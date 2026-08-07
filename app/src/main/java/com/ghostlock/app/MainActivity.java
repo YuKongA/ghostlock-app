@@ -267,6 +267,8 @@ public class MainActivity extends Activity {
             return;
         }
         setRunState(RunState.RUNNING, getString(R.string.status_running));
+        // keep the screen awake
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         appendLog("==== start ====");
         worker.execute(() -> {
             int code = 1;
@@ -287,6 +289,7 @@ public class MainActivity extends Activity {
                 int finalCode = code;
                 ui.post(() -> {
                     running.set(false);
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     if (finalCode == 0) {
                         setRunState(RunState.SUCCESS, getString(R.string.status_success));
                     } else {
