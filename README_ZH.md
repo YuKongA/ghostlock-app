@@ -8,6 +8,7 @@
 | ------------------------------------------------------ | ---------------------------------------------- |
 | `6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k`  | Xiaomi 15 Pro (SM8750)                         |
 | `6.6.77-android15-8-g4a507830d890-ab13636293-4k`       | Redmi K90 (SM8750), Xiaomi Civi 5 Pro (SM8735) |
+| `6.6.89-android15-8-g096cdb6ecefc-ab14358676-4k`       | OPPO Pad4Pro (SM8750)                          |
 | `6.6.118-android15-8-g2e6b9c3812c5-ab15114928-4k`      | OPPO Find N5 (SM8750)                          |
 | `6.6.118-android15-8-g608a629fedf7-ab15154340-4k`      | Redmi K90 Ultra (SM8750)                       |
 | `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5 (MT6991Z)                           |
