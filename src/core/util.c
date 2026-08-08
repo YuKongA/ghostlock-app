@@ -137,7 +137,7 @@ void log_startup_context(void) {
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
              getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)P0_KERNEL_PHYS_LOAD,
+             (unsigned long long)p0_kernel_phys_load,
              (unsigned long long)P0_KERNEL_PHYS_DELTA,
              (unsigned long long)SLIDE_NFULNL_LOGGER,
              (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,

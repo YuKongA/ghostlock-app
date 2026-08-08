@@ -52,6 +52,27 @@ static int soc_is_mtk(void) {
   return 0;
 }
 
+/* XRing uses a different physical mapping from the Qualcomm default. */
+static int soc_is_xring(void) {
+  char buf[256];
+  if (__system_property_get("ro.soc.manufacturer", buf) > 0) {
+    if (strncasecmp(buf, "xring", 5) == 0) {
+      return 1;
+    }
+  }
+  const char *keys[] = {"ro.soc.model", "ro.board.platform", NULL};
+  for (int i = 0; keys[i]; i++) {
+    if (__system_property_get(keys[i], buf) <= 0 || !buf[0]) {
+      continue;
+    }
+    if (strncasecmp(buf, "xring", 5) == 0 ||
+        strncasecmp(buf, "o1", 2) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 /* Override target.h _OFF macros with dynamic offsets from offsets.h table */
 #undef SELINUX_ENFORCING_OFF
 #undef INIT_CRED_OFF
@@ -118,11 +139,14 @@ static void publish_active_offsets(void) {
     p0_kernel_phys_load = active_offsets->kernel_phys_load;
   }
   int mtk = soc_is_mtk();
+  int xring = soc_is_xring();
   if (mtk) {
     p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
+  } else if (xring) {
+    p0_kernel_phys_load = XRING_KERNEL_PHYS_LOAD;
   }
   pr_info("soc: %s; kernel_phys_load=0x%llx\n",
-          mtk ? "mtk" : "qcom/other",
+          mtk ? "mtk" : (xring ? "xring" : "qcom/other"),
           (unsigned long long)p0_kernel_phys_load);
   pr_info("init_cred image=%016zx alias=%016zx\n",
           (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
