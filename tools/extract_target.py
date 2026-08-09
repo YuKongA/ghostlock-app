@@ -534,12 +534,36 @@ FUNCTIONS = {
 }
 
 ASHMEM_FUNCTIONS = {
-    "off_ashmem_ioctl": ("ashmem_ioctl", "fops_ioctl"),
-    "off_ashmem_compat_ioctl": ("compat_ashmem_ioctl", "fops_compat_ioctl"),
-    "off_ashmem_mmap": ("ashmem_mmap", "fops_mmap"),
-    "off_ashmem_open": ("ashmem_open", "fops_open"),
-    "off_ashmem_release": ("ashmem_release", "fops_release"),
-    "off_ashmem_show_fdinfo": ("ashmem_show_fdinfo", "fops_show_fdinfo"),
+    "off_ashmem_ioctl": (
+        "ashmem_ioctl",
+        ("fops_ioctl", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE5ioctl"),
+    ),
+    "off_ashmem_compat_ioctl": (
+        "compat_ashmem_ioctl",
+        ("fops_compat_ioctl", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE12compat_ioctl"),
+    ),
+    "off_ashmem_mmap": (
+        "ashmem_mmap",
+        ("fops_mmap", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE4mmap"),
+    ),
+    "off_ashmem_open": (
+        "ashmem_open",
+        ("fops_open", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE4open"),
+    ),
+    "off_ashmem_release": (
+        "ashmem_release",
+        ("fops_release", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE7release"),
+    ),
+    "off_ashmem_show_fdinfo": (
+        "ashmem_show_fdinfo",
+        ("fops_show_fdinfo", "ashmem_rust6Ashmem"),
+        ("MiscdeviceVTable", "ashmem_rust6Ashmem", "6AshmemE11show_fdinfo"),
+    ),
 }
 
 # file_operations slot offsets: classic C layout (OPPO 6.6) vs 6.12+ Rust
@@ -620,22 +644,47 @@ def resolve_symbols(
     result["off_slide_loggers_0_1"] = (
         unique(symbols, "loggers") + 0x10 if unique(symbols, "loggers") is not None else None
     )
-    misc = find_data_symbol(symbols, types, "ashmem_misc", ("ashmem", "misc"))
-    misc_fops = btf.field("miscdevice", "fops") if btf else None
-    if misc_fops is None and btf is None and kernel_struct_macro(release) == "STRUCT_OFFSETS_6_6":
-        # No BTF: miscdevice.fops is at 0x10 on 6.6 (after minor/name).
-        misc_fops = 0x10
-    result["off_ashmem_misc_fops"] = (
-        misc + misc_fops if misc is not None and misc_fops is not None else None
-    )
+    # Rust ashmem keeps the fops table in a BSS static (ASHMEM_FOPS_PTR) that
+    # is filled at init, so prefer its kallsyms anchor over the in-file scan.
+    # The generic ("ashmem", "fops") fragments also match get_shmem_fops/
+    # VMFILE_FOPS, so only use them as a last resort.
     result["off_ashmem_fops"] = find_data_symbol(
-        symbols, types, "ashmem_fops", ("ashmem", "fops")
+        symbols, types, "ashmem_fops", ("ashmem_fops_ptr",)
     )
-    for field_name, fragments in ASHMEM_FUNCTIONS.items():
-        exact, rust_fragment = fragments
+    if result["off_ashmem_fops"] is None:
+        result["off_ashmem_fops"] = find_data_symbol(
+            symbols, types, "ashmem_fops", ("ashmem", "fops")
+        )
+    # Rust ashmem registers its miscdevice at runtime and leaves no static
+    # ashmem_misc slot; the misc class file_operations table (misc_fops) is a
+    # stable writable data symbol used as the CFI write/restore target.
+    misc = find_data_symbol(symbols, types, "ashmem_misc", ("ashmem_misc",))
+    misc_fops_field = btf.field("miscdevice", "fops") if btf else None
+    if misc_fops_field is None and btf is None and kernel_struct_macro(release) == "STRUCT_OFFSETS_6_6":
+        # No BTF: miscdevice.fops is at 0x10 on 6.6 (after minor/name).
+        misc_fops_field = 0x10
+    if misc is not None and misc_fops_field is not None:
+        result["off_ashmem_misc_fops"] = misc + misc_fops_field
+    else:
+        result["off_ashmem_misc_fops"] = find_data_symbol(
+            symbols, types, "misc_fops", ("misc_fops",)
+        )
+        if result["off_ashmem_misc_fops"] is None:
+            # Last resort: a Rust lockdep key near the MiscDevice static.
+            misc = find_data_symbol(symbols, types, "ashmem_misc", ("ashmem", "misc"))
+            result["off_ashmem_misc_fops"] = (
+                misc + misc_fops_field
+                if misc is not None and misc_fops_field is not None
+                else None
+            )
+    for field_name, patterns in ASHMEM_FUNCTIONS.items():
+        exact, *fragment_patterns = patterns
         value = unique(symbols, exact)
         if value is None:
-            value = find_function(symbols, exact, (rust_fragment, "ashmem_rust6Ashmem"))
+            for fragments in fragment_patterns:
+                value = find_function(symbols, exact, fragments)
+                if value is not None:
+                    break
         result[field_name] = value
     return {
         name: None if value is None else value - base
@@ -1515,6 +1564,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"info: off_ashmem_fops = 0x{scanned:08x} "
                     "(file_operations pattern scan)",
+                    file=sys.stderr,
+                )
+        ashmem_funcs = [
+            value for key, value in symbol_offsets.items()
+            if key in ASHMEM_FUNCTIONS and value is not None
+        ]
+        if len(ashmem_funcs) == len(ASHMEM_FUNCTIONS):
+            span = max(ashmem_funcs) - min(ashmem_funcs)
+            if span > 0x4000:
+                print(
+                    f"warning: ashmem functions span 0x{span:x}; "
+                    "expected a tight same-module cluster",
                     file=sys.stderr,
                 )
         derived: dict[str, int] = {}

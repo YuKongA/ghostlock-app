@@ -17,6 +17,7 @@
 | `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | Redmi K90 Pro Max (SM8850)                     |
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max (SM8850)       |
 | `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15 (SM8850)                            |
+| `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T (SM8850)                           |
 
 启动时按 `uname -r` 匹配偏移表，未匹配的内核会直接拒绝运行，App 顶部显示支持状态。偏移表按精确的 `uname -r` 组织在 `src/kernels/` 下，同一构建的设备共用一行——例如 Redmi K90 与 Xiaomi Civi 5 Pro，以及 Xiaomi 17 / 17 Pro / 17 Pro Max。新增跑在已列内核上的设备时，在对应行追加设备名即可（提取器的 `--register` 会提示共用该内核，不会重复建表）；全新内核构建则新增一行。
 

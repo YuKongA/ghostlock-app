@@ -17,6 +17,7 @@
 | `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | Redmi K90 Pro Max (SM8850)                     |
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max (SM8850)       |
 | `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15 (SM8850)                            |
+| `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T (SM8850)                           |
 
 At startup the kernel is matched via `uname -r`; unsupported kernels are rejected immediately and the app shows the status at the top. Tables live under `src/kernels/` keyed by the exact `uname -r`, so devices on the same build share one row — Redmi K90 & Xiaomi Civi 5 Pro, and Xiaomi 17 / 17 Pro / 17 Pro Max. To add a device on a listed kernel, append it to that row (the extractor's `--register` reports the kernel as shared instead of duplicating it); a new kernel build gets a new row.
 
