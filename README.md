@@ -16,6 +16,7 @@
 | `6.6.118-android15-8-gebdfad32d749-ab15099304-4k`      | OPPO Find X8 / Find X8 Pro (MT6991)            |
 | `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | Redmi K90 Pro Max (SM8850)                     |
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max (SM8850)       |
+| `6.12.23-android16-5-g82efd98459a2-ab14457512-4k`      | OPPO Find X9 / Find X9 Pro (MT6993)            |
 | `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15 (SM8850)                            |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T (SM8850)                           |
 
