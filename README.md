@@ -6,7 +6,7 @@
 
 | Kernel                                                 | Devices                               |
 | ------------------------------------------------------ | ------------------------------------- |
-| `6.6.77-android15-8-g4a507830d890-ab13636293-4k`       | Xiaomi Civi 5 Pro, Redmi K90, POCO F7 |
+| `6.6.77-android15-8-g4a507830d890-ab13636293-4k`       | Xiaomi Civi 5 Pro, Redmi K90, POCO F7, Redmi 4 Turbo |
 | `6.6.77-android15-8-g63ce7556864c-ab13994517-4k`       | Xiaomi 15                             |
 | `6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k`  | Xiaomi 15 Pro                         |
 | `6.6.89-android15-8-g096cdb6ecefc-ab14358676-4k`       | OPPO Pad 4 Pro                        |
