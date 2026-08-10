@@ -14,7 +14,7 @@
 | `6.6.118-android15-8-g93e223c276e7-abogki500782043-4k` | OnePlus 13                            |
 | `6.6.118-android15-8-g608a629fedf7-ab15154340-4k`      | Redmi K90 Ultra                       |
 | `6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k`      | Redmi K90 Ultra                       |
-| `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5                            |
+| `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5 / OnePlus Pad 2            |
 | `6.6.118-android15-8-gebdfad32d749-ab15099304-4k`      | OPPO Find X8 / Find X8 Pro            |
 | `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | Redmi K90 Pro Max                     |
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max       |
