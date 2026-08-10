@@ -20,6 +20,7 @@
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max       |
 | `6.12.23-android16-5-g82efd98459a2-ab14457512-4k`      | OPPO Find X9 / Find X9 Pro            |
 | `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15                            |
+| `6.12.23-android16-5-ga8f88ad96df3-ab13929693-4k`      | OnePlus 15                            |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                           |
 
 启动时按精确的 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。偏移表存放在 `src/kernels/<uname-release>/offsets.h`，同一构建的设备共用一行。为已列出的内核追加设备时，在该行补上设备名即可；新内核构建用提取器的 `--register` 添加。

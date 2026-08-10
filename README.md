@@ -20,6 +20,7 @@
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max       |
 | `6.12.23-android16-5-g82efd98459a2-ab14457512-4k`      | OPPO Find X9 / Find X9 Pro            |
 | `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15                            |
+| `6.12.23-android16-5-ga8f88ad96df3-ab13929693-4k`      | OnePlus 15                            |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                           |
 
 The kernel is matched by exact `uname -r` at startup; unsupported builds are rejected and the app shows the status at the top. Offsets live under `src/kernels/<uname-release>/offsets.h`, and devices on the same build share one row. To add a device on a listed kernel, extend its row; use the extractor's `--register` to add a new kernel build.
