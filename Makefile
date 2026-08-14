@@ -18,6 +18,9 @@ SRCS := \
   src/core/util.c \
   src/core/fops.c
 
+# Headers also trigger a rebuild (e.g. a freshly --register-ed src/kernels/<release>/offsets.h).
+HDRS := $(wildcard src/core/*.h src/core/*/*.h src/kernels/*.h src/kernels/*/*.h)
+
 # Device offsets are selected at runtime from uname -r.
 TARGET_CONFIG ?= target.h
 
@@ -29,10 +32,10 @@ LDFLAGS := -fPIE -pie -pthread -flto
 
 all: ghostlock
 
-ghostlock: $(SRCS)
+ghostlock: $(SRCS) $(HDRS)
 	@echo "Using NDK compiler: $(NDK_CC)"
 	@echo "Target config: $(TARGET_CONFIG)"
-	$(NDK_CC) $(CFLAGS) $(LDFLAGS) $^ -o ghostlock
+	$(NDK_CC) $(CFLAGS) $(LDFLAGS) $(SRCS) -o ghostlock
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: ./ghostlock ==="
