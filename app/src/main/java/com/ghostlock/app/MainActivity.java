@@ -57,6 +57,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,6 +86,7 @@ public class MainActivity extends Activity {
     private static final String EXTRACT_NAME = "libextract.so";
     private static final String KSUD_NAME = "ksud";
     private static final String OFFSETS_JSON = "offsets.json";
+    private static final String OFFSETS_URL = "https://raw.githubusercontent.com/YuKongA/ghostlock-app/main/offsets.json";
     private static final String KSU_LOG_NAME = ".ghostlock_ksu.log";
     /**
      * MediaTek DRAM-base marker emitted by the extractor when phys is not an override.
@@ -392,6 +395,57 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    /**
+     * when the running kernel has no built-in or imported offsets, fetch the
+     * latest offsets.json from github in the background so new kernels work
+     * without an app rebuild or manual import. silent on failure (offline, 404).
+     */
+    private void fetchLatestOffsets() {
+        if (isKernelSupported()) {
+            return;
+        }
+        worker.execute(() -> {
+            File tmp = new File(getFilesDir(), "offsets_fetch.tmp");
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL(OFFSETS_URL).openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setInstanceFollowRedirects(true);
+                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                    return;
+                }
+                try (InputStream in = conn.getInputStream();
+                     OutputStream out = new FileOutputStream(tmp)) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                    }
+                }
+                JSONArray imported = readOffsetsFile(tmp);
+                if (imported == null) {
+                    return;
+                }
+                JSONArray existing = readOffsetsFile(new File(getFilesDir(), OFFSETS_JSON));
+                if (existing == null) {
+                    existing = new JSONArray();
+                }
+                File offsets = new File(getFilesDir(), OFFSETS_JSON);
+                mergeAndSave(offsets, existing, imported, true);
+                appendLog("imported latest offsets: " + OFFSETS_URL);
+                ui.post(() -> applyKernelStatus());
+            } catch (IOException e) {
+                appendLog("offsets fetch failed: " + e.getMessage());
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+                tmp.delete();
+            }
+        });
+    }
+
     private void buildCpuPairs() {
         cpuPairs.clear();
         cpuPairLabels.clear();
@@ -485,6 +539,7 @@ public class MainActivity extends Activity {
         buildCpuPairs();
         restoreCpuPair();
         applyKernelStatus();
+        fetchLatestOffsets();
         setRunState(RunState.IDLE);
 
         runButton.setOnClickListener(v -> startExploit());
