@@ -432,7 +432,7 @@ public class MainActivity extends Activity {
                     existing = new JSONArray();
                 }
                 File offsets = new File(getFilesDir(), OFFSETS_JSON);
-                mergeAndSave(offsets, existing, imported, true);
+                mergeAndSave(offsets, existing, imported, false);
                 appendLog("imported latest offsets: " + OFFSETS_URL);
                 ui.post(() -> applyKernelStatus());
             } catch (IOException e) {
