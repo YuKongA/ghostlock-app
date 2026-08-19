@@ -56,6 +56,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -73,6 +74,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,6 +84,7 @@ public class MainActivity extends Activity {
     private static final String EXTRACT_NAME = "libextract.so";
     private static final String KSUD_NAME = "ksud";
     private static final String OFFSETS_JSON = "offsets.json";
+    private static final String KSU_LOG_NAME = ".ghostlock_ksu.log";
     /**
      * MediaTek DRAM-base marker emitted by the extractor when phys is not an override.
      */
@@ -1239,7 +1242,28 @@ public class MainActivity extends Activity {
                 } else {
                     appendLog("warning: ksud not found");
                 }
+                File logFile = new File(workDir, KSU_LOG_NAME);
+                logFile.delete();
+                AtomicLong ksuOffset = new AtomicLong();
+                Thread tailer = new Thread(() -> {
+                    try {
+                        while (!Thread.currentThread().isInterrupted()) {
+                            tailKsuLog(logFile, ksuOffset);
+                            Thread.sleep(200);
+                        }
+                    } catch (InterruptedException ignored) {
+                    }
+                }, "ksu-log-tailer");
+                tailer.setDaemon(true);
+                tailer.start();
                 code = runBinary(binary, workDir);
+                tailer.interrupt();
+                try {
+                    tailer.join(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                tailKsuLog(logFile, ksuOffset);
                 appendLog("exit code=" + code);
             } catch (Throwable t) {
                 appendLog("error: " + t.getClass().getSimpleName() + ": " + t.getMessage());
@@ -1317,6 +1341,38 @@ public class MainActivity extends Activity {
             pb.environment().put("GHOSTLOCK_CONSUMER_CORE", String.valueOf(pair[1]));
         }
         return runProcess(pb);
+    }
+
+    private void tailKsuLog(File logFile, AtomicLong offset) {
+        if (!logFile.isFile()) {
+            return;
+        }
+        synchronized (offset) {
+            try (RandomAccessFile raf = new RandomAccessFile(logFile, "r")) {
+                long size = raf.length();
+                long pos = offset.get();
+                if (size < pos) {
+                    pos = 0; // log was truncated/recreated by this run
+                }
+                raf.seek(pos);
+                long lastComplete = pos;
+                StringBuilder pending = new StringBuilder(512);
+                int b;
+                while ((b = raf.read()) != -1) {
+                    if (b == '\n') {
+                        if (pending.length() > 0) {
+                            appendLog(pending.toString());
+                            pending.setLength(0);
+                        }
+                        lastComplete = raf.getFilePointer();
+                    } else {
+                        pending.append((char) b);
+                    }
+                }
+                offset.set(lastComplete);
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private int runProcess(ProcessBuilder pb) throws IOException, InterruptedException {

@@ -506,13 +506,13 @@ static void write_root_script(void) {
       "echo \"[*] ksud_file=$(ls -l \"$KSUD\" 2>/dev/null)\" >>\"$LOG\"\n"
       "echo \"[*] uname=$(uname -r)\" >>\"$LOG\"\n"
       "if [ \"$(id -u)\" -ne 0 ]; then\n"
-      "  echo '[!] temp su unavailable; aborting' | tee -a \"$LOG\"\n"
+      "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
       "  exit 1\n"
       "fi\n"
       "KVER=$(uname -r | cut -d. -f1-2)\n"
       "AVER=$(uname -r | grep -o 'android[0-9]*' | head -1)\n"
       "if [ -z \"$AVER\" ] || [ -z \"$KVER\" ]; then\n"
-      "  echo '[!] cannot parse KMI from uname -r' | tee -a \"$LOG\"\n"
+      "  echo '[!] cannot parse KMI from uname -r' >>\"$LOG\"\n"
       "  exit 1\n"
       "fi\n"
       "KMI=\"${AVER}-${KVER}\"\n"
@@ -534,10 +534,14 @@ static void write_root_script(void) {
       "done\n"
       "echo \"[*] policy fixup rc=$FIXUP_RC\" >>\"$LOG\"\n"
       "if [ \"$FIXUP_RC\" -eq 0 ]; then\n"
-      "# load_policy ok: ksud late-load while still permissive, then re-enforce\n"
-      "if ! grep -q kernelsu /proc/modules 2>/dev/null; then\n"
+      "# load_policy ok: late-load (module init re-enforces); already-loaded restores below\n"
+      "if grep -q kernelsu /proc/modules 2>/dev/null; then\n"
+      "  KSU_ALREADY=1\n"
+      "  echo \"[*] kernelsu already loaded; skipping late-load\" >>\"$LOG\"\n"
+      "else\n"
+      "  KSU_ALREADY=0\n"
       "  if [ ! -x \"$KSUD\" ]; then\n"
-      "    echo '[!] ksud missing; cannot late-load' | tee -a \"$LOG\"\n"
+      "    echo '[!] ksud missing; cannot late-load' >>\"$LOG\"\n"
       "    exit 1\n"
       "  fi\n"
       "  echo \"[*] late-load kmi=$KMI\" >>\"$LOG\"\n"
@@ -552,14 +556,16 @@ static void write_root_script(void) {
       "  sleep 0.1\n"
       "done\n"
       "if [ \"$KSU_READY\" -ne 1 ]; then\n"
-      "  echo '[!] KernelSU module not loaded' | tee -a \"$LOG\"\n"
+      "  echo '[!] KernelSU module not loaded' >>\"$LOG\"\n"
       "  exit 1\n"
       "fi\n"
-      "echo '[+] KernelSU module loaded' | tee -a \"$LOG\"\n"
-      "echo \"[*] restoring enforcing\" >>\"$LOG\"\n"
-      "echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
+      "echo '[+] KernelSU module loaded' >>\"$LOG\"\n"
+      "if [ \"$KSU_ALREADY\" -eq 1 ]; then\n"
+      "  echo \"[*] kernelsu already loaded; restoring enforcing\" >>\"$LOG\"\n"
+      "  echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
+      "fi\n"
       "else\n"
-      "  echo '[!] fixup failed; SELinux left permissive' | tee -a \"$LOG\"\n"
+      "  echo '[!] fixup failed; SELinux left permissive' >>\"$LOG\"\n"
       "fi\n",
       g_home_dir);
   if (n < 0 || n >= (int)sizeof(script)) {
@@ -1098,17 +1104,35 @@ int run_exploit(int argc, char **argv) {
     }
     if (!(ksu_log_loaded || ksu_log_failed)) usleep(500000);
   }
+  /* Module init re-enforces at the very end of kernelsu_init; wait up to
+   * 20s for it. Denied read or value 1 both mean enforcing here. */
+  int enforce_ok = 0;
+  for (int i = 0; ksu_log_loaded && !enforce_ok && i < 200; i++) {
+    int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
+    if (efd < 0) {
+      enforce_ok = 1;
+      break;
+    }
+    char eb[4] = {0};
+    ssize_t rn = read(efd, eb, sizeof(eb));
+    close(efd);
+    if (rn > 0 && eb[0] == '1') enforce_ok = 1;
+    if (!enforce_ok) usleep(100000);
+  }
+  if (enforce_ok)
+    pr_info("enforce=1 (enforcing)\n");
+  else if (ksu_log_loaded)
+    pr_warning("enforce=0 (still permissive)\n");
   kernelsu_ready = kernelsu_ready || ksu_log_loaded;
 
-  /* The detached root shell runs the fixup: permissive, load_policy, then
-   * enforcing. The permissive window restores network; the policy reload
-   * is what keeps it working after enforcing is restored. */
+  /* Fixup: permissive, load_policy, late-load. Module init re-enforces;
+   * policy reload keeps it working after enforcing is back. */
   if (kernelsu_ready)
-    pr_success("KernelSU ready; policy fixup result in .ghostlock_ksu.log\n");
+    pr_success("KernelSU ready\n");
   else if (ksu_log_failed)
-    pr_warning("KernelSU module load failed (see .ghostlock_ksu.log)\n");
+    pr_warning("KernelSU module load failed\n");
   else if (seccomp_ok)
-    pr_warning("temporary root ready; KernelSU module load pending (independent root shell; see .ghostlock_ksu.log)\n");
+    pr_warning("temporary root ready; KernelSU module load pending\n");
   else
     pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
   return 0;
