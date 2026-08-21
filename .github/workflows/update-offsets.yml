@@ -7,6 +7,9 @@ on:
       - 'src/kernels/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   regenerate:
     runs-on: ubuntu-latest
