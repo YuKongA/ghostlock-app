@@ -103,9 +103,12 @@ pub fn recover_kernel_phys_load(path: &Path) -> Result<u64> {
                     let Some(node) = stack.pop() else {
                         return Err(ExtractError::new("FDT end without node"));
                     };
+                    // SM8650 xbl_config spells it "MemLabel"; the dt-binding
+                    // name is "mem-label". Accept either.
                     let label = node
                         .props
-                        .get("mem-label")
+                        .get("MemLabel")
+                        .or_else(|| node.props.get("mem-label"))
                         .map(|v| {
                             let end = find_byte(v, 0, v.len()).unwrap_or(v.len());
                             String::from_utf8_lossy(&v[..end]).into_owned()
