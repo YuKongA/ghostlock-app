@@ -165,7 +165,11 @@ pub fn derive_pselect_layout(
         frames.insert(format!("frame_{key}"), first_sp_frame(text, full_name)?);
     }
 
-    let pi_tree = btf.field("rt_mutex_waiter", "pi_tree");
+    // 6.6 names the rb_nodes tree/pi_tree; 6.1 calls them
+    // tree_entry/pi_tree_entry (same offsets in the struct).
+    let pi_tree = btf
+        .field("rt_mutex_waiter", "pi_tree")
+        .or_else(|| btf.field("rt_mutex_waiter", "pi_tree_entry"));
     let wake_state = btf.field("rt_mutex_waiter", "wake_state");
     if pi_tree.is_none() || wake_state.is_none() {
         return Err(ExtractError::new(

@@ -47,12 +47,16 @@ pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
     (
         "rt_mutex_waiter",
         &[
+            // 6.6+ names the rb_nodes tree/pi_tree; 6.1 calls them
+            // tree_entry/pi_tree_entry (both are plain members, same layout).
             ("waiter_tree", "tree"),
             ("waiter_pi_tree", "pi_tree"),
             ("waiter_task", "task"),
             ("waiter_lock", "lock"),
             ("waiter_wake_state", "wake_state"),
             ("waiter_ww_ctx", "ww_ctx"),
+            ("waiter_tree", "tree_entry"),
+            ("waiter_pi_tree", "pi_tree_entry"),
         ],
     ),
     (
@@ -102,6 +106,10 @@ pub fn kernel_struct_macro(release: Option<&str>) -> &'static str {
                 if (major, minor) >= (6, 12) {
                     return "STRUCT_OFFSETS_6_12";
                 }
+                // 6.1 android14 builds use the flat compact-waiter layout.
+                if (major, minor) <= (6, 1) {
+                    return "STRUCT_OFFSETS_6_1";
+                }
             }
         }
     }
@@ -133,10 +141,17 @@ pub fn resolve_structs(btf: Option<&Btf>) -> ResolvedStructs {
             continue;
         }
         for (macro_name, field_name) in *fields {
-            result.insert(
-                (*macro_name).to_string(),
-                btf.field(struct_name, field_name),
-            );
+            let value = btf.field(struct_name, field_name);
+            // Alias entries (e.g. tree/tree_entry) resolve on one kernel
+            // naming only; never clobber a resolved value with a miss.
+            match result.get(*macro_name).copied().flatten() {
+                Some(old) if value.is_none() => {
+                    result.insert((*macro_name).to_string(), Some(old));
+                }
+                _ => {
+                    result.insert((*macro_name).to_string(), value);
+                }
+            }
         }
     }
     result.insert("struct_page_size".to_string(), btf.size("page"));
