@@ -11,6 +11,7 @@ use crate::symbols::{OPTIONAL_SYMBOLS, STRUCT_FIELDS, SYMBOLS};
 
 pub const MTK_DEFAULT_PHYS_LOAD: u64 = 0x8000_0000;
 pub const QC_PHYS_LOAD_6_6: u64 = 0xA800_0000;
+pub const QC_PHYS_LOAD_6_1: u64 = 0xA800_0000;
 pub const QC_PHYS_LOAD_6_12: u64 = 0xC780_0000;
 
 /// Python insertion order of resolve_symbols(): header output matches the
@@ -60,19 +61,21 @@ pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
     if phys == MTK_DEFAULT_PHYS_LOAD {
         return false;
     }
-    let default = if crate::symbols::kernel_struct_macro(release) == "STRUCT_OFFSETS_6_12" {
-        QC_PHYS_LOAD_6_12
-    } else {
-        QC_PHYS_LOAD_6_6
+    let default = match crate::symbols::kernel_struct_macro(release) {
+        "STRUCT_OFFSETS_6_12" => QC_PHYS_LOAD_6_12,
+        "STRUCT_OFFSETS_6_1" => QC_PHYS_LOAD_6_1,
+        _ => QC_PHYS_LOAD_6_6,
     };
     phys != default
 }
 
 pub fn pselect_waiter_shift_for(release: Option<&str>) -> i64 {
-    if crate::symbols::kernel_struct_macro(release) == "STRUCT_OFFSETS_6_12" {
-        0
-    } else {
-        -2
+    match crate::symbols::kernel_struct_macro(release) {
+        "STRUCT_OFFSETS_6_12" => 0,
+        // android14-6.1 compiles its fd_set words one qword later than
+        // 6.6; the committed tables all measure 1.
+        "STRUCT_OFFSETS_6_1" => 1,
+        _ => -2,
     }
 }
 
@@ -86,10 +89,12 @@ pub fn validate_kernel_phys_load(
     };
     let expected = if mtk {
         MTK_DEFAULT_PHYS_LOAD
-    } else if crate::symbols::kernel_struct_macro(release) == "STRUCT_OFFSETS_6_12" {
-        QC_PHYS_LOAD_6_12
     } else {
-        QC_PHYS_LOAD_6_6
+        match crate::symbols::kernel_struct_macro(release) {
+            "STRUCT_OFFSETS_6_12" => QC_PHYS_LOAD_6_12,
+            "STRUCT_OFFSETS_6_1" => QC_PHYS_LOAD_6_1,
+            _ => QC_PHYS_LOAD_6_6,
+        }
     };
     if phys == expected {
         return false;
@@ -123,6 +128,8 @@ pub fn render_device(
     if phys_needs_override(Some(release), phys) {
         lines.push(format!("    .kernel_phys_load = 0x{:x},", phys.unwrap()));
     }
+    // 6.1 entries get their mm_struct_sz=0x400 stride from the
+    // STRUCT_OFFSETS_6_1 macro itself; nothing extra to emit here.
     lines.push(format!("    .pselect_waiter_shift = {pselect_shift},"));
     for key in symbol_render_order() {
         if let Some(value) = symbols.get(key).copied().flatten() {
@@ -251,7 +258,7 @@ pub fn build_report(
             )
         })
         .collect();
-    json!({
+    let mut report = json!({
         "release": release,
         "kimage_text_base": base,
         "kernel_phys_load": phys,
@@ -259,10 +266,32 @@ pub fn build_report(
         "symbols": symbol_json,
         "struct_fields": struct_json,
         "btf_size": btf_size,
-    })
+    });
+    if crate::symbols::kernel_struct_macro(release) == "STRUCT_OFFSETS_6_1" {
+        // 0x400 is the device SLUB stride, not the BTF 0x3c0
+        report["compact_waiter"] = json!(1);
+        report["mm_struct_sz"] = json!(0x400);
+    }
+    report
 }
 
+/* Resolve the repo the extractor reads and writes kernel tables in.
+ * The manifest dir baked in at build time goes stale the moment the
+ * binary runs from another checkout or a linked worktree, so ask git
+ * for the toplevel of the working directory first and only fall back
+ * to the manifest path when there is no repo around (on-device runs). */
 fn repo_root() -> PathBuf {
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if out.status.success() {
+            let top = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !top.is_empty() {
+                return PathBuf::from(top);
+            }
+        }
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -449,4 +478,22 @@ pub fn task_keys_list() -> &'static [&'static str] {
 
 pub fn struct_fields_reference() -> &'static [(&'static str, &'static [(&'static str, &'static str)])] {
     STRUCT_FIELDS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pselect_waiter_shift_for;
+
+    #[test]
+    fn pselect_waiter_shift_matches_the_committed_tables() {
+        assert_eq!(
+            pselect_waiter_shift_for(Some(
+                "6.1.118-android14-11-gca0ef6d17716-ab13624819"
+            )),
+            1
+        );
+        assert_eq!(pselect_waiter_shift_for(Some("6.6.92-android15-8")), -2);
+        assert_eq!(pselect_waiter_shift_for(Some("6.12.30-android16-0")), 0);
+        assert_eq!(pselect_waiter_shift_for(None), -2);
+    }
 }
