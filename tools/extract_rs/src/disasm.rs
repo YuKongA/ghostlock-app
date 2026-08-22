@@ -11,7 +11,7 @@ use yaxpeax_arm::armv8::a64::{ARMv8, InstDecoder};
 use crate::error::{ExtractError, Result};
 
 pub fn disassemble_range(kernel: &[u8], start: usize, stop: usize) -> Result<Vec<String>> {
-    if stop <= start || stop - start > 0x20000 {
+    if stop <= start || stop > kernel.len() || stop - start > 0x20000 {
         return Err(ExtractError::new(format!(
             "disassembly range invalid: 0x{start:x}..0x{stop:x}"
         )));

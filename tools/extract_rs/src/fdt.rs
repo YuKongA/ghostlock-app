@@ -59,7 +59,8 @@ pub fn recover_kernel_phys_load(path: &Path) -> Result<u64> {
             let mut stack: Vec<FdtNode> = Vec::new();
             let mut regions: Vec<(String, String, u64, u64)> = Vec::new();
             let mut p = struct_start;
-            while p < struct_end {
+            let mut terminated = false;
+            while p + 4 <= struct_end {
                 let token = rd_be_u32(&data, p);
                 if token == FDT_BEGIN_NODE {
                     let Some(nul) = find_byte(&data, p + 4, struct_end) else {
@@ -173,10 +174,14 @@ pub fn recover_kernel_phys_load(path: &Path) -> Result<u64> {
                 } else if token == FDT_NOP {
                     p += 4;
                 } else if token == FDT_END {
+                    terminated = true;
                     break;
                 } else {
                     return Err(ExtractError::new("unknown FDT token"));
                 }
+            }
+            if !terminated {
+                return Err(ExtractError::new("truncated FDT: no end token"));
             }
             let nomap: Vec<(u64, u64)> = regions
                 .iter()

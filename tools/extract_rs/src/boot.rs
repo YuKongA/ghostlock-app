@@ -24,7 +24,7 @@ pub const QC_PHYS_LOAD_6_12: u64 = 0xC780_0000;
 /// by size-prefixed blocks, ending once a block decompresses under 8 MiB.
 pub fn decompress_lz4_legacy(payload: &[u8]) -> Result<Vec<u8>> {
     let out = decompress_lz4_legacy_frame(payload)?;
-    if out.len() < 4 || &out[0..2] != b"MZ" || &out[0x38..0x3C] != b"ARM\x64" {
+    if out.len() < 0x3C || &out[0..2] != b"MZ" || &out[0x38..0x3C] != b"ARM\x64" {
         return Err(ExtractError::new(
             "LZ4 decompression did not yield an arm64 Image",
         ));

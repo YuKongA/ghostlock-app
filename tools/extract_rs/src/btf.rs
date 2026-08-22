@@ -253,9 +253,12 @@ impl Btf {
         item: &BtfType,
         name: &str,
         base: u32,
+        depth: usize,
         seen: &mut HashSet<u32>,
     ) -> Option<u32> {
-        if seen.contains(&item.type_id) {
+        // the shared seen set bounds nested anonymous members; the depth
+        // cap catches cycles
+        if depth > 64 || seen.contains(&item.type_id) {
             return None;
         }
         seen.insert(item.type_id);
@@ -268,7 +271,7 @@ impl Btf {
                 if let Some(child) = self.resolve(member.type_id) {
                     if child.kind == KIND_STRUCT || child.kind == KIND_UNION {
                         if let Some(found) =
-                            self.find_member(child, name, offset, &mut seen.clone())
+                            self.find_member(child, name, offset, depth + 1, seen)
                         {
                             return Some(found);
                         }
@@ -281,7 +284,7 @@ impl Btf {
 
     pub fn field(&self, struct_name: &str, field_name: &str) -> Option<u32> {
         let item = self.named_struct(struct_name)?;
-        self.find_member(item, field_name, 0, &mut HashSet::new())
+        self.find_member(item, field_name, 0, 0, &mut HashSet::new())
     }
 
     pub fn size(&self, struct_name: &str) -> Option<u32> {

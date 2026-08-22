@@ -133,13 +133,10 @@ fn obtain_kallsyms(provided: Option<&Path>) -> Result<Option<PathBuf>> {
         return Ok(Some(provided.to_path_buf()));
     }
     // On a rooted phone /proc/kallsyms is the natural source.
+    // procfs stat reports len 0 for it, so probe readability with File::open.
     let proc_ksyms = Path::new("/proc/kallsyms");
-    if proc_ksyms.is_file() {
-        if let Ok(meta) = std::fs::metadata(proc_ksyms) {
-            if meta.len() > 0 {
-                return Ok(Some(proc_ksyms.to_path_buf()));
-            }
-        }
+    if proc_ksyms.is_file() && std::fs::File::open(proc_ksyms).is_ok() {
+        return Ok(Some(proc_ksyms.to_path_buf()));
     }
     Ok(None)
 }
@@ -159,7 +156,16 @@ fn resolve_kallsyms(
     cli: &Cli,
 ) -> Result<Kallsyms> {
     if let Some(path) = obtain_kallsyms(cli.kallsyms.as_deref())? {
-        return parse_kallsyms_file(&path);
+        if cli.kallsyms.is_some() {
+            // an explicit --kallsyms fails loudly instead of falling back
+            return parse_kallsyms_file(&path);
+        }
+        // kptr_restrict zeroes every address; treat that as a missing table
+        if let Ok(ks) = parse_kallsyms_file(&path) {
+            if ks.symbols.values().any(|addrs| addrs.iter().any(|&a| a != 0)) {
+                return Ok(ks);
+            }
+        }
     }
     kallsyms_finder::recover(&boot.kernel, btf_at)
         .map_err(|err| ExtractError::kallsyms(err.to_string()))
@@ -256,20 +262,22 @@ fn run(cli: &Cli) -> Result<i32> {
     }
     if kernel_phys_load.is_none() && (boot.mtk_lz4 || boot.mtk_gzip) {
         if let Some(text_base) = text_base {
-            let derived = text_base - MTK_VADDR_BASE;
-            if derived > 0 && derived <= 0xFFFF_FFFF {
-                eprintln!(
-                    "info: MediaTek compressed image; kernel_phys_load derived \
-                     from _text: 0x{derived:x} (DRAM base; pass --phys to override)"
-                );
-                kernel_phys_load = Some(derived);
-            } else {
-                eprintln!(
-                    "warning: derived MediaTek kernel_phys_load=0x{derived:x} is \
-                     implausible; using 0x{MTK_DEFAULT_PHYS_LOAD:x} (pass --phys \
-                     to override)"
-                );
-                kernel_phys_load = Some(MTK_DEFAULT_PHYS_LOAD);
+            match text_base.checked_sub(MTK_VADDR_BASE) {
+                Some(derived) if derived > 0 && derived <= 0xFFFF_FFFF => {
+                    eprintln!(
+                        "info: MediaTek compressed image; kernel_phys_load derived \
+                         from _text: 0x{derived:x} (DRAM base; pass --phys to override)"
+                    );
+                    kernel_phys_load = Some(derived);
+                }
+                _ => {
+                    eprintln!(
+                        "warning: _text=0x{text_base:x} gives no plausible mtk \
+                         kernel_phys_load; using 0x{MTK_DEFAULT_PHYS_LOAD:x} \
+                         (pass --phys to override)"
+                    );
+                    kernel_phys_load = Some(MTK_DEFAULT_PHYS_LOAD);
+                }
             }
         } else {
             kernel_phys_load = Some(MTK_DEFAULT_PHYS_LOAD);
