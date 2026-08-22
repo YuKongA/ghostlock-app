@@ -1,14 +1,11 @@
 /* 6.1.118-android14-11-gca0ef6d17716-ab13624819: Xiaomi 14 (houji), SM8650,
  * HyperOS 3.0.3.0.
- * Anchors from the boot.img (kallsyms + BTF).
- * kernel_phys_load: xbl_config FDT /soc/memorymap puts the Kernel region
- * at 0xA8000000 (DRAM base 0x80000000 is XBL NOMAP). */
+ * Anchors from the boot.img (kallsyms + BTF). */
 
 OFFSETS_ENTRY(
     "6.1.118-android14-11-gca0ef6d17716-ab13624819",
     STRUCT_OFFSETS_6_1,
     .pselect_waiter_shift = 1,
-    .kernel_phys_load = 0xA8000000,
     .off_init_task = 0x01fdf600,
     .off_init_cred = 0x01ff1a68,
     .off_root_task_group = 0x021c6580,
