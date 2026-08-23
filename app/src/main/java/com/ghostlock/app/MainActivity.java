@@ -308,7 +308,7 @@ public class MainActivity extends Activity {
      * values equal those defaults.  A kernel_phys_load of 0x80000000 is the
      * MediaTek "no override" marker and is ignored as well.
      */
-    private static boolean matchesBuiltin(JSONObject entry) {
+    static boolean matchesBuiltin(JSONObject entry) {
         Map<String, Long> builtin = SupportedKernels.BUILTIN.get(entry.optString("release", ""));
         if (builtin == null) {
             return false;
@@ -331,7 +331,7 @@ public class MainActivity extends Activity {
         return !objectFieldDiffers(builtin, entry.optJSONObject("symbols")) && !objectFieldDiffers(builtin, entry.optJSONObject("struct_fields"));
     }
 
-    private static boolean builtinFieldDiffers(Map<String, Long> builtin, JSONObject entry, String key) {
+    static boolean builtinFieldDiffers(Map<String, Long> builtin, JSONObject entry, String key) {
         if (!entry.has(key) || entry.isNull(key)) {
             return false;
         }
@@ -342,7 +342,7 @@ public class MainActivity extends Activity {
     /**
      * True when any non-null field in `fields` differs from the built-in value.
      */
-    private static boolean objectFieldDiffers(Map<String, Long> builtin, JSONObject fields) {
+    static boolean objectFieldDiffers(Map<String, Long> builtin, JSONObject fields) {
         if (fields == null) {
             return false;
         }

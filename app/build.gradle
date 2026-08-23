@@ -233,3 +233,10 @@ tasks.named('preBuild') {
 base {
     archivesName = "${appName}-v${appVersionName}(${gitVersionCode})"
 }
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    // local unit tests run against a mockable android.jar whose org.json
+    // stubs throw; the real artifact shadows it on the test classpath
+    testImplementation 'org.json:json:20240303'
+}
