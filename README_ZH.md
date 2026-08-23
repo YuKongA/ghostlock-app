@@ -84,6 +84,8 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 
 App 也能直接生成这份 JSON：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，成功后把 `offsets.json` 写入 App 数据目录。
 
+偏移有三个来源。手动导入的条目最优先，其次内置表。两者都没有时，App 才会在后台下载仓库的 `offsets.json` 并合并缺失的内核，ETag 让内容未变时只发一个短请求。App 更新为某内核带上内置表后，对应的下载副本会被删除，内置表重新生效。
+
 ```json
 [
   {

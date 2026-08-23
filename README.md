@@ -95,6 +95,13 @@ URL) and **Parse image** (`boot.img` + optional `xbl_config.img`) run the
 extractor in-process and write `offsets.json` into the app data dir on
 success.
 
+Offsets come from three places. A manually imported entry wins, then the
+built-in tables. When the running kernel has neither, the app downloads
+`offsets.json` from the project repository in the background and merges
+the missing releases. Downloads carry an ETag so an unchanged file costs
+one short request. When an app update ships built-in tables for a kernel
+that was fetched, the fetched copy is dropped and the tables win again.
+
 ```json
 [{
   "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
