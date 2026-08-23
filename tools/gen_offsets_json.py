@@ -27,9 +27,13 @@ STRUCT = [
 
 def parse_val(v):
     v = v.strip()
-    if v.startswith("0x") or v.startswith("0X"):
-        return int(v, 16)
-    return int(v)
+    sign = 1
+    if v.startswith("-"):
+        sign = -1
+        v = v[1:]
+    if v.startswith(("0x", "0X")):
+        return sign * int(v, 16)
+    return sign * int(v)
 
 
 def read_macros():
