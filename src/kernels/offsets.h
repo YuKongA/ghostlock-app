@@ -23,8 +23,7 @@ struct kernel_offsets {
   /* rt_mutex_waiter layout: 0 = 6.6 rb_node, 1 = 6.1 compact tree_entry */
   uint8_t compact_waiter;
   /* mm_struct SLUB stride; 0 uses target.h default (6.6 GKI 0x500).
-   * android14-6.1 KMI builds run 0x400 (BTF says 0x3c0, trust the
-   * hardware stride; see the Root-My-Galaxy S926B port record). */
+   * android14-6.1 uses 0x400 (BTF reports 0x3c0). */
   uint32_t mm_struct_sz;
   uint32_t _pad[3];
 };
