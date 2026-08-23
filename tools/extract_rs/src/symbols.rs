@@ -98,22 +98,22 @@ pub fn resolve_symbols(
     result
 }
 
-pub fn kernel_struct_macro(release: Option<&str>) -> &'static str {
-    if let Some(release) = release {
-        let mut parts = release.split('.');
-        if let (Some(major), Some(minor)) = (parts.next(), parts.next()) {
-            if let (Ok(major), Ok(minor)) = (major.parse::<u32>(), minor.parse::<u32>()) {
-                if (major, minor) >= (6, 12) {
-                    return "STRUCT_OFFSETS_6_12";
-                }
-                // 6.1 android14 builds use the flat compact-waiter layout.
-                if (major, minor) <= (6, 1) {
-                    return "STRUCT_OFFSETS_6_1";
-                }
-            }
-        }
+/// Layout selector for a release, or None when that kernel has no measured
+/// geometry. Only 6.1, 6.6 and 6.12 are verified; callers treat None as
+/// "use STRUCT_OFFSETS_6_6 as a testing starting point", and the extractor
+/// warns so nobody mistakes a fallback table for a verified one.
+pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
+    let release = release?;
+    let mut parts = release.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    match (major, minor) {
+        // 6.1 android14 builds use the flat compact-waiter layout.
+        (6, 1) => Some("STRUCT_OFFSETS_6_1"),
+        (6, 6) => Some("STRUCT_OFFSETS_6_6"),
+        (6, 12) => Some("STRUCT_OFFSETS_6_12"),
+        _ => None,
     }
-    "STRUCT_OFFSETS_6_6"
 }
 
 pub type ResolvedStructs = BTreeMap<String, Option<u32>>;

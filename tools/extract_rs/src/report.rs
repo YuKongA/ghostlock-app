@@ -62,8 +62,8 @@ pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
         return false;
     }
     let default = match crate::symbols::kernel_struct_macro(release) {
-        "STRUCT_OFFSETS_6_12" => QC_PHYS_LOAD_6_12,
-        "STRUCT_OFFSETS_6_1" => QC_PHYS_LOAD_6_1,
+        Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
+        Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
         _ => QC_PHYS_LOAD_6_6,
     };
     phys != default
@@ -71,10 +71,10 @@ pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
 
 pub fn pselect_waiter_shift_for(release: Option<&str>) -> i64 {
     match crate::symbols::kernel_struct_macro(release) {
-        "STRUCT_OFFSETS_6_12" => 0,
+        Some("STRUCT_OFFSETS_6_12") => 0,
         // android14-6.1 compiles its fd_set words one qword later than
         // 6.6; the committed tables all measure 1.
-        "STRUCT_OFFSETS_6_1" => 1,
+        Some("STRUCT_OFFSETS_6_1") => 1,
         _ => -2,
     }
 }
@@ -91,8 +91,8 @@ pub fn validate_kernel_phys_load(
         MTK_DEFAULT_PHYS_LOAD
     } else {
         match crate::symbols::kernel_struct_macro(release) {
-            "STRUCT_OFFSETS_6_12" => QC_PHYS_LOAD_6_12,
-            "STRUCT_OFFSETS_6_1" => QC_PHYS_LOAD_6_1,
+            Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
+            Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
             _ => QC_PHYS_LOAD_6_6,
         }
     };
@@ -123,7 +123,9 @@ pub fn render_device(
     lines.push(format!("    \"{release}\","));
     lines.push(format!(
         "    {},",
-        crate::symbols::kernel_struct_macro(Some(release))
+        // unverified kernels render with the 6.6 layout as a testing start;
+        // the extractor warns whenever it falls back
+        crate::symbols::kernel_struct_macro(Some(release)).unwrap_or("STRUCT_OFFSETS_6_6")
     ));
     if phys_needs_override(Some(release), phys) {
         lines.push(format!("    .kernel_phys_load = 0x{:x},", phys.unwrap()));
@@ -201,11 +203,24 @@ pub fn render_c(
         lines.push(format!("  .{key} = 0x{value:X},{suffix}"));
     }
     lines.push(String::new());
+    let macro_name = crate::symbols::kernel_struct_macro(release);
     lines.push(format!("OFFSETS_ENTRY(\"{label}\","));
+    lines.push(format!(
+        "  {},",
+        // unverified kernels render with the 6.6 layout as a testing start;
+        // the extractor warns whenever it falls back
+        macro_name.unwrap_or("STRUCT_OFFSETS_6_6")
+    ));
     if phys_needs_override(release, phys) {
         lines.push(format!("  .kernel_phys_load=0x{:X},", phys.unwrap()));
     }
     lines.push(format!("  .pselect_waiter_shift={pselect_shift},"));
+    if macro_name == Some("STRUCT_OFFSETS_6_1") {
+        // spell the layout fields out so a manually registered header does
+        // not depend on the selector macro carrying them
+        lines.push("  .compact_waiter=1,".to_string());
+        lines.push("  .mm_struct_sz=0x400,".to_string());
+    }
     for key in symbol_render_order() {
         if let Some(value) = symbols.get(key).copied().flatten() {
             lines.push(format!("  .{key}=0x{value:08X},"));
@@ -267,7 +282,7 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
-    if crate::symbols::kernel_struct_macro(release) == "STRUCT_OFFSETS_6_1" {
+    if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
         report["mm_struct_sz"] = json!(0x400);
@@ -482,7 +497,36 @@ pub fn struct_fields_reference() -> &'static [(&'static str, &'static [(&'static
 
 #[cfg(test)]
 mod tests {
-    use super::pselect_waiter_shift_for;
+    use super::{pselect_waiter_shift_for, render_c};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn render_c_carries_the_layout_selector_and_6_1_scalars() {
+        let symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        let structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        let out = render_c(
+            Some("6.1.118-android14-11-gca0ef6d17716-ab13624819"),
+            "x",
+            &symbols,
+            &structs,
+            None,
+            1,
+        );
+        assert!(out.contains("STRUCT_OFFSETS_6_1"));
+        assert!(out.contains(".compact_waiter=1"));
+        assert!(out.contains(".mm_struct_sz=0x400"));
+
+        let out66 = render_c(
+            Some("6.6.92-android15-8"),
+            "x",
+            &symbols,
+            &structs,
+            None,
+            -2,
+        );
+        assert!(out66.contains("STRUCT_OFFSETS_6_6"));
+        assert!(!out66.contains("compact_waiter"));
+    }
 
     #[test]
     fn pselect_waiter_shift_matches_the_committed_tables() {

@@ -17,7 +17,7 @@ use ghostlock_extract::kallsyms::Kallsyms;
 use ghostlock_extract::kallsyms_finder;
 use ghostlock_extract::payload;
 use ghostlock_extract::report;
-use ghostlock_extract::symbols::{resolve_structs, resolve_symbols};
+use ghostlock_extract::symbols::{kernel_struct_macro, resolve_structs, resolve_symbols};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -229,6 +229,21 @@ fn run(cli: &Cli) -> Result<i32> {
     };
 
     let release = boot.release();
+    match release.as_deref() {
+        Some(release) => {
+            if kernel_struct_macro(Some(release)).is_none() {
+                eprintln!(
+                    "warning: {release} is not a verified kernel family \
+                     (6.1, 6.6, 6.12); emitting the 6.6 layout as a testing \
+                     starting point, verify the waiter layout and slab \
+                     stride before trusting it"
+                );
+            }
+        }
+        None => {
+            eprintln!("warning: boot image carries no kernel release string");
+        }
+    }
     if kernel_phys_load.is_none() && (boot.mtk_lz4 || boot.mtk_gzip) {
         if let Some(text_base) = text_base {
             let derived = text_base - MTK_VADDR_BASE;
