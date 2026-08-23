@@ -99,21 +99,24 @@ static enum soc_family detect_soc(void) {
 static struct kernel_offsets g_external_offsets;
 static char g_external_release[192];
 
-/* Publish the active entry's init_cred image address and the physical load
- * address (MTK always loads at the DRAM base, text_offset=0). */
+/* Entries carry a phys load address only when measured; otherwise MTK uses
+ * the DRAM base, xring its constant, qcom its GKI version. */
 static void publish_active_offsets(void) {
   g_init_cred_image = INIT_CRED;
+  enum soc_family soc = detect_soc();
+  const char *soc_name =
+      soc == SOC_MTK ? "mtk" : soc == SOC_XRING ? "xring" : "qcom/other";
   if (active_offsets->kernel_phys_load) {
     p0_kernel_phys_load = active_offsets->kernel_phys_load;
-  }
-  enum soc_family soc = detect_soc();
-  const char *soc_name = "qcom/other";
-  if (soc == SOC_MTK) {
+  } else if (soc == SOC_MTK) {
     p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
     soc_name = "mtk";
   } else if (soc == SOC_XRING) {
     p0_kernel_phys_load = XRING_KERNEL_PHYS_LOAD;
     soc_name = "xring";
+  } else if (strncmp(active_offsets->uname_r, "6.12.", 5) == 0) {
+    p0_kernel_phys_load = QC_GKI_6_12_PHYS_LOAD;
+    soc_name = "qcom/6.12";
   }
   pr_info("soc: %s; kernel_phys_load=0x%llx\n",
           soc_name, (unsigned long long)p0_kernel_phys_load);
