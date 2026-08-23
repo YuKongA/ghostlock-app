@@ -316,6 +316,12 @@ public class MainActivity extends Activity {
         if (builtinFieldDiffers(builtin, entry, "pselect_waiter_shift")) {
             return false;
         }
+        if (builtinFieldDiffers(builtin, entry, "compact_waiter")) {
+            return false;
+        }
+        if (builtinFieldDiffers(builtin, entry, "mm_struct_sz")) {
+            return false;
+        }
         if (entry.has("kernel_phys_load") && !entry.isNull("kernel_phys_load")) {
             long phys = entry.optLong("kernel_phys_load", 0);
             if (phys != MTK_DEFAULT_PHYS_LOAD && builtinFieldDiffers(builtin, entry, "kernel_phys_load")) {
