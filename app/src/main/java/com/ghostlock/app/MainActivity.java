@@ -527,6 +527,7 @@ public class MainActivity extends Activity {
             }
             if (!isChecked) {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SHIZUKU, false).apply();
+                appendLog("[*] run via shizuku disabled");
                 return;
             }
             String problem = shizukuProblem(true);
