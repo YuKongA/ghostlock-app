@@ -43,4 +43,5 @@
     <string name="kernel_unsupported">不支持</string>
     <string name="support_label">支持</string>
     <string name="cpu_pair_label">CPU 核心对</string>
+    <string name="shizuku_label">通过 Shizuku 运行（shell uid）</string>
 </resources>

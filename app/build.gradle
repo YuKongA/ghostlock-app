@@ -235,6 +235,8 @@ base {
 }
 
 dependencies {
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
     testImplementation 'junit:junit:4.13.2'
     // local unit tests run against a mockable android.jar whose org.json
     // stubs throw; the real artifact shadows it on the test classpath

@@ -39,6 +39,7 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,6 +47,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
+
+import rikka.shizuku.Shizuku;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -94,6 +97,15 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK_XBL = 1003;
     private static final String PREFS = "ghostlock_prefs";
     private static final String PREF_CPU_PAIR = "cpu_pair";
+    private static final String PREF_SHIZUKU = "shizuku";
+    private static final int SHIZUKU_REQUEST = 10001;
+    private static final String SHIZUKU_HOME = "/data/local/tmp";
+    private static final String SHIZUKU_BINARY = SHIZUKU_HOME + "/.ghostlock";
+    private static final String SHIZUKU_KSUD = SHIZUKU_HOME + "/ksud";
+    private static final String SHIZUKU_OFFSETS = SHIZUKU_HOME + "/offsets.json";
+    private static final String SHIZUKU_KSU_LOG = SHIZUKU_HOME + "/" + KSU_LOG_NAME;
+    private static final long SHIZUKU_RUN_TIMEOUT_S = 300;
+    private static final long SHIZUKU_STAGE_TIMEOUT_S = 60;
     private static final String[] KSU_MANAGER_PACKAGES = {"me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager",};
     private static final int COLOR_RED = 0xFFFF6B6B;
     private static final int COLOR_GREEN = 0xFF5FD68A;
@@ -112,6 +124,22 @@ public class MainActivity extends Activity {
     private LinearLayout kernelChip;
     private TextView kernelChipText;
     private Spinner cpuSpinner;
+    private Switch shizukuSwitch;
+    private TextView shizukuLabel;
+    // static so an activity recreation does not re-log the connect line
+    private static boolean shizukuWasAlive;
+    // set while the switch is flipped in code; the change listener must
+    // only ever react to the user's own toggle
+    private boolean shizukuProgrammatic;
+    // guards against late or stacked permission results
+    private boolean shizukuRequestPending;
+    private final Shizuku.OnBinderReceivedListener shizukuOnReceived = this::updateShizukuUi;
+    private final Shizuku.OnBinderDeadListener shizukuOnDead = () -> {
+        appendLog("[-] shizuku server stopped; direct exec");
+        updateShizukuUi();
+    };
+    private final Shizuku.OnRequestPermissionResultListener shizukuOnPermResult =
+            this::onShizukuPermissionResult;
     private ScrollView logScroll;
     private Button runButton;
     private ImageButton advancedButton;
@@ -485,6 +513,34 @@ public class MainActivity extends Activity {
         kernelChip = findViewById(R.id.kernelChip);
         kernelChipText = findViewById(R.id.kernelChipText);
         cpuSpinner = findViewById(R.id.cpuSpinner);
+        shizukuSwitch = findViewById(R.id.shizukuSwitch);
+        shizukuLabel = findViewById(R.id.shizukuLabel);
+
+        Shizuku.addBinderReceivedListenerSticky(shizukuOnReceived);
+        Shizuku.addBinderDeadListener(shizukuOnDead);
+        Shizuku.addRequestPermissionResultListener(shizukuOnPermResult);
+        // only the user's own toggles persist a route; programmatic flips
+        // from updateShizukuUi must not overwrite it
+        shizukuSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (shizukuProgrammatic) {
+                return;
+            }
+            if (!isChecked) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SHIZUKU, false).apply();
+                return;
+            }
+            String problem = shizukuProblem(true);
+            if (problem == null) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SHIZUKU, true).apply();
+                appendLog("[+] run via shizuku enabled");
+            } else {
+                setShizukuChecked(false);
+                appendLog(problem);
+            }
+        });
+        updateShizukuUi();
+        // the binder often attaches late on cold start; re-check shortly
+        ui.postDelayed(this::updateShizukuUi, 500);
 
         applyWindowInsetsPadding();
         deviceInfo.setText(buildDeviceSummary());
@@ -526,9 +582,130 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // re-syncs the switch after time away; note checkSelfPermission
+        // caches a granted answer until the binder reconnects
+        updateShizukuUi();
+    }
+
+    @Override
     protected void onDestroy() {
+        Shizuku.removeBinderReceivedListener(shizukuOnReceived);
+        Shizuku.removeBinderDeadListener(shizukuOnDead);
+        Shizuku.removeRequestPermissionResultListener(shizukuOnPermResult);
         worker.shutdownNow();
         super.onDestroy();
+    }
+
+    private void onShizukuPermissionResult(int requestCode, int grantResult) {
+        if (requestCode != SHIZUKU_REQUEST || !shizukuRequestPending) {
+            return;
+        }
+        shizukuRequestPending = false;
+        if (grantResult == PackageManager.PERMISSION_GRANTED) {
+            appendLog("[+] shizuku authorized");
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SHIZUKU, true).apply();
+            setShizukuChecked(true);
+        } else {
+            appendLog("[-] shizuku permission denied; direct exec");
+        }
+    }
+
+    /** Flips the switch without tripping the user-toggle listener. */
+    private void setShizukuChecked(boolean checked) {
+        shizukuProgrammatic = true;
+        shizukuSwitch.setChecked(checked);
+        shizukuProgrammatic = false;
+    }
+
+    /**
+     * Grey and untouchable while shizuku is absent or stopped; a saved
+     * route comes back only once the binder is live and still authorized.
+     */
+    private void updateShizukuUi() {
+        boolean alive;
+        try {
+            alive = shizukuInstalled() && Shizuku.pingBinder();
+        } catch (RuntimeException e) {
+            alive = false;
+        }
+        shizukuSwitch.setEnabled(alive);
+        float alpha = alive ? 1f : 0.4f;
+        shizukuSwitch.setAlpha(alpha);
+        shizukuLabel.setAlpha(alpha);
+        if (alive && !shizukuWasAlive) {
+            String line = "[*] shizuku available";
+            try {
+                line += " (uid=" + Shizuku.getUid()
+                        + ", " + Shizuku.getSELinuxContext() + ")";
+            } catch (RuntimeException ignored) {
+            }
+            boolean routed = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(PREF_SHIZUKU, false);
+            appendLog(line + (routed ? "" : "; flip the switch to use it"));
+        }
+        shizukuWasAlive = alive;
+        if (!alive) {
+            // an outage only suspends the route; the pref survives
+            setShizukuChecked(false);
+        } else if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_SHIZUKU, false)) {
+            // reflects the cached grant; a revoke shows up once the binder reconnects
+            boolean wasChecked = shizukuSwitch.isChecked();
+            setShizukuChecked(shizukuAuthorized());
+            if (!wasChecked && shizukuSwitch.isChecked()) {
+                appendLog("[+] run via shizuku enabled");
+            }
+        } else if (shizukuSwitch.isChecked()) {
+            setShizukuChecked(false);
+        }
+    }
+
+    private boolean shizukuAuthorized() {
+        return shizukuProblem(false) == null;
+    }
+
+    /**
+     * Null when shizuku can run the binary right now, otherwise the reason.
+     * Reasons carry a log marker so they color correctly wherever they land.
+     */
+    private String shizukuProblem(boolean askForPermission) {
+        try {
+            if (!shizukuInstalled()) {
+                return "[-] shizuku app not installed";
+            }
+            if (!Shizuku.pingBinder()) {
+                return "[-] shizuku not running; start it first";
+            }
+            if (Shizuku.isPreV11()) {
+                return "[-] shizuku too old (pre-v11)";
+            }
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                return null;
+            }
+            if (askForPermission && !Shizuku.shouldShowRequestPermissionRationale()) {
+                shizukuRequestPending = true;
+                Shizuku.requestPermission(SHIZUKU_REQUEST);
+                return "[*] waiting for shizuku permission";
+            }
+            return "[-] shizuku unauthorized; allow ghostlock in the shizuku app";
+        } catch (RuntimeException e) {
+            return "[-] shizuku not ready (" + e.getMessage() + ")";
+        }
+    }
+
+    private boolean shizukuInstalled() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                getPackageManager().getPackageInfo("moe.shizuku.privileged.api",
+                        PackageManager.PackageInfoFlags.of(0));
+            } else {
+                getPackageManager().getPackageInfo("moe.shizuku.privileged.api", 0);
+            }
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
     }
 
     private void setupSystemBars() {
@@ -1237,6 +1414,8 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         appendLog("==== start ====");
         appendLog("cpu pair: " + cpuPairLabels.get(cpuPairIndex));
+        // captured on the ui thread; the worker must not read views
+        boolean viaShizuku = shizukuSwitch.isChecked();
         worker.execute(() -> {
             int code = 1;
             try {
@@ -1262,7 +1441,11 @@ public class MainActivity extends Activity {
                 }, "ksu-log-tailer");
                 tailer.setDaemon(true);
                 tailer.start();
-                code = runBinary(binary, workDir);
+                if (viaShizuku) {
+                    code = runViaShizuku(binary, ksud, workDir);
+                } else {
+                    code = runBinary(binary, workDir);
+                }
                 tailer.interrupt();
                 try {
                     tailer.join(1000);
@@ -1349,6 +1532,276 @@ public class MainActivity extends Activity {
         return runProcess(pb);
     }
 
+    /**
+     * Runs the exploit as shell uid through shizuku. Pre-flight failures
+     * degrade to direct exec; once the binary has spawned there is no
+     * fallback, a rerun would race two exploit chains on one kernel.
+     */
+    private int runViaShizuku(File binary, File ksud, File workDir)
+            throws IOException, InterruptedException {
+        String problem = shizukuProblem(false);
+        if (problem != null) {
+            return shizukuFallback(problem, binary, workDir);
+        }
+        try {
+            stageShizukuFile(binary, SHIZUKU_BINARY);
+            if (ksud != null && ksud.isFile()) {
+                stageShizukuFile(ksud, SHIZUKU_KSUD);
+            }
+            File offsets = new File(workDir, OFFSETS_JSON);
+            StringBuilder rm = new StringBuilder("rm -f ").append(SHIZUKU_KSU_LOG);
+            if (!offsets.isFile()) {
+                rm.append(' ').append(SHIZUKU_OFFSETS);
+            }
+            runShizukuCommand(rm.toString());
+            if (offsets.isFile()) {
+                stageShizukuFile(offsets, SHIZUKU_OFFSETS);
+            }
+            appendLog("[*] launching " + SHIZUKU_BINARY);
+            Process p = startShizukuProcess();
+            int code = runShizukuProcess(p, SHIZUKU_RUN_TIMEOUT_S);
+            fetchShizukuKsuLog();
+            return code;
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            return shizukuFallback("[-] shizuku run failed (" + e.getMessage() + ")", binary, workDir);
+        } finally {
+            try {
+                // staged payload cleanup, on every path past the gates
+                runShizukuCommand("rm -f " + SHIZUKU_BINARY + " " + SHIZUKU_KSUD);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private int shizukuFallback(String reason, File binary, File workDir)
+            throws IOException, InterruptedException {
+        appendLog(reason + "; direct exec");
+        return runBinary(binary, workDir);
+    }
+
+    /**
+     * Streams output and polls exitValue for the real exit status. The
+     * blocking waits are unusable over binder: a live process makes them
+     * throw ("process hasn't exited") instead of block. A leak child that
+     * inherits stdout can hold the pipe after death, so completion comes
+     * from the poll, never from EOF.
+     */
+    private int runShizukuProcess(Process p, long timeoutSeconds) throws InterruptedException {
+        Thread reader = new Thread(() -> {
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    appendLog(line);
+                }
+            } catch (IOException ignored) {
+            }
+        }, "ghostlock-shizuku-reader");
+        reader.setDaemon(true);
+        reader.start();
+
+        Integer exit = null;
+        try {
+            long deadline = System.currentTimeMillis() + timeoutSeconds * 1000;
+            while (true) {
+                try {
+                    exit = p.exitValue();
+                    break;
+                } catch (IllegalArgumentException ignored) {
+                }
+                if (System.currentTimeMillis() >= deadline) {
+                    break;
+                }
+                Thread.sleep(500);
+            }
+        } catch (InterruptedException e) {
+            p.destroy();
+            throw e;
+        }
+        if (exit == null) {
+            appendLog("[!] shizuku run timed out; killing");
+            p.destroy();
+            try {
+                waitShizukuExit(p, 5, "kill");
+            } catch (IOException e) {
+                p.destroyForcibly();
+            }
+        }
+        // force-unblock the reader: an inherited pipe can outlive the binary
+        try {
+            p.getInputStream().close();
+        } catch (IOException ignored) {
+        }
+        reader.join(3000);
+        return exit != null ? exit : -1;
+    }
+
+    /**
+     * Shell uid cannot read /data/app, so file bytes travel through the
+     * shizuku process stdin; wc -c catches truncation in transit.
+     */
+    private void stageShizukuFile(File src, String dest) throws Exception {
+        long want = src.length();
+        Process probe = shizukuNewProcess(new String[]{"sh", "-c",
+                "wc -c < " + dest + " 2>/dev/null"}, null, SHIZUKU_HOME);
+        int rc = waitShizukuExit(probe, SHIZUKU_STAGE_TIMEOUT_S, "staging " + dest);
+        String have;
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(probe.getInputStream(), StandardCharsets.UTF_8))) {
+            have = br.readLine();
+        }
+        if (rc == 0 && have != null && !have.trim().isEmpty()
+                && Long.parseLong(have.trim().split("\\s+")[0]) == want) {
+            appendLog("[*] " + src.getName() + " already staged (" + want + " bytes)");
+            return;
+        }
+        appendLog("[*] staging " + src.getName() + " (" + want + " bytes) -> " + dest);
+        Process p = shizukuNewProcess(
+                new String[]{"sh", "-c",
+                        "rm -f " + dest + " && cat > " + dest
+                                + " && chmod 755 " + dest + " && wc -c < " + dest},
+                null, SHIZUKU_HOME);
+        try (InputStream in = new FileInputStream(src);
+             OutputStream os = p.getOutputStream()) {
+            copyStream(in, os);
+        }
+        rc = waitShizukuExit(p, SHIZUKU_STAGE_TIMEOUT_S, "staging " + dest);
+        if (rc != 0) {
+            throw new IOException("staging " + dest + " failed rc=" + rc);
+        }
+        String out;
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            out = br.readLine();
+        }
+        long written = -1;
+        if (out != null && !out.trim().isEmpty()) {
+            written = Long.parseLong(out.trim().split("\\s+")[0]);
+        }
+        if (written != want) {
+            throw new IOException(
+                    "staging " + dest + ": wrote " + written + " want " + want);
+        }
+        appendLog("[+] staged ok");
+    }
+
+    /**
+     * Bounded wait on a shizuku process via exitValue polling; blocking
+     * waits throw over binder while the process lives. Destroys on timeout.
+     */
+    private static int waitShizukuExit(Process p, long timeoutSeconds, String what)
+            throws InterruptedException, IOException {
+        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000;
+        while (true) {
+            try {
+                return p.exitValue();
+            } catch (IllegalArgumentException ignored) {
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            Thread.sleep(200);
+        }
+        p.destroy();
+        throw new IOException(what + ": timed out");
+    }
+
+    /** Fire-and-forget shell command through shizuku. */
+    private void runShizukuCommand(String cmd) throws Exception {
+        Process p = shizukuNewProcess(new String[]{"sh", "-c", cmd}, null, SHIZUKU_HOME);
+        waitShizukuExit(p, SHIZUKU_STAGE_TIMEOUT_S, cmd);
+    }
+
+    /**
+     * Pulls the root-script log the tailer cannot reach (it lives in
+     * shell-owned tmp). Best effort; silent when absent or unreadable.
+     */
+    private void fetchShizukuKsuLog() {
+        Process p;
+        try {
+            p = shizukuNewProcess(new String[]{"sh", "-c",
+                    "cat " + SHIZUKU_KSU_LOG + " 2>/dev/null"}, null, SHIZUKU_HOME);
+        } catch (Exception e) {
+            return;
+        }
+        try {
+            StringBuilder sb = new StringBuilder();
+            // capture whatever cat produced; closing the pipe can EPIPE it
+            // into a nonzero rc, so the exit code gates nothing here
+            Thread reader = new Thread(() -> {
+                try (BufferedReader br = new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    char[] buf = new char[4096];
+                    int n;
+                    while ((n = br.read(buf)) != -1 && sb.length() <= 256 * 1024) {
+                        sb.append(buf, 0, n);
+                    }
+                } catch (IOException ignored) {
+                }
+            });
+            reader.setDaemon(true);
+            reader.start();
+            try {
+                waitShizukuExit(p, 10, "ksu log fetch");
+            } catch (IOException ignored) {
+            }
+            reader.join(1000);
+            try {
+                p.getInputStream().close();
+            } catch (IOException ignored) {
+            }
+            reader.join(1000);
+            for (String line : sb.toString().split("\n")) {
+                if (!line.isEmpty()) {
+                    appendLog(line);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            p.destroy();
+        }
+    }
+
+    private Process startShizukuProcess() throws Exception {
+        StringBuilder cmd = new StringBuilder("exec");
+        int[] pair = cpuPairs.get(cpuPairIndex);
+        if (pair[0] != 0 || pair[1] != 1) {
+            // vars ride through env(1): an exec envp REPLACES the whole
+            // remote environment and would strip PATH from the shell
+            cmd.append(" env GHOSTLOCK_CORE=").append(pair[0])
+                    .append(" GHOSTLOCK_CONSUMER_CORE=").append(pair[1]);
+        }
+        // no GHOSTLOCK_HOME: the binary then homes to /data/local/tmp like
+        // the adb flow. exec replaces sh so destroy() kills the binary,
+        // </dev/null avoids a tty hang
+        cmd.append(" ").append(SHIZUKU_BINARY).append(" </dev/null 2>&1");
+        return shizukuNewProcess(new String[]{"sh", "-c", cmd.toString()}, null, SHIZUKU_HOME);
+    }
+
+    /**
+     * newProcess is private since api 13.1.1 but still present; invoke it
+     * reflectively. proguard-rules.pro keeps R8 from stripping it.
+     */
+    private static volatile java.lang.reflect.Method shizukuNewProcessMethod;
+
+    private static Process shizukuNewProcess(String[] cmd, String[] env, String dir) throws Exception {
+        java.lang.reflect.Method m = shizukuNewProcessMethod;
+        if (m == null) {
+            m = Shizuku.class.getDeclaredMethod(
+                    "newProcess", String[].class, String[].class, String.class);
+            m.setAccessible(true);
+            shizukuNewProcessMethod = m;
+        }
+        try {
+            return (Process) m.invoke(null, cmd, env, dir);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable c = e.getCause();
+            throw c instanceof Exception ? (Exception) c : e;
+        }
+    }
+
     private void tailKsuLog(File logFile, AtomicLong offset) {
         if (!logFile.isFile()) {
             return;
@@ -1386,7 +1839,10 @@ public class MainActivity extends Activity {
     }
 
     private int runProcess(ProcessBuilder pb, long timeoutSeconds) throws IOException, InterruptedException {
-        Process process = pb.start();
+        return runProcess(pb.start(), timeoutSeconds);
+    }
+
+    private int runProcess(Process process, long timeoutSeconds) throws InterruptedException {
         Thread reader = new Thread(() -> {
             try (BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
