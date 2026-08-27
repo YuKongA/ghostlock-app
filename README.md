@@ -5,7 +5,7 @@
 ## Supported Devices
 
 | Kernel                                                 | Devices                                                          |
-| ------------------------------------------------------ |------------------------------------------------------------------|
+| ------------------------------------------------------ | ---------------------------------------------------------------- |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
 | `6.1.138-android14-11-g0c3d559bcd85-ab14529422`        | Xiaomi 14                                                        |
 | `6.1.145-android14-11-g09f1c0074ad7-ab14226177`        | Infinix Note 50s 5G                                              |
@@ -26,7 +26,7 @@
 | `6.6.118-android15-8-g608a629fedf7-ab15154340-4k`      | REDMI K90 Ultra                                                  |
 | `6.6.118-android15-8-gc44b714366cc-abogki519650608-4k` | REDMI K80 Pro / Turbo 5 Max, POCO X8 Pro Max, Xiaomi Pad 7 Ultra |
 | `6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k`      | REDMI K90 Ultra, POCO F7                                         |
-| `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5, OnePlus Pad 2, OPPO Find X8s                                        |
+| `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5, OnePlus Pad 2, OPPO Find X8s                         |
 | `6.6.118-android15-8-gebdfad32d749-ab15099304-4k`      | OPPO Find X8 / Find X8 Pro                                       |
 | `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | REDMI K90 Pro Max                                                |
 | `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max / 17 Ultra                       |
@@ -36,7 +36,6 @@
 | `6.12.23-android16-5-gf1bdb13583da-ab13761046-4k`      | Red Magic 11 Pro, Tablet 5 Pro                                   |
 | `6.12.30-android16-5-g6e872b4863d6-ab13847919-4k`      | REDMI Note 15 4G, POCO M6 Pro 4G                                 |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
-
 
 Kernels are matched by exact `uname -r`; unsupported builds are rejected and the app shows the status at the top. Offsets live in `src/kernels/<uname-release>/offsets.h` — add new builds with the extractor's `--register`.
 
@@ -101,13 +100,15 @@ extractor in-process and write `offsets.json` into the app data dir on
 success.
 
 ```json
-[{
-  "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
-  "kernel_phys_load": 3347054592,
-  "pselect_waiter_shift": 0,
-  "symbols": { "off_init_task": 37801728, "off_init_cred": 37891184 },
-  "struct_fields": { "task_prio": 148, "task_cred": 2304 }
-}]
+[
+  {
+    "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
+    "kernel_phys_load": 3347054592,
+    "pselect_waiter_shift": 0,
+    "symbols": { "off_init_task": 37801728, "off_init_cred": 37891184 },
+    "struct_fields": { "task_prio": 148, "task_cred": 2304 }
+  }
+]
 ```
 
 ## Credits & License
