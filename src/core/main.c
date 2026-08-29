@@ -798,7 +798,11 @@ static void child_main(struct child_pipes *p) {
     execl("/system/bin/sh", "sh", g_root_script_path, NULL);
     _exit(1);
   }
-  if (worker < 0) { close(p->uid_w); park_rooted_child(); }
+  if (worker < 0) {
+    pr_warning("fork() for root shell failed errno=%d; parking rooted child\n", errno);
+    close(p->uid_w);
+    park_rooted_child();
+  }
   /* the worker holds a fresh cred copy; this task holds the raw init_cred */
   close(p->uid_w);
   park_rooted_child();
