@@ -1333,7 +1333,7 @@ public class MainActivity extends Activity {
             }
         }
         if (!anyInstalled) {
-            appendLog("KernelSU/ReSukiSU app not installed");
+            appendLog("KernelSU/ReSukiSU/Kowsu app not installed");
         }
         return null;
     }
