@@ -50,4 +50,6 @@
     <string name="kernel_supported">Supported</string>
     <string name="kernel_unsupported">Not supported</string>
     <string name="cpu_pair_label">CPU cores</string>
+    <string name="safe_mode_label">Safe mode</string>
+    <string name="safe_mode_summary">Disable all modules</string>
 </resources>

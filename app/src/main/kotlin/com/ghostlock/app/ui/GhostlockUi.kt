@@ -84,6 +84,7 @@ import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -99,6 +100,7 @@ data class GhostlockUiState(
     val exportVisible: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
     val cpuPairIndex: Int = 0,
+    val safeModeEnabled: Boolean = false,
     val executionSheetVisible: Boolean = false,
     val dialogVisible: Boolean = false,
     val dialogType: DialogType = DialogType.NONE,
@@ -126,6 +128,7 @@ interface GhostlockActions {
     fun onParseImage()
     fun onExportOffsets()
     fun onCpuPairSelected(index: Int)
+    fun onSafeModeChanged(enabled: Boolean)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -539,6 +542,14 @@ private fun ControlPanel(
                     onSelectedIndexChange = actions::onCpuPairSelected
                 )
             }
+        }
+        Card(modifier = modifier.padding(top = 12.dp)) {
+            SwitchPreference(
+                checked = state.safeModeEnabled,
+                onCheckedChange = actions::onSafeModeChanged,
+                title = stringResource(R.string.safe_mode_label),
+                summary = stringResource(R.string.safe_mode_summary),
+            )
         }
         AnimatedVisibility(
             visible = state.advancedVisible,

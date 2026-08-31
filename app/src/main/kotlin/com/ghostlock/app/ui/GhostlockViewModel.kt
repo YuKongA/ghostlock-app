@@ -80,6 +80,11 @@ class GhostlockViewModel(
         mutableState.update { it.copy(cpuPairIndex = index) }
     }
 
+    fun toggleSafeMode(enabled: Boolean) {
+        repository.setSafeModeEnabled(enabled)
+        mutableState.update { it.copy(safeModeEnabled = enabled) }
+    }
+
     fun onRun() {
         val snapshot = kernelSnapshot ?: return
         if (!snapshot.kernelSupported) return
@@ -231,6 +236,7 @@ class GhostlockViewModel(
                 kernelSupported = snapshot.kernelSupported,
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
+                safeModeEnabled = snapshot.safeModeEnabled,
                 exportVisible = canExport,
             )
         }

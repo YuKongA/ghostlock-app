@@ -11,6 +11,8 @@ interface GhostlockRepository {
 
     fun selectCpuPair(index: Int)
 
+    fun setSafeModeEnabled(enabled: Boolean)
+
     suspend fun exportCandidates(): List<OffsetCandidate>
 
     suspend fun importOffsets(json: String): OffsetImportResult

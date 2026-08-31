@@ -46,6 +46,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
+    private var safeModeEnabled = false
     private var pendingParsedEntries: JSONArray? = null
 
     init {
@@ -61,6 +62,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         cpuPairs = cpuPairs.toList(),
         cpuPairLabels = cpuPairLabels.toList(),
         selectedCpuPair = selectedCpuPair,
+        safeModeEnabled = safeModeEnabled,
     )
 
     override fun selectCpuPair(index: Int) {
@@ -70,6 +72,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             .edit {
                 putString("cpu_pair", cpuPairs[index].toString())
             }
+    }
+
+    override fun setSafeModeEnabled(enabled: Boolean) {
+        safeModeEnabled = enabled
     }
 
     override suspend fun exportCandidates(): List<OffsetCandidate> {
@@ -237,6 +243,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                         environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()
                     }
+                    if (safeModeEnabled) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"
                 }
             try {
                 runProcess(command, onLog = onLog)
