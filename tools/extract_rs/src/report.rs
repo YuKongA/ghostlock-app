@@ -95,11 +95,7 @@ pub fn validate_kernel_phys_load(release: Option<&str>, phys: Option<u64>, mtk: 
     if phys == expected {
         return false;
     }
-    let note = if mtk {
-        "runtime forces the DRAM base for MediaTek"
-    } else {
-        "the entry will carry it as an explicit override"
-    };
+    let note = "the entry will carry it as an explicit override";
     eprintln!(
         "warning: kernel_phys_load=0x{phys:x} does not match the {} default 0x{expected:x}; {note}",
         if mtk { "MediaTek" } else { "Qualcomm" }
