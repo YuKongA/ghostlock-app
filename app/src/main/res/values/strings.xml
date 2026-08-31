@@ -44,4 +44,5 @@
     <string name="kernel_unsupported">Not supported</string>
     <string name="support_label">Support</string>
     <string name="cpu_pair_label">CPU cores</string>
+    <string name="safe_mode_label">Safe mode: disable all modules before loading root (recover from a bad module)</string>
 </resources>
