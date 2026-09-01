@@ -134,6 +134,17 @@
                 android:background="@drawable/bg_spinner" />
         </LinearLayout>
 
+        <CheckBox
+            android:id="@+id/safeModeCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:text="@string/safe_mode_label"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/importButton"
             android:layout_width="match_parent"

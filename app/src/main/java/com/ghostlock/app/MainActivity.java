@@ -94,6 +94,7 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK_XBL = 1003;
     private static final String PREFS = "ghostlock_prefs";
     private static final String PREF_CPU_PAIR = "cpu_pair";
+    private static final String PREF_SAFE_MODE = "safe_mode";
     private static final String[] KSU_MANAGER_PACKAGES = {"me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager",};
     private static final int COLOR_RED = 0xFFFF6B6B;
     private static final int COLOR_GREEN = 0xFF5FD68A;
@@ -112,6 +113,7 @@ public class MainActivity extends Activity {
     private LinearLayout kernelChip;
     private TextView kernelChipText;
     private Spinner cpuSpinner;
+    private android.widget.CheckBox safeModeCheck;
     private ScrollView logScroll;
     private Button runButton;
     private ImageButton advancedButton;
@@ -485,6 +487,11 @@ public class MainActivity extends Activity {
         kernelChip = findViewById(R.id.kernelChip);
         kernelChipText = findViewById(R.id.kernelChipText);
         cpuSpinner = findViewById(R.id.cpuSpinner);
+        safeModeCheck = findViewById(R.id.safeModeCheck);
+        safeModeCheck.setChecked(
+                getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_SAFE_MODE, false));
+        safeModeCheck.setOnCheckedChangeListener((b, checked) ->
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SAFE_MODE, checked).apply());
 
         applyWindowInsetsPadding();
         deviceInfo.setText(buildDeviceSummary());
@@ -1349,6 +1356,9 @@ public class MainActivity extends Activity {
         if (pair[0] != 0 || pair[1] != 1) {
             pb.environment().put("GHOSTLOCK_CORE", String.valueOf(pair[0]));
             pb.environment().put("GHOSTLOCK_CONSUMER_CORE", String.valueOf(pair[1]));
+        }
+        if (safeModeCheck != null && safeModeCheck.isChecked()) {
+            pb.environment().put("GHOSTLOCK_DISABLE_MODULES", "1");
         }
         return runProcess(pb);
     }
