@@ -48,6 +48,7 @@ import org.json.JSONObject;
 import org.json.JSONTokener;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -57,6 +58,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,6 +87,7 @@ public class MainActivity extends Activity {
     private static final String EXTRACT_NAME = "libextract.so";
     private static final String KSUD_NAME = "ksud";
     private static final String OFFSETS_JSON = "offsets.json";
+    private static final String OFFSETS_URL = "https://raw.githubusercontent.com/YuKongA/ghostlock-app/main/offsets.json";
     private static final String KSU_LOG_NAME = ".ghostlock_ksu.log";
     /**
      * MediaTek DRAM-base marker emitted by the extractor when phys is not an override.
@@ -94,6 +98,7 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK_XBL = 1003;
     private static final String PREFS = "ghostlock_prefs";
     private static final String PREF_CPU_PAIR = "cpu_pair";
+    private static final String PREF_OFFSETS_ETAG = "offsets_etag";
     private static final String[] KSU_MANAGER_PACKAGES = {"me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager",};
     private static final int COLOR_RED = 0xFFFF6B6B;
     private static final int COLOR_GREEN = 0xFF5FD68A;
@@ -398,6 +403,236 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    /**
+     * True when the running kernel needs no github data. Its release is in
+     * the built-in tables or was manually imported into
+     * <filesDir>/offsets.json. Auto-fetched entries do not count, so those
+     * kernels keep tracking the repository.
+     */
+    private boolean coveredWithoutGithub(String version) {
+        for (String supported : SupportedKernels.UNAMES) {
+            if (supported.equals(version)) {
+                return true;
+            }
+        }
+        JSONArray existing;
+        try {
+            existing = readOffsetsFile(new File(getFilesDir(), OFFSETS_JSON));
+        } catch (IOException ignored) {
+            return false;
+        }
+        if (existing == null) {
+            return false;
+        }
+        for (int i = 0; i < existing.length(); i++) {
+            JSONObject entry = existing.optJSONObject(i);
+            if (entry != null && !entry.optBoolean("auto")
+                    && version.equals(entry.optString("release", ""))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Response payload of a successful GET with its ETag. */
+    private static class Download {
+        final byte[] body;
+        final String etag;
+
+        Download(byte[] body, String etag) {
+            this.body = body;
+            this.etag = etag;
+        }
+    }
+
+    /**
+     * GET `url`. Returns null on HTTP 304 when `ifNoneMatch` matches, throws
+     * on any other non-200 response.
+     */
+    private static Download download(String url, String ifNoneMatch) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(8000);
+        conn.setInstanceFollowRedirects(true);
+        if (ifNoneMatch != null) {
+            conn.setRequestProperty("If-None-Match", ifNoneMatch);
+        }
+        try {
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                return null;
+            }
+            if (code != HttpURLConnection.HTTP_OK) {
+                throw new IOException("http " + code);
+            }
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (InputStream in = conn.getInputStream()) {
+                copyStream(in, buffer);
+            }
+            return new Download(buffer.toByteArray(), conn.getHeaderField("ETag"));
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /**
+     * True when the stored entry's offset values differ from the freshly
+     * downloaded ones, ignoring the "auto" marker.
+     */
+    private static boolean valuesChanged(JSONObject stored, JSONObject fresh) {
+        try {
+            JSONObject values = new JSONObject(stored.toString());
+            values.remove("auto");
+            return !values.toString().equals(fresh.toString());
+        } catch (JSONException ignored) {
+            return true;
+        }
+    }
+
+    /**
+     * Merge a fetched aggregate into the stored entries. Missing releases
+     * are added with an auto marker. A stored release updates only when its
+     * own entry is auto-fetched and the upstream values changed, so manually
+     * imported entries always win. Releases the built-in tables cover are
+     * skipped, downloads never replace built-in tables. Returns the merged
+     * array, or null when nothing changed.
+     */
+    private JSONArray mergeFetched(JSONArray existing, JSONArray imported) {
+        Map<String, JSONObject> merged = new LinkedHashMap<>();
+        for (int i = 0; i < existing.length(); i++) {
+            JSONObject entry = existing.optJSONObject(i);
+            if (entry != null) {
+                merged.put(entry.optString("release", ""), entry);
+            }
+        }
+        boolean changed = false;
+        for (int i = 0; i < imported.length(); i++) {
+            JSONObject entry = imported.optJSONObject(i);
+            if (entry == null) {
+                continue;
+            }
+            String release = entry.optString("release", "");
+            if (SupportedKernels.BUILTIN.containsKey(release)) {
+                continue;
+            }
+            JSONObject current = merged.get(release);
+            // manual imports beat downloads
+            if (current != null && (!current.optBoolean("auto") || !valuesChanged(current, entry))) {
+                continue;
+            }
+            try {
+                entry.put("auto", true);
+            } catch (JSONException ignored) {
+                continue;
+            }
+            merged.put(release, entry);
+            changed = true;
+        }
+        if (!changed) {
+            return null;
+        }
+        JSONArray out = new JSONArray();
+        for (JSONObject entry : merged.values()) {
+            out.put(entry);
+        }
+        return out;
+    }
+
+    /**
+     * Drop auto-fetched entries whose release now has a built-in table. An
+     * app update can ship tables for a kernel an older build fetched, and
+     * native prefers stored entries over built-in ones, so the stale copies
+     * would keep winning without this.
+     */
+    private void pruneCoveredAutoOffsets() {
+        File offsets = new File(getFilesDir(), OFFSETS_JSON);
+        JSONArray existing;
+        try {
+            existing = readOffsetsFile(offsets);
+        } catch (IOException e) {
+            appendLog("offsets prune failed: " + e.getMessage());
+            return;
+        }
+        if (existing == null) {
+            return;
+        }
+        JSONArray kept = new JSONArray();
+        boolean changed = false;
+        for (int i = 0; i < existing.length(); i++) {
+            JSONObject entry = existing.optJSONObject(i);
+            if (entry == null) {
+                continue;
+            }
+            if (entry.optBoolean("auto")
+                    && SupportedKernels.BUILTIN.containsKey(entry.optString("release", ""))) {
+                changed = true;
+                continue;
+            }
+            kept.put(entry);
+        }
+        if (!changed) {
+            return;
+        }
+        try (OutputStream out = new FileOutputStream(offsets, false)) {
+            out.write(kept.toString(2).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException | JSONException e) {
+            appendLog("offsets prune failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch offsets.json from github in the background when the running
+     * kernel has neither built-in nor manually imported coverage, so new
+     * kernels work without an app rebuild. A stored ETag turns an unchanged
+     * file into a single 304 request. Stays silent on failure.
+     */
+    private void fetchLatestOffsets() {
+        if (coveredWithoutGithub(System.getProperty("os.version", ""))) {
+            return;
+        }
+        worker.execute(() -> {
+            File tmp = new File(getFilesDir(), "offsets_fetch.tmp");
+            try {
+                Download download = download(OFFSETS_URL,
+                        getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_OFFSETS_ETAG, null));
+                if (download == null) {
+                    return;
+                }
+                if (download.etag != null) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putString(PREF_OFFSETS_ETAG, download.etag).apply();
+                }
+                try (OutputStream out = new FileOutputStream(tmp, false)) {
+                    out.write(download.body);
+                }
+                JSONArray imported = readOffsetsFile(tmp);
+                if (imported == null) {
+                    return;
+                }
+                File offsets = new File(getFilesDir(), OFFSETS_JSON);
+                JSONArray existing = readOffsetsFile(offsets);
+                if (existing == null) {
+                    existing = new JSONArray();
+                }
+                JSONArray merged = mergeFetched(existing, imported);
+                if (merged == null) {
+                    return;
+                }
+                try (OutputStream out = new FileOutputStream(offsets, false)) {
+                    out.write(merged.toString(2).getBytes(StandardCharsets.UTF_8));
+                } catch (JSONException e) {
+                    throw new IOException("serialize offsets failed", e);
+                }
+                appendLog("imported latest offsets: " + OFFSETS_URL);
+                ui.post(() -> applyKernelStatus());
+            } catch (IOException e) {
+                // background refresh, not worth a log line when offline
+            } finally {
+                tmp.delete();
+            }
+        });
+    }
+
     private void buildCpuPairs() {
         cpuPairs.clear();
         cpuPairLabels.clear();
@@ -490,7 +725,9 @@ public class MainActivity extends Activity {
         deviceInfo.setText(buildDeviceSummary());
         buildCpuPairs();
         restoreCpuPair();
+        pruneCoveredAutoOffsets();
         applyKernelStatus();
+        fetchLatestOffsets();
         setRunState(RunState.IDLE);
 
         runButton.setOnClickListener(v -> startExploit());
