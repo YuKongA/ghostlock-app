@@ -1,22 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bg">#FFF7F8FA</color>
-    <color name="surface">#FFFFFFFF</color>
     <color name="text_primary">#FF111827</color>
     <color name="text_secondary">#FF6B7280</color>
     <color name="accent">#FF2563EB</color>
-    <color name="accent_pressed">#FF1D4ED8</color>
-    <color name="accent_disabled">#FF93B4F5</color>
-    <color name="border">#FFE5E7EB</color>
-    <color name="divider">#FFF0F2F5</color>
-    <color name="status_success">#FF047857</color>
-    <color name="status_success_bg">#FFD1FAE5</color>
-    <color name="status_error">#FFB91C1C</color>
-    <color name="status_error_bg">#FFFEE2E2</color>
-    <color name="log_bg">#FF0B1220</color>
-    <color name="log_border">#00000000</color>
-    <color name="log_divider">#33FFFFFF</color>
-    <color name="log_text">#FFD1D5DB</color>
-    <color name="log_title">#FF9CA3AF</color>
     <color name="launcher_icon_background">#FFF1F3F5</color>
 </resources>

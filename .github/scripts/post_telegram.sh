@@ -5,7 +5,7 @@ fi
 BOT_API_URL="${BOT_API_LINK:-https://api.telegram.org}"
 
 # Get Version Info
-VERSION_NAME=$(grep 'def appVersionName' app/build.gradle | sed -E "s/.*'([^']+)'.*/\1/")
+VERSION_NAME=$(sed -nE 's/^[[:space:]]*val appVersionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
 SHORT_HASH=$(git rev-parse --short HEAD)
 COMMIT_MSG_BODY=$(git log -1 --pretty=%B)
 COMMIT_COUNT=$(git rev-list --count HEAD)

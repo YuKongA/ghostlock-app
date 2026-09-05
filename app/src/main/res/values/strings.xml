@@ -4,6 +4,11 @@
     <string name="action_run">Run</string>
     <string name="action_running">Running…</string>
     <string name="action_advanced">Advanced</string>
+    <string name="advanced_settings">Parse</string>
+    <string name="about">About</string>
+    <string name="view_source">View Source:</string>
+    <string name="join_channel">Join Channel:</string>
+    <string name="opensource_info">Copyright © 2026 YuKongA</string>
     <string name="action_import_offsets">Import offsets.json</string>
     <string name="action_export_offsets">Export offsets.json</string>
     <string name="action_parse_ota">Parse OTA link</string>
@@ -36,12 +41,13 @@
     <string name="export_none">No offsets to export</string>
     <string name="export_current_marker">%1$s (current device)</string>
     <string name="action_copy">Copy</string>
+    <string name="action_close">Close</string>
     <string name="copied">Log copied</string>
     <string name="log_title">Log</string>
     <string name="device_label">Device</string>
-    <string name="kernel_label">kernel</string>
+    <string name="kernel_label">Kernel</string>
+    <string name="soc_label">SoC</string>
     <string name="kernel_supported">Supported</string>
     <string name="kernel_unsupported">Not supported</string>
-    <string name="support_label">Support</string>
     <string name="cpu_pair_label">CPU cores</string>
 </resources>
