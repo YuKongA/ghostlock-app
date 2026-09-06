@@ -479,23 +479,36 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val process = builder.start()
         synchronized(processes) { processes += process }
         val reader = Thread {
-            process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
+            try {
+                process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
+            } catch (_: IOException) { }
+        }.apply {
+            name = "process-output-reader"
+            isDaemon = true
         }
         try {
-            reader.isDaemon = true
             reader.start()
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroy()
                 if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly()
             }
-            reader.join(3000)
-            process.inputStream.close()
-            reader.join(3000)
+            joinReader(reader)
             if (finished) process.exitValue() else -1
         } finally {
             if (process.isAlive) process.destroyForcibly()
+            reader.interrupt()
+            runCatching { process.inputStream.close() }
+            joinReader(reader)
             synchronized(processes) { processes -= process }
+        }
+    }
+
+    private fun joinReader(reader: Thread) {
+        try {
+            reader.join(3000)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 
