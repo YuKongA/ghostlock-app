@@ -523,8 +523,8 @@ private fun ControlPanel(
         )
         DeviceInfoCard(
             deviceName = state.deviceName,
-            kernelRelease = state.kernelRelease,
             socName = state.socName,
+            kernelRelease = state.kernelRelease,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp),
@@ -609,8 +609,8 @@ private fun ActivationStatusCard(
 @Composable
 private fun DeviceInfoCard(
     deviceName: String,
-    kernelRelease: String,
     socName: String,
+    kernelRelease: String,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -627,12 +627,12 @@ private fun DeviceInfoCard(
                     value = deviceName,
                 )
                 DeviceInfoItem(
-                    title = stringResource(R.string.kernel_label),
-                    value = kernelRelease,
-                )
-                DeviceInfoItem(
                     title = stringResource(R.string.soc_label),
                     value = socName,
+                )
+                DeviceInfoItem(
+                    title = stringResource(R.string.kernel_label),
+                    value = kernelRelease,
                 )
             }
         }

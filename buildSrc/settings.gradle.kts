@@ -26,6 +26,3 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-
-rootProject.name = "GhostLock"
-include(":app")

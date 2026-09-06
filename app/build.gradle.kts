@@ -1,3 +1,5 @@
+@file:Suppress("UnstableApiUsage")
+
 import java.util.Properties
 
 plugins {
@@ -7,40 +9,6 @@ plugins {
 
 val appName = "GhostLock"
 val appVersionName = "1.1"
-
-val signingProperties = Properties()
-val signingPropertiesFile = rootProject.file("local.properties")
-if (signingPropertiesFile.isFile) {
-    signingPropertiesFile.inputStream().use(signingProperties::load)
-}
-val keystorePath: String? = System.getenv("KEYSTORE_PATH") ?: signingProperties.getProperty("KEYSTORE_PATH")
-val keystorePassword: String? = System.getenv("KEYSTORE_PASS") ?: signingProperties.getProperty("KEYSTORE_PASS")
-val keyAlias: String? = System.getenv("KEY_ALIAS") ?: signingProperties.getProperty("KEY_ALIAS")
-val keyPassword: String? = System.getenv("KEY_PASSWORD") ?: signingProperties.getProperty("KEY_PASSWORD")
-val isPullRequestBuild = System.getenv("GITHUB_EVENT_NAME") == "pull_request" ||
-    (System.getenv("GITHUB_REF") ?: "").startsWith("refs/pull/")
-
-data class SigningValues(
-    val keystorePath: String,
-    val keystorePassword: String,
-    val keyAlias: String,
-    val keyPassword: String,
-)
-
-val releaseSigning = if (!isPullRequestBuild) {
-    keystorePath?.let { path ->
-        keystorePassword?.let { storePassword ->
-            keyAlias?.let { alias ->
-                keyPassword?.let { password ->
-                    SigningValues(path, storePassword, alias, password)
-                }
-            }
-        }
-    }
-} else {
-    null
-}
-val hasReleaseSigning = releaseSigning != null
 
 val gitVersionCode = runCatching {
     providers.exec {
@@ -107,50 +75,19 @@ fun parseKernelEntries(header: File, macros: Map<String, Map<String, Long>>): Pa
     return ParsedKernelEntries(names, entries)
 }
 
-tasks.register("generateSupportedKernels") {
+tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
     description = "generateSupportedKernels"
-    val offsets = fileTree(rootProject.projectDir) { include("src/kernels/*/offsets.h") }
-    inputs.files(offsets)
-    inputs.file(sharedOffsetsHeader)
-    outputs.file(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
-    doLast {
-        val macros = parseStructMacros(sharedOffsetsHeader.readText())
-        val names = mutableListOf<String>()
-        val builtins = linkedMapOf<String, Map<String, Long>>()
-        offsets.forEach { header ->
-            val parsed = parseKernelEntries(header, macros)
-            names += parsed.names
-            builtins.putAll(parsed.entries)
-        }
-        val output = buildString {
-            appendLine("package com.ghostlock.app.domain.model")
-            appendLine()
-            appendLine("/** Generated from kernel offset headers; do not edit. */")
-            appendLine("object SupportedKernels {")
-            appendLine("    val UNAMES: Set<String> = setOf(")
-            names.distinct().forEach { appendLine("        \"${escapeKotlinString(it)}\",") }
-            appendLine("    )")
-            appendLine()
-            appendLine("    /** Built-in release -> field -> value (STRUCT_OFFSETS_* macros expanded). */")
-            appendLine("    val BUILTIN: Map<String, Map<String, Long>> = mapOf(")
-            builtins.forEach { (release, fields) ->
-                appendLine("        \"${escapeKotlinString(release)}\" to mapOf(")
-                fields.forEach { (key, value) -> appendLine("            \"${escapeKotlinString(key)}\" to ${formatOffsetValue(value)},") }
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("}")
-        }
-        val outputFile = supportedKernelsSrc.get().file("com/ghostlock/app/domain/model/SupportedKernels.kt").asFile
-        outputFile.parentFile.mkdirs()
-        outputFile.writeText(output)
-    }
+    offsetHeaders.from(fileTree(rootProject.projectDir) { include("src/kernels/*/offsets.h") })
+    sharedHeader.set(rootProject.layout.projectDirectory.file("src/kernels/offsets.h"))
+    generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
 }
 
 android {
     namespace = "com.ghostlock.app"
     compileSdk {
-        version = release(37)
+        version = release(37) {
+            minorApiLevel = 2
+        }
     }
     defaultConfig {
         applicationId = "com.ghostlock.app"
@@ -158,53 +95,77 @@ android {
         targetSdk = 37
         versionCode = gitVersionCode
         versionName = appVersionName
-        ndk {
-            //noinspection ChromeOsAbiSupport
-            abiFilters += "arm64-v8a"
-        }
-    }
-    if (releaseSigning != null) {
-        signingConfigs {
-            create("release") {
-                storeFile = file(releaseSigning.keystorePath)
-                storePassword = releaseSigning.keystorePassword
-                keyAlias = releaseSigning.keyAlias
-                keyPassword = releaseSigning.keyPassword
-                enableV2Signing = true
-                enableV3Signing = true
-            }
-        }
     }
     sourceSets {
         named("main") {
             kotlin.directories.add(supportedKernelsSrc.get().asFile.absolutePath)
         }
     }
+    val properties = Properties()
+    runCatching { properties.load(project.rootProject.file("local.properties").inputStream()) }
+    val keystorePath = properties.getProperty("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH")
+    val keystorePwd = properties.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
+    val alias = properties.getProperty("KEY_ALIAS") ?: System.getenv("KEY_ALIAS")
+    val pwd = properties.getProperty("KEY_PASSWORD") ?: System.getenv("KEY_PASSWORD")
+    if (keystorePath != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePwd
+                keyAlias = alias
+                keyPassword = pwd
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            optimization.enable = true
+            vcsInfo.include = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "release" else "debug")
+            signingConfig = signingConfigs.getByName(if (keystorePath != null) "release" else "debug")
         }
         debug {
-            isMinifyEnabled = false
-            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName(if (keystorePath != null) "release" else "debug")
         }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
     buildFeatures {
-        compose = true
         buildConfig = true
+    }
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            excludes += "lib/*/libandroidx.graphics.path.so"
         }
     }
+    splits {
+        abi {
+            isEnable = true
+            isUniversalApk = false
+            reset()
+            include("arm64-v8a")
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) {
+        it.packaging.resources.excludes
+            .add("**")
+    }
+}
+
+base {
+    archivesName.set("$appName-v$appVersionName($gitVersionCode)")
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 tasks.named("preBuild") {
@@ -213,21 +174,11 @@ tasks.named("preBuild") {
     dependsOn(tasks.named("generateSupportedKernels"))
 }
 
-base {
-    archivesName.set("$appName-v$appVersionName($gitVersionCode)")
-}
-
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
-    implementation("androidx.compose.ui:ui:1.12.0")
     implementation("androidx.compose.foundation:foundation:1.12.0")
-    implementation("androidx.compose.animation:animation:1.12.0")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4-rc01")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20260814")
 }
