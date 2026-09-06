@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Todo App</title>
+  <style>
+    :root{
+      --bg:#f6f7fb; --card:#ffffff; --muted:#667085; --accent:#5b8cff; --danger:#ef4444; --shadow: 0 6px 18px rgba(16,24,40,.08);
+      font-size:15px;
+    }
+    @media (prefers-color-scheme:dark){
+      :root{ --bg:#0b1016; --card:#0f1724; --muted:#94a3b8; --accent:#6ea8ff; --danger:#fb7185; --shadow: none; }
+    }
+    html,body{height:100%;}
+    body{margin:0; background:var(--bg); font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color: #0f1724; display:flex; align-items:center; justify-content:center; padding:48px 16px; -webkit-font-smoothing:antialiased; font-size:var(--font-size,15px);}    
+    .wrap{width:100%; max-width:480px;}
+    .card{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:20px;}
+    h1{margin:0 0 12px 0; font-weight:600; font-size:18px}
+    .meta{color:var(--muted); font-size:13px; margin-bottom:14px}
+
+    form{display:flex; gap:10px; margin-bottom:16px}
+    .input{flex:1; display:flex; align-items:center; gap:8px;}
+    input[type=text]{flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(15,23,36,.06); background:transparent; outline:none; color:inherit}
+    button.add{background:linear-gradient(180deg,var(--accent), #3a6fe6); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer}
+    ul.todos{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px}
+    li.item{display:flex; align-items:center; gap:12px; padding:10px; border-radius:10px; transition:background .18s ease;}
+    li.item:hover{background: rgba(16,24,40,.02)}
+
+    /* Custom checkbox */
+    .chk{width:22px; height:22px; display:inline-grid; place-items:center; border-radius:6px; border:1.6px solid rgba(15,23,36,.12); background:transparent; cursor:pointer; transition:all .18s ease}
+    input[type=checkbox]{position:absolute; opacity:0; pointer-events:none;}
+    .label{display:flex; align-items:center; gap:12px; flex:1}
+    .title{font-size:15px}
+    .muted{color:var(--muted); font-size:13px}
+    .trash{background:transparent; border:none; color:var(--muted); cursor:pointer; padding:6px; border-radius:8px}
+    .trash:hover{background:rgba(15,23,36,.03)}
+    .done .title{text-decoration:line-through; color:var(--muted)}
+
+    /* SVG check animation */
+    svg.check{width:14px;height:14px; overflow:visible}
+    svg.check path{fill:none; stroke-width:2.4; stroke: white; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:20; stroke-dashoffset:20; transition:stroke-dashoffset .32s cubic-bezier(.2,.9,.2,1)}
+    .checked{background:var(--accent); border-color:var(--accent); box-shadow:0 6px 12px rgba(91,140,255,.18)}
+    .checked svg.check path{stroke-dashoffset:0}
+
+    footer{margin-top:14px; color:var(--muted); font-size:13px; display:flex; justify-content:space-between; align-items:center}
+    .hint{font-size:13px}
+    @media (max-width:520px){body{padding:30px 12px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" role="application" aria-label="Todo app">
+      <h1>Tasks</h1>
+      <div class="meta">Add, complete, and delete tasks — saved to localStorage</div>
+      <form id="form" onsubmit="return false;" aria-label="Add task">
+        <div class="input">
+          <input id="taskInput" type="text" placeholder="Add a task..." aria-label="Task name" autocomplete="off" />
+        </div>
+        <button id="addBtn" class="add" aria-label="Add">Add</button>
+      </form>
+      <ul id="list" class="todos" aria-live="polite"></ul>
+      <footer>
+        <div class="hint">Tip: press Enter to add</div>
+        <div class="muted" id="count">0 items</div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const KEY = 'copilot-todos-v1';
+      const defaults = [
+        {id:cryptoRandom(), text:'Buy groceries', done:false},
+        {id:cryptoRandom(), text:'Call Alice about the meetup', done:false},
+        {id:cryptoRandom(), text:'Read one chapter of a book', done:true}
+      ];
+      const $ = sel => document.querySelector(sel);
+      const listEl = $('#list');
+      const input = $('#taskInput');
+      const addBtn = $('#addBtn');
+      const countEl = $('#count');
+
+      let todos = load();
+
+      function cryptoRandom(){ try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8);} }
+      function load(){
+        try{
+          const raw = localStorage.getItem(KEY);
+          if(!raw){ localStorage.setItem(KEY, JSON.stringify(defaults)); return defaults.slice(); }
+          return JSON.parse(raw);
+        }catch(e){ localStorage.removeItem(KEY); localStorage.setItem(KEY, JSON.stringify(defaults)); return defaults.slice(); }
+      }
+      function save(){ localStorage.setItem(KEY, JSON.stringify(todos)); render(); }
+
+      function add(text){ if(!text || !text.trim()) return; todos.unshift({id:cryptoRandom(), text:text.trim(), done:false}); save(); }
+      function remove(id){ todos = todos.filter(t=>t.id!==id); save(); }
+      function toggle(id){ todos = todos.map(t=> t.id===id ? {...t, done:!t.done} : t); save(); }
+
+      function render(){
+        listEl.innerHTML='';
+        todos.forEach(t => {
+          const li = document.createElement('li'); li.className='item' + (t.done? ' done':'');
+          // checkbox wrapper
+          const label = document.createElement('label'); label.className='label'; label.style.cursor='pointer';
+          const box = document.createElement('span'); box.className='chk' ;
+          if(t.done) box.classList.add('checked');
+          box.setAttribute('role','checkbox'); box.setAttribute('aria-checked', t.done);
+          // hidden checkbox for accessibility          
+          const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = !!t.done; cb.style.position='absolute'; cb.style.left='-9999px';
+          cb.addEventListener('change', ()=>{ toggle(t.id); });
+          const svgNS = 'http://www.w3.org/2000/svg';
+          const svg = document.createElementNS(svgNS,'svg'); svg.setAttribute('viewBox','0 0 24 24'); svg.classList.add('check');
+          const path = document.createElementNS(svgNS,'path'); path.setAttribute('d','M4.5 12.5l4 4L19 6.5'); svg.appendChild(path);
+          box.appendChild(svg);
+          box.addEventListener('click', ()=>{ toggle(t.id); });
+n          const span = document.createElement('span'); span.className='title'; span.textContent = t.text;
+n          const del = document.createElement('button'); del.className='trash'; del.setAttribute('aria-label','Delete task');
+          del.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 11v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 6V4h6v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          del.addEventListener('click', ()=>{ if(confirm('Delete this task?')) remove(t.id); });
+n          label.appendChild(cb);
+          label.appendChild(box);
+          label.appendChild(span);
+          li.appendChild(label);
+          li.appendChild(del);
+          listEl.appendChild(li);
+        });
+        countEl.textContent = todos.length + (todos.length===1? ' item': ' items');
+        // sync visual checked classes after render (so animation plays)
+        document.querySelectorAll('.item').forEach((el,i)=>{
+          const t = todos[i];
+          const box = el.querySelector('.chk');
+          if(t.done) box.classList.add('checked'); else box.classList.remove('checked');
+        });
+      }
+
+      addBtn.addEventListener('click', ()=>{ add(input.value); input.value=''; input.focus(); });
+      input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ add(input.value); input.value=''; }});
+
+      // expose small helpers for browser console in dev
+      window.__todos = {get: ()=>todos, save: save, reload: ()=>{todos=load(); render();}};
+n      render();
+    })();
+  </script>
+</body>
+</html>
