@@ -275,28 +275,25 @@ fn run(cli: &Cli) -> Result<i32> {
     if kernel_phys_load.is_none() && (boot.mtk_lz4 || boot.mtk_gzip) {
         if let Some(text_base) = text_base {
             match text_base.checked_sub(MTK_VADDR_BASE) {
-                Some(derived) if derived > 0 && derived <= 0xFFFF_FFFF => {
+                Some(derived) if derived == MTK_DEFAULT_PHYS_LOAD => {
                     eprintln!(
-                        "info: MediaTek compressed image; kernel_phys_load derived \
-                         from _text: 0x{derived:x} (DRAM base; pass --phys to override)"
+                        "info: MediaTek compressed image; _text confirms \
+                         kernel_phys_load=0x{derived:x} (DRAM base)"
                     );
                     kernel_phys_load = Some(derived);
                 }
                 _ => {
                     eprintln!(
-                        "warning: _text=0x{text_base:x} gives no plausible mtk \
-                         kernel_phys_load; using 0x{MTK_DEFAULT_PHYS_LOAD:x} \
-                         (pass --phys to override)"
+                        "warning: _text=0x{text_base:x} does not match the mtk \
+                         DRAM-base mapping; kernel_phys_load left unset so the \
+                         runtime derives it (pass --phys to override)"
                     );
-                    kernel_phys_load = Some(MTK_DEFAULT_PHYS_LOAD);
                 }
             }
         } else {
-            kernel_phys_load = Some(MTK_DEFAULT_PHYS_LOAD);
             eprintln!(
-                "info: MediaTek compressed image; _text unavailable, assuming \
-                 kernel_phys_load=0x{MTK_DEFAULT_PHYS_LOAD:x} (DRAM base; pass \
-                 --phys to override)"
+                "info: MediaTek compressed image; _text unavailable, leaving \
+                 kernel_phys_load unset so the runtime derives it"
             );
         }
     }
