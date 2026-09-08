@@ -715,7 +715,9 @@ static uintptr_t perf_find_task(void) {
         uint64_t *regs = (uint64_t *)p;
         for (int i = 0; i < 32 && nc < 256; i++) {
           uint64_t v = regs[i];
-          if (v > 0xffffff8000000000ULL && v < 0xfffffffe00000000ULL)
+          /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
+          v |= 0x0fULL << 56;
+          if (v > 0xffffff8000000000ULL && v < DIRECT_MAP_END)
             cands[nc++] = v;
         }
       }
