@@ -264,7 +264,7 @@ struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size
 
     ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
 
-    if (ks->verbose) pr_info("parameters cpu (%zd) mm_struct sz (%zx) mm slab order (%zd) thread cnt (%zd) collisions (%zd)\n",
+    if (ks->verbose) pr_info("parameters cpu (%zu) mm_struct sz (%zx) mm slab order (%zu) thread cnt (%zu) collisions (%zu)\n",
         ks->cpu_cnt,
         ks->mm_struct_sz,
         ks->mm_slab_order,
@@ -303,7 +303,7 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     // piled-up hash bucket ID 128
     // here, I append 4096 futexes to this hash bucket creating a distinction between most other empty or lightly populated ones
     __increase(ks, ID, APPENDED_FUTEXES);
-    if (ks->verbose) pr_info("start finding collisisons\n");
+    if (ks->verbose) pr_info("start finding collisions\n");
 
     // find futex user space address which collide with the piled-up hash bucket ID 128
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
@@ -367,10 +367,10 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     }
     free(best);
     if (wanted == count) {
-        if (ks->verbose) pr_info("found %zd collisisons\n", count);
+        if (ks->verbose) pr_info("found %zu collisions\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_FOUND;
     } else {
-        pr_warning("only found %zd collisions -> cannot continue\n", count);
+        pr_warning("only found %zu collisions -> cannot continue\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_NOT_FOUND;
     }
 }
