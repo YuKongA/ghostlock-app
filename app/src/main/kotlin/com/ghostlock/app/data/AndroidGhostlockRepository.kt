@@ -390,6 +390,15 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val freq = readMaxFreq(0)
             cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
         }
+        // Prefer the highest-frequency core paired with its sibling. On the
+        // Nothing 3a Pro (SM7635, cpus 4-7 big) this yields (6,7), the pair
+        // verified on-device; the freq-cluster chunking above would otherwise
+        // default to (4,5) and drop the prime core entirely.
+        val fastest = online.maxByOrNull { readMaxFreq(it) }
+        if (fastest != null && fastest > 0 && CpuPair(fastest - 1, fastest) !in cpuPairs) {
+            cpuPairs.add(0, CpuPair(fastest - 1, fastest))
+            cpuPairLabels.add(0, "${fastest - 1},$fastest · ${formatFreq(readMaxFreq(fastest))}")
+        }
     }
 
     private fun restoreCpuPair() {
