@@ -1,5 +1,11 @@
 /* 6.1.157-android14-11-g82d681c9b06b-ab14634535 */
 
+/* kernel_phys_load override: this firmware loads the kernel image at
+ * 0xa8080000 (xbl_config FDT "Kernel" reserved region), one 0x80000 step
+ * above the QC default 0xa8000000 in target.h. Without the override every
+ * W1/W2 write lands 0x80000 below its target and hangs the kernel (QCOM
+ * watchdog bite). Same image as the A059 JP build; symbols are identical
+ * to its maintainer-verified profile. */
 OFFSETS_ENTRY(
     "6.1.157-android14-11-g82d681c9b06b-ab14634535",
     STRUCT_OFFSETS_6_1,
