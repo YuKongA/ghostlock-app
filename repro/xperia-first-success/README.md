@@ -71,3 +71,9 @@ BTF confirms Xperia's `struct cred` is 176 bytes with `security` at `+0x78`.
 V13 embeds the exact 176-byte `init_cred` template from 67.2.A.3.178 (raising
 only `usage`) in the pinned payload and makes W2 point to that private copy.
 This removes the static `init_cred` side write and the W2b repair stage.
+
+V13 reached the W2 route with the complete private template, then rebooted
+before the uid probe because compact erase also overwrites the chosen private
+cred's `+8` word. V14 quarantines that socket, repairs private cred `+8` while
+the victim remains parked, and only then asks the child to execute `getuid`.
+A successful rooted child keeps the repaired backing page pinned.
