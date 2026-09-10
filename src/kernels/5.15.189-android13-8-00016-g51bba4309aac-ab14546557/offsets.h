@@ -3,6 +3,7 @@
 OFFSETS_ENTRY(
     "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
     STRUCT_OFFSETS_5_15,
+    .requires_shizuku = 1,
     .pselect_waiter_shift = -2,
     .mcast_waiter_off = 0x60,
     .off_init_task = 0x02c43400,
