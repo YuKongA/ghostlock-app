@@ -42,3 +42,8 @@ V7 rebooted immediately after W2, showing that the selected BSS area contains
 live kernel state. V8 removes the promoted child entirely for W1 and uses the
 existing leaf-zero erase path. This requests a direct zero write without a
 secondary destination write-back.
+
+V8 reached uid 0 but rebooted before its root script ran. W2 had the same
+secondary-write problem: it promoted the global `init_cred` object even though
+the payload already contained a private credential copy. V9 points W2 at that
+pinned payload copy, leaving the kernel's static `init_cred` untouched.
