@@ -126,6 +126,7 @@ data class GhostlockLogLine(val text: String, val color: Int)
 interface GhostlockActions {
     fun onRun()
     fun onRunV2()
+    fun onRunV3()
     fun onCloseExecutionSheet()
     fun onToggleAdvanced()
     fun onCopyLogs()
@@ -495,6 +496,15 @@ private fun PortraitContent(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        item(key = "run_v3") {
+            RunButton(
+                running = state.running,
+                supported = state.kernelSupported,
+                labelRes = R.string.action_run_v3,
+                onClick = actions::onRunV3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -541,6 +551,15 @@ private fun LandscapeContent(
                     supported = state.kernelSupported,
                     labelRes = R.string.action_run_v2,
                     onClick = actions::onRunV2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item(key = "run_v3") {
+                RunButton(
+                    running = state.running,
+                    supported = state.kernelSupported,
+                    labelRes = R.string.action_run_v3,
+                    onClick = actions::onRunV3,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
