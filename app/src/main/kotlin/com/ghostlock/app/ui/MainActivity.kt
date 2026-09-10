@@ -45,6 +45,11 @@ class MainActivity : ComponentActivity() {
         setupSystemBars()
     }
 
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshAccessStatus()
+    }
+
     private fun handleEffect(effect: GhostlockEffect) {
         when (effect) {
             is GhostlockEffect.PickDocument -> {
@@ -109,8 +114,7 @@ private fun GhostlockRoute(
         state = state,
         actions = object : GhostlockActions {
             override fun onRun() = viewModel.onRun()
-            override fun onRunV2() = viewModel.onRunV2()
-            override fun onRunV3() = viewModel.onRunV3()
+            override fun onStatusClick() = viewModel.onStatusClick()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
             override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()

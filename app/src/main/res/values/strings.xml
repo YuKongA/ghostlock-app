@@ -2,9 +2,6 @@
 <resources>
     <string name="app_name">GhostLock</string>
     <string name="action_run">Run</string>
-    <string name="action_run_base">Base attack</string>
-    <string name="action_run_v2">V2 attack</string>
-    <string name="action_run_v3">V3 attack</string>
     <string name="action_running">Running…</string>
     <string name="action_advanced">Advanced</string>
     <string name="advanced_settings">Parse</string>
@@ -52,6 +49,9 @@
     <string name="soc_label">SoC</string>
     <string name="kernel_supported">Supported</string>
     <string name="kernel_unsupported">Not supported</string>
+    <string name="shizuku_ready">Supported · Shizuku ready</string>
+    <string name="shizuku_permission_required">Supported · Shizuku required · Tap to authorize</string>
+    <string name="shizuku_not_running">Supported · Need to start Shizuku</string>
     <string name="cpu_pair_label">CPU cores</string>
     <string name="safe_mode_label">Safe mode</string>
     <string name="safe_mode_summary">Disable all modules</string>

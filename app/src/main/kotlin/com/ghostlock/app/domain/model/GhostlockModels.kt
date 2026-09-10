@@ -13,9 +13,11 @@ data class KernelSnapshot(
     val cpuPairLabels: List<String>,
     val selectedCpuPair: Int,
     val safeModeEnabled: Boolean,
-    val tcpRouteEnabled: Boolean,
-    val compact: Boolean,
+    val requiresShizuku: Boolean,
+    val shizukuStatus: ShizukuStatus,
 )
+
+enum class ShizukuStatus { NOT_REQUIRED, NOT_RUNNING, PERMISSION_REQUIRED, READY }
 
 enum class LogTone { Default, Error, Success, Warning, Progress }
 

@@ -9,7 +9,10 @@ struct kernel_offsets {
   uint64_t kernel_phys_load;
   /* pselect fd_set waiter word shift; 0 uses target.h default. */
   int pselect_waiter_shift;
-  uint64_t off_init_task, off_init_cred;
+  /* Buffer-relative waiter offset used by the 5.15 multicast route. */
+  int mcast_waiter_off;
+  uint64_t off_init_task, off_init_cred, off_empty_zero_page;
+  uint64_t off_mcast_fake_bss;
   uint64_t off_root_task_group, off_selinux_enforcing;
   uint64_t off_selinux_blob_sizes, off_security_hook_heads;
   uint64_t off_slide_nfulnl_logger, off_slide_loggers_0_1, off_slide_boot_id;
@@ -39,6 +42,15 @@ struct kernel_offsets {
   .task_comm = 0x848, .task_tasks = 0x550, .task_seccomp = 0x900,              \
   .compact_waiter = 1, .mm_struct_sz = 0x400
 
+#define STRUCT_OFFSETS_5_15                                                    \
+  .task_prio = 0x7C, .task_normal_prio = 0x84, .task_sched_task_group = 0x400, \
+  .task_pi_lock = 0x884, .task_pi_waiters = 0x898,                             \
+  .task_pi_top_task = 0x8A8, .task_pi_blocked_on = 0x8B0,                     \
+  .task_pid = 0x5D8, .task_tgid = 0x5DC,                                      \
+  .task_atomic_flags = 0x598, .task_real_cred = 0x790, .task_cred = 0x798,    \
+  .task_comm = 0x7A8, .task_tasks = 0x4D0, .task_seccomp = 0x860,             \
+  .compact_waiter = 1, .mm_struct_sz = 0x400
+
 #define STRUCT_OFFSETS_6_12                                                    \
   .task_prio = 0x94, .task_normal_prio = 0x9C, .task_sched_task_group = 0x420, \
   .task_pi_lock = 0x9EC, .task_pi_waiters = 0xA00,                             \
@@ -57,6 +69,7 @@ struct kernel_offsets {
 
 static const struct kernel_offsets known_offsets[] = {
 /* Add new kernels by creating src/kernels/<uname-release>/offsets.h */
+#include "5.15.189-android13-8-00016-g51bba4309aac-ab14546557/offsets.h"
 #include "6.1.115-android14-11-ga2521ca27699-ab13294383/offsets.h"
 #include "6.1.118-android14-11-ga3b9c44908dd-ab13320413/offsets.h"
 #include "6.1.118-android14-11-gca0ef6d17716-ab13624819/offsets.h"
