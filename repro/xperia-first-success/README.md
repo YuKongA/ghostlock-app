@@ -64,3 +64,10 @@ same `0x2adaad88` poison during that window. V12 instead directs W1's secondary
 write into `page_base + 0x108`, quarantines the reclaim socket, repairs that
 private slot, and only then releases the page. The global zero page is never
 used as a promoted child.
+
+V12 removed the global zero-page exposure and reached uid 0 twice, but PID 1
+aborted while the compact erase temporarily corrupted static `init_cred + 8`.
+BTF confirms Xperia's `struct cred` is 176 bytes with `security` at `+0x78`.
+V13 embeds the exact 176-byte `init_cred` template from 67.2.A.3.178 (raising
+only `usage`) in the pinned payload and makes W2 point to that private copy.
+This removes the static `init_cred` side write and the W2b repair stage.
