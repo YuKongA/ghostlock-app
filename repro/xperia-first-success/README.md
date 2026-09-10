@@ -20,3 +20,7 @@ the `sleep(2)` call between W2 success and root-child dispatch becomes a NOP.
 This lets policy recovery start before Sony's init observes a prolonged
 permissive state. The transformation is reproducible with
 `tools/patch_xperia_fast_root.py`.
+
+The optional `--bounded-w1` output also limits W1 to two attempts per process.
+Repeated misses accumulate stale futex state; the fifth attempt of the
+2026-09-10 fast-root run rebooted the device before reaching W2.
