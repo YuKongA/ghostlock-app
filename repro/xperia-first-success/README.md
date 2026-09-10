@@ -13,3 +13,10 @@ policycap-repair experiments.
 The 2026-09-10 reproduction reached the mm_struct leak and payload setup, then
 hung after `consumer thread running on cpu=4` and rebooted before the PI route
 returned. SELinux remained enforcing. See `reproduction.log`.
+
+`ghostlock-v4-fastroot` is derived from the later V3 binary that first reached
+W1, W2, uid 0, and KernelSU on this device. It changes one AArch64 instruction:
+the `sleep(2)` call between W2 success and root-child dispatch becomes a NOP.
+This lets policy recovery start before Sony's init observes a prolonged
+permissive state. The transformation is reproducible with
+`tools/patch_xperia_fast_root.py`.
