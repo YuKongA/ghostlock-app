@@ -89,3 +89,9 @@ multicast ghost route, so it never changed `boot_id`. V17 returns W2 to the
 real `init_cred` and prebuilds a leaf repair payload before W2. After W2 it
 swaps directly to that pinned payload and fires `init_cred + 8` repair without
 running another collision search, reducing PID 1's exposure to the route time.
+
+V17 proved the prebuilt repair path: W2b completed and the victim reported
+uid 0, but PID 1 still aborted after the roughly two-second waiter route.
+V18 gives only the prebuilt repair route a 250 ms absolute futex timeout. The
+normal W1/W2 timing remains unchanged; repair should land about 750 ms sooner,
+while the owner-thread join may finish later without extending corruption.
