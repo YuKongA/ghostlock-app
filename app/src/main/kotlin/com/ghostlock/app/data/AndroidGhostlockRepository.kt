@@ -215,6 +215,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun runExploitV2(pair: CpuPair, onLog: (String) -> Unit): Int =
         runExploitBinary(pair, "libghostlock_v2.so", onLog)
 
+    override suspend fun runExploitV3(pair: CpuPair, onLog: (String) -> Unit): Int =
+        runExploitBinary(pair, "libghostlock_v3.so", onLog)
+
     private suspend fun runExploitBinary(
         pair: CpuPair,
         binaryName: String,

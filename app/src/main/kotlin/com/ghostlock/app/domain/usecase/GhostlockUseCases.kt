@@ -30,8 +30,12 @@ class ExportOffsetsUseCase(private val repository: GhostlockRepository) {
 }
 
 class RunExploitUseCase(private val repository: GhostlockRepository) {
-    suspend operator fun invoke(pair: CpuPair, v2: Boolean, onLog: (String) -> Unit) =
-        if (v2) repository.runExploitV2(pair, onLog) else repository.runExploit(pair, onLog)
+    suspend operator fun invoke(pair: CpuPair, version: Int, onLog: (String) -> Unit) =
+        when (version) {
+            2 -> repository.runExploitV2(pair, onLog)
+            3 -> repository.runExploitV3(pair, onLog)
+            else -> repository.runExploit(pair, onLog)
+        }
 }
 
 class ReadDocumentUseCase(private val repository: GhostlockRepository) {

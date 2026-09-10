@@ -36,5 +36,7 @@ interface GhostlockRepository {
 
     suspend fun runExploitV2(pair: CpuPair, onLog: (String) -> Unit): Int
 
+    suspend fun runExploitV3(pair: CpuPair, onLog: (String) -> Unit): Int
+
     fun close()
 }

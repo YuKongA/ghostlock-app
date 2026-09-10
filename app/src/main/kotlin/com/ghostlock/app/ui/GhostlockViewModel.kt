@@ -85,11 +85,13 @@ class GhostlockViewModel(
         mutableState.update { it.copy(safeModeEnabled = enabled) }
     }
 
-    fun onRun() = runExploit(v2 = false)
+    fun onRun() = runExploit(version = 1)
 
-    fun onRunV2() = runExploit(v2 = true)
+    fun onRunV2() = runExploit(version = 2)
 
-    private fun runExploit(v2: Boolean) {
+    fun onRunV3() = runExploit(version = 3)
+
+    private fun runExploit(version: Int) {
         val snapshot = kernelSnapshot ?: return
         if (!snapshot.kernelSupported) {
             if (beginOperation()) {
@@ -101,11 +103,11 @@ class GhostlockViewModel(
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
-        appendLog(if (v2) "==== start V2 ====" else "==== start base ====")
+        appendLog("==== start ${if (version == 1) "base" else "V$version"} ====")
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val code = runExploitUseCase(pair, v2, ::appendLog)
+                val code = runExploitUseCase(pair, version, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
             } finally {
