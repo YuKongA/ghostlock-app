@@ -24,3 +24,10 @@ permissive state. The transformation is reproducible with
 The optional `--bounded-w1` output also limits W1 to two attempts per process.
 Repeated misses accumulate stale futex state; the fifth attempt of the
 2026-09-10 fast-root run rebooted the device before reaching W2.
+
+`ghostlock-v6-safe-zero` is built from `main` commit `13f425f` with only the
+post-W2 `sleep(2)` removed. Its one-shot W1 uses `empty_zero_page` as the
+promoted rb-tree child. This avoids placing `selinux_state - 8` in a reclaimed
+heap page, which caused ART processes to crash on invalid references such as
+`0x2adaad88`. The resident writer remains compiled in but is disabled unless
+`GHOSTLOCK_515_RESIDENT` is explicitly set.
