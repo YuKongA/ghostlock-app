@@ -36,6 +36,13 @@ abstract class GenerateSupportedKernelsTask : DefaultTask() {
             names.distinct().forEach { appendLine("        \"${escape(it)}\",") }
             appendLine("    )")
             appendLine()
+            appendLine("    /** Releases that must execute through the Shizuku shell UserService. */")
+            appendLine("    val REQUIRES_SHIZUKU: Set<String> = setOf(")
+            builtins.filterValues { it["requires_shizuku"] == 1L }.keys.forEach {
+                appendLine("        \"${escape(it)}\",")
+            }
+            appendLine("    )")
+            appendLine()
             appendLine("    /** Built-in release -> field -> value (STRUCT_OFFSETS_* macros expanded). */")
             appendLine("    val BUILTIN: Map<String, Map<String, Long>> = mapOf(")
             builtins.forEach { (release, fields) ->

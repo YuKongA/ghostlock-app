@@ -58,7 +58,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
-        val requiresShizuku = release == ShizukuExploitRunner.REQUIRED_KERNEL
+        val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
