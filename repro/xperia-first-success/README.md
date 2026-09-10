@@ -57,3 +57,10 @@ V10 completed the `init_cred + 8` repair but rebooted when policy recovery
 started because leaf-zero W1 had also cleared `selinux_state.initialized`.
 V11 uses promoted-child W1 to preserve a non-zero initialized byte, immediately
 repairs `empty_zero_page + 8`, then performs W2 and its `init_cred + 8` repair.
+
+V11 proved all four write stages but still exposed `empty_zero_page` to the
+W1 side write for roughly nine seconds before W1b. New ART crashes carried the
+same `0x2adaad88` poison during that window. V12 instead directs W1's secondary
+write into `page_base + 0x108`, quarantines the reclaim socket, repairs that
+private slot, and only then releases the page. The global zero page is never
+used as a promoted child.
