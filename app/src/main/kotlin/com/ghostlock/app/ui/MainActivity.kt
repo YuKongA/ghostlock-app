@@ -69,6 +69,10 @@ class MainActivity : ComponentActivity() {
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+
+            GhostlockEffect.OpenShizuku -> packageManager
+                .getLaunchIntentForPackage(SHIZUKU_PACKAGE)
+                ?.let(::startActivity)
         }
     }
 
@@ -98,6 +102,10 @@ class MainActivity : ComponentActivity() {
             WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                     WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
         )
+    }
+
+    private companion object {
+        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
     }
 }
 

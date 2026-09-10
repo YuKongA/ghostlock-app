@@ -35,6 +35,7 @@ sealed interface GhostlockEffect {
     data class Toast(val resourceId: Int) : GhostlockEffect
     data class Clipboard(val text: String) : GhostlockEffect
     data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
+    data object OpenShizuku : GhostlockEffect
 }
 
 enum class DocumentRequest { ImportOffsets, BootImage, XblImage }
@@ -94,7 +95,15 @@ class GhostlockViewModel(
     fun onRun() = runExploit()
 
     fun onStatusClick() {
-        if (kernelSnapshot?.requiresShizuku == true) repository.requestShizukuPermission()
+        val snapshot = kernelSnapshot ?: return
+        if (!snapshot.requiresShizuku) return
+        when (snapshot.shizukuStatus) {
+            ShizukuStatus.NOT_RUNNING -> send(GhostlockEffect.OpenShizuku)
+            ShizukuStatus.PERMISSION_REQUIRED -> repository.requestShizukuPermission()
+            ShizukuStatus.NOT_REQUIRED,
+            ShizukuStatus.READY,
+            -> Unit
+        }
     }
 
     private fun runExploit() {
