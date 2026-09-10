@@ -123,6 +123,7 @@ data class GhostlockLogLine(val text: String, val color: Int)
 
 interface GhostlockActions {
     fun onRun()
+    fun onRunV2()
     fun onCloseExecutionSheet()
     fun onToggleAdvanced()
     fun onCopyLogs()
@@ -477,7 +478,17 @@ private fun PortraitContent(
             RunButton(
                 running = state.running,
                 supported = state.kernelSupported,
+                labelRes = R.string.action_run_base,
                 onClick = actions::onRun,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item(key = "run_v2") {
+            RunButton(
+                running = state.running,
+                supported = state.kernelSupported,
+                labelRes = R.string.action_run_v2,
+                onClick = actions::onRunV2,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -516,7 +527,17 @@ private fun LandscapeContent(
                 RunButton(
                     running = state.running,
                     supported = state.kernelSupported,
+                    labelRes = R.string.action_run_base,
                     onClick = actions::onRun,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item(key = "run_v2") {
+                RunButton(
+                    running = state.running,
+                    supported = state.kernelSupported,
+                    labelRes = R.string.action_run_v2,
+                    onClick = actions::onRunV2,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -729,11 +750,12 @@ private fun AdvancedAction(
 private fun RunButton(
     running: Boolean,
     supported: Boolean,
+    labelRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TextButton(
-        text = stringResource(if (running) R.string.action_running else R.string.action_run),
+        text = stringResource(if (running) R.string.action_running else labelRes),
         enabled = supported && !running,
         colors = ButtonDefaults.textButtonColorsPrimary(),
         onClick = onClick,

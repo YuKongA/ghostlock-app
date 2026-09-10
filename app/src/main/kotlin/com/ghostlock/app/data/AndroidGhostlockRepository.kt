@@ -209,10 +209,20 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int {
+    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
+        runExploitBinary(pair, "libghostlock.so", onLog)
+
+    override suspend fun runExploitV2(pair: CpuPair, onLog: (String) -> Unit): Int =
+        runExploitBinary(pair, "libghostlock_v2.so", onLog)
+
+    private suspend fun runExploitBinary(
+        pair: CpuPair,
+        binaryName: String,
+        onLog: (String) -> Unit,
+    ): Int {
         val workDir = filesDir
         return try {
-            val binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so")
+            val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
             if (prepareKsud(workDir, onLog) != null) onLog("ksud ready") else onLog("warning: ksud not found")
             val ksuLog = File(workDir, KsuLogName)
