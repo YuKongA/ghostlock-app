@@ -77,3 +77,8 @@ before the uid probe because compact erase also overwrites the chosen private
 cred's `+8` word. V14 quarantines that socket, repairs private cred `+8` while
 the victim remains parked, and only then asks the child to execute `getuid`.
 A successful rooted child keeps the repaired backing page pinned.
+
+V14 repaired the private cred before probing but still rebooted because the
+four static pointers copied from the on-disk Image were pre-KASLR canonical
+addresses. V15 converts those image VAs through `data_addr()` so the private
+credential refers to valid direct-map aliases at runtime.
