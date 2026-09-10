@@ -31,3 +31,9 @@ promoted rb-tree child. This avoids placing `selinux_state - 8` in a reclaimed
 heap page, which caused ART processes to crash on invalid references such as
 `0x2adaad88`. The resident writer remains compiled in but is disabled unless
 `GHOSTLOCK_515_RESIDENT` is explicitly set.
+
+V6 proved that `empty_zero_page` is also unsafe as the promoted child: the
+erase operation poisoned the global zero page with `selinux_state - 8`, and
+ART processes then observed `0x2adaad88` as an object reference. V7 instead
+uses the reserved Xperia BSS scratch area at `off_mcast_fake_bss + 0x1240` and
+resets `/sys/fs/selinux/checkreqprot` before policy reload.
