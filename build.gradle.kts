@@ -1,8 +1,8 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "9.4.0" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
+    id("com.android.application") version "9.1.0" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
 }
 
 private fun localProperties(): Properties = Properties().also { properties ->
@@ -64,8 +64,13 @@ private fun resolveCargoExecutable(): String {
 
 private fun extractNdkTools(): NdkTools {
     val ndk = resolveNdkDir()
-    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
-    val prebuilt = if (isWindows) "windows-x86_64" else "linux-x86_64"
+    val osName = System.getProperty("os.name").lowercase()
+    val isWindows = osName.contains("windows")
+    val prebuilt = when {
+        isWindows -> "windows-x86_64"
+        osName.contains("mac") -> "darwin-x86_64"
+        else -> "linux-x86_64"
+    }
     val binDir = File(ndk, "toolchains/llvm/prebuilt/$prebuilt/bin")
     return NdkTools(
         clang = File(
