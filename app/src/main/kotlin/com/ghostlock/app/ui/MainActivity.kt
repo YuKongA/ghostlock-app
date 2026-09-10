@@ -109,6 +109,7 @@ private fun GhostlockRoute(
         state = state,
         actions = object : GhostlockActions {
             override fun onRun() = viewModel.onRun()
+            override fun onRunV2() = viewModel.onRunV2()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
             override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()

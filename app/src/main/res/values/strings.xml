@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name">GhostLock</string>
     <string name="action_run">Run</string>
+    <string name="action_run_base">Base attack</string>
+    <string name="action_run_v2">V2 attack</string>
     <string name="action_running">Running…</string>
     <string name="action_advanced">Advanced</string>
     <string name="advanced_settings">Parse</string>
