@@ -52,3 +52,8 @@ V9 rebooted before its first uid report because the minimal credential copy
 does not include Xperia's live SELinux security pointer. V10 returns to the
 real `init_cred`, then immediately applies a leaf-zero write to `init_cred + 8`,
 the secondary write location documented by the compact waiter primitive.
+
+V10 completed the `init_cred + 8` repair but rebooted when policy recovery
+started because leaf-zero W1 had also cleared `selinux_state.initialized`.
+V11 uses promoted-child W1 to preserve a non-zero initialized byte, immediately
+repairs `empty_zero_page + 8`, then performs W2 and its `init_cred + 8` repair.
