@@ -82,3 +82,10 @@ V14 repaired the private cred before probing but still rebooted because the
 four static pointers copied from the on-disk Image were pre-KASLR canonical
 addresses. V15 converts those image VAs through `data_addr()` so the private
 credential refers to valid direct-map aliases at runtime.
+
+The V16 slide-only probe restored the historical consumer timing and compact
+field placement, but Xperia's working primitive additionally needs the newer
+multicast ghost route, so it never changed `boot_id`. V17 returns W2 to the
+real `init_cred` and prebuilds a leaf repair payload before W2. After W2 it
+swaps directly to that pinned payload and fires `init_cred + 8` repair without
+running another collision search, reducing PID 1's exposure to the route time.
