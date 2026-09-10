@@ -100,3 +100,8 @@ V18 survived one isolated run but later real-loader runs rebooted before the
 root script, with an empty loader log and PID 1 abort evidence. KernelSU was
 not involved. V19 reduces only the prebuilt repair wait from 250 ms to 100 ms;
 the trigger still starts after 50 ms, leaving a 50 ms scheduling window.
+
+V19 still rebooted after a successful isolated uid-0 run, so 100 ms was not
+short enough. V20 uses a 5 ms trigger delay and 20 ms waiter timeout only for
+the prebuilt W2b route, leaving roughly 15 ms for the consumer race. Normal
+W1 and W2 retain their established 50 ms / 1 s timing.
