@@ -47,3 +47,8 @@ V8 reached uid 0 but rebooted before its root script ran. W2 had the same
 secondary-write problem: it promoted the global `init_cred` object even though
 the payload already contained a private credential copy. V9 points W2 at that
 pinned payload copy, leaving the kernel's static `init_cred` untouched.
+
+V9 rebooted before its first uid report because the minimal credential copy
+does not include Xperia's live SELinux security pointer. V10 returns to the
+real `init_cred`, then immediately applies a leaf-zero write to `init_cred + 8`,
+the secondary write location documented by the compact waiter primitive.
