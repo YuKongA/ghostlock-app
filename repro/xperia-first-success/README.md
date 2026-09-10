@@ -105,3 +105,11 @@ V19 still rebooted after a successful isolated uid-0 run, so 100 ms was not
 short enough. V20 uses a 5 ms trigger delay and 20 ms waiter timeout only for
 the prebuilt W2b route, leaving roughly 15 ms for the consumer race. Normal
 W1 and W2 retain their established 50 ms / 1 s timing.
+
+V20 passed the isolated-loader test and subsequently completed a real
+KernelSU late-load on A301SO firmware 67.2.A.3.178. Both `su -c id` and
+`su 0 id` returned uid/gid 0 in `u:r:ksu:s0`; `/proc/modules` reported
+`kernelsu` Live while SELinux remained Enforcing and Android's activity and
+package services remained available. One preceding real-loader attempt
+rebooted during W1, before W2 or ksud execution, so W1 remains stochastic.
+The successful console transcript is saved as `v20-real-ksu-success.log`.
