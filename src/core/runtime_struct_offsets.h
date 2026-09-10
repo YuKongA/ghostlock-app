@@ -13,6 +13,7 @@ extern const struct kernel_offsets *active_offsets;
 /* Override symbol macros with the selected device entry. */
 #undef INIT_TASK
 #undef INIT_CRED
+#undef EMPTY_ZERO_PAGE
 #undef ROOT_TASK_GROUP
 #undef SELINUX_ENFORCING
 #undef SELINUX_BLOB_SIZES
@@ -26,6 +27,7 @@ extern const struct kernel_offsets *active_offsets;
 
 #define INIT_TASK           _RSO_IMAGE(off_init_task, INIT_TASK_OFF)
 #define INIT_CRED           _RSO_IMAGE(off_init_cred, INIT_CRED_OFF)
+#define EMPTY_ZERO_PAGE     _RSO_IMAGE(off_empty_zero_page, 0)
 #define ROOT_TASK_GROUP     _RSO_IMAGE(off_root_task_group, ROOT_TASK_GROUP_OFF)
 #define SELINUX_ENFORCING   _RSO_IMAGE(off_selinux_enforcing, SELINUX_ENFORCING_OFF)
 #define SELINUX_BLOB_SIZES  _RSO_IMAGE(off_selinux_blob_sizes, SELINUX_BLOB_SIZES_OFF)

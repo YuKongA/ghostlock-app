@@ -113,3 +113,9 @@ KernelSU late-load on A301SO firmware 67.2.A.3.178. Both `su -c id` and
 package services remained available. One preceding real-loader attempt
 rebooted during W1, before W2 or ksud execution, so W1 remains stochastic.
 The successful console transcript is saved as `v20-real-ksu-success.log`.
+
+V21 rebuilds V20 from the recovered multicast writer source and verifies that
+`load_policy` advances the SELinux status sequence before KernelSU late-load.
+This prevents a false zero exit status from being treated as successful policy
+recovery. Its binary is `ghostlock-v21-policyload-guard` with SHA-256
+`e2b9aad19223c6b2731b46733c7fb0ed0cc27114369ac6d52165dd886512c253`.

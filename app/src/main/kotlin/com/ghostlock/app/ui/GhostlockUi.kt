@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.model.ShizukuStatus
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -95,6 +96,8 @@ data class GhostlockUiState(
     val kernelRelease: String = "",
     val socName: String = "",
     val kernelSupported: Boolean = false,
+    val requiresShizuku: Boolean = false,
+    val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
     val advancedVisible: Boolean = false,
     val exportVisible: Boolean = false,
@@ -123,8 +126,7 @@ data class GhostlockLogLine(val text: String, val color: Int)
 
 interface GhostlockActions {
     fun onRun()
-    fun onRunV2()
-    fun onRunV3()
+    fun onStatusClick()
     fun onCloseExecutionSheet()
     fun onToggleAdvanced()
     fun onCopyLogs()
@@ -478,27 +480,10 @@ private fun PortraitContent(
         item(key = "run") {
             RunButton(
                 running = state.running,
-                supported = state.kernelSupported,
-                labelRes = R.string.action_run_base,
+                supported = state.kernelSupported &&
+                    (!state.requiresShizuku || state.shizukuStatus == ShizukuStatus.READY),
+                labelRes = R.string.action_run,
                 onClick = actions::onRun,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        item(key = "run_v2") {
-            RunButton(
-                running = state.running,
-                supported = state.kernelSupported,
-                labelRes = R.string.action_run_v2,
-                onClick = actions::onRunV2,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        item(key = "run_v3") {
-            RunButton(
-                running = state.running,
-                supported = state.kernelSupported,
-                labelRes = R.string.action_run_v3,
-                onClick = actions::onRunV3,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -536,27 +521,10 @@ private fun LandscapeContent(
             item(key = "run") {
                 RunButton(
                     running = state.running,
-                    supported = state.kernelSupported,
-                    labelRes = R.string.action_run_base,
+                    supported = state.kernelSupported &&
+                        (!state.requiresShizuku || state.shizukuStatus == ShizukuStatus.READY),
+                    labelRes = R.string.action_run,
                     onClick = actions::onRun,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            item(key = "run_v2") {
-                RunButton(
-                    running = state.running,
-                    supported = state.kernelSupported,
-                    labelRes = R.string.action_run_v2,
-                    onClick = actions::onRunV2,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            item(key = "run_v3") {
-                RunButton(
-                    running = state.running,
-                    supported = state.kernelSupported,
-                    labelRes = R.string.action_run_v3,
-                    onClick = actions::onRunV3,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -573,6 +541,9 @@ private fun ControlPanel(
     Column(modifier = modifier) {
         ActivationStatusCard(
             supported = state.kernelSupported,
+            requiresShizuku = state.requiresShizuku,
+            shizukuStatus = state.shizukuStatus,
+            onClick = actions::onStatusClick,
             modifier = Modifier.fillMaxWidth(),
         )
         DeviceInfoCard(
@@ -618,25 +589,30 @@ private fun ControlPanel(
 @Composable
 private fun ActivationStatusCard(
     supported: Boolean,
+    requiresShizuku: Boolean,
+    shizukuStatus: ShizukuStatus,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val accessReady = !requiresShizuku || shizukuStatus == ShizukuStatus.READY
+    val active = supported && accessReady
     val cardColor = if (isSystemInDarkTheme()) {
-        if (supported) Color(0xFF173923) else Color(0xFF3B1715)
+        if (active) Color(0xFF173923) else Color(0xFF3B2715)
     } else {
-        if (supported) Color(0xFFDFFAE4) else Color(0xFFF8E2E2)
+        if (active) Color(0xFFDFFAE4) else Color(0xFFFFF1D6)
     }
-    val statusIcon = if (supported) {
+    val statusIcon = if (active) {
         Icons.Rounded.CheckCircleOutline
     } else {
         Icons.Rounded.RemoveCircleOutline
     }
-    val statusIconColor = if (supported) {
+    val statusIconColor = if (active) {
         if (isSystemInDarkTheme()) Color(0xFF62D783) else Color(0xFF36D167)
     } else {
         if (isSystemInDarkTheme()) Color(0xFFFFC56C) else Color(0xFFF5A623)
     }
     Card(
-        modifier = modifier,
+        modifier = modifier.clickable(enabled = supported && requiresShizuku && !accessReady) { onClick() },
         colors = CardDefaults.defaultColors(color = cardColor),
     ) {
         Box(
@@ -646,7 +622,13 @@ private fun ActivationStatusCard(
         ) {
             Text(
                 text = stringResource(
-                    if (supported) R.string.kernel_supported else R.string.kernel_unsupported,
+                    when {
+                        !supported -> R.string.kernel_unsupported
+                        !requiresShizuku -> R.string.kernel_supported
+                        shizukuStatus == ShizukuStatus.READY -> R.string.shizuku_ready
+                        shizukuStatus == ShizukuStatus.PERMISSION_REQUIRED -> R.string.shizuku_permission_required
+                        else -> R.string.shizuku_not_running
+                    },
                 ),
                 modifier = Modifier
                     .align(Alignment.TopStart)

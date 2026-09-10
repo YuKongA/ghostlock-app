@@ -17,6 +17,7 @@ import com.ghostlock.app.domain.model.ParseResult
 import com.ghostlock.app.domain.model.SupportedKernels
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.usecase.OffsetMatching
+import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
@@ -48,22 +49,30 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
     private var pendingParsedEntries: JSONArray? = null
+    private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
         buildCpuPairs()
         restoreCpuPair()
     }
 
-    override suspend fun snapshot(): KernelSnapshot = KernelSnapshot(
-        deviceName = resolveDeviceName(),
-        kernelRelease = System.getProperty("os.version", "unknown").orEmpty(),
-        socName = resolveSocName(),
-        kernelSupported = isKernelSupported(),
-        cpuPairs = cpuPairs.toList(),
-        cpuPairLabels = cpuPairLabels.toList(),
-        selectedCpuPair = selectedCpuPair,
-        safeModeEnabled = safeModeEnabled,
-    )
+    override suspend fun snapshot(): KernelSnapshot {
+        val release = System.getProperty("os.version", "unknown").orEmpty()
+        val requiresShizuku = release == ShizukuExploitRunner.REQUIRED_KERNEL
+        return KernelSnapshot(
+            deviceName = resolveDeviceName(),
+            kernelRelease = release,
+            socName = resolveSocName(),
+            kernelSupported = isKernelSupported(),
+            cpuPairs = cpuPairs.toList(),
+            cpuPairLabels = cpuPairLabels.toList(),
+            selectedCpuPair = selectedCpuPair,
+            safeModeEnabled = safeModeEnabled,
+            requiresShizuku = requiresShizuku,
+            shizukuStatus = if (requiresShizuku) shizukuRunner.status()
+            else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
+        )
+    }
 
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
@@ -212,11 +221,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
         runExploitBinary(pair, "libghostlock.so", onLog)
 
-    override suspend fun runExploitV2(pair: CpuPair, onLog: (String) -> Unit): Int =
-        runExploitBinary(pair, "libghostlock_v2.so", onLog)
+    override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int =
+        shizukuRunner.run(pair, safeModeEnabled, onLog)
 
-    override suspend fun runExploitV3(pair: CpuPair, onLog: (String) -> Unit): Int =
-        runExploitBinary(pair, "libghostlock_v3.so", onLog)
+    override fun requestShizukuPermission() = shizukuRunner.requestPermission()
+
+    override fun setShizukuStatusListener(listener: (() -> Unit)?) =
+        shizukuRunner.setStatusListener(listener)
 
     private suspend fun runExploitBinary(
         pair: CpuPair,
@@ -310,6 +321,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     override fun close() {
+        shizukuRunner.close()
         synchronized(processes) {
             processes.forEach(Process::destroyForcibly)
             processes.clear()

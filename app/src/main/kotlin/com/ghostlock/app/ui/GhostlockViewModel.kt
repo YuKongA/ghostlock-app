@@ -8,6 +8,7 @@ import com.ghostlock.app.domain.model.LogTone
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
+import com.ghostlock.app.domain.model.ShizukuStatus
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.usecase.ExportOffsetsUseCase
 import com.ghostlock.app.domain.usecase.FormatLogUseCase
@@ -67,7 +68,12 @@ class GhostlockViewModel(
     fun initialize() {
         if (initialized) return
         initialized = true
+        repository.setShizukuStatusListener { refreshAccessStatus() }
         viewModelScope.launch { refreshSnapshot() }
+    }
+
+    fun refreshAccessStatus() {
+        if (initialized) viewModelScope.launch { refreshSnapshot() }
     }
 
     fun toggleAdvanced() = mutableState.update { it.copy(advancedVisible = !it.advancedVisible) }
@@ -85,13 +91,13 @@ class GhostlockViewModel(
         mutableState.update { it.copy(safeModeEnabled = enabled) }
     }
 
-    fun onRun() = runExploit(version = 1)
+    fun onRun() = runExploit()
 
-    fun onRunV2() = runExploit(version = 2)
+    fun onStatusClick() {
+        if (kernelSnapshot?.requiresShizuku == true) repository.requestShizukuPermission()
+    }
 
-    fun onRunV3() = runExploit(version = 3)
-
-    private fun runExploit(version: Int) {
+    private fun runExploit() {
         val snapshot = kernelSnapshot ?: return
         if (!snapshot.kernelSupported) {
             if (beginOperation()) {
@@ -100,14 +106,18 @@ class GhostlockViewModel(
             }
             return
         }
+        if (snapshot.requiresShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
+            onStatusClick()
+            return
+        }
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
-        appendLog("==== start ${if (version == 1) "base" else "V$version"} ====")
+        appendLog("==== start ${if (snapshot.requiresShizuku) "Shizuku/V20" else "base"} ====")
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val code = runExploitUseCase(pair, version, ::appendLog)
+                val code = runExploitUseCase(pair, snapshot.requiresShizuku, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
             } finally {
@@ -237,6 +247,8 @@ class GhostlockViewModel(
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
+                requiresShizuku = snapshot.requiresShizuku,
+                shizukuStatus = snapshot.shizukuStatus,
                 exportVisible = canExport,
             )
         }

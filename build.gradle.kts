@@ -86,6 +86,13 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     rename { "libghostlock.so" }
 }
 
+tasks.register<Copy>("prepareGhostlockV4JniLibs") {
+    description = "Package the Xperia V21 binary with verified SELinux policy recovery"
+    from("repro/xperia-first-success/ghostlock-v21-policyload-guard")
+    into("app/src/main/jniLibs/arm64-v8a")
+    rename { "libghostlock_v4.so" }
+}
+
 tasks.register<Exec>("buildGhostlockExtract") {
     description = "buildGhostlockExtract"
     val tools = extractNdkTools()

@@ -34,9 +34,11 @@ interface GhostlockRepository {
 
     suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int
 
-    suspend fun runExploitV2(pair: CpuPair, onLog: (String) -> Unit): Int
+    suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int
 
-    suspend fun runExploitV3(pair: CpuPair, onLog: (String) -> Unit): Int
+    fun requestShizukuPermission()
+
+    fun setShizukuStatusListener(listener: (() -> Unit)?)
 
     fun close()
 }

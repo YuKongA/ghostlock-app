@@ -2,9 +2,6 @@
 <resources>
     <string name="app_name">GhostLock</string>
     <string name="action_run">执行</string>
-    <string name="action_run_base">基础攻击</string>
-    <string name="action_run_v2">V2 攻击</string>
-    <string name="action_run_v3">V3 攻击</string>
     <string name="action_running">执行中…</string>
     <string name="action_advanced">高级选项</string>
     <string name="advanced_settings">高级</string>
@@ -52,6 +49,9 @@
     <string name="soc_label">芯片</string>
     <string name="kernel_supported">受支持</string>
     <string name="kernel_unsupported">不支持</string>
+    <string name="shizuku_ready">受支持 · Shizuku 已就绪</string>
+    <string name="shizuku_permission_required">受支持 · 需要 Shizuku · 点击授权</string>
+    <string name="shizuku_not_running">受支持 · 需要启动 Shizuku</string>
     <string name="cpu_pair_label">CPU 核心组</string>
     <string name="safe_mode_label">安全模式</string>
     <string name="safe_mode_summary">禁用所有模块</string>

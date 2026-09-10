@@ -6,6 +6,7 @@
 
 | Kernel                                                 | Devices                                                          |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
+| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (A301SO 软银版) — **需要 Shizuku**                            |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
@@ -49,6 +50,8 @@
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
 
 按精确 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。偏移表在 `src/kernels/<uname-release>/offsets.h`，新内核构建用提取器的 `--register` 添加。
+
+明确标记为**需要 Shizuku**的固件通过 shell UserService 执行。先使用 ADB 启动 Shizuku，再点击顶部支持状态区域授权；其余固件沿用应用内执行路径。
 
 ## 快速开始
 

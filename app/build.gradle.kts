@@ -133,6 +133,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        aidl = true
     }
     dependenciesInfo {
         includeInApk = false
@@ -171,11 +172,14 @@ kotlin {
 
 tasks.named("preBuild") {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
+    dependsOn(rootProject.tasks.named("prepareGhostlockV4JniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))
     dependsOn(tasks.named("generateSupportedKernels"))
 }
 
 dependencies {
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.foundation:foundation:1.12.0")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")

@@ -6,6 +6,7 @@
 
 | Kernel                                                 | Devices                                                          |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
+| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (A301SO Softbank ver) — **Shizuku required**                        |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
@@ -49,6 +50,8 @@
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
 
 Kernels are matched by exact `uname -r`; unsupported builds are rejected and the app shows the status at the top. Offsets live in `src/kernels/<uname-release>/offsets.h` — add new builds with the extractor's `--register`.
+
+Rows explicitly marked **Shizuku required** run through a shell UserService. Start Shizuku with ADB and tap the status card to grant access; all other rows use the app's normal execution path.
 
 ## Quick Start
 
