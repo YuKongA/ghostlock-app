@@ -95,3 +95,8 @@ uid 0, but PID 1 still aborted after the roughly two-second waiter route.
 V18 gives only the prebuilt repair route a 250 ms absolute futex timeout. The
 normal W1/W2 timing remains unchanged; repair should land about 750 ms sooner,
 while the owner-thread join may finish later without extending corruption.
+
+V18 survived one isolated run but later real-loader runs rebooted before the
+root script, with an empty loader log and PID 1 abort evidence. KernelSU was
+not involved. V19 reduces only the prebuilt repair wait from 250 ms to 100 ms;
+the trigger still starts after 50 ms, leaving a 50 ms scheduling window.
