@@ -37,3 +37,8 @@ erase operation poisoned the global zero page with `selinux_state - 8`, and
 ART processes then observed `0x2adaad88` as an object reference. V7 instead
 uses the reserved Xperia BSS scratch area at `off_mcast_fake_bss + 0x1240` and
 resets `/sys/fs/selinux/checkreqprot` before policy reload.
+
+V7 rebooted immediately after W2, showing that the selected BSS area contains
+live kernel state. V8 removes the promoted child entirely for W1 and uses the
+existing leaf-zero erase path. This requests a direct zero write without a
+secondary destination write-back.
