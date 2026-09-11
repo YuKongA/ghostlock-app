@@ -6,7 +6,7 @@
 
 | Kernel                                                 | Devices                                                          |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (A301SO Softbank ver) — **Shizuku required**                        |
+| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (any version with latest OS) — **Shizuku required**                        |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
