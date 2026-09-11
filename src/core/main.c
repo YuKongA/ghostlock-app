@@ -20,6 +20,9 @@ const struct kernel_offsets *active_offsets = NULL;
 
 static char g_home_dir[256] = "/data/local/tmp";
 static char g_root_script_path[300] = "/data/local/tmp/.ghostlock_root.sh";
+/* the root script creates this as root, so the caller picks a per-run name
+ * and a leftover cannot be read as this run's output */
+static char g_ksu_log_path[320] = "/data/local/tmp/.ghostlock_ksu.log";
 
 /* MTK and XRing use different physical mappings from the Qualcomm default.
  * W1 has no root and /proc is SELinux-blocked: read SoC properties from the
@@ -506,6 +509,13 @@ static void init_runtime_paths(void) {
   }
   snprintf(g_root_script_path, sizeof(g_root_script_path),
            "%s/.ghostlock_root.sh", g_home_dir);
+  const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
+  if (ksu_log && ksu_log[0]) {
+    snprintf(g_ksu_log_path, sizeof(g_ksu_log_path), "%s", ksu_log);
+  } else {
+    snprintf(g_ksu_log_path, sizeof(g_ksu_log_path),
+             "%s/.ghostlock_ksu.log", g_home_dir);
+  }
   pr_info("runtime home=%s script=%s\n", g_home_dir, g_root_script_path);
 }
 
@@ -522,7 +532,7 @@ static void write_root_script(void) {
       script, sizeof(script),
       "#!/system/bin/sh\n"
       "HOME_DIR='%s'\n"
-      "LOG=\"$HOME_DIR/.ghostlock_ksu.log\"\n"
+      "LOG='%s'\n"
       "KSUD=\"$HOME_DIR/ksud\"\n"
       "echo \"[*] root script start uid=$(id -u) euid=$(id -u)\" >\"$LOG\"\n"
       "chmod 644 \"$LOG\" 2>/dev/null\n"
@@ -644,7 +654,7 @@ static void write_root_script(void) {
       "else\n"
       "  echo '[!] fixup failed; SELinux left permissive' >>\"$LOG\"\n"
       "fi\n",
-      g_home_dir);
+      g_home_dir, g_ksu_log_path);
   if (n < 0 || n >= (int)sizeof(script)) {
     pr_warning("root script too long\n");
     close(sfd);
@@ -847,6 +857,8 @@ static void child_main(struct child_pipes *p) {
     int fl = fcntl(fd, F_GETFD);
     if (fl >= 0) fcntl(fd, F_SETFD, fl | FD_CLOEXEC);
   }
+  /* the script appends to this path, a leftover reads as this run's result */
+  unlink(g_ksu_log_path);
   pid_t worker = fork();
   if (worker == 0) {
     /* Detach into a brand-new session: the independent root shell owns the
@@ -1287,9 +1299,7 @@ int run_exploit(int argc, char **argv) {
   int ksu_log_loaded = 0;
   int ksu_log_failed = 0;
   for (int i = 0; i < 60 && !(ksu_log_loaded || ksu_log_failed); i++) {
-    char ksu_log_path[320];
-    snprintf(ksu_log_path, sizeof(ksu_log_path), "%s/.ghostlock_ksu.log", g_home_dir);
-    FILE *lf = fopen(ksu_log_path, "r");
+    FILE *lf = fopen(g_ksu_log_path, "r");
     if (lf) {
       char line[256];
       while (fgets(line, sizeof(line), lf)) {
