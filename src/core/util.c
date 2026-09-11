@@ -386,7 +386,7 @@ int prepare_skb_payload(uintptr_t base) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      if (tcp && write_right) {
+      if (write_right) {
         put64(p, W0_OFF + 0x18, write_right);
         put64(p, W0_OFF + 0x20, 0);
         put64(p, W0_OFF + 0x28, pselect_custom_target);

