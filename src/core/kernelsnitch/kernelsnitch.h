@@ -230,8 +230,14 @@ static void *__mm_leak(void *arg)
     for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
         if ((coarse_addr % (1ULL << 40)) == 0)
             if (ks->verbose) pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr, coarse_addr + (1ULL << 40));
-        for (size_t slab_addr = coarse_addr; (slab_addr < coarse_addr + COARSE_SZ) && !ks->found; slab_addr += mm_slab_sz) {
-            for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_addr + mm_slab_sz) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
+        size_t slab_end = coarse_addr + COARSE_SZ;
+        if (slab_end > range->end)
+            slab_end = range->end;
+        for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
+            size_t slab_limit = slab_addr + mm_slab_sz;
+            if (slab_limit > slab_end)
+                slab_limit = slab_end;
+            for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
                 if (mm_leak_arg->try_canonical) {
                     size_t canonical_candidate = (mm_struct_candidate & ~(0xfULL << 56)) | (0xfULL << 56);
