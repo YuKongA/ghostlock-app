@@ -222,17 +222,20 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so")
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
             if (prepareKsud(workDir, onLog) != null) onLog("ksud ready") else onLog("warning: ksud not found")
-            val ksuLog = File(workDir, KsuLogName)
-            ksuLog.delete()
+            // the root script creates its log as root, so one name per run
+            // keeps the last run's lines out of this run's log
+            val ksuLog = File(workDir, "$KsuLogName.${System.currentTimeMillis()}")
             val nativeLog = File(workDir, ".ghostlock_native.log")
             nativeLog.writeText("")
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
+            // tag root-script lines so they cannot be read as the native stages'
+            val ksuSink: (String) -> Unit = { onLog("[ksu] $it") }
             val tailer = Thread {
                 try {
                     while (!Thread.currentThread().isInterrupted) {
                         tailKsuLog(nativeLog, nativeOffset, onLog)
-                        tailKsuLog(ksuLog, ksuOffset, onLog)
+                        tailKsuLog(ksuLog, ksuOffset, ksuSink)
                         Thread.sleep(200)
                     }
                 } catch (_: InterruptedException) {
@@ -251,6 +254,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
+                    environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                     if (pair.primary != 0 || pair.consumer != 1) {
                         environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()
@@ -265,7 +269,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     tailer.interrupt()
                     tailer.join(1000)
                     tailKsuLog(nativeLog, nativeOffset, onLog)
-                    tailKsuLog(ksuLog, ksuOffset, onLog)
+                    tailKsuLog(ksuLog, ksuOffset, ksuSink)
                 }
             }
         } catch (error: CancellationException) {
