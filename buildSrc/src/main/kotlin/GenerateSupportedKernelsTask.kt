@@ -68,7 +68,7 @@ abstract class GenerateSupportedKernelsTask : DefaultTask() {
         val offsetField = Regex("\\.([A-Za-z0-9_]+)\\s*=\\s*(0[xX][0-9A-Fa-f]+|-?\\d+)")
 
         fun parseValue(text: String): Long =
-            if (text.startsWith("0x", ignoreCase = true)) text.substring(2).toLong(16) else text.toLong()
+            if (text.startsWith("0x", ignoreCase = true)) text.substring(2).toULong(16).toLong() else text.toLong()
 
         fun format(value: Long): String = if (value < 0) "${value}L" else "0x${value.toString(16)}L"
 

