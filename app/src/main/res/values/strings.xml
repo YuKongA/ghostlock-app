@@ -52,4 +52,7 @@
     <string name="cpu_pair_label">CPU cores</string>
     <string name="safe_mode_label">Safe mode</string>
     <string name="safe_mode_summary">Disable all modules</string>
+    <string name="tcp_route_label">Exploit route</string>
+    <string name="tcp_route_summary_on">TCP zerocopy</string>
+    <string name="tcp_route_summary_off">pselect</string>
 </resources>

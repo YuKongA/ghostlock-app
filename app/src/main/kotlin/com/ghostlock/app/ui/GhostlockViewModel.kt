@@ -85,6 +85,11 @@ class GhostlockViewModel(
         mutableState.update { it.copy(safeModeEnabled = enabled) }
     }
 
+    fun toggleTcpRoute(enabled: Boolean) {
+        repository.setTcpRouteEnabled(enabled)
+        mutableState.update { it.copy(tcpRouteEnabled = enabled) }
+    }
+
     fun onRun() {
         val snapshot = kernelSnapshot ?: return
         if (!snapshot.kernelSupported) {
@@ -231,6 +236,8 @@ class GhostlockViewModel(
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
+                tcpRouteEnabled = snapshot.tcpRouteEnabled,
+                compact = snapshot.compact,
                 exportVisible = canExport,
             )
         }

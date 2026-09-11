@@ -101,6 +101,8 @@ data class GhostlockUiState(
     val cpuPairLabels: List<String> = emptyList(),
     val cpuPairIndex: Int = 0,
     val safeModeEnabled: Boolean = false,
+    val tcpRouteEnabled: Boolean = true,
+    val compact: Boolean = false,
     val executionSheetVisible: Boolean = false,
     val executionSheetDismissible: Boolean = false,
     val dialogVisible: Boolean = false,
@@ -132,6 +134,7 @@ interface GhostlockActions {
     fun onExportOffsets()
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
+    fun onTcpRouteChanged(enabled: Boolean)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -561,6 +564,16 @@ private fun ControlPanel(
                 title = stringResource(R.string.safe_mode_label),
                 summary = stringResource(R.string.safe_mode_summary),
             )
+        }
+        if (state.compact) {
+            Card(modifier = modifier.padding(top = 12.dp)) {
+                SwitchPreference(
+                    checked = state.tcpRouteEnabled,
+                    onCheckedChange = actions::onTcpRouteChanged,
+                    title = stringResource(R.string.tcp_route_label),
+                    summary = stringResource(if (state.tcpRouteEnabled) R.string.tcp_route_summary_on else R.string.tcp_route_summary_off),
+                )
+            }
         }
         AnimatedVisibility(
             visible = state.advancedVisible,

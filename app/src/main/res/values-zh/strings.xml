@@ -52,4 +52,7 @@
     <string name="cpu_pair_label">CPU 核心组</string>
     <string name="safe_mode_label">安全模式</string>
     <string name="safe_mode_summary">禁用所有模块</string>
+    <string name="tcp_route_label">利用路径</string>
+    <string name="tcp_route_summary_on">TCP 零拷贝</string>
+    <string name="tcp_route_summary_off">pselect</string>
 </resources>

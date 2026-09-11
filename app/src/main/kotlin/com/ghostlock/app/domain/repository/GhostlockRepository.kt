@@ -13,6 +13,8 @@ interface GhostlockRepository {
 
     fun setSafeModeEnabled(enabled: Boolean)
 
+    fun setTcpRouteEnabled(enabled: Boolean)
+
     suspend fun exportCandidates(): List<OffsetCandidate>
 
     suspend fun importOffsets(json: String): OffsetImportResult
