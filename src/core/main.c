@@ -866,12 +866,24 @@ static void child_main(struct child_pipes *p) {
   park_rooted_child();
 }
 
+/* the route dup2s its block fd over every low fd in the fdset, so keep the
+ * child pipes above PSELECT_ROUTE_NFDS or verify reads hit a timerfd */
+static int raise_pipe_fd(int fd) {
+  int high = fcntl(fd, F_DUPFD, PSELECT_ROUTE_NFDS + 96);
+  if (high < 0) {
+    pr_warning("pipe fd raise failed fd=%d errno=%d\n", fd, errno);
+    return fd;
+  }
+  close(fd);
+  return high;
+}
+
 static pid_t spawn_child(struct child_pipes *p) {
   int p1[2], p2[2], p3[2];
   if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
-  p->task_r = p1[0]; p->task_w = p1[1];
-  p->cmd_r = p2[0]; p->cmd_w = p2[1];
-  p->uid_r = p3[0]; p->uid_w = p3[1];
+  p->task_r = raise_pipe_fd(p1[0]); p->task_w = raise_pipe_fd(p1[1]);
+  p->cmd_r = raise_pipe_fd(p2[0]); p->cmd_w = raise_pipe_fd(p2[1]);
+  p->uid_r = raise_pipe_fd(p3[0]); p->uid_w = raise_pipe_fd(p3[1]);
   pid_t child = fork();
   if (child < 0) return -1;
   if (child == 0) { child_main(p); _exit(1); }
