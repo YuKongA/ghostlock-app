@@ -131,8 +131,13 @@ void log_startup_context(void) {
                "Seccomp_filters=%s", values[0], values[1], values[2]);
     }
   }
-  pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u attr=%s enforce=%s\n",
-             getpid(), getuid(), geteuid(), getgid(), getegid(), attr,
+  struct timespec boot;
+  clock_gettime(CLOCK_BOOTTIME, &boot);
+  double boot_ms = boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6;
+  /* same clock as printk's [timestamp], so a native log line maps onto dmesg */
+  pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u boot_ms=%.0f "
+             "attr=%s enforce=%s\n",
+             getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms, attr,
              enforce);
   pr_success("startup limits pid=%d %s\n", getpid(), limits);
   pr_success("build config pid=%d label=%s slide=pselect main=pselect\n",
