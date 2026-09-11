@@ -19,6 +19,13 @@ static long long ms_since(struct timespec *t0) {
          (now.tv_nsec - t0->tv_nsec) / 1000000LL;
 }
 
+/* f2fs rollback drops everything since the last checkpoint, so fsync at
+ * stage boundaries or a panicking run loses its own lines */
+void log_sync(void) {
+  fflush(stdout);
+  fsync(STDOUT_FILENO);
+}
+
 uintptr_t page_base;
 uintptr_t last_mm_struct;
 uintptr_t fake_lock;

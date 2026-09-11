@@ -566,6 +566,7 @@ void do_pselect_fake_lock_route(void) {
             (unsigned long long)fdset_get_word(&ex, 1),
             (unsigned long long)fdset_get_word(&ex, 2),
             (unsigned long long)fdset_get_word(&ex, 3));
+    log_sync();
 
     /* The route may replace low fds, including stdout and stderr. */
     reserve_standard_io();

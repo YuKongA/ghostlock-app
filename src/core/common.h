@@ -193,6 +193,7 @@ int prepare_skb_payload(uintptr_t base);
 uintptr_t prepare_kernel_page(void);
 uintptr_t prepare_good_kernel_page(void);
 
+void log_sync(void);
 void fdset_put_word(fd_set *set, int word, uint64_t value);
 uint64_t fdset_get_word(const fd_set *set, int word);
 int tcp_route_selected(void);

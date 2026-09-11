@@ -194,7 +194,10 @@ static double timer_ms(void) {
   clock_gettime(CLOCK_MONOTONIC, &now);
   return (now.tv_sec - t0.tv_sec) * 1000.0 + (now.tv_nsec - t0.tv_nsec) / 1e6;
 }
-#define TIMER(label) pr_info("[T+%.0fms] %s\n", timer_ms(), label)
+#define TIMER(label) do { \
+    pr_info("[T+%.0fms] %s\n", timer_ms(), label); \
+    log_sync(); \
+  } while (0)
 
 extern int pselect_custom_write;
 extern uintptr_t pselect_custom_target;
