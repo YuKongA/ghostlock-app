@@ -279,6 +279,25 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
+    let kernel_major = release
+        .and_then(|value| value.split('.').next())
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    report["kernel_major"] = json!(kernel_major);
+    report["kernelsnitch_collisions"] = json!(4);
+    if kernel_major == 5 {
+        report["cred_copy_size"] = json!(0xb0);
+        report["cred_usage_value"] = json!(0x100);
+        report["cred_caps_offset"] = json!(0x30);
+        report["cred_caps_count"] = json!(3);
+        report["cred_caps_value"] = json!(0x000001ffffffffff_u64);
+    } else {
+        report["cred_copy_size"] = json!(0x88);
+        report["cred_usage_value"] = json!(1);
+        report["cred_caps_offset"] = json!(0x30);
+        report["cred_caps_count"] = json!(5);
+        report["cred_caps_value"] = json!(u64::MAX);
+    }
     if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);

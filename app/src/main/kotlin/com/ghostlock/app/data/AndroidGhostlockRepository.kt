@@ -58,7 +58,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
-        val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU
+        val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU ||
+            importedOffsetsRequireShizuku(release)
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
@@ -385,7 +386,18 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         ?.associateWith { key -> if (value.isNull(key)) null else value.optLong(key) }
         ?: emptyMap()
 
-    private val scalarFields = listOf("pselect_waiter_shift", "compact_waiter", "mm_struct_sz", "kernel_phys_load")
+    private val scalarFields = listOf(
+        "kernel_major", "requires_shizuku", "kernel_phys_load",
+        "pselect_waiter_shift", "mcast_waiter_off", "mcast_buffer_size",
+        "mcast_task_offset", "mcast_lock_offset", "mcast_fake_lock_offset",
+        "mcast_fake_task_offset", "mcast_lock_slots_offset", "mcast_lock_slot_count",
+        "mcast_lock_slot_stride",
+        "kernelsnitch_collisions", "compact_waiter", "mm_struct_sz",
+        "cred_copy_size", "cred_usage_offset", "cred_usage_value",
+        "cred_caps_offset", "cred_caps_count", "cred_caps_value", "cred_ref_count",
+        "cred_ref0_offset", "cred_ref1_offset", "cred_ref2_offset", "cred_ref3_offset",
+        "cred_ref0_image", "cred_ref1_image", "cred_ref2_image", "cred_ref3_image",
+    )
 
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
@@ -395,6 +407,15 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private fun importedOffsetsMatch(version: String): Boolean {
         val entries = readOffsetsFile(offsetsFile) ?: return false
         return (0 until entries.length()).any { entries.optJSONObject(it)?.optString("release") == version }
+    }
+
+    private fun importedOffsetsRequireShizuku(version: String): Boolean {
+        val entries = readOffsetsFile(offsetsFile) ?: return false
+        return (0 until entries.length()).any { index ->
+            entries.optJSONObject(index)?.let { entry ->
+                entry.optString("release") == version && entry.optInt("requires_shizuku") == 1
+            } == true
+        }
     }
 
     private fun buildCpuPairs() {

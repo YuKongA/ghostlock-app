@@ -182,6 +182,8 @@ static const struct {
 } g_symbol_map[] = {
   {"off_init_task", offsetof(struct kernel_offsets, off_init_task)},
   {"off_init_cred", offsetof(struct kernel_offsets, off_init_cred)},
+  {"off_empty_zero_page", offsetof(struct kernel_offsets, off_empty_zero_page)},
+  {"off_mcast_fake_bss", offsetof(struct kernel_offsets, off_mcast_fake_bss)},
   {"off_root_task_group", offsetof(struct kernel_offsets, off_root_task_group)},
   {"off_selinux_enforcing", offsetof(struct kernel_offsets, off_selinux_enforcing)},
   {"off_selinux_blob_sizes", offsetof(struct kernel_offsets, off_selinux_blob_sizes)},
@@ -212,6 +214,56 @@ static const struct {
   {"task_seccomp", offsetof(struct kernel_offsets, task_seccomp)},
 };
 
+enum scalar_width { SCALAR_U8, SCALAR_U32, SCALAR_U64, SCALAR_I32 };
+static const struct {
+  const char *name;
+  size_t off;
+  enum scalar_width width;
+} g_profile_map[] = {
+  {"kernel_major", offsetof(struct kernel_offsets, kernel_major), SCALAR_U8},
+  {"requires_shizuku", offsetof(struct kernel_offsets, requires_shizuku), SCALAR_U8},
+  {"kernel_phys_load", offsetof(struct kernel_offsets, kernel_phys_load), SCALAR_U64},
+  {"pselect_waiter_shift", offsetof(struct kernel_offsets, pselect_waiter_shift), SCALAR_I32},
+  {"mcast_waiter_off", offsetof(struct kernel_offsets, mcast_waiter_off), SCALAR_I32},
+  {"mcast_buffer_size", offsetof(struct kernel_offsets, mcast_buffer_size), SCALAR_U32},
+  {"mcast_task_offset", offsetof(struct kernel_offsets, mcast_task_offset), SCALAR_U32},
+  {"mcast_lock_offset", offsetof(struct kernel_offsets, mcast_lock_offset), SCALAR_U32},
+  {"mcast_fake_lock_offset", offsetof(struct kernel_offsets, mcast_fake_lock_offset), SCALAR_U32},
+  {"mcast_fake_task_offset", offsetof(struct kernel_offsets, mcast_fake_task_offset), SCALAR_U32},
+  {"mcast_lock_slots_offset", offsetof(struct kernel_offsets, mcast_lock_slots_offset), SCALAR_U32},
+  {"mcast_lock_slot_count", offsetof(struct kernel_offsets, mcast_lock_slot_count), SCALAR_U32},
+  {"mcast_lock_slot_stride", offsetof(struct kernel_offsets, mcast_lock_slot_stride), SCALAR_U32},
+  {"kernelsnitch_collisions", offsetof(struct kernel_offsets, kernelsnitch_collisions), SCALAR_U32},
+  {"compact_waiter", offsetof(struct kernel_offsets, compact_waiter), SCALAR_U8},
+  {"mm_struct_sz", offsetof(struct kernel_offsets, mm_struct_sz), SCALAR_U32},
+  {"cred_copy_size", offsetof(struct kernel_offsets, cred_copy_size), SCALAR_U32},
+  {"cred_usage_offset", offsetof(struct kernel_offsets, cred_usage_offset), SCALAR_U32},
+  {"cred_usage_value", offsetof(struct kernel_offsets, cred_usage_value), SCALAR_U32},
+  {"cred_caps_offset", offsetof(struct kernel_offsets, cred_caps_offset), SCALAR_U32},
+  {"cred_caps_count", offsetof(struct kernel_offsets, cred_caps_count), SCALAR_U32},
+  {"cred_caps_value", offsetof(struct kernel_offsets, cred_caps_value), SCALAR_U64},
+  {"cred_ref_count", offsetof(struct kernel_offsets, cred_ref_count), SCALAR_U32},
+  {"cred_ref0_offset", offsetof(struct kernel_offsets, cred_ref0_offset), SCALAR_U32},
+  {"cred_ref1_offset", offsetof(struct kernel_offsets, cred_ref1_offset), SCALAR_U32},
+  {"cred_ref2_offset", offsetof(struct kernel_offsets, cred_ref2_offset), SCALAR_U32},
+  {"cred_ref3_offset", offsetof(struct kernel_offsets, cred_ref3_offset), SCALAR_U32},
+  {"cred_ref0_image", offsetof(struct kernel_offsets, cred_ref0_image), SCALAR_U64},
+  {"cred_ref1_image", offsetof(struct kernel_offsets, cred_ref1_image), SCALAR_U64},
+  {"cred_ref2_image", offsetof(struct kernel_offsets, cred_ref2_image), SCALAR_U64},
+  {"cred_ref3_image", offsetof(struct kernel_offsets, cred_ref3_image), SCALAR_U64},
+};
+
+static void store_profile_scalar(struct kernel_offsets *out, size_t off,
+                                 enum scalar_width width, int64_t value) {
+  char *field = (char *)out + off;
+  switch (width) {
+    case SCALAR_U8:  *(uint8_t *)field = (uint8_t)value; break;
+    case SCALAR_U32: *(uint32_t *)field = (uint32_t)value; break;
+    case SCALAR_U64: *(uint64_t *)field = (uint64_t)value; break;
+    case SCALAR_I32: *(int *)field = (int)value; break;
+  }
+}
+
 /* Fill `out` from one JSON object [obj, end).  Fields absent from the JSON
  * keep whatever the caller put into `out` (zeroed for a fresh table, or a
  * built-in entry the JSON is overriding). */
@@ -221,21 +273,12 @@ static void fill_external_entry(struct kernel_offsets *out,
   const char *v;
   int64_t num;
   out->uname_r = release_buf;
-  v = json_member_value(obj, end, "kernel_phys_load");
-  if (v && json_parse_int(v, end, &num)) {
-    out->kernel_phys_load = (uint64_t)num;
-  }
-  v = json_member_value(obj, end, "pselect_waiter_shift");
-  if (v && json_parse_int(v, end, &num)) {
-    out->pselect_waiter_shift = (int)num;
-  }
-  v = json_member_value(obj, end, "compact_waiter");
-  if (v && json_parse_int(v, end, &num)) {
-    out->compact_waiter = (uint8_t)num;
-  }
-  v = json_member_value(obj, end, "mm_struct_sz");
-  if (v && json_parse_int(v, end, &num)) {
-    out->mm_struct_sz = (uint32_t)num;
+  for (size_t i = 0; i < sizeof(g_profile_map) / sizeof(g_profile_map[0]); i++) {
+    v = json_member_value(obj, end, g_profile_map[i].name);
+    if (v && json_parse_int(v, end, &num)) {
+      store_profile_scalar(out, g_profile_map[i].off,
+                           g_profile_map[i].width, num);
+    }
   }
   v = json_member_value(obj, end, "symbols");
   if (v && *v == '{') {

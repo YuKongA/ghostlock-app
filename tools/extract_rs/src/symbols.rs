@@ -94,7 +94,8 @@ pub fn resolve_symbols(symbols: &BTreeMap<String, BTreeSet<u64>>, base: u64) -> 
 }
 
 /// Layout selector for a release, or None when that kernel has no measured
-/// geometry. Only 6.1, 6.6 and 6.12 are verified; callers treat None as
+/// geometry. The 5.15 layout is a starting point for profile-driven 5.x
+/// support; 6.1, 6.6 and 6.12 retain their established layouts. Callers treat None as
 /// "use STRUCT_OFFSETS_6_6 as a testing starting point", and the extractor
 /// warns so nobody mistakes a fallback table for a verified one.
 pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
@@ -103,6 +104,7 @@ pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
     let major = parts.next()?.parse::<u32>().ok()?;
     let minor = parts.next()?.parse::<u32>().ok()?;
     match (major, minor) {
+        (5, 15) => Some("STRUCT_OFFSETS_5_15"),
         // 6.1 android14 builds use the flat compact-waiter layout.
         (6, 1) => Some("STRUCT_OFFSETS_6_1"),
         (6, 6) => Some("STRUCT_OFFSETS_6_6"),

