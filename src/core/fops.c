@@ -3,6 +3,8 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include "target.h"
+
 /* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
  * output: elapsed milliseconds. Future: shared_elapsed_ms(const timespec *);
  * move to the stateless time helper module and make the input const. */

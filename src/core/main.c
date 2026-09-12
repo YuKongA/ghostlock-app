@@ -16,6 +16,8 @@
 #include <sys/utsname.h>
 #include <strings.h>
 
+#include "target.h"
+
 const struct kernel_offsets *active_offsets = NULL;
 
 static char g_home_dir[256] = "/data/local/tmp";
