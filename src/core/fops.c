@@ -9,9 +9,7 @@
  * output: elapsed milliseconds. Future: shared_elapsed_ms(const timespec *);
  * move to the stateless time helper module and make the input const. */
 static double fops_elapsed_ms(struct timespec *ref) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (now.tv_sec - ref->tv_sec) * 1000.0 + (now.tv_nsec - ref->tv_nsec) / 1e6;
+  return runtime_elapsed_ms(ref);
 }
 extern int pselect_custom_write;
 

@@ -278,7 +278,7 @@ flowchart TD
 
 阶段标题只有在实现、构建、提交和用户真机确认全部完成后才勾选。每次提交后立即暂停。
 
-### [ ] S01：待重构函数规划注释（当前阶段）
+### [x] S01：待重构函数规划注释
 
 - [x] 枚举需要拆分、改名或移除全局状态的核心 native C 函数。
 - [x] 为目标函数注明职责、输入输出、隐式状态、未来名称和目标上下文。
@@ -288,15 +288,17 @@ flowchart TD
 - [x] CLion/Native 编译检查通过（`buildGhostlockNative`；完整 `assembleDebug` 另被本机缺少 Rust Android target 阻塞）。
 - [x] 提交 `docs(native): annotate decoupling targets`。
 - [x] 提交后暂停。
-- [ ] 用户真机兼容性确认。
+- [x] 用户真机兼容性确认（提交 `1959270`）。
 
 ### [ ] S02：无状态工具与运行配置
 
-- [ ] 标准化时间、CPU、错误处理、路径和环境快照接口。
-- [ ] 引入 `RuntimeConfig`；旧入口保留薄包装。
-- [ ] 同步迁移 `main.c` 中简单配置初始化调用。
-- [ ] profile 阻塞项添加 S08 TODO 并登记。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 标准化时间、CPU、错误返回、路径和环境快照接口。
+- [x] 引入 `RuntimeConfig`；旧 `init_cpu_config()` 保留薄包装。
+- [x] 同步迁移 `main.c` 的配置初始化、路径和功能开关调用。
+- [x] profile 阻塞项已添加 S08 TODO 并登记。
+- [x] 完整 `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 
 ### [ ] S03：offset JSON loader
 
@@ -403,7 +405,9 @@ flowchart TD
 
 | 来源阶段 | 代码位置/事项 | 阻塞依赖 | 回补阶段 | 状态 |
 |---|---|---|---|---|
-| S02 | 运行配置中仍需读取 profile 的访问点 | `TargetProfile` 未对象化 | S08 | [ ] 待产生/回补 |
+| S02 | `tcp_route_selected()` 仍组合 `active_offsets` 与配置快照 | `TargetProfile` 未对象化 | S08 | [x] 已产生，待回补 |
+| S02 | `CORE`/`CONSUMER_CORE` 仍需两个兼容镜像 | PI worker 尚未接收 context | S10 | [x] 已产生，待回补 |
+| S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
 | S03 | JSON parse 后直接激活 `active_offsets` | profile 发布与地址解析交织 | S08 | [ ] 待产生/回补 |
 | S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
 | S07 | select/multicast payload 布局读取全局 profile | 路线布局访问器未统一 | S08/S12/S13 | [ ] 待产生/回补 |

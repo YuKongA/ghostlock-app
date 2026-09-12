@@ -1,0 +1,127 @@
+#include "common.h"
+#include "runtime_config.h"
+
+struct runtime_config g_runtime_config = {
+    .main_cpu = 0,
+    .consumer_cpu = 1,
+    .tcp_zerocopy_enabled = true,
+    .home_dir = "/data/local/tmp",
+    .root_script_path = "/data/local/tmp/.ghostlock_root.sh",
+};
+
+// TODO(decoupling:S10-pi-race): Future: pass CPU ids through PiRaceContext.
+// Input: immutable RuntimeConfig; output: worker affinity with no global mirror.
+// Blocked by: PI workers still use CORE macros; completion deletes both globals.
+int g_core_main = 0;
+int g_core_consumer = 1;
+
+static bool environment_flag(const char *name, bool default_value) {
+  const char *value = getenv(name);
+  if (!value || !value[0]) return default_value;
+  return strcmp(value, "0") != 0;
+}
+
+static bool environment_present(const char *name) {
+  return getenv(name) != NULL;
+}
+
+static void runtime_config_init_cpus(struct runtime_config *config) {
+  config->main_cpu = 0;
+  config->consumer_cpu = 1;
+
+  const char *value = getenv("GHOSTLOCK_CORE");
+  if (value && value[0]) {
+    long parsed = strtol(value, NULL, 10);
+    if (parsed >= 0 && parsed < CPU_SETSIZE) {
+      config->main_cpu = (int)parsed;
+    } else {
+      pr_warning("invalid GHOSTLOCK_CORE=%s, using %d\n", value,
+                 config->main_cpu);
+    }
+  }
+
+  value = getenv("GHOSTLOCK_CONSUMER_CORE");
+  if (value && value[0]) {
+    long parsed = strtol(value, NULL, 10);
+    if (parsed >= 0 && parsed < CPU_SETSIZE) {
+      config->consumer_cpu = (int)parsed;
+    } else {
+      pr_warning("invalid GHOSTLOCK_CONSUMER_CORE=%s, using %d\n", value,
+                 config->consumer_cpu);
+    }
+  } else {
+    config->consumer_cpu = config->main_cpu + 1;
+  }
+
+  if (config->main_cpu == config->consumer_cpu) {
+    pr_warning("main and consumer cores are the same (%d); falling back\n",
+               config->main_cpu);
+    config->main_cpu = 0;
+    config->consumer_cpu = 1;
+  }
+
+  cpu_set_t allowed;
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
+      (!CPU_ISSET(config->main_cpu, &allowed) ||
+       !CPU_ISSET(config->consumer_cpu, &allowed))) {
+    pr_warning("cores %d/%d not in allowed cpuset; falling back to 0/1\n",
+               config->main_cpu, config->consumer_cpu);
+    config->main_cpu = 0;
+    config->consumer_cpu = 1;
+  }
+}
+
+static void runtime_config_init_paths(struct runtime_config *config) {
+  const char *home = getenv("GHOSTLOCK_HOME");
+  if (!home || !home[0]) home = getenv("TMPDIR");
+  if (!home || !home[0]) home = "/data/local/tmp";
+
+  snprintf(config->home_dir, sizeof(config->home_dir), "%s", home);
+  size_t length = strlen(config->home_dir);
+  while (length > 1 && config->home_dir[length - 1] == '/') {
+    config->home_dir[--length] = '\0';
+  }
+  snprintf(config->root_script_path, sizeof(config->root_script_path),
+           "%s/.ghostlock_root.sh", config->home_dir);
+}
+
+/* Capture all process environment and CPU/path choices exactly once. Input:
+ * writable config; output: 0/-1 plus compatibility CPU mirrors. */
+int runtime_config_init(struct runtime_config *config) {
+  if (!config) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  memset(config, 0, sizeof(*config));
+  runtime_config_init_cpus(config);
+  runtime_config_init_paths(config);
+  config->tcp_zerocopy_enabled =
+      environment_flag("GHOSTLOCK_TCP_ROUTE", true);
+  config->multicast_resident_enabled =
+      environment_present("GHOSTLOCK_5X_RESIDENT");
+  config->multicast_phase1_probe =
+      environment_present("GHOSTLOCK_5X_PHASE1_PROBE");
+  config->w1_only = environment_present("GHOSTLOCK_W1_ONLY");
+
+  g_core_main = config->main_cpu;
+  g_core_consumer = config->consumer_cpu;
+  return 0;
+}
+
+/* Log the immutable runtime snapshot. Input: initialized config; output: logs. */
+void runtime_config_log(const struct runtime_config *config) {
+  if (!config) return;
+  pr_info("cpu pair: main=%d consumer=%d\n", config->main_cpu,
+          config->consumer_cpu);
+  pr_info("runtime home=%s script=%s\n", config->home_dir,
+          config->root_script_path);
+}
+
+/* Legacy compatibility adapter. Input: process environment; output: refreshed
+ * global RuntimeConfig. New orchestration calls runtime_config_init directly. */
+void init_cpu_config(void) {
+  if (runtime_config_init(&g_runtime_config) == 0) {
+    runtime_config_log(&g_runtime_config);
+  }
+}

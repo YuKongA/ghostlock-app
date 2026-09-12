@@ -21,10 +21,7 @@ static pid_t child_leak;
 /* Decoupling plan: compute elapsed monotonic time. Input: reference timestamp;
  * output: milliseconds. Future: shared_elapsed_ms(const struct timespec *). */
 static long long ms_since(struct timespec *t0) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (now.tv_sec - t0->tv_sec) * 1000LL +
-         (now.tv_nsec - t0->tv_nsec) / 1000000LL;
+  return (long long)runtime_elapsed_ms(t0);
 }
 
 /* f2fs rollback drops everything since the last checkpoint, so fsync at
@@ -67,12 +64,11 @@ void clear_pselect_write(void) {
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
-  /* compact defaults to tcp; GHOSTLOCK_TCP_ROUTE=0 selects pselect */
-  const char *s = getenv("GHOSTLOCK_TCP_ROUTE");
-  if (s && *s && strcmp(s, "0") == 0) {
-    return 0;
-  }
-  return active_offsets && active_offsets->compact_waiter;
+  // TODO(decoupling:S08-profile): Future: tcp_zerocopy_supports(profile, config).
+  // Input: immutable TargetProfile and RuntimeConfig; output: route capability.
+  // Blocked by: TargetProfile is introduced in S08; completion removes this TODO.
+  return g_runtime_config.tcp_zerocopy_enabled && active_offsets &&
+         active_offsets->compact_waiter;
 }
 
 /* Decoupling plan: report multicast-waiter capability. Input: profile; output:

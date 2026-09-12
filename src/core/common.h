@@ -5,6 +5,8 @@
 #define __ARM 1
 
 #include "offset.h"
+#include "runtime_config.h"
+#include "runtime_time.h"
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -161,7 +163,6 @@ extern int memfd_leak;
 int run_exploit(int argc, char **argv);
 void read_first_line(const char *path, char *buf, size_t len);
 void log_startup_context(void);
-void init_cpu_config(void);
 void disable_rseq_for_thread(void);
 void init_p0_profile(void);
 extern uint64_t p0_kernel_phys_load;

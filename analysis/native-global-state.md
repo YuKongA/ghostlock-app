@@ -29,10 +29,10 @@ flowchart LR
 | `g_external_release` | `main.c` static | `g_external_offsets.uname_r` | JSON loader | 用于保持release字符串存活 | `kernel_profile.release[]` |
 | `p0_kernel_phys_load` | `util.c` | `p0_data_alias()`、日志与地址宏 | `publish_active_offsets()` | profile发布后只读 | `address_space.kernel_phys_load` |
 | `g_init_cred_image` | `util.c` | payload/W2和5.x修复 | `publish_active_offsets()` | 名称和所属模块不匹配 | `address_space.init_cred_image` |
-| `g_core_main` | `main.c` | `CORE`宏、主线程、clone、Multicast | `init_cpu_config()` | 通过宏隐式读取 | `runtime_config.primary_cpu` |
-| `g_core_consumer` | `main.c` | `CONSUMER_CORE`宏、consumer/Multicast | `init_cpu_config()` | 同上 | `runtime_config.consumer_cpu` |
-| `g_home_dir` | `main.c` static | offsets、日志、ksud、脚本、child | `init_runtime_paths()` | 与阶段逻辑共居 `main.c` | `runtime_config.home_dir` |
-| `g_root_script_path` | `main.c` static | `write_root_script()` / `child_main()` | `init_runtime_paths()` | 同上 | `runtime_config.root_script_path` |
+| `g_core_main` | `runtime_config.c`兼容镜像 | `CORE`宏、主线程、clone、Multicast | `runtime_config_init()` | S02已由单一配置快照发布；S10删除镜像 | `pi_race_context`显式CPU参数 |
+| `g_core_consumer` | `runtime_config.c`兼容镜像 | `CONSUMER_CORE`宏、consumer/Multicast | `runtime_config_init()` | 同上 | `pi_race_context`显式CPU参数 |
+| `g_runtime_config` | `runtime_config.c` | `main.c`、TCP选路及兼容宏 | `runtime_config_init()` | S02新增的单一进程快照；初始化后只读 | `exploit_session.config` |
+| `home_dir/root_script_path` | `g_runtime_config`字段 | offsets、日志、ksud、脚本、child | `runtime_config_init()` | S02已从`main.c`分散数组迁入配置对象 | `exploit_session.config` |
 | `t0` | `main.c` static | `timer_ms()` | `timer_reset()` | 单一计时器限制并发/嵌套计时 | 显式 `timespec` 参数 |
 
 ### 隐式依赖

