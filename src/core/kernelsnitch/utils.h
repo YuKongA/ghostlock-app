@@ -136,6 +136,8 @@
 #define PAGE_SIZE 4096
 #endif
 
+/* Decoupling plan: pin the current thread to an explicit CPU. Input: CPU id;
+ * output: status. Future: runtime_pin_current_thread(core), returning errors. */
 static inline void pin_to_core(size_t core)
 {
     cpu_set_t cpuset;
@@ -151,6 +153,8 @@ static inline void reset_cpu_pin(void)
     SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
 }
 
+/* Decoupling plan: apply process resource limits. Input: RuntimeConfig policy;
+ * output: structured status. Future: runtime_apply_limits(). */
 static inline void set_limit(void)
 {
     struct rlimit r;
@@ -190,6 +194,9 @@ static void write_file(const char *path, const char *data)
 }
 
 
+/* Decoupling plan: configure the helper user/network namespace. Input: helper
+ * context; output: status. Future: helper_namespace_enter(), returning errors
+ * rather than terminating through utility macros. */
 static inline void set_user_namespace(void)
 {
     uid_t uid = getuid();

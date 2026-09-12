@@ -197,10 +197,15 @@ uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
 }
 
 unsigned long futex_hashsize = -1;
+/* Decoupling plan: derive the estimated futex hash-table size. Input: runtime
+ * CPU count; output: FutexHashContext. Future: futex_hash_context_init(). */
 void futex_init(void)
 {
     futex_hashsize = SYSCHK(sysconf(_SC_NPROCESSORS_ONLN) * 256);
 }
+/* Decoupling plan: hash an address/mm pair using implicit table size. Inputs:
+ * FutexHashContext, address and mm; output: bucket. Future:
+ * futex_hash_bucket(const FutexHashContext *, size_t, size_t). */
 uint32_t futex_hash(size_t addr, size_t mm)
 {
     ASSERT_pr((futex_hashsize != (unsigned long)-1),

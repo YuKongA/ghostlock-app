@@ -128,6 +128,9 @@ static void *__do_increase(void *arg)
  * @arg id: identifier of the futex user-space address to be used for the increase
  * @arg amount: increase
  */
+/* Decoupling plan: coordinate one collision-amplification worker. Inputs:
+ * KernelSnitchContext, worker id and amount; output: synchronized completion.
+ * Future: kernelsnitch_worker_increase(context, id, amount). */
 static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount)
 {
     pthread_t tid;
@@ -265,6 +268,8 @@ static void *__mm_leak(void *arg)
     return 0;
 }
 
+/* Decoupling plan: run one mm-address leak pass. Inputs: snitch context and
+ * scan policy; output: candidate state. Future: kernelsnitch_scan_mm_pass(). */
 static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_canonical, int sweep_tags)
 {
     /* the leak check discards a match past the measured end, so no slice
@@ -524,6 +529,9 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
  * Find collisions for different user space futex addresses within one process and the piled-up hash bucket
  * @arg ks: shared KernelSnitch state
  */
+/* Decoupling plan: execute collision discovery. Input/output:
+ * KernelSnitchContext; output: collision set/status. Future:
+ * kernelsnitch_context_find_collisions(). */
 void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_INIT), "wrong state\n");
@@ -554,6 +562,9 @@ size_t kernelsnitch_found_collisions(struct kernelsnitch_shared_state *ks)
  * Brute-forcing phase, where it tests all mm_struct candidates and matches the hash collisions for this current candidate with the observed user space futex addresses
  * @arg ks: shared KernelSnitch state
  */
+/* Decoupling plan: execute address brute force using discovered collisions.
+ * Input/output: KernelSnitchContext; output: selected address/status. Future:
+ * kernelsnitch_context_scan(). */
 void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
@@ -571,6 +582,9 @@ void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
  * @arg ks: shared KernelSnitch state
  * @return the found mm_struct or -1 for not found
  */
+/* Decoupling plan: stop workers and release snitch-owned memory. Input: owned
+ * context; output: retained address. Future: split context_result() and
+ * kernelsnitch_context_destroy(). */
 size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_MM_FOUND || ks->state == KERNELSNITCH_MM_NOT_FOUND), "wrong state\n");
@@ -597,6 +611,8 @@ size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
  * @arg __verbose: amount of print info, 1 enables and 0 disables
  * @return the found mm_struct or -1 for not found
  */
+/* Decoupling plan: legacy all-in-one discovery entry. Inputs: explicit tuning;
+ * output: address. Future: replace with context_init/scan/result/destroy. */
 size_t kernelsnitch_param(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
 {
     struct kernelsnitch_shared_state *ks = kernelsnitch_setup(__mm_struct_sz, __mm_slab_order, __thread_cnt, __collision_cnt, __verbose);
