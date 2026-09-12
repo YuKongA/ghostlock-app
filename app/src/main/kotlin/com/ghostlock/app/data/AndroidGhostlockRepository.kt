@@ -381,13 +381,15 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun isCompactKernel(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
-        // an imported entry for this release overrides the built-in one, as in select_offsets
+        // an imported entry overrides the built-in one, a member it omits keeps the built-in
+        // value, as in select_offsets. first match wins, same as load_offsets_json
         val entries = readOffsetsFile(offsetsFile)
-        for (index in 0 until (entries?.length() ?: 0)) {
-            val entry = entries?.optJSONObject(index) ?: continue
-            if (entry.optString("release", "") == version) return entry.optLong("compact_waiter", 0L) != 0L
-        }
-        return SupportedKernels.BUILTIN[version]?.get("compact_waiter")?.takeIf { it != 0L } != null
+        val imported = (0 until (entries?.length() ?: 0))
+            .mapNotNull { entries?.optJSONObject(it) }
+            .firstOrNull { it.optString("release", "") == version }
+            ?.let { toKernelOffsets(it).scalars["compact_waiter"] }
+        val value = imported ?: SupportedKernels.BUILTIN[version]?.get("compact_waiter")
+        return value != null && value != 0L
     }
 
     private fun importedOffsetsMatch(version: String): Boolean {
