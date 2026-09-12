@@ -181,7 +181,7 @@ long sched_setattr_tid(int tid, int nice_value) {
   errno = 0;
   long ret = syscall(274, tid, &attr, 0);
   if (ret != 0) {
-    pr_error("sched_setattr(%d,BATCH,nice=%d) ret=%ld errno=%d\n", tid, nice_value, ret, errno);
+    pr_warning("sched_setattr(%d,BATCH,nice=%d) ret=%ld errno=%d\n", tid, nice_value, ret, errno);
   }
   return ret;
 }

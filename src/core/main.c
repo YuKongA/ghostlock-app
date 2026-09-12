@@ -231,7 +231,7 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   int tid = (int)syscall(SYS_gettid);
   atomic_store(&waiter_tid, tid);
   if (futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
-    pr_error("waiter lock chain errno=%d\n", errno);
+    pr_warning("waiter lock chain errno=%d\n", errno);
   atomic_store(&waiter_ready, 1);
   while (!atomic_load(&owner_started)) usleep(1000);
   struct timespec timeout;
@@ -253,7 +253,7 @@ void *waiter_thread(void *arg __attribute__((unused))) {
 void *owner_thread(void *arg __attribute__((unused))) {
   disable_rseq_for_thread();
   long lock_target = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
-  if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
+  if (lock_target != 0) pr_warning("owner lock target errno=%d\n", errno);
   while (!atomic_load(&waiter_ready)) usleep(1000);
   atomic_store(&owner_started, 1);
   futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
@@ -367,8 +367,8 @@ static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) 
    * payload fired at a value target zeroes it */
   int arm_matches = leaf ? (fake_right == 0) : (fake_right != 0);
   if (!arm_matches) {
-    pr_error("  payload arm mismatch leaf=%d fake_right=%016zx; skipping "
-             "write\n", leaf, fake_right);
+    pr_warning("  payload arm mismatch leaf=%d fake_right=%016zx; skipping "
+               "write\n", leaf, fake_right);
     clear_pselect_write();
     return 0;
   }
