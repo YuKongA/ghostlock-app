@@ -3,14 +3,37 @@
 #include "offsets_json.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-static char g_file_buf[1 << 20];
+#define PROFILE_JSON_MAX_SIZE (1U << 20)
+
+static char *read_profile_file(const char *path, size_t *size_out) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return NULL;
+  char *buffer = malloc(PROFILE_JSON_MAX_SIZE + 1);
+  if (!buffer) {
+    close(fd);
+    return NULL;
+  }
+  ssize_t size = read(fd, buffer, PROFILE_JSON_MAX_SIZE);
+  int saved_errno = errno;
+  close(fd);
+  if (size <= 0 || size == PROFILE_JSON_MAX_SIZE) {
+    free(buffer);
+    errno = size == PROFILE_JSON_MAX_SIZE ? EFBIG : saved_errno;
+    return NULL;
+  }
+  buffer[size] = '\0';
+  *size_out = (size_t)size;
+  return buffer;
+}
 
 static const char *json_skip_ws(const char *p, const char *end) {
   while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
@@ -286,6 +309,20 @@ static void fill_external_entry(struct kernel_offsets *out,
                            g_profile_map[i].width, num);
     }
   }
+  /* Resolved profiles use one flat object. Keep the nested reads below only
+   * for compatibility with offsets.json files produced by older extractors. */
+  for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]); i++) {
+    v = json_member_value(obj, end, g_symbol_map[i].name);
+    if (v && json_parse_int(v, end, &num)) {
+      *(uint64_t *)((char *)out + g_symbol_map[i].off) = (uint64_t)num;
+    }
+  }
+  for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]); i++) {
+    v = json_member_value(obj, end, g_task_map[i].name);
+    if (v && json_parse_int(v, end, &num)) {
+      *(uint32_t *)((char *)out + g_task_map[i].off) = (uint32_t)num;
+    }
+  }
   v = json_member_value(obj, end, "symbols");
   if (v && *v == '{') {
     const char *v_end = v;
@@ -319,58 +356,34 @@ static void fill_external_entry(struct kernel_offsets *out,
   }
 }
 
-/* Decoupling plan: read JSON and select the requested release profile. Inputs:
- * path, release and optional base profile; outputs: profile/release/error.
- * Future: target_profile_load_json(), returning OffsetsJsonResult and owning
- * its file buffer locally instead of using shared parser state. */
-int load_offsets_json(const char *path, const char *release,
-                      struct kernel_offsets *out, char *release_buf,
-                      size_t release_buf_cap) {
-  int fd = open(path, O_RDONLY);
-  if (fd < 0) return -1;
-  ssize_t n = read(fd, g_file_buf, sizeof(g_file_buf) - 1);
-  close(fd);
-  if (n <= 0) return -1;
-  g_file_buf[n] = '\0';
-  const char *p = g_file_buf;
-  const char *end = g_file_buf + n;
-  p = json_skip_ws(p, end);
-  if (p < end && *p == '[') {
-    p++;
-    for (;;) {
-      p = json_skip_ws(p, end);
-      if (p < end && *p == ',') p++;
-      p = json_skip_ws(p, end);
-      if (p == end || *p == ']') return -1;
-      if (*p != '{') return -1;
-      const char *obj = p;
-      if (!json_skip_value(&p, end)) return -1;
-      const char *rel = json_member_value(obj, p, "release");
-      char buf[256];
-      const char *q = rel;
-      if (rel && *rel == '"' && json_read_string(&q, p, buf, sizeof(buf)) &&
-          strcmp(buf, release) == 0) {
-        if (strlen(buf) >= release_buf_cap) return -1;
-        strcpy(release_buf, buf);
-        fill_external_entry(out, release_buf, obj, p);
-        return 0;
-      }
+int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
+                               char *release_buf, size_t release_buf_cap) {
+  size_t size = 0;
+  char *file_buffer = read_profile_file(path, &size);
+  if (!file_buffer) return -1;
+  const char *object = json_skip_ws(file_buffer, file_buffer + size);
+  const char *end = object;
+  int result = -1;
+  if (object < file_buffer + size && *object == '{' &&
+      json_skip_value(&end, file_buffer + size) &&
+      json_skip_ws(end, file_buffer + size) == file_buffer + size) {
+    int64_t schema_version = 0;
+    const char *schema_value = json_member_value(object, end, "schema_version");
+    const char *execution_value = json_member_value(object, end, "execution");
+    const char *release_value = json_member_value(object, end, "release");
+    const char *cursor = release_value;
+    char release[256];
+    if (schema_value && json_parse_int(schema_value, end, &schema_version) &&
+        schema_version == 1 && execution_value && *execution_value == '{' &&
+        release_value && json_read_string(&cursor, end, release,
+                                          sizeof(release)) &&
+        strlen(release) < release_buf_cap) {
+      memset(out, 0, sizeof(*out));
+      strcpy(release_buf, release);
+      fill_external_entry(out, release_buf, object, end);
+      result = 0;
     }
   }
-  if (p < end && *p == '{') {
-    const char *obj = p;
-    if (json_skip_value(&p, end)) {
-      const char *rel = json_member_value(obj, p, "release");
-      char buf[256];
-      const char *q = rel;
-      if (rel && *rel == '"' && json_read_string(&q, p, buf, sizeof(buf)) &&
-          strcmp(buf, release) == 0) {
-        if (strlen(buf) >= release_buf_cap) return -1;
-        strcpy(release_buf, buf);
-        fill_external_entry(out, release_buf, obj, p);
-        return 0;
-      }
-    }
-  }
-  return -1;
+  free(file_buffer);
+  return result;
 }

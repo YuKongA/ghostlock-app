@@ -20,65 +20,10 @@ val gitVersionCode = runCatching {
 }
 
 val supportedKernelsSrc = layout.buildDirectory.dir("generated/source/supportedKernels")
-val sharedOffsetsHeader = rootProject.file("src/kernels/offsets.h")
-val offsetFieldRe = Regex("\\.([A-Za-z0-9_]+)\\s*=\\s*(0[xX][0-9A-Fa-f]+|-?\\d+)")
-
-fun parseOffsetValue(text: String): Long = if (text.length > 2 && text.startsWith("0x", ignoreCase = true)) {
-    text.substring(2).toLong(16)
-} else {
-    text.toLong()
-}
-
-fun formatOffsetValue(value: Long): String = if (value < 0) "${value}L" else "0x${value.toString(16)}L"
-
-fun escapeKotlinString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
-
-fun parseStructMacros(text: String): Map<String, Map<String, Long>> {
-    val macros = mutableMapOf<String, Map<String, Long>>()
-    val lines = text.lines()
-    var index = 0
-    while (index < lines.size) {
-        val match = Regex("#define\\s+(STRUCT_OFFSETS_[A-Za-z0-9_]+)\\s*(.*)").matchEntire(lines[index])
-        if (match == null) {
-            index++
-            continue
-        }
-        val name = match.groupValues[1]
-        var body = match.groupValues[2]
-        while (lines[index].trimEnd().endsWith("\\") && index + 1 < lines.size) {
-            index++
-            body += " ${lines[index]}"
-        }
-        macros[name] = offsetFieldRe.findAll(body).associate { it.groupValues[1] to parseOffsetValue(it.groupValues[2]) }
-        index++
-    }
-    return macros
-}
-
-data class ParsedKernelEntries(val names: List<String>, val entries: Map<String, Map<String, Long>>)
-
-fun parseKernelEntries(header: File, macros: Map<String, Map<String, Long>>): ParsedKernelEntries {
-    val text = header.readText()
-    val names = mutableListOf<String>()
-    val entries = linkedMapOf<String, Map<String, Long>>()
-    val matcher = Regex("OFFSETS_ENTRY\\(\\s*\"([^\"]+)\"").findAll(text)
-    for (match in matcher) {
-        val release = match.groupValues[1]
-        val tail = text.substring(match.range.last + 1)
-        val body = tail.substringBefore("\n),")
-        val fields = linkedMapOf<String, Long>()
-        Regex("STRUCT_OFFSETS_[A-Za-z0-9_]+").find(body)?.value?.let { macros[it]?.let(fields::putAll) }
-        offsetFieldRe.findAll(body).forEach { fields[it.groupValues[1]] = parseOffsetValue(it.groupValues[2]) }
-        names += release
-        entries[release] = fields
-    }
-    return ParsedKernelEntries(names, entries)
-}
 
 tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
     description = "generateSupportedKernels"
-    offsetHeaders.from(fileTree(rootProject.projectDir) { include("src/kernels/*/offsets.h") })
-    sharedHeader.set(rootProject.layout.projectDirectory.file("src/kernels/offsets.h"))
+    profilesJson.set(layout.projectDirectory.file("src/main/assets/kernel_profiles.json"))
     generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
 }
 

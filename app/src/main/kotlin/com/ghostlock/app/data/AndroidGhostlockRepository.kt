@@ -236,8 +236,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
         runExploitBinary(pair, "libghostlock.so", onLog)
 
-    override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int =
-        shizukuRunner.run(pair, safeModeEnabled, onLog)
+    override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
+        val profileJson = ProfileConfiguration.resolve(
+            appContext, offsetsFile, System.getProperty("os.version", "").orEmpty(), pair,
+        )
+        return shizukuRunner.run(pair, safeModeEnabled, profileJson, onLog)
+    }
 
     override fun requestShizukuPermission() = shizukuRunner.requestPermission()
 
@@ -259,6 +263,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val ksuLog = File(workDir, "$KsuLogName.${System.currentTimeMillis()}")
             val nativeLog = File(workDir, ".ghostlock_native.log")
             nativeLog.writeText("")
+            val activeProfile = File(workDir, "active-profile.json")
+            activeProfile.writeText(
+                ProfileConfiguration.resolve(
+                    appContext,
+                    offsetsFile,
+                    System.getProperty("os.version", "").orEmpty(),
+                    pair,
+                ),
+                StandardCharsets.UTF_8,
+            )
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
             // tag root-script lines so they cannot be read as the native stages'
@@ -278,7 +292,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 isDaemon = true
                 start()
             }
-            val command = ProcessBuilder(binary.absolutePath).directory(workDir).redirectErrorStream(true).redirectOutput(nativeLog).apply {
+            val command = ProcessBuilder(
+                binary.absolutePath, "--profile", activeProfile.absolutePath,
+            )
+                .directory(workDir)
+                .redirectErrorStream(true)
+                .redirectOutput(nativeLog)
+                .apply {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath

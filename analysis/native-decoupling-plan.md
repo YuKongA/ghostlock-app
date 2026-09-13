@@ -305,21 +305,24 @@ flowchart TD
 
 ### [ ] S03：Kotlin 主导的 Profile 配置管线
 
-- [ ] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表。
-- [ ] 建立单一版本化 schema：顶层包含 `schema_version` 和 `profiles[]`；每个 profile 包含 `release`、能力、符号、结构偏移、payload 布局以及 `execution` 调优参数。
-- [ ] `execution` 纳入当前硬编码的等待时间、超时、重试次数、consumer/路线时序以及推荐 `main_cpu`/`consumer_cpu`；缺省值必须逐项等于修改前常量，避免改变现有攻击行为。
-- [ ] Kotlin 负责读取内置 JSON、匹配 `uname -r`、合并用户导入配置、验证 schema，并生成单个完全解析的 `active-profile.json`。
-- [ ] 配置优先级固定为：用户针对同一 release 的字段覆盖 > 内置 JSON > schema 兼容默认值；CPU 界面显式选择 > profile 推荐核心。
-- [ ] 普通 App 路线将解析后的 profile 写入私有工作目录；Shizuku 路线通过 AIDL 传递解析后的 JSON 文本，由 shell UserService 在其工作目录写入仅本次运行使用的文件。
-- [ ] Kotlin 启动 Native 时统一传入 `--profile <absolute-path>`；Native 只反序列化该单一 resolved profile、再次校验 release/范围并执行，不再自行选择或合并配置源。
-- [ ] 迁移 `offsets_json.c` 为“单 profile 传输解码器”：删除共享 buffer、内置表回退和 release 搜索，只保留严格反序列化与 Native 侧防御性验证。
-- [ ] 为独立命令行调试保留显式 `--profile`，缺少或无效配置时安全退出并给出错误；不得静默回退到 `target.h` 或 C 内置配置。
-- [ ] 保留现有 offsets 导入入口和默认攻击界面，不在本阶段增加高级编辑页面；现有用户不修改参数时，行为、日志关键字和选路必须保持一致。
-- [ ] 添加详细 UI TODO：profile 来源/版本展示、推荐核心一键应用、高级参数编辑、恢复默认值、逐字段校验错误、导入差异预览和危险参数确认。
-- [ ] 添加用户自定义 TODO：按 release 保存稀疏 override、导入/导出、schema 迁移、内置更新后的三方合并及回滚。
-- [ ] 为 Native 仍使用 `struct kernel_offsets` 和宏读取参数的部分添加 S08 TODO；S08 再收敛为只读 `TargetProfile`。
-- [ ] 测试内置/用户覆盖/未知 release/旧 schema/非法范围/App/Shizuku/CLI，并确认生成的 resolved profile 完全一致。
-- [ ] 完整 Gradle 构建、提交、暂停并通过真机门禁；通过后更新核心 UML。
+- [x] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表（43/43 条；旧头文件仅暂留提取器兼容格式定义）。
+- [x] 建立单一版本化 schema：顶层包含 `schema_version` 和 `profiles[]`；每个 profile 包含 `release`、能力、符号、结构偏移、payload 布局以及 `execution` 调优参数。
+- [x] `execution` 纳入当前硬编码的等待时间、超时、重试次数、consumer/路线时序以及推荐 `main_cpu`/`consumer_cpu`；缺省值必须逐项等于修改前常量，避免改变现有攻击行为。
+- [x] Kotlin 负责读取内置 JSON、匹配 `uname -r`、合并用户导入配置、验证 schema，并生成单个完全解析的 `active-profile.json`。
+- [x] 配置优先级固定为：用户针对同一 release 的字段覆盖 > 内置 JSON > schema 兼容默认值；CPU 界面显式选择 > profile 推荐核心。
+- [x] 普通 App 路线将解析后的 profile 写入私有工作目录；Shizuku 路线通过 AIDL 传递解析后的 JSON 文本，由 shell UserService 在其工作目录写入仅本次运行使用的文件。
+- [x] Kotlin 启动 Native 时统一传入 `--profile <absolute-path>`；Native 只反序列化该单一 resolved profile、再次校验 release/范围并执行，不再自行选择或合并配置源。
+- [x] 迁移 `offsets_json.c` 为“单 profile 传输解码器”：删除共享 buffer、内置表回退和 release 搜索，只保留严格反序列化与 Native 侧防御性验证。
+- [x] 为独立命令行调试保留显式 `--profile`，缺少或无效配置时安全退出并给出错误；不得静默回退到 `target.h` 或 C 内置配置。
+- [x] 保留现有 offsets 导入入口和默认攻击界面，不在本阶段增加高级编辑页面；现有用户不修改参数时，行为、日志关键字和选路必须保持一致。
+- [x] 添加详细 UI TODO：profile 来源/版本展示、推荐核心一键应用、高级参数编辑、恢复默认值、逐字段校验错误、导入差异预览和危险参数确认。
+- [x] 添加用户自定义 TODO：按 release 保存稀疏 override、导入/导出、schema 迁移、内置更新后的三方合并及回滚。
+- [x] 为 Native 仍使用 `struct kernel_offsets` 和宏读取参数的部分添加 S08 TODO；S08 再收敛为只读 `TargetProfile`。
+- [x] 静态验证 43 个内置 profile、必需字段、schema、生成索引以及 Native 强制重编；内置/用户覆盖/未知 release/旧 schema/非法范围均在解析边界拒绝或合并。
+- [ ] 真机验证 App/Shizuku 两条启动入口和 CLI resolved profile 行为一致。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 真机门禁通过后勾选阶段标题并更新核心 UML。
 
 S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属：
 
@@ -478,7 +481,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S02 | `tcp_route_selected()` 仍组合 `active_offsets` 与配置快照 | `TargetProfile` 未对象化 | S08 | [x] 已产生，待回补 |
 | S02 | `CORE`/`CONSUMER_CORE` 仍需两个兼容镜像 | PI worker 尚未接收 context | S10 | [x] 已产生，待回补 |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
-| S03 | Native 解码后的 resolved JSON 暂存于 `struct kernel_offsets` | profile 消费宏与地址解析尚未对象化 | S08 | [ ] 待产生/回补 |
+| S03 | Native 解码后的 resolved JSON 暂存于 `struct kernel_offsets` | profile 消费宏与地址解析尚未对象化 | S08 | [x] 已产生，待回补 |
 | S03 | 等待时间、超时、重试次数、路线时序和推荐核心加入 JSON `execution` | Native 各调用点仍使用散落常量 | S08 | [x] 已规划，待接入 |
 | S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |

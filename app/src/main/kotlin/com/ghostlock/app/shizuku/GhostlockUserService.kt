@@ -3,7 +3,7 @@ package com.ghostlock.app.shizuku
 import android.content.Context
 import android.os.Process
 import androidx.annotation.Keep
-import com.ghostlock.app.domain.model.SupportedKernels
+import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -15,6 +15,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         primaryCpu: Int,
         consumerCpu: Int,
         safeMode: Boolean,
+        profileJson: String,
         callback: IGhostlockCallback,
     ) {
         if (!running.compareAndSet(false, true)) {
@@ -32,7 +33,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     "Shizuku UserService is still seccomp-filtered"
                 }
                 val release = System.getProperty("os.version", "").orEmpty()
-                require(release in SupportedKernels.REQUIRES_SHIZUKU) {
+                val resolvedProfile = JSONObject(profileJson)
+                require(resolvedProfile.optString("release") == release) {
+                    "profile release mismatch: ${resolvedProfile.optString("release")}"
+                }
+                require(resolvedProfile.optInt("requires_shizuku") == 1) {
                     "kernel does not require Shizuku: $release"
                 }
 
@@ -45,7 +50,16 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 callback.onLog("Shizuku ready: uid=${Process.myUid()} Seccomp=0")
                 callback.onLog("kernel: $release")
                 val nativeLog = File(workDir, ".ghostlock_native.log")
-                ProcessBuilder(binary.absolutePath)
+                val activeProfile = File(workDir, "active-profile.json").apply {
+                    writeText(profileJson)
+                    setReadable(false, false)
+                    setWritable(false, false)
+                    setReadable(true, true)
+                    setWritable(true, true)
+                }
+                ProcessBuilder(
+                    binary.absolutePath, "--profile", activeProfile.absolutePath,
+                )
                     .directory(workDir)
                     .redirectErrorStream(true)
                     .apply {
