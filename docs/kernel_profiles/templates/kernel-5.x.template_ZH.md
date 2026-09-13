@@ -1,6 +1,8 @@
 # 5.x 内核 Profile 模板说明
 
-模板 JSON：[kernel-5.x.template.json](../../../app/src/main/assets/kernel_profiles/templates/kernel-5.x.template.json)。本文包含全部字段，不依赖共有字段说明。
+模板 JSON：[kernel-5.x.template.json](kernel-5.x.template.json)。本文包含全部字段，不依赖共有字段说明。
+
+> 模板在所有必填空值（`"字段": ,`）填写完成前会刻意保持为非法 JSON，使 IDE 立即标出尚未完成的设备适配。不要为了通过语法检查而把空值随意改成 `0`。
 
 <table>
 <thead>
@@ -8,24 +10,24 @@
 </thead>
 <tbody>
 <tr><th rowspan="4">身份与路线选择</th><td><code>schema_version</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>schema_version</code> 配置值。</td><td rowspan="4">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="4">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
-<tr><td><code>release</code></td><td><code>&lt;exact-uname-r-for-5.x&gt;</code></td><td>定义 5.x 攻击路线消费的 <code>release</code> 配置值。</td></tr>
+<tr><td><code>release</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>release</code> 配置值。</td></tr>
 <tr><td><code>kernel_major</code></td><td><code>5</code></td><td>定义 5.x 攻击路线消费的 <code>kernel_major</code> 配置值。</td></tr>
 <tr><td><code>requires_shizuku</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>requires_shizuku</code> 配置值。</td></tr>
-<tr><th rowspan="15">task_struct 结构偏移</th><td><code>task_prio</code></td><td><code>124</code></td><td>定义 5.x 攻击路线消费的 <code>task_prio</code> 配置值。</td><td rowspan="15">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="15">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
-<tr><td><code>task_normal_prio</code></td><td><code>132</code></td><td>定义 5.x 攻击路线消费的 <code>task_normal_prio</code> 配置值。</td></tr>
-<tr><td><code>task_sched_task_group</code></td><td><code>1024</code></td><td>定义 5.x 攻击路线消费的 <code>task_sched_task_group</code> 配置值。</td></tr>
-<tr><td><code>task_pi_lock</code></td><td><code>2180</code></td><td>定义 5.x 攻击路线消费的 <code>task_pi_lock</code> 配置值。</td></tr>
-<tr><td><code>task_pi_waiters</code></td><td><code>2200</code></td><td>定义 5.x 攻击路线消费的 <code>task_pi_waiters</code> 配置值。</td></tr>
-<tr><td><code>task_pi_top_task</code></td><td><code>2216</code></td><td>定义 5.x 攻击路线消费的 <code>task_pi_top_task</code> 配置值。</td></tr>
-<tr><td><code>task_pi_blocked_on</code></td><td><code>2224</code></td><td>定义 5.x 攻击路线消费的 <code>task_pi_blocked_on</code> 配置值。</td></tr>
-<tr><td><code>task_pid</code></td><td><code>1496</code></td><td>定义 5.x 攻击路线消费的 <code>task_pid</code> 配置值。</td></tr>
-<tr><td><code>task_tgid</code></td><td><code>1500</code></td><td>定义 5.x 攻击路线消费的 <code>task_tgid</code> 配置值。</td></tr>
-<tr><td><code>task_atomic_flags</code></td><td><code>1432</code></td><td>定义 5.x 攻击路线消费的 <code>task_atomic_flags</code> 配置值。</td></tr>
-<tr><td><code>task_real_cred</code></td><td><code>1936</code></td><td>定义 5.x 攻击路线消费的 <code>task_real_cred</code> 配置值。</td></tr>
-<tr><td><code>task_cred</code></td><td><code>1944</code></td><td>定义 5.x 攻击路线消费的 <code>task_cred</code> 配置值。</td></tr>
-<tr><td><code>task_comm</code></td><td><code>1960</code></td><td>定义 5.x 攻击路线消费的 <code>task_comm</code> 配置值。</td></tr>
-<tr><td><code>task_tasks</code></td><td><code>1232</code></td><td>定义 5.x 攻击路线消费的 <code>task_tasks</code> 配置值。</td></tr>
-<tr><td><code>task_seccomp</code></td><td><code>2144</code></td><td>定义 5.x 攻击路线消费的 <code>task_seccomp</code> 配置值。</td></tr>
+<tr><th rowspan="15">task_struct 结构偏移</th><td><code>task_prio</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_prio</code> 配置值。</td><td rowspan="15">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="15">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
+<tr><td><code>task_normal_prio</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_normal_prio</code> 配置值。</td></tr>
+<tr><td><code>task_sched_task_group</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_sched_task_group</code> 配置值。</td></tr>
+<tr><td><code>task_pi_lock</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_pi_lock</code> 配置值。</td></tr>
+<tr><td><code>task_pi_waiters</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_pi_waiters</code> 配置值。</td></tr>
+<tr><td><code>task_pi_top_task</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_pi_top_task</code> 配置值。</td></tr>
+<tr><td><code>task_pi_blocked_on</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_pi_blocked_on</code> 配置值。</td></tr>
+<tr><td><code>task_pid</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_pid</code> 配置值。</td></tr>
+<tr><td><code>task_tgid</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_tgid</code> 配置值。</td></tr>
+<tr><td><code>task_atomic_flags</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_atomic_flags</code> 配置值。</td></tr>
+<tr><td><code>task_real_cred</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_real_cred</code> 配置值。</td></tr>
+<tr><td><code>task_cred</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_cred</code> 配置值。</td></tr>
+<tr><td><code>task_comm</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_comm</code> 配置值。</td></tr>
+<tr><td><code>task_tasks</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_tasks</code> 配置值。</td></tr>
+<tr><td><code>task_seccomp</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_seccomp</code> 配置值。</td></tr>
 <tr><th rowspan="14">credential 布局</th><td><code>cred_copy_size</code></td><td><code>176</code></td><td>定义 5.x 攻击路线消费的 <code>cred_copy_size</code> 配置值。</td><td rowspan="14">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="14">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>cred_usage_value</code></td><td><code>256</code></td><td>定义 5.x 攻击路线消费的 <code>cred_usage_value</code> 配置值。</td></tr>
 <tr><td><code>cred_caps_offset</code></td><td><code>48</code></td><td>定义 5.x 攻击路线消费的 <code>cred_caps_offset</code> 配置值。</td></tr>
@@ -36,13 +38,13 @@
 <tr><td><code>cred_ref2_offset</code></td><td><code>144</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref2_offset</code> 配置值。</td></tr>
 <tr><td><code>cred_ref3_offset</code></td><td><code>152</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref3_offset</code> 配置值。</td></tr>
 <tr><td><code>cred_ref_count</code></td><td><code>4</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref_count</code> 配置值。</td></tr>
-<tr><td><code>cred_ref0_image</code></td><td><code>-274698454400</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref0_image</code> 配置值。</td></tr>
-<tr><td><code>cred_ref1_image</code></td><td><code>-274696707824</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref1_image</code> 配置值。</td></tr>
-<tr><td><code>cred_ref2_image</code></td><td><code>-274698453008</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref2_image</code> 配置值。</td></tr>
-<tr><td><code>cred_ref3_image</code></td><td><code>-274698454232</code></td><td>定义 5.x 攻击路线消费的 <code>cred_ref3_image</code> 配置值。</td></tr>
+<tr><td><code>cred_ref0_image</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>cred_ref0_image</code> 配置值。</td></tr>
+<tr><td><code>cred_ref1_image</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>cred_ref1_image</code> 配置值。</td></tr>
+<tr><td><code>cred_ref2_image</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>cred_ref2_image</code> 配置值。</td></tr>
+<tr><td><code>cred_ref3_image</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>cred_ref3_image</code> 配置值。</td></tr>
 <tr><th rowspan="13">waiter、堆与路线几何</th><td><code>compact_waiter</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>compact_waiter</code> 配置值。</td><td rowspan="13">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="13">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
-<tr><td><code>mm_struct_sz</code></td><td><code>1024</code></td><td>定义 5.x 攻击路线消费的 <code>mm_struct_sz</code> 配置值。</td></tr>
-<tr><td><code>pselect_waiter_shift</code></td><td><code>-2</code></td><td>定义 5.x 攻击路线消费的 <code>pselect_waiter_shift</code> 配置值。</td></tr>
+<tr><td><code>mm_struct_sz</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>mm_struct_sz</code> 配置值。</td></tr>
+<tr><td><code>pselect_waiter_shift</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>pselect_waiter_shift</code> 配置值。</td></tr>
 <tr><td><code>mcast_waiter_off</code></td><td><code>96</code></td><td>定义 5.x 攻击路线消费的 <code>mcast_waiter_off</code> 配置值。</td></tr>
 <tr><td><code>mcast_buffer_size</code></td><td><code>264</code></td><td>定义 5.x 攻击路线消费的 <code>mcast_buffer_size</code> 配置值。</td></tr>
 <tr><td><code>mcast_task_offset</code></td><td><code>48</code></td><td>定义 5.x 攻击路线消费的 <code>mcast_task_offset</code> 配置值。</td></tr>
@@ -53,17 +55,17 @@
 <tr><td><code>mcast_lock_slot_count</code></td><td><code>12</code></td><td>定义 5.x 攻击路线消费的 <code>mcast_lock_slot_count</code> 配置值。</td></tr>
 <tr><td><code>mcast_lock_slot_stride</code></td><td><code>8</code></td><td>定义 5.x 攻击路线消费的 <code>mcast_lock_slot_stride</code> 配置值。</td></tr>
 <tr><td><code>kernelsnitch_collisions</code></td><td><code>8</code></td><td>定义 5.x 攻击路线消费的 <code>kernelsnitch_collisions</code> 配置值。</td></tr>
-<tr><th rowspan="11">内核相对符号</th><td><code>off_init_task</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_init_task</code> 配置值。</td><td rowspan="11">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="11">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
-<tr><td><code>off_init_cred</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_init_cred</code> 配置值。</td></tr>
-<tr><td><code>off_empty_zero_page</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_empty_zero_page</code> 配置值。</td></tr>
-<tr><td><code>off_mcast_fake_bss</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_mcast_fake_bss</code> 配置值。</td></tr>
-<tr><td><code>off_root_task_group</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_root_task_group</code> 配置值。</td></tr>
-<tr><td><code>off_selinux_enforcing</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_selinux_enforcing</code> 配置值。</td></tr>
-<tr><td><code>off_selinux_blob_sizes</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_selinux_blob_sizes</code> 配置值。</td></tr>
-<tr><td><code>off_security_hook_heads</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_security_hook_heads</code> 配置值。</td></tr>
-<tr><td><code>off_slide_nfulnl_logger</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_slide_nfulnl_logger</code> 配置值。</td></tr>
-<tr><td><code>off_slide_boot_id</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_slide_boot_id</code> 配置值。</td></tr>
-<tr><td><code>off_slide_loggers_0_1</code></td><td><code>0</code></td><td>定义 5.x 攻击路线消费的 <code>off_slide_loggers_0_1</code> 配置值。</td></tr>
+<tr><th rowspan="11">内核相对符号</th><td><code>off_init_task</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_init_task</code> 配置值。</td><td rowspan="11">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="11">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
+<tr><td><code>off_init_cred</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_init_cred</code> 配置值。</td></tr>
+<tr><td><code>off_empty_zero_page</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_empty_zero_page</code> 配置值。</td></tr>
+<tr><td><code>off_mcast_fake_bss</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_mcast_fake_bss</code> 配置值。</td></tr>
+<tr><td><code>off_root_task_group</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_root_task_group</code> 配置值。</td></tr>
+<tr><td><code>off_selinux_enforcing</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_selinux_enforcing</code> 配置值。</td></tr>
+<tr><td><code>off_selinux_blob_sizes</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_selinux_blob_sizes</code> 配置值。</td></tr>
+<tr><td><code>off_security_hook_heads</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_security_hook_heads</code> 配置值。</td></tr>
+<tr><td><code>off_slide_nfulnl_logger</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_slide_nfulnl_logger</code> 配置值。</td></tr>
+<tr><td><code>off_slide_boot_id</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_slide_boot_id</code> 配置值。</td></tr>
+<tr><td><code>off_slide_loggers_0_1</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>off_slide_loggers_0_1</code> 配置值。</td></tr>
 <tr><th rowspan="2">推荐核心</th><td><code>recommended_cpus.main</code></td><td><code>0</code></td><td>推荐主竞态线程核心。</td><td>改变调度、热量与竞态窗口；界面显式选择优先。</td><td>兼容旧的 0/1 回退且不假设设备拓扑。</td></tr>
 <tr><td><code>recommended_cpus.consumer</code></td><td><code>1</code></td><td>推荐消费者核心。</td><td>与主核心同核会增加互相抢占；不存在的核心会失败或回退。</td><td>与主核心分离并保持旧默认。</td></tr>
 <tr><th rowspan="3">堆准备</th><td><code>heap.prepare_max_attempts</code></td><td><code>4</code></td><td>堆准备的完整重试上限。</td><td>增大可提高偶发恢复率，也增加耗时和温升。</td><td>原实现最多四轮，迁移时保持行为。</td></tr>

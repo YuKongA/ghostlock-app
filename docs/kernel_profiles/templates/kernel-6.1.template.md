@@ -1,6 +1,8 @@
 # 6.1 Kernel Profile Template Guide
 
-Template JSON: [kernel-6.1.template.json](../../../app/src/main/assets/kernel_profiles/templates/kernel-6.1.template.json). This file contains every field and has no shared-field dependency.
+Template JSON: [kernel-6.1.template.json](kernel-6.1.template.json). This file contains every field and has no shared-field dependency.
+
+> The template is intentionally invalid JSON until every blank required value (`"field": ,`) is filled. This makes the IDE flag unfinished device adaptation immediately. Do not replace blanks with `0` merely to satisfy syntax validation.
 
 <table>
 <thead>
@@ -8,41 +10,41 @@ Template JSON: [kernel-6.1.template.json](../../../app/src/main/assets/kernel_pr
 </thead>
 <tbody>
 <tr><th rowspan="3">Identity and route selection</th><td><code>schema_version</code></td><td><code>1</code></td><td>Defines the <code>schema_version</code> value consumed by the 6.1 route.</td><td rowspan="3">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="3">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
-<tr><td><code>release</code></td><td><code>&lt;exact-uname-r-for-6.1&gt;</code></td><td>Defines the <code>release</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>release</code></td><td></td><td>Defines the <code>release</code> value consumed by the 6.1 route.</td></tr>
 <tr><td><code>kernel_major</code></td><td><code>6</code></td><td>Defines the <code>kernel_major</code> value consumed by the 6.1 route.</td></tr>
-<tr><th rowspan="15">Task structure offsets</th><td><code>task_prio</code></td><td><code>132</code></td><td>Defines the <code>task_prio</code> value consumed by the 6.1 route.</td><td rowspan="15">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="15">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
-<tr><td><code>task_normal_prio</code></td><td><code>140</code></td><td>Defines the <code>task_normal_prio</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_sched_task_group</code></td><td><code>840</code></td><td>Defines the <code>task_sched_task_group</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_pi_lock</code></td><td><code>2340</code></td><td>Defines the <code>task_pi_lock</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_pi_waiters</code></td><td><code>2360</code></td><td>Defines the <code>task_pi_waiters</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_pi_top_task</code></td><td><code>2376</code></td><td>Defines the <code>task_pi_top_task</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_pi_blocked_on</code></td><td><code>2384</code></td><td>Defines the <code>task_pi_blocked_on</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_pid</code></td><td><code>1584</code></td><td>Defines the <code>task_pid</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_tgid</code></td><td><code>1588</code></td><td>Defines the <code>task_tgid</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_atomic_flags</code></td><td><code>1520</code></td><td>Defines the <code>task_atomic_flags</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_real_cred</code></td><td><code>2096</code></td><td>Defines the <code>task_real_cred</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_cred</code></td><td><code>2104</code></td><td>Defines the <code>task_cred</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_comm</code></td><td><code>2120</code></td><td>Defines the <code>task_comm</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_tasks</code></td><td><code>1360</code></td><td>Defines the <code>task_tasks</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>task_seccomp</code></td><td><code>2304</code></td><td>Defines the <code>task_seccomp</code> value consumed by the 6.1 route.</td></tr>
+<tr><th rowspan="15">Task structure offsets</th><td><code>task_prio</code></td><td></td><td>Defines the <code>task_prio</code> value consumed by the 6.1 route.</td><td rowspan="15">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="15">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td><code>task_normal_prio</code></td><td></td><td>Defines the <code>task_normal_prio</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_sched_task_group</code></td><td></td><td>Defines the <code>task_sched_task_group</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_pi_lock</code></td><td></td><td>Defines the <code>task_pi_lock</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_pi_waiters</code></td><td></td><td>Defines the <code>task_pi_waiters</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_pi_top_task</code></td><td></td><td>Defines the <code>task_pi_top_task</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_pi_blocked_on</code></td><td></td><td>Defines the <code>task_pi_blocked_on</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_pid</code></td><td></td><td>Defines the <code>task_pid</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_tgid</code></td><td></td><td>Defines the <code>task_tgid</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_atomic_flags</code></td><td></td><td>Defines the <code>task_atomic_flags</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_real_cred</code></td><td></td><td>Defines the <code>task_real_cred</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_cred</code></td><td></td><td>Defines the <code>task_cred</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_comm</code></td><td></td><td>Defines the <code>task_comm</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_tasks</code></td><td></td><td>Defines the <code>task_tasks</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>task_seccomp</code></td><td></td><td>Defines the <code>task_seccomp</code> value consumed by the 6.1 route.</td></tr>
 <tr><th rowspan="5">Credential layout</th><td><code>cred_copy_size</code></td><td><code>136</code></td><td>Defines the <code>cred_copy_size</code> value consumed by the 6.1 route.</td><td rowspan="5">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="5">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
 <tr><td><code>cred_usage_value</code></td><td><code>1</code></td><td>Defines the <code>cred_usage_value</code> value consumed by the 6.1 route.</td></tr>
 <tr><td><code>cred_caps_offset</code></td><td><code>48</code></td><td>Defines the <code>cred_caps_offset</code> value consumed by the 6.1 route.</td></tr>
 <tr><td><code>cred_caps_count</code></td><td><code>5</code></td><td>Defines the <code>cred_caps_count</code> value consumed by the 6.1 route.</td></tr>
 <tr><td><code>cred_caps_value</code></td><td><code>-1</code></td><td>Defines the <code>cred_caps_value</code> value consumed by the 6.1 route.</td></tr>
 <tr><th rowspan="4">Waiter, heap, and route geometry</th><td><code>compact_waiter</code></td><td><code>1</code></td><td>Defines the <code>compact_waiter</code> value consumed by the 6.1 route.</td><td rowspan="4">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="4">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
-<tr><td><code>mm_struct_sz</code></td><td><code>1024</code></td><td>Defines the <code>mm_struct_sz</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>mm_struct_sz</code></td><td></td><td>Defines the <code>mm_struct_sz</code> value consumed by the 6.1 route.</td></tr>
 <tr><td><code>kernelsnitch_collisions</code></td><td><code>4</code></td><td>Defines the <code>kernelsnitch_collisions</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>pselect_waiter_shift</code></td><td><code>1</code></td><td>Defines the <code>pselect_waiter_shift</code> value consumed by the 6.1 route.</td></tr>
-<tr><th rowspan="9">Kernel-relative symbols</th><td><code>off_init_task</code></td><td><code>0</code></td><td>Defines the <code>off_init_task</code> value consumed by the 6.1 route.</td><td rowspan="9">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="9">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
-<tr><td><code>off_init_cred</code></td><td><code>0</code></td><td>Defines the <code>off_init_cred</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_root_task_group</code></td><td><code>0</code></td><td>Defines the <code>off_root_task_group</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_selinux_enforcing</code></td><td><code>0</code></td><td>Defines the <code>off_selinux_enforcing</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_selinux_blob_sizes</code></td><td><code>0</code></td><td>Defines the <code>off_selinux_blob_sizes</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_security_hook_heads</code></td><td><code>0</code></td><td>Defines the <code>off_security_hook_heads</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_slide_nfulnl_logger</code></td><td><code>0</code></td><td>Defines the <code>off_slide_nfulnl_logger</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_slide_boot_id</code></td><td><code>0</code></td><td>Defines the <code>off_slide_boot_id</code> value consumed by the 6.1 route.</td></tr>
-<tr><td><code>off_slide_loggers_0_1</code></td><td><code>0</code></td><td>Defines the <code>off_slide_loggers_0_1</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>pselect_waiter_shift</code></td><td></td><td>Defines the <code>pselect_waiter_shift</code> value consumed by the 6.1 route.</td></tr>
+<tr><th rowspan="9">Kernel-relative symbols</th><td><code>off_init_task</code></td><td></td><td>Defines the <code>off_init_task</code> value consumed by the 6.1 route.</td><td rowspan="9">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="9">This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td><code>off_init_cred</code></td><td></td><td>Defines the <code>off_init_cred</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_root_task_group</code></td><td></td><td>Defines the <code>off_root_task_group</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_selinux_enforcing</code></td><td></td><td>Defines the <code>off_selinux_enforcing</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_selinux_blob_sizes</code></td><td></td><td>Defines the <code>off_selinux_blob_sizes</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_security_hook_heads</code></td><td></td><td>Defines the <code>off_security_hook_heads</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_slide_nfulnl_logger</code></td><td></td><td>Defines the <code>off_slide_nfulnl_logger</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_slide_boot_id</code></td><td></td><td>Defines the <code>off_slide_boot_id</code> value consumed by the 6.1 route.</td></tr>
+<tr><td><code>off_slide_loggers_0_1</code></td><td></td><td>Defines the <code>off_slide_loggers_0_1</code> value consumed by the 6.1 route.</td></tr>
 <tr><th rowspan="2">Recommended CPUs</th><td><code>recommended_cpus.main</code></td><td><code>0</code></td><td>Suggested main race CPU.</td><td>Changes scheduling, heat, and race timing; explicit UI selection takes precedence.</td><td>Preserves legacy fallback without topology assumptions.</td></tr>
 <tr><td><code>recommended_cpus.consumer</code></td><td><code>1</code></td><td>Suggested consumer CPU.</td><td>Same-core placement increases contention; nonexistent cores fail or fall back.</td><td>Keeps legacy separation.</td></tr>
 <tr><th rowspan="3">Heap preparation</th><td><code>heap.prepare_max_attempts</code></td><td><code>4</code></td><td>Full heap-preparation retry cap.</td><td>More retries may recover transient misses but add time and heat.</td><td>Matches the former four-pass bound.</td></tr>
