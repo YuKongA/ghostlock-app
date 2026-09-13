@@ -2,12 +2,12 @@
 
 > English: [README.md](README.md)
 
-参见[支持设备列表](app/src/main/assets/kernel_profiles/SUPPORTED_DEVICES_ZH.md)。
+参见[支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md)。
 
 
 按精确 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 JSON，`index.json` 保存运行索引，`templates/` 提供各内核大版本模板。
 
-新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](app/src/main/assets/kernel_profiles/README_ZH.md)。
+新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md)。
 
 明确标记为**需要 Shizuku**的固件通过 shell UserService 执行。先使用 ADB 启动 Shizuku，再点击顶部支持状态区域授权；其余固件沿用应用内执行路径。
 
