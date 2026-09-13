@@ -24,7 +24,7 @@
   "cred_caps_offset": 48,
   "cred_caps_count": 3,
   "cred_caps_value": 2199023255551,
-  "requires_shizuku": 1,
+  "requires_shizuku": 0,
   "pselect_waiter_shift": -2,
   "mcast_waiter_off": 96,
   "mcast_buffer_size": 264,
