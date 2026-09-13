@@ -421,7 +421,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线，完整执行至 `KernelSU ready`）。
 - [x] 真机确认后导出完整日志，完成分析并保存 S06 门禁证据。
 
-### [ ] S07：Payload/WriteRequest 构建器
+### [x] S07：Payload/WriteRequest 构建器
 
 - [x] 用不可变 `WriteRequest` 替代 `pselect_custom_*` 写配置。
 - [x] 分离共享布局和三条路线的 waiter 编码。
@@ -429,8 +429,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 对新旧 payload 做逐字节比较（4 组写请求 waiter 向量及 1 组 Multicast stamp 向量，逐字节一致）。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S07 门禁证据。
+- [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线；冷却后使用推荐 0/1 核心完整执行至 `KernelSU ready`）。
+- [x] 真机确认后导出完整日志，完成分析并保存 S07 门禁证据。
 
 ### [ ] S08：Profile 对象化与首轮 TODO 回补
 
