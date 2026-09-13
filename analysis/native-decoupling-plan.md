@@ -411,11 +411,14 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S06：地址状态与 profile view
 
-- [ ] 引入 `ResolvedAddresses` 和只读 `TargetProfile` view。
-- [ ] 将简单地址初始化和访问器同步接入 `main.c`。
-- [ ] 兼容层暂时镜像旧地址全局量。
-- [ ] 复杂 profile 依赖登记到 S08。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 引入 `ResolvedAddresses` 和只读 `TargetProfile` view。
+- [x] 将简单地址初始化和访问器同步接入 `main.c`。
+- [x] 兼容层暂时镜像旧地址全局量。
+- [x] 复杂 profile 依赖登记到 S08。
+- [x] QCOM/MTK/XRing、显式 load 和 6.12 fallback 固定向量与旧地址公式一致。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 - [ ] 真机确认后导出完整日志，完成分析并保存 S06 门禁证据。
 
 ### [ ] S07：Payload/WriteRequest 构建器
@@ -512,6 +515,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
 | S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
+| S06 | `active_offsets` 继续作为 `TargetProfile` 的兼容镜像供宏和复杂调用读取 | runtime offset 与 payload 消费尚未语义化 | S08 | [x] 已产生，待回补 |
+| S06 | `p0_kernel_phys_load`、`g_init_cred_image` 镜像 `ResolvedAddresses` | `SLIDE_*`、payload 和路线调用仍依赖旧符号 | S08 | [x] 已产生，待回补 |
 | S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
 | S07 | select/multicast payload 布局读取全局 profile | 路线布局访问器未统一 | S08/S12/S13 | [ ] 待产生/回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |

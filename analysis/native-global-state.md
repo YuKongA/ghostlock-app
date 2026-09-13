@@ -27,8 +27,10 @@ flowchart LR
 | `active_offsets` | `main.c` | 几乎所有地址、payload、route和验证函数 | `select_offsets()` / `try_external_offsets()` | 选定后实际只读，却通过宏隐式渗透所有文件 | `session.profile` 不可变指针 |
 | `g_external_offsets` | `main.c` static | profile验证/发布 | `try_external_offsets()` | 进程期缓冲，实际只需loader期存活 | loader调用者所有输出 |
 | `g_external_release` | `main.c` static | `g_external_offsets.uname_r` | JSON loader | 用于保持release字符串存活 | `kernel_profile.release[]` |
-| `p0_kernel_phys_load` | `util.c` | `p0_data_alias()`、日志与地址宏 | `publish_active_offsets()` | profile发布后只读 | `address_space.kernel_phys_load` |
-| `g_init_cred_image` | `util.c` | payload/W2和5.x修复 | `publish_active_offsets()` | 名称和所属模块不匹配 | `address_space.init_cred_image` |
+| `g_target_profile` | `main.c` | 地址解析；S08前的后续消费者仍走 `active_offsets` | `publish_active_offsets()` | S06只读view，尚未作为显式参数贯穿调用链 | S08迁入`ExploitSession.profile` |
+| `g_resolved_addresses` | `util.c` | `p0_data_alias()`、`data_addr()`、地址日志 | `publish_active_offsets()` | S06新增的权威地址快照，发布后只读 | `ExploitSession.addresses` |
+| `p0_kernel_phys_load` | `util.c` | 旧日志与地址宏 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.kernel_phys_load` | S08删除镜像消费者 |
+| `g_init_cred_image` | `util.c` | payload/W2和5.x修复 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.init_cred_image` | S08删除镜像消费者 |
 | `g_core_main` | `runtime_config.c`兼容镜像 | `CORE`宏、主线程、clone、Multicast | `runtime_config_init()` | S02已由单一配置快照发布；S10删除镜像 | `pi_race_context`显式CPU参数 |
 | `g_core_consumer` | `runtime_config.c`兼容镜像 | `CONSUMER_CORE`宏、consumer/Multicast | `runtime_config_init()` | 同上 | `pi_race_context`显式CPU参数 |
 | `g_runtime_config` | `runtime_config.c` | `main.c`、TCP选路及兼容宏 | `runtime_config_init()` | S02新增的单一进程快照；初始化后只读 | `exploit_session.config` |

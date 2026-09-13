@@ -5,6 +5,7 @@
 #define __ARM 1
 
 #include "offset.h"
+#include "address_space.h"
 #include "runtime_config.h"
 #include "runtime_time.h"
 
@@ -169,6 +170,8 @@ extern uint64_t p0_kernel_phys_load;
 /* Direct map end, from a rooted run's iomem dump or the target.h default. */
 extern uint64_t g_direct_map_end;
 extern uintptr_t g_init_cred_image;
+extern ResolvedAddresses g_resolved_addresses;
+extern TargetProfile g_target_profile;
 struct kernel_offsets;
 extern const struct kernel_offsets *active_offsets;
 long futex_op(

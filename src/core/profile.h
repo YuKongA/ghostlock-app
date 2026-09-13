@@ -1,6 +1,7 @@
 #ifndef GHOSTLOCK_PROFILE_H
 #define GHOSTLOCK_PROFILE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 struct execution_settings {
@@ -59,5 +60,22 @@ struct kernel_offsets {
   uint32_t _pad[3];
   struct execution_settings execution;
 };
+
+/* S06 read-only view over the transport representation. S08 will replace
+ * direct field consumers with semantic profile accessors without changing the
+ * JSON decoder ABI in this stage. */
+typedef struct target_profile {
+  const struct kernel_offsets *values;
+} TargetProfile;
+
+static inline TargetProfile
+target_profile_view(const struct kernel_offsets *values) {
+  return (TargetProfile){.values = values};
+}
+
+static inline const struct kernel_offsets *
+target_profile_values(const TargetProfile *profile) {
+  return profile ? profile->values : NULL;
+}
 
 #endif

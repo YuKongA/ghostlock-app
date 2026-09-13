@@ -8,9 +8,8 @@
 
 | 函数 | 用途 | 状态/输入输出 | 调用与清理 |
 |---|---|---|---|
-| `detect_soc()` | 识别QCOM、MTK或XRing地址映射 | Android属性 → `soc_family` | 只读，无持久资源 |
 | `validate_offsets_profile()` | 验证公共及路线特有偏移 | `kernel_offsets*` → bool | 不修改profile |
-| `publish_active_offsets()` | 发布选中profile的运行期地址 | 读 `active_offsets`，写全局地址 | 调 `detect_soc()` |
+| `publish_active_offsets()` | 从只读profile view发布结构化地址快照及兼容镜像 | `TargetProfile` → `ResolvedAddresses` | 调 `resolved_addresses_init()` |
 | `try_external_offsets()` | 尝试加载与release匹配的JSON profile | release → bool；写external profile | `load_offsets_json()` → `validate_offsets_profile()` |
 | `select_offsets()` | 按精确 `uname -r` 选外部或内置profile | 写 `active_offsets` | 成功后 `publish_active_offsets()` |
 | `timer_reset()` | 重置顶层阶段计时 | 写 `t0` | 无资源 |
@@ -68,9 +67,19 @@
 | `disable_rseq_for_thread()` | 关闭当前线程rseq | 当前线程 | 线程入口调用 |
 | `futex_op()` | futex syscall薄封装 | futex参数 → long | 无额外所有权 |
 | `sched_setattr_tid()` | 调整指定TID的nice/调度属性 | tid/nice → long | consumer主要触发点 |
-| `init_p0_profile()` | 初始化物理加载地址 | profile → `p0_kernel_phys_load` | 只改地址状态 |
-| `p0_data_alias()` | 镜像地址到物理alias的换算 | address → address | 纯计算 |
-| `data_addr()` | 根据当前profile转换内核数据地址 | address → address | 调 `p0_data_alias()` |
+| `init_p0_profile()` | 输出已解析物理地址快照诊断 | 读 `g_resolved_addresses` | 不再初始化或修改地址 |
+| `p0_data_alias()` | 兼容地址换算入口 | image address → direct-map alias | 委托 `resolved_addresses_data_alias()` |
+| `data_addr()` | 当前调用链的兼容地址入口 | image address → runtime alias | 调 `p0_data_alias()` |
+
+## `address_space.c`
+
+| 函数 | 用途 | 状态/输入输出 | 调用与清理 |
+|---|---|---|---|
+| `detect_target_soc()` | 从 Android 属性识别 QCOM、MTK 或 XRing | 属性区 → `TargetSocFamily` | 文件内纯读取，无资源 |
+| `resolved_addresses_init_for_soc()` | 按显式 SoC/profile推导物理加载地址和 `init_cred` image | `TargetProfile` → `ResolvedAddresses` | 确定性计算，供固定向量验证 |
+| `resolved_addresses_init()` | 设备入口：检测 SoC 后创建地址快照 | `TargetProfile` → `ResolvedAddresses` | 调前两项，无持久资源 |
+| `resolved_addresses_data_alias()` | 将内核 image 地址转换为 direct-map alias | snapshot + image → alias | 纯函数 |
+| `resolved_addresses_soc_name()` | 生成兼容诊断标签 | snapshot + profile → 字符串常量 | 无资源 |
 | `put64()` / `put32()` | 按偏移向payload缓冲写整数 | buffer/off/value | 不分配资源 |
 | `fill_profile_cred_copy()` | 按profile填充credential复制payload | buffer/off → bool | 读 `active_offsets` |
 

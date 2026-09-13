@@ -226,21 +226,31 @@ uint64_t g_direct_map_end = DIRECT_MAP_END;
 /* Selected entry's init_cred image address. */
 uintptr_t g_init_cred_image;
 
+/* S06 authoritative address snapshot. The two scalars above remain mirrors
+ * for compatibility macros until their S08/S15 consumers are migrated. */
+// TODO(decoupling:S08-addresses): Future: pass const ResolvedAddresses to consumers.
+// Input: session-owned address snapshot; output: remove p0/g_init scalar mirrors.
+// Blocked by: payload/SLIDE macros; completion in S08 removes this comment.
+ResolvedAddresses g_resolved_addresses = {
+    .soc = TARGET_SOC_QCOM,
+    .kernel_phys_load = P0_KERNEL_PHYS_LOAD,
+    .init_cred_image = 0,
+};
+
 /* Decoupling plan: resolve physical/image address mapping. Input: target
  * profile; output: ResolvedAddresses. Future: resolve_runtime_addresses(). */
 void init_p0_profile(void) {
   pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
-          (unsigned long long)p0_kernel_phys_load,
-          (unsigned long long)(p0_kernel_phys_load - P0_PHYS_OFFSET));
+          (unsigned long long)g_resolved_addresses.kernel_phys_load,
+          (unsigned long long)(g_resolved_addresses.kernel_phys_load -
+                               P0_PHYS_OFFSET));
 }
 
 /* Decoupling plan: translate an image address through the selected SoC mapping.
  * Inputs: ResolvedAddresses and image address; output: alias. Future:
  * address_space_data_alias(const ResolvedAddresses *, uintptr_t). */
 uintptr_t p0_data_alias(uintptr_t image_addr) {
-  uintptr_t off = image_addr - KIMAGE_TEXT_BASE;
-  uintptr_t phys = p0_kernel_phys_load + off;
-  return ((phys - P0_PHYS_OFFSET) | P0_PAGE_OFFSET);
+  return resolved_addresses_data_alias(&g_resolved_addresses, image_addr);
 }
 
 /* Decoupling plan: compatibility address translator. Inputs: explicit address
