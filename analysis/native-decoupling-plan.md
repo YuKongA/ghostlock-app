@@ -541,6 +541,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] 通过 multicast 真机门禁；按用户决定在 S12/S13 均完成后统一执行。
 - [x] 首轮联合真机测试稳定安全失败于 `PI route did not produce a verified write`；未出现 dirty cleanup，按用户决定进入 S14 PI 控制重构后复测。
 - [x] S14 首轮复测定位：日志为 `calls=1 success=1`，并非 PI 未命中；S13 将 Multicast 成功判定放在 consumer drain 前，形成完成计数读取竞态。已恢复“disarm/drain→读取 success→destroy”的旧顺序。
+- [x] 修复后连续三次均为 `status=0 calls=1 success=1` 但 W1 未生效，确认不是状态误判。为最小化敏感路径差异，one-shot Multicast 回退到 S13 前已真机通过的专用小栈帧、payload builder、socket 和 drain/close 顺序；resident 仍使用 `MulticastWaiterRouteContext`，S14 仍接收结构化 `RouteStatus`。
 - [ ] 真机确认后导出 multicast 完整日志，完成分析并保存 S13 门禁证据。
 
 ### [ ] S14：统一路线接口与运行时回退
