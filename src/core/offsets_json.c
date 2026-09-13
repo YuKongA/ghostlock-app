@@ -290,6 +290,118 @@ static void store_profile_scalar(struct kernel_offsets *out, size_t off,
   }
 }
 
+struct execution_field {
+  const char *name;
+  size_t offset;
+};
+
+#define EXEC_FIELD(json_name, member) \
+  {json_name, offsetof(struct execution_settings, member)}
+
+static int parse_execution_group(const char *parent, const char *parent_end,
+                                 const char *group_name,
+                                 const struct execution_field *fields,
+                                 size_t field_count,
+                                 struct execution_settings *out) {
+  const char *group = json_member_value(parent, parent_end, group_name);
+  const char *group_end = group;
+  if (!group || *group != '{' || !json_skip_value(&group_end, parent_end))
+    return -1;
+  for (size_t i = 0; i < field_count; i++) {
+    const char *value = json_member_value(group, group_end, fields[i].name);
+    int64_t parsed = -1;
+    if (!value || !json_parse_int(value, group_end, &parsed) || parsed < 0 ||
+        (uint64_t)parsed > UINT32_MAX)
+      return -1;
+    *(uint32_t *)((char *)out + fields[i].offset) = (uint32_t)parsed;
+  }
+  return 0;
+}
+
+static int fill_execution_settings(const char *object, const char *object_end,
+                                   struct execution_settings *out) {
+  const char *execution = json_member_value(object, object_end, "execution");
+  const char *execution_end = execution;
+  if (!execution || *execution != '{' ||
+      !json_skip_value(&execution_end, object_end))
+    return -1;
+  memset(out, 0, sizeof(*out));
+
+  static const struct execution_field cpus[] = {
+      EXEC_FIELD("main", recommended_main_cpu),
+      EXEC_FIELD("consumer", recommended_consumer_cpu),
+  };
+  static const struct execution_field heap[] = {
+      EXEC_FIELD("prepare_max_attempts", heap_prepare_max_attempts),
+      EXEC_FIELD("prepare_timeout_ms", heap_prepare_timeout_ms),
+      EXEC_FIELD("kernelsnitch_timeout_ms", heap_kernelsnitch_timeout_ms),
+  };
+  static const struct execution_field race[] = {
+      EXEC_FIELD("route_wait_ms", race_route_wait_ms),
+      EXEC_FIELD("setup_settle_us", race_setup_settle_us),
+      EXEC_FIELD("state_poll_interval_us", race_state_poll_interval_us),
+  };
+  static const struct execution_field stages[] = {
+      EXEC_FIELD("w1_attempts", w1_attempts),
+      EXEC_FIELD("w1_settle_us", w1_settle_us),
+      EXEC_FIELD("w1_scratch_repair_attempts", w1_scratch_repair_attempts),
+      EXEC_FIELD("w2_attempts", w2_attempts),
+      EXEC_FIELD("w2_settle_us", w2_settle_us),
+      EXEC_FIELD("w3_chain_rounds", w3_chain_rounds),
+      EXEC_FIELD("w3_attempts", w3_attempts),
+      EXEC_FIELD("w3_settle_us", w3_settle_us),
+  };
+  static const struct execution_field handoff[] = {
+      EXEC_FIELD("pre_dispatch_settle_ms", handoff_pre_dispatch_settle_ms),
+      EXEC_FIELD("module_poll_attempts", handoff_module_poll_attempts),
+      EXEC_FIELD("module_poll_interval_ms", handoff_module_poll_interval_ms),
+      EXEC_FIELD("enforce_poll_attempts", handoff_enforce_poll_attempts),
+      EXEC_FIELD("enforce_poll_interval_ms", handoff_enforce_poll_interval_ms),
+  };
+  if (parse_execution_group(execution, execution_end, "recommended_cpus", cpus,
+                            sizeof(cpus) / sizeof(cpus[0]), out) ||
+      parse_execution_group(execution, execution_end, "heap", heap,
+                            sizeof(heap) / sizeof(heap[0]), out) ||
+      parse_execution_group(execution, execution_end, "race", race,
+                            sizeof(race) / sizeof(race[0]), out) ||
+      parse_execution_group(execution, execution_end, "stages", stages,
+                            sizeof(stages) / sizeof(stages[0]), out) ||
+      parse_execution_group(execution, execution_end, "handoff", handoff,
+                            sizeof(handoff) / sizeof(handoff[0]), out))
+    return -1;
+
+  const char *routes = json_member_value(execution, execution_end, "routes");
+  const char *routes_end = routes;
+  if (!routes || *routes != '{' || !json_skip_value(&routes_end, execution_end))
+    return -1;
+  static const struct execution_field tcp[] = {
+      EXEC_FIELD("attempts", tcp_attempts),
+      EXEC_FIELD("arm_sequence", tcp_arm_sequence),
+      EXEC_FIELD("post_receive_hold_iterations", tcp_post_receive_hold_iterations),
+  };
+  static const struct execution_field select_stack[] = {
+      EXEC_FIELD("enter_delay_us", select_enter_delay_us),
+      EXEC_FIELD("timeout_us", select_timeout_us),
+      EXEC_FIELD("consumer_max_calls", select_consumer_max_calls),
+      EXEC_FIELD("consumer_burst_calls", select_consumer_burst_calls),
+  };
+  static const struct execution_field multicast[] = {
+      EXEC_FIELD("ready_timeout_ms", multicast_ready_timeout_ms),
+      EXEC_FIELD("post_requeue_settle_us", multicast_post_requeue_settle_us),
+      EXEC_FIELD("post_adjust_settle_us", multicast_post_adjust_settle_us),
+  };
+  return parse_execution_group(routes, routes_end, "tcp_zerocopy", tcp,
+                               sizeof(tcp) / sizeof(tcp[0]), out) ||
+         parse_execution_group(routes, routes_end, "select_stack", select_stack,
+                               sizeof(select_stack) / sizeof(select_stack[0]), out) ||
+         parse_execution_group(routes, routes_end, "multicast_waiter", multicast,
+                               sizeof(multicast) / sizeof(multicast[0]), out)
+             ? -1
+             : 0;
+}
+
+#undef EXEC_FIELD
+
 /* Fill `out` from one JSON object [obj, end).  Fields absent from the JSON
  * keep whatever the caller put into `out` (zeroed for a fresh table, or a
  * built-in entry the JSON is overriding). */
@@ -381,7 +493,7 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
       memset(out, 0, sizeof(*out));
       strcpy(release_buf, release);
       fill_external_entry(out, release_buf, object, end);
-      result = 0;
+      result = fill_execution_settings(object, end, &out->execution);
     }
   }
   free(file_buffer);

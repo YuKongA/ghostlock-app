@@ -10,6 +10,7 @@ struct runtime_config {
   bool multicast_resident_enabled;
   bool multicast_phase1_probe;
   bool w1_only;
+  bool verbose_debug;
   char home_dir[256];
   char root_script_path[300];
 };

@@ -103,6 +103,7 @@ int runtime_config_init(struct runtime_config *config) {
   config->multicast_phase1_probe =
       environment_present("GHOSTLOCK_5X_PHASE1_PROBE");
   config->w1_only = environment_present("GHOSTLOCK_W1_ONLY");
+  config->verbose_debug = environment_present("GHOSTLOCK_VERBOSE_DEBUG");
 
   g_core_main = config->main_cpu;
   g_core_consumer = config->consumer_cpu;
@@ -116,6 +117,7 @@ void runtime_config_log(const struct runtime_config *config) {
           config->consumer_cpu);
   pr_info("runtime home=%s script=%s\n", config->home_dir,
           config->root_script_path);
+  pr_info("runtime verbose_debug=%d\n", config->verbose_debug);
 }
 
 /* Legacy compatibility adapter. Input: process environment; output: refreshed

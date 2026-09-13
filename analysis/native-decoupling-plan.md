@@ -326,6 +326,8 @@ flowchart TD
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
 - [ ] 真机门禁通过后勾选阶段标题并更新核心 UML。
+- [x] 真机门禁首次失败后加入 Debug-only Native execution 参数快照；逐字段严格解码 JSON，并以 `debug.execution.<path>=<value>` 输出，与 S02 verbose 对照分支比较。
+- [ ] 对比 S02/S03 两份参数快照和失败阶段日志，定位不兼容项后重新真机验证。
 
 S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属：
 

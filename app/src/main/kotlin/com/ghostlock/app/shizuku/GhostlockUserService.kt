@@ -3,6 +3,7 @@ package com.ghostlock.app.shizuku
 import android.content.Context
 import android.os.Process
 import androidx.annotation.Keep
+import com.ghostlock.app.BuildConfig
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -66,6 +67,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                         environment()["TMPDIR"] = workDir.absolutePath
                         environment()["HOME"] = workDir.absolutePath
+                        if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
                         environment()["GHOSTLOCK_CORE"] = primaryCpu.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = consumerCpu.toString()
                         if (safeMode) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"

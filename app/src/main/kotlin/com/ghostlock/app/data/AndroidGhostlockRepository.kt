@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.BuildConfig
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
@@ -302,7 +303,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
-                    environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
+                    if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
                     if (pair.primary != 0 || pair.consumer != 1) {
                         environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()

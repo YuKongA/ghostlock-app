@@ -3,6 +3,26 @@
 
 #include <stdint.h>
 
+struct execution_settings {
+  uint32_t recommended_main_cpu, recommended_consumer_cpu;
+  uint32_t heap_prepare_max_attempts, heap_prepare_timeout_ms;
+  uint32_t heap_kernelsnitch_timeout_ms;
+  uint32_t race_route_wait_ms, race_setup_settle_us;
+  uint32_t race_state_poll_interval_us;
+  uint32_t w1_attempts, w1_settle_us, w1_scratch_repair_attempts;
+  uint32_t w2_attempts, w2_settle_us;
+  uint32_t w3_chain_rounds, w3_attempts, w3_settle_us;
+  uint32_t tcp_attempts, tcp_arm_sequence;
+  uint32_t tcp_post_receive_hold_iterations;
+  uint32_t select_enter_delay_us, select_timeout_us;
+  uint32_t select_consumer_max_calls, select_consumer_burst_calls;
+  uint32_t multicast_ready_timeout_ms, multicast_post_requeue_settle_us;
+  uint32_t multicast_post_adjust_settle_us;
+  uint32_t handoff_pre_dispatch_settle_ms, handoff_module_poll_attempts;
+  uint32_t handoff_module_poll_interval_ms, handoff_enforce_poll_attempts;
+  uint32_t handoff_enforce_poll_interval_ms;
+};
+
 /* Native transport representation of one Kotlin-resolved JSON profile.
  * S08 wraps this compatibility layout in an immutable TargetProfile. */
 struct kernel_offsets {
@@ -37,6 +57,7 @@ struct kernel_offsets {
   uint8_t compact_waiter;
   uint32_t mm_struct_sz;
   uint32_t _pad[3];
+  struct execution_settings execution;
 };
 
 #endif

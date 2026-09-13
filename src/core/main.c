@@ -173,6 +173,53 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
   return 0;
 }
 
+static void log_execution_settings(const struct kernel_offsets *profile) {
+  if (!profile || !g_runtime_config.verbose_debug) return;
+  const struct execution_settings *e = &profile->execution;
+#define LOG_EXEC(key, value) pr_info("debug.execution.%s=%u\n", key, (unsigned)(value))
+  pr_info("debug.execution.begin release=%s\n", profile->uname_r);
+  LOG_EXEC("recommended_cpus.main", e->recommended_main_cpu);
+  LOG_EXEC("recommended_cpus.consumer", e->recommended_consumer_cpu);
+  LOG_EXEC("selected_cpus.main", g_runtime_config.main_cpu);
+  LOG_EXEC("selected_cpus.consumer", g_runtime_config.consumer_cpu);
+  LOG_EXEC("heap.prepare_max_attempts", e->heap_prepare_max_attempts);
+  LOG_EXEC("heap.prepare_timeout_ms", e->heap_prepare_timeout_ms);
+  LOG_EXEC("heap.kernelsnitch_timeout_ms", e->heap_kernelsnitch_timeout_ms);
+  LOG_EXEC("race.route_wait_ms", e->race_route_wait_ms);
+  LOG_EXEC("race.setup_settle_us", e->race_setup_settle_us);
+  LOG_EXEC("race.state_poll_interval_us", e->race_state_poll_interval_us);
+  LOG_EXEC("stages.w1_attempts", e->w1_attempts);
+  LOG_EXEC("stages.w1_settle_us", e->w1_settle_us);
+  LOG_EXEC("stages.w1_scratch_repair_attempts", e->w1_scratch_repair_attempts);
+  LOG_EXEC("stages.w2_attempts", e->w2_attempts);
+  LOG_EXEC("stages.w2_settle_us", e->w2_settle_us);
+  LOG_EXEC("stages.w3_chain_rounds", e->w3_chain_rounds);
+  LOG_EXEC("stages.w3_attempts", e->w3_attempts);
+  LOG_EXEC("stages.w3_settle_us", e->w3_settle_us);
+  LOG_EXEC("routes.tcp_zerocopy.attempts", e->tcp_attempts);
+  LOG_EXEC("routes.tcp_zerocopy.arm_sequence", e->tcp_arm_sequence);
+  LOG_EXEC("routes.tcp_zerocopy.post_receive_hold_iterations",
+           e->tcp_post_receive_hold_iterations);
+  LOG_EXEC("routes.select_stack.enter_delay_us", e->select_enter_delay_us);
+  LOG_EXEC("routes.select_stack.timeout_us", e->select_timeout_us);
+  LOG_EXEC("routes.select_stack.consumer_max_calls", e->select_consumer_max_calls);
+  LOG_EXEC("routes.select_stack.consumer_burst_calls",
+           e->select_consumer_burst_calls);
+  LOG_EXEC("routes.multicast_waiter.ready_timeout_ms",
+           e->multicast_ready_timeout_ms);
+  LOG_EXEC("routes.multicast_waiter.post_requeue_settle_us",
+           e->multicast_post_requeue_settle_us);
+  LOG_EXEC("routes.multicast_waiter.post_adjust_settle_us",
+           e->multicast_post_adjust_settle_us);
+  LOG_EXEC("handoff.pre_dispatch_settle_ms", e->handoff_pre_dispatch_settle_ms);
+  LOG_EXEC("handoff.module_poll_attempts", e->handoff_module_poll_attempts);
+  LOG_EXEC("handoff.module_poll_interval_ms", e->handoff_module_poll_interval_ms);
+  LOG_EXEC("handoff.enforce_poll_attempts", e->handoff_enforce_poll_attempts);
+  LOG_EXEC("handoff.enforce_poll_interval_ms", e->handoff_enforce_poll_interval_ms);
+  pr_info("debug.execution.end\n");
+#undef LOG_EXEC
+}
+
 /* Entries carry a phys load address only when measured; otherwise MTK uses
  * the DRAM base, xring its constant, qcom its GKI version. */
 /* Decoupling plan: publish derived addresses for the selected profile. Inputs:
@@ -237,6 +284,7 @@ static int select_offsets(const char *profile_path) {
   if (validate_offsets_profile(&g_external_offsets) != 0) return -1;
   active_offsets = &g_external_offsets;
   pr_success("resolved profile loaded: %s\n", active_offsets->uname_r);
+  log_execution_settings(active_offsets);
   publish_active_offsets();
   return 0;
 }
