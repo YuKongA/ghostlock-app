@@ -467,6 +467,32 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线；完整执行至 `KernelSU ready`）。
 - [x] 真机确认后导出完整日志，完成分析并保存 S09 门禁证据。
 
+### [ ] U01：`remote/main` 上游 Catch-up（插入 S10 前）
+
+> 完整差异、冲突面和语义映射见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md)。不得直接 cherry-pick 旧架构实现，也不得恢复 C `offsets.h` 注册表。
+
+- [x] fetch 并确认拓扑：`origin/decoupling-2` 落后 0；实际待吸收的是 `remote/main` 的 `50d2b72`、`dfb0e84`、`9ee07a8` 三个提交。
+- [x] 完成 19 个上游变更路径与当前 S01–S09 架构的冲突分析。
+- [ ] U01-A：移植 KernelSnitch range-end 截断，添加最后 coarse/slab 边界测试。
+- [ ] U01-A：为现有每次攻击独立日志加入 `boot_ms` 和阶段耐久同步；确认同步点不进入竞态关键窗口。
+- [ ] U01-A：主机测试、完整 Gradle 构建、提交并暂停真机门禁。
+- [ ] U01-A：用户真机确认后保存日志、分析证据并更新核心 UML。
+- [ ] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
+- [ ] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
+- [ ] U01-B：固定测试、完整 Gradle 构建、提交并暂停真机门禁。
+- [ ] U01-B：用户真机确认后保存日志、分析证据并更新核心 UML。
+- [ ] U01-C：将 Lenovo Y700 `dfb0e84` 从 C offsets 转换为独立完整 6.12 JSON profile，并核验结构 ABI。
+- [ ] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/结构 ABI。
+- [ ] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
+- [ ] U01-C：schema/索引测试、完整 Gradle 构建、提交并暂停兼容门禁。
+- [ ] S11 回补：TCP 上限、可恢复失败及清理状态采用 profile + `RouteStatus`，不移植硬编码 128 次。
+- [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
+- [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
+- [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
+- [ ] U01-Z：逐项复核 `50d2b72` 无行为遗漏，再合并 `remote/main` ancestry 并显式解决冲突。
+- [ ] U01-Z：全量测试和 Gradle 构建、提交并暂停最终 catch-up 真机回归。
+- [ ] U01-Z：用户真机确认后保存日志证据；确认 `git rev-list HEAD..remote/main` 为 0。
+
 ### [ ] S10：共享 PI 竞态
 
 - [ ] 引入 `PiRaceContext`，迁移 futex、原子量和线程句柄。
@@ -531,6 +557,10 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
 | S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
 | S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
+| U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | TCP route context/`RouteStatus` 尚未完成 | S11 | [x] 已产生，待回补 |
+| U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
+| U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 已产生，待回补 |
+| U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [x] 已产生，待实现 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
 
 ## 附录 A：按文件迁移细节
