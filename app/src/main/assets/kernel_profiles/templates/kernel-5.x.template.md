@@ -1,28 +1,654 @@
-# 5.x 模板说明 / 5.x Template Guide
+# 5.x Kernel Profile Template Guide
 
-模板：[kernel-5.x.template.json](kernel-5.x.template.json)。共有字段逐项定义见 [模板字段总说明](README.md)，执行参数见 [公共默认值](../defaults.md)。See the shared references for every common field and execution parameter.
+Template JSON: [kernel-5.x.template.json](kernel-5.x.template.json). This file contains every field and has no shared-field dependency.
 
-5.x 走 `multicast_waiter` 路线，并使用旧 credential 引用镜像；它不能从 6.x 模板推导。5.x uses the multicast-waiter route and legacy credential reference images; 6.x layouts are not transferable.
+## Identity and route selection
 
-| 字段 / Field | 模板值 | 作用与影响 / Purpose and impact | 默认理由 / Rationale |
-|---|---:|---|---|
-| `kernel_major` | 5 | 启用 5.x 强校验和 multicast 必填项；选错会采用错误路线。Enables 5.x validation and route requirements. | 对应本模板唯一支持族。Matches this family. |
-| `requires_shizuku` | 1 | 强制 shell UserService，绕开 App seccomp 环境。Forces shell execution. | 当前 5.x 已验证设备需要该身份；新设备必须重新确认。Verified devices require it; recheck new devices. |
-| `compact_waiter` | 1 | 选择紧凑 waiter 表示。Selects compact waiter layout. | 5.x 已验证布局；错误会解释错对象。Verified 5.x representation. |
-| `mm_struct_sz` | 1024 (`0x400`) | heap 步长/对象布局。Heap stride. | 保留已验证 SLUB 步长，不等同于盲用 BTF `sizeof`。Verified slab stride. |
-| `mcast_waiter_off` | 96 | multicast buffer 内 waiter 起点。Waiter start in buffer. | 来自已验证 5.x payload geometry。Verified geometry. |
-| `mcast_buffer_size` | 264 | 真实 multicast payload 缓冲区大小。Payload buffer size. | 保证所有真实槽位在界内；过小越界。Bounds the real payload. |
-| `mcast_task_offset` | 48 | 真实 task 指针位置。Real task-pointer location. | 与 waiter/lock 成组验证。Part of verified geometry. |
-| `mcast_lock_offset` | 56 | 真实 lock 位置。Real lock location. | 错误会锁住或破坏无关内存。Wrong value can corrupt locks. |
-| `mcast_fake_lock_offset` | 4608 (`0x1200`) | 伪 lock 在构造区的位置。Fake-lock placement. | 保持旧 payload 的安全间距。Preserves proven spacing. |
-| `mcast_fake_task_offset` | 12800 (`0x3200`) | 伪 task 位置。Fake-task placement. | 保持构造对象不重叠。Prevents overlap. |
-| `mcast_lock_slots_offset` | 128 (`0x80`) | lock 槽数组起点。Lock-slot array start. | 已验证 payload 布局。Verified layout. |
-| `mcast_lock_slot_count` | 12 | 槽数量。Slot count. | 覆盖旧路线所需候选且限制扫描。Enough candidates with a bound. |
-| `mcast_lock_slot_stride` | 8 | 槽间距。Slot stride. | 指针宽度为 8 字节。Matches 64-bit pointers. |
-| `cred_ref0..3_offset` | 128/136/144/152 | credential 内四个引用指针位置。Four credential reference slots. | 连续 64-bit 槽来自已验证 5.x cred 布局。Verified legacy layout. |
-| `cred_ref_count` | 4 | 启用四个引用修复。Enables four reference repairs. | 与上面四槽严格一致。Matches the four slots. |
-| `cred_ref0..3_image` | 模板中的负十进制 64-bit 位模式 | 写回目标固件相关引用镜像；错误值可能造成任意引用。Reference pointer images; highly build-sensitive. | 仅作为来源格式示例，适配时必须重测，不能继承。Format examples only; replace for every target. |
-| `off_empty_zero_page` | 0 | 5.x 路线需要的 zero page 符号。Required zero-page symbol. | 无跨固件安全默认值。No safe shared value. |
-| `off_mcast_fake_bss` | 0 | multicast 伪对象 BSS 地址。Fake-object BSS address. | 无跨固件安全默认值。No safe shared value. |
+### `schema_version`
 
-其余 `off_* = 0` 同样必须填入；task/cred 模板值也必须通过目标 BTF 复核。All remaining zero symbols must be filled, and structural seeds must be verified against target BTF.
+- Template default: `1`
+- Purpose: Defines the `schema_version` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `release`
+
+- Template default: `<exact-uname-r-for-5.x>`
+- Purpose: Defines the `release` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `kernel_major`
+
+- Template default: `5`
+- Purpose: Defines the `kernel_major` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `requires_shizuku`
+
+- Template default: `1`
+- Purpose: Defines the `requires_shizuku` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Task structure offsets
+
+### `task_prio`
+
+- Template default: `124`
+- Purpose: Defines the `task_prio` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_normal_prio`
+
+- Template default: `132`
+- Purpose: Defines the `task_normal_prio` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_sched_task_group`
+
+- Template default: `1024`
+- Purpose: Defines the `task_sched_task_group` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_lock`
+
+- Template default: `2180`
+- Purpose: Defines the `task_pi_lock` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_waiters`
+
+- Template default: `2200`
+- Purpose: Defines the `task_pi_waiters` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_top_task`
+
+- Template default: `2216`
+- Purpose: Defines the `task_pi_top_task` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_blocked_on`
+
+- Template default: `2224`
+- Purpose: Defines the `task_pi_blocked_on` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pid`
+
+- Template default: `1496`
+- Purpose: Defines the `task_pid` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_tgid`
+
+- Template default: `1500`
+- Purpose: Defines the `task_tgid` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_atomic_flags`
+
+- Template default: `1432`
+- Purpose: Defines the `task_atomic_flags` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_real_cred`
+
+- Template default: `1936`
+- Purpose: Defines the `task_real_cred` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_cred`
+
+- Template default: `1944`
+- Purpose: Defines the `task_cred` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_comm`
+
+- Template default: `1960`
+- Purpose: Defines the `task_comm` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_tasks`
+
+- Template default: `1232`
+- Purpose: Defines the `task_tasks` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_seccomp`
+
+- Template default: `2144`
+- Purpose: Defines the `task_seccomp` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Credential layout
+
+### `cred_copy_size`
+
+- Template default: `176`
+- Purpose: Defines the `cred_copy_size` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_usage_value`
+
+- Template default: `256`
+- Purpose: Defines the `cred_usage_value` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_offset`
+
+- Template default: `48`
+- Purpose: Defines the `cred_caps_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_count`
+
+- Template default: `3`
+- Purpose: Defines the `cred_caps_count` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_value`
+
+- Template default: `2199023255551`
+- Purpose: Defines the `cred_caps_value` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref0_offset`
+
+- Template default: `128`
+- Purpose: Defines the `cred_ref0_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref1_offset`
+
+- Template default: `136`
+- Purpose: Defines the `cred_ref1_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref2_offset`
+
+- Template default: `144`
+- Purpose: Defines the `cred_ref2_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref3_offset`
+
+- Template default: `152`
+- Purpose: Defines the `cred_ref3_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref_count`
+
+- Template default: `4`
+- Purpose: Defines the `cred_ref_count` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref0_image`
+
+- Template default: `-274698454400`
+- Purpose: Defines the `cred_ref0_image` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref1_image`
+
+- Template default: `-274696707824`
+- Purpose: Defines the `cred_ref1_image` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref2_image`
+
+- Template default: `-274698453008`
+- Purpose: Defines the `cred_ref2_image` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_ref3_image`
+
+- Template default: `-274698454232`
+- Purpose: Defines the `cred_ref3_image` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Waiter, heap, and route geometry
+
+### `compact_waiter`
+
+- Template default: `1`
+- Purpose: Defines the `compact_waiter` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mm_struct_sz`
+
+- Template default: `1024`
+- Purpose: Defines the `mm_struct_sz` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `pselect_waiter_shift`
+
+- Template default: `-2`
+- Purpose: Defines the `pselect_waiter_shift` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_waiter_off`
+
+- Template default: `96`
+- Purpose: Defines the `mcast_waiter_off` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_buffer_size`
+
+- Template default: `264`
+- Purpose: Defines the `mcast_buffer_size` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_task_offset`
+
+- Template default: `48`
+- Purpose: Defines the `mcast_task_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_lock_offset`
+
+- Template default: `56`
+- Purpose: Defines the `mcast_lock_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_fake_lock_offset`
+
+- Template default: `4608`
+- Purpose: Defines the `mcast_fake_lock_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_fake_task_offset`
+
+- Template default: `12800`
+- Purpose: Defines the `mcast_fake_task_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_lock_slots_offset`
+
+- Template default: `128`
+- Purpose: Defines the `mcast_lock_slots_offset` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_lock_slot_count`
+
+- Template default: `12`
+- Purpose: Defines the `mcast_lock_slot_count` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mcast_lock_slot_stride`
+
+- Template default: `8`
+- Purpose: Defines the `mcast_lock_slot_stride` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `kernelsnitch_collisions`
+
+- Template default: `8`
+- Purpose: Defines the `kernelsnitch_collisions` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Kernel-relative symbols
+
+### `off_init_task`
+
+- Template default: `0`
+- Purpose: Defines the `off_init_task` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_init_cred`
+
+- Template default: `0`
+- Purpose: Defines the `off_init_cred` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_empty_zero_page`
+
+- Template default: `0`
+- Purpose: Defines the `off_empty_zero_page` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_mcast_fake_bss`
+
+- Template default: `0`
+- Purpose: Defines the `off_mcast_fake_bss` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_root_task_group`
+
+- Template default: `0`
+- Purpose: Defines the `off_root_task_group` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_selinux_enforcing`
+
+- Template default: `0`
+- Purpose: Defines the `off_selinux_enforcing` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_selinux_blob_sizes`
+
+- Template default: `0`
+- Purpose: Defines the `off_selinux_blob_sizes` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_security_hook_heads`
+
+- Template default: `0`
+- Purpose: Defines the `off_security_hook_heads` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_nfulnl_logger`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_nfulnl_logger` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_boot_id`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_boot_id` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_loggers_0_1`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_loggers_0_1` value consumed by the 5.x route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## `execution` tuning
+
+## Recommended CPUs
+
+### `recommended_cpus.main`
+
+- Default: `0`
+- Purpose: Suggested main race CPU.
+- Impact: Changes scheduling, heat, and race timing; explicit UI selection takes precedence.
+- Rationale: Preserves legacy fallback without topology assumptions.
+
+### `recommended_cpus.consumer`
+
+- Default: `1`
+- Purpose: Suggested consumer CPU.
+- Impact: Same-core placement increases contention; nonexistent cores fail or fall back.
+- Rationale: Keeps legacy separation.
+
+## Heap preparation
+
+### `heap.prepare_max_attempts`
+
+- Default: `4`
+- Purpose: Full heap-preparation retry cap.
+- Impact: More retries may recover transient misses but add time and heat.
+- Rationale: Matches the former four-pass bound.
+
+### `heap.prepare_timeout_ms`
+
+- Default: `240000`
+- Purpose: Overall heap preparation timeout.
+- Impact: Too short misjudges slow devices; too long delays failure feedback.
+- Rationale: Four minutes preserves the old bounded worst case.
+
+### `heap.kernelsnitch_timeout_ms`
+
+- Default: `60000`
+- Purpose: KernelSnitch scan timeout.
+- Impact: Affects scan completeness versus stall time.
+- Rationale: Matches the prior 60-second scan window.
+
+## Shared race timing
+
+### `race.route_wait_ms`
+
+- Default: `1000`
+- Purpose: Shared pre-route wait.
+- Impact: Changes readiness ordering.
+- Rationale: Preserves the conservative one-second window.
+
+### `race.setup_settle_us`
+
+- Default: `50000`
+- Purpose: Post-setup settle delay.
+- Impact: Too short can trigger before setup completes.
+- Rationale: Legacy 50 ms balance.
+
+### `race.state_poll_interval_us`
+
+- Default: `1000`
+- Purpose: Shared state polling interval.
+- Impact: Trades CPU load for reaction latency.
+- Rationale: Preserves prior polling cadence.
+
+## W1/W2/W3 stages
+
+### `stages.w1_attempts`
+
+- Default: `15`
+- Purpose: W1 write-attempt cap.
+- Impact: More attempts add heat and corruption exposure.
+- Rationale: Copied from the original loop bound.
+
+### `stages.w1_settle_us`
+
+- Default: `100000`
+- Purpose: W1 post-attempt settle.
+- Impact: Controls stabilization before verification.
+- Rationale: Preserves 100 ms.
+
+### `stages.w1_scratch_repair_attempts`
+
+- Default: `3`
+- Purpose: W1 scratch-repair cap.
+- Impact: More repairs may recover or compound damage.
+- Rationale: Matches the former three repairs.
+
+### `stages.w2_attempts`
+
+- Default: `15`
+- Purpose: W2 credential-write cap.
+- Impact: Affects elevation probability, time, and risk.
+- Rationale: Matches legacy W2.
+
+### `stages.w2_settle_us`
+
+- Default: `100000`
+- Purpose: W2 settle delay.
+- Impact: Too short may verify before visibility.
+- Rationale: Preserves 100 ms.
+
+### `stages.w3_chain_rounds`
+
+- Default: `3`
+- Purpose: Whole W3-chain rounds.
+- Impact: More rounds increase coverage and exposure.
+- Rationale: Legacy cap is three.
+
+### `stages.w3_attempts`
+
+- Default: `6`
+- Purpose: W3 attempts per round.
+- Impact: Changes bypass opportunity and contention.
+- Rationale: Preserves six attempts.
+
+### `stages.w3_settle_us`
+
+- Default: `50000`
+- Purpose: W3 settle delay.
+- Impact: Controls verification timing and speed.
+- Rationale: Preserves 50 ms.
+
+## TCP zerocopy route
+
+### `routes.tcp_zerocopy.attempts`
+
+- Default: `2000`
+- Purpose: TCP zerocopy probe cap.
+- Impact: Major heat/time contributor; too low reduces hit rate.
+- Rationale: Matches the original cap.
+
+### `routes.tcp_zerocopy.arm_sequence`
+
+- Default: `16`
+- Purpose: Arm-sequence length.
+- Impact: Changes spray/trigger ordering; wrong values miss the window.
+- Rationale: Preserves the validated 16-step sequence.
+
+### `routes.tcp_zerocopy.post_receive_hold_iterations`
+
+- Default: `20000`
+- Purpose: Post-receive hold iterations.
+- Impact: Longer hold widens window but adds heat.
+- Rationale: Copies the former busy-loop constant.
+
+## Select-stack route
+
+### `routes.select_stack.enter_delay_us`
+
+- Default: `50000`
+- Purpose: Delay before the main select trigger after consumer entry.
+- Impact: Directly shifts the select-stack race window.
+- Rationale: Preserves validated 50 ms timing.
+
+### `routes.select_stack.timeout_us`
+
+- Default: `200000`
+- Purpose: Per-select timeout.
+- Impact: Balances premature exit and recovery time.
+- Rationale: Preserves 200 ms.
+
+### `routes.select_stack.consumer_max_calls`
+
+- Default: `1`
+- Purpose: Consumer call cap.
+- Impact: Multiple calls alter the proven layout.
+- Rationale: The stable path is single-shot.
+
+### `routes.select_stack.consumer_burst_calls`
+
+- Default: `1`
+- Purpose: Calls per consumer burst.
+- Impact: Changes scheduling and stack lifetime.
+- Rationale: Preserves one-call bursts.
+
+## Multicast-waiter route
+
+### `routes.multicast_waiter.ready_timeout_ms`
+
+- Default: `10000`
+- Purpose: Waiter-ready timeout.
+- Impact: Balances slow scheduling and cleanup latency.
+- Rationale: Matches legacy 10 seconds.
+
+### `routes.multicast_waiter.post_requeue_settle_us`
+
+- Default: `200000`
+- Purpose: Post-requeue settle.
+- Impact: Affects waiter-chain stabilization; shorter waits may overwrite too early.
+- Rationale: Preserves 200 ms.
+
+### `routes.multicast_waiter.post_adjust_settle_us`
+
+- Default: `100000`
+- Purpose: Post-adjust settle.
+- Impact: Controls state visibility.
+- Rationale: Preserves 100 ms.
+
+## Privilege handoff
+
+### `handoff.pre_dispatch_settle_ms`
+
+- Default: `2000`
+- Purpose: Pre-handoff settle.
+- Impact: Too short may dispatch before privilege/SELinux state settles.
+- Rationale: Preserves two seconds.
+
+### `handoff.module_poll_attempts`
+
+- Default: `30`
+- Purpose: Module-state poll count.
+- Impact: Together with the interval, forms the 3-second total window.
+- Rationale: 30×100 ms preserves three seconds.
+
+### `handoff.module_poll_interval_ms`
+
+- Default: `100`
+- Purpose: Module poll interval.
+- Impact: Trades wakeups for latency.
+- Rationale: Legacy cadence.
+
+### `handoff.enforce_poll_attempts`
+
+- Default: `200`
+- Purpose: Enforcing-state poll count.
+- Impact: Together with the interval, defines the 20-second recovery window.
+- Rationale: 200×100 ms preserves twenty seconds.
+
+### `handoff.enforce_poll_interval_ms`
+
+- Default: `100`
+- Purpose: Enforcing poll interval.
+- Impact: Affects detection latency and wakeups.
+- Rationale: Legacy cadence.
+
+Every change must record device, temperature, CPU pair, success rate, and failing stage.

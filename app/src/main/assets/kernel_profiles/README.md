@@ -1,32 +1,32 @@
-# Kernel profile 适配指南 / Kernel Profile Porting Guide
+# Kernel Profile Porting Guide
 
-本目录是运行时 profile 的唯一内置数据源。This directory is the sole built-in source of runtime profiles.
+This directory is the sole built-in source of runtime profiles.
 
-## 文件布局 / Layout
+## Layout
 
-- `index.json`：精确 `uname -r` 到独立 JSON 文件的白名单索引；未登记文件不会进入 App。Exact-release allowlist; unlisted files are not packaged into the generated support index.
-- `defaults.json`：所有 release 共用的执行参数，详见 [defaults.md](defaults.md)。Shared execution tuning; see [defaults.md](defaults.md).
-- `<uname-r>.json`：一个内核 release 一个完整 profile；文件名与 `release` 必须一致。One complete profile per kernel release; filename and `release` must match.
-- `templates/`：不会进入运行索引的内核族模板。Non-runtime family templates.
+- `index.json`: Exact-release allowlist mapping `uname -r` to standalone JSON files; unlisted files are not packaged into the generated support index.
+- `defaults.json`: Shared execution tuning for all releases; see [hared Execution Defaults](defaults.md).
+- `<uname-r>.json`: One complete profile per kernel release; filename and `release` must match.
+- `templates/`: Non-runtime kernel-family templates with self-contained English guides.
 
-## 新设备适配流程 / Porting a New Device
+## Porting a New Device
 
-1. 运行 `adb shell uname -r`，保留完整字符串；任何字符差异都会使匹配失败。Capture the complete release string; any difference intentionally prevents a match.
-2. 确定内核族并打开对应说明：[5.x](templates/kernel-5.x.template.md)、[6.1](templates/kernel-6.1.template.md)、[6.6](templates/kernel-6.6.template.md)、[6.12](templates/kernel-6.12.template.md)。Choose the matching family guide.
-3. 复制对应 `.template.json`，以完整 release 命名并写入 `release`。Copy the template, name it after the exact release, and replace `release`.
-4. 用 `ghostlock-extract --format json` 提取符号/BTF 数据；逐字段转录，不得直接复用另一固件的 `off_*`。Extract metadata and transcribe every field; never reuse symbol offsets merely because the major version matches.
-5. 校验所有 `off_*` 必填地址非零、task/cred 布局来自同一镜像，并依据运行身份设置 `requires_shizuku`。Validate nonzero required addresses and ensure all layouts come from the same image.
-6. 只在确有设备证据时覆盖 `execution`；否则保留 [公共默认值](defaults.md)。Override execution tuning only with measured evidence.
-7. 在 `index.json` 增加 `{release,file}`，运行 `jq` 校验、Rust 测试和 `./gradlew clean :app:assembleDebug`。Add the index entry, validate JSON, then run tests and a clean build.
-8. 真机按低温、固定核心、单路线重复测试；记录 App/Shizuku、W1/W2/W3、回退与清理结果。Device-test under controlled temperature/CPU conditions and record every stage, fallback, and cleanup outcome.
+1. Run `adb shell uname -r` and capture the complete release string; any character difference intentionally prevents a match.
+2. Determine the kernel family and open the matching guide: [5.x](templates/kernel-5.x.template.md), [6.1](templates/kernel-6.1.template.md), [6.6](templates/kernel-6.6.template.md), [6.12](templates/kernel-6.12.template.md).
+3. Copy the corresponding `.template.json`, name it after the exact release, and write the `release` field.
+4. Use `ghostlock-extract --format json` to extract symbol/BTF data; transcribe every field, and never reuse another firmware's `off_*` merely because the major version matches.
+5. Validate that all required `off_*` addresses are nonzero, that task/cred layouts come from the same image, and set `requires_shizuku` according to the runtime identity.
+6. Override `execution` only with measured device evidence; otherwise keep the [shared defaults](defaults.md).
+7. Add `{release,file}` to `index.json`, validate JSON with `jq`, run Rust tests, and run `./gradlew clean :app:assembleDebug`.
+8. Device-test repeatedly under low temperature, fixed CPU cores, and a single route; record App/Shizuku, W1/W2/W3, fallback, and cleanup outcomes.
 
-## 合并顺序 / Merge Order
+## Merge Order
 
-`defaults.json` → 内置 release JSON → 用户稀疏 override → UI 显式核心选择。Later layers win. Kotlin 生成单个 `active-profile.json`，Native 不再搜索或合并配置。Kotlin emits one resolved profile; Native never selects configuration sources.
+`defaults.json` → built-in release JSON → user sparse override → explicit UI CPU selection. Later layers win. Kotlin emits a single `active-profile.json`; Native no longer searches for or merges configuration sources.
 
-## 安全规则 / Safety Rules
+## Safety Rules
 
-- 模板中的 `off_* = 0` 表示“必须提取”，不是可运行默认值。Zero means unresolved, never a runnable default.
-- task/cred/multicast 布局错误可能造成任意内核内存破坏、黑屏或重启。Incorrect layouts can corrupt arbitrary kernel memory and reboot the device.
-- `execution` 调高尝试次数或缩短等待可能显著升温并降低成功率。More attempts or shorter waits can increase heat and reduce reliability.
-- 新 profile 未通过真机门禁前不得提交为“已支持”。Do not claim support before the device gate passes.
+- `off_* = 0` in a template means "must be extracted", never a runnable default.
+- Incorrect task/cred/multicast layouts can corrupt arbitrary kernel memory, cause a black screen, or reboot the device.
+- Increasing `execution` attempt counts or shortening waits can significantly increase heat and reduce the success rate.
+- Do not submit a new profile as "supported" before it passes the device gate.

@@ -1,20 +1,507 @@
-# 6.1 模板说明 / 6.1 Template Guide
+# 6.1 Kernel Profile Template Guide
 
-模板：[kernel-6.1.template.json](kernel-6.1.template.json)。所有共有字段见 [字段总说明](README.md)，执行参数见 [defaults](../defaults.md)。See the shared references for common fields and tuning.
+Template JSON: [kernel-6.1.template.json](kernel-6.1.template.json). This file contains every field and has no shared-field dependency.
 
-6.1 默认使用 `tcp_zerocopy`，并保留 `select_stack` 回退；它采用 compact waiter。6.1 primarily uses TCP zerocopy with select-stack fallback and a compact waiter representation.
+## Identity and route selection
 
-| 子项 / Item | 模板值 | 作用与影响 / Purpose and impact | 默认理由 / Rationale |
-|---|---:|---|---|
-| `kernel_major` | 6 | 进入 6.x 通用校验。Selects 6.x validation. | 内核主版本为 6；路线差异由其余字段表达。Route differences stay in profile data. |
-| `compact_waiter` | 1 | 选择 6.1 紧凑 waiter，而不是 6.6/6.12 tree waiter。Selects compact layout. | 这是 6.1 路线关键差异，漏填会 miss 或错写。Critical verified distinction. |
-| `mm_struct_sz` | 1024 (`0x400`) | TCP 打洞页/heap 对象步长。Heap/object stride. | 使用已验证 SLUB 步长，防止把 BTF 尾部大小误当 allocator stride。Verified allocator stride. |
-| `pselect_waiter_shift` | 1 | select 回退的 waiter 栈位移。Fallback stack displacement. | 现有 6.1 编译布局比基准多一个 qword；新镜像仍须反汇编。Existing builds measure one qword; rederive. |
-| `kernelsnitch_collisions` | 4 | heap hash 冲突目标。Heap collision target. | 6.x 路线已验证四碰撞，减少 5.x 的额外成本。Verified 6.x balance. |
-| `cred_copy_size` | 136 (`0x88`) | credential 复制边界。Credential copy boundary. | 覆盖 6.1 必需字段而不越过模板对象。Verified minimum safe region. |
-| `cred_usage_value` | 1 | 初始引用计数。Initial refcount. | 6.x `usage` 布局使用普通初值 1。Matches verified representation. |
-| `cred_caps_offset/count/value` | 48 / 5 / -1 | 从 `0x30` 起写五个全 capability 64-bit word。Writes five full capability words. | 匹配 6.x cred capability 布局；`-1` 保留全 1 位模式。Matches layout and all-bits-set mask. |
-| `task_*` | JSON 中具体值 | W1/W2/W3 共用的 6.1 `task_struct` 基线。6.1 structural baseline. | 源自已验证 6.1 GKI，但 OEM 配置可改变布局，必须逐镜像 BTF 复核。Verified seed, not universal. |
-| 全部 `off_*` | 0 | 固件符号/KASLR 参考地址。Firmware symbol offsets. | 地址绝不跨 release 继承；0 迫使提取。Zero forces extraction. |
+### `schema_version`
 
-模板没有 `requires_shizuku` 时按普通 App 路线处理；只有确认 App seccomp/权限环境不兼容时才显式加入 `1`。Absence means the normal App path; add `1` only with evidence.
+- Template default: `1`
+- Purpose: Defines the `schema_version` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `release`
+
+- Template default: `<exact-uname-r-for-6.1>`
+- Purpose: Defines the `release` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `kernel_major`
+
+- Template default: `6`
+- Purpose: Defines the `kernel_major` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Task structure offsets
+
+### `task_prio`
+
+- Template default: `132`
+- Purpose: Defines the `task_prio` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_normal_prio`
+
+- Template default: `140`
+- Purpose: Defines the `task_normal_prio` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_sched_task_group`
+
+- Template default: `840`
+- Purpose: Defines the `task_sched_task_group` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_lock`
+
+- Template default: `2340`
+- Purpose: Defines the `task_pi_lock` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_waiters`
+
+- Template default: `2360`
+- Purpose: Defines the `task_pi_waiters` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_top_task`
+
+- Template default: `2376`
+- Purpose: Defines the `task_pi_top_task` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pi_blocked_on`
+
+- Template default: `2384`
+- Purpose: Defines the `task_pi_blocked_on` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_pid`
+
+- Template default: `1584`
+- Purpose: Defines the `task_pid` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_tgid`
+
+- Template default: `1588`
+- Purpose: Defines the `task_tgid` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_atomic_flags`
+
+- Template default: `1520`
+- Purpose: Defines the `task_atomic_flags` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_real_cred`
+
+- Template default: `2096`
+- Purpose: Defines the `task_real_cred` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_cred`
+
+- Template default: `2104`
+- Purpose: Defines the `task_cred` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_comm`
+
+- Template default: `2120`
+- Purpose: Defines the `task_comm` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_tasks`
+
+- Template default: `1360`
+- Purpose: Defines the `task_tasks` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `task_seccomp`
+
+- Template default: `2304`
+- Purpose: Defines the `task_seccomp` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Credential layout
+
+### `cred_copy_size`
+
+- Template default: `136`
+- Purpose: Defines the `cred_copy_size` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_usage_value`
+
+- Template default: `1`
+- Purpose: Defines the `cred_usage_value` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_offset`
+
+- Template default: `48`
+- Purpose: Defines the `cred_caps_offset` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_count`
+
+- Template default: `5`
+- Purpose: Defines the `cred_caps_count` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `cred_caps_value`
+
+- Template default: `-1`
+- Purpose: Defines the `cred_caps_value` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Waiter, heap, and route geometry
+
+### `compact_waiter`
+
+- Template default: `1`
+- Purpose: Defines the `compact_waiter` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `mm_struct_sz`
+
+- Template default: `1024`
+- Purpose: Defines the `mm_struct_sz` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `kernelsnitch_collisions`
+
+- Template default: `4`
+- Purpose: Defines the `kernelsnitch_collisions` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `pselect_waiter_shift`
+
+- Template default: `1`
+- Purpose: Defines the `pselect_waiter_shift` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## Kernel-relative symbols
+
+### `off_init_task`
+
+- Template default: `0`
+- Purpose: Defines the `off_init_task` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_init_cred`
+
+- Template default: `0`
+- Purpose: Defines the `off_init_cred` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_root_task_group`
+
+- Template default: `0`
+- Purpose: Defines the `off_root_task_group` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_selinux_enforcing`
+
+- Template default: `0`
+- Purpose: Defines the `off_selinux_enforcing` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_selinux_blob_sizes`
+
+- Template default: `0`
+- Purpose: Defines the `off_selinux_blob_sizes` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_security_hook_heads`
+
+- Template default: `0`
+- Purpose: Defines the `off_security_hook_heads` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_nfulnl_logger`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_nfulnl_logger` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_boot_id`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_boot_id` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+### `off_slide_loggers_0_1`
+
+- Template default: `0`
+- Purpose: Defines the `off_slide_loggers_0_1` value consumed by the 6.1 route.
+- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
+- Rationale: This preserves the verified 6.1 baseline but is not a stable ABI; revalidate it against the same target image.
+
+
+## `execution` tuning
+
+## Recommended CPUs
+
+### `recommended_cpus.main`
+
+- Default: `0`
+- Purpose: Suggested main race CPU.
+- Impact: Changes scheduling, heat, and race timing; explicit UI selection takes precedence.
+- Rationale: Preserves legacy fallback without topology assumptions.
+
+### `recommended_cpus.consumer`
+
+- Default: `1`
+- Purpose: Suggested consumer CPU.
+- Impact: Same-core placement increases contention; nonexistent cores fail or fall back.
+- Rationale: Keeps legacy separation.
+
+## Heap preparation
+
+### `heap.prepare_max_attempts`
+
+- Default: `4`
+- Purpose: Full heap-preparation retry cap.
+- Impact: More retries may recover transient misses but add time and heat.
+- Rationale: Matches the former four-pass bound.
+
+### `heap.prepare_timeout_ms`
+
+- Default: `240000`
+- Purpose: Overall heap preparation timeout.
+- Impact: Too short misjudges slow devices; too long delays failure feedback.
+- Rationale: Four minutes preserves the old bounded worst case.
+
+### `heap.kernelsnitch_timeout_ms`
+
+- Default: `60000`
+- Purpose: KernelSnitch scan timeout.
+- Impact: Affects scan completeness versus stall time.
+- Rationale: Matches the prior 60-second scan window.
+
+## Shared race timing
+
+### `race.route_wait_ms`
+
+- Default: `1000`
+- Purpose: Shared pre-route wait.
+- Impact: Changes readiness ordering.
+- Rationale: Preserves the conservative one-second window.
+
+### `race.setup_settle_us`
+
+- Default: `50000`
+- Purpose: Post-setup settle delay.
+- Impact: Too short can trigger before setup completes.
+- Rationale: Legacy 50 ms balance.
+
+### `race.state_poll_interval_us`
+
+- Default: `1000`
+- Purpose: Shared state polling interval.
+- Impact: Trades CPU load for reaction latency.
+- Rationale: Preserves prior polling cadence.
+
+## W1/W2/W3 stages
+
+### `stages.w1_attempts`
+
+- Default: `15`
+- Purpose: W1 write-attempt cap.
+- Impact: More attempts add heat and corruption exposure.
+- Rationale: Copied from the original loop bound.
+
+### `stages.w1_settle_us`
+
+- Default: `100000`
+- Purpose: W1 post-attempt settle.
+- Impact: Controls stabilization before verification.
+- Rationale: Preserves 100 ms.
+
+### `stages.w1_scratch_repair_attempts`
+
+- Default: `3`
+- Purpose: W1 scratch-repair cap.
+- Impact: More repairs may recover or compound damage.
+- Rationale: Matches the former three repairs.
+
+### `stages.w2_attempts`
+
+- Default: `15`
+- Purpose: W2 credential-write cap.
+- Impact: Affects elevation probability, time, and risk.
+- Rationale: Matches legacy W2.
+
+### `stages.w2_settle_us`
+
+- Default: `100000`
+- Purpose: W2 settle delay.
+- Impact: Too short may verify before visibility.
+- Rationale: Preserves 100 ms.
+
+### `stages.w3_chain_rounds`
+
+- Default: `3`
+- Purpose: Whole W3-chain rounds.
+- Impact: More rounds increase coverage and exposure.
+- Rationale: Legacy cap is three.
+
+### `stages.w3_attempts`
+
+- Default: `6`
+- Purpose: W3 attempts per round.
+- Impact: Changes bypass opportunity and contention.
+- Rationale: Preserves six attempts.
+
+### `stages.w3_settle_us`
+
+- Default: `50000`
+- Purpose: W3 settle delay.
+- Impact: Controls verification timing and speed.
+- Rationale: Preserves 50 ms.
+
+## TCP zerocopy route
+
+### `routes.tcp_zerocopy.attempts`
+
+- Default: `2000`
+- Purpose: TCP zerocopy probe cap.
+- Impact: Major heat/time contributor; too low reduces hit rate.
+- Rationale: Matches the original cap.
+
+### `routes.tcp_zerocopy.arm_sequence`
+
+- Default: `16`
+- Purpose: Arm-sequence length.
+- Impact: Changes spray/trigger ordering; wrong values miss the window.
+- Rationale: Preserves the validated 16-step sequence.
+
+### `routes.tcp_zerocopy.post_receive_hold_iterations`
+
+- Default: `20000`
+- Purpose: Post-receive hold iterations.
+- Impact: Longer hold widens window but adds heat.
+- Rationale: Copies the former busy-loop constant.
+
+## Select-stack route
+
+### `routes.select_stack.enter_delay_us`
+
+- Default: `50000`
+- Purpose: Delay before the main select trigger after consumer entry.
+- Impact: Directly shifts the select-stack race window.
+- Rationale: Preserves validated 50 ms timing.
+
+### `routes.select_stack.timeout_us`
+
+- Default: `200000`
+- Purpose: Per-select timeout.
+- Impact: Balances premature exit and recovery time.
+- Rationale: Preserves 200 ms.
+
+### `routes.select_stack.consumer_max_calls`
+
+- Default: `1`
+- Purpose: Consumer call cap.
+- Impact: Multiple calls alter the proven layout.
+- Rationale: The stable path is single-shot.
+
+### `routes.select_stack.consumer_burst_calls`
+
+- Default: `1`
+- Purpose: Calls per consumer burst.
+- Impact: Changes scheduling and stack lifetime.
+- Rationale: Preserves one-call bursts.
+
+## Multicast-waiter route
+
+### `routes.multicast_waiter.ready_timeout_ms`
+
+- Default: `10000`
+- Purpose: Waiter-ready timeout.
+- Impact: Balances slow scheduling and cleanup latency.
+- Rationale: Matches legacy 10 seconds.
+
+### `routes.multicast_waiter.post_requeue_settle_us`
+
+- Default: `200000`
+- Purpose: Post-requeue settle.
+- Impact: Affects waiter-chain stabilization; shorter waits may overwrite too early.
+- Rationale: Preserves 200 ms.
+
+### `routes.multicast_waiter.post_adjust_settle_us`
+
+- Default: `100000`
+- Purpose: Post-adjust settle.
+- Impact: Controls state visibility.
+- Rationale: Preserves 100 ms.
+
+## Privilege handoff
+
+### `handoff.pre_dispatch_settle_ms`
+
+- Default: `2000`
+- Purpose: Pre-handoff settle.
+- Impact: Too short may dispatch before privilege/SELinux state settles.
+- Rationale: Preserves two seconds.
+
+### `handoff.module_poll_attempts`
+
+- Default: `30`
+- Purpose: Module-state poll count.
+- Impact: Together with the interval, forms the 3-second total window.
+- Rationale: 30×100 ms preserves three seconds.
+
+### `handoff.module_poll_interval_ms`
+
+- Default: `100`
+- Purpose: Module poll interval.
+- Impact: Trades wakeups for latency.
+- Rationale: Legacy cadence.
+
+### `handoff.enforce_poll_attempts`
+
+- Default: `200`
+- Purpose: Enforcing-state poll count.
+- Impact: Together with the interval, defines the 20-second recovery window.
+- Rationale: 200×100 ms preserves twenty seconds.
+
+### `handoff.enforce_poll_interval_ms`
+
+- Default: `100`
+- Purpose: Enforcing poll interval.
+- Impact: Affects detection latency and wakeups.
+- Rationale: Legacy cadence.
+
+Every change must record device, temperature, CPU pair, success rate, and failing stage.
