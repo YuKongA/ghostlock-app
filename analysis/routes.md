@@ -2,30 +2,40 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。自 S03 起，每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。S02 不追补更新。
+此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S02。
 
 ```mermaid
 flowchart TD
-    Main["main()"] --> Run["run_exploit()"]
-    Run --> Init["select_offsets() / init_p0_profile()"]
+    Kotlin["Kotlin ProcessBuilder<br/>environment + CPU selection"] --> Main["main() / run_exploit()"]
+    Main --> Config["runtime_config_init()"]
+    Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
+    Snapshot --> Init["select_offsets() / init_p0_profile()"]
     Init --> W1["W1: retry_write_stage()"]
     W1 --> Write["do_one_write()"]
     Write --> Page["prepare_good_kernel_page()"]
     Page --> Payload["prepare_skb_payload()"]
     Write --> Race["run_main_route_threads()"]
+    Snapshot --> Race
     Race -. pthread .-> Waiter["waiter_thread()"]
     Race -. pthread .-> Owner["owner_thread()"]
     Race -. pthread .-> Consumer["consumer_thread()"]
     Waiter --> Choice{"route"}
+    Snapshot --> Choice
     Choice --> M["Multicast"]
     Choice --> T["TCP Zerocopy"]
     Choice --> P["pselect/select"]
+    M --> Verify["stage verification"]
+    T --> Verify
+    P --> Verify
+    Verify --> W1
     W1 --> W2["W2: spawn_victim() + credential stage"]
     W2 --> W3["W3: flags/seccomp mode when needed"]
-    W3 --> Root["child_main() handoff"]
+    W3 --> Root["child_main() / KernelSU handoff"]
+    Root --> Cleanup["route cleanup / resident stop"]
+    Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-三条路线共用profile、地址转换、堆页准备、fake对象、PI三线程和W1/W2/W3验证；只在“用哪种可控结构覆盖stale waiter”上分叉。
+S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；旧 CPU 全局量仍作为兼容镜像。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 
