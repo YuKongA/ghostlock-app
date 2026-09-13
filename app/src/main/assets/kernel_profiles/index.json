@@ -118,6 +118,10 @@
       "file": "6.1.138-android14-11-g0c3d559bcd85-ab14529422.json"
     },
     {
+      "release": "6.1.138-android14-11-g965475777129-mi",
+      "file": "6.1.138-android14-11-g965475777129-mi.json"
+    },
+    {
       "release": "6.6.118-android15-8-g608a629fedf7-ab15154340-4k",
       "file": "6.6.118-android15-8-g608a629fedf7-ab15154340-4k.json"
     },
@@ -144,6 +148,10 @@
     {
       "release": "6.12.38-android16-5-g3c4da6410bcb-ab13872285-4k",
       "file": "6.12.38-android16-5-g3c4da6410bcb-ab13872285-4k.json"
+    },
+    {
+      "release": "6.12.38-android16-5-g74ad46052215-ab14494108-4k",
+      "file": "6.12.38-android16-5-g74ad46052215-ab14494108-4k.json"
     },
     {
       "release": "6.6.118-android15-8-g2e6b9c3812c5-ab15114928-4k",

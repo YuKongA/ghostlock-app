@@ -485,10 +485,11 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
 - [x] U01-B：leaf/value/credential、arm mismatch、W1 页面验收固定测试及既有 Heap/KernelSnitch 回归通过；完整 Gradle `assembleDebug` 构建、提交并暂停真机门禁。
 - [x] U01-B：用户真机确认后保存安全拒绝与成功日志、分析证据并更新核心 UML；Direct/5.15 Multicast 完整执行至 `KernelSU ready`。
-- [ ] U01-C：将 Lenovo Y700 `dfb0e84` 从 C offsets 转换为独立完整 6.12 JSON profile，并核验结构 ABI。
-- [ ] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/结构 ABI。
-- [ ] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
-- [ ] U01-C：schema/索引测试、完整 Gradle 构建、提交并暂停兼容门禁。
+- [x] U01-C：将 Lenovo Y700 `dfb0e84` 从 C offsets 转换为独立完整 6.12 JSON profile，并核验 `STRUCT_OFFSETS_6_12` ABI。
+- [x] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/`STRUCT_OFFSETS_6_1` ABI。
+- [x] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
+- [x] U01-C：JSON/schema、索引唯一性和同族 ABI 检查、完整 Gradle `assembleDebug` 构建通过；提交并暂停兼容门禁。
+- [ ] U01-C：用户使用已有设备完成兼容门禁并保存日志；Y700/REDMI K80 对应设备门禁继续等待外部协作者。
 - [ ] S11 回补：TCP 上限、可恢复失败及清理状态采用 profile + `RouteStatus`，不移植硬编码 128 次。
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
 - [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
