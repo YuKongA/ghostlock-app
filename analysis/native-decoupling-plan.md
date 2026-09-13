@@ -500,11 +500,13 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S10：共享 PI 竞态
 
-- [ ] 引入 `PiRaceContext`，迁移 futex、原子量和线程句柄。
-- [ ] 拆分 reset、start、run、stop、destroy。
-- [ ] 修改 `main.c` 线程入口以显式传入 context，保持同步顺序不变。
-- [ ] 处理部分线程创建失败时的 join/清理。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 引入 `PiRaceContext`，迁移 futex、原子量、fast-repair、CPU 和线程句柄。
+- [x] 拆分 reset、start、run、stop、destroy。
+- [x] 修改 `main.c` 三个线程入口以显式传入 context；保留既有 waiter/owner 同步条件和 route 触发顺序。
+- [x] 以 consumer→owner→waiter 的可收敛创建顺序处理部分线程创建失败，并通过显式 stop/join 清理。
+- [x] `PiRaceContext` reset/CPU/线程所有权主机测试和完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 - [ ] 真机确认后导出完整日志，完成分析并保存 S10 门禁证据。
 
 ### [ ] S11：TCP Zerocopy 路线
@@ -553,7 +555,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 | 来源阶段 | 代码位置/事项 | 阻塞依赖 | 回补阶段 | 状态 |
 |---|---|---|---|---|
-| S02 | `CORE`/`CONSUMER_CORE` 仍需两个兼容镜像 | PI worker 尚未接收 context | S10 | [x] 已产生，待回补 |
+| S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] S10 部分回补，待完成 |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
 | S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
@@ -562,6 +564,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
 | S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
 | S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
+| S10 | `fops.c` 三条路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | 路线 context 尚未逐条迁移 | S11/S12/S13 | [x] 已产生，待回补 |
 | U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | TCP route context/`RouteStatus` 尚未完成 | S11 | [x] 已产生，待回补 |
 | U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
 | U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 已产生，待回补 |

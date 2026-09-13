@@ -10,6 +10,7 @@
 #include "runtime_config.h"
 #include "runtime_time.h"
 #include "heap_context.h"
+#include "pi_race.h"
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -115,21 +116,6 @@ struct local_sched_attr {
 #define fake_left (g_heap_context.current.fake_left)
 #define fake_fops (g_heap_context.current.fake_fops)
 
-extern uint32_t f_wait;
-extern uint32_t f_pi_target;
-extern uint32_t f_pi_chain;
-extern atomic_int waiter_ready;
-extern atomic_int waiter_waiting;
-extern atomic_int owner_started;
-extern atomic_int owner_chain_done;
-extern atomic_int route_done;
-extern atomic_int waiter_tid;
-extern atomic_int punch_consume_go;
-extern atomic_int punch_consume_stop;
-extern atomic_int consumer_calls;
-extern atomic_int consumer_success;
-extern atomic_int consumer_inflight;
-extern atomic_int main_route_delay_usec;
 extern int route_last_step;
 extern int route_last_errno;
 #define memfd_leak (g_heap_context.leak_memfd)

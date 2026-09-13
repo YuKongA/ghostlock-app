@@ -18,6 +18,7 @@ SRCS := \
   src/core/main.c \
   src/core/address_space.c \
   src/core/heap_context.c \
+  src/core/pi_race.c \
   src/core/payload_builder.c \
   src/core/runtime_config.c \
   src/core/offsets_json.c \

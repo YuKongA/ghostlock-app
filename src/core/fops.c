@@ -17,6 +17,15 @@ static const struct execution_settings *execution_settings(void) {
 int route_last_step;
 int route_last_errno;
 
+/* TODO(decoupling:S11-S13-route-context): Route instances will receive their
+ * PiRaceContext explicitly. Until then these aliases expose one owned context. */
+#define punch_consume_go (g_pi_race_context.consumer_go)
+#define punch_consume_stop (g_pi_race_context.consumer_stop)
+#define consumer_calls (g_pi_race_context.consumer_calls)
+#define consumer_success (g_pi_race_context.consumer_success)
+#define consumer_inflight (g_pi_race_context.consumer_inflight)
+#define main_route_delay_usec (g_pi_race_context.route_delay_usec)
+
 /* 5.x kernel route. The multicast option buffer overlaps the stale compact
  * waiter. Profiles opt in with kernel_major=5 and mcast_waiter_off. */
 static uint32_t mr_l1, mr_l2, mr_cond;
