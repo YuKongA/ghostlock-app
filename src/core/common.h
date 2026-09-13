@@ -6,6 +6,7 @@
 
 #include "offset.h"
 #include "address_space.h"
+#include "payload_builder.h"
 #include "runtime_config.h"
 #include "runtime_time.h"
 
@@ -139,8 +140,6 @@ extern uintptr_t fake_parent;
 extern uintptr_t fake_right;
 extern uintptr_t fake_left;
 extern uintptr_t fake_fops;
-extern int pselect_custom_write;
-extern uintptr_t pselect_custom_target;
 
 extern uint32_t f_wait;
 extern uint32_t f_pi_target;
@@ -180,7 +179,6 @@ long futex_op(
 long sched_setattr_tid(int tid, int nice_value);
 uintptr_t p0_data_alias(uintptr_t image_addr);
 uintptr_t data_addr(uintptr_t image_addr);
-void clear_pselect_write(void);
 void put64(unsigned char *p, size_t off, uint64_t value);
 void put32(unsigned char *p, size_t off, uint32_t value);
 pid_t clone_child(void);
@@ -203,9 +201,9 @@ void free_ctx_storage(struct mm_ctx *ctx);
 void cleanup_page_prepare_state(void);
 int clone_memfd(void);
 void prepare_ctxs(void);
-int prepare_skb_payload(uintptr_t base);
-uintptr_t prepare_kernel_page(void);
-uintptr_t prepare_good_kernel_page(void);
+int prepare_skb_payload(uintptr_t base, const WriteRequest *request);
+uintptr_t prepare_kernel_page(const WriteRequest *request);
+uintptr_t prepare_good_kernel_page(const WriteRequest *request);
 
 void log_sync(void);
 void fdset_put_word(fd_set *set, int word, uint64_t value);
@@ -215,16 +213,16 @@ int kernel5_route_selected(void);
 void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);
 void reserve_standard_io(void);
-void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex);
-void do_pselect_fake_lock_route(void);
-void do_tcp_fake_lock_route(void);
-void do_kernel5_fake_lock_route(void);
+void prepare_pselect_fdsets(
+    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request);
+void do_pselect_fake_lock_route(const WriteRequest *request);
+void do_tcp_fake_lock_route(const WriteRequest *request);
+void do_kernel5_fake_lock_route(const WriteRequest *request);
 int kernel5_resident_start(void);
 int kernel5_resident_write(uintptr_t target, uintptr_t value);
 void kernel5_resident_stop(void);
 void reset_main_route_state(void);
-int run_main_route_threads(void);
-void set_pselect_write_mode(uintptr_t target, int mode);
+int run_main_route_threads(const WriteRequest *request);
 
 #include "runtime_struct_offsets.h"
 

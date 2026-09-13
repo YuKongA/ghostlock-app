@@ -423,11 +423,13 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S07：Payload/WriteRequest 构建器
 
-- [ ] 用不可变 `WriteRequest` 替代 `pselect_custom_*` 写配置。
-- [ ] 分离共享布局和三条路线的 waiter 编码。
-- [ ] 安全调用点同步迁移；受 profile/路线状态阻塞处添加 TODO。
-- [ ] 对新旧 payload 做逐字节比较。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 用不可变 `WriteRequest` 替代 `pselect_custom_*` 写配置。
+- [x] 分离共享布局和三条路线的 waiter 编码。
+- [x] 安全调用点同步迁移；受 profile/路线状态阻塞处添加 TODO。
+- [x] 对新旧 payload 做逐字节比较（4 组写请求 waiter 向量及 1 组 Multicast stamp 向量，逐字节一致）。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 - [ ] 真机确认后导出完整日志，完成分析并保存 S07 门禁证据。
 
 ### [ ] S08：Profile 对象化与首轮 TODO 回补
@@ -518,7 +520,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S06 | `active_offsets` 继续作为 `TargetProfile` 的兼容镜像供宏和复杂调用读取 | runtime offset 与 payload 消费尚未语义化 | S08 | [x] 已产生，待回补 |
 | S06 | `p0_kernel_phys_load`、`g_init_cred_image` 镜像 `ResolvedAddresses` | `SLIDE_*`、payload 和路线调用仍依赖旧符号 | S08 | [x] 已产生，待回补 |
 | S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
-| S07 | select/multicast payload 布局读取全局 profile | 路线布局访问器未统一 | S08/S12/S13 | [ ] 待产生/回补 |
+| S07 | shared/select/multicast payload 布局仍读取全局 profile | profile 与路线布局访问器未统一 | S08/S12/S13 | [x] 已产生，待回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
 
 ## 附录 A：按文件迁移细节
