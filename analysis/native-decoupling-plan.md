@@ -203,8 +203,13 @@ flowchart TD
     Main --> Init["config + profile + addresses"]
     Init --> Stage["W1 / W2 / W3 stage controller"]
     Stage --> Request["write_request"]
-    Request --> Heap["heap page + fake objects"]
-    Heap --> Race["waiter + owner + consumer PI race"]
+    Request --> Heap["HeapContext<br/>KS + mm sets + SKB + leak child/fd"]
+    Heap --> Current["PayloadPage: current<br/>layout + ReclaimPair"]
+    Current --> Race["waiter + owner + consumer PI race"]
+    Current -. "W2 stash" .-> Prebuilt["PayloadPage: prebuilt"]
+    Prebuilt -. "W2b activate" .-> Current
+    Current -. "W1 quarantine" .-> Quarantine["PayloadPage: quarantine"]
+    Quarantine -. "repair 后 release" .-> Cleanup
     Race --> Choice{"selected route"}
 
     Choice --> MC1["5.x Multicast"]
@@ -240,7 +245,7 @@ flowchart TD
     classDef pselect fill:#eee8f7,stroke:#70539a,color:#2c1e40;
     classDef failure fill:#f8e3e3,stroke:#a24a4a,color:#421b1b;
 
-    class Start,Main,Init,Stage,Request,Heap,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End common;
+    class Start,Main,Init,Stage,Request,Heap,Current,Prebuilt,Quarantine,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End common;
     class MC1,MC2,MC3 multicast;
     class TCP1,TCP2,TCP3 tcp;
     class PS1,PS2,PS3 pselect;
@@ -451,7 +456,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] 后续非阻塞补证：外部协作者完成 Select Stack 真机测试并回传完整 Native 日志。
 - [ ] 收到各路线结果后分别保存和分析证据；任一路线失败则重新打开 S08。
 
-### [ ] S09：Heap 与 PayloadPage 所有权
+### [x] S09：Heap 与 PayloadPage 所有权
 
 - [x] 引入 `HeapContext`、`PayloadPage`、`ReclaimPair` 和显式状态转换。
 - [x] 统一 child、memfd、KernelSnitch mapping、SKB、current/prebuilt/quarantine 所有权。
@@ -459,8 +464,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] `PayloadPage` 整体移动、拒绝部分/重复所有权和销毁关闭 fd 的主机测试通过。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S09 门禁证据。
+- [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线；完整执行至 `KernelSU ready`）。
+- [x] 真机确认后导出完整日志，完成分析并保存 S09 门禁证据。
 
 ### [ ] S10：共享 PI 竞态
 
