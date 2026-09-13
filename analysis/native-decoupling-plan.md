@@ -208,7 +208,7 @@ flowchart TD
     Heap --> Accept{"W1 page preserves<br/>selinux initialized?"}
     Accept -->|no: retry within profile limit| Heap
     Accept -->|yes| Current["PayloadPage: current<br/>layout + ReclaimPair"]
-    Current --> Race["waiter + owner + consumer PI race"]
+    Current --> Race["PiRaceContext<br/>reset → start → run → stop → destroy<br/>waiter + owner + consumer"]
     Current -. "W2 stash" .-> Prebuilt["PayloadPage: prebuilt"]
     Prebuilt -. "W2b activate" .-> Current
     Current -. "W1 quarantine" .-> Quarantine["PayloadPage: quarantine"]
@@ -498,7 +498,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] U01-Z：全量测试和 Gradle 构建、提交并暂停最终 catch-up 真机回归。
 - [ ] U01-Z：用户真机确认后保存日志证据；确认 `git rev-list HEAD..remote/main` 为 0。
 
-### [ ] S10：共享 PI 竞态
+### [x] S10：共享 PI 竞态
 
 - [x] 引入 `PiRaceContext`，迁移 futex、原子量、fast-repair、CPU 和线程句柄。
 - [x] 拆分 reset、start、run、stop、destroy。
@@ -506,8 +506,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 以 consumer→owner→waiter 的可收敛创建顺序处理部分线程创建失败，并通过显式 stop/join 清理。
 - [x] `PiRaceContext` reset/CPU/线程所有权主机测试和完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S10 门禁证据。
+- [x] 用户真机兼容性确认（A301SO、Direct、5.15 Multicast；6 个竞态生命周期全部完成 join 并执行至 `KernelSU ready`）。
+- [x] 真机确认后导出成功及三次 W1 随机失败日志，完成清理分析并保存 S10 门禁证据。
 
 ### [ ] S11：TCP Zerocopy 路线
 
