@@ -491,6 +491,19 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
 
     private fun prepareKsud(workDir: File, onLog: (String) -> Unit): File? {
+        // Prefer the ksud bundled in this APK (e.g. an XRing-tuned KernelSU build);
+        // copying from an installed manager app can pick a KSU build whose syscall
+        // hooks break adbd exec on non-official kernels.
+        runCatching {
+            val appInfo = appContext.packageManager.getApplicationInfo(appContext.packageName, 0)
+            val bundled = File(appInfo.nativeLibraryDir, "libksud.so")
+            if (bundled.isFile) {
+                val out = File(workDir, "ksud")
+                bundled.inputStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+                runCatching { Os.chmod(out.absolutePath, 448) }
+                return out
+            }
+        }.onFailure { onLog("bundled ksud copy failed: ${it.message}") }
         val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager")
         var installed = false
         for (packageName in packages) {
