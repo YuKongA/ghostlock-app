@@ -5,7 +5,7 @@
 ## 文档索引
 
 - **[Native 解耦计划书](native-decoupling-plan.md)：混合式 C 目标架构、迁移映射、分阶段实施和验收标准。**
-
+<br>
 
 - [Native 函数说明](native-functions.md)：逐文件列出职责、状态、调用与清理语义。
 - [三条路线与数据流](routes.md)：Multicast、TCP Zerocopy、pselect/select 的调用和时序。
