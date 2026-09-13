@@ -409,7 +409,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 首次真机失败日志已保存并分析：0/1 核心下 KernelSnitch 与路线均报告成功，但 W1 验证失败；优先以 S04 成功使用的 3/4 核心冷机复测。
 - [x] Debug 构建为 Direct/Shizuku 每次攻击在 `Download/GhostLock/` 创建独立时间戳日志并逐行落盘；Release 行为不变。
 
-### [ ] S06：地址状态与 profile view
+### [x] S06：地址状态与 profile view
 
 - [x] 引入 `ResolvedAddresses` 和只读 `TargetProfile` view。
 - [x] 将简单地址初始化和访问器同步接入 `main.c`。
@@ -418,8 +418,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] QCOM/MTK/XRing、显式 load 和 6.12 fallback 固定向量与旧地址公式一致。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S06 门禁证据。
+- [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线，完整执行至 `KernelSU ready`）。
+- [x] 真机确认后导出完整日志，完成分析并保存 S06 门禁证据。
 
 ### [ ] S07：Payload/WriteRequest 构建器
 

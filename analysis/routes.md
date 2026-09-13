@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S05。
+此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S06。
 
 ```mermaid
 flowchart TD
@@ -15,8 +15,9 @@ flowchart TD
     Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
     Main --> Decode["load_offsets_json()<br/>strict single-profile decode"]
     Decode --> Validate["release + range + route validation"]
-    Validate --> Profile["resolved kernel_offsets<br/>execution snapshot"]
-    Profile --> Init["publish_active_offsets() / init_p0_profile()"]
+    Validate --> Profile["TargetProfile read-only view<br/>resolved kernel_offsets + execution"]
+    Profile --> Addresses["ResolvedAddresses<br/>SoC + physical load + init_cred"]
+    Addresses --> Init["compatibility mirrors<br/>publish_active_offsets() / init_p0_profile()"]
     Init --> W1["W1: retry_write_stage()"]
     W1 --> Write["do_one_write()"]
     Write --> Page["prepare_good_kernel_page()"]
@@ -25,6 +26,7 @@ flowchart TD
     Write --> Race["run_main_route_threads()"]
     Snapshot --> Race
     Profile --> Race
+    Addresses --> Page
     Race -. pthread .-> Waiter["waiter_thread()"]
     Race -. pthread .-> Owner["owner_thread()"]
     Race -. pthread .-> Consumer["consumer_thread()"]
@@ -44,7 +46,7 @@ flowchart TD
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`，当前攻击链已改用 init/find/scan/result/destroy 生命周期，旧入口只保留为待 S15 删除的兼容包装。旧 CPU 和 profile 全局量仍作为兼容镜像，待 S08 收敛。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`，当前攻击链已改用 init/find/scan/result/destroy 生命周期，旧入口只保留为待 S15 删除的兼容包装。S06 增加只读 `TargetProfile` view，并以 `ResolvedAddresses` 统一保存 SoC 分支、物理加载地址和 `init_cred` 地址；地址访问器以该快照为权威来源，旧 `active_offsets` 与地址全局量暂作兼容镜像，待 S08 收敛。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 
@@ -153,9 +155,12 @@ consumer仍停在内核时不关闭相关fd，是为避免回收它仍在引用�
 
 ```mermaid
 flowchart LR
-    O["active_offsets"] --> A["init_p0_profile() / data_addr()"]
-    A --> Targets["stage target addresses"]
-    O --> KS["setup_kernelsnitch()"]
+    P["TargetProfile read-only view"] --> A["resolve_address_space()"]
+    A --> O["ResolvedAddresses<br/>authoritative snapshot"]
+    O --> C["compatibility mirrors<br/>active_offsets / legacy addresses"]
+    O --> D["init_p0_profile() / data_addr()"]
+    D --> Targets["stage target addresses"]
+    P --> KS["setup_kernelsnitch()"]
     KS --> Coll["futex hash collisions"]
     Coll --> MM["mm_struct candidate"]
     MM --> Page["prepare_kernel_page()"]
