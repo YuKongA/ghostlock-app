@@ -387,15 +387,15 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 示例中的 `0` 是 schema 占位，不是运行默认值。转换脚本必须从当前 C 常量和字面量填入实际兼容值；缺字段时 Kotlin 使用同一份 schema defaults，Native 收到的 resolved profile 不允许再含未解析缺省值。所有时间统一使用带单位后缀的字段名。
 
-### [ ] S04：Futex Hash 上下文
+### [x] S04：Futex Hash 上下文
 
 - [x] 引入 `FutexHashContext`，显式传递表大小。
 - [x] 保持 Jenkins hash 结果和兼容入口不变。
 - [x] 固定 key/mm/table-size 输入向量对比新旧 hash 结果（A301SO 真机执行四组向量，显式 context、旧截断函数和旧入口结果逐位一致）。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S04 门禁证据。
+- [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线）。
+- [x] 真机确认后导出完整日志，完成分析并保存 S04 门禁证据。
 
 ### [ ] S05：KernelSnitch 上下文
 
