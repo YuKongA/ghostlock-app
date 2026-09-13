@@ -489,7 +489,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/`STRUCT_OFFSETS_6_1` ABI。
 - [x] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
 - [x] U01-C：JSON/schema、索引唯一性和同族 ABI 检查、完整 Gradle `assembleDebug` 构建通过；提交并暂停兼容门禁。
-- [ ] U01-C：用户使用已有设备完成兼容门禁并保存日志；Y700/REDMI K80 对应设备门禁继续等待外部协作者。
+- [x] U01-C：用户确认本步骤无需已有设备兼容复测；Y700/REDMI K80 对应设备门禁继续等待外部协作者，不扩大已验证范围。
 - [ ] S11 回补：TCP 上限、可恢复失败及清理状态采用 profile + `RouteStatus`，不移植硬编码 128 次。
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
 - [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
