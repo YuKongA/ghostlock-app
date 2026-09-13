@@ -517,24 +517,28 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] TCP 不再通过 S10 兼容宏访问 PI consumer；尚未迁移的 Select/Multicast 临时别名改用 `legacy_` 前缀，避免字段宏污染。
 - [x] TCP 尝试次数、arm sequence 和 post-receive hold 继续读取 `TargetProfile.execution`；失败记录 step/errno，只有 userspace clean 与 kernel disarmed 同时成立才标记 `ROUTE_FALLBACK_SAFE`。
 - [x] TCP context 固定主机测试、既有 5 组主机回归和完整 Gradle `assembleDebug` 构建通过；提交并暂停。
-- [ ] 通过 TCP 真机门禁；S14 以前仅报告 fallback-safe 状态，不在 S11 自动切换 Select。
+- [ ] 通过 TCP 真机门禁；当前无可用 TCP 设备，按用户决定暂缓至后续协作者测试；S14 以前仅报告 fallback-safe 状态，不自动切换 Select。
 - [ ] 真机确认后导出 TCP 完整日志，完成分析并保存 S11 门禁证据。
 
 ### [ ] S12：Select Stack 路线
 
-- [ ] 引入 `SelectStackRouteContext`。
-- [ ] 迁移 fd_set、stdio backup、waiter layout、执行和 dirty cleanup。
-- [ ] 回补 S07/S08 登记的 select-stack TODO。
-- [ ] 构建、提交、暂停并通过 compact/tree 两类真机门禁。
+- [x] 引入 `SelectStackRouteContext`，显式接收 `PiRaceContext`、request、profile execution 与 waiter layout。
+- [x] 迁移三组工作/所有权 fd_set、pipe/timerfd、执行结果和 `RouteStatus`；stdio backup 作为进程日志生命周期的显式借用句柄，S14/S15 再迁移其最终所有权。
+- [x] 拆分 prepare、execute、disarm、destroy；consumer 未退出时返回 dirty failure 并保留 fd，clean 时关闭 route 安装的描述符。
+- [x] 回补 S07/S08 登记的 select layout/context/dirty cleanup TODO；timeout、delay 与 consumer 次数继续由 profile 提供。
+- [ ] U01 compact 外层多时序重试：单次 route 已具备 context，但重试需要同步重建 Heap page 与 PI race，登记到 S14 `ExploitSession`，不得在 S12 偷用共享全局重建。
+- [x] Select context 主机测试和完整 Gradle `assembleDebug` 构建通过；与 S13 合并提交并暂停。
+- [ ] compact/tree 两类真机门禁；按用户决定与 S13 完成后统一测试。
 - [ ] 真机确认后分别导出 compact/tree 完整日志，完成分析并保存 S12 门禁证据。
 
 ### [ ] S13：Multicast Waiter 路线
 
-- [ ] 引入 `MulticastWaiterRouteContext`。
-- [ ] 分离 resident/one-shot 共享 stamp、执行、ghost disarm 和清理。
-- [ ] 回补 W1/W2 repair、quarantine 和 resident 生命周期 TODO。
-- [ ] 保持 W1/W2 修复顺序及长期 writer 行为。
-- [ ] 构建、提交、暂停并通过 multicast 真机门禁。
+- [x] 引入 `MulticastWaiterRouteContext`，迁移 futex、原子量、worker、socket、地址、调度策略、CPU、layout 和状态。
+- [x] resident/one-shot 共用 context stamp 编码；分离 resident prepare/write、ghost disarm 和 destroy。
+- [x] one-shot 显式使用 PI race context，不再使用 S10 临时兼容宏；`fops.c` 中该组宏已全部删除。
+- [x] 保持 W1/W2 repair、quarantine 调用顺序及长期 writer 行为；resident stop 中 Heap 回收兼容调用登记为 S14 session handoff TODO。
+- [x] Select/Multicast context 主机测试、既有回归和完整 Gradle `assembleDebug` 构建通过；合并提交并暂停。
+- [ ] 通过 multicast 真机门禁；按用户决定在 S12/S13 均完成后统一执行。
 - [ ] 真机确认后导出 multicast 完整日志，完成分析并保存 S13 门禁证据。
 
 ### [ ] S14：统一路线接口与运行时回退
@@ -572,7 +576,9 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
 | U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 已产生，待回补 |
 | U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [x] 已产生，待实现 |
-| S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
+| S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] 路线内状态已回补，跨 owner 待完成 |
+| S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [x] route 单次 context 已完成，session 重试待回补 |
+| S13 | resident stop 暂时继续调用 Heap reclaim/prepare cleanup | 为保持已验证 W1/W2 停止顺序，尚无 session handoff | S14 | [x] route context 已完成，Heap handoff 待回补 |
 
 ## 附录 A：按文件迁移细节
 

