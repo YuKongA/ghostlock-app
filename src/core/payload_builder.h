@@ -42,18 +42,20 @@ PayloadWriteLayout payload_write_layout(
     uintptr_t default_fops, uintptr_t credential_fops,
     uintptr_t init_cred_alias);
 
-/* Encode only the request-dependent compact waiter words. The remaining
- * common fake task/lock fields are built by the shared payload builder. */
-void build_tcp_zerocopy_payload(
+/* Encode the route-neutral compact waiter write arm. Value writes always use
+ * {pc=value,right=0,left=target}; leaf writes use {pc=target-8,0,0}. */
+void build_compact_waiter_payload(
     unsigned char *waiter, const WriteRequest *request,
     const PayloadWriteLayout *layout);
-void build_select_stack_payload(
-    unsigned char *waiter, const PayloadWriteLayout *layout);
+int payload_write_layout_matches_request(
+    const WriteRequest *request, const PayloadWriteLayout *layout);
+int payload_write_layout_accepts_page(
+    const WriteRequest *request, const PayloadWriteLayout *layout);
 void build_multicast_waiter_payload(
     unsigned char *buffer, size_t waiter_offset, size_t task_offset,
     size_t lock_offset, uintptr_t fake_task, uintptr_t fake_lock);
 
-/* Fixed-vector comparison against the legacy scalar formulas used before S07. */
-int payload_builder_equivalence_test(void);
+/* Fixed request/layout vectors, including the upstream unified compact arm. */
+int payload_builder_fixed_vector_test(void);
 
 #endif

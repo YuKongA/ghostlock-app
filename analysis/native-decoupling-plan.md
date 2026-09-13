@@ -478,9 +478,9 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-A：为现有每次攻击独立日志加入 `boot_ms` 和阶段耐久同步；Native 文件入口与 Shizuku 管道入口均在现有 `TIMER` 边界落盘，未进入竞态关键窗口。
 - [x] U01-A：range-end/溢出和 Heap 回归主机测试、完整 Gradle `assembleDebug` 构建通过；提交并暂停真机门禁。
 - [x] U01-A：用户真机确认后保存日志、分析证据并更新核心 UML；A301SO/5.15 Multicast 完整执行至 `KernelSU ready`。
-- [ ] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
-- [ ] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
-- [ ] U01-B：固定测试、完整 Gradle 构建、提交并暂停真机门禁。
+- [x] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
+- [x] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
+- [x] U01-B：leaf/value/credential、arm mismatch、W1 页面验收固定测试及既有 Heap/KernelSnitch 回归通过；完整 Gradle `assembleDebug` 构建、提交并暂停真机门禁。
 - [ ] U01-B：用户真机确认后保存日志、分析证据并更新核心 UML。
 - [ ] U01-C：将 Lenovo Y700 `dfb0e84` 从 C offsets 转换为独立完整 6.12 JSON profile，并核验结构 ABI。
 - [ ] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/结构 ABI。

