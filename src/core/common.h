@@ -162,6 +162,8 @@ void init_cpu_config(void);
 void disable_rseq_for_thread(void);
 void init_p0_profile(void);
 extern uint64_t p0_kernel_phys_load;
+/* Direct map end, from a rooted run's iomem dump or the target.h default. */
+extern uint64_t g_direct_map_end;
 extern uintptr_t g_init_cred_image;
 struct kernel_offsets;
 extern const struct kernel_offsets *active_offsets;

