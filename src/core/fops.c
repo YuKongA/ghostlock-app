@@ -216,6 +216,7 @@ void kernel5_resident_stop(void) {
 
 RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   MulticastWaiterRouteContext context;
+  int stamp_result = -1;
   multicast_waiter_route_context_init(
       &context, &g_pi_race_context, request, execution_settings(),
       target_profile_multicast_waiter_layout(&g_target_profile), 0);
@@ -234,19 +235,21 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   atomic_store(&context.race->consumer_stop,0);
   atomic_store(&context.race->route_delay_usec,0);
   errno = 0;
-  int ret=multicast_waiter_stamp(&context,0,0,context.lock);
+  stamp_result=multicast_waiter_stamp(&context,0,0,context.lock);
   route_last_step = 61; route_last_errno = errno;
   atomic_store(&context.race->consumer_go,1);
   for (int spin=0; spin<100000000 &&
        atomic_load(&context.race->consumer_calls)==0; spin++)
     __asm__ volatile("yield" ::: "memory");
-  if (ret==0 || atomic_load(&context.race->consumer_success)>0) {
+out:
+  /* consumer_calls is incremented before sched_setattr/futex completes.
+   * Drain first so consumer_success is a stable completion result. */
+  multicast_waiter_disarm(&context);
+  if (stamp_result==0 || atomic_load(&context.race->consumer_success)>0) {
     route_last_step=0; route_last_errno=0; context.status.code=ROUTE_OK;
   }
   context.status.step=route_last_step;
   context.status.error_number=route_last_errno;
-out:
-  multicast_waiter_disarm(&context);
   multicast_waiter_destroy(&context);
   pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
           context.status.code,context.status.userspace_clean,
