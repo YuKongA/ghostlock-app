@@ -6,6 +6,7 @@
  */
 
 #include "common.h"
+#include "route_controller.h"
 #include "profile.h"
 #include <ctype.h>
 #include <sys/ioctl.h>
@@ -313,8 +314,18 @@ void *waiter_thread(void *arg) {
   atomic_store(&race->waiter_waiting, 1);
   futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
            &race->target_futex, 0);
-  if (kernel5_route_selected()) {
-    do_kernel5_fake_lock_route(request);
+  RouteKind selected = kernel5_route_selected()
+                           ? ROUTE_KIND_MULTICAST_WAITER
+                           : (tcp_route_selected()
+                                  ? ROUTE_KIND_TCP_ZEROCOPY
+                                  : ROUTE_KIND_SELECT_STACK);
+  RouteController controller;
+  route_controller_init(&controller, race, &g_target_profile, selected);
+  race->route_status = route_controller_execute(&controller, request);
+  if (controller.fallback_used) {
+    pr_warning("TCP route cleanly failed; used Select Stack fallback\n");
+  }
+  if (selected == ROUTE_KIND_MULTICAST_WAITER) {
     /* remove_waiter() left this thread's pi_blocked_on pointing at the
      * reclaimed stack waiter. Force one final slow-path removal while the
      * stack frame is still alive, matching the 5.x multicast primitive's
@@ -325,10 +336,6 @@ void *waiter_thread(void *arg) {
     errno = 0;
     long disarm = futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
     pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
-  } else if (tcp_route_selected()) {
-    do_tcp_fake_lock_route(request);
-  } else {
-    do_pselect_fake_lock_route(request);
   }
   atomic_store(&race->route_done, 1);
   futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
@@ -481,11 +488,15 @@ int pi_race_run(PiRaceContext *race) {
           rq, errno);
   while (!atomic_load(&race->route_done))
     usleep(execution_settings()->race_state_poll_interval_us);
-  pr_info("[route] route_done step=%d errno=%d calls=%d success=%d\n",
-          route_last_step, route_last_errno, atomic_load(&race->consumer_calls),
+  RouteStatus status = race->route_status;
+  pr_info("[route] route_done status=%d clean=%d/%d step=%d errno=%d "
+          "calls=%d success=%d\n", status.code, status.userspace_clean,
+          status.kernel_disarmed, status.step, status.error_number,
+          atomic_load(&race->consumer_calls),
           atomic_load(&race->consumer_success));
-  return atomic_load(&race->consumer_calls) > 0 &&
-         atomic_load(&race->consumer_success) > 0 && route_last_step == 0;
+  return status.code == ROUTE_OK &&
+         atomic_load(&race->consumer_calls) > 0 &&
+         atomic_load(&race->consumer_success) > 0;
 }
 
 void pi_race_stop(PiRaceContext *race) {

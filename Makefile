@@ -19,6 +19,7 @@ SRCS := \
   src/core/address_space.c \
   src/core/heap_context.c \
   src/core/pi_race.c \
+  src/core/route_controller.c \
   src/core/tcp_zerocopy_route.c \
   src/core/select_stack_route.c \
   src/core/multicast_waiter_route.c \

@@ -2,6 +2,7 @@
 #define PI_RACE_H
 
 #include "payload_builder.h"
+#include "route_status.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -34,6 +35,7 @@ typedef struct PiRaceContext {
   int owner_started_thread;
   int consumer_started;
   const WriteRequest *request;
+  RouteStatus route_status;
 } PiRaceContext;
 
 extern PiRaceContext g_pi_race_context;

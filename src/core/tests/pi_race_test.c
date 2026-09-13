@@ -18,6 +18,7 @@ int main(void) {
   assert(race.waiter_started == 0);
   assert(race.owner_started_thread == 0);
   assert(race.consumer_started == 0);
+  assert(race.route_status.code == ROUTE_RETRYABLE);
   puts("pi_race_test: ok");
   return 0;
 }

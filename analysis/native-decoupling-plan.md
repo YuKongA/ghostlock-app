@@ -539,15 +539,18 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 保持 W1/W2 repair、quarantine 调用顺序及长期 writer 行为；resident stop 中 Heap 回收兼容调用登记为 S14 session handoff TODO。
 - [x] Select/Multicast context 主机测试、既有回归和完整 Gradle `assembleDebug` 构建通过；合并提交并暂停。
 - [ ] 通过 multicast 真机门禁；按用户决定在 S12/S13 均完成后统一执行。
+- [x] 首轮联合真机测试稳定安全失败于 `PI route did not produce a verified write`；未出现 dirty cleanup，按用户决定进入 S14 PI 控制重构后复测。
 - [ ] 真机确认后导出 multicast 完整日志，完成分析并保存 S13 门禁证据。
 
 ### [ ] S14：统一路线接口与运行时回退
 
-- [ ] 定义统一 supports、prepare、execute、disarm、destroy 接口。
-- [ ] `main.c` 只负责路线选择和阶段编排。
-- [ ] 保持现有路线优先级、错误语义和回退顺序。
-- [ ] 仅在用户态清理完成且内核状态 disarm 后允许切换路线。
-- [ ] 构建、提交、暂停并验证三条路线及 TCP→Select 回退。
+- [x] 定义 `RouteController`、统一 capability/supports 检查和 `RouteStatus` 返回；各路线继续由其 context 执行 prepare/execute/disarm/destroy。
+- [x] `waiter_thread` 只选择路线并调用 controller；路线结果直接写入 `PiRaceContext.route_status`，不再由 `pi_race_run` 通过 `route_last_*` 猜测。
+- [x] 保持 Multicast→TCP→Select 的既有配置优先级；TCP 失败后的 Select 仅作为显式 clean fallback。
+- [x] 仅当 `ROUTE_FALLBACK_SAFE && userspace_clean && kernel_disarmed` 时允许 TCP→Select；dirty failure、retryable 和 unsupported 均不切换。
+- [x] TCP disarm 只停止 TCP punch/trigger，不再提前终止共享 PI consumer；PI consumer 最终停止仍由 `pi_race_stop` 唯一负责。
+- [x] 增加 clean fallback/dirty refusal 固定测试，完整主机回归和 Gradle `assembleDebug` 构建通过；提交并暂停复测。
+- [ ] 真机验证 Multicast，并在有设备时验证 TCP、Select 与 TCP→Select 回退。
 - [ ] 真机确认后分别导出三路线及 TCP→Select 回退日志，完成分析并保存 S14 门禁证据。
 
 ### [ ] S15：兼容层、遗留全局和文档收尾

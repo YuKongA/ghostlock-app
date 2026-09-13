@@ -22,4 +22,5 @@ void pi_race_reset(
   atomic_init(&context->fast_repair, 0);
   context->main_cpu = main_cpu;
   context->consumer_cpu = consumer_cpu;
+  context->route_status = (RouteStatus){.code = ROUTE_RETRYABLE};
 }

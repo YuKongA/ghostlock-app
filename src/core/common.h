@@ -168,9 +168,9 @@ void open_selected_fds(
 void reserve_standard_io(void);
 void prepare_pselect_fdsets(
     fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request);
-void do_pselect_fake_lock_route(const WriteRequest *request);
-void do_tcp_fake_lock_route(const WriteRequest *request);
-void do_kernel5_fake_lock_route(const WriteRequest *request);
+RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
+RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
+RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
 int kernel5_resident_start(void);
 int kernel5_resident_write(uintptr_t target, uintptr_t value);
 void kernel5_resident_stop(void);
