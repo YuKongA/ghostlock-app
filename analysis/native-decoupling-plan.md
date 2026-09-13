@@ -397,15 +397,15 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线）。
 - [x] 真机确认后导出完整日志，完成分析并保存 S04 门禁证据。
 
-### [ ] S05：KernelSnitch 上下文
+### [x] S05：KernelSnitch 上下文
 
 - [x] 引入 `KernelSnitchContext`，收拢 hash、线程、扫描和结果状态。
 - [x] 生命周期拆为 init、scan、result、destroy。
 - [x] 线程只访问传入 context；旧入口保留包装。
 - [x] 完整 Gradle `assembleDebug` 构建通过；A301SO 固定向量确认 context mask 与旧入口一致。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
-- [ ] 真机确认后导出完整日志，完成分析并保存 S05 门禁证据。
+- [x] 用户真机兼容性确认（竞态允许不同 CPU 组合存在随机性；至少一次完整执行至 `KernelSU ready`）。
+- [x] 真机确认后导出完整日志，完成分析并保存 S05 门禁证据。
 - [x] 首次真机失败日志已保存并分析：0/1 核心下 KernelSnitch 与路线均报告成功，但 W1 验证失败；优先以 S04 成功使用的 3/4 核心冷机复测。
 - [x] Debug 构建为 Direct/Shizuku 每次攻击在 `Download/GhostLock/` 创建独立时间戳日志并逐行落盘；Release 行为不变。
 

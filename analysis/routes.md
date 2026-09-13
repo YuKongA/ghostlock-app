@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S04。
+此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S05。
 
 ```mermaid
 flowchart TD
@@ -20,7 +20,7 @@ flowchart TD
     Init --> W1["W1: retry_write_stage()"]
     W1 --> Write["do_one_write()"]
     Write --> Page["prepare_good_kernel_page()"]
-    Page --> Snitch["KernelSnitch scan<br/>FutexHash boundary"]
+    Page --> Snitch["KernelSnitchContext<br/>init → find → scan → result → destroy<br/>owns FutexHashContext"]
     Snitch --> Payload["prepare_skb_payload()"]
     Write --> Race["run_main_route_threads()"]
     Snapshot --> Race
@@ -44,7 +44,7 @@ flowchart TD
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 在共享 KernelSnitch 边界加入显式 `FutexHashContext` API，并以固定向量验证 hash 等价；当前攻击主链仍使用旧兼容入口，context 所有权将在 S05 迁入 KernelSnitch。旧 CPU 和 profile 全局量仍作为兼容镜像，待 S08 收敛。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`，当前攻击链已改用 init/find/scan/result/destroy 生命周期，旧入口只保留为待 S15 删除的兼容包装。旧 CPU 和 profile 全局量仍作为兼容镜像，待 S08 收敛。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 
