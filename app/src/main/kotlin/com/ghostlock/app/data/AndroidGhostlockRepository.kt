@@ -235,13 +235,40 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
-        runExploitBinary(pair, "libghostlock.so", onLog)
+        withDebugAttackLog("direct", onLog) { archivedLog ->
+            runExploitBinary(pair, "libghostlock.so", archivedLog)
+        }
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
-        val profileJson = ProfileConfiguration.resolve(
-            appContext, offsetsFile, System.getProperty("os.version", "").orEmpty(), pair,
-        )
-        return shizukuRunner.run(pair, safeModeEnabled, profileJson, onLog)
+        return withDebugAttackLog("shizuku", onLog) { archivedLog ->
+            val profileJson = ProfileConfiguration.resolve(
+                appContext, offsetsFile, System.getProperty("os.version", "").orEmpty(), pair,
+            )
+            shizukuRunner.run(pair, safeModeEnabled, profileJson, archivedLog)
+        }
+    }
+
+    private suspend fun withDebugAttackLog(
+        entry: String,
+        onLog: (String) -> Unit,
+        run: suspend ((String) -> Unit) -> Int,
+    ): Int {
+        if (!BuildConfig.DEBUG) return run(onLog)
+        val archive = DebugAttackLog.open(appContext, entry)
+        if (archive == null) {
+            onLog("warning: cannot create Download/GhostLock debug log")
+            return run(onLog)
+        }
+        val archivedLog: (String) -> Unit = { line ->
+            runCatching { archive.append(line) }
+            onLog(line)
+        }
+        return try {
+            archivedLog("debug log: Download/GhostLock/${archive.displayName}")
+            run(archivedLog)
+        } finally {
+            runCatching { archive.close() }
+        }
     }
 
     override fun requestShizukuPermission() = shizukuRunner.requestPermission()
