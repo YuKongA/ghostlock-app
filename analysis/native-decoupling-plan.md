@@ -203,7 +203,7 @@ flowchart TD
     Main --> Init["config + profile + addresses"]
     Init --> Stage["W1 / W2 / W3 stage controller"]
     Stage --> Request["write_request"]
-    Request --> Heap["HeapContext<br/>KS + mm sets + SKB + leak child/fd"]
+    Request --> Heap["HeapContext<br/>bounded KS scan + mm sets + SKB + leak child/fd"]
     Heap --> Current["PayloadPage: current<br/>layout + ReclaimPair"]
     Current --> Race["waiter + owner + consumer PI race"]
     Current -. "W2 stash" .-> Prebuilt["PayloadPage: prebuilt"]
@@ -238,6 +238,7 @@ flowchart TD
     Advance -->|yes| Handoff["root child / KernelSU handoff"]
     Handoff --> Cleanup["route disarm + destroy<br/>session resource cleanup"]
     Cleanup --> End["native exit: logs + exit code to Kotlin"]
+    Stage -. "boot_ms + durable TIMER boundaries" .-> Log["per-run debug log"]
 
     classDef common fill:#e8eef8,stroke:#506784,color:#17202a;
     classDef multicast fill:#f7eadf,stroke:#a86628,color:#3b2412;
@@ -245,7 +246,7 @@ flowchart TD
     classDef pselect fill:#eee8f7,stroke:#70539a,color:#2c1e40;
     classDef failure fill:#f8e3e3,stroke:#a24a4a,color:#421b1b;
 
-    class Start,Main,Init,Stage,Request,Heap,Current,Prebuilt,Quarantine,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End common;
+    class Start,Main,Init,Stage,Request,Heap,Current,Prebuilt,Quarantine,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End,Log common;
     class MC1,MC2,MC3 multicast;
     class TCP1,TCP2,TCP3 tcp;
     class PS1,PS2,PS3 pselect;
@@ -476,7 +477,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-A：移植 KernelSnitch range-end 截断，添加最后 coarse/slab 边界测试。
 - [x] U01-A：为现有每次攻击独立日志加入 `boot_ms` 和阶段耐久同步；Native 文件入口与 Shizuku 管道入口均在现有 `TIMER` 边界落盘，未进入竞态关键窗口。
 - [x] U01-A：range-end/溢出和 Heap 回归主机测试、完整 Gradle `assembleDebug` 构建通过；提交并暂停真机门禁。
-- [ ] U01-A：用户真机确认后保存日志、分析证据并更新核心 UML。
+- [x] U01-A：用户真机确认后保存日志、分析证据并更新核心 UML；A301SO/5.15 Multicast 完整执行至 `KernelSU ready`。
 - [ ] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
 - [ ] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
 - [ ] U01-B：固定测试、完整 Gradle 构建、提交并暂停真机门禁。
