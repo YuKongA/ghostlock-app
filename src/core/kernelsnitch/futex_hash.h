@@ -243,28 +243,3 @@ futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
     key.private.offset = addr & 0xfff;
     return futex_hash_context_key(context, &key);
 }
-
-/* Legacy compatibility state. New code must own a FutexHashContext and use
- * futex_hash_context_bucket(); KernelSnitch migration is intentionally S05. */
-// TODO(decoupling:S15-compat): Future: remove futex_hashsize/futex_init/futex_hash.
-// Input: no active KernelSnitch callers; output: explicit context API only.
-// Blocked by: compatibility audit; completion in S15 removes this comment.
-unsigned long futex_hashsize = -1;
-/* Compatibility entry: retain the original online-CPU estimate and mutation
- * until all KernelSnitch callers move to their owned context in S05. */
-void futex_init(void)
-{
-    futex_hashsize = SYSCHK(sysconf(_SC_NPROCESSORS_ONLN) * 256);
-}
-/* Compatibility entry: preserve the original signature, assertion and hash
- * result. New callers use futex_hash_context_bucket() with an explicit size. */
-uint32_t futex_hash(size_t addr, size_t mm)
-{
-    ASSERT_pr((futex_hashsize != (unsigned long)-1),
-              "need to call futex_init() first\n");
-    futex_key_t key;
-    key.private.mm = (void *)mm;
-    key.private.address = addr & ~0xfff;
-    key.private.offset = addr & 0xfff;
-    return __futex_hash(&key, futex_hashsize);
-}

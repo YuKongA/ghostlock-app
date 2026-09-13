@@ -59,12 +59,6 @@ int kernelsnitch_collisions_ready(void) {
   return kernelsnitch_context_has_collisions(ks);
 }
 
-/* Advance collision discovery into address scanning. Input/output: owned
- * snitch context; output is retained in the context result state. */
-void run_kernelsnitch_bruteforce(void) {
-  (void)kernelsnitch_context_scan(ks);
-}
-
 /* Obtain the selected mm_struct candidate. Input: immutable snitch context;
  * output: kernel address or -1. */
 uintptr_t current_kernelsnitch_mm_struct(void) {

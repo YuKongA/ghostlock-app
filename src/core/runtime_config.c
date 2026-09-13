@@ -9,9 +9,8 @@ struct runtime_config g_runtime_config = {
     .root_script_path = "/data/local/tmp/.ghostlock_root.sh",
 };
 
-// TODO(decoupling:S10-pi-race): Future: pass CPU ids through PiRaceContext.
-// Input: immutable RuntimeConfig; output: worker affinity with no global mirror.
-// Blocked by: PI workers still use CORE macros; completion deletes both globals.
+// TODO(post-S15:SESSION-03): Remove CPU mirrors after Heap/KernelSnitch receive
+// RuntimeConfig explicitly. PI and Multicast workers already use context CPUs.
 int g_core_main = 0;
 int g_core_consumer = 1;
 

@@ -351,25 +351,9 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
         ks->thread_cnt,
         ks->collisions);
     pin_to_core(CORE);
-    futex_init();
 
     ks->state = KERNELSNITCH_INIT;
     return ks;
-}
-
-/* Legacy allocation entry retained for source compatibility. New callers own
- * the returned KernelSnitchContext and use the context lifecycle below. */
-// TODO(decoupling:S15-compat): Future: remove legacy KernelSnitch wrappers.
-// Input: zero external wrapper callers; output: context lifecycle API only.
-// Blocked by: final compatibility audit; completion in S15 removes this comment.
-struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz,
-                                                      size_t __mm_slab_order,
-                                                      size_t __thread_cnt,
-                                                      size_t __collision_cnt,
-                                                      size_t __verbose)
-{
-    return kernelsnitch_context_init(__mm_struct_sz, __mm_slab_order,
-                                     __thread_cnt, __collision_cnt, __verbose);
 }
 
 #ifndef KERNELSNITCH_THRESHOLD_MULT
@@ -583,16 +567,6 @@ int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks)
     return ks->state == KERNELSNITCH_COLLISIONS_FOUND;
 }
 
-void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
-{
-    kernelsnitch_context_find_collisions(ks);
-}
-
-size_t kernelsnitch_found_collisions(struct kernelsnitch_shared_state *ks)
-{
-    return (size_t)kernelsnitch_context_has_collisions(ks);
-}
-
 /**
  * Brute-forcing phase, where it tests all mm_struct candidates and matches the hash collisions for this current candidate with the observed user space futex addresses
  * @arg ks: shared KernelSnitch state
@@ -610,11 +584,6 @@ int kernelsnitch_context_scan(KernelSnitchContext *ks)
         __run_mm_leak_pass(ks, 0, 1);
     ks->state = (ks->mm_struct == (size_t)-1) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
     return ks->state == KERNELSNITCH_MM_FOUND ? 0 : -1;
-}
-
-void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
-{
-    (void)kernelsnitch_context_scan(ks);
 }
 
 /**
@@ -642,14 +611,6 @@ void kernelsnitch_context_destroy(KernelSnitchContext *ks)
     ks->futexes = 0;
     if (ks->verbose) pr_info("done\n");
     munmap(ks, sizeof(KernelSnitchContext));
-}
-
-size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
-{
-    ASSERT_pr((ks->state == KERNELSNITCH_MM_FOUND || ks->state == KERNELSNITCH_MM_NOT_FOUND), "wrong state\n");
-    size_t ret = kernelsnitch_context_result(ks);
-    kernelsnitch_context_destroy(ks);
-    return ret;
 }
 
 /**

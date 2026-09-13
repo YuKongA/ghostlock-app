@@ -104,8 +104,8 @@ struct local_sched_attr {
   uint64_t sched_period;
 };
 
-/* TODO(decoupling:S14-session): ExploitSession will own this context and pass it
- * explicitly. These compatibility aliases keep S09 behavior/source churn small. */
+/* TODO(post-S15:SESSION-02): ExploitSession should own HeapContext and remove
+ * these aliases. Retained because the payload macros span main/util/fops. */
 #define page_base (g_heap_context.current.base)
 #define last_mm_struct (g_heap_context.current.last_mm_struct)
 #define fake_lock (g_heap_context.current.fake_lock)
@@ -116,8 +116,6 @@ struct local_sched_attr {
 #define fake_left (g_heap_context.current.fake_left)
 #define fake_fops (g_heap_context.current.fake_fops)
 
-extern int route_last_step;
-extern int route_last_errno;
 #define memfd_leak (g_heap_context.leak_memfd)
 
 int run_exploit(int argc, char **argv);
@@ -146,7 +144,6 @@ int activate_prebuilt_page(void);
 void discard_prebuilt_page(void);
 void setup_kernelsnitch(void);
 int kernelsnitch_collisions_ready(void);
-void run_kernelsnitch_bruteforce(void);
 uintptr_t current_kernelsnitch_mm_struct(void);
 uintptr_t cleanup_kernelsnitch(void);
 void close_ctx_memfds(struct mm_ctx *ctx);
@@ -163,11 +160,7 @@ void fdset_put_word(fd_set *set, int word, uint64_t value);
 uint64_t fdset_get_word(const fd_set *set, int word);
 int tcp_route_selected(void);
 int kernel5_route_selected(void);
-void open_selected_fds(
-    fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);
 void reserve_standard_io(void);
-void prepare_pselect_fdsets(
-    fd_set *in, fd_set *out, fd_set *ex, const WriteRequest *request);
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
 RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);

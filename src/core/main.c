@@ -20,9 +20,9 @@
 
 TargetProfile g_target_profile;
 
-// TODO(decoupling:S14-session): Future: pass RuntimeConfig via ExploitSession.
+// TODO(post-S15:SESSION-01): Pass RuntimeConfig via ExploitSession.
 // Input: const session config; output: paths without process-global aliases.
-// Blocked by: victim/handoff orchestration is centralized in main until S14.
+// Retained because victim/handoff orchestration remains centralized in main.
 #define g_home_dir (g_runtime_config.home_dir)
 #define g_root_script_path (g_runtime_config.root_script_path)
 
@@ -437,7 +437,6 @@ void reset_main_route_state(void) {
       fast_repair ? 5000 : (int)execution_settings()->select_enter_delay_us,
       g_runtime_config.main_cpu, g_runtime_config.consumer_cpu);
   atomic_store(&g_pi_race_context.fast_repair, fast_repair);
-  route_last_step = 0; route_last_errno = 0;
 }
 
 static void pi_race_abort_startup(PiRaceContext *race) {
@@ -521,7 +520,11 @@ int run_main_route_threads(const WriteRequest *request) {
   reset_main_route_state();
   int error = pi_race_start(&g_pi_race_context, request);
   if (error) {
-    route_last_errno = error;
+    g_pi_race_context.route_status = (RouteStatus){
+        .code = ROUTE_DIRTY_FAILURE,
+        .step = 20,
+        .error_number = error,
+    };
     pr_warning("PI race thread creation failed errno=%d\n", error);
     return 0;
   }
