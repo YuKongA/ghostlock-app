@@ -2,492 +2,75 @@
 
 Template JSON: [kernel-6.12.template.json](kernel-6.12.template.json). This file contains every field and has no shared-field dependency.
 
-## Identity and route selection
-
-### `schema_version`
-
-- Template default: `1`
-- Purpose: Defines the `schema_version` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `release`
-
-- Template default: `<exact-uname-r-for-6.12>`
-- Purpose: Defines the `release` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `kernel_major`
-
-- Template default: `6`
-- Purpose: Defines the `kernel_major` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-
-## Task structure offsets
-
-### `task_prio`
-
-- Template default: `148`
-- Purpose: Defines the `task_prio` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_normal_prio`
-
-- Template default: `156`
-- Purpose: Defines the `task_normal_prio` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_sched_task_group`
-
-- Template default: `1056`
-- Purpose: Defines the `task_sched_task_group` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_pi_lock`
-
-- Template default: `2540`
-- Purpose: Defines the `task_pi_lock` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_pi_waiters`
-
-- Template default: `2560`
-- Purpose: Defines the `task_pi_waiters` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_pi_top_task`
-
-- Template default: `2576`
-- Purpose: Defines the `task_pi_top_task` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_pi_blocked_on`
-
-- Template default: `2584`
-- Purpose: Defines the `task_pi_blocked_on` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_pid`
-
-- Template default: `1800`
-- Purpose: Defines the `task_pid` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_tgid`
-
-- Template default: `1804`
-- Purpose: Defines the `task_tgid` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_atomic_flags`
-
-- Template default: `1736`
-- Purpose: Defines the `task_atomic_flags` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_real_cred`
-
-- Template default: `2296`
-- Purpose: Defines the `task_real_cred` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_cred`
-
-- Template default: `2304`
-- Purpose: Defines the `task_cred` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_comm`
-
-- Template default: `2320`
-- Purpose: Defines the `task_comm` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_tasks`
-
-- Template default: `1592`
-- Purpose: Defines the `task_tasks` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `task_seccomp`
-
-- Template default: `2504`
-- Purpose: Defines the `task_seccomp` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-
-## Credential layout
-
-### `cred_copy_size`
-
-- Template default: `136`
-- Purpose: Defines the `cred_copy_size` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `cred_usage_value`
-
-- Template default: `1`
-- Purpose: Defines the `cred_usage_value` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `cred_caps_offset`
-
-- Template default: `48`
-- Purpose: Defines the `cred_caps_offset` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `cred_caps_count`
-
-- Template default: `5`
-- Purpose: Defines the `cred_caps_count` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `cred_caps_value`
-
-- Template default: `-1`
-- Purpose: Defines the `cred_caps_value` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-
-## Waiter, heap, and route geometry
-
-### `kernelsnitch_collisions`
-
-- Template default: `4`
-- Purpose: Defines the `kernelsnitch_collisions` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `pselect_waiter_shift`
-
-- Template default: `0`
-- Purpose: Defines the `pselect_waiter_shift` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-
-## Kernel-relative symbols
-
-### `off_init_task`
-
-- Template default: `0`
-- Purpose: Defines the `off_init_task` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_init_cred`
-
-- Template default: `0`
-- Purpose: Defines the `off_init_cred` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_root_task_group`
-
-- Template default: `0`
-- Purpose: Defines the `off_root_task_group` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_selinux_enforcing`
-
-- Template default: `0`
-- Purpose: Defines the `off_selinux_enforcing` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_selinux_blob_sizes`
-
-- Template default: `0`
-- Purpose: Defines the `off_selinux_blob_sizes` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_security_hook_heads`
-
-- Template default: `0`
-- Purpose: Defines the `off_security_hook_heads` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_slide_nfulnl_logger`
-
-- Template default: `0`
-- Purpose: Defines the `off_slide_nfulnl_logger` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_slide_boot_id`
-
-- Template default: `0`
-- Purpose: Defines the `off_slide_boot_id` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-### `off_slide_loggers_0_1`
-
-- Template default: `0`
-- Purpose: Defines the `off_slide_loggers_0_1` value consumed by the 6.12 route.
-- Impact: An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.
-- Rationale: This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.
-
-
-## `execution` tuning
-
-## Recommended CPUs
-
-### `recommended_cpus.main`
-
-- Default: `0`
-- Purpose: Suggested main race CPU.
-- Impact: Changes scheduling, heat, and race timing; explicit UI selection takes precedence.
-- Rationale: Preserves legacy fallback without topology assumptions.
-
-### `recommended_cpus.consumer`
-
-- Default: `1`
-- Purpose: Suggested consumer CPU.
-- Impact: Same-core placement increases contention; nonexistent cores fail or fall back.
-- Rationale: Keeps legacy separation.
-
-## Heap preparation
-
-### `heap.prepare_max_attempts`
-
-- Default: `4`
-- Purpose: Full heap-preparation retry cap.
-- Impact: More retries may recover transient misses but add time and heat.
-- Rationale: Matches the former four-pass bound.
-
-### `heap.prepare_timeout_ms`
-
-- Default: `240000`
-- Purpose: Overall heap preparation timeout.
-- Impact: Too short misjudges slow devices; too long delays failure feedback.
-- Rationale: Four minutes preserves the old bounded worst case.
-
-### `heap.kernelsnitch_timeout_ms`
-
-- Default: `60000`
-- Purpose: KernelSnitch scan timeout.
-- Impact: Affects scan completeness versus stall time.
-- Rationale: Matches the prior 60-second scan window.
-
-## Shared race timing
-
-### `race.route_wait_ms`
-
-- Default: `1000`
-- Purpose: Shared pre-route wait.
-- Impact: Changes readiness ordering.
-- Rationale: Preserves the conservative one-second window.
-
-### `race.setup_settle_us`
-
-- Default: `50000`
-- Purpose: Post-setup settle delay.
-- Impact: Too short can trigger before setup completes.
-- Rationale: Legacy 50 ms balance.
-
-### `race.state_poll_interval_us`
-
-- Default: `1000`
-- Purpose: Shared state polling interval.
-- Impact: Trades CPU load for reaction latency.
-- Rationale: Preserves prior polling cadence.
-
-## W1/W2/W3 stages
-
-### `stages.w1_attempts`
-
-- Default: `15`
-- Purpose: W1 write-attempt cap.
-- Impact: More attempts add heat and corruption exposure.
-- Rationale: Copied from the original loop bound.
-
-### `stages.w1_settle_us`
-
-- Default: `100000`
-- Purpose: W1 post-attempt settle.
-- Impact: Controls stabilization before verification.
-- Rationale: Preserves 100 ms.
-
-### `stages.w1_scratch_repair_attempts`
-
-- Default: `3`
-- Purpose: W1 scratch-repair cap.
-- Impact: More repairs may recover or compound damage.
-- Rationale: Matches the former three repairs.
-
-### `stages.w2_attempts`
-
-- Default: `15`
-- Purpose: W2 credential-write cap.
-- Impact: Affects elevation probability, time, and risk.
-- Rationale: Matches legacy W2.
-
-### `stages.w2_settle_us`
-
-- Default: `100000`
-- Purpose: W2 settle delay.
-- Impact: Too short may verify before visibility.
-- Rationale: Preserves 100 ms.
-
-### `stages.w3_chain_rounds`
-
-- Default: `3`
-- Purpose: Whole W3-chain rounds.
-- Impact: More rounds increase coverage and exposure.
-- Rationale: Legacy cap is three.
-
-### `stages.w3_attempts`
-
-- Default: `6`
-- Purpose: W3 attempts per round.
-- Impact: Changes bypass opportunity and contention.
-- Rationale: Preserves six attempts.
-
-### `stages.w3_settle_us`
-
-- Default: `50000`
-- Purpose: W3 settle delay.
-- Impact: Controls verification timing and speed.
-- Rationale: Preserves 50 ms.
-
-## TCP zerocopy route
-
-### `routes.tcp_zerocopy.attempts`
-
-- Default: `2000`
-- Purpose: TCP zerocopy probe cap.
-- Impact: Major heat/time contributor; too low reduces hit rate.
-- Rationale: Matches the original cap.
-
-### `routes.tcp_zerocopy.arm_sequence`
-
-- Default: `16`
-- Purpose: Arm-sequence length.
-- Impact: Changes spray/trigger ordering; wrong values miss the window.
-- Rationale: Preserves the validated 16-step sequence.
-
-### `routes.tcp_zerocopy.post_receive_hold_iterations`
-
-- Default: `20000`
-- Purpose: Post-receive hold iterations.
-- Impact: Longer hold widens window but adds heat.
-- Rationale: Copies the former busy-loop constant.
-
-## Select-stack route
-
-### `routes.select_stack.enter_delay_us`
-
-- Default: `50000`
-- Purpose: Delay before the main select trigger after consumer entry.
-- Impact: Directly shifts the select-stack race window.
-- Rationale: Preserves validated 50 ms timing.
-
-### `routes.select_stack.timeout_us`
-
-- Default: `200000`
-- Purpose: Per-select timeout.
-- Impact: Balances premature exit and recovery time.
-- Rationale: Preserves 200 ms.
-
-### `routes.select_stack.consumer_max_calls`
-
-- Default: `1`
-- Purpose: Consumer call cap.
-- Impact: Multiple calls alter the proven layout.
-- Rationale: The stable path is single-shot.
-
-### `routes.select_stack.consumer_burst_calls`
-
-- Default: `1`
-- Purpose: Calls per consumer burst.
-- Impact: Changes scheduling and stack lifetime.
-- Rationale: Preserves one-call bursts.
-
-## Multicast-waiter route
-
-### `routes.multicast_waiter.ready_timeout_ms`
-
-- Default: `10000`
-- Purpose: Waiter-ready timeout.
-- Impact: Balances slow scheduling and cleanup latency.
-- Rationale: Matches legacy 10 seconds.
-
-### `routes.multicast_waiter.post_requeue_settle_us`
-
-- Default: `200000`
-- Purpose: Post-requeue settle.
-- Impact: Affects waiter-chain stabilization; shorter waits may overwrite too early.
-- Rationale: Preserves 200 ms.
-
-### `routes.multicast_waiter.post_adjust_settle_us`
-
-- Default: `100000`
-- Purpose: Post-adjust settle.
-- Impact: Controls state visibility.
-- Rationale: Preserves 100 ms.
-
-## Privilege handoff
-
-### `handoff.pre_dispatch_settle_ms`
-
-- Default: `2000`
-- Purpose: Pre-handoff settle.
-- Impact: Too short may dispatch before privilege/SELinux state settles.
-- Rationale: Preserves two seconds.
-
-### `handoff.module_poll_attempts`
-
-- Default: `30`
-- Purpose: Module-state poll count.
-- Impact: Together with the interval, forms the 3-second total window.
-- Rationale: 30×100 ms preserves three seconds.
-
-### `handoff.module_poll_interval_ms`
-
-- Default: `100`
-- Purpose: Module poll interval.
-- Impact: Trades wakeups for latency.
-- Rationale: Legacy cadence.
-
-### `handoff.enforce_poll_attempts`
-
-- Default: `200`
-- Purpose: Enforcing-state poll count.
-- Impact: Together with the interval, defines the 20-second recovery window.
-- Rationale: 200×100 ms preserves twenty seconds.
-
-### `handoff.enforce_poll_interval_ms`
-
-- Default: `100`
-- Purpose: Enforcing poll interval.
-- Impact: Affects detection latency and wakeups.
-- Rationale: Legacy cadence.
-
-Every change must record device, temperature, CPU pair, success rate, and failing stage.
+<table>
+<thead>
+<tr><th>Parent</th><th>Child</th><th>Default</th><th>Purpose</th><th>Impact</th><th>Rationale</th></tr>
+</thead>
+<tbody>
+<tr><th rowspan="3">Identity and route selection</th><td>&nbsp;&nbsp;↳ <code>schema_version</code></td><td><code>1</code></td><td>Defines the <code>schema_version</code> value consumed by the 6.12 route.</td><td rowspan="3">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="3">This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>release</code></td><td><code>&lt;exact-uname-r-for-6.12&gt;</code></td><td>Defines the <code>release</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>kernel_major</code></td><td><code>6</code></td><td>Defines the <code>kernel_major</code> value consumed by the 6.12 route.</td></tr>
+<tr><th rowspan="15">Task structure offsets</th><td>&nbsp;&nbsp;↳ <code>task_prio</code></td><td><code>148</code></td><td>Defines the <code>task_prio</code> value consumed by the 6.12 route.</td><td rowspan="15">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="15">This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_normal_prio</code></td><td><code>156</code></td><td>Defines the <code>task_normal_prio</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_sched_task_group</code></td><td><code>1056</code></td><td>Defines the <code>task_sched_task_group</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_pi_lock</code></td><td><code>2540</code></td><td>Defines the <code>task_pi_lock</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_pi_waiters</code></td><td><code>2560</code></td><td>Defines the <code>task_pi_waiters</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_pi_top_task</code></td><td><code>2576</code></td><td>Defines the <code>task_pi_top_task</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_pi_blocked_on</code></td><td><code>2584</code></td><td>Defines the <code>task_pi_blocked_on</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_pid</code></td><td><code>1800</code></td><td>Defines the <code>task_pid</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_tgid</code></td><td><code>1804</code></td><td>Defines the <code>task_tgid</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_atomic_flags</code></td><td><code>1736</code></td><td>Defines the <code>task_atomic_flags</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_real_cred</code></td><td><code>2296</code></td><td>Defines the <code>task_real_cred</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_cred</code></td><td><code>2304</code></td><td>Defines the <code>task_cred</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_comm</code></td><td><code>2320</code></td><td>Defines the <code>task_comm</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_tasks</code></td><td><code>1592</code></td><td>Defines the <code>task_tasks</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>task_seccomp</code></td><td><code>2504</code></td><td>Defines the <code>task_seccomp</code> value consumed by the 6.12 route.</td></tr>
+<tr><th rowspan="5">Credential layout</th><td>&nbsp;&nbsp;↳ <code>cred_copy_size</code></td><td><code>136</code></td><td>Defines the <code>cred_copy_size</code> value consumed by the 6.12 route.</td><td rowspan="5">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="5">This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>cred_usage_value</code></td><td><code>1</code></td><td>Defines the <code>cred_usage_value</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>cred_caps_offset</code></td><td><code>48</code></td><td>Defines the <code>cred_caps_offset</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>cred_caps_count</code></td><td><code>5</code></td><td>Defines the <code>cred_caps_count</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>cred_caps_value</code></td><td><code>-1</code></td><td>Defines the <code>cred_caps_value</code> value consumed by the 6.12 route.</td></tr>
+<tr><th rowspan="2">Waiter, heap, and route geometry</th><td>&nbsp;&nbsp;↳ <code>kernelsnitch_collisions</code></td><td><code>4</code></td><td>Defines the <code>kernelsnitch_collisions</code> value consumed by the 6.12 route.</td><td rowspan="2">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="2">This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>pselect_waiter_shift</code></td><td><code>0</code></td><td>Defines the <code>pselect_waiter_shift</code> value consumed by the 6.12 route.</td></tr>
+<tr><th rowspan="9">Kernel-relative symbols</th><td>&nbsp;&nbsp;↳ <code>off_init_task</code></td><td><code>0</code></td><td>Defines the <code>off_init_task</code> value consumed by the 6.12 route.</td><td rowspan="9">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="9">This preserves the verified 6.12 baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_init_cred</code></td><td><code>0</code></td><td>Defines the <code>off_init_cred</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_root_task_group</code></td><td><code>0</code></td><td>Defines the <code>off_root_task_group</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_selinux_enforcing</code></td><td><code>0</code></td><td>Defines the <code>off_selinux_enforcing</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_selinux_blob_sizes</code></td><td><code>0</code></td><td>Defines the <code>off_selinux_blob_sizes</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_security_hook_heads</code></td><td><code>0</code></td><td>Defines the <code>off_security_hook_heads</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_slide_nfulnl_logger</code></td><td><code>0</code></td><td>Defines the <code>off_slide_nfulnl_logger</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_slide_boot_id</code></td><td><code>0</code></td><td>Defines the <code>off_slide_boot_id</code> value consumed by the 6.12 route.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>off_slide_loggers_0_1</code></td><td><code>0</code></td><td>Defines the <code>off_slide_loggers_0_1</code> value consumed by the 6.12 route.</td></tr>
+<tr><th rowspan="2">Recommended CPUs</th><td>&nbsp;&nbsp;↳ <code>recommended_cpus.main</code></td><td><code>0</code></td><td>Suggested main race CPU.</td><td>Changes scheduling, heat, and race timing; explicit UI selection takes precedence.</td><td>Preserves legacy fallback without topology assumptions.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>recommended_cpus.consumer</code></td><td><code>1</code></td><td>Suggested consumer CPU.</td><td>Same-core placement increases contention; nonexistent cores fail or fall back.</td><td>Keeps legacy separation.</td></tr>
+<tr><th rowspan="3">Heap preparation</th><td>&nbsp;&nbsp;↳ <code>heap.prepare_max_attempts</code></td><td><code>4</code></td><td>Full heap-preparation retry cap.</td><td>More retries may recover transient misses but add time and heat.</td><td>Matches the former four-pass bound.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>heap.prepare_timeout_ms</code></td><td><code>240000</code></td><td>Overall heap preparation timeout.</td><td>Too short misjudges slow devices; too long delays failure feedback.</td><td>Four minutes preserves the old bounded worst case.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>heap.kernelsnitch_timeout_ms</code></td><td><code>60000</code></td><td>KernelSnitch scan timeout.</td><td>Affects scan completeness versus stall time.</td><td>Matches the prior 60-second scan window.</td></tr>
+<tr><th rowspan="3">Shared race timing</th><td>&nbsp;&nbsp;↳ <code>race.route_wait_ms</code></td><td><code>1000</code></td><td>Shared pre-route wait.</td><td>Changes readiness ordering.</td><td>Preserves the conservative one-second window.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>race.setup_settle_us</code></td><td><code>50000</code></td><td>Post-setup settle delay.</td><td>Too short can trigger before setup completes.</td><td>Legacy 50 ms balance.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>race.state_poll_interval_us</code></td><td><code>1000</code></td><td>Shared state polling interval.</td><td>Trades CPU load for reaction latency.</td><td>Preserves prior polling cadence.</td></tr>
+<tr><th rowspan="8">W1/W2/W3 stages</th><td>&nbsp;&nbsp;↳ <code>stages.w1_attempts</code></td><td><code>15</code></td><td>W1 write-attempt cap.</td><td>More attempts add heat and corruption exposure.</td><td>Copied from the original loop bound.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w1_settle_us</code></td><td><code>100000</code></td><td>W1 post-attempt settle.</td><td>Controls stabilization before verification.</td><td>Preserves 100 ms.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w1_scratch_repair_attempts</code></td><td><code>3</code></td><td>W1 scratch-repair cap.</td><td>More repairs may recover or compound damage.</td><td>Matches the former three repairs.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w2_attempts</code></td><td><code>15</code></td><td>W2 credential-write cap.</td><td>Affects elevation probability, time, and risk.</td><td>Matches legacy W2.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w2_settle_us</code></td><td><code>100000</code></td><td>W2 settle delay.</td><td>Too short may verify before visibility.</td><td>Preserves 100 ms.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w3_chain_rounds</code></td><td><code>3</code></td><td>Whole W3-chain rounds.</td><td>More rounds increase coverage and exposure.</td><td>Legacy cap is three.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w3_attempts</code></td><td><code>6</code></td><td>W3 attempts per round.</td><td>Changes bypass opportunity and contention.</td><td>Preserves six attempts.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>stages.w3_settle_us</code></td><td><code>50000</code></td><td>W3 settle delay.</td><td>Controls verification timing and speed.</td><td>Preserves 50 ms.</td></tr>
+<tr><th rowspan="3">TCP zerocopy route</th><td>&nbsp;&nbsp;↳ <code>routes.tcp_zerocopy.attempts</code></td><td><code>2000</code></td><td>TCP zerocopy probe cap.</td><td>Major heat/time contributor; too low reduces hit rate.</td><td>Matches the original cap.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.tcp_zerocopy.arm_sequence</code></td><td><code>16</code></td><td>Arm-sequence length.</td><td>Changes spray/trigger ordering; wrong values miss the window.</td><td>Preserves the validated 16-step sequence.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.tcp_zerocopy.post_receive_hold_iterations</code></td><td><code>20000</code></td><td>Post-receive hold iterations.</td><td>Longer hold widens window but adds heat.</td><td>Copies the former busy-loop constant.</td></tr>
+<tr><th rowspan="4">Select-stack route</th><td>&nbsp;&nbsp;↳ <code>routes.select_stack.enter_delay_us</code></td><td><code>50000</code></td><td>Delay before the main select trigger after consumer entry.</td><td>Directly shifts the select-stack race window.</td><td>Preserves validated 50 ms timing.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.select_stack.timeout_us</code></td><td><code>200000</code></td><td>Per-select timeout.</td><td>Balances premature exit and recovery time.</td><td>Preserves 200 ms.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.select_stack.consumer_max_calls</code></td><td><code>1</code></td><td>Consumer call cap.</td><td>Multiple calls alter the proven layout.</td><td>The stable path is single-shot.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.select_stack.consumer_burst_calls</code></td><td><code>1</code></td><td>Calls per consumer burst.</td><td>Changes scheduling and stack lifetime.</td><td>Preserves one-call bursts.</td></tr>
+<tr><th rowspan="3">Multicast-waiter route</th><td>&nbsp;&nbsp;↳ <code>routes.multicast_waiter.ready_timeout_ms</code></td><td><code>10000</code></td><td>Waiter-ready timeout.</td><td>Balances slow scheduling and cleanup latency.</td><td>Matches legacy 10 seconds.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.multicast_waiter.post_requeue_settle_us</code></td><td><code>200000</code></td><td>Post-requeue settle.</td><td>Affects waiter-chain stabilization; shorter waits may overwrite too early.</td><td>Preserves 200 ms.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>routes.multicast_waiter.post_adjust_settle_us</code></td><td><code>100000</code></td><td>Post-adjust settle.</td><td>Controls state visibility.</td><td>Preserves 100 ms.</td></tr>
+<tr><th rowspan="5">Privilege handoff</th><td>&nbsp;&nbsp;↳ <code>handoff.pre_dispatch_settle_ms</code></td><td><code>2000</code></td><td>Pre-handoff settle.</td><td>Too short may dispatch before privilege/SELinux state settles.</td><td>Preserves two seconds.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>handoff.module_poll_attempts</code></td><td><code>30</code></td><td>Module-state poll count.</td><td>Together with the interval, forms the 3-second total window.</td><td>30×100 ms preserves three seconds.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>handoff.module_poll_interval_ms</code></td><td><code>100</code></td><td>Module poll interval.</td><td>Trades wakeups for latency.</td><td>Legacy cadence.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>handoff.enforce_poll_attempts</code></td><td><code>200</code></td><td>Enforcing-state poll count.</td><td>Together with the interval, defines the 20-second recovery window.</td><td>200×100 ms preserves twenty seconds.</td></tr>
+<tr><td>&nbsp;&nbsp;↳ <code>handoff.enforce_poll_interval_ms</code></td><td><code>100</code></td><td>Enforcing poll interval.</td><td>Affects detection latency and wakeups.</td><td>Legacy cadence.</td></tr>
+</tbody>
+</table>
