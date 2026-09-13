@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到暂时完成的 S08：Multicast 已通过真机门禁，TCP/Select 仅有静态验证并等待外部补证。
+此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S14 的 Multicast 门禁：共享 PI 与统一路线状态控制已真机验证；TCP/Select context 仅有静态验证并等待外部补证。
 
 ```mermaid
 flowchart TD
@@ -35,21 +35,24 @@ flowchart TD
     Execution --> Race
     Payload --> Encoders["Multicast / TCP / Select<br/>waiter encoders"]
     Encoders --> Race
-    Write --> Race["run_main_route_threads()"]
+    Write --> Race["run_main_route_threads()<br/>PiRaceContext"]
     Snapshot --> Race
     Profile --> Race
     Addresses --> Page
     Race -. pthread .-> Waiter["waiter_thread()"]
     Race -. pthread .-> Owner["owner_thread()"]
     Race -. pthread .-> Consumer["consumer_thread()"]
-    Waiter --> Choice{"route"}
+    Waiter --> Controller["RouteController<br/>supports + execute + RouteStatus"]
+    Controller --> Choice{"route"}
     Snapshot --> Choice
-    Choice --> M["Multicast"]
-    Choice --> T["TCP Zerocopy"]
-    Choice --> P["pselect/select"]
-    M --> Verify["stage verification"]
-    T --> Verify
-    P --> Verify
+    Choice --> M["Multicast one-shot<br/>device verified"]
+    Choice --> T["TcpZerocopyRouteContext<br/>static verified"]
+    Choice --> P["SelectStackRouteContext<br/>static verified"]
+    T -. "clean + disarmed only" .-> P
+    M --> Status["RouteStatus<br/>OK / fallback-safe / dirty"]
+    T --> Status
+    P --> Status
+    Status --> Verify["stage verification"]
     Verify --> W1
     W1 --> W2["W2: spawn_victim() + credential stage"]
     W2 --> W3["W3: flags/seccomp mode when needed"]
@@ -58,7 +61,7 @@ flowchart TD
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`。S06 以 `ResolvedAddresses` 统一保存 SoC 和运行地址。S07 用显式传递的不可变 `WriteRequest` 替代写配置全局量。S08 将解码结果复制为拥有自身值的不可变 `TargetProfile`，移除 `active_offsets` 和地址标量镜像，并将 CPU、heap、race、阶段、路线及 handoff 参数接入 execution 快照；Multicast 已通过真机门禁，TCP/Select 的能力与布局仅通过固定测试，等待外部协作者补证。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02–S08 已完成运行配置、逐设备 JSON profile、KernelSnitch、地址、写请求和不可变 `TargetProfile` 的边界。S09–S13 将 Heap、共享 PI、TCP、Select 和 Multicast resident 状态迁入各自 context；one-shot Multicast 因真机证明其对通用 context 栈帧敏感，保留专用小栈帧实现。S14 由 `RouteController` 统一 capability、`RouteStatus` 和 TCP→Select clean fallback，`PiRaceContext` 直接持有路线结果，不再从全局日志字段推测。当前 one-shot Multicast 已完整通过 W1/W2/W3 与 KernelSU 门禁；TCP/Select 仍等待对应设备。三条路线继续共用 profile、地址转换、堆页准备、PI 三线程和阶段验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 

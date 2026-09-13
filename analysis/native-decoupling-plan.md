@@ -531,18 +531,18 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] compact/tree 两类真机门禁；按用户决定与 S13 完成后统一测试。
 - [ ] 真机确认后分别导出 compact/tree 完整日志，完成分析并保存 S12 门禁证据。
 
-### [ ] S13：Multicast Waiter 路线
+### [x] S13：Multicast Waiter 路线
 
 - [x] 引入 `MulticastWaiterRouteContext`，迁移 futex、原子量、worker、socket、地址、调度策略、CPU、layout 和状态。
 - [x] resident/one-shot 共用 context stamp 编码；分离 resident prepare/write、ghost disarm 和 destroy。
 - [x] one-shot 显式使用 PI race context，不再使用 S10 临时兼容宏；`fops.c` 中该组宏已全部删除。
 - [x] 保持 W1/W2 repair、quarantine 调用顺序及长期 writer 行为；resident stop 中 Heap 回收兼容调用登记为 S14 session handoff TODO。
 - [x] Select/Multicast context 主机测试、既有回归和完整 Gradle `assembleDebug` 构建通过；合并提交并暂停。
-- [ ] 通过 multicast 真机门禁；按用户决定在 S12/S13 均完成后统一执行。
+- [x] 通过 one-shot Multicast 真机门禁；恢复专用敏感路径后完整执行至 `KernelSU ready`。
 - [x] 首轮联合真机测试稳定安全失败于 `PI route did not produce a verified write`；未出现 dirty cleanup，按用户决定进入 S14 PI 控制重构后复测。
 - [x] S14 首轮复测定位：日志为 `calls=1 success=1`，并非 PI 未命中；S13 将 Multicast 成功判定放在 consumer drain 前，形成完成计数读取竞态。已恢复“disarm/drain→读取 success→destroy”的旧顺序。
 - [x] 修复后连续三次均为 `status=0 calls=1 success=1` 但 W1 未生效，确认不是状态误判。为最小化敏感路径差异，one-shot Multicast 回退到 S13 前已真机通过的专用小栈帧、payload builder、socket 和 drain/close 顺序；resident 仍使用 `MulticastWaiterRouteContext`，S14 仍接收结构化 `RouteStatus`。
-- [ ] 真机确认后导出 multicast 完整日志，完成分析并保存 S13 门禁证据。
+- [x] 真机确认后导出 Multicast 完整日志并保存为 S14 联合门禁证据；Resident 路线本次未启用，日志不可判定。
 
 ### [ ] S14：统一路线接口与运行时回退
 
@@ -553,6 +553,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] TCP disarm 只停止 TCP punch/trigger，不再提前终止共享 PI consumer；PI consumer 最终停止仍由 `pi_race_stop` 唯一负责。
 - [x] 增加 clean fallback/dirty refusal 固定测试，完整主机回归和 Gradle `assembleDebug` 构建通过；提交并暂停复测。
 - [ ] 真机验证 Multicast，并在有设备时验证 TCP、Select 与 TCP→Select 回退。
+- [x] Multicast 真机验证通过：所有路线状态均为 `OK clean=1/1`，W1/W2/W3 完成并进入 `KernelSU ready`。
 - [ ] 真机确认后分别导出三路线及 TCP→Select 回退日志，完成分析并保存 S14 门禁证据。
 
 ### [ ] S15：兼容层、遗留全局和文档收尾
