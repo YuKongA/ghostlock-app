@@ -303,7 +303,7 @@ flowchart TD
 - [x] 用户真机兼容性确认（连续高温会显著降低竞态成功率；固定核心并冷却后验证通过）。
 - [x] 核心维护 UML 已补画到 S02 状态。
 
-### [ ] S03：Kotlin 主导的 Profile 配置管线
+### [x] S03：Kotlin 主导的 Profile 配置管线
 
 - [x] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表（43/43 条；每个 kernel release 独立文件，旧头文件仅暂留提取器兼容格式定义）。
 - [x] 建立单一版本化 schema：`kernel_profiles/index.json` 保存 `schema_version` 及 release→文件索引，`defaults.json` 保存兼容默认值；每个 release 文件包含自身 `schema_version`、能力、符号、结构偏移、payload 布局及 `execution` 调优参数。
@@ -322,12 +322,12 @@ flowchart TD
 - [x] 添加用户自定义 TODO：按 release 保存稀疏 override、导入/导出、schema 迁移、内置更新后的三方合并及回滚。
 - [x] 为 Native 仍使用 `struct kernel_offsets` 和宏读取参数的部分添加 S08 TODO；S08 再收敛为只读 `TargetProfile`。
 - [x] 静态验证 43 个独立内置 profile、索引一一对应、必需字段、schema、生成索引以及 Native 强制重编；内置/用户覆盖/未知 release/旧 schema/非法范围均在解析边界拒绝或合并。
-- [ ] 真机验证 App/Shizuku 两条启动入口和 CLI resolved profile 行为一致。
+- [x] 真机验证 App/Shizuku 两条启动入口和 CLI resolved profile 行为一致。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 真机门禁通过后勾选阶段标题并更新核心 UML。
+- [x] 真机门禁通过后勾选阶段标题并更新核心 UML。
 - [x] 真机门禁首次失败后加入 Debug-only Native execution 参数快照；逐字段严格解码 JSON，并以 `debug.execution.<path>=<value>` 输出，与 S02 verbose 对照分支比较。
-- [ ] 对比 S02/S03 两份参数快照和失败阶段日志，定位不兼容项后重新真机验证。
+- [x] 对比 S02/S03 参数快照：33 个 execution 字段的键、顺序和值完全一致，仅来源标记不同；重新真机验证通过，未发现确定性的 profile 参数不兼容项。
 
 S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属：
 
