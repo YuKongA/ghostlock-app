@@ -290,8 +290,6 @@ atomic_int consumer_success;
 atomic_int consumer_inflight;
 atomic_int main_route_delay_usec;
 static atomic_int fast_repair_route;
-int memfd_leak;
-
 /* Decoupling plan: run the shared PI waiter and delegate route execution.
  * Input: currently implicit race/session state; output: completion/status.
  * Future: pi_race_waiter_worker(void *PiRaceWorkerArgs); route dispatch moves
@@ -1170,6 +1168,7 @@ static int verify_leaf_dir_stage(void *context) {
  * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
  * victim and cleanup responsibilities to their contexts. */
 int run_exploit(int argc, char **argv) {
+  heap_context_init(&g_heap_context);
   const char *profile_path = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {

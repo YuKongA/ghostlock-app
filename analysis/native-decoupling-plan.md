@@ -453,10 +453,13 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S09：Heap 与 PayloadPage 所有权
 
-- [ ] 引入 `HeapContext`、`PayloadPage`、`ReclaimPair` 和显式状态转换。
-- [ ] 统一 child、memfd、mapping、SKB、current/prebuilt/quarantine 所有权。
-- [ ] 保持分配顺序、喷射布局和释放时机兼容。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 引入 `HeapContext`、`PayloadPage`、`ReclaimPair` 和显式状态转换。
+- [x] 统一 child、memfd、KernelSnitch mapping、SKB、current/prebuilt/quarantine 所有权。
+- [x] 保持分配顺序、喷射布局和释放时机兼容。
+- [x] `PayloadPage` 整体移动、拒绝部分/重复所有权和销毁关闭 fd 的主机测试通过。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 - [ ] 真机确认后导出完整日志，完成分析并保存 S09 门禁证据。
 
 ### [ ] S10：共享 PI 竞态
@@ -522,6 +525,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
 | S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
+| S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
 
 ## 附录 A：按文件迁移细节

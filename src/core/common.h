@@ -9,6 +9,7 @@
 #include "payload_builder.h"
 #include "runtime_config.h"
 #include "runtime_time.h"
+#include "heap_context.h"
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -91,8 +92,6 @@ extern int g_core_consumer;
 #define SLIDE_SYSCTL_BOOTID \
   resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
 
-struct kernelsnitch_shared_state;
-
 struct local_sched_attr {
   uint32_t size;
   uint32_t sched_policy;
@@ -104,21 +103,17 @@ struct local_sched_attr {
   uint64_t sched_period;
 };
 
-struct mm_ctx {
-  size_t mm_cnt;
-  pid_t *childs;
-  int *memfds;
-};
-
-extern uintptr_t page_base;
-extern uintptr_t last_mm_struct;
-extern uintptr_t fake_lock;
-extern uintptr_t fake_w0;
-extern uintptr_t fake_task;
-extern uintptr_t fake_parent;
-extern uintptr_t fake_right;
-extern uintptr_t fake_left;
-extern uintptr_t fake_fops;
+/* TODO(decoupling:S14-session): ExploitSession will own this context and pass it
+ * explicitly. These compatibility aliases keep S09 behavior/source churn small. */
+#define page_base (g_heap_context.current.base)
+#define last_mm_struct (g_heap_context.current.last_mm_struct)
+#define fake_lock (g_heap_context.current.fake_lock)
+#define fake_w0 (g_heap_context.current.fake_w0)
+#define fake_task (g_heap_context.current.fake_task)
+#define fake_parent (g_heap_context.current.fake_parent)
+#define fake_right (g_heap_context.current.fake_right)
+#define fake_left (g_heap_context.current.fake_left)
+#define fake_fops (g_heap_context.current.fake_fops)
 
 extern uint32_t f_wait;
 extern uint32_t f_pi_target;
@@ -137,7 +132,7 @@ extern atomic_int consumer_inflight;
 extern atomic_int main_route_delay_usec;
 extern int route_last_step;
 extern int route_last_errno;
-extern int memfd_leak;
+#define memfd_leak (g_heap_context.leak_memfd)
 
 int run_exploit(int argc, char **argv);
 void read_first_line(const char *path, char *buf, size_t len);
