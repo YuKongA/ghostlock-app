@@ -307,7 +307,7 @@ flowchart TD
 
 - [x] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表（43/43 条；每个 kernel release 独立文件，旧头文件仅暂留提取器兼容格式定义）。
 - [x] 建立单一版本化 schema：`kernel_profiles/index.json` 保存 `schema_version` 及 release→文件索引，`defaults.json` 保存兼容默认值；每个 release 文件包含自身 `schema_version`、能力、符号、结构偏移、payload 布局及 `execution` 调优参数。
-- [x] `defaults.json` 使用合法 JSON 元数据字段说明公共参数；`templates/` 提供 5.x、6.1、6.6、6.12 四类带字段说明且不进入运行索引的模板。
+- [x] JSON 保持纯机器数据；`defaults.md` 逐项说明公共参数，`templates/` 为 5.x、6.1、6.6、6.12 四类模板分别提供中英双语说明，profile 总指南负责新设备流程与跳转。
 - [x] 弃用并删除 `src/kernels/**/offsets.h` C 配置表及提取器 `--register` C 注册入口；Makefile 和中英文文档切换到 JSON profile 目录。
 - [x] `execution` 纳入当前硬编码的等待时间、超时、重试次数、consumer/路线时序以及推荐 `main_cpu`/`consumer_cpu`；缺省值必须逐项等于修改前常量，避免改变现有攻击行为。
 - [x] Kotlin 负责读取内置 JSON、匹配 `uname -r`、合并用户导入配置、验证 schema，并生成单个完全解析的 `active-profile.json`。

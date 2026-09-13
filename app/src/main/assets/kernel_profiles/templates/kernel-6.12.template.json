@@ -1,14 +1,5 @@
 {
   "schema_version": 1,
-  "_template": true,
-  "_comment": "6.12 使用 tree waiter/select_stack 路线；布局相近不代表符号地址可复用，必须逐固件提取。 将 release 替换为 adb shell uname -r 的完整输出；所有值为 0 的 off_* 字段必须填入，完成验证后复制到上级目录并登记 index.json。",
-  "_field_comments": {
-    "release": "必须与 uname -r 完全一致。",
-    "kernel_major": "仅表示主要内核族，不代替 release 精确匹配。",
-    "requires_shizuku": "1 表示必须通过 shell UserService 运行，0 表示 App 进程运行。",
-    "off_*": "值 0 表示尚未提取，模板不可直接运行。",
-    "execution": "可省略未修改项，由 defaults.json 补齐；保留时表示该固件覆盖公共默认值。"
-  },
   "release": "<exact-uname-r-for-6.12>",
   "kernel_major": 6,
   "task_prio": 148,

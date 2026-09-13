@@ -58,6 +58,8 @@
 
 Kernels are matched by exact `uname -r`; unsupported builds are rejected and the app shows the status at the top. Built-in profiles live in `app/src/main/assets/kernel_profiles/`, one JSON file per release, with `index.json` as the runtime index and version-family examples under `templates/`.
 
+For the complete bilingual device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](app/src/main/assets/kernel_profiles/README.md).
+
 Rows explicitly marked **Shizuku required** run through a shell UserService. Start Shizuku with ADB and tap the status card to grant access; all other rows use the app's normal execution path.
 
 ## Quick Start
