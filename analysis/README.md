@@ -4,12 +4,15 @@
 
 ## 文档索引
 
+- **[Native 解耦计划书](native-decoupling-plan.md)：混合式 C 目标架构、迁移映射、分阶段实施和验收标准。**
+
+
 - [Native 函数说明](native-functions.md)：逐文件列出职责、状态、调用与清理语义。
 - [三条路线与数据流](routes.md)：Multicast、TCP Zerocopy、pselect/select 的调用和时序。
 - [Kotlin 到 native 的转发](kotlin-native-bridge.md)：普通 App 和 Shizuku 两种进程入口。
 - [全函数调用大图](all-functions-callgraph.md)：按文件展示节点，并突出三条路线的重合部分。
 - [Native 全局状态矩阵](native-global-state.md)：全局变量的读者、写者、生命周期、并发与所有权。
-- [Native 解耦计划书](native-decoupling-plan.md)：混合式 C 目标架构、迁移映射、分阶段实施和验收标准。
+
 
 ## 顶层流程
 

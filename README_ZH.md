@@ -1,5 +1,7 @@
 # GhostLock-App
 
+大规模重构中，详见 [静态分析与计划书](analysis/README.md)
+
 > English: [README.md](README.md)
 
 参见[支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md)。

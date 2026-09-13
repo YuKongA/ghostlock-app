@@ -2,6 +2,8 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
+大规模重构中，详见 [静态分析与计划书](analysis/README.md)
+
 See the [supported-device list](docs/kernel_profiles/SUPPORTED_DEVICES.md).
 
 
