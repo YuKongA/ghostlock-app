@@ -1,0 +1,49 @@
+#include "profile.h"
+
+#include <stdio.h>
+
+int main(void) {
+  struct kernel_offsets decoded = {
+      .kernel_major = 5,
+      .compact_waiter = 1,
+      .pselect_waiter_shift = 16,
+      .mcast_waiter_off = 32,
+      .mcast_buffer_size = 128,
+      .mcast_task_offset = 40,
+      .mcast_lock_offset = 48,
+      .mcast_fake_lock_offset = 0x100,
+      .mcast_fake_task_offset = 0x200,
+      .mcast_lock_slots_offset = 0x300,
+      .mcast_lock_slot_count = 4,
+      .mcast_lock_slot_stride = 64,
+      .off_mcast_fake_bss = 0x123400,
+      .execution = {
+          .recommended_main_cpu = 2,
+          .recommended_consumer_cpu = 3,
+          .heap_prepare_max_attempts = 7,
+      },
+  };
+  TargetProfile profile = target_profile_snapshot(&decoded);
+  decoded.kernel_major = 6;
+  decoded.execution.heap_prepare_max_attempts = 99;
+
+  MulticastWaiterLayout multicast =
+      target_profile_multicast_waiter_layout(&profile);
+  SelectStackLayout select = target_profile_select_stack_layout(&profile);
+  TcpZerocopyLayout tcp = target_profile_tcp_zerocopy_layout(&profile);
+  const struct execution_settings *execution =
+      target_profile_execution(&profile);
+
+  if (!target_profile_supports_multicast_waiter(&profile) ||
+      !target_profile_supports_tcp_zerocopy(&profile) ||
+      !target_profile_supports_select_stack(&profile) ||
+      multicast.buffer_size != 128 || multicast.waiter_offset != 32 ||
+      multicast.lock_slot_count != 4 || select.waiter_shift != 16 ||
+      !select.compact_waiter || !tcp.compact_waiter ||
+      !execution || execution->heap_prepare_max_attempts != 7) {
+    fputs("target profile snapshot/accessor test failed\n", stderr);
+    return 1;
+  }
+  puts("target profile snapshot/accessor test passed");
+  return 0;
+}

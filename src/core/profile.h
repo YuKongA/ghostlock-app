@@ -61,21 +61,116 @@ struct kernel_offsets {
   struct execution_settings execution;
 };
 
-/* S06 read-only view over the transport representation. S08 will replace
- * direct field consumers with semantic profile accessors without changing the
- * JSON decoder ABI in this stage. */
+/* Immutable runtime snapshot copied from the JSON transport representation.
+ * Consumers use semantic capability/layout/execution accessors below. */
 typedef struct target_profile {
-  const struct kernel_offsets *values;
+  struct kernel_offsets values;
+  int loaded;
 } TargetProfile;
 
+typedef struct multicast_waiter_layout {
+  size_t waiter_offset, buffer_size, task_offset, lock_offset;
+  size_t fake_lock_offset, fake_task_offset;
+  size_t lock_slots_offset, lock_slot_count, lock_slot_stride;
+  uint64_t fake_bss_image_offset;
+} MulticastWaiterLayout;
+
+typedef struct select_stack_layout {
+  int waiter_shift;
+  int compact_waiter;
+} SelectStackLayout;
+
+typedef struct tcp_zerocopy_layout {
+  int compact_waiter;
+} TcpZerocopyLayout;
+
 static inline TargetProfile
-target_profile_view(const struct kernel_offsets *values) {
-  return (TargetProfile){.values = values};
+target_profile_snapshot(const struct kernel_offsets *values) {
+  return values ? (TargetProfile){.values = *values, .loaded = 1}
+                : (TargetProfile){0};
 }
 
 static inline const struct kernel_offsets *
 target_profile_values(const TargetProfile *profile) {
-  return profile ? profile->values : NULL;
+  return profile && profile->loaded ? &profile->values : NULL;
+}
+
+static inline int target_profile_is_loaded(const TargetProfile *profile) {
+  return target_profile_values(profile) != NULL;
+}
+
+static inline const struct execution_settings *
+target_profile_execution(const TargetProfile *profile) {
+  const struct kernel_offsets *values = target_profile_values(profile);
+  return values ? &values->execution : NULL;
+}
+
+static inline int target_profile_supports_multicast_waiter(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v && v->kernel_major == 5 && v->mcast_waiter_off > 0;
+}
+
+static inline int target_profile_supports_tcp_zerocopy(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v && v->compact_waiter;
+}
+
+static inline int target_profile_supports_select_stack(
+    const TargetProfile *profile) {
+  return target_profile_is_loaded(profile);
+}
+
+static inline int target_profile_has_compact_waiter(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v && v->compact_waiter;
+}
+
+static inline MulticastWaiterLayout target_profile_multicast_waiter_layout(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v ? (MulticastWaiterLayout){
+      .waiter_offset = (size_t)v->mcast_waiter_off,
+      .buffer_size = v->mcast_buffer_size,
+      .task_offset = v->mcast_task_offset,
+      .lock_offset = v->mcast_lock_offset,
+      .fake_lock_offset = v->mcast_fake_lock_offset,
+      .fake_task_offset = v->mcast_fake_task_offset,
+      .lock_slots_offset = v->mcast_lock_slots_offset,
+      .lock_slot_count = v->mcast_lock_slot_count,
+      .lock_slot_stride = v->mcast_lock_slot_stride,
+      .fake_bss_image_offset = v->off_mcast_fake_bss,
+  } : (MulticastWaiterLayout){0};
+}
+
+static inline SelectStackLayout target_profile_select_stack_layout(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v ? (SelectStackLayout){
+      .waiter_shift = v->pselect_waiter_shift,
+      .compact_waiter = v->compact_waiter,
+  } : (SelectStackLayout){0};
+}
+
+static inline TcpZerocopyLayout target_profile_tcp_zerocopy_layout(
+    const TargetProfile *profile) {
+  return (TcpZerocopyLayout){
+      .compact_waiter = target_profile_has_compact_waiter(profile),
+  };
+}
+
+static inline uint32_t target_profile_u32(
+    const TargetProfile *profile, uint32_t value, uint32_t fallback) {
+  return target_profile_is_loaded(profile) && value ? value : fallback;
+}
+
+static inline uint64_t target_profile_image(
+    const TargetProfile *profile, uint64_t offset, uint64_t image_base,
+    uint64_t fallback_offset) {
+  return image_base +
+      (target_profile_is_loaded(profile) && offset ? offset : fallback_offset);
 }
 
 #endif

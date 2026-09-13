@@ -31,6 +31,7 @@ static void runtime_config_init_cpus(struct runtime_config *config) {
 
   const char *value = getenv("GHOSTLOCK_CORE");
   if (value && value[0]) {
+    config->main_cpu_explicit = true;
     long parsed = strtol(value, NULL, 10);
     if (parsed >= 0 && parsed < CPU_SETSIZE) {
       config->main_cpu = (int)parsed;
@@ -42,6 +43,7 @@ static void runtime_config_init_cpus(struct runtime_config *config) {
 
   value = getenv("GHOSTLOCK_CONSUMER_CORE");
   if (value && value[0]) {
+    config->consumer_cpu_explicit = true;
     long parsed = strtol(value, NULL, 10);
     if (parsed >= 0 && parsed < CPU_SETSIZE) {
       config->consumer_cpu = (int)parsed;
@@ -69,6 +71,43 @@ static void runtime_config_init_cpus(struct runtime_config *config) {
     config->main_cpu = 0;
     config->consumer_cpu = 1;
   }
+}
+
+static int runtime_config_validate_cpus(struct runtime_config *config) {
+  if (config->main_cpu == config->consumer_cpu) {
+    pr_warning("main and consumer cores are the same (%d)\n", config->main_cpu);
+    return -1;
+  }
+  cpu_set_t allowed;
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
+      (!CPU_ISSET(config->main_cpu, &allowed) ||
+       !CPU_ISSET(config->consumer_cpu, &allowed))) {
+    pr_warning("profile cores %d/%d not in allowed cpuset\n",
+               config->main_cpu, config->consumer_cpu);
+    return -1;
+  }
+  return 0;
+}
+
+/* Apply profile CPU recommendations only where Kotlin/environment did not
+ * make an explicit selection. Existing explicit choices remain authoritative. */
+int runtime_config_apply_profile(
+    struct runtime_config *config, const TargetProfile *profile) {
+  const struct execution_settings *e = target_profile_execution(profile);
+  if (!config || !e) return -1;
+  int old_main = config->main_cpu;
+  int old_consumer = config->consumer_cpu;
+  if (!config->main_cpu_explicit)
+    config->main_cpu = (int)e->recommended_main_cpu;
+  if (!config->consumer_cpu_explicit && !config->main_cpu_explicit)
+    config->consumer_cpu = (int)e->recommended_consumer_cpu;
+  if (runtime_config_validate_cpus(config) != 0) {
+    config->main_cpu = old_main;
+    config->consumer_cpu = old_consumer;
+  }
+  g_core_main = config->main_cpu;
+  g_core_consumer = config->consumer_cpu;
+  return 0;
 }
 
 static void runtime_config_init_paths(struct runtime_config *config) {

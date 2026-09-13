@@ -44,15 +44,11 @@
 
 #include "kernelsnitch/utils.h"
 
-#define KERNEL_PAGE_SETUP_ATTEMPTS 6
 #define SKB_DATA_DELTA (-0xe80LL)
 #define MM_STRUCT_SZ 0x500
 
 /* mm_struct stride; 0 uses MM_STRUCT_SZ above. */
-#define mm_struct_sz()                                                        \
-  (active_offsets && active_offsets->mm_struct_sz                             \
-       ? active_offsets->mm_struct_sz                                         \
-       : MM_STRUCT_SZ)
+#define mm_struct_sz() _RSO(mm_struct_sz, MM_STRUCT_SZ)
 
 #define MM_ORDER 3
 #define MM_PARTIALS 5
@@ -60,10 +56,7 @@ extern int g_core_main;
 extern int g_core_consumer;
 #define CORE (g_core_main)
 #define CONSUMER_CORE (g_core_consumer)
-#define kernelsnitch_collisions()                                             \
-  (active_offsets && active_offsets->kernelsnitch_collisions                  \
-       ? active_offsets->kernelsnitch_collisions                              \
-       : 4)
+#define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
 #define SKB_SEND_SIZE (ORDER3_SIZE * 2)
@@ -82,35 +75,21 @@ extern int g_core_consumer;
 
 #define TASK_COMM_LEN 16
 
-#define P0_KERNEL_PHYS_DELTA (p0_kernel_phys_load - P0_PHYS_OFFSET)
-#define P0_DATA_ALIAS_CONST(image_addr) \
-  (P0_PAGE_OFFSET | ((image_addr) - KIMAGE_TEXT_BASE + P0_KERNEL_PHYS_DELTA))
-
-#define CONSUMER_MAX_CALLS 1
 #define PSELECT_ROUTE_NFDS 320
 #define PSELECT_CONSUMER_NICE 19
-#define PSELECT_CONSUMER_BURST_CALLS 1
 #define PSELECT_CONSUMER_SETTLE_USEC 250000
-#define PSELECT_ENTER_DELAY_USEC 50000
-/* select() timeout defaults; the compact route overrides both. */
-#ifndef PSELECT_TIMEOUT_SEC
-#define PSELECT_TIMEOUT_SEC 0
-#endif
-#ifndef PSELECT_TIMEOUT_USEC
-#define PSELECT_TIMEOUT_USEC 200000
-#endif
-#ifndef ROUTE_WAIT_SECONDS
-#define ROUTE_WAIT_SECONDS 1
-#endif
 #define SLIDE_NFULNL_LOGGER \
-  data_addr(SLIDE_NFULNL_LOGGER_IMAGE)
-#define SLIDE_LOGGERS_0_1 data_addr(SLIDE_LOGGERS_0_1_IMAGE)
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_NFULNL_LOGGER_IMAGE)
+#define SLIDE_LOGGERS_0_1 \
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_LOGGERS_0_1_IMAGE)
 #define SLIDE_RANDOM_BOOT_ID_DATA \
-  data_addr(SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
-#define SLIDE_INIT_TASK data_addr(SLIDE_INIT_TASK_IMAGE)
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
+#define SLIDE_INIT_TASK \
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_INIT_TASK_IMAGE)
 #define SLIDE_ROOT_TASK_GROUP \
-  data_addr(SLIDE_ROOT_TASK_GROUP_IMAGE)
-#define SLIDE_SYSCTL_BOOTID data_addr(SLIDE_SYSCTL_BOOTID_IMAGE)
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_ROOT_TASK_GROUP_IMAGE)
+#define SLIDE_SYSCTL_BOOTID \
+  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
 
 struct kernelsnitch_shared_state;
 
@@ -165,20 +144,12 @@ void read_first_line(const char *path, char *buf, size_t len);
 void log_startup_context(void);
 void disable_rseq_for_thread(void);
 void init_p0_profile(void);
-extern uint64_t p0_kernel_phys_load;
-/* Direct map end, from a rooted run's iomem dump or the target.h default. */
-extern uint64_t g_direct_map_end;
-extern uintptr_t g_init_cred_image;
 extern ResolvedAddresses g_resolved_addresses;
 extern TargetProfile g_target_profile;
-struct kernel_offsets;
-extern const struct kernel_offsets *active_offsets;
 long futex_op(
     uint32_t *uaddr, int op, uint32_t val,
     const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3);
 long sched_setattr_tid(int tid, int nice_value);
-uintptr_t p0_data_alias(uintptr_t image_addr);
-uintptr_t data_addr(uintptr_t image_addr);
 void put64(unsigned char *p, size_t off, uint64_t value);
 void put32(unsigned char *p, size_t off, uint32_t value);
 pid_t clone_child(void);

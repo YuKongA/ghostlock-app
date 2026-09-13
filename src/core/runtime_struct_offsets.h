@@ -3,9 +3,14 @@
 
 #include "profile.h"
 
-extern const struct kernel_offsets *active_offsets;
+extern TargetProfile g_target_profile;
 
-#define _RSO(field, fallback) (active_offsets && active_offsets->field ? active_offsets->field : (fallback))
+#define _RSO(field, fallback)                                                \
+  target_profile_u32(&g_target_profile,                                     \
+                     target_profile_values(&g_target_profile)               \
+                         ? target_profile_values(&g_target_profile)->field   \
+                         : 0,                                                \
+                     (fallback))
 #define _RSO_64(field, fallback) ((uint64_t)_RSO(field, fallback))
 #define _RSO_IMAGE(field, fallback) \
   (KIMAGE_TEXT_BASE + _RSO_64(field, fallback))

@@ -434,15 +434,18 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S08：Profile 对象化与首轮 TODO 回补
 
-- [ ] profile 解析不再直接发布分散全局变量。
-- [ ] 提供三条攻击链的语义化能力和布局访问器。
-- [ ] 将 S03 已传入 Native 的等待、重试、时序和推荐核心字段接入 `TargetProfile`；删除对应硬编码常量，保留等价默认值。
-- [ ] 回补 S02 的配置/profile TODO。
-- [ ] 回补 S03 的 parse/profile 激活 TODO。
-- [ ] 回补 S06 的地址解析 TODO。
-- [ ] 回补 S07 的 payload/profile TODO。
-- [ ] 对照 TODO 登记表删除已完成的代码注释。
-- [ ] 构建、提交、暂停并通过三条路线真机门禁。
+- [x] profile 解析不再直接发布分散全局变量；解码到局部 transport 后复制为拥有自身值快照的 `TargetProfile`。
+- [x] 提供三条攻击链的语义化能力和 Multicast/TCP/Select 布局访问器。
+- [x] 将 S03 已传入 Native 的等待、重试、时序和推荐核心字段接入 `TargetProfile`；删除对应硬编码常量，保留等价默认值。
+- [x] 回补 S02 的配置/profile TODO。
+- [x] 回补 S03 的 parse/profile 激活 TODO。
+- [x] 回补 S06 的地址解析 TODO。
+- [x] 回补 S07 的 payload/profile TODO。
+- [x] 对照 TODO 登记表删除已完成的代码注释。
+- [x] TargetProfile 值快照、三路线能力/布局和 execution 访问器固定测试通过。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户完成三条路线真机兼容性确认。
 - [ ] 真机确认后分别导出三条路线完整日志，完成分析并保存 S08 门禁证据。
 
 ### [ ] S09：Heap 与 PayloadPage 所有权
@@ -508,19 +511,14 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 | 来源阶段 | 代码位置/事项 | 阻塞依赖 | 回补阶段 | 状态 |
 |---|---|---|---|---|
-| S02 | `tcp_route_selected()` 仍组合 `active_offsets` 与配置快照 | `TargetProfile` 未对象化 | S08 | [x] 已产生，待回补 |
 | S02 | `CORE`/`CONSUMER_CORE` 仍需两个兼容镜像 | PI worker 尚未接收 context | S10 | [x] 已产生，待回补 |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
-| S03 | Native 解码后的 resolved JSON 暂存于 `struct kernel_offsets` | profile 消费宏与地址解析尚未对象化 | S08 | [x] 已产生，待回补 |
-| S03 | 等待时间、超时、重试次数、路线时序和推荐核心加入 JSON `execution` | Native 各调用点仍使用散落常量 | S08 | [x] 已规划，待接入 |
 | S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
 | S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
-| S06 | `active_offsets` 继续作为 `TargetProfile` 的兼容镜像供宏和复杂调用读取 | runtime offset 与 payload 消费尚未语义化 | S08 | [x] 已产生，待回补 |
-| S06 | `p0_kernel_phys_load`、`g_init_cred_image` 镜像 `ResolvedAddresses` | `SLIDE_*`、payload 和路线调用仍依赖旧符号 | S08 | [x] 已产生，待回补 |
-| S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
-| S07 | shared/select/multicast payload 布局仍读取全局 profile | profile 与路线布局访问器未统一 | S08/S12/S13 | [x] 已产生，待回补 |
+| S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
+| S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
 
 ## 附录 A：按文件迁移细节
