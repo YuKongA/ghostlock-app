@@ -203,8 +203,11 @@ flowchart TD
     Main --> Init["config + profile + addresses"]
     Init --> Stage["W1 / W2 / W3 stage controller"]
     Stage --> Request["write_request"]
-    Request --> Heap["HeapContext<br/>bounded KS scan + mm sets + SKB + leak child/fd"]
-    Heap --> Current["PayloadPage: current<br/>layout + ReclaimPair"]
+    Request --> Payload["route-neutral payload<br/>value/leaf arm validation"]
+    Payload --> Heap["HeapContext<br/>bounded KS scan + mm sets + SKB + leak child/fd"]
+    Heap --> Accept{"W1 page preserves<br/>selinux initialized?"}
+    Accept -->|no: retry within profile limit| Heap
+    Accept -->|yes| Current["PayloadPage: current<br/>layout + ReclaimPair"]
     Current --> Race["waiter + owner + consumer PI race"]
     Current -. "W2 stash" .-> Prebuilt["PayloadPage: prebuilt"]
     Prebuilt -. "W2b activate" .-> Current
@@ -246,7 +249,7 @@ flowchart TD
     classDef pselect fill:#eee8f7,stroke:#70539a,color:#2c1e40;
     classDef failure fill:#f8e3e3,stroke:#a24a4a,color:#421b1b;
 
-    class Start,Main,Init,Stage,Request,Heap,Current,Prebuilt,Quarantine,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End,Log common;
+    class Start,Main,Init,Stage,Request,Payload,Heap,Accept,Current,Prebuilt,Quarantine,Race,Choice,Write,Verify,Advance,Handoff,Cleanup,End,Log common;
     class MC1,MC2,MC3 multicast;
     class TCP1,TCP2,TCP3 tcp;
     class PS1,PS2,PS3 pselect;
@@ -481,7 +484,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
 - [x] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。
 - [x] U01-B：leaf/value/credential、arm mismatch、W1 页面验收固定测试及既有 Heap/KernelSnitch 回归通过；完整 Gradle `assembleDebug` 构建、提交并暂停真机门禁。
-- [ ] U01-B：用户真机确认后保存日志、分析证据并更新核心 UML。
+- [x] U01-B：用户真机确认后保存安全拒绝与成功日志、分析证据并更新核心 UML；Direct/5.15 Multicast 完整执行至 `KernelSU ready`。
 - [ ] U01-C：将 Lenovo Y700 `dfb0e84` 从 C offsets 转换为独立完整 6.12 JSON profile，并核验结构 ABI。
 - [ ] U01-C：将 REDMI K80 `9ee07a8` 从 C offsets 转换为独立完整 6.1 JSON profile，并核验 compact/shift/结构 ABI。
 - [ ] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
