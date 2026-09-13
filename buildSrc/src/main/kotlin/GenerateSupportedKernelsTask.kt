@@ -1,30 +1,35 @@
 import groovy.json.JsonSlurper
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
 abstract class GenerateSupportedKernelsTask : DefaultTask() {
-    @get:InputFile
-    abstract val profilesJson: RegularFileProperty
+    @get:InputDirectory
+    abstract val profilesDirectory: DirectoryProperty
 
     @get:OutputFile
     abstract val generatedFile: RegularFileProperty
 
     @TaskAction
     fun generate() {
-        val root = JsonSlurper().parse(profilesJson.get().asFile) as Map<*, *>
-        require((root["schema_version"] as Number).toInt() == 1) {
+        val directory = profilesDirectory.get().asFile
+        val index = JsonSlurper().parse(directory.resolve("index.json")) as Map<*, *>
+        require((index["schema_version"] as Number).toInt() == 1) {
             "unsupported kernel profile schema"
         }
-        val profiles = (root["profiles"] as List<*>).map { value ->
-            val profile = value as Map<*, *>
+        val profiles = (index["profiles"] as List<*>).map { value ->
+            val entry = value as Map<*, *>
+            val profile = JsonSlurper().parse(directory.resolve(entry["file"] as String)) as Map<*, *>
+            require((profile["schema_version"] as Number).toInt() == 1)
             val release = profile["release"] as String
+            require(release == entry["release"]) { "profile index release mismatch: $release" }
             val fields = linkedMapOf<String, Long>()
             profile.forEach { (rawKey, rawValue) ->
                 val key = rawKey as? String ?: return@forEach
-                if (key != "release" && key != "execution" && rawValue is Number) {
+                if (key != "schema_version" && key != "release" && key != "execution" && rawValue is Number) {
                     fields[key] = rawValue.toLong()
                 }
             }
@@ -40,7 +45,7 @@ abstract class GenerateSupportedKernelsTask : DefaultTask() {
         val output = buildString {
             appendLine("package com.ghostlock.app.domain.model")
             appendLine()
-            appendLine("/** Generated from kernel_profiles.json; do not edit. */")
+            appendLine("/** Generated from kernel_profiles/index.json; do not edit. */")
             appendLine("object SupportedKernels {")
             appendLine("    val UNAMES: Set<String> = setOf(")
             profiles.forEach { (release, _) -> appendLine("        \"${escape(release)}\",") }

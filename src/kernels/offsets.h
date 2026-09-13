@@ -105,7 +105,7 @@ struct kernel_offsets {
   .cred_caps_value = -1,                                                      \
   .kernelsnitch_collisions = 4
 
-/* Runtime built-in profiles moved to app/src/main/assets/kernel_profiles.json.
+/* Runtime built-in profiles moved to app/src/main/assets/kernel_profiles/.
  * This header temporarily retains only legacy extractor format definitions. */
 
 #endif

@@ -9,7 +9,7 @@ import java.io.File
 
 /** Kotlin-owned profile loading, sparse override merging and run transport. */
 internal object ProfileConfiguration {
-    private const val BuiltinAsset = "kernel_profiles.json"
+    private const val BuiltinDirectory = "kernel_profiles"
 
     // TODO(profile-ui): Show source/version and merge diffs; add validated advanced
     // editing, recommended-core apply, reset, import/export and rollback workflows.
@@ -20,18 +20,27 @@ internal object ProfileConfiguration {
         release: String,
         selectedCpus: CpuPair,
     ): String {
-        val root = context.assets.open(BuiltinAsset).bufferedReader().use { reader ->
+        val index = context.assets.open("$BuiltinDirectory/index.json").bufferedReader().use { reader ->
             JSONObject(reader.readText())
         }
-        require(root.optInt("schema_version") == 1) { "unsupported profile schema" }
-        val builtins = root.getJSONArray("profiles")
-        val builtin = findProfile(builtins, release)
+        require(index.optInt("schema_version") == 1) { "unsupported profile schema" }
+        val builtinEntry = findProfile(index.getJSONArray("profiles"), release)
+        val builtin = builtinEntry?.let { entry ->
+            context.assets.open("$BuiltinDirectory/${entry.getString("file")}")
+                .bufferedReader().use { reader -> JSONObject(reader.readText()) }
+                .also {
+                    require(it.optInt("schema_version") == 1) { "unsupported profile schema" }
+                    require(it.optString("release") == release) { "profile index release mismatch" }
+                }
+        }
         val imported = readProfiles(importedFile)?.let { findProfile(it, release) }
         require(builtin != null || imported != null) { "no profile for kernel: $release" }
+        val executionDefaults = context.assets.open("$BuiltinDirectory/defaults.json")
+            .bufferedReader().use { reader -> JSONObject(reader.readText()).getJSONObject("execution") }
         val defaults = JSONObject().apply {
             put("release", release)
             // Execution policy is schema-wide for now; S08 will consume per-profile overrides.
-            put("execution", JSONObject(builtins.getJSONObject(0).getJSONObject("execution").toString()))
+            put("execution", executionDefaults)
         }
         val resolved = deepMerge(
             if (builtin == null) defaults else deepMerge(defaults, builtin),

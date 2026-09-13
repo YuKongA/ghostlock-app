@@ -23,7 +23,7 @@ val supportedKernelsSrc = layout.buildDirectory.dir("generated/source/supportedK
 
 tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
     description = "generateSupportedKernels"
-    profilesJson.set(layout.projectDirectory.file("src/main/assets/kernel_profiles.json"))
+    profilesDirectory.set(layout.projectDirectory.dir("src/main/assets/kernel_profiles"))
     generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
 }
 
