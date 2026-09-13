@@ -292,7 +292,7 @@ flowchart TD
 - [x] 提交后暂停。
 - [x] 用户真机兼容性确认（提交 `1959270`）。
 
-### [ ] S02：无状态工具与运行配置
+### [x] S02：无状态工具与运行配置
 
 - [x] 标准化时间、CPU、错误返回、路径和环境快照接口。
 - [x] 引入 `RuntimeConfig`；旧 `init_cpu_config()` 保留薄包装。
@@ -300,16 +300,82 @@ flowchart TD
 - [x] profile 阻塞项已添加 S08 TODO 并登记。
 - [x] 完整 `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户真机兼容性确认。
+- [x] 用户真机兼容性确认（连续高温会显著降低竞态成功率；固定核心并冷却后验证通过）。
 
-### [ ] S03：offset JSON loader
+### [ ] S03：Kotlin 主导的 Profile 配置管线
 
-- [ ] 分离文件读取、JSON 解析、字段验证和 profile 选择。
-- [ ] 删除共享文件 buffer，返回结构化解析结果。
-- [ ] 保留 JSON 格式、合并规则和旧入口包装。
-- [ ] `main.c` 可安全替换的加载入口立即迁移。
-- [ ] profile 激活阻塞项添加 S08 TODO 并登记。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [ ] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表。
+- [ ] 建立单一版本化 schema：顶层包含 `schema_version` 和 `profiles[]`；每个 profile 包含 `release`、能力、符号、结构偏移、payload 布局以及 `execution` 调优参数。
+- [ ] `execution` 纳入当前硬编码的等待时间、超时、重试次数、consumer/路线时序以及推荐 `main_cpu`/`consumer_cpu`；缺省值必须逐项等于修改前常量，避免改变现有攻击行为。
+- [ ] Kotlin 负责读取内置 JSON、匹配 `uname -r`、合并用户导入配置、验证 schema，并生成单个完全解析的 `active-profile.json`。
+- [ ] 配置优先级固定为：用户针对同一 release 的字段覆盖 > 内置 JSON > schema 兼容默认值；CPU 界面显式选择 > profile 推荐核心。
+- [ ] 普通 App 路线将解析后的 profile 写入私有工作目录；Shizuku 路线通过 AIDL 传递解析后的 JSON 文本，由 shell UserService 在其工作目录写入仅本次运行使用的文件。
+- [ ] Kotlin 启动 Native 时统一传入 `--profile <absolute-path>`；Native 只反序列化该单一 resolved profile、再次校验 release/范围并执行，不再自行选择或合并配置源。
+- [ ] 迁移 `offsets_json.c` 为“单 profile 传输解码器”：删除共享 buffer、内置表回退和 release 搜索，只保留严格反序列化与 Native 侧防御性验证。
+- [ ] 为独立命令行调试保留显式 `--profile`，缺少或无效配置时安全退出并给出错误；不得静默回退到 `target.h` 或 C 内置配置。
+- [ ] 保留现有 offsets 导入入口和默认攻击界面，不在本阶段增加高级编辑页面；现有用户不修改参数时，行为、日志关键字和选路必须保持一致。
+- [ ] 添加详细 UI TODO：profile 来源/版本展示、推荐核心一键应用、高级参数编辑、恢复默认值、逐字段校验错误、导入差异预览和危险参数确认。
+- [ ] 添加用户自定义 TODO：按 release 保存稀疏 override、导入/导出、schema 迁移、内置更新后的三方合并及回滚。
+- [ ] 为 Native 仍使用 `struct kernel_offsets` 和宏读取参数的部分添加 S08 TODO；S08 再收敛为只读 `TargetProfile`。
+- [ ] 测试内置/用户覆盖/未知 release/旧 schema/非法范围/App/Shizuku/CLI，并确认生成的 resolved profile 完全一致。
+- [ ] 完整 Gradle 构建、提交、暂停并通过真机门禁；通过后更新核心 UML。
+
+S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属：
+
+```json
+{
+  "execution": {
+    "recommended_cpus": { "main": 0, "consumer": 1 },
+    "heap": {
+      "prepare_max_attempts": 0,
+      "prepare_timeout_ms": 0,
+      "kernelsnitch_timeout_ms": 0
+    },
+    "race": {
+      "route_wait_ms": 0,
+      "setup_settle_us": 0,
+      "state_poll_interval_us": 0
+    },
+    "stages": {
+      "w1_attempts": 0,
+      "w1_settle_us": 0,
+      "w1_scratch_repair_attempts": 0,
+      "w2_attempts": 0,
+      "w2_settle_us": 0,
+      "w3_chain_rounds": 0,
+      "w3_attempts": 0,
+      "w3_settle_us": 0
+    },
+    "routes": {
+      "tcp_zerocopy": {
+        "attempts": 0,
+        "arm_sequence": 0,
+        "post_receive_hold_iterations": 0
+      },
+      "select_stack": {
+        "enter_delay_us": 0,
+        "timeout_us": 0,
+        "consumer_max_calls": 0,
+        "consumer_burst_calls": 0
+      },
+      "multicast_waiter": {
+        "ready_timeout_ms": 0,
+        "post_requeue_settle_us": 0,
+        "post_adjust_settle_us": 0
+      }
+    },
+    "handoff": {
+      "pre_dispatch_settle_ms": 0,
+      "module_poll_attempts": 0,
+      "module_poll_interval_ms": 0,
+      "enforce_poll_attempts": 0,
+      "enforce_poll_interval_ms": 0
+    }
+  }
+}
+```
+
+示例中的 `0` 是 schema 占位，不是运行默认值。转换脚本必须从当前 C 常量和字面量填入实际兼容值；缺字段时 Kotlin 使用同一份 schema defaults，Native 收到的 resolved profile 不允许再含未解析缺省值。所有时间统一使用带单位后缀的字段名。
 
 ### [ ] S04：Futex Hash 上下文
 
@@ -344,6 +410,7 @@ flowchart TD
 
 - [ ] profile 解析不再直接发布分散全局变量。
 - [ ] 提供三条攻击链的语义化能力和布局访问器。
+- [ ] 将 S03 已传入 Native 的等待、重试、时序和推荐核心字段接入 `TargetProfile`；删除对应硬编码常量，保留等价默认值。
 - [ ] 回补 S02 的配置/profile TODO。
 - [ ] 回补 S03 的 parse/profile 激活 TODO。
 - [ ] 回补 S06 的地址解析 TODO。
@@ -410,7 +477,10 @@ flowchart TD
 | S02 | `tcp_route_selected()` 仍组合 `active_offsets` 与配置快照 | `TargetProfile` 未对象化 | S08 | [x] 已产生，待回补 |
 | S02 | `CORE`/`CONSUMER_CORE` 仍需两个兼容镜像 | PI worker 尚未接收 context | S10 | [x] 已产生，待回补 |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
-| S03 | JSON parse 后直接激活 `active_offsets` | profile 发布与地址解析交织 | S08 | [ ] 待产生/回补 |
+| S03 | Native 解码后的 resolved JSON 暂存于 `struct kernel_offsets` | profile 消费宏与地址解析尚未对象化 | S08 | [ ] 待产生/回补 |
+| S03 | 等待时间、超时、重试次数、路线时序和推荐核心加入 JSON `execution` | Native 各调用点仍使用散落常量 | S08 | [x] 已规划，待接入 |
+| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
+| S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
 | S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
 | S07 | select/multicast payload 布局读取全局 profile | 路线布局访问器未统一 | S08/S12/S13 | [ ] 待产生/回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
@@ -419,12 +489,12 @@ flowchart TD
 
 工具和route文件按依赖从少到多迁移。每次只改一个源文件或一组不可分割的`.c/.h`接口，并使用短期兼容包装保证`main.c`在工具文件迁移期不需频繁修改。
 
-### 9.1 `offsets_json.c/.h`：JSON loader函数式化
+### A.1 Kotlin/Profile JSON 配置边界
 
-- 删除静态`g_file_buf`，改为调用者buffer或loader局部分配/释放。
-- 引入`offsets_json_result`，区分文件错误、JSON错误、release未匹配和profile字段错误。
-- 保留旧`load_offsets_json()`包装，不改offset JSON格式和合并语义。
-- 验证：连续/并发加载、边界大小、非法JSON和内置profile合并。
+- Kotlin 是配置源、release 选择、内置/用户合并和 schema 迁移的唯一所有者。
+- C 内置 profile 逐项迁移为应用资源 JSON；构建期生成 Kotlin 索引，避免同时维护第二份 release 列表。
+- Native 只接收 `--profile` 指定的 resolved 单 profile 文件，并执行严格解码和防御性验证。
+- `offsets_json.c/.h` 不再管理配置来源或合并，只作为临时传输解码层；S08 将结果包装为只读 `TargetProfile`。
 
 ### 9.2 `kernelsnitch/timeutils.h`：纯计时辅助
 
