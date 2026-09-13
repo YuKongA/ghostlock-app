@@ -31,6 +31,7 @@ enum soc_family {
   SOC_QCOM = 0,
   SOC_MTK,
   SOC_XRING,
+  SOC_GOOGLE,
 };
 
 static enum soc_family detect_soc(void) {
@@ -40,6 +41,15 @@ static enum soc_family detect_soc(void) {
   for (int i = 0; keys[i]; i++) {
     if (__system_property_get(keys[i], buf) <= 0 || !buf[0]) {
       continue;
+    }
+    /* Google Tensor: ro.soc.manufacturer=Google, ro.soc.model=Tensor G*,
+     * ro.board.platform=gs101/gs201/zuma/zumapro. 39-bit VA layout with
+     * _text at 0xffffffc008000000 (unlike the qcom 0xffffffc080000000). */
+    if (strncasecmp(buf, "google", 6) == 0 ||
+        strncasecmp(buf, "tensor", 6) == 0 ||
+        (i > 0 && (strncasecmp(buf, "gs", 2) == 0 ||
+                   strncasecmp(buf, "zuma", 4) == 0))) {
+      return SOC_GOOGLE;
     }
     if (strncasecmp(buf, "mediatek", 8) == 0 ||
         strncasecmp(buf, "mtk", 3) == 0 ||
@@ -108,9 +118,17 @@ static void publish_active_offsets(void) {
   g_init_cred_image = INIT_CRED;
   enum soc_family soc = detect_soc();
   const char *soc_name =
-      soc == SOC_MTK ? "mtk" : soc == SOC_XRING ? "xring" : "qcom/other";
+      soc == SOC_MTK ? "mtk"
+      : soc == SOC_XRING ? "xring"
+      : soc == SOC_GOOGLE ? "google/tensor"
+                          : "qcom/other";
   if (active_offsets->kernel_phys_load) {
     p0_kernel_phys_load = active_offsets->kernel_phys_load;
+  } else if (soc == SOC_GOOGLE) {
+    /* Tensor DRAM base 0x80000000, Image text_offset=0: the kernel loads
+     * at the RAM base. The qcom fallback (0xa8000000) yields a wrong
+     * physmap delta here and panics on the first write. */
+    p0_kernel_phys_load = P0_PHYS_OFFSET;
   } else if (soc == SOC_MTK) {
     p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
     soc_name = "mtk";
