@@ -137,6 +137,7 @@ extern int route_last_errno;
 int run_exploit(int argc, char **argv);
 void read_first_line(const char *path, char *buf, size_t len);
 void log_startup_context(void);
+void log_sync(void);
 void disable_rseq_for_thread(void);
 void init_p0_profile(void);
 extern ResolvedAddresses g_resolved_addresses;

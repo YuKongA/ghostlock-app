@@ -473,9 +473,9 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 - [x] fetch 并确认拓扑：`origin/decoupling-2` 落后 0；实际待吸收的是 `remote/main` 的 `50d2b72`、`dfb0e84`、`9ee07a8` 三个提交。
 - [x] 完成 19 个上游变更路径与当前 S01–S09 架构的冲突分析。
-- [ ] U01-A：移植 KernelSnitch range-end 截断，添加最后 coarse/slab 边界测试。
-- [ ] U01-A：为现有每次攻击独立日志加入 `boot_ms` 和阶段耐久同步；确认同步点不进入竞态关键窗口。
-- [ ] U01-A：主机测试、完整 Gradle 构建、提交并暂停真机门禁。
+- [x] U01-A：移植 KernelSnitch range-end 截断，添加最后 coarse/slab 边界测试。
+- [x] U01-A：为现有每次攻击独立日志加入 `boot_ms` 和阶段耐久同步；Native 文件入口与 Shizuku 管道入口均在现有 `TIMER` 边界落盘，未进入竞态关键窗口。
+- [x] U01-A：range-end/溢出和 Heap 回归主机测试、完整 Gradle `assembleDebug` 构建通过；提交并暂停真机门禁。
 - [ ] U01-A：用户真机确认后保存日志、分析证据并更新核心 UML。
 - [ ] U01-B：在 `payload_builder`/`WriteRequest` 中移植 compact value/leaf 统一编码和 arm-target 校验。
 - [ ] U01-B：把 W1 `selinux_state.initialized` 页面字节过滤实现为 Heap 页面验收策略；重试仍使用 `TargetProfile.execution`。

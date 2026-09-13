@@ -3,6 +3,7 @@
 #include "timeutils.h"
 #include "utils.h"
 #include "futex_hash.h"
+#include "scan_bounds.h"
 
 #include <linux/futex.h>
 #include <sys/syscall.h>
@@ -240,13 +241,9 @@ static void *__mm_leak(void *arg)
     for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
         if ((coarse_addr % (1ULL << 40)) == 0)
             if (ks->verbose) pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr, coarse_addr + (1ULL << 40));
-        size_t slab_end = coarse_addr + COARSE_SZ;
-        if (slab_end > range->end)
-            slab_end = range->end;
+        size_t slab_end = kernelsnitch_scan_limit(coarse_addr, COARSE_SZ, range->end);
         for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
-            size_t slab_limit = slab_addr + mm_slab_sz;
-            if (slab_limit > slab_end)
-                slab_limit = slab_end;
+            size_t slab_limit = kernelsnitch_scan_limit(slab_addr, mm_slab_sz, slab_end);
             for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
                 if (mm_leak_arg->try_canonical) {

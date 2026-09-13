@@ -271,7 +271,10 @@ static double timer_ms(void) {
 static const struct execution_settings *execution_settings(void) {
   return target_profile_execution(&g_target_profile);
 }
-#define TIMER(label) pr_info("[T+%.0fms] %s\n", timer_ms(), label)
+#define TIMER(label) do { \
+    pr_info("[T+%.0fms] %s\n", timer_ms(), label); \
+    log_sync(); \
+  } while (0)
 
 uint32_t f_wait;
 uint32_t f_pi_target;

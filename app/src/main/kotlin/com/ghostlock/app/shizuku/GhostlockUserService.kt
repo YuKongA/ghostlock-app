@@ -6,6 +6,7 @@ import androidx.annotation.Keep
 import com.ghostlock.app.BuildConfig
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Keep
@@ -74,12 +75,15 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     }
                     .start()
                     .let { process ->
-                        nativeLog.bufferedWriter().use { persistentLog ->
-                            process.inputStream.bufferedReader().useLines { lines ->
-                                lines.forEach { line ->
-                                    persistentLog.appendLine(line)
-                                    persistentLog.flush()
-                                    callback.onLog(line)
+                        FileOutputStream(nativeLog).use { nativeOutput ->
+                            nativeOutput.bufferedWriter().use { persistentLog ->
+                                process.inputStream.bufferedReader().useLines { lines ->
+                                    lines.forEach { line ->
+                                        persistentLog.appendLine(line)
+                                        persistentLog.flush()
+                                        if (line.contains("[T+")) nativeOutput.fd.sync()
+                                        callback.onLog(line)
+                                    }
                                 }
                             }
                         }

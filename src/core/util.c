@@ -24,6 +24,13 @@ static long long ms_since(struct timespec *t0) {
   return (long long)runtime_elapsed_ms(t0);
 }
 
+/* Persist stage-boundary diagnostics before a kernel panic or filesystem
+ * rollback can discard buffered lines. Unsupported fsync targets are ignored. */
+void log_sync(void) {
+  fflush(stdout);
+  (void)fsync(STDOUT_FILENO);
+}
+
 /* Decoupling plan: decide whether TCP zerocopy is selected. Inputs: profile and
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
@@ -131,13 +138,12 @@ void log_startup_context(void) {
     }
   }
   struct timespec boot;
-  clock_gettime(CLOCK_BOOTTIME, &boot);
+  SYSCHK(clock_gettime(CLOCK_BOOTTIME, &boot));
   double boot_ms = boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6;
-  /* same clock as printk's [timestamp], so a native log line maps onto dmesg */
-  pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u boot_ms=%.0f "
-             "attr=%s enforce=%s\n",
-             getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms, attr,
-             enforce);
+  pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u "
+             "boot_ms=%.0f attr=%s enforce=%s\n",
+             getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms,
+             attr, enforce);
   pr_success("startup limits pid=%d %s\n", getpid(), limits);
   pr_success("build config pid=%d label=%s slide=pselect main=pselect\n",
              getpid(), BUILD_VARIANT_LABEL);
