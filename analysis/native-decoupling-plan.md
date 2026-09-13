@@ -388,9 +388,12 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S04：Futex Hash 上下文
 
-- [ ] 引入 `FutexHashContext`，显式传递表大小。
-- [ ] 保持 Jenkins hash 结果和兼容入口不变。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 引入 `FutexHashContext`，显式传递表大小。
+- [x] 保持 Jenkins hash 结果和兼容入口不变。
+- [x] 固定 key/mm/table-size 输入向量对比新旧 hash 结果（A301SO 真机执行四组向量，显式 context、旧截断函数和旧入口结果逐位一致）。
+- [x] 完整 Gradle `assembleDebug` 构建通过。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 
 ### [ ] S05：KernelSnitch 上下文
 

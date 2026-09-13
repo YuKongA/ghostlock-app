@@ -181,6 +181,13 @@ typedef union {
     } both;
 } futex_key_t;
 
+/* Immutable truncation policy for Linux futex bucket hashing. The kernel table
+ * size is always a power of two, so table_size also defines the mask used by
+ * futex_hash_context_bucket(). */
+typedef struct futex_hash_context {
+    uint32_t table_size;
+} FutexHashContext;
+
 uint32_t futex_hash_no_trunc(futex_key_t *key)
 {
     uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(typeof(*key), both.offset) / 4,
@@ -196,16 +203,58 @@ uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
     return hash & (futex_hashsize-1);
 }
 
+/* Initialize an explicit hash context. Inputs: caller-owned context and the
+ * target futex table size; output: 0 or -1 with errno=EINVAL. This validates
+ * policy only and performs no allocation or process-global mutation. */
+static inline int futex_hash_context_init(FutexHashContext *context,
+                                          size_t table_size)
+{
+    if (!context || table_size == 0 || table_size > UINT32_MAX ||
+        (table_size & (table_size - 1)) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    context->table_size = (uint32_t)table_size;
+    return 0;
+}
+
+/* Hash a prepared private/shared futex key with explicit table policy. Input:
+ * immutable context and key; output: bucket index, or UINT32_MAX for an invalid
+ * context. Jenkins mixing and truncation are intentionally delegated to the
+ * unchanged compatibility primitives above. */
+static inline uint32_t
+futex_hash_context_key(const FutexHashContext *context, futex_key_t *key)
+{
+    if (!context || !context->table_size || !key)
+        return UINT32_MAX;
+    return __futex_hash(key, context->table_size);
+}
+
+/* Construct the Linux private futex key for address/mm and hash it using only
+ * explicit inputs. Input: immutable context, userspace address and candidate
+ * mm; output: bucket index, or UINT32_MAX for an invalid context. */
+static inline uint32_t
+futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
+                          size_t mm)
+{
+    futex_key_t key = {0};
+    key.private.mm = (void *)mm;
+    key.private.address = addr & ~0xfff;
+    key.private.offset = addr & 0xfff;
+    return futex_hash_context_key(context, &key);
+}
+
+/* Legacy compatibility state. New code must own a FutexHashContext and use
+ * futex_hash_context_bucket(); KernelSnitch migration is intentionally S05. */
 unsigned long futex_hashsize = -1;
-/* Decoupling plan: derive the estimated futex hash-table size. Input: runtime
- * CPU count; output: FutexHashContext. Future: futex_hash_context_init(). */
+/* Compatibility entry: retain the original online-CPU estimate and mutation
+ * until all KernelSnitch callers move to their owned context in S05. */
 void futex_init(void)
 {
     futex_hashsize = SYSCHK(sysconf(_SC_NPROCESSORS_ONLN) * 256);
 }
-/* Decoupling plan: hash an address/mm pair using implicit table size. Inputs:
- * FutexHashContext, address and mm; output: bucket. Future:
- * futex_hash_bucket(const FutexHashContext *, size_t, size_t). */
+/* Compatibility entry: preserve the original signature, assertion and hash
+ * result. New callers use futex_hash_context_bucket() with an explicit size. */
 uint32_t futex_hash(size_t addr, size_t mm)
 {
     ASSERT_pr((futex_hashsize != (unsigned long)-1),
