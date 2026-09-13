@@ -432,7 +432,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线；冷却后使用推荐 0/1 核心完整执行至 `KernelSU ready`）。
 - [x] 真机确认后导出完整日志，完成分析并保存 S07 门禁证据。
 
-### [ ] S08：Profile 对象化与首轮 TODO 回补
+### [x] S08：Profile 对象化与首轮 TODO 回补（Multicast 门禁通过，其他路线外部补证）
 
 - [x] profile 解析不再直接发布分散全局变量；解码到局部 transport 后复制为拥有自身值快照的 `TargetProfile`。
 - [x] 提供三条攻击链的语义化能力和 Multicast/TCP/Select 布局访问器。
@@ -445,8 +445,11 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] TargetProfile 值快照、三路线能力/布局和 execution 访问器固定测试通过。
 - [x] 完整 Gradle `assembleDebug` 构建通过。
 - [x] 提交并暂停。
-- [ ] 用户完成三条路线真机兼容性确认。
-- [ ] 真机确认后分别导出三条路线完整日志，完成分析并保存 S08 门禁证据。
+- [x] 用户确认 A301SO、Shizuku、5.15 Multicast 路线完整执行至 `KernelSU ready`；按发布协作策略将 S08 暂时标记完成。
+- [x] Multicast 完整日志和分析已保存为 S08 暂时门禁证据。
+- [ ] 后续非阻塞补证：外部协作者完成 TCP Zerocopy 真机测试并回传完整 Native 日志。
+- [ ] 后续非阻塞补证：外部协作者完成 Select Stack 真机测试并回传完整 Native 日志。
+- [ ] 收到各路线结果后分别保存和分析证据；任一路线失败则重新打开 S08。
 
 ### [ ] S09：Heap 与 PayloadPage 所有权
 

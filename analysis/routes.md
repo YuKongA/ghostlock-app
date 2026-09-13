@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S07。
+此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到暂时完成的 S08：Multicast 已通过真机门禁，TCP/Select 仅有静态验证并等待外部补证。
 
 ```mermaid
 flowchart TD
@@ -15,9 +15,12 @@ flowchart TD
     Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
     Main --> Decode["load_offsets_json()<br/>strict single-profile decode"]
     Decode --> Validate["release + range + route validation"]
-    Validate --> Profile["TargetProfile read-only view<br/>resolved kernel_offsets + execution"]
+    Validate --> Profile["immutable TargetProfile snapshot<br/>owns resolved values"]
+    Profile --> Capability["semantic capabilities + layouts<br/>M: device verified; T/P: static only"]
+    Profile --> Execution["execution settings<br/>CPU + heap + race + stages + routes + handoff"]
+    Execution --> Snapshot
     Profile --> Addresses["ResolvedAddresses<br/>SoC + physical load + init_cred"]
-    Addresses --> Init["compatibility mirrors<br/>publish_active_offsets() / init_p0_profile()"]
+    Addresses --> Init["direct address translation<br/>init_p0_profile() diagnostics"]
     Init --> W1["W1: retry_write_stage()"]
     W1 --> Request["immutable WriteRequest<br/>target + mode + preserve-child"]
     W2 -. next request .-> Request
@@ -27,6 +30,9 @@ flowchart TD
     Page --> Snitch["KernelSnitchContext<br/>init → find → scan → result → destroy<br/>owns FutexHashContext"]
     Snitch --> Payload["PayloadWriteLayout + shared payload"]
     Request --> Payload
+    Capability --> Payload
+    Execution --> Page
+    Execution --> Race
     Payload --> Encoders["Multicast / TCP / Select<br/>waiter encoders"]
     Encoders --> Race
     Write --> Race["run_main_route_threads()"]
@@ -52,7 +58,7 @@ flowchart TD
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`，当前攻击链已改用 init/find/scan/result/destroy 生命周期，旧入口只保留为待 S15 删除的兼容包装。S06 增加只读 `TargetProfile` view，并以 `ResolvedAddresses` 统一保存 SoC 分支、物理加载地址和 `init_cred` 地址；地址访问器以该快照为权威来源，旧 `active_offsets` 与地址全局量暂作兼容镜像，待 S08 收敛。S07 用沿阶段、heap 和 PI waiter 显式传递的不可变 `WriteRequest` 替代 `pselect_custom_*` 写配置全局量，并将 request-dependent layout 与 Multicast/TCP/Select waiter 编码拆开；profile 布局读取仍按 TODO 留待 S08/S12/S13。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02 已将环境变量、CPU、工作路径和路线开关集中为单次 `RuntimeConfig` 快照；S03 将内置 profile 配置源迁移到逐设备 JSON，由 Kotlin 完成匹配、默认值/用户覆盖合并和 schema 校验，再以 `--profile` 向 Native 传递单个 fully-resolved profile。Native 只做严格解码与防御性校验，不再搜索或回退到 C 内置表。S04 引入显式 `FutexHashContext`；S05 将它及 worker、扫描状态和结果统一归入 mmap-backed `KernelSnitchContext`。S06 以 `ResolvedAddresses` 统一保存 SoC 和运行地址。S07 用显式传递的不可变 `WriteRequest` 替代写配置全局量。S08 将解码结果复制为拥有自身值的不可变 `TargetProfile`，移除 `active_offsets` 和地址标量镜像，并将 CPU、heap、race、阶段、路线及 handoff 参数接入 execution 快照；Multicast 已通过真机门禁，TCP/Select 的能力与布局仅通过固定测试，等待外部协作者补证。三条路线继续共用 profile、地址转换、堆页准备、fake 对象、PI 三线程和 W1/W2/W3 验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 
