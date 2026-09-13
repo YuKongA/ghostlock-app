@@ -1,5 +1,14 @@
 {
   "schema_version": 1,
+  "_comment": "所有 profile 共用的兼容执行参数。Kotlin 先载入本文件，再应用内置 profile、用户 override 和界面核心选择；S08 才会让 Native 消费这些调优值。",
+  "_field_comments": {
+    "recommended_cpus": "推荐核心编号；当前界面显式选择优先。",
+    "heap": "heap 准备阶段的最大尝试次数和超时，时间单位写在字段名中。",
+    "race": "三条路线共享的竞态等待与轮询间隔。",
+    "stages": "W1/W2/W3 的尝试次数和每轮稳定等待。",
+    "routes": "各攻击链独有的尝试次数、调用批量和时序。",
+    "handoff": "提权结果交给 KernelSU/模块加载及 enforcing 检查时的轮询参数。"
+  },
   "execution": {
     "recommended_cpus": {
       "main": 0,

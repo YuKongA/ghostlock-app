@@ -21,14 +21,14 @@ SRCS := \
   src/core/util.c \
   src/core/fops.c
 
-# Headers also trigger a rebuild (e.g. a freshly --register-ed src/kernels/<release>/offsets.h).
-HDRS := $(wildcard src/core/*.h src/core/*/*.h src/kernels/*.h src/kernels/*/*.h)
+# Native interface and target headers also trigger a rebuild.
+HDRS := $(wildcard src/core/*.h src/core/*/*.h)
 
 # Device offsets are selected at runtime from uname -r.
 TARGET_CONFIG ?= target.h
 
 CFLAGS = -O2 -flto -Wall -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
-  -Isrc/core -Isrc/kernels -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
+  -Isrc/core -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 LDFLAGS := -fPIE -pie -pthread -flto
 
 .PHONY: all clean product

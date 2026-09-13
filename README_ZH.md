@@ -56,7 +56,7 @@
 | `6.12.38-android16-5-g665eafb62659-ab14778838-4k`      | Red Magic 11 Pro / 11 Pro+, nubia NaviX Ultra                    |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
 
-按精确 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。偏移表在 `src/kernels/<uname-release>/offsets.h`，新内核构建用提取器的 `--register` 添加。
+按精确 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 JSON，`index.json` 保存运行索引，`templates/` 提供各内核大版本模板。
 
 明确标记为**需要 Shizuku**的固件通过 shell UserService 执行。先使用 ADB 启动 Shizuku，再点击顶部支持状态区域授权；其余固件沿用应用内执行路径。
 
@@ -83,11 +83,11 @@ adb shell /data/local/tmp/ghostlock
 
 ```powershell
 cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-tools/extract_rs/target/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --register
+tools/extract_rs/target/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
 tools/extract_rs/target/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
 ```
 
-`--register` 将表写入 `src/kernels/<uname-release>/offsets.h`；`--format c --out offsets.h` 输出独立头文件。
+提取结果使用 `--format json` 输出；新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 JSON 登记到 `kernel_profiles/index.json`。旧 C `offsets.h` 注册表已经弃用并移除。
 
 ### 前置检查
 

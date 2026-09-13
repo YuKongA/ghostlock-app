@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "_comment": "运行时内置 profile 索引。只有列在 profiles 中的文件会被 Gradle 生成器和 Kotlin 选择；templates/ 下的示例不会参与运行。",
   "profiles": [
     {
       "release": "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k",
