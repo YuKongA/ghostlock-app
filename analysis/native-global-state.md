@@ -136,7 +136,7 @@ pselect的fd_set、pipe/timerfd目前是局部变量；需进入context的原因
 |---|---|---|---|---|
 | `route_last_step`, `route_last_errno` | main线程调度 | 三route | 作为跨文件隐式返回值，不能表示clean/dirty | `struct route_status` 返回值 |
 | `g_file_buf[1 MiB]` | JSON parser | `load_offsets_json()` | 非重入，常驻大缓冲 | loader调用者buffer或局部mapping |
-| `futex_hashsize` | futex hash helper | `futex_init()` | header定义可导致多翻译单元问题；上下文隐式 | `kernelsnitch_context.hash_size` |
+| `futex_hashsize` | 仅旧 `futex_hash()` 兼容包装 | `futex_init()` | 当前攻击链已使用 `KernelSnitchContext.futex_hash`；遗留符号仍有header多定义风险 | S15 删除兼容包装，保留显式context |
 
 ## 6. 优先级与风险
 

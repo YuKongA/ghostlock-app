@@ -174,14 +174,21 @@
 | `__mm_mark_found()` | 原子记录成功地址 |
 | `__mm_leak()` | `mm_struct` 候选扫描线程入口 |
 | `__run_mm_leak_pass()` | 执行一轮canonical/tag sweep |
-| `kernelsnitch_setup()` | 分配共享状态、初始化hash并创建工作线程 |
+| `kernelsnitch_context_init()` | 分配 mmap 共享上下文，初始化显式 futex hash 策略、扫描存储和线程槽 |
+| `kernelsnitch_setup()` | 兼容入口；转发到 `kernelsnitch_context_init()` |
 | `__collision_pool_limit()` | 计算候选池上限 |
 | `__screen_collision_pool()` | 初筛潜在hash碰撞 |
 | `__prove_collision_pool()` | 对候选做时序复测 |
 | `__verify_collision_pool()` | 组织候选验证过程 |
 | `__collision_pass()` | 完成一次筛选和证明pass |
-| `kernelsnitch_found_collisions()` | 返回当前有效碰撞数 |
-| `kernelsnitch_cleanup()` | 停止线程、释放状态并返回泄露地址 |
+| `kernelsnitch_context_find_collisions()` | 在显式上下文中运行碰撞发现并更新状态 |
+| `kernelsnitch_context_has_collisions()` | 只读查询碰撞发现结果 |
+| `kernelsnitch_context_scan()` | 使用显式 hash context 扫描 `mm_struct` 候选 |
+| `kernelsnitch_context_result()` | 在 destroy 前只读取得泄露地址 |
+| `kernelsnitch_context_destroy()` | 释放上下文拥有的映射和数组，不隐式返回结果 |
+| `kernelsnitch_find_collisions()` / `kernelsnitch_found_collisions()` | 旧碰撞入口兼容包装 |
+| `kernelsnitch_bruteforce()` | 旧地址扫描入口兼容包装 |
+| `kernelsnitch_cleanup()` | 旧清理入口；先保留结果再销毁上下文 |
 | `kernelsnitch_param()` | 带全部参数的主执行入口 |
 | `kernelsnitch()` | 使用默认参数的兼容入口 |
 
@@ -195,8 +202,11 @@
 | `jhash_1word()` / `jhash_2words()` / `jhash_3words()` | 固定长度hash包装 |
 | `futex_hash_no_trunc()` | 计算未截断futex key hash |
 | `__futex_hash()` | 按hash表大小截断 |
+| `futex_hash_context_init()` | 校验并保存显式、不可变的hash表大小 |
+| `futex_hash_context_key()` | 按显式context截断已构造的futex key |
+| `futex_hash_context_bucket()` | 从地址/mm构造private key并按显式context返回bucket |
 | `futex_init()` | 根据CPU数初始化估算hash表大小 |
-| `futex_hash()` | 从用户地址和候选mm构造private futex key |
+| `futex_hash()` | 旧隐式全局表大小入口，保留作兼容包装 |
 
 ### `utils.h` / `timeutils.h`
 

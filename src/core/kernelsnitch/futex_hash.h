@@ -246,6 +246,9 @@ futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
 
 /* Legacy compatibility state. New code must own a FutexHashContext and use
  * futex_hash_context_bucket(); KernelSnitch migration is intentionally S05. */
+// TODO(decoupling:S15-compat): Future: remove futex_hashsize/futex_init/futex_hash.
+// Input: no active KernelSnitch callers; output: explicit context API only.
+// Blocked by: compatibility audit; completion in S15 removes this comment.
 unsigned long futex_hashsize = -1;
 /* Compatibility entry: retain the original online-CPU estimate and mutation
  * until all KernelSnitch callers move to their owned context in S05. */

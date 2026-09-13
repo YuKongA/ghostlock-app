@@ -399,10 +399,12 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ### [ ] S05：KernelSnitch 上下文
 
-- [ ] 引入 `KernelSnitchContext`，收拢 hash、线程、扫描和结果状态。
-- [ ] 生命周期拆为 init、scan、result、destroy。
-- [ ] 线程只访问传入 context；旧入口保留包装。
-- [ ] 构建、提交、暂停并通过真机门禁。
+- [x] 引入 `KernelSnitchContext`，收拢 hash、线程、扫描和结果状态。
+- [x] 生命周期拆为 init、scan、result、destroy。
+- [x] 线程只访问传入 context；旧入口保留包装。
+- [x] 完整 Gradle `assembleDebug` 构建通过；A301SO 固定向量确认 context mask 与旧入口一致。
+- [x] 提交并暂停。
+- [ ] 用户真机兼容性确认。
 - [ ] 真机确认后导出完整日志，完成分析并保存 S05 门禁证据。
 
 ### [ ] S06：地址状态与 profile view
@@ -506,6 +508,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S03 | 等待时间、超时、重试次数、路线时序和推荐核心加入 JSON `execution` | Native 各调用点仍使用散落常量 | S08 | [x] 已规划，待接入 |
 | S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
+| S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
+| S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
 | S06 | 地址访问器仍镜像旧全局量 | profile view 尚未统一 | S08 | [ ] 待产生/回补 |
 | S07 | select/multicast payload 布局读取全局 profile | 路线布局访问器未统一 | S08/S12/S13 | [ ] 待产生/回补 |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | heap、race、路线 context 均需完成 | S13 | [ ] 待产生/回补 |
