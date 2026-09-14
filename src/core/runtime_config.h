@@ -21,7 +21,11 @@ struct runtime_config {
 
 /* Compatibility authority for S02. Later stages pass a const config pointer
  * through ExploitSession and remove direct access to this process snapshot. */
+#ifdef __cplusplus
+extern struct runtime_config &g_runtime_config;
+#else
 extern struct runtime_config g_runtime_config;
+#endif
 
 int runtime_config_init(struct runtime_config *config);
 int runtime_config_apply_profile(

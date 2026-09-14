@@ -60,7 +60,7 @@ enum kernelsnitch_state {
     KERNELSNITCH_MM_NOT_FOUND,
     KERNELSNITCH_LAST,
 };
-char *kernelsnitch_strings[KERNELSNITCH_LAST] = {
+const char *kernelsnitch_strings[KERNELSNITCH_LAST] = {
     "not initialized",
     "initialized",
     "collisions found",
@@ -142,7 +142,8 @@ static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t a
 {
     pthread_t tid;
     for (size_t i = 0; i < amount; ++i) {
-        struct inc_arg *inc_arg = calloc(1, sizeof(struct inc_arg));
+        auto *inc_arg = static_cast<struct inc_arg *>(
+            calloc(1, sizeof(struct inc_arg)));
         inc_arg->id = id;
         inc_arg->ks = ks;
         int err = pthread_create(&tid, 0, __do_increase, (void *)inc_arg);
@@ -318,7 +319,9 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
                                                size_t __collision_cnt,
                                                size_t __verbose)
 {
-    KernelSnitchContext *ks = SYSCHK(mmap(0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
+    auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
+        0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ,
+        MAP_ANON|MAP_SHARED, -1, 0)));
     ks->mm_struct = -1;
     ks->scan_done = 0;
     ks->mm_struct_sz = __mm_struct_sz;
@@ -335,7 +338,8 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
     ks->total_futexes = ks->futex_hash_table_size*ks->collisions*MULITPLE;
     ks->times = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*ks->total_futexes, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
     ks->tids = (pthread_t *)SYSCHK(mmap(0, sizeof(pthread_t)*ks->thread_cnt, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
-    ks->futexes = SYSCHK(mmap(0, FUTEX_SZ, PROT_NONE, MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0));
+    ks->futexes = static_cast<volatile unsigned char *>(SYSCHK(mmap(
+        0, FUTEX_SZ, PROT_NONE, MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0)));
     for (size_t addr = 0; addr < FUTEX_SZ; addr += FUTEX_MMAP_SZ)
         SYSCHK(mmap((void *)((size_t)ks->futexes + addr), FUTEX_MMAP_SZ, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED|MAP_FIXED, -1, 0));
     /* mm_structs live in the direct map, so the scan stops at its end and never
@@ -470,7 +474,8 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
     /* pool of slow candidates, verified below */
-    coll_cand_t *best = calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t));
+    auto *best = static_cast<coll_cand_t *>(
+        calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t)));
     ASSERT_pr(best, "calloc best\n");
     size_t cheap_probe_extra = MAX((wanted + 2) / 3, (size_t)KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
     size_t cheap_probe_after = ks->futex_hash_table_size * (wanted + cheap_probe_extra);

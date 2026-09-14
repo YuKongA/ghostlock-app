@@ -51,20 +51,22 @@ if(ANDROID_NDK_DIR)
 endif()
 
 set(SOURCES
-        core/main.c
-        core/address_space.c
-        core/heap_context.c
-        core/pi_race.c
-        core/route_controller.c
-        core/tcp_zerocopy_route.c
-        core/select_stack_route.c
-        core/multicast_waiter_route.c
-        core/payload_builder.c
-        core/runtime_config.c
-        core/offsets_json.c
-        core/util.c
-        core/fops.c
+        core/main.cpp
+        core/address_space.cpp
+        core/heap_context.cpp
+        core/pi_race.cpp
+        core/route_controller.cpp
+        core/tcp_zerocopy_route.cpp
+        core/select_stack_route.cpp
+        core/multicast_waiter_route.cpp
+        core/payload_builder.cpp
+        core/runtime_config.cpp
+        core/offsets_json.cpp
+        core/util.cpp
+        core/fops.cpp
+        core/exploit_session.cpp
         core/cpp_link_probe.cpp
+        core/native_resource.cpp
 )
 
 add_executable(src ${SOURCES})

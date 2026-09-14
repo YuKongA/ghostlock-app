@@ -39,14 +39,14 @@
 #define COLOR_DEFAULT "\033[0m"
 
 #define SYSCHK(x) ({ \
-        typeof(x) __res = (x); \
-        if (__res == (typeof(x))-1) \
+        __typeof__(x) __res = (x); \
+        if (__res == (__typeof__(x))-1) \
             pr_error("SYSCHK(" #x "): %m\n"); \
         __res; \
     })
 #define SYSCHK_pr(x, fmt) ({ \
-        typeof(x) __res = (x); \
-        if (__res == (typeof(x))-1) \
+        __typeof__(x) __res = (x); \
+        if (__res == (__typeof__(x))-1) \
             pr_error(fmt); \
         __res; \
     })

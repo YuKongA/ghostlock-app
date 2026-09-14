@@ -38,7 +38,11 @@ typedef struct PiRaceContext {
   RouteStatus route_status;
 } PiRaceContext;
 
+#ifdef __cplusplus
+extern PiRaceContext &g_pi_race_context;
+#else
 extern PiRaceContext g_pi_race_context;
+#endif
 
 void pi_race_reset(
     PiRaceContext *context, int initial_delay_usec,

@@ -3,7 +3,11 @@
 
 #include "profile.h"
 
+#ifdef __cplusplus
+extern TargetProfile &g_target_profile;
+#else
 extern TargetProfile g_target_profile;
+#endif
 
 #define _RSO(field, fallback)                                                \
   target_profile_u32(&g_target_profile,                                     \

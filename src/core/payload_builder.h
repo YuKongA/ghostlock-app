@@ -58,4 +58,20 @@ void build_multicast_waiter_payload(
 /* Fixed request/layout vectors, including the upstream unified compact arm. */
 int payload_builder_fixed_vector_test(void);
 
+#ifdef __cplusplus
+#include <cstddef>
+#include <span>
+
+namespace ghostlock {
+/* Bounds-checked C++ encoders. They return false without modifying memory when
+ * the destination cannot contain every field required by the layout. */
+[[nodiscard]] bool encode_compact_waiter(
+    std::span<std::byte> waiter, const WriteRequest &request,
+    const PayloadWriteLayout &layout) noexcept;
+[[nodiscard]] bool encode_multicast_waiter(
+    std::span<std::byte> buffer, size_t waiter_offset, size_t task_offset,
+    size_t lock_offset, uintptr_t fake_task, uintptr_t fake_lock) noexcept;
+}  // namespace ghostlock
+#endif
+
 #endif

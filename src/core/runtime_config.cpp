@@ -1,19 +1,6 @@
 #include "common.h"
 #include "runtime_config.h"
 
-struct runtime_config g_runtime_config = {
-    .main_cpu = 0,
-    .consumer_cpu = 1,
-    .tcp_zerocopy_enabled = true,
-    .home_dir = "/data/local/tmp",
-    .root_script_path = "/data/local/tmp/.ghostlock_root.sh",
-};
-
-// TODO(post-S15:SESSION-03): Remove CPU mirrors after Heap/KernelSnitch receive
-// RuntimeConfig explicitly. PI and Multicast workers already use context CPUs.
-int g_core_main = 0;
-int g_core_consumer = 1;
-
 static bool environment_flag(const char *name, bool default_value) {
   const char *value = getenv(name);
   if (!value || !value[0]) return default_value;

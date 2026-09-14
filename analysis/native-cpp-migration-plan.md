@@ -1,14 +1,14 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00 已完成；CPP01 已实现并完成构建验证，等待真机门禁。基线为 S15 `0c47a9f`，Multicast 最终门禁证据为 `7e51ad7`。
+> 状态：连续迁移批次已完成“全核心 C++20 编译、基础 RAII、会话状态集中、有界 payload 编码和 JSON 文件所有权”并通过全量主机/Gradle 构建；最终设备门禁仍待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
 ## 1. 不可违反的实施规则
 
-- [ ] 每阶段和每个子项都用 checkbox；一次只实施一个阶段。
-- [ ] 每阶段必须保持可编译、可安装、可运行和旧入口兼容；阶段完成后创建独立 Git 提交并立即暂停。
-- [ ] 用户真机确认前不得进入下一阶段。失败时保留在本阶段修复，不把多个行为变化叠到一次门禁中。
+- [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
+- [x] 原逐阶段暂停规则经用户于 2026-09-14 明确改为“一步完成到最后”；本批连续实施，但仍保留兼容入口与验证记录。
+- [x] 连续批次每次实质修改后运行主机回归和 Native 构建；最终统一进行 APK/真机门禁，不把未实测路线写成设备通过。
 - [ ] 用户确认后导出完整 Native 日志到 `analysis/device-gates/CPPxx-YYYYMMDD-<route>-<pass|fail>.native.log`，创建同名前缀分析文档，再勾选阶段标题。
 - [ ] 每阶段更新 `analysis/routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
 - [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
@@ -299,6 +299,22 @@ struct RouteOutcome final {
 - [ ] 提交、暂停、最终真机/协作者门禁后结束迁移。
 
 ## 7. 每阶段验证矩阵
+
+### 连续迁移批次实际落地范围（2026-09-14）
+
+- [x] 全部核心生产翻译单元和路线固定测试由 `.c` 迁为 `.cpp`，Makefile/CMake 源清单统一为 C++20。
+- [x] `ExploitSession` 集中拥有 runtime config、profile、resolved addresses、Heap、PI race 与 CPU mirror；旧符号暂以引用 façade 保持调用点兼容。
+- [x] 引入 move-only `UniqueFd`、`MappedRegion`、`PthreadOwner`、`ChildProcess` 以及 `Result<T, SysError>`，并覆盖 move、reset、join、kill/wait 测试。
+- [x] profile JSON 文件读取改用 `UniqueFd + std::string`，完整处理短读、`EINTR`、空文件和大小上限，不再手工 `malloc/free/close`。
+- [x] payload builder 增加 `std::span<std::byte>` 有界编码入口与不足长度拒绝测试；旧入口只作为稳定 façade 转发。
+- [x] 删除 CPP-COMPAT-01 的四个零调用 KernelSnitch util 包装。
+- [x] 全量 Native 交叉编译、11 组主机测试及 Debug APK 构建通过；APK 为 `GhostLock-v1.1(180)-arm64-v8a-debug.apk`。
+- [ ] 最终 Multicast 真机门禁；通过前不得把本连续批次标记为设备完成。
+- [ ] TCP/Select 设备门禁；目前无可用设备，只能保留为外部协作者验证项。
+- [ ] 深层路线资源的类内 RAII 替换：内核可能继续引用 fd/mmap/thread 的 dirty 状态仍使用显式 disarm/quarantine 清理，不能安全地机械改成作用域析构。
+- [ ] 删除旧全局引用 façade、将 `RuntimeConfig/TargetProfile` 完全值类型化以及把 W1/W2/W3 改为独立 state-machine；这些会改变主控制流，留待最终设备基线之后逐项验证。
+
+因此，本批次完成了语言迁移和可安全证明的 C++ 所有权边界；CPP07–CPP13 中涉及攻击时序/栈帧/dirty kernel reference 的“类化”条目仍是明确的后续工作，而非虚假勾选。
 
 | 层级 | 必做验证 | 失败含义 |
 |---|---|---|

@@ -173,7 +173,7 @@ typedef union {
         };
         unsigned long address;
         unsigned int offset;
-    } private;
+    } private_key;
     struct {
         uint64_t ptr;
         unsigned long word;
@@ -190,7 +190,7 @@ typedef struct futex_hash_context {
 
 uint32_t futex_hash_no_trunc(futex_key_t *key)
 {
-    uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(typeof(*key), both.offset) / 4,
+    uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(__typeof__(*key), both.offset) / 4,
               key->both.offset);
 
     return hash;
@@ -237,9 +237,9 @@ static inline uint32_t
 futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
                           size_t mm)
 {
-    futex_key_t key = {0};
-    key.private.mm = (void *)mm;
-    key.private.address = addr & ~0xfff;
-    key.private.offset = addr & 0xfff;
+    futex_key_t key = {};
+    key.private_key.mm = (void *)mm;
+    key.private_key.address = addr & ~0xfff;
+    key.private_key.offset = addr & 0xfff;
     return futex_hash_context_key(context, &key);
 }

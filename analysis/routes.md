@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 CPP00：Native 已由 GNU C11 objects 与 C++20 object 混合组成，并经静态 libc++/`clang++` 链接；该构建边界已通过 Multicast 真机门禁。TCP/Select context 仍仅有静态验证并等待外部补证。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 的 C++ 批次仍等待最终真机门禁，TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
@@ -10,11 +10,12 @@ flowchart TD
     Override["optional user override"] --> Resolve
     Resolve --> Active["resolved active-profile.json"]
     Active --> Launch["Kotlin ProcessBuilder<br/>--profile + environment + CPU selection"]
-    Launch --> Binary["mixed Native binary<br/>GNU C11 + C++20 / static libc++"]
-    Binary --> Main["C main() / run_exploit()"]
-    Main --> Config["runtime_config_init()"]
+    Launch --> Binary["Native binary<br/>all core translation units C++20 / static libc++"]
+    Binary --> Main["main.cpp / run_exploit()"]
+    Main --> Session["ExploitSession process owner<br/>config + profile + addresses + heap + PI"]
+    Session --> Config["runtime_config_init()"]
     Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
-    Main --> Decode["load_offsets_json()<br/>strict single-profile decode"]
+    Session --> Decode["load_resolved_profile_json()<br/>UniqueFd + std::string owned input"]
     Decode --> Validate["release + range + route validation"]
     Validate --> Profile["immutable TargetProfile snapshot<br/>owns resolved values"]
     Profile --> Capability["semantic capabilities + layouts<br/>M: device verified; T/P: static only"]
@@ -29,7 +30,7 @@ flowchart TD
     Request --> Write["do_one_write(request)"]
     Write --> Page["prepare_good_kernel_page()"]
     Page --> Snitch["KernelSnitchContext<br/>init → find → scan → result → destroy<br/>owns FutexHashContext"]
-    Snitch --> Payload["PayloadWriteLayout + shared payload"]
+    Snitch --> Payload["PayloadWriteLayout + bounded std::span encoder"]
     Request --> Payload
     Capability --> Payload
     Execution --> Page
@@ -46,7 +47,7 @@ flowchart TD
     Waiter --> Controller["RouteController<br/>supports + execute + RouteStatus"]
     Controller --> Choice{"route"}
     Snapshot --> Choice
-    Choice --> M["Multicast one-shot<br/>device verified"]
+    Choice --> M["Multicast one-shot<br/>C++ final device gate pending"]
     Choice --> T["TcpZerocopyRouteContext<br/>static verified"]
     Choice --> P["SelectStackRouteContext<br/>static verified"]
     T -. "clean + disarmed only" .-> P

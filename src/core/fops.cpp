@@ -5,6 +5,12 @@
 #include <sys/timerfd.h>
 
 #include "target.h"
+
+/* The two Multicast stamp buffers intentionally remain dynamic stack frames.
+ * Their layout/order is device-verified and must not become heap-backed STL. */
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wvla-cxx-extension"
+#endif
 #include "multicast_waiter_route.h"
 #include "select_stack_route.h"
 #include "tcp_zerocopy_route.h"
@@ -38,7 +44,7 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
                                   uintptr_t target, uintptr_t value,
                                   uintptr_t lock) {
   size_t size = context->layout.buffer_size;
-  unsigned char b[size];
+  __extension__ unsigned char b[size];
   size_t o = context->layout.waiter_offset;
   memset(b, 0, sizeof(b));
   if (target) {
@@ -54,7 +60,7 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
 }
 
 static void *multicast_waiter_worker(void *arg) {
-  MulticastWaiterRouteContext *context = arg;
+  auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
   pin_to_core(context->consumer_cpu);
   sigset_t set; sigemptyset(&set); sigaddset(&set, SIGUSR1);
   pthread_sigmask(SIG_UNBLOCK, &set, NULL);
@@ -88,7 +94,7 @@ static void *multicast_waiter_worker(void *arg) {
 }
 
 static void *multicast_owner_worker(void *arg) {
-  MulticastWaiterRouteContext *context = arg;
+  auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
   pin_to_core(context->main_cpu);
   while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
   futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
@@ -217,7 +223,7 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
   MulticastWaiterLayout layout =
       target_profile_multicast_waiter_layout(&g_target_profile);
   size_t stamp_size = layout.buffer_size;
-  unsigned char stamp[stamp_size];
+  __extension__ unsigned char stamp[stamp_size];
   memset(stamp, 0, sizeof(stamp));
   build_multicast_waiter_payload(
       stamp, layout.waiter_offset, layout.task_offset,
@@ -346,7 +352,7 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
  * TcpZerocopyRouteContext; output: context-owned phase/error flags. */
 static void *tcp_punch_thread(void *arg) {
   disable_rseq_for_thread();
-  TcpZerocopyRouteContext *context = arg;
+  auto *context = static_cast<TcpZerocopyRouteContext *>(arg);
   while (!atomic_load(&context->punch_go) &&
          !atomic_load(&context->punch_stop)) {
     sched_yield();
@@ -404,9 +410,9 @@ static int tcp_zerocopy_prepare(TcpZerocopyRouteContext *context) {
     pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
     return tcp_zerocopy_fail(context, 42, errno);
   }
-  context->mapping = mmap(NULL, context->mapping_length,
-                          PROT_READ | PROT_WRITE,
-                          MAP_SHARED, context->punch_fd, 0);
+  context->mapping = static_cast<unsigned char *>(
+      mmap(NULL, context->mapping_length, PROT_READ | PROT_WRITE,
+           MAP_SHARED, context->punch_fd, 0));
   if (context->mapping == MAP_FAILED) {
     pr_warning("tcp route mmap errno=%d\n", errno);
     return tcp_zerocopy_fail(context, 43, errno);
@@ -550,7 +556,7 @@ static void tcp_zerocopy_destroy(TcpZerocopyRouteContext *context) {
       pr_warning("tcp route munmap errno=%d\n", saved_errno);
       return;
     }
-    context->mapping = MAP_FAILED;
+    context->mapping = static_cast<unsigned char *>(MAP_FAILED);
   }
   if (context->punch_fd >= 0) {
     close(context->punch_fd);

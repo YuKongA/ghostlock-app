@@ -86,8 +86,13 @@ typedef struct tcp_zerocopy_layout {
 
 static inline TargetProfile
 target_profile_snapshot(const struct kernel_offsets *values) {
+#ifdef __cplusplus
+  return values ? TargetProfile{.values = *values, .loaded = 1}
+                : TargetProfile{};
+#else
   return values ? (TargetProfile){.values = *values, .loaded = 1}
                 : (TargetProfile){0};
+#endif
 }
 
 static inline const struct kernel_offsets *

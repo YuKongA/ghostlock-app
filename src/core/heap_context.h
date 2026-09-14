@@ -53,7 +53,11 @@ typedef struct HeapContext {
   PayloadPage quarantine;
 } HeapContext;
 
+#ifdef __cplusplus
+extern HeapContext &g_heap_context;
+#else
 extern HeapContext g_heap_context;
+#endif
 
 void heap_context_init(HeapContext *context);
 int payload_page_has_reclaim(const PayloadPage *page);

@@ -5,7 +5,6 @@
 int main(void) {
   struct kernel_offsets decoded = {
       .kernel_major = 5,
-      .compact_waiter = 1,
       .pselect_waiter_shift = 16,
       .mcast_waiter_off = 32,
       .mcast_buffer_size = 128,
@@ -17,6 +16,7 @@ int main(void) {
       .mcast_lock_slot_count = 4,
       .mcast_lock_slot_stride = 64,
       .off_mcast_fake_bss = 0x123400,
+      .compact_waiter = 1,
       .execution = {
           .recommended_main_cpu = 2,
           .recommended_consumer_cpu = 3,

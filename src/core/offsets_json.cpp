@@ -1,6 +1,7 @@
 /* Minimal JSON parser for the runtime offsets import (offsets.json).
  * Self-contained on purpose: the binary must not depend on cJSON. */
 #include "offsets_json.h"
+#include "native_resource.hpp"
 
 #include <ctype.h>
 #include <errno.h>
@@ -12,27 +13,38 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <string>
+
 #define PROFILE_JSON_MAX_SIZE (1U << 20)
 
-static char *read_profile_file(const char *path, size_t *size_out) {
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0) return NULL;
-  char *buffer = malloc(PROFILE_JSON_MAX_SIZE + 1);
-  if (!buffer) {
-    close(fd);
-    return NULL;
+static ghostlock::Result<std::string> read_profile_file(const char *path) {
+  ghostlock::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+  if (!fd.valid()) {
+    return ghostlock::Result<std::string>::failure(
+        ghostlock::SysError::from_errno());
   }
-  ssize_t size = read(fd, buffer, PROFILE_JSON_MAX_SIZE);
-  int saved_errno = errno;
-  close(fd);
-  if (size <= 0 || size == PROFILE_JSON_MAX_SIZE) {
-    free(buffer);
-    errno = size == PROFILE_JSON_MAX_SIZE ? EFBIG : saved_errno;
-    return NULL;
+
+  std::string buffer(PROFILE_JSON_MAX_SIZE, '\0');
+  size_t used = 0;
+  while (used < buffer.size()) {
+    const ssize_t count = read(fd.get(), buffer.data() + used,
+                               buffer.size() - used);
+    if (count > 0) {
+      used += static_cast<size_t>(count);
+      continue;
+    }
+    if (count == 0) break;
+    if (errno == EINTR) continue;
+    return ghostlock::Result<std::string>::failure(
+        ghostlock::SysError::from_errno());
   }
-  buffer[size] = '\0';
-  *size_out = (size_t)size;
-  return buffer;
+  if (used == 0 || used == PROFILE_JSON_MAX_SIZE) {
+    errno = used == PROFILE_JSON_MAX_SIZE ? EFBIG : EINVAL;
+    return ghostlock::Result<std::string>::failure(
+        ghostlock::SysError::from_errno());
+  }
+  buffer.resize(used);
+  return ghostlock::Result<std::string>::success(std::move(buffer));
 }
 
 static const char *json_skip_ws(const char *p, const char *end) {
@@ -470,9 +482,14 @@ static void fill_external_entry(struct kernel_offsets *out,
 
 int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
                                char *release_buf, size_t release_buf_cap) {
-  size_t size = 0;
-  char *file_buffer = read_profile_file(path, &size);
-  if (!file_buffer) return -1;
+  auto file_result = read_profile_file(path);
+  if (!file_result) {
+    errno = file_result.error().code.value();
+    return -1;
+  }
+  const std::string &file = file_result.value();
+  const char *file_buffer = file.data();
+  const size_t size = file.size();
   const char *object = json_skip_ws(file_buffer, file_buffer + size);
   const char *end = object;
   int result = -1;
@@ -496,6 +513,5 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
       result = fill_execution_settings(object, end, &out->execution);
     }
   }
-  free(file_buffer);
   return result;
 }

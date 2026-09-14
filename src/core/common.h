@@ -1,7 +1,9 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #define __ARM 1
 
 #include "offset.h"
@@ -54,8 +56,13 @@
 
 #define MM_ORDER 3
 #define MM_PARTIALS 5
+#ifdef __cplusplus
+extern int &g_core_main;
+extern int &g_core_consumer;
+#else
 extern int g_core_main;
 extern int g_core_consumer;
+#endif
 #define CORE (g_core_main)
 #define CONSUMER_CORE (g_core_consumer)
 #define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
@@ -124,11 +131,16 @@ void log_startup_context(void);
 void log_sync(void);
 void disable_rseq_for_thread(void);
 void init_p0_profile(void);
+#ifdef __cplusplus
+extern ResolvedAddresses &g_resolved_addresses;
+extern TargetProfile &g_target_profile;
+#else
 extern ResolvedAddresses g_resolved_addresses;
 extern TargetProfile g_target_profile;
+#endif
 long futex_op(
     uint32_t *uaddr, int op, uint32_t val,
-    const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3);
+    const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);
 long sched_setattr_tid(int tid, int nice_value);
 void put64(unsigned char *p, size_t off, uint64_t value);
 void put32(unsigned char *p, size_t off, uint32_t value);
@@ -142,10 +154,6 @@ void release_quarantined_reclaim_sockets(void);
 int stash_prebuilt_page(void);
 int activate_prebuilt_page(void);
 void discard_prebuilt_page(void);
-void setup_kernelsnitch(void);
-int kernelsnitch_collisions_ready(void);
-uintptr_t current_kernelsnitch_mm_struct(void);
-uintptr_t cleanup_kernelsnitch(void);
 void close_ctx_memfds(struct mm_ctx *ctx);
 void free_ctx_storage(struct mm_ctx *ctx);
 void cleanup_page_prepare_state(void);
