@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是解耦阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 S14 的 Multicast 门禁：共享 PI 与统一路线状态控制已真机验证；TCP/Select context 仅有静态验证并等待外部补证。
+此图是迁移阶段的唯一强制更新 UML。每阶段只有在构建和真机测试通过后，才把该阶段已经验证的调用边界更新到图中；未完成或仅有 TODO 的目标结构不得提前画入。当前已同步到 CPP00：Native 已由 GNU C11 objects 与 C++20 object 混合组成，并经静态 libc++/`clang++` 链接；该构建边界已通过 Multicast 真机门禁。TCP/Select context 仍仅有静态验证并等待外部补证。
 
 ```mermaid
 flowchart TD
@@ -10,7 +10,8 @@ flowchart TD
     Override["optional user override"] --> Resolve
     Resolve --> Active["resolved active-profile.json"]
     Active --> Launch["Kotlin ProcessBuilder<br/>--profile + environment + CPU selection"]
-    Launch --> Main["main() / run_exploit()"]
+    Launch --> Binary["mixed Native binary<br/>GNU C11 + C++20 / static libc++"]
+    Binary --> Main["C main() / run_exploit()"]
     Main --> Config["runtime_config_init()"]
     Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
     Main --> Decode["load_offsets_json()<br/>strict single-profile decode"]
@@ -61,7 +62,7 @@ flowchart TD
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02–S08 已完成运行配置、逐设备 JSON profile、KernelSnitch、地址、写请求和不可变 `TargetProfile` 的边界。S09–S13 将 Heap、共享 PI、TCP、Select 和 Multicast resident 状态迁入各自 context；one-shot Multicast 因真机证明其对通用 context 栈帧敏感，保留专用小栈帧实现。S14 由 `RouteController` 统一 capability、`RouteStatus` 和 TCP→Select clean fallback，`PiRaceContext` 直接持有路线结果，不再从全局日志字段推测。当前 one-shot Multicast 已完整通过 W1/W2/W3 与 KernelSU 门禁；TCP/Select 仍等待对应设备。三条路线继续共用 profile、地址转换、堆页准备、PI 三线程和阶段验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02–S14 已完成 context 与统一路线状态边界。CPP00 只改变编译/链接层：C 攻击代码保持原控制流，额外的 C++20 link probe 不被攻击链调用；静态 libc++ 产物已完整通过 W1/W2/W3 与 KernelSU 门禁。one-shot Multicast 仍保留已验证的专用小栈帧实现；TCP/Select 仍等待对应设备。三条路线继续共用 profile、地址转换、堆页准备、PI 三线程和阶段验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 

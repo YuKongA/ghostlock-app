@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00 已实现并完成构建验证，等待真机门禁。基线为 S15 `0c47a9f`，Multicast 最终门禁证据为 `7e51ad7`。
+> 状态：CPP00 已完成；CPP01 实施中。基线为 S15 `0c47a9f`，Multicast 最终门禁证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -153,7 +153,7 @@ struct RouteOutcome final {
 
 阶段顺序按“构建基础 → 纯值 → 单资源 → 聚合资源 → 并发 → 三路线 → 全局编排”推进。Multicast one-shot 是当前唯一完整真机覆盖且对栈帧/顺序高度敏感的路线，因此最后迁移。
 
-### [ ] CPP00：混合 C/C++ 构建骨架
+### [x] CPP00：混合 C/C++ 构建骨架
 
 - [x] Makefile 增加 `NDK_CXX`、独立 `.c/.cpp → .o` 规则和最终 `clang++` 链接；保留当前优化、PIE、pthread、LTO 和 include 定义。既有 C 因 GNU `typeof` 固定为 `gnu11`。
 - [x] Gradle input 扩展到 `.cpp/.hpp`；输出路径、APK 打包名称和任务依赖不变。
@@ -162,7 +162,7 @@ struct RouteOutcome final {
 - [x] `llvm-readelf` 确认 PIE/DYN，仅依赖 `libm/libdl/libc`；使用静态 libc++，APK 无 `libc++_shared.so` 依赖。Native 大小由 96,928 增至 431,344 字节（+334,416 B）。
 - [x] 既有 profile/payload/Heap/KernelSnitch bounds/RouteController 主机测试、CPP link probe、`buildGhostlockNative` 和 `assembleDebug` 全部通过；APK 内 Native SHA-256 与构建产物一致。
 - [x] 创建 CPP00 独立提交并暂停。
-- [ ] 真机执行完整 Multicast 门禁，保存 CPP00 日志并更新核心 UML。
+- [x] `versionCode=178` 真机完成完整 Multicast 门禁；六次路线均 `OK clean=1/1`，W1/W2/W3、root、seccomp 与 KernelSU 交接通过，日志和核心 UML 已更新。
 
 ### [ ] CPP01：公共强类型、常量与 `target.h`
 
