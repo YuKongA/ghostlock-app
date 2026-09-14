@@ -8,6 +8,8 @@
 
 ### 当前源码布局
 
+当前实现的 profile、session、共享攻击链与三路线所有权关系见 [`native-cpp-current-uml.md`](native-cpp-current-uml.md)。
+
 - [x] `memory/`：地址解析、Heap/page 状态与 route-neutral payload 编码。
 - [x] `routes/`：路线状态、控制器、三路线 context，以及保持原单一编译单元边界的 `route_operations.cpp`。
 - [x] `session/`：`ExploitSession` 与运行配置。
@@ -15,6 +17,7 @@
 - [x] `tests/`：所有主机固定测试；C/C++ link probe 已退出生产二进制。
 - [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `src/core/README.md`。
 - [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
+- [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
 - [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元；必须作为单独行为门禁，避免改变静态函数布局和敏感路线生成代码。
 
 ## 1. 不可违反的实施规则
