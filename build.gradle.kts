@@ -89,7 +89,7 @@ tasks.register<Exec>("buildGhostlockNative") {
     environment("ANDROID_NDK_HOME", ndk)
     environment("NDK_ROOT", ndk)
     inputs.files(
-        fileTree("src") { include("**/*.c", "**/*.h") },
+        fileTree("src") { include("**/*.c", "**/*.h", "**/*.cpp", "**/*.hpp") },
         file("Makefile"),
     )
     outputs.file(file("ghostlock"))

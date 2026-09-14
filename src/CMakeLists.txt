@@ -1,8 +1,13 @@
 # ONLY FOR IDE SYNTAX ANALYSIS AND AUTO COMPLETION
 cmake_minimum_required(VERSION 4.3)
-project(src C)
+project(src LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # CLion-only configuration. The native binary is built by the parent Gradle
 # task (aarch64-linux-android / arm64-v8a), not by this CMake project.
@@ -45,11 +50,21 @@ if(ANDROID_NDK_DIR)
     endif()
 endif()
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
-        core/*.c
-        core/*.h
-        kernels/*.c
-        kernels/*.h
+set(SOURCES
+        core/main.c
+        core/address_space.c
+        core/heap_context.c
+        core/pi_race.c
+        core/route_controller.c
+        core/tcp_zerocopy_route.c
+        core/select_stack_route.c
+        core/multicast_waiter_route.c
+        core/payload_builder.c
+        core/runtime_config.c
+        core/offsets_json.c
+        core/util.c
+        core/fops.c
+        core/cpp_link_probe.cpp
 )
 
 add_executable(src ${SOURCES})
