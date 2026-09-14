@@ -129,7 +129,6 @@ flowchart TB
     U_k5selected["kernel5_route_selected"]
     U_kssetup["setup_kernelsnitch"]
     U_ksready["kernelsnitch_collisions_ready"]
-    U_ksrun["run_kernelsnitch_bruteforce"]
     U_kscurrent["current_kernelsnitch_mm_struct"]
     U_kscleanup["cleanup_kernelsnitch"]
     U_readline["read_first_line"]
@@ -184,7 +183,6 @@ flowchart TB
     U_page --> U_openmem
     U_page --> U_kssetup
     U_page --> U_ksready
-    U_page --> U_ksrun
     U_page --> U_kscurrent
     U_page --> U_kscleanup
     U_page --> U_payload
@@ -282,14 +280,17 @@ flowchart TB
     S_mark["__mm_mark_found"]
     S_leak["__mm_leak"]
     S_leakpass["__run_mm_leak_pass"]
-    S_setup["kernelsnitch_setup"]
+    S_init["kernelsnitch_context_init"]
     S_limit["__collision_pool_limit"]
     S_screen["__screen_collision_pool"]
     S_prove["__prove_collision_pool"]
     S_verify["__verify_collision_pool"]
     S_pass["__collision_pass"]
-    S_found["kernelsnitch_found_collisions"]
-    S_cleanup["kernelsnitch_cleanup"]
+    S_find["kernelsnitch_context_find_collisions"]
+    S_found["kernelsnitch_context_has_collisions"]
+    S_scan["kernelsnitch_context_scan"]
+    S_result["kernelsnitch_context_result"]
+    S_cleanup["kernelsnitch_context_destroy"]
     S_param["kernelsnitch_param"]
     S_default["kernelsnitch"]
 
@@ -299,16 +300,19 @@ flowchart TB
     S_leak --> S_match
     S_leak --> S_mark
     S_leakpass -. pthread .-> S_leak
-    S_setup -. pthread .-> S_do
+    S_init -. pthread .-> S_do
     S_screen --> S_measure
     S_prove --> S_measure
     S_verify --> S_screen
     S_verify --> S_prove
     S_pass --> S_limit
     S_pass --> S_verify
-    S_param --> S_setup
-    S_param --> S_pass
-    S_param --> S_leakpass
+    S_find --> S_pass
+    S_scan --> S_leakpass
+    S_param --> S_init
+    S_param --> S_find
+    S_param --> S_scan
+    S_param --> S_result
     S_param --> S_cleanup
     S_default --> S_param
   end
@@ -384,10 +388,12 @@ flowchart TB
   M_run --> U_quarantine
   M_run --> U_releaseq
   M_run --> F_k5stop
-  U_kssetup --> S_setup
+  U_kssetup --> S_init
   U_ksready --> S_found
   U_kscleanup --> S_cleanup
-  S_setup --> H_init
+  U_kscurrent --> S_result
+  U_kscleanup --> S_result
+  S_init --> H_init
   S_match --> H_hash
   S_screen --> H_hash
   S_measure --> X_tb
@@ -416,7 +422,7 @@ flowchart LR
     Verify --> CommonB
 ```
 
-这张过滤图显示：三条路线不是三套完整攻击链，而是同一条profile→堆准备→PI竞争→阶段验证主链上的三个可替换覆盖机制。当前重合部分仍由跨文件全局变量连接，因此也是后续解耦的主要边界。
+这张过滤图显示：三条路线不是三套完整攻击链，而是同一条 profile→堆准备→PI竞争→阶段验证主链上的三个可替换覆盖机制。S15 后路线结果、FutexHash、KernelSnitch 和路线资源已有显式 context；尚存的重合边界主要是会话级 profile/地址、Heap 页面与编排所有权。
 
 ## 函数与全局状态依赖
 
@@ -433,16 +439,16 @@ flowchart LR
     JsonFns["load_offsets_json / parser helpers"]
   end
 
-  subgraph Globals["当前可变全局状态"]
+  subgraph Globals["S15 后的状态/所有权对象"]
     GProfile["active_offsets<br/>p0_kernel_phys_load / g_init_cred_image"]
     GConfig["g_core_* / paths / timer"]
-    GRace["f_* / waiter_* / owner_*<br/>consumer_* / route_done"]
-    GWrite["pselect_custom_*<br/>route_last_step / errno"]
+    GRace["PiRaceContext<br/>waiter / owner / consumer / RouteStatus"]
+    GWrite["WriteRequest<br/>immutable stage payload"]
     GPage["page_base / fake_*<br/>current + prebuilt state"]
     GHeap["ks / mm contexts / skb_buf<br/>reclaim sockets / leak anchors"]
-    GMcast["mr_* resident state"]
-    GTcp["tcp_punch_* state"]
-    GPselect["standard_io_backup"]
+    GMcast["MulticastWaiterRouteContext"]
+    GTcp["TcpZerocopyRouteContext"]
+    GPselect["SelectStackRouteContext"]
     GJson["g_file_buf"]
   end
 

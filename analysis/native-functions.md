@@ -87,11 +87,10 @@
 
 | 函数 | 用途 | 状态/输入输出 | 调用/清理 |
 |---|---|---|---|
-| `setup_kernelsnitch()` | 创建地址碰撞探测上下文 | 写 `ks` | `kernelsnitch_setup()` |
-| `kernelsnitch_collisions_ready()` | 查询有效碰撞数 | `ks` → bool | `kernelsnitch_found_collisions()` |
-| `run_kernelsnitch_bruteforce()` | 推进碰撞搜索 | 修改 `ks` | kernelsnitch内部pass |
-| `current_kernelsnitch_mm_struct()` | 取得当前候选 `mm_struct` 地址 | `ks` → address | 只读 |
-| `cleanup_kernelsnitch()` | 停止工作线程并回收KS上下文 | `ks` → address | `kernelsnitch_cleanup()` |
+| `setup_kernelsnitch()` | 零调用兼容适配：创建地址碰撞探测上下文 | 写 `ks` | `kernelsnitch_context_init()`；登记 `COMPAT-01` |
+| `kernelsnitch_collisions_ready()` | 零调用兼容适配：查询有效碰撞数 | `ks` → bool | `kernelsnitch_context_has_collisions()`；登记 `COMPAT-01` |
+| `current_kernelsnitch_mm_struct()` | 零调用兼容适配：取得当前候选 `mm_struct` 地址 | `ks` → address | `kernelsnitch_context_result()`；登记 `COMPAT-01` |
+| `cleanup_kernelsnitch()` | 零调用兼容适配：保留结果并回收KS上下文 | `ks` → address | `kernelsnitch_context_result/destroy()`；登记 `COMPAT-01` |
 | `clone_child()` | 创建用于分配 `mm_struct` 的子进程 | 无 → PID | 调用者负责kill/wait |
 | `clone_leak_child()` | 创建泄露/固定用子进程 | 写 `child_leak` → PID | 后续cleanup回收 |
 | `open_memfd()` | 为子进程相关分配准备memfd | child → fd | fd所有权交给调用者 |
@@ -184,7 +183,6 @@
 | `__mm_leak()` | `mm_struct` 候选扫描线程入口 |
 | `__run_mm_leak_pass()` | 执行一轮canonical/tag sweep |
 | `kernelsnitch_context_init()` | 分配 mmap 共享上下文，初始化显式 futex hash 策略、扫描存储和线程槽 |
-| `kernelsnitch_setup()` | 兼容入口；转发到 `kernelsnitch_context_init()` |
 | `__collision_pool_limit()` | 计算候选池上限 |
 | `__screen_collision_pool()` | 初筛潜在hash碰撞 |
 | `__prove_collision_pool()` | 对候选做时序复测 |
@@ -195,9 +193,6 @@
 | `kernelsnitch_context_scan()` | 使用显式 hash context 扫描 `mm_struct` 候选 |
 | `kernelsnitch_context_result()` | 在 destroy 前只读取得泄露地址 |
 | `kernelsnitch_context_destroy()` | 释放上下文拥有的映射和数组，不隐式返回结果 |
-| `kernelsnitch_find_collisions()` / `kernelsnitch_found_collisions()` | 旧碰撞入口兼容包装 |
-| `kernelsnitch_bruteforce()` | 旧地址扫描入口兼容包装 |
-| `kernelsnitch_cleanup()` | 旧清理入口；先保留结果再销毁上下文 |
 | `kernelsnitch_param()` | 带全部参数的主执行入口 |
 | `kernelsnitch()` | 使用默认参数的兼容入口 |
 

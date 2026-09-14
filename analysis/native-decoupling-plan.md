@@ -556,13 +556,14 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] Multicast 真机验证通过：所有路线状态均为 `OK clean=1/1`，W1/W2/W3 完成并进入 `KernelSU ready`。
 - [ ] 真机确认后分别导出三路线及 TCP→Select 回退日志，完成分析并保存 S14 门禁证据。
 
-### [ ] S15：兼容层、遗留全局和文档收尾
+### [x] S15：兼容层、遗留全局和文档收尾
 
-- [ ] 删除零调用的包装、全局镜像和宽泛 `common.h` extern。
-- [ ] 检查所有 TODO：完成或记录明确保留理由及后续缺陷编号。
-- [ ] 更新全函数调用图、数据流图和全局状态矩阵。
-- [ ] 全量构建、提交、暂停并完成最终真机回归。
-- [ ] 真机确认后导出最终回归完整日志，完成分析并保存 S15 门禁证据。
+- [x] 删除旧 FutexHash、KernelSnitch、路线错误镜像和 Select fd-set 兼容入口；缩窄 `common.h` extern。
+- [x] 检查遗留 TODO：未在 S15 安全迁移的会话/所有权问题登记为 `SESSION-01`–`SESSION-04`、`SELECT-01`；零调用 util 级 KernelSnitch 适配入口登记为 `COMPAT-01`，避免在门禁前追加行为变更。
+- [x] 更新全函数调用图、数据流图和全局状态矩阵，使其反映 S15 删除项与保留边界。
+- [x] 全量构建通过，提交 `0c47a9f` 后暂停；重新部署 `versionCode=176` 并完成最终真机回归。
+- [x] 导出最终 Multicast 回归完整日志并完成分析：六次路线执行均 `OK clean=1/1`，W1/W2/W3、root child、seccomp 绕过及 KernelSU 交接全部通过。
+- [ ] 最终外部补证：TCP、Select 与 TCP→Select 回退仍受设备缺失限制；不扩大本次 Multicast 门禁结论。
 
 ## 10. 待回补 TODO 登记表
 
@@ -585,6 +586,9 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] 路线内状态已回补，跨 owner 待完成 |
 | S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [x] route 单次 context 已完成，session 重试待回补 |
 | S13 | resident stop 暂时继续调用 Heap reclaim/prepare cleanup | 为保持已验证 W1/W2 停止顺序，尚无 session handoff | S14 | [x] route context 已完成，Heap handoff 待回补 |
+| S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [ ] 下次行为提交删除并重跑门禁 |
+| S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
+| S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
 
 ## 附录 A：按文件迁移细节
 

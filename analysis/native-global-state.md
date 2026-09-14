@@ -136,9 +136,11 @@ pselect的fd_set、pipe/timerfd目前是局部变量；需进入context的原因
 
 | 变量 | 读者 | 写者 | 问题 | 目标归宿 |
 |---|---|---|---|---|
-| `route_last_step`, `route_last_errno` | main线程调度 | 三route | 作为跨文件隐式返回值，不能表示clean/dirty | `struct route_status` 返回值 |
+| `RouteStatus`（位于各 route/PI context） | main线程调度 | 三route controller | S15 已删除 `route_last_step/route_last_errno` 隐式全局返回值 | 保持结构化返回与 clean/disarmed 双判定 |
 | `g_file_buf[1 MiB]` | JSON parser | `load_offsets_json()` | 非重入，常驻大缓冲 | loader调用者buffer或局部mapping |
-| `futex_hashsize` | 仅旧 `futex_hash()` 兼容包装 | `futex_init()` | 当前攻击链已使用 `KernelSnitchContext.futex_hash`；遗留符号仍有header多定义风险 | S15 删除兼容包装，保留显式context |
+| `FutexHashContext` | KernelSnitch context | `kernelsnitch_context_init()` | S15 已删除 `futex_hashsize`、`futex_init()`、`futex_hash()` 全局兼容层 | 保持显式 context |
+
+S15 审计后仍保留四个零调用的 util 级 KernelSnitch 转发函数及进程级 `ks` owner，登记为 `COMPAT-01`；它们不参与本次已验证攻击链，后续删除必须形成新的可测试提交。会话所有权残项使用 `SESSION-01`–`SESSION-04`，Select 外层重试使用 `SELECT-01` 跟踪。
 
 ## 6. 优先级与风险
 

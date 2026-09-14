@@ -189,6 +189,8 @@ flowchart LR
 
 ## 路线选择与回退现状
 
+S15 最终回归（`versionCode=176`）再次验证 Multicast 端到端主链：六次 route 均为 `OK clean=1/1`，W1/W2/W3 后进入 `KernelSU ready`。TCP、Select 和 TCP→Select 回退仍等待对应设备补证。
+
 ```mermaid
 stateDiagram-v2
     [*] --> ProfileSelected
