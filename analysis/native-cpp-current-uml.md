@@ -118,6 +118,16 @@ class SelectStackRouteContext {
   +RouteStatus status
 }
 
+class RouteOutcome {
+  <<layout-compatible typed status>>
+  +RouteCode code
+  +int step
+  +int error_number
+  +is_clean() bool
+  +is_dirty() bool
+  +can_fallback() bool
+}
+
 class RouteOperations {
   <<routes/route_operations.cpp>>
   +multicast prepare/execute/disarm/destroy
@@ -126,9 +136,11 @@ class RouteOperations {
 }
 
 class NativeResource {
-  <<support; not yet wired into routes>>
+  <<support; foundation not yet wired into routes>>
+  +BorrowedFd
   +UniqueFd
   +MappedRegion
+  +ScopeExit
   +PthreadOwner
   +ChildProcess
   +Result~T,SysError~
@@ -154,6 +166,7 @@ RouteController o-- PiRaceContext : borrows
 RouteController ..> MulticastWaiterRouteContext : dispatch
 RouteController ..> TcpZerocopyRouteContext : dispatch
 RouteController ..> SelectStackRouteContext : dispatch
+RouteController --> RouteOutcome : returns
 RouteOperations ..> MulticastWaiterRouteContext : operates on
 RouteOperations ..> TcpZerocopyRouteContext : operates on
 RouteOperations ..> SelectStackRouteContext : operates on
@@ -165,5 +178,5 @@ NativeResource ..> ExploitSession : foundation only
 - `kernel_offsets` 是 Kotlin JSON 到 Native 的可变 transport；`TargetProfile` 是复制得到的只读语义入口，但两者尚未完全拆成独立 C++ 类型。
 - `ExploitSession` 已集中主要全局状态，旧代码仍通过全局引用 façade 访问其成员。
 - 三条路线共享 `WriteRequest → HeapContext → PiRaceContext → RouteController`，随后才各自构造 route context。
-- RAII 类型已经存在，但三条路线尚未接入；路线仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
+- RAII 基础类型已补齐借用、scope、stop 和 handoff 语义，但三条路线尚未接入；路线仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
 - 下一次结构拆分是把 `route_operations.cpp` 的三组函数分别移入对应路线 `.cpp`；该操作会改变编译单元和生成代码，必须独立进行真机门禁。

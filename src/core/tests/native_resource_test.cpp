@@ -1,7 +1,9 @@
 #include "support/native_resource.hpp"
 
 #include <fcntl.h>
+#include <dirent.h>
 #include <signal.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -18,9 +20,37 @@ void *increment(void *argument) {
   return nullptr;
 }
 
+struct StopState {
+  std::atomic<bool> stop{false};
+  std::atomic<int> stop_calls{0};
+};
+
+void request_stop(void *argument) noexcept {
+  auto *state = static_cast<StopState *>(argument);
+  state->stop_calls.fetch_add(1);
+  state->stop.store(true);
+}
+
+void *wait_for_stop(void *argument) {
+  auto *state = static_cast<StopState *>(argument);
+  while (!state->stop.load()) sched_yield();
+  return nullptr;
+}
+
+int open_fd_count() {
+  DIR *directory = opendir("/proc/self/fd");
+  if (!directory) directory = opendir("/dev/fd");
+  assert(directory);
+  int count = 0;
+  while (readdir(directory)) ++count;
+  closedir(directory);
+  return count;
+}
+
 }  // namespace
 
 int main() {
+  const int initial_fd_count = open_fd_count();
   int pipe_fd[2];
   assert(pipe(pipe_fd) == 0);
   close(pipe_fd[1]);
@@ -29,19 +59,56 @@ int main() {
     ghostlock::UniqueFd first(observed);
     ghostlock::UniqueFd second(std::move(first));
     assert(!first.valid() && second.get() == observed);
+    ghostlock::BorrowedFd borrowed = second.borrow();
+    assert(borrowed.valid() && borrowed.get() == observed);
   }
   errno = 0;
   assert(fcntl(observed, F_GETFD) == -1 && errno == EBADF);
+  assert(open_fd_count() == initial_fd_count);
+
+  int scope_calls = 0;
+  {
+    auto first = ghostlock::make_scope_exit([&]() noexcept { ++scope_calls; });
+    auto second = std::move(first);
+    (void)second;
+  }
+  assert(scope_calls == 1);
+  {
+    auto cancelled =
+        ghostlock::make_scope_exit([&]() noexcept { ++scope_calls; });
+    cancelled.release();
+  }
+  assert(scope_calls == 1);
 
   auto mapping = ghostlock::MappedRegion::map_anonymous(
       4096, PROT_READ | PROT_WRITE);
   assert(mapping && mapping.value().bytes().size() == 4096);
   mapping.value().bytes()[0] = std::byte{0x5a};
+  ghostlock::MappedRegion moved_mapping(std::move(mapping.value()));
+  assert(moved_mapping.valid() && !mapping.value().valid());
+  auto invalid_mapping =
+      ghostlock::MappedRegion::map_anonymous(0, PROT_READ | PROT_WRITE);
+  assert(!invalid_mapping);
 
   std::atomic<int> calls{0};
   ghostlock::PthreadOwner worker;
   assert(worker.start(increment, &calls) == 0);
   assert(worker.join() == 0 && calls.load() == 1);
+
+  StopState stop_state;
+  ghostlock::PthreadOwner stoppable;
+  assert(stoppable.start(wait_for_stop, &stop_state, request_stop,
+                         &stop_state) == 0);
+  stoppable.request_stop();
+  stoppable.request_stop();
+  assert(stoppable.state() ==
+         ghostlock::PthreadOwner::State::StopRequested);
+  assert(stoppable.join() == 0);
+  assert(stop_state.stop_calls.load() == 1);
+  assert(stoppable.state() == ghostlock::PthreadOwner::State::Joined);
+
+  ghostlock::PthreadOwner invalid_worker;
+  assert(invalid_worker.start(nullptr, nullptr) == EINVAL);
 
   const pid_t pid = fork();
   assert(pid >= 0);
@@ -51,5 +118,22 @@ int main() {
   ghostlock::ChildProcess child(pid);
   assert(child.terminate_and_wait(SIGKILL) == 0);
   assert(!child.valid());
+  assert(child.state() == ghostlock::ChildProcess::State::Reaped);
+  assert(child.terminate_and_wait(SIGKILL) == EINVAL);
+
+  const pid_t handoff_pid = fork();
+  assert(handoff_pid >= 0);
+  if (handoff_pid == 0) {
+    for (;;) pause();
+  }
+  ghostlock::ChildProcess handoff(handoff_pid);
+  assert(handoff.release_to_handoff() == handoff_pid);
+  assert(handoff.state() == ghostlock::ChildProcess::State::Transferred);
+  assert(kill(handoff_pid, SIGKILL) == 0);
+  assert(waitpid(handoff_pid, nullptr, 0) == handoff_pid);
+
+  ghostlock::ChildProcess invalid_child(-1);
+  assert(!invalid_child.valid());
+  assert(invalid_child.release_to_handoff() == -1);
   return 0;
 }

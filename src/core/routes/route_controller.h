@@ -25,8 +25,7 @@ void route_controller_init(RouteController *controller,
         RouteKind selected);
 
 static inline int route_status_allows_fallback(const RouteStatus *status) {
-    return status && status->code == ROUTE_FALLBACK_SAFE &&
-            status->userspace_clean && status->kernel_disarmed;
+    return status && status->can_fallback();
 }
 
 RouteStatus route_controller_execute(RouteController *controller,

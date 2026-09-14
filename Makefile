@@ -86,7 +86,8 @@ native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 	$(HOST_BUILD_DIR)/native_resource_test
 
 NATIVE_HOST_TESTS := \
-  profile_test payload_builder_test heap_context_test \
+  profile_test payload_builder_test heap_context_test route_status_test \
+  runtime_time_test \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test
@@ -107,6 +108,14 @@ $(HOST_BUILD_DIR)/target_constants_test: src/core/tests/target_constants_test.cp
 $(HOST_BUILD_DIR)/native_resource_test: src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp src/core/support/native_result.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp -o $@
+
+$(HOST_BUILD_DIR)/route_status_test: src/core/tests/route_status_test.cpp src/core/routes/route_status.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+
+$(HOST_BUILD_DIR)/runtime_time_test: src/core/tests/runtime_time_test.cpp src/core/runtime_time.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/profile_test: src/core/tests/profile_test.cpp src/core/profile.h
 	@mkdir -p $(HOST_BUILD_DIR)

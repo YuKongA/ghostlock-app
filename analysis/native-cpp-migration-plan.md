@@ -193,19 +193,19 @@ struct RouteOutcome final {
 
 ### [ ] CPP02：状态码、时间、字节和系统调用工具
 
-- [ ] 迁移 `route_status.h` 为强类型 `RouteOutcome`，保留 C 数值映射 façade。
-- [ ] 迁移 `runtime_time.h` 和纯 util helper，使用 `std::chrono`、`std::span<std::byte>`、`std::string_view`。
+- [x] `route_status.h` 的 C++ 分支迁为强类型 `RouteCode/RouteOutcome`，保留 C 定义、旧名称、数值映射和 20-byte 布局 façade。
+- [ ] `runtime_time.h` 的计算已迁为 `std::chrono` 并保留 `timespec` syscall 边界；其余纯 util helper 尚待迁移。
 - [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno；其余 syscall wrapper 仍待逐个迁移。
 - [x] 日志函数继续走现有低级实现，不引入 iostream。
-- [ ] 固定测试覆盖 errno、溢出、空 span、时间换算和旧日志字段。
+- [ ] 固定测试已覆盖状态布局/数值、fallback、时间换算和空 span；其余 syscall errno wrapper 迁移后再补齐对应错误测试。
 - [ ] 提交、暂停、真机门禁。
 
 ### [ ] CPP03：基础 RAII 资源库
 
-- [ ] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit`、borrowed fd view（前两项已完成；后两项待实现）。
-- [ ] 实现 `ChildProcess`，覆盖 move、release、kill/wait、重复清理和 fork 失败（owner 与主要生命周期已完成；fork 失败测试待补）。
-- [ ] 实现 `PthreadOwner`，覆盖创建失败、显式 stop/join、部分启动和析构策略（start/join/move 已完成；stop 协议与部分启动测试待补）。
-- [ ] 添加 fd 数量、mmap、线程及 child 泄漏测试；使用 `/proc/self/fd` 和 waitpid 验证。
+- [x] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit` 和 trivially-copyable `BorrowedFd`。
+- [ ] `ChildProcess` 已覆盖 move、handoff、kill/wait、状态和重复清理；真实 `fork()` API 失败注入仍待补。
+- [x] `PthreadOwner` 已实现 create、幂等 stop callback、join、detach、release、move 和非阻塞析构策略。
+- [x] 资源测试覆盖 `/proc/self/fd`（macOS 回退 `/dev/fd`）、mmap、线程及 child waitpid，并验证无重复 owner 清理。
 - [x] 本阶段只提供类型，不迁移攻击路线调用点。
 - [ ] 提交、暂停、真机门禁。
 
