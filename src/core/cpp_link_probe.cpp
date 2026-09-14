@@ -1,4 +1,5 @@
 #include "cpp_link_probe.h"
+#include "target_constants.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -27,6 +28,11 @@ int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
     ErrnoRestore restore(saved_errno);
     const std::string owned = text ? text : "";
     const std::vector<char> copied(owned.begin(), owned.end());
+    const ghostlock::target::KernelImageAddress image(
+        ghostlock::target::address::kImageTextBase);
+    if (!image.checked_add(ghostlock::target::payload::kLockOffset)) {
+      return -1;
+    }
     errno = EIO;
     return static_cast<int>(owned.size() + copied.size()) + saved_errno;
   } catch (...) {

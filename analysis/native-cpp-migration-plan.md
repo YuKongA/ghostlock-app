@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00 已完成；CPP01 实施中。基线为 S15 `0c47a9f`，Multicast 最终门禁证据为 `7e51ad7`。
+> 状态：CPP00 已完成；CPP01 已实现并完成构建验证，等待真机门禁。基线为 S15 `0c47a9f`，Multicast 最终门禁证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -166,12 +166,14 @@ struct RouteOutcome final {
 
 ### [ ] CPP01：公共强类型、常量与 `target.h`
 
-- [ ] 新建 `target_constants.hpp`：把真正编译期恒量迁为 `inline constexpr`，按 address/layout/payload 分类到命名空间。
-- [ ] `target.h` 暂保留 C façade；宏只转发到可表达为 C 常量的兼容值，并逐调用点删除。
-- [ ] profile 可变 symbol/layout offset 不迁成“新 constexpr 默认配置”，改由 `TargetProfile` 提供。
-- [ ] 引入 kernel address 强类型和受检算术；保持日志格式仍输出原始十六进制值。
-- [ ] 为全部旧宏建立固定向量/`static_assert`，证明数值与 payload offset 完全一致。
-- [ ] 提交、暂停、真机门禁并更新地址数据流图。
+- [x] 新建 `target_constants.hpp`：真正稳定的 address-domain 与项目自定义 payload 槽位迁为 `inline constexpr`，按命名空间分类。
+- [x] `target.h` 保留 C façade：C++ 分支转发到 namespaced constants，尚未迁移的 C 调用点继续使用数值兼容分支。
+- [x] kernel symbol、task/cred/waiter layout offset 及 SoC 物理加载默认值明确留在 profile/C compatibility 层，未伪装成新的 C++ runtime authority。
+- [x] 引入零开销、standard-layout、trivially-copyable 的 `KernelAddress<Domain>` 及溢出受检 `checked_add()`；攻击日志和 C 控制流未改变。
+- [x] `target_constants_test.cpp` 为 `target.h` 全部地址、symbol、layout、payload 及派生 image 宏建立 `static_assert` 固定向量，并测试正常/溢出地址运算。
+- [x] target constants、CPP link probe、既有五组主机回归、`buildGhostlockNative` 和全新 `assembleDebug` 构建通过。
+- [x] 创建 CPP01 独立提交并暂停。
+- [ ] 真机执行完整 Multicast 门禁，保存 CPP01 日志并更新地址数据流图。
 
 ### [ ] CPP02：状态码、时间、字节和系统调用工具
 
@@ -328,6 +330,7 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | 生成 task 清理/隔离 output，并连续 clean/incremental 构建通过 |
 | CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04 | transport façade 与 immutable profile 分离 |
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04 | 常量命名空间与 profile 数据边界明确 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |
