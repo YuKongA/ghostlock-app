@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 的 C++ 批次仍等待最终真机门禁，TCP/Select 仍只有主机固定测试。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；CPP03/versionCode 185 的 Multicast 门禁已通过，TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
@@ -47,7 +47,7 @@ flowchart TD
     Waiter --> Controller["RouteController<br/>supports + execute + RouteStatus"]
     Controller --> Choice{"route"}
     Snapshot --> Choice
-    Choice --> M["Multicast one-shot<br/>C++ final device gate pending"]
+    Choice --> M["Multicast one-shot<br/>CPP03 device verified"]
     Choice --> T["TcpZerocopyRouteContext<br/>static verified"]
     Choice --> P["SelectStackRouteContext<br/>static verified"]
     T -. "clean + disarmed only" .-> P

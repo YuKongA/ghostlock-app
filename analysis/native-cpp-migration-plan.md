@@ -198,7 +198,7 @@ struct RouteOutcome final {
 - [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno；其余 syscall wrapper 仍待逐个迁移。
 - [x] 日志函数继续走现有低级实现，不引入 iostream。
 - [ ] 固定测试已覆盖状态布局/数值、fallback、时间换算和空 span；其余 syscall errno wrapper 迁移后再补齐对应错误测试。
-- [ ] 提交、暂停、真机门禁。
+- [x] `df901ec` 已提交；versionCode 185 Multicast 真机门禁通过并归档为 `CPP03-20260914-multicast-pass`。
 
 ### [ ] CPP03：基础 RAII 资源库
 
@@ -207,7 +207,7 @@ struct RouteOutcome final {
 - [x] `PthreadOwner` 已实现 create、幂等 stop callback、join、detach、release、move 和非阻塞析构策略。
 - [x] 资源测试覆盖 `/proc/self/fd`（macOS 回退 `/dev/fd`）、mmap、线程及 child waitpid，并验证无重复 owner 清理。
 - [x] 本阶段只提供类型，不迁移攻击路线调用点。
-- [ ] 提交、暂停、真机门禁。
+- [x] `df901ec` 已提交；基础 RAII 未接入路线，versionCode 185 Multicast 完整门禁通过。
 
 ### [ ] CPP04：Profile、JSON transport 与地址空间
 
