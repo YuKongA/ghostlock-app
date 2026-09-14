@@ -63,9 +63,8 @@ set(SOURCES
         core/session/runtime_config.cpp
         core/offsets_json.cpp
         core/util.cpp
-        core/fops.cpp
+        core/routes/route_operations.cpp
         core/session/exploit_session.cpp
-        core/support/cpp_link_probe.cpp
         core/support/native_resource.cpp
 )
 

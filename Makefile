@@ -32,9 +32,8 @@ CXX_SRCS := \
   src/core/session/runtime_config.cpp \
   src/core/offsets_json.cpp \
   src/core/util.cpp \
-  src/core/fops.cpp \
+  src/core/routes/route_operations.cpp \
   src/core/session/exploit_session.cpp \
-  src/core/support/cpp_link_probe.cpp \
   src/core/support/native_resource.cpp
 
 NATIVE_BUILD_DIR := .build/native
@@ -95,10 +94,10 @@ NATIVE_HOST_TESTS := \
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@for test in $^; do $$test; done
 
-$(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/support/cpp_link_probe.cpp src/core/support/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
+$(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/tests/cpp_link_probe.cpp src/core/tests/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) -std=c11 -Isrc/core -c src/core/tests/cpp_link_probe_test.c -o $(HOST_BUILD_DIR)/cpp_link_probe_test.o
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core -c src/core/support/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core -c src/core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
 
 $(HOST_BUILD_DIR)/target_constants_test: src/core/tests/target_constants_test.cpp src/core/target.h src/core/target_constants.hpp
