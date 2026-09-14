@@ -189,6 +189,7 @@ static const struct {
   {"off_slide_nfulnl_logger", offsetof(struct kernel_offsets, off_slide_nfulnl_logger)},
   {"off_slide_loggers_0_1", offsetof(struct kernel_offsets, off_slide_loggers_0_1)},
   {"off_slide_boot_id", offsetof(struct kernel_offsets, off_slide_boot_id)},
+  {"off_vr_sys_exit_tp", offsetof(struct kernel_offsets, off_vr_sys_exit_tp)},
 };
 
 static const struct {

@@ -13,6 +13,9 @@ OFFSETS_ENTRY(
     .off_slide_nfulnl_logger = 0x020029c8,
     .off_slide_boot_id = 0x0226a498,
     .off_slide_loggers_0_1 = 0x02002918,
+    /* Vivo vr.ko: __tracepoint_sys_exit @ 0xffffffc00a1a1020
+     * offset from _text (0xffffffc008000000) = 0x021a1020 */
+    .off_vr_sys_exit_tp = 0x021a1020,
 ),
 
 /* BTF reference (runtime uses target.h defaults): */

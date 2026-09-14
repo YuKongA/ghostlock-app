@@ -25,7 +25,9 @@ struct kernel_offsets {
   /* mm_struct SLUB stride; 0 uses target.h default (6.6 GKI 0x500).
    * android14-6.1 uses 0x400 (BTF reports 0x3c0). */
   uint32_t mm_struct_sz;
-  uint32_t _pad[3];
+  uint32_t _pad[2];
+
+  uint64_t off_vr_sys_exit_tp;
 };
 
 #define OFFSETS_ENTRY(uname, ...) { .uname_r = uname, __VA_ARGS__ }
