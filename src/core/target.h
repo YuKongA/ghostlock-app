@@ -90,6 +90,29 @@
 #define TIF_SECCOMP_BIT 11
 #define PFA_NO_NEW_PRIVS_BIT 0
 
+/* offsetof(struct tracepoint, funcs) — NOT constant across KMIs.
+ *
+ * The field was last on 6.1, but 6.6 inserted a `probestub` field (holding
+ * __probestub_<name>) just before regfunc, pushing funcs down by 8 bytes.
+ * Writing the 6.1 value on a 6.6 kernel clobbers `unregfunc` and leaves
+ * funcs intact, so the vr.ko kill probe keeps firing — a silent no-op.
+ *
+ * Evidence (6.6.89-android15-8-g97a9aaefab9a GKI vmlinux):
+ *   __traceiter_sys_exit: adrp x8, 0xffffffc082292000
+ *                         ldr  x21, [x8, #0x168]   ; tp+0x48
+ *                         cbz  x21, <skip>         ; NULL funcs => no probes
+ *   __tracepoint_sys_exit == 0xffffffc082292120, so 0x168 == 0x48.
+ *   Field dump of the struct confirms +0x28=__traceiter_sys_exit (iterator),
+ *   +0x30=__probestub_sys_exit, +0x38=syscall_regfunc, +0x40=syscall_unregfunc,
+ *   +0x48=funcs (NULL at rest).
+ * Corroborated by the kallsyms struct stride: every consecutive pair of
+ * __tracepoint_* symbols is 0x48 apart on 6.1 and 0x50 apart on 6.6
+ * (1550/1550 and 1781/1781 gaps, no exceptions).
+ *
+ * Selected at runtime by tracepoint_funcs_off() in main.c. */
+#define TRACEPOINT_FUNCS_OFF_6_1 0x40
+#define TRACEPOINT_FUNCS_OFF_6_6 0x48
+
 #define STRUCT_PAGE_SIZE 0x40
 #define STRUCT_PAGE_COMPOUND_HEAD_OFF 0x08
 #define STRUCT_SLAB_CACHE_OFF 0x08

@@ -14,11 +14,20 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("off_security_hook_heads", "security_hook_heads"),
     ("off_slide_nfulnl_logger", "nfulnl_logger"),
     ("off_slide_boot_id", "sysctl_bootid"),
+    // Vivo vr.ko anti-root neutralization: sys_exit enforcement probe target.
+    // Present on all GKI kernels; neutralization only runs when vr.ko is
+    // detected in /proc/modules at runtime, so non-vivo devices are unaffected.
+    ("off_vr_sys_exit_tp", "__tracepoint_sys_exit"),
 ];
 
 /// GKI kernels drop some data symbols; unresolved optionals emit 0 and the
 /// runtime falls back to target.h defaults.
-pub const OPTIONAL_SYMBOLS: &[&str] = &["off_security_hook_heads"];
+pub const OPTIONAL_SYMBOLS: &[&str] = &[
+    "off_security_hook_heads",
+    // __tracepoint_sys_exit may be absent on stripped/custom kernels;
+    // 0 disables vr.ko neutralization safely.
+    "off_vr_sys_exit_tp",
+];
 
 /// struct name -> (offset macro, BTF field)
 pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
