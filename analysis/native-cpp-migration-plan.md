@@ -4,6 +4,19 @@
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
+状态约定：阶段标题只有在该阶段全部代码项和所需真机门禁完成后才标为 `[x]`；阶段内部允许先勾选已经实现并由主机测试证明的独立子项。`[ ]` 不一定表示尚未开始，也可能表示仍缺资源接入或设备证据。
+
+### 当前源码布局
+
+- [x] `memory/`：地址解析、Heap/page 状态与 route-neutral payload 编码。
+- [x] `routes/`：路线状态、控制器、三路线 context，以及保持原单一编译单元边界的 `route_operations.cpp`。
+- [x] `session/`：`ExploitSession` 与运行配置。
+- [x] `support/`：通用 `Result` 和 RAII 资源类型。
+- [x] `tests/`：所有主机固定测试；C/C++ link probe 已退出生产二进制。
+- [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `src/core/README.md`。
+- [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
+- [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元；必须作为单独行为门禁，避免改变静态函数布局和敏感路线生成代码。
+
 ## 1. 不可违反的实施规则
 
 - [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
@@ -23,9 +36,9 @@
 
 ### 2.1 编译模式
 
-- C++ 标准：C++20；迁移期既有 C 文件固定为 GNU C11，因为 KernelSnitch helper 使用 GNU `typeof`。
+- C++ 标准：生产 Native 全部使用 C++20；仅 `cpp_link_probe_test.c` 保留为主机 C11 测试，用于验证稳定 C façade。
 - C++ 标准库：Android NDK libc++；最终链接由 `clang++` 驱动。
-- 迁移期采用混合构建：未迁移 `.c` 由 `clang` 编译，`.cpp` 由 `clang++` 编译，各自产生对象文件后统一链接。
+- 当前生产构建只编译 `.cpp` 并由 `clang++` 统一链接；Makefile 仍保留空的 C source 规则，便于未来确有 C ABI 源文件时使用。
 - CLion CMake 必须与 Makefile 使用相同源文件清单和 C++20 设置，但 CMake 仍只作为 IDE 索引/静态分析入口。
 - 在 APK 门禁中使用 `llvm-readelf -d` 检查 `DT_NEEDED`，明确采用静态 libc++ 或把 `libc++_shared.so` 一并正确打包；不得依赖设备碰巧存在 C++ runtime。
 - Debug/Release 都启用 `-Wall -Wextra -Wconversion` 的可行子集；迁移阶段先记录旧代码噪声，再逐文件收紧，禁止一次性掩盖全部警告。
@@ -179,23 +192,23 @@ struct RouteOutcome final {
 
 - [ ] 迁移 `route_status.h` 为强类型 `RouteOutcome`，保留 C 数值映射 façade。
 - [ ] 迁移 `runtime_time.h` 和纯 util helper，使用 `std::chrono`、`std::span<std::byte>`、`std::string_view`。
-- [ ] 新建 `SysError`/`Result<T,E>`；所有 syscall wrapper 在失败点保存 errno。
-- [ ] 日志函数继续走现有低级实现，不引入 iostream。
+- [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno；其余 syscall wrapper 仍待逐个迁移。
+- [x] 日志函数继续走现有低级实现，不引入 iostream。
 - [ ] 固定测试覆盖 errno、溢出、空 span、时间换算和旧日志字段。
 - [ ] 提交、暂停、真机门禁。
 
 ### [ ] CPP03：基础 RAII 资源库
 
-- [ ] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit`、borrowed fd view。
-- [ ] 实现 `ChildProcess`，覆盖 move、release、kill/wait、重复清理和 fork 失败。
-- [ ] 实现 `PthreadOwner`，覆盖创建失败、显式 stop/join、部分启动和析构策略。
+- [ ] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit`、borrowed fd view（前两项已完成；后两项待实现）。
+- [ ] 实现 `ChildProcess`，覆盖 move、release、kill/wait、重复清理和 fork 失败（owner 与主要生命周期已完成；fork 失败测试待补）。
+- [ ] 实现 `PthreadOwner`，覆盖创建失败、显式 stop/join、部分启动和析构策略（start/join/move 已完成；stop 协议与部分启动测试待补）。
 - [ ] 添加 fd 数量、mmap、线程及 child 泄漏测试；使用 `/proc/self/fd` 和 waitpid 验证。
-- [ ] 本阶段只提供类型，不迁移攻击路线调用点。
+- [x] 本阶段只提供类型，不迁移攻击路线调用点。
 - [ ] 提交、暂停、真机门禁。
 
 ### [ ] CPP04：Profile、JSON transport 与地址空间
 
-- [ ] `offsets_json.c` 保留解析 façade，内部迁为有界 `std::string_view`/value parser；不改变 Kotlin resolved JSON schema。
+- [ ] `offsets_json.cpp` 保留解析 façade，文件 owner 已迁为 `UniqueFd + std::string`；有界 `std::string_view` value parser 尚待完成，Kotlin schema 未改变。
 - [ ] `TargetProfile` 成为不可变 C++ value，execution/layout accessor 返回 value 或只读 view。
 - [ ] `ResolvedAddresses` 使用强地址类型，消除 active offset/address 宏镜像的读者。
 - [ ] 明确 `target.h` 剩余 compatibility 常量及删除期限。
@@ -205,10 +218,10 @@ struct RouteOutcome final {
 ### [ ] CPP05：Payload Builder 纯函数化
 
 - [ ] `WriteRequest`、`PayloadWriteLayout` 改为不可变标准布局 value；`WriteMode` 改为 `enum class`。
-- [ ] builder 接收 `std::span<std::byte>` 并返回显式编码结果，不写全局 page 状态。
+- [x] builder 接收 `std::span<std::byte>` 并返回显式编码结果，不写全局 page 状态。
 - [ ] 用 `std::array` 表达固定 payload 片段，禁止越界和隐式整数截断。
-- [ ] 对 Multicast/TCP/Select 所有已有向量逐字节比较 C 与 C++ 输出。
-- [ ] 保留 C façade 直到所有调用者迁完。
+- [x] 对 Multicast/TCP/Select 现有共享 payload 固定向量逐字节比较，并覆盖 destination 过小拒绝。
+- [x] 保留 C façade 直到所有调用者迁完。
 - [ ] 提交、暂停、真机门禁。
 
 ### [ ] CPP06：FutexHash 与 KernelSnitch
@@ -216,7 +229,7 @@ struct RouteOutcome final {
 - [ ] `FutexHashContext` 迁为无资源或只读 value；hash 函数使用强类型参数。
 - [ ] `KernelSnitch` 类唯一拥有 mmap、数组和 worker；容器在扫描前完成分配/`reserve()`。
 - [ ] 用 RAII 替代 init/find/scan/result/destroy 手工状态机，但保留显式阶段检查。
-- [ ] `COMPAT-01` 四个零调用 util 适配入口在本阶段删除；不得再创建 C++ 版兼容包装。
+- [x] `COMPAT-01` 四个零调用 util 适配入口已删除，未创建 C++ 版兼容包装。
 - [ ] 验证 collision、range-end、canonical/tag sweep、部分线程创建失败和 destroy。
 - [ ] 提交、暂停、真机门禁并保存 KernelSnitch 时序对比。
 
@@ -253,7 +266,7 @@ struct RouteOutcome final {
 
 - [ ] `TcpZerocopyRoute` move-only，唯一拥有 client/server/punch fd、mapping 和 punch worker。
 - [ ] prepare/execute/disarm 显式返回结果；析构只处理已 disarm 或用户态可安全资源。
-- [ ] profile attempts/arm sequence/hold iterations 保持不变。
+- [x] profile attempts/arm sequence/hold iterations 保持不变。
 - [ ] fallback 只有 `FallbackSafe && userspace_clean && kernel_disarmed` 才允许。
 - [ ] 主机测试和外部 TCP 设备门禁通过后才勾选阶段；无设备时不得宣称完成。
 - [ ] 提交、暂停、保存 TCP 成功/安全失败/dirty 证据。
@@ -269,7 +282,7 @@ struct RouteOutcome final {
 
 ### [ ] CPP12：ExploitSession 与阶段控制流
 
-- [ ] 新建 `ExploitSession`，按声明逆序拥有 config/profile/address、Heap、PI race、route controller、victim 和 handoff。
+- [ ] 新建 `ExploitSession`：已集中 config/profile/address/Heap/PI race 与 CPU mirrors；route controller、victim、handoff 及旧全局引用 façade 尚未收归。
 - [ ] `main` 只负责解析、构造 session、运行和映射退出码。
 - [ ] W1/W1b/W2/W2b/W3 改为显式 stage state machine；重试返回 typed outcome，不用跨函数全局量。
 - [ ] 回补 `SESSION-01`–`SESSION-04`：Heap handoff、CPU/config 镜像和 resident stop 跨 owner 清理。
@@ -281,7 +294,7 @@ struct RouteOutcome final {
 ### [ ] CPP13：Multicast Waiter 路线（最后迁移）
 
 - [ ] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome。
-- [ ] one-shot 保持已验证的专用小栈帧、payload builder、socket 和 drain/close 顺序；首个提交只做类型/owner 等价迁移。
+- [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
 - [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。
 - [ ] resident 与 one-shot 共用纯编码逻辑，但生命周期控制保持独立方法。
 - [ ] ghost disarm、consumer drain、success 读取、destroy 顺序必须与 S14/S15 成功日志一致。
@@ -292,7 +305,7 @@ struct RouteOutcome final {
 
 - [ ] 删除只为混合迁移存在的 façade、宏、`.c` header 分支和零调用包装。
 - [ ] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由。
-- [ ] 将完成迁移的文件统一为 `.cpp/.hpp`，更新 Makefile、Gradle inputs 和 CLion CMake。
+- [x] 所有生产翻译单元统一为 `.cpp`，按职责归档，并更新 Makefile、Gradle inputs 和 CLion CMake。
 - [ ] 全项目启用最终警告策略，运行 clang-tidy 的 selected checks，不做无关格式化洪泛。
 - [ ] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明。
 - [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成。
@@ -355,10 +368,12 @@ struct RouteOutcome final {
 | CPP-DIRTY-01 | consumer in-flight 时 RAII 不能自动关闭内核引用资源 | CPP03/CPP11 | 显式 quarantine/release 类型及测试 |
 | CPP-MCAST-01 | one-shot 对栈帧和 drain/close 顺序敏感 | CPP13 | 汇编/日志对比及多次真机成功 |
 | CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
+| CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
+| CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
 
 ## 10. 完成定义
 
-- [ ] Native 核心使用 C++20 构建，STL/runtime 在 APK 中可重复部署且依赖明确。
+- [x] Native 核心使用 C++20 构建，静态 libc++ 在 APK 中的依赖明确；干净 Debug APK 构建已重复通过。
 - [ ] fd、mmap、pthread、child、Heap page 和路线资源均有可审计唯一 owner。
 - [ ] 正常、重试、安全回退、dirty failure 和进程退出的析构/释放顺序可由测试和日志证明。
 - [ ] payload/kernel ABI、竞态关键顺序及 Kotlin/Direct/Shizuku 外部协议与 C 基线兼容。
