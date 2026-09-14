@@ -52,27 +52,31 @@ endif()
 
 set(SOURCES
         core/main.cpp
-        core/address_space.cpp
-        core/heap_context.cpp
+        core/memory/address_space.cpp
+        core/memory/heap_context.cpp
         core/pi_race.cpp
-        core/route_controller.cpp
-        core/tcp_zerocopy_route.cpp
-        core/select_stack_route.cpp
-        core/multicast_waiter_route.cpp
-        core/payload_builder.cpp
-        core/runtime_config.cpp
+        core/routes/route_controller.cpp
+        core/routes/tcp_zerocopy_route.cpp
+        core/routes/select_stack_route.cpp
+        core/routes/multicast_waiter_route.cpp
+        core/memory/payload_builder.cpp
+        core/session/runtime_config.cpp
         core/offsets_json.cpp
         core/util.cpp
         core/fops.cpp
-        core/exploit_session.cpp
-        core/cpp_link_probe.cpp
-        core/native_resource.cpp
+        core/session/exploit_session.cpp
+        core/support/cpp_link_probe.cpp
+        core/support/native_resource.cpp
 )
 
 add_executable(src ${SOURCES})
 
 target_include_directories(src PRIVATE
         core
+        core/memory
+        core/routes
+        core/session
+        core/support
         core/kernelsnitch
         kernels
         ${NDK_INCLUDE_DIRS}

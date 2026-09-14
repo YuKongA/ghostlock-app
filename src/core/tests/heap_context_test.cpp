@@ -1,4 +1,4 @@
-#include "../heap_context.h"
+#include "memory/heap_context.h"
 
 #include <assert.h>
 #include <errno.h>

@@ -1,4 +1,4 @@
-#include "cpp_link_probe.h"
+#include "support/cpp_link_probe.h"
 
 #include <assert.h>
 #include <errno.h>

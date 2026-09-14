@@ -1,4 +1,4 @@
-#include "../multicast_waiter_route.h"
+#include "routes/multicast_waiter_route.h"
 
 #include <assert.h>
 #include <stdint.h>

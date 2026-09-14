@@ -21,21 +21,21 @@ C_SRCS :=
 
 CXX_SRCS := \
   src/core/main.cpp \
-  src/core/address_space.cpp \
-  src/core/heap_context.cpp \
+  src/core/memory/address_space.cpp \
+  src/core/memory/heap_context.cpp \
   src/core/pi_race.cpp \
-  src/core/route_controller.cpp \
-  src/core/tcp_zerocopy_route.cpp \
-  src/core/select_stack_route.cpp \
-  src/core/multicast_waiter_route.cpp \
-  src/core/payload_builder.cpp \
-  src/core/runtime_config.cpp \
+  src/core/routes/route_controller.cpp \
+  src/core/routes/tcp_zerocopy_route.cpp \
+  src/core/routes/select_stack_route.cpp \
+  src/core/routes/multicast_waiter_route.cpp \
+  src/core/memory/payload_builder.cpp \
+  src/core/session/runtime_config.cpp \
   src/core/offsets_json.cpp \
   src/core/util.cpp \
   src/core/fops.cpp \
-  src/core/exploit_session.cpp \
-  src/core/cpp_link_probe.cpp \
-  src/core/native_resource.cpp
+  src/core/session/exploit_session.cpp \
+  src/core/support/cpp_link_probe.cpp \
+  src/core/support/native_resource.cpp
 
 NATIVE_BUILD_DIR := .build/native
 C_OBJS := $(patsubst %.c,$(NATIVE_BUILD_DIR)/%.o,$(C_SRCS))
@@ -95,37 +95,37 @@ NATIVE_HOST_TESTS := \
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@for test in $^; do $$test; done
 
-$(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/cpp_link_probe.cpp src/core/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
+$(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/support/cpp_link_probe.cpp src/core/support/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) -std=c11 -Isrc/core -c src/core/tests/cpp_link_probe_test.c -o $(HOST_BUILD_DIR)/cpp_link_probe_test.o
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core -c src/core/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core -c src/core/support/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
 
 $(HOST_BUILD_DIR)/target_constants_test: src/core/tests/target_constants_test.cpp src/core/target.h src/core/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/target_constants_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/native_resource_test: src/core/tests/native_resource_test.cpp src/core/native_resource.cpp src/core/native_resource.hpp src/core/native_result.hpp
+$(HOST_BUILD_DIR)/native_resource_test: src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp src/core/support/native_result.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/native_resource_test.cpp src/core/native_resource.cpp -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/profile_test: src/core/tests/profile_test.cpp src/core/profile.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 
-$(HOST_BUILD_DIR)/payload_builder_test: src/core/tests/payload_builder_test.cpp src/core/payload_builder.cpp src/core/payload_builder.h
+$(HOST_BUILD_DIR)/payload_builder_test: src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp src/core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/payload_builder_test.cpp src/core/payload_builder.cpp -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp -o $@
 
-$(HOST_BUILD_DIR)/heap_context_test: src/core/tests/heap_context_test.cpp src/core/heap_context.cpp src/core/heap_context.h
+$(HOST_BUILD_DIR)/heap_context_test: src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/memory/heap_context.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/heap_context_test.cpp src/core/heap_context.cpp -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp -o $@
 
 $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: src/core/tests/kernelsnitch_scan_bounds_test.cpp src/core/kernelsnitch/scan_bounds.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 
-$(HOST_BUILD_DIR)/route_controller_test: src/core/tests/route_controller_test.cpp src/core/route_controller.cpp
+$(HOST_BUILD_DIR)/route_controller_test: src/core/tests/route_controller_test.cpp src/core/routes/route_controller.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Isrc/core $^ -o $@
 
@@ -133,15 +133,15 @@ $(HOST_BUILD_DIR)/pi_race_test: src/core/tests/pi_race_test.cpp src/core/pi_race
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
 
-$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: src/core/tests/tcp_zerocopy_route_test.cpp src/core/tcp_zerocopy_route.cpp
+$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
 
-$(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_test.cpp src/core/select_stack_route.cpp
+$(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
 
-$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/multicast_waiter_route.cpp
+$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
 

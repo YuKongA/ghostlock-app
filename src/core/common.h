@@ -7,11 +7,11 @@
 #define __ARM 1
 
 #include "offset.h"
-#include "address_space.h"
-#include "payload_builder.h"
-#include "runtime_config.h"
+#include "memory/address_space.h"
+#include "memory/payload_builder.h"
+#include "session/runtime_config.h"
 #include "runtime_time.h"
-#include "heap_context.h"
+#include "memory/heap_context.h"
 #include "pi_race.h"
 
 #define PAGE_SHIFT 12
@@ -101,14 +101,14 @@ extern int g_core_consumer;
   resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
 
 struct local_sched_attr {
-  uint32_t size;
-  uint32_t sched_policy;
-  uint64_t sched_flags;
-  int32_t sched_nice;
-  uint32_t sched_priority;
-  uint64_t sched_runtime;
-  uint64_t sched_deadline;
-  uint64_t sched_period;
+    uint32_t size;
+    uint32_t sched_policy;
+    uint64_t sched_flags;
+    int32_t sched_nice;
+    uint32_t sched_priority;
+    uint64_t sched_runtime;
+    uint64_t sched_deadline;
+    uint64_t sched_period;
 };
 
 /* TODO(post-S15:SESSION-02): ExploitSession should own HeapContext and remove
@@ -126,11 +126,17 @@ struct local_sched_attr {
 #define memfd_leak (g_heap_context.leak_memfd)
 
 int run_exploit(int argc, char **argv);
+
 void read_first_line(const char *path, char *buf, size_t len);
+
 void log_startup_context(void);
+
 void log_sync(void);
+
 void disable_rseq_for_thread(void);
+
 void init_p0_profile(void);
+
 #ifdef __cplusplus
 extern ResolvedAddresses &g_resolved_addresses;
 extern TargetProfile &g_target_profile;
@@ -138,44 +144,78 @@ extern TargetProfile &g_target_profile;
 extern ResolvedAddresses g_resolved_addresses;
 extern TargetProfile g_target_profile;
 #endif
+
 long futex_op(
-    uint32_t *uaddr, int op, uint32_t val,
-    const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);
+        uint32_t *uaddr, int op, uint32_t val,
+        const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);
+
 long sched_setattr_tid(int tid, int nice_value);
+
 void put64(unsigned char *p, size_t off, uint64_t value);
+
 void put32(unsigned char *p, size_t off, uint32_t value);
+
 pid_t clone_child(void);
+
 pid_t clone_leak_child(void);
+
 int open_memfd(pid_t child);
+
 void kill_child(pid_t child);
+
 void close_reclaim_sockets(void);
+
 int quarantine_reclaim_sockets(void);
+
 void release_quarantined_reclaim_sockets(void);
+
 int stash_prebuilt_page(void);
+
 int activate_prebuilt_page(void);
+
 void discard_prebuilt_page(void);
+
 void close_ctx_memfds(struct mm_ctx *ctx);
+
 void free_ctx_storage(struct mm_ctx *ctx);
+
 void cleanup_page_prepare_state(void);
+
 int clone_memfd(void);
+
 void prepare_ctxs(void);
+
 int prepare_skb_payload(uintptr_t base, const WriteRequest *request);
+
 uintptr_t prepare_kernel_page(const WriteRequest *request);
+
 uintptr_t prepare_good_kernel_page(const WriteRequest *request);
 
 void log_sync(void);
 void fdset_put_word(fd_set *set, int word, uint64_t value);
+
 uint64_t fdset_get_word(const fd_set *set, int word);
+
 int tcp_route_selected(void);
+
 int kernel5_route_selected(void);
+
 void reserve_standard_io(void);
+
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
+
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
+
 RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
+
 int kernel5_resident_start(void);
+
 int kernel5_resident_write(uintptr_t target, uintptr_t value);
+
 void kernel5_resident_stop(void);
+
 void reset_main_route_state(void);
+
 int run_main_route_threads(const WriteRequest *request);
 
 #include "runtime_struct_offsets.h"
