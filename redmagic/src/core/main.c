@@ -132,6 +132,29 @@ static void publish_active_offsets(void) {
  * built-in table, the entry starts from the built-in values so fields the
  * JSON leaves empty keep the built-in ones instead of falling back to
  * target.h defaults. */
+static int is_redmagic_11_pro_family(void) {
+  char buf[PROP_VALUE_MAX];
+  const char *keys[] = {"ro.vendor.product.ztename", "ro.product.model",
+                        "ro.product.marketname", "ro.product.name", NULL};
+  for (int i = 0; keys[i]; i++) {
+    buf[0] = '\0';
+    __system_property_get(keys[i], buf);
+    if (strcasestr(buf, "11 Pro") || strcasestr(buf, "11Pro") ||
+        strcasestr(buf, "NX809"))
+      return 1;
+  }
+  return 0;
+}
+
+static const struct kernel_offsets *redmagic_11_pro_offsets(void) {
+  const char *k = "6.12.23-android16-5-gf1bdb13583da-ab13761046-4k";
+  for (int i = 0; known_offsets[i].uname_r; i++) {
+    if (strcmp(known_offsets[i].uname_r, k) == 0)
+      return &known_offsets[i];
+  }
+  return NULL;
+}
+
 static int try_external_offsets(const char *release) {
   char path[320];
   snprintf(path, sizeof(path), "%s/offsets.json", g_home_dir);
@@ -179,6 +202,18 @@ static int select_offsets(void) {
     if (strcmp(uts.release, known_offsets[i].uname_r) == 0) {
       active_offsets = &known_offsets[i];
       pr_success("offsets matched: %s\n", active_offsets->uname_r);
+      publish_active_offsets();
+      return 0;
+    }
+  }
+  /* REDMAGIC 11 Pro and 11 Pro+ share the same GKI; firmware ab-numbers differ. */
+  if (strncmp(uts.release, "6.12.23-android16-5-", 21) == 0 &&
+      is_redmagic_11_pro_family()) {
+    const struct kernel_offsets *alias = redmagic_11_pro_offsets();
+    if (alias) {
+      active_offsets = alias;
+      pr_success("offsets aliased (REDMAGIC 11 Pro family): %s\n",
+                 active_offsets->uname_r);
       publish_active_offsets();
       return 0;
     }
