@@ -26,7 +26,7 @@ jobs:
             source: release
             tag: nx809j-11514-dump
             zip: boot_b.zip
-            img: boot_a.img
+            imgs: "boot_a.img boot_b.img"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -57,15 +57,18 @@ jobs:
               --pattern "${{ matrix.zip }}" \
               --dir work
             unzip -o "work/${{ matrix.zip }}" -d work
-            cp "work/${{ matrix.img }}" work/boot.img
+            for img in ${{ matrix.imgs }}; do
+              echo "=== kernel banner $img ==="
+              strings "work/$img" | grep -E 'Linux version|android16-5-g' | head -n 5 | tee -a "out/${{ matrix.name }}-banner.txt"
+            done
           else
             curl -fL "${{ matrix.boot }}" -o work/boot.img.zst
             curl -fL "${{ matrix.xbl }}" -o work/xbl_config.img.zst
             zstd -d work/boot.img.zst -o work/boot.img
             zstd -d work/xbl_config.img.zst -o work/xbl_config.img
+            echo "=== kernel banner ==="
+            strings work/boot.img | grep -E 'Linux version|android16-5-g' | head -n 20 | tee "out/${{ matrix.name }}-banner.txt"
           fi
-          echo "=== kernel banner ==="
-          strings work/boot.img | grep -E 'Linux version|android16-5-g' | head -n 20 | tee "out/${{ matrix.name }}-banner.txt"
 
       - name: Extract offsets
         continue-on-error: true
@@ -75,13 +78,25 @@ jobs:
           if [ -f work/xbl_config.img ]; then
             extra+=(--xbl-config work/xbl_config.img)
           fi
-          ./redmagic/tools/extract_rs/target/release/ghostlock-extract \
-            work/boot.img \
-            "${extra[@]}" \
-            --format json \
-            --out "out/${{ matrix.name }}-offsets.json" \
-            2>&1 | tee "out/${{ matrix.name }}-extract.log"
-          echo "extract_exit=$?" | tee -a "out/${{ matrix.name }}-extract.log"
+          if [ "${{ matrix.source }}" = "release" ]; then
+            for img in ${{ matrix.imgs }}; do
+              stem="${img%.img}"
+              ./redmagic/tools/extract_rs/target/release/ghostlock-extract \
+                "work/$img" \
+                --format json \
+                --out "out/${{ matrix.name }}-${stem}-offsets.json" \
+                2>&1 | tee "out/${{ matrix.name }}-${stem}-extract.log"
+              echo "extract_exit=$?" | tee -a "out/${{ matrix.name }}-${stem}-extract.log"
+            done
+          else
+            ./redmagic/tools/extract_rs/target/release/ghostlock-extract \
+              work/boot.img \
+              "${extra[@]}" \
+              --format json \
+              --out "out/${{ matrix.name }}-offsets.json" \
+              2>&1 | tee "out/${{ matrix.name }}-extract.log"
+            echo "extract_exit=$?" | tee -a "out/${{ matrix.name }}-extract.log"
+          fi
 
       - name: Upload result
         if: always()
