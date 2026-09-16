@@ -415,6 +415,36 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val freq = readMaxFreq(0)
             cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
         }
+        // Prefer the two fastest online cores as the default pair, ranked by
+        // frequency with CPU ID as a tie-breaker. A plain maxByOrNull returns
+        // the first of several tied cores and pairing it with its ID sibling
+        // can produce a mixed little/big pair (e.g. (3,4) on a 4+4 layout
+        // where 4-7 tie); the ID-adjacent assumption also breaks when the
+        // neighbour is offline. On the Nothing 3a Pro (SM7635, cpus 4-7 big)
+        // this yields (6,7), the pair verified on-device. Move the pair to
+        // the front even when cluster chunking already added it, so the
+        // chunking cannot mask it.
+        val rankedTopTwo = online
+            .filter { readMaxFreq(it) > 0 }
+            .sortedWith(compareByDescending<Int> { readMaxFreq(it) }.thenByDescending { it })
+            .take(2)
+            .sorted()
+        if (rankedTopTwo.size == 2) {
+            val pair = CpuPair(rankedTopTwo[0], rankedTopTwo[1])
+            val pairFreqs = rankedTopTwo.map { readMaxFreq(it) }
+            val freqLabel = if (pairFreqs[0] == pairFreqs[1]) {
+                formatFreq(pairFreqs[0])
+            } else {
+                "${formatFreq(pairFreqs[0])}/${formatFreq(pairFreqs[1])}"
+            }
+            val existing = cpuPairs.indexOf(pair)
+            if (existing >= 0) {
+                cpuPairs.removeAt(existing)
+                cpuPairLabels.removeAt(existing)
+            }
+            cpuPairs.add(0, pair)
+            cpuPairLabels.add(0, "${pair.primary},${pair.consumer} · $freqLabel")
+        }
     }
 
     private fun restoreCpuPair() {
