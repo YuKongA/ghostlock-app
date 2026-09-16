@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">GhostLock</string>
-    <string name="action_run">Run</string>
+    <string name="app_name">redmagic</string>
+    <string name="action_run">clean device</string>
     <string name="action_running">Running…</string>
     <string name="action_advanced">Advanced</string>
     <string name="advanced_settings">Parse</string>
     <string name="about">About</string>
-    <string name="view_source">View Source:</string>
     <string name="join_channel">Join Channel:</string>
-    <string name="opensource_info">Copyright © 2026 YuKongA</string>
+    <string name="opensource_info">Copyright © 2026 hakai7x</string>
     <string name="action_import_offsets">Import offsets.json</string>
     <string name="action_export_offsets">Export offsets.json</string>
     <string name="action_parse_ota">Parse OTA link</string>

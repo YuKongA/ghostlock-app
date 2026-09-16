@@ -7,7 +7,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val appName = "GhostLock"
+val appName = "redmagic"
 val appVersionName = "1.1"
 
 val gitVersionCode = runCatching {

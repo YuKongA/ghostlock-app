@@ -27,5 +27,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GhostLock"
+rootProject.name = "redmagic"
 include(":app")

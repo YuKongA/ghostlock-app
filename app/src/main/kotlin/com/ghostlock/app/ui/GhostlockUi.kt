@@ -158,7 +158,7 @@ internal fun GhostlockApp(
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 TopAppBar(
-                    title = "GhostLock",
+                    title = stringResource(R.string.app_name),
                     scrollBehavior = scrollBehavior,
                     actions = {
                         SettingsMenu(
@@ -277,21 +277,6 @@ private fun GhostlockAboutDialog(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = stringResource(R.string.view_source) + " ")
-                Text(
-                    text = AnnotatedString(
-                        text = "GitHub",
-                        spanStyle = SpanStyle(
-                            textDecoration = TextDecoration.Underline,
-                            color = MiuixTheme.colorScheme.primary,
-                        ),
-                    ),
-                    modifier = Modifier.clickable {
-                        uriHandler.openUri("https://github.com/YuKongA/ghostlock-app")
-                    },
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = stringResource(R.string.join_channel) + " ")
                 Text(
                     text = AnnotatedString(
@@ -302,7 +287,7 @@ private fun GhostlockAboutDialog(
                         ),
                     ),
                     modifier = Modifier.clickable {
-                        uriHandler.openUri("https://t.me/YuKongA13579")
+                        uriHandler.openUri("https://t.me/hakai7x")
                     },
                 )
             }
