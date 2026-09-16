@@ -374,9 +374,20 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private val scalarFields = listOf("pselect_waiter_shift", "compact_waiter", "mm_struct_sz", "kernel_phys_load")
 
+    private fun isRedMagic11ProFamily(): Boolean {
+        val hay = listOf(
+            resolveDeviceName(),
+            Build.MODEL,
+            systemProperty("ro.vendor.product.ztename"),
+            systemProperty("ro.product.model"),
+        ).joinToString(" ").lowercase(Locale.ROOT)
+        return "11 pro" in hay || "11pro" in hay || "nx809" in hay
+    }
+
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
-        return version in SupportedKernels.UNAMES || importedOffsetsMatch(version)
+        if (version in SupportedKernels.UNAMES || importedOffsetsMatch(version)) return true
+        return isRedMagic11ProFamily() && version.startsWith("6.12.23-android16-5-")
     }
 
     private fun isCompactKernel(): Boolean {
