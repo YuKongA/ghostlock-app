@@ -146,13 +146,20 @@ static int is_redmagic_11_pro_family(void) {
   return 0;
 }
 
-static const struct kernel_offsets *redmagic_11_pro_offsets(void) {
-  const char *k = "6.12.23-android16-5-gf1bdb13583da-ab13761046-4k";
+static const struct kernel_offsets *find_offsets_by_uname(const char *k) {
   for (int i = 0; known_offsets[i].uname_r; i++) {
     if (strcmp(known_offsets[i].uname_r, k) == 0)
       return &known_offsets[i];
   }
   return NULL;
+}
+
+static const struct kernel_offsets *redmagic_11_pro_offsets(const char *release) {
+  if (strncmp(release, "6.12.38-android16-5-", 21) == 0)
+    return find_offsets_by_uname(
+        "6.12.38-android16-5-g665eafb62659-ab14778838-4k");
+  return find_offsets_by_uname(
+      "6.12.23-android16-5-gf1bdb13583da-ab13761046-4k");
 }
 
 static int try_external_offsets(const char *release) {
@@ -206,10 +213,11 @@ static int select_offsets(void) {
       return 0;
     }
   }
-  /* REDMAGIC 11 Pro and 11 Pro+ share the same GKI; firmware ab-numbers differ. */
-  if (strncmp(uts.release, "6.12.23-android16-5-", 21) == 0 &&
+  /* REDMAGIC 11 Pro and 11 Pro+ share GKI rows. Firmware ab-numbers differ. */
+  if ((strncmp(uts.release, "6.12.23-android16-5-", 21) == 0 ||
+       strncmp(uts.release, "6.12.38-android16-5-", 21) == 0) &&
       is_redmagic_11_pro_family()) {
-    const struct kernel_offsets *alias = redmagic_11_pro_offsets();
+    const struct kernel_offsets *alias = redmagic_11_pro_offsets(uts.release);
     if (alias) {
       active_offsets = alias;
       pr_success("offsets aliased (REDMAGIC 11 Pro family): %s\n",

@@ -387,7 +387,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
         if (version in SupportedKernels.UNAMES || importedOffsetsMatch(version)) return true
-        return isRedMagic11ProFamily() && version.startsWith("6.12.23-android16-5-")
+        return isRedMagic11ProFamily() &&
+            (version.startsWith("6.12.23-android16-5-") ||
+                version.startsWith("6.12.38-android16-5-"))
     }
 
     private fun isCompactKernel(): Boolean {
