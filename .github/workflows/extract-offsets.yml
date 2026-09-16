@@ -3,6 +3,9 @@ name: Extract offsets
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   extract:
     name: ${{ matrix.name }}
@@ -12,11 +15,18 @@ jobs:
       matrix:
         include:
           - name: nx809j-cn-b24
+            source: url
             boot: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_CN_NX809JV1.0.0B24/boot.img.zst
             xbl: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_CN_NX809JV1.0.0B24/xbl_config.img.zst
           - name: nx809j-eea-b20
+            source: url
             boot: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_EEA_NX809JV1.0.0B20/boot.img.zst
             xbl: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_EEA_NX809JV1.0.0B20/xbl_config.img.zst
+          - name: nx809j-11514-dump
+            source: release
+            tag: nx809j-11514-dump
+            zip: boot_b.zip
+            img: boot_a.img
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,26 +47,41 @@ jobs:
         run: cargo build --release --manifest-path redmagic/tools/extract_rs/Cargo.toml
 
       - name: Download boot images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p work out
-          curl -fL "${{ matrix.boot }}" -o work/boot.img.zst
-          curl -fL "${{ matrix.xbl }}" -o work/xbl_config.img.zst
-          zstd -d work/boot.img.zst -o work/boot.img
-          zstd -d work/xbl_config.img.zst -o work/xbl_config.img
+          if [ "${{ matrix.source }}" = "release" ]; then
+            gh release download "${{ matrix.tag }}" \
+              --repo "${{ github.repository }}" \
+              --pattern "${{ matrix.zip }}" \
+              --dir work
+            unzip -o "work/${{ matrix.zip }}" -d work
+            cp "work/${{ matrix.img }}" work/boot.img
+          else
+            curl -fL "${{ matrix.boot }}" -o work/boot.img.zst
+            curl -fL "${{ matrix.xbl }}" -o work/xbl_config.img.zst
+            zstd -d work/boot.img.zst -o work/boot.img
+            zstd -d work/xbl_config.img.zst -o work/xbl_config.img
+          fi
           echo "=== kernel banner ==="
-          strings work/boot.img | grep -E 'Linux version|android16-5-g' | head -n 20 | tee out/${{ matrix.name }}-banner.txt
+          strings work/boot.img | grep -E 'Linux version|android16-5-g' | head -n 20 | tee "out/${{ matrix.name }}-banner.txt"
 
       - name: Extract offsets
         continue-on-error: true
         run: |
           set +e
+          extra=()
+          if [ -f work/xbl_config.img ]; then
+            extra+=(--xbl-config work/xbl_config.img)
+          fi
           ./redmagic/tools/extract_rs/target/release/ghostlock-extract \
             work/boot.img \
-            --xbl-config work/xbl_config.img \
+            "${extra[@]}" \
             --format json \
-            --out out/${{ matrix.name }}-offsets.json \
-            2>&1 | tee out/${{ matrix.name }}-extract.log
-          echo "extract_exit=$?" | tee -a out/${{ matrix.name }}-extract.log
+            --out "out/${{ matrix.name }}-offsets.json" \
+            2>&1 | tee "out/${{ matrix.name }}-extract.log"
+          echo "extract_exit=$?" | tee -a "out/${{ matrix.name }}-extract.log"
 
       - name: Upload result
         if: always()
@@ -64,4 +89,3 @@ jobs:
         with:
           name: offsets-${{ matrix.name }}
           path: out/
-          archive: false
