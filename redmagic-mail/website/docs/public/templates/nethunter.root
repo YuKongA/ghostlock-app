@@ -1,0 +1,57 @@
+{
+    "id": "nethunter.root",
+    "name": "Kali NetHunter",
+    "author": "cachiusa",
+    "description": "Required permissions for Kali NetHunter app to chroot.",
+    "namespace": "INHERITED",
+    "uid": 0,
+    "gid": 0,
+    "groups": [
+        "ROOT"
+    ],
+    "capabilities": [
+        "CAP_CHOWN",
+        "CAP_DAC_OVERRIDE",
+        "CAP_DAC_READ_SEARCH",
+        "CAP_FOWNER",
+        "CAP_FSETID",
+        "CAP_SETGID",
+        "CAP_SETUID",
+        "CAP_NET_BIND_SERVICE",
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW",
+        "CAP_SYS_MODULE",
+        "CAP_SYS_RAWIO",
+        "CAP_SYS_CHROOT",
+        "CAP_SYS_PTRACE",
+        "CAP_SYS_ADMIN",
+        "CAP_SYS_BOOT",
+        "CAP_SYS_RESOURCE",
+        "CAP_SYS_TTY_CONFIG",
+        "CAP_MKNOD",
+        "CAP_SYSLOG",
+        "CAP_AUDIT_WRITE"
+    ],
+    "context": "u:r:ksu:s0",
+    "locales": {
+        "bn": {
+            "name": "কালি নেটহানটার",
+            "description": "কালি নেটহানটার অ্যাপের কার্যকলাপের জন্য যে অনুমতিগুলি লাগে।"
+        },
+        "zh_TW": {
+            "name": "Kali NetHunter",
+            "description": "提供Kali NetHunter使用chroot"
+        },
+        "pt_BR": {
+            "name": "Kali NetHunter",
+            "description": "Permissões necessárias para o app Kali NetHunter fazer chroot."
+        },
+        "it_IT": {
+            "name": "Kali NetHunter",
+            "description": "Autorizzazioni richieste per il chroot dell'applicazione Kali NetHunter."
+        } 
+    },
+    "flags":[
+        "NO_NEW_PRIVS"
+    ]
+}

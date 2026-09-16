@@ -1,0 +1,33 @@
+name: Rustfmt check
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'dev'
+    paths:
+      - '.github/workflows/rustfmt.yml'
+      - 'userspace/**'
+  pull_request:
+    branches:
+      - 'main'
+      - 'dev'
+    paths:
+      - '.github/workflows/rustfmt.yml'
+      - 'userspace/**'
+
+permissions:
+  checks: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Run rustfmt
+        run: cargo fmt --all --check

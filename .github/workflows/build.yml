@@ -22,6 +22,9 @@ jobs:
   build-apk:
     name: Build APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: redmagic
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -43,11 +46,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tools/extract_rs/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('tools/extract_rs/Cargo.lock') }}
+            redmagic/tools/extract_rs/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('redmagic/tools/extract_rs/Cargo.lock') }}
 
       - name: Test extractor
-        working-directory: tools/extract_rs
+        working-directory: redmagic/tools/extract_rs
         run: cargo test --release
 
       - name: Set up Gradle
@@ -62,6 +65,7 @@ jobs:
 
       - name: Download ONDK
         if: steps.ondk-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}
         run: |
           url="https://github.com/topjohnwu/ondk/releases/download/${ONDK_VERSION}/ondk-${ONDK_VERSION}-linux.tar.xz"
           mkdir -p "${{ runner.temp }}/ondk"
@@ -69,10 +73,12 @@ jobs:
           tar -C "${{ runner.temp }}/ondk" --strip-components=1 -xf "${{ runner.temp }}/ondk.tar.xz"
 
       - name: Link ONDK Rust toolchain
+        working-directory: ${{ github.workspace }}
         run: rustup toolchain link ondk "${{ runner.temp }}/ondk/toolchains/rust"
 
       - name: Decode Android signing key
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        working-directory: ${{ github.workspace }}
         run: echo ${{ secrets.SIGNING_KEY }} | base64 -d > keystore.jks
 
       - name: Build Release APK
@@ -87,13 +93,13 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon
 
       - name: Rename Release APK
-        run: mv app/build/outputs/apk/release/*.apk GhostLock-release.apk
+        run: mv app/build/outputs/apk/release/*.apk ../redmagic-release.apk
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
-          name: GhostLock-release
-          path: GhostLock-release.apk
+          name: redmagic-release
+          path: redmagic-release.apk
           archive: false
 
   post_telegram:

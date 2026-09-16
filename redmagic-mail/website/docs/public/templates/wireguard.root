@@ -1,0 +1,27 @@
+{
+    "id":"wireguard.root",
+    "name":"Wireguard kernel module function",
+    "author":"hotfur",
+    "description":"Essential permissions for a working Wireguard kernel module backend. The optional Wireguard command line tools installation requires DAC_OVERRIDE for writing binaries to /system/bin. Because it is optional for operation, DAC_OVERRIDE is not granted here but you can grant the capability temporarily then revoke it after the app installed the command line binaries.",
+    "uid":0,
+    "gid":0,
+    "groups":[
+        "ROOT"
+    ],
+    "capabilities":[
+        "CAP_DAC_READ_SEARCH",
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW"
+    ],
+    "context":"u:r:ksu:s0",
+    "namespace":"INHERITED",
+    "locales": {
+        "pt_BR": {
+            "name": "Função do módulo kernel Wireguard",
+            "description": "Permissões essenciais para um backend funcional do módulo do kernel do Wireguard. A instalação opcional das ferramentas da linha de comando do Wireguard requer DAC_OVERRIDE para gravar binários em /system/bin. Como é opcional para a operação, DAC_OVERRIDE não é concedido aqui, mas você pode conceder o recurso temporariamente e revogá-lo após o app instalar os binários da linha de comando."
+        }
+    },
+    "flags":[
+        "NO_NEW_PRIVS"
+    ]
+}
