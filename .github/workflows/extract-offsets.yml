@@ -1,0 +1,67 @@
+name: Extract offsets
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extract:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nx809j-cn-b24
+            boot: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_CN_NX809JV1.0.0B24/boot.img.zst
+            xbl: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_CN_NX809JV1.0.0B24/xbl_config.img.zst
+          - name: nx809j-eea-b20
+            boot: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_EEA_NX809JV1.0.0B20/boot.img.zst
+            xbl: https://github.com/ItsVixano/nubia_archive/releases/download/GEN_EEA_NX809JV1.0.0B20/xbl_config.img.zst
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            redmagic/tools/extract_rs/target
+          key: extract-${{ runner.os }}-${{ hashFiles('redmagic/tools/extract_rs/Cargo.lock') }}
+
+      - name: Build extractor
+        run: cargo build --release --manifest-path redmagic/tools/extract_rs/Cargo.toml
+
+      - name: Download boot images
+        run: |
+          mkdir -p work out
+          curl -fL "${{ matrix.boot }}" -o work/boot.img.zst
+          curl -fL "${{ matrix.xbl }}" -o work/xbl_config.img.zst
+          zstd -d work/boot.img.zst -o work/boot.img
+          zstd -d work/xbl_config.img.zst -o work/xbl_config.img
+          echo "=== kernel banner ==="
+          strings work/boot.img | grep -E 'Linux version|android16-5-g' | head -n 20 | tee out/${{ matrix.name }}-banner.txt
+
+      - name: Extract offsets
+        continue-on-error: true
+        run: |
+          set +e
+          ./redmagic/tools/extract_rs/target/release/ghostlock-extract \
+            work/boot.img \
+            --xbl-config work/xbl_config.img \
+            --format json \
+            --out out/${{ matrix.name }}-offsets.json \
+            2>&1 | tee out/${{ matrix.name }}-extract.log
+          echo "extract_exit=$?" | tee -a out/${{ matrix.name }}-extract.log
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: offsets-${{ matrix.name }}
+          path: out/
+          archive: false
