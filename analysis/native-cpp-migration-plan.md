@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04–CPP06 代码与主机/Gradle 验证完成（profile 值类型化与有界解码、payload 强类型与有界编码、FutexHash 固定向量与零调用状态表修复）。CPP05 与 CPP06 的 `ghostlock` SHA-256 相同，证明 CP06 未改变生产二进制；真机门禁与 CPP06 的 KernelSnitch 类化合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04–CPP06 代码与主机/Gradle 验证完成（profile 值类型化与有界解码、payload 强类型与有界编码、FutexHash 固定向量与零调用状态表修复）。CPP05 与 CPP06 的 `ghostlock` SHA-256 相同，证明 CPP06 未改变生产二进制；真机门禁与 CPP06 的 KernelSnitch 类化合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
