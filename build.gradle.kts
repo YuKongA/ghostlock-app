@@ -2,7 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application") version "9.4.0" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
 }
 
 private fun localProperties(): Properties = Properties().also { properties ->
@@ -45,6 +45,23 @@ private fun resolveNdkDir(): String {
 
 private data class NdkTools(val clang: String, val ar: String)
 
+private fun resolveCargoExecutable(): String {
+    val cargoOnPath = System.getenv("PATH")
+        .orEmpty()
+        .split(File.pathSeparator)
+        .asSequence()
+        .map { File(it, "cargo") }
+        .firstOrNull { it.isFile && it.canExecute() }
+    if (cargoOnPath != null) return cargoOnPath.absolutePath
+
+    val cargoInRustupHome = File(System.getProperty("user.home"), ".cargo/bin/cargo")
+    return if (cargoInRustupHome.isFile && cargoInRustupHome.canExecute()) {
+        cargoInRustupHome.absolutePath
+    } else {
+        "cargo"
+    }
+}
+
 private fun extractNdkTools(): NdkTools {
     val ndk = resolveNdkDir()
     val isWindows = System.getProperty("os.name").lowercase().contains("windows")
@@ -85,7 +102,7 @@ tasks.register<Exec>("buildGhostlockExtract") {
     description = "buildGhostlockExtract"
     val tools = extractNdkTools()
     val isOndk = useOndk()
-    val command = mutableListOf("cargo")
+    val command = mutableListOf(resolveCargoExecutable())
     if (isOndk) command += "+ondk"
     command += listOf("build", "--release", "--target", "aarch64-linux-android")
     if (isOndk) {

@@ -177,7 +177,7 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.foundation:foundation:1.12.0")
+    implementation("androidx.compose.foundation:foundation:1.12.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")

