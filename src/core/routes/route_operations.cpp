@@ -245,9 +245,19 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
     size_t stamp_size = layout.buffer_size;
     __extension__ unsigned char stamp[stamp_size];
     memset(stamp, 0, sizeof(stamp));
-    build_multicast_waiter_payload(
-            stamp, layout.waiter_offset, layout.task_offset,
-            layout.lock_offset, fake_task, fake_lock);
+    if (!ghostlock::encode_multicast_waiter(
+            {reinterpret_cast<std::byte *>(stamp), stamp_size},
+            layout.waiter_offset, layout.task_offset, layout.lock_offset,
+            fake_task, fake_lock)) {
+        status.step = 59;
+        status.error_number = EOVERFLOW;
+        status.userspace_clean = 1;
+        status.kernel_disarmed = 1;
+        pr_warning("multicast byte injection rejected: waiter=%zu task=%zu "
+                   "lock=%zu buffer=%zu\n", layout.waiter_offset,
+                   layout.task_offset, layout.lock_offset, stamp_size);
+        return status;
+    }
     uint16_t family = AF_UNSPEC;
     memcpy(stamp + 8, &family, sizeof(family));
 

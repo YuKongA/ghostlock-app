@@ -425,7 +425,10 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      build_compact_waiter_payload(p + W0_OFF, request, &write_layout);
+      (void) ghostlock::encode_compact_waiter(
+          {reinterpret_cast<std::byte *>(p + W0_OFF),
+           ghostlock::kCompactWaiterBytes},
+          *request, write_layout);
       put64(p, W0_OFF + 0x30, waiter_task); /* task */
       put64(p, W0_OFF + 0x38, fake_lock);   /* lock */
       put32(p, W0_OFF + 0x40, 0);           /* wake_state */

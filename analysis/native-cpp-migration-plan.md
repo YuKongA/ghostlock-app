@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04 代码与主机验证完成：`TargetProfile` 不可变 value、`ResolvedAddresses` 强地址类型与受检 direct-map 换算、有界 `std::string_view` profile 解码、覆盖 45 个内置 profile 的 `offsets_json_test`。提交后暂停，等待 CPP04 真机门禁。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04（profile/地址值类型化、有界 `std::string_view` 解码、45 个内置 profile 固定向量）与 CPP05（`WriteMode`/`WriteRequest` 强类型、固定片段与有界编码）代码及主机/Gradle 验证完成；两阶段的真机门禁合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -222,12 +222,13 @@ struct RouteOutcome final {
 
 ### [ ] CPP05：Payload Builder 纯函数化
 
-- [ ] `WriteRequest`、`PayloadWriteLayout` 改为不可变标准布局 value；`WriteMode` 改为 `enum class`。
+- [x] `WriteRequest`、`PayloadWriteLayout` 改为不可变标准布局 value（`ghostlock::` 强类型 + `static_assert`）；`WriteMode` 改为 `enum class`；C 调用点全部迁移，C façade 退入 `#else` 分支。
 - [x] builder 接收 `std::span<std::byte>` 并返回显式编码结果，不写全局 page 状态。
-- [ ] 用 `std::array` 表达固定 payload 片段，禁止越界和隐式整数截断。
-- [x] 对 Multicast/TCP/Select 现有共享 payload 固定向量逐字节比较，并覆盖 destination 过小拒绝。
+- [x] 用 `kCompactWaiterBytes` 与 `std::array` 表达固定 payload 片段；`util.cpp` 与 `route_operations.cpp` 改用 span 编码入口，Multicast 几何越界时以 step=59/`EOVERFLOW` 安全拒绝而非越界写入。
+- [x] 对 Multicast/TCP/Select 现有共享 payload 固定向量逐字节比较，并覆盖 compact 与 multicast destination 过小拒绝。
 - [x] 保留 C façade 直到所有调用者迁完。
-- [ ] 提交、暂停、真机门禁。
+- [x] 提交并暂停（CPP05 独立提交）。
+- [ ] 真机门禁：与 CPP04 合并导出 Multicast 完整日志，保存两阶段证据并更新核心 UML。
 
 ### [ ] CPP06：FutexHash 与 KernelSnitch
 
@@ -364,7 +365,7 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
-| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04 验证时在 `supportedKernels` 与 `javac` classes 各复现一次，清理 `app/build` 后通过；生成 task 清理/隔离 output 仍待独立维护 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04/CPP05 验证时在 `supportedKernels`、`javac` classes、`packaged_res` 各复现，清理 `app/build` 后通过；生成 task 清理/隔离 output 仍待独立维护 |
 | CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |

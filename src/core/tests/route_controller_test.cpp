@@ -36,7 +36,7 @@ static void reset_stubs(RouteStatus status) {
 
 int main(void) {
   PiRaceContext race = {0};
-  WriteRequest request = {.mode = WRITE_MODE_ZERO};
+  WriteRequest request = {.mode = WriteMode::Zero};
   struct kernel_offsets values = {.compact_waiter = 1};
   TargetProfile profile = target_profile_snapshot(&values);
   RouteController controller;
