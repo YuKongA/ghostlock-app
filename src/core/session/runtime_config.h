@@ -2,8 +2,7 @@
 #define GHOSTLOCK_RUNTIME_CONFIG_H
 
 #include <stdbool.h>
-
-struct target_profile;
+#include "profile.h"
 
 struct runtime_config {
     int main_cpu;
@@ -30,7 +29,7 @@ extern struct runtime_config g_runtime_config;
 int runtime_config_init(struct runtime_config *config);
 
 int runtime_config_apply_profile(
-        struct runtime_config *config, const struct target_profile *profile);
+        struct runtime_config *config, const TargetProfile *profile);
 
 void runtime_config_log(const struct runtime_config *config);
 

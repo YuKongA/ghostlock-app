@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+#include <array>
+#include <cstring>
+#endif
+
 struct execution_settings {
   uint32_t recommended_main_cpu, recommended_consumer_cpu;
   uint32_t heap_prepare_max_attempts, heap_prepare_timeout_ms;
@@ -62,11 +67,72 @@ struct kernel_offsets {
 };
 
 /* Immutable runtime snapshot copied from the JSON transport representation.
- * Consumers use semantic capability/layout/execution accessors below. */
+ * The C++ value owns uname_r and rebinds the transport pointer after every
+ * copy/move. The C layout remains available as a compatibility façade. */
+#ifdef __cplusplus
+class TargetProfile final {
+ public:
+  TargetProfile() noexcept = default;
+
+  explicit TargetProfile(const struct kernel_offsets &transport) noexcept
+      : values_(transport), loaded_(true) {
+    copy_release(transport.uname_r);
+  }
+
+  TargetProfile(const TargetProfile &other) noexcept
+      : values_(other.values_), release_(other.release_),
+        loaded_(other.loaded_) {
+    rebind_release();
+  }
+
+  TargetProfile &operator=(const TargetProfile &other) noexcept {
+    if (this != &other) {
+      values_ = other.values_;
+      release_ = other.release_;
+      loaded_ = other.loaded_;
+      rebind_release();
+    }
+    return *this;
+  }
+
+  TargetProfile(TargetProfile &&other) noexcept : TargetProfile(other) {}
+
+  TargetProfile &operator=(TargetProfile &&other) noexcept {
+    return *this = other;
+  }
+
+  [[nodiscard]] const struct kernel_offsets *values() const noexcept {
+    return loaded_ ? &values_ : nullptr;
+  }
+
+  [[nodiscard]] bool loaded() const noexcept { return loaded_; }
+
+ private:
+  void copy_release(const char *release) noexcept {
+    release_.fill('\0');
+    if (release) {
+      const size_t length = std::strlen(release);
+      const size_t copied =
+          length < release_.size() ? length : release_.size() - 1;
+      std::memcpy(release_.data(), release, copied);
+    }
+    rebind_release();
+  }
+
+  void rebind_release() noexcept {
+    values_.uname_r = loaded_ ? release_.data() : nullptr;
+  }
+
+  struct kernel_offsets values_{};
+  std::array<char, 256> release_{};
+  bool loaded_ = false;
+};
+#else
 typedef struct target_profile {
   struct kernel_offsets values;
   int loaded;
 } TargetProfile;
+#endif
 
 typedef struct multicast_waiter_layout {
   size_t waiter_offset, buffer_size, task_offset, lock_offset;
@@ -87,8 +153,7 @@ typedef struct tcp_zerocopy_layout {
 static inline TargetProfile
 target_profile_snapshot(const struct kernel_offsets *values) {
 #ifdef __cplusplus
-  return values ? TargetProfile{.values = *values, .loaded = 1}
-                : TargetProfile{};
+  return values ? TargetProfile(*values) : TargetProfile();
 #else
   return values ? (TargetProfile){.values = *values, .loaded = 1}
                 : (TargetProfile){0};
@@ -97,7 +162,11 @@ target_profile_snapshot(const struct kernel_offsets *values) {
 
 static inline const struct kernel_offsets *
 target_profile_values(const TargetProfile *profile) {
+#ifdef __cplusplus
+  return profile ? profile->values() : nullptr;
+#else
   return profile && profile->loaded ? &profile->values : NULL;
+#endif
 }
 
 static inline int target_profile_is_loaded(const TargetProfile *profile) {

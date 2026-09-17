@@ -5,8 +5,17 @@
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/system_properties.h>
 
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
+
+#include <limits>
+
+/* Android property lookup is unavailable in host fixed-vector tests. The
+ * non-Android branch keeps the QCOM default so the deterministic SoC-specific
+ * derivations below can be exercised on the host; production is unchanged. */
+#if defined(__ANDROID__)
 static TargetSocFamily detect_target_soc(void) {
     char value[256];
     const char *keys[] = {"ro.soc.manufacturer", "ro.soc.model",
@@ -28,6 +37,11 @@ static TargetSocFamily detect_target_soc(void) {
     }
     return TARGET_SOC_QCOM;
 }
+#else
+static TargetSocFamily detect_target_soc(void) {
+    return TARGET_SOC_QCOM;
+}
+#endif
 
 int resolved_addresses_init_for_soc(ResolvedAddresses *out,
         const TargetProfile *profile,
@@ -37,19 +51,30 @@ int resolved_addresses_init_for_soc(ResolvedAddresses *out,
         errno = EINVAL;
         return -1;
     }
-    memset(out, 0, sizeof(*out));
+    *out = ResolvedAddresses{};
     out->soc = soc;
-    out->init_cred_image = KIMAGE_TEXT_BASE + values->off_init_cred;
+    const auto image = ghostlock::target::KernelImageAddress(KIMAGE_TEXT_BASE)
+        .checked_add(values->off_init_cred);
+    if (!image) {
+        errno = ERANGE;
+        return -1;
+    }
+    out->init_cred_image = *image;
     if (values->kernel_phys_load) {
-        out->kernel_phys_load = values->kernel_phys_load;
+        out->kernel_phys_load = ghostlock::target::PhysicalAddress(
+            values->kernel_phys_load);
     } else if (out->soc == TARGET_SOC_MTK) {
-        out->kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
+        out->kernel_phys_load = ghostlock::target::PhysicalAddress(
+            KIMAGE_TEXT_BASE - MTK_VADDR_BASE);
     } else if (out->soc == TARGET_SOC_XRING) {
-        out->kernel_phys_load = XRING_KERNEL_PHYS_LOAD;
+        out->kernel_phys_load = ghostlock::target::PhysicalAddress(
+            XRING_KERNEL_PHYS_LOAD);
     } else if (strncmp(values->uname_r, "6.12.", 5) == 0) {
-        out->kernel_phys_load = QC_GKI_6_12_PHYS_LOAD;
+        out->kernel_phys_load = ghostlock::target::PhysicalAddress(
+            QC_GKI_6_12_PHYS_LOAD);
     } else {
-        out->kernel_phys_load = P0_KERNEL_PHYS_LOAD;
+        out->kernel_phys_load = ghostlock::target::PhysicalAddress(
+            P0_KERNEL_PHYS_LOAD);
     }
     return 0;
 }
@@ -62,9 +87,24 @@ int resolved_addresses_init(ResolvedAddresses *out,
 uintptr_t resolved_addresses_data_alias(const ResolvedAddresses *addresses,
         uintptr_t image_addr) {
     if (!addresses) return 0;
-    uintptr_t offset = image_addr - KIMAGE_TEXT_BASE;
-    uintptr_t physical = addresses->kernel_phys_load + offset;
-    return ((physical - P0_PHYS_OFFSET) | P0_PAGE_OFFSET);
+    const auto result = resolved_addresses_data_alias_checked(
+        *addresses, ghostlock::target::KernelImageAddress(image_addr));
+    return result ? result->value() : 0;
+}
+
+std::optional<ghostlock::target::DirectMapAddress>
+resolved_addresses_data_alias_checked(
+    const ResolvedAddresses &addresses,
+    ghostlock::target::KernelImageAddress image_address) noexcept {
+    const uintptr_t image = image_address.value();
+    if (image < KIMAGE_TEXT_BASE) return std::nullopt;
+    const uintptr_t offset = image - KIMAGE_TEXT_BASE;
+    const auto physical = addresses.kernel_phys_load.checked_add(offset);
+    if (!physical || physical->value() < P0_PHYS_OFFSET) return std::nullopt;
+    const uintptr_t direct =
+        (physical->value() - P0_PHYS_OFFSET) | P0_PAGE_OFFSET;
+    if (direct < P0_PAGE_OFFSET) return std::nullopt;
+    return ghostlock::target::DirectMapAddress(direct);
 }
 
 const char *resolved_addresses_soc_name(const ResolvedAddresses *addresses,

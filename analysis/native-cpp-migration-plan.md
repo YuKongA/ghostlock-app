@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：连续迁移批次已完成“全核心 C++20 编译、基础 RAII、会话状态集中、有界 payload 编码和 JSON 文件所有权”并通过全量主机/Gradle 构建；最终设备门禁仍待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04 代码与主机验证完成：`TargetProfile` 不可变 value、`ResolvedAddresses` 强地址类型与受检 direct-map 换算、有界 `std::string_view` profile 解码、覆盖 45 个内置 profile 的 `offsets_json_test`。提交后暂停，等待 CPP04 真机门禁。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -211,12 +211,14 @@ struct RouteOutcome final {
 
 ### [ ] CPP04：Profile、JSON transport 与地址空间
 
-- [ ] `offsets_json.cpp` 保留解析 façade，文件 owner 已迁为 `UniqueFd + std::string`；有界 `std::string_view` value parser 尚待完成，Kotlin schema 未改变。
-- [ ] `TargetProfile` 成为不可变 C++ value，execution/layout accessor 返回 value 或只读 view。
-- [ ] `ResolvedAddresses` 使用强地址类型，消除 active offset/address 宏镜像的读者。
-- [ ] 明确 `target.h` 剩余 compatibility 常量及删除期限。
-- [ ] 对全部内置 profile 运行 schema、解析、地址和 layout 固定向量。
-- [ ] 提交、暂停、真机门禁。
+- [x] `offsets_json.cpp` 保留解析 façade，文件 owner 已迁为 `UniqueFd + std::string`；有界 `std::string_view` value parser 已落地（`json_skip_ws`/`json_match_key`/`json_skip_value`/`json_value_span`/`json_member_value`/`json_read_string`/`json_parse_int`），Kotlin schema 未改变。
+- [x] `TargetProfile` 成为不可变 C++ value，拥有 release 并重绑 transport 指针；execution 返回只读 view，layout accessor 返回 value。
+- [x] `ResolvedAddresses` 使用 `PhysicalAddress`/`KernelImageAddress` 强地址类型；`resolved_addresses_kernel_phys_load()`/`resolved_addresses_init_cred_image()` accessor 取代直接字段读取，`resolved_addresses_data_alias_checked()` 做溢出/下溢拒绝。
+- [x] 明确 `target.h` 剩余 compatibility 常量及删除期限（device defaults → CPP08/CPP12，symbol fallback → CPP08，payload slot/structure offsets → CPP05/CPP13），并在文件头记录。
+- [x] 对全部内置 profile 运行 schema、解析、地址和 layout 固定向量：新增 `tests/offsets_json_test.cpp`，遍历 45 个内置 profile 并覆盖 9 组解码拒绝、3 组地址拒绝与 QCOM/MTK/XRing 物理加载规则。
+- [x] `address_space.cpp` 的 Android-only `__system_property_get` 探测加入非 Android 分界，使确定性地址推导可在主机固定向量中执行；Android 生产路径不变。
+- [x] 提交并暂停（CPP04 独立提交）。
+- [ ] 真机门禁：导出 Multicast 完整日志，保存 CPP04 证据并更新核心 UML。
 
 ### [ ] CPP05：Payload Builder 纯函数化
 
@@ -362,9 +364,9 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
-| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | 生成 task 清理/隔离 output，并连续 clean/incremental 构建通过 |
-| CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04 | transport façade 与 immutable profile 分离 |
-| CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04 | 常量命名空间与 profile 数据边界明确 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04 验证时在 `supportedKernels` 与 `javac` classes 各复现一次，清理 `app/build` 后通过；生成 task 清理/隔离 output 仍待独立维护 |
+| CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
+| CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |
 | CPP-SESSION-01 | config/profile/address/Heap/PI/route 仍由 main/global 拼装 | CPP12 | `ExploitSession` 唯一拥有一次运行 |
 | CPP-SELECT-01 | compact Select 外层重试需要跨 Heap/PI/route 重建 | CPP12 | session 级有界重试及真机证据 |

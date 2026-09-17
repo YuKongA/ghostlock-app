@@ -1,5 +1,11 @@
-/* Minimal JSON parser for the runtime offsets import (offsets.json).
- * Self-contained on purpose: the binary must not depend on cJSON. */
+/* Resolved-profile transport decoder.
+ *
+ * Native receives one fully resolved profile file from Kotlin and performs
+ * strict decoding plus defensive validation. The parser is a bounded
+ * string_view cursor: every helper consumes from or returns a view into the
+ * caller-owned std::string, so no pointer pair can drift out of bounds.
+ * Configuration-source selection and merging stay on the Kotlin side.
+ */
 #include "offsets_json.h"
 #include "support/native_resource.hpp"
 
@@ -13,11 +19,13 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <optional>
 #include <string>
+#include <string_view>
 
 #define PROFILE_JSON_MAX_SIZE (1U << 20)
 
-static ghostlock::Result <std::string> read_profile_file(const char *path) {
+static ghostlock::Result<std::string> read_profile_file(const char *path) {
     ghostlock::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
     if (!fd.valid()) {
         return ghostlock::Result<std::string>::failure(
@@ -47,168 +55,187 @@ static ghostlock::Result <std::string> read_profile_file(const char *path) {
     return ghostlock::Result<std::string>::success(std::move(buffer));
 }
 
-static const char *json_skip_ws(const char *p, const char *end) {
-    while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
-        p++;
+static std::string_view json_skip_ws(std::string_view in) {
+    size_t i = 0;
+    while (i < in.size() &&
+            (in[i] == ' ' || in[i] == '\t' || in[i] == '\n' || in[i] == '\r')) {
+        i++;
     }
-    return p;
+    return in.substr(i);
 }
 
-/* Match the string literal at *pp against key; on success advance *pp past
- * the closing quote. */
-static int json_match_key(const char **pp, const char *end, const char *key) {
-    const char *p = json_skip_ws(*pp, end);
-    if (p == end || *p != '"') return 0;
-    const char *q = p + 1;
-    while (q < end && *q != '"') {
-        if (*q == '\\') q++;
-        q++;
+/* Match the string literal at the front of `in` against key; on success
+ * consume it from `in`. A failed match leaves `in` untouched. */
+static bool json_match_key(std::string_view &in, std::string_view key) {
+    const std::string_view probe = json_skip_ws(in);
+    if (probe.empty() || probe.front() != '"') return false;
+    size_t i = 1;
+    while (i < probe.size() && probe[i] != '"') {
+        if (probe[i] == '\\') i++;
+        i++;
     }
-    if (q >= end) return 0;
-    size_t len = (size_t)(q - (p + 1));
-    if (len == strlen(key) && memcmp(p + 1, key, len) == 0) {
-        *pp = q + 1;
-        return 1;
+    if (i >= probe.size()) return false;
+    const std::string_view name = probe.substr(1, i - 1);
+    if (name.size() != key.size() ||
+            memcmp(name.data(), key.data(), name.size()) != 0) {
+        return false;
     }
-    return 0;
+    in = probe.substr(i + 1);
+    return true;
 }
 
-/* Advance *pp past one JSON value (string, number, object, array, literal). */
-static int json_skip_value(const char **pp, const char *end) {
-    const char *p = json_skip_ws(*pp, end);
-    if (p == end) return 0;
-    if (*p == '"') {
-        p++;
-        while (p < end && *p != '"') {
-            if (*p == '\\') p++;
-            p++;
+/* Advance `in` past one JSON value (string, number, object, array, literal). */
+static bool json_skip_value(std::string_view &in) {
+    in = json_skip_ws(in);
+    if (in.empty()) return false;
+    if (in.front() == '"') {
+        size_t i = 1;
+        while (i < in.size() && in[i] != '"') {
+            if (in[i] == '\\') i++;
+            i++;
         }
-        if (p >= end) return 0;
-        *pp = p + 1;
-        return 1;
+        if (i >= in.size()) return false;
+        in.remove_prefix(i + 1);
+        return true;
     }
-    if (*p == '{' || *p == '[') {
-        char open = *p;
-        char close = (open == '{') ? '}' : ']';
-        p++;
+    if (in.front() == '{' || in.front() == '[') {
+        const char open = in.front();
+        const char close = (open == '{') ? '}' : ']';
+        size_t i = 1;
         int depth = 1;
-        while (p < end && depth > 0) {
-            if (*p == '"') {
-                p++;
-                while (p < end && *p != '"') {
-                    if (*p == '\\') p++;
-                    p++;
+        while (i < in.size() && depth > 0) {
+            if (in[i] == '"') {
+                i++;
+                while (i < in.size() && in[i] != '"') {
+                    if (in[i] == '\\') i++;
+                    i++;
                 }
-                if (p >= end) return 0;
-                p++;
-            } else if (*p == open) {
+                if (i >= in.size()) return false;
+                i++;
+            } else if (in[i] == open) {
                 depth++;
-                p++;
-            } else if (*p == close) {
+                i++;
+            } else if (in[i] == close) {
                 depth--;
-                p++;
+                i++;
             } else {
-                p++;
+                i++;
             }
         }
-        if (depth != 0) return 0;
-        *pp = p;
-        return 1;
+        if (depth != 0) return false;
+        in.remove_prefix(i);
+        return true;
     }
-    while (p < end && *p != ',' && *p != '}' && *p != ']' &&
-            *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
-        p++;
+    size_t i = 0;
+    while (i < in.size() && in[i] != ',' && in[i] != '}' && in[i] != ']' &&
+            in[i] != ' ' && in[i] != '\t' && in[i] != '\n' && in[i] != '\r') {
+        i++;
     }
-    *pp = p;
-    return 1;
+    in.remove_prefix(i);
+    return true;
 }
 
-/* Return a pointer to the value of member `key` at depth 1 inside the object
- * starting at `obj`, or NULL when absent. */
-static const char *json_member_value(const char *obj, const char *end,
-        const char *key) {
-    const char *p = json_skip_ws(obj, end);
-    if (p == end || *p != '{') return NULL;
-    p++;
+/* Return the exact source span of the value at the front of `at`, or nullopt
+ * when the value is malformed. `at` is not modified. */
+static std::optional<std::string_view> json_value_span(std::string_view at) {
+    at = json_skip_ws(at);
+    const char *start = at.data();
+    if (!json_skip_value(at)) return std::nullopt;
+    return std::string_view(start,
+            static_cast<size_t>(at.data() - start));
+}
+
+/* Return the value of member `key` at depth 1 inside the object at the front
+ * of `object`, or nullopt when absent. */
+static std::optional<std::string_view> json_member_value(
+        std::string_view object, std::string_view key) {
+    object = json_skip_ws(object);
+    if (object.empty() || object.front() != '{') return std::nullopt;
+    object.remove_prefix(1);
     for (;;) {
-        p = json_skip_ws(p, end);
-        if (p == end || *p != '"') return NULL;
-        if (!json_match_key(&p, end, key)) {
-            /* json_match_key left p at the member name; skip it and the value. */
-            if (!json_skip_value(&p, end)) return NULL;
-            p = json_skip_ws(p, end);
-            if (p == end || *p != ':') return NULL;
-            p = json_skip_ws(p + 1, end);
-            if (!json_skip_value(&p, end)) return NULL;
-            p = json_skip_ws(p, end);
-            if (p < end && *p == ',') {
-                p++;
+        object = json_skip_ws(object);
+        if (object.empty() || object.front() != '"') return std::nullopt;
+        if (!json_match_key(object, key)) {
+            /* json_match_key left the member name at the front of object. */
+            if (!json_skip_value(object)) return std::nullopt;
+            object = json_skip_ws(object);
+            if (object.empty() || object.front() != ':') return std::nullopt;
+            object.remove_prefix(1);
+            object = json_skip_ws(object);
+            if (!json_skip_value(object)) return std::nullopt;
+            object = json_skip_ws(object);
+            if (!object.empty() && object.front() == ',') {
+                object.remove_prefix(1);
                 continue;
             }
-            return NULL;
+            return std::nullopt;
         }
-        p = json_skip_ws(p, end);
-        if (p == end || *p != ':') return NULL;
-        p = json_skip_ws(p + 1, end);
-        return (p < end) ? p : NULL;
+        object = json_skip_ws(object);
+        if (object.empty() || object.front() != ':') return std::nullopt;
+        object.remove_prefix(1);
+        object = json_skip_ws(object);
+        return object.empty() ? std::nullopt
+                              : std::optional<std::string_view>(object);
     }
 }
 
-/* Copy the JSON string at *pp (escapes stripped) into dst. */
-static int json_read_string(const char **pp, const char *end, char *dst,
-        size_t cap) {
-    const char *p = json_skip_ws(*pp, end);
-    if (p == end || *p != '"') return 0;
-    p++;
+/* Copy the JSON string at the front of `in` (escapes stripped) into dst. */
+static bool json_read_string(std::string_view &in, char *dst, size_t cap) {
+    in = json_skip_ws(in);
+    if (in.empty() || in.front() != '"') return false;
+    size_t i = 1;
     size_t len = 0;
-    while (p < end && *p != '"') {
-        char c = *p;
+    while (i < in.size() && in[i] != '"') {
+        char c = in[i];
         if (c == '\\') {
-            p++;
-            if (p >= end) return 0;
-            c = *p;
+            i++;
+            if (i >= in.size()) return false;
+            c = in[i];
         }
-        if (len + 1 >= cap) return 0;
+        if (len + 1 >= cap) return false;
         dst[len++] = c;
-        p++;
+        i++;
     }
-    if (p >= end) return 0;
+    if (i >= in.size()) return false;
     dst[len] = '\0';
-    *pp = p + 1;
-    return 1;
+    in.remove_prefix(i + 1);
+    return true;
 }
 
-static int json_parse_int(const char *p, const char *end, int64_t *out) {
-    p = json_skip_ws(p, end);
-    if (p == end) return 0;
-    int neg = 0;
-    if (*p == '-') {
-        neg = 1;
-        p++;
+static bool json_parse_int(std::string_view in, int64_t *out) {
+    in = json_skip_ws(in);
+    if (in.empty()) return false;
+    size_t i = 0;
+    bool neg = false;
+    if (in[i] == '-') {
+        neg = true;
+        i++;
     }
     uint64_t v = 0;
-    if (p + 2 <= end && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
-        p += 2;
+    if (i + 2 <= in.size() && in[i] == '0' &&
+            (in[i + 1] == 'x' || in[i + 1] == 'X')) {
+        i += 2;
         int digits = 0;
-        while (p < end && isxdigit((unsigned char) *p)) {
-            char c = *p;
-            int d = (c <= '9') ? (c - '0') : (tolower((unsigned char) c) - 'a' + 10);
+        while (i < in.size() && isxdigit((unsigned char) in[i])) {
+            const char c = in[i];
+            const int d = (c <= '9') ? (c - '0')
+                                     : (tolower((unsigned char) c) - 'a' + 10);
             v = v * 16 + (uint64_t) d;
             digits++;
-            p++;
+            i++;
         }
-        if (!digits) return 0;
+        if (!digits) return false;
     } else {
         int digits = 0;
-        while (p < end && *p >= '0' && *p <= '9') {
-            v = v * 10 + (uint64_t)(*p - '0');
+        while (i < in.size() && in[i] >= '0' && in[i] <= '9') {
+            v = v * 10 + (uint64_t) (in[i] - '0');
             digits++;
-            p++;
+            i++;
         }
-        if (!digits) return 0;
+        if (!digits) return false;
     }
     *out = neg ? -(int64_t) v : (int64_t) v;
-    return 1;
+    return true;
 }
 
 static const struct {
@@ -320,19 +347,18 @@ struct execution_field {
 #define EXEC_FIELD(json_name, member) \
   {json_name, offsetof(struct execution_settings, member)}
 
-static int parse_execution_group(const char *parent, const char *parent_end,
-        const char *group_name,
-        const struct execution_field *fields,
-        size_t field_count,
-        struct execution_settings *out) {
-    const char *group = json_member_value(parent, parent_end, group_name);
-    const char *group_end = group;
-    if (!group || *group != '{' || !json_skip_value(&group_end, parent_end))
+static int parse_execution_group(std::string_view parent,
+        std::string_view group_name, const struct execution_field *fields,
+        size_t field_count, struct execution_settings *out) {
+    const auto group_value = json_member_value(parent, group_name);
+    if (!group_value || group_value->empty() || group_value->front() != '{')
         return -1;
+    const auto group = json_value_span(*group_value);
+    if (!group) return -1;
     for (size_t i = 0; i < field_count; i++) {
-        const char *value = json_member_value(group, group_end, fields[i].name);
+        const auto value = json_member_value(*group, fields[i].name);
         int64_t parsed = -1;
-        if (!value || !json_parse_int(value, group_end, &parsed) || parsed < 0 ||
+        if (!value || !json_parse_int(*value, &parsed) || parsed < 0 ||
                 (uint64_t) parsed > UINT32_MAX)
             return -1;
         *(uint32_t * )((char *) out + fields[i].offset) = (uint32_t) parsed;
@@ -340,13 +366,14 @@ static int parse_execution_group(const char *parent, const char *parent_end,
     return 0;
 }
 
-static int fill_execution_settings(const char *object, const char *object_end,
+static int fill_execution_settings(std::string_view object,
         struct execution_settings *out) {
-    const char *execution = json_member_value(object, object_end, "execution");
-    const char *execution_end = execution;
-    if (!execution || *execution != '{' ||
-            !json_skip_value(&execution_end, object_end))
+    const auto execution_value = json_member_value(object, "execution");
+    if (!execution_value || execution_value->empty() ||
+            execution_value->front() != '{')
         return -1;
+    const auto execution = json_value_span(*execution_value);
+    if (!execution) return -1;
     memset(out, 0, sizeof(*out));
 
     static const struct execution_field cpus[] = {
@@ -380,22 +407,23 @@ static int fill_execution_settings(const char *object, const char *object_end,
             EXEC_FIELD("enforce_poll_attempts", handoff_enforce_poll_attempts),
             EXEC_FIELD("enforce_poll_interval_ms", handoff_enforce_poll_interval_ms),
     };
-    if (parse_execution_group(execution, execution_end, "recommended_cpus", cpus,
+    if (parse_execution_group(*execution, "recommended_cpus", cpus,
             sizeof(cpus) / sizeof(cpus[0]), out) ||
-            parse_execution_group(execution, execution_end, "heap", heap,
+            parse_execution_group(*execution, "heap", heap,
                     sizeof(heap) / sizeof(heap[0]), out) ||
-            parse_execution_group(execution, execution_end, "race", race,
+            parse_execution_group(*execution, "race", race,
                     sizeof(race) / sizeof(race[0]), out) ||
-            parse_execution_group(execution, execution_end, "stages", stages,
+            parse_execution_group(*execution, "stages", stages,
                     sizeof(stages) / sizeof(stages[0]), out) ||
-            parse_execution_group(execution, execution_end, "handoff", handoff,
+            parse_execution_group(*execution, "handoff", handoff,
                     sizeof(handoff) / sizeof(handoff[0]), out))
         return -1;
 
-    const char *routes = json_member_value(execution, execution_end, "routes");
-    const char *routes_end = routes;
-    if (!routes || *routes != '{' || !json_skip_value(&routes_end, execution_end))
+    const auto routes_value = json_member_value(*execution, "routes");
+    if (!routes_value || routes_value->empty() || routes_value->front() != '{')
         return -1;
+    const auto routes = json_value_span(*routes_value);
+    if (!routes) return -1;
     static const struct execution_field tcp[] = {
             EXEC_FIELD("attempts", tcp_attempts),
             EXEC_FIELD("arm_sequence", tcp_arm_sequence),
@@ -412,11 +440,11 @@ static int fill_execution_settings(const char *object, const char *object_end,
             EXEC_FIELD("post_requeue_settle_us", multicast_post_requeue_settle_us),
             EXEC_FIELD("post_adjust_settle_us", multicast_post_adjust_settle_us),
     };
-    return parse_execution_group(routes, routes_end, "tcp_zerocopy", tcp,
+    return parse_execution_group(*routes, "tcp_zerocopy", tcp,
             sizeof(tcp) / sizeof(tcp[0]), out) ||
-            parse_execution_group(routes, routes_end, "select_stack", select_stack,
+            parse_execution_group(*routes, "select_stack", select_stack,
                     sizeof(select_stack) / sizeof(select_stack[0]), out) ||
-            parse_execution_group(routes, routes_end, "multicast_waiter", multicast,
+            parse_execution_group(*routes, "multicast_waiter", multicast,
                     sizeof(multicast) / sizeof(multicast[0]), out)
             ? -1
             : 0;
@@ -424,21 +452,19 @@ static int fill_execution_settings(const char *object, const char *object_end,
 
 #undef EXEC_FIELD
 
-/* Fill `out` from one JSON object [obj, end).  Fields absent from the JSON
- * keep whatever the caller put into `out` (zeroed for a fresh table, or a
- * built-in entry the JSON is overriding). */
+/* Fill `out` from one JSON object. Fields absent from the JSON keep whatever
+ * the caller put into `out` (zeroed for a fresh table, or a built-in entry the
+ * JSON is overriding). */
 /* Decoupling plan: merge one JSON entry into a profile candidate. Inputs:
- * object span and base profile; output: populated candidate/error. Future:
+ * object span and release buffer; output: populated candidate/error. Future:
  * target_profile_parse_entry(ProfileBuilder *, JsonObjectView). */
 static void fill_external_entry(struct kernel_offsets *out,
-        const char *release_buf, const char *obj,
-        const char *end) {
-    const char *v;
+        const char *release_buf, std::string_view object) {
     int64_t num;
     out->uname_r = release_buf;
     for (size_t i = 0; i < sizeof(g_profile_map) / sizeof(g_profile_map[0]); i++) {
-        v = json_member_value(obj, end, g_profile_map[i].name);
-        if (v && json_parse_int(v, end, &num)) {
+        const auto v = json_member_value(object, g_profile_map[i].name);
+        if (v && json_parse_int(*v, &num)) {
             store_profile_scalar(out, g_profile_map[i].off,
                     g_profile_map[i].width, num);
         }
@@ -446,38 +472,42 @@ static void fill_external_entry(struct kernel_offsets *out,
     /* Resolved profiles use one flat object. Keep the nested reads below only
      * for compatibility with offsets.json files produced by older extractors. */
     for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]); i++) {
-        v = json_member_value(obj, end, g_symbol_map[i].name);
-        if (v && json_parse_int(v, end, &num)) {
+        const auto v = json_member_value(object, g_symbol_map[i].name);
+        if (v && json_parse_int(*v, &num)) {
             *(uint64_t * )((char *) out + g_symbol_map[i].off) = (uint64_t) num;
         }
     }
     for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]); i++) {
-        v = json_member_value(obj, end, g_task_map[i].name);
-        if (v && json_parse_int(v, end, &num)) {
+        const auto v = json_member_value(object, g_task_map[i].name);
+        if (v && json_parse_int(*v, &num)) {
             *(uint32_t * )((char *) out + g_task_map[i].off) = (uint32_t) num;
         }
     }
-    v = json_member_value(obj, end, "symbols");
-    if (v && *v == '{') {
-        const char *v_end = v;
-        if (json_skip_value(&v_end, end)) {
+    const auto symbols = json_member_value(object, "symbols");
+    if (symbols && !symbols->empty() && symbols->front() == '{') {
+        if (const auto symbols_span = json_value_span(*symbols)) {
             for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]);
                  i++) {
-                const char *mv = json_member_value(v, v_end, g_symbol_map[i].name);
-                if (mv && json_parse_int(mv, v_end, &num)) {
-                    *(uint64_t * )((char *) out + g_symbol_map[i].off) = (uint64_t) num;
+                const auto mv = json_member_value(*symbols_span,
+                        g_symbol_map[i].name);
+                if (mv && json_parse_int(*mv, &num)) {
+                    *(uint64_t * )((char *) out + g_symbol_map[i].off) =
+                            (uint64_t) num;
                 }
             }
         }
     }
-    v = json_member_value(obj, end, "struct_fields");
-    if (v && *v == '{') {
-        const char *v_end = v;
-        if (json_skip_value(&v_end, end)) {
-            for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]); i++) {
-                const char *mv = json_member_value(v, v_end, g_task_map[i].name);
-                if (mv && json_parse_int(mv, v_end, &num)) {
-                    *(uint32_t * )((char *) out + g_task_map[i].off) = (uint32_t) num;
+    const auto struct_fields = json_member_value(object, "struct_fields");
+    if (struct_fields && !struct_fields->empty() &&
+            struct_fields->front() == '{') {
+        if (const auto fields_span = json_value_span(*struct_fields)) {
+            for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]);
+                 i++) {
+                const auto mv = json_member_value(*fields_span,
+                        g_task_map[i].name);
+                if (mv && json_parse_int(*mv, &num)) {
+                    *(uint32_t * )((char *) out + g_task_map[i].off) =
+                            (uint32_t) num;
                 }
             }
         }
@@ -498,29 +528,34 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
         return -1;
     }
     const std::string &file = file_result.value();
-    const char *file_buffer = file.data();
-    const size_t size = file.size();
-    const char *object = json_skip_ws(file_buffer, file_buffer + size);
-    const char *end = object;
+    const std::string_view document(file.data(), file.size());
+    const std::string_view object = json_skip_ws(document);
     int result = -1;
-    if (object < file_buffer + size && *object == '{' &&
-            json_skip_value(&end, file_buffer + size) &&
-            json_skip_ws(end, file_buffer + size) == file_buffer + size) {
-        int64_t schema_version = 0;
-        const char *schema_value = json_member_value(object, end, "schema_version");
-        const char *execution_value = json_member_value(object, end, "execution");
-        const char *release_value = json_member_value(object, end, "release");
-        const char *cursor = release_value;
-        char release[256];
-        if (schema_value && json_parse_int(schema_value, end, &schema_version) &&
-                schema_version == 1 && execution_value && *execution_value == '{' &&
-                release_value && json_read_string(&cursor, end, release,
-                sizeof(release)) &&
-                strlen(release) < release_buf_cap) {
-            memset(out, 0, sizeof(*out));
-            strcpy(release_buf, release);
-            fill_external_entry(out, release_buf, object, end);
-            result = fill_execution_settings(object, end, &out->execution);
+    if (!object.empty() && object.front() == '{') {
+        std::string_view cursor = object;
+        if (json_skip_value(cursor) && json_skip_ws(cursor).empty()) {
+            int64_t schema_version = 0;
+            const auto schema_value =
+                    json_member_value(object, "schema_version");
+            const auto execution_value =
+                    json_member_value(object, "execution");
+            const auto release_value = json_member_value(object, "release");
+            if (schema_value &&
+                    json_parse_int(*schema_value, &schema_version) &&
+                    schema_version == 1 && execution_value &&
+                    !execution_value->empty() &&
+                    execution_value->front() == '{' && release_value) {
+                std::string_view release_cursor = *release_value;
+                char release[256];
+                if (json_read_string(release_cursor, release,
+                            sizeof(release)) &&
+                        strlen(release) < release_buf_cap) {
+                    memset(out, 0, sizeof(*out));
+                    strcpy(release_buf, release);
+                    fill_external_entry(out, release_buf, object);
+                    result = fill_execution_settings(object, &out->execution);
+                }
+            }
         }
     }
     return result;

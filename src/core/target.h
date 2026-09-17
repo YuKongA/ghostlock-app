@@ -7,6 +7,30 @@
 
 #define BUILD_VARIANT_LABEL "ghostlock_oplus"
 
+/* Compatibility façade for the translation units that still read C-style
+ * macros. `target_constants.hpp` owns the stable address-domain and
+ * payload-slot values for C++ code; everything below is a retained default or
+ * fallback, not a second authority:
+ *
+ *   - device/profile defaults (`P0_KERNEL_PHYS_LOAD`, `QC_GKI_6_12_PHYS_LOAD`,
+ *     `XRING_KERNEL_PHYS_LOAD`): delete in CPP08/CPP12, once RuntimeConfig owns
+ *     the startup fallback and ExploitSession is the only entry point.
+ *   - symbol/slide and fake-layout offsets: fallbacks for the `_RSO`
+ *     accessors in `runtime_struct_offsets.h`. They are still reachable when a
+ *     resolved profile carries zero for an unchecked field, so they are deleted
+ *     in CPP08 only after profile validation forces every symbol field nonzero.
+ *   - payload slots already forwarded from `target_constants.hpp`
+ *     (`LOCK_OFF`, `W0_OFF`, `FOPS_OFF`, `RIGHT_OFF`, `LEFT_OFF`,
+ *     `FAKE_TASK_OFF`, `CRED_COPY_OFF`, `TCP_*`): keep this C-compatible
+ *     spelling until CPP05/CPP13 replace the remaining payload readers.
+ *   - kernel structure layout offsets (`FAKE_WAITER_*`, `TASK_*`, `CRED_*`,
+ *     `SECCOMP_*`, `STRUCT_*`): move into the payload/kernel layout constant
+ *     namespace in CPP05/CPP13.
+ *
+ * `tests/target_constants_test.cpp` pins every value so an accidental change
+ * is caught before it can alter the payload bytes.
+ */
+
 /* Kernel address layout. */
 #ifdef __cplusplus
 #define KIMAGE_TEXT_BASE (::ghostlock::target::address::kImageTextBase)
