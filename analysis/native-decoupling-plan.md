@@ -13,6 +13,7 @@
 - [ ] 真机日志和分析保存后，再勾选真机门禁与阶段总项，并创建独立的门禁证据提交；TODO 只有在代码注释与登记项同时删除后才算完成。已完成的 S01–S03 不追溯补做。
 - [ ] 每阶段真机日志分析完成后，更新 `analysis/routes.md` 的“核心维护图：三路线端到端主链”，只反映该阶段已经验证的结构变化。
 - [ ] 核心维护图保持简洁，只展示入口、配置/profile、W1/W2/W3、共享 heap/PI、三路线分叉、验证、回退和清理；详细函数图继续留在 `all-functions-callgraph.md`，不要求每阶段同步重画。
+- [ ] C++ 现代化续章（`## 11`，M01+）复用本节全部门禁、日志证据与“提交后暂停”流程；其硬约束优先于现代化收益，任何无法证明与 S15 基线二进制等价的改动都必须回退或保留 C 兼容实现。
 
 规划注释必须说明当前职责、副作用、输入、输出、未来拆分/名称、目标上下文及兼容策略：
 
@@ -589,6 +590,85 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [ ] 下次行为提交删除并重跑门禁 |
 | S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
 | S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
+| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [ ] CPP04 代码完成，真机门禁待执行 |
+
+## 11. C++ 现代化续章（M01+，规划）
+
+> 本节修订第 1 节“不迁移 C++”的边界：C 解耦（S01–S15）的成果保持不动，C++ 现代化作为后续续章推进。目标是在**不改变攻击行为**的前提下，消除本计划已登记的 `SESSION-01..04`、`SELECT-01` 遗留全局，并提升类型安全、所有权表达与命名空间边界。本节的硬约束、门禁、日志证据和提交/暂停规则沿用第 9 节与开头“会话恢复与阶段执行规则”。
+>
+> **执行权威**：C++ 现代化按 [`native-cpp-migration-plan.md`](native-cpp-migration-plan.md) 的 CPP04–CPP14 阶段落地；本节的 M01–M06 只是同一批工作的主题汇总视图（M01↔CPP12、M02↔CPP03/08/12、M03↔CPP09、M04↔CPP14、M05↔CPP13、M06↔CPP14），不另立执行批次。两处编号冲突时以 CPP 计划为准，并在 `## 10` 表格更新映射。
+
+### 11.1 硬约束（不可妥协）
+
+- [ ] 攻击关键路径的系统调用顺序、栈帧布局、堆分配顺序、页内容与结构偏移完全不变；ABI 敏感结构保留 `static_assert` 布局/大小/对齐断言。
+- [ ] `TargetProfile`、`RouteOutcome`、`kernel_offsets`、`ReclaimPair` 等已参与布局/传输的类型不得因现代化改变尺寸或字段顺序；必要时使用“C 存储 + C++ 访问器”而非直接替换。
+- [ ] 不启用异常与 RTTI；错误继续以 `Result` / `RouteStatus` / `int` + `errno` 表达，不引入抛异常路径。
+- [ ] 竞态关键窗口内禁止引入堆分配、锁、虚函数或运行期多态；多态仅用函数指针表或静态分发。
+- [ ] 保持 Kotlin 启动协议、offset JSON schema、环境变量、关键日志关键字与退出码兼容。
+- [ ] 每个 fd、线程、mapping、child、buffer 有唯一 RAII 所有者；替换已验证的敏感释放顺序前，必须逐项证明行为等价。
+- [ ] 新类型位于 `namespace ghostlock`，类型名沿用现有 CamelCase、函数/字段沿用 snake_case，且不含内核版本号。
+- [ ] 每阶段独立提交后立即暂停；真机门禁与日志证据流程同第 9 节。
+
+### 11.2 与既有计划的关系与前置依赖
+
+- [ ] M01–M06 以 `## 10` 的 `SESSION-01..04`、`SELECT-01` 及 `common.h` 宏总线为直接输入；完成后必须同时删除代码 `TODO` 与登记项。
+- [ ] 启动前置：S11/S12/S14/U01 真机门禁尚未闭环；M 系列仅在用户确认可用设备，或明确允许“仅对 Multicast 已证路径做非行为性改动”后启动。
+- [ ] 任一阶段若无法证明与 S15 基线二进制在攻击关键对象上等价，则停止该阶段并保留 C 兼容实现，登记为回补项而非强推。
+- [ ] M 系列不改变 Kotlin/native 的 profile schema；若现代化需要触碰 schema，则按第 3 节流程另立独立阶段，不并入 M01–M06。
+
+### 11.3 阶段
+
+#### [ ] M01：ExploitSession 成为唯一根 owner
+
+- [ ] 将 `g_heap_context`、`g_pi_race_context`、`g_target_profile`、`g_resolved_addresses`、`g_runtime_config` 收拢为 `ghostlock::g_exploit_session` 成员，`ExploitSession` 成为唯一进程级 owner。
+- [ ] 删除 `common.h` 的 `#define page_base` / `fake_*`、`CORE` / `CONSUMER_CORE`、`SLIDE_*`、`mm_struct_sz()` 等宏别名，改为经 session/context 显式访问。
+- [ ] `run_exploit()` 与阶段控制器改为显式 `ExploitSession &` 参数；回补 `SESSION-01`、`SESSION-02`。
+- [ ] `PayloadPage` 的 current/prebuilt/quarantine 移动与 state 转换保持现有语义，不改变回收时机。
+- [ ] 门禁：Multicast 真机完整执行至 `KernelSU ready` + TCP/Select 主机回归。
+
+#### [ ] M02：资源所有权全面 RAII 化
+
+- [ ] `main.cpp`、`check_selinux_off()`、`process_has_seccomp()`、`perf_find_task()` 的裸 fd → `BorrowedFd` / `UniqueFd`。
+- [ ] `struct child_pipes` → `ghostlock::VictimContext`（`ChildProcess` + 拥有型 pipe 对）；`spawn_child` / `spawn_victim` 改为返回 `Result`。
+- [ ] `slab_drain()`、`clone_child`、`clone_leak_child` 的 fork/wait 由 RAII 子进程类型接管，临时 pid 数组不再手工 `calloc`/`free`。
+- [ ] fork 边界后的 fd 继承/关闭顺序逐 fd 证明等价；根 shell 链路的 `FD_CLOEXEC` 扫描保持原顺序。
+- [ ] 门禁：Multicast 真机 + 主机生命周期测试（部分 init 失败、重复 destroy、move 语义）。
+
+#### [ ] M03：并发原语与布尔语义
+
+- [ ] `PiRaceContext` 的 `atomic_int` → `std::atomic<int>` / `std::atomic<bool>`，`int` 标志 → `bool`；内存序先做 1:1 映射（`seq_cst`），放宽内存序必须单独评审与真机复测。
+- [ ] `TargetProfile::loaded_`、`RouteOutcome` 若为 ABI/传输敏感则保留 `int` 存储并补访问器，不直接改字段类型。
+- [ ] 用 `std::thread` 或 `PthreadOwner` 统一线程句柄，替换裸 `pthread_t` + `*_started` 标志对。
+- [ ] 门禁：Multicast 真机（记录竞态随机性）+ 并发主机测试（线程启动部分失败时 join 已创建部分）。
+
+#### [ ] M04：命名空间与头文件边界
+
+- [ ] 将核心类型/函数移入 `namespace ghostlock`；删除 `#ifdef __cplusplus extern T &g_x;` 兼容技巧。
+- [ ] `common.h` 拆分为 profile / runtime / heap / race / route / victim 窄接口（见 9.14），不再导出可变攻击状态。
+- [ ] 用“查找使用位置”确认每个旧符号为零引用后再删除。
+- [ ] 门禁：全量主机测试 + Multicast 真机。
+
+#### [ ] M05：VLA 与手写缓冲收敛
+
+- [ ] `multicast_waiter_stamp()` 的 VLA → 固定上界 `std::array<unsigned char, N>` + `std::span`，以运行时断言校验 `layout.buffer_size`。
+- [ ] 其余攻击关键 VLA 仅在能证明栈布局等价时替换；不能证明的保留原实现并登记 M05 回补 TODO。
+- [ ] 门禁：stamp 生成结果与旧实现逐字节对比 + Multicast 真机。
+
+#### [ ] M06：构建、测试与文档收尾
+
+- [ ] 引入统一主机测试运行器；保留现有 `*_fixed_vector_test()` 入口，不替换为外部框架以免改变构建链路。
+- [ ] 以 `nm` / `size` / 反汇编对比攻击关键对象与 S15 基线的栈帧和 ABI；差异需逐项批准并登记。
+- [ ] 更新 `native-cpp-current-uml.md`、全局状态矩阵与全函数调用图，标注已消除的宏与全局。
+- [ ] 门禁：完整 `assembleDebug` + 三条路线与 TCP→Select clean 回退真机。
+
+### 11.4 验收标准（现代化）
+
+- [ ] `common.h` 不再导出任何可变攻击状态或宏别名。
+- [ ] `main.cpp` 无裸 `open` / `pipe` / `mmap` / `fork` 所有权泄漏；每个资源在类型中有唯一 owner。
+- [ ] 无未登记 VLA；保留项均有等价性证明。
+- [ ] 所有线程入口只经 `void *` 取 `ghostlock::` context，不读进程全局。
+- [ ] `TargetProfile` / `RouteOutcome` 等 ABI 断言继续通过。
+- [ ] 三条路线与 TCP→Select clean 回退门禁通过，关键日志关键字与退出码不变。
 
 ## 附录 A：按文件迁移细节
 
