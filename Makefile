@@ -91,7 +91,7 @@ NATIVE_HOST_TESTS := \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
-  offsets_json_test
+  offsets_json_test futex_hash_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@for test in $^; do $$test; done
@@ -157,6 +157,10 @@ $(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_r
 $(HOST_BUILD_DIR)/offsets_json_test: src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $^ -o $@
+
+$(HOST_BUILD_DIR)/futex_hash_test: src/core/tests/futex_hash_test.cpp src/core/kernelsnitch/futex_hash.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: ./ghostlock ==="

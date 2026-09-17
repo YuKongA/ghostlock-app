@@ -1,12 +1,10 @@
 #pragma once
 
-#include "utils.h"
-
-#include <stdio.h>
-#include <stdlib.h>
+/* Pure hash/bucket arithmetic: no KernelSnitch state, no Android headers, so
+ * the same translation unit can be exercised by host fixed-vector tests. */
+#include <errno.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <time.h>
-#include <sys/time.h>
 
 // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
 typedef uint32_t u32;
@@ -188,7 +186,12 @@ typedef struct futex_hash_context {
     uint32_t table_size;
 } FutexHashContext;
 
-uint32_t futex_hash_no_trunc(futex_key_t *key)
+#ifdef __cplusplus
+static_assert(sizeof(FutexHashContext) == sizeof(uint32_t));
+static_assert(alignof(FutexHashContext) == alignof(uint32_t));
+#endif
+
+static inline uint32_t futex_hash_no_trunc(futex_key_t *key)
 {
     uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(__typeof__(*key), both.offset) / 4,
               key->both.offset);
@@ -196,7 +199,7 @@ uint32_t futex_hash_no_trunc(futex_key_t *key)
     return hash;
 }
 
-uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
+static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
 {
     uint32_t hash = futex_hash_no_trunc(key);
 

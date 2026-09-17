@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04（profile/地址值类型化、有界 `std::string_view` 解码、45 个内置 profile 固定向量）与 CPP05（`WriteMode`/`WriteRequest` 强类型、固定片段与有界编码）代码及主机/Gradle 验证完成；两阶段的真机门禁合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04–CPP06 代码与主机/Gradle 验证完成（profile 值类型化与有界解码、payload 强类型与有界编码、FutexHash 固定向量与零调用状态表修复）。CPP05 与 CPP06 的 `ghostlock` SHA-256 相同，证明 CP06 未改变生产二进制；真机门禁与 CPP06 的 KernelSnitch 类化合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -232,12 +232,14 @@ struct RouteOutcome final {
 
 ### [ ] CPP06：FutexHash 与 KernelSnitch
 
-- [ ] `FutexHashContext` 迁为无资源或只读 value；hash 函数使用强类型参数。
-- [ ] `KernelSnitch` 类唯一拥有 mmap、数组和 worker；容器在扫描前完成分配/`reserve()`。
-- [ ] 用 RAII 替代 init/find/scan/result/destroy 手工状态机，但保留显式阶段检查。
+- [x] `FutexHashContext` 为无资源只读 value（单字段 + `static_assert`）；hash 函数接收显式 context。`futex_hash.h` 去除 Android-only 依赖并收敛 linkage（`static inline`），使 hash 结果可由主机固定向量锁定。
+- [ ] `KernelSnitch` 类唯一拥有 mmap、数组和 worker；容器在扫描前完成分配/`reserve()`。现状 `kernelsnitch_context_*` 已是唯一所有者但入口仍是 C 风格；类化会触碰碰撞搜索时序，登记为 CPP06 剩余项，待真机时序对比可用后实施。
+- [ ] 用 RAII 替代 init/find/scan/result/destroy 手工状态机，但保留显式阶段检查。同上，保留给真机门禁后。
 - [x] `COMPAT-01` 四个零调用 util 适配入口已删除，未创建 C++ 版兼容包装。
-- [ ] 验证 collision、range-end、canonical/tag sweep、部分线程创建失败和 destroy。
-- [ ] 提交、暂停、真机门禁并保存 KernelSnitch 时序对比。
+- [x] 新增 `futex_hash_test`：4 组 table/key/mm 固定向量、power-of-two 掩码一致性、非法表大小与空 context 拒绝；修复 `kernelsnitch_strings` 缺失 `COLLISIONS_NOT_FOUND` 造成的标签错位与 `MM_NOT_FOUND` 越界读。
+- [ ] 验证 collision、canonical/tag sweep、部分线程创建失败和 destroy：需要真机时序对比，与 CPP04/CPP05 门禁合并执行。
+- [x] 提交并暂停（CPP06 部分提交）。
+- [ ] 真机门禁：保存 KernelSnitch 时序对比与状态标签输出。
 
 ### [ ] CPP07：Heap 与 PayloadPage 所有权
 
@@ -376,6 +378,7 @@ struct RouteOutcome final {
 | CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
 | CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
 | CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
+| CPP06-KS-RAII | KernelSnitch 仍是 C 风格生命周期入口，`kernelsnitch_print_state` 表为零调用调试代码 | 类化会触碰碰撞搜索时序，需要真机对比与冷机复测 | CPP06 剩余项（与 CPP04/CPP05 门禁合并后） | [ ] 代码项已定位，未实施 |
 
 ## 10. 完成定义
 

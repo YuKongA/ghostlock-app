@@ -60,12 +60,16 @@ enum kernelsnitch_state {
     KERNELSNITCH_MM_NOT_FOUND,
     KERNELSNITCH_LAST,
 };
-const char *kernelsnitch_strings[KERNELSNITCH_LAST] = {
-    "not initialized",
-    "initialized",
-    "collisions found",
-    "mm_struct found",
-    "mm_struct not found",
+/* One label per state. The table previously skipped
+ * KERNELSNITCH_COLLISIONS_NOT_FOUND, so every later state printed the wrong
+ * label and KERNELSNITCH_MM_NOT_FOUND read past the array. */
+static const char *const kernelsnitch_strings[KERNELSNITCH_LAST] = {
+    "not initialized",      /* KERNELSNITCH_NOT_INIT */
+    "initialized",          /* KERNELSNITCH_INIT */
+    "collisions found",     /* KERNELSNITCH_COLLISIONS_FOUND */
+    "collisions not found", /* KERNELSNITCH_COLLISIONS_NOT_FOUND */
+    "mm_struct found",      /* KERNELSNITCH_MM_FOUND */
+    "mm_struct not found",  /* KERNELSNITCH_MM_NOT_FOUND */
 };
 
 struct kernelsnitch_shared_state {
