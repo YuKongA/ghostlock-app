@@ -39,6 +39,7 @@ CXX_SRCS := \
   src/core/session/exploit_stages.cpp \
   src/core/session/handoff_probe.cpp \
   src/core/session/victim_process.cpp \
+  src/core/session/victim_context.cpp \
   src/core/support/native_resource.cpp
 
 NATIVE_BUILD_DIR := .build/native
@@ -99,7 +100,7 @@ NATIVE_HOST_TESTS := \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
   offsets_json_test futex_hash_test number_parse_test runtime_paths_test \
-  handoff_probe_test
+  handoff_probe_test victim_context_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -198,6 +199,10 @@ $(HOST_BUILD_DIR)/runtime_paths_test: src/core/tests/runtime_paths_test.cpp src/
 $(HOST_BUILD_DIR)/handoff_probe_test: src/core/tests/handoff_probe_test.cpp src/core/session/handoff_probe.cpp src/core/session/handoff_probe.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/handoff_probe_test.cpp src/core/session/handoff_probe.cpp -o $@
+
+$(HOST_BUILD_DIR)/victim_context_test: src/core/tests/victim_context_test.cpp src/core/session/victim_context.cpp src/core/session/victim_context.hpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/victim_context_test.cpp src/core/session/victim_context.cpp src/core/support/native_resource.cpp -o $@
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: ./ghostlock ==="

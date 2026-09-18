@@ -181,6 +181,7 @@ static pid_t spawn_child(ghostlock::VictimContext *p) {
     p->task_write.reset();
     p->cmd_read.reset();
     p->uid_write.reset();
+    p->set_child(child);
     return child;
 }
 

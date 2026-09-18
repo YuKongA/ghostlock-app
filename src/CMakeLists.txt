@@ -70,6 +70,7 @@ set(SOURCES
         core/session/exploit_stages.cpp
         core/session/handoff_probe.cpp
         core/session/victim_process.cpp
+        core/session/victim_context.cpp
         core/support/native_resource.cpp
 )
 
