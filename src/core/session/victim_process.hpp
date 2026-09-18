@@ -16,7 +16,9 @@ struct w3_stage_context {
     int leaf_to_target8; /* 1: leaf write lands on [target+8], 0: [target] */
 };
 
-/* Fork the victim and read back the task pointer perf leaked. */
+/* Fork the victim and read back the task pointer perf leaked. Kept as pid_t:
+ * the Result migration reshuffled do_one_write without a behaviour gain
+ * (M02 review). */
 pid_t spawn_victim(VictimContext *p, uintptr_t *task_out);
 
 /* Stage verification callbacks. */

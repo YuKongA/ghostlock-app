@@ -163,9 +163,6 @@ static void child_main(VictimContext *p) {
 
 /* Decoupling plan: create the victim process and pipe protocol. Input/output:
  * VictimContext; output: owned PID/error. Future: victim_context_spawn(). */
-/* TODO(M02-SPAWN-RESULT): spawn_child/spawn_victim still return pid_t/int with
- * call-site errno checks instead of an explicit Result; tracked as an M02
- * maintenance item (no behaviour change, does not block other work). */
 static pid_t spawn_child(VictimContext *p) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;

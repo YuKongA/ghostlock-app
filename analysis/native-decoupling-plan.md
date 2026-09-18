@@ -639,7 +639,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 - [x] `main.cpp`、`check_selinux_off()`、`process_has_seccomp()`、`perf_find_task()` 的裸 fd → `BorrowedFd` / `UniqueFd`（CPP12 M02 fd 段，`CPP12f`；`main.cpp` 已无裸 fd/mmap）。
 - [x] `struct child_pipes` → `ghostlock::VictimContext`（六 `UniqueFd` 顺序不变，`ChildProcess` + pid 所有权；`CPP12g`/`CPP12w`，`4a6cb5f`）。
-- [ ] `spawn_child` / `spawn_victim` 仍返回 `pid_t`/`int` 并在调用点校验 errno，未改为 `Result`；属低收益签名迁移，保留现状并登记为后续维护项（不改变行为，不阻塞 M02）。
+- [x] `spawn_child` / `spawn_victim` 的 `Result` 迁移经实验否决（实验构建 `fc4f9536` 触发 `do_one_write` 同数重排、`run_exploit` +8，无行为收益），保留 `pid_t`/errno 校验；不再追踪。
 - [x] `slab_drain()`、`clone_child`、`clone_leak_child` 的 fork/wait 由 RAII 子进程类型接管，临时 pid 数组不再手工 `calloc`/`free`（`std::array<ChildProcess,64>`，`CPP12f`；`leak_child` + `mark_reaped()`，`CPP12o`）。
 - [x] fork 边界后的 fd 继承/关闭顺序逐 fd 证明等价；根 shell 链路的 `FD_CLOEXEC` 扫描保持原顺序（CPP12g/CPP12m 重建与门禁版逐字节一致）。
 - [x] 门禁：Multicast 真机 + 主机生命周期测试（部分 init 失败、重复 destroy、move 语义；`make native-host-tests` 全绿）。
