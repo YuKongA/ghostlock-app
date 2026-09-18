@@ -333,7 +333,7 @@ struct RouteOutcome final {
 
 ### [ ] CPP14：C façade、遗留全局与文件收尾
 
-- [ ] 删除只为混合迁移存在的 façade、宏、`.c` header 分支和零调用包装。
+- [x] 删除只为混合迁移存在的 façade、宏、`.c` header 分支和零调用包装：8 个核心头文件的 C 分支（`8884be4`）与 `profile.h`/`target.h`/KernelSnitch owner 块的 C 路径（`54120b6`）已删除，native 与门禁版 `625d5300…` 逐字节一致；零调用 `kernelsnitch`/`kernelsnitch_param` 已在 `e9b8151` 删除；`offsets_json.h`/`futex_hash.h` 审计无 C 包装。
 - [ ] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由。
 - [x] 所有生产翻译单元统一为 `.cpp`，按职责归档，并更新 Makefile、Gradle inputs 和 CLion CMake。
 - [ ] 全项目启用最终警告策略，运行 clang-tidy 的 selected checks，不做无关格式化洪泛。
