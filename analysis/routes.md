@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 门禁已连续通过（`CPP04-06`、`CPP06b`、`CPP07`、`CPP08-direct`/`-shizuku`、`CPP09`、`CPP12`、`CPP12d`、`CPP12f`、`CPP12g`、`CPP12h`、`CPP12i`、`CPP12j`、`CPP12l`，均在 `device-gates/`）；PI-TIMEOUT-01 因构建布局下 3/3 panic 已回退（`CPP12b/c/e`），VictimProcess 收编因 2/2 panic 同样回退（`CPP12k`，见规划 TODO 表）。TCP/Select 仍只有主机固定测试。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。全部核心翻译单元为 C++20/静态 libc++，并经 CPP12 批次 A/B 分层（`main` 薄适配 + `ghostlock::ops/race/stages/victim/route/support/memory`）与 CPP13 resident 类化；Multicast 门禁持续通过（最近 `CPP12u`/`CPP12v`/`CPP12w`/`CPP13a`/`CPP13b`，均在 `device-gates/`），`KERNEL-PANIC-01` 经 `CPP12s` 内核栈定位为 ghost waiter 时序/环境问题而非布局。TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
@@ -11,8 +11,9 @@ flowchart TD
     Resolve --> Active["resolved active-profile.json"]
     Active --> Launch["Kotlin ProcessBuilder<br/>--profile + environment + CPU selection"]
     Launch --> Binary["Native binary<br/>all core translation units C++20 / static libc++"]
-    Binary --> Main["main.cpp / run_exploit()"]
-    Main --> Session["ExploitSession process owner<br/>config + profile + addresses + heap + PI"]
+    Binary --> Main["main.cpp: main + run_exploit()<br/>薄适配：解析 + stage 编排"]
+    Main --> Stages["ghostlock::stages<br/>setup / W1 / W2-W3 chain / handoff"]
+    Main --> Session["ExploitSession process owner<br/>config + profile + addresses + heap + PI + victim"]
     Session --> Config["runtime_config_init()"]
     Config --> Snapshot["RuntimeConfig snapshot<br/>CPU + paths + route flags"]
     Session --> Decode["load_resolved_profile_json()<br/>UniqueFd + std::string owned input"]
@@ -47,7 +48,7 @@ flowchart TD
     Waiter --> Controller["RouteController<br/>supports + execute + RouteStatus"]
     Controller --> Choice{"route"}
     Snapshot --> Choice
-    Choice --> M["Multicast one-shot<br/>CPP03 device verified"]
+    Choice --> M["Multicast resident (MulticastWaiterRoute) + one-shot<br/>device verified (CPP12u/v/w, CPP13a/b)"]
     Choice --> T["TcpZerocopyRouteContext<br/>static verified"]
     Choice --> P["SelectStackRouteContext<br/>static verified"]
     T -. "clean + disarmed only" .-> P
@@ -56,14 +57,14 @@ flowchart TD
     P --> Status
     Status --> Verify["stage verification"]
     Verify --> W1
-    W1 --> W2["W2: spawn_victim() + credential stage"]
+    W1 --> W2["W2: spawn_victim() + credential stage<br/>VictimContext 唯一拥有 fd 与 pid"]
     W2 --> W3["W3: flags/seccomp mode when needed"]
     W3 --> Root["child_main() / KernelSU handoff"]
     Root --> Cleanup["route cleanup / resident stop"]
     Cleanup --> Exit["native exit + Kotlin log"]
 ```
 
-S02–S14 已完成 context 与统一路线状态边界。CPP00 只改变编译/链接层：C 攻击代码保持原控制流，额外的 C++20 link probe 不被攻击链调用；静态 libc++ 产物已完整通过 W1/W2/W3 与 KernelSU 门禁。one-shot Multicast 仍保留已验证的专用小栈帧实现；TCP/Select 仍等待对应设备。三条路线继续共用 profile、地址转换、堆页准备、PI 三线程和阶段验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
+S02–S14 已完成 context 与统一路线状态边界；CPP12 批次 A/B 完成 `main` 分层与 namespace 化，CPP13 把 resident Multicast 收归 `MulticastWaiterRoute` 类并将 payload 编码与 one-shot 同源（one-shot 保持专用小栈帧与 VLA；步骤 B 的分组提取因 `do_kernel5_fake_lock_route` +3 指令被否决）。TCP/Select 仍等待对应设备。三条路线继续共用 profile、地址转换、堆页准备、PI 三线程和阶段验证，只在“用哪种可控结构覆盖 stale waiter”上分叉。
 
 ## PI竞争时序
 

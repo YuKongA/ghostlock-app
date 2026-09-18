@@ -1,6 +1,6 @@
 # GhostLock-App
 
-大规模重构中，详见 [静态分析与计划书](analysis/README.md)
+现代 C++ 迁移与解耦收尾中（CPP13 完成、CPP14 文档收尾），详见 [静态分析与计划书](analysis/README.md)
 
 > English: [README.md](README.md)
 

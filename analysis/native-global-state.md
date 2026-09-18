@@ -1,177 +1,49 @@
-# Native 全局状态调用矩阵
+# Native 全局状态矩阵
 
-本文档按“定义→主要读者→主要写者→生命周期→目标归宿”分析 native 可变全局状态。宏、编译期常量和不可变偏移表不列为状态。
+本文档记录**当前保留**的可变全局状态（CPP14 收尾口径）：一个真正的 process singleton、三个引用别名
+façade、一个启动期只读上界，以及会话/路线拥有的资源。宏、编译期常量与不可变偏移表不列为状态。
 
-## 分类总览
+## 1. 保留清单与理由
 
-```mermaid
-flowchart LR
-    Session["Exploit session"] --> Config["configuration / paths / CPUs"]
-    Session --> Profile["profile / resolved addresses"]
-    Session --> Race["PI race and synchronization"]
-    Session --> Heap["heap shaping and payload pages"]
-    Session --> Route["route-private resources"]
-    Session --> Victim["victim and stage protocol"]
-
-    Race --> Shared["waiter / owner / consumer"]
-    Heap --> Shared
-    Route --> Shared
-```
-
-`ExploitSession` 已存在并集中了多数节点状态（CPP04–CPP09）；旧调用点仍通过全局引用 façade 访问，会话内收编见 CPP12。
-
-## 1. Profile、地址与运行配置
-
-| 变量 | 定义 | 主要读者 | 主要写者 | 生命周期/问题 | 目标归宿 |
+| 变量 | 定义 | 形态 | 读者/写者 | 生命周期 | 保留理由 |
 |---|---|---|---|---|---|
-| `active_offsets` | `main.c` | 几乎所有地址、payload、route和验证函数 | `select_offsets()` / `try_external_offsets()` | 选定后实际只读，却通过宏隐式渗透所有文件 | `session.profile` 不可变指针 |
-| `g_external_offsets` | `main.c` static | profile验证/发布 | `try_external_offsets()` | 进程期缓冲，实际只需loader期存活 | loader调用者所有输出 |
-| `g_external_release` | `main.c` static | `g_external_offsets.uname_r` | JSON loader | 用于保持release字符串存活 | `kernel_profile.release[]` |
-| `g_target_profile` | `main.c` | 地址解析；S08前的后续消费者仍走 `active_offsets` | `publish_active_offsets()` | S06只读view，尚未作为显式参数贯穿调用链 | S08迁入`ExploitSession.profile` |
-| `g_resolved_addresses` | `util.c` | `p0_data_alias()`、`data_addr()`、地址日志 | `publish_active_offsets()` | S06新增的权威地址快照，发布后只读 | `ExploitSession.addresses` |
-| `p0_kernel_phys_load` | `util.c` | 旧日志与地址宏 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.kernel_phys_load` | S08删除镜像消费者 |
-| `g_init_cred_image` | `util.c` | payload/W2和5.x修复 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.init_cred_image` | S08删除镜像消费者 |
-| `g_core_main` / `g_core_consumer` | 已删除（CPP12/`SESSION-03`） | — | — | 曾经的 `runtime_config` 兼容镜像；`CORE` 宏随后也已删除（CPP12/`CPP12j`），调用点改为 `runtime_config_snapshot().main_cpu` | — |
-| `g_runtime_config` | 引用别名已删除（CPP12/`SESSION-01`） | `main`、TCP选路 | `runtime_config_init()` | 进程快照仍由 session 唯一拥有；调用点改经 `runtime_config_snapshot()` 访问，零调用 `init_cpu_config` 一并删除 | — |
-| `home_dir/root_script_path` | `g_runtime_config`字段 | offsets、日志、ksud、脚本、child | `runtime_config_init()` | S02已从`main.c`分散数组迁入配置对象 | `exploit_session.config` |
-| `t0` | `main.c` static | `timer_ms()` | `timer_reset()` | 单一计时器限制并发/嵌套计时 | 显式 `timespec` 参数 |
+| `g_exploit_session` | `session/exploit_session.cpp` | 对象 | 全攻击链 | 进程级；主线程初始化，运行期只读其成员 | **唯一 process singleton**：一次运行的全部会话状态（runtime / profile / addresses / heap / race / victim / parked handoff） |
+| `g_target_profile` | `exploit_session.cpp:36` | **引用别名** → `g_exploit_session.profile` | 地址/payload/route/验证 | 一次解析后只读 | `profile.h` 的 `_RSO` 宏在头文件内引用；别名替换已验证会改变攻击函数布局 |
+| `g_resolved_addresses` | `exploit_session.cpp:37` | **引用别名** → `g_exploit_session.addresses` | `resolved_addresses_data_alias()` 热路径 | 一次发布后只读 | 同上：被 payload/地址换算热路径直接调用 |
+| `g_heap_context` | `exploit_session.cpp:38` | **引用别名** → `g_exploit_session.heap` | payload/page 热路径 | 进程级；攻击窗口由单线程驱动 | 别名替换已验证改变 `waiter_thread`（-2）与 `do_pselect_fake_lock_route`（-22），保留至专门门禁 |
+| `g_direct_map_end` | `memory/address_space.cpp:12` | 标量 | `in_direct_map()`、KernelSnitch 扫描边界 | 启动期一次（`apply_iomem_cache()` 可收窄） | iomem 实测上界；发布后只读 |
 
-### 隐式依赖
+> 三个引用别名是 SESSION 系列的过渡 façade：所有权自始在 `ExploitSession`，别名只为避免在敏感热路径
+> 改动调用点。删除别名（直接使用 session 成员）经构建对比会改变攻击关键函数，登记为后续专门门禁项。
 
-`runtime_struct_offsets.h`、`kernelsnitch_collisions()` 和多个 `SLIDE_*` 宏直接读 `target profile` 或全局地址。这些依赖不会出现在函数签名中，是函数式化的首要对象；`mm_struct_sz()` 已改为 `target_profile_mm_struct_sz()` 访问器（CPP12/`CPP12j`）。
+## 2. 会话拥有的资源（非全局）
 
-## 2. PI竞争与同步状态
+- `ExploitSession`：`runtime`（值类型；`runtime_config_init()` 后经 `runtime_config_snapshot()` 只读）、
+  `PiRace race`（futex/原子量/三线程 `PthreadOwner`）、`VictimContext victim`（六 `UniqueFd` + pid）、
+  `parked_victim`/`parked_victim_cmd`、`release_resident_heap()`。
+- `HeapContext`：`MmContextSet`×4、`unique_ptr skb_buffer`、`PayloadPage`（current/prebuilt/quarantine）、
+  `ChildProcess leak_child`、`UniqueFd leak_memfd`、`snitch`（`KernelSnitchOwner`）。
+- 路线实例：`TcpZerocopyRoute`、`SelectStackRoute`（栈上 move-only，显式 prepare/execute/disarm/destroy）；
+  `MulticastWaiterRoute`（进程级实例在 `multicast_waiter_route.cpp` 匿名 namespace，唯一经 `resident_route()` 到达）。
 
-| 变量组 | 主要读者 | 主要写者 | 生命周期/并发 | 目标归宿 |
-|---|---|---|---|---|
-| `f_wait`, `f_pi_target`, `f_pi_chain` | waiter/owner、`run_main_route_threads()` | `reset_main_route_state()`，内核futex | 每次route run一组，目前作为进程级单例 | `pi_race_context.futexes` |
+## 3. 路线级 static（受限例外）
 
-CPP09 落地：上述 futex、全部原子量与三个线程句柄已由 `ghostlock::PiRace`（`pi_race.cpp` + `main.cpp` 中的 `run()` 定义）唯一拥有；`pthread_t + started` 兼容镜像已删除，线程生命周期改由 `PthreadOwner` 管理，`start/run/request_stop/join` 显式分离。`g_pi_race_context` 引用别名也已删除（`9dba566`），调用点直接访问 `g_exploit_session.race`，重建 native 与门禁版逐字节一致。`run()` 等待 `route_done` 仍无超时（`PI-TIMEOUT-01`）。
-| `waiter_ready`, `waiter_waiting`, `waiter_tid` | owner、main、consumer | waiter/reset | 跨三线程原子同步 | `pi_sync.waiter` |
-| `owner_started`, `owner_chain_done`, `owner_stop` | waiter/main/owner | owner/main/reset | owner生命周期信号 | `pi_sync.owner` |
-| `route_done` | main | waiter/reset | route结束信号 | `pi_sync.route_done` |
-| `punch_consume_go`, `punch_consume_stop` | consumer及三路线 | route/main/reset | route与consumer的反向控制通道 | `pi_sync.consumer_gate` |
-| `consumer_calls`, `consumer_success`, `consumer_inflight` | main、TCP、pselect、Multicast | consumer、route/reset | 统计与安全清理条件混合 | `consumer_status` |
-| `main_route_delay_usec` | consumer | reset、TCP、pselect、Multicast | route特有时序参数作为共享变量 | `route_attempt.consumer_delay_usec` |
-| `fast_repair_route` | waiter/reset | `retry_write_stage()` | 5.x W2特例渗透公共PI逻辑 | `write_request.fast_repair` |
-
-### 调用者关系
-
-```mermaid
-flowchart LR
-    Reset["reset_main_route_state"] --> RaceState["PI globals"]
-    Main["run_main_route_threads"] --> RaceState
-    Waiter["waiter_thread"] <--> RaceState
-    Owner["owner_thread"] <--> RaceState
-    Consumer["consumer_thread"] <--> RaceState
-    Mcast["Multicast route"] <--> RaceState
-    TCP["TCP route"] <--> RaceState
-    Pselect["pselect route"] <--> RaceState
-```
-
-这是最明显的“隐式总线”：三条route、三个线程和外层控制器均能改写同一组原子量。
-
-## 3. 堆塑形、payload与页所有权
-
-| 变量组 | 定义 | 主要读者 | 主要写者 | 所有权问题 | 目标归宿 |
-|---|---|---|---|---|---|
-| `page_base`, `last_mm_struct` | 别名已删除（CPP12/`CPP07-OWNER`，`4ba123a`） | route/main/payload 直接访问 `g_heap_context.current` | page prepare | 当前页和历史泄露仍无类型区分；`payload_page` 已持有字段 | `payload_layout` 嵌入 `payload_page`（已部分完成） |
-| `fake_lock`, `fake_w0`, `fake_task`, `fake_parent`, `fake_right`, `fake_left`, `fake_fops` | 别名已删除（CPP12/`CPP07-OWNER`，`4ba123a`） | — | `prepare_skb_payload()` 写 `g_heap_context.current` | 调用点已显式，字段仍可独立改写 | `payload_layout` 访问器（后续批次） |
-| `pselect_custom_write`, `pselect_custom_target`, `pselect_child_node` | `util.c` | payload/pselect/main | set/clear及W2/W3控制流 | 单次请求通过全局传递 | 不可变 `write_request` |
-| `ks` | `util.c` static | KS adapter/page prepare | setup/cleanup | 单例指针，无显式所有者 | `kernelsnitch_context` |
-| `mm_objs_per_slab` | `util.c` static | context/page prepare | page prepare | 可由profile纯计算 | 局部值或 `heap_geometry` |
-| `skb_buf` | 已落地（CPP12/`CPP07-OWNER`，`9a18262`） | payload/page prepare | `prepare_kernel_page()` 分配，`cleanup_page_prepare_state()` 释放 | `std::unique_ptr<unsigned char[]>` 拥有 | `HeapContext.skb_buffer`（完成） |
-| `prepare_ctx`, `spray_ctx`, `pre_ctx`, `post_ctx` | 已落地（CPP12/`CPP07-OWNER`，`9a18262`） | page prepare/cleanup | `prepare_ctxs()` / `close_ctx_memfds()` / `free_ctx_storage()` | `ghostlock::MmContextSet` 的 owning vector；析构只释放内存，close/kill 保持显式 | `HeapContext.prepare/spray/pre/post`（完成） |
-| `child_leak`, `memfd_leak` | `leak_memfd` 已为 `UniqueFd`（`9a18262`）；`leak_child` 仍为 pid | page prepare/cleanup | clone/page prepare | `leak_child` 的手工 waitpid/kill 语义需要独立验证 | `heap_context.leak_anchor`（child 待收编） |
-| `reclaim_sv[2]` | `util.c` static | page prepare/quarantine/stash | page prepare、close、move | 实际是可移动所有权 | `reclaim_pair active` |
-| `quarantined_reclaim_sv[2]` | `util.c` static | release | quarantine/release | 状态由fd是否为-1暗示 | `reclaim_slot{state=QUARANTINED}` |
-| `prebuilt_reclaim_sv[2]`, `prebuilt_page_base`, `prebuilt_fake_*` | `util.c` static | activate/discard | stash | 手工复制页和所有fake地址，易漏字段 | 第二个完整 `payload_page` |
-
-### 所有权转移现状
-
-```mermaid
-stateDiagram-v2
-    [*] --> Empty
-    Empty --> Current: prepare_kernel_page
-    Current --> Quarantined: quarantine_reclaim_sockets
-    Quarantined --> Released: repair + release
-    Current --> Prebuilt: stash_prebuilt_page
-    Prebuilt --> Current: activate_prebuilt_page
-    Prebuilt --> Released: discard_prebuilt_page
-    Current --> Released: close_reclaim_sockets
-```
-
-状态转移由多个fd数组和 `-1` 哨兵共同表示，适合改为可移动的 `payload_page` + `reclaim_pair`。
-
-## 4. Route私有状态
-
-### Multicast resident
-
-| 变量组 | 读者/写者 | 生命周期 | 目标归宿 |
-|---|---|---|---|
-| `mr_l1`, `mr_l2`, `mr_cond` | `mr_x()` / `mr_y()` / start | resident一次建立到stop | `multicast_route_context.futexes` |
-| `mr_tx`, `mr_ty` | start/stop | pthread create→join | `multicast_route_context.threads` |
-| `mr_y_l2`, `mr_x_l1`, `mr_y_wait`, `mr_x_wait`, `mr_y_done`, `mr_x_done` | x/y/start/stop | resident同步 | `multicast_sync` |
-| `mr_respray`, `mr_sprayed`, `mr_stop`, `mr_y_tid` | writer/y/start/stop | 跨线程原子控制 | `multicast_sync` |
-| `mr_target`, `mr_value` | write/y | 每次resident write | `write_request`；用原子或mutex发布 |
-| `mr_lock`, `mr_task` | stamp/start/y | resident对象 | `multicast_payload` |
-| `mr_fd`, `mr_ready`, `mr_policy`, `mr_lock_slot` | 全部resident helper | resident实例 | `multicast_route_context` |
-
-### TCP Zerocopy
-
-| 变量 | 读者/写者 | 问题 | 目标归宿 |
-|---|---|---|---|
-| `tcp_punch_go`, `tcp_punch_stop`, `tcp_punch_phase`, `tcp_punch_failed` | TCP route/punch thread | 文件级单例，使线程入口无法复用 | 已落地（CPP10）：`TcpZerocopyRoute` 成员原子量 |
-
-TCP的client/server fd、punch fd、mapping和punch worker已由 `TcpZerocopyRoute` 唯一拥有（`UniqueFd` ×3、`MappedRegion`、`PthreadOwner`，CPP10），`prepare/execute/disarm/destroy` 显式分离；join/munmap 失败时以 dirty 保留资源，不提前 close（防止已复用 fd 被 puncher 使用）。
-
-### pselect/select
-
-| 变量 | 读者/写者 | 问题 | 目标归宿 |
-|---|---|---|---|
-| `standard_io_backup[3]` | reserve/restore | 文件级 static 的 stdio 备份，但语义是**借用** | 已落地（CPP11）：`SelectStackRoute.stdio_backup`（`BorrowedFd`×3，从不关闭）；`reserve_standard_io()` 仍写文件级缓冲并在构造时转换 |
-
-pselect 的 fd_set、pipe/timerfd 与执行状态已由 `SelectStackRoute` 拥有（`FdSet`×6、`UniqueFd`、`BorrowedFd` stdio，CPP11）；consumer stuck 时经 `release_to_process_lifetime` 保留全部描述符至进程退出。timerfd 创建失败时 `block_borrows_pipe` 表达对 pipe read end 的借用，避免重复关闭。
-
-## 5. 路线结果和其他工具状态
-
-| 变量 | 读者 | 写者 | 问题 | 目标归宿 |
-|---|---|---|---|---|
-| `RouteStatus`（位于各 route/PI context） | main线程调度 | 三route controller；CPP09 后 `PiRace::run()` 读 `route_status` 并返回合并 consumer counts 的 `RouteStatus` | S15 已删除 `route_last_step/route_last_errno` 隐式全局返回值 | 保持结构化返回与 clean/disarmed 双判定 |
-| `g_file_buf[1 MiB]` | JSON parser | `load_offsets_json()` | 非重入，常驻大缓冲 | loader调用者buffer或局部mapping |
-| `FutexHashContext` | KernelSnitch context | `kernelsnitch_context_init()` | S15 已删除 `futex_hashsize`、`futex_init()`、`futex_hash()` 全局兼容层 | 保持显式 context |
-
-S15 审计后保留的四个零调用 util 级 KernelSnitch 转发函数已在 CPP06 删除（`CPP-COMPAT-01`，`futex_hash` 唯一 owner 为 `KernelSnitchOwner`）；会话所有权残项使用 `SESSION-01`–`SESSION-04`，Select 外层重试使用 `SELECT-01` 跟踪。
-
-## 6. 优先级与风险
-
-| 优先级 | 状态簇 | 理由 |
+| 变量 | 位置 | 说明 |
 |---|---|---|
-| P0 | PI竞争原子量、futex、route result | 跨文件、跨线程、三route共享，最容易产生时序回归 |
-| P0 | reclaim/prebuilt | 表示同一资源的字段可独立更新，所有权转移不原子；`page_base`/`fake_*` 别名与 mm sets/SKB/leak memfd 已收编（CPP12/`CPP07-OWNER`） |
-| P1 | Multicast `mr_*` | 状态数量多，清理跨route/W1/W2 |
-| P1 | profile/地址宏 | 隐式依赖范围最广，但选定后只读 |
-| P2 | TCP punch、pselect stdio | 局部边界较清晰，易封装 |
-| P2 | paths/timer/JSON buffer | 攻击时序风险低，适合早期练习性迁移 |
+| `multicast_resident_route` | `multicast_waiter_route.cpp`（匿名 ns） | resident 单例；`stop()` 后资源归零，经访问器唯一到达 |
+| `standard_io_backup[3]` | `route_operations.cpp`（static） | Select 的 stdio 借用备份；构造时转 `BorrowedFd`，从不关闭 |
+| `ks`（宏） | `util.cpp` | `g_heap_context.snitch` 别名；owner 为 `HeapContext` |
 
-## 7. 目标依赖图
+## 4. 已删除/收归历史（索引）
 
-```mermaid
-flowchart TB
-    Config["runtime_config"] --> Session["exploit_session"]
-    Profile["kernel_profile + address_space"] --> Session
-    Session --> Heap["heap_context"]
-    Session --> Race["pi_race_context"]
-    Session --> Victim["victim_context"]
-    Session --> Route["route_instance"]
-    Heap --> Page["payload_page current/prebuilt"]
-    Heap --> Snitch["kernelsnitch_context"]
-    Heap --> Reclaim["reclaim_context"]
-    Race --> Sync["pi_sync"]
-    Route --> MC["multicast_route_context"]
-    Route --> TCP["tcp_route_context"]
-    Route --> PS["pselect_route_context"]
-    Request["immutable write_request"] --> Heap
-    Request --> Route
-    Route --> Status["route_status return value"]
-```
+- 引用别名：`g_runtime_config`、`g_pi_race_context`、`page_base`/`last_mm_struct`/`fake_*`/`memfd_leak`、
+  `CORE`/`mm_struct_sz()` 宏。
+- 零调用 façade：`kernelsnitch()`/`kernelsnitch_param()`、`init_cpu_config`、KernelSnitch util 包装、
+  8 个核心头文件与 `profile.h`/`target.h` 的 C 分支。
+- 迁移期镜像：`g_core_main`/`g_core_consumer`、`p0_kernel_phys_load`/`g_init_cred_image`（S06 起冗余）。
+
+## 5. 风险与后续
+
+- P0：`race` 原子量与 Heap 页状态跨线程/热路径共享，任何收归/重排都需攻击函数形状对比 + 门禁。
+- P1：三个引用别名的最终删除（直达 session 成员）是 CPP14 登记项，需专门门禁。
+- P2：`standard_io_backup` 随 `SELECT-01`（compact Select 外层重试重建）一并处理。

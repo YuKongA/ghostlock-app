@@ -2,7 +2,7 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
-大规模重构中，详见 [静态分析与计划书](analysis/README.md)
+现代 C++ 迁移与解耦收尾中（CPP13 完成、CPP14 文档收尾），详见 [静态分析与计划书](analysis/README.md)
 
 See the [supported-device list](docs/kernel_profiles/SUPPORTED_DEVICES.md).
 

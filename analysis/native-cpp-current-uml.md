@@ -40,12 +40,15 @@ class TargetProfile {
 }
 
 class ExploitSession {
-  <<process owner>>
+  <<process owner; the only singleton>>
   +runtime_config runtime
   +TargetProfile profile
   +ResolvedAddresses addresses
   +HeapContext heap
   +PiRaceContext race
+  +VictimContext victim
+  +pid parked_victim / UniqueFd parked_victim_cmd
+  +release_resident_heap()
 }
 
 class RuntimeConfig {
@@ -72,9 +75,10 @@ class HeapContext {
 }
 
 class VictimContext {
-  <<run-local owning class (CPP12)>>
+  <<session-owned owning class (CPP12/CPP12w)>>
   +UniqueFd task/cmd/uid pipe ends
-  +child pid stays with run_exploit
+  +child pid: set / release / mark_exited / retire
+  +作用域退出绝不 signal child
 }
 
 class HandoffProbe {
@@ -110,13 +114,14 @@ class RouteController {
   +execute(request) RouteStatus
 }
 
-class MulticastWaiterRouteContext {
-  <<route-local resident; CPP13 step A accessor>>
+class MulticastWaiterRoute {
+  <<process-level resident owner (CPP13)>>
   +MulticastWaiterLayout layout
-  +workers and futexes
-  +socket_fd
+  +workers + futexes + socket_fd
   +RouteStatus status
-  +resident_context() accessor
+  +init / start / write / stop
+  +resident_route() accessor
+  +route_operations.cpp thin kernel5_resident_* wrappers
 }
 
 class TcpZerocopyRouteContext {
@@ -176,7 +181,7 @@ ExploitSession *-- PiRaceContext
 TargetProfile --> ResolvedAddresses : offsets
 TargetProfile --> HeapContext : geometry + limits
 TargetProfile --> RouteController : capabilities
-TargetProfile --> MulticastWaiterRouteContext : layout + timing
+TargetProfile --> MulticastWaiterRoute : layout + timing
 TargetProfile --> TcpZerocopyRouteContext : layout + timing
 TargetProfile --> SelectStackRouteContext : layout + timing
 HeapContext ..> WriteRequest : builds payload page for
@@ -184,11 +189,11 @@ PiRaceContext ..> WriteRequest : borrows
 RouteController o-- PiRaceContext : borrows
 RouteOperations ..> VictimContext : W2/W3 protocol
 ExploitSession ..> HandoffProbe : run_exploit() (session helper)
-RouteController ..> MulticastWaiterRouteContext : dispatch
+RouteController ..> MulticastWaiterRoute : dispatch
 RouteController ..> TcpZerocopyRouteContext : dispatch
 RouteController ..> SelectStackRouteContext : dispatch
 RouteController --> RouteOutcome : returns
-RouteOperations ..> MulticastWaiterRouteContext : operates on
+RouteOperations ..> MulticastWaiterRoute : operates on
 RouteOperations ..> TcpZerocopyRouteContext : operates on
 RouteOperations ..> SelectStackRouteContext : operates on
 NativeResource ..> ExploitSession : foundation only

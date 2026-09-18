@@ -1,6 +1,10 @@
 # 全函数调用大图
 
-本图覆盖约定范围内的所有核心native C函数、kernelsnitch/hash/system helper，以及Kotlin native转发入口。为了保留可读性，libc/内核系统调用不单独建节点。
+本图覆盖约定范围内的所有核心 native 函数、kernelsnitch/hash/system helper，以及 Kotlin native 转发入口。为了保留可读性，libc/内核系统调用不单独建节点。
+
+> 2026-09-18 更新：顶部总览反映最终分层结构（CPP12 批次 A/B + CPP13）。
+> "全节点调用图"一节保留迁移中快照，用于历史对照；最终结构以 `routes.md` 核心维护图、
+> `native-cpp-current-uml.md` 和 `native-functions.md` 为准。
 
 ## 跨文件重合总览
 
@@ -8,24 +12,23 @@
 flowchart LR
     K["Kotlin forwarding"] -. ProcessBuilder .-> Entry["main.cpp: main"]
     Entry --> RX["main.cpp: run_exploit"]
-    RX --> Profile["offsets_json.cpp: load_offsets_json"]
-    RX --> Addr["util.cpp: init_p0_profile / data_addr"]
-    RX --> Write["main.cpp: retry_write_stage / do_one_write"]
-    Write --> Heap["util.cpp: prepare_good_kernel_page"]
-    Heap --> KS["kernelsnitch: setup / collision / mm leak"]
-    Heap --> Payload["util.cpp: prepare_skb_payload"]
-    Write --> Race["main.cpp: run_main_route_threads / PiRace"]
-    Race --> Waiter["main.cpp: waiter_thread"]
-    Race --> Owner["main.cpp: owner_thread"]
-    Race --> Consumer["main.cpp: consumer_thread"]
-    Waiter --> M["routes/route_operations.cpp: MulticastWaiterRoute"]
-    Waiter --> T["routes/route_operations.cpp: TcpZerocopyRoute"]
-    Waiter --> P["routes/route_operations.cpp: SelectStackRoute"]
-    M --> Consumer
-    T --> Consumer
-    P --> Consumer
-    RX --> Victim["main.c: spawn_victim / child_main"]
-    Victim --> Verify["main.c: W1/W2/W3 verification"]
+    RX --> Setup["ghostlock::stages::run_setup_stage"]
+    RX --> W1["ghostlock::stages::run_w1_stage"]
+    RX --> Chain["ghostlock::stages::run_w2_w3_chain"]
+    RX --> Handoff["ghostlock::stages::run_handoff_stage"]
+    Setup --> Ops["ghostlock::ops: select_offsets / apply_iomem_cache / write_root_script"]
+    W1 --> Retry["ghostlock::stages::retry_write_stage"]
+    Chain --> Retry
+    Retry --> Write["ghostlock::ops::do_one_write"]
+    Write --> Heap["ghostlock::ops: prepare_good_kernel_page"]
+    Heap --> KS["kernelsnitch: collision / mm leak"]
+    Heap --> Payload["ghostlock::ops: prepare_skb_payload"]
+    Write --> Race["ghostlock::race: run_main_route_threads / PiRace::run"]
+    Race --> Threads["ghostlock::race: waiter/owner/consumer_thread"]
+    Threads --> Routes["ghostlock::route: MulticastWaiterRoute / TcpZerocopyRoute / SelectStackRoute"]
+    Chain --> Victim["ghostlock::victim: spawn_victim / child_main"]
+    Victim --> VC["ghostlock::VictimContext: 六 fd + pid 显式所有权"]
+    Victim --> Verify["W1/W2/W3 verification callbacks"]
     Verify --> Write
 ```
 

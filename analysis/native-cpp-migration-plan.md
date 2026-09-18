@@ -339,14 +339,14 @@ struct RouteOutcome final {
 
 - [x] 删除只为混合迁移存在的 façade、宏、`.c` header 分支和零调用包装：8 个核心头文件的 C 分支（`8884be4`）与 `profile.h`/`target.h`/KernelSnitch owner 块的 C 路径（`54120b6`）已删除，native 与门禁版 `625d5300…` 逐字节一致；零调用 `kernelsnitch`/`kernelsnitch_param` 已在 `e9b8151` 删除；`offsets_json.h`/`futex_hash.h` 审计无 C 包装。
 - [x] 引用别名收归试验：`g_pi_race_context` 已删除（调用点直接用 `g_exploit_session.race`，`9dba566`，native 与门禁版 `625d5300…` 逐字节一致）；`g_heap_context` 替换经构建对比会改变攻击关键函数 `waiter_thread`（-2 指令）与 `do_pselect_fake_lock_route`（-22），按硬约束已回退，登记为后续需专门门禁的项；`g_target_profile` 因 `_RSO` 宏在 `profile.h` 内依赖而保留；`g_resolved_addresses` 待 session 重构。
-- [ ] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由。
+- [x] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由：`native-global-state.md` 收尾口径为 1 个 singleton（`g_exploit_session`）+ 3 个引用别名 façade（`g_target_profile`/`g_resolved_addresses`/`g_heap_context`，所有权在 session，删除别名已验证改变攻击函数）+ 1 个启动期只读上界（`g_direct_map_end`）+ 受限路线 static（resident 实例/`standard_io_backup`），逐项附理由。
 - [x] 所有生产翻译单元统一为 `.cpp`，按职责归档，并更新 Makefile、Gradle inputs 和 CLion CMake。
 - [x] 全项目启用最终警告策略：Makefile/CMake 启用 `-Wall -Wextra -Wconversion -Wsign-conversion`，42 条生产警告与 1 条测试警告全部零指令修复，native `625d5300…` 逐字节一致、主机测试全绿（`native-warning-audit.md`，2026-09-18）。
 - [x] clang-tidy selected checks 已固化到 `.clang-tidy` + `make lint-tidy`（`bugprone-*`/`performance-*`/`clang-analyzer-*`；告警已全部修复或就地 `NOLINT` 说明理由，0 用户代码告警，native 仍与门禁版逐字节一致，2026-09-18）。
-- [ ] 函数表/UML 最终同步随本阶段收尾。
-- [ ] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明。
+- [x] 函数表/UML 最终同步随本阶段收尾。
+- [x] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明：`native-functions.md` 按 TU/命名空间重排、`native-cpp-current-uml.md` 更新类结构（`MulticastWaiterRoute`/`VictimContext`）、`native-global-state.md` 收尾口径、`all-functions-callgraph.md` 总览重画（全节点图留历史快照）、`routes.md` 核心维护图与状态说明、`analysis/README.md`/`README.md`/`README_ZH.md` 索引与状态（2026-09-18）。
 - [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成：Debug 已多轮门禁；Release 构建/R8、静态 libc++ 依赖、体积（4.7 MB）、启动协议与 Multicast 攻击链路已通过（`CPP14-release-20260917-multicast-pass`，native 与 Debug 门禁版逐字节相同；首次运行命中一次 `KERNEL-PANIC-01` 后复跑通过）；TCP/Select 回归仍待外部设备。
-- [ ] 提交、暂停、最终真机/协作者门禁后结束迁移。
+- [ ] 提交、暂停、最终真机/协作者门禁后结束迁移：最终 Multicast 门禁沿用 `CPP13b`（native `66f0a8a3…`，与本次文档同步的二进制一致）；TCP/Select 回归保留为外部协作者验证项。
 
 ## 7. 每阶段验证矩阵
 
