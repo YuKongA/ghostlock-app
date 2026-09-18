@@ -815,6 +815,7 @@ static void write_root_script(void) {
     }
     sfd.reset();
     chmod(g_root_script_path, 0755);
+    pr_info("root script written path=%s bytes=%d\n", g_root_script_path, n);
 }
 
 static int kernelsu_module_loaded(void) {
@@ -1022,7 +1023,10 @@ static void child_main(struct child_pipes *p) {
             close(p->cmd_r);
             close(p->uid_w);
             park_rooted_child();
-        } else if (cmd == 'G' || cmd == 'X') break;
+        } else if (cmd == 'G' || cmd == 'X') {
+            pr_info("handoff: root script path=%s\n", g_root_script_path);
+            break;
+        }
     }
     close(p->cmd_r);
     if (getuid() != 0) {
@@ -1041,9 +1045,17 @@ static void child_main(struct child_pipes *p) {
          * whole chain (ksud late-load + module watch) and must survive the
          * exploit parent killing this group on timeout. */
         if (setsid() < 0) _exit(1);
+        errno = 0;
+        const int probe = open(g_root_script_path, O_RDONLY | O_CLOEXEC);
+        pr_info("handoff: script open fd=%d errno=%d path=%s\n", probe, errno,
+                g_root_script_path);
+        if (probe >= 0) close(probe);
         execl("/system/bin/sh", "sh", g_root_script_path, NULL);
+        pr_warning("execl root script failed path=%s errno=%d\n",
+                g_root_script_path, errno);
         _exit(1);
     }
+    pr_info("handoff: root shell worker pid=%d\n", worker);
     if (worker < 0) {
         pr_warning("fork() for root shell failed errno=%d; parking rooted child\n", errno);
         close(p->uid_w);
@@ -1616,7 +1628,11 @@ int run_exploit(int argc, char **argv) {
         return 1;
     }
     if (child_alive) {
-        if (write(pipes.cmd_w, "G", 1) != 1)
+        errno = 0;
+        const ssize_t sent = write(pipes.cmd_w, "G", 1);
+        pr_info("handoff: child=%d alive=%d sent=%zd errno=%d\n", child,
+                child_alive, sent, errno);
+        if (sent != 1)
             pr_warning("failed to start root shell (child exited early)\n");
         close(pipes.cmd_w);
         waitpid(child, NULL, WNOHANG);
