@@ -18,7 +18,7 @@
 - [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `src/core/README.md`。
 - [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
 - [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
-- [x] `main.cpp` 按层次拆分：`exploit_ops.cpp`（启动/profile/计时/攻击原语）、`routes/route_threads.cpp`（PI worker + `PiRace::run`）、`session/victim_process.cpp`（victim 协议与 verify）、`session/exploit_stages.cpp`（W1–W3 stage 策略）；`main.cpp` 只留 `main`/`run_exploit`。共享访问器（`execution_settings`/`in_direct_map`/`timer_*`/sandbox 检查）以 `inline` 放在 `exploit_ops.hpp`，`profile_macros.h` 统一 profile 覆盖宏（2026-09-18，待真机门禁）。
+- [x] `main.cpp` 按层次拆分并加 namespace：`ghostlock::ops`（exploit_ops：启动/profile/计时/攻击原语）、`ghostlock::race`（route_threads：PI worker、`PiRace::run` 与 route 入口）、`ghostlock::victim`（victim_process：协议与 verify）、`ghostlock::stages`（exploit_stages：W1–W3 stage 与写重试）；`main.cpp` 只留 `main`/`run_exploit`，调用点带 namespace 前缀。共享访问器以 `inline` 放在 `exploit_ops.hpp`，`profile_macros.h` 统一 profile 覆盖宏（2026-09-18，待真机门禁）。
 - [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元；必须作为单独行为门禁，避免改变静态函数布局和敏感路线生成代码。
 
 ## 1. 不可违反的实施规则

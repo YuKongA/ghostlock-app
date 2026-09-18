@@ -4,6 +4,8 @@
 #include "common.h"
 #include "session/victim_context.hpp"
 
+namespace ghostlock::victim {
+
 /* Verification contexts handed to retry_write_stage callbacks. */
 struct w2_stage_context {
     ghostlock::VictimContext *pipes;
@@ -22,5 +24,7 @@ int verify_selinux_stage(void *context);
 int verify_w2_stage(void *context);
 int verify_seccomp_probe_stage(void *context);
 int verify_leaf_dir_stage(void *context);
+
+}  // namespace ghostlock::victim
 
 #endif

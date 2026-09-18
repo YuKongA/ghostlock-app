@@ -180,10 +180,6 @@ int kernel5_resident_write(uintptr_t target, uintptr_t value);
 
 void kernel5_resident_stop(void);
 
-void reset_main_route_state(void);
-
-int run_main_route_threads(const WriteRequest *request);
-
 #include "runtime_struct_offsets.h"
 
 #endif
