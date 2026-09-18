@@ -1,0 +1,16 @@
+[*] root script start uid=0 euid=0
+[*] seccomp=Seccomp:	0 Seccomp_filters:	0 
+[*] ksud=/data/user/0/com.ghostlock.app/files/ksud
+[*] ksud_file=-rwx------ 1 u0_a510 u0_a510 4892712 2026-09-18 09:15 /data/user/0/com.ghostlock.app/files/ksud
+[*] uname=5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[*] iomem cache: cached 12860 bytes
+[*] fixup: attempt 1
+1+0 records in
+1+0 records out
+1 bytes (1 B) copied, 0.013 s, 76 B/s
+[*] policyload before=0 after=2
+[*] policy fixup rc=0
+[*] late-load kmi=android13-5.15
+[*] late-load exit=0
+[*] temp su uid=0; watching kernelsu.ko
+[+] KernelSU module loaded
