@@ -2,7 +2,7 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
-C++ 迁移与解耦已完成（CPP00–CPP14；TCP/Select 设备门禁待外部协作者），详见 [静态分析与计划书](analysis/README.md)
+C++ 迁移与解耦已完成（CPP00–CPP14；TCP/Select 设备门禁待外部协作者），详见 [静态分析与计划书](docs/analysis/README.md)
 
 See the [supported-device list](docs/kernel_profiles/SUPPORTED_DEVICES.md).
 

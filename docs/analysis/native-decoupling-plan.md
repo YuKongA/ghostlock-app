@@ -9,9 +9,9 @@
 - [ ] 简单修改若被 profile、共享解析器或复杂全局状态阻塞，先保留兼容行为并在代码现场添加结构化 TODO；同时在依赖所属的后续阶段登记“回补 TODO”子项。
 - [ ] 阶段及所有子项使用 checkbox。完成静态检查和构建后创建本阶段独立提交并立即暂停。
 - [ ] 用户真机确认前不得进入下一阶段。失败时留在当前阶段，通过修复提交重新测试。
-- [ ] 用户确认真机结果后，先导出并分析本次完整 Native 日志；原始日志保存为 `analysis/device-gates/Sxx-YYYYMMDD-<route>-<pass|fail>.native.log`，分析保存为同名前缀的 `.md`。分析至少记录设备/release、入口、路线、CPU、温度条件、W1/W2/W3 重试、运行时回退、KernelSU 交接、清理和异常；缺失信息必须明确标为“日志不可判定”，不得臆测。
+- [ ] 用户确认真机结果后，先导出并分析本次完整 Native 日志；原始日志保存为 ``，分析保存为同名前缀的 `.md`。分析至少记录设备/release、入口、路线、CPU、温度条件、W1/W2/W3 重试、运行时回退、KernelSU 交接、清理和异常；缺失信息必须明确标为“日志不可判定”，不得臆测。
 - [ ] 真机日志和分析保存后，再勾选真机门禁与阶段总项，并创建独立的门禁证据提交；TODO 只有在代码注释与登记项同时删除后才算完成。已完成的 S01–S03 不追溯补做。
-- [ ] 每阶段真机日志分析完成后，更新 `analysis/routes.md` 的“核心维护图：三路线端到端主链”，只反映该阶段已经验证的结构变化。
+- [ ] 每阶段真机日志分析完成后，更新 `routes.md` 的“核心维护图：三路线端到端主链”，只反映该阶段已经验证的结构变化。
 - [ ] 核心维护图保持简洁，只展示入口、配置/profile、W1/W2/W3、共享 heap/PI、三路线分叉、验证、回退和清理；详细函数图继续留在 `all-functions-callgraph.md`，不要求每阶段同步重画。
 - [ ] C++ 现代化续章（`## 11`，M01+）复用本节全部门禁、日志证据与“提交后暂停”流程；其硬约束优先于现代化收益，任何无法证明与 S15 基线二进制等价的改动都必须回退或保留 C 兼容实现。
 
@@ -319,7 +319,7 @@ flowchart TD
 - [x] 将 `src/kernels/offsets.h` 及各内核头文件中的全部 `known_offsets` 条目等价转换为应用内置 JSON；逐字段比较生成结果，转换完成后 C 不再保存内置 profile 表（43/43 条；每个 kernel release 独立文件，旧头文件仅暂留提取器兼容格式定义）。
 - [x] 建立单一版本化 schema：`kernel_profiles/index.json` 保存 `schema_version` 及 release→文件索引，`defaults.json` 保存兼容默认值；每个 release 文件包含自身 `schema_version`、能力、符号、结构偏移、payload 布局及 `execution` 调优参数。
 - [x] JSON 保持纯机器数据；`defaults.md` 逐项说明公共参数，`templates/` 为 5.x、6.1、6.6、6.12 四类模板分别提供中英双语说明，profile 总指南负责新设备流程与跳转。
-- [x] 文档按语言拆为英文 `.md` 与中文 `_ZH.md`，同语种链接闭合；四个版本文件各自包含完整字段和分层 execution 说明，不再依赖共有模板文档；全部说明迁至顶层 `docs/kernel_profiles/`，不打包进 APK assets。
+- [x] 文档按语言拆为英文 `.md` 与中文 `_ZH.md`，同语种链接闭合；四个版本文件各自包含完整字段和分层 execution 说明，不再依赖共有模板文档；全部说明迁至顶层 `../kernel_profiles`，不打包进 APK assets。
 - [x] 弃用并删除 `src/kernels/**/offsets.h` C 配置表及提取器 `--register` C 注册入口；Makefile 和中英文文档切换到 JSON profile 目录。
 - [x] `execution` 纳入当前硬编码的等待时间、超时、重试次数、consumer/路线时序以及推荐 `main_cpu`/`consumer_cpu`；缺省值必须逐项等于修改前常量，避免改变现有攻击行为。
 - [x] Kotlin 负责读取内置 JSON、匹配 `uname -r`、合并用户导入配置、验证 schema，并生成单个完全解析的 `active-profile.json`。
@@ -602,7 +602,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 ## 11. C++ 现代化续章（M01+，CPP00–CPP14 已关闭）
 
-> 本节修订第 1 节“不迁移 C++”的边界：C 解耦（S01–S15）的成果保持不动，C++ 现代化作为后续续章推进。目标是在**不改变攻击行为**的前提下，消除本计划已登记的 `SESSION-01..04`、`SELECT-01` 遗留全局，并提升类型安全、所有权表达与命名空间边界。本节的硬约束、门禁、日志证据和提交/暂停规则沿用第 9 节与开头“会话恢复与阶段执行规则”。
+> 本节修订第 1 节“不迁移 C++”的边界：C 解耦（S01–S15）的成果保持不动，C++ 现代化作为后续续章推进。目标是在 **不改变攻击行为**的前提下，消除本计划已登记的 `SESSION-01..04`、`SELECT-01` 遗留全局，并提升类型安全、所有权表达与命名空间边界。本节的硬约束、门禁、日志证据和提交/暂停规则沿用第 9 节与开头“会话恢复与阶段执行规则”。
 >
 > **执行结果（2026-09-18）**：C++ 现代化按 [`native-cpp-migration-plan.md`](native-cpp-migration-plan.md) 的 CPP00–CPP14 执行并关闭；`SESSION-01..04` 与 `common.h` 宏总线已消除，`SELECT-01` 明确保留为未回补项。最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS）；`U01-D`（`27924cb`）改变 payload 字节，生效构建 `a5a0ba07…` 待真机门禁。TCP/Select 设备门禁仍属外部协作者。本节的 M01–M06 只是同一批工作的主题汇总视图（M01↔CPP12、M02↔CPP03/08/12、M03↔CPP09、M04↔CPP14、M05↔CPP13、M06↔CPP14），不另立执行批次；两处编号冲突时以 CPP 计划为准。
 
@@ -616,7 +616,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 每个 fd、线程、mapping、child、buffer 有唯一 RAII 所有者；替换已验证的敏感释放顺序前，必须逐项证明行为等价。证据：CPP03/CPP07/CPP09/CPP12 的所有权迁移均以逐字节或逐指令对比放行；不能证明的（`g_heap_context` 别名、PI-TIMEOUT、路由拆分）已回退并登记。
 - [x] 新类型位于 `namespace ghostlock`，类型名沿用现有 CamelCase、函数/字段沿用 snake_case，且不含内核版本号。证据：CPP12 批次 B（`91fb8a1`）与 CPP14 命名空间收尾。
 - [x] 每阶段独立提交后立即暂停；真机门禁与日志证据流程同第 9 节。例外：用户于 2026-09-14 明确允许连续批次推进；每个真机门禁仍独立归档（见 `native-cpp-migration-plan.md`）。
-- [x] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务；该步骤见 `native-cpp-migration-plan.md` 第 1 节，用于规避重复缓存副本（`CPP-BUILD-02` 已由生成任务级清理加固）。
+- [x] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `../../app/build`），再运行目标任务；该步骤见 `native-cpp-migration-plan.md` 第 1 节，用于规避重复缓存副本（`CPP-BUILD-02` 已由生成任务级清理加固）。
 
 ### 11.2 与既有计划的关系与前置依赖
 
@@ -668,7 +668,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 - [x] 引入统一主机测试运行器；保留现有 `*_fixed_vector_test()` 入口，不替换为外部框架以免改变构建链路（`make native-host-tests`，覆盖 14 组固定向量/所有权测试）。
 - [x] 以 `nm` / `size` / 反汇编对比攻击关键对象与 S15 基线的栈帧和 ABI；差异需逐项批准并登记（CPP 全程逐字节/逐指令对比；`PI-TIMEOUT`、`g_heap_context` 别名等差异均已逐项批准或回退）。
-- [x] 归档对比脚本：`tools/cmp_disasm.py`（合并 legacy/namespace 两种符号拼写，自动探测 `$LLVM_OBJDUMP`/PATH/NDK）。以 `6cb2640` 重建门禁版 `66f0a8a3…` 与当前 HEAD 构建 `a5a0ba07…` 对比：8/8 攻击函数 layout 形状一致、`RESULT: PASS`（strict 注解差异来自 U01-E/F 引入的地址位移，非指令形状变化）。
+- [x] 归档对比脚本：`../../tools/cmp_disasm.py`（合并 legacy/namespace 两种符号拼写，自动探测 `$LLVM_OBJDUMP`/PATH/NDK）。以 `6cb2640` 重建门禁版 `66f0a8a3…` 与当前 HEAD 构建 `a5a0ba07…` 对比：8/8 攻击函数 layout 形状一致、`RESULT: PASS`（strict 注解差异来自 U01-E/F 引入的地址位移，非指令形状变化）。
 - [x] 更新 `native-cpp-current-uml.md`、全局状态矩阵与全函数调用图，标注已消除的宏与全局（CPP14 `5960e5a`/`d2871b7`）。
 - [ ] 门禁：完整 `assembleDebug` + 三条路线与 TCP→Select clean 回退真机。Multicast 已多轮通过（含 Release 构建）；TCP/Select 真机回归仍待外部设备。
 

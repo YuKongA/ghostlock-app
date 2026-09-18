@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。全部核心翻译单元为 C++20/静态 libc++，并经 CPP12 批次 A/B 分层（`main` 薄适配 + `ghostlock::ops/race/stages/victim/route/support/memory`）与 CPP13 resident 类化，CPP00–CPP14 迁移已关闭；Multicast 门禁持续通过（最终 `CPP13b` 两次冷机，native `66f0a8a3…`；另有 `CPP12u`/`CPP12v`/`CPP12w`/`CPP13a`，均在 `device-gates/`）。`KERNEL-PANIC-01` 由三个同型实例（两个 NULL-lock + 一个 refcount WARN）覆盖两个构建、同构建同日 PASS→panic→PASS，判定为环境/时序而非布局/代码因果（`CPP12y` 归档）。TCP/Select 仍只有主机固定测试。当前 HEAD 完成 CPP15–CPP17（命名空间/零指令清理 + 三个引用别名 façade 收归），门禁闭环：`CPP16-U01D-20260918-multicast-pass` 与 `CPP17-20260918-multicast-pass*`（含一次同型 W1 panic 后的连续 PASS、成功冷机、零页重试），用户两次豁免第二次冷机，native `55863311…` 为最新基线。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。全部核心翻译单元为 C++20/静态 libc++，并经 CPP12 批次 A/B 分层（`main` 薄适配 + `ghostlock::ops/race/stages/victim/route/support/memory`）与 CPP13 resident 类化，CPP00–CPP14 迁移已关闭；Multicast 门禁持续通过（最终 `CPP13b` 两次冷机，native `66f0a8a3…`；另有 `CPP12u`/`CPP12v`/`CPP12w`/`CPP13a`，均在 `device-gates`）。`KERNEL-PANIC-01` 由三个同型实例（两个 NULL-lock + 一个 refcount WARN）覆盖两个构建、同构建同日 PASS→panic→PASS，判定为环境/时序而非布局/代码因果（`CPP12y` 归档）。TCP/Select 仍只有主机固定测试。当前 HEAD 完成 CPP15–CPP17（命名空间/零指令清理 + 三个引用别名 façade 收归），门禁闭环：`CPP16-U01D-20260918-multicast-pass` 与 `CPP17-20260918-multicast-pass*`（含一次同型 W1 panic 后的连续 PASS、成功冷机、零页重试），用户两次豁免第二次冷机，native `55863311…` 为最新基线。
 
 ```mermaid
 flowchart TD

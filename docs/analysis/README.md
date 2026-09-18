@@ -1,6 +1,6 @@
 # GhostLock native 分析
 
-本目录对 GhostLock 攻击相关的 native C++ 实现进行静态分析，不是利用指南。分析范围包括 `src/core` 中的攻击函数与分层命名空间、参与地址发现的 kernelsnitch 头文件实现，以及 Kotlin 中启动 native 进程的转发入口。Rust 偏移提取器和无关 UI 函数不在范围内。
+本目录对 GhostLock 攻击相关的 native C++ 实现进行静态分析，不是利用指南。分析范围包括 `../../src/core` 中的攻击函数与分层命名空间、参与地址发现的 kernelsnitch 头文件实现，以及 Kotlin 中启动 native 进程的转发入口。Rust 偏移提取器和无关 UI 函数不在范围内。
 
 ## 文档索引
 

@@ -8,7 +8,7 @@
   gone. `VictimContext` and `handoff_probe_run` structure the victim pipe
   set and the KernelSU handoff. Multicast device gates pass (latest
   `CPP12n`); TCP/Select device gates await external hardware.
-  See `analysis/native-cpp-migration-plan.md`.
+  See `../../docs/analysis`.
 
 - `routes/`: route selection, status, route contexts and the shared
   `route_operations.cpp` implementation. The latter replaces the misleading

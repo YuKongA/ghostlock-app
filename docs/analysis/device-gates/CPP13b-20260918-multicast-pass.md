@@ -25,4 +25,4 @@
   warm boot）下完整 PASS：W1 页验收 `attempt=4`、6/6 route、`Write 1 complete` T+15598ms、
   `exploit complete` T+35505ms、`KernelSU module loaded`、`enforce=1`、`KernelSU ready`
   （日志 `CPP13b-20260918-multicast-pass-3.native.log`）。
-  该次运行的是设备上旧 APK（versionCode 302，native `66f0a8a3…`），**不代表 U01-D/CPP16 门禁**。
+  该次运行的是设备上旧 APK（versionCode 302，native `66f0a8a3…`）， **不代表 U01-D/CPP16 门禁**。

@@ -15,7 +15,7 @@
 - [x] `session/`：`ExploitSession` 与运行配置。
 - [x] `support/`：通用 `Result` 和 RAII 资源类型。
 - [x] `tests/`：所有主机固定测试；C/C++ link probe 已退出生产二进制。
-- [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `src/core/README.md`。
+- [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `../../src/core/README.md`。
 - [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
 - [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
 - [x] `main.cpp` 分层与 namespace 化系列（`1ec96ab`/`172062d`/`d9b1042`/`300d3bf` + `d862a51`/`fb8fb59`/`dfd0d60`/`a30e8f2`）：批次 A（main 解析/stage/victim enum/分 TU，`085c060`，native `53f9ec60…`）第一次冷机 PASS（`CPP12u`）；批次 B（namespace 层，`91fb8a1`，native `1e196eb9…`，与历史 `CPP12r` 构建逐字节一致）第一次冷机 PASS（`CPP12v-20260918-multicast-pass`，6/6 route、零页重试、`KernelSU ready`）。历史 2/2 panic（`CPP12r`）与布局无因果闭环（`CPP12s` 内核栈 + 双 PASS）；第二次冷机待跑或豁免。
@@ -26,18 +26,18 @@
 - [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
 - [x] 原逐阶段暂停规则经用户于 2026-09-14 明确改为“一步完成到最后”；本批连续实施，但仍保留兼容入口与验证记录。
 - [x] 连续批次每次实质修改后运行主机回归和 Native 构建；最终统一进行 APK/真机门禁，不把未实测路线写成设备通过。
-- [ ] 每次需要用户真机验证前，自动依次执行 `./gradlew clean`、`:app:assembleDebug` 与 `adb -s <serial> install -r`，再请用户运行。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `build/` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
-- [ ] 用户确认后导出完整 Native 日志到 `analysis/device-gates/CPPxx-YYYYMMDD-<route>-<pass|fail>.native.log`，创建同名前缀分析文档，再勾选阶段标题。
+- [ ] 每次需要用户真机验证前，自动依次执行 `./gradlew clean`、`:app:assembleDebug` 与 `adb -s <serial> install -r`，再请用户运行。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `../../build` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
+- [ ] 用户确认后导出完整 Native 日志到 ``，创建同名前缀分析文档，再勾选阶段标题。
 - [ ] 从真机读取日志并归档完成后，仅当“前一次执行成功且设备没有自动重启”时才执行 `adb -s <serial> reboot`，为下一次门禁准备干净状态；若前一次执行失败并已触发设备自动重启（如 kernel panic），跳过 reboot 并直接进入失败分析。
 - [x] 布局敏感改动（新增/删除编译单元、改变 `.text` 排布）的门禁至少包含两次冷机复跑；`CPP12k` 证明同一构建可能在 W2 spray 窗口 2/2 panic 而回退版稳定，`CPP12l` 证明隔离复跑可判定归因。
-- [ ] 每阶段更新 `analysis/routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
+- [ ] 每阶段更新 `routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
 - [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
 - [ ] 函数和类型按职责/攻击链命名，不使用内核版本号；版本差异只能出现在 profile 数据和注释中。
 - [ ] 不在同一阶段同时进行“语言迁移”和“攻击算法优化”。先证明等价，再在独立阶段改变策略。
 - [ ] 不改变 Kotlin → Native 的参数、stdout/stderr、退出码、日志路径、时间戳文件命名和 Direct/Shizuku 启动协议。
 - [ ] 不把异常传播越过 C ABI、线程入口、`fork()` 边界或 `main()`；边界函数必须返回显式状态。
 - [ ] 不在竞态关键窗口引入隐藏分配、引用计数、iostream、locale、锁或不可控析构工作。
-- [ ] 用户文件 `analysis/s02-execution.log` 始终不纳入提交。
+- [ ] 用户文件 `` 始终不纳入提交。
 
 ## 2. 技术基线与语言策略
 
@@ -269,7 +269,7 @@ struct RouteOutcome final {
 - [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
 - [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
-- [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `analysis/upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
+- [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
 - [x] Direct 入口门禁通过（206）：handoff 诊断 `script open fd=3 errno=0`，root script 执行、`KernelSU ready`，6/6 route clean、无 prepare 重试，证据 `CPP08-20260917-direct-pass`。首轮 EFAULT 失败与修复见 `CPP08-20260917-direct-kernelsu-pending`。
 - [x] Shizuku 入口门禁通过（211）：日志通路修复后日志完整（`Shizuku ready uid=2000 Seccomp=0`），4 次 route 全 clean（W3 按 shell 无 seccomp 跳过），`KernelSU ready`、无 panic；证据 `CPP08-20260917-shizuku-pass`。此前两次失败（门槛拒绝、日志背压 panic）分别见 `CPP08-20260917-shizuku-gate-fail` 与 `-shizuku-panic`。
 
@@ -345,7 +345,7 @@ struct RouteOutcome final {
 - [x] 全项目启用最终警告策略：Makefile/CMake 启用 `-Wall -Wextra -Wconversion -Wsign-conversion`，42 条生产警告与 1 条测试警告全部零指令修复，native `625d5300…` 逐字节一致、主机测试全绿（`native-warning-audit.md`，2026-09-18）。
 - [x] clang-tidy selected checks 已固化到 `.clang-tidy` + `make lint-tidy`（`bugprone-*`/`performance-*`/`clang-analyzer-*`；告警已全部修复或就地 `NOLINT` 说明理由，0 用户代码告警，native 仍与门禁版逐字节一致，2026-09-18）。
 - [x] 函数表/UML 最终同步随本阶段收尾。
-- [x] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明：`native-functions.md` 按 TU/命名空间重排、`native-cpp-current-uml.md` 更新类结构（`MulticastWaiterRoute`/`VictimContext`）、`native-global-state.md` 收尾口径、`all-functions-callgraph.md` 总览重画（全节点图留历史快照）、`routes.md` 核心维护图与状态说明、`analysis/README.md`/`README.md`/`README_ZH.md` 索引与状态（2026-09-18）。
+- [x] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明：`native-functions.md` 按 TU/命名空间重排、`native-cpp-current-uml.md` 更新类结构（`MulticastWaiterRoute`/`VictimContext`）、`native-global-state.md` 收尾口径、`all-functions-callgraph.md` 总览重画（全节点图留历史快照）、`routes.md` 核心维护图与状态说明、``/`README.md`/`README_ZH.md` 索引与状态（2026-09-18）。
 - [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成：Debug 已多轮门禁；Release 构建/R8、静态 libc++ 依赖、体积（4.7 MB）、启动协议与 Multicast 攻击链路已通过（`CPP14-release-20260917-multicast-pass`，native 与 Debug 门禁版逐字节相同；首次运行命中一次 `KERNEL-PANIC-01` 后复跑通过）；TCP/Select 回归仍待外部设备。
 - [x] 提交、暂停、最终真机/协作者门禁后结束迁移：最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS；同构建的 `CPP12y` panic 已归入 `KERNEL-PANIC-01`）；TCP/Select 回归保留为外部协作者验证项。CPP00–CPP14 迁移结束。
 
@@ -357,7 +357,7 @@ struct RouteOutcome final {
 - [x] 头文件：命名空间内的（`heap_context.h`、`address_space.h`、`exploit_ops.hpp`、`exploit_stages.hpp`、`victim_process.hpp`、`exploit_session.hpp` 等）删冗余前缀；全局 extern、`using X = ghostlock::Y;` 兼容别名、宏体不动。
 - [x] 特判：`main.cpp` 删除匿名 namespace 的 `using ghostlock::stages::StageResult;`，正文改 `stages::StageResult`；全局别名（`PiRaceContext`/`TcpZerocopyRouteContext`/`SelectStackRouteContext`/`RouteStatus` 等）保留。
 - [x] 测试文件统一 `using namespace ghostlock;`，删除具体 using（下层具体 using 展开为 `runtime_time::`/`runtime_paths::`/`target::` 前缀）；共约 121 处替换。
-- [x] 验证：`make native-host-tests` 全绿；`make ghostlock` 产物与基线 `a5a0ba07…` **逐字节一致**；`tools/cmp_disasm.py` PASS。
+- [x] 验证：`make native-host-tests` 全绿；`make ghostlock` 产物与基线 `a5a0ba07…` **逐字节一致**；`../../tools/cmp_disasm.py` PASS。
 
 ### [x] CPP16：零指令语言清理
 

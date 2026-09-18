@@ -19,7 +19,7 @@
 
 - retirement 的**失败分支本次未被触发**：`W3-0: leaf dir` probe 只在 `tcp_route_selected()==false`
   时执行，而生产配置（profile `tcp_zerocopy_enabled` + 5.15 TCP capability）下该值为 true。
-- 历史核对：`analysis/device-gates/*.native.log` 中 `W3-0: leaf dir` 出现次数为 **0**，即该 probe
+- 历史核对：`..` 中 `W3-0: leaf dir` 出现次数为 **0**，即该 probe
   分支在既有门禁中从未在生产配置下执行。移植语义正确性由代码审查与 upstream `U01` 对齐保证；
   若需覆盖失败分支，需专门以 `tcp_route_selected()==false` 配置运行（待定）。
 - 逐次 KernelSU 日志路径仍为未移植项（代码 `TODO(U01-S14-KSU-LOG)`）。
