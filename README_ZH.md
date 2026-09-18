@@ -1,6 +1,6 @@
 # GhostLock-App
 
-现代 C++ 迁移与解耦收尾中（CPP13 完成、CPP14 文档收尾），详见 [静态分析与计划书](analysis/README.md)
+C++ 迁移与解耦已完成（CPP00–CPP14；TCP/Select 设备门禁待外部协作者），详见 [静态分析与计划书](analysis/README.md)
 
 > English: [README.md](README.md)
 

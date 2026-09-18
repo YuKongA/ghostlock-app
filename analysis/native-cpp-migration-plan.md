@@ -346,7 +346,7 @@ struct RouteOutcome final {
 - [x] 函数表/UML 最终同步随本阶段收尾。
 - [x] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明：`native-functions.md` 按 TU/命名空间重排、`native-cpp-current-uml.md` 更新类结构（`MulticastWaiterRoute`/`VictimContext`）、`native-global-state.md` 收尾口径、`all-functions-callgraph.md` 总览重画（全节点图留历史快照）、`routes.md` 核心维护图与状态说明、`analysis/README.md`/`README.md`/`README_ZH.md` 索引与状态（2026-09-18）。
 - [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成：Debug 已多轮门禁；Release 构建/R8、静态 libc++ 依赖、体积（4.7 MB）、启动协议与 Multicast 攻击链路已通过（`CPP14-release-20260917-multicast-pass`，native 与 Debug 门禁版逐字节相同；首次运行命中一次 `KERNEL-PANIC-01` 后复跑通过）；TCP/Select 回归仍待外部设备。
-- [ ] 提交、暂停、最终真机/协作者门禁后结束迁移：最终 Multicast 门禁沿用 `CPP13b`（native `66f0a8a3…`，与本次文档同步的二进制一致）；TCP/Select 回归保留为外部协作者验证项。
+- [x] 提交、暂停、最终真机/协作者门禁后结束迁移：最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS；同构建的 `CPP12y` panic 已归入 `KERNEL-PANIC-01`）；TCP/Select 回归保留为外部协作者验证项。CPP00–CPP14 迁移结束。
 
 ## 7. 每阶段验证矩阵
 
