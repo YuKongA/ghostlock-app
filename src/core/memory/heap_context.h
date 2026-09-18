@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#ifdef __cplusplus
+#include <type_traits>
+#endif
+
 struct kernelsnitch_shared_state;
 
 struct mm_ctx {
@@ -36,7 +40,34 @@ typedef struct PayloadPage {
     uintptr_t fake_fops;
     ReclaimPair reclaim;
     PayloadPageState state;
+#ifdef __cplusplus
+    /* Move-only owner of one payload page and its reclaim socket pair.
+     *
+     * There is deliberately no destructor: a page whose fds may still be
+     * referenced by the kernel must never be released by scope exit. Use
+     * destroy() for the explicit release and move_to() to transfer ownership.
+     * A moved-from page is left empty; the fds travel with the destination. */
+    PayloadPage() noexcept;
+    PayloadPage(const PayloadPage &) = delete;
+    PayloadPage &operator=(const PayloadPage &) = delete;
+    PayloadPage(PayloadPage &&other) noexcept;
+    PayloadPage &operator=(PayloadPage &&) = delete;
+
+    [[nodiscard]] bool has_reclaim() const noexcept;
+    void destroy() noexcept;
+    [[nodiscard]] bool move_to(PayloadPage &destination,
+                               PayloadPageState destination_state) noexcept;
+#endif
 } PayloadPage;
+
+#ifdef __cplusplus
+static_assert(std::is_standard_layout_v<PayloadPage>);
+static_assert(!std::is_copy_constructible_v<PayloadPage>);
+static_assert(!std::is_copy_assignable_v<PayloadPage>);
+static_assert(std::is_move_constructible_v<PayloadPage>);
+/* No implicit release on scope exit: the destructor stays trivial. */
+static_assert(std::is_trivially_destructible_v<PayloadPage>);
+#endif
 
 typedef struct HeapContext {
     struct kernelsnitch_shared_state *snitch;

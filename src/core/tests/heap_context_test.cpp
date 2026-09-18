@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <type_traits>
+#include <utility>
+
 static void test_move_preserves_page_as_one_owner(void) {
   HeapContext context;
   heap_context_init(&context);
@@ -49,9 +52,42 @@ static void test_move_rejects_partial_or_occupied_ownership(void) {
   context.current.reclaim.fd[1] = -1;
 }
 
+static void test_page_is_move_only_and_released_explicitly(void) {
+  static_assert(!std::is_copy_constructible_v<PayloadPage>);
+  static_assert(!std::is_copy_assignable_v<PayloadPage>);
+  static_assert(std::is_move_constructible_v<PayloadPage>);
+  /* Scope exit must not close fds that the kernel may still reference. */
+  static_assert(std::is_trivially_destructible_v<PayloadPage>);
+
+  PayloadPage source;
+  assert(source.state == PAYLOAD_PAGE_EMPTY);
+  assert(!source.has_reclaim());
+
+  int owned[2];
+  assert(pipe(owned) == 0);
+  source.base = 0xabc00000;
+  source.reclaim.fd[0] = owned[0];
+  source.reclaim.fd[1] = owned[1];
+  source.state = PAYLOAD_PAGE_CURRENT;
+
+  PayloadPage moved(std::move(source));
+  assert(moved.has_reclaim());
+  assert(moved.base == 0xabc00000);
+  assert(moved.state == PAYLOAD_PAGE_CURRENT);
+  assert(source.state == PAYLOAD_PAGE_EMPTY);
+  assert(!source.has_reclaim());
+
+  moved.destroy();
+  errno = 0;
+  assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
+  moved.destroy();
+  assert(moved.state == PAYLOAD_PAGE_EMPTY);
+}
+
 int main(void) {
   test_move_preserves_page_as_one_owner();
   test_move_rejects_partial_or_occupied_ownership();
+  test_page_is_move_only_and_released_explicitly();
   puts("heap_context_test: ok");
   return 0;
 }

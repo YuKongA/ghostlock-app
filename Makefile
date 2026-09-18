@@ -94,7 +94,7 @@ NATIVE_HOST_TESTS := \
   offsets_json_test futex_hash_test number_parse_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
-	@for test in $^; do $$test; done
+	@status=0; for test in $^; do $$test || status=1; done; exit $$status
 
 $(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/tests/cpp_link_probe.cpp src/core/tests/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
 	@mkdir -p $(HOST_BUILD_DIR)
