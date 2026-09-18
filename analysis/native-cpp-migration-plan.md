@@ -333,7 +333,7 @@ struct RouteOutcome final {
 - [x] resident 与 one-shot 共用纯编码逻辑，生命周期控制保持独立方法：步骤 C 把 resident stamp 改为经 `ghostlock::encode_multicast_waiter` 生成 waiter words（erase words/family 由 resident 补齐），构建 `66f0a8a3…` 与 `ea87d65f…` 对比 **8/8 攻击函数 strict 一致**；步骤 B 的 one-shot 分组提取实测 `do_kernel5_fake_lock_route` **155→158（+3）**，未达"逐指令等价"契约，已回退并记录。
 - [x] ghost disarm、consumer drain、success 读取、destroy 顺序与 S14/S15 成功日志一致：步骤 A 原样搬移 `multicast_waiter_disarm/destroy`（构建 strict 对比），`CPP13a` 真机日志保留 `mcast ghost disarm`/route status 顺序。
 - [ ] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过。
-- [ ] 提交、暂停；至少多次冷机 Multicast 真机通过后才勾选阶段。
+- [ ] 提交、暂停；至少多次冷机 Multicast 真机通过后才勾选阶段。已冷机：`CPP13a`（步骤 A，native `ea87d65f…`）与 `CPP13b`（A+C，native `66f0a8a3…`）各一次 PASS；阶段版本第二次冷机待跑或豁免。
 
 ### [ ] CPP14：C façade、遗留全局与文件收尾
 
