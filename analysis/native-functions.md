@@ -97,7 +97,7 @@
 | `tcp_wait_for_consumer_idle()` / `tcp_make_pair()` / `tcp_punch_thread()` | TCP zerocopy 辅助（consumer drain、loopback 对、memfd 打孔） | — | `UniqueFd` 拥有 |
 | `TcpZerocopyRoute::prepare/execute/disarm/destroy()` / `do_tcp_fake_lock_route()` | TCP 路线（定义在 `route_operations.cpp`） | 写 route/consumer/punch 状态 | dirty 时保留资源至进程退出 |
 | `fdset_*` / `pselect_*` / `open_selected_fds()` / `reserve_standard_io()` / `select_stack_build_fdsets()` | Select stack 辅助（fd_set word、fd 布置、stdio 备份） | — | 路线/进程收尾 |
-| `SelectStackRoute::prepare/execute/disarm/destroy()` / `do_pselect_fake_lock_route()` | Select 路线（定义在 `route_operations.cpp`） | 写 route/consumer 状态 | consumer stuck 时保留全部 fd |
+| `SelectStackRoute::prepare/execute/disarm/destroy()` / `do_pselect_fake_lock_route()` | Select 路线（定义在 `route_operations.cpp`）；compact 时 `execute()` 内 4 次 attempt，每次重建 page/fd_sets 并递增 consumer 轮次（SELECT-01） | 写 route/consumer 状态 | consumer stuck 时保留全部 fd |
 
 ## 其余单元（函数名不变，所有权见全局矩阵）
 

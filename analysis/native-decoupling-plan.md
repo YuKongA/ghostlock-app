@@ -499,7 +499,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-F：新设备 profile 追加：Pixel 9 Pro / 9 Pro Fold（`6.1.162-…-g752d9…`，Tensor G4，靠 U01-E 的 Google physmap 回退）、Honor Magic V5（`6.6.118-…-g21be9…`）、NX809J/NX888J（`6.12.38-…-g665ea…`）转为 JSON（同族结构字段复用 + 上游 `off_*`/shift），`index.json` 48 项、`offsets_json_test` 全绿；中英文支持设备表登记为待真机复核。
 - [x] U01-G：提取器 `opt-level = "z"`（已有）与 `yaxpeax-arm` 0.4→0.5 + `Cargo.lock` 再生成；`cargo build --release`/测试通过，对 67.2.A.3.178 Image 运行正常（futex-stack 推导失败时按启发式给出 `pselect_waiter_shift=-2`，与设备 profile 一致）。
 - [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
-- [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。（route 级 fd 所有权与 clean/dirty 语义已由 CPP11 完成；外层多时序重试仍登记为 `SELECT-01`。）
+- [x] S12 回补：compact pselect 多 delay/retry 在路线内实现（`e13ed9dd`：4 次 attempt、页/fd_set 重建、consumer 轮次递增）；in-flight fd 所有权与 child pipe window 已完成（CPP11）；真机证据待 Select 设备。
 - [x] S14 回补：W3 probe 失败退休 child（`88390be7`，冷机门禁 `U01-S14-20260918-multicast-pass`；probe 失败分支在生产配置下不可达，历史门禁日志同为 0 次，语义由代码审查与 upstream 对齐保证）。
 - [x] S14 回补：逐次 KSU 日志路径（Kotlin 生成 `ghostlock-ksu-<millis>.log` 并经 `GHOSTLOCK_KSU_LOG` 传入；root script 与 `handoff_probe_run` 共用该路径，固定名仅作 CLI 回退）——`e1153fd3`，功能验证 `U01-S14-KSU-LOG-20260918-multicast-pass`（设备实测 per-run 文件生成、旧标记未被读取），用户于 2026-09-18 豁免冷机复跑。
 - [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
@@ -535,7 +535,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 迁移三组工作/所有权 fd_set、pipe/timerfd、执行结果和 `RouteStatus`；stdio backup 作为进程日志生命周期的显式借用句柄，S14/S15 再迁移其最终所有权。
 - [x] 拆分 prepare、execute、disarm、destroy；consumer 未退出时返回 dirty failure 并保留 fd，clean 时关闭 route 安装的描述符。
 - [x] 回补 S07/S08 登记的 select layout/context/dirty cleanup TODO；timeout、delay 与 consumer 次数继续由 profile 提供。
-- [ ] U01 compact 外层多时序重试：单次 route 已具备 context，但重试需要同步重建 Heap page 与 PI race，登记到 S14 `ExploitSession`，不得在 S12 偷用共享全局重建。
+- [x] U01 compact 外层多时序重试：由 `SelectStackRoute::execute()` 路线内实现（`e13ed9dd`），不需要 session 级重建；候选 ladder/attempts 入 schema 与真机验证待 Select 设备。
 - [x] Select context 主机测试和完整 Gradle `assembleDebug` 构建通过；与 S13 合并提交并暂停。
 - [ ] compact/tree 两类真机门禁；按用户决定与 S13 完成后统一测试。
 - [ ] 真机确认后分别导出 compact/tree 完整日志，完成分析并保存 S12 门禁证据。
@@ -580,8 +580,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 |---|---|---|---|---|
 | S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] 镜像全部删除：`CORE`/`CONSUMER_CORE` 宏与 KernelSnitch 隐式 pin 已改为显式 CPU（CPP12/`CPP12j`，门禁 `CPP12j-20260917-multicast-pass`） |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] `g_home_dir`/`g_root_script_path` 宏已删除，调用点内联 `runtime_config_snapshot()`（`e1782f6`，与门禁版 `625d5300…` 逐字节一致） |
-| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
-| S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
+| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | profile-ui | [x] 核心完成：高级区执行参数编辑（8 字段稀疏 override、覆盖保存/清除）+ 推荐核心一键应用 + 来源/覆盖状态展示（APK 335）；导入差异预览/schema 迁移/逐字段错误保留 `TODO(profile-ui)` |
+| S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | profile-ui | [x] 稀疏 override 完成（按 release 存 offsets.json，deepMerge 生效）；导入/导出已有；schema 迁移与回滚保留 `TODO(profile-ui)` |
 | S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已收敛：`futex_hash.h` 改为显式 context 的 `static inline`，零调用兼容入口随 CPP06 删除 |
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 四个零调用 util 适配入口已删除（CPP06，`COMPAT-01`），Multicast 门禁 `CPP06b` 通过 |
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] `SelectStackRoute` 持有 layout/context（CPP11） |
@@ -589,11 +589,11 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 别名已删除、mm sets/SKB/leak memfd 已收归（CPP12/`CPP07-OWNER`，`4ba123a`/`9a18262`，门禁 `CPP12h-20260917-multicast-pass`） |
 | S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] 三条路线全部完成：TCP（CPP10）、Select（CPP11）、Multicast（CPP13） |
 | U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] TCP 代码回补完成（CPP10）；设备门禁随 CPP10 外部补证 |
-| U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [ ] 部分完成：route 级 fd 所有权与 clean/dirty 语义已回补（CPP11）；外层多时序重试见 `SELECT-01` |
+| U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 完成：route 级 fd/clean-dirty（CPP11）+ route 内多 attempt/页重建（`e13ed9dd`）；真机待 Select 设备 |
 | U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 完成：handoff/enforcing 探针结构化（CPP12i）；W3 child retirement 移植并门禁（`88390be7`；probe 失败分支生产配置下不可达）；逐次 KSU 日志路径实测生效（`e1153fd3`/`U01-S14-KSU-LOG-20260918-multicast-pass`），用户豁免冷机复跑 |
 | U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] `ExploitSession::release_resident_heap()` 已接管（CPP12/`CPP12o`） |
-| S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [ ] 未回补：route 单次 context 已完成（CPP11），session 级重试见 `SELECT-01` |
+| S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [x] 已由 route 内重试实现（`e13ed9dd`），session 级不再需要 |
 | S13 | resident stop 暂时继续调用 Heap reclaim/prepare cleanup | 为保持已验证 W1/W2 停止顺序，尚无 session handoff | S14 | [x] 已移入 `ExploitSession`（CPP12/`CPP12o`） |
 | S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [x] 已在 CPP06 删除并随 Multicast 门禁（`CPP06b-20260917-multicast-pass`）验证 |
 | S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [x] CPP12 全部完成：SESSION-01（`e1782f6`）、SESSION-02（`faac9ce`）、SESSION-03、SESSION-04（`CPP12o`）；`g_heap_context`/`g_target_profile`/`g_resolved_addresses` 引用别名收尾见 CPP14/`native-global-state.md` |

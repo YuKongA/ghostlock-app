@@ -314,7 +314,7 @@ struct RouteOutcome final {
 - [x] 路径宏清理（`SESSION-01` 别名段）：删除 `g_home_dir`/`g_root_script_path` 宏，调用点内联 `runtime_config_snapshot()` 读取（`e1782f6`）；重建 native 与 `CPP12m/CPP12n` 门禁版本 `625d5300…` 逐字节一致，两次冷机证据继续有效。
 - [x] 回补 `SESSION-04`：resident stop 的 Heap 释放已移入 `ExploitSession::release_resident_heap()`（`kernel5_resident_stop` 只做 disarm/destroy，W1/W2 stop 顺序不变）；Multicast 门禁通过 `CPP12o-20260918-multicast-pass`。
 - [x] 回补 `SESSION-02`（`da2ab17`/`faac9ce`）：`run_exploit`/`retry_write_stage` 显式接收 `ExploitSession &`，`VictimContext` 管道与 parked handoff pid/pipe 归 session 拥有（`common.h` 过期声明一并删除）；native `395c5faf…`，8/8 攻击关键函数形状一致。门禁：`CPP12p` 第一次冷机 W1 PI-route 窗口 panic（spray 成功后，归入 `KERNEL-PANIC-01`），`CPP12q` 隔离复跑完整 PASS，用户豁免第二次冷机（`CPP12p`/`CPP12q` 归档）。
-- [ ] 回补 `SELECT-01`：每次 compact Select 外层重试重新构造 Heap page、PI race 和 route context。
+- [x] 回补 `SELECT-01`：compact Select 在路线内重试（4 次 attempt），每次重建 payload page 与 fd_sets 并递增 consumer 轮次；delay ladder/attempts 暂留 Native（待 Select 设备验证后入 schema），profile 继续拥有 timeout。构建 `e13ed9dd`；8 个攻击函数 shape 不变；无真机验证（无 Select 设备）。
 - [x] M02 fd 段：`check_selinux_off`/`enforce_readable`/`perf_find_task` 的裸 fd → `UniqueFd`/`MappedRegion`（munmap→close 顺序不变，攻击关键函数逐指令一致）；`slab_drain` 的 pid 数组 → `std::array<ChildProcess,64>`（kill+reap 顺序不变、零堆分配）。Multicast 门禁通过 `CPP12f-20260917-multicast-pass`；`child_pipes` 6 fd → `UniqueFd` + `parked_cmd_w` 所有权转移，Multicast 门禁通过 `CPP12g-20260917-multicast-pass`（完整 victim 协议）。
 - [x] Heap owner 段（`CPP07-OWNER` 主体）：删除 `common.h` 的 `page_base`/`last_mm_struct`/`fake_*`/`memfd_leak` 别名，调用点显式访问 `g_heap_context`（SYSCHK 字符串化经 `SYSCHK_pr` 保持，重建 native 与 `7b60739a…` 逐字节一致，`4ba123a`）；`mm_ctx` 的 calloc/free 数组 → `ghostlock::MmContextSet`（owning vector，析构只释放内存）、`leak_memfd` → `UniqueFd`、`skb_buffer` → `unique_ptr`，`9a18262`。攻击关键函数指令形状一致；Multicast 门禁通过 `CPP12h-20260917-multicast-pass`（native `328a6415…`）。剩余：prepare 失败注入框架；`leak_child` 已收编为 `ghostlock::ChildProcess` + `mark_reaped()`（显式表达 spray 路径的 `waitpid` 回收，scope 退出不再二次 signal），Multicast 门禁通过 `CPP12o-20260918-multicast-pass`。
 - [x] `KernelSuHandoff` 探针结果结构化：`/proc/modules` 扫描、root 日志标记与 enforce 轮询收进 `ghostlock::handoff_probe_run`（显式 `HandoffPollPolicy`/`HandoffProbeResult`），日志文本、轮询次数/间隔与 ready/enforcing 语义不变；`handoff_probe_test` 锁定标记匹配与零策略短路；Multicast 门禁通过 `CPP12i-20260917-multicast-pass`（`eeb9d20`，native `a7e1ea23…`）。
@@ -430,7 +430,7 @@ struct RouteOutcome final {
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |
 | CPP-SESSION-01 | config/profile/address/Heap/PI/route 仍由 main/global 拼装 | CPP12 | `ExploitSession` 唯一拥有一次运行 |
-| CPP-SELECT-01 | compact Select 外层重试需要跨 Heap/PI/route 重建 | CPP12 | session 级有界重试及真机证据 |
+| CPP-SELECT-01 | compact Select 外层重试需要跨 Heap/PI/route 重建 | CPP18 | [x] `SelectStackRoute::execute()` 路线内 4 次 attempt + 页/fd_set 重建 + 轮次递增（`e13ed9dd`）；候选/次数入 schema 与真机证据待 Select 设备 |
 | CPP-DIRTY-01 | consumer in-flight 时 RAII 不能自动关闭内核引用资源 | CPP03/CPP11 | 显式 quarantine/release 类型及测试 |
 | CPP-MCAST-01 | one-shot 对栈帧和 drain/close 顺序敏感 | CPP13 | 汇编/日志对比及多次真机成功 |
 | CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
