@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP08 已完成（CPP08 Direct/Shizuku 门禁见 `CPP08-20260917-direct-pass`/`-shizuku-pass`，期间修复 fork+exec EFAULT、UserService 建议值门槛、日志管道背压，并移植上游第二批 `396e52d`）。CPP09 代码与主机测试已完成（`PiRace` 类 + `PthreadOwner` ×3，native `19f9b5146e18a5ef85839fc9aa3fbabd43bfb6a1a18580136e8f54dafb33b141`），等待 Multicast 真机门禁。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成。CPP08 Direct/Shizuku 门禁见 `CPP08-20260917-direct-pass`/`-shizuku-pass`；CPP09（`PiRace` 类 + `PthreadOwner` ×3）门禁见 `CPP09-20260917-multicast-pass`（6/6 route clean，行为与 CPP08 基线一致）。下一阶段为 CPP10（TCP Zerocopy 路线，需外部 TCP 设备门禁）。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -270,7 +270,7 @@ struct RouteOutcome final {
 - [x] Direct 入口门禁通过（206）：handoff 诊断 `script open fd=3 errno=0`，root script 执行、`KernelSU ready`，6/6 route clean、无 prepare 重试，证据 `CPP08-20260917-direct-pass`。首轮 EFAULT 失败与修复见 `CPP08-20260917-direct-kernelsu-pending`。
 - [x] Shizuku 入口门禁通过（211）：日志通路修复后日志完整（`Shizuku ready uid=2000 Seccomp=0`），4 次 route 全 clean（W3 按 shell 无 seccomp 跳过），`KernelSU ready`、无 panic；证据 `CPP08-20260917-shizuku-pass`。此前两次失败（门槛拒绝、日志背压 panic）分别见 `CPP08-20260917-shizuku-gate-fail` 与 `-shizuku-panic`。
 
-### [ ] CPP09：PI Race 并发生命周期
+### [x] CPP09：PI Race 并发生命周期
 
 - [x] `PiRace` 类拥有 futex、atomic、三个 `PthreadOwner`、CPU 选择、request borrow 和 outcome；`pthread_t`/`*_started` 兼容镜像已删除，`start_threads` 按 consumer→owner→waiter 创建，部分失败时 `request_stop` + join 已启动者。等待超时（`PI-TIMEOUT-01`）保持独立加固项。
 - [x] 使用 `std::atomic` 时逐字段记录 memory order；热路径保持原 seq_cst 默认、reset 保持 relaxed，并在 `pi_race.h` 注明未验证不得放松。
@@ -279,7 +279,7 @@ struct RouteOutcome final {
 - [x] 线程兼容镜像删除；`g_pi_race_context` 作为 `g_exploit_session.race` 的引用别名保留，调用点收归随 `SESSION-01` 在 CPP12 完成。
 - [x] 主机测试覆盖 reset 幂等、正常启动/停止/join、部分启动失败清理（已启动 worker 全部 join、重复 join/stop 幂等）与 counts 合并；真实 timeout/dirty 语义由真机门禁覆盖。
 - [x] 提交、暂停（CPP09 独立提交）。
-- [ ] Multicast 真机门禁；比较 calls/success/join 与总耗时。
+- [x] Multicast 真机门禁（APK 214）：6/6 route `OK clean=1/1 calls=1 success=1`、5 次 spray、6 次 disarm、`threads joined` ×6、`KernelSU ready`；证据 `CPP09-20260917-multicast-pass`。总耗时差异（T+34.8s vs 28.2s）全部来自 KernelSnitch collision 阶段波动，已记录为观察项。
 
 ### [ ] CPP10：TCP Zerocopy 路线
 
