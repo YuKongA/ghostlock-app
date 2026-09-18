@@ -18,4 +18,6 @@
 ## 判定
 
 - 设计文档要求阶段"至少多次冷机"：`CPP13a`（步骤 A）与本页各一次 PASS；
-- 阶段版本（A+C）的第二次冷机待跑或由用户豁免，随后勾选 CPP13。
+- **第二次冷机（重连后补跑）PASS**：`boot_ms=151075`、6/6 route、`Write 1 complete` T+10958ms、
+  `exploit complete` T+30511ms、`KernelSU ready`（日志 `CPP13b-20260918-multicast-pass-2.native.log`）；
+  同一构建期间的一次 panic 记录在 `CPP12y`（PASS/panic/PASS 直接对照）。
