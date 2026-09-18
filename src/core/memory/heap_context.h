@@ -26,6 +26,8 @@ struct MmContextSet {
 
 }  // namespace ghostlock
 
+namespace ghostlock::memory {
+
 typedef enum PayloadPageState {
     PAYLOAD_PAGE_EMPTY = 0,
     PAYLOAD_PAGE_CURRENT,
@@ -92,8 +94,6 @@ typedef struct HeapContext {
     PayloadPage quarantine;
 } HeapContext;
 
-extern HeapContext &g_heap_context;
-
 void heap_context_init(HeapContext *context);
 
 void close_ctx_memfds(ghostlock::MmContextSet *ctx);
@@ -107,5 +107,9 @@ void payload_page_destroy(PayloadPage *page);
 int payload_page_move(
         PayloadPage *destination, PayloadPage *source,
         PayloadPageState destination_state);
+
+}  // namespace ghostlock::memory
+
+extern ghostlock::memory::HeapContext &g_heap_context;
 
 #endif

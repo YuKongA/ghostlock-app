@@ -5,6 +5,8 @@
 
 #include <utility>
 
+namespace ghostlock::memory {
+
 namespace {
 
 /* Return the page to the empty state without touching any fd. Ownership
@@ -111,3 +113,5 @@ int payload_page_move(
     if (!destination || !source) return 0;
     return source->move_to(*destination, destination_state) ? 1 : 0;
 }
+
+}  // namespace ghostlock::memory

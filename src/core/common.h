@@ -99,7 +99,7 @@ struct local_sched_attr {
     uint64_t sched_period;
 };
 
-extern ResolvedAddresses &g_resolved_addresses;
+extern ghostlock::memory::ResolvedAddresses &g_resolved_addresses;
 extern TargetProfile &g_target_profile;
 
 /* Measured direct-map end (defaults to the built-in bound). */
