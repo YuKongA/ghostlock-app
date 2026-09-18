@@ -56,15 +56,9 @@
 
 #define MM_ORDER 3
 #define MM_PARTIALS 5
-#ifdef __cplusplus
-extern int &g_core_main;
-extern int &g_core_consumer;
-#else
-extern int g_core_main;
-extern int g_core_consumer;
-#endif
-#define CORE (g_core_main)
-#define CONSUMER_CORE (g_core_consumer)
+/* CPU mirrors are gone (CPP12/SESSION-03): the session snapshot is the only
+ * authority, and this macro resolves straight to the live config value. */
+#define CORE (g_runtime_config.main_cpu)
 #define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)

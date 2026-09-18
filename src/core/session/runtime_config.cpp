@@ -92,8 +92,6 @@ int runtime_config_apply_profile(
         config->main_cpu = old_main;
         config->consumer_cpu = old_consumer;
     }
-    g_core_main = config->main_cpu;
-    g_core_consumer = config->consumer_cpu;
     return 0;
 }
 
@@ -108,7 +106,7 @@ static void runtime_config_init_paths(runtime_config *config) {
 }
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
- * writable config; output: 0/-1 plus compatibility CPU mirrors. */
+ * writable config; output: 0/-1 with the validated CPU pair. */
 int runtime_config_init(runtime_config *config) {
     if (!config) {
         errno = EINVAL;
@@ -138,8 +136,6 @@ int runtime_config_init(runtime_config *config) {
     config->w1_only = environment_present("GHOSTLOCK_W1_ONLY");
     config->verbose_debug = environment_present("GHOSTLOCK_VERBOSE_DEBUG");
 
-    g_core_main = config->main_cpu;
-    g_core_consumer = config->consumer_cpu;
     return 0;
 }
 
