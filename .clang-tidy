@@ -1,0 +1,33 @@
+# Selected clang-tidy subset for the native C++ core (CPP14).
+#
+# Run through the NDK toolchain so the Android and libc++ headers resolve:
+#   make lint-tidy NDK_ROOT=/path/to/ndk
+#
+# The exclusions below are category-level decisions reviewed in
+# analysis/native-warning-audit.md; single-point analyzer false positives
+# carry an inline NOLINT at the diagnostic line instead.
+#
+#   -bugprone-easily-swappable-parameters
+#       Kernel-style syscall wrappers pass many same-typed arguments by design.
+#   -bugprone-reserved-identifier
+#       The ported kernel/jhash code keeps its leading-underscore names.
+#   -bugprone-exception-escape
+#       The native core builds with -fno-exceptions by design; the checks
+#       agree with libc++ declarations, not with the actual runtime.
+#   -performance-enum-size
+#       The C-style enums carry ABI and log values (RouteCode,
+#       TargetSocFamily); their underlying type is part of the contract.
+#   -performance-no-int-to-ptr
+#       Kernel address arithmetic intentionally round-trips through uintptr_t.
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -bugprone-exception-escape,
+  -performance-enum-size,
+  -performance-no-int-to-ptr
+
+HeaderFilterRegex: '.*'
+FormatStyle: none

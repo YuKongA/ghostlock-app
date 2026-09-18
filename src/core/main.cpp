@@ -568,7 +568,9 @@ static void apply_iomem_cache(void) {
     if (f) {
         /* the first line names the release that wrote the dump */
         if (fgets(stamp, sizeof(stamp), f)) {
-            stamp[strcspn(stamp, "\r\n")] = '\0';
+            /* strcspn returns an index inside the buffer; the store writes the
+             * terminating NUL at worst on the last byte. */
+            stamp[strcspn(stamp, "\r\n")] = '\0';  // NOLINT(clang-analyzer-security.ArrayBound)
             ok = strncmp(stamp, "# ", 2) == 0 &&
                  strcmp(stamp + 2, release) == 0 &&
                  iomem_map_span(f, &span);
@@ -907,7 +909,7 @@ static uintptr_t perf_find_task(void) {
         pr_warning("perf_event_open failed errno=%d\n", errno);
         return 0;
     }
-    size_t msz = 4096 * (1 + 32);
+    size_t msz = 4096 * (1 + 32);  // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     void *mapped = mmap(NULL, msz, PROT_READ | PROT_WRITE, MAP_SHARED, fd.get(), 0);
     if (mapped == MAP_FAILED) {
         pr_warning("perf mmap failed errno=%d\n", errno);
@@ -923,7 +925,7 @@ static uintptr_t perf_find_task(void) {
     uint64_t head = hdr->data_head;
     __sync_synchronize();
     char *base = (char *) buf.data() + 4096;
-    size_t dsz = 4096 * 32;
+    size_t dsz = 4096 * 32;  // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     uint64_t pos = hdr->data_tail;
     uintptr_t cands[256];
     int nc = 0;

@@ -34,4 +34,11 @@
 - 二进制验证：`make clean && make ghostlock`（新标志集下）0 警告，native SHA-256 仍为 `625d5300…`；`cmp_disasm.py` 8/8 攻击关键函数 strict 逐指令一致，`full_cmp.py` 全量形状一致。
 - 构建策略：Makefile `COMMON_FLAGS` 启用 `-Wall -Wextra -Wconversion -Wsign-conversion`（保留原 `-Wno-unused-parameter -Wno-sign-compare -Wno-unused-function`）；主机测试统一 `HOST_CXXFLAGS` 并让所有测试目标依赖 `$(HDRS)`，头文件变化会触发测试重建。`src/CMakeLists.txt` 同步相同警告集与 `-fno-rtti`。
 - 顺带修复两处被缺失头依赖掩盖的主机测试破损：`route_controller_test`（`PiRaceContext` 默认构造，并链接 `native_resource.cpp` 提供 `PthreadOwner` 析构）与 `multicast_waiter_route_test`（CPU 字段显式赋值，同一链接依赖）。`offsets_json_test` 删除未使用的 `total_json`。
-- 未做：clang-tidy selected checks 与函数表/UML 最终同步（CPP14 剩余项）。
+
+## clang-tidy selected checks（CPP14，2026-09-18）
+
+- 配置：`.clang-tidy` 选定 `bugprone-*`、`performance-*`、`clang-analyzer-*`，并排除 `bugprone-easily-swappable-parameters`/`bugprone-reserved-identifier`（内核风格代码）、`bugprone-exception-escape`（`-fno-exceptions` 项目）、`performance-enum-size`（C ABI/日志枚举）、`performance-no-int-to-ptr`（内核地址语义）；每项理由写在配置文件内。
+- 修复：`futex_hash.h` 的 `__jhash_mix`/`__jhash_final` 与 `target.h` 的 `PSELECT_WAITER_WORD_SHIFT` 补齐宏参数括号（零指令，native 仍逐字节一致）。
+- 单项误报就地 `NOLINT` 并给出理由：`main.cpp`（`strcspn` 下标、`perf` 常量乘法）、`route_operations.cpp`（已验证 profile 几何的 VLA 与 `TCP_PUNCH_SHMEM_LEN`）、`runtime_config.cpp`（CPU id 已按 `CPU_SETSIZE` 校验的两处 `CPU_ISSET`）、`kernelsnitch.h`（`calloc` 后的空指针分析看不到 `SYSCHK`/OOM 终止）、`offsets_json.cpp`（已检查 `strlen < cap` 的 `strcpy`）、`profile.h`（有意委托 copy 的 move 构造）、`futex_hash.h`（jhash 0..3 全覆盖 switch）。
+- 运行：`make lint-tidy NDK_ROOT=…`（NDK clang-tidy，`--warnings-as-errors='*'`），当前 0 用户代码告警。
+- 未做：函数表/UML 最终同步（CPP14 剩余项）。

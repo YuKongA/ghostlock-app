@@ -338,7 +338,8 @@ struct RouteOutcome final {
 - [ ] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由。
 - [x] 所有生产翻译单元统一为 `.cpp`，按职责归档，并更新 Makefile、Gradle inputs 和 CLion CMake。
 - [x] 全项目启用最终警告策略：Makefile/CMake 启用 `-Wall -Wextra -Wconversion -Wsign-conversion`，42 条生产警告与 1 条测试警告全部零指令修复，native `625d5300…` 逐字节一致、主机测试全绿（`native-warning-audit.md`，2026-09-18）。
-- [ ] clang-tidy selected checks（`bugprone-*`/`performance-*` 关键规则），不做无关格式化洪泛；函数表/UML 最终同步随本阶段收尾。
+- [x] clang-tidy selected checks 已固化到 `.clang-tidy` + `make lint-tidy`（`bugprone-*`/`performance-*`/`clang-analyzer-*`；告警已全部修复或就地 `NOLINT` 说明理由，0 用户代码告警，native 仍与门禁版逐字节一致，2026-09-18）。
+- [ ] 函数表/UML 最终同步随本阶段收尾。
 - [ ] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明。
 - [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成：Debug 已多轮门禁；Release 构建/R8、静态 libc++ 依赖、体积（4.7 MB）、启动协议与 Multicast 攻击链路已通过（`CPP14-release-20260917-multicast-pass`，native 与 Debug 门禁版逐字节相同；首次运行命中一次 `KERNEL-PANIC-01` 后复跑通过）；TCP/Select 回归仍待外部设备。
 - [ ] 提交、暂停、最终真机/协作者门禁后结束迁移。

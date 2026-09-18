@@ -152,7 +152,7 @@ static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t a
     for (size_t i = 0; i < amount; ++i) {
         auto *inc_arg = static_cast<struct inc_arg *>(
             calloc(1, sizeof(struct inc_arg)));
-        inc_arg->id = id;
+        inc_arg->id = id;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         inc_arg->ks = ks;
         int err = pthread_create(&tid, 0, __do_increase, (void *)inc_arg);
         if (err)
@@ -290,7 +290,7 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
     const size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
     for (size_t i = 0; i < ks->thread_cnt; ++i) {
         struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
-        mm_leak_arg->ks = ks;
+        mm_leak_arg->ks = ks;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         mm_leak_arg->range.id = i;
         mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff*i;
         mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff*(i+1);

@@ -244,7 +244,9 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
     MulticastWaiterLayout layout =
             target_profile_multicast_waiter_layout(&g_target_profile);
     size_t stamp_size = layout.buffer_size;
-    __extension__ unsigned char stamp[stamp_size];
+    /* VLA size comes from the validated profile geometry; the encode step
+     * rejects an undersized buffer before any indexed write. */
+    __extension__ unsigned char stamp[stamp_size];  // NOLINT(clang-analyzer-core.VLASize)
     memset(stamp, 0, sizeof(stamp));
     if (!ghostlock::encode_multicast_waiter(
             {reinterpret_cast<std::byte *>(stamp), stamp_size},
@@ -535,7 +537,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
     TcpZerocopyRouteContext context(
             &ghostlock::g_exploit_session.race, request, execution_settings(),
-            TCP_PUNCH_SHMEM_LEN);
+            TCP_PUNCH_SHMEM_LEN);  // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     if (context.prepare() == 0) {
         (void) context.execute();
     }

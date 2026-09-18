@@ -50,9 +50,10 @@ static void runtime_config_init_cpus(runtime_config *config) {
     }
 
     cpu_set_t allowed;
+    /* both CPU ids are range-checked against CPU_SETSIZE by init_cpus */
     if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
-            (!CPU_ISSET(config->main_cpu, &allowed) ||
-                    !CPU_ISSET(config->consumer_cpu, &allowed))) {
+            (!CPU_ISSET(config->main_cpu, &allowed) ||  // NOLINT(clang-analyzer-security.ArrayBound)
+                    !CPU_ISSET(config->consumer_cpu, &allowed))) {  // NOLINT(clang-analyzer-security.ArrayBound)
         pr_warning("cores %d/%d not in allowed cpuset; falling back to 0/1\n",
                 config->main_cpu, config->consumer_cpu);
         config->main_cpu = 0;
@@ -66,9 +67,10 @@ static int runtime_config_validate_cpus(runtime_config *config) {
         return -1;
     }
     cpu_set_t allowed;
+    /* both CPU ids are range-checked against CPU_SETSIZE by init_cpus */
     if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
-            (!CPU_ISSET(config->main_cpu, &allowed) ||
-                    !CPU_ISSET(config->consumer_cpu, &allowed))) {
+            (!CPU_ISSET(config->main_cpu, &allowed) ||  // NOLINT(clang-analyzer-security.ArrayBound)
+                    !CPU_ISSET(config->consumer_cpu, &allowed))) {  // NOLINT(clang-analyzer-security.ArrayBound)
         pr_warning("profile cores %d/%d not in allowed cpuset\n",
                 config->main_cpu, config->consumer_cpu);
         return -1;

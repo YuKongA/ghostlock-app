@@ -551,7 +551,8 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
                             sizeof(release)) &&
                         strlen(release) < release_buf_cap) {
                     memset(out, 0, sizeof(*out));
-                    strcpy(release_buf, release);
+                    /* strlen(release) < release_buf_cap was checked above */
+                    strcpy(release_buf, release);  // NOLINT(clang-analyzer-security.insecureAPI.strcpy)
                     fill_external_entry(out, release_buf, object);
                     result = fill_execution_settings(object, &out->execution);
                 }

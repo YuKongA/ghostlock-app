@@ -78,7 +78,7 @@ $(NATIVE_BUILD_DIR)/%.o: %.cpp $(HDRS)
 	@mkdir -p $(dir $@)
 	$(NDK_CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests
+.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
 
@@ -102,6 +102,20 @@ native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
+
+# CPP14 selected clang-tidy subset; the check list and its reviewed
+# exclusions live in .clang-tidy. Requires the NDK so the Android and
+# libc++ headers resolve.
+lint-tidy:
+	@test -n "$(NDK_ROOT)" || { echo "NDK_ROOT is not set"; exit 1; }
+	@status=0; for f in $(CXX_SRCS); do \
+	  $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/clang-tidy "$$f" \
+	    --warnings-as-errors='*' -- \
+	    -std=c++20 -fno-rtti -Isrc/core \
+	    --target=aarch64-linux-android$(API) \
+	    --sysroot=$(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/sysroot \
+	    -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\" || status=1; \
+	done; exit $$status
 
 $(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/tests/cpp_link_probe.cpp src/core/tests/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
 	@mkdir -p $(HOST_BUILD_DIR)

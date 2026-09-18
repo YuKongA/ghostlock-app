@@ -98,7 +98,10 @@ class TargetProfile final {
     return *this;
   }
 
-  TargetProfile(TargetProfile &&other) noexcept : TargetProfile(other) {}
+  /* Delegates to the copy constructor on purpose: rebinds the release buffer
+   * and keeps the moved-from profile valid for the process-wide accessor. */
+  TargetProfile(TargetProfile &&other) noexcept
+      : TargetProfile(other) {}  // NOLINT(performance-move-constructor-init)
 
   TargetProfile &operator=(TargetProfile &&other) noexcept {
     return *this = other;
