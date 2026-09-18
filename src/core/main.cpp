@@ -467,13 +467,30 @@ RouteStatus ghostlock::PiRace::run() noexcept {
             &target_futex, 0);
     pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
             rq, errno);
-    /* TODO(pi-timeout-01): This wait has no deadline. A route that stalls in
-     * the race window (observed when the Shizuku log pipe applied
-     * backpressure) parks the process forever and the corrupted PI chain is
-     * never disarmed. Bound the wait from TargetProfile.execution and map a
-     * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
-    while (!atomic_load(&route_done))
+    /* Bounded wait (PI-TIMEOUT-01): a route that stalls in the race window
+     * (observed when the Shizuku log pipe applied backpressure) must not park
+     * the process forever. The bound is ten times the profile's shared
+     * pre-route wait, far above the observed 1-2s route window; a timeout is
+     * reported as a dirty failure and join() detaches the stranded waiter. */
+    struct timespec done_started;
+    SYSCHK(clock_gettime(CLOCK_MONOTONIC, &done_started));
+    const double done_timeout_ms =
+            (double) execution_settings()->race_route_wait_ms * 10.0;
+    while (!atomic_load(&route_done)) {
         usleep(execution_settings()->race_state_poll_interval_us);
+        const double elapsed_ms = runtime_elapsed_ms(&done_started);
+        if (elapsed_ms >= done_timeout_ms) {
+            run_timed_out = 1;
+            route_status.code = ROUTE_DIRTY_FAILURE;
+            route_status.step = 62;
+            route_status.error_number = ETIMEDOUT;
+            route_status.userspace_clean = 0;
+            route_status.kernel_disarmed = 0;
+            pr_error("[route] route_done wait timed out after %.0fms; "
+                     "PI chain left dirty\n", elapsed_ms);
+            return route_status;
+        }
+    }
     const RouteStatus status = route_status;
     const int calls = atomic_load(&consumer_calls);
     const int success = atomic_load(&consumer_success);

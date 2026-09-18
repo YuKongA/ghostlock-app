@@ -113,6 +113,23 @@ int main(void) {
   race.join();
   assert(race.waiter_owner.state() == PthreadOwner::State::Joined);
 
+  /* A timed-out run detaches the stranded waiter but still joins the owner
+   * and consumer. */
+  {
+    PiRaceContext timed_out;
+    timed_out.reset(5, 0, 1);
+    g_started = 0;
+    assert(timed_out.start_threads(fake_waiter, fake_owner, fake_consumer,
+                                   nullptr) == 0);
+    assert(wait_started(3));
+    timed_out.run_timed_out = 1;
+    timed_out.request_stop();
+    timed_out.join();
+    assert(timed_out.waiter_owner.state() == PthreadOwner::State::Detached);
+    assert(timed_out.owner_owner.state() == PthreadOwner::State::Joined);
+    assert(timed_out.consumer_owner.state() == PthreadOwner::State::Joined);
+  }
+
   /* Outcome merge: Ok without a winning consumer call degrades to Retryable,
    * everything else is passed through untouched. */
   RouteStatus ok{};

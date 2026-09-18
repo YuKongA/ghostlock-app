@@ -36,17 +36,22 @@ class PiRace final {
                                   void *(*consumer_entry)(void *),
                                   const WriteRequest *route_request) noexcept;
 
-  /* Waits for the route to finish and returns its outcome. A route that
-   * reports Ok without a consumer call and success has not won the race, so
-   * the returned outcome degrades to Retryable, matching the bool the
-   * previous free function returned. The wait itself is unbounded today:
-   * see TODO(pi-timeout-01). */
+  /* Waits for the route to finish and returns its outcome. The wait is
+   * bounded by ten times the profile's shared pre-route wait; a route that
+   * stalls in the race window is reported as a dirty failure (step 62,
+   * ETIMEDOUT) and run_timed_out marks the attempt, so join() detaches the
+   * stranded waiter instead of blocking forever. A route that reports Ok
+   * without a consumer call and success has not won the race, so the
+   * returned outcome degrades to Retryable, matching the bool the previous
+   * free function returned. */
   [[nodiscard]] RouteStatus run() noexcept;
 
   /* Business stop signal for the three workers; idempotent. */
   void request_stop() noexcept;
 
-  /* waiter -> owner -> consumer join order; idempotent. */
+  /* waiter -> owner -> consumer join order; idempotent. After a run timeout
+   * the waiter is detached (it can stall for good inside the route) while the
+   * owner and consumer are still stopped and joined. */
   void join() noexcept;
 
   /* Testable counter merge used by run(): Ok with zero calls or zero
@@ -78,6 +83,8 @@ class PiRace final {
   atomic_int fast_repair;
   int main_cpu = 0;
   int consumer_cpu = 0;
+  /* Set by run() when the route_done wait expired; makes join() bound. */
+  int run_timed_out = 0;
   PthreadOwner waiter_owner;
   PthreadOwner owner_owner;
   PthreadOwner consumer_owner;
