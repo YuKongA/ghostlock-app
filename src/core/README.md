@@ -1,5 +1,11 @@
 # Native core layout
 
+- Migration status (CPP00–CPP12): C++20 with static libc++; `PiRace`,
+  `TcpZerocopyRoute` and `SelectStackRoute` are owning classes with host tests;
+  `RuntimeConfig` is a value type reached through `runtime_config_snapshot()`.
+  Multicast device gates pass; TCP/Select device gates await external hardware.
+  See `analysis/native-cpp-migration-plan.md`.
+
 - `routes/`: route selection, status, route contexts and the shared
   `route_operations.cpp` implementation. The latter replaces the misleading
   historical name `fops.cpp` without changing route timing or translation-unit

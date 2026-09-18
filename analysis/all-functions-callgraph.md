@@ -6,21 +6,21 @@
 
 ```mermaid
 flowchart LR
-    K["Kotlin forwarding"] -. ProcessBuilder .-> Entry["main.c: main"]
-    Entry --> RX["main.c: run_exploit"]
-    RX --> Profile["offsets_json.c: load_offsets_json"]
-    RX --> Addr["util.c: init_p0_profile / data_addr"]
-    RX --> Write["main.c: retry_write_stage / do_one_write"]
-    Write --> Heap["util.c: prepare_good_kernel_page"]
+    K["Kotlin forwarding"] -. ProcessBuilder .-> Entry["main.cpp: main"]
+    Entry --> RX["main.cpp: run_exploit"]
+    RX --> Profile["offsets_json.cpp: load_offsets_json"]
+    RX --> Addr["util.cpp: init_p0_profile / data_addr"]
+    RX --> Write["main.cpp: retry_write_stage / do_one_write"]
+    Write --> Heap["util.cpp: prepare_good_kernel_page"]
     Heap --> KS["kernelsnitch: setup / collision / mm leak"]
-    Heap --> Payload["util.c: prepare_skb_payload"]
-    Write --> Race["main.c: run_main_route_threads"]
-    Race --> Waiter["main.c: waiter_thread"]
-    Race --> Owner["main.c: owner_thread"]
-    Race --> Consumer["main.c: consumer_thread"]
-    Waiter --> M["fops.c: Multicast"]
-    Waiter --> T["fops.c: TCP Zerocopy"]
-    Waiter --> P["fops.c: pselect/select"]
+    Heap --> Payload["util.cpp: prepare_skb_payload"]
+    Write --> Race["main.cpp: run_main_route_threads / PiRace"]
+    Race --> Waiter["main.cpp: waiter_thread"]
+    Race --> Owner["main.cpp: owner_thread"]
+    Race --> Consumer["main.cpp: consumer_thread"]
+    Waiter --> M["routes/route_operations.cpp: MulticastWaiterRoute"]
+    Waiter --> T["routes/route_operations.cpp: TcpZerocopyRoute"]
+    Waiter --> P["routes/route_operations.cpp: SelectStackRoute"]
     M --> Consumer
     T --> Consumer
     P --> Consumer
@@ -481,7 +481,7 @@ flowchart LR
 
 该图中连线最多的三个状态节点是PI同步、写请求/路线结果和payload page。它们应优先被替换为 `pi_race_context`、`write_request/route_status` 和 `payload_page`。
 
-## 解耦后的对照调用图
+## 解耦后的对照调用图（规划目标；当前实现的可执行部分以 `PiRace`/三路线 owning class 为准）
 
 ```mermaid
 flowchart TB
@@ -516,4 +516,4 @@ flowchart TB
     Status -->|dirty| Abort["safe abort"]
 ```
 
-目标图不再使用双向“函数↔全局变量”边；状态只通过session所有权、显式参数和结构化返回值流动。
+目标图不再使用双向“函数↔全局变量”边；状态只通过session所有权、显式参数和结构化返回值流动。当前实现进度（CPP00–CPP12 子项）：`PiRace` 类（futex/原子量/`PthreadOwner` ×3，`run()` 返回 `RouteStatus`）、`TcpZerocopyRoute`/`SelectStackRoute` owning class、`FdSet`/`BorrowedFd`、`RuntimeConfig` 值类型经 `runtime_config_snapshot()` 访问、CPU 镜像已删除；`exploit_session_init`/`stage_controller_run`/`route_ops` 等仍为规划目标（对应 CPP12 剩余/CPP13/CPP14）。
