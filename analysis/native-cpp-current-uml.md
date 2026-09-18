@@ -79,11 +79,14 @@ class WriteRequest {
 }
 
 class PiRaceContext {
-  <<session-owned shared race>>
+  <<session-owned race class (CPP09)>>
   +futex words
-  +waiter/owner/consumer threads
-  +atomic coordination
+  +atomics (seq_cst hot path, relaxed reset)
+  +PthreadOwner waiter/owner/consumer
+  +reset / start_threads / run
+  +request_stop / join
   +RouteStatus route_status
+  +outcome_with_counters()
 }
 
 class RouteController {
@@ -136,7 +139,7 @@ class RouteOperations {
 }
 
 class NativeResource {
-  <<support; foundation not yet wired into routes>>
+  <<support; PthreadOwner wired into PiRace (CPP09)>>
   +BorrowedFd
   +UniqueFd
   +MappedRegion
@@ -176,7 +179,8 @@ NativeResource ..> ExploitSession : foundation only
 ## 当前关键边界
 
 - `kernel_offsets` 是 Kotlin JSON 到 Native 的可变 transport；`TargetProfile` 是复制得到的只读语义入口，但两者尚未完全拆成独立 C++ 类型。
-- `ExploitSession` 已集中主要全局状态，旧代码仍通过全局引用 façade 访问其成员。
+- `ExploitSession` 已集中主要全局状态，旧代码仍通过全局引用 façade 访问其成员；`RuntimeConfig`/`ResolvedAddresses` 已是值类型（CPP04/CPP08），`PayloadPage` move-only（CPP07）。
 - 三条路线共享 `WriteRequest → HeapContext → PiRaceContext → RouteController`，随后才各自构造 route context。
-- RAII 基础类型已补齐借用、scope、stop 和 handoff 语义，但三条路线尚未接入；路线仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
+- `PiRaceContext` 是 `ghostlock::PiRace`：futex、原子量、三个 `PthreadOwner` 与 `RouteStatus` 由该类唯一拥有，`start_threads`/`run`/`request_stop`/`join` 显式分离，`run()` 返回合并 consumer calls/success 的结果；`g_pi_race_context` 仍是 session 成员的引用别名（CPP12 删除）。
+- RAII 基础类型已补齐借用、scope、stop 和 handoff 语义；路线仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
 - 下一次结构拆分是把 `route_operations.cpp` 的三组函数分别移入对应路线 `.cpp`；该操作会改变编译单元和生成代码，必须独立进行真机门禁。

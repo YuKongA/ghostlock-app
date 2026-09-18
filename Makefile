@@ -138,9 +138,9 @@ $(HOST_BUILD_DIR)/route_controller_test: src/core/tests/route_controller_test.cp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Isrc/core $^ -o $@
 
-$(HOST_BUILD_DIR)/pi_race_test: src/core/tests/pi_race_test.cpp src/core/pi_race.cpp
+$(HOST_BUILD_DIR)/pi_race_test: src/core/tests/pi_race_test.cpp src/core/pi_race.cpp src/core/pi_race.h src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/pi_race_test.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/tcp_zerocopy_route_test: src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp
 	@mkdir -p $(HOST_BUILD_DIR)

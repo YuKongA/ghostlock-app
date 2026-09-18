@@ -16,3 +16,4 @@ target/
 *.keystore
 /.codex/
 /src/.codex/config.toml
+/ghostlock *

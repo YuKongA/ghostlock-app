@@ -18,7 +18,7 @@ flowchart LR
     Route --> Shared
 ```
 
-当前代码没有 `ExploitSession`；图中六个节点的状态分散在 `main.c`、`util.c`、`fops.c` 和 `common.h` 的 `extern` 声明中。
+`ExploitSession` 已存在并集中了多数节点状态（CPP04–CPP09）；旧调用点仍通过全局引用 façade 访问，会话内收编见 CPP12。
 
 ## 1. Profile、地址与运行配置
 
@@ -46,6 +46,8 @@ flowchart LR
 | 变量组 | 主要读者 | 主要写者 | 生命周期/并发 | 目标归宿 |
 |---|---|---|---|---|
 | `f_wait`, `f_pi_target`, `f_pi_chain` | waiter/owner、`run_main_route_threads()` | `reset_main_route_state()`，内核futex | 每次route run一组，目前作为进程级单例 | `pi_race_context.futexes` |
+
+CPP09 落地：上述 futex、全部原子量与三个线程句柄已由 `ghostlock::PiRace`（`pi_race.cpp` + `main.cpp` 中的 `run()` 定义）唯一拥有；`pthread_t + started` 兼容镜像已删除，线程生命周期改由 `PthreadOwner` 管理，`start/run/request_stop/join` 显式分离。`g_pi_race_context` 仍是 `g_exploit_session.race` 的引用别名，删除调用点引用统一在 CPP12（`SESSION-01`）。`run()` 等待 `route_done` 仍无超时（`PI-TIMEOUT-01`）。
 | `waiter_ready`, `waiter_waiting`, `waiter_tid` | owner、main、consumer | waiter/reset | 跨三线程原子同步 | `pi_sync.waiter` |
 | `owner_started`, `owner_chain_done`, `owner_stop` | waiter/main/owner | owner/main/reset | owner生命周期信号 | `pi_sync.owner` |
 | `route_done` | main | waiter/reset | route结束信号 | `pi_sync.route_done` |
@@ -136,11 +138,11 @@ pselect的fd_set、pipe/timerfd目前是局部变量；需进入context的原因
 
 | 变量 | 读者 | 写者 | 问题 | 目标归宿 |
 |---|---|---|---|---|
-| `RouteStatus`（位于各 route/PI context） | main线程调度 | 三route controller | S15 已删除 `route_last_step/route_last_errno` 隐式全局返回值 | 保持结构化返回与 clean/disarmed 双判定 |
+| `RouteStatus`（位于各 route/PI context） | main线程调度 | 三route controller；CPP09 后 `PiRace::run()` 读 `route_status` 并返回合并 consumer counts 的 `RouteStatus` | S15 已删除 `route_last_step/route_last_errno` 隐式全局返回值 | 保持结构化返回与 clean/disarmed 双判定 |
 | `g_file_buf[1 MiB]` | JSON parser | `load_offsets_json()` | 非重入，常驻大缓冲 | loader调用者buffer或局部mapping |
 | `FutexHashContext` | KernelSnitch context | `kernelsnitch_context_init()` | S15 已删除 `futex_hashsize`、`futex_init()`、`futex_hash()` 全局兼容层 | 保持显式 context |
 
-S15 审计后仍保留四个零调用的 util 级 KernelSnitch 转发函数及进程级 `ks` owner，登记为 `COMPAT-01`；它们不参与本次已验证攻击链，后续删除必须形成新的可测试提交。会话所有权残项使用 `SESSION-01`–`SESSION-04`，Select 外层重试使用 `SELECT-01` 跟踪。
+S15 审计后保留的四个零调用 util 级 KernelSnitch 转发函数已在 CPP06 删除（`CPP-COMPAT-01`，`futex_hash` 唯一 owner 为 `KernelSnitchOwner`）；会话所有权残项使用 `SESSION-01`–`SESSION-04`，Select 外层重试使用 `SELECT-01` 跟踪。
 
 ## 6. 优先级与风险
 

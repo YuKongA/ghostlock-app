@@ -37,7 +37,7 @@ flowchart TD
     Execution --> Race
     Payload --> Encoders["Multicast / TCP / Select<br/>waiter encoders"]
     Encoders --> Race
-    Write --> Race["run_main_route_threads()<br/>PiRaceContext"]
+    Write --> Race["run_main_route_threads()<br/>PiRace (PthreadOwner x3)"]
     Snapshot --> Race
     Profile --> Race
     Addresses --> Page
@@ -216,7 +216,7 @@ stateDiagram-v2
 
 | 范围 | 主要所有者 | 清理 | 不干净条件 |
 |---|---|---|---|
-| PI waiter/owner/consumer | `run_main_route_threads()` | stop原子量 + join | consumer或内核PI路径不返回 |
+| PI waiter/owner/consumer | `PiRace::start_threads/run`（`run_main_route_threads()` 调用） | `request_stop()` 原子量 + `PthreadOwner::join` | consumer 或内核 PI 路径不返回；等待无超时（`PI-TIMEOUT-01`） |
 | Multicast resident | `kernel5_resident_*()` | disarm、join、socket/page cleanup | ghost/scratch未修复 |
 | TCP局部资源 | `do_tcp_fake_lock_route()` | stop/join/munmap/close | PI写结果仍可能无法单凭fd清理判定 |
 | pselect fd | `do_pselect_fake_lock_route()` | restore stdio + close | consumer stuck时故意保留 |

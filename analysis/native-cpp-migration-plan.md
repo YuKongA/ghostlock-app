@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP08 已完成。CPP08 两种入口均通过真机门禁：Direct `CPP08-20260917-direct-pass`、Shizuku `CPP08-20260917-shizuku-pass`（期间修复 fork+exec EFAULT、UserService 建议值门槛、日志管道背压，并移植上游第二批 `396e52d`）。下一阶段为 CPP09；`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`（`pi_race_run` 等待路由完成需超时）等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP08 已完成（CPP08 Direct/Shizuku 门禁见 `CPP08-20260917-direct-pass`/`-shizuku-pass`，期间修复 fork+exec EFAULT、UserService 建议值门槛、日志管道背压，并移植上游第二批 `396e52d`）。CPP09 代码与主机测试已完成（`PiRace` 类 + `PthreadOwner` ×3，native `19f9b5146e18a5ef85839fc9aa3fbabd43bfb6a1a18580136e8f54dafb33b141`），等待 Multicast 真机门禁。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -272,13 +272,14 @@ struct RouteOutcome final {
 
 ### [ ] CPP09：PI Race 并发生命周期
 
-- [ ] `PiRace` 类拥有 futex、atomic、三个 `PthreadOwner`、CPU 选择、request borrow 和 outcome。
-- [ ] 使用 `std::atomic` 时逐字段记录 memory order；先保持当前顺序一致，不主动“优化”为 relaxed。
-- [ ] start/run/request_stop/join 分离；部分线程创建失败按 consumer→owner→waiter 的当前可收敛顺序清理。
-- [ ] `RouteStatus` 不再写外部可变指针，由 `PiRace::run()` 返回 `RouteOutcome`。
-- [ ] 删除 `g_pi_race_context` 和线程兼容镜像。
-- [ ] 主机测试覆盖正常、timeout、部分启动、dirty 和重复 stop。
-- [ ] 提交、暂停、Multicast 真机门禁；比较 calls/success/join 与总耗时。
+- [x] `PiRace` 类拥有 futex、atomic、三个 `PthreadOwner`、CPU 选择、request borrow 和 outcome；`pthread_t`/`*_started` 兼容镜像已删除，`start_threads` 按 consumer→owner→waiter 创建，部分失败时 `request_stop` + join 已启动者。等待超时（`PI-TIMEOUT-01`）保持独立加固项。
+- [x] 使用 `std::atomic` 时逐字段记录 memory order；热路径保持原 seq_cst 默认、reset 保持 relaxed，并在 `pi_race.h` 注明未验证不得放松。
+- [x] start/run/request_stop/join 分离；`run_main_route_threads()` 只做 `reset → start_threads → run → request_stop → join` 编排。
+- [x] `RouteStatus` 由 `PiRace::run()` 返回，经 `outcome_with_counters()` 合并 consumer calls/success（Ok 无活动降级为 Retryable，dirty 原样透传），调用者不再读取隐式状态。
+- [x] 线程兼容镜像删除；`g_pi_race_context` 作为 `g_exploit_session.race` 的引用别名保留，调用点收归随 `SESSION-01` 在 CPP12 完成。
+- [x] 主机测试覆盖 reset 幂等、正常启动/停止/join、部分启动失败清理（已启动 worker 全部 join、重复 join/stop 幂等）与 counts 合并；真实 timeout/dirty 语义由真机门禁覆盖。
+- [x] 提交、暂停（CPP09 独立提交）。
+- [ ] Multicast 真机门禁；比较 calls/success/join 与总耗时。
 
 ### [ ] CPP10：TCP Zerocopy 路线
 
@@ -377,7 +378,7 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
-| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04/CPP05 验证时在 `supportedKernels`、`javac` classes、`packaged_res` 各复现；已升级为第 1 节强制步骤“构建前先 `./gradlew clean`”。生成 task 清理/隔离 output 仍待独立维护 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护（生成 task 级清理已完成） | [x] `GenerateSupportedKernelsTask` 与 `generateBuildInfo` 每次重建唯一输出文件并删除同目录陈旧副本；构建前强制 `./gradlew clean` 步骤保留，覆盖 javac/打包层缓存 |
 | CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |
@@ -391,9 +392,9 @@ struct RouteOutcome final {
 | CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [x] 完成；部分线程创建失败注入为后续维护项 |
 | CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` fail-fast，未返回结构化错误 | 需要会话级错误传播策略 | CPP12 | [ ] 保留原语义，已登记 |
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
-| U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记 |
+| U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记；U01-G（`opt-level = "z"`）已完成，D–F 待维护 |
 | PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |
-| PI-TIMEOUT-01 | `pi_race_run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`）；修复需绑定 `TargetProfile.execution` 的超时并把超时映射为 `ROUTE_DIRTY_FAILURE` | 攻击逻辑加固（独立真机门禁） | [ ] 已登记（代码 TODO `pi-timeout-01`） |
+| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`）；修复需绑定 `TargetProfile.execution` 的超时并把超时映射为 `ROUTE_DIRTY_FAILURE` | 攻击逻辑加固（独立真机门禁） | [ ] 已登记（代码 TODO `pi-timeout-01`） |
 
 ## 10. 完成定义
 

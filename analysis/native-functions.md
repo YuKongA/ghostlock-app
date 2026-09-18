@@ -27,8 +27,9 @@
 | `waiter_thread()` | 建立PI waiter，触发UAF窗口后调用选定路线 | 读写 `f_*`、`waiter_*`、`route_done` | futex；分流到三个 `do_*_route()`；5.x额外disarm |
 | `owner_thread()` | 持有目标PI futex并建立owner/waiter依赖 | 读写 `owner_*`、`f_pi_*` | 退出前unlock |
 | `consumer_thread()` | 从另一CPU改变waiter优先级，促使PI链遍历 | 读写 `punch_consume_*`、`consumer_*` | `sched_setattr_tid()`；失败时使用futex备用刺激 |
-| `reset_main_route_state()` | 重置一次竞争的futex和同步量 | 写所有PI全局状态 | 无资源操作 |
-| `run_main_route_threads()` | 创建、同步、触发并join三个竞争线程 | 返回路线是否有可验证活动 | 调三线程入口；正常路径join全部 |
+| `reset_main_route_state()` | 重置一次竞争的 futex 与同步量 | 调 `PiRace::reset()`；保留 `fast_repair` latch | 无资源操作 |
+| `PiRace::run()` | 等 waiter/owner 就绪、`CMP_REQUEUE_PI`、等 `route_done` 并返回结果 | 读 `route_status` 与 consumer counts | 定义在 `main.cpp`；等待无超时（`PI-TIMEOUT-01`） |
+| `run_main_route_threads()` | 创建、同步、触发并 join 三个竞争线程 | `PiRace::start_threads/run/request_stop/join`；返回路线是否 OK | `PthreadOwner` 拥有线程；创建失败按 consumer→owner 清理 |
 | `do_one_write()` | 一次抽象内核写入的总入口 | target/mode/leaf → bool；写payload模式 | `prepare_good_kernel_page()` → `run_main_route_threads()`；5.x resident特例 |
 | `retry_write_stage()` | 为W1/W2/W3提供重试和回调验证 | 阶段参数+验证函数 → bool | 调 `do_one_write()`；5.x W2预构造修复页 |
 
@@ -232,5 +233,5 @@
 
 - `run_exploit()`是阶段、选路、victim协议和恢复策略的集中点。
 - `prepare_kernel_page()`与 `prepare_skb_payload()`通过 `page_base`/`fake_*`/多组ctx形成最强堆状态耦合。
-- `run_main_route_threads()`提供公共PI竞争，但路线仍反向操作共享原子量。
+- `PiRace::run()` 提供公共 PI 竞争并返回结构化结果，但路线仍反向读写 `PiRace` 的共享原子量（会话内收编见 CPP12）。
 - TCP局部清理最集中；pselect允许dirty fd保活；Multicast的disarm、quarantine和W1/W2主流程交织最深。

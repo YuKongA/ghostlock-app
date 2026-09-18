@@ -293,8 +293,8 @@ static const struct execution_settings *execution_settings(void) {
 
 /* Decoupling plan: run the shared PI waiter and delegate route execution.
  * Input: currently implicit race/session state; output: completion/status.
- * Future: pi_race_waiter_worker(void *PiRaceWorkerArgs); route dispatch moves
- * to the stage controller. */
+ * CPP09: PiRace owns the lifecycle; this entry body and route dispatch move
+ * to the stage controller in CPP12. */
 void *waiter_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     const WriteRequest *request = race->request;
@@ -358,7 +358,7 @@ void *waiter_thread(void *arg) {
 }
 
 /* Decoupling plan: own the target and chain PI futexes. Input: PiRaceContext;
- * output: synchronization state. Future: pi_race_owner_worker(void *context). */
+ * output: synchronization state; lifecycle owned by PiRace (CPP09). */
 void *owner_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     disable_rseq_for_thread();
@@ -383,8 +383,8 @@ void *owner_thread(void *arg) {
 }
 
 /* Decoupling plan: trigger PI traversal from the consumer CPU. Inputs:
- * PiRaceContext, TargetProfile and RuntimeConfig; output: attempt counters.
- * Future: pi_race_consumer_worker(void *PiRaceWorkerArgs). */
+ * PiRaceContext, TargetProfile and RuntimeConfig; output: attempt counters;
+ * lifecycle owned by PiRace (CPP09). */
 void *consumer_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     disable_rseq_for_thread();
@@ -443,60 +443,28 @@ void *consumer_thread(void *arg) {
 }
 
 /* Decoupling plan: reset one PI race attempt. Input/output: PiRaceContext;
- * output: initialized synchronization state. Future: pi_race_reset(). */
+ * output: initialized synchronization state; lifecycle lives in PiRace::reset(). */
 void reset_main_route_state(void) {
     int fast_repair = atomic_load(&g_pi_race_context.fast_repair);
-    pi_race_reset(
-            &g_pi_race_context,
+    g_pi_race_context.reset(
             fast_repair ? 5000 : (int) execution_settings()->select_enter_delay_us,
             g_runtime_config.main_cpu, g_runtime_config.consumer_cpu);
     atomic_store(&g_pi_race_context.fast_repair, fast_repair);
 }
 
-static void pi_race_abort_startup(PiRaceContext *race) {
-    atomic_store(&race->consumer_stop, 1);
-    atomic_store(&race->owner_stop, 1);
-    if (race->owner_started_thread) pthread_join(race->owner_thread, NULL);
-    if (race->consumer_started) pthread_join(race->consumer_thread, NULL);
-    race->waiter_started = 0;
-    race->owner_started_thread = 0;
-    race->consumer_started = 0;
-    race->request = NULL;
-}
-
-int pi_race_start(PiRaceContext *race, const WriteRequest *request) {
-    race->request = request;
-    pr_info("[route] creating waiter/owner/consumer\n");
-    int error = pthread_create(
-            &race->consumer_thread, NULL, consumer_thread, race);
-    if (error) return error;
-    race->consumer_started = 1;
-    error = pthread_create(&race->owner_thread, NULL, owner_thread, race);
-    if (error) {
-        pi_race_abort_startup(race);
-        return error;
-    }
-    race->owner_started_thread = 1;
-    error = pthread_create(&race->waiter_thread, NULL, waiter_thread, race);
-    if (error) {
-        pi_race_abort_startup(race);
-        return error;
-    }
-    race->waiter_started = 1;
-    return 0;
-}
-
-int pi_race_run(PiRaceContext *race) {
-    while (!atomic_load(&race->waiter_waiting) ||
-            !atomic_load(&race->owner_started))
+/* Wait for the parked waiter/owner pair, trigger the PI requeue and return the
+ * route outcome once the waiter reported completion. The count/timeout policy
+ * lives in outcome_with_counters() and TODO(pi-timeout-01). */
+RouteStatus ghostlock::PiRace::run() noexcept {
+    while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
         usleep(execution_settings()->race_state_poll_interval_us);
     pr_info("[route] waiter parked; owner started\n");
-    usleep(atomic_load(&race->fast_repair)
+    usleep(atomic_load(&fast_repair)
             ? 5000
             : execution_settings()->race_setup_settle_us);
     errno = 0;
-    long rq = futex_op(&race->wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
-            &race->target_futex, 0);
+    long rq = futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
+            &target_futex, 0);
     pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
             rq, errno);
     /* TODO(pi-timeout-01): This wait has no deadline. A route that stalls in
@@ -504,40 +472,24 @@ int pi_race_run(PiRaceContext *race) {
      * backpressure) parks the process forever and the corrupted PI chain is
      * never disarmed. Bound the wait from TargetProfile.execution and map a
      * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
-    while (!atomic_load(&race->route_done))
+    while (!atomic_load(&route_done))
         usleep(execution_settings()->race_state_poll_interval_us);
-    RouteStatus status = race->route_status;
+    const RouteStatus status = route_status;
+    const int calls = atomic_load(&consumer_calls);
+    const int success = atomic_load(&consumer_success);
     pr_info("[route] route_done status=%d clean=%d/%d step=%d errno=%d "
             "calls=%d success=%d\n", status.code, status.userspace_clean,
             status.kernel_disarmed, status.step, status.error_number,
-            atomic_load(&race->consumer_calls),
-            atomic_load(&race->consumer_success));
-    return status.code == ROUTE_OK &&
-            atomic_load(&race->consumer_calls) > 0 &&
-            atomic_load(&race->consumer_success) > 0;
-}
-
-void pi_race_stop(PiRaceContext *race) {
-    atomic_store(&race->consumer_go, 0);
-    atomic_store(&race->consumer_stop, 1);
-    atomic_store(&race->owner_stop, 1);
-}
-
-void pi_race_destroy(PiRaceContext *race) {
-    if (race->waiter_started) pthread_join(race->waiter_thread, NULL);
-    if (race->owner_started_thread) pthread_join(race->owner_thread, NULL);
-    if (race->consumer_started) pthread_join(race->consumer_thread, NULL);
-    race->waiter_started = 0;
-    race->owner_started_thread = 0;
-    race->consumer_started = 0;
-    race->request = NULL;
-    pr_info("[route] threads joined\n");
+            calls, success);
+    return outcome_with_counters(status, calls, success);
 }
 
 /* Create, synchronize, stop and join one explicitly owned PI race. */
 int run_main_route_threads(const WriteRequest *request) {
     reset_main_route_state();
-    int error = pi_race_start(&g_pi_race_context, request);
+    pr_info("[route] creating waiter/owner/consumer\n");
+    int error = g_pi_race_context.start_threads(
+            waiter_thread, owner_thread, consumer_thread, request);
     if (error) {
         g_pi_race_context.route_status = (RouteStatus) {
                 .code = ROUTE_DIRTY_FAILURE,
@@ -547,10 +499,11 @@ int run_main_route_threads(const WriteRequest *request) {
         pr_warning("PI race thread creation failed errno=%d\n", error);
         return 0;
     }
-    int result = pi_race_run(&g_pi_race_context);
-    pi_race_stop(&g_pi_race_context);
-    pi_race_destroy(&g_pi_race_context);
-    return result;
+    RouteStatus status = g_pi_race_context.run();
+    g_pi_race_context.request_stop();
+    g_pi_race_context.join();
+    pr_info("[route] threads joined\n");
+    return status.code == ROUTE_OK;
 }
 
 /* A target outside the direct map is wrong by construction, so it is worth
