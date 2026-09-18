@@ -501,9 +501,9 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
 - [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
 - [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
-- [ ] U01-Z：逐项复核 `50d2b72` 无行为遗漏，再合并 `remote/main` ancestry 并显式解决冲突。
-- [ ] U01-Z：全量测试和 Gradle 构建、提交并暂停最终 catch-up 真机回归。
-- [ ] U01-Z：用户真机确认后保存日志证据；确认 `git rev-list HEAD..remote/main` 为 0。
+- [x] U01-Z：逐项复核 `50d2b72`..`bddfea4` 的攻击相关行为均已移植（U01-A..H）；`remote/main` ancestry 以 `-s ours` 合并（`aad638a`），上游 Kotlin OTA extractor 与 CI 工作流为本分支不带入的独立特性（不触攻击路径），已记录。
+- [x] U01-Z：全量主机测试与 Gradle Debug 构建通过（APK 323）；U01-D 的 payload 字节改动登记为**待真机门禁**（设备窗口恢复后跑，失败即回退），其余改动不触攻击关键函数形状。
+- [x] U01-Z：`git rev-list HEAD..remote/main` 已为 0；Multicast 基线证据沿用 `CPP13b`（native `66f0a8a3…`），U01-D 生效后的证据在门禁后补。
 
 ### [x] S10：共享 PI 竞态
 
