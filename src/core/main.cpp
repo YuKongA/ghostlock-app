@@ -14,11 +14,21 @@
 
 using namespace ghostlock;
 
-/* Decoupling plan: top-level lifecycle and W1/W2/W3 orchestration. Inputs:
- * argv/environment snapshot; output: stable process exit code. Future:
- * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
- * victim and cleanup responsibilities to their contexts. */
-int run_exploit(ExploitSession &session, const char *profile_path) {
+/* Decoupling plan: native executable adapter and W1/W2/W3 orchestration.
+ * Inputs: argc/argv plus the process-level session; output: stable exit code.
+ * Argument parsing stays here; the stage sequence only owns the session. */
+int main(int argc, char **argv) {
+    const char *profile_path = nullptr;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
+            profile_path = argv[++i];
+        } else {
+            pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
+            return 1;
+        }
+    }
+
+    ExploitSession &session = g_exploit_session;
     if (stages::run_setup_stage(profile_path) == stages::StageResult::Failed)
         return 1;
 
@@ -50,21 +60,4 @@ int run_exploit(ExploitSession &session, const char *profile_path) {
     return stages::run_handoff_stage(session, chain) ==
                     stages::StageResult::Failed
             ? 1 : 0;
-}
-
-/* Decoupling plan: native executable adapter. Inputs: argc/argv; output: stable
- * exit code. Future: remain a thin adapter around ExploitSession lifecycle. */
-/* Argument parsing stays in the adapter so the exploit entry only owns the
- * process-level session, the run and the exit code. */
-int main(int argc, char **argv) {
-    const char *profile_path = nullptr;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
-            profile_path = argv[++i];
-        } else {
-            pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
-            return 1;
-        }
-    }
-    return run_exploit(g_exploit_session, profile_path);
 }
