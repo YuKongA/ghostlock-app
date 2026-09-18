@@ -29,8 +29,13 @@ static const struct execution_settings *execution_settings(void) {
 }
 
 /* One process-level resident is retained across W1/W2. Its mutable state and
- * resources have one explicit owner; S14 will move that owner into session. */
+ * resources have one explicit owner behind this accessor; S14 will move that
+ * owner into session. The storage stays at file scope so every current
+ * inlined access expands exactly like the validated direct reference. */
 static MulticastWaiterRouteContext multicast_resident_context;
+static MulticastWaiterRouteContext &resident_context(void) {
+    return multicast_resident_context;
+}
 
 static void multicast_waiter_interrupt(int sig) {
     (void) sig;
@@ -118,7 +123,7 @@ static void *multicast_owner_worker(void *arg) {
 }
 
 int kernel5_resident_start(void) {
-    MulticastWaiterRouteContext *context = &multicast_resident_context;
+    MulticastWaiterRouteContext *context = &resident_context();
     if (context->ready) return 1;
     if (context->waiter_worker_started || context->owner_worker_started) {
         pr_warning("multicast resident remains partially armed; refusing restart\n");
@@ -180,7 +185,7 @@ int kernel5_resident_start(void) {
 }
 
 int kernel5_resident_write(uintptr_t target, uintptr_t value) {
-    MulticastWaiterRouteContext *context = &multicast_resident_context;
+    MulticastWaiterRouteContext *context = &resident_context();
     if (!context->ready) return 0;
     context->target = target;
     context->value = value;
@@ -220,7 +225,7 @@ static void multicast_waiter_destroy(MulticastWaiterRouteContext *context) {
 }
 
 void kernel5_resident_stop(void) {
-    MulticastWaiterRouteContext *context = &multicast_resident_context;
+    MulticastWaiterRouteContext *context = &resident_context();
     if (!context->ready) {
         if (context->waiter_worker_started || context->owner_worker_started) {
             context->status.code = ROUTE_DIRTY_FAILURE;

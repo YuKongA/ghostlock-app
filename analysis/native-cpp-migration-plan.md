@@ -324,6 +324,7 @@ struct RouteOutcome final {
 ### [ ] CPP13：Multicast Waiter 路线（最后迁移）
 
 - [ ] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome。
+- [x] 步骤 A（部分）：resident 访问器 `resident_context()` 就位（文件级存储 + 引用访问器，`route_operations.cpp`），与门禁版 `625d5300…` 逐字节一致；函数局部 static 的命名 owner 形式经构建对比会改变攻击关键函数 `do_one_write`（-38 指令），已按硬约束回退，正式 owner 迁移与 `SESSION-04` 一并走专门门禁（`multicast-route-class-plan.md`，2026-09-18）。
 - [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
 - [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。
 - [ ] resident 与 one-shot 共用纯编码逻辑，但生命周期控制保持独立方法。
