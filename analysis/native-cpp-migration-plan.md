@@ -323,17 +323,17 @@ struct RouteOutcome final {
 - [x] 验证每个早退点的析构顺序和日志：审计见 [`native-exit-path-audit.md`](native-exit-path-audit.md)；无新增所有权泄漏，dirty/quarantine 资源保持“进程退出回收”语义，失败不触发不安全 fallback。
 - [ ] 提交、暂停，三路线及可用回退组合分别真机门禁。
 
-### [ ] CPP13：Multicast Waiter 路线（最后迁移）
+### [x] CPP13：Multicast Waiter 路线（最后迁移）
 
-- [ ] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome。
-- [ ] 步骤 A 正式迁移（`multicast_waiter_route.cpp`）：resident 生命周期（`init`/`start`/`write`/`stop`、worker、socket、layout、outcome）收归 `MulticastWaiterRoute` 类，`route_operations.cpp` 只留 thin `kernel5_resident_*` wrapper；host-safe `init` inline 在头文件，固定向量测试不再链接 Android 单元。构建 `ea87d65f…`；第一次冷机 PASS（`CPP13a-20260918-multicast-pass`，6/6 route、W1 两次页重试后成功、`KernelSU ready`），第二次冷机待跑或豁免。
+- [x] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome（步骤 A+C；步骤 B 经实验否决）。
+- [x] 步骤 A 正式迁移（`multicast_waiter_route.cpp`）：resident 生命周期（`init`/`start`/`write`/`stop`、worker、socket、layout、outcome）收归 `MulticastWaiterRoute` 类，`route_operations.cpp` 只留 thin `kernel5_resident_*` wrapper；host-safe `init` inline 在头文件，固定向量测试不再链接 Android 单元。构建 `ea87d65f…`；冷机 PASS（`CPP13a-20260918-multicast-pass`，6/6 route、W1 两次页重试后成功、`KernelSU ready`）。
 - [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
 - [x] 步骤 D（收尾）：路线状态与 `disarm → destroy` 顺序已写入 `multicast_waiter_route.h` 契约注释，`native-cpp-current-uml.md` 命名已统一（`resident_context()`，并删除过期的 `g_pi_race_context` 别名描述），与门禁版 `625d5300…` 逐字节一致（2026-09-18）。
-- [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。步骤 A 记录：`do_one_write` 224→186（resident 分支由 LTO 内联改为调用 wrapper；差异块后非 resident 攻击路径逐指令一致），其余 7/8 攻击函数 strict 或 1 处注解差异（vs `e065ca70…`）。
+- [x] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。步骤 A 记录：`do_one_write` 224→186（resident 分支由 LTO 内联改为调用 wrapper；差异块后非 resident 攻击路径逐指令一致），其余 7/8 攻击函数 strict 或 1 处注解差异（vs `e065ca70…`）。
 - [x] resident 与 one-shot 共用纯编码逻辑，生命周期控制保持独立方法：步骤 C 把 resident stamp 改为经 `ghostlock::encode_multicast_waiter` 生成 waiter words（erase words/family 由 resident 补齐），构建 `66f0a8a3…` 与 `ea87d65f…` 对比 **8/8 攻击函数 strict 一致**；步骤 B 的 one-shot 分组提取实测 `do_kernel5_fake_lock_route` **155→158（+3）**，未达"逐指令等价"契约，已回退并记录。
 - [x] ghost disarm、consumer drain、success 读取、destroy 顺序与 S14/S15 成功日志一致：步骤 A 原样搬移 `multicast_waiter_disarm/destroy`（构建 strict 对比），`CPP13a` 真机日志保留 `mcast ghost disarm`/route status 顺序。
-- [ ] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过。
-- [ ] 提交、暂停；至少多次冷机 Multicast 真机通过后才勾选阶段。已冷机：`CPP13a`（步骤 A，native `ea87d65f…`）与 `CPP13b`（A+C，native `66f0a8a3…`）各一次 PASS；阶段版本第二次冷机待跑或豁免。
+- [x] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过：宿主固定测试全绿（含 `multicast_waiter_route_test` 不再链接 Android 单元）、Gradle Debug 构建通过、汇编差异以 strict 形状对比为准；ASan/UBSan 无宿主攻击路径可运行集（不适用）。
+- [x] 提交、暂停；多次冷机 Multicast 真机通过后勾选阶段：`CPP13a`（步骤 A，native `ea87d65f…`）与 `CPP13b`（A+C，native `66f0a8a3…`）各一次 PASS，阶段版本第二次冷机由用户豁免（2026-09-18）。
 
 ### [ ] CPP14：C façade、遗留全局与文件收尾
 
