@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP06 已提交；CPP01–CPP06 的 Multicast 真机门禁于 2026-09-17 合并通过（设备 APK 的 `libghostlock.so` SHA-256 与构建产物一致，证据见 `device-gates/CPP04-06-20260917-multicast-pass`）。CPP06 的 KernelSnitch 类化、resident 路径与线程创建失败注入仍待后续门禁。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP06 已提交；CPP01–CPP06 的 Multicast 真机门禁于 2026-09-17 合并通过（证据见 `device-gates/CPP04-06-20260917-multicast-pass`）。CPP02/CPP03/CPP06 收尾（util helper RAII、真实 fork 失败注入、`KernelSnitchOwner` 类化）已完成代码与主机/Gradle 验证，native SHA-256 由 `d634883…` 变为 `b6245955…`；收尾后的真机复测、resident 路径与 `utils.h` syscall helper 全量迁移仍待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -195,16 +195,17 @@ struct RouteOutcome final {
 ### [ ] CPP02：状态码、时间、字节和系统调用工具
 
 - [x] `route_status.h` 的 C++ 分支迁为强类型 `RouteCode/RouteOutcome`，保留 C 定义、旧名称、数值映射和 20-byte 布局 façade。
-- [ ] `runtime_time.h` 的计算已迁为 `std::chrono` 并保留 `timespec` syscall 边界；其余纯 util helper 尚待迁移。
-- [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno；其余 syscall wrapper 仍待逐个迁移。
+- [x] `runtime_time.h` 的计算已迁为 `std::chrono` 并保留 `timespec` syscall 边界；`ms_since()` 改为 const 委托，`read_first_line()` 改为 `UniqueFd` + 显式 errno 恢复的 RAII 实现。
+- [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno。
 - [x] 日志函数继续走现有低级实现，不引入 iostream。
-- [ ] 固定测试已覆盖状态布局/数值、fallback、时间换算和空 span；其余 syscall errno wrapper 迁移后再补齐对应错误测试。
+- [x] 固定测试覆盖状态布局/数值、fallback、时间换算（normalize 正/负溢出、相等 deadline、单调时钟）与空 span。
+- [ ] `utils.h` 剩余 syscall/进程 helper（`set_limit`、`write_file`、`set_user_namespace` 等）逐个迁移，并在迁移后补齐对应 errno 测试。
 - [x] `df901ec` 已提交；versionCode 185 Multicast 真机门禁通过并归档为 `CPP03-20260914-multicast-pass`。
 
-### [ ] CPP03：基础 RAII 资源库
+### [x] CPP03：基础 RAII 资源库
 
 - [x] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit` 和 trivially-copyable `BorrowedFd`。
-- [ ] `ChildProcess` 已覆盖 move、handoff、kill/wait、状态和重复清理；真实 `fork()` API 失败注入仍待补。
+- [x] `ChildProcess` 覆盖 move、handoff、kill/wait、状态和重复清理；新增 `RLIMIT_NPROC` 的真实 fork 失败注入，验证失败分支不产生受管 child。
 - [x] `PthreadOwner` 已实现 create、幂等 stop callback、join、detach、release、move 和非阻塞析构策略。
 - [x] 资源测试覆盖 `/proc/self/fd`（macOS 回退 `/dev/fd`）、mmap、线程及 child waitpid，并验证无重复 owner 清理。
 - [x] 本阶段只提供类型，不迁移攻击路线调用点。
@@ -234,13 +235,14 @@ struct RouteOutcome final {
 ### [ ] CPP06：FutexHash 与 KernelSnitch
 
 - [x] `FutexHashContext` 为无资源只读 value（单字段 + `static_assert`）；hash 函数接收显式 context。`futex_hash.h` 去除 Android-only 依赖并收敛 linkage（`static inline`），使 hash 结果可由主机固定向量锁定。
-- [ ] `KernelSnitch` 类唯一拥有 mmap、数组和 worker；容器在扫描前完成分配/`reserve()`。现状 `kernelsnitch_context_*` 已是唯一所有者但入口仍是 C 风格；类化会触碰碰撞搜索时序，登记为 CPP06 剩余项，待真机时序对比可用后实施。
-- [ ] 用 RAII 替代 init/find/scan/result/destroy 手工状态机，但保留显式阶段检查。同上，保留给真机门禁后。
+- [x] `KernelSnitch` 的唯一 owner 由 `ghostlock::KernelSnitchOwner` 表达：持有 mmap 上下文并释放全部用户态映射；`util.cpp` 的 init/find/scan/result/destroy 均经 owner，fork leak child 仅借用 `get()`，C 入口保持不变。
+- [x] 生命周期保留显式阶段检查（find → has → scan → result → reset），`destroy` 与 `result` 仍然分离；`reset()` 幂等且可在任意早退路径安全执行。
 - [x] `COMPAT-01` 四个零调用 util 适配入口已删除，未创建 C++ 版兼容包装。
 - [x] 新增 `futex_hash_test`：4 组 table/key/mm 固定向量、power-of-two 掩码一致性、非法表大小与空 context 拒绝；修复 `kernelsnitch_strings` 缺失 `COLLISIONS_NOT_FOUND` 造成的标签错位与 `MM_NOT_FOUND` 越界读。
-- [x] 验证 collision 与 destroy（合并门禁）：日志中 6 次 collision 与 mm_struct leak、6 次 spray 重建全部成功；canonical/tag sweep 由 leak 成功间接覆盖。部分线程创建失败注入仍未执行，保留在 `CPP06-KS-RAII` 登记项。
+- [x] 验证 collision 与 destroy（合并门禁）：日志中 6 次 collision 与 mm_struct leak、6 次 spray 重建全部成功；canonical/tag sweep 由 leak 成功间接覆盖。
 - [x] 提交并暂停（CPP06 部分提交）。
 - [x] 真机门禁：KernelSnitch 时序已归档（collision ≈2.0s、leak ≈40ms、六次 spray 全部成功）；`kernelsnitch_print_state` 零调用，标签输出不适用。
+- [ ] 收尾后真机复测：native 由 `d634883…` 变为 `b6245955…`（util helper RAII、fork 失败注入、`KernelSnitchOwner`），需与 CPP04-06 基线比较 collision/leak 时序；resident 路径与部分线程创建失败注入仍未覆盖。
 
 ### [ ] CPP07：Heap 与 PayloadPage 所有权
 
@@ -379,7 +381,7 @@ struct RouteOutcome final {
 | CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
 | CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
 | CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
-| CPP06-KS-RAII | KernelSnitch 仍是 C 风格生命周期入口，`kernelsnitch_print_state` 表为零调用调试代码 | 类化会触碰碰撞搜索时序，需要真机对比与冷机复测 | CPP06 剩余项（与 CPP04/CPP05 门禁合并后） | [ ] 代码项已定位，未实施 |
+| CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 收尾后需要真机时序对比与新哈希门禁 | CPP06 剩余项 | [x] 代码完成，真机复测待执行 |
 
 ## 10. 完成定义
 

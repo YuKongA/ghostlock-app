@@ -677,3 +677,77 @@ size_t kernelsnitch(size_t __mm_struct_sz, size_t __mm_slab_order)
 {
     return kernelsnitch_param(__mm_struct_sz, __mm_slab_order, sysconf(_SC_NPROCESSORS_ONLN)*2, 16, 0);
 }
+
+#ifdef __cplusplus
+
+#include <utility>
+
+namespace ghostlock {
+
+/* Owning RAII handle for one KernelSnitchContext. The mmap-backed shared
+ * layout and the C entry points above stay unchanged; this type only makes the
+ * single owner and the explicit init -> find -> scan -> result -> destroy order
+ * visible at the call site. destroy releases user-space mappings only, so the
+ * destructor is safe on every exit path, including a missed search. A forked
+ * leak child borrows the raw context through get() and must never reset it. */
+class KernelSnitchOwner final {
+ public:
+  KernelSnitchOwner() noexcept = default;
+  ~KernelSnitchOwner() noexcept { reset(); }
+
+  KernelSnitchOwner(const KernelSnitchOwner &) = delete;
+  KernelSnitchOwner &operator=(const KernelSnitchOwner &) = delete;
+
+  KernelSnitchOwner(KernelSnitchOwner &&other) noexcept
+      : context_(std::exchange(other.context_, nullptr)) {}
+
+  KernelSnitchOwner &operator=(KernelSnitchOwner &&other) noexcept {
+    if (this != &other) {
+      reset();
+      context_ = std::exchange(other.context_, nullptr);
+    }
+    return *this;
+  }
+
+  [[nodiscard]] static KernelSnitchOwner create(size_t mm_struct_sz,
+                                                size_t mm_slab_order,
+                                                size_t thread_cnt,
+                                                size_t collision_cnt,
+                                                size_t verbose) noexcept {
+    return KernelSnitchOwner(kernelsnitch_context_init(
+        mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose));
+  }
+
+  [[nodiscard]] KernelSnitchContext *get() const noexcept { return context_; }
+  [[nodiscard]] bool valid() const noexcept { return context_ != nullptr; }
+
+  void find_collisions() const {
+    kernelsnitch_context_find_collisions(context_);
+  }
+  [[nodiscard]] bool has_collisions() const {
+    return kernelsnitch_context_has_collisions(context_) != 0;
+  }
+  [[nodiscard]] int scan() const {
+    return kernelsnitch_context_scan(context_);
+  }
+  [[nodiscard]] size_t result() const {
+    return kernelsnitch_context_result(context_);
+  }
+
+  void reset() noexcept {
+    if (context_) {
+      kernelsnitch_context_destroy(context_);
+      context_ = nullptr;
+    }
+  }
+
+ private:
+  explicit KernelSnitchOwner(KernelSnitchContext *context) noexcept
+      : context_(context) {}
+
+  KernelSnitchContext *context_ = nullptr;
+};
+
+}  // namespace ghostlock
+
+#endif

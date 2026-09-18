@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -135,5 +136,30 @@ int main() {
   ghostlock::ChildProcess invalid_child(-1);
   assert(!invalid_child.valid());
   assert(invalid_child.release_to_handoff() == -1);
+
+  /* fork() failure injection: a failed fork must leave no owned child. The
+   * limit is best-effort, so a platform that still forks is also acceptable
+   * and the child is reaped. */
+  struct rlimit saved_limit {};
+  if (getrlimit(RLIMIT_NPROC, &saved_limit) == 0) {
+    struct rlimit exhausted = saved_limit;
+    exhausted.rlim_cur = 0;
+    if (setrlimit(RLIMIT_NPROC, &exhausted) == 0) {
+      errno = 0;
+      const pid_t failed = fork();
+      if (failed == 0) _exit(0);
+      if (failed > 0) {
+        kill(failed, SIGKILL);
+        waitpid(failed, nullptr, 0);
+      } else {
+        assert(errno == EAGAIN || errno == ENOMEM);
+        ghostlock::ChildProcess none(failed);
+        assert(!none.valid());
+        assert(none.state() == ghostlock::ChildProcess::State::Empty);
+        assert(none.terminate_and_wait(SIGKILL) == EINVAL);
+      }
+      (void)setrlimit(RLIMIT_NPROC, &saved_limit);
+    }
+  }
   return 0;
 }
