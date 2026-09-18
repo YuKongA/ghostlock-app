@@ -158,10 +158,6 @@ int activate_prebuilt_page(void);
 
 void discard_prebuilt_page(void);
 
-void close_ctx_memfds(struct mm_ctx *ctx);
-
-void free_ctx_storage(struct mm_ctx *ctx);
-
 void cleanup_page_prepare_state(void);
 
 int clone_memfd(void);

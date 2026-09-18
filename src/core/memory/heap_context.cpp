@@ -65,17 +65,31 @@ bool PayloadPage::move_to(PayloadPage &destination,
     return true;
 }
 
+void close_ctx_memfds(ghostlock::MmContextSet *ctx) {
+    for (size_t i = 0; i < ctx->memfds.size(); i++) {
+        if (ctx->memfds[i] > 0) {
+            close(ctx->memfds[i]);
+            ctx->memfds[i] = -1;
+        }
+    }
+}
+
+void free_ctx_storage(ghostlock::MmContextSet *ctx) {
+    std::vector<pid_t>().swap(ctx->childs);
+    std::vector<int>().swap(ctx->memfds);
+}
+
 void heap_context_init(HeapContext *context) {
     if (!context) return;
     context->snitch = nullptr;
     context->mm_objs_per_slab = 0;
-    context->skb_buffer = nullptr;
-    context->prepare = mm_ctx{};
-    context->spray = mm_ctx{};
-    context->pre = mm_ctx{};
-    context->post = mm_ctx{};
+    context->skb_buffer.reset();
+    context->prepare = ghostlock::MmContextSet{};
+    context->spray = ghostlock::MmContextSet{};
+    context->pre = ghostlock::MmContextSet{};
+    context->post = ghostlock::MmContextSet{};
     context->leak_child = 0;
-    context->leak_memfd = -1;
+    context->leak_memfd.reset();
     context->current.destroy();
     context->prebuilt.destroy();
     context->quarantine.destroy();

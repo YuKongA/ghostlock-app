@@ -84,10 +84,91 @@ static void test_page_is_move_only_and_released_explicitly(void) {
   assert(moved.state == PAYLOAD_PAGE_EMPTY);
 }
 
+static void test_mm_set_releases_descriptors_explicitly(void) {
+  ghostlock::MmContextSet set;
+  int owned[4];
+  assert(pipe(owned) == 0);
+  assert(pipe(owned + 2) == 0);
+
+  set.childs.assign(2, 0);
+  set.memfds.assign(2, -1);
+  assert(set.childs.size() == 2);
+  assert(set.memfds.size() == 2);
+  set.childs[0] = 1234;
+  set.memfds[0] = owned[0];
+  set.memfds[1] = owned[2];
+
+  close_ctx_memfds(&set);
+  assert(set.memfds[0] == -1);
+  assert(set.memfds[1] == -1);
+  errno = 0;
+  assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
+  errno = 0;
+  assert(fcntl(owned[2], F_GETFD) == -1 && errno == EBADF);
+
+  free_ctx_storage(&set);
+  assert(set.childs.empty());
+  assert(set.memfds.empty());
+  /* Repeated cleanup and destroy are idempotent. */
+  close_ctx_memfds(&set);
+  free_ctx_storage(&set);
+  assert(set.childs.empty());
+
+  /* Scope exit alone only frees storage: no descriptor is closed and no pid
+   * is signalled, so a forked helper that calls exit() cannot release the
+   * parent's children. */
+  int survivor[2];
+  assert(pipe(survivor) == 0);
+  {
+    ghostlock::MmContextSet scoped;
+    scoped.memfds.assign(1, survivor[0]);
+    scoped.childs.assign(1, 4321);
+  }
+  assert(fcntl(survivor[0], F_GETFD) >= 0);
+  close(survivor[0]);
+  close(survivor[1]);
+
+  set.memfds.assign(1, owned[1]);
+  ghostlock::MmContextSet moved(std::move(set));
+  assert(moved.memfds.size() == 1 && moved.memfds[0] == owned[1]);
+  close(moved.memfds[0]);
+}
+
+static void test_heap_context_init_releases_attempt_state(void) {
+  HeapContext context;
+  heap_context_init(&context);
+  assert(context.skb_buffer == nullptr);
+  assert(!context.leak_memfd.valid());
+  assert(context.prepare.childs.empty());
+  assert(context.prepare.memfds.empty());
+
+  int owned[2];
+  assert(pipe(owned) == 0);
+  context.skb_buffer = std::make_unique<unsigned char[]>(16);
+  context.leak_memfd.reset(owned[0]);
+  context.prepare.memfds.assign(1, owned[1]);
+
+  heap_context_init(&context);
+  assert(context.skb_buffer == nullptr);
+  assert(!context.leak_memfd.valid());
+  assert(context.prepare.memfds.empty());
+  errno = 0;
+  assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
+  /* The mm set only drops storage; a memfd recorded there is never closed
+   * implicitly because the kernel may still reference it. */
+  assert(fcntl(owned[1], F_GETFD) >= 0);
+  context.prepare.memfds.assign(1, owned[1]);
+  close_ctx_memfds(&context.prepare);
+  errno = 0;
+  assert(fcntl(owned[1], F_GETFD) == -1 && errno == EBADF);
+}
+
 int main(void) {
   test_move_preserves_page_as_one_owner();
   test_move_rejects_partial_or_occupied_ownership();
   test_page_is_move_only_and_released_explicitly();
+  test_mm_set_releases_descriptors_explicitly();
+  test_heap_context_init_releases_attempt_state();
   puts("heap_context_test: ok");
   return 0;
 }

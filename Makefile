@@ -126,9 +126,9 @@ $(HOST_BUILD_DIR)/payload_builder_test: src/core/tests/payload_builder_test.cpp 
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp -o $@
 
-$(HOST_BUILD_DIR)/heap_context_test: src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/memory/heap_context.h
+$(HOST_BUILD_DIR)/heap_context_test: src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/memory/heap_context.h src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: src/core/tests/kernelsnitch_scan_bounds_test.cpp src/core/kernelsnitch/scan_bounds.h
 	@mkdir -p $(HOST_BUILD_DIR)

