@@ -10,6 +10,8 @@ import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionFieldValue
+import com.ghostlock.app.domain.model.ExecutionProfile
 import com.ghostlock.app.domain.model.KernelOffsets
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
@@ -110,6 +112,114 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 putBoolean("shizuku_explicit", true)
             }
         if (enabled) shizukuRunner.requestPermission()
+    }
+
+    /* profile-ui: sparse per-release execution overrides live in the same
+     * offsets.json the resolver already merges, so ProfileConfiguration keeps
+     * a single merge path (defaults < builtin < user override). */
+    override suspend fun executionProfile(release: String, pair: CpuPair): ExecutionProfile {
+        val resolved = try {
+            JSONTokener(
+                ProfileConfiguration.resolve(appContext, offsetsFile, release, pair),
+            ).nextValue() as? JSONObject
+        } catch (_: Exception) {
+            null
+        }
+        if (resolved == null) {
+            return ExecutionProfile(
+                release = release,
+                hasProfile = false,
+                recommendedMainCpu = 0,
+                recommendedConsumerCpu = 1,
+                fields = emptyList(),
+            )
+        }
+        val execution = resolved.optJSONObject("execution")
+        val overrides = readExecutionOverride(release)
+        val recommended = execution?.optJSONObject("recommended_cpus")
+        val fields = ExecutionProfile.EditableFields.map { path ->
+            val local = path.removePrefix("execution.")
+            ExecutionFieldValue(
+                path = path,
+                value = execution?.let { jsonPathGet(it, local) } ?: 0L,
+                overridden = overrides?.let { jsonPathGet(it, local) } != null,
+            )
+        }
+        return ExecutionProfile(
+            release = release,
+            hasProfile = true,
+            recommendedMainCpu = recommended?.optInt("main", 0) ?: 0,
+            recommendedConsumerCpu = recommended?.optInt("consumer", 1) ?: 1,
+            fields = fields,
+        )
+    }
+
+    override suspend fun saveExecutionOverrides(
+        release: String,
+        values: Map<String, Long>,
+    ): Boolean = try {
+        val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
+        var entry = findReleaseEntry(existing, release)
+        if (entry == null) {
+            entry = JSONObject().put("release", release)
+            existing.put(entry)
+        }
+        val execution = entry.optJSONObject("execution")
+            ?: JSONObject().also { entry.put("execution", it) }
+        for ((path, value) in values) {
+            jsonPathSet(execution, path.removePrefix("execution."), value)
+        }
+        offsetsFile.writeText(existing.toString(2), StandardCharsets.UTF_8)
+        true
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
+
+    override suspend fun clearExecutionOverrides(release: String): Boolean = try {
+        val existing = readOffsetsFile(offsetsFile) ?: return true
+        val entry = findReleaseEntry(existing, release) ?: return true
+        entry.remove("execution")
+        val kept = JSONArray()
+        for (index in 0 until existing.length()) {
+            val candidate = existing.optJSONObject(index) ?: continue
+            if (candidate.optString("release") != release || candidate.length() > 1) {
+                kept.put(candidate)
+            }
+        }
+        offsetsFile.writeText(kept.toString(2), StandardCharsets.UTF_8)
+        true
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun findReleaseEntry(entries: JSONArray, release: String): JSONObject? =
+        (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }
+            .firstOrNull { it.optString("release") == release }
+
+    private fun readExecutionOverride(release: String): JSONObject? =
+        (readOffsetsFile(offsetsFile) ?: return null).let { findReleaseEntry(it, release) }
+            ?.optJSONObject("execution")
+
+    private fun jsonPathGet(root: JSONObject, path: String): Long? {
+        var node: Any? = root
+        for (segment in path.split('.')) {
+            node = (node as? JSONObject)?.opt(segment) ?: return null
+        }
+        return (node as? Number)?.toLong()
+    }
+
+    private fun jsonPathSet(root: JSONObject, path: String, value: Long) {
+        val segments = path.split('.')
+        var node = root
+        for (index in 0 until segments.size - 1) {
+            val next = node.optJSONObject(segments[index])
+            node = next ?: JSONObject().also { node.put(segments[index], it) }
+        }
+        node.put(segments.last(), value)
     }
 
     override suspend fun exportCandidates(): List<OffsetCandidate> {

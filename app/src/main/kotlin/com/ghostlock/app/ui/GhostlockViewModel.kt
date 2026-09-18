@@ -77,7 +77,80 @@ class GhostlockViewModel(
         if (initialized) viewModelScope.launch { refreshSnapshot() }
     }
 
-    fun toggleAdvanced() = mutableState.update { it.copy(advancedVisible = !it.advancedVisible) }
+    fun toggleAdvanced() {
+        val visible = !mutableState.value.advancedVisible
+        mutableState.update { it.copy(advancedVisible = visible) }
+        if (visible) loadExecutionProfile()
+    }
+
+    /* profile-ui: resolved execution view + sparse per-release overrides. */
+    fun loadExecutionProfile() {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val profile = repository.executionProfile(snapshot.kernelRelease, pair)
+            mutableState.update {
+                it.copy(
+                    executionRelease = profile.release,
+                    executionHasProfile = profile.hasProfile,
+                    executionHasOverrides = profile.fields.any { field -> field.overridden },
+                    executionFields = profile.fields,
+                    executionEditing = profile.fields.associate { field -> field.path to field.value.toString() },
+                    executionRecommendedMain = profile.recommendedMainCpu,
+                    executionRecommendedConsumer = profile.recommendedConsumerCpu,
+                    executionDirty = false,
+                )
+            }
+        }
+    }
+
+    fun updateExecutionField(path: String, value: String) {
+        mutableState.update {
+            it.copy(
+                executionEditing = it.executionEditing + (path to value),
+                executionDirty = true,
+            )
+        }
+    }
+
+    fun saveExecutionOverrides() {
+        val snapshot = kernelSnapshot ?: return
+        val editing = mutableState.value.executionEditing
+        val values = editing.mapNotNull { (path, text) ->
+            text.trim().toLongOrNull()?.takeIf { value -> value >= 0 }?.let { path to it }
+        }.toMap()
+        viewModelScope.launch {
+            val ok = repository.saveExecutionOverrides(snapshot.kernelRelease, values)
+            if (ok) loadExecutionProfile()
+            send(GhostlockEffect.Toast(if (ok) R.string.execution_saved else R.string.execution_save_failed))
+        }
+    }
+
+    fun resetExecutionOverrides() {
+        val snapshot = kernelSnapshot ?: return
+        viewModelScope.launch {
+            val ok = repository.clearExecutionOverrides(snapshot.kernelRelease)
+            if (ok) loadExecutionProfile()
+            send(GhostlockEffect.Toast(if (ok) R.string.execution_reset_done else R.string.execution_save_failed))
+        }
+    }
+
+    fun applyRecommendedCores() {
+        val snapshot = kernelSnapshot ?: return
+        val state = mutableState.value
+        val index = snapshot.cpuPairs.indexOfFirst {
+            it.primary == state.executionRecommendedMain &&
+                it.consumer == state.executionRecommendedConsumer
+        }
+        viewModelScope.launch {
+            if (index >= 0) {
+                selectCpuPair(index)
+                send(GhostlockEffect.Toast(R.string.execution_cores_applied))
+            } else {
+                send(GhostlockEffect.Toast(R.string.execution_cores_unavailable))
+            }
+        }
+    }
 
     fun selectCpuPair(index: Int) {
         val snapshot = kernelSnapshot ?: return

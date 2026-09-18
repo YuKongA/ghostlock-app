@@ -61,4 +61,23 @@
     <string name="shizuku_summary_on">Shell uid, no seccomp</string>
     <string name="shizuku_status_not_running">Start Shizuku, then return here</string>
     <string name="shizuku_status_permission_required">Grant Shizuku access when asked</string>
+    <string name="execution_source_defaults">Profile %1$s · built-in defaults</string>
+    <string name="execution_source_overridden">Profile %1$s · user overrides</string>
+    <string name="execution_apply_cores">Use recommended cores %1$d / %2$d</string>
+    <string name="execution_save">Save overrides</string>
+    <string name="execution_reset">Clear overrides</string>
+    <string name="execution_saved">Execution overrides saved</string>
+    <string name="execution_save_failed">Could not save execution overrides</string>
+    <string name="execution_reset_done">Execution overrides cleared</string>
+    <string name="execution_cores_applied">Recommended cores selected</string>
+    <string name="execution_cores_unavailable">Recommended cores unavailable</string>
+    <string name="execution_field_w1_attempts">W1 attempts</string>
+    <string name="execution_field_w2_attempts">W2 attempts</string>
+    <string name="execution_field_w3_attempts">W3 attempts</string>
+    <string name="execution_field_w3_chain_rounds">W3 chain rounds</string>
+    <string name="execution_field_route_wait">Route wait (ms)</string>
+    <string name="execution_field_heap_attempts">Heap prepare attempts</string>
+    <string name="execution_field_select_enter">Select enter delay (us)</string>
+    <string name="execution_field_select_timeout">Select timeout (us)</string>
+    <string name="execution_field_generic">Value</string>
 </resources>

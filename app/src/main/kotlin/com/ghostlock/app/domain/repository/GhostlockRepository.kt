@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.repository
 
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionProfile
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
@@ -33,6 +34,12 @@ interface GhostlockRepository {
     suspend fun cacheDocument(uri: String, fileName: String): String
 
     suspend fun publishOffsets(candidate: OffsetCandidate): String
+
+    suspend fun executionProfile(release: String, pair: CpuPair): ExecutionProfile
+
+    suspend fun saveExecutionOverrides(release: String, values: Map<String, Long>): Boolean
+
+    suspend fun clearExecutionOverrides(release: String): Boolean
 
     suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int
 

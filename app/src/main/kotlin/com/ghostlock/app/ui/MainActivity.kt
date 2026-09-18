@@ -140,6 +140,11 @@ private fun GhostlockRoute(
             override fun onDialogDismissFinished() = viewModel.onDialogDismissFinished()
             override fun onOverwriteConfirm() = viewModel.onOverwriteConfirm()
             override fun onOverwriteDismiss() = viewModel.onOverwriteDismiss()
+            override fun onExecutionFieldChanged(path: String, value: String) =
+                viewModel.updateExecutionField(path, value)
+            override fun onSaveExecution() = viewModel.saveExecutionOverrides()
+            override fun onResetExecution() = viewModel.resetExecutionOverrides()
+            override fun onApplyRecommendedCores() = viewModel.applyRecommendedCores()
         },
     )
 }

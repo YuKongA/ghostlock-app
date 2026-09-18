@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.model.ExecutionFieldValue
 import com.ghostlock.app.domain.model.ShizukuStatus
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -122,6 +123,14 @@ data class GhostlockUiState(
     val overwriteDialogVisible: Boolean = false,
     val overwriteMessage: String = "",
     val logLines: List<GhostlockLogLine> = emptyList(),
+    val executionRelease: String = "",
+    val executionHasProfile: Boolean = false,
+    val executionHasOverrides: Boolean = false,
+    val executionFields: List<ExecutionFieldValue> = emptyList(),
+    val executionEditing: Map<String, String> = emptyMap(),
+    val executionRecommendedMain: Int = 0,
+    val executionRecommendedConsumer: Int = 1,
+    val executionDirty: Boolean = false,
 )
 
 enum class DialogType { NONE, LIST, INPUT }
@@ -148,6 +157,10 @@ interface GhostlockActions {
     fun onDialogDismissFinished()
     fun onOverwriteConfirm()
     fun onOverwriteDismiss()
+    fun onExecutionFieldChanged(path: String, value: String)
+    fun onSaveExecution()
+    fun onResetExecution()
+    fun onApplyRecommendedCores()
 }
 
 @Composable
@@ -762,7 +775,76 @@ private fun AdvancedOptions(
                 onClick = actions::onExportOffsets,
             )
         }
+        if (state.executionHasProfile) {
+            ExecutionEditor(state = state, actions = actions)
+        }
     }
+}
+
+/* profile-ui: resolved execution view, recommended-core shortcut and sparse
+ * per-release override editing. Export/import previews and schema migration
+ * stay on the TODO(profile-ui) list. */
+@Composable
+private fun ExecutionEditor(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    Column(modifier = Modifier.padding(top = 12.dp)) {
+        Text(
+            text = stringResource(
+                if (state.executionHasOverrides) R.string.execution_source_overridden
+                else R.string.execution_source_defaults,
+                state.executionRelease,
+            ),
+            fontSize = 13.sp,
+        )
+        AdvancedAction(
+            text = stringResource(
+                R.string.execution_apply_cores,
+                state.executionRecommendedMain,
+                state.executionRecommendedConsumer,
+            ),
+            onClick = actions::onApplyRecommendedCores,
+        )
+        for (field in state.executionFields) {
+            TextField(
+                value = state.executionEditing[field.path] ?: field.value.toString(),
+                onValueChange = { value -> actions.onExecutionFieldChanged(field.path, value) },
+                label = stringResource(executionFieldLabel(field.path)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                singleLine = true,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            TextButton(
+                text = stringResource(R.string.execution_save),
+                onClick = actions::onSaveExecution,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            TextButton(
+                text = stringResource(R.string.execution_reset),
+                onClick = actions::onResetExecution,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+    }
+}
+
+private fun executionFieldLabel(path: String): Int = when (path) {
+    "execution.stages.w1_attempts" -> R.string.execution_field_w1_attempts
+    "execution.stages.w2_attempts" -> R.string.execution_field_w2_attempts
+    "execution.stages.w3_attempts" -> R.string.execution_field_w3_attempts
+    "execution.stages.w3_chain_rounds" -> R.string.execution_field_w3_chain_rounds
+    "execution.race.route_wait_ms" -> R.string.execution_field_route_wait
+    "execution.heap.prepare_max_attempts" -> R.string.execution_field_heap_attempts
+    "execution.routes.select_stack.enter_delay_us" -> R.string.execution_field_select_enter
+    "execution.routes.select_stack.timeout_us" -> R.string.execution_field_select_timeout
+    else -> R.string.execution_field_generic
 }
 
 @Composable

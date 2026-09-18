@@ -61,4 +61,23 @@
     <string name="shizuku_summary_on">shell uid，无 seccomp</string>
     <string name="shizuku_status_not_running">请先启动 Shizuku，再回到本应用</string>
     <string name="shizuku_status_permission_required">请在弹窗中授予 Shizuku 权限</string>
+    <string name="execution_source_defaults">配置 %1$s · 内置默认值</string>
+    <string name="execution_source_overridden">配置 %1$s · 用户覆盖</string>
+    <string name="execution_apply_cores">应用推荐核心 %1$d / %2$d</string>
+    <string name="execution_save">保存覆盖</string>
+    <string name="execution_reset">清除覆盖</string>
+    <string name="execution_saved">执行参数覆盖已保存</string>
+    <string name="execution_save_failed">无法保存执行参数覆盖</string>
+    <string name="execution_reset_done">执行参数覆盖已清除</string>
+    <string name="execution_cores_applied">已选择推荐核心</string>
+    <string name="execution_cores_unavailable">推荐核心不可用</string>
+    <string name="execution_field_w1_attempts">W1 尝试次数</string>
+    <string name="execution_field_w2_attempts">W2 尝试次数</string>
+    <string name="execution_field_w3_attempts">W3 尝试次数</string>
+    <string name="execution_field_w3_chain_rounds">W3 链轮数</string>
+    <string name="execution_field_route_wait">路由等待（毫秒）</string>
+    <string name="execution_field_heap_attempts">堆准备尝试次数</string>
+    <string name="execution_field_select_enter">select 进入延迟（微秒）</string>
+    <string name="execution_field_select_timeout">select 超时（微秒）</string>
+    <string name="execution_field_generic">值</string>
 </resources>
