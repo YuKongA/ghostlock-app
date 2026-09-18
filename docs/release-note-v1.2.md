@@ -46,6 +46,16 @@ Native 攻击链从 C 完整重写为 C++20（RAII / 命名空间 / 分层），
 > 上游为 LTO 单模块，`do_kernel5`/`do_pselect`/`run_main_route_threads`/multicast workers 被内联，
 > 故上游侧只列可比独立符号。
 
+## 构建与依赖
+
+- **单 `.so`、无 C++ 运行时依赖**：Android 不提供公共 C++ 标准库（`/system/lib64/libc++.so` 是 AOSP
+  私有实现、受命名空间隔离，NDK 应用不可依赖），因此 Native 采用 NDK 默认的静态 libc++；
+  `libghostlock.so` 的 `NEEDED` 仅 `libm.so` / `libdl.so` / `libc.so`。
+- **打包 strip**：静态 libc++ 会带 ~800 KB DWARF 与 ~100 KB 符号表；打包时仅对 APK 内副本执行
+  `llvm-strip --strip-all`（`build.gradle.kts` 的 `prepareGhostlockJniLibs`），源码构建产物保留符号
+  供反汇编对比。strip 前后 `.text` 段逐字节相同（`c59460bf…`）。
+- 体积：`libghostlock.so` 1.14 MB → **225 KB**；Release APK **2.35 MiB**。
+
 ## 相对上游 `main` 的结构变化
 
 - `src/kernels/**/offsets.h`（C 注册表，48 个）由 `app/src/main/assets/kernel_profiles/` JSON profile 取代
@@ -59,6 +69,7 @@ Native 攻击链从 C 完整重写为 C++20（RAII / 命名空间 / 分层），
 - URL OTA 路径尚无真机记录（本地文件路径长期使用）
 - `KERNEL-PANIC-01`：Multicast 攻击存在间歇性内核崩溃，跨多个构建、同构建可出现 PASS/panic/PASS，
   判定为环境/时序而非布局/代码因果；门禁需 KernelSU 未加载的干净启动
+- 当前构建 `0109d5a8` 的 Multicast 真机门禁待执行；攻击 8 函数与该门禁构建 `e13ed9dd` 逐指令形状一致
 
 ## 升级说明
 
