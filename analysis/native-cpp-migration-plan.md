@@ -267,7 +267,8 @@ struct RouteOutcome final {
 - [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
 - [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `analysis/upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
-- [ ] 两种入口真机门禁：Direct 首轮失败已定位——`std::string` 路径在 fork+exec 边界被内核拒绝（`open`/`execl` 均 EFAULT errno=14），修复为 exec 前复制到栈缓冲（`8bfcffd`，native `acc14530…`），证据 `CPP08-20260917-direct-kernelsu-pending`。待 Direct 复测与 Shizuku 入口验证。
+- [x] Direct 入口门禁通过（206）：handoff 诊断 `script open fd=3 errno=0`，root script 执行、`KernelSU ready`，6/6 route clean、无 prepare 重试，证据 `CPP08-20260917-direct-pass`。首轮 EFAULT 失败与修复见 `CPP08-20260917-direct-kernelsu-pending`。
+- [ ] Shizuku 入口门禁：首测被 `GhostlockUserService` 的 `requires_shizuku` 硬门槛拒绝（`CPP08-20260917-shizuku-gate-fail`），已按建议值语义改为信息日志，待 209 复测。
 
 ### [ ] CPP09：PI Race 并发生命周期
 

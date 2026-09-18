@@ -39,8 +39,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 require(resolvedProfile.optString("release") == release) {
                     "profile release mismatch: ${resolvedProfile.optString("release")}"
                 }
-                require(resolvedProfile.optInt("requires_shizuku") == 1) {
-                    "kernel does not require Shizuku: $release"
+                // TODO(profile-suggest-01): requires_shizuku is a suggestion.
+                // Reaching this shell-side service means the app already chose
+                // the Shizuku path, so the flag is logged, never a gate.
+                if (resolvedProfile.optInt("requires_shizuku") != 1) {
+                    callback.onLog("[*] kernel does not require Shizuku; running on user request")
                 }
 
                 val binary = File(context.applicationInfo.nativeLibraryDir, "libghostlock.so")
