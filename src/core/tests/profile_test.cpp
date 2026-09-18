@@ -17,6 +17,7 @@ int main(void) {
       .mcast_lock_slot_stride = 64,
       .off_mcast_fake_bss = 0x123400,
       .compact_waiter = 1,
+      .mm_struct_sz = 0x580,
       .execution = {
           .recommended_main_cpu = 2,
           .recommended_consumer_cpu = 3,
@@ -40,8 +41,20 @@ int main(void) {
       multicast.buffer_size != 128 || multicast.waiter_offset != 32 ||
       multicast.lock_slot_count != 4 || select.waiter_shift != 16 ||
       !select.compact_waiter || !tcp.compact_waiter ||
-      !execution || execution->heap_prepare_max_attempts != 7) {
+      !execution || execution->heap_prepare_max_attempts != 7 ||
+      target_profile_mm_struct_sz(&profile, 0x500) != 0x580) {
     fputs("target profile snapshot/accessor test failed\n", stderr);
+    return 1;
+  }
+
+  /* A zero profile field and an unloaded profile both use the fallback. */
+  decoded.mm_struct_sz = 0;
+  TargetProfile zero_stride = target_profile_snapshot(&decoded);
+  TargetProfile unloaded{};
+  if (target_profile_mm_struct_sz(&zero_stride, 0x500) != 0x500 ||
+      target_profile_mm_struct_sz(&unloaded, 0x500) != 0x500 ||
+      target_profile_mm_struct_sz(nullptr, 0x500) != 0x500) {
+    fputs("target profile mm_struct stride fallback test failed\n", stderr);
     return 1;
   }
   puts("target profile snapshot/accessor test passed");

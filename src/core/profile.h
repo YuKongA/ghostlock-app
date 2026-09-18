@@ -246,6 +246,14 @@ static inline uint32_t target_profile_u32(
   return target_profile_is_loaded(profile) && value ? value : fallback;
 }
 
+/* mm_struct stride; a missing or zero profile field uses the fallback. */
+static inline uint32_t target_profile_mm_struct_sz(
+    const TargetProfile *profile, uint32_t fallback) {
+  const struct kernel_offsets *values = target_profile_values(profile);
+  return target_profile_u32(profile, values ? values->mm_struct_sz : 0,
+                            fallback);
+}
+
 static inline uint64_t target_profile_image(
     const TargetProfile *profile, uint64_t offset, uint64_t image_base,
     uint64_t fallback_offset) {

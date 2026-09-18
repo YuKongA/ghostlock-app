@@ -51,14 +51,8 @@
 #define SKB_DATA_DELTA (-0xe80LL)
 #define MM_STRUCT_SZ 0x500
 
-/* mm_struct stride; 0 uses MM_STRUCT_SZ above. */
-#define mm_struct_sz() _RSO(mm_struct_sz, MM_STRUCT_SZ)
-
 #define MM_ORDER 3
 #define MM_PARTIALS 5
-/* CPU mirrors are gone (CPP12/SESSION-03): the session snapshot is the only
- * authority, and this macro resolves straight to the live config value. */
-#define CORE (runtime_config_snapshot().main_cpu)
 #define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
