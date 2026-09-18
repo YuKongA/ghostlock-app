@@ -291,8 +291,6 @@ flowchart TB
     S_scan["kernelsnitch_context_scan"]
     S_result["kernelsnitch_context_result"]
     S_cleanup["kernelsnitch_context_destroy"]
-    S_param["kernelsnitch_param"]
-    S_default["kernelsnitch"]
 
     S_do --> S_futex
     S_inc --> S_futex
@@ -309,12 +307,6 @@ flowchart TB
     S_pass --> S_verify
     S_find --> S_pass
     S_scan --> S_leakpass
-    S_param --> S_init
-    S_param --> S_find
-    S_param --> S_scan
-    S_param --> S_result
-    S_param --> S_cleanup
-    S_default --> S_param
   end
 
   subgraph HASH["src/core/kernelsnitch/futex_hash.h"]

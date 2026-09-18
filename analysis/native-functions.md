@@ -198,8 +198,8 @@
 | `kernelsnitch_context_scan()` | 使用显式 hash context 扫描 `mm_struct` 候选 |
 | `kernelsnitch_context_result()` | 在 destroy 前只读取得泄露地址 |
 | `kernelsnitch_context_destroy()` | 释放上下文拥有的映射和数组，不隐式返回结果 |
-| `kernelsnitch_param()` | 带全部参数的主执行入口 |
-| `kernelsnitch()` | 使用默认参数的兼容入口 |
+
+零调用兼容入口 `kernelsnitch_param()`/`kernelsnitch()` 已在 CPP12 宏清理中删除（`e9b8151`）。
 
 ### `futex_hash.h`
 

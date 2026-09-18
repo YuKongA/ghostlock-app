@@ -31,14 +31,14 @@ flowchart LR
 | `g_resolved_addresses` | `util.c` | `p0_data_alias()`、`data_addr()`、地址日志 | `publish_active_offsets()` | S06新增的权威地址快照，发布后只读 | `ExploitSession.addresses` |
 | `p0_kernel_phys_load` | `util.c` | 旧日志与地址宏 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.kernel_phys_load` | S08删除镜像消费者 |
 | `g_init_cred_image` | `util.c` | payload/W2和5.x修复 | `publish_active_offsets()` | S06起仅镜像 `g_resolved_addresses.init_cred_image` | S08删除镜像消费者 |
-| `g_core_main` / `g_core_consumer` | 已删除（CPP12/`SESSION-03`） | — | — | 曾经的 `runtime_config` 兼容镜像；`CORE` 宏现直接解析 `g_runtime_config.main_cpu`，零调用的 `CONSUMER_CORE` 一并删除 | — |
-| `g_runtime_config` | 引用别名已删除（CPP12/`SESSION-01`） | `main`、TCP选路与 `CORE` 宏 | `runtime_config_init()` | 进程快照仍由 session 唯一拥有；调用点改经 `runtime_config_snapshot()` 访问，零调用 `init_cpu_config` 一并删除 | — |
+| `g_core_main` / `g_core_consumer` | 已删除（CPP12/`SESSION-03`） | — | — | 曾经的 `runtime_config` 兼容镜像；`CORE` 宏随后也已删除（CPP12/`CPP12j`），调用点改为 `runtime_config_snapshot().main_cpu` | — |
+| `g_runtime_config` | 引用别名已删除（CPP12/`SESSION-01`） | `main`、TCP选路 | `runtime_config_init()` | 进程快照仍由 session 唯一拥有；调用点改经 `runtime_config_snapshot()` 访问，零调用 `init_cpu_config` 一并删除 | — |
 | `home_dir/root_script_path` | `g_runtime_config`字段 | offsets、日志、ksud、脚本、child | `runtime_config_init()` | S02已从`main.c`分散数组迁入配置对象 | `exploit_session.config` |
 | `t0` | `main.c` static | `timer_ms()` | `timer_reset()` | 单一计时器限制并发/嵌套计时 | 显式 `timespec` 参数 |
 
 ### 隐式依赖
 
-`runtime_struct_offsets.h`、`mm_struct_sz()`、`kernelsnitch_collisions()` 和多个 `SLIDE_*` 宏直接读 `active_offsets` 或全局地址。这些依赖不会出现在函数签名中，是函数式化的首要对象。
+`runtime_struct_offsets.h`、`kernelsnitch_collisions()` 和多个 `SLIDE_*` 宏直接读 `target profile` 或全局地址。这些依赖不会出现在函数签名中，是函数式化的首要对象；`mm_struct_sz()` 已改为 `target_profile_mm_struct_sz()` 访问器（CPP12/`CPP12j`）。
 
 ## 2. PI竞争与同步状态
 

@@ -576,7 +576,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 | 来源阶段 | 代码位置/事项 | 阻塞依赖 | 回补阶段 | 状态 |
 |---|---|---|---|---|
-| S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] S10 部分回补，待完成 |
+| S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] 镜像全部删除：`CORE` 宏与 KernelSnitch 隐式 pin 已改为显式 CPU（CPP12/`CPP12j`，门禁 `CPP12j-20260917-multicast-pass`） |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
 | S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
@@ -628,7 +628,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 #### [ ] M01：ExploitSession 成为唯一根 owner
 
 - [ ] 将 `g_heap_context`、`g_pi_race_context`、`g_target_profile`、`g_resolved_addresses`、`g_runtime_config` 收拢为 `ghostlock::g_exploit_session` 成员，`ExploitSession` 成为唯一进程级 owner。
-- [ ] 删除 `common.h` 的 `#define page_base` / `fake_*`、`CORE` / `CONSUMER_CORE`、`SLIDE_*`、`mm_struct_sz()` 等宏别名，改为经 session/context 显式访问。
+- [ ] 删除 `common.h` 的宏别名：`page_base`/`fake_*`/`memfd_leak`、`CORE`/`CONSUMER_CORE`、`mm_struct_sz()` 已删除（CPP12/`CPP12h`/`CPP12j`），调用点经 session/heap context 与 `target_profile_*` 访问器显式访问；`SLIDE_*` 会改变已验证 payload 字节，登记为 U01-D。
 - [ ] `run_exploit()` 与阶段控制器改为显式 `ExploitSession &` 参数；回补 `SESSION-01`、`SESSION-02`。
 - [ ] `PayloadPage` 的 current/prebuilt/quarantine 移动与 state 转换保持现有语义，不改变回收时机。
 - [ ] 门禁：Multicast 真机完整执行至 `KernelSU ready` + TCP/Select 主机回归。
