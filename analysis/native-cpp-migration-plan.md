@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP07 已完成。门禁证据：CPP01–CPP06 基线 `CPP04-06-20260917-multicast-pass`、复测 `CPP06b`/`CPP06d`；CPP07 通过 `CPP07-20260917-multicast-pass`（native `cfeda33b…`，6/6 clean、无 prepare 重试、时序一致）。已记录两次同模式的间歇性 KernelSnitch 阶段 kernel panic（`CPP06c`、`CPP07-20260917-multicast-kernel-panic`），与 native 版本无关、根因不可判定（无 dmesg/pstore）。CPP07 的 `HeapOwner`/全局镜像/故障注入作为 `CPP07-OWNER` 移交 CPP12。下一阶段 CPP08。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP07 已完成（CPP01–CPP06 基线 `CPP04-06-20260917-multicast-pass`、复测 `CPP06b`/`CPP06d`；CPP07 `CPP07-20260917-multicast-pass`）。已记录两次同模式的间歇性 KernelSnitch 阶段 kernel panic（`CPP06c`、`CPP07-20260917-multicast-kernel-panic`），与 native 版本无关、根因不可判定。CPP08 代码完成：`RuntimeConfig` 值类型化（`std::string` 路径、构造后只读语义）、路径 `c_str()` 边界、`write_root_script` RAII、`runtime_paths` 固定向量；native `8e5cd481…`，等待 Direct/Shizuku 两种入口真机门禁。`HeapOwner` 与 RuntimeConfig session 化分别作为 `CPP07-OWNER`/`SESSION-01` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -260,12 +260,12 @@ struct RouteOutcome final {
 
 ### [ ] CPP08：RuntimeConfig、日志与进程资源
 
-- [ ] `RuntimeConfig` 使用 `std::string`/强 CPU 类型，构造后只读；删除固定 char buffer 和 `g_runtime_config`。
-- [ ] 路径转换到 syscall/exec 边界时使用稳定 `c_str()`，禁止保存临时字符串指针。
-- [ ] Native 日志文件 owner RAII 化，保留逐行落盘和每次攻击独立文件行为。
-- [ ] Direct/Shizuku、verbose/non-verbose 和路径失败测试通过。
-- [ ] 回补 `SESSION-01`、`SESSION-03`。
-- [ ] 提交、暂停、两种入口真机门禁。
+- [x] `RuntimeConfig` 值类型化：C++ class 拥有 `std::string` 路径，`runtime_config_init` 改为显式字段重置；C façade 保留。`g_runtime_config` 引用别名的删除需要 `ExploitSession` 根 owner，随 `SESSION-01` 移交 CPP12。
+- [x] 路径只在 syscall/exec 边界转换为稳定 `c_str()`；`g_home_dir`/`g_root_script_path` 宏直接暴露 `c_str()`，不存在保存临时字符串指针的调用点。
+- [x] Native 文件 owner：`write_root_script` 改用 `UniqueFd` 接管写入 fd，保留写入失败告警与 `chmod` 顺序；Kotlin 侧 `DebugAttackLog` 已有显式 open/close。
+- [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
+- [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
+- [ ] 提交、暂停、两种入口真机门禁（native `8e5cd481…`；Direct + Shizuku）。
 
 ### [ ] CPP09：PI Race 并发生命周期
 

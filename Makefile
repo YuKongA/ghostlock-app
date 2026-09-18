@@ -91,7 +91,7 @@ NATIVE_HOST_TESTS := \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
-  offsets_json_test futex_hash_test number_parse_test
+  offsets_json_test futex_hash_test number_parse_test runtime_paths_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -163,6 +163,10 @@ $(HOST_BUILD_DIR)/futex_hash_test: src/core/tests/futex_hash_test.cpp src/core/k
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/number_parse_test: src/core/tests/number_parse_test.cpp src/core/kernelsnitch/number_parse.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+
+$(HOST_BUILD_DIR)/runtime_paths_test: src/core/tests/runtime_paths_test.cpp src/core/session/runtime_paths.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
 

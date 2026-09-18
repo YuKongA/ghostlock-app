@@ -1,5 +1,6 @@
 #include "common.h"
 #include "session/runtime_config.h"
+#include "session/runtime_paths.h"
 
 static bool environment_flag(const char *name, bool default_value) {
     const char *value = getenv(name);
@@ -11,7 +12,7 @@ static bool environment_present(const char *name) {
     return getenv(name) != NULL;
 }
 
-static void runtime_config_init_cpus(struct runtime_config *config) {
+static void runtime_config_init_cpus(runtime_config *config) {
     config->main_cpu = 0;
     config->consumer_cpu = 1;
 
@@ -59,7 +60,7 @@ static void runtime_config_init_cpus(struct runtime_config *config) {
     }
 }
 
-static int runtime_config_validate_cpus(struct runtime_config *config) {
+static int runtime_config_validate_cpus(runtime_config *config) {
     if (config->main_cpu == config->consumer_cpu) {
         pr_warning("main and consumer cores are the same (%d)\n", config->main_cpu);
         return -1;
@@ -78,7 +79,7 @@ static int runtime_config_validate_cpus(struct runtime_config *config) {
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
 int runtime_config_apply_profile(
-        struct runtime_config *config, const TargetProfile *profile) {
+        runtime_config *config, const TargetProfile *profile) {
     const struct execution_settings *e = target_profile_execution(profile);
     if (!config || !e) return -1;
     int old_main = config->main_cpu;
@@ -96,29 +97,36 @@ int runtime_config_apply_profile(
     return 0;
 }
 
-static void runtime_config_init_paths(struct runtime_config *config) {
+static void runtime_config_init_paths(runtime_config *config) {
     const char *home = getenv("GHOSTLOCK_HOME");
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";
 
-    snprintf(config->home_dir, sizeof(config->home_dir), "%s", home);
-    size_t length = strlen(config->home_dir);
-    while (length > 1 && config->home_dir[length - 1] == '/') {
-        config->home_dir[--length] = '\0';
-    }
-    snprintf(config->root_script_path, sizeof(config->root_script_path),
-            "%s/.ghostlock_root.sh", config->home_dir);
+    config->home_dir = ghostlock::runtime_paths::normalize_home_dir(home);
+    config->root_script_path =
+            ghostlock::runtime_paths::root_script_file(config->home_dir);
 }
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
  * writable config; output: 0/-1 plus compatibility CPU mirrors. */
-int runtime_config_init(struct runtime_config *config) {
+int runtime_config_init(runtime_config *config) {
     if (!config) {
         errno = EINVAL;
         return -1;
     }
 
-    memset(config, 0, sizeof(*config));
+    config->main_cpu = 0;
+    config->consumer_cpu = 1;
+    config->tcp_zerocopy_enabled = false;
+    config->multicast_resident_enabled = false;
+    config->multicast_phase1_probe = false;
+    config->w1_only = false;
+    config->verbose_debug = false;
+    config->main_cpu_explicit = false;
+    config->consumer_cpu_explicit = false;
+    config->home_dir.clear();
+    config->root_script_path.clear();
+
     runtime_config_init_cpus(config);
     runtime_config_init_paths(config);
     config->tcp_zerocopy_enabled =
@@ -136,12 +144,12 @@ int runtime_config_init(struct runtime_config *config) {
 }
 
 /* Log the immutable runtime snapshot. Input: initialized config; output: logs. */
-void runtime_config_log(const struct runtime_config *config) {
+void runtime_config_log(const runtime_config *config) {
     if (!config) return;
     pr_info("cpu pair: main=%d consumer=%d\n", config->main_cpu,
             config->consumer_cpu);
-    pr_info("runtime home=%s script=%s\n", config->home_dir,
-            config->root_script_path);
+    pr_info("runtime home=%s script=%s\n", config->home_dir.c_str(),
+            config->root_script_path.c_str());
     pr_info("runtime verbose_debug=%d\n", config->verbose_debug);
 }
 
