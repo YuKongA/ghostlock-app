@@ -71,6 +71,12 @@ set(SOURCES
 
 add_executable(src ${SOURCES})
 
+# Mirror the Makefile warning policy so IDE diagnostics match the native build.
+target_compile_options(src PRIVATE
+        -fno-rtti
+        -Wall -Wextra -Wconversion -Wsign-conversion
+        -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function)
+
 target_include_directories(src PRIVATE
         core
         core/memory

@@ -240,7 +240,7 @@ futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
 {
     futex_key_t key = {};
     key.private_key.mm = (void *)mm;
-    key.private_key.address = addr & ~0xfff;
+    key.private_key.address = addr & ~(size_t) 0xfff;
     key.private_key.offset = addr & 0xfff;
     return futex_hash_context_key(context, &key);
 }

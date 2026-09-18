@@ -6,7 +6,9 @@
 
 int main(void) {
   MulticastWaiterRouteContext context;
-  PiRaceContext race = {.main_cpu = 2, .consumer_cpu = 3};
+  PiRaceContext race;
+  race.main_cpu = 2;
+  race.consumer_cpu = 3;
   WriteRequest request = {0};
   MulticastWaiterLayout layout = {
       .waiter_offset = 32, .buffer_size = 128,

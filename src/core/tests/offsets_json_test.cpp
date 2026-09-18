@@ -286,13 +286,11 @@ int main(void) {
   }
 
   std::vector<ProfileFile> profiles;
-  size_t total_json = 0;
   struct dirent *item = nullptr;
   while ((item = readdir(directory)) != nullptr) {
     const std::string name = item->d_name;
     if (name.size() < 5 || name.compare(name.size() - 5, 5, ".json") != 0)
       continue;
-    total_json++;
     if (name == kIndexFile || name == kDefaultsFile) continue;
     ProfileFile entry;
     entry.name = name.substr(0, name.size() - 5);

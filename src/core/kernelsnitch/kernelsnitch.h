@@ -115,7 +115,7 @@ typedef struct kernelsnitch_shared_state KernelSnitchContext;
  */
 static int __futex(unsigned int *uaddr, int futex_op, unsigned int val, const struct timespec *timeout, unsigned int *uaddr2, unsigned int val3)
 {
-    return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
+    return (int) syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
 }
 
 /**
@@ -174,7 +174,7 @@ static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t a
 
 static int __compare(const void *a, const void *b)
 {
-    return (*(size_t *)a - *(size_t *)b);
+    return (int) (*(size_t *)a - *(size_t *)b);
 }
 
 /**
@@ -332,7 +332,7 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
     auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
         0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ,
         MAP_ANON|MAP_SHARED, -1, 0)));
-    ks->mm_struct = -1;
+    ks->mm_struct = (size_t) -1;
     ks->scan_done = 0;
     ks->mm_struct_sz = __mm_struct_sz;
     ks->mm_slab_order = __mm_slab_order;

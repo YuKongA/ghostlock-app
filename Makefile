@@ -48,7 +48,8 @@ HDRS := $(wildcard src/core/*.h src/core/*.hpp src/core/*/*.h src/core/*/*.hpp)
 # Device offsets are selected at runtime from uname -r.
 TARGET_CONFIG ?= target.h
 
-COMMON_FLAGS := -O2 -flto -Wall -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
+COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
+  -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
   -Isrc/core -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 CFLAGS := $(COMMON_FLAGS) -std=gnu11
 CXXFLAGS := $(COMMON_FLAGS) -std=c++20 -fno-rtti
@@ -56,6 +57,7 @@ LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 
 HOST_CC ?= cc
 HOST_CXX ?= c++
+HOST_CXXFLAGS := -std=c++20 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
 HOST_BUILD_DIR := .build/host
 
 .PHONY: all clean product
@@ -98,83 +100,86 @@ NATIVE_HOST_TESTS := \
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
 
+# Host tests must rebuild whenever any production header changes.
+$(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
+
 $(HOST_BUILD_DIR)/cpp_link_probe_test: src/core/tests/cpp_link_probe.cpp src/core/tests/cpp_link_probe.h src/core/tests/cpp_link_probe_test.c
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) -std=c11 -Isrc/core -c src/core/tests/cpp_link_probe_test.c -o $(HOST_BUILD_DIR)/cpp_link_probe_test.o
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core -c src/core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core -c src/core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
 
 $(HOST_BUILD_DIR)/target_constants_test: src/core/tests/target_constants_test.cpp src/core/target.h src/core/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/target_constants_test.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/target_constants_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/native_resource_test: src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp src/core/support/native_result.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/native_resource_test.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_status_test: src/core/tests/route_status_test.cpp src/core/routes/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/runtime_time_test: src/core/tests/runtime_time_test.cpp src/core/runtime_time.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/profile_test: src/core/tests/profile_test.cpp src/core/profile.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/payload_builder_test: src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp src/core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp -o $@
 
 $(HOST_BUILD_DIR)/heap_context_test: src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/memory/heap_context.h src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/heap_context_test.cpp src/core/memory/heap_context.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: src/core/tests/kernelsnitch_scan_bounds_test.cpp src/core/kernelsnitch/scan_bounds.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
-$(HOST_BUILD_DIR)/route_controller_test: src/core/tests/route_controller_test.cpp src/core/routes/route_controller.cpp
+$(HOST_BUILD_DIR)/route_controller_test: src/core/tests/route_controller_test.cpp src/core/routes/route_controller.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Isrc/core $^ -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Isrc/core src/core/tests/route_controller_test.cpp src/core/routes/route_controller.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/pi_race_test: src/core/tests/pi_race_test.cpp src/core/pi_race.cpp src/core/pi_race.h src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/pi_race_test.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/pi_race_test.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/tcp_zerocopy_route_test: src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp src/core/routes/tcp_zerocopy_route.h src/core/pi_race.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/tcp_zerocopy_route_test.cpp src/core/routes/tcp_zerocopy_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/routes/select_stack_route.h src/core/pi_race.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp
+$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -pthread -Isrc/core $^ -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/offsets_json_test: src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $^ -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/futex_hash_test: src/core/tests/futex_hash_test.cpp src/core/kernelsnitch/futex_hash.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/number_parse_test: src/core/tests/number_parse_test.cpp src/core/kernelsnitch/number_parse.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/runtime_paths_test: src/core/tests/runtime_paths_test.cpp src/core/session/runtime_paths.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core $< -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
 $(HOST_BUILD_DIR)/handoff_probe_test: src/core/tests/handoff_probe_test.cpp src/core/session/handoff_probe.cpp src/core/session/handoff_probe.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) -std=c++20 -fno-rtti -Isrc/core src/core/tests/handoff_probe_test.cpp src/core/session/handoff_probe.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/handoff_probe_test.cpp src/core/session/handoff_probe.cpp -o $@
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: ./ghostlock ==="
