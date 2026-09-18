@@ -2,6 +2,8 @@
 
 每个条目依次记录“用途”、“状态/输入输出”和“调用/清理”。系统调用只在影响资源所有权或控制流时列出。
 
+> 本表是 S01 审计与后续 CPP 增量更新的混合快照；符号所有权与 façade 的最新状态以 `native-global-state.md`、`native-cpp-current-uml.md` 和 `native-cpp-migration-plan.md` 为准。
+
 ## `main.c`
 
 ### 配置、环境与入口
@@ -14,10 +16,10 @@
 | `select_offsets()` | 按精确 `uname -r` 选外部或内置profile | 写 `active_offsets` | 成功后 `publish_active_offsets()` |
 | `timer_reset()` | 重置顶层阶段计时 | 写 `t0` | 无资源 |
 | `timer_ms()` | 返回相对耗时 | 读 `t0` → ms | 无资源 |
-| `init_cpu_config()` | 选主CPU和consumer CPU | 读环境/sysfs，写 `g_core_*` | 局部fd即时关闭 |
+| `init_cpu_config()` | 已删除（CPP12/`SESSION-01`）：CPU 选择由 `runtime_config_init()` 完成 | — | — |
 | `init_runtime_paths()` | 设定工作目录、日志与root脚本路径 | 读 `GHOSTLOCK_HOME`，写路径缓冲 | 无持久fd |
 | `write_root_script()` | 生成后续root/KernelSU调度脚本 | 读运行路径，写文件 | 在函数内关闭文件 |
-| `kernelsu_module_loaded()` | 检查KernelSU类模块状态 | `/proc/modules` → bool | `FILE*` 局部关闭 |
+| `handoff_probe_run()` | KernelSU 交接探针：模块可见性、root 日志标记与 enforce 状态（CPP12/`handoff_probe.hpp`） | `HandoffPollPolicy` + home_dir → `HandoffProbeResult` | `FILE*`/fd 局部关闭；轮询与 legacy 语义一致 |
 | `main()` | native ELF入口 | argc/argv → exit code | 仅调 `run_exploit()` |
 
 ### PI竞争与路线调度
@@ -43,9 +45,9 @@
 | `slab_drain()` | 以分配活动降低旧slab对下次喷射的影响 | 无 | 临时映射在函数内释放 |
 | `perf_find_task()` | 从perf观测中取得victim `task_struct` 地址 | 无 → kernel address | perf fd/ring mapping局部回收 |
 | `park_rooted_child()` | 保留一个已获得所需凭据的子进程 | 无返回 | 长期 `pause()` |
-| `child_main()` | victim管道协议：报告task/UID、执行探针和最终交接 | `child_pipes*` | `perf_find_task()`；关闭未使用pipe端；可fork/exec |
-| `spawn_child()` | 创建victim并建立管道 | 写 `child_pipes` → PID | child分支调 `child_main()` |
-| `spawn_victim()` | 包装创建victim并读取task地址 | pipes + task_out → PID | 调 `spawn_child()`，关task read端 |
+| `child_main()` | victim管道协议：报告task/UID、执行探针和最终交接 | `ghostlock::VictimContext*`（六 `UniqueFd`） | `perf_find_task()`；关闭未使用pipe端；可fork/exec |
+| `spawn_child()` | 创建victim并建立管道 | 写 `VictimContext` → PID（`set_child`） | child分支调 `child_main()` |
+| `spawn_victim()` | 包装创建victim并读取task地址 | VictimContext + task_out → PID | 调 `spawn_child()`，关task read端 |
 | `verify_selinux_stage()` | W1验证回调 | context → bool | `check_selinux_off()` |
 | `verify_w2_stage()` | W2验证回调 | pipe context → bool | 命令victim报告UID |
 | `verify_seccomp_probe_stage()` | W3验证回调 | pipe context → bool | 命令victim执行受Seccomp影响的探针 |

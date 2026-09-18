@@ -46,7 +46,7 @@ flowchart LR
 |---|---|---|---|---|
 | `f_wait`, `f_pi_target`, `f_pi_chain` | waiter/owner、`run_main_route_threads()` | `reset_main_route_state()`，内核futex | 每次route run一组，目前作为进程级单例 | `pi_race_context.futexes` |
 
-CPP09 落地：上述 futex、全部原子量与三个线程句柄已由 `ghostlock::PiRace`（`pi_race.cpp` + `main.cpp` 中的 `run()` 定义）唯一拥有；`pthread_t + started` 兼容镜像已删除，线程生命周期改由 `PthreadOwner` 管理，`start/run/request_stop/join` 显式分离。`g_pi_race_context` 仍是 `g_exploit_session.race` 的引用别名，删除调用点引用统一在 CPP12（`SESSION-01`）。`run()` 等待 `route_done` 仍无超时（`PI-TIMEOUT-01`）。
+CPP09 落地：上述 futex、全部原子量与三个线程句柄已由 `ghostlock::PiRace`（`pi_race.cpp` + `main.cpp` 中的 `run()` 定义）唯一拥有；`pthread_t + started` 兼容镜像已删除，线程生命周期改由 `PthreadOwner` 管理，`start/run/request_stop/join` 显式分离。`g_pi_race_context` 引用别名也已删除（`9dba566`），调用点直接访问 `g_exploit_session.race`，重建 native 与门禁版逐字节一致。`run()` 等待 `route_done` 仍无超时（`PI-TIMEOUT-01`）。
 | `waiter_ready`, `waiter_waiting`, `waiter_tid` | owner、main、consumer | waiter/reset | 跨三线程原子同步 | `pi_sync.waiter` |
 | `owner_started`, `owner_chain_done`, `owner_stop` | waiter/main/owner | owner/main/reset | owner生命周期信号 | `pi_sync.owner` |
 | `route_done` | main | waiter/reset | route结束信号 | `pi_sync.route_done` |
