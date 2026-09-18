@@ -326,10 +326,10 @@ struct RouteOutcome final {
 ### [ ] CPP13：Multicast Waiter 路线（最后迁移）
 
 - [ ] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome。
-- [x] 步骤 A（部分）：resident 访问器 `resident_context()` 就位（文件级存储 + 引用访问器，`route_operations.cpp`），与门禁版 `625d5300…` 逐字节一致；函数局部 static 的命名 owner 形式经构建对比会改变攻击关键函数 `do_one_write`（-38 指令），已按硬约束回退，正式 owner 迁移与 `SESSION-04` 一并走专门门禁（`multicast-route-class-plan.md`，2026-09-18）。
+- [ ] 步骤 A 正式迁移（`multicast_waiter_route.cpp`）：resident 生命周期（`init`/`start`/`write`/`stop`、worker、socket、layout、outcome）收归 `MulticastWaiterRoute` 类，`route_operations.cpp` 只留 thin `kernel5_resident_*` wrapper；host-safe `init` inline 在头文件，固定向量测试不再链接 Android 单元。构建 `ea87d65f…`；设备专门门禁待跑（设计文档要求多次冷机）。
 - [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
 - [x] 步骤 D（收尾）：路线状态与 `disarm → destroy` 顺序已写入 `multicast_waiter_route.h` 契约注释，`native-cpp-current-uml.md` 命名已统一（`resident_context()`，并删除过期的 `g_pi_race_context` 别名描述），与门禁版 `625d5300…` 逐字节一致（2026-09-18）。
-- [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。
+- [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。步骤 A 记录：`do_one_write` 224→186（resident 分支由 LTO 内联改为调用 wrapper；差异块后非 resident 攻击路径逐指令一致），其余 7/8 攻击函数 strict 或 1 处注解差异（vs `e065ca70…`）。
 - [ ] resident 与 one-shot 共用纯编码逻辑，但生命周期控制保持独立方法。
 - [ ] ghost disarm、consumer drain、success 读取、destroy 顺序必须与 S14/S15 成功日志一致。
 - [ ] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过。

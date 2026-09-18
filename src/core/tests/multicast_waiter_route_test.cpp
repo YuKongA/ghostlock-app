@@ -18,8 +18,7 @@ int main(void) {
   const struct execution_settings *execution =
       (const struct execution_settings *)(uintptr_t)0x1234;
 
-  multicast_waiter_route_context_init(
-      &context, &race, &request, execution, layout, 1);
+  context.init(&race, &request, execution, layout, 1);
   assert(context.race == &race && context.request == &request);
   assert(context.execution == execution);
   assert(context.layout.buffer_size == 128);

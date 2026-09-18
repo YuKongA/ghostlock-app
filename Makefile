@@ -176,9 +176,9 @@ $(HOST_BUILD_DIR)/select_stack_route_test: src/core/tests/select_stack_route_tes
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/select_stack_route_test.cpp src/core/routes/select_stack_route.cpp src/core/pi_race.cpp src/core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_route_test.cpp src/core/support/native_resource.cpp src/core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/multicast_waiter_route_test.cpp src/core/routes/multicast_waiter_route.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Isrc/core src/core/tests/multicast_waiter_route_test.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/offsets_json_test: src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
