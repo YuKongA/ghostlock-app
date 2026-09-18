@@ -196,6 +196,12 @@ int ChildProcess::terminate_and_wait(int signal_number) noexcept {
   return 0;
 }
 
+void ChildProcess::mark_reaped() noexcept {
+  if (!valid()) return;
+  pid_ = -1;
+  state_ = State::Reaped;
+}
+
 void ChildProcess::cleanup_if_running() noexcept {
   if (valid()) (void)terminate_and_wait(SIGKILL);
 }

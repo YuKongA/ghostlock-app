@@ -137,6 +137,18 @@ int main() {
   assert(!invalid_child.valid());
   assert(invalid_child.release_to_handoff() == -1);
 
+  /* An externally reaped child is marked so the owner never waits again. */
+  const pid_t reaped_pid = fork();
+  assert(reaped_pid >= 0);
+  if (reaped_pid == 0) _exit(0);
+  ghostlock::ChildProcess reaped(reaped_pid);
+  assert(waitpid(reaped_pid, nullptr, 0) == reaped_pid);
+  reaped.mark_reaped();
+  assert(!reaped.valid());
+  assert(reaped.state() == ghostlock::ChildProcess::State::Reaped);
+  reaped.mark_reaped();  /* idempotent */
+  assert(reaped.terminate_and_wait(SIGKILL) == EINVAL);
+
   /* fork() failure injection: a failed fork must leave no owned child. The
    * limit is best-effort, so a platform that still forks is also acceptable
    * and the child is reaped. */

@@ -88,7 +88,9 @@ void heap_context_init(HeapContext *context) {
     context->spray = ghostlock::MmContextSet{};
     context->pre = ghostlock::MmContextSet{};
     context->post = ghostlock::MmContextSet{};
-    context->leak_child = 0;
+    /* Drop any stale pid without signaling it, then start empty. */
+    (void) context->leak_child.release_to_handoff();
+    context->leak_child = ghostlock::ChildProcess();
     context->leak_memfd.reset();
     context->current.destroy();
     context->prebuilt.destroy();

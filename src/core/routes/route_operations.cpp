@@ -235,11 +235,9 @@ void kernel5_resident_stop(void) {
     }
     multicast_waiter_disarm(context);
     multicast_waiter_destroy(context);
-    /* TODO(post-S15:SESSION-04): These HeapContext actions
-     * remain here only to preserve the validated W1/W2 stop order. Move them to
-     * ExploitSession after route destroy reports userspace_clean. */
-    close_reclaim_sockets();
-    cleanup_page_prepare_state();
+    /* SESSION-04: the route owns only its route resources; reaping the
+     * HeapContext references is the session's step after destroy. */
+    ghostlock::g_exploit_session.release_resident_heap();
     pr_success("5.x resident writer disarmed\n");
 }
 

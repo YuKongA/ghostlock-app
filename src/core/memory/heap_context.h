@@ -82,7 +82,10 @@ typedef struct HeapContext {
     ghostlock::MmContextSet spray;
     ghostlock::MmContextSet pre;
     ghostlock::MmContextSet post;
-    pid_t leak_child;
+    /* Owns the KernelSnitch collision helper until it exits; mark_reaped()
+     * records the waitpid() the spray path performs, so scope exit never
+     * signals a pid twice. */
+    ghostlock::ChildProcess leak_child;
     ghostlock::UniqueFd leak_memfd;
     PayloadPage current;
     PayloadPage prebuilt;

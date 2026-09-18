@@ -516,7 +516,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.childs[i] = clone_child();
   }
-  child_leak = clone_leak_child();
+  child_leak = ghostlock::ChildProcess(clone_leak_child());
   for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.childs[i] = clone_child();
   }
@@ -524,7 +524,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.memfds[i] = open_memfd(pre_ctx.childs[i]);
   }
-  g_heap_context.leak_memfd.reset(open_memfd(child_leak));
+  g_heap_context.leak_memfd.reset(open_memfd(child_leak.get()));
   for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.memfds[i] = open_memfd(post_ctx.childs[i]);
   }
@@ -543,16 +543,19 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   {
     struct timespec t_wait;
     clock_gettime(CLOCK_MONOTONIC, &t_wait);
+    const pid_t leak_pid = child_leak.get();
     int leak_status = 0;
     pid_t wp = 0;
     long long last_beat = 0;
     for (;;) {
-      wp = waitpid(child_leak, &leak_status, WNOHANG);
-      if (wp == child_leak) {
+      wp = waitpid(leak_pid, &leak_status, WNOHANG);
+      if (wp == leak_pid) {
+        child_leak.mark_reaped();
         break;
       }
       if (wp < 0) {
         pr_warning("waitpid leak child: %m\n");
+        child_leak.mark_reaped();
         break;
       }
       long long waited = ms_since(&t_wait);
@@ -561,8 +564,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
               ->heap_kernelsnitch_timeout_ms;
       if ((uint64_t)waited >= timeout_ms) {
         pr_warning("leak child stuck >%ums, killing it\n", timeout_ms);
-        kill(child_leak, SIGKILL);
-        waitpid(child_leak, NULL, 0);
+        (void) child_leak.terminate_and_wait(SIGKILL);
         break;
       }
       if (waited - last_beat >= 2000) {
@@ -580,7 +582,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
       }
       usleep(50000);
     }
-    if (wp == child_leak &&
+    if (wp == leak_pid &&
         (!WIFEXITED(leak_status) || WEXITSTATUS(leak_status) != 0)) {
       pr_warning("leak child exit status=%d\n", leak_status);
     }

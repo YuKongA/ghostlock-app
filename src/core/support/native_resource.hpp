@@ -171,6 +171,11 @@ class ChildProcess final {
   [[nodiscard]] pid_t release_to_handoff() noexcept;
   [[nodiscard]] int terminate_and_wait(int signal_number) noexcept;
 
+  /* Marks a child the caller already reaped through waitpid(): the owner
+   * drops the pid without signaling or waiting again. Idempotent; a no-op
+   * when the owner no longer holds a running child. */
+  void mark_reaped() noexcept;
+
  private:
   void cleanup_if_running() noexcept;
 
