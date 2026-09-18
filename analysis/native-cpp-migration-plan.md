@@ -25,6 +25,7 @@
 - [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
 - [x] 原逐阶段暂停规则经用户于 2026-09-14 明确改为“一步完成到最后”；本批连续实施，但仍保留兼容入口与验证记录。
 - [x] 连续批次每次实质修改后运行主机回归和 Native 构建；最终统一进行 APK/真机门禁，不把未实测路线写成设备通过。
+- [ ] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `build/` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
 - [ ] 用户确认后导出完整 Native 日志到 `analysis/device-gates/CPPxx-YYYYMMDD-<route>-<pass|fail>.native.log`，创建同名前缀分析文档，再勾选阶段标题。
 - [ ] 每阶段更新 `analysis/routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
 - [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
@@ -367,7 +368,7 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
-| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04/CPP05 验证时在 `supportedKernels`、`javac` classes、`packaged_res` 各复现，清理 `app/build` 后通过；生成 task 清理/隔离 output 仍待独立维护 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护 | CPP04/CPP05 验证时在 `supportedKernels`、`javac` classes、`packaged_res` 各复现；已升级为第 1 节强制步骤“构建前先 `./gradlew clean`”。生成 task 清理/隔离 output 仍待独立维护 |
 | CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |

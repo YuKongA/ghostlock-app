@@ -608,6 +608,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [ ] 每个 fd、线程、mapping、child、buffer 有唯一 RAII 所有者；替换已验证的敏感释放顺序前，必须逐项证明行为等价。
 - [ ] 新类型位于 `namespace ghostlock`，类型名沿用现有 CamelCase、函数/字段沿用 snake_case，且不含内核版本号。
 - [ ] 每阶段独立提交后立即暂停；真机门禁与日志证据流程同第 9 节。
+- [ ] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务；该步骤见 `native-cpp-migration-plan.md` 第 1 节，用于规避重复缓存副本。
 
 ### 11.2 与既有计划的关系与前置依赖
 
