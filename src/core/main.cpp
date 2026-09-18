@@ -25,7 +25,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
         return 1;
 
     if (runtime_config_snapshot().multicast_phase1_probe) {
-        if (!kernel5_route_selected()) {
+        if (!ghostlock::support::kernel5_route_selected()) {
             pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
             return 1;
         }

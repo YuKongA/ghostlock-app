@@ -99,6 +99,14 @@ struct local_sched_attr {
     uint64_t sched_period;
 };
 
+extern ResolvedAddresses &g_resolved_addresses;
+extern TargetProfile &g_target_profile;
+
+/* Measured direct-map end (defaults to the built-in bound). */
+extern uint64_t g_direct_map_end;
+
+namespace ghostlock::support {
+
 void read_first_line(const char *path, char *buf, size_t len);
 
 void log_startup_context(void);
@@ -108,12 +116,6 @@ void log_sync(void);
 void disable_rseq_for_thread(void);
 
 void init_p0_profile(void);
-
-extern ResolvedAddresses &g_resolved_addresses;
-extern TargetProfile &g_target_profile;
-
-/* Measured direct-map end (defaults to the built-in bound). */
-extern uint64_t g_direct_map_end;
 
 long futex_op(
         uint32_t *uaddr, int op, uint32_t val,
@@ -157,14 +159,15 @@ uintptr_t prepare_kernel_page(const WriteRequest *request);
 
 uintptr_t prepare_good_kernel_page(const WriteRequest *request);
 
-void log_sync(void);
-void fdset_put_word(fd_set *set, int word, uint64_t value);
-
-uint64_t fdset_get_word(const fd_set *set, int word);
-
 int tcp_route_selected(void);
 
 int kernel5_route_selected(void);
+
+}  // namespace ghostlock::support
+
+void fdset_put_word(fd_set *set, int word, uint64_t value);
+
+uint64_t fdset_get_word(const fd_set *set, int word);
 
 void reserve_standard_io(void);
 

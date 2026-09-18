@@ -14,6 +14,8 @@
 #define post_ctx (g_heap_context.post)
 #define child_leak (g_heap_context.leak_child)
 
+namespace ghostlock::support {
+
 static const struct kernel_offsets *profile_values(void) {
   return target_profile_values(&g_target_profile);
 }
@@ -748,3 +750,5 @@ uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
   }
   return 0;
 }
+
+}  // namespace ghostlock::support
