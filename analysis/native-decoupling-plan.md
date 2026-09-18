@@ -500,7 +500,8 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-G：提取器 `opt-level = "z"`（已有）与 `yaxpeax-arm` 0.4→0.5 + `Cargo.lock` 再生成；`cargo build --release`/测试通过，对 67.2.A.3.178 Image 运行正常（futex-stack 推导失败时按启发式给出 `pselect_waiter_shift=-2`，与设备 profile 一致）。
 - [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。（route 级 fd 所有权与 clean/dirty 语义已由 CPP11 完成；外层多时序重试仍登记为 `SELECT-01`。）
-- [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。（handoff/enforcing 探针已由 CPP12 结构化；W3 child 退休与逐次 KSU 日志路径仍待独立行为提交。）
+- [x] S14 回补：W3 probe 失败退休 child（`88390be7`，冷机门禁 `U01-S14-20260918-multicast-pass`；probe 失败分支在生产配置下不可达，历史门禁日志同为 0 次，语义由代码审查与 upstream 对齐保证）。
+- [ ] S14 回补：逐次 KSU 日志路径（handoff/enforcing 判定已由 CPP12 结构化）；代码标记 `TODO(U01-S14-KSU-LOG)`。
 - [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
 - [x] U01-Z：逐项复核 `50d2b72`..`bddfea4` 的攻击相关行为均已移植（U01-A..H）；`remote/main` ancestry 以 `-s ours` 合并（`aad638a`），上游 Kotlin OTA extractor 与 CI 工作流为本分支不带入的独立特性（不触攻击路径），已记录。
 - [x] U01-Z：全量主机测试与 Gradle Debug 构建通过（APK 323）；U01-D 的 payload 字节改动登记为**待真机门禁**（设备窗口恢复后跑，失败即回退），其余改动不触攻击关键函数形状。
@@ -589,7 +590,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] 三条路线全部完成：TCP（CPP10）、Select（CPP11）、Multicast（CPP13） |
 | U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] TCP 代码回补完成（CPP10）；设备门禁随 CPP10 外部补证 |
 | U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [ ] 部分完成：route 级 fd 所有权与 clean/dirty 语义已回补（CPP11）；外层多时序重试见 `SELECT-01` |
-| U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [ ] 部分完成：handoff/enforcing 探针已结构化（CPP12i）；W3 child 退休与逐次 KSU 日志待独立行为提交 |
+| U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [ ] 部分完成：handoff/enforcing 探针已结构化（CPP12i）；W3 child retirement 已移植并冷机门禁（`88390be7`/`U01-S14-20260918-multicast-pass`；probe 失败分支未在生产路径触发）；逐次 KSU 日志路径待做（代码 `TODO(U01-S14-KSU-LOG)`） |
 | U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
 | S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] `ExploitSession::release_resident_heap()` 已接管（CPP12/`CPP12o`） |
 | S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [ ] 未回补：route 单次 context 已完成（CPP11），session 级重试见 `SELECT-01` |
