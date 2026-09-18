@@ -398,7 +398,7 @@ struct RouteOutcome final {
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
 | U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记；U01-G（`opt-level = "z"`）已完成，D–F 待维护 |
 | PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |
-| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`）；修复需绑定 `TargetProfile.execution` 的超时并把超时映射为 `ROUTE_DIRTY_FAILURE` | 攻击逻辑加固（独立真机门禁） | [ ] 已登记（代码 TODO `pi-timeout-01`） |
+| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`） | 攻击逻辑加固（独立真机门禁） | [x] 代码完成：等待绑定 `race_route_wait_ms × 10`，超时映射 `ROUTE_DIRTY_FAILURE`（step 62、ETIMEDOUT），`join()` 超时后 detach stranded waiter；主机测试覆盖；Multicast 门禁复验待做 |
 
 ## 10. 完成定义
 

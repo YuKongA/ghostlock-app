@@ -69,7 +69,13 @@ void ghostlock::PiRace::request_stop() noexcept {
 }
 
 void ghostlock::PiRace::join() noexcept {
-  (void) waiter_owner.join();
+  if (run_timed_out) {
+    /* The waiter stalled inside the route and may never reach its exit path;
+     * detaching keeps this join bounded. The attempt is already dirty. */
+    (void) waiter_owner.detach();
+  } else {
+    (void) waiter_owner.join();
+  }
   (void) owner_owner.join();
   (void) consumer_owner.join();
   request = nullptr;
