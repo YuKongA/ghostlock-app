@@ -91,6 +91,5 @@ class PiRace final {
 }  // namespace ghostlock
 
 using PiRaceContext = ghostlock::PiRace;
-extern PiRaceContext &g_pi_race_context;
 
 #endif
