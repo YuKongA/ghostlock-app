@@ -307,7 +307,7 @@ struct RouteOutcome final {
 - [x] `SESSION-03`：删除 `g_core_main`/`g_core_consumer` CPU 镜像与 `main_cpu_mirror`/`consumer_cpu_mirror` 字段；`CORE` 宏直接解析会话快照，零调用 `CONSUMER_CORE` 删除（独立提交；Multicast 门禁通过 `CPP12-20260917-multicast-pass`）。
 - [x] 新建 `ExploitSession`：唯一拥有 config/profile/address/Heap/PI race/victim 管道与 parked handoff；route controller 是无资源栈上 dispatcher（原地保留）；`g_target_profile`/`g_resolved_addresses`/`g_heap_context` 引用别名待 CPP14 收归（`g_heap_context` 已验证会改变攻击关键函数）。
 - [x] `main` 只负责解析、构造 session、运行和映射退出码：`--profile` 解析移入 `main`（usage/退出码不变），`run_exploit(session, profile_path)` 接收进程级 `g_exploit_session`；session 构造仍由进程级静态对象完成（引用别名绑定不可局部化）。
-- [x] W1/W1b/W2/W2b/W3 以显式顺序 stage + profile 有界重试 + typed outcome（`retry_write_stage`→int、路线→`RouteStatus`、`fast_repair` 归 session）呈现；不重写为 `switch` 状态机以避免破坏已验证时序，route controller 同理原地保留（等价性优先，2026-09-18）。
+- [x] W1/W1b/W2/W2b/W3 以显式 stage 函数呈现：`run_setup_stage`/`run_w1_stage`/`run_w2_w3_chain`/`run_handoff_stage`（typed 返回码区分失败/继续/w1-only），`run_exploit` 只剩 21 行编排；日志、顺序与退出码不变。不重写为 `switch` 状态机以避免破坏已验证时序（2026-09-18）。
 - [x] `SESSION-01`：删除 `g_runtime_config` 引用别名与零调用 `init_cpu_config`，所有调用点改经 `runtime_config_snapshot()` 访问 session 快照（独立提交；Multicast 门禁通过 `CPP12-20260917-multicast-pass`，W2→W3 全链执行无偏差）。
 - [x] 路径宏清理（`SESSION-01` 别名段）：删除 `g_home_dir`/`g_root_script_path` 宏，调用点内联 `runtime_config_snapshot()` 读取（`e1782f6`）；重建 native 与 `CPP12m/CPP12n` 门禁版本 `625d5300…` 逐字节一致，两次冷机证据继续有效。
 - [x] 回补 `SESSION-04`：resident stop 的 Heap 释放已移入 `ExploitSession::release_resident_heap()`（`kernel5_resident_stop` 只做 disarm/destroy，W1/W2 stop 顺序不变）；Multicast 门禁通过 `CPP12o-20260918-multicast-pass`。
