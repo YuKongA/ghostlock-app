@@ -6,16 +6,27 @@
 
 ## 亮点
 
-- **新设备与 SoC 支持**：Google Tensor（`SOC_GOOGLE`，含物理加载回退）、Pixel 9 Pro / 9 Pro Fold、
-  Honor Magic V5、NX809J/NX888J；内置 profile 增至 48 个
-- **APK 瘦身**：远端 OTA 提取迁移到纯 Kotlin（HTTP range），Android 提取器不再携带 `http-rustls`
-  栈（`libextract.so` **3.60 MB → 2.09 MiB**）；打包时 strip 静态 libc++ 调试段（`libghostlock.so` 1.14 MB → 225 KB）；同步启用 locale 过滤与 dex legacy packaging，Release APK 仅 **2.35 MiB**
-- **Profile 编辑器（高级区）**：查看当前 profile 来源与覆盖状态、编辑执行参数（W1/W2/W3 尝试次数、
-  W3 链轮数、路由等待、堆准备次数、select 延时/超时）、一键应用推荐核心、按 release 保存/清除覆盖
-- **可靠性改进**：每次运行独立 KernelSU 日志路径（旧标记不再污染 handoff 判定）；W3 probe 失败
-  改为退休 child 而非盲写；compact Select 路线内 4 次重试（每次重建 payload page）
-- **上游行为对齐**：KernelSnitch range-end 截断、direct-map 末端测量、compact value/leaf 统一编码、
-  arm-target 校验、W1 页面字节过滤、`SLIDE_*` direct-map task alias
+**上游 catch-up（U01，逐项语义移植）**
+
+- KernelSnitch range-end 截断与 direct-map 末端测量（`.ghostlock_iomem` 缓存、`in_direct_map()` 越界拒绝）
+- compact value/leaf 统一编码、arm-target 一致性校验、W1 `selinux_state.initialized` 页面字节过滤
+- W3 probe 失败退休 child；每次运行独立 KernelSU 日志路径（旧标记不再污染 handoff 判定）
+- compact Select 路线内 4 次重试（每次重建 payload page、consumer 轮次递增）
+- `SLIDE_*` direct-map task alias（multicast payload 与 TCP 路线一致）
+- Google Tensor SoC 检测；上游新增设备（Pixel 9 Pro / 9 Pro Fold、Honor Magic V5、NX809J/NX888J）
+- 远端 OTA 提取改为纯 Kotlin（`libextract.so` 不再携带 `http-rustls`，3.60 MB → 2.09 MiB）
+
+**本分支新增**
+
+- Native 解耦（S01–S15）+ C++20/RAII 迁移（CPP00–CPP17）：C → 单语言 C++20，引用别名 façade 收归，
+  resident Multicast 类化，`main` 薄适配
+- **Profile 编辑器（高级区）**：profile 来源/覆盖状态展示、8 个执行参数编辑（W1/W2/W3 尝试次数、
+  W3 链轮数、路由等待、堆准备次数、select 延时/超时）、推荐核心一键应用、按 release 稀疏覆盖保存/清除
+- **非核心参数建议值化**：缺失/越界的执行参数回退到内置建议而不是拒绝整个 profile；Shizuku 开关
+  由 profile 建议种子、用户显式选择双向覆盖并持久化
+- **打包瘦身**：打包副本 strip 静态 libc++ 调试段（`libghostlock.so` 1.14 MB → 225 KB），
+  Release APK **2.35 MiB**
+- 工程护栏：`tools/cmp_disasm.py` 反汇编对比、`make native-host-tests`、clang-tidy 与严格警告门禁
 
 ## All code changed, No bytecode changed!
 
