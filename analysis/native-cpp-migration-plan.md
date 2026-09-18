@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP06 已完成并通过真机门禁：CPP01–CPP06 基线证据 `device-gates/CPP04-06-20260917-multicast-pass`；CPP02/CPP03/CPP06 收尾后的复测证据 `device-gates/CPP06b-20260917-multicast-pass`（native `b6245955…` 与设备 APK 一致，时序与基线一致）。下一阶段为 CPP07；`utils.h` 剩余 syscall helper 迁移保留在 CPP02 尾巴。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP06 已完成并通过真机门禁：CPP01–CPP06 基线证据 `device-gates/CPP04-06-20260917-multicast-pass`；CPP03/CPP06 复测证据 `device-gates/CPP06b-20260917-multicast-pass`（native `b6245955…` 与设备 APK 一致）。CPP02 尾巴已收口（host-safe `number_parse.h` + 固定向量、`gettime_ns`/`write_file` 迁移），native SHA-256 保持 `b6245955…` 不变，零二进制变化。下一阶段为 CPP07；进程/调度 helper 的 fail-fast 语义作为 `CPP02-HELPERS` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -193,14 +193,16 @@ struct RouteOutcome final {
 - [x] 创建 CPP01 独立提交并暂停。
 - [x] 真机执行完整 Multicast 门禁；与 CPP04–CPP06 合并归档为 `CPP04-06-20260917-multicast-pass`，地址数据流图沿用当前 UML。
 
-### [ ] CPP02：状态码、时间、字节和系统调用工具
+### [x] CPP02：状态码、时间、字节和系统调用工具
 
 - [x] `route_status.h` 的 C++ 分支迁为强类型 `RouteCode/RouteOutcome`，保留 C 定义、旧名称、数值映射和 20-byte 布局 façade。
 - [x] `runtime_time.h` 的计算已迁为 `std::chrono` 并保留 `timespec` syscall 边界；`ms_since()` 改为 const 委托，`read_first_line()` 改为 `UniqueFd` + 显式 errno 恢复的 RAII 实现。
 - [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno。
 - [x] 日志函数继续走现有低级实现，不引入 iostream。
 - [x] 固定测试覆盖状态布局/数值、fallback、时间换算（normalize 正/负溢出、相等 deadline、单调时钟）与空 span。
-- [ ] `utils.h` 剩余 syscall/进程 helper（`set_limit`、`write_file`、`set_user_namespace` 等）逐个迁移，并在迁移后补齐对应 errno 测试。
+- [x] `utils.h` 的纯解析 helper 迁为 host-safe `number_parse.h`（`parse_ul`/`parse_xl` 委托，行为不变），新增 `number_parse_test` 固定向量（base 自动检测、八进制/十六进制、空白/符号、空串、尾部垃圾、`ERANGE` 溢出、`ULONG_MAX` 回绕）。
+- [x] `gettime_ns()` 委托 `runtime_time`（`std::chrono`）；`write_file()` 改用 `UniqueFd` 接管 fd，保留 `SYSCHK` fail-fast 与 `pr_error` 语义。
+- [x] `set_limit`/`set_unbuffer`/`set_proc_name`/`set_user_namespace`/`pin_to_core`/`reset_cpu_pin`/`hexdump` 保留 `SYSCHK` fail-fast 语义；改为结构化错误需要会话级错误传播策略，作为 `CPP02-HELPERS` 移交 CPP12。
 - [x] `df901ec` 已提交；versionCode 185 Multicast 真机门禁通过并归档为 `CPP03-20260914-multicast-pass`。
 
 ### [x] CPP03：基础 RAII 资源库
@@ -383,6 +385,7 @@ struct RouteOutcome final {
 | CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
 | CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
 | CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [x] 完成；部分线程创建失败注入为后续维护项 |
+| CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` fail-fast，未返回结构化错误 | 需要会话级错误传播策略 | CPP12 | [ ] 保留原语义，已登记 |
 
 ## 10. 完成定义
 

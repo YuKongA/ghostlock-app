@@ -21,6 +21,10 @@
 #include <sys/types.h>
 #include <sys/prctl.h>
 
+#include "number_parse.h"
+#include "runtime_time.h"
+#include "support/native_resource.hpp"
+
 #ifdef ANDROID_APP_NO_LKM
 #include <android/log.h>
 #endif
@@ -180,17 +184,16 @@ static inline void set_proc_name(const char *name)
 
 static inline size_t gettime_ns(void)
 {
-    struct timespec t;
-    SYSCHK(clock_gettime(CLOCK_MONOTONIC, &t));
-    return t.tv_nsec + t.tv_sec*1000000000ULL;
+    return static_cast<size_t>(ghostlock::runtime_time::to_duration(
+            ghostlock::runtime_time::monotonic_now()).count());
 }
 
 static void write_file(const char *path, const char *data)
 {
-    int fd = SYSCHK(open(path, O_WRONLY));
-    if (write(fd, data, strlen(data)) != (ssize_t)strlen(data))
+    ghostlock::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
+    const size_t length = strlen(data);
+    if (write(fd.get(), data, length) != (ssize_t)length)
         pr_error("write(%s): %m\n", path);
-    close(fd);
 }
 
 
@@ -246,24 +249,16 @@ static inline void hexdump(const void* data, size_t size)
 
 static inline unsigned long parse_ul(const char *s, const char *name)
 {
-    char *end = NULL;
-    unsigned long v;
-
-    errno = 0;
-    v = strtoul(s, &end, 0);
-    if (!(errno == 0 && end && *end == '\0'))
+    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 0);
+    if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
-    return v;
+    return parsed.value;
 }
 
 static inline unsigned long parse_xl(const char *s, const char *name)
 {
-    char *end = NULL;
-    unsigned long v;
-
-    errno = 0;
-    v = strtoul(s, &end, 16);
-    if (!(errno == 0 && end && *end == '\0'))
+    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 16);
+    if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
-    return v;
+    return parsed.value;
 }
