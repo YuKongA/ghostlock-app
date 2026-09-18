@@ -1,0 +1,47 @@
+Oops#1 Part1
+<1>[  302.484217][T22354]   EA = 0, S1PTW = 0
+<1>[  302.484225][T22354]   FSC = 0x05: level 1 translation fault
+<1>[  302.484234][T22354] Data abort info:
+<1>[  302.484240][T22354]   ISV = 0, ISS = 0x00000005
+<1>[  302.484250][T22354]   CM = 0, WnR = 0
+<1>[  302.484258][T22354] user pgtable: 4k pages, 39-bit VAs, pgdp=000000095c72e000
+<1>[  302.484268][T22354] [0000000000000000] pgd=0000000000000000, p4d=0000000000000000, pud=0000000000000000
+<0>[  302.484296][T22354] Internal error: Oops: 0000000096000005 [#1] PREEMPT SMP
+<3>[  302.484715][T22354] Skip md ftrace buffer dump for: 0x1609e0
+<4>[  302.484735][T22354] Modules linked in: sony_camera(OE) slg51000_regulator(OE) wlan(OE) ipa_clientsm(OE) lxs_touchscreen(OE) ipanetm(OE) rndisipam(OE) msm_eva(OE) camera(OE) machine_dlkm(OE) pinctrl_lpi_dlkm(OE) swr_dmic_dlkm(OE) lpass_cdc_rx_macro_dlkm(OE) lpass_cdc_va_macro_dlkm(OE) lpass_cdc_wsa2_macro_dlkm(OE) wcd938x_dlkm(OE) lpass_cdc_wsa_macro_dlkm(OE) lpass_cdc_tx_macro_dlkm(OE) adsp_loader_dlkm(OE) ipam(OE) lpass_cdc_dlkm(OE) coresight_tmc(E) msm_kgsl(OE) swr_ctrl_dlkm(OE) wcd9xxx_dlkm(OE) audio_pkt_dlkm(OE) audio_prm_dlkm(OE) qdss_bridge(E) spf_core_dlkm(OE) gpr_dlkm(OE) q6_notifier_dlkm(OE) bt_fm_slim(OE) spcom(E) cnss2(OE) rmnet_shs(OE) usb_f_qdss(E) spss_utils(E) usb_f_gsi(E) coresight_hwevent(E) qcom_spmi_adc5_gen3(E) cirrus_cs40l2x_codec(OE) gsim(OE) msm_drm(OE) nt36xxx_i2c(OE) qcrypto_msm_dlkm(OE) pt_i2c(OE) atmel_mxt_ts(OE) synaptics_tcm_ts(OE) goodix_ts(OE) camera_sync(OE) pt_device_access(OE) rmnet_aps(OE) sync_fence(OE) pt_ts(OE) rmnet_perf_tether(OE)
+<4>[  302.484893][T22354]  rmnet_offload(OE) rmnet_wlan(OE) rmnet_perf(OE) tz_log_dlkm(OE) qti_devfreq_cdev(E) nxp_nci(OE) radio_i2c_rtc6226_qca(OE) qcedev_mod_dlkm(OE) qrng_dlkm(OE) slim_qcom_ngd_ctrl(E) coresight_remote_etm(E) stm_p_ost(E) coresight_cti(E) coresight_funnel(E) qce50_dlkm(OE) coresight_dummy(E) stm_ftrace(E) rmnet_core(OE) mhi_dev_uci(E) memlat_scmi(E) coresight_stm(E) coresight_replicator(E) btpower(OE) coresight_tpda(E) coresight_tpdm(E) coresight_csr(E) stm_p_basic(E) coresight_tgu(E) stm_console(E) mmc_log_probes(E) gh_tlmm_vm_mem_access(E) mhi_cntrl_qcom(E) sys_pm_vx(E) cirrus_cs35l45(OE) rdtags(OE) cirrus_cs40l2x(OE) mhi_dev_satellite(E) et603_int(OE) usb_bam(E) qcom_pon(E) ucsi_glink(E) mhi_dev_dtr(E) repeater_qti_pmic_eusb2(E) qti_battery_debug(E) msm_video(OE) swr_haptics_dlkm(OE) rmnet_ctl(OE) phy_msm_snps_eusb2(E) altmode_glink(E) mhi_dev_netdev(E) charger_ulog_glink(E) subsystem_sleep_stats(E) qcom_esoc(E) hdmi_dlkm(OE) wlan_firmware_service(OE)
+<4>[  302.485037][T22354]  cnss_plat_ipc_qmi_svc(OE) snd_usb_audio_qmi(E) qrtr_smd(E) memlat_vendor(E) snd_soc_hdmi_codec(E) cnss_prealloc(OE) mac80211(E) qcom_vadc_common(E) slimbus(E) max31760_fan(E) icc_test(E) leds_qti_flash(E) qcom_spss(E) gh_irq_lend(E) cnss_nl(OE) qrtr_gunyah(E) qrtr_mhi(E) cnss_utils(OE) coresight(E) phy_msm_m31_eusb2(E) nvmem_qfprom(E) stm_core(E) frpc_adsprpc(E) qti_battery_charger(E) spmi_glink_debug(E) qti_qmi_sensor_v2(E) usb_f_diag(E) leds_qti_tri_led(E) qti_cpufreq_cdev(E) qbt_handler(E) ipa_fmwk(E) rmnet_sch(OE) msm_mmrm(OE) sdpm_clk(E) cfg80211(E) audpkt_ion_dlkm(OE) last_logs(OE) cirrus_wm_adsp(OE) somc_battchg_ext(OE) qcom_q6v5_pas(E) ddr_cdev(E) qti_userspace_cdev(E) dwc3_msm(E) qcom_pil_info(E) qcom_va_minidump(E) msm_lmh_dcvs(E) msm_performance(E) qcom_edac(E) repeater_i2c_eusb2(E) msm_hw_fence(OE) smcinvoke_dlkm(OE) q6_dlkm(OE) qcom_q6v5(E) qti_qmi_cdev(E) hdcp_qseecom_dlkm(OE) mhi(E) stub_dlkm(OE) snd_event_dlkm(OE) mbhc_dlkm(OE)
+<4>[  302.485194][T22354]  q6_pdr_dlkm(OE) wsa883x_dlkm(OE) wcd938x_slave_dlkm(OE) wsa884x_dlkm(OE) msm_ext_display(OE) qcom_spmi_temp_alarm(E) usb_f_ccid(E) gh_mem_notifier(E) qti_ocp_notifier(E) cpu_voltage_cooling(E) msm_sharedmem(E) qseecom_proxy(E) wcd_core_dlkm(OE) spi_msm_geni(E) phy_qcom_ufs_qmp_v4(E) qcom_sysmon(E) swr_dlkm(OE) msm_show_epoch(E) sps_drv(E) boot_stats(E) msm_geni_serial(E) hvc_gunyah(E) sg(E) qcom_lpm(E) reboot_mode(E) glink_probe(E) i3c_master_msm_geni(E) qcom_cpufreq_hw_debug(E) policy_engine(E) microdump_collector(E) synx_driver(E) core_hang_detect(E) pmic_pon_log(E) qcom_cpuss_sleep_stats(E) r8168(E) pinctrl_somc_pmic(E) i2c_msm_geni(E) smsc75xx(E) spmi_pmic_arb_debug(E) phy_generic(E) realtek(E) repeater(E) cdsprm(E) gpucc_kalama(E) smsc(E) msm_gpi(E) qsee_ipc_irq_bridge(E) smp2p(E) pwm_qti_lpg(E) usbmon(E) redriver(E) memlat(E) debugcc_kalama(E) panel_event_notifier(E) smp2p_sleepstate(E) soc_sleep_stats(E) glink_pkt(E) bam_dma(E) dmesg_dumper(E)
+<4>[  302.485355][T22354]  hung_task_enh(E) rq_stats(E) phy_msm_ssusb_qmp(E) msm_memshare(E) smsc95xx(E) cdsp_loader(E) phy_qcom_emu(E) eud(E) adsp_sleepmon(E) f_fs_ipc_log(E) qcom_glink_spss(E) rdbg(E) ehset(E) usb_f_cdev(E) rimps_log(E) phy_qcom_ufs_qmp_v4_khaje(E) phy_qcom_ufs_qmp_v4_waipio(E) qcom_ramdump(E) qti_fixed_regulator(E) pinctrl_spmi_gpio(E) lt9611uxc(E) sysmon_subsystem_stats(E) bcl_soc(E) qcom_iommu_debug(E) qcom_ipc_lite(E) pm8941_pwrkey(E) heap_mem_ext_v01(E) pinctrl_spmi_mpp(E) pmic_glink(E) pdr_interface(E) qmi_helpers(E) pci_msm_drv(E) rproc_qcom_common(E) qcom_smd(E) qcom_glink_smem(E) qcom_glink(E) msm_show_resume_irq(E) zram(E) msm_sysstats(E) wakeup_irq_debug(E) zsmalloc(E) nvme(E) nvme_core(E) bcl_pmic5(E) c1dcvs_scmi(E) c1dcvs_vendor(E) qcom_rimps(E) sdhci_msm(E) arm_smmu(E) ufs_qcom(E) ufshcd_crypto_qti(E) msm_qmp(E) qcom_aoss(E) stub_regulator(E) socinfo(E) rtc_pm8xxx(E) qrtr(E) qcom_reboot_reason(E) spmi_pmic_arb(E) qcom_spmi_pmic(E) regmap_spmi(E)
+<4>[  302.485512][T22354]  qti_regmap_debugfs(E) pmu_scmi(E) pmu_vendor(E) qcom_pmu_lib(E) qcom_llcc_pmu(E) qcom_iommu_util(E) qcom_logbuf_vh(E) debug_symbol(E) qcom_dload_mode(E) pinctrl_somc(E) phy_qcom_ufs_qrbtc_sdm845(E) phy_qcom_ufs_qmp_v4_kalama(E) phy_qcom_ufs(E) nvmem_qcom_spmi_sdam(E) ns(E) qnoc_kalama(E) qnoc_qos(E) pinctrl_kalama(E) pinctrl_msm(E) memory_dump_v2(E) mem_buf(E) qcom_dma_heaps(E) msm_dma_iommu_mapping(E) mem_buf_msgq(E) mem_buf_dev(E) mem_hooks(E) llcc_qcom(E) iommu_logger(E) gunyah(E) mdt_loader(E) secure_buffer(E) gh_ctrl(E) videocc_kalama(E) tcsrcc_kalama(E) dispcc_kalama(E) dcc_v2(E) crypto_qti_common(E) crypto_qti_hwkm(E) hwkm(E) tmecom_intf(E) cqhci(E) clk_dummy(E) cpu_hotplug(E) thermal_pause(E) sched_walt(E) qcom_cpufreq_hw(E) bwmon(E) qcom_dcvs(E) dcvs_fp(E) rpmh_regulator(E) qcom_tsens(E) thermal_minidump(E) qcom_pdc(E) qcom_ipcc(E) camcc_kalama(E) icc_rpmh(E) icc_debug(E) icc_bcm_voter(E) gcc_kalama(E) clk_qcom(E) gdsc_regulator(E)
+<4>[  302.485660][T22354]  debug_regulator(E) proxy_consumer(E) clk_rpmh(E) qcom_rpmh(E) cmd_db(E) qcom_ipc_logging(E) qcom_cpu_vendor_hooks(E) gh_virt_wdt(E) qcom_wdt_core(E) qcom_scm(E) minidump(E) smem(E) qcom_hwspinlock(E) gh_rm_drv(E) gh_dbl(E) gh_msgq(E) gh_arm_drv(E)
+<4>[  302.485702][T22354] CPU: 1 PID: 22354 Comm: libghostlock.so Tainted: G S      W  OE     5.15.189-android13-8-00016-g51bba4309aac-ab14546557 #1
+<4>[  302.485711][T22354] Hardware name: Sony Corporation. PDX-234 J(Kalama QRD) (DT)
+<4>[  302.485717][T22354] pstate: 824000c5 (Nzcv daIF +PAN -UAO +TCO -DIT -SSBS BTYPE=--)
+<4>[  302.485724][T22354] pc : rt_mutex_adjust_prio_chain+0x1b0/0x14c0
+<4>[  302.485747][T22354] lr : max_tt_usecs+0x6646/0x1fe6b
+<4>[  302.485755][T22354] sp : ffffffc03938bbe0
+<4>[  302.485758][T22354] x29: ffffffc03938bc20 x28: ffffffc03edbbb18 x27: 0000000000000000
+<4>[  302.485768][T22354] x26: ffffff80458d3600 x25: 0000000000000000 x24: ffffff80458d0884
+<4>[  302.485775][T22354] x23: 0000000000000000 x22: 0000000000000000 x21: ffffff80458d3610
+<4>[  302.485781][T22354] x20: 0000000000000001 x19: ffffff80458d0000 x18: ffffffc03405d050
+<4>[  302.485788][T22354] x17: 0000000000000078 x16: ffffffd406d0d000 x15: ffffffd406d28000
+<4>[  302.485795][T22354] x14: 0000000000000000 x13: 0000000000000000 x12: ffffffd406d0d000
+<4>[  302.485802][T22354] x11: 0000000000000001 x10: 0000000000000078 x9 : 0000000000000000
+<4>[  302.485809][T22354] x8 : 0000000000000003 x7 : 00000000000000e0 x6 : ffffffd40604041d
+<4>[  302.485816][T22354] x5 : ffffff80458d0000 x4 : ffffffd406d0d000 x3 : 00000000c0000000
+<4>[  302.485823][T22354] x2 : 0000000000000001 x1 : 0000000000000000 x0 : 0000000000000000
+<4>[  302.485832][T22354] Call trace:
+<4>[  302.485835][T22354]  rt_mutex_adjust_prio_chain+0x1b0/0x14c0
+<4>[  302.485839][T22354]  rt_mutex_adjust_pi+0x174/0x318
+<4>[  302.485843][T22354]  __sched_setscheduler+0xdf8/0x1144
+<4>[  302.485857][T22354]  __do_sys_sched_setattr+0x244/0x3c8
+<4>[  302.485863][T22354]  __arm64_sys_sched_setattr+0x24/0x34
+<4>[  302.485869][T22354]  invoke_syscall+0x60/0x150
+<4>[  302.485878][T22354]  el0_svc_common+0x8c/0xf8
+<4>[  302.485882][T22354]  do_el0_svc+0x28/0x98
+<4>[  302.485885][T22354]  el0_svc+0x24/0x84
+<4>[  302.485897][T22354]  el0t_64_sync_handler+0x88/0xec
+<4>[  302.485902][T22354]  el0t_64_sync+0x1b8/0x1bc
+<0>[  302.485915][T22354] Code: f9401f9b b8bfc108 11000508 b9001348 (b8bfc368) 
+<4>[  302.485929][T22354] ---[ end trace 4787218177d75ea7 ]---
