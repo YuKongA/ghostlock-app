@@ -101,6 +101,20 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     from("ghostlock")
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libghostlock.so" }
+    /* Strip only the packaged copy: static libc++ carries its DWARF into the
+     * binary, while the top-level ghostlock keeps its symbols for the
+     * disassembly comparisons. Paths are captured as plain strings so the
+     * configuration cache can serialize this task. */
+    val stripPath = File(extractNdkTools().clang)
+        .resolveSibling("llvm-strip").absolutePath
+    val packagedPath = File(rootDir, "app/src/main/jniLibs/arm64-v8a/libghostlock.so").absolutePath
+    doLast {
+        val code = ProcessBuilder(stripPath, "--strip-all", packagedPath)
+            .inheritIO()
+            .start()
+            .waitFor()
+        check(code == 0) { "llvm-strip failed with $code" }
+    }
 }
 
 tasks.register<Exec>("buildGhostlockExtract") {
