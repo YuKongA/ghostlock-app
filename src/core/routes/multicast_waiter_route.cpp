@@ -51,12 +51,18 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
     __extension__ unsigned char b[size];
     size_t o = context->layout.waiter_offset;
     memset(b, 0, sizeof(b));
+    /* Same pure encoder as the one-shot route; the resident also stamps the
+     * erase words at the waiter head. */
+    if (!ghostlock::encode_multicast_waiter(
+            {reinterpret_cast<std::byte *>(b), size},
+            o, context->layout.task_offset, context->layout.lock_offset,
+            context->task, lock)) {
+        return -1;
+    }
     if (target) {
         ghostlock::support::put64(b, o, (target - 8) & ~(uintptr_t) 3);
         ghostlock::support::put64(b, o + 8, value);
     }
-    ghostlock::support::put64(b, o + context->layout.task_offset, context->task);
-    ghostlock::support::put64(b, o + context->layout.lock_offset, lock);
     uint16_t family = AF_UNSPEC;
     memcpy(b + 8, &family, sizeof(family));
     return setsockopt(context->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,

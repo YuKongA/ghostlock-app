@@ -330,8 +330,8 @@ struct RouteOutcome final {
 - [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
 - [x] 步骤 D（收尾）：路线状态与 `disarm → destroy` 顺序已写入 `multicast_waiter_route.h` 契约注释，`native-cpp-current-uml.md` 命名已统一（`resident_context()`，并删除过期的 `g_pi_race_context` 别名描述），与门禁版 `625d5300…` 逐字节一致（2026-09-18）。
 - [ ] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。步骤 A 记录：`do_one_write` 224→186（resident 分支由 LTO 内联改为调用 wrapper；差异块后非 resident 攻击路径逐指令一致），其余 7/8 攻击函数 strict 或 1 处注解差异（vs `e065ca70…`）。
-- [ ] resident 与 one-shot 共用纯编码逻辑，但生命周期控制保持独立方法。
-- [ ] ghost disarm、consumer drain、success 读取、destroy 顺序必须与 S14/S15 成功日志一致。
+- [x] resident 与 one-shot 共用纯编码逻辑，生命周期控制保持独立方法：步骤 C 把 resident stamp 改为经 `ghostlock::encode_multicast_waiter` 生成 waiter words（erase words/family 由 resident 补齐），构建 `66f0a8a3…` 与 `ea87d65f…` 对比 **8/8 攻击函数 strict 一致**；步骤 B 的 one-shot 分组提取实测 `do_kernel5_fake_lock_route` **155→158（+3）**，未达"逐指令等价"契约，已回退并记录。
+- [x] ghost disarm、consumer drain、success 读取、destroy 顺序与 S14/S15 成功日志一致：步骤 A 原样搬移 `multicast_waiter_disarm/destroy`（构建 strict 对比），`CPP13a` 真机日志保留 `mcast ghost disarm`/route status 顺序。
 - [ ] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过。
 - [ ] 提交、暂停；至少多次冷机 Multicast 真机通过后才勾选阶段。
 
