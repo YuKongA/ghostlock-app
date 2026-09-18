@@ -92,11 +92,19 @@ class GhostlockViewModel(
         mutableState.update { it.copy(safeModeEnabled = enabled) }
     }
 
+    fun toggleShizuku(enabled: Boolean) {
+        repository.setShizukuEnabled(enabled)
+        mutableState.update { it.copy(shizukuEnabled = enabled) }
+        // The grant dialog lands in another app, so the status is re-read and
+        // onResume() refreshes it again when the dialog closes.
+        viewModelScope.launch { refreshSnapshot() }
+    }
+
     fun onRun() = runExploit()
 
     fun onStatusClick() {
         val snapshot = kernelSnapshot ?: return
-        if (!snapshot.requiresShizuku) return
+        if (!snapshot.requiresShizuku && !snapshot.shizukuEnabled) return
         when (snapshot.shizukuStatus) {
             ShizukuStatus.NOT_RUNNING -> send(GhostlockEffect.OpenShizuku)
             ShizukuStatus.PERMISSION_REQUIRED -> repository.requestShizukuPermission()
@@ -115,18 +123,19 @@ class GhostlockViewModel(
             }
             return
         }
-        if (snapshot.requiresShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
+        val useShizuku = snapshot.requiresShizuku || snapshot.shizukuEnabled
+        if (useShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
             onStatusClick()
             return
         }
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
-        appendLog("==== start ${if (snapshot.requiresShizuku) "Shizuku/V20" else "base"} ====")
+        appendLog("==== start ${if (useShizuku) "Shizuku/V20" else "base"} ====")
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val code = runExploitUseCase(pair, snapshot.requiresShizuku, ::appendLog)
+                val code = runExploitUseCase(pair, useShizuku, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
             } finally {
@@ -257,6 +266,7 @@ class GhostlockViewModel(
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
                 requiresShizuku = snapshot.requiresShizuku,
+                shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
                 exportVisible = canExport,
             )

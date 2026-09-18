@@ -49,7 +49,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
-    private var tcpRouteEnabled = true
+    private var shizukuEnabled = false
     private var pendingParsedEntries: JSONArray? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
 
@@ -62,6 +62,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val release = System.getProperty("os.version", "unknown").orEmpty()
         val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU ||
             importedOffsetsRequireShizuku(release)
+        val shizukuActive = requiresShizuku || shizukuEnabled
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
@@ -72,7 +73,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
             requiresShizuku = requiresShizuku,
-            shizukuStatus = if (requiresShizuku) shizukuRunner.status()
+            shizukuEnabled = shizukuEnabled,
+            shizukuStatus = if (shizukuActive) shizukuRunner.status()
             else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
         )
     }
@@ -89,8 +91,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         safeModeEnabled = enabled
     }
 
-    override fun setTcpRouteEnabled(enabled: Boolean) {
-        tcpRouteEnabled = enabled
+    override fun setShizukuEnabled(enabled: Boolean) {
+        shizukuEnabled = enabled
+        if (enabled) shizukuRunner.requestPermission()
     }
 
     override suspend fun exportCandidates(): List<OffsetCandidate> {

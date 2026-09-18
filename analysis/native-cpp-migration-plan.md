@@ -264,6 +264,7 @@ struct RouteOutcome final {
 - [x] 路径只在 syscall/exec 边界转换为稳定 `c_str()`；`g_home_dir`/`g_root_script_path` 宏直接暴露 `c_str()`，不存在保存临时字符串指针的调用点。
 - [x] Native 文件 owner：`write_root_script` 改用 `UniqueFd` 接管写入 fd，保留写入失败告警与 `chmod` 顺序；Kotlin 侧 `DebugAttackLog` 已有显式 open/close。
 - [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
+- [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
 - [ ] 提交、暂停、两种入口真机门禁（native `8e5cd481…`；Direct + Shizuku）。
 

@@ -56,7 +56,9 @@
     <string name="cpu_pair_label">CPU cores</string>
     <string name="safe_mode_label">Safe mode</string>
     <string name="safe_mode_summary">Disable all modules</string>
-    <string name="tcp_route_label">Exploit route</string>
-    <string name="tcp_route_summary_on">TCP zerocopy</string>
-    <string name="tcp_route_summary_off">pselect</string>
+    <string name="shizuku_label">Run via Shizuku</string>
+    <string name="shizuku_summary_off">Run in the app process</string>
+    <string name="shizuku_summary_on">Shell uid, no seccomp</string>
+    <string name="shizuku_status_not_running">Start Shizuku, then return here</string>
+    <string name="shizuku_status_permission_required">Grant Shizuku access when asked</string>
 </resources>

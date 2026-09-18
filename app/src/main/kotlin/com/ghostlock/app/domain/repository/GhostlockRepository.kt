@@ -13,7 +13,7 @@ interface GhostlockRepository {
 
     fun setSafeModeEnabled(enabled: Boolean)
 
-    fun setTcpRouteEnabled(enabled: Boolean)
+    fun setShizukuEnabled(enabled: Boolean)
 
     suspend fun exportCandidates(): List<OffsetCandidate>
 
