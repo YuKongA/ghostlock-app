@@ -21,3 +21,8 @@
 - **第二次冷机（重连后补跑）PASS**：`boot_ms=151075`、6/6 route、`Write 1 complete` T+10958ms、
   `exploit complete` T+30511ms、`KernelSU ready`（日志 `CPP13b-20260918-multicast-pass-2.native.log`）；
   同一构建期间的一次 panic 记录在 `CPP12y`（PASS/panic/PASS 直接对照）。
+- **第三次复跑 PASS（非冷机，仅供参考）**：同构建 `66f0a8a3…` 在 `boot_ms=1968046`（约 32.8 分钟
+  warm boot）下完整 PASS：W1 页验收 `attempt=4`、6/6 route、`Write 1 complete` T+15598ms、
+  `exploit complete` T+35505ms、`KernelSU module loaded`、`enforce=1`、`KernelSU ready`
+  （日志 `CPP13b-20260918-multicast-pass-3.native.log`）。
+  该次运行的是设备上旧 APK（versionCode 302，native `66f0a8a3…`），**不代表 U01-D/CPP16 门禁**。
