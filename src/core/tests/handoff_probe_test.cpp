@@ -84,7 +84,7 @@ int main(void) {
   idle_policy.enforce_poll_attempts = 0;
   idle_policy.log_poll_attempts = 0;
   const HandoffProbeResult idle =
-          handoff_probe_run(idle_policy, loaded_dir.path);
+          handoff_probe_run(idle_policy, loaded_dir.log_path);
   assert(!idle.module_visible && !idle.ksu_log_loaded &&
          !idle.ksu_log_failed && !idle.enforce_ok && !idle.ready());
 
@@ -97,7 +97,7 @@ int main(void) {
   policy.log_poll_attempts = 1;
   policy.log_poll_interval_ms = 0;
   const HandoffProbeResult probe =
-          handoff_probe_run(policy, loaded_dir.path);
+          handoff_probe_run(policy, loaded_dir.log_path);
   assert(!probe.module_visible);
   assert(probe.ksu_log_loaded && !probe.ksu_log_failed);
   assert(probe.ready());
@@ -106,9 +106,9 @@ int main(void) {
     assert(probe.enforce_ok);
   }
 
-  /* A missing home directory leaves the log probes false. */
+  /* A missing per-run log leaves the log probes false. */
   const HandoffProbeResult missing = handoff_probe_run(
-          policy, "/nonexistent-home");
+          policy, "/nonexistent-home/.ghostlock_ksu.log");
   assert(!missing.ksu_log_loaded && !missing.ksu_log_failed);
   assert(!missing.ready());
 

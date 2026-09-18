@@ -55,6 +55,10 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 callback.onLog("Shizuku ready: uid=${Process.myUid()} Seccomp=0")
                 callback.onLog("kernel: $release")
                 val nativeLog = File(workDir, ".ghostlock_native.log")
+                // U01-S14: per-run KernelSU log so a previous run's markers can
+                // never satisfy the handoff probe; the native process receives
+                // the resolved path via GHOSTLOCK_KSU_LOG.
+                val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
                 val activeProfile = File(workDir, "active-profile.json").apply {
                     writeText(profileJson)
                     setReadable(false, false)
@@ -72,6 +76,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                         environment()["TMPDIR"] = workDir.absolutePath
                         environment()["HOME"] = workDir.absolutePath
+                        environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                         if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
                         environment()["GHOSTLOCK_CORE"] = primaryCpu.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = consumerCpu.toString()

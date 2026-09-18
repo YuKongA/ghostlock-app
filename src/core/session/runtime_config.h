@@ -23,6 +23,10 @@ class RuntimeConfig final {
   bool consumer_cpu_explicit = false;
   std::string home_dir = "/data/local/tmp";
   std::string root_script_path = "/data/local/tmp/.ghostlock_root.sh";
+  /* Per-run KernelSU log (U01-S14): Kotlin passes GHOSTLOCK_KSU_LOG so a
+   * previous run's markers can never be misread; falls back to the legacy
+   * home-dir name for CLI runs. */
+  std::string ksu_log_path = "/data/local/tmp/.ghostlock_ksu.log";
 
   RuntimeConfig() noexcept = default;
 };

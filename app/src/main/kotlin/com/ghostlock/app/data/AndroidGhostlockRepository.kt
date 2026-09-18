@@ -38,8 +38,11 @@ import java.util.concurrent.atomic.AtomicLong
 class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private companion object {
         const val OffsetsFileName = "offsets.json"
-        const val KsuLogName = ".ghostlock_ksu.log"
         const val ExtractBinaryName = "libextract.so"
+
+        /* U01-S14: per-run KernelSU log name; the resolved path travels to
+         * the native process via GHOSTLOCK_KSU_LOG. */
+        fun ksuLogName(runStamp: Long) = "ghostlock-ksu-$runStamp.log"
     }
 
     private val appContext = context.applicationContext
@@ -292,9 +295,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
             if (prepareKsud(workDir, onLog) != null) onLog("ksud ready") else onLog("warning: ksud not found")
-            // the root script creates its log as root, so one name per run
-            // keeps the last run's lines out of this run's log
-            val ksuLog = File(workDir, "$KsuLogName.${System.currentTimeMillis()}")
+            // U01-S14: a per-run KernelSU log path so a previous run's markers
+            // can never satisfy the handoff probe; passed to the native process.
+            val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
             val nativeLog = File(workDir, ".ghostlock_native.log")
             nativeLog.writeText("")
             val activeProfile = File(workDir, "active-profile.json")
@@ -336,6 +339,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
+                    environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                     if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
                     if (pair.primary != 0 || pair.consumer != 1) {
                         environment()["GHOSTLOCK_CORE"] = pair.primary.toString()

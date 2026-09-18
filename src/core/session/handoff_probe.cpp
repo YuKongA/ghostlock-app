@@ -8,7 +8,6 @@
 namespace ghostlock {
 namespace {
 
-constexpr char kKsuLogSuffix[] = ".ghostlock_ksu.log";
 constexpr size_t kKsuLogPathMax = 320;
 
 /* Module init re-enforces at the very end of kernelsu_init; a denied read or
@@ -60,7 +59,7 @@ bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
 }
 
 HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,
-                                     std::string_view home_dir) noexcept {
+                                     std::string_view ksu_log_path) noexcept {
     HandoffProbeResult result;
 
     for (uint32_t i = 0;
@@ -69,16 +68,14 @@ HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,
         usleep(policy.module_poll_interval_ms * 1000U);
     }
 
-    char log_path[kKsuLogPathMax];
-    snprintf(log_path, sizeof(log_path), "%.*s/%s", (int)home_dir.size(),
-             home_dir.data(), kKsuLogSuffix);
-
     /* untrusted_app loses /proc/modules once enforcing is restored, so poll
-     * the app-readable log for the loaded-module line. */
+     * the app-readable log for the loaded-module line. The path is per-run
+     * (U01-S14): the caller passes the resolved file so a previous run's
+     * markers can never satisfy this poll. */
     for (uint32_t i = 0;
          i < policy.log_poll_attempts &&
                  !(result.ksu_log_loaded || result.ksu_log_failed); i++) {
-        scan_ksu_log(log_path, result.ksu_log_loaded, result.ksu_log_failed);
+        scan_ksu_log(ksu_log_path, result.ksu_log_loaded, result.ksu_log_failed);
         if (!(result.ksu_log_loaded || result.ksu_log_failed)) {
             usleep(policy.log_poll_interval_ms * 1000U);
         }

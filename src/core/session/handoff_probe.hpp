@@ -35,14 +35,11 @@ bool kernelsu_module_visible() noexcept;
 /* Re-scan the root-side log; markers accumulate into loaded/failed. */
 bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept;
 
-/* TODO(U01-S14-KSU-LOG): the per-run KernelSU log path is still derived from
- * home_dir here; upstream generates a per-run path in Kotlin and passes it
- * explicitly. Blocked by: the Kotlin/native launch protocol change.
- * Completion: accept the resolved path from the caller and delete this note. */
-
-/* Run the module, log and enforce polls with the given policy. */
+/* Run the module, log and enforce polls with the given policy. The log path
+ * is the per-run file produced by the root script (U01-S14); the root script
+ * and this probe must receive the same resolved path. */
 HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,
-                                     std::string_view home_dir) noexcept;
+                                     std::string_view ksu_log_path) noexcept;
 
 }  // namespace ghostlock
 
