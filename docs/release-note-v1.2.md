@@ -1,6 +1,6 @@
-# GhostLock v1.1 Release Notes
+# GhostLock v1.2 Release Notes
 
-构建：APK `343`（versionName `1.1`）· 攻击 native `0109d5a8` · 提取器 `libextract.so` 2.19 MB
+构建：APK `346`（versionName `1.2`）· 攻击 native `0109d5a8` · 提取器 `libextract.so` 2.19 MB
 
 ## 亮点
 

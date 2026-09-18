@@ -11,7 +11,7 @@ plugins {
 }
 
 val appName = "GhostLock"
-val appVersionName = "1.1"
+val appVersionName = "1.2"
 
 val gitVersionCode = runCatching {
     providers.exec {
