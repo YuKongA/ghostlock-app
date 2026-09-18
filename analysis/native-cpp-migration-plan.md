@@ -310,7 +310,8 @@ struct RouteOutcome final {
 - [x] `SESSION-01`：删除 `g_runtime_config` 引用别名与零调用 `init_cpu_config`，所有调用点改经 `runtime_config_snapshot()` 访问 session 快照（独立提交；Multicast 门禁通过 `CPP12-20260917-multicast-pass`，W2→W3 全链执行无偏差）。
 - [ ] 回补 `SESSION-02`、`SESSION-04`：Heap handoff、resident stop 跨 owner 清理（`SESSION-03` 已完成）。
 - [ ] 回补 `SELECT-01`：每次 compact Select 外层重试重新构造 Heap page、PI race 和 route context。
-- [ ] `VictimProcess` 与 `KernelSuHandoff` 明确所有权转移、child 退休、module/enforcing 探针结果。
+- [x] M02 fd 段：`check_selinux_off`/`enforce_readable`/`perf_find_task` 的裸 fd → `UniqueFd`/`MappedRegion`（munmap→close 顺序不变，攻击关键函数逐指令一致）；`slab_drain` 的 pid 数组 → `std::array<ChildProcess,64>`（kill+reap 顺序不变、零堆分配）。
+- [ ] `VictimProcess` 完整收编（`child_pipes` 的 3 对 pipe + child 退休）与 `KernelSuHandoff` 探针结果结构化：`parked_cmd_w` 的裸值语义需要精细等价证明，登记为后续批次。
 - [ ] 验证每个早退点的析构顺序和日志；确保失败不会触发不安全 fallback。
 - [ ] 提交、暂停，三路线及可用回退组合分别真机门禁。
 
