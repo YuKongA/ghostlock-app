@@ -28,6 +28,7 @@
 - [ ] 每次需要用户真机验证前，自动依次执行 `./gradlew clean`、`:app:assembleDebug` 与 `adb -s <serial> install -r`，再请用户运行。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `build/` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
 - [ ] 用户确认后导出完整 Native 日志到 `analysis/device-gates/CPPxx-YYYYMMDD-<route>-<pass|fail>.native.log`，创建同名前缀分析文档，再勾选阶段标题。
 - [ ] 从真机读取日志并归档完成后，仅当“前一次执行成功且设备没有自动重启”时才执行 `adb -s <serial> reboot`，为下一次门禁准备干净状态；若前一次执行失败并已触发设备自动重启（如 kernel panic），跳过 reboot 并直接进入失败分析。
+- [x] 布局敏感改动（新增/删除编译单元、改变 `.text` 排布）的门禁至少包含两次冷机复跑；`CPP12k` 证明同一构建可能在 W2 spray 窗口 2/2 panic 而回退版稳定，`CPP12l` 证明隔离复跑可判定归因。
 - [ ] 每阶段更新 `analysis/routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
 - [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
 - [ ] 函数和类型按职责/攻击链命名，不使用内核版本号；版本差异只能出现在 profile 数据和注释中。
@@ -315,7 +316,7 @@ struct RouteOutcome final {
 - [x] `KernelSuHandoff` 探针结果结构化：`/proc/modules` 扫描、root 日志标记与 enforce 轮询收进 `ghostlock::handoff_probe_run`（显式 `HandoffPollPolicy`/`HandoffProbeResult`），日志文本、轮询次数/间隔与 ready/enforcing 语义不变；`handoff_probe_test` 锁定标记匹配与零策略短路；Multicast 门禁通过 `CPP12i-20260917-multicast-pass`（`eeb9d20`，native `a7e1ea23…`）。
 - [x] 宏别名清理（M01 子项）：删除 `common.h` 的 `CORE` 与 `mm_struct_sz()`；调用点改用 `runtime_config_snapshot().main_cpu` 与 `target_profile_mm_struct_sz()` 访问器；KernelSnitch init 接收显式 pin CPU；删除两个零调用旧入口。Multicast 门禁通过 `CPP12j-20260917-multicast-pass`（`e9b8151`，native `cea1bedc…`，攻击关键函数严格一致、布局零位移）。
 - [ ] `VictimProcess` 完整收编：首次尝试（`c222151`，`child_pipes` → `ghostlock::VictimContext` + 主机生命周期测试）在 APK 242 / native `b147df9f` 上 **2/2 kernel panic**（`CPP12k-20260917-multicast-kernel-panic`，两次均截断于 W2 spray 窗口；8/8 攻击关键函数逐指令一致，差异为布局位移与 `run_exploit` +5 指令）。已按 `PI-TIMEOUT-01` 先例回退（`552c8b2`），隔离复跑 PASS（`CPP12l-20260917-multicast-pass`）。**登记为待受控重试**：重试前需先解决或绕开布局敏感性与 W2 spray 窗口的间歇性内核崩溃（`KERNEL-PANIC-01`），并采用多次冷机复测。
-- [ ] 验证每个早退点的析构顺序和日志；确保失败不会触发不安全 fallback。
+- [x] 验证每个早退点的析构顺序和日志：审计见 [`native-exit-path-audit.md`](native-exit-path-audit.md)；无新增所有权泄漏，dirty/quarantine 资源保持“进程退出回收”语义，失败不触发不安全 fallback。
 - [ ] 提交、暂停，三路线及可用回退组合分别真机门禁。
 
 ### [ ] CPP13：Multicast Waiter 路线（最后迁移）
