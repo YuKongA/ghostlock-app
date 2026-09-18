@@ -30,8 +30,8 @@ int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
             return 1;
         }
         pr_info("5.x phase-1 probe: cycle/stamp/adjust/disarm only\n");
-        int ok = kernel5_resident_start();
-        if (ok) kernel5_resident_stop();
+        int ok = ghostlock::route::kernel5_resident_start();
+        if (ok) ghostlock::route::kernel5_resident_stop();
         pr_info("5.x phase-1 probe result=%s\n", ok ? "pass" : "fail");
         return ok ? 0 : 1;
     }

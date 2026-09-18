@@ -49,18 +49,18 @@ void *waiter_thread(void *arg) {
     atomic_store(&race->waiter_waiting, 1);
     ghostlock::support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
             &race->target_futex, 0);
-    RouteKind selected = ghostlock::support::kernel5_route_selected()
-            ? ROUTE_KIND_MULTICAST_WAITER
+    ghostlock::route::RouteKind selected = ghostlock::support::kernel5_route_selected()
+            ? ghostlock::route::ROUTE_KIND_MULTICAST_WAITER
             : (ghostlock::support::tcp_route_selected()
-                    ? ROUTE_KIND_TCP_ZEROCOPY
-                    : ROUTE_KIND_SELECT_STACK);
-    RouteController controller;
-    route_controller_init(&controller, race, &g_target_profile, selected);
-    race->route_status = route_controller_execute(&controller, request);
+                    ? ghostlock::route::ROUTE_KIND_TCP_ZEROCOPY
+                    : ghostlock::route::ROUTE_KIND_SELECT_STACK);
+    ghostlock::route::RouteController controller;
+    ghostlock::route::route_controller_init(&controller, race, &g_target_profile, selected);
+    race->route_status = ghostlock::route::route_controller_execute(&controller, request);
     if (controller.fallback_used) {
         pr_warning("TCP route cleanly failed; used Select Stack fallback\n");
     }
-    if (selected == ROUTE_KIND_MULTICAST_WAITER) {
+    if (selected == ghostlock::route::ROUTE_KIND_MULTICAST_WAITER) {
         /* remove_waiter() left this thread's pi_blocked_on pointing at the
          * reclaimed stack waiter. Force one final slow-path removal while the
          * stack frame is still alive, matching the 5.x multicast primitive's
