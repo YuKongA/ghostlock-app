@@ -72,7 +72,7 @@ flowchart TB
     M_cpu["init_cpu_config"]
     M_paths["init_runtime_paths"]
     M_script["write_root_script"]
-    M_ksu["kernelsu_module_loaded"]
+    M_ksu["handoff_probe_run<br/>module + ksu log + enforce"]
     M_perf["perf_find_task"]
     M_park["park_rooted_child"]
     M_child["child_main"]
