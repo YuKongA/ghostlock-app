@@ -148,11 +148,3 @@ void runtime_config_log(const runtime_config *config) {
             config->root_script_path.c_str());
     pr_info("runtime verbose_debug=%d\n", config->verbose_debug);
 }
-
-/* Legacy compatibility adapter. Input: process environment; output: refreshed
- * global RuntimeConfig. New orchestration calls runtime_config_init directly. */
-void init_cpu_config(void) {
-    if (runtime_config_init(&g_runtime_config) == 0) {
-        runtime_config_log(&g_runtime_config);
-    }
-}

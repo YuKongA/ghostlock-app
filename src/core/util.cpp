@@ -35,7 +35,7 @@ void log_sync(void) {
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
-  return g_runtime_config.tcp_zerocopy_enabled &&
+  return runtime_config_snapshot().tcp_zerocopy_enabled &&
          target_profile_supports_tcp_zerocopy(&g_target_profile);
 }
 

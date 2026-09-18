@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 首批子项 `SESSION-03`（CPU 镜像删除）已完成（native `a5b2d151343f38229c61726056434c2cbaadc3e7372a574a6c72c3f10b44ba4c`）。无可用 TCP/Select 外部设备，CPP10/CPP11 设备门禁待补；CPP12 其余子项与阶段门禁待设备。`SESSION-01/02/04`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 已完成 `SESSION-03`（CPU 镜像删除）与 `SESSION-01`（config 引用别名删除）（native `a5b2d151343f38229c61726056434c2cbaadc3e7372a574a6c72c3f10b44ba4c`）。无可用 TCP/Select 外部设备，CPP10/CPP11 设备门禁待补；CPP12 其余子项与阶段门禁待设备。`SESSION-01/02/04`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -307,7 +307,8 @@ struct RouteOutcome final {
 - [ ] 新建 `ExploitSession`：已集中 config/profile/address/Heap/PI race（CPU 镜像已随 `SESSION-03` 删除）；route controller、victim、handoff 及旧全局引用 façade 尚未收归。
 - [ ] `main` 只负责解析、构造 session、运行和映射退出码。
 - [ ] W1/W1b/W2/W2b/W3 改为显式 stage state machine；重试返回 typed outcome，不用跨函数全局量。
-- [ ] 回补 `SESSION-01`、`SESSION-02`、`SESSION-04`：config 引用别名收编、Heap handoff、resident stop 跨 owner 清理（`SESSION-03` 已完成）。
+- [x] `SESSION-01`：删除 `g_runtime_config` 引用别名与零调用 `init_cpu_config`，所有调用点改经 `runtime_config_snapshot()` 访问 session 快照（独立提交）。
+- [ ] 回补 `SESSION-02`、`SESSION-04`：Heap handoff、resident stop 跨 owner 清理（`SESSION-03` 已完成）。
 - [ ] 回补 `SELECT-01`：每次 compact Select 外层重试重新构造 Heap page、PI race 和 route context。
 - [ ] `VictimProcess` 与 `KernelSuHandoff` 明确所有权转移、child 退休、module/enforcing 探针结果。
 - [ ] 验证每个早退点的析构顺序和日志；确保失败不会触发不安全 fallback。

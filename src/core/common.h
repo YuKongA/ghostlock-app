@@ -58,7 +58,7 @@
 #define MM_PARTIALS 5
 /* CPU mirrors are gone (CPP12/SESSION-03): the session snapshot is the only
  * authority, and this macro resolves straight to the live config value. */
-#define CORE (g_runtime_config.main_cpu)
+#define CORE (runtime_config_snapshot().main_cpu)
 #define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
 
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)

@@ -48,12 +48,10 @@ typedef struct runtime_config {
 
 #endif
 
-/* Compatibility authority for S02. Later stages pass a const config pointer
- * through ExploitSession and remove direct access to this process snapshot. */
+/* The process snapshot is owned by ExploitSession. Callers reach it through
+ * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
 #ifdef __cplusplus
-extern RuntimeConfig &g_runtime_config;
-#else
-extern runtime_config g_runtime_config;
+RuntimeConfig &runtime_config_snapshot() noexcept;
 #endif
 
 int runtime_config_init(runtime_config *config);
@@ -62,8 +60,5 @@ int runtime_config_apply_profile(
         runtime_config *config, const TargetProfile *profile);
 
 void runtime_config_log(const runtime_config *config);
-
-/* Legacy entry retained while callers outside main migrate. */
-void init_cpu_config(void);
 
 #endif

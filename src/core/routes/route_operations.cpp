@@ -128,8 +128,8 @@ int kernel5_resident_start(void) {
     const struct execution_settings *execution = execution_settings();
     multicast_waiter_route_context_init(
             context, &g_pi_race_context, NULL, execution, layout, 1);
-    context->main_cpu = g_runtime_config.main_cpu;
-    context->consumer_cpu = g_runtime_config.consumer_cpu;
+    context->main_cpu = runtime_config_snapshot().main_cpu;
+    context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
     uintptr_t bss = resolved_addresses_data_alias(
             &g_resolved_addresses, KIMAGE_TEXT_BASE + layout.fake_bss_image_offset);
     context->lock = bss + layout.fake_lock_offset;
