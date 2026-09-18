@@ -145,6 +145,9 @@ extern ResolvedAddresses g_resolved_addresses;
 extern TargetProfile g_target_profile;
 #endif
 
+/* Measured direct-map end (defaults to the built-in bound). */
+extern uint64_t g_direct_map_end;
+
 long futex_op(
         uint32_t *uaddr, int op, uint32_t val,
         const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);

@@ -56,3 +56,46 @@
 5. U01-Z：逐项与 `50d2b72` diff 复核、合并 `remote/main` ancestry、解决冲突、全量构建并暂停真机回归。
 
 这样可避免为追平 Git 数字而一次性混入 PI race、TCP、Select、victim 和 UI 五个不同风险域。
+
+---
+
+# 第二批上游提交（2026-09-17 复核）
+
+## 拓扑
+
+- `remote/main` 已从 `9ee07a8` 前进到 `42b2f37`；本分支相对 `remote/main` 为 115 ahead / **12 behind**。
+- 第二批 9 个上游提交（在已分析的 `50d2b72`/`dfb0e84`/`9ee07a8` 之后）：
+
+| 提交 | 主题 | 本分支动作 |
+|---|---|---|
+| `396e52d` | core: cache the direct map end from /proc/iomem (#138) | **移植（见下）** |
+| `9e75003` | Add Pixel 9 Pro（含 `SLIDE_*` alias 改动与 SOC_GOOGLE） | `SLIDE_*` 登记为 `U01-D`；SOC_GOOGLE 与 profile 登记 |
+| `1145ef2` / `4b269cd` / `e7b81ae` | 新设备 offsets（Honor Magic V5、NX809J/NX888J、6.1.162 修正） | 后续按 JSON profile 流程追加，非修复 |
+| `bb83c4c` / `833ef7c` / `42b2f37` | CI（drop setup-android、pre-release 上传） | 不适用（本分支 CI 独立维护） |
+| `12fd9f3` | rust opt-level z | 提取器体积优化，登记为后续维护 |
+
+## `396e52d` 语义映射（本轮移植）
+
+上游为“KernelSnitch 扫描越过 direct map 末端”提供完整修复，比第一批的 range-end 截断更彻底：
+
+| 上游行为 | 作用 | 本分支落点 |
+|---|---|---|
+| 新增 `g_direct_map_end`（默认内置边界，只可收窄） | 为扫描与写入提供真实 direct map 末端 | `address_space.cpp` 定义；`common.h` 与 `kernelsnitch.h` 只读声明 |
+| `apply_iomem_cache()` 读取 `<home>/.ghostlock_iomem` | 从**上一次 rooted run** 的 `/proc/iomem` 测量 span，校验 release/DRAM/上界后才采纳 | `main.cpp` 静态函数，在 profile 加载后调用 |
+| `write_root_script()` 追加 iomem 缓存段 | 以 root 原子写 `.ghostlock_iomem`（`# <uname -r>` 首行 + System RAM dump） | 同一段脚本移植，路径复用 `$HOME_DIR` |
+| `__run_mm_leak_pass` 的 slice end clamp 到 `MIN(g_direct_map_end, IDENTITY_END)`；`identity_diff` 同界 | 扫描不再越过真实 direct map 末端（疑似间歇性内核崩溃根因） | `kernelsnitch.h` 对应函数 |
+| `prepare_kernel_page` 的 leak 判定改用 `g_direct_map_end` | 同上 | `util.cpp` |
+| `in_direct_map()` 在 `do_one_write`/`retry_write_stage` 拒绝越界 target，`perf_find_task` 过滤候选 | 构造上不可能成功的写入不再喷射/重试 | `main.cpp` 三处 |
+
+默认值下 `identity_diff` 与扫描上限不变（`MIN(0xffffff9000000000, 0xffffff8c00000000) = IDENTITY_END`），因此对本分支已验证的 5.15 设备是**零行为变化**；只有在存在可信 `.ghostlock_iomem` 时才收窄。
+
+## `U01-D`：`SLIDE_INIT_TASK` / `SLIDE_ROOT_TASK_GROUP`（登记，暂不移植）
+
+`9e75003` 把 `prepare_skb_payload` 的三个 waiter 地址从 image 形式（`INIT_TASK`/`ROOT_TASK_GROUP`）改为 direct-map alias（`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP`），理由是对所有 SoC 可解引用。
+本分支 5.15 Multicast 以 image 形式通过全部门禁，且该改动会**改变已验证 payload 字节**，需独立真机门禁与字节级对比，因此登记为 `U01-D`，不在本轮混入。
+
+## 其他登记
+
+- `U01-E`：SOC_GOOGLE/Tensor 支持（`detect_target_soc` + 物理加载回退 + 后续 profile）。
+- `U01-F`：新设备 profile 追加（Honor Magic V5 10.0.0.105、NX809J/NX888J 6.12.38、Pixel 9 Pro 6.1.162）与 `e7b81ae` 的 6.1.162 修正，按 JSON 转换流程执行。
+- `U01-G`：提取器 `opt-level = "z"`（再生成 `Cargo.lock`）。

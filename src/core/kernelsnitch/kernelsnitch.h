@@ -19,6 +19,10 @@
 #define __INTEL
 #endif
 
+/* Measured direct-map end (never wider than the built-in bound). Owned by the
+ * address-space layer; KernelSnitch only reads it to bound its scan. */
+extern uint64_t g_direct_map_end;
+
 #define FUTEX_SZ (64ULL<<30)
 #define FUTEX_MMAP_SZ (1ULL<<30)
 #ifndef PAGE_SIZE
@@ -283,7 +287,7 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
 {
     /* the leak check discards a match past the measured end, so no slice
      * scans past it */
-    size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
+    const size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
     for (size_t i = 0; i < ks->thread_cnt; ++i) {
         struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
         mm_leak_arg->ks = ks;
@@ -348,7 +352,8 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
         SYSCHK(mmap((void *)((size_t)ks->futexes + addr), FUTEX_MMAP_SZ, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED|MAP_FIXED, -1, 0));
     /* mm_structs live in the direct map, so the scan stops at its end and never
      * past the identity range the futexes are drawn from */
-    ks->identity_diff = ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START)/ks->thread_cnt);
+    ks->identity_diff =
+            ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START)/ks->thread_cnt);
 
     ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
 

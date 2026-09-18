@@ -266,6 +266,7 @@ struct RouteOutcome final {
 - [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
 - [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
+- [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `analysis/upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
 - [ ] 两种入口真机门禁：Direct 首轮失败已定位——`std::string` 路径在 fork+exec 边界被内核拒绝（`open`/`execl` 均 EFAULT errno=14），修复为 exec 前复制到栈缓冲（`8bfcffd`，native `acc14530…`），证据 `CPP08-20260917-direct-kernelsu-pending`。待 Direct 复测与 Shizuku 入口验证。
 
 ### [ ] CPP09：PI Race 并发生命周期
@@ -389,6 +390,7 @@ struct RouteOutcome final {
 | CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [x] 完成；部分线程创建失败注入为后续维护项 |
 | CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` fail-fast，未返回结构化错误 | 需要会话级错误传播策略 | CPP12 | [ ] 保留原语义，已登记 |
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
+| U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记 |
 
 ## 10. 完成定义
 

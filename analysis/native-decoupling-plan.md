@@ -491,6 +491,12 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-C：更新 `index.json` 与中英文独立支持设备文档；在收到对应设备日志前标记为待真机验证。
 - [x] U01-C：JSON/schema、索引唯一性和同族 ABI 检查、完整 Gradle `assembleDebug` 构建通过；提交并暂停兼容门禁。
 - [x] U01-C：用户确认本步骤无需已有设备兼容复测；Y700/REDMI K80 对应设备门禁继续等待外部协作者，不扩大已验证范围。
+- [x] 第二批上游复核（`9ee07a8..42b2f37`，9 提交）：见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节。
+- [x] U01-H：移植 `396e52d` 的 direct-map 末端测量——`g_direct_map_end`、`.ghostlock_iomem` 缓存、`in_direct_map()` 越界拒绝与 KernelSnitch slice/`identity_diff` 收窄；默认常量下零行为变化。
+- [ ] U01-D：`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP` alias 改动（改变已验证 payload 字节，需独立字节对比与真机门禁）。
+- [ ] U01-E：SOC_GOOGLE/Tensor 支持。
+- [ ] U01-F：新设备 profile 追加（Honor Magic V5、NX809J/NX888J、Pixel 9 Pro、6.1.162 修正）。
+- [ ] U01-G：提取器 `opt-level = "z"` 与 `Cargo.lock` 再生成。
 - [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
 - [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
 - [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。

