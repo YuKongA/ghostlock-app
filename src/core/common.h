@@ -105,20 +105,6 @@ struct local_sched_attr {
     uint64_t sched_period;
 };
 
-/* TODO(post-S15:SESSION-02): ExploitSession should own HeapContext and remove
- * these aliases. Retained because the payload macros span main/util/fops. */
-#define page_base (g_heap_context.current.base)
-#define last_mm_struct (g_heap_context.current.last_mm_struct)
-#define fake_lock (g_heap_context.current.fake_lock)
-#define fake_w0 (g_heap_context.current.fake_w0)
-#define fake_task (g_heap_context.current.fake_task)
-#define fake_parent (g_heap_context.current.fake_parent)
-#define fake_right (g_heap_context.current.fake_right)
-#define fake_left (g_heap_context.current.fake_left)
-#define fake_fops (g_heap_context.current.fake_fops)
-
-#define memfd_leak (g_heap_context.leak_memfd)
-
 int run_exploit(int argc, char **argv);
 
 void read_first_line(const char *path, char *buf, size_t len);
