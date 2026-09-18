@@ -1,6 +1,8 @@
 #include "pi_race.h"
 
-void ghostlock::PiRace::reset(
+using namespace ghostlock;
+
+void PiRace::reset(
         int initial_delay_usec, int main_cpu_value, int consumer_cpu_value) noexcept {
   /* Dropping a joinable owner here would detach its thread, matching the old
    * reset that simply zeroed the pthread_t and leaked it; every caller joins
@@ -32,7 +34,7 @@ void ghostlock::PiRace::reset(
   route_status = (RouteStatus) {.code = ROUTE_RETRYABLE};
 }
 
-int ghostlock::PiRace::start_threads(
+int PiRace::start_threads(
         void *(*waiter_entry)(void *), void *(*owner_entry)(void *),
         void *(*consumer_entry)(void *), const WriteRequest *route_request) noexcept {
   if (!waiter_entry || !owner_entry || !consumer_entry) return EINVAL;
@@ -52,7 +54,7 @@ int ghostlock::PiRace::start_threads(
   return 0;
 }
 
-void ghostlock::PiRace::abort_startup() noexcept {
+void PiRace::abort_startup() noexcept {
   atomic_store(&consumer_stop, 1);
   atomic_store(&owner_stop, 1);
   owner_owner.request_stop();
@@ -62,20 +64,20 @@ void ghostlock::PiRace::abort_startup() noexcept {
   request = nullptr;
 }
 
-void ghostlock::PiRace::request_stop() noexcept {
+void PiRace::request_stop() noexcept {
   atomic_store(&consumer_go, 0);
   atomic_store(&consumer_stop, 1);
   atomic_store(&owner_stop, 1);
 }
 
-void ghostlock::PiRace::join() noexcept {
+void PiRace::join() noexcept {
   (void) waiter_owner.join();
   (void) owner_owner.join();
   (void) consumer_owner.join();
   request = nullptr;
 }
 
-RouteStatus ghostlock::PiRace::outcome_with_counters(
+RouteStatus PiRace::outcome_with_counters(
         const RouteStatus &outcome, int calls, int success) noexcept {
   if (outcome.code == ROUTE_OK && (calls == 0 || success == 0)) {
     RouteStatus retryable = outcome;

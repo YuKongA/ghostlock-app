@@ -27,11 +27,11 @@ RouteStatus route_controller_execute(RouteController *controller,
         return (RouteStatus) {.code = ROUTE_UNSUPPORTED};
     }
     switch (controller->selected) {
-        case ROUTE_KIND_MULTICAST_WAITER:
+        case RouteKind::MulticastWaiter:
             if (!target_profile_supports_multicast_waiter(controller->profile))
                 return (RouteStatus) {.code = ROUTE_UNSUPPORTED};
             return do_kernel5_fake_lock_route(request);
-        case ROUTE_KIND_TCP_ZEROCOPY: {
+        case RouteKind::TcpZerocopy: {
             if (!target_profile_supports_tcp_zerocopy(controller->profile))
                 return (RouteStatus) {.code = ROUTE_UNSUPPORTED};
             RouteStatus status = do_tcp_fake_lock_route(request);
@@ -43,7 +43,7 @@ RouteStatus route_controller_execute(RouteController *controller,
             controller->fallback_used = 1;
             return do_pselect_fake_lock_route(request);
         }
-        case ROUTE_KIND_SELECT_STACK:
+        case RouteKind::SelectStack:
             if (!target_profile_supports_select_stack(controller->profile))
                 return (RouteStatus) {.code = ROUTE_UNSUPPORTED};
             return do_pselect_fake_lock_route(request);

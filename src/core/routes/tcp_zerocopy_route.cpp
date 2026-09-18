@@ -4,7 +4,9 @@
 
 #include <utility>
 
-ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
+using namespace ghostlock;
+
+TcpZerocopyRoute::TcpZerocopyRoute(
         PiRace *race_context, const WriteRequest *route_request,
         const execution_settings *execution_settings_value,
         size_t mapping_length_value) noexcept
@@ -21,7 +23,7 @@ ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
   status.code = ROUTE_RETRYABLE;
 }
 
-ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
+TcpZerocopyRoute::TcpZerocopyRoute(
         TcpZerocopyRoute &&other) noexcept
     : race(other.race),
       request(other.request),
@@ -53,14 +55,14 @@ ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
                         memory_order_relaxed);
 }
 
-int ghostlock::TcpZerocopyRoute::fail(
+int TcpZerocopyRoute::fail(
         int step, int error_number) noexcept {
   status.step = step;
   status.error_number = error_number;
   return -1;
 }
 
-void ghostlock::TcpZerocopyRoute::disarm() noexcept {
+void TcpZerocopyRoute::disarm() noexcept {
   atomic_store(&race->consumer_go, 0);
   atomic_store(&punch_go, 0);
   atomic_store(&punch_stop, 1);
@@ -70,7 +72,7 @@ void ghostlock::TcpZerocopyRoute::disarm() noexcept {
   status.kernel_disarmed = 1;
 }
 
-void ghostlock::TcpZerocopyRoute::retain_for_process_lifetime() noexcept {
+void TcpZerocopyRoute::retain_for_process_lifetime() noexcept {
   (void) punch_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
   (void) server_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
   (void) client_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
@@ -78,7 +80,7 @@ void ghostlock::TcpZerocopyRoute::retain_for_process_lifetime() noexcept {
   (void) punch_worker.release();
 }
 
-void ghostlock::TcpZerocopyRoute::destroy() noexcept {
+void TcpZerocopyRoute::destroy() noexcept {
   if (punch_worker.joinable()) {
     const int join_error = punch_worker.join();
     if (join_error != 0) {

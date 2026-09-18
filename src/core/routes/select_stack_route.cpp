@@ -4,7 +4,9 @@
 
 #include <utility>
 
-ghostlock::SelectStackRoute::SelectStackRoute(
+using namespace ghostlock;
+
+SelectStackRoute::SelectStackRoute(
         PiRace *race_context, const WriteRequest *route_request,
         const execution_settings *execution_settings_value,
         SelectStackLayout route_layout,
@@ -28,7 +30,7 @@ ghostlock::SelectStackRoute::SelectStackRoute(
   status.code = ROUTE_RETRYABLE;
 }
 
-ghostlock::SelectStackRoute::SelectStackRoute(
+SelectStackRoute::SelectStackRoute(
         SelectStackRoute &&other) noexcept
     : race(other.race),
       request(other.request),
@@ -57,13 +59,13 @@ ghostlock::SelectStackRoute::SelectStackRoute(
   }
 }
 
-int ghostlock::SelectStackRoute::fail(int step, int error_number) noexcept {
+int SelectStackRoute::fail(int step, int error_number) noexcept {
   status.step = step;
   status.error_number = error_number;
   return -1;
 }
 
-void ghostlock::SelectStackRoute::disarm() noexcept {
+void SelectStackRoute::disarm() noexcept {
   atomic_store(&race->consumer_go, 0);
   if (atomic_load(&race->consumer_inflight) != 0) {
     for (int i = 0;
@@ -76,7 +78,7 @@ void ghostlock::SelectStackRoute::disarm() noexcept {
   status.kernel_disarmed = !consumer_stuck;
 }
 
-void ghostlock::SelectStackRoute::retain_for_process_lifetime() noexcept {
+void SelectStackRoute::retain_for_process_lifetime() noexcept {
   /* A stuck consumer may still walk these descriptors, so none of them may be
    * closed: hand every owner's descriptor to the process lifetime. */
   (void) high_read.release_to_process_lifetime("pselect consumer stuck");
@@ -89,7 +91,7 @@ void ghostlock::SelectStackRoute::retain_for_process_lifetime() noexcept {
    * remains set and nothing below closes them. */
 }
 
-void ghostlock::SelectStackRoute::destroy() noexcept {
+void SelectStackRoute::destroy() noexcept {
   for (int fd = 0; fd < 3; fd++) {
     if (stdio_backup[fd].valid()) dup2(stdio_backup[fd].get(), fd);
   }

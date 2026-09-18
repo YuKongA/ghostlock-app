@@ -6,7 +6,8 @@
 
 #include <atomic>
 
-using ghostlock::PthreadOwner;
+using namespace ghostlock;
+
 
 /* Stand-in workers for the host: the real entries own futex/attack logic that
  * only exists on Android, but the lifecycle contract (creation order, stop

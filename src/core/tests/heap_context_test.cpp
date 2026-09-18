@@ -9,11 +9,13 @@
 #include <type_traits>
 #include <utility>
 
+using namespace ghostlock;
+
 static void test_move_preserves_page_as_one_owner(void) {
-  ghostlock::memory::HeapContext context;
-  ghostlock::memory::heap_context_init(&context);
+  memory::HeapContext context;
+  memory::heap_context_init(&context);
   assert(context.current.reclaim.fd[0] == -1);
-  assert(context.prebuilt.state == ghostlock::memory::PAYLOAD_PAGE_EMPTY);
+  assert(context.prebuilt.state == memory::PayloadPageState::Empty);
 
   int owned[2];
   assert(pipe(owned) == 0);
@@ -21,46 +23,46 @@ static void test_move_preserves_page_as_one_owner(void) {
   context.current.fake_lock = 0x12340100;
   context.current.reclaim.fd[0] = owned[0];
   context.current.reclaim.fd[1] = owned[1];
-  context.current.state = ghostlock::memory::PAYLOAD_PAGE_CURRENT;
+  context.current.state = memory::PayloadPageState::Current;
 
-  assert(ghostlock::memory::payload_page_move(&context.prebuilt, &context.current,
-                           ghostlock::memory::PAYLOAD_PAGE_PREBUILT));
-  assert(context.current.state == ghostlock::memory::PAYLOAD_PAGE_EMPTY);
+  assert(memory::payload_page_move(&context.prebuilt, &context.current,
+                           memory::PayloadPageState::Prebuilt));
+  assert(context.current.state == memory::PayloadPageState::Empty);
   assert(context.current.reclaim.fd[0] == -1);
   assert(context.prebuilt.base == 0x12340000);
   assert(context.prebuilt.fake_lock == 0x12340100);
-  assert(context.prebuilt.state == ghostlock::memory::PAYLOAD_PAGE_PREBUILT);
+  assert(context.prebuilt.state == memory::PayloadPageState::Prebuilt);
 
-  ghostlock::memory::payload_page_destroy(&context.prebuilt);
+  memory::payload_page_destroy(&context.prebuilt);
   errno = 0;
   assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
 }
 
 static void test_move_rejects_partial_or_occupied_ownership(void) {
-  ghostlock::memory::HeapContext context;
-  ghostlock::memory::heap_context_init(&context);
+  memory::HeapContext context;
+  memory::heap_context_init(&context);
   context.current.reclaim.fd[0] = 3;
-  context.current.state = ghostlock::memory::PAYLOAD_PAGE_CURRENT;
-  assert(!ghostlock::memory::payload_page_move(&context.prebuilt, &context.current,
-                            ghostlock::memory::PAYLOAD_PAGE_PREBUILT));
+  context.current.state = memory::PayloadPageState::Current;
+  assert(!memory::payload_page_move(&context.prebuilt, &context.current,
+                            memory::PayloadPageState::Prebuilt));
 
   context.current.reclaim.fd[1] = 4;
-  context.prebuilt.state = ghostlock::memory::PAYLOAD_PAGE_PREBUILT;
-  assert(!ghostlock::memory::payload_page_move(&context.prebuilt, &context.current,
-                            ghostlock::memory::PAYLOAD_PAGE_PREBUILT));
+  context.prebuilt.state = memory::PayloadPageState::Prebuilt;
+  assert(!memory::payload_page_move(&context.prebuilt, &context.current,
+                            memory::PayloadPageState::Prebuilt));
   context.current.reclaim.fd[0] = -1;
   context.current.reclaim.fd[1] = -1;
 }
 
 static void test_page_is_move_only_and_released_explicitly(void) {
-  static_assert(!std::is_copy_constructible_v<ghostlock::memory::PayloadPage>);
-  static_assert(!std::is_copy_assignable_v<ghostlock::memory::PayloadPage>);
-  static_assert(std::is_move_constructible_v<ghostlock::memory::PayloadPage>);
+  static_assert(!std::is_copy_constructible_v<memory::PayloadPage>);
+  static_assert(!std::is_copy_assignable_v<memory::PayloadPage>);
+  static_assert(std::is_move_constructible_v<memory::PayloadPage>);
   /* Scope exit must not close fds that the kernel may still reference. */
-  static_assert(std::is_trivially_destructible_v<ghostlock::memory::PayloadPage>);
+  static_assert(std::is_trivially_destructible_v<memory::PayloadPage>);
 
-  ghostlock::memory::PayloadPage source;
-  assert(source.state == ghostlock::memory::PAYLOAD_PAGE_EMPTY);
+  memory::PayloadPage source;
+  assert(source.state == memory::PayloadPageState::Empty);
   assert(!source.has_reclaim());
 
   int owned[2];
@@ -68,24 +70,24 @@ static void test_page_is_move_only_and_released_explicitly(void) {
   source.base = 0xabc00000;
   source.reclaim.fd[0] = owned[0];
   source.reclaim.fd[1] = owned[1];
-  source.state = ghostlock::memory::PAYLOAD_PAGE_CURRENT;
+  source.state = memory::PayloadPageState::Current;
 
-  ghostlock::memory::PayloadPage moved(std::move(source));
+  memory::PayloadPage moved(std::move(source));
   assert(moved.has_reclaim());
   assert(moved.base == 0xabc00000);
-  assert(moved.state == ghostlock::memory::PAYLOAD_PAGE_CURRENT);
-  assert(source.state == ghostlock::memory::PAYLOAD_PAGE_EMPTY);
+  assert(moved.state == memory::PayloadPageState::Current);
+  assert(source.state == memory::PayloadPageState::Empty);
   assert(!source.has_reclaim());
 
   moved.destroy();
   errno = 0;
   assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
   moved.destroy();
-  assert(moved.state == ghostlock::memory::PAYLOAD_PAGE_EMPTY);
+  assert(moved.state == memory::PayloadPageState::Empty);
 }
 
 static void test_mm_set_releases_descriptors_explicitly(void) {
-  ghostlock::MmContextSet set;
+  MmContextSet set;
   int owned[4];
   assert(pipe(owned) == 0);
   assert(pipe(owned + 2) == 0);
@@ -98,7 +100,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
   set.memfds[0] = owned[0];
   set.memfds[1] = owned[2];
 
-  ghostlock::memory::close_ctx_memfds(&set);
+  memory::close_ctx_memfds(&set);
   assert(set.memfds[0] == -1);
   assert(set.memfds[1] == -1);
   errno = 0;
@@ -106,12 +108,12 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
   errno = 0;
   assert(fcntl(owned[2], F_GETFD) == -1 && errno == EBADF);
 
-  ghostlock::memory::free_ctx_storage(&set);
+  memory::free_ctx_storage(&set);
   assert(set.childs.empty());
   assert(set.memfds.empty());
   /* Repeated cleanup and destroy are idempotent. */
-  ghostlock::memory::close_ctx_memfds(&set);
-  ghostlock::memory::free_ctx_storage(&set);
+  memory::close_ctx_memfds(&set);
+  memory::free_ctx_storage(&set);
   assert(set.childs.empty());
 
   /* Scope exit alone only frees storage: no descriptor is closed and no pid
@@ -120,7 +122,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
   int survivor[2];
   assert(pipe(survivor) == 0);
   {
-    ghostlock::MmContextSet scoped;
+    MmContextSet scoped;
     scoped.memfds.assign(1, survivor[0]);
     scoped.childs.assign(1, 4321);
   }
@@ -129,14 +131,14 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
   close(survivor[1]);
 
   set.memfds.assign(1, owned[1]);
-  ghostlock::MmContextSet moved(std::move(set));
+  MmContextSet moved(std::move(set));
   assert(moved.memfds.size() == 1 && moved.memfds[0] == owned[1]);
   close(moved.memfds[0]);
 }
 
 static void test_heap_context_init_releases_attempt_state(void) {
-  ghostlock::memory::HeapContext context;
-  ghostlock::memory::heap_context_init(&context);
+  memory::HeapContext context;
+  memory::heap_context_init(&context);
   assert(context.skb_buffer == nullptr);
   assert(!context.leak_memfd.valid());
   assert(context.prepare.childs.empty());
@@ -148,7 +150,7 @@ static void test_heap_context_init_releases_attempt_state(void) {
   context.leak_memfd.reset(owned[0]);
   context.prepare.memfds.assign(1, owned[1]);
 
-  ghostlock::memory::heap_context_init(&context);
+  memory::heap_context_init(&context);
   assert(context.skb_buffer == nullptr);
   assert(!context.leak_memfd.valid());
   assert(context.prepare.memfds.empty());
@@ -158,7 +160,7 @@ static void test_heap_context_init_releases_attempt_state(void) {
    * implicitly because the kernel may still reference it. */
   assert(fcntl(owned[1], F_GETFD) >= 0);
   context.prepare.memfds.assign(1, owned[1]);
-  ghostlock::memory::close_ctx_memfds(&context.prepare);
+  memory::close_ctx_memfds(&context.prepare);
   errno = 0;
   assert(fcntl(owned[1], F_GETFD) == -1 && errno == EBADF);
 }

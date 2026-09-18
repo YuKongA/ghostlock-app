@@ -22,7 +22,7 @@
 #undef SLIDE_RANDOM_BOOT_ID_DATA_OFF
 #undef SLIDE_SYSCTL_BOOTID_OFF
 
-#define PROFILE_VALUES target_profile_values(&g_target_profile)
+#define PROFILE_VALUES target_profile_values(&g_exploit_session.profile)
 #define SELINUX_ENFORCING_OFF         PROFILE_VALUES->off_selinux_enforcing
 #define INIT_CRED_OFF                 PROFILE_VALUES->off_init_cred
 #define INIT_TASK_OFF                 PROFILE_VALUES->off_init_task

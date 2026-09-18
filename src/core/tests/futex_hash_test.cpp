@@ -66,12 +66,12 @@ int main(void) {
   if (sizeof(size_t) > sizeof(uint32_t)) {
     assert(futex_hash_context_init(&rejected, (size_t) 1 << 32) == -1);
   }
-  assert(futex_hash_context_init(NULL, 256) == -1);
+  assert(futex_hash_context_init(nullptr, 256) == -1);
 
   /* An uninitialized context cannot produce a bucket. */
   futex_key_t key = {};
   assert(futex_hash_context_key(&rejected, &key) == UINT32_MAX);
-  assert(futex_hash_context_key(NULL, &key) == UINT32_MAX);
+  assert(futex_hash_context_key(nullptr, &key) == UINT32_MAX);
   assert(futex_hash_context_bucket(&rejected, 0x1000, 0x2000) == UINT32_MAX);
 
   puts("futex_hash_test: ok");

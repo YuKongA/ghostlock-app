@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+using namespace ghostlock;
+
 namespace {
 
 constexpr const char *kProfileDir = "app/src/main/assets/kernel_profiles";
@@ -133,11 +135,11 @@ void check_profile(const ProfileFile &entry) {
          "multicast slot count snapshot", name);
 
   /* QCOM with the profile's own physical load (or the 6.12/QCOM fallback). */
-  ghostlock::memory::ResolvedAddresses addresses = {};
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         ghostlock::memory::TARGET_SOC_QCOM) == 0,
+  memory::ResolvedAddresses addresses = {};
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == 0,
          "address init succeeds", name);
-  expect(ghostlock::memory::resolved_addresses_init_cred_image(&addresses) ==
+  expect(memory::resolved_addresses_init_cred_image(&addresses) ==
              (uintptr_t)(KIMAGE_TEXT_BASE + decoded.off_init_cred),
          "init_cred image formula", name);
   const uint64_t expected_phys =
@@ -145,10 +147,10 @@ void check_profile(const ProfileFile &entry) {
           ? decoded.kernel_phys_load
           : (strncmp(decoded.uname_r, "6.12.", 5) == 0 ? QC_GKI_6_12_PHYS_LOAD
                                                        : P0_KERNEL_PHYS_LOAD);
-  expect(ghostlock::memory::resolved_addresses_kernel_phys_load(&addresses) == expected_phys,
+  expect(memory::resolved_addresses_kernel_phys_load(&addresses) == expected_phys,
          "kernel physical load selection", name);
-  expect(ghostlock::memory::resolved_addresses_data_alias(
-             &addresses, ghostlock::memory::resolved_addresses_init_cred_image(&addresses)) ==
+  expect(memory::resolved_addresses_data_alias(
+             &addresses, memory::resolved_addresses_init_cred_image(&addresses)) ==
              expected_alias(expected_phys, decoded.off_init_cred),
          "init_cred direct-map alias", name);
 
@@ -156,22 +158,22 @@ void check_profile(const ProfileFile &entry) {
   struct kernel_offsets zero_load = decoded;
   zero_load.kernel_phys_load = 0;
   TargetProfile zero_profile = target_profile_snapshot(&zero_load);
-  ghostlock::memory::ResolvedAddresses mtk = {};
-  ghostlock::memory::ResolvedAddresses xring = {};
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
-                                         ghostlock::memory::TARGET_SOC_MTK) == 0 &&
-             ghostlock::memory::resolved_addresses_kernel_phys_load(&mtk) ==
+  memory::ResolvedAddresses mtk = {};
+  memory::ResolvedAddresses xring = {};
+  expect(memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
+                                         memory::SocFamily::Mtk) == 0 &&
+             memory::resolved_addresses_kernel_phys_load(&mtk) ==
                  (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
          "MTK physical load fallback", name);
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&xring, &zero_profile,
-                                         ghostlock::memory::TARGET_SOC_XRING) == 0 &&
-             ghostlock::memory::resolved_addresses_kernel_phys_load(&xring) ==
+  expect(memory::resolved_addresses_init_for_soc(&xring, &zero_profile,
+                                         memory::SocFamily::Xring) == 0 &&
+             memory::resolved_addresses_kernel_phys_load(&xring) ==
                  XRING_KERNEL_PHYS_LOAD,
          "XRing physical load fallback", name);
-  ghostlock::memory::ResolvedAddresses google = {};
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&google, &zero_profile,
-                                         ghostlock::memory::TARGET_SOC_GOOGLE) == 0 &&
-             ghostlock::memory::resolved_addresses_kernel_phys_load(&google) ==
+  memory::ResolvedAddresses google = {};
+  expect(memory::resolved_addresses_init_for_soc(&google, &zero_profile,
+                                         memory::SocFamily::Google) == 0 &&
+             memory::resolved_addresses_kernel_phys_load(&google) ==
                  (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
          "Tensor/Google physical load fallback", name);
 }
@@ -179,42 +181,42 @@ void check_profile(const ProfileFile &entry) {
 void check_address_rejections(void) {
   struct kernel_offsets decoded = {};
   TargetProfile profile = target_profile_snapshot(&decoded);
-  ghostlock::memory::ResolvedAddresses addresses = {};
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         ghostlock::memory::TARGET_SOC_QCOM) == -1,
+  memory::ResolvedAddresses addresses = {};
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == -1,
          "empty profile rejected", "address");
 
   decoded.uname_r = "6.6.0-test";
   decoded.off_init_cred = 0x1000;
   decoded.kernel_phys_load = 0x1000;
   profile = target_profile_snapshot(&decoded);
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         ghostlock::memory::TARGET_SOC_QCOM) == 0,
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == 0,
          "small physical load accepted", "address");
 
-  const auto below_base = ghostlock::memory::resolved_addresses_data_alias_checked(
-      addresses, ghostlock::target::KernelImageAddress(KIMAGE_TEXT_BASE - 1));
+  const auto below_base = memory::resolved_addresses_data_alias_checked(
+      addresses, target::KernelImageAddress(KIMAGE_TEXT_BASE - 1));
   expect(!below_base.has_value(), "image below text base rejected", "address");
 
-  const auto underflow = ghostlock::memory::resolved_addresses_data_alias_checked(
-      addresses, ghostlock::target::KernelImageAddress(KIMAGE_TEXT_BASE));
+  const auto underflow = memory::resolved_addresses_data_alias_checked(
+      addresses, target::KernelImageAddress(KIMAGE_TEXT_BASE));
   expect(!underflow.has_value(), "physical underflow rejected", "address");
 
   decoded.kernel_phys_load = UINTPTR_MAX;
   profile = target_profile_snapshot(&decoded);
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         ghostlock::memory::TARGET_SOC_QCOM) == 0,
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == 0,
          "max physical load accepted", "address");
-  const auto overflow = ghostlock::memory::resolved_addresses_data_alias_checked(
+  const auto overflow = memory::resolved_addresses_data_alias_checked(
       addresses,
-      ghostlock::target::KernelImageAddress(KIMAGE_TEXT_BASE + 0x1000));
+      target::KernelImageAddress(KIMAGE_TEXT_BASE + 0x1000));
   expect(!overflow.has_value(), "physical overflow rejected", "address");
 
   decoded.kernel_phys_load = 0;
   decoded.off_init_cred = UINTPTR_MAX;
   profile = target_profile_snapshot(&decoded);
-  expect(ghostlock::memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         ghostlock::memory::TARGET_SOC_QCOM) == -1,
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == -1,
          "image offset overflow rejected", "address");
 }
 

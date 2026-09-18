@@ -3,12 +3,10 @@
 
 #include "profile.h"
 
-extern TargetProfile &g_target_profile;
-
 #define _RSO(field, fallback)                                                \
-  target_profile_u32(&g_target_profile,                                     \
-                     target_profile_values(&g_target_profile)               \
-                         ? (uint32_t) target_profile_values(&g_target_profile)->field \
+  target_profile_u32(&g_exploit_session.profile,                                     \
+                     target_profile_values(&g_exploit_session.profile)               \
+                         ? (uint32_t) target_profile_values(&g_exploit_session.profile)->field \
                          : 0,                                                \
                      (uint32_t) (fallback))
 #define _RSO_64(field, fallback) ((uint64_t)_RSO(field, fallback))

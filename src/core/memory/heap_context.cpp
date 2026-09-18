@@ -23,7 +23,7 @@ void clear_page(PayloadPage &page) noexcept {
     page.fake_fops = 0;
     page.reclaim.fd[0] = -1;
     page.reclaim.fd[1] = -1;
-    page.state = PAYLOAD_PAGE_EMPTY;
+    page.state = PayloadPageState::Empty;
 }
 
 }  // namespace
@@ -47,7 +47,7 @@ void PayloadPage::destroy() noexcept {
 
 bool PayloadPage::move_to(PayloadPage &destination,
         PayloadPageState destination_state) noexcept {
-    if (&destination == this || destination.state != PAYLOAD_PAGE_EMPTY ||
+    if (&destination == this || destination.state != PayloadPageState::Empty ||
             !has_reclaim()) {
         return false;
     }
@@ -67,7 +67,7 @@ bool PayloadPage::move_to(PayloadPage &destination,
     return true;
 }
 
-void close_ctx_memfds(ghostlock::MmContextSet *ctx) {
+void close_ctx_memfds(MmContextSet *ctx) {
     for (size_t i = 0; i < ctx->memfds.size(); i++) {
         if (ctx->memfds[i] > 0) {
             close(ctx->memfds[i]);
@@ -76,7 +76,7 @@ void close_ctx_memfds(ghostlock::MmContextSet *ctx) {
     }
 }
 
-void free_ctx_storage(ghostlock::MmContextSet *ctx) {
+void free_ctx_storage(MmContextSet *ctx) {
     std::vector<pid_t>().swap(ctx->childs);
     std::vector<int>().swap(ctx->memfds);
 }
@@ -86,13 +86,13 @@ void heap_context_init(HeapContext *context) {
     context->snitch = nullptr;
     context->mm_objs_per_slab = 0;
     context->skb_buffer.reset();
-    context->prepare = ghostlock::MmContextSet{};
-    context->spray = ghostlock::MmContextSet{};
-    context->pre = ghostlock::MmContextSet{};
-    context->post = ghostlock::MmContextSet{};
+    context->prepare = MmContextSet{};
+    context->spray = MmContextSet{};
+    context->pre = MmContextSet{};
+    context->post = MmContextSet{};
     /* Drop any stale pid without signaling it, then start empty. */
     (void) context->leak_child.release_to_handoff();
-    context->leak_child = ghostlock::ChildProcess();
+    context->leak_child = ChildProcess();
     context->leak_memfd.reset();
     context->current.destroy();
     context->prebuilt.destroy();

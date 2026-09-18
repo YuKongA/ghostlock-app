@@ -161,13 +161,13 @@ target_profile_values(const TargetProfile *profile) {
 }
 
 static inline int target_profile_is_loaded(const TargetProfile *profile) {
-  return target_profile_values(profile) != NULL;
+  return target_profile_values(profile) != nullptr;
 }
 
 static inline const struct execution_settings *
 target_profile_execution(const TargetProfile *profile) {
   const struct kernel_offsets *values = target_profile_values(profile);
-  return values ? &values->execution : NULL;
+  return values ? &values->execution : nullptr;
 }
 
 static inline int target_profile_supports_multicast_waiter(

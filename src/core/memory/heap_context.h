@@ -28,12 +28,12 @@ struct MmContextSet {
 
 namespace ghostlock::memory {
 
-typedef enum PayloadPageState {
-    PAYLOAD_PAGE_EMPTY = 0,
-    PAYLOAD_PAGE_CURRENT,
-    PAYLOAD_PAGE_PREBUILT,
-    PAYLOAD_PAGE_QUARANTINED,
-} PayloadPageState;
+enum class PayloadPageState : int {
+    Empty = 0,
+    Current,
+    Prebuilt,
+    Quarantined,
+};
 
 typedef struct ReclaimPair {
     int fd[2];
@@ -80,15 +80,15 @@ typedef struct HeapContext {
     struct kernelsnitch_shared_state *snitch;
     size_t mm_objs_per_slab;
     std::unique_ptr<unsigned char[]> skb_buffer;
-    ghostlock::MmContextSet prepare;
-    ghostlock::MmContextSet spray;
-    ghostlock::MmContextSet pre;
-    ghostlock::MmContextSet post;
+    MmContextSet prepare;
+    MmContextSet spray;
+    MmContextSet pre;
+    MmContextSet post;
     /* Owns the KernelSnitch collision helper until it exits; mark_reaped()
      * records the waitpid() the spray path performs, so scope exit never
      * signals a pid twice. */
-    ghostlock::ChildProcess leak_child;
-    ghostlock::UniqueFd leak_memfd;
+    ChildProcess leak_child;
+    UniqueFd leak_memfd;
     PayloadPage current;
     PayloadPage prebuilt;
     PayloadPage quarantine;
@@ -96,9 +96,9 @@ typedef struct HeapContext {
 
 void heap_context_init(HeapContext *context);
 
-void close_ctx_memfds(ghostlock::MmContextSet *ctx);
+void close_ctx_memfds(MmContextSet *ctx);
 
-void free_ctx_storage(ghostlock::MmContextSet *ctx);
+void free_ctx_storage(MmContextSet *ctx);
 
 int payload_page_has_reclaim(const PayloadPage *page);
 
@@ -110,6 +110,5 @@ int payload_page_move(
 
 }  // namespace ghostlock::memory
 
-extern ghostlock::memory::HeapContext &g_heap_context;
 
 #endif

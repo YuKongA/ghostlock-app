@@ -142,6 +142,10 @@
 
 /* Decoupling plan: pin the current thread to an explicit CPU. Input: CPU id;
  * output: status. Future: runtime_pin_current_thread(core), returning errors. */
+/* TODO(CPP02-HELPERS): SYSCHK fail-fast stays until session-level error
+ * propagation exists. Blocked by: ExploitSession error plumbing.
+ * Completion: land the structured-error form, then delete this comment and the
+ * CPP02-HELPERS row in native-cpp-migration-plan.md. */
 static inline void pin_to_core(size_t core)
 {
     cpu_set_t cpuset;
@@ -159,6 +163,10 @@ static inline void reset_cpu_pin(void)
 
 /* Decoupling plan: apply process resource limits. Input: RuntimeConfig policy;
  * output: structured status. Future: runtime_apply_limits(). */
+/* TODO(CPP02-HELPERS): same fail-fast retention as pin_to_core().
+ * Blocked by: ExploitSession error plumbing.
+ * Completion: return structured status, then delete this comment and the
+ * CPP02-HELPERS row in native-cpp-migration-plan.md. */
 static inline void set_limit(void)
 {
     struct rlimit r;
@@ -172,9 +180,9 @@ static inline void set_limit(void)
 
 static inline void set_unbuffer(void)
 {
-    SYSCHK(setvbuf(stdin,  NULL, _IONBF, 0));
-    SYSCHK(setvbuf(stdout, NULL, _IONBF, 0));
-    SYSCHK(setvbuf(stderr, NULL, _IONBF, 0));
+    SYSCHK(setvbuf(stdin,  nullptr, _IONBF, 0));
+    SYSCHK(setvbuf(stdout, nullptr, _IONBF, 0));
+    SYSCHK(setvbuf(stderr, nullptr, _IONBF, 0));
 }
 
 static inline void set_proc_name(const char *name)
@@ -200,6 +208,10 @@ static void write_file(const char *path, const char *data)
 /* Decoupling plan: configure the helper user/network namespace. Input: helper
  * context; output: status. Future: helper_namespace_enter(), returning errors
  * rather than terminating through utility macros. */
+/* TODO(CPP02-HELPERS): same fail-fast retention as pin_to_core().
+ * Blocked by: ExploitSession error plumbing.
+ * Completion: return structured status, then delete this comment and the
+ * CPP02-HELPERS row in native-cpp-migration-plan.md. */
 static inline void set_user_namespace(void)
 {
     uid_t uid = getuid();

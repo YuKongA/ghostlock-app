@@ -13,6 +13,8 @@
 
 #include <string>
 
+using namespace ghostlock;
+
 namespace {
 
 struct TempLogDir {
@@ -42,12 +44,10 @@ void remove_temp_log_dir(const TempLogDir &dir) {
 }  // namespace
 
 int main(void) {
-  using ghostlock::HandoffPollPolicy;
-  using ghostlock::HandoffProbeResult;
 
   bool loaded = false;
   bool failed = false;
-  assert(!ghostlock::scan_ksu_log("/nonexistent/.ghostlock_ksu.log",
+  assert(!scan_ksu_log("/nonexistent/.ghostlock_ksu.log",
                                   loaded, failed));
   assert(!loaded && !failed);
 
@@ -55,19 +55,19 @@ int main(void) {
           "[*] unrelated\n[+] KernelSU module loaded\n");
   loaded = false;
   failed = false;
-  assert(ghostlock::scan_ksu_log(loaded_dir.log_path, loaded, failed));
+  assert(scan_ksu_log(loaded_dir.log_path, loaded, failed));
   assert(loaded && !failed);
 
   TempLogDir already_dir = make_temp_log_dir("[+] KernelSU already loaded\n");
   loaded = false;
   failed = false;
-  assert(ghostlock::scan_ksu_log(already_dir.log_path, loaded, failed));
+  assert(scan_ksu_log(already_dir.log_path, loaded, failed));
   assert(loaded && !failed);
 
   TempLogDir failed_dir = make_temp_log_dir("[!] KernelSU module not loaded\n");
   loaded = false;
   failed = false;
-  assert(ghostlock::scan_ksu_log(failed_dir.log_path, loaded, failed));
+  assert(scan_ksu_log(failed_dir.log_path, loaded, failed));
   assert(!loaded && failed);
 
   /* Both markers accumulate independently, mirroring the legacy scan. */
@@ -75,7 +75,7 @@ int main(void) {
           "[!] KernelSU module not loaded\n[+] KernelSU already loaded\n");
   loaded = false;
   failed = false;
-  assert(ghostlock::scan_ksu_log(both_dir.log_path, loaded, failed));
+  assert(scan_ksu_log(both_dir.log_path, loaded, failed));
   assert(loaded && failed);
 
   /* A zero policy performs no poll and no sleep. */
@@ -84,7 +84,7 @@ int main(void) {
   idle_policy.enforce_poll_attempts = 0;
   idle_policy.log_poll_attempts = 0;
   const HandoffProbeResult idle =
-          ghostlock::handoff_probe_run(idle_policy, loaded_dir.path);
+          handoff_probe_run(idle_policy, loaded_dir.path);
   assert(!idle.module_visible && !idle.ksu_log_loaded &&
          !idle.ksu_log_failed && !idle.enforce_ok && !idle.ready());
 
@@ -97,7 +97,7 @@ int main(void) {
   policy.log_poll_attempts = 1;
   policy.log_poll_interval_ms = 0;
   const HandoffProbeResult probe =
-          ghostlock::handoff_probe_run(policy, loaded_dir.path);
+          handoff_probe_run(policy, loaded_dir.path);
   assert(!probe.module_visible);
   assert(probe.ksu_log_loaded && !probe.ksu_log_failed);
   assert(probe.ready());
@@ -107,7 +107,7 @@ int main(void) {
   }
 
   /* A missing home directory leaves the log probes false. */
-  const HandoffProbeResult missing = ghostlock::handoff_probe_run(
+  const HandoffProbeResult missing = handoff_probe_run(
           policy, "/nonexistent-home");
   assert(!missing.ksu_log_loaded && !missing.ksu_log_failed);
   assert(!missing.ready());

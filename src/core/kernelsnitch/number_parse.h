@@ -22,7 +22,7 @@ struct ParsedUnsigned {
  * as valid zero, matching the pre-migration helper. */
 static inline struct ParsedUnsigned number_parse_unsigned(const char *text,
         int base) {
-    char *end = NULL;
+    char *end = nullptr;
     errno = 0;
     const unsigned long value = strtoul(text, &end, base);
     struct ParsedUnsigned parsed;

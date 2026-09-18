@@ -132,7 +132,7 @@ static void *__do_increase(void *arg)
     struct inc_arg *inc_arg = (struct inc_arg *)arg;
     struct kernelsnitch_shared_state *ks = inc_arg->ks;
     size_t id = inc_arg->id;
-    SYSCHK(__futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, NULL, NULL, 0));
+    SYSCHK(__futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0));
     free(inc_arg);
     return 0;
 }
@@ -146,6 +146,9 @@ static void *__do_increase(void *arg)
 /* Decoupling plan: coordinate one collision-amplification worker. Inputs:
  * KernelSnitchContext, worker id and amount; output: synchronized completion.
  * Future: kernelsnitch_worker_increase(context, id, amount). */
+/* TODO(CPP06-KS-RAII): a partial worker-start failure is only logged here; the
+ * failure-injection coverage remains a maintenance item. Completion: cover the
+ * failure path, then delete this comment and the residual row. */
 static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount)
 {
     pthread_t tid;
@@ -194,7 +197,7 @@ static size_t __measure(size_t futex_addr, size_t repeat, size_t avg)
     for (size_t l = 0; l < repeat; ++l) {
         sched_yield();
         t0 = rdtsc_begin();
-        SYSCHK(__futex((unsigned int *)futex_addr, FUTEX_WAKE_PRIVATE, 0, NULL, NULL, 0));
+        SYSCHK(__futex((unsigned int *)futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
         t1 = rdtsc_end();
         __times[l] = t1 - t0;
     }
@@ -423,7 +426,7 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     size_t wanted = ks->collisions - 1;
     /* pass 1 drains the pile.
        Piled-bucket colliders collapse while ambient buckets stay slow. */
-    __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, NULL, NULL, 0);
+    __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
     usleep(200000);
     size_t alive[KERNELSNITCH_COLLISION_POOL];
     size_t alive_t[KERNELSNITCH_COLLISION_POOL];
@@ -455,7 +458,7 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     }
     if (count < wanted && drain_on_short) {
         /* leave the bucket drained so a conservative retry starts clean */
-        __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, NULL, NULL, 0);
+        __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
         usleep(200000);
     }
     return count;

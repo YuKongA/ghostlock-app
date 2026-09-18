@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+using namespace ghostlock;
+
 static RouteStatus tcp_result;
 static int tcp_calls;
 static int select_calls;
@@ -43,27 +45,27 @@ int main(void) {
   WriteRequest request = {.mode = WriteMode::Zero};
   struct kernel_offsets values = {.compact_waiter = 1};
   TargetProfile profile = target_profile_snapshot(&values);
-  ghostlock::route::RouteController controller;
-  ghostlock::route::route_controller_init(
-      &controller, &race, &profile, ghostlock::route::ROUTE_KIND_TCP_ZEROCOPY);
+  route::RouteController controller;
+  route::route_controller_init(
+      &controller, &race, &profile, route::RouteKind::TcpZerocopy);
 
   reset_stubs((RouteStatus){
       .code = ROUTE_FALLBACK_SAFE,
       .userspace_clean = 1,
       .kernel_disarmed = 1,
   });
-  RouteStatus status = ghostlock::route::route_controller_execute(&controller, &request);
+  RouteStatus status = route::route_controller_execute(&controller, &request);
   assert(status.code == ROUTE_OK);
   assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
 
-  ghostlock::route::route_controller_init(
-      &controller, &race, &profile, ghostlock::route::ROUTE_KIND_TCP_ZEROCOPY);
+  route::route_controller_init(
+      &controller, &race, &profile, route::RouteKind::TcpZerocopy);
   reset_stubs((RouteStatus){
       .code = ROUTE_DIRTY_FAILURE,
       .userspace_clean = 0,
       .kernel_disarmed = 1,
   });
-  status = ghostlock::route::route_controller_execute(&controller, &request);
+  status = route::route_controller_execute(&controller, &request);
   assert(status.code == ROUTE_DIRTY_FAILURE);
   assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 

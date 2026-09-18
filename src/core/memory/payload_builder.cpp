@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <span>
 
+using namespace ghostlock;
+
 namespace {
 
 void store64(unsigned char *p, size_t off, uint64_t value) {
@@ -81,9 +83,9 @@ void build_compact_waiter_payload(
         unsigned char *waiter, const WriteRequest *request,
         const PayloadWriteLayout *layout) {
     if (!waiter || !request || !layout) return;
-    (void) ghostlock::encode_compact_waiter(
+    (void) encode_compact_waiter(
             {reinterpret_cast<std::byte *>(waiter),
-             ghostlock::kCompactWaiterBytes},
+             kCompactWaiterBytes},
             *request, *layout);
 }
 
@@ -110,7 +112,7 @@ void build_multicast_waiter_payload(
     if (!buffer) return;
     const size_t required = waiter_offset +
             std::max(task_offset, lock_offset) + sizeof(uint64_t);
-    (void) ghostlock::encode_multicast_waiter(
+    (void) encode_multicast_waiter(
             {reinterpret_cast<std::byte *>(buffer), required}, waiter_offset,
             task_offset, lock_offset, fake_task, fake_lock);
 }
@@ -133,7 +135,7 @@ int payload_builder_fixed_vector_test(void) {
     const uintptr_t page = 0xffffff8800210000ULL;
     const uintptr_t init_cred = 0xffffff802abfd588ULL;
     for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); ++i) {
-        std::array<unsigned char, ghostlock::kCompactWaiterBytes> current{};
+        std::array<unsigned char, kCompactWaiterBytes> current{};
         const WriteRequest request = WriteRequest::make(
                 vectors[i].target, vectors[i].mode, vectors[i].leaf != 0);
         PayloadWriteLayout layout = payload_write_layout(
@@ -164,11 +166,11 @@ int payload_builder_fixed_vector_test(void) {
     if (memcmp(legacy_stamp.data(), current_stamp.data(),
             legacy_stamp.size()) != 0) return 0;
     std::byte undersized[0x2f]{};
-    if (ghostlock::encode_compact_waiter(undersized, w1, rejected)) return 0;
+    if (encode_compact_waiter(undersized, w1, rejected)) return 0;
     /* Multicast geometry that would run past the supplied span is rejected
      * instead of written out of bounds. */
     std::array<std::byte, 0x40> multicast_small{};
-    if (ghostlock::encode_multicast_waiter(
+    if (encode_multicast_waiter(
             multicast_small, 0x20, 0x28, 0x30, 0x1111, 0x2222))
         return 0;
     return 1;

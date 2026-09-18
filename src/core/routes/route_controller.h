@@ -7,16 +7,19 @@
 
 namespace ghostlock::route {
 
-typedef enum RouteKind {
-    ROUTE_KIND_MULTICAST_WAITER = 0,
-    ROUTE_KIND_TCP_ZEROCOPY,
-    ROUTE_KIND_SELECT_STACK,
-} RouteKind;
+enum class RouteKind : int {
+    MulticastWaiter = 0,
+    TcpZerocopy,
+    SelectStack,
+};
 
 typedef struct RouteController {
     PiRaceContext *race;
     const TargetProfile *profile;
     RouteKind selected;
+    /* Kept as int: bool fields shrink this struct and measurably move the
+     * waiter_thread stack offsets (CPP17 experiment, 886 instructions
+     * reshuffled). The style gain does not justify a stack-layout change. */
     int allow_tcp_select_fallback;
     int fallback_used;
 } RouteController;

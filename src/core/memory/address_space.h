@@ -9,19 +9,19 @@
 
 namespace ghostlock::memory {
 
-typedef enum target_soc_family {
-    TARGET_SOC_QCOM = 0,
-    TARGET_SOC_MTK,
-    TARGET_SOC_XRING,
-    TARGET_SOC_GOOGLE,
-} TargetSocFamily;
+enum class SocFamily : int {
+    Qcom = 0,
+    Mtk,
+    Xring,
+    Google,
+};
 
 /* Addresses derived once from an immutable target profile and the device SoC.
  * This is the authoritative input for image-to-direct-map translation. */
 typedef struct resolved_addresses {
-    TargetSocFamily soc;
-    ghostlock::target::PhysicalAddress kernel_phys_load;
-    ghostlock::target::KernelImageAddress init_cred_image;
+    SocFamily soc;
+    target::PhysicalAddress kernel_phys_load;
+    target::KernelImageAddress init_cred_image;
 } ResolvedAddresses;
 
 int resolved_addresses_init(ResolvedAddresses *out,
@@ -29,15 +29,15 @@ int resolved_addresses_init(ResolvedAddresses *out,
 
 int resolved_addresses_init_for_soc(ResolvedAddresses *out,
         const TargetProfile *profile,
-        TargetSocFamily soc);
+        SocFamily soc);
 
 uintptr_t resolved_addresses_data_alias(const ResolvedAddresses *addresses,
         uintptr_t image_addr);
 
-std::optional<ghostlock::target::DirectMapAddress>
+std::optional<target::DirectMapAddress>
 resolved_addresses_data_alias_checked(
     const ResolvedAddresses &addresses,
-    ghostlock::target::KernelImageAddress image_address) noexcept;
+    target::KernelImageAddress image_address) noexcept;
 
 static inline uint64_t resolved_addresses_kernel_phys_load(
     const ResolvedAddresses *addresses) {

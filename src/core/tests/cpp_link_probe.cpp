@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+using namespace ghostlock;
+
 namespace {
     class ErrnoRestore final {
     public:
@@ -35,9 +37,9 @@ int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
         ErrnoRestore restore(saved_errno);
         const std::string owned = text ? text : "";
         const std::vector<char> copied(owned.begin(), owned.end());
-        const ghostlock::target::KernelImageAddress image(
-            ghostlock::target::address::kImageTextBase);
-        if (!image.checked_add(ghostlock::target::payload::kLockOffset)) {
+        const target::KernelImageAddress image(
+            target::address::kImageTextBase);
+        if (!image.checked_add(target::payload::kLockOffset)) {
             return -1;
         }
         errno = EIO;

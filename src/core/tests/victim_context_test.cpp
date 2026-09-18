@@ -13,6 +13,8 @@
 
 #include <cerrno>
 
+using namespace ghostlock;
+
 namespace {
 
 pid_t spawn_sleeper() {
@@ -32,7 +34,6 @@ void reap_sleeper(pid_t child) {
 }  // namespace
 
 int main(void) {
-  using ghostlock::VictimContext;
 
   VictimContext context;
   assert(context.child() == -1);

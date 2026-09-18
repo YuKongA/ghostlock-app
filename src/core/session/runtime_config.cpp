@@ -2,6 +2,8 @@
 #include "session/runtime_config.h"
 #include "session/runtime_paths.h"
 
+using namespace ghostlock;
+
 static bool environment_flag(const char *name, bool default_value) {
     const char *value = getenv(name);
     if (!value || !value[0]) return default_value;
@@ -9,7 +11,7 @@ static bool environment_flag(const char *name, bool default_value) {
 }
 
 static bool environment_present(const char *name) {
-    return getenv(name) != NULL;
+    return getenv(name) != nullptr;
 }
 
 static void runtime_config_init_cpus(runtime_config *config) {
@@ -19,7 +21,7 @@ static void runtime_config_init_cpus(runtime_config *config) {
     const char *value = getenv("GHOSTLOCK_CORE");
     if (value && value[0]) {
         config->main_cpu_explicit = true;
-        long parsed = strtol(value, NULL, 10);
+        long parsed = strtol(value, nullptr, 10);
         if (parsed >= 0 && parsed < CPU_SETSIZE) {
             config->main_cpu = (int) parsed;
         } else {
@@ -31,7 +33,7 @@ static void runtime_config_init_cpus(runtime_config *config) {
     value = getenv("GHOSTLOCK_CONSUMER_CORE");
     if (value && value[0]) {
         config->consumer_cpu_explicit = true;
-        long parsed = strtol(value, NULL, 10);
+        long parsed = strtol(value, nullptr, 10);
         if (parsed >= 0 && parsed < CPU_SETSIZE) {
             config->consumer_cpu = (int) parsed;
         } else {
@@ -102,9 +104,9 @@ static void runtime_config_init_paths(runtime_config *config) {
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";
 
-    config->home_dir = ghostlock::runtime_paths::normalize_home_dir(home);
+    config->home_dir = runtime_paths::normalize_home_dir(home);
     config->root_script_path =
-            ghostlock::runtime_paths::root_script_file(config->home_dir);
+            runtime_paths::root_script_file(config->home_dir);
 }
 
 /* Capture all process environment and CPU/path choices exactly once. Input:

@@ -11,9 +11,8 @@
 #include <type_traits>
 #include <utility>
 
-using ghostlock::MappedRegion;
-using ghostlock::PthreadOwner;
-using ghostlock::TcpZerocopyRoute;
+using namespace ghostlock;
+
 
 static int mmap_zero_page(void **address, size_t size) {
   char name[64];
