@@ -235,7 +235,7 @@ static int resolve_profile_addresses(void) {
  * target_profile_select() and resolve_runtime_addresses(). */
 static int select_offsets(const char *profile_path) {
     struct utsname uts;
-    struct kernel_offsets decoded = {0};
+    struct kernel_offsets decoded = {};
     if (uname(&uts) < 0) return -1;
     pr_info("kernel: %s\n", uts.release);
 #ifdef TARGET_KERNEL_RELEASE

@@ -135,7 +135,7 @@ int kernel5_resident_start(void) {
             &g_resolved_addresses, KIMAGE_TEXT_BASE + layout.fake_bss_image_offset);
     context->lock = bss + layout.fake_lock_offset;
     context->task = bss + layout.fake_task_offset;
-    struct sigaction sa = {0};
+    struct sigaction sa = {};
     sa.sa_handler = multicast_waiter_interrupt;
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGUSR1, &sa, NULL) != 0) return 0;

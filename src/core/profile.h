@@ -204,7 +204,7 @@ static inline MulticastWaiterLayout target_profile_multicast_waiter_layout(
       .lock_slot_count = v->mcast_lock_slot_count,
       .lock_slot_stride = v->mcast_lock_slot_stride,
       .fake_bss_image_offset = v->off_mcast_fake_bss,
-  } : (MulticastWaiterLayout){0};
+  } : MulticastWaiterLayout{};
 }
 
 static inline SelectStackLayout target_profile_select_stack_layout(
@@ -213,7 +213,7 @@ static inline SelectStackLayout target_profile_select_stack_layout(
   return v ? (SelectStackLayout){
       .waiter_shift = v->pselect_waiter_shift,
       .compact_waiter = v->compact_waiter,
-  } : (SelectStackLayout){0};
+  } : SelectStackLayout{};
 }
 
 static inline TcpZerocopyLayout target_profile_tcp_zerocopy_layout(
