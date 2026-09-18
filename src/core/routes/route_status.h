@@ -1,8 +1,6 @@
 #ifndef ROUTE_STATUS_H
 #define ROUTE_STATUS_H
 
-#ifdef __cplusplus
-
 #include <cstddef>
 #include <type_traits>
 
@@ -59,25 +57,5 @@ inline constexpr RouteResultCode ROUTE_DIRTY_FAILURE =
     RouteResultCode::DirtyFailure;
 inline constexpr RouteResultCode ROUTE_UNSUPPORTED =
     RouteResultCode::Unsupported;
-
-#else
-
-typedef enum RouteResultCode {
-  ROUTE_OK = 0,
-  ROUTE_RETRYABLE,
-  ROUTE_FALLBACK_SAFE,
-  ROUTE_DIRTY_FAILURE,
-  ROUTE_UNSUPPORTED,
-} RouteResultCode;
-
-typedef struct RouteStatus {
-  RouteResultCode code;
-  int step;
-  int error_number;
-  int userspace_clean;
-  int kernel_disarmed;
-} RouteStatus;
-
-#endif
 
 #endif

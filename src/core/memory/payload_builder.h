@@ -4,7 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
 
 #include <cstddef>
 #include <cstdint>
@@ -67,39 +66,6 @@ using WriteRequest = ghostlock::WriteRequest;
 using WriteMode = ghostlock::WriteMode;
 using PayloadWriteLayout = ghostlock::PayloadWriteLayout;
 
-#else /* C façade for callers that have not migrated to the C++ value types */
-
-typedef enum WriteMode {
-    WRITE_MODE_DISABLED = 0,
-    WRITE_MODE_ZERO = 1,
-    WRITE_MODE_CREDENTIAL = 2,
-} WriteMode;
-
-typedef struct WriteRequest {
-    uintptr_t target;
-    WriteMode mode;
-    int preserve_child;
-} WriteRequest;
-
-typedef struct PayloadWriteLayout {
-    uintptr_t parent;
-    uintptr_t right;
-    uintptr_t left;
-    uintptr_t fops;
-    int needs_credential_copy;
-} PayloadWriteLayout;
-
-static inline WriteRequest write_request_make(
-        uintptr_t target, WriteMode mode, int leaf) {
-    const WriteRequest request = {
-            .target = target,
-            .mode = mode,
-            .preserve_child = leaf ? 0 : 1,
-    };
-    return request;
-}
-
-#endif
 
 /* Resolve the request-dependent words shared by the three route encoders. */
 PayloadWriteLayout payload_write_layout(

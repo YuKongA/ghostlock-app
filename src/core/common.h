@@ -111,13 +111,8 @@ void disable_rseq_for_thread(void);
 
 void init_p0_profile(void);
 
-#ifdef __cplusplus
 extern ResolvedAddresses &g_resolved_addresses;
 extern TargetProfile &g_target_profile;
-#else
-extern ResolvedAddresses g_resolved_addresses;
-extern TargetProfile g_target_profile;
-#endif
 
 /* Measured direct-map end (defaults to the built-in bound). */
 extern uint64_t g_direct_map_end;

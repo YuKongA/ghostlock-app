@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include "profile.h"
 
-#ifdef __cplusplus
 
 #include <string>
 
@@ -30,29 +29,10 @@ class RuntimeConfig final {
 
 using runtime_config = RuntimeConfig;
 
-#else /* C façade for callers that have not migrated */
-
-typedef struct runtime_config {
-    int main_cpu;
-    int consumer_cpu;
-    bool tcp_zerocopy_enabled;
-    bool multicast_resident_enabled;
-    bool multicast_phase1_probe;
-    bool w1_only;
-    bool verbose_debug;
-    bool main_cpu_explicit;
-    bool consumer_cpu_explicit;
-    char home_dir[256];
-    char root_script_path[300];
-} runtime_config;
-
-#endif
 
 /* The process snapshot is owned by ExploitSession. Callers reach it through
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
-#ifdef __cplusplus
 RuntimeConfig &runtime_config_snapshot() noexcept;
-#endif
 
 int runtime_config_init(runtime_config *config);
 

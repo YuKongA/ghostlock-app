@@ -186,10 +186,8 @@ typedef struct futex_hash_context {
     uint32_t table_size;
 } FutexHashContext;
 
-#ifdef __cplusplus
 static_assert(sizeof(FutexHashContext) == sizeof(uint32_t));
 static_assert(alignof(FutexHashContext) == alignof(uint32_t));
-#endif
 
 static inline uint32_t futex_hash_no_trunc(futex_key_t *key)
 {
