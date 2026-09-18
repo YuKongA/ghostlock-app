@@ -99,8 +99,6 @@ struct local_sched_attr {
     uint64_t sched_period;
 };
 
-int run_exploit(int argc, char **argv);
-
 void read_first_line(const char *path, char *buf, size_t len);
 
 void log_startup_context(void);
