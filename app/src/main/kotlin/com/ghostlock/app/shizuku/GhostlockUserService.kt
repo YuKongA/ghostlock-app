@@ -6,7 +6,7 @@ import androidx.annotation.Keep
 import com.ghostlock.app.BuildConfig
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Keep
@@ -67,6 +67,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 )
                     .directory(workDir)
                     .redirectErrorStream(true)
+                    .redirectOutput(nativeLog)
                     .apply {
                         environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                         environment()["TMPDIR"] = workDir.absolutePath
@@ -78,19 +79,22 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     }
                     .start()
                     .let { process ->
-                        FileOutputStream(nativeLog).use { nativeOutput ->
-                            nativeOutput.bufferedWriter().use { persistentLog ->
-                                process.inputStream.bufferedReader().useLines { lines ->
-                                    lines.forEach { line ->
-                                        persistentLog.appendLine(line)
-                                        persistentLog.flush()
-                                        if (line.contains("[T+")) nativeOutput.fd.sync()
-                                        callback.onLog(line)
-                                    }
-                                }
-                            }
+                        // The native process writes its log to a file and this
+                        // tailer forwards lines asynchronously. Reading a pipe
+                        // here applied backpressure inside the PI race window
+                        // (every line also costs a binder round trip), which
+                        // stalled the route and ended in a kernel panic.
+                        val tailer = Thread({
+                            relayLog(nativeLog, callback)
+                        }, "ghostlock-shizuku-tailer").apply {
+                            isDaemon = true
+                            start()
                         }
-                        process.waitFor()
+                        val exitCode = process.waitFor()
+                        Thread.sleep(200)
+                        tailer.interrupt()
+                        tailer.join(1000)
+                        exitCode
                     }
             }.getOrElse { error ->
                 runCatching { callback.onLog("error: ${error.message}") }
@@ -99,6 +103,51 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
             running.set(false)
             runCatching { callback.onComplete(exitCode) }
         }, "ghostlock-shizuku-runner").start()
+    }
+
+    /** Forward complete native log lines without ever blocking the native
+     * process; the file is the transport, binder is only the display path. */
+    private fun relayLog(logFile: File, callback: IGhostlockCallback) {
+        var offset = 0L
+        val pending = StringBuilder()
+        while (!Thread.currentThread().isInterrupted) {
+            try {
+                if (logFile.isFile) {
+                    RandomAccessFile(logFile, "r").use { handle ->
+                        if (offset > handle.length()) {
+                            offset = 0
+                            pending.clear()
+                        }
+                        handle.seek(offset)
+                        while (true) {
+                            val byte = handle.read()
+                            if (byte == -1) break
+                            if (byte == '\n'.code) {
+                                val line = pending.toString()
+                                pending.clear()
+                                offset = handle.filePointer
+                                if (line.isNotEmpty()) {
+                                    runCatching { callback.onLog(line) }
+                                }
+                            } else {
+                                pending.append(byte.toChar())
+                            }
+                        }
+                    }
+                }
+                Thread.sleep(100)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            } catch (_: Exception) {
+                try {
+                    Thread.sleep(200)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
+            }
+        }
     }
 
     override fun destroy() {
