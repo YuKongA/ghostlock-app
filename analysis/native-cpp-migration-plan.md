@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP07 已完成（CPP01–CPP06 基线 `CPP04-06-20260917-multicast-pass`、复测 `CPP06b`/`CPP06d`；CPP07 `CPP07-20260917-multicast-pass`）。已记录两次同模式的间歇性 KernelSnitch 阶段 kernel panic（`CPP06c`、`CPP07-20260917-multicast-kernel-panic`），与 native 版本无关、根因不可判定。CPP08 代码完成：`RuntimeConfig` 值类型化（`std::string` 路径、构造后只读语义）、路径 `c_str()` 边界、`write_root_script` RAII、`runtime_paths` 固定向量；native `8e5cd481…`，等待 Direct/Shizuku 两种入口真机门禁。`HeapOwner` 与 RuntimeConfig session 化分别作为 `CPP07-OWNER`/`SESSION-01` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP08 已完成。CPP08 两种入口均通过真机门禁：Direct `CPP08-20260917-direct-pass`、Shizuku `CPP08-20260917-shizuku-pass`（期间修复 fork+exec EFAULT、UserService 建议值门槛、日志管道背压，并移植上游第二批 `396e52d`）。下一阶段为 CPP09；`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`（`pi_race_run` 等待路由完成需超时）等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -258,7 +258,7 @@ struct RouteOutcome final {
 - [x] 部分 prepare 失败注入：需要 syscall 层故障注入框架，随 `CPP07-OWNER` 一并移交 CPP12。
 - [x] 真机门禁：6/6 route clean、无 prepare 重试，Heap 时序与基线一致（证据 `CPP07-20260917-multicast-pass`）；同一构建在 20:34 出现过一次与 CPP06c 同模式的间歇性 kernel panic（证据 `CPP07-20260917-multicast-kernel-panic`，根因不可判定，与 native 版本无关）。
 
-### [ ] CPP08：RuntimeConfig、日志与进程资源
+### [x] CPP08：RuntimeConfig、日志与进程资源
 
 - [x] `RuntimeConfig` 值类型化：C++ class 拥有 `std::string` 路径，`runtime_config_init` 改为显式字段重置；C façade 保留。`g_runtime_config` 引用别名的删除需要 `ExploitSession` 根 owner，随 `SESSION-01` 移交 CPP12。
 - [x] 路径只在 syscall/exec 边界转换为稳定 `c_str()`；`g_home_dir`/`g_root_script_path` 宏直接暴露 `c_str()`，不存在保存临时字符串指针的调用点。
@@ -268,7 +268,7 @@ struct RouteOutcome final {
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
 - [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `analysis/upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
 - [x] Direct 入口门禁通过（206）：handoff 诊断 `script open fd=3 errno=0`，root script 执行、`KernelSU ready`，6/6 route clean、无 prepare 重试，证据 `CPP08-20260917-direct-pass`。首轮 EFAULT 失败与修复见 `CPP08-20260917-direct-kernelsu-pending`。
-- [ ] Shizuku 入口门禁：① 首测被 `GhostlockUserService` 的 `requires_shizuku` 硬门槛拒绝（`CPP08-20260917-shizuku-gate-fail`），已改为信息日志；② 复测两次均在 route 阶段卡住后 `kernel_panic`（`CPP08-20260917-shizuku-panic`）：native stdout 走管道 + 每行 binder 回调，背压阻塞竞态窗口；已改为 `redirectOutput(文件)` + 异步 tailer，待 211 复测。
+- [x] Shizuku 入口门禁通过（211）：日志通路修复后日志完整（`Shizuku ready uid=2000 Seccomp=0`），4 次 route 全 clean（W3 按 shell 无 seccomp 跳过），`KernelSU ready`、无 panic；证据 `CPP08-20260917-shizuku-pass`。此前两次失败（门槛拒绝、日志背压 panic）分别见 `CPP08-20260917-shizuku-gate-fail` 与 `-shizuku-panic`。
 
 ### [ ] CPP09：PI Race 并发生命周期
 
@@ -393,6 +393,7 @@ struct RouteOutcome final {
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
 | U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记 |
 | PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |
+| PI-TIMEOUT-01 | `pi_race_run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`）；修复需绑定 `TargetProfile.execution` 的超时并把超时映射为 `ROUTE_DIRTY_FAILURE` | 攻击逻辑加固（独立真机门禁） | [ ] 已登记（代码 TODO `pi-timeout-01`） |
 
 ## 10. 完成定义
 
