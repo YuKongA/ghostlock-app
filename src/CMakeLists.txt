@@ -52,10 +52,12 @@ endif()
 
 set(SOURCES
         core/main.cpp
+        core/exploit_ops.cpp
         core/memory/address_space.cpp
         core/memory/heap_context.cpp
         core/pi_race.cpp
         core/routes/route_controller.cpp
+        core/routes/route_threads.cpp
         core/routes/tcp_zerocopy_route.cpp
         core/routes/select_stack_route.cpp
         core/routes/multicast_waiter_route.cpp
@@ -65,7 +67,9 @@ set(SOURCES
         core/util.cpp
         core/routes/route_operations.cpp
         core/session/exploit_session.cpp
+        core/session/exploit_stages.cpp
         core/session/handoff_probe.cpp
+        core/session/victim_process.cpp
         core/support/native_resource.cpp
 )
 
