@@ -25,7 +25,26 @@ struct kernel_offsets {
   /* mm_struct SLUB stride; 0 uses target.h default (6.6 GKI 0x500).
    * android14-6.1 uses 0x400 (BTF reports 0x3c0). */
   uint32_t mm_struct_sz;
-  uint32_t _pad[3];
+  uint32_t _pad[2];
+
+  /* Vivo vr.ko anti-root neutralization.
+   * Offset of __tracepoint_sys_exit from the kernel image base (_text).
+   * 0 = not a vivo device; neutralization is skipped.
+   * This offset is image-relative, like the other off_* values: data_addr()
+   * adds KIMAGE_TEXT_BASE and then subtracts it again, so the value is
+   * measured against _text, not against that constant.
+   * The extractor resolves __tracepoint_sys_exit on every GKI build, so a
+   * tool-generated table can carry this field on a non-vivo kernel; the
+   * effective gate is the vr.ko check at the call site, which is where the
+   * device-specific decision belongs.
+   * Confirmed from vr.ko disassembly: it registers a tracepoint probe on
+   * sys_exit (imports tracepoint_probe_register_prio and walks tp->funcs);
+   * zeroing tp->funcs disables it globally. vr.ko resolves symbols at
+   * runtime through vklp_get_addr + for_each_kernel_tracepoint, so it has
+   * no static __tracepoint_sys_exit relocation.
+   * NOTE: the funcs offset is NOT constant across KMIs (0x40 on 6.1,
+   * 0x48 on 6.6) and is selected at runtime by tracepoint_funcs_off(). */
+  uint64_t off_vr_sys_exit_tp;
 };
 
 #define OFFSETS_ENTRY(uname, ...) { .uname_r = uname, __VA_ARGS__ }
@@ -79,6 +98,7 @@ static const struct kernel_offsets known_offsets[] = {
 #include "6.6.89-android15-8-g0889fe95bb10-ab14402178-4k/offsets.h"
 #include "6.6.89-android15-8-gb99b4586a3ee-ab13754593-4k/offsets.h"
 #include "6.6.89-android15-8-gf4dc45704e54-abogki446052083-4k/offsets.h"
+#include "6.6.89-android15-8-g97a9aaefab9a-ab14519050-4k/offsets.h"
 #include "6.6.92-android15-8-g3637f4904cf5-ab13944661-4k/offsets.h"
 #include "6.6.102-android15-8-gab8eb70a71b8-ab14350911-4k/offsets.h"
 #include "6.6.102-android15-8-gb01b41c2647c-ab15574720-4k/offsets.h"
