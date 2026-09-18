@@ -27,7 +27,8 @@
 - 但本次是同一构建 **2/2 连续** panic，按 `PI-TIMEOUT-01` 先例不再扩大样本，先回退 VictimContext 收编并做隔离复跑，确认设备与攻击层状态。
 - 设备温度与冷却间隔：**日志不可判定**（a/b 两次运行间隔约 1 分 42 秒，无温度记录）。
 
-## 后续
+## 后续与隔离复跑结果
 
 - VictimContext 收编代码保留在提交历史（`c222151`），登记为待受控条件下重试的批次。
-- KERNEL-PANIC-01 追加本次证据；回退后以 `cea1bedc` 等价构建隔离复跑。
+- 回退提交 `552c8b2` 后的 native 与 CPP12j 通过版本逐字节一致（`cea1bedc`）；隔离复跑 **PASS**（`CPP12l-20260917-multicast-pass`，6/6 route、`KernelSU ready`）。
+- 该结果确认：设备与攻击层在两次 panic 后仍稳定，本次 2/2 panic 与 `b147df9f` 构建相关（布局敏感触发，同 `PI-TIMEOUT-01` 与 `KERNEL-PANIC-01` 的历史模式）。
