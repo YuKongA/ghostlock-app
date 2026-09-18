@@ -15,6 +15,34 @@
 - **上游行为对齐**：KernelSnitch range-end 截断、direct-map 末端测量、compact value/leaf 统一编码、
   arm-target 校验、W1 页面字节过滤、`SLIDE_*` direct-map task alias
 
+## All code changed, No bytecode changed!
+
+Native 攻击链从 C 完整重写为 C++20（RAII / 命名空间 / 分层），而攻击关键指令保持逐指令形状不变。以下为同工具链、同优化档下的静态对比：
+
+**相对上游 `main`（C 单模块 + LTO）**
+
+| 指标 | 数值 |
+|---|---|
+| 文件大小 | 93,760 B → 1,140,328 B（+1116%，含静态 libc++/libc++abi） |
+| `.text` | 67,072 B → 213,678 B（+218.6%） |
+| 共同函数形状完全相同 | 115/137（83.9%） |
+| 总体指令形状变化率 | 3,487/6,486 = **53.8%** |
+| 核心攻击（上游可比独立符号） | `waiter_thread` −28.4% / 形状 89.8%；`do_one_write` −37.8% / 82.9%；`consumer_thread` +3.3% / 52.5%；`owner_thread` +13.8% / 44.6%；`tcp_punch_thread` −2.8% / 50.7% |
+
+**相对上一门禁构建（`e13ed9dd`）**
+
+| 指标 | 数值 |
+|---|---|
+| 共同函数形状完全相同 | 459/462（99.4%） |
+| 总体指令形状变化率 | 6/33,073 = **0.02%** |
+| 核心 8 攻击函数 | 全部 **0.0%**（逐指令形状不变） |
+
+> 口径：指令形状 = 归一化全部地址与符号注解后的逐指令对比（差异数/基线指令数）；
+> 核心 8 攻击函数 = `owner_thread`/`waiter_thread`/`consumer_thread`/`run_main_route_threads`/
+> `do_kernel5_fake_lock_route`/`do_one_write`/`multicast_owner_worker`/`multicast_waiter_worker`。
+> 上游为 LTO 单模块，`do_kernel5`/`do_pselect`/`run_main_route_threads`/multicast workers 被内联，
+> 故上游侧只列可比独立符号。
+
 ## 相对上游 `main` 的结构变化
 
 - `src/kernels/**/offsets.h`（C 注册表，48 个）由 `app/src/main/assets/kernel_profiles/` JSON profile 取代
