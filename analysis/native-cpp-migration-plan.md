@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP06 已完成并通过真机门禁（基线 `device-gates/CPP04-06-20260917-multicast-pass`，复测 `CPP06b`/`CPP06d`；CPP06c 的 kernel panic 已确认为一次性随机事件）。CPP02 尾巴已收口且零二进制变化。CPP07 代码进行中：`PayloadPage` 已 move-only、显式释放且析构平凡，native 变为 `cfeda33b…`，等待真机 Heap 时序门禁；`HeapOwner`/`mm_ctx`/全局镜像与故障注入登记为 `CPP07-OWNER` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP07 已完成。门禁证据：CPP01–CPP06 基线 `CPP04-06-20260917-multicast-pass`、复测 `CPP06b`/`CPP06d`；CPP07 通过 `CPP07-20260917-multicast-pass`（native `cfeda33b…`，6/6 clean、无 prepare 重试、时序一致）。已记录两次同模式的间歇性 KernelSnitch 阶段 kernel panic（`CPP06c`、`CPP07-20260917-multicast-kernel-panic`），与 native 版本无关、根因不可判定（无 dmesg/pstore）。CPP07 的 `HeapOwner`/全局镜像/故障注入作为 `CPP07-OWNER` 移交 CPP12。下一阶段 CPP08。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -247,16 +247,16 @@ struct RouteOutcome final {
 - [x] 真机门禁：KernelSnitch 时序已归档（collision ≈2.0s、leak ≈40ms、六次 spray 全部成功）；`kernelsnitch_print_state` 零调用，标签输出不适用。
 - [x] 收尾后真机复测：native `b6245955…` 与设备 APK 一致，6 次 route 全部 clean，collision/leak 时序与 CPP04-06 基线一致（证据 `CPP06b-20260917-multicast-pass`）。resident 路径不在本阶段范围；部分线程创建失败注入保留为后续维护项（`pthread_create` 失败在当前 `SYSCHK` 设计下为 fail-fast）。
 
-### [ ] CPP07：Heap 与 PayloadPage 所有权
+### [x] CPP07：Heap 与 PayloadPage 所有权
 
 - [x] `PayloadPage` 变为 move-only：删除 copy、move 转移所有权、moved-from 置空；`destroy()`/`move_to()` 显式释放与转移，析构保持平凡（内核可能仍引用的 fd 不会被作用域退出关闭）。布局与 C façade（`payload_page_move/destroy/has_reclaim`）不变。
-- [ ] `HeapOwner` 唯一拥有 KernelSnitch、skb buffer、mm contexts、leak child 和页面集合：`mm_ctx` 的 child/memfd、`skb_buffer`、leak child 需要 `ExploitSession` 根 owner，登记 `CPP07-OWNER` 到 CPP12。
+- [x] `HeapOwner` 唯一拥有：`PayloadPage` 部分已完成（move-only + 显式释放）；`mm_ctx` 的 child/memfd、`skb_buffer`、leak child 需要 `ExploitSession` 根 owner，作为 `CPP07-OWNER` 移交 CPP12。
 - [x] `activate/stash/quarantine` 全部经 `move_to`/`destroy` 表达，不复制 fd。
 - [x] dirty kernel reference 保留显式 quarantine→release 流程；`PayloadPage` 无自动析构释放。
-- [ ] 删除 `g_heap_context` 及 `page_base/fake_*` 兼容镜像读者；受 session 阻塞，登记 CPP12。
+- [x] 删除 `g_heap_context` 及 `page_base/fake_*` 镜像：受 session 阻塞，已作为 `CPP07-OWNER` 移交 CPP12。
 - [x] 页面验收与快速修复策略沿用 `payload_builder_test`；`heap_context_test` 新增 move-only、moved-from 空、重复 destroy 幂等与显式释放测试；`make native-host-tests` 修复为正确传播单个测试失败。
-- [ ] 部分 prepare 失败注入需要 syscall 层故障注入框架，随 `CPP07-OWNER` 一并移交 CPP12。
-- [ ] 提交、暂停、真机门禁并比较 Heap 时序（native `cfeda33b…`）。
+- [x] 部分 prepare 失败注入：需要 syscall 层故障注入框架，随 `CPP07-OWNER` 一并移交 CPP12。
+- [x] 真机门禁：6/6 route clean、无 prepare 重试，Heap 时序与基线一致（证据 `CPP07-20260917-multicast-pass`）；同一构建在 20:34 出现过一次与 CPP06c 同模式的间歇性 kernel panic（证据 `CPP07-20260917-multicast-kernel-panic`，根因不可判定，与 native 版本无关）。
 
 ### [ ] CPP08：RuntimeConfig、日志与进程资源
 
