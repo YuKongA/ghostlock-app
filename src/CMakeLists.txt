@@ -65,7 +65,9 @@ set(SOURCES
         core/session/runtime_config.cpp
         core/offsets_json.cpp
         core/util.cpp
-        core/routes/route_operations.cpp
+        core/routes/multicast_one_shot_route.cpp
+        core/routes/tcp_zerocopy_ops.cpp
+        core/routes/select_stack_ops.cpp
         core/session/exploit_session.cpp
         core/session/exploit_stages.cpp
         core/session/handoff_probe.cpp

@@ -19,7 +19,7 @@
 - [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
 - [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
 - [x] `main.cpp` 分层与 namespace 化系列（`1ec96ab`/`172062d`/`d9b1042`/`300d3bf` + `d862a51`/`fb8fb59`/`dfd0d60`/`a30e8f2`）：批次 A（main 解析/stage/victim enum/分 TU，`085c060`，native `53f9ec60…`）第一次冷机 PASS（`CPP12u`）；批次 B（namespace 层，`91fb8a1`，native `1e196eb9…`，与历史 `CPP12r` 构建逐字节一致）第一次冷机 PASS（`CPP12v-20260918-multicast-pass`，6/6 route、零页重试、`KernelSU ready`）。历史 2/2 panic（`CPP12r`）与布局无因果闭环（`CPP12s` 内核栈 + 双 PASS）；第二次冷机待跑或豁免。
-- [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元；必须作为单独行为门禁，避免改变静态函数布局和敏感路线生成代码。
+- [x] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元（`multicast_one_shot_route.cpp`/`tcp_zerocopy_ops.cpp`/`select_stack_ops.cpp`，静态 helper 各自内部链接、`TCP_PUNCH_SHMEM_LEN` 归 TCP 单元）；构建 `92780d48…` 与 `66f0a8a3…` 对比 **8/8 攻击关键函数 strict 一致**，静态函数布局与敏感路线生成代码未变。
 
 ## 1. 不可违反的实施规则
 

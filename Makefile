@@ -34,7 +34,9 @@ CXX_SRCS := \
   src/core/session/runtime_config.cpp \
   src/core/offsets_json.cpp \
   src/core/util.cpp \
-  src/core/routes/route_operations.cpp \
+  src/core/routes/multicast_one_shot_route.cpp \
+  src/core/routes/tcp_zerocopy_ops.cpp \
+  src/core/routes/select_stack_ops.cpp \
   src/core/session/exploit_session.cpp \
   src/core/session/exploit_stages.cpp \
   src/core/session/handoff_probe.cpp \
