@@ -21,10 +21,12 @@ C_SRCS :=
 
 CXX_SRCS := \
   src/core/main.cpp \
+  src/core/exploit_ops.cpp \
   src/core/memory/address_space.cpp \
   src/core/memory/heap_context.cpp \
   src/core/pi_race.cpp \
   src/core/routes/route_controller.cpp \
+  src/core/routes/route_threads.cpp \
   src/core/routes/tcp_zerocopy_route.cpp \
   src/core/routes/select_stack_route.cpp \
   src/core/routes/multicast_waiter_route.cpp \
@@ -34,7 +36,9 @@ CXX_SRCS := \
   src/core/util.cpp \
   src/core/routes/route_operations.cpp \
   src/core/session/exploit_session.cpp \
+  src/core/session/exploit_stages.cpp \
   src/core/session/handoff_probe.cpp \
+  src/core/session/victim_process.cpp \
   src/core/support/native_resource.cpp
 
 NATIVE_BUILD_DIR := .build/native
