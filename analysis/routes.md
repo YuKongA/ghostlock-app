@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；CPP01–CPP06 的 Multicast 门禁已通过（`device-gates/CPP04-06-20260917-multicast-pass`，设备 APK 的 native SHA-256 与构建产物一致），TCP/Select 仍只有主机固定测试。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 门禁已连续通过（`CPP04-06`、`CPP06b`、`CPP07`、`CPP08-direct`/`-shizuku`、`CPP09`，均在 `device-gates/`），TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
@@ -141,7 +141,7 @@ sequenceDiagram
     R->>R: munmap + close memfd/socket
 ```
 
-TCP是局部资源所有权最集中的路线：线程、映射和fd均经单一 `out` 路径回收。PI三线程和喷射页仍由外层公共代码管理。
+TCP是局部资源所有权最集中的路线。CPP10 后由 `TcpZerocopyRoute` 唯一拥有 client/server/punch fd、mapping 与 punch worker（`UniqueFd`/`MappedRegion`/`PthreadOwner`），`prepare → execute → disarm → destroy` 显式分离；join/munmap 失败置 dirty 并保留资源（不提前 close 已被 puncher 借用的 fd）。PI三线程和喷射页仍由外层公共代码管理。
 
 ## pselect/select
 
@@ -191,7 +191,7 @@ flowchart LR
 
 ## 路线选择与回退现状
 
-S15 最终回归（`versionCode=176`）再次验证 Multicast 端到端主链：六次 route 均为 `OK clean=1/1`，W1/W2/W3 后进入 `KernelSU ready`。TCP、Select 和 TCP→Select 回退仍等待对应设备补证。
+S15 最终回归（`versionCode=176`）再次验证 Multicast 端到端主链：六次 route 均为 `OK clean=1/1`，W1/W2/W3 后进入 `KernelSU ready`。CPP07–CPP09 的门禁在同一行为基线上复验通过（`CPP09-20260917-multicast-pass`）。TCP、Select 和 TCP→Select 回退仍等待对应设备补证。
 
 ```mermaid
 stateDiagram-v2

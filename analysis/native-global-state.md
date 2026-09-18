@@ -122,9 +122,9 @@ stateDiagram-v2
 
 | 变量 | 读者/写者 | 问题 | 目标归宿 |
 |---|---|---|---|
-| `tcp_punch_go`, `tcp_punch_stop`, `tcp_punch_phase`, `tcp_punch_failed` | TCP route/punch thread | 文件级单例，使线程入口无法复用 | `tcp_route_context.punch` |
+| `tcp_punch_go`, `tcp_punch_stop`, `tcp_punch_phase`, `tcp_punch_failed` | TCP route/punch thread | 文件级单例，使线程入口无法复用 | 已落地（CPP10）：`TcpZerocopyRoute` 成员原子量 |
 
-TCP的client/server fd、punch fd、mapping和punch thread已是 `do_tcp_fake_lock_route()` 局部变量，只需收入context以便统一失败分类和外部清理验证。
+TCP的client/server fd、punch fd、mapping和punch worker已由 `TcpZerocopyRoute` 唯一拥有（`UniqueFd` ×3、`MappedRegion`、`PthreadOwner`，CPP10），`prepare/execute/disarm/destroy` 显式分离；join/munmap 失败时以 dirty 保留资源，不提前 close（防止已复用 fd 被 puncher 使用）。
 
 ### pselect/select
 

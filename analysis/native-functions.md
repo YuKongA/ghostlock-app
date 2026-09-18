@@ -133,9 +133,11 @@
 | 函数 | 用途 | 状态/输入输出 | 调用/清理 |
 |---|---|---|---|
 | `tcp_wait_for_consumer_idle()` | 停止consumer并等正在执行的调用返回 | consumer原子量 | 自旋等待 |
-| `tcp_make_pair()` | 建loopback TCP client/server对 | out fd → status | listener始终在函数内关闭 |
-| `tcp_punch_thread()` | 对memfd循环填充/打孔 | `tcp_punch_*` | 不拥有fd，使用传入state |
-| `do_tcp_fake_lock_route()` | TCP路线完整控制器 | 读fake/page，写route/consumer/punch状态 | 统一 `out` 停线程、join、munmap、close |
+| `tcp_make_pair()` | 建loopback TCP client/server对 | out fd → status | listener/client/server 均由 `UniqueFd` 拥有，失败路径自动关闭 |
+| `tcp_punch_thread()` | 对memfd循环填充/打孔 | `TcpZerocopyRoute` 的 `punch_*` 原子 | 借用 `punch_fd.get()`，不拥有fd |
+| `TcpZerocopyRoute::prepare()` / `execute()` | 取得资源 / 跑触发循环 | 写 route/consumer/punch 状态 | 定义在 `route_operations.cpp`（依赖 fake/page 全局） |
+| `TcpZerocopyRoute::disarm()` / `destroy()` | 停触发并 drain / join worker 后一次性释放 | 资源与 status | host-safe；join/munmap 失败置 dirty 并保留资源至进程退出 |
+| `do_tcp_fake_lock_route()` | TCP路线完整控制器 | 读fake/page，写route/consumer/punch状态 | 构造 context → `prepare/execute/disarm/destroy`；dirty 日志按 step 47/48 打印 |
 
 ### pselect/select
 

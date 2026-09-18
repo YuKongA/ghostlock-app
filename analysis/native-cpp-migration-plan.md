@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP09 已完成。CPP08 Direct/Shizuku 门禁见 `CPP08-20260917-direct-pass`/`-shizuku-pass`；CPP09（`PiRace` 类 + `PthreadOwner` ×3）门禁见 `CPP09-20260917-multicast-pass`（6/6 route clean，行为与 CPP08 基线一致）。下一阶段为 CPP10（TCP Zerocopy 路线，需外部 TCP 设备门禁）。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute` 类 + RAII 资源）代码与主机测试完成（native `07f6ccc6c2b49bf73504f7d82ee8f013f9dbab4ab0a962f2c555ca6171368608`）；无可用外部 TCP 设备，阶段设备门禁待补。CPP11 同样先完成代码与主机测试。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -283,12 +283,13 @@ struct RouteOutcome final {
 
 ### [ ] CPP10：TCP Zerocopy 路线
 
-- [ ] `TcpZerocopyRoute` move-only，唯一拥有 client/server/punch fd、mapping 和 punch worker。
-- [ ] prepare/execute/disarm 显式返回结果；析构只处理已 disarm 或用户态可安全资源。
+- [x] `TcpZerocopyRoute` move-only（删除 copy、提供 move 构造），唯一拥有三个 `UniqueFd`、`MappedRegion` mapping 和 `PthreadOwner` punch worker；`tcp_make_pair` 的 listener/client/server 全部 RAII 接管。
+- [x] prepare/execute/disarm/destroy 分离并显式返回：`prepare()` 返回 int 且记录 step/errno，`execute()` 返回 `RouteStatus`；析构保持平凡，dirty 路径经 `release_to_process_lifetime`/`release()` 故意保留资源，不提前 close 已被 puncher 借用的 fd。
 - [x] profile attempts/arm sequence/hold iterations 保持不变。
-- [ ] fallback 只有 `FallbackSafe && userspace_clean && kernel_disarmed` 才允许。
-- [ ] 主机测试和外部 TCP 设备门禁通过后才勾选阶段；无设备时不得宣称完成。
-- [ ] 提交、暂停、保存 TCP 成功/安全失败/dirty 证据。
+- [x] fallback 只有 `FallbackSafe && userspace_clean && kernel_disarmed` 才允许（`route_status_allows_fallback` → `RouteOutcome::can_fallback()`，controller 未改）。
+- [x] 主机测试：move-only 断言、资源转移、disarm 幂等、destroy 释放 fd/mapping 并幂等、`fail()` 记录 step/errno、dirty→fallback-safe 状态机；`make native-host-tests` 全绿。
+- [ ] 外部 TCP 设备门禁（本机无可用 TCP 端点）：通过前阶段保持 `[ ]`，不得宣称完成。
+- [x] 提交、暂停（CPP10 独立提交）；TCP 成功/安全失败/dirty 设备证据待外部设备补。
 
 ### [ ] CPP11：Select Stack 路线
 
