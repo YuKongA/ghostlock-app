@@ -2,28 +2,108 @@
 
 #include <sys/mman.h>
 
-void tcp_zerocopy_route_context_init(
-        TcpZerocopyRouteContext *context,
-        PiRaceContext *race,
-        const WriteRequest *request,
-        const struct execution_settings *execution,
-        size_t mapping_length) {
-    context->race = race;
-    context->request = request;
-    context->execution = execution;
-    context->client_fd = -1;
-    context->server_fd = -1;
-    context->punch_fd = -1;
-    context->mapping = static_cast<unsigned char *>(MAP_FAILED);
-    context->mapping_length = mapping_length;
-    context->page_size = 0;
-    context->punch_worker = {};
-    context->punch_worker_started = 0;
-    context->route_won = 0;
-    context->status = {};
-    context->status.code = ROUTE_RETRYABLE;
-    atomic_store_explicit(&context->punch_go, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->punch_stop, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->punch_phase, 0, memory_order_relaxed);
-    atomic_store_explicit(&context->punch_failed, 0, memory_order_relaxed);
+#include <utility>
+
+ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
+        PiRace *race_context, const WriteRequest *route_request,
+        const execution_settings *execution_settings_value,
+        size_t mapping_length_value) noexcept
+    : race(race_context),
+      request(route_request),
+      execution(execution_settings_value),
+      mapping_length(mapping_length_value) {
+  /* C atomics cannot carry initializers in C++; mirror the old
+   * tcp_zerocopy_route_context_init stores explicitly. */
+  atomic_store_explicit(&punch_go, 0, memory_order_relaxed);
+  atomic_store_explicit(&punch_stop, 0, memory_order_relaxed);
+  atomic_store_explicit(&punch_phase, 0, memory_order_relaxed);
+  atomic_store_explicit(&punch_failed, 0, memory_order_relaxed);
+  status.code = ROUTE_RETRYABLE;
+}
+
+ghostlock::TcpZerocopyRoute::TcpZerocopyRoute(
+        TcpZerocopyRoute &&other) noexcept
+    : race(other.race),
+      request(other.request),
+      execution(other.execution),
+      client_fd(std::move(other.client_fd)),
+      server_fd(std::move(other.server_fd)),
+      punch_fd(std::move(other.punch_fd)),
+      mapping(std::move(other.mapping)),
+      mapping_length(other.mapping_length),
+      page_size(other.page_size),
+      punch_worker(std::move(other.punch_worker)),
+      route_won(other.route_won),
+      status(other.status) {
+  atomic_store_explicit(&punch_go,
+                        atomic_load_explicit(&other.punch_go,
+                                             memory_order_relaxed),
+                        memory_order_relaxed);
+  atomic_store_explicit(&punch_stop,
+                        atomic_load_explicit(&other.punch_stop,
+                                             memory_order_relaxed),
+                        memory_order_relaxed);
+  atomic_store_explicit(&punch_phase,
+                        atomic_load_explicit(&other.punch_phase,
+                                             memory_order_relaxed),
+                        memory_order_relaxed);
+  atomic_store_explicit(&punch_failed,
+                        atomic_load_explicit(&other.punch_failed,
+                                             memory_order_relaxed),
+                        memory_order_relaxed);
+}
+
+int ghostlock::TcpZerocopyRoute::fail(
+        int step, int error_number) noexcept {
+  status.step = step;
+  status.error_number = error_number;
+  return -1;
+}
+
+void ghostlock::TcpZerocopyRoute::disarm() noexcept {
+  atomic_store(&race->consumer_go, 0);
+  atomic_store(&punch_go, 0);
+  atomic_store(&punch_stop, 1);
+  while (atomic_load(&race->consumer_inflight)) {
+    __asm__ volatile("yield":: : "memory");
+  }
+  status.kernel_disarmed = 1;
+}
+
+void ghostlock::TcpZerocopyRoute::retain_for_process_lifetime() noexcept {
+  (void) punch_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
+  (void) server_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
+  (void) client_fd.release_to_process_lifetime("tcp route dirty: puncher may run");
+  (void) mapping.release();
+  (void) punch_worker.release();
+}
+
+void ghostlock::TcpZerocopyRoute::destroy() noexcept {
+  if (punch_worker.joinable()) {
+    const int join_error = punch_worker.join();
+    if (join_error != 0) {
+      (void) fail(47, join_error);
+      status.code = ROUTE_DIRTY_FAILURE;
+      retain_for_process_lifetime();
+      return;
+    }
+  }
+  if (mapping.valid()) {
+    void *mapped = mapping.release();
+    if (munmap(mapped, mapping_length) != 0) {
+      const int saved_errno = errno;
+      (void) fail(48, saved_errno);
+      status.code = ROUTE_DIRTY_FAILURE;
+      retain_for_process_lifetime();
+      return;
+    }
+    mapping = MappedRegion{};
+  }
+  punch_fd.reset();
+  server_fd.reset();
+  client_fd.reset();
+  status.userspace_clean = 1;
+  if (!route_won && status.kernel_disarmed) {
+    status.code = ROUTE_FALLBACK_SAFE;
+  }
 }
