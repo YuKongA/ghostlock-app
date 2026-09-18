@@ -13,6 +13,7 @@ typedef enum target_soc_family {
     TARGET_SOC_QCOM = 0,
     TARGET_SOC_MTK,
     TARGET_SOC_XRING,
+    TARGET_SOC_GOOGLE,
 } TargetSocFamily;
 
 /* Addresses derived once from an immutable target profile and the device SoC.

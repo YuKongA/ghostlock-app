@@ -29,6 +29,15 @@ static TargetSocFamily detect_target_soc(void) {
             "ro.board.platform", NULL};
     for (int i = 0; keys[i]; ++i) {
         if (__system_property_get(keys[i], value) <= 0 || !value[0]) continue;
+        if (strncasecmp(value, "google", 6) == 0 ||
+                strncasecmp(value, "tensor", 6) == 0 ||
+                (i > 0 && (strncasecmp(value, "gs", 2) == 0 ||
+                           strncasecmp(value, "zuma", 4) == 0))) {
+            return TARGET_SOC_GOOGLE;
+        }
+    }
+    for (int i = 0; keys[i]; ++i) {
+        if (__system_property_get(keys[i], value) <= 0 || !value[0]) continue;
         if (strncasecmp(value, "mediatek", 8) == 0 ||
                 strncasecmp(value, "mtk", 3) == 0 ||
                 (i > 0 && strncasecmp(value, "mt", 2) == 0)) {
@@ -70,7 +79,8 @@ int resolved_addresses_init_for_soc(ResolvedAddresses *out,
     if (values->kernel_phys_load) {
         out->kernel_phys_load = ghostlock::target::PhysicalAddress(
             values->kernel_phys_load);
-    } else if (out->soc == TARGET_SOC_MTK) {
+    } else if (out->soc == TARGET_SOC_MTK || out->soc == TARGET_SOC_GOOGLE) {
+        /* Tensor G4/G5 (zumapro) loads the Image at the DRAM base like MTK. */
         out->kernel_phys_load = ghostlock::target::PhysicalAddress(
             KIMAGE_TEXT_BASE - MTK_VADDR_BASE);
     } else if (out->soc == TARGET_SOC_XRING) {
@@ -120,6 +130,9 @@ const char *resolved_addresses_soc_name(const ResolvedAddresses *addresses,
     if (addresses->soc == TARGET_SOC_MTK) return "mtk";
     if (addresses->soc == TARGET_SOC_XRING) return "xring";
     const struct kernel_offsets *values = target_profile_values(profile);
+    if (addresses->soc == TARGET_SOC_GOOGLE) {
+        return values && values->kernel_phys_load ? "google/tensor" : "tensor";
+    }
     return values && !values->kernel_phys_load && values->uname_r &&
             strncmp(values->uname_r, "6.12.", 5) == 0
             ? "qcom/6.12"

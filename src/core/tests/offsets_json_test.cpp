@@ -168,6 +168,12 @@ void check_profile(const ProfileFile &entry) {
              ghostlock::memory::resolved_addresses_kernel_phys_load(&xring) ==
                  XRING_KERNEL_PHYS_LOAD,
          "XRing physical load fallback", name);
+  ghostlock::memory::ResolvedAddresses google = {};
+  expect(ghostlock::memory::resolved_addresses_init_for_soc(&google, &zero_profile,
+                                         ghostlock::memory::TARGET_SOC_GOOGLE) == 0 &&
+             ghostlock::memory::resolved_addresses_kernel_phys_load(&google) ==
+                 (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
+         "Tensor/Google physical load fallback", name);
 }
 
 void check_address_rejections(void) {

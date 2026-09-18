@@ -494,7 +494,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 第二批上游复核（`9ee07a8..42b2f37`，9 提交）：见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节。
 - [x] U01-H：移植 `396e52d` 的 direct-map 末端测量——`g_direct_map_end`、`.ghostlock_iomem` 缓存、`in_direct_map()` 越界拒绝与 KernelSnitch slice/`identity_diff` 收窄；默认常量下零行为变化。
 - [ ] U01-D：`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP` alias 改动（改变已验证 payload 字节，需独立字节对比与真机门禁）。
-- [ ] U01-E：SOC_GOOGLE/Tensor 支持。
+- [x] U01-E：SOC_GOOGLE/Tensor 支持：`TARGET_SOC_GOOGLE`（google/tensor/gs*/zuma* 属性检测）、与 MTK 共享的 DRAM-base `kernel_phys_load` 回退、`google/tensor`/`tensor` 名称；主机固定向量（`offsets_json_test`）覆盖 Tensor 回退，构建与 `66f0a8a3…` 对比 7/8 strict + `do_one_write` 1 处注解差异。
 - [ ] U01-F：新设备 profile 追加（Honor Magic V5、NX809J/NX888J、Pixel 9 Pro、6.1.162 修正）。
 - [ ] U01-G：提取器 `opt-level = "z"` 与 `Cargo.lock` 再生成。
 - [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
