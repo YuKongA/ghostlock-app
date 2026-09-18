@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.BuildConfig
+import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.R
 import com.ghostlock.app.domain.model.ShizukuStatus
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -691,6 +692,13 @@ private fun DeviceInfoCard(
                     title = stringResource(R.string.kernel_label),
                     value = kernelRelease,
                 )
+                if (BuildConfig.DEBUG) {
+                    DeviceInfoItem(
+                        title = stringResource(R.string.build_label),
+                        value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · " +
+                            BuildInfo.BUILD_TIME_LABEL,
+                    )
+                }
             }
         }
     }

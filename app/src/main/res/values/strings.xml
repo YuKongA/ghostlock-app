@@ -46,6 +46,7 @@
     <string name="log_title">Log</string>
     <string name="device_label">Device</string>
     <string name="kernel_label">Kernel</string>
+    <string name="build_label">Build</string>
     <string name="soc_label">SoC</string>
     <string name="kernel_supported">Supported</string>
     <string name="kernel_unsupported">Not supported</string>

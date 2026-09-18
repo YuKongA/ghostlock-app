@@ -46,6 +46,7 @@
     <string name="log_title">日志</string>
     <string name="device_label">设备</string>
     <string name="kernel_label">内核</string>
+    <string name="build_label">构建</string>
     <string name="soc_label">芯片</string>
     <string name="kernel_supported">受支持</string>
     <string name="kernel_unsupported">不支持</string>

@@ -1,5 +1,8 @@
 @file:Suppress("UnstableApiUsage")
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
 
 plugins {
@@ -27,6 +30,34 @@ tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
     generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
 }
 
+val buildInfoSrc = layout.buildDirectory.dir("generated/source/buildInfo")
+
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    description = "generateBuildInfo"
+    val outputDirectory = buildInfoSrc
+    outputs.dir(outputDirectory)
+    // Always rewrite so the debug UI shows the timestamp of the installed build.
+    outputs.upToDateWhen { false }
+    doLast {
+        val directory = outputDirectory.get().asFile.resolve("com/ghostlock/app")
+        directory.mkdirs()
+        val timeMillis = System.currentTimeMillis()
+        val label = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
+            .format(Date(timeMillis))
+        directory.resolve("BuildInfo.kt").writeText(
+            buildString {
+                appendLine("package com.ghostlock.app")
+                appendLine()
+                appendLine("/** Generated per build; shown only by debug builds. */")
+                appendLine("object BuildInfo {")
+                appendLine("    const val BUILD_TIME_EPOCH_MILLIS: Long = ${timeMillis}L")
+                appendLine("    const val BUILD_TIME_LABEL: String = \"$label\"")
+                appendLine("}")
+            },
+        )
+    }
+}
+
 android {
     namespace = "com.ghostlock.app"
     compileSdk {
@@ -47,6 +78,7 @@ android {
     sourceSets {
         named("main") {
             kotlin.directories.add(supportedKernelsSrc.get().asFile.absolutePath)
+            kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
         }
     }
     val properties = Properties()
@@ -125,6 +157,7 @@ tasks.named("preBuild") {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))
     dependsOn(tasks.named("generateSupportedKernels"))
+    dependsOn(generateBuildInfo)
 }
 
 dependencies {
