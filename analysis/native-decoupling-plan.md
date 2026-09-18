@@ -580,7 +580,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 |---|---|---|---|---|
 | S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] 镜像全部删除：`CORE`/`CONSUMER_CORE` 宏与 KernelSnitch 隐式 pin 已改为显式 CPU（CPP12/`CPP12j`，门禁 `CPP12j-20260917-multicast-pass`） |
 | S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] `g_home_dir`/`g_root_script_path` 宏已删除，调用点内联 `runtime_config_snapshot()`（`e1782f6`，与门禁版 `625d5300…` 逐字节一致） |
-| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | profile-ui | [x] 核心完成：高级区执行参数编辑（8 字段稀疏 override、覆盖保存/清除）+ 推荐核心一键应用 + 来源/覆盖状态展示（APK 335）；导入差异预览/schema 迁移/逐字段错误保留 `TODO(profile-ui)` |
+| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | profile-ui | [x] 核心完成：高级区执行参数编辑（8 字段稀疏 override、覆盖保存/清除）+ 推荐核心一键应用 + 来源/覆盖状态展示（APK 335/338）；冷机回归与高级区目视确认见 `PROFILE-UI-SELECT-01-20260918-multicast-pass`；override 保存/清除闭环待手动验证；导入差异预览/schema 迁移/逐字段错误保留 `TODO(profile-ui)` |
 | S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | profile-ui | [x] 稀疏 override 完成（按 release 存 offsets.json，deepMerge 生效）；导入/导出已有；schema 迁移与回滚保留 `TODO(profile-ui)` |
 | S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已收敛：`futex_hash.h` 改为显式 context 的 `static inline`，零调用兼容入口随 CPP06 删除 |
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 四个零调用 util 适配入口已删除（CPP06，`COMPAT-01`），Multicast 门禁 `CPP06b` 通过 |
