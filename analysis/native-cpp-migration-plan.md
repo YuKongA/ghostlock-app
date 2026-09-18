@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP06 已提交；CPP01–CPP06 的 Multicast 真机门禁于 2026-09-17 合并通过（证据见 `device-gates/CPP04-06-20260917-multicast-pass`）。CPP02/CPP03/CPP06 收尾（util helper RAII、真实 fork 失败注入、`KernelSnitchOwner` 类化）已完成代码与主机/Gradle 验证，native SHA-256 由 `d634883…` 变为 `b6245955…`；收尾后的真机复测、resident 路径与 `utils.h` syscall helper 全量迁移仍待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP06 已完成并通过真机门禁：CPP01–CPP06 基线证据 `device-gates/CPP04-06-20260917-multicast-pass`；CPP02/CPP03/CPP06 收尾后的复测证据 `device-gates/CPP06b-20260917-multicast-pass`（native `b6245955…` 与设备 APK 一致，时序与基线一致）。下一阶段为 CPP07；`utils.h` 剩余 syscall helper 迁移保留在 CPP02 尾巴。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -25,8 +25,9 @@
 - [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
 - [x] 原逐阶段暂停规则经用户于 2026-09-14 明确改为“一步完成到最后”；本批连续实施，但仍保留兼容入口与验证记录。
 - [x] 连续批次每次实质修改后运行主机回归和 Native 构建；最终统一进行 APK/真机门禁，不把未实测路线写成设备通过。
-- [ ] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `build/` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
+- [ ] 每次需要用户真机验证前，自动依次执行 `./gradlew clean`、`:app:assembleDebug` 与 `adb -s <serial> install -r`，再请用户运行。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `build/` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
 - [ ] 用户确认后导出完整 Native 日志到 `analysis/device-gates/CPPxx-YYYYMMDD-<route>-<pass|fail>.native.log`，创建同名前缀分析文档，再勾选阶段标题。
+- [ ] 从真机读取日志并归档完成后，自动执行 `adb -s <serial> reboot` 重启设备，为下一次门禁准备干净状态；重启前确认日志已写入 `analysis/device-gates/`。
 - [ ] 每阶段更新 `analysis/routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
 - [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
 - [ ] 函数和类型按职责/攻击链命名，不使用内核版本号；版本差异只能出现在 profile 数据和注释中。
@@ -232,7 +233,7 @@ struct RouteOutcome final {
 - [x] 提交并暂停（CPP05 独立提交）。
 - [x] 真机门禁：与 CPP04 合并归档为 `CPP04-06-20260917-multicast-pass`。
 
-### [ ] CPP06：FutexHash 与 KernelSnitch
+### [x] CPP06：FutexHash 与 KernelSnitch
 
 - [x] `FutexHashContext` 为无资源只读 value（单字段 + `static_assert`）；hash 函数接收显式 context。`futex_hash.h` 去除 Android-only 依赖并收敛 linkage（`static inline`），使 hash 结果可由主机固定向量锁定。
 - [x] `KernelSnitch` 的唯一 owner 由 `ghostlock::KernelSnitchOwner` 表达：持有 mmap 上下文并释放全部用户态映射；`util.cpp` 的 init/find/scan/result/destroy 均经 owner，fork leak child 仅借用 `get()`，C 入口保持不变。
@@ -242,7 +243,7 @@ struct RouteOutcome final {
 - [x] 验证 collision 与 destroy（合并门禁）：日志中 6 次 collision 与 mm_struct leak、6 次 spray 重建全部成功；canonical/tag sweep 由 leak 成功间接覆盖。
 - [x] 提交并暂停（CPP06 部分提交）。
 - [x] 真机门禁：KernelSnitch 时序已归档（collision ≈2.0s、leak ≈40ms、六次 spray 全部成功）；`kernelsnitch_print_state` 零调用，标签输出不适用。
-- [ ] 收尾后真机复测：native 由 `d634883…` 变为 `b6245955…`（util helper RAII、fork 失败注入、`KernelSnitchOwner`），需与 CPP04-06 基线比较 collision/leak 时序；resident 路径与部分线程创建失败注入仍未覆盖。
+- [x] 收尾后真机复测：native `b6245955…` 与设备 APK 一致，6 次 route 全部 clean，collision/leak 时序与 CPP04-06 基线一致（证据 `CPP06b-20260917-multicast-pass`）。resident 路径不在本阶段范围；部分线程创建失败注入保留为后续维护项（`pthread_create` 失败在当前 `SYSCHK` 设计下为 fail-fast）。
 
 ### [ ] CPP07：Heap 与 PayloadPage 所有权
 
@@ -381,7 +382,7 @@ struct RouteOutcome final {
 | CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
 | CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
 | CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
-| CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 收尾后需要真机时序对比与新哈希门禁 | CPP06 剩余项 | [x] 代码完成，真机复测待执行 |
+| CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [x] 完成；部分线程创建失败注入为后续维护项 |
 
 ## 10. 完成定义
 
