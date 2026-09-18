@@ -69,6 +69,12 @@ abstract class GenerateSupportedKernelsTask : DefaultTask() {
         }
         generatedFile.get().asFile.apply {
             parentFile.mkdirs()
+            // CPP-BUILD-02: stale duplicates (e.g. "name 2.kt") left behind by
+            // filesystem-level copies break the next Kotlin build; the task is
+            // the only writer of this directory, so anything else is stale.
+            parentFile.listFiles()?.forEach { stale ->
+                if (stale.isFile && stale != this) stale.delete()
+            }
             writeText(output)
         }
     }

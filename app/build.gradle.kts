@@ -41,6 +41,9 @@ val generateBuildInfo = tasks.register("generateBuildInfo") {
     doLast {
         val directory = outputDirectory.get().asFile.resolve("com/ghostlock/app")
         directory.mkdirs()
+        // CPP-BUILD-02: this task is the only writer of the directory, so any
+        // other file is a stale duplicate that must not reach the Kotlin build.
+        directory.listFiles()?.forEach { stale -> if (stale.isFile) stale.delete() }
         val timeMillis = System.currentTimeMillis()
         val label = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
             .format(Date(timeMillis))
