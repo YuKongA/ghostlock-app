@@ -26,9 +26,17 @@
 - `do_kernel5_fake_lock_route` +7 指令的布局变化未引发 `KERNEL-PANIC-01`（第一次冷机）；
 - 按布局敏感规则需第二次冷机（reboot 回干净启动），或由用户豁免。
 
+## 更正（2026-09-18）
+
+- 本页的 PASS 不能归因于 hardening 分支：`do_mcast_group_source`（5.15）在
+  `copy_group_source_from_sockptr(&greqs)` **之后**才检查 `gsr_group/gsr_source.ss_family != AF_INET`
+  并返回 `-EADDRNOTAVAIL`；攻击 stamp 的 family 为 `AF_UNSPEC`，因此 setsockopt 返回 99 是预期
+  路径且 stamp 已落地。hardening 的"非 0 即未落地"判据不成立，已回退（`CPP12u` 现场）。
+- 本页保留为**干净冷启动（`boot_ms=33897`）的完整 Multicast 链路**证据；路线的成功判定走
+  上游 `stamp_result == 0 || consumer_success > 0`，与 hardening 无关。
+- 批次 A（main 分层/分 TU）需在 hardening 回退版上重新门禁。
+
 ## 后续
 
-- 第二次冷机验证（或用户豁免）。
-- 若两次冷机 PASS：`CPP12s` 候选 1（stamp 失败后仍触发 walk）已封堵；候选 2（stamp 落地后、
-  walk 前被中断/栈覆盖）仍为原语残余风险，随后续门禁观察。
-- 之后恢复既定计划：分层/namespace 小步重试与 pid 所有权重试（各自独立门禁）。
+- 批次 A 门禁（已安装重建版本，等待运行）。
+- 之后恢复既定计划：namespace 层（批次 B）与 pid 所有权重试（各自独立门禁）。

