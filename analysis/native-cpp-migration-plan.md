@@ -266,7 +266,7 @@ struct RouteOutcome final {
 - [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
 - [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
 - [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
-- [ ] 两种入口真机门禁：Direct 首轮失败（攻击链 6/6 clean，但 KernelSU 交接未生效、ksu log 未生成；证据 `CPP08-20260917-direct-kernelsu-pending`）。已排除脚本内容/权限与 SELinux，handoff 边界已加诊断输出，待复测定位。
+- [ ] 两种入口真机门禁：Direct 首轮失败已定位——`std::string` 路径在 fork+exec 边界被内核拒绝（`open`/`execl` 均 EFAULT errno=14），修复为 exec 前复制到栈缓冲（`8bfcffd`，native `acc14530…`），证据 `CPP08-20260917-direct-kernelsu-pending`。待 Direct 复测与 Shizuku 入口验证。
 
 ### [ ] CPP09：PI Race 并发生命周期
 

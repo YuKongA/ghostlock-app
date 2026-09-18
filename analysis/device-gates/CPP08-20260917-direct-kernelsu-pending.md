@@ -22,17 +22,19 @@
 - 残留进程：victim（`ghostleaf_01234`，root）park 中，其一个 zombie 子进程 exit code 为 0；
 - 环境：permissive（W1 生效后未恢复 enforcing），排除了 SELinux 阻止脚本写日志。
 
-## 待定位
+## 根因（21:16 复测，带诊断）
 
-native 侧 handoff（`child_main` 的 'G' 分支 → worker `execl("/system/bin/sh", script)`）是否真正执行、
-以及 child 中 `g_root_script_path`（`RuntimeConfig` 的 `std::string` 经 `.c_str()`）的实际取值与 `execl` 结果，
-现有日志均无法区分。本次提交在 handoff 边界加入诊断输出（不改变控制流）：
+`versionCode=205`（提交 `c460a1c`）复测日志中 handoff 诊断输出：
 
-- `root script written path=… bytes=…`
-- `handoff: child=… alive=… sent=… errno=…`
-- `handoff: root script path=…`（child 侧）
-- `handoff: script open fd=… errno=…` 与 `execl root script failed …`（worker 侧）
+- `root script written path=… bytes=4726`（写入正确）；
+- `handoff: root script path=/data/user/0/com.ghostlock.app/files/.ghostlock_root.sh`；
+- `handoff: child=20001 alive=1 sent=1 errno=0`、`handoff: root shell worker pid=32238`（handoff 全链路已执行）；
+- `handoff: script open fd=-1 errno=14` 与 `execl root script failed … errno=14` —— **EFAULT**。
 
-复测后按上述输出定位根因。
+即 CPP08 把 `root_script_path` 从全局 `char[300]` 改为 `std::string` 堆指针后，
+路径在用户态可正常打印，但 `open()`/`execl()` 的内核侧复制失败（EFAULT）。
+
+修复：在 fork+exec 前把路径复制到进程稳定的栈缓冲 `char script_path[320]`，
+`open`/`execl` 均使用该缓冲（提交 `8bfcffd`，native `acc14530…`）。
 
 原始日志：[`CPP08-20260917-direct-kernelsu-pending.native.log`](CPP08-20260917-direct-kernelsu-pending.native.log)
