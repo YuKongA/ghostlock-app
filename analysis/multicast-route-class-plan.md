@@ -36,7 +36,7 @@
    - 试验记录（2026-09-18）：`resident_context()` 引用访问器 + 文件级存储已落地，与门禁版 `625d5300…` 逐字节一致（8/8 攻击关键函数 strict、全量 642/642 形状一致）。若把存储改为函数局部 static（真正的命名 owner），构建对比显示 `do_one_write` 由 224 条指令变为 186 条（LTO 把 `kernel5_resident_write` 内联进 `do_one_write` 后形态改变），攻击关键函数变化，按硬约束回退。正式 owner 迁移（含 `kernel5_resident_*` 收编）应与 `SESSION-04` 一并走专门门禁。
 2. **步骤 B（one-shot 生命周期命名）**：把 `do_kernel5_fake_lock_route` 内的 socket/consumer 触发/close 片段提取为 `multicast_one_shot_prepare/execute/destroy` 静态函数或局部结构，但**不引入新的栈对象**（只做代码分组），保持 VLA 与调用顺序逐指令等价。
 3. **步骤 C（共用编码路径）**：核对 one-shot 与 resident 的 stamp 编码同源（`encode_multicast_waiter`），删除重复字面量；用 `payload_builder_test` 固定向量锁定字节。
-4. **步骤 D（收尾）**：把路线状态与 `disarm/destroy` 的显式顺序写入 `multicast_waiter_route.h` 注释，并在 `native-cpp-current-uml.md` 统一命名。
+4. **步骤 D（收尾）**：把路线状态与 `disarm/destroy` 的显式顺序写入 `multicast_waiter_route.h` 注释，并在 `native-cpp-current-uml.md` 统一命名。（完成，2026-09-18：契约注释落在 `multicast_waiter_route.h`；UML 命名统一为 `resident_context()` 并修正过期别名描述；native 与门禁版 `625d5300…` 逐字节一致。）
 
 每步门禁：
 - 主机：`make native-host-tests` + `multicast_waiter_route_test`；
