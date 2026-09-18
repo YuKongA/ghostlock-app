@@ -1039,6 +1039,12 @@ static void child_main(struct child_pipes *p) {
         int fl = fcntl(fd, F_GETFD);
         if (fl >= 0) fcntl(fd, F_SETFD, fl | FD_CLOEXEC);
     }
+    /* Pin the path in a stack buffer before fork/exec. The RuntimeConfig path
+     * is now std::string-owned; passing its heap pointer straight into execl()
+     * failed with EFAULT at the kernel boundary even though userspace could
+     * print it, so the exec path must travel in process-stable stack storage. */
+    char script_path[320];
+    snprintf(script_path, sizeof(script_path), "%s", g_root_script_path);
     pid_t worker = fork();
     if (worker == 0) {
         /* Detach into a brand-new session: the independent root shell owns the
@@ -1046,13 +1052,13 @@ static void child_main(struct child_pipes *p) {
          * exploit parent killing this group on timeout. */
         if (setsid() < 0) _exit(1);
         errno = 0;
-        const int probe = open(g_root_script_path, O_RDONLY | O_CLOEXEC);
+        const int probe = open(script_path, O_RDONLY | O_CLOEXEC);
         pr_info("handoff: script open fd=%d errno=%d path=%s\n", probe, errno,
-                g_root_script_path);
+                script_path);
         if (probe >= 0) close(probe);
-        execl("/system/bin/sh", "sh", g_root_script_path, NULL);
+        execl("/system/bin/sh", "sh", script_path, NULL);
         pr_warning("execl root script failed path=%s errno=%d\n",
-                g_root_script_path, errno);
+                script_path, errno);
         _exit(1);
     }
     pr_info("handoff: root shell worker pid=%d\n", worker);
