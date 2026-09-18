@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 的 `SESSION-01`/`SESSION-03` 已通过 Multicast 门禁（`CPP12-20260917-multicast-pass`：设备 SELinux 已 permissive，按设计跳过 W1/W1b，4/4 route clean、handoff/KernelSU 正常；native `a5b2d151343f38229c61726056434c2cbaadc3e7372a574a6c72c3f10b44ba4c`）。无可用 TCP/Select 外部设备，CPP10/CPP11 门禁待补；CPP12 其余子项继续推进并各自门禁。`SESSION-01/02/04`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 的 `SESSION-01`/`SESSION-03` 已通过 Multicast 门禁（`CPP12-20260917-multicast-pass`）；PI-TIMEOUT-01 代码完成（native `6bd2291a…`），首次复验在 spray 阶段遇与 CPP06c/CPP07 同模式的间歇性 kernel panic（`CPP12-20260917b-multicast-kernel-panic`，route 前中断、超时分支未执行），待复测。无可用 TCP/Select 外部设备，CPP10/CPP11 门禁待补；CPP12 其余子项继续推进并各自门禁。`SESSION-01/02/04`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -398,7 +398,7 @@ struct RouteOutcome final {
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
 | U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记；U01-G（`opt-level = "z"`）已完成，D–F 待维护 |
 | PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |
-| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`） | 攻击逻辑加固（独立真机门禁） | [x] 代码完成：等待绑定 `race_route_wait_ms × 10`，超时映射 `ROUTE_DIRTY_FAILURE`（step 62、ETIMEDOUT），`join()` 超时后 detach stranded waiter；主机测试覆盖；Multicast 门禁复验待做 |
+| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`） | 攻击逻辑加固（独立真机门禁） | [x] 代码完成：等待绑定 `race_route_wait_ms × 10`，超时映射 `ROUTE_DIRTY_FAILURE`（step 62、ETIMEDOUT），`join()` 超时后 detach stranded waiter；主机测试覆盖。首次复验在 spray 阶段遇间歇性 panic（`CPP12-20260917b-multicast-kernel-panic`，超时分支未执行），待复测 |
 
 ## 10. 完成定义
 
