@@ -15,6 +15,7 @@ import com.ghostlock.app.domain.model.ExecutionProfile
 import com.ghostlock.app.domain.model.KernelOffsets
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
+import com.ghostlock.app.data.ota.OtaPayloadExtractor
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
 import com.ghostlock.app.domain.model.SupportedKernels
@@ -291,9 +292,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, ExtractBinaryName)
             if (!binary.isFile) return ParseResult.Failed(1, "missing native binary: ${binary.absolutePath}")
 
-            val isRemoteUrl = input.startsWith("http://", ignoreCase = true) || input.startsWith("https://", ignoreCase = true)
+            /* Remote OTA URLs are resolved by the pure-Kotlin extractor so the
+             * Android binary ships without the http stack; local files keep
+             * going straight to the Rust extractor. */
+            val isRemoteUrl = input.startsWith("http://", ignoreCase = true) ||
+                input.startsWith("https://", ignoreCase = true)
             val (effectiveInput, effectiveXblPath) = if (isRemoteUrl) {
-                val extracted = com.ghostlock.app.data.ota.OtaPayloadExtractor.extractPartitions(
+                val extracted = OtaPayloadExtractor.extractPartitions(
                     url = input,
                     workDir = filesDir,
                     onLog = onLog,
