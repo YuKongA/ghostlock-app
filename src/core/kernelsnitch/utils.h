@@ -142,10 +142,8 @@
 
 /* Decoupling plan: pin the current thread to an explicit CPU. Input: CPU id;
  * output: status. Future: runtime_pin_current_thread(core), returning errors. */
-/* TODO(CPP02-HELPERS): SYSCHK fail-fast stays until session-level error
- * propagation exists. Blocked by: ExploitSession error plumbing.
- * Completion: land the structured-error form, then delete this comment and the
- * CPP02-HELPERS row in native-cpp-migration-plan.md. */
+/* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
+ * -1); callers have no better recovery than proceeding, so the form is kept. */
 static inline void pin_to_core(size_t core)
 {
     cpu_set_t cpuset;
@@ -163,10 +161,7 @@ static inline void reset_cpu_pin(void)
 
 /* Decoupling plan: apply process resource limits. Input: RuntimeConfig policy;
  * output: structured status. Future: runtime_apply_limits(). */
-/* TODO(CPP02-HELPERS): same fail-fast retention as pin_to_core().
- * Blocked by: ExploitSession error plumbing.
- * Completion: return structured status, then delete this comment and the
- * CPP02-HELPERS row in native-cpp-migration-plan.md. */
+/* CPP02 review: same log-and-continue retention as pin_to_core(). */
 static inline void set_limit(void)
 {
     struct rlimit r;
@@ -208,27 +203,6 @@ static void write_file(const char *path, const char *data)
 /* Decoupling plan: configure the helper user/network namespace. Input: helper
  * context; output: status. Future: helper_namespace_enter(), returning errors
  * rather than terminating through utility macros. */
-/* TODO(CPP02-HELPERS): same fail-fast retention as pin_to_core().
- * Blocked by: ExploitSession error plumbing.
- * Completion: return structured status, then delete this comment and the
- * CPP02-HELPERS row in native-cpp-migration-plan.md. */
-static inline void set_user_namespace(void)
-{
-    uid_t uid = getuid();
-    gid_t gid = getgid();
-
-    SYSCHK(unshare(CLONE_NEWUSER | CLONE_NEWNET));
-
-    write_file("/proc/self/setgroups", "deny");
-
-    char map[128];
-    snprintf(map, sizeof(map), "0 %d 1\n", uid);
-    write_file("/proc/self/uid_map", map);
-
-    snprintf(map, sizeof(map), "0 %d 1\n", gid);
-    write_file("/proc/self/gid_map", map);
-}
-
 static inline void hexdump(const void* data, size_t size)
 {
     char ascii[17];
