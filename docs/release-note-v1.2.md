@@ -1,13 +1,15 @@
 # GhostLock v1.2 Release Notes
 
-构建：APK `346`（versionName `1.2`）· 攻击 native `0109d5a8` · 提取器 `libextract.so` 2.19 MB
+构建：Release APK `349`（arm64-v8a，**2.58 MiB**）· 攻击 native `0109d5a8` · 提取器 `libextract.so` 2.09 MiB（APK 内 1.03 MiB）
+
+> 对照：Debug APK 约 20 MiB；APK 内 `libghostlock.so` 333 KiB、`classes.dex` 1.15 MiB（均为压缩后）。
 
 ## 亮点
 
 - **新设备与 SoC 支持**：Google Tensor（`SOC_GOOGLE`，含物理加载回退）、Pixel 9 Pro / 9 Pro Fold、
   Honor Magic V5、NX809J/NX888J；内置 profile 增至 48 个
 - **APK 瘦身**：远端 OTA 提取迁移到纯 Kotlin（HTTP range），Android 提取器不再携带 `http-rustls`
-  栈（`libextract.so` **3.60 MB → 2.19 MB**）；同步启用 locale 过滤与 dex legacy packaging
+  栈（`libextract.so` **3.60 MB → 2.09 MiB**）；同步启用 locale 过滤与 dex legacy packaging，Release APK 仅 **2.58 MiB**
 - **Profile 编辑器（高级区）**：查看当前 profile 来源与覆盖状态、编辑执行参数（W1/W2/W3 尝试次数、
   W3 链轮数、路由等待、堆准备次数、select 延时/超时）、一键应用推荐核心、按 release 保存/清除覆盖
 - **可靠性改进**：每次运行独立 KernelSU 日志路径（旧标记不再污染 handoff 判定）；W3 probe 失败
