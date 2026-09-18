@@ -651,7 +651,7 @@ void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
     }
 }
 
-#ifdef __cplusplus
+/* The KernelSnitchOwner block below is C++-only; the C façade is gone. */
 
 #include <utility>
 
@@ -724,5 +724,3 @@ class KernelSnitchOwner final {
 };
 
 }  // namespace ghostlock
-
-#endif

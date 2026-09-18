@@ -4,10 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
 #include <array>
 #include <cstring>
-#endif
 
 /* TODO(profile-suggest-01): Only kernel geometry (kernel_major, symbol and
  * struct offsets, waiter layout, credential template) is truly required. Every
@@ -75,7 +73,6 @@ struct kernel_offsets {
 /* Immutable runtime snapshot copied from the JSON transport representation.
  * The C++ value owns uname_r and rebinds the transport pointer after every
  * copy/move. The C layout remains available as a compatibility façade. */
-#ifdef __cplusplus
 class TargetProfile final {
  public:
   TargetProfile() noexcept = default;
@@ -133,12 +130,6 @@ class TargetProfile final {
   std::array<char, 256> release_{};
   bool loaded_ = false;
 };
-#else
-typedef struct target_profile {
-  struct kernel_offsets values;
-  int loaded;
-} TargetProfile;
-#endif
 
 typedef struct multicast_waiter_layout {
   size_t waiter_offset, buffer_size, task_offset, lock_offset;
@@ -158,21 +149,12 @@ typedef struct tcp_zerocopy_layout {
 
 static inline TargetProfile
 target_profile_snapshot(const struct kernel_offsets *values) {
-#ifdef __cplusplus
   return values ? TargetProfile(*values) : TargetProfile();
-#else
-  return values ? (TargetProfile){.values = *values, .loaded = 1}
-                : (TargetProfile){0};
-#endif
 }
 
 static inline const struct kernel_offsets *
 target_profile_values(const TargetProfile *profile) {
-#ifdef __cplusplus
   return profile ? profile->values() : nullptr;
-#else
-  return profile && profile->loaded ? &profile->values : NULL;
-#endif
 }
 
 static inline int target_profile_is_loaded(const TargetProfile *profile) {
