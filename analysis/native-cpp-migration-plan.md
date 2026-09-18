@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP06 已完成并通过真机门禁：CPP01–CPP06 基线证据 `device-gates/CPP04-06-20260917-multicast-pass`；CPP03/CPP06 复测证据 `device-gates/CPP06b-20260917-multicast-pass`（native `b6245955…` 与设备 APK 一致）。CPP02 尾巴已收口（host-safe `number_parse.h` + 固定向量、`gettime_ns`/`write_file` 迁移），native SHA-256 保持 `b6245955…` 不变，零二进制变化。CPP06c（versionCode 198、同一 native）出现一次 KernelSnitch 阶段 kernel panic，根因不可判定（无 dmesg/pstore 权限），已归档为 `device-gates/CPP06c-20260917-multicast-kernel-panic`，待冷机复跑；门禁结论以 CPP06b 成功证据为准。下一阶段为 CPP07；进程/调度 helper 的 fail-fast 语义作为 `CPP02-HELPERS` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP06 已完成并通过真机门禁：CPP01–CPP06 基线证据 `device-gates/CPP04-06-20260917-multicast-pass`；CPP03/CPP06 复测证据 `device-gates/CPP06b-20260917-multicast-pass`（native `b6245955…` 与设备 APK 一致）。CPP02 尾巴已收口（host-safe `number_parse.h` + 固定向量、`gettime_ns`/`write_file` 迁移），native SHA-256 保持 `b6245955…` 不变，零二进制变化。CPP06c（versionCode 198、同一 native）的一次 KernelSnitch 阶段 kernel panic 已由 `device-gates/CPP06d-20260917-multicast-pass` 复跑确认为一次性随机事件（6 次 route 全部 clean；根因不可判定，无 dmesg/pstore 权限）。下一阶段为 CPP07；进程/调度 helper 的 fail-fast 语义作为 `CPP02-HELPERS` 移交 CPP12。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
