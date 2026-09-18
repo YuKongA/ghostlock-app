@@ -590,7 +590,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [ ] 下次行为提交删除并重跑门禁 |
 | S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
 | S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
-| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [ ] CPP04 代码完成，真机门禁待执行 |
+| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [x] CPP04–CPP06 已提交，Multicast 门禁通过（`CPP04-06-20260917-multicast-pass`）；CPP07+ 待继续 |
 
 ## 11. C++ 现代化续章（M01+，规划）
 

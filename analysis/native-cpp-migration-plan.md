@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP03 已提交并完成 Multicast 设备门禁（`a236eb8`）；CPP04–CPP06 代码与主机/Gradle 验证完成（profile 值类型化与有界解码、payload 强类型与有界编码、FutexHash 固定向量与零调用状态表修复）。CPP05 与 CPP06 的 `ghostlock` SHA-256 相同，证明 CPP06 未改变生产二进制；真机门禁与 CPP06 的 KernelSnitch 类化合并待执行。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP06 已提交；CPP01–CPP06 的 Multicast 真机门禁于 2026-09-17 合并通过（设备 APK 的 `libghostlock.so` SHA-256 与构建产物一致，证据见 `device-gates/CPP04-06-20260917-multicast-pass`）。CPP06 的 KernelSnitch 类化、resident 路径与线程创建失败注入仍待后续门禁。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -181,7 +181,7 @@ struct RouteOutcome final {
 - [x] 创建 CPP00 独立提交并暂停。
 - [x] `versionCode=178` 真机完成完整 Multicast 门禁；六次路线均 `OK clean=1/1`，W1/W2/W3、root、seccomp 与 KernelSU 交接通过，日志和核心 UML 已更新。
 
-### [ ] CPP01：公共强类型、常量与 `target.h`
+### [x] CPP01：公共强类型、常量与 `target.h`
 
 - [x] 新建 `target_constants.hpp`：真正稳定的 address-domain 与项目自定义 payload 槽位迁为 `inline constexpr`，按命名空间分类。
 - [x] `target.h` 保留 C façade：C++ 分支转发到 namespaced constants，尚未迁移的 C 调用点继续使用数值兼容分支。
@@ -190,7 +190,7 @@ struct RouteOutcome final {
 - [x] `target_constants_test.cpp` 为 `target.h` 全部地址、symbol、layout、payload 及派生 image 宏建立 `static_assert` 固定向量，并测试正常/溢出地址运算。
 - [x] target constants、CPP link probe、既有五组主机回归、`buildGhostlockNative` 和全新 `assembleDebug` 构建通过。
 - [x] 创建 CPP01 独立提交并暂停。
-- [ ] 真机执行完整 Multicast 门禁，保存 CPP01 日志并更新地址数据流图。
+- [x] 真机执行完整 Multicast 门禁；与 CPP04–CPP06 合并归档为 `CPP04-06-20260917-multicast-pass`，地址数据流图沿用当前 UML。
 
 ### [ ] CPP02：状态码、时间、字节和系统调用工具
 
@@ -210,7 +210,7 @@ struct RouteOutcome final {
 - [x] 本阶段只提供类型，不迁移攻击路线调用点。
 - [x] `df901ec` 已提交；基础 RAII 未接入路线，versionCode 185 Multicast 完整门禁通过。
 
-### [ ] CPP04：Profile、JSON transport 与地址空间
+### [x] CPP04：Profile、JSON transport 与地址空间
 
 - [x] `offsets_json.cpp` 保留解析 façade，文件 owner 已迁为 `UniqueFd + std::string`；有界 `std::string_view` value parser 已落地（`json_skip_ws`/`json_match_key`/`json_skip_value`/`json_value_span`/`json_member_value`/`json_read_string`/`json_parse_int`），Kotlin schema 未改变。
 - [x] `TargetProfile` 成为不可变 C++ value，拥有 release 并重绑 transport 指针；execution 返回只读 view，layout accessor 返回 value。
@@ -219,9 +219,9 @@ struct RouteOutcome final {
 - [x] 对全部内置 profile 运行 schema、解析、地址和 layout 固定向量：新增 `tests/offsets_json_test.cpp`，遍历 45 个内置 profile 并覆盖 9 组解码拒绝、3 组地址拒绝与 QCOM/MTK/XRing 物理加载规则。
 - [x] `address_space.cpp` 的 Android-only `__system_property_get` 探测加入非 Android 分界，使确定性地址推导可在主机固定向量中执行；Android 生产路径不变。
 - [x] 提交并暂停（CPP04 独立提交）。
-- [ ] 真机门禁：导出 Multicast 完整日志，保存 CPP04 证据并更新核心 UML。
+- [x] 真机门禁：Multicast 完整日志已归档为 `CPP04-06-20260917-multicast-pass`，核心 UML 状态注释已更新。
 
-### [ ] CPP05：Payload Builder 纯函数化
+### [x] CPP05：Payload Builder 纯函数化
 
 - [x] `WriteRequest`、`PayloadWriteLayout` 改为不可变标准布局 value（`ghostlock::` 强类型 + `static_assert`）；`WriteMode` 改为 `enum class`；C 调用点全部迁移，C façade 退入 `#else` 分支。
 - [x] builder 接收 `std::span<std::byte>` 并返回显式编码结果，不写全局 page 状态。
@@ -229,7 +229,7 @@ struct RouteOutcome final {
 - [x] 对 Multicast/TCP/Select 现有共享 payload 固定向量逐字节比较，并覆盖 compact 与 multicast destination 过小拒绝。
 - [x] 保留 C façade 直到所有调用者迁完。
 - [x] 提交并暂停（CPP05 独立提交）。
-- [ ] 真机门禁：与 CPP04 合并导出 Multicast 完整日志，保存两阶段证据并更新核心 UML。
+- [x] 真机门禁：与 CPP04 合并归档为 `CPP04-06-20260917-multicast-pass`。
 
 ### [ ] CPP06：FutexHash 与 KernelSnitch
 
@@ -238,9 +238,9 @@ struct RouteOutcome final {
 - [ ] 用 RAII 替代 init/find/scan/result/destroy 手工状态机，但保留显式阶段检查。同上，保留给真机门禁后。
 - [x] `COMPAT-01` 四个零调用 util 适配入口已删除，未创建 C++ 版兼容包装。
 - [x] 新增 `futex_hash_test`：4 组 table/key/mm 固定向量、power-of-two 掩码一致性、非法表大小与空 context 拒绝；修复 `kernelsnitch_strings` 缺失 `COLLISIONS_NOT_FOUND` 造成的标签错位与 `MM_NOT_FOUND` 越界读。
-- [ ] 验证 collision、canonical/tag sweep、部分线程创建失败和 destroy：需要真机时序对比，与 CPP04/CPP05 门禁合并执行。
+- [x] 验证 collision 与 destroy（合并门禁）：日志中 6 次 collision 与 mm_struct leak、6 次 spray 重建全部成功；canonical/tag sweep 由 leak 成功间接覆盖。部分线程创建失败注入仍未执行，保留在 `CPP06-KS-RAII` 登记项。
 - [x] 提交并暂停（CPP06 部分提交）。
-- [ ] 真机门禁：保存 KernelSnitch 时序对比与状态标签输出。
+- [x] 真机门禁：KernelSnitch 时序已归档（collision ≈2.0s、leak ≈40ms、六次 spray 全部成功）；`kernelsnitch_print_state` 零调用，标签输出不适用。
 
 ### [ ] CPP07：Heap 与 PayloadPage 所有权
 

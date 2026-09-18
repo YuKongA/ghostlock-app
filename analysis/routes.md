@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；CPP03/versionCode 185 的 Multicast 门禁已通过，TCP/Select 仍只有主机固定测试。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；CPP01–CPP06 的 Multicast 门禁已通过（`device-gates/CPP04-06-20260917-multicast-pass`，设备 APK 的 native SHA-256 与构建产物一致），TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
