@@ -115,10 +115,11 @@ class TcpZerocopyRouteContext {
 }
 
 class SelectStackRouteContext {
-  <<route-local>>
-  +SelectStackLayout layout
-  +fd_sets and pipe
-  +stdio borrow
+  <<route-local owning class (CPP11)>>
+  +FdSet in/out/ex and owned sets
+  +UniqueFd pipe/timerfd/high-read
+  +BorrowedFd stdio_backup
+  +prepare / execute / disarm / destroy
   +RouteStatus status
 }
 
@@ -183,5 +184,5 @@ NativeResource ..> ExploitSession : foundation only
 - `ExploitSession` 已集中主要全局状态，旧代码仍通过全局引用 façade 访问其成员；`RuntimeConfig`/`ResolvedAddresses` 已是值类型（CPP04/CPP08），`PayloadPage` move-only（CPP07）。
 - 三条路线共享 `WriteRequest → HeapContext → PiRaceContext → RouteController`，随后才各自构造 route context。
 - `PiRaceContext` 是 `ghostlock::PiRace`：futex、原子量、三个 `PthreadOwner` 与 `RouteStatus` 由该类唯一拥有，`start_threads`/`run`/`request_stop`/`join` 显式分离，`run()` 返回合并 consumer calls/success 的结果；`g_pi_race_context` 仍是 session 成员的引用别名（CPP12 删除）。
-- RAII 基础类型已补齐借用、scope、stop 和 handoff 语义；`PthreadOwner` 已接入 `PiRace`（CPP09）与 `TcpZerocopyRoute`（CPP10），Multicast/Select 仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
+- RAII 基础类型已补齐借用、scope、stop 和 handoff 语义；`PthreadOwner` 已接入 `PiRace`（CPP09）与 `TcpZerocopyRoute`（CPP10），`SelectStackRoute`（CPP11）拥有 `FdSet`/`UniqueFd` 并把 stdio 备份保持为 `BorrowedFd`；Multicast 仍必须显式执行 `disarm → destroy`，以防内核继续引用 fd、mmap 或线程相关对象。
 - 下一次结构拆分是把 `route_operations.cpp` 的三组函数分别移入对应路线 `.cpp`；该操作会改变编译单元和生成代码，必须独立进行真机门禁。

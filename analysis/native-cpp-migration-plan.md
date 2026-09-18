@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute` 类 + RAII 资源）代码与主机测试完成（native `07f6ccc6c2b49bf73504f7d82ee8f013f9dbab4ab0a962f2c555ca6171368608`）；无可用外部 TCP 设备，阶段设备门禁待补。CPP11 同样先完成代码与主机测试。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成（native `29e617d6edafca24ef196ac12903f32237b47e2b855819dc03255fdc3a8290fd`）；无可用 TCP/Select 外部设备，两阶段设备门禁待补。下一阶段 CPP12（ExploitSession 与阶段控制流）。`SESSION-01/03`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -293,12 +293,13 @@ struct RouteOutcome final {
 
 ### [ ] CPP11：Select Stack 路线
 
-- [ ] `SelectStackRoute` 拥有 fd sets、pipe/timerfd、stdio borrow 和执行状态。
-- [ ] `fd_set` 用专用 wrapper 表达位操作，但 syscall 边界仍传兼容布局。
-- [ ] consumer in-flight 时资源转入 `QuarantinedResource`，禁止 RAII 析构提前关闭。
-- [ ] compact/tree 两种 layout 分别固定测试和真机验证。
-- [ ] 暂不实现外层多 delay/retry；保留 `SELECT-01` 给 CPP12 session。
-- [ ] 提交、暂停、保存 Select 与 TCP→Select 回退证据。
+- [x] `SelectStackRoute` 拥有 pipe/timerfd/high-read 描述符（`UniqueFd`）与执行状态；`stdio_backup` 建模为 `BorrowedFd`（借用，从不关闭）；timerfd 失败时 `block_borrows_pipe` 表达对 pipe read end 的借用，避免重复关闭。
+- [x] `FdSet` wrapper 提供 `zero/set/test/raw`，`pselect/select` 边界仍传原生 `fd_set*`；`pselect_put_global_word`/`fdset_get_word`/`open_selected_fds` 布局未变。
+- [x] consumer in-flight 时（`consumer_stuck`）经 `release_to_process_lifetime`/`release()` 保留全部路由描述符至进程退出，禁止析构提前关闭；`destroy()` 的 dirty 分支幂等并保持 `selected_fds_installed` 语义。
+- [x] 主机测试：构造/借用记录、`FdSet` 位操作、move-only 与资源转移、借用 block 不双关、stdio 借用在 restore 后仍有效、stuck 分支保留 fd、disarm/destroy 幂等与 fallback-safe；`make native-host-tests` 全绿。
+- [ ] compact/tree 两种 layout 的设备验证：无可用 Select 设备，门禁待补（阶段保持 `[ ]`）。
+- [x] 暂不实现外层多 delay/retry；`SELECT-01` 保留给 CPP12 session。
+- [x] 提交、暂停（CPP11 独立提交）；Select 与 TCP→Select 回退设备证据待外部设备补。
 
 ### [ ] CPP12：ExploitSession 与阶段控制流
 

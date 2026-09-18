@@ -151,10 +151,12 @@
 | `pselect_waiter_shift()` | 取profile的waiter栈布局滑移 | 无 → int | 读 `active_offsets` |
 | `pselect_put_waiter_word()` | 应用滑移后写waiter word | sets/index/value | `pselect_put_global_word()` |
 | `open_selected_fds()` | 按fd_set布置真实fd | sets/read/write fd | 创建的复制fd由路线/进程收尾 |
-| `reserve_standard_io()` | 备份0/1/2以防路线覆盖日志fd | 写 `standard_io_backup` | `dup` |
-| `restore_standard_io()` | 恢复并关闭标准fd备份 | 清backup | `dup2/close` |
-| `prepare_pselect_fdsets()` | 构造compact或tree waiter的fd_set布局 | in/out/ex | 调word写辅助 |
-| `do_pselect_fake_lock_route()` | 建阻塞fd、进入select/pselect、协调consumer并收尾 | 写route/consumer状态 | consumer stuck时故意保留fd并标记dirty |
+| `reserve_standard_io()` | 备份0/1/2以防路线覆盖日志fd | 写 `standard_io_backup` | `dup`；构造 `SelectStackRoute` 时转为 `BorrowedFd` |
+| `restore_standard_io()` | 恢复标准fd（借助用备份，从不关闭） | 无 | `dup2` |
+| `select_stack_build_fdsets()` | 构造compact或tree waiter的fd_set布局 | `FdSet` in/out/ex | 调word写辅助 |
+| `SelectStackRoute::prepare()` / `execute()` | 建阻塞fd、进入select/pselect、协调consumer | 写route/consumer状态 | 定义在 `route_operations.cpp` |
+| `SelectStackRoute::disarm()` / `destroy()` | bounded drain / 恢复stdio并释放描述符 | 资源与 status | host-safe；consumer stuck 时经 `release_to_process_lifetime` 保留全部 fd |
+| `do_pselect_fake_lock_route()` | Select路线完整控制器 | 读fake/page，写route/consumer状态 | 构造 context → `prepare/execute/disarm/destroy`；dirty 日志按 step 34 打印 |
 
 ## `offsets_json.c`
 

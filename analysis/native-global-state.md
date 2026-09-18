@@ -130,9 +130,9 @@ TCP的client/server fd、punch fd、mapping和punch worker已由 `TcpZerocopyRou
 
 | 变量 | 读者/写者 | 问题 | 目标归宿 |
 |---|---|---|---|
-| `standard_io_backup[3]` | reserve/restore | 每次route的局部资源被保存为文件单例 | `pselect_route_context.stdio_backup` |
+| `standard_io_backup[3]` | reserve/restore | 文件级 static 的 stdio 备份，但语义是**借用** | 已落地（CPP11）：`SelectStackRoute.stdio_backup`（`BorrowedFd`×3，从不关闭）；`reserve_standard_io()` 仍写文件级缓冲并在构造时转换 |
 
-pselect的fd_set、pipe/timerfd目前是局部变量；需进入context的原因是consumer stuck时所有权会延长到进程退出。
+pselect 的 fd_set、pipe/timerfd 与执行状态已由 `SelectStackRoute` 拥有（`FdSet`×6、`UniqueFd`、`BorrowedFd` stdio，CPP11）；consumer stuck 时经 `release_to_process_lifetime` 保留全部描述符至进程退出。timerfd 创建失败时 `block_borrows_pipe` 表达对 pipe read end 的借用，避免重复关闭。
 
 ## 5. 路线结果和其他工具状态
 

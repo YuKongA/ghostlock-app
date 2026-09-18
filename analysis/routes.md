@@ -147,12 +147,12 @@ TCP是局部资源所有权最集中的路线。CPP10 后由 `TcpZerocopyRoute` 
 
 ```mermaid
 flowchart TD
-    R["do_pselect_fake_lock_route()"] --> Prep["prepare_pselect_fdsets()"]
+    R["do_pselect_fake_lock_route()"] --> Ctor["SelectStackRoute(race, request, layout, stdio_backup)"]
+    Ctor --> Prep["prepare(): pipe/timerfd + select_stack_build_fdsets()"]
     Prep --> Shift["pselect_waiter_shift()"]
     Prep --> Word["pselect_put_waiter_word()"]
-    Word --> Sets["in/out/ex fd_set"]
-    R --> Open["open_selected_fds()"]
-    R --> Save["reserve_standard_io()"]
+    Word --> Sets["FdSet in/out/ex"]
+    Prep --> Open["open_selected_fds()"]
     R --> Kind{"compact_waiter?"}
     Kind -->|6.1 fallback| PS["pselect()"]
     Kind -->|6.6/6.12| S["select()"]
@@ -160,13 +160,13 @@ flowchart TD
     S --> Frame
     R --> C["consumer_thread()"]
     C --> PI["PI walk / tree relink"]
-    R --> Restore["restore_standard_io()"]
+    R --> Restore["destroy(): restore stdio (borrowed)"]
     R --> Check{"consumer_inflight?"}
-    Check -->|no| Close["close timerfd/pipe"]
-    Check -->|yes| Dirty["keep fd until process exit; step=34"]
+    Check -->|no| Close["close owned timerfd/pipe"]
+    Check -->|yes| Dirty["retain every route fd until process exit; step=34"]
 ```
 
-consumer仍停在内核时不关闭相关fd，是为避免回收它仍在引用的对象。这个出口是dirty failure，不适合运行时切换路线。
+consumer仍停在内核时不关闭相关fd，是为避免回收它仍在引用的对象；CPP11 后由 `SelectStackRoute` 经 `release_to_process_lifetime` 显式保留（stdout/stderr 备份是 `BorrowedFd`，从不关闭）。这个出口是dirty failure，不适合运行时切换路线。
 
 ## 堆与地址数据流
 
