@@ -2,6 +2,8 @@
 
 These values preserve pre-S03 behavior. Time units are encoded in field-name suffixes: `_ms` for milliseconds and `_us` for microseconds. S08 will wire them to Native consumers; until then they stabilize the schema and support future overrides.
 
+> TODO(profile-suggest-01): Everything in this table is advisory. Only kernel geometry is required; a profile may omit or override these values, and the shipped default is the suggestion.
+
 <table>
 <thead>
 <tr><th>Parent</th><th>Child</th><th>Default</th><th>Purpose</th><th>Impact</th><th>Rationale</th></tr>

@@ -60,6 +60,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
+        // TODO(profile-suggest-01): requires_shizuku is a suggestion, not a
+        // hard gate. Use it as the default state of the user's Shizuku toggle
+        // and let an explicit user choice override it in both directions.
         val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU ||
             importedOffsetsRequireShizuku(release)
         val shizukuActive = requiresShizuku || shizukuEnabled

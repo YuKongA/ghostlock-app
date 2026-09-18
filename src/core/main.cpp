@@ -126,6 +126,11 @@ static int validate_offsets_profile(const struct kernel_offsets *entry) {
             return -1;
         }
     }
+    /* TODO(profile-suggest-01): Non-core execution settings must become
+     * advisories: a missing or adjusted retry, wait or settle value should
+     * fall back to the shipped suggestion instead of rejecting the whole
+     * profile. Required stays limited to kernel geometry and the credential
+     * template. */
     const struct execution_settings *e = &entry->execution;
     if (e->recommended_main_cpu >= CPU_SETSIZE ||
             e->recommended_consumer_cpu >= CPU_SETSIZE ||

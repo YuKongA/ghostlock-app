@@ -9,6 +9,12 @@
 #include <cstring>
 #endif
 
+/* TODO(profile-suggest-01): Only kernel geometry (kernel_major, symbol and
+ * struct offsets, waiter layout, credential template) is truly required. Every
+ * non-core setting below is advisory: requires_shizuku, retry counts,
+ * settle/timeout timings and recommended CPUs should be suggestions that a
+ * user override or a shipped default can replace, and a profile that omits
+ * them must still load. See docs/kernel_profiles/defaults*.md. */
 struct execution_settings {
   uint32_t recommended_main_cpu, recommended_consumer_cpu;
   uint32_t heap_prepare_max_attempts, heap_prepare_timeout_ms;

@@ -1,6 +1,8 @@
 # 内核 Profile 适配指南
 
-本目录是运行时 profile 的唯一内置数据源。
+> TODO(profile-suggest-01)：只有内核几何为必填；`requires_shizuku`、`execution`
+> 重试次数与等待/超时时间均为建议值：profile 可以省略或覆盖，缺省时随包默认值
+> 即建议值。
 
 ## 文件布局
 

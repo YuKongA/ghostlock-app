@@ -391,6 +391,7 @@ struct RouteOutcome final {
 | CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` fail-fast，未返回结构化错误 | 需要会话级错误传播策略 | CPP12 | [ ] 保留原语义，已登记 |
 | CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
 | U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记 |
+| PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |
 
 ## 10. 完成定义
 

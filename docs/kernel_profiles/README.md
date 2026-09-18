@@ -1,6 +1,10 @@
 # Kernel Profile Porting Guide
 
-This directory is the sole built-in source of runtime profiles.
+> TODO(profile-suggest-01): Only kernel geometry is required. `requires_shizuku`,
+> `execution` retry counts and wait/settle timings are suggestions: a profile may
+> omit or override them, and the shipped default becomes the suggestion.
+
+## File Layout
 
 ## Layout
 
