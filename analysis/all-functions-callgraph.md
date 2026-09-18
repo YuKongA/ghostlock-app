@@ -439,7 +439,7 @@ flowchart LR
     GConfig["g_core_* / paths / timer"]
     GRace["PiRaceContext<br/>waiter / owner / consumer / RouteStatus"]
     GWrite["WriteRequest<br/>immutable stage payload"]
-    GPage["g_heap_context.current<br/>fake_*/reclaim fields; prebuilt state"]
+    GPage["g_exploit_session.heap.current<br/>fake_*/reclaim fields; prebuilt state"]
     GHeap["ks / MmContextSet / skb_buffer<br/>reclaim sockets / UniqueFd leak memfd"]
     GMcast["MulticastWaiterRouteContext"]
     GTcp["TcpZerocopyRouteContext"]

@@ -69,10 +69,10 @@
 | 提交 | 主题 | 本分支动作 |
 |---|---|---|
 | `396e52d` | core: cache the direct map end from /proc/iomem (#138) | **移植（见下）** |
-| `9e75003` | Add Pixel 9 Pro（含 `SLIDE_*` alias 改动与 SOC_GOOGLE） | `SLIDE_*` 登记为 `U01-D`；SOC_GOOGLE 与 profile 登记 |
-| `1145ef2` / `4b269cd` / `e7b81ae` | 新设备 offsets（Honor Magic V5、NX809J/NX888J、6.1.162 修正） | 后续按 JSON profile 流程追加，非修复 |
+| `9e75003` | Add Pixel 9 Pro（含 `SLIDE_*` alias 改动与 SOC_GOOGLE） | `SLIDE_*` 已实施（U01-D `27924cb`，待门禁）；SOC_GOOGLE 与 profile 已移植 |
+| `1145ef2` / `4b269cd` / `e7b81ae` | 新设备 offsets（Honor Magic V5、NX809J/NX888J、6.1.162 修正） | 已按 JSON profile 流程追加（U01-F `2c4d76d`，`index.json` 48 项），非攻击修复 |
 | `bb83c4c` / `833ef7c` / `42b2f37` | CI（drop setup-android、pre-release 上传） | 不适用（本分支 CI 独立维护） |
-| `12fd9f3` | rust opt-level z | 提取器体积优化，登记为后续维护 |
+| `12fd9f3` | rust opt-level z | 已完成（U01-G，含 yaxpeax 0.5 升级 `408abe2`） |
 
 ## `396e52d` 语义映射（本轮移植）
 
@@ -89,13 +89,14 @@
 
 默认值下 `identity_diff` 与扫描上限不变（`MIN(0xffffff9000000000, 0xffffff8c00000000) = IDENTITY_END`），因此对本分支已验证的 5.15 设备是**零行为变化**；只有在存在可信 `.ghostlock_iomem` 时才收窄。
 
-## `U01-D`：`SLIDE_INIT_TASK` / `SLIDE_ROOT_TASK_GROUP`（登记，暂不移植）
+## `U01-D`：`SLIDE_INIT_TASK` / `SLIDE_ROOT_TASK_GROUP`（已移植 `27924cb`，待门禁）
 
 `9e75003` 把 `prepare_skb_payload` 的三个 waiter 地址从 image 形式（`INIT_TASK`/`ROOT_TASK_GROUP`）改为 direct-map alias（`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP`），理由是对所有 SoC 可解引用。
-本分支 5.15 Multicast 以 image 形式通过全部门禁，且该改动会**改变已验证 payload 字节**，需独立真机门禁与字节级对比，因此登记为 `U01-D`，不在本轮混入。
+
+该改动会**改变已验证 payload 字节**，最初仅在首批 catch-up 登记并暂缓。2026-09-18 在 U01-D 批次实施（`27924cb`，构建 `a5a0ba07…` 与门禁版 `66f0a8a3…` 攻击函数形状一致）；生效构建尚未真机门禁，按 [native-decoupling-plan.md](native-decoupling-plan.md) 的 `U01-D 门禁` 项执行，失败即回退。
 
 ## 其他登记
 
-- `U01-E`：SOC_GOOGLE/Tensor 支持（`detect_target_soc` + 物理加载回退 + 后续 profile）。
-- `U01-F`：新设备 profile 追加（Honor Magic V5 10.0.0.105、NX809J/NX888J 6.12.38、Pixel 9 Pro 6.1.162）与 `e7b81ae` 的 6.1.162 修正，按 JSON 转换流程执行。
-- `U01-G`：提取器 `opt-level = "z"`（再生成 `Cargo.lock`）。
+- `U01-E`：SOC_GOOGLE/Tensor 支持——已完成（`fe5467d`，主机固定向量覆盖）。
+- `U01-F`：新设备 profile 追加（Honor Magic V5 10.0.0.105、NX809J/NX888J 6.12.38、Pixel 9 Pro 6.1.162）与 `e7b81ae` 的 6.1.162 修正——已完成（`2c4d76d`，`index.json` 48 项）。
+- `U01-G`：提取器 `opt-level = "z"`（再生成 `Cargo.lock`）与 yaxpeax 0.5——已完成（`408abe2`）。

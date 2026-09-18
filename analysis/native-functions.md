@@ -21,8 +21,8 @@
 |---|---|---|---|
 | `validate_offsets_profile()` | 校验公共与路线偏移 | `kernel_offsets*` → bool | 只读 |
 | `log_execution_settings()` | 输出执行参数诊断 | profile | 无资源 |
-| `resolve_profile_addresses()` | 发布结构化地址快照 | 写 `g_resolved_addresses` | `resolved_addresses_init()` |
-| `select_offsets()` | 按 `uname -r` 选外部/内置 profile | 写 `g_target_profile` | 成功后发布地址 |
+| `resolve_profile_addresses()` | 发布结构化地址快照 | 写 `g_exploit_session.addresses` | `resolved_addresses_init()` |
+| `select_offsets()` | 按 `uname -r` 选外部/内置 profile | 写 `g_exploit_session.profile` | 成功后发布地址 |
 | `apply_iomem_cache()` | 以 home 的 iomem dump 收窄 direct map 末端 | 写 `g_direct_map_end` | 文件在函数内关闭 |
 | `write_root_script()` | 生成 root/KernelSU 调度脚本 | 读 runtime paths，写文件 | 句柄在函数内关闭 |
 | `perf_find_task()` | 由 perf 观测取得 victim `task_struct` | 无 → address | perf fd/ring 局部回收 |
@@ -113,6 +113,6 @@
 - `main` 只做解析与编排；stage 状态经 `VictimChain`/`ExploitSession` 显式传递，victim pid 归 `VictimContext`。
 - PI 竞争（`ghostlock::race`）与三路线分离：resident Multicast 用类生命周期，one-shot 保持专用小栈帧与 VLA；
   payload 编码对两条 Multicast 路径同源。
-- `prepare_kernel_page()`/`prepare_skb_payload()` 仍是最强堆耦合；`g_heap_context`/`g_resolved_addresses`/
-  `g_target_profile` 是保留的 process singleton（理由见全局矩阵）。
+- `prepare_kernel_page()`/`prepare_skb_payload()` 仍是最强堆耦合；会话状态统一经 `g_exploit_session`
+  成员访问（三个引用别名已在 CPP17 收归，见全局矩阵）。
 - 攻击关键函数（8 个）在每次布局改动时用构建对比脚本验证 strict 或已知注解差异。

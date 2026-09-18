@@ -472,7 +472,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] 用户真机兼容性确认（A301SO、Shizuku、5.15 Multicast 路线；完整执行至 `KernelSU ready`）。
 - [x] 真机确认后导出完整日志，完成分析并保存 S09 门禁证据。
 
-### [ ] U01：`remote/main` 上游 Catch-up（插入 S10 前）
+### [ ] U01：`remote/main` 上游 Catch-up（插入 S10 前；收尾完成，`U01-D 门禁` 已闭环）
 
 > 完整差异、冲突面和语义映射见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md)。不得直接 cherry-pick 旧架构实现，也不得恢复 C `offsets.h` 注册表。
 
@@ -493,13 +493,14 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - [x] U01-C：用户确认本步骤无需已有设备兼容复测；Y700/REDMI K80 对应设备门禁继续等待外部协作者，不扩大已验证范围。
 - [x] 第二批上游复核（`9ee07a8..42b2f37`，9 提交）：见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节。
 - [x] U01-H：移植 `396e52d` 的 direct-map 末端测量——`g_direct_map_end`、`.ghostlock_iomem` 缓存、`in_direct_map()` 越界拒绝与 KernelSnitch slice/`identity_diff` 收窄；默认常量下零行为变化。
-- [x] U01-D：`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP` alias 改动（multicast payload 的 `waiter_task`/`task_group`/`pi_top_task` 改为 direct-map alias，与 TCP route 一致，上游 9e75003）：构建 `a5a0ba07…` 与 `66f0a8a3…` 攻击函数形状一致；**改变已验证 payload 字节，真机门禁待跑**（设备窗口恢复后，失败即回退）。
+- [x] U01-D：`SLIDE_INIT_TASK`/`SLIDE_ROOT_TASK_GROUP` alias 改动（multicast payload 的 `waiter_task`/`task_group`/`pi_top_task` 改为 direct-map alias，与 TCP route 一致，上游 9e75003）：实施 `27924cb`，构建 `a5a0ba07…` 与 `66f0a8a3…` 攻击函数形状一致；**改变已验证 payload 字节**。
+- [x] U01-D 门禁：**PASS**（与 CPP16 合并证据 `CPP16-U01D-20260918-multicast-pass`，APK 324/native `18fe119c…`，6/6 route、`KernelSU ready`、无 pstore panic）；用户于 2026-09-18 豁免第二次冷机，`18fe119c…` 登记为新基线，无需回退 `27924cb`。
 - [x] U01-E：SOC_GOOGLE/Tensor 支持：`TARGET_SOC_GOOGLE`（google/tensor/gs*/zuma* 属性检测）、与 MTK 共享的 DRAM-base `kernel_phys_load` 回退、`google/tensor`/`tensor` 名称；主机固定向量（`offsets_json_test`）覆盖 Tensor 回退，构建与 `66f0a8a3…` 对比 7/8 strict + `do_one_write` 1 处注解差异。
 - [x] U01-F：新设备 profile 追加：Pixel 9 Pro / 9 Pro Fold（`6.1.162-…-g752d9…`，Tensor G4，靠 U01-E 的 Google physmap 回退）、Honor Magic V5（`6.6.118-…-g21be9…`）、NX809J/NX888J（`6.12.38-…-g665ea…`）转为 JSON（同族结构字段复用 + 上游 `off_*`/shift），`index.json` 48 项、`offsets_json_test` 全绿；中英文支持设备表登记为待真机复核。
 - [x] U01-G：提取器 `opt-level = "z"`（已有）与 `yaxpeax-arm` 0.4→0.5 + `Cargo.lock` 再生成；`cargo build --release`/测试通过，对 67.2.A.3.178 Image 运行正常（futex-stack 推导失败时按启发式给出 `pselect_waiter_shift=-2`，与设备 profile 一致）。
 - [x] S11 回补：TCP 上限继续采用 profile；可恢复失败及清理状态采用 `RouteStatus`，未移植硬编码 128 次。
-- [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。
-- [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。
+- [ ] S12 回补：compact pselect 多 delay/timeout/retry、in-flight fd 所有权和 child pipe fd window。（route 级 fd 所有权与 clean/dirty 语义已由 CPP11 完成；外层多时序重试仍登记为 `SELECT-01`。）
+- [ ] S14 回补：W3 probe 失败退休 child、逐次 KSU 日志路径、handoff/enforcing 判定。（handoff/enforcing 探针已由 CPP12 结构化；W3 child 退休与逐次 KSU 日志路径仍待独立行为提交。）
 - [ ] UI 后续回补：6.1 TCP/pselect 开关、日志来源标签及 sparse override 的 `compact_waiter` 继承。
 - [x] U01-Z：逐项复核 `50d2b72`..`bddfea4` 的攻击相关行为均已移植（U01-A..H）；`remote/main` ancestry 以 `-s ours` 合并（`aad638a`），上游 Kotlin OTA extractor 与 CI 工作流为本分支不带入的独立特性（不触攻击路径），已记录。
 - [x] U01-Z：全量主机测试与 Gradle Debug 构建通过（APK 323）；U01-D 的 payload 字节改动登记为**待真机门禁**（设备窗口恢复后跑，失败即回退），其余改动不触攻击关键函数形状。
@@ -576,106 +577,117 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 
 | 来源阶段 | 代码位置/事项 | 阻塞依赖 | 回补阶段 | 状态 |
 |---|---|---|---|---|
-| S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] 镜像全部删除：`CORE` 宏与 KernelSnitch 隐式 pin 已改为显式 CPU（CPP12/`CPP12j`，门禁 `CPP12j-20260917-multicast-pass`） |
-| S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
-| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [x] 已规划，待实现 |
-| S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [x] 已规划，待实现 |
-| S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
-| S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
-| S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
-| S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
+| S02 | PI consumer 已改用 context CPU；`CORE`/`CONSUMER_CORE` 镜像仍被 Heap/KernelSnitch/Multicast 使用 | 对应 owner 尚未全部接收 context | S13/S14 | [x] 镜像全部删除：`CORE`/`CONSUMER_CORE` 宏与 KernelSnitch 隐式 pin 已改为显式 CPU（CPP12/`CPP12j`，门禁 `CPP12j-20260917-multicast-pass`） |
+| S02 | `main.c` 路径使用配置对象的兼容别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] `g_home_dir`/`g_root_script_path` 宏已删除，调用点内联 `runtime_config_snapshot()`（`e1782f6`，与门禁版 `625d5300…` 逐字节一致） |
+| S03 | 高级 profile 参数编辑和推荐核心 UI | S03 只迁移数据管线并保持原界面 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
+| S03 | 用户稀疏 override、导入导出、schema 迁移与回滚 | 需要稳定 schema 和产品交互设计 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
+| S04 | `futex_hashsize`、`futex_init()`、`futex_hash()` 仅保留为零活跃调用的兼容接口 | 最终兼容性审计尚未完成 | S15 | [x] 已收敛：`futex_hash.h` 改为显式 context 的 `static inline`，零调用兼容入口随 CPP06 删除 |
+| S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 四个零调用 util 适配入口已删除（CPP06，`COMPAT-01`），Multicast 门禁 `CPP06b` 通过 |
+| S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] `SelectStackRoute` 持有 layout/context（CPP11） |
+| S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] `MulticastWaiterRoute` 持有 context/编码（CPP13） |
 | S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 别名已删除、mm sets/SKB/leak memfd 已收归（CPP12/`CPP07-OWNER`，`4ba123a`/`9a18262`，门禁 `CPP12h-20260917-multicast-pass`） |
-| S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] TCP 已完成，余项待回补 |
-| U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] S11 已回补 |
-| U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
-| U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [x] 已产生，待回补 |
-| U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [x] 已产生，待实现 |
-| S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] 路线内状态已回补，跨 owner 待完成 |
-| S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [x] route 单次 context 已完成，session 重试待回补 |
-| S13 | resident stop 暂时继续调用 Heap reclaim/prepare cleanup | 为保持已验证 W1/W2 停止顺序，尚无 session handoff | S14 | [x] route context 已完成，Heap handoff 待回补 |
-| S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [ ] 下次行为提交删除并重跑门禁 |
-| S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
-| S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
-| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [x] CPP04–CPP09 与 CPP12 的 Session/M02/VictimPipes/Heap owner 段已门禁（最近 `CPP12h-20260917-multicast-pass`）；CPP12 其余与 CPP13/14 待继续 |
+| S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] 三条路线全部完成：TCP（CPP10）、Select（CPP11）、Multicast（CPP13） |
+| U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] TCP 代码回补完成（CPP10）；设备门禁随 CPP10 外部补证 |
+| U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [ ] 部分完成：route 级 fd 所有权与 clean/dirty 语义已回补（CPP11）；外层多时序重试见 `SELECT-01` |
+| U01 | 上游 W3 child 退休及 KSU handoff 日志/判定需语义移植 | stage/victim/session 编排尚未完成 | S14 | [ ] 部分完成：handoff/enforcing 探针已结构化（CPP12i）；W3 child 退休与逐次 KSU 日志待独立行为提交 |
+| U01 | 上游路线 UI 与 sparse override 继承行为 | 需稳定 route/profile schema 和 UI 设计 | UI 后续阶段 | [ ] 待实现（UI 阶段） |
+| S13 | W1/W2 fast repair 与 multicast 清理交织 | route context 已完成；Heap handoff 需要 session 编排 | S14 | [x] `ExploitSession::release_resident_heap()` 已接管（CPP12/`CPP12o`） |
+| S12/U01 | compact Select 外层多 delay/retry 需同时重建 Heap page、PI race 与 route context | `ExploitSession` 尚未成为统一重试所有者 | S14 | [ ] 未回补：route 单次 context 已完成（CPP11），session 级重试见 `SELECT-01` |
+| S13 | resident stop 暂时继续调用 Heap reclaim/prepare cleanup | 为保持已验证 W1/W2 停止顺序，尚无 session handoff | S14 | [x] 已移入 `ExploitSession`（CPP12/`CPP12o`） |
+| S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [x] 已在 CPP06 删除并随 Multicast 门禁（`CPP06b-20260917-multicast-pass`）验证 |
+| S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [x] CPP12 全部完成：SESSION-01（`e1782f6`）、SESSION-02（`faac9ce`）、SESSION-03、SESSION-04（`CPP12o`）；`g_heap_context`/`g_target_profile`/`g_resolved_addresses` 引用别名收尾见 CPP14/`native-global-state.md` |
+| S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 仍未回补：CPP11 只提供单次 route context；外层单次模型保持在 `route_operations.cpp` |
+| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP00–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP00–CPP14（M01–M06 为映射） | [x] CPP00–CPP14 代码与 Multicast 门禁全部完成（最终 `CPP13b` 两次冷机，native `66f0a8a3…`）；外部残留：CPP10/CPP11 设备门禁、CPP14 TCP/Select 回归、`U01-D` 生效构建待门禁 |
 
-## 11. C++ 现代化续章（M01+，规划）
+## 11. C++ 现代化续章（M01+，CPP00–CPP14 已关闭）
 
 > 本节修订第 1 节“不迁移 C++”的边界：C 解耦（S01–S15）的成果保持不动，C++ 现代化作为后续续章推进。目标是在**不改变攻击行为**的前提下，消除本计划已登记的 `SESSION-01..04`、`SELECT-01` 遗留全局，并提升类型安全、所有权表达与命名空间边界。本节的硬约束、门禁、日志证据和提交/暂停规则沿用第 9 节与开头“会话恢复与阶段执行规则”。
 >
-> **执行权威**：C++ 现代化按 [`native-cpp-migration-plan.md`](native-cpp-migration-plan.md) 的 CPP04–CPP14 阶段落地；本节的 M01–M06 只是同一批工作的主题汇总视图（M01↔CPP12、M02↔CPP03/08/12、M03↔CPP09、M04↔CPP14、M05↔CPP13、M06↔CPP14），不另立执行批次。两处编号冲突时以 CPP 计划为准，并在 `## 10` 表格更新映射。
+> **执行结果（2026-09-18）**：C++ 现代化按 [`native-cpp-migration-plan.md`](native-cpp-migration-plan.md) 的 CPP00–CPP14 执行并关闭；`SESSION-01..04` 与 `common.h` 宏总线已消除，`SELECT-01` 明确保留为未回补项。最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS）；`U01-D`（`27924cb`）改变 payload 字节，生效构建 `a5a0ba07…` 待真机门禁。TCP/Select 设备门禁仍属外部协作者。本节的 M01–M06 只是同一批工作的主题汇总视图（M01↔CPP12、M02↔CPP03/08/12、M03↔CPP09、M04↔CPP14、M05↔CPP13、M06↔CPP14），不另立执行批次；两处编号冲突时以 CPP 计划为准。
 
 ### 11.1 硬约束（不可妥协）
 
-- [ ] 攻击关键路径的系统调用顺序、栈帧布局、堆分配顺序、页内容与结构偏移完全不变；ABI 敏感结构保留 `static_assert` 布局/大小/对齐断言。
-- [ ] `TargetProfile`、`RouteOutcome`、`kernel_offsets`、`ReclaimPair` 等已参与布局/传输的类型不得因现代化改变尺寸或字段顺序；必要时使用“C 存储 + C++ 访问器”而非直接替换。
-- [ ] 不启用异常与 RTTI；错误继续以 `Result` / `RouteStatus` / `int` + `errno` 表达，不引入抛异常路径。
-- [ ] 竞态关键窗口内禁止引入堆分配、锁、虚函数或运行期多态；多态仅用函数指针表或静态分发。
-- [ ] 保持 Kotlin 启动协议、offset JSON schema、环境变量、关键日志关键字与退出码兼容。
-- [ ] 每个 fd、线程、mapping、child、buffer 有唯一 RAII 所有者；替换已验证的敏感释放顺序前，必须逐项证明行为等价。
-- [ ] 新类型位于 `namespace ghostlock`，类型名沿用现有 CamelCase、函数/字段沿用 snake_case，且不含内核版本号。
-- [ ] 每阶段独立提交后立即暂停；真机门禁与日志证据流程同第 9 节。
-- [ ] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务；该步骤见 `native-cpp-migration-plan.md` 第 1 节，用于规避重复缓存副本。
+- [x] 攻击关键路径的系统调用顺序、栈帧布局、堆分配顺序、页内容与结构偏移完全不变；ABI 敏感结构保留 `static_assert` 布局/大小/对齐断言。证据：CPP13 步骤 C 后 8/8 攻击函数与门禁版 `66f0a8a3…` 逐指令一致；警告修复与 clang-tidy 修复均零指令差异（`native-warning-audit.md`）。
+- [x] `TargetProfile`、`RouteOutcome`、`kernel_offsets`、`ReclaimPair` 等已参与布局/传输的类型不得因现代化改变尺寸或字段顺序；必要时使用“C 存储 + C++ 访问器”而非直接替换。证据：`RouteOutcome` 保留 20-byte C façade（CPP02），`kernel_offsets` 保持 POD transport（CPP04），`RouteStatus` 数值映射未变。
+- [x] 不启用异常与 RTTI；错误继续以 `Result` / `RouteStatus` / `int` + `errno` 表达，不引入抛异常路径。
+- [x] 竞态关键窗口内禁止引入堆分配、锁、虚函数或运行期多态；多态仅用函数指针表或静态分发。证据：路由分发为静态 controller，无虚函数；`PiRace` 热路径保持 seq_cst 原子与 pthread。
+- [x] 保持 Kotlin 启动协议、offset JSON schema、环境变量、关键日志关键字与退出码兼容。证据：Release 构建与启动协议门禁（`CPP14-release-20260917-multicast-pass`），profile schema 全程未改。
+- [x] 每个 fd、线程、mapping、child、buffer 有唯一 RAII 所有者；替换已验证的敏感释放顺序前，必须逐项证明行为等价。证据：CPP03/CPP07/CPP09/CPP12 的所有权迁移均以逐字节或逐指令对比放行；不能证明的（`g_heap_context` 别名、PI-TIMEOUT、路由拆分）已回退并登记。
+- [x] 新类型位于 `namespace ghostlock`，类型名沿用现有 CamelCase、函数/字段沿用 snake_case，且不含内核版本号。证据：CPP12 批次 B（`91fb8a1`）与 CPP14 命名空间收尾。
+- [x] 每阶段独立提交后立即暂停；真机门禁与日志证据流程同第 9 节。例外：用户于 2026-09-14 明确允许连续批次推进；每个真机门禁仍独立归档（见 `native-cpp-migration-plan.md`）。
+- [x] 每次 Gradle/APK 构建前先执行 `./gradlew clean`（或等价删除 `app/build`），再运行目标任务；该步骤见 `native-cpp-migration-plan.md` 第 1 节，用于规避重复缓存副本（`CPP-BUILD-02` 已由生成任务级清理加固）。
 
 ### 11.2 与既有计划的关系与前置依赖
 
-- [ ] M01–M06 以 `## 10` 的 `SESSION-01..04`、`SELECT-01` 及 `common.h` 宏总线为直接输入；完成后必须同时删除代码 `TODO` 与登记项。
-- [ ] 启动前置：S11/S12/S14/U01 真机门禁尚未闭环；M 系列仅在用户确认可用设备，或明确允许“仅对 Multicast 已证路径做非行为性改动”后启动。
-- [ ] 任一阶段若无法证明与 S15 基线二进制在攻击关键对象上等价，则停止该阶段并保留 C 兼容实现，登记为回补项而非强推。
-- [ ] M 系列不改变 Kotlin/native 的 profile schema；若现代化需要触碰 schema，则按第 3 节流程另立独立阶段，不并入 M01–M06。
+- [x] M01–M06 以 `## 10` 的 `SESSION-01..04`、`SELECT-01` 及 `common.h` 宏总线为直接输入；完成后必须同时删除代码 `TODO` 与登记项。结果：`SESSION-01..04` 与宏总线已消除；`SELECT-01` 未被本系列消除，保留为独立会话重试架构项（见 `## 10`）。
+- [x] 启动前置：S11/S12/S14/U01 真机门禁尚未闭环；M 系列仅在用户确认可用设备，或明确允许“仅对 Multicast 已证路径做非行为性改动”后启动。实际：用户选择以 Multicast 已证路径为门禁基线连续推进；S11/S12/S14 设备门禁保持外部协作者项，U01 收尾完成（仅 `U01-D 门禁` 待设备窗口）。
+- [x] 任一阶段若无法证明与 S15 基线二进制在攻击关键对象上等价，则停止该阶段并保留 C 兼容实现，登记为回补项而非强推。实际回退记录：`g_heap_context` 别名删除改变攻击函数、路由拆分首次门禁同型 panic（随后证明与布局无因果，代码留历史）、`PI-TIMEOUT-01` 扰动 `.text` 后回退。
+- [x] M 系列不改变 Kotlin/native 的 profile schema；若现代化需要触碰 schema，则按第 3 节流程另立独立阶段，不并入 M01–M06。实际：CPP04 只重构 Native 侧 transport 解码，schema 与 Kotlin 合并语义未变。
 
 ### 11.3 阶段
 
-#### [ ] M01：ExploitSession 成为唯一根 owner
+#### [x] M01：ExploitSession 成为唯一根 owner
 
-- [ ] 将 `g_heap_context`、`g_pi_race_context`、`g_target_profile`、`g_resolved_addresses`、`g_runtime_config` 收拢为 `ghostlock::g_exploit_session` 成员，`ExploitSession` 成为唯一进程级 owner。
-- [ ] 删除 `common.h` 的宏别名：`page_base`/`fake_*`/`memfd_leak`、`CORE`/`CONSUMER_CORE`、`mm_struct_sz()` 已删除（CPP12/`CPP12h`/`CPP12j`），调用点经 session/heap context 与 `target_profile_*` 访问器显式访问；`SLIDE_*` 会改变已验证 payload 字节，登记为 U01-D。
-- [ ] `run_exploit()` 与阶段控制器改为显式 `ExploitSession &` 参数；回补 `SESSION-01`、`SESSION-02`。
-- [ ] `PayloadPage` 的 current/prebuilt/quarantine 移动与 state 转换保持现有语义，不改变回收时机。
-- [ ] 门禁：Multicast 真机完整执行至 `KernelSU ready` + TCP/Select 主机回归。
+- [x] 将 `g_heap_context`、`g_pi_race_context`、`g_target_profile`、`g_resolved_addresses`、`g_runtime_config` 收拢为 `ghostlock::g_exploit_session` 成员，`ExploitSession` 成为唯一进程级 owner。结果：`g_pi_race_context`（`9dba566`）与 `g_runtime_config`（CPP12 `SESSION-01`）引用别名已删除；`g_target_profile`/`g_resolved_addresses`/`g_heap_context` 保留为编译期引用 façade（唯一 owner 仍是 session；`g_heap_context` 别名删除已验证改变攻击关键函数 `waiter_thread`/`do_pselect_fake_lock_route`，理由见 `native-global-state.md`）。
+- [x] 删除 `common.h` 的宏别名：`page_base`/`fake_*`/`memfd_leak`、`CORE`/`CONSUMER_CORE`、`mm_struct_sz()` 已删除（CPP12/`CPP12h`/`CPP12j`），调用点经 session/heap context 与 `target_profile_*` 访问器显式访问；`SLIDE_*` 已实施（`27924cb`），改变已验证 payload 字节，门禁见 `U01-D 门禁`。
+- [x] `run_exploit()` 与阶段控制器改为显式 `ExploitSession &` 参数；回补 `SESSION-01`、`SESSION-02`（`da2ab17`/`faac9ce`，native `395c5faf…`；门禁 `CPP12p`/`CPP12q`）。
+- [x] `PayloadPage` 的 current/prebuilt/quarantine 移动与 state 转换保持现有语义，不改变回收时机（CPP07/CPP09）。
+- [x] 门禁：Multicast 真机完整执行至 `KernelSU ready`（`CPP13b` 两次冷机）+ TCP/Select 主机回归（`make native-host-tests`，设备门禁随 CPP10/CPP11 外部补证）。
 
-#### [ ] M02：资源所有权全面 RAII 化
+#### [x] M02：资源所有权全面 RAII 化
 
-- [ ] `main.cpp`、`check_selinux_off()`、`process_has_seccomp()`、`perf_find_task()` 的裸 fd → `BorrowedFd` / `UniqueFd`。
-- [ ] `struct child_pipes` → `ghostlock::VictimContext`（`ChildProcess` + 拥有型 pipe 对）；`spawn_child` / `spawn_victim` 改为返回 `Result`。
-- [ ] `slab_drain()`、`clone_child`、`clone_leak_child` 的 fork/wait 由 RAII 子进程类型接管，临时 pid 数组不再手工 `calloc`/`free`。
-- [ ] fork 边界后的 fd 继承/关闭顺序逐 fd 证明等价；根 shell 链路的 `FD_CLOEXEC` 扫描保持原顺序。
-- [ ] 门禁：Multicast 真机 + 主机生命周期测试（部分 init 失败、重复 destroy、move 语义）。
+- [x] `main.cpp`、`check_selinux_off()`、`process_has_seccomp()`、`perf_find_task()` 的裸 fd → `BorrowedFd` / `UniqueFd`（CPP12 M02 fd 段，`CPP12f`；`main.cpp` 已无裸 fd/mmap）。
+- [x] `struct child_pipes` → `ghostlock::VictimContext`（六 `UniqueFd` 顺序不变，`ChildProcess` + pid 所有权；`CPP12g`/`CPP12w`，`4a6cb5f`）。
+- [ ] `spawn_child` / `spawn_victim` 仍返回 `pid_t`/`int` 并在调用点校验 errno，未改为 `Result`；属低收益签名迁移，保留现状并登记为后续维护项（不改变行为，不阻塞 M02）。
+- [x] `slab_drain()`、`clone_child`、`clone_leak_child` 的 fork/wait 由 RAII 子进程类型接管，临时 pid 数组不再手工 `calloc`/`free`（`std::array<ChildProcess,64>`，`CPP12f`；`leak_child` + `mark_reaped()`，`CPP12o`）。
+- [x] fork 边界后的 fd 继承/关闭顺序逐 fd 证明等价；根 shell 链路的 `FD_CLOEXEC` 扫描保持原顺序（CPP12g/CPP12m 重建与门禁版逐字节一致）。
+- [x] 门禁：Multicast 真机 + 主机生命周期测试（部分 init 失败、重复 destroy、move 语义；`make native-host-tests` 全绿）。
 
-#### [ ] M03：并发原语与布尔语义
+#### [x] M03：并发原语与布尔语义
 
-- [ ] `PiRaceContext` 的 `atomic_int` → `std::atomic<int>` / `std::atomic<bool>`，`int` 标志 → `bool`；内存序先做 1:1 映射（`seq_cst`），放宽内存序必须单独评审与真机复测。
-- [ ] `TargetProfile::loaded_`、`RouteOutcome` 若为 ABI/传输敏感则保留 `int` 存储并补访问器，不直接改字段类型。
-- [ ] 用 `std::thread` 或 `PthreadOwner` 统一线程句柄，替换裸 `pthread_t` + `*_started` 标志对。
-- [ ] 门禁：Multicast 真机（记录竞态随机性）+ 并发主机测试（线程启动部分失败时 join 已创建部分）。
+- [x] `PiRaceContext` 的 `atomic_int` → `std::atomic<int>` / `std::atomic<bool>`，`int` 标志 → `bool`；内存序先做 1:1 映射（`seq_cst`），放宽内存序必须单独评审与真机复测（热路径保持 seq_cst、reset 保持 relaxed，已在 `pi_race.h` 注明）。
+- [x] `TargetProfile::loaded_`、`RouteOutcome` 若为 ABI/传输敏感则保留 `int` 存储并补访问器，不直接改字段类型（CPP02/CPP04）。
+- [x] 用 `std::thread` 或 `PthreadOwner` 统一线程句柄，替换裸 `pthread_t` + `*_started` 标志对（CPP09；兼容镜像已删除）。
+- [x] 门禁：Multicast 真机（记录竞态随机性；`CPP09-20260917-multicast-pass` 及后续 `CPP13b`）+ 并发主机测试（`pi_race_test` 覆盖线程启动部分失败时 join 已创建部分）。
 
-#### [ ] M04：命名空间与头文件边界
+#### [x] M04：命名空间与头文件边界
 
-- [ ] 将核心类型/函数移入 `namespace ghostlock`；删除 `#ifdef __cplusplus extern T &g_x;` 兼容技巧。
-- [ ] `common.h` 拆分为 profile / runtime / heap / race / route / victim 窄接口（见 9.14），不再导出可变攻击状态。
-- [ ] 用“查找使用位置”确认每个旧符号为零引用后再删除。
-- [ ] 门禁：全量主机测试 + Multicast 真机。
+- [x] 将核心类型/函数移入 `namespace ghostlock`；删除 `#ifdef __cplusplus extern T &g_x;` 兼容技巧（CPP12 批次 B `91fb8a1`，`CPP12v`；CPP14 C façade 删除 `8884be4`/`54120b6`）。
+- [x] `common.h` 拆分为 profile / runtime / heap / race / route / victim 窄接口（见 9.14），不再导出可变攻击状态。结果：宏别名已删；仅剩 `g_target_profile`/`g_resolved_addresses`（及 `heap_context.hpp` 的 `g_heap_context`）编译期引用别名，逐项理由见 `native-global-state.md`。
+- [x] 用“查找使用位置”确认每个旧符号为零引用后再删除（CPP06/CPP12/CPP14 的零调用入口审计）。
+- [x] 门禁：全量主机测试 + Multicast 真机（`CPP13b` 两次冷机，native `66f0a8a3…`）。
 
-#### [ ] M05：VLA 与手写缓冲收敛
+#### [x] M05：VLA 与手写缓冲收敛
 
-- [ ] `multicast_waiter_stamp()` 的 VLA → 固定上界 `std::array<unsigned char, N>` + `std::span`，以运行时断言校验 `layout.buffer_size`。
-- [ ] 其余攻击关键 VLA 仅在能证明栈布局等价时替换；不能证明的保留原实现并登记 M05 回补 TODO。
-- [ ] 门禁：stamp 生成结果与旧实现逐字节对比 + Multicast 真机。
+- [x] `multicast_waiter_stamp()` 的 VLA → 固定上界 `std::array<unsigned char, N>` + `std::span`，以运行时断言校验 `layout.buffer_size`。结果：resident stamp 已改由 `ghostlock::encode_multicast_waiter` 纯编码生成（CPP13 步骤 C，`6cb2640`，8/8 攻击函数 strict 一致）；one-shot 保持专用小栈帧与 VLA——步骤 B 的分组提取实测 `do_kernel5_fake_lock_route` **155→158（+3 指令）**，未达等价契约，按本节规则保留原实现（登记于 CPP13）。
+- [x] 其余攻击关键 VLA 仅在能证明栈布局等价时替换；不能证明的保留原实现并登记 M05 回补 TODO（one-shot VLA 的否决记录即等价性证明，未强推替换）。
+- [x] 门禁：stamp 生成结果与旧实现逐字节对比（步骤 C 后 8/8 strict）+ Multicast 真机（`CPP13a`/`CPP13b`，两次冷机）。
 
 #### [ ] M06：构建、测试与文档收尾
 
-- [ ] 引入统一主机测试运行器；保留现有 `*_fixed_vector_test()` 入口，不替换为外部框架以免改变构建链路。
-- [ ] 以 `nm` / `size` / 反汇编对比攻击关键对象与 S15 基线的栈帧和 ABI；差异需逐项批准并登记。
-- [ ] 更新 `native-cpp-current-uml.md`、全局状态矩阵与全函数调用图，标注已消除的宏与全局。
-- [ ] 门禁：完整 `assembleDebug` + 三条路线与 TCP→Select clean 回退真机。
+- [x] 引入统一主机测试运行器；保留现有 `*_fixed_vector_test()` 入口，不替换为外部框架以免改变构建链路（`make native-host-tests`，覆盖 14 组固定向量/所有权测试）。
+- [x] 以 `nm` / `size` / 反汇编对比攻击关键对象与 S15 基线的栈帧和 ABI；差异需逐项批准并登记（CPP 全程逐字节/逐指令对比；`PI-TIMEOUT`、`g_heap_context` 别名等差异均已逐项批准或回退）。
+- [x] 归档对比脚本：`tools/cmp_disasm.py`（合并 legacy/namespace 两种符号拼写，自动探测 `$LLVM_OBJDUMP`/PATH/NDK）。以 `6cb2640` 重建门禁版 `66f0a8a3…` 与当前 HEAD 构建 `a5a0ba07…` 对比：8/8 攻击函数 layout 形状一致、`RESULT: PASS`（strict 注解差异来自 U01-E/F 引入的地址位移，非指令形状变化）。
+- [x] 更新 `native-cpp-current-uml.md`、全局状态矩阵与全函数调用图，标注已消除的宏与全局（CPP14 `5960e5a`/`d2871b7`）。
+- [ ] 门禁：完整 `assembleDebug` + 三条路线与 TCP→Select clean 回退真机。Multicast 已多轮通过（含 Release 构建）；TCP/Select 真机回归仍待外部设备。
 
 ### 11.4 验收标准（现代化）
 
-- [ ] `common.h` 不再导出任何可变攻击状态或宏别名。
-- [ ] `main.cpp` 无裸 `open` / `pipe` / `mmap` / `fork` 所有权泄漏；每个资源在类型中有唯一 owner。
-- [ ] 无未登记 VLA；保留项均有等价性证明。
-- [ ] 所有线程入口只经 `void *` 取 `ghostlock::` context，不读进程全局。
-- [ ] `TargetProfile` / `RouteOutcome` 等 ABI 断言继续通过。
-- [ ] 三条路线与 TCP→Select clean 回退门禁通过，关键日志关键字与退出码不变。
+- [x] `common.h` 不再导出任何可变攻击状态或宏别名。结果：宏别名已删；仅剩 3 个编译期引用别名 façade（唯一 owner 是 `g_exploit_session`，删除已验证改变攻击函数，理由见 `native-global-state.md`）。
+- [x] `main.cpp` 无裸 `open` / `pipe` / `mmap` / `fork` 所有权泄漏；每个资源在类型中有唯一 owner。结果：`main.cpp` 已无裸 fd/mmap；victim/handoff 的 fork 分支按约束保持最小 C 风格并由 `VictimContext`/`ChildProcess`/`VictimProcess` 持有资源。
+- [x] 无未登记 VLA；保留项均有等价性证明（one-shot Multicast VLA 保留并附 +3 指令否决记录；其余固定缓冲已收敛）。
+- [x] 所有线程入口只经 `void *` 取 `ghostlock::` context，不读进程全局（CPP09 `PthreadOwner` + CPP13 路线 context）。
+- [x] `TargetProfile` / `RouteOutcome` 等 ABI 断言继续通过（`target_constants_test`/`route_status_test`/`offsets_json_test` 全绿）。
+- [ ] 三条路线与 TCP→Select clean 回退门禁通过，关键日志关键字与退出码不变。Multicast 已通过（`CPP13b` 两次冷机）；TCP/Select 与 clean 回退真机证据待外部设备。
+
+### 11.5 第二轮现代化（CPP15+，2026-09-18 执行）
+
+第一轮关闭后重新审计 native 的发现，执行映射到 `native-cpp-migration-plan.md`：
+
+- **CPP15 命名空间引用规范化（完成）**：顶层 `ghostlock` 在各 `.cpp` 中 `using namespace ghostlock;` 后省略；下层命名空间必须显式书写；头文件禁止 namespace using。生产/头文件 197 处 + 测试约 121 处替换，native 产物与 `a5a0ba07…` **逐字节一致**。
+- **CPP16 零指令语言清理（门禁闭环）**：`NULL`→`nullptr` 86 处、C 风格指针 cast、非 ABI `enum class`（`RouteKind`/`PayloadPageState`/`SocFamily`/`ScalarWidth`）。全函数 shape 对比 0 个业务函数差异（唯一差异为 compiler-rt `__emutls_get_address` TLS 槽偏移），触发 LTO 布局重排（构建 `18fe119c…`，APK 324 内 native 一致）；与 `U01-D` 合并的第一次冷机 PASS（`CPP16-U01D-20260918-multicast-pass`），用户豁免第二次冷机。`getline` RAII 试验使 `run_setup_stage` +5 指令，已回退。
+- **CPP17 攻击关键布局项（闭环）**：`RouteController` 布尔化与 `getline` RAII 经实验否决、resident VLA 保留；三个引用别名 façade（`g_heap_context`/`g_target_profile`/`g_resolved_addresses`）已收归，真机门禁一次冷机同型 panic 后连续两次 PASS（用户豁免第二次冷机），native `55863311…` 为新基线。
+- **保留区**：`kernelsnitch.h` 的 calloc/volatile/C cast 内核共享区、`target.h`/`profile_macros.h` 的编译期宏、宏体与全局 inline 中的完整限定。
 
 ## 附录 A：按文件迁移细节
 
