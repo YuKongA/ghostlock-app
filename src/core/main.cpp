@@ -1336,17 +1336,8 @@ static int verify_leaf_dir_stage(void *context) {
  * argv/environment snapshot; output: stable process exit code. Future:
  * exploit_session_run(ExploitSession *), delegating profile, heap, race, route,
  * victim and cleanup responsibilities to their contexts. */
-int run_exploit(ghostlock::ExploitSession &session, int argc, char **argv) {
+int run_exploit(ghostlock::ExploitSession &session, const char *profile_path) {
     heap_context_init(&g_heap_context);
-    const char *profile_path = NULL;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
-            profile_path = argv[++i];
-        } else {
-            pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
-            return 1;
-        }
-    }
     if (!profile_path) {
         pr_error("missing required --profile <resolved-profile.json>\n");
         return 1;
@@ -1747,6 +1738,17 @@ int run_exploit(ghostlock::ExploitSession &session, int argc, char **argv) {
 
 /* Decoupling plan: native executable adapter. Inputs: argc/argv; output: stable
  * exit code. Future: remain a thin adapter around ExploitSession lifecycle. */
+/* Argument parsing stays in the adapter so the exploit entry only owns the
+ * process-level session, the run and the exit code. */
 int main(int argc, char **argv) {
-    return run_exploit(ghostlock::g_exploit_session, argc, argv);
+    const char *profile_path = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
+            profile_path = argv[++i];
+        } else {
+            pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
+            return 1;
+        }
+    }
+    return run_exploit(ghostlock::g_exploit_session, profile_path);
 }
