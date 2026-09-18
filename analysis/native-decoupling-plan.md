@@ -584,7 +584,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S05 | `kernelsnitch_setup/find/bruteforce/cleanup` 等旧入口仅保留包装 | 最终兼容性审计尚未完成 | S15 | [x] 已产生，待删除 |
 | S07 | Select waiter layout 已语义化，但尚未由路线 context 持有 | Select 路线所有权尚未迁移 | S12 | [x] 已产生，待回补 |
 | S07 | Multicast waiter layout 已语义化，但尚未由路线 context 持有 | Multicast 路线所有权尚未迁移 | S13 | [x] 已产生，待回补 |
-| S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 已产生，待回补 |
+| S09 | `HeapContext` 暂由进程级兼容全局持有，`common.h` 保留 `page_base`/`fake_*` 别名 | `ExploitSession` 尚未成为编排入口 | S14 | [x] 别名已删除、mm sets/SKB/leak memfd 已收归（CPP12/`CPP07-OWNER`，`4ba123a`/`9a18262`，门禁 `CPP12h-20260917-multicast-pass`） |
 | S10 | `fops.c` 路线暂以兼容别名访问 `g_pi_race_context` 的 consumer 协调字段 | TCP 已回补；Select/Multicast 路线 context 尚未迁移 | S12/S13 | [x] TCP 已完成，余项待回补 |
 | U01 | 上游 TCP 上限、可恢复失败与清理状态需语义移植 | 已由 profile + TCP route context + `RouteStatus` 完成；自动 fallback 留待公共控制器 | S11/S14 | [x] S11 已回补 |
 | U01 | 上游 compact pselect 重试、时序、in-flight fd 和 pipe window 需语义移植 | Select route context 尚未完成 | S12 | [x] 已产生，待回补 |
@@ -596,7 +596,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 | S15/COMPAT-01 | `setup_kernelsnitch()`、ready/result/cleanup 四个 util 级适配入口当前为零调用 | S15 真机门禁所测二进制仍含这些无状态转发；删除会改变已验证产物 | 后续维护 | [ ] 下次行为提交删除并重跑门禁 |
 | S15/SESSION-01..04 | RuntimeConfig、HeapContext/CPU 镜像及 resident Heap handoff | 需要真正的 `ExploitSession` 所有权边界 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
 | S15/SELECT-01 | compact Select 外层重试需重建 Heap、PI 与 route context | 单路线 context 不能独立拥有完整重试生命周期 | 后续会话重构 | [ ] 已在代码 TODO 标号 |
-| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [x] CPP04–CPP06 已提交，Multicast 门禁通过（`CPP04-06-20260917-multicast-pass`）；CPP07+ 待继续 |
+| S15/现代化 | C++ 现代化续章见 `## 11`；执行按 `native-cpp-migration-plan.md` 的 CPP04–CPP14 落地 | 见 `## 11.2` 前置依赖 | CPP04–CPP14（M01–M06 为映射） | [x] CPP04–CPP09 与 CPP12 的 Session/M02/VictimPipes/Heap owner 段已门禁（最近 `CPP12h-20260917-multicast-pass`）；CPP12 其余与 CPP13/14 待继续 |
 
 ## 11. C++ 现代化续章（M01+，规划）
 

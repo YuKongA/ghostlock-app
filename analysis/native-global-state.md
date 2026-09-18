@@ -75,14 +75,14 @@ flowchart LR
 
 | 变量组 | 定义 | 主要读者 | 主要写者 | 所有权问题 | 目标归宿 |
 |---|---|---|---|---|---|
-| `page_base`, `last_mm_struct` | `util.c` | route/main/payload | page prepare | 当前页和历史泄露无类型区分 | `payload_page` / `heap_diagnostics` |
-| `fake_lock`, `fake_w0`, `fake_task`, `fake_parent`, `fake_right`, `fake_left`, `fake_fops` | `util.c` | 三route和payload | `prepare_skb_payload()` / prebuilt activate | 属于某一喷射页，却可独立改写 | `payload_layout` 嵌入 `payload_page` |
+| `page_base`, `last_mm_struct` | 别名已删除（CPP12/`CPP07-OWNER`，`4ba123a`） | route/main/payload 直接访问 `g_heap_context.current` | page prepare | 当前页和历史泄露仍无类型区分；`payload_page` 已持有字段 | `payload_layout` 嵌入 `payload_page`（已部分完成） |
+| `fake_lock`, `fake_w0`, `fake_task`, `fake_parent`, `fake_right`, `fake_left`, `fake_fops` | 别名已删除（CPP12/`CPP07-OWNER`，`4ba123a`） | — | `prepare_skb_payload()` 写 `g_heap_context.current` | 调用点已显式，字段仍可独立改写 | `payload_layout` 访问器（后续批次） |
 | `pselect_custom_write`, `pselect_custom_target`, `pselect_child_node` | `util.c` | payload/pselect/main | set/clear及W2/W3控制流 | 单次请求通过全局传递 | 不可变 `write_request` |
 | `ks` | `util.c` static | KS adapter/page prepare | setup/cleanup | 单例指针，无显式所有者 | `kernelsnitch_context` |
 | `mm_objs_per_slab` | `util.c` static | context/page prepare | page prepare | 可由profile纯计算 | 局部值或 `heap_geometry` |
-| `skb_buf` | `util.c` static | payload/page prepare | page prepare/cleanup | malloc/free隔着多层函数 | `heap_context.skb_buffer` |
-| `prepare_ctx`, `spray_ctx`, `pre_ctx`, `post_ctx` | `util.c` static | page prepare/cleanup | `prepare_ctxs()` | 四组相同类型资源的所有权隐式 | `heap_context.mm_sets` |
-| `child_leak`, `memfd_leak` | util/main | page prepare/cleanup | clone/page prepare | `memfd_leak`甚至在 `main.c` 定义而在 `util.c` 管理 | `heap_context.leak_anchor` |
+| `skb_buf` | 已落地（CPP12/`CPP07-OWNER`，`9a18262`） | payload/page prepare | `prepare_kernel_page()` 分配，`cleanup_page_prepare_state()` 释放 | `std::unique_ptr<unsigned char[]>` 拥有 | `HeapContext.skb_buffer`（完成） |
+| `prepare_ctx`, `spray_ctx`, `pre_ctx`, `post_ctx` | 已落地（CPP12/`CPP07-OWNER`，`9a18262`） | page prepare/cleanup | `prepare_ctxs()` / `close_ctx_memfds()` / `free_ctx_storage()` | `ghostlock::MmContextSet` 的 owning vector；析构只释放内存，close/kill 保持显式 | `HeapContext.prepare/spray/pre/post`（完成） |
+| `child_leak`, `memfd_leak` | `leak_memfd` 已为 `UniqueFd`（`9a18262`）；`leak_child` 仍为 pid | page prepare/cleanup | clone/page prepare | `leak_child` 的手工 waitpid/kill 语义需要独立验证 | `heap_context.leak_anchor`（child 待收编） |
 | `reclaim_sv[2]` | `util.c` static | page prepare/quarantine/stash | page prepare、close、move | 实际是可移动所有权 | `reclaim_pair active` |
 | `quarantined_reclaim_sv[2]` | `util.c` static | release | quarantine/release | 状态由fd是否为-1暗示 | `reclaim_slot{state=QUARANTINED}` |
 | `prebuilt_reclaim_sv[2]`, `prebuilt_page_base`, `prebuilt_fake_*` | `util.c` static | activate/discard | stash | 手工复制页和所有fake地址，易漏字段 | 第二个完整 `payload_page` |
@@ -148,7 +148,7 @@ S15 审计后保留的四个零调用 util 级 KernelSnitch 转发函数已在 C
 | 优先级 | 状态簇 | 理由 |
 |---|---|---|
 | P0 | PI竞争原子量、futex、route result | 跨文件、跨线程、三route共享，最容易产生时序回归 |
-| P0 | `page_base`/`fake_*`/reclaim/prebuilt | 表示同一资源的字段可独立更新，所有权转移不原子 |
+| P0 | reclaim/prebuilt | 表示同一资源的字段可独立更新，所有权转移不原子；`page_base`/`fake_*` 别名与 mm sets/SKB/leak memfd 已收编（CPP12/`CPP07-OWNER`） |
 | P1 | Multicast `mr_*` | 状态数量多，清理跨route/W1/W2 |
 | P1 | profile/地址宏 | 隐式依赖范围最广，但选定后只读 |
 | P2 | TCP punch、pselect stdio | 局部边界较清晰，易封装 |

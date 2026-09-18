@@ -444,8 +444,8 @@ flowchart LR
     GConfig["g_core_* / paths / timer"]
     GRace["PiRaceContext<br/>waiter / owner / consumer / RouteStatus"]
     GWrite["WriteRequest<br/>immutable stage payload"]
-    GPage["page_base / fake_*<br/>current + prebuilt state"]
-    GHeap["ks / mm contexts / skb_buf<br/>reclaim sockets / leak anchors"]
+    GPage["g_heap_context.current<br/>fake_*/reclaim fields; prebuilt state"]
+    GHeap["ks / MmContextSet / skb_buffer<br/>reclaim sockets / UniqueFd leak memfd"]
     GMcast["MulticastWaiterRouteContext"]
     GTcp["TcpZerocopyRouteContext"]
     GPselect["SelectStackRouteContext"]
@@ -516,4 +516,4 @@ flowchart TB
     Status -->|dirty| Abort["safe abort"]
 ```
 
-目标图不再使用双向“函数↔全局变量”边；状态只通过session所有权、显式参数和结构化返回值流动。当前实现进度（CPP00–CPP12 子项）：`PiRace` 类（futex/原子量/`PthreadOwner` ×3，`run()` 返回 `RouteStatus`）、`TcpZerocopyRoute`/`SelectStackRoute` owning class、`FdSet`/`BorrowedFd`、`RuntimeConfig` 值类型经 `runtime_config_snapshot()` 访问、CPU 镜像已删除；`exploit_session_init`/`stage_controller_run`/`route_ops` 等仍为规划目标（对应 CPP12 剩余/CPP13/CPP14）。
+目标图不再使用双向“函数↔全局变量”边；状态只通过session所有权、显式参数和结构化返回值流动。当前实现进度（CPP00–CPP12 子项）：`PiRace` 类（futex/原子量/`PthreadOwner` ×3，`run()` 返回 `RouteStatus`）、`TcpZerocopyRoute`/`SelectStackRoute` owning class、`FdSet`/`BorrowedFd`、`RuntimeConfig` 值类型经 `runtime_config_snapshot()` 访问、CPU 镜像已删除；Heap 侧 `MmContextSet`/`UniqueFd leak_memfd`/`skb_buffer` 已收编且 `page_base`/`fake_*` 别名删除（`CPP12h`）；`exploit_session_init`/`stage_controller_run`/`route_ops` 等仍为规划目标（对应 CPP12 剩余/CPP13/CPP14）。

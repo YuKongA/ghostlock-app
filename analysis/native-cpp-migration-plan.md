@@ -1,6 +1,6 @@
 # Native C → 现代 C++ 迁移与 RAII 重构计划
 
-> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 的 `SESSION-01`/`SESSION-03` 已通过 Multicast 门禁（`CPP12-20260917-multicast-pass`）；PI-TIMEOUT-01 代码完成（native `6bd2291a…`），两次复验连续在首条 W1 route 前遇与 CPP06c/CPP07 同模式的间歇性 kernel panic（`CPP12-20260917b`/`-c`）；隔离复跑（回退后 `a5b2d151…`）PASS（`CPP12-20260917d`），反汇编证明攻击关键函数逐指令一致、唯一差异为超时逻辑与代码布局位移（`pi-timeout-binary-diff.md`）。无可用 TCP/Select 外部设备，CPP10/CPP11 门禁待补；CPP12 其余子项继续推进并各自门禁。`SESSION-01/02/04`、`CPP07-OWNER`、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
+> 状态：CPP00–CPP09 已完成并门禁通过（Multicast 行为与基线一致）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）代码与主机测试完成；CPP12 的 `SESSION-01`/`SESSION-03`、M02 fd 段与 VictimPipes 收编已通过 Multicast 门禁（`CPP12-20260917-multicast-pass`、`CPP12f`、`CPP12g`）；本次 Heap owner 段（`page_base`/`fake_*` 别名删除，native `7b60739a…`→逐字节一致；`MmContextSet`/`leak_memfd`/`skb_buffer` RAII，native `328a6415…`）Multicast 门禁通过（`CPP12h-20260917-multicast-pass`）。PI-TIMEOUT-01 已回退（`CPP12-20260917b/c/e` panic 证据、`CPP12d` 隔离 PASS、`pi-timeout-binary-diff.md`），代码保留在历史。无可用 TCP/Select 外部设备，CPP10/CPP11 门禁待补；CPP12 其余子项继续推进并各自门禁。`SESSION-01/02/04`、`CPP07-OWNER`（剩余 prepare 失败注入）、`PI-TIMEOUT-01`、`PROFILE-SUGGEST-01` 等已登记。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。
 >
 > 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
 
@@ -311,6 +311,7 @@ struct RouteOutcome final {
 - [ ] 回补 `SESSION-02`、`SESSION-04`：Heap handoff、resident stop 跨 owner 清理（`SESSION-03` 已完成）。
 - [ ] 回补 `SELECT-01`：每次 compact Select 外层重试重新构造 Heap page、PI race 和 route context。
 - [x] M02 fd 段：`check_selinux_off`/`enforce_readable`/`perf_find_task` 的裸 fd → `UniqueFd`/`MappedRegion`（munmap→close 顺序不变，攻击关键函数逐指令一致）；`slab_drain` 的 pid 数组 → `std::array<ChildProcess,64>`（kill+reap 顺序不变、零堆分配）。Multicast 门禁通过 `CPP12f-20260917-multicast-pass`；`child_pipes` 6 fd → `UniqueFd` + `parked_cmd_w` 所有权转移，Multicast 门禁通过 `CPP12g-20260917-multicast-pass`（完整 victim 协议）。
+- [x] Heap owner 段（`CPP07-OWNER` 主体）：删除 `common.h` 的 `page_base`/`last_mm_struct`/`fake_*`/`memfd_leak` 别名，调用点显式访问 `g_heap_context`（SYSCHK 字符串化经 `SYSCHK_pr` 保持，重建 native 与 `7b60739a…` 逐字节一致，`4ba123a`）；`mm_ctx` 的 calloc/free 数组 → `ghostlock::MmContextSet`（owning vector，析构只释放内存）、`leak_memfd` → `UniqueFd`、`skb_buffer` → `unique_ptr`，`9a18262`。攻击关键函数指令形状一致；Multicast 门禁通过 `CPP12h-20260917-multicast-pass`（native `328a6415…`）。剩余：`leak_child` 收编与 prepare 失败注入框架。
 - [ ] `VictimProcess` 完整收编（`child_pipes` 的 3 对 pipe + child 退休）与 `KernelSuHandoff` 探针结果结构化：`parked_cmd_w` 的裸值语义需要精细等价证明，登记为后续批次。
 - [ ] 验证每个早退点的析构顺序和日志；确保失败不会触发不安全 fallback。
 - [ ] 提交、暂停，三路线及可用回退组合分别真机门禁。
@@ -396,7 +397,7 @@ struct RouteOutcome final {
 | CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
 | CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [x] 完成；部分线程创建失败注入为后续维护项 |
 | CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` fail-fast，未返回结构化错误 | 需要会话级错误传播策略 | CPP12 | [ ] 保留原语义，已登记 |
-| CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_child`/`leak_memfd`、`skb_buffer` 与 `g_heap_context`/`page_base`/`fake_*` 镜像尚未收归 `HeapOwner`；部分 prepare 失败注入缺框架 | 需要 `ExploitSession` 作为根 owner | CPP12 | [ ] 已登记 |
+| CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_memfd`、`skb_buffer` 与 `page_base`/`fake_*`/`memfd_leak` 镜像已收归并门禁（`CPP12h-20260917-multicast-pass`）；剩余 `leak_child` 的 pid 收编与部分 prepare 失败注入框架 | 失败注入需要 syscall 层故障注入框架 | CPP12 剩余 | [x] 主体完成（`4ba123a`/`9a18262`），余项已登记 |
 | U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [ ] 已登记；U01-G（`opt-level = "z"`）已完成，D–F 待维护 |
 | KERNEL-PANIC-01 | Multicast 攻击存在间歇性内核崩溃（无 dmesg/pstore 权限）：CPP06c、CPP07、CPP12b/c/e 分别在 spray 阶段或 W2 后触发，位置不一致；与构建布局可能相关 | 无（需外部 panic 解析能力或多次统计） | 攻击层观察 | [ ] 已记录全部证据（`analysis/device-gates/CPP*-kernel-panic*`、`pi-timeout-binary-diff.md`）；不阻塞迁移推进 |
 | PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | UI/profile 后续阶段 | [ ] 已登记（代码 TODO `profile-suggest-01`） |

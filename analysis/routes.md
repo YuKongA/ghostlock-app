@@ -2,7 +2,7 @@
 
 ## 核心维护图：三路线端到端主链
 
-此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 门禁已连续通过（`CPP04-06`、`CPP06b`、`CPP07`、`CPP08-direct`/`-shizuku`、`CPP09`、`CPP12`、`CPP12d`，均在 `device-gates/`）；PI-TIMEOUT-01 因构建布局下 3/3 panic 已回退（`CPP12b/c/e`，见规划 TODO 表）。TCP/Select 仍只有主机固定测试。
+此图是迁移阶段的唯一强制更新 UML。实线表示当前实现，设备验证状态直接写在路线节点中。当前全部核心翻译单元已用 C++20/静态 libc++ 构建；Multicast 门禁已连续通过（`CPP04-06`、`CPP06b`、`CPP07`、`CPP08-direct`/`-shizuku`、`CPP09`、`CPP12`、`CPP12d`、`CPP12f`、`CPP12g`、`CPP12h`，均在 `device-gates/`）；PI-TIMEOUT-01 因构建布局下 3/3 panic 已回退（`CPP12b/c/e`，见规划 TODO 表）。TCP/Select 仍只有主机固定测试。
 
 ```mermaid
 flowchart TD
@@ -181,10 +181,10 @@ flowchart LR
     KS --> Coll["futex hash collisions"]
     Coll --> MM["mm_struct candidate"]
     MM --> Page["prepare_kernel_page()"]
-    Page --> Ctx["prepare/spray/pre/post mm_ctx"]
+    Page --> Ctx["prepare/spray/pre/post<br/>ghostlock::MmContextSet"]
     Page --> SKB["prepare_skb_payload()"]
     Targets --> SKB
-    SKB --> Fake["page_base + fake_lock/waiter/task/fops"]
+    SKB --> Fake["g_heap_context.current<br/>fake_lock/waiter/task/fops"]
     Fake --> Routes["three routes"]
     Routes --> Verify["W1/W2/W3 verify callback"]
 ```
