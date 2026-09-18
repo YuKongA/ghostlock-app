@@ -1,7 +1,5 @@
 #include "routes/route_controller.h"
 
-namespace ghostlock::route {
-
 RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
 
 RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
@@ -50,5 +48,3 @@ RouteStatus route_controller_execute(RouteController *controller,
     }
     return (RouteStatus) {.code = ROUTE_UNSUPPORTED};
 }
-
-}  // namespace ghostlock::route

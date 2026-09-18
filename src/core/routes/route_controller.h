@@ -5,8 +5,6 @@
 #include "pi_race.h"
 #include "profile.h"
 
-namespace ghostlock::route {
-
 typedef enum RouteKind {
     ROUTE_KIND_MULTICAST_WAITER = 0,
     ROUTE_KIND_TCP_ZEROCOPY,
@@ -33,7 +31,4 @@ static inline int route_status_allows_fallback(const RouteStatus *status) {
 RouteStatus route_controller_execute(RouteController *controller,
         const WriteRequest *request);
 
-}  // namespace ghostlock::route
-
 #endif
-

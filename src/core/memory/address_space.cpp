@@ -11,8 +11,6 @@
  * reads it to bound its scan; it is never an authority wider than target.h. */
 uint64_t g_direct_map_end = DIRECT_MAP_END;
 
-namespace ghostlock::memory {
-
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
 #endif
@@ -125,5 +123,3 @@ const char *resolved_addresses_soc_name(const ResolvedAddresses *addresses,
             ? "qcom/6.12"
             : "qcom/other";
 }
-
-}  // namespace ghostlock::memory

@@ -7,8 +7,6 @@
 
 #include <stdint.h>
 
-namespace ghostlock::memory {
-
 typedef enum target_soc_family {
     TARGET_SOC_QCOM = 0,
     TARGET_SOC_MTK,
@@ -50,7 +48,5 @@ static inline uintptr_t resolved_addresses_init_cred_image(
 
 const char *resolved_addresses_soc_name(const ResolvedAddresses *addresses,
         const TargetProfile *profile);
-
-}  // namespace ghostlock::memory
 
 #endif
