@@ -57,6 +57,36 @@ int main(void) {
     fputs("target profile mm_struct stride fallback test failed\n", stderr);
     return 1;
   }
+
+  /* PROFILE-SUGGEST-01: advisory execution fields fall back to the shipped
+   * suggestions instead of being rejected. */
+  struct execution_settings sparse = {};
+  execution_settings_apply_suggestions(&sparse);
+  const struct execution_settings suggested = execution_settings_suggested();
+  if (sparse.recommended_main_cpu != 0 || sparse.recommended_consumer_cpu != 1 ||
+      sparse.w1_attempts != suggested.w1_attempts ||
+      sparse.tcp_arm_sequence != suggested.tcp_arm_sequence ||
+      sparse.handoff_enforce_poll_interval_ms !=
+              suggested.handoff_enforce_poll_interval_ms) {
+    fputs("profile suggestion fallback test failed\n", stderr);
+    return 1;
+  }
+
+  /* Out-of-range CPUs are repaired as a pair; arm_sequence clamps. */
+  struct execution_settings invalid = {
+      .recommended_main_cpu = 2048,
+      .recommended_consumer_cpu = 2048,
+      .tcp_attempts = 4,
+      .tcp_arm_sequence = 16,
+  };
+  execution_settings_apply_suggestions(&invalid);
+  if (invalid.recommended_main_cpu == invalid.recommended_consumer_cpu ||
+      invalid.recommended_main_cpu >= 1024 ||
+      invalid.recommended_consumer_cpu >= 1024 ||
+      invalid.tcp_arm_sequence > invalid.tcp_attempts) {
+    fputs("profile suggestion repair test failed\n", stderr);
+    return 1;
+  }
   puts("target profile snapshot/accessor test passed");
   return 0;
 }

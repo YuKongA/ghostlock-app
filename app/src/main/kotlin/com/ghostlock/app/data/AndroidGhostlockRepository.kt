@@ -53,22 +53,26 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
     private var shizukuEnabled = false
+    /** True once the user flipped the toggle; only then does it override the
+     * profile suggestion (PROFILE-SUGGEST-01). */
+    private var shizukuPreferenceSet = false
     private var pendingParsedEntries: JSONArray? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
         buildCpuPairs()
         restoreCpuPair()
+        restoreShizukuPreference()
     }
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
-        // TODO(profile-suggest-01): requires_shizuku is a suggestion, not a
-        // hard gate. Use it as the default state of the user's Shizuku toggle
-        // and let an explicit user choice override it in both directions.
+        /* PROFILE-SUGGEST-01: requires_shizuku is a suggestion. It seeds the
+         * toggle until the user makes an explicit choice, which then overrides
+         * it in both directions. */
         val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU ||
             importedOffsetsRequireShizuku(release)
-        val shizukuActive = requiresShizuku || shizukuEnabled
+        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else requiresShizuku
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
@@ -79,7 +83,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
             requiresShizuku = requiresShizuku,
-            shizukuEnabled = shizukuEnabled,
+            shizukuEnabled = shizukuActive,
             shizukuStatus = if (shizukuActive) shizukuRunner.status()
             else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
         )
@@ -99,6 +103,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override fun setShizukuEnabled(enabled: Boolean) {
         shizukuEnabled = enabled
+        shizukuPreferenceSet = true
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .edit {
+                putBoolean("shizuku_enabled", enabled)
+                putBoolean("shizuku_explicit", true)
+            }
         if (enabled) shizukuRunner.requestPermission()
     }
 
@@ -515,6 +525,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
+    }
+
+    private fun restoreShizukuPreference() {
+        val prefs = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+        shizukuPreferenceSet = prefs.getBoolean("shizuku_explicit", false)
+        shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
     }
 
     private fun parseCpuList(value: String): List<Int> = value.split(',').flatMap { part ->

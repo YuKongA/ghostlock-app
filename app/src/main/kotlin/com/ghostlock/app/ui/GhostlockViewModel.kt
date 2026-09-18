@@ -104,7 +104,9 @@ class GhostlockViewModel(
 
     fun onStatusClick() {
         val snapshot = kernelSnapshot ?: return
-        if (!snapshot.requiresShizuku && !snapshot.shizukuEnabled) return
+        /* shizukuEnabled already carries the profile suggestion unless the
+         * user overrode it (PROFILE-SUGGEST-01). */
+        if (!snapshot.shizukuEnabled) return
         when (snapshot.shizukuStatus) {
             ShizukuStatus.NOT_RUNNING -> send(GhostlockEffect.OpenShizuku)
             ShizukuStatus.PERMISSION_REQUIRED -> repository.requestShizukuPermission()
@@ -123,7 +125,7 @@ class GhostlockViewModel(
             }
             return
         }
-        val useShizuku = snapshot.requiresShizuku || snapshot.shizukuEnabled
+        val useShizuku = snapshot.shizukuEnabled
         if (useShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
             onStatusClick()
             return
