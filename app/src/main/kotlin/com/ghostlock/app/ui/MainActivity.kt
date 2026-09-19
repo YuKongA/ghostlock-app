@@ -21,7 +21,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ghostlock.app.GhostlockApplication
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.BootSettingsActivity
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<GhostlockViewModel> {
@@ -41,7 +40,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         viewModel.initialize()
         setContent {
-            GhostlockRoute(viewModel, ::handleEffect)
+            GhostlockRoute(
+                viewModel = viewModel,
+                onEffect = ::handleEffect,
+                onOpenBootSettings = {
+                    startActivity(Intent(this, BootSettingsActivity::class.java))
+                },
+            )
         }
         setupSystemBars()
     }
@@ -101,6 +106,7 @@ class MainActivity : ComponentActivity() {
 private fun GhostlockRoute(
     viewModel: GhostlockViewModel,
     onEffect: (GhostlockEffect) -> Unit,
+    onOpenBootSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel.effects) {
@@ -111,9 +117,7 @@ private fun GhostlockRoute(
         actions = object : GhostlockActions {
             override fun onRun() = viewModel.onRun()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
-            override fun onOpenBootSettings() {
-                startActivity(Intent(this@MainActivity, BootSettingsActivity::class.java))
-            }
+            override fun onOpenBootSettings() = onOpenBootSettings()
             override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()
             override fun onImportOffsets() = viewModel.importOffsets()
