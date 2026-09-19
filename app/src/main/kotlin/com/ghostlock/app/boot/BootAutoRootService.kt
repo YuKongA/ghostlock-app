@@ -3,7 +3,9 @@ package com.ghostlock.app.boot
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import com.ghostlock.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +17,7 @@ import kotlinx.coroutines.withContext
 
 class BootAutoRootService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -40,24 +43,27 @@ class BootAutoRootService : Service() {
             return START_NOT_STICKY
         }
         scope.launch {
-            var result: BootRunResult = BootRunResult.StoppedSafely
+            var result: BootRunResult = BootRunResult.StoppedSafely()
             try {
                 result = withContext(Dispatchers.IO) {
                     BootAutoRootRunner.runIfConfigured(this@BootAutoRootService, beforeUnlock) { line ->
-                        try {
-                            val summary = line.take(100)
-                            startForeground(
-                                BootAutoRootNotifications.NOTIFICATION_PROGRESS_ID,
-                                BootAutoRootNotifications.buildProgress(this@BootAutoRootService, summary),
-                            )
-                        } catch (_: Throwable) {
+                        mainHandler.post {
+                            try {
+                                val summary = line.take(100)
+                                startForeground(
+                                    BootAutoRootNotifications.NOTIFICATION_PROGRESS_ID,
+                                    BootAutoRootNotifications.buildProgress(this@BootAutoRootService, summary),
+                                )
+                            } catch (_: Throwable) {
+                            }
                         }
                     }
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Throwable) {
-                result = BootRunResult.StoppedSafely
+            } catch (error: Throwable) {
+                val detail = error.message?.take(120) ?: error.javaClass.simpleName
+                result = BootRunResult.StoppedSafely(detail)
             } finally {
                 try {
                     BootAutoRootNotifications.showResult(this@BootAutoRootService, result)

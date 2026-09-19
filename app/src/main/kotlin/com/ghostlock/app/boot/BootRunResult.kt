@@ -9,7 +9,7 @@ sealed interface BootRunResult {
     data class Skipped(val reason: SkipReason) : BootRunResult
 
     /** Unexpected error caught safely — no crash, no repeat attempts beyond limit. */
-    data object StoppedSafely : BootRunResult
+    data class StoppedSafely(val detail: String? = null) : BootRunResult
 }
 
 enum class SkipReason {

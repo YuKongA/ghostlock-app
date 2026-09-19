@@ -83,6 +83,7 @@
     <string name="boot_result_not_root_body">The run ended safely and your phone was not harmed. Open GhostLock to try again when you want.</string>
     <string name="boot_result_safe_stop_title">Auto-run stopped</string>
     <string name="boot_result_safe_stop_body">Something unexpected happened, but the app stopped cleanly. Open GhostLock to retry manually.</string>
+    <string name="boot_result_detail_suffix">%1$s\n\n%2$s</string>
     <string name="boot_result_skipped_title">Auto-run skipped</string>
     <string name="boot_result_skipped_unsupported_body">This kernel is not supported yet, so nothing was run.</string>
     <string name="boot_result_skipped_cpu_body">No CPU core pair is saved yet. Open GhostLock once, then try boot auto-run again.</string>

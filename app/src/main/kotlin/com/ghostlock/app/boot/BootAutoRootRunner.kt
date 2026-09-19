@@ -20,9 +20,10 @@ object BootAutoRootRunner {
             runConfigured(context, beforeUnlock, onLog)
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Throwable) {
-            onLog("auto-run stopped safely (unexpected error)")
-            BootRunResult.StoppedSafely
+        } catch (error: Throwable) {
+            val detail = error.message?.take(120) ?: error.javaClass.simpleName
+            onLog("auto-run stopped safely: $detail")
+            BootRunResult.StoppedSafely(detail)
         }
     }
 
@@ -46,18 +47,25 @@ object BootAutoRootRunner {
             },
         )
         delay(delayMs)
-        val workContext = if (beforeUnlock) {
+        val storageContext = if (beforeUnlock) {
             context.applicationContext.createDeviceProtectedStorageContext()
         } else {
             context.applicationContext
         }
-        val repository = AndroidGhostlockRepository(workContext)
+        val repository = try {
+            AndroidGhostlockRepository(storageContext)
+        } catch (error: Throwable) {
+            val detail = error.message?.take(120) ?: error.javaClass.simpleName
+            onLog("could not prepare boot run: $detail")
+            return BootRunResult.StoppedSafely(detail)
+        }
         try {
             val snapshot = try {
                 repository.snapshot()
-            } catch (_: Throwable) {
-                onLog("skip: could not read device info")
-                return BootRunResult.StoppedSafely
+            } catch (error: Throwable) {
+                val detail = error.message?.take(120) ?: error.javaClass.simpleName
+                onLog("skip: could not read device info ($detail)")
+                return BootRunResult.StoppedSafely(detail)
             }
             if (!snapshot.kernelSupported) {
                 onLog("skip: kernel unsupported (${snapshot.kernelRelease})")
@@ -70,21 +78,21 @@ object BootAutoRootRunner {
             }
             val maxAttempts = prefs.maxAttempts
             onLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
-            var lastCode = -1
             repeat(maxAttempts) { index ->
                 val attempt = index + 1
                 onLog("==== boot attempt $attempt/$maxAttempts ====")
-                lastCode = try {
+                val code = try {
                     repository.runExploit(pair, onLog)
-                } catch (_: Throwable) {
-                    onLog("attempt $attempt stopped safely")
+                } catch (error: Throwable) {
+                    val detail = error.message?.take(120) ?: error.javaClass.simpleName
+                    onLog("attempt $attempt stopped safely: $detail")
                     -1
                 }
-                if (lastCode == 0) {
+                if (code == 0) {
                     onLog("result: exploit completed on attempt $attempt")
                     return BootRunResult.Success
                 }
-                onLog("result: exploit failed (exit code=$lastCode)")
+                onLog("result: exploit failed (exit code=$code)")
                 if (attempt < maxAttempts) {
                     onLog("retrying…")
                     delay(RETRY_DELAY_MS)

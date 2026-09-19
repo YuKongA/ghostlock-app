@@ -55,15 +55,33 @@ object BootAutoRootNotifications {
         if (result is BootRunResult.Skipped && result.reason == SkipReason.Disabled) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannels(context)
-        val (titleRes, bodyRes) = when (result) {
-            BootRunResult.Success -> R.string.boot_result_success_title to R.string.boot_result_success_body
-            BootRunResult.FailedNotRoot -> R.string.boot_result_not_root_title to R.string.boot_result_not_root_body
-            BootRunResult.StoppedSafely -> R.string.boot_result_safe_stop_title to R.string.boot_result_safe_stop_body
+        val (titleRes, bodyRes, detail) = when (result) {
+            BootRunResult.Success -> Triple(R.string.boot_result_success_title, R.string.boot_result_success_body, null)
+            BootRunResult.FailedNotRoot -> Triple(R.string.boot_result_not_root_title, R.string.boot_result_not_root_body, null)
+            is BootRunResult.StoppedSafely -> Triple(
+                R.string.boot_result_safe_stop_title,
+                R.string.boot_result_safe_stop_body,
+                result.detail,
+            )
             is BootRunResult.Skipped -> when (result.reason) {
-                SkipReason.UnsupportedKernel -> R.string.boot_result_skipped_title to R.string.boot_result_skipped_unsupported_body
-                SkipReason.NoCpuPair -> R.string.boot_result_skipped_title to R.string.boot_result_skipped_cpu_body
+                SkipReason.UnsupportedKernel -> Triple(
+                    R.string.boot_result_skipped_title,
+                    R.string.boot_result_skipped_unsupported_body,
+                    null,
+                )
+                SkipReason.NoCpuPair -> Triple(
+                    R.string.boot_result_skipped_title,
+                    R.string.boot_result_skipped_cpu_body,
+                    null,
+                )
                 SkipReason.Disabled -> return
             }
+        }
+        val body = context.getString(bodyRes)
+        val fullBody = if (detail.isNullOrBlank()) {
+            body
+        } else {
+            context.getString(R.string.boot_result_detail_suffix, detail, body)
         }
         val openApp = PendingIntent.getActivity(
             context,
@@ -74,8 +92,8 @@ object BootAutoRootNotifications {
         val notification = NotificationCompat.Builder(context, CHANNEL_RESULT_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(titleRes))
-            .setContentText(context.getString(bodyRes))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(bodyRes)))
+            .setContentText(fullBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(fullBody))
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)

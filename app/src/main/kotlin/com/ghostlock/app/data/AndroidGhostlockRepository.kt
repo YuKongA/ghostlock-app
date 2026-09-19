@@ -40,8 +40,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val ExtractBinaryName = "libextract.so"
     }
 
+    /** Credential-encrypted app context (native libs, PackageManager). */
     private val appContext = context.applicationContext
-    private val filesDir: File = appContext.filesDir
+    /** May be device-protected during direct boot; drives filesDir and prefs reads. */
+    private val storageContext = context
+    private val filesDir: File = storageContext.filesDir
     private val offsetsFile get() = File(filesDir, OffsetsFileName)
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
@@ -419,7 +422,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     private fun restoreCpuPair() {
-        val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
+        val saved = storageContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
     }
