@@ -73,6 +73,15 @@ class MainActivity : ComponentActivity() {
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+
+            GhostlockEffect.ManualRunNotificationStart ->
+                ManualRunNotifications.showProgress(this, getString(R.string.manual_run_notification_running))
+
+            is GhostlockEffect.ManualRunNotificationProgress ->
+                ManualRunNotifications.showProgress(this, effect.line)
+
+            is GhostlockEffect.ManualRunNotificationFinish ->
+                ManualRunNotifications.showResult(this, effect.exitCode)
         }
     }
 

@@ -90,7 +90,7 @@
     <string name="notification_settings_menu">通知</string>
     <string name="notification_settings_title">通知</string>
     <string name="notify_progress_label">运行中通知</string>
-    <string name="notify_progress_summary">开机自动运行时在锁屏显示 GhostLock 进度</string>
+    <string name="notify_progress_summary">GhostLock 运行时显示进度（开机自动或手动 Run，手动为静默）</string>
     <string name="notify_progress_detailed_label">实时进度更新</string>
     <string name="notify_progress_detailed_summary">每个步骤更新通知文字</string>
     <string name="notify_result_success_label">成功</string>
@@ -102,4 +102,8 @@
     <string name="notify_settings_note_title">说明</string>
     <string name="notify_settings_note_body">Android 在后台运行开机任务时仍需要一条最小通知。关闭「运行中通知」会尽量改为静默且不在锁屏显示。</string>
     <string name="boot_auto_root_running_minimal">后台运行中…</string>
+    <string name="manual_run_channel_name">手动运行</string>
+    <string name="manual_run_channel_desc">在应用中点 Run 时的静默通知</string>
+    <string name="manual_run_notification_title">GhostLock 运行中</string>
+    <string name="manual_run_notification_running">运行中…</string>
 </resources>

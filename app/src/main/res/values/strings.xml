@@ -90,7 +90,7 @@
     <string name="notification_settings_menu">Notifications</string>
     <string name="notification_settings_title">Notifications</string>
     <string name="notify_progress_label">Running notification</string>
-    <string name="notify_progress_summary">Show GhostLock on the lock screen while boot auto-run is active</string>
+    <string name="notify_progress_summary">Show progress while GhostLock runs (boot auto-run or manual Run)</string>
     <string name="notify_progress_detailed_label">Live progress updates</string>
     <string name="notify_progress_detailed_summary">Update the notification text as each step runs</string>
     <string name="notify_result_success_label">Success</string>
@@ -102,4 +102,8 @@
     <string name="notify_settings_note_title">Note</string>
     <string name="notify_settings_note_body">Android still requires a small silent notification while a boot run is in progress. Turning off \"Running notification\" keeps it minimal and off the lock screen when possible.</string>
     <string name="boot_auto_root_running_minimal">Running in background…</string>
+    <string name="manual_run_channel_name">Manual run</string>
+    <string name="manual_run_channel_desc">Silent notifications while GhostLock runs from the app</string>
+    <string name="manual_run_notification_title">GhostLock running</string>
+    <string name="manual_run_notification_running">Running…</string>
 </resources>
