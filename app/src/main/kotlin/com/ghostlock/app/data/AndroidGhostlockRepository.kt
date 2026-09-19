@@ -71,8 +71,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
         selectedCpuPair = index
+        persistCpuPair(cpuPairs[index].toString())
+    }
+
+    private fun persistCpuPair(value: String) {
         appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
-                putString("cpu_pair", cpuPairs[index].toString())
+            putString("cpu_pair", value)
+        }
+        appContext.createDeviceProtectedStorageContext()
+            .getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .edit {
+                putString("cpu_pair", value)
             }
     }
 

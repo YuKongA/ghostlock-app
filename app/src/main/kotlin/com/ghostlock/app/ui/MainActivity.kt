@@ -21,6 +21,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ghostlock.app.GhostlockApplication
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.BootSettingsActivity
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<GhostlockViewModel> {
@@ -110,6 +111,9 @@ private fun GhostlockRoute(
         actions = object : GhostlockActions {
             override fun onRun() = viewModel.onRun()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
+            override fun onOpenBootSettings() {
+                startActivity(Intent(this@MainActivity, BootSettingsActivity::class.java))
+            }
             override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()
             override fun onImportOffsets() = viewModel.importOffsets()
