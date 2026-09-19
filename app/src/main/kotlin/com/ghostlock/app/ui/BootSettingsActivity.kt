@@ -211,7 +211,7 @@ private fun BootSettingsScreen(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
-                        BootInfoNoteCard(
+                    BootInfoNoteCard(
                             modifier = Modifier.fillMaxWidth(),
                             titleRes = R.string.boot_permissions_note_title,
                             bodyRes = R.string.boot_permissions_note_body,
@@ -274,7 +274,7 @@ private fun BootSettingsScreen(
 }
 
 @Composable
-private fun BootInfoNoteCard(
+internal fun BootInfoNoteCard(
     modifier: Modifier = Modifier,
     titleRes: Int,
     bodyRes: Int,

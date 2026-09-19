@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import com.ghostlock.app.R
+import com.ghostlock.app.data.BootAutoRootPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ class BootAutoRootService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val beforeUnlock = intent?.getBooleanExtra(EXTRA_BEFORE_UNLOCK, false) == true
+        val bootPrefs = BootAutoRootPreferences(this)
         try {
             BootAutoRootNotifications.ensureChannels(this)
             startForeground(
@@ -47,6 +49,7 @@ class BootAutoRootService : Service() {
             try {
                 result = withContext(Dispatchers.IO) {
                     BootAutoRootRunner.runIfConfigured(this@BootAutoRootService, beforeUnlock) { line ->
+                        if (!bootPrefs.notifyProgressDetailed) return@runIfConfigured
                         mainHandler.post {
                             try {
                                 val summary = line.take(100)

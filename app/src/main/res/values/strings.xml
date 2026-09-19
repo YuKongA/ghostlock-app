@@ -87,4 +87,19 @@
     <string name="boot_result_skipped_title">Auto-run skipped</string>
     <string name="boot_result_skipped_unsupported_body">This kernel is not supported yet, so nothing was run.</string>
     <string name="boot_result_skipped_cpu_body">No CPU core pair is saved yet. Open GhostLock once, then try boot auto-run again.</string>
+    <string name="notification_settings_menu">Notifications</string>
+    <string name="notification_settings_title">Notifications</string>
+    <string name="notify_progress_label">Running notification</string>
+    <string name="notify_progress_summary">Show GhostLock on the lock screen while boot auto-run is active</string>
+    <string name="notify_progress_detailed_label">Live progress updates</string>
+    <string name="notify_progress_detailed_summary">Update the notification text as each step runs</string>
+    <string name="notify_result_success_label">Success</string>
+    <string name="notify_result_success_summary">Notify when boot auto-run completes with root</string>
+    <string name="notify_result_failure_label">Failure or safe stop</string>
+    <string name="notify_result_failure_summary">Notify when not rooted or the run stops safely</string>
+    <string name="notify_result_skipped_label">Skipped</string>
+    <string name="notify_result_skipped_summary">Notify when auto-run is skipped (unsupported kernel, missing CPU pair)</string>
+    <string name="notify_settings_note_title">Note</string>
+    <string name="notify_settings_note_body">Android still requires a small silent notification while a boot run is in progress. Turning off \"Running notification\" keeps it minimal and off the lock screen when possible.</string>
+    <string name="boot_auto_root_running_minimal">Running in background…</string>
 </resources>

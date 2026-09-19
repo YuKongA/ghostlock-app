@@ -87,4 +87,19 @@
     <string name="boot_result_skipped_title">已跳过自动运行</string>
     <string name="boot_result_skipped_unsupported_body">当前内核尚不支持，未执行任何操作。</string>
     <string name="boot_result_skipped_cpu_body">尚未保存 CPU 核心组。请先打开 GhostLock 一次，再启用开机自动运行。</string>
+    <string name="notification_settings_menu">通知</string>
+    <string name="notification_settings_title">通知</string>
+    <string name="notify_progress_label">运行中通知</string>
+    <string name="notify_progress_summary">开机自动运行时在锁屏显示 GhostLock 进度</string>
+    <string name="notify_progress_detailed_label">实时进度更新</string>
+    <string name="notify_progress_detailed_summary">每个步骤更新通知文字</string>
+    <string name="notify_result_success_label">成功</string>
+    <string name="notify_result_success_summary">开机自动 root 成功时通知</string>
+    <string name="notify_result_failure_label">失败或安全停止</string>
+    <string name="notify_result_failure_summary">未 root 或安全停止时通知</string>
+    <string name="notify_result_skipped_label">已跳过</string>
+    <string name="notify_result_skipped_summary">自动运行被跳过时通知（内核不支持、未选 CPU 等）</string>
+    <string name="notify_settings_note_title">说明</string>
+    <string name="notify_settings_note_body">Android 在后台运行开机任务时仍需要一条最小通知。关闭「运行中通知」会尽量改为静默且不在锁屏显示。</string>
+    <string name="boot_auto_root_running_minimal">后台运行中…</string>
 </resources>

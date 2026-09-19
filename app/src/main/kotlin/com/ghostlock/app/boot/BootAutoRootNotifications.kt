@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.ghostlock.app.R
+import com.ghostlock.app.data.BootAutoRootPreferences
 import com.ghostlock.app.ui.MainActivity
 
 object BootAutoRootNotifications {
@@ -17,15 +18,24 @@ object BootAutoRootNotifications {
     const val NOTIFICATION_RESULT_ID = 1002
 
     fun ensureChannels(context: Context) {
+        val prefs = BootAutoRootPreferences(context)
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val progressImportance = if (prefs.notifyProgressEnabled) {
+            NotificationManager.IMPORTANCE_DEFAULT
+        } else {
+            NotificationManager.IMPORTANCE_MIN
+        }
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_PROGRESS_ID,
                 context.getString(R.string.boot_auto_root_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
+                progressImportance,
             ).apply {
                 description = context.getString(R.string.boot_auto_root_channel_desc)
                 setShowBadge(false)
+                if (prefs.notifyProgressEnabled) {
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                }
             },
         )
         manager.createNotificationChannel(
@@ -35,23 +45,38 @@ object BootAutoRootNotifications {
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = context.getString(R.string.boot_auto_root_result_channel_desc)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             },
         )
     }
 
     fun buildProgress(context: Context, text: String): Notification {
-        val safeText = text.ifBlank { context.getString(R.string.boot_auto_root_running) }
+        val prefs = BootAutoRootPreferences(context)
+        val safeText = when {
+            !prefs.notifyProgressEnabled -> context.getString(R.string.boot_auto_root_running_minimal)
+            text.isBlank() -> context.getString(R.string.boot_auto_root_running)
+            else -> text
+        }
         return NotificationCompat.Builder(context, CHANNEL_PROGRESS_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(R.string.boot_auto_root_notification_title))
             .setContentText(safeText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setSilent(true)
+            .setSilent(!prefs.notifyProgressEnabled)
+            .setVisibility(
+                if (prefs.notifyProgressEnabled) {
+                    NotificationCompat.VISIBILITY_PUBLIC
+                } else {
+                    NotificationCompat.VISIBILITY_SECRET
+                },
+            )
             .build()
     }
 
     fun showResult(context: Context, result: BootRunResult) {
+        val prefs = BootAutoRootPreferences(context)
+        if (!prefs.shouldShowResult(result)) return
         if (result is BootRunResult.Skipped && result.reason == SkipReason.Disabled) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannels(context)
@@ -97,6 +122,7 @@ object BootAutoRootNotifications {
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
         manager.notify(NOTIFICATION_RESULT_ID, notification)
     }

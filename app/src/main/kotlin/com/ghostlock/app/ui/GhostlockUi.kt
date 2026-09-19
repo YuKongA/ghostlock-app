@@ -127,6 +127,7 @@ interface GhostlockActions {
     fun onRun()
     fun onCloseExecutionSheet()
     fun onOpenBootSettings()
+    fun onOpenNotificationSettings()
     fun onToggleAdvanced()
     fun onCopyLogs()
     fun onImportOffsets()
@@ -166,6 +167,7 @@ internal fun GhostlockApp(
                             advancedVisible = state.advancedVisible,
                             onToggleAdvanced = actions::onToggleAdvanced,
                             onOpenBootSettings = actions::onOpenBootSettings,
+                            onOpenNotificationSettings = actions::onOpenNotificationSettings,
                             onShowAbout = { aboutVisible = true },
                         )
                     },
@@ -212,6 +214,7 @@ private fun SettingsMenu(
     advancedVisible: Boolean,
     onToggleAdvanced: () -> Unit,
     onOpenBootSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onShowAbout: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -225,6 +228,10 @@ private fun SettingsMenu(
             DropdownItem(
                 text = stringResource(R.string.boot_settings_menu),
                 onClick = onOpenBootSettings,
+            ),
+            DropdownItem(
+                text = stringResource(R.string.notification_settings_menu),
+                onClick = onOpenNotificationSettings,
             ),
             DropdownItem(
                 text = stringResource(R.string.about),

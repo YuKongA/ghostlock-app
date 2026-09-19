@@ -46,6 +46,9 @@ class MainActivity : ComponentActivity() {
                 onOpenBootSettings = {
                     startActivity(Intent(this, BootSettingsActivity::class.java))
                 },
+                onOpenNotificationSettings = {
+                    startActivity(Intent(this, NotificationSettingsActivity::class.java))
+                },
             )
         }
         setupSystemBars()
@@ -107,6 +110,7 @@ private fun GhostlockRoute(
     viewModel: GhostlockViewModel,
     onEffect: (GhostlockEffect) -> Unit,
     onOpenBootSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel.effects) {
@@ -118,6 +122,7 @@ private fun GhostlockRoute(
             override fun onRun() = viewModel.onRun()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
             override fun onOpenBootSettings() = onOpenBootSettings()
+            override fun onOpenNotificationSettings() = onOpenNotificationSettings()
             override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()
             override fun onImportOffsets() = viewModel.importOffsets()

@@ -35,6 +35,11 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.NotificationSettingsActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:windowSoftInputMode="adjustResize" />
         <receiver
             android:name=".boot.BootCompletedReceiver"
             android:directBootAware="true"
