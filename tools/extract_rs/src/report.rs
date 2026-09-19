@@ -269,25 +269,29 @@ pub fn build_report(
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(0);
     report["kernel_major"] = json!(kernel_major);
-    report["kernelsnitch_collisions"] = json!(4);
+    let mut kernelsnitch = serde_json::Map::new();
+    kernelsnitch.insert("collisions".to_string(), json!(4));
+    let mut cred = serde_json::Map::new();
     if kernel_major == 5 {
-        report["cred_copy_size"] = json!(0xb0);
-        report["cred_usage_value"] = json!(0x100);
-        report["cred_caps_offset"] = json!(0x30);
-        report["cred_caps_count"] = json!(3);
-        report["cred_caps_value"] = json!(0x000001ffffffffff_u64);
+        cred.insert("copy_size".to_string(), json!(0xb0));
+        cred.insert("usage_value".to_string(), json!(0x100));
+        cred.insert("caps_offset".to_string(), json!(0x30));
+        cred.insert("caps_count".to_string(), json!(3));
+        cred.insert("caps_value".to_string(), json!(0x000001ffffffffff_u64));
     } else {
-        report["cred_copy_size"] = json!(0x88);
-        report["cred_usage_value"] = json!(1);
-        report["cred_caps_offset"] = json!(0x30);
-        report["cred_caps_count"] = json!(5);
-        report["cred_caps_value"] = json!(u64::MAX);
+        cred.insert("copy_size".to_string(), json!(0x88));
+        cred.insert("usage_value".to_string(), json!(1));
+        cred.insert("caps_offset".to_string(), json!(0x30));
+        cred.insert("caps_count".to_string(), json!(5));
+        cred.insert("caps_value".to_string(), json!(u64::MAX));
     }
+    report["cred"] = serde_json::Value::Object(cred);
     if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
-        report["mm_struct_sz"] = json!(0x400);
+        kernelsnitch.insert("mm_struct_sz".to_string(), json!(0x400));
     }
+    report["kernelsnitch"] = serde_json::Value::Object(kernelsnitch);
     report
 }
 

@@ -1,6 +1,6 @@
 # 6.12 Kernel Profile Template Guide
 
-Template JSON: [kernel-6.12.template.json](kernel-6.12.template.json). This file contains every field and has no shared-field dependency.
+Template JSON: [kernel-6.12.template.conf](kernel-6.12.template.conf). This file contains every field and has no shared-field dependency.
 
 > The template is intentionally invalid JSON until every blank required value (`"field": ,`) is filled. This makes the IDE flag unfinished device adaptation immediately. Do not replace blanks with `0` merely to satisfy syntax validation.
 

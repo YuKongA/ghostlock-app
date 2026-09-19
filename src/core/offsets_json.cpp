@@ -7,6 +7,7 @@
  * Configuration-source selection and merging stay on the Kotlin side.
  */
 #include "offsets_json.h"
+#include "profile_binary.h"
 #include "support/native_resource.hpp"
 
 #include <ctype.h>
@@ -181,6 +182,76 @@ static std::optional<std::string_view> json_member_value(
     }
 }
 
+static std::optional<std::string_view> json_object_span(
+        std::string_view object, const char *name) {
+    const auto value = json_member_value(object, name);
+    if (!value || value->empty() || value->front() != '{') return std::nullopt;
+    return json_value_span(*value);
+}
+
+static bool json_parse_int(std::string_view in, int64_t *out);
+
+/* First member name and value span of the object at the front of `object`. */
+static bool json_first_member(std::string_view object,
+        std::string_view *name, std::string_view *value) {
+    object = json_skip_ws(object);
+    if (object.empty() || object.front() != '{') return false;
+    object.remove_prefix(1);
+    object = json_skip_ws(object);
+    if (object.empty() || object.front() != '"') return false;
+    size_t i = 1;
+    while (i < object.size() && object[i] != '"') {
+        if (object[i] == '\\') i++;
+        i++;
+    }
+    if (i >= object.size()) return false;
+    *name = object.substr(1, i - 1);
+    object.remove_prefix(i + 1);
+    object = json_skip_ws(object);
+    if (object.empty() || object.front() != ':') return false;
+    object.remove_prefix(1);
+    object = json_skip_ws(object);
+    const auto span = json_value_span(object);
+    if (!span) return false;
+    *value = *span;
+    return true;
+}
+
+/* Namespaced groups shared by the flat profile maps below. */
+struct ProfileGroups {
+    std::optional<std::string_view> task_struct;
+    std::optional<std::string_view> cred;
+    std::optional<std::string_view> offset;
+    std::optional<std::string_view> mcast;
+};
+
+/* Resolve one flat map name against the namespaced groups first
+ * ("task_prio" -> task.prio); the flat key stays as a legacy fallback. */
+static bool read_namespaced_scalar(std::string_view object, const char *name,
+        const ProfileGroups &groups, int64_t *num) {
+    const std::optional<std::string_view> *group = nullptr;
+    std::string_view field = name;
+    if (strncmp(name, "task_", 5) == 0) {
+        group = &groups.task_struct;
+        field = std::string_view(name + 5);
+    } else if (strncmp(name, "cred_", 5) == 0) {
+        group = &groups.cred;
+        field = std::string_view(name + 5);
+    } else if (strncmp(name, "off_", 4) == 0) {
+        group = &groups.offset;
+        field = std::string_view(name + 4);
+    } else if (strncmp(name, "mcast_", 6) == 0) {
+        group = &groups.mcast;
+        field = std::string_view(name + 6);
+    }
+    if (group != nullptr && group->has_value()) {
+        const auto nested = json_member_value(**group, field);
+        if (nested && json_parse_int(*nested, num)) return true;
+    }
+    const auto flat = json_member_value(object, name);
+    return flat && json_parse_int(*flat, num);
+}
+
 /* Copy the JSON string at the front of `in` (escapes stripped) into dst. */
 static bool json_read_string(std::string_view &in, char *dst, size_t cap) {
     in = json_skip_ws(in);
@@ -290,7 +361,7 @@ static const struct {
     ScalarWidth width;
 } g_profile_map[] = {
         {"kernel_major", offsetof(struct kernel_offsets, kernel_major), ScalarWidth::U8},
-        {"requires_shizuku", offsetof(struct kernel_offsets, requires_shizuku), ScalarWidth::U8},
+        {"recommend_shizuku", offsetof(struct kernel_offsets, recommend_shizuku), ScalarWidth::U8},
         {"kernel_phys_load", offsetof(struct kernel_offsets, kernel_phys_load), ScalarWidth::U64},
         {"pselect_waiter_shift", offsetof(struct kernel_offsets, pselect_waiter_shift), ScalarWidth::I32},
         {"mcast_waiter_off", offsetof(struct kernel_offsets, mcast_waiter_off), ScalarWidth::I32},
@@ -460,6 +531,56 @@ static int fill_execution_settings(std::string_view object,
 /* Fill `out` from one JSON object. Fields absent from the JSON keep whatever
  * the caller put into `out` (zeroed for a fresh table, or a built-in entry the
  * JSON is overriding). */
+/* Writes one route branch's fields into the native struct. */
+static void apply_route_branch_values(std::string_view branch,
+        uint8_t route_kind, struct kernel_offsets *out, int64_t *num) {
+    switch (route_kind) {
+        case kRouteTcpZerocopy: {
+            const auto v = json_member_value(branch, "compact_waiter");
+            if (v && json_parse_int(*v, num)) out->compact_waiter = (uint8_t) *num;
+            break;
+        }
+        case kRouteSelectStack: {
+            const auto v = json_member_value(branch, "waiter_shift");
+            if (v && json_parse_int(*v, num)) out->pselect_waiter_shift = (int) *num;
+            break;
+        }
+        case kRouteMulticastWaiter: {
+            struct Scalar {
+                const char *name;
+                size_t offset;
+            };
+            static const Scalar kMcastFields[] = {
+                {"waiter_off", offsetof(struct kernel_offsets, mcast_waiter_off)},
+                {"buffer_size", offsetof(struct kernel_offsets, mcast_buffer_size)},
+                {"task_offset", offsetof(struct kernel_offsets, mcast_task_offset)},
+                {"lock_offset", offsetof(struct kernel_offsets, mcast_lock_offset)},
+                {"fake_lock_offset", offsetof(struct kernel_offsets, mcast_fake_lock_offset)},
+                {"fake_task_offset", offsetof(struct kernel_offsets, mcast_fake_task_offset)},
+                {"lock_slots_offset", offsetof(struct kernel_offsets, mcast_lock_slots_offset)},
+                {"lock_slot_count", offsetof(struct kernel_offsets, mcast_lock_slot_count)},
+                {"lock_slot_stride", offsetof(struct kernel_offsets, mcast_lock_slot_stride)},
+            };
+            for (const Scalar &field : kMcastFields) {
+                const auto v = json_member_value(branch, field.name);
+                if (v && json_parse_int(*v, num)) {
+                    *reinterpret_cast<uint32_t *>(
+                            reinterpret_cast<char *>(out) + field.offset) =
+                            (uint32_t) *num;
+                }
+            }
+            /* The multicast route also relies on the compact waiter layout. */
+            const auto compact = json_member_value(branch, "compact_waiter");
+            if (compact && json_parse_int(*compact, num)) {
+                out->compact_waiter = (uint8_t) *num;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 /* Decoupling plan: merge one JSON entry into a profile candidate. Inputs:
  * object span and release buffer; output: populated candidate/error. Future:
  * target_profile_parse_entry(ProfileBuilder *, JsonObjectView). */
@@ -467,9 +588,16 @@ static void fill_external_entry(struct kernel_offsets *out,
         const char *release_buf, std::string_view object) {
     int64_t num;
     out->uname_r = release_buf;
+    /* Offsets are namespaced as task/cred/off/mcast objects; the flat keys
+     * remain as a legacy fallback for older offsets.json files. */
+    const ProfileGroups groups = {
+            .task_struct = json_object_span(object, "task_struct"),
+            .cred = json_object_span(object, "cred"),
+            .offset = json_object_span(object, "offset"),
+            .mcast = json_object_span(object, "mcast"),
+    };
     for (size_t i = 0; i < sizeof(g_profile_map) / sizeof(g_profile_map[0]); i++) {
-        const auto v = json_member_value(object, g_profile_map[i].name);
-        if (v && json_parse_int(*v, &num)) {
+        if (read_namespaced_scalar(object, g_profile_map[i].name, groups, &num)) {
             store_profile_scalar(out, g_profile_map[i].off,
                     g_profile_map[i].width, num);
         }
@@ -477,14 +605,12 @@ static void fill_external_entry(struct kernel_offsets *out,
     /* Resolved profiles use one flat object. Keep the nested reads below only
      * for compatibility with offsets.json files produced by older extractors. */
     for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]); i++) {
-        const auto v = json_member_value(object, g_symbol_map[i].name);
-        if (v && json_parse_int(*v, &num)) {
+        if (read_namespaced_scalar(object, g_symbol_map[i].name, groups, &num)) {
             *reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(out) + g_symbol_map[i].off) = static_cast<uint64_t>(num);
         }
     }
     for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]); i++) {
-        const auto v = json_member_value(object, g_task_map[i].name);
-        if (v && json_parse_int(*v, &num)) {
+        if (read_namespaced_scalar(object, g_task_map[i].name, groups, &num)) {
             *reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(out) + g_task_map[i].off) = static_cast<uint32_t>(num);
         }
     }
@@ -517,6 +643,87 @@ static void fill_external_entry(struct kernel_offsets *out,
             }
         }
     }
+    /* KernelSnitch tuning moved under a nested object; the flat keys read above
+     * stay as a legacy fallback for older offsets.json files. */
+    const auto snitch = json_member_value(object, "kernelsnitch");
+    if (snitch && !snitch->empty() && snitch->front() == '{') {
+        if (const auto snitch_span = json_value_span(*snitch)) {
+            const auto collisions = json_member_value(*snitch_span, "collisions");
+            if (collisions && json_parse_int(*collisions, &num)) {
+                out->kernelsnitch_collisions = (uint32_t) num;
+            }
+            const auto stride = json_member_value(*snitch_span, "mm_struct_sz");
+            if (stride && json_parse_int(*stride, &num)) {
+                out->mm_struct_sz = (uint32_t) num;
+            }
+        }
+    }
+    /* Routes are {"<name>": {fields}} with exactly one branch. */
+    const auto route_value = json_member_value(object, "route");
+    if (route_value && !route_value->empty() && route_value->front() == '{') {
+        std::string_view branch_name;
+        std::string_view branch;
+        if (json_first_member(*route_value, &branch_name, &branch)) {
+            const uint8_t route_kind = route_kind_from_string(branch_name);
+            if (route_kind != kRouteAuto) {
+                out->route = route_kind;
+                apply_route_branch_values(branch, route_kind, out, &num);
+            }
+        }
+    } else if (route_value && !route_value->empty() &&
+            route_value->front() == '"') {
+        /* Legacy flat spelling: "route": "<name>". */
+        std::string_view route_cursor = *route_value;
+        char route_name[32];
+        if (json_read_string(route_cursor, route_name, sizeof(route_name))) {
+            out->route = route_kind_from_string(route_name);
+        }
+    }
+    /* Fallback declaration: {"to": "<route>", "route": {"<route>": {fields}}}. */
+    const auto fallback_value = json_member_value(object, "fallback");
+    if (fallback_value && !fallback_value->empty() &&
+            fallback_value->front() == '{') {
+        const auto to_value = json_member_value(*fallback_value, "to");
+        if (to_value && !to_value->empty() && to_value->front() == '"') {
+            std::string_view to_cursor = *to_value;
+            char to_name[32];
+            if (json_read_string(to_cursor, to_name, sizeof(to_name))) {
+                /* "none" and unknown names both decode as kRouteAuto. */
+                out->fallback_route = route_kind_from_string(to_name);
+            }
+        }
+        const auto fallback_route_value =
+                json_member_value(*fallback_value, "route");
+        if (fallback_route_value && !fallback_route_value->empty() &&
+                fallback_route_value->front() == '{') {
+            std::string_view branch_name;
+            std::string_view branch;
+            if (json_first_member(*fallback_route_value, &branch_name, &branch)) {
+                const uint8_t route_kind = route_kind_from_string(branch_name);
+                if (route_kind != kRouteAuto) {
+                    apply_route_branch_values(branch, route_kind, out, &num);
+                }
+            }
+        }
+    } else if (fallback_value && !fallback_value->empty() &&
+            fallback_value->front() == '"') {
+        /* Legacy flat spelling: "fallback_to": "<name>". */
+        std::string_view fallback_cursor = *fallback_value;
+        char fallback_name[32];
+        if (json_read_string(fallback_cursor, fallback_name, sizeof(fallback_name))) {
+            out->fallback_route = route_kind_from_string(fallback_name);
+        }
+    }
+    /* Legacy flat fallback key from transition builds. */
+    const auto legacy_fallback = json_member_value(object, "fallback_to");
+    if (legacy_fallback && !legacy_fallback->empty() &&
+            legacy_fallback->front() == '"') {
+        std::string_view legacy_cursor = *legacy_fallback;
+        char legacy_name[32];
+        if (json_read_string(legacy_cursor, legacy_name, sizeof(legacy_name))) {
+            out->fallback_route = route_kind_from_string(legacy_name);
+        }
+    }
     /* a zeroed entry selects the 6.6 waiter layout; warn rather than fail quietly */
     if (strncmp(out->uname_r, "6.1.", 4) == 0 && !out->compact_waiter) {
         fprintf(stderr,
@@ -525,15 +732,8 @@ static void fill_external_entry(struct kernel_offsets *out,
     }
 }
 
-int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
-        char *release_buf, size_t release_buf_cap) {
-    auto file_result = read_profile_file(path);
-    if (!file_result) {
-        errno = file_result.error().code.value();
-        return -1;
-    }
-    const std::string &file = file_result.value();
-    const std::string_view document(file.data(), file.size());
+int parse_resolved_profile_json(std::string_view document,
+        struct kernel_offsets *out, char *release_buf, size_t release_buf_cap) {
     const std::string_view object = json_skip_ws(document);
     int result = -1;
     if (!object.empty() && object.front() == '{') {
@@ -547,9 +747,7 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
             const auto release_value = json_member_value(object, "release");
             if (schema_value &&
                     json_parse_int(*schema_value, &schema_version) &&
-                    schema_version == 1 && execution_value &&
-                    !execution_value->empty() &&
-                    execution_value->front() == '{' && release_value) {
+                    schema_version == 1 && release_value) {
                 std::string_view release_cursor = *release_value;
                 char release[256];
                 if (json_read_string(release_cursor, release,
@@ -559,10 +757,53 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
                     /* strlen(release) < release_buf_cap was checked above */
                     strcpy(release_buf, release);  // NOLINT(clang-analyzer-security.insecureAPI.strcpy)
                     fill_external_entry(out, release_buf, object);
-                    result = fill_execution_settings(object, &out->execution);
+                    /* execution tuning is merged by Kotlin defaults; it is
+                     * only decoded when a source document carries one. */
+                    if (execution_value && !execution_value->empty() &&
+                            execution_value->front() == '{') {
+                        result = fill_execution_settings(object, &out->execution);
+                    } else {
+                        result = 0;
+                    }
                 }
             }
         }
     }
     return result;
+}
+
+int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
+        char *release_buf, size_t release_buf_cap) {
+    auto file_result = read_profile_file(path);
+    if (!file_result) {
+        errno = file_result.error().code.value();
+        return -1;
+    }
+    const std::string &file = file_result.value();
+    return parse_resolved_profile_json(
+            std::string_view(file.data(), file.size()), out, release_buf,
+            release_buf_cap);
+}
+
+int load_resolved_profile(const char *path, struct kernel_offsets *out,
+        char *release_buf, size_t release_buf_cap) {
+    auto file_result = read_profile_file(path);
+    if (!file_result) {
+        errno = file_result.error().code.value();
+        return -1;
+    }
+    const std::string &file = file_result.value();
+    const std::string_view document(file.data(), file.size());
+    /* Kotlin hands over the typed binary layout; JSON stays for assets,
+     * imports and host tests. */
+    if (document.size() >= 4 &&
+            static_cast<uint8_t>(document[0]) == (uint8_t) (ghostlock::binary_profile::kMagic & 0xff) &&
+            static_cast<uint8_t>(document[1]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 8) & 0xff) &&
+            static_cast<uint8_t>(document[2]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 16) & 0xff) &&
+            static_cast<uint8_t>(document[3]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 24) & 0xff)) {
+        return ghostlock::binary_profile::parse(document, out, release_buf,
+                release_buf_cap);
+    }
+    return parse_resolved_profile_json(document, out, release_buf,
+            release_buf_cap);
 }

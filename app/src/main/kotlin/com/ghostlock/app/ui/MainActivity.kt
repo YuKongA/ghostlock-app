@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.Toast
@@ -35,6 +36,36 @@ class MainActivity : ComponentActivity() {
         pendingDocumentRequest = null
         if (uri != null && request != null) viewModel.onDocumentResult(request, uri.toString())
     }
+    private val documentsPicker =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+            val request = pendingDocumentRequest
+            pendingDocumentRequest = null
+            if (uris.isNotEmpty() && request != null) {
+                viewModel.onDocumentsResult(request, uris.map(Uri::toString))
+            }
+        }
+
+    private enum class FolderRequest { DebugLocation, ExportProfile }
+    private var pendingFolderRequest: FolderRequest? = null
+    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        val request = pendingFolderRequest
+        pendingFolderRequest = null
+        when (request) {
+            FolderRequest.DebugLocation ->
+                viewModel.onDebugExportLocationPicked(uri?.let(::documentTreeRelativePath))
+            FolderRequest.ExportProfile ->
+                if (uri != null) viewModel.onExportProfileFolderPicked(uri.toString())
+            null -> Unit
+        }
+    }
+
+    /** Maps a SAF tree URI to the external-storage-relative MediaStore path. */
+    private fun documentTreeRelativePath(uri: Uri): String? {
+        val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: return null
+        if (!documentId.startsWith("primary:")) return null
+        return documentId.substringAfter(':').trim('/').ifEmpty { null }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,7 +85,28 @@ class MainActivity : ComponentActivity() {
         when (effect) {
             is GhostlockEffect.PickDocument -> {
                 pendingDocumentRequest = effect.request
-                documentPicker.launch(arrayOf("*/*"))
+                val mimeTypes = when (effect.request) {
+                    DocumentRequest.ImportOffsetsHocon ->
+                        arrayOf("text/plain", "application/octet-stream")
+                    DocumentRequest.ImportOffsetsJson ->
+                        arrayOf("application/json", "text/plain", "application/octet-stream")
+                    else -> arrayOf("*/*")
+                }
+                when (effect.request) {
+                    DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson ->
+                        documentsPicker.launch(mimeTypes)
+                    else -> documentPicker.launch(mimeTypes)
+                }
+            }
+
+            GhostlockEffect.PickDebugFolder -> {
+                pendingFolderRequest = FolderRequest.DebugLocation
+                folderPicker.launch(null)
+            }
+
+            GhostlockEffect.PickProfileExportFolder -> {
+                pendingFolderRequest = FolderRequest.ExportProfile
+                folderPicker.launch(null)
             }
 
             is GhostlockEffect.Share -> shareOffsets(effect.uri.toUri())
@@ -78,7 +130,7 @@ class MainActivity : ComponentActivity() {
 
     private fun shareOffsets(uri: Uri) {
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/json"
+            type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -122,11 +174,14 @@ private fun GhostlockRoute(
         state = state,
         actions = object : GhostlockActions {
             override fun onRun() = viewModel.onRun()
+            override fun onProfileInvalid() = viewModel.onProfileInvalid()
             override fun onStatusClick() = viewModel.onStatusClick()
             override fun onCloseExecutionSheet() = viewModel.onCloseExecutionSheet()
-            override fun onToggleAdvanced() = viewModel.toggleAdvanced()
             override fun onCopyLogs() = viewModel.copyLogs()
-            override fun onImportOffsets() = viewModel.importOffsets()
+            override fun onImportOffsetsHocon() = viewModel.importOffsetsHocon()
+            override fun onImportOffsetsJson() = viewModel.importOffsetsJson()
+            override fun onDocumentsResult(request: DocumentRequest, uris: List<String>) =
+                viewModel.onDocumentsResult(request, uris)
             override fun onParseOta() = viewModel.promptParseUrl()
             override fun onParseImage() = viewModel.parseOffsets()
             override fun onExportOffsets() = viewModel.exportOffsets()
@@ -142,9 +197,30 @@ private fun GhostlockRoute(
             override fun onOverwriteDismiss() = viewModel.onOverwriteDismiss()
             override fun onExecutionFieldChanged(path: String, value: String) =
                 viewModel.updateExecutionField(path, value)
-            override fun onSaveExecution() = viewModel.saveExecutionOverrides()
-            override fun onResetExecution() = viewModel.resetExecutionOverrides()
-            override fun onApplyRecommendedCores() = viewModel.applyRecommendedCores()
+            override fun onRouteChanged(index: Int) = viewModel.onRouteChanged(index)
+            override fun onFallbackChanged(index: Int) = viewModel.onFallbackChanged(index)
+            override fun onExportProfile() = viewModel.onExportProfile()
+            override fun onResetParameters() = viewModel.onResetParameters()
+            override fun onOpenAdvanced() = viewModel.onOpenAdvanced()
+            override fun onCloseAdvanced() = viewModel.onCloseAdvanced()
+            override fun onShowAbout() = viewModel.onShowAbout()
+            override fun onCloseAbout() = viewModel.onCloseAbout()
+            override fun onDebugExportChanged(enabled: Boolean) = viewModel.onDebugExportChanged(enabled)
+            override fun onDebugExportLocationPick() = viewModel.onDebugExportLocationPick()
+            override fun onDebugKernelLogChanged(enabled: Boolean) =
+                viewModel.onDebugKernelLogChanged(enabled)
+            override fun onOpenParameters() = viewModel.onOpenParameters()
+            override fun onCloseParameters() = viewModel.onCloseParameters()
+            override fun onOpenBuiltinProfiles() = viewModel.onOpenBuiltinProfiles()
+            override fun onCloseBuiltinProfiles() = viewModel.onCloseBuiltinProfiles()
+            override fun onSelectBuiltinProfile(release: String?) =
+                viewModel.onSelectBuiltinProfile(release)
+            override fun onOpenProfileOverrides() = viewModel.onOpenProfileOverrides()
+            override fun onCloseProfileOverrides() = viewModel.onCloseProfileOverrides()
+            override fun onOpenAdvancedOverrides() = viewModel.onOpenAdvancedOverrides()
+            override fun onCloseAdvancedOverrides() = viewModel.onCloseAdvancedOverrides()
+            override fun onProfileOverrideChanged(path: String, value: String) =
+                viewModel.onProfileOverrideChanged(path, value)
         },
     )
 }

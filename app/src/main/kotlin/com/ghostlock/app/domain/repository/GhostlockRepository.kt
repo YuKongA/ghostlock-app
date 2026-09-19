@@ -1,7 +1,7 @@
 package com.ghostlock.app.domain.repository
 
 import com.ghostlock.app.domain.model.CpuPair
-import com.ghostlock.app.domain.model.ExecutionProfile
+import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
@@ -18,9 +18,14 @@ interface GhostlockRepository {
 
     suspend fun exportCandidates(): List<OffsetCandidate>
 
-    suspend fun importOffsets(json: String): OffsetImportResult
+    /**
+     * Imports one or more picked documents (file name -> text). Includes are
+     * resolved against the picked files first, then the bundled assets; a
+     * missing include fails the import so the user can pick it too.
+     */
+    suspend fun importOffsets(documents: Map<String, String>): OffsetImportResult
 
-    suspend fun confirmImport(json: String): OffsetImportResult
+    suspend fun confirmImport(documents: Map<String, String>): OffsetImportResult
 
     suspend fun parseSource(
         input: String,
@@ -35,15 +40,26 @@ interface GhostlockRepository {
 
     suspend fun publishOffsets(candidate: OffsetCandidate): String
 
-    suspend fun executionProfile(release: String, pair: CpuPair): ExecutionProfile
+    /** Single authority for loading, editing and exporting profile config. */
+    fun profileController(): ProfileConfigController
 
-    suspend fun saveExecutionOverrides(release: String, values: Map<String, Long>): Boolean
+    suspend fun debugSettings(): DebugSettings
 
-    suspend fun clearExecutionOverrides(release: String): Boolean
+    fun setDebugExportEnabled(enabled: Boolean)
+
+    fun setDebugExportLocation(location: String)
+
+    fun setDebugKernelLogEnabled(enabled: Boolean)
 
     suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int
 
     suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int
+
+    /**
+     * Start-up hint: the previous in-process run failed at the W3 seccomp
+     * bypass stage, which Shizuku (shell uid, no seccomp) can skip.
+     */
+    suspend fun lastRunW3SeccompHint(): Boolean
 
     fun requestShizukuPermission()
 

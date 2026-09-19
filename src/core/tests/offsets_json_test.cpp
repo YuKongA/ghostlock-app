@@ -1,337 +1,222 @@
-/* Host fixed-vector test for the resolved-profile transport decoder and the
- * startup address derivation.
+/* Host fixed-vector test for the JSON profile decoder.
  *
- * Every built-in profile is decoded through the same entry point the native
- * binary uses (load_resolved_profile_json), then the deterministic
- * TargetProfile accessors and SoC address formulas are checked against the
- * decoded values. Rejection vectors cover the schema and bounding guards.
- */
+ * The runtime transport is the typed binary layout (profile_binary_test);
+ * this test keeps the JSON decoder honest for imported offsets, legacy flat
+ * documents and HOCON-loaded configuration sources. */
 
 #include "memory/address_space.h"
 #include "offsets_json.h"
 #include "profile.h"
 #include "target.h"
 
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <string>
-#include <vector>
 
 using namespace ghostlock;
 
 namespace {
 
-constexpr const char *kProfileDir = "app/src/main/assets/kernel_profiles";
-constexpr const char *kIndexFile = "index.json";
-constexpr const char *kDefaultsFile = "defaults.json";
-constexpr size_t kReleaseCap = 192;
-
-struct ProfileFile {
-  std::string name;
-  std::string path;
-};
-
-bool read_text_file(const std::string &path, std::string *out) {
-  FILE *file = fopen(path.c_str(), "rb");
-  if (!file) return false;
-  char buffer[4096];
-  size_t count = 0;
-  while ((count = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-    out->append(buffer, count);
-  }
-  fclose(file);
-  return true;
-}
-
-size_t count_occurrences(const std::string &text, const std::string &needle) {
-  size_t count = 0;
-  size_t position = 0;
-  while ((position = text.find(needle, position)) != std::string::npos) {
-    count++;
-    position += needle.size();
-  }
-  return count;
-}
-
-uintptr_t expected_alias(uint64_t physical_load, uint64_t image_offset) {
-  const uintptr_t physical = physical_load + image_offset;
-  return (physical - P0_PHYS_OFFSET) | P0_PAGE_OFFSET;
-}
-
 int g_failures = 0;
 
-void expect(bool condition, const char *message, const std::string &context) {
+void expect(bool condition, const char *message) {
   if (condition) return;
-  fprintf(stderr, "FAIL %s: %s\n", message, context.c_str());
+  fprintf(stderr, "FAIL %s\n", message);
   g_failures++;
 }
 
-bool profile_execution_complete(const struct execution_settings *e) {
-  return e && e->recommended_main_cpu != e->recommended_consumer_cpu &&
-         e->heap_prepare_max_attempts && e->heap_prepare_timeout_ms &&
-         e->heap_kernelsnitch_timeout_ms && e->race_route_wait_ms &&
-         e->race_setup_settle_us && e->race_state_poll_interval_us &&
-         e->w1_attempts && e->w1_settle_us && e->w1_scratch_repair_attempts &&
-         e->w2_attempts && e->w2_settle_us && e->w3_chain_rounds &&
-         e->w3_attempts && e->w3_settle_us && e->tcp_attempts &&
-         e->tcp_arm_sequence && e->tcp_post_receive_hold_iterations &&
-         e->select_enter_delay_us && e->select_timeout_us &&
-         e->select_consumer_max_calls && e->select_consumer_burst_calls &&
-         e->multicast_ready_timeout_ms && e->multicast_post_requeue_settle_us &&
-         e->multicast_post_adjust_settle_us && e->handoff_pre_dispatch_settle_ms &&
-         e->handoff_module_poll_attempts && e->handoff_module_poll_interval_ms &&
-         e->handoff_enforce_poll_attempts && e->handoff_enforce_poll_interval_ms;
+bool decode_text(const char *text, struct kernel_offsets *out, char *release,
+        size_t cap) {
+  char path[] = ".build/host/offsets_vector_XXXXXX";
+  const int fd = mkstemp(path);
+  if (fd < 0) return false;
+  const size_t length = strlen(text);
+  const bool written = write(fd, text, length) == (ssize_t) length;
+  close(fd);
+  const bool ok = written && load_resolved_profile_json(path, out, release, cap) == 0;
+  unlink(path);
+  return ok;
 }
 
-bool profile_required_fields_complete(const struct kernel_offsets *v) {
-  return v->off_init_task && v->off_init_cred && v->off_root_task_group &&
-         v->off_selinux_enforcing && v->task_prio && v->task_pi_lock &&
-         v->task_pi_waiters && v->task_pi_blocked_on && v->task_cred &&
-         v->task_seccomp && v->cred_copy_size && v->cred_caps_count;
+/* Shared geometry for the vectors below. */
+const char *kCommon =
+    "\"schema_version\":1,\"kernel_major\":6,"
+    "\"kernelsnitch\":{\"collisions\":4,\"mm_struct_sz\":1024},"
+    "\"task_struct\":{\"prio\":132,\"cred\":2080,\"pi_lock\":2316,"
+    "\"pi_waiters\":2336,\"pi_blocked_on\":2360,\"seccomp\":2280},"
+    "\"cred\":{\"copy_size\":136,\"usage_value\":1,\"caps_offset\":48,"
+    "\"caps_count\":5,\"caps_value\":-1},"
+    "\"offset\":{\"init_task\":34464384,\"init_cred\":34538824,"
+    "\"root_task_group\":36521344,\"selinux_enforcing\":36790120}";
+
+const char *kExecution =
+    "\"execution\":{"
+    "\"recommended_cpus\":{\"main\":0,\"consumer\":1},"
+    "\"heap\":{\"prepare_max_attempts\":4,\"prepare_timeout_ms\":240000,"
+    "\"kernelsnitch_timeout_ms\":60000},"
+    "\"race\":{\"route_wait_ms\":1000,\"setup_settle_us\":50000,"
+    "\"state_poll_interval_us\":1000},"
+    "\"stages\":{\"w1_attempts\":15,\"w1_settle_us\":100000,"
+    "\"w1_scratch_repair_attempts\":3,\"w2_attempts\":15,"
+    "\"w2_settle_us\":100000,\"w3_chain_rounds\":3,\"w3_attempts\":6,"
+    "\"w3_settle_us\":50000},"
+    "\"handoff\":{\"pre_dispatch_settle_ms\":2000,"
+    "\"module_poll_attempts\":30,\"module_poll_interval_ms\":100,"
+    "\"enforce_poll_attempts\":200,\"enforce_poll_interval_ms\":100},"
+    "\"routes\":{"
+    "\"tcp_zerocopy\":{\"attempts\":2000,\"arm_sequence\":16,"
+    "\"post_receive_hold_iterations\":20000},"
+    "\"select_stack\":{\"enter_delay_us\":50000,\"timeout_us\":200000,"
+    "\"consumer_max_calls\":1,\"consumer_burst_calls\":1},"
+    "\"multicast_waiter\":{\"ready_timeout_ms\":10000,"
+    "\"post_requeue_settle_us\":200000,\"post_adjust_settle_us\":100000}}}";
+
+void check_documents() {
+  struct kernel_offsets v = {};
+  char release[64] = {0};
+
+  /* New layout: one route branch plus a fallback declaration. */
+  const std::string select_doc = std::string("{\"release\":\"6.6.test\",") +
+      kCommon + "," + kExecution +
+      ",\"route\":{\"select_stack\":{\"waiter_shift\":-2}},"
+      "\"fallback\":{\"to\":\"none\"}}";
+  expect(decode_text(select_doc.c_str(), &v, release, sizeof(release)),
+         "select document decodes");
+  expect(strcmp(release, "6.6.test") == 0, "release decoded");
+  expect(v.route == kRouteSelectStack, "select route kind");
+  expect(v.fallback_route == kRouteAuto, "fallback none");
+  expect(v.pselect_waiter_shift == -2, "waiter shift decoded");
+  expect(v.task_prio == 132 && v.cred_copy_size == 136, "namespaced scalars decoded");
+  expect(v.off_init_task == 34464384, "offset namespace decoded");
+  expect(v.kernelsnitch_collisions == 4 && v.mm_struct_sz == 1024,
+         "kernelsnitch namespace decoded");
+  expect(v.execution.w1_attempts == 15 && v.execution.tcp_attempts == 2000,
+         "execution decoded");
+
+  const std::string tcp_doc = std::string("{\"release\":\"6.1.test\",") +
+      kCommon +
+      ",\"route\":{\"tcp_zerocopy\":{\"compact_waiter\":1}},"
+      "\"fallback\":{\"to\":\"select_stack\","
+      "\"route\":{\"select_stack\":{\"waiter_shift\":1}}}}";
+  expect(decode_text(tcp_doc.c_str(), &v, release, sizeof(release)),
+         "tcp document decodes");
+  expect(v.route == kRouteTcpZerocopy, "tcp route kind");
+  expect(v.fallback_route == kRouteSelectStack, "fallback target decoded");
+  expect(v.compact_waiter == 1 && v.pselect_waiter_shift == 1,
+         "fallback branch fields decoded");
+
+  const std::string mcast_doc = std::string("{\"release\":\"5.15.test\",") +
+      kCommon +
+      ",\"route\":{\"multicast_waiter\":{\"waiter_off\":96,"
+      "\"buffer_size\":264,\"compact_waiter\":1}},"
+      "\"fallback\":{\"to\":\"none\"}}";
+  expect(decode_text(mcast_doc.c_str(), &v, release, sizeof(release)),
+         "multicast document decodes");
+  expect(v.route == kRouteMulticastWaiter, "multicast route kind");
+  expect(v.mcast_waiter_off == 96 && v.mcast_buffer_size == 264 &&
+             v.compact_waiter == 1,
+         "multicast branch decoded");
+
+  /* Legacy flat spelling stays decodable for old offsets.json files. */
+  const std::string legacy_doc = std::string("{\"release\":\"legacy.test\",") +
+      kCommon +
+      ",\"route\":\"tcp_zerocopy\",\"compact_waiter\":1,"
+      "\"fallback_to\":\"select_stack\",\"pselect_waiter_shift\":1}";
+  expect(decode_text(legacy_doc.c_str(), &v, release, sizeof(release)),
+         "legacy document decodes");
+  expect(v.route == kRouteTcpZerocopy, "legacy route decoded");
+  expect(v.fallback_route == kRouteSelectStack, "legacy fallback decoded");
+  expect(v.compact_waiter == 1 && v.pselect_waiter_shift == 1,
+         "legacy flat fields decoded");
 }
 
-void check_profile(const ProfileFile &entry) {
-  const std::string &name = entry.name;
-  struct kernel_offsets decoded = {};
-  char release[kReleaseCap] = {0};
-  if (load_resolved_profile_json(entry.path.c_str(), &decoded, release,
-                                 sizeof(release)) != 0) {
-    fprintf(stderr, "FAIL decode: %s\n", name.c_str());
-    g_failures++;
-    return;
-  }
-  expect(strcmp(release, decoded.uname_r) == 0, "release round-trip", name);
-  expect(strcmp(release, name.c_str()) == 0, "release matches file name", name);
-  expect(decoded.kernel_major == 5 || decoded.kernel_major == 6,
-         "kernel_major is 5 or 6", name);
-  expect(profile_required_fields_complete(&decoded),
-         "required profile fields present", name);
-
-  TargetProfile profile = target_profile_snapshot(&decoded);
-  expect(target_profile_is_loaded(&profile), "profile snapshot loaded", name);
-  expect(profile_execution_complete(target_profile_execution(&profile)),
-         "execution settings complete", name);
-
-  const MulticastWaiterLayout multicast =
-      target_profile_multicast_waiter_layout(&profile);
-  const SelectStackLayout select =
-      target_profile_select_stack_layout(&profile);
-  const TcpZerocopyLayout tcp = target_profile_tcp_zerocopy_layout(&profile);
-  expect(select.waiter_shift == decoded.pselect_waiter_shift,
-         "select waiter shift snapshot", name);
-  expect(select.compact_waiter == decoded.compact_waiter,
-         "select compact flag snapshot", name);
-  expect(tcp.compact_waiter == decoded.compact_waiter,
-         "tcp compact flag snapshot", name);
-  expect(multicast.buffer_size == decoded.mcast_buffer_size,
-         "multicast buffer size snapshot", name);
-  expect(multicast.waiter_offset == (size_t)decoded.mcast_waiter_off,
-         "multicast waiter offset snapshot", name);
-  expect(multicast.lock_slot_count == decoded.mcast_lock_slot_count,
-         "multicast slot count snapshot", name);
-
-  /* QCOM with the profile's own physical load (or the 6.12/QCOM fallback). */
-  memory::ResolvedAddresses addresses = {};
-  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         memory::SocFamily::Qcom) == 0,
-         "address init succeeds", name);
-  expect(memory::resolved_addresses_init_cred_image(&addresses) ==
-             (uintptr_t)(KIMAGE_TEXT_BASE + decoded.off_init_cred),
-         "init_cred image formula", name);
-  const uint64_t expected_phys =
-      decoded.kernel_phys_load
-          ? decoded.kernel_phys_load
-          : (strncmp(decoded.uname_r, "6.12.", 5) == 0 ? QC_GKI_6_12_PHYS_LOAD
-                                                       : P0_KERNEL_PHYS_LOAD);
-  expect(memory::resolved_addresses_kernel_phys_load(&addresses) == expected_phys,
-         "kernel physical load selection", name);
-  expect(memory::resolved_addresses_data_alias(
-             &addresses, memory::resolved_addresses_init_cred_image(&addresses)) ==
-             expected_alias(expected_phys, decoded.off_init_cred),
-         "init_cred direct-map alias", name);
-
-  /* SoC fallbacks only apply when the profile carries no measured load. */
-  struct kernel_offsets zero_load = decoded;
-  zero_load.kernel_phys_load = 0;
-  TargetProfile zero_profile = target_profile_snapshot(&zero_load);
-  memory::ResolvedAddresses mtk = {};
-  memory::ResolvedAddresses xring = {};
-  expect(memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
-                                         memory::SocFamily::Mtk) == 0 &&
-             memory::resolved_addresses_kernel_phys_load(&mtk) ==
-                 (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
-         "MTK physical load fallback", name);
-  expect(memory::resolved_addresses_init_for_soc(&xring, &zero_profile,
-                                         memory::SocFamily::Xring) == 0 &&
-             memory::resolved_addresses_kernel_phys_load(&xring) ==
-                 XRING_KERNEL_PHYS_LOAD,
-         "XRing physical load fallback", name);
-  memory::ResolvedAddresses google = {};
-  expect(memory::resolved_addresses_init_for_soc(&google, &zero_profile,
-                                         memory::SocFamily::Google) == 0 &&
-             memory::resolved_addresses_kernel_phys_load(&google) ==
-                 (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
-         "Tensor/Google physical load fallback", name);
-}
-
-void check_address_rejections(void) {
-  struct kernel_offsets decoded = {};
-  TargetProfile profile = target_profile_snapshot(&decoded);
-  memory::ResolvedAddresses addresses = {};
-  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         memory::SocFamily::Qcom) == -1,
-         "empty profile rejected", "address");
-
-  decoded.uname_r = "6.6.0-test";
-  decoded.off_init_cred = 0x1000;
-  decoded.kernel_phys_load = 0x1000;
-  profile = target_profile_snapshot(&decoded);
-  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         memory::SocFamily::Qcom) == 0,
-         "small physical load accepted", "address");
-
-  const auto below_base = memory::resolved_addresses_data_alias_checked(
-      addresses, target::KernelImageAddress(KIMAGE_TEXT_BASE - 1));
-  expect(!below_base.has_value(), "image below text base rejected", "address");
-
-  const auto underflow = memory::resolved_addresses_data_alias_checked(
-      addresses, target::KernelImageAddress(KIMAGE_TEXT_BASE));
-  expect(!underflow.has_value(), "physical underflow rejected", "address");
-
-  decoded.kernel_phys_load = UINTPTR_MAX;
-  profile = target_profile_snapshot(&decoded);
-  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         memory::SocFamily::Qcom) == 0,
-         "max physical load accepted", "address");
-  const auto overflow = memory::resolved_addresses_data_alias_checked(
-      addresses,
-      target::KernelImageAddress(KIMAGE_TEXT_BASE + 0x1000));
-  expect(!overflow.has_value(), "physical overflow rejected", "address");
-
-  decoded.kernel_phys_load = 0;
-  decoded.off_init_cred = UINTPTR_MAX;
-  profile = target_profile_snapshot(&decoded);
-  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
-                                         memory::SocFamily::Qcom) == -1,
-         "image offset overflow rejected", "address");
-}
-
-void check_decoder_rejections(void) {
+void check_decoder_rejections() {
   const char *cases[] = {
       "",
       "[]",
       "{}",
       "{\"schema_version\":2,\"release\":\"x\",\"execution\":{}}",
-      "{\"schema_version\":1,\"release\":\"x\"}",
-      "{\"schema_version\":1,\"release\":\"x\",\"execution\":{\"recommended_cpus\":"
-      "{\"main\":0,\"consumer\":1,\"heap\":{\"prepare_max_attempts\":1},"
+      "{\"schema_version\":1,\"release\":\"x\",\"execution\":{"
+      "\"recommended_cpus\":{\"main\":0,\"consumer\":1,"
+      "\"heap\":{\"prepare_max_attempts\":1},"
       "\"race\":{},\"stages\":{},\"handoff\":{},\"routes\":{}}}",
       "{\"schema_version\":1,\"release\":\"x\"",
       "{\"schema_version\":1,\"release\":\"x\"} trailing",
       "{\"schema_version\":1,\"execution\":{},\"release\":7}",
   };
   for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-    char path[] = ".build/host/offsets_reject_XXXXXX";
-    const int fd = mkstemp(path);
-    if (fd < 0) {
-      fprintf(stderr, "FAIL mkstemp for rejection vector %zu\n", i);
-      g_failures++;
-      continue;
-    }
-    const size_t length = strlen(cases[i]);
-    if (length > 0 && write(fd, cases[i], length) != (ssize_t)length) {
-      fprintf(stderr, "FAIL write for rejection vector %zu\n", i);
-      g_failures++;
-    }
-    close(fd);
-
-    struct kernel_offsets decoded = {};
-    char release[kReleaseCap] = {0};
-    const int result =
-        load_resolved_profile_json(path, &decoded, release, sizeof(release));
-    char message[64];
-    snprintf(message, sizeof(message), "rejection vector %zu", i);
-    expect(result == -1, message, "decoder");
-    unlink(path);
+    struct kernel_offsets v = {};
+    char release[64] = {0};
+    expect(!decode_text(cases[i], &v, release, sizeof(release)),
+           "rejection vector rejected");
   }
 
   /* A release longer than the caller buffer must be rejected. */
   const char *long_release =
-      "{\"schema_version\":1,\"release\":\"0123456789\",\"execution\":{}}";
+      "{\"schema_version\":1,\"release\":\"0123456789\"}";
   char path[] = ".build/host/offsets_short_cap_XXXXXX";
   const int fd = mkstemp(path);
   if (fd < 0) {
-    fprintf(stderr, "FAIL mkstemp for release-cap vector\n");
-    g_failures++;
+    expect(false, "mkstemp for release-cap vector");
     return;
   }
   const size_t length = strlen(long_release);
-  if (write(fd, long_release, length) != (ssize_t)length) {
-    fprintf(stderr, "FAIL write for release-cap vector\n");
-    g_failures++;
-  }
+  expect(write(fd, long_release, length) == (ssize_t) length,
+         "write release-cap vector");
   close(fd);
-  struct kernel_offsets decoded = {};
+  struct kernel_offsets v = {};
   char release[8] = {0};
-  expect(load_resolved_profile_json(path, &decoded, release, sizeof(release)) ==
-             -1,
-         "release longer than buffer rejected", "decoder");
+  expect(load_resolved_profile_json(path, &v, release, sizeof(release)) == -1,
+         "release longer than buffer rejected");
   unlink(path);
+}
+
+void check_address_paths() {
+  struct kernel_offsets decoded = {};
+  decoded.uname_r = "6.6.test";
+  decoded.kernel_major = 6;
+  decoded.off_init_cred = 0x1000;
+  decoded.kernel_phys_load = 0x80000000ULL;
+  TargetProfile profile = target_profile_snapshot(&decoded);
+  memory::ResolvedAddresses addresses = {};
+  expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+                                         memory::SocFamily::Qcom) == 0,
+         "address init succeeds");
+  expect(memory::resolved_addresses_init_cred_image(&addresses) ==
+             (uintptr_t)(KIMAGE_TEXT_BASE + decoded.off_init_cred),
+         "init_cred image formula");
+  const uint64_t expected_phys = decoded.kernel_phys_load;
+  const uintptr_t physical = expected_phys + decoded.off_init_cred;
+  expect(memory::resolved_addresses_data_alias(
+             &addresses, memory::resolved_addresses_init_cred_image(&addresses)) ==
+             ((physical - P0_PHYS_OFFSET) | P0_PAGE_OFFSET),
+         "init_cred direct-map alias");
+
+  /* SoC fallbacks only apply when the profile carries no measured load. */
+  struct kernel_offsets zero_load = decoded;
+  zero_load.kernel_phys_load = 0;
+  TargetProfile zero_profile = target_profile_snapshot(&zero_load);
+  memory::ResolvedAddresses mtk = {};
+  expect(memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
+                                         memory::SocFamily::Mtk) == 0 &&
+             memory::resolved_addresses_kernel_phys_load(&mtk) ==
+                 (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
+         "MTK physical load fallback");
 }
 
 }  // namespace
 
 int main(void) {
-  DIR *directory = opendir(kProfileDir);
-  if (!directory) {
-    fprintf(stderr, "cannot open %s (run from the project root)\n",
-            kProfileDir);
-    return 1;
-  }
-
-  std::vector<ProfileFile> profiles;
-  struct dirent *item = nullptr;
-  while ((item = readdir(directory)) != nullptr) {
-    const std::string name = item->d_name;
-    if (name.size() < 5 || name.compare(name.size() - 5, 5, ".json") != 0)
-      continue;
-    if (name == kIndexFile || name == kDefaultsFile) continue;
-    ProfileFile entry;
-    entry.name = name.substr(0, name.size() - 5);
-    entry.path = std::string(kProfileDir) + "/" + name;
-    profiles.push_back(entry);
-  }
-  closedir(directory);
-
-  if (profiles.size() < 40) {
-    fprintf(stderr, "FAIL expected at least 40 built-in profiles, found %zu\n",
-            profiles.size());
-    g_failures++;
-  }
-
-  std::string index;
-  if (!read_text_file(std::string(kProfileDir) + "/" + kIndexFile, &index)) {
-    fprintf(stderr, "FAIL cannot read index.json\n");
-    g_failures++;
-  } else {
-    const size_t indexed = count_occurrences(index, "\"file\"");
-    expect(indexed == profiles.size(), "index/profile count match", "index");
-  }
-
-  for (const ProfileFile &entry : profiles) check_profile(entry);
-
+  check_documents();
   check_decoder_rejections();
-  check_address_rejections();
-
+  check_address_paths();
   if (g_failures != 0) {
     fprintf(stderr, "offsets_json_test: %d failure(s)\n", g_failures);
     return 1;
   }
-  printf("offsets_json_test: %zu profiles decoded and checked\n",
-         profiles.size());
+  puts("offsets_json_test: ok");
   return 0;
 }

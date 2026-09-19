@@ -43,7 +43,11 @@ static void reset_stubs(RouteStatus status) {
 int main(void) {
   PiRaceContext race;
   WriteRequest request = {.mode = WriteMode::Zero};
-  struct kernel_offsets values = {.compact_waiter = 1};
+  /* The optional fallback field is present: tcp failure falls back to select. */
+  struct kernel_offsets values = {
+      .compact_waiter = 1,
+      .fallback_route = kRouteSelectStack,
+  };
   TargetProfile profile = target_profile_snapshot(&values);
   route::RouteController controller;
   route::route_controller_init(
@@ -57,6 +61,20 @@ int main(void) {
   RouteStatus status = route::route_controller_execute(&controller, &request);
   assert(status.code == ROUTE_OK);
   assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
+
+  /* Without the fallback field the tcp failure is returned unchanged. */
+  struct kernel_offsets no_fallback = {.compact_waiter = 1};
+  TargetProfile no_fallback_profile = target_profile_snapshot(&no_fallback);
+  route::route_controller_init(
+      &controller, &race, &no_fallback_profile, route::RouteKind::TcpZerocopy);
+  reset_stubs((RouteStatus){
+      .code = ROUTE_FALLBACK_SAFE,
+      .userspace_clean = 1,
+      .kernel_disarmed = 1,
+  });
+  status = route::route_controller_execute(&controller, &request);
+  assert(status.code == ROUTE_FALLBACK_SAFE);
+  assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 
   route::route_controller_init(
       &controller, &race, &profile, route::RouteKind::TcpZerocopy);

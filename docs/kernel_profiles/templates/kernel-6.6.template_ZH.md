@@ -1,6 +1,6 @@
 # 6.6 内核 Profile 模板说明
 
-模板 JSON：[kernel-6.6.template.json](kernel-6.6.template.json)。本文包含全部字段，不依赖共有字段说明。
+模板 JSON：[kernel-6.6.template.conf](kernel-6.6.template.conf)。本文包含全部字段，不依赖共有字段说明。
 
 > 模板在所有必填空值（`"字段": ,`）填写完成前会刻意保持为非法 JSON，使 IDE 立即标出尚未完成的设备适配。不要为了通过语法检查而把空值随意改成 `0`。
 

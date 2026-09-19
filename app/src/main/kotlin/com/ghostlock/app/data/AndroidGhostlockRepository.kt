@@ -10,25 +10,21 @@ import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.domain.model.CpuPair
-import com.ghostlock.app.domain.model.ExecutionFieldValue
-import com.ghostlock.app.domain.model.ExecutionProfile
+import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelOffsets
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.data.ota.OtaPayloadExtractor
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
-import com.ghostlock.app.domain.model.SupportedKernels
 import com.ghostlock.app.domain.repository.GhostlockRepository
+import com.ghostlock.app.domain.repository.ProfileConfigController
 import com.ghostlock.app.domain.usecase.OffsetMatching
 import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import org.json.JSONTokener
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -40,17 +36,40 @@ import java.util.concurrent.atomic.AtomicLong
 /** Android implementation of the domain repository. All platform I/O lives here. */
 class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private companion object {
-        const val OffsetsFileName = "offsets.json"
+        const val OffsetsFileName = "offsets.conf"
+        const val LegacyOffsetsFileName = "offsets.json"
         const val ExtractBinaryName = "libextract.so"
+        const val DefaultDebugLocation = "Download/ghostlock-debug-log"
+        const val PrefDebugExportEnabled = "debug_export_enabled"
+        const val PrefDebugExportLocation = "debug_export_location"
+        const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
 
         /* U01-S14: per-run KernelSU log name; the resolved path travels to
          * the native process via GHOSTLOCK_KSU_LOG. */
         fun ksuLogName(runStamp: Long) = "ghostlock-ksu-$runStamp.log"
+
+        const val BuiltinDirectory = "kernel_profiles"
+
+        /* Every run's stdout/stderr is redirected here (export or not), so the
+         * previous run can be inspected on the next start-up. */
+        const val NativeLogFileName = ".ghostlock_native.log"
+        const val LastRunFileName = ".ghostlock_last_run"
+        const val W3SeccompFailureMarker = "W3 seccomp clear failed"
     }
 
     private val appContext = context.applicationContext
     private val filesDir: File = appContext.filesDir
+    private val preferences get() =
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
     private val offsetsFile get() = File(filesDir, OffsetsFileName)
+    private val builtinProfiles = BuiltinProfileCatalog(appContext)
+    private val assetConfigLoader = AssetConfigLoader(appContext)
+    private val profileController = AndroidProfileConfigController(
+        appContext,
+        filesDir,
+        offsetsFile,
+        preferences,
+    )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
@@ -59,23 +78,29 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     /** True once the user flipped the toggle; only then does it override the
      * profile suggestion (PROFILE-SUGGEST-01). */
     private var shizukuPreferenceSet = false
-    private var pendingParsedEntries: JSONArray? = null
+    private var pendingParsedEntries: ValueList? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
         buildCpuPairs()
         restoreCpuPair()
         restoreShizukuPreference()
+        dropLegacyOffsetsCache()
+    }
+
+    /** The old JSON offsets cache is not compatible and is discarded. */
+    private fun dropLegacyOffsetsCache() {
+        runCatching { File(filesDir, LegacyOffsetsFileName).delete() }
     }
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
-        /* PROFILE-SUGGEST-01: requires_shizuku is a suggestion. It seeds the
+        /* PROFILE-SUGGEST-01: recommend_shizuku is a suggestion. It seeds the
          * toggle until the user makes an explicit choice, which then overrides
          * it in both directions. */
-        val requiresShizuku = release in SupportedKernels.REQUIRES_SHIZUKU ||
-            importedOffsetsRequireShizuku(release)
-        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else requiresShizuku
+        val recommendShizuku = release in builtinProfiles.recommendShizuku ||
+            importedOffsetsRecommendShizuku(release)
+        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else recommendShizuku
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
@@ -85,7 +110,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             cpuPairLabels = cpuPairLabels.toList(),
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
-            requiresShizuku = requiresShizuku,
+            recommendShizuku = recommendShizuku,
             shizukuEnabled = shizukuActive,
             shizukuStatus = if (shizukuActive) shizukuRunner.status()
             else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
@@ -115,151 +140,85 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         if (enabled) shizukuRunner.requestPermission()
     }
 
-    /* profile-ui: sparse per-release execution overrides live in the same
-     * offsets.json the resolver already merges, so ProfileConfiguration keeps
-     * a single merge path (defaults < builtin < user override). */
-    override suspend fun executionProfile(release: String, pair: CpuPair): ExecutionProfile {
-        val resolved = try {
-            JSONTokener(
-                ProfileConfiguration.resolve(appContext, offsetsFile, release, pair),
-            ).nextValue() as? JSONObject
-        } catch (_: Exception) {
-            null
-        }
-        if (resolved == null) {
-            return ExecutionProfile(
-                release = release,
-                hasProfile = false,
-                recommendedMainCpu = 0,
-                recommendedConsumerCpu = 1,
-                fields = emptyList(),
-            )
-        }
-        val execution = resolved.optJSONObject("execution")
-        val overrides = readExecutionOverride(release)
-        val recommended = execution?.optJSONObject("recommended_cpus")
-        val fields = ExecutionProfile.EditableFields.map { path ->
-            val local = path.removePrefix("execution.")
-            ExecutionFieldValue(
-                path = path,
-                value = execution?.let { jsonPathGet(it, local) } ?: 0L,
-                overridden = overrides?.let { jsonPathGet(it, local) } != null,
-            )
-        }
-        return ExecutionProfile(
-            release = release,
-            hasProfile = true,
-            recommendedMainCpu = recommended?.optInt("main", 0) ?: 0,
-            recommendedConsumerCpu = recommended?.optInt("consumer", 1) ?: 1,
-            fields = fields,
-        )
+    override fun profileController(): ProfileConfigController = profileController
+
+    /* debug-ui: preferences for the hidden debug screen. */
+    override suspend fun debugSettings(): DebugSettings = DebugSettings(
+        exportEnabled = preferences.getBoolean(PrefDebugExportEnabled, true),
+        exportLocation = normalizeDebugLocation(preferences.getString(PrefDebugExportLocation, null)),
+        kernelLogEnabled = preferences.getBoolean(PrefDebugKernelLogEnabled, true),
+    )
+
+    override fun setDebugExportEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PrefDebugExportEnabled, enabled) }
     }
 
-    override suspend fun saveExecutionOverrides(
-        release: String,
-        values: Map<String, Long>,
-    ): Boolean = try {
-        val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-        var entry = findReleaseEntry(existing, release)
-        if (entry == null) {
-            entry = JSONObject().put("release", release)
-            existing.put(entry)
-        }
-        val execution = entry.optJSONObject("execution")
-            ?: JSONObject().also { entry.put("execution", it) }
-        for ((path, value) in values) {
-            jsonPathSet(execution, path.removePrefix("execution."), value)
-        }
-        offsetsFile.writeText(existing.toString(2), StandardCharsets.UTF_8)
-        true
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
-        false
+    override fun setDebugExportLocation(location: String) {
+        preferences.edit { putString(PrefDebugExportLocation, normalizeDebugLocation(location)) }
     }
 
-    override suspend fun clearExecutionOverrides(release: String): Boolean = try {
-        val existing = readOffsetsFile(offsetsFile) ?: return true
-        val entry = findReleaseEntry(existing, release) ?: return true
-        entry.remove("execution")
-        val kept = JSONArray()
-        for (index in 0 until existing.length()) {
-            val candidate = existing.optJSONObject(index) ?: continue
-            if (candidate.optString("release") != release || candidate.length() > 1) {
-                kept.put(candidate)
-            }
-        }
-        offsetsFile.writeText(kept.toString(2), StandardCharsets.UTF_8)
-        true
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
-        false
+    override fun setDebugKernelLogEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PrefDebugKernelLogEnabled, enabled) }
     }
 
-    private fun findReleaseEntry(entries: JSONArray, release: String): JSONObject? =
-        (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }
-            .firstOrNull { it.optString("release") == release }
-
-    private fun readExecutionOverride(release: String): JSONObject? =
-        (readOffsetsFile(offsetsFile) ?: return null).let { findReleaseEntry(it, release) }
-            ?.optJSONObject("execution")
-
-    private fun jsonPathGet(root: JSONObject, path: String): Long? {
-        var node: Any? = root
-        for (segment in path.split('.')) {
-            node = (node as? JSONObject)?.opt(segment) ?: return null
+    private fun normalizeDebugLocation(value: String?): String {
+        val cleaned = value.orEmpty().trim().trim('/').replace(Regex("/{2,}"), "/")
+        val safe = cleaned.takeIf { candidate ->
+            candidate.isNotEmpty() && candidate.split('/').none { it == ".." || it == "." }
         }
-        return (node as? Number)?.toLong()
+        return safe ?: DefaultDebugLocation
     }
 
-    private fun jsonPathSet(root: JSONObject, path: String, value: Long) {
-        val segments = path.split('.')
-        var node = root
-        for (index in 0 until segments.size - 1) {
-            val next = node.optJSONObject(segments[index])
-            node = next ?: JSONObject().also { node.put(segments[index], it) }
-        }
-        node.put(segments.last(), value)
-    }
+    /* Profile configuration now lives in AndroidProfileConfigController: the
+     * repository only wires it and forwards the native document. */
 
     override suspend fun exportCandidates(): List<OffsetCandidate> {
         val entries = readOffsetsFile(offsetsFile) ?: return emptyList()
         val current = System.getProperty("os.version", "")
-        return (0 until entries.length()).asSequence().mapNotNull { entries.optJSONObject(it) }
-            .map { entry: JSONObject -> entry.optString("release", "") to entry }.filter { (release, entry) ->
-                release.isNotEmpty() && !(SupportedKernels.BUILTIN.containsKey(release) && matchesBuiltin(entry))
-            }.distinctBy { it.first }.sortedWith(compareBy<Pair<String, JSONObject>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
-            .map { (release, entry) -> OffsetCandidate(release, entry.toString(2)) }.toList()
+        return entries.asSequence()
+            .mapNotNull { it.asValueMap() }
+            .map { entry -> (entry["release"] as? String).orEmpty() to entry }
+            .filter { (release, entry) ->
+                release.isNotEmpty() &&
+                        !(builtinProfiles.builtin.containsKey(release) && matchesBuiltin(entry))
+            }
+            .distinctBy { it.first }
+            .sortedWith(compareBy<Pair<String, ValueMap>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
+            .map { (release, entry) -> OffsetCandidate(release, HoconSupport.render(entry)) }
+            .toList()
     }
 
-    override suspend fun importOffsets(json: String): OffsetImportResult = mergeImported(json, overwrite = false)
+    override suspend fun importOffsets(documents: Map<String, String>): OffsetImportResult =
+        mergeImported(documents, overwrite = false)
 
-    override suspend fun confirmImport(json: String): OffsetImportResult = mergeImported(json, overwrite = true)
+    override suspend fun confirmImport(documents: Map<String, String>): OffsetImportResult =
+        mergeImported(documents, overwrite = true)
 
-    private fun mergeImported(json: String, overwrite: Boolean): OffsetImportResult {
+    private class MissingIncludesException(val files: List<String>) : Exception()
+
+    private fun mergeImported(documents: Map<String, String>, overwrite: Boolean): OffsetImportResult {
         return try {
-            val imported = parseEntries(json) ?: return OffsetImportResult.Failed("not a valid offsets.json")
-            val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-            val fresh = JSONArray()
+            val imported = parseImportDocuments(documents)
+                ?: return OffsetImportResult.Failed("not a valid profile document")
+            val existing = readOffsetsFile(offsetsFile) ?: ValueList()
+            val fresh = ValueList()
             val skipped = mutableListOf<String>()
             val differingBuiltins = mutableListOf<String>()
-            for (index in 0 until imported.length()) {
-                val entry = imported.optJSONObject(index) ?: continue
-                val release = entry.optString("release", "")
+            for (entry in imported.mapNotNull { it.asValueMap() }) {
+                val release = (entry["release"] as? String).orEmpty()
                 if (release.isEmpty()) continue
-                if (release in SupportedKernels.BUILTIN) {
+                if (release in builtinProfiles.builtin) {
                     if (matchesBuiltin(entry)) {
                         skipped += release
                     } else {
                         differingBuiltins += release
-                        fresh.put(entry)
+                        fresh.add(entry)
                     }
                 } else {
-                    fresh.put(entry)
+                    fresh.add(entry)
                 }
             }
-            if (fresh.length() == 0) return OffsetImportResult.AlreadyPresent
+            if (fresh.isEmpty()) return OffsetImportResult.AlreadyPresent
 
             val overlaps = overlappingReleases(existing, fresh)
             val replaced = (overlaps + differingBuiltins).distinct()
@@ -270,9 +229,73 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             OffsetImportResult.Imported(freshReleases(fresh))
         } catch (error: CancellationException) {
             throw error
+        } catch (error: MissingIncludesException) {
+            OffsetImportResult.MissingIncludes(error.files)
         } catch (error: Exception) {
             OffsetImportResult.Failed(error.message ?: "import failed")
         }
+    }
+
+    /**
+     * Parses every picked document. Includes resolve against the picked files
+     * first (by full name or base name), then the bundled assets; anything
+     * unresolvable is reported so the user can pick the dependency as well.
+     * Only objects carrying a `release` become entries (shared files selected
+     * by accident are skipped).
+     */
+    private fun parseImportDocuments(documents: Map<String, String>): ValueList? {
+        val byName = HashMap<String, String>()
+        documents.forEach { (name, text) ->
+            byName[name] = text
+            byName[name.substringAfterLast('/')] = text
+        }
+        val missing = linkedSetOf<String>()
+        val entries = ValueList()
+        documents.forEach { (_, text) ->
+            val expanded = expandImportIncludes(text, byName, missing, linkedSetOf())
+            when (val value = HoconSupport.parseValue(expanded)) {
+                is Map<*, *> -> value.asValueMap()
+                    ?.takeIf { it.containsKey("release") }
+                    ?.let(entries::add)
+
+                is List<*> -> value.forEach { item ->
+                    item.asValueMap()?.takeIf { it.containsKey("release") }?.let(entries::add)
+                }
+            }
+        }
+        if (missing.isNotEmpty()) throw MissingIncludesException(missing.toList())
+        return entries.takeIf { it.isNotEmpty() }
+    }
+
+    private fun expandImportIncludes(
+        text: String,
+        byName: Map<String, String>,
+        missing: MutableSet<String>,
+        visiting: MutableSet<String>,
+    ): String {
+        if (!text.contains("include ")) return text
+        val expanded = StringBuilder()
+        for (line in text.lineSequence()) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("include ")) {
+                val target = trimmed.removePrefix("include ").trim().trim('"')
+                val key = target.substringAfterLast('/')
+                val local = byName[key]
+                if (local != null) {
+                    if (visiting.add(key)) {
+                        expanded.append(expandImportIncludes(local, byName, missing, visiting))
+                        visiting.remove(key)
+                    }
+                } else {
+                    val asset = assetConfigLoader.load("$BuiltinDirectory/$target")
+                    if (asset.isBlank()) missing += target else expanded.append(asset)
+                }
+            } else {
+                expanded.append(line)
+            }
+            expanded.append('\n')
+        }
+        return expanded.toString()
     }
 
     override suspend fun parseSource(input: String, xblPath: String?, overwrite: Boolean, onLog: (String) -> Unit): ParseResult {
@@ -284,7 +307,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 val pending = pendingParsedEntries
                 if (pending != null) {
                     pendingParsedEntries = null
-                    val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
+                    val existing = readOffsetsFile(offsetsFile) ?: ValueList()
                     mergeAndSave(existing, pending, overwrite = true)
                     return ParseResult.Parsed(freshReleases(pending))
                 }
@@ -332,24 +355,23 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             onLog("extract exit code=$code")
             if (code != 0 || !parsedFile.isFile) return ParseResult.Failed(code)
             val fresh = parseEntries(parsedFile.readText()) ?: return ParseResult.Failed(code, "invalid extractor output")
-            val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-            val filtered = JSONArray()
+            val existing = readOffsetsFile(offsetsFile) ?: ValueList()
+            val filtered = ValueList()
             val skipped = mutableListOf<String>()
             val differingBuiltins = mutableListOf<String>()
-            for (index in 0 until fresh.length()) {
-                val entry = fresh.optJSONObject(index) ?: continue
-                val release = entry.optString("release", "")
-                if (release in SupportedKernels.BUILTIN) {
+            for (entry in fresh.mapNotNull { it.asValueMap() }) {
+                val release = (entry["release"] as? String).orEmpty()
+                if (release in builtinProfiles.builtin) {
                     if (matchesBuiltin(entry)) skipped += release
                     else {
                         differingBuiltins += release
-                        filtered.put(entry)
+                        filtered.add(entry)
                     }
                 } else {
-                    filtered.put(entry)
+                    filtered.add(entry)
                 }
             }
-            if (filtered.length() == 0) return ParseResult.AlreadyPresent
+            if (filtered.isEmpty()) return ParseResult.AlreadyPresent
             val replaced = if (overwrite) emptyList() else differingBuiltins.distinct()
             if (replaced.isNotEmpty()) {
                 pendingParsedEntries = filtered
@@ -369,37 +391,79 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
-        withDebugAttackLog("direct", onLog) { archivedLog ->
-            runExploitBinary(pair, "libghostlock.so", archivedLog)
-        }
+        withDebugAttackLog("direct", onLog) { archivedLog, debugDir ->
+            runExploitBinary(pair, "libghostlock.so", archivedLog, debugDir)
+        }.also { code -> recordLastRun(code, shizuku = false) }
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
-        return withDebugAttackLog("shizuku", onLog) { archivedLog ->
-            val profileJson = ProfileConfiguration.resolve(
-                appContext, offsetsFile, System.getProperty("os.version", "").orEmpty(), pair,
+        return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir ->
+            val release = System.getProperty("os.version", "").orEmpty()
+            val config = profileController.load(release, pair)
+            val profileBlob = profileController.nativeDocument(config)
+            when {
+                !config.hasProfile || profileBlob == null -> {
+                    archivedLog("error: profile is unavailable for $release")
+                    1
+                }
+
+                config.invalidPaths.isNotEmpty() -> {
+                    archivedLog(
+                        "error: profile has ${config.invalidPaths.size} invalid field(s): " +
+                            config.invalidPaths.take(6).joinToString(),
+                    )
+                    1
+                }
+
+                else -> shizukuRunner.run(pair, safeModeEnabled, profileBlob, debugDir, archivedLog)
+            }
+        }.also { code -> recordLastRun(code, shizuku = true) }
+    }
+
+    private suspend fun recordLastRun(code: Int, shizuku: Boolean) = withContext(Dispatchers.IO) {
+        runCatching {
+            File(filesDir, LastRunFileName).writeText(
+                "$code ${if (shizuku) 1 else 0} ${System.currentTimeMillis()}\n",
+                StandardCharsets.UTF_8,
             )
-            shizukuRunner.run(pair, safeModeEnabled, profileJson, archivedLog)
         }
+    }
+
+    override suspend fun lastRunW3SeccompHint(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val parts = File(filesDir, LastRunFileName)
+                .takeIf { it.isFile }
+                ?.readText()
+                ?.trim()
+                ?.split(' ')
+                ?: return@runCatching false
+            val code = parts.getOrNull(0)?.toIntOrNull() ?: return@runCatching false
+            val ranWithShizuku = parts.getOrNull(1) == "1"
+            if (code == 0 || ranWithShizuku) return@runCatching false
+            val nativeLog = File(filesDir, NativeLogFileName)
+            nativeLog.isFile && nativeLog.readText().contains(W3SeccompFailureMarker)
+        }.getOrDefault(false)
     }
 
     private suspend fun withDebugAttackLog(
         entry: String,
         onLog: (String) -> Unit,
-        run: suspend ((String) -> Unit) -> Int,
+        run: suspend ((String) -> Unit, String?) -> Int,
     ): Int {
-        if (!BuildConfig.DEBUG) return run(onLog)
-        val archive = DebugAttackLog.open(appContext, entry)
+        val settings = debugSettings()
+        if (!settings.exportEnabled) return run(onLog, null)
+        val archive = DebugAttackLog.open(appContext, entry, settings.exportLocation)
         if (archive == null) {
-            onLog("warning: cannot create Download/GhostLock debug log")
-            return run(onLog)
+            onLog("warning: cannot create ${settings.exportLocation} debug log")
+            return run(onLog, null)
         }
         val archivedLog: (String) -> Unit = { line ->
             runCatching { archive.append(line) }
             onLog(line)
         }
         return try {
-            archivedLog("debug log: Download/GhostLock/${archive.displayName}")
-            run(archivedLog)
+            archivedLog("debug log: ${archive.folderPath}/${archive.displayName}")
+            archivedLog("debug dump dir: ${archive.folderFile.absolutePath}")
+            run(archivedLog, if (settings.kernelLogEnabled) archive.folderFile.absolutePath else null)
         } finally {
             runCatching { archive.close() }
         }
@@ -414,6 +478,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         pair: CpuPair,
         binaryName: String,
         onLog: (String) -> Unit,
+        debugDir: String?,
     ): Int {
         val workDir = filesDir
         return try {
@@ -423,18 +488,20 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             // U01-S14: a per-run KernelSU log path so a previous run's markers
             // can never satisfy the handoff probe; passed to the native process.
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
-            val nativeLog = File(workDir, ".ghostlock_native.log")
+            val nativeLog = File(workDir, NativeLogFileName)
             nativeLog.writeText("")
-            val activeProfile = File(workDir, "active-profile.json")
-            activeProfile.writeText(
-                ProfileConfiguration.resolve(
-                    appContext,
-                    offsetsFile,
-                    System.getProperty("os.version", "").orEmpty(),
-                    pair,
-                ),
-                StandardCharsets.UTF_8,
-            )
+            val activeProfile = File(workDir, "active-profile.bin")
+            val release = System.getProperty("os.version", "").orEmpty()
+            val config = profileController.load(release, pair)
+            if (config.invalidPaths.isNotEmpty()) {
+                error(
+                    "profile has ${config.invalidPaths.size} invalid field(s): " +
+                        config.invalidPaths.take(6).joinToString(),
+                )
+            }
+            val profileBlob = profileController.nativeDocument(config)
+                ?: error("profile is unavailable for $release")
+            activeProfile.writeBytes(profileBlob)
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
             // tag root-script lines so they cannot be read as the native stages'
@@ -466,6 +533,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["HOME"] = workDir.absolutePath
                     environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                     if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
+                    if (!debugDir.isNullOrEmpty()) environment()["GHOSTLOCK_DEBUG_DIR"] = debugDir
                     if (pair.primary != 0 || pair.consumer != 1) {
                         environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()
@@ -505,12 +573,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun publishOffsets(candidate: OffsetCandidate): String {
         val safeRelease = candidate.release.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, "offsets-$safeRelease.json")
-            put(MediaStore.Downloads.MIME_TYPE, "application/json")
+            put(MediaStore.Downloads.DISPLAY_NAME, "offsets-$safeRelease.conf")
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
         }
         val uri = appContext.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("cannot create download entry")
         appContext.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write("[${candidate.json}]".toByteArray(StandardCharsets.UTF_8))
+            output.write(candidate.document.toByteArray(StandardCharsets.UTF_8))
         } ?: throw IOException("cannot open download entry")
         return uri.toString()
     }
@@ -523,12 +591,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private fun parseEntries(text: String): JSONArray? {
+    /**
+     * Stored documents are HOCON. The rust extractor report (legacy JSON) is
+     * read through the same parser, which is the only JSON-compatible entry
+     * besides importing a picked legacy offsets.json.
+     */
+    private fun parseEntries(text: String): ValueList? {
         if (text.isBlank()) return null
         return try {
-            when (val value = JSONTokener(text).nextValue()) {
-                is JSONArray -> value
-                is JSONObject -> JSONArray().put(value)
+            when (val value = HoconSupport.parseValue(text)) {
+                is List<*> -> value.asValueList()
+                is Map<*, *> -> ValueList().apply { value.asValueMap()?.let(::add) }
                 else -> null
             }
         } catch (_: Exception) {
@@ -536,62 +609,114 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private fun readOffsetsFile(file: File): JSONArray? = if (file.isFile) parseEntries(file.readText()) else null
+    private fun readOffsetsFile(file: File): ValueList? = if (file.isFile) parseEntries(file.readText()) else null
 
-    private fun overlappingReleases(existing: JSONArray, imported: JSONArray): List<String> {
-        val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
-        return (0 until imported.length()).mapNotNull { imported.optJSONObject(it)?.optString("release") }.filter { it in known }.distinct()
+    private fun overlappingReleases(existing: List<*>, imported: List<*>): List<String> {
+        val known = existing.mapNotNull { (it.asValueMap()?.get("release") as? String) }.toSet()
+        return imported.mapNotNull { (it.asValueMap()?.get("release") as? String) }
+            .filter { it in known }
+            .distinct()
     }
 
-    private fun mergeAndSave(existing: JSONArray, imported: JSONArray, overwrite: Boolean) {
-        val importedByRelease = (0 until imported.length()).mapNotNull { imported.optJSONObject(it) }.associateBy { it.optString("release", "") }
-        val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
-        val merged = JSONArray()
-        for (index in 0 until existing.length()) {
-            val entry = existing.optJSONObject(index) ?: continue
-            val release = entry.optString("release", "")
-            if (overwrite && release in importedByRelease) continue
-            merged.put(entry)
+    private fun mergeAndSave(existing: List<*>, imported: List<*>, overwrite: Boolean) {
+        val importedByRelease = imported.mapNotNull { it.asValueMap() }
+            .associateBy { (it["release"] as? String).orEmpty() }
+        val known = existing.mapNotNull { (it.asValueMap()?.get("release") as? String) }.toSet()
+        val merged = ValueList()
+        existing.forEach { raw ->
+            val entry = raw.asValueMap() ?: return@forEach
+            val release = (entry["release"] as? String).orEmpty()
+            if (overwrite && release in importedByRelease) return@forEach
+            merged.add(entry)
         }
-        for (index in 0 until imported.length()) {
-            val entry = imported.optJSONObject(index) ?: continue
-            if (!overwrite && entry.optString("release", "") in known) continue
-            merged.put(entry)
+        imported.forEach { raw ->
+            val entry = raw.asValueMap() ?: return@forEach
+            val release = (entry["release"] as? String).orEmpty()
+            if (!overwrite && release in known) return@forEach
+            merged.add(entry)
         }
-        offsetsFile.writeText(merged.toString(2), StandardCharsets.UTF_8)
+        offsetsFile.writeText(HoconSupport.render(merged), StandardCharsets.UTF_8)
     }
 
-    private fun freshReleases(entries: JSONArray): List<String> =
-        (0 until entries.length()).mapNotNull { entries.optJSONObject(it)?.optString("release") }.distinct()
+    private fun freshReleases(entries: List<*>): List<String> =
+        entries.mapNotNull { (it.asValueMap()?.get("release") as? String) }.distinct()
 
-    private fun matchesBuiltin(entry: JSONObject): Boolean = OffsetMatching.matchesBuiltin(toKernelOffsets(entry), SupportedKernels.BUILTIN)
+    private fun matchesBuiltin(entry: ValueMap): Boolean =
+        OffsetMatching.matchesBuiltin(toKernelOffsets(entry), builtinProfiles.builtin)
 
-    private fun toKernelOffsets(entry: JSONObject): KernelOffsets = KernelOffsets(
-        release = entry.optString("release", ""),
-        scalars = scalarFields.associateWith { if (entry.has(it) && !entry.isNull(it)) entry.optLong(it) else null },
-        symbols = objectFields(entry.optJSONObject("symbols")),
-        structFields = objectFields(entry.optJSONObject("struct_fields")),
-    )
+    private fun toKernelOffsets(entry: ValueMap): KernelOffsets {
+        /* Remote/main-era offsets are normalised before comparison. */
+        LegacyProfileConverter.convertValue(entry)
+        return KernelOffsets(
+            release = (entry["release"] as? String).orEmpty(),
+            scalars = scalarFields.associateWith { scalarValue(entry, it) },
+            symbols = namespacedFields(entry, "offset"),
+            structFields = namespacedFields(entry, "task_struct") +
+                namespacedFields(entry, "cred") +
+                namespacedFields(entry, "kernelsnitch"),
+        )
+    }
 
-    private fun objectFields(value: JSONObject?): Map<String, Long?> =
-        value?.keys()?.asSequence()?.associateWith { key -> if (value.isNull(key)) null else value.optLong(key) } ?: emptyMap()
+    /** Namespace fields, keyed as `namespace.field` to match the catalogue. */
+    private fun namespacedFields(entry: ValueMap, namespace: String): Map<String, Long?> {
+        val group = entry[namespace].asValueMap() ?: return emptyMap()
+        return group.entries.associate { (field, value) ->
+            "$namespace.$field" to (value as? Number)?.toLong()
+        }
+    }
+
+    /** Reads a numeric field, following route branches and legacy flat keys. */
+    private fun scalarValue(entry: ValueMap, field: String): Long? {
+        val candidates = when {
+            field == "compact_waiter" -> listOf(
+                "route.tcp_zerocopy.compact_waiter",
+                "fallback.route.tcp_zerocopy.compact_waiter",
+                "compact_waiter",
+            )
+
+            field == "pselect_waiter_shift" -> listOf(
+                "route.select_stack.waiter_shift",
+                "fallback.route.select_stack.waiter_shift",
+                "pselect_waiter_shift",
+            )
+
+            field.startsWith("mcast.") -> {
+                val suffix = field.removePrefix("mcast.")
+                listOf(
+                    "route.multicast_waiter.$suffix",
+                    "fallback.route.multicast_waiter.$suffix",
+                    "mcast.$suffix",
+                    "mcast_$suffix",
+                )
+            }
+
+            else -> listOf(field, field.replace('.', '_'))
+        }
+        for (candidate in candidates) {
+            nestedValue(entry, candidate)?.let { return it }
+        }
+        return null
+    }
+
+    private fun nestedValue(entry: ValueMap, path: String): Long? =
+        (entry.getValueAt(path) as? Number)?.toLong()
 
     private val scalarFields = listOf(
-        "kernel_major", "requires_shizuku", "kernel_phys_load",
-        "pselect_waiter_shift", "mcast_waiter_off", "mcast_buffer_size",
-        "mcast_task_offset", "mcast_lock_offset", "mcast_fake_lock_offset",
-        "mcast_fake_task_offset", "mcast_lock_slots_offset", "mcast_lock_slot_count",
-        "mcast_lock_slot_stride",
-        "kernelsnitch_collisions", "compact_waiter", "mm_struct_sz",
-        "cred_copy_size", "cred_usage_offset", "cred_usage_value",
-        "cred_caps_offset", "cred_caps_count", "cred_caps_value", "cred_ref_count",
-        "cred_ref0_offset", "cred_ref1_offset", "cred_ref2_offset", "cred_ref3_offset",
-        "cred_ref0_image", "cred_ref1_image", "cred_ref2_image", "cred_ref3_image",
+        "kernel_major", "recommend_shizuku", "kernel_phys_load",
+        "pselect_waiter_shift", "mcast.waiter_off", "mcast.buffer_size",
+        "mcast.task_offset", "mcast.lock_offset", "mcast.fake_lock_offset",
+        "mcast.fake_task_offset", "mcast.lock_slots_offset", "mcast.lock_slot_count",
+        "mcast.lock_slot_stride",
+        "kernelsnitch.collisions", "compact_waiter", "kernelsnitch.mm_struct_sz",
+        "cred.copy_size", "cred.usage_offset", "cred.usage_value",
+        "cred.caps_offset", "cred.caps_count", "cred.caps_value", "cred.ref_count",
+        "cred.ref0_offset", "cred.ref1_offset", "cred.ref2_offset", "cred.ref3_offset",
+        "cred.ref0_image", "cred.ref1_image", "cred.ref2_image", "cred.ref3_image",
     )
 
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
-        return version in SupportedKernels.UNAMES || importedOffsetsMatch(version)
+        return version in builtinProfiles.unames || importedOffsetsMatch(version)
     }
 
     private fun isCompactKernel(): Boolean {
@@ -607,15 +732,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun importedOffsetsMatch(version: String): Boolean {
         val entries = readOffsetsFile(offsetsFile) ?: return false
-        return (0 until entries.length()).any { entries.optJSONObject(it)?.optString("release") == version }
+        return entries.any { (it.asValueMap()?.get("release") as? String) == version }
     }
 
-    private fun importedOffsetsRequireShizuku(version: String): Boolean {
+    private fun importedOffsetsRecommendShizuku(version: String): Boolean {
         val entries = readOffsetsFile(offsetsFile) ?: return false
-        return (0 until entries.length()).any { index ->
-            entries.optJSONObject(index)?.let { entry ->
-                entry.optString("release") == version && entry.optInt("requires_shizuku") == 1
-            } == true
+        return entries.any { raw ->
+            val entry = raw.asValueMap() ?: return@any false
+            entry["release"] == version && (entry["recommend_shizuku"] as? Number)?.toInt() == 1
         }
     }
 

@@ -425,7 +425,7 @@ struct RouteOutcome final {
 | 编号 | 问题 | 回补阶段 | 完成条件 |
 |---|---|---|---|
 | CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
-| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护（生成 task 级清理已完成） | [x] `GenerateSupportedKernelsTask` 与 `generateBuildInfo` 每次重建唯一输出文件并删除同目录陈旧副本；构建前强制 `./gradlew clean` 步骤保留，覆盖 javac/打包层缓存 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护（生成 task 级清理已完成） | [x] `GenerateSupportedKernelsTask` 已移除（改为运行时 `BuiltinProfileCatalog` 读取 `kernel_profiles/index.conf`）；`generateBuildInfo` 仍每次重建唯一输出并清理陈旧副本 |
 | CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
 | CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
 | CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |

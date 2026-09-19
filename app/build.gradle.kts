@@ -22,14 +22,6 @@ val gitVersionCode = runCatching {
     1
 }
 
-val supportedKernelsSrc = layout.buildDirectory.dir("generated/source/supportedKernels")
-
-tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
-    description = "generateSupportedKernels"
-    profilesDirectory.set(layout.projectDirectory.dir("src/main/assets/kernel_profiles"))
-    generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
-}
-
 val buildInfoSrc = layout.buildDirectory.dir("generated/source/buildInfo")
 
 val generateBuildInfo = tasks.register("generateBuildInfo") {
@@ -80,7 +72,6 @@ android {
     }
     sourceSets {
         named("main") {
-            kotlin.directories.add(supportedKernelsSrc.get().asFile.absolutePath)
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
         }
     }
@@ -159,7 +150,6 @@ kotlin {
 tasks.named("preBuild") {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))
-    dependsOn(tasks.named("generateSupportedKernels"))
     dependsOn(generateBuildInfo)
 }
 
@@ -173,4 +163,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4-rc01")
     implementation("org.apache.commons:commons-compress:1.26.0")
+    implementation("com.typesafe:config:1.4.3")
+
+    testImplementation("junit:junit:4.13.2")
 }

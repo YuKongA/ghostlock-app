@@ -39,13 +39,13 @@ void log_sync(void) {
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
   return runtime_config_snapshot().tcp_zerocopy_enabled &&
-         target_profile_supports_tcp_zerocopy(&g_exploit_session.profile);
+         target_profile_route(&g_exploit_session.profile) == kRouteTcpZerocopy;
 }
 
 /* Decoupling plan: report multicast-waiter capability. Input: profile; output:
  * boolean. Future: multicast_waiter_supports(const TargetProfile *). */
 int kernel5_route_selected(void) {
-  return target_profile_supports_multicast_waiter(&g_exploit_session.profile);
+  return target_profile_route(&g_exploit_session.profile) == kRouteMulticastWaiter;
 }
 
 void read_first_line(const char *path, char *buf, size_t len) {

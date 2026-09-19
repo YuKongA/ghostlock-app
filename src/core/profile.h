@@ -6,12 +6,12 @@
 
 #include <array>
 #include <cstring>
+#include <string_view>
 
 /* PROFILE-SUGGEST-01: only kernel geometry (kernel_major, symbol and struct
- * offsets, waiter layout, credential template) is truly required. Every
- * non-core setting below is advisory: Kotlin merges shipped defaults and user
- * overrides, and the validator below fills any value a profile omitted. See
- * execution_settings_apply_suggestions() and docs/kernel_profiles/defaults*.md. */
+ * offsets, waiter layout, credential template) is truly required. Kotlin merges
+ * the shipped execution defaults and user overrides before the profile reaches
+ * native; see docs/kernel_profiles/defaults*.md. */
 struct execution_settings {
   uint32_t recommended_main_cpu, recommended_consumer_cpu;
   uint32_t heap_prepare_max_attempts, heap_prepare_timeout_ms;
@@ -32,96 +32,21 @@ struct execution_settings {
   uint32_t handoff_enforce_poll_interval_ms;
 };
 
-/* Shipped advisory suggestions (PROFILE-SUGGEST-01). Kept in sync with
- * app/src/main/assets/kernel_profiles/defaults.json; they only fill fields a
- * profile omitted or left out of range. Kernel geometry and the credential
- * template stay strictly required. */
-[[nodiscard]] inline struct execution_settings
-execution_settings_suggested(void) {
-  return {
-      .recommended_main_cpu = 0,
-      .recommended_consumer_cpu = 1,
-      .heap_prepare_max_attempts = 4,
-      .heap_prepare_timeout_ms = 240000,
-      .heap_kernelsnitch_timeout_ms = 60000,
-      .race_route_wait_ms = 1000,
-      .race_setup_settle_us = 50000,
-      .race_state_poll_interval_us = 1000,
-      .w1_attempts = 15,
-      .w1_settle_us = 100000,
-      .w1_scratch_repair_attempts = 3,
-      .w2_attempts = 15,
-      .w2_settle_us = 100000,
-      .w3_chain_rounds = 3,
-      .w3_attempts = 6,
-      .w3_settle_us = 50000,
-      .tcp_attempts = 2000,
-      .tcp_arm_sequence = 16,
-      .tcp_post_receive_hold_iterations = 20000,
-      .select_enter_delay_us = 50000,
-      .select_timeout_us = 200000,
-      .select_consumer_max_calls = 1,
-      .select_consumer_burst_calls = 1,
-      .multicast_ready_timeout_ms = 10000,
-      .multicast_post_requeue_settle_us = 200000,
-      .multicast_post_adjust_settle_us = 100000,
-      .handoff_pre_dispatch_settle_ms = 2000,
-      .handoff_module_poll_attempts = 30,
-      .handoff_module_poll_interval_ms = 100,
-      .handoff_enforce_poll_attempts = 200,
-      .handoff_enforce_poll_interval_ms = 100,
-  };
-}
 
-/* Fill zero/out-of-range advisory fields with the shipped suggestions. The CPU
- * pair is repaired as a pair so main != consumer still holds. */
-inline void execution_settings_apply_suggestions(
-        struct execution_settings *settings) {
-  if (!settings) return;
-  const struct execution_settings s = execution_settings_suggested();
-  constexpr uint32_t kMaxAdvisoryCpu = 1024; /* CPU_SETSIZE on Android */
-  if (settings->recommended_main_cpu >= kMaxAdvisoryCpu ||
-          settings->recommended_main_cpu == settings->recommended_consumer_cpu)
-    settings->recommended_main_cpu = s.recommended_main_cpu;
-  if (settings->recommended_consumer_cpu >= kMaxAdvisoryCpu ||
-          settings->recommended_consumer_cpu == settings->recommended_main_cpu)
-    settings->recommended_consumer_cpu =
-            s.recommended_consumer_cpu != settings->recommended_main_cpu
-            ? s.recommended_consumer_cpu : s.recommended_main_cpu;
-#define APPLY_ADVISORY(field) \
-  if (!settings->field) settings->field = s.field
-  APPLY_ADVISORY(heap_prepare_max_attempts);
-  APPLY_ADVISORY(heap_prepare_timeout_ms);
-  APPLY_ADVISORY(heap_kernelsnitch_timeout_ms);
-  APPLY_ADVISORY(race_route_wait_ms);
-  APPLY_ADVISORY(race_setup_settle_us);
-  APPLY_ADVISORY(race_state_poll_interval_us);
-  APPLY_ADVISORY(w1_attempts);
-  APPLY_ADVISORY(w1_settle_us);
-  APPLY_ADVISORY(w1_scratch_repair_attempts);
-  APPLY_ADVISORY(w2_attempts);
-  APPLY_ADVISORY(w2_settle_us);
-  APPLY_ADVISORY(w3_chain_rounds);
-  APPLY_ADVISORY(w3_attempts);
-  APPLY_ADVISORY(w3_settle_us);
-  APPLY_ADVISORY(tcp_attempts);
-  APPLY_ADVISORY(tcp_arm_sequence);
-  APPLY_ADVISORY(tcp_post_receive_hold_iterations);
-  APPLY_ADVISORY(select_enter_delay_us);
-  APPLY_ADVISORY(select_timeout_us);
-  APPLY_ADVISORY(select_consumer_max_calls);
-  APPLY_ADVISORY(select_consumer_burst_calls);
-  APPLY_ADVISORY(multicast_ready_timeout_ms);
-  APPLY_ADVISORY(multicast_post_requeue_settle_us);
-  APPLY_ADVISORY(multicast_post_adjust_settle_us);
-  APPLY_ADVISORY(handoff_pre_dispatch_settle_ms);
-  APPLY_ADVISORY(handoff_module_poll_attempts);
-  APPLY_ADVISORY(handoff_module_poll_interval_ms);
-  APPLY_ADVISORY(handoff_enforce_poll_attempts);
-  APPLY_ADVISORY(handoff_enforce_poll_interval_ms);
-#undef APPLY_ADVISORY
-  if (settings->tcp_arm_sequence > settings->tcp_attempts)
-    settings->tcp_arm_sequence = settings->tcp_attempts;
+/* Explicit route selection written by the profile ("route": "<name>").
+ * Geometry inference below exists only for profiles predating the field. */
+enum : uint8_t {
+  kRouteAuto = 0,
+  kRouteTcpZerocopy = 1,
+  kRouteSelectStack = 2,
+  kRouteMulticastWaiter = 3,
+};
+
+[[nodiscard]] inline uint8_t route_kind_from_string(std::string_view name) {
+  if (name == "tcp_zerocopy") return kRouteTcpZerocopy;
+  if (name == "select_stack") return kRouteSelectStack;
+  if (name == "multicast_waiter") return kRouteMulticastWaiter;
+  return kRouteAuto;
 }
 
 /* Native transport representation of one Kotlin-resolved JSON profile.
@@ -129,8 +54,11 @@ inline void execution_settings_apply_suggestions(
 struct kernel_offsets {
   const char *uname_r;
   uint8_t kernel_major;
-  uint8_t requires_shizuku;
-  uint16_t _header_pad;
+  uint8_t recommend_shizuku;
+  uint8_t route;
+  /* Declared fallback route ("fallback_to": "none"/"<route>"); kRouteAuto
+   * means none. tcp_zerocopy currently falls back to select_stack. */
+  uint8_t fallback_route;
   uint64_t kernel_phys_load;
   int pselect_waiter_shift;
   int mcast_waiter_off;
@@ -261,21 +189,32 @@ target_profile_execution(const TargetProfile *profile) {
   return values ? &values->execution : nullptr;
 }
 
+/* The effective route: the explicit field wins, otherwise fall back to the
+ * legacy geometry inference so old profiles keep behaving the same way. */
+static inline uint8_t target_profile_route(const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  if (!v) return kRouteAuto;
+  if (v->route != kRouteAuto) return v->route;
+  if (v->kernel_major == 5 && v->mcast_waiter_off > 0) {
+    return kRouteMulticastWaiter;
+  }
+  if (v->compact_waiter) return kRouteTcpZerocopy;
+  return kRouteSelectStack;
+}
+
 static inline int target_profile_supports_multicast_waiter(
     const TargetProfile *profile) {
-  const struct kernel_offsets *v = target_profile_values(profile);
-  return v && v->kernel_major == 5 && v->mcast_waiter_off > 0;
+  return target_profile_route(profile) == kRouteMulticastWaiter;
 }
 
 static inline int target_profile_supports_tcp_zerocopy(
     const TargetProfile *profile) {
-  const struct kernel_offsets *v = target_profile_values(profile);
-  return v && v->compact_waiter;
+  return target_profile_route(profile) == kRouteTcpZerocopy;
 }
 
 static inline int target_profile_supports_select_stack(
     const TargetProfile *profile) {
-  return target_profile_is_loaded(profile);
+  return target_profile_route(profile) == kRouteSelectStack;
 }
 
 static inline int target_profile_has_compact_waiter(

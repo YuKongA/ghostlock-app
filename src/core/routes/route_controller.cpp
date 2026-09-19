@@ -38,7 +38,11 @@ RouteStatus route_controller_execute(RouteController *controller,
             if (status.code == ROUTE_OK || !controller->allow_tcp_select_fallback ||
                     !route_status_allows_fallback(&status))
                 return status;
-            if (!target_profile_supports_select_stack(controller->profile))
+            /* Fallback follows the profile's explicit "fallback_to"
+             * declaration; profiles without one return the TCP failure. */
+            const struct kernel_offsets *values =
+                    target_profile_values(controller->profile);
+            if (!values || values->fallback_route != kRouteSelectStack)
                 return status;
             controller->fallback_used = 1;
             return do_pselect_fake_lock_route(request);

@@ -1,6 +1,6 @@
 # 5.x Kernel Profile Template Guide
 
-Template JSON: [kernel-5.x.template.json](kernel-5.x.template.json). This file contains every field and has no shared-field dependency.
+Template JSON: [kernel-5.x.template.conf](kernel-5.x.template.conf). This file contains every field and has no shared-field dependency.
 
 > The template is intentionally invalid JSON until every blank required value (`"field": ,`) is filled. This makes the IDE flag unfinished device adaptation immediately. Do not replace blanks with `0` merely to satisfy syntax validation.
 
@@ -12,7 +12,7 @@ Template JSON: [kernel-5.x.template.json](kernel-5.x.template.json). This file c
 <tr><th rowspan="4">Identity and route selection</th><td><code>schema_version</code></td><td><code>1</code></td><td>Defines the <code>schema_version</code> value consumed by the 5.x route.</td><td rowspan="4">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="4">This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
 <tr><td><code>release</code></td><td></td><td>Defines the <code>release</code> value consumed by the 5.x route.</td></tr>
 <tr><td><code>kernel_major</code></td><td><code>5</code></td><td>Defines the <code>kernel_major</code> value consumed by the 5.x route.</td></tr>
-<tr><td><code>requires_shizuku</code></td><td><code>1</code></td><td>Defines the <code>requires_shizuku</code> value consumed by the 5.x route.</td></tr>
+<tr><td><code>recommend_shizuku</code></td><td><code>1</code></td><td>Defines the <code>recommend_shizuku</code> value consumed by the 5.x route.</td></tr>
 <tr><th rowspan="15">Task structure offsets</th><td><code>task_prio</code></td><td></td><td>Defines the <code>task_prio</code> value consumed by the 5.x route.</td><td rowspan="15">An incorrect value can change target selection, structure bounds, or race timing, causing failure, deadlock, memory corruption, a black screen, or reboot.</td><td rowspan="15">This preserves the verified 5.x baseline but is not a stable ABI; revalidate it against the same target image.</td></tr>
 <tr><td><code>task_normal_prio</code></td><td></td><td>Defines the <code>task_normal_prio</code> value consumed by the 5.x route.</td></tr>
 <tr><td><code>task_sched_task_group</code></td><td></td><td>Defines the <code>task_sched_task_group</code> value consumed by the 5.x route.</td></tr>

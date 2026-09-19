@@ -1,5 +1,6 @@
 package com.ghostlock.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
@@ -8,8 +9,11 @@ import com.ghostlock.app.domain.model.LogTone
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
+import com.ghostlock.app.domain.model.ProfileConfig
+import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.model.ShizukuStatus
 import com.ghostlock.app.domain.repository.GhostlockRepository
+import com.ghostlock.app.domain.repository.ProfileConfigController
 import com.ghostlock.app.domain.usecase.ExportOffsetsUseCase
 import com.ghostlock.app.domain.usecase.FormatLogUseCase
 import com.ghostlock.app.domain.usecase.ImportOffsetsUseCase
@@ -21,16 +25,22 @@ import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.net.toUri
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed interface GhostlockEffect {
     data class PickDocument(val request: DocumentRequest) : GhostlockEffect
+    data object PickDebugFolder : GhostlockEffect
+    data object PickProfileExportFolder : GhostlockEffect
     data class Share(val uri: String) : GhostlockEffect
     data class Toast(val resourceId: Int) : GhostlockEffect
     data class Clipboard(val text: String) : GhostlockEffect
@@ -38,7 +48,9 @@ sealed interface GhostlockEffect {
     data object OpenShizuku : GhostlockEffect
 }
 
-enum class DocumentRequest { ImportOffsets, BootImage, XblImage }
+private const val AutoSaveDelayMillis = 600L
+
+enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage }
 
 class GhostlockViewModel(
     private val repository: GhostlockRepository,
@@ -56,6 +68,7 @@ class GhostlockViewModel(
     private val readDocumentUseCase = ReadDocumentUseCase(repository)
     private val runExploitUseCase = RunExploitUseCase(repository)
     private val formatLog = FormatLogUseCase()
+    private val profileController get() = repository.profileController()
 
     val state = mutableState.asStateFlow()
     val effects = effectChannel.receiveAsFlow()
@@ -65,92 +78,434 @@ class GhostlockViewModel(
     private var pendingBootPath: String? = null
     private var exportCandidates: List<OffsetCandidate> = emptyList()
     private var pendingConfirmation: PendingConfirmation? = null
+    private var executionSaveJob: Job? = null
+    private var profileSaveJob: Job? = null
 
     fun initialize() {
         if (initialized) return
         initialized = true
         repository.setShizukuStatusListener { refreshAccessStatus() }
-        viewModelScope.launch { refreshSnapshot() }
+        viewModelScope.launch {
+            refreshSnapshot()
+            applyRecommendedShizuku()
+            maybeSuggestShizukuForW3()
+        }
+    }
+
+    private var recommendedShizukuApplied = false
+
+    /**
+     * Kernels that recommend Shizuku start with the toggle on at every launch;
+     * a manual switch-off still applies for the rest of the session.
+     */
+    private fun applyRecommendedShizuku() {
+        if (recommendedShizukuApplied) return
+        recommendedShizukuApplied = true
+        val snapshot = kernelSnapshot ?: return
+        if (!snapshot.recommendShizuku || state.value.shizukuEnabled) return
+        toggleShizuku(true)
+    }
+
+    private var w3HintChecked = false
+
+    /**
+     * The previous run's native log survives export settings; when it failed
+     * at the W3 seccomp bypass in-process, suggest switching to Shizuku.
+     */
+    private suspend fun maybeSuggestShizukuForW3() {
+        if (w3HintChecked) return
+        w3HintChecked = true
+        val hint = runCatching { repository.lastRunW3SeccompHint() }.getOrDefault(false)
+        if (!hint || state.value.shizukuEnabled) return
+        mutableState.update {
+            it.copy(
+                dialogVisible = true,
+                dialogType = DialogType.CONFIRM,
+                dialogTitleRes = R.string.w3_shizuku_hint_title,
+                dialogMessageRes = R.string.w3_shizuku_hint_message,
+            )
+        }
     }
 
     fun refreshAccessStatus() {
         if (initialized) viewModelScope.launch { refreshSnapshot() }
     }
 
-    fun toggleAdvanced() {
-        val visible = !mutableState.value.advancedVisible
-        mutableState.update { it.copy(advancedVisible = visible) }
-        if (visible) loadExecutionProfile()
-    }
-
-    /* profile-ui: resolved execution view + sparse per-release overrides. */
-    fun loadExecutionProfile() {
+    /* profile-ui: the controller owns loading, merging and persistence. */
+    fun loadExecutionProfile(preserveEditing: Boolean = false) {
         val snapshot = kernelSnapshot ?: return
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val profile = repository.executionProfile(snapshot.kernelRelease, pair)
+            applyExecutionConfig(profileController.load(snapshot.kernelRelease, pair), preserveEditing)
+        }
+    }
+
+    private fun applyExecutionConfig(config: ProfileConfig, preserveEditing: Boolean) {
+        mutableState.update { state ->
+            state.copy(
+                executionRelease = config.release,
+                executionHasProfile = config.hasProfile,
+                executionFields = config.general,
+                executionEditing = if (preserveEditing) state.executionEditing
+                else config.general.associate { field -> field.path to field.value.toString() },
+                profileInvalidPaths = config.invalidPaths,
+                profileRoute = config.route,
+                profileFallback = config.fallbackTo,
+                activeBuiltinProfile = profileController.activeBuiltinRelease(),
+            )
+        }
+    }
+
+    /** Switches the explicit route; index 0 restores geometry inference. */
+    fun onRouteChanged(index: Int) {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        val route = ProfileConfig.Routes.getOrNull(index - 1)
+        /* Re-confirming the current value must not rewrite overrides. */
+        if (route == state.value.profileRoute) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                profileController.updateRoute(snapshot.kernelRelease, pair, route)
+            }
+            val config = result.getOrNull()
+            if (config == null) {
+                android.util.Log.e("GhostLock", "updateRoute failed", result.exceptionOrNull())
+                send(GhostlockEffect.Toast(R.string.execution_save_failed))
+                return@launch
+            }
+            applyExecutionConfig(config, preserveEditing = false)
+            applyAdvancedConfig(config, preserveEditing = false)
+        }
+    }
+
+    /** index 0 disables the fallback; the rest map to ProfileConfig.Routes. */
+    fun onFallbackChanged(index: Int) {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        val fallback = if (index <= 0) "none" else ProfileConfig.Routes.getOrNull(index - 1)
+        val current = state.value.profileFallback
+        if (fallback == current || (fallback == "none" && current == null)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                profileController.updateFallback(snapshot.kernelRelease, pair, fallback)
+            }
+            val config = result.getOrNull()
+            if (config == null) {
+                android.util.Log.e("GhostLock", "updateFallback failed", result.exceptionOrNull())
+                send(GhostlockEffect.Toast(R.string.execution_save_failed))
+                return@launch
+            }
+            applyExecutionConfig(config, preserveEditing = false)
+            applyAdvancedConfig(config, preserveEditing = false)
+        }
+    }
+
+    /** General overrides auto-save shortly after the last keystroke. */
+    fun updateExecutionField(path: String, value: String) {
+        mutableState.update {
+            it.copy(
+                executionEditing = it.executionEditing + (path to value),
+            )
+        }
+        scheduleExecutionSave()
+    }
+
+    private fun scheduleExecutionSave() {
+        executionSaveJob?.cancel()
+        executionSaveJob = viewModelScope.launch {
+            delay(AutoSaveDelayMillis.milliseconds)
+            val snapshot = kernelSnapshot ?: return@launch
+            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return@launch
+            val values = mutableState.value.executionEditing.mapNotNull { (path, text) ->
+                text.trim().toLongOrNull()?.let { value -> path to value }
+            }.toMap()
+            val ok = runCatching {
+                profileController.updateGeneral(snapshot.kernelRelease, pair, values)
+            }.onSuccess { config -> applyExecutionConfig(config, preserveEditing = true) }.isSuccess
+            if (!ok) send(GhostlockEffect.Toast(R.string.execution_save_failed))
+        }
+    }
+
+    /* advanced-ui: the merged screen loads its editors and debug prefs. */
+    fun onOpenAdvanced() {
+        mutableState.update {
+            it.copy(
+                advancedScreenVisible = true,
+                parametersVisible = false,
+                builtinScreenVisible = false,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+            )
+        }
+        loadExecutionProfile()
+        viewModelScope.launch(Dispatchers.IO) {
+            val settings = repository.debugSettings()
             mutableState.update {
                 it.copy(
-                    executionRelease = profile.release,
-                    executionHasProfile = profile.hasProfile,
-                    executionHasOverrides = profile.fields.any { field -> field.overridden },
-                    executionFields = profile.fields,
-                    executionEditing = profile.fields.associate { field -> field.path to field.value.toString() },
-                    executionRecommendedMain = profile.recommendedMainCpu,
-                    executionRecommendedConsumer = profile.recommendedConsumerCpu,
-                    executionDirty = false,
+                    debugExportEnabled = settings.exportEnabled,
+                    debugExportLocation = settings.exportLocation,
+                    debugKernelLogEnabled = settings.kernelLogEnabled,
                 )
             }
         }
     }
 
-    fun updateExecutionField(path: String, value: String) {
+    fun onCloseAdvanced() {
         mutableState.update {
             it.copy(
-                executionEditing = it.executionEditing + (path to value),
-                executionDirty = true,
+                advancedScreenVisible = false,
+                parametersVisible = false,
+                builtinScreenVisible = false,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
             )
         }
     }
 
-    fun saveExecutionOverrides() {
-        val snapshot = kernelSnapshot ?: return
-        val editing = mutableState.value.executionEditing
-        val values = editing.mapNotNull { (path, text) ->
-            text.trim().toLongOrNull()?.takeIf { value -> value >= 0 }?.let { path to it }
-        }.toMap()
-        viewModelScope.launch {
-            val ok = repository.saveExecutionOverrides(snapshot.kernelRelease, values)
-            if (ok) loadExecutionProfile()
-            send(GhostlockEffect.Toast(if (ok) R.string.execution_saved else R.string.execution_save_failed))
+    fun onOpenParameters() {
+        mutableState.update {
+            it.copy(
+                parametersVisible = true,
+                builtinScreenVisible = false,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+            )
+        }
+        loadExecutionProfile()
+    }
+
+    fun onCloseParameters() {
+        mutableState.update {
+            it.copy(
+                parametersVisible = false,
+                builtinScreenVisible = false,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+            )
         }
     }
 
-    fun resetExecutionOverrides() {
+    fun onShowAbout() {
+        mutableState.update { it.copy(aboutVisible = true) }
+    }
+
+    fun onCloseAbout() {
+        mutableState.update { it.copy(aboutVisible = false) }
+    }
+
+    fun onDebugExportChanged(enabled: Boolean) {
+        repository.setDebugExportEnabled(enabled)
+        mutableState.update { it.copy(debugExportEnabled = enabled) }
+    }
+
+    fun onDebugExportLocationPick() = send(GhostlockEffect.PickDebugFolder)
+
+    fun onDebugExportLocationPicked(location: String?) {
+        if (location.isNullOrBlank()) {
+            send(GhostlockEffect.Toast(R.string.debug_export_location_unsupported))
+            return
+        }
+        repository.setDebugExportLocation(location)
+        mutableState.update { it.copy(debugExportLocation = location) }
+    }
+
+    fun onDebugKernelLogChanged(enabled: Boolean) {
+        repository.setDebugKernelLogEnabled(enabled)
+        mutableState.update { it.copy(debugKernelLogEnabled = enabled) }
+    }
+
+    /** Copies the merged profile (HOCON) into a folder the user picks. */
+    fun onExportProfile() = send(GhostlockEffect.PickProfileExportFolder)
+
+    fun onExportProfileFolderPicked(folderUri: String?) {
+        if (folderUri.isNullOrBlank()) return
         val snapshot = kernelSnapshot ?: return
-        viewModelScope.launch {
-            val ok = repository.clearExecutionOverrides(snapshot.kernelRelease)
-            if (ok) loadExecutionProfile()
-            send(GhostlockEffect.Toast(if (ok) R.string.execution_reset_done else R.string.execution_save_failed))
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = profileController.export(snapshot.kernelRelease, pair, folderUri)
+            send(
+                GhostlockEffect.Toast(
+                    if (ok) R.string.override_export_done else R.string.export_failed,
+                ),
+            )
         }
     }
 
-    fun applyRecommendedCores() {
+    /** Drops every general and advanced override back to the resolved defaults. */
+    fun onResetParameters() {
         val snapshot = kernelSnapshot ?: return
-        val state = mutableState.value
-        val index = snapshot.cpuPairs.indexOfFirst {
-            it.primary == state.executionRecommendedMain &&
-                it.consumer == state.executionRecommendedConsumer
-        }
-        viewModelScope.launch {
-            if (index >= 0) {
-                selectCpuPair(index)
-                send(GhostlockEffect.Toast(R.string.execution_cores_applied))
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = runCatching {
+                profileController.reset(snapshot.kernelRelease, pair)
+            }.getOrNull()
+            if (config == null) {
+                send(GhostlockEffect.Toast(R.string.execution_save_failed))
             } else {
-                send(GhostlockEffect.Toast(R.string.execution_cores_unavailable))
+                applyExecutionConfig(config, preserveEditing = false)
+                applyAdvancedConfig(config, preserveEditing = false)
+                send(GhostlockEffect.Toast(R.string.override_reset_done))
             }
         }
     }
+
+    /** Opens the builtin picker; overrides stay keyed to the device kernel. */
+    fun onOpenBuiltinProfiles() {
+        val snapshot = kernelSnapshot ?: return
+        mutableState.update { it.copy(builtinScreenVisible = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val releases = runCatching { profileController.builtinReleases() }
+                .getOrDefault(emptyList())
+            val templates = releases.filter {
+                it.endsWith(ProfileConfigController.TemplateSuffix)
+            }
+            val kernels = releases.filterNot {
+                it.endsWith(ProfileConfigController.TemplateSuffix)
+            }
+            if (templates.isEmpty() && kernels.isEmpty()) {
+                send(GhostlockEffect.Toast(R.string.load_builtin_failed))
+                return@launch
+            }
+            mutableState.update {
+                it.copy(
+                    builtinTemplates = sortByKernelSimilarity(
+                        snapshot.kernelRelease, templates,
+                    ),
+                    builtinProfiles = sortByKernelSimilarity(
+                        snapshot.kernelRelease, kernels,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun onCloseBuiltinProfiles() {
+        mutableState.update { it.copy(builtinScreenVisible = false) }
+    }
+
+    fun onSelectBuiltinProfile(release: String?) {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = runCatching {
+                profileController.selectBuiltin(release, snapshot.kernelRelease, pair)
+            }.getOrNull()
+            if (config == null) {
+                send(GhostlockEffect.Toast(R.string.load_builtin_failed))
+                return@launch
+            }
+            applyExecutionConfig(config, preserveEditing = false)
+            applyAdvancedConfig(config, preserveEditing = false)
+            send(GhostlockEffect.Toast(R.string.load_builtin_done))
+        }
+    }
+
+    /** Orders releases by absolute major/minor/fix/android distance to device. */
+    private fun sortByKernelSimilarity(deviceRelease: String, releases: List<String>): List<String> {
+        val device = kernelVersionKey(deviceRelease)
+        return releases.sortedWith(Comparator { a, b ->
+            compareIntLists(
+                similarityKey(device, kernelVersionKey(a)),
+                similarityKey(device, kernelVersionKey(b)),
+            )
+        })
+    }
+
+    private fun kernelVersionKey(release: String): List<Int> {
+        val version = release.substringBefore('-').split('.')
+            .mapNotNull { it.toIntOrNull() }
+        val android = Regex("-android(\\d+)").find(release)
+            ?.groupValues?.get(1)?.toIntOrNull()
+        return if (android == null) version else version + android
+    }
+
+    private fun similarityKey(device: List<Int>, candidate: List<Int>): List<Int> =
+        (0 until maxOf(device.size, candidate.size)).map { index ->
+            kotlin.math.abs((device.getOrNull(index) ?: 0) - (candidate.getOrNull(index) ?: 0))
+        }
+
+    private fun compareIntLists(a: List<Int>, b: List<Int>): Int {
+        for (index in 0 until maxOf(a.size, b.size)) {
+            val result = (a.getOrNull(index) ?: 0).compareTo(b.getOrNull(index) ?: 0)
+            if (result != 0) return result
+        }
+        return 0
+    }
+
+    fun onOpenProfileOverrides() {
+        mutableState.update {
+            it.copy(profileOverrideVisible = true, advancedOverrideVisible = false)
+        }
+        loadExecutionProfile()
+    }
+
+    fun onCloseProfileOverrides() {
+        mutableState.update {
+            it.copy(profileOverrideVisible = false, advancedOverrideVisible = false)
+        }
+    }
+
+    fun onOpenAdvancedOverrides() {
+        mutableState.update { it.copy(advancedOverrideVisible = true) }
+        loadProfileOverrides()
+    }
+
+    fun onCloseAdvancedOverrides() {
+        mutableState.update { it.copy(advancedOverrideVisible = false) }
+    }
+
+    fun onProfileOverrideChanged(path: String, value: String) {
+        mutableState.update {
+            it.copy(
+                profileOverrideEditing = it.profileOverrideEditing + (path to value),
+            )
+        }
+        scheduleProfileSave()
+    }
+
+    private fun scheduleProfileSave() {
+        profileSaveJob?.cancel()
+        profileSaveJob = viewModelScope.launch {
+            delay(AutoSaveDelayMillis.milliseconds)
+            val snapshot = kernelSnapshot ?: return@launch
+            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return@launch
+            val values = mutableState.value.profileOverrideEditing.mapNotNull { (path, text) ->
+                text.trim().toLongOrNull()?.let { value -> path to value }
+            }.toMap()
+            val ok = runCatching {
+                profileController.updateAdvanced(snapshot.kernelRelease, pair, values)
+            }.onSuccess { config -> applyAdvancedConfig(config, preserveEditing = true) }.isSuccess
+            if (!ok) send(GhostlockEffect.Toast(R.string.execution_save_failed))
+        }
+    }
+
+    private fun loadProfileOverrides(preserveEditing: Boolean = false) {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            applyAdvancedConfig(profileController.load(snapshot.kernelRelease, pair), preserveEditing)
+        }
+    }
+
+    private fun applyAdvancedConfig(config: ProfileConfig, preserveEditing: Boolean) {
+        mutableState.update { state ->
+            state.copy(
+                profileOverrideRelease = config.release,
+                profileOverrideRoots = config.roots,
+                profileOverrideEditing = if (preserveEditing) state.profileOverrideEditing
+                else flattenLeaves(config.roots).associate { field ->
+                    field.path to (field.value?.toString() ?: "")
+                },
+                profileInvalidPaths = config.invalidPaths,
+                profileRoute = config.route,
+                profileFallback = config.fallbackTo,
+                activeBuiltinProfile = profileController.activeBuiltinRelease(),
+            )
+        }
+    }
+
+    private fun flattenLeaves(nodes: List<ProfileFieldNode>): List<ProfileFieldNode> =
+        nodes.flatMap { node -> if (node.isGroup) flattenLeaves(node.children) else listOf(node) }
 
     fun selectCpuPair(index: Int) {
         val snapshot = kernelSnapshot ?: return
@@ -168,12 +523,27 @@ class GhostlockViewModel(
     fun toggleShizuku(enabled: Boolean) {
         repository.setShizukuEnabled(enabled)
         mutableState.update { it.copy(shizukuEnabled = enabled) }
+        if (!enabled && kernelSnapshot?.recommendShizuku == true) {
+            send(GhostlockEffect.Toast(R.string.shizuku_recommended_hint))
+        }
         // The grant dialog lands in another app, so the status is re-read and
         // onResume() refreshes it again when the dialog closes.
         viewModelScope.launch { refreshSnapshot() }
     }
 
     fun onRun() = runExploit()
+
+    /** Explains why the run button is greyed out. */
+    fun onProfileInvalid() {
+        val state = state.value
+        val messageRes = when {
+            !state.executionHasProfile -> R.string.run_blocked_no_profile
+            state.shizukuEnabled && state.shizukuStatus != ShizukuStatus.READY ->
+                R.string.run_blocked_shizuku
+            else -> R.string.profile_invalid
+        }
+        send(GhostlockEffect.Toast(messageRes))
+    }
 
     fun onStatusClick() {
         val snapshot = kernelSnapshot ?: return
@@ -231,7 +601,11 @@ class GhostlockViewModel(
         send(GhostlockEffect.Toast(R.string.copied))
     }
 
-    fun importOffsets() = send(GhostlockEffect.PickDocument(DocumentRequest.ImportOffsets))
+    fun importOffsetsHocon() =
+        send(GhostlockEffect.PickDocument(DocumentRequest.ImportOffsetsHocon))
+
+    fun importOffsetsJson() =
+        send(GhostlockEffect.PickDocument(DocumentRequest.ImportOffsetsJson))
 
     fun parseOffsets() {
         exportCandidates = emptyList()
@@ -274,7 +648,7 @@ class GhostlockViewModel(
                         dialogCurrentItemIndex = exportCandidates.indexOfFirst { offsetCandidate ->
                             offsetCandidate.release == kernelSnapshot?.kernelRelease
                         },
-                    )
+                            )
                 }
             }
         }
@@ -282,9 +656,20 @@ class GhostlockViewModel(
 
     fun onDocumentResult(request: DocumentRequest, uri: String) {
         when (request) {
-            DocumentRequest.ImportOffsets -> importDocument(uri)
             DocumentRequest.BootImage -> stageBoot(uri)
             DocumentRequest.XblImage -> stageXbl(uri)
+            DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson -> Unit
+        }
+    }
+
+    /** Multi-picked documents (a profile plus any include dependencies). */
+    fun onDocumentsResult(request: DocumentRequest, uris: List<String>) {
+        when (request) {
+            DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson ->
+                importDocuments(uris)
+
+            DocumentRequest.BootImage -> uris.firstOrNull()?.let(::stageBoot)
+            DocumentRequest.XblImage -> uris.firstOrNull()?.let(::stageXbl)
         }
     }
 
@@ -309,6 +694,7 @@ class GhostlockViewModel(
         dismissDialog(clearConfirmation = false)
         when (dialogType) {
             DialogType.INPUT -> parseUrl(value)
+            DialogType.CONFIRM -> toggleShizuku(true)
             DialogType.NONE, DialogType.LIST -> Unit
         }
     }
@@ -330,6 +716,12 @@ class GhostlockViewModel(
     private suspend fun refreshSnapshot() {
         val snapshot = withContext(Dispatchers.IO) { loadKernelSnapshot() }
         val canExport = withContext(Dispatchers.IO) { exportOffsetsUseCase().isNotEmpty() }
+        /* Validate the resolved profile here so the run button can grey out. */
+        val loaded = withContext(Dispatchers.IO) {
+            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair)
+                ?: return@withContext null
+            runCatching { profileController.load(snapshot.kernelRelease, pair) }.getOrNull()
+        }
         kernelSnapshot = snapshot
         mutableState.update {
             it.copy(
@@ -340,20 +732,26 @@ class GhostlockViewModel(
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
-                requiresShizuku = snapshot.requiresShizuku,
                 shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
                 exportVisible = canExport,
+                profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
+                executionHasProfile = loaded?.hasProfile ?: false,
             )
         }
     }
 
-    private fun importDocument(uri: String) {
-        if (!beginOperation()) return
+    private fun importDocuments(uris: List<String>) {
+        if (uris.isEmpty() || !beginOperation()) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val json = readDocumentUseCase(uri)
-                handleImportResult(importOffsetsUseCase(json), json)
+                val documents = linkedMapOf<String, String>()
+                uris.forEach { uri ->
+                    val name = uri.toUri().lastPathSegment?.let(Uri::decode)
+                        ?: uri.substringAfterLast('/')
+                    documents[name] = readDocumentUseCase(uri)
+                }
+                handleImportResult(importOffsetsUseCase(documents), documents)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -366,24 +764,40 @@ class GhostlockViewModel(
         }
     }
 
-    private suspend fun handleImportResult(result: OffsetImportResult, json: String) {
+    private suspend fun handleImportResult(
+        result: OffsetImportResult,
+        documents: Map<String, String>,
+    ) {
         when (result) {
             is OffsetImportResult.RequiresOverwrite -> {
-                pendingConfirmation = PendingConfirmation.Import(json)
+                pendingConfirmation = PendingConfirmation.Import(documents)
                 showOverwriteDialog(result.releases)
             }
 
             is OffsetImportResult.Imported -> {
                 refreshSnapshot()
-                appendLog("offsets.json imported: ${result.releases.joinToString()}")
+                appendLog("profile imported: ${result.releases.joinToString()}")
                 appendLog("result: offsets imported successfully")
-                send(GhostlockEffect.Toast(R.string.import_success))
+                val deviceRelease = state.value.kernelRelease
+                val matchesDevice = deviceRelease.isEmpty() ||
+                    result.releases.any { it == deviceRelease }
+                send(
+                    GhostlockEffect.Toast(
+                        if (matchesDevice) R.string.import_success else R.string.import_no_match,
+                    ),
+                )
             }
 
             OffsetImportResult.AlreadyPresent -> {
                 appendLog("result: offsets already present")
                 send(GhostlockEffect.Toast(R.string.offsets_already_exist))
             }
+            is OffsetImportResult.MissingIncludes -> {
+                appendLog("import offsets missing includes: ${result.files.joinToString()}")
+                appendLog("result: import failed")
+                send(GhostlockEffect.Toast(R.string.import_missing_includes))
+            }
+
             is OffsetImportResult.Failed -> {
                 appendLog("import offsets failed: ${result.reason}")
                 appendLog("result: import failed")
@@ -460,7 +874,7 @@ class GhostlockViewModel(
 
                 is ParseResult.Parsed -> {
                     refreshSnapshot()
-                    appendLog("offsets.json written: ${result.releases.joinToString()}")
+                    appendLog("offsets exported: ${result.releases.joinToString()}")
                     appendLog("result: offsets parsed successfully")
                     send(GhostlockEffect.Toast(R.string.parse_success))
                 }
@@ -507,7 +921,10 @@ class GhostlockViewModel(
                 if (!beginOperation()) return
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
-                        handleImportResult(importOffsetsUseCase.overwrite(confirmation.json), confirmation.json)
+                        handleImportResult(
+                            importOffsetsUseCase.overwrite(confirmation.documents),
+                            confirmation.documents,
+                        )
                     } finally {
                         endOperation()
                     }
@@ -524,7 +941,7 @@ class GhostlockViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val uri = publishOffsetsUseCase(candidate)
-                appendLog("exported offsets: offsets-${candidate.release}.json")
+                appendLog("exported offsets: offsets-${candidate.release}.conf")
                 send(GhostlockEffect.Share(uri))
             } catch (error: CancellationException) {
                 throw error
@@ -622,7 +1039,7 @@ class GhostlockViewModel(
     }
 
     private sealed interface PendingConfirmation {
-        data class Import(val json: String) : PendingConfirmation
+        data class Import(val documents: Map<String, String>) : PendingConfirmation
         data class Parse(val input: String, val xblPath: String?) : PendingConfirmation
     }
 }

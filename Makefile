@@ -33,6 +33,7 @@ CXX_SRCS := \
   src/core/memory/payload_builder.cpp \
   src/core/session/runtime_config.cpp \
   src/core/offsets_json.cpp \
+  src/core/profile_binary.cpp \
   src/core/util.cpp \
   src/core/routes/route_operations.cpp \
   src/core/session/exploit_session.cpp \
@@ -99,8 +100,8 @@ NATIVE_HOST_TESTS := \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
-  offsets_json_test futex_hash_test number_parse_test runtime_paths_test \
-  handoff_probe_test victim_context_test
+  offsets_json_test profile_binary_test futex_hash_test number_parse_test \
+  runtime_paths_test handoff_probe_test victim_context_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -148,6 +149,9 @@ $(HOST_BUILD_DIR)/profile_test: src/core/tests/profile_test.cpp src/core/profile
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core $< -o $@
 
+$(HOST_BUILD_DIR)/profile_binary_test: src/core/tests/profile_binary_test.cpp src/core/profile_binary.cpp src/core/profile_binary.h src/core/profile.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/profile_binary_test.cpp src/core/profile_binary.cpp -o $@
+
 $(HOST_BUILD_DIR)/payload_builder_test: src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp src/core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/payload_builder_test.cpp src/core/memory/payload_builder.cpp -o $@
@@ -182,7 +186,7 @@ $(HOST_BUILD_DIR)/multicast_waiter_route_test: src/core/tests/multicast_waiter_r
 
 $(HOST_BUILD_DIR)/offsets_json_test: src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc/core src/core/tests/offsets_json_test.cpp src/core/offsets_json.cpp src/core/profile_binary.cpp src/core/memory/address_space.cpp src/core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/futex_hash_test: src/core/tests/futex_hash_test.cpp src/core/kernelsnitch/futex_hash.h
 	@mkdir -p $(HOST_BUILD_DIR)

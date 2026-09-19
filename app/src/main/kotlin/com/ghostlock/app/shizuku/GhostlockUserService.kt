@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Process
 import androidx.annotation.Keep
 import com.ghostlock.app.BuildConfig
-import org.json.JSONObject
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,7 +16,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         primaryCpu: Int,
         consumerCpu: Int,
         safeMode: Boolean,
-        profileJson: String,
+        profileBlob: ByteArray,
+        debugDir: String?,
         callback: IGhostlockCallback,
     ) {
         if (!running.compareAndSet(false, true)) {
@@ -35,14 +35,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     "Shizuku UserService is still seccomp-filtered"
                 }
                 val release = System.getProperty("os.version", "").orEmpty()
-                val resolvedProfile = JSONObject(profileJson)
-                require(resolvedProfile.optString("release") == release) {
-                    "profile release mismatch: ${resolvedProfile.optString("release")}"
-                }
-                // PROFILE-SUGGEST-01: requires_shizuku is a suggestion.
-                // Reaching this shell-side service means the app already chose
-                // the Shizuku path, so the flag is logged, never a gate.
-                if (resolvedProfile.optInt("requires_shizuku") != 1) {
+                require(profileBlob.size >= 12) { "profile blob is too short" }
+                // PROFILE-SUGGEST-01: recommend_shizuku is a suggestion; the
+                // blob's header carries it, and the app already chose the
+                // Shizuku path, so it is logged, never a gate.
+                if (profileBlob[8].toInt() != 1) {
                     callback.onLog("[*] kernel does not require Shizuku; running on user request")
                 }
 
@@ -59,8 +56,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
-                val activeProfile = File(workDir, "active-profile.json").apply {
-                    writeText(profileJson)
+                val activeProfile = File(workDir, "active-profile.bin").apply {
+                    writeBytes(profileBlob)
                     setReadable(false, false)
                     setWritable(false, false)
                     setReadable(true, true)
@@ -78,6 +75,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         environment()["HOME"] = workDir.absolutePath
                         environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                         if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
+                        if (!debugDir.isNullOrEmpty()) environment()["GHOSTLOCK_DEBUG_DIR"] = debugDir
                         environment()["GHOSTLOCK_CORE"] = primaryCpu.toString()
                         environment()["GHOSTLOCK_CONSUMER_CORE"] = consumerCpu.toString()
                         if (safeMode) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"

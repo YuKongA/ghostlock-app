@@ -1,6 +1,6 @@
 # 5.x 内核 Profile 模板说明
 
-模板 JSON：[kernel-5.x.template.json](kernel-5.x.template.json)。本文包含全部字段，不依赖共有字段说明。
+模板 JSON：[kernel-5.x.template.conf](kernel-5.x.template.conf)。本文包含全部字段，不依赖共有字段说明。
 
 > 模板在所有必填空值（`"字段": ,`）填写完成前会刻意保持为非法 JSON，使 IDE 立即标出尚未完成的设备适配。不要为了通过语法检查而把空值随意改成 `0`。
 
@@ -12,7 +12,7 @@
 <tr><th rowspan="4">身份与路线选择</th><td><code>schema_version</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>schema_version</code> 配置值。</td><td rowspan="4">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="4">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>release</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>release</code> 配置值。</td></tr>
 <tr><td><code>kernel_major</code></td><td><code>5</code></td><td>定义 5.x 攻击路线消费的 <code>kernel_major</code> 配置值。</td></tr>
-<tr><td><code>requires_shizuku</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>requires_shizuku</code> 配置值。</td></tr>
+<tr><td><code>recommend_shizuku</code></td><td><code>1</code></td><td>定义 5.x 攻击路线消费的 <code>recommend_shizuku</code> 配置值。</td></tr>
 <tr><th rowspan="15">task_struct 结构偏移</th><td><code>task_prio</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_prio</code> 配置值。</td><td rowspan="15">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="15">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>task_normal_prio</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_normal_prio</code> 配置值。</td></tr>
 <tr><td><code>task_sched_task_group</code></td><td></td><td>定义 5.x 攻击路线消费的 <code>task_sched_task_group</code> 配置值。</td></tr>
