@@ -1,28 +1,27 @@
 package com.ghostlock.app.boot
 
 import android.content.Context
-import android.os.SystemClock
 import com.ghostlock.app.data.BootAutoRootPreferences
 
 object BootRunCoordinator {
     private var scheduledThisProcess = false
 
-    fun scheduleAfterUnlock(context: Context, source: String) {
+    fun scheduleAfterUnlock(context: Context, unusedSource: String = "") {
         val app = context.applicationContext
         val prefs = BootAutoRootPreferences(app)
         if (!prefs.autoRunAtBoot) return
         if (ExploitRunLock.isHeld()) {
-            prefs.recordBootSkip("run already in progress ($source)")
+            prefs.recordBootSkipRunInProgress()
             return
         }
         synchronized(this) {
             if (scheduledThisProcess) {
-                prefs.recordBootSkip("already scheduled ($source)")
+                prefs.recordBootSkipAlreadyScheduled()
                 return
             }
             scheduledThisProcess = true
         }
-        prefs.recordBootTrigger(source, SystemClock.elapsedRealtime())
+        prefs.recordBootScheduled()
         try {
             BootAutoRootService.start(app)
         } catch (error: Throwable) {

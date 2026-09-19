@@ -65,14 +65,7 @@ class BootAutoRootService : Service() {
                 result = BootRunResult.StoppedSafely(detail)
             } finally {
                 val prefs = BootAutoRootPreferences(this@BootAutoRootService)
-                prefs.recordBootFinished(
-                    when (result) {
-                        BootRunResult.Success -> "Finished: run completed"
-                        BootRunResult.FailedNotRoot -> "Finished: not rooted"
-                        is BootRunResult.StoppedSafely -> "Finished: stopped safely"
-                        is BootRunResult.Skipped -> "Finished: skipped (${result.reason})"
-                    },
-                )
+                prefs.recordBootFinished(result)
                 try {
                     BootAutoRootNotifications.showResult(this@BootAutoRootService, result)
                 } catch (_: Throwable) {

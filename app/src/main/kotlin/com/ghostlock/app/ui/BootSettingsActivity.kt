@@ -98,9 +98,7 @@ class BootSettingsActivity : ComponentActivity() {
     }
 
     private fun refreshLastBootStatus() {
-        lastBootStatusState.value = bootPrefs.lastBootStatus.ifBlank {
-            getString(R.string.boot_last_status_empty)
-        }
+        lastBootStatusState.value = bootPrefs.formatLastBootStatus(this)
     }
 
     private fun onAutoRunChanged(enabled: Boolean) {
