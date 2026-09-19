@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
             }
 
             GhostlockEffect.ManualRunNotificationStart ->
-                ManualRunNotifications.showProgress(this, getString(R.string.manual_run_notification_running))
+                ManualRunNotifications.showProgress(this, getString(R.string.session_running))
 
             is GhostlockEffect.ManualRunNotificationProgress ->
                 ManualRunNotifications.showProgress(this, effect.line)

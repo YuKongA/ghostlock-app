@@ -8,13 +8,10 @@ import com.ghostlock.app.data.BootAutoRootPreferences
 class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         try {
-            val action = intent?.action ?: return
-            val prefs = BootAutoRootPreferences(context)
-            if (!prefs.shouldHandleBootAction(action)) return
-            val beforeUnlock = action == Intent.ACTION_LOCKED_BOOT_COMPLETED
-            BootAutoRootService.start(context.applicationContext, beforeUnlock)
+            if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
+            if (!BootAutoRootPreferences(context).shouldHandleBootAction(intent.action)) return
+            BootAutoRootService.start(context.applicationContext)
         } catch (_: Throwable) {
-            // Never crash the system broadcast path.
         }
     }
 }

@@ -78,14 +78,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     private fun persistCpuPair(value: String) {
-        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
+        storageContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
             putString("cpu_pair", value)
         }
-        appContext.createDeviceProtectedStorageContext()
-            .getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .edit {
-                putString("cpu_pair", value)
-            }
     }
 
     override fun setSafeModeEnabled(enabled: Boolean) {

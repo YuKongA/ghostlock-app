@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowInsetsController
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -78,21 +77,12 @@ class BootSettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setupSystemBars()
         bootPrefs = BootAutoRootPreferences(this)
-        bootPrefs.syncRuntimeFromApp()
         setContent {
             BootSettingsScreen(
                 initialAutoRun = bootPrefs.autoRunAtBoot,
-                initialRunBeforeUnlock = bootPrefs.runBeforeUnlock,
                 initialMaxAttempts = bootPrefs.maxAttempts,
                 onAutoRunChanged = ::onAutoRunChanged,
-                onRunBeforeUnlockChanged = { enabled ->
-                    bootPrefs.runBeforeUnlock = enabled
-                    bootPrefs.syncRuntimeFromApp()
-                },
-                onMaxAttemptsChanged = {
-                    bootPrefs.maxAttempts = it
-                    bootPrefs.syncRuntimeFromApp()
-                },
+                onMaxAttemptsChanged = { bootPrefs.maxAttempts = it },
                 onBack = ::finish,
             )
         }
@@ -140,17 +130,14 @@ class BootSettingsActivity : ComponentActivity() {
 @Composable
 private fun BootSettingsScreen(
     initialAutoRun: Boolean,
-    initialRunBeforeUnlock: Boolean,
     initialMaxAttempts: Int,
     onAutoRunChanged: (Boolean) -> Unit,
-    onRunBeforeUnlockChanged: (Boolean) -> Unit,
     onMaxAttemptsChanged: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val prefs = BootAutoRootPreferences(context)
     var autoRun by rememberSaveable { mutableStateOf(initialAutoRun) }
-    var runBeforeUnlock by rememberSaveable { mutableStateOf(initialRunBeforeUnlock) }
     var maxAttempts by rememberSaveable {
         mutableIntStateOf(
             initialMaxAttempts.coerceIn(BootAutoRootPreferences.MIN_ATTEMPTS, BootAutoRootPreferences.MAX_ATTEMPTS),
@@ -211,39 +198,11 @@ private fun BootSettingsScreen(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
-                    BootInfoNoteCard(
+                        BootInfoNoteCard(
                             modifier = Modifier.fillMaxWidth(),
                             titleRes = R.string.boot_permissions_note_title,
                             bodyRes = R.string.boot_permissions_note_body,
                         )
-                    }
-                }
-                item(key = "before_unlock") {
-                    AnimatedVisibility(
-                        visible = autoRun,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
-                    ) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            SwitchPreference(
-                                checked = runBeforeUnlock,
-                                onCheckedChange = { enabled ->
-                                    runBeforeUnlock = enabled
-                                    onRunBeforeUnlockChanged(enabled)
-                                },
-                                title = stringResource(R.string.boot_run_before_unlock_label),
-                                summary = stringResource(R.string.boot_run_before_unlock_summary),
-                            )
-                        }
-                    }
-                }
-                item(key = "before_unlock_note") {
-                    AnimatedVisibility(
-                        visible = autoRun && runBeforeUnlock,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
-                    ) {
-                        BootBeforeUnlockNoteCard(modifier = Modifier.fillMaxWidth())
                     }
                 }
                 item(key = "max_attempts") {
@@ -296,13 +255,4 @@ internal fun BootInfoNoteCard(
             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.68f),
         )
     }
-}
-
-@Composable
-private fun BootBeforeUnlockNoteCard(modifier: Modifier = Modifier) {
-    BootInfoNoteCard(
-        modifier = modifier,
-        titleRes = R.string.boot_before_unlock_note_title,
-        bodyRes = R.string.boot_before_unlock_note_body,
-    )
 }

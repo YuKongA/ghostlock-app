@@ -33,9 +33,6 @@ object BootAutoRootNotifications {
             ).apply {
                 description = context.getString(R.string.boot_auto_root_channel_desc)
                 setShowBadge(false)
-                if (prefs.notifyProgressEnabled) {
-                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                }
             },
         )
         manager.createNotificationChannel(
@@ -45,32 +42,26 @@ object BootAutoRootNotifications {
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = context.getString(R.string.boot_auto_root_result_channel_desc)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             },
         )
     }
 
-    fun buildProgress(context: Context, text: String): Notification {
+    fun buildProgress(context: Context, line: String): Notification {
         val prefs = BootAutoRootPreferences(context)
-        val safeText = when {
-            !prefs.notifyProgressEnabled -> context.getString(R.string.boot_auto_root_running_minimal)
-            text.isBlank() -> context.getString(R.string.boot_auto_root_running)
-            else -> text
+        val title = context.getString(R.string.session_running)
+        val body = when {
+            !prefs.notifyProgressEnabled -> title
+            !prefs.notifyProgressDetailed -> title
+            line.isBlank() -> title
+            else -> line.trim().take(100)
         }
         return NotificationCompat.Builder(context, CHANNEL_PROGRESS_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(context.getString(R.string.boot_auto_root_notification_title))
-            .setContentText(safeText)
+            .setContentTitle(title)
+            .setContentText(body)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(!prefs.notifyProgressEnabled)
-            .setVisibility(
-                if (prefs.notifyProgressEnabled) {
-                    NotificationCompat.VISIBILITY_PUBLIC
-                } else {
-                    NotificationCompat.VISIBILITY_SECRET
-                },
-            )
             .build()
     }
 
@@ -81,7 +72,7 @@ object BootAutoRootNotifications {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannels(context)
         val (titleRes, bodyRes, detail) = when (result) {
-            BootRunResult.Success -> Triple(R.string.boot_result_success_title, R.string.boot_result_success_body, null)
+            BootRunResult.Success -> Triple(R.string.run_completed, R.string.run_completed_summary, null)
             BootRunResult.FailedNotRoot -> Triple(R.string.boot_result_not_root_title, R.string.boot_result_not_root_body, null)
             is BootRunResult.StoppedSafely -> Triple(
                 R.string.boot_result_safe_stop_title,
@@ -122,7 +113,6 @@ object BootAutoRootNotifications {
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
         manager.notify(NOTIFICATION_RESULT_ID, notification)
     }

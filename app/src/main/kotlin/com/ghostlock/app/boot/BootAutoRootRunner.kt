@@ -8,16 +8,14 @@ import kotlinx.coroutines.delay
 
 object BootAutoRootRunner {
     private const val BOOT_DELAY_MS = 15_000L
-    private const val LOCKED_BOOT_DELAY_MS = 20_000L
     private const val RETRY_DELAY_MS = 5_000L
 
     suspend fun runIfConfigured(
         context: Context,
-        beforeUnlock: Boolean,
         onLog: (String) -> Unit,
     ): BootRunResult {
         return try {
-            runConfigured(context, beforeUnlock, onLog)
+            runConfigured(context, onLog)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
@@ -29,7 +27,6 @@ object BootAutoRootRunner {
 
     private suspend fun runConfigured(
         context: Context,
-        beforeUnlock: Boolean,
         onLog: (String) -> Unit,
     ): BootRunResult {
         val prefs = BootAutoRootPreferences(context)
@@ -37,23 +34,10 @@ object BootAutoRootRunner {
             onLog("auto run at boot is disabled")
             return BootRunResult.Skipped(SkipReason.Disabled)
         }
-        prefs.syncRuntimeFromApp()
-        val delayMs = if (beforeUnlock) LOCKED_BOOT_DELAY_MS else BOOT_DELAY_MS
-        onLog(
-            if (beforeUnlock) {
-                "waiting ${delayMs / 1000}s (direct boot, lock screen)"
-            } else {
-                "waiting ${delayMs / 1000}s for boot to settle"
-            },
-        )
-        delay(delayMs)
-        val storageContext = if (beforeUnlock) {
-            context.applicationContext.createDeviceProtectedStorageContext()
-        } else {
-            context.applicationContext
-        }
+        onLog("waiting ${BOOT_DELAY_MS / 1000}s after unlock for boot to settle")
+        delay(BOOT_DELAY_MS)
         val repository = try {
-            AndroidGhostlockRepository(storageContext)
+            AndroidGhostlockRepository(context.applicationContext)
         } catch (error: Throwable) {
             val detail = error.message?.take(120) ?: error.javaClass.simpleName
             onLog("could not prepare boot run: $detail")

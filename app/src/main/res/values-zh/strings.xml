@@ -59,21 +59,18 @@
     <string name="boot_settings_title">开机</string>
     <string name="boot_settings_back">返回</string>
     <string name="boot_auto_run_label">开机自动运行</string>
-    <string name="boot_auto_run_summary">设备启动完成后自动运行 GhostLock</string>
+    <string name="boot_auto_run_summary">设备解锁后自动运行 GhostLock</string>
     <string name="boot_permissions_note_title">权限说明</string>
-    <string name="boot_permissions_note_body">开机运行不会弹出单独的权限对话框，安装应用时系统已允许接收开机广播。仅通知权限需要您同意，用于在锁屏显示进度和结果。需要解锁前运行请打开下方「解锁前运行」（Direct Boot）。安装后请至少打开 GhostLock 一次以保存 CPU 设置。部分机型还需在系统设置中允许自启动或关闭 GhostLock 的电池限制。</string>
+    <string name="boot_permissions_note_body">开机运行不会弹出单独的权限对话框，安装应用时系统已允许接收开机广播。通知权限可选，用于显示「GhostLock 运行中」和「运行完成」。安装后请至少打开 GhostLock 一次以保存 CPU 设置。部分机型还需在系统设置中允许自启动或关闭 GhostLock 的电池限制。</string>
     <string name="boot_permissions_toast">开机权限随安装自动获得，通知仅用于显示进度。</string>
-    <string name="boot_run_before_unlock_label">解锁前运行</string>
-    <string name="boot_run_before_unlock_summary">锁屏 Direct Boot 阶段运行，无额外系统权限弹窗</string>
-    <string name="boot_before_unlock_note_title">说明</string>
-    <string name="boot_before_unlock_note_body">解锁前只能使用内置内核偏移。导入的 offsets.json 在用户凭据加密区，需解锁后才能读取。</string>
+    <string name="session_running">GhostLock 运行中</string>
+    <string name="run_completed">运行完成</string>
+    <string name="run_completed_summary">GhostLock 已成功完成。可照常使用 root 管理器。</string>
     <string name="boot_max_attempts_label">最大尝试次数</string>
     <string name="boot_max_attempts_summary">运行失败时的重试次数</string>
     <string name="boot_auto_root_channel_name">开机自动 root</string>
     <string name="boot_auto_root_channel_desc">开机自动运行 GhostLock 时显示进度</string>
     <string name="boot_auto_root_notification_title">GhostLock 开机运行</string>
-    <string name="boot_auto_root_running">正在启动…</string>
-    <string name="boot_auto_root_running_locked">锁屏界面启动中…</string>
     <string name="boot_auto_root_notification_denied">开机自动运行需要通知权限</string>
     <string name="boot_auto_root_result_channel_name">开机结果</string>
     <string name="boot_auto_root_result_channel_desc">开机自动运行成功或失败的通知</string>
@@ -101,9 +98,6 @@
     <string name="notify_result_skipped_summary">自动运行被跳过时通知（内核不支持、未选 CPU 等）</string>
     <string name="notify_settings_note_title">说明</string>
     <string name="notify_settings_note_body">Android 在后台运行开机任务时仍需要一条最小通知。关闭「运行中通知」会尽量改为静默且不在锁屏显示。</string>
-    <string name="boot_auto_root_running_minimal">后台运行中…</string>
     <string name="manual_run_channel_name">手动运行</string>
     <string name="manual_run_channel_desc">在应用中点 Run 时的静默通知</string>
-    <string name="manual_run_notification_title">GhostLock 运行中</string>
-    <string name="manual_run_notification_running">运行中…</string>
 </resources>

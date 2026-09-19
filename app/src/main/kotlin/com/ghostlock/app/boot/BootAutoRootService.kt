@@ -23,7 +23,6 @@ class BootAutoRootService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val beforeUnlock = intent?.getBooleanExtra(EXTRA_BEFORE_UNLOCK, false) == true
         val bootPrefs = BootAutoRootPreferences(this)
         try {
             BootAutoRootNotifications.ensureChannels(this)
@@ -31,13 +30,7 @@ class BootAutoRootService : Service() {
                 BootAutoRootNotifications.NOTIFICATION_PROGRESS_ID,
                 BootAutoRootNotifications.buildProgress(
                     this,
-                    getString(
-                        if (beforeUnlock) {
-                            R.string.boot_auto_root_running_locked
-                        } else {
-                            R.string.boot_auto_root_running
-                        },
-                    ),
+                    getString(R.string.session_running),
                 ),
             )
         } catch (_: Throwable) {
@@ -48,14 +41,13 @@ class BootAutoRootService : Service() {
             var result: BootRunResult = BootRunResult.StoppedSafely()
             try {
                 result = withContext(Dispatchers.IO) {
-                    BootAutoRootRunner.runIfConfigured(this@BootAutoRootService, beforeUnlock) { line ->
+                    BootAutoRootRunner.runIfConfigured(this@BootAutoRootService) { line ->
                         if (!bootPrefs.notifyProgressDetailed) return@runIfConfigured
                         mainHandler.post {
                             try {
-                                val summary = line.take(100)
                                 startForeground(
                                     BootAutoRootNotifications.NOTIFICATION_PROGRESS_ID,
-                                    BootAutoRootNotifications.buildProgress(this@BootAutoRootService, summary),
+                                    BootAutoRootNotifications.buildProgress(this@BootAutoRootService, line),
                                 )
                             } catch (_: Throwable) {
                             }
@@ -88,12 +80,8 @@ class BootAutoRootService : Service() {
     }
 
     companion object {
-        const val EXTRA_BEFORE_UNLOCK = "before_unlock"
-
-        fun start(context: Context, beforeUnlock: Boolean) {
-            val intent = Intent(context, BootAutoRootService::class.java)
-                .putExtra(EXTRA_BEFORE_UNLOCK, beforeUnlock)
-            context.startForegroundService(intent)
+        fun start(context: Context) {
+            context.startForegroundService(Intent(context, BootAutoRootService::class.java))
         }
     }
 }

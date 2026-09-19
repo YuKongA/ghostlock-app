@@ -59,21 +59,18 @@
     <string name="boot_settings_title">Boot</string>
     <string name="boot_settings_back">Back</string>
     <string name="boot_auto_run_label">Auto run at boot</string>
-    <string name="boot_auto_run_summary">Run GhostLock automatically after the device finishes booting</string>
+    <string name="boot_auto_run_summary">Run GhostLock automatically after the device unlocks following boot</string>
     <string name="boot_permissions_note_title">Permissions</string>
-    <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. Only notifications are asked so progress and results can appear on the lock screen. Enable \"Run before unlock\" for Direct Boot before your PIN. Open GhostLock once after install so CPU settings are saved. On some devices, also allow autostart or disable battery restrictions for GhostLock in system settings.</string>
+    <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. Notification permission is optional but shows \"GhostLock running\" and \"Run completed\" during auto-run. Open GhostLock once after install so CPU settings are saved. On some devices, also allow autostart or disable battery restrictions for GhostLock in system settings.</string>
     <string name="boot_permissions_toast">Boot access is automatic. Notifications show progress only.</string>
-    <string name="boot_run_before_unlock_label">Run before unlock</string>
-    <string name="boot_run_before_unlock_summary">Direct Boot on the lock screen — no extra system permission dialog</string>
-    <string name="boot_before_unlock_note_title">Note</string>
-    <string name="boot_before_unlock_note_body">Before unlock, only built-in kernel offsets are available. Imported offsets.json stays encrypted until you unlock the device.</string>
+    <string name="session_running">GhostLock running</string>
+    <string name="run_completed">Run completed</string>
+    <string name="run_completed_summary">GhostLock finished successfully. You can use your root manager as usual.</string>
     <string name="boot_max_attempts_label">Maximum attempts</string>
     <string name="boot_max_attempts_summary">How many times to retry if the run fails</string>
     <string name="boot_auto_root_channel_name">Boot auto root</string>
     <string name="boot_auto_root_channel_desc">Shows progress while GhostLock runs after boot</string>
     <string name="boot_auto_root_notification_title">GhostLock boot run</string>
-    <string name="boot_auto_root_running">Starting…</string>
-    <string name="boot_auto_root_running_locked">Starting on lock screen…</string>
     <string name="boot_auto_root_notification_denied">Notification permission is required for auto run at boot</string>
     <string name="boot_auto_root_result_channel_name">Boot results</string>
     <string name="boot_auto_root_result_channel_desc">Success or failure after auto-run at boot</string>
@@ -101,9 +98,6 @@
     <string name="notify_result_skipped_summary">Notify when auto-run is skipped (unsupported kernel, missing CPU pair)</string>
     <string name="notify_settings_note_title">Note</string>
     <string name="notify_settings_note_body">Android still requires a small silent notification while a boot run is in progress. Turning off \"Running notification\" keeps it minimal and off the lock screen when possible.</string>
-    <string name="boot_auto_root_running_minimal">Running in background…</string>
     <string name="manual_run_channel_name">Manual run</string>
     <string name="manual_run_channel_desc">Silent notifications while GhostLock runs from the app</string>
-    <string name="manual_run_notification_title">GhostLock running</string>
-    <string name="manual_run_notification_running">Running…</string>
 </resources>
