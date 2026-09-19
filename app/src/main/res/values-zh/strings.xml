@@ -60,8 +60,11 @@
     <string name="boot_settings_back">返回</string>
     <string name="boot_auto_run_label">开机自动运行</string>
     <string name="boot_auto_run_summary">设备启动完成后自动运行 GhostLock</string>
+    <string name="boot_permissions_note_title">权限说明</string>
+    <string name="boot_permissions_note_body">开机运行不会弹出单独的权限对话框，安装应用时系统已允许接收开机广播。仅通知权限需要您同意，用于在锁屏显示进度和结果。需要解锁前运行请打开下方「解锁前运行」（Direct Boot）。安装后请至少打开 GhostLock 一次以保存 CPU 设置。部分机型还需在系统设置中允许自启动或关闭 GhostLock 的电池限制。</string>
+    <string name="boot_permissions_toast">开机权限随安装自动获得，通知仅用于显示进度。</string>
     <string name="boot_run_before_unlock_label">解锁前运行</string>
-    <string name="boot_run_before_unlock_summary">在锁屏界面、Direct Boot 阶段启动，而不是等到解锁后</string>
+    <string name="boot_run_before_unlock_summary">锁屏 Direct Boot 阶段运行，无额外系统权限弹窗</string>
     <string name="boot_before_unlock_note_title">说明</string>
     <string name="boot_before_unlock_note_body">解锁前只能使用内置内核偏移。导入的 offsets.json 在用户凭据加密区，需解锁后才能读取。</string>
     <string name="boot_max_attempts_label">最大尝试次数</string>

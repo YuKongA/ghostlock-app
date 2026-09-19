@@ -60,8 +60,11 @@
     <string name="boot_settings_back">Back</string>
     <string name="boot_auto_run_label">Auto run at boot</string>
     <string name="boot_auto_run_summary">Run GhostLock automatically after the device finishes booting</string>
+    <string name="boot_permissions_note_title">Permissions</string>
+    <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. Only notifications are asked so progress and results can appear on the lock screen. Enable \"Run before unlock\" for Direct Boot before your PIN. Open GhostLock once after install so CPU settings are saved. On some devices, also allow autostart or disable battery restrictions for GhostLock in system settings.</string>
+    <string name="boot_permissions_toast">Boot access is automatic. Notifications show progress only.</string>
     <string name="boot_run_before_unlock_label">Run before unlock</string>
-    <string name="boot_run_before_unlock_summary">Start on the lock screen at direct boot instead of waiting until you unlock</string>
+    <string name="boot_run_before_unlock_summary">Direct Boot on the lock screen — no extra system permission dialog</string>
     <string name="boot_before_unlock_note_title">Note</string>
     <string name="boot_before_unlock_note_body">Before unlock, only built-in kernel offsets are available. Imported offsets.json stays encrypted until you unlock the device.</string>
     <string name="boot_max_attempts_label">Maximum attempts</string>

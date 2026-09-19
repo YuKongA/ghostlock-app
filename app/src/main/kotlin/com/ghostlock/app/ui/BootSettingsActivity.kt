@@ -66,6 +66,7 @@ class BootSettingsActivity : ComponentActivity() {
     ) { granted ->
         if (granted) {
             bootPrefs.autoRunAtBoot = true
+            Toast.makeText(this, R.string.boot_permissions_toast, Toast.LENGTH_LONG).show()
         } else {
             bootPrefs.autoRunAtBoot = false
             Toast.makeText(this, R.string.boot_auto_root_notification_denied, Toast.LENGTH_LONG).show()
@@ -113,6 +114,7 @@ class BootSettingsActivity : ComponentActivity() {
             }
         }
         bootPrefs.autoRunAtBoot = true
+        Toast.makeText(this, R.string.boot_permissions_toast, Toast.LENGTH_LONG).show()
     }
 
     private fun setupSystemBars() {
@@ -203,22 +205,41 @@ private fun BootSettingsScreen(
                         )
                     }
                 }
-                item(key = "before_unlock") {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        SwitchPreference(
-                            checked = runBeforeUnlock,
-                            onCheckedChange = { enabled ->
-                                runBeforeUnlock = enabled
-                                onRunBeforeUnlockChanged(enabled)
-                            },
-                            title = stringResource(R.string.boot_run_before_unlock_label),
-                            summary = stringResource(R.string.boot_run_before_unlock_summary),
+                item(key = "permissions_note") {
+                    AnimatedVisibility(
+                        visible = autoRun,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        BootInfoNoteCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            titleRes = R.string.boot_permissions_note_title,
+                            bodyRes = R.string.boot_permissions_note_body,
                         )
+                    }
+                }
+                item(key = "before_unlock") {
+                    AnimatedVisibility(
+                        visible = autoRun,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            SwitchPreference(
+                                checked = runBeforeUnlock,
+                                onCheckedChange = { enabled ->
+                                    runBeforeUnlock = enabled
+                                    onRunBeforeUnlockChanged(enabled)
+                                },
+                                title = stringResource(R.string.boot_run_before_unlock_label),
+                                summary = stringResource(R.string.boot_run_before_unlock_summary),
+                            )
+                        }
                     }
                 }
                 item(key = "before_unlock_note") {
                     AnimatedVisibility(
-                        visible = runBeforeUnlock,
+                        visible = autoRun && runBeforeUnlock,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
@@ -226,19 +247,25 @@ private fun BootSettingsScreen(
                     }
                 }
                 item(key = "max_attempts") {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        OverlaySpinnerPreference(
-                            title = stringResource(R.string.boot_max_attempts_label),
-                            summary = stringResource(R.string.boot_max_attempts_summary),
-                            items = attemptLabels.map { DropdownItem(icon = null, title = it) },
-                            selectedIndex = maxAttempts - BootAutoRootPreferences.MIN_ATTEMPTS,
-                            showValue = true,
-                            onSelectedIndexChange = { index ->
-                                val value = index + BootAutoRootPreferences.MIN_ATTEMPTS
-                                maxAttempts = value
-                                onMaxAttemptsChanged(value)
-                            },
-                        )
+                    AnimatedVisibility(
+                        visible = autoRun,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            OverlaySpinnerPreference(
+                                title = stringResource(R.string.boot_max_attempts_label),
+                                summary = stringResource(R.string.boot_max_attempts_summary),
+                                items = attemptLabels.map { DropdownItem(icon = null, title = it) },
+                                selectedIndex = maxAttempts - BootAutoRootPreferences.MIN_ATTEMPTS,
+                                showValue = true,
+                                onSelectedIndexChange = { index ->
+                                    val value = index + BootAutoRootPreferences.MIN_ATTEMPTS
+                                    maxAttempts = value
+                                    onMaxAttemptsChanged(value)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -247,22 +274,35 @@ private fun BootSettingsScreen(
 }
 
 @Composable
-private fun BootBeforeUnlockNoteCard(modifier: Modifier = Modifier) {
+private fun BootInfoNoteCard(
+    modifier: Modifier = Modifier,
+    titleRes: Int,
+    bodyRes: Int,
+) {
     Card(
         modifier = modifier,
         insideMargin = PaddingValues(16.dp),
     ) {
         Text(
-            text = stringResource(R.string.boot_before_unlock_note_title),
+            text = stringResource(titleRes),
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium,
             color = MiuixTheme.colorScheme.onSurface,
         )
         Text(
-            text = stringResource(R.string.boot_before_unlock_note_body),
+            text = stringResource(bodyRes),
             modifier = Modifier.padding(top = 8.dp),
             fontSize = 14.sp,
             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.68f),
         )
     }
+}
+
+@Composable
+private fun BootBeforeUnlockNoteCard(modifier: Modifier = Modifier) {
+    BootInfoNoteCard(
+        modifier = modifier,
+        titleRes = R.string.boot_before_unlock_note_title,
+        bodyRes = R.string.boot_before_unlock_note_body,
+    )
 }
