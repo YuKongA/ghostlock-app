@@ -20,17 +20,14 @@ const struct kernel_offsets *active_offsets = NULL;
 
 static char g_home_dir[256] = "/data/local/tmp";
 static char g_root_script_path[300] = "/data/local/tmp/.ghostlock_root.sh";
-/* the root script creates this as root, so the caller picks a per-run name
- * and a leftover cannot be read as this run's output */
 static char g_ksu_log_path[320] = "/data/local/tmp/.ghostlock_ksu.log";
 
-/* MTK and XRing use different physical mappings from the Qualcomm default.
- * W1 has no root and /proc is SELinux-blocked: read SoC properties from the
- * shared property area instead. */
+/* MTK / XRing / Tensor use different physical mappings from the Qualcomm default. */
 enum soc_family {
   SOC_QCOM = 0,
   SOC_MTK,
   SOC_XRING,
+  SOC_GOOGLE,
 };
 
 static enum soc_family detect_soc(void) {
@@ -40,6 +37,12 @@ static enum soc_family detect_soc(void) {
   for (int i = 0; keys[i]; i++) {
     if (__system_property_get(keys[i], buf) <= 0 || !buf[0]) {
       continue;
+    }
+    if (strncasecmp(buf, "google", 6) == 0 ||
+        strncasecmp(buf, "tensor", 6) == 0 ||
+        (i > 0 && (strncasecmp(buf, "gs", 2) == 0 ||
+                   strncasecmp(buf, "zuma", 4) == 0))) {
+      return SOC_GOOGLE;
     }
     if (strncasecmp(buf, "mediatek", 8) == 0 ||
         strncasecmp(buf, "mtk", 3) == 0 ||
@@ -108,9 +111,15 @@ static void publish_active_offsets(void) {
   g_init_cred_image = INIT_CRED;
   enum soc_family soc = detect_soc();
   const char *soc_name =
-      soc == SOC_MTK ? "mtk" : soc == SOC_XRING ? "xring" : "qcom/other";
+      soc == SOC_MTK ? "mtk"
+      : soc == SOC_XRING ? "xring"
+      : soc == SOC_GOOGLE ? "google/tensor"
+                          : "qcom/other";
   if (active_offsets->kernel_phys_load) {
     p0_kernel_phys_load = active_offsets->kernel_phys_load;
+  } else if (soc == SOC_GOOGLE) {
+    p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
+    soc_name = "tensor";
   } else if (soc == SOC_MTK) {
     p0_kernel_phys_load = KIMAGE_TEXT_BASE - MTK_VADDR_BASE;
     soc_name = "mtk";
@@ -127,11 +136,8 @@ static void publish_active_offsets(void) {
           (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
 }
 
-/* Import a matching entry from <home>/offsets.json; returns 0 and activates
- * the external table on success.  When the release is also registered in the
- * built-in table, the entry starts from the built-in values so fields the
- * JSON leaves empty keep the built-in ones instead of falling back to
- * target.h defaults. */
+/* Import a matching entry from <home>/offsets.json; 
+ * returns 0 and activates the external table on success. */
 static int try_external_offsets(const char *release) {
   char path[320];
   snprintf(path, sizeof(path), "%s/offsets.json", g_home_dir);

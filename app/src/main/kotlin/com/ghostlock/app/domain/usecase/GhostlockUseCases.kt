@@ -39,6 +39,5 @@ class ReadDocumentUseCase(private val repository: GhostlockRepository) {
 }
 
 class PublishOffsetsUseCase(private val repository: GhostlockRepository) {
-    suspend operator fun invoke(candidate: com.ghostlock.app.domain.model.OffsetCandidate) =
-        repository.publishOffsets(candidate)
+    suspend operator fun invoke(candidate: com.ghostlock.app.domain.model.OffsetCandidate) = repository.publishOffsets(candidate)
 }

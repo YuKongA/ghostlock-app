@@ -14,8 +14,7 @@ object OffsetMatching {
                 return false
             }
         }
-        return !objectFieldDiffers(builtin, entry.symbols) &&
-                !objectFieldDiffers(builtin, entry.structFields)
+        return !objectFieldDiffers(builtin, entry.symbols) && !objectFieldDiffers(builtin, entry.structFields)
     }
 
     fun fieldDiffers(builtin: Map<String, Long>, fields: Map<String, Long?>, key: String): Boolean {

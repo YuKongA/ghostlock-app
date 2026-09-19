@@ -48,7 +48,9 @@ jobs:
 
       - name: Test extractor
         working-directory: tools/extract_rs
-        run: cargo test --release
+        run: |
+          cargo test --release --features http
+          cargo build --release --features http
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -75,6 +77,13 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         run: echo ${{ secrets.SIGNING_KEY }} | base64 -d > keystore.jks
 
+      - name: Build Ghostlock binary
+        run: |
+          export ANDROID_NDK_HOME="${{ runner.temp }}/ondk"
+          export NDK_ROOT="$ANDROID_NDK_HOME"
+          make ghostlock
+          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all ghostlock || true
+
       - name: Build Release APK
         run: |
           export ONDK_HOME="${{ runner.temp }}/ondk"
@@ -86,8 +95,25 @@ jobs:
           export KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           ./gradlew :app:assembleRelease --no-daemon
 
+      - name: Strip Ghostlock binary
+        run: |
+          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all ghostlock || true
+
       - name: Rename Release APK
         run: mv app/build/outputs/apk/release/*.apk GhostLock-release.apk
+
+      - name: Prepare extractor binaries
+        run: |
+          cp tools/extract_rs/target/release/ghostlock-extract tools/extract_rs/ghostlock-extract-linux-x86_64
+
+          export CC_aarch64_linux_android="${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang"
+          export AR_aarch64_linux_android="${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          export RUSTC_BOOTSTRAP=1
+          export RUSTFLAGS="-C force-unwind-tables=no -C link-arg=-Wl,--icf=all"
+          cargo +ondk build --release --target aarch64-linux-android --features http --manifest-path tools/extract_rs/Cargo.toml \
+            -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
+          cp tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract tools/extract_rs/ghostlock-extract-android-arm64
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
@@ -96,8 +122,208 @@ jobs:
           path: GhostLock-release.apk
           archive: false
 
+      - name: Upload Ghostlock binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghostlock
+          path: ghostlock
+          archive: false
+
+      - name: Upload Extractor Linux
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghostlock-extract-linux-x86_64
+          path: tools/extract_rs/ghostlock-extract-linux-x86_64
+          archive: false
+
+      - name: Upload Extractor Android
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghostlock-extract-android-arm64
+          path: tools/extract_rs/ghostlock-extract-android-arm64
+          archive: false
+
+  build-extractor-macos:
+    name: Build Extractor (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/extract_rs/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('tools/extract_rs/Cargo.lock') }}
+
+      - name: Build macOS universal binary
+        working-directory: tools/extract_rs
+        run: |
+          cargo build --release --features http --target aarch64-apple-darwin
+          cargo build --release --features http --target x86_64-apple-darwin
+          mkdir -p bin
+          lipo -create -output bin/ghostlock-extract-macos-universal \
+            target/aarch64-apple-darwin/release/ghostlock-extract \
+            target/x86_64-apple-darwin/release/ghostlock-extract
+
+      - name: Upload Extractor macOS
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghostlock-extract-macos-universal
+          path: tools/extract_rs/bin/ghostlock-extract-macos-universal
+          archive: false
+
+  build-extractor-windows:
+    name: Build Extractor (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/extract_rs/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('tools/extract_rs/Cargo.lock') }}
+
+      - name: Build Windows binary
+        shell: bash
+        working-directory: tools/extract_rs
+        run: |
+          cargo build --release --features http
+          mkdir -p bin
+          cp target/release/ghostlock-extract.exe bin/ghostlock-extract-windows-x86_64.exe
+
+      - name: Upload Extractor Windows
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghostlock-extract-windows-x86_64
+          path: tools/extract_rs/bin/ghostlock-extract-windows-x86_64.exe
+          archive: false
+
+  prerelease:
+    name: Pre-release
+    needs: [build-apk, build-extractor-macos, build-extractor-windows]
+    runs-on: ubuntu-latest
+    if: ${{ success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.ref_type != 'tag' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Prepare release files and notes
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          chmod +x release-files/ghostlock release-files/ghostlock-extract-* || true
+
+          cd release-files
+          for f in GhostLock-release.apk ghostlock ghostlock-extract-*; do
+            if [ -f "$f" ]; then
+              sha256sum "$f"
+            fi
+          done > sha256sum.txt
+          cd ..
+
+          VERSION_NAME=$(sed -nE 's/^[[:space:]]*val appVersionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          export VERSION_NAME
+          export SHORT_HASH
+          export COMMIT_COUNT
+          export COMMIT_MSG
+
+          python3 - <<'PY'
+          import os
+
+          version = os.environ.get("VERSION_NAME", "Unknown")
+          short_hash = os.environ.get("SHORT_HASH", "Unknown")
+          commit_count = os.environ.get("COMMIT_COUNT", "0")
+          commit_msg = os.environ.get("COMMIT_MSG", "No commit message").strip()
+          repo = os.environ.get("GITHUB_REPOSITORY", "YuKongA/ghostlock-app")
+          sha = os.environ.get("GITHUB_SHA", "")
+
+          with open("release-files/sha256sum.txt", "r", encoding="utf-8") as f:
+              checksums = f.read().strip()
+
+          lines = [
+              "### GhostLock Pre-release",
+              "",
+              f"- **Version**: `v{version}` (`{commit_count}`)",
+              f"- **Commit**: [`{short_hash}`](https://github.com/{repo}/commit/{sha})",
+              "",
+              "#### Commit Message",
+              "```",
+              commit_msg,
+              "```",
+              "",
+              "#### Files",
+              "- `GhostLock-release.apk`: GhostLock Android Application",
+              "- `ghostlock`: Standalone GhostLock native binary (Android arm64-v8a)",
+              "- `ghostlock-extract-android-arm64`: Kernel offset extractor CLI (Android arm64-v8a)",
+              "- `ghostlock-extract-linux-x86_64`: Kernel offset extractor CLI (Linux x86_64)",
+              "- `ghostlock-extract-macos-universal`: Kernel offset extractor CLI (macOS Universal arm64 + x86_64)",
+              "- `ghostlock-extract-windows-x86_64.exe`: Kernel offset extractor CLI (Windows x86_64)",
+              "",
+              "#### SHA256 Checksums",
+              "```",
+              checksums,
+              "```",
+          ]
+          notes = "\n".join(lines) + "\n"
+
+          with open("release-notes.md", "w", encoding="utf-8") as f:
+              f.write(notes)
+          PY
+
+      - name: Update Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f pre-release
+          git push -f origin pre-release
+          gh release edit pre-release --target ${{ github.sha }} 2>/dev/null || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pre-release
+          target_commitish: ${{ github.sha }}
+          name: GhostLock Pre-release
+          body_path: release-notes.md
+          prerelease: true
+          files: release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   post_telegram:
-    needs: [build-apk]
+    needs: [build-apk, build-extractor-macos, build-extractor-windows]
     runs-on: ubuntu-latest
     if: ${{ success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.ref_type != 'tag' }}
     steps:

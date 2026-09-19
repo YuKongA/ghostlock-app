@@ -22,14 +22,13 @@ class FormatLogUseCase {
         return LogEntry(text, tone)
     }
 
-    private fun isWriteRound(message: String): Boolean =
-        listOf("W1", "W2", "W3", "Write 1").any(message::startsWith)
+    private fun isWriteRound(message: String): Boolean = listOf("W1", "W2", "W3", "Write 1").any(message::startsWith)
 
     private fun stripAnsi(value: String): String = value.replace(ansi, "")
 
     private companion object {
         val ansi = Regex("\\u001B\\[[;\\d]*m")
-        val sourceTag = Regex("^\\[[a-z]+\\]\\s+")
-        val leadingTags = Regex("^(\\[[^]]+\\]\\s*)+")
+        val sourceTag = Regex("^\\[[a-z]+]\\s+")
+        val leadingTags = Regex("^(\\[[^]]+]\\s*)+")
     }
 }

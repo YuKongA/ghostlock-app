@@ -71,8 +71,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
         selectedCpuPair = index
-        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .edit {
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
                 putString("cpu_pair", cpuPairs[index].toString())
             }
     }
@@ -88,17 +87,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun exportCandidates(): List<OffsetCandidate> {
         val entries = readOffsetsFile(offsetsFile) ?: return emptyList()
         val current = System.getProperty("os.version", "")
-        return (0 until entries.length()).asSequence()
-            .mapNotNull { entries.optJSONObject(it) }
-            .map { entry: JSONObject -> entry.optString("release", "") to entry }
-            .filter { (release, entry) ->
-                release.isNotEmpty() &&
-                        !(SupportedKernels.BUILTIN.containsKey(release) && matchesBuiltin(entry))
-            }
-            .distinctBy { it.first }
-            .sortedWith(compareBy<Pair<String, JSONObject>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
-            .map { (release, entry) -> OffsetCandidate(release, entry.toString(2)) }
-            .toList()
+        return (0 until entries.length()).asSequence().mapNotNull { entries.optJSONObject(it) }
+            .map { entry: JSONObject -> entry.optString("release", "") to entry }.filter { (release, entry) ->
+                release.isNotEmpty() && !(SupportedKernels.BUILTIN.containsKey(release) && matchesBuiltin(entry))
+            }.distinctBy { it.first }.sortedWith(compareBy<Pair<String, JSONObject>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
+            .map { (release, entry) -> OffsetCandidate(release, entry.toString(2)) }.toList()
     }
 
     override suspend fun importOffsets(json: String): OffsetImportResult = mergeImported(json, overwrite = false)
@@ -145,6 +138,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun parseSource(input: String, xblPath: String?, overwrite: Boolean, onLog: (String) -> Unit): ParseResult {
         val parsedFile = File(filesDir, "offsets_parse.tmp")
+        var tempBootFile: File? = null
+        var tempXblFile: File? = null
         return try {
             if (overwrite) {
                 val pending = pendingParsedEntries
@@ -157,21 +152,33 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             val binary = File(appContext.applicationInfo.nativeLibraryDir, ExtractBinaryName)
             if (!binary.isFile) return ParseResult.Failed(1, "missing native binary: ${binary.absolutePath}")
+
+            val isRemoteUrl = input.startsWith("http://", ignoreCase = true) || input.startsWith("https://", ignoreCase = true)
+            val (effectiveInput, effectiveXblPath) = if (isRemoteUrl) {
+                val extracted = com.ghostlock.app.data.ota.OtaPayloadExtractor.extractPartitions(
+                    url = input,
+                    workDir = filesDir,
+                    onLog = onLog,
+                )
+                tempBootFile = extracted.bootFile
+                tempXblFile = extracted.xblConfigFile
+                Pair(extracted.bootFile.absolutePath, extracted.xblConfigFile?.absolutePath ?: xblPath)
+            } else {
+                Pair(input, xblPath)
+            }
+
             parsedFile.delete()
             val args = buildList {
-                add(input)
-                if (xblPath != null) {
+                add(effectiveInput)
+                if (effectiveXblPath != null) {
                     add("--xbl-config")
-                    add(xblPath)
+                    add(effectiveXblPath)
                 }
                 addAll(listOf("--format", "json", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
             }
-            onLog("extract: $input")
+            onLog("extract: $effectiveInput")
             val code = runProcess(
-                ProcessBuilder(listOf(binary.absolutePath) + args)
-                    .directory(filesDir)
-                    .redirectErrorStream(true)
-                    .apply {
+                ProcessBuilder(listOf(binary.absolutePath) + args).directory(filesDir).redirectErrorStream(true).apply {
                         environment()["GHOSTLOCK_HOME"] = filesDir.absolutePath
                         environment()["TMPDIR"] = filesDir.absolutePath
                         environment()["HOME"] = filesDir.absolutePath
@@ -213,6 +220,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             ParseResult.Failed(1, error.message)
         } finally {
             parsedFile.delete()
+            tempBootFile?.delete()
+            tempXblFile?.delete()
         }
     }
 
@@ -246,11 +255,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 isDaemon = true
                 start()
             }
-            val command = ProcessBuilder(binary.absolutePath)
-                .directory(workDir)
-                .redirectErrorStream(true)
-                .redirectOutput(nativeLog)
-                .apply {
+            val command = ProcessBuilder(binary.absolutePath).directory(workDir).redirectErrorStream(true).redirectOutput(nativeLog).apply {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
@@ -280,11 +285,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    override suspend fun readDocument(uri: String): String = appContext.contentResolver
-        .openInputStream(uri.toUri())
-        ?.bufferedReader()
-        ?.use { it.readText() }
-        ?: throw IOException("cannot open $uri")
+    override suspend fun readDocument(uri: String): String =
+        appContext.contentResolver.openInputStream(uri.toUri())?.bufferedReader()?.use { it.readText() } ?: throw IOException("cannot open $uri")
 
     override suspend fun cacheDocument(uri: String, fileName: String): String {
         val target = File(filesDir, fileName)
@@ -300,8 +302,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             put(MediaStore.Downloads.DISPLAY_NAME, "offsets-$safeRelease.json")
             put(MediaStore.Downloads.MIME_TYPE, "application/json")
         }
-        val uri = appContext.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("cannot create download entry")
+        val uri = appContext.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("cannot create download entry")
         appContext.contentResolver.openOutputStream(uri)?.use { output ->
             output.write("[${candidate.json}]".toByteArray(StandardCharsets.UTF_8))
         } ?: throw IOException("cannot open download entry")
@@ -332,14 +333,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun overlappingReleases(existing: JSONArray, imported: JSONArray): List<String> {
         val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
-        return (0 until imported.length()).mapNotNull { imported.optJSONObject(it)?.optString("release") }
-            .filter { it in known }
-            .distinct()
+        return (0 until imported.length()).mapNotNull { imported.optJSONObject(it)?.optString("release") }.filter { it in known }.distinct()
     }
 
     private fun mergeAndSave(existing: JSONArray, imported: JSONArray, overwrite: Boolean) {
-        val importedByRelease = (0 until imported.length()).mapNotNull { imported.optJSONObject(it) }
-            .associateBy { it.optString("release", "") }
+        val importedByRelease = (0 until imported.length()).mapNotNull { imported.optJSONObject(it) }.associateBy { it.optString("release", "") }
         val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
         val merged = JSONArray()
         for (index in 0 until existing.length()) {
@@ -368,9 +366,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         structFields = objectFields(entry.optJSONObject("struct_fields")),
     )
 
-    private fun objectFields(value: JSONObject?): Map<String, Long?> = value?.keys()?.asSequence()
-        ?.associateWith { key -> if (value.isNull(key)) null else value.optLong(key) }
-        ?: emptyMap()
+    private fun objectFields(value: JSONObject?): Map<String, Long?> =
+        value?.keys()?.asSequence()?.associateWith { key -> if (value.isNull(key)) null else value.optLong(key) } ?: emptyMap()
 
     private val scalarFields = listOf("pselect_waiter_shift", "compact_waiter", "mm_struct_sz", "kernel_phys_load")
 
@@ -384,9 +381,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         // an imported entry overrides the built-in one, a member it omits keeps the built-in
         // value, as in select_offsets. first match wins, same as load_offsets_json
         val entries = readOffsetsFile(offsetsFile)
-        val imported = (0 until (entries?.length() ?: 0))
-            .mapNotNull { entries?.optJSONObject(it) }
-            .firstOrNull { it.optString("release", "") == version }
+        val imported = (0 until (entries?.length() ?: 0)).mapNotNull { entries?.optJSONObject(it) }.firstOrNull { it.optString("release", "") == version }
             ?.let { toKernelOffsets(it).scalars["compact_waiter"] }
         val value = imported ?: SupportedKernels.BUILTIN[version]?.get("compact_waiter")
         return value != null && value != 0L
@@ -401,10 +396,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         cpuPairs.clear()
         cpuPairLabels.clear()
         val online = parseCpuList(readSysFile("/sys/devices/system/cpu/online"))
-        online.groupBy { readMaxFreq(it) }
-            .filterKeys { it > 0 }
-            .toSortedMap(compareByDescending { it })
-            .forEach { (freq, cluster) ->
+        online.groupBy { readMaxFreq(it) }.filterKeys { it > 0 }.toSortedMap(compareByDescending { it }).forEach { (freq, cluster) ->
                 cluster.sorted().chunked(2).filter { it.size == 2 }.forEach { pair ->
                     cpuPairs += CpuPair(pair[0], pair[1])
                     cpuPairLabels += "${pair[0]},${pair[1]} · ${formatFreq(freq)}"
@@ -418,8 +410,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     private fun restoreCpuPair() {
-        val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .getString("cpu_pair", null) ?: return
+        val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
     }
@@ -459,8 +450,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 val cn = Locale.getDefault().country.equals("CN", true)
                 firstValidProperty(
                     *(if (cn) arrayOf(
-                        "ro.vendor.oplus.market.name",
-                        "ro.vendor.oplus.market.enname"
+                        "ro.vendor.oplus.market.name", "ro.vendor.oplus.market.enname"
                     ) else arrayOf("ro.vendor.oplus.market.enname", "ro.vendor.oplus.market.name"))
                 )
             }
@@ -471,24 +461,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             else -> null
         }
         return marketName ?: listOfNotNull(
-            manufacturer,
-            Build.BRAND.orEmpty().takeIf { !it.equals(manufacturer, true) },
-            Build.MODEL.orEmpty()
-        )
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
+            manufacturer, Build.BRAND.orEmpty().takeIf { !it.equals(manufacturer, true) }, Build.MODEL.orEmpty()
+        ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     private fun resolveSocName(): String = listOf(
         systemProperty("ro.soc.manufacturer"),
         systemProperty("ro.soc.model"),
-    )
-        .mapNotNull(::validDeviceName)
-        .joinToString(" ")
-        .ifBlank { "unknown" }
+    ).mapNotNull(::validDeviceName).joinToString(" ").ifBlank { "unknown" }
 
-    private fun firstValidProperty(vararg keys: String): String? =
-        keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
+    private fun firstValidProperty(vararg keys: String): String? = keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
 
     private fun prepareKsud(workDir: File, onLog: (String) -> Unit): File? {
         val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager")
@@ -520,7 +502,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val reader = if (captureOutput) Thread {
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
-            } catch (_: IOException) { }
+            } catch (_: IOException) {
+            }
         }.apply {
             name = "process-output-reader"
             isDaemon = true

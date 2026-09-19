@@ -96,6 +96,9 @@ android {
         versionCode = gitVersionCode
         versionName = appVersionName
     }
+    androidResources {
+        localeFilters += listOf("en", "zh")
+    }
     sourceSets {
         named("main") {
             kotlin.directories.add(supportedKernelsSrc.get().asFile.absolutePath)
@@ -143,6 +146,9 @@ android {
             useLegacyPackaging = true
             excludes += "lib/*/libandroidx.graphics.path.so"
         }
+        dex {
+            useLegacyPackaging = true
+        }
     }
     splits {
         abi {
@@ -177,9 +183,10 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.foundation:foundation:1.12.0")
+    implementation("androidx.compose.foundation:foundation:1.12.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4-rc01")
+    implementation("org.apache.commons:commons-compress:1.26.0")
 }
