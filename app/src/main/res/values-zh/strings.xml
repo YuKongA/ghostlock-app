@@ -69,6 +69,7 @@
     <string name="run_successful_summary">GhostLock 已成功完成，可照常使用 root 管理器。</string>
     <string name="run_completed">运行完成</string>
     <string name="run_completed_summary">GhostLock 已成功完成。可照常使用 root 管理器。</string>
+    <string name="boot_run_success_toast">已获取 root</string>
     <string name="boot_max_attempts_label">最大尝试次数</string>
     <string name="boot_max_attempts_summary">运行失败时的重试次数</string>
     <string name="boot_auto_root_channel_name">开机自动 root</string>

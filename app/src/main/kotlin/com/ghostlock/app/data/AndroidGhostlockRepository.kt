@@ -233,7 +233,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int {
+    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit, bootAutoRun: Boolean): Int {
         val workDir = filesDir
         if (!ExploitRunLock.tryAcquire(appContext)) {
             onLog("error: another GhostLock run is already in progress")
@@ -286,6 +286,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     }
                     if (safeModeEnabled) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"
                     if (!tcpRouteEnabled) environment()["GHOSTLOCK_TCP_ROUTE"] = "0"
+                    if (bootAutoRun) environment()["GHOSTLOCK_BOOT_RUN"] = "1"
                 }
             try {
                 runProcess(command, onLog = {}, captureOutput = false, forceKillOnClose = false)

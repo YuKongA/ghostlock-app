@@ -69,6 +69,7 @@
     <string name="run_successful_summary">GhostLock completed successfully. You can use your root manager as usual.</string>
     <string name="run_completed">Run completed</string>
     <string name="run_completed_summary">GhostLock finished successfully. You can use your root manager as usual.</string>
+    <string name="boot_run_success_toast">Root ready</string>
     <string name="boot_max_attempts_label">Maximum attempts</string>
     <string name="boot_max_attempts_summary">How many times to retry if the run fails</string>
     <string name="boot_auto_root_channel_name">Boot auto root</string>

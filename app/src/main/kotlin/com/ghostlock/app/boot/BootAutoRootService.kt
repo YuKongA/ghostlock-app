@@ -67,7 +67,13 @@ class BootAutoRootService : Service() {
                 val prefs = BootAutoRootPreferences(this@BootAutoRootService)
                 prefs.recordBootFinished(result)
                 try {
-                    BootAutoRootNotifications.showResult(this@BootAutoRootService, result)
+                    when (result) {
+                        BootRunResult.Success ->
+                            mainHandler.post {
+                                BootAutoRootFeedback.showSuccessToast(this@BootAutoRootService)
+                            }
+                        else -> BootAutoRootNotifications.showResult(this@BootAutoRootService, result)
+                    }
                 } catch (_: Throwable) {
                 }
                 try {

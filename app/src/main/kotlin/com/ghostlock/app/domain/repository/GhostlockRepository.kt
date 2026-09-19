@@ -34,7 +34,7 @@ interface GhostlockRepository {
 
     suspend fun publishOffsets(candidate: OffsetCandidate): String
 
-    suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int
+    suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit, bootAutoRun: Boolean = false): Int
 
     fun close()
 }
