@@ -35,13 +35,16 @@ object ManualRunNotifications {
     fun showProgress(context: Context, line: String) {
         val prefs = BootAutoRootPreferences(context)
         if (!prefs.notifyProgressEnabled) return
+        if (line.isNotBlank() && prefs.notifyProgressDetailed) {
+            RunSessionProgress.onLogLine(line)
+        }
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(context)
         val title = context.getString(R.string.session_running)
-        val text = when {
-            !prefs.notifyProgressDetailed -> title
-            line.isBlank() -> title
-            else -> line.trim().take(100)
+        val text = if (prefs.notifyProgressDetailed) {
+            RunSessionProgress.notificationBody(context)
+        } else {
+            title
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -68,8 +71,8 @@ object ManualRunNotifications {
         if (!success && !prefs.notifyResultFailure) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(context)
-        val titleRes = if (success) R.string.run_completed else R.string.boot_result_not_root_title
-        val bodyRes = if (success) R.string.run_completed_summary else R.string.boot_result_not_root_body
+        val titleRes = if (success) R.string.run_successful else R.string.boot_result_not_root_title
+        val bodyRes = if (success) R.string.run_successful_summary else R.string.boot_result_not_root_body
         val openApp = PendingIntent.getActivity(
             context,
             0,

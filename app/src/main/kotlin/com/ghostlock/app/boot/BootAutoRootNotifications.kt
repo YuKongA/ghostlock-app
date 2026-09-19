@@ -9,6 +9,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.ghostlock.app.R
 import com.ghostlock.app.data.BootAutoRootPreferences
+import com.ghostlock.app.ui.RunSessionProgress
 import com.ghostlock.app.ui.MainActivity
 
 object BootAutoRootNotifications {
@@ -48,13 +49,11 @@ object BootAutoRootNotifications {
 
     fun buildProgress(context: Context, line: String): Notification {
         val prefs = BootAutoRootPreferences(context)
-        val title = context.getString(R.string.session_running)
-        val body = when {
-            !prefs.notifyProgressEnabled -> title
-            !prefs.notifyProgressDetailed -> title
-            line.isBlank() -> title
-            else -> line.trim().take(100)
+        if (line.isNotBlank() && prefs.notifyProgressDetailed) {
+            RunSessionProgress.onLogLine(line)
         }
+        val title = context.getString(R.string.session_running)
+        val body = BootRunNotificationProgress.progressBody(context, prefs)
         return NotificationCompat.Builder(context, CHANNEL_PROGRESS_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
@@ -72,7 +71,7 @@ object BootAutoRootNotifications {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         ensureChannels(context)
         val (titleRes, bodyRes, detail) = when (result) {
-            BootRunResult.Success -> Triple(R.string.run_completed, R.string.run_completed_summary, null)
+            BootRunResult.Success -> Triple(R.string.run_successful, R.string.run_successful_summary, null)
             BootRunResult.FailedNotRoot -> Triple(R.string.boot_result_not_root_title, R.string.boot_result_not_root_body, null)
             is BootRunResult.StoppedSafely -> Triple(
                 R.string.boot_result_safe_stop_title,

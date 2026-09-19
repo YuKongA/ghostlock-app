@@ -64,6 +64,9 @@
     <string name="boot_permissions_note_body">开机运行不会弹出单独的权限对话框，安装应用时系统已允许接收开机广播。重启后需解锁一次；自动运行从解锁后开始（约等待 15 秒）。通知权限可选，用于显示进度。安装后请至少打开 GhostLock 一次以保存 CPU 设置。小米/OPPO/vivo 等机型请允许 GhostLock 自启动并关闭电池限制，否则开机自动运行可能永远不会启动。</string>
     <string name="boot_permissions_toast">开机权限随安装自动获得，通知仅用于显示进度。</string>
     <string name="session_running">GhostLock 运行中</string>
+    <string name="session_step_progress">步骤 %1$d/%2$d</string>
+    <string name="run_successful">成功</string>
+    <string name="run_successful_summary">GhostLock 已成功完成。</string>
     <string name="run_completed">运行完成</string>
     <string name="run_completed_summary">GhostLock 已成功完成。可照常使用 root 管理器。</string>
     <string name="boot_max_attempts_label">最大尝试次数</string>
@@ -91,8 +94,8 @@
     <string name="notification_settings_title">通知</string>
     <string name="notify_progress_label">运行中通知</string>
     <string name="notify_progress_summary">GhostLock 运行时显示进度（开机自动或手动 Run，手动为静默）</string>
-    <string name="notify_progress_detailed_label">实时进度更新</string>
-    <string name="notify_progress_detailed_summary">每个步骤更新通知文字</string>
+    <string name="notify_progress_detailed_label">步骤计数</string>
+    <string name="notify_progress_detailed_summary">运行通知中显示 步骤 N/6（不显示完整日志）</string>
     <string name="notify_result_success_label">成功</string>
     <string name="notify_result_success_summary">开机自动 root 成功时通知</string>
     <string name="notify_result_failure_label">失败或安全停止</string>

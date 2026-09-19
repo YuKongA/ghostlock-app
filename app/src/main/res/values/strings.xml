@@ -64,6 +64,9 @@
     <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. After reboot you must unlock the device once; auto-run starts from unlock (and may wait ~15 seconds). Notification permission is optional but shows progress. Open GhostLock once after install so CPU settings are saved. On Xiaomi/Oppo/Vivo etc., allow GhostLock autostart and disable battery restrictions or boot auto-run may never start.</string>
     <string name="boot_permissions_toast">Boot access is automatic. Notifications show progress only.</string>
     <string name="session_running">GhostLock running</string>
+    <string name="session_step_progress">Step %1$d/%2$d</string>
+    <string name="run_successful">Successful</string>
+    <string name="run_successful_summary">GhostLock finished successfully.</string>
     <string name="run_completed">Run completed</string>
     <string name="run_completed_summary">GhostLock finished successfully. You can use your root manager as usual.</string>
     <string name="boot_max_attempts_label">Maximum attempts</string>
@@ -91,8 +94,8 @@
     <string name="notification_settings_title">Notifications</string>
     <string name="notify_progress_label">Running notification</string>
     <string name="notify_progress_summary">Show progress while GhostLock runs (boot auto-run or manual Run)</string>
-    <string name="notify_progress_detailed_label">Live progress updates</string>
-    <string name="notify_progress_detailed_summary">Update the notification text as each step runs</string>
+    <string name="notify_progress_detailed_label">Step counter</string>
+    <string name="notify_progress_detailed_summary">Show Step N/6 in the running notification (not full logs)</string>
     <string name="notify_result_success_label">Success</string>
     <string name="notify_result_success_summary">Notify when boot auto-run completes with root</string>
     <string name="notify_result_failure_label">Failure or safe stop</string>

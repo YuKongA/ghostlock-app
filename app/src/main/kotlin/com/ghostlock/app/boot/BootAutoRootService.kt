@@ -24,14 +24,12 @@ class BootAutoRootService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val bootPrefs = BootAutoRootPreferences(this)
+        BootRunNotificationProgress.resetSession()
         try {
             BootAutoRootNotifications.ensureChannels(this)
             startForeground(
                 BootAutoRootNotifications.NOTIFICATION_PROGRESS_ID,
-                BootAutoRootNotifications.buildProgress(
-                    this,
-                    getString(R.string.session_running),
-                ),
+                BootAutoRootNotifications.buildProgress(this, ""),
             )
         } catch (error: Throwable) {
             BootRunCoordinator.onServiceStartFailed()
@@ -46,7 +44,9 @@ class BootAutoRootService : Service() {
             try {
                 result = withContext(Dispatchers.IO) {
                     BootAutoRootRunner.runIfConfigured(this@BootAutoRootService) { line ->
-                        if (!bootPrefs.notifyProgressDetailed) return@runIfConfigured
+                        if (!bootPrefs.notifyProgressEnabled || !bootPrefs.notifyProgressDetailed) {
+                            return@runIfConfigured
+                        }
                         mainHandler.post {
                             try {
                                 startForeground(

@@ -74,8 +74,10 @@ class MainActivity : ComponentActivity() {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
 
-            GhostlockEffect.ManualRunNotificationStart ->
-                ManualRunNotifications.showProgress(this, getString(R.string.session_running))
+            GhostlockEffect.ManualRunNotificationStart -> {
+                RunSessionProgress.reset()
+                ManualRunNotifications.showProgress(this, "")
+            }
 
             is GhostlockEffect.ManualRunNotificationProgress ->
                 ManualRunNotifications.showProgress(this, effect.line)
