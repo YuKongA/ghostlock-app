@@ -67,7 +67,7 @@ object BootAutoRootRunner {
                 val attempt = index + 1
                 onLog("==== boot attempt $attempt/$maxAttempts ====")
                 val code = try {
-                    repository.runExploit(pair, onLog, bootAutoRun = true)
+                    repository.runExploit(pair, bootAutoRun = true, onLog)
                 } catch (error: Throwable) {
                     val detail = error.message?.take(120) ?: error.javaClass.simpleName
                     onLog("attempt $attempt stopped safely: $detail")

@@ -233,20 +233,25 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit, bootAutoRun: Boolean): Int {
+    override suspend fun runExploit(pair: CpuPair, bootAutoRun: Boolean, onLog: (String) -> Unit): Int {
         val workDir = filesDir
         if (!ExploitRunLock.tryAcquire(appContext)) {
             onLog("error: another GhostLock run is already in progress")
             return ExploitRunLock.EXIT_BUSY
         }
         return try {
-            runExploitLocked(pair, onLog, workDir)
+            runExploitLocked(pair, onLog, workDir, bootAutoRun)
         } finally {
             ExploitRunLock.release(appContext)
         }
     }
 
-    private suspend fun runExploitLocked(pair: CpuPair, onLog: (String) -> Unit, workDir: File): Int {
+    private suspend fun runExploitLocked(
+        pair: CpuPair,
+        onLog: (String) -> Unit,
+        workDir: File,
+        bootAutoRun: Boolean,
+    ): Int {
         return try {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so")
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
