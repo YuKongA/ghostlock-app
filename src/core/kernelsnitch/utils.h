@@ -21,6 +21,10 @@
 #include <sys/types.h>
 #include <sys/prctl.h>
 
+#include "number_parse.h"
+#include "runtime_time.h"
+#include "support/native_resource.hpp"
+
 #ifdef ANDROID_APP_NO_LKM
 #include <android/log.h>
 #endif
@@ -39,14 +43,14 @@
 #define COLOR_DEFAULT "\033[0m"
 
 #define SYSCHK(x) ({ \
-        typeof(x) __res = (x); \
-        if (__res == (typeof(x))-1) \
+        __typeof__(x) __res = (x); \
+        if (__res == (__typeof__(x))-1) \
             pr_error("SYSCHK(" #x "): %m\n"); \
         __res; \
     })
 #define SYSCHK_pr(x, fmt) ({ \
-        typeof(x) __res = (x); \
-        if (__res == (typeof(x))-1) \
+        __typeof__(x) __res = (x); \
+        if (__res == (__typeof__(x))-1) \
             pr_error(fmt); \
         __res; \
     })
@@ -136,6 +140,10 @@
 #define PAGE_SIZE 4096
 #endif
 
+/* Decoupling plan: pin the current thread to an explicit CPU. Input: CPU id;
+ * output: status. Future: runtime_pin_current_thread(core), returning errors. */
+/* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
+ * -1); callers have no better recovery than proceeding, so the form is kept. */
 static inline void pin_to_core(size_t core)
 {
     cpu_set_t cpuset;
@@ -151,6 +159,9 @@ static inline void reset_cpu_pin(void)
     SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
 }
 
+/* Decoupling plan: apply process resource limits. Input: RuntimeConfig policy;
+ * output: structured status. Future: runtime_apply_limits(). */
+/* CPP02 review: same log-and-continue retention as pin_to_core(). */
 static inline void set_limit(void)
 {
     struct rlimit r;
@@ -164,9 +175,9 @@ static inline void set_limit(void)
 
 static inline void set_unbuffer(void)
 {
-    SYSCHK(setvbuf(stdin,  NULL, _IONBF, 0));
-    SYSCHK(setvbuf(stdout, NULL, _IONBF, 0));
-    SYSCHK(setvbuf(stderr, NULL, _IONBF, 0));
+    SYSCHK(setvbuf(stdin,  nullptr, _IONBF, 0));
+    SYSCHK(setvbuf(stdout, nullptr, _IONBF, 0));
+    SYSCHK(setvbuf(stderr, nullptr, _IONBF, 0));
 }
 
 static inline void set_proc_name(const char *name)
@@ -176,37 +187,22 @@ static inline void set_proc_name(const char *name)
 
 static inline size_t gettime_ns(void)
 {
-    struct timespec t;
-    SYSCHK(clock_gettime(CLOCK_MONOTONIC, &t));
-    return t.tv_nsec + t.tv_sec*1000000000ULL;
+    return static_cast<size_t>(ghostlock::runtime_time::to_duration(
+            ghostlock::runtime_time::monotonic_now()).count());
 }
 
 static void write_file(const char *path, const char *data)
 {
-    int fd = SYSCHK(open(path, O_WRONLY));
-    if (write(fd, data, strlen(data)) != (ssize_t)strlen(data))
+    ghostlock::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
+    const size_t length = strlen(data);
+    if (write(fd.get(), data, length) != (ssize_t)length)
         pr_error("write(%s): %m\n", path);
-    close(fd);
 }
 
 
-static inline void set_user_namespace(void)
-{
-    uid_t uid = getuid();
-    gid_t gid = getgid();
-
-    SYSCHK(unshare(CLONE_NEWUSER | CLONE_NEWNET));
-
-    write_file("/proc/self/setgroups", "deny");
-
-    char map[128];
-    snprintf(map, sizeof(map), "0 %d 1\n", uid);
-    write_file("/proc/self/uid_map", map);
-
-    snprintf(map, sizeof(map), "0 %d 1\n", gid);
-    write_file("/proc/self/gid_map", map);
-}
-
+/* Decoupling plan: configure the helper user/network namespace. Input: helper
+ * context; output: status. Future: helper_namespace_enter(), returning errors
+ * rather than terminating through utility macros. */
 static inline void hexdump(const void* data, size_t size)
 {
     char ascii[17];
@@ -239,24 +235,16 @@ static inline void hexdump(const void* data, size_t size)
 
 static inline unsigned long parse_ul(const char *s, const char *name)
 {
-    char *end = NULL;
-    unsigned long v;
-
-    errno = 0;
-    v = strtoul(s, &end, 0);
-    if (!(errno == 0 && end && *end == '\0'))
+    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 0);
+    if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
-    return v;
+    return parsed.value;
 }
 
 static inline unsigned long parse_xl(const char *s, const char *name)
 {
-    char *end = NULL;
-    unsigned long v;
-
-    errno = 0;
-    v = strtoul(s, &end, 16);
-    if (!(errno == 0 && end && *end == '\0'))
+    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 16);
+    if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
-    return v;
+    return parsed.value;
 }

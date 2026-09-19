@@ -1,0 +1,87 @@
+Panic#2 Part1
+<3>[   64.793377][T13361] kgsl kgsl-3d0: snapshot: device is powered off
+<0>[   64.993457][T13361] Kernel Offset: 0x2138e00000 from 0xffffffc008000000
+<0>[   64.993465][T13361] PHYS_OFFSET: 0x80000000
+<0>[   64.993471][T13361] CPU features: 0x1,00280381,79b34edb
+<0>[   64.993479][T13361] Memory Limit: none
+<7>[   64.993491][T13361] cnss: Crash shutdown with driver_state 0x6f66107
+<3>[   64.993634][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] host pm_state:M2 dev_state:M2 ee:MISSION MODE
+<3>[   64.993659][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] device ee: MISSION MODE dev_state: M2
+<3>[   64.993674][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_ERRDBG2 val: 0xcafecace, ret: 0
+<3>[   64.993690][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_ERRDBG3 val: 0xcafecace, ret: 0
+<3>[   64.993703][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_ERRDBG1 val: 0xcafecace, ret: 0
+<3>[   64.993717][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_ERRCODE val: 0xcafecace, ret: 0
+<3>[   64.993732][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_EXECENV val: 0x2, ret: 0
+<3>[   64.993747][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHI_STATUS val: 0x9a79de70, ret: 0
+<3>[   64.993762][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: MHI_CNTRL val: 0x400, ret: 0
+<3>[   64.993777][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: MHI_STATUS val: 0x401, ret: 0
+<3>[   64.993790][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: MHI_WAKE_DB val: 0x0, ret: 0
+<3>[   64.993805][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHIE_TXVEC_DB val: 0xc7caac3, ret: 0
+<3>[   64.993820][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHIE_TXVEC_STATUS val: 0x8c7caac3, ret: 0
+<3>[   64.993834][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHIE_RXVEC_DB val: 0x253f9618, ret: 0
+<3>[   64.993846][T13361] mhi mhi_1107_00.01.00: [E][mhi_debug_reg_dump] reg: BHIE_RXVEC_STATUS val: 0x0, ret: 0
+<3>[   65.456685][T13361] mhi mhi_1107_00.01.00: [E][mhi_process_sfr] mhi_mmio_patched.c:215:0x400(0): 
+<7>[   65.456695][T13361] cnss: Collect FW image dump segment, nentries 13
+<7>[   65.456703][T13361] cnss: Seg: 0, va: 0000000000000000, dma: 0x00000000a0900000, size: 0x80000
+<7>[   65.456718][T13361] cnss: Mini dump region: FBC_0, va: 0000000000000000, pa: 0x00000000e4c00000, size: 0x80000
+<7>[   65.456732][T13361] cnss: Seg: 1, va: 0000000000000000, dma: 0x00000000a0980000, size: 0x80000
+<7>[   65.456741][T13361] cnss: Mini dump region: FBC_1, va: 0000000000000000, pa: 0x00000000e4c80000, size: 0x80000
+<7>[   65.456751][T13361] cnss: Seg: 2, va: 0000000000000000, dma: 0x00000000a0a00000, size: 0x80000
+<7>[   65.456758][T13361] cnss: Mini dump region: FBC_2, va: 0000000000000000, pa: 0x00000000e4d00000, size: 0x80000
+<7>[   65.456769][T13361] cnss: Seg: 3, va: 0000000000000000, dma: 0x00000000a0a80000, size: 0x80000
+<7>[   65.456777][T13361] cnss: Mini dump region: FBC_3, va: 0000000000000000, pa: 0x00000000e4d80000, size: 0x80000
+<7>[   65.456789][T13361] cnss: Seg: 4, va: 0000000000000000, dma: 0x00000000a0b00000, size: 0x80000
+<7>[   65.456796][T13361] cnss: Mini dump region: FBC_4, va: 0000000000000000, pa: 0x00000000e4e00000, size: 0x80000
+<7>[   65.456806][T13361] cnss: Seg: 5, va: 0000000000000000, dma: 0x00000000a0b80000, size: 0x80000
+<7>[   65.456813][T13361] cnss: Mini dump region: FBC_5, va: 0000000000000000, pa: 0x00000000e4e80000, size: 0x80000
+<7>[   65.456824][T13361] cnss: Seg: 6, va: 0000000000000000, dma: 0x00000000a0c00000, size: 0x80000
+<7>[   65.456832][T13361] cnss: Mini dump region: FBC_6, va: 0000000000000000, pa: 0x00000000e4f00000, size: 0x80000
+<7>[   65.456843][T13361] cnss: Seg: 7, va: 0000000000000000, dma: 0x00000000a0c80000, size: 0x80000
+<7>[   65.456850][T13361] cnss: Mini dump region: FBC_7, va: 0000000000000000, pa: 0x00000000e4f80000, size: 0x80000
+<7>[   65.456861][T13361] cnss: Seg: 8, va: 0000000000000000, dma: 0x00000000a0d00000, size: 0x80000
+<7>[   65.456868][T13361] cnss: Mini dump region: FBC_8, va: 0000000000000000, pa: 0x00000000e5000000, size: 0x80000
+<7>[   65.456878][T13361] cnss: Seg: 9, va: 0000000000000000, dma: 0x00000000a0d80000, size: 0x80000
+<7>[   65.456885][T13361] cnss: Mini dump region: FBC_9, va: 0000000000000000, pa: 0x00000000e5080000, size: 0x80000
+<7>[   65.456896][T13361] cnss: Seg: a, va: 0000000000000000, dma: 0x00000000a0e00000, size: 0x80000
+<7>[   65.456903][T13361] cnss: Mini dump region: FBC_A, va: 0000000000000000, pa: 0x00000000e5100000, size: 0x80000
+<7>[   65.456913][T13361] cnss: Seg: b, va: 0000000000000000, dma: 0x00000000a0e80000, size: 0x80000
+<7>[   65.456920][T13361] cnss: Mini dump region: FBC_B, va: 0000000000000000, pa: 0x00000000e5180000, size: 0x80000
+<7>[   65.456930][T13361] cnss: Seg: c, va: 0000000000000000, dma: 0x00000000a0f00000, size: 0xc0
+<7>[   65.456937][T13361] cnss: Mini dump region: FBC_C, va: 0000000000000000, pa: 0x00000000e4b81000, size: 0xc0
+<7>[   65.456946][T13361] cnss: Collect RDDM image dump segment, nentries 16
+<7>[   65.456952][T13361] cnss: Seg: 0, va: 0000000000000000, dma: 0x00000000a0080000, size: 0x80000
+<7>[   65.456959][T13361] cnss: Mini dump region: RDDM_0, va: 0000000000000000, pa: 0x00000000e4400000, size: 0x80000
+<7>[   65.456969][T13361] cnss: Seg: 1, va: 0000000000000000, dma: 0x00000000a0100000, size: 0x80000
+<7>[   65.456977][T13361] cnss: Mini dump region: RDDM_1, va: 0000000000000000, pa: 0x00000000e4480000, size: 0x80000
+<7>[   65.456987][T13361] cnss: Seg: 2, va: 0000000000000000, dma: 0x00000000a0180000, size: 0x80000
+<7>[   65.456995][T13361] cnss: Mini dump region: RDDM_2, va: 0000000000000000, pa: 0x00000000e4500000, size: 0x80000
+<7>[   65.457005][T13361] cnss: Seg: 3, va: 0000000000000000, dma: 0x00000000a0200000, size: 0x80000
+<7>[   65.457012][T13361] cnss: Mini dump region: RDDM_3, va: 0000000000000000, pa: 0x00000000e4580000, size: 0x80000
+<7>[   65.457022][T13361] cnss: Seg: 4, va: 0000000000000000, dma: 0x00000000a0280000, size: 0x80000
+<7>[   65.457029][T13361] cnss: Mini dump region: RDDM_4, va: 0000000000000000, pa: 0x00000000e4600000, size: 0x80000
+<7>[   65.457040][T13361] cnss: Seg: 5, va: 0000000000000000, dma: 0x00000000a0300000, size: 0x80000
+<7>[   65.457047][T13361] cnss: Mini dump region: RDDM_5, va: 0000000000000000, pa: 0x00000000e4680000, size: 0x80000
+<7>[   65.457057][T13361] cnss: Seg: 6, va: 0000000000000000, dma: 0x00000000a0380000, size: 0x80000
+<7>[   65.457064][T13361] cnss: Mini dump region: RDDM_6, va: 0000000000000000, pa: 0x00000000e4700000, size: 0x80000
+<7>[   65.457075][T13361] cnss: Seg: 7, va: 0000000000000000, dma: 0x00000000a0400000, size: 0x80000
+<7>[   65.457082][T13361] cnss: Mini dump region: RDDM_7, va: 0000000000000000, pa: 0x00000000e4780000, size: 0x80000
+<7>[   65.457093][T13361] cnss: Seg: 8, va: 0000000000000000, dma: 0x00000000a0480000, size: 0x80000
+<7>[   65.457100][T13361] cnss: Mini dump region: RDDM_8, va: 0000000000000000, pa: 0x00000000e4800000, size: 0x80000
+<7>[   65.457109][T13361] cnss: Seg: 9, va: 0000000000000000, dma: 0x00000000a0500000, size: 0x80000
+<7>[   65.457117][T13361] cnss: Mini dump region: RDDM_9, va: 0000000000000000, pa: 0x00000000e4880000, size: 0x80000
+<7>[   65.457128][T13361] cnss: Seg: a, va: 0000000000000000, dma: 0x00000000a0580000, size: 0x80000
+<7>[   65.457136][T13361] cnss: Mini dump region: RDDM_A, va: 0000000000000000, pa: 0x00000000e4900000, size: 0x80000
+<7>[   65.457146][T13361] cnss: Seg: b, va: 0000000000000000, dma: 0x00000000a0600000, size: 0x80000
+<7>[   65.457153][T13361] cnss: Mini dump region: RDDM_B, va: 0000000000000000, pa: 0x00000000e4980000, size: 0x80000
+<7>[   65.457164][T13361] cnss: Seg: c, va: 0000000000000000, dma: 0x00000000a0680000, size: 0x80000
+<7>[   65.457171][T13361] cnss: Mini dump region: RDDM_C, va: 0000000000000000, pa: 0x00000000e4a00000, size: 0x80000
+<7>[   65.457182][T13361] cnss: Seg: d, va: 0000000000000000, dma: 0x00000000a0700000, size: 0x80000
+<7>[   65.457190][T13361] cnss: Mini dump region: RDDM_D, va: 0000000000000000, pa: 0x00000000e4a80000, size: 0x80000
+<7>[   65.457201][T13361] cnss: Seg: e, va: 0000000000000000, dma: 0x00000000a0780000, size: 0x80000
+<7>[   65.457208][T13361] cnss: Mini dump region: RDDM_E, va: 0000000000000000, pa: 0x00000000e4b00000, size: 0x80000
+<7>[   65.457219][T13361] cnss: Seg: f, va: 0000000000000000, dma: 0x00000000a0800000, size: 0xf0
+<7>[   65.457226][T13361] cnss: Mini dump region: RDDM_F, va: 0000000000000000, pa: 0x00000000e4b80000, size: 0xf0
+<7>[   65.457238][T13361] cnss: Collect remote heap dump segment
+<7>[   65.457243][T13361] cnss: Seg: 0, va: 0000000000000000, dma: 0x00000000a1800000, size: 0x6f0000
+<7>[   65.457251][T13361] cnss: Mini dump region: RHEAP_0, va: 0000000000000000, pa: 0x00000000e5200000, size: 0x6f0000
+<7>[   65.457264][T13361] cnss: Setting MHI state: RDDM_DONE(10)

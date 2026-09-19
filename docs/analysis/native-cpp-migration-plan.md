@@ -1,0 +1,455 @@
+# Native C → 现代 C++ 迁移与 RAII 重构计划
+
+> 状态（2026-09-18 关闭）：CPP00–CPP14 全部完成。最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS；同构建 `CPP12y` 的间歇 panic 归入 `KERNEL-PANIC-01`——同构建同日 PASS→panic→PASS，结论为环境/时序，与布局/代码无因果）。CPP10（`TcpZerocopyRoute`）与 CPP11（`SelectStackRoute` + `FdSet`）的代码与主机测试完成，设备门禁仍待外部 TCP/Select 协作者；CPP12 的 `SESSION-01..04`、M02 fd/pipe 段、Heap owner、`KernelSuHandoff`、`VictimContext` pid 所有权与 stage 分层全部通过 Multicast 门禁（`CPP12f`–`CPP12w`）；CPP13 完成 resident 类化与 resident/one-shot 共享编码（`CPP13a`/`CPP13b`）；CPP14 完成 C façade 删除、引用别名收拢、严格警告与 clang-tidy 门禁、Debug/Release 构建与文档同步（`CPP14-release-20260917-multicast-pass`；native 与 Debug 门禁版逐字节相同）。`route_operations.cpp` 按路线拆分（`4c9c46f`）因首次门禁遇同型 W1 panic（`CPP12x`，与 `CPP12s` 调用栈一致）已回退（`6c74486`），代码留历史待环境手段后重试。剩余外部项：CPP10/CPP11 设备门禁、`SELECT-01`（compact Select 外层重试）、CPP14 的 TCP/Select 回归。`U01-D`（`27924cb`）payload alias 已随第二轮门禁闭环（`CPP16-U01D-20260918-multicast-pass`）。基线为 S15 `0c47a9f`，Multicast 最终 C 基线证据为 `7e51ad7`。第二轮（CPP15+）：CPP15 命名空间规范化已完成且产物逐字节一致（`a5a0ba07…`）；CPP16 代码完成（构建 `18fe119c…`，全业务函数 shape 一致，触发 LTO 布局重排）；`U01-D`+CPP16 联合门禁闭环（第一次冷机 PASS，用户豁免第二次；`CPP16-U01D-20260918-multicast-pass`，APK 324、6/6 route、`KernelSU ready`），CPP17 闭环（`RouteController` 布尔化与 `getline` RAII 否决、resident VLA 保留、三个引用别名收归并真机门禁，用户豁免第二次冷机），native `55863311…` 为最新基线。
+>
+> 目标不是机械地把 `.c` 改成 `.cpp`，而是在保持内核交互、竞态时序、payload 字节布局和 Kotlin 启动协议兼容的前提下，用 C++20、STL、强类型及 RAII 重写控制流与生命周期管理。
+
+状态约定：阶段标题只有在该阶段全部代码项和所需真机门禁完成后才标为 `[x]`；阶段内部允许先勾选已经实现并由主机测试证明的独立子项。`[ ]` 不一定表示尚未开始，也可能表示仍缺资源接入或设备证据。
+
+### 当前源码布局
+
+当前实现的 profile、session、共享攻击链与三路线所有权关系见 [`native-cpp-current-uml.md`](native-cpp-current-uml.md)。
+
+- [x] `memory/`：地址解析、Heap/page 状态与 route-neutral payload 编码。
+- [x] `routes/`：路线状态、控制器、三路线 context，以及保持原单一编译单元边界的 `route_operations.cpp`。
+- [x] `session/`：`ExploitSession` 与运行配置。
+- [x] `support/`：通用 `Result` 和 RAII 资源类型。
+- [x] `tests/`：所有主机固定测试；C/C++ link probe 已退出生产二进制。
+- [x] Makefile、Gradle 输入和 CLion CMake 已同步；目录说明见 `../../src/core/README.md`。
+- [x] 结构提交：`35ebfba`（按职责归档）和 `1d8bbb7`（移除 `fops` 误名、隔离测试探针）。
+- [x] 新增 profile-centered 当前实现 UML，明确 transport、snapshot、session、共享 PI/Heap 和 route operations 边界。
+- [x] `main.cpp` 分层与 namespace 化系列（`1ec96ab`/`172062d`/`d9b1042`/`300d3bf` + `d862a51`/`fb8fb59`/`dfd0d60`/`a30e8f2`）：批次 A（main 解析/stage/victim enum/分 TU，`085c060`，native `53f9ec60…`）第一次冷机 PASS（`CPP12u`）；批次 B（namespace 层，`91fb8a1`，native `1e196eb9…`，与历史 `CPP12r` 构建逐字节一致）第一次冷机 PASS（`CPP12v-20260918-multicast-pass`，6/6 route、零页重试、`KernelSU ready`）。历史 2/2 panic（`CPP12r`）与布局无因果闭环（`CPP12s` 内核栈 + 双 PASS）；第二次冷机待跑或豁免。
+- [ ] 将 `route_operations.cpp` 按 Multicast/TCP/Select 拆成独立编译单元：实现与构建验证完成（`4c9c46f`，8/8 攻击关键函数与 `66f0a8a3…` strict 一致），但首次真机门禁为同型 W1 panic（`CPP12x`，Call trace 与 `CPP12s` 完全一致，与本层无因果）；已回退（`6c74486`），代码保留在历史，待环境/攻击层手段后重试。
+
+## 1. 不可违反的实施规则
+
+- [x] 每阶段和每个子项都用 checkbox；阶段状态必须区分代码完成、主机验证和设备验证。
+- [x] 原逐阶段暂停规则经用户于 2026-09-14 明确改为“一步完成到最后”；本批连续实施，但仍保留兼容入口与验证记录。
+- [x] 连续批次每次实质修改后运行主机回归和 Native 构建；最终统一进行 APK/真机门禁，不把未实测路线写成设备通过。
+- [ ] 每次需要用户真机验证前，自动依次执行 `./gradlew clean`、`:app:assembleDebug` 与 `adb -s <serial> install -r`，再请用户运行。这是 CPP-BUILD-02 重复缓存副本的强制规避步骤；不得依赖残留在 `../../build` 中的增量结果，也不得把清理后的通过当作对旧缓存的验证。
+- [ ] 用户确认后导出完整 Native 日志到 ``，创建同名前缀分析文档，再勾选阶段标题。
+- [ ] 从真机读取日志并归档完成后，仅当“前一次执行成功且设备没有自动重启”时才执行 `adb -s <serial> reboot`，为下一次门禁准备干净状态；若前一次执行失败并已触发设备自动重启（如 kernel panic），跳过 reboot 并直接进入失败分析。
+- [x] 布局敏感改动（新增/删除编译单元、改变 `.text` 排布）的门禁至少包含两次冷机复跑；`CPP12k` 证明同一构建可能在 W2 spray 窗口 2/2 panic 而回退版稳定，`CPP12l` 证明隔离复跑可判定归因。
+- [ ] 每阶段更新 `routes.md` 的核心维护图；函数/所有权发生变化时同步更新全函数调用图、函数表和全局状态矩阵。
+- [ ] 简单迁移若受会话、profile、共享 Heap 或敏感时序阻塞，在代码现场登记 `TODO(CPPxx-编号)`，并在本计划的 TODO 表登记回补阶段。
+- [ ] 函数和类型按职责/攻击链命名，不使用内核版本号；版本差异只能出现在 profile 数据和注释中。
+- [ ] 不在同一阶段同时进行“语言迁移”和“攻击算法优化”。先证明等价，再在独立阶段改变策略。
+- [ ] 不改变 Kotlin → Native 的参数、stdout/stderr、退出码、日志路径、时间戳文件命名和 Direct/Shizuku 启动协议。
+- [ ] 不把异常传播越过 C ABI、线程入口、`fork()` 边界或 `main()`；边界函数必须返回显式状态。
+- [ ] 不在竞态关键窗口引入隐藏分配、引用计数、iostream、locale、锁或不可控析构工作。
+- [ ] 用户文件 `` 始终不纳入提交。
+
+## 2. 技术基线与语言策略
+
+### 2.1 编译模式
+
+- C++ 标准：生产 Native 全部使用 C++20；仅 `cpp_link_probe_test.c` 保留为主机 C11 测试，用于验证稳定 C façade。
+- C++ 标准库：Android NDK libc++；最终链接由 `clang++` 驱动。
+- 当前生产构建只编译 `.cpp` 并由 `clang++` 统一链接；Makefile 仍保留空的 C source 规则，便于未来确有 C ABI 源文件时使用。
+- CLion CMake 必须与 Makefile 使用相同源文件清单和 C++20 设置，但 CMake 仍只作为 IDE 索引/静态分析入口。
+- 在 APK 门禁中使用 `llvm-readelf -d` 检查 `DT_NEEDED`，明确采用静态 libc++ 或把 `libc++_shared.so` 一并正确打包；不得依赖设备碰巧存在 C++ runtime。
+- Debug/Release 都启用 `-Wall -Wextra -Wconversion` 的可行子集；迁移阶段先记录旧代码噪声，再逐文件收紧，禁止一次性掩盖全部警告。
+- 默认禁用 RTTI；业务控制流不使用异常。是否使用 `-fno-exceptions` 必须先完成 libc++/析构行为构建验证。
+
+### 2.2 允许并推荐的现代 C++ 工具
+
+| 目的 | 首选工具 | 使用限制 |
+|---|---|---|
+| 不可变视图 | `std::span`、`std::string_view` | 不得超过底层 storage 生命周期 |
+| 固定布局 | `std::array`、`enum class`、`constexpr` | 与 kernel/transport 对齐处必须 `static_assert` |
+| 可选结果 | `std::optional` | 不用于区分多种错误原因的路径 |
+| 多分支状态 | `std::variant` 或项目级 `Result<T, Error>` | 不使用异常承载正常失败 |
+| 动态所有权 | `std::unique_ptr` + 自定义 deleter | 禁止无意义 `shared_ptr` |
+| 动态集合 | `std::vector` | 只在准备阶段分配；竞态前 `reserve()` |
+| 文本/路径 | `std::string`、`std::string_view` | 不在 signal/fork child 的受限路径动态构造 |
+| 时间 | `std::chrono` | syscall 需要 `timespec` 时在边界显式转换 |
+| 并发状态 | `std::atomic<T>` | 保留并注明 memory order；不可机械替换时序 |
+| 线程 | 自定义 `Pthread` RAII 或受控 `std::thread` | 需要 TID、调度策略、CPU affinity 的路线优先保留 pthread 语义 |
+| 作用域收尾 | 小型 `ScopeExit` 或 RAII owner | 析构必须 `noexcept`、幂等且耗时可预测 |
+
+### 2.3 明确禁止的“现代化”误区
+
+- 不使用 `std::shared_ptr` 管理 fd、mmap、pthread 或 Heap 页面所有权。
+- 不用 iostream/`std::format` 替换当前低级日志管线，除非先证明无额外 runtime/分配影响。
+- 不让拥有资源的对象可复制；默认删除 copy，只有语义明确时提供 move。
+- 不用析构函数静默执行可能阻塞的无限 `join()`；线程 owner 必须先显式 `request_stop()`，析构只执行有界收尾或触发可诊断失败。
+- 不在 `fork()` 后调用非 async-signal-safe 的复杂 STL 操作。
+- 不把 kernel ABI 数据直接建模成含虚函数、继承或非标准布局的类。
+- 不因 RAII 而关闭仍被内核引用的 fd/mmap；dirty failure 的“故意保留至进程退出”必须由显式 `QuarantinedResource` 表示。
+
+## 3. 目标架构
+
+```mermaid
+flowchart TD
+    K["Kotlin resolved JSON profile"] --> ABI["稳定 C ABI / argv 边界"]
+    ABI --> App["ExploitApplication"]
+    App --> Session["ExploitSession"]
+    Session --> Config["RuntimeConfig + TargetProfile"]
+    Session --> Address["ResolvedAddresses"]
+    Session --> Heap["HeapOwner / PayloadPage"]
+    Session --> Race["PiRace"]
+    Race --> Controller["RouteController"]
+    Controller --> Mcast["MulticastWaiterRoute"]
+    Controller --> Tcp["TcpZerocopyRoute"]
+    Controller --> Select["SelectStackRoute"]
+    Mcast --> Status["RouteOutcome"]
+    Tcp --> Status
+    Select --> Status
+    Status --> Stage["W1 / W2 / W3 controller"]
+    Stage --> Handoff["VictimProcess + KernelSuHandoff"]
+
+    Fd["UniqueFd"] --> Heap
+    Fd --> Mcast
+    Fd --> Tcp
+    Fd --> Select
+    Map["MappedRegion"] --> Heap
+    Map --> Tcp
+    Thread["PthreadOwner"] --> Race
+    Thread --> Mcast
+    Thread --> Tcp
+    Child["ChildProcess"] --> Heap
+    Child --> Handoff
+```
+
+核心原则：`ExploitSession` 拥有一次攻击的全部可变状态；profile/address/request 是不可变值或借用；Heap、route、thread、fd、mmap 和 child 都有唯一 owner；路线只返回结构化结果，不发布隐式全局状态。
+
+## 4. RAII 基础类型设计
+
+### 4.1 `UniqueFd`
+
+- move-only；默认值 `-1`；`valid()`、`get()`、`release()`、`reset()`。
+- 析构调用 `close()`，保存 errno 但不抛异常。
+- 支持显式 borrowed view，禁止用裸 `int` 表达不清楚的所有权转移。
+- 对 dirty kernel reference 提供 `release_to_process_lifetime(reason)`，日志记录故意泄漏原因。
+
+### 4.2 `MappedRegion`
+
+- move-only；拥有 address + length；析构 `munmap()`。
+- 构造通过 `Result<MappedRegion, SysError>`，拒绝半初始化对象。
+- `bytes()` 返回 `std::span<std::byte>`，payload 编码不再接收无长度裸指针。
+
+### 4.3 `PthreadOwner`
+
+- 保存 `pthread_t`、started/joined/stop 状态及路线角色。
+- 显式 `start()`、`request_stop()`、`join()`；析构不得无限阻塞。
+- 线程入口使用无异常 C trampoline，立即转发到 `noexcept` 成员函数。
+- affinity、scheduler、native TID 和 futex 行为继续使用 pthread/Linux API，不用 `std::jthread` 隐藏这些语义。
+
+### 4.4 `ChildProcess`
+
+- move-only PID owner；区分 running、parked、reaped、transferred。
+- 显式 `terminate_and_wait()`/`release_to_handoff()`；析构只清理由当前对象明确拥有且可安全回收的 child。
+- `fork()` child 分支保持 C 风格最小代码，不运行父进程 STL 清理路径。
+
+### 4.5 结果与错误
+
+```cpp
+enum class RouteCode { Ok, Retryable, FallbackSafe, DirtyFailure, Unsupported };
+
+struct RouteOutcome final {
+    RouteCode code;
+    RouteStep step;
+    std::error_code error;
+    bool userspace_clean;
+    bool kernel_disarmed;
+};
+```
+
+- `RouteOutcome` 保持当前 `RouteStatus` 语义和日志数值映射。
+- syscall 错误在调用点立即捕获 errno，转换成项目级 `SysError`/`std::error_code`；不得稍后读取被覆盖的 errno。
+- dirty、retryable、unsupported 不通过异常表示。
+
+## 5. ABI、内存布局和低级边界
+
+- Kotlin/Direct/Shizuku 当前并非直接构造 C++ 对象；外部入口维持 C ABI/argv/file protocol。
+- 需要被 C 文件调用的过渡接口放在 `extern "C"` façade 中；C++ 类型不得泄漏到 C header。
+- `kernel_offsets` JSON transport 在迁移初期保持 C-compatible POD；解码完成后转换成不可变 `TargetProfile` C++ value。
+- 对 payload、kernel 结构镜像和 syscall 参数使用 `std::is_standard_layout_v`、`std::is_trivially_copyable_v`、`sizeof`、`offsetof` 静态断言。
+- 使用 `std::byte`/`memcpy` 编码未对齐字段，不通过未对齐 `reinterpret_cast<T*>` 写入。
+- 所有 kernel address 使用独立强类型包装（如 `KernelImageAddress`、`DirectMapAddress`），但底层仍为 `std::uintptr_t` 且无运行时开销。
+- `target.h` 中 profile 可覆盖的地址/布局不得继续成为 C++ 业务代码的默认来源；仅真正编译期恒量进入命名空间。
+
+## 6. 分阶段迁移顺序
+
+阶段顺序按“构建基础 → 纯值 → 单资源 → 聚合资源 → 并发 → 三路线 → 全局编排”推进。Multicast one-shot 是当前唯一完整真机覆盖且对栈帧/顺序高度敏感的路线，因此最后迁移。
+
+### [x] CPP00：混合 C/C++ 构建骨架
+
+- [x] Makefile 增加 `NDK_CXX`、独立 `.c/.cpp → .o` 规则和最终 `clang++` 链接；保留当前优化、PIE、pthread、LTO 和 include 定义。既有 C 因 GNU `typeof` 固定为 `gnu11`。
+- [x] Gradle input 扩展到 `.cpp/.hpp`；输出路径、APK 打包名称和任务依赖不变。
+- [x] CLion CMake project 切换为 `C CXX`，设置 GNU C11/C++20，并使用与 Makefile 相同的生产源文件清单。
+- [x] 添加不参与攻击控制流的 C++ link probe；host C 测试已覆盖 C façade、`std::string`/`std::vector`、RAII errno 恢复和异常边界。
+- [x] `llvm-readelf` 确认 PIE/DYN，仅依赖 `libm/libdl/libc`；使用静态 libc++，APK 无 `libc++_shared.so` 依赖。Native 大小由 96,928 增至 431,344 字节（+334,416 B）。
+- [x] 既有 profile/payload/Heap/KernelSnitch bounds/RouteController 主机测试、CPP link probe、`buildGhostlockNative` 和 `assembleDebug` 全部通过；APK 内 Native SHA-256 与构建产物一致。
+- [x] 创建 CPP00 独立提交并暂停。
+- [x] `versionCode=178` 真机完成完整 Multicast 门禁；六次路线均 `OK clean=1/1`，W1/W2/W3、root、seccomp 与 KernelSU 交接通过，日志和核心 UML 已更新。
+
+### [x] CPP01：公共强类型、常量与 `target.h`
+
+- [x] 新建 `target_constants.hpp`：真正稳定的 address-domain 与项目自定义 payload 槽位迁为 `inline constexpr`，按命名空间分类。
+- [x] `target.h` 保留 C façade：C++ 分支转发到 namespaced constants，尚未迁移的 C 调用点继续使用数值兼容分支。
+- [x] kernel symbol、task/cred/waiter layout offset 及 SoC 物理加载默认值明确留在 profile/C compatibility 层，未伪装成新的 C++ runtime authority。
+- [x] 引入零开销、standard-layout、trivially-copyable 的 `KernelAddress<Domain>` 及溢出受检 `checked_add()`；攻击日志和 C 控制流未改变。
+- [x] `target_constants_test.cpp` 为 `target.h` 全部地址、symbol、layout、payload 及派生 image 宏建立 `static_assert` 固定向量，并测试正常/溢出地址运算。
+- [x] target constants、CPP link probe、既有五组主机回归、`buildGhostlockNative` 和全新 `assembleDebug` 构建通过。
+- [x] 创建 CPP01 独立提交并暂停。
+- [x] 真机执行完整 Multicast 门禁；与 CPP04–CPP06 合并归档为 `CPP04-06-20260917-multicast-pass`，地址数据流图沿用当前 UML。
+
+### [x] CPP02：状态码、时间、字节和系统调用工具
+
+- [x] `route_status.h` 的 C++ 分支迁为强类型 `RouteCode/RouteOutcome`，保留 C 定义、旧名称、数值映射和 20-byte 布局 façade。
+- [x] `runtime_time.h` 的计算已迁为 `std::chrono` 并保留 `timespec` syscall 边界；`ms_since()` 改为 const 委托，`read_first_line()` 改为 `UniqueFd` + 显式 errno 恢复的 RAII 实现。
+- [x] 新建 `SysError`/`Result<T,E>`；基础资源构造失败已在失败点保存 errno。
+- [x] 日志函数继续走现有低级实现，不引入 iostream。
+- [x] 固定测试覆盖状态布局/数值、fallback、时间换算（normalize 正/负溢出、相等 deadline、单调时钟）与空 span。
+- [x] `utils.h` 的纯解析 helper 迁为 host-safe `number_parse.h`（`parse_ul`/`parse_xl` 委托，行为不变），新增 `number_parse_test` 固定向量（base 自动检测、八进制/十六进制、空白/符号、空串、尾部垃圾、`ERANGE` 溢出、`ULONG_MAX` 回绕）。
+- [x] `gettime_ns()` 委托 `runtime_time`（`std::chrono`）；`write_file()` 改用 `UniqueFd` 接管 fd，保留 `SYSCHK` fail-fast 与 `pr_error` 语义。
+- [x] `set_limit`/`set_unbuffer`/`set_proc_name`/`set_user_namespace`/`pin_to_core`/`reset_cpu_pin`/`hexdump` 保留 `SYSCHK` log-and-continue 语义；CPP17 复核确认结构化返回无调用者可用恢复策略，保留原语义（零调用 `set_user_namespace` 已删除），`CPP02-HELPERS` 关闭。
+- [x] `df901ec` 已提交；versionCode 185 Multicast 真机门禁通过并归档为 `CPP03-20260914-multicast-pass`。
+
+### [x] CPP03：基础 RAII 资源库
+
+- [x] 实现并测试 `UniqueFd`、`MappedRegion`、`ScopeExit` 和 trivially-copyable `BorrowedFd`。
+- [x] `ChildProcess` 覆盖 move、handoff、kill/wait、状态和重复清理；新增 `RLIMIT_NPROC` 的真实 fork 失败注入，验证失败分支不产生受管 child。
+- [x] `PthreadOwner` 已实现 create、幂等 stop callback、join、detach、release、move 和非阻塞析构策略。
+- [x] 资源测试覆盖 `/proc/self/fd`（macOS 回退 `/dev/fd`）、mmap、线程及 child waitpid，并验证无重复 owner 清理。
+- [x] 本阶段只提供类型，不迁移攻击路线调用点。
+- [x] `df901ec` 已提交；基础 RAII 未接入路线，versionCode 185 Multicast 完整门禁通过。
+
+### [x] CPP04：Profile、JSON transport 与地址空间
+
+- [x] `offsets_json.cpp` 保留解析 façade，文件 owner 已迁为 `UniqueFd + std::string`；有界 `std::string_view` value parser 已落地（`json_skip_ws`/`json_match_key`/`json_skip_value`/`json_value_span`/`json_member_value`/`json_read_string`/`json_parse_int`），Kotlin schema 未改变。
+- [x] `TargetProfile` 成为不可变 C++ value，拥有 release 并重绑 transport 指针；execution 返回只读 view，layout accessor 返回 value。
+- [x] `ResolvedAddresses` 使用 `PhysicalAddress`/`KernelImageAddress` 强地址类型；`resolved_addresses_kernel_phys_load()`/`resolved_addresses_init_cred_image()` accessor 取代直接字段读取，`resolved_addresses_data_alias_checked()` 做溢出/下溢拒绝。
+- [x] 明确 `target.h` 剩余 compatibility 常量及删除期限（device defaults → CPP08/CPP12，symbol fallback → CPP08，payload slot/structure offsets → CPP05/CPP13），并在文件头记录。
+- [x] 对全部内置 profile 运行 schema、解析、地址和 layout 固定向量：新增 `tests/offsets_json_test.cpp`，遍历 45 个内置 profile 并覆盖 9 组解码拒绝、3 组地址拒绝与 QCOM/MTK/XRing 物理加载规则。
+- [x] `address_space.cpp` 的 Android-only `__system_property_get` 探测加入非 Android 分界，使确定性地址推导可在主机固定向量中执行；Android 生产路径不变。
+- [x] 提交并暂停（CPP04 独立提交）。
+- [x] 真机门禁：Multicast 完整日志已归档为 `CPP04-06-20260917-multicast-pass`，核心 UML 状态注释已更新。
+
+### [x] CPP05：Payload Builder 纯函数化
+
+- [x] `WriteRequest`、`PayloadWriteLayout` 改为不可变标准布局 value（`ghostlock::` 强类型 + `static_assert`）；`WriteMode` 改为 `enum class`；C 调用点全部迁移，C façade 退入 `#else` 分支。
+- [x] builder 接收 `std::span<std::byte>` 并返回显式编码结果，不写全局 page 状态。
+- [x] 用 `kCompactWaiterBytes` 与 `std::array` 表达固定 payload 片段；`util.cpp` 与 `route_operations.cpp` 改用 span 编码入口，Multicast 几何越界时以 step=59/`EOVERFLOW` 安全拒绝而非越界写入。
+- [x] 对 Multicast/TCP/Select 现有共享 payload 固定向量逐字节比较，并覆盖 compact 与 multicast destination 过小拒绝。
+- [x] 保留 C façade 直到所有调用者迁完。
+- [x] 提交并暂停（CPP05 独立提交）。
+- [x] 真机门禁：与 CPP04 合并归档为 `CPP04-06-20260917-multicast-pass`。
+
+### [x] CPP06：FutexHash 与 KernelSnitch
+
+- [x] `FutexHashContext` 为无资源只读 value（单字段 + `static_assert`）；hash 函数接收显式 context。`futex_hash.h` 去除 Android-only 依赖并收敛 linkage（`static inline`），使 hash 结果可由主机固定向量锁定。
+- [x] `KernelSnitch` 的唯一 owner 由 `ghostlock::KernelSnitchOwner` 表达：持有 mmap 上下文并释放全部用户态映射；`util.cpp` 的 init/find/scan/result/destroy 均经 owner，fork leak child 仅借用 `get()`，C 入口保持不变。
+- [x] 生命周期保留显式阶段检查（find → has → scan → result → reset），`destroy` 与 `result` 仍然分离；`reset()` 幂等且可在任意早退路径安全执行。
+- [x] `COMPAT-01` 四个零调用 util 适配入口已删除，未创建 C++ 版兼容包装。
+- [x] 新增 `futex_hash_test`：4 组 table/key/mm 固定向量、power-of-two 掩码一致性、非法表大小与空 context 拒绝；修复 `kernelsnitch_strings` 缺失 `COLLISIONS_NOT_FOUND` 造成的标签错位与 `MM_NOT_FOUND` 越界读。
+- [x] 验证 collision 与 destroy（合并门禁）：日志中 6 次 collision 与 mm_struct leak、6 次 spray 重建全部成功；canonical/tag sweep 由 leak 成功间接覆盖。
+- [x] 提交并暂停（CPP06 部分提交）。
+- [x] 真机门禁：KernelSnitch 时序已归档（collision ≈2.0s、leak ≈40ms、六次 spray 全部成功）；`kernelsnitch_print_state` 零调用，标签输出不适用。
+- [x] 收尾后真机复测：native `b6245955…` 与设备 APK 一致，6 次 route 全部 clean，collision/leak 时序与 CPP04-06 基线一致（证据 `CPP06b-20260917-multicast-pass`）。resident 路径不在本阶段范围。
+- [ ] 部分线程创建失败注入（`__increase` 的 worker `pthread_create` 失败当前只 log）：保留为后续维护项，代码标记 `TODO(CPP06-KS-RAII)`。
+
+### [x] CPP07：Heap 与 PayloadPage 所有权
+
+- [x] `PayloadPage` 变为 move-only：删除 copy、move 转移所有权、moved-from 置空；`destroy()`/`move_to()` 显式释放与转移，析构保持平凡（内核可能仍引用的 fd 不会被作用域退出关闭）。布局与 C façade（`payload_page_move/destroy/has_reclaim`）不变。
+- [x] `HeapOwner` 唯一拥有：`PayloadPage` 部分已完成（move-only + 显式释放）；`mm_ctx` 的 child/memfd、`skb_buffer`、leak child 需要 `ExploitSession` 根 owner，作为 `CPP07-OWNER` 移交 CPP12。
+- [x] `activate/stash/quarantine` 全部经 `move_to`/`destroy` 表达，不复制 fd。
+- [x] dirty kernel reference 保留显式 quarantine→release 流程；`PayloadPage` 无自动析构释放。
+- [x] 删除 `g_heap_context` 及 `page_base/fake_*` 镜像：受 session 阻塞，已作为 `CPP07-OWNER` 移交 CPP12。
+- [x] 页面验收与快速修复策略沿用 `payload_builder_test`；`heap_context_test` 新增 move-only、moved-from 空、重复 destroy 幂等与显式释放测试；`make native-host-tests` 修复为正确传播单个测试失败。
+- [ ] 部分 prepare 失败注入：需要 syscall 层故障注入框架，随 `CPP07-OWNER` 移交 CPP12 后仍未落地，代码标记 `TODO(CPP07-OWNER)`。
+- [x] 真机门禁：6/6 route clean、无 prepare 重试，Heap 时序与基线一致（证据 `CPP07-20260917-multicast-pass`）；同一构建在 20:34 出现过一次与 CPP06c 同模式的间歇性 kernel panic（证据 `CPP07-20260917-multicast-kernel-panic`，根因不可判定，与 native 版本无关）。
+
+### [x] CPP08：RuntimeConfig、日志与进程资源
+
+- [x] `RuntimeConfig` 值类型化：C++ class 拥有 `std::string` 路径，`runtime_config_init` 改为显式字段重置；C façade 保留。`g_runtime_config` 引用别名的删除需要 `ExploitSession` 根 owner，随 `SESSION-01` 移交 CPP12。
+- [x] 路径只在 syscall/exec 边界转换为稳定 `c_str()`；`g_home_dir`/`g_root_script_path` 宏直接暴露 `c_str()`，不存在保存临时字符串指针的调用点。
+- [x] Native 文件 owner：`write_root_script` 改用 `UniqueFd` 接管写入 fd，保留写入失败告警与 `chmod` 顺序；Kotlin 侧 `DebugAttackLog` 已有显式 open/close。
+- [x] 新增 host-safe `session/runtime_paths.h` 与 `runtime_paths_test` 固定向量（尾部斜杠、根路径、空串、255 字节截断、root script 拼接与上限），锁定路径行为。
+- [x] 主页新增用户可选 "Run via Shizuku" 开关（profile 未强制时显示，状态就绪才允许 Run；`requiresShizuku` 机型保持只读状态卡）；同时补上缺失的 `GhostlockUserService` manifest 声明与 release R8 keep，使 Direct/Shizuku 可独立选择。
+- [ ] 回补 `SESSION-01`、`SESSION-03`：RuntimeConfig 经 ExploitSession 传递与 CPU 镜像归并需要 session 编排，已登记 CPP12。
+- [x] 上游第二批 catch-up 与 CPP08 修复合并为同一复测基线：移植 `396e52d`（`g_direct_map_end`、`/proc/iomem` 缓存、`in_direct_map()`、KernelSnitch slice/`identity_diff` 收窄），默认常量下零行为变化，详见 `upstream-catch-up-20260913.md`；该修复针对我们在 KernelSnitch 阶段观察到的间歇性内核崩溃。
+- [x] Direct 入口门禁通过（206）：handoff 诊断 `script open fd=3 errno=0`，root script 执行、`KernelSU ready`，6/6 route clean、无 prepare 重试，证据 `CPP08-20260917-direct-pass`。首轮 EFAULT 失败与修复见 `CPP08-20260917-direct-kernelsu-pending`。
+- [x] Shizuku 入口门禁通过（211）：日志通路修复后日志完整（`Shizuku ready uid=2000 Seccomp=0`），4 次 route 全 clean（W3 按 shell 无 seccomp 跳过），`KernelSU ready`、无 panic；证据 `CPP08-20260917-shizuku-pass`。此前两次失败（门槛拒绝、日志背压 panic）分别见 `CPP08-20260917-shizuku-gate-fail` 与 `-shizuku-panic`。
+
+### [x] CPP09：PI Race 并发生命周期
+
+- [x] `PiRace` 类拥有 futex、atomic、三个 `PthreadOwner`、CPU 选择、request borrow 和 outcome；`pthread_t`/`*_started` 兼容镜像已删除，`start_threads` 按 consumer→owner→waiter 创建，部分失败时 `request_stop` + join 已启动者。等待超时（`PI-TIMEOUT-01`）保持独立加固项。
+- [x] 使用 `std::atomic` 时逐字段记录 memory order；热路径保持原 seq_cst 默认、reset 保持 relaxed，并在 `pi_race.h` 注明未验证不得放松。
+- [x] start/run/request_stop/join 分离；`run_main_route_threads()` 只做 `reset → start_threads → run → request_stop → join` 编排。
+- [x] `RouteStatus` 由 `PiRace::run()` 返回，经 `outcome_with_counters()` 合并 consumer calls/success（Ok 无活动降级为 Retryable，dirty 原样透传），调用者不再读取隐式状态。
+- [x] 线程兼容镜像删除；`g_pi_race_context` 作为 `g_exploit_session.race` 的引用别名保留，调用点收归随 `SESSION-01` 在 CPP12 完成。
+- [x] 主机测试覆盖 reset 幂等、正常启动/停止/join、部分启动失败清理（已启动 worker 全部 join、重复 join/stop 幂等）与 counts 合并；真实 timeout/dirty 语义由真机门禁覆盖。
+- [x] 提交、暂停（CPP09 独立提交）。
+- [x] Multicast 真机门禁（APK 214）：6/6 route `OK clean=1/1 calls=1 success=1`、5 次 spray、6 次 disarm、`threads joined` ×6、`KernelSU ready`；证据 `CPP09-20260917-multicast-pass`。总耗时差异（T+34.8s vs 28.2s）全部来自 KernelSnitch collision 阶段波动，已记录为观察项。
+
+### [ ] CPP10：TCP Zerocopy 路线
+
+- [x] `TcpZerocopyRoute` move-only（删除 copy、提供 move 构造），唯一拥有三个 `UniqueFd`、`MappedRegion` mapping 和 `PthreadOwner` punch worker；`tcp_make_pair` 的 listener/client/server 全部 RAII 接管。
+- [x] prepare/execute/disarm/destroy 分离并显式返回：`prepare()` 返回 int 且记录 step/errno，`execute()` 返回 `RouteStatus`；析构保持平凡，dirty 路径经 `release_to_process_lifetime`/`release()` 故意保留资源，不提前 close 已被 puncher 借用的 fd。
+- [x] profile attempts/arm sequence/hold iterations 保持不变。
+- [x] fallback 只有 `FallbackSafe && userspace_clean && kernel_disarmed` 才允许（`route_status_allows_fallback` → `RouteOutcome::can_fallback()`，controller 未改）。
+- [x] 主机测试：move-only 断言、资源转移、disarm 幂等、destroy 释放 fd/mapping 并幂等、`fail()` 记录 step/errno、dirty→fallback-safe 状态机；`make native-host-tests` 全绿。
+- [ ] 外部 TCP 设备门禁（本机无可用 TCP 端点）：通过前阶段保持 `[ ]`，不得宣称完成。
+- [x] 提交、暂停（CPP10 独立提交）；TCP 成功/安全失败/dirty 设备证据待外部设备补。
+
+### [ ] CPP11：Select Stack 路线
+
+- [x] `SelectStackRoute` 拥有 pipe/timerfd/high-read 描述符（`UniqueFd`）与执行状态；`stdio_backup` 建模为 `BorrowedFd`（借用，从不关闭）；timerfd 失败时 `block_borrows_pipe` 表达对 pipe read end 的借用，避免重复关闭。
+- [x] `FdSet` wrapper 提供 `zero/set/test/raw`，`pselect/select` 边界仍传原生 `fd_set*`；`pselect_put_global_word`/`fdset_get_word`/`open_selected_fds` 布局未变。
+- [x] consumer in-flight 时（`consumer_stuck`）经 `release_to_process_lifetime`/`release()` 保留全部路由描述符至进程退出，禁止析构提前关闭；`destroy()` 的 dirty 分支幂等并保持 `selected_fds_installed` 语义。
+- [x] 主机测试：构造/借用记录、`FdSet` 位操作、move-only 与资源转移、借用 block 不双关、stdio 借用在 restore 后仍有效、stuck 分支保留 fd、disarm/destroy 幂等与 fallback-safe；`make native-host-tests` 全绿。
+- [ ] compact/tree 两种 layout 的设备验证：无可用 Select 设备，门禁待补（阶段保持 `[ ]`）。
+- [x] 暂不实现外层多 delay/retry；`SELECT-01` 保留给 CPP12 session。
+- [x] 提交、暂停（CPP11 独立提交）；Select 与 TCP→Select 回退设备证据待外部设备补。
+
+### [ ] CPP12：ExploitSession 与阶段控制流
+
+- [x] `SESSION-03`：删除 `g_core_main`/`g_core_consumer` CPU 镜像与 `main_cpu_mirror`/`consumer_cpu_mirror` 字段；`CORE` 宏直接解析会话快照，零调用 `CONSUMER_CORE` 删除（独立提交；Multicast 门禁通过 `CPP12-20260917-multicast-pass`）。
+- [x] 新建 `ExploitSession`：唯一拥有 config/profile/address/Heap/PI race/victim 管道与 parked handoff；route controller 是无资源栈上 dispatcher（原地保留）；`g_target_profile`/`g_resolved_addresses`/`g_heap_context` 引用别名待 CPP14 收归（`g_heap_context` 已验证会改变攻击关键函数）。
+- [x] `main` 只负责解析、构造 session、运行和映射退出码：`--profile` 解析移入 `main`（usage/退出码不变），`run_exploit(session, profile_path)` 接收进程级 `g_exploit_session`；session 构造仍由进程级静态对象完成（引用别名绑定不可局部化）。
+- [x] W1/W1b/W2/W2b/W3 以显式 stage 函数与 enum 控制流呈现：`StageResult`（Failed/Continue/Done）驱动 `run_exploit` 编排，`VictimRound` 驱动 W2/W3 重试；函数拆分为 `run_setup_stage`/`run_w1_stage`/`park_rooted_child`/`root_victim`/`clear_victim_seccomp`/`run_w2_w3_chain`/`run_handoff_stage`；日志、顺序与退出码不变（2026-09-18）。
+- [x] `SESSION-01`：删除 `g_runtime_config` 引用别名与零调用 `init_cpu_config`，所有调用点改经 `runtime_config_snapshot()` 访问 session 快照（独立提交；Multicast 门禁通过 `CPP12-20260917-multicast-pass`，W2→W3 全链执行无偏差）。
+- [x] 路径宏清理（`SESSION-01` 别名段）：删除 `g_home_dir`/`g_root_script_path` 宏，调用点内联 `runtime_config_snapshot()` 读取（`e1782f6`）；重建 native 与 `CPP12m/CPP12n` 门禁版本 `625d5300…` 逐字节一致，两次冷机证据继续有效。
+- [x] 回补 `SESSION-04`：resident stop 的 Heap 释放已移入 `ExploitSession::release_resident_heap()`（`kernel5_resident_stop` 只做 disarm/destroy，W1/W2 stop 顺序不变）；Multicast 门禁通过 `CPP12o-20260918-multicast-pass`。
+- [x] 回补 `SESSION-02`（`da2ab17`/`faac9ce`）：`run_exploit`/`retry_write_stage` 显式接收 `ExploitSession &`，`VictimContext` 管道与 parked handoff pid/pipe 归 session 拥有（`common.h` 过期声明一并删除）；native `395c5faf…`，8/8 攻击关键函数形状一致。门禁：`CPP12p` 第一次冷机 W1 PI-route 窗口 panic（spray 成功后，归入 `KERNEL-PANIC-01`），`CPP12q` 隔离复跑完整 PASS，用户豁免第二次冷机（`CPP12p`/`CPP12q` 归档）。
+- [x] 回补 `SELECT-01`：compact Select 在路线内重试（4 次 attempt），每次重建 payload page 与 fd_sets 并递增 consumer 轮次；delay ladder/attempts 暂留 Native（待 Select 设备验证后入 schema），profile 继续拥有 timeout。构建 `e13ed9dd`；8 个攻击函数 shape 不变；无真机验证（无 Select 设备）。
+- [x] M02 fd 段：`check_selinux_off`/`enforce_readable`/`perf_find_task` 的裸 fd → `UniqueFd`/`MappedRegion`（munmap→close 顺序不变，攻击关键函数逐指令一致）；`slab_drain` 的 pid 数组 → `std::array<ChildProcess,64>`（kill+reap 顺序不变、零堆分配）。Multicast 门禁通过 `CPP12f-20260917-multicast-pass`；`child_pipes` 6 fd → `UniqueFd` + `parked_cmd_w` 所有权转移，Multicast 门禁通过 `CPP12g-20260917-multicast-pass`（完整 victim 协议）。
+- [x] Heap owner 段（`CPP07-OWNER` 主体）：删除 `common.h` 的 `page_base`/`last_mm_struct`/`fake_*`/`memfd_leak` 别名，调用点显式访问 `g_heap_context`（SYSCHK 字符串化经 `SYSCHK_pr` 保持，重建 native 与 `7b60739a…` 逐字节一致，`4ba123a`）；`mm_ctx` 的 calloc/free 数组 → `ghostlock::MmContextSet`（owning vector，析构只释放内存）、`leak_memfd` → `UniqueFd`、`skb_buffer` → `unique_ptr`，`9a18262`。攻击关键函数指令形状一致；Multicast 门禁通过 `CPP12h-20260917-multicast-pass`（native `328a6415…`）。剩余：prepare 失败注入框架；`leak_child` 已收编为 `ghostlock::ChildProcess` + `mark_reaped()`（显式表达 spray 路径的 `waitpid` 回收，scope 退出不再二次 signal），Multicast 门禁通过 `CPP12o-20260918-multicast-pass`。
+- [x] `KernelSuHandoff` 探针结果结构化：`/proc/modules` 扫描、root 日志标记与 enforce 轮询收进 `ghostlock::handoff_probe_run`（显式 `HandoffPollPolicy`/`HandoffProbeResult`），日志文本、轮询次数/间隔与 ready/enforcing 语义不变；`handoff_probe_test` 锁定标记匹配与零策略短路；Multicast 门禁通过 `CPP12i-20260917-multicast-pass`（`eeb9d20`，native `a7e1ea23…`）。
+- [x] 宏别名清理（M01 子项）：删除 `common.h` 的 `CORE` 与 `mm_struct_sz()`；调用点改用 `runtime_config_snapshot().main_cpu` 与 `target_profile_mm_struct_sz()` 访问器；KernelSnitch init 接收显式 pin CPU；删除两个零调用旧入口。Multicast 门禁通过 `CPP12j-20260917-multicast-pass`（`e9b8151`，native `cea1bedc…`，攻击关键函数严格一致、布局零位移）。
+- [x] VictimContext pipe 集合收编（小步重试）：`struct child_pipes` → `ghostlock::VictimContext`（header-only，六 `UniqueFd` 顺序不变），pid 所有权暂留 `run_exploit`；二进制 640/640 形状一致、8/8 攻击关键函数严格一致、仅 `run_exploit` 两处 `bl` 注解位移（`6ab92de`）。两次冷机门禁连续 PASS：`CPP12m`、`CPP12n`（native `625d5300…`）。
+- [x] VictimContext pid 所有权（`set_child`/`mark_child_exited`/`release_child`/`retire_child`）：历史两次尝试（`c222151`/等效重试，native `b147df9f`）在 APK 242 上 2/2 W2 spray 窗口 panic（`CPP12k-20260917-multicast-kernel-panic`），已回退（`552c8b2`），隔离复跑 PASS（`CPP12l`）。在分层/namespace 基线上重做（`4a6cb5f`，`victim_context.cpp` + host test），形状对比 6/8 攻击函数严格一致、`waiter_thread`/`do_one_write` 仅 1 处地址注解差异（native `e065ca70…`）；第一次冷机 PASS（`CPP12w-20260918-multicast-pass`，6/6 route、`KernelSU ready`）。
+- [x] 验证每个早退点的析构顺序和日志：审计见 [`native-exit-path-audit.md`](native-exit-path-audit.md)；无新增所有权泄漏，dirty/quarantine 资源保持“进程退出回收”语义，失败不触发不安全 fallback。
+- [ ] 提交、暂停，三路线及可用回退组合分别真机门禁。
+
+### [x] CPP13：Multicast Waiter 路线（最后迁移）
+
+- [x] `MulticastWaiterRoute` 管理 resident 状态、futex、worker、socket、布局和 outcome（步骤 A+C；步骤 B 经实验否决）。
+- [x] 步骤 A 正式迁移（`multicast_waiter_route.cpp`）：resident 生命周期（`init`/`start`/`write`/`stop`、worker、socket、layout、outcome）收归 `MulticastWaiterRoute` 类，`route_operations.cpp` 只留 thin `kernel5_resident_*` wrapper；host-safe `init` inline 在头文件，固定向量测试不再链接 Android 单元。构建 `ea87d65f…`；冷机 PASS（`CPP13a-20260918-multicast-pass`，6/6 route、W1 两次页重试后成功、`KernelSU ready`）。
+- [x] C++ 语言迁移中 one-shot 保持专用小栈帧、VLA、payload builder、socket 和 drain/close 顺序；未在敏感栈上加入 STL owner。
+- [x] 步骤 D（收尾）：路线状态与 `disarm → destroy` 顺序已写入 `multicast_waiter_route.h` 契约注释，`native-cpp-current-uml.md` 命名已统一（`resident_context()`，并删除过期的 `g_pi_race_context` 别名描述），与门禁版 `625d5300…` 逐字节一致（2026-09-18）。
+- [x] 对可能影响栈布局的局部对象记录 `sizeof`/地址/汇编差异；禁止在敏感函数栈上放置大型 STL 对象。步骤 A 记录：`do_one_write` 224→186（resident 分支由 LTO 内联改为调用 wrapper；差异块后非 resident 攻击路径逐指令一致），其余 7/8 攻击函数 strict 或 1 处注解差异（vs `e065ca70…`）。
+- [x] resident 与 one-shot 共用纯编码逻辑，生命周期控制保持独立方法：步骤 C 把 resident stamp 改为经 `ghostlock::encode_multicast_waiter` 生成 waiter words（erase words/family 由 resident 补齐），构建 `66f0a8a3…` 与 `ea87d65f…` 对比 **8/8 攻击函数 strict 一致**；步骤 B 的 one-shot 分组提取实测 `do_kernel5_fake_lock_route` **155→158（+3）**，未达"逐指令等价"契约，已回退并记录。
+- [x] ghost disarm、consumer drain、success 读取、destroy 顺序与 S14/S15 成功日志一致：步骤 A 原样搬移 `multicast_waiter_disarm/destroy`（构建 strict 对比），`CPP13a` 真机日志保留 `mcast ghost disarm`/route status 顺序。
+- [x] 固定测试、ASan/UBSan 可运行子集、Release 汇编差异和完整 Gradle 构建通过：宿主固定测试全绿（含 `multicast_waiter_route_test` 不再链接 Android 单元）、Gradle Debug 构建通过、汇编差异以 strict 形状对比为准；ASan/UBSan 无宿主攻击路径可运行集（不适用）。
+- [x] 提交、暂停；多次冷机 Multicast 真机通过后勾选阶段：`CPP13a`（步骤 A，native `ea87d65f…`）与 `CPP13b`（A+C，native `66f0a8a3…`）各一次 PASS，阶段版本第二次冷机由用户豁免（2026-09-18）。
+
+### [ ] CPP14：C façade、遗留全局与文件收尾
+
+- [x] 删除只为混合迁移存在的 façade、宏、`.c` header 分支和零调用包装：8 个核心头文件的 C 分支（`8884be4`）与 `profile.h`/`target.h`/KernelSnitch owner 块的 C 路径（`54120b6`）已删除，native 与门禁版 `625d5300…` 逐字节一致；零调用 `kernelsnitch`/`kernelsnitch_param` 已在 `e9b8151` 删除；`offsets_json.h`/`futex_hash.h` 审计无 C 包装。
+- [x] 引用别名收归试验：`g_pi_race_context` 已删除（调用点直接用 `g_exploit_session.race`，`9dba566`，native 与门禁版 `625d5300…` 逐字节一致）；`g_heap_context` 替换经构建对比会改变攻击关键函数 `waiter_thread`（-2 指令）与 `do_pselect_fake_lock_route`（-22），按硬约束已回退，登记为后续需专门门禁的项；`g_target_profile` 因 `_RSO` 宏在 `profile.h` 内依赖而保留；`g_resolved_addresses` 待 session 重构。
+- [x] 除真正 process singleton（如日志 sink）外不保留可变全局；每项例外写明线程/所有权理由：`native-global-state.md` 收尾口径为 1 个 singleton（`g_exploit_session`）+ 3 个引用别名 façade（`g_target_profile`/`g_resolved_addresses`/`g_heap_context`，所有权在 session，删除别名已验证改变攻击函数）+ 1 个启动期只读上界（`g_direct_map_end`）+ 受限路线 static（resident 实例/`standard_io_backup`），逐项附理由。
+- [x] 所有生产翻译单元统一为 `.cpp`，按职责归档，并更新 Makefile、Gradle inputs 和 CLion CMake。
+- [x] 全项目启用最终警告策略：Makefile/CMake 启用 `-Wall -Wextra -Wconversion -Wsign-conversion`，42 条生产警告与 1 条测试警告全部零指令修复，native `625d5300…` 逐字节一致、主机测试全绿（`native-warning-audit.md`，2026-09-18）。
+- [x] clang-tidy selected checks 已固化到 `.clang-tidy` + `make lint-tidy`（`bugprone-*`/`performance-*`/`clang-analyzer-*`；告警已全部修复或就地 `NOLINT` 说明理由，0 用户代码告警，native 仍与门禁版逐字节一致，2026-09-18）。
+- [x] 函数表/UML 最终同步随本阶段收尾。
+- [x] 更新所有函数表、调用图、数据流图、全局状态矩阵和中英文架构说明：`native-functions.md` 按 TU/命名空间重排、`native-cpp-current-uml.md` 更新类结构（`MulticastWaiterRoute`/`VictimContext`）、`native-global-state.md` 收尾口径、`all-functions-callgraph.md` 总览重画（全节点图留历史快照）、`routes.md` 核心维护图与状态说明、``/`README.md`/`README_ZH.md` 索引与状态（2026-09-18）。
+- [ ] Debug/Release APK、符号/依赖、体积、启动协议和三路线回归完成：Debug 已多轮门禁；Release 构建/R8、静态 libc++ 依赖、体积（4.7 MB）、启动协议与 Multicast 攻击链路已通过（`CPP14-release-20260917-multicast-pass`，native 与 Debug 门禁版逐字节相同；首次运行命中一次 `KERNEL-PANIC-01` 后复跑通过）；TCP/Select 回归仍待外部设备。
+- [x] 提交、暂停、最终真机/协作者门禁后结束迁移：最终 Multicast 门禁为 `CPP13b`（native `66f0a8a3…`，两次冷机 PASS；同构建的 `CPP12y` panic 已归入 `KERNEL-PANIC-01`）；TCP/Select 回归保留为外部协作者验证项。CPP00–CPP14 迁移结束。
+
+### [x] CPP15：命名空间引用规范化（零运行时）
+
+> 规则（用户 2026-09-18 指定）：顶层 `ghostlock` 允许在 `.cpp` 中 `using namespace ghostlock;` 后省略；下层命名空间（`memory`/`ops`/`route`/`race`/`support`/`stages`/`victim`/`target`/`runtime_time`/`runtime_paths`）必须显式书写。头文件禁止 `using namespace`；全局作用域头文件（`common.h`/`target.h`/`kernelsnitch/utils.h`）与全局 `using` 别名、宏体保留完整限定。
+
+- [x] 生产 `.cpp`/头文件：命名空间内文件删冗余前缀；全局文件（`main.cpp`、`offsets_json.cpp`、`pi_race.cpp`、`multicast_waiter_route.cpp`、`route_operations.cpp`、`route_threads.cpp`、`select_stack_route.cpp`、`tcp_zerocopy_route.cpp`、`payload_builder.cpp`、`exploit_session.cpp`、`runtime_config.cpp`）加 `using namespace ghostlock;` 后同规则；共 197 处替换。
+- [x] 头文件：命名空间内的（`heap_context.h`、`address_space.h`、`exploit_ops.hpp`、`exploit_stages.hpp`、`victim_process.hpp`、`exploit_session.hpp` 等）删冗余前缀；全局 extern、`using X = ghostlock::Y;` 兼容别名、宏体不动。
+- [x] 特判：`main.cpp` 删除匿名 namespace 的 `using ghostlock::stages::StageResult;`，正文改 `stages::StageResult`；全局别名（`PiRaceContext`/`TcpZerocopyRouteContext`/`SelectStackRouteContext`/`RouteStatus` 等）保留。
+- [x] 测试文件统一 `using namespace ghostlock;`，删除具体 using（下层具体 using 展开为 `runtime_time::`/`runtime_paths::`/`target::` 前缀）；共约 121 处替换。
+- [x] 验证：`make native-host-tests` 全绿；`make ghostlock` 产物与基线 `a5a0ba07…` **逐字节一致**；`../../tools/cmp_disasm.py` PASS。
+
+### [x] CPP16：零指令语言清理
+
+- [x] `NULL` → `nullptr`：86 处（生产 64 + 内核头 12 + 测试 2，`multicast_waiter_route.cpp` 24、`route_threads.cpp` 20 最多）。
+- [x] C 风格指针 cast → `reinterpret_cast`（`route_operations.cpp`/`exploit_ops.cpp`/`offsets_json.cpp`/`route_threads.cpp`）；`offsets_json.cpp` 的字段写入与值转换同步改为 `reinterpret_cast` + `static_cast`。
+- [x] 非 ABI `typedef enum` → `enum class`：`RouteKind`（`MulticastWaiter`/`TcpZerocopy`/`SelectStack`）、`PayloadPageState`（`Empty`/`Current`/`Prebuilt`/`Quarantined`）、`SocFamily`（原 `TargetSocFamily` 与 `TARGET_SOC_*`）、局部 `ScalarWidth`；`kernelsnitch_state` 保留（内核共享区）。
+- [x] `exploit_ops.cpp` 的 `getline` + `free` → RAII：CPP17 复核维持否决，保留 C 配对（`ScopeExit` 使 `run_setup_stage` +5 指令）。
+- [x] 验证：主机测试全绿；全函数 shape 对比 0 个业务函数差异（唯一差异为 compiler-rt `__emutls_get_address` 的 TLS 槽偏移 0x40）、`nm` 符号大小 0 差异、`cmp_disasm` 8/8 layout PASS。
+- [x] `RouteController` 的 `allow_tcp_select_fallback`/`fallback_used` → `bool`：CPP17 实验否决（实验构建 `c0f5d302…` 仅改变 `waiter_thread` 的栈偏移/寄存器分配，未达栈帧不变契约），保留 `int`。
+- [x] 真机门禁：**第一次冷机 PASS**（`CPP16-U01D-20260918-multicast-pass`，APK 324、native `18fe119c…`、6/6 route、`KernelSU ready`、无 pstore panic）；用户于 2026-09-18 豁免第二次冷机，`18fe119c…` 登记为新基线。
+
+### [x] CPP17：攻击关键布局项（闭环）
+
+- [x] `RouteController` 布尔化（CPP16 遗留）：实验构建 `c0f5d30269068271` 与基线 `18fe119c` 全函数对比仅 `waiter_thread` 形状变化（886 指令数不变、栈偏移与寄存器重排 595 行）；违反"攻击函数栈帧布局不变"硬约束，**否决**并回退，保留 `int`（构建逐字节回到 `18fe119c…`）。
+- [x] `exploit_ops.cpp` 的 `getline` RAII（CPP16 回退项）：`ScopeExit` 使 `run_setup_stage` 2297→2302（+5 指令），**否决**，保留 C `getline/free` 配对。
+- [x] resident Multicast VLA（`multicast_waiter_stamp` 的 `b[size]`）：几何来自已验证 profile，堆化会进入竞态窗口；**保留**并已在代码注释记录理由。
+- [x] 引用别名 façade 收归（用户批准逐指令差异）：删除 `g_heap_context`/`g_target_profile`/`g_resolved_addresses`（含 `PROFILE_VALUES`/`_RSO` 宏改用 `g_exploit_session.profile`、`common.h` 引入 session 头）。构建 `55863311e8e551df` 与 `18fe119c` 全函数对比：11 个函数 shape 变化（`run_exploit` +206 为 `activate_prebuilt_page` 内联）、关键函数外部调用序列一致。真机门禁：一次冷机 W1 同型 panic（`CPP17-20260918-w1-panic`）→ panic 重启后 PASS → 成功冷机 PASS（零页重试、`KernelSU ready`）；用户于 2026-09-18 豁免第二次冷机，`55863311…` 登记为新基线。
+- [x] 验证：布局敏感规则下完成；`native-global-state.md` 同步收归口径。
+
+## 7. 每阶段验证矩阵
+
+### 连续迁移批次实际落地范围（2026-09-14）
+
+- [x] 全部核心生产翻译单元和路线固定测试由 `.c` 迁为 `.cpp`，Makefile/CMake 源清单统一为 C++20。
+- [x] `ExploitSession` 集中拥有 runtime config、profile、resolved addresses、Heap、PI race 与 CPU mirror；旧符号暂以引用 façade 保持调用点兼容。
+- [x] 引入 move-only `UniqueFd`、`MappedRegion`、`PthreadOwner`、`ChildProcess` 以及 `Result<T, SysError>`，并覆盖 move、reset、join、kill/wait 测试。
+- [x] profile JSON 文件读取改用 `UniqueFd + std::string`，完整处理短读、`EINTR`、空文件和大小上限，不再手工 `malloc/free/close`。
+- [x] payload builder 增加 `std::span<std::byte>` 有界编码入口与不足长度拒绝测试；旧入口只作为稳定 façade 转发。
+- [x] 删除 CPP-COMPAT-01 的四个零调用 KernelSnitch util 包装。
+- [x] 全量 Native 交叉编译、11 组主机测试及 Debug APK 构建通过；APK 为 `GhostLock-v1.1(180)-arm64-v8a-debug.apk`（该快照）。
+- [x] 最终 Multicast 真机门禁：`CPP13b`（native `66f0a8a3…`）两次冷机 PASS；同构建间歇 panic 归入 `KERNEL-PANIC-01`。
+- [ ] TCP/Select 设备门禁；目前无可用设备，只能保留为外部协作者验证项。
+- [x] 深层路线资源的类内 RAII 替换：dirty 状态以显式 quarantine/`release_to_process_lifetime` 表达，未机械改成作用域析构（CPP-DIRTY-01/CPP11/CPP12 审计）。
+- [x] 删除旧全局引用 façade、将 `RuntimeConfig/TargetProfile` 完全值类型化以及把 W1/W2/W3 改为独立 state-machine：CPP12/CPP14 已完成值类型化与 stage 拆分；仅 3 个引用别名 façade 因删除改变攻击函数而保留（`native-global-state.md`）。
+
+因此，本批次完成了语言迁移和可安全证明的 C++ 所有权边界；CPP07–CPP13 中涉及攻击时序/栈帧/dirty kernel reference 的“类化”条目当时保留为后续工作，现已全部在 CPP07–CPP14 内完成（Multicast 门禁；TCP/Select 设备门禁待外部协作者），不存在虚假勾选。
+
+| 层级 | 必做验证 | 失败含义 |
+|---|---|---|
+| 编译 | C/C++ objects、LTO、PIE、NDK API、Debug/Release | 构建或 ABI 基线已破坏 |
+| 链接 | undefined symbols、libc++ `DT_NEEDED`、binary size | runtime 打包或 façade 不完整 |
+| 静态布局 | `sizeof/alignof/offsetof`、standard-layout、trivial-copy | kernel/transport ABI 风险 |
+| 单元 | move、重复 cleanup、部分构造、errno、固定字节向量 | RAII/纯函数语义错误 |
+| 资源 | fd、mmap、pthread、child、quarantine | 生命周期泄漏或提前释放 |
+| 控制流 | OK/retry/fallback-safe/dirty/unsupported | fallback 安全边界错误 |
+| 集成 | Native binary、Gradle APK、Direct/Shizuku | 应用集成不兼容 |
+| 真机 | W1/W2/W3、route clean、root、seccomp、KernelSU | 不得进入下一阶段 |
+
+可在主机运行的代码使用 ASan/UBSan；涉及 Android kernel syscall、调度和真实 payload 的部分以固定向量、交叉编译及真机日志为准。TSan 不作为 PI 竞态正确性的裁判，因为该代码刻意包含内核协调竞态，但普通用户态数据竞争仍需单独消除。
+
+## 8. 真机日志对比字段
+
+每次门禁至少比较：
+
+- build/version、release/profile、入口、main/consumer CPU、温度或“日志不可判定”；
+- Heap prepare 次数、KernelSnitch 时长、mm_struct/page 地址类别；
+- 每次 route 的 code、clean/disarmed、step、errno、calls、success 和 join；
+- W1/W1b/W2/W2b/W3 尝试次数及 settle 时间；
+- child UID、seccomp probe、KernelSU module/ready、SELinux 最终 enforcing；
+- fallback 是否发生、失败资源是否 quarantine、进程是否安全退出；
+- 与最近一次同路线 C 基线日志的行为和耗时差异。
+
+## 9. 初始 TODO/风险登记
+
+| 编号 | 问题 | 回补阶段 | 完成条件 |
+|---|---|---|---|
+| CPP-BUILD-01 | 当前 Makefile 单次 clang 编译/链接，尚无 C++ runtime 策略 | CPP00 | mixed objects + clang++ link + APK dependency 验证 |
+| CPP-BUILD-02 | Gradle 生成目录偶发出现 `name 2.kt`/`name 3.class` 重复缓存 | 独立 buildSrc 维护（生成 task 级清理已完成） | [x] `GenerateSupportedKernelsTask` 已移除（改为运行时 `BuiltinProfileCatalog` 读取 `kernel_profiles/index.conf`）；`generateBuildInfo` 仍每次重建唯一输出并清理陈旧副本 |
+| CPP-ABI-01 | `kernel_offsets` 同时承担 JSON transport 与 runtime value | CPP04（代码完成） | [x] `TargetProfile` 是不可变 value，拥有 release 与值快照；C façade 只剩 transport 解码入口 |
+| CPP-TARGET-01 | `target.h` 混合编译期常量和 profile fallback | CPP01/CPP04（代码完成） | [x] 常量命名空间已建立；fallback 按 CPP04 文件头注释的期限继续收敛 |
+| CPP-COMPAT-01 | 四个零调用 KernelSnitch util wrapper | CPP06 | 删除且调用图/构建/门禁通过 |
+| CPP-SESSION-01 | config/profile/address/Heap/PI/route 仍由 main/global 拼装 | CPP12 | `ExploitSession` 唯一拥有一次运行 |
+| CPP-SELECT-01 | compact Select 外层重试需要跨 Heap/PI/route 重建 | CPP18 | [x] `SelectStackRoute::execute()` 路线内 4 次 attempt + 页/fd_set 重建 + 轮次递增（`e13ed9dd`）；候选/次数入 schema 与真机证据待 Select 设备 |
+| CPP-DIRTY-01 | consumer in-flight 时 RAII 不能自动关闭内核引用资源 | CPP03/CPP11 | 显式 quarantine/release 类型及测试 |
+| CPP-MCAST-01 | one-shot 对栈帧和 drain/close 顺序敏感 | CPP13 | 汇编/日志对比及多次真机成功 |
+| CPP-FORK-01 | fork child 不能安全运行复杂 STL/锁/析构路径 | CPP03/CPP12 | child 分支最小化并有退出/回收测试 |
+| CPP-LAYOUT-01 | `route_operations.cpp` 仍聚合三路线实现，直接拆分会改变静态函数/代码布局 | CPP10/CPP11/CPP13 各自门禁后 | 每条路线移入自己的 `.cpp`，主机固定测试与对应设备日志均通过 |
+| CPP-SOURCE-01 | 原 `fops.cpp` 名称误导，link probe 曾进入生产源清单 | 已完成 | `1d8bbb7` 已改名为 route operations，并把 probe 隔离到 `tests/` |
+| CPP06-KS-RAII | KernelSnitch 保留 C 入口（mmap 共享布局与 fork child 依赖），C++ 调用点已由 `KernelSnitchOwner` 唯一拥有 | 真机复测 `CPP06b-20260917-multicast-pass` 通过，时序与基线一致 | CPP06 | [ ] 主体完成；剩余部分线程创建失败注入（代码 `TODO(CPP06-KS-RAII)`） |
+| CPP02-HELPERS | `utils.h` 的进程/调度 helper（`set_limit`、`set_user_namespace`、`pin_to_core` 等）仍为 `SYSCHK` 隐式错误 | 需要会话级错误传播策略 | CPP17 评估 | [x] `SYSCHK` 实为 log-and-continue（打印后返回 -1）；结构化返回无调用者可用恢复策略，保留原语义；零调用 `set_user_namespace` 已删除（构建 `88390be7` 逐字节一致） |
+| CPP07-OWNER | `mm_ctx` 的 child/memfd、`leak_memfd`、`skb_buffer` 与 `page_base`/`fake_*`/`memfd_leak` 镜像已收归并门禁（`CPP12h-20260917-multicast-pass`）；`leak_child` 的 pid 收编已完成（`CPP12o`）；剩余部分 prepare 失败注入框架 | 失败注入需要 syscall 层故障注入框架 | CPP12 剩余后维护 | [ ] 主体完成（`4ba123a`/`9a18262`）；剩余项代码标记 `TODO(CPP07-OWNER)` |
+| U01-D..G | 第二批上游剩余项：`SLIDE_*` alias、Tensor SoC、新设备 profile、提取器 `opt-level` | 见 [upstream-catch-up-20260913.md](upstream-catch-up-20260913.md) 第二批章节 | 后续维护 | [x] D 已实施（`27924cb`，payload alias，待 `U01-D 门禁`）；E（SOC_GOOGLE）、F（新设备 JSON profile）、G（`opt-level = "z"` + yaxpeax 0.5）已完成 |
+| KERNEL-PANIC-01 | Multicast 攻击存在间歇性系统崩溃：CPP06c、CPP07、CPP12b/c/e、CPP12k、CPP12p、CPP12r、CPP12s 分别在 spray 阶段或 W2/W1 PI-route 后触发；`CPP14-release`、`CPP12-victim-pid-clean-2run`、`CPP12p`/`CPP12q` 与 `CPP12s`（回退版 `395c5faf…`，与 `CPP12q` PASS 版逐字节相同，07:44–08:1x 三连 W1 panic）均证明**同一二进制**可一次崩溃、一次通过，且崩溃集中在 **KernelSnitch collision / mm spray 及紧随的 PI-route 窗口**（另有 W1b spray 后一例）。`CPP12r` 对分层/namespace 系列的 2/2 归因已被 `CPP12s` 推翻（同一环境窗口内回退版同样 panic）；`CPP12s` 首次取得内核栈（`CPP12s-20260918-w1-panic.last-kmsg.log`）：pstore 显示 `rt_mutex_adjust_prio_chain+0x1a0` 读 `waiter->lock==NULL`（fault VA 0），崩溃线程 `T22354` 不在攻击进程（pid 14503）直系 tid 范围内，指向攻击残留 PI 状态被后续 futex/PI 路径遍历；该次 W1 的页验收两次失败（`prepare_kernel_page attempt=3`，全程 6.6s，对照 PASS 版 2.1s）；触发者是本进程 `consumer_thread` 的 `sched_setattr` → `rt_mutex_adjust_pi` 读取 ghost waiter（`lock==NULL`）。曾实施 stamp 短路 hardening（native `6713fba0…`、APK 285）并**回退**（判据被内核顺序否定：setsockopt 的 `EADDRNOTAVAIL` 是预期路径且 stamp 已落地）；`CPP12t-20260918-multicast-pass` 保留为干净冷启动完整链路证据（6/6 route、`KernelSU ready`）。`CPP12x` 提供第二个同型实例：`route_operations.cpp` 拆分版（攻击函数与 PASS 构建 `66f0a8a3…` **逐指令一致**）首次运行仍在 W1 同窗 panic（`rt_mutex_adjust_prio_chain` 读 NULL `lock`），据此进一步排除布局因果。`CPP12y` 给出同构建 PASS/panic 直接对照（`66f0a8a3…`：`CPP13b` PASS → panic → 重连后 PASS），且崩溃形态为 `put_task_struct` 的 refcount underflow WARN（`brk #0x800` + `REFCOUNT_SATURATED`），与 NULL-lock 同源不同形。`CPP12-victim-pid-kernelsu-crash` 的 dmesg 捕获（root）显示一类**环境相关分支**：KernelSU 已加载时攻击触发 re-enforce → system_server 崩溃（无内核 panic 打印） | 攻击层时序/状态窗口；布局敏感改动仍需多次冷机复测；门禁必须在 KernelSU 未加载的干净启动下进行 | 攻击层观察 | [ ] 已记录全部证据（`device-gates/CPP*-kernel-panic*` 含 dmesg 捕获、`pi-timeout-binary-diff.md`、`CPP12k`/`CPP12l`、`CPP12p`/`CPP12q`、`CPP12r`/`CPP12s`（含 `CPP12s` 首个内核栈 `last-kmsg.log`）、`CPP14-release`、`CPP12-victim-pid-clean-2run`）。**最终结论**：三个同型实例（两个 NULL-lock + 一个 refcount WARN）覆盖两个构建，同构建同日 PASS→panic→PASS——环境/时序，与布局/代码无因果，不阻塞迁移 |
+| PROFILE-SUGGEST-01 | profile 的非核心设置仍为硬性要求（`requires_shizuku`、重试次数、等待/超时、推荐核心、resident 开关），应改为建议值：可省略、用户可覆盖 | 需要 Kotlin 合并语义、Native `validate_offsets_profile` 放宽与 UI 开关默认值联动 | CPP18/profile | [x] 核心完成：Kotlin 合并已支持缺省回退 + 用户覆盖；Native 改为建议回退（`execution_settings_apply_suggestions`，`3d7c024d`，run_setup_stage +160、攻击函数 shape 不变）；Shizuku 开关由建议种子、显式偏好双向覆盖并持久化（APK 334）；`resident` 高级参数编辑仍属 `TODO(profile-ui)` 后续；真机功能门禁待跑 |
+| PI-TIMEOUT-01 | `PiRace::run()` 等待 `route_done` 无超时：任何 route 卡死都会永久挂起，已破坏的 PI 状态无人 disarm | Shizuku 日志通路背压事件暴露（`CPP08-20260917-shizuku-panic`） | 攻击逻辑加固（独立真机门禁） | [x] 代码完成：等待绑定 `race_route_wait_ms × 10`，超时映射 `ROUTE_DIRTY_FAILURE`（step 62、ETIMEDOUT），`join()` 超时后 detach stranded waiter；主机测试覆盖。首次与二次复验连续在同窗口（首条 W1 route 前）遇间歇性 kernel panic（`CPP12-20260917b`/`-c`，超时分支均不可能执行）；隔离复跑 PASS（`CPP12-20260917d`，6/6 route）；反汇编对比（`pi-timeout-binary-diff.md`）证明除 `run_main_route_threads`（+228B 超时逻辑）外 388 个函数逐指令一致。v2（noinline + 复用 step 判定）实测扰动更大（`.text` +744B、数据符号不一致位移），已恢复 v1（二进制回到 `6bd2291a…`）。判定：布局重排是任何改动的固有属性；v1 第三次复跑仍 panic（`CPP12-20260917e`，位置不一致：2 次 route 前、1 次 W2 后）、基线 1/1 pass，已回退到稳定基线 `a5b2d151…`。代码保留在提交历史（`bd9a57f`/`916e778`），待后续批次在受控条件下重试 |
+
+## 10. 完成定义
+
+- [x] Native 核心使用 C++20 构建，静态 libc++ 在 APK 中的依赖明确；干净 Debug APK 构建已重复通过。
+- [x] fd、mmap、pthread、child、Heap page 和路线资源均有可审计唯一 owner（CPP03/07/09/11/12/13；例外为 `native-global-state.md` 逐项登记的 3 个引用别名 façade 与 dirty 路径的显式 quarantine）。
+- [x] 正常、重试、安全回退、dirty failure 和进程退出的析构/释放顺序可由测试和日志证明（`native-exit-path-audit.md` 与 `CPP12*` 门禁日志；`SELECT-01` 外层重试为登记例外）。
+- [x] payload/kernel ABI、竞态关键顺序及 Kotlin/Direct/Shizuku 外部协议与 C 基线兼容（逐字节/逐指令对比 + Direct/Shizuku 门禁 + Release 启动协议）。
+- [ ] Multicast、TCP、Select 各自完成可用设备门禁；缺失设备的路线不得仅凭主机测试宣称完成（Multicast 已通过 `CPP13b`；TCP/Select 待外部协作者）。
+- [x] 遗留全局、兼容 wrapper 和宽泛 extern 已删除或有明确、编号化、可验证的保留理由（`native-global-state.md`）。
+- [x] 文档、UML、函数调用图和所有权矩阵与最终 C++ 实现一致（CPP14 `5960e5a`/`d2871b7`；`U01-D` 生效后的基线在门禁通过后补记）。

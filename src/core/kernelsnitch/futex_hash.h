@@ -1,12 +1,10 @@
 #pragma once
 
-#include "utils.h"
-
-#include <stdio.h>
-#include <stdlib.h>
+/* Pure hash/bucket arithmetic: no KernelSnitch state, no Android headers, so
+ * the same translation unit can be exercised by host fixed-vector tests. */
+#include <errno.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <time.h>
-#include <sys/time.h>
 
 // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
 typedef uint32_t u32;
@@ -55,24 +53,24 @@ static inline __u32 rol32(__u32 word, unsigned int shift)
 /* __jhash_mix -- mix 3 32-bit values reversibly. */
 #define __jhash_mix(a, b, c)            \
 {                        \
-    a -= c;  a ^= rol32(c, 4);  c += b;    \
-    b -= a;  b ^= rol32(a, 6);  a += c;    \
-    c -= b;  c ^= rol32(b, 8);  b += a;    \
-    a -= c;  a ^= rol32(c, 16); c += b;    \
-    b -= a;  b ^= rol32(a, 19); a += c;    \
-    c -= b;  c ^= rol32(b, 4);  b += a;    \
+    (a) -= (c);  (a) ^= rol32((c), 4);  (c) += (b);    \
+    (b) -= (a);  (b) ^= rol32((a), 6);  (a) += (c);    \
+    (c) -= (b);  (c) ^= rol32((b), 8);  (b) += (a);    \
+    (a) -= (c);  (a) ^= rol32((c), 16); (c) += (b);    \
+    (b) -= (a);  (b) ^= rol32((a), 19); (a) += (c);    \
+    (c) -= (b);  (c) ^= rol32((b), 4);  (b) += (a);    \
 }
 
 /* __jhash_final - final mixing of 3 32-bit values (a,b,c) into c */
 #define __jhash_final(a, b, c)            \
 {                        \
-    c ^= b; c -= rol32(b, 14);        \
-    a ^= c; a -= rol32(c, 11);        \
-    b ^= a; b -= rol32(a, 25);        \
-    c ^= b; c -= rol32(b, 16);        \
-    a ^= c; a -= rol32(c, 4);        \
-    b ^= a; b -= rol32(a, 14);        \
-    c ^= b; c -= rol32(b, 24);        \
+    (c) ^= (b); (c) -= rol32((b), 14);        \
+    (a) ^= (c); (a) -= rol32((c), 11);        \
+    (b) ^= (a); (b) -= rol32((a), 25);        \
+    (c) ^= (b); (c) -= rol32((b), 16);        \
+    (a) ^= (c); (a) -= rol32((c), 4);        \
+    (b) ^= (a); (b) -= rol32((a), 14);        \
+    (c) ^= (b); (c) -= rol32((b), 24);        \
 }
 
 /* An arbitrary initial parameter */
@@ -116,7 +114,7 @@ static inline u32 jhash2(const u32 *k, u32 length, u32 initval)
     }
 
     /* Handle the last 3 u32's: all the case statements fall through */
-    switch (length) {
+    switch (length) {  // NOLINT(bugprone-switch-missing-default-case): 0..3 is exhaustive
     case 3: c += k[2];    fallthrough;
     case 2: b += k[1];    fallthrough;
     case 1: a += k[0];
@@ -173,7 +171,7 @@ typedef union {
         };
         unsigned long address;
         unsigned int offset;
-    } private;
+    } private_key;
     struct {
         uint64_t ptr;
         unsigned long word;
@@ -181,33 +179,68 @@ typedef union {
     } both;
 } futex_key_t;
 
-uint32_t futex_hash_no_trunc(futex_key_t *key)
+/* Immutable truncation policy for Linux futex bucket hashing. The kernel table
+ * size is always a power of two, so table_size also defines the mask used by
+ * futex_hash_context_bucket(). */
+typedef struct futex_hash_context {
+    uint32_t table_size;
+} FutexHashContext;
+
+static_assert(sizeof(FutexHashContext) == sizeof(uint32_t));
+static_assert(alignof(FutexHashContext) == alignof(uint32_t));
+
+static inline uint32_t futex_hash_no_trunc(futex_key_t *key)
 {
-    uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(typeof(*key), both.offset) / 4,
+    uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(__typeof__(*key), both.offset) / 4,
               key->both.offset);
 
     return hash;
 }
 
-uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
+static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
 {
     uint32_t hash = futex_hash_no_trunc(key);
 
     return hash & (futex_hashsize-1);
 }
 
-unsigned long futex_hashsize = -1;
-void futex_init(void)
+/* Initialize an explicit hash context. Inputs: caller-owned context and the
+ * target futex table size; output: 0 or -1 with errno=EINVAL. This validates
+ * policy only and performs no allocation or process-global mutation. */
+static inline int futex_hash_context_init(FutexHashContext *context,
+                                          size_t table_size)
 {
-    futex_hashsize = SYSCHK(sysconf(_SC_NPROCESSORS_ONLN) * 256);
+    if (!context || table_size == 0 || table_size > UINT32_MAX ||
+        (table_size & (table_size - 1)) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    context->table_size = (uint32_t)table_size;
+    return 0;
 }
-uint32_t futex_hash(size_t addr, size_t mm)
+
+/* Hash a prepared private/shared futex key with explicit table policy. Input:
+ * immutable context and key; output: bucket index, or UINT32_MAX for an invalid
+ * context. Jenkins mixing and truncation are intentionally delegated to the
+ * unchanged compatibility primitives above. */
+static inline uint32_t
+futex_hash_context_key(const FutexHashContext *context, futex_key_t *key)
 {
-    ASSERT_pr((futex_hashsize != (unsigned long)-1),
-              "need to call futex_init() first\n");
-    futex_key_t key;
-    key.private.mm = (void *)mm;
-    key.private.address = addr & ~0xfff;
-    key.private.offset = addr & 0xfff;
-    return __futex_hash(&key, futex_hashsize);
+    if (!context || !context->table_size || !key)
+        return UINT32_MAX;
+    return __futex_hash(key, context->table_size);
+}
+
+/* Construct the Linux private futex key for address/mm and hash it using only
+ * explicit inputs. Input: immutable context, userspace address and candidate
+ * mm; output: bucket index, or UINT32_MAX for an invalid context. */
+static inline uint32_t
+futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
+                          size_t mm)
+{
+    futex_key_t key = {};
+    key.private_key.mm = (void *)mm;
+    key.private_key.address = addr & ~(size_t) 0xfff;
+    key.private_key.offset = addr & 0xfff;
+    return futex_hash_context_key(context, &key);
 }

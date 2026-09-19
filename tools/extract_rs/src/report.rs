@@ -1,10 +1,7 @@
-//! Output rendering and kernel-table registration.
+//! Output rendering for extracted kernel metadata.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-use regex::Regex;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 use crate::error::{ExtractError, Result};
 use crate::symbols::{OPTIONAL_SYMBOLS, STRUCT_FIELDS, SYMBOLS};
@@ -40,18 +37,6 @@ fn struct_render_order() -> Vec<&'static str> {
     keys.push("struct_slab_cache");
     keys.push("struct_mm_struct");
     keys
-}
-
-pub fn kernel_key(release: &str) -> String {
-    let mut out = String::new();
-    for ch in release.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-' {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
-    out
 }
 
 pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
@@ -279,166 +264,35 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
+    let kernel_major = release
+        .and_then(|value| value.split('.').next())
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    report["kernel_major"] = json!(kernel_major);
+    let mut kernelsnitch = serde_json::Map::new();
+    kernelsnitch.insert("collisions".to_string(), json!(4));
+    let mut cred = serde_json::Map::new();
+    if kernel_major == 5 {
+        cred.insert("copy_size".to_string(), json!(0xb0));
+        cred.insert("usage_value".to_string(), json!(0x100));
+        cred.insert("caps_offset".to_string(), json!(0x30));
+        cred.insert("caps_count".to_string(), json!(3));
+        cred.insert("caps_value".to_string(), json!(0x000001ffffffffff_u64));
+    } else {
+        cred.insert("copy_size".to_string(), json!(0x88));
+        cred.insert("usage_value".to_string(), json!(1));
+        cred.insert("caps_offset".to_string(), json!(0x30));
+        cred.insert("caps_count".to_string(), json!(5));
+        cred.insert("caps_value".to_string(), json!(u64::MAX));
+    }
+    report["cred"] = serde_json::Value::Object(cred);
     if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
-        report["mm_struct_sz"] = json!(0x400);
+        kernelsnitch.insert("mm_struct_sz".to_string(), json!(0x400));
     }
+    report["kernelsnitch"] = serde_json::Value::Object(kernelsnitch);
     report
-}
-
-/* Resolve the repo the extractor reads and writes kernel tables in.
- * The manifest dir baked in at build time goes stale the moment the
- * binary runs from another checkout or a linked worktree, so ask git
- * for the toplevel of the working directory first and only fall back
- * to the manifest path when there is no repo around (on-device runs). */
-fn repo_root() -> PathBuf {
-    if let Ok(out) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if out.status.success() {
-            let top = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !top.is_empty() {
-                return PathBuf::from(top);
-            }
-        }
-    }
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf()
-}
-
-pub fn kernels_root() -> PathBuf {
-    repo_root().join("src").join("kernels")
-}
-
-pub fn kernel_header_path(key: &str) -> PathBuf {
-    kernels_root().join(key).join("offsets.h")
-}
-
-pub type EntryFields = BTreeMap<String, i64>;
-
-fn parse_int(text: &str) -> i64 {
-    if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
-        i64::from_str_radix(hex, 16).unwrap_or(0)
-    } else {
-        text.parse::<i64>().unwrap_or(0)
-    }
-}
-
-/// Map each registered release to its {field: value} from kernel headers.
-pub fn existing_entries() -> BTreeMap<String, EntryFields> {
-    let mut entries: BTreeMap<String, EntryFields> = BTreeMap::new();
-    let entry_re = Regex::new(r#"OFFSETS_ENTRY\(\s*"([^"]+)"#).unwrap();
-    let field_re = Regex::new(r"\.([A-Za-z0-9_]+)\s*=\s*(0x[0-9A-Fa-f]+|-?\d+)").unwrap();
-    let Ok(dir) = std::fs::read_dir(kernels_root()) else {
-        return entries;
-    };
-    for sub in dir.flatten() {
-        let header = sub.path().join("offsets.h");
-        let Ok(text) = std::fs::read_to_string(&header) else {
-            continue;
-        };
-        for entry_match in entry_re.captures_iter(&text) {
-            let release = entry_match[1].to_string();
-            let tail = &text[entry_match.get(0).unwrap().end()..];
-            let mut fields: EntryFields = BTreeMap::new();
-            for field_match in field_re.captures_iter(tail) {
-                fields.insert(field_match[1].to_string(), parse_int(&field_match[2]));
-            }
-            entries.entry(release).or_insert(fields);
-        }
-    }
-    entries
-}
-
-pub fn warn_existing_mismatches(release: &str, symbols: &BTreeMap<String, Option<u64>>) {
-    let entries = existing_entries();
-    let Some(existing) = entries.get(release) else {
-        return;
-    };
-    for (key, value) in symbols {
-        let Some(value) = value else { continue };
-        if let Some(old) = existing.get(key) {
-            if *old != *value as i64 {
-                eprintln!(
-                    "warning: {release} is already registered with .{key}=\
-                     0x{old:08X}; this image extracts 0x{value:08X}"
-                );
-                if key == "off_slide_loggers_0_1" {
-                    eprintln!(
-                        "warning:   loggers[0][1] is loggers + NF_LOG_TYPE_ULOG*8 \
-                         (disassembly + BTF verified and confirmed on device for \
-                         findn5/17pm); the older heuristic loggers + 0x10 was wrong."
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Natural sort key matching VSCode's folder order.
-fn kernel_include_sort_key(include: &str) -> Vec<(u8, SortPart)> {
-    let path = include
-        .trim_start_matches("#include \"")
-        .trim_end_matches("/offsets.h\"");
-    let mut key: Vec<(u8, SortPart)> = Vec::new();
-    let re = Regex::new(r"(\d+)").unwrap();
-    let mut cursor = 0;
-    for caps in re.captures_iter(path) {
-        let matched = caps.get(0).unwrap();
-        if matched.start() > cursor {
-            key.push((
-                1,
-                SortPart::Text(path[cursor..matched.start()].to_ascii_lowercase()),
-            ));
-        }
-        key.push((0, SortPart::Digit(matched.as_str().parse::<u64>().unwrap())));
-        cursor = matched.end();
-    }
-    if cursor < path.len() {
-        key.push((1, SortPart::Text(path[cursor..].to_ascii_lowercase())));
-    }
-    key
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum SortPart {
-    Digit(u64),
-    Text(String),
-}
-
-/// Add `#include "<key>/offsets.h"` to src/kernels/offsets.h if missing.
-pub fn register_kernel(key: &str) -> Result<PathBuf> {
-    let header = kernels_root().join("offsets.h");
-    let text = std::fs::read_to_string(&header)
-        .map_err(|err| ExtractError::new(format!("cannot read {}: {err}", header.display())))?;
-    let include = format!("#include \"{key}/offsets.h\"");
-    if text.contains(&include) {
-        return Ok(header);
-    }
-    let marker = Regex::new(r"(?m)^\s*\{\s*\.uname_r\s*=\s*NULL").unwrap();
-    let marker = marker
-        .find(&text)
-        .ok_or_else(|| ExtractError::new(format!("cannot locate NULL terminator in {header:?}")))?;
-    let block = &text[..marker.start()];
-    let key_order = kernel_include_sort_key(&include);
-    let mut insert_at = marker.start();
-    let include_re = Regex::new(r#"#include "[^"]+/offsets\.h""#).unwrap();
-    for existing in include_re.find_iter(block) {
-        if kernel_include_sort_key(existing.as_str()) > key_order {
-            insert_at = existing.start();
-            break;
-        }
-    }
-    let mut out = text.clone();
-    out.insert_str(insert_at, &format!("{include}\n"));
-    std::fs::write(&header, out)
-        .map_err(|err| ExtractError::new(format!("cannot write {header:?}: {err}")))?;
-    Ok(header)
 }
 
 pub fn require_fields(

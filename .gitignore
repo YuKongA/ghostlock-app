@@ -7,9 +7,13 @@ app/build/
 libghostlock.so
 libextract.so
 build/
+/.build/
 .DS_Store
 __pycache__
 /devices
 target/
 *.jks
 *.keystore
+/.codex/
+/src/.codex/config.toml
+/ghostlock *

@@ -24,7 +24,7 @@ use ghostlock_extract::symbols::{kernel_struct_macro, resolve_structs, resolve_s
 #[command(
     name = "ghostlock-extract",
     about = "Extract GhostLock kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
-    after_help = "examples:\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract boot.img --xbl-config xbl_config.img --register\n  ghostlock-extract payload.bin --register\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
+    after_help = "examples:\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
 )]
 struct Cli {
     /// boot.img, raw arm64 Image, gzip Image, payload.bin, OTA ZIP, or http(s) OTA URL
@@ -45,15 +45,9 @@ struct Cli {
     /// output format: text (JSON), json, or c
     #[arg(long, value_parser = ["text", "json", "c"], default_value = "text")]
     format: String,
-    /// register the kernel table under src/kernels/<release>/offsets.h
-    #[arg(long)]
-    register: bool,
     /// treat every unresolved symbol as optional (emit 0)
     #[arg(long)]
     allow_missing: bool,
-    /// overwrite an existing device header that differs
-    #[arg(long)]
-    force: bool,
     /// write output to a file instead of stdout
     #[arg(long)]
     out: Option<PathBuf>,
@@ -395,10 +389,6 @@ fn run(cli: &Cli) -> Result<i32> {
         .filter(|(_, value)| value.is_none())
         .map(|(key, _)| key.clone())
         .collect();
-    let existing = report::existing_entries()
-        .get(release.as_deref().unwrap_or(""))
-        .cloned()
-        .unwrap_or_default();
     let mut tolerated: BTreeSet<String> = report::optional_symbols()
         .into_iter()
         .map(str::to_string)
@@ -413,20 +403,8 @@ fn run(cli: &Cli) -> Result<i32> {
         .collect();
     tolerated_missing.sort();
     for key in tolerated_missing {
-        let carried = existing.get(&key).copied().unwrap_or(0);
-        symbol_offsets.insert(key.clone(), Some(carried as u64));
-        if carried != 0 {
-            eprintln!(
-                "warning: {key} not found in kallsyms; carried over 0x{carried:08x} \
-                 from the registered {} entry",
-                release.as_deref().unwrap_or("")
-            );
-        } else {
-            eprintln!(
-                "warning: {key} not found in kallsyms; emitted 0x00000000 (runtime \
-                 falls back to target.h default)"
-            );
-        }
+        symbol_offsets.insert(key.clone(), Some(0));
+        eprintln!("warning: {key} not found in kallsyms; emitted 0x00000000");
     }
     report::require_fields(&symbol_offsets, &BTreeSet::new())?;
     if btf.is_some() {
@@ -446,48 +424,6 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
-    if cli.register {
-        let Some(release) = release.as_deref() else {
-            return Err(ExtractError::new(
-                "--register requires a kernel release string in the boot image",
-            ));
-        };
-        let key = report::kernel_key(release);
-        if report::existing_entries().contains_key(release) && !cli.force {
-            report::warn_existing_mismatches(release, &symbol_offsets);
-            if report::kernel_header_path(&key).exists() {
-                eprintln!("info: {release} already registered; no duplicate table created");
-                return Ok(0);
-            }
-        }
-        let output = report::render_device(
-            release,
-            &symbol_offsets,
-            &struct_offsets,
-            kernel_phys_load,
-            pselect_shift,
-        );
-        let target = report::kernel_header_path(&key);
-        if target.exists()
-            && std::fs::read_to_string(&target)
-                .map(|t| t != output)
-                .unwrap_or(true)
-            && !cli.force
-        {
-            return Err(ExtractError::new(format!(
-                "{} already exists and differs; pass --force to overwrite",
-                target.display()
-            )));
-        }
-        std::fs::create_dir_all(target.parent().unwrap())
-            .map_err(|err| ExtractError::new(format!("{err}")))?;
-        std::fs::write(&target, output).map_err(|err| ExtractError::new(format!("{err}")))?;
-        eprintln!("wrote {}", target.display());
-        report::register_kernel(&key)?;
-        report::warn_existing_mismatches(release, &symbol_offsets);
-        return Ok(0);
-    }
-
     let output = if cli.format == "c" {
         report::render_c(
             release.as_deref(),
