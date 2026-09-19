@@ -3,6 +3,7 @@ package com.ghostlock.app.boot
 import android.content.Context
 import com.ghostlock.app.data.AndroidGhostlockRepository
 import com.ghostlock.app.data.BootAutoRootPreferences
+import com.ghostlock.app.boot.ExploitRunLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
@@ -71,6 +72,10 @@ object BootAutoRootRunner {
                     val detail = error.message?.take(120) ?: error.javaClass.simpleName
                     onLog("attempt $attempt stopped safely: $detail")
                     -1
+                }
+                if (code == ExploitRunLock.EXIT_BUSY) {
+                    onLog("skip: another run is in progress")
+                    return BootRunResult.Skipped(SkipReason.RunInProgress)
                 }
                 if (code == 0) {
                     onLog("result: exploit completed on attempt $attempt")

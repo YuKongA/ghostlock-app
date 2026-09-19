@@ -16,4 +16,5 @@ enum class SkipReason {
     Disabled,
     UnsupportedKernel,
     NoCpuPair,
+    RunInProgress,
 }

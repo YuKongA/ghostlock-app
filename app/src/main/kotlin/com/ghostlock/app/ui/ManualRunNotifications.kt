@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.ghostlock.app.R
+import com.ghostlock.app.boot.ExploitRunLock
 import com.ghostlock.app.data.BootAutoRootPreferences
 
 /** Silent shade notifications while the user taps Run in the main app. */
@@ -60,6 +61,7 @@ object ManualRunNotifications {
 
     fun showResult(context: Context, exitCode: Int) {
         dismissProgress(context)
+        if (exitCode == ExploitRunLock.EXIT_BUSY) return
         val prefs = BootAutoRootPreferences(context)
         val success = exitCode == 0
         if (success && !prefs.notifyResultSuccess) return

@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.ghostlock.app.boot.ExploitRunLock
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.KernelOffsets
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -234,6 +235,18 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int {
         val workDir = filesDir
+        if (!ExploitRunLock.tryAcquire(appContext)) {
+            onLog("error: another GhostLock run is already in progress")
+            return ExploitRunLock.EXIT_BUSY
+        }
+        return try {
+            runExploitLocked(pair, onLog, workDir)
+        } finally {
+            ExploitRunLock.release(appContext)
+        }
+    }
+
+    private suspend fun runExploitLocked(pair: CpuPair, onLog: (String) -> Unit, workDir: File): Int {
         return try {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so")
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
@@ -275,7 +288,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     if (!tcpRouteEnabled) environment()["GHOSTLOCK_TCP_ROUTE"] = "0"
                 }
             try {
-                runProcess(command, onLog = {}, captureOutput = false)
+                runProcess(command, onLog = {}, captureOutput = false, forceKillOnClose = false)
             } finally {
                 withContext(Dispatchers.IO) {
                     tailer.interrupt()
@@ -318,7 +331,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override fun close() {
         synchronized(processes) {
-            processes.forEach(Process::destroyForcibly)
+            processes.forEach { managed ->
+                if (managed.forceKillOnClose && managed.process.isAlive) {
+                    managed.process.destroyForcibly()
+                }
+            }
             processes.clear()
         }
     }
@@ -504,9 +521,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         onLog: (String) -> Unit = {},
         timeoutSeconds: Long = 300,
         captureOutput: Boolean = true,
+        forceKillOnClose: Boolean = true,
     ): Int = runInterruptible {
         val process = builder.start()
-        synchronized(processes) { processes += process }
+        synchronized(processes) { processes += ManagedProcess(process, forceKillOnClose) }
         val reader = if (captureOutput) Thread {
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
@@ -526,13 +544,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             reader?.let(::joinReader)
             if (finished) process.exitValue() else -1
         } finally {
-            if (process.isAlive) process.destroyForcibly()
+            if (forceKillOnClose && process.isAlive) {
+                process.destroyForcibly()
+            }
             reader?.interrupt()
             runCatching { process.inputStream.close() }
             reader?.let(::joinReader)
-            synchronized(processes) { processes -= process }
+            synchronized(processes) { processes.removeAll { it.process === process } }
         }
     }
+
+    private data class ManagedProcess(val process: Process, val forceKillOnClose: Boolean)
 
     private fun joinReader(reader: Thread) {
         try {
@@ -568,6 +590,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private val processes = mutableSetOf<Process>()
+    private val processes = mutableSetOf<ManagedProcess>()
 
 }

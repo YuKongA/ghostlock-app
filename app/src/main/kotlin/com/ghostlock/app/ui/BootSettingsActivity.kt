@@ -59,6 +59,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 class BootSettingsActivity : ComponentActivity() {
     private lateinit var bootPrefs: BootAutoRootPreferences
+    private val lastBootStatusState = mutableStateOf("")
 
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -77,14 +78,28 @@ class BootSettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setupSystemBars()
         bootPrefs = BootAutoRootPreferences(this)
+        refreshLastBootStatus()
         setContent {
+            val lastBootStatus by lastBootStatusState
             BootSettingsScreen(
                 initialAutoRun = bootPrefs.autoRunAtBoot,
                 initialMaxAttempts = bootPrefs.maxAttempts,
+                lastBootStatus = lastBootStatus,
                 onAutoRunChanged = ::onAutoRunChanged,
                 onMaxAttemptsChanged = { bootPrefs.maxAttempts = it },
                 onBack = ::finish,
             )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::bootPrefs.isInitialized) refreshLastBootStatus()
+    }
+
+    private fun refreshLastBootStatus() {
+        lastBootStatusState.value = bootPrefs.lastBootStatus.ifBlank {
+            getString(R.string.boot_last_status_empty)
         }
     }
 
@@ -131,6 +146,7 @@ class BootSettingsActivity : ComponentActivity() {
 private fun BootSettingsScreen(
     initialAutoRun: Boolean,
     initialMaxAttempts: Int,
+    lastBootStatus: String,
     onAutoRunChanged: (Boolean) -> Unit,
     onMaxAttemptsChanged: (Int) -> Unit,
     onBack: () -> Unit,
@@ -225,6 +241,22 @@ private fun BootSettingsScreen(
                                 },
                             )
                         }
+                    }
+                }
+                item(key = "last_boot_status") {
+                    Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
+                        Text(
+                            text = stringResource(R.string.boot_last_status_label),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = lastBootStatus,
+                            modifier = Modifier.padding(top = 8.dp),
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
                     }
                 }
             }

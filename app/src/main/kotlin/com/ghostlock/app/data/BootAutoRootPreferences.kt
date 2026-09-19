@@ -39,18 +39,43 @@ class BootAutoRootPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_NOTIFY_RESULT_SKIPPED, true)
         set(value) = prefs.edit { putBoolean(KEY_NOTIFY_RESULT_SKIPPED, value) }
 
+    val lastBootStatus: String
+        get() = prefs.getString(KEY_LAST_BOOT_STATUS, "").orEmpty()
+
     fun shouldShowResult(result: BootRunResult): Boolean = when (result) {
         BootRunResult.Success -> notifyResultSuccess
         BootRunResult.FailedNotRoot -> notifyResultFailure
         is BootRunResult.StoppedSafely -> notifyResultFailure
         is BootRunResult.Skipped -> when (result.reason) {
             SkipReason.Disabled -> false
-            SkipReason.UnsupportedKernel, SkipReason.NoCpuPair -> notifyResultSkipped
+            SkipReason.UnsupportedKernel, SkipReason.NoCpuPair, SkipReason.RunInProgress -> notifyResultSkipped
         }
     }
 
-    fun shouldHandleBootAction(action: String?): Boolean =
-        autoRunAtBoot && action == Intent.ACTION_BOOT_COMPLETED
+    fun shouldScheduleBootRun(action: String?): Boolean {
+        if (!autoRunAtBoot) return false
+        return action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_USER_UNLOCKED
+    }
+
+    fun recordBootTrigger(source: String, elapsedRealtime: Long) {
+        prefs.edit {
+            putString(KEY_LAST_BOOT_STATUS, "Scheduled ($source)")
+            putLong(KEY_LAST_BOOT_AT, System.currentTimeMillis())
+            putLong(KEY_LAST_BOOT_ELAPSED, elapsedRealtime)
+        }
+    }
+
+    fun recordBootFailure(message: String) {
+        prefs.edit { putString(KEY_LAST_BOOT_STATUS, "Failed: $message") }
+    }
+
+    fun recordBootSkip(message: String) {
+        prefs.edit { putString(KEY_LAST_BOOT_STATUS, "Skipped: $message") }
+    }
+
+    fun recordBootFinished(summary: String) {
+        prefs.edit { putString(KEY_LAST_BOOT_STATUS, summary) }
+    }
 
     companion object {
         const val PREFS_NAME = "ghostlock_prefs"
@@ -62,6 +87,9 @@ class BootAutoRootPreferences(context: Context) {
         const val KEY_NOTIFY_RESULT_SUCCESS = "notify_result_success"
         const val KEY_NOTIFY_RESULT_FAILURE = "notify_result_failure"
         const val KEY_NOTIFY_RESULT_SKIPPED = "notify_result_skipped"
+        const val KEY_LAST_BOOT_STATUS = "last_boot_status"
+        const val KEY_LAST_BOOT_AT = "last_boot_at"
+        const val KEY_LAST_BOOT_ELAPSED = "last_boot_elapsed"
         const val DEFAULT_MAX_ATTEMPTS = 3
         const val MIN_ATTEMPTS = 1
         const val MAX_ATTEMPTS = 10

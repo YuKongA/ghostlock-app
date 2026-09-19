@@ -90,6 +90,11 @@ object BootAutoRootNotifications {
                     R.string.boot_result_skipped_cpu_body,
                     null,
                 )
+                SkipReason.RunInProgress -> Triple(
+                    R.string.boot_result_skipped_title,
+                    R.string.boot_result_skipped_busy_body,
+                    null,
+                )
                 SkipReason.Disabled -> return
             }
         }

@@ -33,7 +33,11 @@ class BootAutoRootService : Service() {
                     getString(R.string.session_running),
                 ),
             )
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            BootRunCoordinator.onServiceStartFailed()
+            BootAutoRootPreferences(this).recordBootFailure(
+                error.message?.take(120) ?: error.javaClass.simpleName,
+            )
             stopSelf()
             return START_NOT_STICKY
         }
@@ -60,6 +64,15 @@ class BootAutoRootService : Service() {
                 val detail = error.message?.take(120) ?: error.javaClass.simpleName
                 result = BootRunResult.StoppedSafely(detail)
             } finally {
+                val prefs = BootAutoRootPreferences(this@BootAutoRootService)
+                prefs.recordBootFinished(
+                    when (result) {
+                        BootRunResult.Success -> "Finished: run completed"
+                        BootRunResult.FailedNotRoot -> "Finished: not rooted"
+                        is BootRunResult.StoppedSafely -> "Finished: stopped safely"
+                        is BootRunResult.Skipped -> "Finished: skipped (${result.reason})"
+                    },
+                )
                 try {
                     BootAutoRootNotifications.showResult(this@BootAutoRootService, result)
                 } catch (_: Throwable) {

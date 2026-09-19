@@ -61,7 +61,7 @@
     <string name="boot_auto_run_label">Auto run at boot</string>
     <string name="boot_auto_run_summary">Run GhostLock automatically after the device unlocks following boot</string>
     <string name="boot_permissions_note_title">Permissions</string>
-    <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. Notification permission is optional but shows \"GhostLock running\" and \"Run completed\" during auto-run. Open GhostLock once after install so CPU settings are saved. On some devices, also allow autostart or disable battery restrictions for GhostLock in system settings.</string>
+    <string name="boot_permissions_note_body">Boot access does not use a separate permission popup. Android grants it when GhostLock is installed. After reboot you must unlock the device once; auto-run starts from unlock (and may wait ~15 seconds). Notification permission is optional but shows progress. Open GhostLock once after install so CPU settings are saved. On Xiaomi/Oppo/Vivo etc., allow GhostLock autostart and disable battery restrictions or boot auto-run may never start.</string>
     <string name="boot_permissions_toast">Boot access is automatic. Notifications show progress only.</string>
     <string name="session_running">GhostLock running</string>
     <string name="run_completed">Run completed</string>
@@ -84,6 +84,9 @@
     <string name="boot_result_skipped_title">Auto-run skipped</string>
     <string name="boot_result_skipped_unsupported_body">This kernel is not supported yet, so nothing was run.</string>
     <string name="boot_result_skipped_cpu_body">No CPU core pair is saved yet. Open GhostLock once, then try boot auto-run again.</string>
+    <string name="boot_result_skipped_busy_body">GhostLock was already running (for example from manual Run). Boot auto-run was skipped.</string>
+    <string name="boot_last_status_label">Last boot auto-run</string>
+    <string name="boot_last_status_empty">No boot auto-run yet on this device.</string>
     <string name="notification_settings_menu">Notifications</string>
     <string name="notification_settings_title">Notifications</string>
     <string name="notify_progress_label">Running notification</string>

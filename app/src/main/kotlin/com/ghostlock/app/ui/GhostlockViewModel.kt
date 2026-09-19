@@ -16,6 +16,7 @@ import com.ghostlock.app.domain.usecase.LoadKernelSnapshotUseCase
 import com.ghostlock.app.domain.usecase.ParseSourceUseCase
 import com.ghostlock.app.domain.usecase.PublishOffsetsUseCase
 import com.ghostlock.app.domain.usecase.ReadDocumentUseCase
+import com.ghostlock.app.boot.ExploitRunLock
 import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
 import kotlinx.coroutines.CancellationException
@@ -115,7 +116,13 @@ class GhostlockViewModel(
                     appendLog(line)
                     send(GhostlockEffect.ManualRunNotificationProgress(line))
                 }
-                appendLog(if (exitCode == 0) "result: exploit completed" else "result: exploit failed (exit code=$exitCode)")
+                appendLog(if (exitCode == 0) {
+                    "result: exploit completed"
+                } else if (exitCode == ExploitRunLock.EXIT_BUSY) {
+                    "result: another run is already in progress"
+                } else {
+                    "result: exploit failed (exit code=$exitCode)"
+                })
                 appendLog("exit code=$exitCode")
             } finally {
                 send(GhostlockEffect.ManualRunNotificationFinish(exitCode))
