@@ -26,8 +26,11 @@ object BootRunCoordinator {
         try {
             BootAutoRootService.start(app)
         } catch (error: Throwable) {
-            synchronized(this) { scheduledThisProcess = false }
+            onServiceStartFailed()
             prefs.recordBootFailure(error.message?.take(120) ?: error.javaClass.simpleName)
+        }
+    }
+
     fun onServiceStartFailed() {
         synchronized(this) { scheduledThisProcess = false }
     }
