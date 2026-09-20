@@ -70,6 +70,9 @@ android {
     androidResources {
         localeFilters += listOf("en", "zh")
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     sourceSets {
         named("main") {
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
@@ -166,4 +169,5 @@ dependencies {
     implementation("com.typesafe:config:1.4.3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
 }
