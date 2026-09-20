@@ -3,7 +3,7 @@
 
 /* Binary transport for the resolved profile, shared with Kotlin's
  * NativeProfileDocument (app/src/main/kotlin/com/ghostlock/app/data/
- * NativeProfile.kt). Layout, version 1, little-endian:
+ * NativeProfile.kt). Layout, version 2, little-endian:
  *
  *   u32 magic ("GLK1"), u16 version, u8 route, u8 kernel_major,
  *   u8 recommend_shizuku, u8 fallback_route, u16 release_length,
