@@ -204,9 +204,24 @@ static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
     return hash & (futex_hashsize-1);
 }
 
+/* Linux sizes the futex table from the possible CPUs and rounds that up to a
+ * power of two (kernel/futex/core.c: roundup_pow_of_two(256 *
+ * num_possible_cpus())). Online CPUs fluctuate with hotplug and thermal limits,
+ * so deriving the size from them both violates the power-of-two policy and
+ * mis-sizes the table. Input: possible CPU count; output: kernel table size. */
+static inline size_t futex_hash_table_size_for(size_t cpu_count)
+{
+    size_t size = (cpu_count ? cpu_count : 1) * 256;
+    size_t rounded = 1;
+    while (rounded < size)
+        rounded <<= 1;
+    return rounded;
+}
+
 /* Initialize an explicit hash context. Inputs: caller-owned context and the
- * target futex table size; output: 0 or -1 with errno=EINVAL. This validates
- * policy only and performs no allocation or process-global mutation. */
+ * target futex table size (futex_hash_table_size_for()); output: 0 or -1 with
+ * errno=EINVAL. This validates policy only and performs no allocation or
+ * process-global mutation. */
 static inline int futex_hash_context_init(FutexHashContext *context,
                                           size_t table_size)
 {

@@ -340,14 +340,18 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
     ks->mm_struct_sz = __mm_struct_sz;
     ks->mm_slab_order = __mm_slab_order;
     size_t online_cpu_cnt = (size_t)SYSCHK(sysconf(_SC_NPROCESSORS_ONLN));
+    /* The kernel table follows the possible CPUs, not the online subset. */
+    size_t possible_cpu_cnt = (size_t)sysconf(_SC_NPROCESSORS_CONF);
+    if (possible_cpu_cnt == 0)
+        possible_cpu_cnt = online_cpu_cnt;
     ks->cpu_cnt = online_cpu_cnt*2;
     ks->thread_cnt = __thread_cnt;
     ks->collisions = __collision_cnt;
     ks->verbose = __verbose;
 
     // unfortunately I have to use a the kernelsnitch_shared_state and mmap(shared) as find collisions and bruteforce might be in different processes!!!
-    ks->futex_hash_table_size = 256*ks->cpu_cnt;
-    SYSCHK(futex_hash_context_init(&ks->futex_hash, 256*online_cpu_cnt));
+    ks->futex_hash_table_size = futex_hash_table_size_for(possible_cpu_cnt);
+    SYSCHK(futex_hash_context_init(&ks->futex_hash, ks->futex_hash_table_size));
     ks->total_futexes = ks->futex_hash_table_size*ks->collisions*MULITPLE;
     ks->times = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*ks->total_futexes, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
     ks->tids = (pthread_t *)SYSCHK(mmap(0, sizeof(pthread_t)*ks->thread_cnt, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
@@ -362,8 +366,10 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
 
     ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
 
-    if (ks->verbose) pr_info("parameters cpu (%zu) mm_struct sz (%zx) mm slab order (%zu) thread cnt (%zu) collisions (%zu)\n",
+    if (ks->verbose) pr_info("parameters cpu (%zu online, %zu possible, futex table %zu) mm_struct sz (%zx) mm slab order (%zu) thread cnt (%zu) collisions (%zu)\n",
         ks->cpu_cnt,
+        possible_cpu_cnt,
+        ks->futex_hash_table_size,
         ks->mm_struct_sz,
         ks->mm_slab_order,
         ks->thread_cnt,

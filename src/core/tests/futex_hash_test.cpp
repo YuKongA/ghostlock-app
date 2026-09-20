@@ -74,6 +74,17 @@ int main(void) {
   assert(futex_hash_context_key(nullptr, &key) == UINT32_MAX);
   assert(futex_hash_context_bucket(&rejected, 0x1000, 0x2000) == UINT32_MAX);
 
+  /* Kernel-equivalent table sizing: possible CPUs, rounded up. Hotplug can
+   * leave the online count non-power-of-two, which must not fail the policy. */
+  assert(futex_hash_table_size_for(1) == 256);
+  assert(futex_hash_table_size_for(6) == 2048);
+  assert(futex_hash_table_size_for(7) == 2048);
+  assert(futex_hash_table_size_for(8) == 2048);
+  assert(futex_hash_table_size_for(12) == 4096);
+  FutexHashContext sized = {};
+  assert(futex_hash_context_init(&sized, futex_hash_table_size_for(7)) == 0);
+  assert(sized.table_size == 2048);
+
   puts("futex_hash_test: ok");
   return 0;
 }
