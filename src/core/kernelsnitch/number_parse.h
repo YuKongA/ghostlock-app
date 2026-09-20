@@ -18,8 +18,11 @@ struct ParsedUnsigned {
 };
 
 /* Parse `text` with the given base. `valid` keeps the legacy condition
- * (errno == 0 && consumed to the end); an empty string therefore still counts
- * as valid zero, matching the pre-migration helper. */
+ * (conversion reached the terminator without overflowing); an empty string
+ * therefore still counts as valid zero, matching the pre-migration helper.
+ * Platforms differ on whether strtoul reports EINVAL for that no-conversion
+ * case (macOS does, glibc/bionic do not), so both are accepted when nothing
+ * was consumed. */
 static inline struct ParsedUnsigned number_parse_unsigned(const char *text,
         int base) {
     char *end = nullptr;
@@ -27,7 +30,7 @@ static inline struct ParsedUnsigned number_parse_unsigned(const char *text,
     const unsigned long value = strtoul(text, &end, base);
     struct ParsedUnsigned parsed;
     parsed.value = value;
-    parsed.valid = (errno == 0 && end && *end == '\0');
+    parsed.valid = (end && *end == '\0' && (errno == 0 || errno == EINVAL));
     return parsed;
 }
 

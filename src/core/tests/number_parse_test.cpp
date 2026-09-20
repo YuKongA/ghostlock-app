@@ -2,7 +2,8 @@
  *
  * Locks the legacy strtoul contract that KernelSnitch's parse helpers expose:
  * base-0 auto-detection, unsigned wraparound, full-string validation and
- * ERANGE overflow reporting. */
+ * ERANGE overflow reporting. An empty string is the legacy "valid zero" case,
+ * even though platforms differ on the errno strtoul reports for it. */
 
 #include "../kernelsnitch/number_parse.h"
 
@@ -25,7 +26,7 @@ int main(void) {
       {"+9", 0, 9UL, 1},
       {"1f", 16, 31UL, 1},
       {"0x1f", 16, 31UL, 1},
-      {"", 0, 0UL, 0},
+      {"", 0, 0UL, 1},
       {"12x", 0, 12UL, 0},
       {"x12", 0, 0UL, 0},
       {"-1", 0, ULONG_MAX, 1},
