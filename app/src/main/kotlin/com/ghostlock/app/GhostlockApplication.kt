@@ -12,12 +12,22 @@ class GhostlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         val prefs = BootAutoRootPreferences(this)
-        if (prefs.disableAutoRunIfRunInterrupted() || prefs.consumePanicToastPending()) {
-            Toast.makeText(
-                applicationContext,
-                getString(R.string.auto_run_disabled_after_reboot),
-                Toast.LENGTH_LONG,
-            ).show()
+        when {
+            prefs.disableAutoRunIfRunInterrupted() -> {
+                prefs.consumePanicToastPending()
+                Toast.makeText(
+                    applicationContext,
+                    getString(R.string.auto_run_disabled_after_reboot),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            prefs.consumePanicToastPending() -> {
+                Toast.makeText(
+                    applicationContext,
+                    getString(R.string.auto_run_disabled_after_reboot),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
         }
     }
 
