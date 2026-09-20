@@ -88,57 +88,6 @@ pub fn validate_kernel_phys_load(release: Option<&str>, phys: Option<u64>, mtk: 
     true
 }
 
-pub fn render_device(
-    release: &str,
-    symbols: &BTreeMap<String, Option<u64>>,
-    structs: &BTreeMap<String, Option<u32>>,
-    phys: Option<u64>,
-    pselect_shift: i64,
-) -> String {
-    let mut lines = vec![format!("/* {release} */"), String::new()];
-    lines.push("OFFSETS_ENTRY(".to_string());
-    lines.push(format!("    \"{release}\","));
-    lines.push(format!(
-        "    {},",
-        // unverified kernels render with the 6.6 layout as a testing start;
-        // the extractor warns whenever it falls back
-        crate::symbols::kernel_struct_macro(Some(release)).unwrap_or("STRUCT_OFFSETS_6_6")
-    ));
-    if phys_needs_override(Some(release), phys) {
-        lines.push(format!("    .kernel_phys_load = 0x{:x},", phys.unwrap()));
-    }
-    // 6.1 entries get their mm_struct_sz=0x400 stride from the
-    // STRUCT_OFFSETS_6_1 macro itself; nothing extra to emit here.
-    lines.push(format!("    .pselect_waiter_shift = {pselect_shift},"));
-    for key in symbol_render_order() {
-        if let Some(value) = symbols.get(key).copied().flatten() {
-            lines.push(format!("    .{key} = 0x{value:08x},"));
-        }
-    }
-    lines.push("),".to_string());
-    let mut reference: Vec<(&str, u32)> = Vec::new();
-    for key in struct_render_order() {
-        if key.starts_with("struct_page") || key == "struct_slab_cache" || key == "struct_mm_struct"
-        {
-            if let Some(value) = structs.get(key).copied().flatten() {
-                reference.push((key, value));
-            }
-        }
-    }
-    if !reference.is_empty() {
-        lines.push(String::new());
-        lines.push("/* BTF reference (runtime uses target.h defaults): */".to_string());
-        for (key, value) in &reference {
-            lines.push(format!(
-                "/* #define {} 0x{:X} */",
-                key.to_uppercase(),
-                value
-            ));
-        }
-    }
-    lines.join("\n") + "\n"
-}
-
 pub fn render_c(
     release: Option<&str>,
     name: &str,
@@ -264,34 +213,11 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
-    let kernel_major = release
-        .and_then(|value| value.split('.').next())
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(0);
-    report["kernel_major"] = json!(kernel_major);
-    let mut kernelsnitch = serde_json::Map::new();
-    kernelsnitch.insert("collisions".to_string(), json!(4));
-    let mut cred = serde_json::Map::new();
-    if kernel_major == 5 {
-        cred.insert("copy_size".to_string(), json!(0xb0));
-        cred.insert("usage_value".to_string(), json!(0x100));
-        cred.insert("caps_offset".to_string(), json!(0x30));
-        cred.insert("caps_count".to_string(), json!(3));
-        cred.insert("caps_value".to_string(), json!(0x000001ffffffffff_u64));
-    } else {
-        cred.insert("copy_size".to_string(), json!(0x88));
-        cred.insert("usage_value".to_string(), json!(1));
-        cred.insert("caps_offset".to_string(), json!(0x30));
-        cred.insert("caps_count".to_string(), json!(5));
-        cred.insert("caps_value".to_string(), json!(u64::MAX));
-    }
-    report["cred"] = serde_json::Value::Object(cred);
     if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
-        kernelsnitch.insert("mm_struct_sz".to_string(), json!(0x400));
+        report["mm_struct_sz"] = json!(0x400);
     }
-    report["kernelsnitch"] = serde_json::Value::Object(kernelsnitch);
     report
 }
 

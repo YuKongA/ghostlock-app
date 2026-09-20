@@ -404,7 +404,10 @@ fn run(cli: &Cli) -> Result<i32> {
     tolerated_missing.sort();
     for key in tolerated_missing {
         symbol_offsets.insert(key.clone(), Some(0));
-        eprintln!("warning: {key} not found in kallsyms; emitted 0x00000000");
+        eprintln!(
+            "warning: {key} not found in kallsyms; emitted 0x00000000 (runtime \
+             falls back to target.h default)"
+        );
     }
     report::require_fields(&symbol_offsets, &BTreeSet::new())?;
     if btf.is_some() {

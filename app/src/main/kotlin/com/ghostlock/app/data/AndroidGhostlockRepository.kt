@@ -205,6 +205,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val skipped = mutableListOf<String>()
             val differingBuiltins = mutableListOf<String>()
             for (entry in imported.mapNotNull { it.asValueMap() }) {
+                LegacyProfileConverter.convertValue(entry)
                 val release = (entry["release"] as? String).orEmpty()
                 if (release.isEmpty()) continue
                 if (release in builtinProfiles.builtin) {
@@ -360,6 +361,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val skipped = mutableListOf<String>()
             val differingBuiltins = mutableListOf<String>()
             for (entry in fresh.mapNotNull { it.asValueMap() }) {
+                LegacyProfileConverter.convertValue(entry)
                 val release = (entry["release"] as? String).orEmpty()
                 if (release in builtinProfiles.builtin) {
                     if (matchesBuiltin(entry)) skipped += release

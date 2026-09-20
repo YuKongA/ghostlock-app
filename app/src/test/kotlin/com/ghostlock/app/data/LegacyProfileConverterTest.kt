@@ -13,6 +13,29 @@ import org.junit.Test
 class LegacyProfileConverterTest {
 
     @Test
+    fun `upstream extractor report converts to current profile layout`() {
+        val entry = valueMapOf(
+            "release" to "6.1.118-test",
+            "kimage_text_base" to 0x100000L,
+            "btf_size" to 4096,
+            "compact_waiter" to 1,
+            "pselect_waiter_shift" to 1,
+            "mm_struct_sz" to 0x400,
+            "struct_fields" to valueMapOf("task_prio" to 132),
+            "symbols" to valueMapOf("off_init_task" to 33420800L),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertFalse(entry.containsKey("kimage_text_base"))
+        assertFalse(entry.containsKey("btf_size"))
+        assertEquals(0x400, entry["kernelsnitch"].asValueMap()!!["mm_struct_sz"])
+        assertEquals(132, entry["task_struct"].asValueMap()!!["prio"])
+        assertEquals(33420800L, entry["offset"].asValueMap()!!["init_task"])
+        assertEquals("tcp_zerocopy", entry["route"].asValueMap()!!.keys.first())
+    }
+
+    @Test
     fun `tcp report keeps pselect as explicit select fallback`() {
         val entry = valueMapOf(
             "release" to "r",
