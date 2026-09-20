@@ -9,6 +9,7 @@ object BootRunCoordinator {
     fun scheduleAfterUnlock(context: Context, unusedSource: String = "") {
         val app = context.applicationContext
         val prefs = BootAutoRootPreferences(app)
+        if (prefs.disableAutoRunIfRunInterrupted()) return
         if (!prefs.autoRunAtBoot) return
         if (ExploitRunLock.isHeld()) {
             prefs.recordBootSkipRunInProgress()

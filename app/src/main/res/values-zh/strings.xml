@@ -101,6 +101,8 @@
     <string name="boot_status_finished_skipped_unsupported">上次结果：已跳过，内核不支持。</string>
     <string name="boot_status_finished_skipped_cpu">上次结果：已跳过，未保存 CPU 核心组。</string>
     <string name="boot_status_finished_skipped_busy">上次结果：已跳过，已有其他运行在进行。</string>
+    <string name="boot_status_panic_disabled">运行中发生意外重启，已关闭开机自动运行。准备好后请手动重新开启。</string>
+    <string name="auto_run_disabled_after_reboot">运行中发生意外重启，已关闭开机自动运行。</string>
     <string name="notification_settings_menu">通知</string>
     <string name="notification_settings_title">通知</string>
     <string name="notify_progress_label">运行中通知</string>

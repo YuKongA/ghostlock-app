@@ -58,6 +58,7 @@ class BootAutoRootPreferences(context: Context) {
             KIND_FINISHED_SKIPPED_UNSUPPORTED -> context.getString(R.string.boot_status_finished_skipped_unsupported)
             KIND_FINISHED_SKIPPED_CPU -> context.getString(R.string.boot_status_finished_skipped_cpu)
             KIND_FINISHED_SKIPPED_BUSY -> context.getString(R.string.boot_status_finished_skipped_busy)
+            KIND_PANIC_DISABLED -> context.getString(R.string.boot_status_panic_disabled)
             else -> context.getString(R.string.boot_last_status_empty)
         }
     }
@@ -106,6 +107,33 @@ class BootAutoRootPreferences(context: Context) {
         }
     }
 
+    fun markExploitRunStarted() {
+        prefs.edit { putBoolean(KEY_EXPLOIT_RUN_ACTIVE, true) }
+    }
+
+    fun markExploitRunFinished() {
+        prefs.edit { remove(KEY_EXPLOIT_RUN_ACTIVE) }
+    }
+
+    /** Run was still marked active after reboot; disable auto-run until user turns it on again. */
+    fun disableAutoRunIfRunInterrupted(): Boolean {
+        if (!prefs.getBoolean(KEY_EXPLOIT_RUN_ACTIVE, false)) return false
+        prefs.edit {
+            remove(KEY_EXPLOIT_RUN_ACTIVE)
+            putBoolean(KEY_AUTO_RUN_AT_BOOT, false)
+            putString(KEY_LAST_BOOT_KIND, KIND_PANIC_DISABLED)
+            remove(KEY_LAST_BOOT_EXTRA)
+            putBoolean(KEY_SHOW_PANIC_TOAST, true)
+        }
+        return true
+    }
+
+    fun consumePanicToastPending(): Boolean {
+        if (!prefs.getBoolean(KEY_SHOW_PANIC_TOAST, false)) return false
+        prefs.edit { remove(KEY_SHOW_PANIC_TOAST) }
+        return true
+    }
+
     fun recordBootFinished(result: BootRunResult) {
         val kind = when (result) {
             BootRunResult.Success -> KIND_FINISHED_SUCCESS
@@ -138,6 +166,8 @@ class BootAutoRootPreferences(context: Context) {
         const val KEY_LAST_BOOT_EXTRA = "last_boot_status_extra"
         const val KEY_LAST_BOOT_AT = "last_boot_at"
         const val KEY_LAST_BOOT_ELAPSED = "last_boot_elapsed"
+        const val KEY_EXPLOIT_RUN_ACTIVE = "exploit_run_active"
+        const val KEY_SHOW_PANIC_TOAST = "show_panic_toast"
         private const val KIND_SCHEDULED = "scheduled"
         private const val KIND_FAILED = "failed"
         private const val KIND_SKIP_ALREADY = "skip_already"
@@ -148,6 +178,7 @@ class BootAutoRootPreferences(context: Context) {
         private const val KIND_FINISHED_SKIPPED_UNSUPPORTED = "finished_skipped_unsupported"
         private const val KIND_FINISHED_SKIPPED_CPU = "finished_skipped_cpu"
         private const val KIND_FINISHED_SKIPPED_BUSY = "finished_skipped_busy"
+        private const val KIND_PANIC_DISABLED = "panic_disabled"
         const val DEFAULT_MAX_ATTEMPTS = 3
         const val MIN_ATTEMPTS = 1
         const val MAX_ATTEMPTS = 10

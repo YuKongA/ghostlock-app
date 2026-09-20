@@ -240,8 +240,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             return ExploitRunLock.EXIT_BUSY
         }
         return try {
+            BootAutoRootPreferences(appContext).markExploitRunStarted()
             runExploitLocked(pair, onLog, workDir, bootAutoRun)
         } finally {
+            BootAutoRootPreferences(appContext).markExploitRunFinished()
             ExploitRunLock.release(appContext)
         }
     }

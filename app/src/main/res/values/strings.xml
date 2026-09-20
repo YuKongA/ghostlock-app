@@ -101,6 +101,8 @@
     <string name="boot_status_finished_skipped_unsupported">Last result: skipped, kernel not supported.</string>
     <string name="boot_status_finished_skipped_cpu">Last result: skipped, CPU pair not saved.</string>
     <string name="boot_status_finished_skipped_busy">Last result: skipped, another run was active.</string>
+    <string name="boot_status_panic_disabled">Auto-run disabled after an unexpected reboot during a run. Turn it on again when ready.</string>
+    <string name="auto_run_disabled_after_reboot">Auto-run at boot was turned off after an unexpected reboot during a run.</string>
     <string name="notification_settings_menu">Notifications</string>
     <string name="notification_settings_title">Notifications</string>
     <string name="notify_progress_label">Running notification</string>
