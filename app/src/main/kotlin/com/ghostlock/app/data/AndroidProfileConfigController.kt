@@ -3,7 +3,6 @@ package com.ghostlock.app.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
-import android.provider.DocumentsContract
 import androidx.core.content.edit
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
@@ -19,12 +18,24 @@ import java.nio.charset.StandardCharsets
  * while this class is the single authority for loading it, merging
  * builtin/imported/override layers, persisting sparse edits and producing the
  * document handed to the native process.
+ *
+ * Imported profiles come verbatim from [userProfiles]; every edit (general,
+ * route/fallback and advanced) persists as a sparse override in preferences,
+ * so stored user documents are never rewritten.
  */
 internal class AndroidProfileConfigController(
     context: Context,
     private val filesDir: File,
-    private val offsetsFile: File,
+    private val userProfiles: UserProfileStore,
     private val preferences: SharedPreferences,
+    /**
+     * Editing sessions pin the imported document instead of consulting the
+     * live selection, and keep their overrides in [preferences] (a private
+     * session store), so they never touch the attack controller.
+     */
+    private val forcedUserProfile: String? = null,
+    /** Editing sessions also pin the builtin source of the live controller. */
+    private val forcedBuiltinRelease: String? = null,
 ) : ProfileConfigController {
     private val appContext = context.applicationContext
     private val assetLoader = AssetConfigLoader(appContext)
@@ -232,21 +243,16 @@ internal class AndroidProfileConfigController(
         pair: CpuPair,
         route: String?,
     ): ProfileConfig {
-        val existing = readOffsets() ?: ValueList()
-        var entry = findReleaseEntry(existing, release)
-        if (entry == null) {
-            entry = valueMapOf("release" to release)
-            existing.add(entry)
-        }
+        val override = readAdvancedOverride(release)
         if (route.isNullOrBlank()) {
-            entry.remove("route")
+            override.remove("route")
         } else {
-            val existingBranch = entry["route"].asValueMap()?.get(route).asValueMap()
+            val existingBranch = override["route"].asValueMap()?.get(route).asValueMap()
                 ?: routeBranchTemplate(route)
-            entry["route"] = valueMapOf(route to existingBranch)
+            override["route"] = valueMapOf(route to existingBranch)
+            pruneOverrideBranches(override, "route", route)
         }
-        pruneOverrideBranches(release, "route", route)
-        offsetsFile.writeText(HoconSupport.render(existing), StandardCharsets.UTF_8)
+        writeAdvancedOverride(release, override)
         persistSnapshot(release, pair)
         return load(release, pair)
     }
@@ -256,16 +262,11 @@ internal class AndroidProfileConfigController(
         pair: CpuPair,
         fallbackTo: String?,
     ): ProfileConfig {
-        val existing = readOffsets() ?: ValueList()
-        var entry = findReleaseEntry(existing, release)
-        if (entry == null) {
-            entry = valueMapOf("release" to release)
-            existing.add(entry)
-        }
+        val override = readAdvancedOverride(release)
         if (fallbackTo.isNullOrBlank()) {
-            entry.remove("fallback")
+            override.remove("fallback")
         } else {
-            val fallback = entry["fallback"].asValueMap() ?: valueMapOf()
+            val fallback = override["fallback"].asValueMap() ?: valueMapOf()
             fallback["to"] = fallbackTo
             if (fallbackTo in ProfileConfig.Routes) {
                 val branch = fallback["route"].asValueMap()?.get(fallbackTo).asValueMap()
@@ -274,10 +275,10 @@ internal class AndroidProfileConfigController(
             } else {
                 fallback.remove("route")
             }
-            entry["fallback"] = fallback
+            override["fallback"] = fallback
+            pruneOverrideBranches(override, "fallback", fallbackTo.takeIf { it in ProfileConfig.Routes })
         }
-        pruneOverrideBranches(release, "fallback", fallbackTo?.takeIf { it in ProfileConfig.Routes })
-        offsetsFile.writeText(HoconSupport.render(existing), StandardCharsets.UTF_8)
+        writeAdvancedOverride(release, override)
         persistSnapshot(release, pair)
         return load(release, pair)
     }
@@ -287,21 +288,16 @@ internal class AndroidProfileConfigController(
         pair: CpuPair,
         values: Map<String, Long>,
     ): ProfileConfig {
-        val existing = readOffsets() ?: ValueList()
-        var entry = findReleaseEntry(existing, release)
-        if (entry == null) {
-            entry = valueMapOf("release" to release)
-            existing.add(entry)
-        }
-        val execution = entry.mutableChild("execution")
+        val override = readAdvancedOverride(release)
+        val execution = override.mutableChild("execution")
         for ((path, value) in values) {
             if (path.startsWith("execution.")) {
                 execution.setValueAt(path.removePrefix("execution."), value)
             } else {
-                entry.setValueAt(path, value)
+                override.setValueAt(path, value)
             }
         }
-        offsetsFile.writeText(HoconSupport.render(existing), StandardCharsets.UTF_8)
+        writeAdvancedOverride(release, override)
         persistSnapshot(release, pair)
         return load(release, pair)
     }
@@ -325,6 +321,22 @@ internal class AndroidProfileConfigController(
                 }
                 if (value != baseline.getLongAt(path)) rebuilt.setValueAt(path, value)
             }
+            /* The advanced editor carries neither the fallback choice nor the
+             * selected CPUs (and may drop a route branch the baseline already
+             * matches); keep all three. */
+            val current = readAdvancedOverride(release)
+            current["route"].asValueMap()?.let { route -> rebuilt.putIfAbsent("route", route) }
+            current["execution"].asValueMap()?.get("selected_cpus")?.let { cpus ->
+                rebuilt.mutableChild("execution")["selected_cpus"] = cpus
+            }
+            current["fallback"].asValueMap()?.let { fallback ->
+                val rebuiltFallback = rebuilt["fallback"].asValueMap()
+                if (rebuiltFallback == null) {
+                    rebuilt["fallback"] = fallback
+                } else {
+                    fallback["to"]?.let { rebuiltFallback["to"] = it }
+                }
+            }
             writeAdvancedOverride(release, rebuilt)
             persistSnapshot(release, pair)
         }
@@ -332,33 +344,84 @@ internal class AndroidProfileConfigController(
     }
 
     override suspend fun reset(release: String, pair: CpuPair): ProfileConfig {
-        clearGeneral(release)
-        clearRouteAndFallback(release)
         writeAdvancedOverride(release, valueMapOf())
+        return load(release, pair)
+    }
+
+    override suspend fun resetGeneral(release: String, pair: CpuPair): ProfileConfig {
+        val override = readAdvancedOverride(release)
+        override.remove("execution")
+        writeAdvancedOverride(release, override)
+        return load(release, pair)
+    }
+
+    override suspend fun resetAdvanced(release: String, pair: CpuPair): ProfileConfig {
+        val override = readAdvancedOverride(release)
+        override.keys.toList().filter { it != "execution" }.forEach(override::remove)
+        writeAdvancedOverride(release, override)
+        return load(release, pair)
+    }
+
+    override suspend fun clearSelectedCpus(release: String, pair: CpuPair): ProfileConfig {
+        val override = readAdvancedOverride(release)
+        val execution = override["execution"].asValueMap()
+        execution?.remove("selected_cpus")
+        if (execution != null && execution.isEmpty()) override.remove("execution")
+        writeAdvancedOverride(release, override)
         return load(release, pair)
     }
 
     override suspend fun export(
         release: String,
         pair: CpuPair,
-        folderUri: String,
+        documentUri: String,
     ): Boolean = try {
         persistSnapshot(release, pair)
         val snapshot = File(filesDir, snapshotName(release))
         if (!snapshot.isFile) return false
         val resolver = appContext.contentResolver
-        val document = DocumentsContract.createDocument(
-            resolver,
-            Uri.parse(folderUri),
-            "text/plain",
-            snapshotName(release),
-        ) ?: return false
-        val output = resolver.openOutputStream(document, "wt") ?: return false
+        val output = resolver.openOutputStream(Uri.parse(documentUri), "wt") ?: return false
         output.use { stream -> snapshot.inputStream().use { it.copyTo(stream) } }
         true
     } catch (_: Exception) {
         false
     }
+
+    override suspend fun saveModified(release: String, pair: CpuPair): Boolean =
+        saveResolved(release, pair, modifiedName(release))
+
+    /** Renders the resolved profile (built-in + imported + overrides) as HOCON. */
+    fun renderResolved(release: String, pair: CpuPair): String? {
+        val resolved = resolveCurrent(
+            release, pair, readAdvancedOverride(release), includeImported = true,
+        ) ?: return null
+        val view = resolved.copyValue().asValueMap() ?: return null
+        view["schema_version"] = 1
+        view["release"] = release
+        /* The CPU choice follows the device pair, it must not be frozen here. */
+        view["execution"].asValueMap()?.remove("selected_cpus")
+        fillRouteExecutionDefaults(view)
+        trimRouteTuning(view)
+        return HoconSupport.render(view)
+    }
+
+    /** Stores the rendered resolved profile under [fileName]. */
+    fun saveResolved(release: String, pair: CpuPair, fileName: String): Boolean {
+        val text = renderResolved(release, pair) ?: return false
+        return runCatching { userProfiles.save(fileName, text) }.isSuccess
+    }
+
+    /** Sparse overrides stored for [release]; seeds an editing session. */
+    fun overridesSnapshot(release: String): ValueMap =
+        readAdvancedOverride(release).copyValue().asValueMap() ?: valueMapOf()
+
+    /** Replaces the sparse overrides stored for [release]. */
+    fun replaceOverrides(release: String, override: ValueMap) {
+        writeAdvancedOverride(release, override.copyValue().asValueMap() ?: valueMapOf())
+    }
+
+    private fun modifiedName(release: String): String =
+        "${release.replace(Regex("[^A-Za-z0-9._-]"), "_")}-modified.conf"
 
     override suspend fun builtinReleases(): List<String> {
         val index = readIndex() ?: return emptyList()
@@ -370,7 +433,36 @@ internal class AndroidProfileConfigController(
     }
 
     override fun activeBuiltinRelease(): String? =
-        preferences.getString(PrefBuiltinRelease, null)?.takeIf { it.isNotEmpty() }
+        forcedBuiltinRelease
+            ?: preferences.getString(PrefBuiltinRelease, null)?.takeIf { it.isNotEmpty() }
+
+    override fun activeUserProfile(): String? =
+        forcedUserProfile
+            ?: preferences.getString(PrefActiveUserProfile, null)?.takeIf { it.isNotEmpty() }
+
+    override suspend fun selectUserProfile(
+        name: String?,
+        deviceRelease: String,
+        pair: CpuPair,
+    ): ProfileConfig {
+        preferences.edit {
+            if (name.isNullOrBlank()) remove(PrefActiveUserProfile)
+            else putString(PrefActiveUserProfile, name)
+        }
+        return load(deviceRelease, pair)
+    }
+
+    override fun onUserProfileRenamed(oldName: String, newName: String) {
+        if (activeUserProfile() == oldName) {
+            preferences.edit { putString(PrefActiveUserProfile, newName) }
+        }
+    }
+
+    override fun onUserProfileDeleted(name: String) {
+        if (activeUserProfile() == name) {
+            preferences.edit { remove(PrefActiveUserProfile) }
+        }
+    }
 
     override suspend fun selectBuiltin(
         release: String?,
@@ -454,11 +546,10 @@ internal class AndroidProfileConfigController(
         require((index["schema_version"] as? Number)?.toInt() == 1) { "unsupported profile schema" }
         val builtinEntry = findProfile(index["profiles"].asValueList(), profileRelease)
         val imported = if (includeImported) {
-            readProfiles(offsetsFile)?.let { findProfile(it, deviceRelease) }
+            userProfiles.loadEntry(deviceRelease, activeUserProfile())
         } else {
             null
         }
-        LegacyProfileConverter.convertValue(imported)
         LegacyProfileConverter.convertValue(overrides)
         if (builtinEntry == null && imported == null) return@runCatching null
         val builtin = builtinEntry?.let { entry ->
@@ -483,10 +574,8 @@ internal class AndroidProfileConfigController(
             mergeSource(
                 if (builtin == null) defaults else deepMergeValues(defaults, builtin),
                 if (includeImported) imported else null,
-                replaceRouteBranch = true,
             ),
             overrides,
-            replaceRouteBranch = false,
         )
         resolved["schema_version"] = 1
         /* A manually chosen builtin still reports the device release so the
@@ -526,6 +615,11 @@ internal class AndroidProfileConfigController(
             ?: error("index.conf is not an object")
     }.getOrNull()
 
+    private fun findProfile(profiles: List<*>?, release: String): ValueMap? =
+        profiles.orEmpty().asSequence()
+            .mapNotNull { it.asValueMap() }
+            .firstOrNull { it["release"] == release }
+
     private fun readAsset(path: String): String = assetLoader.load(path)
 
     /** Shared execution tuning every profile includes ("execution-tuning.conf"). */
@@ -549,21 +643,6 @@ internal class AndroidProfileConfigController(
         }
     }
 
-    private fun readProfiles(file: File): ValueList? {
-        if (!file.isFile) return null
-        return when (val value = HoconSupport.parseValue(file.readText())) {
-            is List<*> -> value.asValueList()
-            is Map<*, *> -> value["profiles"].asValueList()
-                ?: ValueList().apply { add(value.asValueMap()) }
-            else -> null
-        }
-    }
-
-    private fun findProfile(profiles: List<*>?, release: String): ValueMap? =
-        profiles.orEmpty().asSequence()
-            .mapNotNull { it.asValueMap() }
-            .firstOrNull { it["release"] == release }
-
     /**
      * Route objects hold exactly one branch. An incoming branch that differs
      * from the base replaces it (the old geometry belongs to the old route),
@@ -572,7 +651,6 @@ internal class AndroidProfileConfigController(
     private fun mergeRouteObjects(
         base: ValueMap?,
         incoming: Map<*, *>?,
-        replaceBranch: Boolean,
     ): ValueMap? {
         if (incoming == null) return base
         val incomingBranch = incoming.keys.filterIsInstance<String>()
@@ -588,10 +666,8 @@ internal class AndroidProfileConfigController(
                 ),
             )
 
-            /* Advanced edits never carry the choice: a branch that differs from
-             * the selected one is stale data and must not switch it back. */
-            !replaceBranch -> base ?: valueMapOf(incomingBranch to incomingBody)
-
+            /* A branch different from the base carries the new choice: the old
+             * geometry belongs to the old route. */
             else -> valueMapOf(incomingBranch to incomingBody)
         }
     }
@@ -600,7 +676,6 @@ internal class AndroidProfileConfigController(
     private fun mergeSource(
         base: ValueMap,
         incoming: ValueMap?,
-        replaceRouteBranch: Boolean,
     ): ValueMap {
         /* Snapshot the branches first: deepMergeValues mutates its base argument,
          * so a later read would already contain the incoming branch. */
@@ -610,13 +685,11 @@ internal class AndroidProfileConfigController(
         val merged = deepMergeValues(base, incoming)
         if (incoming == null) return merged
         incoming["route"].asValueMap()?.let { route ->
-            mergeRouteObjects(baseRoute, route, replaceRouteBranch)
-                ?.let { merged["route"] = it }
+            mergeRouteObjects(baseRoute, route)?.let { merged["route"] = it }
         }
         incoming["fallback"].asValueMap()?.get("route").asValueMap()?.let { fallbackRoute ->
             val fallback = merged["fallback"].asValueMap() ?: return@let
-            mergeRouteObjects(baseFallbackRoute, fallbackRoute, replaceRouteBranch)
-                ?.let { fallback["route"] = it }
+            mergeRouteObjects(baseFallbackRoute, fallbackRoute)?.let { fallback["route"] = it }
         }
         return merged
     }
@@ -645,9 +718,7 @@ internal class AndroidProfileConfigController(
      * advanced override; edits of the previous branch would otherwise pull the
      * choice back or shadow the new branch's fields.
      */
-    private fun pruneOverrideBranches(release: String, key: String, keep: String?) {
-        val all = readDebugOverrides()
-        val entry = all[release].asValueMap() ?: return
+    private fun pruneOverrideBranches(entry: ValueMap, key: String, keep: String?) {
         val container = if (key == "fallback") {
             entry["fallback"].asValueMap()?.get("route").asValueMap()
         } else {
@@ -670,8 +741,6 @@ internal class AndroidProfileConfigController(
                 if (fallback.isEmpty()) entry.remove("fallback")
             }
         }
-        if (entry.isEmpty()) all.remove(release)
-        preferences.edit { putString(PrefDebugProfileOverrides, HoconSupport.render(all)) }
     }
 
     private fun validateResolved(profile: ValueMap, release: String) {
@@ -760,58 +829,20 @@ internal class AndroidProfileConfigController(
         cachedBinary = binary
     }
 
-    private fun readOffsets(): ValueList? = if (offsetsFile.isFile) {
-        when (val value = HoconSupport.parseValue(offsetsFile.readText())) {
-            is List<*> -> value.asValueList()
-            is Map<*, *> -> ValueList().apply { add(value.asValueMap()) }
-            else -> null
-        }
-    } else null
-
-    private fun findReleaseEntry(entries: List<*>, release: String): ValueMap? =
-        entries.mapNotNull { it.asValueMap() }
-            .firstOrNull { it["release"] == release }
-
     private fun readDebugOverrides(): ValueMap {
         val raw = preferences.getString(PrefDebugProfileOverrides, null) ?: return valueMapOf()
         return runCatching { HoconSupport.parseValue(raw).asValueMap() ?: valueMapOf() }
             .getOrDefault(valueMapOf())
     }
 
+    /** Sparse overrides for [release]: general, route/fallback and advanced. */
     private fun readAdvancedOverride(release: String): ValueMap =
-        readDebugOverrides()[release].asValueMap()?.also { entry ->
-            /* The fallback choice lives in the offsets entry, never in the
-             * advanced override; old builds could leave a scalar here. */
-            entry["fallback"].asValueMap()?.remove("to")
-        } ?: valueMapOf()
+        readDebugOverrides()[release].asValueMap() ?: valueMapOf()
 
     private fun writeAdvancedOverride(release: String, override: ValueMap) {
         val all = readDebugOverrides()
         if (override.isEmpty()) all.remove(release) else all[release] = override
         preferences.edit { putString(PrefDebugProfileOverrides, HoconSupport.render(all)) }
-    }
-
-    /** Reset also drops the route/fallback overrides back to the built-in. */
-    private fun clearRouteAndFallback(release: String) {
-        val existing = readOffsets() ?: return
-        val entry = findReleaseEntry(existing, release) ?: return
-        entry.remove("route")
-        entry.remove("fallback")
-        offsetsFile.writeText(HoconSupport.render(existing), StandardCharsets.UTF_8)
-    }
-
-    private fun clearGeneral(release: String) {
-        val existing = readOffsets() ?: return
-        val entry = findReleaseEntry(existing, release) ?: return
-        entry.remove("execution")
-        val kept = ValueList()
-        for (candidate in existing) {
-            val map = candidate.asValueMap() ?: continue
-            if (map["release"] != release || map.size > 1) {
-                kept.add(map)
-            }
-        }
-        offsetsFile.writeText(HoconSupport.render(kept), StandardCharsets.UTF_8)
     }
 
     /* profile-export: the merged profile also lives as a plain HOCON file in the
@@ -871,6 +902,7 @@ internal class AndroidProfileConfigController(
         private const val SizeofU32 = 4L
         private const val SizeofU64 = 8L
         private const val PrefBuiltinRelease = "debug_builtin_release"
+        private const val PrefActiveUserProfile = "active_user_profile"
         const val PrefDebugProfileOverrides = "debug_profile_overrides"
     }
 }

@@ -45,19 +45,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    private enum class FolderRequest { DebugLocation, ExportProfile }
-    private var pendingFolderRequest: FolderRequest? = null
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        val request = pendingFolderRequest
-        pendingFolderRequest = null
-        when (request) {
-            FolderRequest.DebugLocation ->
-                viewModel.onDebugExportLocationPicked(uri?.let(::documentTreeRelativePath))
-            FolderRequest.ExportProfile ->
-                if (uri != null) viewModel.onExportProfileFolderPicked(uri.toString())
-            null -> Unit
-        }
+        viewModel.onDebugExportLocationPicked(uri?.let(::documentTreeRelativePath))
     }
+
+    private val profileDocumentCreator =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
+            viewModel.onExportProfileDocumentPicked(uri?.toString())
+        }
 
     /** Maps a SAF tree URI to the external-storage-relative MediaStore path. */
     private fun documentTreeRelativePath(uri: Uri): String? {
@@ -99,15 +94,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            GhostlockEffect.PickDebugFolder -> {
-                pendingFolderRequest = FolderRequest.DebugLocation
-                folderPicker.launch(null)
-            }
+            GhostlockEffect.PickDebugFolder -> folderPicker.launch(null)
 
-            GhostlockEffect.PickProfileExportFolder -> {
-                pendingFolderRequest = FolderRequest.ExportProfile
-                folderPicker.launch(null)
-            }
+            is GhostlockEffect.CreateProfileDocument ->
+                profileDocumentCreator.launch(effect.suggestedName)
 
             is GhostlockEffect.Share -> shareOffsets(effect.uri.toUri())
             is GhostlockEffect.Toast -> Toast.makeText(this, effect.resourceId, Toast.LENGTH_SHORT).show()
@@ -200,7 +190,10 @@ private fun GhostlockRoute(
             override fun onRouteChanged(index: Int) = viewModel.onRouteChanged(index)
             override fun onFallbackChanged(index: Int) = viewModel.onFallbackChanged(index)
             override fun onExportProfile() = viewModel.onExportProfile()
-            override fun onResetParameters() = viewModel.onResetParameters()
+            override fun onSaveProfileEdits() = viewModel.onSaveProfileEdits()
+            override fun onSaveProfileAs() = viewModel.onSaveProfileAs()
+            override fun onExportProfileEdits() = viewModel.onExportProfileEdits()
+            override fun onRevertProfileEdits() = viewModel.onRevertProfileEdits()
             override fun onOpenAdvanced() = viewModel.onOpenAdvanced()
             override fun onCloseAdvanced() = viewModel.onCloseAdvanced()
             override fun onShowAbout() = viewModel.onShowAbout()
@@ -211,6 +204,20 @@ private fun GhostlockRoute(
                 viewModel.onDebugKernelLogChanged(enabled)
             override fun onOpenParameters() = viewModel.onOpenParameters()
             override fun onCloseParameters() = viewModel.onCloseParameters()
+            override fun onOpenLoadConfig() = viewModel.onOpenLoadConfig()
+            override fun onCloseLoadConfig() = viewModel.onCloseLoadConfig()
+            override fun onOpenUserProfileDetail(name: String) =
+                viewModel.onOpenUserProfileDetail(name)
+            override fun onCloseUserProfileDetail() = viewModel.onCloseUserProfileDetail()
+            override fun onLoadUserProfile(name: String) = viewModel.onLoadUserProfile(name)
+            override fun onUnloadUserProfile() = viewModel.onUnloadUserProfile()
+            override fun onEditUserProfile(name: String) = viewModel.onEditUserProfile(name)
+            override fun onUserProfileRename(name: String) = viewModel.onUserProfileRename(name)
+            override fun onUserProfileExport(name: String) = viewModel.onUserProfileExport(name)
+            override fun onConvertUserProfile(name: String) = viewModel.onConvertUserProfile(name)
+            override fun onUserProfileDelete(name: String) = viewModel.onUserProfileDelete(name)
+            override fun onUserProfileDeleteConfirm() = viewModel.onUserProfileDeleteConfirm()
+            override fun onUserProfileDeleteDismiss() = viewModel.onUserProfileDeleteDismiss()
             override fun onOpenBuiltinProfiles() = viewModel.onOpenBuiltinProfiles()
             override fun onCloseBuiltinProfiles() = viewModel.onCloseBuiltinProfiles()
             override fun onSelectBuiltinProfile(release: String?) =

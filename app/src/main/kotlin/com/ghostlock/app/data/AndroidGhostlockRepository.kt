@@ -17,6 +17,8 @@ import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.data.ota.OtaPayloadExtractor
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
+import com.ghostlock.app.domain.model.ProfileConfig
+import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.repository.ProfileConfigController
 import com.ghostlock.app.domain.usecase.OffsetMatching
@@ -38,17 +40,18 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private companion object {
         const val OffsetsFileName = "offsets.conf"
         const val LegacyOffsetsFileName = "offsets.json"
+        const val UserProfilesDirectoryName = "user_profiles"
+        const val EditSessionPreferences = "ghostlock_edit_session"
         const val ExtractBinaryName = "libextract.so"
         const val DefaultDebugLocation = "Download/ghostlock-debug-log"
         const val PrefDebugExportEnabled = "debug_export_enabled"
         const val PrefDebugExportLocation = "debug_export_location"
         const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
+        const val PrefDebugProfileOverrides = "debug_profile_overrides"
 
         /* U01-S14: per-run KernelSU log name; the resolved path travels to
          * the native process via GHOSTLOCK_KSU_LOG. */
         fun ksuLogName(runStamp: Long) = "ghostlock-ksu-$runStamp.log"
-
-        const val BuiltinDirectory = "kernel_profiles"
 
         /* Every run's stdout/stderr is redirected here (export or not), so the
          * previous run can be inspected on the next start-up. */
@@ -64,10 +67,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private val offsetsFile get() = File(filesDir, OffsetsFileName)
     private val builtinProfiles = BuiltinProfileCatalog(appContext)
     private val assetConfigLoader = AssetConfigLoader(appContext)
+    private val userProfileStore = UserProfileStore(
+        directory = File(filesDir, UserProfilesDirectoryName),
+        assetLoader = assetConfigLoader,
+    )
     private val profileController = AndroidProfileConfigController(
         appContext,
         filesDir,
-        offsetsFile,
+        userProfileStore,
         preferences,
     )
     private val cpuPairs = mutableListOf<CpuPair>()
@@ -78,7 +85,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     /** True once the user flipped the toggle; only then does it override the
      * profile suggestion (PROFILE-SUGGEST-01). */
     private var shizukuPreferenceSet = false
-    private var pendingParsedEntries: ValueList? = null
+    private var pendingParsedDocument: PendingParsedDocument? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
@@ -86,11 +93,48 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         restoreCpuPair()
         restoreShizukuPreference()
         dropLegacyOffsetsCache()
+        migrateLegacyOffsetsStore()
     }
 
     /** The old JSON offsets cache is not compatible and is discarded. */
     private fun dropLegacyOffsetsCache() {
         runCatching { File(filesDir, LegacyOffsetsFileName).delete() }
+    }
+
+    /**
+     * Old builds kept imported offsets and parameter overrides in one HOCON
+     * file. Split it: overrides move to preferences, the remaining entries
+     * become verbatim user documents, then the legacy file is dropped.
+     */
+    private fun migrateLegacyOffsetsStore() {
+        if (!offsetsFile.isFile) return
+        runCatching {
+            val entries = parseEntries(offsetsFile.readText()) ?: return@runCatching
+            for (raw in entries) {
+                val entry = raw.asValueMap() ?: continue
+                val release = (entry["release"] as? String).orEmpty()
+                if (release.isEmpty()) continue
+                val overrides = valueMapOf()
+                (entry.remove("execution") as? Map<*, *>)?.let { overrides["execution"] = it }
+                (entry.remove("route") as? Map<*, *>)?.let { overrides["route"] = it }
+                (entry.remove("fallback") as? Map<*, *>)?.let { overrides["fallback"] = it }
+                if (overrides.isNotEmpty()) mergeLegacyOverrides(release, overrides)
+                if (entry.size > 1) {
+                    userProfileStore.save("$release.conf", HoconSupport.render(entry))
+                }
+            }
+            offsetsFile.delete()
+        }.onFailure {
+            android.util.Log.e("GhostLock", "legacy offsets migration failed", it)
+        }
+    }
+
+    private fun mergeLegacyOverrides(release: String, overrides: ValueMap) {
+        val raw = preferences.getString(PrefDebugProfileOverrides, null)
+        val all = runCatching { HoconSupport.parseValue(raw ?: "") }
+            .getOrNull().asValueMap() ?: valueMapOf()
+        deepMergeValues(all.mutableChild(release), overrides)
+        preferences.edit { putString(PrefDebugProfileOverrides, HoconSupport.render(all)) }
     }
 
     override suspend fun snapshot(): KernelSnapshot {
@@ -173,19 +217,21 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
      * repository only wires it and forwards the native document. */
 
     override suspend fun exportCandidates(): List<OffsetCandidate> {
-        val entries = readOffsetsFile(offsetsFile) ?: return emptyList()
         val current = System.getProperty("os.version", "")
-        return entries.asSequence()
-            .mapNotNull { it.asValueMap() }
-            .map { entry -> (entry["release"] as? String).orEmpty() to entry }
-            .filter { (release, entry) ->
-                release.isNotEmpty() &&
-                        !(builtinProfiles.builtin.containsKey(release) && matchesBuiltin(entry))
-            }
-            .distinctBy { it.first }
-            .sortedWith(compareBy<Pair<String, ValueMap>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
+        val byRelease = linkedMapOf<String, ValueMap>()
+        for (entry in userProfileStore.entries()) {
+            val release = (entry["release"] as? String).orEmpty()
+            if (release.isEmpty()) continue
+            LegacyProfileConverter.convertValue(entry)
+            if (builtinProfiles.builtin.containsKey(release) && matchesBuiltin(entry)) continue
+            byRelease.putIfAbsent(release, entry)
+        }
+        return byRelease.entries
+            .sortedWith(
+                compareBy<Map.Entry<String, ValueMap>> { if (it.key == current) 0 else 1 }
+                    .thenBy { it.key },
+            )
             .map { (release, entry) -> OffsetCandidate(release, HoconSupport.render(entry)) }
-            .toList()
     }
 
     override suspend fun importOffsets(documents: Map<String, String>): OffsetImportResult =
@@ -194,109 +240,54 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun confirmImport(documents: Map<String, String>): OffsetImportResult =
         mergeImported(documents, overwrite = true)
 
-    private class MissingIncludesException(val files: List<String>) : Exception()
-
     private fun mergeImported(documents: Map<String, String>, overwrite: Boolean): OffsetImportResult {
         return try {
             val imported = parseImportDocuments(documents)
                 ?: return OffsetImportResult.Failed("not a valid profile document")
-            val existing = readOffsetsFile(offsetsFile) ?: ValueList()
-            val fresh = ValueList()
-            val skipped = mutableListOf<String>()
-            val differingBuiltins = mutableListOf<String>()
-            for (entry in imported.mapNotNull { it.asValueMap() }) {
-                LegacyProfileConverter.convertValue(entry)
-                val release = (entry["release"] as? String).orEmpty()
-                if (release.isEmpty()) continue
-                if (release in builtinProfiles.builtin) {
-                    if (matchesBuiltin(entry)) {
-                        skipped += release
-                    } else {
-                        differingBuiltins += release
-                        fresh.add(entry)
-                    }
-                } else {
-                    fresh.add(entry)
-                }
-            }
+            /* Unlike export candidates, imports are never compared against the
+             * bundled tables: whatever the user picked lands in the store. */
+            val fresh = imported.filter { (it["release"] as? String).orEmpty().isNotEmpty() }
             if (fresh.isEmpty()) return OffsetImportResult.AlreadyPresent
 
-            val overlaps = overlappingReleases(existing, fresh)
-            val replaced = (overlaps + differingBuiltins).distinct()
-            if (!overwrite && replaced.isNotEmpty()) {
-                return OffsetImportResult.RequiresOverwrite(replaced)
+            val releases = freshReleases(fresh)
+            val overlaps = releases.filter { userProfileStore.containsRelease(it) }
+            if (!overwrite && overlaps.isNotEmpty()) {
+                return OffsetImportResult.RequiresOverwrite(overlaps)
             }
-            mergeAndSave(existing, fresh, overwrite)
-            OffsetImportResult.Imported(freshReleases(fresh))
+            if (overwrite) dropReplacedDocuments(releases)
+            for ((name, text) in documents) userProfileStore.save(name, text)
+            OffsetImportResult.Imported(releases)
         } catch (error: CancellationException) {
             throw error
-        } catch (error: MissingIncludesException) {
+        } catch (error: UserProfileStore.MissingIncludes) {
             OffsetImportResult.MissingIncludes(error.files)
         } catch (error: Exception) {
             OffsetImportResult.Failed(error.message ?: "import failed")
         }
     }
 
-    /**
-     * Parses every picked document. Includes resolve against the picked files
-     * first (by full name or base name), then the bundled assets; anything
-     * unresolvable is reported so the user can pick the dependency as well.
-     * Only objects carrying a `release` become entries (shared files selected
-     * by accident are skipped).
-     */
-    private fun parseImportDocuments(documents: Map<String, String>): ValueList? {
-        val byName = HashMap<String, String>()
-        documents.forEach { (name, text) ->
-            byName[name] = text
-            byName[name.substringAfterLast('/')] = text
-        }
-        val missing = linkedSetOf<String>()
-        val entries = ValueList()
-        documents.forEach { (_, text) ->
-            val expanded = expandImportIncludes(text, byName, missing, linkedSetOf())
-            when (val value = HoconSupport.parseValue(expanded)) {
-                is Map<*, *> -> value.asValueMap()
-                    ?.takeIf { it.containsKey("release") }
-                    ?.let(entries::add)
-
-                is List<*> -> value.forEach { item ->
-                    item.asValueMap()?.takeIf { it.containsKey("release") }?.let(entries::add)
-                }
+    /** Confirmed overwrite: drop old documents fully superseded by [releases]. */
+    private fun dropReplacedDocuments(releases: List<String>) {
+        val incoming = releases.toSet()
+        userProfileStore.list().forEach { stored ->
+            if (stored.releases.isNotEmpty() && stored.releases.all { it in incoming }) {
+                userProfileStore.delete(stored.name)
             }
         }
-        if (missing.isNotEmpty()) throw MissingIncludesException(missing.toList())
-        return entries.takeIf { it.isNotEmpty() }
     }
 
-    private fun expandImportIncludes(
-        text: String,
-        byName: Map<String, String>,
-        missing: MutableSet<String>,
-        visiting: MutableSet<String>,
-    ): String {
-        if (!text.contains("include ")) return text
-        val expanded = StringBuilder()
-        for (line in text.lineSequence()) {
-            val trimmed = line.trim()
-            if (trimmed.startsWith("include ")) {
-                val target = trimmed.removePrefix("include ").trim().trim('"')
-                val key = target.substringAfterLast('/')
-                val local = byName[key]
-                if (local != null) {
-                    if (visiting.add(key)) {
-                        expanded.append(expandImportIncludes(local, byName, missing, visiting))
-                        visiting.remove(key)
-                    }
-                } else {
-                    val asset = assetConfigLoader.load("$BuiltinDirectory/$target")
-                    if (asset.isBlank()) missing += target else expanded.append(asset)
-                }
-            } else {
-                expanded.append(line)
-            }
-            expanded.append('\n')
+    /**
+     * Parses every picked document, resolving includes against the picked
+     * files first (by full name or base name), then the bundled assets.
+     * Anything unresolvable is reported so the user can pick it too; only
+     * objects carrying a `release` become entries.
+     */
+    private fun parseImportDocuments(documents: Map<String, String>): List<ValueMap>? {
+        val entries = mutableListOf<ValueMap>()
+        documents.forEach { (_, text) ->
+            entries += userProfileStore.parseEntries(text, extraDocuments = documents)
         }
-        return expanded.toString()
+        return entries.takeIf { it.isNotEmpty() }
     }
 
     override suspend fun parseSource(input: String, xblPath: String?, overwrite: Boolean, onLog: (String) -> Unit): ParseResult {
@@ -305,12 +296,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         var tempXblFile: File? = null
         return try {
             if (overwrite) {
-                val pending = pendingParsedEntries
+                val pending = pendingParsedDocument
                 if (pending != null) {
-                    pendingParsedEntries = null
-                    val existing = readOffsetsFile(offsetsFile) ?: ValueList()
-                    mergeAndSave(existing, pending, overwrite = true)
-                    return ParseResult.Parsed(freshReleases(pending))
+                    pendingParsedDocument = null
+                    dropReplacedDocuments(pending.releases)
+                    userProfileStore.save(pending.name, pending.text)
+                    return ParseResult.Parsed(pending.releases)
                 }
             }
             val binary = File(appContext.applicationInfo.nativeLibraryDir, ExtractBinaryName)
@@ -355,32 +346,23 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             )
             onLog("extract exit code=$code")
             if (code != 0 || !parsedFile.isFile) return ParseResult.Failed(code)
-            val fresh = parseEntries(parsedFile.readText()) ?: return ParseResult.Failed(code, "invalid extractor output")
-            val existing = readOffsetsFile(offsetsFile) ?: ValueList()
-            val filtered = ValueList()
-            val skipped = mutableListOf<String>()
-            val differingBuiltins = mutableListOf<String>()
-            for (entry in fresh.mapNotNull { it.asValueMap() }) {
-                LegacyProfileConverter.convertValue(entry)
-                val release = (entry["release"] as? String).orEmpty()
-                if (release in builtinProfiles.builtin) {
-                    if (matchesBuiltin(entry)) skipped += release
-                    else {
-                        differingBuiltins += release
-                        filtered.add(entry)
-                    }
-                } else {
-                    filtered.add(entry)
-                }
-            }
+            val document = parsedFile.readText()
+            val fresh = parseEntries(document) ?: return ParseResult.Failed(code, "invalid extractor output")
+            /* Parsed reports are stored as-is, even when they match a bundled
+             * profile; loading decides whether they take effect. */
+            val filtered = fresh.mapNotNull { it.asValueMap() }
+                .filter { (it["release"] as? String).orEmpty().isNotEmpty() }
             if (filtered.isEmpty()) return ParseResult.AlreadyPresent
-            val replaced = if (overwrite) emptyList() else differingBuiltins.distinct()
-            if (replaced.isNotEmpty()) {
-                pendingParsedEntries = filtered
-                return ParseResult.RequiresOverwrite(replaced)
+            val releases = freshReleases(filtered)
+            val overlaps = releases.filter { userProfileStore.containsRelease(it) }
+            val name = parsedDocumentName(releases)
+            if (!overwrite && overlaps.isNotEmpty()) {
+                pendingParsedDocument = PendingParsedDocument(name, document, releases)
+                return ParseResult.RequiresOverwrite(overlaps)
             }
-            mergeAndSave(existing, filtered, overwrite = true)
-            ParseResult.Parsed(freshReleases(filtered))
+            dropReplacedDocuments(releases)
+            userProfileStore.save(name, document)
+            ParseResult.Parsed(releases)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -572,6 +554,146 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return target.absolutePath
     }
 
+    override suspend fun userProfiles(): List<UserProfileFile> =
+        withContext(Dispatchers.IO) {
+            userProfileStore.list().map { stored ->
+                UserProfileFile(
+                    name = stored.name,
+                    releases = stored.releases,
+                    importedAt = stored.importedAt,
+                    sizeBytes = stored.sizeBytes,
+                    parseError = stored.parseError,
+                    version = stored.version,
+                )
+            }
+        }
+
+    override suspend fun deleteUserProfile(name: String): Boolean {
+        val deleted = withContext(Dispatchers.IO) { userProfileStore.delete(name) }
+        if (deleted) profileController.onUserProfileDeleted(name)
+        return deleted
+    }
+
+    override suspend fun renameUserProfile(name: String, newName: String): String? {
+        val renamed = withContext(Dispatchers.IO) { userProfileStore.rename(name, newName) }
+        if (renamed != null) profileController.onUserProfileRenamed(name, renamed)
+        return renamed
+    }
+
+    /** Renders a stored document as HOCON and shares it; returns the URI. */
+    override suspend fun exportUserProfile(name: String): String {
+        val hocon = withContext(Dispatchers.IO) { userProfileStore.exportHocon(name) }
+            ?: throw IOException("cannot export $name")
+        return publishOffsets(OffsetCandidate(name.substringBeforeLast('.'), hocon))
+    }
+
+    /**
+     * Converts a stored legacy document into the current layout and stores the
+     * result as a new user document; returns its name, or null on failure.
+     */
+    override suspend fun convertUserProfile(name: String): String? {
+        val hocon = withContext(Dispatchers.IO) { userProfileStore.exportHocon(name) }
+            ?: return null
+        val base = name.substringBeforeLast('.')
+        return withContext(Dispatchers.IO) {
+            userProfileStore.save("$base-converted.conf", hocon)
+        }
+    }
+
+    /* ---- editing session: isolated from the live attack controller ---- */
+
+    private var editSession: AndroidProfileConfigController? = null
+    private var editSessionTargetName: String? = null
+    private var editSessionLive = false
+
+    override suspend fun beginEditSession(name: String?): ProfileConfig? =
+        withContext(Dispatchers.IO) {
+            endEditSession()
+            val release = System.getProperty("os.version", "").orEmpty()
+            val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
+            val sessionPreferences = appContext.getSharedPreferences(
+                EditSessionPreferences,
+                Context.MODE_PRIVATE,
+            )
+            sessionPreferences.edit().clear().commit()
+            editSessionLive = name != null && name == profileController.activeUserProfile()
+            if (editSessionLive) {
+                val overrides = profileController.overridesSnapshot(release)
+                if (overrides.isNotEmpty()) {
+                    /* The store keeps one entry per release, so wrap it back. */
+                    sessionPreferences.edit(commit = true) {
+                        putString(
+                            AndroidProfileConfigController.PrefDebugProfileOverrides,
+                            HoconSupport.render(valueMapOf(release to overrides)),
+                        )
+                    }
+                }
+            }
+            val session = AndroidProfileConfigController(
+                context = appContext,
+                filesDir = filesDir,
+                userProfiles = userProfileStore,
+                preferences = sessionPreferences,
+                forcedUserProfile = name,
+                forcedBuiltinRelease = profileController.activeBuiltinRelease(),
+            )
+            editSession = session
+            editSessionTargetName = name
+            runCatching { session.load(release, pair) }.getOrNull()
+        }
+
+    override fun editSessionController(): ProfileConfigController? = editSession
+
+    override fun editSessionIsLive(): Boolean = editSessionLive
+
+    override fun editSessionTarget(): String? = editSessionTargetName
+
+    override suspend fun saveEditSessionInPlace(): Boolean = withContext(Dispatchers.IO) {
+        if (editSessionLive) return@withContext false
+        val session = editSession ?: return@withContext false
+        val target = editSessionTargetName ?: return@withContext false
+        val release = System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext false
+        val document = session.renderResolved(release, pair) ?: return@withContext false
+        userProfileStore.overwrite(target, document)
+    }
+
+    override suspend fun commitEditSession(): Boolean = withContext(Dispatchers.IO) {
+        if (!editSessionLive) return@withContext false
+        val session = editSession ?: return@withContext false
+        val release = System.getProperty("os.version", "").orEmpty()
+        profileController.replaceOverrides(release, session.overridesSnapshot(release))
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext false
+        runCatching { profileController.load(release, pair) }.isSuccess
+    }
+
+    override suspend fun saveEditSessionAsNew(): String? = withContext(Dispatchers.IO) {
+        val session = editSession ?: return@withContext null
+        val release = System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
+        val stem = (editSessionTargetName ?: release)
+            .substringBeforeLast('.')
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val name = "${stem.ifEmpty { "profile" }}-edited.conf"
+        if (session.saveResolved(release, pair, name)) name else null
+    }
+
+    override suspend fun exportEditSession(): String = withContext(Dispatchers.IO) {
+        val session = editSession ?: throw IOException("no editing session")
+        val release = System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: throw IOException("no cpu pair")
+        val document = session.renderResolved(release, pair)
+            ?: throw IOException("cannot render the edited profile")
+        val stem = editSessionTargetName?.substringBeforeLast('.') ?: release
+        publishOffsets(OffsetCandidate(stem.ifEmpty { release }, document))
+    }
+
+    override fun endEditSession() {
+        editSession = null
+        editSessionTargetName = null
+        editSessionLive = false
+    }
+
     override suspend fun publishOffsets(candidate: OffsetCandidate): String {
         val safeRelease = candidate.release.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val values = ContentValues().apply {
@@ -594,9 +716,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     /**
-     * Stored documents are HOCON. The rust extractor report (legacy JSON) is
-     * read through the same parser, which is the only JSON-compatible entry
-     * besides importing a picked legacy offsets.json.
+     * Legacy/parse helper: reads HOCON or JSON text into a list of entries.
+     * Stored user documents are parsed by [UserProfileStore] instead.
      */
     private fun parseEntries(text: String): ValueList? {
         if (text.isBlank()) return null
@@ -611,33 +732,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private fun readOffsetsFile(file: File): ValueList? = if (file.isFile) parseEntries(file.readText()) else null
+    private class PendingParsedDocument(
+        val name: String,
+        val text: String,
+        val releases: List<String>,
+    )
 
-    private fun overlappingReleases(existing: List<*>, imported: List<*>): List<String> {
-        val known = existing.mapNotNull { (it.asValueMap()?.get("release") as? String) }.toSet()
-        return imported.mapNotNull { (it.asValueMap()?.get("release") as? String) }
-            .filter { it in known }
-            .distinct()
-    }
-
-    private fun mergeAndSave(existing: List<*>, imported: List<*>, overwrite: Boolean) {
-        val importedByRelease = imported.mapNotNull { it.asValueMap() }
-            .associateBy { (it["release"] as? String).orEmpty() }
-        val known = existing.mapNotNull { (it.asValueMap()?.get("release") as? String) }.toSet()
-        val merged = ValueList()
-        existing.forEach { raw ->
-            val entry = raw.asValueMap() ?: return@forEach
-            val release = (entry["release"] as? String).orEmpty()
-            if (overwrite && release in importedByRelease) return@forEach
-            merged.add(entry)
-        }
-        imported.forEach { raw ->
-            val entry = raw.asValueMap() ?: return@forEach
-            val release = (entry["release"] as? String).orEmpty()
-            if (!overwrite && release in known) return@forEach
-            merged.add(entry)
-        }
-        offsetsFile.writeText(HoconSupport.render(merged), StandardCharsets.UTF_8)
+    private fun parsedDocumentName(releases: List<String>): String {
+        val stem = releases.firstOrNull().orEmpty()
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .ifEmpty { "parsed" }
+        return "$stem.json"
     }
 
     private fun freshReleases(entries: List<*>): List<String> =
@@ -721,29 +826,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return version in builtinProfiles.unames || importedOffsetsMatch(version)
     }
 
-    private fun isCompactKernel(): Boolean {
-        val version = System.getProperty("os.version", "").orEmpty()
-        // an imported entry overrides the built-in one, a member it omits keeps the built-in
-        // value, as in select_offsets. first match wins, same as load_offsets_json
-        val entries = readOffsetsFile(offsetsFile)
-        val imported = (0 until (entries?.length() ?: 0)).mapNotNull { entries?.optJSONObject(it) }.firstOrNull { it.optString("release", "") == version }
-            ?.let { toKernelOffsets(it).scalars["compact_waiter"] }
-        val value = imported ?: SupportedKernels.BUILTIN[version]?.get("compact_waiter")
-        return value != null && value != 0L
-    }
+    private fun importedOffsetsMatch(version: String): Boolean =
+        userProfileStore.containsRelease(version)
 
-    private fun importedOffsetsMatch(version: String): Boolean {
-        val entries = readOffsetsFile(offsetsFile) ?: return false
-        return entries.any { (it.asValueMap()?.get("release") as? String) == version }
-    }
-
-    private fun importedOffsetsRecommendShizuku(version: String): Boolean {
-        val entries = readOffsetsFile(offsetsFile) ?: return false
-        return entries.any { raw ->
-            val entry = raw.asValueMap() ?: return@any false
-            entry["release"] == version && (entry["recommend_shizuku"] as? Number)?.toInt() == 1
-        }
-    }
+    private fun importedOffsetsRecommendShizuku(version: String): Boolean =
+        userProfileStore.recommendsShizuku(version)
 
     private fun buildCpuPairs() {
         cpuPairs.clear()

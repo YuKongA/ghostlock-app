@@ -29,20 +29,55 @@ interface ProfileConfigController {
     /** Drops every general and advanced override for the release. */
     suspend fun reset(release: String, pair: CpuPair): ProfileConfig
 
+    /** Drops only the general (execution tuning) overrides. */
+    suspend fun resetGeneral(release: String, pair: CpuPair): ProfileConfig
+
+    /** Drops route/fallback and advanced overrides, keeping general ones. */
+    suspend fun resetAdvanced(release: String, pair: CpuPair): ProfileConfig
+
+    /** Removes the explicit CPU selection override for the release. */
+    suspend fun clearSelectedCpus(release: String, pair: CpuPair): ProfileConfig
+
     /** Sets the explicit route; null restores geometry inference. */
     suspend fun updateRoute(release: String, pair: CpuPair, route: String?): ProfileConfig
 
     /** Sets "fallback_to"; "none" disables, null removes the declaration. */
     suspend fun updateFallback(release: String, pair: CpuPair, fallbackTo: String?): ProfileConfig
 
-    /** Writes the merged profile JSON into the folder the user picked. */
-    suspend fun export(release: String, pair: CpuPair, folderUri: String): Boolean
+    /** Writes the merged profile into the document the user picked. */
+    suspend fun export(release: String, pair: CpuPair, documentUri: String): Boolean
+
+    /**
+     * Saves the resolved profile (built-in plus overrides) as a new verbatim
+     * user document, so the current edits can be managed like an import.
+     */
+    suspend fun saveModified(release: String, pair: CpuPair): Boolean
 
     /** Releases listed by the bundled kernel_profiles/index.conf. */
     suspend fun builtinReleases(): List<String>
 
     /** Manually selected builtin source, or null for automatic matching. */
     fun activeBuiltinRelease(): String?
+
+    /**
+     * Manually loaded user document feeding the imported layer, or null when
+     * no import is loaded. Nothing is auto-selected: imported documents only
+     * take effect once the user loads them.
+     */
+    fun activeUserProfile(): String?
+
+    /** Loads [name] into the imported layer; null unloads it. */
+    suspend fun selectUserProfile(
+        name: String?,
+        deviceRelease: String,
+        pair: CpuPair,
+    ): ProfileConfig
+
+    /** Keeps the loaded selection pointing at a renamed document. */
+    fun onUserProfileRenamed(oldName: String, newName: String)
+
+    /** Unloads the document when it is deleted. */
+    fun onUserProfileDeleted(name: String)
 
     /**
      * Dangerous escape hatch: use another built-in profile as the source for

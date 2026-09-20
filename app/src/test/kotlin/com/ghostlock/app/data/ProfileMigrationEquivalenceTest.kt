@@ -48,6 +48,8 @@ class ProfileMigrationEquivalenceTest {
 
             val pair = CpuPair(primary = 0, consumer = 1)
             for (release in legacyReleases) {
+                /* Imported documents only apply once loaded. */
+                imported.selectUserProfile("remote-main-6x-offsets.json", release, pair)
                 val baselineModel = baseline.load(release, pair)
                 val baselineNative = baseline.nativeDocument(baselineModel)
                 val importedModel = imported.load(release, pair)
@@ -73,12 +75,15 @@ class ProfileMigrationEquivalenceTest {
         preferencesName: String,
     ): AndroidProfileConfigController {
         check(directory.mkdirs()) { "cannot create ${directory.absolutePath}" }
-        val offsetsFile = directory.resolve("offsets.conf")
-        if (offsets != null) offsetsFile.writeText(offsets)
+        val store = UserProfileStore(
+            directory = directory.resolve("user_profiles"),
+            assetLoader = AssetConfigLoader(context),
+        )
+        if (offsets != null) store.save("remote-main-6x-offsets.json", offsets)
         return AndroidProfileConfigController(
             context = context,
             filesDir = directory,
-            offsetsFile = offsetsFile,
+            userProfiles = store,
             preferences = context.getSharedPreferences(preferencesName, 0).also { it.edit().clear().commit() },
         )
     }

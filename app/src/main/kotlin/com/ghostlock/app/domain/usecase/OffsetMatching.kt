@@ -6,6 +6,9 @@ import com.ghostlock.app.domain.model.KernelOffsets
 object OffsetMatching {
     fun matchesBuiltin(entry: KernelOffsets, builtins: Map<String, Map<String, Long>>): Boolean {
         val builtin = builtins[entry.release] ?: return false
+        entry.scalars["kernel_phys_load"]?.let { phys ->
+            if (phys != builtin["kernel_phys_load"]) return false
+        }
         if (entry.scalars.any { (key, value) ->
                 value != null && builtin[key]?.let { it != value } == true
             }) return false

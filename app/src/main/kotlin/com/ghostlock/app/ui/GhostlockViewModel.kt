@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.LogTone
 import com.ghostlock.app.domain.model.OffsetCandidate
@@ -25,9 +26,7 @@ import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -40,7 +39,7 @@ import kotlin.time.Duration.Companion.milliseconds
 sealed interface GhostlockEffect {
     data class PickDocument(val request: DocumentRequest) : GhostlockEffect
     data object PickDebugFolder : GhostlockEffect
-    data object PickProfileExportFolder : GhostlockEffect
+    data class CreateProfileDocument(val suggestedName: String) : GhostlockEffect
     data class Share(val uri: String) : GhostlockEffect
     data class Toast(val resourceId: Int) : GhostlockEffect
     data class Clipboard(val text: String) : GhostlockEffect
@@ -48,7 +47,7 @@ sealed interface GhostlockEffect {
     data object OpenShizuku : GhostlockEffect
 }
 
-private const val AutoSaveDelayMillis = 600L
+private const val OverwriteSummaryLimit = 12
 
 enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage }
 
@@ -78,8 +77,6 @@ class GhostlockViewModel(
     private var pendingBootPath: String? = null
     private var exportCandidates: List<OffsetCandidate> = emptyList()
     private var pendingConfirmation: PendingConfirmation? = null
-    private var executionSaveJob: Job? = null
-    private var profileSaveJob: Job? = null
 
     fun initialize() {
         if (initialized) return
@@ -152,77 +149,44 @@ class GhostlockViewModel(
                 profileRoute = config.route,
                 profileFallback = config.fallbackTo,
                 activeBuiltinProfile = profileController.activeBuiltinRelease(),
+                activeUserProfile = profileController.activeUserProfile(),
+                customCpuPair = customCpuPairOf(config),
             )
         }
     }
 
-    /** Switches the explicit route; index 0 restores geometry inference. */
+    /** The pair actually resolved from the profile, when it beats the device pick. */
+    private fun customCpuPairOf(config: ProfileConfig): CpuPair? {
+        val snapshot = kernelSnapshot ?: return null
+        val main = config.general
+            .firstOrNull { it.path == "execution.selected_cpus.main" }?.value ?: return null
+        val consumer = config.general
+            .firstOrNull { it.path == "execution.selected_cpus.consumer" }?.value ?: return null
+        val pair = CpuPair(main.toInt(), consumer.toInt())
+        return pair.takeIf { it != snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) }
+    }
+
+    /** Route edits are draft-only; saving the session commits them. */
     fun onRouteChanged(index: Int) {
-        val snapshot = kernelSnapshot ?: return
-        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         val route = ProfileConfig.Routes.getOrNull(index - 1)
-        /* Re-confirming the current value must not rewrite overrides. */
         if (route == state.value.profileRoute) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                profileController.updateRoute(snapshot.kernelRelease, pair, route)
-            }
-            val config = result.getOrNull()
-            if (config == null) {
-                android.util.Log.e("GhostLock", "updateRoute failed", result.exceptionOrNull())
-                send(GhostlockEffect.Toast(R.string.execution_save_failed))
-                return@launch
-            }
-            applyExecutionConfig(config, preserveEditing = false)
-            applyAdvancedConfig(config, preserveEditing = false)
-        }
+        mutableState.update { it.copy(profileRoute = route) }
     }
 
     /** index 0 disables the fallback; the rest map to ProfileConfig.Routes. */
     fun onFallbackChanged(index: Int) {
-        val snapshot = kernelSnapshot ?: return
-        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         val fallback = if (index <= 0) "none" else ProfileConfig.Routes.getOrNull(index - 1)
         val current = state.value.profileFallback
         if (fallback == current || (fallback == "none" && current == null)) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                profileController.updateFallback(snapshot.kernelRelease, pair, fallback)
-            }
-            val config = result.getOrNull()
-            if (config == null) {
-                android.util.Log.e("GhostLock", "updateFallback failed", result.exceptionOrNull())
-                send(GhostlockEffect.Toast(R.string.execution_save_failed))
-                return@launch
-            }
-            applyExecutionConfig(config, preserveEditing = false)
-            applyAdvancedConfig(config, preserveEditing = false)
-        }
+        mutableState.update { it.copy(profileFallback = fallback) }
     }
 
-    /** General overrides auto-save shortly after the last keystroke. */
+    /** General edits are draft-only; saving the session commits them. */
     fun updateExecutionField(path: String, value: String) {
         mutableState.update {
             it.copy(
                 executionEditing = it.executionEditing + (path to value),
             )
-        }
-        scheduleExecutionSave()
-    }
-
-    private fun scheduleExecutionSave() {
-        executionSaveJob?.cancel()
-        executionSaveJob = viewModelScope.launch {
-            delay(AutoSaveDelayMillis.milliseconds)
-            val snapshot = kernelSnapshot ?: return@launch
-            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return@launch
-            val values = mutableState.value.executionEditing.mapNotNull { (path, text) ->
-                text.trim().toLongOrNull()?.let { value -> path to value }
-            }.toMap()
-            val ok = runCatching {
-                profileController.updateGeneral(snapshot.kernelRelease, pair, values)
-            }.onSuccess { config -> applyExecutionConfig(config, preserveEditing = true) }.isSuccess
-            if (!ok) send(GhostlockEffect.Toast(R.string.execution_save_failed))
         }
     }
 
@@ -232,6 +196,7 @@ class GhostlockViewModel(
             it.copy(
                 advancedScreenVisible = true,
                 parametersVisible = false,
+                loadConfigVisible = false,
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
@@ -255,6 +220,7 @@ class GhostlockViewModel(
             it.copy(
                 advancedScreenVisible = false,
                 parametersVisible = false,
+                loadConfigVisible = false,
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
@@ -266,6 +232,7 @@ class GhostlockViewModel(
         mutableState.update {
             it.copy(
                 parametersVisible = true,
+                loadConfigVisible = false,
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
@@ -278,11 +245,180 @@ class GhostlockViewModel(
         mutableState.update {
             it.copy(
                 parametersVisible = false,
+                loadConfigVisible = false,
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
             )
         }
+    }
+
+    /** Opens the configuration-loading screen and refreshes the stored list. */
+    fun onOpenLoadConfig() {
+        mutableState.update {
+            it.copy(
+                loadConfigVisible = true,
+                builtinScreenVisible = false,
+                userProfileDetail = null,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO) { refreshUserProfiles() }
+    }
+
+    fun onCloseLoadConfig() {
+        mutableState.update {
+            it.copy(loadConfigVisible = false, builtinScreenVisible = false, userProfileDetail = null)
+        }
+    }
+
+    fun onOpenUserProfileDetail(name: String) {
+        mutableState.update { it.copy(userProfileDetail = name, builtinScreenVisible = false) }
+    }
+
+    fun onCloseUserProfileDetail() {
+        mutableState.update { it.copy(userProfileDetail = null) }
+    }
+
+    /** Loads a stored document into the imported layer. */
+    fun onLoadUserProfile(name: String) = selectUserProfile(name)
+
+    /** Unloads the imported layer, back to built-in plus overrides. */
+    fun onUnloadUserProfile() = selectUserProfile(null)
+
+    /**
+     * Loads the document and opens the shared parameter-override editor, so
+     * "modify" reuses the exact same UI as the parameter overrides.
+     */
+
+    private fun selectUserProfile(name: String?) {
+        val snapshot = kernelSnapshot ?: return
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = runCatching {
+                profileController.selectUserProfile(name, snapshot.kernelRelease, pair)
+            }.getOrNull()
+            if (config == null) {
+                send(GhostlockEffect.Toast(R.string.user_profile_load_failed))
+                return@launch
+            }
+            applyExecutionConfig(config, preserveEditing = false)
+            applyAdvancedConfig(config, preserveEditing = false)
+            refreshSnapshot()
+            send(
+                GhostlockEffect.Toast(
+                    if (name != null) R.string.user_profile_loaded
+                    else R.string.user_profile_unloaded,
+                ),
+            )
+        }
+    }
+
+    private suspend fun refreshUserProfiles() {
+        val profiles = runCatching { repository.userProfiles() }.getOrDefault(emptyList())
+        mutableState.update { it.copy(userProfiles = profiles) }
+    }
+
+    /** Renames a stored document through the shared text-input dialog. */
+    fun onUserProfileRename(name: String) {
+        mutableState.update {
+            it.copy(
+                userProfileRenameTarget = name,
+                dialogVisible = true,
+                dialogType = DialogType.INPUT,
+                dialogTitleRes = R.string.user_profile_rename,
+                dialogMessageRes = R.string.user_profile_rename_hint,
+                dialogInput = name,
+                dialogConfirmLabelRes = R.string.user_profile_rename_confirm,
+            )
+        }
+    }
+
+    private fun renameUserProfile(name: String, newName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val renamed = runCatching { repository.renameUserProfile(name, newName) }.getOrNull()
+            refreshUserProfiles()
+            if (renamed != null) {
+                mutableState.update { state ->
+                    state.copy(
+                        activeUserProfile = if (state.activeUserProfile == name) {
+                            renamed
+                        } else {
+                            state.activeUserProfile
+                        },
+                        userProfileDetail = if (state.userProfileDetail == name) {
+                            renamed
+                        } else {
+                            state.userProfileDetail
+                        },
+                    )
+                }
+            }
+            send(
+                GhostlockEffect.Toast(
+                    if (renamed != null) R.string.user_profile_renamed
+                    else R.string.user_profile_rename_failed,
+                ),
+            )
+        }
+    }
+
+    /** Renders the stored document as HOCON and shares it. */
+    fun onUserProfileExport(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repository.exportUserProfile(name) }
+                .onSuccess { uri -> send(GhostlockEffect.Share(uri)) }
+                .onFailure {
+                    android.util.Log.e("GhostLock", "export user profile failed", it)
+                    send(GhostlockEffect.Toast(R.string.export_failed))
+                }
+        }
+    }
+
+    /** Converts a legacy document into a current-layout copy in the store. */
+    fun onConvertUserProfile(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val converted = runCatching { repository.convertUserProfile(name) }.getOrNull()
+            refreshUserProfiles()
+            send(
+                GhostlockEffect.Toast(
+                    if (converted != null) R.string.user_profile_converted
+                    else R.string.user_profile_convert_failed,
+                ),
+            )
+        }
+    }
+
+    fun onUserProfileDelete(name: String) {
+        mutableState.update { it.copy(userProfileDeleteTarget = name) }
+    }
+
+    fun onUserProfileDeleteConfirm() {
+        val name = state.value.userProfileDeleteTarget ?: return
+        mutableState.update { it.copy(userProfileDeleteTarget = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching { repository.deleteUserProfile(name) }.getOrDefault(false)
+            refreshUserProfiles()
+            if (ok) {
+                mutableState.update { current ->
+                    current.copy(
+                        activeUserProfile = current.activeUserProfile?.takeIf { it != name },
+                        userProfileDetail = current.userProfileDetail?.takeIf { it != name },
+                    )
+                }
+                refreshSnapshot()
+            }
+            send(
+                GhostlockEffect.Toast(
+                    if (ok) R.string.user_profile_deleted else R.string.user_profile_delete_failed,
+                ),
+            )
+        }
+    }
+
+    fun onUserProfileDeleteDismiss() {
+        mutableState.update { it.copy(userProfileDeleteTarget = null) }
     }
 
     fun onShowAbout() {
@@ -314,15 +450,18 @@ class GhostlockViewModel(
         mutableState.update { it.copy(debugKernelLogEnabled = enabled) }
     }
 
-    /** Copies the merged profile (HOCON) into a folder the user picks. */
-    fun onExportProfile() = send(GhostlockEffect.PickProfileExportFolder)
+    /** Saves the merged profile through the system document dialog. */
+    fun onExportProfile() {
+        val release = kernelSnapshot?.kernelRelease ?: return
+        send(GhostlockEffect.CreateProfileDocument(exportDocumentName(release)))
+    }
 
-    fun onExportProfileFolderPicked(folderUri: String?) {
-        if (folderUri.isNullOrBlank()) return
+    fun onExportProfileDocumentPicked(documentUri: String?) {
+        if (documentUri.isNullOrBlank()) return
         val snapshot = kernelSnapshot ?: return
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val ok = profileController.export(snapshot.kernelRelease, pair, folderUri)
+            val ok = profileController.export(snapshot.kernelRelease, pair, documentUri)
             send(
                 GhostlockEffect.Toast(
                     if (ok) R.string.override_export_done else R.string.export_failed,
@@ -331,21 +470,174 @@ class GhostlockViewModel(
         }
     }
 
-    /** Drops every general and advanced override back to the resolved defaults. */
-    fun onResetParameters() {
+    private fun exportDocumentName(release: String): String =
+        "${release.replace(Regex("[^A-Za-z0-9._-]"), "_")}.conf"
+
+    /* ---- editing session: draft edits plus an isolated controller ---- */
+
+    private fun currentPair(): CpuPair? {
+        val snapshot = kernelSnapshot ?: return null
+        return snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair)
+    }
+
+    /** Opens the editor for the profile the attack controller currently loads. */
+    fun onOpenProfileOverrides() {
+        openEditSession(profileController.activeUserProfile(), fromDetail = false)
+    }
+
+    /**
+     * Opens the editor for the stored document [name] without loading it into
+     * the attack controller: a private session controller resolves the edits.
+     */
+    fun onEditUserProfile(name: String) {
+        val profile = state.value.userProfiles.firstOrNull { it.name == name }
+        if (profile?.version == 1) {
+            send(GhostlockEffect.Toast(R.string.user_profile_legacy_hint))
+            return
+        }
+        openEditSession(name, fromDetail = true)
+    }
+
+    private fun openEditSession(name: String?, fromDetail: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = runCatching { repository.beginEditSession(name) }.getOrNull()
+            if (config == null) {
+                send(GhostlockEffect.Toast(R.string.user_profile_load_failed))
+                return@launch
+            }
+            applyExecutionConfig(config, preserveEditing = false)
+            applyAdvancedConfig(config, preserveEditing = false)
+            mutableState.update {
+                it.copy(
+                    builtinScreenVisible = false,
+                    advancedOverrideVisible = false,
+                    profileOverrideVisible = true,
+                    editTargetName = name,
+                    userProfileDetail = if (fromDetail) it.userProfileDetail else null,
+                    loadConfigVisible = if (fromDetail) it.loadConfigVisible else false,
+                )
+            }
+        }
+    }
+
+    /** Reloads the session, dropping every unsaved edit. */
+    fun onRevertProfileEdits() {
+        loadEditSession()
+        send(GhostlockEffect.Toast(R.string.profile_reverted))
+    }
+
+    private fun loadEditSession(preserveEditing: Boolean = false) {
         val snapshot = kernelSnapshot ?: return
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
+        val session = repository.editSessionController() ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val config = runCatching {
-                profileController.reset(snapshot.kernelRelease, pair)
-            }.getOrNull()
+            val config = runCatching { session.load(snapshot.kernelRelease, pair) }.getOrNull()
+                ?: return@launch
+            applyExecutionConfig(config, preserveEditing)
+            applyAdvancedConfig(config, preserveEditing)
+        }
+    }
+
+    /** Writes the draft (general, route/fallback, advanced) into the session. */
+    private suspend fun commitDraftToSession(): ProfileConfig? {
+        val snapshot = kernelSnapshot ?: return null
+        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return null
+        val session = repository.editSessionController() ?: return null
+        val release = snapshot.kernelRelease
+        val general = mutableState.value.executionEditing.mapNotNull { (path, text) ->
+            text.trim().toLongOrNull()?.let { value -> path to value }
+        }.toMap()
+        session.updateGeneral(release, pair, general)
+        session.updateRoute(release, pair, mutableState.value.profileRoute)
+        session.updateFallback(release, pair, mutableState.value.profileFallback)
+        /* General edits share the execution.* tree paths. The advanced rebuild
+         * replaces the whole override entry, so the drafts must be merged in or
+         * the general edits would be dropped. */
+        val drafts = mutableState.value.profileOverrideEditing +
+            mutableState.value.executionEditing
+        val advanced = drafts.mapNotNull { (path, text) ->
+            text.trim().toLongOrNull()?.let { value -> path to value }
+        }.toMap()
+        return runCatching { session.updateAdvanced(release, pair, advanced) }.getOrNull()
+    }
+
+    /**
+     * Commits the draft: a loaded profile gets the overrides written back to
+     * the live controller, an unloaded one is stored as a new profile.
+     */
+    fun onSaveProfileEdits() {
+        val pair = currentPair() ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = commitDraftToSession()
             if (config == null) {
                 send(GhostlockEffect.Toast(R.string.execution_save_failed))
-            } else {
-                applyExecutionConfig(config, preserveEditing = false)
-                applyAdvancedConfig(config, preserveEditing = false)
-                send(GhostlockEffect.Toast(R.string.override_reset_done))
+                return@launch
             }
+            if (repository.editSessionIsLive()) {
+                val committed = runCatching { repository.commitEditSession() }
+                    .getOrDefault(false)
+                if (!committed) {
+                    send(GhostlockEffect.Toast(R.string.execution_save_failed))
+                    return@launch
+                }
+                val live = runCatching { profileController.load(config.release, pair) }.getOrNull()
+                if (live != null) {
+                    applyExecutionConfig(live, preserveEditing = false)
+                    applyAdvancedConfig(live, preserveEditing = false)
+                }
+                send(GhostlockEffect.Toast(R.string.profile_saved))
+            } else if (repository.editSessionTarget() != null) {
+                /* Editing a stored document that is not loaded: Save updates
+                 * that document in place, Save as creates a copy. */
+                val saved = runCatching { repository.saveEditSessionInPlace() }
+                    .getOrDefault(false)
+                refreshUserProfiles()
+                send(
+                    GhostlockEffect.Toast(
+                        if (saved) R.string.profile_saved else R.string.execution_save_failed,
+                    ),
+                )
+            } else {
+                val name = repository.saveEditSessionAsNew()
+                refreshUserProfiles()
+                send(
+                    GhostlockEffect.Toast(
+                        if (name != null) R.string.profile_saved_as_new
+                        else R.string.execution_save_failed,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Stores the session result as a new saved profile. */
+    fun onSaveProfileAs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (commitDraftToSession() == null) {
+                send(GhostlockEffect.Toast(R.string.execution_save_failed))
+                return@launch
+            }
+            val name = repository.saveEditSessionAsNew()
+            refreshUserProfiles()
+            send(
+                GhostlockEffect.Toast(
+                    if (name != null) R.string.profile_saved_as_new
+                    else R.string.execution_save_failed,
+                ),
+            )
+        }
+    }
+
+    /** Renders the session result as HOCON and shares it. */
+    fun onExportProfileEdits() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (commitDraftToSession() == null) {
+                send(GhostlockEffect.Toast(R.string.export_failed))
+                return@launch
+            }
+            runCatching { repository.exportEditSession() }
+                .onSuccess { uri -> send(GhostlockEffect.Share(uri)) }
+                .onFailure { send(GhostlockEffect.Toast(R.string.export_failed)) }
         }
     }
 
@@ -387,7 +679,10 @@ class GhostlockViewModel(
         val snapshot = kernelSnapshot ?: return
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            /* The controller keeps a single active source: picking a builtin
+             * unloads whatever user document was loaded before. */
             val config = runCatching {
+                profileController.selectUserProfile(null, snapshot.kernelRelease, pair)
                 profileController.selectBuiltin(release, snapshot.kernelRelease, pair)
             }.getOrNull()
             if (config == null) {
@@ -396,6 +691,7 @@ class GhostlockViewModel(
             }
             applyExecutionConfig(config, preserveEditing = false)
             applyAdvancedConfig(config, preserveEditing = false)
+            refreshSnapshot()
             send(GhostlockEffect.Toast(R.string.load_builtin_done))
         }
     }
@@ -432,58 +728,32 @@ class GhostlockViewModel(
         return 0
     }
 
-    fun onOpenProfileOverrides() {
-        mutableState.update {
-            it.copy(profileOverrideVisible = true, advancedOverrideVisible = false)
-        }
-        loadExecutionProfile()
-    }
-
     fun onCloseProfileOverrides() {
+        repository.endEditSession()
         mutableState.update {
-            it.copy(profileOverrideVisible = false, advancedOverrideVisible = false)
+            it.copy(
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+                editTargetName = null,
+            )
         }
     }
 
     fun onOpenAdvancedOverrides() {
         mutableState.update { it.copy(advancedOverrideVisible = true) }
-        loadProfileOverrides()
+        loadEditSession()
     }
 
     fun onCloseAdvancedOverrides() {
         mutableState.update { it.copy(advancedOverrideVisible = false) }
     }
 
+    /** Advanced edits are draft-only; saving the session commits them. */
     fun onProfileOverrideChanged(path: String, value: String) {
         mutableState.update {
             it.copy(
                 profileOverrideEditing = it.profileOverrideEditing + (path to value),
             )
-        }
-        scheduleProfileSave()
-    }
-
-    private fun scheduleProfileSave() {
-        profileSaveJob?.cancel()
-        profileSaveJob = viewModelScope.launch {
-            delay(AutoSaveDelayMillis.milliseconds)
-            val snapshot = kernelSnapshot ?: return@launch
-            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return@launch
-            val values = mutableState.value.profileOverrideEditing.mapNotNull { (path, text) ->
-                text.trim().toLongOrNull()?.let { value -> path to value }
-            }.toMap()
-            val ok = runCatching {
-                profileController.updateAdvanced(snapshot.kernelRelease, pair, values)
-            }.onSuccess { config -> applyAdvancedConfig(config, preserveEditing = true) }.isSuccess
-            if (!ok) send(GhostlockEffect.Toast(R.string.execution_save_failed))
-        }
-    }
-
-    private fun loadProfileOverrides(preserveEditing: Boolean = false) {
-        val snapshot = kernelSnapshot ?: return
-        val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            applyAdvancedConfig(profileController.load(snapshot.kernelRelease, pair), preserveEditing)
         }
     }
 
@@ -500,6 +770,7 @@ class GhostlockViewModel(
                 profileRoute = config.route,
                 profileFallback = config.fallbackTo,
                 activeBuiltinProfile = profileController.activeBuiltinRelease(),
+                activeUserProfile = profileController.activeUserProfile(),
             )
         }
     }
@@ -513,6 +784,19 @@ class GhostlockViewModel(
         selectCpuPairUseCase(index)
         kernelSnapshot = snapshot.copy(selectedCpuPair = index)
         mutableState.update { it.copy(cpuPairIndex = index) }
+        /* Picking a preset pair replaces an explicit profile selection. */
+        if (mutableState.value.customCpuPair != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val config = runCatching {
+                    profileController.clearSelectedCpus(
+                        snapshot.kernelRelease,
+                        snapshot.cpuPairs[index],
+                    )
+                }.getOrNull() ?: return@launch
+                applyExecutionConfig(config, preserveEditing = false)
+                applyAdvancedConfig(config, preserveEditing = false)
+            }
+        }
     }
 
     fun toggleSafeMode(enabled: Boolean) {
@@ -628,6 +912,7 @@ class GhostlockViewModel(
                 dialogTitleRes = R.string.parse_url_title,
                 dialogMessageRes = R.string.parse_url_hint,
                 dialogInput = "",
+                dialogConfirmLabelRes = R.string.parse_start,
             )
         }
     }
@@ -691,11 +976,13 @@ class GhostlockViewModel(
 
     fun onDialogConfirm(value: String) {
         val dialogType = state.value.dialogType
+        val renameTarget = state.value.userProfileRenameTarget
         dismissDialog(clearConfirmation = false)
-        when (dialogType) {
-            DialogType.INPUT -> parseUrl(value)
-            DialogType.CONFIRM -> toggleShizuku(true)
-            DialogType.NONE, DialogType.LIST -> Unit
+        when {
+            renameTarget != null -> renameUserProfile(renameTarget, value)
+            dialogType == DialogType.INPUT -> parseUrl(value)
+            dialogType == DialogType.CONFIRM -> toggleShizuku(true)
+            else -> Unit
         }
     }
 
@@ -737,12 +1024,13 @@ class GhostlockViewModel(
                 exportVisible = canExport,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,
+                customCpuPair = loaded?.let(::customCpuPairOf),
             )
         }
     }
 
     private fun importDocuments(uris: List<String>) {
-        if (uris.isEmpty() || !beginOperation()) return
+        if (uris.isEmpty() || !beginOperation(showLogSheet = false)) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val documents = linkedMapOf<String, String>()
@@ -776,6 +1064,7 @@ class GhostlockViewModel(
 
             is OffsetImportResult.Imported -> {
                 refreshSnapshot()
+                refreshUserProfiles()
                 appendLog("profile imported: ${result.releases.joinToString()}")
                 appendLog("result: offsets imported successfully")
                 val deviceRelease = state.value.kernelRelease
@@ -874,6 +1163,7 @@ class GhostlockViewModel(
 
                 is ParseResult.Parsed -> {
                     refreshSnapshot()
+                    refreshUserProfiles()
                     appendLog("offsets exported: ${result.releases.joinToString()}")
                     appendLog("result: offsets parsed successfully")
                     send(GhostlockEffect.Toast(R.string.parse_success))
@@ -918,7 +1208,7 @@ class GhostlockViewModel(
         pendingConfirmation = null
         when (confirmation) {
             is PendingConfirmation.Import -> {
-                if (!beginOperation()) return
+                if (!beginOperation(showLogSheet = false)) return
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         handleImportResult(
@@ -956,9 +1246,19 @@ class GhostlockViewModel(
         mutableState.update {
             it.copy(
                 overwriteDialogVisible = true,
-                overwriteMessage = releases.joinToString("\n"),
+                overwriteMessage = overwriteSummary(releases),
+                /* The confirmation must be the only overlay on screen; a log
+                 * sheet behind it would swallow its taps. */
+                executionSheetVisible = false,
             )
         }
+    }
+
+    /** Keeps the confirmation readable when a document carries many releases. */
+    private fun overwriteSummary(releases: List<String>): String {
+        val head = releases.take(OverwriteSummaryLimit).joinToString("\n")
+        val rest = releases.size - OverwriteSummaryLimit
+        return if (rest > 0) "$head\n… (+$rest)" else head
     }
 
     private fun dismissDialog(clearConfirmation: Boolean = true) {
@@ -982,6 +1282,8 @@ class GhostlockViewModel(
                 dialogItemResIds = emptyList(),
                 dialogCurrentItemIndex = -1,
                 dialogInput = "",
+                dialogConfirmLabelRes = R.string.parse_start,
+                userProfileRenameTarget = null,
             )
         }
     }
@@ -992,15 +1294,19 @@ class GhostlockViewModel(
         mutableState.update { it.copy(logLines = it.logLines + uiLine) }
     }
 
-    private fun beginOperation(): Boolean {
+    private fun beginOperation(showLogSheet: Boolean = true): Boolean {
         if (running) return false
         running = true
         mutableState.update {
-            it.copy(
-                running = true,
-                executionSheetVisible = true,
-                executionSheetDismissible = false,
-            )
+            if (showLogSheet) {
+                it.copy(
+                    running = true,
+                    executionSheetVisible = true,
+                    executionSheetDismissible = false,
+                )
+            } else {
+                it.copy(running = true)
+            }
         }
         return true
     }

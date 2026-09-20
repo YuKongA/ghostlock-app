@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +25,10 @@ import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.R
 import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.ProfileFieldNode
+import com.ghostlock.app.domain.model.UserProfileFile
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
@@ -151,7 +154,7 @@ internal fun AdvancedScreen(
     }
 }
 
-/** Parameters screen: offsets tooling plus the parameter-override submenu. */
+/** Parameters screen: configuration loading and the parameter-override submenu. */
 @Composable
 internal fun ParameterScreen(
     state: GhostlockUiState,
@@ -165,6 +168,88 @@ internal fun ParameterScreen(
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
                     IconButton(onClick = actions::onCloseParameters) {
+                        Icon(
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = stringResource(R.string.action_back),
+                        )
+                    }
+                },
+            )
+        },
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item(key = "loaded") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        /* The controller loads a single source: a user document
+                         * when one is loaded, the builtin otherwise. */
+                        Text(
+                            text = state.activeUserProfile?.let { profile ->
+                                stringResource(R.string.loaded_user_profile, profile)
+                            } ?: stringResource(
+                                R.string.builtin_profile_label,
+                                state.activeBuiltinProfile
+                                    ?: stringResource(R.string.load_builtin_auto),
+                            ),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+            }
+            item(key = "load") {
+                Card {
+                    ArrowPreference(
+                        title = stringResource(R.string.load_config_title),
+                        summary = stringResource(R.string.load_config_summary),
+                        onClick = actions::onOpenLoadConfig,
+                    )
+                }
+            }
+            item(key = "override") {
+                Card {
+                    ArrowPreference(
+                        title = stringResource(R.string.edit_loaded_profile),
+                        summary = stringResource(R.string.override_summary),
+                        onClick = actions::onOpenProfileOverrides,
+                    )
+                }
+            }
+            item(key = "actions") {
+                TextButton(
+                    text = stringResource(R.string.override_export),
+                    onClick = actions::onExportProfile,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Configuration loading: the import/parse buttons, the builtin picker and the
+ * list of verbatim user-imported documents (export, rename, delete).
+ */
+@Composable
+internal fun LoadConfigScreen(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = stringResource(R.string.load_config_title),
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    IconButton(onClick = actions::onCloseLoadConfig) {
                         Icon(
                             imageVector = MiuixIcons.Back,
                             contentDescription = stringResource(R.string.action_back),
@@ -210,46 +295,363 @@ internal fun ParameterScreen(
                     )
                 }
             }
+            item(key = "user-title") {
+                Text(
+                    text = stringResource(R.string.user_profiles_title),
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
             item(key = "builtin") {
-                Card {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { actions.onOpenBuiltinProfiles() }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.load_builtin_profile),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = stringResource(R.string.load_builtin_summary),
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        /* The builtin is the loaded source only while no user
+                         * document is loaded. */
+                        if (state.activeUserProfile == null) {
+                            Text(
+                                text = stringResource(R.string.user_profile_loaded_badge),
+                                modifier = Modifier.padding(start = 8.dp),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = OverrideHighlight,
+                            )
+                        }
                         Icon(
-                            imageVector = Icons.Rounded.Warning,
+                            imageVector = MiuixIcons.Basic.ArrowRight,
                             contentDescription = null,
-                            tint = FieldErrorHighlight,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Text(
-                            text = stringResource(R.string.load_builtin_profile),
-                            modifier = Modifier.padding(start = 12.dp),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = FieldErrorHighlight,
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(18.dp),
                         )
                     }
                 }
             }
-            item(key = "override") {
-                Card {
-                    ArrowPreference(
-                        title = stringResource(R.string.override_title),
-                        summary = stringResource(R.string.override_summary),
-                        onClick = actions::onOpenProfileOverrides,
-                    )
+            if (state.userProfiles.isEmpty()) {
+                item(key = "user-empty") {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = stringResource(R.string.user_profiles_empty),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
                 }
+            }
+            items(state.userProfiles, key = { it.name }) { profile ->
+                UserProfileCard(
+                    profile = profile,
+                    loaded = profile.name == state.activeUserProfile,
+                    onClick = { actions.onOpenUserProfileDetail(profile.name) },
+                )
             }
         }
     }
 }
 
-/** Parameter overrides: general editor, advanced submenu and export/reset. */
+/** One stored document; taps open the secondary menu with its actions. */
+@Composable
+private fun UserProfileCard(
+    profile: UserProfileFile,
+    loaded: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = profile.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (profile.parseError) {
+                        stringResource(R.string.user_profile_parse_error)
+                    } else {
+                        releaseSummary(profile.releases)
+                    },
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = if (profile.parseError) FieldErrorHighlight
+                    else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.user_profile_meta,
+                        formatFileSize(profile.sizeBytes),
+                        formatProfileTime(profile.importedAt),
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Text(
+                text = "v${profile.version}",
+                modifier = Modifier.padding(start = 8.dp),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (profile.version == 1) {
+                    FieldErrorHighlight
+                } else {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                },
+            )
+            if (loaded) {
+                Text(
+                    text = stringResource(R.string.user_profile_loaded_badge),
+                    modifier = Modifier.padding(start = 8.dp),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = OverrideHighlight,
+                )
+            }
+            Icon(
+                imageVector = MiuixIcons.Basic.ArrowRight,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(18.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Secondary menu for one stored document: load/unload, modify (the shared
+ * parameter-override editor), export, rename and delete.
+ */
+@Composable
+internal fun UserProfileDetailScreen(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val name = state.userProfileDetail
+    val profile = state.userProfiles.firstOrNull { it.name == name }
+    val loaded = name != null && name == state.activeUserProfile
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = stringResource(R.string.user_profile_detail),
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    IconButton(onClick = actions::onCloseUserProfileDetail) {
+                        Icon(
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = stringResource(R.string.action_back),
+                        )
+                    }
+                },
+            )
+        },
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item(key = "info") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Text(
+                            text = profile?.name ?: name.orEmpty(),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        if (profile != null) {
+                            Text(
+                                text = if (profile.parseError) {
+                                    stringResource(R.string.user_profile_parse_error)
+                                } else {
+                                    releaseSummary(profile.releases)
+                                },
+                                modifier = Modifier.padding(top = 6.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = if (profile.parseError) FieldErrorHighlight
+                                else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.user_profile_meta,
+                                    formatFileSize(profile.sizeBytes),
+                                    formatProfileTime(profile.importedAt),
+                                ),
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                            Text(
+                                text = stringResource(R.string.user_profile_version, profile.version),
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = if (profile.version == 1) {
+                                    FieldErrorHighlight
+                                } else {
+                                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                },
+                            )
+                            if (loaded) {
+                                Text(
+                                    text = stringResource(R.string.user_profile_loaded_badge),
+                                    modifier = Modifier.padding(top = 6.dp),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = OverrideHighlight,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (profile != null) {
+                item(key = "load") {
+                    TextButton(
+                        text = stringResource(
+                            if (loaded) R.string.user_profile_unload
+                            else R.string.user_profile_load,
+                        ),
+                        onClick = {
+                            if (loaded) actions.onUnloadUserProfile()
+                            else actions.onLoadUserProfile(profile.name)
+                        },
+                        colors = if (loaded) {
+                            ButtonDefaults.textButtonColors()
+                        } else {
+                            ButtonDefaults.textButtonColorsPrimary()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (profile.version == 1) {
+                    item(key = "legacy-notice") {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = stringResource(R.string.user_profile_legacy_notice),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                    item(key = "convert") {
+                        TextButton(
+                            text = stringResource(R.string.user_profile_convert),
+                            onClick = { actions.onConvertUserProfile(profile.name) },
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                } else {
+                    item(key = "edit") {
+                        TextButton(
+                            text = stringResource(R.string.user_profile_edit),
+                            onClick = { actions.onEditUserProfile(profile.name) },
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                item(key = "export") {
+                    TextButton(
+                        text = stringResource(R.string.user_profile_export),
+                        onClick = { actions.onUserProfileExport(profile.name) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item(key = "rename") {
+                    TextButton(
+                        text = stringResource(R.string.user_profile_rename),
+                        onClick = { actions.onUserProfileRename(profile.name) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item(key = "delete") {
+                    TextButton(
+                        text = stringResource(R.string.user_profile_delete),
+                        onClick = { actions.onUserProfileDelete(profile.name) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+    val deleteTarget = state.userProfileDeleteTarget
+    OverlayDialog(
+        show = deleteTarget != null,
+        title = stringResource(R.string.user_profile_delete_title),
+        summary = deleteTarget?.let { stringResource(R.string.user_profile_delete_message, it) },
+        onDismissRequest = actions::onUserProfileDeleteDismiss,
+        content = {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.cancel),
+                    onClick = actions::onUserProfileDeleteDismiss,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.user_profile_delete),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = actions::onUserProfileDeleteConfirm,
+                )
+            }
+        },
+    )
+}
+
+private fun releaseSummary(releases: List<String>): String {
+    if (releases.isEmpty()) return ""
+    val head = releases.take(3).joinToString(", ")
+    return if (releases.size > 3) "$head +${releases.size - 3}" else head
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+private fun formatProfileTime(millis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
+
+/** Parameter overrides: general editor, its reset and the advanced submenu. */
 @Composable
 internal fun ProfileOverrideScreen(
     state: GhostlockUiState,
@@ -315,6 +717,22 @@ internal fun ProfileOverrideScreen(
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 )
                             }
+                            state.activeUserProfile?.let { userProfile ->
+                                Text(
+                                    text = stringResource(R.string.loaded_user_profile, userProfile),
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = OverrideHighlight,
+                                )
+                            }
+                            state.editTargetName?.let { target ->
+                                Text(
+                                    text = stringResource(R.string.editing_profile, target),
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
                         }
                     }
                     if (state.executionHasProfile) {
@@ -332,22 +750,40 @@ internal fun ProfileOverrideScreen(
                 }
             }
             item(key = "actions") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (state.editTargetName == null) {
+                        Text(
+                            text = stringResource(R.string.builtin_edit_save_hint),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
                     TextButton(
-                        text = stringResource(R.string.override_export),
-                        onClick = actions::onExportProfile,
+                        text = stringResource(R.string.profile_save),
+                        enabled = state.editTargetName != null,
+                        onClick = actions::onSaveProfileEdits,
                         colors = ButtonDefaults.textButtonColorsPrimary(),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TextButton(
+                            text = stringResource(R.string.profile_save_as),
+                            onClick = actions::onSaveProfileAs,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(
+                            text = stringResource(R.string.override_export),
+                            onClick = actions::onExportProfileEdits,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     TextButton(
-                        text = stringResource(R.string.override_reset),
-                        onClick = actions::onResetParameters,
-                        modifier = Modifier.weight(1f),
+                        text = stringResource(R.string.profile_revert),
+                        onClick = actions::onRevertProfileEdits,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -399,6 +835,18 @@ internal fun BuiltinProfileScreen(
                     color = MiuixTheme.colorScheme.onSurface,
                 )
             }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.builtin_immutable_notice),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -409,7 +857,10 @@ internal fun BuiltinProfileScreen(
                 item(key = "auto") {
                     BuiltinProfileRow(
                         title = stringResource(R.string.load_builtin_auto),
-                        selected = state.activeBuiltinProfile == null,
+                        /* A loaded user document shadows the builtin choice, so
+                         * no row is highlighted while one is active. */
+                        selected = state.activeUserProfile == null &&
+                            state.activeBuiltinProfile == null,
                         onClick = { actions.onSelectBuiltinProfile(null) },
                     )
                 }
@@ -420,7 +871,8 @@ internal fun BuiltinProfileScreen(
                     items(state.builtinTemplates) { release ->
                         BuiltinProfileRow(
                             title = release,
-                            selected = state.activeBuiltinProfile == release,
+                            selected = state.activeUserProfile == null &&
+                                state.activeBuiltinProfile == release,
                             onClick = { actions.onSelectBuiltinProfile(release) },
                         )
                     }
@@ -432,7 +884,8 @@ internal fun BuiltinProfileScreen(
                     items(state.builtinProfiles) { release ->
                         BuiltinProfileRow(
                             title = release,
-                            selected = state.activeBuiltinProfile == release,
+                            selected = state.activeUserProfile == null &&
+                                state.activeBuiltinProfile == release,
                             onClick = { actions.onSelectBuiltinProfile(release) },
                         )
                     }
@@ -567,6 +1020,14 @@ internal fun AdvancedOverrideScreen(
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
+                        state.activeUserProfile?.let { userProfile ->
+                            Text(
+                                text = stringResource(R.string.loaded_user_profile, userProfile),
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MiuixTheme.textStyles.body2,
+                                color = OverrideHighlight,
+                            )
+                        }
                     }
                 }
             }
@@ -582,6 +1043,15 @@ internal fun AdvancedOverrideScreen(
                         onValueChange = actions::onProfileOverrideChanged,
                     )
                 }
+            }
+            item(key = "actions") {
+                TextButton(
+                    text = stringResource(R.string.profile_revert),
+                    onClick = actions::onRevertProfileEdits,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                )
             }
         }
     }

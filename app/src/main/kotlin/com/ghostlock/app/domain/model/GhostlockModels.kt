@@ -28,6 +28,17 @@ data class LogEntry(val text: String, val tone: LogTone)
 
 data class OffsetCandidate(val release: String, val document: String)
 
+/** One verbatim user-imported document in the user profile folder. */
+data class UserProfileFile(
+    val name: String,
+    val releases: List<String>,
+    val importedAt: Long,
+    val sizeBytes: Long,
+    val parseError: Boolean,
+    /** 1 = legacy layout (load only), 2 = current layout (editable). */
+    val version: Int = 2,
+)
+
 /** One editable advisory execution value (PROFILE-SUGGEST-01 / profile-ui). */
 data class ExecutionFieldValue(
     val path: String,

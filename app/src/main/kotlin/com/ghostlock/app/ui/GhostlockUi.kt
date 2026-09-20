@@ -59,9 +59,11 @@ import androidx.compose.ui.unit.sp
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
 import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.model.ShizukuStatus
+import com.ghostlock.app.domain.model.UserProfileFile
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -101,6 +103,8 @@ data class GhostlockUiState(
     val exportVisible: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
     val cpuPairIndex: Int = 0,
+    /** CPU pair from the resolved profile when it differs from the device pick. */
+    val customCpuPair: CpuPair? = null,
     val safeModeEnabled: Boolean = false,
     val tcpRouteEnabled: Boolean = true,
     val compact: Boolean = false,
@@ -115,6 +119,7 @@ data class GhostlockUiState(
     val dialogItemResIds: List<Int> = emptyList(),
     val dialogCurrentItemIndex: Int = -1,
     val dialogInput: String = "",
+    val dialogConfirmLabelRes: Int = R.string.parse_start,
     val overwriteDialogVisible: Boolean = false,
     val overwriteMessage: String = "",
     val logLines: List<GhostlockLogLine> = emptyList(),
@@ -130,6 +135,8 @@ data class GhostlockUiState(
     val parametersVisible: Boolean = false,
     val profileOverrideVisible: Boolean = false,
     val advancedOverrideVisible: Boolean = false,
+    /** Stored document edited by the open session; null for the builtin. */
+    val editTargetName: String? = null,
     val profileOverrideRelease: String = "",
     val profileOverrideRoots: List<ProfileFieldNode> = emptyList(),
     val profileOverrideEditing: Map<String, String> = emptyMap(),
@@ -146,6 +153,15 @@ data class GhostlockUiState(
     val builtinTemplates: List<String> = emptyList(),
     /** Builtin releases sorted by similarity to the device kernel. */
     val builtinProfiles: List<String> = emptyList(),
+    val loadConfigVisible: Boolean = false,
+    /** Verbatim documents in the user profile folder, newest first. */
+    val userProfiles: List<UserProfileFile> = emptyList(),
+    /** Loaded user document feeding the imported layer; null means none. */
+    val activeUserProfile: String? = null,
+    /** File name of the open user-profile detail screen, null when closed. */
+    val userProfileDetail: String? = null,
+    val userProfileRenameTarget: String? = null,
+    val userProfileDeleteTarget: String? = null,
 )
 
 enum class DialogType { NONE, LIST, INPUT, CONFIRM }
@@ -178,7 +194,10 @@ interface GhostlockActions {
     fun onRouteChanged(index: Int)
     fun onFallbackChanged(index: Int)
     fun onExportProfile()
-    fun onResetParameters()
+    fun onSaveProfileEdits()
+    fun onSaveProfileAs()
+    fun onExportProfileEdits()
+    fun onRevertProfileEdits()
     fun onOpenAdvanced()
     fun onCloseAdvanced()
     fun onShowAbout()
@@ -188,6 +207,19 @@ interface GhostlockActions {
     fun onDebugKernelLogChanged(enabled: Boolean)
     fun onOpenParameters()
     fun onCloseParameters()
+    fun onOpenLoadConfig()
+    fun onCloseLoadConfig()
+    fun onOpenUserProfileDetail(name: String)
+    fun onCloseUserProfileDetail()
+    fun onLoadUserProfile(name: String)
+    fun onUnloadUserProfile()
+    fun onEditUserProfile(name: String)
+    fun onUserProfileRename(name: String)
+    fun onUserProfileExport(name: String)
+    fun onConvertUserProfile(name: String)
+    fun onUserProfileDelete(name: String)
+    fun onUserProfileDeleteConfirm()
+    fun onUserProfileDeleteDismiss()
     fun onOpenBuiltinProfiles()
     fun onCloseBuiltinProfiles()
     fun onSelectBuiltinProfile(release: String?)
@@ -202,9 +234,11 @@ private enum class GhostlockScreen(val depth: Int) {
     Main(0),
     Advanced(1),
     Parameters(2),
-    Builtin(3),
-    ProfileOverride(4),
-    AdvancedOverride(5),
+    LoadConfig(3),
+    Builtin(4),
+    UserProfileDetail(4),
+    ProfileOverride(5),
+    AdvancedOverride(6),
 }
 
 @Composable
@@ -221,6 +255,8 @@ internal fun GhostlockApp(
                 state.advancedOverrideVisible -> GhostlockScreen.AdvancedOverride
                 state.profileOverrideVisible -> GhostlockScreen.ProfileOverride
                 state.builtinScreenVisible -> GhostlockScreen.Builtin
+                state.userProfileDetail != null -> GhostlockScreen.UserProfileDetail
+                state.loadConfigVisible -> GhostlockScreen.LoadConfig
                 state.parametersVisible -> GhostlockScreen.Parameters
                 else -> GhostlockScreen.Advanced
             }
@@ -229,6 +265,8 @@ internal fun GhostlockApp(
                     GhostlockScreen.AdvancedOverride -> actions.onCloseAdvancedOverrides()
                     GhostlockScreen.ProfileOverride -> actions.onCloseProfileOverrides()
                     GhostlockScreen.Builtin -> actions.onCloseBuiltinProfiles()
+                    GhostlockScreen.UserProfileDetail -> actions.onCloseUserProfileDetail()
+                    GhostlockScreen.LoadConfig -> actions.onCloseLoadConfig()
                     GhostlockScreen.Parameters -> actions.onCloseParameters()
                     GhostlockScreen.Advanced -> actions.onCloseAdvanced()
                     GhostlockScreen.Main -> Unit
@@ -254,6 +292,10 @@ internal fun GhostlockApp(
                         ParameterScreen(state = state, actions = actions)
                     GhostlockScreen.Builtin ->
                         BuiltinProfileScreen(state = state, actions = actions)
+                    GhostlockScreen.LoadConfig ->
+                        LoadConfigScreen(state = state, actions = actions)
+                    GhostlockScreen.UserProfileDetail ->
+                        UserProfileDetailScreen(state = state, actions = actions)
                     GhostlockScreen.ProfileOverride ->
                         ProfileOverrideScreen(state = state, actions = actions)
                     GhostlockScreen.AdvancedOverride ->
@@ -482,7 +524,7 @@ private fun GhostlockDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         TextButton(
                             modifier = Modifier.weight(1f),
-                            text = stringResource(R.string.parse_start),
+                            text = stringResource(state.dialogConfirmLabelRes),
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = { actions.onDialogConfirm(state.dialogInput) },
                         )
@@ -660,13 +702,25 @@ private fun ControlPanel(
                 .padding(top = 12.dp),
         )
         if (state.cpuPairLabels.isNotEmpty()) {
+            val customPair = state.customCpuPair
+            val labels = if (customPair != null) {
+                state.cpuPairLabels + stringResource(
+                    R.string.cpu_pair_custom,
+                    "${customPair.primary}, ${customPair.consumer}",
+                )
+            } else {
+                state.cpuPairLabels
+            }
             Card(modifier = modifier.padding(top = 12.dp)) {
                 OverlaySpinnerPreference(
                     title = stringResource(R.string.cpu_pair_label),
-                    items = state.cpuPairLabels.map { DropdownItem(icon = null, title = it) },
-                    selectedIndex = state.cpuPairIndex,
+                    items = labels.map { DropdownItem(icon = null, title = it) },
+                    selectedIndex = if (customPair != null) labels.lastIndex
+                    else state.cpuPairIndex,
                     showValue = true,
-                    onSelectedIndexChange = actions::onCpuPairSelected
+                    onSelectedIndexChange = { index ->
+                        if (index < state.cpuPairLabels.size) actions.onCpuPairSelected(index)
+                    },
                 )
             }
         }
