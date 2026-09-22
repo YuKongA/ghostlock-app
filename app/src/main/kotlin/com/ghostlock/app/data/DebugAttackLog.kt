@@ -24,7 +24,7 @@ internal class DebugAttackLog private constructor(
     private val writer: BufferedWriter,
 ) : Closeable {
     /**
-     * Absolute folder handed to the native process through GHOSTLOCK_DEBUG_DIR;
+     * Absolute folder handed to the native process through --dump-kernel-log;
      * the root prepare script drops kernel/pstore/iomem dumps next to the log.
      */
     @Suppress("DEPRECATION")
