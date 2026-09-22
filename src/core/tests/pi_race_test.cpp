@@ -25,8 +25,8 @@ static bool wait_started(int expected) {
 static void *fake_waiter(void *arg) {
   auto *race = static_cast<PiRaceContext *>(arg);
   g_started.fetch_add(1);
-  while (!atomic_load(&race->owner_stop) &&
-          !atomic_load(&race->owner_chain_done))
+  while (!race->owner_stop.load() &&
+          !race->owner_chain_done.load())
     usleep(1000);
   return nullptr;
 }
@@ -34,14 +34,14 @@ static void *fake_waiter(void *arg) {
 static void *fake_owner(void *arg) {
   auto *race = static_cast<PiRaceContext *>(arg);
   g_started.fetch_add(1);
-  while (!atomic_load(&race->owner_stop)) usleep(1000);
+  while (!race->owner_stop.load()) usleep(1000);
   return nullptr;
 }
 
 static void *fake_consumer(void *arg) {
   auto *race = static_cast<PiRaceContext *>(arg);
   g_started.fetch_add(1);
-  while (!atomic_load(&race->consumer_stop)) usleep(1000);
+  while (!race->consumer_stop.load()) usleep(1000);
   return nullptr;
 }
 
@@ -51,12 +51,12 @@ int main(void) {
   assert(race.wait_futex == 0);
   assert(race.target_futex == 0);
   assert(race.chain_futex == 0);
-  assert(atomic_load(&race.waiter_ready) == 0);
-  assert(atomic_load(&race.waiter_waiting) == 0);
-  assert(atomic_load(&race.owner_started) == 0);
-  assert(atomic_load(&race.consumer_go) == 0);
-  assert(atomic_load(&race.consumer_stop) == 0);
-  assert(atomic_load(&race.route_delay_usec) == 12345);
+  assert(race.waiter_ready.load() == 0);
+  assert(race.waiter_waiting.load() == 0);
+  assert(race.owner_started.load() == 0);
+  assert(race.consumer_go.load() == 0);
+  assert(race.consumer_stop.load() == 0);
+  assert(race.route_delay_usec.load() == 12345);
   assert(race.main_cpu == 2);
   assert(race.consumer_cpu == 3);
   assert(race.waiter_owner.state() == PthreadOwner::State::Empty);
@@ -69,7 +69,7 @@ int main(void) {
   race.reset(1, 0, 1);
   assert(race.main_cpu == 0);
   assert(race.consumer_cpu == 1);
-  assert(atomic_load(&race.route_delay_usec) == 1);
+  assert(race.route_delay_usec.load() == 1);
 
   /* A rejected entry starts nothing. */
   g_started = 0;
@@ -92,7 +92,7 @@ int main(void) {
   assert(race.consumer_owner.state() == PthreadOwner::State::Joined);
   assert(race.waiter_owner.state() == PthreadOwner::State::Running);
   assert(race.request == nullptr);
-  atomic_store(&race.owner_stop, 1);
+  race.owner_stop.store(1);
   assert(race.waiter_owner.join() == 0);
   assert(race.waiter_owner.state() == PthreadOwner::State::Joined);
 
@@ -104,9 +104,9 @@ int main(void) {
   assert(wait_started(3));
   race.request_stop();
   race.request_stop();
-  assert(atomic_load(&race.consumer_go) == 0);
-  assert(atomic_load(&race.consumer_stop) == 1);
-  assert(atomic_load(&race.owner_stop) == 1);
+  assert(race.consumer_go.load() == 0);
+  assert(race.consumer_stop.load() == 1);
+  assert(race.owner_stop.load() == 1);
   race.join();
   assert(race.waiter_owner.state() == PthreadOwner::State::Joined);
   assert(race.owner_owner.state() == PthreadOwner::State::Joined);

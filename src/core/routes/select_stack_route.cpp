@@ -66,14 +66,14 @@ int SelectStackRoute::fail(int step, int error_number) noexcept {
 }
 
 void SelectStackRoute::disarm() noexcept {
-  atomic_store(&race->consumer_go, 0);
-  if (atomic_load(&race->consumer_inflight) != 0) {
+  race->consumer_go.store(0);
+  if (race->consumer_inflight.load() != 0) {
     for (int i = 0;
-         i < 2000 && atomic_load(&race->consumer_inflight) != 0;
+         i < 2000 && race->consumer_inflight.load() != 0;
          i++) {
       usleep(1000);
     }
-    consumer_stuck = atomic_load(&race->consumer_inflight) != 0;
+    consumer_stuck = race->consumer_inflight.load() != 0;
   }
   status.kernel_disarmed = !consumer_stuck;
 }

@@ -6,7 +6,7 @@
 #include "support/native_resource.hpp"
 
 #include <pthread.h>
-#include <stdatomic.h>
+#include <atomic>
 #include <cstdint>
 
 namespace ghostlock {
@@ -62,20 +62,20 @@ class PiRace final {
   uint32_t wait_futex = 0;
   uint32_t target_futex = 0;
   uint32_t chain_futex = 0;
-  atomic_int waiter_ready;
-  atomic_int waiter_waiting;
-  atomic_int owner_started;
-  atomic_int owner_chain_done;
-  atomic_int owner_stop;
-  atomic_int route_done;
-  atomic_int waiter_tid;
-  atomic_int consumer_go;
-  atomic_int consumer_stop;
-  atomic_int consumer_calls;
-  atomic_int consumer_success;
-  atomic_int consumer_inflight;
-  atomic_int route_delay_usec;
-  atomic_int fast_repair;
+  std::atomic<int> waiter_ready;
+  std::atomic<int> waiter_waiting;
+  std::atomic<int> owner_started;
+  std::atomic<int> owner_chain_done;
+  std::atomic<int> owner_stop;
+  std::atomic<int> route_done;
+  std::atomic<int> waiter_tid;
+  std::atomic<int> consumer_go;
+  std::atomic<int> consumer_stop;
+  std::atomic<int> consumer_calls;
+  std::atomic<int> consumer_success;
+  std::atomic<int> consumer_inflight;
+  std::atomic<int> route_delay_usec;
+  std::atomic<int> fast_repair;
   int main_cpu = 0;
   int consumer_cpu = 0;
   PthreadOwner waiter_owner;

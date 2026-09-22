@@ -127,7 +127,7 @@ int main(void) {
   context.disarm();
   context.disarm();
   assert(context.status.kernel_disarmed == 1);
-  assert(atomic_load(&race.consumer_go) == 0);
+  assert(race.consumer_go.load() == 0);
 
   /* destroy without resources is idempotent and reports a clean fallback. */
   context.destroy();

@@ -79,10 +79,9 @@ int main(int argc, char **argv) {
     }
 
     stages::VictimChain chain;
-    if (stages::run_w2_w3_chain(session, &chain) ==
-            stages::StageResult::Failed)
+    if (stages::run_w2_w3_chain(session, &chain) == stages::StageResult::Failed) {
         return 1;
-    return stages::run_handoff_stage(session, chain) ==
-                    stages::StageResult::Failed
+    }
+    return stages::run_handoff_stage(session, chain) == stages::StageResult::Failed
             ? 1 : 0;
 }

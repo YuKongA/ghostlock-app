@@ -7,7 +7,7 @@
 #include "routes/route_status.h"
 
 #include <pthread.h>
-#include <stdatomic.h>
+#include <atomic>
 #include <cstdint>
 
 /* Resident multicast waiter lifecycle (CPP13).
@@ -60,16 +60,16 @@ class MulticastWaiterRoute final {
     lock_slot = 0;
     status = {};
     status.code = ROUTE_RETRYABLE;
-    atomic_store_explicit(&waiter_has_lock2, 0, memory_order_relaxed);
-    atomic_store_explicit(&owner_has_lock1, 0, memory_order_relaxed);
-    atomic_store_explicit(&waiter_waiting, 0, memory_order_relaxed);
-    atomic_store_explicit(&owner_waiting, 0, memory_order_relaxed);
-    atomic_store_explicit(&waiter_ready, 0, memory_order_relaxed);
-    atomic_store_explicit(&respray_requested, 0, memory_order_relaxed);
-    atomic_store_explicit(&sprayed, 0, memory_order_relaxed);
-    atomic_store_explicit(&stop_requested, 0, memory_order_relaxed);
-    atomic_store_explicit(&owner_done, 0, memory_order_relaxed);
-    atomic_store_explicit(&waiter_tid, 0, memory_order_relaxed);
+    waiter_has_lock2.store(0, std::memory_order_relaxed);
+    owner_has_lock1.store(0, std::memory_order_relaxed);
+    waiter_waiting.store(0, std::memory_order_relaxed);
+    owner_waiting.store(0, std::memory_order_relaxed);
+    waiter_ready.store(0, std::memory_order_relaxed);
+    respray_requested.store(0, std::memory_order_relaxed);
+    sprayed.store(0, std::memory_order_relaxed);
+    stop_requested.store(0, std::memory_order_relaxed);
+    owner_done.store(0, std::memory_order_relaxed);
+    waiter_tid.store(0, std::memory_order_relaxed);
   }
 
   /* Arm the resident (waiter and owner workers plus the retry socket), write
@@ -89,10 +89,10 @@ class MulticastWaiterRoute final {
   uint32_t lock1_futex, lock2_futex, condition_futex;
   pthread_t owner_worker, waiter_worker;
   int owner_worker_started, waiter_worker_started;
-  atomic_int waiter_has_lock2, owner_has_lock1;
-  atomic_int waiter_waiting, owner_waiting, waiter_ready;
-  atomic_int respray_requested, sprayed, stop_requested;
-  atomic_int owner_done, waiter_tid;
+  std::atomic<int> waiter_has_lock2, owner_has_lock1;
+  std::atomic<int> waiter_waiting, owner_waiting, waiter_ready;
+  std::atomic<int> respray_requested, sprayed, stop_requested;
+  std::atomic<int> owner_done, waiter_tid;
   uintptr_t target, value, lock, task;
   int socket_fd;
   int ready, scheduler_policy, lock_slot;

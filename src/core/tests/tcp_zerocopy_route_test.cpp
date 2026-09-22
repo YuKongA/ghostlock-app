@@ -50,10 +50,10 @@ int main(void) {
   assert(!context.mapping.valid());
   assert(context.mapping_length == 16 * 1024 * 1024);
   assert(context.punch_worker.state() == PthreadOwner::State::Empty);
-  assert(atomic_load(&context.punch_go) == 0);
-  assert(atomic_load(&context.punch_stop) == 0);
-  assert(atomic_load(&context.punch_phase) == 0);
-  assert(atomic_load(&context.punch_failed) == 0);
+  assert(context.punch_go.load() == 0);
+  assert(context.punch_stop.load() == 0);
+  assert(context.punch_phase.load() == 0);
+  assert(context.punch_failed.load() == 0);
   assert(context.status.code == ROUTE_RETRYABLE);
   assert(context.status.userspace_clean == 0);
   assert(context.status.kernel_disarmed == 0);
@@ -69,14 +69,14 @@ int main(void) {
     assert(fd >= 0);
     source.punch_fd.reset(fd);
     source.mapping = MappedRegion(mapped, 4096);
-    atomic_store(&source.punch_phase, 3);
+    source.punch_phase.store(3);
     TcpZerocopyRouteContext moved(std::move(source));
     assert(moved.punch_fd.get() == fd);
     assert(!source.punch_fd.valid());
     assert(moved.mapping.valid());
     assert(!source.mapping.valid());
     assert(moved.mapping_length == 8192);
-    assert(atomic_load(&moved.punch_phase) == 3);
+    assert(moved.punch_phase.load() == 3);
     moved.disarm();
     moved.destroy();
     assert(!moved.punch_fd.valid());
@@ -88,7 +88,7 @@ int main(void) {
   context.disarm();
   context.disarm();
   assert(context.status.kernel_disarmed == 1);
-  assert(atomic_load(&race.consumer_go) == 0);
+  assert(race.consumer_go.load() == 0);
 
   /* destroy without resources is idempotent and reports a clean fallback. */
   context.destroy();

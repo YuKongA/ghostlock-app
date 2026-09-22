@@ -26,8 +26,8 @@ int main(void) {
   assert(context.main_cpu == 2 && context.consumer_cpu == 3);
   assert(context.scheduler_policy == 0);
   assert(!context.waiter_worker_started && !context.owner_worker_started);
-  assert(atomic_load(&context.stop_requested) == 0);
-  assert(atomic_load(&context.respray_requested) == 0);
+  assert(context.stop_requested.load() == 0);
+  assert(context.respray_requested.load() == 0);
   assert(context.status.code == ROUTE_RETRYABLE);
   puts("multicast_waiter_route_test: ok");
   return 0;

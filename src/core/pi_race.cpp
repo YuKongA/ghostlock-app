@@ -13,21 +13,21 @@ void PiRace::reset(
   wait_futex = 0;
   target_futex = 0;
   chain_futex = 0;
-  atomic_store_explicit(&waiter_ready, 0, memory_order_relaxed);
-  atomic_store_explicit(&waiter_waiting, 0, memory_order_relaxed);
-  atomic_store_explicit(&owner_started, 0, memory_order_relaxed);
-  atomic_store_explicit(&owner_chain_done, 0, memory_order_relaxed);
-  atomic_store_explicit(&owner_stop, 0, memory_order_relaxed);
-  atomic_store_explicit(&route_done, 0, memory_order_relaxed);
-  atomic_store_explicit(&waiter_tid, 0, memory_order_relaxed);
-  atomic_store_explicit(&consumer_go, 0, memory_order_relaxed);
-  atomic_store_explicit(&consumer_stop, 0, memory_order_relaxed);
-  atomic_store_explicit(&consumer_calls, 0, memory_order_relaxed);
-  atomic_store_explicit(&consumer_success, 0, memory_order_relaxed);
-  atomic_store_explicit(&consumer_inflight, 0, memory_order_relaxed);
-  atomic_store_explicit(&route_delay_usec, initial_delay_usec,
-                        memory_order_relaxed);
-  atomic_store_explicit(&fast_repair, 0, memory_order_relaxed);
+  waiter_ready.store(0, std::memory_order_relaxed);
+  waiter_waiting.store(0, std::memory_order_relaxed);
+  owner_started.store(0, std::memory_order_relaxed);
+  owner_chain_done.store(0, std::memory_order_relaxed);
+  owner_stop.store(0, std::memory_order_relaxed);
+  route_done.store(0, std::memory_order_relaxed);
+  waiter_tid.store(0, std::memory_order_relaxed);
+  consumer_go.store(0, std::memory_order_relaxed);
+  consumer_stop.store(0, std::memory_order_relaxed);
+  consumer_calls.store(0, std::memory_order_relaxed);
+  consumer_success.store(0, std::memory_order_relaxed);
+  consumer_inflight.store(0, std::memory_order_relaxed);
+  route_delay_usec.store(initial_delay_usec,
+                        std::memory_order_relaxed);
+  fast_repair.store(0, std::memory_order_relaxed);
   main_cpu = main_cpu_value;
   consumer_cpu = consumer_cpu_value;
   request = nullptr;
@@ -55,8 +55,8 @@ int PiRace::start_threads(
 }
 
 void PiRace::abort_startup() noexcept {
-  atomic_store(&consumer_stop, 1);
-  atomic_store(&owner_stop, 1);
+  consumer_stop.store(1);
+  owner_stop.store(1);
   owner_owner.request_stop();
   consumer_owner.request_stop();
   (void) owner_owner.join();
@@ -65,9 +65,9 @@ void PiRace::abort_startup() noexcept {
 }
 
 void PiRace::request_stop() noexcept {
-  atomic_store(&consumer_go, 0);
-  atomic_store(&consumer_stop, 1);
-  atomic_store(&owner_stop, 1);
+  consumer_go.store(0);
+  consumer_stop.store(1);
+  owner_stop.store(1);
 }
 
 void PiRace::join() noexcept {

@@ -8,7 +8,7 @@
 #include "support/native_resource.hpp"
 
 #include <pthread.h>
-#include <stdatomic.h>
+#include <atomic>
 #include <cstddef>
 
 namespace ghostlock {
@@ -58,10 +58,10 @@ class TcpZerocopyRoute final {
   size_t mapping_length = 0;
   size_t page_size = 0;
   PthreadOwner punch_worker;
-  atomic_int punch_go;
-  atomic_int punch_stop;
-  atomic_int punch_phase;
-  atomic_int punch_failed;
+  std::atomic<int> punch_go;
+  std::atomic<int> punch_stop;
+  std::atomic<int> punch_phase;
+  std::atomic<int> punch_failed;
   int route_won = 0;
   RouteStatus status{};
 

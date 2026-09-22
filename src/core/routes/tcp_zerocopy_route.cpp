@@ -16,10 +16,10 @@ TcpZerocopyRoute::TcpZerocopyRoute(
       mapping_length(mapping_length_value) {
   /* C atomics cannot carry initializers in C++; mirror the old
    * tcp_zerocopy_route_context_init stores explicitly. */
-  atomic_store_explicit(&punch_go, 0, memory_order_relaxed);
-  atomic_store_explicit(&punch_stop, 0, memory_order_relaxed);
-  atomic_store_explicit(&punch_phase, 0, memory_order_relaxed);
-  atomic_store_explicit(&punch_failed, 0, memory_order_relaxed);
+  punch_go.store(0, std::memory_order_relaxed);
+  punch_stop.store(0, std::memory_order_relaxed);
+  punch_phase.store(0, std::memory_order_relaxed);
+  punch_failed.store(0, std::memory_order_relaxed);
   status.code = ROUTE_RETRYABLE;
 }
 
@@ -37,22 +37,14 @@ TcpZerocopyRoute::TcpZerocopyRoute(
       punch_worker(std::move(other.punch_worker)),
       route_won(other.route_won),
       status(other.status) {
-  atomic_store_explicit(&punch_go,
-                        atomic_load_explicit(&other.punch_go,
-                                             memory_order_relaxed),
-                        memory_order_relaxed);
-  atomic_store_explicit(&punch_stop,
-                        atomic_load_explicit(&other.punch_stop,
-                                             memory_order_relaxed),
-                        memory_order_relaxed);
-  atomic_store_explicit(&punch_phase,
-                        atomic_load_explicit(&other.punch_phase,
-                                             memory_order_relaxed),
-                        memory_order_relaxed);
-  atomic_store_explicit(&punch_failed,
-                        atomic_load_explicit(&other.punch_failed,
-                                             memory_order_relaxed),
-                        memory_order_relaxed);
+  punch_go.store(other.punch_go.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+  punch_stop.store(other.punch_stop.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+  punch_phase.store(other.punch_phase.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+  punch_failed.store(other.punch_failed.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
 }
 
 int TcpZerocopyRoute::fail(
@@ -63,10 +55,10 @@ int TcpZerocopyRoute::fail(
 }
 
 void TcpZerocopyRoute::disarm() noexcept {
-  atomic_store(&race->consumer_go, 0);
-  atomic_store(&punch_go, 0);
-  atomic_store(&punch_stop, 1);
-  while (atomic_load(&race->consumer_inflight)) {
+  race->consumer_go.store(0);
+  punch_go.store(0);
+  punch_stop.store(1);
+  while (race->consumer_inflight.load()) {
     __asm__ volatile("yield":: : "memory");
   }
   status.kernel_disarmed = 1;

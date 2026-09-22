@@ -28,7 +28,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
-#include <stdatomic.h>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
