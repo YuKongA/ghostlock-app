@@ -10,6 +10,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Keep this module's output under the repository-root build/ directory.
+layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("app"))
+
 val appName = "GhostLock"
 val appVersionName = "1.2"
 

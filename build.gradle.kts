@@ -93,6 +93,14 @@ private fun extractNdkTools(): NdkTools {
     )
 }
 
+// Every module's output lives under the root build/ directory (native,
+// host-test, extract, kernel-profiles, app). Delete the whole tree here so a
+// single root `clean` resets all of them.
+tasks.register<Delete>("clean") {
+    description = "Delete the root build/ directory (all module outputs)."
+    delete(layout.buildDirectory)
+}
+
 tasks.register<Exec>("buildGhostlockNative") {
     description = "buildGhostlockNative"
     workingDir(file("src"))
@@ -153,13 +161,13 @@ tasks.register<Exec>("buildGhostlockExtract") {
         file("tools/extract_rs/Cargo.lock"),
     )
     inputs.property("useOndk", isOndk)
-    outputs.file(file("tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract"))
+    outputs.file(file("build/extract/aarch64-linux-android/release/ghostlock-extract"))
 }
 
 tasks.register<Copy>("prepareGhostlockExtractJniLibs") {
     description = "prepareGhostlockExtractJniLibs"
     dependsOn("buildGhostlockExtract")
-    from("tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract")
+    from("build/extract/aarch64-linux-android/release/ghostlock-extract")
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libextract.so" }
 }

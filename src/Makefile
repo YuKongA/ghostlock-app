@@ -67,7 +67,7 @@ LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 HOST_CC ?= cc
 HOST_CXX ?= c++
 HOST_CXXFLAGS := -std=c++20 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
-HOST_BUILD_DIR := $(BUILD_ROOT)/host
+HOST_BUILD_DIR := $(BUILD_ROOT)/host-test
 
 # Every generated artifact stays under build/ so nothing lands in the repo root.
 GHOSTLOCK_BIN := $(NATIVE_BUILD_DIR)/ghostlock

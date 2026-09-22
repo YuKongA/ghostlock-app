@@ -30,7 +30,7 @@ void expect(bool condition, const char *message) {
 
 bool decode_text(const char *text, struct kernel_offsets *out, char *release,
         size_t cap) {
-  char path[] = "../build/host/offsets_vector_XXXXXX";
+  char path[] = "../build/host-test/offsets_vector_XXXXXX";
   const int fd = mkstemp(path);
   if (fd < 0) return false;
   const size_t length = strlen(text);
@@ -157,7 +157,7 @@ void check_decoder_rejections() {
   /* A release longer than the caller buffer must be rejected. */
   const char *long_release =
       "{\"schema_version\":1,\"release\":\"0123456789\"}";
-  char path[] = "../build/host/offsets_short_cap_XXXXXX";
+  char path[] = "../build/host-test/offsets_short_cap_XXXXXX";
   const int fd = mkstemp(path);
   if (fd < 0) {
     expect(false, "mkstemp for release-cap vector");

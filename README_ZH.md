@@ -36,8 +36,8 @@ adb shell /data/local/tmp/ghostlock
 
 ```powershell
 cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-tools/extract_rs/target/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
-tools/extract_rs/target/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
 ```
 
 提取结果使用 `--format json` 输出；新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 JSON 登记到 `kernel_profiles/index.json`。旧 C `offsets.h` 注册表已经弃用并移除。
@@ -57,7 +57,7 @@ $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android
 cargo build --release --target aarch64-linux-android --manifest-path tools/extract_rs/Cargo.toml
-adb push tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
+adb push build/extract/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
 adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 ```
 

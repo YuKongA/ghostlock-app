@@ -36,8 +36,8 @@ adb shell /data/local/tmp/ghostlock
 
 ```powershell
 cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-tools/extract_rs/target/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
-tools/extract_rs/target/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
 ```
 
 Use `--format json` for extractor output. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone JSON profile, and add it to `kernel_profiles/index.json`. The old C `offsets.h` registry is deprecated and removed.
@@ -59,7 +59,7 @@ $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android
 cargo build --release --target aarch64-linux-android --manifest-path tools/extract_rs/Cargo.toml
-adb push tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
+adb push build/extract/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
 adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 ```
 
