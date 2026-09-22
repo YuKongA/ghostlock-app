@@ -4,6 +4,7 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::config;
 
 static void runtime_config_init_cpus(runtime_config *config) {
     config->main_cpu = 0;
@@ -64,9 +65,9 @@ static void runtime_config_init_paths(runtime_config *config) {
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";
 
-    config->home_dir = runtime_paths::normalize_home_dir(home);
+    config->home_dir = ghostlock::config::normalize_home_dir(home);
     config->root_script_path =
-            runtime_paths::root_script_file(config->home_dir);
+            ghostlock::config::root_script_file(config->home_dir);
 
     const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
     config->ksu_log_path = (ksu_log && ksu_log[0])

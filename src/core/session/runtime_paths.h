@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::runtime_paths {
+namespace ghostlock::config {
     /* Capacities match the historical fixed buffers (content bytes + NUL). */
     inline constexpr size_t kHomeDirCapacity = 256;
     inline constexpr size_t kRootScriptPathCapacity = 300;
@@ -40,6 +40,6 @@ namespace ghostlock::runtime_paths {
         }
         return result;
     }
-} // namespace ghostlock::runtime_paths
+} // namespace ghostlock::config
 
 #endif

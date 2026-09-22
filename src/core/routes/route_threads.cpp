@@ -13,6 +13,7 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::config;
 
 namespace ghostlock::race {
     void *waiter_thread(void *arg) {

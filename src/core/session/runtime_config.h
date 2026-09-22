@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace ghostlock {
+namespace ghostlock::config {
 
 /* One runtime snapshot captured once from the environment. Paths own their
  * storage; callers convert to c_str() only at syscall/exec boundaries so no
@@ -40,6 +40,6 @@ using runtime_config = RuntimeConfig;
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
 RuntimeConfig &runtime_config_snapshot() noexcept;
 
-} // namespace ghostlock
+} // namespace ghostlock::config
 
 #endif

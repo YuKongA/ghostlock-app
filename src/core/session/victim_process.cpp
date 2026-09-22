@@ -12,6 +12,8 @@
 #include <array>
 
 namespace ghostlock::victim {
+    using namespace ghostlock::config;
+
     /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
     static void park_child_process_forever(void) {
