@@ -22,6 +22,9 @@ C_SRCS :=
 CXX_SRCS := \
   core/main.cpp \
   core/exploit_ops.cpp \
+  core/profile_entry.cpp \
+  core/legacy_support/legacy_profile_converter.cpp \
+  core/legacy_support/legacy_entrypoint_starter.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
   core/pi_race.cpp \

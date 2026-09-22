@@ -820,3 +820,48 @@ int load_resolved_profile(const char *path, struct kernel_offsets *out,
                     release_buf_cap);
     return rc == 0 ? require_explicit_route(out) : rc;
 }
+
+/* Legacy/JSON lexical access for legacy_support. Thin wrappers keep the
+ * bounded-cursor primitives private to this file. */
+namespace ghostlock::profile_json {
+
+void fill_entry(struct kernel_offsets *out, const char *release_buf,
+        std::string_view object) {
+    fill_external_entry(out, release_buf, object);
+}
+
+int select_entry(std::string_view document, const char *release,
+        std::string_view *entry_out) {
+    if (!release || !entry_out) return -1;
+    const std::string_view start = json_skip_ws(document);
+    if (start.empty()) return -1;
+    if (start.front() == '{') {
+        *entry_out = start;
+        return 0;
+    }
+    if (start.front() != '[') return -1;
+    std::string_view cursor = start;
+    cursor.remove_prefix(1);
+    for (;;) {
+        cursor = json_skip_ws(cursor);
+        if (cursor.empty()) return -1;
+        if (cursor.front() == ']') return -1;
+        const auto span = json_value_span(cursor);
+        if (!span) return -1;
+        cursor.remove_prefix(span->size());
+        const auto rel = json_member_value(*span, "release");
+        if (rel && !rel->empty() && rel->front() == '"') {
+            std::string_view rel_view = *rel;
+            char name[256];
+            if (json_read_string(rel_view, name, sizeof(name)) &&
+                    strcmp(name, release) == 0) {
+                *entry_out = *span;
+                return 0;
+            }
+        }
+        cursor = json_skip_ws(cursor);
+        if (!cursor.empty() && cursor.front() == ',') cursor.remove_prefix(1);
+    }
+}
+
+}  // namespace ghostlock::profile_json

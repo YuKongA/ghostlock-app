@@ -2,6 +2,9 @@
 #define OFFSETS_JSON_H
 
 #include <stddef.h>
+
+#include <string_view>
+
 #include "profile.h"
 
 /* Decode one fully resolved runtime profile. Configuration-source selection
@@ -13,5 +16,18 @@ int load_resolved_profile(const char *path, struct kernel_offsets *out,
 
 int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
                                char *release_buf, size_t release_buf_cap);
+
+/* JSON lexical helpers shared with legacy_support. `select_entry` finds the
+ * entry whose "release" equals `release` in a top-level array (or accepts a
+ * single object as-is); `fill_entry` fills *out from one entry object. */
+namespace ghostlock::profile_json {
+
+int select_entry(std::string_view document, const char *release,
+        std::string_view *entry_out);
+
+void fill_entry(struct kernel_offsets *out, const char *release_buf,
+        std::string_view object);
+
+}  // namespace ghostlock::profile_json
 
 #endif
