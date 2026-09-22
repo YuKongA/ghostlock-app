@@ -58,6 +58,11 @@
 
 ## 批次 2 —— 中风险（影响脚本 / 日志字节，需比对输出）
 
+**进度**：7 已做且保持字节一致——`char script[12288]` → `std::string`，`snprintf`
+的格式串与参数完全不变（`script.size()` 仍为 12288），脚本文本不变。8 已在批次 1
+完成。9 **不采纳**：`read_le`/`write_le` 是端序无关的通用变长实现，`std::bit_cast`/
+`std::byteswap` 只适用于定宽，替换后更复杂且无收益。
+
 7. `exploit_ops.cpp` `write_root_script`：`char script[12288]` + 单个大 `snprintf`
    拼接 shell 脚本 → `std::string` 逐段拼接。**必须保持脚本文本逐字节一致**。
 8. `util.cpp` 日志/属性格式化缓冲（`snprintf` 到定长 buffer）。
