@@ -178,11 +178,11 @@ namespace ghostlock::support {
 
     void prepare_ctxs(void);
 
-    int prepare_skb_payload(uintptr_t base, const WriteRequest *request);
+    int prepare_skb_payload(uintptr_t base, const ghostlock::memory::WriteRequest *request);
 
-    uintptr_t prepare_kernel_page(const WriteRequest *request);
+    uintptr_t prepare_kernel_page(const ghostlock::memory::WriteRequest *request);
 
-    uintptr_t prepare_good_kernel_page(const WriteRequest *request);
+    uintptr_t prepare_good_kernel_page(const ghostlock::memory::WriteRequest *request);
 } // namespace ghostlock::support
 
 namespace ghostlock::route {
@@ -192,11 +192,11 @@ namespace ghostlock::route {
 
     void reserve_standard_io(void);
 
-    RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
+    RouteStatus do_pselect_fake_lock_route(const ghostlock::memory::WriteRequest *request);
 
-    RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
+    RouteStatus do_tcp_fake_lock_route(const ghostlock::memory::WriteRequest *request);
 
-    RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
+    RouteStatus do_kernel5_fake_lock_route(const ghostlock::memory::WriteRequest *request);
 
     int kernel5_resident_start(void);
 

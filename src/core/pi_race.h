@@ -36,14 +36,14 @@ namespace ghostlock::race {
         [[nodiscard]] int start_threads(void *(*waiter_entry)(void *),
                                         void *(*owner_entry)(void *),
                                         void *(*consumer_entry)(void *),
-                                        const WriteRequest *route_request) noexcept;
+                                        const ghostlock::memory::WriteRequest *route_request) noexcept;
 
         /* Waits for the route to finish and returns its outcome. A route that
          * reports Ok without a consumer call and success has not won the race, so
          * the returned outcome degrades to Retryable, matching the bool the
          * previous free function returned. The wait itself is unbounded today:
          * see TODO(pi-timeout-01). */
-        [[nodiscard]] RouteStatus run() noexcept;
+        [[nodiscard]] ghostlock::route::RouteStatus run() noexcept;
 
         /* Business stop signal for the three workers; idempotent. */
         void request_stop() noexcept;
@@ -53,8 +53,8 @@ namespace ghostlock::race {
 
         /* Testable counter merge used by run(): Ok with zero calls or zero
          * successes is not a routed attempt. */
-        [[nodiscard]] static RouteStatus outcome_with_counters(
-            const RouteStatus &outcome, int calls, int success) noexcept;
+        [[nodiscard]] static ghostlock::route::RouteStatus outcome_with_counters(
+            const ghostlock::route::RouteStatus &outcome, int calls, int success) noexcept;
 
         /* C atomics cannot carry initializers in C++; static instances are
          * zero-initialized and every dynamic path calls reset() first.
@@ -83,8 +83,8 @@ namespace ghostlock::race {
         ghostlock::support::PthreadOwner waiter_owner;
         ghostlock::support::PthreadOwner owner_owner;
         ghostlock::support::PthreadOwner consumer_owner;
-        const WriteRequest *request = nullptr;
-        RouteStatus route_status{};
+        const ghostlock::memory::WriteRequest *request = nullptr;
+        ghostlock::route::RouteStatus route_status{};
 
     private:
         void abort_startup() noexcept;

@@ -2,6 +2,7 @@
 
 namespace ghostlock::route {
     using namespace ghostlock::profile;
+    using namespace ghostlock::memory;
 
     RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
 

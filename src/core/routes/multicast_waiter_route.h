@@ -38,7 +38,7 @@ public:
 
     /* Host-safe: the fixed-vector test constructs a context and calls init()
    * without linking the Android-only implementation unit. */
-    void init(ghostlock::race::PiRaceContext *race_value, const WriteRequest *request_value,
+    void init(ghostlock::race::PiRaceContext *race_value, const ghostlock::memory::WriteRequest *request_value,
               const struct ghostlock::profile::execution_settings *execution_value,
               ghostlock::profile::MulticastWaiterLayout layout_value, int resident_value) noexcept {
         race = race_value;
@@ -64,7 +64,7 @@ public:
         ready = 0;
         lock_slot = 0;
         status = {};
-        status.code = ROUTE_RETRYABLE;
+        status.code = ghostlock::route::ROUTE_RETRYABLE;
         waiter_has_lock2.store(0, std::memory_order_relaxed);
         owner_has_lock1.store(0, std::memory_order_relaxed);
         waiter_waiting.store(0, std::memory_order_relaxed);
@@ -90,7 +90,7 @@ public:
     /* Fields stay public: the workers read and write them from their hot loops,
    * preserving the pre-class access shape and field order. */
     ghostlock::race::PiRaceContext *race;
-    const WriteRequest *request;
+    const ghostlock::memory::WriteRequest *request;
     const struct ghostlock::profile::execution_settings *execution;
     ghostlock::profile::MulticastWaiterLayout layout;
     uint32_t lock1_futex, lock2_futex, condition_futex;
@@ -105,7 +105,7 @@ public:
     int ready, scheduler_policy, lock_slot;
     int main_cpu, consumer_cpu;
     int resident;
-    RouteStatus status;
+    ghostlock::route::RouteStatus status;
 };
 
 using MulticastWaiterRouteContext = MulticastWaiterRoute;

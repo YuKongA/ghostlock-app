@@ -41,7 +41,7 @@ namespace ghostlock::route::select_stack {
  * destructor close a descriptor a stuck consumer may still walk. */
     class SelectStackRoute final {
     public:
-        SelectStackRoute(ghostlock::race::PiRace *race, const WriteRequest *request,
+        SelectStackRoute(ghostlock::race::PiRace *race, const ghostlock::memory::WriteRequest *request,
                          const ghostlock::profile::execution_settings *execution,
                          ghostlock::profile::SelectStackLayout layout,
                          const int stdio_backup[3]) noexcept;
@@ -61,7 +61,7 @@ namespace ghostlock::route::select_stack {
 
         /* Park the crafted waiter and run select/pselect. Defined in
    * route_operations.cpp. */
-        [[nodiscard]] RouteStatus execute() noexcept;
+        [[nodiscard]] ghostlock::route::RouteStatus execute() noexcept;
 
         /* Stop the consumer trigger and bounded-drain it; a consumer still in
    * flight marks the route dirty. */
@@ -79,7 +79,7 @@ namespace ghostlock::route::select_stack {
         }
 
         ghostlock::race::PiRace *race = nullptr;
-        const WriteRequest *request = nullptr;
+        const ghostlock::memory::WriteRequest *request = nullptr;
         const struct ghostlock::profile::execution_settings *execution = nullptr;
         ghostlock::profile::SelectStackLayout layout{};
         FdSet input_set;
@@ -100,7 +100,7 @@ namespace ghostlock::route::select_stack {
         int successes = 0;
         int select_result = 0;
         int select_errno = 0;
-        RouteStatus status{};
+        ghostlock::route::RouteStatus status{};
 
     private:
         void retain_for_process_lifetime() noexcept;

@@ -4,6 +4,7 @@
 #include <cstddef>
 
 using namespace ghostlock;
+using namespace ghostlock::route;
 
 int main() {
     static_assert(static_cast<int>(ROUTE_OK) == 0);

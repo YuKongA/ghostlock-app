@@ -61,11 +61,6 @@ namespace ghostlock::memory {
         std::uintptr_t fake_lock) noexcept;
 } // namespace ghostlock::memory
 
-using WriteRequest = ghostlock::memory::WriteRequest;
-using WriteMode = ghostlock::memory::WriteMode;
-using PayloadWriteLayout = ghostlock::memory::PayloadWriteLayout;
-
-
 namespace ghostlock::memory {
 /* Resolve the request-dependent words shared by the three route encoders. */
 PayloadWriteLayout payload_write_layout(

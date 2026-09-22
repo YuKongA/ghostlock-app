@@ -12,8 +12,10 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::route;
 using namespace ghostlock::route::select_stack;
 using namespace ghostlock::race;
+using namespace ghostlock::memory;
 
 
 int main(void) {

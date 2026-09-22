@@ -15,7 +15,7 @@ namespace ghostlock::race {
     void reset_main_route_state(void);
 
     /* Create, synchronize, stop and join one explicitly owned PI race. */
-    int run_main_route_threads(const WriteRequest *request);
+    int run_main_route_threads(const ghostlock::memory::WriteRequest *request);
 } // namespace ghostlock::race
 
 #endif

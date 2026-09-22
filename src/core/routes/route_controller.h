@@ -24,7 +24,7 @@ namespace ghostlock::route {
 
         void init(ghostlock::race::PiRaceContext *race, const ghostlock::profile::TargetProfile *profile,
                   RouteKind selected);
-        RouteStatus execute(const WriteRequest *request);
+        ghostlock::route::RouteStatus execute(const ghostlock::memory::WriteRequest *request);
     } RouteController;
 } // namespace ghostlock::route
 

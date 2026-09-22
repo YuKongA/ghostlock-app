@@ -21,7 +21,7 @@ namespace ghostlock::route::tcp_zerocopy {
  * the still-running puncher never sees a recycled descriptor. */
     class TcpZerocopyRoute final {
     public:
-        TcpZerocopyRoute(ghostlock::race::PiRace *race, const WriteRequest *request,
+        TcpZerocopyRoute(ghostlock::race::PiRace *race, const ghostlock::memory::WriteRequest *request,
                          const ghostlock::profile::execution_settings *execution,
                          size_t mapping_length) noexcept;
 
@@ -38,7 +38,7 @@ namespace ghostlock::route::tcp_zerocopy {
         [[nodiscard]] int prepare() noexcept;
 
         /* Run the trigger after prepare() established exclusive ownership. */
-        [[nodiscard]] RouteStatus execute() noexcept;
+        [[nodiscard]] ghostlock::route::RouteStatus execute() noexcept;
 
         /* Stop every trigger and drain the consumer. */
         void disarm() noexcept;
@@ -51,7 +51,7 @@ namespace ghostlock::route::tcp_zerocopy {
         [[nodiscard]] int fail(int step, int error_number) noexcept;
 
         ghostlock::race::PiRace *race = nullptr;
-        const WriteRequest *request = nullptr;
+        const ghostlock::memory::WriteRequest *request = nullptr;
         const struct ghostlock::profile::execution_settings *execution = nullptr;
         ghostlock::support::UniqueFd client_fd;
         ghostlock::support::UniqueFd server_fd;
@@ -65,7 +65,7 @@ namespace ghostlock::route::tcp_zerocopy {
         std::atomic<int> punch_phase;
         std::atomic<int> punch_failed;
         int route_won = 0;
-        RouteStatus status{};
+        ghostlock::route::RouteStatus status{};
 
     private:
         /* dirty failure: never close or unmap anything the puncher may still use */

@@ -8,6 +8,7 @@ using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::support;
 using namespace ghostlock::race;
+using namespace ghostlock::memory;
 
 namespace ghostlock::route::select_stack {
 
