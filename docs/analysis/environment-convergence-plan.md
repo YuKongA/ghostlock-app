@@ -28,7 +28,16 @@
 - `GHOSTLOCK_5X_PHASE1_PROBE` → 删除（调试）
 - `GHOSTLOCK_W1_ONLY` → 删除（调试）
 - `GHOSTLOCK_VERBOSE_DEBUG` → 删除（调试）
-- `GHOSTLOCK_DEBUG_DIR` → 删除（调试）
+
+内核日志 dump 改为 CLI 参数 **`--dump-kernel-log <dir>`**（不再用任何环境变量）：
+
+```text
+ghostlock --ghostlock-app-call --dump-kernel-log <dir>
+ghostlock --dump-kernel-log <dir>            # legacy 入口同样可加
+```
+
+`<dir>` 为空/缺省时不 dump；native 把目录写进 root script 的 `DEBUG_DIR`，
+脚本据此落 `kernel-dmesg.log` / `kernel-info.txt` / `iomem.txt` / `pstore/`。
 
 ## Profile 扩展（GLK1 v3）
 

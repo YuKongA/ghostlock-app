@@ -60,9 +60,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 if (safeMode && profileBlob.size >= 16) {
                     profileBlob[profileBlob.size - 16] = 1
                 }
-                ProcessBuilder(
-                    binary.absolutePath, "--ghostlock-app-call",
-                )
+                val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+                if (!debugDir.isNullOrEmpty()) {
+                    argv += listOf("--dump-kernel-log", debugDir)
+                }
+                ProcessBuilder(argv)
                     .directory(workDir)
                     .redirectErrorStream(true)
                     .redirectOutput(nativeLog)

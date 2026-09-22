@@ -87,6 +87,7 @@ int runtime_config_init(runtime_config *config) {
     config->home_dir.clear();
     config->root_script_path.clear();
     config->ksu_log_path.clear();
+    config->debug_dir.clear();
 
     runtime_config_init_cpus(config);
     runtime_config_init_paths(config);

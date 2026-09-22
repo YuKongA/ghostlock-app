@@ -25,21 +25,39 @@ using namespace ghostlock;
 int main(int argc, char **argv) {
     struct kernel_offsets decoded = {};
     char release_buf[256] = {0};
-    int loaded = -1;
 
-    if (argc == 1) {
-        loaded = legacy_support::start_legacy_entrypoint(
-                &decoded, release_buf, sizeof(release_buf));
-    } else if (argc == 2 && strcmp(argv[1], "--ghostlock-app-call") == 0) {
+    bool app_call = false;
+    const char *prebuilt_path = nullptr;
+    const char *dump_dir = nullptr;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ghostlock-app-call") == 0) {
+            app_call = true;
+        } else if (strcmp(argv[i], "--load-prebuilt-profile") == 0 &&
+                i + 1 < argc) {
+            prebuilt_path = argv[++i];
+        } else if (strcmp(argv[i], "--dump-kernel-log") == 0 && i + 1 < argc) {
+            dump_dir = argv[++i];
+        } else {
+            pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
+                     " [--dump-kernel-log <dir>]\n", argv[0]);
+            return 1;
+        }
+    }
+    if (app_call && prebuilt_path) {
+        pr_error("choose one entrypoint\n");
+        return 1;
+    }
+
+    int loaded;
+    if (prebuilt_path) {
+        loaded = profile_entry::read_glk1_file(
+                prebuilt_path, &decoded, release_buf, sizeof(release_buf));
+    } else if (app_call) {
         loaded = profile_entry::read_glk1_stdin(
                 &decoded, release_buf, sizeof(release_buf));
-    } else if (argc == 3 && strcmp(argv[1], "--load-prebuilt-profile") == 0) {
-        loaded = profile_entry::read_glk1_file(
-                argv[2], &decoded, release_buf, sizeof(release_buf));
     } else {
-        pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]\n",
-                argv[0]);
-        return 1;
+        loaded = legacy_support::start_legacy_entrypoint(
+                &decoded, release_buf, sizeof(release_buf));
     }
     if (loaded != 0) {
         pr_error("cannot load profile\n");
@@ -47,7 +65,8 @@ int main(int argc, char **argv) {
     }
 
     ExploitSession &session = g_exploit_session;
-    if (stages::run_setup_stage(decoded) == stages::StageResult::Failed)
+    if (stages::run_setup_stage(decoded, dump_dir) ==
+            stages::StageResult::Failed)
         return 1;
 
     switch (stages::run_w1_stage(session)) {

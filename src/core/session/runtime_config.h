@@ -20,6 +20,8 @@ class RuntimeConfig final {
    * previous run's markers can never be misread; falls back to the legacy
    * home-dir name for CLI runs. */
   std::string ksu_log_path = "/data/local/tmp/.ghostlock_ksu.log";
+  /* Kernel-log dump directory from --dump-kernel-log; empty disables the dump. */
+  std::string debug_dir;
 
   RuntimeConfig() noexcept = default;
 };

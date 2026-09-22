@@ -507,9 +507,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 isDaemon = true
                 start()
             }
-            val command = ProcessBuilder(
-                binary.absolutePath, "--ghostlock-app-call",
-            )
+            val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+            if (!debugDir.isNullOrEmpty()) {
+                argv += listOf("--dump-kernel-log", debugDir)
+            }
+            val command = ProcessBuilder(argv)
                 .directory(workDir)
                 .redirectErrorStream(true)
                 .redirectOutput(nativeLog)
