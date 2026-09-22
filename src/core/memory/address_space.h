@@ -17,39 +17,26 @@ namespace ghostlock::memory {
 
     /* Addresses derived once from an immutable target profile and the device SoC.
  * This is the authoritative input for image-to-direct-map translation. */
-    typedef struct resolved_addresses {
+    struct ResolvedAddresses {
         SocFamily soc;
         target::PhysicalAddress kernel_phys_load;
         target::KernelImageAddress init_cred_image;
-    } ResolvedAddresses;
 
-    int resolved_addresses_init(ResolvedAddresses *out,
-                                const TargetProfile *profile);
+        int init(const TargetProfile *profile);
+        int init_for_soc(const TargetProfile *profile, SocFamily family);
 
-    int resolved_addresses_init_for_soc(ResolvedAddresses *out,
-                                        const TargetProfile *profile,
-                                        SocFamily soc);
+        uintptr_t data_alias(uintptr_t image_addr) const;
+        std::optional<target::DirectMapAddress> data_alias_checked(
+            target::KernelImageAddress image_address) const noexcept;
 
-    uintptr_t resolved_addresses_data_alias(const ResolvedAddresses *addresses,
-                                            uintptr_t image_addr);
-
-    std::optional<target::DirectMapAddress>
-    resolved_addresses_data_alias_checked(
-        const ResolvedAddresses &addresses,
-        target::KernelImageAddress image_address) noexcept;
-
-    static inline uint64_t resolved_addresses_kernel_phys_load(
-        const ResolvedAddresses *addresses) {
-        return addresses ? addresses->kernel_phys_load.value() : 0;
-    }
-
-    static inline uintptr_t resolved_addresses_init_cred_image(
-        const ResolvedAddresses *addresses) {
-        return addresses ? addresses->init_cred_image.value() : 0;
-    }
-
-    const char *resolved_addresses_soc_name(const ResolvedAddresses *addresses,
-                                            const TargetProfile *profile);
+        [[nodiscard]] uint64_t phys_load() const {
+            return kernel_phys_load.value();
+        }
+        [[nodiscard]] uintptr_t init_cred_image_addr() const {
+            return init_cred_image.value();
+        }
+        [[nodiscard]] const char *soc_name(const TargetProfile *profile) const;
+    };
 } // namespace ghostlock::memory
 
 #endif

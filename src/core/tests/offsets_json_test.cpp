@@ -181,16 +181,15 @@ namespace {
         decoded.kernel_phys_load = 0x80000000ULL;
         TargetProfile profile = TargetProfile::from(&decoded);
         memory::ResolvedAddresses addresses = {};
-        expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
+        expect(addresses.init_for_soc(&profile,
                                                        memory::SocFamily::Qcom) == 0,
                "address init succeeds");
-        expect(memory::resolved_addresses_init_cred_image(&addresses) ==
+        expect(addresses.init_cred_image_addr() ==
                (uintptr_t)(KIMAGE_TEXT_BASE + decoded.off_init_cred),
                "init_cred image formula");
         const uint64_t expected_phys = decoded.kernel_phys_load;
         const uintptr_t physical = expected_phys + decoded.off_init_cred;
-        expect(memory::resolved_addresses_data_alias(
-                   &addresses, memory::resolved_addresses_init_cred_image(&addresses)) ==
+        expect(addresses.data_alias(addresses.init_cred_image_addr()) ==
                ((physical - P0_PHYS_OFFSET) | P0_PAGE_OFFSET),
                "init_cred direct-map alias");
 
@@ -199,9 +198,9 @@ namespace {
         zero_load.kernel_phys_load = 0;
         TargetProfile zero_profile = TargetProfile::from(&zero_load);
         memory::ResolvedAddresses mtk = {};
-        expect(memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
+        expect(mtk.init_for_soc(&zero_profile,
                                                        memory::SocFamily::Mtk) == 0 &&
-               memory::resolved_addresses_kernel_phys_load(&mtk) ==
+               mtk.phys_load() ==
                (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
                "MTK physical load fallback");
     }

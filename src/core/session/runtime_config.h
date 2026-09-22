@@ -23,6 +23,12 @@ public:
     std::string debug_dir;
 
     RuntimeConfig() noexcept = default;
+
+    /* Capture the process environment exactly once. */
+    int init();
+    /* Merge the profile's recommended CPU pair (validated). */
+    int apply_profile(const TargetProfile *profile);
+    void log() const;
 };
 
 using runtime_config = RuntimeConfig;
@@ -31,12 +37,5 @@ using runtime_config = RuntimeConfig;
 /* The process snapshot is owned by ExploitSession. Callers reach it through
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
 RuntimeConfig &runtime_config_snapshot() noexcept;
-
-int runtime_config_init(runtime_config *config);
-
-int runtime_config_apply_profile(
-    runtime_config *config, const TargetProfile *profile);
-
-void runtime_config_log(const runtime_config *config);
 
 #endif

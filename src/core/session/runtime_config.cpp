@@ -44,17 +44,16 @@ static int runtime_config_validate_cpus(runtime_config *config) {
 
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
-int runtime_config_apply_profile(
-    runtime_config *config, const TargetProfile *profile) {
+int RuntimeConfig::apply_profile(const TargetProfile *profile) {
     const struct execution_settings *e = profile->execution();
-    if (!config || !e) return -1;
-    int old_main = config->main_cpu;
-    int old_consumer = config->consumer_cpu;
-    config->main_cpu = (int) e->recommended_main_cpu;
-    config->consumer_cpu = (int) e->recommended_consumer_cpu;
-    if (runtime_config_validate_cpus(config) != 0) {
-        config->main_cpu = old_main;
-        config->consumer_cpu = old_consumer;
+    if (!e) return -1;
+    int old_main = main_cpu;
+    int old_consumer = consumer_cpu;
+    main_cpu = (int) e->recommended_main_cpu;
+    consumer_cpu = (int) e->recommended_consumer_cpu;
+    if (runtime_config_validate_cpus(this) != 0) {
+        main_cpu = old_main;
+        consumer_cpu = old_consumer;
     }
     return 0;
 }
@@ -76,30 +75,23 @@ static void runtime_config_init_paths(runtime_config *config) {
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
  * writable config; output: 0/-1 with the validated CPU pair. */
-int runtime_config_init(runtime_config *config) {
-    if (!config) {
-        errno = EINVAL;
-        return -1;
-    }
+int RuntimeConfig::init() {
+    main_cpu = 0;
+    consumer_cpu = 1;
+    home_dir.clear();
+    root_script_path.clear();
+    ksu_log_path.clear();
+    debug_dir.clear();
 
-    config->main_cpu = 0;
-    config->consumer_cpu = 1;
-    config->home_dir.clear();
-    config->root_script_path.clear();
-    config->ksu_log_path.clear();
-    config->debug_dir.clear();
-
-    runtime_config_init_cpus(config);
-    runtime_config_init_paths(config);
+    runtime_config_init_cpus(this);
+    runtime_config_init_paths(this);
 
     return 0;
 }
 
 /* Log the immutable runtime snapshot. Input: initialized config; output: logs. */
-void runtime_config_log(const runtime_config *config) {
-    if (!config) return;
-    pr_info("cpu pair: main=%d consumer=%d\n", config->main_cpu,
-            config->consumer_cpu);
-    pr_info("runtime home=%s script=%s\n", config->home_dir.c_str(),
-            config->root_script_path.c_str());
+void RuntimeConfig::log() const {
+    pr_info("cpu pair: main=%d consumer=%d\n", main_cpu, consumer_cpu);
+    pr_info("runtime home=%s script=%s\n", home_dir.c_str(),
+            root_script_path.c_str());
 }
