@@ -12,6 +12,8 @@
 #include <cerrno>
 #include <cstdlib>
 
+namespace ghostlock::kernelsnitch {
+
 struct ParsedUnsigned {
     unsigned long value;
     int valid;
@@ -33,5 +35,7 @@ static inline struct ParsedUnsigned number_parse_unsigned(const char *text,
     parsed.valid = (end && *end == '\0' && (errno == 0 || errno == EINVAL));
     return parsed;
 }
+
+} // namespace ghostlock::kernelsnitch
 
 #endif

@@ -7,6 +7,8 @@
 #include <cstdint>
 
 // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
+namespace ghostlock::kernelsnitch {
+
 typedef uint32_t u32;
 typedef uint32_t __u32;
 typedef uint8_t u8;
@@ -251,3 +253,5 @@ futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
     key.private_key.offset = addr & 0xfff;
     return futex_hash_context_key(context, &key);
 }
+
+} // namespace ghostlock::kernelsnitch

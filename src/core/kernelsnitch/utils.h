@@ -142,6 +142,8 @@
 
 /* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
  * -1); callers have no better recovery than proceeding, so the form is kept. */
+namespace ghostlock {
+
 static inline void pin_to_core(size_t core) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -219,15 +221,17 @@ static inline void hexdump(const void *data, size_t size) {
 }
 
 static inline unsigned long parse_ul(const char *s, const char *name) {
-    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 0);
+    const kernelsnitch::ParsedUnsigned parsed = kernelsnitch::number_parse_unsigned(s, 0);
     if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
     return parsed.value;
 }
 
 static inline unsigned long parse_xl(const char *s, const char *name) {
-    const struct ParsedUnsigned parsed = number_parse_unsigned(s, 16);
+    const kernelsnitch::ParsedUnsigned parsed = kernelsnitch::number_parse_unsigned(s, 16);
     if (!parsed.valid)
         pr_error("invalid %s: %s\n", name, s);
     return parsed.value;
 }
+
+} // namespace ghostlock

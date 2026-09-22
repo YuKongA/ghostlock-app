@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <cstdio>
 
+using namespace ghostlock::kernelsnitch;
+
 int main(void) {
     static const struct {
         size_t table_size;

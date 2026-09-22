@@ -17,6 +17,8 @@
 #define RDPRU_ECX_MPERF 0
 #define RDPRU_ECX_APERF 1
 
+namespace ghostlock {
+
 static inline size_t rdtsc_begin(void) {
 #if defined(__INTEL)
     size_t a, d;
@@ -68,3 +70,5 @@ static inline size_t rdtsc_end(void) {
 #error "Invalid TIMEUTILS_ARCH value"
 #endif
 }
+
+} // namespace ghostlock

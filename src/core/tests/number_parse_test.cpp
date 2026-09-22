@@ -12,6 +12,8 @@
 #include <cstdio>
 
 
+using namespace ghostlock::kernelsnitch;
+
 int main(void) {
     struct {
         const char *text;
