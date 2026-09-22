@@ -486,6 +486,16 @@ internal class AndroidProfileConfigController(
         fallbackTo: String?,
         path: String,
     ): Long? {
+        /* The GLK1 transport only carries `recommended_cpus`; the effective
+         * choice lives in `selected_cpus` (device pair or explicit override).
+         * Fold the selection into the recommended slots so native's
+         * apply_profile actually honours it. */
+        if (path == "execution.recommended_cpus.main" ||
+            path == "execution.recommended_cpus.consumer"
+        ) {
+            val slot = path.removePrefix("execution.recommended_cpus.")
+            profile.getLongAt("execution.selected_cpus.$slot")?.let { return it }
+        }
         val branchField = when (path) {
             "compact_waiter" -> "compact_waiter"
             "pselect_waiter_shift" -> "waiter_shift"

@@ -118,6 +118,37 @@ class ControllerOverrideTest {
     }
 
     @Test
+    fun `native document folds the selected cpu pair into recommended cpus`() = runBlocking {
+        val legacy = checkNotNull(
+            javaClass.classLoader?.getResourceAsStream("remote-main-6x-offsets.json"),
+        ).bufferedReader().use { it.readText() }
+        val root = Files.createTempDirectory("controller-cpu-pair").toFile()
+        try {
+            val store = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            )
+            store.save("remote-main-6x-offsets.json", legacy)
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = store,
+                preferences = context.getSharedPreferences("controller-cpu-pair", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val pair = CpuPair(primary = 2, consumer = 3)
+            val config = controller.load(release, pair)
+            assertTrue(config.hasProfile)
+            val document = requireNotNull(controller.nativeDocument(config))
+            val decoded = requireNotNull(NativeProfileDocument.fromBinary(document))
+            assertEquals(2L, decoded.execution.recommendedMainCpu)
+            assertEquals(3L, decoded.execution.recommendedConsumerCpu)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `reopening a session sees the general edits saved into the overrides`() = runBlocking {
         val legacy = checkNotNull(
             javaClass.classLoader?.getResourceAsStream("remote-main-6x-offsets.json"),
