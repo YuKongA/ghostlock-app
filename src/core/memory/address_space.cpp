@@ -73,7 +73,7 @@ namespace ghostlock::memory {
         }
         *this = ResolvedAddresses{};
         soc = family;
-        const auto image = target::KernelImageAddress(KIMAGE_TEXT_BASE)
+        const auto image = target::KernelAddress<target::ImageAddressDomain>(KIMAGE_TEXT_BASE)
                 .checked_add(values->off_init_cred);
         if (!image) {
             errno = ERANGE;
@@ -81,20 +81,20 @@ namespace ghostlock::memory {
         }
         init_cred_image = *image;
         if (values->kernel_phys_load) {
-            kernel_phys_load = target::PhysicalAddress(
+            kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 values->kernel_phys_load);
         } else if (soc == SocFamily::Mtk || soc == SocFamily::Google) {
             /* Tensor G4/G5 (zumapro) loads the Image at the DRAM base like MTK. */
-            kernel_phys_load = target::PhysicalAddress(
+            kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 KIMAGE_TEXT_BASE - MTK_VADDR_BASE);
         } else if (soc == SocFamily::Xring) {
-            kernel_phys_load = target::PhysicalAddress(
+            kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 XRING_KERNEL_PHYS_LOAD);
         } else if (strncmp(values->uname_r, "6.12.", 5) == 0) {
-            kernel_phys_load = target::PhysicalAddress(
+            kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 QC_GKI_6_12_PHYS_LOAD);
         } else {
-            kernel_phys_load = target::PhysicalAddress(
+            kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 P0_KERNEL_PHYS_LOAD);
         }
         return 0;
@@ -106,13 +106,13 @@ namespace ghostlock::memory {
 
     uintptr_t ResolvedAddresses::data_alias(uintptr_t image_addr) const {
         const auto result = data_alias_checked(
-            target::KernelImageAddress(image_addr));
+            target::KernelAddress<target::ImageAddressDomain>(image_addr));
         return result ? result->value() : 0;
     }
 
-    std::optional<target::DirectMapAddress>
+    std::optional<target::KernelAddress<target::DirectMapAddressDomain>>
     ResolvedAddresses::data_alias_checked(
-        target::KernelImageAddress image_address) const noexcept {
+        target::KernelAddress<target::ImageAddressDomain> image_address) const noexcept {
         const uintptr_t image = image_address.value();
         if (image < KIMAGE_TEXT_BASE) return std::nullopt;
         const uintptr_t offset = image - KIMAGE_TEXT_BASE;
@@ -121,7 +121,7 @@ namespace ghostlock::memory {
         const uintptr_t direct =
                 (physical->value() - P0_PHYS_OFFSET) | P0_PAGE_OFFSET;
         if (direct < P0_PAGE_OFFSET) return std::nullopt;
-        return target::DirectMapAddress(direct);
+        return target::KernelAddress<target::DirectMapAddressDomain>(direct);
     }
 
     const char *ResolvedAddresses::soc_name(const TargetProfile *profile) const {

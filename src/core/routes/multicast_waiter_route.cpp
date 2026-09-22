@@ -43,7 +43,7 @@ namespace {
         (void) sig;
     }
 
-    static long multicast_waiter_adjust(MulticastWaiterRouteContext *context) {
+    static long multicast_waiter_adjust(MulticastWaiterRoute *context) {
         struct sched_param sp = {.sched_priority = 0};
         int next = context->scheduler_policy == SCHED_NORMAL
                        ? SCHED_BATCH
@@ -54,7 +54,7 @@ namespace {
         return r;
     }
 
-    static int multicast_waiter_stamp(MulticastWaiterRouteContext *context,
+    static int multicast_waiter_stamp(MulticastWaiterRoute *context,
                                       uintptr_t target, uintptr_t value,
                                       uintptr_t lock) {
         size_t size = context->layout.buffer_size;
@@ -82,7 +82,7 @@ namespace {
     }
 
     static void *multicast_waiter_worker(void *arg) {
-        auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
+        auto *context = static_cast<MulticastWaiterRoute *>(arg);
         pin_to_core((size_t) context->consumer_cpu);
         sigset_t set;
         sigemptyset(&set);
@@ -120,7 +120,7 @@ namespace {
     }
 
     static void *multicast_owner_worker(void *arg) {
-        auto *context = static_cast<MulticastWaiterRouteContext *>(arg);
+        auto *context = static_cast<MulticastWaiterRoute *>(arg);
         pin_to_core((size_t) context->main_cpu);
         while (!context->waiter_has_lock2.load()) sched_yield();
         support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
@@ -133,14 +133,14 @@ namespace {
         return nullptr;
     }
 
-    static void multicast_waiter_disarm(MulticastWaiterRouteContext *context) {
+    static void multicast_waiter_disarm(MulticastWaiterRoute *context) {
         context->stop_requested.store(1);
         context->race->consumer_go.store(0);
         while (context->race->consumer_inflight.load()) sched_yield();
         context->status.kernel_disarmed = 1;
     }
 
-    static void multicast_waiter_destroy(MulticastWaiterRouteContext *context) {
+    static void multicast_waiter_destroy(MulticastWaiterRoute *context) {
         if (context->waiter_worker_started) {
             pthread_join(context->waiter_worker, nullptr);
             context->waiter_worker_started = 0;

@@ -107,15 +107,15 @@ static_assert(SLIDE_ROOT_TASK_GROUP_IMAGE ==
               KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF);
 static_assert(SLIDE_SYSCTL_BOOTID_IMAGE ==
               KIMAGE_TEXT_BASE + SLIDE_SYSCTL_BOOTID_OFF);
-static_assert(std::is_standard_layout_v<target::KernelImageAddress>);
-static_assert(std::is_trivially_copyable_v<target::KernelImageAddress>);
+static_assert(std::is_standard_layout_v<target::KernelAddress<target::ImageAddressDomain>>);
+static_assert(std::is_trivially_copyable_v<target::KernelAddress<target::ImageAddressDomain>>);
 
 int main() {
-    const target::KernelImageAddress base(KIMAGE_TEXT_BASE);
+    const target::KernelAddress<target::ImageAddressDomain> base(KIMAGE_TEXT_BASE);
     const auto target = base.checked_add(LOCK_OFF);
     assert(target && target->value() == KIMAGE_TEXT_BASE + LOCK_OFF);
 
-    const target::KernelImageAddress near_end(
+    const target::KernelAddress<target::ImageAddressDomain> near_end(
         std::numeric_limits<std::uintptr_t>::max() - 1);
     assert(!near_end.checked_add(2));
     return 0;

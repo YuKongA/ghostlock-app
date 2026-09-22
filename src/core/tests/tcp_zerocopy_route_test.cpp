@@ -46,7 +46,7 @@ int main(void) {
     const struct execution_settings *execution =
             (const struct execution_settings *) (uintptr_t) 0x1234;
 
-    TcpZerocopyRouteContext context(&race, &request, execution, 16 * 1024 * 1024);
+    TcpZerocopyRoute context(&race, &request, execution, 16 * 1024 * 1024);
     assert(context.race == &race);
     assert(context.request == &request);
     assert(context.execution == execution);
@@ -65,18 +65,18 @@ int main(void) {
     assert(context.status.kernel_disarmed == 0);
 
     /* Move-only: no copy, resources transfer with the move. */
-    static_assert(!std::is_copy_constructible_v<TcpZerocopyRouteContext>);
-    static_assert(!std::is_copy_assignable_v<TcpZerocopyRouteContext>);
-    static_assert(std::is_move_constructible_v<TcpZerocopyRouteContext>);
+    static_assert(!std::is_copy_constructible_v<TcpZerocopyRoute>);
+    static_assert(!std::is_copy_assignable_v<TcpZerocopyRoute>);
+    static_assert(std::is_move_constructible_v<TcpZerocopyRoute>);
     {
-        TcpZerocopyRouteContext source(&race, &request, execution, 8192);
+        TcpZerocopyRoute source(&race, &request, execution, 8192);
         void *mapped = nullptr;
         int fd = mmap_zero_page(&mapped, 4096);
         assert(fd >= 0);
         source.punch_fd.reset(fd);
         source.mapping = MappedRegion(mapped, 4096);
         source.punch_phase.store(3);
-        TcpZerocopyRouteContext moved(std::move(source));
+        TcpZerocopyRoute moved(std::move(source));
         assert(moved.punch_fd.get() == fd);
         assert(!source.punch_fd.valid());
         assert(moved.mapping.valid());

@@ -108,8 +108,6 @@ public:
     ghostlock::route::RouteStatus status;
 };
 
-using MulticastWaiterRouteContext = MulticastWaiterRoute;
-
 /* Process-level resident owner. */
 MulticastWaiterRoute &resident_route(void);
 

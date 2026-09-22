@@ -105,7 +105,6 @@ namespace ghostlock::route::select_stack {
     private:
         void retain_for_process_lifetime() noexcept;
     };
-    using SelectStackRouteContext = SelectStackRoute;
 } // namespace ghostlock::route::select_stack
 
 #endif

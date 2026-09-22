@@ -43,7 +43,7 @@ int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
         ErrnoRestore restore(saved_errno);
         const std::string owned = text ? text : "";
         const std::vector<char> copied(owned.begin(), owned.end());
-        const target::KernelImageAddress image(
+        const target::KernelAddress<target::ImageAddressDomain> image(
             target::address::kImageTextBase);
         if (!image.checked_add(target::payload::kLockOffset)) {
             return -1;

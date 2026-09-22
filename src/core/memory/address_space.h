@@ -19,15 +19,15 @@ namespace ghostlock::memory {
  * This is the authoritative input for image-to-direct-map translation. */
     struct ResolvedAddresses {
         SocFamily soc;
-        target::PhysicalAddress kernel_phys_load;
-        target::KernelImageAddress init_cred_image;
+        target::KernelAddress<target::PhysicalAddressDomain> kernel_phys_load;
+        target::KernelAddress<target::ImageAddressDomain> init_cred_image;
 
         int init(const ghostlock::profile::TargetProfile *profile);
         int init_for_soc(const ghostlock::profile::TargetProfile *profile, SocFamily family);
 
         uintptr_t data_alias(uintptr_t image_addr) const;
-        std::optional<target::DirectMapAddress> data_alias_checked(
-            target::KernelImageAddress image_address) const noexcept;
+        std::optional<target::KernelAddress<target::DirectMapAddressDomain>> data_alias_checked(
+            target::KernelAddress<target::ImageAddressDomain> image_address) const noexcept;
 
         [[nodiscard]] uint64_t phys_load() const {
             return kernel_phys_load.value();

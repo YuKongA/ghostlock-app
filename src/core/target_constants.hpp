@@ -70,14 +70,10 @@ namespace ghostlock::target {
     struct PhysicalAddressDomain final {
     };
 
-    using KernelImageAddress = KernelAddress<ImageAddressDomain>;
-    using DirectMapAddress = KernelAddress<DirectMapAddressDomain>;
-    using PhysicalAddress = KernelAddress<PhysicalAddressDomain>;
-
-    static_assert(std::is_standard_layout_v<KernelImageAddress>);
-    static_assert(std::is_trivially_copyable_v<KernelImageAddress>);
-    static_assert(sizeof(KernelImageAddress) == sizeof(std::uintptr_t));
-    static_assert(alignof(KernelImageAddress) == alignof(std::uintptr_t));
+    static_assert(std::is_standard_layout_v<KernelAddress<ImageAddressDomain>>);
+    static_assert(std::is_trivially_copyable_v<KernelAddress<ImageAddressDomain>>);
+    static_assert(sizeof(KernelAddress<ImageAddressDomain>) == sizeof(std::uintptr_t));
+    static_assert(alignof(KernelAddress<ImageAddressDomain>) == alignof(std::uintptr_t));
 
     static_assert(address::kImageTextBase == 0xffffffc080000000ULL);
     static_assert(address::kMtkVirtualBase == 0xffffffc000000000ULL);

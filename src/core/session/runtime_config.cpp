@@ -6,7 +6,7 @@ using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::config;
 
-static void runtime_config_init_cpus(runtime_config *config) {
+static void runtime_config_init_cpus(RuntimeConfig *config) {
     config->main_cpu = 0;
     config->consumer_cpu = 1;
 
@@ -27,7 +27,7 @@ static void runtime_config_init_cpus(runtime_config *config) {
     }
 }
 
-static int runtime_config_validate_cpus(runtime_config *config) {
+static int runtime_config_validate_cpus(RuntimeConfig *config) {
     if (config->main_cpu == config->consumer_cpu) {
         pr_warning("main and consumer cores are the same (%d)\n", config->main_cpu);
         return -1;
@@ -60,7 +60,7 @@ int RuntimeConfig::apply_profile(const TargetProfile *profile) {
     return 0;
 }
 
-static void runtime_config_init_paths(runtime_config *config) {
+static void runtime_config_init_paths(RuntimeConfig *config) {
     const char *home = getenv("GHOSTLOCK_HOME");
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";

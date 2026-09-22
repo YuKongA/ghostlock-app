@@ -26,7 +26,7 @@ int main(void) {
     const struct execution_settings *execution =
             (const struct execution_settings *) (uintptr_t) 0x1234;
 
-    SelectStackRouteContext context(&race, &request, execution, layout, nullptr);
+    SelectStackRoute context(&race, &request, execution, layout, nullptr);
     assert(context.race == &race && context.request == &request);
     assert(context.execution == execution);
     assert(context.layout.waiter_shift == 16 && context.layout.compact_waiter);
@@ -58,18 +58,18 @@ int main(void) {
     }
 
     /* Move-only: no copy, descriptors and owned sets transfer with the move. */
-    static_assert(!std::is_copy_constructible_v<SelectStackRouteContext>);
-    static_assert(!std::is_copy_assignable_v<SelectStackRouteContext>);
-    static_assert(std::is_move_constructible_v<SelectStackRouteContext>);
+    static_assert(!std::is_copy_constructible_v<SelectStackRoute>);
+    static_assert(!std::is_copy_assignable_v<SelectStackRoute>);
+    static_assert(std::is_move_constructible_v<SelectStackRoute>);
     {
-        SelectStackRouteContext source(&race, &request, execution, layout, nullptr);
+        SelectStackRoute source(&race, &request, execution, layout, nullptr);
         int fds[2];
         assert(pipe(fds) == 0);
         source.pipe_read.reset(fds[0]);
         source.pipe_write.reset(fds[1]);
         source.selected_fds_installed = 1;
         source.owned_input_set.set(9);
-        SelectStackRouteContext moved(std::move(source));
+        SelectStackRoute moved(std::move(source));
         assert(moved.pipe_read.get() == fds[0]);
         assert(!source.pipe_read.valid());
         assert(moved.pipe_write.get() == fds[1]);
@@ -84,7 +84,7 @@ int main(void) {
     /* A borrowed block descriptor (timerfd_create fallback) is not closed
    * twice: the pipe read end closes once. */
     {
-        SelectStackRouteContext borrowed_block(
+        SelectStackRoute borrowed_block(
             &race, &request, execution, layout, nullptr);
         int fds[2];
         assert(pipe(fds) == 0);
@@ -99,7 +99,7 @@ int main(void) {
 
     /* A stuck consumer retains every route descriptor for process lifetime. */
     {
-        SelectStackRouteContext stuck(&race, &request, execution, layout, nullptr);
+        SelectStackRoute stuck(&race, &request, execution, layout, nullptr);
         int fds[2];
         assert(pipe(fds) == 0);
         stuck.pipe_read.reset(fds[0]);
@@ -122,7 +122,7 @@ int main(void) {
         int saved_stdout = dup(1);
         assert(saved_stdout >= 0);
         int backups[3] = {-1, saved_stdout, -1};
-        SelectStackRouteContext restored(&race, &request, execution, layout, backups);
+        SelectStackRoute restored(&race, &request, execution, layout, backups);
         restored.destroy();
         assert(fcntl(saved_stdout, F_GETFD) != -1);
         close(saved_stdout);

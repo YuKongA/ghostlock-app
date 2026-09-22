@@ -13,7 +13,7 @@ using namespace ghostlock::race;
 using namespace ghostlock::memory;
 
 int main(void) {
-    MulticastWaiterRouteContext context;
+    MulticastWaiterRoute context;
     PiRaceContext race;
     race.main_cpu = 2;
     race.consumer_cpu = 3;
