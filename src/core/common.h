@@ -16,10 +16,14 @@
 #include "pi_race.h"
 #include "session/exploit_session.hpp"
 
+namespace ghostlock::kernel {
+
 inline constexpr unsigned PAGE_SHIFT = 12;
 inline constexpr unsigned long PAGE_SIZE = 1UL << PAGE_SHIFT;
 inline constexpr unsigned KS_PAGE_SIZE = 4096;
 inline constexpr unsigned long long KS_PAGE_MASK = 0xfffULL;
+
+} // namespace ghostlock::kernel
 
 #include <dirent.h>
 #include <cerrno>
@@ -50,6 +54,8 @@ inline constexpr unsigned long long KS_PAGE_MASK = 0xfffULL;
 
 #include "kernelsnitch/utils.h"
 
+namespace ghostlock::kernel {
+
 inline constexpr long long SKB_DATA_DELTA = -0xe80LL;
 inline constexpr unsigned long MM_STRUCT_SZ = 0x500;
 
@@ -76,6 +82,8 @@ inline constexpr unsigned TASK_COMM_LEN = 16;
 inline constexpr unsigned PSELECT_ROUTE_NFDS = 320;
 inline constexpr int PSELECT_CONSUMER_NICE = 19;
 inline constexpr unsigned PSELECT_CONSUMER_SETTLE_USEC = 250000;
+
+} // namespace ghostlock::kernel
 
 namespace ghostlock::kernel {
 
