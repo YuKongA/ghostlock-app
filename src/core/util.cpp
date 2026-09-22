@@ -216,7 +216,7 @@ namespace ghostlock::support {
     pid_t clone_leak_child(void) {
         pid_t child = (pid_t) SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0));
         if (child == 0) {
-            kernelsnitch_context_find_collisions(ks);
+            ghostlock::kernelsnitch::context_find_collisions(ks);
             exit(0);
         }
         return child;

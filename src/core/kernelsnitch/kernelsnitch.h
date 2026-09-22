@@ -246,9 +246,9 @@ static void *__mm_leak(void *arg) {
     for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
         if ((coarse_addr % (1ULL << 40)) == 0)
             if (ks->verbose) pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr, coarse_addr + (1ULL << 40));
-        size_t slab_end = kernelsnitch_scan_limit(coarse_addr, COARSE_SZ, range->end);
+        size_t slab_end = ghostlock::kernelsnitch::scan_limit(coarse_addr, COARSE_SZ, range->end);
         for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
-            size_t slab_limit = kernelsnitch_scan_limit(slab_addr, mm_slab_sz, slab_end);
+            size_t slab_limit = ghostlock::kernelsnitch::scan_limit(slab_addr, mm_slab_sz, slab_end);
             for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found;
                  mm_struct_candidate += ks->mm_struct_sz) {
                 if (mm_leak_arg->try_canonical) {
@@ -315,7 +315,9 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
  * @arg __pin_cpu: CPU the calling thread is pinned to for the search
  * @return shared KernelSnitch state
  */
-KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
+namespace ghostlock::kernelsnitch {
+
+KernelSnitchContext *context_init(size_t __mm_struct_sz,
                                                size_t __mm_slab_order,
                                                size_t __thread_cnt,
                                                size_t __collision_cnt,
@@ -574,7 +576,7 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
  */
 /* Execute collision discovery. Input/output: KernelSnitchContext; output:
  * collision set and state transition retained by the context. */
-void kernelsnitch_context_find_collisions(KernelSnitchContext *ks) {
+void context_find_collisions(KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_INIT), "wrong state\n");
     ASSERT_pr((ks->collisions >= 2), "need at least one collision\n");
     if (ks->verbose) pr_info("start finding collisions\n");
@@ -594,7 +596,7 @@ void kernelsnitch_context_find_collisions(KernelSnitchContext *ks) {
     }
 }
 
-int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks) {
+int context_has_collisions(const KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND || ks->state == KERNELSNITCH_COLLISIONS_NOT_FOUND),
               "wrong state\n");
     return ks->state == KERNELSNITCH_COLLISIONS_FOUND;
@@ -606,7 +608,7 @@ int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks) {
  */
 /* Execute address scanning using discovered collisions. Input/output:
  * KernelSnitchContext; output: 0 on a selected address, -1 otherwise. */
-int kernelsnitch_context_scan(KernelSnitchContext *ks) {
+int context_scan(KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
     if (ks->verbose) pr_info("start bruteforcing\n");
     reset_cpu_pin();
@@ -625,11 +627,11 @@ int kernelsnitch_context_scan(KernelSnitchContext *ks) {
  */
 /* Read and release are deliberately separate: result borrows the immutable
  * context, while destroy consumes all mmap-backed context storage. */
-size_t kernelsnitch_context_result(const KernelSnitchContext *ks) {
+size_t context_result(const KernelSnitchContext *ks) {
     return ks ? ks->mm_struct : (size_t) -1;
 }
 
-void kernelsnitch_context_destroy(KernelSnitchContext *ks) {
+void context_destroy(KernelSnitchContext *ks) {
     if (!ks) return;
     munmap((void *) ks->times, sizeof(size_t) * ks->total_futexes);
     ks->times = 0;
@@ -647,7 +649,7 @@ void kernelsnitch_context_destroy(KernelSnitchContext *ks) {
  * Prints the current execution state KernelSnitch is in
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_print_state(struct kernelsnitch_shared_state *ks) {
+void print_state(struct kernelsnitch_shared_state *ks) {
     pr_info("ks state: %s\n", kernelsnitch_strings[ks->state]);
 }
 
@@ -655,13 +657,15 @@ void kernelsnitch_print_state(struct kernelsnitch_shared_state *ks) {
  * Prints the found collisions
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks) {
+void print_collisions(struct kernelsnitch_shared_state *ks) {
     pr_info("collisions:\n");
     for (size_t i = 2; i < ks->collisions; ++i) {
         size_t addr = ks->futex_addrs[i];
         pr_info("  %016zx\n", addr);
     }
 }
+
+} // namespace ghostlock::kernelsnitch
 
 /* The KernelSnitchOwner block below is C++-only; the C façade is gone. */
 
@@ -702,7 +706,7 @@ namespace ghostlock {
                                                       size_t collision_cnt,
                                                       size_t verbose,
                                                       size_t pin_cpu) noexcept {
-            return KernelSnitchOwner(kernelsnitch_context_init(
+            return KernelSnitchOwner(kernelsnitch::context_init(
                 mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose,
                 pin_cpu));
         }
@@ -711,24 +715,24 @@ namespace ghostlock {
         [[nodiscard]] bool valid() const noexcept { return context_ != nullptr; }
 
         void find_collisions() const {
-            kernelsnitch_context_find_collisions(context_);
+            kernelsnitch::context_find_collisions(context_);
         }
 
         [[nodiscard]] bool has_collisions() const {
-            return kernelsnitch_context_has_collisions(context_) != 0;
+            return kernelsnitch::context_has_collisions(context_) != 0;
         }
 
         [[nodiscard]] int scan() const {
-            return kernelsnitch_context_scan(context_);
+            return kernelsnitch::context_scan(context_);
         }
 
         [[nodiscard]] size_t result() const {
-            return kernelsnitch_context_result(context_);
+            return kernelsnitch::context_result(context_);
         }
 
         void reset() noexcept {
             if (context_) {
-                kernelsnitch_context_destroy(context_);
+                kernelsnitch::context_destroy(context_);
                 context_ = nullptr;
             }
         }
