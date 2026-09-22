@@ -463,7 +463,7 @@ namespace ghostlock::support {
         }
 
         int cpu_count = (int) sysconf(_SC_NPROCESSORS_ONLN);
-        KernelSnitchOwner snitch = KernelSnitchOwner::create(
+        kernelsnitch::KernelSnitchOwner snitch = kernelsnitch::KernelSnitchOwner::create(
             g_exploit_session.profile.mm_struct_stride(MM_STRUCT_SZ),
             MM_ORDER, (size_t) cpu_count, kernelsnitch_collisions(), 0,
             (size_t) runtime_config_snapshot().main_cpu);

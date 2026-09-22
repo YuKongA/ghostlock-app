@@ -55,6 +55,8 @@ extern uint64_t g_direct_map_end;
 #define COARSE_SZ (1ULL << 30)
 #endif
 
+namespace ghostlock::kernelsnitch {
+
 enum kernelsnitch_state {
     KERNELSNITCH_NOT_INIT = 0,
     KERNELSNITCH_INIT,
@@ -315,8 +317,6 @@ static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_can
  * @arg __pin_cpu: CPU the calling thread is pinned to for the search
  * @return shared KernelSnitch state
  */
-namespace ghostlock::kernelsnitch {
-
 KernelSnitchContext *context_init(size_t __mm_struct_sz,
                                                size_t __mm_slab_order,
                                                size_t __thread_cnt,
@@ -665,13 +665,11 @@ void print_collisions(struct kernelsnitch_shared_state *ks) {
     }
 }
 
-} // namespace ghostlock::kernelsnitch
 
 /* The KernelSnitchOwner block below is C++-only; the C façade is gone. */
 
 #include <utility>
 
-namespace ghostlock {
     /* Owning RAII handle for one KernelSnitchContext. The mmap-backed shared
  * layout and the C entry points above stay unchanged; this type only makes the
  * single owner and the explicit init -> find -> scan -> result -> destroy order
@@ -744,4 +742,4 @@ namespace ghostlock {
 
         KernelSnitchContext *context_ = nullptr;
     };
-} // namespace ghostlock
+} // namespace ghostlock::kernelsnitch

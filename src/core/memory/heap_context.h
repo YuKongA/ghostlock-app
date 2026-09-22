@@ -11,7 +11,9 @@
 
 #include "support/native_resource.hpp"
 
+namespace ghostlock::kernelsnitch {
 struct kernelsnitch_shared_state;
+}
 
 namespace ghostlock {
     /* Owns the per-attempt mm-shaping child pid and memfd arrays. The vectors free
@@ -80,7 +82,7 @@ namespace ghostlock::memory {
     static_assert(std::is_trivially_destructible_v<PayloadPage>);
 
     typedef struct HeapContext {
-        struct kernelsnitch_shared_state *snitch;
+        ghostlock::kernelsnitch::kernelsnitch_shared_state *snitch;
         size_t mm_objs_per_slab;
         std::unique_ptr<unsigned char[]> skb_buffer;
         MmContextSet prepare;
