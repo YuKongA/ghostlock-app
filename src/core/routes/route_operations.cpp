@@ -257,7 +257,7 @@ int TcpZerocopyRoute::prepare() noexcept {
 /* Run the route after prepare has established exclusive resource ownership. */
 RouteStatus TcpZerocopyRoute::execute() noexcept {
     /* waiter->task carries init_task's phys alias, not the image address */
-    uintptr_t waiter_task = SLIDE_INIT_TASK;
+    uintptr_t waiter_task = ghostlock::profile::slide_init_task();
     int arm_seq = (int) execution->tcp_arm_sequence;
     int post_hold =
             (int) execution->tcp_post_receive_hold_iterations;
