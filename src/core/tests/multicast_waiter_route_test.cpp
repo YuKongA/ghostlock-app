@@ -3,6 +3,9 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+using namespace ghostlock::route;
+
+using namespace ghostlock;
 
 int main(void) {
     MulticastWaiterRouteContext context;

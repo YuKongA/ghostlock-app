@@ -14,6 +14,8 @@
 
 using namespace ghostlock;
 
+namespace ghostlock::route {
+
 /* Resident Multicast Waiter route owner (CPP13). The process-level instance
  * lives at file scope so every inlined access expands exactly like the
  * validated direct reference; the kernel5_resident_* wrappers in
@@ -247,3 +249,5 @@ void MulticastWaiterRoute::stop() noexcept {
 MulticastWaiterRoute &resident_route(void) {
     return multicast_resident_route;
 }
+
+} // namespace ghostlock::route

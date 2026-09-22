@@ -89,6 +89,8 @@
 #define SLIDE_SYSCTL_BOOTID \
   g_exploit_session.addresses.data_alias(SLIDE_SYSCTL_BOOTID_IMAGE)
 
+namespace ghostlock {
+
 struct local_sched_attr {
     uint32_t size;
     uint32_t sched_policy;
@@ -103,6 +105,8 @@ struct local_sched_attr {
 
 /* Measured direct-map end (defaults to the built-in bound). */
 extern uint64_t g_direct_map_end;
+
+} // namespace ghostlock
 
 namespace ghostlock::support {
     void read_first_line(const char *path, char *buf, size_t len);

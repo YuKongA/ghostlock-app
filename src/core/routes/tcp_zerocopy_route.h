@@ -71,8 +71,7 @@ namespace ghostlock {
         /* dirty failure: never close or unmap anything the puncher may still use */
         void retain_for_process_lifetime() noexcept;
     };
+    using TcpZerocopyRouteContext = TcpZerocopyRoute;
 } // namespace ghostlock
-
-using TcpZerocopyRouteContext = ghostlock::TcpZerocopyRoute;
 
 #endif

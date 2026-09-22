@@ -6,6 +6,7 @@
 
 #include "memory/address_space.h"
 #include "legacy_support/offsets_json.h"
+using namespace ghostlock;
 #include "profile.h"
 #include "target.h"
 

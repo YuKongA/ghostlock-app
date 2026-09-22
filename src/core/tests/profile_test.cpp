@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+using namespace ghostlock;
+
 int main(void) {
     struct kernel_offsets decoded = {
         .kernel_major = 5,
@@ -36,9 +38,9 @@ int main(void) {
     const struct execution_settings *execution =
             profile.execution();
 
-    if (!profile.supports(::RouteKind::MulticastWaiter) ||
-        profile.supports(::RouteKind::TcpZerocopy) ||
-        profile.supports(::RouteKind::SelectStack) ||
+    if (!profile.supports(ghostlock::RouteKind::MulticastWaiter) ||
+        profile.supports(ghostlock::RouteKind::TcpZerocopy) ||
+        profile.supports(ghostlock::RouteKind::SelectStack) ||
         multicast.buffer_size != 128 || multicast.waiter_offset != 32 ||
         multicast.lock_slot_count != 4 || select.waiter_shift != 16 ||
         !select.compact_waiter || !tcp.compact_waiter ||
@@ -55,13 +57,13 @@ int main(void) {
     TargetProfile explicit_select = TargetProfile::from(&decoded);
     decoded.route = kRouteAuto;
     TargetProfile unresolved = TargetProfile::from(&decoded);
-    if (!explicit_tcp.supports(::RouteKind::TcpZerocopy) ||
-        explicit_tcp.supports(::RouteKind::MulticastWaiter) ||
-        !explicit_select.supports(::RouteKind::SelectStack) ||
-        explicit_select.supports(::RouteKind::TcpZerocopy) ||
-        unresolved.supports(::RouteKind::MulticastWaiter) ||
-        unresolved.supports(::RouteKind::TcpZerocopy) ||
-        unresolved.supports(::RouteKind::SelectStack)) {
+    if (!explicit_tcp.supports(ghostlock::RouteKind::TcpZerocopy) ||
+        explicit_tcp.supports(ghostlock::RouteKind::MulticastWaiter) ||
+        !explicit_select.supports(ghostlock::RouteKind::SelectStack) ||
+        explicit_select.supports(ghostlock::RouteKind::TcpZerocopy) ||
+        unresolved.supports(ghostlock::RouteKind::MulticastWaiter) ||
+        unresolved.supports(ghostlock::RouteKind::TcpZerocopy) ||
+        unresolved.supports(ghostlock::RouteKind::SelectStack)) {
         fputs("explicit route selection test failed\n", stderr);
         return 1;
     }

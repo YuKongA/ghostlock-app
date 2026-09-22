@@ -11,6 +11,7 @@
 #include <climits>
 #include <cstdio>
 
+
 int main(void) {
     struct {
         const char *text;

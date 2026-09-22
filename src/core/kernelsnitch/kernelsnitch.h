@@ -21,7 +21,9 @@
 
 /* Measured direct-map end (never wider than the built-in bound). Owned by the
  * address-space layer; KernelSnitch only reads it to bound its scan. */
+namespace ghostlock {
 extern uint64_t g_direct_map_end;
+} // namespace ghostlock
 
 #define FUTEX_SZ (64ULL<<30)
 #define FUTEX_MMAP_SZ (1ULL<<30)

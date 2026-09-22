@@ -89,8 +89,7 @@ namespace ghostlock {
     private:
         void abort_startup() noexcept;
     };
+    using PiRaceContext = PiRace;
 } // namespace ghostlock
-
-using PiRaceContext = ghostlock::PiRace;
 
 #endif

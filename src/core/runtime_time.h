@@ -43,6 +43,8 @@ namespace ghostlock::runtime_time {
     }
 } // namespace ghostlock::runtime_time
 
+namespace ghostlock {
+
 static inline double runtime_elapsed_between_ms(const timespec *start,
                                                 const timespec *end) {
     return ghostlock::runtime_time::elapsed_ms(*start, *end);
@@ -53,5 +55,6 @@ static inline double runtime_elapsed_ms(const timespec *reference) {
     return runtime_elapsed_between_ms(reference, &now);
 }
 
+} // namespace ghostlock
 
 #endif

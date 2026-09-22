@@ -25,6 +25,8 @@
 
 using namespace ghostlock;
 
+namespace ghostlock {
+
 #define PROFILE_JSON_MAX_SIZE (1U << 20)
 
 static Result<std::string> read_profile_file(const char *path) {
@@ -797,7 +799,7 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
 
 /* Legacy/JSON lexical access for legacy_support. Thin wrappers keep the
  * bounded-cursor primitives private to this file. */
-namespace ghostlock::profile_json {
+namespace profile_json {
     void fill_entry(struct kernel_offsets *out, const char *release_buf,
                     std::string_view object) {
         fill_external_entry(out, release_buf, object);
@@ -836,4 +838,6 @@ namespace ghostlock::profile_json {
             if (!cursor.empty() && cursor.front() == ',') cursor.remove_prefix(1);
         }
     }
-} // namespace ghostlock::profile_json
+} // namespace profile_json
+
+} // namespace ghostlock

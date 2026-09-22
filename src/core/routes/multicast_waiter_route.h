@@ -24,6 +24,8 @@
  * The process-level resident lives in multicast_waiter_route.cpp and is
  * reached through resident_route(); the kernel5_resident_* wrappers in
  * route_operations.cpp forward to this class. */
+namespace ghostlock::route {
+
 class MulticastWaiterRoute final {
 public:
     MulticastWaiterRoute() noexcept = default;
@@ -110,5 +112,7 @@ using MulticastWaiterRouteContext = MulticastWaiterRoute;
 
 /* Process-level resident owner. */
 MulticastWaiterRoute &resident_route(void);
+
+} // namespace ghostlock::route
 
 #endif

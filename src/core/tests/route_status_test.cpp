@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstddef>
 
+using namespace ghostlock;
+
 int main() {
     static_assert(static_cast<int>(ROUTE_OK) == 0);
     static_assert(static_cast<int>(ROUTE_RETRYABLE) == 1);

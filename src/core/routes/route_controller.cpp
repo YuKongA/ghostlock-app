@@ -29,14 +29,14 @@ namespace ghostlock::route {
         }
         switch (selected) {
             case RouteKind::MulticastWaiter:
-                if (!profile->supports(::RouteKind::MulticastWaiter))
+                if (!profile->supports(ghostlock::RouteKind::MulticastWaiter))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED
                 };
                 return do_kernel5_fake_lock_route(request);
             case RouteKind::TcpZerocopy: {
-                if (!profile->supports(::RouteKind::TcpZerocopy))
+                if (!profile->supports(ghostlock::RouteKind::TcpZerocopy))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED
@@ -54,7 +54,7 @@ namespace ghostlock::route {
                 return do_pselect_fake_lock_route(request);
             }
             case RouteKind::SelectStack:
-                if (!profile->supports(::RouteKind::SelectStack))
+                if (!profile->supports(ghostlock::RouteKind::SelectStack))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED

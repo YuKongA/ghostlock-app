@@ -1,11 +1,12 @@
 #include "target.h"
 
+using namespace ghostlock;
+
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <type_traits>
 
-using namespace ghostlock;
 
 
 static_assert(KIMAGE_TEXT_BASE == 0xffffffc080000000ULL);

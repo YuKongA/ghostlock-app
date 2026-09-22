@@ -7,6 +7,8 @@
 
 #include "profile.h"
 
+namespace ghostlock {
+
 /* Decode one resolved JSON profile. The entrypoints own format selection and
  * decoding; this stays for assets/imports and host tests. */
 int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
@@ -15,12 +17,14 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
 /* JSON lexical helpers shared with legacy_support. `select_entry` finds the
  * entry whose "release" equals `release` in a top-level array (or accepts a
  * single object as-is); `fill_entry` fills *out from one entry object. */
-namespace ghostlock::profile_json {
+namespace profile_json {
     int select_entry(std::string_view document, const char *release,
                      std::string_view *entry_out);
 
     void fill_entry(struct kernel_offsets *out, const char *release_buf,
                     std::string_view object);
-} // namespace ghostlock::profile_json
+} // namespace profile_json
+
+} // namespace ghostlock
 
 #endif

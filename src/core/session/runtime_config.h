@@ -6,6 +6,8 @@
 
 #include <string>
 
+namespace ghostlock {
+
 /* One runtime snapshot captured once from the environment. Paths own their
  * storage; callers convert to c_str() only at syscall/exec boundaries so no
  * temporary string pointer can outlive the snapshot. */
@@ -37,5 +39,7 @@ using runtime_config = RuntimeConfig;
 /* The process snapshot is owned by ExploitSession. Callers reach it through
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
 RuntimeConfig &runtime_config_snapshot() noexcept;
+
+} // namespace ghostlock
 
 #endif

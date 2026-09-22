@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+using namespace ghostlock;
+
 int main(void) {
     if (!payload_builder_fixed_vector_test()) {
         fputs("payload builder fixed-vector comparison failed\n", stderr);

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstdio>
 
+using namespace ghostlock;
+
 int main(void) {
     assert(ghostlock::kernelsnitch::scan_limit(100, 20, 200) == 120);
     assert(ghostlock::kernelsnitch::scan_limit(100, 200, 150) == 150);
