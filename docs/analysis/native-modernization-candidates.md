@@ -22,6 +22,16 @@
 
 ## 批次 1 —— 低风险（纯局部，不改内核交互与输出字节）
 
+**进度（已落地并提交）**：`util.cpp`（日志缓冲、cred 数组、`open_memfd`）、
+`handoff_probe.cpp`（`UniqueFd` 行读取 + `string_view`）、`victim_process.cpp`
+（`FILE*`→`UniqueFd`、`std::array`）、`route_operations.cpp`（`sendbuf`/`zc`→
+`std::array`）、`main.cpp` / `legacy_entrypoint_starter.cpp`（`release_buf`/`path`
+→`std::array`）；`src/Makefile` 给 `handoff_probe_test` 补 `native_resource.cpp`。
+
+**刻意未动**：`exploit_ops.cpp` 的 `iomem_map_span`（CPP17 已否决）、
+`process_has_seccomp` / `vr.ko` 检测（W3 判定相关，保留 `FILE*`+`fgets`），
+以及所有内核布局写入（`put32/put64`、VLA `b[size]`/`stamp[stamp_size]`）。
+
 1. **`FILE*` + `fgets`/`getline` → RAII 读取**
    - `session/handoff_probe.cpp`：`fopen("/proc/modules")`、ksu log 扫描（`FILE*` + `fgets` + `char line[256]`）。
    - `exploit_ops.cpp` `apply_iomem_cache`：`fopen` + `getline` + 手动 `free(line)`。

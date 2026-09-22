@@ -26,12 +26,12 @@ int start_legacy_entrypoint(struct kernel_offsets *out, char *release_buf,
     if (uname(&uts) < 0) return -1;
     pr_info("kernel: %s\n", uts.release);
 
-    char path[320];
-    snprintf(path, sizeof(path), "%s/offsets.json", home_dir());
-    if (convert_legacy_offsets(path, uts.release, out, release_buf,
+    std::array<char, 320> path{};
+    snprintf(path.data(), path.size(), "%s/offsets.json", home_dir());
+    if (convert_legacy_offsets(path.data(), uts.release, out, release_buf,
                 release_buf_cap) != 0) {
         pr_error("no matching offsets.json entry for %s at %s\n", uts.release,
-                path);
+                path.data());
         return -1;
     }
     pr_success("legacy offsets loaded: %s\n", out->uname_r);

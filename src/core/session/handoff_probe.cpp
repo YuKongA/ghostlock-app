@@ -67,9 +67,10 @@ bool kernelsu_module_visible() noexcept {
 }
 
 bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
-    char resolved[kKsuLogPathMax];
-    snprintf(resolved, sizeof(resolved), "%.*s", (int) path.size(), path.data());
-    const bool opened = for_each_line(resolved, [&](std::string_view line) {
+    std::array<char, kKsuLogPathMax> resolved{};
+    snprintf(resolved.data(), resolved.size(), "%.*s", (int) path.size(),
+            path.data());
+    const bool opened = for_each_line(resolved.data(), [&](std::string_view line) {
         if (line.find("[+] KernelSU module loaded") != std::string_view::npos ||
                 line.find("[+] KernelSU already loaded") !=
                         std::string_view::npos) {

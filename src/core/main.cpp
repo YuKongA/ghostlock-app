@@ -14,6 +14,7 @@
 #include "profile_entry.h"
 #include "session/exploit_stages.hpp"
 
+#include <array>
 #include <string.h>
 
 using namespace ghostlock;
@@ -24,8 +25,7 @@ using namespace ghostlock;
  * one decoded transport struct; the stage sequence only owns the session. */
 int main(int argc, char **argv) {
     struct kernel_offsets decoded = {};
-    char release_buf[256] = {0};
-
+    std::array<char, 256> release_buf{};
     bool app_call = false;
     const char *prebuilt_path = nullptr;
     const char *dump_dir = nullptr;
@@ -51,13 +51,13 @@ int main(int argc, char **argv) {
     int loaded;
     if (prebuilt_path) {
         loaded = profile_entry::read_glk1_file(
-                prebuilt_path, &decoded, release_buf, sizeof(release_buf));
+                prebuilt_path, &decoded, release_buf.data(), release_buf.size());
     } else if (app_call) {
         loaded = profile_entry::read_glk1_stdin(
-                &decoded, release_buf, sizeof(release_buf));
+                &decoded, release_buf.data(), release_buf.size());
     } else {
         loaded = legacy_support::start_legacy_entrypoint(
-                &decoded, release_buf, sizeof(release_buf));
+                &decoded, release_buf.data(), release_buf.size());
     }
     if (loaded != 0) {
         pr_error("cannot load profile\n");

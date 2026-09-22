@@ -253,9 +253,9 @@ pid_t clone_leak_child(void) {
 /* Decoupling plan: open the child-related memfd allocation. Input: PID; output:
  * owned fd/error. Future: heap_context_open_memfd(context, child). */
 int open_memfd(pid_t child) {
-  char path[64];
-  snprintf(path, sizeof(path), "/proc/%d/mem", child);
-  return SYSCHK(open(path, O_RDONLY));
+  std::array<char, 64> path{};
+  snprintf(path.data(), path.size(), "/proc/%d/mem", child);
+  return SYSCHK(open(path.data(), O_RDONLY));
 }
 
 /* Decoupling plan: terminate and reap a heap helper. Input: owned PID; output:
