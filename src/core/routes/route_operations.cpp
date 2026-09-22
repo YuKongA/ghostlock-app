@@ -24,6 +24,7 @@ using namespace ghostlock::profile;
 using namespace ghostlock::session;
 using namespace ghostlock::memory;
 using namespace ghostlock::support;
+using namespace ghostlock::runtime_time;
 
 namespace ghostlock::route {
     static double fops_elapsed_ms(struct timespec *ref) {

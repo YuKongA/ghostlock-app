@@ -41,20 +41,16 @@ namespace ghostlock::runtime_time {
                                          timespec deadline) noexcept {
         return to_duration(now) >= to_duration(deadline);
     }
+    static inline double runtime_elapsed_between_ms(const timespec *start,
+                                                    const timespec *end) {
+        return elapsed_ms(*start, *end);
+    }
+
+    static inline double runtime_elapsed_ms(const timespec *reference) {
+        const timespec now = monotonic_now();
+        return runtime_elapsed_between_ms(reference, &now);
+    }
+
 } // namespace ghostlock::runtime_time
-
-namespace ghostlock {
-
-static inline double runtime_elapsed_between_ms(const timespec *start,
-                                                const timespec *end) {
-    return ghostlock::runtime_time::elapsed_ms(*start, *end);
-}
-
-static inline double runtime_elapsed_ms(const timespec *reference) {
-    const timespec now = ghostlock::runtime_time::monotonic_now();
-    return runtime_elapsed_between_ms(reference, &now);
-}
-
-} // namespace ghostlock
 
 #endif

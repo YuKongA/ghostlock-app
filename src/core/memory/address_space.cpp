@@ -9,9 +9,9 @@
 /* Measured direct-map end. Defaults to the built-in bound and can only be
  * narrowed by a rooted /proc/iomem dump (apply_iomem_cache). KernelSnitch
  * reads it to bound its scan; it is never an authority wider than target.h. */
-namespace ghostlock {
+namespace ghostlock::kernel {
 uint64_t g_direct_map_end = DIRECT_MAP_END;
-} // namespace ghostlock
+} // namespace ghostlock::kernel
 
 namespace ghostlock::memory {
     using namespace ghostlock::profile;

@@ -15,14 +15,13 @@
 #include "session/exploit_stages.hpp"
 
 #include <array>
-#include <cstring>
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::session;
 
 int main(int argc, char **argv) {
-    struct kernel_offsets decoded = {};
+    kernel_offsets decoded = {};
     std::array<char, 256> release_buf{};
     bool app_call = false;
     const char *prebuilt_path = nullptr;
@@ -47,7 +46,7 @@ int main(int argc, char **argv) {
     }
 
     int loaded;
-    if (prebuilt_path) {
+    if (prebuilt_path != nullptr) {
         loaded = profile_entry::read_glk1_file(
             prebuilt_path, &decoded, release_buf.data(), release_buf.size());
     } else if (app_call) {

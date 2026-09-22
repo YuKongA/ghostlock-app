@@ -77,7 +77,7 @@ inline constexpr unsigned PSELECT_ROUTE_NFDS = 320;
 inline constexpr int PSELECT_CONSUMER_NICE = 19;
 inline constexpr unsigned PSELECT_CONSUMER_SETTLE_USEC = 250000;
 
-namespace ghostlock {
+namespace ghostlock::kernel {
 
 struct local_sched_attr {
     uint32_t size;
@@ -94,7 +94,7 @@ struct local_sched_attr {
 /* Measured direct-map end (defaults to the built-in bound). */
 extern uint64_t g_direct_map_end;
 
-} // namespace ghostlock
+} // namespace ghostlock::kernel
 
 namespace ghostlock::profile {
 

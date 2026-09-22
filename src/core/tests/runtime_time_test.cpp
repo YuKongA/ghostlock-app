@@ -3,6 +3,7 @@
 #include <cassert>
 
 using namespace ghostlock;
+using namespace ghostlock::runtime_time;
 
 int main() {
     constexpr timespec unnormalized{.tv_sec = 3, .tv_nsec = -250000000};
