@@ -20,6 +20,7 @@ using namespace ghostlock;
 using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::legacy;
+using namespace ghostlock::kernel;
 
 namespace {
     int g_failures = 0;

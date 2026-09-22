@@ -1,6 +1,7 @@
 #include "target.h"
 
 using namespace ghostlock;
+using namespace ghostlock::kernel;
 
 #include <cassert>
 #include <cstdint>

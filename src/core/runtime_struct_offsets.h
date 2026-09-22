@@ -20,49 +20,49 @@ inline uint32_t symbol_u32(T kernel_offsets::*field, uint32_t fallback) {
 
 template <typename T>
 inline uint64_t symbol_image(T kernel_offsets::*field, uint64_t fallback) {
-    return KIMAGE_TEXT_BASE +
+    return ghostlock::kernel::KIMAGE_TEXT_BASE +
            static_cast<uint64_t>(symbol_u32(field, static_cast<uint32_t>(fallback)));
 }
 
 inline uintptr_t init_task() {
-    return symbol_image(&kernel_offsets::off_init_task, INIT_TASK_OFF);
+    return symbol_image(&kernel_offsets::off_init_task, ghostlock::kernel::INIT_TASK_OFF);
 }
 inline uintptr_t init_cred() {
-    return symbol_image(&kernel_offsets::off_init_cred, INIT_CRED_OFF);
+    return symbol_image(&kernel_offsets::off_init_cred, ghostlock::kernel::INIT_CRED_OFF);
 }
 inline uintptr_t empty_zero_page() {
     return symbol_image(&kernel_offsets::off_empty_zero_page, 0);
 }
 inline uintptr_t root_task_group() {
-    return symbol_image(&kernel_offsets::off_root_task_group, ROOT_TASK_GROUP_OFF);
+    return symbol_image(&kernel_offsets::off_root_task_group, ghostlock::kernel::ROOT_TASK_GROUP_OFF);
 }
 inline uintptr_t selinux_enforcing() {
-    return symbol_image(&kernel_offsets::off_selinux_enforcing, SELINUX_ENFORCING_OFF);
+    return symbol_image(&kernel_offsets::off_selinux_enforcing, ghostlock::kernel::SELINUX_ENFORCING_OFF);
 }
 inline uintptr_t selinux_blob_sizes() {
-    return symbol_image(&kernel_offsets::off_selinux_blob_sizes, SELINUX_BLOB_SIZES_OFF);
+    return symbol_image(&kernel_offsets::off_selinux_blob_sizes, ghostlock::kernel::SELINUX_BLOB_SIZES_OFF);
 }
 inline uintptr_t security_hook_heads() {
-    return symbol_image(&kernel_offsets::off_security_hook_heads, SECURITY_HOOK_HEADS_OFF);
+    return symbol_image(&kernel_offsets::off_security_hook_heads, ghostlock::kernel::SECURITY_HOOK_HEADS_OFF);
 }
 
 inline uintptr_t slide_nfulnl_logger_image() {
-    return symbol_image(&kernel_offsets::off_slide_nfulnl_logger, SLIDE_NFULNL_LOGGER_OFF);
+    return symbol_image(&kernel_offsets::off_slide_nfulnl_logger, ghostlock::kernel::SLIDE_NFULNL_LOGGER_OFF);
 }
 inline uintptr_t slide_loggers_0_1_image() {
-    return symbol_image(&kernel_offsets::off_slide_loggers_0_1, SLIDE_LOGGERS_0_1_OFF);
+    return symbol_image(&kernel_offsets::off_slide_loggers_0_1, ghostlock::kernel::SLIDE_LOGGERS_0_1_OFF);
 }
 inline uintptr_t slide_random_boot_id_data_image() {
-    return symbol_image(&kernel_offsets::off_slide_boot_id, SLIDE_RANDOM_BOOT_ID_DATA_OFF);
+    return symbol_image(&kernel_offsets::off_slide_boot_id, ghostlock::kernel::SLIDE_RANDOM_BOOT_ID_DATA_OFF);
 }
 inline uintptr_t slide_init_task_image() {
-    return symbol_image(&kernel_offsets::off_init_task, INIT_TASK_OFF);
+    return symbol_image(&kernel_offsets::off_init_task, ghostlock::kernel::INIT_TASK_OFF);
 }
 inline uintptr_t slide_root_task_group_image() {
-    return symbol_image(&kernel_offsets::off_root_task_group, ROOT_TASK_GROUP_OFF);
+    return symbol_image(&kernel_offsets::off_root_task_group, ghostlock::kernel::ROOT_TASK_GROUP_OFF);
 }
 inline uintptr_t slide_sysctl_bootid_image() {
-    return symbol_image(&kernel_offsets::off_slide_boot_id, SLIDE_SYSCTL_BOOTID_OFF);
+    return symbol_image(&kernel_offsets::off_slide_boot_id, ghostlock::kernel::SLIDE_SYSCTL_BOOTID_OFF);
 }
 
 inline uint32_t fake_task_prio_off() {

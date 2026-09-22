@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "futex_hash.h"
 #include "scan_bounds.h"
+#include "target.h"
 
 #include <linux/futex.h>
 #include <sys/syscall.h>
@@ -39,14 +40,8 @@ extern uint64_t g_direct_map_end;
 #elif defined(__ARM)
 #define VA_BITS 39
 #if VA_BITS==39
-#ifndef KERNELSNITCH_IDENTITY_START
-#define KERNELSNITCH_IDENTITY_START 0xffffff8000000000ULL
-#endif
-#ifndef KERNELSNITCH_IDENTITY_END
-#define KERNELSNITCH_IDENTITY_END (KERNELSNITCH_IDENTITY_START + (64ULL<<30))
-#endif
-#define IDENTITY_START KERNELSNITCH_IDENTITY_START
-#define IDENTITY_END   KERNELSNITCH_IDENTITY_END
+#define IDENTITY_START (::ghostlock::kernel::KERNELSNITCH_IDENTITY_START)
+#define IDENTITY_END   (::ghostlock::kernel::KERNELSNITCH_IDENTITY_END)
 // #define IDENTITY_END   0xffffffc000000000ULL
 #elif VA_BITS==48
 #define IDENTITY_START 0xffff000000000000ULL

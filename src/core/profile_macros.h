@@ -24,8 +24,5 @@
 #ifndef VR_SYSCALL_TP_FLAG
 #define VR_SYSCALL_TP_FLAG     0x400ULL
 #endif
-#ifndef TASK_THREAD_INFO_FLAGS_OFF
-#define TASK_THREAD_INFO_FLAGS_OFF 0x00
-#endif
 
 #endif
