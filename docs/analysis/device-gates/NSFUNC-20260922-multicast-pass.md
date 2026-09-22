@@ -37,6 +37,15 @@
 
 结论：门禁必须在 **KernelSU 未加载的干净冷启动**下进行；清理冷启动后本页证据 PASS。
 
+## 后续加固（`78a4a2a`）
+
+针对"KernelSU 已加载时再跑会崩"，`run_setup_stage()` 现在在 W1 前检测
+`/proc/modules` 里的 `kernelsu`，命中则打印
+`KernelSU already loaded; skipping exploit (cold boot for a clean run)` 并返回
+`Done`；`main()` 补齐对 setup `Done` 的处理（此前只处理 `Failed`，导致 guard 的
+`Done` 仍继续跑 W1）。真机验证：已加载时 exit=0、无 panic、`uptime` 连续；冷启动
+仍走完整链路。
+
 ## 结论
 
 命名空间收拢（`ghostlock::profile/config/session/route/memory/attack/kernel/support/legacy`
