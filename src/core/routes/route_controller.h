@@ -13,7 +13,7 @@ namespace ghostlock::route {
     };
 
     typedef struct RouteController {
-        PiRaceContext *race;
+        ghostlock::race::PiRaceContext *race;
         const ghostlock::profile::TargetProfile *profile;
         RouteKind selected;
         /* Kept as int: bool fields shrink this struct and measurably move the
@@ -22,7 +22,7 @@ namespace ghostlock::route {
         int allow_tcp_select_fallback;
         int fallback_used;
 
-        void init(PiRaceContext *race, const ghostlock::profile::TargetProfile *profile,
+        void init(ghostlock::race::PiRaceContext *race, const ghostlock::profile::TargetProfile *profile,
                   RouteKind selected);
         RouteStatus execute(const WriteRequest *request);
     } RouteController;

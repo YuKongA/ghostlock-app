@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace ghostlock {
+namespace ghostlock::race {
     /* Owns one PI race attempt: the two PI futexes the waiter walks, the three
      * worker threads and the route outcome. The atomics stay public because the
      * route operations read and write them from their hot loops; this class owns
@@ -90,6 +90,6 @@ namespace ghostlock {
         void abort_startup() noexcept;
     };
     using PiRaceContext = PiRace;
-} // namespace ghostlock
+} // namespace ghostlock::race
 
 #endif

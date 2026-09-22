@@ -13,6 +13,7 @@
 using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::route::select_stack;
+using namespace ghostlock::race;
 
 
 int main(void) {

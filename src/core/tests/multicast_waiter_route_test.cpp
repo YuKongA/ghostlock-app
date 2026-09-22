@@ -8,6 +8,7 @@ using namespace ghostlock::route;
 using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::route::multicast_waiter;
+using namespace ghostlock::race;
 
 int main(void) {
     MulticastWaiterRouteContext context;

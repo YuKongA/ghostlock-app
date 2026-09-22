@@ -21,7 +21,7 @@ namespace ghostlock::route::tcp_zerocopy {
  * the still-running puncher never sees a recycled descriptor. */
     class TcpZerocopyRoute final {
     public:
-        TcpZerocopyRoute(PiRace *race, const WriteRequest *request,
+        TcpZerocopyRoute(ghostlock::race::PiRace *race, const WriteRequest *request,
                          const ghostlock::profile::execution_settings *execution,
                          size_t mapping_length) noexcept;
 
@@ -50,7 +50,7 @@ namespace ghostlock::route::tcp_zerocopy {
 
         [[nodiscard]] int fail(int step, int error_number) noexcept;
 
-        PiRace *race = nullptr;
+        ghostlock::race::PiRace *race = nullptr;
         const WriteRequest *request = nullptr;
         const struct ghostlock::profile::execution_settings *execution = nullptr;
         ghostlock::support::UniqueFd client_fd;

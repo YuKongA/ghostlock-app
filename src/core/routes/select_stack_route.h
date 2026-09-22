@@ -41,7 +41,7 @@ namespace ghostlock::route::select_stack {
  * destructor close a descriptor a stuck consumer may still walk. */
     class SelectStackRoute final {
     public:
-        SelectStackRoute(PiRace *race, const WriteRequest *request,
+        SelectStackRoute(ghostlock::race::PiRace *race, const WriteRequest *request,
                          const ghostlock::profile::execution_settings *execution,
                          ghostlock::profile::SelectStackLayout layout,
                          const int stdio_backup[3]) noexcept;
@@ -78,7 +78,7 @@ namespace ghostlock::route::select_stack {
             return block_borrows_pipe ? pipe_read.get() : block.get();
         }
 
-        PiRace *race = nullptr;
+        ghostlock::race::PiRace *race = nullptr;
         const WriteRequest *request = nullptr;
         const struct ghostlock::profile::execution_settings *execution = nullptr;
         ghostlock::profile::SelectStackLayout layout{};

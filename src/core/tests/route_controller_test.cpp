@@ -5,6 +5,7 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::race;
 
 static RouteStatus tcp_result;
 static int tcp_calls;

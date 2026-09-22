@@ -38,7 +38,7 @@ public:
 
     /* Host-safe: the fixed-vector test constructs a context and calls init()
    * without linking the Android-only implementation unit. */
-    void init(PiRaceContext *race_value, const WriteRequest *request_value,
+    void init(ghostlock::race::PiRaceContext *race_value, const WriteRequest *request_value,
               const struct ghostlock::profile::execution_settings *execution_value,
               ghostlock::profile::MulticastWaiterLayout layout_value, int resident_value) noexcept {
         race = race_value;
@@ -89,7 +89,7 @@ public:
 
     /* Fields stay public: the workers read and write them from their hot loops,
    * preserving the pre-class access shape and field order. */
-    PiRaceContext *race;
+    ghostlock::race::PiRaceContext *race;
     const WriteRequest *request;
     const struct ghostlock::profile::execution_settings *execution;
     ghostlock::profile::MulticastWaiterLayout layout;
