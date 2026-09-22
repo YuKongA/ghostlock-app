@@ -186,6 +186,11 @@ static inline int target_profile_is_loaded(const TargetProfile *profile) {
   return target_profile_values(profile) != nullptr;
 }
 
+static inline const char *target_profile_release(const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return (v && v->uname_r) ? v->uname_r : "";
+}
+
 static inline const struct execution_settings *
 target_profile_execution(const TargetProfile *profile) {
   const struct kernel_offsets *values = target_profile_values(profile);

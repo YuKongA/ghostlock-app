@@ -10,32 +10,9 @@
 #include "common.h"
 #include "runtime_struct_offsets.h"
 
-/* Override target.h _OFF macros with the resolved runtime profile. */
-#undef SELINUX_ENFORCING_OFF
-#undef INIT_CRED_OFF
-#undef INIT_TASK_OFF
-#undef ROOT_TASK_GROUP_OFF
-#undef SELINUX_BLOB_SIZES_OFF
-#undef SECURITY_HOOK_HEADS_OFF
-#undef SLIDE_NFULNL_LOGGER_OFF
-#undef SLIDE_LOGGERS_0_1_OFF
-#undef SLIDE_RANDOM_BOOT_ID_DATA_OFF
-#undef SLIDE_SYSCTL_BOOTID_OFF
-
-#define PROFILE_VALUES target_profile_values(&g_exploit_session.profile)
-#define SELINUX_ENFORCING_OFF         PROFILE_VALUES->off_selinux_enforcing
-#define INIT_CRED_OFF                 PROFILE_VALUES->off_init_cred
-#define INIT_TASK_OFF                 PROFILE_VALUES->off_init_task
-#define ROOT_TASK_GROUP_OFF           PROFILE_VALUES->off_root_task_group
-#define SELINUX_BLOB_SIZES_OFF        PROFILE_VALUES->off_selinux_blob_sizes
-#define SECURITY_HOOK_HEADS_OFF       PROFILE_VALUES->off_security_hook_heads
-#define SLIDE_NFULNL_LOGGER_OFF       PROFILE_VALUES->off_slide_nfulnl_logger
-#define SLIDE_LOGGERS_0_1_OFF         PROFILE_VALUES->off_slide_loggers_0_1
-#define SLIDE_RANDOM_BOOT_ID_DATA_OFF PROFILE_VALUES->off_slide_boot_id
-#define SLIDE_SYSCTL_BOOTID_OFF       PROFILE_VALUES->off_slide_boot_id
-
-/* Override struct field offsets (task_struct, etc.) with per-device values */
-#include "runtime_struct_offsets.h"
+/* runtime_struct_offsets.h resolves every symbol/task offset from the loaded
+ * profile and falls back to the compile-time target.h defaults. No macro here
+ * re-reads the profile; consumers use the target_profile_* accessors. */
 
 /* VR.ko anti-root fallback defines */
 #ifndef VR_TAG_A_OFF
