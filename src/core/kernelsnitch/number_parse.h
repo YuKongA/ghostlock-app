@@ -24,7 +24,7 @@ struct ParsedUnsigned {
  * case (macOS does, glibc/bionic do not), so both are accepted when nothing
  * was consumed. */
 static inline struct ParsedUnsigned number_parse_unsigned(const char *text,
-        int base) {
+                                                          int base) {
     char *end = nullptr;
     errno = 0;
     const unsigned long value = strtoul(text, &end, base);

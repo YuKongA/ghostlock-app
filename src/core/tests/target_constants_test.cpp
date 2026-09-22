@@ -110,12 +110,12 @@ static_assert(std::is_standard_layout_v<target::KernelImageAddress>);
 static_assert(std::is_trivially_copyable_v<target::KernelImageAddress>);
 
 int main() {
-  const target::KernelImageAddress base(KIMAGE_TEXT_BASE);
-  const auto target = base.checked_add(LOCK_OFF);
-  assert(target && target->value() == KIMAGE_TEXT_BASE + LOCK_OFF);
+    const target::KernelImageAddress base(KIMAGE_TEXT_BASE);
+    const auto target = base.checked_add(LOCK_OFF);
+    assert(target && target->value() == KIMAGE_TEXT_BASE + LOCK_OFF);
 
-  const target::KernelImageAddress near_end(
-      std::numeric_limits<std::uintptr_t>::max() - 1);
-  assert(!near_end.checked_add(2));
-  return 0;
+    const target::KernelImageAddress near_end(
+        std::numeric_limits<std::uintptr_t>::max() - 1);
+    assert(!near_end.checked_add(2));
+    return 0;
 }

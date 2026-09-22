@@ -31,7 +31,13 @@ namespace {
     };
 } // namespace
 
-extern "C" __attribute__((used, visibility("default")))
+extern "C" __attribute__ ((used
+,
+visibility (
+"default"
+)
+)
+)
 int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
     try {
         ErrnoRestore restore(saved_errno);

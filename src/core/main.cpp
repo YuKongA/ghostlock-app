@@ -19,10 +19,6 @@
 
 using namespace ghostlock;
 
-/* Decoupling plan: native executable adapter and W1/W2/W3 orchestration.
- * Entry split: no argument -> legacy offsets.json; --ghostlock-app-call ->
- * GLK1 on stdin; --load-prebuilt-profile <bin> -> GLK1 file. All three produce
- * one decoded transport struct; the stage sequence only owns the session. */
 int main(int argc, char **argv) {
     struct kernel_offsets decoded = {};
     std::array<char, 256> release_buf{};
@@ -33,7 +29,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--ghostlock-app-call") == 0) {
             app_call = true;
         } else if (strcmp(argv[i], "--load-prebuilt-profile") == 0 &&
-                i + 1 < argc) {
+                   i + 1 < argc) {
             prebuilt_path = argv[++i];
         } else if (strcmp(argv[i], "--dump-kernel-log") == 0 && i + 1 < argc) {
             dump_dir = argv[++i];
@@ -51,13 +47,13 @@ int main(int argc, char **argv) {
     int loaded;
     if (prebuilt_path) {
         loaded = profile_entry::read_glk1_file(
-                prebuilt_path, &decoded, release_buf.data(), release_buf.size());
+            prebuilt_path, &decoded, release_buf.data(), release_buf.size());
     } else if (app_call) {
         loaded = profile_entry::read_glk1_stdin(
-                &decoded, release_buf.data(), release_buf.size());
+            &decoded, release_buf.data(), release_buf.size());
     } else {
         loaded = legacy_support::start_legacy_entrypoint(
-                &decoded, release_buf.data(), release_buf.size());
+            &decoded, release_buf.data(), release_buf.size());
     }
     if (loaded != 0) {
         pr_error("cannot load profile\n");
@@ -66,7 +62,7 @@ int main(int argc, char **argv) {
 
     ExploitSession &session = g_exploit_session;
     if (stages::run_setup_stage(decoded, dump_dir) ==
-            stages::StageResult::Failed)
+        stages::StageResult::Failed)
         return 1;
 
     switch (stages::run_w1_stage(session)) {
@@ -83,5 +79,6 @@ int main(int argc, char **argv) {
         return 1;
     }
     return stages::run_handoff_stage(session, chain) == stages::StageResult::Failed
-            ? 1 : 0;
+               ? 1
+               : 0;
 }

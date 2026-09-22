@@ -105,86 +105,82 @@ struct local_sched_attr {
 extern uint64_t g_direct_map_end;
 
 namespace ghostlock::support {
+    void read_first_line(const char *path, char *buf, size_t len);
 
-void read_first_line(const char *path, char *buf, size_t len);
+    void log_startup_context(void);
 
-void log_startup_context(void);
+    void log_sync(void);
 
-void log_sync(void);
+    void disable_rseq_for_thread(void);
 
-void disable_rseq_for_thread(void);
+    void init_p0_profile(void);
 
-void init_p0_profile(void);
-
-long futex_op(
+    long futex_op(
         uint32_t *uaddr, int op, uint32_t val,
         const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);
 
-long sched_setattr_tid(int tid, int nice_value);
+    long sched_setattr_tid(int tid, int nice_value);
 
-void put64(unsigned char *p, size_t off, uint64_t value);
+    void put64(unsigned char *p, size_t off, uint64_t value);
 
-void put32(unsigned char *p, size_t off, uint32_t value);
+    void put32(unsigned char *p, size_t off, uint32_t value);
 
-pid_t clone_child(void);
+    pid_t clone_child(void);
 
-pid_t clone_leak_child(void);
+    pid_t clone_leak_child(void);
 
-int open_memfd(pid_t child);
+    int open_memfd(pid_t child);
 
-void kill_child(pid_t child);
+    void kill_child(pid_t child);
 
-void close_reclaim_sockets(void);
+    void close_reclaim_sockets(void);
 
-int quarantine_reclaim_sockets(void);
+    int quarantine_reclaim_sockets(void);
 
-void release_quarantined_reclaim_sockets(void);
+    void release_quarantined_reclaim_sockets(void);
 
-int stash_prebuilt_page(void);
+    int stash_prebuilt_page(void);
 
-int activate_prebuilt_page(void);
+    int activate_prebuilt_page(void);
 
-void discard_prebuilt_page(void);
+    void discard_prebuilt_page(void);
 
-void cleanup_page_prepare_state(void);
+    void cleanup_page_prepare_state(void);
 
-int clone_memfd(void);
+    int clone_memfd(void);
 
-void prepare_ctxs(void);
+    void prepare_ctxs(void);
 
-int prepare_skb_payload(uintptr_t base, const WriteRequest *request);
+    int prepare_skb_payload(uintptr_t base, const WriteRequest *request);
 
-uintptr_t prepare_kernel_page(const WriteRequest *request);
+    uintptr_t prepare_kernel_page(const WriteRequest *request);
 
-uintptr_t prepare_good_kernel_page(const WriteRequest *request);
+    uintptr_t prepare_good_kernel_page(const WriteRequest *request);
 
-int tcp_route_selected(void);
+    int tcp_route_selected(void);
 
-int kernel5_route_selected(void);
-
-}  // namespace ghostlock::support
+    int kernel5_route_selected(void);
+} // namespace ghostlock::support
 
 namespace ghostlock::route {
+    void fdset_put_word(fd_set *set, int word, uint64_t value);
 
-void fdset_put_word(fd_set *set, int word, uint64_t value);
+    uint64_t fdset_get_word(const fd_set *set, int word);
 
-uint64_t fdset_get_word(const fd_set *set, int word);
+    void reserve_standard_io(void);
 
-void reserve_standard_io(void);
+    RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
 
-RouteStatus do_pselect_fake_lock_route(const WriteRequest *request);
+    RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
 
-RouteStatus do_tcp_fake_lock_route(const WriteRequest *request);
+    RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
 
-RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
+    int kernel5_resident_start(void);
 
-int kernel5_resident_start(void);
+    int kernel5_resident_write(uintptr_t target, uintptr_t value);
 
-int kernel5_resident_write(uintptr_t target, uintptr_t value);
-
-void kernel5_resident_stop(void);
-
-}  // namespace ghostlock::route
+    void kernel5_resident_stop(void);
+} // namespace ghostlock::route
 
 #include "runtime_struct_offsets.h"
 

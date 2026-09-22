@@ -12,8 +12,7 @@ typedef uint32_t __u32;
 typedef uint8_t u8;
 
 // #include <linux/bitops.h>
-static inline __u32 rol32(__u32 word, unsigned int shift)
-{
+static inline __u32 rol32(__u32 word, unsigned int shift) {
     return (word << (shift & 31)) | (word >> ((-shift) & 31));
 }
 
@@ -95,13 +94,11 @@ static inline __u32 rol32(__u32 word, unsigned int shift)
  *
  * Returns the hash value of the key.
  */
-static inline u32 jhash2(const u32 *k, u32 length, u32 initval)
-{
-
+static inline u32 jhash2(const u32 *k, u32 length, u32 initval) {
     u32 a, b, c;
 
     /* Set up the internal state */
-    a = b = c = JHASH_INITVAL + (length<<2) + initval;
+    a = b = c = JHASH_INITVAL + (length << 2) + initval;
 
     /* Handle most of the key */
     while (length > 3) {
@@ -114,21 +111,22 @@ static inline u32 jhash2(const u32 *k, u32 length, u32 initval)
     }
 
     /* Handle the last 3 u32's: all the case statements fall through */
-    switch (length) {  // NOLINT(bugprone-switch-missing-default-case): 0..3 is exhaustive
-    case 3: c += k[2];    fallthrough;
-    case 2: b += k[1];    fallthrough;
-    case 1: a += k[0];
-        __jhash_final(a, b, c);
-    case 0:    /* Nothing left to add */
-        break;
+    switch (length) { // NOLINT(bugprone-switch-missing-default-case): 0..3 is exhaustive
+        case 3: c += k[2];
+            fallthrough;
+        case 2: b += k[1];
+            fallthrough;
+        case 1: a += k[0];
+            __jhash_final(a, b, c);
+        case 0: /* Nothing left to add */
+            break;
     }
 
     return c;
 }
 
 /* __jhash_nwords - hash exactly 3, 2 or 1 word(s) */
-static inline u32 __jhash_nwords(u32 a, u32 b, u32 c, u32 initval)
-{
+static inline u32 __jhash_nwords(u32 a, u32 b, u32 c, u32 initval) {
     a += initval;
     b += initval;
     c += initval;
@@ -138,18 +136,15 @@ static inline u32 __jhash_nwords(u32 a, u32 b, u32 c, u32 initval)
     return c;
 }
 
-static inline u32 jhash_3words(u32 a, u32 b, u32 c, u32 initval)
-{
+static inline u32 jhash_3words(u32 a, u32 b, u32 c, u32 initval) {
     return __jhash_nwords(a, b, c, initval + JHASH_INITVAL + (3 << 2));
 }
 
-static inline u32 jhash_2words(u32 a, u32 b, u32 initval)
-{
+static inline u32 jhash_2words(u32 a, u32 b, u32 initval) {
     return __jhash_nwords(a, b, 0, initval + JHASH_INITVAL + (2 << 2));
 }
 
-static inline u32 jhash_1word(u32 a, u32 initval)
-{
+static inline u32 jhash_1word(u32 a, u32 initval) {
     return __jhash_nwords(a, 0, 0, initval + JHASH_INITVAL + (1 << 2));
 }
 
@@ -163,15 +158,18 @@ typedef union {
         unsigned long pgoff;
         unsigned int offset;
     } shared;
+
     struct {
         union {
             // struct mm_struct *mm;
             void *mm;
             uint64_t __tmp;
         };
+
         unsigned long address;
         unsigned int offset;
     } private_key;
+
     struct {
         uint64_t ptr;
         unsigned long word;
@@ -189,19 +187,17 @@ typedef struct futex_hash_context {
 static_assert(sizeof(FutexHashContext) == sizeof(uint32_t));
 static_assert(alignof(FutexHashContext) == alignof(uint32_t));
 
-static inline uint32_t futex_hash_no_trunc(futex_key_t *key)
-{
-    uint32_t hash = jhash2((uint32_t *)key, OFFSET_OF(__typeof__(*key), both.offset) / 4,
-              key->both.offset);
+static inline uint32_t futex_hash_no_trunc(futex_key_t *key) {
+    uint32_t hash = jhash2((uint32_t *) key, OFFSET_OF(__typeof__(*key), both.offset) / 4,
+        key->both.offset);
 
     return hash;
 }
 
-static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
-{
+static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize) {
     uint32_t hash = futex_hash_no_trunc(key);
 
-    return hash & (futex_hashsize-1);
+    return hash & (futex_hashsize - 1);
 }
 
 /* Linux sizes the futex table from the possible CPUs and rounds that up to a
@@ -209,8 +205,7 @@ static inline uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
  * num_possible_cpus())). Online CPUs fluctuate with hotplug and thermal limits,
  * so deriving the size from them both violates the power-of-two policy and
  * mis-sizes the table. Input: possible CPU count; output: kernel table size. */
-static inline size_t futex_hash_table_size_for(size_t cpu_count)
-{
+static inline size_t futex_hash_table_size_for(size_t cpu_count) {
     size_t size = (cpu_count ? cpu_count : 1) * 256;
     size_t rounded = 1;
     while (rounded < size)
@@ -223,14 +218,13 @@ static inline size_t futex_hash_table_size_for(size_t cpu_count)
  * errno=EINVAL. This validates policy only and performs no allocation or
  * process-global mutation. */
 static inline int futex_hash_context_init(FutexHashContext *context,
-                                          size_t table_size)
-{
+                                          size_t table_size) {
     if (!context || table_size == 0 || table_size > UINT32_MAX ||
         (table_size & (table_size - 1)) != 0) {
         errno = EINVAL;
         return -1;
     }
-    context->table_size = (uint32_t)table_size;
+    context->table_size = (uint32_t) table_size;
     return 0;
 }
 
@@ -239,8 +233,7 @@ static inline int futex_hash_context_init(FutexHashContext *context,
  * context. Jenkins mixing and truncation are intentionally delegated to the
  * unchanged compatibility primitives above. */
 static inline uint32_t
-futex_hash_context_key(const FutexHashContext *context, futex_key_t *key)
-{
+futex_hash_context_key(const FutexHashContext *context, futex_key_t *key) {
     if (!context || !context->table_size || !key)
         return UINT32_MAX;
     return __futex_hash(key, context->table_size);
@@ -251,10 +244,9 @@ futex_hash_context_key(const FutexHashContext *context, futex_key_t *key)
  * mm; output: bucket index, or UINT32_MAX for an invalid context. */
 static inline uint32_t
 futex_hash_context_bucket(const FutexHashContext *context, size_t addr,
-                          size_t mm)
-{
+                          size_t mm) {
     futex_key_t key = {};
-    key.private_key.mm = (void *)mm;
+    key.private_key.mm = (void *) mm;
     key.private_key.address = addr & ~(size_t) 0xfff;
     key.private_key.offset = addr & 0xfff;
     return futex_hash_context_key(context, &key);

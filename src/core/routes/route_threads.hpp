@@ -4,18 +4,18 @@
 #include "common.h"
 
 namespace ghostlock::race {
+    /* Thread entry points registered with PiRace::start_threads(). */
+    void *waiter_thread(void *arg);
 
-/* Thread entry points registered with PiRace::start_threads(). */
-void *waiter_thread(void *arg);
-void *owner_thread(void *arg);
-void *consumer_thread(void *arg);
+    void *owner_thread(void *arg);
 
-/* Reset one PI race attempt; preserves the caller-owned fast-repair latch. */
-void reset_main_route_state(void);
+    void *consumer_thread(void *arg);
 
-/* Create, synchronize, stop and join one explicitly owned PI race. */
-int run_main_route_threads(const WriteRequest *request);
+    /* Reset one PI race attempt; preserves the caller-owned fast-repair latch. */
+    void reset_main_route_state(void);
 
-}  // namespace ghostlock::race
+    /* Create, synchronize, stop and join one explicitly owned PI race. */
+    int run_main_route_threads(const WriteRequest *request);
+} // namespace ghostlock::race
 
 #endif

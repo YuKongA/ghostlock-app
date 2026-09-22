@@ -25,80 +25,85 @@
  * reached through resident_route(); the kernel5_resident_* wrappers in
  * route_operations.cpp forward to this class. */
 class MulticastWaiterRoute final {
- public:
-  MulticastWaiterRoute() noexcept = default;
-  ~MulticastWaiterRoute() noexcept = default;
-  MulticastWaiterRoute(const MulticastWaiterRoute &) = delete;
-  MulticastWaiterRoute &operator=(const MulticastWaiterRoute &) = delete;
+public:
+    MulticastWaiterRoute() noexcept = default;
 
-  /* Host-safe: the fixed-vector test constructs a context and calls init()
+    ~MulticastWaiterRoute() noexcept = default;
+
+    MulticastWaiterRoute(const MulticastWaiterRoute &) = delete;
+
+    MulticastWaiterRoute &operator=(const MulticastWaiterRoute &) = delete;
+
+    /* Host-safe: the fixed-vector test constructs a context and calls init()
    * without linking the Android-only implementation unit. */
-  void init(PiRaceContext *race_value, const WriteRequest *request_value,
-            const struct execution_settings *execution_value,
-            MulticastWaiterLayout layout_value, int resident_value) noexcept {
-    race = race_value;
-    request = request_value;
-    execution = execution_value;
-    layout = layout_value;
-    lock1_futex = 0;
-    lock2_futex = 0;
-    condition_futex = 0;
-    owner_worker = {};
-    waiter_worker = {};
-    owner_worker_started = 0;
-    waiter_worker_started = 0;
-    target = 0;
-    value = 0;
-    lock = 0;
-    task = 0;
-    socket_fd = -1;
-    main_cpu = race ? race->main_cpu : 0;
-    consumer_cpu = race ? race->consumer_cpu : 0;
-    scheduler_policy = 0; /* SCHED_NORMAL/SCHED_OTHER */
-    resident = resident_value;
-    ready = 0;
-    lock_slot = 0;
-    status = {};
-    status.code = ROUTE_RETRYABLE;
-    waiter_has_lock2.store(0, std::memory_order_relaxed);
-    owner_has_lock1.store(0, std::memory_order_relaxed);
-    waiter_waiting.store(0, std::memory_order_relaxed);
-    owner_waiting.store(0, std::memory_order_relaxed);
-    waiter_ready.store(0, std::memory_order_relaxed);
-    respray_requested.store(0, std::memory_order_relaxed);
-    sprayed.store(0, std::memory_order_relaxed);
-    stop_requested.store(0, std::memory_order_relaxed);
-    owner_done.store(0, std::memory_order_relaxed);
-    waiter_tid.store(0, std::memory_order_relaxed);
-  }
+    void init(PiRaceContext *race_value, const WriteRequest *request_value,
+              const struct execution_settings *execution_value,
+              MulticastWaiterLayout layout_value, int resident_value) noexcept {
+        race = race_value;
+        request = request_value;
+        execution = execution_value;
+        layout = layout_value;
+        lock1_futex = 0;
+        lock2_futex = 0;
+        condition_futex = 0;
+        owner_worker = {};
+        waiter_worker = {};
+        owner_worker_started = 0;
+        waiter_worker_started = 0;
+        target = 0;
+        value = 0;
+        lock = 0;
+        task = 0;
+        socket_fd = -1;
+        main_cpu = race ? race->main_cpu : 0;
+        consumer_cpu = race ? race->consumer_cpu : 0;
+        scheduler_policy = 0; /* SCHED_NORMAL/SCHED_OTHER */
+        resident = resident_value;
+        ready = 0;
+        lock_slot = 0;
+        status = {};
+        status.code = ROUTE_RETRYABLE;
+        waiter_has_lock2.store(0, std::memory_order_relaxed);
+        owner_has_lock1.store(0, std::memory_order_relaxed);
+        waiter_waiting.store(0, std::memory_order_relaxed);
+        owner_waiting.store(0, std::memory_order_relaxed);
+        waiter_ready.store(0, std::memory_order_relaxed);
+        respray_requested.store(0, std::memory_order_relaxed);
+        sprayed.store(0, std::memory_order_relaxed);
+        stop_requested.store(0, std::memory_order_relaxed);
+        owner_done.store(0, std::memory_order_relaxed);
+        waiter_tid.store(0, std::memory_order_relaxed);
+    }
 
-  /* Arm the resident (waiter and owner workers plus the retry socket), write
+    /* Arm the resident (waiter and owner workers plus the retry socket), write
    * one target through the armed ghost, and join the workers again.
    * Implemented in multicast_waiter_route.cpp; the pthread workers stay
    * file-local there. */
-  [[nodiscard]] int start() noexcept;
-  [[nodiscard]] int write(uintptr_t target, uintptr_t value) noexcept;
-  void stop() noexcept;
+    [[nodiscard]] int start() noexcept;
 
-  /* Fields stay public: the workers read and write them from their hot loops,
+    [[nodiscard]] int write(uintptr_t target, uintptr_t value) noexcept;
+
+    void stop() noexcept;
+
+    /* Fields stay public: the workers read and write them from their hot loops,
    * preserving the pre-class access shape and field order. */
-  PiRaceContext *race;
-  const WriteRequest *request;
-  const struct execution_settings *execution;
-  MulticastWaiterLayout layout;
-  uint32_t lock1_futex, lock2_futex, condition_futex;
-  pthread_t owner_worker, waiter_worker;
-  int owner_worker_started, waiter_worker_started;
-  std::atomic<int> waiter_has_lock2, owner_has_lock1;
-  std::atomic<int> waiter_waiting, owner_waiting, waiter_ready;
-  std::atomic<int> respray_requested, sprayed, stop_requested;
-  std::atomic<int> owner_done, waiter_tid;
-  uintptr_t target, value, lock, task;
-  int socket_fd;
-  int ready, scheduler_policy, lock_slot;
-  int main_cpu, consumer_cpu;
-  int resident;
-  RouteStatus status;
+    PiRaceContext *race;
+    const WriteRequest *request;
+    const struct execution_settings *execution;
+    MulticastWaiterLayout layout;
+    uint32_t lock1_futex, lock2_futex, condition_futex;
+    pthread_t owner_worker, waiter_worker;
+    int owner_worker_started, waiter_worker_started;
+    std::atomic<int> waiter_has_lock2, owner_has_lock1;
+    std::atomic<int> waiter_waiting, owner_waiting, waiter_ready;
+    std::atomic<int> respray_requested, sprayed, stop_requested;
+    std::atomic<int> owner_done, waiter_tid;
+    uintptr_t target, value, lock, task;
+    int socket_fd;
+    int ready, scheduler_policy, lock_slot;
+    int main_cpu, consumer_cpu;
+    int resident;
+    RouteStatus status;
 };
 
 using MulticastWaiterRouteContext = MulticastWaiterRoute;

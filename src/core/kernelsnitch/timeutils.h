@@ -17,8 +17,7 @@
 #define RDPRU_ECX_MPERF 0
 #define RDPRU_ECX_APERF 1
 
-static inline size_t rdtsc_begin(void)
-{
+static inline size_t rdtsc_begin(void) {
 #if defined(__INTEL)
     size_t a, d;
     asm volatile("mfence");
@@ -38,14 +37,13 @@ static inline size_t rdtsc_begin(void)
     asm volatile("isb" ::: "memory");
     asm volatile("mrs %0, cntvct_el0" : "=r"(vct));
     asm volatile("isb" ::: "memory");
-    return (size_t)vct;
+    return (size_t) vct;
 #else
 #error "Invalid TIMEUTILS_ARCH value"
 #endif
 }
 
-static inline size_t rdtsc_end(void)
-{
+static inline size_t rdtsc_end(void) {
 #if defined(__INTEL)
     size_t a, d;
     asm volatile("lfence");
@@ -65,7 +63,7 @@ static inline size_t rdtsc_end(void)
     asm volatile("isb" ::: "memory");
     asm volatile("mrs %0, cntvct_el0" : "=r"(vct));
     asm volatile("isb" ::: "memory");
-    return (size_t)vct;
+    return (size_t) vct;
 #else
 #error "Invalid TIMEUTILS_ARCH value"
 #endif
