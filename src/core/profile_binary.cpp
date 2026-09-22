@@ -1,121 +1,151 @@
 #include "profile_binary.h"
 
 #include <cstring>
+#include <type_traits>
 
 namespace ghostlock::binary_profile {
     using namespace ghostlock::profile;
 
     namespace {
-        constexpr uint8_t kW1 = 1;
-        constexpr uint8_t kW4 = 4;
         constexpr uint8_t kW8 = 8;
 
+        /* Reinterpret one transport member as the wire's raw 64-bit record.
+         * Signed members are sign-extended exactly like the previous
+         * reinterpret_cast implementation did. */
+        template <typename T>
+        constexpr uint64_t to_raw(T value) noexcept {
+            if constexpr (std::is_signed_v<T>) {
+                return static_cast<uint64_t>(static_cast<int64_t>(value));
+            } else {
+                return static_cast<uint64_t>(value);
+            }
+        }
+
+        template <typename T>
+        constexpr T from_raw(uint64_t raw) noexcept {
+            if constexpr (std::is_signed_v<T>) {
+                return static_cast<T>(static_cast<int64_t>(raw));
+            } else {
+                return static_cast<T>(raw);
+            }
+        }
+
+        /* One typed read/write pair over the transport struct. The order of
+         * kFields is the GLK1 wire order shared with Kotlin's
+         * NativeProfileDocument.flatten(); every record is 8 bytes, so no
+         * offsetof or reinterpret_cast is needed to reach a member. */
         struct Field {
-            size_t offset;
-            uint8_t width;
-            bool is_signed;
+            uint64_t (*load)(const struct kernel_offsets &);
+            void (*store)(struct kernel_offsets &, uint64_t);
         };
 
-        /* Fixed order shared with Kotlin's NativeProfileDocument.flatten(). */
-#define F(name, width, sign) {offsetof(struct kernel_offsets, name), width, sign}
+#define FIELD(member)                                                \
+    {                                                               \
+        [](const struct kernel_offsets &o) -> uint64_t {            \
+            return to_raw(o.member);                                \
+        },                                                          \
+        [](struct kernel_offsets &o, uint64_t raw) {                \
+            o.member = from_raw<decltype(o.member)>(raw);           \
+        }                                                           \
+    }
         constexpr Field kFields[] = {
             /* task_struct */
-            F(task_prio, kW4, false),
-            F(task_normal_prio, kW4, false),
-            F(task_sched_task_group, kW4, false),
-            F(task_pi_lock, kW4, false),
-            F(task_pi_waiters, kW4, false),
-            F(task_pi_top_task, kW4, false),
-            F(task_pi_blocked_on, kW4, false),
-            F(task_pid, kW4, false),
-            F(task_tgid, kW4, false),
-            F(task_atomic_flags, kW4, false),
-            F(task_real_cred, kW4, false),
-            F(task_cred, kW4, false),
-            F(task_comm, kW4, false),
-            F(task_tasks, kW4, false),
-            F(task_seccomp, kW4, false),
+            FIELD(task_prio),
+            FIELD(task_normal_prio),
+            FIELD(task_sched_task_group),
+            FIELD(task_pi_lock),
+            FIELD(task_pi_waiters),
+            FIELD(task_pi_top_task),
+            FIELD(task_pi_blocked_on),
+            FIELD(task_pid),
+            FIELD(task_tgid),
+            FIELD(task_atomic_flags),
+            FIELD(task_real_cred),
+            FIELD(task_cred),
+            FIELD(task_comm),
+            FIELD(task_tasks),
+            FIELD(task_seccomp),
             /* cred */
-            F(cred_copy_size, kW4, false),
-            F(cred_usage_offset, kW4, false),
-            F(cred_usage_value, kW4, false),
-            F(cred_caps_offset, kW4, false),
-            F(cred_caps_count, kW4, false),
-            F(cred_caps_value, kW8, false),
-            F(cred_ref_count, kW4, false),
-            F(cred_ref0_offset, kW4, false),
-            F(cred_ref1_offset, kW4, false),
-            F(cred_ref2_offset, kW4, false),
-            F(cred_ref3_offset, kW4, false),
-            F(cred_ref0_image, kW8, false),
-            F(cred_ref1_image, kW8, false),
-            F(cred_ref2_image, kW8, false),
-            F(cred_ref3_image, kW8, false),
+            FIELD(cred_copy_size),
+            FIELD(cred_usage_offset),
+            FIELD(cred_usage_value),
+            FIELD(cred_caps_offset),
+            FIELD(cred_caps_count),
+            FIELD(cred_caps_value),
+            FIELD(cred_ref_count),
+            FIELD(cred_ref0_offset),
+            FIELD(cred_ref1_offset),
+            FIELD(cred_ref2_offset),
+            FIELD(cred_ref3_offset),
+            FIELD(cred_ref0_image),
+            FIELD(cred_ref1_image),
+            FIELD(cred_ref2_image),
+            FIELD(cred_ref3_image),
             /* offset (kernel symbols and slide anchors) */
-            F(off_init_task, kW8, false),
-            F(off_init_cred, kW8, false),
-            F(off_empty_zero_page, kW8, false),
-            F(off_mcast_fake_bss, kW8, false),
-            F(off_root_task_group, kW8, false),
-            F(off_selinux_enforcing, kW8, false),
-            F(off_selinux_blob_sizes, kW8, false),
-            F(off_security_hook_heads, kW8, false),
-            F(off_slide_nfulnl_logger, kW8, false),
-            F(off_slide_loggers_0_1, kW8, false),
-            F(off_slide_boot_id, kW8, false),
+            FIELD(off_init_task),
+            FIELD(off_init_cred),
+            FIELD(off_empty_zero_page),
+            FIELD(off_mcast_fake_bss),
+            FIELD(off_root_task_group),
+            FIELD(off_selinux_enforcing),
+            FIELD(off_selinux_blob_sizes),
+            FIELD(off_security_hook_heads),
+            FIELD(off_slide_nfulnl_logger),
+            FIELD(off_slide_loggers_0_1),
+            FIELD(off_slide_boot_id),
             /* mcast geometry */
-            F(mcast_waiter_off, kW4, true),
-            F(mcast_buffer_size, kW4, false),
-            F(mcast_task_offset, kW4, false),
-            F(mcast_lock_offset, kW4, false),
-            F(mcast_fake_lock_offset, kW4, false),
-            F(mcast_fake_task_offset, kW4, false),
-            F(mcast_lock_slots_offset, kW4, false),
-            F(mcast_lock_slot_count, kW4, false),
-            F(mcast_lock_slot_stride, kW4, false),
+            FIELD(mcast_waiter_off),
+            FIELD(mcast_buffer_size),
+            FIELD(mcast_task_offset),
+            FIELD(mcast_lock_offset),
+            FIELD(mcast_fake_lock_offset),
+            FIELD(mcast_fake_task_offset),
+            FIELD(mcast_lock_slots_offset),
+            FIELD(mcast_lock_slot_count),
+            FIELD(mcast_lock_slot_stride),
             /* misc */
-            F(kernel_phys_load, kW8, false),
-            F(pselect_waiter_shift, kW4, true),
-            F(compact_waiter, kW1, false),
-            F(kernelsnitch_collisions, kW4, false),
-            F(mm_struct_sz, kW4, false),
+            FIELD(kernel_phys_load),
+            FIELD(pselect_waiter_shift),
+            FIELD(compact_waiter),
+            FIELD(kernelsnitch_collisions),
+            FIELD(mm_struct_sz),
             /* execution tuning */
-            F(execution.recommended_main_cpu, kW4, false),
-            F(execution.recommended_consumer_cpu, kW4, false),
-            F(execution.heap_prepare_max_attempts, kW4, false),
-            F(execution.heap_prepare_timeout_ms, kW4, false),
-            F(execution.heap_kernelsnitch_timeout_ms, kW4, false),
-            F(execution.race_route_wait_ms, kW4, false),
-            F(execution.race_setup_settle_us, kW4, false),
-            F(execution.race_state_poll_interval_us, kW4, false),
-            F(execution.w1_attempts, kW4, false),
-            F(execution.w1_settle_us, kW4, false),
-            F(execution.w1_scratch_repair_attempts, kW4, false),
-            F(execution.w2_attempts, kW4, false),
-            F(execution.w2_settle_us, kW4, false),
-            F(execution.w3_chain_rounds, kW4, false),
-            F(execution.w3_attempts, kW4, false),
-            F(execution.w3_settle_us, kW4, false),
-            F(execution.tcp_attempts, kW4, false),
-            F(execution.tcp_arm_sequence, kW4, false),
-            F(execution.tcp_post_receive_hold_iterations, kW4, false),
-            F(execution.select_enter_delay_us, kW4, false),
-            F(execution.select_timeout_us, kW4, false),
-            F(execution.select_consumer_max_calls, kW4, false),
-            F(execution.select_consumer_burst_calls, kW4, false),
-            F(execution.multicast_ready_timeout_ms, kW4, false),
-            F(execution.multicast_post_requeue_settle_us, kW4, false),
-            F(execution.multicast_post_adjust_settle_us, kW4, false),
-            F(execution.handoff_pre_dispatch_settle_ms, kW4, false),
-            F(execution.handoff_module_poll_attempts, kW4, false),
-            F(execution.handoff_module_poll_interval_ms, kW4, false),
-            F(execution.handoff_enforce_poll_attempts, kW4, false),
-            F(execution.handoff_enforce_poll_interval_ms, kW4, false),
+            FIELD(execution.recommended_main_cpu),
+            FIELD(execution.recommended_consumer_cpu),
+            FIELD(execution.heap_prepare_max_attempts),
+            FIELD(execution.heap_prepare_timeout_ms),
+            FIELD(execution.heap_kernelsnitch_timeout_ms),
+            FIELD(execution.race_route_wait_ms),
+            FIELD(execution.race_setup_settle_us),
+            FIELD(execution.race_state_poll_interval_us),
+            FIELD(execution.w1_attempts),
+            FIELD(execution.w1_settle_us),
+            FIELD(execution.w1_scratch_repair_attempts),
+            FIELD(execution.w2_attempts),
+            FIELD(execution.w2_settle_us),
+            FIELD(execution.w3_chain_rounds),
+            FIELD(execution.w3_attempts),
+            FIELD(execution.w3_settle_us),
+            FIELD(execution.tcp_attempts),
+            FIELD(execution.tcp_arm_sequence),
+            FIELD(execution.tcp_post_receive_hold_iterations),
+            FIELD(execution.select_enter_delay_us),
+            FIELD(execution.select_timeout_us),
+            FIELD(execution.select_consumer_max_calls),
+            FIELD(execution.select_consumer_burst_calls),
+            FIELD(execution.multicast_ready_timeout_ms),
+            FIELD(execution.multicast_post_requeue_settle_us),
+            FIELD(execution.multicast_post_adjust_settle_us),
+            FIELD(execution.handoff_pre_dispatch_settle_ms),
+            FIELD(execution.handoff_module_poll_attempts),
+            FIELD(execution.handoff_module_poll_interval_ms),
+            FIELD(execution.handoff_enforce_poll_attempts),
+            FIELD(execution.handoff_enforce_poll_interval_ms),
             /* execution flags (GLK1 v3) */
-            F(safe_mode, kW1, false),
-            F(multicast_resident, kW1, false),
+            FIELD(safe_mode),
+            FIELD(multicast_resident),
         };
-#undef F
+#undef FIELD
 
         constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
         constexpr size_t kHeaderSize = 12;
@@ -132,13 +162,6 @@ namespace ghostlock::binary_profile {
             for (size_t i = 0; i < width; i++) {
                 bytes[i] = (uint8_t)(value >> (8 * i));
             }
-        }
-
-        int64_t as_signed(uint64_t value, size_t width) {
-            const size_t bits = width * 8;
-            if (bits >= 64) return (int64_t) value;
-            const uint64_t sign_bit = 1ULL << (bits - 1);
-            return (int64_t)((value ^ sign_bit) - sign_bit);
         }
     } // namespace
 
@@ -169,18 +192,7 @@ namespace ghostlock::binary_profile {
 
         const uint8_t *fields = bytes + kHeaderSize + release_length;
         for (size_t i = 0; i < kFieldCount; i++) {
-            const uint64_t raw = read_le(fields + i * kW8, kW8);
-            const Field &field = kFields[i];
-            void *target = reinterpret_cast<char *>(out) + field.offset;
-            if (field.width == kW1) {
-                *reinterpret_cast<uint8_t *>(target) = (uint8_t) raw;
-            } else if (field.width == kW4) {
-                *reinterpret_cast<uint32_t *>(target) = field.is_signed
-                                                            ? (uint32_t) as_signed(raw, kW4)
-                                                            : (uint32_t) raw;
-            } else {
-                *reinterpret_cast<uint64_t *>(target) = raw;
-            }
+            kFields[i].store(*out, read_le(fields + i * kW8, kW8));
         }
         return 0;
     }
@@ -206,19 +218,7 @@ namespace ghostlock::binary_profile {
 
         uint8_t *fields = bytes + kHeaderSize + release_length;
         for (size_t i = 0; i < kFieldCount; i++) {
-            const Field &field = kFields[i];
-            const void *source = reinterpret_cast<const char *>(in) + field.offset;
-            uint64_t raw;
-            if (field.width == kW1) {
-                raw = *reinterpret_cast<const uint8_t *>(source);
-            } else if (field.width == kW4) {
-                raw = field.is_signed
-                          ? (uint64_t)(int64_t) * reinterpret_cast<const int32_t *>(source)
-                          : (uint64_t) * reinterpret_cast<const uint32_t *>(source);
-            } else {
-                raw = *reinterpret_cast<const uint64_t *>(source);
-            }
-            write_le(fields + i * kW8, raw, kW8);
+            write_le(fields + i * kW8, kFields[i].load(*in), kW8);
         }
         return (int) total;
     }

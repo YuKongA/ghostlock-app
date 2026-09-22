@@ -16,6 +16,7 @@
 #endif
 
 #include "routes/multicast_waiter_route.h"
+#include "routes/route_lifecycle.hpp"
 #include "routes/select_stack_route.h"
 #include "routes/tcp_zerocopy_route.h"
 
@@ -367,11 +368,7 @@ namespace ghostlock::route {
         tcp_zerocopy::TcpZerocopyRoute context(
             &g_exploit_session.race, request, execution_settings(),
             TCP_PUNCH_SHMEM_LEN); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
-        if (context.prepare() == 0) {
-            (void) context.execute();
-        }
-        context.disarm();
-        context.destroy();
+        const RouteStatus status = run_route_lifecycle(context);
         if (context.status.code == ROUTE_DIRTY_FAILURE &&
             context.status.step == 47) {
             pr_warning("tcp route punch join errno=%d; resources retained\n",
@@ -388,7 +385,7 @@ namespace ghostlock::route {
                 context.race->consumer_success.load(), context.status.code,
                 context.status.userspace_clean, context.status.kernel_disarmed,
                 context.status.step, context.status.error_number);
-        return context.status;
+        return status;
     }
 
     static int route_delay_usec(const select_stack::SelectStackRoute *context,
@@ -733,11 +730,7 @@ namespace ghostlock::route {
             &g_exploit_session.race, request, execution_settings(),
             g_exploit_session.profile.select_stack_layout(),
             standard_io_backup);
-        if (context.prepare() == 0) {
-            (void) context.execute();
-        }
-        context.disarm();
-        context.destroy();
+        const RouteStatus status = run_route_lifecycle(context);
         if (context.status.code == ROUTE_DIRTY_FAILURE &&
             context.status.step == 34) {
             pr_error("pselect consumer still inflight; leaking route fds\n");
@@ -748,6 +741,6 @@ namespace ghostlock::route {
                 context.status.code, context.status.userspace_clean,
                 context.status.kernel_disarmed, context.status.step,
                 context.status.error_number);
-        return context.status;
+        return status;
     }
 } // namespace ghostlock::route
