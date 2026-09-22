@@ -88,11 +88,11 @@ namespace ghostlock::route::select_stack {
         FdSet owned_input_set;
         FdSet owned_output_set;
         FdSet owned_exception_set;
-        UniqueFd pipe_read;
-        UniqueFd pipe_write;
-        UniqueFd block;
-        UniqueFd high_read;
-        BorrowedFd stdio_backup[3];
+        ghostlock::support::UniqueFd pipe_read;
+        ghostlock::support::UniqueFd pipe_write;
+        ghostlock::support::UniqueFd block;
+        ghostlock::support::UniqueFd high_read;
+        ghostlock::support::BorrowedFd stdio_backup[3];
         int block_borrows_pipe = 0;
         int selected_fds_installed = 0;
         int consumer_stuck = 0;

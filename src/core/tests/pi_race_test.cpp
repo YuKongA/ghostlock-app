@@ -7,6 +7,7 @@
 #include <atomic>
 
 using namespace ghostlock;
+using namespace ghostlock::support;
 
 
 /* Stand-in workers for the host: the real entries own futex/attack logic that

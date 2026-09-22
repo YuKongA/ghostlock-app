@@ -1,6 +1,7 @@
 #include "pi_race.h"
 
 using namespace ghostlock;
+using namespace ghostlock::support;
 
 void PiRace::reset(
     int initial_delay_usec, int main_cpu_value, int consumer_cpu_value) noexcept {

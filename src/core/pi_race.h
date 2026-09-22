@@ -80,9 +80,9 @@ namespace ghostlock {
         std::atomic<int> fast_repair;
         int main_cpu = 0;
         int consumer_cpu = 0;
-        PthreadOwner waiter_owner;
-        PthreadOwner owner_owner;
-        PthreadOwner consumer_owner;
+        ghostlock::support::PthreadOwner waiter_owner;
+        ghostlock::support::PthreadOwner owner_owner;
+        ghostlock::support::PthreadOwner consumer_owner;
         const WriteRequest *request = nullptr;
         RouteStatus route_status{};
 

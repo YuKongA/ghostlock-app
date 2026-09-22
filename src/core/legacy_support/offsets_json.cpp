@@ -25,6 +25,7 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::support;
 
 namespace ghostlock {
 

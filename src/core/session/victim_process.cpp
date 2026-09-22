@@ -13,6 +13,7 @@
 
 namespace ghostlock::session::victim {
     using namespace ghostlock::config;
+    using namespace ghostlock::support;
 
     /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */

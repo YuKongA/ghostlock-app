@@ -8,7 +8,7 @@
 #include <cerrno>
 #include <utility>
 
-namespace ghostlock {
+namespace ghostlock::support {
     UniqueFd::~UniqueFd() noexcept { reset(); }
 
     UniqueFd::UniqueFd(UniqueFd &&other) noexcept : fd_(other.release()) {
@@ -211,4 +211,4 @@ namespace ghostlock {
     void ChildProcess::cleanup_if_running() noexcept {
         if (valid()) (void) terminate_and_wait(SIGKILL);
     }
-} // namespace ghostlock
+} // namespace ghostlock::support

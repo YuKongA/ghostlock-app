@@ -92,8 +92,8 @@ namespace ghostlock::memory {
         /* Owns the KernelSnitch collision helper until it exits; mark_reaped()
      * records the waitpid() the spray path performs, so scope exit never
      * signals a pid twice. */
-        ChildProcess leak_child;
-        UniqueFd leak_memfd;
+        ghostlock::support::ChildProcess leak_child;
+        ghostlock::support::UniqueFd leak_memfd;
         PayloadPage current;
         PayloadPage prebuilt;
         PayloadPage quarantine;

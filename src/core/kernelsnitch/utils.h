@@ -184,7 +184,7 @@ static inline size_t gettime_ns(void) {
 }
 
 static void write_file(const char *path, const char *data) {
-    ghostlock::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
+    ghostlock::support::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
     const size_t length = strlen(data);
     if (write(fd.get(), data, length) != (ssize_t) length)
         pr_error("write(%s): %m\n", path);

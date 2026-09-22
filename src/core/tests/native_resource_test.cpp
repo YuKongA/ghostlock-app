@@ -15,6 +15,7 @@
 #include <cstddef>
 
 using namespace ghostlock;
+using namespace ghostlock::support;
 
 namespace {
     void *increment(void *argument) {

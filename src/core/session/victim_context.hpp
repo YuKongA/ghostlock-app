@@ -27,12 +27,12 @@ namespace ghostlock::session::victim {
 
         VictimContext &operator=(const VictimContext &) = delete;
 
-        UniqueFd task_read;
-        UniqueFd cmd_write;
-        UniqueFd uid_read;
-        UniqueFd task_write;
-        UniqueFd cmd_read;
-        UniqueFd uid_write;
+        ghostlock::support::UniqueFd task_read;
+        ghostlock::support::UniqueFd cmd_write;
+        ghostlock::support::UniqueFd uid_read;
+        ghostlock::support::UniqueFd task_write;
+        ghostlock::support::UniqueFd cmd_read;
+        ghostlock::support::UniqueFd uid_write;
 
         [[nodiscard]] pid_t child() const noexcept { return child_; }
         void set_child(pid_t child) noexcept { child_ = child; }

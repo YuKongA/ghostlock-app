@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 namespace ghostlock::session {
+    using namespace ghostlock::support;
+
     namespace {
         constexpr size_t kKsuLogPathMax = 320;
 

@@ -53,13 +53,13 @@ namespace ghostlock::route::tcp_zerocopy {
         PiRace *race = nullptr;
         const WriteRequest *request = nullptr;
         const struct ghostlock::profile::execution_settings *execution = nullptr;
-        UniqueFd client_fd;
-        UniqueFd server_fd;
-        UniqueFd punch_fd;
-        MappedRegion mapping;
+        ghostlock::support::UniqueFd client_fd;
+        ghostlock::support::UniqueFd server_fd;
+        ghostlock::support::UniqueFd punch_fd;
+        ghostlock::support::MappedRegion mapping;
         size_t mapping_length = 0;
         size_t page_size = 0;
-        PthreadOwner punch_worker;
+        ghostlock::support::PthreadOwner punch_worker;
         std::atomic<int> punch_go;
         std::atomic<int> punch_stop;
         std::atomic<int> punch_phase;

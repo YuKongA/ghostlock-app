@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace ghostlock {
+namespace ghostlock::support {
     class BorrowedFd final {
     public:
         constexpr BorrowedFd() noexcept = default;
@@ -226,6 +226,6 @@ namespace ghostlock {
         pid_t pid_ = -1;
         State state_ = State::Empty;
     };
-} // namespace ghostlock
+} // namespace ghostlock::support
 
 #endif

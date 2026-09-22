@@ -6,6 +6,8 @@
 #include <utility>
 
 namespace ghostlock::memory {
+    using namespace ghostlock::support;
+
     namespace {
         /* Return the page to the empty state without touching any fd. Ownership
  * release is always explicit (destroy()), never scope-exit. */

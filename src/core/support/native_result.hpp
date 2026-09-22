@@ -6,7 +6,7 @@
 #include <utility>
 #include <variant>
 
-namespace ghostlock {
+namespace ghostlock::support {
     struct SysError final {
         std::error_code code;
 
@@ -42,6 +42,6 @@ namespace ghostlock {
 
         std::variant<T, E> value_;
     };
-} // namespace ghostlock
+} // namespace ghostlock::support
 
 #endif
