@@ -14,6 +14,7 @@
 #include <string>
 
 using namespace ghostlock;
+using namespace ghostlock::session;
 
 namespace {
     struct TempLogDir {

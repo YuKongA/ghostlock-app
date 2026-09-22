@@ -5,7 +5,7 @@
 
 #include <cerrno>
 
-namespace ghostlock {
+namespace ghostlock::session::victim {
     void VictimContext::retire_child() noexcept {
         const pid_t child = release_child();
         if (child <= 0) return;
@@ -14,4 +14,4 @@ namespace ghostlock {
             if (errno != EINTR) return;
         }
     }
-} // namespace ghostlock
+} // namespace ghostlock::session::victim

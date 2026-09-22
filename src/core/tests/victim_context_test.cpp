@@ -14,6 +14,7 @@
 #include <cerrno>
 
 using namespace ghostlock;
+using namespace ghostlock::session::victim;
 
 namespace {
     pid_t spawn_sleeper() {

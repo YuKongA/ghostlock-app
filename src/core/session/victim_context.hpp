@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace ghostlock {
+namespace ghostlock::session::victim {
     /* Owns the six pipe ends of the victim protocol plus the child pid for one
  * W2/W3 chain. The child-side ends are closed by the fork child before
  * child_main runs; the parent-side ends are closed once their protocol step
@@ -49,6 +49,6 @@ namespace ghostlock {
     private:
         pid_t child_ = -1;
     };
-} // namespace ghostlock
+} // namespace ghostlock::session::victim
 
 #endif

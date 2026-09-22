@@ -103,22 +103,22 @@ inline uint32_t kernelsnitch_collisions() {
 }
 
 inline uintptr_t slide_nfulnl_logger() {
-    return g_exploit_session.addresses.data_alias(slide_nfulnl_logger_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_nfulnl_logger_image());
 }
 inline uintptr_t slide_loggers_0_1() {
-    return g_exploit_session.addresses.data_alias(slide_loggers_0_1_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_loggers_0_1_image());
 }
 inline uintptr_t slide_random_boot_id_data() {
-    return g_exploit_session.addresses.data_alias(slide_random_boot_id_data_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_random_boot_id_data_image());
 }
 inline uintptr_t slide_init_task() {
-    return g_exploit_session.addresses.data_alias(slide_init_task_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_init_task_image());
 }
 inline uintptr_t slide_root_task_group() {
-    return g_exploit_session.addresses.data_alias(slide_root_task_group_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_root_task_group_image());
 }
 inline uintptr_t slide_sysctl_bootid() {
-    return g_exploit_session.addresses.data_alias(slide_sysctl_bootid_image());
+    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_sysctl_bootid_image());
 }
 
 } // namespace ghostlock::profile

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace ghostlock {
+namespace ghostlock::session {
     /* Post-exploit KernelSU handoff probe results. The field semantics stay the
  * legacy booleans so the caller keeps the exact log lines and their order. */
     struct HandoffProbeResult {
@@ -39,6 +39,6 @@ namespace ghostlock {
  * and this probe must receive the same resolved path. */
     HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,
                                          std::string_view ksu_log_path) noexcept;
-} // namespace ghostlock
+} // namespace ghostlock::session
 
 #endif

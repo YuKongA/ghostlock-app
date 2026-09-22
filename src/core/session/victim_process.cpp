@@ -11,7 +11,7 @@
 
 #include <array>
 
-namespace ghostlock::victim {
+namespace ghostlock::session::victim {
     using namespace ghostlock::config;
 
     /* rooted exits kfree the static init_cred (w2 stores it with no
@@ -271,4 +271,4 @@ namespace ghostlock::victim {
         pr_warning("leaf dir probe ambiguous (len=%u c0=%02x)\n", (unsigned) len, c0);
         return 0;
     }
-} // namespace ghostlock::victim
+} // namespace ghostlock::session::victim

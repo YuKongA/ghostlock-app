@@ -8,12 +8,12 @@ namespace ghostlock::profile {
 
 /* Value from the loaded profile, falling back to the compile-time default. */
 inline uint32_t symbol_or_default(uint32_t value, uint32_t fallback) {
-    return g_exploit_session.profile.or_default(value, fallback);
+    return ghostlock::session::g_exploit_session.profile.or_default(value, fallback);
 }
 
 template <typename T>
 inline uint32_t symbol_u32(T kernel_offsets::*field, uint32_t fallback) {
-    const kernel_offsets *values = g_exploit_session.profile.values();
+    const kernel_offsets *values = ghostlock::session::g_exploit_session.profile.values();
     return symbol_or_default(values ? static_cast<uint32_t>(values->*field) : 0,
                              fallback);
 }

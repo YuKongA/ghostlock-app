@@ -19,6 +19,7 @@
 
 using namespace ghostlock;
 using namespace ghostlock::profile;
+using namespace ghostlock::session;
 
 int main(int argc, char **argv) {
     struct kernel_offsets decoded = {};

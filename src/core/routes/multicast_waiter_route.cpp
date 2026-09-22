@@ -15,6 +15,7 @@
 using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::config;
+using namespace ghostlock::session;
 
 namespace ghostlock::route {
 
