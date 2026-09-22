@@ -6,6 +6,7 @@
 using namespace ghostlock::route;
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 int main(void) {
     MulticastWaiterRouteContext context;

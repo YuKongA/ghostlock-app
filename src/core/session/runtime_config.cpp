@@ -3,6 +3,7 @@
 #include "session/runtime_paths.h"
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 static void runtime_config_init_cpus(runtime_config *config) {
     config->main_cpu = 0;

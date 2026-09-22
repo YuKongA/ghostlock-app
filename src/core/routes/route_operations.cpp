@@ -20,6 +20,7 @@
 #include "routes/tcp_zerocopy_route.h"
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 namespace ghostlock::route {
     static double fops_elapsed_ms(struct timespec *ref) {

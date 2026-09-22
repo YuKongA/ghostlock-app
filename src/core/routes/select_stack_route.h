@@ -42,8 +42,8 @@ namespace ghostlock {
     class SelectStackRoute final {
     public:
         SelectStackRoute(PiRace *race, const WriteRequest *request,
-                         const execution_settings *execution,
-                         SelectStackLayout layout,
+                         const ghostlock::profile::execution_settings *execution,
+                         ghostlock::profile::SelectStackLayout layout,
                          const int stdio_backup[3]) noexcept;
 
         ~SelectStackRoute() noexcept = default;
@@ -80,8 +80,8 @@ namespace ghostlock {
 
         PiRace *race = nullptr;
         const WriteRequest *request = nullptr;
-        const struct execution_settings *execution = nullptr;
-        SelectStackLayout layout{};
+        const struct ghostlock::profile::execution_settings *execution = nullptr;
+        ghostlock::profile::SelectStackLayout layout{};
         FdSet input_set;
         FdSet output_set;
         FdSet exception_set;

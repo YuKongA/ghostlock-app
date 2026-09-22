@@ -24,6 +24,7 @@
 #include <string_view>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 namespace ghostlock {
 

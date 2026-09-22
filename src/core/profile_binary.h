@@ -25,11 +25,11 @@ namespace ghostlock::binary_profile {
     inline constexpr uint16_t kVersion = 3u;
 
     /* Parse one binary document into the native transport struct. */
-    int parse(std::string_view document, struct kernel_offsets *out,
+    int parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,
               char *release_buf, size_t release_buf_cap);
 
     /* Serialize the same layout (host tests and tooling). */
-    int serialize(const struct kernel_offsets *in, char *buffer, size_t capacity);
+    int serialize(const struct ghostlock::profile::kernel_offsets *in, char *buffer, size_t capacity);
 } // namespace ghostlock::binary_profile
 
 #endif

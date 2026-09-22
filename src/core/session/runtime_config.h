@@ -29,7 +29,7 @@ public:
     /* Capture the process environment exactly once. */
     int init();
     /* Merge the profile's recommended CPU pair (validated). */
-    int apply_profile(const TargetProfile *profile);
+    int apply_profile(const ghostlock::profile::TargetProfile *profile);
     void log() const;
 };
 

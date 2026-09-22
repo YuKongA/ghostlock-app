@@ -3,6 +3,7 @@
 #include <cstdio>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 int main(void) {
     struct kernel_offsets decoded = {
@@ -38,9 +39,9 @@ int main(void) {
     const struct execution_settings *execution =
             profile.execution();
 
-    if (!profile.supports(ghostlock::RouteKind::MulticastWaiter) ||
-        profile.supports(ghostlock::RouteKind::TcpZerocopy) ||
-        profile.supports(ghostlock::RouteKind::SelectStack) ||
+    if (!profile.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
+        profile.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
+        profile.supports(ghostlock::profile::RouteKind::SelectStack) ||
         multicast.buffer_size != 128 || multicast.waiter_offset != 32 ||
         multicast.lock_slot_count != 4 || select.waiter_shift != 16 ||
         !select.compact_waiter || !tcp.compact_waiter ||
@@ -57,13 +58,13 @@ int main(void) {
     TargetProfile explicit_select = TargetProfile::from(&decoded);
     decoded.route = kRouteAuto;
     TargetProfile unresolved = TargetProfile::from(&decoded);
-    if (!explicit_tcp.supports(ghostlock::RouteKind::TcpZerocopy) ||
-        explicit_tcp.supports(ghostlock::RouteKind::MulticastWaiter) ||
-        !explicit_select.supports(ghostlock::RouteKind::SelectStack) ||
-        explicit_select.supports(ghostlock::RouteKind::TcpZerocopy) ||
-        unresolved.supports(ghostlock::RouteKind::MulticastWaiter) ||
-        unresolved.supports(ghostlock::RouteKind::TcpZerocopy) ||
-        unresolved.supports(ghostlock::RouteKind::SelectStack)) {
+    if (!explicit_tcp.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
+        explicit_tcp.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
+        !explicit_select.supports(ghostlock::profile::RouteKind::SelectStack) ||
+        explicit_select.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
+        unresolved.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
+        unresolved.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
+        unresolved.supports(ghostlock::profile::RouteKind::SelectStack)) {
         fputs("explicit route selection test failed\n", stderr);
         return 1;
     }

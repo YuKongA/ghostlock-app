@@ -7,6 +7,7 @@
 #include <cstring>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 int main(void) {
     struct kernel_offsets values = {};

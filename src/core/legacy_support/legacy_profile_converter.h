@@ -11,7 +11,7 @@ namespace ghostlock::legacy_support {
  * struct. A document without an explicit route gets one by legacy geometry
  * inference, so the downstream path always consumes a resolved route. */
     int convert_legacy_offsets(const char *path, const char *release,
-                               struct kernel_offsets *out, char *release_buf, size_t release_buf_cap);
+                               struct ghostlock::profile::kernel_offsets *out, char *release_buf, size_t release_buf_cap);
 } // namespace ghostlock::legacy_support
 
 #endif

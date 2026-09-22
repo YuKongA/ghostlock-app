@@ -8,7 +8,7 @@
 #include <cstring>
 #include <string_view>
 
-namespace ghostlock {
+namespace ghostlock::profile {
 
 /* PROFILE-SUGGEST-01: only kernel geometry (kernel_major, symbol and struct
  * offsets, waiter layout, credential template) is truly required. Kotlin merges
@@ -256,6 +256,6 @@ private:
     bool loaded_ = false;
 };
 
-} // namespace ghostlock
+} // namespace ghostlock::profile
 
 #endif

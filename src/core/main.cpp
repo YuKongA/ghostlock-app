@@ -18,6 +18,7 @@
 #include <cstring>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 int main(int argc, char **argv) {
     struct kernel_offsets decoded = {};

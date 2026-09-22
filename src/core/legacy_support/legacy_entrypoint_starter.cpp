@@ -7,6 +7,8 @@
 #include <sys/utsname.h>
 
 namespace ghostlock::legacy_support {
+    using namespace ghostlock::profile;
+
     namespace {
         const char *home_dir() {
             const char *home = getenv("GHOSTLOCK_HOME");

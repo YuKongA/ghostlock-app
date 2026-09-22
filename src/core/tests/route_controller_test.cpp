@@ -4,6 +4,7 @@
 #include <cstdio>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 static RouteStatus tcp_result;
 static int tcp_calls;

@@ -22,8 +22,8 @@ namespace ghostlock::memory {
         target::PhysicalAddress kernel_phys_load;
         target::KernelImageAddress init_cred_image;
 
-        int init(const TargetProfile *profile);
-        int init_for_soc(const TargetProfile *profile, SocFamily family);
+        int init(const ghostlock::profile::TargetProfile *profile);
+        int init_for_soc(const ghostlock::profile::TargetProfile *profile, SocFamily family);
 
         uintptr_t data_alias(uintptr_t image_addr) const;
         std::optional<target::DirectMapAddress> data_alias_checked(
@@ -35,7 +35,7 @@ namespace ghostlock::memory {
         [[nodiscard]] uintptr_t init_cred_image_addr() const {
             return init_cred_image.value();
         }
-        [[nodiscard]] const char *soc_name(const TargetProfile *profile) const;
+        [[nodiscard]] const char *soc_name(const ghostlock::profile::TargetProfile *profile) const;
     };
 } // namespace ghostlock::memory
 

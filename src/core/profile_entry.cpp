@@ -13,6 +13,8 @@
 #include <string_view>
 
 namespace ghostlock::profile_entry {
+    using namespace ghostlock::profile;
+
     namespace {
         constexpr size_t kMaxDocument = 1U << 20; /* 1 MiB */
 

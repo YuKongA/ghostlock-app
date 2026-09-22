@@ -3,6 +3,8 @@
 #include <cstring>
 
 namespace ghostlock::binary_profile {
+    using namespace ghostlock::profile;
+
     namespace {
         constexpr uint8_t kW1 = 1;
         constexpr uint8_t kW4 = 4;

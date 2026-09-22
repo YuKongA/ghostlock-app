@@ -22,7 +22,7 @@ namespace ghostlock {
     class TcpZerocopyRoute final {
     public:
         TcpZerocopyRoute(PiRace *race, const WriteRequest *request,
-                         const execution_settings *execution,
+                         const ghostlock::profile::execution_settings *execution,
                          size_t mapping_length) noexcept;
 
         ~TcpZerocopyRoute() noexcept = default;
@@ -52,7 +52,7 @@ namespace ghostlock {
 
         PiRace *race = nullptr;
         const WriteRequest *request = nullptr;
-        const struct execution_settings *execution = nullptr;
+        const struct ghostlock::profile::execution_settings *execution = nullptr;
         UniqueFd client_fd;
         UniqueFd server_fd;
         UniqueFd punch_fd;

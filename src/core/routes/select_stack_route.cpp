@@ -5,6 +5,7 @@
 #include <utility>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 SelectStackRoute::SelectStackRoute(
     PiRace *race_context, const WriteRequest *route_request,

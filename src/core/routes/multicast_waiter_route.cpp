@@ -13,6 +13,7 @@
 #include "target.h"
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 namespace ghostlock::route {
 

@@ -11,6 +11,7 @@
 #include <utility>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 
 int main(void) {

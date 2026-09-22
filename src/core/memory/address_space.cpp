@@ -14,6 +14,8 @@ uint64_t g_direct_map_end = DIRECT_MAP_END;
 } // namespace ghostlock
 
 namespace ghostlock::memory {
+    using namespace ghostlock::profile;
+
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
 #endif

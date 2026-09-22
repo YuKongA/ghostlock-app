@@ -12,6 +12,7 @@
 #include <utility>
 
 using namespace ghostlock;
+using namespace ghostlock::profile;
 
 
 static int mmap_zero_page(void **address, size_t size) {

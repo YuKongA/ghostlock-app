@@ -39,8 +39,8 @@ public:
     /* Host-safe: the fixed-vector test constructs a context and calls init()
    * without linking the Android-only implementation unit. */
     void init(PiRaceContext *race_value, const WriteRequest *request_value,
-              const struct execution_settings *execution_value,
-              MulticastWaiterLayout layout_value, int resident_value) noexcept {
+              const struct ghostlock::profile::execution_settings *execution_value,
+              ghostlock::profile::MulticastWaiterLayout layout_value, int resident_value) noexcept {
         race = race_value;
         request = request_value;
         execution = execution_value;
@@ -91,8 +91,8 @@ public:
    * preserving the pre-class access shape and field order. */
     PiRaceContext *race;
     const WriteRequest *request;
-    const struct execution_settings *execution;
-    MulticastWaiterLayout layout;
+    const struct ghostlock::profile::execution_settings *execution;
+    ghostlock::profile::MulticastWaiterLayout layout;
     uint32_t lock1_futex, lock2_futex, condition_futex;
     pthread_t owner_worker, waiter_worker;
     int owner_worker_started, waiter_worker_started;

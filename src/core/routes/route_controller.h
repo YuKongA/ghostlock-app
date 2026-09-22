@@ -14,7 +14,7 @@ namespace ghostlock::route {
 
     typedef struct RouteController {
         PiRaceContext *race;
-        const TargetProfile *profile;
+        const ghostlock::profile::TargetProfile *profile;
         RouteKind selected;
         /* Kept as int: bool fields shrink this struct and measurably move the
      * waiter_thread stack offsets (CPP17 experiment, 886 instructions
@@ -22,7 +22,7 @@ namespace ghostlock::route {
         int allow_tcp_select_fallback;
         int fallback_used;
 
-        void init(PiRaceContext *race, const TargetProfile *profile,
+        void init(PiRaceContext *race, const ghostlock::profile::TargetProfile *profile,
                   RouteKind selected);
         RouteStatus execute(const WriteRequest *request);
     } RouteController;
