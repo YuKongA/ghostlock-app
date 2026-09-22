@@ -10,6 +10,7 @@
 #include <utility>
 
 using namespace ghostlock;
+using namespace ghostlock::memory;
 
 static void test_move_preserves_page_as_one_owner(void) {
     memory::HeapContext context;

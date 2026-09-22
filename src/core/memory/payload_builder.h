@@ -10,7 +10,7 @@
 #include <span>
 #include <type_traits>
 
-namespace ghostlock {
+namespace ghostlock::memory {
     /* Immutable description of one kernel write. `preserve_child` selects the
  * one-child erase layout; false selects the leaf/zero layout. */
     enum class WriteMode : int {
@@ -59,13 +59,14 @@ namespace ghostlock {
         std::span<std::byte> buffer, std::size_t waiter_offset,
         std::size_t task_offset, std::size_t lock_offset, std::uintptr_t fake_task,
         std::uintptr_t fake_lock) noexcept;
-} // namespace ghostlock
+} // namespace ghostlock::memory
 
-using WriteRequest = ghostlock::WriteRequest;
-using WriteMode = ghostlock::WriteMode;
-using PayloadWriteLayout = ghostlock::PayloadWriteLayout;
+using WriteRequest = ghostlock::memory::WriteRequest;
+using WriteMode = ghostlock::memory::WriteMode;
+using PayloadWriteLayout = ghostlock::memory::PayloadWriteLayout;
 
 
+namespace ghostlock::memory {
 /* Resolve the request-dependent words shared by the three route encoders. */
 PayloadWriteLayout payload_write_layout(
     const WriteRequest *request, uintptr_t page_base,
@@ -90,5 +91,6 @@ void build_multicast_waiter_payload(
 
 /* Fixed request/layout vectors, including the upstream unified compact arm. */
 int payload_builder_fixed_vector_test(void);
+} // namespace ghostlock::memory
 
 #endif

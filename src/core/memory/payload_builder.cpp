@@ -30,7 +30,7 @@ namespace {
     }
 } // namespace
 
-namespace ghostlock {
+namespace ghostlock::memory {
     bool encode_compact_waiter(std::span<std::byte> waiter,
                                const WriteRequest &request,
                                const PayloadWriteLayout &layout) noexcept {
@@ -51,8 +51,6 @@ namespace ghostlock {
         return span_store64(buffer, waiter_offset + task_offset, fake_task) &&
                span_store64(buffer, waiter_offset + lock_offset, fake_lock);
     }
-} // namespace ghostlock
-
 PayloadWriteLayout payload_write_layout(
     const WriteRequest *request, uintptr_t page_base,
     uintptr_t default_fops, uintptr_t credential_fops,
@@ -180,3 +178,5 @@ int payload_builder_fixed_vector_test(void) {
         return 0;
     return 1;
 }
+
+} // namespace ghostlock::memory

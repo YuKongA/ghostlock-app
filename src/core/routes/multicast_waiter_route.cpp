@@ -16,6 +16,7 @@ using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::config;
 using namespace ghostlock::session;
+using namespace ghostlock::memory;
 
 namespace ghostlock::route::multicast_waiter {
 

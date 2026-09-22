@@ -3,6 +3,7 @@
 #include <cstdio>
 
 using namespace ghostlock;
+using namespace ghostlock::memory;
 
 int main(void) {
     if (!payload_builder_fixed_vector_test()) {

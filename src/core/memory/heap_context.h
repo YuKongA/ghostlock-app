@@ -15,7 +15,7 @@ namespace ghostlock::kernelsnitch {
 struct kernelsnitch_shared_state;
 }
 
-namespace ghostlock {
+namespace ghostlock::memory {
     /* Owns the per-attempt mm-shaping child pid and memfd arrays. The vectors free
  * their storage on destruction, but they never kill a child or close a memfd:
  * a forked helper that reaches exit() must not release the parent's resources.
@@ -24,7 +24,7 @@ namespace ghostlock {
         std::vector<pid_t> childs;
         std::vector<int> memfds;
     };
-} // namespace ghostlock
+} // namespace ghostlock::memory
 
 namespace ghostlock::memory {
     enum class PayloadPageState : int {
