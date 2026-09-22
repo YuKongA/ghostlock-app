@@ -41,7 +41,7 @@ internal class AndroidProfileConfigController(
     private val assetLoader = AssetConfigLoader(appContext)
     private val lock = Any()
     private var cachedRelease: String? = null
-    private var cachedBinary: ByteArray? = null
+    private var cachedProfile: Profile? = null
 
     override suspend fun load(release: String, pair: CpuPair): ProfileConfig {
         val deviceRelease = release
@@ -89,10 +89,11 @@ internal class AndroidProfileConfigController(
             }
         }
 
-        if (explicitRoute != null && explicitRoute !in ProfileConfig.Routes) {
-            invalid += "route"
-        }
-        val route = effectiveRoute(profile, explicitRoute)
+        /* The route is profile-controlled: a missing or unknown branch is
+         * invalid. Legacy documents get their route from the converter, so an
+         * unresolved route here means the profile is genuinely broken. */
+        val route = explicitRoute?.takeIf { it in ProfileConfig.Routes }
+        if (route == null) invalid += "route"
 
         requireNonZero(*RouteCommonRequired.toTypedArray())
         val major = value("kernel_major")
@@ -128,7 +129,7 @@ internal class AndroidProfileConfigController(
             }
         }
 
-        val routePrefix = route.let { "route.$it" }
+        val routePrefix = route?.let { "route.$it" } ?: "route"
         val fallbackPrefix = fallbackTo?.takeIf { it != "none" }
             ?.let { "fallback.route.$it" }
         when (route) {
@@ -223,19 +224,6 @@ internal class AndroidProfileConfigController(
         /* Legacy flat spelling from transition builds. */
         return (profile["fallback_to"] as? String)
             ?.takeIf { it.isNotEmpty() && it != "null" }
-    }
-
-    /** Explicit route wins; otherwise infer from legacy geometry markers. */
-    private fun effectiveRoute(profile: ValueMap, explicit: String?): String {
-        if (explicit != null && explicit in ProfileConfig.Routes) return explicit
-        val major = profile.getLongAt("kernel_major")
-        val waiter = profile.getLongAt("route.multicast_waiter.waiter_off")
-            ?: profile.getLongAt("mcast.waiter_off")
-        if (major == 5L && waiter != null && waiter > 0L) return "multicast_waiter"
-        val compact = profile.getLongAt("route.tcp_zerocopy.compact_waiter")
-            ?: profile.getLongAt("compact_waiter")
-        if ((compact ?: 0L) != 0L) return "tcp_zerocopy"
-        return "select_stack"
     }
 
     override suspend fun updateRoute(
@@ -477,16 +465,18 @@ internal class AndroidProfileConfigController(
     }
 
     override fun nativeDocument(config: ProfileConfig): ByteArray? = synchronized(lock) {
-        if (cachedRelease == config.release) cachedBinary else null
+        if (cachedRelease == config.release) cachedProfile?.toBinary() else null
     }
 
-    /** Builds the typed binary document native consumes at run time. */
-    private fun buildNativeDocument(release: String, profile: ValueMap): ByteArray {
+    /** Builds the single resolved authority native consumes at run time. */
+    private fun buildNativeDocument(release: String, profile: ValueMap): Profile? {
         val route = routeNameOf(profile)
         val fallbackTo = fallbackTargetOf(profile)
-        return NativeProfileDocument.from(release, route, fallbackTo) { path ->
-            nativeValue(profile, route, fallbackTo, path)
-        }.toBinary()
+        return Profile.fromValueMap(
+            release = release,
+            route = RouteKind.fromToken(route),
+            fallbackTo = RouteKind.fromToken(fallbackTo),
+        ) { path -> nativeValue(profile, route, fallbackTo, path) }
     }
 
     /** Maps canonical native field names onto the declared route branches. */
@@ -824,9 +814,9 @@ internal class AndroidProfileConfigController(
 
     // ---- persistence ----
 
-    private fun cache(release: String, binary: ByteArray?) = synchronized(lock) {
+    private fun cache(release: String, profile: Profile?) = synchronized(lock) {
         cachedRelease = release
-        cachedBinary = binary
+        cachedProfile = profile
     }
 
     private fun readDebugOverrides(): ValueMap {

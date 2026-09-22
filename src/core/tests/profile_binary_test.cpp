@@ -75,6 +75,10 @@ int main(void) {
              std::string_view(buffer, static_cast<size_t>(size)),
              &parsed, tiny_release, sizeof(tiny_release)) == -1);
 
+  /* A profile without a declared route never serializes. */
+  values.route = kRouteAuto;
+  assert(binary_profile::serialize(&values, buffer, sizeof(buffer)) == -1);
+
   puts("profile_binary_test: ok");
   return 0;
 }

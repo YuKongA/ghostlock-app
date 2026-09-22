@@ -5,6 +5,7 @@
 int main(void) {
   struct kernel_offsets decoded = {
       .kernel_major = 5,
+      .route = kRouteMulticastWaiter,
       .pselect_waiter_shift = 16,
       .mcast_waiter_off = 32,
       .mcast_buffer_size = 128,
@@ -47,15 +48,20 @@ int main(void) {
     return 1;
   }
 
-  /* An explicit route field overrides the legacy geometry inference. */
+  /* The declared route decides, and kRouteAuto selects no chain at all. */
   decoded.route = kRouteTcpZerocopy;
   TargetProfile explicit_tcp = target_profile_snapshot(&decoded);
   decoded.route = kRouteSelectStack;
   TargetProfile explicit_select = target_profile_snapshot(&decoded);
+  decoded.route = kRouteAuto;
+  TargetProfile unresolved = target_profile_snapshot(&decoded);
   if (!target_profile_supports_tcp_zerocopy(&explicit_tcp) ||
       target_profile_supports_multicast_waiter(&explicit_tcp) ||
       !target_profile_supports_select_stack(&explicit_select) ||
-      target_profile_supports_tcp_zerocopy(&explicit_select)) {
+      target_profile_supports_tcp_zerocopy(&explicit_select) ||
+      target_profile_supports_multicast_waiter(&unresolved) ||
+      target_profile_supports_tcp_zerocopy(&unresolved) ||
+      target_profile_supports_select_stack(&unresolved)) {
     fputs("explicit route selection test failed\n", stderr);
     return 1;
   }

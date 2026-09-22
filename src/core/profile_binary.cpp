@@ -157,6 +157,9 @@ int parse(std::string_view document, struct kernel_offsets *out,
     memset(out, 0, sizeof(*out));
     out->uname_r = release_buf;
     out->route = bytes[6];
+    /* The route is profile-controlled: an unresolved kRouteAuto is rejected
+     * instead of being inferred from kernel geometry. */
+    if (out->route == kRouteAuto) return -1;
     out->kernel_major = bytes[7];
     out->recommend_shizuku = bytes[8];
     out->fallback_route = bytes[9];
@@ -181,6 +184,7 @@ int parse(std::string_view document, struct kernel_offsets *out,
 
 int serialize(const struct kernel_offsets *in, char *buffer, size_t capacity) {
     if (!in || !buffer || !in->uname_r) return -1;
+    if (in->route == kRouteAuto) return -1;
     const size_t release_length = strlen(in->uname_r);
     if (release_length > 0xffff) return -1;
     const size_t total = kHeaderSize + release_length + kFieldCount * kW8;

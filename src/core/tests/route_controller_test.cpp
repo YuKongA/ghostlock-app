@@ -45,8 +45,9 @@ int main(void) {
   WriteRequest request = {.mode = WriteMode::Zero};
   /* The optional fallback field is present: tcp failure falls back to select. */
   struct kernel_offsets values = {
-      .compact_waiter = 1,
+      .route = kRouteTcpZerocopy,
       .fallback_route = kRouteSelectStack,
+      .compact_waiter = 1,
   };
   TargetProfile profile = target_profile_snapshot(&values);
   route::RouteController controller;
@@ -63,7 +64,10 @@ int main(void) {
   assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
 
   /* Without the fallback field the tcp failure is returned unchanged. */
-  struct kernel_offsets no_fallback = {.compact_waiter = 1};
+  struct kernel_offsets no_fallback = {
+      .route = kRouteTcpZerocopy,
+      .compact_waiter = 1,
+  };
   TargetProfile no_fallback_profile = target_profile_snapshot(&no_fallback);
   route::route_controller_init(
       &controller, &race, &no_fallback_profile, route::RouteKind::TcpZerocopy);

@@ -189,17 +189,13 @@ target_profile_execution(const TargetProfile *profile) {
   return values ? &values->execution : nullptr;
 }
 
-/* The effective route: the explicit field wins, otherwise fall back to the
- * legacy geometry inference so old profiles keep behaving the same way. */
+/* The route is profile-controlled: profiles must declare it explicitly, and
+ * a missing (kRouteAuto) value is rejected while loading. Legacy documents get
+ * their route baked in by Kotlin's LegacyProfileConverter beforehand. */
 static inline uint8_t target_profile_route(const TargetProfile *profile) {
   const struct kernel_offsets *v = target_profile_values(profile);
   if (!v) return kRouteAuto;
-  if (v->route != kRouteAuto) return v->route;
-  if (v->kernel_major == 5 && v->mcast_waiter_off > 0) {
-    return kRouteMulticastWaiter;
-  }
-  if (v->compact_waiter) return kRouteTcpZerocopy;
-  return kRouteSelectStack;
+  return v->route;
 }
 
 static inline int target_profile_supports_multicast_waiter(

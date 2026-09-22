@@ -96,6 +96,7 @@ internal data class NativeProfileDocument(
         const val Magic = 0x314B4C47
         const val Version: Short = 2
         private const val HeaderSize = 12
+        private const val FieldCount = 86
 
         fun routeKind(route: String?): Int = when (route) {
             "tcp_zerocopy" -> 1
@@ -103,6 +104,112 @@ internal data class NativeProfileDocument(
             "multicast_waiter" -> 3
             else -> 0
         }
+
+        /** Decodes the GLK1 v2 byte layout; null on bad magic/version/size. */
+        fun fromBinary(bytes: ByteArray): NativeProfileDocument? {
+            if (bytes.size < HeaderSize) return null
+            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            if (buffer.int != Magic) return null
+            if (buffer.short != Version) return null
+            val routeKind = buffer.get().toInt() and 0xff
+            val kernelMajor = buffer.get().toLong() and 0xff
+            val recommendShizuku = buffer.get().toLong() and 0xff
+            val fallbackRoute = buffer.get().toInt() and 0xff
+            val releaseLength = buffer.short.toInt() and 0xffff
+            if (buffer.remaining() != releaseLength + FieldCount * 8) return null
+            val releaseBytes = ByteArray(releaseLength)
+            buffer.get(releaseBytes)
+            val fields = LongArray(FieldCount) { buffer.long }
+            return fromFields(
+                release = String(releaseBytes, Charsets.UTF_8),
+                routeKind = routeKind,
+                kernelMajor = kernelMajor,
+                recommendShizuku = recommendShizuku,
+                fallbackRoute = fallbackRoute,
+                fields = fields,
+            )
+        }
+
+        /* Field indices mirror flatten() one-to-one. */
+        private fun fromFields(
+            release: String,
+            routeKind: Int,
+            kernelMajor: Long,
+            recommendShizuku: Long,
+            fallbackRoute: Int,
+            fields: LongArray,
+        ): NativeProfileDocument = NativeProfileDocument(
+            release = release,
+            routeKind = routeKind,
+            kernelMajor = kernelMajor,
+            recommendShizuku = recommendShizuku,
+            fallbackRoute = fallbackRoute,
+            taskStruct = TaskStructOffsets(
+                prio = fields[0], normalPrio = fields[1], schedTaskGroup = fields[2],
+                piLock = fields[3], piWaiters = fields[4], piTopTask = fields[5],
+                piBlockedOn = fields[6], pid = fields[7], tgid = fields[8],
+                atomicFlags = fields[9], realCred = fields[10], cred = fields[11],
+                comm = fields[12], tasks = fields[13], seccomp = fields[14],
+            ),
+            cred = CredTemplate(
+                copySize = fields[15], usageOffset = fields[16], usageValue = fields[17],
+                capsOffset = fields[18], capsCount = fields[19], capsValue = fields[20],
+                refCount = fields[21], ref0Offset = fields[22], ref1Offset = fields[23],
+                ref2Offset = fields[24], ref3Offset = fields[25], ref0Image = fields[26],
+                ref1Image = fields[27], ref2Image = fields[28], ref3Image = fields[29],
+            ),
+            kernelOffset = KernelOffsetTable(
+                initTask = fields[30], initCred = fields[31], emptyZeroPage = fields[32],
+                mcastFakeBss = fields[33], rootTaskGroup = fields[34],
+                selinuxEnforcing = fields[35], selinuxBlobSizes = fields[36],
+                securityHookHeads = fields[37], slideNfulnlLogger = fields[38],
+                slideLoggers01 = fields[39], slideBootId = fields[40],
+            ),
+            multicast = MulticastGeometry(
+                waiterOff = fields[41], bufferSize = fields[42], taskOffset = fields[43],
+                lockOffset = fields[44], fakeLockOffset = fields[45],
+                fakeTaskOffset = fields[46], lockSlotsOffset = fields[47],
+                lockSlotCount = fields[48], lockSlotStride = fields[49],
+            ),
+            kernelPhysLoad = fields[50],
+            pselectWaiterShift = fields[51],
+            compactWaiter = fields[52],
+            kernelsnitchCollisions = fields[53],
+            mmStructSz = fields[54],
+            execution = ExecutionTuning(
+                recommendedMainCpu = fields[55],
+                recommendedConsumerCpu = fields[56],
+                heapPrepareMaxAttempts = fields[57],
+                heapPrepareTimeoutMs = fields[58],
+                heapKernelsnitchTimeoutMs = fields[59],
+                raceRouteWaitMs = fields[60],
+                raceSetupSettleUs = fields[61],
+                raceStatePollIntervalUs = fields[62],
+                w1Attempts = fields[63],
+                w1SettleUs = fields[64],
+                w1ScratchRepairAttempts = fields[65],
+                w2Attempts = fields[66],
+                w2SettleUs = fields[67],
+                w3ChainRounds = fields[68],
+                w3Attempts = fields[69],
+                w3SettleUs = fields[70],
+                tcpAttempts = fields[71],
+                tcpArmSequence = fields[72],
+                tcpPostReceiveHoldIterations = fields[73],
+                selectEnterDelayUs = fields[74],
+                selectTimeoutUs = fields[75],
+                selectConsumerMaxCalls = fields[76],
+                selectConsumerBurstCalls = fields[77],
+                multicastReadyTimeoutMs = fields[78],
+                multicastPostRequeueSettleUs = fields[79],
+                multicastPostAdjustSettleUs = fields[80],
+                handoffPreDispatchSettleMs = fields[81],
+                handoffModulePollAttempts = fields[82],
+                handoffModulePollIntervalMs = fields[83],
+                handoffEnforcePollAttempts = fields[84],
+                handoffEnforcePollIntervalMs = fields[85],
+            ),
+        )
 
         /** Builds the document from resolved profile values by dotted path. */
         fun from(
