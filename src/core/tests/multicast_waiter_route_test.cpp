@@ -14,7 +14,7 @@ using namespace ghostlock::memory;
 
 int main(void) {
     MulticastWaiterRoute context;
-    PiRaceContext race;
+    PiRace race;
     race.main_cpu = 2;
     race.consumer_cpu = 3;
     WriteRequest request = {0};

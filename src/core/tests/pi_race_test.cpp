@@ -27,7 +27,7 @@ static bool wait_started(int expected) {
 }
 
 static void *fake_waiter(void *arg) {
-    auto *race = static_cast<PiRaceContext *>(arg);
+    auto *race = static_cast<PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->owner_stop.load() &&
            !race->owner_chain_done.load())
@@ -36,21 +36,21 @@ static void *fake_waiter(void *arg) {
 }
 
 static void *fake_owner(void *arg) {
-    auto *race = static_cast<PiRaceContext *>(arg);
+    auto *race = static_cast<PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->owner_stop.load()) usleep(1000);
     return nullptr;
 }
 
 static void *fake_consumer(void *arg) {
-    auto *race = static_cast<PiRaceContext *>(arg);
+    auto *race = static_cast<PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->consumer_stop.load()) usleep(1000);
     return nullptr;
 }
 
 int main(void) {
-    PiRaceContext race;
+    PiRace race;
     race.reset(12345, 2, 3);
     assert(race.wait_futex == 0);
     assert(race.target_futex == 0);
@@ -124,12 +124,12 @@ int main(void) {
     ok.code = ROUTE_OK;
     ok.userspace_clean = 1;
     ok.kernel_disarmed = 1;
-    assert(PiRaceContext::outcome_with_counters(ok, 3, 2).code == ROUTE_OK);
-    assert(PiRaceContext::outcome_with_counters(ok, 0, 0).code ==
+    assert(PiRace::outcome_with_counters(ok, 3, 2).code == ROUTE_OK);
+    assert(PiRace::outcome_with_counters(ok, 0, 0).code ==
            ROUTE_RETRYABLE);
-    assert(PiRaceContext::outcome_with_counters(ok, 3, 0).code ==
+    assert(PiRace::outcome_with_counters(ok, 3, 0).code ==
            ROUTE_RETRYABLE);
-    assert(PiRaceContext::outcome_with_counters(ok, 0, 2).code ==
+    assert(PiRace::outcome_with_counters(ok, 0, 2).code ==
            ROUTE_RETRYABLE);
 
     RouteStatus dirty{};
@@ -137,7 +137,7 @@ int main(void) {
     dirty.step = 59;
     dirty.userspace_clean = 1;
     dirty.kernel_disarmed = 0;
-    const RouteStatus kept = PiRaceContext::outcome_with_counters(dirty, 10, 10);
+    const RouteStatus kept = PiRace::outcome_with_counters(dirty, 10, 10);
     assert(kept.code == ROUTE_DIRTY_FAILURE);
     assert(kept.step == 59);
     assert(kept.userspace_clean == 1);

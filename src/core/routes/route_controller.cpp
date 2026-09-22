@@ -10,7 +10,7 @@ namespace ghostlock::route {
 
     RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request);
 
-    void RouteController::init(ghostlock::race::PiRaceContext *race,
+    void RouteController::init(ghostlock::race::PiRace *race,
                                const TargetProfile *profile,
                                RouteKind selected) {
         *this = (RouteController)

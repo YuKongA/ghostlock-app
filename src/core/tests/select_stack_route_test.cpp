@@ -19,7 +19,7 @@ using namespace ghostlock::memory;
 
 
 int main(void) {
-    PiRaceContext race;
+    PiRace race;
     race.reset(0, 0, 1);
     WriteRequest request{};
     SelectStackLayout layout = {.waiter_shift = 16, .compact_waiter = 1};

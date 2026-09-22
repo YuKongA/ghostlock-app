@@ -40,7 +40,7 @@ static int mmap_zero_page(void **address, size_t size) {
 }
 
 int main(void) {
-    PiRaceContext race;
+    PiRace race;
     race.reset(0, 0, 1);
     WriteRequest request{};
     const struct execution_settings *execution =

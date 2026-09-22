@@ -47,7 +47,7 @@ static void reset_stubs(RouteStatus status) {
 }
 
 int main(void) {
-    PiRaceContext race;
+    PiRace race;
     WriteRequest request = {.mode = WriteMode::Zero};
     /* The optional fallback field is present: tcp failure falls back to select. */
     struct kernel_offsets values = {

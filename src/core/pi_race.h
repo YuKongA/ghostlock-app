@@ -89,7 +89,6 @@ namespace ghostlock::race {
     private:
         void abort_startup() noexcept;
     };
-    using PiRaceContext = PiRace;
 } // namespace ghostlock::race
 
 #endif

@@ -22,7 +22,7 @@ using namespace ghostlock::memory;
 
 namespace ghostlock::race {
     void *waiter_thread(void *arg) {
-        auto *race = static_cast<PiRaceContext *>(arg);
+        auto *race = static_cast<PiRace *>(arg);
         const WriteRequest *request = race->request;
         support::disable_rseq_for_thread();
         int tid = (int) syscall(SYS_gettid);
@@ -84,7 +84,7 @@ namespace ghostlock::race {
     }
 
     void *owner_thread(void *arg) {
-        auto *race = static_cast<PiRaceContext *>(arg);
+        auto *race = static_cast<PiRace *>(arg);
         support::disable_rseq_for_thread();
         long lock_target = support::futex_op(
             &race->target_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
@@ -107,7 +107,7 @@ namespace ghostlock::race {
     }
 
     void *consumer_thread(void *arg) {
-        auto *race = static_cast<PiRaceContext *>(arg);
+        auto *race = static_cast<PiRace *>(arg);
         support::disable_rseq_for_thread();
         pin_to_core((size_t) race->consumer_cpu);
         pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
