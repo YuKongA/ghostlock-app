@@ -142,7 +142,7 @@
 
 /* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
  * -1); callers have no better recovery than proceeding, so the form is kept. */
-namespace ghostlock {
+namespace ghostlock::kernel {
 
 static inline void pin_to_core(size_t core) {
     cpu_set_t cpuset;
@@ -234,4 +234,4 @@ static inline unsigned long parse_xl(const char *s, const char *name) {
     return parsed.value;
 }
 
-} // namespace ghostlock
+} // namespace ghostlock::kernel

@@ -17,7 +17,7 @@
 #define RDPRU_ECX_MPERF 0
 #define RDPRU_ECX_APERF 1
 
-namespace ghostlock {
+namespace ghostlock::kernel {
 
 static inline size_t rdtsc_begin(void) {
 #if defined(__INTEL)
@@ -71,4 +71,4 @@ static inline size_t rdtsc_end(void) {
 #endif
 }
 
-} // namespace ghostlock
+} // namespace ghostlock::kernel

@@ -22,6 +22,7 @@ namespace ghostlock::support {
     using namespace ghostlock::config;
     using namespace ghostlock::session;
     using namespace ghostlock::memory;
+    using namespace ghostlock::kernel;
 
     static const struct kernel_offsets *profile_values(void) {
         return g_exploit_session.profile.values();

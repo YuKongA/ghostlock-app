@@ -195,9 +195,9 @@ static size_t __measure(size_t futex_addr, size_t repeat, size_t avg) {
     size_t __times[16];
     for (size_t l = 0; l < repeat; ++l) {
         sched_yield();
-        t0 = rdtsc_begin();
+        t0 = ghostlock::kernel::rdtsc_begin();
         SYSCHK(__futex((unsigned int *) futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
-        t1 = rdtsc_end();
+        t1 = ghostlock::kernel::rdtsc_end();
         __times[l] = t1 - t0;
     }
     qsort(__times, repeat, sizeof(size_t), __compare);
@@ -373,7 +373,7 @@ KernelSnitchContext *context_init(size_t __mm_struct_sz,
             ks->mm_slab_order,
             ks->thread_cnt,
             ks->collisions);
-    pin_to_core(__pin_cpu);
+    ghostlock::kernel::pin_to_core(__pin_cpu);
 
     ks->state = KERNELSNITCH_INIT;
     return ks;
@@ -613,7 +613,7 @@ int context_has_collisions(const KernelSnitchContext *ks) {
 int context_scan(KernelSnitchContext *ks) {
     ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
     if (ks->verbose) pr_info("start bruteforcing\n");
-    reset_cpu_pin();
+    ghostlock::kernel::reset_cpu_pin();
 
     __run_mm_leak_pass(ks, 1, 0);
     if (!ks->found)
