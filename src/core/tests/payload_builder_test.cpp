@@ -3,10 +3,9 @@
 #include <cstdio>
 
 using namespace ghostlock;
-using namespace ghostlock::memory;
 
-int main(void) {
-    if (!payload_builder_fixed_vector_test()) {
+int32_t main(void) {
+    if (!ghostlock::memory::payload_builder_fixed_vector_test()) {
         fputs("payload builder fixed-vector comparison failed\n", stderr);
         return 1;
     }

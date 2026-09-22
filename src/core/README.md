@@ -10,10 +10,9 @@
   `CPP12n`); TCP/Select device gates await external hardware.
   See `../../docs/analysis`.
 
-- `routes/`: route selection, status, route contexts and the shared
-  `route_operations.cpp` implementation. The latter replaces the misleading
-  historical name `fops.cpp` without changing route timing or translation-unit
-  boundaries.
+- `route/`: route selection, status, per-route contexts and their route-level
+  drivers (`multicast_waiter_route.cpp` / `tcp_zerocopy_route.cpp` /
+  `select_stack_route.cpp`); the old shared `route_operations.cpp` is merged in.
 - `memory/`: address resolution, heap/page state and route-neutral payload encoding.
 - `session/`: one-invocation state owner, runtime configuration, handoff
   probes and the victim pipe context.

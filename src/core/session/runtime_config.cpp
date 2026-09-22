@@ -3,10 +3,8 @@
 #include "session/runtime_paths.h"
 
 using namespace ghostlock;
-using namespace ghostlock::profile;
-using namespace ghostlock::config;
 
-static void runtime_config_init_cpus(RuntimeConfig *config) {
+static void runtime_config_init_cpus(config::RuntimeConfig *config) {
     config->main_cpu = 0;
     config->consumer_cpu = 1;
 
@@ -27,7 +25,7 @@ static void runtime_config_init_cpus(RuntimeConfig *config) {
     }
 }
 
-static int runtime_config_validate_cpus(RuntimeConfig *config) {
+static int32_t runtime_config_validate_cpus(config::RuntimeConfig *config) {
     if (config->main_cpu == config->consumer_cpu) {
         pr_warning("main and consumer cores are the same (%d)\n", config->main_cpu);
         return -1;
@@ -46,13 +44,13 @@ static int runtime_config_validate_cpus(RuntimeConfig *config) {
 
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
-int RuntimeConfig::apply_profile(const TargetProfile *profile) {
-    const struct execution_settings *e = profile->execution();
+int32_t ghostlock::config::RuntimeConfig::apply_profile(const profile::TargetProfile *profile) {
+    const profile::execution_settings *e = profile->execution();
     if (!e) return -1;
-    int old_main = main_cpu;
-    int old_consumer = consumer_cpu;
-    main_cpu = (int) e->recommended_main_cpu;
-    consumer_cpu = (int) e->recommended_consumer_cpu;
+    int32_t old_main = main_cpu;
+    int32_t old_consumer = consumer_cpu;
+    main_cpu = profile->recommended_main_cpu();
+    consumer_cpu = profile->recommended_consumer_cpu();
     if (runtime_config_validate_cpus(this) != 0) {
         main_cpu = old_main;
         consumer_cpu = old_consumer;
@@ -60,7 +58,7 @@ int RuntimeConfig::apply_profile(const TargetProfile *profile) {
     return 0;
 }
 
-static void runtime_config_init_paths(RuntimeConfig *config) {
+static void runtime_config_init_paths(config::RuntimeConfig *config) {
     const char *home = getenv("GHOSTLOCK_HOME");
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";
@@ -77,7 +75,7 @@ static void runtime_config_init_paths(RuntimeConfig *config) {
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
  * writable config; output: 0/-1 with the validated CPU pair. */
-int RuntimeConfig::init() {
+int32_t ghostlock::config::RuntimeConfig::init() {
     main_cpu = 0;
     consumer_cpu = 1;
     home_dir.clear();
@@ -92,7 +90,7 @@ int RuntimeConfig::init() {
 }
 
 /* Log the immutable runtime snapshot. Input: initialized config; output: logs. */
-void RuntimeConfig::log() const {
+void ghostlock::config::RuntimeConfig::log() const {
     pr_info("cpu pair: main=%d consumer=%d\n", main_cpu, consumer_cpu);
     pr_info("runtime home=%s script=%s\n", home_dir.c_str(),
             root_script_path.c_str());

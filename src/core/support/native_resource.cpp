@@ -19,17 +19,17 @@ namespace ghostlock::support {
         return *this;
     }
 
-    int UniqueFd::release() noexcept { return std::exchange(fd_, -1); }
+    int32_t UniqueFd::release() noexcept { return std::exchange(fd_, -1); }
 
-    int UniqueFd::release_to_process_lifetime(std::string_view reason) noexcept {
+    int32_t UniqueFd::release_to_process_lifetime(std::string_view reason) noexcept {
         (void) reason;
         return release();
     }
 
-    void UniqueFd::reset(int fd) noexcept {
-        const int old = std::exchange(fd_, fd);
+    void UniqueFd::reset(int32_t fd) noexcept {
+        const int32_t old = std::exchange(fd_, fd);
         if (old >= 0) {
-            const int saved_errno = errno;
+            const int32_t saved_errno = errno;
             close(old);
             errno = saved_errno;
         }
@@ -52,7 +52,7 @@ namespace ghostlock::support {
     }
 
     Result<MappedRegion> MappedRegion::map_anonymous(std::size_t size,
-                                                     int protection) {
+                                                     int32_t protection) {
         void *address = mmap(nullptr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS,
                              -1, 0);
         if (address == MAP_FAILED) {
@@ -79,7 +79,7 @@ namespace ghostlock::support {
         void *old = std::exchange(address_, nullptr);
         const std::size_t old_size = std::exchange(size_, 0);
         if (old && old != MAP_FAILED && old_size) {
-            const int saved_errno = errno;
+            const int32_t saved_errno = errno;
             munmap(old, old_size);
             errno = saved_errno;
         }
@@ -109,13 +109,13 @@ namespace ghostlock::support {
         return *this;
     }
 
-    int PthreadOwner::start(void *(*entry)(void *), void *argument,
+    int32_t PthreadOwner::start(void *(*entry)(void *), void *argument,
                         ThreadStopCallback stop,
                         void *stop_argument)
     noexcept
  {
   if (joinable() || !entry) return EINVAL;
-  const int error = pthread_create(&thread_, nullptr, entry, argument);
+  const int32_t error = pthread_create(&thread_, nullptr, entry, argument);
   if (!error) {
     state_ = State::Running;
     stop_ = stop;
@@ -130,9 +130,9 @@ namespace ghostlock::support {
         if (stop_) stop_(stop_argument_);
     }
 
-    int PthreadOwner::join(void **result) noexcept {
+    int32_t PthreadOwner::join(void **result) noexcept {
         if (!joinable()) return EINVAL;
-        const int error = pthread_join(thread_, result);
+        const int32_t error = pthread_join(thread_, result);
         if (!error) {
             state_ = State::Joined;
             stop_ = nullptr;
@@ -141,9 +141,9 @@ namespace ghostlock::support {
         return error;
     }
 
-    int PthreadOwner::detach() noexcept {
+    int32_t PthreadOwner::detach() noexcept {
         if (!joinable()) return EINVAL;
-        const int error = pthread_detach(thread_);
+        const int32_t error = pthread_detach(thread_);
         if (!error) {
             state_ = State::Detached;
             stop_ = nullptr;
@@ -190,7 +190,7 @@ namespace ghostlock::support {
         return std::exchange(pid_, -1);
     }
 
-    int ChildProcess::terminate_and_wait(int signal_number) noexcept {
+    int32_t ChildProcess::terminate_and_wait(int32_t signal_number) noexcept {
         if (!valid()) return EINVAL;
         const pid_t owned = pid_;
         if (kill(owned, signal_number) != 0 && errno != ESRCH) return errno;

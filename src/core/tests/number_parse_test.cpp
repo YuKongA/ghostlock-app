@@ -12,14 +12,12 @@
 #include <cstdio>
 
 
-using namespace ghostlock::kernelsnitch;
-
-int main(void) {
+int32_t main(void) {
     struct {
         const char *text;
-        int base;
+        int32_t base;
         unsigned long value;
-        int valid;
+        int32_t valid;
     } vectors[] = {
         {"42", 0, 42UL, 1},
         {"0x1f", 0, 31UL, 1},
@@ -36,8 +34,8 @@ int main(void) {
         {"99999999999999999999999999", 0, ULONG_MAX, 0},
     };
     for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); i++) {
-        const struct ParsedUnsigned parsed =
-                number_parse_unsigned(vectors[i].text, vectors[i].base);
+        const ghostlock::kernelsnitch::ParsedUnsigned parsed =
+                ghostlock::kernelsnitch::number_parse_unsigned(vectors[i].text, vectors[i].base);
         if (parsed.value != vectors[i].value ||
             parsed.valid != vectors[i].valid) {
             fprintf(stderr, "vector %zu ('%s' base=%d) -> value=%lu valid=%d\n", i,

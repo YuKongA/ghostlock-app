@@ -6,28 +6,42 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ProfileRoundTripTest {
-    private val values = mapOf(
+    /* Route-independent values plus per-route values. GLK1 v4 only carries the
+     * route section of the document's own route. */
+    private val common = mapOf(
         "kernel_major" to 6L,
         "compact_waiter" to 1L,
-        "pselect_waiter_shift" to -2L,
         "kernel_phys_load" to 0x80000000L,
         "task_struct.prio" to 0x20L,
         "task_struct.cred" to 0x30L,
         "cred.copy_size" to 0x88L,
         "offset.init_task" to 0x1000L,
-        "offset.mcast_fake_bss" to 0x2000L,
-        "mcast.waiter_off" to 264L,
-        "mcast.buffer_size" to 512L,
         "kernelsnitch.collisions" to 7L,
         "kernelsnitch.mm_struct_sz" to 0x4000L,
         "execution.recommended_cpus.main" to 0L,
         "execution.recommended_cpus.consumer" to 1L,
         "execution.stages.w1_attempts" to 3L,
+    )
+    private val tcpValues = common + mapOf(
         "execution.routes.tcp_zerocopy.arm_sequence" to 1L,
     )
+    private val selectValues = common + mapOf(
+        "pselect_waiter_shift" to -2L,
+        "execution.routes.select_stack.enter_delay_us" to 50000L,
+    )
+    private val multicastValues = common + mapOf(
+        "offset.mcast_fake_bss" to 0x2000L,
+        "mcast.waiter_off" to 264L,
+        "mcast.buffer_size" to 512L,
+        "execution.routes.multicast_waiter.ready_timeout_ms" to 1234L,
+    )
 
-    private fun document(route: String?, fallback: String?): NativeProfileDocument =
-        NativeProfileDocument.from("6.1.0-test", route, fallback) { values[it] }
+    private fun document(
+        route: String?,
+        fallback: String?,
+        vals: Map<String, Long>,
+    ): NativeProfileDocument =
+        NativeProfileDocument.from("6.1.0-test", route, fallback) { vals[it] }
 
     @Test
     fun `route kind maps token and wire both ways`() {
@@ -42,14 +56,20 @@ class ProfileRoundTripTest {
 
     @Test
     fun `binary decode fully restores the document`() {
-        val original = document("tcp_zerocopy", "select_stack")
-        val decoded = NativeProfileDocument.fromBinary(original.toBinary())
-        assertEquals(original, decoded)
+        for ((route, vals) in listOf(
+            "tcp_zerocopy" to tcpValues,
+            "select_stack" to selectValues,
+            "multicast_waiter" to multicastValues,
+        )) {
+            val original = document(route, "select_stack", vals)
+            val decoded = NativeProfileDocument.fromBinary(original.toBinary())
+            assertEquals(original, decoded)
+        }
     }
 
     @Test
-    fun `profile round trip is byte identical and exposes route semantics`() {
-        val bytes = document("multicast_waiter", "select_stack").toBinary()
+    fun `multicast round trip exposes route semantics`() {
+        val bytes = document("multicast_waiter", "select_stack", multicastValues).toBinary()
         val profile = Profile.fromBinary(bytes)!!
 
         assertEquals(RouteKind.MULTICAST_WAITER, profile.route)
@@ -62,20 +82,28 @@ class ProfileRoundTripTest {
         assertEquals(0x4000L, profile.mmStructStride(fallback = 1L))
         assertEquals(264L, profile.multicastLayout().waiterOffset)
         assertEquals(0x2000L, profile.multicastLayout().fakeBssImageOffset)
-        assertEquals(-2L, profile.selectStackLayout().waiterShift)
 
         assertArrayEquals(bytes, profile.toBinary())
     }
 
     @Test
+    fun `select round trip exposes waiter shift`() {
+        val bytes = document("select_stack", null, selectValues).toBinary()
+        val profile = Profile.fromBinary(bytes)!!
+        assertEquals(RouteKind.SELECT_STACK, profile.route)
+        assertEquals(-2L, profile.selectStackLayout().waiterShift)
+        assertArrayEquals(bytes, profile.toBinary())
+    }
+
+    @Test
     fun `unresolved route is rejected on decode`() {
-        val unresolved = document(route = null, fallback = null)
+        val unresolved = document(route = null, fallback = null, vals = tcpValues)
         assertNull(Profile.fromBinary(unresolved.toBinary()))
     }
 
     @Test
     fun `corrupt magic and truncated payload are rejected`() {
-        val bytes = document("select_stack", null).toBinary()
+        val bytes = document("select_stack", null, selectValues).toBinary()
         assertNull(Profile.fromBinary(bytes.copyOf().also { it[0] = 0 }))
         assertNull(Profile.fromBinary(bytes.copyOf(bytes.size - 1)))
     }
@@ -86,10 +114,10 @@ class ProfileRoundTripTest {
             release = "6.1.0-test",
             route = RouteKind.TCP_ZEROCOPY,
             fallbackTo = null,
-            value = { values[it] },
+            value = { tcpValues[it] },
         )!!
         assertEquals(RouteKind.TCP_ZEROCOPY, profile.route)
         assertNull(profile.fallback)
-        assertArrayEquals(document("tcp_zerocopy", null).toBinary(), profile.toBinary())
+        assertArrayEquals(document("tcp_zerocopy", null, tcpValues).toBinary(), profile.toBinary())
     }
 }

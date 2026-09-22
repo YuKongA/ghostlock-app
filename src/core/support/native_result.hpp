@@ -10,7 +10,7 @@ namespace ghostlock::support {
     struct SysError final {
         std::error_code code;
 
-        [[nodiscard]] static SysError from_errno(int value = errno) noexcept {
+        [[nodiscard]] static SysError from_errno(int32_t value = errno) noexcept {
             return {{value, std::generic_category()}};
         }
     };

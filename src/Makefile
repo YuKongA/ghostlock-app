@@ -21,26 +21,25 @@ C_SRCS :=
 
 CXX_SRCS := \
   core/main.cpp \
-  core/exploit_ops.cpp \
-  core/profile_entry.cpp \
-  core/legacy_support/legacy_profile_converter.cpp \
-  core/legacy_support/legacy_entrypoint_starter.cpp \
+  core/attack/ops.cpp \
+  core/profile/entry.cpp \
+  core/legacy/legacy_profile_converter.cpp \
+  core/legacy/legacy_entrypoint_starter.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
-  core/pi_race.cpp \
-  core/routes/route_controller.cpp \
-  core/routes/route_threads.cpp \
-  core/routes/tcp_zerocopy_route.cpp \
-  core/routes/select_stack_route.cpp \
-  core/routes/multicast_waiter_route.cpp \
+  core/race/pi_race.cpp \
+  core/route/route_controller.cpp \
+  core/race/threads.cpp \
+  core/route/tcp_zerocopy_route.cpp \
+  core/route/select_stack_route.cpp \
+  core/route/multicast_waiter_route.cpp \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
-  core/legacy_support/offsets_json.cpp \
-  core/profile_binary.cpp \
-  core/util.cpp \
-  core/routes/route_operations.cpp \
+  core/legacy/offsets_json.cpp \
+  core/profile/binary.cpp \
+  core/support/util.cpp \
   core/session/exploit_session.cpp \
-  core/session/exploit_stages.cpp \
+  core/route/exploit_procedure.cpp \
   core/session/handoff_probe.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \
@@ -58,7 +57,7 @@ OBJS := $(C_OBJS) $(CXX_OBJS)
 HDRS := $(wildcard core/*.h core/*.hpp core/*/*.h core/*/*.hpp)
 
 # Device offsets are selected at runtime from uname -r.
-TARGET_CONFIG ?= target.h
+TARGET_CONFIG ?= kernel/target.h
 
 COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
   -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
@@ -108,6 +107,7 @@ native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 
 NATIVE_HOST_TESTS := \
   profile_test payload_builder_test heap_context_test route_status_test \
+  route_catalog_test \
   runtime_time_test \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
@@ -141,7 +141,7 @@ $(HOST_BUILD_DIR)/cpp_link_probe_test: core/tests/cpp_link_probe.cpp core/tests/
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore -c core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
 
-$(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/target.h core/target_constants.hpp
+$(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/kernel/target.h core/kernel/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/target_constants_test.cpp -o $@
 
@@ -149,20 +149,24 @@ $(HOST_BUILD_DIR)/native_resource_test: core/tests/native_resource_test.cpp core
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/native_resource_test.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/routes/route_status.h
+$(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/runtime_time.h
+$(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/support/time.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/profile.h
+$(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_catalog_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/profile/model.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile_binary.cpp core/profile_binary.h core/profile.h
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile_binary.cpp -o $@
+$(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/model.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile/binary.cpp -o $@
 
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -176,29 +180,29 @@ $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: core/tests/kernelsnitch_scan_bo
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/route_controller_test: core/tests/route_controller_test.cpp core/routes/route_controller.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/route_controller_test: core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Icore core/tests/route_controller_test.cpp core/routes/route_controller.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Icore core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/pi_race_test: core/tests/pi_race_test.cpp core/pi_race.cpp core/pi_race.h core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/pi_race_test: core/tests/pi_race_test.cpp core/race/pi_race.cpp core/race/pi_race.h core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/pi_race_test.cpp core/pi_race.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/pi_race_test.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: core/tests/tcp_zerocopy_route_test.cpp core/routes/tcp_zerocopy_route.cpp core/routes/tcp_zerocopy_route.h core/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: core/tests/tcp_zerocopy_route_test.cpp core/route/tcp_zerocopy_route.cpp core/route/tcp_zerocopy_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/tcp_zerocopy_route_test.cpp core/routes/tcp_zerocopy_route.cpp core/pi_race.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/tcp_zerocopy_route_test.cpp core/route/tcp_zerocopy_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/select_stack_route_test: core/tests/select_stack_route_test.cpp core/routes/select_stack_route.cpp core/routes/select_stack_route.h core/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/select_stack_route_test: core/tests/select_stack_route_test.cpp core/route/select_stack_route.cpp core/route/select_stack_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/select_stack_route_test.cpp core/routes/select_stack_route.cpp core/pi_race.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/select_stack_route_test.cpp core/route/select_stack_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/multicast_waiter_route_test: core/tests/multicast_waiter_route_test.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/multicast_waiter_route_test.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/offsets_json_test: core/tests/offsets_json_test.cpp core/legacy_support/offsets_json.cpp core/memory/address_space.cpp core/support/native_resource.cpp
+$(HOST_BUILD_DIR)/offsets_json_test: core/tests/offsets_json_test.cpp core/legacy/offsets_json.cpp core/memory/address_space.cpp core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/offsets_json_test.cpp core/legacy_support/offsets_json.cpp core/profile_binary.cpp core/memory/address_space.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/offsets_json_test.cpp core/legacy/offsets_json.cpp core/profile/binary.cpp core/memory/address_space.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/futex_hash_test: core/tests/futex_hash_test.cpp core/kernelsnitch/futex_hash.h
 	@mkdir -p $(HOST_BUILD_DIR)

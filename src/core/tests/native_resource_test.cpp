@@ -15,17 +15,16 @@
 #include <cstddef>
 
 using namespace ghostlock;
-using namespace ghostlock::support;
 
 namespace {
     void *increment(void *argument) {
-        static_cast<std::atomic<int> *>(argument)->fetch_add(1);
+        static_cast<std::atomic<int32_t> *>(argument)->fetch_add(1);
         return nullptr;
     }
 
     struct StopState {
         std::atomic<bool> stop{false};
-        std::atomic<int> stop_calls{0};
+        std::atomic<int32_t> stop_calls{0};
     };
 
     void request_stop(void *argument) noexcept {
@@ -40,76 +39,76 @@ namespace {
         return nullptr;
     }
 
-    int open_fd_count() {
+    int32_t open_fd_count() {
         DIR *directory = opendir("/proc/self/fd");
         if (!directory) directory = opendir("/dev/fd");
         assert(directory);
-        int count = 0;
+        int32_t count = 0;
         while (readdir(directory)) ++count;
         closedir(directory);
         return count;
     }
 } // namespace
 
-int main() {
-    const int initial_fd_count = open_fd_count();
-    int pipe_fd[2];
+int32_t main() {
+    const int32_t initial_fd_count = open_fd_count();
+    int32_t pipe_fd[2];
     assert(pipe(pipe_fd) == 0);
     close(pipe_fd[1]);
-    const int observed = pipe_fd[0];
+    const int32_t observed = pipe_fd[0];
     {
-        UniqueFd first(observed);
-        UniqueFd second(std::move(first));
+        ghostlock::support::UniqueFd first(observed);
+        ghostlock::support::UniqueFd second(std::move(first));
         assert(!first.valid() && second.get() == observed);
-        BorrowedFd borrowed = second.borrow();
+        ghostlock::support::BorrowedFd borrowed = second.borrow();
         assert(borrowed.valid() && borrowed.get() == observed);
     }
     errno = 0;
     assert(fcntl(observed, F_GETFD) == -1 && errno == EBADF);
     assert(open_fd_count() == initial_fd_count);
 
-    int scope_calls = 0;
+    int32_t scope_calls = 0;
     {
-        auto first = make_scope_exit([&]() noexcept { ++scope_calls; });
+        auto first = ghostlock::support::make_scope_exit([&]() noexcept { ++scope_calls; });
         auto second = std::move(first);
         (void) second;
     }
     assert(scope_calls == 1);
     {
         auto cancelled =
-                make_scope_exit([&]() noexcept { ++scope_calls; });
+                ghostlock::support::make_scope_exit([&]() noexcept { ++scope_calls; });
         cancelled.release();
     }
     assert(scope_calls == 1);
 
-    auto mapping = MappedRegion::map_anonymous(
+    auto mapping = ghostlock::support::MappedRegion::map_anonymous(
         4096, PROT_READ | PROT_WRITE);
     assert(mapping && mapping.value().bytes().size() == 4096);
     mapping.value().bytes()[0] = std::byte{0x5a};
-    MappedRegion moved_mapping(std::move(mapping.value()));
+    ghostlock::support::MappedRegion moved_mapping(std::move(mapping.value()));
     assert(moved_mapping.valid() && !mapping.value().valid());
     auto invalid_mapping =
-            MappedRegion::map_anonymous(0, PROT_READ | PROT_WRITE);
+            ghostlock::support::MappedRegion::map_anonymous(0, PROT_READ | PROT_WRITE);
     assert(!invalid_mapping);
 
-    std::atomic<int> calls{0};
-    PthreadOwner worker;
+    std::atomic<int32_t> calls{0};
+    ghostlock::support::PthreadOwner worker;
     assert(worker.start(increment, &calls) == 0);
     assert(worker.join() == 0 && calls.load() == 1);
 
     StopState stop_state;
-    PthreadOwner stoppable;
+    ghostlock::support::PthreadOwner stoppable;
     assert(stoppable.start(wait_for_stop, &stop_state, request_stop,
                            &stop_state) == 0);
     stoppable.request_stop();
     stoppable.request_stop();
     assert(stoppable.state() ==
-           PthreadOwner::State::StopRequested);
+           ghostlock::support::PthreadOwner::State::StopRequested);
     assert(stoppable.join() == 0);
     assert(stop_state.stop_calls.load() == 1);
-    assert(stoppable.state() == PthreadOwner::State::Joined);
+    assert(stoppable.state() == ghostlock::support::PthreadOwner::State::Joined);
 
-    PthreadOwner invalid_worker;
+    ghostlock::support::PthreadOwner invalid_worker;
     assert(invalid_worker.start(nullptr, nullptr) == EINVAL);
 
     const pid_t pid = fork();
@@ -117,10 +116,10 @@ int main() {
     if (pid == 0) {
         for (;;) pause();
     }
-    ChildProcess child(pid);
+    ghostlock::support::ChildProcess child(pid);
     assert(child.terminate_and_wait(SIGKILL) == 0);
     assert(!child.valid());
-    assert(child.state() == ChildProcess::State::Reaped);
+    assert(child.state() == ghostlock::support::ChildProcess::State::Reaped);
     assert(child.terminate_and_wait(SIGKILL) == EINVAL);
 
     const pid_t handoff_pid = fork();
@@ -128,13 +127,13 @@ int main() {
     if (handoff_pid == 0) {
         for (;;) pause();
     }
-    ChildProcess handoff(handoff_pid);
+    ghostlock::support::ChildProcess handoff(handoff_pid);
     assert(handoff.release_to_handoff() == handoff_pid);
-    assert(handoff.state() == ChildProcess::State::Transferred);
+    assert(handoff.state() == ghostlock::support::ChildProcess::State::Transferred);
     assert(kill(handoff_pid, SIGKILL) == 0);
     assert(waitpid(handoff_pid, nullptr, 0) == handoff_pid);
 
-    ChildProcess invalid_child(-1);
+    ghostlock::support::ChildProcess invalid_child(-1);
     assert(!invalid_child.valid());
     assert(invalid_child.release_to_handoff() == -1);
 
@@ -142,11 +141,11 @@ int main() {
     const pid_t reaped_pid = fork();
     assert(reaped_pid >= 0);
     if (reaped_pid == 0) _exit(0);
-    ChildProcess reaped(reaped_pid);
+    ghostlock::support::ChildProcess reaped(reaped_pid);
     assert(waitpid(reaped_pid, nullptr, 0) == reaped_pid);
     reaped.mark_reaped();
     assert(!reaped.valid());
-    assert(reaped.state() == ChildProcess::State::Reaped);
+    assert(reaped.state() == ghostlock::support::ChildProcess::State::Reaped);
     reaped.mark_reaped(); /* idempotent */
     assert(reaped.terminate_and_wait(SIGKILL) == EINVAL);
 
@@ -166,9 +165,9 @@ int main() {
                 waitpid(failed, nullptr, 0);
             } else {
                 assert(errno == EAGAIN || errno == ENOMEM);
-                ChildProcess none(failed);
+                ghostlock::support::ChildProcess none(failed);
                 assert(!none.valid());
-                assert(none.state() == ChildProcess::State::Empty);
+                assert(none.state() == ghostlock::support::ChildProcess::State::Empty);
                 assert(none.terminate_and_wait(SIGKILL) == EINVAL);
             }
             (void) setrlimit(RLIMIT_NPROC, &saved_limit);

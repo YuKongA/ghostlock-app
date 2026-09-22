@@ -1,5 +1,5 @@
 #include "tests/cpp_link_probe.h"
-#include "target_constants.hpp"
+#include "kernel/target_constants.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -11,7 +11,7 @@ using namespace ghostlock;
 namespace {
     class ErrnoRestore final {
     public:
-        explicit ErrnoRestore(int value)
+        explicit ErrnoRestore(int32_t value)
 
             noexcept : value_(value) {
         }
@@ -27,18 +27,20 @@ namespace {
         ErrnoRestore &operator=(const ErrnoRestore &) = delete;
 
     private:
-        int value_;
+        int32_t value_;
     };
 } // namespace
 
 extern "C" __attribute__ ((used
 ,
 visibility (
+
+
 "default"
 )
 )
 )
-int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
+int32_t ghostlock_cpp_link_probe(const char *text, int32_t saved_errno) noexcept {
     try {
         ErrnoRestore restore(saved_errno);
         const std::string owned = text ? text : "";
@@ -49,7 +51,7 @@ int ghostlock_cpp_link_probe(const char *text, int saved_errno) noexcept {
             return -1;
         }
         errno = EIO;
-        return static_cast<int>(owned.size() + copied.size()) + saved_errno;
+        return static_cast<int32_t>(owned.size() + copied.size()) + saved_errno;
     } catch (...) {
         errno = saved_errno;
         return -1;

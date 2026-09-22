@@ -12,9 +12,8 @@
 #include <cstdint>
 #include <cstdio>
 
-using namespace ghostlock::kernelsnitch;
 
-int main(void) {
+int32_t main(void) {
     static const struct {
         size_t table_size;
         size_t addr;
@@ -40,14 +39,14 @@ int main(void) {
         },
     };
     for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); ++i) {
-        FutexHashContext context = {};
+        ghostlock::kernelsnitch::FutexHashContext context = {};
         assert(futex_hash_context_init(&context, vectors[i].table_size) == 0);
         assert(context.table_size == vectors[i].table_size);
 
-        futex_key_t key = {};
+        ghostlock::kernelsnitch::futex_key_t key = {};
         key.private_key.mm = (void *) vectors[i].mm;
         key.private_key.address = vectors[i].addr & ~(size_t) 0xfff;
-        key.private_key.offset = (unsigned int) (vectors[i].addr & 0xfff);
+        key.private_key.offset = (uint32_t) (vectors[i].addr & 0xfff);
         assert(futex_hash_context_key(&context, &key) ==
                vectors[i].expected_key_hash);
         assert(futex_hash_context_bucket(
@@ -57,8 +56,8 @@ int main(void) {
     }
 
     /* The mask is applied to the same untruncated hash for every table size. */
-    FutexHashContext small = {};
-    FutexHashContext large = {};
+    ghostlock::kernelsnitch::FutexHashContext small = {};
+    ghostlock::kernelsnitch::FutexHashContext large = {};
     assert(futex_hash_context_init(&small, 256) == 0);
     assert(futex_hash_context_init(&large, 4096) == 0);
     const uint32_t small_bucket = futex_hash_context_bucket(
@@ -68,7 +67,7 @@ int main(void) {
     assert((large_bucket & 0xffU) == small_bucket);
 
     /* Invalid policy inputs are rejected without mutating the context. */
-    FutexHashContext rejected = {};
+    ghostlock::kernelsnitch::FutexHashContext rejected = {};
     assert(futex_hash_context_init(&rejected, 0) == -1);
     assert(futex_hash_context_init(&rejected, 255) == -1);
     assert(futex_hash_context_init(&rejected, 300) == -1);
@@ -76,23 +75,23 @@ int main(void) {
     if (sizeof(size_t) > sizeof(uint32_t)) {
         assert(futex_hash_context_init(&rejected, (size_t) 1 << 32) == -1);
     }
-    assert(futex_hash_context_init(nullptr, 256) == -1);
+    assert(ghostlock::kernelsnitch::futex_hash_context_init(nullptr, 256) == -1);
 
     /* An uninitialized context cannot produce a bucket. */
-    futex_key_t key = {};
+    ghostlock::kernelsnitch::futex_key_t key = {};
     assert(futex_hash_context_key(&rejected, &key) == UINT32_MAX);
     assert(futex_hash_context_key(nullptr, &key) == UINT32_MAX);
     assert(futex_hash_context_bucket(&rejected, 0x1000, 0x2000) == UINT32_MAX);
 
     /* Kernel-equivalent table sizing: possible CPUs, rounded up. Hotplug can
    * leave the online count non-power-of-two, which must not fail the policy. */
-    assert(futex_hash_table_size_for(1) == 256);
-    assert(futex_hash_table_size_for(6) == 2048);
-    assert(futex_hash_table_size_for(7) == 2048);
-    assert(futex_hash_table_size_for(8) == 2048);
-    assert(futex_hash_table_size_for(12) == 4096);
-    FutexHashContext sized = {};
-    assert(futex_hash_context_init(&sized, futex_hash_table_size_for(7)) == 0);
+    assert(ghostlock::kernelsnitch::futex_hash_table_size_for(1) == 256);
+    assert(ghostlock::kernelsnitch::futex_hash_table_size_for(6) == 2048);
+    assert(ghostlock::kernelsnitch::futex_hash_table_size_for(7) == 2048);
+    assert(ghostlock::kernelsnitch::futex_hash_table_size_for(8) == 2048);
+    assert(ghostlock::kernelsnitch::futex_hash_table_size_for(12) == 4096);
+    ghostlock::kernelsnitch::FutexHashContext sized = {};
+    assert(futex_hash_context_init(&sized, ghostlock::kernelsnitch::futex_hash_table_size_for(7)) == 0);
     assert(sized.table_size == 2048);
 
     puts("futex_hash_test: ok");

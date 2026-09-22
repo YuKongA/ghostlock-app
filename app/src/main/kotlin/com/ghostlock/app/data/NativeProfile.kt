@@ -4,8 +4,11 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Typed mirror of the native `struct kernel_offsets` (binary layout v1).
- * The field order of [toBinary] must match `src/core/profile_binary.cpp`.
+ * Typed mirror of the native `struct kernel_offsets` (GLK1 v4: fixed common
+ * slots + a per-route section). Route-specific parameters live in [routeConfig],
+ * not in the common document. The common slot order must match
+ * `src/core/profile/binary.cpp` `kCommonFields`; route keys must match its
+ * `kXxxFields`.
  */
 internal data class NativeProfileDocument(
     val release: String,
@@ -16,22 +19,24 @@ internal data class NativeProfileDocument(
     val taskStruct: TaskStructOffsets,
     val cred: CredTemplate,
     val kernelOffset: KernelOffsetTable,
-    val multicast: MulticastGeometry,
     val kernelPhysLoad: Long,
-    val pselectWaiterShift: Long,
     val compactWaiter: Long,
     val kernelsnitchCollisions: Long,
     val mmStructSz: Long,
     val execution: ExecutionTuning,
     val safeMode: Long,
-    val multicastResident: Long,
+    /** Route-specific configuration; never part of the shared schema. */
+    val routeConfig: RouteConfig,
 ) {
     fun toBinary(): ByteArray {
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
         require(releaseBytes.size <= 0xffff) { "release is too long" }
-        val fields = flatten()
+        val common = flattenCommon()
+        val route = routeEntries()
+        var size = HeaderSize + releaseBytes.size + common.size * 8 + 1
+        for ((key, _) in route) size += 1 + key.toByteArray(Charsets.UTF_8).size + 8
         val buffer = ByteBuffer
-            .allocate(HeaderSize + releaseBytes.size + fields.size * 8)
+            .allocate(size)
             .order(ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(Magic)
         buffer.putShort(Version)
@@ -41,75 +46,98 @@ internal data class NativeProfileDocument(
         buffer.put(fallbackRoute.toByte())
         buffer.putShort(releaseBytes.size.toShort())
         buffer.put(releaseBytes)
-        fields.forEach(buffer::putLong)
+        common.forEach(buffer::putLong)
+        buffer.put(route.size.toByte())
+        for ((key, value) in route) {
+            val kb = key.toByteArray(Charsets.UTF_8)
+            buffer.put(kb.size.toByte())
+            buffer.put(kb)
+            buffer.putLong(value)
+        }
         return buffer.array()
     }
 
-    private fun flatten(): LongArray {
+    /** Route-independent slots (order shared with native kCommonFields). */
+    private fun flattenCommon(): LongArray {
         val task = taskStruct
         val credential = cred
         val offsets = kernelOffset
-        val mcast = multicast
         val exec = execution
         return longArrayOf(
-            /* task_struct */
             task.prio, task.normalPrio, task.schedTaskGroup, task.piLock,
             task.piWaiters, task.piTopTask, task.piBlockedOn, task.pid, task.tgid,
             task.atomicFlags, task.realCred, task.cred, task.comm, task.tasks,
             task.seccomp,
-            /* cred */
             credential.copySize, credential.usageOffset, credential.usageValue,
             credential.capsOffset, credential.capsCount, credential.capsValue,
             credential.refCount,
             credential.ref0Offset, credential.ref1Offset, credential.ref2Offset,
             credential.ref3Offset, credential.ref0Image, credential.ref1Image,
             credential.ref2Image, credential.ref3Image,
-            /* offset */
             offsets.initTask, offsets.initCred, offsets.emptyZeroPage,
-            offsets.mcastFakeBss, offsets.rootTaskGroup, offsets.selinuxEnforcing,
-            offsets.selinuxBlobSizes, offsets.securityHookHeads,
-            offsets.slideNfulnlLogger, offsets.slideLoggers01, offsets.slideBootId,
-            /* mcast */
-            mcast.waiterOff, mcast.bufferSize, mcast.taskOffset, mcast.lockOffset,
-            mcast.fakeLockOffset, mcast.fakeTaskOffset, mcast.lockSlotsOffset,
-            mcast.lockSlotCount, mcast.lockSlotStride,
-            /* misc */
-            kernelPhysLoad, pselectWaiterShift, compactWaiter,
-            kernelsnitchCollisions, mmStructSz,
-            /* execution */
+            offsets.rootTaskGroup, offsets.selinuxEnforcing, offsets.selinuxBlobSizes,
+            offsets.securityHookHeads, offsets.slideNfulnlLogger, offsets.slideLoggers01,
+            offsets.slideBootId,
+            kernelPhysLoad, compactWaiter, kernelsnitchCollisions, mmStructSz,
             exec.recommendedMainCpu, exec.recommendedConsumerCpu,
             exec.heapPrepareMaxAttempts, exec.heapPrepareTimeoutMs,
             exec.heapKernelsnitchTimeoutMs, exec.raceRouteWaitMs,
             exec.raceSetupSettleUs, exec.raceStatePollIntervalUs,
             exec.w1Attempts, exec.w1SettleUs, exec.w1ScratchRepairAttempts,
             exec.w2Attempts, exec.w2SettleUs, exec.w3ChainRounds,
-            exec.w3Attempts, exec.w3SettleUs, exec.tcpAttempts,
-            exec.tcpArmSequence, exec.tcpPostReceiveHoldIterations,
-            exec.selectEnterDelayUs, exec.selectTimeoutUs,
-            exec.selectConsumerMaxCalls, exec.selectConsumerBurstCalls,
-            exec.multicastReadyTimeoutMs, exec.multicastPostRequeueSettleUs,
-            exec.multicastPostAdjustSettleUs, exec.handoffPreDispatchSettleMs,
-            exec.handoffModulePollAttempts, exec.handoffModulePollIntervalMs,
-            exec.handoffEnforcePollAttempts, exec.handoffEnforcePollIntervalMs,
-            /* execution flags (GLK1 v3) */
-            safeMode, multicastResident,
+            exec.w3Attempts, exec.w3SettleUs,
+            exec.handoffPreDispatchSettleMs, exec.handoffModulePollAttempts,
+            exec.handoffModulePollIntervalMs, exec.handoffEnforcePollAttempts,
+            exec.handoffEnforcePollIntervalMs,
+            safeMode,
         )
+    }
+
+    /** Route-specific entries emitted from [routeConfig] (keys shared with the
+     * native route table). */
+    private fun routeEntries(): List<Pair<String, Long>> = when (val cfg = routeConfig) {
+        is TcpConfig -> listOf(
+            "tcp_attempts" to cfg.attempts,
+            "tcp_arm_sequence" to cfg.armSequence,
+            "tcp_post_receive_hold_iterations" to cfg.postReceiveHoldIterations,
+        )
+
+        is SelectConfig -> listOf(
+            "pselect_waiter_shift" to cfg.waiterShift,
+            "select_enter_delay_us" to cfg.enterDelayUs,
+            "select_timeout_us" to cfg.timeoutUs,
+            "select_consumer_max_calls" to cfg.consumerMaxCalls,
+            "select_consumer_burst_calls" to cfg.consumerBurstCalls,
+        )
+
+        is MulticastConfig -> listOf(
+            "mcast_waiter_off" to cfg.geometry.waiterOff,
+            "mcast_buffer_size" to cfg.geometry.bufferSize,
+            "mcast_task_offset" to cfg.geometry.taskOffset,
+            "mcast_lock_offset" to cfg.geometry.lockOffset,
+            "mcast_fake_lock_offset" to cfg.geometry.fakeLockOffset,
+            "mcast_fake_task_offset" to cfg.geometry.fakeTaskOffset,
+            "mcast_lock_slots_offset" to cfg.geometry.lockSlotsOffset,
+            "mcast_lock_slot_count" to cfg.geometry.lockSlotCount,
+            "mcast_lock_slot_stride" to cfg.geometry.lockSlotStride,
+            "off_mcast_fake_bss" to cfg.fakeBssImageOffset,
+            "multicast_resident" to cfg.resident,
+            "multicast_ready_timeout_ms" to cfg.readyTimeoutMs,
+            "multicast_post_requeue_settle_us" to cfg.postRequeueSettleUs,
+            "multicast_post_adjust_settle_us" to cfg.postAdjustSettleUs,
+        )
+
+        NoRouteConfig -> emptyList()
     }
 
     companion object {
         const val Magic = 0x314B4C47
-        const val Version: Short = 3
+        const val Version: Short = 4
         private const val HeaderSize = 12
-        private const val FieldCount = 88
+        private const val CommonFieldCount = 66
 
-        fun routeKind(route: String?): Int = when (route) {
-            "tcp_zerocopy" -> 1
-            "select_stack" -> 2
-            "multicast_waiter" -> 3
-            else -> 0
-        }
+        fun routeKind(route: String?): Int = RouteKind.fromToken(route)?.wire ?: 0
 
-        /** Decodes the GLK1 v2 byte layout; null on bad magic/version/size. */
         fun fromBinary(bytes: ByteArray): NativeProfileDocument? {
             if (bytes.size < HeaderSize) return null
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -120,28 +148,52 @@ internal data class NativeProfileDocument(
             val recommendShizuku = buffer.get().toLong() and 0xff
             val fallbackRoute = buffer.get().toInt() and 0xff
             val releaseLength = buffer.short.toInt() and 0xffff
-            if (buffer.remaining() != releaseLength + FieldCount * 8) return null
+            if (buffer.remaining() < releaseLength + CommonFieldCount * 8 + 1) return null
             val releaseBytes = ByteArray(releaseLength)
             buffer.get(releaseBytes)
-            val fields = LongArray(FieldCount) { buffer.long }
-            return fromFields(
+            val common = LongArray(CommonFieldCount) { buffer.long }
+            var routeConfig: RouteConfig = emptyRouteConfig(routeKind)
+            val count = buffer.get().toInt() and 0xff
+            repeat(count) {
+                if (buffer.remaining() < 1) return null
+                val keyLength = buffer.get().toInt() and 0xff
+                if (buffer.remaining() < keyLength + 8) return null
+                val keyBytes = ByteArray(keyLength)
+                buffer.get(keyBytes)
+                routeConfig = applyRouteEntry(routeConfig, String(keyBytes, Charsets.UTF_8), buffer.long)
+            }
+            return fromCommon(
                 release = String(releaseBytes, Charsets.UTF_8),
                 routeKind = routeKind,
                 kernelMajor = kernelMajor,
                 recommendShizuku = recommendShizuku,
                 fallbackRoute = fallbackRoute,
-                fields = fields,
+                f = common,
+                routeConfig = routeConfig,
             )
         }
 
-        /* Field indices mirror flatten() one-to-one. */
-        private fun fromFields(
+        private fun emptyRouteConfig(routeKind: Int): RouteConfig = when (RouteKind.fromWire(routeKind)) {
+            RouteKind.TCP_ZEROCOPY -> TcpConfig(0L, 0L, 0L)
+            RouteKind.SELECT_STACK -> SelectConfig(0L, 0L, 0L, 0L, 0L)
+            RouteKind.MULTICAST_WAITER -> MulticastConfig(
+                geometry = MulticastGeometry(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+                fakeBssImageOffset = 0L, resident = 0L,
+                readyTimeoutMs = 0L, postRequeueSettleUs = 0L, postAdjustSettleUs = 0L,
+            )
+
+            else -> NoRouteConfig
+        }
+
+        /* Common slot indices mirror flattenCommon() one-to-one. */
+        private fun fromCommon(
             release: String,
             routeKind: Int,
             kernelMajor: Long,
             recommendShizuku: Long,
             fallbackRoute: Int,
-            fields: LongArray,
+            f: LongArray,
+            routeConfig: RouteConfig,
         ): NativeProfileDocument = NativeProfileDocument(
             release = release,
             routeKind = routeKind,
@@ -149,73 +201,91 @@ internal data class NativeProfileDocument(
             recommendShizuku = recommendShizuku,
             fallbackRoute = fallbackRoute,
             taskStruct = TaskStructOffsets(
-                prio = fields[0], normalPrio = fields[1], schedTaskGroup = fields[2],
-                piLock = fields[3], piWaiters = fields[4], piTopTask = fields[5],
-                piBlockedOn = fields[6], pid = fields[7], tgid = fields[8],
-                atomicFlags = fields[9], realCred = fields[10], cred = fields[11],
-                comm = fields[12], tasks = fields[13], seccomp = fields[14],
+                prio = f[0], normalPrio = f[1], schedTaskGroup = f[2],
+                piLock = f[3], piWaiters = f[4], piTopTask = f[5],
+                piBlockedOn = f[6], pid = f[7], tgid = f[8],
+                atomicFlags = f[9], realCred = f[10], cred = f[11],
+                comm = f[12], tasks = f[13], seccomp = f[14],
             ),
             cred = CredTemplate(
-                copySize = fields[15], usageOffset = fields[16], usageValue = fields[17],
-                capsOffset = fields[18], capsCount = fields[19], capsValue = fields[20],
-                refCount = fields[21], ref0Offset = fields[22], ref1Offset = fields[23],
-                ref2Offset = fields[24], ref3Offset = fields[25], ref0Image = fields[26],
-                ref1Image = fields[27], ref2Image = fields[28], ref3Image = fields[29],
+                copySize = f[15], usageOffset = f[16], usageValue = f[17],
+                capsOffset = f[18], capsCount = f[19], capsValue = f[20],
+                refCount = f[21], ref0Offset = f[22], ref1Offset = f[23],
+                ref2Offset = f[24], ref3Offset = f[25], ref0Image = f[26],
+                ref1Image = f[27], ref2Image = f[28], ref3Image = f[29],
             ),
             kernelOffset = KernelOffsetTable(
-                initTask = fields[30], initCred = fields[31], emptyZeroPage = fields[32],
-                mcastFakeBss = fields[33], rootTaskGroup = fields[34],
-                selinuxEnforcing = fields[35], selinuxBlobSizes = fields[36],
-                securityHookHeads = fields[37], slideNfulnlLogger = fields[38],
-                slideLoggers01 = fields[39], slideBootId = fields[40],
+                initTask = f[30], initCred = f[31], emptyZeroPage = f[32],
+                rootTaskGroup = f[33], selinuxEnforcing = f[34],
+                selinuxBlobSizes = f[35], securityHookHeads = f[36],
+                slideNfulnlLogger = f[37], slideLoggers01 = f[38], slideBootId = f[39],
             ),
-            multicast = MulticastGeometry(
-                waiterOff = fields[41], bufferSize = fields[42], taskOffset = fields[43],
-                lockOffset = fields[44], fakeLockOffset = fields[45],
-                fakeTaskOffset = fields[46], lockSlotsOffset = fields[47],
-                lockSlotCount = fields[48], lockSlotStride = fields[49],
-            ),
-            kernelPhysLoad = fields[50],
-            pselectWaiterShift = fields[51],
-            compactWaiter = fields[52],
-            kernelsnitchCollisions = fields[53],
-            mmStructSz = fields[54],
+            kernelPhysLoad = f[40],
+            compactWaiter = f[41],
+            kernelsnitchCollisions = f[42],
+            mmStructSz = f[43],
             execution = ExecutionTuning(
-                recommendedMainCpu = fields[55],
-                recommendedConsumerCpu = fields[56],
-                heapPrepareMaxAttempts = fields[57],
-                heapPrepareTimeoutMs = fields[58],
-                heapKernelsnitchTimeoutMs = fields[59],
-                raceRouteWaitMs = fields[60],
-                raceSetupSettleUs = fields[61],
-                raceStatePollIntervalUs = fields[62],
-                w1Attempts = fields[63],
-                w1SettleUs = fields[64],
-                w1ScratchRepairAttempts = fields[65],
-                w2Attempts = fields[66],
-                w2SettleUs = fields[67],
-                w3ChainRounds = fields[68],
-                w3Attempts = fields[69],
-                w3SettleUs = fields[70],
-                tcpAttempts = fields[71],
-                tcpArmSequence = fields[72],
-                tcpPostReceiveHoldIterations = fields[73],
-                selectEnterDelayUs = fields[74],
-                selectTimeoutUs = fields[75],
-                selectConsumerMaxCalls = fields[76],
-                selectConsumerBurstCalls = fields[77],
-                multicastReadyTimeoutMs = fields[78],
-                multicastPostRequeueSettleUs = fields[79],
-                multicastPostAdjustSettleUs = fields[80],
-                handoffPreDispatchSettleMs = fields[81],
-                handoffModulePollAttempts = fields[82],
-                handoffModulePollIntervalMs = fields[83],
-                handoffEnforcePollAttempts = fields[84],
-                handoffEnforcePollIntervalMs = fields[85],
+                recommendedMainCpu = f[44], recommendedConsumerCpu = f[45],
+                heapPrepareMaxAttempts = f[46], heapPrepareTimeoutMs = f[47],
+                heapKernelsnitchTimeoutMs = f[48], raceRouteWaitMs = f[49],
+                raceSetupSettleUs = f[50], raceStatePollIntervalUs = f[51],
+                w1Attempts = f[52], w1SettleUs = f[53],
+                w1ScratchRepairAttempts = f[54], w2Attempts = f[55], w2SettleUs = f[56],
+                w3ChainRounds = f[57], w3Attempts = f[58], w3SettleUs = f[59],
+                handoffPreDispatchSettleMs = f[60], handoffModulePollAttempts = f[61],
+                handoffModulePollIntervalMs = f[62], handoffEnforcePollAttempts = f[63],
+                handoffEnforcePollIntervalMs = f[64],
             ),
-            safeMode = fields[86],
-            multicastResident = fields[87],
+            safeMode = f[65],
+            routeConfig = routeConfig,
         )
+
+        private fun applyRouteEntry(
+            config: RouteConfig,
+            key: String,
+            value: Long,
+        ): RouteConfig = when (config) {
+            is TcpConfig -> when (key) {
+                "tcp_attempts" -> config.copy(attempts = value)
+                "tcp_arm_sequence" -> config.copy(armSequence = value)
+                "tcp_post_receive_hold_iterations" -> config.copy(postReceiveHoldIterations = value)
+                else -> config
+            }
+
+            is SelectConfig -> when (key) {
+                "pselect_waiter_shift" -> config.copy(waiterShift = value)
+                "select_enter_delay_us" -> config.copy(enterDelayUs = value)
+                "select_timeout_us" -> config.copy(timeoutUs = value)
+                "select_consumer_max_calls" -> config.copy(consumerMaxCalls = value)
+                "select_consumer_burst_calls" -> config.copy(consumerBurstCalls = value)
+                else -> config
+            }
+
+            is MulticastConfig -> when (key) {
+                "mcast_waiter_off" -> config.copy(geometry = config.geometry.copy(waiterOff = value))
+                "mcast_buffer_size" -> config.copy(geometry = config.geometry.copy(bufferSize = value))
+                "mcast_task_offset" -> config.copy(geometry = config.geometry.copy(taskOffset = value))
+                "mcast_lock_offset" -> config.copy(geometry = config.geometry.copy(lockOffset = value))
+                "mcast_fake_lock_offset" ->
+                    config.copy(geometry = config.geometry.copy(fakeLockOffset = value))
+                "mcast_fake_task_offset" ->
+                    config.copy(geometry = config.geometry.copy(fakeTaskOffset = value))
+                "mcast_lock_slots_offset" ->
+                    config.copy(geometry = config.geometry.copy(lockSlotsOffset = value))
+                "mcast_lock_slot_count" ->
+                    config.copy(geometry = config.geometry.copy(lockSlotCount = value))
+                "mcast_lock_slot_stride" ->
+                    config.copy(geometry = config.geometry.copy(lockSlotStride = value))
+                "off_mcast_fake_bss" -> config.copy(fakeBssImageOffset = value)
+                "multicast_resident" -> config.copy(resident = value)
+                "multicast_ready_timeout_ms" -> config.copy(readyTimeoutMs = value)
+                "multicast_post_requeue_settle_us" -> config.copy(postRequeueSettleUs = value)
+                "multicast_post_adjust_settle_us" -> config.copy(postAdjustSettleUs = value)
+                else -> config
+            }
+
+            NoRouteConfig -> config
+        }
 
         /** Builds the document from resolved profile values by dotted path. */
         fun from(
@@ -225,6 +295,45 @@ internal data class NativeProfileDocument(
             value: (String) -> Long?,
         ): NativeProfileDocument {
             fun v(path: String): Long = value(path) ?: 0L
+            val routeConfig: RouteConfig = when (RouteKind.fromToken(route)) {
+                RouteKind.TCP_ZEROCOPY -> TcpConfig(
+                    attempts = v("execution.routes.tcp_zerocopy.attempts"),
+                    armSequence = v("execution.routes.tcp_zerocopy.arm_sequence"),
+                    postReceiveHoldIterations =
+                        v("execution.routes.tcp_zerocopy.post_receive_hold_iterations"),
+                )
+
+                RouteKind.SELECT_STACK -> SelectConfig(
+                    waiterShift = v("pselect_waiter_shift"),
+                    enterDelayUs = v("execution.routes.select_stack.enter_delay_us"),
+                    timeoutUs = v("execution.routes.select_stack.timeout_us"),
+                    consumerMaxCalls = v("execution.routes.select_stack.consumer_max_calls"),
+                    consumerBurstCalls = v("execution.routes.select_stack.consumer_burst_calls"),
+                )
+
+                RouteKind.MULTICAST_WAITER -> MulticastConfig(
+                    geometry = MulticastGeometry(
+                        waiterOff = v("mcast.waiter_off"),
+                        bufferSize = v("mcast.buffer_size"),
+                        taskOffset = v("mcast.task_offset"),
+                        lockOffset = v("mcast.lock_offset"),
+                        fakeLockOffset = v("mcast.fake_lock_offset"),
+                        fakeTaskOffset = v("mcast.fake_task_offset"),
+                        lockSlotsOffset = v("mcast.lock_slots_offset"),
+                        lockSlotCount = v("mcast.lock_slot_count"),
+                        lockSlotStride = v("mcast.lock_slot_stride"),
+                    ),
+                    fakeBssImageOffset = v("offset.mcast_fake_bss"),
+                    resident = v("multicast_resident"),
+                    readyTimeoutMs = v("execution.routes.multicast_waiter.ready_timeout_ms"),
+                    postRequeueSettleUs =
+                        v("execution.routes.multicast_waiter.post_requeue_settle_us"),
+                    postAdjustSettleUs =
+                        v("execution.routes.multicast_waiter.post_adjust_settle_us"),
+                )
+
+                else -> NoRouteConfig
+            }
             return NativeProfileDocument(
                 release = release,
                 routeKind = routeKind(route),
@@ -269,7 +378,6 @@ internal data class NativeProfileDocument(
                     initTask = v("offset.init_task"),
                     initCred = v("offset.init_cred"),
                     emptyZeroPage = v("offset.empty_zero_page"),
-                    mcastFakeBss = v("offset.mcast_fake_bss"),
                     rootTaskGroup = v("offset.root_task_group"),
                     selinuxEnforcing = v("offset.selinux_enforcing"),
                     selinuxBlobSizes = v("offset.selinux_blob_sizes"),
@@ -278,19 +386,7 @@ internal data class NativeProfileDocument(
                     slideLoggers01 = v("offset.slide_loggers_0_1"),
                     slideBootId = v("offset.slide_boot_id"),
                 ),
-                multicast = MulticastGeometry(
-                    waiterOff = v("mcast.waiter_off"),
-                    bufferSize = v("mcast.buffer_size"),
-                    taskOffset = v("mcast.task_offset"),
-                    lockOffset = v("mcast.lock_offset"),
-                    fakeLockOffset = v("mcast.fake_lock_offset"),
-                    fakeTaskOffset = v("mcast.fake_task_offset"),
-                    lockSlotsOffset = v("mcast.lock_slots_offset"),
-                    lockSlotCount = v("mcast.lock_slot_count"),
-                    lockSlotStride = v("mcast.lock_slot_stride"),
-                ),
                 kernelPhysLoad = v("kernel_phys_load"),
-                pselectWaiterShift = v("pselect_waiter_shift"),
                 compactWaiter = v("compact_waiter"),
                 kernelsnitchCollisions = v("kernelsnitch.collisions"),
                 mmStructSz = v("kernelsnitch.mm_struct_sz"),
@@ -311,21 +407,6 @@ internal data class NativeProfileDocument(
                     w3ChainRounds = v("execution.stages.w3_chain_rounds"),
                     w3Attempts = v("execution.stages.w3_attempts"),
                     w3SettleUs = v("execution.stages.w3_settle_us"),
-                    tcpAttempts = v("execution.routes.tcp_zerocopy.attempts"),
-                    tcpArmSequence = v("execution.routes.tcp_zerocopy.arm_sequence"),
-                    tcpPostReceiveHoldIterations =
-                        v("execution.routes.tcp_zerocopy.post_receive_hold_iterations"),
-                    selectEnterDelayUs = v("execution.routes.select_stack.enter_delay_us"),
-                    selectTimeoutUs = v("execution.routes.select_stack.timeout_us"),
-                    selectConsumerMaxCalls = v("execution.routes.select_stack.consumer_max_calls"),
-                    selectConsumerBurstCalls =
-                        v("execution.routes.select_stack.consumer_burst_calls"),
-                    multicastReadyTimeoutMs =
-                        v("execution.routes.multicast_waiter.ready_timeout_ms"),
-                    multicastPostRequeueSettleUs =
-                        v("execution.routes.multicast_waiter.post_requeue_settle_us"),
-                    multicastPostAdjustSettleUs =
-                        v("execution.routes.multicast_waiter.post_adjust_settle_us"),
                     handoffPreDispatchSettleMs = v("execution.handoff.pre_dispatch_settle_ms"),
                     handoffModulePollAttempts = v("execution.handoff.module_poll_attempts"),
                     handoffModulePollIntervalMs = v("execution.handoff.module_poll_interval_ms"),
@@ -333,7 +414,7 @@ internal data class NativeProfileDocument(
                     handoffEnforcePollIntervalMs = v("execution.handoff.enforce_poll_interval_ms"),
                 ),
                 safeMode = 0,
-                multicastResident = 0,
+                routeConfig = routeConfig,
             )
         }
     }
@@ -379,7 +460,6 @@ internal data class KernelOffsetTable(
     val initTask: Long,
     val initCred: Long,
     val emptyZeroPage: Long,
-    val mcastFakeBss: Long,
     val rootTaskGroup: Long,
     val selinuxEnforcing: Long,
     val selinuxBlobSizes: Long,
@@ -418,19 +498,37 @@ internal data class ExecutionTuning(
     val w3ChainRounds: Long,
     val w3Attempts: Long,
     val w3SettleUs: Long,
-    val tcpAttempts: Long,
-    val tcpArmSequence: Long,
-    val tcpPostReceiveHoldIterations: Long,
-    val selectEnterDelayUs: Long,
-    val selectTimeoutUs: Long,
-    val selectConsumerMaxCalls: Long,
-    val selectConsumerBurstCalls: Long,
-    val multicastReadyTimeoutMs: Long,
-    val multicastPostRequeueSettleUs: Long,
-    val multicastPostAdjustSettleUs: Long,
     val handoffPreDispatchSettleMs: Long,
     val handoffModulePollAttempts: Long,
     val handoffModulePollIntervalMs: Long,
     val handoffEnforcePollAttempts: Long,
     val handoffEnforcePollIntervalMs: Long,
 )
+
+/** Route-specific configuration; one subtype per route. */
+internal sealed interface RouteConfig
+
+internal object NoRouteConfig : RouteConfig
+
+internal data class TcpConfig(
+    val attempts: Long,
+    val armSequence: Long,
+    val postReceiveHoldIterations: Long,
+) : RouteConfig
+
+internal data class SelectConfig(
+    val waiterShift: Long,
+    val enterDelayUs: Long,
+    val timeoutUs: Long,
+    val consumerMaxCalls: Long,
+    val consumerBurstCalls: Long,
+) : RouteConfig
+
+internal data class MulticastConfig(
+    val geometry: MulticastGeometry,
+    val fakeBssImageOffset: Long,
+    val resident: Long,
+    val readyTimeoutMs: Long,
+    val postRequeueSettleUs: Long,
+    val postAdjustSettleUs: Long,
+) : RouteConfig

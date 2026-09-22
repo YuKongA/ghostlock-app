@@ -13,6 +13,18 @@ package com.ghostlock.app.data
  * `fallback_to`). 5.x branches are only kept for those local formats; nothing
  * in a remote/main document can select them.
  */
+private fun moveKey(
+    source: ValueMap,
+    target: ValueMap,
+    from: String,
+    to: String,
+) {
+    if (source.containsKey(from) && source[from] != null && !target.containsKey(to)) {
+        target[to] = source[from]
+    }
+    source.remove(from)
+}
+
 internal object LegacyProfileConverter {
     private val MetadataKeys = listOf("kimage_text_base", "btf_size", "kallsyms")
 
@@ -39,6 +51,53 @@ internal object LegacyProfileConverter {
         "waiter_off", "buffer_size", "task_offset", "lock_offset",
         "fake_lock_offset", "fake_task_offset", "lock_slots_offset",
         "lock_slot_count", "lock_slot_stride",
+    )
+
+    /* Per-route legacy layout codec. Adding a route = add a codec + register it
+     * below; the branch/fallback moves stop being a `when` over route names. */
+    private interface LegacyRouteCodec {
+        fun fillBranch(entry: ValueMap, branch: ValueMap)
+        fun fillFallback(entry: ValueMap, branch: ValueMap)
+    }
+
+    private object TcpRouteCodec : LegacyRouteCodec {
+        override fun fillBranch(entry: ValueMap, branch: ValueMap) =
+            moveKey(entry, branch, "compact_waiter", "compact_waiter")
+
+        override fun fillFallback(entry: ValueMap, branch: ValueMap) =
+            moveKey(entry, branch, "compact_waiter", "compact_waiter")
+    }
+
+    private object SelectRouteCodec : LegacyRouteCodec {
+        override fun fillBranch(entry: ValueMap, branch: ValueMap) =
+            moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+
+        override fun fillFallback(entry: ValueMap, branch: ValueMap) =
+            moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+    }
+
+    private object MulticastRouteCodec : LegacyRouteCodec {
+        override fun fillBranch(entry: ValueMap, branch: ValueMap) {
+            moveKey(entry, branch, "compact_waiter", "compact_waiter")
+            moveMcast(entry, branch)
+        }
+
+        override fun fillFallback(entry: ValueMap, branch: ValueMap) = moveMcast(entry, branch)
+
+        private fun moveMcast(entry: ValueMap, branch: ValueMap) {
+            entry["mcast"].asValueMap()?.let { mcast ->
+                mcast.forEach { (key, value) ->
+                    if (!branch.containsKey(key)) branch[key] = value
+                }
+                entry.remove("mcast")
+            }
+        }
+    }
+
+    private val RouteCodecs: Map<String, LegacyRouteCodec> = mapOf(
+        "tcp_zerocopy" to TcpRouteCodec,
+        "select_stack" to SelectRouteCodec,
+        "multicast_waiter" to MulticastRouteCodec,
     )
 
     fun convertValue(entry: ValueMap?): ValueMap? {
@@ -109,18 +168,6 @@ internal object LegacyProfileConverter {
         if (group.isEmpty()) entry.remove(groupName)
     }
 
-    private fun moveKey(
-        source: ValueMap,
-        target: ValueMap,
-        from: String,
-        to: String,
-    ) {
-        if (source.containsKey(from) && source[from] != null && !target.containsKey(to)) {
-            target[to] = source[from]
-        }
-        source.remove(from)
-    }
-
     private fun moveFlatNamespaces(entry: ValueMap) {
         val namespaces = listOf(
             Triple("task_struct", "task_", TaskStructFields),
@@ -160,28 +207,8 @@ internal object LegacyProfileConverter {
     }
 
     private fun moveRouteLayout(entry: ValueMap) {
-        fun move(dest: ValueMap, from: String, to: String) {
-            if (entry.containsKey(from) && entry[from] != null && !dest.containsKey(to)) {
-                dest[to] = entry[from]
-            }
-            entry.remove(from)
-        }
-
         fun fillBranch(name: String, branch: ValueMap) {
-            when (name) {
-                "tcp_zerocopy" -> move(branch, "compact_waiter", "compact_waiter")
-                "select_stack" -> move(branch, "pselect_waiter_shift", "waiter_shift")
-                /* 5.x-only branch: unreachable from remote/main documents. */
-                "multicast_waiter" -> {
-                    move(branch, "compact_waiter", "compact_waiter")
-                    entry["mcast"].asValueMap()?.let { mcast ->
-                        mcast.forEach { (key, value) ->
-                            if (!branch.containsKey(key)) branch[key] = value
-                        }
-                        entry.remove("mcast")
-                    }
-                }
-            }
+            RouteCodecs[name]?.fillBranch(entry, branch)
         }
 
         when (val route = entry["route"]) {
@@ -217,25 +244,7 @@ internal object LegacyProfileConverter {
             if (fallbackValue != "none") {
                 val branch = fallback["route"].asValueMap()?.get(fallbackValue).asValueMap()
                     ?: valueMapOf()
-                when (fallbackValue) {
-                    "tcp_zerocopy" -> if (entry.containsKey("compact_waiter") &&
-                        entry["compact_waiter"] != null && !branch.containsKey("compact_waiter")
-                    ) {
-                        branch["compact_waiter"] = entry["compact_waiter"]
-                    }
-
-                    "select_stack" -> if (entry.containsKey("pselect_waiter_shift") &&
-                        entry["pselect_waiter_shift"] != null && !branch.containsKey("waiter_shift")
-                    ) {
-                        branch["waiter_shift"] = entry["pselect_waiter_shift"]
-                    }
-
-                    "multicast_waiter" -> entry["mcast"].asValueMap()?.let { mcast ->
-                        mcast.forEach { (key, value) ->
-                            if (!branch.containsKey(key)) branch[key] = value
-                        }
-                    }
-                }
+                RouteCodecs[fallbackValue]?.fillFallback(entry, branch)
                 if (branch.isNotEmpty()) {
                     fallback["route"] = valueMapOf(fallbackValue to branch)
                 }

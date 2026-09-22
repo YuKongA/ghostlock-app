@@ -1,11 +1,10 @@
-#include "runtime_time.h"
+#include "support/time.h"
 
 #include <cassert>
 
 using namespace ghostlock;
-using namespace ghostlock::runtime_time;
 
-int main() {
+int32_t main() {
     constexpr timespec unnormalized{.tv_sec = 3, .tv_nsec = -250000000};
     constexpr timespec normalized = runtime_time::normalize(unnormalized);
     static_assert(normalized.tv_sec == 2);
@@ -25,11 +24,11 @@ int main() {
     static_assert(!runtime_time::reached(start, end));
     static_assert(runtime_time::reached(start, start));
 
-    assert(runtime_elapsed_between_ms(&start, &end) == 1250.0);
+    assert(ghostlock::runtime_time::runtime_elapsed_between_ms(&start, &end) == 1250.0);
 
     const timespec first = runtime_time::monotonic_now();
     const timespec second = runtime_time::monotonic_now();
     assert(runtime_time::reached(second, first));
-    assert(runtime_elapsed_ms(&first) >= 0.0);
+    assert(ghostlock::runtime_time::runtime_elapsed_ms(&first) >= 0.0);
     return 0;
 }

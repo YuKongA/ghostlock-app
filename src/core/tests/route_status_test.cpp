@@ -1,22 +1,21 @@
-#include "routes/route_status.h"
+#include "route/route_status.h"
 
 #include <cassert>
 #include <cstddef>
 
 using namespace ghostlock;
-using namespace ghostlock::route;
 
-int main() {
-    static_assert(static_cast<int>(ROUTE_OK) == 0);
-    static_assert(static_cast<int>(ROUTE_RETRYABLE) == 1);
-    static_assert(static_cast<int>(ROUTE_FALLBACK_SAFE) == 2);
-    static_assert(static_cast<int>(ROUTE_DIRTY_FAILURE) == 3);
-    static_assert(static_cast<int>(ROUTE_UNSUPPORTED) == 4);
-    static_assert(sizeof(RouteStatus) == sizeof(int) * 5);
-    static_assert(offsetof(RouteStatus, kernel_disarmed) == sizeof(int) * 4);
+int32_t main() {
+    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_OK) == 0);
+    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_RETRYABLE) == 1);
+    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_FALLBACK_SAFE) == 2);
+    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_DIRTY_FAILURE) == 3);
+    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_UNSUPPORTED) == 4);
+    static_assert(sizeof(ghostlock::route::RouteStatus) == sizeof(int32_t) * 5);
+    static_assert(offsetof(ghostlock::route::RouteStatus, kernel_disarmed) == sizeof(int32_t) * 4);
 
-    constexpr RouteStatus fallback{
-        .code = ROUTE_FALLBACK_SAFE,
+    constexpr ghostlock::route::RouteStatus fallback{
+        .code = ghostlock::route::ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     };
@@ -24,8 +23,8 @@ int main() {
     static_assert(!fallback.is_dirty());
     static_assert(fallback.can_fallback());
 
-    constexpr RouteStatus dirty{
-        .code = ROUTE_DIRTY_FAILURE,
+    constexpr ghostlock::route::RouteStatus dirty{
+        .code = ghostlock::route::ROUTE_DIRTY_FAILURE,
         .userspace_clean = 0,
         .kernel_disarmed = 1,
     };

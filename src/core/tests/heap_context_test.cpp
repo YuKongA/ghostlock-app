@@ -10,7 +10,6 @@
 #include <utility>
 
 using namespace ghostlock;
-using namespace ghostlock::memory;
 
 static void test_move_preserves_page_as_one_owner(void) {
     memory::HeapContext context;
@@ -18,7 +17,7 @@ static void test_move_preserves_page_as_one_owner(void) {
     assert(context.current.reclaim.fd[0] == -1);
     assert(context.prebuilt.state == memory::PayloadPageState::Empty);
 
-    int owned[2];
+    int32_t owned[2];
     assert(pipe(owned) == 0);
     context.current.base = 0x12340000;
     context.current.fake_lock = 0x12340100;
@@ -63,7 +62,7 @@ static void test_page_is_move_only_and_released_explicitly(void) {
     assert(source.state == memory::PayloadPageState::Empty);
     assert(!source.has_reclaim());
 
-    int owned[2];
+    int32_t owned[2];
     assert(pipe(owned) == 0);
     source.base = 0xabc00000;
     source.reclaim.fd[0] = owned[0];
@@ -85,8 +84,8 @@ static void test_page_is_move_only_and_released_explicitly(void) {
 }
 
 static void test_mm_set_releases_descriptors_explicitly(void) {
-    MmContextSet set;
-    int owned[4];
+    ghostlock::memory::MmContextSet set;
+    int32_t owned[4];
     assert(pipe(owned) == 0);
     assert(pipe(owned + 2) == 0);
 
@@ -117,10 +116,10 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
     /* Scope exit alone only frees storage: no descriptor is closed and no pid
    * is signalled, so a forked helper that calls exit() cannot release the
    * parent's children. */
-    int survivor[2];
+    int32_t survivor[2];
     assert(pipe(survivor) == 0);
     {
-        MmContextSet scoped;
+        ghostlock::memory::MmContextSet scoped;
         scoped.memfds.assign(1, survivor[0]);
         scoped.childs.assign(1, 4321);
     }
@@ -129,7 +128,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
     close(survivor[1]);
 
     set.memfds.assign(1, owned[1]);
-    MmContextSet moved(std::move(set));
+    ghostlock::memory::MmContextSet moved(std::move(set));
     assert(moved.memfds.size() == 1 && moved.memfds[0] == owned[1]);
     close(moved.memfds[0]);
 }
@@ -142,7 +141,7 @@ static void test_heap_context_init_releases_attempt_state(void) {
     assert(context.prepare.childs.empty());
     assert(context.prepare.memfds.empty());
 
-    int owned[2];
+    int32_t owned[2];
     assert(pipe(owned) == 0);
     context.skb_buffer = std::make_unique<unsigned char[]>(16);
     context.leak_memfd.reset(owned[0]);
@@ -163,7 +162,7 @@ static void test_heap_context_init_releases_attempt_state(void) {
     assert(fcntl(owned[1], F_GETFD) == -1 && errno == EBADF);
 }
 
-int main(void) {
+int32_t main(void) {
     test_move_preserves_page_as_one_owner();
     test_move_rejects_partial_or_occupied_ownership();
     test_page_is_move_only_and_released_explicitly();

@@ -6,8 +6,6 @@
 #include <utility>
 
 namespace ghostlock::memory {
-    using namespace ghostlock::support;
-
     namespace {
         /* Return the page to the empty state without touching any fd. Ownership
  * release is always explicit (destroy()), never scope-exit. */
@@ -38,7 +36,7 @@ namespace ghostlock::memory {
     }
 
     void PayloadPage::destroy() noexcept {
-        for (int i = 0; i < 2; i++) {
+        for (int32_t i = 0; i < 2; i++) {
             if (reclaim.fd[i] >= 0) close(reclaim.fd[i]);
         }
         clear_page(*this);
@@ -77,7 +75,7 @@ namespace ghostlock::memory {
 
     void free_ctx_storage(MmContextSet *ctx) {
         std::vector<pid_t>().swap(ctx->childs);
-        std::vector<int>().swap(ctx->memfds);
+        std::vector<int32_t>().swap(ctx->memfds);
     }
 
     void HeapContext::init() {
@@ -90,7 +88,7 @@ namespace ghostlock::memory {
         post = MmContextSet{};
         /* Drop any stale pid without signaling it, then start empty. */
         (void) leak_child.release_to_handoff();
-        leak_child = ChildProcess();
+        leak_child = support::ChildProcess();
         leak_memfd.reset();
         current.destroy();
         prebuilt.destroy();

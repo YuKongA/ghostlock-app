@@ -1,14 +1,13 @@
-#include "profile.h"
+#include "profile/model.h"
 
 #include <cstdio>
 
 using namespace ghostlock;
-using namespace ghostlock::profile;
 
-int main(void) {
-    struct kernel_offsets decoded = {
+int32_t main(void) {
+    profile::kernel_offsets decoded = {
         .kernel_major = 5,
-        .route = kRouteMulticastWaiter,
+        .route = ghostlock::profile::kRouteMulticastWaiter,
         .pselect_waiter_shift = 16,
         .mcast_waiter_off = 32,
         .mcast_buffer_size = 128,
@@ -28,15 +27,15 @@ int main(void) {
             .heap_prepare_max_attempts = 7,
         },
     };
-    TargetProfile profile = TargetProfile::from(&decoded);
+    ghostlock::profile::TargetProfile profile = ghostlock::profile::TargetProfile::from(&decoded);
     decoded.kernel_major = 6;
     decoded.execution.heap_prepare_max_attempts = 99;
 
-    MulticastWaiterLayout multicast =
+    ghostlock::profile::MulticastWaiterLayout multicast =
             profile.multicast_layout();
-    SelectStackLayout select = profile.select_stack_layout();
-    TcpZerocopyLayout tcp = profile.tcp_zerocopy_layout();
-    const struct execution_settings *execution =
+    ghostlock::profile::SelectStackLayout select = profile.select_stack_layout();
+    ghostlock::profile::TcpZerocopyLayout tcp = profile.tcp_zerocopy_layout();
+    const profile::execution_settings *execution =
             profile.execution();
 
     if (!profile.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
@@ -52,12 +51,12 @@ int main(void) {
     }
 
     /* The declared route decides, and kRouteAuto selects no chain at all. */
-    decoded.route = kRouteTcpZerocopy;
-    TargetProfile explicit_tcp = TargetProfile::from(&decoded);
-    decoded.route = kRouteSelectStack;
-    TargetProfile explicit_select = TargetProfile::from(&decoded);
-    decoded.route = kRouteAuto;
-    TargetProfile unresolved = TargetProfile::from(&decoded);
+    decoded.route = ghostlock::profile::kRouteTcpZerocopy;
+    ghostlock::profile::TargetProfile explicit_tcp = ghostlock::profile::TargetProfile::from(&decoded);
+    decoded.route = ghostlock::profile::kRouteSelectStack;
+    ghostlock::profile::TargetProfile explicit_select = ghostlock::profile::TargetProfile::from(&decoded);
+    decoded.route = ghostlock::profile::kRouteAuto;
+    ghostlock::profile::TargetProfile unresolved = ghostlock::profile::TargetProfile::from(&decoded);
     if (!explicit_tcp.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
         explicit_tcp.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
         !explicit_select.supports(ghostlock::profile::RouteKind::SelectStack) ||
@@ -71,11 +70,11 @@ int main(void) {
 
     /* A zero profile field and an unloaded profile both use the fallback. */
     decoded.mm_struct_sz = 0;
-    TargetProfile zero_stride = TargetProfile::from(&decoded);
-    TargetProfile unloaded{};
+    ghostlock::profile::TargetProfile zero_stride = ghostlock::profile::TargetProfile::from(&decoded);
+    ghostlock::profile::TargetProfile unloaded{};
     if (zero_stride.mm_struct_stride(0x500) != 0x500 ||
         unloaded.mm_struct_stride(0x500) != 0x500 ||
-        TargetProfile{}.mm_struct_stride(0x500) != 0x500) {
+        profile::TargetProfile{}.mm_struct_stride(0x500) != 0x500) {
         fputs("target profile mm_struct stride fallback test failed\n", stderr);
         return 1;
     }

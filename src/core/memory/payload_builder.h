@@ -13,7 +13,7 @@
 namespace ghostlock::memory {
     /* Immutable description of one kernel write. `preserve_child` selects the
  * one-child erase layout; false selects the leaf/zero layout. */
-    enum class WriteMode : int {
+    enum class WriteMode : int32_t {
         Disabled = 0,
         Zero = 1,
         Credential = 2,
@@ -62,30 +62,30 @@ namespace ghostlock::memory {
 } // namespace ghostlock::memory
 
 namespace ghostlock::memory {
-/* Resolve the request-dependent words shared by the three route encoders. */
-PayloadWriteLayout payload_write_layout(
-    const WriteRequest *request, uintptr_t page_base,
-    uintptr_t default_fops, uintptr_t credential_fops,
-    uintptr_t init_cred_alias);
+    /* Resolve the request-dependent words shared by the three route encoders. */
+    PayloadWriteLayout payload_write_layout(
+        const WriteRequest *request, uintptr_t page_base,
+        uintptr_t default_fops, uintptr_t credential_fops,
+        uintptr_t init_cred_alias);
 
-/* Encode the route-neutral compact waiter write arm. Value writes always use
+    /* Encode the route-neutral compact waiter write arm. Value writes always use
  * {pc=value,right=0,left=target}; leaf writes use {pc=target-8,0,0}. */
-void build_compact_waiter_payload(
-    unsigned char *waiter, const WriteRequest *request,
-    const PayloadWriteLayout *layout);
+    void build_compact_waiter_payload(
+        unsigned char *waiter, const WriteRequest *request,
+        const PayloadWriteLayout *layout);
 
-int payload_write_layout_matches_request(
-    const WriteRequest *request, const PayloadWriteLayout *layout);
+    int32_t payload_write_layout_matches_request(
+        const WriteRequest *request, const PayloadWriteLayout *layout);
 
-int payload_write_layout_accepts_page(
-    const WriteRequest *request, const PayloadWriteLayout *layout);
+    int32_t payload_write_layout_accepts_page(
+        const WriteRequest *request, const PayloadWriteLayout *layout);
 
-void build_multicast_waiter_payload(
-    unsigned char *buffer, size_t waiter_offset, size_t task_offset,
-    size_t lock_offset, uintptr_t fake_task, uintptr_t fake_lock);
+    void build_multicast_waiter_payload(
+        unsigned char *buffer, size_t waiter_offset, size_t task_offset,
+        size_t lock_offset, uintptr_t fake_task, uintptr_t fake_lock);
 
-/* Fixed request/layout vectors, including the upstream unified compact arm. */
-int payload_builder_fixed_vector_test(void);
+    /* Fixed request/layout vectors, including the upstream unified compact arm. */
+    int32_t payload_builder_fixed_vector_test(void);
 } // namespace ghostlock::memory
 
 #endif

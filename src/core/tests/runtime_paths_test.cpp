@@ -9,9 +9,8 @@
 #include <string>
 
 using namespace ghostlock;
-using namespace ghostlock::config;
 
-int main(void) {
+int32_t main(void) {
     assert(config::normalize_home_dir("/data/local/tmp") == "/data/local/tmp");
     assert(config::normalize_home_dir("/data/local/tmp/") == "/data/local/tmp");
     assert(config::normalize_home_dir("/data//tmp///") == "/data//tmp");

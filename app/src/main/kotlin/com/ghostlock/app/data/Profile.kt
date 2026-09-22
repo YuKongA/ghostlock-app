@@ -66,11 +66,14 @@ internal data class Profile(
     val taskStruct: TaskStructOffsets get() = document.taskStruct
     val cred: CredTemplate get() = document.cred
     val kernelOffsets: KernelOffsetTable get() = document.kernelOffset
-    val multicast: MulticastGeometry get() = document.multicast
+    val multicast: MulticastGeometry
+        get() = (document.routeConfig as? MulticastConfig)?.geometry
+            ?: MulticastGeometry(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
     val execution: ExecutionTuning get() = document.execution
     val kernelPhysLoad: Long get() = document.kernelPhysLoad
     val compactWaiter: Boolean get() = document.compactWaiter != 0L
-    val pselectWaiterShift: Long get() = document.pselectWaiterShift
+    val pselectWaiterShift: Long
+        get() = (document.routeConfig as? SelectConfig)?.waiterShift ?: 0L
     val kernelsnitchCollisions: Long get() = document.kernelsnitchCollisions
     val mmStructSz: Long get() = document.mmStructSz
 
@@ -91,7 +94,7 @@ internal data class Profile(
         lockSlotsOffset = multicast.lockSlotsOffset,
         lockSlotCount = multicast.lockSlotCount,
         lockSlotStride = multicast.lockSlotStride,
-        fakeBssImageOffset = kernelOffsets.mcastFakeBss,
+        fakeBssImageOffset = (document.routeConfig as? MulticastConfig)?.fakeBssImageOffset ?: 0L,
     )
 
     fun selectStackLayout(): SelectStackLayout =

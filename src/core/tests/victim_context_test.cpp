@@ -14,7 +14,6 @@
 #include <cerrno>
 
 using namespace ghostlock;
-using namespace ghostlock::session::victim;
 
 namespace {
     pid_t spawn_sleeper() {
@@ -32,8 +31,8 @@ namespace {
     }
 } // namespace
 
-int main(void) {
-    VictimContext context;
+int32_t main(void) {
+    ghostlock::session::victim::VictimContext context;
     assert(context.child() == -1);
     assert(!context.task_read.valid());
 

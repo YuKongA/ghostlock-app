@@ -1,4 +1,4 @@
-#include "routes/tcp_zerocopy_route.h"
+#include "route/tcp_zerocopy_route.h"
 
 #include <cassert>
 #include <cerrno>
@@ -12,18 +12,12 @@
 #include <utility>
 
 using namespace ghostlock;
-using namespace ghostlock::profile;
-using namespace ghostlock::route;
-using namespace ghostlock::route::tcp_zerocopy;
-using namespace ghostlock::support;
-using namespace ghostlock::race;
-using namespace ghostlock::memory;
 
 
-static int mmap_zero_page(void **address, size_t size) {
+static int32_t mmap_zero_page(void **address, size_t size) {
     char name[64];
-    snprintf(name, sizeof(name), "/ghostlock_tcp_test_%d", (int) getpid());
-    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+    snprintf(name, sizeof(name), "/ghostlock_tcp_test_%d", (int32_t) getpid());
+    int32_t fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
     if (fd < 0) return -1;
     shm_unlink(name);
     if (ftruncate(fd, (off_t) size) != 0) {
@@ -39,44 +33,43 @@ static int mmap_zero_page(void **address, size_t size) {
     return fd;
 }
 
-int main(void) {
-    PiRace race;
+int32_t main(void) {
+    ghostlock::race::PiRace race;
     race.reset(0, 0, 1);
-    WriteRequest request{};
-    const struct execution_settings *execution =
-            (const struct execution_settings *) (uintptr_t) 0x1234;
+    ghostlock::memory::WriteRequest request{};
+    const profile::TargetProfile profile{};
 
-    TcpZerocopyRoute context(&race, &request, execution, 16 * 1024 * 1024);
+    ghostlock::route::tcp_zerocopy::TcpZerocopyRoute context(&race, &request, profile, 16 * 1024 * 1024);
     assert(context.race == &race);
     assert(context.request == &request);
-    assert(context.execution == execution);
+    assert(&context.profile == &profile);
     assert(!context.client_fd.valid());
     assert(!context.server_fd.valid());
     assert(!context.punch_fd.valid());
     assert(!context.mapping.valid());
     assert(context.mapping_length == 16 * 1024 * 1024);
-    assert(context.punch_worker.state() == PthreadOwner::State::Empty);
+    assert(context.punch_worker.state() == ghostlock::support::PthreadOwner::State::Empty);
     assert(context.punch_go.load() == 0);
     assert(context.punch_stop.load() == 0);
     assert(context.punch_phase.load() == 0);
     assert(context.punch_failed.load() == 0);
-    assert(context.status.code == ROUTE_RETRYABLE);
+    assert(context.status.code == ghostlock::route::ROUTE_RETRYABLE);
     assert(context.status.userspace_clean == 0);
     assert(context.status.kernel_disarmed == 0);
 
     /* Move-only: no copy, resources transfer with the move. */
-    static_assert(!std::is_copy_constructible_v<TcpZerocopyRoute>);
-    static_assert(!std::is_copy_assignable_v<TcpZerocopyRoute>);
-    static_assert(std::is_move_constructible_v<TcpZerocopyRoute>);
+    static_assert(!std::is_copy_constructible_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
+    static_assert(!std::is_copy_assignable_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
+    static_assert(std::is_move_constructible_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
     {
-        TcpZerocopyRoute source(&race, &request, execution, 8192);
+        ghostlock::route::tcp_zerocopy::TcpZerocopyRoute source(&race, &request, profile, 8192);
         void *mapped = nullptr;
-        int fd = mmap_zero_page(&mapped, 4096);
+        int32_t fd = mmap_zero_page(&mapped, 4096);
         assert(fd >= 0);
         source.punch_fd.reset(fd);
-        source.mapping = MappedRegion(mapped, 4096);
+        source.mapping = ghostlock::support::MappedRegion(mapped, 4096);
         source.punch_phase.store(3);
-        TcpZerocopyRoute moved(std::move(source));
+        ghostlock::route::tcp_zerocopy::TcpZerocopyRoute moved(std::move(source));
         assert(moved.punch_fd.get() == fd);
         assert(!source.punch_fd.valid());
         assert(moved.mapping.valid());
@@ -100,7 +93,7 @@ int main(void) {
     context.destroy();
     context.destroy();
     assert(context.status.userspace_clean == 1);
-    assert(context.status.code == ROUTE_FALLBACK_SAFE);
+    assert(context.status.code == ghostlock::route::ROUTE_FALLBACK_SAFE);
 
     /* fail() records step and errno for the caller's log. */
     assert(context.fail(59, 5) == -1);

@@ -5,10 +5,10 @@
  * documents and HOCON-loaded configuration sources. */
 
 #include "memory/address_space.h"
-#include "legacy_support/offsets_json.h"
+#include "legacy/offsets_json.h"
 using namespace ghostlock;
-#include "profile.h"
-#include "target.h"
+#include "profile/model.h"
+#include "kernel/target.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,12 +18,9 @@ using namespace ghostlock;
 #include <string>
 
 using namespace ghostlock;
-using namespace ghostlock::profile;
-using namespace ghostlock::legacy;
-using namespace ghostlock::kernel;
 
 namespace {
-    int g_failures = 0;
+    int32_t g_failures = 0;
 
     void expect(bool condition, const char *message) {
         if (condition) return;
@@ -31,15 +28,15 @@ namespace {
         g_failures++;
     }
 
-    bool decode_text(const char *text, struct kernel_offsets *out, char *release,
+    bool decode_text(const char *text, profile::kernel_offsets *out, char *release,
                      size_t cap) {
         char path[] = "../build/host-test/offsets_vector_XXXXXX";
-        const int fd = mkstemp(path);
+        const int32_t fd = mkstemp(path);
         if (fd < 0) return false;
         const size_t length = strlen(text);
         const bool written = write(fd, text, length) == (ssize_t) length;
         close(fd);
-        const bool ok = written && load_resolved_profile_json(path, out, release, cap) == 0;
+        const bool ok = written && ghostlock::legacy::load_resolved_profile_json(path, out, release, cap) == 0;
         unlink(path);
         return ok;
     }
@@ -78,7 +75,7 @@ namespace {
             "\"post_requeue_settle_us\":200000,\"post_adjust_settle_us\":100000}}}";
 
     void check_documents() {
-        struct kernel_offsets v = {};
+        profile::kernel_offsets v = {};
         char release[64] = {0};
 
         /* New layout: one route branch plus a fallback declaration. */
@@ -89,8 +86,8 @@ namespace {
         expect(decode_text(select_doc.c_str(), &v, release, sizeof(release)),
                "select document decodes");
         expect(strcmp(release, "6.6.test") == 0, "release decoded");
-        expect(v.route == kRouteSelectStack, "select route kind");
-        expect(v.fallback_route == kRouteAuto, "fallback none");
+        expect(v.route == ghostlock::profile::kRouteSelectStack, "select route kind");
+        expect(v.fallback_route == ghostlock::profile::kRouteAuto, "fallback none");
         expect(v.pselect_waiter_shift == -2, "waiter shift decoded");
         expect(v.task_prio == 132 && v.cred_copy_size == 136, "namespaced scalars decoded");
         expect(v.off_init_task == 34464384, "offset namespace decoded");
@@ -106,8 +103,8 @@ namespace {
                                     "\"route\":{\"select_stack\":{\"waiter_shift\":1}}}}";
         expect(decode_text(tcp_doc.c_str(), &v, release, sizeof(release)),
                "tcp document decodes");
-        expect(v.route == kRouteTcpZerocopy, "tcp route kind");
-        expect(v.fallback_route == kRouteSelectStack, "fallback target decoded");
+        expect(v.route == ghostlock::profile::kRouteTcpZerocopy, "tcp route kind");
+        expect(v.fallback_route == ghostlock::profile::kRouteSelectStack, "fallback target decoded");
         expect(v.compact_waiter == 1 && v.pselect_waiter_shift == 1,
                "fallback branch fields decoded");
 
@@ -118,7 +115,7 @@ namespace {
                                       "\"fallback\":{\"to\":\"none\"}}";
         expect(decode_text(mcast_doc.c_str(), &v, release, sizeof(release)),
                "multicast document decodes");
-        expect(v.route == kRouteMulticastWaiter, "multicast route kind");
+        expect(v.route == ghostlock::profile::kRouteMulticastWaiter, "multicast route kind");
         expect(v.mcast_waiter_off == 96 && v.mcast_buffer_size == 264 &&
                v.compact_waiter == 1,
                "multicast branch decoded");
@@ -130,8 +127,8 @@ namespace {
                                        "\"fallback_to\":\"select_stack\",\"pselect_waiter_shift\":1}";
         expect(decode_text(legacy_doc.c_str(), &v, release, sizeof(release)),
                "legacy document decodes");
-        expect(v.route == kRouteTcpZerocopy, "legacy route decoded");
-        expect(v.fallback_route == kRouteSelectStack, "legacy fallback decoded");
+        expect(v.route == ghostlock::profile::kRouteTcpZerocopy, "legacy route decoded");
+        expect(v.fallback_route == ghostlock::profile::kRouteSelectStack, "legacy fallback decoded");
         expect(v.compact_waiter == 1 && v.pselect_waiter_shift == 1,
                "legacy flat fields decoded");
     }
@@ -151,7 +148,7 @@ namespace {
             "{\"schema_version\":1,\"execution\":{},\"release\":7}",
         };
         for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-            struct kernel_offsets v = {};
+            profile::kernel_offsets v = {};
             char release[64] = {0};
             expect(!decode_text(cases[i], &v, release, sizeof(release)),
                    "rejection vector rejected");
@@ -161,7 +158,7 @@ namespace {
         const char *long_release =
                 "{\"schema_version\":1,\"release\":\"0123456789\"}";
         char path[] = "../build/host-test/offsets_short_cap_XXXXXX";
-        const int fd = mkstemp(path);
+        const int32_t fd = mkstemp(path);
         if (fd < 0) {
             expect(false, "mkstemp for release-cap vector");
             return;
@@ -170,47 +167,47 @@ namespace {
         expect(write(fd, long_release, length) == (ssize_t) length,
                "write release-cap vector");
         close(fd);
-        struct kernel_offsets v = {};
+        profile::kernel_offsets v = {};
         char release[8] = {0};
-        expect(load_resolved_profile_json(path, &v, release, sizeof(release)) == -1,
+        expect(ghostlock::legacy::load_resolved_profile_json(path, &v, release, sizeof(release)) == -1,
                "release longer than buffer rejected");
         unlink(path);
     }
 
     void check_address_paths() {
-        struct kernel_offsets decoded = {};
+        profile::kernel_offsets decoded = {};
         decoded.uname_r = "6.6.test";
         decoded.kernel_major = 6;
         decoded.off_init_cred = 0x1000;
         decoded.kernel_phys_load = 0x80000000ULL;
-        TargetProfile profile = TargetProfile::from(&decoded);
+        ghostlock::profile::TargetProfile profile = ghostlock::profile::TargetProfile::from(&decoded);
         memory::ResolvedAddresses addresses = {};
         expect(addresses.init_for_soc(&profile,
-                                                       memory::SocFamily::Qcom) == 0,
+                                      memory::SocFamily::Qcom) == 0,
                "address init succeeds");
         expect(addresses.init_cred_image_addr() ==
-               (uintptr_t)(KIMAGE_TEXT_BASE + decoded.off_init_cred),
+               (uintptr_t)(ghostlock::kernel::KIMAGE_TEXT_BASE + decoded.off_init_cred),
                "init_cred image formula");
         const uint64_t expected_phys = decoded.kernel_phys_load;
         const uintptr_t physical = expected_phys + decoded.off_init_cred;
         expect(addresses.data_alias(addresses.init_cred_image_addr()) ==
-               ((physical - P0_PHYS_OFFSET) | P0_PAGE_OFFSET),
+               ((physical - ghostlock::kernel::P0_PHYS_OFFSET) | ghostlock::kernel::P0_PAGE_OFFSET),
                "init_cred direct-map alias");
 
         /* SoC fallbacks only apply when the profile carries no measured load. */
-        struct kernel_offsets zero_load = decoded;
+        profile::kernel_offsets zero_load = decoded;
         zero_load.kernel_phys_load = 0;
-        TargetProfile zero_profile = TargetProfile::from(&zero_load);
+        ghostlock::profile::TargetProfile zero_profile = ghostlock::profile::TargetProfile::from(&zero_load);
         memory::ResolvedAddresses mtk = {};
         expect(mtk.init_for_soc(&zero_profile,
-                                                       memory::SocFamily::Mtk) == 0 &&
+                                memory::SocFamily::Mtk) == 0 &&
                mtk.phys_load() ==
-               (uintptr_t)(KIMAGE_TEXT_BASE - MTK_VADDR_BASE),
+               (uintptr_t)(ghostlock::kernel::KIMAGE_TEXT_BASE - ghostlock::kernel::MTK_VADDR_BASE),
                "MTK physical load fallback");
     }
 } // namespace
 
-int main(void) {
+int32_t main(void) {
     check_documents();
     check_decoder_rejections();
     check_address_paths();

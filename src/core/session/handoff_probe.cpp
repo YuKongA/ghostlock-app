@@ -11,8 +11,6 @@
 #include <unistd.h>
 
 namespace ghostlock::session {
-    using namespace ghostlock::support;
-
     namespace {
         constexpr size_t kKsuLogPathMax = 320;
 
@@ -20,7 +18,7 @@ namespace ghostlock::session {
  * Returns false when the file cannot be opened. */
         template<typename Fn>
         bool for_each_line(const char *path, Fn &&fn) noexcept {
-            UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+            support::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
             if (!fd.valid()) return false;
 
             std::string data;
@@ -49,7 +47,7 @@ namespace ghostlock::session {
         /* Module init re-enforces at the very end of kernelsu_init; a denied read or
  * the value '1' both mean enforcing here. */
         bool read_enforce_enforcing() noexcept {
-            UniqueFd fd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+            support::UniqueFd fd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
             if (!fd.valid()) return true;
             std::array < char, 4 > buffer{};
             const ssize_t n = read(fd.get(), buffer.data(), buffer.size());
@@ -68,7 +66,7 @@ namespace ghostlock::session {
 
     bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
         std::array < char, kKsuLogPathMax > resolved{};
-        snprintf(resolved.data(), resolved.size(), "%.*s", (int) path.size(),
+        snprintf(resolved.data(), resolved.size(), "%.*s", static_cast<int32_t>(path.size()),
                  path.data());
         const bool opened = for_each_line(resolved.data(), [&](std::string_view line) {
             if (line.find("[+] KernelSU module loaded") != std::string_view::npos ||

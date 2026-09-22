@@ -6,9 +6,8 @@
 
 using namespace ghostlock;
 
-using namespace ghostlock::kernelsnitch;
 
-int main(void) {
+int32_t main(void) {
     assert(ghostlock::kernelsnitch::scan_limit(100, 20, 200) == 120);
     assert(ghostlock::kernelsnitch::scan_limit(100, 200, 150) == 150);
     assert(ghostlock::kernelsnitch::scan_limit(150, 20, 150) == 150);

@@ -52,25 +52,24 @@ endif ()
 
 set(SOURCES
         core/main.cpp
-        core/exploit_ops.cpp
-        core/profile_entry.cpp
-        core/legacy_support/legacy_profile_converter.cpp
-        core/legacy_support/legacy_entrypoint_starter.cpp
+        core/attack/ops.cpp
+        core/profile/entry.cpp
+        core/legacy/legacy_profile_converter.cpp
+        core/legacy/legacy_entrypoint_starter.cpp
         core/memory/address_space.cpp
         core/memory/heap_context.cpp
-        core/pi_race.cpp
-        core/routes/route_controller.cpp
-        core/routes/route_threads.cpp
-        core/routes/tcp_zerocopy_route.cpp
-        core/routes/select_stack_route.cpp
-        core/routes/multicast_waiter_route.cpp
+        core/race/pi_race.cpp
+        core/route/route_controller.cpp
+        core/race/threads.cpp
+        core/route/tcp_zerocopy_route.cpp
+        core/route/select_stack_route.cpp
+        core/route/multicast_waiter_route.cpp
         core/memory/payload_builder.cpp
         core/session/runtime_config.cpp
-        core/legacy_support/offsets_json.cpp
-        core/util.cpp
-        core/routes/route_operations.cpp
+        core/legacy/offsets_json.cpp
+        core/support/util.cpp
         core/session/exploit_session.cpp
-        core/session/exploit_stages.cpp
+        core/route/exploit_procedure.cpp
         core/session/handoff_probe.cpp
         core/session/victim_process.cpp
         core/session/victim_context.cpp
@@ -88,7 +87,7 @@ target_compile_options(src PRIVATE
 target_include_directories(src PRIVATE
         core
         core/memory
-        core/routes
+        core/route
         core/session
         core/support
         core/kernelsnitch

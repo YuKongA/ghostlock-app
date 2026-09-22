@@ -17,18 +17,18 @@ namespace ghostlock::support {
     public:
         constexpr BorrowedFd() noexcept = default;
 
-        explicit constexpr BorrowedFd(int fd) noexcept : fd_(fd) {
+        explicit constexpr BorrowedFd(int32_t fd) noexcept : fd_(fd) {
         }
 
         [[nodiscard]] constexpr bool valid() const noexcept { return fd_ >= 0; }
-        [[nodiscard]] constexpr int get() const noexcept { return fd_; }
+        [[nodiscard]] constexpr int32_t get() const noexcept { return fd_; }
 
     private:
-        int fd_ = -1;
+        int32_t fd_ = -1;
     };
 
     static_assert(std::is_trivially_copyable_v<BorrowedFd>);
-    static_assert(sizeof(BorrowedFd) == sizeof(int));
+    static_assert(sizeof(BorrowedFd) == sizeof(int32_t));
 
     template<typename Callback>
     class ScopeExit final {
@@ -72,7 +72,7 @@ namespace ghostlock::support {
     public:
         constexpr UniqueFd() noexcept = default;
 
-        explicit constexpr UniqueFd(int fd) noexcept : fd_(fd) {
+        explicit constexpr UniqueFd(int32_t fd) noexcept : fd_(fd) {
         }
 
         ~UniqueFd() noexcept;
@@ -86,21 +86,21 @@ namespace ghostlock::support {
         UniqueFd &operator=(UniqueFd &&other) noexcept;
 
         [[nodiscard]] constexpr bool valid() const noexcept { return fd_ >= 0; }
-        [[nodiscard]] constexpr int get() const noexcept { return fd_; }
+        [[nodiscard]] constexpr int32_t get() const noexcept { return fd_; }
 
         [[nodiscard]] constexpr BorrowedFd borrow() const noexcept {
             return BorrowedFd(fd_);
         }
 
-        [[nodiscard]] int release() noexcept;
+        [[nodiscard]] int32_t release() noexcept;
 
-        [[nodiscard]] int release_to_process_lifetime(
+        [[nodiscard]] int32_t release_to_process_lifetime(
             std::string_view reason) noexcept;
 
-        void reset(int fd = -1) noexcept;
+        void reset(int32_t fd = -1) noexcept;
 
     private:
-        int fd_ = -1;
+        int32_t fd_ = -1;
     };
 
     class MappedRegion final {
@@ -122,7 +122,7 @@ namespace ghostlock::support {
         MappedRegion &operator=(MappedRegion &&other) noexcept;
 
         [[nodiscard]] static Result<MappedRegion> map_anonymous(std::size_t size,
-                                                                int protection);
+                                                                int32_t protection);
 
         [[nodiscard]] bool valid() const noexcept;
 
@@ -158,15 +158,15 @@ namespace ghostlock::support {
 
         PthreadOwner &operator=(PthreadOwner &&other) noexcept;
 
-        [[nodiscard]] int start(void *(*entry)(void *), void *argument,
+        [[nodiscard]] int32_t start(void *(*entry)(void *), void *argument,
                                 ThreadStopCallback stop = nullptr,
                                 void *stop_argument = nullptr) noexcept;
 
         void request_stop() noexcept;
 
-        [[nodiscard]] int join(void **result = nullptr) noexcept;
+        [[nodiscard]] int32_t join(void **result = nullptr) noexcept;
 
-        [[nodiscard]] int detach() noexcept;
+        [[nodiscard]] int32_t detach() noexcept;
 
         [[nodiscard]] pthread_t release() noexcept;
 
@@ -213,7 +213,7 @@ namespace ghostlock::support {
 
         [[nodiscard]] pid_t release_to_handoff() noexcept;
 
-        [[nodiscard]] int terminate_and_wait(int signal_number) noexcept;
+        [[nodiscard]] int32_t terminate_and_wait(int32_t signal_number) noexcept;
 
         /* Marks a child the caller already reaped through waitpid(): the owner
    * drops the pid without signaling or waiting again. Idempotent; a no-op

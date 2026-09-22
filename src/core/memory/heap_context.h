@@ -12,7 +12,7 @@
 #include "support/native_resource.hpp"
 
 namespace ghostlock::kernelsnitch {
-struct kernelsnitch_shared_state;
+    struct kernelsnitch_shared_state;
 }
 
 namespace ghostlock::memory {
@@ -22,23 +22,23 @@ namespace ghostlock::memory {
  * Release stays explicit through close_ctx_memfds()/free_ctx_storage(). */
     struct MmContextSet {
         std::vector<pid_t> childs;
-        std::vector<int> memfds;
+        std::vector<int32_t> memfds;
     };
 } // namespace ghostlock::memory
 
 namespace ghostlock::memory {
-    enum class PayloadPageState : int {
+    enum class PayloadPageState : int32_t {
         Empty = 0,
         Current,
         Prebuilt,
         Quarantined,
     };
 
-    typedef struct ReclaimPair {
-        int fd[2];
-    } ReclaimPair;
+    struct ReclaimPair {
+        int32_t fd[2];
+    };
 
-    typedef struct PayloadPage {
+    struct PayloadPage {
         uintptr_t base;
         uintptr_t last_mm_struct;
         uintptr_t fake_lock;
@@ -72,7 +72,7 @@ namespace ghostlock::memory {
 
         [[nodiscard]] bool move_to(PayloadPage &destination,
                                    PayloadPageState destination_state) noexcept;
-    } PayloadPage;
+    };
 
     static_assert(std::is_standard_layout_v<PayloadPage>);
     static_assert(!std::is_copy_constructible_v<PayloadPage>);
@@ -81,7 +81,7 @@ namespace ghostlock::memory {
     /* No implicit release on scope exit: the destructor stays trivial. */
     static_assert(std::is_trivially_destructible_v<PayloadPage>);
 
-    typedef struct HeapContext {
+    struct HeapContext {
         ghostlock::kernelsnitch::kernelsnitch_shared_state *snitch;
         size_t mm_objs_per_slab;
         std::unique_ptr<unsigned char[]> skb_buffer;
@@ -99,7 +99,7 @@ namespace ghostlock::memory {
         PayloadPage quarantine;
 
         void init();
-    } HeapContext;
+    };
 
     void close_ctx_memfds(MmContextSet *ctx);
 
