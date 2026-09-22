@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <type_traits>
 
-namespace ghostlock {
+namespace ghostlock::route {
     enum class RouteCode : int {
         Ok = 0,
         Retryable,
@@ -42,10 +42,10 @@ namespace ghostlock {
     static_assert(offsetof(RouteOutcome, error_number) == sizeof(int) * 2);
     static_assert(offsetof(RouteOutcome, userspace_clean) == sizeof(int) * 3);
     static_assert(offsetof(RouteOutcome, kernel_disarmed) == sizeof(int) * 4);
-} // namespace ghostlock
+} // namespace ghostlock::route
 
-using RouteResultCode = ghostlock::RouteCode;
-using RouteStatus = ghostlock::RouteOutcome;
+using RouteResultCode = ghostlock::route::RouteCode;
+using RouteStatus = ghostlock::route::RouteOutcome;
 
 inline constexpr RouteResultCode ROUTE_OK = RouteResultCode::Ok;
 inline constexpr RouteResultCode ROUTE_RETRYABLE = RouteResultCode::Retryable;

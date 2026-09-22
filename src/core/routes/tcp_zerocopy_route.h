@@ -11,7 +11,7 @@
 #include <atomic>
 #include <cstddef>
 
-namespace ghostlock {
+namespace ghostlock::route::tcp_zerocopy {
     /* Owns every userspace resource of one TCP zerocopy attempt: the loopback
  * pair, the punching memfd and its shared mapping, and the punch worker.
  * Lifetime is explicit: prepare() -> execute() -> disarm() -> destroy().
@@ -72,6 +72,6 @@ namespace ghostlock {
         void retain_for_process_lifetime() noexcept;
     };
     using TcpZerocopyRouteContext = TcpZerocopyRoute;
-} // namespace ghostlock
+} // namespace ghostlock::route::tcp_zerocopy
 
 #endif

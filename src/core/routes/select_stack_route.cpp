@@ -7,6 +7,8 @@
 using namespace ghostlock;
 using namespace ghostlock::profile;
 
+namespace ghostlock::route::select_stack {
+
 SelectStackRoute::SelectStackRoute(
     PiRace *race_context, const WriteRequest *route_request,
     const execution_settings *execution_settings_value,
@@ -126,3 +128,5 @@ void SelectStackRoute::destroy() noexcept {
         status.code = ROUTE_FALLBACK_SAFE;
     }
 }
+
+} // namespace ghostlock::route::select_stack

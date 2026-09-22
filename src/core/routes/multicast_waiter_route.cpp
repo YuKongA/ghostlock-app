@@ -17,7 +17,7 @@ using namespace ghostlock::profile;
 using namespace ghostlock::config;
 using namespace ghostlock::session;
 
-namespace ghostlock::route {
+namespace ghostlock::route::multicast_waiter {
 
 /* Resident Multicast Waiter route owner (CPP13). The process-level instance
  * lives at file scope so every inlined access expands exactly like the
@@ -253,4 +253,4 @@ MulticastWaiterRoute &resident_route(void) {
     return multicast_resident_route;
 }
 
-} // namespace ghostlock::route
+} // namespace ghostlock::route::multicast_waiter

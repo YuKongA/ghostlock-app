@@ -7,6 +7,8 @@
 using namespace ghostlock;
 using namespace ghostlock::profile;
 
+namespace ghostlock::route::tcp_zerocopy {
+
 TcpZerocopyRoute::TcpZerocopyRoute(
     PiRace *race_context, const WriteRequest *route_request,
     const execution_settings *execution_settings_value,
@@ -104,3 +106,5 @@ void TcpZerocopyRoute::destroy() noexcept {
         status.code = ROUTE_FALLBACK_SAFE;
     }
 }
+
+} // namespace ghostlock::route::tcp_zerocopy

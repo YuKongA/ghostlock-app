@@ -15,7 +15,7 @@
 #define PSELECT_ROUTE_NFDS 320
 #endif
 
-namespace ghostlock {
+namespace ghostlock::route::select_stack {
     /* Bit-access wrapper for one fd_set; syscall boundaries still receive the raw
  * fd_set so the kernel ABI layout stays untouched. */
     class FdSet final {
@@ -106,6 +106,6 @@ namespace ghostlock {
         void retain_for_process_lifetime() noexcept;
     };
     using SelectStackRouteContext = SelectStackRoute;
-} // namespace ghostlock
+} // namespace ghostlock::route::select_stack
 
 #endif
