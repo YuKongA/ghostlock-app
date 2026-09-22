@@ -84,6 +84,9 @@ struct kernel_offsets {
   uint32_t task_pid, task_tgid, task_atomic_flags;
   uint32_t task_real_cred, task_cred, task_comm, task_tasks, task_seccomp;
   uint8_t compact_waiter;
+  /* Execution flags resolved from the profile (GLK1 v3). */
+  uint8_t safe_mode;
+  uint8_t multicast_resident;
   uint32_t mm_struct_sz;
   uint32_t _pad[3];
   struct execution_settings execution;
@@ -217,6 +220,18 @@ static inline int target_profile_has_compact_waiter(
     const TargetProfile *profile) {
   const struct kernel_offsets *v = target_profile_values(profile);
   return v && v->compact_waiter;
+}
+
+/* Execution flags carried by the profile (GLK1 v3). */
+static inline int target_profile_safe_mode(const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v && v->safe_mode;
+}
+
+static inline int target_profile_multicast_resident(
+    const TargetProfile *profile) {
+  const struct kernel_offsets *v = target_profile_values(profile);
+  return v && v->multicast_resident;
 }
 
 static inline MulticastWaiterLayout target_profile_multicast_waiter_layout(

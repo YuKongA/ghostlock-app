@@ -484,6 +484,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             val profileBlob = profileController.nativeDocument(config)
                 ?: error("profile is unavailable for $release")
+            // GLK1 v3: the second-to-last field is safe_mode (little-endian).
+            if (safeModeEnabled && profileBlob.size >= 16) {
+                profileBlob[profileBlob.size - 16] = 1
+            }
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
             // tag root-script lines so they cannot be read as the native stages'
@@ -514,14 +518,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
                     environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
-                    if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
-                    if (!debugDir.isNullOrEmpty()) environment()["GHOSTLOCK_DEBUG_DIR"] = debugDir
-                    if (pair.primary != 0 || pair.consumer != 1) {
-                        environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
-                        environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()
-                    }
-                    if (safeModeEnabled) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"
-                    if (!tcpRouteEnabled) environment()["GHOSTLOCK_TCP_ROUTE"] = "0"
                 }
             try {
                 runProcess(command, onLog = {}, captureOutput = false, stdin = profileBlob)

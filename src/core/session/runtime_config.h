@@ -14,13 +14,6 @@ class RuntimeConfig final {
  public:
   int main_cpu = 0;
   int consumer_cpu = 1;
-  bool tcp_zerocopy_enabled = true;
-  bool multicast_resident_enabled = false;
-  bool multicast_phase1_probe = false;
-  bool w1_only = false;
-  bool verbose_debug = false;
-  bool main_cpu_explicit = false;
-  bool consumer_cpu_explicit = false;
   std::string home_dir = "/data/local/tmp";
   std::string root_script_path = "/data/local/tmp/.ghostlock_root.sh";
   /* Per-run KernelSU log (U01-S14): Kotlin passes GHOSTLOCK_KSU_LOG so a

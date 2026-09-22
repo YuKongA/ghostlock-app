@@ -110,6 +110,9 @@ constexpr Field kFields[] = {
         F(execution.handoff_module_poll_interval_ms, kW4, false),
         F(execution.handoff_enforce_poll_attempts, kW4, false),
         F(execution.handoff_enforce_poll_interval_ms, kW4, false),
+        /* execution flags (GLK1 v3) */
+        F(safe_mode, kW1, false),
+        F(multicast_resident, kW1, false),
 };
 #undef F
 

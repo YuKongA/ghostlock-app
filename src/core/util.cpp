@@ -38,8 +38,7 @@ void log_sync(void) {
  * runtime-config snapshot; output: boolean. Future:
  * tcp_zerocopy_supports(profile, config), with no environment reread. */
 int tcp_route_selected(void) {
-  return runtime_config_snapshot().tcp_zerocopy_enabled &&
-         target_profile_route(&g_exploit_session.profile) == kRouteTcpZerocopy;
+  return target_profile_route(&g_exploit_session.profile) == kRouteTcpZerocopy;
 }
 
 /* Decoupling plan: report multicast-waiter capability. Input: profile; output:

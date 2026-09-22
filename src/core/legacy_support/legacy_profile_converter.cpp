@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -63,6 +64,42 @@ void infer_route(struct kernel_offsets *out) {
     }
 }
 
+/* remote/main-era configuration environment becomes profile state; nothing
+ * downstream reads these variables. */
+void apply_legacy_environment(struct kernel_offsets *out) {
+    out->execution.recommended_main_cpu = 0;
+    out->execution.recommended_consumer_cpu = 1;
+
+    if (const char *core = getenv("GHOSTLOCK_CORE")) {
+        char *end = nullptr;
+        const long value = strtol(core, &end, 10);
+        if (end != core && value >= 0 && value < 65536) {
+            out->execution.recommended_main_cpu = (uint32_t) value;
+        }
+    }
+    const char *consumer = getenv("GHOSTLOCK_CONSUMER_CORE");
+    if (consumer) {
+        char *end = nullptr;
+        const long value = strtol(consumer, &end, 10);
+        if (end != consumer && value >= 0 && value < 65536) {
+            out->execution.recommended_consumer_cpu = (uint32_t) value;
+        } else {
+            out->execution.recommended_consumer_cpu =
+                    out->execution.recommended_main_cpu + 1;
+        }
+    } else {
+        out->execution.recommended_consumer_cpu =
+                out->execution.recommended_main_cpu + 1;
+    }
+
+    if (const char *tcp = getenv("GHOSTLOCK_TCP_ROUTE")) {
+        if (strcmp(tcp, "0") == 0) out->route = kRouteSelectStack;
+    }
+    if (const char *disable = getenv("GHOSTLOCK_DISABLE_MODULES")) {
+        if (strcmp(disable, "1") == 0) out->safe_mode = 1;
+    }
+}
+
 }  // namespace
 
 int convert_legacy_offsets(const char *path, const char *release,
@@ -89,6 +126,7 @@ int convert_legacy_offsets(const char *path, const char *release,
     profile_json::fill_entry(out, release_buf, entry);
     out->uname_r = release_buf;
     infer_route(out);
+    apply_legacy_environment(out);
     return 0;
 }
 

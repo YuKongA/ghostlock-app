@@ -23,6 +23,8 @@ internal data class NativeProfileDocument(
     val kernelsnitchCollisions: Long,
     val mmStructSz: Long,
     val execution: ExecutionTuning,
+    val safeMode: Long,
+    val multicastResident: Long,
 ) {
     fun toBinary(): ByteArray {
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
@@ -89,14 +91,16 @@ internal data class NativeProfileDocument(
             exec.multicastPostAdjustSettleUs, exec.handoffPreDispatchSettleMs,
             exec.handoffModulePollAttempts, exec.handoffModulePollIntervalMs,
             exec.handoffEnforcePollAttempts, exec.handoffEnforcePollIntervalMs,
+            /* execution flags (GLK1 v3) */
+            safeMode, multicastResident,
         )
     }
 
     companion object {
         const val Magic = 0x314B4C47
-        const val Version: Short = 2
+        const val Version: Short = 3
         private const val HeaderSize = 12
-        private const val FieldCount = 86
+        private const val FieldCount = 88
 
         fun routeKind(route: String?): Int = when (route) {
             "tcp_zerocopy" -> 1
@@ -209,6 +213,8 @@ internal data class NativeProfileDocument(
                 handoffEnforcePollAttempts = fields[84],
                 handoffEnforcePollIntervalMs = fields[85],
             ),
+            safeMode = fields[86],
+            multicastResident = fields[87],
         )
 
         /** Builds the document from resolved profile values by dotted path. */
@@ -326,6 +332,8 @@ internal data class NativeProfileDocument(
                     handoffEnforcePollAttempts = v("execution.handoff.enforce_poll_attempts"),
                     handoffEnforcePollIntervalMs = v("execution.handoff.enforce_poll_interval_ms"),
                 ),
+                safeMode = 0,
+                multicastResident = 0,
             )
         }
     }

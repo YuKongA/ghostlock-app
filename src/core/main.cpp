@@ -50,18 +50,6 @@ int main(int argc, char **argv) {
     if (stages::run_setup_stage(decoded) == stages::StageResult::Failed)
         return 1;
 
-    if (runtime_config_snapshot().multicast_phase1_probe) {
-        if (!support::kernel5_route_selected()) {
-            pr_error("5.x phase-1 probe requested for a non-5.x profile\n");
-            return 1;
-        }
-        pr_info("5.x phase-1 probe: cycle/stamp/adjust/disarm only\n");
-        int ok = route::kernel5_resident_start();
-        if (ok) route::kernel5_resident_stop();
-        pr_info("5.x phase-1 probe result=%s\n", ok ? "pass" : "fail");
-        return ok ? 0 : 1;
-    }
-
     switch (stages::run_w1_stage(session)) {
         case stages::StageResult::Failed:
             return 1;

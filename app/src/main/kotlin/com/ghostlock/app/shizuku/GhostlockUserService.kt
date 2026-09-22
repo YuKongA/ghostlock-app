@@ -56,6 +56,10 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
+                // GLK1 v3: the second-to-last field is safe_mode (little-endian).
+                if (safeMode && profileBlob.size >= 16) {
+                    profileBlob[profileBlob.size - 16] = 1
+                }
                 ProcessBuilder(
                     binary.absolutePath, "--ghostlock-app-call",
                 )
@@ -67,11 +71,6 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         environment()["TMPDIR"] = workDir.absolutePath
                         environment()["HOME"] = workDir.absolutePath
                         environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
-                        if (BuildConfig.DEBUG) environment()["GHOSTLOCK_VERBOSE_DEBUG"] = "1"
-                        if (!debugDir.isNullOrEmpty()) environment()["GHOSTLOCK_DEBUG_DIR"] = debugDir
-                        environment()["GHOSTLOCK_CORE"] = primaryCpu.toString()
-                        environment()["GHOSTLOCK_CONSUMER_CORE"] = consumerCpu.toString()
-                        if (safeMode) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"
                     }
                     .start()
                     .let { process ->

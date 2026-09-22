@@ -4,49 +4,11 @@
 
 using namespace ghostlock;
 
-static bool environment_flag(const char *name, bool default_value) {
-    const char *value = getenv(name);
-    if (!value || !value[0]) return default_value;
-    return strcmp(value, "0") != 0;
-}
-
-static bool environment_present(const char *name) {
-    return getenv(name) != nullptr;
-}
-
 static void runtime_config_init_cpus(runtime_config *config) {
     config->main_cpu = 0;
     config->consumer_cpu = 1;
 
-    const char *value = getenv("GHOSTLOCK_CORE");
-    if (value && value[0]) {
-        config->main_cpu_explicit = true;
-        long parsed = strtol(value, nullptr, 10);
-        if (parsed >= 0 && parsed < CPU_SETSIZE) {
-            config->main_cpu = (int) parsed;
-        } else {
-            pr_warning("invalid GHOSTLOCK_CORE=%s, using %d\n", value,
-                    config->main_cpu);
-        }
-    }
-
-    value = getenv("GHOSTLOCK_CONSUMER_CORE");
-    if (value && value[0]) {
-        config->consumer_cpu_explicit = true;
-        long parsed = strtol(value, nullptr, 10);
-        if (parsed >= 0 && parsed < CPU_SETSIZE) {
-            config->consumer_cpu = (int) parsed;
-        } else {
-            pr_warning("invalid GHOSTLOCK_CONSUMER_CORE=%s, using %d\n", value,
-                    config->consumer_cpu);
-        }
-    } else {
-        config->consumer_cpu = config->main_cpu + 1;
-    }
-
     if (config->main_cpu == config->consumer_cpu) {
-        pr_warning("main and consumer cores are the same (%d); falling back\n",
-                config->main_cpu);
         config->main_cpu = 0;
         config->consumer_cpu = 1;
     }
@@ -88,10 +50,8 @@ int runtime_config_apply_profile(
     if (!config || !e) return -1;
     int old_main = config->main_cpu;
     int old_consumer = config->consumer_cpu;
-    if (!config->main_cpu_explicit)
-        config->main_cpu = (int) e->recommended_main_cpu;
-    if (!config->consumer_cpu_explicit && !config->main_cpu_explicit)
-        config->consumer_cpu = (int) e->recommended_consumer_cpu;
+    config->main_cpu = (int) e->recommended_main_cpu;
+    config->consumer_cpu = (int) e->recommended_consumer_cpu;
     if (runtime_config_validate_cpus(config) != 0) {
         config->main_cpu = old_main;
         config->consumer_cpu = old_consumer;
@@ -124,27 +84,12 @@ int runtime_config_init(runtime_config *config) {
 
     config->main_cpu = 0;
     config->consumer_cpu = 1;
-    config->tcp_zerocopy_enabled = false;
-    config->multicast_resident_enabled = false;
-    config->multicast_phase1_probe = false;
-    config->w1_only = false;
-    config->verbose_debug = false;
-    config->main_cpu_explicit = false;
-    config->consumer_cpu_explicit = false;
     config->home_dir.clear();
     config->root_script_path.clear();
     config->ksu_log_path.clear();
 
     runtime_config_init_cpus(config);
     runtime_config_init_paths(config);
-    config->tcp_zerocopy_enabled =
-            environment_flag("GHOSTLOCK_TCP_ROUTE", true);
-    config->multicast_resident_enabled =
-            environment_present("GHOSTLOCK_5X_RESIDENT");
-    config->multicast_phase1_probe =
-            environment_present("GHOSTLOCK_5X_PHASE1_PROBE");
-    config->w1_only = environment_present("GHOSTLOCK_W1_ONLY");
-    config->verbose_debug = environment_present("GHOSTLOCK_VERBOSE_DEBUG");
 
     return 0;
 }
@@ -156,5 +101,4 @@ void runtime_config_log(const runtime_config *config) {
             config->consumer_cpu);
     pr_info("runtime home=%s script=%s\n", config->home_dir.c_str(),
             config->root_script_path.c_str());
-    pr_info("runtime verbose_debug=%d\n", config->verbose_debug);
 }

@@ -305,8 +305,9 @@ tasks.register("exportKernelProfiles") {
             "execution.handoff.pre_dispatch_settle_ms", "execution.handoff.module_poll_attempts",
             "execution.handoff.module_poll_interval_ms", "execution.handoff.enforce_poll_attempts",
             "execution.handoff.enforce_poll_interval_ms",
+            "safe_mode", "multicast_resident",
         )
-        check(fieldPaths.size == 86) { "field table drifted: ${fieldPaths.size}" }
+        check(fieldPaths.size == 88) { "field table drifted: ${fieldPaths.size}" }
 
         fun serialize(
             release: String,
@@ -322,7 +323,7 @@ tasks.register("exportKernelProfiles") {
                 .allocate(12 + releaseBytes.size + values.size * 8)
                 .order(java.nio.ByteOrder.LITTLE_ENDIAN)
             buffer.putInt(0x314B4C47)   // "GLK1"
-            buffer.putShort(2)          // layout version
+            buffer.putShort(3)          // layout version
             buffer.put(route.toByte())
             buffer.put(kernelMajor.toByte())
             buffer.put(recommendShizuku.toByte())
