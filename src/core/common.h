@@ -156,10 +156,6 @@ namespace ghostlock::support {
     uintptr_t prepare_kernel_page(const WriteRequest *request);
 
     uintptr_t prepare_good_kernel_page(const WriteRequest *request);
-
-    int tcp_route_selected(void);
-
-    int kernel5_route_selected(void);
 } // namespace ghostlock::support
 
 namespace ghostlock::route {

