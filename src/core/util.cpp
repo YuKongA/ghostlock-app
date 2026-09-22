@@ -237,35 +237,29 @@ namespace ghostlock::support {
     }
 
     void close_reclaim_sockets(void) {
-        memory::payload_page_destroy(&g_exploit_session.heap.current);
+        g_exploit_session.heap.current.destroy();
     }
 
     int quarantine_reclaim_sockets(void) {
-        return memory::payload_page_move(&g_exploit_session.heap.quarantine,
-                                         &g_exploit_session.heap.current,
-                                         memory::PayloadPageState::Quarantined);
+        return g_exploit_session.heap.current.move_to(g_exploit_session.heap.quarantine, memory::PayloadPageState::Quarantined);
     }
 
     void release_quarantined_reclaim_sockets(void) {
-        memory::payload_page_destroy(&g_exploit_session.heap.quarantine);
+        g_exploit_session.heap.quarantine.destroy();
     }
 
     int stash_prebuilt_page(void) {
-        return memory::payload_page_move(&g_exploit_session.heap.prebuilt,
-                                         &g_exploit_session.heap.current,
-                                         memory::PayloadPageState::Prebuilt);
+        return g_exploit_session.heap.current.move_to(g_exploit_session.heap.prebuilt, memory::PayloadPageState::Prebuilt);
     }
 
     int activate_prebuilt_page(void) {
-        if (!memory::payload_page_has_reclaim(&g_exploit_session.heap.prebuilt)) return 0;
+        if (!g_exploit_session.heap.prebuilt.has_reclaim()) return 0;
         close_reclaim_sockets();
-        return memory::payload_page_move(&g_exploit_session.heap.current,
-                                         &g_exploit_session.heap.prebuilt,
-                                         memory::PayloadPageState::Current);
+        return g_exploit_session.heap.prebuilt.move_to(g_exploit_session.heap.current, memory::PayloadPageState::Current);
     }
 
     void discard_prebuilt_page(void) {
-        memory::payload_page_destroy(&g_exploit_session.heap.prebuilt);
+        g_exploit_session.heap.prebuilt.destroy();
     }
 
     void cleanup_page_prepare_state(void) {

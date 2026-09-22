@@ -53,8 +53,7 @@ int main(void) {
     };
     TargetProfile profile = TargetProfile::from(&values);
     route::RouteController controller;
-    route::route_controller_init(
-        &controller, &race, &profile, route::RouteKind::TcpZerocopy);
+    controller.init(&race, &profile, route::RouteKind::TcpZerocopy);
 
     reset_stubs((RouteStatus)
     {
@@ -62,7 +61,7 @@ int main(void) {
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     });
-    RouteStatus status = route::route_controller_execute(&controller, &request);
+    RouteStatus status = controller.execute(&request);
     assert(status.code == ROUTE_OK);
     assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
 
@@ -72,27 +71,25 @@ int main(void) {
         .compact_waiter = 1,
     };
     TargetProfile no_fallback_profile = TargetProfile::from(&no_fallback);
-    route::route_controller_init(
-        &controller, &race, &no_fallback_profile, route::RouteKind::TcpZerocopy);
+    controller.init(&race, &no_fallback_profile, route::RouteKind::TcpZerocopy);
     reset_stubs((RouteStatus)
     {
         .code = ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     });
-    status = route::route_controller_execute(&controller, &request);
+    status = controller.execute(&request);
     assert(status.code == ROUTE_FALLBACK_SAFE);
     assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 
-    route::route_controller_init(
-        &controller, &race, &profile, route::RouteKind::TcpZerocopy);
+    controller.init(&race, &profile, route::RouteKind::TcpZerocopy);
     reset_stubs((RouteStatus)
     {
         .code = ROUTE_DIRTY_FAILURE,
         .userspace_clean = 0,
         .kernel_disarmed = 1,
     });
-    status = route::route_controller_execute(&controller, &request);
+    status = controller.execute(&request);
     assert(status.code == ROUTE_DIRTY_FAILURE);
     assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 

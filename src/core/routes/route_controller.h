@@ -21,19 +21,11 @@ namespace ghostlock::route {
      * reshuffled). The style gain does not justify a stack-layout change. */
         int allow_tcp_select_fallback;
         int fallback_used;
+
+        void init(PiRaceContext *race, const TargetProfile *profile,
+                  RouteKind selected);
+        RouteStatus execute(const WriteRequest *request);
     } RouteController;
-
-    void route_controller_init(RouteController *controller,
-                               PiRaceContext *race,
-                               const TargetProfile *profile,
-                               RouteKind selected);
-
-    static inline int route_status_allows_fallback(const RouteStatus *status) {
-        return status && status->can_fallback();
-    }
-
-    RouteStatus route_controller_execute(RouteController *controller,
-                                         const WriteRequest *request);
 } // namespace ghostlock::route
 
 #endif

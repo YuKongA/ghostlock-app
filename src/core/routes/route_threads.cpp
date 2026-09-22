@@ -52,8 +52,8 @@ namespace ghostlock::race {
                                                ? route::RouteKind::TcpZerocopy
                                                : route::RouteKind::SelectStack);
         route::RouteController controller;
-        route::route_controller_init(&controller, race, &g_exploit_session.profile, selected);
-        race->route_status = route::route_controller_execute(&controller, request);
+        controller.init(race, &g_exploit_session.profile, selected);
+        race->route_status = controller.execute(request);
         if (controller.fallback_used) {
             pr_warning("TCP route cleanly failed; used Select Stack fallback\n");
         }

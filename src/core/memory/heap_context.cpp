@@ -78,36 +78,20 @@ namespace ghostlock::memory {
         std::vector<int>().swap(ctx->memfds);
     }
 
-    void heap_context_init(HeapContext *context) {
-        if (!context) return;
-        context->snitch = nullptr;
-        context->mm_objs_per_slab = 0;
-        context->skb_buffer.reset();
-        context->prepare = MmContextSet{};
-        context->spray = MmContextSet{};
-        context->pre = MmContextSet{};
-        context->post = MmContextSet{};
+    void HeapContext::init() {
+        snitch = nullptr;
+        mm_objs_per_slab = 0;
+        skb_buffer.reset();
+        prepare = MmContextSet{};
+        spray = MmContextSet{};
+        pre = MmContextSet{};
+        post = MmContextSet{};
         /* Drop any stale pid without signaling it, then start empty. */
-        (void) context->leak_child.release_to_handoff();
-        context->leak_child = ChildProcess();
-        context->leak_memfd.reset();
-        context->current.destroy();
-        context->prebuilt.destroy();
-        context->quarantine.destroy();
-    }
-
-    int payload_page_has_reclaim(const PayloadPage *page) {
-        return page && page->has_reclaim();
-    }
-
-    void payload_page_destroy(PayloadPage *page) {
-        if (page) page->destroy();
-    }
-
-    int payload_page_move(
-        PayloadPage *destination, PayloadPage *source,
-        PayloadPageState destination_state) {
-        if (!destination || !source) return 0;
-        return source->move_to(*destination, destination_state) ? 1 : 0;
+        (void) leak_child.release_to_handoff();
+        leak_child = ChildProcess();
+        leak_memfd.reset();
+        current.destroy();
+        prebuilt.destroy();
+        quarantine.destroy();
     }
 } // namespace ghostlock::memory

@@ -95,21 +95,13 @@ namespace ghostlock::memory {
         PayloadPage current;
         PayloadPage prebuilt;
         PayloadPage quarantine;
-    } HeapContext;
 
-    void heap_context_init(HeapContext *context);
+        void init();
+    } HeapContext;
 
     void close_ctx_memfds(MmContextSet *ctx);
 
     void free_ctx_storage(MmContextSet *ctx);
-
-    int payload_page_has_reclaim(const PayloadPage *page);
-
-    void payload_page_destroy(PayloadPage *page);
-
-    int payload_page_move(
-        PayloadPage *destination, PayloadPage *source,
-        PayloadPageState destination_state);
 } // namespace ghostlock::memory
 
 

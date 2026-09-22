@@ -13,7 +13,7 @@ using namespace ghostlock;
 
 static void test_move_preserves_page_as_one_owner(void) {
     memory::HeapContext context;
-    memory::heap_context_init(&context);
+    context.init();
     assert(context.current.reclaim.fd[0] == -1);
     assert(context.prebuilt.state == memory::PayloadPageState::Empty);
 
@@ -25,31 +25,28 @@ static void test_move_preserves_page_as_one_owner(void) {
     context.current.reclaim.fd[1] = owned[1];
     context.current.state = memory::PayloadPageState::Current;
 
-    assert(memory::payload_page_move(&context.prebuilt, &context.current,
-                                     memory::PayloadPageState::Prebuilt));
+    assert(context.current.move_to(context.prebuilt, memory::PayloadPageState::Prebuilt));
     assert(context.current.state == memory::PayloadPageState::Empty);
     assert(context.current.reclaim.fd[0] == -1);
     assert(context.prebuilt.base == 0x12340000);
     assert(context.prebuilt.fake_lock == 0x12340100);
     assert(context.prebuilt.state == memory::PayloadPageState::Prebuilt);
 
-    memory::payload_page_destroy(&context.prebuilt);
+    context.prebuilt.destroy();
     errno = 0;
     assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
 }
 
 static void test_move_rejects_partial_or_occupied_ownership(void) {
     memory::HeapContext context;
-    memory::heap_context_init(&context);
+    context.init();
     context.current.reclaim.fd[0] = 3;
     context.current.state = memory::PayloadPageState::Current;
-    assert(!memory::payload_page_move(&context.prebuilt, &context.current,
-                                      memory::PayloadPageState::Prebuilt));
+    assert(!context.current.move_to(context.prebuilt, memory::PayloadPageState::Prebuilt));
 
     context.current.reclaim.fd[1] = 4;
     context.prebuilt.state = memory::PayloadPageState::Prebuilt;
-    assert(!memory::payload_page_move(&context.prebuilt, &context.current,
-                                      memory::PayloadPageState::Prebuilt));
+    assert(!context.current.move_to(context.prebuilt, memory::PayloadPageState::Prebuilt));
     context.current.reclaim.fd[0] = -1;
     context.current.reclaim.fd[1] = -1;
 }
@@ -138,7 +135,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
 
 static void test_heap_context_init_releases_attempt_state(void) {
     memory::HeapContext context;
-    memory::heap_context_init(&context);
+    context.init();
     assert(context.skb_buffer == nullptr);
     assert(!context.leak_memfd.valid());
     assert(context.prepare.childs.empty());
@@ -150,7 +147,7 @@ static void test_heap_context_init_releases_attempt_state(void) {
     context.leak_memfd.reset(owned[0]);
     context.prepare.memfds.assign(1, owned[1]);
 
-    memory::heap_context_init(&context);
+    context.init();
     assert(context.skb_buffer == nullptr);
     assert(!context.leak_memfd.valid());
     assert(context.prepare.memfds.empty());
