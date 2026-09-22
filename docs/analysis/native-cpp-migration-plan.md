@@ -354,6 +354,8 @@ struct RouteOutcome final {
 ### [x] CPP15：命名空间引用规范化（零运行时）
 
 > 规则（用户 2026-09-18 指定）：顶层 `ghostlock` 允许在 `.cpp` 中 `using namespace ghostlock;` 后省略；下层命名空间（`memory`/`ops`/`route`/`race`/`support`/`stages`/`victim`/`target`/`runtime_time`/`runtime_paths`）必须显式书写。头文件禁止 `using namespace`；全局作用域头文件（`common.h`/`target.h`/`kernelsnitch/utils.h`）与全局 `using` 别名、宏体保留完整限定。
+>
+> 后续修订（2026-09-22，命名空间收拢批次）：原 `ops`→`attack`，`stages`/`victim` 并入 `session::*`，`route` 拆 `tcp_zerocopy`/`select_stack`/`multicast_waiter`，`legacy_support`→`legacy`，PiRace 归 `race`；`common.h` 常量、time 辅助、`g_direct_map_end` 及 `target.h` 的 88 个宏均归入 `ghostlock::kernel`（`bef7c1c`），全局与命名空间内兼容别名已删除。
 
 - [x] 生产 `.cpp`/头文件：命名空间内文件删冗余前缀；全局文件（`main.cpp`、`offsets_json.cpp`、`pi_race.cpp`、`multicast_waiter_route.cpp`、`route_operations.cpp`、`route_threads.cpp`、`select_stack_route.cpp`、`tcp_zerocopy_route.cpp`、`payload_builder.cpp`、`exploit_session.cpp`、`runtime_config.cpp`）加 `using namespace ghostlock;` 后同规则；共 197 处替换。
 - [x] 头文件：命名空间内的（`heap_context.h`、`address_space.h`、`exploit_ops.hpp`、`exploit_stages.hpp`、`victim_process.hpp`、`exploit_session.hpp` 等）删冗余前缀；全局 extern、`using X = ghostlock::Y;` 兼容别名、宏体不动。

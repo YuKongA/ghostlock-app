@@ -690,7 +690,7 @@ S03 的 `execution` 固定分组如下，实施时不得重新决定字段归属
 - **CPP15 命名空间引用规范化（完成）**：顶层 `ghostlock` 在各 `.cpp` 中 `using namespace ghostlock;` 后省略；下层命名空间必须显式书写；头文件禁止 namespace using。生产/头文件 197 处 + 测试约 121 处替换，native 产物与 `a5a0ba07…` **逐字节一致**。
 - **CPP16 零指令语言清理（门禁闭环）**：`NULL`→`nullptr` 86 处、C 风格指针 cast、非 ABI `enum class`（`RouteKind`/`PayloadPageState`/`SocFamily`/`ScalarWidth`）。全函数 shape 对比 0 个业务函数差异（唯一差异为 compiler-rt `__emutls_get_address` TLS 槽偏移），触发 LTO 布局重排（构建 `18fe119c…`，APK 324 内 native 一致）；与 `U01-D` 合并的第一次冷机 PASS（`CPP16-U01D-20260918-multicast-pass`），用户豁免第二次冷机。`getline` RAII 试验使 `run_setup_stage` +5 指令，已回退。
 - **CPP17 攻击关键布局项（闭环）**：`RouteController` 布尔化与 `getline` RAII 经实验否决、resident VLA 保留；三个引用别名 façade（`g_heap_context`/`g_target_profile`/`g_resolved_addresses`）已收归，真机门禁一次冷机同型 panic 后连续两次 PASS（用户豁免第二次冷机），native `55863311…` 为新基线。
-- **保留区**：`kernelsnitch.h` 的 calloc/volatile/C cast 内核共享区、`target.h`/`profile_macros.h` 的编译期宏、宏体与全局 inline 中的完整限定。
+- **保留区**：`kernelsnitch.h` 的 calloc/volatile/C cast 内核共享区（含其 `IDENTITY_START/END`/`PAGE_SIZE` 局部宏）。~~`target.h`/`profile_macros.h` 的编译期宏~~（2026-09-22：`target.h` 的 88 个宏已函数化为 `ghostlock::kernel` 的 `inline constexpr`，`bef7c1c`；`profile_macros.h` 仅保留 `VR_*` 反 root 回退宏）。
 
 ## 附录 A：按文件迁移细节
 
