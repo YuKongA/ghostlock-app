@@ -17,7 +17,7 @@ C++ 迁移与解耦已完成（CPP00–CPP17；Multicast 真机门禁通过，TC
 
 打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
 
-路线是双核竞争。6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入（`GHOSTLOCK_TCP_ROUTE=0` 强制回退 pselect 路线）。核心对默认取大核（不可用时回退 0/1），可用 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE` 覆盖。
+路线是双核竞争。6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入。路线与 CPU 对由解析后的 profile 决定；无参数 legacy 入口仍兼容 `GHOSTLOCK_TCP_ROUTE=0`（强制 pselect）与 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`。
 
 ## 命令行调试
 

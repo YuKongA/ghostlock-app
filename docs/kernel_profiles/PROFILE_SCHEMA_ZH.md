@@ -272,7 +272,7 @@ cred
 
 - Kotlin 侧由 `NativeProfileDocument`（data class，与 native `struct kernel_offsets` 一一对应）序列化：
   `u32 magic("GLK1") + u16 version(2) + u8 route + u8 kernel_major + u8 recommend_shizuku + u8 fallback_route + u16 release_length + release + N×int64 小端`，字段顺序见 `NativeProfile.kt.flatten()` 与 `profile_binary.cpp`（两侧必须同步修改）。
-- 传输路径：direct 写入 `active-profile.bin`；Shizuku 通过 AIDL `in byte[] profileBlob` 传给 UserService，落盘后以 `--profile` 指向。
+- 传输路径：direct 与 Shizuku 都把 profile 以 **stdin** 交给 native（`--ghostlock-app-call`），不再落盘 `active-profile.bin`、也不再使用 `--profile`。
 - native `load_resolved_profile()` 先检测 magic：命中走 `binary_profile::parse`，否则回退 JSON 解码器（assets 校验与 host tests）。JSON 解码器按 `route`/`fallback` 对象分支读取路由字段；过渡期的扁平写法（路由字符串、`fallback_to`）仍可解码。
 - 内部存储与“导出配置”均为 HOCON（人类可读）；JSON 仅存在于 legacy 转换（旧 offsets.json、extractor 输出）与 native 二进制传输之外的调试文档。
 - 运行时路由与能力判断（`target_profile_route`、`supports_*`、`tcp_route_selected`、`kernel5_route_selected`）全部基于解析后的 route。

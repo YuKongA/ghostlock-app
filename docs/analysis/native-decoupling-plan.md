@@ -1,5 +1,7 @@
 # 会话恢复与阶段执行规则
 
+> **现状注（2026-09，入口/配置已重构）**：native 入口现为 **无参数**（legacy `<GHOSTLOCK_HOME>/offsets.json`）/ **`--ghostlock-app-call`**（stdin 读 GLK1）/ **`--load-prebuilt-profile <bin>`**，可选 **`--dump-kernel-log <dir>`**；配置以 **GLK1 v3 profile 为唯一权威**，环境变量只保留 legacy 转换与路径类，旧的 `--profile` 已移除。详见 [native-entrypoint-plan.md](native-entrypoint-plan.md)、[environment-convergence-plan.md](environment-convergence-plan.md)。下文出现的 `--profile` / 旧环境变量均为迁移过程的历史记录。
+
 > 本节是跨会话继续工作的强制入口。恢复工作时先读本节，再查看“实施阶段”和“待回补 TODO 登记表”。
 
 - [ ] 开始前检查 `git status`、最近提交、当前未完成阶段和代码 TODO。

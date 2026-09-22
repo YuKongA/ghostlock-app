@@ -1,5 +1,7 @@
 # Native 早退点析构与资源审计（CPP12）
 
+> **现状注（2026-09）**：`main` 已不再解析 `--profile`；入口改为 无参数（legacy offsets.json）/ `--ghostlock-app-call`（stdin GLK1）/ `--load-prebuilt-profile <bin>`，`run_setup_stage` 收 decoded struct。详见 [native-entrypoint-plan.md](native-entrypoint-plan.md)。下文为历史审计记录。
+
 范围：`run_exploit()` 的每个返回/终止路径、W2/W3 链的失败分支，以及 `main.cpp`/`util.cpp` 中剩余的裸资源调用。目标是对照 C 基线确认“进程退出时资源由内核回收、dirty 资源故意保留”的既有语义没有被 C++ 化改变。
 
 ## 1. `run_exploit()` 早退点

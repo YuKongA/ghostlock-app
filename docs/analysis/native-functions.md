@@ -1,5 +1,7 @@
 # Native 函数标准化说明
 
+> **现状注（2026-09）**：`main()` 不再解析 `--profile`；入口为 无参数 / `--ghostlock-app-call`（stdin GLK1）/ `--load-prebuilt-profile <bin>`，`run_setup_stage(decoded)` 只收已解码 profile。详见 [native-entrypoint-plan.md](native-entrypoint-plan.md)。
+
 每个条目依次记录“用途”、“状态/输入输出”和“调用/清理”。系统调用只在影响资源所有权或控制流时列出。
 
 > 2026-09-18 刷新：主线已按 `main` 薄适配 + `ghostlock::ops/race/stages/victim/route/support/memory` 分层组织

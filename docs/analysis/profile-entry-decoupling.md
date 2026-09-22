@@ -1,5 +1,7 @@
 # Profile 输入入口解耦（native 参数输入环节）
 
+> **现状注（2026-09，已实现）**：本计划的目标已落地，但入口命名与文中草案不同——生产入口为 **`--ghostlock-app-call`（stdin 读 GLK1）**，另加 **`--load-prebuilt-profile <bin>`** 与无参数 legacy（`offsets.json`），旧 `--profile` 已移除；legacy→Profile 转换落在 `legacy_support::legacy_profile_converter`。详见 [native-entrypoint-plan.md](native-entrypoint-plan.md)。下文 `--profile-bin` / `--profile-json` 为当时的设计草案。
+
 > 对象：native 进程的参数输入环节。目标是把「传统命令行 / 旧版 JSON 配置」入口与
 > 「新版 ProfileConfigController byteArray」入口分离，去掉运行期 magic 嗅探的隐式分流。
 > 本文件是分析/规划，不改变攻击关键路径。
