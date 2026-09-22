@@ -7,7 +7,7 @@
 
 #include "profile.h"
 
-namespace ghostlock {
+namespace ghostlock::legacy {
 
 /* Decode one resolved JSON profile. The entrypoints own format selection and
  * decoding; this stays for assets/imports and host tests. */
@@ -25,6 +25,6 @@ namespace profile_json {
                     std::string_view object);
 } // namespace profile_json
 
-} // namespace ghostlock
+} // namespace ghostlock::legacy
 
 #endif

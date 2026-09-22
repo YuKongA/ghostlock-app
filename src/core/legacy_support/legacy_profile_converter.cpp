@@ -18,7 +18,7 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::legacy_support {
+namespace ghostlock::legacy {
     using namespace ghostlock::profile;
 
     namespace {
@@ -128,4 +128,4 @@ namespace ghostlock::legacy_support {
         apply_legacy_environment(out);
         return 0;
     }
-} // namespace ghostlock::legacy_support
+} // namespace ghostlock::legacy

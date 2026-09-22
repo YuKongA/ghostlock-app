@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <sys/utsname.h>
 
-namespace ghostlock::legacy_support {
+namespace ghostlock::legacy {
     using namespace ghostlock::profile;
 
     namespace {
@@ -36,4 +36,4 @@ namespace ghostlock::legacy_support {
         pr_success("legacy offsets loaded: %s\n", out->uname_r);
         return 0;
     }
-} // namespace ghostlock::legacy_support
+} // namespace ghostlock::legacy

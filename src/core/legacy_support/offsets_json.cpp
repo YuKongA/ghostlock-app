@@ -27,7 +27,7 @@ using namespace ghostlock;
 using namespace ghostlock::profile;
 using namespace ghostlock::support;
 
-namespace ghostlock {
+namespace ghostlock::legacy {
 
 #define PROFILE_JSON_MAX_SIZE (1U << 20)
 
@@ -842,4 +842,4 @@ namespace profile_json {
     }
 } // namespace profile_json
 
-} // namespace ghostlock
+} // namespace ghostlock::legacy

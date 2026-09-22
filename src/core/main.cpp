@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
         loaded = profile_entry::read_glk1_stdin(
             &decoded, release_buf.data(), release_buf.size());
     } else {
-        loaded = legacy_support::start_legacy_entrypoint(
+        loaded = legacy::start_legacy_entrypoint(
             &decoded, release_buf.data(), release_buf.size());
     }
     if (loaded != 0) {
