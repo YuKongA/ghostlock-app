@@ -62,9 +62,14 @@ int main(int argc, char **argv) {
     }
 
     ExploitSession &session = g_exploit_session;
-    if (stages::run_setup_stage(decoded, dump_dir) ==
-        stages::StageResult::Failed)
-        return 1;
+    switch (stages::run_setup_stage(decoded, dump_dir)) {
+        case stages::StageResult::Failed:
+            return 1;
+        case stages::StageResult::Done:
+            return 0;
+        case stages::StageResult::Continue:
+            break;
+    }
 
     switch (stages::run_w1_stage(session)) {
         case stages::StageResult::Failed:
