@@ -5,7 +5,7 @@
  * documents and HOCON-loaded configuration sources. */
 
 #include "memory/address_space.h"
-#include "offsets_json.h"
+#include "legacy_support/offsets_json.h"
 #include "profile.h"
 #include "target.h"
 

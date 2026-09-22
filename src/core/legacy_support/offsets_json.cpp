@@ -6,7 +6,7 @@
  * caller-owned std::string, so no pointer pair can drift out of bounds.
  * Configuration-source selection and merging stay on the Kotlin side.
  */
-#include "offsets_json.h"
+#include "legacy_support/offsets_json.h"
 #include "support/native_resource.hpp"
 
 #include <cctype>

@@ -35,7 +35,7 @@ CXX_SRCS := \
   core/routes/multicast_waiter_route.cpp \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
-  core/offsets_json.cpp \
+  core/legacy_support/offsets_json.cpp \
   core/profile_binary.cpp \
   core/util.cpp \
   core/routes/route_operations.cpp \
@@ -196,9 +196,9 @@ $(HOST_BUILD_DIR)/multicast_waiter_route_test: core/tests/multicast_waiter_route
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/multicast_waiter_route_test.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/offsets_json_test: core/tests/offsets_json_test.cpp core/offsets_json.cpp core/memory/address_space.cpp core/support/native_resource.cpp
+$(HOST_BUILD_DIR)/offsets_json_test: core/tests/offsets_json_test.cpp core/legacy_support/offsets_json.cpp core/memory/address_space.cpp core/support/native_resource.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/offsets_json_test.cpp core/offsets_json.cpp core/profile_binary.cpp core/memory/address_space.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/offsets_json_test.cpp core/legacy_support/offsets_json.cpp core/profile_binary.cpp core/memory/address_space.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/futex_hash_test: core/tests/futex_hash_test.cpp core/kernelsnitch/futex_hash.h
 	@mkdir -p $(HOST_BUILD_DIR)

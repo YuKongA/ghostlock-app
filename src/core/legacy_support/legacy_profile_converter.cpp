@@ -6,7 +6,7 @@
  * pre-route-field geometry inference. */
 #include "legacy_support/legacy_profile_converter.h"
 
-#include "offsets_json.h"
+#include "legacy_support/offsets_json.h"
 
 #include <cerrno>
 #include <fcntl.h>

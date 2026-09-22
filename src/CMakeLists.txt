@@ -66,7 +66,7 @@ set(SOURCES
         core/routes/multicast_waiter_route.cpp
         core/memory/payload_builder.cpp
         core/session/runtime_config.cpp
-        core/offsets_json.cpp
+        core/legacy_support/offsets_json.cpp
         core/util.cpp
         core/routes/route_operations.cpp
         core/session/exploit_session.cpp
