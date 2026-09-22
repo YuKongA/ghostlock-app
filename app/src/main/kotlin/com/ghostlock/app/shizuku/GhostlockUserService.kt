@@ -56,15 +56,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
-                val activeProfile = File(workDir, "active-profile.bin").apply {
-                    writeBytes(profileBlob)
-                    setReadable(false, false)
-                    setWritable(false, false)
-                    setReadable(true, true)
-                    setWritable(true, true)
-                }
                 ProcessBuilder(
-                    binary.absolutePath, "--profile", activeProfile.absolutePath,
+                    binary.absolutePath, "--ghostlock-app-call",
                 )
                     .directory(workDir)
                     .redirectErrorStream(true)
@@ -82,6 +75,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     }
                     .start()
                     .let { process ->
+                        runCatching { process.outputStream.use { it.write(profileBlob) } }
                         // The native process writes its log to a file and this
                         // tailer forwards lines asynchronously. Reading a pipe
                         // here applied backpressure inside the PI race window

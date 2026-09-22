@@ -65,7 +65,7 @@ internal class DebugAttackLog private constructor(
     companion object {
         private val SidecarNames = listOf(
             "kernel-dmesg.log", "kernel-info.txt", "iomem.txt",
-            "active-profile.json", "ksu.log",
+            "ksu.log",
         )
         private val sequence = AtomicLong()
 

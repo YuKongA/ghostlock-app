@@ -7,7 +7,6 @@
  * Configuration-source selection and merging stay on the Kotlin side.
  */
 #include "offsets_json.h"
-#include "profile_binary.h"
 #include "support/native_resource.hpp"
 
 #include <ctype.h>
@@ -794,30 +793,6 @@ int load_resolved_profile_json(const char *path, struct kernel_offsets *out,
     const int rc = parse_resolved_profile_json(
             std::string_view(file.data(), file.size()), out, release_buf,
             release_buf_cap);
-    return rc == 0 ? require_explicit_route(out) : rc;
-}
-
-int load_resolved_profile(const char *path, struct kernel_offsets *out,
-        char *release_buf, size_t release_buf_cap) {
-    auto file_result = read_profile_file(path);
-    if (!file_result) {
-        errno = file_result.error().code.value();
-        return -1;
-    }
-    const std::string &file = file_result.value();
-    const std::string_view document(file.data(), file.size());
-    /* Kotlin hands over the typed binary layout; JSON stays for assets,
-     * imports and host tests. */
-    const bool is_binary = document.size() >= 4 &&
-            static_cast<uint8_t>(document[0]) == (uint8_t) (ghostlock::binary_profile::kMagic & 0xff) &&
-            static_cast<uint8_t>(document[1]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 8) & 0xff) &&
-            static_cast<uint8_t>(document[2]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 16) & 0xff) &&
-            static_cast<uint8_t>(document[3]) == (uint8_t) ((ghostlock::binary_profile::kMagic >> 24) & 0xff);
-    const int rc = is_binary
-            ? ghostlock::binary_profile::parse(document, out, release_buf,
-                    release_buf_cap)
-            : parse_resolved_profile_json(document, out, release_buf,
-                    release_buf_cap);
     return rc == 0 ? require_explicit_route(out) : rc;
 }
 

@@ -474,7 +474,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
             val nativeLog = File(workDir, NativeLogFileName)
             nativeLog.writeText("")
-            val activeProfile = File(workDir, "active-profile.bin")
             val release = System.getProperty("os.version", "").orEmpty()
             val config = profileController.load(release, pair)
             if (config.invalidPaths.isNotEmpty()) {
@@ -485,7 +484,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             val profileBlob = profileController.nativeDocument(config)
                 ?: error("profile is unavailable for $release")
-            activeProfile.writeBytes(profileBlob)
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
             // tag root-script lines so they cannot be read as the native stages'
@@ -506,7 +504,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 start()
             }
             val command = ProcessBuilder(
-                binary.absolutePath, "--profile", activeProfile.absolutePath,
+                binary.absolutePath, "--ghostlock-app-call",
             )
                 .directory(workDir)
                 .redirectErrorStream(true)
@@ -526,7 +524,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     if (!tcpRouteEnabled) environment()["GHOSTLOCK_TCP_ROUTE"] = "0"
                 }
             try {
-                runProcess(command, onLog = {}, captureOutput = false)
+                runProcess(command, onLog = {}, captureOutput = false, stdin = profileBlob)
             } finally {
                 withContext(Dispatchers.IO) {
                     tailer.interrupt()
@@ -942,9 +940,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         onLog: (String) -> Unit = {},
         timeoutSeconds: Long = 300,
         captureOutput: Boolean = true,
+        stdin: ByteArray? = null,
     ): Int = runInterruptible {
         val process = builder.start()
         synchronized(processes) { processes += process }
+        if (stdin != null) {
+            runCatching { process.outputStream.use { it.write(stdin) } }
+        }
         val reader = if (captureOutput) Thread {
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
