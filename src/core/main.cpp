@@ -6,8 +6,8 @@
  *
  * This translation unit is the thin adapter: parse, run the stage sequence and
  * map the outcome to the process exit code. Setup, attack primitives, victim
- * protocol and stage policy live in their own units under ghostlock::ops,
- * ghostlock::victim, ghostlock::race and ghostlock::stages.
+ * protocol and stage policy live in their own units under ghostlock::attack,
+ * ghostlock::session::victim, ghostlock::race and ghostlock::session::stages.
  */
 
 #include "legacy_support/legacy_entrypoint_starter.h"

