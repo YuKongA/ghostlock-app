@@ -24,8 +24,8 @@ C++ 迁移与解耦已完成（CPP00–CPP17；Multicast 真机门禁通过，TC
 adb/shell 环境无 seccomp 过滤，会跳过 W3，适合快速验证：
 
 ```powershell
-make ghostlock
-adb push ghostlock /data/local/tmp/ghostlock
+make -C src ghostlock
+adb push build/native/ghostlock /data/local/tmp/ghostlock
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock
 ```

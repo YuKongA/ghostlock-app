@@ -24,8 +24,8 @@ The route races two cores. On the 6.6/6.12 tree-waiter kernels the main thread h
 adb/shell has no seccomp filter, so W3 is skipped - handy for quick verification:
 
 ```powershell
-make ghostlock
-adb push ghostlock /data/local/tmp/ghostlock
+make -C src ghostlock
+adb push build/native/ghostlock /data/local/tmp/ghostlock
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock
 ```
