@@ -5,7 +5,7 @@
 
 #include "profile_binary.h"
 
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <unistd.h>
 

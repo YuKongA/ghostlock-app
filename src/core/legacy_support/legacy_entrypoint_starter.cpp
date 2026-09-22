@@ -3,7 +3,7 @@
 #include "common.h"
 #include "legacy_support/legacy_profile_converter.h"
 
-#include <stdio.h>
+#include <cstdio>
 #include <sys/utsname.h>
 
 namespace ghostlock::legacy_support {

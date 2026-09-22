@@ -1,7 +1,6 @@
 #ifndef GHOSTLOCK_RUNTIME_CONFIG_H
 #define GHOSTLOCK_RUNTIME_CONFIG_H
 
-#include <stdbool.h>
 #include "profile.h"
 
 

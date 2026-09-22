@@ -1,7 +1,7 @@
 #ifndef KERNELSNITCH_SCAN_BOUNDS_H
 #define KERNELSNITCH_SCAN_BOUNDS_H
 
-#include <stddef.h>
+#include <cstddef>
 
 /* Return min(start + span, range_end) without overflowing size_t. */
 static inline size_t kernelsnitch_scan_limit(

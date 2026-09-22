@@ -8,7 +8,7 @@
 
 #include <pthread.h>
 #include <stdatomic.h>
-#include <stdint.h>
+#include <cstdint>
 
 /* Resident multicast waiter lifecycle (CPP13).
  *

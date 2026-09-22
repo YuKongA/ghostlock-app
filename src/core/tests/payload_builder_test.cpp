@@ -1,6 +1,6 @@
 #include "memory/payload_builder.h"
 
-#include <stdio.h>
+#include <cstdio>
 
 int main(void) {
   if (!payload_builder_fixed_vector_test()) {

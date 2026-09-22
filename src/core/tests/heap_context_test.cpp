@@ -1,9 +1,9 @@
 #include "memory/heap_context.h"
 
-#include <assert.h>
-#include <errno.h>
+#include <cassert>
+#include <cerrno>
 #include <fcntl.h>
-#include <stdio.h>
+#include <cstdio>
 #include <unistd.h>
 
 #include <type_traits>

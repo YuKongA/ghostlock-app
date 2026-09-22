@@ -9,8 +9,8 @@
  * whitespace and an optional sign are accepted, and overflow reports ERANGE
  * with ULONG_MAX. */
 
-#include <errno.h>
-#include <stdlib.h>
+#include <cerrno>
+#include <cstdlib>
 
 struct ParsedUnsigned {
     unsigned long value;

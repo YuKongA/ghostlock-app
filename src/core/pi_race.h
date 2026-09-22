@@ -7,7 +7,7 @@
 
 #include <pthread.h>
 #include <stdatomic.h>
-#include <stdint.h>
+#include <cstdint>
 
 namespace ghostlock {
 

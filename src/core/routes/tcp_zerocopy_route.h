@@ -9,7 +9,7 @@
 
 #include <pthread.h>
 #include <stdatomic.h>
-#include <stddef.h>
+#include <cstddef>
 
 namespace ghostlock {
 

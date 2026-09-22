@@ -7,7 +7,7 @@
  * trailing-slash rules can be locked by host fixed-vector tests
  * (tests/runtime_paths_test.cpp). */
 
-#include <stddef.h>
+#include <cstddef>
 
 #include <string>
 #include <string_view>

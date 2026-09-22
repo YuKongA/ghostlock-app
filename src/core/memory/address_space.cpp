@@ -2,8 +2,8 @@
 
 #include "target.h"
 
-#include <errno.h>
-#include <string.h>
+#include <cerrno>
+#include <cstring>
 #include <strings.h>
 
 /* Measured direct-map end. Defaults to the built-in bound and can only be

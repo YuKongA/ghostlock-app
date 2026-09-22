@@ -1,7 +1,7 @@
 #include "../pi_race.h"
 
-#include <assert.h>
-#include <stdio.h>
+#include <cassert>
+#include <cstdio>
 #include <unistd.h>
 
 #include <atomic>

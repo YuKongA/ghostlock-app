@@ -7,9 +7,9 @@
 
 #include "../kernelsnitch/number_parse.h"
 
-#include <assert.h>
-#include <limits.h>
-#include <stdio.h>
+#include <cassert>
+#include <climits>
+#include <cstdio>
 
 int main(void) {
   struct {

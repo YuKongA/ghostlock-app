@@ -1,8 +1,8 @@
 #include "routes/multicast_waiter_route.h"
 
-#include <assert.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
 
 int main(void) {
   MulticastWaiterRouteContext context;

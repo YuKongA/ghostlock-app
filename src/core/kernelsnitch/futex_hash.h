@@ -2,9 +2,9 @@
 
 /* Pure hash/bucket arithmetic: no KernelSnitch state, no Android headers, so
  * the same translation unit can be exercised by host fixed-vector tests. */
-#include <errno.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
 
 // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
 typedef uint32_t u32;

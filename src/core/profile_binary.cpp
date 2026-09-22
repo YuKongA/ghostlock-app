@@ -1,6 +1,6 @@
 #include "profile_binary.h"
 
-#include <string.h>
+#include <cstring>
 
 namespace ghostlock::binary_profile {
 namespace {

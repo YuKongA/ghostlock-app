@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_RUNTIME_TIME_H
 #define GHOSTLOCK_RUNTIME_TIME_H
 
-#include <time.h>
+#include <ctime>
 
 
 #include <chrono>

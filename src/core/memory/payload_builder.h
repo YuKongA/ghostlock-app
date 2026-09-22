@@ -1,8 +1,8 @@
 #ifndef PAYLOAD_BUILDER_H
 #define PAYLOAD_BUILDER_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 
 #include <cstddef>

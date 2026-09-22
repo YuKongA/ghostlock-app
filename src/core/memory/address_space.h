@@ -5,7 +5,7 @@
 #include "target_constants.hpp"
 #include <optional>
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace ghostlock::memory {
 

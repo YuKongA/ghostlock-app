@@ -1,7 +1,7 @@
 #include "routes/multicast_waiter_route.h"
 
 #include <netinet/in.h>
-#include <time.h>
+#include <ctime>
 #include <unistd.h>
 
 #if defined(__clang__)

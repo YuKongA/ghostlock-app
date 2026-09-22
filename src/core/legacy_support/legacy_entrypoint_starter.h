@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_LEGACY_ENTRYPOINT_STARTER_H
 #define GHOSTLOCK_LEGACY_ENTRYPOINT_STARTER_H
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "profile.h"
 

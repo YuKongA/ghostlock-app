@@ -1,8 +1,8 @@
 #ifndef GHOSTLOCK_PROFILE_H
 #define GHOSTLOCK_PROFILE_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include <array>
 #include <cstring>

@@ -15,7 +15,7 @@
 #include "session/exploit_stages.hpp"
 
 #include <array>
-#include <string.h>
+#include <cstring>
 
 using namespace ghostlock;
 

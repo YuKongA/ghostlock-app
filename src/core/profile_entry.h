@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_PROFILE_ENTRY_H
 #define GHOSTLOCK_PROFILE_ENTRY_H
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "profile.h"
 

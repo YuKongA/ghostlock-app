@@ -1,7 +1,7 @@
 #include "common.h"
 
 #include <array>
-#include <time.h>
+#include <ctime>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/timerfd.h>

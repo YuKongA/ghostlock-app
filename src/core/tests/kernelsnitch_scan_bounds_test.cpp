@@ -1,8 +1,8 @@
 #include "../kernelsnitch/scan_bounds.h"
 
-#include <assert.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
 
 int main(void) {
   assert(kernelsnitch_scan_limit(100, 20, 200) == 120);

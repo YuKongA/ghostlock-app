@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_LEGACY_PROFILE_CONVERTER_H
 #define GHOSTLOCK_LEGACY_PROFILE_CONVERTER_H
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "profile.h"
 

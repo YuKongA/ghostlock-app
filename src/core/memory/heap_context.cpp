@@ -1,6 +1,6 @@
 #include "memory/heap_context.h"
 
-#include <string.h>
+#include <cstring>
 #include <unistd.h>
 
 #include <utility>

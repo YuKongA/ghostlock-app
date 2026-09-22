@@ -1,7 +1,7 @@
 #include "routes/route_controller.h"
 
-#include <assert.h>
-#include <stdio.h>
+#include <cassert>
+#include <cstdio>
 
 using namespace ghostlock;
 

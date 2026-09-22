@@ -21,7 +21,7 @@
 #define KS_PAGE_MASK 0xfffULL
 
 #include <dirent.h>
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <linux/futex.h>
 #include <linux/memfd.h>
@@ -29,10 +29,10 @@
 #include <sched.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -44,7 +44,7 @@
 #include <sys/utsname.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
-#include <time.h>
+#include <ctime>
 #include <unistd.h>
 
 #include "kernelsnitch/utils.h"

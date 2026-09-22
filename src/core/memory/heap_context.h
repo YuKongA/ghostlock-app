@@ -1,8 +1,8 @@
 #ifndef HEAP_CONTEXT_H
 #define HEAP_CONTEXT_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 #include <sys/types.h>
 
 #include <memory>

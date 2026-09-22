@@ -9,10 +9,10 @@
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <stdint.h>
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdint>
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <pthread.h>
 
 #if !defined(__ARM) && !defined(__INTEL) && !defined(__AMD)

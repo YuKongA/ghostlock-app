@@ -5,9 +5,9 @@
 
 #include "session/victim_context.hpp"
 
-#include <assert.h>
+#include <cassert>
 #include <signal.h>
-#include <stdio.h>
+#include <cstdio>
 #include <sys/wait.h>
 #include <unistd.h>
 

@@ -5,7 +5,7 @@
 #include <array>
 #include <cerrno>
 #include <fcntl.h>
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <unistd.h>

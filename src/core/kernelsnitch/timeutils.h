@@ -4,10 +4,10 @@
 #define _GNU_SOURCE
 #endif
 #include <sched.h>
-#include <time.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <ctime>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
 #if !defined(__ARM) && !defined(__INTEL) && !defined(__AMD)
 #define __INTEL

@@ -1,6 +1,6 @@
 #include "memory/payload_builder.h"
 
-#include <string.h>
+#include <cstring>
 
 #include <algorithm>
 #include <array>

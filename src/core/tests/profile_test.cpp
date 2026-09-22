@@ -1,6 +1,6 @@
 #include "profile.h"
 
-#include <stdio.h>
+#include <cstdio>
 
 int main(void) {
   struct kernel_offsets decoded = {

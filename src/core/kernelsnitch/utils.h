@@ -3,20 +3,20 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <unistd.h>  
 #include <err.h>  
-#include <stdio.h>  
+#include <cstdio>  
 #include <sys/mman.h>  
 #include <sched.h>
-#include <time.h>
-#include <string.h>
+#include <ctime>
+#include <cstring>
 #include <sys/resource.h>
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <unistd.h>
-#include <inttypes.h>
+#include <cinttypes>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/prctl.h>

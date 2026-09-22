@@ -1,7 +1,7 @@
 #ifndef OFFSETS_JSON_H
 #define OFFSETS_JSON_H
 
-#include <stddef.h>
+#include <cstddef>
 
 #include <string_view>
 
