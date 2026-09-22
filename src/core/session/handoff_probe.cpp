@@ -1,8 +1,13 @@
 #include "session/handoff_probe.hpp"
 
+#include "support/native_resource.hpp"
+
+#include <array>
+#include <cerrno>
 #include <fcntl.h>
 #include <stdio.h>
-#include <string.h>
+#include <string>
+#include <string_view>
 #include <unistd.h>
 
 namespace ghostlock {
@@ -10,52 +15,72 @@ namespace {
 
 constexpr size_t kKsuLogPathMax = 320;
 
+/* Read a line-delimited file, invoking `fn` for each line (newline stripped).
+ * Returns false when the file cannot be opened. */
+template <typename Fn>
+bool for_each_line(const char *path, Fn &&fn) noexcept {
+    UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+    if (!fd.valid()) return false;
+
+    std::string data;
+    std::array<char, 4096> chunk{};
+    for (;;) {
+        const ssize_t n = read(fd.get(), chunk.data(), chunk.size());
+        if (n > 0) {
+            data.append(chunk.data(), static_cast<size_t>(n));
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        break;
+    }
+
+    size_t start = 0;
+    while (start < data.size()) {
+        const size_t newline = data.find('\n', start);
+        const size_t end = newline == std::string::npos ? data.size() : newline;
+        fn(std::string_view(data).substr(start, end - start));
+        if (newline == std::string::npos) break;
+        start = newline + 1;
+    }
+    return true;
+}
+
 /* Module init re-enforces at the very end of kernelsu_init; a denied read or
  * the value '1' both mean enforcing here. */
 bool read_enforce_enforcing() noexcept {
-    const int fd = open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return true;
-    char buffer[4] = {0};
-    const ssize_t n = read(fd, buffer, sizeof(buffer));
-    close(fd);
+    UniqueFd fd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+    if (!fd.valid()) return true;
+    std::array<char, 4> buffer{};
+    const ssize_t n = read(fd.get(), buffer.data(), buffer.size());
     return n > 0 && buffer[0] == '1';
 }
 
 }  // namespace
 
 bool kernelsu_module_visible() noexcept {
-    FILE *modules = fopen("/proc/modules", "r");
-    if (!modules) return false;
-
-    char line[256];
     bool loaded = false;
-    while (fgets(line, sizeof(line), modules)) {
-        char name[64];
-        if (sscanf(line, "%63s", name) == 1 && strcmp(name, "kernelsu") == 0) {
-            loaded = true;
-            break;
-        }
-    }
-    fclose(modules);
+    for_each_line("/proc/modules", [&loaded](std::string_view line) {
+        const size_t end = line.find_first_of(" \t");
+        if (line.substr(0, end) == "kernelsu") loaded = true;
+    });
     return loaded;
 }
 
 bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
     char resolved[kKsuLogPathMax];
-    snprintf(resolved, sizeof(resolved), "%.*s", (int)path.size(), path.data());
-    FILE *log = fopen(resolved, "r");
-    if (!log) return false;
-
-    char line[256];
-    while (fgets(line, sizeof(line), log)) {
-        if (strstr(line, "[+] KernelSU module loaded") ||
-                strstr(line, "[+] KernelSU already loaded")) {
+    snprintf(resolved, sizeof(resolved), "%.*s", (int) path.size(), path.data());
+    const bool opened = for_each_line(resolved, [&](std::string_view line) {
+        if (line.find("[+] KernelSU module loaded") != std::string_view::npos ||
+                line.find("[+] KernelSU already loaded") !=
+                        std::string_view::npos) {
             loaded = true;
         }
-        if (strstr(line, "[!] KernelSU module not loaded")) failed = true;
-    }
-    fclose(log);
-    return loaded || failed;
+        if (line.find("[!] KernelSU module not loaded") !=
+                std::string_view::npos) {
+            failed = true;
+        }
+    });
+    return opened ? (loaded || failed) : false;
 }
 
 HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,

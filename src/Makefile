@@ -212,9 +212,9 @@ $(HOST_BUILD_DIR)/runtime_paths_test: core/tests/runtime_paths_test.cpp core/ses
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/handoff_probe_test: core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp core/session/handoff_probe.hpp
+$(HOST_BUILD_DIR)/handoff_probe_test: core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp core/session/handoff_probe.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/victim_context_test: core/tests/victim_context_test.cpp core/session/victim_context.cpp core/session/victim_context.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)

