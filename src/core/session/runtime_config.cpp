@@ -46,7 +46,7 @@ static int runtime_config_validate_cpus(runtime_config *config) {
  * make an explicit selection. Existing explicit choices remain authoritative. */
 int runtime_config_apply_profile(
     runtime_config *config, const TargetProfile *profile) {
-    const struct execution_settings *e = target_profile_execution(profile);
+    const struct execution_settings *e = profile->execution();
     if (!config || !e) return -1;
     int old_main = config->main_cpu;
     int old_consumer = config->consumer_cpu;

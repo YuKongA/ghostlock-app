@@ -12,7 +12,7 @@
 
 /* runtime_struct_offsets.h resolves every symbol/task offset from the loaded
  * profile and falls back to the compile-time target.h defaults. No macro here
- * re-reads the profile; consumers use the target_profile_* accessors. */
+ * re-reads the profile; consumers use the TargetProfile accessors. */
 
 /* VR.ko anti-root fallback defines */
 #ifndef VR_TAG_A_OFF

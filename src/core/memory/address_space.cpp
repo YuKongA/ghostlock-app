@@ -63,7 +63,7 @@ namespace ghostlock::memory {
     int resolved_addresses_init_for_soc(ResolvedAddresses *out,
                                         const TargetProfile *profile,
                                         SocFamily soc) {
-        const struct kernel_offsets *values = target_profile_values(profile);
+        const struct kernel_offsets *values = profile->values();
         if (!out || !values || !values->uname_r || !values->off_init_cred) {
             errno = EINVAL;
             return -1;
@@ -130,7 +130,7 @@ namespace ghostlock::memory {
         if (!addresses) return "unknown";
         if (addresses->soc == SocFamily::Mtk) return "mtk";
         if (addresses->soc == SocFamily::Xring) return "xring";
-        const struct kernel_offsets *values = target_profile_values(profile);
+        const struct kernel_offsets *values = profile->values();
         if (addresses->soc == SocFamily::Google) {
             return values && values->kernel_phys_load ? "google/tensor" : "tensor";
         }

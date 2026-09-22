@@ -28,7 +28,7 @@ namespace {
     }
 
     static const struct execution_settings *resident_execution_settings(void) {
-        return target_profile_execution(&g_exploit_session.profile);
+        return g_exploit_session.profile.execution();
     }
 
     static void multicast_waiter_interrupt(int sig) {
@@ -161,7 +161,7 @@ int MulticastWaiterRoute::start() noexcept {
         return 0;
     }
     MulticastWaiterLayout layout_value =
-            target_profile_multicast_waiter_layout(&g_exploit_session.profile);
+            g_exploit_session.profile.multicast_layout();
     const struct execution_settings *execution = resident_execution_settings();
     context->init(
         &g_exploit_session.race, nullptr, execution, layout_value, 1);

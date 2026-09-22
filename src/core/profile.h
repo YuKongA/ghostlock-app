@@ -35,12 +35,21 @@ struct execution_settings {
 
 /* Explicit route selection written by the profile ("route": "<name>").
  * Geometry inference below exists only for profiles predating the field. */
-enum : uint8_t {
-    kRouteAuto = 0,
-    kRouteTcpZerocopy = 1,
-    kRouteSelectStack = 2,
-    kRouteMulticastWaiter = 3,
+enum class RouteKind : uint8_t {
+  Auto = 0,
+  TcpZerocopy = 1,
+  SelectStack = 2,
+  MulticastWaiter = 3,
 };
+
+/* Wire values for the binary / JSON transport layers. */
+inline constexpr uint8_t kRouteAuto = static_cast<uint8_t>(RouteKind::Auto);
+inline constexpr uint8_t kRouteTcpZerocopy =
+        static_cast<uint8_t>(RouteKind::TcpZerocopy);
+inline constexpr uint8_t kRouteSelectStack =
+        static_cast<uint8_t>(RouteKind::SelectStack);
+inline constexpr uint8_t kRouteMulticastWaiter =
+        static_cast<uint8_t>(RouteKind::MulticastWaiter);
 
 [[nodiscard]] inline uint8_t route_kind_from_string(std::string_view name) {
     if (name == "tcp_zerocopy") return kRouteTcpZerocopy;
@@ -92,6 +101,22 @@ struct kernel_offsets {
     struct execution_settings execution;
 };
 
+typedef struct multicast_waiter_layout {
+    size_t waiter_offset, buffer_size, task_offset, lock_offset;
+    size_t fake_lock_offset, fake_task_offset;
+    size_t lock_slots_offset, lock_slot_count, lock_slot_stride;
+    uint64_t fake_bss_image_offset;
+} MulticastWaiterLayout;
+
+typedef struct select_stack_layout {
+    int waiter_shift;
+    int compact_waiter;
+} SelectStackLayout;
+
+typedef struct tcp_zerocopy_layout {
+    int compact_waiter;
+} TcpZerocopyLayout;
+
 /* Immutable runtime snapshot copied from the JSON transport representation.
  * The C++ value owns uname_r and rebinds the transport pointer after every
  * copy/move. The C layout remains available as a compatibility façade. */
@@ -136,6 +161,78 @@ public:
 
     [[nodiscard]] bool loaded() const noexcept { return loaded_; }
 
+  [[nodiscard]] RouteKind route() const noexcept {
+    return loaded_ ? static_cast<RouteKind>(values_.route) : RouteKind::Auto;
+  }
+
+  [[nodiscard]] bool supports(RouteKind kind) const noexcept {
+    return route() == kind;
+  }
+
+  [[nodiscard]] const char *release() const noexcept {
+    return loaded_ && values_.uname_r ? values_.uname_r : "";
+  }
+
+  [[nodiscard]] const struct execution_settings *execution() const noexcept {
+    return loaded_ ? &values_.execution : nullptr;
+  }
+
+  [[nodiscard]] bool has_compact_waiter() const noexcept {
+    return loaded_ && values_.compact_waiter;
+  }
+
+  [[nodiscard]] bool safe_mode() const noexcept {
+    return loaded_ && values_.safe_mode;
+  }
+
+  [[nodiscard]] bool multicast_resident() const noexcept {
+    return loaded_ && values_.multicast_resident;
+  }
+
+  [[nodiscard]] MulticastWaiterLayout multicast_layout() const noexcept {
+    return loaded_ ? (MulticastWaiterLayout){
+        .waiter_offset = (size_t) values_.mcast_waiter_off,
+        .buffer_size = values_.mcast_buffer_size,
+        .task_offset = values_.mcast_task_offset,
+        .lock_offset = values_.mcast_lock_offset,
+        .fake_lock_offset = values_.mcast_fake_lock_offset,
+        .fake_task_offset = values_.mcast_fake_task_offset,
+        .lock_slots_offset = values_.mcast_lock_slots_offset,
+        .lock_slot_count = values_.mcast_lock_slot_count,
+        .lock_slot_stride = values_.mcast_lock_slot_stride,
+        .fake_bss_image_offset = values_.off_mcast_fake_bss,
+    } : MulticastWaiterLayout{};
+  }
+
+  [[nodiscard]] SelectStackLayout select_stack_layout() const noexcept {
+    return loaded_ ? (SelectStackLayout){
+        .waiter_shift = values_.pselect_waiter_shift,
+        .compact_waiter = values_.compact_waiter,
+    } : SelectStackLayout{};
+  }
+
+  [[nodiscard]] TcpZerocopyLayout tcp_zerocopy_layout() const noexcept {
+    return (TcpZerocopyLayout){.compact_waiter = has_compact_waiter()};
+  }
+
+  [[nodiscard]] uint32_t or_default(uint32_t value, uint32_t fallback)
+      const noexcept {
+    return (loaded_ && value) ? value : fallback;
+  }
+
+  [[nodiscard]] uint32_t mm_struct_stride(uint32_t fallback) const noexcept {
+    return or_default(loaded_ ? values_.mm_struct_sz : 0, fallback);
+  }
+
+  [[nodiscard]] uint64_t image(uint64_t offset, uint64_t image_base,
+      uint64_t fallback_offset) const noexcept {
+    return image_base + ((loaded_ && offset) ? offset : fallback_offset);
+  }
+
+  static TargetProfile from(const struct kernel_offsets *values) {
+    return values ? TargetProfile(*values) : TargetProfile();
+  }
+
 private:
     void copy_release(const char *release) noexcept {
         release_.fill('\0');
@@ -156,145 +253,5 @@ private:
     std::array<char, 256> release_{};
     bool loaded_ = false;
 };
-
-typedef struct multicast_waiter_layout {
-    size_t waiter_offset, buffer_size, task_offset, lock_offset;
-    size_t fake_lock_offset, fake_task_offset;
-    size_t lock_slots_offset, lock_slot_count, lock_slot_stride;
-    uint64_t fake_bss_image_offset;
-} MulticastWaiterLayout;
-
-typedef struct select_stack_layout {
-    int waiter_shift;
-    int compact_waiter;
-} SelectStackLayout;
-
-typedef struct tcp_zerocopy_layout {
-    int compact_waiter;
-} TcpZerocopyLayout;
-
-static inline TargetProfile
-target_profile_snapshot(const struct kernel_offsets *values) {
-    return values ? TargetProfile(*values) : TargetProfile();
-}
-
-static inline const struct kernel_offsets *
-target_profile_values(const TargetProfile *profile) {
-    return profile ? profile->values() : nullptr;
-}
-
-static inline int target_profile_is_loaded(const TargetProfile *profile) {
-    return target_profile_values(profile) != nullptr;
-}
-
-static inline const char *target_profile_release(const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return (v && v->uname_r) ? v->uname_r : "";
-}
-
-static inline const struct execution_settings *
-target_profile_execution(const TargetProfile *profile) {
-    const struct kernel_offsets *values = target_profile_values(profile);
-    return values ? &values->execution : nullptr;
-}
-
-/* The route is profile-controlled: profiles must declare it explicitly, and
- * a missing (kRouteAuto) value is rejected while loading. Legacy documents get
- * their route baked in by Kotlin's LegacyProfileConverter beforehand. */
-static inline uint8_t target_profile_route(const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    if (!v) return kRouteAuto;
-    return v->route;
-}
-
-static inline int target_profile_supports_multicast_waiter(
-    const TargetProfile *profile) {
-    return target_profile_route(profile) == kRouteMulticastWaiter;
-}
-
-static inline int target_profile_supports_tcp_zerocopy(
-    const TargetProfile *profile) {
-    return target_profile_route(profile) == kRouteTcpZerocopy;
-}
-
-static inline int target_profile_supports_select_stack(
-    const TargetProfile *profile) {
-    return target_profile_route(profile) == kRouteSelectStack;
-}
-
-static inline int target_profile_has_compact_waiter(
-    const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return v && v->compact_waiter;
-}
-
-/* Execution flags carried by the profile (GLK1 v3). */
-static inline int target_profile_safe_mode(const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return v && v->safe_mode;
-}
-
-static inline int target_profile_multicast_resident(
-    const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return v && v->multicast_resident;
-}
-
-static inline MulticastWaiterLayout target_profile_multicast_waiter_layout(
-    const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return v
-               ? (MulticastWaiterLayout){
-                   .waiter_offset = (size_t) v->mcast_waiter_off,
-                   .buffer_size = v->mcast_buffer_size,
-                   .task_offset = v->mcast_task_offset,
-                   .lock_offset = v->mcast_lock_offset,
-                   .fake_lock_offset = v->mcast_fake_lock_offset,
-                   .fake_task_offset = v->mcast_fake_task_offset,
-                   .lock_slots_offset = v->mcast_lock_slots_offset,
-                   .lock_slot_count = v->mcast_lock_slot_count,
-                   .lock_slot_stride = v->mcast_lock_slot_stride,
-                   .fake_bss_image_offset = v->off_mcast_fake_bss,
-               }
-               : MulticastWaiterLayout{};
-}
-
-static inline SelectStackLayout target_profile_select_stack_layout(
-    const TargetProfile *profile) {
-    const struct kernel_offsets *v = target_profile_values(profile);
-    return v
-               ? (SelectStackLayout){
-                   .waiter_shift = v->pselect_waiter_shift,
-                   .compact_waiter = v->compact_waiter,
-               }
-               : SelectStackLayout{};
-}
-
-static inline TcpZerocopyLayout target_profile_tcp_zerocopy_layout(
-    const TargetProfile *profile) {
-    return (TcpZerocopyLayout){
-        .compact_waiter = target_profile_has_compact_waiter(profile),
-    };
-}
-
-static inline uint32_t target_profile_u32(
-    const TargetProfile *profile, uint32_t value, uint32_t fallback) {
-    return target_profile_is_loaded(profile) && value ? value : fallback;
-}
-
-/* mm_struct stride; a missing or zero profile field uses the fallback. */
-static inline uint32_t target_profile_mm_struct_sz(
-    const TargetProfile *profile, uint32_t fallback) {
-    const struct kernel_offsets *values = target_profile_values(profile);
-    return target_profile_u32(profile, values ? values->mm_struct_sz : 0,
-                              fallback);
-}
-
-static inline uint64_t target_profile_image(
-    const TargetProfile *profile, uint64_t offset, uint64_t image_base,
-    uint64_t fallback_offset) {
-    return image_base +
-           (target_profile_is_loaded(profile) && offset ? offset : fallback_offset);
-}
 
 #endif

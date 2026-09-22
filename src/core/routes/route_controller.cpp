@@ -31,14 +31,14 @@ namespace ghostlock::route {
         }
         switch (controller->selected) {
             case RouteKind::MulticastWaiter:
-                if (!target_profile_supports_multicast_waiter(controller->profile))
+                if (!controller->profile->supports(::RouteKind::MulticastWaiter))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED
                 };
                 return do_kernel5_fake_lock_route(request);
             case RouteKind::TcpZerocopy: {
-                if (!target_profile_supports_tcp_zerocopy(controller->profile))
+                if (!controller->profile->supports(::RouteKind::TcpZerocopy))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED
@@ -50,14 +50,14 @@ namespace ghostlock::route {
                 /* Fallback follows the profile's explicit "fallback_to"
              * declaration; profiles without one return the TCP failure. */
                 const struct kernel_offsets *values =
-                        target_profile_values(controller->profile);
+                        controller->profile->values();
                 if (!values || values->fallback_route != kRouteSelectStack)
                     return status;
                 controller->fallback_used = 1;
                 return do_pselect_fake_lock_route(request);
             }
             case RouteKind::SelectStack:
-                if (!target_profile_supports_select_stack(controller->profile))
+                if (!controller->profile->supports(::RouteKind::SelectStack))
                     return (RouteStatus)
                 {
                     .code = ROUTE_UNSUPPORTED

@@ -27,7 +27,7 @@ namespace ghostlock::route {
     }
 
     static const struct execution_settings *execution_settings(void) {
-        return target_profile_execution(&g_exploit_session.profile);
+        return g_exploit_session.profile.execution();
     }
 
     /* Resident multicast writer wrappers (CPP13): the owning class lives in
@@ -48,7 +48,7 @@ namespace ghostlock::route {
         (void) request;
         RouteStatus status = {.code = ROUTE_RETRYABLE};
         MulticastWaiterLayout layout =
-                target_profile_multicast_waiter_layout(&g_exploit_session.profile);
+                g_exploit_session.profile.multicast_layout();
         size_t stamp_size = layout.buffer_size;
         /* VLA size comes from the validated profile geometry; the encode step
      * rejects an undersized buffer before any indexed write. */
@@ -441,7 +441,7 @@ namespace ghostlock::route {
     }
 
     static int pselect_waiter_shift(const SelectStackRouteContext *context) {
-        return target_profile_is_loaded(&g_exploit_session.profile)
+        return g_exploit_session.profile.loaded()
                    ? context->layout.waiter_shift
                    : PSELECT_WAITER_WORD_SHIFT;
     }
@@ -717,7 +717,7 @@ namespace ghostlock::route {
      * profile-schema extension; the profile still owns the timeout. */
         SelectStackRouteContext context(
             &g_exploit_session.race, request, execution_settings(),
-            target_profile_select_stack_layout(&g_exploit_session.profile),
+            g_exploit_session.profile.select_stack_layout(),
             standard_io_backup);
         if (context.prepare() == 0) {
             (void) context.execute();
