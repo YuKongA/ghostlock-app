@@ -2,6 +2,7 @@
 
 #include <array>
 #include <ctime>
+#include <iterator>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/timerfd.h>
@@ -544,7 +545,7 @@ namespace ghostlock::route {
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
             };
-            for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+            for (size_t i = 0; i < std::size(words); i++) {
                 struct pselect_waiter_word *w = &words[i];
                 pselect_put_waiter_word(context, words_per_set,
                                         w->word, w->value, w->name);
@@ -566,7 +567,7 @@ namespace ghostlock::route {
                 {13, (g_exploit_session.heap.current.fake_lock), "lock"},
                 {14, 3, "wake_state"},
             };
-            for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+            for (size_t i = 0; i < std::size(words); i++) {
                 struct pselect_waiter_word *w = &words[i];
                 pselect_put_waiter_word(context, words_per_set,
                                         w->word, w->value, w->name);

@@ -19,6 +19,7 @@
 #include <cstring>
 #include <unistd.h>
 
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -316,115 +317,94 @@ static bool json_parse_int(std::string_view in, int64_t *out) {
     return true;
 }
 
-static const struct {
+/* The JSON decoder assigns through a member expression, so no
+ * offset/reinterpret_cast pair is needed and the declared member type defines
+ * the truncation exactly like the old width-driven switch did. */
+struct scalar_field {
     const char *name;
-    size_t off;
-} g_symbol_map[] = {
-    {"off_init_task", offsetof(struct kernel_offsets, off_init_task)},
-    {"off_init_cred", offsetof(struct kernel_offsets, off_init_cred)},
-    {"off_empty_zero_page", offsetof(struct kernel_offsets, off_empty_zero_page)},
-    {"off_mcast_fake_bss", offsetof(struct kernel_offsets, off_mcast_fake_bss)},
-    {"off_root_task_group", offsetof(struct kernel_offsets, off_root_task_group)},
-    {"off_selinux_enforcing", offsetof(struct kernel_offsets, off_selinux_enforcing)},
-    {"off_selinux_blob_sizes", offsetof(struct kernel_offsets, off_selinux_blob_sizes)},
-    {"off_security_hook_heads", offsetof(struct kernel_offsets, off_security_hook_heads)},
-    {"off_slide_nfulnl_logger", offsetof(struct kernel_offsets, off_slide_nfulnl_logger)},
-    {"off_slide_loggers_0_1", offsetof(struct kernel_offsets, off_slide_loggers_0_1)},
-    {"off_slide_boot_id", offsetof(struct kernel_offsets, off_slide_boot_id)},
+    void (*store)(struct kernel_offsets &, int64_t);
 };
 
-static const struct {
-    const char *name;
-    size_t off;
-} g_task_map[] = {
-    {"task_prio", offsetof(struct kernel_offsets, task_prio)},
-    {"task_normal_prio", offsetof(struct kernel_offsets, task_normal_prio)},
-    {"task_sched_task_group", offsetof(struct kernel_offsets, task_sched_task_group)},
-    {"task_pi_lock", offsetof(struct kernel_offsets, task_pi_lock)},
-    {"task_pi_waiters", offsetof(struct kernel_offsets, task_pi_waiters)},
-    {"task_pi_top_task", offsetof(struct kernel_offsets, task_pi_top_task)},
-    {"task_pi_blocked_on", offsetof(struct kernel_offsets, task_pi_blocked_on)},
-    {"task_pid", offsetof(struct kernel_offsets, task_pid)},
-    {"task_tgid", offsetof(struct kernel_offsets, task_tgid)},
-    {"task_atomic_flags", offsetof(struct kernel_offsets, task_atomic_flags)},
-    {"task_real_cred", offsetof(struct kernel_offsets, task_real_cred)},
-    {"task_cred", offsetof(struct kernel_offsets, task_cred)},
-    {"task_comm", offsetof(struct kernel_offsets, task_comm)},
-    {"task_tasks", offsetof(struct kernel_offsets, task_tasks)},
-    {"task_seccomp", offsetof(struct kernel_offsets, task_seccomp)},
+#define SCALAR_STORE(member)                                    \
+    {#member, [](struct kernel_offsets &o, int64_t value) {     \
+        o.member = static_cast<decltype(o.member)>(value);      \
+    }}
+
+static const struct scalar_field g_symbol_map[] = {
+    SCALAR_STORE(off_init_task),
+    SCALAR_STORE(off_init_cred),
+    SCALAR_STORE(off_empty_zero_page),
+    SCALAR_STORE(off_mcast_fake_bss),
+    SCALAR_STORE(off_root_task_group),
+    SCALAR_STORE(off_selinux_enforcing),
+    SCALAR_STORE(off_selinux_blob_sizes),
+    SCALAR_STORE(off_security_hook_heads),
+    SCALAR_STORE(off_slide_nfulnl_logger),
+    SCALAR_STORE(off_slide_loggers_0_1),
+    SCALAR_STORE(off_slide_boot_id),
 };
 
-enum class ScalarWidth : int {
-    U8,
-    U32,
-    U64,
-    I32,
+static const struct scalar_field g_task_map[] = {
+    SCALAR_STORE(task_prio),
+    SCALAR_STORE(task_normal_prio),
+    SCALAR_STORE(task_sched_task_group),
+    SCALAR_STORE(task_pi_lock),
+    SCALAR_STORE(task_pi_waiters),
+    SCALAR_STORE(task_pi_top_task),
+    SCALAR_STORE(task_pi_blocked_on),
+    SCALAR_STORE(task_pid),
+    SCALAR_STORE(task_tgid),
+    SCALAR_STORE(task_atomic_flags),
+    SCALAR_STORE(task_real_cred),
+    SCALAR_STORE(task_cred),
+    SCALAR_STORE(task_comm),
+    SCALAR_STORE(task_tasks),
+    SCALAR_STORE(task_seccomp),
 };
 
-static const struct {
-    const char *name;
-    size_t off;
-    ScalarWidth width;
-} g_profile_map[] = {
-    {"kernel_major", offsetof(struct kernel_offsets, kernel_major), ScalarWidth::U8},
-    {"recommend_shizuku", offsetof(struct kernel_offsets, recommend_shizuku), ScalarWidth::U8},
-    {"kernel_phys_load", offsetof(struct kernel_offsets, kernel_phys_load), ScalarWidth::U64},
-    {"pselect_waiter_shift", offsetof(struct kernel_offsets, pselect_waiter_shift), ScalarWidth::I32},
-    {"mcast_waiter_off", offsetof(struct kernel_offsets, mcast_waiter_off), ScalarWidth::I32},
-    {"mcast_buffer_size", offsetof(struct kernel_offsets, mcast_buffer_size), ScalarWidth::U32},
-    {"mcast_task_offset", offsetof(struct kernel_offsets, mcast_task_offset), ScalarWidth::U32},
-    {"mcast_lock_offset", offsetof(struct kernel_offsets, mcast_lock_offset), ScalarWidth::U32},
-    {"mcast_fake_lock_offset", offsetof(struct kernel_offsets, mcast_fake_lock_offset), ScalarWidth::U32},
-    {"mcast_fake_task_offset", offsetof(struct kernel_offsets, mcast_fake_task_offset), ScalarWidth::U32},
-    {"mcast_lock_slots_offset", offsetof(struct kernel_offsets, mcast_lock_slots_offset), ScalarWidth::U32},
-    {"mcast_lock_slot_count", offsetof(struct kernel_offsets, mcast_lock_slot_count), ScalarWidth::U32},
-    {"mcast_lock_slot_stride", offsetof(struct kernel_offsets, mcast_lock_slot_stride), ScalarWidth::U32},
-    {"kernelsnitch_collisions", offsetof(struct kernel_offsets, kernelsnitch_collisions), ScalarWidth::U32},
-    {"compact_waiter", offsetof(struct kernel_offsets, compact_waiter), ScalarWidth::U8},
-    {"mm_struct_sz", offsetof(struct kernel_offsets, mm_struct_sz), ScalarWidth::U32},
-    {"cred_copy_size", offsetof(struct kernel_offsets, cred_copy_size), ScalarWidth::U32},
-    {"cred_usage_offset", offsetof(struct kernel_offsets, cred_usage_offset), ScalarWidth::U32},
-    {"cred_usage_value", offsetof(struct kernel_offsets, cred_usage_value), ScalarWidth::U32},
-    {"cred_caps_offset", offsetof(struct kernel_offsets, cred_caps_offset), ScalarWidth::U32},
-    {"cred_caps_count", offsetof(struct kernel_offsets, cred_caps_count), ScalarWidth::U32},
-    {"cred_caps_value", offsetof(struct kernel_offsets, cred_caps_value), ScalarWidth::U64},
-    {"cred_ref_count", offsetof(struct kernel_offsets, cred_ref_count), ScalarWidth::U32},
-    {"cred_ref0_offset", offsetof(struct kernel_offsets, cred_ref0_offset), ScalarWidth::U32},
-    {"cred_ref1_offset", offsetof(struct kernel_offsets, cred_ref1_offset), ScalarWidth::U32},
-    {"cred_ref2_offset", offsetof(struct kernel_offsets, cred_ref2_offset), ScalarWidth::U32},
-    {"cred_ref3_offset", offsetof(struct kernel_offsets, cred_ref3_offset), ScalarWidth::U32},
-    {"cred_ref0_image", offsetof(struct kernel_offsets, cred_ref0_image), ScalarWidth::U64},
-    {"cred_ref1_image", offsetof(struct kernel_offsets, cred_ref1_image), ScalarWidth::U64},
-    {"cred_ref2_image", offsetof(struct kernel_offsets, cred_ref2_image), ScalarWidth::U64},
-    {"cred_ref3_image", offsetof(struct kernel_offsets, cred_ref3_image), ScalarWidth::U64},
+static const struct scalar_field g_profile_map[] = {
+    SCALAR_STORE(kernel_major),
+    SCALAR_STORE(recommend_shizuku),
+    SCALAR_STORE(kernel_phys_load),
+    SCALAR_STORE(pselect_waiter_shift),
+    SCALAR_STORE(mcast_waiter_off),
+    SCALAR_STORE(mcast_buffer_size),
+    SCALAR_STORE(mcast_task_offset),
+    SCALAR_STORE(mcast_lock_offset),
+    SCALAR_STORE(mcast_fake_lock_offset),
+    SCALAR_STORE(mcast_fake_task_offset),
+    SCALAR_STORE(mcast_lock_slots_offset),
+    SCALAR_STORE(mcast_lock_slot_count),
+    SCALAR_STORE(mcast_lock_slot_stride),
+    SCALAR_STORE(kernelsnitch_collisions),
+    SCALAR_STORE(compact_waiter),
+    SCALAR_STORE(mm_struct_sz),
+    SCALAR_STORE(cred_copy_size),
+    SCALAR_STORE(cred_usage_offset),
+    SCALAR_STORE(cred_usage_value),
+    SCALAR_STORE(cred_caps_offset),
+    SCALAR_STORE(cred_caps_count),
+    SCALAR_STORE(cred_caps_value),
+    SCALAR_STORE(cred_ref_count),
+    SCALAR_STORE(cred_ref0_offset),
+    SCALAR_STORE(cred_ref1_offset),
+    SCALAR_STORE(cred_ref2_offset),
+    SCALAR_STORE(cred_ref3_offset),
+    SCALAR_STORE(cred_ref0_image),
+    SCALAR_STORE(cred_ref1_image),
+    SCALAR_STORE(cred_ref2_image),
+    SCALAR_STORE(cred_ref3_image),
 };
-
-static void store_profile_scalar(struct kernel_offsets *out, size_t off,
-                                 ScalarWidth width, int64_t value) {
-    char *field = reinterpret_cast<char *>(out) + off;
-    switch (width) {
-        case ScalarWidth::U8:
-            *reinterpret_cast<uint8_t *>(field) = static_cast<uint8_t>(value);
-            break;
-        case ScalarWidth::U32:
-            *reinterpret_cast<uint32_t *>(field) = static_cast<uint32_t>(value);
-            break;
-        case ScalarWidth::U64:
-            *reinterpret_cast<uint64_t *>(field) = static_cast<uint64_t>(value);
-            break;
-        case ScalarWidth::I32:
-            *reinterpret_cast<int *>(field) = static_cast<int>(value);
-            break;
-    }
-}
 
 struct execution_field {
     const char *name;
-    size_t offset;
+    void (*store)(struct execution_settings &, uint32_t);
 };
 
-#define EXEC_FIELD(json_name, member) \
-  {json_name, offsetof(struct execution_settings, member)}
+#define EXEC_FIELD(json_name, member)                                  \
+  {json_name, [](struct execution_settings &o, uint32_t value) {       \
+      o.member = value;                                                \
+  }}
 
 static int parse_execution_group(std::string_view parent,
                                  std::string_view group_name, const struct execution_field *fields,
@@ -440,7 +420,7 @@ static int parse_execution_group(std::string_view parent,
         if (!value || !json_parse_int(*value, &parsed) || parsed < 0 ||
             (uint64_t) parsed > UINT32_MAX)
             return -1;
-        *reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(out) + fields[i].offset) = static_cast<uint32_t>(parsed);
+        fields[i].store(*out, static_cast<uint32_t>(parsed));
     }
     return 0;
 }
@@ -487,15 +467,15 @@ static int fill_execution_settings(std::string_view object,
         EXEC_FIELD("enforce_poll_interval_ms", handoff_enforce_poll_interval_ms),
     };
     if (parse_execution_group(*execution, "recommended_cpus", cpus,
-                              sizeof(cpus) / sizeof(cpus[0]), out) ||
+                              std::size(cpus), out) ||
         parse_execution_group(*execution, "heap", heap,
-                              sizeof(heap) / sizeof(heap[0]), out) ||
+                              std::size(heap), out) ||
         parse_execution_group(*execution, "race", race,
-                              sizeof(race) / sizeof(race[0]), out) ||
+                              std::size(race), out) ||
         parse_execution_group(*execution, "stages", stages,
-                              sizeof(stages) / sizeof(stages[0]), out) ||
+                              std::size(stages), out) ||
         parse_execution_group(*execution, "handoff", handoff,
-                              sizeof(handoff) / sizeof(handoff[0]), out))
+                              std::size(handoff), out))
         return -1;
 
     const auto routes_value = json_member_value(*execution, "routes");
@@ -520,11 +500,11 @@ static int fill_execution_settings(std::string_view object,
         EXEC_FIELD("post_adjust_settle_us", multicast_post_adjust_settle_us),
     };
     return parse_execution_group(*routes, "tcp_zerocopy", tcp,
-                                 sizeof(tcp) / sizeof(tcp[0]), out) ||
+                                 std::size(tcp), out) ||
            parse_execution_group(*routes, "select_stack", select_stack,
-                                 sizeof(select_stack) / sizeof(select_stack[0]), out) ||
+                                 std::size(select_stack), out) ||
            parse_execution_group(*routes, "multicast_waiter", multicast,
-                                 sizeof(multicast) / sizeof(multicast[0]), out)
+                                 std::size(multicast), out)
                ? -1
                : 0;
 }
@@ -596,36 +576,31 @@ static void fill_external_entry(struct kernel_offsets *out,
         .offset = json_object_span(object, "offset"),
         .mcast = json_object_span(object, "mcast"),
     };
-    for (size_t i = 0; i < sizeof(g_profile_map) / sizeof(g_profile_map[0]); i++) {
+    for (size_t i = 0; i < std::size(g_profile_map); i++) {
         if (read_namespaced_scalar(object, g_profile_map[i].name, groups, &num)) {
-            store_profile_scalar(out, g_profile_map[i].off,
-                                 g_profile_map[i].width, num);
+            g_profile_map[i].store(*out, num);
         }
     }
     /* Resolved profiles use one flat object. Keep the nested reads below only
      * for compatibility with offsets.json files produced by older extractors. */
-    for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]); i++) {
+    for (size_t i = 0; i < std::size(g_symbol_map); i++) {
         if (read_namespaced_scalar(object, g_symbol_map[i].name, groups, &num)) {
-            *reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(out) + g_symbol_map[i].off) = static_cast<uint64_t>(
-                num);
+            g_symbol_map[i].store(*out, num);
         }
     }
-    for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]); i++) {
+    for (size_t i = 0; i < std::size(g_task_map); i++) {
         if (read_namespaced_scalar(object, g_task_map[i].name, groups, &num)) {
-            *reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(out) + g_task_map[i].off) = static_cast<uint32_t>(
-                num);
+            g_task_map[i].store(*out, num);
         }
     }
     const auto symbols = json_member_value(object, "symbols");
     if (symbols && !symbols->empty() && symbols->front() == '{') {
         if (const auto symbols_span = json_value_span(*symbols)) {
-            for (size_t i = 0; i < sizeof(g_symbol_map) / sizeof(g_symbol_map[0]);
-                 i++) {
+            for (size_t i = 0; i < std::size(g_symbol_map); i++) {
                 const auto mv = json_member_value(*symbols_span,
                                                   g_symbol_map[i].name);
                 if (mv && json_parse_int(*mv, &num)) {
-                    *reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(out) + g_symbol_map[i].off) =
-                            (uint64_t) num;
+                    g_symbol_map[i].store(*out, num);
                 }
             }
         }
@@ -634,13 +609,11 @@ static void fill_external_entry(struct kernel_offsets *out,
     if (struct_fields && !struct_fields->empty() &&
         struct_fields->front() == '{') {
         if (const auto fields_span = json_value_span(*struct_fields)) {
-            for (size_t i = 0; i < sizeof(g_task_map) / sizeof(g_task_map[0]);
-                 i++) {
+            for (size_t i = 0; i < std::size(g_task_map); i++) {
                 const auto mv = json_member_value(*fields_span,
                                                   g_task_map[i].name);
                 if (mv && json_parse_int(*mv, &num)) {
-                    *reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(out) + g_task_map[i].off) =
-                            (uint32_t) num;
+                    g_task_map[i].store(*out, num);
                 }
             }
         }

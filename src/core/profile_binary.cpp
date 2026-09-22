@@ -1,6 +1,7 @@
 #include "profile_binary.h"
 
 #include <cstring>
+#include <iterator>
 #include <type_traits>
 
 namespace ghostlock::binary_profile {
@@ -147,7 +148,7 @@ namespace ghostlock::binary_profile {
         };
 #undef FIELD
 
-        constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
+        constexpr size_t kFieldCount = std::size(kFields);
         constexpr size_t kHeaderSize = 12;
 
         uint64_t read_le(const uint8_t *bytes, size_t width) {
