@@ -2,6 +2,8 @@
 local.properties
 .gradle/
 .idea/
+.kotlin/
+cmake-build-*/
 *.iml
 app/build/
 libghostlock.so
