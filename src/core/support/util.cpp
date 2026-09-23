@@ -203,6 +203,11 @@ namespace ghostlock::support {
             v->cred_ref0_image, v->cred_ref1_image,
             v->cred_ref2_image, v->cred_ref3_image,
         };
+        if (v->cred_ref_count > ref_offsets.size()) {
+            pr_error("credential reference count %u exceeds the %zu slots\n",
+                     v->cred_ref_count, ref_offsets.size());
+            return 0;
+        }
         for (size_t i = 0; i < v->cred_ref_count; i++) {
             if (ref_offsets[i] + sizeof(uint64_t) > v->cred_copy_size) {
                 pr_error("credential reference %zu exceeds configured copy size\n", i);
