@@ -1,8 +1,8 @@
 #include "tests/cpp_link_probe.h"
 
-#include <cassert>
-#include <cerrno>
-#include <cstdio>
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
 
 int main(void) {
     errno = EAGAIN;
