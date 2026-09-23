@@ -34,8 +34,7 @@ namespace ghostlock::legacy {
     static support::Result<std::string> read_profile_file(const char *path) {
         support::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
         if (!fd.valid()) {
-            return support::Result<std::string>::failure(
-                support::SysError::from_errno());
+            return std::unexpected(support::SysError::from_errno());
         }
 
         std::string buffer(kProfileJsonMaxSize, '\0');
@@ -49,16 +48,14 @@ namespace ghostlock::legacy {
             }
             if (count == 0) break;
             if (errno == EINTR) continue;
-            return support::Result<std::string>::failure(
-                support::SysError::from_errno());
+            return std::unexpected(support::SysError::from_errno());
         }
         if (used == 0 || used == kProfileJsonMaxSize) {
             errno = used == kProfileJsonMaxSize ? EFBIG : EINVAL;
-            return support::Result<std::string>::failure(
-                support::SysError::from_errno());
+            return std::unexpected(support::SysError::from_errno());
         }
         buffer.resize(used);
-        return support::Result<std::string>::success(std::move(buffer));
+        return buffer;
     }
 
     static std::string_view json_skip_ws(std::string_view in) {

@@ -56,9 +56,9 @@ namespace ghostlock::support {
         void *address = mmap(nullptr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS,
                              -1, 0);
         if (address == MAP_FAILED) {
-            return Result < MappedRegion > ::failure(SysError::from_errno());
+            return std::unexpected(SysError::from_errno());
         }
-        return Result < MappedRegion > ::success(MappedRegion(address, size));
+        return MappedRegion(address, size);
     }
 
     bool MappedRegion::valid() const noexcept {
