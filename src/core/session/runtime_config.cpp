@@ -30,8 +30,13 @@ static int32_t runtime_config_validate_cpus(config::RuntimeConfig *config) {
         pr_warning("main and consumer cores are the same (%d)\n", config->main_cpu);
         return -1;
     }
+    if (config->main_cpu < 0 || config->main_cpu >= CPU_SETSIZE ||
+        config->consumer_cpu < 0 || config->consumer_cpu >= CPU_SETSIZE) {
+        pr_warning("profile cores %d/%d are outside the supported CPU range\n",
+                   config->main_cpu, config->consumer_cpu);
+        return -1;
+    }
     cpu_set_t allowed;
-    /* both CPU ids are range-checked against CPU_SETSIZE by init_cpus */
     if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0 &&
         (!CPU_ISSET(config->main_cpu, &allowed) || // NOLINT(clang-analyzer-security.ArrayBound)
          !CPU_ISSET(config->consumer_cpu, &allowed))) { // NOLINT(clang-analyzer-security.ArrayBound)
@@ -40,7 +45,6 @@ static int32_t runtime_config_validate_cpus(config::RuntimeConfig *config) {
         return -1;
     }
     return 0;
-}
 
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
