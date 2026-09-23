@@ -4,7 +4,6 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#define __ARM 1
 
 #include "kernel/offset.h"
 #include "kernel/runtime_struct_offsets.h"
@@ -50,7 +49,5 @@
 #include "profile/accessors.hpp"
 #include "support/decls.hpp"
 #include "route/route_api.hpp"
-
-#include "kernel/runtime_struct_offsets.h"
 
 #endif

