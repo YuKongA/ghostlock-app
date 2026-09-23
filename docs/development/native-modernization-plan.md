@@ -83,11 +83,13 @@
   处理：去掉死条件，VR 块改为无条件编译（运行时 `/proc/modules` 检测决定是否写），
   `VR_TAG_B_OFF` 保留为可 `-D` 覆盖的宏，`macros.h` 精简为纯宏头。
   验证：8/8 攻击函数 IDENTICAL (strict)，host/lint/构建全绿——行为与码型零变化。
-- [x] C++23 评估：NDK 30 的 clang 21 + libc++ 与 host Apple clang 21 在 `-std=c++23`
-  下均可编译 `std::expected` / `std::to_underlying` / `std::byteswap`（探测编译通过）。
-  结论：技术可行；升级 `-std` 是独立批次（`Makefile` ×3、`CMakeLists.txt` ×1），
-  真正收益要等 `std::expected` 替换手写 `Result<T>` 时体现，需单独走 host/lint/
-  cmp_disasm/真机门禁，暂不在本计划内实施。
+- [x] C++23 评估与实施：NDK 30（clang 21 + libc++）与 host Apple clang 21 均支持
+  `std::expected` / `std::to_underlying` / `std::byteswap`（探测编译通过）。
+  已把 `Makefile`（`CXXFLAGS` / `HOST_CXXFLAGS` / `lint-tidy`）与 `CMakeLists.txt`
+  升到 `c++23`。验证：host tests 全绿、NDK 构建零警告、`lint-tidy` 0 findings、
+  8/8 攻击函数对 C++20 构建 IDENTICAL (strict)——标准升级零码型变化。
+  下一步（独立批次）：`std::expected` 替换手写 `Result<T>`
+  （`support/native_result.hpp`）。
 
 ## 明确保留
 
