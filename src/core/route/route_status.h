@@ -2,6 +2,7 @@
 #define ROUTE_STATUS_H
 
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 
 namespace ghostlock::route {
