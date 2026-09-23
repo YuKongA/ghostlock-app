@@ -88,8 +88,11 @@
   已把 `Makefile`（`CXXFLAGS` / `HOST_CXXFLAGS` / `lint-tidy`）与 `CMakeLists.txt`
   升到 `c++23`。验证：host tests 全绿、NDK 构建零警告、`lint-tidy` 0 findings、
   8/8 攻击函数对 C++20 构建 IDENTICAL (strict)——标准升级零码型变化。
-  下一步（独立批次）：`std::expected` 替换手写 `Result<T>`
-  （`support/native_result.hpp`）。
+- [x] C++23 特性落地：`support/native_result.hpp` 的手写 `Result<T>`（`std::variant`）
+  改为 `std::expected<T, E>` 别名（失败用 `std::unexpected`，调用点 4 处），
+  `kRoute*` 常量改用 `std::to_underlying`，KernelSU 日志扫描改用
+  `std::string_view::contains`。验证：host tests 全绿、NDK 构建零警告、
+  `lint-tidy` 0 findings、8/8 攻击函数对升级前构建 IDENTICAL (strict)。
 
 ## 明确保留
 
