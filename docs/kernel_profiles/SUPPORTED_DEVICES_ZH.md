@@ -24,6 +24,7 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.1.138-android14-11-g6ab8c9a86a33-ab14396278`        | POCO X6 Pro                                                      |
 | `6.1.138-android14-11-g44bda9e8f6e9-ab13792638`        | POCO X6 Pro                                                      |
 | `6.1.138-android14-11-g965475777129-mi`                 | REDMI K80 — **上游已登记，等待本分支真机复核**                   |
+| `6.1.138-android14-11-g2ecae636cf9b-ab14676408`        | Lenovo Yoga Tab Plus (TB520FU)                                   |
 | `6.1.145-android14-11-g09f1c0074ad7-ab14226177`        | Infinix Note 50s 5G, Infinix GT 30 (X6876)                       |
 | `6.1.145-android14-11-g74d1702dab4d-ab14669069`        | vivo T4                                                          |
 | `6.1.145-android14-11-geaa643a2c0ee-ab14763719`        | Motorola Razr 50 Ultra / Motorola Razr+ 2024                     |
