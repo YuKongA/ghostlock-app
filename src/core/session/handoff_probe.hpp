@@ -31,6 +31,10 @@ namespace ghostlock::session {
     /* /proc/modules scan for the kernelsu entry. */
     bool kernelsu_module_visible() noexcept;
 
+    /* True when KernelSU already grants root here (su -c 'id -u' == 0).
+     * Reliable where /proc/modules is unreadable, e.g. from untrusted_app. */
+    bool ksu_root_owned() noexcept;
+
     /* Re-scan the root-side log; markers accumulate into loaded/failed. */
     bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept;
 

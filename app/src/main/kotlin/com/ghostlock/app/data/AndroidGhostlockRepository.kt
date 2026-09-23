@@ -41,6 +41,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val EditSessionPreferences = "ghostlock_edit_session"
         const val ExtractBinaryName = "libextract.so"
         const val DefaultDebugLocation = "Download/ghostlock-debug-log"
+        const val PrefForceAttackTest = "force_attack_test"
         const val PrefDebugExportEnabled = "debug_export_enabled"
         const val PrefDebugExportLocation = "debug_export_location"
         const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
@@ -78,6 +79,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
+    private var forceAttackTest = false
     private var shizukuEnabled = false
     /** True once the user flipped the toggle; only then does it override the
      * profile suggestion (PROFILE-SUGGEST-01). */
@@ -89,6 +91,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         buildCpuPairs()
         restoreCpuPair()
         restoreShizukuPreference()
+        restoreForceAttackTest()
         dropLegacyOffsetsCache()
         migrateLegacyOffsetsStore()
     }
@@ -151,6 +154,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             cpuPairLabels = cpuPairLabels.toList(),
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
+            forceAttackTest = forceAttackTest,
             recommendShizuku = recommendShizuku,
             shizukuEnabled = shizukuActive,
             shizukuStatus = if (shizukuActive) shizukuRunner.status()
@@ -168,6 +172,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override fun setSafeModeEnabled(enabled: Boolean) {
         safeModeEnabled = enabled
+    }
+
+    override fun setForceAttackTest(enabled: Boolean) {
+        forceAttackTest = enabled
+        preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
     }
 
     override fun setShizukuEnabled(enabled: Boolean) {
@@ -313,7 +322,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 }
                 addAll(listOf("--format", "json", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
             }
-            onLog("extract: $effectiveInput")
+            onLog("<k> extract: $effectiveInput")
             val code = runProcess(
                 ProcessBuilder(listOf(binary.absolutePath) + args).directory(filesDir).redirectErrorStream(true).apply {
                         environment()["GHOSTLOCK_HOME"] = filesDir.absolutePath
@@ -323,7 +332,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 onLog = onLog,
                 timeoutSeconds = 1800,
             )
-            onLog("extract exit code=$code")
+            onLog("<k> extract exit code=$code")
             if (code != 0 || !parsedFile.isFile) return ParseResult.Failed(code)
             val document = parsedFile.readText()
             val fresh = parseEntries(document) ?: return ParseResult.Failed(code, "invalid extractor output")
@@ -360,31 +369,31 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
         return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir ->
-            archivedLog("shizuku: resolving profile")
+            archivedLog("<s> resolving profile")
             val release = System.getProperty("os.version", "").orEmpty()
             val config = profileController.load(release, pair)
             val profileBlob = profileController.nativeDocument(config)
             archivedLog(
-                "shizuku: profile resolved hasProfile=${config.hasProfile} " +
+                "<s> profile resolved hasProfile=${config.hasProfile} " +
                     "blob=${profileBlob?.size ?: 0} invalid=${config.invalidPaths.size}",
             )
             when {
                 !config.hasProfile || profileBlob == null -> {
-                    archivedLog("error: profile is unavailable for $release")
+                    archivedLog("<s> error: profile is unavailable for $release")
                     1
                 }
 
                 config.invalidPaths.isNotEmpty() -> {
                     archivedLog(
-                        "error: profile has ${config.invalidPaths.size} invalid field(s): " +
+                        "<s> error: profile has ${config.invalidPaths.size} invalid field(s): " +
                             config.invalidPaths.take(6).joinToString(),
                     )
                     1
                 }
 
                 else -> {
-                    archivedLog("shizuku: starting UserService")
-                    shizukuRunner.run(pair, safeModeEnabled, profileBlob, debugDir, archivedLog)
+                    archivedLog("<b> starting UserService")
+                    shizukuRunner.run(pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog)
                 }
             }
         }.also { code -> recordLastRun(code, shizuku = true) }
@@ -424,7 +433,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         if (!settings.exportEnabled) return run(onLog, null)
         val archive = DebugAttackLog.open(appContext, entry, settings.exportLocation)
         if (archive == null) {
-            onLog("warning: cannot create ${settings.exportLocation} debug log")
+            onLog("<k> warning: cannot create ${settings.exportLocation} debug log")
             return run(onLog, null)
         }
         val archivedLog: (String) -> Unit = { line ->
@@ -432,8 +441,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             onLog(line)
         }
         return try {
-            archivedLog("debug log: ${archive.folderPath}/${archive.displayName}")
-            archivedLog("debug dump dir: ${archive.folderFile.absolutePath}")
+            archivedLog("<k> debug log: ${archive.folderPath}/${archive.displayName}")
+            archivedLog("<k> debug dump dir: ${archive.folderFile.absolutePath}")
             run(archivedLog, if (settings.kernelLogEnabled) archive.folderFile.absolutePath else null)
         } finally {
             runCatching { archive.close() }
@@ -455,7 +464,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return try {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
-            if (prepareKsud(workDir, onLog) != null) onLog("ksud ready") else onLog("warning: ksud not found")
+            if (prepareKsud(workDir, onLog) != null) onLog("<k> ksud ready") else onLog("<k> warning: ksud not found")
             // U01-S14: a per-run KernelSU log path so a previous run's markers
             // can never satisfy the handoff probe; passed to the native process.
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
@@ -496,6 +505,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 start()
             }
             val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+            if (forceAttackTest) {
+                argv += "--force-attack"
+            }
             if (!debugDir.isNullOrEmpty()) {
                 argv += listOf("--dump-kernel-log", debugDir)
             }
@@ -509,8 +521,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["HOME"] = workDir.absolutePath
                     environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                 }
+            onLog("<b> starting native: ${binary.absolutePath}")
             try {
-                runProcess(command, onLog = {}, captureOutput = false, stdin = profileBlob)
+                val nativeCode = runProcess(command, onLog = {}, captureOutput = false, stdin = profileBlob)
+                onLog("<b> native exited code=$nativeCode")
+                nativeCode
             } finally {
                 withContext(Dispatchers.IO) {
                     tailer.interrupt()
@@ -522,7 +537,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            onLog("error: ${error::class.simpleName}: ${error.message}")
+            onLog("<-> error: ${error::class.simpleName}: ${error.message}")
             1
         }
     }
@@ -785,6 +800,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
     }
 
+    private fun restoreForceAttackTest() {
+        forceAttackTest = preferences.getBoolean(PrefForceAttackTest, false)
+    }
+
     private fun parseCpuList(value: String): List<Int> = value.split(',').flatMap { part ->
         val range = part.trim().split('-').mapNotNull { it.toIntOrNull() }
         when (range.size) {
@@ -855,9 +874,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 source.inputStream().use { input -> output.outputStream().use { input.copyTo(it) } }
                 runCatching { Os.chmod(output.absolutePath, 448) }
                 return output
-            }.onFailure { onLog("copy ksud failed: ${it.message}") }
+            }.onFailure { onLog("<k> copy ksud failed: ${it.message}") }
         }
-        if (!installed) onLog("KernelSU/ReSukiSU/KowSU app not installed")
+        if (!installed) onLog("<k> KernelSU/ReSukiSU/KowSU app not installed")
         return null
     }
 

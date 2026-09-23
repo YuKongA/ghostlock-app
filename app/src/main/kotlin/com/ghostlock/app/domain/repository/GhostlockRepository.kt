@@ -16,6 +16,9 @@ interface GhostlockRepository {
 
     fun setSafeModeEnabled(enabled: Boolean)
 
+    /** Skip the pre-attack KernelSU check and run the exploit as a test. */
+    fun setForceAttackTest(enabled: Boolean)
+
     fun setShizukuEnabled(enabled: Boolean)
 
     /**

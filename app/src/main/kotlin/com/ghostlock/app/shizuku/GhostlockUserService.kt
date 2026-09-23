@@ -17,12 +17,13 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         primaryCpu: Int,
         consumerCpu: Int,
         safeMode: Boolean,
+        forceAttack: Boolean,
         profileBlob: ByteArray,
         debugDir: String?,
         callback: IGhostlockCallback,
     ) {
         if (!running.compareAndSet(false, true)) {
-            callback.onLog("error: another GhostLock process is already running")
+            callback.onLog("<s> error: another GhostLock process is already running")
             callback.onComplete(1)
             return
         }
@@ -41,7 +42,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // blob's header carries it, and the app already chose the
                 // Shizuku path, so it is logged, never a gate.
                 if (profileBlob[8].toInt() != 1) {
-                    callback.onLog("[*] kernel does not require Shizuku; running on user request")
+                    callback.onLog("<s> kernel does not require Shizuku; running on user request")
                 }
 
                 val binary = File(context.applicationInfo.nativeLibraryDir, "libghostlock.so")
@@ -50,8 +51,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 val workDir = File("/data/local/tmp/ghostlock-app").apply {
                     require(isDirectory || mkdirs()) { "cannot create $absolutePath" }
                 }
-                callback.onLog("Shizuku ready: uid=${Process.myUid()} Seccomp=0")
-                callback.onLog("kernel: $release")
+                callback.onLog("<s> Shizuku ready: uid=${Process.myUid()} Seccomp=0")
+                callback.onLog("<s> kernel: $release")
                 val nativeLog = File(workDir, ".ghostlock_native.log")
                 // U01-S14: per-run KernelSU log so a previous run's markers can
                 // never satisfy the handoff probe; the native process receives
@@ -63,9 +64,13 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     NativeProfileDocument.safeModeOffset(profileBlob)?.let { profileBlob[it] = 1 }
                 }
                 val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+                if (forceAttack) {
+                    argv += "--force-attack"
+                }
                 if (!debugDir.isNullOrEmpty()) {
                     argv += listOf("--dump-kernel-log", debugDir)
                 }
+                callback.onLog("<b> starting native: ${binary.absolutePath}")
                 ProcessBuilder(argv)
                     .directory(workDir)
                     .redirectErrorStream(true)
@@ -91,13 +96,14 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                             start()
                         }
                         val exitCode = process.waitFor()
+                        callback.onLog("<b> native exited code=$exitCode")
                         Thread.sleep(200)
                         tailer.interrupt()
                         tailer.join(1000)
                         exitCode
                     }
             }.getOrElse { error ->
-                runCatching { callback.onLog("error: ${error.message}") }
+                runCatching { callback.onLog("<s> error: ${error.message}") }
                 1
             }
             running.set(false)

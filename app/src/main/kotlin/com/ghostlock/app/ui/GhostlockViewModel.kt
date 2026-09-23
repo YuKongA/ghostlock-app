@@ -799,6 +799,11 @@ class GhostlockViewModel(
         mutableState.update { it.copy(safeModeEnabled = enabled) }
     }
 
+    fun toggleForceAttackTest(enabled: Boolean) {
+        repository.setForceAttackTest(enabled)
+        mutableState.update { it.copy(forceAttackTestEnabled = enabled) }
+    }
+
     fun toggleShizuku(enabled: Boolean) {
         repository.setShizukuEnabled(enabled)
         mutableState.update { it.copy(shizukuEnabled = enabled) }
@@ -984,6 +989,7 @@ class GhostlockViewModel(
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
+                forceAttackTestEnabled = snapshot.forceAttackTest,
                 shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
@@ -1238,7 +1244,9 @@ class GhostlockViewModel(
     }
 
     private fun appendLog(line: String) {
-        val entry = formatLog(line)
+        /* The final result lines are Kotlin-side; tag them so they read as <k>. */
+        val tagged = if (line.startsWith("result:")) "<k> $line" else line
+        val entry = formatLog(tagged)
         val uiLine = GhostlockLogLine(entry.text, toneColor(entry.tone))
         mutableState.update { it.copy(logLines = it.logLines + uiLine) }
     }
@@ -1274,6 +1282,8 @@ class GhostlockViewModel(
         LogTone.Success -> 0xFF5FD68A.toInt()
         LogTone.Warning -> 0xFFFFC94D.toInt()
         LogTone.Progress -> 0xFF60A5FA.toInt()
+        LogTone.Kotlin -> 0xFF5EEAD4.toInt()
+        LogTone.Shizuku -> 0xFFC084FC.toInt()
         LogTone.Default -> -1
     }
 

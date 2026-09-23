@@ -13,6 +13,8 @@ data class KernelSnapshot(
     val cpuPairLabels: List<String>,
     val selectedCpuPair: Int,
     val safeModeEnabled: Boolean,
+    /** Skip the pre-attack KernelSU check and run the exploit as a test. */
+    val forceAttackTest: Boolean = false,
     /** Profile/imported offsets force the Shizuku path. */
     val recommendShizuku: Boolean,
     /** User-selected Shizuku path for kernels that do not require it. */
@@ -22,7 +24,7 @@ data class KernelSnapshot(
 
 enum class ShizukuStatus { NOT_REQUIRED, NOT_RUNNING, PERMISSION_REQUIRED, READY }
 
-enum class LogTone { Default, Error, Success, Warning, Progress }
+enum class LogTone { Default, Error, Success, Warning, Progress, Kotlin, Shizuku }
 
 data class LogEntry(val text: String, val tone: LogTone)
 

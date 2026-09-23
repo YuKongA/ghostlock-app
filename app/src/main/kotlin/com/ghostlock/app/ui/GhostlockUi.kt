@@ -105,6 +105,7 @@ data class GhostlockUiState(
     /** CPU pair from the resolved profile when it differs from the device pick. */
     val customCpuPair: CpuPair? = null,
     val safeModeEnabled: Boolean = false,
+    val forceAttackTestEnabled: Boolean = false,
     val tcpRouteEnabled: Boolean = true,
     val compact: Boolean = false,
     val executionSheetVisible: Boolean = false,
@@ -180,6 +181,7 @@ interface GhostlockActions {
     fun onParseImage()
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
+    fun onForceAttackTestChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)

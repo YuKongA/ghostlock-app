@@ -97,6 +97,16 @@ internal fun AdvancedScreen(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item(key = "forceAttack") {
+                Card {
+                    SwitchPreference(
+                        checked = state.forceAttackTestEnabled,
+                        onCheckedChange = actions::onForceAttackTestChanged,
+                        title = stringResource(R.string.force_attack_test_label),
+                        summary = stringResource(R.string.force_attack_test_summary),
+                    )
+                }
+            }
             item(key = "override") {
                 Card {
                     ArrowPreference(

@@ -62,6 +62,8 @@
     <string name="cpu_pair_label">CPU 核心组</string>
     <string name="safe_mode_label">安全模式</string>
     <string name="safe_mode_summary">禁用所有模块</string>
+    <string name="force_attack_test_label">强制攻击测试</string>
+    <string name="force_attack_test_summary">忽略已加载的 KernelSU 直接运行攻击；结束后丢弃 root child</string>
     <string name="shizuku_label">通过 Shizuku 执行</string>
     <string name="shizuku_summary_off">通过 Shizuku 可跳过 W3 seccomp bypass</string>
     <string name="shizuku_summary_on">通过 Shizuku 可跳过 W3 seccomp bypass</string>

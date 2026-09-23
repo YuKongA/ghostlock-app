@@ -176,6 +176,8 @@ private fun GhostlockRoute(
             override fun onParseImage() = viewModel.parseOffsets()
             override fun onCpuPairSelected(index: Int) = viewModel.selectCpuPair(index)
             override fun onSafeModeChanged(enabled: Boolean) = viewModel.toggleSafeMode(enabled)
+            override fun onForceAttackTestChanged(enabled: Boolean) =
+                viewModel.toggleForceAttackTest(enabled)
             override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
             override fun onDialogItemSelected(index: Int) = viewModel.onDialogItemSelected(index)
             override fun onDialogInputChange(value: String) = viewModel.onDialogInputChange(value)

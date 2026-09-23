@@ -28,18 +28,21 @@ int main(int argc, char **argv) {
         std::array<char, 256> release_buf{};
 
         bool app_call = false;
+        bool force_attack = false;
         const char *prebuilt_path = nullptr;
         const char *dump_dir = nullptr;
         for (int32_t i = 1; i < argc; i++) {
             if (std::string_view(argv[i]) == "--ghostlock-app-call") {
                 app_call = true;
+            } else if (std::string_view(argv[i]) == "--force-attack") {
+                force_attack = true;
             } else if (std::string_view(argv[i]) == "--load-prebuilt-profile" &&i + 1 < argc) {
                 prebuilt_path = argv[++i];
             } else if (std::string_view(argv[i]) == "--dump-kernel-log" && i + 1 < argc) {
                 dump_dir = argv[++i];
             } else {
                 pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
-                " [--dump-kernel-log <dir>]\n", argv[0]);
+                " [--dump-kernel-log <dir>] [--force-attack]\n", argv[0]);
                 return 1;
             }
         }
@@ -63,6 +66,7 @@ int main(int argc, char **argv) {
 
         auto &session = session::g_exploit_session;
         auto procedure = make_exploit_procedure(session, decoded.route_kind());
+        procedure->set_force_attack(force_attack);
         return procedure->run(decoded, dump_dir);
     } catch (const FatalError &) {
         return 1;

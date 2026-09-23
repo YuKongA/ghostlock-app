@@ -62,6 +62,8 @@
     <string name="cpu_pair_label">CPU cores</string>
     <string name="safe_mode_label">Safe mode</string>
     <string name="safe_mode_summary">Disable all modules</string>
+    <string name="force_attack_test_label">Force attack test</string>
+    <string name="force_attack_test_summary">Ignore an existing KernelSU root and run the exploit anyway; the rooted child is discarded at the end</string>
     <string name="shizuku_label">Run via Shizuku</string>
     <string name="shizuku_summary_off">Via Shizuku: skips the W3 seccomp bypass</string>
     <string name="shizuku_summary_on">Via Shizuku: skips the W3 seccomp bypass</string>
