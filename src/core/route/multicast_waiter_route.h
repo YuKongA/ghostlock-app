@@ -38,7 +38,7 @@ namespace ghostlock::route::multicast_waiter {
         /* Host-safe: the fixed-vector test constructs a context and calls init()
    * without linking the Android-only implementation unit. */
         void init(ghostlock::race::PiRace *race_value, const ghostlock::memory::WriteRequest *request_value,
-                  const struct ghostlock::profile::TargetProfile *profile_value,
+                  const ghostlock::profile::TargetProfile *profile_value,
                   ghostlock::profile::MulticastWaiterLayout layout_value, int32_t resident_value) noexcept {
             race = race_value;
             request = request_value;
@@ -90,7 +90,7 @@ namespace ghostlock::route::multicast_waiter {
    * preserving the pre-class access shape and field order. */
         ghostlock::race::PiRace *race;
         const ghostlock::memory::WriteRequest *request;
-        const struct ghostlock::profile::TargetProfile *profile = nullptr;
+        const ghostlock::profile::TargetProfile *profile = nullptr;
         ghostlock::profile::MulticastWaiterLayout layout;
         uint32_t lock1_futex, lock2_futex, condition_futex;
         pthread_t owner_worker, waiter_worker;

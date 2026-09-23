@@ -52,7 +52,7 @@ namespace ghostlock::route::tcp_zerocopy {
 
         ghostlock::race::PiRace *race = nullptr;
         const ghostlock::memory::WriteRequest *request = nullptr;
-        const struct ghostlock::profile::TargetProfile &profile;
+        const ghostlock::profile::TargetProfile &profile;
         ghostlock::support::UniqueFd client_fd;
         ghostlock::support::UniqueFd server_fd;
         ghostlock::support::UniqueFd punch_fd;

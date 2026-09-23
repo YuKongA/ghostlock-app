@@ -111,7 +111,6 @@ namespace ghostlock::profile {
         uint8_t safe_mode;
         uint8_t multicast_resident;
         uint32_t mm_struct_sz;
-        uint32_t _pad[3];
         struct execution_settings execution;
 
         /* Typed view of the wire route field so callers need no cast. */

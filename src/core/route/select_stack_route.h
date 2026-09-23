@@ -80,7 +80,7 @@ namespace ghostlock::route::select_stack {
 
         ghostlock::race::PiRace *race = nullptr;
         const ghostlock::memory::WriteRequest *request = nullptr;
-        const struct ghostlock::profile::TargetProfile &profile;
+        const ghostlock::profile::TargetProfile &profile;
         ghostlock::profile::SelectStackLayout layout{};
         FdSet input_set;
         FdSet output_set;
