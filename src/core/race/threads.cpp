@@ -116,7 +116,7 @@ namespace ghostlock::race {
             int32_t calls_this_seq = 0;
             while (!race->consumer_stop.load() &&
                    race->consumer_go.load() == seq) {
-                int32_t delay_usec = race->route_delay_usec.load();
+                uint32_t delay_usec = race->route_delay_usec.load();
                 if (delay_usec > 0) usleep(static_cast<useconds_t>(delay_usec));
                 for (uint32_t burst = 0;
                      burst < session::g_exploit_session.profile.select_consumer_burst_calls(); burst++) {

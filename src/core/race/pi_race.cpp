@@ -3,7 +3,7 @@
 using namespace ghostlock;
 
 void ghostlock::race::PiRace::reset(
-    int32_t initial_delay_usec, int32_t main_cpu_value, int32_t consumer_cpu_value) noexcept {
+    uint32_t initial_delay_usec, int32_t main_cpu_value, int32_t consumer_cpu_value) noexcept {
     /* Dropping a joinable owner here would detach its thread, matching the old
      * reset that simply zeroed the pthread_t and leaked it; every caller joins
      * through join() first, so this only runs on the normal path. */

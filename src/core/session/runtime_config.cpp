@@ -49,8 +49,8 @@ int32_t ghostlock::config::RuntimeConfig::apply_profile(const profile::TargetPro
     if (!e) return -1;
     int32_t old_main = main_cpu;
     int32_t old_consumer = consumer_cpu;
-    main_cpu = profile->recommended_main_cpu();
-    consumer_cpu = profile->recommended_consumer_cpu();
+    main_cpu = static_cast<int32_t>(profile->recommended_main_cpu());
+    consumer_cpu = static_cast<int32_t>(profile->recommended_consumer_cpu());
     if (runtime_config_validate_cpus(this) != 0) {
         main_cpu = old_main;
         consumer_cpu = old_consumer;

@@ -7,16 +7,16 @@ import com.ghostlock.app.data.route.SelectConfig
 
 /** Read-only multicast waiter geometry, mirroring native `MulticastWaiterLayout`. */
 internal data class MulticastWaiterLayout(
-    val waiterOffset: Long,
-    val bufferSize: Long,
-    val taskOffset: Long,
-    val lockOffset: Long,
-    val fakeLockOffset: Long,
-    val fakeTaskOffset: Long,
-    val lockSlotsOffset: Long,
-    val lockSlotCount: Long,
-    val lockSlotStride: Long,
-    val fakeBssImageOffset: Long,
+    val waiterOffset: ULong,
+    val bufferSize: ULong,
+    val taskOffset: ULong,
+    val lockOffset: ULong,
+    val fakeLockOffset: ULong,
+    val fakeTaskOffset: ULong,
+    val lockSlotsOffset: ULong,
+    val lockSlotCount: ULong,
+    val lockSlotStride: ULong,
+    val fakeBssImageOffset: ULong,
 )
 
 /** Read-only select-stack geometry, mirroring native `SelectStackLayout`. */
@@ -47,40 +47,40 @@ internal data class Profile(
             ?: error("profile route is unresolved")
 
     val fallback: RouteKind? get() = RouteKind.fromWire(document.fallbackRoute)
-    val kernelMajor: Long get() = document.kernelMajor
-    val recommendShizuku: Boolean get() = document.recommendShizuku != 0L
+    val kernelMajor: UInt get() = document.kernelMajor
+    val recommendShizuku: Boolean get() = document.recommendShizuku != 0u
     val taskStruct: TaskStructOffsets get() = document.taskStruct
     val cred: CredTemplate get() = document.cred
     val kernelOffsets: KernelOffsetTable get() = document.kernelOffset
     val multicast: MulticastGeometry
         get() = (document.routeConfig as? MulticastConfig)?.geometry
-            ?: MulticastGeometry(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
+            ?: MulticastGeometry(0L, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u)
     val execution: ExecutionTuning get() = document.execution
-    val kernelPhysLoad: Long get() = document.kernelPhysLoad
-    val compactWaiter: Boolean get() = document.compactWaiter != 0L
+    val kernelPhysLoad: ULong get() = document.kernelPhysLoad
+    val compactWaiter: Boolean get() = document.compactWaiter != 0u
     val pselectWaiterShift: Long
         get() = (document.routeConfig as? SelectConfig)?.waiterShift ?: 0L
-    val kernelsnitchCollisions: Long get() = document.kernelsnitchCollisions
-    val mmStructSz: Long get() = document.mmStructSz
+    val kernelsnitchCollisions: UInt get() = document.kernelsnitchCollisions
+    val mmStructSz: UInt get() = document.mmStructSz
 
     fun supports(candidate: RouteKind): Boolean = route == candidate
 
     fun hasCompactWaiter(): Boolean = compactWaiter
 
     /** mm_struct stride; a missing or zero value uses [fallback]. */
-    fun mmStructStride(fallback: Long): Long = mmStructSz.takeIf { it != 0L } ?: fallback
+    fun mmStructStride(fallback: UInt): UInt = if (mmStructSz != 0u) mmStructSz else fallback
 
     fun multicastLayout(): MulticastWaiterLayout = MulticastWaiterLayout(
-        waiterOffset = multicast.waiterOff,
-        bufferSize = multicast.bufferSize,
-        taskOffset = multicast.taskOffset,
-        lockOffset = multicast.lockOffset,
-        fakeLockOffset = multicast.fakeLockOffset,
-        fakeTaskOffset = multicast.fakeTaskOffset,
-        lockSlotsOffset = multicast.lockSlotsOffset,
-        lockSlotCount = multicast.lockSlotCount,
-        lockSlotStride = multicast.lockSlotStride,
-        fakeBssImageOffset = (document.routeConfig as? MulticastConfig)?.fakeBssImageOffset ?: 0L,
+        waiterOffset = multicast.waiterOff.toULong(),
+        bufferSize = multicast.bufferSize.toULong(),
+        taskOffset = multicast.taskOffset.toULong(),
+        lockOffset = multicast.lockOffset.toULong(),
+        fakeLockOffset = multicast.fakeLockOffset.toULong(),
+        fakeTaskOffset = multicast.fakeTaskOffset.toULong(),
+        lockSlotsOffset = multicast.lockSlotsOffset.toULong(),
+        lockSlotCount = multicast.lockSlotCount.toULong(),
+        lockSlotStride = multicast.lockSlotStride.toULong(),
+        fakeBssImageOffset = (document.routeConfig as? MulticastConfig)?.fakeBssImageOffset ?: 0uL,
     )
 
     fun selectStackLayout(): SelectStackLayout =

@@ -3,6 +3,8 @@ package com.ghostlock.app.data
 import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.RouteConfig
 import com.ghostlock.app.data.route.RouteKind
+import com.ghostlock.app.data.route.toConfigUInt
+import com.ghostlock.app.data.route.toConfigULong
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -12,22 +14,27 @@ import java.nio.ByteOrder
  * not in the common document. The common slot order must match
  * `src/core/profile/binary.cpp` `kCommonFields`; route keys are owned by the
  * per-route [RouteConfig] subtype.
+ *
+ * Every field mirrors the native storage signedness: native `uint8_t`/`uint32_t`
+ * slots are `UInt` and `uint64_t` slots are `ULong`, while the signed
+ * `int32_t` slots ([com.ghostlock.app.data.route.SelectConfig.waiterShift],
+ * [com.ghostlock.app.data.route.MulticastGeometry.waiterOff]) stay `Long`.
  */
 internal data class NativeProfileDocument(
     val release: String,
-    val routeKind: Int,
-    val kernelMajor: Long,
-    val recommendShizuku: Long,
-    val fallbackRoute: Int,
+    val routeKind: UInt,
+    val kernelMajor: UInt,
+    val recommendShizuku: UInt,
+    val fallbackRoute: UInt,
     val taskStruct: TaskStructOffsets,
     val cred: CredTemplate,
     val kernelOffset: KernelOffsetTable,
-    val kernelPhysLoad: Long,
-    val compactWaiter: Long,
-    val kernelsnitchCollisions: Long,
-    val mmStructSz: Long,
+    val kernelPhysLoad: ULong,
+    val compactWaiter: UInt,
+    val kernelsnitchCollisions: UInt,
+    val mmStructSz: UInt,
     val execution: ExecutionTuning,
-    val safeMode: Long,
+    val safeMode: UInt,
     /** Route-specific configuration; never part of the shared schema. */
     val routeConfig: RouteConfig,
 ) {
@@ -41,8 +48,8 @@ internal data class NativeProfileDocument(
         val buffer = ByteBuffer
             .allocate(size)
             .order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putInt(Magic)
-        buffer.putShort(Version)
+        buffer.putInt(Magic.toInt())
+        buffer.putShort(Version.toShort())
         buffer.put(routeKind.toByte())
         buffer.put(kernelMajor.toByte())
         buffer.put(recommendShizuku.toByte())
@@ -67,43 +74,49 @@ internal data class NativeProfileDocument(
         val offsets = kernelOffset
         val exec = execution
         return longArrayOf(
-            task.prio, task.normalPrio, task.schedTaskGroup, task.piLock,
-            task.piWaiters, task.piTopTask, task.piBlockedOn, task.pid, task.tgid,
-            task.atomicFlags, task.realCred, task.cred, task.comm, task.tasks,
-            task.seccomp,
-            credential.copySize, credential.usageOffset, credential.usageValue,
-            credential.capsOffset, credential.capsCount, credential.capsValue,
-            credential.refCount,
-            credential.ref0Offset, credential.ref1Offset, credential.ref2Offset,
-            credential.ref3Offset, credential.ref0Image, credential.ref1Image,
-            credential.ref2Image, credential.ref3Image,
-            offsets.initTask, offsets.initCred, offsets.emptyZeroPage,
-            offsets.rootTaskGroup, offsets.selinuxEnforcing, offsets.selinuxBlobSizes,
-            offsets.securityHookHeads, offsets.slideNfulnlLogger, offsets.slideLoggers01,
-            offsets.slideBootId,
-            kernelPhysLoad, compactWaiter, kernelsnitchCollisions, mmStructSz,
-            exec.recommendedMainCpu, exec.recommendedConsumerCpu,
-            exec.heapPrepareMaxAttempts, exec.heapPrepareTimeoutMs,
-            exec.heapKernelsnitchTimeoutMs, exec.raceRouteWaitMs,
-            exec.raceSetupSettleUs, exec.raceStatePollIntervalUs,
-            exec.w1Attempts, exec.w1SettleUs, exec.w1ScratchRepairAttempts,
-            exec.w2Attempts, exec.w2SettleUs, exec.w3ChainRounds,
-            exec.w3Attempts, exec.w3SettleUs,
-            exec.handoffPreDispatchSettleMs, exec.handoffModulePollAttempts,
-            exec.handoffModulePollIntervalMs, exec.handoffEnforcePollAttempts,
-            exec.handoffEnforcePollIntervalMs,
-            exec.consumerMaxCalls, exec.consumerBurstCalls,
-            safeMode,
+            task.prio.toLong(), task.normalPrio.toLong(), task.schedTaskGroup.toLong(),
+            task.piLock.toLong(), task.piWaiters.toLong(), task.piTopTask.toLong(),
+            task.piBlockedOn.toLong(), task.pid.toLong(), task.tgid.toLong(),
+            task.atomicFlags.toLong(), task.realCred.toLong(), task.cred.toLong(),
+            task.comm.toLong(), task.tasks.toLong(), task.seccomp.toLong(),
+            credential.copySize.toLong(), credential.usageOffset.toLong(),
+            credential.usageValue.toLong(), credential.capsOffset.toLong(),
+            credential.capsCount.toLong(), credential.capsValue.toLong(),
+            credential.refCount.toLong(),
+            credential.ref0Offset.toLong(), credential.ref1Offset.toLong(),
+            credential.ref2Offset.toLong(), credential.ref3Offset.toLong(),
+            credential.ref0Image.toLong(), credential.ref1Image.toLong(),
+            credential.ref2Image.toLong(), credential.ref3Image.toLong(),
+            offsets.initTask.toLong(), offsets.initCred.toLong(),
+            offsets.emptyZeroPage.toLong(), offsets.rootTaskGroup.toLong(),
+            offsets.selinuxEnforcing.toLong(), offsets.selinuxBlobSizes.toLong(),
+            offsets.securityHookHeads.toLong(), offsets.slideNfulnlLogger.toLong(),
+            offsets.slideLoggers01.toLong(), offsets.slideBootId.toLong(),
+            kernelPhysLoad.toLong(), compactWaiter.toLong(),
+            kernelsnitchCollisions.toLong(), mmStructSz.toLong(),
+            exec.recommendedMainCpu.toLong(), exec.recommendedConsumerCpu.toLong(),
+            exec.heapPrepareMaxAttempts.toLong(), exec.heapPrepareTimeoutMs.toLong(),
+            exec.heapKernelsnitchTimeoutMs.toLong(), exec.raceRouteWaitMs.toLong(),
+            exec.raceSetupSettleUs.toLong(), exec.raceStatePollIntervalUs.toLong(),
+            exec.w1Attempts.toLong(), exec.w1SettleUs.toLong(),
+            exec.w1ScratchRepairAttempts.toLong(), exec.w2Attempts.toLong(),
+            exec.w2SettleUs.toLong(), exec.w3ChainRounds.toLong(),
+            exec.w3Attempts.toLong(), exec.w3SettleUs.toLong(),
+            exec.handoffPreDispatchSettleMs.toLong(), exec.handoffModulePollAttempts.toLong(),
+            exec.handoffModulePollIntervalMs.toLong(), exec.handoffEnforcePollAttempts.toLong(),
+            exec.handoffEnforcePollIntervalMs.toLong(),
+            exec.consumerMaxCalls.toLong(), exec.consumerBurstCalls.toLong(),
+            safeMode.toLong(),
         )
     }
 
     companion object {
-        const val Magic = 0x0D000721
-        const val Version: Short = 2
+        const val Magic = 0x0D000721u
+        const val Version: UShort = 2u
         private const val HeaderSize = 12
         private const val CommonFieldCount = 68
 
-        fun routeKind(route: String?): Int = RouteKind.fromToken(route)?.wire ?: 0
+        fun routeKind(route: String?): UInt = RouteKind.fromToken(route)?.wire ?: 0u
 
         /** Byte offset of the trailing common `safe_mode` slot in a v2 document,
          * or null when the blob is too short. The route section follows the
@@ -119,18 +132,19 @@ internal data class NativeProfileDocument(
         fun fromBinary(bytes: ByteArray): NativeProfileDocument? {
             if (bytes.size < HeaderSize) return null
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            if (buffer.int != Magic) return null
-            if (buffer.short != Version) return null
-            val routeKind = buffer.get().toInt() and 0xff
-            val kernelMajor = buffer.get().toLong() and 0xff
-            val recommendShizuku = buffer.get().toLong() and 0xff
-            val fallbackRoute = buffer.get().toInt() and 0xff
+            if (buffer.int.toUInt() != Magic) return null
+            if (buffer.short.toUShort() != Version) return null
+            val routeKind = (buffer.get().toInt() and 0xff).toUInt()
+            val kernelMajor = (buffer.get().toInt() and 0xff).toUInt()
+            val recommendShizuku = (buffer.get().toInt() and 0xff).toUInt()
+            val fallbackRoute = (buffer.get().toInt() and 0xff).toUInt()
             val releaseLength = buffer.short.toInt() and 0xffff
             if (buffer.remaining() < releaseLength + CommonFieldCount * 8 + 1) return null
             val releaseBytes = ByteArray(releaseLength)
             buffer.get(releaseBytes)
             val common = LongArray(CommonFieldCount) { buffer.long }
-            var routeConfig: RouteConfig = RouteKind.fromWire(routeKind)?.emptyConfig() ?: NoRouteConfig
+            var routeConfig: RouteConfig =
+                RouteKind.fromWire(routeKind)?.emptyConfig() ?: NoRouteConfig
             val count = buffer.get().toInt() and 0xff
             repeat(count) {
                 if (buffer.remaining() < 1) return null
@@ -154,10 +168,10 @@ internal data class NativeProfileDocument(
         /* Common slot indices mirror flattenCommon() one-to-one. */
         private fun fromCommon(
             release: String,
-            routeKind: Int,
-            kernelMajor: Long,
-            recommendShizuku: Long,
-            fallbackRoute: Int,
+            routeKind: UInt,
+            kernelMajor: UInt,
+            recommendShizuku: UInt,
+            fallbackRoute: UInt,
             f: LongArray,
             routeConfig: RouteConfig,
         ): NativeProfileDocument = NativeProfileDocument(
@@ -167,44 +181,51 @@ internal data class NativeProfileDocument(
             recommendShizuku = recommendShizuku,
             fallbackRoute = fallbackRoute,
             taskStruct = TaskStructOffsets(
-                prio = f[0], normalPrio = f[1], schedTaskGroup = f[2],
-                piLock = f[3], piWaiters = f[4], piTopTask = f[5],
-                piBlockedOn = f[6], pid = f[7], tgid = f[8],
-                atomicFlags = f[9], realCred = f[10], cred = f[11],
-                comm = f[12], tasks = f[13], seccomp = f[14],
+                prio = f[0].toUInt(), normalPrio = f[1].toUInt(), schedTaskGroup = f[2].toUInt(),
+                piLock = f[3].toUInt(), piWaiters = f[4].toUInt(), piTopTask = f[5].toUInt(),
+                piBlockedOn = f[6].toUInt(), pid = f[7].toUInt(), tgid = f[8].toUInt(),
+                atomicFlags = f[9].toUInt(), realCred = f[10].toUInt(), cred = f[11].toUInt(),
+                comm = f[12].toUInt(), tasks = f[13].toUInt(), seccomp = f[14].toUInt(),
             ),
             cred = CredTemplate(
-                copySize = f[15], usageOffset = f[16], usageValue = f[17],
-                capsOffset = f[18], capsCount = f[19], capsValue = f[20],
-                refCount = f[21], ref0Offset = f[22], ref1Offset = f[23],
-                ref2Offset = f[24], ref3Offset = f[25], ref0Image = f[26],
-                ref1Image = f[27], ref2Image = f[28], ref3Image = f[29],
+                copySize = f[15].toUInt(), usageOffset = f[16].toUInt(),
+                usageValue = f[17].toUInt(), capsOffset = f[18].toUInt(),
+                capsCount = f[19].toUInt(), capsValue = f[20].toULong(),
+                refCount = f[21].toUInt(), ref0Offset = f[22].toUInt(),
+                ref1Offset = f[23].toUInt(), ref2Offset = f[24].toUInt(),
+                ref3Offset = f[25].toUInt(), ref0Image = f[26].toULong(),
+                ref1Image = f[27].toULong(), ref2Image = f[28].toULong(),
+                ref3Image = f[29].toULong(),
             ),
             kernelOffset = KernelOffsetTable(
-                initTask = f[30], initCred = f[31], emptyZeroPage = f[32],
-                rootTaskGroup = f[33], selinuxEnforcing = f[34],
-                selinuxBlobSizes = f[35], securityHookHeads = f[36],
-                slideNfulnlLogger = f[37], slideLoggers01 = f[38], slideBootId = f[39],
+                initTask = f[30].toULong(), initCred = f[31].toULong(),
+                emptyZeroPage = f[32].toULong(), rootTaskGroup = f[33].toULong(),
+                selinuxEnforcing = f[34].toULong(), selinuxBlobSizes = f[35].toULong(),
+                securityHookHeads = f[36].toULong(), slideNfulnlLogger = f[37].toULong(),
+                slideLoggers01 = f[38].toULong(), slideBootId = f[39].toULong(),
             ),
-            kernelPhysLoad = f[40],
-            compactWaiter = f[41],
-            kernelsnitchCollisions = f[42],
-            mmStructSz = f[43],
+            kernelPhysLoad = f[40].toULong(),
+            compactWaiter = f[41].toUInt(),
+            kernelsnitchCollisions = f[42].toUInt(),
+            mmStructSz = f[43].toUInt(),
             execution = ExecutionTuning(
-                recommendedMainCpu = f[44], recommendedConsumerCpu = f[45],
-                heapPrepareMaxAttempts = f[46], heapPrepareTimeoutMs = f[47],
-                heapKernelsnitchTimeoutMs = f[48], raceRouteWaitMs = f[49],
-                raceSetupSettleUs = f[50], raceStatePollIntervalUs = f[51],
-                w1Attempts = f[52], w1SettleUs = f[53],
-                w1ScratchRepairAttempts = f[54], w2Attempts = f[55], w2SettleUs = f[56],
-                w3ChainRounds = f[57], w3Attempts = f[58], w3SettleUs = f[59],
-                handoffPreDispatchSettleMs = f[60], handoffModulePollAttempts = f[61],
-                handoffModulePollIntervalMs = f[62], handoffEnforcePollAttempts = f[63],
-                handoffEnforcePollIntervalMs = f[64],
-                consumerMaxCalls = f[65],
-                consumerBurstCalls = f[66],
+                recommendedMainCpu = f[44].toUInt(), recommendedConsumerCpu = f[45].toUInt(),
+                heapPrepareMaxAttempts = f[46].toUInt(), heapPrepareTimeoutMs = f[47].toUInt(),
+                heapKernelsnitchTimeoutMs = f[48].toUInt(), raceRouteWaitMs = f[49].toUInt(),
+                raceSetupSettleUs = f[50].toUInt(), raceStatePollIntervalUs = f[51].toUInt(),
+                w1Attempts = f[52].toUInt(), w1SettleUs = f[53].toUInt(),
+                w1ScratchRepairAttempts = f[54].toUInt(), w2Attempts = f[55].toUInt(),
+                w2SettleUs = f[56].toUInt(), w3ChainRounds = f[57].toUInt(),
+                w3Attempts = f[58].toUInt(), w3SettleUs = f[59].toUInt(),
+                handoffPreDispatchSettleMs = f[60].toUInt(),
+                handoffModulePollAttempts = f[61].toUInt(),
+                handoffModulePollIntervalMs = f[62].toUInt(),
+                handoffEnforcePollAttempts = f[63].toUInt(),
+                handoffEnforcePollIntervalMs = f[64].toUInt(),
+                consumerMaxCalls = f[65].toUInt(),
+                consumerBurstCalls = f[66].toUInt(),
             ),
-            safeMode = f[67],
+            safeMode = f[67].toUInt(),
             routeConfig = routeConfig,
         )
 
@@ -216,89 +237,91 @@ internal data class NativeProfileDocument(
             value: (String) -> Long?,
         ): NativeProfileDocument {
             fun v(path: String): Long = value(path) ?: 0L
+            fun vu(path: String): UInt = v(path).toConfigUInt()
+            fun vul(path: String): ULong = v(path).toConfigULong()
             val routeConfig = RouteKind.fromToken(route)?.buildConfig(::v) ?: NoRouteConfig
             return NativeProfileDocument(
                 release = release,
                 routeKind = routeKind(route),
-                kernelMajor = v("kernel_major"),
-                recommendShizuku = v("recommend_shizuku"),
+                kernelMajor = vu("kernel_major"),
+                recommendShizuku = vu("recommend_shizuku"),
                 fallbackRoute = routeKind(fallbackTo),
                 taskStruct = TaskStructOffsets(
-                    prio = v("task_struct.prio"),
-                    normalPrio = v("task_struct.normal_prio"),
-                    schedTaskGroup = v("task_struct.sched_task_group"),
-                    piLock = v("task_struct.pi_lock"),
-                    piWaiters = v("task_struct.pi_waiters"),
-                    piTopTask = v("task_struct.pi_top_task"),
-                    piBlockedOn = v("task_struct.pi_blocked_on"),
-                    pid = v("task_struct.pid"),
-                    tgid = v("task_struct.tgid"),
-                    atomicFlags = v("task_struct.atomic_flags"),
-                    realCred = v("task_struct.real_cred"),
-                    cred = v("task_struct.cred"),
-                    comm = v("task_struct.comm"),
-                    tasks = v("task_struct.tasks"),
-                    seccomp = v("task_struct.seccomp"),
+                    prio = vu("task_struct.prio"),
+                    normalPrio = vu("task_struct.normal_prio"),
+                    schedTaskGroup = vu("task_struct.sched_task_group"),
+                    piLock = vu("task_struct.pi_lock"),
+                    piWaiters = vu("task_struct.pi_waiters"),
+                    piTopTask = vu("task_struct.pi_top_task"),
+                    piBlockedOn = vu("task_struct.pi_blocked_on"),
+                    pid = vu("task_struct.pid"),
+                    tgid = vu("task_struct.tgid"),
+                    atomicFlags = vu("task_struct.atomic_flags"),
+                    realCred = vu("task_struct.real_cred"),
+                    cred = vu("task_struct.cred"),
+                    comm = vu("task_struct.comm"),
+                    tasks = vu("task_struct.tasks"),
+                    seccomp = vu("task_struct.seccomp"),
                 ),
                 cred = CredTemplate(
-                    copySize = v("cred.copy_size"),
-                    usageOffset = v("cred.usage_offset"),
-                    usageValue = v("cred.usage_value"),
-                    capsOffset = v("cred.caps_offset"),
-                    capsCount = v("cred.caps_count"),
-                    capsValue = v("cred.caps_value"),
-                    refCount = v("cred.ref_count"),
-                    ref0Offset = v("cred.ref0_offset"),
-                    ref1Offset = v("cred.ref1_offset"),
-                    ref2Offset = v("cred.ref2_offset"),
-                    ref3Offset = v("cred.ref3_offset"),
-                    ref0Image = v("cred.ref0_image"),
-                    ref1Image = v("cred.ref1_image"),
-                    ref2Image = v("cred.ref2_image"),
-                    ref3Image = v("cred.ref3_image"),
+                    copySize = vu("cred.copy_size"),
+                    usageOffset = vu("cred.usage_offset"),
+                    usageValue = vu("cred.usage_value"),
+                    capsOffset = vu("cred.caps_offset"),
+                    capsCount = vu("cred.caps_count"),
+                    capsValue = vul("cred.caps_value"),
+                    refCount = vu("cred.ref_count"),
+                    ref0Offset = vu("cred.ref0_offset"),
+                    ref1Offset = vu("cred.ref1_offset"),
+                    ref2Offset = vu("cred.ref2_offset"),
+                    ref3Offset = vu("cred.ref3_offset"),
+                    ref0Image = vul("cred.ref0_image"),
+                    ref1Image = vul("cred.ref1_image"),
+                    ref2Image = vul("cred.ref2_image"),
+                    ref3Image = vul("cred.ref3_image"),
                 ),
                 kernelOffset = KernelOffsetTable(
-                    initTask = v("offset.init_task"),
-                    initCred = v("offset.init_cred"),
-                    emptyZeroPage = v("offset.empty_zero_page"),
-                    rootTaskGroup = v("offset.root_task_group"),
-                    selinuxEnforcing = v("offset.selinux_enforcing"),
-                    selinuxBlobSizes = v("offset.selinux_blob_sizes"),
-                    securityHookHeads = v("offset.security_hook_heads"),
-                    slideNfulnlLogger = v("offset.slide_nfulnl_logger"),
-                    slideLoggers01 = v("offset.slide_loggers_0_1"),
-                    slideBootId = v("offset.slide_boot_id"),
+                    initTask = vul("offset.init_task"),
+                    initCred = vul("offset.init_cred"),
+                    emptyZeroPage = vul("offset.empty_zero_page"),
+                    rootTaskGroup = vul("offset.root_task_group"),
+                    selinuxEnforcing = vul("offset.selinux_enforcing"),
+                    selinuxBlobSizes = vul("offset.selinux_blob_sizes"),
+                    securityHookHeads = vul("offset.security_hook_heads"),
+                    slideNfulnlLogger = vul("offset.slide_nfulnl_logger"),
+                    slideLoggers01 = vul("offset.slide_loggers_0_1"),
+                    slideBootId = vul("offset.slide_boot_id"),
                 ),
-                kernelPhysLoad = v("kernel_phys_load"),
-                compactWaiter = v("compact_waiter"),
-                kernelsnitchCollisions = v("kernelsnitch.collisions"),
-                mmStructSz = v("kernelsnitch.mm_struct_sz"),
+                kernelPhysLoad = vul("kernel_phys_load"),
+                compactWaiter = vu("compact_waiter"),
+                kernelsnitchCollisions = vu("kernelsnitch.collisions"),
+                mmStructSz = vu("kernelsnitch.mm_struct_sz"),
                 execution = ExecutionTuning(
-                    recommendedMainCpu = v("execution.recommended_cpus.main"),
-                    recommendedConsumerCpu = v("execution.recommended_cpus.consumer"),
-                    heapPrepareMaxAttempts = v("execution.heap.prepare_max_attempts"),
-                    heapPrepareTimeoutMs = v("execution.heap.prepare_timeout_ms"),
-                    heapKernelsnitchTimeoutMs = v("execution.heap.kernelsnitch_timeout_ms"),
-                    raceRouteWaitMs = v("execution.race.route_wait_ms"),
-                    raceSetupSettleUs = v("execution.race.setup_settle_us"),
-                    raceStatePollIntervalUs = v("execution.race.state_poll_interval_us"),
-                    w1Attempts = v("execution.stages.w1_attempts"),
-                    w1SettleUs = v("execution.stages.w1_settle_us"),
-                    w1ScratchRepairAttempts = v("execution.stages.w1_scratch_repair_attempts"),
-                    w2Attempts = v("execution.stages.w2_attempts"),
-                    w2SettleUs = v("execution.stages.w2_settle_us"),
-                    w3ChainRounds = v("execution.stages.w3_chain_rounds"),
-                    w3Attempts = v("execution.stages.w3_attempts"),
-                    w3SettleUs = v("execution.stages.w3_settle_us"),
-                    handoffPreDispatchSettleMs = v("execution.handoff.pre_dispatch_settle_ms"),
-                    handoffModulePollAttempts = v("execution.handoff.module_poll_attempts"),
-                    handoffModulePollIntervalMs = v("execution.handoff.module_poll_interval_ms"),
-                    handoffEnforcePollAttempts = v("execution.handoff.enforce_poll_attempts"),
-                    handoffEnforcePollIntervalMs = v("execution.handoff.enforce_poll_interval_ms"),
-                    consumerMaxCalls = v("execution.routes.select_stack.consumer_max_calls"),
-                    consumerBurstCalls = v("execution.routes.select_stack.consumer_burst_calls"),
+                    recommendedMainCpu = vu("execution.recommended_cpus.main"),
+                    recommendedConsumerCpu = vu("execution.recommended_cpus.consumer"),
+                    heapPrepareMaxAttempts = vu("execution.heap.prepare_max_attempts"),
+                    heapPrepareTimeoutMs = vu("execution.heap.prepare_timeout_ms"),
+                    heapKernelsnitchTimeoutMs = vu("execution.heap.kernelsnitch_timeout_ms"),
+                    raceRouteWaitMs = vu("execution.race.route_wait_ms"),
+                    raceSetupSettleUs = vu("execution.race.setup_settle_us"),
+                    raceStatePollIntervalUs = vu("execution.race.state_poll_interval_us"),
+                    w1Attempts = vu("execution.stages.w1_attempts"),
+                    w1SettleUs = vu("execution.stages.w1_settle_us"),
+                    w1ScratchRepairAttempts = vu("execution.stages.w1_scratch_repair_attempts"),
+                    w2Attempts = vu("execution.stages.w2_attempts"),
+                    w2SettleUs = vu("execution.stages.w2_settle_us"),
+                    w3ChainRounds = vu("execution.stages.w3_chain_rounds"),
+                    w3Attempts = vu("execution.stages.w3_attempts"),
+                    w3SettleUs = vu("execution.stages.w3_settle_us"),
+                    handoffPreDispatchSettleMs = vu("execution.handoff.pre_dispatch_settle_ms"),
+                    handoffModulePollAttempts = vu("execution.handoff.module_poll_attempts"),
+                    handoffModulePollIntervalMs = vu("execution.handoff.module_poll_interval_ms"),
+                    handoffEnforcePollAttempts = vu("execution.handoff.enforce_poll_attempts"),
+                    handoffEnforcePollIntervalMs = vu("execution.handoff.enforce_poll_interval_ms"),
+                    consumerMaxCalls = vu("execution.routes.select_stack.consumer_max_calls"),
+                    consumerBurstCalls = vu("execution.routes.select_stack.consumer_burst_calls"),
                 ),
-                safeMode = 0,
+                safeMode = 0u,
                 routeConfig = routeConfig,
             )
         }
@@ -306,76 +329,76 @@ internal data class NativeProfileDocument(
 }
 
 internal data class TaskStructOffsets(
-    val prio: Long,
-    val normalPrio: Long,
-    val schedTaskGroup: Long,
-    val piLock: Long,
-    val piWaiters: Long,
-    val piTopTask: Long,
-    val piBlockedOn: Long,
-    val pid: Long,
-    val tgid: Long,
-    val atomicFlags: Long,
-    val realCred: Long,
-    val cred: Long,
-    val comm: Long,
-    val tasks: Long,
-    val seccomp: Long,
+    val prio: UInt,
+    val normalPrio: UInt,
+    val schedTaskGroup: UInt,
+    val piLock: UInt,
+    val piWaiters: UInt,
+    val piTopTask: UInt,
+    val piBlockedOn: UInt,
+    val pid: UInt,
+    val tgid: UInt,
+    val atomicFlags: UInt,
+    val realCred: UInt,
+    val cred: UInt,
+    val comm: UInt,
+    val tasks: UInt,
+    val seccomp: UInt,
 )
 
 internal data class CredTemplate(
-    val copySize: Long,
-    val usageOffset: Long,
-    val usageValue: Long,
-    val capsOffset: Long,
-    val capsCount: Long,
-    val capsValue: Long,
-    val refCount: Long,
-    val ref0Offset: Long,
-    val ref1Offset: Long,
-    val ref2Offset: Long,
-    val ref3Offset: Long,
-    val ref0Image: Long,
-    val ref1Image: Long,
-    val ref2Image: Long,
-    val ref3Image: Long,
+    val copySize: UInt,
+    val usageOffset: UInt,
+    val usageValue: UInt,
+    val capsOffset: UInt,
+    val capsCount: UInt,
+    val capsValue: ULong,
+    val refCount: UInt,
+    val ref0Offset: UInt,
+    val ref1Offset: UInt,
+    val ref2Offset: UInt,
+    val ref3Offset: UInt,
+    val ref0Image: ULong,
+    val ref1Image: ULong,
+    val ref2Image: ULong,
+    val ref3Image: ULong,
 )
 
 internal data class KernelOffsetTable(
-    val initTask: Long,
-    val initCred: Long,
-    val emptyZeroPage: Long,
-    val rootTaskGroup: Long,
-    val selinuxEnforcing: Long,
-    val selinuxBlobSizes: Long,
-    val securityHookHeads: Long,
-    val slideNfulnlLogger: Long,
-    val slideLoggers01: Long,
-    val slideBootId: Long,
+    val initTask: ULong,
+    val initCred: ULong,
+    val emptyZeroPage: ULong,
+    val rootTaskGroup: ULong,
+    val selinuxEnforcing: ULong,
+    val selinuxBlobSizes: ULong,
+    val securityHookHeads: ULong,
+    val slideNfulnlLogger: ULong,
+    val slideLoggers01: ULong,
+    val slideBootId: ULong,
 )
 
 internal data class ExecutionTuning(
-    val recommendedMainCpu: Long,
-    val recommendedConsumerCpu: Long,
-    val heapPrepareMaxAttempts: Long,
-    val heapPrepareTimeoutMs: Long,
-    val heapKernelsnitchTimeoutMs: Long,
-    val raceRouteWaitMs: Long,
-    val raceSetupSettleUs: Long,
-    val raceStatePollIntervalUs: Long,
-    val w1Attempts: Long,
-    val w1SettleUs: Long,
-    val w1ScratchRepairAttempts: Long,
-    val w2Attempts: Long,
-    val w2SettleUs: Long,
-    val w3ChainRounds: Long,
-    val w3Attempts: Long,
-    val w3SettleUs: Long,
-    val handoffPreDispatchSettleMs: Long,
-    val handoffModulePollAttempts: Long,
-    val handoffModulePollIntervalMs: Long,
-    val handoffEnforcePollAttempts: Long,
-    val handoffEnforcePollIntervalMs: Long,
-    val consumerMaxCalls: Long,
-    val consumerBurstCalls: Long,
+    val recommendedMainCpu: UInt,
+    val recommendedConsumerCpu: UInt,
+    val heapPrepareMaxAttempts: UInt,
+    val heapPrepareTimeoutMs: UInt,
+    val heapKernelsnitchTimeoutMs: UInt,
+    val raceRouteWaitMs: UInt,
+    val raceSetupSettleUs: UInt,
+    val raceStatePollIntervalUs: UInt,
+    val w1Attempts: UInt,
+    val w1SettleUs: UInt,
+    val w1ScratchRepairAttempts: UInt,
+    val w2Attempts: UInt,
+    val w2SettleUs: UInt,
+    val w3ChainRounds: UInt,
+    val w3Attempts: UInt,
+    val w3SettleUs: UInt,
+    val handoffPreDispatchSettleMs: UInt,
+    val handoffModulePollAttempts: UInt,
+    val handoffModulePollIntervalMs: UInt,
+    val handoffEnforcePollAttempts: UInt,
+    val handoffEnforcePollIntervalMs: UInt,
+    val consumerMaxCalls: UInt,
+    val consumerBurstCalls: UInt,
 )

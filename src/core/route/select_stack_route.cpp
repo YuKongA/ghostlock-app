@@ -165,7 +165,7 @@ namespace ghostlock::route {
 namespace ghostlock::route {
     /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
-    static int32_t route_delay_usec(const select_stack::SelectStackRoute *context,
+    static uint32_t route_delay_usec(const select_stack::SelectStackRoute *context,
                                 int32_t attempt) {
         if (!context->layout.compact_waiter) {
             (void) attempt;
@@ -177,12 +177,12 @@ namespace ghostlock::route {
      * upstream 50d2b72 candidate list); the profile's enter delay seeds the
      * first attempt. The ladder stays native-side until a Select device can
      * validate a schema extension. */
-        const int32_t seed = context->profile.select_enter_delay_us();
-        static constexpr std::array<int32_t, 8> delays = {
+        const uint32_t seed = context->profile.select_enter_delay_us();
+        static constexpr std::array<uint32_t, 8> delays = {
             50000, 30000, 70000, 10000, 100000, 150000, 20000, 120000,
         };
-        const int32_t ladder = delays[static_cast<size_t>((attempt - 1) % 8)];
-        return attempt == 1 && seed > 0 ? seed : ladder;
+        const uint32_t ladder = delays[static_cast<size_t>((attempt - 1) % 8)];
+        return attempt == 1 && seed != 0 ? seed : ladder;
     }
 
     void fdset_put_word(fd_set *set, int32_t word, uint64_t value) {
@@ -444,7 +444,7 @@ namespace ghostlock::route::select_stack {
             race->consumer_calls.store(0);
             race->consumer_success.store(0);
             race->consumer_stop.store(0);
-            int32_t delay_usec = route::route_delay_usec(this, attempt);
+            uint32_t delay_usec = route::route_delay_usec(this, attempt);
             race->route_delay_usec.store(delay_usec);
             race->consumer_go.store(attempt);
 

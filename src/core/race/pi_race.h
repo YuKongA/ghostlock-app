@@ -28,7 +28,7 @@ namespace ghostlock::race {
 
         /* All state returns to its reset value. The fast_repair latch is owned by
          * the caller (reset_main_route_state preserves it across resets). */
-        void reset(int32_t initial_delay_usec, int32_t main_cpu, int32_t consumer_cpu) noexcept;
+        void reset(uint32_t initial_delay_usec, int32_t main_cpu, int32_t consumer_cpu) noexcept;
 
         /* consumer -> owner -> waiter, matching the original creation order. On a
          * partial failure every already-started worker is asked to stop and joined
@@ -76,7 +76,7 @@ namespace ghostlock::race {
         std::atomic<int32_t> consumer_calls;
         std::atomic<int32_t> consumer_success;
         std::atomic<int32_t> consumer_inflight;
-        std::atomic<int32_t> route_delay_usec;
+        std::atomic<uint32_t> route_delay_usec;
         std::atomic<int32_t> fast_repair;
         int32_t main_cpu = 0;
         int32_t consumer_cpu = 0;

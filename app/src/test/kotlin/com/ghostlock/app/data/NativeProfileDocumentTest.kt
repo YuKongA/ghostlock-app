@@ -140,8 +140,8 @@ class NativeProfileDocumentTest {
 
         val decoded = NativeProfileDocument.fromBinary(bytes)!!
         val config = decoded.routeConfig as TcpConfig
-        assertEquals(0L, config.attempts)
-        assertEquals(7L, config.armSequence)
+        assertEquals(0u, config.attempts)
+        assertEquals(7u, config.armSequence)
     }
 
     @Test

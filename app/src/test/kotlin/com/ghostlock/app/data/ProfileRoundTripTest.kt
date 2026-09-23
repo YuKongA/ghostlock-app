@@ -54,7 +54,7 @@ class ProfileRoundTripTest {
             assertEquals(kind, RouteKind.fromToken(kind.token))
             assertEquals(kind, RouteKind.fromWire(kind.wire))
         }
-        assertNull(RouteKind.fromWire(0))
+        assertNull(RouteKind.fromWire(0u))
         assertNull(RouteKind.fromToken("unknown"))
         assertNull(RouteKind.fromToken(null))
     }
@@ -80,17 +80,17 @@ class ProfileRoundTripTest {
         assertEquals(RouteKind.MULTICAST_WAITER, profile.route)
         assertEquals(RouteKind.SELECT_STACK, profile.fallback)
         assertEquals("6.1.0-test", profile.release)
-        assertEquals(6L, profile.kernelMajor)
+        assertEquals(6u, profile.kernelMajor)
         assertEquals(true, profile.supports(RouteKind.MULTICAST_WAITER))
         assertEquals(false, profile.supports(RouteKind.TCP_ZEROCOPY))
         assertEquals(true, profile.hasCompactWaiter())
-        assertEquals(0x4000L, profile.mmStructStride(fallback = 1L))
-        assertEquals(264L, profile.multicastLayout().waiterOffset)
-        assertEquals(0x2000L, profile.multicastLayout().fakeBssImageOffset)
+        assertEquals(0x4000u, profile.mmStructStride(fallback = 1u))
+        assertEquals(264uL, profile.multicastLayout().waiterOffset)
+        assertEquals(0x2000uL, profile.multicastLayout().fakeBssImageOffset)
         /* Consumer cadence rides the common slot, not the multicast section. */
         val decoded = NativeProfileDocument.fromBinary(bytes)!!
-        assertEquals(1L, decoded.execution.consumerMaxCalls)
-        assertEquals(1L, decoded.execution.consumerBurstCalls)
+        assertEquals(1u, decoded.execution.consumerMaxCalls)
+        assertEquals(1u, decoded.execution.consumerBurstCalls)
 
         assertArrayEquals(bytes, profile.toBinary())
     }
@@ -112,8 +112,8 @@ class ProfileRoundTripTest {
         bytes[offset] = 1
 
         val decoded = NativeProfileDocument.fromBinary(bytes)!!
-        assertEquals(1L, decoded.safeMode)
-        assertEquals(original.copy(safeMode = 1L), decoded)
+        assertEquals(1u, decoded.safeMode)
+        assertEquals(original.copy(safeMode = 1u), decoded)
     }
 
     @Test

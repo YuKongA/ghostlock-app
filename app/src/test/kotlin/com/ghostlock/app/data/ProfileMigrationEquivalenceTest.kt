@@ -44,7 +44,7 @@ class ProfileMigrationEquivalenceTest {
                 .toSortedSet()
 
             assertEquals("fixture must cover every current 6.x builtin", current6x, legacyReleases)
-            assertEquals("remote/main fixture size", 47, legacyReleases.size)
+            assertEquals("remote/main fixture size", 50, legacyReleases.size)
 
             val pair = CpuPair(primary = 0, consumer = 1)
             for (release in legacyReleases) {

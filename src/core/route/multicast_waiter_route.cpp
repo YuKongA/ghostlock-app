@@ -367,7 +367,7 @@ namespace {
             return Status{route::kernel5_resident_write(request.target, value) != 0};
         }
 
-        int32_t w1_attempt_cap(int32_t base) const override {
+        uint32_t w1_attempt_cap(uint32_t base) const override {
             if (session_.profile.multicast_resident()) return base;
             /* one-shot route cannot safely retry a missed W1 */
             return 1;
@@ -417,10 +417,10 @@ namespace {
                 return false;
             }
             int32_t repaired = 0;
-            int32_t repair_attempts =
+            uint32_t repair_attempts =
                     session::g_exploit_session.profile.w1_scratch_repair_attempts();
-            for (int32_t repair_try = 1; repair_try <= repair_attempts; repair_try++) {
-                pr_info("W1b: private scratch repair attempt %d/%d\n",
+            for (uint32_t repair_try = 1; repair_try <= repair_attempts; repair_try++) {
+                pr_info("W1b: private scratch repair attempt %u/%u\n",
                         repair_try, repair_attempts);
                 const memory::WriteRequest scratch_repair = memory::WriteRequest::make(
                     w1_scratch_poison, memory::WriteMode::Zero, 1);

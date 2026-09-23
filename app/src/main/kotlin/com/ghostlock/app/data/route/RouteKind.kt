@@ -6,14 +6,14 @@ package com.ghostlock.app.data.route
  * declare its route explicitly.
  */
 internal enum class RouteKind(
-    val wire: Int,
+    val wire: UInt,
     val token: String,
     private val empty: RouteConfig,
     private val builder: ((String) -> Long) -> RouteConfig,
 ) {
-    TCP_ZEROCOPY(1, "tcp_zerocopy", TcpConfig.EMPTY, { value -> TcpConfig.from(value) }),
-    SELECT_STACK(2, "select_stack", SelectConfig.EMPTY, { value -> SelectConfig.from(value) }),
-    MULTICAST_WAITER(3, "multicast_waiter", MulticastConfig.EMPTY, { value ->
+    TCP_ZEROCOPY(1u, "tcp_zerocopy", TcpConfig.EMPTY, { value -> TcpConfig.from(value) }),
+    SELECT_STACK(2u, "select_stack", SelectConfig.EMPTY, { value -> SelectConfig.from(value) }),
+    MULTICAST_WAITER(3u, "multicast_waiter", MulticastConfig.EMPTY, { value ->
         MulticastConfig.from(value)
     }),
     ;
@@ -25,6 +25,6 @@ internal enum class RouteKind(
     companion object {
         fun fromToken(token: String?): RouteKind? = values().firstOrNull { it.token == token }
 
-        fun fromWire(wire: Int): RouteKind? = values().firstOrNull { it.wire == wire }
+        fun fromWire(wire: UInt): RouteKind? = values().firstOrNull { it.wire == wire }
     }
 }

@@ -200,32 +200,32 @@ namespace ghostlock::profile {
             return loaded_ ? &values_.execution : nullptr;
         }
 
-        /* Typed execution-config getters: return the value in the type callers
-         * need, so no static_cast is required at the call site. */
-#define GHOSTLOCK_EXEC_INT(name) \
-        [[nodiscard]] int32_t name() const noexcept { return static_cast<int32_t>(values_.execution.name); }
+        /* Typed execution-config getters. Every execution field is an unsigned
+         * 32-bit value both in `execution_settings` and on the wire (the legacy
+         * JSON parser also rejects negatives), so each getter returns uint32_t
+         * and no static_cast is required at the call site. */
 #define GHOSTLOCK_EXEC_U32(name) \
         [[nodiscard]] uint32_t name() const noexcept { return values_.execution.name; }
-        GHOSTLOCK_EXEC_INT(recommended_main_cpu)
-        GHOSTLOCK_EXEC_INT(recommended_consumer_cpu)
-        GHOSTLOCK_EXEC_INT(heap_prepare_max_attempts)
+        GHOSTLOCK_EXEC_U32(recommended_main_cpu)
+        GHOSTLOCK_EXEC_U32(recommended_consumer_cpu)
+        GHOSTLOCK_EXEC_U32(heap_prepare_max_attempts)
         GHOSTLOCK_EXEC_U32(heap_prepare_timeout_ms)
         GHOSTLOCK_EXEC_U32(heap_kernelsnitch_timeout_ms)
         GHOSTLOCK_EXEC_U32(race_route_wait_ms)
         GHOSTLOCK_EXEC_U32(race_setup_settle_us)
         GHOSTLOCK_EXEC_U32(race_state_poll_interval_us)
-        GHOSTLOCK_EXEC_INT(w1_attempts)
+        GHOSTLOCK_EXEC_U32(w1_attempts)
         GHOSTLOCK_EXEC_U32(w1_settle_us)
-        GHOSTLOCK_EXEC_INT(w1_scratch_repair_attempts)
-        GHOSTLOCK_EXEC_INT(w2_attempts)
+        GHOSTLOCK_EXEC_U32(w1_scratch_repair_attempts)
+        GHOSTLOCK_EXEC_U32(w2_attempts)
         GHOSTLOCK_EXEC_U32(w2_settle_us)
-        GHOSTLOCK_EXEC_INT(w3_chain_rounds)
-        GHOSTLOCK_EXEC_INT(w3_attempts)
+        GHOSTLOCK_EXEC_U32(w3_chain_rounds)
+        GHOSTLOCK_EXEC_U32(w3_attempts)
         GHOSTLOCK_EXEC_U32(w3_settle_us)
-        GHOSTLOCK_EXEC_INT(tcp_attempts)
-        GHOSTLOCK_EXEC_INT(tcp_arm_sequence)
-        GHOSTLOCK_EXEC_INT(tcp_post_receive_hold_iterations)
-        GHOSTLOCK_EXEC_INT(select_enter_delay_us)
+        GHOSTLOCK_EXEC_U32(tcp_attempts)
+        GHOSTLOCK_EXEC_U32(tcp_arm_sequence)
+        GHOSTLOCK_EXEC_U32(tcp_post_receive_hold_iterations)
+        GHOSTLOCK_EXEC_U32(select_enter_delay_us)
         GHOSTLOCK_EXEC_U32(select_timeout_us)
         GHOSTLOCK_EXEC_U32(select_consumer_max_calls)
         GHOSTLOCK_EXEC_U32(select_consumer_burst_calls)
@@ -237,7 +237,6 @@ namespace ghostlock::profile {
         GHOSTLOCK_EXEC_U32(handoff_module_poll_interval_ms)
         GHOSTLOCK_EXEC_U32(handoff_enforce_poll_attempts)
         GHOSTLOCK_EXEC_U32(handoff_enforce_poll_interval_ms)
-#undef GHOSTLOCK_EXEC_INT
 #undef GHOSTLOCK_EXEC_U32
 
         [[nodiscard]] bool has_compact_waiter() const noexcept {

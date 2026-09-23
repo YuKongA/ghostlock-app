@@ -13,9 +13,9 @@ class RouteCatalogAgreementTest {
     @Test
     fun tokensAndWiresMatchNative() {
         val expected = listOf(
-            "tcp_zerocopy" to 1,
-            "select_stack" to 2,
-            "multicast_waiter" to 3,
+            "tcp_zerocopy" to 1u,
+            "select_stack" to 2u,
+            "multicast_waiter" to 3u,
         )
         assertEquals(expected, RouteKind.values().map { it.token to it.wire })
     }
