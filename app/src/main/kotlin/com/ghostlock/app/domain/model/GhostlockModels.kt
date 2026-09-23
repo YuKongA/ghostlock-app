@@ -84,7 +84,12 @@ data class ProfileConfig(
         /** Routes a profile may declare ("" is the inference fallback). */
         val Routes = listOf("tcp_zerocopy", "select_stack", "multicast_waiter")
 
-        /** Execution tuning paths the general editor exposes. */
+        /**
+         * Route-independent execution tuning paths the general editor always
+         * exposes. Route-specific tuning is appended dynamically from the
+         * resolved profile for the active route (plus its fallback), so a
+         * profile never shows another route's knobs.
+         */
         val GeneralPaths = listOf(
             "execution.selected_cpus.main",
             "execution.selected_cpus.consumer",
@@ -94,8 +99,6 @@ data class ProfileConfig(
             "execution.stages.w3_chain_rounds",
             "execution.race.route_wait_ms",
             "execution.heap.prepare_max_attempts",
-            "execution.routes.select_stack.enter_delay_us",
-            "execution.routes.select_stack.timeout_us",
         )
     }
 }

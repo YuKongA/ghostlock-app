@@ -213,4 +213,43 @@ class ControllerOverrideTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `general editor only offers the resolved route tuning`() = runBlocking {
+        val root = Files.createTempDirectory("controller-general-route").toFile()
+        try {
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = UserProfileStore(
+                    directory = root.resolve("user_profiles"),
+                    assetLoader = AssetConfigLoader(context),
+                ),
+                preferences = context.getSharedPreferences("controller-general-route", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val pair = CpuPair(primary = 0, consumer = 1)
+
+            /* multicast builtin: only its own tuning, never select's. */
+            val multicast = controller.load(
+                "5.15.189-android13-8-00016-g51bba4309aac-ab14546557", pair,
+            )
+            assertTrue(multicast.hasProfile)
+            val multicastPaths = multicast.general.map { it.path }
+            assertTrue(
+                multicastPaths.any { it.startsWith("execution.routes.multicast_waiter.") },
+            )
+            assertTrue(multicastPaths.none { it.startsWith("execution.routes.select_stack.") })
+            assertTrue(multicastPaths.none { it.startsWith("execution.routes.tcp_zerocopy.") })
+
+            /* tcp profile with a select fallback: both groups, no multicast. */
+            val tcp = controller.load("6.1.118-android14-11-ga3b9c44908dd-ab13320413", pair)
+            val tcpPaths = tcp.general.map { it.path }
+            assertTrue(tcpPaths.any { it.startsWith("execution.routes.tcp_zerocopy.") })
+            assertTrue(tcpPaths.any { it.startsWith("execution.routes.select_stack.") })
+            assertTrue(tcpPaths.none { it.startsWith("execution.routes.multicast_waiter.") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }

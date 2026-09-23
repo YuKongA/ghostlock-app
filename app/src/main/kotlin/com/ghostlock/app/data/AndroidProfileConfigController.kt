@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.core.content.edit
+import com.ghostlock.app.data.route.RouteKind
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
 import com.ghostlock.app.domain.model.ProfileConfig
@@ -64,7 +65,7 @@ internal class AndroidProfileConfigController(
             release = deviceRelease,
             hasProfile = true,
             roots = roots,
-            general = generalFields(full, baseline),
+            general = generalFields(full, baseline, route, fallbackTo),
             route = route,
             fallbackTo = fallbackTo,
             invalidPaths = invalidPaths,
@@ -486,7 +487,7 @@ internal class AndroidProfileConfigController(
         fallbackTo: String?,
         path: String,
     ): Long? {
-        /* The GLK1 transport only carries `recommended_cpus`; the effective
+        /* The v2 transport only carries `recommended_cpus`; the effective
          * choice lives in `selected_cpus` (device pair or explicit override).
          * Fold the selection into the recommended slots so native's
          * apply_profile actually honours it. */
@@ -754,13 +755,23 @@ internal class AndroidProfileConfigController(
     private fun generalFields(
         profile: ValueMap,
         baseline: ValueMap,
+        route: String?,
+        fallbackTo: String?,
     ): List<ExecutionFieldValue> {
         fun read(root: ValueMap, path: String): Long? = if (path.startsWith("execution.")) {
             root["execution"].asValueMap()?.getLongAt(path.removePrefix("execution."))
         } else {
             root.getLongAt(path)
         }
-        return ProfileConfig.GeneralPaths.map { path ->
+        /* Route tuning is appended from the resolved document itself: only the
+         * active route's leaves (sorted, so the order is stable), plus the
+         * declared fallback's, so the editor never offers another route's
+         * knobs. Both route groups are filled into `execution.routes` during
+         * resolution, so the keys come straight from the HOCON. */
+        val paths = ProfileConfig.GeneralPaths +
+            routeTuningPaths(profile, route) +
+            routeTuningPaths(profile, fallbackTo?.takeIf { it != "none" && it != route })
+        return paths.map { path ->
             val value = read(profile, path) ?: 0L
             ExecutionFieldValue(
                 path = path,
@@ -768,6 +779,14 @@ internal class AndroidProfileConfigController(
                 overridden = read(baseline, path)?.let { baselineValue -> value != baselineValue } == true,
             )
         }
+    }
+
+    private fun routeTuningPaths(profile: ValueMap, route: String?): List<String> {
+        if (route == null || route !in ProfileConfig.Routes) return emptyList()
+        val group = profile["execution"].asValueMap()?.get("routes").asValueMap()
+            ?.get(route).asValueMap() ?: return emptyList()
+        return group.keys.filterIsInstance<String>().sorted()
+            .map { "execution.routes.$route.$it" }
     }
 
     private fun buildTree(
