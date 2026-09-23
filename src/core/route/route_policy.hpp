@@ -32,13 +32,22 @@ namespace ghostlock::route {
         { P::run(request) } -> std::same_as<RouteStatus>;
     };
 
-    struct SelectPolicy {
-        static constexpr RouteKind kind = RouteKind::SelectStack;
+    /* Route capability defaults. Adding a capability becomes one `static
+     * constexpr` default here (false): existing policies inherit it untouched,
+     * and a policy that needs true just redeclares it. Capabilities are read
+     * through the concrete policy type, so a redeclaration hides the base
+     * default and stays a direct compile-time compare - no indirect dispatch
+     * ever enters the PI-window path. */
+    struct RoutePolicyDefaults {
         static constexpr bool multicast = false;
         static constexpr bool w2_fast_repair = false;
         static constexpr bool w3_exact_target = false;
         static constexpr bool tcp_payload_layout = false;
         static constexpr bool allows_fallback = false;
+    };
+
+    struct SelectPolicy : RoutePolicyDefaults {
+        static constexpr RouteKind kind = RouteKind::SelectStack;
 
         static bool supported(const profile::TargetProfile &profile) noexcept {
             return profile.supports(kind);
@@ -49,10 +58,8 @@ namespace ghostlock::route {
         }
     };
 
-    struct TcpPolicy {
+    struct TcpPolicy : RoutePolicyDefaults {
         static constexpr RouteKind kind = RouteKind::TcpZerocopy;
-        static constexpr bool multicast = false;
-        static constexpr bool w2_fast_repair = false;
         static constexpr bool w3_exact_target = true;
         static constexpr bool tcp_payload_layout = true;
         static constexpr bool allows_fallback = true;
@@ -66,13 +73,10 @@ namespace ghostlock::route {
         }
     };
 
-    struct MulticastPolicy {
+    struct MulticastPolicy : RoutePolicyDefaults {
         static constexpr RouteKind kind = RouteKind::MulticastWaiter;
         static constexpr bool multicast = true;
         static constexpr bool w2_fast_repair = true;
-        static constexpr bool w3_exact_target = false;
-        static constexpr bool tcp_payload_layout = false;
-        static constexpr bool allows_fallback = false;
 
         static bool supported(const profile::TargetProfile &profile) noexcept {
             return profile.supports(kind);
