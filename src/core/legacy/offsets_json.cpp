@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 using namespace ghostlock;
 
@@ -324,82 +325,84 @@ namespace ghostlock::legacy {
         void (*store)(profile::kernel_offsets &, int64_t);
     };
 
-#define SCALAR_STORE(member)                                    \
-    {#member, [](profile::kernel_offsets &o, int64_t value) {     \
-        o.member = static_cast<decltype(o.member)>(value);      \
-    }}
+    /* The member pointer is the template argument: the declared member type
+     * defines the truncation exactly like the old member-expression macro did,
+     * with no per-field closure spelled out. */
+    template<auto Member>
+    void store_scalar(profile::kernel_offsets &offsets, int64_t value) {
+        offsets.*Member =
+                static_cast<std::remove_reference_t<decltype(offsets.*Member)>>(value);
+    }
 
-    /* Same member-expression store, but with an explicit JSON key for the nested
- * route branches whose keys omit the flat-map prefix ("waiter_off"). */
-#define SCALAR_ALIAS(json_name, member)                         \
-    {json_name, [](profile::kernel_offsets &o, int64_t value) {   \
-        o.member = static_cast<decltype(o.member)>(value);      \
-    }}
+    template<auto Member>
+    constexpr scalar_field scalar_store(const char *name) {
+        return {name, &store_scalar<Member>};
+    }
 
-    static const struct scalar_field g_symbol_map[] = {
-        SCALAR_STORE(off_init_task),
-        SCALAR_STORE(off_init_cred),
-        SCALAR_STORE(off_empty_zero_page),
-        SCALAR_STORE(off_mcast_fake_bss),
-        SCALAR_STORE(off_root_task_group),
-        SCALAR_STORE(off_selinux_enforcing),
-        SCALAR_STORE(off_selinux_blob_sizes),
-        SCALAR_STORE(off_security_hook_heads),
-        SCALAR_STORE(off_slide_nfulnl_logger),
-        SCALAR_STORE(off_slide_loggers_0_1),
-        SCALAR_STORE(off_slide_boot_id),
+    static constexpr struct scalar_field g_symbol_map[] = {
+        scalar_store<&profile::kernel_offsets::off_init_task>("off_init_task"),
+        scalar_store<&profile::kernel_offsets::off_init_cred>("off_init_cred"),
+        scalar_store<&profile::kernel_offsets::off_empty_zero_page>("off_empty_zero_page"),
+        scalar_store<&profile::kernel_offsets::off_mcast_fake_bss>("off_mcast_fake_bss"),
+        scalar_store<&profile::kernel_offsets::off_root_task_group>("off_root_task_group"),
+        scalar_store<&profile::kernel_offsets::off_selinux_enforcing>("off_selinux_enforcing"),
+        scalar_store<&profile::kernel_offsets::off_selinux_blob_sizes>("off_selinux_blob_sizes"),
+        scalar_store<&profile::kernel_offsets::off_security_hook_heads>("off_security_hook_heads"),
+        scalar_store<&profile::kernel_offsets::off_slide_nfulnl_logger>("off_slide_nfulnl_logger"),
+        scalar_store<&profile::kernel_offsets::off_slide_loggers_0_1>("off_slide_loggers_0_1"),
+        scalar_store<&profile::kernel_offsets::off_slide_boot_id>("off_slide_boot_id"),
     };
 
-    static const struct scalar_field g_task_map[] = {
-        SCALAR_STORE(task_prio),
-        SCALAR_STORE(task_normal_prio),
-        SCALAR_STORE(task_sched_task_group),
-        SCALAR_STORE(task_pi_lock),
-        SCALAR_STORE(task_pi_waiters),
-        SCALAR_STORE(task_pi_top_task),
-        SCALAR_STORE(task_pi_blocked_on),
-        SCALAR_STORE(task_pid),
-        SCALAR_STORE(task_tgid),
-        SCALAR_STORE(task_atomic_flags),
-        SCALAR_STORE(task_real_cred),
-        SCALAR_STORE(task_cred),
-        SCALAR_STORE(task_comm),
-        SCALAR_STORE(task_tasks),
-        SCALAR_STORE(task_seccomp),
+    static constexpr struct scalar_field g_task_map[] = {
+        scalar_store<&profile::kernel_offsets::task_prio>("task_prio"),
+        scalar_store<&profile::kernel_offsets::task_normal_prio>("task_normal_prio"),
+        scalar_store<&profile::kernel_offsets::task_sched_task_group>("task_sched_task_group"),
+        scalar_store<&profile::kernel_offsets::task_pi_lock>("task_pi_lock"),
+        scalar_store<&profile::kernel_offsets::task_pi_waiters>("task_pi_waiters"),
+        scalar_store<&profile::kernel_offsets::task_pi_top_task>("task_pi_top_task"),
+        scalar_store<&profile::kernel_offsets::task_pi_blocked_on>("task_pi_blocked_on"),
+        scalar_store<&profile::kernel_offsets::task_pid>("task_pid"),
+        scalar_store<&profile::kernel_offsets::task_tgid>("task_tgid"),
+        scalar_store<&profile::kernel_offsets::task_atomic_flags>("task_atomic_flags"),
+        scalar_store<&profile::kernel_offsets::task_real_cred>("task_real_cred"),
+        scalar_store<&profile::kernel_offsets::task_cred>("task_cred"),
+        scalar_store<&profile::kernel_offsets::task_comm>("task_comm"),
+        scalar_store<&profile::kernel_offsets::task_tasks>("task_tasks"),
+        scalar_store<&profile::kernel_offsets::task_seccomp>("task_seccomp"),
     };
 
-    static const struct scalar_field g_profile_map[] = {
-        SCALAR_STORE(kernel_major),
-        SCALAR_STORE(recommend_shizuku),
-        SCALAR_STORE(kernel_phys_load),
-        SCALAR_STORE(pselect_waiter_shift),
-        SCALAR_STORE(mcast_waiter_off),
-        SCALAR_STORE(mcast_buffer_size),
-        SCALAR_STORE(mcast_task_offset),
-        SCALAR_STORE(mcast_lock_offset),
-        SCALAR_STORE(mcast_fake_lock_offset),
-        SCALAR_STORE(mcast_fake_task_offset),
-        SCALAR_STORE(mcast_lock_slots_offset),
-        SCALAR_STORE(mcast_lock_slot_count),
-        SCALAR_STORE(mcast_lock_slot_stride),
-        SCALAR_STORE(kernelsnitch_collisions),
-        SCALAR_STORE(compact_waiter),
-        SCALAR_STORE(mm_struct_sz),
-        SCALAR_STORE(cred_copy_size),
-        SCALAR_STORE(cred_usage_offset),
-        SCALAR_STORE(cred_usage_value),
-        SCALAR_STORE(cred_caps_offset),
-        SCALAR_STORE(cred_caps_count),
-        SCALAR_STORE(cred_caps_value),
-        SCALAR_STORE(cred_ref_count),
-        SCALAR_STORE(cred_ref0_offset),
-        SCALAR_STORE(cred_ref1_offset),
-        SCALAR_STORE(cred_ref2_offset),
-        SCALAR_STORE(cred_ref3_offset),
-        SCALAR_STORE(cred_ref0_image),
-        SCALAR_STORE(cred_ref1_image),
-        SCALAR_STORE(cred_ref2_image),
-        SCALAR_STORE(cred_ref3_image),
+    static constexpr struct scalar_field g_profile_map[] = {
+        scalar_store<&profile::kernel_offsets::kernel_major>("kernel_major"),
+        scalar_store<&profile::kernel_offsets::recommend_shizuku>("recommend_shizuku"),
+        scalar_store<&profile::kernel_offsets::kernel_phys_load>("kernel_phys_load"),
+        scalar_store<&profile::kernel_offsets::pselect_waiter_shift>("pselect_waiter_shift"),
+        scalar_store<&profile::kernel_offsets::mcast_waiter_off>("mcast_waiter_off"),
+        scalar_store<&profile::kernel_offsets::mcast_buffer_size>("mcast_buffer_size"),
+        scalar_store<&profile::kernel_offsets::mcast_task_offset>("mcast_task_offset"),
+        scalar_store<&profile::kernel_offsets::mcast_lock_offset>("mcast_lock_offset"),
+        scalar_store<&profile::kernel_offsets::mcast_fake_lock_offset>("mcast_fake_lock_offset"),
+        scalar_store<&profile::kernel_offsets::mcast_fake_task_offset>("mcast_fake_task_offset"),
+        scalar_store<&profile::kernel_offsets::mcast_lock_slots_offset>("mcast_lock_slots_offset"),
+        scalar_store<&profile::kernel_offsets::mcast_lock_slot_count>("mcast_lock_slot_count"),
+        scalar_store<&profile::kernel_offsets::mcast_lock_slot_stride>("mcast_lock_slot_stride"),
+        scalar_store<&profile::kernel_offsets::kernelsnitch_collisions>("kernelsnitch_collisions"),
+        scalar_store<&profile::kernel_offsets::compact_waiter>("compact_waiter"),
+        scalar_store<&profile::kernel_offsets::mm_struct_sz>("mm_struct_sz"),
+        scalar_store<&profile::kernel_offsets::cred_copy_size>("cred_copy_size"),
+        scalar_store<&profile::kernel_offsets::cred_usage_offset>("cred_usage_offset"),
+        scalar_store<&profile::kernel_offsets::cred_usage_value>("cred_usage_value"),
+        scalar_store<&profile::kernel_offsets::cred_caps_offset>("cred_caps_offset"),
+        scalar_store<&profile::kernel_offsets::cred_caps_count>("cred_caps_count"),
+        scalar_store<&profile::kernel_offsets::cred_caps_value>("cred_caps_value"),
+        scalar_store<&profile::kernel_offsets::cred_ref_count>("cred_ref_count"),
+        scalar_store<&profile::kernel_offsets::cred_ref0_offset>("cred_ref0_offset"),
+        scalar_store<&profile::kernel_offsets::cred_ref1_offset>("cred_ref1_offset"),
+        scalar_store<&profile::kernel_offsets::cred_ref2_offset>("cred_ref2_offset"),
+        scalar_store<&profile::kernel_offsets::cred_ref3_offset>("cred_ref3_offset"),
+        scalar_store<&profile::kernel_offsets::cred_ref0_image>("cred_ref0_image"),
+        scalar_store<&profile::kernel_offsets::cred_ref1_image>("cred_ref1_image"),
+        scalar_store<&profile::kernel_offsets::cred_ref2_image>("cred_ref2_image"),
+        scalar_store<&profile::kernel_offsets::cred_ref3_image>("cred_ref3_image"),
     };
 
     struct execution_field {
@@ -408,10 +411,16 @@ namespace ghostlock::legacy {
         void (*store)(profile::execution_settings &, uint32_t);
     };
 
-#define EXEC_FIELD(json_name, member)                                  \
-  {json_name, [](profile::execution_settings &o, uint32_t value) {       \
-      o.member = value;                                                \
-  }}
+    /* Same member-pointer pattern for the execution groups. */
+    template<auto Member>
+    void store_execution(profile::execution_settings &settings, uint32_t value) {
+        settings.*Member = value;
+    }
+
+    template<auto Member>
+    constexpr execution_field exec_field(const char *name) {
+        return {name, &store_execution<Member>};
+    }
 
     static int32_t parse_execution_group(std::string_view parent,
                                      std::string_view group_name, const struct execution_field *fields,
@@ -442,36 +451,36 @@ namespace ghostlock::legacy {
         if (!execution) return -1;
         memset(out, 0, sizeof(*out));
 
-        static const struct execution_field cpus[] = {
-            EXEC_FIELD("main", recommended_main_cpu),
-            EXEC_FIELD("consumer", recommended_consumer_cpu),
+        static constexpr struct execution_field cpus[] = {
+            exec_field<&profile::execution_settings::recommended_main_cpu>("main"),
+            exec_field<&profile::execution_settings::recommended_consumer_cpu>("consumer"),
         };
-        static const struct execution_field heap[] = {
-            EXEC_FIELD("prepare_max_attempts", heap_prepare_max_attempts),
-            EXEC_FIELD("prepare_timeout_ms", heap_prepare_timeout_ms),
-            EXEC_FIELD("kernelsnitch_timeout_ms", heap_kernelsnitch_timeout_ms),
+        static constexpr struct execution_field heap[] = {
+            exec_field<&profile::execution_settings::heap_prepare_max_attempts>("prepare_max_attempts"),
+            exec_field<&profile::execution_settings::heap_prepare_timeout_ms>("prepare_timeout_ms"),
+            exec_field<&profile::execution_settings::heap_kernelsnitch_timeout_ms>("kernelsnitch_timeout_ms"),
         };
-        static const struct execution_field race[] = {
-            EXEC_FIELD("route_wait_ms", race_route_wait_ms),
-            EXEC_FIELD("setup_settle_us", race_setup_settle_us),
-            EXEC_FIELD("state_poll_interval_us", race_state_poll_interval_us),
+        static constexpr struct execution_field race[] = {
+            exec_field<&profile::execution_settings::race_route_wait_ms>("route_wait_ms"),
+            exec_field<&profile::execution_settings::race_setup_settle_us>("setup_settle_us"),
+            exec_field<&profile::execution_settings::race_state_poll_interval_us>("state_poll_interval_us"),
         };
-        static const struct execution_field stages[] = {
-            EXEC_FIELD("w1_attempts", w1_attempts),
-            EXEC_FIELD("w1_settle_us", w1_settle_us),
-            EXEC_FIELD("w1_scratch_repair_attempts", w1_scratch_repair_attempts),
-            EXEC_FIELD("w2_attempts", w2_attempts),
-            EXEC_FIELD("w2_settle_us", w2_settle_us),
-            EXEC_FIELD("w3_chain_rounds", w3_chain_rounds),
-            EXEC_FIELD("w3_attempts", w3_attempts),
-            EXEC_FIELD("w3_settle_us", w3_settle_us),
+        static constexpr struct execution_field stages[] = {
+            exec_field<&profile::execution_settings::w1_attempts>("w1_attempts"),
+            exec_field<&profile::execution_settings::w1_settle_us>("w1_settle_us"),
+            exec_field<&profile::execution_settings::w1_scratch_repair_attempts>("w1_scratch_repair_attempts"),
+            exec_field<&profile::execution_settings::w2_attempts>("w2_attempts"),
+            exec_field<&profile::execution_settings::w2_settle_us>("w2_settle_us"),
+            exec_field<&profile::execution_settings::w3_chain_rounds>("w3_chain_rounds"),
+            exec_field<&profile::execution_settings::w3_attempts>("w3_attempts"),
+            exec_field<&profile::execution_settings::w3_settle_us>("w3_settle_us"),
         };
-        static const struct execution_field handoff[] = {
-            EXEC_FIELD("pre_dispatch_settle_ms", handoff_pre_dispatch_settle_ms),
-            EXEC_FIELD("module_poll_attempts", handoff_module_poll_attempts),
-            EXEC_FIELD("module_poll_interval_ms", handoff_module_poll_interval_ms),
-            EXEC_FIELD("enforce_poll_attempts", handoff_enforce_poll_attempts),
-            EXEC_FIELD("enforce_poll_interval_ms", handoff_enforce_poll_interval_ms),
+        static constexpr struct execution_field handoff[] = {
+            exec_field<&profile::execution_settings::handoff_pre_dispatch_settle_ms>("pre_dispatch_settle_ms"),
+            exec_field<&profile::execution_settings::handoff_module_poll_attempts>("module_poll_attempts"),
+            exec_field<&profile::execution_settings::handoff_module_poll_interval_ms>("module_poll_interval_ms"),
+            exec_field<&profile::execution_settings::handoff_enforce_poll_attempts>("enforce_poll_attempts"),
+            exec_field<&profile::execution_settings::handoff_enforce_poll_interval_ms>("enforce_poll_interval_ms"),
         };
         if (parse_execution_group(*execution, "recommended_cpus", cpus,
                                   std::size(cpus), out) ||
@@ -490,21 +499,21 @@ namespace ghostlock::legacy {
             return -1;
         const auto routes = json_value_span(*routes_value);
         if (!routes) return -1;
-        static const struct execution_field tcp[] = {
-            EXEC_FIELD("attempts", tcp_attempts),
-            EXEC_FIELD("arm_sequence", tcp_arm_sequence),
-            EXEC_FIELD("post_receive_hold_iterations", tcp_post_receive_hold_iterations),
+        static constexpr struct execution_field tcp[] = {
+            exec_field<&profile::execution_settings::tcp_attempts>("attempts"),
+            exec_field<&profile::execution_settings::tcp_arm_sequence>("arm_sequence"),
+            exec_field<&profile::execution_settings::tcp_post_receive_hold_iterations>("post_receive_hold_iterations"),
         };
-        static const struct execution_field select_stack[] = {
-            EXEC_FIELD("enter_delay_us", select_enter_delay_us),
-            EXEC_FIELD("timeout_us", select_timeout_us),
-            EXEC_FIELD("consumer_max_calls", select_consumer_max_calls),
-            EXEC_FIELD("consumer_burst_calls", select_consumer_burst_calls),
+        static constexpr struct execution_field select_stack[] = {
+            exec_field<&profile::execution_settings::select_enter_delay_us>("enter_delay_us"),
+            exec_field<&profile::execution_settings::select_timeout_us>("timeout_us"),
+            exec_field<&profile::execution_settings::select_consumer_max_calls>("consumer_max_calls"),
+            exec_field<&profile::execution_settings::select_consumer_burst_calls>("consumer_burst_calls"),
         };
-        static const struct execution_field multicast[] = {
-            EXEC_FIELD("ready_timeout_ms", multicast_ready_timeout_ms),
-            EXEC_FIELD("post_requeue_settle_us", multicast_post_requeue_settle_us),
-            EXEC_FIELD("post_adjust_settle_us", multicast_post_adjust_settle_us),
+        static constexpr struct execution_field multicast[] = {
+            exec_field<&profile::execution_settings::multicast_ready_timeout_ms>("ready_timeout_ms"),
+            exec_field<&profile::execution_settings::multicast_post_requeue_settle_us>("post_requeue_settle_us"),
+            exec_field<&profile::execution_settings::multicast_post_adjust_settle_us>("post_adjust_settle_us"),
         };
         return parse_execution_group(*routes, "tcp_zerocopy", tcp,
                                      std::size(tcp), out) ||
@@ -516,7 +525,6 @@ namespace ghostlock::legacy {
                    : 0;
     }
 
-#undef EXEC_FIELD
 
     /* Fill `out` from one JSON object. Fields absent from the JSON keep whatever
  * the caller put into `out` (zeroed for a fresh table, or a built-in entry the
@@ -542,16 +550,16 @@ namespace ghostlock::legacy {
 
     static void decode_multicast_branch(std::string_view branch,
                                         profile::kernel_offsets *out, int64_t *num) {
-        static const struct scalar_field kMcastFields[] = {
-            SCALAR_ALIAS("waiter_off", mcast_waiter_off),
-            SCALAR_ALIAS("buffer_size", mcast_buffer_size),
-            SCALAR_ALIAS("task_offset", mcast_task_offset),
-            SCALAR_ALIAS("lock_offset", mcast_lock_offset),
-            SCALAR_ALIAS("fake_lock_offset", mcast_fake_lock_offset),
-            SCALAR_ALIAS("fake_task_offset", mcast_fake_task_offset),
-            SCALAR_ALIAS("lock_slots_offset", mcast_lock_slots_offset),
-            SCALAR_ALIAS("lock_slot_count", mcast_lock_slot_count),
-            SCALAR_ALIAS("lock_slot_stride", mcast_lock_slot_stride),
+        static constexpr struct scalar_field kMcastFields[] = {
+            scalar_store<&profile::kernel_offsets::mcast_waiter_off>("waiter_off"),
+            scalar_store<&profile::kernel_offsets::mcast_buffer_size>("buffer_size"),
+            scalar_store<&profile::kernel_offsets::mcast_task_offset>("task_offset"),
+            scalar_store<&profile::kernel_offsets::mcast_lock_offset>("lock_offset"),
+            scalar_store<&profile::kernel_offsets::mcast_fake_lock_offset>("fake_lock_offset"),
+            scalar_store<&profile::kernel_offsets::mcast_fake_task_offset>("fake_task_offset"),
+            scalar_store<&profile::kernel_offsets::mcast_lock_slots_offset>("lock_slots_offset"),
+            scalar_store<&profile::kernel_offsets::mcast_lock_slot_count>("lock_slot_count"),
+            scalar_store<&profile::kernel_offsets::mcast_lock_slot_stride>("lock_slot_stride"),
         };
         for (const struct scalar_field &field: kMcastFields) {
             const auto v = json_member_value(branch, field.name);
