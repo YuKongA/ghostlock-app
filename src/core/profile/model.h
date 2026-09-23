@@ -7,6 +7,7 @@
 #include <array>
 #include <cstring>
 #include <string_view>
+#include <utility>
 
 namespace ghostlock::profile {
     /* PROFILE-SUGGEST-01: only kernel geometry (kernel_major, symbol and struct
@@ -44,13 +45,13 @@ namespace ghostlock::profile {
     };
 
     /* Wire values for the v2 binary transport and the v1 JSON converter. */
-    inline constexpr uint8_t kRouteAuto = static_cast<uint8_t>(RouteKind::Auto);
+    inline constexpr uint8_t kRouteAuto = std::to_underlying(RouteKind::Auto);
     inline constexpr uint8_t kRouteTcpZerocopy =
-            static_cast<uint8_t>(RouteKind::TcpZerocopy);
+            std::to_underlying(RouteKind::TcpZerocopy);
     inline constexpr uint8_t kRouteSelectStack =
-            static_cast<uint8_t>(RouteKind::SelectStack);
+            std::to_underlying(RouteKind::SelectStack);
     inline constexpr uint8_t kRouteMulticastWaiter =
-            static_cast<uint8_t>(RouteKind::MulticastWaiter);
+            std::to_underlying(RouteKind::MulticastWaiter);
 
     /* Single native route catalog: token <-> wire value. Adding a route means
      * one entry here plus its RoutePolicy / procedure. */

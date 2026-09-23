@@ -69,13 +69,11 @@ namespace ghostlock::session {
         snprintf(resolved.data(), resolved.size(), "%.*s", static_cast<int32_t>(path.size()),
                  path.data());
         const bool opened = for_each_line(resolved.data(), [&](std::string_view line) {
-            if (line.find("[+] KernelSU module loaded") != std::string_view::npos ||
-                line.find("[+] KernelSU already loaded") !=
-                std::string_view::npos) {
+            if (line.contains("[+] KernelSU module loaded") ||
+                line.contains("[+] KernelSU already loaded")) {
                 loaded = true;
             }
-            if (line.find("[!] KernelSU module not loaded") !=
-                std::string_view::npos) {
+            if (line.contains("[!] KernelSU module not loaded")) {
                 failed = true;
             }
         });
