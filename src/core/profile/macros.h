@@ -1,28 +1,13 @@
 #ifndef GHOSTLOCK_PROFILE_MACROS_H
 #define GHOSTLOCK_PROFILE_MACROS_H
 
-/* The home dir and root script path are read from the session snapshot at
- * every syscall/exec boundary. Keeping the reads inline means the call
- * sites pass stable c_str() pointers exactly where the kernel or exec
- * needs them and nowhere else, and no process-global path state is
- * exposed outside the session (CPP12/SESSION-01). */
-
-#include "common.h"
-#include "kernel/runtime_struct_offsets.h"
-
-/* runtime_struct_offsets.h resolves every symbol/task offset from the loaded
- * profile and falls back to the compile-time target.h defaults. No macro here
- * re-reads the profile; consumers use the TargetProfile accessors. */
-
-/* VR.ko anti-root fallback defines */
-#ifndef VR_TAG_A_OFF
-#define VR_TAG_A_OFF           0x06
-#endif
+/* Build-time overridable VR.ko tag-B offset, consumed by
+ * ExploitProcedure::w2()'s anti-root bypass. It stays a define (not a
+ * constexpr) so a device with a different vr.ko layout can override it with
+ * -DVR_TAG_B_OFF=...; the default matches the verified vivo 6.1 tree. Tag A
+ * rides the zeroed thread_info.flags word, so it needs no separate offset. */
 #ifndef VR_TAG_B_OFF
-#define VR_TAG_B_OFF           0x2c
-#endif
-#ifndef VR_SYSCALL_TP_FLAG
-#define VR_SYSCALL_TP_FLAG     0x400ULL
+#define VR_TAG_B_OFF 0x2c
 #endif
 
 #endif

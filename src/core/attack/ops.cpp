@@ -9,7 +9,6 @@
 #include "attack/ops.hpp"
 #include "support/fatal_error.hpp"
 
-#include "profile/macros.h"
 #include "session/exploit_session.hpp"
 
 #include <algorithm>
