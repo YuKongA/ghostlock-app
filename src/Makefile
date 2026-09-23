@@ -69,6 +69,13 @@ LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 HOST_CC ?= cc
 HOST_CXX ?= c++
 HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
+# The size-stripping link flag is spelled differently per linker: Darwin's ld
+# uses -dead_strip, while GNU ld on a Linux host rejects it and needs
+# --gc-sections instead. Keep each spelling in its own variable so the commas
+# inside the flags are not parsed as $(if ...) argument separators.
+HOST_LD_GC_DARWIN := -Wl,-dead_strip
+HOST_LD_GC_ELF := -Wl,--gc-sections
+HOST_LD_GC := $(if $(filter Darwin,$(shell uname -s)),$(HOST_LD_GC_DARWIN),$(HOST_LD_GC_ELF))
 HOST_BUILD_DIR := $(BUILD_ROOT)/host-test
 
 # Every generated artifact stays under build/ so nothing lands in the repo root.
@@ -163,7 +170,7 @@ $(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/pro
 
 $(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/route/route_policy.hpp core/route/route_status.h core/profile/model.h core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections -Wl,-dead_strip -Icore core/tests/route_policy_test.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/route_policy_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/route/route_lifecycle.hpp core/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -190,7 +197,7 @@ $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: core/tests/kernelsnitch_scan_bo
 
 $(HOST_BUILD_DIR)/route_controller_test: core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections -Wl,-dead_strip -pthread -Icore core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -pthread -Icore core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/pi_race_test: core/tests/pi_race_test.cpp core/race/pi_race.cpp core/race/pi_race.h core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
