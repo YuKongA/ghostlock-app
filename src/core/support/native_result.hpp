@@ -2,6 +2,7 @@
 #define GHOSTLOCK_NATIVE_RESULT_HPP
 
 #include <cerrno>
+#include <cstdint>
 #include <expected>
 #include <system_error>
 
