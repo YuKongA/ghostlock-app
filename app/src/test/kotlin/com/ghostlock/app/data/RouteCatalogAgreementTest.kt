@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

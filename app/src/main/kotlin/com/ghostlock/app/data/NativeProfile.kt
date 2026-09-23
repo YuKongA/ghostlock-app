@@ -1,14 +1,17 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.route.NoRouteConfig
+import com.ghostlock.app.data.route.RouteConfig
+import com.ghostlock.app.data.route.RouteKind
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Typed mirror of the native `struct kernel_offsets` (GLK1 v4: fixed common
+ * Typed mirror of the native `struct kernel_offsets` (v2: fixed common
  * slots + a per-route section). Route-specific parameters live in [routeConfig],
  * not in the common document. The common slot order must match
- * `src/core/profile/binary.cpp` `kCommonFields`; route keys must match its
- * `kXxxFields`.
+ * `src/core/profile/binary.cpp` `kCommonFields`; route keys are owned by the
+ * per-route [RouteConfig] subtype.
  */
 internal data class NativeProfileDocument(
     val release: String,
@@ -32,7 +35,7 @@ internal data class NativeProfileDocument(
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
         require(releaseBytes.size <= 0xffff) { "release is too long" }
         val common = flattenCommon()
-        val route = routeEntries()
+        val route = routeConfig.entries()
         var size = HeaderSize + releaseBytes.size + common.size * 8 + 1
         for ((key, _) in route) size += 1 + key.toByteArray(Charsets.UTF_8).size + 8
         val buffer = ByteBuffer
@@ -89,54 +92,29 @@ internal data class NativeProfileDocument(
             exec.handoffPreDispatchSettleMs, exec.handoffModulePollAttempts,
             exec.handoffModulePollIntervalMs, exec.handoffEnforcePollAttempts,
             exec.handoffEnforcePollIntervalMs,
+            exec.consumerMaxCalls, exec.consumerBurstCalls,
             safeMode,
         )
     }
 
-    /** Route-specific entries emitted from [routeConfig] (keys shared with the
-     * native route table). */
-    private fun routeEntries(): List<Pair<String, Long>> = when (val cfg = routeConfig) {
-        is TcpConfig -> listOf(
-            "tcp_attempts" to cfg.attempts,
-            "tcp_arm_sequence" to cfg.armSequence,
-            "tcp_post_receive_hold_iterations" to cfg.postReceiveHoldIterations,
-        )
-
-        is SelectConfig -> listOf(
-            "pselect_waiter_shift" to cfg.waiterShift,
-            "select_enter_delay_us" to cfg.enterDelayUs,
-            "select_timeout_us" to cfg.timeoutUs,
-            "select_consumer_max_calls" to cfg.consumerMaxCalls,
-            "select_consumer_burst_calls" to cfg.consumerBurstCalls,
-        )
-
-        is MulticastConfig -> listOf(
-            "mcast_waiter_off" to cfg.geometry.waiterOff,
-            "mcast_buffer_size" to cfg.geometry.bufferSize,
-            "mcast_task_offset" to cfg.geometry.taskOffset,
-            "mcast_lock_offset" to cfg.geometry.lockOffset,
-            "mcast_fake_lock_offset" to cfg.geometry.fakeLockOffset,
-            "mcast_fake_task_offset" to cfg.geometry.fakeTaskOffset,
-            "mcast_lock_slots_offset" to cfg.geometry.lockSlotsOffset,
-            "mcast_lock_slot_count" to cfg.geometry.lockSlotCount,
-            "mcast_lock_slot_stride" to cfg.geometry.lockSlotStride,
-            "off_mcast_fake_bss" to cfg.fakeBssImageOffset,
-            "multicast_resident" to cfg.resident,
-            "multicast_ready_timeout_ms" to cfg.readyTimeoutMs,
-            "multicast_post_requeue_settle_us" to cfg.postRequeueSettleUs,
-            "multicast_post_adjust_settle_us" to cfg.postAdjustSettleUs,
-        )
-
-        NoRouteConfig -> emptyList()
-    }
-
     companion object {
-        const val Magic = 0x314B4C47
-        const val Version: Short = 4
+        const val Magic = 0x0D000721
+        const val Version: Short = 2
         private const val HeaderSize = 12
-        private const val CommonFieldCount = 66
+        private const val CommonFieldCount = 68
 
         fun routeKind(route: String?): Int = RouteKind.fromToken(route)?.wire ?: 0
+
+        /** Byte offset of the trailing common `safe_mode` slot in a v2 document,
+         * or null when the blob is too short. The route section follows the
+         * common slots, so the old `size - 16` shortcut no longer applies. */
+        fun safeModeOffset(document: ByteArray): Int? {
+            if (document.size < HeaderSize) return null
+            val releaseLength =
+                (document[10].toInt() and 0xff) or ((document[11].toInt() and 0xff) shl 8)
+            val offset = HeaderSize + releaseLength + (CommonFieldCount - 1) * 8
+            return if (offset + 8 <= document.size) offset else null
+        }
 
         fun fromBinary(bytes: ByteArray): NativeProfileDocument? {
             if (bytes.size < HeaderSize) return null
@@ -152,7 +130,7 @@ internal data class NativeProfileDocument(
             val releaseBytes = ByteArray(releaseLength)
             buffer.get(releaseBytes)
             val common = LongArray(CommonFieldCount) { buffer.long }
-            var routeConfig: RouteConfig = emptyRouteConfig(routeKind)
+            var routeConfig: RouteConfig = RouteKind.fromWire(routeKind)?.emptyConfig() ?: NoRouteConfig
             val count = buffer.get().toInt() and 0xff
             repeat(count) {
                 if (buffer.remaining() < 1) return null
@@ -160,7 +138,7 @@ internal data class NativeProfileDocument(
                 if (buffer.remaining() < keyLength + 8) return null
                 val keyBytes = ByteArray(keyLength)
                 buffer.get(keyBytes)
-                routeConfig = applyRouteEntry(routeConfig, String(keyBytes, Charsets.UTF_8), buffer.long)
+                routeConfig = routeConfig.apply(String(keyBytes, Charsets.UTF_8), buffer.long)
             }
             return fromCommon(
                 release = String(releaseBytes, Charsets.UTF_8),
@@ -171,18 +149,6 @@ internal data class NativeProfileDocument(
                 f = common,
                 routeConfig = routeConfig,
             )
-        }
-
-        private fun emptyRouteConfig(routeKind: Int): RouteConfig = when (RouteKind.fromWire(routeKind)) {
-            RouteKind.TCP_ZEROCOPY -> TcpConfig(0L, 0L, 0L)
-            RouteKind.SELECT_STACK -> SelectConfig(0L, 0L, 0L, 0L, 0L)
-            RouteKind.MULTICAST_WAITER -> MulticastConfig(
-                geometry = MulticastGeometry(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
-                fakeBssImageOffset = 0L, resident = 0L,
-                readyTimeoutMs = 0L, postRequeueSettleUs = 0L, postAdjustSettleUs = 0L,
-            )
-
-            else -> NoRouteConfig
         }
 
         /* Common slot indices mirror flattenCommon() one-to-one. */
@@ -235,57 +201,12 @@ internal data class NativeProfileDocument(
                 handoffPreDispatchSettleMs = f[60], handoffModulePollAttempts = f[61],
                 handoffModulePollIntervalMs = f[62], handoffEnforcePollAttempts = f[63],
                 handoffEnforcePollIntervalMs = f[64],
+                consumerMaxCalls = f[65],
+                consumerBurstCalls = f[66],
             ),
-            safeMode = f[65],
+            safeMode = f[67],
             routeConfig = routeConfig,
         )
-
-        private fun applyRouteEntry(
-            config: RouteConfig,
-            key: String,
-            value: Long,
-        ): RouteConfig = when (config) {
-            is TcpConfig -> when (key) {
-                "tcp_attempts" -> config.copy(attempts = value)
-                "tcp_arm_sequence" -> config.copy(armSequence = value)
-                "tcp_post_receive_hold_iterations" -> config.copy(postReceiveHoldIterations = value)
-                else -> config
-            }
-
-            is SelectConfig -> when (key) {
-                "pselect_waiter_shift" -> config.copy(waiterShift = value)
-                "select_enter_delay_us" -> config.copy(enterDelayUs = value)
-                "select_timeout_us" -> config.copy(timeoutUs = value)
-                "select_consumer_max_calls" -> config.copy(consumerMaxCalls = value)
-                "select_consumer_burst_calls" -> config.copy(consumerBurstCalls = value)
-                else -> config
-            }
-
-            is MulticastConfig -> when (key) {
-                "mcast_waiter_off" -> config.copy(geometry = config.geometry.copy(waiterOff = value))
-                "mcast_buffer_size" -> config.copy(geometry = config.geometry.copy(bufferSize = value))
-                "mcast_task_offset" -> config.copy(geometry = config.geometry.copy(taskOffset = value))
-                "mcast_lock_offset" -> config.copy(geometry = config.geometry.copy(lockOffset = value))
-                "mcast_fake_lock_offset" ->
-                    config.copy(geometry = config.geometry.copy(fakeLockOffset = value))
-                "mcast_fake_task_offset" ->
-                    config.copy(geometry = config.geometry.copy(fakeTaskOffset = value))
-                "mcast_lock_slots_offset" ->
-                    config.copy(geometry = config.geometry.copy(lockSlotsOffset = value))
-                "mcast_lock_slot_count" ->
-                    config.copy(geometry = config.geometry.copy(lockSlotCount = value))
-                "mcast_lock_slot_stride" ->
-                    config.copy(geometry = config.geometry.copy(lockSlotStride = value))
-                "off_mcast_fake_bss" -> config.copy(fakeBssImageOffset = value)
-                "multicast_resident" -> config.copy(resident = value)
-                "multicast_ready_timeout_ms" -> config.copy(readyTimeoutMs = value)
-                "multicast_post_requeue_settle_us" -> config.copy(postRequeueSettleUs = value)
-                "multicast_post_adjust_settle_us" -> config.copy(postAdjustSettleUs = value)
-                else -> config
-            }
-
-            NoRouteConfig -> config
-        }
 
         /** Builds the document from resolved profile values by dotted path. */
         fun from(
@@ -295,45 +216,7 @@ internal data class NativeProfileDocument(
             value: (String) -> Long?,
         ): NativeProfileDocument {
             fun v(path: String): Long = value(path) ?: 0L
-            val routeConfig: RouteConfig = when (RouteKind.fromToken(route)) {
-                RouteKind.TCP_ZEROCOPY -> TcpConfig(
-                    attempts = v("execution.routes.tcp_zerocopy.attempts"),
-                    armSequence = v("execution.routes.tcp_zerocopy.arm_sequence"),
-                    postReceiveHoldIterations =
-                        v("execution.routes.tcp_zerocopy.post_receive_hold_iterations"),
-                )
-
-                RouteKind.SELECT_STACK -> SelectConfig(
-                    waiterShift = v("pselect_waiter_shift"),
-                    enterDelayUs = v("execution.routes.select_stack.enter_delay_us"),
-                    timeoutUs = v("execution.routes.select_stack.timeout_us"),
-                    consumerMaxCalls = v("execution.routes.select_stack.consumer_max_calls"),
-                    consumerBurstCalls = v("execution.routes.select_stack.consumer_burst_calls"),
-                )
-
-                RouteKind.MULTICAST_WAITER -> MulticastConfig(
-                    geometry = MulticastGeometry(
-                        waiterOff = v("mcast.waiter_off"),
-                        bufferSize = v("mcast.buffer_size"),
-                        taskOffset = v("mcast.task_offset"),
-                        lockOffset = v("mcast.lock_offset"),
-                        fakeLockOffset = v("mcast.fake_lock_offset"),
-                        fakeTaskOffset = v("mcast.fake_task_offset"),
-                        lockSlotsOffset = v("mcast.lock_slots_offset"),
-                        lockSlotCount = v("mcast.lock_slot_count"),
-                        lockSlotStride = v("mcast.lock_slot_stride"),
-                    ),
-                    fakeBssImageOffset = v("offset.mcast_fake_bss"),
-                    resident = v("multicast_resident"),
-                    readyTimeoutMs = v("execution.routes.multicast_waiter.ready_timeout_ms"),
-                    postRequeueSettleUs =
-                        v("execution.routes.multicast_waiter.post_requeue_settle_us"),
-                    postAdjustSettleUs =
-                        v("execution.routes.multicast_waiter.post_adjust_settle_us"),
-                )
-
-                else -> NoRouteConfig
-            }
+            val routeConfig = RouteKind.fromToken(route)?.buildConfig(::v) ?: NoRouteConfig
             return NativeProfileDocument(
                 release = release,
                 routeKind = routeKind(route),
@@ -412,6 +295,8 @@ internal data class NativeProfileDocument(
                     handoffModulePollIntervalMs = v("execution.handoff.module_poll_interval_ms"),
                     handoffEnforcePollAttempts = v("execution.handoff.enforce_poll_attempts"),
                     handoffEnforcePollIntervalMs = v("execution.handoff.enforce_poll_interval_ms"),
+                    consumerMaxCalls = v("execution.routes.select_stack.consumer_max_calls"),
+                    consumerBurstCalls = v("execution.routes.select_stack.consumer_burst_calls"),
                 ),
                 safeMode = 0,
                 routeConfig = routeConfig,
@@ -469,18 +354,6 @@ internal data class KernelOffsetTable(
     val slideBootId: Long,
 )
 
-internal data class MulticastGeometry(
-    val waiterOff: Long,
-    val bufferSize: Long,
-    val taskOffset: Long,
-    val lockOffset: Long,
-    val fakeLockOffset: Long,
-    val fakeTaskOffset: Long,
-    val lockSlotsOffset: Long,
-    val lockSlotCount: Long,
-    val lockSlotStride: Long,
-)
-
 internal data class ExecutionTuning(
     val recommendedMainCpu: Long,
     val recommendedConsumerCpu: Long,
@@ -503,32 +376,6 @@ internal data class ExecutionTuning(
     val handoffModulePollIntervalMs: Long,
     val handoffEnforcePollAttempts: Long,
     val handoffEnforcePollIntervalMs: Long,
-)
-
-/** Route-specific configuration; one subtype per route. */
-internal sealed interface RouteConfig
-
-internal object NoRouteConfig : RouteConfig
-
-internal data class TcpConfig(
-    val attempts: Long,
-    val armSequence: Long,
-    val postReceiveHoldIterations: Long,
-) : RouteConfig
-
-internal data class SelectConfig(
-    val waiterShift: Long,
-    val enterDelayUs: Long,
-    val timeoutUs: Long,
     val consumerMaxCalls: Long,
     val consumerBurstCalls: Long,
-) : RouteConfig
-
-internal data class MulticastConfig(
-    val geometry: MulticastGeometry,
-    val fakeBssImageOffset: Long,
-    val resident: Long,
-    val readyTimeoutMs: Long,
-    val postRequeueSettleUs: Long,
-    val postAdjustSettleUs: Long,
-) : RouteConfig
+)

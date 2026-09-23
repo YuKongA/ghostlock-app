@@ -484,9 +484,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             val profileBlob = profileController.nativeDocument(config)
                 ?: error("profile is unavailable for $release")
-            // GLK1 v3: the second-to-last field is safe_mode (little-endian).
-            if (safeModeEnabled && profileBlob.size >= 16) {
-                profileBlob[profileBlob.size - 16] = 1
+            // v2: safe_mode is the last common slot (little-endian); the route
+            // section follows it, so the offset comes from the header.
+            if (safeModeEnabled) {
+                NativeProfileDocument.safeModeOffset(profileBlob)?.let { profileBlob[it] = 1 }
             }
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()

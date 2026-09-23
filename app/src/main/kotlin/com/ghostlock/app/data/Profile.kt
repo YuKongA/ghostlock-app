@@ -1,22 +1,9 @@
 package com.ghostlock.app.data
 
-/**
- * Semantic route selector, mirroring the native `kRoute*` wire values.
- * `0` (native `kRouteAuto`) is intentionally absent: a resolved profile must
- * declare its route explicitly.
- */
-internal enum class RouteKind(val wire: Int, val token: String) {
-    TCP_ZEROCOPY(1, "tcp_zerocopy"),
-    SELECT_STACK(2, "select_stack"),
-    MULTICAST_WAITER(3, "multicast_waiter"),
-    ;
-
-    companion object {
-        fun fromToken(token: String?): RouteKind? = values().firstOrNull { it.token == token }
-
-        fun fromWire(wire: Int): RouteKind? = values().firstOrNull { it.wire == wire }
-    }
-}
+import com.ghostlock.app.data.route.MulticastConfig
+import com.ghostlock.app.data.route.MulticastGeometry
+import com.ghostlock.app.data.route.RouteKind
+import com.ghostlock.app.data.route.SelectConfig
 
 /** Read-only multicast waiter geometry, mirroring native `MulticastWaiterLayout`. */
 internal data class MulticastWaiterLayout(
@@ -42,11 +29,10 @@ internal data class TcpZerocopyLayout(val compactWaiter: Boolean)
  * Single authority for one fully resolved profile.
  *
  * The semantic identity (route enum, capabilities, layout views) lives here,
- * while [NativeProfileDocument] remains the GLK1 v2 codec so the verified byte
+ * while [NativeProfileDocument] remains the v2 codec so the verified byte
  * layout stays authoritative. `toBinary()` must stay byte-identical to the
  * previous direct `NativeProfileDocument.toBinary()` output.
- *
- * See docs/analysis/profile-entry-decoupling.md section 7.
+
  */
 internal data class Profile(
     val document: NativeProfileDocument,
@@ -117,7 +103,7 @@ internal data class Profile(
             Profile(document, invalidPaths)
         }
 
-        /** Reverse: GLK1 bytes -> authority (UI / debug / tests). */
+        /** Reverse: v2 bytes -> authority (UI / debug / tests). */
         fun fromBinary(bytes: ByteArray): Profile? =
             NativeProfileDocument.fromBinary(bytes)?.let { fromNativeDocument(it) }
 

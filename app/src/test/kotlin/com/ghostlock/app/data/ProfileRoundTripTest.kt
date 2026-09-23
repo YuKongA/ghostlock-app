@@ -1,12 +1,13 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ProfileRoundTripTest {
-    /* Route-independent values plus per-route values. GLK1 v4 only carries the
+    /* Route-independent values plus per-route values. v2 only carries the
      * route section of the document's own route. */
     private val common = mapOf(
         "kernel_major" to 6L,
@@ -21,6 +22,10 @@ class ProfileRoundTripTest {
         "execution.recommended_cpus.main" to 0L,
         "execution.recommended_cpus.consumer" to 1L,
         "execution.stages.w1_attempts" to 3L,
+        /* Drives the shared consumer thread, so it must survive on every
+         * route (the multicast primitive uses the same PI consumer). */
+        "execution.routes.select_stack.consumer_max_calls" to 1L,
+        "execution.routes.select_stack.consumer_burst_calls" to 1L,
     )
     private val tcpValues = common + mapOf(
         "execution.routes.tcp_zerocopy.arm_sequence" to 1L,
@@ -82,6 +87,10 @@ class ProfileRoundTripTest {
         assertEquals(0x4000L, profile.mmStructStride(fallback = 1L))
         assertEquals(264L, profile.multicastLayout().waiterOffset)
         assertEquals(0x2000L, profile.multicastLayout().fakeBssImageOffset)
+        /* Consumer cadence rides the common slot, not the multicast section. */
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(1L, decoded.execution.consumerMaxCalls)
+        assertEquals(1L, decoded.execution.consumerBurstCalls)
 
         assertArrayEquals(bytes, profile.toBinary())
     }
@@ -93,6 +102,18 @@ class ProfileRoundTripTest {
         assertEquals(RouteKind.SELECT_STACK, profile.route)
         assertEquals(-2L, profile.selectStackLayout().waiterShift)
         assertArrayEquals(bytes, profile.toBinary())
+    }
+
+    @Test
+    fun `safe mode patch targets the trailing common slot`() {
+        val original = document("multicast_waiter", null, multicastValues)
+        val bytes = original.toBinary()
+        val offset = NativeProfileDocument.safeModeOffset(bytes)!!
+        bytes[offset] = 1
+
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(1L, decoded.safeMode)
+        assertEquals(original.copy(safeMode = 1L), decoded)
     }
 
     @Test

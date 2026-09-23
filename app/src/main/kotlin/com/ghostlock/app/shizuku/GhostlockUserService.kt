@@ -1,5 +1,6 @@
 package com.ghostlock.app.shizuku
 
+import com.ghostlock.app.data.NativeProfileDocument
 import android.content.Context
 import android.os.Process
 import androidx.annotation.Keep
@@ -56,9 +57,10 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
-                // GLK1 v3: the second-to-last field is safe_mode (little-endian).
-                if (safeMode && profileBlob.size >= 16) {
-                    profileBlob[profileBlob.size - 16] = 1
+                // v2: safe_mode is the last common slot (little-endian); the
+                // route section follows it, so the offset comes from the header.
+                if (safeMode) {
+                    NativeProfileDocument.safeModeOffset(profileBlob)?.let { profileBlob[it] = 1 }
                 }
                 val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
                 if (!debugDir.isNullOrEmpty()) {
