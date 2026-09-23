@@ -1,6 +1,7 @@
 #ifndef GHOSTLOCK_CPP_LINK_PROBE_H
 #define GHOSTLOCK_CPP_LINK_PROBE_H
 
+#include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
