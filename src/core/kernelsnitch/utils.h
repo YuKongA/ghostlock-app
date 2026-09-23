@@ -44,18 +44,14 @@
 #define COLOR_YELLOW "\033[33m"
 #define COLOR_DEFAULT "\033[0m"
 
-#define SYSCHK(x) ({ \
-        __typeof__(x) __res = (x); \
-        if (__res == (__typeof__(x))-1) \
+/* The upstream statement expression became an immediately-invoked lambda:
+ * standard C++, one evaluation of the expression, same log line. */
+#define SYSCHK(x) ([&] { \
+        auto __res = (x); \
+        if (__res == (decltype(__res))-1) \
             pr_error("SYSCHK(" #x "): %m\n"); \
-        __res; \
-    })
-#define SYSCHK_pr(x, fmt) ({ \
-        __typeof__(x) __res = (x); \
-        if (__res == (__typeof__(x))-1) \
-            pr_error(fmt); \
-        __res; \
-    })
+        return __res; \
+    }())
 
 #ifdef PANIC
 #define PR_ASSERT pr_error
