@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,29 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/* Field reference and validation rules live in the repository docs; pick the
+ * page matching the system language. */
+private const val ProfileDocsBase =
+    "https://github.com/YuKongA/ghostlock-app/blob/main/docs/kernel_profiles/"
+
+private fun profileDocsUrl(): String =
+    ProfileDocsBase + if (Locale.getDefault().language == "zh") {
+        "PROFILE_SCHEMA_ZH.md"
+    } else {
+        "PROFILE_SCHEMA.md"
+    }
+
+@Composable
+private fun ProfileDocsCard(onOpen: () -> Unit) {
+    Card {
+        ArrowPreference(
+            title = stringResource(R.string.profile_docs),
+            summary = stringResource(R.string.profile_docs_summary),
+            onClick = onOpen,
+        )
+    }
+}
 
 /**
  * Advanced screen: offsets tooling, parameter overrides and the debug-only
@@ -161,6 +185,7 @@ internal fun ParameterScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val uriHandler = LocalUriHandler.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -221,6 +246,9 @@ internal fun ParameterScreen(
                         onClick = actions::onOpenProfileOverrides,
                     )
                 }
+            }
+            item(key = "docs") {
+                ProfileDocsCard { uriHandler.openUri(profileDocsUrl()) }
             }
             item(key = "actions") {
                 TextButton(
@@ -658,6 +686,7 @@ internal fun ProfileOverrideScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val uriHandler = LocalUriHandler.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -748,6 +777,9 @@ internal fun ProfileOverrideScreen(
                         onClick = actions::onOpenAdvancedOverrides,
                     )
                 }
+            }
+            item(key = "docs") {
+                ProfileDocsCard { uriHandler.openUri(profileDocsUrl()) }
             }
             item(key = "actions") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

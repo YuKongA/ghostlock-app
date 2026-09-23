@@ -97,6 +97,8 @@
     <string name="parameters_summary">Load configuration and parameter overrides</string>
     <string name="override_summary">Edit the parameters of the loaded profile</string>
     <string name="override_general">General overrides</string>
+    <string name="profile_docs">Profile documentation</string>
+    <string name="profile_docs_summary">Field reference and validation rules on GitHub</string>
     <string name="override_export">Export configuration</string>
     <string name="override_export_summary">Save the merged profile as a file</string>
     <string name="override_export_done">Configuration exported</string>

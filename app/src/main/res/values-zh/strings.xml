@@ -97,6 +97,8 @@
     <string name="parameters_summary">加载配置与参数覆盖</string>
     <string name="override_summary">编辑已加载配置的参数</string>
     <string name="override_general">一般参数覆盖</string>
+    <string name="profile_docs">配置文档</string>
+    <string name="profile_docs_summary">在 GitHub 上查看字段含义与校验规则</string>
     <string name="override_export">导出配置</string>
     <string name="override_export_summary">将合并后的 profile 保存为文件</string>
     <string name="override_export_done">配置已导出</string>
