@@ -33,25 +33,31 @@
 退出码 0、0 findings；`tools/cmp_disasm.py` 对 HEAD 前后二进制 8/8 攻击函数
 **IDENTICAL (strict)**。
 
-## 批次 2：攻击路径局部（需 `cmp_disasm.py` + 设备门禁）
+## 批次 2：攻击路径局部（已实施，待真机门禁）
 
-- [ ] `support/util.cpp:12-20` 9 个访问宏（`ks`/`mm_objs_per_slab`/`skb_buf`/`prepare_ctx`…）
-  → 引用别名（`mm_objs_per_slab` 可写，引用成立）
-- [ ] `support/util.cpp:607-626` `pcp_shaping_sv[2]`、`reclaim_sv`、`iovec`/`msghdr` 的 C 数组 +
-  `memset` → `std::array` + `{}` 初始化
-- [ ] `session/victim_process.cpp:160` `int32_t p1[2], p2[2], p3[2]` → `std::array`
-- [ ] `session/victim_process.cpp:121` fd 上限硬编码 1024 → `getrlimit(RLIMIT_NOFILE)`
-  （顺带修 >1024 fd 不置 CLOEXEC 的边角）
-- [ ] `route/select_stack_route.cpp:181,268` `delays[8]`/`standard_io_backup[3]` →
-  `inline constexpr std::array`；`select_stack_route.cpp:190,194,199` C 风格 cast → `static_cast`
-- [ ] `memory/heap_context.h:37` `ReclaimPair{int32_t fd[2]}` → `std::array<int32_t,2>`
-- [ ] `route/exploit_procedure.cpp:183` `char mod[256]` + `fgets` + `strncasecmp` →
-  `std::array` + `string_view::starts_with`（W2 判定路径，此前保留，可再评）
-- [ ] `attack/ops.cpp:437-508` `perf_find_task`：`pe{}`、`4096*(1+32)`/`4096*32` 命名常量、
-  `__sync_synchronize()` → `std::atomic_thread_fence`、`cands[256]` → `std::array`、
-  O(n²) 计票 → `std::count`（算法不变）
-- [ ] `kernelsnitch/utils.h:45-56` `SYSCHK` GNU statement expression（45 处）→ 函数模板 + 薄宏
-  保留 `#x` 文本；`PAGE_SIZE` 回退宏（唯一 `-Wsign-conversion` 来源）另行评估
+- [x] `support/util.cpp:12-20` 9 个访问宏（`ks`/`mm_objs_per_slab`/`skb_buf`/`prepare_ctx`…）
+  → 匿名 namespace 引用别名；`skb_buf` 因每次 spray 重新分配改为 `skb_buf()` 取值函数
+- [x] `support/util.cpp:607-626` `pcp_shaping_sv`/`iovec`/`msghdr` → `std::array` + `{}` 初始化；
+  `reclaim_sv` 随 `ReclaimPair` 改 `std::array`（`socketpair` 传 `.data()`）
+- [x] `session/victim_process.cpp:160` `int32_t p1[2], p2[2], p3[2]` → `std::array`
+- [x] `session/victim_process.cpp:121` fd 上限硬编码 1024 → `getrlimit(RLIMIT_NOFILE)`
+  （>1M 或无限时回退 1024；补上 >1024 fd 的 CLOEXEC）
+- [x] `route/select_stack_route.cpp:181,268` `delays[8]`/`standard_io_backup[3]` →
+  `std::array`（构造参数与成员 `stdio_backup` 同步改 `std::array`）；`:190,194,199,320,375`
+  C 风格 cast → `static_cast`
+- [x] `memory/heap_context.h:37` `ReclaimPair{int32_t fd[2]}` → `std::array<int32_t,2>`
+- [x] `route/exploit_procedure.cpp:183` `char mod[256]` + `strncasecmp` → `std::array` +
+  `string_view` 前缀判断（保留大小写不敏感语义）
+- [x] `attack/ops.cpp:437-508` `perf_find_task`：`pe{}`、perf ring 尺寸命名常量、
+  `std::atomic_thread_fence(acquire)`、`cands` → `std::array`、O(n²) 计票用 `std::count`
+- [x] `kernelsnitch/utils.h:45-56` `SYSCHK` statement expression → 立即调用 lambda
+  （标准 C++，表达式只求值一次，日志文本不变）；`SYSCHK_pr` 唯一调用点展开为显式 `if`
+
+验证：`make -C src native-host-tests` 全绿；NDK 构建通过（仅剩 PAGE_SIZE 一处
+`-Wsign-conversion`）；`make -C src lint-tidy` 退出码 0、0 findings；`tools/cmp_disasm.py`
+对批次 1 提交（330df70）构建的二进制 8/8 攻击函数 **IDENTICAL (strict)**（见下）。
+**真机设备门禁待跑**（`victim_process.cpp` 的 fd 上限处理、`util.cpp` 引用别名与
+`perf_find_task` 均落在攻击路径）。
 
 ## 批次 3：宏层 / 结构（低优先，纯可读性）
 
