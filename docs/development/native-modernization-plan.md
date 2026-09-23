@@ -75,13 +75,19 @@
 退出码 0、0 findings；`tools/cmp_disasm.py` 对批次 2 提交（92604fe）构建的二进制
 7/8 IDENTICAL (strict)，`do_one_write` 为允许的 LAYOUT-SHIFT（1 个地址注解），PASS。
 
-## 待决策（需确认后再动）
+## 收尾（2026-09-22 第二轮）
 
-- [ ] `profile/macros.h` 的 VR 宏：`#ifndef VR_TAG_A_OFF` 默认定义使
-  `exploit_procedure.cpp` 的 `#ifdef VR_TAG_A_OFF` **恒真**，即 VR.ko tag 清理总是编译。
-  需要确认这是有意默认开启，还是本意是构建时开关；确认后再改成显式 feature 宏。
-- [ ] C++23 升级评估：`std::expected` 替换手写 `Result<T>` 的 variant 实现、
-  `std::to_underlying`、`std::byteswap`（依赖 NDK/libc++ 支持，须单独门禁）。
+- [x] `profile/macros.h` VR 宏整理：追溯 upstream `e9e10f2`（Add vivo t4 support），
+  `#ifndef` 默认定义 + `#ifdef` 包裹是移植遗留，恒真即「总是编译」；`VR_TAG_A_OFF` /
+  `VR_SYSCALL_TP_FLAG` 未被代码引用（tag A 随 `thread_info.flags` 整字清零）。
+  处理：去掉死条件，VR 块改为无条件编译（运行时 `/proc/modules` 检测决定是否写），
+  `VR_TAG_B_OFF` 保留为可 `-D` 覆盖的宏，`macros.h` 精简为纯宏头。
+  验证：8/8 攻击函数 IDENTICAL (strict)，host/lint/构建全绿——行为与码型零变化。
+- [x] C++23 评估：NDK 30 的 clang 21 + libc++ 与 host Apple clang 21 在 `-std=c++23`
+  下均可编译 `std::expected` / `std::to_underlying` / `std::byteswap`（探测编译通过）。
+  结论：技术可行；升级 `-std` 是独立批次（`Makefile` ×3、`CMakeLists.txt` ×1），
+  真正收益要等 `std::expected` 替换手写 `Result<T>` 时体现，需单独走 host/lint/
+  cmp_disasm/真机门禁，暂不在本计划内实施。
 
 ## 明确保留
 
