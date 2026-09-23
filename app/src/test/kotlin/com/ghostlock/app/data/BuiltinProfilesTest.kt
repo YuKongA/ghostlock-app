@@ -102,4 +102,22 @@ class BuiltinProfilesTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `legacy shared defaults stay in sync with the bundled 6x templates`() {
+        val loader = AssetConfigLoader(context)
+        val cred = HoconSupport.parseValue(loader.load("kernel_profiles/credential-6x.conf"))
+            .asValueMap()!!["cred"].asValueMap()!!
+        val snitch = HoconSupport.parseValue(loader.load("kernel_profiles/kernelsnitch-6x.conf"))
+            .asValueMap()!!["kernelsnitch"].asValueMap()!!
+
+        /* LegacyProfileConverter seeds these values into imported reports and
+         * carries its own copies; changing the assets requires updating it. */
+        assertEquals(136L, (cred["copy_size"] as Number).toLong())
+        assertEquals(48L, (cred["caps_offset"] as Number).toLong())
+        assertEquals(5L, (cred["caps_count"] as Number).toLong())
+        assertEquals(1L, (cred["usage_value"] as Number).toLong())
+        assertEquals(-1L, (cred["caps_value"] as Number).toLong())
+        assertEquals(4L, (snitch["collisions"] as Number).toLong())
+    }
 }

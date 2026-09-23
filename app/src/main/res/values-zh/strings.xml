@@ -11,7 +11,6 @@
     <string name="opensource_info">版权所有 © 2026 YuKongA</string>
     <string name="action_import_offsets_conf">导入 offsets.conf（HOCON）</string>
     <string name="action_import_offsets_json">导入 offsets.json（v1）</string>
-    <string name="action_export_offsets">导出 offsets.json</string>
     <string name="action_parse_ota">解析完整包链接</string>
     <string name="action_parse">解析本地镜像</string>
     <string name="import_success">偏移已导入</string>
@@ -41,10 +40,8 @@
     <string name="profile_invalid">配置参数不合法，请先修正红色标记的项</string>
     <string name="run_blocked_no_profile">未找到匹配本机内核的配置，请前往配置参数导入或调整</string>
     <string name="run_blocked_shizuku">Shizuku 未就绪，请点击状态卡启动或授权</string>
-    <string name="export_title">选择要导出的内核</string>
     <string name="export_share">分享偏移</string>
     <string name="export_failed">导出失败</string>
-    <string name="export_none">没有可导出的偏移</string>
     <string name="export_current_marker">%1$s（当前设备）</string>
     <string name="action_copy">复制</string>
     <string name="action_close">关闭</string>

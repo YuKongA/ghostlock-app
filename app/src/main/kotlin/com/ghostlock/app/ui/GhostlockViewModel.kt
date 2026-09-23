@@ -7,7 +7,6 @@ import com.ghostlock.app.R
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.LogTone
-import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
 import com.ghostlock.app.domain.model.ProfileConfig
@@ -15,12 +14,10 @@ import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.model.ShizukuStatus
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.repository.ProfileConfigController
-import com.ghostlock.app.domain.usecase.ExportOffsetsUseCase
 import com.ghostlock.app.domain.usecase.FormatLogUseCase
 import com.ghostlock.app.domain.usecase.ImportOffsetsUseCase
 import com.ghostlock.app.domain.usecase.LoadKernelSnapshotUseCase
 import com.ghostlock.app.domain.usecase.ParseSourceUseCase
-import com.ghostlock.app.domain.usecase.PublishOffsetsUseCase
 import com.ghostlock.app.domain.usecase.ReadDocumentUseCase
 import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
@@ -62,8 +59,6 @@ class GhostlockViewModel(
     private val selectCpuPairUseCase = SelectCpuPairUseCase(repository)
     private val importOffsetsUseCase = ImportOffsetsUseCase(repository)
     private val parseSourceUseCase = ParseSourceUseCase(repository)
-    private val exportOffsetsUseCase = ExportOffsetsUseCase(repository)
-    private val publishOffsetsUseCase = PublishOffsetsUseCase(repository)
     private val readDocumentUseCase = ReadDocumentUseCase(repository)
     private val runExploitUseCase = RunExploitUseCase(repository)
     private val formatLog = FormatLogUseCase()
@@ -75,7 +70,6 @@ class GhostlockViewModel(
     private var kernelSnapshot: KernelSnapshot? = null
     private var pendingParseWithXbl = false
     private var pendingBootPath: String? = null
-    private var exportCandidates: List<OffsetCandidate> = emptyList()
     private var pendingConfirmation: PendingConfirmation? = null
 
     fun initialize() {
@@ -531,7 +525,8 @@ class GhostlockViewModel(
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         val session = repository.editSessionController() ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val config = runCatching { session.load(snapshot.kernelRelease, pair) }.getOrNull()
+            val release = repository.editSessionRelease() ?: snapshot.kernelRelease
+            val config = runCatching { session.load(release, pair) }.getOrNull()
                 ?: return@launch
             applyExecutionConfig(config, preserveEditing)
             applyAdvancedConfig(config, preserveEditing)
@@ -543,7 +538,7 @@ class GhostlockViewModel(
         val snapshot = kernelSnapshot ?: return null
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return null
         val session = repository.editSessionController() ?: return null
-        val release = snapshot.kernelRelease
+        val release = repository.editSessionRelease() ?: snapshot.kernelRelease
         val general = mutableState.value.executionEditing.mapNotNull { (path, text) ->
             text.trim().toLongOrNull()?.let { value -> path to value }
         }.toMap()
@@ -892,7 +887,6 @@ class GhostlockViewModel(
         send(GhostlockEffect.PickDocument(DocumentRequest.ImportOffsetsJson))
 
     fun parseOffsets() {
-        exportCandidates = emptyList()
         mutableState.update {
             it.copy(
                 dialogVisible = true,
@@ -917,28 +911,6 @@ class GhostlockViewModel(
         }
     }
 
-    fun exportOffsets() {
-        viewModelScope.launch {
-            exportCandidates = withContext(Dispatchers.IO) { exportOffsetsUseCase() }
-            if (exportCandidates.isEmpty()) {
-                send(GhostlockEffect.Toast(R.string.export_none))
-            } else {
-                mutableState.update {
-                    it.copy(
-                        dialogVisible = true,
-                        dialogType = DialogType.LIST,
-                        dialogTitleRes = R.string.export_title,
-                        dialogItems = exportCandidates.map(OffsetCandidate::release),
-                        dialogItemResIds = emptyList(),
-                        dialogCurrentItemIndex = exportCandidates.indexOfFirst { offsetCandidate ->
-                            offsetCandidate.release == kernelSnapshot?.kernelRelease
-                        },
-                            )
-                }
-            }
-        }
-    }
-
     fun onDocumentResult(request: DocumentRequest, uri: String) {
         when (request) {
             DocumentRequest.BootImage -> stageBoot(uri)
@@ -959,13 +931,7 @@ class GhostlockViewModel(
     }
 
     fun onDialogItemSelected(index: Int) {
-        val candidates = exportCandidates
         dismissDialog()
-        if (candidates.isNotEmpty()) {
-            candidates.getOrNull(index)?.let(::publish)
-            exportCandidates = emptyList()
-            return
-        }
         when (index) {
             0 -> pickBoot(withXbl = false)
             1 -> pickBoot(withXbl = true)
@@ -1002,7 +968,6 @@ class GhostlockViewModel(
 
     private suspend fun refreshSnapshot() {
         val snapshot = withContext(Dispatchers.IO) { loadKernelSnapshot() }
-        val canExport = withContext(Dispatchers.IO) { exportOffsetsUseCase().isNotEmpty() }
         /* Validate the resolved profile here so the run button can grey out. */
         val loaded = withContext(Dispatchers.IO) {
             val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair)
@@ -1021,7 +986,6 @@ class GhostlockViewModel(
                 safeModeEnabled = snapshot.safeModeEnabled,
                 shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
-                exportVisible = canExport,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,
                 customCpuPair = loaded?.let(::customCpuPairOf),
@@ -1223,21 +1187,6 @@ class GhostlockViewModel(
 
             is PendingConfirmation.Parse -> viewModelScope.launch(Dispatchers.IO) {
                 runParse(confirmation.input, confirmation.xblPath, overwrite = true)
-            }
-        }
-    }
-
-    private fun publish(candidate: OffsetCandidate) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val uri = publishOffsetsUseCase(candidate)
-                appendLog("exported offsets: offsets-${candidate.release}.conf")
-                send(GhostlockEffect.Share(uri))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                appendLog("export offsets failed: ${error.message}")
-                send(GhostlockEffect.Toast(R.string.export_failed))
             }
         }
     }

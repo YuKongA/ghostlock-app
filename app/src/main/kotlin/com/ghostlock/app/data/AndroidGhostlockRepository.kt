@@ -11,7 +11,6 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
-import com.ghostlock.app.domain.model.KernelOffsets
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.data.ota.OtaPayloadExtractor
@@ -21,7 +20,6 @@ import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.repository.ProfileConfigController
-import com.ghostlock.app.domain.usecase.OffsetMatching
 import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -215,24 +213,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     /* Profile configuration now lives in AndroidProfileConfigController: the
      * repository only wires it and forwards the native document. */
-
-    override suspend fun exportCandidates(): List<OffsetCandidate> {
-        val current = System.getProperty("os.version", "")
-        val byRelease = linkedMapOf<String, ValueMap>()
-        for (entry in userProfileStore.entries()) {
-            val release = (entry["release"] as? String).orEmpty()
-            if (release.isEmpty()) continue
-            LegacyProfileConverter.convertValue(entry)
-            if (builtinProfiles.builtin.containsKey(release) && matchesBuiltin(entry)) continue
-            byRelease.putIfAbsent(release, entry)
-        }
-        return byRelease.entries
-            .sortedWith(
-                compareBy<Map.Entry<String, ValueMap>> { if (it.key == current) 0 else 1 }
-                    .thenBy { it.key },
-            )
-            .map { (release, entry) -> OffsetCandidate(release, HoconSupport.render(entry)) }
-    }
 
     override suspend fun importOffsets(documents: Map<String, String>): OffsetImportResult =
         mergeImported(documents, overwrite = false)
@@ -601,13 +581,19 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private var editSession: AndroidProfileConfigController? = null
     private var editSessionTargetName: String? = null
+    private var editSessionTargetRelease: String? = null
     private var editSessionLive = false
 
     override suspend fun beginEditSession(name: String?): ProfileConfig? =
         withContext(Dispatchers.IO) {
             endEditSession()
-            val release = System.getProperty("os.version", "").orEmpty()
+            val deviceRelease = System.getProperty("os.version", "").orEmpty()
             val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
+            /* A stored document is edited against its own release: the device
+             * release would resolve the bundled profile instead and hide the
+             * imported geometry. Only the live controller stays device-keyed. */
+            val targetRelease = name?.let { userProfileStore.releasesOf(it).firstOrNull() }
+                ?: deviceRelease
             val sessionPreferences = appContext.getSharedPreferences(
                 EditSessionPreferences,
                 Context.MODE_PRIVATE,
@@ -615,13 +601,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             sessionPreferences.edit().clear().commit()
             editSessionLive = name != null && name == profileController.activeUserProfile()
             if (editSessionLive) {
-                val overrides = profileController.overridesSnapshot(release)
+                val overrides = profileController.overridesSnapshot(deviceRelease)
                 if (overrides.isNotEmpty()) {
                     /* The store keeps one entry per release, so wrap it back. */
                     sessionPreferences.edit(commit = true) {
                         putString(
                             AndroidProfileConfigController.PrefDebugProfileOverrides,
-                            HoconSupport.render(valueMapOf(release to overrides)),
+                            HoconSupport.render(valueMapOf(deviceRelease to overrides)),
                         )
                     }
                 }
@@ -636,7 +622,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             )
             editSession = session
             editSessionTargetName = name
-            runCatching { session.load(release, pair) }.getOrNull()
+            editSessionTargetRelease = targetRelease
+            runCatching { session.load(targetRelease, pair) }.getOrNull()
         }
 
     override fun editSessionController(): ProfileConfigController? = editSession
@@ -645,11 +632,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override fun editSessionTarget(): String? = editSessionTargetName
 
+    override fun editSessionRelease(): String? = editSessionTargetRelease
+
     override suspend fun saveEditSessionInPlace(): Boolean = withContext(Dispatchers.IO) {
         if (editSessionLive) return@withContext false
         val session = editSession ?: return@withContext false
         val target = editSessionTargetName ?: return@withContext false
-        val release = System.getProperty("os.version", "").orEmpty()
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
         val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext false
         val document = session.renderResolved(release, pair) ?: return@withContext false
         userProfileStore.overwrite(target, document)
@@ -666,7 +656,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun saveEditSessionAsNew(): String? = withContext(Dispatchers.IO) {
         val session = editSession ?: return@withContext null
-        val release = System.getProperty("os.version", "").orEmpty()
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
         val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
         val stem = (editSessionTargetName ?: release)
             .substringBeforeLast('.')
@@ -677,7 +668,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun exportEditSession(): String = withContext(Dispatchers.IO) {
         val session = editSession ?: throw IOException("no editing session")
-        val release = System.getProperty("os.version", "").orEmpty()
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
         val pair = cpuPairs.getOrNull(selectedCpuPair) ?: throw IOException("no cpu pair")
         val document = session.renderResolved(release, pair)
             ?: throw IOException("cannot render the edited profile")
@@ -688,6 +680,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override fun endEditSession() {
         editSession = null
         editSessionTargetName = null
+        editSessionTargetRelease = null
         editSessionLive = false
     }
 
@@ -744,79 +737,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun freshReleases(entries: List<*>): List<String> =
         entries.mapNotNull { (it.asValueMap()?.get("release") as? String) }.distinct()
-
-    private fun matchesBuiltin(entry: ValueMap): Boolean =
-        OffsetMatching.matchesBuiltin(toKernelOffsets(entry), builtinProfiles.builtin)
-
-    private fun toKernelOffsets(entry: ValueMap): KernelOffsets {
-        /* Remote/main-era offsets are normalised before comparison. */
-        LegacyProfileConverter.convertValue(entry)
-        return KernelOffsets(
-            release = (entry["release"] as? String).orEmpty(),
-            scalars = scalarFields.associateWith { scalarValue(entry, it) },
-            symbols = namespacedFields(entry, "offset"),
-            structFields = namespacedFields(entry, "task_struct") +
-                namespacedFields(entry, "cred") +
-                namespacedFields(entry, "kernelsnitch"),
-        )
-    }
-
-    /** Namespace fields, keyed as `namespace.field` to match the catalogue. */
-    private fun namespacedFields(entry: ValueMap, namespace: String): Map<String, Long?> {
-        val group = entry[namespace].asValueMap() ?: return emptyMap()
-        return group.entries.associate { (field, value) ->
-            "$namespace.$field" to (value as? Number)?.toLong()
-        }
-    }
-
-    /** Reads a numeric field, following route branches and legacy flat keys. */
-    private fun scalarValue(entry: ValueMap, field: String): Long? {
-        val candidates = when {
-            field == "compact_waiter" -> listOf(
-                "route.tcp_zerocopy.compact_waiter",
-                "fallback.route.tcp_zerocopy.compact_waiter",
-                "compact_waiter",
-            )
-
-            field == "pselect_waiter_shift" -> listOf(
-                "route.select_stack.waiter_shift",
-                "fallback.route.select_stack.waiter_shift",
-                "pselect_waiter_shift",
-            )
-
-            field.startsWith("mcast.") -> {
-                val suffix = field.removePrefix("mcast.")
-                listOf(
-                    "route.multicast_waiter.$suffix",
-                    "fallback.route.multicast_waiter.$suffix",
-                    "mcast.$suffix",
-                    "mcast_$suffix",
-                )
-            }
-
-            else -> listOf(field, field.replace('.', '_'))
-        }
-        for (candidate in candidates) {
-            nestedValue(entry, candidate)?.let { return it }
-        }
-        return null
-    }
-
-    private fun nestedValue(entry: ValueMap, path: String): Long? =
-        (entry.getValueAt(path) as? Number)?.toLong()
-
-    private val scalarFields = listOf(
-        "kernel_major", "recommend_shizuku", "kernel_phys_load",
-        "pselect_waiter_shift", "mcast.waiter_off", "mcast.buffer_size",
-        "mcast.task_offset", "mcast.lock_offset", "mcast.fake_lock_offset",
-        "mcast.fake_task_offset", "mcast.lock_slots_offset", "mcast.lock_slot_count",
-        "mcast.lock_slot_stride",
-        "kernelsnitch.collisions", "compact_waiter", "kernelsnitch.mm_struct_sz",
-        "cred.copy_size", "cred.usage_offset", "cred.usage_value",
-        "cred.caps_offset", "cred.caps_count", "cred.caps_value", "cred.ref_count",
-        "cred.ref0_offset", "cred.ref1_offset", "cred.ref2_offset", "cred.ref3_offset",
-        "cred.ref0_image", "cred.ref1_image", "cred.ref2_image", "cred.ref3_image",
-    )
 
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()

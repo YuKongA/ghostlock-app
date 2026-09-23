@@ -5,6 +5,7 @@ import androidx.core.content.edit
 import com.ghostlock.app.domain.model.CpuPair
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -248,6 +249,122 @@ class ControllerOverrideTest {
             assertTrue(tcpPaths.any { it.startsWith("execution.routes.tcp_zerocopy.") })
             assertTrue(tcpPaths.any { it.startsWith("execution.routes.select_stack.") })
             assertTrue(tcpPaths.none { it.startsWith("execution.routes.multicast_waiter.") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `legacy json report resolves when the release has no bundled profile`() = runBlocking {
+        /* Issue #175: a remote/main-era JSON report whose release is absent from
+         * index.conf used to fail validation because the conversion never
+         * supplied kernel_major or the shared credential template. */
+        val deviceRelease = "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k"
+        val report = """
+            [{
+              "release": "$deviceRelease",
+              "kernel_phys_load": 3347054592,
+              "pselect_waiter_shift": 0,
+              "symbols": {
+                "off_init_task": 37801728,
+                "off_init_cred": 37891184,
+                "off_root_task_group": 40097152,
+                "off_selinux_enforcing": 40408272,
+                "off_security_hook_heads": 0
+              },
+              "struct_fields": {
+                "task_prio": 148,
+                "task_normal_prio": 156,
+                "task_sched_task_group": 1056,
+                "task_pi_lock": 2540,
+                "task_pi_waiters": 2560,
+                "task_pi_top_task": 2576,
+                "task_pi_blocked_on": 2584,
+                "task_pid": 1800,
+                "task_tgid": 1804,
+                "task_atomic_flags": 1736,
+                "task_real_cred": 2296,
+                "task_cred": 2304,
+                "task_comm": 2320,
+                "task_tasks": 1592,
+                "task_seccomp": 2504
+              }
+            }]
+        """.trimIndent()
+        val root = Files.createTempDirectory("controller-unbundled").toFile()
+        try {
+            val store = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            )
+            store.save("offsets-6.12.38-gbe6292a1543d.json", report)
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = store,
+                preferences = context.getSharedPreferences("controller-unbundled", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val pair = CpuPair(primary = 0, consumer = 1)
+            controller.selectUserProfile("offsets-6.12.38-gbe6292a1543d.json", deviceRelease, pair)
+
+            val config = controller.load(deviceRelease, pair)
+            assertTrue("profile did not resolve", config.hasProfile)
+            assertEquals(emptySet<String>(), config.invalidPaths)
+            assertEquals("select_stack", config.route)
+            assertNotNull("no native document", controller.nativeDocument(config))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `hocon import is not seeded and surfaces the missing fields`() = runBlocking {
+        /* A HOCON import is the user's own edit: the loader must not invent the
+         * missing shared fields, it only reports them so the editor can. */
+        val deviceRelease = "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k"
+        val report = """
+            schema_version = 1
+            release = "$deviceRelease"
+            kernel_major = 6
+            route { select_stack { waiter_shift = 0 } }
+            fallback { to = "none" }
+            task_struct {
+              prio = 148
+              pi_lock = 2540
+              pi_waiters = 2560
+              pi_blocked_on = 2584
+              cred = 2304
+              seccomp = 2504
+            }
+            offset {
+              init_task = 37801728
+              init_cred = 37891184
+              root_task_group = 40097152
+              selinux_enforcing = 40408272
+            }
+        """.trimIndent()
+        val root = Files.createTempDirectory("controller-hocon").toFile()
+        try {
+            val store = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            )
+            store.save("edited.conf", report)
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = store,
+                preferences = context.getSharedPreferences("controller-hocon", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val pair = CpuPair(primary = 0, consumer = 1)
+            controller.selectUserProfile("edited.conf", deviceRelease, pair)
+
+            val config = controller.load(deviceRelease, pair)
+            assertTrue("profile did not resolve", config.hasProfile)
+            assertTrue("cred.copy_size was not surfaced", "cred.copy_size" in config.invalidPaths)
+            assertTrue("cred.caps_count was not surfaced", "cred.caps_count" in config.invalidPaths)
         } finally {
             root.deleteRecursively()
         }

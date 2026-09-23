@@ -105,6 +105,74 @@ class LegacyProfileConverterTest {
     }
 
     @Test
+    fun `imported 6x report gains kernel_major and shared defaults`() {
+        val entry = valueMapOf(
+            "release" to "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k",
+            "kernel_phys_load" to 3347054592L,
+            "pselect_waiter_shift" to 0,
+            "struct_fields" to valueMapOf("task_prio" to 148, "struct_mm_struct" to 1216),
+            "offset" to valueMapOf("init_task" to 37801728L),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertEquals(6L, entry["kernel_major"])
+        val cred = entry["cred"].asValueMap()!!
+        assertEquals(136L, cred["copy_size"])
+        assertEquals(48L, cred["caps_offset"])
+        assertEquals(5L, cred["caps_count"])
+        val snitch = entry["kernelsnitch"].asValueMap()!!
+        assertEquals(4L, snitch["collisions"])
+    }
+
+    @Test
+    fun `existing values are never overwritten by shared defaults`() {
+        val entry = valueMapOf(
+            "release" to "6.12.38-test",
+            "kernel_major" to 6,
+            "cred" to valueMapOf("copy_size" to 176, "caps_count" to 3),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        val cred = entry["cred"].asValueMap()!!
+        assertEquals(176, cred["copy_size"])
+        assertEquals(3, cred["caps_count"])
+        assertEquals(48L, cred["caps_offset"])
+    }
+
+    @Test
+    fun `5x report gets its major but no 6x credential template`() {
+        val entry = valueMapOf("release" to "5.15.189-android13-8-test")
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertEquals(5L, entry["kernel_major"])
+        assertFalse(entry.containsKey("cred"))
+    }
+
+    @Test
+    fun `v2 profile is not seeded and keeps its missing fields`() {
+        val entry = valueMapOf("release" to "6.12.38-test", "schema_version" to 1)
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertFalse(entry.containsKey("kernel_major"))
+        assertFalse(entry.containsKey("cred"))
+        assertFalse(entry.containsKey("kernelsnitch"))
+    }
+
+    @Test
+    fun `sparse override without a release is not seeded`() {
+        val entry = valueMapOf("kernel_major" to 6, "task_struct" to valueMapOf("prio" to 140))
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertFalse(entry.containsKey("cred"))
+        assertFalse(entry.containsKey("kernelsnitch"))
+    }
+
+    @Test
     fun `seeded branch keeps its fields`() {
         val entry = valueMapOf(
             "release" to "r",

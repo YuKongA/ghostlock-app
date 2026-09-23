@@ -100,16 +100,67 @@ internal object LegacyProfileConverter {
         "multicast_waiter" to MulticastRouteCodec,
     )
 
+    /* Values the bundled `credential-6x.conf` and `kernelsnitch-6x.conf` carry.
+     * An imported extractor report has no `include` line and no such fields, so
+     * the conversion seeds them here; the values must stay in sync with those
+     * assets (BuiltinProfilesTest pins that). */
+    private val CredDefaults6x = valueMapOf(
+        "caps_offset" to 48L,
+        "copy_size" to 136L,
+        "usage_value" to 1L,
+        "caps_count" to 5L,
+        "caps_value" to -1L,
+    )
+    private val KernelsnitchDefaults6x = valueMapOf(
+        "collisions" to 4L,
+    )
+
     fun convertValue(entry: ValueMap?): ValueMap? {
         if (entry == null) return null
+        /* The bundled extractor still emits v1 reports, which carry no
+         * schema_version; every such document is normalised and seeded. A v2
+         * profile carries schema_version and is only normalised in place, so an
+         * author's own edit keeps showing its missing fields. */
+        val legacy = !entry.containsKey("schema_version")
         MetadataKeys.forEach(entry::remove)
         moveFlatNamespaces(entry)
         moveSymbolGroups(entry)
         moveKernelsnitch(entry)
+        if (legacy) inferKernelMajor(entry)
         moveRouteLayout(entry)
         moveFallback(entry)
         dropEmptyRouteBranches(entry)
+        if (legacy) applySharedDefaults(entry)
         return entry
+    }
+
+    /**
+     * A legacy report only carries a release string; the current validation
+     * needs an explicit `kernel_major`. Recover it from the release.
+     */
+    private fun inferKernelMajor(entry: ValueMap) {
+        if (entry.containsKey("kernel_major")) return
+        val release = entry["release"] as? String ?: return
+        val major = release.substringBefore('.').toIntOrNull() ?: return
+        if (major == 5 || major == 6) entry["kernel_major"] = major.toLong()
+    }
+
+    /**
+     * Seeds the shared 6.x geometry a legacy report never carries. Only a full
+     * document (one with a release) is seeded, and values already present win.
+     */
+    private fun applySharedDefaults(entry: ValueMap) {
+        if (!entry.containsKey("release")) return
+        if ((entry["kernel_major"] as? Number)?.toLong() != 6L) return
+        fillMissing(entry, "cred", CredDefaults6x)
+        fillMissing(entry, "kernelsnitch", KernelsnitchDefaults6x)
+    }
+
+    private fun fillMissing(entry: ValueMap, namespace: String, defaults: Map<String, Any?>) {
+        val target = entry.mutableChild(namespace)
+        for ((field, value) in defaults) {
+            if (!target.containsKey(field)) target[field] = value
+        }
     }
 
     /**

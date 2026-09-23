@@ -174,7 +174,6 @@ private fun GhostlockRoute(
                 viewModel.onDocumentsResult(request, uris)
             override fun onParseOta() = viewModel.promptParseUrl()
             override fun onParseImage() = viewModel.parseOffsets()
-            override fun onExportOffsets() = viewModel.exportOffsets()
             override fun onCpuPairSelected(index: Int) = viewModel.selectCpuPair(index)
             override fun onSafeModeChanged(enabled: Boolean) = viewModel.toggleSafeMode(enabled)
             override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)

@@ -63,6 +63,15 @@ internal class UserProfileStore(
         return converted != entry
     }
 
+    /** Releases carried by the stored document [name], in document order. */
+    fun releasesOf(name: String): List<String> {
+        val file = fileByName(name) ?: return emptyList()
+        val byName = documents()
+        return runCatching { parseWith(file.readText(), byName) }.getOrNull()
+            ?.mapNotNull { it["release"] as? String }
+            ?: emptyList()
+    }
+
     fun rawText(name: String): String? {
         val file = fileByName(name) ?: return null
         return runCatching { file.readText() }.getOrNull()
@@ -159,7 +168,12 @@ internal class UserProfileStore(
         val text = rawText(name) ?: return null
         val entries = runCatching { parseEntries(text) }.getOrNull() ?: return null
         if (entries.isEmpty()) return null
-        entries.forEach { LegacyProfileConverter.convertValue(it) }
+        entries.forEach {
+            LegacyProfileConverter.convertValue(it)
+            /* Exports are v2: the conversion has seeded any v1 gap, and the
+             * marker keeps a re-import from being seeded again. */
+            it["schema_version"] = 1
+        }
         return HoconSupport.render(
             if (entries.size == 1) entries.first() else ValueList().apply { addAll(entries) },
         )

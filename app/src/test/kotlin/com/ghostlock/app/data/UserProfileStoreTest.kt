@@ -56,6 +56,7 @@ class UserProfileStoreTest {
 
             val hocon = requireNotNull(store.exportHocon("offsets.json"))
             assertTrue(hocon.contains("release = \"6.1.118-test\""))
+            assertTrue(hocon.contains("schema_version = 1"))
             assertTrue(hocon.contains("offset {"))
             assertTrue(hocon.contains("init_task = 33420800"))
             assertFalse(hocon.contains("\"symbols\""))
@@ -130,6 +131,18 @@ class UserProfileStoreTest {
             assertTrue(profiles.getValue("broken.conf").parseError)
             assertTrue(profiles.getValue("offsets.json").sizeBytes > 0L)
             assertNull(store.loadEntry("unknown-release", "offsets.json"))
+        }
+    }
+
+    @Test
+    fun `releasesOf reads the stored document releases`() {
+        withStore { store ->
+            store.save("offsets.json", legacyDocument)
+            store.save("multi.json", """[{"release": "a"}, {"release": "b"}]""")
+
+            assertEquals(listOf("6.1.118-test"), store.releasesOf("offsets.json"))
+            assertEquals(listOf("a", "b"), store.releasesOf("multi.json"))
+            assertTrue(store.releasesOf("missing.json").isEmpty())
         }
     }
 

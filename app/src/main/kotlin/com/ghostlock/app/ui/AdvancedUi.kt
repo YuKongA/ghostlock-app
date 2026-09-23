@@ -97,9 +97,6 @@ internal fun AdvancedScreen(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "tools") {
-                AdvancedOptions(state = state, actions = actions)
-            }
             item(key = "override") {
                 Card {
                     ArrowPreference(

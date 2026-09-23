@@ -18,8 +18,6 @@ interface GhostlockRepository {
 
     fun setShizukuEnabled(enabled: Boolean)
 
-    suspend fun exportCandidates(): List<OffsetCandidate>
-
     /**
      * Imports one or more picked documents (file name -> text). Includes are
      * resolved against the picked files first, then the bundled assets; a
@@ -86,6 +84,9 @@ interface GhostlockRepository {
 
     /** Renders the session result as HOCON, writes it to Downloads, shares it. */
     suspend fun exportEditSession(): String
+
+    /** Release the editing session targets; a stored document uses its own. */
+    fun editSessionRelease(): String?
 
     fun endEditSession()
 

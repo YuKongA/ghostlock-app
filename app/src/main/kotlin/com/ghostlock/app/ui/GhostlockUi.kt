@@ -100,7 +100,6 @@ data class GhostlockUiState(
     val shizukuEnabled: Boolean = false,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
-    val exportVisible: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
     val cpuPairIndex: Int = 0,
     /** CPU pair from the resolved profile when it differs from the device pick. */
@@ -179,7 +178,6 @@ interface GhostlockActions {
     fun onDocumentsResult(request: DocumentRequest, uris: List<String>)
     fun onParseOta()
     fun onParseImage()
-    fun onExportOffsets()
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
@@ -895,21 +893,6 @@ private fun DeviceInfoItem(
     }
 }
 
-@Composable
-internal fun AdvancedOptions(
-    state: GhostlockUiState,
-    actions: GhostlockActions,
-) {
-    Column {
-        if (state.exportVisible) {
-            AdvancedAction(
-                text = stringResource(R.string.action_export_offsets),
-                onClick = actions::onExportOffsets,
-            )
-        }
-    }
-}
-
 /* profile-ui: resolved execution view with auto-saved sparse overrides. */
 @Composable
 internal fun ExecutionEditor(
@@ -950,21 +933,6 @@ internal val OverrideHighlight = Color(0xFFF5A623)
 internal val FieldErrorHighlight = Color(0xFFE53935)
 
 internal fun isFieldInputInvalid(text: String): Boolean = text.trim().toLongOrNull() == null
-
-@Composable
-internal fun AdvancedAction(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    TextButton(
-        text = text,
-        onClick = onClick,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-    )
-}
 
 @Composable
 private fun RunButton(

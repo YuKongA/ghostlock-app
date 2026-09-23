@@ -11,7 +11,6 @@
     <string name="opensource_info">Copyright © 2026 YuKongA</string>
     <string name="action_import_offsets_conf">Import offsets.conf (HOCON)</string>
     <string name="action_import_offsets_json">Import offsets.json (v1)</string>
-    <string name="action_export_offsets">Export offsets.json</string>
     <string name="action_parse_ota">Parse OTA link</string>
     <string name="action_parse">Parse local image</string>
     <string name="import_success">Offsets imported</string>
@@ -41,10 +40,8 @@
     <string name="profile_invalid">Profile parameters are invalid; fix the red fields first</string>
     <string name="run_blocked_no_profile">No profile matches this kernel; import or adjust it in Parameters</string>
     <string name="run_blocked_shizuku">Shizuku is not ready; tap the status card to start or authorize</string>
-    <string name="export_title">Select kernel to export</string>
     <string name="export_share">Share offsets</string>
     <string name="export_failed">Export failed</string>
-    <string name="export_none">No offsets to export</string>
     <string name="export_current_marker">%1$s (current device)</string>
     <string name="action_copy">Copy</string>
     <string name="action_close">Close</string>

@@ -25,10 +25,6 @@ class ParseSourceUseCase(private val repository: GhostlockRepository) {
     ) = repository.parseSource(input, xblPath, overwrite, onLog)
 }
 
-class ExportOffsetsUseCase(private val repository: GhostlockRepository) {
-    suspend operator fun invoke() = repository.exportCandidates()
-}
-
 class RunExploitUseCase(private val repository: GhostlockRepository) {
     suspend operator fun invoke(pair: CpuPair, useShizuku: Boolean, onLog: (String) -> Unit) =
         if (useShizuku) repository.runExploitWithShizuku(pair, onLog)
