@@ -63,12 +63,12 @@ COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
   -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
   -Icore -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 CFLAGS := $(COMMON_FLAGS) -std=gnu11
-CXXFLAGS := $(COMMON_FLAGS) -std=c++20 -fno-rtti
+CXXFLAGS := $(COMMON_FLAGS) -std=c++23 -fno-rtti
 LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 
 HOST_CC ?= cc
 HOST_CXX ?= c++
-HOST_CXXFLAGS := -std=c++20 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
+HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
 HOST_BUILD_DIR := $(BUILD_ROOT)/host-test
 
 # Every generated artifact stays under build/ so nothing lands in the repo root.
@@ -129,7 +129,7 @@ lint-tidy:
 	@status=0; for f in $(CXX_SRCS); do \
 	  $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/clang-tidy "$$f" \
 	    --warnings-as-errors='*' -- \
-	    -std=c++20 -fno-rtti -Icore \
+	    -std=c++23 -fno-rtti -Icore \
 	    --target=aarch64-linux-android$(API) \
 	    --sysroot=$(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/sysroot \
 	    -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\" || status=1; \
