@@ -8,8 +8,6 @@
 namespace ghostlock::binary_profile {
     namespace {
         constexpr uint8_t kW8 = 8;
-        constexpr uint8_t kVersion4 = 4;
-
         /* Reinterpret one transport member as the wire's raw 64-bit record.
          * Signed members are sign-extended exactly like the previous
          * reinterpret_cast implementation did. */
@@ -48,7 +46,7 @@ namespace ghostlock::binary_profile {
         }                                                           \
     }
 
-        /* GLK1 v4 = fixed common slots + a route section. The common slots hold
+        /* v2 = fixed common slots + a route section. The common slots hold
          * only route-independent members; every route-specific member is one
          * name->u64 entry in the route section, decoded by that route's table.
          * Adding a route means adding a route table, not enlarging the common
@@ -94,6 +92,10 @@ namespace ghostlock::binary_profile {
             FIELD(execution.handoff_module_poll_interval_ms),
             FIELD(execution.handoff_enforce_poll_attempts),
             FIELD(execution.handoff_enforce_poll_interval_ms),
+            /* The consumer thread is shared by every route (the multicast
+             * primitive drives the same PI consumer), so these stay common. */
+            FIELD(execution.select_consumer_max_calls),
+            FIELD(execution.select_consumer_burst_calls),
             /* execution flags */
             FIELD(safe_mode),
         };
@@ -114,8 +116,6 @@ namespace ghostlock::binary_profile {
             {"pselect_waiter_shift", FIELD(pselect_waiter_shift)},
             {"select_enter_delay_us", FIELD(execution.select_enter_delay_us)},
             {"select_timeout_us", FIELD(execution.select_timeout_us)},
-            {"select_consumer_max_calls", FIELD(execution.select_consumer_max_calls)},
-            {"select_consumer_burst_calls", FIELD(execution.select_consumer_burst_calls)},
         };
 
         constexpr NamedField kMulticastFields[] = {
@@ -180,7 +180,7 @@ namespace ghostlock::binary_profile {
         if (!out || !release_buf || document.size() < kHeaderSize) return -1;
         const auto *bytes = reinterpret_cast<const uint8_t *>(document.data());
         const auto *end = bytes + document.size();
-        if (read_le(bytes, 4) != kMagic || read_le(bytes + 4, 2) != kVersion4) {
+        if (read_le(bytes, 4) != kMagic || read_le(bytes + 4, 2) != kVersion) {
             return -1;
         }
         const size_t release_length = static_cast<size_t>(read_le(bytes + 10, 2));
@@ -245,7 +245,7 @@ namespace ghostlock::binary_profile {
         auto *bytes = reinterpret_cast<uint8_t *>(buffer);
         memset(bytes, 0, kHeaderSize);
         write_le(bytes, kMagic, 4);
-        write_le(bytes + 4, kVersion4, 2);
+        write_le(bytes + 4, kVersion, 2);
         bytes[6] = in->route;
         bytes[7] = in->kernel_major;
         bytes[8] = in->recommend_shizuku;

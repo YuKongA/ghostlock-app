@@ -43,7 +43,7 @@ namespace ghostlock::profile {
         MulticastWaiter = 3,
     };
 
-    /* Wire values for the binary / JSON transport layers. */
+    /* Wire values for the v2 binary transport and the v1 JSON converter. */
     inline constexpr uint8_t kRouteAuto = static_cast<uint8_t>(RouteKind::Auto);
     inline constexpr uint8_t kRouteTcpZerocopy =
             static_cast<uint8_t>(RouteKind::TcpZerocopy);
@@ -72,7 +72,7 @@ namespace ghostlock::profile {
         return kRouteAuto;
     }
 
-    /* Native transport representation of one Kotlin-resolved JSON profile.
+    /* Native transport representation of one Kotlin-resolved profile.
      * S08 wraps this compatibility layout in an immutable TargetProfile. */
     struct kernel_offsets {
         const char *uname_r;
@@ -107,7 +107,7 @@ namespace ghostlock::profile {
         uint32_t task_pid, task_tgid, task_atomic_flags;
         uint32_t task_real_cred, task_cred, task_comm, task_tasks, task_seccomp;
         uint8_t compact_waiter;
-        /* Execution flags resolved from the profile (GLK1 v3). */
+        /* Execution flags resolved from the profile (v2). */
         uint8_t safe_mode;
         uint8_t multicast_resident;
         uint32_t mm_struct_sz;
@@ -136,7 +136,7 @@ namespace ghostlock::profile {
         int32_t compact_waiter;
     };
 
-    /* Immutable runtime snapshot copied from the JSON transport representation.
+    /* Immutable runtime snapshot copied from the transport representation.
      * The C++ value owns uname_r and rebinds the transport pointer after every
      * copy/move. The C layout remains available as a compatibility façade. */
     class TargetProfile final {
