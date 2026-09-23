@@ -2,9 +2,24 @@
 
 > 中文版本：[SUPPORTED_DEVICES_ZH.md](SUPPORTED_DEVICES_ZH.md)
 
+Rows marked **Shizuku recommended** ship a profile with `recommend_shizuku = 1`.
+The app automatically turns on the home-screen **Run via Shizuku** switch for
+them at every start; you can switch it off for the current session, and while it
+is off the app stops asking for Shizuku until the next start.
+
+Shizuku runs the exploit as the shell user, which has no seccomp filter, so the
+W3 seccomp bypass stage is skipped. To use it:
+
+1. Start Shizuku (for example over ADB) and keep it running.
+2. Tap the status card at the top of the app and grant access when prompted.
+
+Rows without the marker don't turn the switch on automatically, but **you can
+enable it manually on any device**. Running via Shizuku skips the W3 seccomp
+bypass there as well, so it saves time even where it isn't required.
+
 | Kernel                                                 | Devices                                                          |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (any version with latest OS) — **Shizuku required**                        |
+| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (any version with latest OS) — **Shizuku recommended**                        |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |

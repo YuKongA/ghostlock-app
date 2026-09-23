@@ -1,13 +1,14 @@
 # GhostLock-App
 
-C++ 迁移与解耦已完成（CPP00–CPP17；Multicast 真机门禁通过，TCP/Select 待外部协作者），详见 [静态分析与计划书](docs/analysis/README.md)
-
 > English: [README.md](README.md)
 
-参见[支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md)。
+## 文档
 
-
-按精确 `uname -r` 匹配偏移表，未匹配的内核直接拒绝运行，App 顶部显示支持状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 JSON，`index.json` 保存运行索引，`templates/` 提供各内核大版本模板。
+- [Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 HOCON 文件，`index.conf` 保存运行索引，`<major.minor>-template.conf` 提供各内核大版本模板。
+- [支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
+- [公共执行默认值](docs/kernel_profiles/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。
+- [Profile 结构文档](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md) —— profile 的完整结构、字段语义与数据流。
+- [新增攻击链指南](docs/development/adding-a-route.md) —— 为 native 添加新 route 的开发者指南。
 
 新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md)。
 
@@ -17,7 +18,7 @@ C++ 迁移与解耦已完成（CPP00–CPP17；Multicast 真机门禁通过，TC
 
 打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
 
-路线是双核竞争。6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入。路线与 CPU 对由解析后的 profile 决定；无参数 legacy 入口仍兼容 `GHOSTLOCK_TCP_ROUTE=0`（强制 pselect）与 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`。
+路线是双核竞争。6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。路线与 CPU 对由解析后的 profile 决定；无参数 legacy 入口仍兼容 `GHOSTLOCK_TCP_ROUTE=0`（强制 pselect）与 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`。
 
 ## 命令行调试
 
@@ -40,7 +41,7 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
 ```
 
-提取结果使用 `--format json` 输出；新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 JSON 登记到 `kernel_profiles/index.json`。旧 C `offsets.h` 注册表已经弃用并移除。
+提取结果使用 `--format json` 输出；新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
 
 ### 前置检查
 
@@ -52,7 +53,7 @@ build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.
 
 ```powershell
 rustup target add aarch64-linux-android
-$ndk = "$env:ANDROID_HOME\ndk\29.0.14206865\toolchains\llvm\prebuilt\windows-x86_64\bin"
+$ndk = "$env:ANDROID_HOME\ndk\<version>\toolchains\llvm\prebuilt\windows-x86_64\bin"
 $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android

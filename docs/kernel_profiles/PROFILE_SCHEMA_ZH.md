@@ -1,8 +1,18 @@
 # Kernel Profile 结构文档（配置系统）
 
+> English: [PROFILE_SCHEMA.md](PROFILE_SCHEMA.md)
+
 本文档描述 `app/src/main/assets/kernel_profiles/` 下内核配置（profile）的完整结构、字段语义、路由机制与校验规则，以及配置在 Kotlin / native 之间的流转方式。
 
 > 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优建议见 [defaults_ZH.md](defaults_ZH.md)。
+
+> **版本命名（v1 / v2）**：配置系统按代际分两版。
+> - **v1 = 旧版 JSON**：remote/main 时代的 `offsets.json`，以及导入 / extractor 输出路径；对应代码为
+>   `src/core/legacy/`（`convert_legacy_offsets`）与 Kotlin `LegacyProfileConverter`。
+> - **v2 = 新版 HOCON**：`assets/kernel_profiles/*.conf`，由 `AndroidProfileConfigController` 解析、
+>   合并，再由 `NativeProfileDocument` 序列化为二进制交给 native。
+>
+> native 二进制传输的 magic 为 `0x0D000721`，version 为 `2`。（符号/文件名保持现状，不在代码里改名。）
 
 ## 0. 文件格式（HOCON）
 
@@ -28,9 +38,9 @@ filesDir/offsets.conf                     解析/导入的偏移（imported，HO
 内部覆盖（advanced override，sparse）    高级参数覆盖页写入
         │
         ▼  ProfileConfigController.resolve（Kotlin）
-   resolved profile JSON（单对象，全字段已合并）
+   resolved profile（单对象，全字段已合并）
         │
-        ├──▶ 运行：类型化二进制（direct 写 active-profile.bin / Shizuku binder byte[]）
+        ├──▶ 运行：类型化二进制（direct 与 Shizuku 都把字节写入 native 的 stdin）
         │      native 只做解析与几何使用，不再做参数校验
         ├──▶ 快照：filesDir/<release>.conf（HOCON，导出配置的源）
         └──▶ UI：参数覆盖页 / 高级参数覆盖树
@@ -178,7 +188,7 @@ cred
 | `cred.usage_offset` / `cred.usage_value` | 引用计数字段偏移 / 目标值 |
 | `cred.caps_offset` / `cred.caps_count` / `cred.caps_value` | capability 集合偏移 / 数量 / 填充值 |
 | `cred.ref_count` | 需要修复的引用字段数量（≤4） |
-| `cred_ref0..3_offset` / `cred_ref0..3_image` | 各引用字段偏移 / 应恢复的镜像值 |
+| `cred.refN_offset` / `cred.refN_image`（N=0..3） | 各引用字段偏移 / 应恢复的镜像值 |
 
 ### 4.3 内核符号与滑移（`offset`）
 
@@ -242,7 +252,7 @@ cred
 2. 参数覆盖页与高级参数覆盖中，非法项以红色 label 显示（未填写同样标红）；已覆盖且合法项为黄色。
 3. `fallback.to` 必须是 `"none"` 或合法路由名；声明回退时，目标分支的必填字段同样会被校验（如回退 `select_stack` 需要 `fallback.route.select_stack.waiter_shift` 存在，0 合法）。
 4. 主页“执行”按钮在 `invalidPaths` 非空时置灰，点击提示修正红色项；即使绕过，`runExploit` 也会在启动 native 前拦截并写入日志。
-5. native 不再做几何校验，只解析 JSON 并按 route/字段执行。
+5. native 不再做几何校验，只解析 v2 二进制并按 route/字段执行。
 
 ## 7. 加载层次与存储位置
 
@@ -268,14 +278,14 @@ cred
 
 ## 9. native 传输与解析
 
-运行时的配置传输是**类型化二进制结构体**，不再是 JSON 文本：
+运行时的配置传输是**类型化二进制结构体**（v2），不再是 JSON 文本：
 
 - Kotlin 侧由 `NativeProfileDocument`（data class，与 native `struct kernel_offsets` 一一对应）序列化：
-  `u32 magic("GLK1") + u16 version(2) + u8 route + u8 kernel_major + u8 recommend_shizuku + u8 fallback_route + u16 release_length + release + N×int64 小端`，字段顺序见 `NativeProfile.kt.flatten()` 与 `profile_binary.cpp`（两侧必须同步修改）。
+  `u32 magic(0x0D000721) + u16 version(2) + u8 route + u8 kernel_major + u8 recommend_shizuku + u8 fallback_route + u16 release_length + release + 68×int64 公共槽 + u8 route 节条目数 + N×(u8 key_length + key + i64) 小端`，字段顺序见 `NativeProfile.kt`（`flattenCommon` / per-route `RouteConfig`）与 `profile/binary.cpp`（`kCommonFields` / `kTcp/kSelect/kMulticastFields`），两侧必须同步修改。
 - 传输路径：direct 与 Shizuku 都把 profile 以 **stdin** 交给 native（`--ghostlock-app-call`），不再落盘 `active-profile.bin`、也不再使用 `--profile`。
-- native `load_resolved_profile()` 先检测 magic：命中走 `binary_profile::parse`，否则回退 JSON 解码器（assets 校验与 host tests）。JSON 解码器按 `route`/`fallback` 对象分支读取路由字段；过渡期的扁平写法（路由字符串、`fallback_to`）仍可解码。
-- 内部存储与“导出配置”均为 HOCON（人类可读）；JSON 仅存在于 legacy 转换（旧 offsets.json、extractor 输出）与 native 二进制传输之外的调试文档。
-- 运行时路由与能力判断（`target_profile_route`、`supports_*`、`tcp_route_selected`、`kernel5_route_selected`）全部基于解析后的 route。
+- native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给 `profile/binary.cpp::parse`。它不检测 magic 之外的格式，也没有 JSON 回退——v1 JSON 只在导入转换（`legacy/offsets_json.cpp`）里解析。
+- 内部存储与“导出配置”均为 HOCON（人类可读）；JSON 只出现在 v1 转换（旧 `offsets.json`、extractor 输出）。
+- 运行时路由与能力判断（`TargetProfile::route()`、`TargetProfile::supports()`、`route_capability`）全部基于解析后的 route。
 
 ## 10. 修改配置的检查清单
 

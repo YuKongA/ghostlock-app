@@ -1,49 +1,131 @@
 # Kernel Profile Porting Guide
 
-> TODO(profile-suggest-01): Only kernel geometry is required. `recommend_shizuku`,
-> `execution` retry counts and wait/settle timings are suggestions: a profile may
-> omit or override them, and the shipped default becomes the suggestion.
+This guide explains how to make GhostLock support a new kernel.
 
-## File Layout
+GhostLock matches kernels by exact `uname -r`. When nothing matches, the app
+refuses to run. In most cases you don't need to change code — you only add a
+profile (a HOCON config file) for that kernel.
 
-- `app/src/main/assets/kernel_profiles/index.conf`: Stores the list of all built-in supported kernel profiles. New profiles must ultimately be added here. Matching is performed by exact `uname -r`.
-- `app/src/main/assets/kernel_profiles/execution-tuning.conf`: Shared general execution tuning every profile includes; `execution-<route>.conf` carries per-route tuning (included only by profiles using that route, plus fallback). `credential-6x.conf` and `kernelsnitch-6x.conf` add the values shared by 6.x kernels. `*-template.conf` files are per-field-annotated reference templates, manually loadable from the debug picker but never auto-matched. See [Common Execution Defaults](defaults.md).
-- `app/src/main/assets/kernel_profiles/<uname-r>.conf`: The complete profile corresponding to each specific kernel sub-version; the file name must match the kernel sub-version `release`.
-- `docs/kernel_profiles/templates/`: Template folder. Contains kernel configuration templates for different minor versions.
+> Only kernel geometry (symbol and struct offsets) is required.
+> `recommend_shizuku` and the retry/wait values under `execution` are
+> suggestions: a profile may omit them, and the shipped default becomes the
+> suggestion (see [Shared Execution Defaults](defaults.md)).
 
-> **HOCON**: every configuration file is parsed as HOCON (Typesafe Config).
-> `#` comments, `${?variables}`, trailing commas and `include "file.conf"`
-> (relative to the same folder, nested) are supported; JSON documents remain
-> valid HOCON and need no migration.
+## Before you start
 
-## New Device Adaptation Workflow
+- A target device reachable over `adb`, or a firmware package matching it.
+- A working build: `./gradlew :app:assembleDebug` succeeds.
+- The extraction tool builds ([`tools/extract_rs`](../../tools/extract_rs), Rust).
 
-1. Run `adb shell uname -r` and keep the complete string; any character difference will cause matching to fail.
-2. Determine the kernel family and open the corresponding document: [5.x](templates/kernel-5.x.template.md), [6.1](templates/kernel-6.1.template.md), [6.6](templates/kernel-6.6.template.md), [6.12](templates/kernel-6.12.template.md).
-3. Copy the corresponding `.conf`, name it using the full kernel sub-version `release`, and fill in the required fields.
-4. Build the extraction tool under `tools`, run `ghostlock-extract --format json` to extract symbol/BTF data, and transcribe field by field.
-    - `tools/extract_rs` parses offsets from `boot.img` (optionally with `xbl_config.img`), a complete OTA zip, or an `http(s)` link pointing to it. For kallsyms, pass `--kallsyms`, or omit it to directly recover the image's embedded table. `pselect_waiter_shift` and `off_slide_loggers_0_1` are derived by the built-in arm64 disassembler. MediaTek images do not have `xbl_config.img` and usually have no embedded BTF: the physical load address is derived from the kallsyms `_text` (can be overridden with `--phys`).
-5. Verify that all required `off_*` addresses are non-zero, that the task/cred layout comes from the same image, and set `recommend_shizuku` (default `0`; only the 5.15 multicast profile recommends Shizuku).
-6. Only override `execution` when there is actual device evidence; otherwise keep the [Common Defaults](defaults.md).
-7. Add `{release,file}` to `index.conf`, run `jq` validation, Rust tests, and `./gradlew clean :app:assembleDebug`.
-8. Use `./gradlew installDebug` to repeatedly debug-test on a real device under the same environment, with fixed cores, and a single route; be careful to control the device temperature before testing to prevent CPU throttling;
+## Where the files live
 
-1. Run `adb shell uname -r` and capture the complete release string; any character difference intentionally prevents a match.
-2. Determine the kernel family and open the matching guide: [5.x](templates/kernel-5.x.template.md), [6.1](templates/kernel-6.1.template.md), [6.6](templates/kernel-6.6.template.md), [6.12](templates/kernel-6.12.template.md).
-3. Copy the corresponding `.template.json`, name it after the exact release, and write the `release` field.
-4. Use `ghostlock-extract --format json` to extract symbol/BTF data; transcribe every field, and never reuse another firmware's `off_*` merely because the major version matches.
-5. Validate that all required `off_*` addresses are nonzero, that task/cred layouts come from the same image, and set `requires_shizuku` according to the runtime identity.
-6. Override `execution` only with measured device evidence; otherwise keep the [shared defaults](defaults.md).
-7. Add `{release,file}` to `index.json`, validate JSON with `jq`, run Rust tests, and run `./gradlew clean :app:assembleDebug`.
-8. Device-test repeatedly under low temperature, fixed CPU cores, and a single route; record App/Shizuku, W1/W2/W3, fallback, and cleanup outcomes.
+Every built-in profile lives in `app/src/main/assets/kernel_profiles/`:
 
-## Merge Order
+- `index.conf` — the list of built-in kernels. New profiles must be added here.
+- `<uname-r>.conf` — one complete profile per kernel; the file name must match
+  `uname -r` exactly.
+- `execution-tuning.conf` — tuning shared by every kernel.
+- `execution-<route>.conf` — tuning for a single attack route. Only profiles
+  that use that route (or fall back to it) need to include it.
+- `credential-6x.conf`, `kernelsnitch-6x.conf` — credential template and
+  KernelSnitch values shared by 6.x kernels.
+- `*-template.conf` — annotated reference templates. You can load them manually
+  from the debug page, but they never participate in device matching.
+- `docs/kernel_profiles/templates/` — templates grouped by kernel family.
 
-`defaults.json` → built-in release JSON → user sparse override → explicit UI CPU selection. Later layers win. Kotlin emits a single `active-profile.json`; Native no longer searches for or merges configuration sources.
+All of these are parsed as HOCON (Typesafe Config): `#` comments, `${?variables}`,
+trailing commas, and `include "file.conf"` (relative to the same directory,
+nestable) are supported. JSON is still valid HOCON, so nothing needs converting.
 
-## Safety Rules
+For what each field means, the required-field matrix, and the validation rules,
+see the [Profile schema](PROFILE_SCHEMA.md). This guide covers the workflow only
+and doesn't repeat the field reference.
 
-- `off_* = 0` in a template means "must be extracted", never a runnable default.
-- Incorrect task/cred/multicast layouts can corrupt arbitrary kernel memory, cause a black screen, or reboot the device.
-- Increasing `execution` attempt counts or shortening waits can significantly increase heat and reduce the success rate.
-- Do not submit a new profile as "supported" before it passes the device gate.
+## Adaptation steps
+
+1. **Identify the kernel version.**
+   Run `adb shell uname -r` and keep the complete string; any character
+   difference makes matching fail.
+
+2. **Pick a template.**
+   Open the document for the kernel family:
+   [5.x](templates/kernel-5.x.template.md),
+   [6.1](templates/kernel-6.1.template.md),
+   [6.6](templates/kernel-6.6.template.md),
+   [6.12](templates/kernel-6.12.template.md).
+
+3. **Copy it into a new profile.**
+   Copy the template to `app/src/main/assets/kernel_profiles/<uname-r>.conf`.
+   The file name must match `release`, then fill in the required fields.
+
+4. **Extract the offsets.**
+   Build and run the extractor:
+
+   ```sh
+   cargo build --release --manifest-path tools/extract_rs/Cargo.toml
+   build/extract/release/ghostlock-extract boot.img --format json --out offsets.json
+   ```
+
+   The tool accepts a `boot.img` (optionally with `xbl_config.img`), a complete
+   OTA zip, or an `http(s)` URL pointing at one. Pass `--kallsyms` to supply a
+   symbol table explicitly, or omit it to recover the image's embedded table.
+   `pselect_waiter_shift` and `off_slide_loggers_0_1` are derived by the built-in
+   arm64 disassembler. MediaTek images have no `xbl_config.img` and usually no
+   embedded BTF: the physical load address is derived from kallsyms `_text`, and
+   you can override it with `--phys`.
+
+5. **Transcribe field by field, then check your work.**
+   Field meanings and requirements are in the
+   [Profile schema](PROFILE_SCHEMA.md). Confirm every required `off_*` is
+   non-zero and that the task/cred layout comes from the same image. Set
+   `recommend_shizuku` as needed (default `0`; only the 5.15 multicast profile
+   recommends it).
+
+6. **Change `execution` only with device evidence.**
+   Otherwise keep the [Shared Defaults](defaults.md). You can also try values on the
+   in-app parameter override page first (see below) before writing them back.
+
+7. **Register it in `index.conf`.**
+   Add a `{release, file}` entry, then validate and build:
+
+   ```sh
+   jq . app/src/main/assets/kernel_profiles/index.conf
+   cargo test --manifest-path tools/extract_rs/Cargo.toml
+   ./gradlew clean :app:assembleDebug
+   ```
+
+8. **Verify on a real device.**
+   Install with `./gradlew installDebug` and test repeatedly in the same
+   environment, on fixed cores, with a single attack route. Let the device cool
+   down first so CPU throttling doesn't skew the results. Don't mark a new
+   profile as "supported" until it passes on-device verification.
+
+## Editing configuration inside the app
+
+You don't have to edit assets and reinstall the app for every tweak. The app
+offers two override layers; saving applies them immediately and they take part
+in the next run:
+
+- **Parameter override page (general overrides)** - adjust `execution.*` tuning,
+  such as attempt counts, wait/timeout values, and core selection.
+- **Advanced override page** - change `route` / `fallback.to` and any numeric
+  path (stored as sparse HOCON); handy for trying new offsets or geometry.
+- **Export config** - write the fully merged HOCON to a folder you pick (SAF)
+  and use it as the starting point for a new profile.
+
+Overrides are saved per release and take priority over the built-in profile and
+imported offsets. See section 7 of the
+[Profile schema](PROFILE_SCHEMA.md) for the layer order and storage locations.
+Adding a kernel to the built-in set still follows the steps above and commits to
+assets.
+
+## Safety notes
+
+- `off_* = 0` in a template is a symbol offset relative to the kernel image
+  base; you must extract the real value.
+- A wrong task/cred/multicast layout can corrupt arbitrary kernel memory, blank
+  the screen, or reboot the device.
+- Raising `execution` attempt counts or shortening waits increases heat and can
+  lower the success rate.
+- Don't submit a new profile as "supported" before it passes on-device
+  verification.

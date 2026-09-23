@@ -2,9 +2,21 @@
 
 > English version: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md)
 
+标记为**推荐 Shizuku**的固件，其 profile 中 `recommend_shizuku = 1`。每次启动时，应用会为主页的
+**通过 Shizuku 执行**开关自动打开；你可以在本次会话中关掉它，关掉后应用在本次会话内不再要求 Shizuku。
+
+Shizuku 以 shell 用户身份执行攻击，而 shell 没有 seccomp 过滤，因此会跳过 W3 seccomp bypass 阶段。
+使用步骤：
+
+1. 先启动 Shizuku（例如通过 ADB）并保持运行。
+2. 点击应用顶部的状态卡，在弹出的请求中授予权限。
+
+未标记的固件不会自动打开该开关，但**任何设备都可以手动开启**：通过 Shizuku 执行同样会跳过
+W3 seccomp bypass，即使并非必需，也能节省时间。
+
 | Kernel                                                 | Devices                                                          |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (最新系统·任意地区版本) — **需要 Shizuku**                            |
+| `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Xperia 1 V (最新系统·任意地区版本) — **推荐 Shizuku**                            |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |

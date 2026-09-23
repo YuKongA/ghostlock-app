@@ -2,12 +2,13 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
-C++ 迁移与解耦已完成（CPP00–CPP17；Multicast 真机门禁通过，TCP/Select 待外部协作者），详见 [静态分析与计划书](docs/analysis/README.md)
+## Documentation
 
-See the [supported-device list](docs/kernel_profiles/SUPPORTED_DEVICES.md).
-
-
-Kernels are matched by exact `uname -r`; unsupported builds are rejected and the app shows the status at the top. Built-in profiles live in `app/src/main/assets/kernel_profiles/`, one JSON file per release, with `index.json` as the runtime index and version-family examples under `templates/`.
+- [Kernel Profile Porting Guide](docs/kernel_profiles/README.md) - add support for a new kernel. GhostLock matches kernels by exact `uname -r` and rejects unsupported builds, showing the status at the top. Built-in profiles live in `app/src/main/assets/kernel_profiles/`: one HOCON file per release, `index.conf` as the runtime index, and `<major.minor>-template.conf` version-family templates.
+- [Supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) - the built-in kernel list.
+- [Shared execution defaults](docs/kernel_profiles/defaults.md) - every execution-tuning field, its default, and why.
+- [Profile schema](docs/kernel_profiles/PROFILE_SCHEMA.md) - full profile structure and data flow.
+- [Adding an attack route](docs/development/adding-a-route.md) - developer guide for a new native route (Chinese).
 
 For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/kernel_profiles/README.md).
 
@@ -17,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
 
-The route races two cores. On the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels the main thread drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page instead. The route and CPU pair come from the resolved profile; the legacy no-argument entry still honors `GHOSTLOCK_TCP_ROUTE=0` (force pselect) and `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`.
+The route races two cores. On the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels the main thread drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page instead; the 5.15 kernels use the multicast waiter route. The route and CPU pair come from the resolved profile; the legacy no-argument entry still honors `GHOSTLOCK_TCP_ROUTE=0` (force pselect) and `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`.
 
 ## Command-Line Debugging
 
@@ -40,7 +41,7 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
 ```
 
-Use `--format json` for extractor output. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone JSON profile, and add it to `kernel_profiles/index.json`. The old C `offsets.h` registry is deprecated and removed.
+Use `--format json` for extractor output. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
 
 ### Preflight
 
@@ -54,7 +55,7 @@ running inside the app sandbox. Cross-compile and push:
 
 ```powershell
 rustup target add aarch64-linux-android
-$ndk = "$env:ANDROID_HOME\ndk\29.0.14206865\toolchains\llvm\prebuilt\windows-x86_64\bin"
+$ndk = "$env:ANDROID_HOME\ndk\<version>\toolchains\llvm\prebuilt\windows-x86_64\bin"
 $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android

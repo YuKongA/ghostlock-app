@@ -1,8 +1,17 @@
 # Shared Execution Defaults
 
-These values preserve pre-S03 behavior. Time units are encoded in field-name suffixes: `_ms` for milliseconds and `_us` for microseconds. S08 will wire them to Native consumers; until then they stabilize the schema and support future overrides.
+These are the execution-tuning defaults every kernel shares. The app merges the
+built-in profile, imported offsets, and user overrides before handing the result
+to native; anything a profile omits falls back to the values here.
 
-> TODO(profile-suggest-01): Everything in this table is advisory. Only kernel geometry is required; a profile may omit or override these values, and the shipped default is the suggestion.
+Field-name suffixes encode units: `_ms` for milliseconds, `_us` for
+microseconds. The "Impact" and "Rationale" columns explain the trade-offs rather
+than prescribe values; when you do change `execution`, base it on real-device
+measurements.
+
+> Everything in this table is advisory. Only kernel geometry is required; a
+> profile may omit or override these values, and the shipped default is the
+> suggestion.
 
 <table>
 <thead>
