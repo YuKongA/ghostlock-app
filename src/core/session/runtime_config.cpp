@@ -45,6 +45,7 @@ static int32_t runtime_config_validate_cpus(config::RuntimeConfig *config) {
         return -1;
     }
     return 0;
+}
 
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
