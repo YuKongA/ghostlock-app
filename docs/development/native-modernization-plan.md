@@ -59,18 +59,29 @@
 **真机设备门禁待跑**（`victim_process.cpp` 的 fd 上限处理、`util.cpp` 引用别名与
 `perf_find_task` 均落在攻击路径）。
 
-## 批次 3：宏层 / 结构（低优先，纯可读性）
+## 批次 3：宏层 / 结构（已实施）
 
-- [ ] `legacy/offsets_json.cpp:327,334,411` `SCALAR_STORE`/`SCALAR_ALIAS`/`EXEC_FIELD` →
-  C++20 NTTP `template<auto kernel_offsets::*M>`，免宏且强类型（v1 路径）
-- [ ] `kernelsnitch/utils.h:73-133` `pr_*` 宏矩阵 → sink 函数 + 薄宏，可补
-  `format(printf)` 检查（会改输出路径形状，谨慎）
-- [ ] `profile/macros.h` VR 宏：`#ifndef` 默认定义使 `exploit_procedure.cpp:160` 的
-  `#ifdef VR_TAG_A_OFF` 恒真，行为需确认后改为显式 feature 开关
-- [ ] C++23 评估：`std::expected` 替换手写 `Result<T>` 的 variant 实现、
-  `std::to_underlying`、`std::byteswap`（依赖 NDK/libc++ 支持）
-- [ ] `runtime_struct_offsets.h:78-136` 访问器样板：评估后保留（每个访问器已是最小形式
-  `symbol_u32(&field, fallback)`，改成表驱动反而更难读）
+- [x] `legacy/offsets_json.cpp:327,334,411` `SCALAR_STORE`/`SCALAR_ALIAS`/`EXEC_FIELD`
+  → C++20 `template<auto Member>` 成员指针 NTTP（97 处：57 store / 9 alias / 31 exec），
+  类型仍由声明成员决定截断（v1 路径，`offsets_json_test` 覆盖）
+- [x] `kernelsnitch/kernelsnitch.h:246` `PAGE_SIZE << mm_slab_order` 保持 int 语义但改为
+  `static_cast<size_t>(PAGE_SIZE) << ...`：消除全仓最后一个 `-Wsign-conversion`，值不变
+- [x] `runtime_struct_offsets.h:78-136` 访问器样板：**评审保留**（每个访问器已是最小形式
+  `symbol_u32(&field, fallback)`，表驱动不增可读性）
+- [x] `kernelsnitch/utils.h:73-133` `pr_*` 宏矩阵：**评审保留**（上游移植代码 + 输出即门禁
+  比对对象，改成函数会改变所有日志路径的形状，收益低于风险）
+
+验证：`make -C src native-host-tests` 全绿；NDK 构建**零警告**；`make -C src lint-tidy`
+退出码 0、0 findings；`tools/cmp_disasm.py` 对批次 2 提交（92604fe）构建的二进制
+7/8 IDENTICAL (strict)，`do_one_write` 为允许的 LAYOUT-SHIFT（1 个地址注解），PASS。
+
+## 待决策（需确认后再动）
+
+- [ ] `profile/macros.h` 的 VR 宏：`#ifndef VR_TAG_A_OFF` 默认定义使
+  `exploit_procedure.cpp` 的 `#ifdef VR_TAG_A_OFF` **恒真**，即 VR.ko tag 清理总是编译。
+  需要确认这是有意默认开启，还是本意是构建时开关；确认后再改成显式 feature 宏。
+- [ ] C++23 升级评估：`std::expected` 替换手写 `Result<T>` 的 variant 实现、
+  `std::to_underlying`、`std::byteswap`（依赖 NDK/libc++ 支持，须单独门禁）。
 
 ## 明确保留
 
