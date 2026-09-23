@@ -78,13 +78,13 @@ namespace ghostlock::attack {
     void write_root_script(void);
 
     uintptr_t perf_find_task(void);
-} // namespace ghostlock::attack
 
-/* The macro stays outside the namespace; the timer accessor is qualified so
- * macro users do not need a using-declaration. */
-#define TIMER(label) do { \
-    pr_info("[T+%.0fms] %s\n", ghostlock::attack::timer_ms(), label); \
-    ghostlock::support::log_sync(); \
-  } while (0)
+    /* One labeled timing line plus a log flush; a function keeps the call-site
+     * shape the TIMER macro had, without the macro. */
+    inline void timer_mark(const char *label) {
+        pr_info("[T+%.0fms] %s\n", timer_ms(), label);
+        ghostlock::support::log_sync();
+    }
+} // namespace ghostlock::attack
 
 #endif
