@@ -120,7 +120,8 @@ NATIVE_HOST_TESTS := \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
   offsets_json_test profile_binary_test futex_hash_test number_parse_test \
-  runtime_paths_test handoff_probe_test victim_context_test
+  runtime_paths_test handoff_probe_test victim_context_test \
+  cpp_link_probe_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
