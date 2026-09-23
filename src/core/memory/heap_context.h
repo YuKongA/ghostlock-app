@@ -1,6 +1,7 @@
 #ifndef HEAP_CONTEXT_H
 #define HEAP_CONTEXT_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
@@ -35,7 +36,7 @@ namespace ghostlock::memory {
     };
 
     struct ReclaimPair {
-        int32_t fd[2];
+        std::array<int32_t, 2> fd;
     };
 
     struct PayloadPage {

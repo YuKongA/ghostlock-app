@@ -118,7 +118,17 @@ namespace ghostlock::session::victim {
         }
         /* Don't leak app-side fds into the root shell chain: ksud/zygisk
      * daemons must not keep their write ends open. */
-        for (int32_t fd = 3; fd < 1024; fd++) {
+        /* Every live descriptor above stdio must not leak into the exec chain,
+         * however high the soft limit goes; the old 1024 cutoff missed the
+         * descriptors the spray opens past it. */
+        int32_t fd_limit = 1024;
+        struct rlimit nofile_limit{};
+        if (getrlimit(RLIMIT_NOFILE, &nofile_limit) == 0 &&
+            nofile_limit.rlim_cur != RLIM_INFINITY &&
+            nofile_limit.rlim_cur <= static_cast<rlim_t>(1048576)) {
+            fd_limit = static_cast<int32_t>(nofile_limit.rlim_cur);
+        }
+        for (int32_t fd = 3; fd < fd_limit; fd++) {
             int32_t fl = fcntl(fd, F_GETFD);
             if (fl >= 0) fcntl(fd, F_SETFD, fl | FD_CLOEXEC);
         }
@@ -157,8 +167,8 @@ namespace ghostlock::session::victim {
     }
 
     static pid_t spawn_child(VictimContext &p) {
-        int32_t p1[2], p2[2], p3[2];
-        if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) return -1;
+        std::array<int32_t, 2> p1{}, p2{}, p3{};
+        if (pipe(p1.data()) < 0 || pipe(p2.data()) < 0 || pipe(p3.data()) < 0) return -1;
         p.task_read.reset(p1[0]);
         p.task_write.reset(p1[1]);
         p.cmd_read.reset(p2[0]);

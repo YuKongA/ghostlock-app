@@ -1,5 +1,6 @@
 #include "route/select_stack_route.h"
 
+#include <array>
 #include <cassert>
 #include <cerrno>
 #include <fcntl.h>
@@ -19,8 +20,9 @@ int32_t main(void) {
     ghostlock::memory::WriteRequest request{};
     ghostlock::profile::SelectStackLayout layout = {.waiter_shift = 16, .compact_waiter = 1};
     const profile::TargetProfile profile{};
+    const std::array<int32_t, 3> no_stdio = {-1, -1, -1};
 
-    ghostlock::route::select_stack::SelectStackRoute context(&race, &request, profile, layout, nullptr);
+    ghostlock::route::select_stack::SelectStackRoute context(&race, &request, profile, layout, no_stdio);
     assert(context.race == &race && context.request == &request);
     assert(&context.profile == &profile);
     assert(context.layout.waiter_shift == 16 && context.layout.compact_waiter);
@@ -34,7 +36,7 @@ int32_t main(void) {
 
     /* Borrowed stdio backup is recorded as a borrowed handle. */
     {
-        int32_t backups[3] = {100, 101, 102};
+        const std::array<int32_t, 3> backups = {100, 101, 102};
         ghostlock::route::select_stack::SelectStackRoute borrowed_stdio(&race, &request, profile, layout, backups);
         assert(borrowed_stdio.stdio_backup[0].get() == 100);
         assert(borrowed_stdio.stdio_backup[2].get() == 102);
@@ -56,7 +58,7 @@ int32_t main(void) {
     static_assert(!std::is_copy_assignable_v<ghostlock::route::select_stack::SelectStackRoute>);
     static_assert(std::is_move_constructible_v<ghostlock::route::select_stack::SelectStackRoute>);
     {
-        ghostlock::route::select_stack::SelectStackRoute source(&race, &request, profile, layout, nullptr);
+        ghostlock::route::select_stack::SelectStackRoute source(&race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
         source.pipe_read.reset(fds[0]);
@@ -79,7 +81,7 @@ int32_t main(void) {
    * twice: the pipe read end closes once. */
     {
         ghostlock::route::select_stack::SelectStackRoute borrowed_block(
-            &race, &request, profile, layout, nullptr);
+            &race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
         borrowed_block.pipe_read.reset(fds[0]);
@@ -93,7 +95,7 @@ int32_t main(void) {
 
     /* A stuck consumer retains every route descriptor for process lifetime. */
     {
-        ghostlock::route::select_stack::SelectStackRoute stuck(&race, &request, profile, layout, nullptr);
+        ghostlock::route::select_stack::SelectStackRoute stuck(&race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
         stuck.pipe_read.reset(fds[0]);
@@ -115,7 +117,7 @@ int32_t main(void) {
     {
         int32_t saved_stdout = dup(1);
         assert(saved_stdout >= 0);
-        int32_t backups[3] = {-1, saved_stdout, -1};
+        const std::array<int32_t, 3> backups = {-1, saved_stdout, -1};
         ghostlock::route::select_stack::SelectStackRoute restored(&race, &request, profile, layout, backups);
         restored.destroy();
         assert(fcntl(saved_stdout, F_GETFD) != -1);

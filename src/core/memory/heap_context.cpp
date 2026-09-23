@@ -36,8 +36,8 @@ namespace ghostlock::memory {
     }
 
     void PayloadPage::destroy() noexcept {
-        for (int32_t i = 0; i < 2; i++) {
-            if (reclaim.fd[i] >= 0) close(reclaim.fd[i]);
+        for (const int32_t fd : reclaim.fd) {
+            if (fd >= 0) close(fd);
         }
         clear_page(*this);
     }

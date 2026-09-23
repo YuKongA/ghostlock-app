@@ -9,6 +9,8 @@
 
 #include <sys/select.h>
 
+#include <array>
+
 /* Shared with common.h; repeated behind a guard so this header stays
  * host-safe for the fixed tests. */
 #ifndef PSELECT_ROUTE_NFDS
@@ -44,7 +46,7 @@ namespace ghostlock::route::select_stack {
         SelectStackRoute(ghostlock::race::PiRace *race, const ghostlock::memory::WriteRequest *request,
                          const ghostlock::profile::TargetProfile &profile,
                          ghostlock::profile::SelectStackLayout layout,
-                         const int32_t stdio_backup[3]) noexcept;
+                         const std::array<int32_t, 3> &stdio_backup_value) noexcept;
 
         ~SelectStackRoute() noexcept = default;
 
@@ -92,7 +94,7 @@ namespace ghostlock::route::select_stack {
         ghostlock::support::UniqueFd pipe_write;
         ghostlock::support::UniqueFd block;
         ghostlock::support::UniqueFd high_read;
-        ghostlock::support::BorrowedFd stdio_backup[3];
+        std::array<ghostlock::support::BorrowedFd, 3> stdio_backup;
         int32_t block_borrows_pipe = 0;
         int32_t selected_fds_installed = 0;
         int32_t consumer_stuck = 0;
