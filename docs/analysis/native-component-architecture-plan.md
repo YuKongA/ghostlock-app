@@ -1,0 +1,463 @@
+# Native 组件架构与配置解耦计划（2026-09-23）
+
+## 现状与基线
+
+- 分支：`very-not-stable-dev`
+- HEAD：`b411bb4`
+- 兼容基线按用户明确指定为主线，不以当前 dev 架构或数据格式作为长期兼容承诺。仓库快照中 `remote/main` 为 `10001ae`；`git rev-list --left-right --count remote/main...very-not-stable-dev` 为 `0 351`，即当前 dev 有 351 个主线之外的提交。
+- 代码行为基线为 `b411bb4`。初次设计时工作树约有 70 个修改/未跟踪路径；用户随后要求回滚未提交的实现改动，tracked 源码现已恢复，未跟踪的设计/规范文档作为本次文档提交内容保留。不得重放未经设计的旧实现改动。
+- 当前 Profile 主链：内置 HOCON、导入配置与稀疏用户 override 由 `AndroidProfileConfigController` 合并；`NativeProfileDocument` 编码 GLK1 v2；native 的 `kernel_offsets` 经 `TargetProfile` 封装为只读快照。
+- 当前 native 扩展点是 route：`RouteKind` / route catalog、编译期 `Policy`、`Procedure` 和 route 生命周期。TCP zerocopy、select stack、multicast waiter 是现有 route 实现。
+- 当前 W1/W2/W3、victim child 和 handoff 位于共享 session/procedure 周边；CVE-2026-43499 futex collision 属于漏洞后端职责的目标划分；UMH 转发前端与 CVE-2026-64560 后端是规划项，尚未作为组件集成。
+- 现有配置已包含 route 调优，但设备核心字段与 runtime tuning 的文件边界、Kotlin 模型边界仍需收敛。`recommend_shizuku` 是 App 路径建议，不是 native 核心布局。
+
+## 目标与约束
+
+### 目标
+
+1. 将设备核心 Profile、前端、漏洞后端、中间件和执行调优建模为独立配置域。
+2. 让 Kotlin 与 native 对跨进程共享的**解析后组件配置**保持字段语义一致；存储模型、UI 编辑态和 Kotlin 策略元数据不要求与 native 类型镜像。
+3. 用单一 `ResolvedRuntimePlan` 明确一次运行选用的 frontend、backend、middleware 及各自配置，避免以一个 `route` 字段代表整个执行链。
+4. 支持现有 child frontend、三种 middleware、CVE-2026-43499 backend，以及后续 UMH frontend、CVE-2026-64560 backend 的独立注册和兼容性检查。
+5. 保持 HOCON 为权威配置输入；跨 Kotlin/native 的状态只能通过版本化 profile DTO 或项目已允许的文件/进程通道传递。wire 版本由新模型按主线兼容需求重新确定。
+
+### 设计原则
+
+- 组件关系由 Orchestrator 组合；frontend、backend、middleware 不直接依赖其他组件的具体类。
+- 配置按组件 ID 命名空间隔离：`frontend.<id>`、`backend.<id>`、`middleware.<id>`。未知组件 ID、未知字段、缺少必需配置或不兼容组合必须产生可诊断错误，不得静默套用另一组件参数。
+- 每个组件声明稳定 ID、schema 版本、能力与适用条件；“用户推荐”与“组件实际支持”分开表达。profile 声明不是支持认证，真机 gate 才能记录设备支持状态。
+- Native 继续遵守项目限制：不用虚基类作为 route/provider 扩展机制；PI 竞争窗口中不引入间接调用。组件选择在敏感执行区间外完成，使用编译期 Policy、具名 Procedure 与显式静态分派。新架构不得增加可变全局状态。
+- Kotlin 核心字段与 native core snapshot 尽量一一对应。格式/展示元数据、导入来源、编辑状态、`recommend_shizuku` 留在 Kotlin；App 在 DTO 边界处理兼容，不要求 native 消费这些字段。
+- 新配置先进入解析后的强类型 DTO，再由 native adapter 转成各组件配置；组件实现不读取 HOCON，也不直接解析 wire bytes。
+
+### 非目标
+
+- 本计划只定义组件与配置架构，不设计或记录漏洞利用步骤、内存写入细节、偏移生成方法或绕过实现。
+- 不在同一批次重写 `kernelsnitch/`、legacy v1 导入路径、现有 CVE 后端内部实现或现有 middleware 算法。
+- 不把 UMH 作为所有设备的默认 frontend，不据架构存在推断设备兼容性。
+- 不在组件架构迁移中同时调优 race、重试、CPU 亲和性等执行行为。
+
+## 目标模型
+
+```mermaid
+flowchart TB
+    subgraph Store["持久化配置"]
+        Core["DeviceCoreProfile<br/>设备/内核身份与通用核心数据"]
+        FrontCfg["FrontendProfile<br/>child 或 umh_forward 配置"]
+        BackCfg["BackendProfile<br/>按 backend_id 分区"]
+        MidCfg["MiddlewareProfile<br/>按 middleware_id 分区"]
+        Preset["ExecutionPreset<br/>通用与组件默认参数"]
+        Recommend["Core Recommendations<br/>稀疏推荐值"]
+        Override["ExecutionOverride<br/>用户稀疏覆盖"]
+    end
+
+    Resolver["Kotlin ProfileResolver<br/>校验、优先级合并、兼容性检查"]
+    Plan["ResolvedRuntimePlan<br/>一次运行的不可变选择与参数"]
+    DTO["Versioned GLK DTO<br/>Kotlin/native 边界适配"]
+
+    subgraph Native["Native runtime"]
+        Snapshot["RuntimeSnapshot<br/>core + selected component configs"]
+        Orchestrator["NativeOrchestrator<br/>静态能力目录与显式分派"]
+        Frontend["Frontend Policy / Procedure<br/>root_child | umh_forward"]
+        Backend["Backend Policy / Procedure<br/>cve_2026_43499 | cve_2026_64560"]
+        Middleware["Middleware Policy / Procedure<br/>tcp | select | multicast"]
+        Session["ExecutionSession<br/>运行状态与资源所有权"]
+    end
+
+    Core --> Resolver
+    FrontCfg --> Resolver
+    BackCfg --> Resolver
+    MidCfg --> Resolver
+    Preset --> Resolver
+    Recommend --> Resolver
+    Override --> Resolver
+    Resolver --> Plan --> DTO --> Snapshot --> Orchestrator
+    Orchestrator --> Frontend
+    Orchestrator --> Backend
+    Orchestrator --> Middleware
+    Frontend --> Session
+    Backend --> Session
+    Middleware --> Session
+```
+
+组件组合是计划中的选择，不是承诺所有排列都兼容。Orchestrator 应根据各组件静态声明的能力/约束验证组合，并在执行前拒绝不兼容计划。Session 只承载经审查的公共运行状态与资源所有权，不成为组件任意共享数据的容器。
+
+### 合并规则
+
+对允许调优的叶字段，解析优先级从低至高为：通用 preset → 所选组件 preset → 核心 Profile 的稀疏推荐 → 用户 override → 本次显式会话选择。CPU 对等会话输入不得被设备推荐暗中替代。核心偏移、route/provider ID 和必需能力不属于 tuning override 白名单。
+
+### 模型对应与例外
+
+| 语义域 | Kotlin 持久化/编辑模型 | Kotlin 解析后 / native DTO | 对应规则 |
+|---|---|---|---|
+| 设备核心 | `DeviceCoreProfile` | `CoreRuntimeConfig` | 字段语义与值域逐项对应；Kotlin 可有文件元数据，native 不接收无关元数据 |
+| frontend/backend/middleware 选择 | 组件引用与独立配置段 | 组件 ID + 该组件强类型配置 | ID、schema 版本和字段语义一致；各组件内部类无需全局同构 |
+| execution tuning | preset、recommendation、override 分层 | 合并后的 `ExecutionSettings` | 仅解析后的值跨边界；native 不知道值来自哪一层 |
+| `recommend_shizuku` | Kotlin App 策略元数据 | 不放入 native core DTO | 明确例外；如旧 wire 仍有槽位，由 Kotlin 兼容适配处理，不作为 native 能力 |
+| schema、导入来源、编辑差异 | Kotlin 专有元数据 | 不传输 | App 侧消费 |
+| safe mode / 本次运行选择 | 会话或运行选项 | 明确的 runtime option | 不写入设备核心 Profile 或通用 preset |
+
+## 具体数据结构与类边界
+
+本节定义接口形状，不规定漏洞原语、偏移计算或内存操作。具体字段仍由各自组件 schema 单独评审。下列 C++ 类型是架构草图；落地时应优先复用现有类型，并通过边界 adapter 避免重复存储。
+
+### Kotlin 持久化与解析模型
+
+Kotlin 持久化模型表达“配置从哪里来、编辑了什么”；解析模型表达“本次实际选择什么”。两者分开定义：
+
+```kotlin
+@JvmInline value class ComponentId(val value: String)
+@JvmInline value class ExecutionKey(val value: String)
+
+data class DeviceCoreProfile(
+    val release: String,
+    val schemaVersion: Int,
+    val kernelMajor: Int,
+    val core: CoreKernelConfig,
+    val recommendations: CoreRecommendations = CoreRecommendations(),
+)
+
+data class ComponentProfiles(
+    val frontends: Map<ComponentId, FrontendProfile>,
+    val backends: Map<ComponentId, BackendProfile>,
+    val middlewares: Map<ComponentId, MiddlewareProfile>,
+)
+
+data class ComponentSelection(
+    val frontend: ComponentId,
+    val backend: ComponentId,
+    val middleware: ComponentId,
+)
+
+data class SparseExecutionValues(val values: Map<ExecutionKey, UInt>)
+
+data class ResolvedRuntimePlan(
+    val core: CoreKernelConfig,
+    val selection: ComponentSelection,
+    val frontend: FrontendConfig,
+    val backend: BackendConfig,
+    val middleware: MiddlewareConfig,
+    val execution: ExecutionSettings,
+    val options: RuntimeOptions,
+)
+```
+
+`CoreKernelConfig`、`FrontendConfig`、`BackendConfig`、`MiddlewareConfig` 和 `ExecutionSettings` 使用 sealed/typed 子模型，不让任意 dotted path Map 直接穿过领域层。HOCON adapter 可以暂时读写 `ValueMap`，但应在输入边界验证字段并立即转成 typed model。`recommend_shizuku` 单独保留在 App 策略模型，不放入 `ResolvedRuntimePlan.core`。
+
+### Native C++23 运行模型
+
+```cpp
+namespace ghostlock::runtime {
+    struct ComponentId final {
+        std::string_view value;
+    };
+
+    enum class FrontendKind : std::uint8_t { RootChild, UmhForward };
+    enum class BackendKind : std::uint8_t { Cve2026_43499, Cve2026_64560 };
+    enum class MiddlewareKind : std::uint8_t {
+        TcpZerocopy, SelectStack, MulticastWaiter
+    };
+
+    struct RuntimeOptions final {
+        bool safe_mode;
+        // Run-scoped options only; no App presentation metadata.
+    };
+
+    struct ComponentSelection final {
+        FrontendKind frontend;
+        BackendKind backend;
+        MiddlewareKind middleware;
+    };
+
+    struct RuntimePlanView final {
+        const profile::TargetProfile& core;
+        ComponentSelection selection;
+        const FrontendConfig& frontend;
+        const BackendConfig& backend;
+        const MiddlewareConfig& middleware;
+        const ExecutionSettings& execution;
+        RuntimeOptions options;
+    };
+
+    struct RunResult final {
+        RunCode code;
+        RunStage stage;
+        bool clean;
+    };
+}
+```
+
+The concrete config types should use discriminated unions, such as `std::variant<RootChildConfig, UmhForwardConfig>`, for transport/validation. Convert them to a checked `RuntimePlanView` before dispatch. Within native, use existing typed route layout/config types wherever suitable; do not copy their fields into a second parallel structure.
+
+The component contract is compile-time policy-based rather than virtual:
+
+```cpp
+template <class Config>
+struct ComponentPolicy {
+    static constexpr auto kind = /* stable enum value */;
+    static bool supports(const RuntimePlanView&) noexcept;
+    static RunResult run(ExecutionSession&, const RuntimePlanView&) noexcept;
+};
+
+template <class Frontend, class Backend, class Middleware>
+RunResult run_pipeline(ExecutionSession& session,
+                       const RuntimePlanView& plan) noexcept;
+```
+
+These declarations show ownership and call direction only. Implementations must keep the repository's existing route lifecycle and critical-section invariants. `supports()` is pure/read-only and runs before component setup. Policy types must be host-compilable; Android-only work remains in the Android-specific procedure/adapter boundary.
+
+### Native classes and ownership
+
+| Type | Owns / responsibility | Must not own |
+|---|---|---|
+| `RuntimePlanDecoder` | Decode a supported GLK version; reject malformed/unknown required data | HOCON parsing, UI/import state |
+| `RuntimePlanValidator` | Validate IDs, schemas, required fields and compatibility before dispatch | Component execution state |
+| `NativeOrchestrator` | Select a compile-time pipeline outside sensitive windows; coordinate stage lifecycle | Per-component hidden singleton state |
+| `ExecutionSession` | One run's common state, cancellation/result, shared resource ownership | Arbitrary component-specific scratch data |
+| `FrontendPolicy` / procedure | Frontend-specific startup and handoff contract | Backend/middleware implementation details |
+| `BackendPolicy` / procedure | Backend-specific availability, preparation and result contract | Frontend process ownership or middleware-specific layout |
+| `Middleware Policy` / route | Route-specific lifecycle and configuration use | Frontend selection or backend private state |
+| `RuntimeProfileAdapter` | Map the stable wire/core DTO to existing `TargetProfile` and component configs | Decision-making based on App-only metadata |
+
+Do not add `std::function`, virtual dispatch, callback tables, or type-erased function pointers to the execution path. `std::variant` is appropriate at the decode/validation boundary; `std::visit` is limited to non-sensitive normalization if used. The selected pipeline itself is instantiated through direct template calls.
+
+## C++23 特性选用
+
+| C++23/modern C++ feature | Use | Constraint |
+|---|---|---|
+| `enum class` with fixed underlying type | Stable component IDs in the wire DTO and switch dispatch | Explicit numeric values; never serialize compiler enum layout implicitly |
+| `std::expected<T, E>` | Decoder/validator/factory errors with typed error codes | Error paths remain explicit; no exceptions across native process boundary |
+| `std::variant` | Typed config alternatives at the DTO boundary | No unchecked `get`; validate kind/config match before constructing runtime view |
+| `std::optional<T>` | Truly optional recommendations/fallback choices | Absence must not be confused with numeric zero/default config |
+| `std::span<const T>` | Read-only descriptor/field tables and test fixtures | Non-owning lifetime must be scoped to immutable catalogs |
+| `std::string_view` | Static component IDs and diagnostic labels | Never retain a view into a temporary decoded buffer |
+| Concepts / `static_assert` | Verify Policy interface and allowed config types at compile time | Compile-time checks must not introduce runtime indirection |
+| `constexpr` / `consteval` tables | Static component catalog and enum-token agreement | Tables are immutable; no registration-time mutable globals |
+| designated initializers | Readable construction of config/result aggregates | Keep declaration order aligned with project's compiler support and avoid ABI serialization |
+| `std::visit` | Optional validation of config variant before execution | Do not use as a critical-window dispatch mechanism |
+
+Do not adopt C++23 library features solely for novelty. Before using `std::expected`, confirm the Android NDK libc++ level configured by the project. Where support is insufficient, use a small project-local result type with the same explicit semantics; do not introduce exceptions as a substitute.
+
+## Call chain (pseudocode only)
+
+### App/configuration to native plan
+
+```text
+ProfileController.load(deviceRelease, cpuSelection)
+  -> HoconProfileStore.loadCore(deviceRelease)
+  -> ComponentProfileStore.loadReferencedProfiles()
+  -> ExecutionPresetStore.loadCommonAndComponentDefaults()
+  -> OverrideStore.loadSparseOverrides()
+  -> ProfileResolver.resolve(inputs)
+       -> validateCore(core)
+       -> resolveSelections(recommendations, explicitChoices)
+       -> validateComponentSchemas(selection, componentProfiles)
+       -> validateCompatibility(frontend, backend, middleware)
+       -> mergeExecution(defaults, recommendations, overrides, sessionChoices)
+       -> return ResolvedRuntimePlan or typed ConfigError
+  -> RuntimePlanCodec.encode(plan, supportedWireVersion)
+  -> ProcessBuilder.start(nativeExecutable)
+  -> stdin.write(versionedRuntimeDocument)
+```
+
+### Native decode and preflight
+
+```text
+main
+  -> RuntimePlanDecoder.decode(stdin)
+       -> accept supported wire versions
+       -> decode core and selected component sections
+       -> reject malformed or unknown required sections
+  -> RuntimePlanValidator.validate(decodedPlan)
+       -> validate component IDs and config-kind correspondence
+       -> validate compatibility constraints
+       -> build immutable RuntimePlanView
+  -> NativeOrchestrator.run(planView)
+```
+
+### Static dispatch outside sensitive execution windows
+
+```text
+NativeOrchestrator.run(plan)
+  -> switch plan.selection.frontend
+       -> switch plan.selection.backend
+            -> switch plan.selection.middleware
+                 -> run_pipeline<RootChildPolicy, Cve43499Policy, TcpPolicy>(session, plan)
+                 -> run_pipeline<RootChildPolicy, Cve43499Policy, SelectPolicy>(session, plan)
+                 -> ... only catalogued combinations ...
+       -> ...
+  -> return RunResult
+
+run_pipeline<Frontend, Backend, Middleware>(session, plan)
+  -> Frontend::preflight(plan)
+  -> Backend::preflight(plan)
+  -> Middleware::preflight(plan)
+  -> if any preflight fails: return typed failure
+  -> construct procedure composition with direct typed calls
+  -> run existing shared session lifecycle
+  -> collect component statuses
+  -> disarm/cleanup through the owning component/session
+  -> return RunResult
+```
+
+The pseudocode intentionally omits vulnerability operation details. The catalog should enumerate only reviewed combinations; nested switches must reject all other tuples. Do not build a runtime callback graph and do not perform component selection inside the PI-sensitive window.
+
+### Failure and cleanup flow
+
+```text
+decode/validation failure
+  -> emit ConfigError(stage, componentId, fieldPath)
+  -> do not create execution resources
+
+preflight failure
+  -> stop before entering the selected pipeline
+  -> unwind only resources already acquired by their owner
+
+component failure
+  -> map to typed RunResult and existing RouteStatus-compatible reporting
+  -> session requests orderly teardown
+  -> each component disarms/destroys only resources it owns
+  -> return result to app through existing stdout/exit-code contract
+```
+
+## 批次 1 的具体字段契约草案
+
+| Kotlin concept | Native concept | Transport | 说明 |
+|---|---|---|---|
+| `DeviceCoreProfile.release` | `TargetProfile::release()` | required core header field | 与现有 uname release gate 对应 |
+| `CoreKernelConfig` | 现有 `TargetProfile` 核心 accessor 集合 | core section | 字段语义保持一致；按现有签名类型映射 |
+| `ComponentSelection` | `runtime::ComponentSelection` | required component selection section | 独立 frontend/backend/middleware ID，不复用单一 route byte |
+| `FrontendConfig` | `FrontendConfig` variant | selected frontend section | section ID 必须与 selection ID 一致 |
+| `BackendConfig` | `BackendConfig` variant | selected backend section | 不共享不同 backend 的私有字段命名空间 |
+| `MiddlewareConfig` | existing route config + middleware DTO | selected middleware section | 老 route schema 通过迁移 adapter 读入 |
+| `ExecutionSettings` | native execution settings | resolved execution section | 所有来源已在 Kotlin 合并；native 收到确定值 |
+| `recommend_shizuku` | 无 native 对应字段 | Kotlin only | 从新 wire 语义移除；旧 v2 兼容 adapter 单独处理 |
+| `RuntimeOptions.safe_mode` | runtime option | option section | 运行期参数，不属于设备几何或 preset |
+
+正式实现前，应把上表扩成逐字段 schema：名称、类型、必需性、范围、默认来源、是否允许用户覆盖、Kotlin/native 对照测试。不得在本计划中猜测新增 backend 的设备偏移字段。
+
+## 数据流与控制流变化
+
+```text
+现状：HOCON + tuning 解析
+  → 单一 resolved profile
+  → GLK1 v2
+  → native TargetProfile / RouteController
+
+目标：DeviceCoreProfile + component profiles + presets + overrides
+  → Kotlin resolver 校验并生成 ResolvedRuntimePlan
+  → 版本化 GLK DTO
+  → native RuntimeSnapshot
+  → Orchestrator 校验组件兼容性并静态分派
+  → frontend + backend + middleware 在同一 ExecutionSession 合作
+```
+
+不变量：
+
+1. 核心 Profile 缺字段时不得由执行 preset 填补核心数据。
+2. 某组件未被选择时，其组件配置不得进入本次 RuntimeSnapshot。
+3. fallback（若保留）必须作为组件选择策略建模并显式校验，不得与 middleware ID 混为一谈。
+4. `recommend_shizuku` 不决定 native backend/frontend/middleware，也不进入 native 核心能力判定。
+5. 配置解析结果在 native 执行期间只读；组件状态仅由其所有者或 ExecutionSession 按契约管理。
+6. 新模型写出版本须有显式版本号和拒绝未知必需能力的规则。dev 独有的 GLK v2、HOCON profile schema、组件接口和行为不构成必须保留的兼容契约；Batch 0 只识别并保留主线实际存在且仍需支持的输入/接口。
+
+## 改动清单（按批次）
+
+### [ ] Batch 0：基线与工作树归属
+
+- [x] 新建 `docs/analysis/native-component-architecture-plan.md`。
+- [ ] 记录当前 70 个 dirty/untracked 路径归属，并对上一轮 execution 拆分补齐单独设计/验证状态；任何实现前确认不覆盖它们。
+- [ ] 从 git 历史提取 Profile/wire/route 设计与 device gate 证据，列出可用基线二进制和设备矩阵。
+
+### [ ] Batch 1：配置模型拆分，保持运行行为
+
+- [ ] `app/src/main/kotlin/com/ghostlock/app/data/AndroidProfileConfigController.kt`：将大而全 ValueMap 合并流程拆为 loader/resolver/validator/serializer 职责；解析成明确的 `DeviceCoreProfile`、`ExecutionPreset`、`ExecutionOverride` 与 `ResolvedRuntimePlan`。
+- [ ] `app/src/main/kotlin/com/ghostlock/app/data/`：增加 Kotlin typed core/component/tuning models 与 HOCON adapters；避免 UI 用 dotted path 直接成为领域模型。
+- [ ] `app/src/main/assets/kernel_profiles/`：核心文件只留设备核心字段和允许的稀疏推荐；新增单一通用 preset 文件及按组件 ID 的默认配置；迁移模板和 index。
+- [ ] `build.gradle.kts`：profile exporter 使用相同字段表/合并规则，不能维护与 app resolver 不同的第二套业务规则。优先抽取共享 schema/生成字段表；如 Gradle 无法复用 Kotlin 实现，须有逐字段一致性测试。
+- [ ] `app/src/test/**`：加旧 HOCON → 新模型 → resolved plan 等价测试、合并优先级与无效/未知字段测试、组件配置隔离测试。
+- [ ] `docs/kernel_profiles/PROFILE_SCHEMA*.md`、`README*.md`：更新 schema、迁移和中英文说明。
+- [ ] 保持 native 执行路径不变；不要求兼容 dev 独有的现有 GLK v2 布局或逐字节保持其输出。以 Batch 0 确认的主线输入为 fixture，验证其可转换成新的核心/组件模型；`recommend_shizuku` 留在 Kotlin 策略路径。
+
+### [ ] Batch 2：Kotlin/native 版本化组件 DTO
+
+- [ ] `app/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt`：拆成 core DTO、component DTO、runtime options 与 wire codec；保持 codec 不承载存储来源信息。
+- [ ] `src/core/profile/model.h`、`binary.h`、`binary.cpp`：定义 native 对应的只读 runtime/core/component DTO 和新版本解码适配。仅当 Batch 0 证明某旧 wire 格式属于必须支持的主线契约时，才保留该 reader；dev 独有的 GLK v2 reader 可直接替换。
+- [ ] `src/core/profile/**` 与 Android app 的 binary tests：逐字段校验类型、signedness、默认值、未知字段/版本行为及 round-trip。
+- [ ] wire 版本及二进制字段表只允许在本批变更；禁止 Kotlin/native 字段顺序各自手维护却无一致性测试。
+- [ ] `recommend_shizuku` 留在 App 模型；无需为 dev 独有旧 v2 字段继续保留 native 语义槽位。
+
+### [ ] Batch 3：native Orchestrator 与现有组件目录化
+
+- [ ] `src/core/route/route_policy.hpp`、`route_controller.*`、`exploit_procedure.*`：将 middleware route 的目录与选择职责收敛到 Orchestrator；迁移时保持既有 policy/procedure 生命周期和静态分派约束。
+- [ ] `src/core/session/**`：明确 frontend/backend/middleware 的公共上下文、错误结果与资源所有权；保留 `g_exploit_session` 唯一可变 singleton 规则。
+- [ ] `src/core/route/tcp_zerocopy_route.*`、`select_stack_route.*`、`multicast_waiter_route.*`：仅接入新的配置 DTO 和目录，不改内部算法/时序。
+- [ ] CVE-2026-43499 既有 backend 仅经新 backend contract 暴露能力和状态；本批不改其漏洞原语实现。
+- [ ] `src/core/tests/**`：测试目录 ID、可用性检查、兼容组合拒绝、生命周期和资源清理。
+
+### [ ] Batch 4：frontend provider 接入
+
+- [ ] `src/core/session/victim_process.*`、`victim_context.*`、handoff 文件：将现有 root-child 相关启动与交接归入 `root_child` frontend 边界；仅移动职责，不改 W1/W2/W3 行为。
+- [ ] 新增 UMH frontend 的独立 policy/config/adapter 文件；只定义与 Orchestrator/Session 的交互契约和故障回报，不在该批混入 backend 或 middleware 变更。
+- [ ] `app` 配置模型与 UI：允许选择/推荐 frontend，并清楚展示 unavailable/unsupported 状态。
+- [ ] UMH 独立验证完成前不将其标为设备 supported，不自动切换用户入口。
+
+### [ ] Batch 5：backend 扩展点及第二后端接入
+
+- [ ] `src/core/` 新增 backend catalog/contract 和 CVE-2026-64560 backend 模块；该模块以独立 profile schema 声明其核心配置需求。
+- [ ] `app` 增加对应 backend profile 类型与校验；native 只消费已校验的类型化配置。
+- [ ] 对兼容性、生命周期、清理、wire 解码和失败隔离做独立测试；设备支持状态必须由对应设备 gate 证据决定。
+- [ ] CVE-2026-43499 继续作为独立 backend；不得把其配置强行复用成 CVE-2026-64560 的默认值。
+
+### [ ] Batch 6：文档收敛与旧格式退场评估
+
+- [ ] `docs/kernel_profiles/PROFILE_SCHEMA*.md`：最终字段表和迁移说明。
+- [ ] `docs/development/adding-a-route.md`：仅当其职责扩展至新增 frontend/backend/middleware 时，改为或链接唯一权威的 component-extension 指南。
+- [ ] `src/core/README.md`：native 组件目录、编译边界、Session 所有权和测试入口。
+- [ ] `AGENTS.md`：更新稳定架构规则与权威文档索引。
+- [ ] 旧字段/旧 v2 writer 是否移除须另有兼容数据与发布策略证据，不在前序批次顺手删除。
+
+## 兼容性与回滚
+
+- **兼容性范围**：以主线 `remote/main`（本次调查为 `10001ae`）实际存在的输入、CLI/ProcessBuilder 契约和用户数据格式为准。当前 dev 相对该主线的 351 个提交所引入的 Profile schema、GLK v2、API、组件结构和运行行为均可替换或移除，不要求双读、迁移或二进制兼容。
+- Batch 0 必须从 `remote/main` 核实需要保留的真实外部契约，例如旧 offsets 输入/导入格式、native 入口与退出/日志协议。不得因 dev 当前实现存在某 reader 就推定它是主线兼容要求。
+- 新 HOCON schema 与 Kotlin/native DTO 可按本计划直接形成新版本；未知 required component/schema 必须 fail closed 并给出可诊断错误。主线输入如需兼容，应在边界 converter 一次性映射到新 typed model，不让 legacy 类型渗入运行时模型。
+- 回滚以源码批次、构建产物和配置快照为单位，不承担向 dev 旧 schema/wire/API 回滚兼容的义务。每批保留可复现构建和验证记录；发现差异时先查明映射，不用默认值掩盖。
+- 用户明确允许丢弃 dev 相对 main 的改动，不等于可直接删除当前未提交工作树内容。实施时可用新设计替代这些内容，但不得用破坏性清理命令清除尚未核对的本地修改。
+
+## 验证矩阵
+
+| 批次 | 自动验证 | 必须保持/观察的证据 |
+|---|---|---|
+| 0 | `git status`、`git rev-list`、主线输入/入口契约检查 | dirty 文件清单、主线基线 commit、主线格式/入口及已有真机 gate 证据 |
+| 1 | `./gradlew :app:testDebugUnitTest`、`./gradlew exportKernelProfiles`、主线输入转换 fixture | 主线实际输入可转换；dev 旧 profile 无兼容要求；解析优先级/拒绝规则测试通过 |
+| 2 | `make -C src native-host-tests`、`:app:testDebugUnitTest`、新 codec round-trip 与 cross-language fixture | 主线需要的输入/进程契约保持；新 Kotlin/native 字段表一致；无静默截断/默认化 |
+| 3 | `make -C src native-host-tests`、`make -C src ghostlock`、`make -C src lint-tidy` | 三种现有 middleware 在新目录选择下语义不变；攻击函数 `cmp_disasm` 对照基线 |
+| 4 | host tests、NDK build、lint-tidy、frontend contract tests | root-child 行为不变；UMH unavailable/error 路径可诊断；设备 gate 单独记录 |
+| 5 | host tests、NDK build、lint-tidy、backend/profile compatibility tests | 两个 backend 配置互不误用；未 gate 的组合不标 supported；攻击函数 diff 经审核 |
+| 每个触及攻击路径的批次 | `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock`；按 AGENTS 要求真机门禁 | 8 个函数 IDENTICAL 或经复核差异；冷启动、固定 CPU 对、单组合、KernelSU 未加载；日志归档 PASS/FAIL |
+
+按仓库门槛，L 级计划的每个实现批次还须完成 host tests、NDK 零告警、lint-tidy 0 findings；触及攻击关键路径时须完成 `cmp_disasm` 和真机 gate。目标设备不可用时该批保持未完成，不以 host 测试代替设备支持结论。
+
+## 明确保留
+
+- `kernelsnitch/` 上游移植实现和 legacy v1 converter。
+- 现有 CVE-2026-43499、W1/W2/W3、三种 middleware 的算法、时序、payload 与内存布局，除经单独批准的实现任务外。
+- 主线确实提供的用户输入/导入与 native 进程入口契约；dev 独有的 GLK v2 reader、HOCON profile 数据和组件 API 不列为保留项。
+- 进程启动仍通过 ProcessBuilder/文件/已定义 profile DTO，不引入 JNI 或未经批准的跨层通道。
+- 不新增可变 native 全局、不在 PI 竞争窗口内增加间接调用、不引入虚基类 provider。
+- `recommend_shizuku` 继续由 App 决定 Shizuku 建议/路径，不纳入 native core capability。
+
+## 进度
+
+- [x] 只读调查当前 Profile、route、session 和 native 扩展规则。
+- [x] 建立未来组件组合图及配置模型边界。
+- [x] 写出本计划与分批改动清单。
+- [x] 用户评审并认可计划，授权开始执行。
+- [ ] Batch 0：确认当前工作树状态、主线兼容输入与可用基线证据。
+- [ ] Batch 1：Profile 存储/解析模型解耦并保持运行输出等价。
+- [ ] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。
+- [ ] Batch 3：native Orchestrator 接入现有组件。
+- [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。
+- [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
+- [ ] Batch 6：文档收敛和旧格式退场评估。
