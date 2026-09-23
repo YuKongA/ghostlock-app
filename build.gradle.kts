@@ -173,13 +173,14 @@ tasks.register<Copy>("prepareGhostlockExtractJniLibs") {
 }
 
 /**
- * Serializes every bundled HOCON kernel profile into the GLK1 v2 binary layout
- * the native side reads (`src/core/profile_binary.cpp`). Mirrors
- * `NativeProfileDocument` (app/.../data/NativeProfile.kt): same header and the
- * same 86-field order. Output: build/kernel-profiles/<release>.bin.
+ * Serializes every bundled HOCON kernel profile into the v2 binary layout
+ * the native side reads (`src/core/profile/binary.cpp`). Mirrors
+ * `NativeProfileDocument` (app/.../data/NativeProfile.kt): fixed common slots
+ * (`kCommonFields`) plus a per-route section (`kTcp/kSelect/kMulticastFields`).
+ * Output: build/kernel-profiles/<release>.bin.
  */
 tasks.register("exportKernelProfiles") {
-    description = "Serialize bundled HOCON kernel profiles into GLK1 .bin documents"
+    description = "Serialize bundled HOCON kernel profiles into v2 .bin documents"
     group = "build"
     val profilesDir = layout.projectDirectory.dir("app/src/main/assets/kernel_profiles")
     val outputDir = layout.buildDirectory.dir("kernel-profiles")
@@ -230,17 +231,54 @@ tasks.register("exportKernelProfiles") {
                 .resolve().root().unwrapped()
         }.getOrNull()
 
-        fun lookup(root: Map<*, *>, path: String): Long {
+        fun lookupOrNull(root: Map<*, *>, path: String): Long? {
             var current: Any? = root
             for (segment in path.split('.')) {
-                current = (current as? Map<*, *>)?.get(segment) ?: return 0L
+                current = (current as? Map<*, *>)?.get(segment) ?: return null
             }
             return when (current) {
                 is Number -> current.toLong()
                 is Boolean -> if (current) 1L else 0L
-                is String -> current.toLongOrNull() ?: 0L
-                else -> 0L
+                is String -> current.toLongOrNull()
+                else -> null
             }
+        }
+
+        fun lookup(root: Map<*, *>, path: String): Long = lookupOrNull(root, path) ?: 0L
+
+        /* Mirrors the app's nativeValue: canonical route fields map onto the
+         * declared `route.<name>.<field>` / `fallback.route.<name>.<field>`
+         * branches (`compact_waiter`, `waiter_shift`, `mcast.*`). */
+        fun nativeValue(
+            root: Map<*, *>,
+            routeName: String?,
+            fallbackName: String?,
+            path: String,
+        ): Long {
+            val branchField = when (path) {
+                "compact_waiter" -> "compact_waiter"
+                "pselect_waiter_shift" -> "waiter_shift"
+                else -> null
+            }
+            if (branchField != null) {
+                if (routeName != null) {
+                    lookupOrNull(root, "route.$routeName.$branchField")?.let { return it }
+                }
+                if (fallbackName != null && fallbackName != "none") {
+                    lookupOrNull(root, "fallback.route.$fallbackName.$branchField")?.let { return it }
+                }
+            }
+            if (path.startsWith("mcast.")) {
+                val field = path.removePrefix("mcast.")
+                if (routeName != null) {
+                    lookupOrNull(root, "route.$routeName.$field")?.let { return it }
+                }
+                if (fallbackName != null && fallbackName != "none") {
+                    lookupOrNull(root, "fallback.route.$fallbackName.$field")?.let { return it }
+                }
+                return lookup(root, "mcast.$field")
+            }
+            return lookup(root, path)
         }
 
         val knownRoutes = listOf("tcp_zerocopy", "select_stack", "multicast_waiter")
@@ -264,8 +302,34 @@ tasks.register("exportKernelProfiles") {
             return (profile["fallback_to"] as? String)?.takeIf { it.isNotEmpty() && it != "null" }
         }
 
-        /* Field order mirrors NativeProfileDocument.flatten() indices 0..85. */
-        val fieldPaths = listOf(
+        fun deepCopy(value: Any?): Any? = when (value) {
+            is Map<*, *> -> value.entries.associate { it.key to deepCopy(it.value) }.toMutableMap()
+            is List<*> -> value.map { deepCopy(it) }.toMutableList()
+            else -> value
+        }
+
+        /* Mirrors the app's fillRouteExecutionDefaults: a profile carries only
+         * its own route group, so missing groups are filled from the shared
+         * execution-<route>.conf. Common slots (e.g. the consumer cadence read
+         * by every route) depend on this. */
+        fun fillRouteExecution(profile: Map<*, *>): Map<*, *> {
+            val root = deepCopy(profile) as MutableMap<Any?, Any?>
+            val execution = (root["execution"] as? MutableMap<Any?, Any?>) ?: return root
+            val routes = execution.getOrPut("routes") { mutableMapOf<Any?, Any?>() }
+                    as MutableMap<Any?, Any?>
+            for (route in knownRoutes) {
+                if (routes.containsKey(route)) continue
+                val conf = parse("execution-${route.replace('_', '-')}.conf") ?: continue
+                val group = (((conf["execution"] as? Map<*, *>)?.get("routes") as? Map<*, *>)
+                        ?.get(route)) as? Map<*, *> ?: continue
+                routes[route] = deepCopy(group)
+            }
+            return root
+        }
+
+        /* v2: fixed common slots + a per-route section. Mirrors the native
+         * kCommonFields / kXxxFields tables and NativeProfileDocument. */
+        val commonFieldPaths = listOf(
             "task_struct.prio", "task_struct.normal_prio", "task_struct.sched_task_group",
             "task_struct.pi_lock", "task_struct.pi_waiters", "task_struct.pi_top_task",
             "task_struct.pi_blocked_on", "task_struct.pid", "task_struct.tgid",
@@ -276,13 +340,10 @@ tasks.register("exportKernelProfiles") {
             "cred.ref0_offset", "cred.ref1_offset", "cred.ref2_offset", "cred.ref3_offset",
             "cred.ref0_image", "cred.ref1_image", "cred.ref2_image", "cred.ref3_image",
             "offset.init_task", "offset.init_cred", "offset.empty_zero_page",
-            "offset.mcast_fake_bss", "offset.root_task_group", "offset.selinux_enforcing",
+            "offset.root_task_group", "offset.selinux_enforcing",
             "offset.selinux_blob_sizes", "offset.security_hook_heads",
             "offset.slide_nfulnl_logger", "offset.slide_loggers_0_1", "offset.slide_boot_id",
-            "mcast.waiter_off", "mcast.buffer_size", "mcast.task_offset", "mcast.lock_offset",
-            "mcast.fake_lock_offset", "mcast.fake_task_offset", "mcast.lock_slots_offset",
-            "mcast.lock_slot_count", "mcast.lock_slot_stride",
-            "kernel_phys_load", "pselect_waiter_shift", "compact_waiter",
+            "kernel_phys_load", "compact_waiter",
             "kernelsnitch.collisions", "kernelsnitch.mm_struct_sz",
             "execution.recommended_cpus.main", "execution.recommended_cpus.consumer",
             "execution.heap.prepare_max_attempts", "execution.heap.prepare_timeout_ms",
@@ -294,20 +355,48 @@ tasks.register("exportKernelProfiles") {
             "execution.stages.w2_attempts", "execution.stages.w2_settle_us",
             "execution.stages.w3_chain_rounds", "execution.stages.w3_attempts",
             "execution.stages.w3_settle_us",
-            "execution.routes.tcp_zerocopy.attempts", "execution.routes.tcp_zerocopy.arm_sequence",
-            "execution.routes.tcp_zerocopy.post_receive_hold_iterations",
-            "execution.routes.select_stack.enter_delay_us", "execution.routes.select_stack.timeout_us",
-            "execution.routes.select_stack.consumer_max_calls",
-            "execution.routes.select_stack.consumer_burst_calls",
-            "execution.routes.multicast_waiter.ready_timeout_ms",
-            "execution.routes.multicast_waiter.post_requeue_settle_us",
-            "execution.routes.multicast_waiter.post_adjust_settle_us",
             "execution.handoff.pre_dispatch_settle_ms", "execution.handoff.module_poll_attempts",
             "execution.handoff.module_poll_interval_ms", "execution.handoff.enforce_poll_attempts",
             "execution.handoff.enforce_poll_interval_ms",
-            "safe_mode", "multicast_resident",
+            "execution.routes.select_stack.consumer_max_calls",
+            "execution.routes.select_stack.consumer_burst_calls",
+            "safe_mode",
         )
-        check(fieldPaths.size == 88) { "field table drifted: ${fieldPaths.size}" }
+        check(commonFieldPaths.size == 68) { "common field table drifted: ${commonFieldPaths.size}" }
+
+        /* key (wire name) -> dotted HOCON path, per route. */
+        val routeFieldPaths = mapOf(
+            "tcp_zerocopy" to listOf(
+                "tcp_attempts" to "execution.routes.tcp_zerocopy.attempts",
+                "tcp_arm_sequence" to "execution.routes.tcp_zerocopy.arm_sequence",
+                "tcp_post_receive_hold_iterations" to
+                    "execution.routes.tcp_zerocopy.post_receive_hold_iterations",
+            ),
+            "select_stack" to listOf(
+                "pselect_waiter_shift" to "pselect_waiter_shift",
+                "select_enter_delay_us" to "execution.routes.select_stack.enter_delay_us",
+                "select_timeout_us" to "execution.routes.select_stack.timeout_us",
+            ),
+            "multicast_waiter" to listOf(
+                "mcast_waiter_off" to "mcast.waiter_off",
+                "mcast_buffer_size" to "mcast.buffer_size",
+                "mcast_task_offset" to "mcast.task_offset",
+                "mcast_lock_offset" to "mcast.lock_offset",
+                "mcast_fake_lock_offset" to "mcast.fake_lock_offset",
+                "mcast_fake_task_offset" to "mcast.fake_task_offset",
+                "mcast_lock_slots_offset" to "mcast.lock_slots_offset",
+                "mcast_lock_slot_count" to "mcast.lock_slot_count",
+                "mcast_lock_slot_stride" to "mcast.lock_slot_stride",
+                "off_mcast_fake_bss" to "offset.mcast_fake_bss",
+                "multicast_resident" to "multicast_resident",
+                "multicast_ready_timeout_ms" to
+                    "execution.routes.multicast_waiter.ready_timeout_ms",
+                "multicast_post_requeue_settle_us" to
+                    "execution.routes.multicast_waiter.post_requeue_settle_us",
+                "multicast_post_adjust_settle_us" to
+                    "execution.routes.multicast_waiter.post_adjust_settle_us",
+            ),
+        )
 
         fun serialize(
             release: String,
@@ -315,22 +404,32 @@ tasks.register("exportKernelProfiles") {
             kernelMajor: Long,
             recommendShizuku: Long,
             fallbackRoute: Int,
-            values: LongArray,
+            common: LongArray,
+            routeFields: List<Pair<String, Long>>,
         ): ByteArray {
             val releaseBytes = release.toByteArray(Charsets.UTF_8)
             require(releaseBytes.size <= 0xffff) { "release is too long: $release" }
+            val keyBytes = routeFields.map { it.first.toByteArray(Charsets.UTF_8) }
+            var size = 12 + releaseBytes.size + common.size * 8 + 1
+            keyBytes.forEach { size += 1 + it.size + 8 }
             val buffer = java.nio.ByteBuffer
-                .allocate(12 + releaseBytes.size + values.size * 8)
+                .allocate(size)
                 .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            buffer.putInt(0x314B4C47)   // "GLK1"
-            buffer.putShort(3)          // layout version
+            buffer.putInt(0x0D000721)
+            buffer.putShort(2)          // layout version
             buffer.put(route.toByte())
             buffer.put(kernelMajor.toByte())
             buffer.put(recommendShizuku.toByte())
             buffer.put(fallbackRoute.toByte())
             buffer.putShort(releaseBytes.size.toShort())
             buffer.put(releaseBytes)
-            values.forEach(buffer::putLong)
+            common.forEach(buffer::putLong)
+            buffer.put(routeFields.size.toByte())
+            for (i in routeFields.indices) {
+                buffer.put(keyBytes[i].size.toByte())
+                buffer.put(keyBytes[i])
+                buffer.putLong(routeFields[i].second)
+            }
             return buffer.array()
         }
 
@@ -338,15 +437,22 @@ tasks.register("exportKernelProfiles") {
         srcDir.listFiles { entry -> entry.isFile && entry.name.endsWith(".conf") }
             ?.sortedBy { it.name }
             ?.forEach { file ->
-                val profile = parse(file.name) ?: return@forEach
+                val profile = parse(file.name)?.let { fillRouteExecution(it) } ?: return@forEach
                 val release = profile["release"] as? String ?: return@forEach
+                val routeName = routeNameOf(profile)
+                val fallbackName = fallbackOf(profile)
+                val routeFields = (routeFieldPaths[routeName] ?: emptyList())
+                    .map { it.first to nativeValue(profile, routeName, fallbackName, it.second) }
                 val bytes = serialize(
                     release = release,
-                    route = routeWire(routeNameOf(profile)),
+                    route = routeWire(routeName),
                     kernelMajor = lookup(profile, "kernel_major"),
                     recommendShizuku = lookup(profile, "recommend_shizuku"),
-                    fallbackRoute = routeWire(fallbackOf(profile)),
-                    values = LongArray(fieldPaths.size) { lookup(profile, fieldPaths[it]) },
+                    fallbackRoute = routeWire(fallbackName),
+                    common = LongArray(commonFieldPaths.size) {
+                        nativeValue(profile, routeName, fallbackName, commonFieldPaths[it])
+                    },
+                    routeFields = routeFields,
                 )
                 File(outDir, "$release.bin").writeBytes(bytes)
                 exported++
