@@ -361,9 +361,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
         return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir ->
+            archivedLog("shizuku: resolving profile")
             val release = System.getProperty("os.version", "").orEmpty()
             val config = profileController.load(release, pair)
             val profileBlob = profileController.nativeDocument(config)
+            archivedLog(
+                "shizuku: profile resolved hasProfile=${config.hasProfile} " +
+                    "blob=${profileBlob?.size ?: 0} invalid=${config.invalidPaths.size}",
+            )
             when {
                 !config.hasProfile || profileBlob == null -> {
                     archivedLog("error: profile is unavailable for $release")
@@ -378,7 +383,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     1
                 }
 
-                else -> shizukuRunner.run(pair, safeModeEnabled, profileBlob, debugDir, archivedLog)
+                else -> {
+                    archivedLog("shizuku: starting UserService")
+                    shizukuRunner.run(pair, safeModeEnabled, profileBlob, debugDir, archivedLog)
+                }
             }
         }.also { code -> recordLastRun(code, shizuku = true) }
     }
