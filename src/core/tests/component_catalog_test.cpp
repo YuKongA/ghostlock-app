@@ -2,8 +2,10 @@
  * selection rejection. The orchestrator reuses the profile route enum for the
  * middleware, so Auto must never be selectable. */
 
+#include "route/backend_policy.hpp"
 #include "route/component_catalog.hpp"
 #include "route/frontend_contract.hpp"
+#include "route/pipeline.hpp"
 
 #include <cassert>
 #include <cstdio>

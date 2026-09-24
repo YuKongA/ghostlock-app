@@ -142,11 +142,15 @@ UI 选择/推荐推迟到 UMH 有真机证据之后。
 - [x] 本地验证：`native-host-tests`、`make -B -C src ghostlock`（零告警）、`lint-tidy` 0 findings、
   `cmp_disasm`（Batch 3.1 候选 `5dcd8ddd…` → 本批候选 `fcbc2191…`：7 IDENTICAL + `do_one_write` 既有
   LAYOUT-SHIFT，RESULT PASS）、`./gradlew :profile-core:test :app:testDebugUnitTest` 通过。
-- [ ] D1=B 实拆（切片 1，2026-09-24）：`handoff` 已从 `ExploitProcedure` 迁至
+- [x] D1=B 实拆（切片 1，2026-09-24）：`handoff` 已从 `ExploitProcedure` 迁至
   `session/root_child_frontend.{hpp,cpp}`（`run_root_child_handoff`）；`ExploitProcedure::handoff`
   转为薄转发；行为、语句顺序与日志文本不变。native 零告警、host tests、`lint-tidy` 0、
   `cmp_disasm` 对 Batch 3 基线 **8 函数 PASS**（候选 `4ee24fbccf7f7e20f3c0aaa9bb3860512c2bd2fcbb8c6ac2ee8f4651ee587bec`）。
-- [ ] D1=B 剩余：`run_pipeline<Frontend,Backend,Middleware>` 形式化组合（backend/middleware 仍在
-  `ExploitProcedure`）；D3 模型预留（App 模型 frontend 字段与 `available/unsupported` 语义）。
+- [~] D1=B 切片 2：新增 `route/pipeline.hpp`（`Pipeline<F,B,M>` 组合形状 + `pipeline_supported`，
+  不重复可用性）与 `route/backend_policy.hpp`（`Cve2026_43499`/`Cve2026_64560` 声明 + static_assert
+  绑定 catalog 权威）；`cmp_disasm` 8 攻击函数仍 PASS。**实现级抽离**（把 W1–W3/middleware 从
+  `ExploitProcedure` 移入 pipeline，会改 `run_main_route_threads`）留独立切片，以 `4ee24fbc…` 为基线
+  并配真机门禁。
+- [ ] D3 模型预留（App 模型 frontend 字段与 `available/unsupported` 语义）。
 - [ ] **真机门禁（本批构建重新跑）**：A301SO / 5.15、KernelSU 未加载、固定 CPU 对、multicast、冷机；
   归档 `docs/analysis/device-gates/`（绑定本批候选）。通过前 Batch 4 不算完成。
