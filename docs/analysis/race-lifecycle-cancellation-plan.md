@@ -26,6 +26,14 @@
 3. **PI 链 disarm**：清理由漏洞原语留下的 dangling PI 状态（multicast 的 ghost disarm 是**必做步骤**）。
 4. **状态回收**：仅在确认无访问者后清理/复用共享状态（futex、`request` 指针、session）。
 
+## 根本限制与终态语义
+
+- deadline 只表示“**检测到越界**”，**不证明**阻塞中的参与者已停止，也**不证明** PI 状态已解除或资源可回收。
+- 因此本设计**不承诺“有界结束”或“安全恢复”**；在获得证明之前，终态只能表达为**停止继续执行（halt）**，
+  不得宣称“清理完成 / 资源已回收 / 可安全复用”。
+- 终态升级条件（须**同时**满足才可改称“已清理 / 可重试”）：参与者已停止访问 PI/race 状态、`waiter` 的
+  ghost disarm 已执行、`futex`/`request`/session 已无访问者。任一未证，终态保持 **halt**。
+
 ## 安全检查点与不可中断点（逐个列出）
 
 | 参与者 | 等待/阻塞点 | 有界？ | 停止检查 | 退出前的必做动作 |
@@ -68,9 +76,10 @@
 
 ## 方案边界
 
-- **主方案 S1（有界等待 + 可证明的停止 + 必做 disarm + terminal-stop）**：由 profile 提供 deadline；
-  超时置 dirty → terminal-stop，并明确 `waiter` 的 disarm 仍执行、`owner` 的不可中断 futex 如何处置、
-  join 失败如何上报；只有“未 armed 且 clean”才允许重试。
+- **主方案 S1（deadline 检测 + 取消意图 + halt 终态）**：由 profile 提供 deadline；超时置 dirty 并
+  **halt（停止继续执行）**。`waiter` 的 disarm 能否完成、`owner` 的不可中断 futex 如何处置、join 失败
+  如何上报，均须显式定义；**不得**在未证明“参与者已停止 / PI 已 disarm / 资源无访问者”时宣称清理完成。
+  只有“未 armed 且 clean（全部前提已证）”才允许重试。
 - ~~**S2（超时后 detach 并继续运行）——不批准**~~：`start_threads()` 把 `WriteRequest` 以**借用指针**交给
   线程（`pi_race.cpp:37` 保存 `request`），调用者的 request 是栈对象；detach 后调用者可能返回/重试/复用
   session，线程仍访问旧对象与 futex。且 `join()` 忽略 join 错误并无条件清空 `request`，**不能**作为
@@ -108,5 +117,7 @@
 - [x] 只读调查 `PiRace` 生命周期、waiter/owner/consumer 等待点、`run_main_route_threads` 停止/join、
       `retry_write_stage` 重试，确认 `TODO(pi-timeout-01)`。
 - [x] 产出设计（R1）：四者分离、检查点清单、D1–D5 结论、S2 删除、S3 更名。
+- [x] 依评审结论补充“根本限制与终态语义”：deadline ≠ 停止；未证明即 **halt**，不宣称“有界结束/安全恢复/
+  清理完成”。
 - [ ] 评审批准 R1 后的 D1–D5 收敛版本。
 - [ ] 实现（另批，按攻击关键路径门槛）。
