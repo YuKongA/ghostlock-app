@@ -1,6 +1,6 @@
-/* v2 entry points: the App path (stdin) and the prebuilt-profile path
- * (file). Both decode the typed transport layout directly; no JSON or legacy
- * rules reach this unit. */
+/* Profile entry points: the App path (stdin) and the prebuilt-profile path
+ * (file). Both decode the typed transport directly (v3, with v2 still
+ * accepted); no JSON or legacy rules reach this unit. */
 #include "profile/entry.h"
 
 #include "profile/binary.h"

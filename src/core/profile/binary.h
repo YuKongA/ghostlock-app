@@ -2,14 +2,20 @@
 #define GHOSTLOCK_PROFILE_BINARY_H
 
 /* Binary transport for the resolved profile, shared with Kotlin's
- * NativeProfileDocument (app/src/main/kotlin/com/ghostlock/app/data/
- * NativeProfile.kt). Layout, little-endian:
+ * RuntimeCodec (profile-core/.../profile/). Little-endian.
  *
- *   u32 magic (0x0D000721), u16 version, u8 route, u8 kernel_major,
- *   u8 recommend_shizuku, u8 fallback_route, u16 release_length,
- *   release bytes (UTF-8), then a fixed array of int64 values in the exact
- *   order listed in profile_binary.cpp / NativeProfile.kt.
+ * v2 (legacy, still decoded):
+ *   u32 magic, u16 version(2), u8 route, u8 kernel_major, u8 recommend_shizuku,
+ *   u8 fallback_route, u16 release_length, release, 68×u64 common slots,
+ *   route section (u8 count + entries).
  *
+ * v3 (current writer):
+ *   u32 magic, u16 version(3), u16 frontend_id, u16 backend_id,
+ *   u16 middleware_id, u8 kernel_major, u8 fallback_route, u16 release_length,
+ *   release, 68×u64 core slots, middleware section (u16 count + entries),
+ *   options section (u16 count + entries: safe_mode, selected_cpus.*).
+ *
+ * v3 drops the `recommend_shizuku` byte (App-only; the executor never reads it).
  * v1 JSON profiles never reach this unit: imports are converted by the v1
  * converter, and the runtime path always uses this typed layout. */
 
@@ -22,7 +28,13 @@
 
 namespace ghostlock::binary_profile {
     inline constexpr uint32_t kMagic = 0x0D000721u;
-    inline constexpr uint16_t kVersion = 2u;
+    inline constexpr uint16_t kVersionV2 = 2u;
+    inline constexpr uint16_t kVersionV3 = 3u;
+    /* Version emitted by serialize(); parse() accepts both V2 and V3. */
+    inline constexpr uint16_t kVersion = kVersionV3;
+    /* Component selection defaults (Batch 2 has a single frontend/backend). */
+    inline constexpr uint16_t kFrontendRootChild = 1u;
+    inline constexpr uint16_t kBackendCve202643499 = 1u;
 
     /* Parse one binary document into the native transport struct. */
     int32_t parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,

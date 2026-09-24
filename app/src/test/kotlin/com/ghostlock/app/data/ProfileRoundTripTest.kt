@@ -74,7 +74,7 @@ class ProfileRoundTripTest {
 
     @Test
     fun `multicast round trip exposes route semantics`() {
-        val bytes = document("multicast_waiter", "select_stack", multicastValues).toBinary()
+        val bytes = document("multicast_waiter", "select_stack", multicastValues).toBinaryV3()
         val profile = Profile.fromBinary(bytes)!!
 
         assertEquals(RouteKind.MULTICAST_WAITER, profile.route)
@@ -97,7 +97,7 @@ class ProfileRoundTripTest {
 
     @Test
     fun `select round trip exposes waiter shift`() {
-        val bytes = document("select_stack", null, selectValues).toBinary()
+        val bytes = document("select_stack", null, selectValues).toBinaryV3()
         val profile = Profile.fromBinary(bytes)!!
         assertEquals(RouteKind.SELECT_STACK, profile.route)
         assertEquals(-2L, profile.selectStackLayout().waiterShift)
@@ -139,6 +139,6 @@ class ProfileRoundTripTest {
         )!!
         assertEquals(RouteKind.TCP_ZEROCOPY, profile.route)
         assertNull(profile.fallback)
-        assertArrayEquals(document("tcp_zerocopy", null, tcpValues).toBinary(), profile.toBinary())
+        assertArrayEquals(document("tcp_zerocopy", null, tcpValues).toBinaryV3(), profile.toBinary())
     }
 }

@@ -357,12 +357,12 @@ via SAF.
 
 ## 9. Native transport and parsing
 
-Runtime configuration crosses as a **typed binary struct** (v2), no longer JSON
-text:
+Runtime configuration crosses as a **typed binary struct** (v3), no longer JSON
+text. v2 documents are still decoded for compatibility.
 
 - Kotlin serializes it from `NativeProfileDocument` (a data class matching
-  native's `struct kernel_offsets`):
-  `u32 magic(0x0D000721) + u16 version(2) + u8 route + u8 kernel_major + u8 recommend_shizuku + u8 fallback_route + u16 release_length + release + 68×int64 common slots + u8 route-section entry count + N×(u8 key_length + key + i64)`, little-endian. The field order lives in `NativeProfile.kt` (`flattenCommon` / per-route `RouteConfig`) and `profile/binary.cpp` (`kCommonFields` / `kTcp/kSelect/kMulticastFields`); the two sides must change together.
+  native's `struct kernel_offsets`) via `toBinaryV3()`:
+  `u32 magic(0x0D000721) + u16 version(3) + u16 frontend_id + u16 backend_id + u16 middleware_id + u8 kernel_major + u8 fallback_route + u16 release_length + release + 68×u64 core slots + u16 middleware entry count + N×(u8 key_length + key + i64) + u16 option count + M×(u8 key_length + key + i64)`, little-endian. `middleware_id` carries the route; `recommend_shizuku` is App-only and absent from the wire. The field order lives in `NativeProfile.kt` (`flattenCommon` / per-route `RouteConfig`) and `profile/binary.cpp` (`kCommonFields` / `kTcp/kSelect/kMulticastFields`); the two sides must change together.
 - Transport path: direct and Shizuku both hand the profile to native on
   **stdin** (`--ghostlock-app-call`); nothing is written to `active-profile.bin`
   and `--profile` no longer exists.

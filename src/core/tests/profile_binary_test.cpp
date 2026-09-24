@@ -46,7 +46,7 @@ namespace {
                           const std::vector<Entry> &entries) {
         std::string out;
         put_u32(out, binary_profile::kMagic);
-        put_u16(out, binary_profile::kVersion);
+        put_u16(out, binary_profile::kVersionV2);
         out.push_back(static_cast<char>(route));
         out.push_back(static_cast<char>(major));
         out.push_back(static_cast<char>(recommend));
@@ -112,7 +112,8 @@ int32_t main(void) {
     assert(round_trip(values, &parsed, release, sizeof(release)) == 0);
     assert(strcmp(release, values.uname_r) == 0);
     assert(strcmp(parsed.uname_r, values.uname_r) == 0);
-    assert(parsed.kernel_major == 6 && parsed.recommend_shizuku == 1);
+    /* v3 drops recommend_shizuku from the transport; it stays App-only. */
+    assert(parsed.kernel_major == 6 && parsed.recommend_shizuku == 0);
     assert(parsed.route == ghostlock::profile::kRouteMulticastWaiter);
     assert(parsed.fallback_route == ghostlock::profile::kRouteSelectStack);
     assert(parsed.task_prio == 132);
@@ -158,16 +159,23 @@ int32_t main(void) {
                                (static_cast<uint32_t>(bytes[2]) << 16) |
                                (static_cast<uint32_t>(bytes[3]) << 24);
         const uint16_t version = static_cast<uint16_t>(bytes[4] | (bytes[5] << 8));
+        const uint16_t middleware = static_cast<uint16_t>(bytes[10] | (bytes[11] << 8));
         assert(magic == 0x0D000721u && binary_profile::kMagic == 0x0D000721u);
-        assert(version == 2u && binary_profile::kVersion == 2u);
-        assert(bytes[6] == ghostlock::profile::kRouteSelectStack);
-        assert(bytes[7] == 6);
-        const size_t route_bytes =
-            1 + (1 + std::strlen("pselect_waiter_shift") + 8) +
+        assert(version == 3u && binary_profile::kVersion == 3u);
+        assert(middleware == ghostlock::profile::kRouteSelectStack);
+        assert(bytes[12] == 6);
+        assert(bytes[13] == ghostlock::profile::kRouteSelectStack);
+        const size_t middleware_bytes =
+            2 + (1 + std::strlen("pselect_waiter_shift") + 8) +
             (1 + std::strlen("select_enter_delay_us") + 8) +
             (1 + std::strlen("select_timeout_us") + 8);
+        const size_t options_bytes =
+            2 + (1 + std::strlen("safe_mode") + 8) +
+            (1 + std::strlen("selected_cpus.main") + 8) +
+            (1 + std::strlen("selected_cpus.consumer") + 8);
         assert(static_cast<size_t>(size) ==
-               12 + std::strlen(values.uname_r) + kCommonCount * 8 + route_bytes);
+               16 + std::strlen(values.uname_r) + kCommonCount * 8 +
+               middleware_bytes + options_bytes);
     }
 
     /* ---- White box: every common slot index. ---- */
@@ -283,6 +291,8 @@ int32_t main(void) {
                                      tiny_release, sizeof(tiny_release)) == -1);
 
         std::vector<uint64_t> common(kCommonCount, 0);
+        /* build_doc emits the v2 layout, so only version 2 of this vector is
+         * valid; v3 acceptance is covered by the serialize round trips above. */
         for (int version : {1, 2, 3, 4, 5}) {
             std::string doc = build_doc(ghostlock::profile::kRouteSelectStack, 6, 0, 0, "v", common, {});
             doc[4] = static_cast<char>(version & 0xff);

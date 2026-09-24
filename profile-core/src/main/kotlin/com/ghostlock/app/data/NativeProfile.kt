@@ -67,6 +67,55 @@ data class NativeProfileDocument(
         return buffer.array()
     }
 
+    /**
+     * v3 transport: `u32 magic + u16 version(3) + u16 frontend + u16 backend +
+     * u16 middleware + u8 kernel_major + u8 fallback + u16 release_len + release
+     * + 68×u64 core + u16 middleware_count + entries + u16 option_count +
+     * entries`. `recommend_shizuku` is deliberately absent (App-only).
+     */
+    fun toBinaryV3(): ByteArray {
+        val releaseBytes = release.toByteArray(Charsets.UTF_8)
+        require(releaseBytes.size <= 0xffff) { "release is too long" }
+        val core = flattenCommon()
+        val middleware = routeConfig.entries()
+        val options = listOf(
+            "safe_mode" to safeMode.toLong(),
+            "selected_cpus.main" to execution.recommendedMainCpu.toLong(),
+            "selected_cpus.consumer" to execution.recommendedConsumerCpu.toLong(),
+        )
+        var size = HeaderSizeV3 + releaseBytes.size + core.size * 8 + 2
+        for ((key, _) in middleware) size += 1 + key.toByteArray(Charsets.UTF_8).size + 8
+        size += 2
+        for ((key, _) in options) size += 1 + key.toByteArray(Charsets.UTF_8).size + 8
+
+        val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(Magic.toInt())
+        buffer.putShort(VersionV3.toShort())
+        buffer.putShort(FrontendRootChild.toShort())
+        buffer.putShort(BackendCve202643499.toShort())
+        buffer.putShort(routeKind.toShort())
+        buffer.put(kernelMajor.toByte())
+        buffer.put(fallbackRoute.toByte())
+        buffer.putShort(releaseBytes.size.toShort())
+        buffer.put(releaseBytes)
+        core.forEach(buffer::putLong)
+        buffer.putShort(middleware.size.toShort())
+        for ((key, value) in middleware) {
+            val kb = key.toByteArray(Charsets.UTF_8)
+            buffer.put(kb.size.toByte())
+            buffer.put(kb)
+            buffer.putLong(value)
+        }
+        buffer.putShort(options.size.toShort())
+        for ((key, value) in options) {
+            val kb = key.toByteArray(Charsets.UTF_8)
+            buffer.put(kb.size.toByte())
+            buffer.put(kb)
+            buffer.putLong(value)
+        }
+        return buffer.array()
+    }
+
     /** Route-independent slots (order shared with native kCommonFields). */
     private fun flattenCommon(): LongArray {
         val task = taskStruct
@@ -112,8 +161,16 @@ data class NativeProfileDocument(
 
     companion object {
         const val Magic = 0x0D000721u
+
+        /** Legacy transport, still decoded. */
         const val Version: UShort = 2u
+
+        /** Current writer version (core + middleware + options sections). */
+        const val VersionV3: UShort = 3u
+        private const val FrontendRootChild: UShort = 1u
+        private const val BackendCve202643499: UShort = 1u
         private const val HeaderSize = 12
+        private const val HeaderSizeV3 = 16
         private const val CommonFieldCount = 68
 
         fun routeKind(route: String?): UInt = RouteKind.fromToken(route)?.wire ?: 0u
@@ -133,7 +190,17 @@ data class NativeProfileDocument(
             if (bytes.size < HeaderSize) return null
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             if (buffer.int.toUInt() != Magic) return null
-            if (buffer.short.toUShort() != Version) return null
+            return when (buffer.short.toUShort()) {
+                Version -> fromBinaryV2(bytes)
+                VersionV3 -> fromBinaryV3(bytes)
+                else -> null
+            }
+        }
+
+        private fun fromBinaryV2(bytes: ByteArray): NativeProfileDocument? {
+            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.int // magic
+            buffer.short // version
             val routeKind = (buffer.get().toInt() and 0xff).toUInt()
             val kernelMajor = (buffer.get().toInt() and 0xff).toUInt()
             val recommendShizuku = (buffer.get().toInt() and 0xff).toUInt()
@@ -159,6 +226,57 @@ data class NativeProfileDocument(
                 routeKind = routeKind,
                 kernelMajor = kernelMajor,
                 recommendShizuku = recommendShizuku,
+                fallbackRoute = fallbackRoute,
+                f = common,
+                routeConfig = routeConfig,
+            )
+        }
+
+        private fun fromBinaryV3(bytes: ByteArray): NativeProfileDocument? {
+            if (bytes.size < HeaderSizeV3) return null
+            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.int // magic
+            buffer.short // version
+            buffer.short // frontend
+            buffer.short // backend
+            val routeKind = (buffer.short.toInt() and 0xffff).toUInt()
+            val kernelMajor = (buffer.get().toInt() and 0xff).toUInt()
+            val fallbackRoute = (buffer.get().toInt() and 0xff).toUInt()
+            val releaseLength = buffer.short.toInt() and 0xffff
+            if (buffer.remaining() < releaseLength + CommonFieldCount * 8 + 2) return null
+            val releaseBytes = ByteArray(releaseLength)
+            buffer.get(releaseBytes)
+            val common = LongArray(CommonFieldCount) { buffer.long }
+            var routeConfig: RouteConfig =
+                RouteKind.fromWire(routeKind)?.emptyConfig() ?: NoRouteConfig
+            val middlewareCount = buffer.short.toInt() and 0xffff
+            repeat(middlewareCount) {
+                if (buffer.remaining() < 1) return null
+                val keyLength = buffer.get().toInt() and 0xff
+                if (buffer.remaining() < keyLength + 8) return null
+                val keyBytes = ByteArray(keyLength)
+                buffer.get(keyBytes)
+                routeConfig = routeConfig.apply(String(keyBytes, Charsets.UTF_8), buffer.long)
+            }
+            val optionCount = buffer.short.toInt() and 0xffff
+            repeat(optionCount) {
+                if (buffer.remaining() < 1) return null
+                val keyLength = buffer.get().toInt() and 0xff
+                if (buffer.remaining() < keyLength + 8) return null
+                val keyBytes = ByteArray(keyLength)
+                buffer.get(keyBytes)
+                val value = buffer.long
+                when (String(keyBytes, Charsets.UTF_8)) {
+                    "safe_mode" -> common[67] = value
+                    "selected_cpus.main" -> common[44] = value
+                    "selected_cpus.consumer" -> common[45] = value
+                }
+            }
+            return fromCommon(
+                release = String(releaseBytes, Charsets.UTF_8),
+                routeKind = routeKind,
+                kernelMajor = kernelMajor,
+                recommendShizuku = 0u,
                 fallbackRoute = fallbackRoute,
                 f = common,
                 routeConfig = routeConfig,

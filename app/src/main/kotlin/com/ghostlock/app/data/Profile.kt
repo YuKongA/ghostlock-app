@@ -90,7 +90,7 @@ internal data class Profile(
 
     fun toNativeDocument(): NativeProfileDocument = document
 
-    fun toBinary(): ByteArray = document.toBinary()
+    fun toBinary(): ByteArray = document.toBinaryV3()
 
     companion object {
         /** Wraps a decoded document, rejecting an unresolved route. */

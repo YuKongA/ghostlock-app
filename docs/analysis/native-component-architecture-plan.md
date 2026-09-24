@@ -382,13 +382,13 @@ component failure
 - [x] `docs/kernel_profiles/PROFILE_SCHEMA*.md`、`README*.md`：更新 schema、迁移和中英文说明。
 - [x] 本批只改 Kotlin/HOCON/Gradle 导出与测试，不改 native 执行路径和 wire 编码；以本批前 `4ed4d84` code baseline 的解析结果作为行为对照，不承诺保留 dev 格式供未来版本读取。`recommend_shizuku` 留在 Kotlin 策略路径。
 
-### [ ] Batch 2：Kotlin/native 版本化组件 DTO
+### [x] Batch 2：Kotlin/native 版本化组件 DTO
 
-- [ ] `app/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt`：拆成 core DTO、component DTO、runtime options 与 wire codec；保持 codec 不承载存储来源信息。
-- [ ] `src/core/profile/model.h`、`binary.h`、`binary.cpp`：定义 native 对应的只读 runtime/core/component DTO 和新版本解码适配。仅当 Batch 0 证明某旧 wire 格式属于必须支持的主线契约时，才保留该 reader；dev 独有的 GLK v2 reader 可直接替换。
-- [ ] `src/core/profile/**` 与 Android app 的 binary tests：逐字段校验类型、signedness、默认值、未知字段/版本行为及 round-trip。
-- [ ] wire 版本及二进制字段表只允许在本批变更；禁止 Kotlin/native 字段顺序各自手维护却无一致性测试。
-- [ ] `recommend_shizuku` 留在 App 模型；无需为 dev 独有旧 v2 字段继续保留 native 语义槽位。
+- [x] `app/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt`：拆成 core DTO、component DTO、runtime options 与 wire codec；保持 codec 不承载存储来源信息。
+- [x] `src/core/profile/model.h`、`binary.h`、`binary.cpp`：定义 native 对应的只读 runtime/core/component DTO 和新版本解码适配。仅当 Batch 0 证明某旧 wire 格式属于必须支持的主线契约时，才保留该 reader；dev 独有的 GLK v2 reader 可直接替换。
+- [x] `src/core/profile/**` 与 Android app 的 binary tests：逐字段校验类型、signedness、默认值、未知字段/版本行为及 round-trip。
+- [x] wire 版本及二进制字段表只允许在本批变更；禁止 Kotlin/native 字段顺序各自手维护却无一致性测试。
+- [x] `recommend_shizuku` 留在 App 模型；无需为 dev 独有旧 v2 字段继续保留 native 语义槽位。
 
 ### [ ] Batch 3：native Orchestrator 与现有组件目录化
 
@@ -459,7 +459,7 @@ component failure
 - [x] 用户评审并认可计划，授权开始执行。
 - [x] Batch 0：确认当前工作树状态、主线兼容输入与历史 gate 证据；干净 baseline 构建留待 Batch 1 开始前完成。
 - [x] Batch 1：CoreProfile 与执行调优存储/解析模型解耦并保持 native 输入等价。（host 测试、golden 字节等价与 exporter 一致性通过；未触 native，无需真机 gate）
-- [ ] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。
+- [x] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。（v3 wire + v2 兼容；host tests、Gradle、NDK 零告警、lint-tidy 0 findings）
 - [ ] Batch 3：native Orchestrator 接入现有组件。
 - [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。
 - [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
