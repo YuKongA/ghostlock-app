@@ -151,6 +151,8 @@ UI 选择/推荐推迟到 UMH 有真机证据之后。
   绑定 catalog 权威）；`cmp_disasm` 8 攻击函数仍 PASS。**实现级抽离**（把 W1–W3/middleware 从
   `ExploitProcedure` 移入 pipeline，会改 `run_main_route_threads`）留独立切片，以 `4ee24fbc…` 为基线
   并配真机门禁。
-- [ ] D3 模型预留（App 模型 frontend 字段与 `available/unsupported` 语义）。
+- [x] D3 模型预留：`:profile-core` 新增 `component/ComponentKind.kt`（`FrontendKind`/`BackendKind` wire id +
+  `ComponentAvailability`），镜像 native 权威；`ComponentKindTest` 固定 wire 值（1/2）与可用性
+  （仅 `RootChild`/`Cve2026_43499` available）。无 UI、无行为变化。
 - [ ] **真机门禁（本批构建重新跑）**：A301SO / 5.15、KernelSU 未加载、固定 CPU 对、multicast、冷机；
   归档 `docs/analysis/device-gates/`（绑定本批候选）。通过前 Batch 4 不算完成。
