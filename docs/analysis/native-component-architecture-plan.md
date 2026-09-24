@@ -390,13 +390,13 @@ component failure
 - [x] wire 版本及二进制字段表只允许在本批变更；禁止 Kotlin/native 字段顺序各自手维护却无一致性测试。
 - [x] `recommend_shizuku` 留在 App 模型；无需为 dev 独有旧 v2 字段继续保留 native 语义槽位。
 
-### [ ] Batch 3：native Orchestrator 与现有组件目录化
+### [x] Batch 3：native Orchestrator 与现有组件目录化
 
-- [ ] `src/core/route/route_policy.hpp`、`route_controller.*`、`exploit_procedure.*`：将 middleware route 的目录与选择职责收敛到 Orchestrator；迁移时保持既有 policy/procedure 生命周期和静态分派约束。
-- [ ] `src/core/session/**`：明确 frontend/backend/middleware 的公共上下文、错误结果与资源所有权；保留 `g_exploit_session` 唯一可变 singleton 规则。
-- [ ] `src/core/route/tcp_zerocopy_route.*`、`select_stack_route.*`、`multicast_waiter_route.*`：仅接入新的配置 DTO 和目录，不改内部算法/时序。
-- [ ] CVE-2026-43499 既有 backend 仅经新 backend contract 暴露能力和状态；本批不改其漏洞原语实现。
-- [ ] `src/core/tests/**`：测试目录 ID、可用性检查、兼容组合拒绝、生命周期和资源清理。
+- [x] `src/core/route/route_policy.hpp`、`route_controller.*`、`exploit_procedure.*`：将 middleware route 的目录与选择职责收敛到 Orchestrator；迁移时保持既有 policy/procedure 生命周期和静态分派约束。
+- [x] `src/core/session/**`：明确 frontend/backend/middleware 的公共上下文、错误结果与资源所有权；保留 `g_exploit_session` 唯一可变 singleton 规则。
+- [x] `src/core/route/tcp_zerocopy_route.*`、`select_stack_route.*`、`multicast_waiter_route.*`：仅接入新的配置 DTO 和目录，不改内部算法/时序。
+- [x] CVE-2026-43499 既有 backend 仅经新 backend contract 暴露能力和状态；本批不改其漏洞原语实现。
+- [x] `src/core/tests/**`：测试目录 ID、可用性检查、兼容组合拒绝、生命周期和资源清理。
 
 ### [ ] Batch 4：frontend provider 接入
 
@@ -460,7 +460,7 @@ component failure
 - [x] Batch 0：确认当前工作树状态、主线兼容输入与历史 gate 证据；干净 baseline 构建留待 Batch 1 开始前完成。
 - [x] Batch 1：CoreProfile 与执行调优存储/解析模型解耦并保持 native 输入等价。（host 测试、golden 字节等价与 exporter 一致性通过；未触 native，无需真机 gate）
 - [x] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。（v3 wire + v2 兼容；host tests、Gradle、NDK 零告警、lint-tidy 0 findings）
-- [ ] Batch 3：native Orchestrator 接入现有组件。
+- [x] Batch 3：native Orchestrator 接入现有组件。（cmp_disasm PASS、host/NDK/lint 通过、冷机 multicast 真机 gate PASS）
 - [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。
 - [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
 - [ ] Batch 6：文档收敛和旧格式退场评估。

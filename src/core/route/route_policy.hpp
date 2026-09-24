@@ -19,7 +19,12 @@ namespace ghostlock::route {
 
     using RouteKind = ghostlock::profile::RouteKind;
 
-    /* One resolved route's behavior. A policy is a tag type whose compile-time
+    /* Native middleware catalog (Batch 3): each policy is one selectable
+     * middleware tactic (tcp_zerocopy | select_stack | multicast_waiter). The
+     * orchestrator (route/orchestrator.hpp) picks the pipeline; this registry
+     * maps a resolved route to its compile-time policy.
+     *
+     * One resolved route's behavior. A policy is a tag type whose compile-time
      * capabilities replace every `supports(RouteKind)` branch in the run stages,
      * and whose run() is the per-write entry point. Adding a route means adding
      * a policy and listing it in RoutePolicyList below; no stage edits. */

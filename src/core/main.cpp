@@ -13,7 +13,7 @@
 #include "legacy/legacy_entrypoint_starter.h"
 #include "profile/entry.h"
 #include "support/fatal_error.hpp"
-#include "route/exploit_procedure.hpp"
+#include "route/orchestrator.hpp"
 
 #include <array>
 #include <memory>
@@ -65,7 +65,22 @@ int main(int argc, char **argv) {
         }
 
         auto &session = session::g_exploit_session;
-        auto procedure = make_exploit_procedure(session, decoded.route_kind());
+        /* Batch 3 registry: the only shipped frontend/backend today; the
+         * middleware comes from the decoded route. */
+        const runtime::ComponentSelection selection{
+            runtime::FrontendKind::RootChild,
+            runtime::BackendKind::Cve2026_43499,
+            decoded.route_kind(),
+        };
+        if (!runtime::selection_supported(selection)) {
+            pr_error("unsupported component selection\n");
+            throw FatalError{};
+        }
+        auto procedure = runtime::make_orchestrated_procedure(session, selection);
+        if (!procedure) {
+            pr_error("orchestrator rejected the component selection\n");
+            throw FatalError{};
+        }
         procedure->set_force_attack(force_attack);
         return procedure->run(decoded, dump_dir);
     } catch (const FatalError &) {

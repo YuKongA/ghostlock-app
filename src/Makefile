@@ -114,7 +114,7 @@ native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 
 NATIVE_HOST_TESTS := \
   profile_test payload_builder_test heap_context_test route_status_test \
-  route_catalog_test route_policy_test route_lifecycle_test \
+  route_catalog_test component_catalog_test route_policy_test route_lifecycle_test \
   runtime_time_test \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
@@ -168,6 +168,10 @@ $(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/suppo
 $(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/profile/model.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_catalog_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/route/component_catalog.hpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/component_catalog_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/route/route_policy.hpp core/route/route_status.h core/profile/model.h core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
