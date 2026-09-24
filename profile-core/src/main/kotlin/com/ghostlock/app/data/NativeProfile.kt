@@ -169,7 +169,9 @@ data class NativeProfileDocument(
         /** Current writer version (core + middleware + options sections). */
         const val VersionV3: UShort = 3u
         private const val FrontendRootChild: UShort = 1u
+        private const val FrontendUmhForward: UShort = 2u
         private const val BackendCve202643499: UShort = 1u
+        private const val BackendCve20264560: UShort = 2u
         private const val HeaderSize = 12
         private const val HeaderSizeV3 = 16
         private const val CommonFieldCount = 68
@@ -250,9 +252,13 @@ data class NativeProfileDocument(
             val frontend = buffer.short.toInt() and 0xffff
             val backend = buffer.short.toInt() and 0xffff
             val middleware = buffer.short.toInt() and 0xffff
-            if (frontend != FrontendRootChild.toInt() || backend != BackendCve202643499.toInt()) {
-                return null
-            }
+            /* Unknown ids are rejected here; known-but-unavailable ids (UMH,
+             * cve_2026_64560) decode and are rejected by the orchestrator. */
+            val frontendKnown = frontend == FrontendRootChild.toInt() ||
+                frontend == FrontendUmhForward.toInt()
+            val backendKnown = backend == BackendCve202643499.toInt() ||
+                backend == BackendCve20264560.toInt()
+            if (!frontendKnown || !backendKnown) return null
             if (RouteKind.fromWire(middleware.toUInt()) == null) return null
             val routeKind = middleware.toUInt()
             val kernelMajor = (buffer.get().toInt() and 0xff).toUInt()

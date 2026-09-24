@@ -341,6 +341,13 @@ int32_t main(void) {
             assert(parse_v3(binary_profile::kFrontendRootChild,
                             binary_profile::kBackendCve202643499,
                             ghostlock::profile::kRouteSelectStack) == 0);
+            /* Known-but-unavailable ids decode; the orchestrator rejects them. */
+            assert(parse_v3(binary_profile::kFrontendUmhForward,
+                            binary_profile::kBackendCve202643499,
+                            ghostlock::profile::kRouteSelectStack) == 0);
+            assert(parse_v3(binary_profile::kFrontendRootChild,
+                            binary_profile::kBackendCve20264560,
+                            ghostlock::profile::kRouteSelectStack) == 0);
             assert(parse_v3(9, binary_profile::kBackendCve202643499,
                             ghostlock::profile::kRouteSelectStack) == -1);
             assert(parse_v3(binary_profile::kFrontendRootChild, 9,

@@ -17,6 +17,7 @@
 
 #include <array>
 #include <memory>
+#include <string>
 #include <string_view>
 
 using namespace ghostlock;
@@ -81,7 +82,13 @@ int main(int argc, char **argv) {
             static_cast<runtime::MiddlewareKind>(ids.middleware),
         };
         if (!runtime::selection_supported(selection)) {
-            pr_error("unsupported component selection\n");
+            /* Known-but-unavailable ids land here (unknown ids were rejected at
+             * decode time), with the three dimensions named for diagnosis. */
+            const std::string frontend(runtime::frontend_name(selection.frontend));
+            const std::string backend(runtime::backend_name(selection.backend));
+            const std::string middleware(runtime::middleware_name(selection.middleware));
+            pr_error("unsupported component selection: frontend=%s backend=%s middleware=%s\n",
+                     frontend.c_str(), backend.c_str(), middleware.c_str());
             throw FatalError{};
         }
         auto procedure = runtime::make_orchestrated_procedure(session, selection);

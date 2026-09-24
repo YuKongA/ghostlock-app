@@ -411,12 +411,15 @@ component failure
 - [x] 复审修正 II：exporter 输出限定在 `build` 生成目录、staging→backup→rollback（失败保留旧输出）；`index.conf` 坏项严格拒绝；`ExporterAgreementTest` 断言导出集合与索引非模板项一致；`ExploitSession` 标注 race 终结在 route 卡住时**未闭环**；`profile_binary_test` 断言成功解码的 `component_ids`；`ProfileRoundTripTest` 加 v3 错误组件 ID 回归。
 - [ ] F9（typed 主链）另立 Batch 2.5。
 
-### [ ] Batch 4：frontend provider 接入
+### [~] Batch 4：frontend provider 接入（契约脚手架，非解耦）
 
-- [ ] `src/core/session/victim_process.*`、`victim_context.*`、handoff 文件：将现有 root-child 相关启动与交接归入 `root_child` frontend 边界；仅移动职责，不改 W1/W2/W3 行为。
-- [ ] 新增 UMH frontend 的独立 policy/config/adapter 文件；只定义与 Orchestrator/Session 的交互契约和故障回报，不在该批混入 backend 或 middleware 变更。
-- [ ] `app` 配置模型与 UI：允许选择/推荐 frontend，并清楚展示 unavailable/unsupported 状态。
-- [ ] UMH 独立验证完成前不将其标为设备 supported，不自动切换用户入口。
+> 用户确认：D1=A 薄声明 / UMH unavailable / 不做 UI / D4 重新门禁。契约只表达编译期 ID、可用性与故障原因；`ExploitProcedure` 仍承载 child/W1–W3/handoff，**不代表 frontend 已拆分**。
+
+- [~] root-child 边界：`frontend_contract.hpp` 声明 `root_child` 指向现有 victim/handoff（未搬代码）；`handoff_probe` 为 root handoff/KernelSU 验证，与 child 生命周期职责分列。
+- [x] UMH frontend 占位：`route/frontend_contract.hpp` 声明 `umh_forward` `available=false` + 原因，无执行路径。
+- [ ] `app` 配置模型与 UI：按 D3 本批不做（UMH 无真机证据前不暴露选择）。
+- [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。
+- [ ] 真机门禁：以本批候选 `fcbc2191…` 冷机复跑并归档。
 
 ### [ ] Batch 5：backend 扩展点及第二后端接入
 

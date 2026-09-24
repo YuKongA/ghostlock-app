@@ -32,9 +32,21 @@ namespace ghostlock::binary_profile {
     inline constexpr uint16_t kVersionV3 = 3u;
     /* Version emitted by serialize(); parse() accepts both V2 and V3. */
     inline constexpr uint16_t kVersion = kVersionV3;
-    /* Component selection defaults (Batch 2 has a single frontend/backend). */
+    /* Known component ids. The full catalog is decoded here; an id that is
+     * known but unavailable (UMH / cve_2026_64560) is accepted at decode time
+     * and rejected by the orchestrator before the attack starts. */
     inline constexpr uint16_t kFrontendRootChild = 1u;
+    inline constexpr uint16_t kFrontendUmhForward = 2u;
     inline constexpr uint16_t kBackendCve202643499 = 1u;
+    inline constexpr uint16_t kBackendCve20264560 = 2u;
+
+    [[nodiscard]] constexpr bool frontend_known(uint16_t id) noexcept {
+        return id == kFrontendRootChild || id == kFrontendUmhForward;
+    }
+
+    [[nodiscard]] constexpr bool backend_known(uint16_t id) noexcept {
+        return id == kBackendCve202643499 || id == kBackendCve20264560;
+    }
 
     /* Component selection as decoded from the transport. v2 fills the single
      * shipped frontend/backend; v3 carries the wire ids. Kept out of

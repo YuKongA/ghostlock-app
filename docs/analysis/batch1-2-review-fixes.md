@@ -128,6 +128,16 @@
   更干净的做法是导出纯函数（输入 profile map，输出 bytes）+ Gradle 任务负责路径/参数（CPU 对、
   是否导出模板显式化）。属构建体系完善，**建议**随后续文档/构建收敛批次做；当前保留防御性校验即可。
 
+## 边界记录（暂不阻塞，供后续批次处理）
+
+- **B1 exporter 的 expectedOutputDir 可信性**：`ProfileExporter.main` 从第 3 个参数接收
+  `expectedOutputDir`。当前仅由 `:profile-core` 的 Gradle 任务调用，传入的是项目生成目录，属可信配置；
+  若将来允许直接命令行调用，调用者可把输出与 expected 设为同一外部路径，校验便不再是独立约束。
+  届时需把允许根锚定到项目路径。**本批维持“仅供 Gradle 内部调用”的约定。**
+- **B2 空 `profiles` 列表**：`index.conf` 若为空的 `profiles`，导出会得到 0 个 profile，且
+  `ExporterAgreementTest` 会对两个空集合判相等。若项目要求至少内置一个 profile，可加非空断言
+  （低成本）。**本批未强制**，记录待定。
+
 ## 待拍板（已定）
 
 - **D1（F1）**：采用“v3 移除 options 的 safe_mode、safeModeOffset 按版本分派”（推荐），还是定位 options 条目？

@@ -154,6 +154,9 @@ class ProfileRoundTripTest {
             return copy
         }
         assertNotNull(NativeProfileDocument.fromBinary(patched(1, 1, 2)))
+        /* Known-but-unavailable ids decode; the orchestrator rejects them. */
+        assertNotNull(NativeProfileDocument.fromBinary(patched(2, 1, 2)))
+        assertNotNull(NativeProfileDocument.fromBinary(patched(1, 2, 2)))
         assertNull(NativeProfileDocument.fromBinary(patched(9, 1, 2)))
         assertNull(NativeProfileDocument.fromBinary(patched(1, 9, 2)))
         assertNull(NativeProfileDocument.fromBinary(patched(1, 1, 99)))

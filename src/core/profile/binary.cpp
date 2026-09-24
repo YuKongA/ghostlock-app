@@ -248,10 +248,11 @@ namespace ghostlock::binary_profile {
             const uint16_t frontend = static_cast<uint16_t>(read_le(bytes + 6, 2));
             const uint16_t backend = static_cast<uint16_t>(read_le(bytes + 8, 2));
             const uint16_t middleware = static_cast<uint16_t>(read_le(bytes + 10, 2));
-            /* Reject unsupported component ids instead of accepting an unknown
-             * combination; the middleware id is u16 on the wire and must map to
-             * a known route without truncation. */
-            if (frontend != kFrontendRootChild || backend != kBackendCve202643499) return -1;
+            /* Reject unknown ids only; known-but-unavailable ids (UMH,
+             * cve_2026_64560) decode and are rejected by the orchestrator
+             * before the attack starts. The middleware id is u16 on the wire
+             * and must map to a known route without truncation. */
+            if (!frontend_known(frontend) || !backend_known(backend)) return -1;
             if (middleware > 0xff) return -1;
             memset(out, 0, sizeof(*out));
             out->uname_r = release_buf;
