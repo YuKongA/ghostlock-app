@@ -41,26 +41,28 @@ namespace ghostlock::profile_entry {
         }
 
         int32_t decode(const std::string &document, profile::kernel_offsets *out,
-                   char *release_buf, size_t release_buf_cap) {
+                   char *release_buf, size_t release_buf_cap,
+                   binary_profile::component_ids *ids) {
             return ghostlock::binary_profile::parse(
                 std::string_view(document.data(), document.size()), out,
-                release_buf, release_buf_cap);
+                release_buf, release_buf_cap, ids);
         }
     } // namespace
 
     int32_t read_glk1_stdin(profile::kernel_offsets *out, char *release_buf,
-                        size_t release_buf_cap) {
+                        size_t release_buf_cap, binary_profile::component_ids *ids) {
         if (!out || !release_buf || release_buf_cap == 0) {
             errno = EINVAL;
             return -1;
         }
         std::string document;
         if (read_all(STDIN_FILENO, &document) != 0) return -1;
-        return decode(document, out, release_buf, release_buf_cap);
+        return decode(document, out, release_buf, release_buf_cap, ids);
     }
 
     int32_t read_glk1_file(const char *path, profile::kernel_offsets *out,
-                       char *release_buf, size_t release_buf_cap) {
+                       char *release_buf, size_t release_buf_cap,
+                       binary_profile::component_ids *ids) {
         if (!path || !out || !release_buf || release_buf_cap == 0) {
             errno = EINVAL;
             return -1;
@@ -70,6 +72,6 @@ namespace ghostlock::profile_entry {
         std::string document;
         const int32_t rc = read_all(fd.get(), &document);
         if (rc != 0) return -1;
-        return decode(document, out, release_buf, release_buf_cap);
+        return decode(document, out, release_buf, release_buf_cap, ids);
     }
 } // namespace ghostlock::profile_entry

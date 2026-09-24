@@ -153,6 +153,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+// The exporter-agreement test compares against the freshly exported .bin set.
+tasks.withType<Test>().configureEach {
+    dependsOn(":profile-core:exportKernelProfiles")
+}
+
 tasks.named("preBuild") {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))

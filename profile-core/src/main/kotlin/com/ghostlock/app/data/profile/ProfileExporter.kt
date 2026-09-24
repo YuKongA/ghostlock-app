@@ -3,24 +3,31 @@ package com.ghostlock.app.data.profile
 import com.ghostlock.app.data.HoconSupport
 import com.ghostlock.app.data.NativeProfileDocument
 import com.ghostlock.app.data.ValueMap
+import com.ghostlock.app.data.asValueList
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.route.RouteKind
 import java.io.File
 
 /**
- * Serializes the bundled HOCON profiles into the v2 binary the native side
+ * Serializes the bundled HOCON profiles into the v3 binary the native side
  * reads. It shares [ProfileMerger], [ProfileResolver] and
  * [NativeProfileDocument] with the app, so the exporter and the runtime can no
- * longer drift.
+ * longer drift. The work list comes from `index.conf`; a missing/invalid entry
+ * fails the export instead of silently dropping a profile.
  */
 object ProfileExporter {
     @JvmStatic
     fun main(args: Array<String>) {
         require(args.size >= 2) { "usage: ProfileExporter <profilesDir> <outputDir>" }
-        val srcDir = File(args[0])
-        val outDir = File(args[1])
-        if (outDir.exists()) outDir.deleteRecursively()
-        outDir.mkdirs()
+        val srcDir = File(args[0]).canonicalFile
+        val outDir = File(args[1]).canonicalFile
+        require(srcDir.isDirectory) { "profiles dir does not exist: $srcDir" }
+        rejectUnsafeOutput(srcDir, outDir)
+
+        val index = parseFile(File(srcDir, "index.conf"), srcDir)
+            ?: error("index.conf is missing or invalid")
+        val entries = index["profiles"].asValueList()?.mapNotNull { it.asValueMap() }
+            ?: error("index.conf has no profiles list")
 
         val routes = RouteKind.entries.map { it.token }
         val tuningExecution = parseFile(File(srcDir, "execution-tuning.conf"), srcDir)
@@ -33,33 +40,69 @@ object ProfileExporter {
                 ?.let { route to it }
         }.toMap()
 
+        /* Stage into a sibling temp dir and swap in only on full success, so a
+         * failure never leaves a half-deleted or partial output dir. */
+        val staging = File(outDir.parentFile, "${outDir.name}.staging-${System.nanoTime()}")
+        if (staging.exists()) staging.deleteRecursively()
+        staging.mkdirs()
+
         var count = 0
-        srcDir.listFiles { file -> file.isFile && file.name.endsWith(".conf") }
-            ?.sortedBy { it.name }
-            ?.forEach { file ->
-                val parsed = parseFile(file, srcDir) ?: return@forEach
-                val release = parsed["release"] as? String ?: return@forEach
-                val route = routeNameOf(parsed, routes)
-                val fallbackTo = fallbackOf(parsed)
-                val merged = ProfileMerger.resolveMerged(
-                    deviceRelease = release,
-                    builtin = parsed,
-                    imported = null,
-                    overrides = null,
-                    tuningExecution = tuningExecution,
-                    pair = CpuPairView(0, 1),
-                    routePresets = routePresets,
-                )
-                val bytes = NativeProfileDocument.from(
-                    release = release,
-                    route = RouteKind.fromToken(route)?.token,
-                    fallbackTo = RouteKind.fromToken(fallbackTo)?.token,
-                ) { path -> ProfileResolver.nativeValue(merged, route, fallbackTo, path) }.toBinaryV3()
-                File(outDir, "$release.bin").writeBytes(bytes)
-                count++
-                println("exportKernelProfiles: $release (${bytes.size} bytes)")
+        for (entry in entries) {
+            val file = entry["file"] as? String ?: error("index entry missing 'file'")
+            val release = entry["release"] as? String ?: error("index entry missing 'release'")
+            /* Reference templates are not device profiles and are not exported. */
+            if (release.endsWith("-template")) continue
+            val parsed = parseFile(File(srcDir, file), srcDir) ?: error("cannot parse $file")
+            val actualRelease = parsed["release"] as? String ?: error("$file has no release")
+            require(actualRelease == release) { "index/file release mismatch for $file" }
+            val route = routeNameOf(parsed, routes)
+            val fallbackTo = fallbackOf(parsed)
+            val merged = ProfileMerger.resolveMerged(
+                deviceRelease = actualRelease,
+                builtin = parsed,
+                imported = null,
+                overrides = null,
+                tuningExecution = tuningExecution,
+                pair = CpuPairView(0, 1),
+                routePresets = routePresets,
+            )
+            val errors = ProfileResolver.validateMerged(merged, route, fallbackTo)
+            if (errors.isNotEmpty()) {
+                error("$file fails validation: ${errors.joinToString()}")
             }
+            val bytes = NativeProfileDocument.from(
+                release = actualRelease,
+                route = RouteKind.fromToken(route)?.token,
+                fallbackTo = RouteKind.fromToken(fallbackTo)?.token,
+            ) { path -> ProfileResolver.nativeValue(merged, route, fallbackTo, path) }.toBinaryV3()
+            File(staging, "$actualRelease.bin").writeBytes(bytes)
+            count++
+            println("exportKernelProfiles: $actualRelease (${bytes.size} bytes)")
+        }
+
+        if (outDir.exists() && !outDir.deleteRecursively()) {
+            error("cannot replace output dir: $outDir")
+        }
+        if (!staging.renameTo(outDir)) {
+            error("cannot move staging dir into place: $outDir")
+        }
         println("exportKernelProfiles: $count profile(s) -> ${outDir.absolutePath}")
+    }
+
+    /** Refuses an output dir that would delete sources or write into the tree. */
+    private fun rejectUnsafeOutput(srcDir: File, outDir: File) {
+        val src = srcDir.path
+        val out = outDir.path
+        require(out != src) { "output dir must not be the profiles dir: $outDir" }
+        require(!out.startsWith(src + File.separator)) {
+            "output dir must not be inside the profiles dir: $outDir"
+        }
+        require(!src.startsWith(out + File.separator)) {
+            "output dir must not contain the profiles dir: $outDir"
+        }
+        require(!out.contains("${File.separator}app${File.separator}src${File.separator}")) {
+            "refusing to write into the source tree: $outDir"
+        }
     }
 
     private fun routeNameOf(profile: Map<*, *>, routes: List<String>): String? =

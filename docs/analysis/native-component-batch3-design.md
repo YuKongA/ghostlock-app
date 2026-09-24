@@ -170,6 +170,9 @@
   - `NDK_ROOT=... make -C src lint-tidy` exit 0、0 findings；
   - `cmp_disasm` vs Batch 3 前基线：7 IDENTICAL + `do_one_write` 既有 LAYOUT-SHIFT，RESULT PASS
     （无恶化）。
+- [~] **范围修正（Batch 3 审查后）**：本批仅落地 catalog 与薄 Orchestrator 骨架；`route_controller.*`/
+  `exploit_procedure.*` 未改，未消费 wire 的 frontend/backend 选择，backend contract、可审计 Session
+  所有权追踪、生命周期/清理测试未做（转 Batch 3.1，并入 Batch 1/2 review F4）。
 - [x] **真机门禁：PASS**（`docs/analysis/device-gates/B3-20260923-multicast-direct-pass.md`）：
   A301SO / `5.15.189-...-ab14546557`，KernelSU 未加载、固定 CPU 对 3/4、multicast 单组合、direct；
   多次 `route_done success=1`、`child is root`、无 panic。早期非确定 panic 归为 `KERNEL-PANIC-01`

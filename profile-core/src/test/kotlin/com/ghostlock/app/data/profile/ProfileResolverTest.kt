@@ -58,6 +58,14 @@ class ProfileResolverTest {
     }
 
     @Test
+    fun `validateMerged reports a missing required cred field`() {
+        val profile = validProfile()
+        (profile["cred"] as MutableMap<String, Any?>).remove("copy_size")
+        val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
+        assertTrue(errors.any { it.fieldPath == "cred.copy_size" && it.message == "missing" })
+    }
+
+    @Test
     fun `validateMerged accepts a minimal valid profile`() {
         assertEquals(emptyList<ConfigError>(), ProfileResolver.validateMerged(validProfile(), "select_stack", "none"))
     }

@@ -306,6 +306,38 @@ int32_t main(void) {
             assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
         }
 
+        /* Batch 3.1: v3 component ids are validated and the u16 middleware id
+         * is not truncated. */
+        {
+            profile::kernel_offsets v3 = {};
+            v3.uname_r = "component-ids";
+            v3.route = ghostlock::profile::kRouteSelectStack;
+            char v3buf[4096];
+            const int32_t v3size = binary_profile::serialize(&v3, v3buf, sizeof(v3buf));
+            assert(v3size > 0);
+            auto parse_v3 = [&](int32_t frontend, int32_t backend, int32_t middleware) {
+                char buf[4096];
+                memcpy(buf, v3buf, static_cast<size_t>(v3size));
+                buf[6] = static_cast<char>(frontend & 0xff);
+                buf[7] = static_cast<char>((frontend >> 8) & 0xff);
+                buf[8] = static_cast<char>(backend & 0xff);
+                buf[9] = static_cast<char>((backend >> 8) & 0xff);
+                buf[10] = static_cast<char>(middleware & 0xff);
+                buf[11] = static_cast<char>((middleware >> 8) & 0xff);
+                return binary_profile::parse(std::string_view(buf, static_cast<size_t>(v3size)),
+                                             &parsed, release, sizeof(release));
+            };
+            assert(parse_v3(binary_profile::kFrontendRootChild,
+                            binary_profile::kBackendCve202643499,
+                            ghostlock::profile::kRouteSelectStack) == 0);
+            assert(parse_v3(9, binary_profile::kBackendCve202643499,
+                            ghostlock::profile::kRouteSelectStack) == -1);
+            assert(parse_v3(binary_profile::kFrontendRootChild, 9,
+                            ghostlock::profile::kRouteSelectStack) == -1);
+            assert(parse_v3(binary_profile::kFrontendRootChild,
+                            binary_profile::kBackendCve202643499, 99) == -1);
+        }
+
         /* A profile without a declared route never serializes. */
         values.route = ghostlock::profile::kRouteAuto;
         assert(binary_profile::serialize(&values, buffer, sizeof(buffer)) == -1);

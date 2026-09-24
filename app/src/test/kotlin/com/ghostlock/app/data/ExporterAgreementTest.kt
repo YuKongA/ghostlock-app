@@ -28,7 +28,10 @@ class ExporterAgreementTest {
     @Test
     fun `exporter output matches the app native documents`() = runBlocking {
         val exporterDir = File("../build/kernel-profiles")
-        if (!exporterDir.isDirectory) return@runBlocking
+        org.junit.Assert.assertTrue(
+            "exporter output missing; run :profile-core:exportKernelProfiles",
+            exporterDir.isDirectory,
+        )
 
         val root = Files.createTempDirectory("exporter-agreement").toFile()
         try {

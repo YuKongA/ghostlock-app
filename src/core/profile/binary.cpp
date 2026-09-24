@@ -184,7 +184,7 @@ namespace ghostlock::binary_profile {
         constexpr std::string_view kOptionCpuConsumer = "selected_cpus.consumer";
 
         int32_t parse_v2(std::string_view document, profile::kernel_offsets *out,
-                         char *release_buf, size_t release_buf_cap) {
+                         char *release_buf, size_t release_buf_cap, component_ids *ids) {
             const auto *bytes = reinterpret_cast<const uint8_t *>(document.data());
             const auto *end = bytes + document.size();
             if (document.size() < kHeaderSizeV2) return -1;
@@ -229,11 +229,12 @@ namespace ghostlock::binary_profile {
                 }
                 p += key_len + kW8;
             }
+            if (ids) *ids = {kFrontendRootChild, kBackendCve202643499, out->route};
             return 0;
         }
 
         int32_t parse_v3(std::string_view document, profile::kernel_offsets *out,
-                         char *release_buf, size_t release_buf_cap) {
+                         char *release_buf, size_t release_buf_cap, component_ids *ids) {
             if (document.size() < kHeaderSizeV3) return -1;
             const auto *bytes = reinterpret_cast<const uint8_t *>(document.data());
             const auto *end = bytes + document.size();
@@ -244,9 +245,17 @@ namespace ghostlock::binary_profile {
             memcpy(release_buf, bytes + kHeaderSizeV3, release_length);
             release_buf[release_length] = '\0';
 
+            const uint16_t frontend = static_cast<uint16_t>(read_le(bytes + 6, 2));
+            const uint16_t backend = static_cast<uint16_t>(read_le(bytes + 8, 2));
+            const uint16_t middleware = static_cast<uint16_t>(read_le(bytes + 10, 2));
+            /* Reject unsupported component ids instead of accepting an unknown
+             * combination; the middleware id is u16 on the wire and must map to
+             * a known route without truncation. */
+            if (frontend != kFrontendRootChild || backend != kBackendCve202643499) return -1;
+            if (middleware > 0xff) return -1;
             memset(out, 0, sizeof(*out));
             out->uname_r = release_buf;
-            out->route = static_cast<uint8_t>(read_le(bytes + 10, 2));
+            out->route = static_cast<uint8_t>(middleware);
             if (out->route == profile::kRouteAuto) return -1;
             out->kernel_major = bytes[12];
             out->recommend_shizuku = 0;
@@ -296,18 +305,19 @@ namespace ghostlock::binary_profile {
                 }
                 p += key_len + kW8;
             }
+            if (ids) *ids = {frontend, backend, middleware};
             return 0;
         }
     } // namespace
 
     int32_t parse(std::string_view document, profile::kernel_offsets *out,
-              char *release_buf, size_t release_buf_cap) {
+              char *release_buf, size_t release_buf_cap, component_ids *ids) {
         if (!out || !release_buf || document.size() < kHeaderSizeV2) return -1;
         const auto *bytes = reinterpret_cast<const uint8_t *>(document.data());
         if (read_le(bytes, 4) != kMagic) return -1;
         const uint16_t version = static_cast<uint16_t>(read_le(bytes + 4, 2));
-        if (version == kVersionV2) return parse_v2(document, out, release_buf, release_buf_cap);
-        if (version == kVersionV3) return parse_v3(document, out, release_buf, release_buf_cap);
+        if (version == kVersionV2) return parse_v2(document, out, release_buf, release_buf_cap, ids);
+        if (version == kVersionV3) return parse_v3(document, out, release_buf, release_buf_cap, ids);
         return -1;
     }
 

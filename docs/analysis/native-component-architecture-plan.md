@@ -390,13 +390,25 @@ component failure
 - [x] wire 版本及二进制字段表只允许在本批变更；禁止 Kotlin/native 字段顺序各自手维护却无一致性测试。
 - [x] `recommend_shizuku` 留在 App 模型；无需为 dev 独有旧 v2 字段继续保留 native 语义槽位。
 
-### [x] Batch 3：native Orchestrator 与现有组件目录化
+### [~] Batch 3：native Orchestrator 与现有组件目录化（部分完成）
 
-- [x] `src/core/route/route_policy.hpp`、`route_controller.*`、`exploit_procedure.*`：将 middleware route 的目录与选择职责收敛到 Orchestrator；迁移时保持既有 policy/procedure 生命周期和静态分派约束。
-- [x] `src/core/session/**`：明确 frontend/backend/middleware 的公共上下文、错误结果与资源所有权；保留 `g_exploit_session` 唯一可变 singleton 规则。
-- [x] `src/core/route/tcp_zerocopy_route.*`、`select_stack_route.*`、`multicast_waiter_route.*`：仅接入新的配置 DTO 和目录，不改内部算法/时序。
-- [x] CVE-2026-43499 既有 backend 仅经新 backend contract 暴露能力和状态；本批不改其漏洞原语实现。
-- [x] `src/core/tests/**`：测试目录 ID、可用性检查、兼容组合拒绝、生命周期和资源清理。
+> 静态审查（2026-09-23）后修正：本批实际只落地组件 catalog 与薄 Orchestrator 骨架；下列条目并非全部完成。
+
+- [~] `route_policy.hpp` 标注为 middleware catalog；`orchestrator.hpp` 校验 selection 后仍调用既有 `make_exploit_procedure`。`route_controller.*`、`exploit_procedure.*` 未改动。
+- [ ] `session/**` 仅新增说明性注释，未提供可审计的创建/借用/释放/终结点追踪；`g_exploit_session` 唯一性未变。
+- [ ] 三种 middleware 未改（算法/时序不变）；未“接入新的配置 DTO”——Orchestrator 尚未消费 wire 的 frontend/backend 选择（`main.cpp` 仍硬编码；v3 解码器未读取 frontend/backend 且把 middleware ID 截成 u8）。
+- [ ] backend contract 未实现（无可用性/状态接口；CVE-2026-43499 仅登记在 catalog）。
+- [~] `component_catalog_test` 覆盖 ID/可用性/组合拒绝；生命周期与资源清理测试未新增。
+- [x] 攻击路径语义未变：`cmp_disasm` 对 Batch 0 基线 7 函数 IDENTICAL + `do_one_write` 既有 LAYOUT-SHIFT，PASS；冷机 multicast direct 真机 gate PASS（`B3-20260923-multicast-direct-pass`）。
+- [ ] 剩余项转 Batch 3.1（与 Batch 1/2 审查 F4 合并）：v3 解码 frontend/backend ID 精确校验并接通 `main → selection`；Session 可审计所有权追踪；生命周期/清理测试。
+
+### [x] Batch 3.1：接通 DTO→Orchestrator、Session 所有权与 Batch 1/2 审查修复
+
+- [x] v3 解码两侧精确校验 frontend/backend/middleware（native `binary.cpp` + Kotlin `fromBinaryV3`），middleware 不再 u8 截断；`parse`/`entry` 新增 `component_ids` 输出（**不改 `kernel_offsets` 布局**），`main.cpp` 用 wire 选择构造 `ComponentSelection`（legacy 回落 decoded route）。
+- [x] `ExploitSession` 升级为逐字段所有权契约表（owner / created / borrowers / release / termination）。
+- [~] 生命周期/清理测试：route 生命周期由既有 `route_lifecycle_test`/`route_policy_test` 覆盖，selection 拒绝由 `component_catalog_test` 覆盖；组件层未新增清理测试（无新增资源）。
+- [x] Batch 1/2 审查修复 F1–F8：F1 v3 `safe_mode` 只经 core 槽 + `safeModeOffset` 按 header version 分派（golden 重生成）；F2 route 调优逐字段合并 preset；F3 exporter 拒绝源目录/源码树并 staging→原子替换；F4 同上；F5 CPU 会话对优先于 imported/override；F6 exporter 以 `index.conf` 为准、失败即报错、不导出模板；F7 `validateMerged` 区分缺失/类型/零且 exporter 调用；F8 `ExporterAgreementTest` 目录缺失即失败 + 测试依赖 exporter。
+- [ ] F9（typed 主链）另立 Batch 2.5。
 
 ### [ ] Batch 4：frontend provider 接入
 
@@ -460,7 +472,8 @@ component failure
 - [x] Batch 0：确认当前工作树状态、主线兼容输入与历史 gate 证据；干净 baseline 构建留待 Batch 1 开始前完成。
 - [x] Batch 1：CoreProfile 与执行调优存储/解析模型解耦并保持 native 输入等价。（host 测试、golden 字节等价与 exporter 一致性通过；未触 native，无需真机 gate）
 - [x] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。（v3 wire + v2 兼容；host tests、Gradle、NDK 零告警、lint-tidy 0 findings）
-- [x] Batch 3：native Orchestrator 接入现有组件。（cmp_disasm PASS、host/NDK/lint 通过、冷机 multicast 真机 gate PASS）
+- [~] Batch 3：部分完成（catalog + 薄 Orchestrator 骨架）。cmp_disasm PASS、host/NDK/lint 通过、冷机 multicast 真机 gate PASS。
+- [x] Batch 3.1：DTO→Orchestrator 接通（component_ids）、Session 逐字段所有权表、Batch 1/2 F1–F8 修复。（cmp_disasm PASS、host/Gradle/lint 通过；F9 typed 主链转 Batch 2.5）
 - [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。
 - [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
 - [ ] Batch 6：文档收敛和旧格式退场评估。

@@ -36,9 +36,20 @@ namespace ghostlock::binary_profile {
     inline constexpr uint16_t kFrontendRootChild = 1u;
     inline constexpr uint16_t kBackendCve202643499 = 1u;
 
-    /* Parse one binary document into the native transport struct. */
+    /* Component selection as decoded from the transport. v2 fills the single
+     * shipped frontend/backend; v3 carries the wire ids. Kept out of
+     * kernel_offsets so the execution struct layout (and attack codegen) does
+     * not move. */
+    struct component_ids {
+        uint16_t frontend;
+        uint16_t backend;
+        uint16_t middleware;
+    };
+
+    /* Parse one binary document into the native transport struct. `ids`, when
+     * given, receives the decoded component selection. */
     int32_t parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,
-              char *release_buf, size_t release_buf_cap);
+              char *release_buf, size_t release_buf_cap, component_ids *ids = nullptr);
 
     /* Serialize the same layout (host tests and tooling). */
     int32_t serialize(const struct ghostlock::profile::kernel_offsets *in, char *buffer, size_t capacity);

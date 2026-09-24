@@ -26,6 +26,11 @@ int main(int argc, char **argv) {
     try {
         profile::kernel_offsets decoded = {};
         std::array<char, 256> release_buf{};
+        binary_profile::component_ids ids{
+            static_cast<uint16_t>(runtime::FrontendKind::RootChild),
+            static_cast<uint16_t>(runtime::BackendKind::Cve2026_43499),
+            0,
+        };
 
         bool app_call = false;
         bool force_attack = false;
@@ -53,9 +58,9 @@ int main(int argc, char **argv) {
 
         int32_t loaded;
         if (prebuilt_path != nullptr) {
-            loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size());
+            loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size(), &ids);
         } else if (app_call) {
-            loaded = profile_entry::read_glk1_stdin(&decoded, release_buf.data(), release_buf.size());
+            loaded = profile_entry::read_glk1_stdin(&decoded, release_buf.data(), release_buf.size(), &ids);
         } else {
             loaded = legacy::start_legacy_entrypoint(&decoded, release_buf.data(), release_buf.size());
         }
@@ -65,12 +70,15 @@ int main(int argc, char **argv) {
         }
 
         auto &session = session::g_exploit_session;
-        /* Batch 3 registry: the only shipped frontend/backend today; the
-         * middleware comes from the decoded route. */
+        /* Batch 3.1: the component selection now comes from the wire. The
+         * legacy entry carries no ids, so fall back to the decoded route. */
+        if (ids.middleware == 0) {
+            ids.middleware = static_cast<uint16_t>(decoded.route_kind());
+        }
         const runtime::ComponentSelection selection{
-            runtime::FrontendKind::RootChild,
-            runtime::BackendKind::Cve2026_43499,
-            decoded.route_kind(),
+            static_cast<runtime::FrontendKind>(ids.frontend),
+            static_cast<runtime::BackendKind>(ids.backend),
+            static_cast<runtime::MiddlewareKind>(ids.middleware),
         };
         if (!runtime::selection_supported(selection)) {
             pr_error("unsupported component selection\n");

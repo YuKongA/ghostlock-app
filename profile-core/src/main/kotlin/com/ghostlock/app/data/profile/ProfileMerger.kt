@@ -44,9 +44,10 @@ object ProfileMerger {
         /* A manually chosen builtin still reports the device release so the
          * native release gate and the exported document stay coherent. */
         resolved["release"] = deviceRelease
-        val selectedOverride = imported?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
-            ?: overrides?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
-        applySelectedCpus(resolved, pair, selectedOverride)
+        /* The CPU pair is the run-scoped session choice and outranks imported
+         * or overridden selected_cpus, so a stale imported value can never
+         * silently override the user's current picker choice. */
+        applySelectedCpus(resolved, pair)
         fillRouteExecutionDefaults(resolved, routePresets)
         validateResolved(resolved, deviceRelease)
         return resolved
@@ -57,20 +58,11 @@ object ProfileMerger {
         imported?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
             ?: overrides?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
 
-    private fun applySelectedCpus(
-        resolved: ValueMap,
-        pair: CpuPairView,
-        selectedOverride: ValueMap?,
-    ) {
-        val execution = resolved.mutableChild("execution")
-        if (selectedOverride == null) {
-            execution["selected_cpus"] = valueMapOf(
-                "main" to pair.main.toLong(),
-                "consumer" to pair.consumer.toLong(),
-            )
-        } else {
-            execution["selected_cpus"] = selectedOverride
-        }
+    private fun applySelectedCpus(resolved: ValueMap, pair: CpuPairView) {
+        resolved.mutableChild("execution")["selected_cpus"] = valueMapOf(
+            "main" to pair.main.toLong(),
+            "consumer" to pair.consumer.toLong(),
+        )
     }
 
     /** Fills the route-tuning groups absent from the profile from the presets. */
@@ -78,9 +70,17 @@ object ProfileMerger {
         val execution = profile["execution"].asValueMap() ?: return
         val routes = execution.mutableChild("routes")
         for (route in RouteNames) {
-            if (routes.containsKey(route)) continue
             val defaults = routePresets[route] ?: continue
-            routes[route] = defaults
+            val existing = routes[route].asValueMap()
+            if (existing == null) {
+                routes[route] = defaults
+                continue
+            }
+            /* A sparse import/override may carry only some route fields; fill
+             * the rest from the preset instead of leaving them to encode as 0. */
+            for ((key, value) in defaults) {
+                if (!existing.containsKey(key)) existing[key] = value
+            }
         }
     }
 

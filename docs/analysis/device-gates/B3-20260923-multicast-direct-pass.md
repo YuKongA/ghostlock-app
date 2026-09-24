@@ -32,6 +32,22 @@
 - 攻击路径不变：`cmp_disasm` 对 Batch 3 前基线为 7 函数 IDENTICAL + `do_one_write` 既有 LAYOUT-SHIFT，
   RESULT PASS。
 
+## 反汇编门禁证据
+
+- 基线（Batch 0，`b411bb4`/`4ed4d84` 源码）`/private/tmp/ghostlock-baseline-4ed4d84`
+  SHA-256 `2039b06eaf39c9f9b4ec9f47b99636a5ab417409aebc6e9dee4101d5e7781ca3`。
+- 候选 `build/native/ghostlock`（Batch 3）SHA-256
+  `de522e79846dfb633bce03adca87f5ff7dfc98cb48de158c28da7efa111a0ba0`。
+- 命令：`ANDROID_NDK_HOME=<ndk> python3 tools/cmp_disasm.py <baseline> build/native/ghostlock`；完整输出：
+  `IDENTICAL` ×7（owner_thread / waiter_thread / consumer_thread / run_main_route_threads /
+  do_kernel5_fake_lock_route / multicast_owner_worker / multicast_waiter_worker）+
+  `LAYOUT-SHIFT do_one_write: 138 instructions, 1 annotated address operands differ`；`RESULT: PASS`。
+- `do_one_write` 差异归属：Batch 2 后基线 `/private/tmp/ghostlock-batch3-base`
+  （SHA-256 `5dcd8ddd101e3063560ed7408e1f928aec68b946531d5c179361196974c01552`）对同一 Batch 0 基线
+  已是同一形态（`do_one_write` `1 annotated address operands differ`）。Batch 3 未改
+  `ExploitProcedure::attack_write` 或任何被内联进 `do_one_write` 的文件，差异形态与计数未扩大，
+  属既有地址 operand 重定位，非本批引入。
+
 ## 附：同批次早期非确定观察（不作为本 gate 失败）
 
 - 同一工作树在更早的 direct 两次运行出现 panic，pstore `dmesg-ramoops-0`：

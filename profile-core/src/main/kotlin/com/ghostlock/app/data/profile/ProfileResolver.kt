@@ -108,8 +108,12 @@ object ProfileResolver {
             errors += ConfigError("cred", "not an object")
         } else {
             for (field in RequiredCred) {
-                if ((cred[field] as? Number)?.toLong() == 0L) {
-                    errors += ConfigError("cred.$field", "missing or zero")
+                when (val value = cred[field]) {
+                    null -> errors += ConfigError("cred.$field", "missing")
+                    !is Number -> errors += ConfigError("cred.$field", "not a number")
+                    else -> if (value.toLong() == 0L) {
+                        errors += ConfigError("cred.$field", "zero")
+                    }
                 }
             }
         }
@@ -118,8 +122,12 @@ object ProfileResolver {
             errors += ConfigError("offset", "not an object")
         } else {
             for (field in RequiredOffset) {
-                if ((offset[field] as? Number)?.toLong() == 0L) {
-                    errors += ConfigError("offset.$field", "missing or zero")
+                when (val value = offset[field]) {
+                    null -> errors += ConfigError("offset.$field", "missing")
+                    !is Number -> errors += ConfigError("offset.$field", "not a number")
+                    else -> if (value.toLong() == 0L) {
+                        errors += ConfigError("offset.$field", "zero")
+                    }
                 }
             }
         }

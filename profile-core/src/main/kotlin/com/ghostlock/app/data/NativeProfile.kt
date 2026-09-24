@@ -78,8 +78,9 @@ data class NativeProfileDocument(
         require(releaseBytes.size <= 0xffff) { "release is too long" }
         val core = flattenCommon()
         val middleware = routeConfig.entries()
+        /* safe_mode travels only in the core common slot; writing it again in
+         * options would let fromBinaryV3 override the patched core value. */
         val options = listOf(
-            "safe_mode" to safeMode.toLong(),
             "selected_cpus.main" to execution.recommendedMainCpu.toLong(),
             "selected_cpus.consumer" to execution.recommendedConsumerCpu.toLong(),
         )
@@ -180,9 +181,18 @@ data class NativeProfileDocument(
          * common slots, so the old `size - 16` shortcut no longer applies. */
         fun safeModeOffset(document: ByteArray): Int? {
             if (document.size < HeaderSize) return null
+            val version = (document[4].toInt() and 0xff) or ((document[5].toInt() and 0xff) shl 8)
+            val header = when (version) {
+                2 -> HeaderSize
+                3 -> HeaderSizeV3
+                else -> return null
+            }
+            val releaseOffset = if (version == 2) 10 else 14
+            if (document.size < releaseOffset + 2) return null
             val releaseLength =
-                (document[10].toInt() and 0xff) or ((document[11].toInt() and 0xff) shl 8)
-            val offset = HeaderSize + releaseLength + (CommonFieldCount - 1) * 8
+                (document[releaseOffset].toInt() and 0xff) or
+                    ((document[releaseOffset + 1].toInt() and 0xff) shl 8)
+            val offset = header + releaseLength + (CommonFieldCount - 1) * 8
             return if (offset + 8 <= document.size) offset else null
         }
 
@@ -237,9 +247,14 @@ data class NativeProfileDocument(
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             buffer.int // magic
             buffer.short // version
-            buffer.short // frontend
-            buffer.short // backend
-            val routeKind = (buffer.short.toInt() and 0xffff).toUInt()
+            val frontend = buffer.short.toInt() and 0xffff
+            val backend = buffer.short.toInt() and 0xffff
+            val middleware = buffer.short.toInt() and 0xffff
+            if (frontend != FrontendRootChild.toInt() || backend != BackendCve202643499.toInt()) {
+                return null
+            }
+            if (RouteKind.fromWire(middleware.toUInt()) == null) return null
+            val routeKind = middleware.toUInt()
             val kernelMajor = (buffer.get().toInt() and 0xff).toUInt()
             val fallbackRoute = (buffer.get().toInt() and 0xff).toUInt()
             val releaseLength = buffer.short.toInt() and 0xffff
