@@ -5,6 +5,7 @@
 
 #include "route/component_catalog.hpp"
 #include "route/exploit_procedure.hpp"
+#include "route/frontend_contract.hpp"
 #include "session/exploit_session.hpp"
 
 namespace ghostlock::runtime {

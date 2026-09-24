@@ -7,11 +7,14 @@
 #include "route/component_catalog.hpp"
 
 namespace ghostlock::runtime::frontend {
-    /* Batch 4 contract scaffolding. It declares only the compile-time id,
-     * availability and failure reason; there is no provider operation here and
-     * no execution path. The root_child frontend is realized by the existing
-     * ExploitProcedure / victim / handoff code and is NOT split out by this
-     * batch (see the Batch 4 design "实现边界").
+    /* Batch 4 DECLARATION-ONLY scaffolding. These structs name the known
+     * frontend ids and their failure reason; they are NOT wired into selection
+     * and expose no provider operation or execution path. Availability is owned
+     * by component_catalog::frontend_available(), and the static_asserts below
+     * fail to compile if this declaration ever drifts from it.
+     *
+     * The root_child frontend is realized by the existing ExploitProcedure /
+     * victim / handoff code and is NOT split out by this batch.
      *
      * Responsibility split (do not merge):
      *   - child lifecycle boundary: session/victim_context.* + victim_process.*
@@ -22,20 +25,18 @@ namespace ghostlock::runtime::frontend {
 
     struct RootChildFrontend final {
         static constexpr FrontendKind kind = FrontendKind::RootChild;
-        static constexpr bool available = true;
         static constexpr std::string_view unavailable_reason = "";
     };
 
     struct UmhForwardFrontend final {
         static constexpr FrontendKind kind = FrontendKind::UmhForward;
-        static constexpr bool available = false;
         static constexpr std::string_view unavailable_reason =
             "umh_forward frontend is not implemented";
     };
 
-    [[nodiscard]] constexpr bool available(FrontendKind kind) noexcept {
-        return kind == FrontendKind::RootChild;
-    }
+    /* Declarations must match the catalog authority. */
+    static_assert(frontend_available(RootChildFrontend::kind));
+    static_assert(!frontend_available(UmhForwardFrontend::kind));
 } // namespace ghostlock::runtime::frontend
 
 #endif

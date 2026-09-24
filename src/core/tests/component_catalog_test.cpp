@@ -3,6 +3,7 @@
  * middleware, so Auto must never be selectable. */
 
 #include "route/component_catalog.hpp"
+#include "route/frontend_contract.hpp"
 
 #include <cassert>
 #include <cstdio>
