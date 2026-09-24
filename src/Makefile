@@ -41,6 +41,7 @@ CXX_SRCS := \
   core/session/exploit_session.cpp \
   core/route/exploit_procedure.cpp \
   core/session/root_child_frontend.cpp \
+  core/session/backend/cve_2026_43499_backend.cpp \
   core/session/handoff_probe.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \

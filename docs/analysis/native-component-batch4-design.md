@@ -154,5 +154,11 @@ UI 选择/推荐推迟到 UMH 有真机证据之后。
 - [x] D3 模型预留：`:profile-core` 新增 `component/ComponentKind.kt`（`FrontendKind`/`BackendKind` wire id +
   `ComponentAvailability`），镜像 native 权威；`ComponentKindTest` 固定 wire 值（1/2）与可用性
   （仅 `RootChild`/`Cve2026_43499` available）。无 UI、无行为变化。
+- [x] D1=B 切片 3a：`setup` 迁至 `session/backend/cve_2026_43499_backend.*`（`run_setup`）；
+  `ExploitProcedure::setup` 转薄转发；W1/W2/W3 仍留（与 route hook 交织）。native 零告警、host、
+  `lint-tidy` 0、`cmp_disasm` vs slice2 基线 `4ee24fbc…` **8 函数 PASS**（候选
+  `1ac25ff9eb168fc0238f13a73210693b1d84337136320cba0482a67b6503fbd5`）。
+- [ ] D1=B 切片 3b/3c：`attack_write` 的 route 执行与 hook 迁入 middleware（**会改 `do_one_write`**，
+  需以 `4ee24fbc…` 为基线逐条复核 + 新真机门禁）；`w2/w3` 的 victim 生命周期与 hook 契约收敛。
 - [ ] **真机门禁（本批构建重新跑）**：A301SO / 5.15、KernelSU 未加载、固定 CPU 对、multicast、冷机；
   归档 `docs/analysis/device-gates/`（绑定本批候选）。通过前 Batch 4 不算完成。
