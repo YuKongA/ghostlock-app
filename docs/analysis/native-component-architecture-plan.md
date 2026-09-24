@@ -415,7 +415,8 @@ component failure
 
 > 用户确认：D1=A 薄声明 / UMH unavailable / 不做 UI / D4 重新门禁。契约只表达编译期 ID、可用性与故障原因；`ExploitProcedure` 仍承载 child/W1–W3/handoff，**不代表 frontend 已拆分**。
 
-- [~] root-child 边界：`frontend_contract.hpp` 声明 `root_child` 指向现有 victim/handoff（未搬代码）；`handoff_probe` 为 root handoff/KernelSU 验证，与 child 生命周期职责分列。
+- [~] root-child 边界（D1=B 实拆，切片 1）：`handoff` 已迁为 `session/root_child_frontend.{hpp,cpp}` 的 `run_root_child_handoff`，`ExploitProcedure::handoff` 转薄转发；`handoff_probe` 仍为 root handoff/KernelSU 验证（与 child 生命周期分列）。`cmp_disasm` 8 函数 PASS（候选 `4ee24fbc…`）。
+- [ ] D1=B 剩余：`run_pipeline<Frontend,Backend,Middleware>` 形式化组合；D3 模型预留（App frontend 字段/available 语义）。
 - [x] UMH frontend 占位：`route/frontend_contract.hpp` 声明 `umh_forward` `available=false` + 原因，无执行路径。
 - [ ] `app` 配置模型与 UI：按 D3 本批不做（UMH 无真机证据前不暴露选择）。
 - [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。

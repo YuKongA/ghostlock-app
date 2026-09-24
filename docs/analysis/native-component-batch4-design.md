@@ -63,26 +63,25 @@
 | Orchestrator frontend 选择 | `selection_supported` 的 frontend 分量 | 明确用 frontend kind 校验；仅 root_child 通过，UMH 被拒绝并报错 |
 | app frontend 选择/推荐 | 无 | 最小化；见 D3 |
 
-## 待决方案（需用户拍板）
+## 决策（第二轮，用户确认：D1=B 实拆 / D2 浅占位 / D3 模型预留 / D4 复跑）
 
-**D1 — frontend contract 的实现深度**
+**D1 = B 实拆（frontend procedure 从 `ExploitProcedure` 抽出，由 pipeline 组合）**
 
-- **A（推荐，薄声明）**：新增 `frontend_contract.hpp`（编译期 policy：`kind`/`available`/故障回报类型）
-  与 `root_child_frontend` 的**描述**，指向现有 victim/handoff；`ExploitProcedure` 不动。机器码不变。
-- **B（实拆）**：把 `ExploitProcedure` 中 frontend 相关步骤抽成 frontend procedure，由 pipeline 组合。
-  会改 `do_one_write`/`run_main_route_threads` 等机器码，需要重建反汇编基线 + 真机门禁。
+- 范围：把 `ExploitProcedure` 中 **frontend 相关步骤**（`handoff` 及 victim/child 生命周期相关的
+  调用编排）抽出为 `root_child` 的 frontend procedure，由 `run_pipeline<Frontend, Backend, Middleware>`
+  组合；backend（W1/W2/W3 写入与校验）与 middleware（route/race）步骤保持原语义。
+- **本批接受机器码变化**：`do_one_write`/`run_main_route_threads` 等会变；因此
+  - 以**改动前精确二进制**（Batch 4 前的 `fcbc2191…` 或更早确认候选）为 `cmp_disasm` 基线；
+  - 逐条反汇编核对 8 函数 **以及本批触碰的等待/join/disarm/reset/资源准备回收顺序**；
+  - 真机门禁以本批新候选重新跑。
+- 不得改变：victim/child 协议与 handoff 时序、资源所有权与清理顺序、`ExploitSession` 字段布局、
+  PI 窗口内无间接调用。
 
-建议 A：Batch 4 先建立边界与契约；实拆留到“生命周期/取消”专项（与 race 未闭环一起）。
+**D2 = 浅占位**：`umh_forward` 只声明 `available=false` + 所需 config schema 草案 + 故障回报契约，
+Orchestrator 攻击前以明确错误拒绝；不写执行路径。
 
-**D2 — UMH 占位的深度**
-
-- 建议：只声明 `umh_forward` policy 的 `available()==false`、所需 config schema 草案与故障回报契约，
-  Orchestrator 对其返回 unsupported 并给出可诊断错误；不写任何执行路径。
-
-**D3 — app/UI 范围**
-
-- 建议：本批**不做 UI**（避免在未验证 UMH 时暴露选择）；仅在 DTO/模型层预留 frontend 字段与
-  `available/unsupported` 语义。UI 选择/推荐推迟到 UMH 有真机证据之后（Batch 4.1 或 Batch 6）。
+**D3 = 不做 UI，仅模型预留**：DTO/模型层预留 frontend 字段与 `available/unsupported` 语义；
+UI 选择/推荐推迟到 UMH 有真机证据之后。
 
 **D4 — 真机门禁**
 
@@ -143,5 +142,11 @@
 - [x] 本地验证：`native-host-tests`、`make -B -C src ghostlock`（零告警）、`lint-tidy` 0 findings、
   `cmp_disasm`（Batch 3.1 候选 `5dcd8ddd…` → 本批候选 `fcbc2191…`：7 IDENTICAL + `do_one_write` 既有
   LAYOUT-SHIFT，RESULT PASS）、`./gradlew :profile-core:test :app:testDebugUnitTest` 通过。
+- [ ] D1=B 实拆（切片 1，2026-09-24）：`handoff` 已从 `ExploitProcedure` 迁至
+  `session/root_child_frontend.{hpp,cpp}`（`run_root_child_handoff`）；`ExploitProcedure::handoff`
+  转为薄转发；行为、语句顺序与日志文本不变。native 零告警、host tests、`lint-tidy` 0、
+  `cmp_disasm` 对 Batch 3 基线 **8 函数 PASS**（候选 `4ee24fbccf7f7e20f3c0aaa9bb3860512c2bd2fcbb8c6ac2ee8f4651ee587bec`）。
+- [ ] D1=B 剩余：`run_pipeline<Frontend,Backend,Middleware>` 形式化组合（backend/middleware 仍在
+  `ExploitProcedure`）；D3 模型预留（App 模型 frontend 字段与 `available/unsupported` 语义）。
 - [ ] **真机门禁（本批构建重新跑）**：A301SO / 5.15、KernelSU 未加载、固定 CPU 对、multicast、冷机；
-  归档 `docs/analysis/device-gates/`（绑定本批候选 `fcbc2191…`）。通过前 Batch 4 不算完成。
+  归档 `docs/analysis/device-gates/`（绑定本批候选）。通过前 Batch 4 不算完成。
