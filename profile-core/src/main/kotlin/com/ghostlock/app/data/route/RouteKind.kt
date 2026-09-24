@@ -5,7 +5,7 @@ package com.ghostlock.app.data.route
  * `0` (native `kRouteAuto`) is intentionally absent: a resolved profile must
  * declare its route explicitly.
  */
-internal enum class RouteKind(
+enum class RouteKind(
     val wire: UInt,
     val token: String,
     private val empty: RouteConfig,

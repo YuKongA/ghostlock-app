@@ -1,7 +1,8 @@
 # Shared Execution Defaults
 
-These are the execution-tuning defaults every kernel shares. The app merges the
-built-in profile, imported offsets, and user overrides before handing the result
+These are the execution-tuning defaults every kernel shares. The resolver loads
+them from `execution-tuning.conf` and `execution-<route>.conf` as presets, merges
+the built-in profile, imported offsets, and user overrides, and hands the result
 to native; anything a profile omits falls back to the values here.
 
 Field-name suffixes encode units: `_ms` for milliseconds, `_us` for

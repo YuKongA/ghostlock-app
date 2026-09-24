@@ -25,8 +25,8 @@ Every built-in profile lives in `app/src/main/assets/kernel_profiles/`:
 - `<uname-r>.conf` — one complete profile per kernel; the file name must match
   `uname -r` exactly.
 - `execution-tuning.conf` — tuning shared by every kernel.
-- `execution-<route>.conf` — tuning for a single attack route. Only profiles
-  that use that route (or fall back to it) need to include it.
+- `execution-<route>.conf` — tuning for a single attack route. The resolver
+  loads these presets; device profiles don't `include` them.
 - `credential-6x.conf`, `kernelsnitch-6x.conf` — credential template and
   KernelSnitch values shared by 6.x kernels.
 - `*-template.conf` — annotated reference templates. You can load them manually

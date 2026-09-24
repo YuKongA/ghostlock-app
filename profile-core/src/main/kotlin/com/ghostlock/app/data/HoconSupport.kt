@@ -10,7 +10,7 @@ import com.typesafe.config.ConfigSyntax
  * expanded by [AssetConfigLoader] before parsing) straight into the value
  * model (LinkedHashMap / ArrayList / scalars) and rendered back from it.
  */
-internal object HoconSupport {
+object HoconSupport {
     private val parseOptions = ConfigParseOptions.defaults()
         .setSyntax(ConfigSyntax.CONF)
         .setAllowMissing(false)

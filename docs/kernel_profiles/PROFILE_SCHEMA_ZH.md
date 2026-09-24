@@ -30,7 +30,7 @@
 ```
 assets/kernel_profiles/<release>.conf     内置配置（HOCON）
 assets/kernel_profiles/execution-tuning.conf   execution 通用调优（所有内核）
-assets/kernel_profiles/execution-<route>.conf   各路由的 execution 调优（按需 include）
+assets/kernel_profiles/execution-<route>.conf   各路由的 execution 调优 preset（由 resolver 加载）
 assets/kernel_profiles/credential-6x.conf      6.x 凭据模板共享值
 assets/kernel_profiles/kernelsnitch-6x.conf    6.x KernelSnitch 共享值
 assets/kernel_profiles/<major.minor>-template.conf  参考模板（登记 index，调试页可手动加载；不参与设备匹配与自动回退）
@@ -46,7 +46,7 @@ filesDir/offsets.conf                     解析/导入的偏移（imported，HO
         └──▶ UI：参数覆盖页 / 高级参数覆盖树
 ```
 
-合并优先级（低 → 高）：`execution-tuning`（+ 按路由 include 的 `execution-<route>.conf`）→ `内置/profile + imported offsets` → `高级覆盖`；最后强制写入 `execution.selected_cpus`（来自手动选择或 imported/覆盖中的显式值）。
+合并优先级（低 → 高）：`execution-tuning`（+ 按路由的 `execution-<route>.conf`）→ `内置/profile + imported offsets` → `高级覆盖`；最后强制写入 `execution.selected_cpus`（来自手动选择或 imported/覆盖中的显式值）。
 
 ## 2. 顶层结构
 
@@ -63,7 +63,7 @@ kernelsnitch { collisions = 4, mm_struct_sz = 4096 }
 task_struct { prio = 132, cred = 2080, pi_lock = 2316 }
 cred { copy_size = 136, caps_offset = 48, caps_count = 5 }
 offset { init_task = 34464384, init_cred = 34538824 }
-# execution 等共享值由共享文件提供（include），按需只写差异
+# execution 调优由 resolver 从 preset 文件提供；只写差异
 ```
 
 | 字段 | 类型 | 说明 |
@@ -74,7 +74,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 | `route` | object | 显式路由父项，只含一个分支，见第 3 节 |
 | `fallback` | object | 回退声明（`to` + 可选 `route` 分支），见第 3 节 |
 | 几何字段 | object/int | 按命名空间分组：`task_struct` / `cred` / `offset` / `kernelsnitch`；未采用的路由专属字段**直接省略**，不要写 `0` 或占位值；`null` 只出现在模板与编辑中间态 |
-| `execution` | object | 调优参数（advisory）；通用项来自 `include "execution-tuning.conf"`，路由项按需 include `execution-<route>.conf`（主路由与回退路由各一个），只写差异 |
+| `execution` | object | 调优参数（advisory）；通用项来自 `execution-tuning.conf`，路由项来自 `execution-<route>.conf`；两者由 resolver 作为 preset 加载，设备 profile 不 include。只写差异 |
 
 ## 3. 路由（route）机制
 
@@ -235,7 +235,7 @@ cred
 
 ## 5. execution 调优参数（advisory）
 
-`execution` 全部为建议值，随 profile 合并后传入 native；数值语义与默认值见 [defaults_ZH.md](defaults_ZH.md)。通用分组由 `execution-tuning.conf` 提供，路由分组只 include 本 profile 用到的（主路由 + 回退路由）：
+`execution` 全部为建议值，随 profile 合并后传入 native；数值语义与默认值见 [defaults_ZH.md](defaults_ZH.md)。通用分组来自 `execution-tuning.conf`，路由分组由 resolver 从 `execution-<route>.conf` 加载（主路由 + 回退路由），设备 profile 不再 include 它们：
 
 - `recommended_cpus` / `selected_cpus`：推荐与本地选定核心（`selected_cpus` 由参数覆盖页“一般参数覆盖”或主页 CPU 选择维护）
 - `heap`：KernelSnitch 搜索的尝试次数与超时
@@ -258,7 +258,7 @@ cred
 
 | 层 | 来源 | 位置 | 写入者 |
 |---|---|---|---|
-| shared | 共享值；profile 通过 `include` 引入 | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | 随包发布 |
+| shared | 共享值；tuning preset 由 resolver/exporter 加载，core 共享值由设备 profile `include` | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | 随包发布 |
 | builtin | 精确 `uname -r` 命中；未命中即视为不支持 | `assets/kernel_profiles/*.conf` | 随包发布 |
 | imported | 解析/导入的偏移（同一 release entry） | `filesDir/offsets.conf` | 解析 OTA / 导入配置文件 |
 | general override | `execution.*` | `filesDir/offsets.conf` 的 release entry | 参数覆盖页“一般参数覆盖 / 重设参数” |
@@ -274,7 +274,7 @@ cred
 - 每个大版本一个：`5.15-template` / `6.1-template` / `6.6-template` / `6.12-template`，登记在 `index.conf`，仅作**开发与调试参考**。
 - 所有几何/偏移字段为 `null`（未填写），`route` / `fallback` 给出完整分支结构；每个字段上方都有中文说明注释，可直接复制填写。
 - 在内置选择页的“模板（参考，未填写）”分区可手动加载，用于查看字段结构；模板**不参与设备匹配，也不做自动回退**——设备无精确命中且无 imported 时视为不支持。
-- 模板只 `include "execution-tuning.conf"`；复制后按所选路由补 `include "execution-<route>.conf"`（tcp 回退 select 时两者都要）。仓库内的同步副本见 `docs/kernel_profiles/templates/`，assets 中的原文件可用 adb 查看。
+- 模板只含 core 字段（以及 core 的 include）；execution 调优由 resolver 从 `execution-*.conf` 提供，复制模板无需补 tuning include。仓库内的同步副本见 `docs/kernel_profiles/templates/`，assets 中的原文件可用 adb 查看。
 
 ## 9. native 传输与解析
 
@@ -291,7 +291,7 @@ cred
 
 1. 只改需要改的字段；未采用的路由字段直接省略（不要补 `0` 占位）。
 2. `route` 只能有一个分支，且分支内必须给出该路由的必填字段；`fallback.to` 声明了回退目标时，`fallback.route` 分支内同样要补齐。
-   共享值通过 `include` 引入，不要复制：`execution-tuning.conf`（通用调优）、本路由与回退路由的 `execution-<route>.conf`、`credential-6x.conf`（6.x 凭据模板）、`kernelsnitch-6x.conf`（6.x collisions）。
+   共享 core 值通过 `include` 引入，不要复制：`credential-6x.conf`（6.x 凭据模板）、`kernelsnitch-6x.conf`（6.x collisions）。execution 调优（`execution-tuning.conf` / `execution-<route>.conf`）由 resolver 作为 preset 加载，设备 profile 不要 include。
 3. 修改 `execution` 需要设备实测依据；否则保持 defaults。
 4. 本地验证：`make native-host-tests`（profiles 解码/校验向量）与 `./gradlew :app:assembleDebug`。
 5. 修改字段命名/分组时同步更新：`FieldLabels.kt` + `values*/strings.xml`、可能的 `docs/kernel_profiles/defaults*.md`。

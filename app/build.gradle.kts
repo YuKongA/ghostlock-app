@@ -169,6 +169,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4-rc01")
     implementation("org.apache.commons:commons-compress:1.26.0")
+    implementation(project(":profile-core"))
     implementation("com.typesafe:config:1.4.3")
 
     testImplementation("junit:junit:4.13.2")

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.core.content.edit
+import com.ghostlock.app.data.profile.CpuPairView
+import com.ghostlock.app.data.profile.ProfileMerger
+import com.ghostlock.app.data.profile.ProfileResolver
 import com.ghostlock.app.data.route.RouteKind
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
@@ -55,7 +58,8 @@ internal class AndroidProfileConfigController(
         val baseline = resolveCurrent(deviceRelease, pair, null, includeImported = false) ?: full
         val route = routeNameOf(full)
         val fallbackTo = fallbackTargetOf(full)
-        val invalidPaths = validateProfileFields(full, route, fallbackTo)
+        val invalidPaths = validateProfileFields(full, route, fallbackTo) +
+            ProfileResolver.validateMerged(full, route, fallbackTo).mapTo(mutableSetOf()) { it.fieldPath }
         /* Invalid fields missing from the resolved document still get a row,
          * otherwise the run stays blocked with no red field to fix. */
         materializeInvalidPaths(full, invalidPaths)
@@ -477,50 +481,7 @@ internal class AndroidProfileConfigController(
             release = release,
             route = RouteKind.fromToken(route),
             fallbackTo = RouteKind.fromToken(fallbackTo),
-        ) { path -> nativeValue(profile, route, fallbackTo, path) }
-    }
-
-    /** Maps canonical native field names onto the declared route branches. */
-    private fun nativeValue(
-        profile: ValueMap,
-        route: String?,
-        fallbackTo: String?,
-        path: String,
-    ): Long? {
-        /* The v2 transport only carries `recommended_cpus`; the effective
-         * choice lives in `selected_cpus` (device pair or explicit override).
-         * Fold the selection into the recommended slots so native's
-         * apply_profile actually honours it. */
-        if (path == "execution.recommended_cpus.main" ||
-            path == "execution.recommended_cpus.consumer"
-        ) {
-            val slot = path.removePrefix("execution.recommended_cpus.")
-            profile.getLongAt("execution.selected_cpus.$slot")?.let { return it }
-        }
-        val branchField = when (path) {
-            "compact_waiter" -> "compact_waiter"
-            "pselect_waiter_shift" -> "waiter_shift"
-            else -> null
-        }
-        if (branchField != null) {
-            route?.let { name ->
-                profile.getLongAt("route.$name.$branchField")?.let { return it }
-            }
-            if (fallbackTo != null && fallbackTo != "none") {
-                profile.getLongAt("fallback.route.$fallbackTo.$branchField")?.let { return it }
-            }
-        }
-        if (path.startsWith("mcast.")) {
-            val field = path.removePrefix("mcast.")
-            route?.let { name ->
-                profile.getLongAt("route.$name.$field")?.let { return it }
-            }
-            if (fallbackTo != null && fallbackTo != "none") {
-                profile.getLongAt("fallback.route.$fallbackTo.$field")?.let { return it }
-            }
-            profile.getLongAt("mcast.$field")?.let { return it }
-        }
-        return profile.getLongAt(path)
+        ) { path -> ProfileResolver.nativeValue(profile, route, fallbackTo, path) }
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----
@@ -564,30 +525,19 @@ internal class AndroidProfileConfigController(
                     }
                 }
         }
-        /* Base layer: shared execution-tuning.conf values; every profile
-         * includes the same file, so the values coincide. Imported offsets and
-         * overrides still layer on top. */
-        val tuning = readExecutionTuning()
-        val defaults = valueMapOf("release" to deviceRelease).apply {
-            tuning?.get("execution")?.let { put("execution", it) }
-        }
-        val resolved = mergeSource(
-            mergeSource(
-                if (builtin == null) defaults else deepMergeValues(defaults, builtin),
-                if (includeImported) imported else null,
-            ),
-            overrides,
+        val tuningExecution = readExecutionTuning()?.get("execution").asValueMap()
+        val routePresets = ProfileConfig.Routes
+            .mapNotNull { route -> readExecutionRoute(route)?.let { route to it } }
+            .toMap()
+        ProfileMerger.resolveMerged(
+            deviceRelease = deviceRelease,
+            builtin = builtin,
+            imported = imported,
+            overrides = overrides,
+            tuningExecution = tuningExecution,
+            pair = CpuPairView(pair.primary, pair.consumer),
+            routePresets = routePresets,
         )
-        resolved["schema_version"] = 1
-        /* A manually chosen builtin still reports the device release so the
-         * native release gate and the exported document stay coherent. */
-        resolved["release"] = deviceRelease
-        val selectedOverride = imported?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
-            ?: overrides?.get("execution").asValueMap()?.get("selected_cpus").asValueMap()
-        applySelectedCpus(resolved, pair, selectedOverride)
-        fillRouteExecutionDefaults(resolved)
-        validateResolved(resolved, deviceRelease)
-        resolved
     }.getOrNull()
 
     /**
@@ -596,13 +546,10 @@ internal class AndroidProfileConfigController(
      * filled from the shared `execution-<route>.conf` files.
      */
     private fun fillRouteExecutionDefaults(profile: ValueMap) {
-        val execution = profile["execution"].asValueMap() ?: return
-        val routes = execution.mutableChild("routes")
-        for (route in ProfileConfig.Routes) {
-            if (routes.containsKey(route)) continue
-            val defaults = readExecutionRoute(route) ?: continue
-            routes[route] = defaults
-        }
+        val presets = ProfileConfig.Routes
+            .mapNotNull { route -> readExecutionRoute(route)?.let { route to it } }
+            .toMap()
+        ProfileMerger.fillRouteExecutionDefaults(profile, presets)
     }
 
     private fun readExecutionRoute(route: String): ValueMap? = runCatching {
@@ -627,73 +574,6 @@ internal class AndroidProfileConfigController(
     private fun readExecutionTuning(): ValueMap? = runCatching {
         HoconSupport.parseValue(readAsset("$BuiltinDirectory/execution-tuning.conf")).asValueMap()
     }.getOrNull()
-
-    private fun applySelectedCpus(
-        resolved: ValueMap,
-        pair: CpuPair,
-        selectedOverride: ValueMap?,
-    ) {
-        val execution = resolved.mutableChild("execution")
-        if (selectedOverride == null) {
-            execution["selected_cpus"] = valueMapOf(
-                "main" to pair.primary.toLong(),
-                "consumer" to pair.consumer.toLong(),
-            )
-        } else {
-            execution["selected_cpus"] = selectedOverride
-        }
-    }
-
-    /**
-     * Route objects hold exactly one branch. An incoming branch that differs
-     * from the base replaces it (the old geometry belongs to the old route),
-     * while the same branch merges field-wise.
-     */
-    private fun mergeRouteObjects(
-        base: ValueMap?,
-        incoming: Map<*, *>?,
-    ): ValueMap? {
-        if (incoming == null) return base
-        val incomingBranch = incoming.keys.filterIsInstance<String>()
-            .firstOrNull { it in ProfileConfig.Routes } ?: return base
-        val incomingBody = incoming[incomingBranch].asValueMap() ?: valueMapOf()
-        val baseBranch = base?.keys?.toList()
-            ?.firstOrNull { it in ProfileConfig.Routes }
-        return when {
-            baseBranch == incomingBranch -> valueMapOf(
-                incomingBranch to deepMergeValues(
-                    base[incomingBranch].asValueMap() ?: valueMapOf(),
-                    incomingBody,
-                ),
-            )
-
-            /* A branch different from the base carries the new choice: the old
-             * geometry belongs to the old route. */
-            else -> valueMapOf(incomingBranch to incomingBody)
-        }
-    }
-
-    /** deepMerge plus branch-replacement semantics for route/fallback.route. */
-    private fun mergeSource(
-        base: ValueMap,
-        incoming: ValueMap?,
-    ): ValueMap {
-        /* Snapshot the branches first: deepMergeValues mutates its base argument,
-         * so a later read would already contain the incoming branch. */
-        val baseRoute = base["route"].asValueMap()?.copyValue().asValueMap()
-        val baseFallbackRoute = base["fallback"].asValueMap()
-            ?.get("route").asValueMap()?.copyValue().asValueMap()
-        val merged = deepMergeValues(base, incoming)
-        if (incoming == null) return merged
-        incoming["route"].asValueMap()?.let { route ->
-            mergeRouteObjects(baseRoute, route)?.let { merged["route"] = it }
-        }
-        incoming["fallback"].asValueMap()?.get("route").asValueMap()?.let { fallbackRoute ->
-            val fallback = merged["fallback"].asValueMap() ?: return@let
-            mergeRouteObjects(baseFallbackRoute, fallbackRoute)?.let { fallback["route"] = it }
-        }
-        return merged
-    }
 
     /** Creates null placeholders for invalid fields the document does not carry. */
     private fun materializeInvalidPaths(profile: ValueMap, invalidPaths: Set<String>) {
@@ -742,12 +622,6 @@ internal class AndroidProfileConfigController(
                 if (fallback.isEmpty()) entry.remove("fallback")
             }
         }
-    }
-
-    private fun validateResolved(profile: ValueMap, release: String) {
-        require(profile["release"] == release) { "profile release mismatch" }
-        require((profile["kernel_major"] as? Number)?.toInt() in 5..6) { "invalid kernel_major" }
-        require(profile.containsKey("execution")) { "missing execution tuning" }
     }
 
     // ---- controller model helpers ----

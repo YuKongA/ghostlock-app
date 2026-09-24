@@ -23,7 +23,7 @@ GhostLock 用 `uname -r` 精确匹配内核版本：匹配不到时应用会直�
 - `<uname-r>.conf`：一款内核一份完整 profile，文件名必须与 `uname -r` 完全一致。
 - `execution-tuning.conf`：所有内核共用的调优值。
 - `execution-<route>.conf`：各攻击路线（route）专属的调优值。
-  只有使用该路线（或回退到它）的 profile 才需要引入。
+  这些 preset 由 resolver 加载；设备 profile 不 include。
 - `credential-6x.conf`、`kernelsnitch-6x.conf`：6.x 内核共享的凭据模板与 KernelSnitch 参数。
 - `*-template.conf`：带逐字段注释的参考模板。可以在调试页手动加载，但不参与设备匹配。
 - `docs/kernel_profiles/templates/`：按大版本整理的模板文档。

@@ -1,6 +1,6 @@
 package com.ghostlock.app.data.route
 
-internal data class TcpConfig(
+data class TcpConfig(
     val attempts: UInt,
     val armSequence: UInt,
     val postReceiveHoldIterations: UInt,

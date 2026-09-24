@@ -29,3 +29,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "GhostLock"
 include(":app")
+include(":profile-core")

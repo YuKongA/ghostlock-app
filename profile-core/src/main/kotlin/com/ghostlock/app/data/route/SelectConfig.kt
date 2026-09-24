@@ -1,6 +1,6 @@
 package com.ghostlock.app.data.route
 
-internal data class SelectConfig(
+data class SelectConfig(
     val waiterShift: Long,
     val enterDelayUs: UInt,
     val timeoutUs: UInt,

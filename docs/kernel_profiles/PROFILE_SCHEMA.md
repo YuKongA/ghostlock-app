@@ -42,8 +42,8 @@ parsed as **HOCON**:
 
 ```
 assets/kernel_profiles/<release>.conf     built-in profile (HOCON)
-assets/kernel_profiles/execution-tuning.conf   general execution tuning (all kernels)
-assets/kernel_profiles/execution-<route>.conf   per-route execution tuning (included on demand)
+assets/kernel_profiles/execution-tuning.conf   general execution tuning preset (all kernels)
+assets/kernel_profiles/execution-<route>.conf   per-route execution tuning preset (loaded by the resolver)
 assets/kernel_profiles/credential-6x.conf      6.x credential template
 assets/kernel_profiles/kernelsnitch-6x.conf    6.x KernelSnitch values
 assets/kernel_profiles/<major.minor>-template.conf  reference templates (registered in
@@ -61,7 +61,7 @@ internal overrides (sparse HOCON text)    written by the advanced override page
         └──▶ UI: override page / advanced override tree
 ```
 
-Merge priority (low to high): `execution-tuning` (plus the included
+Merge priority (low to high): `execution-tuning` (plus the per-route
 `execution-<route>.conf`) → built-in profile + imported offsets → advanced
 overrides. Finally `execution.selected_cpus` is forced in (from the manual
 selection or an explicit imported/override value).
@@ -81,7 +81,7 @@ kernelsnitch { collisions = 4, mm_struct_sz = 4096 }
 task_struct { prio = 132, cred = 2080, pi_lock = 2316 }
 cred { copy_size = 136, caps_offset = 48, caps_count = 5 }
 offset { init_task = 34464384, init_cred = 34538824 }
-# execution and other shared values come from shared files (include); write only differences
+# execution tuning is provided by the resolver from the preset files; write only differences
 ```
 
 | Field | Type | Meaning |
@@ -92,7 +92,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 | `route` | object | Explicit route parent with exactly one branch; see section 3 |
 | `fallback` | object | Fallback declaration (`to` plus an optional `route` branch); see section 3 |
 | geometry | object/int | Grouped by namespace: `task_struct` / `cred` / `offset` / `kernelsnitch`. Omit unused route-specific fields entirely — don't write `0` or placeholders. `null` only appears in templates and in-progress edits |
-| `execution` | object | Advisory tuning. General values come from `include "execution-tuning.conf"`; per-route values from `include "execution-<route>.conf"` (one for the primary route, one for the fallback). Write only differences |
+| `execution` | object | Advisory tuning. General values come from `execution-tuning.conf`, per-route values from `execution-<route>.conf`; the resolver loads both as presets, device profiles don't `include` them. Write only differences |
 
 ## 3. Route mechanism
 
@@ -283,8 +283,9 @@ affected by route choice:
 
 Every `execution` value is advisory. The app merges them into the profile and
 passes the result to native; see [defaults.md](defaults.md) for semantics and
-defaults. General groups come from `execution-tuning.conf`; include only the
-route groups the profile uses (primary route plus fallback):
+defaults. The common groups come from `execution-tuning.conf` and the per-route
+groups from `execution-<route>.conf`; the app resolver (and the Gradle exporter)
+load these presets directly, so device profiles no longer `include` them:
 
 - `recommended_cpus` / `selected_cpus`: suggested and locally selected cores
   (`selected_cpus` is maintained by the "general parameter override" page or the
@@ -323,7 +324,7 @@ Validation happens in Kotlin (`AndroidProfileConfigController.validateProfileFie
 
 | Layer | Source | Location | Written by |
 |---|---|---|---|
-| shared | shared values; profiles include them | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | shipped with the app |
+| shared | shared values; the resolver/exporter load the tuning presets, device profiles `include` the core ones | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | shipped with the app |
 | builtin | exact `uname -r` match; no match means unsupported | `assets/kernel_profiles/*.conf` | shipped with the app |
 | imported | parsed/imported offsets (same release entry) | `filesDir/offsets.conf` | Parse OTA / import config |
 | general override | `execution.*` | the release entry in `filesDir/offsets.conf` | override page "general parameter override / reset" |
@@ -348,9 +349,9 @@ via SAF.
   to inspect the field structure. Templates **never participate in device
   matching and never auto-fall-back**: a device with no exact match and no
   imported offsets is treated as unsupported.
-- A template only `include "execution-tuning.conf"`; after copying, add
-  `include "execution-<route>.conf"` for the route you pick (both when tcp falls
-  back to select). Synchronized copies live in
+- A template carries only core fields (plus the core `include`s); execution
+  tuning is provided by the resolver from `execution-*.conf`, so copying a
+  template needs no tuning `include`. Synchronized copies live in
   `docs/kernel_profiles/templates/`; the originals under assets can be viewed
   with adb.
 
@@ -382,10 +383,11 @@ text:
 2. `route` has exactly one branch, and that branch must carry the route's
    required fields. When `fallback.to` names a target, fill the
    `fallback.route` branch the same way.
-   Pull shared values in with `include` instead of copying:
-   `execution-tuning.conf` (general tuning), the `execution-<route>.conf` for
-   the primary and fallback routes, `credential-6x.conf` (6.x credential
-   template), `kernelsnitch-6x.conf` (6.x collisions).
+   Pull shared core values in with `include` instead of copying:
+   `credential-6x.conf` (6.x credential template) and `kernelsnitch-6x.conf`
+   (6.x collisions). Execution tuning (`execution-tuning.conf` /
+   `execution-<route>.conf`) is loaded by the resolver as a preset; don't
+   `include` it in a device profile.
 3. Change `execution` only with device measurements; otherwise keep the
    defaults.
 4. Verify locally: `make native-host-tests` (profile decode/validation vectors)

@@ -1,6 +1,6 @@
 package com.ghostlock.app.data.route
 
-internal data class MulticastConfig(
+data class MulticastConfig(
     val geometry: MulticastGeometry,
     val fakeBssImageOffset: ULong,
     val resident: UInt,
@@ -82,7 +82,7 @@ internal data class MulticastConfig(
     }
 }
 
-internal data class MulticastGeometry(
+data class MulticastGeometry(
     val waiterOff: Long,
     val bufferSize: UInt,
     val taskOffset: UInt,

@@ -5,26 +5,26 @@ package com.ghostlock.app.data
  * (LinkedHashMap / ArrayList / scalars). Everything the application reads,
  * merges, persists and hands to native goes through these helpers.
  */
-internal typealias ValueMap = LinkedHashMap<String, Any?>
-internal typealias ValueList = ArrayList<Any?>
+typealias ValueMap = LinkedHashMap<String, Any?>
+typealias ValueList = ArrayList<Any?>
 
-internal fun valueMapOf(vararg pairs: Pair<String, Any?>): ValueMap = linkedMapOf(*pairs)
+fun valueMapOf(vararg pairs: Pair<String, Any?>): ValueMap = linkedMapOf(*pairs)
 
-internal fun valueListOf(vararg items: Any?): ValueList = ArrayList(items.toList())
+fun valueListOf(vararg items: Any?): ValueList = ArrayList(items.toList())
 
 @Suppress("UNCHECKED_CAST")
-internal fun Any?.asValueMap(): ValueMap? {
+fun Any?.asValueMap(): ValueMap? {
     val map = this as? Map<*, *> ?: return null
     return map as? ValueMap
         ?: ValueMap().apply { map.forEach { (key, value) -> put(key.toString(), value) } }
 }
 
-internal fun Any?.asValueList(): ValueList? {
+fun Any?.asValueList(): ValueList? {
     val list = this as? List<*> ?: return null
     return list as? ValueList ?: ValueList().apply { addAll(list) }
 }
 
-internal fun Any?.copyValue(): Any? = when (this) {
+fun Any?.copyValue(): Any? = when (this) {
     is Map<*, *> -> {
         val copy = ValueMap()
         for ((key, value) in this) copy[key.toString()] = value.copyValue()
@@ -40,7 +40,7 @@ internal fun Any?.copyValue(): Any? = when (this) {
     else -> this
 }
 
-internal fun Map<String, Any?>.getValueAt(path: String): Any? {
+fun Map<String, Any?>.getValueAt(path: String): Any? {
     var node: Any? = this
     for (segment in path.split('.')) {
         node = when (val current = node) {
@@ -52,10 +52,10 @@ internal fun Map<String, Any?>.getValueAt(path: String): Any? {
     return node
 }
 
-internal fun Map<String, Any?>.getLongAt(path: String): Long? =
+fun Map<String, Any?>.getLongAt(path: String): Long? =
     (getValueAt(path) as? Number)?.toLong()
 
-internal fun MutableMap<String, Any?>.setValueAt(path: String, value: Any?) {
+fun MutableMap<String, Any?>.setValueAt(path: String, value: Any?) {
     val segments = path.split('.')
     var node: MutableMap<String, Any?> = this
     for (index in 0 until segments.size - 1) {
@@ -64,7 +64,7 @@ internal fun MutableMap<String, Any?>.setValueAt(path: String, value: Any?) {
     node[segments.last()] = value
 }
 
-internal fun MutableMap<String, Any?>.removeValueAt(path: String) {
+fun MutableMap<String, Any?>.removeValueAt(path: String) {
     val segments = path.split('.')
     val parents = ArrayList<Pair<MutableMap<String, Any?>, String>>()
     var node: MutableMap<String, Any?> = this
@@ -81,14 +81,14 @@ internal fun MutableMap<String, Any?>.removeValueAt(path: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
-internal fun MutableMap<String, Any?>.mutableChild(key: String): ValueMap =
+fun MutableMap<String, Any?>.mutableChild(key: String): ValueMap =
     (this[key] as? ValueMap) ?: ValueMap().also { this[key] = it }
 
 @Suppress("UNCHECKED_CAST")
-internal fun MutableMap<String, Any?>.mutableChildOrNull(key: String): ValueMap? =
+fun MutableMap<String, Any?>.mutableChildOrNull(key: String): ValueMap? =
     this[key] as? ValueMap
 
-internal fun deepMergeValues(base: ValueMap, override: Map<String, Any?>?): ValueMap {
+fun deepMergeValues(base: ValueMap, override: Map<String, Any?>?): ValueMap {
     if (override == null) return base
     for ((key, incoming) in override) {
         val current = base[key]
@@ -102,5 +102,5 @@ internal fun deepMergeValues(base: ValueMap, override: Map<String, Any?>?): Valu
     return base
 }
 
-internal fun asMutableMap(source: Map<*, *>): ValueMap =
+fun asMutableMap(source: Map<*, *>): ValueMap =
     source as? ValueMap ?: ValueMap().apply { source.forEach { (key, value) -> put(key.toString(), value) } }

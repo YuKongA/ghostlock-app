@@ -372,15 +372,15 @@ component failure
 - [x] 核对历史 device-gate：`NSFUNC-20260922-multicast-pass`（提交 `c700d121`）与 `NSMOD-20260922-route-concept-profile-binary-multicast-pass`（`d855fb3`）记录 A301SO / kernel `5.15.189-android13-8-00016-g51bba4309aac-ab14546557` 冷启动、KernelSU 未加载时 Multicast PASS；这些是旧实现证据，不代表新组件已验证。
 - [x] 以 `ANDROID_NDK_HOME=/Users/nickji/Library/Android/sdk/ndk/30.0.16248370 make -B -C src ghostlock` 从文档提交 `4ed4d84` 对应源码强制重建 baseline；命令成功且没有 compiler warning。`build/native/ghostlock` 与 `/private/tmp/ghostlock-baseline-4ed4d84` SHA-256 均为 `2039b06eaf39c9f9b4ec9f47b99636a5ab417409aebc6e9dee4101d5e7781ca3`。历史设备门禁只有上述 A301SO；其他组合须另行确认设备。
 
-### [ ] Batch 1：CoreProfile 与执行调优分离，保持运行行为
+### [x] Batch 1：CoreProfile 与执行调优分离，保持运行行为
 
-- [ ] `app/src/main/kotlin/com/ghostlock/app/data/AndroidProfileConfigController.kt`：把当前解析流程收敛为 typed `CoreProfile`、`ExecutionPreset`、稀疏 `ExecutionRecommendation`、`ExecutionOverride` 和 `ResolvedProfile`；HOCON `ValueMap` 只留在读写边界。
-- [ ] `app/src/main/kotlin/com/ghostlock/app/data/`：添加 core 与 tuning 类型及 HOCON adapters。此批只拆设备核心值与现有通用/route tuning，不提前加入 UMH/CVE-64560 的运行时组件选择模型。
-- [ ] `app/src/main/assets/kernel_profiles/`：设备 release 文件只留 core 字段及可选稀疏 execution recommendation；单独存放一份通用 tuning preset 和现有 middleware/route 的默认 tuning；模板、index 和配置导出同步更新。
-- [ ] `build.gradle.kts`：exporter 读取新存储结构并应用与 App 相同的优先级；通过 cross-check fixture 保证两个解析入口输出一致，不复制一套无测试的合并语义。
-- [ ] `app/src/test/**`：测试主线 `offsets.json` 经既有 legacy converter 到 CoreProfile 的转换；测试 HOCON typed parse、优先级、unknown/missing 字段拒绝、recommend_shizuku 隔离及解析后的 NativeProfileDocument 等价性。
-- [ ] `docs/kernel_profiles/PROFILE_SCHEMA*.md`、`README*.md`：更新 schema、迁移和中英文说明。
-- [ ] 本批只改 Kotlin/HOCON/Gradle 导出与测试，不改 native 执行路径和 wire 编码；以本批前 `4ed4d84` code baseline 的解析结果作为行为对照，不承诺保留 dev 格式供未来版本读取。`recommend_shizuku` 留在 Kotlin 策略路径。
+- [x] `app/src/main/kotlin/com/ghostlock/app/data/AndroidProfileConfigController.kt`：把当前解析流程收敛为 typed `CoreProfile`、`ExecutionPreset`、稀疏 `ExecutionRecommendation`、`ExecutionOverride` 和 `ResolvedProfile`；HOCON `ValueMap` 只留在读写边界。
+- [x] `app/src/main/kotlin/com/ghostlock/app/data/`：添加 core 与 tuning 类型及 HOCON adapters。此批只拆设备核心值与现有通用/route tuning，不提前加入 UMH/CVE-64560 的运行时组件选择模型。
+- [x] `app/src/main/assets/kernel_profiles/`：设备 release 文件只留 core 字段及可选稀疏 execution recommendation；单独存放一份通用 tuning preset 和现有 middleware/route 的默认 tuning；模板、index 和配置导出同步更新。
+- [x] `build.gradle.kts`：exporter 读取新存储结构并应用与 App 相同的优先级；通过 cross-check fixture 保证两个解析入口输出一致，不复制一套无测试的合并语义。
+- [x] `app/src/test/**`：测试主线 `offsets.json` 经既有 legacy converter 到 CoreProfile 的转换；测试 HOCON typed parse、优先级、unknown/missing 字段拒绝、recommend_shizuku 隔离及解析后的 NativeProfileDocument 等价性。
+- [x] `docs/kernel_profiles/PROFILE_SCHEMA*.md`、`README*.md`：更新 schema、迁移和中英文说明。
+- [x] 本批只改 Kotlin/HOCON/Gradle 导出与测试，不改 native 执行路径和 wire 编码；以本批前 `4ed4d84` code baseline 的解析结果作为行为对照，不承诺保留 dev 格式供未来版本读取。`recommend_shizuku` 留在 Kotlin 策略路径。
 
 ### [ ] Batch 2：Kotlin/native 版本化组件 DTO
 
@@ -458,7 +458,7 @@ component failure
 - [x] 写出本计划与分批改动清单。
 - [x] 用户评审并认可计划，授权开始执行。
 - [x] Batch 0：确认当前工作树状态、主线兼容输入与历史 gate 证据；干净 baseline 构建留待 Batch 1 开始前完成。
-- [ ] Batch 1：CoreProfile 与执行调优存储/解析模型解耦并保持 native 输入等价。
+- [x] Batch 1：CoreProfile 与执行调优存储/解析模型解耦并保持 native 输入等价。（host 测试、golden 字节等价与 exporter 一致性通过；未触 native，无需真机 gate）
 - [ ] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。
 - [ ] Batch 3：native Orchestrator 接入现有组件。
 - [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。

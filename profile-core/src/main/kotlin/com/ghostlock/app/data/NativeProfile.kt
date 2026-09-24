@@ -20,7 +20,7 @@ import java.nio.ByteOrder
  * `int32_t` slots ([com.ghostlock.app.data.route.SelectConfig.waiterShift],
  * [com.ghostlock.app.data.route.MulticastGeometry.waiterOff]) stay `Long`.
  */
-internal data class NativeProfileDocument(
+data class NativeProfileDocument(
     val release: String,
     val routeKind: UInt,
     val kernelMajor: UInt,
@@ -328,7 +328,7 @@ internal data class NativeProfileDocument(
     }
 }
 
-internal data class TaskStructOffsets(
+data class TaskStructOffsets(
     val prio: UInt,
     val normalPrio: UInt,
     val schedTaskGroup: UInt,
@@ -346,7 +346,7 @@ internal data class TaskStructOffsets(
     val seccomp: UInt,
 )
 
-internal data class CredTemplate(
+data class CredTemplate(
     val copySize: UInt,
     val usageOffset: UInt,
     val usageValue: UInt,
@@ -364,7 +364,7 @@ internal data class CredTemplate(
     val ref3Image: ULong,
 )
 
-internal data class KernelOffsetTable(
+data class KernelOffsetTable(
     val initTask: ULong,
     val initCred: ULong,
     val emptyZeroPage: ULong,
@@ -377,7 +377,7 @@ internal data class KernelOffsetTable(
     val slideBootId: ULong,
 )
 
-internal data class ExecutionTuning(
+data class ExecutionTuning(
     val recommendedMainCpu: UInt,
     val recommendedConsumerCpu: UInt,
     val heapPrepareMaxAttempts: UInt,
