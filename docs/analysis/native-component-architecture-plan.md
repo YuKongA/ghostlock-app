@@ -419,7 +419,7 @@ component failure
 - [x] UMH frontend 占位：`route/frontend_contract.hpp` 声明 `umh_forward` `available=false` + 原因，无执行路径。
 - [ ] `app` 配置模型与 UI：按 D3 本批不做（UMH 无真机证据前不暴露选择）。
 - [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。
-- [ ] 真机门禁：**FAIL**（`B4-20260924-multicast-w3-pi-panic-fail.md`）——候选 `fcbc2191…` 连续多次在 PI route（W3/W2）panic，pstore 栈 `rt_mutex_adjust_prio_chain` via `sched_setattr`；非已证实 Batch 4 源码回归，根因待独立生命周期批次定位。Batch 4 因此**不算完成**。
+- [ ] 真机门禁：**非确定**（`B4-20260924-multicast-w3-pi-panic-fail.md`）——候选 `fcbc2191…` 多次 PI route panic（pstore `rt_mutex_adjust_prio_chain` via `sched_setattr`）与一次完整 PASS（`090931`：child is root + KernelSU ready）并存；按 `KERNEL-PANIC-01` 属非确定间歇风险，非已证实 Batch 4 源码回归。缺稳定 PASS，根因待独立生命周期批次；Batch 4 不算完成。
 
 ### [ ] Batch 5：backend 扩展点及第二后端接入
 

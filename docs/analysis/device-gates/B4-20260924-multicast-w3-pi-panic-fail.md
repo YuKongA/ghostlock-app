@@ -1,4 +1,4 @@
-# B4 真机门禁：frontend contract / known-id decode（multicast_waiter，direct）— FAIL
+# B4 真机门禁：frontend contract / known-id decode（multicast_waiter，direct）— FAIL/PASS（非确定）
 
 对应候选 `build/native/ghostlock`（Batch 4，提交 `b0069bd`）SHA-256
 `fcbc2191693b3a9eda41e8f07e5bf9958b210c90ffba89a6bda34439f5f5613d`。
@@ -41,7 +41,20 @@ Comm: libghostlock.so
   `sched_setattr`），属既有的间歇性 PI 链风险；本次连续发生，升级为本候选的明确失败。
 - 根因待新日志，并应放入独立的“生命周期/取消”批次处理（race 无 deadline 仍未闭环）。
 
+## 复跑 PASS（2026-09-24 09:10，同候选 `fcbc2191…`）
+
+`20260924-090931/ghostlock-direct-0.log.txt` 完整跑通：`W3: seccomp mode` route
+`route_done status=0 clean=1/1 success=1` → `[T+30360ms] exploit complete` →
+`handoff: child=21020 alive=1 sent=1` → `[ksu] KernelSU module loaded` → `KernelSU ready`。
+
+## 判定（更新）
+
+同一候选 `fcbc2191…` **既出现 panic（`085457` pstore），又出现完整 PASS（`090931`）**。按 AGENTS 的
+`KERNEL-PANIC-01`（同构建可 PASS/panic/PASS），本次判为**非确定间歇风险**，不归因 Batch 4 源码；
+门禁结果记为“**非确定**”——不能作为稳定 PASS，也非纯 FAIL。需多次冷机复跑统计，且在独立
+“生命周期/取消”批次解决 PI 链风险与 race 无 deadline 之前，不得宣称稳定支持。
+
 ## 日志
 
-- 设备：`Download/GhostLock/20260924-090931`、`-085457`、`-084136`、`-084127`、`-084004`。
+- 设备：`Download/GhostLock/20260924-090931`（PASS）、`-085457`（panic）、`-084136`、`-084127`、`-084004`。
 - 内核：`/sys/fs/pstore/dmesg-ramoops-0`（08:55）。
