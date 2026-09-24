@@ -158,4 +158,15 @@ class ProfileRoundTripTest {
         assertNull(NativeProfileDocument.fromBinary(patched(1, 9, 2)))
         assertNull(NativeProfileDocument.fromBinary(patched(1, 1, 99)))
     }
+
+    @Test
+    fun `v3 safe mode patch lands on the core slot`() {
+        val original = document("select_stack", null, selectValues)
+        val bytes = original.toBinaryV3()
+        val offset = NativeProfileDocument.safeModeOffset(bytes)!!
+        bytes[offset] = 1
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(1u, decoded.safeMode)
+        assertEquals(original.copy(safeMode = 1u), decoded)
+    }
 }

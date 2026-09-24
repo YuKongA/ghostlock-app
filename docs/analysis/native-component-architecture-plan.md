@@ -407,7 +407,7 @@ component failure
 - [x] v3 解码两侧精确校验 frontend/backend/middleware（native `binary.cpp` + Kotlin `fromBinaryV3`），middleware 不再 u8 截断；`parse`/`entry` 新增 `component_ids` 输出（**不改 `kernel_offsets` 布局**），`main.cpp` 用 wire 选择构造 `ComponentSelection`（legacy 回落 decoded route）。
 - [x] `ExploitSession` 升级为逐字段所有权契约表（owner / created / borrowers / release / termination）。
 - [~] 生命周期/清理测试：route 生命周期由既有 `route_lifecycle_test`/`route_policy_test` 覆盖，selection 拒绝由 `component_catalog_test` 覆盖；组件层未新增清理测试（无新增资源）。
-- [x] Batch 1/2 审查修复 F1–F8：F1 v3 `safe_mode` 只经 core 槽 + `safeModeOffset` 按 header version 分派（golden 重生成）；F2 route 调优逐字段合并 preset；F3 exporter 拒绝源目录/源码树并 staging→原子替换；F4 同上；F5 CPU 会话对优先于 imported/override；F6 exporter 以 `index.conf` 为准、失败即报错、不导出模板；F7 `validateMerged` 区分缺失/类型/零且 exporter 调用；F8 `ExporterAgreementTest` 目录缺失即失败 + 测试依赖 exporter。
+- [x] Batch 1/2 审查修复 F1–F8：F1 v3 `safe_mode` 只经 core 槽 + `safeModeOffset` 按 header version 分派（golden 重生成）；F2 route 调优逐字段合并 preset；F3 exporter 输出限定等于配置的 `build` 生成目录并 staging→backup→rollback（失败保留旧输出，非严格原子）；F4 同上；F5 CPU 会话对优先于 imported/override；F6 exporter 以 `index.conf` 为准、失败即报错、不导出模板；F7 `validateMerged` 区分缺失/类型/零且 exporter 调用；F8 `ExporterAgreementTest` 目录缺失即失败 + 测试依赖 exporter。
 - [x] 复审修正 II：exporter 输出限定在 `build` 生成目录、staging→backup→rollback（失败保留旧输出）；`index.conf` 坏项严格拒绝；`ExporterAgreementTest` 断言导出集合与索引非模板项一致；`ExploitSession` 标注 race 终结在 route 卡住时**未闭环**；`profile_binary_test` 断言成功解码的 `component_ids`；`ProfileRoundTripTest` 加 v3 错误组件 ID 回归。
 - [ ] F9（typed 主链）另立 Batch 2.5。
 

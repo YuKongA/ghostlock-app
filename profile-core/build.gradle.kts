@@ -27,5 +27,9 @@ tasks.register<JavaExec>("exportKernelProfiles") {
     outputs.dir(outputDir)
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.ghostlock.app.data.profile.ProfileExporter")
-    args(profilesDir.asFile.absolutePath, outputDir.get().asFile.absolutePath)
+    args(
+        profilesDir.asFile.absolutePath,
+        outputDir.get().asFile.absolutePath,
+        outputDir.get().asFile.absolutePath,
+    )
 }

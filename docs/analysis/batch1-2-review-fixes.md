@@ -33,8 +33,8 @@
 ### F3 [P1] exporter 可能递归删除任意目录
 
 - 证据：`ProfileExporter.main()` 对参数输出目录立即 `deleteRecursively()`，无任何校验。
-- 方案：拒绝 `outDir == srcDir`、`outDir` 是 `srcDir` 祖先/后代、或位于源码树（`app/src`）内的路径；
-  导出改为**写同级临时目录再原子替换**（`outDir.tmp-<n>` → rename），失败不破坏既有输出。
+- 方案：输出必须**等于 Gradle 配置的生成目录**（`build/kernel-profiles`）且不在源码树；替换改为
+  `staging→backup→rollback`（先移开旧输出，staging 安装失败则回滚并保留旧输出；**非严格原子**）。
 - 验证：单测拒绝 srcDir/源码树；正常导出仍成功。
 
 ### F4 [P2] v3 解码不校验组件 ID、middleware 截断
@@ -99,7 +99,7 @@
 
 - [x] F1（safe_mode：v3 只经 core 槽 + `safeModeOffset` 版本分派；golden 重生成）
 - [x] F2（route 调优逐字段合并；`ProfileMergerTest`）
-- [x] F3（exporter 拒绝源目录/源码树 + staging→原子替换）
+- [x] F3（exporter 输出限定配置的 build 生成目录 + staging→backup→rollback；外部路径拒绝测试）
 - [x] F4（v3 两侧精确校验 frontend/backend/middleware；`profile_binary_test` 向量）
 - [x] F5（CPU 会话对优先；`ProfileMergerTest`）
 - [x] F6（exporter 以 index.conf 为准、失败报错、不导出模板）
@@ -109,6 +109,24 @@
 - [ ] F9（typed 主链）——转 Batch 2.5
 - 验证：`make -C src native-host-tests`、`make -B -C src ghostlock`（零告警）、`lint-tidy` 0 findings、
   `cmp_disasm` PASS、`./gradlew :profile-core:test :app:testDebugUnitTest`。
+
+## 推迟项（建议后期统一处理，工程权衡）
+
+- **D-RACE（race `route_done` 无 deadline）**：审查正确——`PiRace::run()` 等待 `route_done` 没有超时，
+  route 卡住时到不了 `stop/join`。但加 deadline/超时属**攻击关键路径时序改动**，会改动
+  `run_main_route_threads` 等 8 个攻击函数的机器码，并需要真机复现“卡住”场景才能验证。放入本批会破坏
+  “8 函数 IDENTICAL”不变量、并把一个需要设备门禁的时序修复混进配置批次。**建议**：当前仅在
+  `ExploitSession` 标注该终结点未闭环；修复放到独立的“攻击路径加固”批次（与 Batch 4 或专批），
+  带 `cmp_disasm` + 真机 gate 一起做。
+- **D-SINGLE-SOURCE（组件 ID / 字段校验表的跨语言单一来源）**：现在 `kFrontendRootChild` /
+  `kBackendCve202643499`（native）与 `FrontendRootChild` / `BackendCve202643499`（Kotlin）各自手写，
+  `validateMerged` 的字段列表也与 `NativeProfileDocument` 字段表并存。彻底单一来源应由生成或共享
+  fixture 驱动；现在引入生成器会与 F9（typed 主链）重复一次迁移。**建议**：随 **Batch 2.5** 的
+  typed/契约收敛一起做，在此之前用 agreement 测试兜底（已有 `route_catalog_test` +
+  `component_catalog_test` + `profile_binary_test`，可再加一层 ID agreement）。
+- **D-EXPORTER-STRUCT（exporter 结构化）**：`ProfileExporter` 仍是“脚本式 main + 文件系统副作用”。
+  更干净的做法是导出纯函数（输入 profile map，输出 bytes）+ Gradle 任务负责路径/参数（CPU 对、
+  是否导出模板显式化）。属构建体系完善，**建议**随后续文档/构建收敛批次做；当前保留防御性校验即可。
 
 ## 待拍板（已定）
 

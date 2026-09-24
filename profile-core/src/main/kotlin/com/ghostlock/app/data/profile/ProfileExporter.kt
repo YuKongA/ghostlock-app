@@ -18,11 +18,14 @@ import java.io.File
 object ProfileExporter {
     @JvmStatic
     fun main(args: Array<String>) {
-        require(args.size >= 2) { "usage: ProfileExporter <profilesDir> <outputDir>" }
+        require(args.size >= 3) {
+            "usage: ProfileExporter <profilesDir> <outputDir> <expectedOutputDir>"
+        }
         val srcDir = File(args[0]).canonicalFile
         val outDir = File(args[1]).canonicalFile
+        val expectedOutDir = File(args[2]).canonicalFile
         require(srcDir.isDirectory) { "profiles dir does not exist: $srcDir" }
-        rejectUnsafeOutput(srcDir, outDir)
+        validateOutputDir(srcDir, outDir, expectedOutDir)
 
         val index = parseFile(File(srcDir, "index.conf"), srcDir)
             ?: error("index.conf is missing or invalid")
@@ -99,14 +102,21 @@ object ProfileExporter {
         println("exportKernelProfiles: $count profile(s) -> ${outDir.absolutePath}")
     }
 
-    /** Confines output to a generated build dir and refuses source locations. */
-    private fun rejectUnsafeOutput(srcDir: File, outDir: File) {
+    /**
+     * Refuses any output that is not exactly the configured generated directory
+     * (and never the source tree). [expectedDir] is the build directory the
+     * Gradle task owns, so an attacker-supplied path can never cause a replace
+     * of unrelated data even if it contains a `build` segment.
+     */
+    internal fun validateOutputDir(srcDir: File, outDir: File, expectedDir: File) {
         val src = srcDir.path
         val out = outDir.path
         require(outDir.parentFile != null && outDir.name.isNotEmpty()) {
             "invalid output dir: $outDir"
         }
-        /* Only ever delete/replace a generated build directory. */
+        require(out == expectedDir.path) {
+            "output dir must be the configured export dir $expectedDir, got $outDir"
+        }
         val underBuild = out.contains("${File.separator}build${File.separator}") ||
             outDir.parentFile!!.name == "build"
         require(underBuild) { "output dir must live under a build directory: $outDir" }
