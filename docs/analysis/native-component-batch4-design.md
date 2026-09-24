@@ -158,7 +158,10 @@ UI 选择/推荐推迟到 UMH 有真机证据之后。
   `ExploitProcedure::setup` 转薄转发；W1/W2/W3 仍留（与 route hook 交织）。native 零告警、host、
   `lint-tidy` 0、`cmp_disasm` vs slice2 基线 `4ee24fbc…` **8 函数 PASS**（候选
   `1ac25ff9eb168fc0238f13a73210693b1d84337136320cba0482a67b6503fbd5`）。
-- [ ] D1=B 切片 3b/3c：`attack_write` 的 route 执行与 hook 迁入 middleware（**会改 `do_one_write`**，
-  需以 `4ee24fbc…` 为基线逐条复核 + 新真机门禁）；`w2/w3` 的 victim 生命周期与 hook 契约收敛。
+- [x] D1=B 切片 3b：`attack_write` 的 route 执行改为 `route::middleware::run_middleware_route`（新入口，
+  语义不变）。LTO 下候选二进制与 3a 相同（`1ac25ff9…`），`cmp_disasm` 8 函数 PASS（`do_one_write`
+  仍为既有 LAYOUT-SHIFT，未新增差异）。
+- [ ] D1=B 切片 3c：`w2/w3` 的 victim 生命周期与 route hook 契约收敛（需先定义 backend↔middleware
+  编译期 hook 契约，不改 route 算法）。
 - [ ] **真机门禁（本批构建重新跑）**：A301SO / 5.15、KernelSU 未加载、固定 CPU 对、multicast、冷机；
   归档 `docs/analysis/device-gates/`（绑定本批候选）。通过前 Batch 4 不算完成。

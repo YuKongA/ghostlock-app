@@ -417,7 +417,8 @@ component failure
 
 - [~] root-child 边界（D1=B 实拆，切片 1）：`handoff` 已迁为 `session/root_child_frontend.{hpp,cpp}` 的 `run_root_child_handoff`，`ExploitProcedure::handoff` 转薄转发；`handoff_probe` 仍为 root handoff/KernelSU 验证（与 child 生命周期分列）。`cmp_disasm` 8 函数 PASS（候选 `4ee24fbc…`）。
 - [~] D1=B 切片 2/3a：`pipeline.hpp` 组合形状 + `backend_policy.hpp` 占位；`setup` 迁至 `session/backend/cve_2026_43499_backend.*`（8 函数 PASS，候选 `1ac25ff9…`）。
-- [ ] D1=B 切片 3b/3c：`attack_write` 的 route 执行/hook 迁入 middleware（会改 `do_one_write`，需 `4ee24fbc…` 基线 + 新门禁）；`w2/w3` hook 契约收敛。D3 模型预留已完成。
+- [x] D1=B 切片 3b：`attack_write` 的 route 执行走 `route::middleware::run_middleware_route`（LTO 下二进制不变，8 函数 PASS）。
+- [ ] D1=B 切片 3c：`w2/w3` 的 victim 生命周期与 route hook 契约收敛（backend↔middleware 编译期 hook 契约）。D3 模型预留已完成。
 - [x] UMH frontend 占位：`route/frontend_contract.hpp` 声明 `umh_forward` `available=false` + 原因，无执行路径。
 - [ ] `app` 配置模型与 UI：按 D3 本批不做（UMH 无真机证据前不暴露选择）。
 - [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。
