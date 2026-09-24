@@ -3,6 +3,7 @@ package com.ghostlock.app.data
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -140,5 +141,21 @@ class ProfileRoundTripTest {
         assertEquals(RouteKind.TCP_ZEROCOPY, profile.route)
         assertNull(profile.fallback)
         assertArrayEquals(document("tcp_zerocopy", null, tcpValues).toBinaryV3(), profile.toBinary())
+    }
+
+    @Test
+    fun `v3 decode rejects unknown component ids`() {
+        val bytes = document("select_stack", null, selectValues).toBinaryV3()
+        fun patched(frontend: Int, backend: Int, middleware: Int): ByteArray {
+            val copy = bytes.copyOf()
+            copy[6] = frontend.toByte(); copy[7] = (frontend shr 8).toByte()
+            copy[8] = backend.toByte(); copy[9] = (backend shr 8).toByte()
+            copy[10] = middleware.toByte(); copy[11] = (middleware shr 8).toByte()
+            return copy
+        }
+        assertNotNull(NativeProfileDocument.fromBinary(patched(1, 1, 2)))
+        assertNull(NativeProfileDocument.fromBinary(patched(9, 1, 2)))
+        assertNull(NativeProfileDocument.fromBinary(patched(1, 9, 2)))
+        assertNull(NativeProfileDocument.fromBinary(patched(1, 1, 99)))
     }
 }

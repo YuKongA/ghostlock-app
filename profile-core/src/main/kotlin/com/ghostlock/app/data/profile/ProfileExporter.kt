@@ -26,8 +26,11 @@ object ProfileExporter {
 
         val index = parseFile(File(srcDir, "index.conf"), srcDir)
             ?: error("index.conf is missing or invalid")
-        val entries = index["profiles"].asValueList()?.mapNotNull { it.asValueMap() }
-            ?: error("index.conf has no profiles list")
+        val profiles = index["profiles"]
+        require(profiles is List<*>) { "index.conf profiles must be a list" }
+        val entries = profiles.mapIndexed { index, raw ->
+            raw.asValueMap() ?: error("index.conf profiles[$index] is not an object")
+        }
 
         val routes = RouteKind.entries.map { it.token }
         val tuningExecution = parseFile(File(srcDir, "execution-tuning.conf"), srcDir)
@@ -80,19 +83,33 @@ object ProfileExporter {
             println("exportKernelProfiles: $actualRelease (${bytes.size} bytes)")
         }
 
-        if (outDir.exists() && !outDir.deleteRecursively()) {
-            error("cannot replace output dir: $outDir")
-        }
-        if (!staging.renameTo(outDir)) {
+        /* Swap without ever deleting the previous output first: move it aside,
+         * then move the staging dir in, and roll back if the move fails. */
+        if (outDir.exists()) {
+            val backup = File(outDir.parentFile, "${outDir.name}.bak-${System.nanoTime()}")
+            if (!outDir.renameTo(backup)) error("cannot move current output aside: $outDir")
+            if (!staging.renameTo(outDir)) {
+                backup.renameTo(outDir)
+                error("cannot move staging dir into place: $outDir (previous output restored)")
+            }
+            backup.deleteRecursively()
+        } else if (!staging.renameTo(outDir)) {
             error("cannot move staging dir into place: $outDir")
         }
         println("exportKernelProfiles: $count profile(s) -> ${outDir.absolutePath}")
     }
 
-    /** Refuses an output dir that would delete sources or write into the tree. */
+    /** Confines output to a generated build dir and refuses source locations. */
     private fun rejectUnsafeOutput(srcDir: File, outDir: File) {
         val src = srcDir.path
         val out = outDir.path
+        require(outDir.parentFile != null && outDir.name.isNotEmpty()) {
+            "invalid output dir: $outDir"
+        }
+        /* Only ever delete/replace a generated build directory. */
+        val underBuild = out.contains("${File.separator}build${File.separator}") ||
+            outDir.parentFile!!.name == "build"
+        require(underBuild) { "output dir must live under a build directory: $outDir" }
         require(out != src) { "output dir must not be the profiles dir: $outDir" }
         require(!out.startsWith(src + File.separator)) {
             "output dir must not be inside the profiles dir: $outDir"

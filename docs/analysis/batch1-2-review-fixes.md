@@ -105,6 +105,7 @@
 - [x] F6（exporter 以 index.conf 为准、失败报错、不导出模板）
 - [x] F7（`validateMerged` 缺失/类型/零；exporter 调用；`ProfileResolverTest`）
 - [x] F8（`ExporterAgreementTest` 目录缺失即失败 + 测试依赖 exporter）
+- [x] 复审修正 II：exporter 输出限定 `build` 生成目录 + staging→backup→rollback（失败保留旧输出）；索引坏项严格拒绝；导出集合断言；race 终结点标注未闭环；两侧组件 ID 成功/失败测试。
 - [ ] F9（typed 主链）——转 Batch 2.5
 - 验证：`make -C src native-host-tests`、`make -B -C src ghostlock`（零告警）、`lint-tidy` 0 findings、
   `cmp_disasm` PASS、`./gradlew :profile-core:test :app:testDebugUnitTest`。

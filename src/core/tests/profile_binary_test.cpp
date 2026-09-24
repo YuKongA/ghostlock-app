@@ -327,6 +327,17 @@ int32_t main(void) {
                 return binary_profile::parse(std::string_view(buf, static_cast<size_t>(v3size)),
                                              &parsed, release, sizeof(release));
             };
+            /* A successful decode must report the exact ids, not just reject
+             * bad ones: this pins the wire -> selection contract. */
+            binary_profile::component_ids ids{};
+            char idbuf[4096];
+            memcpy(idbuf, v3buf, static_cast<size_t>(v3size));
+            assert(binary_profile::parse(std::string_view(idbuf, static_cast<size_t>(v3size)),
+                                         &parsed, release, sizeof(release), &ids) == 0);
+            assert(ids.frontend == binary_profile::kFrontendRootChild);
+            assert(ids.backend == binary_profile::kBackendCve202643499);
+            assert(ids.middleware == ghostlock::profile::kRouteSelectStack);
+
             assert(parse_v3(binary_profile::kFrontendRootChild,
                             binary_profile::kBackendCve202643499,
                             ghostlock::profile::kRouteSelectStack) == 0);
