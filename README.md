@@ -10,6 +10,7 @@
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
 | `6.1.138-android14-11-g0c3d559bcd85-ab14529422`        | Xiaomi 14                                                        |
+| `6.1.138-android14-11-g151cf2b6bfbe-ab13719792`        | Lenovo Xiaoxin Pad Pro 12.7 (TB375FC)                            |
 | `6.1.138-android14-11-g2ecae636cf9b-ab14676408`        | Lenovo Yoga Tab Plus (TB520FU)                                   |
 | `6.1.138-android14-11-g6ab8c9a86a33-ab14396278`        | POCO X6 Pro                                                      |
 | `6.1.138-android14-11-g44bda9e8f6e9-ab13792638`        | POCO X6 Pro                                                      |
