@@ -108,9 +108,79 @@ flowchart LR
 - 本地验证：`native-host-tests` 全通过；NDK `-B` 全量零告警；`lint-tidy` 0 findings。
 - 真机门禁：**待跑**（候选 `bd35b701…`；multicast、固定 CPU 对、冷机、KernelSU 未加载）。
 
+## 核心攻击代码审查记录（2026-09-24）
+
+> 范围：`722230a`（3c hook 收敛）与 `1241ced`（pipeline 落地）两笔重构触及的核心攻击代码及其
+> 资源准备/存活期/回收闭包。方法：Rust 式所有权追踪 + 终结点顺序核对 + `cmp_disasm` 与扩展
+> 反汇编对比。基线 `1ac25ff9…` → `fed6b7cf…` → 候选 `bd35b701…`。
+
+### 1. 所有权与生命周期追踪
+
+| 对象/资源 | 所有权类别 | 起点（创建/获取） | 所有者 | 借用者 / 访问区间 | 终结点与释放 |
+|---|---|---|---|---|---|
+| `g_exploit_session` | owning（进程唯一） | 进程静态初始化 | 进程 | backend/frontend 经 `ExploitSession&` 参数读写；全流程 | 进程结束；无显式释放 |
+| `session.victim`（6 pipe + child pid） | owning（session 成员） | `spawn_victim`（每次 spawn） | session | `w2`/`w3`/`park_retry_child`/handoff；`release_child`/`retire_child` 转移 | 失败退出（`X`）、park（`P`）、handoff（`G`）后 release/reset |
+| `VictimChain`（3 flags） | borrowed（栈值） | `run_pipeline` 局部 | `run_pipeline` 栈帧 | `Backend::run` 填充 → `Frontend::run` 读取 | `run_pipeline` 返回即终结，无跨帧引用 |
+| `w2_stage_context` | borrowed（栈值） | `Cve2026_43499Policy::run` 局部 | `run` 栈帧 | `w2`/`w3`/`verify_*` 指针传递 | `run` 返回即终结，不逃逸 |
+| `session.heap.current.base`（spray/repair 页） | owning（session 管理） | `prepare_good_kernel_page`（`attack_write` / `w2_fast_repair_prebuild`） | session.heap | attack_write / route race | 失败 `discard_prebuilt_page`；W2 修复经 `stash`/`activate`；resident 侧 `release_resident_heap`（route destroy） |
+| prebuilt 暂存页 | owning（support 静态） | `stash_prebuilt_page` | support | `retry_write_stage`（W2） | `activate_prebuilt_page`（消费）/`discard_prebuilt_page`（失败） |
+| `session.race`（PiRace + 3 线程） | owning（session 成员） | route prepare（`race/threads.cpp`，未改） | session.race | owner/waiter/consumer；attack_write 经 `run_main_route_threads` | `request_stop` → join（`run_main_route_threads` IDENTICAL，顺序未变） |
+| multicast resident route（进程级静态） | owning（静态） | `kernel5_resident_start`（`MulticastPolicy::resident_write` 内） | multicast_waiter 静态 | workers + resident write | `kernel5_resident_stop`（w1 失败、route destroy、handoff 末尾） |
+| quarantine sockets | owning（support 静态） | `quarantine_reclaim_sockets`（W1b） | support | W1b 重试循环 | 成功 `release_quarantined_reclaim_sockets`；失败保留隔离（注释约定） |
+| `session.profile`（TargetProfile 值对象） | owning（值） | `install_profile`（`run_setup`） | session | 只读全流程 | 进程结束 |
+| `parked_victim` / `parked_victim_cmd` | owning（session 成员） | park / handoff 转移 | session | handoff | signal + reset |
+
+### 2. UAF 检查结论
+
+- 迁移后 backend/frontend 为静态函数：`session_` 成员访问一律改为 `ExploitSession&` 参数（指向
+  `g_exploit_session`，进程生命期），不存在“对象销毁后访问成员”；无捕获、无 this 逃逸。
+- `VictimChain` / `w2_stage_context` 仅在 `run_pipeline` / `Cve2026_43499Policy::run` 栈帧存活，
+  handoff 与 W2/W3 都在其作用域内调用；无跨帧或跨线程引用。
+- 作为漏洞原语被有意利用的目标对象（waiter/task/cred）属既定例外，未扩散到辅助对象、race 状态、
+  waiter 缓冲、映射或同步资源。
+- 结论：**未发现 UAF**。
+
+### 3. 终结点与清理顺序
+
+- W1 失败 → `kernel5_resident_stop`；W1b 成功/失败 → quarantine release/保留；W2 修复 →
+  prebuild → 写 → activate，失败 discard（均保留原位置与顺序）。
+- route 生命周期 `prepare → execute → disarm → destroy` 未改（`route_lifecycle.hpp` 未动，
+  `run_main_route_threads` IDENTICAL）。
+- handoff 末尾 `kernel5_resident_stop`、child/parked child 信号与 fd 关闭未改
+  （`root_child_frontend.cpp` 仅新增 `RootChildPolicy::run` 薄转发）。
+- 结论：**终结点位于合理生命周期边界，成功/失败/重试/提前返回路径均有回收**。
+
+### 4. 核心攻击函数与资源准备/回收的反汇编核对
+
+| 函数 | 基线→候选 | 结论 |
+|---|---|---|
+| `owner_thread` / `waiter_thread` / `consumer_thread` | IDENTICAL | 等待/唤醒路径不变 |
+| `run_main_route_threads` | IDENTICAL | route 选择/race 执行/停线程顺序不变 |
+| `do_kernel5_fake_lock_route` | IDENTICAL | 一次性 multicast 顺序不变 |
+| `multicast_owner_worker` / `multicast_waiter_worker` | IDENTICAL | waiter/owner 热循环不变 |
+| `do_one_write`（`attack_write`） | 138 → 132 | 20 个调用目标逐一相同；差=this→参数 + LTO 参数重排；`resident_write` 分派取代 vtable |
+| `middleware::resident_write` | 309 → 294，调用多重集相同（25=25） | 源码未改；差异为 LTO 布局/寄存器重排 |
+| `MulticastWaiterRoute::write` / `stop` | IDENTICAL | resident 资源准备/回收不变 |
+| `multicast_waiter_stamp` / `multicast_waiter_adjust` | IDENTICAL | waiter 字节/调度辅助不变 |
+| `victim::verify_selinux_stage` / `verify_leaf_dir_stage` | IDENTICAL | 校验/探测不变 |
+| `support::prepare_good_kernel_page` / `discard_prebuilt_page` | IDENTICAL | 页准备/丢弃不变 |
+
+- 攻击代码（`do_one_write` → `run_main_route_threads` → workers/`do_kernel5`）与资源准备/回收
+  （prepare/stash/activate/discard、quarantine、resident start/stop、handoff stop）之间的**相对顺序不变**。
+- 编排函数（`Cve2026_43499Policy::run` vs 旧 `ExploitProcedure::run`）因 LTO 内联边界不同不做逐字节
+  对比，改以「源码机械迁移（语句顺序/日志文本不变）+ 8 函数调用序列 + 上述资源函数 IDENTICAL」为证据。
+
+### 5. 基线与证据
+
+- 基线：`1ac25ff9…`（切 3a/3b，3c 审查）、`fed6b7cf…`（切片 3c，pipeline 落地审查）。
+- 候选：`fed6b7cf…`（切片 3c）、`bd35b701…`（pipeline 落地，真机 PASS
+  `B4-pipeline-20260924-multicast-direct-pass.md`）。
+- 对比工具：`tools/cmp_disasm.py`（8 函数）+ 扩展同名符号对比脚本（资源准备/回收函数）。
+
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。
 - [x] 用户确认：`ExploitProcedure` 完全退场，P1–P3 合并落地。
 - [x] P1–P3 实现 + 本地验证（host/构建/lint/`cmp_disasm` 逐条复核）。
-- [ ] 真机门禁（用户执行）→ 归档并收尾 Batch 4 的 pipeline 落地。
+- [x] 真机门禁 PASS（`B4-pipeline-20260924-multicast-direct-pass.md`）。
+- [x] 核心攻击代码审查（所有权追踪 / UAF / 终结点顺序 / 反汇编核对）。
