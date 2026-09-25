@@ -10,10 +10,13 @@ GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期
 
 - 可用性：`route/component_catalog.hpp` 的 `frontend_available` / `backend_available` /
   `middleware_available`。identity 与执行 policy **都不携带 `available`**。
-- 组合：`combination_supported(selection)` 列出可派发三元组；`dispatch_target_of(kind)` 给出
-  middleware→分派目标映射；`orchestrator.hpp` 的每个 case 用 `static_assert(P::target == …)` 锁定。
+- 组合与分派：`combination_supported(selection)` 列出可派发三元组；`dispatch_target_of(frontend,
+  backend, middleware)` 给出**完整组合**的分派目标；`orchestrator.hpp` 的每个 case 用
+  `static_assert(P::target == …)` 锁定。**分派键保留完整选择**：当前目录只有
+  `root_child × cve_2026_43499 × {三种 middleware}`，新增 frontend/backend 时必须同时扩展
+  `DispatchTarget` 枚举、映射与 orchestrator 分支——不能只按 middleware 决定 pipeline。
 - 执行入口：`route/pipeline.hpp` 的 `Pipeline<F,B,M>::run`，编译期校验 `catalogued`、
-  `MiddlewarePolicy<M>` 与 `BackendExecution<B,M>`，返回 `RunResult`。
+  `MiddlewarePolicy<M>`、`FrontendExecution<F>` 与 `BackendExecution<B,M>`，返回 `RunResult`。
 - 绑定方式：backend 步骤模板化在 middleware 上（`Cve2026_43499Policy::run<M>` / `attack_write<M>`），
   以 `M::resident_write` 等静态 hook 直接调用，无虚表；hook 边界 `[[gnu::noinline]]`。
 
@@ -74,17 +77,18 @@ GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期
 catalog 加 `DispatchTarget` 值与该 kind 的映射；orchestrator 加 case：
 
 ```cpp
-case DispatchTarget::FooWaiter: {
+case DispatchTarget::RootChild_Cve43499_FooWaiter: {
     using P = Pipeline<session::frontend::RootChildPolicy,
                        session::backend::Cve2026_43499Policy,
                        route::FooPolicy>;
-    static_assert(P::target == DispatchTarget::FooWaiter,
-                  "dispatch case must match the policy's target");
+    static_assert(P::target == DispatchTarget::RootChild_Cve43499_FooWaiter,
+                  "dispatch case must match the pipeline's target");
     return P::run(exploit_session, decoded, debug_dir, force_attack);
 }
 ```
 
 并在 `cve_2026_43499_backend.cpp` 末尾补该 policy 的显式实例化（漏掉会链接失败）。
+`DispatchTarget` 名带完整组合前缀，是为了让后端/前端维度扩展时映射与分支同步增长。
 
 ---
 
@@ -107,10 +111,12 @@ case DispatchTarget::FooWaiter: {
 
 ## 三、新增 frontend
 
-与 backend 同构：`route/frontend_contract.hpp` 的 identity（含 unavailable reason）+
-`session/root_child_frontend.hpp` 的执行 policy（`run(session, chain)` 承载 startup/handoff）+
-catalog/pipeline/orchestrator 接线。UMH 的职责边界见 `frontend_contract.hpp`（child 生命周期与
-KernelSU handoff 不合并；UMH 不得默认绑定 KernelSU）。
+与 backend 同构：`route/frontend_contract.hpp` 提供 `FrontendIdentity`（仅 `kind`）与
+`FrontendExecution<F>`（可用 frontend 的 `run(session, chain)` 精确返回 `StageResult`），以及
+`FrontendIdentityList` / `for_each_frontend` 注册表；执行 policy 在 `session/root_child_frontend.hpp`
+（`RootChildPolicy::run` 承载 startup/handoff），该头以 `static_assert` 绑定 identity 与 catalog；
+`Pipeline` 以 `static_assert(FrontendExecution<F>)` 约束组合入口。UMH 的职责边界见
+`frontend_contract.hpp`（child 生命周期与 KernelSU handoff 不合并；UMH 不得默认绑定 KernelSU）。
 
 ---
 
@@ -121,7 +127,8 @@ KernelSU handoff 不合并；UMH 不得默认绑定 KernelSU）。
 1. `route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt`：canonical 列表同步（middleware）。
 2. `route_policy_test.cpp`：能力断言与派发计数（middleware）。
 3. `component_catalog_test.cpp`：组合、`dispatch_target` 与映射（新组合）。
-4. `backend_contract_test.cpp`：`BackendIdentity` / `BackendExecution` / `Pipeline::target`（新 backend/middleware）。
+4. `backend_contract_test.cpp`：`FrontendIdentity` / `FrontendExecution` / `BackendIdentity` /
+   `BackendExecution` / `Pipeline::target`（新 frontend/backend/middleware）。
 5. `foo_route_test.cpp`：构造/析构/几何（middleware），并登记进 `NATIVE_HOST_TESTS`。
 6. `profile_binary_test.cpp`：wire 解码/拒绝（新 id）。
 7. 新增攻击路径函数时，把它加进 `tools/cmp_disasm.py` 的 `TARGETS`。

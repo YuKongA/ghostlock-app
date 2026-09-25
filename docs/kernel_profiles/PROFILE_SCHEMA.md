@@ -10,20 +10,17 @@ native.
 > To add support for a new kernel, follow [README.md](README.md). For
 > execution-tuning defaults, see [defaults.md](defaults.md).
 
-> **Version naming (v1 / v2 / v3)**: the configuration system has three layers.
-> - **v1 = the old JSON format**: the `offsets.json` of the remote/main era and
->   the import / extractor output path. Code: `src/core/legacy/`
->   (`convert_legacy_offsets`) and Kotlin `LegacyProfileConverter`.
-> - **v2 = the HOCON profile generation**: `assets/kernel_profiles/*.conf`,
->   parsed and merged by `AndroidProfileConfigController`.
-> - **v3 = the current wire**: `NativeProfileDocument` serializes the resolved
->   profile into the binary native consumes, with component ids
->   (frontend / backend / middleware), the middleware section and the options
->   section. Native still decodes v2 documents for compatibility; the v2 writer
->   is gone.
->
-> The native binary transport uses magic `0x0D000721` and version `3`
-> (version `2` is still decoded for compatibility).
+> **Three version names, three different things** (do not read them as one
+> sequence):
+> - **Profile schema version**: the HOCON profile generation, carried by the
+>   `schema_version` field inside each profile (see section 2).
+> - **Binary wire version**: the GLK1 transport version after magic
+>   `0x0D000721`. The current writer emits wire version `3` (component ids +
+>   middleware section + options section); wire version `2` documents are still
+>   decoded, but the v2 writer is gone.
+> - **v1 JSON import**: the remote/main-era `offsets.json`, converted once by
+>   `src/core/legacy/` (`convert_legacy_offsets`) and Kotlin
+>   `LegacyProfileConverter`.
 
 ## 0. File format (HOCON)
 

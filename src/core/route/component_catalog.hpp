@@ -68,30 +68,34 @@ namespace ghostlock::runtime {
                middleware_available(selection.middleware);
     }
 
-    /* Dispatch target for one selection: the exact value the orchestrator
-     * switch enumerates. It is a pure constexpr function, so the host test can
-     * prove it agrees with combination_supported() for every triple - the
-     * catalogue and the dispatch cannot drift. */
+    /* Dispatch target for one catalogued combination. It names the FULL triple,
+     * not just the middleware: opening a second frontend/backend must extend
+     * this enum and the mapping below, so the dispatch can never key on a
+     * single axis while the catalogue grows on the others. Pipeline exposes it
+     * as Pipeline::target and every orchestrator case asserts its own target
+     * against that value, so a branch cannot be wired to another (still
+     * supported) combination without failing to compile. */
     enum class DispatchTarget : std::uint8_t {
         None,
-        SelectStack,
-        TcpZerocopy,
-        MulticastWaiter,
+        RootChild_Cve43499_SelectStack,
+        RootChild_Cve43499_TcpZerocopy,
+        RootChild_Cve43499_MulticastWaiter,
     };
 
-    /* The single target<->middleware mapping. Pipeline exposes it as
-     * Pipeline::target and every orchestrator case asserts its own target
-     * against that value, so a branch cannot be wired to another (still
-     * supported) middleware policy without failing to compile. */
     [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
-        MiddlewareKind kind) noexcept {
-        switch (kind) {
+        FrontendKind frontend, BackendKind backend,
+        MiddlewareKind middleware) noexcept {
+        if (frontend != FrontendKind::RootChild ||
+            backend != BackendKind::Cve2026_43499) {
+            return DispatchTarget::None;
+        }
+        switch (middleware) {
             case MiddlewareKind::SelectStack:
-                return DispatchTarget::SelectStack;
+                return DispatchTarget::RootChild_Cve43499_SelectStack;
             case MiddlewareKind::TcpZerocopy:
-                return DispatchTarget::TcpZerocopy;
+                return DispatchTarget::RootChild_Cve43499_TcpZerocopy;
             case MiddlewareKind::MulticastWaiter:
-                return DispatchTarget::MulticastWaiter;
+                return DispatchTarget::RootChild_Cve43499_MulticastWaiter;
             default:
                 return DispatchTarget::None;
         }
@@ -100,7 +104,8 @@ namespace ghostlock::runtime {
     [[nodiscard]] constexpr DispatchTarget dispatch_target(
         const ComponentSelection &selection) noexcept {
         if (!combination_supported(selection)) return DispatchTarget::None;
-        return dispatch_target_of(selection.middleware);
+        return dispatch_target_of(selection.frontend, selection.backend,
+                                  selection.middleware);
     }
 
     [[nodiscard]] constexpr std::string_view frontend_name(FrontendKind kind) noexcept {

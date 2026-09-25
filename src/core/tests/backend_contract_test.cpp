@@ -49,9 +49,19 @@ int32_t main(void) {
                                                 route::MulticastPolicy>;
     static_assert(SelectPipeline::catalogued && TcpPipeline::catalogued &&
                   MulticastPipeline::catalogued);
-    static_assert(SelectPipeline::target == runtime::DispatchTarget::SelectStack);
-    static_assert(TcpPipeline::target == runtime::DispatchTarget::TcpZerocopy);
-    static_assert(MulticastPipeline::target == runtime::DispatchTarget::MulticastWaiter);
+    static_assert(SelectPipeline::target ==
+                  runtime::DispatchTarget::RootChild_Cve43499_SelectStack);
+    static_assert(TcpPipeline::target ==
+                  runtime::DispatchTarget::RootChild_Cve43499_TcpZerocopy);
+    static_assert(MulticastPipeline::target ==
+                  runtime::DispatchTarget::RootChild_Cve43499_MulticastWaiter);
+
+    /* The frontend contract is symmetric with the backend one: identity plus
+     * the terminal step for an available frontend. */
+    static_assert(runtime::FrontendIdentity<session::frontend::RootChildPolicy>);
+    static_assert(runtime::FrontendExecution<session::frontend::RootChildPolicy>);
+    static_assert(runtime::FrontendIdentity<session::frontend::UmhForwardPolicy>);
+    static_assert(!runtime::FrontendExecution<session::frontend::UmhForwardPolicy>);
 
     /* Registry walks the declared identities; availability is only ever the
      * catalogue's answer (no identity/policy carries an available state). */
@@ -61,6 +71,12 @@ int32_t main(void) {
         assert(runtime::backend_name(B::kind) != "");
     });
     assert(known == 2);
+    int32_t frontends = 0;
+    runtime::for_each_frontend([&]<class F>() {
+        frontends++;
+        assert(runtime::frontend_name(F::kind) != "");
+    });
+    assert(frontends == 2);
     assert(runtime::backend_available(runtime::backend::Cve2026_43499::kind));
     assert(!runtime::backend_available(runtime::backend::Cve2026_64560::kind));
     assert(runtime::backend_name(runtime::backend::Cve2026_64560::kind) == "cve_2026_64560");

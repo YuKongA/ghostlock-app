@@ -1,10 +1,18 @@
 #ifndef GHOSTLOCK_FRONTEND_CONTRACT_HPP
 #define GHOSTLOCK_FRONTEND_CONTRACT_HPP
 
+#include <concepts>
 #include <cstdint>
 #include <string_view>
+#include <tuple>
+#include <utility>
 
 #include "route/component_catalog.hpp"
+#include "session/stage_types.hpp"
+
+namespace ghostlock::session {
+    struct ExploitSession;
+}
 
 namespace ghostlock::runtime::frontend {
     /* Batch 4 DECLARATION-ONLY scaffolding. These structs name the known
@@ -38,5 +46,42 @@ namespace ghostlock::runtime::frontend {
     static_assert(frontend_available(RootChildFrontend::kind));
     static_assert(!frontend_available(UmhForwardFrontend::kind));
 } // namespace ghostlock::runtime::frontend
+
+namespace ghostlock::runtime {
+    /* Frontend contract, symmetric with BackendIdentity / BackendExecution
+     * (route/backend_contract.hpp): the declared identity, and the terminal
+     * step an *available* frontend provides (startup/handoff). Availability is
+     * owned by component_catalog::frontend_available(); neither level carries
+     * an available state. */
+    template <class F>
+    concept FrontendIdentity = requires {
+        { F::kind } -> std::convertible_to<FrontendKind>;
+    };
+
+    template <class F>
+    concept FrontendExecution = FrontendIdentity<F> &&
+        requires(session::ExploitSession &exploit_session,
+                 const session::VictimChain &chain) {
+            { F::run(exploit_session, chain) } -> std::same_as<session::StageResult>;
+        };
+
+    /* The declared registry; for_each keeps enumeration automatic as it grows. */
+    using FrontendIdentityList =
+        std::tuple<frontend::RootChildFrontend, frontend::UmhForwardFrontend>;
+
+    template <class Fn, class... Fs>
+    constexpr void for_each_frontend(Fn &&fn, std::tuple<Fs...> *) {
+        (fn.template operator()<Fs>(), ...);
+    }
+
+    template <class Fn>
+    constexpr void for_each_frontend(Fn &&fn) {
+        for_each_frontend(std::forward<Fn>(fn),
+                          static_cast<FrontendIdentityList *>(nullptr));
+    }
+
+    static_assert(FrontendIdentity<frontend::RootChildFrontend>);
+    static_assert(FrontendIdentity<frontend::UmhForwardFrontend>);
+} // namespace ghostlock::runtime
 
 #endif

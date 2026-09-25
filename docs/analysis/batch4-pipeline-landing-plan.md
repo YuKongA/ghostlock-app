@@ -306,6 +306,28 @@ host tests 全通过（含 `Pipeline::target`、映射与 `BackendExecution` 断
 上一候选**字节相同**（本轮回合无运行时影响）；lint-tidy 0 findings；`cmp_disasm` **8/8 IDENTICAL**
 （strict，RESULT: PASS）。
 
+## 第四轮架构审查回应与修正（2026-09-24）
+
+> 审查（基于 `40e6cfc`，文档/接口边界）指出 4 项；逐条修正。
+
+- **P1 分派键保留完整组合**：`DispatchTarget` 改为完整三元组命名
+  （`RootChild_Cve43499_{SelectStack,TcpZerocopy,MulticastWaiter}`），
+  `dispatch_target_of(frontend, backend, middleware)` 以完整选择为输入；`Pipeline::target` 由三元组
+  计算，orchestrator 每个 case 逐一断言。新增 frontend/backend 时必须同时扩展枚举/映射/分支
+  （扩展指南已写明）——分派不再只凭 middleware 轴。
+- **P2 Frontend 对称执行契约**：`frontend_contract.hpp` 新增 `FrontendIdentity` /
+  `FrontendExecution<F>`（`run(session, chain)` 精确返回 `StageResult`）与 `FrontendIdentityList` /
+  `for_each_frontend` 注册表；`root_child_frontend.hpp` 绑定 identity/catalog/execution 断言；
+  `Pipeline` 增加 `static_assert(FrontendExecution<Frontend>)`。UMH 占位不满足执行契约。
+- **P2 README 构建期/运行期**：README(.md/_ZH) 改为「编目组合在构建期实例化，具体组合由 profile
+  选择」，不再写成组件在构建期固定。
+- **P2 Profile 版本命名**：PROFILE_SCHEMA(.md/_ZH) 拆分为三套独立名称——profile schema version
+  （`schema_version` 字段）、binary wire version（当前 3，v2 兼容解码）、v1 JSON 导入；不再用同一
+  v1/v2/v3 序列混指。
+
+验证（候选 `dcd5224d…`（与上一候选字节相同），基线 `cacc2c6c…`）：host 全通过（含完整组合映射、
+frontend contract、registry 断言）；NDK `-B` 零告警；lint-tidy 0；`cmp_disasm` 8/8 IDENTICAL。
+
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。

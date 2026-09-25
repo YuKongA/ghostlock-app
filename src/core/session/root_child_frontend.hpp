@@ -32,6 +32,10 @@ namespace ghostlock::session::frontend {
 
     static_assert(RootChildPolicy::kind == runtime::frontend::RootChildFrontend::kind);
     static_assert(UmhForwardPolicy::kind == runtime::frontend::UmhForwardFrontend::kind);
+    static_assert(runtime::FrontendIdentity<RootChildPolicy>);
+    static_assert(runtime::FrontendExecution<RootChildPolicy>);
+    static_assert(runtime::FrontendIdentity<UmhForwardPolicy>);
+    static_assert(!runtime::FrontendExecution<UmhForwardPolicy>);
 } // namespace ghostlock::session::frontend
 
 #endif

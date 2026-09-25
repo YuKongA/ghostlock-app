@@ -6,16 +6,12 @@
 
 > 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优建议见 [defaults_ZH.md](defaults_ZH.md)。
 
-> **版本命名（v1 / v2 / v3）**：配置系统分三层。
-> - **v1 = 旧版 JSON**：remote/main 时代的 `offsets.json`，以及导入 / extractor 输出路径；对应代码为
->   `src/core/legacy/`（`convert_legacy_offsets`）与 Kotlin `LegacyProfileConverter`。
-> - **v2 = HOCON 配置代际**：`assets/kernel_profiles/*.conf`，由 `AndroidProfileConfigController`
->   解析、合并。
-> - **v3 = 当前 wire**：`NativeProfileDocument` 把解析结果序列化为 native 消费的二进制，携带组件 id
->   （frontend / backend / middleware）、middleware 节与 options 节；native 仍兼容解码 v2 文档，
->   但 v2 writer 已移除。
->
-> native 二进制传输的 magic 为 `0x0D000721`，version 为 `3`（version `2` 仍可解码兼容）。
+> **三个"版本"是彼此独立的东西**（不要当成同一条版本序列）：
+> - **Profile schema 版本**：HOCON 配置代际，由每份 profile 里的 `schema_version` 字段表达（见第 2 节）。
+> - **Binary wire 版本**：magic `0x0D000721` 之后的 GLK1 传输版本。当前 writer 写 wire version `3`
+>   （组件 id + middleware 节 + options 节）；wire version `2` 文档仍可解码，但 v2 writer 已移除。
+> - **v1 JSON 导入**：remote/main 时代的 `offsets.json`，由 `src/core/legacy/`
+>   （`convert_legacy_offsets`）与 Kotlin `LegacyProfileConverter` 一次性转换。
 
 ## 0. 文件格式（HOCON）
 
