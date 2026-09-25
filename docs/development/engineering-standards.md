@@ -98,7 +98,8 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 3. **Route 类**：`prepare → execute → disarm → destroy` 固定生命周期（概念见 `route_lifecycle.hpp`），
    结果只经 `status` 汇报。`execute` 仅在 `prepare` 返回 0 时调用。
 
-新增 route 的完整触点清单以 `docs/development/adding-a-route.md` 为唯一权威，必须逐项核对。
+新增组件（middleware/backend/frontend）的完整触点清单以 `docs/development/adding-a-component.md`
+为唯一权威，必须逐项核对。
 
 ### 2.3 编译边界与条件编译
 
@@ -333,7 +334,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 ## 9. Agent 执行检查清单（先设计，后改动）
 
 **开始前**
-- [ ] 读 `AGENTS.md` + 本文 + 与任务直接相关的现行文档（`adding-a-route.md`、PROFILE_SCHEMA 等）
+- [ ] 读 `AGENTS.md` + 本文 + 与任务直接相关的现行文档（`adding-a-component.md`、PROFILE_SCHEMA 等）
 - [ ] 用 git 历史检索是否已有同类设计与证据（`git log --all -- <path>`）
 - [ ] 判定变更级别（S/M/L）；L 级先写计划并获用户认可
 - [ ] 列出影响面：文件清单、数据流/控制流/数据结构是否变化、是否需要跨层同步
@@ -379,7 +380,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 |---|---|
 | 解耦设计流程与验收 | `DECOUPLING_PLAN.md` / `DECOUPLING_LOG.md`（commit `432a05f` 等） |
 | C++ 迁移批次与门禁 | `docs/analysis/native-cpp-migration-plan.md`、`docs/development/native-modernization-plan.md` |
-| route 扩展清单 | `docs/development/adding-a-route.md`（现行） |
+| 组件扩展清单 | `docs/development/adding-a-component.md`（现行） |
 | 全局状态口径 | `docs/analysis/native-global-state.md` |
 | 入口/CLI 契约 | `docs/analysis/native-entrypoint-plan.md` |
 | 环境变量收敛 | `docs/analysis/environment-convergence-plan.md` |

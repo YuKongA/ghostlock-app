@@ -8,7 +8,7 @@
 - [Supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) - the built-in kernel list.
 - [Shared execution defaults](docs/kernel_profiles/defaults.md) - every execution-tuning field, its default, and why.
 - [Profile schema](docs/kernel_profiles/PROFILE_SCHEMA.md) - full profile structure and data flow.
-- [Adding an attack route](docs/development/adding-a-route.md) - developer guide for a new native route (Chinese).
+- [Adding a component](docs/development/adding-a-component.md) - developer guide for a new native middleware / backend / frontend (Chinese).
 
 For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/kernel_profiles/README.md).
 
@@ -18,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
 
-The route races two cores. On the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels the main thread drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page instead; the 5.15 kernels use the multicast waiter route. The route and CPU pair come from the resolved profile; the legacy no-argument entry still honors `GHOSTLOCK_TCP_ROUTE=0` (force pselect) and `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`.
+The execution chain is a pipeline of three components fixed at build time: a frontend (`root_child` startup/handoff), a backend (the CVE-2026-43499 futex primitive), and a middleware route. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The component selection and CPU pair come from the resolved profile; the legacy no-argument entry still honors `GHOSTLOCK_TCP_ROUTE=0` (force pselect) and `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`.
 
 ## Command-Line Debugging
 

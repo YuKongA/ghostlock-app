@@ -18,8 +18,10 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 - 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
   `<uname-r>.conf` 每 release 一份、`execution-*.conf` 公共/分 route 调参、
   `credential-6x.conf`、`kernelsnitch-6x.conf`。格式为 HOCON（支持 `include`）。
-- 三条 route：`select_stack`、`tcp_zerocopy`、`multicast_waiter`。route 由 profile
-  显式选择，不从 kernel 版本推断。
+- 组件模型：frontend（`root_child`；`umh_forward` 占位不可用）× backend（`cve_2026_43499`；
+  `cve_2026_64560` 占位不可用）× middleware（`select_stack` / `tcp_zerocopy` / `multicast_waiter`），
+  由 `Pipeline<F,B,M>` 编译期固定。组合与可用性的唯一权威是 `route/component_catalog.hpp`，
+  选择显式来自 profile/wire，不从 kernel 版本推断。
 
 ## 常用命令
 
@@ -69,9 +71,11 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 - 全局状态只允许 `g_exploit_session`（进程唯一 singleton）与启动期只读的
   `g_direct_map_end`；新代码不得再引入可变全局或引用别名。审计记录见
   `docs/analysis/native-global-state.md`（git 历史）。
-- route 结构 = Policy（编译期能力声明，必须 host 可编译）+ Procedure（与共享流程不同的
-  步骤）+ Route 类（`prepare → execute → disarm → destroy`，仅经 `status` 汇报；不用虚基类）。
-  新增 route 的完整触点清单见 `docs/development/adding-a-route.md`。
+- 组件结构 = identity（kind，声明型，必须 host 可编译）+ 执行 policy（frontend/backend 步骤或
+  middleware route）。middleware policy 以编译期能力 + 静态 hook 表达，backend 步骤模板化在
+  middleware 上直接调用（不用虚基类）；Route 类满足 `prepare → execute → disarm → destroy`，
+  仅经 `status` 汇报。新增组件（middleware/backend/frontend）的完整触点清单见
+  `docs/development/adding-a-component.md`。
 - 双侧一致性（改了必须两边同步，测试会抓）：
   - Native `profile/model.h` 的 `RouteKind`/`kRouteCatalog` ↔ Kotlin `data/route/RouteKind.kt`
     （`route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt` 断言同一列表）
@@ -114,7 +118,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 - **结构与流程变化必须同步更新对应 Mermaid/UML 图**：L 级改动（route、跨层契约、会话/资源所有权、
   攻击阶段机、清理边界）必须画图；一个结构只保留一处权威图，其他文档链接它。
 - 双语：`README.md` + `README_ZH.md`；`docs/**` 下有 `*_ZH.md` 对应的保持同步。
-- 现行文档：`README.md`、`docs/kernel_profiles/*`、`docs/development/adding-a-route.md`、
+- 现行文档：`README.md`、`docs/kernel_profiles/*`、`docs/development/adding-a-component.md`、
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、
   `docs/development/documentation-standards.md`（文档规范）、`src/core/README.md`。

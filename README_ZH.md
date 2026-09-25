@@ -8,7 +8,7 @@
 - [支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
 - [公共执行默认值](docs/kernel_profiles/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。
 - [Profile 结构文档](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md) —— profile 的完整结构、字段语义与数据流。
-- [新增攻击链指南](docs/development/adding-a-route.md) —— 为 native 添加新 route 的开发者指南。
+- [新增组件指南](docs/development/adding-a-component.md) —— 为 native 添加新 middleware / backend / frontend 的开发者指南。
 
 新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md)。
 
@@ -18,7 +18,7 @@
 
 打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
 
-路线是双核竞争。6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。路线与 CPU 对由解析后的 profile 决定；无参数 legacy 入口仍兼容 `GHOSTLOCK_TCP_ROUTE=0`（强制 pselect）与 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`。
+执行链由三类组件在构建期固定：frontend（`root_child` 启动/交接）、backend（CVE-2026-43499 futex 原语）与 middleware 路线。路线是双核竞争：6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。组件选择与 CPU 对由解析后的 profile 决定；无参数 legacy 入口仍兼容 `GHOSTLOCK_TCP_ROUTE=0`（强制 pselect）与 `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`。
 
 ## 命令行调试
 

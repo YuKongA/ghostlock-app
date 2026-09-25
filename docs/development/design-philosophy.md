@@ -263,7 +263,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 |---|---|
 | 解耦设计与验收 | `DECOUPLING_PLAN.md` / `DECOUPLING_LOG.md`（commit `432a05f` 等） |
 | C++ 迁移批次与门禁 | `docs/analysis/native-cpp-migration-plan.md`、`docs/development/native-modernization-plan.md` |
-| route 扩展清单与双侧一致性 | `docs/development/adding-a-route.md`（现行） |
+| 组件扩展清单与双侧一致性 | `docs/development/adding-a-component.md`（现行） |
 | 全局状态审计 | `docs/analysis/native-global-state.md` |
 | 入口/CLI 契约 | `docs/analysis/native-entrypoint-plan.md` |
 | 环境变量收敛 | `docs/analysis/environment-convergence-plan.md` |

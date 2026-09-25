@@ -445,13 +445,18 @@ component failure
   设备支持状态留待其执行实现后的 gate。
 - [x] CVE-2026-43499 保持独立 backend；64560 未来字段必须进入其自己的 section，不得复用 43499 的槽。
 
-### [ ] Batch 6：文档收敛与旧格式退场评估
+### [x] Batch 6：文档收敛与旧格式退场评估
 
-- [ ] `docs/kernel_profiles/PROFILE_SCHEMA*.md`：最终字段表和迁移说明。
-- [ ] `docs/development/adding-a-route.md`：仅当其职责扩展至新增 frontend/backend/middleware 时，改为或链接唯一权威的 component-extension 指南。
-- [ ] `src/core/README.md`：native 组件目录、编译边界、Session 所有权和测试入口。
-- [ ] `AGENTS.md`：更新稳定架构规则与权威文档索引。
-- [ ] 旧字段/旧 v2 writer 是否移除须另有兼容数据与发布策略证据，不在前序批次顺手删除。
+- [x] `docs/kernel_profiles/PROFILE_SCHEMA*.md`：版本命名更新为 v1/v2/v3（v3 = 当前 wire，v2 兼容解码）、
+  组件选择与 v3 二进制描述同步（含中文版）。
+- [x] `docs/development/adding-a-route.md` → `adding-a-component.md`：重写为唯一权威的组件扩展指南
+  （middleware / backend / frontend），并同步 `README.md`、`README_ZH.md`、`AGENTS.md`、
+  `design-philosophy.md`、`engineering-standards.md` 的引用。
+- [x] `src/core/README.md`：组件与 pipeline 目录、编译边界、测试与门禁入口、Session 所有权指向。
+- [x] `AGENTS.md`：三层架构的组件模型（Pipeline / 组合权威 / 显式选择）、代码约定与文档索引更新。
+- [x] v2 writer 退场评估：`serialize()` 现在只写 v3（`binary.h` 的 `kVersion = kVersionV3`），v2
+  **writer 已不存在**；v2 **reader** 与共享字段槽保留（兼容解码，且 v3 仍使用这些槽）。旧字段/reader
+  的移除须另附兼容数据与发布策略证据，本批不删。
 
 ## 兼容性与回滚
 
@@ -497,4 +502,4 @@ component failure
 - [x] Batch 3.1：DTO→Orchestrator 接通（component_ids）、Session 逐字段所有权表、Batch 1/2 F1–F8 修复。（cmp_disasm PASS、host/Gradle/lint 通过；F9 typed 主链转 Batch 2.5）
 - [x] Batch 4：frontend 契约脚手架与 D1=B 实拆（切片 1/2/3a/3b/3c）；UMH 占位、拒绝分层、D3 模型预留；固定 CPU 对真机 gate PASS（候选 `fed6b7cf…`）。UI 按 D3 推迟。
 - [x] Batch 5：backend contract 与 CVE-2026-64560 占位接入（执行实现/字段 schema/设备 gate 留待其漏洞工作）。
-- [ ] Batch 6：文档收敛和旧格式退场评估。
+- [x] Batch 6：文档收敛（组件扩展指南、core README、PROFILE_SCHEMA、AGENTS）+ v2 writer 退场评估。

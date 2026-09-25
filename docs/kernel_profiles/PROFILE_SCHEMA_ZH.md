@@ -6,13 +6,16 @@
 
 > 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优建议见 [defaults_ZH.md](defaults_ZH.md)。
 
-> **版本命名（v1 / v2）**：配置系统按代际分两版。
+> **版本命名（v1 / v2 / v3）**：配置系统分三层。
 > - **v1 = 旧版 JSON**：remote/main 时代的 `offsets.json`，以及导入 / extractor 输出路径；对应代码为
 >   `src/core/legacy/`（`convert_legacy_offsets`）与 Kotlin `LegacyProfileConverter`。
-> - **v2 = 新版 HOCON**：`assets/kernel_profiles/*.conf`，由 `AndroidProfileConfigController` 解析、
->   合并，再由 `NativeProfileDocument` 序列化为二进制交给 native。
+> - **v2 = HOCON 配置代际**：`assets/kernel_profiles/*.conf`，由 `AndroidProfileConfigController`
+>   解析、合并。
+> - **v3 = 当前 wire**：`NativeProfileDocument` 把解析结果序列化为 native 消费的二进制，携带组件 id
+>   （frontend / backend / middleware）、middleware 节与 options 节；native 仍兼容解码 v2 文档，
+>   但 v2 writer 已移除。
 >
-> native 二进制传输的 magic 为 `0x0D000721`，version 为 `2`。（符号/文件名保持现状，不在代码里改名。）
+> native 二进制传输的 magic 为 `0x0D000721`，version 为 `3`（version `2` 仍可解码兼容）。
 
 ## 0. 文件格式（HOCON）
 
@@ -252,7 +255,7 @@ cred
 2. 参数覆盖页与高级参数覆盖中，非法项以红色 label 显示（未填写同样标红）；已覆盖且合法项为黄色。
 3. `fallback.to` 必须是 `"none"` 或合法路由名；声明回退时，目标分支的必填字段同样会被校验（如回退 `select_stack` 需要 `fallback.route.select_stack.waiter_shift` 存在，0 合法）。
 4. 主页“执行”按钮在 `invalidPaths` 非空时置灰，点击提示修正红色项；即使绕过，`runExploit` 也会在启动 native 前拦截并写入日志。
-5. native 不再做几何校验，只解析 v2 二进制并按 route/字段执行。
+5. native 不再做几何校验，只解析 v3 二进制（v2 仍可解码）并按组件选择与字段执行。
 
 ## 7. 加载层次与存储位置
 

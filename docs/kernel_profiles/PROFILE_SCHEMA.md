@@ -10,16 +10,20 @@ native.
 > To add support for a new kernel, follow [README.md](README.md). For
 > execution-tuning defaults, see [defaults.md](defaults.md).
 
-> **Version naming (v1 / v2)**: the configuration system has two generations.
+> **Version naming (v1 / v2 / v3)**: the configuration system has three layers.
 > - **v1 = the old JSON format**: the `offsets.json` of the remote/main era and
 >   the import / extractor output path. Code: `src/core/legacy/`
 >   (`convert_legacy_offsets`) and Kotlin `LegacyProfileConverter`.
-> - **v2 = the current HOCON format**: `assets/kernel_profiles/*.conf`, parsed
->   and merged by `AndroidProfileConfigController`, then serialized by
->   `NativeProfileDocument` into the binary native consumes.
+> - **v2 = the HOCON profile generation**: `assets/kernel_profiles/*.conf`,
+>   parsed and merged by `AndroidProfileConfigController`.
+> - **v3 = the current wire**: `NativeProfileDocument` serializes the resolved
+>   profile into the binary native consumes, with component ids
+>   (frontend / backend / middleware), the middleware section and the options
+>   section. Native still decodes v2 documents for compatibility; the v2 writer
+>   is gone.
 >
-> The native binary transport uses magic `0x0D000721` and version `2`.
-> (Symbols and file names stay as they are; nothing was renamed in code.)
+> The native binary transport uses magic `0x0D000721` and version `3`
+> (version `2` is still decoded for compatibility).
 
 ## 0. File format (HOCON)
 
@@ -317,8 +321,8 @@ Validation happens in Kotlin (`AndroidProfileConfigController.validateProfileFie
 4. The home-screen **Run** button is disabled while `invalidPaths` is non-empty;
    tapping it asks you to fix the red entries. Even if you bypass that,
    `runExploit` blocks before starting native and writes to the log.
-5. Native no longer validates geometry; it only parses the v2 binary and
-   executes the route and fields it was given.
+5. Native no longer validates geometry; it only parses the v3 binary (v2 is
+   still decoded) and executes the component selection and fields it was given.
 
 ## 7. Load layers and storage locations
 
