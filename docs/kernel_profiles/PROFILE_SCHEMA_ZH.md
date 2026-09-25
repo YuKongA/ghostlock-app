@@ -22,7 +22,8 @@
 - 支持 `include "file.conf"`（相对同目录、可嵌套、防循环）：读取 assets 时由 `AssetConfigLoader` 展开；
   **导入**时优先用一并选中的文件展开，其次查包内共享文件，缺失会报错并要求重新选择；
 - 解析发生在 Kotlin 侧（`HoconSupport`），随后以类型化二进制结构体传给 native（见第 9 节）；
-- 应用内部存储与导出均为 HOCON（extractor 的 offsets.json 仍可导入，属 legacy 路径）。
+- 应用内部存储与导出均为 HOCON（`ghostlock-extract --format conf` 输出 flatten 自包含
+  profile，走常规导入路径；`--format json` 与旧 `offsets.json` 仍属 legacy 路径）。
 
 ## 1. 数据流总览
 
@@ -110,7 +111,7 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 | 顶层 `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
 | `kimage_text_base` / `btf_size` / `kallsyms` | 丢弃 |
 | 无 `route` 字段 | 按 6.x 几何推断：`compact_waiter` → tcp，否则 select |
-| 无 cred 模板 | 不臆造；由内置 profile 提供 |
+| 无 cred 模板 | 由转换器写入内置 6.x 常量（`credential-6x.conf` / `kernelsnitch-6x.conf`）；5.x 凭据字段仍由作者提供 |
 
 上游文档不可能选中 5.x 分支（`multicast_waiter` 仅作为本地格式的受保护推断保留）。
 
@@ -283,7 +284,7 @@ cred
   `u32 magic(0x0D000721) + u16 version(3) + u16 frontend_id + u16 backend_id + u16 middleware_id + u8 kernel_major + u8 fallback_route + u16 release_length + release + 68×u64 core 槽 + u16 middleware 条目数 + N×(u8 key_length + key + i64) + u16 option 条目数 + M×(u8 key_length + key + i64) 小端`；`middleware_id` 承载 route，`recommend_shizuku` 仅属 App、不再上 wire。字段顺序见 `NativeProfile.kt`（`flattenCommon` / per-route `RouteConfig`）与 `profile/binary.cpp`（`kCommonFields` / `kTcp/kSelect/kMulticastFields`），两侧必须同步修改。
 - 传输路径：direct 与 Shizuku 都把 profile 以 **stdin** 交给 native（`--ghostlock-app-call`），不再落盘 `active-profile.bin`、也不再使用 `--profile`。
 - native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给 `profile/binary.cpp::parse`。它不检测 magic 之外的格式，也没有 JSON 回退——v1 JSON 只在导入转换（`legacy/offsets_json.cpp`）里解析。
-- 内部存储与“导出配置”均为 HOCON（人类可读）；JSON 只出现在 v1 转换（旧 `offsets.json`、extractor 输出）。
+- 内部存储与“导出配置”均为 HOCON（人类可读）；JSON 只出现在 v1 转换（旧 `offsets.json`、`ghostlock-extract --format json`）。
 - 运行时路由与能力判断（`TargetProfile::route()`、`TargetProfile::supports()`、`route_capability`）全部基于解析后的 route。
 
 ## 10. 修改配置的检查清单

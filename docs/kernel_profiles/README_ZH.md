@@ -55,13 +55,16 @@ GhostLock 用 `uname -r` 精确匹配内核版本：匹配不到时应用会直�
 
    ```sh
    cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-   build/extract/release/ghostlock-extract boot.img --format json --out offsets.json
+   build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
    ```
 
-   工具支持 `boot.img`（可附带 `xbl_config.img`）、完整 OTA zip，或指向它们的
-   `http(s)` 链接。kallsyms 可以显式传 `--kallsyms`，省略时会尝试恢复镜像内嵌表。
-   `pselect_waiter_shift` 和 `off_slide_loggers_0_1` 由内置的 arm64 反汇编器推导。
-   联发科（MediaTek）镜像没有 `xbl_config.img`，通常也没有内嵌 BTF：
+   `--format conf` 输出 flatten（无 `include`、6.x 凭据/KernelSnitch 常量内联）的
+   自包含 profile，可直接作为新 profile 的底稿；5.x 的凭据引用修复与 multicast 几何
+   也会从镜像与 BTF 自动推导。工具支持 `boot.img`（可附带
+   `xbl_config.img`）、完整 OTA zip，或指向它们的 `http(s)` 链接。kallsyms 可以显式传
+   `--kallsyms`，省略时会尝试恢复镜像内嵌表。`pselect_waiter_shift` 和
+   `off_slide_loggers_0_1` 由内置的 arm64 反汇编器推导，route 由内核证据建议
+   （`--route` 覆盖）。联发科（MediaTek）镜像没有 `xbl_config.img`，通常也没有内嵌 BTF：
    物理加载地址由 kallsyms 的 `_text` 推导，必要时用 `--phys` 覆盖。
 
 5. **逐字段转录并自检。**

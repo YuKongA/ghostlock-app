@@ -270,8 +270,9 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 ### 6.3 Rust（`tools/extract_rs`）
 
 - `cargo fmt` + `cargo clippy` 作为默认门槛；错误处理用 `Result` + `?`，不 `unwrap` 可失败路径。
-- API 面向本仓库的 CLI 契约：`--format json`、退出码有语义（如 preflight 拒绝 `6`）；
-  新增 CLI 选项要更新 README 与 profile 适配文档。
+- API 面向本仓库的 CLI 契约：`--format conf`（flatten GLK profile，默认）与 `--format json`
+  （v1 导入）、退出码有语义（如 preflight 拒绝 `6`）；新增 CLI 选项要更新 README 与 profile
+  适配文档。
 
 ### 6.4 提交、分支与评审批次
 

@@ -94,6 +94,78 @@ fn probe(
     kallsyms::find_function(symbols, exact, fragments)
 }
 
+/// Probes the three route paths the same way for `--analysis` and the
+/// `--format conf` route suggestion; the only authority for the probe list.
+pub fn probe_paths(symbols: &BTreeMap<String, BTreeSet<u64>>) -> Vec<PathCandidate> {
+    let build_path =
+        |route: &'static str, probes: Vec<(&'static str, Option<u64>)>, require_all: bool| {
+            let available = if require_all {
+                probes.iter().all(|(_, address)| address.is_some())
+            } else {
+                probes.iter().any(|(_, address)| address.is_some())
+            };
+            PathCandidate {
+                route,
+                probes,
+                available,
+            }
+        };
+    let mut paths = vec![
+        build_path(
+            "select_stack",
+            vec![
+                (
+                    "core_sys_select",
+                    probe(symbols, "core_sys_select", &["core_sys_select"]),
+                ),
+                ("futex_wait", probe(symbols, "futex_wait", &["futex_wait"])),
+            ],
+            true,
+        ),
+        build_path(
+            "tcp_zerocopy",
+            vec![(
+                "tcp_zerocopy_receive",
+                probe(symbols, "tcp_zerocopy_receive", &["zerocopy_receive"]),
+            )],
+            false,
+        ),
+        build_path(
+            "multicast_waiter",
+            vec![
+                (
+                    "ip_mc_msfadd",
+                    probe(symbols, "ip_mc_msfadd", &["ip_mc_msfadd"]),
+                ),
+                (
+                    "ip_mc_source",
+                    probe(symbols, "ip_mc_source", &["ip_mc_source"]),
+                ),
+            ],
+            false,
+        ),
+    ];
+    paths.sort_by_key(|path| path.route);
+    paths
+}
+
+/// The route a profile should select from kernel evidence alone. Shared by the
+/// `--analysis` report and the `--format conf` default, so both agree.
+pub fn suggest_route(
+    pselect_derived: bool,
+    paths: &[PathCandidate],
+    release: Option<&str>,
+) -> (Option<&'static str>, Confidence, Vec<String>) {
+    let (major, minor) = parse_major_minor(release);
+    let family = kernel_struct_macro(release);
+    let available = |route: &str| {
+        paths
+            .iter()
+            .any(|path| path.route == route && path.available)
+    };
+    suggest(pselect_derived, &available, family, major, minor)
+}
+
 pub fn build(input: Input<'_>) -> Analysis {
     let (kernel_major, kernel_minor) = parse_major_minor(input.release);
     let family = kernel_struct_macro(input.release);
@@ -130,52 +202,10 @@ pub fn build(input: Input<'_>) -> Analysis {
         },
     };
 
-    let build_path = |route: &'static str,
-                      probes: Vec<(&'static str, Option<u64>)>,
-                      require_all: bool| {
-        let available = if require_all {
-            probes.iter().all(|(_, address)| address.is_some())
-        } else {
-            probes.iter().any(|(_, address)| address.is_some())
-        };
-        PathCandidate { route, probes, available }
-    };
-    let mut paths = vec![
-        build_path(
-            "select_stack",
-            vec![
-                ("core_sys_select", probe(input.symbols, "core_sys_select", &["core_sys_select"])),
-                ("futex_wait", probe(input.symbols, "futex_wait", &["futex_wait"])),
-            ],
-            true,
-        ),
-        build_path(
-            "tcp_zerocopy",
-            vec![(
-                "tcp_zerocopy_receive",
-                probe(input.symbols, "tcp_zerocopy_receive", &["zerocopy_receive"]),
-            )],
-            false,
-        ),
-        build_path(
-            "multicast_waiter",
-            vec![
-                ("ip_mc_msfadd", probe(input.symbols, "ip_mc_msfadd", &["ip_mc_msfadd"])),
-                ("ip_mc_source", probe(input.symbols, "ip_mc_source", &["ip_mc_source"])),
-            ],
-            false,
-        ),
-    ];
-    paths.sort_by_key(|path| path.route);
-
+    let paths = probe_paths(input.symbols);
     let pselect_derived = matches!(pselect, PselectOutcome::Derived(_));
-    let available = |route: &str| {
-        paths
-            .iter()
-            .any(|path| path.route == route && path.available)
-    };
     let (suggestion, suggestion_confidence, suggestion_reasons) =
-        suggest(pselect_derived, &available, family, kernel_major, kernel_minor);
+        suggest_route(pselect_derived, &paths, input.release);
 
     Analysis {
         release: input.release.map(str::to_string),

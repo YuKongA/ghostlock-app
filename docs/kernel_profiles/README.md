@@ -63,16 +63,21 @@ and doesn't repeat the field reference.
 
    ```sh
    cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-   build/extract/release/ghostlock-extract boot.img --format json --out offsets.json
+   build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
    ```
 
-   The tool accepts a `boot.img` (optionally with `xbl_config.img`), a complete
-   OTA zip, or an `http(s)` URL pointing at one. Pass `--kallsyms` to supply a
-   symbol table explicitly, or omit it to recover the image's embedded table.
-   `pselect_waiter_shift` and `off_slide_loggers_0_1` are derived by the built-in
-   arm64 disassembler. MediaTek images have no `xbl_config.img` and usually no
-   embedded BTF: the physical load address is derived from kallsyms `_text`, and
-   you can override it with `--phys`.
+   `--format conf` writes a flattened, self-contained profile (no `include`
+   lines, the 6.x credential/KernelSnitch constants inlined); it can seed the
+   new profile directly. On 5.x it also derives the credential reference
+   repair and the multicast geometry from the image and its BTF. The tool accepts a `boot.img` (optionally with
+   `xbl_config.img`), a complete OTA zip, or an `http(s)` URL pointing at one.
+   Pass `--kallsyms` to supply a symbol table explicitly, or omit it to recover
+   the image's embedded table. `pselect_waiter_shift` and
+   `off_slide_loggers_0_1` are derived by the built-in arm64 disassembler, and
+   the route is suggested from kernel evidence (`--route` overrides it).
+   MediaTek images have no `xbl_config.img` and usually no embedded BTF: the
+   physical load address is derived from kallsyms `_text`, and you can override
+   it with `--phys`.
 
 5. **Transcribe field by field, then check your work.**
    Field meanings and requirements are in the

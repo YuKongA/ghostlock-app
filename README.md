@@ -37,11 +37,11 @@ adb shell /data/local/tmp/ghostlock
 
 ```powershell
 cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
-build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format conf --out profile.conf
+build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-Use `--format json` for extractor output. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
+`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
 
 ### Preflight
 
@@ -66,28 +66,52 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 
 ### Importing offsets without rebuilding the app
 
-New kernels no longer need an app rebuild: tap **Import offsets.json** and
-pick the extractor's JSON (single object or array), or push it to
-`<GHOSTLOCK_HOME>/offsets.json` (default `/data/local/tmp`). At startup native
-matches the current `uname -r` against imported entries before rejecting the
-kernel. Imports merge across files; a release already stored prompts before
-overwrite.
+New kernels no longer need an app rebuild: tap **Import offsets.conf (HOCON)**
+and pick the extractor's flattened `.conf`, or use **Import offsets.json (v1)**
+for an older JSON report. A `.json` pushed to `<GHOSTLOCK_HOME>/offsets.json`
+(default `/data/local/tmp`) is still accepted by the native no-argument
+entrypoint. At startup native matches the current `uname -r` against imported
+entries before rejecting the kernel. Imports merge across files; a release
+already stored prompts before overwrite.
 
-The app can also generate the JSON itself — **Parse OTA link** (full OTA ZIP
+The app can also generate the profile itself — **Parse OTA link** (full OTA ZIP
 URL) and **Parse image** (`boot.img` + optional `xbl_config.img`) run the
-extractor in-process and write `offsets.json` into the app data dir on
-success.
+extractor in-process and write a flattened `.conf` into the app data dir on
+success:
 
-```json
-[
-  {
-    "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
-    "kernel_phys_load": 3347054592,
-    "pselect_waiter_shift": 0,
-    "symbols": { "off_init_task": 37801728, "off_init_cred": 37891184 },
-    "struct_fields": { "task_prio": 148, "task_cred": 2304 }
+```hocon
+# GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
+release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
+schema_version = 1
+kernel_major = 6
+recommend_shizuku = 0
+kernel_phys_load = 0xC7800000
+route {
+  select_stack {
+    waiter_shift = 0
   }
-]
+}
+fallback {
+  to = "none"
+}
+kernelsnitch {
+  collisions = 4
+}
+task_struct {
+  prio = 148
+  cred = 2304
+}
+cred {
+  caps_offset = 48
+  copy_size = 136
+  usage_value = 1
+  caps_count = 5
+  caps_value = -1
+}
+offset {
+  init_task = 37801728
+  init_cred = 37891184
+}
 ```
 
 ## Credits & License

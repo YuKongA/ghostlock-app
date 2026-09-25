@@ -9,7 +9,7 @@ use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
 use ghostlock_extract::derive::{
-    PSELECT_ROUTE_NFDS, derive_nf_logger_registration, derive_pselect_layout,
+    PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
     ensure_rtmutex_43499_unpatched, relative_symbols,
 };
 use ghostlock_extract::error::{ExtractError, Result};
@@ -25,7 +25,7 @@ use ghostlock_extract::symbols::{kernel_struct_macro, resolve_structs, resolve_s
 #[command(
     name = "ghostlock-extract",
     about = "Extract GhostLock kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
-    after_help = "examples:\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
+    after_help = "examples:\n  ghostlock-extract boot.img --format conf --out profile.conf\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
 )]
 struct Cli {
     /// boot.img, raw arm64 Image, gzip Image, payload.bin, OTA ZIP, or http(s) OTA URL
@@ -43,9 +43,12 @@ struct Cli {
     /// device name used in the --format c output header
     #[arg(long, default_value = "target")]
     name: String,
-    /// output format: text (JSON), json, or c
-    #[arg(long, value_parser = ["text", "json", "c"], default_value = "text")]
+    /// output format: text (JSON), json, c, or conf (flattened GLK profile HOCON)
+    #[arg(long, value_parser = ["text", "json", "c", "conf"], default_value = "text")]
     format: String,
+    /// route written to --format conf; defaults to the analysis suggestion
+    #[arg(long, value_parser = ["tcp_zerocopy", "select_stack", "multicast_waiter"])]
+    route: Option<String>,
     /// treat every unresolved symbol as optional (emit 0)
     #[arg(long)]
     allow_missing: bool,
@@ -317,6 +320,10 @@ fn run(cli: &Cli) -> Result<i32> {
         boot.mtk_lz4 || boot.mtk_gzip,
     );
 
+    if cli.route.is_some() && cli.format != "conf" {
+        eprintln!("warning: --route only affects --format conf; ignoring");
+    }
+
     if cli.analysis {
         let analysis_report = analysis::build(analysis::Input {
             release: release.as_deref(),
@@ -457,7 +464,7 @@ fn run(cli: &Cli) -> Result<i32> {
             .iter()
             .map(|(key, value)| (key.clone(), value.map(|v| v as u64)))
             .collect();
-        report::require_fields(&struct_fields_u64, &BTreeSet::new())?;
+        report::require_fields(&struct_fields_u64, &report::optional_struct_fields())?;
     }
     if let Some(mm_size) = struct_offsets.get("struct_mm_struct").copied().flatten() {
         eprintln!(
@@ -478,6 +485,102 @@ fn run(cli: &Cli) -> Result<i32> {
             kernel_phys_load,
             pselect_shift,
         )
+    } else if cli.format == "conf" {
+        let release_text = release
+            .as_deref()
+            .ok_or_else(|| ExtractError::new("--format conf requires a kernel release string"))?;
+        let major = release_text
+            .split('.')
+            .next()
+            .and_then(|part| part.parse::<u32>().ok());
+        if major != Some(5) && major != Some(6) {
+            return Err(ExtractError::new(format!(
+                "--format conf needs a 5.x/6.x release, got {release_text}"
+            )));
+        }
+        let route = match cli.route.as_deref() {
+            Some(route) => Some(route.to_string()),
+            None => {
+                let paths = analysis::probe_paths(&symbols);
+                let pselect_derived = derived.contains_key("pselect_waiter_shift_value");
+                let (suggested, _, _) =
+                    analysis::suggest_route(pselect_derived, &paths, release.as_deref());
+                suggested.map(str::to_string)
+            }
+        };
+        let geometry = route
+            .as_deref()
+            .map(|route| {
+                report::conf_route_geometry(
+                    route,
+                    release_text,
+                    Some(pselect_shift),
+                    &struct_offsets,
+                )
+            })
+            .unwrap_or_default();
+        match route.as_deref() {
+            Some(route) if geometry.is_empty() => {
+                eprintln!(
+                    "warning: route {route} has no derivable geometry; the built-in profile \
+                     must supply its layout"
+                );
+            }
+            None => eprintln!(
+                "warning: no route could be inferred; pass --route to select one; the written \
+                 profile has no route block"
+            ),
+            Some(_) => {}
+        }
+        if route.as_deref() == Some("multicast_waiter")
+            && !geometry.iter().any(|(key, _)| *key == "task_offset")
+        {
+            eprintln!(
+                "warning: rt_mutex_waiter task/lock offsets are missing from BTF; the multicast \
+                 geometry is partial"
+            );
+        }
+        let cred: Vec<(String, String)> = if major == Some(5) {
+            let derived_cred = btf.as_ref().and_then(|btf| {
+                let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;
+                let size = btf.size("cred")?;
+                match derive_cred_5x(btf, &boot.kernel, init_cred_off) {
+                    Ok(cred) => Some(report::conf_cred_5x(&cred, size)),
+                    Err(err) => {
+                        eprintln!("warning: 5.x credential derivation failed: {err}");
+                        None
+                    }
+                }
+            });
+            match derived_cred {
+                Some(cred) => cred,
+                None => {
+                    eprintln!(
+                        "warning: credential template omitted; the built-in profile must \
+                         supply it"
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            report::conf_cred_6x()
+        };
+        let extra_offsets = report::ConfExtraOffsets {
+            empty_zero_page: kallsyms::unique(&symbols, "empty_zero_page")
+                .and_then(|value| value.checked_sub(base)),
+            mcast_fake_bss: kallsyms::unique(&symbols, "z_pagemap_global")
+                .and_then(|value| value.checked_sub(base)),
+        };
+        report::render_conf(&report::ConfInputs {
+            release: release_text,
+            phys: kernel_phys_load,
+            symbols: &symbol_offsets,
+            structs: &struct_offsets,
+            route: route.as_deref(),
+            route_geometry: &geometry,
+            cred: &cred,
+            extra_offsets: &extra_offsets,
+        })
     } else {
         let report_value = report::build_report(
             release.as_deref(),

@@ -31,6 +31,63 @@ class UserProfileStoreTest {
         ]
     """.trimIndent()
 
+    /** A flattened `--format conf` extractor output: no includes, cred inlined. */
+    private val extractorConf = """
+        # GhostLock kernel profile: 6.6.89-test (HOCON, self-contained).
+        release = "6.6.89-test"
+        schema_version = 1
+        kernel_major = 6
+        recommend_shizuku = 0
+        kernel_phys_load = 0xA8000000
+        route {
+          select_stack {
+            waiter_shift = -2
+          }
+        }
+        fallback {
+          to = "none"
+        }
+        kernelsnitch {
+          collisions = 4
+          mm_struct_sz = 1024
+        }
+        task_struct {
+          prio = 132
+        }
+        cred {
+          caps_offset = 48
+          copy_size = 136
+          usage_value = 1
+          caps_count = 5
+          caps_value = -1
+        }
+        offset {
+          init_task = 34595456
+          security_hook_heads = 0
+        }
+    """.trimIndent()
+
+    @Test
+    fun `flattened extractor conf round trips without conversion`() {
+        withStore { store ->
+            store.save("6.6.89-test.conf", extractorConf)
+
+            val entry = requireNotNull(store.loadEntry("6.6.89-test", "6.6.89-test.conf"))
+            val exported = requireNotNull(store.exportHocon("6.6.89-test.conf"))
+            val exportedEntry = HoconSupport.parseValue(exported).asValueMap()!!
+
+            assertFalse("export must not re-introduce includes", exported.contains("include"))
+            assertEquals(entry, exportedEntry)
+            val cred = exportedEntry["cred"].asValueMap()!!
+            assertEquals(48L, (cred["caps_offset"] as Number).toLong())
+            assertEquals(-1L, (cred["caps_value"] as Number).toLong())
+            assertEquals(
+                4L,
+                (exportedEntry["kernelsnitch"].asValueMap()!!["collisions"] as Number).toLong(),
+            )
+        }
+    }
+
     @Test
     fun `documents are stored byte for byte and converted on read`() {
         withStore { store ->

@@ -36,8 +36,10 @@ parsed as **HOCON**:
   bundled shared files, failing loudly when missing so you can reselect;
 - parsing happens on the Kotlin side (`HoconSupport`), then the typed binary
   struct crosses to native (section 9);
-- the app stores and exports HOCON; the extractor's `offsets.json` can still be
-  imported through the v1 path.
+- the app stores and exports HOCON; `ghostlock-extract --format conf` emits a
+  flattened, self-contained profile (credential/KernelSnitch constants inlined,
+  no `include` lines) that imports through the normal path, while `--format
+  json` and old `offsets.json` files still import through the v1 path.
 
 ## 1. Data flow
 
@@ -142,7 +144,7 @@ metadata). `LegacyProfileConverter` normalizes them on load (idempotently):
 | top-level `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
 | `kimage_text_base` / `btf_size` / `kallsyms` | dropped |
 | no `route` field | inferred from 6.x geometry: `compact_waiter` → tcp, otherwise select |
-| no cred template | never invented; the built-in profile provides it |
+| no cred template | the converter seeds the bundled 6.x constants (`credential-6x.conf` / `kernelsnitch-6x.conf`); 5.x credential fields stay author-supplied |
 
 An upstream document can never select the 5.x branch (`multicast_waiter` is
 retained only as a guarded inference of the local format).
@@ -372,7 +374,8 @@ text. v2 documents are still decoded for compatibility.
   the magic and has no JSON fallback — v1 JSON is parsed only during import
   conversion (`legacy/offsets_json.cpp`).
 - Internal storage and "export config" are HOCON (human-readable); JSON only
-  appears in the v1 conversion (old `offsets.json`, extractor output).
+  appears in the v1 conversion (old `offsets.json`, `ghostlock-extract
+  --format json`).
 - Runtime route and capability decisions (`TargetProfile::route()`,
   `TargetProfile::supports()`, `route_capability`) are all based on the decoded
   route.

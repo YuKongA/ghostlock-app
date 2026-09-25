@@ -37,11 +37,11 @@ adb shell /data/local/tmp/ghostlock
 
 ```powershell
 cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format json --out offsets.json
-build/extract/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
+build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format conf --out profile.conf
+build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-提取结果使用 `--format json` 输出；新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
+提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile，route 由 `--analysis` 证据建议、`--route` 可覆盖；5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
 
 ### 前置检查
 
@@ -64,20 +64,43 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 
 ### 外部导入偏移，免去重新构建应用
 
-新增内核不再需要重新打包 App：点击 **导入 offsets.json** 选择提取器产出的 JSON（单对象或数组均可），或推送到 `<GHOSTLOCK_HOME>/offsets.json`（默认 `/data/local/tmp`）。启动时 native 会先按当前 `uname -r` 匹配导入条目，匹配成功则顶部状态变为受支持。多次导入会合并；新文件含已存内核时，App 会先询问是否覆盖。
+新增内核不再需要重新打包 App：点击 **导入 offsets.conf (HOCON)** 选择提取器产出的扁平 `.conf`；旧 JSON 报告仍可通过 **导入 offsets.json (v1)** 导入，推送到 `<GHOSTLOCK_HOME>/offsets.json`（默认 `/data/local/tmp`）的 `.json` 也仍由 native 无参数入口接受。启动时 native 会先按当前 `uname -r` 匹配导入条目，匹配成功则顶部状态变为受支持。多次导入会合并；新文件含已存内核时，App 会先询问是否覆盖。
 
-App 也能直接生成这份 JSON：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，成功后把 `offsets.json` 写入 App 数据目录。
+App 也能直接生成这份 profile：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，成功后把一份扁平 `.conf` 写入 App 数据目录：
 
-```json
-[
-  {
-    "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
-    "kernel_phys_load": 3347054592,
-    "pselect_waiter_shift": 0,
-    "symbols": { "off_init_task": 37801728, "off_init_cred": 37891184 },
-    "struct_fields": { "task_prio": 148, "task_cred": 2304 }
+```hocon
+# GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
+release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
+schema_version = 1
+kernel_major = 6
+recommend_shizuku = 0
+kernel_phys_load = 0xC7800000
+route {
+  select_stack {
+    waiter_shift = 0
   }
-]
+}
+fallback {
+  to = "none"
+}
+kernelsnitch {
+  collisions = 4
+}
+task_struct {
+  prio = 148
+  cred = 2304
+}
+cred {
+  caps_offset = 48
+  copy_size = 136
+  usage_value = 1
+  caps_count = 5
+  caps_value = -1
+}
+offset {
+  init_task = 37801728
+  init_cred = 37891184
+}
 ```
 
 ## 来源与许可证

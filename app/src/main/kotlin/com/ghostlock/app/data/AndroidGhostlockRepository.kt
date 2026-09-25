@@ -322,7 +322,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     add("--xbl-config")
                     add(effectiveXblPath)
                 }
-                addAll(listOf("--format", "json", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
+                /* --format conf: the extractor output is already the flattened
+                 * profile (no includes, credential template inlined), so the
+                 * stored document needs no legacy conversion. */
+                addAll(listOf("--format", "conf", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
             }
             onLog("<k> extract: $effectiveInput")
             val code = runProcess(
@@ -761,7 +764,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val stem = releases.firstOrNull().orEmpty()
             .replace(Regex("[^A-Za-z0-9._-]"), "_")
             .ifEmpty { "parsed" }
-        return "$stem.json"
+        return "$stem.conf"
     }
 
     private fun freshReleases(entries: List<*>): List<String> =
