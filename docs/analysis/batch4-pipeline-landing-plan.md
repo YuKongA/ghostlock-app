@@ -80,16 +80,37 @@ flowchart LR
 | 反汇编 | `python3 tools/cmp_disasm.py <上一片候选> build/native/ghostlock` | P1/P3：8 函数 PASS；P2：差异逐条复核 |
 | 真机 | 冷机、固定 CPU 对、multicast、KernelSU 未加载 | P2 后复跑并归档 |
 
-## 待确认
+## 实现记录（2026-09-24）
 
-1. 按 **P1 → P2 → P3** 推进（每片独立验证）？
-2. P2 的符号策略：`ExploitProcedure` 完全退场（`cmp_disasm` 加 backend 候选）还是保留薄壳？
-3. P2 接受 `do_one_write` 经复核的形状/符号变化 + 新真机门禁？
+- 用户确认：**`ExploitProcedure` 完全退场**（接受符号变化），P1–P3 **合并为一次落地**（P2 的终态决定 P1
+  接线形状，避免引入即弃的中间形态）。
+- 候选 `bd35b7012151e4b445e6e1e16da4660c6186ede5918f769e0a36a8e1e449a34d`；
+  基线 `fed6b7cf…`（由提交 `722230a` worktree 重建复现，另存 `/private/tmp/ghostlock-b4-pipeline-base`）。
+- 结构：
+  - `session/stage_types.hpp`（新）：`StageResult` / `VictimRound` / `VictimChain` /
+    `write_stage_verify_fn`，自退役过程类迁出，backend/frontend/pipeline 共用；
+  - `session/backend/cve_2026_43499_backend.*`：`Cve2026_43499Policy::run`（setup → W1 → W2/W3 编排）+
+    `attack_write` / `run_setup`；W1b scratch repair 与 retry/park 为单元内 helper；
+  - `session/root_child_frontend.*`：`RootChildPolicy::run`（handoff 步骤）；
+  - `route/pipeline.hpp`：`run_pipeline<F,B,M>`（backend steps → frontend handoff，`pipeline_supported`
+    编译期约束）；
+  - `route/orchestrator.hpp`：`run_orchestrated_pipeline` 以嵌套 `switch` 枚举 catalog 组合并直接调
+    `run_pipeline<...>`；未编目组合返回 -1；
+  - `main.cpp` 直接调用；`exploit_procedure.{hpp,cpp}`、三个空 procedure 绑定与 `make_*_procedure`
+    工厂删除；`route_api.hpp` 去掉工厂声明；
+  - `tools/cmp_disasm.py`：`do_one_write` 增加 backend 符号候选（含 session 参数签名）。
+- `cmp_disasm`（基线 `fed6b7cf…`）：7 函数 IDENTICAL；`do_one_write` **138 → 132**：
+  - 20 个调用目标逐一相同（printf / clock_gettime / fflush / fsync / prepare_good_kernel_page /
+    run_main_route_threads / puts 等）；
+  - 6 条差来自 this→参数化（序言/尾声去掉 this 保存与 `mov x8/x1` 搬运，栈 0x50→0x40）与 LTO
+    参数重排（函数为 local symbol，所有调用点一致）；`request` 字段访问与 `in_direct_map`
+    分支结构一致。
+- 本地验证：`native-host-tests` 全通过；NDK `-B` 全量零告警；`lint-tidy` 0 findings。
+- 真机门禁：**待跑**（候选 `bd35b701…`；multicast、固定 CPU 对、冷机、KernelSU 未加载）。
 
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。
-- [ ] 用户确认范围与 P2 符号策略。
-- [ ] P1（预期不改 8 函数）。
-- [ ] P2（触 8 函数，复核 + 门禁）。
-- [ ] P3（调用点收口）。
+- [x] 用户确认：`ExploitProcedure` 完全退场，P1–P3 合并落地。
+- [x] P1–P3 实现 + 本地验证（host/构建/lint/`cmp_disasm` 逐条复核）。
+- [ ] 真机门禁（用户执行）→ 归档并收尾 Batch 4 的 pipeline 落地。

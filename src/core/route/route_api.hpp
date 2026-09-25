@@ -2,7 +2,6 @@
 #define GHOSTLOCK_ROUTE_API_HPP
 
 #include <cstdint>
-#include <memory>
 #include "support/status.hpp"
 #include <sys/select.h>
 
@@ -10,7 +9,6 @@
 #include "route/route_status.h"
 
 namespace ghostlock::session {
-    class ExploitProcedure;
     struct ExploitSession;
 } // namespace ghostlock::session
 
@@ -32,16 +30,6 @@ namespace ghostlock::route {
     Status kernel5_resident_write(uintptr_t target, uintptr_t value);
 
     void kernel5_resident_stop(void);
-
-    /* Per-route procedure factories (implemented in the route's own file). */
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_select_procedure(
-        ghostlock::session::ExploitSession &session);
-
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_tcp_procedure(
-        ghostlock::session::ExploitSession &session);
-
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_multicast_procedure(
-        ghostlock::session::ExploitSession &session);
 } // namespace ghostlock::route
 
 #endif

@@ -10,6 +10,7 @@
  * ghostlock::session::victim, ghostlock::race and ghostlock::session::stages.
  */
 
+#include "common.h"
 #include "legacy/legacy_entrypoint_starter.h"
 #include "profile/entry.h"
 #include "support/fatal_error.hpp"
@@ -91,13 +92,16 @@ int main(int argc, char **argv) {
                      frontend.c_str(), backend.c_str(), middleware.c_str());
             throw FatalError{};
         }
-        auto procedure = runtime::make_orchestrated_procedure(session, selection);
-        if (!procedure) {
+        /* Batch 4 (D1=B): the orchestrator dispatches the catalogued pipeline
+         * directly (backend steps + frontend handoff); a negative result means
+         * no catalogued combination owns the selection. */
+        const int32_t code = runtime::run_orchestrated_pipeline(
+            session, selection, decoded, dump_dir, force_attack);
+        if (code < 0) {
             pr_error("orchestrator rejected the component selection\n");
             throw FatalError{};
         }
-        procedure->set_force_attack(force_attack);
-        return procedure->run(decoded, dump_dir);
+        return code;
     } catch (const FatalError &) {
         return 1;
     }

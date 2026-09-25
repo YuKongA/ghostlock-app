@@ -1,7 +1,7 @@
 /*
  * GhostLock — middleware route entry (Batch 4, D1=B slice 3b).
  *
- * Single route write, moved out of ExploitProcedure::attack_write; behavior is
+ * Single route write, moved out of the retired procedure; behavior is
  * unchanged (the route policy and race still run inside run_main_route_threads).
  */
 

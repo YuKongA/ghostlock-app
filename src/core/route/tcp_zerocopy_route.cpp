@@ -389,24 +389,4 @@ namespace ghostlock::route::tcp_zerocopy {
 } // namespace ghostlock::route::tcp_zerocopy
 #endif // __ANDROID__
 
-#if defined(__ANDROID__)
-#include "route/exploit_procedure.hpp"
 
-namespace {
-    /* The TCP behavior lives in TcpPolicy (route_policy.hpp, capability
-     * w3_exact_target); this binding keeps the per-route factory shape until
-     * the pipeline composition slice replaces it. */
-    class TcpProcedure final : public ghostlock::session::ExploitProcedure {
-    public:
-        explicit TcpProcedure(ghostlock::session::ExploitSession &session)
-            : ExploitProcedure(session) {}
-    };
-} // namespace
-
-namespace ghostlock::route {
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_tcp_procedure(
-        ghostlock::session::ExploitSession &session) {
-        return std::make_unique<TcpProcedure>(session);
-    }
-} // namespace ghostlock::route
-#endif // __ANDROID__

@@ -9,6 +9,7 @@
 
 #include "attack/ops.hpp"
 #include "route/route_api.hpp"
+#include "session/exploit_session.hpp"
 #include "session/handoff_probe.hpp"
 
 #include <unistd.h>
@@ -17,6 +18,10 @@
 #include <cstdint>
 
 namespace ghostlock::session::frontend {
+    StageResult RootChildPolicy::run(ExploitSession &session, const VictimChain &chain) {
+        return run_root_child_handoff(session, chain);
+    }
+
     /* Stage: settle, root-shell handoff and KernelSU late-load. */
     StageResult run_root_child_handoff(ExploitSession &session, const VictimChain &chain) {
         const int32_t child_alive = chain.child_alive;

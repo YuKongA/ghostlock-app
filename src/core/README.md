@@ -2,8 +2,9 @@
 
 - `route/`: route selection, status, per-route contexts and their route-level
   drivers (`multicast_waiter_route.cpp` / `tcp_zerocopy_route.cpp` /
-  `select_stack_route.cpp`), the pluggable `route_policy.hpp` registry and the
-  shared `ExploitProcedure` base.
+  `select_stack_route.cpp`), the pluggable `route_policy.hpp` registry, the
+  middleware route hooks (`middleware_hooks.*`) and the pipeline/orchestrator
+  (`pipeline.hpp` / `orchestrator.hpp`).
 - `attack/`: profile installation and the shared attack helpers.
 - `race/`: the PI race owner and its waiter/owner/consumer threads.
 - `memory/`: address resolution, heap/page state and route-neutral payload encoding.

@@ -344,7 +344,6 @@ namespace ghostlock::route {
 
 #if defined(__ANDROID__)
 #include "race/threads.hpp"
-#include "route/exploit_procedure.hpp"
 #include "route/route_policy.hpp"
 
 namespace ghostlock::route {
@@ -427,25 +426,6 @@ namespace ghostlock::route {
             return false;
         }
         return true;
-    }
-} // namespace ghostlock::route
-
-namespace {
-    /* The middleware behavior lives in MulticastPolicy (route_policy.hpp);
-     * this binding keeps the per-route factory shape until the pipeline
-     * composition slice replaces it. */
-    class MulticastProcedure final : public ghostlock::session::ExploitProcedure {
-    public:
-        explicit MulticastProcedure(ghostlock::session::ExploitSession &session)
-            : ExploitProcedure(session) {}
-
-    };
-} // namespace
-
-namespace ghostlock::route {
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_multicast_procedure(
-        ghostlock::session::ExploitSession &session) {
-        return std::make_unique<MulticastProcedure>(session);
     }
 } // namespace ghostlock::route
 #endif // __ANDROID__

@@ -523,21 +523,4 @@ namespace ghostlock::route {
 } // namespace ghostlock::route
 #endif // __ANDROID__
 
-#if defined(__ANDROID__)
-#include "route/exploit_procedure.hpp"
 
-namespace {
-    class SelectProcedure final : public ghostlock::session::ExploitProcedure {
-    public:
-        explicit SelectProcedure(ghostlock::session::ExploitSession &session)
-            : ExploitProcedure(session) {}
-    };
-} // namespace
-
-namespace ghostlock::route {
-    std::unique_ptr<ghostlock::session::ExploitProcedure> make_select_procedure(
-        ghostlock::session::ExploitSession &session) {
-        return std::make_unique<SelectProcedure>(session);
-    }
-} // namespace ghostlock::route
-#endif // __ANDROID__

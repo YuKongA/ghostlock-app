@@ -13,8 +13,8 @@ namespace ghostlock::runtime::frontend {
      * by component_catalog::frontend_available(), and the static_asserts below
      * fail to compile if this declaration ever drifts from it.
      *
-     * The root_child frontend is realized by the existing ExploitProcedure /
-     * victim / handoff code and is NOT split out by this batch.
+     * The root_child frontend is realized by session/root_child_frontend.*
+     * (handoff step) with the victim/handoff code below.
      *
      * Responsibility split (do not merge):
      *   - child lifecycle boundary: session/victim_context.* + victim_process.*
