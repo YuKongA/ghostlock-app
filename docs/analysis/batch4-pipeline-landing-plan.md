@@ -271,4 +271,4 @@ flowchart LR
 - [x] 真机门禁 PASS（`B4-pipeline-20260924-multicast-direct-pass.md`）。
 - [x] 核心攻击代码审查（所有权追踪 / UAF / 终结点顺序 / 反汇编核对；权威判归专用安全测试 AI）。
 - [x] 架构审查 P1–P4 契约修正实现（P1=B backend 模板化；P2 组合权威；P3 `RunResult`；P4 契约注释）。
-- [ ] P1-B 真机门禁（候选 `cacc2c6c…`）→ 归档并收尾。
+- [x] P1-B 真机门禁 PASS（`B4-review-p1b-20260924-multicast-direct-pass.md`，候选 `cacc2c6c…`）。
