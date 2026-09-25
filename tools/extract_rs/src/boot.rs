@@ -163,6 +163,25 @@ mod tests {
     }
 
     #[test]
+    fn release_skips_format_strings() {
+        let mut kernel = Vec::new();
+        kernel.extend_from_slice(b"....Linux version %s (build)....\0");
+        kernel.extend_from_slice(
+            b"....Linux version 5.15.189-android13-8-00016-g51bba4309aac-ab14546557 (abuild@host) ....\0",
+        );
+        assert_eq!(
+            extract_release(&kernel).as_deref(),
+            Some("5.15.189-android13-8-00016-g51bba4309aac-ab14546557")
+        );
+    }
+
+    #[test]
+    fn release_none_without_banner() {
+        assert!(extract_release(b"no banner here").is_none());
+        assert!(extract_release(b"Linux version (none)").is_none());
+    }
+
+    #[test]
     fn lz4_legacy_chunked_stream() {
         // Regression: legacy frames must be decoded block by block; a single
         // pass used to break at the 8 MiB block boundary.
@@ -251,14 +270,7 @@ impl BootImage {
     }
 
     pub fn release(&self) -> Option<String> {
-        let needle = b"Linux version ";
-        let pos = find_subslice(&self.kernel, needle)?;
-        let rest = &self.kernel[pos + needle.len()..];
-        let end = rest
-            .iter()
-            .position(|b| *b == 0 || *b == b'\r' || *b == b'\n' || *b == b' ')
-            .unwrap_or(rest.len());
-        Some(String::from_utf8_lossy(&rest[..end]).into_owned())
+        extract_release(&self.kernel)
     }
 
     /// Locate the embedded BTF blob (largest valid candidate), returning its
@@ -351,6 +363,44 @@ impl BootImage {
     }
 }
 
+/// Extract the UTS release from the kernel image.
+///
+/// The first `Linux version ` hit is not necessarily the banner: some kernels
+/// carry format strings (`Linux version %s ...`) before the real
+/// `linux_banner` data, so candidates that are not shaped like
+/// `major.minor.patch[-...]` are skipped.
+fn extract_release(kernel: &[u8]) -> Option<String> {
+    let needle = b"Linux version ";
+    let mut cursor = 0usize;
+    while let Some(pos) = find_subslice_from(kernel, needle, cursor) {
+        cursor = pos + needle.len();
+        let rest = &kernel[pos + needle.len()..];
+        let end = rest
+            .iter()
+            .position(|b| *b == 0 || *b == b'\r' || *b == b'\n' || *b == b' ')
+            .unwrap_or(rest.len());
+        let candidate = String::from_utf8_lossy(&rest[..end]).into_owned();
+        if is_release_shape(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn is_release_shape(candidate: &str) -> bool {
+    if candidate.contains('%') {
+        return false;
+    }
+    let mut parts = candidate.split('.');
+    let major = parts.next().and_then(|part| part.parse::<u32>().ok());
+    let minor = parts.next().and_then(|part| part.parse::<u32>().ok());
+    let patch = parts
+        .next()
+        .and_then(|part| part.split('-').next())
+        .and_then(|part| part.parse::<u32>().ok());
+    major.is_some() && minor.is_some() && patch.is_some()
+}
+
 pub fn align(value: usize, size: usize) -> usize {
     (value + size - 1) & !(size - 1)
 }
@@ -387,3 +437,5 @@ pub fn find_subslice_in(haystack: &[u8], needle: &[u8], from: usize, to: usize) 
     }
     (from..=to - needle.len()).find(|&i| &haystack[i..i + needle.len()] == needle)
 }
+
+

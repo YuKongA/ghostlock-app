@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod boot;
 pub mod btf;
 pub mod derive;

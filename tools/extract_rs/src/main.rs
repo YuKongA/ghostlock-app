@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 
+use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
 use ghostlock_extract::derive::{
@@ -54,6 +55,10 @@ struct Cli {
     /// skip disassembly-based derivation (pselect/loggers heuristics)
     #[arg(long)]
     no_disasm: bool,
+    /// analyse the kernel (family, waiter layout, primitive, route candidates)
+    /// and print a report instead of offsets
+    #[arg(long)]
+    analysis: bool,
     /// working directory for payload extraction and temp files; defaults to
     /// the system temp dir (pass an app-writable dir when running on Android)
     #[arg(long)]
@@ -202,17 +207,27 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let boot = BootImage::load(&boot_path)?;
+    let mut phys_source = "unset";
     let mut kernel_phys_load = if let Some(xbl) = &xbl_path {
         match recover_kernel_phys_load(xbl) {
-            Ok(phys) => Some(phys),
+            Ok(phys) => {
+                phys_source = "xbl_config FDT";
+                Some(phys)
+            }
             Err(err) => {
                 eprintln!(
                     "warning: xbl_config FDT parse failed: {err}; proceeding with boot-only analysis"
                 );
+                if cli.phys.is_some() {
+                    phys_source = "--phys";
+                }
                 cli.phys
             }
         }
     } else {
+        if cli.phys.is_some() {
+            phys_source = "--phys";
+        }
         cli.phys
     };
 
@@ -229,15 +244,19 @@ fn run(cli: &Cli) -> Result<i32> {
         return Err(ExtractError::new("_text/_head is not unique in kallsyms"));
     };
     let (rel_symbols, sorted_offsets) = relative_symbols(&symbols, base);
-    // stop early when remove_waiter() is fixed.
-    match ensure_rtmutex_43499_unpatched(&boot.kernel, &rel_symbols, &sorted_offsets) {
+    // stop early when remove_waiter() is fixed; --analysis reports it instead.
+    let primitive = ensure_rtmutex_43499_unpatched(&boot.kernel, &rel_symbols, &sorted_offsets);
+    match &primitive {
         Ok(remove_waiter) => eprintln!(
             "info: (CVE-2026-43499 primitive present \
              (remove_waiter@{remove_waiter:#x} still uses current)"
         ),
         Err(err) => {
-            eprintln!("error: {err}");
-            return Ok(6);
+            if !cli.analysis {
+                eprintln!("error: {err}");
+                return Ok(6);
+            }
+            eprintln!("warning: analysis continues: {err}");
         }
     }
 
@@ -275,6 +294,7 @@ fn run(cli: &Cli) -> Result<i32> {
                          kernel_phys_load=0x{derived:x} (DRAM base)"
                     );
                     kernel_phys_load = Some(derived);
+                    phys_source = "MediaTek DRAM base";
                 }
                 _ => {
                     eprintln!(
@@ -296,6 +316,28 @@ fn run(cli: &Cli) -> Result<i32> {
         kernel_phys_load,
         boot.mtk_lz4 || boot.mtk_gzip,
     );
+
+    if cli.analysis {
+        let analysis_report = analysis::build(analysis::Input {
+            release: release.as_deref(),
+            kernel: &boot.kernel,
+            symbols: &symbols,
+            rel_symbols: &rel_symbols,
+            sorted_offsets: &sorted_offsets,
+            btf: btf.as_ref(),
+            phys: kernel_phys_load,
+            phys_source,
+            primitive,
+            allow_disasm: !cli.no_disasm,
+        });
+        let text = analysis::render(&analysis_report);
+        if let Some(out) = &cli.out {
+            std::fs::write(out, text).map_err(|err| ExtractError::new(format!("{err}")))?;
+        } else {
+            print!("{text}");
+        }
+        return Ok(0);
+    }
 
     let mut symbol_offsets = resolve_symbols(&symbols, base);
 

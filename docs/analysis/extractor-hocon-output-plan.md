@@ -57,10 +57,29 @@ offset { init_task = ..., ... }
 | 测试 | Rust：`conf` 输出可被现有 schema 解析、键集与同类内置 profile 一致（golden）；App：parse→export 无转换路径 |
 | 兼容 | `--format json` / `LegacyProfileConverter` 保留（旧 extractor 导入） |
 
+## `--analysis`（已实现，2026-09-24）
+
+> 回答"开发者怎么知道用哪条 route"：先落地从内核证据推断的能力，`--route` 只作覆盖。
+
+`ghostlock-extract <image> --analysis` 输出只读报告（不写 offsets）：
+
+- **release 提取修复**：跳过 `Linux version %s` 之类的格式串，取真实 `major.minor.patch-…` banner
+  （A301SO 5.15 之前被命中为 `%s`，导致 family/major 全退化）。
+- 报告：release/kernel_major、family（verified/unverified）、`kernel_phys_load`（含来源
+  xbl / `--phys` / MTK）、`rt_mutex_waiter` 字段（`tree`/`tree_entry` …）+ size、mm_struct size、
+  primitive（`remove_waiter` 修补状态）、pselect 推导结果、三条路径的符号探测
+  （`core_sys_select`/`futex_wait`、`tcp_zerocopy_receive`、`ip_mc_msfadd`/`ip_mc_source`）、
+  **建议 route + 置信度 + 理由**。
+- 建议规则：pselect 可推导 → `select_stack`(high)；5.x 且 multicast 路径存在 → `multicast_waiter`(medium)；
+  6.1 且 tcp 路径存在 → `tcp_zerocopy`(medium)；否则 family 默认(low)；未知且无推导 → none。
+- 实测（A301SO 5.15 `boot.img`）：`suggested route multicast_waiter (medium)`——与内置 profile 一致。
+- 据此，开放问题 1 的 route 来源 = **分析建议 + `--route` 覆盖**；`--format conf` 写 route 分支时复用
+  同一判定（或读取 `--route`）。
+
 ## 开放问题（待确认）
 
-1. **route 来源**：`--route <name>` 显式传入（推荐）还是按 release 推断（5.x → multicast_waiter）？
-   extractor 本轮是否输出 route 几何（mcast/waiter_shift/compact_waiter），还是等 5.15 推导适配？
+1. **route 来源**：分析建议（`--analysis`，基于 waiter 布局/pselect/路径证据）+ `--route` 覆盖（推荐，
+   已实现建议部分）；route 几何输出等 5.15 推导适配后再接。
 2. **cred / kernelsnitch.collisions**：extractor 是否输出 `include "credential-6x.conf"`（6.x）或内联
    （5.x）？推荐：extractor 只输出它推导的字段，`cred`/`collisions` 由 App 合并内置资产。
 3. **顺序**：先落格式（本计划），再做 5.15 推导（family/slab/shift/mcast）？
