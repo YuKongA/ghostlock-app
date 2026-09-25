@@ -65,8 +65,39 @@
    `run<M>` 由 `Pipeline`/`MiddlewarePolicy` 的 `static_assert` 间接约束（推荐）；或 concept 自身在
    available 时要求 `run<M>` 签名。
 
+## 实现记录（2026-09-24）
+
+采用默认：空 schema（无字段）、Kotlin 只做一致性校验、concept 只校验 `kind`。
+
+- **现状修正（只读发现）**：wire v3 **没有 backend 私有 section**——backend 仅携带 id
+  （`binary.h` header 内 u16 `backend_id`，无 backend 字段区）。因此 64560 的「空 schema」= 无 section、
+  无字段；隔离约束记为：未来 64560 字段必须进入它自己的 section，且不得复用 43499 的槽。
+- **B5-1 backend contract**：新增 `route/backend_contract.hpp`——`BackendIdentity`（仅 `kind`）、
+  `BackendExecution<B, Middleware>`（可用 backend 的 `run<M>` 签名）、`BackendIdentityList` +
+  `for_each_backend`（声明注册表）、catalog 绑定 `static_assert`。执行 policy 不再携带 `available`
+  （`Cve2026_43499Policy` 与 frontend 两个 policy 一并删除），可用性唯一权威 = `component_catalog`。
+- **B5-2 占位模块**：`session/backend/cve_2026_64560_backend.hpp`（纯头）：`kind` +
+  `unavailable_reason`；`static_assert`（identity 满足、catalog 不可用、identity 与 policy 同 id）。
+- **B5-3 wire/schema**：解码不变（64560 id 接受、未知拒绝；组合拒绝已有测试）；新增
+  `backend_contract_test`（identity/execution/注册表/名称），`profile_binary_test` 已覆盖解码分层。
+- **B5-4 Kotlin**：D3 的 `ComponentKind.kt` + `ComponentKindTest` 已固定 wire 值与可用性且与 native
+  权威一致；本批无需改动。
+
+验证：
+
+| 项 | 结果 |
+|---|---|
+| host | 全通过（新增 `backend_contract_test`） |
+| NDK `-B` | 零告警；产物与上一候选**字节相同** `dcd5224d7be39c9a702bafeaee4fdcea8f45f7a3ece6fd505fceaf5023cd5cac`（Batch 5 无运行时影响） |
+| lint-tidy | 0 findings |
+| cmp_disasm | 8 函数全部 IDENTICAL（strict，RESULT: PASS） |
+| Kotlin | 未改（D3 已一致） |
+| 真机 | 不适用（不可用 backend 无执行路径，不 gate） |
+
+边界：本批只完成 contract 与占位；CVE-2026-64560 的执行实现、字段 schema 与设备 gate 留待其漏洞工作。
+
 ## 进度
 
 - [x] 现状只读梳理；产出本计划（2026-09-24）。
-- [ ] 用户确认目标与上述开放问题。
-- [ ] B5-1 contract、B5-2 占位模块、B5-3 隔离测试、B5-4 Kotlin/文档。
+- [x] 用户确认默认（空 schema / Kotlin 只校验 / concept 只 `kind`）。
+- [x] B5-1 contract、B5-2 占位模块、B5-3 测试、B5-4 Kotlin 一致性核对与文档。

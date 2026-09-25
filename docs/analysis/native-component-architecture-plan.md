@@ -432,12 +432,18 @@ component failure
 - [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。
 - [x] 真机门禁：以切片 3c 候选 `fed6b7cf…` 固定 CPU 对复跑 **PASS**（`B4-slice3c-20260924-multicast-direct-pass.md`）。历史 `B4-20260924-multicast-w3-pi-panic-fail.md` 的 PASS + panic 非确定来自 CPU 对不同、未受控对照，未归因源码；本批以固定 CPU 对复跑通过。
 
-### [ ] Batch 5：backend 扩展点及第二后端接入
+### [x] Batch 5：backend 扩展点及第二后端接入（契约与占位；64560 执行实现留待其漏洞工作）
 
-- [ ] `src/core/` 新增 backend catalog/contract 和 CVE-2026-64560 backend 模块；该模块以独立 profile schema 声明其核心配置需求。
-- [ ] `app` 增加对应 backend profile 类型与校验；native 只消费已校验的类型化配置。
-- [ ] 对兼容性、生命周期、清理、wire 解码和失败隔离做独立测试；设备支持状态必须由对应设备 gate 证据决定。
-- [ ] CVE-2026-43499 继续作为独立 backend；不得把其配置强行复用成 CVE-2026-64560 的默认值。
+- [x] `src/core/` 新增 backend contract（`route/backend_contract.hpp`：identity / execution / 注册表 +
+  catalog 绑定 `static_assert`）与 `session/backend/cve_2026_64560_backend.hpp` 占位（不可用、无字段、
+  无执行路径）。可用性唯一权威 = `component_catalog::backend_available`；执行 policy 不再携带
+  `available`（backend 与 frontend 一并清理）。wire v3 无 backend 私有 section，64560 的 schema 为空。
+- [x] Kotlin 侧 D3 的 `ComponentKind` + `ComponentKindTest` 已固定与 native 一致的 wire 值/可用性；
+  本批无需改（64560 无 profile 字段，不新增类型）。
+- [x] 独立测试：`backend_contract_test`（identity/execution/注册表）、`profile_binary_test`（64560 解码
+  接受、未知拒绝）、`component_catalog_test`（组合拒绝）；生命周期/清理不适用（无可执行路径）。
+  设备支持状态留待其执行实现后的 gate。
+- [x] CVE-2026-43499 保持独立 backend；64560 未来字段必须进入其自己的 section，不得复用 43499 的槽。
 
 ### [ ] Batch 6：文档收敛与旧格式退场评估
 
@@ -490,5 +496,5 @@ component failure
 - [~] Batch 3：部分完成（catalog + 薄 Orchestrator 骨架）。cmp_disasm PASS、host/NDK/lint 通过、冷机 multicast 真机 gate PASS。
 - [x] Batch 3.1：DTO→Orchestrator 接通（component_ids）、Session 逐字段所有权表、Batch 1/2 F1–F8 修复。（cmp_disasm PASS、host/Gradle/lint 通过；F9 typed 主链转 Batch 2.5）
 - [x] Batch 4：frontend 契约脚手架与 D1=B 实拆（切片 1/2/3a/3b/3c）；UMH 占位、拒绝分层、D3 模型预留；固定 CPU 对真机 gate PASS（候选 `fed6b7cf…`）。UI 按 D3 推迟。
-- [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
+- [x] Batch 5：backend contract 与 CVE-2026-64560 占位接入（执行实现/字段 schema/设备 gate 留待其漏洞工作）。
 - [ ] Batch 6：文档收敛和旧格式退场评估。

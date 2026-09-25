@@ -116,8 +116,8 @@ native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 
 NATIVE_HOST_TESTS := \
   profile_test payload_builder_test heap_context_test route_status_test \
-  route_catalog_test component_catalog_test route_policy_test route_lifecycle_test \
-  runtime_time_test \
+  route_catalog_test component_catalog_test backend_contract_test route_policy_test \
+  route_lifecycle_test runtime_time_test \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   multicast_waiter_route_test target_constants_test native_resource_test \
@@ -166,6 +166,14 @@ $(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/route
 $(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/support/time.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
+
+$(HOST_BUILD_DIR)/backend_contract_test: core/tests/backend_contract_test.cpp \
+  core/route/backend_contract.hpp core/route/backend_policy.hpp core/route/component_catalog.hpp \
+  core/route/route_policy.hpp core/route/frontend_contract.hpp core/session/stage_types.hpp \
+  core/session/backend/cve_2026_43499_backend.hpp core/session/backend/cve_2026_64560_backend.hpp \
+  core/session/exploit_session.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/backend_contract_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/profile/model.h
 	@mkdir -p $(HOST_BUILD_DIR)

@@ -3,6 +3,7 @@
 
 #include "memory/payload_builder.h"
 #include "profile/model.h"
+#include "route/backend_policy.hpp"
 #include "route/component_catalog.hpp"
 #include "session/exploit_session.hpp"
 #include "session/stage_types.hpp"
@@ -21,7 +22,6 @@ namespace ghostlock::session::backend {
      * for the catalogued middleware policies; callers only include this header. */
     struct Cve2026_43499Policy final {
         static constexpr runtime::BackendKind kind = runtime::BackendKind::Cve2026_43499;
-        static constexpr bool available = true;
 
         /* setup -> W1 -> W2/W3 chain. Continue hands the filled chain to the
          * frontend handoff step (see runtime::Pipeline::run). */
@@ -44,6 +44,12 @@ namespace ghostlock::session::backend {
                                                    const profile::kernel_offsets &decoded,
                                                    const char *debug_dir, bool force_attack);
     };
+
+    /* Availability is owned by component_catalog::backend_available(); the
+     * execution policy carries only the id. The declared identity and this
+     * policy must name the same backend. */
+    static_assert(Cve2026_43499Policy::kind == runtime::backend::Cve2026_43499::kind);
+    static_assert(runtime::backend_available(Cve2026_43499Policy::kind));
 } // namespace ghostlock::session::backend
 
 #endif
