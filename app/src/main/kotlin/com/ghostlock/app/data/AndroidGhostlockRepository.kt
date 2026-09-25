@@ -8,6 +8,8 @@ import android.provider.MediaStore
 import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.ghostlock.app.BuildConfig
+import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -441,6 +443,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             onLog(line)
         }
         return try {
+            /* First line of every archived run log: which app build produced it. */
+            archivedLog(
+                "<k> GhostLock ${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE} " +
+                    "build ${BuildInfo.BUILD_TIME_LABEL}",
+            )
             archivedLog("<k> debug log: ${archive.folderPath}/${archive.displayName}")
             archivedLog("<k> debug dump dir: ${archive.folderFile.absolutePath}")
             run(archivedLog, if (settings.kernelLogEnabled) archive.folderFile.absolutePath else null)
