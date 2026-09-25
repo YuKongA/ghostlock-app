@@ -393,13 +393,13 @@ namespace ghostlock::route::tcp_zerocopy {
 #include "route/exploit_procedure.hpp"
 
 namespace {
+    /* The TCP behavior lives in TcpPolicy (route_policy.hpp, capability
+     * w3_exact_target); this binding keeps the per-route factory shape until
+     * the pipeline composition slice replaces it. */
     class TcpProcedure final : public ghostlock::session::ExploitProcedure {
     public:
         explicit TcpProcedure(ghostlock::session::ExploitSession &session)
             : ExploitProcedure(session) {}
-
-    protected:
-        bool w3_exact_target() const override { return true; }
     };
 } // namespace
 

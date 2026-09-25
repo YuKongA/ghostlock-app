@@ -2,6 +2,7 @@
 #define GHOSTLOCK_ROUTE_POLICY_HPP
 
 #include <concepts>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <variant>
@@ -9,6 +10,11 @@
 #include "memory/payload_builder.h"
 #include "profile/model.h"
 #include "route/route_status.h"
+#include "support/status.hpp"
+
+namespace ghostlock::session {
+    struct ExploitSession;
+}
 
 namespace ghostlock::route {
     RouteStatus do_pselect_fake_lock_route(const memory::WriteRequest *request);
@@ -49,6 +55,31 @@ namespace ghostlock::route {
         static constexpr bool w3_exact_target = false;
         static constexpr bool tcp_payload_layout = false;
         static constexpr bool allows_fallback = false;
+
+        /* Middleware route hooks (Batch 4, D1=B slice 3c). Only the route steps
+         * with side effects are hooks; pure capability queries stay on the
+         * static-constexpr capabilities above and are read through
+         * route_capability(). The neutral defaults live here so every policy
+         * inherits the whole interface; a policy that needs different behavior
+         * redeclares the hook and the Android-only definition lives in that
+         * middleware's procedure unit. Backend steps call these through
+         * route/middleware_hooks.hpp (direct dispatch, no vtable). */
+        static std::optional<Status> resident_write(
+            session::ExploitSession &, const memory::WriteRequest &) noexcept {
+            return std::nullopt;
+        }
+
+        static bool w1_resident_repair(session::ExploitSession &) noexcept {
+            return true;
+        }
+
+        static bool w2_fast_repair_prebuild(session::ExploitSession &) noexcept {
+            return true;
+        }
+
+        static bool w2_fast_repair_activate(session::ExploitSession &) noexcept {
+            return true;
+        }
     };
 
     struct SelectPolicy : RoutePolicyDefaults {
@@ -90,7 +121,38 @@ namespace ghostlock::route {
         static RouteStatus run(const memory::WriteRequest *request) {
             return do_kernel5_fake_lock_route(request);
         }
+
+#if defined(__ANDROID__)
+        /* Route-hook overrides: declared here, defined in
+         * multicast_waiter_route.cpp (Android-only implementation). */
+        static std::optional<Status> resident_write(
+            session::ExploitSession &exploit_session,
+            const memory::WriteRequest &request) noexcept;
+
+        static bool w1_resident_repair(session::ExploitSession &exploit_session) noexcept;
+
+        static bool w2_fast_repair_prebuild(session::ExploitSession &exploit_session) noexcept;
+
+        static bool w2_fast_repair_activate(session::ExploitSession &exploit_session) noexcept;
+#endif
     };
+
+    /* Compile-time middleware contract (Batch 4, D1=B slice 3c): every route
+     * policy must expose the side-effecting route hooks. A policy inherits the
+     * neutral defaults; a signature drift or a missing hook fails here. */
+    template<class P>
+    concept MiddlewarePolicy = RoutePolicy<P> &&
+        requires(session::ExploitSession &exploit_session,
+                 const memory::WriteRequest &request) {
+            { P::resident_write(exploit_session, request) } -> std::same_as<std::optional<Status>>;
+            { P::w1_resident_repair(exploit_session) } -> std::same_as<bool>;
+            { P::w2_fast_repair_prebuild(exploit_session) } -> std::same_as<bool>;
+            { P::w2_fast_repair_activate(exploit_session) } -> std::same_as<bool>;
+        };
+
+    static_assert(MiddlewarePolicy<SelectPolicy>);
+    static_assert(MiddlewarePolicy<TcpPolicy>);
+    static_assert(MiddlewarePolicy<MulticastPolicy>);
 
     /* The single registry. Appending a policy here wires every generic loop
      * below (variant, selection, fallback lookup, capabilities). */

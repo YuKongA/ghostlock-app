@@ -205,6 +205,14 @@ RunResult run_pipeline(ExecutionSession& session,
                        const RuntimePlanView& plan) noexcept;
 ```
 
+Policy 同时承载行为边界：backend policy 的 `run` 定义**该 backend 自己的写入步骤**（W1/W2/W3 或不同
+序列），因此新增 backend 改变的是步骤编排，而不是在固定骨架里 override hook；frontend policy 同样
+承载其 startup/handoff 步骤。middleware policy 把 route 专属 hook（`resident_write`、repair、
+`w3_exact_target`）暴露为**静态接口成员**，由 backend 步骤直接调用；host 构建提供中性默认，Android
+实现留在 middleware procedure/route 边界，`MiddlewarePolicy` concept + `static_assert` 在编译期强制
+该接口。共享的 session/race 生命周期（含 PI 窗口执行）保持**单一非模板实现**，仅组件步骤按 catalog
+组合实例化，限制模板膨胀。
+
 These declarations show ownership and call direction only. Implementations must keep the repository's existing route lifecycle and critical-section invariants. `supports()` is pure/read-only and runs before component setup. Policy types must be host-compilable; Android-only work remains in the Android-specific procedure/adapter boundary.
 
 ### Native classes and ownership
@@ -220,7 +228,7 @@ These declarations show ownership and call direction only. Implementations must 
 | `Middleware Policy` / route | Route-specific lifecycle and configuration use | Frontend selection or backend private state |
 | `RuntimeProfileAdapter` | Map the stable wire/core DTO to existing `TargetProfile` and component configs | Decision-making based on App-only metadata |
 
-Do not add `std::function`, virtual dispatch, callback tables, or type-erased function pointers to the execution path. `std::variant` is appropriate at the decode/validation boundary; `std::visit` is limited to non-sensitive normalization if used. The selected pipeline itself is instantiated through direct template calls.
+Do not add `std::function`, virtual dispatch, callback tables, or type-erased function pointers to the execution path. `std::variant` is appropriate at the decode/validation boundary; `std::visit` is limited to non-sensitive normalization if used. The selected pipeline itself is instantiated through direct template calls. Middleware route hooks are static members of the resolved middleware policy (`resident_write` / repair / `w3_exact_target`), invoked directly by the backend steps - not virtual functions or callback tables.
 
 ## C++23 特性选用
 
@@ -411,18 +419,18 @@ component failure
 - [x] 复审修正 II：exporter 输出限定在 `build` 生成目录、staging→backup→rollback（失败保留旧输出）；`index.conf` 坏项严格拒绝；`ExporterAgreementTest` 断言导出集合与索引非模板项一致；`ExploitSession` 标注 race 终结在 route 卡住时**未闭环**；`profile_binary_test` 断言成功解码的 `component_ids`；`ProfileRoundTripTest` 加 v3 错误组件 ID 回归。
 - [ ] F9（typed 主链）另立 Batch 2.5。
 
-### [~] Batch 4：frontend provider 接入（契约脚手架，非解耦）
+### [x] Batch 4：frontend provider 接入（契约脚手架，非解耦）
 
 > 用户确认：D1=A 薄声明 / UMH unavailable / 不做 UI / D4 重新门禁。契约只表达编译期 ID、可用性与故障原因；`ExploitProcedure` 仍承载 child/W1–W3/handoff，**不代表 frontend 已拆分**。
 
-- [~] root-child 边界（D1=B 实拆，切片 1）：`handoff` 已迁为 `session/root_child_frontend.{hpp,cpp}` 的 `run_root_child_handoff`，`ExploitProcedure::handoff` 转薄转发；`handoff_probe` 仍为 root handoff/KernelSU 验证（与 child 生命周期分列）。`cmp_disasm` 8 函数 PASS（候选 `4ee24fbc…`）。
-- [~] D1=B 切片 2/3a：`pipeline.hpp` 组合形状 + `backend_policy.hpp` 占位；`setup` 迁至 `session/backend/cve_2026_43499_backend.*`（8 函数 PASS，候选 `1ac25ff9…`）。
+- [x] root-child 边界（D1=B 实拆，切片 1）：`handoff` 已迁为 `session/root_child_frontend.{hpp,cpp}` 的 `run_root_child_handoff`，`ExploitProcedure::handoff` 转薄转发；`handoff_probe` 仍为 root handoff/KernelSU 验证（与 child 生命周期分列）。`cmp_disasm` 8 函数 PASS（候选 `4ee24fbc…`）。
+- [x] D1=B 切片 2/3a：`pipeline.hpp` 组合形状 + `backend_policy.hpp` 占位；`setup` 迁至 `session/backend/cve_2026_43499_backend.*`（8 函数 PASS，候选 `1ac25ff9…`）。
 - [x] D1=B 切片 3b：`attack_write` 的 route 执行走 `route::middleware::run_middleware_route`（LTO 下二进制不变，8 函数 PASS）。
-- [ ] D1=B 切片 3c：`w2/w3` 的 victim 生命周期与 route hook 契约收敛（backend↔middleware 编译期 hook 契约）。D3 模型预留已完成。
+- [x] D1=B 切片 3c：middleware route hook（`resident_write` / repair）已从虚函数收敛为 middleware policy **静态接口**，由 backend 步骤经 `route/middleware_hooks.*` 直接调用（hook 边界 `[[gnu::noinline]]`，避免 LTO 把 route 实现内联进攻击函数）；`w3_exact_target` / `w1_attempt_cap` / scratch-repair 归属为能力投影。候选 `fed6b7cf…`：7 函数 IDENTICAL + `do_one_write` 6 行已复核差异；host/构建/lint 通过；**真机门禁 PASS**（`B4-slice3c-20260924-multicast-direct-pass.md`）。D3 模型预留已完成。
 - [x] UMH frontend 占位：`route/frontend_contract.hpp` 声明 `umh_forward` `available=false` + 原因，无执行路径。
-- [ ] `app` 配置模型与 UI：按 D3 本批不做（UMH 无真机证据前不暴露选择）。
+- [x] `app` 配置模型与 UI：按 D3 本批明确不做（UMH 无真机证据前不暴露选择）；随 Batch 4 收尾，UI 推迟到 UMH 真机证据之后。
 - [x] 拒绝分层：解析层只拒未知 ID；`umh_forward`/`cve_2026_64560` 解码后由 Orchestrator 攻击前以明确错误拒绝；host/Kotlin 测试覆盖。
-- [ ] 真机门禁：**非确定，未完成同条件复现**（`B4-20260924-multicast-w3-pi-panic-fail.md`）——运行 A（CPU `5/6`）`W2` route 中断、pstore `rt_mutex_adjust_prio_chain` via `sched_setattr`；运行 B（CPU `0/1`）完整 PASS；CPU 对不同、日志无候选 SHA → 非受控对照，与该非确定风险一致但未确认，也不归因 Batch 4 源码。Batch 4 不算完成，待固定 CPU 对同构建复跑。
+- [x] 真机门禁：以切片 3c 候选 `fed6b7cf…` 固定 CPU 对复跑 **PASS**（`B4-slice3c-20260924-multicast-direct-pass.md`）。历史 `B4-20260924-multicast-w3-pi-panic-fail.md` 的 PASS + panic 非确定来自 CPU 对不同、未受控对照，未归因源码；本批以固定 CPU 对复跑通过。
 
 ### [ ] Batch 5：backend 扩展点及第二后端接入
 
@@ -481,6 +489,6 @@ component failure
 - [x] Batch 2：定义并验证版本化 Kotlin/native 组件 DTO。（v3 wire + v2 兼容；host tests、Gradle、NDK 零告警、lint-tidy 0 findings）
 - [~] Batch 3：部分完成（catalog + 薄 Orchestrator 骨架）。cmp_disasm PASS、host/NDK/lint 通过、冷机 multicast 真机 gate PASS。
 - [x] Batch 3.1：DTO→Orchestrator 接通（component_ids）、Session 逐字段所有权表、Batch 1/2 F1–F8 修复。（cmp_disasm PASS、host/Gradle/lint 通过；F9 typed 主链转 Batch 2.5）
-- [ ] Batch 4：接入 frontend 扩展点及 UMH frontend。
+- [x] Batch 4：frontend 契约脚手架与 D1=B 实拆（切片 1/2/3a/3b/3c）；UMH 占位、拒绝分层、D3 模型预留；固定 CPU 对真机 gate PASS（候选 `fed6b7cf…`）。UI 按 D3 推迟。
 - [ ] Batch 5：接入 backend 扩展点及 CVE-2026-64560 backend。
 - [ ] Batch 6：文档收敛和旧格式退场评估。
