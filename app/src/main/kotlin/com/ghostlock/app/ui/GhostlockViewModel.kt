@@ -16,6 +16,7 @@ import com.ghostlock.app.domain.usecase.LoadKernelSnapshotUseCase
 import com.ghostlock.app.domain.usecase.ParseSourceUseCase
 import com.ghostlock.app.domain.usecase.PublishOffsetsUseCase
 import com.ghostlock.app.domain.usecase.ReadDocumentUseCase
+import com.ghostlock.app.boot.ExploitRunLock
 import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
 import kotlinx.coroutines.CancellationException
@@ -34,6 +35,9 @@ sealed interface GhostlockEffect {
     data class Toast(val resourceId: Int) : GhostlockEffect
     data class Clipboard(val text: String) : GhostlockEffect
     data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
+    data object ManualRunNotificationStart : GhostlockEffect
+    data class ManualRunNotificationProgress(val line: String) : GhostlockEffect
+    data class ManualRunNotificationFinish(val exitCode: Int) : GhostlockEffect
 }
 
 enum class DocumentRequest { ImportOffsets, BootImage, XblImage }
@@ -102,14 +106,26 @@ class GhostlockViewModel(
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
+        send(GhostlockEffect.ManualRunNotificationStart)
         appendLog("==== start ====")
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
+            var exitCode = -1
             try {
-                val code = runExploitUseCase(pair, ::appendLog)
-                appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
-                appendLog("exit code=$code")
+                exitCode = runExploitUseCase(pair) { line ->
+                    appendLog(line)
+                    send(GhostlockEffect.ManualRunNotificationProgress(line))
+                }
+                appendLog(if (exitCode == 0) {
+                    "result: exploit completed"
+                } else if (exitCode == ExploitRunLock.EXIT_BUSY) {
+                    "result: another run is already in progress"
+                } else {
+                    "result: exploit failed (exit code=$exitCode)"
+                })
+                appendLog("exit code=$exitCode")
             } finally {
+                send(GhostlockEffect.ManualRunNotificationFinish(exitCode))
                 endOperation()
                 send(GhostlockEffect.KeepScreenAwake(false))
             }

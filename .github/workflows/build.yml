@@ -4,11 +4,9 @@ on:
   push:
     paths-ignore:
       - "**.md"
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
 
 concurrency:
@@ -85,6 +83,7 @@ jobs:
           "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all ghostlock || true
 
       - name: Build Release APK
+        if: github.event_name != 'pull_request'
         run: |
           export ONDK_HOME="${{ runner.temp }}/ondk"
           export ANDROID_NDK_HOME="$ONDK_HOME"
@@ -95,12 +94,25 @@ jobs:
           export KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           ./gradlew :app:assembleRelease --no-daemon
 
+      - name: Build Debug APK (pull request)
+        if: github.event_name == 'pull_request'
+        run: |
+          export ONDK_HOME="${{ runner.temp }}/ondk"
+          export ANDROID_NDK_HOME="$ONDK_HOME"
+          export NDK_ROOT="$ONDK_HOME"
+          ./gradlew :app:assembleDebug --no-daemon
+
       - name: Strip Ghostlock binary
         run: |
           "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all ghostlock || true
 
       - name: Rename Release APK
+        if: github.event_name != 'pull_request'
         run: mv app/build/outputs/apk/release/*.apk GhostLock-release.apk
+
+      - name: Rename Debug APK
+        if: github.event_name == 'pull_request'
+        run: mv app/build/outputs/apk/debug/*.apk GhostLock-debug.apk
 
       - name: Prepare extractor binaries
         run: |
@@ -116,10 +128,19 @@ jobs:
           cp tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract tools/extract_rs/ghostlock-extract-android-arm64
 
       - name: Upload Release APK
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: GhostLock-release
           path: GhostLock-release.apk
+          archive: false
+
+      - name: Upload Debug APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: GhostLock-debug
+          path: GhostLock-debug.apk
           archive: false
 
       - name: Upload Ghostlock binary
