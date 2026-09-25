@@ -177,10 +177,78 @@ flowchart LR
   `B4-pipeline-20260924-multicast-direct-pass.md`）。
 - 对比工具：`tools/cmp_disasm.py`（8 函数）+ 扩展同名符号对比脚本（资源准备/回收函数）。
 
+## 架构审查意见与契约修正计划（2026-09-24）
+
+> 外部架构审查（基于 `1241ced` 快照；范围：pipeline / orchestrator / 组件目录 / 阶段类型）提出 5 项。
+> 逐条回应；**P1–P4 为实现前的契约修正（L 级）**，P5 为事实澄清。安全审查的最终权威归用户指定的
+> 专用安全测试 AI，本仓记录仅作证据输入。
+
+### P1 Middleware 未进入执行契约（成立）
+
+- 现状：`M` 只参与 `pipeline_supported`；执行分派经 profile 在 `route/middleware_hooks.*` 的 policy
+  direct chain 完成（3c）。单看该层契约确实无法证明不同 `M` 实例产生不同行为。
+- 修正（二选一）：
+  - **A（推荐，保留 3c 权威）**：`run_pipeline` 增加 `M::supported(profile)` 前置校验（`RoutePolicy`
+    concept 已要求 `supported`）；`M` 与 profile 不一致即拒绝。契约写明：`M` = 编译期选定的 middleware
+    policy，执行体是该 policy 的静态 hook（`middleware_hooks.*`），**profile 是运行时权威**；
+    orchestrator 的 selection→`M` 映射保证二者一致，校验作防御。
+  - **B（更强、改动大）**：backend 步骤模板化接收 `M`，hook 直接 `M::resident_write(...)`。代价：攻击
+    路径模板化 + 与 3c 的 policy 静态接口重复，需新 `cmp_disasm`/真机门禁。
+- 推荐 A；B 仅在认为“必须由类型直接决定行为”时才选。
+
+### P2 组合兼容性缺少单一权威（成立）
+
+- 修正：在 `component_catalog.hpp` 增加**编译期组合表** + `combination_supported(selection)` 作为唯一
+  权威；`selection_supported`（三维各自可用）保留为 ID 可用性预检；orchestrator 先查组合表再 `switch`
+  （分支只写 catalog 组合，default 拒绝）。新增 host test：枚举全部组合，断言组合表与 orchestrator
+  可派发集合一致（新增组件只改组合表 + 分派分支）。
+- 影响：`component_catalog.hpp`（公共数据结构）、`orchestrator.hpp`、host test；不改 8 函数。
+
+### P3 阶段终态语义（成立）
+
+- 修正：落地整体计划已定义的 `RunResult { RunCode code; RunStage stage; bool clean; }`（L183–187）：
+  `RunCode = Completed | DiagnosticStop | Failed | Rejected`。`run_pipeline` 返回 `RunResult`；`main`
+  映射 exit code。setup 的 `Done`（KernelSU 已 root 提前退出）映射 `DiagnosticStop`；frontend 的
+  `Failed`/其他 映射 `Failed`/`Completed`，消除“0/1 合并”。
+- 影响：`session/stage_types.hpp` 或新增 `session/run_result.hpp`、`pipeline.hpp`、`orchestrator.hpp`、
+  `main.cpp`；8 函数不在其内，仍按常规门禁。
+
+### P4 VictimChain 状态归属（成立）
+
+- 契约澄清（记录为主）：
+  - **权威**：`session.victim`（child pid、6 pipe）与 `session.parked_victim*`；
+  - `VictimChain` 是 backend 在 W2/W3 期间生成、**转移（transferred）给 frontend 的单线程阶段摘要**
+    （`ever_rooted` / `seccomp_ok` / `child_alive` 最近观测）；
+  - **一致性**：chain 在 backend run 返回前填充完毕，frontend run 同线程随后调用，期间无并发写；
+    handoff 的实际动作仍以 `session.victim` 的 fd/pid 为准（写 'G'、waitpid、release），chain 只做
+    路径选择 → 无过期不一致窗口。
+  - 约束：若未来引入并发/异步，chain 必须改为只读 session 的访问器。
+- 影响：`stage_types.hpp` / `root_child_frontend.hpp` 注释 + 本计划；不改代码逻辑。
+
+### P5 门禁状态（事实澄清）
+
+- 审查快照 `1241ced` 时门禁为待跑属实；其后已真机 **PASS** 并归档
+  `B4-pipeline-20260924-multicast-direct-pass.md`（提交 `4caa0e7`，候选 `bd35b701…`）。
+- 生命周期/字节码审查的最终判定由用户指定的专用安全测试 AI 复核；本仓记录（所有权追踪 / `cmp_disasm`
+  扩展对比）为其证据输入，不替代其结论。
+
+### 修正实现顺序（待认可）
+
+1. P2 组合权威（catalog + orchestrator + host test）——不改 8 函数；
+2. P3 `RunResult` 终态语义——不改 8 函数；
+3. P1-A `M::supported(profile)` 校验 + 契约文档——不改 8 函数；
+4. P4 契约注释 + 测试——不改 8 函数。
+
+### 待确认
+
+- P1 采用 **A**（推荐）还是 **B**？
+- P2–P4 按上述实现？
+
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。
 - [x] 用户确认：`ExploitProcedure` 完全退场，P1–P3 合并落地。
 - [x] P1–P3 实现 + 本地验证（host/构建/lint/`cmp_disasm` 逐条复核）。
 - [x] 真机门禁 PASS（`B4-pipeline-20260924-multicast-direct-pass.md`）。
-- [x] 核心攻击代码审查（所有权追踪 / UAF / 终结点顺序 / 反汇编核对）。
+- [x] 核心攻击代码审查（所有权追踪 / UAF / 终结点顺序 / 反汇编核对；权威判归专用安全测试 AI）。
+- [ ] 架构审查 P1–P4 契约修正（P1 待选 A/B，推荐 A；P2–P4 待认可）。
