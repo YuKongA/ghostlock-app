@@ -102,6 +102,17 @@ int32_t main(void) {
                {FrontendKind::RootChild, BackendKind::Cve2026_64560,
                 MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::None);
 
+    /* The target<->middleware mapping is one function; Pipeline and the
+     * orchestrator cases assert against it, so a mis-wired branch cannot pass. */
+    static_assert(runtime::dispatch_target_of(MiddlewareKind::SelectStack) ==
+                  runtime::DispatchTarget::SelectStack);
+    static_assert(runtime::dispatch_target_of(MiddlewareKind::TcpZerocopy) ==
+                  runtime::DispatchTarget::TcpZerocopy);
+    static_assert(runtime::dispatch_target_of(MiddlewareKind::MulticastWaiter) ==
+                  runtime::DispatchTarget::MulticastWaiter);
+    static_assert(runtime::dispatch_target_of(MiddlewareKind::Auto) ==
+                  runtime::DispatchTarget::None);
+
     /* Names are stable for diagnostics. */
     assert(runtime::frontend_name(FrontendKind::RootChild) == "root_child");
     assert(runtime::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");

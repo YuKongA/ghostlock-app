@@ -1,6 +1,7 @@
 #ifndef GHOSTLOCK_PIPELINE_HPP
 #define GHOSTLOCK_PIPELINE_HPP
 
+#include "route/backend_contract.hpp"
 #include "route/component_catalog.hpp"
 #include "route/route_policy.hpp"
 #include "session/exploit_session.hpp"
@@ -53,6 +54,13 @@ namespace ghostlock::runtime {
         static constexpr bool catalogued = pipeline_catalogued<Frontend, Backend, Middleware>();
         static_assert(catalogued, "pipeline must be a catalogued combination");
         static_assert(route::MiddlewarePolicy<Middleware>);
+        static_assert(BackendExecution<Backend, Middleware>,
+                      "backend must satisfy the execution contract for this middleware");
+
+        /* The dispatch target this middleware policy is wired to; the
+         * orchestrator asserts each case against it. */
+        static constexpr DispatchTarget target = dispatch_target_of(Middleware::kind);
+        static_assert(target != DispatchTarget::None);
 
         /* Backend steps first (Continue hands the chain on), then the frontend
          * handoff. Middleware hooks are direct static calls on the middleware

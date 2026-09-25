@@ -19,21 +19,30 @@ namespace ghostlock::runtime {
         session::ExploitSession &exploit_session, const ComponentSelection &selection,
         const profile::kernel_offsets &decoded, const char *debug_dir, bool force_attack) {
         switch (dispatch_target(selection)) {
-            case DispatchTarget::SelectStack:
-                return Pipeline<session::frontend::RootChildPolicy,
-                                session::backend::Cve2026_43499Policy,
-                                route::SelectPolicy>::run(
-                    exploit_session, decoded, debug_dir, force_attack);
-            case DispatchTarget::TcpZerocopy:
-                return Pipeline<session::frontend::RootChildPolicy,
-                                session::backend::Cve2026_43499Policy,
-                                route::TcpPolicy>::run(
-                    exploit_session, decoded, debug_dir, force_attack);
-            case DispatchTarget::MulticastWaiter:
-                return Pipeline<session::frontend::RootChildPolicy,
-                                session::backend::Cve2026_43499Policy,
-                                route::MulticastPolicy>::run(
-                    exploit_session, decoded, debug_dir, force_attack);
+            case DispatchTarget::SelectStack: {
+                using P = Pipeline<session::frontend::RootChildPolicy,
+                                   session::backend::Cve2026_43499Policy,
+                                   route::SelectPolicy>;
+                static_assert(P::target == DispatchTarget::SelectStack,
+                              "dispatch case must match the policy's target");
+                return P::run(exploit_session, decoded, debug_dir, force_attack);
+            }
+            case DispatchTarget::TcpZerocopy: {
+                using P = Pipeline<session::frontend::RootChildPolicy,
+                                   session::backend::Cve2026_43499Policy,
+                                   route::TcpPolicy>;
+                static_assert(P::target == DispatchTarget::TcpZerocopy,
+                              "dispatch case must match the policy's target");
+                return P::run(exploit_session, decoded, debug_dir, force_attack);
+            }
+            case DispatchTarget::MulticastWaiter: {
+                using P = Pipeline<session::frontend::RootChildPolicy,
+                                   session::backend::Cve2026_43499Policy,
+                                   route::MulticastPolicy>;
+                static_assert(P::target == DispatchTarget::MulticastWaiter,
+                              "dispatch case must match the policy's target");
+                return P::run(exploit_session, decoded, debug_dir, force_attack);
+            }
             case DispatchTarget::None:
                 return RunResult{.code = RunCode::Rejected};
         }

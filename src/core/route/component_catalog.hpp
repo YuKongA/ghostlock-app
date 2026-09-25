@@ -79,10 +79,13 @@ namespace ghostlock::runtime {
         MulticastWaiter,
     };
 
-    [[nodiscard]] constexpr DispatchTarget dispatch_target(
-        const ComponentSelection &selection) noexcept {
-        if (!combination_supported(selection)) return DispatchTarget::None;
-        switch (selection.middleware) {
+    /* The single target<->middleware mapping. Pipeline exposes it as
+     * Pipeline::target and every orchestrator case asserts its own target
+     * against that value, so a branch cannot be wired to another (still
+     * supported) middleware policy without failing to compile. */
+    [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
+        MiddlewareKind kind) noexcept {
+        switch (kind) {
             case MiddlewareKind::SelectStack:
                 return DispatchTarget::SelectStack;
             case MiddlewareKind::TcpZerocopy:
@@ -92,6 +95,12 @@ namespace ghostlock::runtime {
             default:
                 return DispatchTarget::None;
         }
+    }
+
+    [[nodiscard]] constexpr DispatchTarget dispatch_target(
+        const ComponentSelection &selection) noexcept {
+        if (!combination_supported(selection)) return DispatchTarget::None;
+        return dispatch_target_of(selection.middleware);
     }
 
     [[nodiscard]] constexpr std::string_view frontend_name(FrontendKind kind) noexcept {

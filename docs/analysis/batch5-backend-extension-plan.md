@@ -40,11 +40,12 @@
 
 | 文件 | 动作 |
 |---|---|
-| `src/core/route/backend_policy.hpp` | 新增 `BackendPolicy` concept + 注册表（可用性权威仍在 component_catalog） |
-| `src/core/session/backend/cve_2026_64560_backend.{hpp,cpp}` | 占位 policy（available=false + 拒绝原因） |
+| `src/core/route/backend_contract.hpp`（新） | `BackendIdentity` / `BackendExecution` concept + `BackendIdentityList` / `for_each_backend` 注册表（可用性权威仍在 `component_catalog`） |
+| `src/core/session/backend/cve_2026_64560_backend.hpp`（新，**纯头**） | 占位 policy（`kind` + `unavailable_reason` + identity/catalog 断言；**无 `available`**、无执行、无 `.cpp`） |
+| `src/core/route/backend_policy.hpp` | 不变（声明型 identity 已在此） |
 | `src/core/route/component_catalog.hpp` | 不变（组合表仍只认 43499） |
-| `src/core/tests/*` | contract / 拒绝 / 隔离测试 |
-| `app/**/ComponentKind.kt`（如需要） | 占位校验一致性 |
+| `src/core/tests/backend_contract_test.cpp`（新） | identity / execution / 注册表 / `Pipeline::target` 测试 |
+| `app/**/ComponentKind.kt` | D3 已一致，本批不改 |
 | `docs/**` | 本计划 + 整体计划同步 |
 
 ## 验证

@@ -287,6 +287,25 @@ flowchart LR
 host tests 全通过（含派发断言）；NDK `-B` 零告警；lint-tidy 0 findings；
 `cmp_disasm` **8 函数全部 IDENTICAL（strict，RESULT: PASS）**（本轮不触 backend/route 执行体）。
 
+## 第三轮架构审查回应与修正（2026-09-24）
+
+> 审查（基于 `eb37236`、`62b0759`）确认组合约束/状态语义/可用性重复已实质改善，剩 3 项；逐条修正。
+
+- **P2-1 派发目标 ↔ policy 对应**：`component_catalog` 抽出唯一映射
+  `dispatch_target_of(MiddlewareKind)`；`Pipeline<F,B,M>` 暴露 `target = dispatch_target_of(M::kind)`；
+  orchestrator 每个 case 以 `static_assert(P::target == DispatchTarget::X)` 锁定——把分支误接到另一个
+  仍受支持的 policy 会直接编译失败；host test 固定映射值。
+- **P2-2 `BackendExecution` 进入组合入口**：`pipeline.hpp` include `backend_contract.hpp`，
+  `Pipeline` 增加 `static_assert(BackendExecution<Backend, Middleware>)`；组合入口与独立 contract 测试
+  共用同一 concept（可用 backend 的 `run<M>` 精确返回 `StageResult`）。
+- **P2-3 Batch 5 计划表同步**：影响文件表已更新为纯头占位、`backend_contract.hpp` concept、
+  无 `available`（见该计划）。
+
+验证（候选 `dcd5224d7be39c9a702bafeaee4fdcea8f45f7a3ece6fd505fceaf5023cd5cac`，基线 `cacc2c6c…`）：
+host tests 全通过（含 `Pipeline::target`、映射与 `BackendExecution` 断言）；NDK `-B` 零告警且产物与
+上一候选**字节相同**（本轮回合无运行时影响）；lint-tidy 0 findings；`cmp_disasm` **8/8 IDENTICAL**
+（strict，RESULT: PASS）。
+
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。
