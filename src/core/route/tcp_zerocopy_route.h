@@ -31,7 +31,7 @@ namespace ghostlock::route::tcp_zerocopy {
 
         TcpZerocopyRoute &operator=(const TcpZerocopyRoute &) = delete;
 
-        TcpZerocopyRoute(TcpZerocopyRoute &&other) noexcept;
+        TcpZerocopyRoute(TcpZerocopyRoute &&) = delete;
 
         /* Acquire every userspace resource. No PI consumer or punch operation is
    * armed until this returns 0; every failure records step/error_number. */

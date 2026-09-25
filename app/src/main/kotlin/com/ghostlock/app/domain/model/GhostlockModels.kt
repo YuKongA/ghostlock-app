@@ -100,6 +100,7 @@ data class ProfileConfig(
             "execution.stages.w3_attempts",
             "execution.stages.w3_chain_rounds",
             "execution.race.route_wait_ms",
+            "execution.race.route_done_timeout_ms",
             "execution.heap.prepare_max_attempts",
         )
     }

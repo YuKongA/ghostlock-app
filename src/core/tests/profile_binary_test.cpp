@@ -101,6 +101,7 @@ int32_t main(void) {
     values.kernelsnitch_collisions = 4;
     values.mm_struct_sz = 0x400;
     values.execution.w1_attempts = 15;
+    values.execution.race_route_done_timeout_ms = 300000;
     values.execution.handoff_enforce_poll_interval_ms = 100;
     values.mcast_waiter_off = 96;
     values.mcast_buffer_size = 512;
@@ -126,6 +127,7 @@ int32_t main(void) {
     assert(parsed.kernelsnitch_collisions == 4);
     assert(parsed.mm_struct_sz == 0x400);
     assert(parsed.execution.w1_attempts == 15);
+    assert(parsed.execution.race_route_done_timeout_ms == 300000);
     assert(parsed.execution.handoff_enforce_poll_interval_ms == 100);
     assert(parsed.mcast_waiter_off == 96);
     assert(parsed.mcast_buffer_size == 512);
@@ -172,7 +174,8 @@ int32_t main(void) {
         const size_t options_bytes =
             2 + (1 + std::strlen("safe_mode") + 8) +
             (1 + std::strlen("selected_cpus.main") + 8) +
-            (1 + std::strlen("selected_cpus.consumer") + 8);
+            (1 + std::strlen("selected_cpus.consumer") + 8) +
+            (1 + std::strlen("race.route_done_timeout_ms") + 8);
         assert(static_cast<size_t>(size) ==
                16 + std::strlen(values.uname_r) + kCommonCount * 8 +
                middleware_bytes + options_bytes);

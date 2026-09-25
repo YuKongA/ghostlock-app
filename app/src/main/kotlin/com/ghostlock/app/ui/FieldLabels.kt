@@ -37,6 +37,7 @@ private fun fieldLabelRes(path: String): Int? = when (path) {
         "execution.heap.prepare_max_attempts" -> R.string.field_execution_heap_prepare_max_attempts
         "execution.heap.prepare_timeout_ms" -> R.string.field_execution_heap_prepare_timeout_ms
         "execution.race.route_wait_ms" -> R.string.field_execution_race_route_wait_ms
+        "execution.race.route_done_timeout_ms" -> R.string.field_execution_race_route_done_timeout_ms
         "execution.race.setup_settle_us" -> R.string.field_execution_race_setup_settle_us
         "execution.race.state_poll_interval_us" -> R.string.field_execution_race_state_poll_interval_us
         "execution.recommended_cpus.consumer" -> R.string.field_execution_recommended_cpus_consumer

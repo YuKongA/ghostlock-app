@@ -1,123 +1,152 @@
-# Race 生命周期/取消加固 计划（2026-09-23，只读调查 + 设计，评审修订 R1）
+# Race 生命周期与资源终结加固计划（2026-09-24，R2）
 
-> 面向 `B3`/`B4` 门禁中观测到的 PI 链 panic 与 `PiRace::run()` 无 deadline（`TODO(pi-timeout-01)`）。
-> **本文件只做调查与设计，不含实现**；实现属攻击关键路径（`cmp_disasm` + 真机门禁）。
-> 本版本按评审 R1 修订：修正基线提交、收敛因果措辞、拆分“超时/停止/disarm/回收”、
-> 删除 S2、S3 更名、列出安全检查点与不可中断点。
+> 面向核心攻击代码所有权审查发现的四个缺口：`route_done` 无 deadline、join 失败后仍结束借用、
+> 活跃 TCP route 可移动、multicast resident 部分启动没有可达终结点。实现属于攻击关键路径；
+> 本计划已获用户认可并完成实现；本页同时保留所有权与验证证据。
 
 ## 现状与基线
 
-- 分支 `very-not-stable-dev`；**设计提交 `bbae6d2`**（调查提交 `a9d9cbf`）；代码基线仍以攻击路径未变前的
-  Batch 3.1 候选为准。
-- 设备证据见 `docs/analysis/device-gates/B4-20260924-multicast-w3-pi-panic-fail.md`：运行 A（CPU `5/6`）
-  在 `W2` route 中断、pstore 有 PI 链 Oops；运行 B（CPU `0/1`）完整 PASS。**CPU 对不同、日志不含候选 SHA**
-  → 非受控对照；门禁记“非确定”。
-- 因果措辞（收敛）：`pstore` 栈明确经过 `__do_sys_sched_setattr`，**优先指向 `race/threads.cpp:134` 的
-  `sched_setattr_tid`**；`multicast_waiter_route.cpp:40` 的 `sched_setscheduler` 是另一条候选路径，
-  当前这份栈**没有直接证明**它是触发点。观测**与 PI 链风险一致**，但**根因及各因素贡献未确定**，
-  不表述为“固有风险”，也不断言“非本批引入”。
+- 分支 `very-not-stable-dev`，源码基线 `3bc924b1ea5d31ee75d5b6aa5e23795ff4405cb0`。
+- 改动前二进制 `build/native/ghostlock` SHA-256：
+  `dcd5224d7be39c9a702bafeaee4fdcea8f45f7a3ece6fd505fceaf5023cd5cac`。
+- 最近真机 PASS 基线 `/private/tmp/ghostlock-b4-review-p1b-candidate` SHA-256：
+  `cacc2c6c7530710d6ec0ec7085452389fe58f6dfd0a7e286948fdf517e5040f9`。
+- 当前候选对该真机基线的 8 个攻击函数全部 `IDENTICAL (strict)`；资源准备/回收函数
+  `MulticastWaiterRoute::{stop,write}`、`multicast_waiter_{adjust,stamp}`、
+  `MulticastPolicy::{resident_write,w1_resident_repair,w2_fast_repair_*}`、
+  `prepare_good_kernel_page`、`cleanup_page_prepare_state` 也严格一致。
+- 当前缺口：`PiRace::run()` 可永久等 `route_done`；`PiRace::join()` 忽略错误并清空 `request`；
+  `TcpZerocopyRoute` 可在 punch worker 借用旧 `this` 时移动；multicast resident 在部分启动失败时
+  仅依靠进程自然退出终结。
 
-## 关键：超时检测 / 线程停止 / PI 链 disarm / 状态回收 必须分开定义
+## 目标与约束
 
-“超时后返回”若不同时定义 stop、disarm 与回收，会把永久等待换成更危险的并发访问。四者分别定义：
+- 所有栈借用必须在栈对象终结前证明访问者已停止；无法证明时不得返回到调用者。
+- 把 deadline 检测、取消意图、PI disarm、资源回收分开；deadline 不代表已经安全清理。
+- 只在证明 PI 尚未 armed 时执行局部回滚；PI 已 armed 或状态不明时执行 fail-stop，不重试、不 fallback、
+  不展开栈、不运行析构器。
+- fail-stop 使用 `SYS_exit_group` 结束整个 native 进程，并在调用前写一条同步错误日志。它只保证用户态
+  不再继续访问，不宣称内核 PI 状态已安全回收；真机门禁负责验证该终态不会引入 panic。
+- 不改变漏洞原语、payload 布局、W1/W2/W3 目标、正常成功路径的 stop/disarm/destroy 顺序。
 
-1. **超时检测**：判定某个等待越界（deadline）。
-2. **取消意图**：通知参与者应当停止（标志），但**标志不等于可取消**。
-3. **PI 链 disarm**：清理由漏洞原语留下的 dangling PI 状态（multicast 的 ghost disarm 是**必做步骤**）。
-4. **状态回收**：仅在确认无访问者后清理/复用共享状态（futex、`request` 指针、session）。
+## 所有权与终结点设计
 
-## 根本限制与终态语义
+| 对象/资源 | owner | borrower | 新终结点 |
+|---|---|---|---|
+| 栈上 `WriteRequest` | backend 调用帧 | `PiRace::request`、waiter、route | 三个 race worker 全部 join 成功后返回；否则 fail-stop |
+| `PiRace` futex/atomics | `ExploitSession` | waiter/owner/consumer | clean join 后才允许 reset；deadline 或 join 失败 fail-stop |
+| TCP route `this` | waiter 栈帧 | punch worker | 删除 move；worker join 后 route 才可销毁 |
+| multicast resident | 进程级静态对象 | waiter/owner、PI consumer | pre-arm 失败回滚并 join；post-arm 失败 fail-stop；成功保持既有 disarm→join→close |
+| payload/reclaim state | `HeapContext` | route 与内核引用 | route clean 后才 cleanup；dirty/fail-stop 不回收 |
 
-- deadline 只表示“**检测到越界**”，**不证明**阻塞中的参与者已停止，也**不证明** PI 状态已解除或资源可回收。
-- 因此本设计**不承诺“有界结束”或“安全恢复”**；在获得证明之前，终态只能表达为**停止继续执行（halt）**，
-  不得宣称“清理完成 / 资源已回收 / 可安全复用”。
-- 终态升级条件（须**同时**满足才可改称“已清理 / 可重试”）：参与者已停止访问 PI/race 状态、`waiter` 的
-  ghost disarm 已执行、`futex`/`request`/session 已无访问者。任一未证，终态保持 **halt**。
+```mermaid
+stateDiagram-v2
+    [*] --> Empty
+    Empty --> WorkersStarted: workers created
+    WorkersStarted --> Empty: pre-arm failure / stop + join + close
+    WorkersStarted --> RequeueAttempted: CMP_REQUEUE_PI
+    RequeueAttempted --> Armed: expected PI result + waiter ready
+    RequeueAttempted --> FailStop: timeout / unknown result / worker not ready
+    Armed --> Disarmed: stop request + consumer idle + ghost disarm
+    Armed --> FailStop: deadline / disarm cannot be proven
+    Disarmed --> Destroyed: join waiter + join owner + close socket
+    Destroyed --> [*]
+    FailStop --> [*]: SYS_exit_group; no unwinding
+```
 
-## 安全检查点与不可中断点（逐个列出）
+## 改动清单
 
-| 参与者 | 等待/阻塞点 | 有界？ | 停止检查 | 退出前的必做动作 |
-|---|---|---|---|---|
-| `waiter_thread`（`threads.cpp:18`） | `owner_started` 自旋（27） | 否 | 无 | — |
-| | `FUTEX_WAIT_REQUEUE_PI`（48，timeout 来自 `race_route_wait_ms`） | 是 | 有（timed 返回） | 返回后**必须**执行 `controller.execute` 与 `route_needs_ghost_disarm` 的 ghost disarm（56-67），**不得**因取消跳过 disarm |
-| | `route_done.store` + `chain_futex UNLOCK_PI`（68-69） | — | — | 是 disarm 与上报的责任者 |
-| | `owner_chain_done` 等待（70） | 否 | 无 | — |
-| `owner_thread`（75） | `FUTEX_LOCK_PI(target_futex)`（78） | **否（无超时）** | 无 | 停止时若已持有则 `UNLOCK_PI`（84-88/93-94） |
-| | `waiter_ready` 自旋（81） | 否 | 有 `owner_stop` | — |
-| | `chain_futex LOCK_PI`（90） | 否 | 无 | — |
-| `consumer_thread`（98） | `sched_setattr_tid`（134） | 否（syscall） | 循环有 `consumer_stop`，但 syscall 内不可取消 | — |
-| `PiRace::run()`（171） | `route_done` 轮询（189） | **否** | 无 | 超时须定义终态（见 D3） |
-| `run_main_route_threads`（203） | `join()`（219） | 否 | 无 | 当前忽略 join 错误并无条件清 `request` |
+1. **Race deadline 与 join 合同**
+   - `profile/model.h`、`profile/binary.cpp`、`:profile-core` DTO/导出器及 HOCON defaults：在 GLK1 v3
+     options 增加具名 `race.route_done_timeout_ms`，不移动既有 68 个 common slots，也不复用 waiter futex
+     的 `race_route_wait_ms`；旧 v2/v3 缺键时 Native 使用 300000 ms 默认值。
+   - `race/pi_race.{h,cpp}`：`run()` 使用 monotonic deadline；`join()` 返回逐线程结果，仅当三者均已
+     join 才清空 `request`；`reset()` 拒绝覆盖仍 joinable 的 owner。
+   - `race/threads.cpp`：deadline、reset 拒绝或 join 失败统一进入 `fail_stop_dirty_race()`；正常路径仍为
+     `run → request_stop → join`。fail-stop 前不得清空 `request`、reset futex、释放 payload 或 route 资源。
+   - `support/`：增加最小的 `[[noreturn]]` fail-stop helper，只记录原因并调用 `SYS_exit_group`；不分配、
+     不加锁、不运行清理回调。
 
-结论：`waiter` 的 disarm 不可跳过；`owner`/`chain_futex` 的 PI futex 无超时，是**不可中断 syscall 边界**；
-`consumer` 可能停在 `sched_setattr`；`run` 的 `route_done`、`owner_chain_done` 无 deadline。
+2. **TCP route 禁止活跃移动**
+   - `route/tcp_zerocopy_route.{h,cpp}`：删除移动构造，使 route 地址从构造到 punch worker join 保持稳定。
+   - `tests/tcp_zerocopy_route_test.cpp`：断言不可复制且不可移动；保留 disarm/destroy、fd/mapping 清理测试。
 
-## 决策（评审 R1 结论）
+3. **Multicast resident 部分启动终态**
+   - `route/multicast_waiter_route.{h,cpp}`：用显式阶段记录 `Empty/WorkersStarted/RequeueAttempted/Armed/
+     Disarmed/Destroyed`。worker 在 pre-arm 自旋点检查 `stop_requested`。
+   - waiter/owner 创建失败及 requeue 前 ready timeout：设置 stop，按 waiter→owner 顺序 join，关闭已创建
+     socket，回到 `Empty`；waiter 的 pre-arm futex 带同一 monotonic deadline，避免 stop 信号恰好落在
+     检查与入睡之间时 join 永久阻塞。该路径允许向调用者返回失败。
+   - 从调用 `CMP_REQUEUE_PI` 起，任何未知结果、waiter-ready timeout 或 adjust 失败均 fail-stop；不调用
+     普通 `stop()`，防止把未知 PI 状态误报成 clean。
+   - 正常 `stop()` 仅接受 `Armed`，保持 `consumer_go=0 → consumer_inflight=0 → kernel_disarmed →
+     join waiter → join owner → close socket → release_resident_heap` 顺序；任一 join 失败时不关闭或标记 clean，
+     直接 fail-stop。
 
-- **D1 = profile 配置**：新增独立 `execution.race.route_done_timeout_ms`（不复用 `race_route_wait_ms`，
-  后者已控制 waiter 的 `FUTEX_WAIT_REQUEUE_PI`）。**deadline 覆盖范围须写明**：至少 `route_done`
-  轮询与 `owner_chain_done` 等待；`owner` 的无超时 PI futex 需单独策略（见 D2）。
-- **D2 = 分阶段取消意图，但不承诺 syscall 可取消**：
-  - 定义“取消意图”标志与检查点，而非直接“waiter stop flag”；
-  - `waiter`：timed futex 返回后仍**必须完成 route 与 ghost disarm**，再据此决定终态；
-  - `owner`/`chain_futex` 的 PI futex 无超时 → 属不可中断边界，须给出超时后的处置（不得假装可取消）；
-  - `consumer` 可能停在 `sched_setattr`，同样不可承诺即时取消。
-- **D3 = armed/状态不明一律 terminal-stop**：一旦 PI 窗口已进入或状态不明，**停止本次运行**——
-  不重试、不切 route、不继续 W2/W3 chain rounds。只有能证明“尚未 armed、参与者已 join、资源 clean”
-  的失败才可重试。**必须完整传播状态**：`run_main_route_threads()` 现把 `RouteStatus` 压成 `bool`
-  （`threads.cpp:203`、`return status.code == ROUTE_OK`），`retry_write_stage()` 在 `!routed` 时 `continue`
-  （`exploit_procedure.cpp:92-98`）；仅设置 `ROUTE_DIRTY_FAILURE` 不构成终止语义，需要让 dirty 一路上报并
-  在此停止。
-- **D4 = 不可变旧基线 + 同条件门禁**：使用**改动前已确认的精确二进制**（如 `/private/tmp/ghostlock-batch3-base`）
-  作 `cmp_disasm` 基线，不用新实现重置基线来消除差异。除 8 个攻击函数外，还须反汇编核对本批触碰的
-  **等待、join、disarm、reset 及资源准备/回收顺序**。真机固定同一 CPU 对与启动条件；**单次 PASS 不关闭风险**。
-- **D5 = 独立共享 race 生命周期批次**：该路径被所有 middleware 共享，不只属于某个 frontend/backend，
-  所有调用它的 middleware 都要覆盖验证。新组件不得据此宣称取消已验证；但不必把它们的接口设计塞进本批。
+4. **文档和测试**
+   - `session/exploit_session.hpp` 更新所有权表与终结点；本文件更新实际实现进度。
+   - 扩充 `pi_race_test`、`multicast_waiter_route_test`、profile binary/Kotlin agreement 测试，覆盖 deadline、
+     join 失败不结束借用、reset 拒绝、pre-arm 回滚、post-arm fail-stop 的可测试判定函数。
+   - fail-stop 的单元测试只测试“状态应进入 terminal”判定，不在测试进程中真正执行 `exit_group`。
 
-## 方案边界
+## 控制流差异
 
-- **主方案 S1（deadline 检测 + 取消意图 + halt 终态）**：由 profile 提供 deadline；超时置 dirty 并
-  **halt（停止继续执行）**。`waiter` 的 disarm 能否完成、`owner` 的不可中断 futex 如何处置、join 失败
-  如何上报，均须显式定义；**不得**在未证明“参与者已停止 / PI 已 disarm / 资源无访问者”时宣称清理完成。
-  只有“未 armed 且 clean（全部前提已证）”才允许重试。
-- ~~**S2（超时后 detach 并继续运行）——不批准**~~：`start_threads()` 把 `WriteRequest` 以**借用指针**交给
-  线程（`pi_race.cpp:37` 保存 `request`），调用者的 request 是栈对象；detach 后调用者可能返回/重试/复用
-  session，线程仍访问旧对象与 futex。且 `join()` 忽略 join 错误并无条件清空 `request`，**不能**作为
-  “线程已停”的证明。
-- **S3 = fail-stop / 紧急隔离（保留但更名）**：终止进程**不等于**证明内核 PI 状态已 disarm；它**不允许
-  恢复执行**，也**不承诺**内核状态安全回收。仅作为不可恢复情况的紧急终止，不作为生命周期证明。
+```mermaid
+flowchart TD
+    A[prepare/start workers] --> B{PI armed?}
+    B -- no; setup failed --> C[request stop]
+    C --> D[join all started workers]
+    D --> E[release pre-arm userspace resources]
+    E --> F[return retryable failure]
+    B -- yes or unknown --> G[execute route]
+    G --> H{route_done before deadline?}
+    H -- yes --> I[request stop]
+    I --> J{all joins succeeded?}
+    J -- yes --> K[clear request; return status]
+    J -- no --> L[fail-stop; no unwind]
+    H -- no --> L
+```
 
-## 影响文件（拟，待实现）
+正常成功路径的机器码与调用顺序是首要不变量。新增检查若使 8 个攻击函数不再 strict-identical，必须逐条
+注解差异；无法证明不影响 PI 窗口、ghost disarm 或资源终结顺序时停止本批并回滚。
 
-| 文件 | 动作 |
-|---|---|
-| `src/core/race/threads.cpp`（`PiRace::run`、`run_main_route_threads`、waiter/owner/consumer） | deadline、取消意图检查点、必做 disarm、join 错误处理、完整状态传播 |
-| `src/core/race/pi_race.{h,cpp}` | 取消/超时状态；清理顺序与 `reset()` 前置条件 |
-| `src/core/route/exploit_procedure.cpp`（`retry_write_stage`） | dirty/terminal 时不重试 |
-| `src/core/profile/model.h`、`binary.*` + Kotlin DTO | `execution.race.route_done_timeout_ms`（跨层契约） |
-| `src/core/session/exploit_session.hpp` | 实现后把 race 终结点标记为已闭环 |
-| `src/core/tests/**` | 生命周期/取消/clean 前无访问者；超时→terminal-stop 路径 |
+## 兼容性与回滚
 
-## 验证矩阵（拟）
+- GLK1 v3 options 只追加具名键；旧 v2/v3 文档由 Native getter 填入默认 timeout，legacy `offsets.json`
+  路径不增加字段，68 个 common slots 保持不变。
+- HOCON 未显式配置时使用内置 execution default；现有 profile 无需逐文件重复字段。
+- 回滚单位是本批全部源码、profile 契约和测试；不得只回滚 deadline 而保留新的终态判断。
+- 真机门禁失败时恢复到上述 `dcd5224d…` 二进制对应源码，不把失败候选设为新基线。
 
-| 项 | 命令 | 预期 |
+## 验证矩阵
+
+| 项 | 命令/条件 | 通过标准 |
 |---|---|---|
-| host 单测 | `make -C src native-host-tests` | 有界等待、超时→terminal-stop、clean 前无访问者、dirty 传播 |
-| 反汇编 | `cmp_disasm <改动前精确基线> build/native/ghostlock` | 8 函数 + 本批触碰的等待/join/disarm/reset/回收顺序经逐条核对 |
-| 构建/静态 | `make -B -C src ghostlock`、`lint-tidy` | 零告警、0 findings |
-| 真机门禁 | 固定 CPU 对、冷机、KernelSU 未加载、multicast、多次 | 每次结果归档；单次 PASS 不关闭风险 |
+| Native host | `make -C src native-host-tests` | 生命周期、字段一致性、pre-arm 回滚测试全部通过 |
+| Kotlin | `./gradlew :profile-core:test :app:testDebugUnitTest` | wire/default/export agreement 全部通过 |
+| NDK | `ANDROID_NDK_HOME=... make -B -C src ghostlock` | 零告警 |
+| Static | `ANDROID_NDK_HOME=... make -C src lint-tidy` | 0 findings |
+| 反汇编 | `python3 tools/cmp_disasm.py /private/tmp/ghostlock-b4-review-p1b-candidate build/native/ghostlock` | 8 函数逐条结论；另核对等待、join、reset、multicast start/stop、page prepare/cleanup |
+| 真机 | A301SO、5.15、multicast、direct、冷机、固定 CPU 对、KernelSU 未加载 | 正常链 PASS；重复运行无 panic；日志归档新 gate |
+| timeout fault gate | 仅在可控测试构建注入 route_done timeout | native 进程 fail-stop，不继续 W2/W3、不 fallback；设备无 panic才接受 |
 
 ## 明确保留
 
-- 漏洞原语算法、payload、W1/W2/W3、内存布局（除本专项明确批准）。
-- 不新增 PI 窗口内间接调用、不新增可变全局、不引入虚基类 provider。
+- 不修改 `kernelsnitch/`、legacy v1 路径、payload 编码、攻击目标地址和 stage 验证逻辑。
+- 不给 Select/TCP 宣称真机验证；它们仍只有 host 固定测试。
+- 不在 PI 窗口加入虚调用、`std::function`、锁、分配或异步日志。
+- 不把进程退出描述成内核 PI 状态已安全 disarm；只有真机证据支持的结论才写入 gate。
 
 ## 进度
 
-- [x] 只读调查 `PiRace` 生命周期、waiter/owner/consumer 等待点、`run_main_route_threads` 停止/join、
-      `retry_write_stage` 重试，确认 `TODO(pi-timeout-01)`。
-- [x] 产出设计（R1）：四者分离、检查点清单、D1–D5 结论、S2 删除、S3 更名。
-- [x] 依评审结论补充“根本限制与终态语义”：deadline ≠ 停止；未证明即 **halt**，不宣称“有界结束/安全恢复/
-  清理完成”。
-- [ ] 评审批准 R1 后的 D1–D5 收敛版本。
-- [ ] 实现（另批，按攻击关键路径门槛）。
+- [x] Rust 式所有权追踪及 UAF/终结点审查。
+- [x] 当前候选与最近真机 PASS 基线的攻击函数和资源闭包反汇编核对。
+- [x] R2 设计收敛：四项问题、状态图、fail-stop 边界、验证矩阵。
+- [x] 用户认可 R2（2026-09-24）。
+- [x] 分批实现：profile 合同 → race 终结 → TCP immovable → multicast pre-arm rollback。
+- [x] Host、Kotlin、NDK 零告警与 clang-tidy 通过。
+- [x] 反汇编完成逐函数注解：5 个目标仅 layout shift；3 个目标为本计划要求的 deadline/终结分支差异；
+  正常攻击、资源准备、disarm 与回收调用顺序保持不变。候选 SHA-256
+  `c98583ec481771926d3993d84b78c2c366d7b14e22a443e31d65c26d1e909dc2`。
+- [x] 真机正常门禁归档：`device-gates/RACE-LIFETIME-20260924-multicast-direct-pass.md`。
+- [ ] timeout fault gate（未注入；不据此声明 fail-stop 后内核 PI 状态安全）。

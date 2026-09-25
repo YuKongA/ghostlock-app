@@ -182,6 +182,8 @@ namespace ghostlock::binary_profile {
         constexpr std::string_view kOptionSafeMode = "safe_mode";
         constexpr std::string_view kOptionCpuMain = "selected_cpus.main";
         constexpr std::string_view kOptionCpuConsumer = "selected_cpus.consumer";
+        constexpr std::string_view kOptionRouteDoneTimeout =
+                "race.route_done_timeout_ms";
 
         int32_t parse_v2(std::string_view document, profile::kernel_offsets *out,
                          char *release_buf, size_t release_buf_cap, component_ids *ids) {
@@ -303,6 +305,8 @@ namespace ghostlock::binary_profile {
                     out->execution.recommended_main_cpu = static_cast<uint32_t>(raw);
                 } else if (key == kOptionCpuConsumer) {
                     out->execution.recommended_consumer_cpu = static_cast<uint32_t>(raw);
+                } else if (key == kOptionRouteDoneTimeout) {
+                    out->execution.race_route_done_timeout_ms = static_cast<uint32_t>(raw);
                 }
                 p += key_len + kW8;
             }
@@ -332,6 +336,7 @@ namespace ghostlock::binary_profile {
 
         const std::string_view options[] = {
             kOptionSafeMode, kOptionCpuMain, kOptionCpuConsumer,
+            kOptionRouteDoneTimeout,
         };
         size_t middleware_bytes = 2; /* count */
         for (size_t i = 0; i < rf->count; i++) {
@@ -387,6 +392,8 @@ namespace ghostlock::binary_profile {
                 value = in->execution.recommended_main_cpu;
             } else if (key == kOptionCpuConsumer) {
                 value = in->execution.recommended_consumer_cpu;
+            } else if (key == kOptionRouteDoneTimeout) {
+                value = in->execution.race_route_done_timeout_ms;
             }
             write_le(p, value, kW8);
             p += kW8;

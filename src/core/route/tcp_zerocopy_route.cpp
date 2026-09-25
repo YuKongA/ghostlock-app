@@ -12,8 +12,6 @@
 #include <sys/socket.h>
 #endif
 
-#include <utility>
-
 using namespace ghostlock;
 
 namespace ghostlock::route::tcp_zerocopy {
@@ -32,30 +30,6 @@ namespace ghostlock::route::tcp_zerocopy {
         punch_phase.store(0, std::memory_order_relaxed);
         punch_failed.store(0, std::memory_order_relaxed);
         status.code = ROUTE_RETRYABLE;
-    }
-
-    TcpZerocopyRoute::TcpZerocopyRoute(
-        TcpZerocopyRoute &&other) noexcept
-        : race(other.race),
-          request(other.request),
-          profile(other.profile),
-          client_fd(std::move(other.client_fd)),
-          server_fd(std::move(other.server_fd)),
-          punch_fd(std::move(other.punch_fd)),
-          mapping(std::move(other.mapping)),
-          mapping_length(other.mapping_length),
-          page_size(other.page_size),
-          punch_worker(std::move(other.punch_worker)),
-          route_won(other.route_won),
-          status(other.status) {
-        punch_go.store(other.punch_go.load(std::memory_order_relaxed),
-                       std::memory_order_relaxed);
-        punch_stop.store(other.punch_stop.load(std::memory_order_relaxed),
-                         std::memory_order_relaxed);
-        punch_phase.store(other.punch_phase.load(std::memory_order_relaxed),
-                          std::memory_order_relaxed);
-        punch_failed.store(other.punch_failed.load(std::memory_order_relaxed),
-                           std::memory_order_relaxed);
     }
 
     int32_t TcpZerocopyRoute::fail(
@@ -388,5 +362,4 @@ namespace ghostlock::route::tcp_zerocopy {
     }
 } // namespace ghostlock::route::tcp_zerocopy
 #endif // __ANDROID__
-
 

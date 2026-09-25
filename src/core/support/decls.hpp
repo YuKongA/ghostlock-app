@@ -15,6 +15,9 @@ namespace ghostlock::support {
 
     void log_sync(void);
 
+    [[noreturn]] void fail_stop_dirty_race(const char *reason,
+                                           int32_t error_number) noexcept;
+
     void disable_rseq_for_thread(void);
 
     void init_p0_profile(void);

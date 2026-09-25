@@ -16,7 +16,7 @@ using namespace ghostlock;
 
 int32_t main(void) {
     ghostlock::race::PiRace race;
-    race.reset(0, 0, 1);
+    assert(race.reset(0, 0, 1));
     ghostlock::memory::WriteRequest request{};
     ghostlock::profile::SelectStackLayout layout = {.waiter_shift = 16, .compact_waiter = 1};
     const profile::TargetProfile profile{};

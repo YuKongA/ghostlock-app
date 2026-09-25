@@ -2,11 +2,12 @@
 
 using namespace ghostlock;
 
-void ghostlock::race::PiRace::reset(
+bool ghostlock::race::PiRace::reset(
     uint32_t initial_delay_usec, int32_t main_cpu_value, int32_t consumer_cpu_value) noexcept {
-    /* Dropping a joinable owner here would detach its thread, matching the old
-     * reset that simply zeroed the pthread_t and leaked it; every caller joins
-     * through join() first, so this only runs on the normal path. */
+    if (waiter_owner.joinable() || owner_owner.joinable() ||
+        consumer_owner.joinable()) {
+        return false;
+    }
     waiter_owner = support::PthreadOwner{};
     owner_owner = support::PthreadOwner{};
     consumer_owner = support::PthreadOwner{};
@@ -32,6 +33,7 @@ void ghostlock::race::PiRace::reset(
     consumer_cpu = consumer_cpu_value;
     request = nullptr;
     route_status = route::RouteStatus{.code = route::ROUTE_RETRYABLE};
+    return true;
 }
 
 int32_t ghostlock::race::PiRace::start_threads(
@@ -42,28 +44,49 @@ noexcept
     if (!waiter_entry || !owner_entry || !consumer_entry) return EINVAL;
     request = route_request;
     int32_t error = consumer_owner.start(consumer_entry, this);
-    if (error) return error;
+    if (error) {
+        request = nullptr;
+        return error;
+    }
     error = owner_owner.start(owner_entry, this);
     if (error) {
-        abort_startup();
+        const int32_t cleanup_error = abort_startup();
+        if (cleanup_error != 0) {
+            route_status = route::RouteStatus{
+                .code = route::ROUTE_DIRTY_FAILURE,
+                .step = 19,
+                .error_number = cleanup_error,
+            };
+            return cleanup_error;
+        }
         return error;
     }
     error = waiter_owner.start(waiter_entry, this);
     if (error) {
-        abort_startup();
+        const int32_t cleanup_error = abort_startup();
+        if (cleanup_error != 0) {
+            route_status = route::RouteStatus{
+                .code = route::ROUTE_DIRTY_FAILURE,
+                .step = 19,
+                .error_number = cleanup_error,
+            };
+            return cleanup_error;
+        }
         return error;
     }
     return 0;
 }
 
-void ghostlock::race::PiRace::abort_startup() noexcept {
+int32_t ghostlock::race::PiRace::abort_startup() noexcept {
     consumer_stop.store(1);
     owner_stop.store(1);
     owner_owner.request_stop();
     consumer_owner.request_stop();
-    (void) owner_owner.join();
-    (void) consumer_owner.join();
-    request = nullptr;
+    const int32_t owner_error = owner_owner.joinable() ? owner_owner.join() : 0;
+    const int32_t consumer_error = consumer_owner.joinable() ? consumer_owner.join() : 0;
+    const int32_t first_error = owner_error != 0 ? owner_error : consumer_error;
+    if (first_error == 0) request = nullptr;
+    return first_error;
 }
 
 void ghostlock::race::PiRace::request_stop() noexcept {
@@ -72,11 +95,20 @@ void ghostlock::race::PiRace::request_stop() noexcept {
     owner_stop.store(1);
 }
 
-void ghostlock::race::PiRace::join() noexcept {
-    (void) waiter_owner.join();
-    (void) owner_owner.join();
-    (void) consumer_owner.join();
-    request = nullptr;
+int32_t ghostlock::race::PiRace::join() noexcept {
+    int32_t first_error = 0;
+    const int32_t waiter_error = waiter_owner.joinable() ? waiter_owner.join() : 0;
+    if (waiter_error != 0) first_error = waiter_error;
+    const int32_t owner_error = owner_owner.joinable() ? owner_owner.join() : 0;
+    if (first_error == 0 && owner_error != 0) {
+        first_error = owner_error;
+    }
+    const int32_t consumer_error = consumer_owner.joinable() ? consumer_owner.join() : 0;
+    if (first_error == 0 && consumer_error != 0) {
+        first_error = consumer_error;
+    }
+    if (first_error == 0) request = nullptr;
+    return first_error;
 }
 
 ghostlock::route::RouteStatus ghostlock::race::PiRace::outcome_with_counters(

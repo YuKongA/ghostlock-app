@@ -28,7 +28,8 @@ namespace ghostlock::race {
 
         /* All state returns to its reset value. The fast_repair latch is owned by
          * the caller (reset_main_route_state preserves it across resets). */
-        void reset(uint32_t initial_delay_usec, int32_t main_cpu, int32_t consumer_cpu) noexcept;
+        [[nodiscard]] bool reset(uint32_t initial_delay_usec, int32_t main_cpu,
+                                 int32_t consumer_cpu) noexcept;
 
         /* consumer -> owner -> waiter, matching the original creation order. On a
          * partial failure every already-started worker is asked to stop and joined
@@ -49,7 +50,7 @@ namespace ghostlock::race {
         void request_stop() noexcept;
 
         /* waiter -> owner -> consumer join order; idempotent. */
-        void join() noexcept;
+        [[nodiscard]] int32_t join() noexcept;
 
         /* Testable counter merge used by run(): Ok with zero calls or zero
          * successes is not a routed attempt. */
@@ -87,7 +88,7 @@ namespace ghostlock::race {
         ghostlock::route::RouteStatus route_status{};
 
     private:
-        void abort_startup() noexcept;
+        [[nodiscard]] int32_t abort_startup() noexcept;
     };
 } // namespace ghostlock::race
 

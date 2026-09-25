@@ -18,7 +18,8 @@
 <tr><th rowspan="3">堆准备</th><td><code>heap.prepare_max_attempts</code></td><td><code>4</code></td><td>堆准备的完整重试上限。</td><td>增大可提高偶发恢复率，也增加耗时和温升。</td><td>原实现最多四轮，迁移时保持行为。</td></tr>
 <tr><td><code>heap.prepare_timeout_ms</code></td><td><code>240000</code></td><td>单次堆准备总超时。</td><td>太短会误判慢设备；太长会延迟失败反馈。</td><td>4 分钟覆盖旧最坏路径且仍有上界。</td></tr>
 <tr><td><code>heap.kernelsnitch_timeout_ms</code></td><td><code>60000</code></td><td>KernelSnitch 扫描等待上限。</td><td>缩短可能漏掉结果，增大会延长卡住状态。</td><td>原扫描窗口为 60 秒。</td></tr>
-<tr><th rowspan="3">共享竞态时序</th><td><code>race.route_wait_ms</code></td><td><code>1000</code></td><td>路线启动前共享等待。</td><td>影响线程/对象就绪顺序。</td><td>1 秒是旧实现的保守稳定窗口。</td></tr>
+<tr><th rowspan="4">共享竞态时序</th><td><code>race.route_wait_ms</code></td><td><code>1000</code></td><td>路线启动前共享等待。</td><td>影响线程/对象就绪顺序。</td><td>1 秒是旧实现的保守稳定窗口。</td></tr>
+<tr><td><code>race.route_done_timeout_ms</code></td><td><code>300000</code></td><td>等待 route worker 发布终态的最长时间。</td><td>到期后 native 进程 fail-stop，因为此时无法安全展开 PI 所有权。</td><td>5 分钟可限制永久卡住，同时不缩短现有 TCP 尝试窗口。</td></tr>
 <tr><td><code>race.setup_settle_us</code></td><td><code>50000</code></td><td>竞态准备后的稳定等待。</td><td>太短会在资源未就绪时触发。</td><td>原 50 毫秒平衡可靠性和速度。</td></tr>
 <tr><td><code>race.state_poll_interval_us</code></td><td><code>1000</code></td><td>共享状态轮询间隔。</td><td>越小处理器占用越高，越大响应越迟。</td><td>1 毫秒保持旧轮询粒度。</td></tr>
 <tr><th rowspan="8">W1/W2/W3 阶段</th><td><code>stages.w1_attempts</code></td><td><code>15</code></td><td>W1 写入尝试上限。</td><td>增大提高机会但累积热量和破坏风险。</td><td>来自原 W1 循环常量。</td></tr>

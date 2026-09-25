@@ -45,6 +45,15 @@ namespace ghostlock::support {
         (void) fsync(STDOUT_FILENO);
     }
 
+    [[noreturn]] void fail_stop_dirty_race(const char *reason,
+                                           int32_t error_number) noexcept {
+        pr_error("terminal dirty race: %s errno=%d; stopping native process\n",
+                 reason ? reason : "unknown", error_number);
+        log_sync();
+        syscall(SYS_exit_group, 70);
+        __builtin_unreachable();
+    }
+
     void read_first_line(const char *path, char *buf, size_t len) {
         if (!len) {
             return;

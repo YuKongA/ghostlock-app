@@ -120,6 +120,20 @@ class NativeProfileDocumentTest {
     }
 
     @Test
+    fun `v3 carries route done timeout as a compatible named option`() {
+        val document = doc(
+            "select_stack",
+            mapOf("execution.race.route_done_timeout_ms" to 300000L),
+        )
+        val decoded = NativeProfileDocument.fromBinary(document.toBinaryV3())!!
+        assertEquals(300000u, decoded.execution.raceRouteDoneTimeoutMs)
+
+        /* v2 has no option section; Native applies its runtime default. */
+        val legacy = NativeProfileDocument.fromBinary(document.toBinary())!!
+        assertEquals(0u, legacy.execution.raceRouteDoneTimeoutMs)
+    }
+
+    @Test
     fun `safe mode offset rejects a truncated blob`() {
         assertNull(NativeProfileDocument.safeModeOffset(ByteArray(8)))
     }

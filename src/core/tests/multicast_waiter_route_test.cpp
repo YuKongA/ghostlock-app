@@ -30,6 +30,14 @@ int32_t main(void) {
     assert(context.stop_requested.load() == 0);
     assert(context.respray_requested.load() == 0);
     assert(context.status.code == ghostlock::route::ROUTE_RETRYABLE);
+    assert(context.state == ghostlock::route::multicast_waiter::ResidentState::Empty);
+    using ghostlock::route::multicast_waiter::ResidentState;
+    assert(ghostlock::route::multicast_waiter::can_rollback_prearm(ResidentState::Empty));
+    assert(ghostlock::route::multicast_waiter::can_rollback_prearm(ResidentState::WorkersStarted));
+    assert(!ghostlock::route::multicast_waiter::can_rollback_prearm(ResidentState::RequeueAttempted));
+    assert(ghostlock::route::multicast_waiter::requires_fail_stop(ResidentState::RequeueAttempted));
+    assert(ghostlock::route::multicast_waiter::requires_fail_stop(ResidentState::Armed));
+    assert(!ghostlock::route::multicast_waiter::requires_fail_stop(ResidentState::Destroyed));
     puts("multicast_waiter_route_test: ok");
     return 0;
 }

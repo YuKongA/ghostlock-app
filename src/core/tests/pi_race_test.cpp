@@ -47,7 +47,7 @@ static void *fake_consumer(void *arg) {
 
 int32_t main(void) {
     ghostlock::race::PiRace race;
-    race.reset(12345, 2, 3);
+    assert(race.reset(12345, 2, 3));
     assert(race.wait_futex == 0);
     assert(race.target_futex == 0);
     assert(race.chain_futex == 0);
@@ -66,7 +66,7 @@ int32_t main(void) {
     assert(race.route_status.code == ghostlock::route::ROUTE_RETRYABLE);
 
     /* reset is idempotent and clears previous values. */
-    race.reset(1, 0, 1);
+    assert(race.reset(1, 0, 1));
     assert(race.main_cpu == 0);
     assert(race.consumer_cpu == 1);
     assert(race.route_delay_usec.load() == 1);
@@ -98,20 +98,25 @@ int32_t main(void) {
 
     /* Normal lifecycle: three workers, idempotent stop, join, repeated join. */
     g_started = 0;
-    race.reset(5, 0, 1);
-    assert(race.start_threads(fake_waiter, fake_owner, fake_consumer, nullptr) ==
+    assert(race.reset(5, 0, 1));
+    ghostlock::memory::WriteRequest request{};
+    assert(race.start_threads(fake_waiter, fake_owner, fake_consumer, &request) ==
            0);
     assert(wait_started(3));
+    assert(race.request == &request);
+    assert(!race.reset(6, 0, 1));
+    assert(race.request == &request);
     race.request_stop();
     race.request_stop();
     assert(race.consumer_go.load() == 0);
     assert(race.consumer_stop.load() == 1);
     assert(race.owner_stop.load() == 1);
-    race.join();
+    assert(race.join() == 0);
+    assert(race.request == nullptr);
     assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
     assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
     assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
-    race.join();
+    assert(race.join() == 0);
     assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
 
     /* Outcome merge: Ok without a winning consumer call degrades to Retryable,

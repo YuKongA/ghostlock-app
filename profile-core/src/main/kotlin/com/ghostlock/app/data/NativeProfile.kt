@@ -83,6 +83,7 @@ data class NativeProfileDocument(
         val options = listOf(
             "selected_cpus.main" to execution.recommendedMainCpu.toLong(),
             "selected_cpus.consumer" to execution.recommendedConsumerCpu.toLong(),
+            "race.route_done_timeout_ms" to execution.raceRouteDoneTimeoutMs.toLong(),
         )
         var size = HeaderSizeV3 + releaseBytes.size + core.size * 8 + 2
         for ((key, _) in middleware) size += 1 + key.toByteArray(Charsets.UTF_8).size + 8
@@ -280,6 +281,7 @@ data class NativeProfileDocument(
                 routeConfig = routeConfig.apply(String(keyBytes, Charsets.UTF_8), buffer.long)
             }
             val optionCount = buffer.short.toInt() and 0xffff
+            var raceRouteDoneTimeoutMs = 0u
             repeat(optionCount) {
                 if (buffer.remaining() < 1) return null
                 val keyLength = buffer.get().toInt() and 0xff
@@ -291,9 +293,10 @@ data class NativeProfileDocument(
                     "safe_mode" -> common[67] = value
                     "selected_cpus.main" -> common[44] = value
                     "selected_cpus.consumer" -> common[45] = value
+                    "race.route_done_timeout_ms" -> raceRouteDoneTimeoutMs = value.toConfigUInt()
                 }
             }
-            return fromCommon(
+            val document = fromCommon(
                 release = String(releaseBytes, Charsets.UTF_8),
                 routeKind = routeKind,
                 kernelMajor = kernelMajor,
@@ -301,6 +304,11 @@ data class NativeProfileDocument(
                 fallbackRoute = fallbackRoute,
                 f = common,
                 routeConfig = routeConfig,
+            )
+            return document.copy(
+                execution = document.execution.copy(
+                    raceRouteDoneTimeoutMs = raceRouteDoneTimeoutMs,
+                ),
             )
         }
 
@@ -351,6 +359,7 @@ data class NativeProfileDocument(
                 recommendedMainCpu = f[44].toUInt(), recommendedConsumerCpu = f[45].toUInt(),
                 heapPrepareMaxAttempts = f[46].toUInt(), heapPrepareTimeoutMs = f[47].toUInt(),
                 heapKernelsnitchTimeoutMs = f[48].toUInt(), raceRouteWaitMs = f[49].toUInt(),
+                raceRouteDoneTimeoutMs = 0u,
                 raceSetupSettleUs = f[50].toUInt(), raceStatePollIntervalUs = f[51].toUInt(),
                 w1Attempts = f[52].toUInt(), w1SettleUs = f[53].toUInt(),
                 w1ScratchRepairAttempts = f[54].toUInt(), w2Attempts = f[55].toUInt(),
@@ -442,6 +451,7 @@ data class NativeProfileDocument(
                     heapPrepareTimeoutMs = vu("execution.heap.prepare_timeout_ms"),
                     heapKernelsnitchTimeoutMs = vu("execution.heap.kernelsnitch_timeout_ms"),
                     raceRouteWaitMs = vu("execution.race.route_wait_ms"),
+                    raceRouteDoneTimeoutMs = vu("execution.race.route_done_timeout_ms"),
                     raceSetupSettleUs = vu("execution.race.setup_settle_us"),
                     raceStatePollIntervalUs = vu("execution.race.state_poll_interval_us"),
                     w1Attempts = vu("execution.stages.w1_attempts"),
@@ -523,6 +533,7 @@ data class ExecutionTuning(
     val heapPrepareTimeoutMs: UInt,
     val heapKernelsnitchTimeoutMs: UInt,
     val raceRouteWaitMs: UInt,
+    val raceRouteDoneTimeoutMs: UInt,
     val raceSetupSettleUs: UInt,
     val raceStatePollIntervalUs: UInt,
     val w1Attempts: UInt,

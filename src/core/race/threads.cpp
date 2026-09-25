@@ -158,9 +158,12 @@ namespace ghostlock::race {
 
     void reset_main_route_state(void) {
         int32_t fast_repair = session::g_exploit_session.race.fast_repair.load();
-        session::g_exploit_session.race.reset(
+        if (!session::g_exploit_session.race.reset(
             fast_repair ? 5000 : session::g_exploit_session.profile.select_enter_delay_us(),
-            config::runtime_config_snapshot().main_cpu, config::runtime_config_snapshot().consumer_cpu);
+            config::runtime_config_snapshot().main_cpu,
+            config::runtime_config_snapshot().consumer_cpu)) {
+            support::fail_stop_dirty_race("reset with live PI workers", EBUSY);
+        }
         session::g_exploit_session.race.fast_repair.store(fast_repair);
     }
 } // namespace ghostlock::race
@@ -186,8 +189,20 @@ ghostlock::route::RouteStatus ghostlock::race::PiRace::run() noexcept {
      * backpressure) parks the process forever and the corrupted PI chain is
      * never disarmed. Bound the wait from profile::TargetProfile.execution and map a
      * timeout to ROUTE_DIRTY_FAILURE instead of looping indefinitely. */
-    while (!route_done.load())
+    struct timespec wait_started{};
+    SYSCHK(clock_gettime(CLOCK_MONOTONIC, &wait_started));
+    const double timeout_ms = static_cast<double>(
+        session::g_exploit_session.profile.race_route_done_timeout_ms());
+    while (!route_done.load()) {
+        if (runtime_time::runtime_elapsed_ms(&wait_started) >= timeout_ms) {
+            return route::RouteStatus{
+                .code = route::ROUTE_DIRTY_FAILURE,
+                .step = 21,
+                .error_number = ETIMEDOUT,
+            };
+        }
         usleep(session::g_exploit_session.profile.race_state_poll_interval_us());
+    }
     const route::RouteStatus status = route_status;
     const int32_t calls = consumer_calls.load();
     const int32_t success = consumer_success.load();
@@ -206,6 +221,11 @@ namespace ghostlock::race {
         int32_t error = session::g_exploit_session.race.start_threads(
             waiter_thread, owner_thread, consumer_thread, &request);
         if (error) {
+            if (session::g_exploit_session.race.route_status.code ==
+                route::ROUTE_DIRTY_FAILURE) {
+                support::fail_stop_dirty_race(
+                    "partial PI worker startup cleanup", error);
+            }
             session::g_exploit_session.race.route_status = route::RouteStatus{
                 .code = route::ROUTE_DIRTY_FAILURE,
                 .step = 20,
@@ -215,8 +235,14 @@ namespace ghostlock::race {
             return 0;
         }
         route::RouteStatus status = session::g_exploit_session.race.run();
+        if (status.code == route::ROUTE_DIRTY_FAILURE) {
+            support::fail_stop_dirty_race("route_done deadline", status.error_number);
+        }
         session::g_exploit_session.race.request_stop();
-        session::g_exploit_session.race.join();
+        const int32_t join_error = session::g_exploit_session.race.join();
+        if (join_error != 0) {
+            support::fail_stop_dirty_race("PI worker join", join_error);
+        }
         pr_info("[route] threads joined\n");
         return status.code == route::ROUTE_OK;
     }

@@ -25,6 +25,26 @@
  * reached through resident_route(); the kernel5_resident_* wrappers in
  * multicast_waiter_route.cpp forward to this class. */
 namespace ghostlock::route::multicast_waiter {
+    enum class ResidentState : uint8_t {
+        Empty = 0,
+        WorkersStarted,
+        RequeueAttempted,
+        Armed,
+        Disarmed,
+        Destroyed,
+    };
+
+    [[nodiscard]] constexpr bool can_rollback_prearm(ResidentState state) noexcept {
+        return state == ResidentState::Empty ||
+               state == ResidentState::WorkersStarted;
+    }
+
+    [[nodiscard]] constexpr bool requires_fail_stop(ResidentState state) noexcept {
+        return state == ResidentState::RequeueAttempted ||
+               state == ResidentState::Armed ||
+               state == ResidentState::Disarmed;
+    }
+
     class MulticastWaiterRoute final {
     public:
         MulticastWaiterRoute() noexcept = default;
@@ -64,6 +84,7 @@ namespace ghostlock::route::multicast_waiter {
             lock_slot = 0;
             status = {};
             status.code = ghostlock::route::ROUTE_RETRYABLE;
+            state = ResidentState::Empty;
             waiter_has_lock2.store(0, std::memory_order_relaxed);
             owner_has_lock1.store(0, std::memory_order_relaxed);
             waiter_waiting.store(0, std::memory_order_relaxed);
@@ -105,6 +126,7 @@ namespace ghostlock::route::multicast_waiter {
         int32_t main_cpu, consumer_cpu;
         int32_t resident;
         ghostlock::route::RouteStatus status;
+        ResidentState state = ResidentState::Empty;
     };
 
     /* Process-level resident owner. */
