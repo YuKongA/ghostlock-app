@@ -16,9 +16,13 @@
 
 ## 目标（本批）
 
-1. **backend contract**：编译期 `BackendPolicy` concept + 注册表，明确 backend 必须提供的接口
-   （`kind` / `available`，可用时 `run<Middleware>`），`Cve2026_43499Policy` 满足；
-   `Cve2026_64560Policy` 以 `available=false` 占位满足（无 `run`）。
+1. **backend contract**：编译期 `BackendPolicy` concept + 注册表。**可用性的唯一权威是
+   `component_catalog::backend_available(kind)`**；concept 只要求 `kind`（可用时另要求执行接口
+   `run<Middleware>`），**不携带 available 状态**，避免第二事实源。声明型 identity
+   （`runtime::backend::Cve2026_*`，用于选择/校验）与执行 policy（`session::backend::Cve2026_*Policy`，
+   用于派发）通过 `kind` 对应，并以 `static_assert` 绑定 catalog（如现有
+   `static_assert(backend_available(Cve2026_43499::kind))` 那样扩展）。`Cve2026_64560Policy`
+   提供 `kind` 但无执行接口（不可用，不实例化 `Pipeline`）。
 2. **CVE-2026-64560 模块占位**：`session/backend/cve_2026_64560_backend.{hpp,cpp}`，只声明 id /
    可用性 / 拒绝原因；**不实现原语、不定义设备字段**。
 3. **profile schema 占位与隔离**：64560 拥有独立 section 标识（wire 已按 backend id 分区）；
@@ -57,8 +61,9 @@
 
 1. 64560 的 section / schema 版本是否现在确定一个**空 schema 版本号**，还是等漏洞实现时再定？
 2. Kotlin 侧本批是否加占位类型（与 D3 一致），还是只做 native？
-3. backend contract concept 的粒度：只校验 `kind` / `available`，还是同时校验可用 policy 的
-   `run<M>` 返回类型？
+3. backend contract concept 的粒度：只校验 `kind`（可用性由 catalog 查），可用 policy 的
+   `run<M>` 由 `Pipeline`/`MiddlewarePolicy` 的 `static_assert` 间接约束（推荐）；或 concept 自身在
+   available 时要求 `run<M>` 签名。
 
 ## 进度
 

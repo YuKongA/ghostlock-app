@@ -24,7 +24,7 @@ namespace ghostlock::session::backend {
         static constexpr bool available = true;
 
         /* setup -> W1 -> W2/W3 chain. Continue hands the filled chain to the
-         * frontend handoff step (see runtime::run_pipeline). */
+         * frontend handoff step (see runtime::Pipeline::run). */
         template <class Middleware>
         [[nodiscard]] static StageResult run(ExploitSession &session,
                                              const profile::kernel_offsets &decoded,

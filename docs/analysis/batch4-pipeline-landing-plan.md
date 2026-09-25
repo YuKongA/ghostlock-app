@@ -263,6 +263,30 @@ flowchart LR
 注：`Select` / `Tcp` 的 `attack_write` 实例存在但不在设备门禁范围（无对应设备）；`route/middleware_hooks.*`
 删除后，3c 文档中的该机制描述由本节取代。
 
+## 第二轮架构审查回应与修正（2026-09-24）
+
+> 审查（基于 `32ed4f9`，仅架构接口）指出 4 项；逐条修正，均不触攻击路径。
+
+- **P2-1 派发集合可测**：`component_catalog.hpp` 新增 `DispatchTarget` 与 `dispatch_target(selection)`
+  （纯 constexpr，orchestrator switch 枚举同一函数）。host test 对全部三元组断言
+  `dispatch_target != None ⟺ combination_supported`，并固定每个 middleware 的目标值与不可用组合的
+  `None`——「catalog 与 switch 不漂移」从人工约定变为测试保证。
+- **P2-2 组合级编译期约束 + `Pipeline` 职责**：新增 `pipeline_catalogued<F,B,M>()`（以
+  `combination_supported` 编译期检查）；`Pipeline<F,B,M>` 现在 `static_assert(catalogued)` 并承载
+  `Pipeline<...>::run(...)`；orchestrator 改为 `switch (dispatch_target(selection))` +
+  `Pipeline<...>::run`；删除逐项可用的 `pipeline_supported` 与自由 `run_pipeline`，公开模板不再能由
+  未登记组合实例化。
+- **P2-3 结果契约**：删除无来源的 `RunResult.clean`（清理状态归阶段/session，不在结果字段表达）；
+  frontend 终态改为显式 `switch`：`Failed→Failed`、`Done→Completed`、`Continue→Failed`（终态契约违反
+  不被静默当成功；未来扩展 `StageResult` 会触发 `-Wswitch` 强制更新映射）。
+- **P2-4 Batch 5 backend 权威（文档）**：见 `batch5-backend-extension-plan.md` 更新——唯一权威
+  `component_catalog::backend_available(kind)`；`BackendPolicy` concept 不携带 available；声明型 identity
+  与执行 policy 以 `kind` 对应并 `static_assert` 绑定 catalog。
+
+验证（候选 `dcd5224d7be39c9a702bafeaee4fdcea8f45f7a3ece6fd505fceaf5023cd5cac`，基线 `cacc2c6c…`）：
+host tests 全通过（含派发断言）；NDK `-B` 零告警；lint-tidy 0 findings；
+`cmp_disasm` **8 函数全部 IDENTICAL（strict，RESULT: PASS）**（本轮不触 backend/route 执行体）。
+
 ## 进度
 
 - [x] 现状与 8 函数影响只读梳理；产出本切片计划（2026-09-24）。

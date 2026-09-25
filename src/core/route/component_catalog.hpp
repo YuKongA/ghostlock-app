@@ -68,6 +68,32 @@ namespace ghostlock::runtime {
                middleware_available(selection.middleware);
     }
 
+    /* Dispatch target for one selection: the exact value the orchestrator
+     * switch enumerates. It is a pure constexpr function, so the host test can
+     * prove it agrees with combination_supported() for every triple - the
+     * catalogue and the dispatch cannot drift. */
+    enum class DispatchTarget : std::uint8_t {
+        None,
+        SelectStack,
+        TcpZerocopy,
+        MulticastWaiter,
+    };
+
+    [[nodiscard]] constexpr DispatchTarget dispatch_target(
+        const ComponentSelection &selection) noexcept {
+        if (!combination_supported(selection)) return DispatchTarget::None;
+        switch (selection.middleware) {
+            case MiddlewareKind::SelectStack:
+                return DispatchTarget::SelectStack;
+            case MiddlewareKind::TcpZerocopy:
+                return DispatchTarget::TcpZerocopy;
+            case MiddlewareKind::MulticastWaiter:
+                return DispatchTarget::MulticastWaiter;
+            default:
+                return DispatchTarget::None;
+        }
+    }
+
     [[nodiscard]] constexpr std::string_view frontend_name(FrontendKind kind) noexcept {
         return kind == FrontendKind::RootChild ? "root_child" : "umh_forward";
     }

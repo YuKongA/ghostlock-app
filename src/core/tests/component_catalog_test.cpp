@@ -71,6 +71,37 @@ int32_t main(void) {
     assert(!runtime::combination_supported(
         {FrontendKind::RootChild, BackendKind::Cve2026_64560, MiddlewareKind::TcpZerocopy}));
 
+    /* dispatch_target() is the exact value the orchestrator switch enumerates;
+     * it must agree with the catalogue for every triple (P2 review), so the
+     * predicate and the dispatch cannot drift. */
+    for (FrontendKind f : frontends) {
+        for (BackendKind b : backends) {
+            for (MiddlewareKind m : middlewares) {
+                const runtime::ComponentSelection s{f, b, m};
+                assert((runtime::dispatch_target(s) != runtime::DispatchTarget::None) ==
+                       runtime::combination_supported(s));
+            }
+        }
+    }
+    assert(runtime::dispatch_target(
+               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
+                MiddlewareKind::SelectStack}) == runtime::DispatchTarget::SelectStack);
+    assert(runtime::dispatch_target(
+               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
+                MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::TcpZerocopy);
+    assert(runtime::dispatch_target(
+               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
+                MiddlewareKind::MulticastWaiter}) == runtime::DispatchTarget::MulticastWaiter);
+    assert(runtime::dispatch_target(
+               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
+                MiddlewareKind::Auto}) == runtime::DispatchTarget::None);
+    assert(runtime::dispatch_target(
+               {FrontendKind::UmhForward, BackendKind::Cve2026_43499,
+                MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::None);
+    assert(runtime::dispatch_target(
+               {FrontendKind::RootChild, BackendKind::Cve2026_64560,
+                MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::None);
+
     /* Names are stable for diagnostics. */
     assert(runtime::frontend_name(FrontendKind::RootChild) == "root_child");
     assert(runtime::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");

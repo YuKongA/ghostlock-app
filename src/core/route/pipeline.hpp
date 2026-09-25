@@ -7,22 +7,14 @@
 #include "session/stage_types.hpp"
 
 namespace ghostlock::runtime {
-    /* Batch 4 (D1=B) pipeline composition shape. It pins the three component
-     * kinds of one selected pipeline at compile time; availability stays owned
-     * by component_catalog (no second availability definition here). */
-    template <class Frontend, class Backend, class Middleware>
-    struct Pipeline final {
-        static constexpr FrontendKind frontend = Frontend::kind;
-        static constexpr BackendKind backend = Backend::kind;
-        static constexpr MiddlewareKind middleware = Middleware::kind;
-    };
-
     /* Pipeline terminal outcome (Batch 4 review P3). Completed = the selected
      * pipeline ran to the end; DiagnosticStop = a stage decided the objective
      * was already met and stopped early (e.g. KernelSU already rooted);
-     * Failed = a stage failed; Rejected = no catalogued combination owns the
-     * selection. `stage` names the last stage that produced the outcome and
-     * `clean` is true when the run needs no further recovery. */
+     * Failed = a stage failed or violated its terminal contract; Rejected = no
+     * catalogued combination owns the selection. `stage` names the last stage
+     * that produced the outcome. Cleanup state is owned by the stages/session
+     * and is deliberately not part of this result: the pipeline only reports
+     * what its stages actually produced. */
     enum class RunCode {
         Completed,
         DiagnosticStop,
@@ -39,48 +31,58 @@ namespace ghostlock::runtime {
     struct RunResult final {
         RunCode code = RunCode::Failed;
         RunStage stage = RunStage::None;
-        bool clean = false;
     };
 
-    /* A pipeline is dispatchable only when all three kinds are available. */
+    /* Compile-time catalogue check for one pipeline instantiation. */
     template <class Frontend, class Backend, class Middleware>
-    [[nodiscard]] constexpr bool pipeline_supported() noexcept {
-        return frontend_available(Frontend::kind) &&
-               backend_available(Backend::kind) &&
-               middleware_available(Middleware::kind);
+    [[nodiscard]] constexpr bool pipeline_catalogued() noexcept {
+        return combination_supported(
+            ComponentSelection{Frontend::kind, Backend::kind, Middleware::kind});
     }
 
-    /* Run one catalogued pipeline. The backend policy owns the write-stage
-     * sequence (Continue hands the filled chain to the frontend), the frontend
-     * policy owns the handoff step, and the middleware policy is passed into
-     * the backend steps as a type: every route hook (resident_write, repairs)
-     * is a direct static call on `Middleware`, so different middleware
-     * instances produce different pipeline code by construction - no vtable or
-     * indirect dispatch enters the path. */
+    /* Batch 4 pipeline composition. The type fixes one catalogued combination:
+     * instantiating it for an uncatalogued tuple fails the static_assert, and
+     * run() is the only execution entry, so the catalogue, the orchestrator
+     * dispatch (component_catalog::dispatch_target) and this template cannot
+     * drift apart. */
     template <class Frontend, class Backend, class Middleware>
-    [[nodiscard]] RunResult run_pipeline(session::ExploitSession &exploit_session,
-                                         const profile::kernel_offsets &decoded,
-                                         const char *debug_dir, bool force_attack) {
-        static_assert(pipeline_supported<Frontend, Backend, Middleware>());
+    struct Pipeline final {
+        static constexpr FrontendKind frontend = Frontend::kind;
+        static constexpr BackendKind backend = Backend::kind;
+        static constexpr MiddlewareKind middleware = Middleware::kind;
+        static constexpr bool catalogued = pipeline_catalogued<Frontend, Backend, Middleware>();
+        static_assert(catalogued, "pipeline must be a catalogued combination");
         static_assert(route::MiddlewarePolicy<Middleware>);
-        session::VictimChain chain{};
-        switch (Backend::template run<Middleware>(exploit_session, decoded, debug_dir,
-                                                  force_attack, chain)) {
-            case session::StageResult::Failed:
-                return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend,
-                                 .clean = false};
-            case session::StageResult::Done:
-                return RunResult{.code = RunCode::DiagnosticStop, .stage = RunStage::Backend,
-                                 .clean = true};
-            case session::StageResult::Continue:
-                break;
+
+        /* Backend steps first (Continue hands the chain on), then the frontend
+         * handoff. Middleware hooks are direct static calls on the middleware
+         * policy; no vtable or indirect dispatch enters the path. */
+        [[nodiscard]] static RunResult run(session::ExploitSession &exploit_session,
+                                           const profile::kernel_offsets &decoded,
+                                           const char *debug_dir, bool force_attack) {
+            session::VictimChain chain{};
+            switch (Backend::template run<Middleware>(exploit_session, decoded, debug_dir,
+                                                      force_attack, chain)) {
+                case session::StageResult::Failed:
+                    return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend};
+                case session::StageResult::Done:
+                    return RunResult{.code = RunCode::DiagnosticStop, .stage = RunStage::Backend};
+                case session::StageResult::Continue:
+                    break;
+            }
+            switch (Frontend::run(exploit_session, chain)) {
+                case session::StageResult::Failed:
+                    return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+                case session::StageResult::Done:
+                    return RunResult{.code = RunCode::Completed, .stage = RunStage::Frontend};
+                case session::StageResult::Continue:
+                    /* The frontend step is terminal; Continue is a contract
+                     * violation and must not be silently read as success. */
+                    return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+            }
+            return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
         }
-        return Frontend::run(exploit_session, chain) == session::StageResult::Failed
-                   ? RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend,
-                               .clean = false}
-                   : RunResult{.code = RunCode::Completed, .stage = RunStage::Frontend,
-                               .clean = true};
-    }
+    };
 } // namespace ghostlock::runtime
 
 #endif
