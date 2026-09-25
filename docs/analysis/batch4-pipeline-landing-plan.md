@@ -232,17 +232,36 @@ flowchart LR
 - 生命周期/字节码审查的最终判定由用户指定的专用安全测试 AI 复核；本仓记录（所有权追踪 / `cmp_disasm`
   扩展对比）为其证据输入，不替代其结论。
 
-### 修正实现顺序（待认可）
+### 修正实现记录（2026-09-24）
 
-1. P2 组合权威（catalog + orchestrator + host test）——不改 8 函数；
-2. P3 `RunResult` 终态语义——不改 8 函数；
-3. P1-A `M::supported(profile)` 校验 + 契约文档——不改 8 函数；
-4. P4 契约注释 + 测试——不改 8 函数。
+用户确认：**P1 选 B**（backend 模板化接收 `M`，避免后期再改更难定位），P2–P4 按上述实现。
 
-### 待确认
+- **P2**：`component_catalog.hpp` 新增 `combination_supported()`（唯一派发权威）；`orchestrator.hpp`
+  先查它再走嵌套 `switch`，其余返回 `Rejected`；`component_catalog_test` 枚举全部组合，断言组合表
+  与三维预检一致（当前恰好 3 个）。
+- **P3**：新增 `runtime::RunResult { RunCode code; RunStage stage; bool clean; }`
+  （`Completed | DiagnosticStop | Failed | Rejected`）；`run_pipeline` 返回它，setup 的 `Done`
+  映射 `DiagnosticStop`；`main.cpp` 显式映射 exit code（`Rejected` 报错）。
+- **P1-B**：`Cve2026_43499Policy::run<Middleware>` / `attack_write<Middleware>` 模板化；helper
+  （`retry_write_stage` / `w2` / `w3` / `w1_scratch_repair` / `w1`）模板化，直接静态调用
+  `M::resident_write` / `M::w1_resident_repair` / `M::w2_fast_repair_prebuild/activate`；
+  能力查询用 `if constexpr (M::multicast)` 与 `M::w3_exact_target`；`MulticastPolicy` 的 4 个
+  hook 加 `[[gnu::noinline]]` 作为显式中间件边界；**删除 `route/middleware_hooks.*`**（运行时
+  dispatch 不再需要）；cpp 末尾显式实例化 3 个 middleware policy。
+- **P4**：`stage_types.hpp` 的 `VictimChain` 注释写明权威/一致性/并发约束；frontend 注释同步。
 
-- P1 采用 **A**（推荐）还是 **B**？
-- P2–P4 按上述实现？
+验证（候选 `cacc2c6c7530710d6ec0ec7085452389fe58f6dfd0a7e286948fdf517e5040f9`，基线 `bd35b701…`）：
+
+| 项 | 结果 |
+|---|---|
+| host tests | 全通过（含 `combination_supported` 枚举断言） |
+| NDK `-B` 全量 | 零告警 |
+| lint-tidy | 0 findings |
+| cmp_disasm | `owner_thread` / `multicast_owner_worker` / `multicast_waiter_worker` IDENTICAL；`waiter_thread` / `consumer_thread` / `run_main_route_threads` / `do_kernel5_fake_lock_route` LAYOUT-SHIFT（仅数据地址注解平移，指令形状与符号目标一致）；`do_one_write`（Multicast 实例）仅 1 处 layout 差异 = 日志全局 PIC 取址形式（GOT 间接 → `ldr [x22,#0x2c0]`），前后 `printf/fflush/fsync` 序列与调用目标一致 |
+| 真机门禁 | **待跑**（本轮改模板化，触 8 函数） |
+
+注：`Select` / `Tcp` 的 `attack_write` 实例存在但不在设备门禁范围（无对应设备）；`route/middleware_hooks.*`
+删除后，3c 文档中的该机制描述由本节取代。
 
 ## 进度
 
@@ -251,4 +270,5 @@ flowchart LR
 - [x] P1–P3 实现 + 本地验证（host/构建/lint/`cmp_disasm` 逐条复核）。
 - [x] 真机门禁 PASS（`B4-pipeline-20260924-multicast-direct-pass.md`）。
 - [x] 核心攻击代码审查（所有权追踪 / UAF / 终结点顺序 / 反汇编核对；权威判归专用安全测试 AI）。
-- [ ] 架构审查 P1–P4 契约修正（P1 待选 A/B，推荐 A；P2–P4 待认可）。
+- [x] 架构审查 P1–P4 契约修正实现（P1=B backend 模板化；P2 组合权威；P3 `RunResult`；P4 契约注释）。
+- [ ] P1-B 真机门禁（候选 `cacc2c6c…`）→ 归档并收尾。

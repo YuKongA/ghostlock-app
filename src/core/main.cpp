@@ -93,15 +93,21 @@ int main(int argc, char **argv) {
             throw FatalError{};
         }
         /* Batch 4 (D1=B): the orchestrator dispatches the catalogued pipeline
-         * directly (backend steps + frontend handoff); a negative result means
-         * no catalogued combination owns the selection. */
-        const int32_t code = runtime::run_orchestrated_pipeline(
+         * directly (backend steps + frontend handoff). DiagnosticStop is a
+         * successful early stop (objective already met), not a full run. */
+        const runtime::RunResult result = runtime::run_orchestrated_pipeline(
             session, selection, decoded, dump_dir, force_attack);
-        if (code < 0) {
-            pr_error("orchestrator rejected the component selection\n");
-            throw FatalError{};
+        switch (result.code) {
+            case runtime::RunCode::Rejected:
+                pr_error("orchestrator rejected the component selection\n");
+                throw FatalError{};
+            case runtime::RunCode::Failed:
+                return 1;
+            case runtime::RunCode::Completed:
+            case runtime::RunCode::DiagnosticStop:
+                return 0;
         }
-        return code;
+        throw FatalError{};
     } catch (const FatalError &) {
         return 1;
     }

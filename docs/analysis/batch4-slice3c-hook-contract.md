@@ -4,6 +4,9 @@
 > 已完成，`cmp_disasm` 8 函数 PASS。**3c 把 middleware route hook 从虚函数收敛为
 > `run_pipeline<F,B,M>` 内的 policy 静态接口；触及 8 函数，需独立门禁。**
 > 形态依据：`native-component-architecture-plan.md`「Native C++23 运行模型」与「静态分派」两节。
+> **后续演进**：Batch 4 架构审查（P1-B）把本片的 `route/middleware_hooks.*` 运行时 dispatch 收敛为
+> backend 模板参数 `M` 的直接静态调用；policy 静态 hook 与 noinline 边界保留（见
+> `batch4-pipeline-landing-plan.md`）。
 
 ## 现状：route 相关虚 hook
 

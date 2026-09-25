@@ -46,11 +46,25 @@ namespace ghostlock::runtime {
                kind == MiddlewareKind::MulticastWaiter;
     }
 
-    /* Single compatibility check the orchestrator runs before dispatch. */
+    /* Per-id availability pre-check: the three ids are each selectable. This
+     * says nothing about whether the tuple is a catalogued pipeline. */
     [[nodiscard]] constexpr bool selection_supported(
         const ComponentSelection &selection) noexcept {
         return frontend_available(selection.frontend) &&
                backend_available(selection.backend) &&
+               middleware_available(selection.middleware);
+    }
+
+    /* THE dispatch authority: the exact tuples the orchestrator can enumerate
+     * and run. selection_supported() must hold for every supported combination,
+     * but not every available triple is catalogued (e.g. Auto is never a
+     * middleware, and future frontends/backends are added here explicitly).
+     * Adding a component updates this catalogue and the orchestrator switch
+     * together; the host test asserts the two never diverge. */
+    [[nodiscard]] constexpr bool combination_supported(
+        const ComponentSelection &selection) noexcept {
+        return selection.frontend == FrontendKind::RootChild &&
+               selection.backend == BackendKind::Cve2026_43499 &&
                middleware_available(selection.middleware);
     }
 

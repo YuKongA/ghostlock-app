@@ -38,6 +38,39 @@ int32_t main(void) {
     assert(!runtime::selection_supported(
         {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::Auto}));
 
+    /* combination_supported is THE dispatch authority. Every admitted tuple
+     * must also pass the per-id pre-check, and the current catalogue admits
+     * exactly root_child x cve_2026_43499 x {tcp, select, multicast}. */
+    const FrontendKind frontends[] = {FrontendKind::RootChild, FrontendKind::UmhForward};
+    const BackendKind backends[] = {BackendKind::Cve2026_43499, BackendKind::Cve2026_64560};
+    const MiddlewareKind middlewares[] = {MiddlewareKind::TcpZerocopy, MiddlewareKind::SelectStack,
+                                          MiddlewareKind::MulticastWaiter, MiddlewareKind::Auto};
+    int32_t catalogued = 0;
+    for (FrontendKind f : frontends) {
+        for (BackendKind b : backends) {
+            for (MiddlewareKind m : middlewares) {
+                const runtime::ComponentSelection s{f, b, m};
+                if (runtime::combination_supported(s)) {
+                    catalogued++;
+                    assert(runtime::selection_supported(s));
+                }
+            }
+        }
+    }
+    assert(catalogued == 3);
+    assert(runtime::combination_supported(
+        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::TcpZerocopy}));
+    assert(runtime::combination_supported(
+        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::SelectStack}));
+    assert(runtime::combination_supported(
+        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::MulticastWaiter}));
+    assert(!runtime::combination_supported(
+        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::Auto}));
+    assert(!runtime::combination_supported(
+        {FrontendKind::UmhForward, BackendKind::Cve2026_43499, MiddlewareKind::TcpZerocopy}));
+    assert(!runtime::combination_supported(
+        {FrontendKind::RootChild, BackendKind::Cve2026_64560, MiddlewareKind::TcpZerocopy}));
+
     /* Names are stable for diagnostics. */
     assert(runtime::frontend_name(FrontendKind::RootChild) == "root_child");
     assert(runtime::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");

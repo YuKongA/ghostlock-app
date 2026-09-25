@@ -56,14 +56,15 @@ namespace ghostlock::route {
         static constexpr bool tcp_payload_layout = false;
         static constexpr bool allows_fallback = false;
 
-        /* Middleware route hooks (Batch 4, D1=B slice 3c). Only the route steps
-         * with side effects are hooks; pure capability queries stay on the
-         * static-constexpr capabilities above and are read through
-         * route_capability(). The neutral defaults live here so every policy
-         * inherits the whole interface; a policy that needs different behavior
-         * redeclares the hook and the Android-only definition lives in that
-         * middleware's procedure unit. Backend steps call these through
-         * route/middleware_hooks.hpp (direct dispatch, no vtable). */
+        /* Middleware route hooks (Batch 4, D1=B). Only the route steps with side
+         * effects are hooks; pure capability queries stay on the
+         * static-constexpr capabilities above. The neutral defaults live here so
+         * every policy inherits the whole interface; a policy that needs
+         * different behavior redeclares the hook and the Android-only definition
+         * lives in that middleware's procedure unit. The backend steps call
+         * these directly through the middleware policy template parameter
+         * (route/pipeline.hpp), so no vtable or runtime dispatch enters the
+         * path. */
         static std::optional<Status> resident_write(
             session::ExploitSession &, const memory::WriteRequest &) noexcept {
             return std::nullopt;
@@ -124,16 +125,22 @@ namespace ghostlock::route {
 
 #if defined(__ANDROID__)
         /* Route-hook overrides: declared here, defined in
-         * multicast_waiter_route.cpp (Android-only implementation). */
-        static std::optional<Status> resident_write(
+         * multicast_waiter_route.cpp (Android-only implementation). noinline is
+         * the explicit middleware boundary: the backend steps call these
+         * directly, and without it LTO inlines the whole route body (resident
+         * worker startup included) into the attack functions. */
+        [[gnu::noinline]] static std::optional<Status> resident_write(
             session::ExploitSession &exploit_session,
             const memory::WriteRequest &request) noexcept;
 
-        static bool w1_resident_repair(session::ExploitSession &exploit_session) noexcept;
+        [[gnu::noinline]] static bool w1_resident_repair(
+            session::ExploitSession &exploit_session) noexcept;
 
-        static bool w2_fast_repair_prebuild(session::ExploitSession &exploit_session) noexcept;
+        [[gnu::noinline]] static bool w2_fast_repair_prebuild(
+            session::ExploitSession &exploit_session) noexcept;
 
-        static bool w2_fast_repair_activate(session::ExploitSession &exploit_session) noexcept;
+        [[gnu::noinline]] static bool w2_fast_repair_activate(
+            session::ExploitSession &exploit_session) noexcept;
 #endif
     };
 

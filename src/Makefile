@@ -30,7 +30,6 @@ CXX_SRCS := \
   core/race/pi_race.cpp \
   core/route/route_controller.cpp \
   core/route/route_middleware.cpp \
-  core/route/middleware_hooks.cpp \
   core/race/threads.cpp \
   core/route/tcp_zerocopy_route.cpp \
   core/route/select_stack_route.cpp \

@@ -53,6 +53,10 @@ TARGETS = [
         "do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
     ]),
     ("do_one_write", [
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::SelectPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::TcpPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "ghostlock::session::backend::Cve2026_43499Policy::attack_write(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "ghostlock::session::backend::Cve2026_43499Policy::attack_write(ghostlock::session::ExploitSession const&, ghostlock::memory::WriteRequest const&, char const*)",
         "ghostlock::session::ExploitProcedure::attack_write(ghostlock::memory::WriteRequest const&, char const*)",
