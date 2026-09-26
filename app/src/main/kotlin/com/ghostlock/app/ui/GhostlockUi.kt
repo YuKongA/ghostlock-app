@@ -164,7 +164,7 @@ data class GhostlockUiState(
     val userProfileDeleteTarget: String? = null,
 )
 
-enum class DialogType { NONE, LIST, INPUT, CONFIRM }
+enum class DialogType { NONE, LIST, INPUT, CONFIRM, NOTICE }
 
 data class GhostlockLogLine(val text: String, val color: Int)
 
@@ -554,6 +554,27 @@ private fun GhostlockDialog(
                             text = stringResource(R.string.w3_shizuku_hint_enable),
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = { actions.onDialogConfirm("") },
+                        )
+                    }
+                }
+
+                DialogType.NOTICE -> {
+                    Text(
+                        text = stringResource(state.dialogMessageRes),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                    ) {
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.dialog_dismiss),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = actions::onDialogDismiss,
                         )
                     }
                 }

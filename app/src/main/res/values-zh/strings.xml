@@ -73,6 +73,9 @@
     <string name="w3_shizuku_hint_title">建议启用 Shizuku</string>
     <string name="w3_shizuku_hint_message">上次执行在 W3 seccomp bypass 阶段失败。通过 Shizuku 执行（shell uid、无 seccomp）可跳过该阶段。</string>
     <string name="w3_shizuku_hint_enable">启用</string>
+    <string name="run_interrupted_title">上次攻击未完成</string>
+    <string name="run_interrupted_message">上次攻击在某个阶段中断（设备可能已内核 panic 并重启）。请确认设备状态后重试。</string>
+    <string name="dialog_dismiss">关闭</string>
     <string name="execution_apply_cores">应用推荐核心 %1$d / %2$d</string>
     <string name="execution_save">保存覆盖</string>
     <string name="execution_reset">清除覆盖</string>

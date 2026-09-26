@@ -106,14 +106,25 @@ class GhostlockViewModel(
     private suspend fun maybeSuggestShizukuForW3() {
         if (w3HintChecked) return
         w3HintChecked = true
-        val hint = runCatching { repository.lastRunW3SeccompHint() }.getOrDefault(false)
-        if (!hint || state.value.shizukuEnabled) return
+        val step = runCatching { repository.lastRunStuckStep() }.getOrNull() ?: return
+        if (state.value.shizukuEnabled) return
+        /* Any interrupted step is reported; only a W3 stall offers Shizuku,
+         * because Shizuku (shell uid, no seccomp) skips exactly that stage. */
+        val isW3 = step.startsWith("w3")
         mutableState.update {
             it.copy(
                 dialogVisible = true,
-                dialogType = DialogType.CONFIRM,
-                dialogTitleRes = R.string.w3_shizuku_hint_title,
-                dialogMessageRes = R.string.w3_shizuku_hint_message,
+                dialogType = if (isW3) DialogType.CONFIRM else DialogType.NOTICE,
+                dialogTitleRes = if (isW3) {
+                    R.string.w3_shizuku_hint_title
+                } else {
+                    R.string.run_interrupted_title
+                },
+                dialogMessageRes = if (isW3) {
+                    R.string.w3_shizuku_hint_message
+                } else {
+                    R.string.run_interrupted_message
+                },
             )
         }
     }

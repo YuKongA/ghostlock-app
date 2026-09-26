@@ -13,6 +13,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 class GhostlockUserService(private val context: Context) : IGhostlockUserService.Stub() {
     private val running = AtomicBoolean(false)
 
+    private companion object {
+        const val StatusMarker = "\u001eGLK_STATUS"
+        const val StatusAck = "\u001eGLK_STATUS_ACK\n"
+        const val StatusDisabled = "\u001eGLK_STATUS_DISABLED"
+    }
+
     override fun runExploit(
         primaryCpu: Int,
         consumerCpu: Int,
@@ -21,6 +27,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         profileBlob: ByteArray,
         debugDir: String?,
         callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
     ) {
         if (!running.compareAndSet(false, true)) {
             callback.onLog("<s> error: another GhostLock process is already running")
@@ -63,7 +70,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 if (safeMode) {
                     NativeProfileDocument.safeModeOffset(profileBlob)?.let { profileBlob[it] = 1 }
                 }
-                val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+                val argv = mutableListOf(
+                    binary.absolutePath,
+                    "--ghostlock-app-call",
+                    "--enable-status-record",
+                )
                 if (forceAttack) {
                     argv += "--force-attack"
                 }
@@ -83,14 +94,28 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     }
                     .start()
                     .let { process ->
-                        runCatching { process.outputStream.use { it.write(profileBlob) } }
+                        val stdinOut = process.outputStream
+                        /* Length-prefixed GLK1; stdin stays open for the ACK. */
+                        runCatching {
+                            val length = profileBlob.size
+                            stdinOut.write(
+                                byteArrayOf(
+                                    (length ushr 24).toByte(),
+                                    (length ushr 16).toByte(),
+                                    (length ushr 8).toByte(),
+                                    length.toByte(),
+                                ),
+                            )
+                            stdinOut.write(profileBlob)
+                            stdinOut.flush()
+                        }
                         // The native process writes its log to a file and this
                         // tailer forwards lines asynchronously. Reading a pipe
                         // here applied backpressure inside the PI race window
                         // (every line also costs a binder round trip), which
                         // stalled the route and ended in a kernel panic.
                         val tailer = Thread({
-                            relayLog(nativeLog, callback)
+                            relayLog(nativeLog, callback, statusCallback, stdinOut)
                         }, "ghostlock-shizuku-tailer").apply {
                             isDaemon = true
                             start()
@@ -113,7 +138,35 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
 
     /** Forward complete native log lines without ever blocking the native
      * process; the file is the transport, binder is only the display path. */
-    private fun relayLog(logFile: File, callback: IGhostlockCallback) {
+    /** Forwards status events to the app (persist) and ACKs the native process;
+     *  returns true when the line was a status event. */
+    private fun handleStatusLine(
+        line: String,
+        statusCallback: IGhostlockStatusCallback,
+        stdinOut: java.io.OutputStream,
+    ): Boolean {
+        if (!line.startsWith(StatusMarker)) return false
+        if (line.contains(StatusDisabled)) {
+            runCatching { statusCallback.onStatus("", "disabled") }
+            return true
+        }
+        val parts = line.removePrefix(StatusMarker).trim().split(' ')
+        if (parts.size >= 2) {
+            runCatching { statusCallback.onStatus(parts[0], parts[1]) }
+            runCatching {
+                stdinOut.write(StatusAck.toByteArray(Charsets.UTF_8))
+                stdinOut.flush()
+            }
+        }
+        return true
+    }
+
+    private fun relayLog(
+        logFile: File,
+        callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
+        stdinOut: java.io.OutputStream,
+    ) {
         var offset = 0L
         val pending = StringBuilder()
         while (!Thread.currentThread().isInterrupted) {
@@ -133,7 +186,9 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                                 pending.clear()
                                 offset = handle.filePointer
                                 if (line.isNotEmpty()) {
-                                    runCatching { callback.onLog(line) }
+                                    if (!handleStatusLine(line, statusCallback, stdinOut)) {
+                                        runCatching { callback.onLog(line) }
+                                    }
                                 }
                             } else {
                                 pending.append(byte.toChar())

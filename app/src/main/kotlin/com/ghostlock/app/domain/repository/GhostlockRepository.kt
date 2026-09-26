@@ -109,10 +109,11 @@ interface GhostlockRepository {
     suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int
 
     /**
-     * Start-up hint: the previous in-process run failed at the W3 seccomp
-     * bypass stage, which Shizuku (shell uid, no seccomp) can skip.
+     * The step left `in_progress` by the previous run (usually a kernel panic),
+     * or null when the last run completed/failed cleanly. `w3*` means Shizuku
+     * (shell uid, no seccomp) can skip that stage.
      */
-    suspend fun lastRunW3SeccompHint(): Boolean
+    suspend fun lastRunStuckStep(): String?
 
     fun requestShizukuPermission()
 

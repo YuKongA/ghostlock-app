@@ -73,6 +73,9 @@
     <string name="w3_shizuku_hint_title">Enable Shizuku?</string>
     <string name="w3_shizuku_hint_message">The last run failed at the W3 seccomp bypass stage. Running via Shizuku (shell uid, no seccomp) skips it.</string>
     <string name="w3_shizuku_hint_enable">Enable</string>
+    <string name="run_interrupted_title">Previous run interrupted</string>
+    <string name="run_interrupted_message">The last attack stopped mid-way (the device may have panicked and rebooted). Check the device and try again.</string>
+    <string name="dialog_dismiss">Dismiss</string>
     <string name="execution_apply_cores">Use recommended cores %1$d / %2$d</string>
     <string name="execution_save">Save overrides</string>
     <string name="execution_reset">Clear overrides</string>

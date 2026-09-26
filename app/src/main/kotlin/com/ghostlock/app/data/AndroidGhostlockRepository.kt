@@ -27,12 +27,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /** Android implementation of the domain repository. All platform I/O lives here. */
 class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
@@ -56,8 +58,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         /* Every run's stdout/stderr is redirected here (export or not), so the
          * previous run can be inspected on the next start-up. */
         const val NativeLogFileName = ".ghostlock_native.log"
-        const val LastRunFileName = ".ghostlock_last_run"
-        const val W3SeccompFailureMarker = "W3 seccomp clear failed"
+
+        /* Attack step status persisted by the app. The native process reports
+         * each step on stdout and waits for an ACK on stdin; the app owns the
+         * file so a kernel panic still leaves the last in_progress step for the
+         * next launch to read. HOCON/JSON. */
+        const val RunStateFileName = ".ghostlock_run_state.json"
+        const val StatusMarker = "\u001eGLK_STATUS"
+        const val StatusAck = "\u001eGLK_STATUS_ACK\n"
+        const val StatusDisabled = "\u001eGLK_STATUS_DISABLED"
+        val RunSteps = listOf("w1a", "w1b", "w1c", "w2a", "w2b", "w3a", "w3b", "w3c")
     }
 
     private val appContext = context.applicationContext
@@ -370,7 +380,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
         withDebugAttackLog("direct", onLog) { archivedLog, debugDir ->
             runExploitBinary(pair, "libghostlock.so", archivedLog, debugDir)
-        }.also { code -> recordLastRun(code, shizuku = false) }
+        }
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
         return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir ->
@@ -398,35 +408,90 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
                 else -> {
                     archivedLog("<b> starting UserService")
-                    shizukuRunner.run(pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog)
+                    resetRunState()
+                    shizukuRunner.run(
+                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
+                    ) { step, status ->
+                        if (status == "disabled") clearRunState() else applyRunStatus(step, status)
+                    }
                 }
             }
-        }.also { code -> recordLastRun(code, shizuku = true) }
-    }
-
-    private suspend fun recordLastRun(code: Int, shizuku: Boolean) = withContext(Dispatchers.IO) {
-        runCatching {
-            File(filesDir, LastRunFileName).writeText(
-                "$code ${if (shizuku) 1 else 0} ${System.currentTimeMillis()}\n",
-                StandardCharsets.UTF_8,
-            )
         }
     }
 
-    override suspend fun lastRunW3SeccompHint(): Boolean = withContext(Dispatchers.IO) {
+    /* --- attack step status ------------------------------------------------
+     * The native process reports each step over stdout and waits for an ACK on
+     * stdin. The app persists the status here; a kernel panic leaves the last
+     * in_progress step on disk for the next launch to read. */
+
+    private val runStateLock = Any()
+    private var runSteps: LinkedHashMap<String, String> = LinkedHashMap()
+
+    private fun persistRunStateLocked() {
+        val json = buildString {
+            append("{\n")
+            append("  \"schema_version\": 1,\n")
+            append("  \"updated_at\": ").append(System.currentTimeMillis()).append(",\n")
+            append("  \"steps\": {\n")
+            val entries = runSteps.entries.toList()
+            entries.forEachIndexed { index, (key, value) ->
+                append("    \"").append(key).append("\": \"").append(value).append('"')
+                if (index + 1 < entries.size) append(',')
+                append('\n')
+            }
+            append("  }\n}\n")
+        }
         runCatching {
-            val parts = File(filesDir, LastRunFileName)
-                .takeIf { it.isFile }
-                ?.readText()
-                ?.trim()
-                ?.split(' ')
-                ?: return@runCatching false
-            val code = parts.getOrNull(0)?.toIntOrNull() ?: return@runCatching false
-            val ranWithShizuku = parts.getOrNull(1) == "1"
-            if (code == 0 || ranWithShizuku) return@runCatching false
-            val nativeLog = File(filesDir, NativeLogFileName)
-            nativeLog.isFile && nativeLog.readText().contains(W3SeccompFailureMarker)
-        }.getOrDefault(false)
+            FileOutputStream(File(filesDir, RunStateFileName)).use { out ->
+                out.write(json.toByteArray(StandardCharsets.UTF_8))
+                out.flush()
+                out.fd.sync()
+            }
+        }
+    }
+
+    private fun resetRunState() = synchronized(runStateLock) {
+        runSteps = LinkedHashMap<String, String>().apply {
+            RunSteps.forEach { put(it, "not_start") }
+        }
+        persistRunStateLocked()
+    }
+
+    private fun applyRunStatus(step: String, status: String) = synchronized(runStateLock) {
+        if (!runSteps.containsKey(step)) return@synchronized
+        runSteps[step] = status
+        persistRunStateLocked()
+    }
+
+    private fun clearRunState() = runCatching { File(filesDir, RunStateFileName).delete() }
+
+    /** Handles one stdout line; true when it was a status event, not a log line. */
+    private fun handleStatusLine(line: String, process: AtomicReference<Process?>): Boolean {
+        if (!line.startsWith(StatusMarker)) return false
+        if (line.contains(StatusDisabled)) {
+            clearRunState()
+            return true
+        }
+        val parts = line.removePrefix(StatusMarker).trim().split(' ')
+        if (parts.size < 2) return true
+        applyRunStatus(parts[0], parts[1])
+        runCatching {
+            process.get()?.outputStream?.apply {
+                write(StatusAck.toByteArray(StandardCharsets.UTF_8))
+                flush()
+            }
+        }
+        return true
+    }
+
+    override suspend fun lastRunStuckStep(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val file = File(filesDir, RunStateFileName)
+            if (!file.isFile) return@runCatching null
+            val root = HoconSupport.parseValue(file.readText()) as? Map<*, *> ?: return@runCatching null
+            val steps = root["steps"] as? Map<*, *> ?: return@runCatching null
+            steps.entries.firstOrNull { (it.value as? String) == "in_progress" }?.key as? String
+        }.getOrNull()
     }
 
     private suspend fun withDebugAttackLog(
@@ -497,12 +562,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
+            val processRef = AtomicReference<Process?>(null)
             // tag root-script lines so they cannot be read as the native stages'
             val ksuSink: (String) -> Unit = { onLog("[ksu] $it") }
+            // status events are consumed here (persisted + ACKed); plain lines are logs
+            val nativeSink: (String) -> Unit = { line ->
+                if (!handleStatusLine(line, processRef)) onLog(line)
+            }
             val tailer = Thread {
                 try {
                     while (!Thread.currentThread().isInterrupted) {
-                        tailKsuLog(nativeLog, nativeOffset, onLog)
+                        tailKsuLog(nativeLog, nativeOffset, nativeSink)
                         tailKsuLog(ksuLog, ksuOffset, ksuSink)
                         Thread.sleep(200)
                     }
@@ -514,7 +584,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 isDaemon = true
                 start()
             }
-            val argv = mutableListOf(binary.absolutePath, "--ghostlock-app-call")
+            val argv = mutableListOf(
+                binary.absolutePath,
+                "--ghostlock-app-call",
+                "--enable-status-record",
+            )
             if (forceAttackTest) {
                 argv += "--force-attack"
             }
@@ -532,8 +606,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                 }
             onLog("<b> starting native: ${binary.absolutePath}")
+            resetRunState()
             try {
-                val nativeCode = runProcess(command, onLog = {}, captureOutput = false, stdin = profileBlob)
+                val nativeCode = runProcess(
+                    command,
+                    onLog = {},
+                    captureOutput = false,
+                    stdin = profileBlob,
+                    frameStdin = true,
+                    onProcess = { processRef.set(it) },
+                )
                 onLog("<b> native exited code=$nativeCode")
                 nativeCode
             } finally {
@@ -896,12 +978,34 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         timeoutSeconds: Long = 300,
         captureOutput: Boolean = true,
         stdin: ByteArray? = null,
+        frameStdin: Boolean = false,
+        onProcess: ((Process) -> Unit)? = null,
     ): Int = runInterruptible {
         val process = builder.start()
         synchronized(processes) { processes += process }
         if (stdin != null) {
-            runCatching { process.outputStream.use { it.write(stdin) } }
+            if (frameStdin) {
+                /* 4-byte big-endian length + payload, stdin kept open for the
+                 * status-record ACK channel. */
+                runCatching {
+                    val out = process.outputStream
+                    val length = stdin.size
+                    out.write(
+                        byteArrayOf(
+                            (length ushr 24).toByte(),
+                            (length ushr 16).toByte(),
+                            (length ushr 8).toByte(),
+                            length.toByte(),
+                        ),
+                    )
+                    out.write(stdin)
+                    out.flush()
+                }
+            } else {
+                runCatching { process.outputStream.use { it.write(stdin) } }
+            }
         }
+        onProcess?.invoke(process)
         val reader = if (captureOutput) Thread {
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
