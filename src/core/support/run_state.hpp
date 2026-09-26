@@ -12,7 +12,15 @@
  * When disabled every call is a no-op and stdin/stdout keep the legacy
  * behaviour.
  */
+#include <string>
+#include <string_view>
+
 namespace ghostlock::support::run_state {
+    /* Protocol helpers (pure, host-testable). */
+    std::string format_event(std::string_view step, std::string_view status);
+
+    [[nodiscard]] bool is_ack(std::string_view line);
+
     void configure(bool enabled) noexcept;
 
     [[nodiscard]] bool enabled() noexcept;

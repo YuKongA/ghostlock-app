@@ -15,7 +15,8 @@ namespace ghostlock::support::run_state {
         bool g_enabled = false;
 
         void emit(const char *step, const char *status) noexcept {
-            std::fprintf(stdout, "%cGLK_STATUS %s %s\n", kMarker, step, status);
+            const std::string line = format_event(step, status);
+            std::fwrite(line.data(), 1, line.size(), stdout);
             std::fflush(stdout);
         }
 
@@ -34,7 +35,7 @@ namespace ghostlock::support::run_state {
                 line[used++] = c;
             }
             line[used] = '\0';
-            return std::strcmp(line, kAckLine) == 0;
+            return is_ack(line);
         }
 
         /* The status channel is best-effort: a missing ACK disables it for the
@@ -54,6 +55,20 @@ namespace ghostlock::support::run_state {
             if (!wait_ack()) disable_on_timeout();
         }
     } // namespace
+
+    std::string format_event(std::string_view step, std::string_view status) {
+        std::string line;
+        line.reserve(step.size() + status.size() + 24);
+        line.push_back(kMarker);
+        line.append("GLK_STATUS ");
+        line.append(step.data(), step.size());
+        line.push_back(' ');
+        line.append(status.data(), status.size());
+        line.push_back('\n');
+        return line;
+    }
+
+    bool is_ack(std::string_view line) { return line == kAckLine; }
 
     void configure(bool enabled) noexcept { g_enabled = enabled; }
 
