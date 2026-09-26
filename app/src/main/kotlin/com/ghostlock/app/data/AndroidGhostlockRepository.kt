@@ -67,7 +67,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val StatusMarker = "\u001eGLK_STATUS"
         const val StatusAck = "\u001eGLK_STATUS_ACK\n"
         const val StatusDisabled = "\u001eGLK_STATUS_DISABLED"
-        val RunSteps = listOf("w1a", "w1b", "w1c", "w2a", "w2b", "w3a", "w3b", "w3c")
     }
 
     private val appContext = context.applicationContext
@@ -428,19 +427,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var runSteps: LinkedHashMap<String, String> = LinkedHashMap()
 
     private fun persistRunStateLocked() {
-        val json = buildString {
-            append("{\n")
-            append("  \"schema_version\": 1,\n")
-            append("  \"updated_at\": ").append(System.currentTimeMillis()).append(",\n")
-            append("  \"steps\": {\n")
-            val entries = runSteps.entries.toList()
-            entries.forEachIndexed { index, (key, value) ->
-                append("    \"").append(key).append("\": \"").append(value).append('"')
-                if (index + 1 < entries.size) append(',')
-                append('\n')
-            }
-            append("  }\n}\n")
-        }
+        val json = RunStateCodec.encode(runSteps, System.currentTimeMillis())
         runCatching {
             FileOutputStream(File(filesDir, RunStateFileName)).use { out ->
                 out.write(json.toByteArray(StandardCharsets.UTF_8))
@@ -452,7 +439,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun resetRunState() = synchronized(runStateLock) {
         runSteps = LinkedHashMap<String, String>().apply {
-            RunSteps.forEach { put(it, "not_start") }
+            RunStateCodec.Steps.forEach { put(it, RunStateCodec.NotStarted) }
         }
         persistRunStateLocked()
     }
@@ -488,9 +475,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         runCatching {
             val file = File(filesDir, RunStateFileName)
             if (!file.isFile) return@runCatching null
-            val root = HoconSupport.parseValue(file.readText()) as? Map<*, *> ?: return@runCatching null
-            val steps = root["steps"] as? Map<*, *> ?: return@runCatching null
-            steps.entries.firstOrNull { (it.value as? String) == "in_progress" }?.key as? String
+            RunStateCodec.parseStuckStep(file.readText())
         }.getOrNull()
     }
 
