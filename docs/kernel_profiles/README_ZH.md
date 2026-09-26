@@ -59,7 +59,9 @@ GhostLock 用 `uname -r` 精确匹配内核版本：匹配不到时应用会直�
    ```
 
    `--format conf` 输出 flatten（无 `include`、6.x 凭据/KernelSnitch 常量内联）的
-   自包含 profile，可直接作为新 profile 的底稿；5.x 的凭据引用修复与 multicast 几何
+   自包含 profile：镜像实际获得多少字段就写出多少，未获得的字段省略，不会用相邻内核族的
+   猜测值补齐。因此它是**候选底稿**，可直接作为新 profile 的起点，但导入后由 App 校验
+   缺失字段并在执行前拦截，生成成功不代表可用。5.x 的凭据引用修复与 multicast 几何
    也会从镜像与 BTF 自动推导。工具支持 `boot.img`（可附带
    `xbl_config.img`）、完整 OTA zip，或指向它们的 `http(s)` 链接。kallsyms 可以显式传
    `--kallsyms`，省略时会尝试恢复镜像内嵌表。`pselect_waiter_shift` 和

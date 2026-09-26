@@ -12,7 +12,7 @@ use crate::btf::Btf;
 use crate::derive::{PSELECT_ROUTE_NFDS, PselectLayout, RelSymbols, derive_pselect_layout};
 use crate::error::ExtractError;
 use crate::kallsyms;
-use crate::symbols::kernel_struct_macro;
+use crate::symbols::{kernel_layout_verified, kernel_struct_macro};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Confidence {
@@ -50,6 +50,7 @@ pub struct Analysis {
     pub kernel_major: Option<u32>,
     pub kernel_minor: Option<u32>,
     pub family: Option<&'static str>,
+    pub family_verified: bool,
     pub phys: Option<u64>,
     pub phys_source: &'static str,
     pub waiter_fields: BTreeMap<String, u32>,
@@ -157,7 +158,7 @@ pub fn suggest_route(
     release: Option<&str>,
 ) -> (Option<&'static str>, Confidence, Vec<String>) {
     let (major, minor) = parse_major_minor(release);
-    let family = kernel_struct_macro(release);
+    let family = kernel_struct_macro(release).filter(|_| kernel_layout_verified(release));
     let available = |route: &str| {
         paths
             .iter()
@@ -169,13 +170,20 @@ pub fn suggest_route(
 pub fn build(input: Input<'_>) -> Analysis {
     let (kernel_major, kernel_minor) = parse_major_minor(input.release);
     let family = kernel_struct_macro(input.release);
+    let family_verified = kernel_layout_verified(input.release);
 
     let mut waiter_fields = BTreeMap::new();
     let mut waiter_size = None;
     let mut mm_struct_size = None;
     if let Some(btf) = input.btf {
         for field in [
-            "tree", "tree_entry", "pi_tree", "pi_tree_entry", "task", "lock", "wake_state",
+            "tree",
+            "tree_entry",
+            "pi_tree",
+            "pi_tree_entry",
+            "task",
+            "lock",
+            "wake_state",
             "ww_ctx",
         ] {
             if let Some(offset) = btf.field("rt_mutex_waiter", field) {
@@ -212,6 +220,7 @@ pub fn build(input: Input<'_>) -> Analysis {
         kernel_major,
         kernel_minor,
         family,
+        family_verified,
         phys: input.phys,
         phys_source: input.phys_source,
         waiter_fields,
@@ -304,7 +313,10 @@ pub fn render(analysis: &Analysis) -> String {
     lines.push("== GhostLock kernel analysis ==".to_string());
     lines.push(field(
         "release",
-        analysis.release.clone().unwrap_or_else(|| "(none)".to_string()),
+        analysis
+            .release
+            .clone()
+            .unwrap_or_else(|| "(none)".to_string()),
     ));
     lines.push(field(
         "kernel_major",
@@ -315,9 +327,11 @@ pub fn render(analysis: &Analysis) -> String {
     ));
     lines.push(field(
         "kernel_family",
-        match analysis.family {
-            Some(macro_name) => format!("{macro_name} (verified)"),
-            None => "(unverified; the extractor falls back to the 6.6 layout)".to_string(),
+        match (analysis.family, analysis.family_verified) {
+            (Some(macro_name), true) => format!("{macro_name} (verified Android family)"),
+            (Some(macro_name), false) => format!("{macro_name} (template only; unverified)"),
+            (None, true) => "verified 5.15 android13 train".to_string(),
+            (None, false) => "unverified (no family layout will be emitted)".to_string(),
         },
     ));
     lines.push(field(
@@ -350,7 +364,11 @@ pub fn render(analysis: &Analysis) -> String {
     ));
     lines.push(field("pselect chain", render_pselect(&analysis.pselect)));
     for path in &analysis.paths {
-        let state = if path.available { "available" } else { "missing" };
+        let state = if path.available {
+            "available"
+        } else {
+            "missing"
+        };
         let probes: Vec<String> = path
             .probes
             .iter()
@@ -408,10 +426,24 @@ mod tests {
 
     #[test]
     fn family_defaults_are_low_confidence() {
-        let (route, confidence, _) = suggest(false, &no_routes, Some("STRUCT_OFFSETS_6_6"), Some(6), Some(6));
+        let (route, confidence, _) = suggest(
+            false,
+            &no_routes,
+            Some("STRUCT_OFFSETS_6_6"),
+            Some(6),
+            Some(6),
+        );
         assert_eq!(route, Some("select_stack"));
         assert_eq!(confidence, Confidence::Low);
         let (route, _, _) = suggest(false, &no_routes, None, Some(5), Some(15));
         assert_eq!(route, None);
+    }
+
+    #[test]
+    fn unverified_six_x_template_does_not_drive_route_suggestion() {
+        let paths = Vec::new();
+        let (route, confidence, _) = suggest_route(false, &paths, Some("6.6.92-generic-build"));
+        assert_eq!(route, None);
+        assert_eq!(confidence, Confidence::Low);
     }
 }

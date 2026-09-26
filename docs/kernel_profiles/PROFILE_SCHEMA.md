@@ -39,7 +39,12 @@ parsed as **HOCON**:
 - the app stores and exports HOCON; `ghostlock-extract --format conf` emits a
   flattened, self-contained profile (credential/KernelSnitch constants inlined,
   no `include` lines) that imports through the normal path, while `--format
-  json` and old `offsets.json` files still import through the v1 path.
+  json` and old `offsets.json` files still import through the v1 path;
+- extractor output is a **candidate source**: it writes every field the image
+  actually yields and omits the rest, never borrowing a neighbouring kernel
+  family's guesses. A candidate may be incomplete; after import the app's field
+  validation fills `invalidPaths` and blocks execution, so a successful
+  generation never means the device is supported.
 
 ## 1. Data flow
 

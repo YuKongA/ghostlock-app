@@ -67,6 +67,57 @@ class UserProfileStoreTest {
         }
     """.trimIndent()
 
+    /**
+     * An unverified candidate `--format conf` output: only the fields the image
+     * yielded. For an unverified 5.x multicast route that means the BTF-derived
+     * waiter offsets, with the proven Xperia constants left out.
+     */
+    private val candidateConf = """
+        # GhostLock kernel profile: 5.15.178-g3575c47dc7ce-dirty (HOCON, self-contained).
+        release = "5.15.178-g3575c47dc7ce-dirty"
+        schema_version = 1
+        kernel_major = 5
+        recommend_shizuku = 0
+        route {
+          multicast_waiter {
+            task_offset = 48
+            lock_offset = 56
+          }
+        }
+        fallback {
+          to = "none"
+        }
+        cred {
+          caps_offset = 40
+          copy_size = 176
+        }
+        offset {
+          init_task = 34595456
+        }
+    """.trimIndent()
+
+    @Test
+    fun `unverified candidate keeps the BTF-derived route geometry on import`() {
+        withStore { store ->
+            store.save("candidate.conf", candidateConf)
+
+            val entry = requireNotNull(
+                store.loadEntry("5.15.178-g3575c47dc7ce-dirty", "candidate.conf"),
+            )
+            val geometry = entry["route"].asValueMap()!!["multicast_waiter"].asValueMap()!!
+            assertEquals(48L, (geometry["task_offset"] as Number).toLong())
+            assertEquals(56L, (geometry["lock_offset"] as Number).toLong())
+            assertFalse(
+                "the extractor must not seed the proven Xperia constants",
+                geometry.containsKey("waiter_off"),
+            )
+
+            val exported = requireNotNull(store.exportHocon("candidate.conf"))
+            assertFalse("export must not re-introduce includes", exported.contains("include"))
+            assertTrue(exported.contains("release = \"5.15.178-g3575c47dc7ce-dirty\""))
+        }
+    }
+
     @Test
     fun `flattened extractor conf round trips without conversion`() {
         withStore { store ->

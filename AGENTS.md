@@ -10,7 +10,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 |---|---|---|
 | Android | `app/` | Kotlin/Compose UI、HOCON profile 解析/合并/覆盖、Shizuku UserService、日志 |
 | Native | `src/core/` | C++23 攻击 runtime，产物 `build/native/ghostlock` |
-| Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → offsets（`--format json`） |
+| Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → `--format conf`（flatten GLK profile）/ `--format json`（v1） |
 
 - Native 不是 JNI：`libghostlock.so` 是可执行 ELF，由 Kotlin `ProcessBuilder` 启动。
   CLI：无参数（legacy `offsets.json`）/ `--ghostlock-app-call`（stdin GLK1）/

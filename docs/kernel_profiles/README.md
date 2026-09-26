@@ -67,8 +67,12 @@ and doesn't repeat the field reference.
    ```
 
    `--format conf` writes a flattened, self-contained profile (no `include`
-   lines, the 6.x credential/KernelSnitch constants inlined); it can seed the
-   new profile directly. On 5.x it also derives the credential reference
+   lines, the 6.x credential/KernelSnitch constants inlined) with every field
+   the image actually yields and the rest omitted; it never fills gaps from a
+   neighbouring kernel family's guesses. Treat it as a **candidate seed**: it
+   can start the new profile directly, but the app validates missing fields
+   after import and blocks execution, so a successful generation does not mean
+   the profile is usable. On 5.x it also derives the credential reference
    repair and the multicast geometry from the image and its BTF. The tool accepts a `boot.img` (optionally with
    `xbl_config.img`), a complete OTA zip, or an `http(s)` URL pointing at one.
    Pass `--kallsyms` to supply a symbol table explicitly, or omit it to recover

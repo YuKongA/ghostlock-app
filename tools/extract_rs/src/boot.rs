@@ -437,5 +437,3 @@ pub fn find_subslice_in(haystack: &[u8], needle: &[u8], from: usize, to: usize) 
     }
     (from..=to - needle.len()).find(|&i| &haystack[i..i + needle.len()] == needle)
 }
-
-

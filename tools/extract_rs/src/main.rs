@@ -19,13 +19,15 @@ use ghostlock_extract::kallsyms::Kallsyms;
 use ghostlock_extract::kallsyms_finder;
 use ghostlock_extract::payload;
 use ghostlock_extract::report;
-use ghostlock_extract::symbols::{kernel_struct_macro, resolve_structs, resolve_symbols};
+use ghostlock_extract::symbols::{
+    kernel_layout_verified, kernel_struct_macro, resolve_structs, resolve_symbols,
+};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "ghostlock-extract",
     about = "Extract GhostLock kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
-    after_help = "examples:\n  ghostlock-extract boot.img --format conf --out profile.conf\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
+    after_help = "examples:\n  ghostlock-extract boot.img --format conf --out profile.conf\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
 )]
 struct Cli {
     /// boot.img, raw arm64 Image, gzip Image, payload.bin, OTA ZIP, or http(s) OTA URL
@@ -40,11 +42,8 @@ struct Cli {
     /// kernel physical load address (hex or decimal); overrides defaults
     #[arg(long, value_parser = parse_int)]
     phys: Option<u64>,
-    /// device name used in the --format c output header
-    #[arg(long, default_value = "target")]
-    name: String,
-    /// output format: text (JSON), json, c, or conf (flattened GLK profile HOCON)
-    #[arg(long, value_parser = ["text", "json", "c", "conf"], default_value = "text")]
+    /// output format: text (JSON), json, or conf (flattened GLK profile HOCON)
+    #[arg(long, value_parser = ["text", "json", "conf"], default_value = "text")]
     format: String,
     /// route written to --format conf; defaults to the analysis suggestion
     #[arg(long, value_parser = ["tcp_zerocopy", "select_stack", "multicast_waiter"])]
@@ -275,12 +274,12 @@ fn run(cli: &Cli) -> Result<i32> {
     let release = boot.release();
     match release.as_deref() {
         Some(release) => {
-            if kernel_struct_macro(Some(release)).is_none() {
+            if !kernel_layout_verified(Some(release)) {
+                let template = kernel_struct_macro(Some(release));
                 eprintln!(
-                    "warning: {release} is not a verified kernel family \
-                     (6.1, 6.6, 6.12); emitting the 6.6 layout as a testing \
-                     starting point, verify the waiter layout and slab \
-                     stride before trusting it"
+                    "warning: {release} is unverified{}; no family-derived \
+                     geometry will be emitted",
+                    template.map_or(String::new(), |name| format!(" (template {name} only)"))
                 );
             }
         }
@@ -314,12 +313,6 @@ fn run(cli: &Cli) -> Result<i32> {
             );
         }
     }
-    report::validate_kernel_phys_load(
-        release.as_deref(),
-        kernel_phys_load,
-        boot.mtk_lz4 || boot.mtk_gzip,
-    );
-
     if cli.route.is_some() && cli.format != "conf" {
         eprintln!("warning: --route only affects --format conf; ignoring");
     }
@@ -420,12 +413,19 @@ fn run(cli: &Cli) -> Result<i32> {
         .get("pselect_waiter_shift_value")
         .copied()
         .map(|value| value as i64)
-        .unwrap_or_else(|| {
+        .or_else(|| {
             let shift = report::pselect_waiter_shift_for(release.as_deref());
-            eprintln!(
-                "warning: using heuristic pselect_waiter_shift={shift} (6.12=0, 6.6=-2); \
-                 unreliable for kernels with a non-inlined do_pselect middle layer"
-            );
+            if let Some(shift) = shift {
+                eprintln!(
+                    "warning: using verified-family pselect_waiter_shift={shift}; \
+                     image-specific disassembly derivation was unavailable"
+                );
+            } else {
+                eprintln!(
+                    "warning: pselect_waiter_shift unavailable; no family fallback \
+                     is defined for this release"
+                );
+            }
             shift
         });
     if let Some(slot) = derived.get("off_slide_loggers_0_1").copied() {
@@ -458,13 +458,31 @@ fn run(cli: &Cli) -> Result<i32> {
              falls back to target.h default)"
         );
     }
-    report::require_fields(&symbol_offsets, &BTreeSet::new())?;
+    // A conf candidate carries whatever the image yielded; the app's
+    // pre-execution validation reports the gaps. Every other format keeps the
+    // hard requirement.
+    let candidate = cli.format == "conf";
+    match report::require_fields(&symbol_offsets, &BTreeSet::new()) {
+        Ok(()) => {}
+        Err(err) if candidate => eprintln!(
+            "warning: {err}; writing an unverified candidate (missing fields are omitted and \
+             validated by the app)"
+        ),
+        Err(err) => return Err(err),
+    }
     if btf.is_some() {
         let struct_fields_u64: BTreeMap<String, Option<u64>> = struct_offsets
             .iter()
             .map(|(key, value)| (key.clone(), value.map(|v| v as u64)))
             .collect();
-        report::require_fields(&struct_fields_u64, &report::optional_struct_fields())?;
+        match report::require_fields(&struct_fields_u64, &report::optional_struct_fields()) {
+            Ok(()) => {}
+            Err(err) if candidate => eprintln!(
+                "warning: {err}; writing an unverified candidate (missing fields are omitted and \
+                 validated by the app)"
+            ),
+            Err(err) => return Err(err),
+        }
     }
     if let Some(mm_size) = struct_offsets.get("struct_mm_struct").copied().flatten() {
         eprintln!(
@@ -476,16 +494,7 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
-    let output = if cli.format == "c" {
-        report::render_c(
-            release.as_deref(),
-            &cli.name,
-            &symbol_offsets,
-            &struct_offsets,
-            kernel_phys_load,
-            pselect_shift,
-        )
-    } else if cli.format == "conf" {
+    let output = if cli.format == "conf" {
         let release_text = release
             .as_deref()
             .ok_or_else(|| ExtractError::new("--format conf requires a kernel release string"))?;
@@ -498,6 +507,9 @@ fn run(cli: &Cli) -> Result<i32> {
                 "--format conf needs a 5.x/6.x release, got {release_text}"
             )));
         }
+        // Candidate output: emit everything the image actually yielded and
+        // leave the rest out. Whether the result is complete enough to run is
+        // decided by the app's pre-execution validation, not here.
         let route = match cli.route.as_deref() {
             Some(route) => Some(route.to_string()),
             None => {
@@ -511,26 +523,19 @@ fn run(cli: &Cli) -> Result<i32> {
         let geometry = route
             .as_deref()
             .map(|route| {
-                report::conf_route_geometry(
-                    route,
-                    release_text,
-                    Some(pselect_shift),
-                    &struct_offsets,
-                )
+                report::conf_route_geometry(route, release_text, pselect_shift, &struct_offsets)
             })
             .unwrap_or_default();
         match route.as_deref() {
-            Some(route) if geometry.is_empty() => {
-                eprintln!(
-                    "warning: route {route} has no derivable geometry; the built-in profile \
-                     must supply its layout"
-                );
-            }
-            None => eprintln!(
-                "warning: no route could be inferred; pass --route to select one; the written \
-                 profile has no route block"
+            Some(route) if geometry.is_empty() => eprintln!(
+                "warning: no image-derived geometry for route {route}; writing an unverified \
+                 candidate route branch"
             ),
             Some(_) => {}
+            None => eprintln!(
+                "warning: no route could be inferred; writing release/common fields only \
+                 (pass --route to select one)"
+            ),
         }
         if route.as_deref() == Some("multicast_waiter")
             && !geometry.iter().any(|(key, _)| *key == "task_offset")
@@ -540,6 +545,10 @@ fn run(cli: &Cli) -> Result<i32> {
                  geometry is partial"
             );
         }
+        eprintln!(
+            "info: {release_text} profile is an unverified candidate; the app validates fields \
+             before any execution"
+        );
         let cred: Vec<(String, String)> = if major == Some(5) {
             let derived_cred = btf.as_ref().and_then(|btf| {
                 let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;

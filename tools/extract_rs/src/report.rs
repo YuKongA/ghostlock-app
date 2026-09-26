@@ -5,171 +5,20 @@ use std::collections::BTreeMap;
 
 use crate::derive::Cred5x;
 use crate::error::{ExtractError, Result};
-use crate::symbols::{OPTIONAL_SYMBOLS, STRUCT_FIELDS, SYMBOLS};
+use crate::symbols::{OPTIONAL_SYMBOLS, kernel_device_geometry_verified, kernel_layout_verified};
 
-pub const MTK_DEFAULT_PHYS_LOAD: u64 = 0x8000_0000;
-pub const QC_PHYS_LOAD_6_6: u64 = 0xA800_0000;
-pub const QC_PHYS_LOAD_6_1: u64 = 0xA800_0000;
-pub const QC_PHYS_LOAD_6_12: u64 = 0xC780_0000;
-
-/// Python insertion order of resolve_symbols(): header output matches the
-/// Python tool byte-for-byte.
-pub fn symbol_render_order() -> Vec<&'static str> {
-    let mut keys: Vec<&'static str> = Vec::new();
-    for (name, _) in SYMBOLS {
-        keys.push(*name);
+pub fn pselect_waiter_shift_for(release: Option<&str>) -> Option<i64> {
+    if !kernel_layout_verified(release) {
+        return None;
     }
-    keys.push("off_slide_loggers_0_1");
-    keys
-}
-
-/// Python insertion order of resolve_structs(): struct_fields output in the
-/// C header matches the Python tool byte-for-byte.
-fn struct_render_order() -> Vec<&'static str> {
-    let mut keys: Vec<&'static str> = Vec::new();
-    for (_, fields) in STRUCT_FIELDS {
-        for (macro_name, _) in *fields {
-            keys.push(*macro_name);
-        }
-    }
-    keys.push("struct_page_size");
-    keys.push("struct_page_compound_head");
-    keys.push("struct_page_type");
-    keys.push("struct_slab_cache");
-    keys.push("struct_mm_struct");
-    keys
-}
-
-pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
-    let Some(phys) = phys else {
-        return false;
-    };
-    if phys == MTK_DEFAULT_PHYS_LOAD {
-        return false;
-    }
-    let default = match crate::symbols::kernel_struct_macro(release) {
-        Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
-        Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
-        _ => QC_PHYS_LOAD_6_6,
-    };
-    phys != default
-}
-
-pub fn pselect_waiter_shift_for(release: Option<&str>) -> i64 {
     match crate::symbols::kernel_struct_macro(release) {
-        Some("STRUCT_OFFSETS_6_12") => 0,
+        Some("STRUCT_OFFSETS_6_12") => Some(0),
         // android14-6.1 compiles its fd_set words one qword later than
         // 6.6; the committed tables all measure 1.
-        Some("STRUCT_OFFSETS_6_1") => 1,
-        _ => -2,
+        Some("STRUCT_OFFSETS_6_1") => Some(1),
+        Some("STRUCT_OFFSETS_6_6") => Some(-2),
+        _ => None,
     }
-}
-
-pub fn validate_kernel_phys_load(release: Option<&str>, phys: Option<u64>, mtk: bool) -> bool {
-    let Some(phys) = phys else {
-        return false;
-    };
-    let expected = if mtk {
-        MTK_DEFAULT_PHYS_LOAD
-    } else {
-        match crate::symbols::kernel_struct_macro(release) {
-            Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
-            Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
-            _ => QC_PHYS_LOAD_6_6,
-        }
-    };
-    if phys == expected {
-        return false;
-    }
-    let note = "the entry will carry it as an explicit override";
-    eprintln!(
-        "warning: kernel_phys_load=0x{phys:x} does not match the {} default 0x{expected:x}; {note}",
-        if mtk { "MediaTek" } else { "Qualcomm" }
-    );
-    true
-}
-
-pub fn render_c(
-    release: Option<&str>,
-    name: &str,
-    symbols: &BTreeMap<String, Option<u64>>,
-    structs: &BTreeMap<String, Option<u32>>,
-    phys: Option<u64>,
-    pselect_shift: i64,
-) -> String {
-    let label = release.unwrap_or(name);
-    let mut lines = vec![
-        format!("/* Generated offsets for {label}. */"),
-        String::new(),
-    ];
-    lines.push("#define STRUCT_OFFSETS_EXTRACTED \\".to_string());
-    let task_keys = [
-        "task_prio",
-        "task_normal_prio",
-        "task_sched_task_group",
-        "task_pi_lock",
-        "task_pi_waiters",
-        "task_pi_top_task",
-        "task_pi_blocked_on",
-        "task_pid",
-        "task_tgid",
-        "task_atomic_flags",
-        "task_real_cred",
-        "task_cred",
-        "task_comm",
-        "task_tasks",
-        "task_seccomp",
-    ];
-    let present: Vec<(String, u32)> = task_keys
-        .iter()
-        .filter_map(|key| {
-            structs
-                .get(*key)
-                .copied()
-                .flatten()
-                .map(|value| ((*key).to_string(), value))
-        })
-        .collect();
-    for (index, (key, value)) in present.iter().enumerate() {
-        let suffix = if index + 1 < present.len() { " \\" } else { "" };
-        lines.push(format!("  .{key} = 0x{value:X},{suffix}"));
-    }
-    lines.push(String::new());
-    let macro_name = crate::symbols::kernel_struct_macro(release);
-    lines.push(format!("OFFSETS_ENTRY(\"{label}\","));
-    lines.push(format!(
-        "  {},",
-        // unverified kernels render with the 6.6 layout as a testing start;
-        // the extractor warns whenever it falls back
-        macro_name.unwrap_or("STRUCT_OFFSETS_6_6")
-    ));
-    if phys_needs_override(release, phys) {
-        lines.push(format!("  .kernel_phys_load=0x{:X},", phys.unwrap()));
-    }
-    lines.push(format!("  .pselect_waiter_shift={pselect_shift},"));
-    if macro_name == Some("STRUCT_OFFSETS_6_1") {
-        // spell the layout fields out so a manually registered header does
-        // not depend on the selector macro carrying them
-        lines.push("  .compact_waiter=1,".to_string());
-        lines.push("  .mm_struct_sz=0x400,".to_string());
-    }
-    for key in symbol_render_order() {
-        if let Some(value) = symbols.get(key).copied().flatten() {
-            lines.push(format!("  .{key}=0x{value:08X},"));
-        }
-    }
-    lines.push("),".to_string());
-    lines.push(String::new());
-    lines.push("/* BTF fields not stored in kernel_offsets: */".to_string());
-    for key in struct_render_order() {
-        if key.starts_with("task_") {
-            continue;
-        }
-        if let Some(value) = structs.get(key).copied().flatten() {
-            lines.push(format!("#define {} 0x{:X}", key.to_uppercase(), value));
-        }
-    }
-    lines.join("\n")
 }
 
 pub fn build_report(
@@ -179,7 +28,7 @@ pub fn build_report(
     symbols: &BTreeMap<String, Option<u64>>,
     structs: &BTreeMap<String, Option<u32>>,
     btf_size: usize,
-    pselect_shift: i64,
+    pselect_shift: Option<i64>,
 ) -> Value {
     let symbol_json: BTreeMap<String, Value> = symbols
         .iter()
@@ -214,7 +63,9 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
-    if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
+    if kernel_layout_verified(release)
+        && crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1")
+    {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
         report["mm_struct_sz"] = json!(0x400);
@@ -308,11 +159,25 @@ pub fn conf_route_geometry(
         // android14-6.1 is the compact-waiter family; no other family has a
         // measured tcp layout.
         "tcp_zerocopy"
-            if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1") =>
+            if kernel_layout_verified(Some(release))
+                && crate::symbols::kernel_struct_macro(Some(release))
+                    == Some("STRUCT_OFFSETS_6_1") =>
         {
             vec![("compact_waiter", 1)]
         }
-        "multicast_waiter" if major == Some(5) => crate::derive::multicast_geometry_5x(structs),
+        // A verified 5.x train gets the corroborated geometry; the
+        // device-measured forged-object placement is emitted only for the exact
+        // validated release. An unverified release keeps just the BTF-derived
+        // waiter/lock offsets.
+        "multicast_waiter" if major == Some(5) => {
+            if !kernel_layout_verified(Some(release)) {
+                crate::derive::multicast_geometry_btf_only(structs)
+            } else if kernel_device_geometry_verified(Some(release)) {
+                crate::derive::multicast_geometry_5x(structs)
+            } else {
+                crate::derive::multicast_geometry_corroborated(structs)
+            }
+        }
         _ => Vec::new(),
     }
 }
@@ -398,9 +263,10 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
     if let Some(phys) = input.phys {
         lines.push(format!("kernel_phys_load = 0x{phys:X}"));
     }
-    if let Some(route) = input.route
-        && !input.route_geometry.is_empty()
-    {
+    if let Some(route) = input.route {
+        // A candidate profile keeps the chosen route even when no geometry
+        // could be derived, so the import carries the recommendation and the
+        // missing fields surface as invalid paths on the Kotlin side.
         lines.push("route {".to_string());
         lines.push(format!("  {route} {{"));
         for (key, value) in input.route_geometry {
@@ -415,14 +281,27 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         &[("to".to_string(), "\"none\"".to_string())],
     );
 
+    // KernelSnitch defaults are emitted only for a verified train; an
+    // unverified release omits them rather than inheriting a neighbour's value.
     let mut snitch = Vec::new();
-    if major == Some(6) {
-        // = kernelsnitch-6x.conf
-        snitch.push(("collisions".to_string(), "4".to_string()));
-    }
-    if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1") {
-        // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
-        snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+    if kernel_layout_verified(Some(release)) {
+        match major {
+            Some(6) => {
+                // = kernelsnitch-6x.conf
+                snitch.push(("collisions".to_string(), "4".to_string()));
+                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1")
+                {
+                    // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
+                    snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+                }
+            }
+            Some(5) => {
+                // android13-5.15 measured defaults (bundled 5.15 profile).
+                snitch.push(("collisions".to_string(), "8".to_string()));
+                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+            }
+            _ => {}
+        }
     }
     push_conf_block(&mut lines, "kernelsnitch", &snitch);
 
@@ -480,36 +359,11 @@ pub fn optional_struct_fields() -> BTreeSet<&'static str> {
     OPTIONAL_STRUCT_FIELDS.iter().copied().collect()
 }
 
-pub fn task_keys_list() -> &'static [&'static str] {
-    &[
-        "task_prio",
-        "task_normal_prio",
-        "task_sched_task_group",
-        "task_pi_lock",
-        "task_pi_waiters",
-        "task_pi_top_task",
-        "task_pi_blocked_on",
-        "task_pid",
-        "task_tgid",
-        "task_atomic_flags",
-        "task_real_cred",
-        "task_cred",
-        "task_comm",
-        "task_tasks",
-        "task_seccomp",
-    ]
-}
-
-pub fn struct_fields_reference()
--> &'static [(&'static str, &'static [(&'static str, &'static str)])] {
-    STRUCT_FIELDS
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfExtraOffsets, ConfInputs, conf_cred_5x, conf_cred_6x, conf_route_geometry,
-        pselect_waiter_shift_for, render_c, render_conf,
+        ConfExtraOffsets, ConfInputs, build_report, conf_cred_5x, conf_cred_6x,
+        conf_route_geometry, pselect_waiter_shift_for, render_conf,
     };
     use crate::derive::Cred5x;
     use std::collections::BTreeMap;
@@ -593,7 +447,7 @@ mod tests {
         };
         let geometry = conf_route_geometry(
             "multicast_waiter",
-            "5.15.189-android13-8",
+            "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
             Some(-2),
             &structs,
         );
@@ -616,7 +470,8 @@ mod tests {
         assert!(out.contains("lock_offset = 56"));
         assert!(out.contains("fake_task_offset = 12800"));
         assert!(out.contains("compact_waiter = 1"));
-        assert!(!out.contains("collisions"));
+        assert!(out.contains("collisions = 8"));
+        assert!(out.contains("mm_struct_sz = 1024"));
         assert!(out.contains("cred {\n  caps_offset = 48\n  copy_size = 176\n  usage_value = 256"));
         assert!(out.contains("caps_count = 3"));
         assert!(out.contains("caps_value = 2199023255551"));
@@ -650,7 +505,7 @@ mod tests {
         assert_eq!(
             conf_route_geometry(
                 "multicast_waiter",
-                "5.15.189-android13-8",
+                "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
                 Some(-2),
                 &structs
             ),
@@ -674,41 +529,121 @@ mod tests {
     }
 
     #[test]
-    fn render_c_carries_the_layout_selector_and_6_1_scalars() {
+    fn unverified_route_geometry_is_a_partial_candidate() {
+        let (_, structs) = conf_fixture();
+        // No image-derived shift: the route branch stays empty rather than
+        // borrowing the -2 family default.
+        assert!(conf_route_geometry("select_stack", "6.7.1-generic", None, &structs).is_empty());
+        // An image-derived shift is kept.
+        assert_eq!(
+            conf_route_geometry("select_stack", "6.7.1-generic", Some(-1), &structs),
+            vec![("waiter_shift", -1)]
+        );
+        // Unverified 5.x multicast keeps only BTF-derived waiter offsets; the
+        // proven Xperia constants are withheld.
+        assert_eq!(
+            conf_route_geometry(
+                "multicast_waiter",
+                "5.15.178-g3575c47dc7ce-dirty",
+                Some(-2),
+                &structs
+            ),
+            vec![("task_offset", 48), ("lock_offset", 56)]
+        );
+    }
+
+    #[test]
+    fn verified_5x_train_without_device_evidence_omits_measured_placement() {
+        let (_, structs) = conf_fixture();
+        let geometry = conf_route_geometry(
+            "multicast_waiter",
+            "5.15.208-android13-9-gabcdef",
+            Some(-2),
+            &structs,
+        );
+        assert!(geometry.contains(&("waiter_off", 96)));
+        assert!(geometry.contains(&("buffer_size", 264)));
+        assert!(geometry.contains(&("task_offset", 48)));
+        assert!(geometry.contains(&("lock_offset", 56)));
+        assert!(geometry.contains(&("compact_waiter", 1)));
+        assert!(
+            !geometry.iter().any(|(key, _)| {
+                let key = *key;
+                key.starts_with("fake_") || key.starts_with("lock_slot")
+            }),
+            "device-measured placement must not be inherited by the train"
+        );
+    }
+
+    #[test]
+    fn candidate_conf_keeps_the_route_branch_when_geometry_is_empty() {
         let symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
         let structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
-        let out = render_c(
-            Some("6.1.118-android14-11-gca0ef6d17716-ab13624819"),
-            "x",
-            &symbols,
-            &structs,
-            None,
-            1,
-        );
-        assert!(out.contains("STRUCT_OFFSETS_6_1"));
-        assert!(out.contains(".compact_waiter=1"));
-        assert!(out.contains(".mm_struct_sz=0x400"));
+        let out = render_conf(&ConfInputs {
+            release: "5.15.178-g3575c47dc7ce-dirty",
+            phys: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("multicast_waiter"),
+            route_geometry: &[],
+            cred: &[],
+            extra_offsets: &ConfExtraOffsets {
+                empty_zero_page: None,
+                mcast_fake_bss: None,
+            },
+        });
+        assert!(out.contains("route {"));
+        assert!(out.contains("multicast_waiter {"));
+        assert!(out.contains("release = \"5.15.178-g3575c47dc7ce-dirty\""));
+    }
 
-        let out66 = render_c(
-            Some("6.6.92-android15-8"),
-            "x",
-            &symbols,
-            &structs,
-            None,
-            -2,
-        );
-        assert!(out66.contains("STRUCT_OFFSETS_6_6"));
-        assert!(!out66.contains("compact_waiter"));
+    #[test]
+    fn unverified_release_omits_kernelsnitch_defaults() {
+        let (symbols, structs) = conf_fixture();
+        let out = render_conf(&ConfInputs {
+            release: "6.7.1-generic",
+            phys: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: None,
+            route_geometry: &[],
+            cred: &[],
+            extra_offsets: &no_extra_offsets(),
+        });
+        assert!(!out.contains("kernelsnitch"));
     }
 
     #[test]
     fn pselect_waiter_shift_matches_the_committed_tables() {
         assert_eq!(
             pselect_waiter_shift_for(Some("6.1.118-android14-11-gca0ef6d17716-ab13624819")),
-            1
+            Some(1)
         );
-        assert_eq!(pselect_waiter_shift_for(Some("6.6.92-android15-8")), -2);
-        assert_eq!(pselect_waiter_shift_for(Some("6.12.30-android16-0")), 0);
-        assert_eq!(pselect_waiter_shift_for(None), -2);
+        assert_eq!(
+            pselect_waiter_shift_for(Some("6.6.92-android15-8")),
+            Some(-2)
+        );
+        assert_eq!(
+            pselect_waiter_shift_for(Some("6.12.30-android16-0")),
+            Some(0)
+        );
+        assert_eq!(pselect_waiter_shift_for(Some("6.7.1-android16-1")), None);
+        assert_eq!(pselect_waiter_shift_for(None), None);
+    }
+
+    #[test]
+    fn json_report_keeps_unverified_pselect_shift_null() {
+        let symbols = BTreeMap::new();
+        let structs = BTreeMap::new();
+        let report = build_report(
+            Some("6.7.1-generic"),
+            0,
+            None,
+            &symbols,
+            &structs,
+            0,
+            pselect_waiter_shift_for(Some("6.7.1-generic")),
+        );
+        assert!(report["pselect_waiter_shift"].is_null());
     }
 }

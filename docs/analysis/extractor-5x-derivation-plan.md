@@ -68,6 +68,10 @@ kallsyms 与 BTF：
 | `offset.empty_zero_page` | kallsyms `empty_zero_page` |
 | `offset.mcast_fake_bss` | kallsyms `z_pagemap_global` |
 
+以上常量在 `android13-5.15` train 验证（与 6.x 相同的 train 判定）；仅当 release 的
+`major.minor` 为 5.15 且带 `-android13-` 后缀才写入这些常量，其它 5.x 只写 BTF 给出的
+`task_offset` / `lock_offset`。
+
 推导失败（无 BTF、无符号、镜像越界、ref > 4）时省略对应字段并警告；同分支合并时由内置
 profile 补齐（`ProfileMerger` 同 route 分支按字段 deep-merge）。
 
@@ -83,7 +87,7 @@ profile 补齐（`ProfileMerger` 同 route 分支按字段 deep-merge）。
 ## 开放问题
 
 1. `z_pagemap_global` 是 5.15 GKI 常见符号；无此符号的 5.x 省略 `mcast_fake_bss` + 警告。
-2. 几何常量取自 5.15.189；其它 5.x 需真机复核（模板文档已声明非稳定 ABI）。
+2. 几何常量取自 5.15.189；验证粒度是 `android13-5.15` train（与 6.x 家族同形式），同一 train 内其它 release 也会套用，仍需真机复核（模板文档已声明非稳定 ABI）；非 5.15 或缺 `-android13-` 后缀的 release 不套用。
 3. cred 的 `ref_*` 选择规则在其它 5.x 上可能选出多于 4 个指针；此时报错而不是截断。
 
 ## 进度

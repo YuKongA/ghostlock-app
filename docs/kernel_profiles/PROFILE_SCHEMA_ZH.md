@@ -24,6 +24,9 @@
 - 解析发生在 Kotlin 侧（`HoconSupport`），随后以类型化二进制结构体传给 native（见第 9 节）；
 - 应用内部存储与导出均为 HOCON（`ghostlock-extract --format conf` 输出 flatten 自包含
   profile，走常规导入路径；`--format json` 与旧 `offsets.json` 仍属 legacy 路径）。
+- 提取器输出是**候选来源**：镜像实际获得多少字段就写出多少，未获得的字段省略，不会借用
+  相邻内核族的猜测值。因此候选 profile 可能不完整；导入成功后由 App 的字段校验填充
+  `invalidPaths` 并在执行前拦截，生成成功不等于设备受支持。
 
 ## 1. 数据流总览
 
