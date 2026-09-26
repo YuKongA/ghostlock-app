@@ -171,13 +171,15 @@ sequenceDiagram
   - `src/core/session/backend/cve_2026_43499_backend.cpp`：`w1a/w1b/w1c`、`w2a/w2b`、`w3a/w3b/w3c`
     步骤边界插入 `run_state::enter/complete`。
   - `src/Makefile`：加入 `core/support/run_state.cpp`。
-- [ ] Implement（Kotlin）：stdin 帧化 + 保持打开、tailer 识别事件写文件并回 ACK、删除旧机制、
-  `lastRunStuckAtW3()`、提示分级（w3* 自动启用 Shizuku，其它仅提示）、Shizuku 路径经 binder 转发
-  `onStatus`。
+- [x] Implement（Kotlin）：stdin 帧化 + 保持打开、tailer 识别事件写
+  `.ghostlock_run_state.json` 并回 ACK、删除旧 `last_run`/日志标记机制、`lastRunStuckStep()`、
+  提示分级（`w3*` 自动启用 Shizuku，其它用 `NOTICE` 仅提示）、Shizuku 路径经新同步 AIDL
+  `IGhostlockStatusCallback` 转发 `onStatus`。
 - [x] Verify（Native）：
   - NDK 构建 `make -C src ghostlock` 成功、零警告；
   - `cmp_disasm`：**RESULT: PASS**（`multicast_owner_worker`/`multicast_waiter_worker` strict IDENTICAL，
     其余 6 个为 `LAYOUT-SHIFT` 注解地址位移，指令数/形状一致）；
   - `make -C src native-host-tests` 全部通过；
   - `make -C src lint-tidy` exit 0、无用户代码 finding。
-- [ ] Verify（Kotlin）：待实现后跑 `:app:testDebugUnitTest`。
+- [x] Verify（Kotlin）：`./gradlew :app:compileDebugKotlin` 与 `:app:testDebugUnitTest` 通过。
+- 说明：真机行为（状态按步推进、注入 panic 后重启提示）尚未在设备验证。
