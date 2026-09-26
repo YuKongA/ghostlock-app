@@ -40,6 +40,25 @@ namespace ghostlock::profile_entry {
             return 0;
         }
 
+        int32_t read_exact(int32_t fd, void *buf, size_t len) {
+            auto *bytes = static_cast<unsigned char *>(buf);
+            size_t used = 0;
+            while (used < len) {
+                const ssize_t count = read(fd, bytes + used, len - used);
+                if (count > 0) {
+                    used += static_cast<size_t>(count);
+                    continue;
+                }
+                if (count == 0) {
+                    errno = EIO;
+                    return -1;
+                }
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            return 0;
+        }
+
         int32_t decode(const std::string &document, profile::kernel_offsets *out,
                    char *release_buf, size_t release_buf_cap,
                    binary_profile::component_ids *ids) {
@@ -57,6 +76,27 @@ namespace ghostlock::profile_entry {
         }
         std::string document;
         if (read_all(STDIN_FILENO, &document) != 0) return -1;
+        return decode(document, out, release_buf, release_buf_cap, ids);
+    }
+
+    int32_t read_glk1_frame_stdin(profile::kernel_offsets *out, char *release_buf,
+                        size_t release_buf_cap, binary_profile::component_ids *ids) {
+        if (!out || !release_buf || release_buf_cap == 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        unsigned char header[4];
+        if (read_exact(STDIN_FILENO, header, sizeof(header)) != 0) return -1;
+        const size_t length = (static_cast<size_t>(header[0]) << 24) |
+                              (static_cast<size_t>(header[1]) << 16) |
+                              (static_cast<size_t>(header[2]) << 8) |
+                              static_cast<size_t>(header[3]);
+        if (length == 0 || length > kMaxDocument) {
+            errno = EFBIG;
+            return -1;
+        }
+        std::string document(length, '\0');
+        if (read_exact(STDIN_FILENO, document.data(), length) != 0) return -1;
         return decode(document, out, release_buf, release_buf_cap, ids);
     }
 

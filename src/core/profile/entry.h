@@ -14,6 +14,13 @@ namespace ghostlock::profile_entry {
                         size_t release_buf_cap,
                         ghostlock::binary_profile::component_ids *ids = nullptr);
 
+    /* Reads a length-prefixed typed document from stdin (4-byte big-endian
+     * length + payload). Unlike read_glk1_stdin it does not consume to EOF, so
+     * stdin stays usable for the status-record ACK channel. */
+    int32_t read_glk1_frame_stdin(struct ghostlock::profile::kernel_offsets *out, char *release_buf,
+                        size_t release_buf_cap,
+                        ghostlock::binary_profile::component_ids *ids = nullptr);
+
     /* Reads a typed document from a file path. */
     int32_t read_glk1_file(const char *path, struct ghostlock::profile::kernel_offsets *out,
                        char *release_buf, size_t release_buf_cap,

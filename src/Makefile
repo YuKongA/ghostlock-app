@@ -45,7 +45,8 @@ CXX_SRCS := \
   core/session/handoff_probe.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \
-  core/support/native_resource.cpp
+  core/support/native_resource.cpp \
+  core/support/run_state.cpp
 
 # Generated output stays in the repository-root build/ directory; this Makefile
 # lives in src/ and is expected to run from there (`make -C src ...`).

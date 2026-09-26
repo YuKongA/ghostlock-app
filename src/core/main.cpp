@@ -14,6 +14,7 @@
 #include "legacy/legacy_entrypoint_starter.h"
 #include "profile/entry.h"
 #include "support/fatal_error.hpp"
+#include "support/run_state.hpp"
 #include "route/orchestrator.hpp"
 
 #include <array>
@@ -36,6 +37,7 @@ int main(int argc, char **argv) {
 
         bool app_call = false;
         bool force_attack = false;
+        bool status_record = false;
         const char *prebuilt_path = nullptr;
         const char *dump_dir = nullptr;
         for (int32_t i = 1; i < argc; i++) {
@@ -43,13 +45,15 @@ int main(int argc, char **argv) {
                 app_call = true;
             } else if (std::string_view(argv[i]) == "--force-attack") {
                 force_attack = true;
+            } else if (std::string_view(argv[i]) == "--enable-status-record") {
+                status_record = true;
             } else if (std::string_view(argv[i]) == "--load-prebuilt-profile" &&i + 1 < argc) {
                 prebuilt_path = argv[++i];
             } else if (std::string_view(argv[i]) == "--dump-kernel-log" && i + 1 < argc) {
                 dump_dir = argv[++i];
             } else {
                 pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
-                " [--dump-kernel-log <dir>] [--force-attack]\n", argv[0]);
+                " [--dump-kernel-log <dir>] [--force-attack] [--enable-status-record]\n", argv[0]);
                 return 1;
             }
         }
@@ -57,12 +61,21 @@ int main(int argc, char **argv) {
             pr_error("choose one entrypoint\n");
             return 1;
         }
+        if (status_record && !app_call) {
+            pr_error("--enable-status-record requires --ghostlock-app-call\n");
+            return 1;
+        }
+        support::run_state::configure(status_record);
 
         int32_t loaded;
         if (prebuilt_path != nullptr) {
             loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size(), &ids);
         } else if (app_call) {
-            loaded = profile_entry::read_glk1_stdin(&decoded, release_buf.data(), release_buf.size(), &ids);
+            loaded = status_record
+                         ? profile_entry::read_glk1_frame_stdin(
+                               &decoded, release_buf.data(), release_buf.size(), &ids)
+                         : profile_entry::read_glk1_stdin(
+                               &decoded, release_buf.data(), release_buf.size(), &ids);
         } else {
             loaded = legacy::start_legacy_entrypoint(&decoded, release_buf.data(), release_buf.size());
         }
