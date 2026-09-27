@@ -9,7 +9,11 @@ ifeq ($(OS),Windows_NT)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANG_BASE).cmd
 else
   NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT))
-  PREBUILT := linux-x86_64
+  ifeq ($(shell uname -s),Darwin)
+    PREBUILT := darwin-x86_64
+  else
+    PREBUILT := linux-x86_64
+  endif
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang
 endif
 

@@ -64,8 +64,14 @@ private fun resolveCargoExecutable(): String {
 
 private fun extractNdkTools(): NdkTools {
     val ndk = resolveNdkDir()
-    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
-    val prebuilt = if (isWindows) "windows-x86_64" else "linux-x86_64"
+    val osName = System.getProperty("os.name").lowercase()
+    val isWindows = osName.contains("windows")
+    val isMac = osName.contains("mac") || osName.contains("darwin")
+    val prebuilt = when {
+        isWindows -> "windows-x86_64"
+        isMac -> "darwin-x86_64"
+        else -> "linux-x86_64"
+    }
     val binDir = File(ndk, "toolchains/llvm/prebuilt/$prebuilt/bin")
     return NdkTools(
         clang = File(
