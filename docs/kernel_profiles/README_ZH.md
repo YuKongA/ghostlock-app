@@ -54,7 +54,7 @@ GhostLock 用 `uname -r` 精确匹配内核版本：匹配不到时应用会直�
    编译并运行提取工具：
 
    ```sh
-   (cd tools/extract_rs && cargo build --release)
+   cargo build --release --manifest-path tools/extract_rs/Cargo.toml
    build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
    ```
 
@@ -82,7 +82,7 @@ GhostLock 用 `uname -r` 精确匹配内核版本：匹配不到时应用会直�
 
    ```sh
    jq . app/src/main/assets/kernel_profiles/index.conf
-   (cd tools/extract_rs && cargo test)
+   cargo test --manifest-path tools/extract_rs/Cargo.toml
    ./gradlew clean :app:assembleDebug
    ```
 

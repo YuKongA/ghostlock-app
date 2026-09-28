@@ -6,24 +6,24 @@
 
 > 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优建议见 [defaults_ZH.md](defaults_ZH.md)。
 
-> **两个"版本"是彼此独立的东西**（不要当成同一条版本序列）：
+> **三个"版本"是彼此独立的东西**（不要当成同一条版本序列）：
 > - **Profile schema 版本**：HOCON 配置代际，由每份 profile 里的 `schema_version` 字段表达（见第 2 节）。
 > - **Binary wire 版本**：magic `0x0D000721` 之后的 GLK1 传输版本。当前 writer 写 wire version `2`
 >   （对象分段，见第 9 节）；它是唯一版本，Kotlin 与 native 版本绑定。
->
-> 下文全部描述当前 v2 配置；旧 v1 JSON 导入路径仅在 Kotlin 侧，集中见第 11 节。
+> - **v1 JSON 导入**：remote/main 时代的 `offsets.json`，只在 Kotlin 侧由
+>   `LegacyProfileConverter` 一次性转换；native 不再解析 v1。
 
 ## 0. 文件格式（HOCON）
 
 内置配置、`index.conf`、共享配置与导入的偏移文件都按 **HOCON** 解析：
 
-- JSON 是 HOCON 的子集；
+- JSON 是 HOCON 的子集，历史文件无需转换；
 - 支持 `#` / `//` 注释、尾逗号、`${var}` 变量替换（可选替换写 `${?var}`）；
 - 支持 `include "file.conf"`（相对同目录、可嵌套、防循环）：读取 assets 时由 `AssetConfigLoader` 展开；
   **导入**时优先用一并选中的文件展开，其次查包内共享文件，缺失会报错并要求重新选择；
 - 解析发生在 Kotlin 侧（`HoconSupport`），随后以类型化二进制结构体传给 native（见第 9 节）；
 - 应用内部存储与导出均为 HOCON（`ghostlock-extract --format conf` 输出 flatten 自包含
-  profile，走常规导入路径；旧 v1 JSON 导入路径见第 11 节）。
+  profile，走常规导入路径；`--format json` 与旧 `offsets.json` 仍属 legacy 路径）。
 - 提取器输出是**候选来源**：镜像实际获得多少字段就写出多少，未获得的字段省略，不会借用
   相邻内核族的猜测值。因此候选 profile 可能不完整；导入成功后由 App 的字段校验填充
   `invalidPaths` 并在执行前拦截，生成成功不等于设备受支持。
@@ -76,7 +76,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 | `kernel_major` | int | `5` 或 `6`；用于地址解析与合法性检查，不再决定路由 |
 | `route` | object | 显式路由父项，只含一个分支，见第 3 节 |
 | `fallback` | object | 回退声明（`to` + 可选 `route` 分支），见第 3 节 |
-| 几何字段 | object/int | 按命名空间分组：`task_struct` / `cred` / `offset` / `kernelsnitch`；当前路由的全字段与公共几何**必须全部出现**，无法提供的值写显式 `null`（不要用 `0` 占位）；非当前路由的分支省略 |
+| 几何字段 | object/int | 按命名空间分组：`task_struct` / `cred` / `offset` / `kernelsnitch`；未采用的路由专属字段**直接省略**，不要写 `0` 或占位值；`null` 只出现在模板与编辑中间态 |
 | `execution` | object | 调优参数（advisory）；通用项来自 `execution-tuning.conf`，路由项来自 `execution-<route>.conf`；两者由 resolver 作为 preset 加载，设备 profile 不 include。只写差异 |
 
 ## 3. 路由（route）机制
@@ -89,6 +89,7 @@ route { select_stack { waiter_shift = -2 } }
 route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 ```
 
+- 旧配置缺少 `route` 时保留兼容推断：`kernel_major==5 且 mcast.waiter_off>0` → `multicast_waiter`；否则 `compact_waiter!=0` → `tcp_zerocopy`；否则 `select_stack`（导入旧 `offsets.json` 时自动归一为新结构）。
 - 每个路由只要求自己的分支：未采用的路由分支完全不写；分支之间不得并存（一个配置一种 path）。
 - `fallback` 父项声明回退：`"to"` 取 `"none"` 或路由名；声明目标时同时给出 `"route"` 分支，
   存放回退执行所需的字段：
@@ -101,16 +102,32 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
   当前实现支持 `tcp_zerocopy` 失败后回退 `select_stack`；写 `"to": "none"` 即关闭。
 - native 侧 `RouteKind` 枚举与 Kotlin 侧取值一一对应（`profile.h` / `ProfileConfig.Routes`）。
 
+### 3.1 remote/main 时代 offsets 的兼容转换
+
+上游（`remote/main` 顶端提交 `bddfea46`）时期只有 6.x 内核、没有 Shizuku 路径、没有 5.x 几何；其 `offsets.json` 条目是提取器报告格式（`symbols`/`struct_fields` + 4 个顶层标量 + 元数据）。加载时会由 `LegacyProfileConverter` 自动归一（幂等）：
+
+| 上游内容 | 转换结果 |
+|---|---|
+| `symbols` 对象（`off_*` 键） | `offset.*` 命名空间 |
+| `struct_fields` 对象（`task_*` 键） | `task_struct.*` 命名空间；`rt_mutex_waiter`/`cred_uid`/`seccomp_*` 等 BTE 专用键保留原组，不参与新校验与比较 |
+| 顶层 `pselect_waiter_shift` | `route.select_stack.waiter_shift`；tcp 配置则保留为 `fallback.route.select_stack.waiter_shift` |
+| 顶层 `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
+| `kimage_text_base` / `btf_size` / `kallsyms` | 丢弃 |
+| 无 `route` 字段 | 按 6.x 几何推断：`compact_waiter` → tcp，否则 select |
+| 无 cred 模板 | 由转换器写入内置 6.x 常量（`credential-6x.conf` / `kernelsnitch-6x.conf`）；5.x 凭据字段仍由作者提供 |
+
+上游文档不可能选中 5.x 分支（`multicast_waiter` 仅作为本地格式的受保护推断保留）。
+
 ### 必填矩阵
 
-| 字段组 | tcp_zerocopy | select_stack | multicast_waiter |
-|---|:---:|:---:|:---:|
-| `offset.init_task` / `offset.init_cred` / `offset.root_task_group` / `offset.selinux_enforcing` | 必填 | 必填 | 必填 |
-| `task_struct.prio` / `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_blocked_on` / `task_struct.cred` / `task_struct.seccomp` | 必填 | 必填 | 必填 |
-| `kernel_major` ∈ {5,6}、`cred.copy_size`、`cred.caps_count` 及凭据模板边界 | 必填 | 必填 | 必填 |
-| `route.tcp_zerocopy.compact_waiter` / `route.multicast_waiter.compact_waiter` | 必填 | | 必填 |
-| `route.select_stack.waiter_shift` | | 必填（0 合法） | |
-| `route.multicast_waiter.waiter_off`（>0）、`route.multicast_waiter.buffer_size`、`route.multicast_waiter.task_offset`、`route.multicast_waiter.lock_offset`、`offset.empty_zero_page`、`kernelsnitch.mm_struct_sz`、`cred.ref_count`（>0） | | | 必填 |
+| 字段组 | 公共（所有路由） | tcp_zerocopy | select_stack | multicast_waiter |
+|---|:---:|:---:|:---:|:---:|
+| `offset.init_task` / `offset.init_cred` / `offset.root_task_group` / `offset.selinux_enforcing` | 必填 | | | |
+| `task_struct.prio` / `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_blocked_on` / `task_struct.cred` / `task_struct.seccomp` | 必填 | | | |
+| `kernel_major` ∈ {5,6}、`cred.copy_size`、`cred.caps_count` 及凭据模板边界 | 必填 | | | |
+| `route.tcp_zerocopy.compact_waiter` / `route.multicast_waiter.compact_waiter` | | 必填 | | 必填 |
+| `route.select_stack.waiter_shift` | | | 必填（0 合法） | |
+| `route.multicast_waiter.waiter_off`（>0）、`route.multicast_waiter.buffer_size`、`route.multicast_waiter.task_offset`、`route.multicast_waiter.lock_offset`、`offset.empty_zero_page`、`kernelsnitch.mm_struct_sz`、`cred.ref_count`（>0） | | | | 必填 |
 
 凭据模板边界（通用）：`cred.usage_offset + 4 ≤ cred.copy_size`；`cred.caps_offset + cred.caps_count × 8 ≤ cred.copy_size`；`cred.ref_count ≤ 4`；每个 `cred.refN_image` 非零、`cred.refN_offset + 8 ≤ cred.copy_size`。`multicast_waiter` 还要求 `cred_copy_size ≥ 0xa0` 且 `route.multicast_waiter.waiter_off + route.multicast_waiter.lock_offset + 8 ≤ route.multicast_waiter.buffer_size`。
 
@@ -184,7 +201,6 @@ cred
 | `offset.selinux_blob_sizes` / `offset.security_hook_heads` | SELinux/安全钩子相关偏移 |
 | `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | 地址滑移（KASLR）定位点 |
 | `kernel_phys_load` | 内核物理加载地址（0 时按 SoC 公式回退） |
-| `kernel_phys_offset` | DRAM 基址 / linear-map `PHYS_OFFSET`，用于 image→direct-map 换算（缺省用编译期 `P0_PHYS_OFFSET = 0x80000000`）。DRAM 基址不同的设备需填写（如 MTK `0x40000000`）；无法从 `boot.img` 提取，取自 `/proc/iomem` |
 | `recommend_shizuku` | 该内核是否建议走 Shizuku（0/1，所有 profile 必填，默认 0；仅提示不强制）。不在任何编辑器中显示：推荐内核在**每次启动时自动打开**主页“Run via Shizuku”开关，会话内可手动关闭，关闭后本次会话不再要求 Shizuku |
 
 ### 4.4 select_stack / tcp 路由字段
@@ -211,6 +227,9 @@ cred
 |---|---|
 | `kernelsnitch.collisions` | 需要的 futex 碰撞数量 |
 | `kernelsnitch.mm_struct_sz` | `mm_struct` 的 SLUB 大小（未填写时使用内置默认） |
+
+> 旧版扁平键（`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` / `cred_*` / `off_*` / `mcast_*`）在导入旧 `offsets.json`、解析 extractor 输出或读取高级覆盖时自动归入对应命名空间。
+> 应用内部存储（`offsets.conf`、高级覆盖、快照）与导出均为 HOCON；旧版 JSON 缓存**不迁移、启动即丢弃**。
 
 ## 5. execution 调优参数（advisory）
 
@@ -264,37 +283,15 @@ cred
   随后是 `release` 文本、`u16 section_count`，每个 section 为 `u8 name_len + name + u32 entry_count`，每个条目为 `u8 key_len + key + u64 value`。
   presence 由键是否出现表达（缺席 ≠ 提供的 0）；值为 u64 原始位型（有符号为二补数），不做 clamp；只写/接受**当前 route** 的 `route.*` section；未知 section/键忽略；重复键 last-wins。`middleware` 承载 route。权威 section/键表在 `profile/binary.cpp`（`kSections`），`NativeProfile.kt` 的对象 section 必须逐字对齐。
 - 传输路径：direct 与 Shizuku 都把 profile 以 **stdin** 交给 native（`--ghostlock-app-call`），不再落盘 `active-profile.bin`、也不再使用 `--profile`。
-- native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给 `profile/binary.cpp::parse`；它不检测 magic 之外的格式，也没有 JSON 回退。
-- 内部存储与“导出配置”均为 HOCON（人类可读）；旧 v1 `offsets.json` 只在 Kotlin 侧转成 v2，见第 11 节。
+- native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给 `profile/binary.cpp::parse`。它不检测 magic 之外的格式，也没有 JSON 回退；native 侧 v1 `legacy/` JSON 解析器已删除。
+- 内部存储与“导出配置”均为 HOCON（人类可读）；旧 v1 `offsets.json` 只在 Kotlin 侧由 `LegacyProfileConverter.kt` 转成 v2，`ghostlock-extract --format json` 仍按 v1 JSON 形状输出给外部工具。
 - 运行时路由与能力判断（`TargetProfile::route()`、`TargetProfile::supports()`、`route_capability`）全部基于解析后的 route。
 
 ## 10. 修改配置的检查清单
 
-1. 每份 profile 都要包含当前路由的全字段与公共几何，且每项都必须出现；镜像或设备无法提供的值写显式 `null`（不要用 `0` 占位，除非 0 就是真实值）。非当前路由（及其声明的 fallback）的字段省略。`ghostlock-extract --format conf` 会输出这份完整骨架；`null` 使字段在 app 中可见可编辑，而不是悄无声息地缺失。
+1. 只改需要改的字段；未采用的路由字段直接省略（不要补 `0` 占位）。
 2. `route` 只能有一个分支，且分支内必须给出该路由的必填字段；`fallback.to` 声明了回退目标时，`fallback.route` 分支内同样要补齐。
    共享 core 值通过 `include` 引入，不要复制：`credential-6x.conf`（6.x 凭据模板）、`kernelsnitch-6x.conf`（6.x collisions）。execution 调优（`execution-tuning.conf` / `execution-<route>.conf`）由 resolver 作为 preset 加载，设备 profile 不要 include。
 3. 修改 `execution` 需要设备实测依据；否则保持 defaults。
 4. 本地验证：`make native-host-tests`（profiles 解码/校验向量）与 `./gradlew :app:assembleDebug`。
 5. 修改字段命名/分组时同步更新：`FieldLabels.kt` + `values*/strings.xml`、可能的 `docs/kernel_profiles/defaults*.md`。
-
-## 11. 旧 v1 JSON 导入（兼容）
-
-本节集中说明 **v1 JSON** 兼容层；第 0–10 节只描述当前 v2 配置。native 只读 v2（见第 9 节），v1 路径仅在 Kotlin 侧且自包含。
-
-- **v1 = 旧 JSON 格式**：remote/main 时代的 `offsets.json`——提取器报告（`symbols`/`struct_fields` + 4 个顶层标量 + `kimage_text_base`/`btf_size`/`kallsyms` 等元数据）。`ghostlock-extract --format json` 仍按此形状输出给外部工具。
-- 加载时会由 `LegacyProfileConverter` 把 v1 文档归一为 v2（幂等）：
-
-  | v1 内容 | 转换结果 |
-  |---|---|
-  | `symbols` 对象（`off_*` 键） | `offset.*` 命名空间 |
-  | `struct_fields` 对象（`task_*` 键） | `task_struct.*` 命名空间；`rt_mutex_waiter`/`cred_uid`/`seccomp_*` 等字段保留原处，不参与校验与比较 |
-  | 顶层 `pselect_waiter_shift` | `route.select_stack.waiter_shift`；tcp 配置则保留为 `fallback.route.select_stack.waiter_shift` |
-  | 顶层 `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
-  | `kimage_text_base` / `btf_size` / `kallsyms` | 丢弃 |
-  | 无 `route` 字段 | 按 6.x 几何推断：`compact_waiter` → tcp，否则 select |
-  | 无 cred 模板 | 写入内置 6.x 常量（`credential-6x.conf` / `kernelsnitch-6x.conf`）；5.x 凭据字段仍由作者提供 |
-
-- 旧版扁平键（`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` / `cred_*` / `off_*` / `mcast_*`）在导入旧 `offsets.json`、解析 extractor 输出或读取高级覆盖时自动归入对应命名空间。
-- 旧配置缺少 `route` 时同样按此推断：`kernel_major==5 且 mcast.waiter_off>0` → `multicast_waiter`；否则 `compact_waiter!=0` → `tcp_zerocopy`；否则 `select_stack`。v1 文档不可能选中 5.x 分支（`multicast_waiter` 仅作为受保护推断保留）。
-- 旧版 JSON 缓存**不迁移、启动即丢弃**；内部存储、快照与导出始终为 HOCON。
-- native 无 v1 解析器：native 侧 `legacy/` JSON 解码器已删除；v1 文档在传输前已由 Kotlin 侧转成 v2。

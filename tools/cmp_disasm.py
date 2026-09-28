@@ -7,12 +7,21 @@ Usage:
 The objdump binary is resolved from $LLVM_OBJDUMP, then PATH, then the
 Android NDK under $ANDROID_NDK_HOME / $ANDROID_NDK_ROOT / ~/Library/Android/sdk.
 
-Two levels are reported:
-  strict  - only absolute hex addresses are normalised; symbol+offset
-            annotations must match. This is the equivalence contract used by
-            the CPP migration gates.
-  layout  - symbol names/offsets are normalised too; any remaining difference
-            is a real instruction-shape change.
+Three levels are reported, from the loosest to the strictest:
+  layout   - symbol names/offsets and all hex are normalised; a difference
+             here is a real instruction-shape change.
+  operands - symbol/address annotations are dropped, but immediate values and
+             structure offsets are kept; a difference here is a real
+             instruction-operand change.
+  strict   - only absolute hex addresses are normalised; symbol+offset
+             annotations and immediates must match. This is the equivalence
+             contract used by the CPP migration gates.
+
+A function is IDENTICAL only when strict matches. When layout matches but
+operands differ, the changed immediate/offset is a hard failure, so it can
+never be hidden behind a layout annotation shift. Only when both layout and
+operands match but strict does not is the difference confined to symbol
+spelling and is reported as LAYOUT-SHIFT for manual review.
 
 Each target lists the legacy demangled spelling and the namespace-qualified
 spelling; whichever is present in a binary is used, so the tool keeps working
@@ -134,8 +143,23 @@ def resolve(funcs, candidates):
 
 
 def strict(text):
+    """Drop absolute addresses; keep symbol annotations and immediates."""
     text = re.sub(r"0x[0-9a-f]+ <", "<", text)
-    return re.sub(r"0x[0-9a-f]+", "0xH", text)
+    parts = re.split(r"(<[^>]*>)", text)
+    for i in range(0, len(parts), 2):
+        parts[i] = re.sub(r"(?<!#)(?<!#-)0x[0-9a-f]+", "0xH", parts[i])
+    return "".join(parts)
+
+
+def operands(text):
+    """Drop symbol/address annotations; keep immediates and offsets.
+
+    An immediate is spelled `#0x..` (possibly `#-0x..`) and a structure
+    offset is a `#0x..` inside a memory operand, so the negative lookbehind
+    keeps both; a bare `0x..` is an absolute address/branch target and is
+    normalised."""
+    text = re.sub(r"<.*>", "<SYM>", text)
+    return re.sub(r"(?<!#)(?<!#-)0x[0-9a-f]+", "0xH", text)
 
 
 def layout(text):
@@ -165,6 +189,8 @@ def main():
             continue
         sb = [strict(x) for x in b]
         sc = [strict(x) for x in c]
+        ob = [operands(x) for x in b]
+        oc = [operands(x) for x in c]
         lb = [layout(x) for x in b]
         lc = [layout(x) for x in c]
         if lb != lc:
@@ -172,6 +198,18 @@ def main():
             print(f"SHAPE-DIFF {label} ({len(b)} instructions)")
             shown = 0
             for i, (x, y) in enumerate(zip(lb, lc)):
+                if x != y:
+                    print(f"  [{i}] base: {b[i]}")
+                    print(f"  [{i}] cur: {c[i]}")
+                    shown += 1
+                    if shown >= 5:
+                        break
+            continue
+        if ob != oc:
+            failed += 1
+            print(f"OPERAND-DIFF {label} ({len(b)} instructions)")
+            shown = 0
+            for i, (x, y) in enumerate(zip(ob, oc)):
                 if x != y:
                     print(f"  [{i}] base: {b[i]}")
                     print(f"  [{i}] cur: {c[i]}")

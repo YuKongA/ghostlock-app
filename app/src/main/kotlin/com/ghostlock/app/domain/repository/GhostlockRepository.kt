@@ -34,9 +34,6 @@ interface GhostlockRepository {
         input: String,
         xblPath: String? = null,
         uefiPath: String? = null,
-        /** vendor_boot.img (MediaTek only); derives kernel_phys_load AND
-         * kernel_phys_offset from its header. */
-        vendorBootPath: String? = null,
         overwrite: Boolean = false,
         onLog: (String) -> Unit = {},
     ): ParseResult

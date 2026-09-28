@@ -92,66 +92,6 @@ const CONF_TASK_FIELDS: &[(&str, &str)] = &[
     ("task_seccomp", "seccomp"),
 ];
 
-/// Full route field universe per branch (authoritative: Kotlin
-/// `RouteConfig.entries()` / native `kSections`). A missing value renders as
-/// `null` so every generated profile carries every field of its route.
-const CONF_ROUTE_FIELDS: &[(&str, &[&str])] = &[
-    ("tcp_zerocopy", &["compact_waiter"]),
-    ("select_stack", &["waiter_shift"]),
-    (
-        "multicast_waiter",
-        &[
-            "waiter_off",
-            "buffer_size",
-            "task_offset",
-            "lock_offset",
-            "compact_waiter",
-        ],
-    ),
-];
-
-/// Full credential field universe (native `kCred` / `credential-6x.conf`).
-const CONF_CRED_FIELDS: &[&str] = &[
-    "copy_size",
-    "usage_offset",
-    "usage_value",
-    "caps_offset",
-    "caps_count",
-    "caps_value",
-    "ref_count",
-    "ref0_offset",
-    "ref1_offset",
-    "ref2_offset",
-    "ref3_offset",
-    "ref0_image",
-    "ref1_image",
-    "ref2_image",
-    "ref3_image",
-];
-
-/// Full offset field universe (native `kOffset`).
-const CONF_OFFSET_FIELDS: &[&str] = &[
-    "init_task",
-    "init_cred",
-    "empty_zero_page",
-    "root_task_group",
-    "selinux_enforcing",
-    "selinux_blob_sizes",
-    "security_hook_heads",
-    "slide_nfulnl_logger",
-    "slide_loggers_0_1",
-    "slide_boot_id",
-];
-
-/// Looks up a key in `(key, value)` entries, or `"null"` when absent.
-fn conf_lookup(entries: &[(String, String)], key: &str) -> String {
-    entries
-        .iter()
-        .find(|(candidate, _)| candidate == key)
-        .map(|(_, value)| value.clone())
-        .unwrap_or_else(|| "null".to_string())
-}
-
 /// Extra `offset.*` keys the extractor resolves outside the `off_*` symbol
 /// table (kallsyms-only symbols). Kept in its bundled-profile position.
 #[derive(Debug, Clone, Default)]
@@ -224,13 +164,16 @@ pub fn conf_route_geometry(
         {
             vec![("compact_waiter", 1)]
         }
-        // The 5.x one-shot multicast branch runs entirely from probe-derived
-        // constants (waiter_off / buffer_size), BTF-derived rt_mutex_waiter
-        // task/lock offsets and the fixed 5.x waiter-layout flag. Emit all of
-        // them for every 5.x kernel so the generated profile runs without
-        // manual edits; a kernel without BTF omits only the task/lock keys.
+        // The 5.x multicast branch keeps only what this image can supply: the
+        // BTF-derived rt_mutex_waiter task/lock offsets and the waiter-layout
+        // flag. The frame/copy-window constants (`waiter_off` / `buffer_size`)
+        // are added by the caller only after the static derivation from the
+        // image succeeds, so an unverified candidate never inherits the
+        // hardware-probed 5.x constants.
         "multicast_waiter" if major == Some(5) => {
-            crate::derive::multicast_geometry_corroborated(structs)
+            let mut geometry = crate::derive::multicast_geometry_btf_only(structs);
+            geometry.push(("compact_waiter", 1));
+            geometry
         }
         _ => Vec::new(),
     }
@@ -285,9 +228,6 @@ fn push_conf_block(lines: &mut Vec<String>, name: &str, entries: &[(String, Stri
 pub struct ConfInputs<'a> {
     pub release: &'a str,
     pub phys: Option<u64>,
-    /// DRAM base (linear-map PHYS_OFFSET); normally supplied by hand, so the
-    /// extractor writes an explicit `null` unless one is known.
-    pub phys_offset: Option<u64>,
     pub symbols: &'a BTreeMap<String, Option<u64>>,
     pub structs: &'a BTreeMap<String, Option<u32>>,
     pub route: Option<&'a str>,
@@ -313,40 +253,17 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         format!("kernel_major = {}", major.unwrap_or(0)),
         "recommend_shizuku = 0".to_string(),
     ];
-    lines.push(match input.phys {
-        // Decimal only: HOCON has no `0x` literal, and the Kotlin reader
-        // (`getLongAt`) accepts a Number only, so a hex spelling would be
-        // silently dropped on import. An unknown phys is an explicit `null`.
-        Some(phys) => format!("kernel_phys_load = {phys}"),
-        None => "kernel_phys_load = null".to_string(),
-    });
-    lines.push(match input.phys_offset {
-        Some(offset) => format!("kernel_phys_offset = {offset}"),
-        None => "kernel_phys_offset = null".to_string(),
-    });
+    if let Some(phys) = input.phys {
+        lines.push(format!("kernel_phys_load = 0x{phys:X}"));
+    }
     if let Some(route) = input.route {
-        // The chosen route keeps its whole field universe even when no
-        // geometry could be derived, so the import carries the recommendation
-        // and the missing fields surface as invalid paths on the Kotlin side.
+        // A candidate profile keeps the chosen route even when no geometry
+        // could be derived, so the import carries the recommendation and the
+        // missing fields surface as invalid paths on the Kotlin side.
         lines.push("route {".to_string());
         lines.push(format!("  {route} {{"));
-        match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
-            Some((_, fields)) => {
-                for field in *fields {
-                    let value = input
-                        .route_geometry
-                        .iter()
-                        .find(|(key, _)| key == field)
-                        .map(|(_, value)| value.to_string())
-                        .unwrap_or_else(|| "null".to_string());
-                    lines.push(format!("    {field} = {value}"));
-                }
-            }
-            None => {
-                for (key, value) in input.route_geometry {
-                    lines.push(format!("    {key} = {value}"));
-                }
-            }
+        for (key, value) in input.route_geometry {
+            lines.push(format!("    {key} = {value}"));
         }
         lines.push("  }".to_string());
         lines.push("}".to_string());
@@ -357,9 +274,9 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         &[("to".to_string(), "\"none\"".to_string())],
     );
 
-    // KernelSnitch: full universe. `collisions` is emitted for a verified
-    // train (and every 5.x kernel); `mm_struct_sz` only where it applies. An
-    // unverified release keeps both as `null` rather than omitting the block.
+    // KernelSnitch defaults are emitted for a verified train, and for every
+    // 5.x kernel (the android13-5.15 measured defaults are 5.x-wide and are
+    // required for the profile to run). An unverified release omits them.
     let mut snitch = Vec::new();
     if kernel_layout_verified(Some(release)) || major == Some(5) {
         match major {
@@ -380,46 +297,24 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
             _ => {}
         }
     }
-    push_conf_block(
-        &mut lines,
-        "kernelsnitch",
-        &[
-            ("collisions".to_string(), conf_lookup(&snitch, "collisions")),
-            (
-                "mm_struct_sz".to_string(),
-                conf_lookup(&snitch, "mm_struct_sz"),
-            ),
-        ],
-    );
+    push_conf_block(&mut lines, "kernelsnitch", &snitch);
 
     let task: Vec<(String, String)> = CONF_TASK_FIELDS
         .iter()
-        .map(|(macro_name, key)| {
-            (
-                (*key).to_string(),
-                input
-                    .structs
-                    .get(*macro_name)
-                    .copied()
-                    .flatten()
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "null".to_string()),
-            )
+        .filter_map(|(macro_name, key)| {
+            input
+                .structs
+                .get(*macro_name)
+                .copied()
+                .flatten()
+                .map(|value| ((*key).to_string(), value.to_string()))
         })
         .collect();
     push_conf_block(&mut lines, "task_struct", &task);
 
-    let cred: Vec<(String, String)> = CONF_CRED_FIELDS
-        .iter()
-        .map(|key| ((*key).to_string(), conf_lookup(input.cred, key)))
-        .collect();
-    push_conf_block(&mut lines, "cred", &cred);
+    push_conf_block(&mut lines, "cred", input.cred);
 
-    let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
-    let offset: Vec<(String, String)> = CONF_OFFSET_FIELDS
-        .iter()
-        .map(|key| ((*key).to_string(), conf_lookup(&offset_entries, key)))
-        .collect();
+    let offset = conf_offsets(input.symbols, input.extra_offsets);
     push_conf_block(&mut lines, "offset", &offset);
 
     lines.join("\n") + "\n"
@@ -490,7 +385,6 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "6.6.89-android15-8-g0889fe95bb10-ab14402178-4k",
             phys: Some(0x4000_0000),
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("select_stack"),
@@ -499,15 +393,13 @@ mod tests {
             extra_offsets: &no_extra_offsets(),
         });
         assert!(!out.contains("include"));
-        assert!(out.contains("kernel_phys_load = 1073741824"));
+        assert!(out.contains("kernel_phys_load = 0x40000000"));
         assert!(out.contains("route {\n  select_stack {\n    waiter_shift = -2\n  }\n}"));
         assert!(out.contains("collisions = 4"));
-        assert!(out.contains("mm_struct_sz = null"));
+        assert!(!out.contains("mm_struct_sz"));
         assert!(!out.contains("task_prio"));
         assert!(out.contains("  prio = 132"));
-        assert!(out.contains("cred {"));
-        assert!(out.contains("copy_size = 136"));
-        assert!(out.contains("caps_offset = 48"));
+        assert!(out.contains("cred {\n  caps_offset = 48\n  copy_size = 136"));
         assert!(out.contains("caps_value = -1"));
         assert!(out.contains("init_task = 34595456"));
         assert!(out.contains("security_hook_heads = 0"));
@@ -521,7 +413,6 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "6.1.118-android14-11-gca0ef6d17716-ab13624819",
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("tcp_zerocopy"),
@@ -531,7 +422,7 @@ mod tests {
         });
         assert!(out.contains("tcp_zerocopy {\n    compact_waiter = 1"));
         assert!(out.contains("mm_struct_sz = 1024"));
-        assert!(out.contains("kernel_phys_load = null"));
+        assert!(!out.contains("kernel_phys_load"));
     }
 
     #[test]
@@ -548,16 +439,19 @@ mod tests {
                 (0x98, 0xffffffc00ab23b28),
             ],
         };
-        let geometry = conf_route_geometry(
+        let mut geometry = conf_route_geometry(
             "multicast_waiter",
             "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
             Some(-2),
             &structs,
         );
+        // The frame/copy-window constants are added only from this image's
+        // static derivation, exactly as main.rs does on success.
+        geometry.insert(0, ("waiter_off", 96));
+        geometry.insert(1, ("buffer_size", 264));
         let out = render_conf(&ConfInputs {
             release: "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -574,9 +468,7 @@ mod tests {
         assert!(out.contains("compact_waiter = 1"));
         assert!(out.contains("collisions = 8"));
         assert!(out.contains("mm_struct_sz = 1024"));
-        assert!(out.contains("cred {"));
-        assert!(out.contains("copy_size = 176"));
-        assert!(out.contains("usage_value = 256"));
+        assert!(out.contains("cred {\n  caps_offset = 48\n  copy_size = 176\n  usage_value = 256"));
         assert!(out.contains("caps_count = 3"));
         assert!(out.contains("caps_value = 2199023255551"));
         assert!(out.contains("ref0_offset = 128"));
@@ -613,8 +505,6 @@ mod tests {
                 &structs
             ),
             vec![
-                ("waiter_off", 96),
-                ("buffer_size", 264),
                 ("task_offset", 48),
                 ("lock_offset", 56),
                 ("compact_waiter", 1),
@@ -637,9 +527,11 @@ mod tests {
             conf_route_geometry("select_stack", "6.7.1-generic", Some(-1), &structs),
             vec![("waiter_shift", -1)]
         );
-        // Every 5.x multicast profile carries the full one-shot geometry so it
-        // runs without manual edits, even when the release string carries no
-        // "-android13-" train tag.
+        // Every 5.x multicast profile keeps the BTF-derived waiter field
+        // offsets and the layout flag, but never the hardware-probed
+        // frame/copy-window constants: those are added only by the image's
+        // static derivation, even when the release carries no "-android13-"
+        // train tag.
         assert_eq!(
             conf_route_geometry(
                 "multicast_waiter",
@@ -648,8 +540,6 @@ mod tests {
                 &structs
             ),
             vec![
-                ("waiter_off", 96),
-                ("buffer_size", 264),
                 ("task_offset", 48),
                 ("lock_offset", 56),
                 ("compact_waiter", 1),
@@ -666,8 +556,8 @@ mod tests {
             Some(-2),
             &structs,
         );
-        assert!(geometry.contains(&("waiter_off", 96)));
-        assert!(geometry.contains(&("buffer_size", 264)));
+        assert!(!geometry.iter().any(|(key, _)| *key == "waiter_off"));
+        assert!(!geometry.iter().any(|(key, _)| *key == "buffer_size"));
         assert!(geometry.contains(&("task_offset", 48)));
         assert!(geometry.contains(&("lock_offset", 56)));
         assert!(geometry.contains(&("compact_waiter", 1)));
@@ -687,7 +577,6 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "5.15.178-g3575c47dc7ce-dirty",
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -708,7 +597,6 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "6.7.1-generic",
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: None,
@@ -716,13 +604,11 @@ mod tests {
             cred: &[],
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(out.contains("kernelsnitch {"));
-        assert!(out.contains("collisions = null"));
-        assert!(out.contains("mm_struct_sz = null"));
+        assert!(!out.contains("kernelsnitch"));
     }
 
     #[test]
-    fn unverified_5x_candidate_is_runnable() {
+    fn unverified_5x_candidate_omits_the_frame_constants() {
         let (symbols, structs) = conf_fixture();
         let geometry = conf_route_geometry(
             "multicast_waiter",
@@ -733,7 +619,6 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "5.15.178-g3575c47dc7ce-dirty",
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -741,8 +626,10 @@ mod tests {
             cred: &[],
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(out.contains("multicast_waiter {\n    waiter_off = 96"));
-        assert!(out.contains("buffer_size = 264"));
+        // Without this image's static derivation the unverified candidate must
+        // not borrow the hardware-probed frame/copy-window constants.
+        assert!(!out.contains("waiter_off"));
+        assert!(!out.contains("buffer_size"));
         assert!(out.contains("task_offset = 48"));
         assert!(out.contains("lock_offset = 56"));
         assert!(out.contains("compact_waiter = 1"));
@@ -890,11 +777,14 @@ mod tests {
     #[test]
     fn a301so_generated_conf_matches_the_bundled_profile() {
         let (release, symbols, structs, cred, extra) = a301so_inputs();
-        let geometry = conf_route_geometry("multicast_waiter", &release, None, &structs);
+        let mut geometry = conf_route_geometry("multicast_waiter", &release, None, &structs);
+        // A301SO's static derivation reproduces the hardware-probed 0x60, so
+        // the generated profile carries the same constants as the bundled one.
+        geometry.insert(0, ("waiter_off", 96));
+        geometry.insert(1, ("buffer_size", 264));
         let generated = render_conf(&ConfInputs {
             release: &release,
             phys: None,
-            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),

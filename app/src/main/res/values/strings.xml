@@ -32,7 +32,6 @@
     <string name="parse_attach_xbl">Attach xbl_config.img</string>
     <string name="parse_attach_uefi">Attach uefi.img</string>
     <string name="parse_attach_xbl_uefi">Attach xbl_config.img + uefi.img</string>
-    <string name="parse_attach_vendor_boot">Attach vendor_boot.img (MediaTek only)</string>
     <string name="parse_url_title">Full package URL</string>
     <string name="parse_url_hint">Paste full OTA zip URL</string>
     <string name="parse_start">Start</string>
@@ -40,7 +39,6 @@
     <string name="parse_pick_xbl_hint">Pick xbl_config.img</string>
     <string name="parse_pick_payload_hint">Pick payload.bin</string>
     <string name="parse_pick_uefi_hint">Pick uefi.img</string>
-    <string name="parse_pick_vendor_boot_hint">Pick vendor_boot.img</string>
     <string name="parse_success">Offsets parsed</string>
     <string name="parse_failed">Parse failed</string>
     <string name="parse_failed_route">Kernel incompatible with the current exploit chain</string>
@@ -48,9 +46,6 @@
     <string name="parse_failed_fixed">This kernel already fixed the vulnerability</string>
     <string name="parse_failed_url">Invalid OTA URL</string>
     <string name="parse_missing_phys_hint">Missing kernel_phys_load; attach xbl_config.img or uefi.img and parse again to fill it</string>
-    <string name="parse_missing_phys_mediatek">Missing kernel_phys_load / kernel_phys_offset. MediaTek images carry no xbl_config or BTF, so the extractor cannot derive them from boot.img alone and the runtime fallback fails at W1. Easiest fix: parse again and attach vendor_boot.img. If that is refused (an unrecognized alignment pattern), run the separate tools/mtk-phys extractor on a rooted device instead, then set both in advanced overrides.</string>
-    <string name="parse_result_title">Extraction result</string>
-    <string name="import_result_title">Import result</string>
     <string name="parse_timeout">Parse timed out</string>
     <string name="cancel">Cancel</string>
     <string name="profile_invalid">Profile parameters are invalid; fix the red fields first</string>
@@ -95,7 +90,6 @@
     <string name="run_interrupted_title">Previous run interrupted</string>
     <string name="run_interrupted_message">The last attack stopped mid-way (the device may have panicked and rebooted). Check the device and try again.</string>
     <string name="dialog_dismiss">Dismiss</string>
-    <string name="dialog_open_guide">Open guide</string>
     <string name="execution_save_failed">Could not save execution overrides</string>
     <string name="debug_export_log">Export debug log to file</string>
     <string name="debug_export_log_summary">Write the attack log and dumps to storage</string>
@@ -214,7 +208,6 @@
     <string name="field_execution_stages_w3_settle_us">w3_settle_us</string>
     <string name="field_kernel_major">kernel_major</string>
     <string name="field_kernel_phys_load">kernel_phys_load</string>
-    <string name="field_kernel_phys_offset">kernel_phys_offset</string>
     <string name="field_kernelsnitch_collisions">kernelsnitch_collisions</string>
     <string name="field_mcast_buffer_size">mcast_buffer_size</string>
     <string name="field_mcast_lock_offset">mcast_lock_offset</string>

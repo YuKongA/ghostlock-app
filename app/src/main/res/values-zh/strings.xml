@@ -32,7 +32,6 @@
     <string name="parse_attach_xbl">附加 xbl_config.img</string>
     <string name="parse_attach_uefi">附加 uefi.img</string>
     <string name="parse_attach_xbl_uefi">附加 xbl_config.img + uefi.img</string>
-    <string name="parse_attach_vendor_boot">附加 vendor_boot.img（联发科）</string>
     <string name="parse_url_title">完整包链接</string>
     <string name="parse_url_hint">粘贴完整 OTA zip 链接</string>
     <string name="parse_start">开始解析</string>
@@ -40,7 +39,6 @@
     <string name="parse_pick_xbl_hint">请选择 xbl_config.img</string>
     <string name="parse_pick_payload_hint">请选择 payload.bin</string>
     <string name="parse_pick_uefi_hint">请选择 uefi.img</string>
-    <string name="parse_pick_vendor_boot_hint">请选择 vendor_boot.img</string>
     <string name="parse_success">偏移解析成功</string>
     <string name="parse_failed">解析失败</string>
     <string name="parse_failed_route">内核不支持当前利用链</string>
@@ -48,9 +46,6 @@
     <string name="parse_failed_fixed">此内核已修复该漏洞</string>
     <string name="parse_failed_url">OTA 链接无效</string>
     <string name="parse_missing_phys_hint">缺少 kernel_phys_load，附加 xbl_config.img 或 uefi.img 后重新解析可补齐</string>
-    <string name="parse_missing_phys_mediatek">缺少 kernel_phys_load / kernel_phys_offset。联发科镜像没有 xbl_config 或 BTF，提取器无法仅从 boot.img 推导，运行时回退会在 W1 失败。最简单的办法：重新解析并附加 vendor_boot.img。如果被拒绝（对齐模式无法识别），请改为在已 root 的设备上运行单独的 tools/mtk-phys 提取器，再把两个值填入高级参数覆盖。</string>
-    <string name="parse_result_title">解析结果</string>
-    <string name="import_result_title">导入结果</string>
     <string name="parse_timeout">解析超时</string>
     <string name="cancel">取消</string>
     <string name="profile_invalid">配置参数不合法，请先修正红色标记的项</string>
@@ -95,7 +90,6 @@
     <string name="run_interrupted_title">上次攻击未完成</string>
     <string name="run_interrupted_message">上次攻击在某个阶段中断（设备可能已内核 panic 并重启）。请确认设备状态后重试。</string>
     <string name="dialog_dismiss">关闭</string>
-    <string name="dialog_open_guide">查看指南</string>
     <string name="execution_save_failed">无法保存执行参数覆盖</string>
     <string name="debug_export_log">导出 Debug 日志到文件</string>
     <string name="debug_export_log_summary">把攻击日志与 dump 写入存储</string>
@@ -214,7 +208,6 @@
     <string name="field_execution_stages_w3_settle_us">W3 稳定时间（微秒）</string>
     <string name="field_kernel_major">内核主版本</string>
     <string name="field_kernel_phys_load">内核物理加载地址</string>
-    <string name="field_kernel_phys_offset">DRAM 物理基址</string>
     <string name="field_kernelsnitch_collisions">碰撞数量</string>
     <string name="field_mcast_buffer_size">多播缓冲区大小</string>
     <string name="field_mcast_lock_offset">多播锁偏移</string>
