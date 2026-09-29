@@ -113,8 +113,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
   S/CPP/U01/NS\* 证据链样例）。
 - `KERNEL-PANIC-01` 是已知环境/时序问题：同构建可 PASS/panic/PASS，判定因果要求同构建
   复现 + 冷机复跑，不要仅凭一次 panic 归因代码。
-- 现实状态：Multicast（5.15）是主验证路径；TCP/Select 仅主机固定测试，无对应设备前
-  不得宣称已验证；新 profile 未过真机不得标 supported。
+
 
 ## 文档约定
 

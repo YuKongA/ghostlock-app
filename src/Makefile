@@ -39,6 +39,7 @@ CXX_SRCS := \
   core/session/exploit_session.cpp \
   core/session/root_child_frontend.cpp \
   core/session/backend/cve_2026_43499_backend.cpp \
+  core/session/ancillary/ancillary_controller.cpp \
   core/session/handoff_probe.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \
@@ -121,7 +122,7 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test cpp_link_probe_test
+  run_state_test cpp_link_probe_test ancillary_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -188,6 +189,13 @@ $(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp 
 $(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/route/route_policy.hpp core/route/route_status.h core/profile/model.h core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/route_policy_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/ancillary_test: core/tests/ancillary_test.cpp \
+  core/session/ancillary/ancillary_policy.hpp core/session/ancillary/vr_guard.hpp \
+  core/session/ancillary/ancillary_controller.hpp core/session/exploit_session.hpp \
+  core/profile/model.h core/support/status.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/ancillary_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/route/route_lifecycle.hpp core/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
