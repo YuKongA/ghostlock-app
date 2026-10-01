@@ -105,7 +105,7 @@ namespace ghostlock::profile {
         uint64_t init_task = 0, init_cred = 0, empty_zero_page = 0;
         uint64_t root_task_group = 0, selinux_enforcing = 0;
         uint64_t selinux_blob_sizes = 0, security_hook_heads = 0;
-        uint64_t slide_nfulnl_logger = 0, slide_loggers_0_1 = 0, slide_boot_id = 0;
+        uint64_t slide_nfulnl_logger = 0, slide_loggers_0_1 = 0, slide_boot_id = 0, off_vr_sys_exit_tp = 0;
     };
 
     struct KernelMisc {

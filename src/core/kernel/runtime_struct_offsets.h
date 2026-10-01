@@ -100,7 +100,18 @@ namespace ghostlock::profile {
         return symbol_image(
             [](const kernel_offsets &v) { return v.offsets.slide_boot_id; },
             ghostlock::kernel::SLIDE_SYSCTL_BOOTID_OFF);
+
     }
+                  
+
+
+    inline uint32_t off_vr_sys_exit_tp() {
+    return symbol_u32(
+        [](const kernel_offsets &v) { return static_cast<uint32_t>(v.offsets.off_vr_sys_exit_tp); },
+        0);
+}
+
+
 
     inline uint32_t fake_task_prio_off() {
         return symbol_u32([](const kernel_offsets &v) { return v.task.prio; }, 0x94);

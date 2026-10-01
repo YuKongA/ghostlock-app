@@ -106,6 +106,7 @@ namespace ghostlock::binary_profile {
             PLAIN("security_hook_heads", offsets.security_hook_heads),
             PLAIN("slide_nfulnl_logger", offsets.slide_nfulnl_logger),
             PLAIN("slide_loggers_0_1", offsets.slide_loggers_0_1),
+            PLAIN("off_vr_sys_exit_tp", offsets.off_vr_sys_exit_tp),  
             PLAIN("slide_boot_id", offsets.slide_boot_id),
         };
 
