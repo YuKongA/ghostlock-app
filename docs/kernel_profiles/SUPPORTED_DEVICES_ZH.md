@@ -18,6 +18,7 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 |--------------------------------------------------------|------------------------------------------------------------------|
 | `5.15.167-android13-8-00017-gb1f32b310a30-ab12826353`  | Red Magic 8 Pro                                                  |
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
+| `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
@@ -70,21 +71,3 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.12.38-android16-5-g665eafb62659-ab14778838-4k`      | NX809J / NX888J                                                  |
 | `6.12.38-android16-5-g74ad46052215-ab14494108-4k`      | Lenovo Legion Y700 Wuji                                          |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
-
-## SOG10 报告：完整真机门禁待补齐
-
-已为 Sony Xperia 1 V SOG10（au/KDDI）、Android 15、固件 `67.2.A.3.163`
-注册候选 profile，精确 kernel 为
-`5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`。
-设备所有者提供的一份日志记录了 GhostLock `1.2+530`
-（构建标签 `2026-09-28 23:37:01`）使用 CPU 对 3/4 经应用直接入口成功运行，
-包含 root 权限、KernelSU ready 和 native 退出码 0。所有者报告未发现问题，
-且 KernelSU 正常工作。
-
-该次运行实际使用的 `profile.conf` / `profile.bin` 及重复运行结果仍待提供。
-日志不能确定源码 commit，也不能证明使用了未被 override 修改的本候选 profile。
-该报告不能证明可重复性，也不能推及其他固件或 Xperia 型号。
-
-该 profile 推荐 Shizuku，选择 `multicast_waiter`，不设置 fallback；
-日志中成功运行使用的是应用直接入口。加入上方支持列表前，须完成
-[适配指南](README_ZH.md)中的真机验证，并由维护者审阅证据。
