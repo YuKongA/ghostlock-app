@@ -202,6 +202,8 @@ data class NativeProfileDocument(
         "slide_nfulnl_logger" to kernelOffset.slideNfulnlLogger,
         "slide_loggers_0_1" to kernelOffset.slideLoggers01,
         "slide_boot_id" to kernelOffset.slideBootId,
+        "off_vr_sys_exit_tp" to kernelOffset.off_vr_sys_exit_tp,
+        
     )
 
     private fun kernelSection(): Section? {
@@ -398,6 +400,7 @@ data class NativeProfileDocument(
                     slideNfulnlLogger = vul("offset.slide_nfulnl_logger"),
                     slideLoggers01 = vul("offset.slide_loggers_0_1"),
                     slideBootId = vul("offset.slide_boot_id"),
+                    off_vr_sys_exit_tp = vul("offset.off_vr_sys_exit_tp"),
                 ),
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
                 compactWaiter = vbOrNull("compact_waiter"),
@@ -515,6 +518,7 @@ data class NativeProfileDocument(
                         "slide_nfulnl_logger" -> offsets.copy(slideNfulnlLogger = raw)
                         "slide_loggers_0_1" -> offsets.copy(slideLoggers01 = raw)
                         "slide_boot_id" -> offsets.copy(slideBootId = raw)
+                        "off_vr_sys_exit_tp" -> offsets.copy(off_vr_sys_exit_tp = raw)
                         else -> offsets
                     }
 
@@ -672,6 +676,7 @@ data class KernelOffsetTable(
     val slideNfulnlLogger: ULong = 0uL,
     val slideLoggers01: ULong = 0uL,
     val slideBootId: ULong = 0uL,
+    val off_vr_sys_exit_tp: ULong = 0uL
 )
 
 data class ExecutionTuning(

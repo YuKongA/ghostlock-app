@@ -14,12 +14,16 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("off_security_hook_heads", "security_hook_heads"),
     ("off_slide_nfulnl_logger", "nfulnl_logger"),
     ("off_slide_boot_id", "sysctl_bootid"),
+    ("off_vr_sys_exit_tp", "__tracepoint_sys_exit"),
 ];
 
 /// GKI kernels drop some data symbols; unresolved optionals emit 0 and the
 /// runtime falls back to target.h defaults.
-pub const OPTIONAL_SYMBOLS: &[&str] = &["off_security_hook_heads"];
 
+pub const OPTIONAL_SYMBOLS: &[&str] = &[
+    "off_security_hook_heads",
+    "off_vr_sys_exit_tp",
+    
 /// struct name -> (offset macro, BTF field)
 pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
     (

