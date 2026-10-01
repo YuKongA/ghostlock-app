@@ -46,6 +46,9 @@
     <string name="parse_failed_fixed">此内核已修复该漏洞</string>
     <string name="parse_failed_url">OTA 链接无效</string>
     <string name="parse_missing_phys_hint">缺少 kernel_phys_load，附加 xbl_config.img 或 uefi.img 后重新解析可补齐</string>
+    <string name="parse_missing_phys_mediatek">缺少 kernel_phys_load / kernel_phys_offset。联发科镜像没有 xbl_config 或 BTF，提取器无法从 boot.img 推导，运行时回退会在 W1 失败。请在已 root 的设备上运行单独的 tools/mtk-phys 提取器，再把两个值填入高级参数覆盖。</string>
+    <string name="parse_result_title">解析结果</string>
+    <string name="import_result_title">导入结果</string>
     <string name="parse_timeout">解析超时</string>
     <string name="cancel">取消</string>
     <string name="profile_invalid">配置参数不合法，请先修正红色标记的项</string>
@@ -90,6 +93,7 @@
     <string name="run_interrupted_title">上次攻击未完成</string>
     <string name="run_interrupted_message">上次攻击在某个阶段中断（设备可能已内核 panic 并重启）。请确认设备状态后重试。</string>
     <string name="dialog_dismiss">关闭</string>
+    <string name="dialog_open_guide">查看指南</string>
     <string name="execution_save_failed">无法保存执行参数覆盖</string>
     <string name="debug_export_log">导出 Debug 日志到文件</string>
     <string name="debug_export_log_summary">把攻击日志与 dump 写入存储</string>

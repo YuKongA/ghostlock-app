@@ -163,9 +163,19 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.named("preBuild") {
+    dependsOn(generateBuildInfo)
+}
+
+/* The arm64 native payload is only needed by the tasks that merge/package the
+ * APK/AAB. Keeping it off preBuild means pure JVM unit tests
+ * (:app:testDebugUnitTest) no longer build the native binaries, so a developer
+ * machine without the NDK / aarch64 Rust target can still run them. */
+tasks.matching { task ->
+    (task.name.startsWith("merge") && task.name.endsWith("JniLibFolders")) ||
+        (task.name.startsWith("merge") && task.name.endsWith("NativeLibs"))
+}.configureEach {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))
-    dependsOn(generateBuildInfo)
 }
 
 dependencies {

@@ -10,22 +10,22 @@ native.
 > To add support for a new kernel, follow [README.md](README.md). For
 > execution-tuning defaults, see [defaults.md](defaults.md).
 
-> **Three version names, three different things** (do not read them as one
-> sequence):
+> **Two version names** (do not conflate them):
 > - **Profile schema version**: the HOCON profile generation, carried by the
 >   `schema_version` field inside each profile (see section 2).
 > - **Binary wire version**: the GLK1 transport version after magic
 >   `0x0D000721`. The current writer emits wire version `2` (object sections,
 >   see section 9); it is the only version, and Kotlin/native are version-bound.
-> - **v1 JSON import**: the remote/main-era `offsets.json`, converted once on
->   the Kotlin side by `LegacyProfileConverter`; native no longer parses v1.
+>
+> Everything below describes the current v2 configuration. The legacy v1 JSON
+> import path is Kotlin-side only and is collected in section 11.
 
 ## 0. File format (HOCON)
 
 Built-in profiles, `index.conf`, shared files, and imported offset files are all
 parsed as **HOCON**:
 
-- JSON is a subset of HOCON, so historical files need no conversion;
+- JSON is a subset of HOCON;
 - `#` / `//` comments, trailing commas, and `${var}` substitution (optional
   `${?var}`) are supported;
 - `include "file.conf"` is supported (relative to the same directory, nestable,
@@ -36,8 +36,8 @@ parsed as **HOCON**:
   struct crosses to native (section 9);
 - the app stores and exports HOCON; `ghostlock-extract --format conf` emits a
   flattened, self-contained profile (credential/KernelSnitch constants inlined,
-  no `include` lines) that imports through the normal path, while `--format
-  json` and old `offsets.json` files still import through the v1 path;
+  no `include` lines) that imports through the normal path (the v1 JSON import
+  path is section 11);
 - extractor output is a **candidate source**: it writes every field the image
   actually yields and omits the rest, never borrowing a neighbouring kernel
   family's guesses. A candidate may be incomplete; after import the app's field
@@ -112,10 +112,6 @@ route { select_stack { waiter_shift = -2 } }
 route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 ```
 
-- When an old config has no `route`, a compatibility inference runs:
-  `kernel_major == 5 && mcast.waiter_off > 0` → `multicast_waiter`; otherwise
-  `compact_waiter != 0` → `tcp_zerocopy`; otherwise `select_stack`. Importing an
-  old `offsets.json` normalizes it to the new structure automatically.
 - Each route needs only its own branch; write no other branch, and never leave
   two branches side by side (one config, one path).
 - `fallback` declares a fallback: `"to"` is `"none"` or a route name. When you
@@ -131,26 +127,6 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
   `select_stack`; write `"to": "none"` to disable it.
 - Native's `RouteKind` enum maps one-to-one to the Kotlin values
   (`profile.h` / `ProfileConfig.Routes`).
-
-### 3.1 Compatibility conversion for remote/main-era offsets
-
-Upstream (the tip of `remote/main`, commit `bddfea46`) had only 6.x kernels, no
-Shizuku path, and no 5.x geometry; its `offsets.json` entries are the extractor
-report format (`symbols` / `struct_fields` plus four top-level scalars and
-metadata). `LegacyProfileConverter` normalizes them on load (idempotently):
-
-| Upstream content | Conversion result |
-|---|---|
-| `symbols` object (`off_*` keys) | `offset.*` namespace |
-| `struct_fields` object (`task_*` keys) | `task_struct.*` namespace; BTE-specific keys such as `rt_mutex_waiter` / `cred_uid` / `seccomp_*` stay in their original group and take no part in the new validation or comparison |
-| top-level `pselect_waiter_shift` | `route.select_stack.waiter_shift`; for a tcp profile it stays as `fallback.route.select_stack.waiter_shift` |
-| top-level `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
-| `kimage_text_base` / `btf_size` / `kallsyms` | dropped |
-| no `route` field | inferred from 6.x geometry: `compact_waiter` → tcp, otherwise select |
-| no cred template | the converter seeds the bundled 6.x constants (`credential-6x.conf` / `kernelsnitch-6x.conf`); 5.x credential fields stay author-supplied |
-
-An upstream document can never select the 5.x branch (`multicast_waiter` is
-retained only as a guarded inference of the local format).
 
 ### Required-field matrix
 
@@ -273,14 +249,6 @@ affected by route choice:
 | `kernelsnitch.collisions` | Number of futex collisions needed |
 | `kernelsnitch.mm_struct_sz` | SLUB size of `mm_struct` (falls back to the built-in default when omitted) |
 
-> Old flat keys (`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` /
-> `cred_*` / `off_*` / `mcast_*`) are folded into the matching namespaces when
-> importing an old `offsets.json`, parsing extractor output, or reading advanced
-> overrides.
-> Internal storage (`offsets.conf`, advanced overrides, snapshots) and exports
-> are all HOCON; old JSON caches are **not migrated and are discarded at
-> startup**.
-
 ## 5. execution tuning (advisory)
 
 Every `execution` value is advisory. The app merges them into the profile and
@@ -378,13 +346,10 @@ and there is no legacy decode.
   **stdin** (`--ghostlock-app-call`); nothing is written to `active-profile.bin`
   and `--profile` no longer exists.
 - Native has exactly one decode path: `profile/entry.cpp` hands the stdin (or
-  file) bytes to `profile/binary.cpp::parse`. It detects no format other than
-  the magic and has no JSON fallback; the native v1 `legacy/` JSON parser was
-  removed.
-- Internal storage and "export config" are HOCON (human-readable); the legacy
-  v1 `offsets.json` is converted to v2 only on the Kotlin side
-  (`LegacyProfileConverter.kt`), and `ghostlock-extract --format json` still
-  emits the v1 JSON shape for external tools.
+  file) bytes to `profile/binary.cpp::parse`; it detects no format other than
+  the magic and has no JSON fallback.
+- Internal storage and "export config" are HOCON (human-readable). The legacy
+  v1 `offsets.json` is converted to v2 only on the Kotlin side; see section 11.
 - Runtime route and capability decisions (`TargetProfile::route()`,
   `TargetProfile::supports()`, `route_capability`) are all based on the decoded
   route.
@@ -412,3 +377,39 @@ and there is no legacy decode.
    and `./gradlew :app:assembleDebug`.
 5. When renaming or regrouping fields, update `FieldLabels.kt` +
    `values*/strings.xml` and, when relevant, `docs/kernel_profiles/defaults*.md`.
+
+## 11. Legacy v1 JSON import (compatibility)
+
+This section collects everything about the **v1 JSON** compatibility layer;
+sections 0–10 describe the current v2 configuration only. Native reads v2
+exclusively (section 9); the v1 path is Kotlin-side and self-contained.
+
+- **v1 = the old JSON format**: the `offsets.json` of the remote/main era — the
+  extractor report (`symbols` / `struct_fields`, four top-level scalars, and
+  metadata such as `kimage_text_base` / `btf_size` / `kallsyms`).
+  `ghostlock-extract --format json` still emits this shape for external tools.
+- `LegacyProfileConverter` normalizes a v1 document to v2 on load, idempotently:
+
+  | v1 content | Conversion result |
+  |---|---|
+  | `symbols` object (`off_*` keys) | `offset.*` namespace |
+  | `struct_fields` object (`task_*` keys) | `task_struct.*` namespace; a few fields (`rt_mutex_waiter`, `cred_uid`, `seccomp_*`, …) stay in place and take no part in validation/comparison |
+  | top-level `pselect_waiter_shift` | `route.select_stack.waiter_shift` (as `fallback.route.select_stack.waiter_shift` for a tcp profile) |
+  | top-level `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
+  | `kimage_text_base` / `btf_size` / `kallsyms` | dropped |
+  | no `route` field | inferred from 6.x geometry: `compact_waiter` → tcp, otherwise select |
+  | no cred template | seeds the bundled 6.x constants (`credential-6x.conf` / `kernelsnitch-6x.conf`); 5.x credential fields stay author-supplied |
+
+- Old flat keys (`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` /
+  `cred_*` / `off_*` / `mcast_*`) are folded into the matching namespaces when
+  importing an old `offsets.json`, parsing extractor output, or reading advanced
+  overrides.
+- The same route inference applies to an old config with no `route`:
+  `kernel_major == 5 && mcast.waiter_off > 0` → `multicast_waiter`; otherwise
+  `compact_waiter != 0` → `tcp_zerocopy`; otherwise `select_stack`. A v1
+  document can never select the 5.x branch (`multicast_waiter` is retained only
+  as a guarded inference).
+- Old JSON caches are **not migrated and are discarded at startup**; internal
+  storage, snapshots, and exports are always HOCON.
+- Native has no v1 parser: the native `legacy/` JSON decoder was removed; a v1
+  document is converted to v2 on the Kotlin side before transport.

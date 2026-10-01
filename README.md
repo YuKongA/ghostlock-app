@@ -47,6 +47,16 @@ build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.
 
 `--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
 
+### MediaTek
+
+MediaTek images have no `xbl_config.img` and usually no embedded BTF, so the
+extractor cannot derive the two physical addresses (`kernel_phys_load`,
+`kernel_phys_offset`) from the image and leaves them `null`. The runtime then
+falls back to the SoC formula, which fails at W1 on MediaTek. Fill both by
+running the separate `tools/mtk-phys/` extractor on a rooted device (it reads
+`/proc/iomem`) and pasting the values into the app's advanced overrides. See
+[MEDIATEK.md](docs/kernel_profiles/MEDIATEK.md).
+
 ### Preflight
 
 The extractor disassembles `remove_waiter()` before extracting offsets. Kernels with the fix are rejected with exit code `6`; only vulnerable kernels continue.

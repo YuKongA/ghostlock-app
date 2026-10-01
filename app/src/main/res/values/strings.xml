@@ -46,6 +46,9 @@
     <string name="parse_failed_fixed">This kernel already fixed the vulnerability</string>
     <string name="parse_failed_url">Invalid OTA URL</string>
     <string name="parse_missing_phys_hint">Missing kernel_phys_load; attach xbl_config.img or uefi.img and parse again to fill it</string>
+    <string name="parse_missing_phys_mediatek">Missing kernel_phys_load / kernel_phys_offset. MediaTek images carry no xbl_config or BTF, so the extractor cannot derive them from boot.img and the runtime fallback fails at W1. Run the separate tools/mtk-phys extractor on a rooted device, then set both in advanced overrides.</string>
+    <string name="parse_result_title">Extraction result</string>
+    <string name="import_result_title">Import result</string>
     <string name="parse_timeout">Parse timed out</string>
     <string name="cancel">Cancel</string>
     <string name="profile_invalid">Profile parameters are invalid; fix the red fields first</string>
@@ -90,6 +93,7 @@
     <string name="run_interrupted_title">Previous run interrupted</string>
     <string name="run_interrupted_message">The last attack stopped mid-way (the device may have panicked and rebooted). Check the device and try again.</string>
     <string name="dialog_dismiss">Dismiss</string>
+    <string name="dialog_open_guide">Open guide</string>
     <string name="execution_save_failed">Could not save execution overrides</string>
     <string name="debug_export_log">Export debug log to file</string>
     <string name="debug_export_log_summary">Write the attack log and dumps to storage</string>

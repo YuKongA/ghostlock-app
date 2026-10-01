@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -118,6 +119,8 @@ data class GhostlockUiState(
     val dialogCurrentItemIndex: Int = -1,
     val dialogInput: String = "",
     val dialogConfirmLabelRes: Int = R.string.parse_start,
+    /** Documentation URL shown as an extra button on a NOTICE dialog. */
+    val dialogDocUrl: String? = null,
     val overwriteDialogVisible: Boolean = false,
     val overwriteMessage: String = "",
     val logLines: List<GhostlockLogLine> = emptyList(),
@@ -556,6 +559,15 @@ private fun GhostlockDialog(
                             .fillMaxWidth()
                             .padding(top = 16.dp),
                     ) {
+                        state.dialogDocUrl?.let { docUrl ->
+                            val uriHandler = LocalUriHandler.current
+                            TextButton(
+                                modifier = Modifier.weight(1f),
+                                text = stringResource(R.string.dialog_open_guide),
+                                onClick = { uriHandler.openUri(docUrl) },
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
                         TextButton(
                             modifier = Modifier.weight(1f),
                             text = stringResource(R.string.dialog_dismiss),

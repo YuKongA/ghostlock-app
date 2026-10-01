@@ -9,9 +9,11 @@
 <tr><th>父项</th><th>子项</th><th>默认值</th><th>作用</th><th>影响</th><th>默认理由</th></tr>
 </thead>
 <tbody>
-<tr><th rowspan="3">身份与路线选择</th><td><code>schema_version</code></td><td><code>1</code></td><td>配置结构版本，固定为 1；格式升级时用它判断兼容性。</td><td rowspan="3">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="3">该值保持 6.6 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
+<tr><th rowspan="5">身份与路线选择</th><td><code>schema_version</code></td><td><code>1</code></td><td>配置结构版本，固定为 1；格式升级时用它判断兼容性。</td><td rowspan="5">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="5">该值保持 6.6 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>release</code></td><td></td><td>与设备 <code>uname -r</code> 完全一致的版本串；文件名和匹配都用它。</td></tr>
 <tr><td><code>kernel_major</code></td><td><code>6</code></td><td>内核主版本（5 或 6），供地址解析和合法性检查使用。</td></tr>
+<tr><td><code>kernel_phys_load</code></td><td></td><td>内核物理加载地址（0 时按 SoC 公式回退）。</td></tr>
+<tr><td><code>kernel_phys_offset</code></td><td></td><td>DRAM 基址 / linear-map <code>PHYS_OFFSET</code>，用于 image&rarr;direct-map 换算；取自 <code>/proc/iomem</code>，无法从 <code>boot.img</code> 提取。</td></tr>
 <tr><th rowspan="15">task_struct 结构偏移</th><td><code>task_struct.prio</code></td><td></td><td><code>task_struct.prio</code>，PI 优先级提升判定会读它。</td><td rowspan="15">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="15">该值保持 6.6 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>task_struct.normal_prio</code></td><td></td><td>常规调度优先级字段。</td></tr>
 <tr><td><code>task_struct.sched_task_group</code></td><td></td><td>调度组指针 <code>sched_task_group</code> 的偏移。</td></tr>

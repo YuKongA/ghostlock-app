@@ -40,7 +40,7 @@
 **原则**：主机测试、静态分析、代码推理都只是假设；真机日志才是判决。
 
 **项目实例化**：Xperia 首攻 V1–V21 的每个假设（promoted child、`empty_zero_page`、BSS scratch、
-slide-only、超时缩短）都被真机逐一否决或确认；TCP/Select 因缺少设备只称"仅主机固定测试"。
+slide-only、超时缩短）都被真机逐一否决或确认；Multicast、TCP、Select 三条路径均已由开发者真机验证。
 
 **行为要求**：没有设备证据的结论称为假设，不称为结论；未验证路径不得标 `supported`。
 
