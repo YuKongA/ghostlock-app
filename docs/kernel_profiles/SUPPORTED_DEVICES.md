@@ -73,3 +73,23 @@ bypass there as well, so it saves time even where it isn't required.
 | `6.12.38-android16-5-g665eafb62659-ab14778838-4k`      | NX809J / NX888J                                                  |
 | `6.12.38-android16-5-g74ad46052215-ab14494108-4k`      | Lenovo Legion Y700 Wuji                                          |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
+
+## SOG10 report pending a complete device gate
+
+A candidate profile is registered for Sony Xperia 1 V SOG10 (au/KDDI),
+Android 15, firmware `67.2.A.3.163`, with exact kernel
+`5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`.
+One owner-supplied log records a successful direct-app run in GhostLock
+`1.2+530` (build label `2026-09-28 23:37:01`) on CPU pair 3/4. It records
+root access, KernelSU ready, and native exit code 0. The owner reports no
+issues and working KernelSU.
+
+The effective `profile.conf` / `profile.bin` for that run and repeated-run
+results are still pending. The log does not establish an exact source commit
+or prove that this candidate was used without overrides. This report does not
+establish repeatability or support for other firmware or Xperia variants.
+
+The profile recommends Shizuku and selects `multicast_waiter` without a
+fallback; the recorded successful run used the direct-app entry. Before adding
+a supported-device row, complete the real-device verification in the
+[porting guide](README.md) and obtain maintainer review of the evidence.
