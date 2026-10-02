@@ -13,6 +13,9 @@ object ProfileResolver {
         "release", "schema_version", "kernel_major", "recommend_shizuku",
         "route", "fallback", "kernelsnitch", "task_struct", "cred", "offset",
         "kernel_phys_load", "execution",
+        /* Ancillary vr.ko guard: the gate (mirrors recommend_shizuku) and the
+         * layout section derived from the image's BTF. */
+        "recommend_vr_guard", "vr_guard",
     )
     private val RequiredTopLevel = setOf(
         "release", "schema_version", "kernel_major", "route", "task_struct", "cred", "offset",

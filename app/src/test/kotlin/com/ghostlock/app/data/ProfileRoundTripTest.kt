@@ -26,6 +26,11 @@ class ProfileRoundTripTest {
          * route (the multicast primitive uses the same PI consumer). */
         "execution.routes.select_stack.consumer_max_calls" to 1L,
         "execution.routes.select_stack.consumer_burst_calls" to 1L,
+        /* Ancillary vr.ko guard: the gate rides meta, the layout is its own
+         * section, and the symbol lives in offset like every other symbol. */
+        "recommend_vr_guard" to 1L,
+        "vr_guard.tracepoint_funcs" to 0x40L,
+        "offset.vr_sys_exit_tp" to 0x21A1020L,
     )
     private val tcpValues = common + mapOf(
         "execution.routes.tcp_zerocopy.attempts" to 10L,
@@ -95,6 +100,24 @@ class ProfileRoundTripTest {
         assertEquals(1u, decoded.execution.consumerBurstCalls)
 
         assertArrayEquals(bytes, profile.toBinary())
+    }
+
+    @Test
+    fun `vr guard round trip carries gate layout and symbol`() {
+        val bytes = document("multicast_waiter", "none", multicastValues).toBinary()
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+
+        assertEquals(1u, decoded.vrGuard)
+        assertEquals(0x40u, decoded.vrGuardTracepointFuncs)
+        assertEquals(0x21A1020uL, decoded.kernelOffset.vrSysExitTp)
+        /* The layout is per-image: a profile without it must decode as absent so
+         * the behavior stays fail-closed. */
+        val withoutLayout = document(
+            "multicast_waiter",
+            "none",
+            common - "vr_guard.tracepoint_funcs",
+        ).toBinary()
+        assertNull(NativeProfileDocument.fromBinary(withoutLayout)!!.vrGuardTracepointFuncs)
     }
 
     @Test

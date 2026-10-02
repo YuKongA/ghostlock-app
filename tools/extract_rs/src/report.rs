@@ -206,6 +206,8 @@ fn conf_offsets(
         ("slide_nfulnl_logger", symbol("off_slide_nfulnl_logger")),
         ("slide_boot_id", symbol("off_slide_boot_id")),
         ("slide_loggers_0_1", symbol("off_slide_loggers_0_1")),
+        // Ancillary vr.ko guard: the tracepoint the vendor probe hangs off.
+        ("vr_sys_exit_tp", symbol("off_vr_sys_exit_tp")),
     ]
     .into_iter()
     .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
@@ -316,6 +318,25 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
 
     let offset = conf_offsets(input.symbols, input.extra_offsets);
     push_conf_block(&mut lines, "offset", &offset);
+
+    // Ancillary vr.ko guard. The gate mirrors recommend_shizuku: it says the
+    // profile enables the behavior; whether vr.ko is on the running device is a
+    // separate decision, taken there (see docs/analysis/ancillary-controller-guide.md).
+    // Both facts are per-image and come from this image's BTF — nothing here
+    // reads the kernel release.
+    if let Some(funcs) = input.structs.get("vr_tracepoint_funcs").copied().flatten() {
+        let gate = lines
+            .iter()
+            .position(|line| line.starts_with("recommend_shizuku"))
+            .map(|index| index + 1)
+            .unwrap_or(lines.len());
+        lines.insert(gate, "recommend_vr_guard = 1".to_string());
+        push_conf_block(
+            &mut lines,
+            "vr_guard",
+            &[("tracepoint_funcs".to_string(), funcs.to_string())],
+        );
+    }
 
     lines.join("\n") + "\n"
 }
