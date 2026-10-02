@@ -2,7 +2,23 @@
 
 - Head：`vr-guard-pr`（原生二进制构建自 C++ 树最后一次变更 `2912fca4`，其后仅 Kotlin / 测试 / 文档）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：37 files、+1413 / −36（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`；提交数见 PR 界面）
+- 规模：代码（`src/`、`tools/`、`profile-core/`、`app/`）35 files、+1093 / −44；文档与门禁记录
+  见 PR 界面的 Files changed（本说明自身也在其中，随提交演进微调）
+
+## 需要你拍板的三件事（先说结论）
+
+1. **multicast 提交是否留在本 PR**：它把 multicast route 从「每阶段一次 poison/walk」改为
+   「重复投毒 + 重复 walk」，是这台设备能跑完一轮的前提（否则 vr.ko 行为无法真机验证）。
+   改动自包含，可拆 —— 如需要，我保留 vr.ko 部分、把重复投毒另开一篇。
+2. **与 main 新约定是否现在对齐**（`2d9d8016` 的「整域 + 显式 null」规则、`a9518142` 的
+   `kernel_phys_offset`）：本 PR 按目标分支既有的 presence 语义实现；若要现在对齐，属机械改动，
+   我可以直接做进本篇。
+3. **两处 API/类型选择**：`AncillaryContext.write_zero`（语义化「清零一个字」，避免行为引用
+   middleware 的 `WriteRequest`；也可以改成更通用的 `write` 形态）；`vr_guard.tracepoint_funcs`
+   用 `u8` 标量（0 = 未提供，与 `offset.*` 惯例一致；改成 presence 语义需要更多字节、会超出
+   padding，得重评布局冻结）。
+
+其余内容：逐文件改动（§主要变化）、验证矩阵与反汇编核对、两份真机门禁、明确保留 —— 见下文。
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
@@ -177,18 +193,11 @@ rebase 掉它另开 PR。
 
 ## reviewer 注意（可调整项）
 
-1. multicast 是否留在本 PR：见上节。若要拆分，我保留 vr.ko 部分、另开一个 PR 放重复投毒。
-2. `AncillaryContext` 的写原语现为 `write_zero(session, target, desc)`（语义化「清零一个字」，
-   避免行为引用 middleware 的 `WriteRequest`）。若倾向更通用的 `write` 形态，我可以改。
-3. `vr_guard.tracepoint_funcs` 现为 `u8` 标量（0 = 未提供，与 `offset.*` 的惯例一致）。若希望
-   保留 presence 语义（0 与缺失不同）需要更多字节，会超出 padding，需重新评估布局冻结方案。
-4. 与主线新约定的对齐（`origin/main` 2026-09-30 起、本分支基线尚未包含）：`2d9d8016` 为
-   profile/提取器引入「整域 + 显式 null」规则（缺值写 null 而不是省略），`a9518142` 新增可配
-   `kernel_phys_offset`。本 PR 已把三个调参键收录进编辑器与校验（见改动表）；其余按本分支既有
-   presence 语义实现（缺值不写键），合并到含该规则的主线时，把
-   `vr_guard.tracepoint_funcs` 与 `route.multicast_waiter.{attempts,arm_sequence,arm_hold}`
-   纳入提取器/编辑器的 field universe（缺值写显式 null）即可，属机械改动。若需要，我可以现在
-   就把这部分对齐做进 PR。
+见开头的「需要你拍板的三件事」；与主线新约定对齐的细节：本 PR 已把三个调参键收录进编辑器与
+校验（见改动表），其余按目标分支既有的 presence 语义实现（缺值不写键）。合并到含
+`2d9d8016` 规则的主线时，把 `vr_guard.tracepoint_funcs` 与
+`route.multicast_waiter.{attempts,arm_sequence,arm_hold}` 纳入提取器/编辑器的 field universe
+（缺值写显式 null）即可。
 
 ## 风险与未验证
 
