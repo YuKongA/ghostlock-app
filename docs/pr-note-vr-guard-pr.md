@@ -41,6 +41,16 @@
 | 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
 | 计划 / 证据 | `docs/analysis/vr-guard-plan.md` | 计划、反汇编核对记录、真机门禁 |
 
+## 对评审的回应（全部已修复）
+
+| 评审意见 | 处理 |
+|---|---|
+| 路由把 `setsockopt` 返回 0 当作成功，缺少 consumer 的验证写入 | `ROUTE_OK` 现在只由 `consumer_success > 0` 决定（与 select 路由一致）；日志补 `sockopt=` 字段 |
+| `vr_tracepoint_funcs` 为 u8，BTF 偏移 ≥ 0x100 会被静默截断（fail-closed 失效） | 提取器仅在 `1..=0xFF` 时输出布局，否则整段省略、guard 保持关闭；共享校验同时拒绝超宽的 `vr_guard.tracepoint_funcs` |
+| 调参三键的窄化转换先于共享校验，导出器等非 App 调用方会静默回绕 | `ProfileResolver.validateMerged` 增加 8/8/16 位宽度校验（route 与 fallback 两支），带测试 |
+| 硬编码 (4,5) 会成为所有具备 4/5 核心设备的默认核对 | 改为**按 profile 推荐**（`BuiltinProfileCatalog` + `UserProfileStore`，与 `recommend_shizuku` 同一机制），用户显式选择优先 |
+| 非 conf 格式在缺 `tracepoint.funcs` 时整体解析失败 | `OPTIONAL_STRUCT_FIELDS` 增加 `vr_tracepoint_funcs`，JSON/text 输出保持可用 |
+
 ## 新内置条目附带的两项修复
 
 新内置条目把两个既有缺陷变成可见失败，随本 PR 一并修复：
@@ -114,8 +124,9 @@
   **102 条**差异指令，逐条按 `adrp` 页基址 + 立即数解析并折算为符号+偏移后，**全部是同一
   对象成员或同一字符串字面量，0 例指向不同目标**（1 条手工解析至 `g_exploit_session+0x5d0`）。
   结构体大小与偏移未动，见设计点 1。
-- `do_kernel5_fake_lock_route`：174 → 222 条，**既定行为改动**（multicast 重复投毒循环包裹
-  既有 poison+walk 主体；主体内语句顺序与 prepare/recycle 顺序不变）。
+- `do_kernel5_fake_lock_route`：174 → **224** 条，**既定行为改动**（multicast 重复投毒循环包裹
+  既有 poison+walk 主体；主体内语句顺序与 prepare/recycle 顺序不变。224 = 评审修正后的条数，
+  见下节）。
 - `multicast_owner_worker` / `multicast_waiter_worker`：两侧都不存在（本分支未实例化这两个
   worker，与 `kernel-phys-offset-plan.md` 的同类记录一致）。
 

@@ -148,7 +148,7 @@ flowchart TD
 | `consumer_thread` | OPERAND-DIFF ×8 | LAYOUT-SHIFT ×2 | 5 处对象 + 3 处字面量，同上 |
 | `run_main_route_threads` | OPERAND-DIFF ×45 | LAYOUT-SHIFT ×3 | 33 处对象 + 11 处字面量 + 1 处手工解析（`g_exploit_session+0x5d0`），同上 |
 | `do_one_write`（3 个 middleware 实例） | OPERAND-DIFF ×16/实例 | **IDENTICAL (strict)**，126 条/实例 | 每实例 6 处对象 + 10 处字面量，解析后完全一致 |
-| `do_kernel5_fake_lock_route` | DIFF 174 → 222 | DIFF 174 → 222 | **既定行为改动**（multicast 重复投毒/重复 walk）：循环包裹既有 poison+walk 主体，主体内语句顺序与 prepare/recycle 顺序不变；真机门禁见下 |
+| `do_kernel5_fake_lock_route` | DIFF 174 → 224 | DIFF 174 → 224 | **既定行为改动**（multicast 重复投毒/重复 walk）：循环包裹既有 poison+walk 主体，主体内语句顺序与 prepare/recycle 顺序不变；224 为 review 修正后的条数（见下节）；真机门禁见下 |
 | `multicast_owner_worker` / `multicast_waiter_worker` | MISSING（两侧皆无此符号） | MISSING | 本分支 multicast 实现没有这两个 worker（未实例化）——与 `kernel-phys-offset-plan.md` 反汇编核对记录中同类结论一致（该记录同样把这两项记为「两边都不存在」） |
 
 **复核方法（可复现）**：对每条 `OPERAND-DIFF` 指令，按 `adrp` 页基址 + 立即数解析有效地址，
@@ -179,6 +179,20 @@ flowchart TD
 2026-10-02 复算：`owner_thread` 1 对象 + 1 字面量；`waiter_thread` 15 + 16；
 `consumer_thread` 5 + 3；`run_main_route_threads` 33 + 11（另 1 条手工解析）；
 `attack_write`×3 每实例 6 + 10。`DIFFERENT obj/str` 全为 0。
+
+### Review 驱动修正（2026-10-02，PR #228 的评审）
+
+评审提出 5 条，逐条核实并修复（同分支）：
+
+| 评审意见 | 判定 | 处理 |
+|---|---|---|
+| 路由不得把 setsockopt 返回 0 当作成功；须用 consumer 的验证写入 | 真问题（本次重写引入） | `multicast_waiter_route.cpp`：`ROUTE_OK` 只由 `consumer_success > 0` 决定（与 select 路由一致）；日志补 `sockopt=` 字段 |
+| `vr_tracepoint_funcs` 为 u8，BTF 偏移 ≥ 0x100 会被静默截断（fail-closed 失效） | 真问题（理论边界） | 提取器仅在 `1..=0xFF` 时输出布局，否则整段省略（guard 保持关闭）；共享校验拒绝 `vr_guard.tracepoint_funcs > 0xFF` |
+| 调参三键的窄化转换先于共享校验，导出器等调用方会静默回绕 | 真问题 | `ProfileResolver.validateMerged` 增加宽度校验（route 与 fallback 两支；8/8/16 位），带测试 |
+| 硬编码 (4,5) 会成为所有具备 4/5 核心设备的默认核对 | 真问题（设计） | 改为按 profile 推荐：`BuiltinProfileCatalog.recommendedCpus` + `UserProfileStore.recommendedCpus`（与 `recommend_shizuku` 同机制）；用户显式选择优先（`cpuPairPreferenceSet`） |
+| 非 conf 格式在缺 `tracepoint.funcs` 时整体解析失败 | 真问题 | `OPTIONAL_STRUCT_FIELDS` 增加 `vr_tracepoint_funcs`，JSON/text 输出保持可用 |
+
+反汇编：修正后 `do_kernel5_fake_lock_route` = **174 → 224**（+2 条：判定与日志字段），其余函数与基线的关系不变（见上表）。
 
 ## 真机门禁
 
@@ -228,4 +242,5 @@ KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 - [x] CPU 配对修复（`efcf8374`）+ 参考方案与同期工作（#141/#220/#221）对比（`3c94485b`）
 - [x] 主机测试 25/25、NDK 0 warning、lint rc=0、cmp_disasm 复核记录（本文档）
 - [x] 冷启动真机门禁复跑 + 日志归档（ANC-01，2026-10-02，PASS）
+- [x] Review 驱动修正 5 条：路由判据 / 提取器可选性与宽度 / 共享校验 / CPU 配对来源（PR #228 评审）
 - [x] 推送分支并开 PR：https://github.com/YuKongA/ghostlock-app/pull/228
