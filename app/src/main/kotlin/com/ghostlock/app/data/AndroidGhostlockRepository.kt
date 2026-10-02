@@ -935,6 +935,25 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val freq = readMaxFreq(0)
             cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
         }
+        /* The pair the reference kit verified on the iQOO 12 kernel line
+         * (main=4, consumer=5) straddles two frequency groups, so the
+         * per-cluster chunking above can never produce it — and an odd-sized
+         * cluster (cpu2,3,4 at 3.15 GHz on SM8650) silently drops its last
+         * core. Offer it explicitly and make it the default when both cores
+         * report a frequency; every other pair stays one tap away. */
+        val preferred = CpuPair(4, 5)
+        val preferredFreqs = listOf(
+            readMaxFreq(preferred.primary),
+            readMaxFreq(preferred.consumer),
+        )
+        if (preferredFreqs.all { it > 0 } && preferred !in cpuPairs) {
+            cpuPairs.add(0, preferred)
+            cpuPairLabels.add(
+                0,
+                "${preferred.primary},${preferred.consumer} · " +
+                    preferredFreqs.joinToString("/") { formatFreq(it) },
+            )
+        }
     }
 
     private fun restoreCpuPair() {
