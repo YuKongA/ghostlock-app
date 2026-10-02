@@ -1,7 +1,7 @@
 # vr.ko guard（vivo/iQOO 探针中和）批次计划（2026-09-29 起，2026-10-02 更新）
 
 对应分支 `vr-guard-pr`（基 `deff0b1b`，目标分支 `vr-ko-bypass-dev`）。
-PR 正文草稿在仓库外（`PR-vr-guard.md`），推送时使用。
+PR 正文见 `docs/pr-note-vr-guard-pr.md`。
 
 ## 现状与基线
 
@@ -51,11 +51,42 @@ PR 正文草稿在仓库外（`PR-vr-guard.md`），推送时使用。
 | 读取点 | `src/core/attack/ops.cpp`、`src/core/route/multicast_waiter_route.cpp` | `mcast_*` 改经 `mcast_tuning()` 读取 |
 | multicast 路由 | `src/core/route/multicast_waiter_route.cpp` | 单次投毒 → 重复投毒 / 重复 walk（`attempts/arm_sequence/arm_hold`，默认 128/16/20000） |
 | 提取器 | `tools/extract_rs/src/{symbols,report}.rs` | `__tracepoint_sys_exit`（optional）+ BTF `tracepoint.funcs`；`--format conf` 输出 gate/符号/布局 |
-| profile-core | `profile-core/.../NativeProfile.kt` 等 | gate/符号/布局的读写、导出与解析器白名单；冻结 golden 夹具不变 |
-| 内置 profile | `app/src/main/assets/kernel_profiles/6.1.145-android14-11-maybe-dirty.conf`（新增）+ `index.conf` | iQOO 12 条目：gate on、布局 64、multicast 几何、cred refs |
+| profile-core | `profile-core/.../NativeProfile.kt` 等 | gate/符号/布局的读写、导出与解析器白名单；另镜像 multicast `attempts/arm_sequence/arm_hold`（`MulticastConfig`，随新内置一并补齐）；冻结 golden 夹具不变 |
+| 导出器合并修复 | `profile-core/.../ProfileMerger.kt` | 合并基准改为**深拷贝**共享 execution 预设（见下节） |
+| 迁移夹具 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 夹具（实测值 + 嵌套 `route` 声明）；尺寸断言 52 → 53 |
+| 内置 profile | `app/src/main/assets/kernel_profiles/6.1.145-android14-11-maybe-dirty.conf`（新增）+ `index.conf` | iQOO 12 条目：gate on、布局 64、multicast 几何与调参、cred refs |
 | 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术；字段位置随 padding 重构同步 |
 
 ## 数据流/控制流差异
+
+本次有两处控制流变化，各一张图。行为内部不改变攻击函数语句顺序：调用点在攻击路径之外。
+
+```mermaid
+flowchart TD
+    W1["w1(): SELinux 已 permissive"] --> CALL["固定 PreSpawn 调用点<br/>AncillaryController::apply"]
+    CALL --> LIST{"编译期遍历 AncillaryPolicyList"}
+    LIST --> GATE{"VrGuardPolicy::enabled(profile)"}
+    GATE -- "gate off" --> SKIP["不执行"]
+    GATE -- "gate on" --> PLAN{"plan_vr_guard(profile)"}
+    PLAN -- "缺符号/布局任一" --> SKIP
+    PLAN -- "得到 {image_offset, width}" --> MOD{"apply: /proc/modules 有 vr.ko?"}
+    MOD -- "否（fail safe）" --> SKIP
+    MOD -- "是（≤5 次尝试）" --> WRITE["context.write_zero(target)<br/>→ zero_word → attack_write"]
+    WRITE --> NEXT["继续 W2 / W3 / handoff"]
+```
+
+```mermaid
+flowchart TD
+    P["poison: setsockopt(MCAST_BLOCK_SOURCE)<br/>264 字节拷贝落到调用者栈帧"] --> ARM{"attempt ≥ arm_sequence 且<br/>返回 0 / EADDRNOTAVAIL ?"}
+    ARM -- "否" --> MORE{"attempt < attempts ?"}
+    ARM -- "是" --> GO["consumer_go = attempt，yield 自旋 arm_hold"]
+    GO --> WALK["disarm；等 inflight 清零（walk 完成）"]
+    WALK --> OK{"consumer_success > 0 ?"}
+    OK -- "是" --> DONE["route 成功"]
+    OK -- "否" --> MORE
+    MORE -- "是" --> P
+    MORE -- "否" --> FAIL["route 失败（attempts 用尽）"]
+```
 
 - 控制流：`w1()` 写完 SELinux / 已 permissive 之后 → 固定 `PreSpawn` 调用点 →
   `AncillaryController<M>::apply`（编译期遍历注册表）→ `VrGuardPolicy::apply<M>`
@@ -76,16 +107,31 @@ PR 正文草稿在仓库外（`PR-vr-guard.md`），推送时使用。
 - 回滚：单分支 revert。multicast 重复投毒可由
   `route.multicast_waiter.{attempts,arm_sequence,arm_hold}` 覆盖回单次语义。
 
+## 新内置 profile 附带的两项修复（2026-10-02）
+
+新内置条目把两个既有缺陷变成可见失败，随本批次一并修复：
+
+1. **导出器合并状态泄漏**（`ProfileMerger.resolveMerged`）：合并基准曾直接引用共享的
+   `execution` 预设实例，而 `deepMergeValues` 原地写入 —— 首个覆盖 execution 值的内置
+   （本 profile 的 `heap.prepare_max_attempts = 12`）把它写进共享预设，同进程内其后的
+   profile 全部继承 12，直到某个 profile 显式写回 4。`ExporterAgreementTest`（导出集与
+   app 自身文档逐字节比对）在 9 个 profile 上复现。修复：种子前深拷贝该预设
+   （`copyValue()`）。缺陷此前不可见，因为没有任何内置把 execution 值改成非默认。
+2. **迁移夹具缺口**（`ProfileMigrationEquivalenceTest`）：该测试要求 remote/main 夹具覆盖
+   每个现行 6.x 内置。新条目按实测值写入；remote/main 时代没有 multicast 路由，其 `route`
+   以嵌套对象声明（转换器对该形态原样透传），迁移解析结果与内置文档逐字节一致；夹具尺寸
+   断言随之为 53。
+
 ## 验证矩阵
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| 主机单测 | `make -C src native-host-tests`（WSL g++ 15） | **25/25 PASS**（`tcp_zerocopy_route_test` 在 x86 上 `yield` 汇编失败，基线同样失败，非本 PR 引入） |
-| NDK 构建 | `make -C src ghostlock`（ONDK r30.1，API 35） | **0 warning** |
-| lint | `make -C src lint-tidy` | **rc=0** |
+| 主机单测 | `make -C src native-host-tests`（WSL g++ 15） | **25/25 PASS**（`tcp_zerocopy_route_test` 在 x86 上 `yield` 汇编失败，基线同样失败，非本 PR 引入；2026-10-02 复跑） |
+| NDK 构建 | `make -C src ghostlock`（ONDK r30.1，API 35） | **0 warning**（二进制 md5 `02f2be01`） |
+| lint | `make -C src lint-tidy`（ONDK r30.1 clang-tidy） | **rc=0**（2026-10-02 复跑） |
 | 反汇编核对 | `tools/cmp_disasm.py <baseline> build/native/ghostlock` | 见下节 |
-| Rust | `cargo test`（extract_rs） | 34/34（2026-09-30） |
-| Kotlin | `:profile-core:test` + `:app:testDebugUnitTest` | 全绿（79 app 测试，2026-09-30；2026-10-02 批次只动 C++ 与主机测试，Kotlin 未受影响） |
+| Rust | `cargo test`（extract_rs） | 34/34（2026-09-30）；`--format conf` 对本机 boot.img 复核输出 `vr_sys_exit_tp=37532032`、`tracepoint_funcs=64`（2026-10-02） |
+| Kotlin | `:profile-core:test` + `:app:testDebugUnitTest` | 全绿（**80 app 测试 + 17 profile-core**，2026-10-02；含新增 vr.ko 往返夹具、multicast 调参键向量与两处修复的回归） |
 | 真机门禁 | 冷启动 / 锁屏 / multicast | 2026-09-30 PASS；2026-10-02 重构后需复跑一次再合并（待设备接线） |
 
 ## 反汇编核对记录（cmp_disasm）
@@ -101,14 +147,16 @@ PR 正文草稿在仓库外（`PR-vr-guard.md`），推送时使用。
 | `waiter_thread` | OPERAND-DIFF ×31 | LAYOUT-SHIFT ×10（仅注解） | 15 处对象 + 16 处字面量，解析后两侧**完全一致** |
 | `consumer_thread` | OPERAND-DIFF ×8 | LAYOUT-SHIFT ×2 | 5 处对象 + 3 处字面量，同上 |
 | `run_main_route_threads` | OPERAND-DIFF ×45 | LAYOUT-SHIFT ×3 | 33 处对象 + 11 处字面量 + 1 处手工解析（`g_exploit_session+0x5d0`），同上 |
-| `do_one_write`（3 个实例） | OPERAND-DIFF ×16 ×3 | **IDENTICAL (strict)**（126 条） | 6 处对象 + 10 处字面量 ×3，解析后完全一致 |
+| `do_one_write`（3 个 middleware 实例） | OPERAND-DIFF ×16/实例 | **IDENTICAL (strict)**，126 条/实例 | 每实例 6 处对象 + 10 处字面量，解析后完全一致 |
 | `do_kernel5_fake_lock_route` | DIFF 174 → 222 | DIFF 174 → 222 | **既定行为改动**（multicast 重复投毒/重复 walk）：循环包裹既有 poison+walk 主体，主体内语句顺序与 prepare/recycle 顺序不变；真机门禁见下 |
 | `multicast_owner_worker` / `multicast_waiter_worker` | MISSING（两侧皆无此符号） | MISSING | 本分支 multicast 实现没有这两个 worker（未实例化）——与 `kernel-phys-offset-plan.md` 反汇编核对记录中同类结论一致（该记录同样把这两项记为「两边都不存在」） |
 
 **复核方法（可复现）**：对每条 `OPERAND-DIFF` 指令，按 `adrp` 页基址 + 立即数解析有效地址，
 再经符号表折算为 `符号+偏移`；字符串地址按 ELF 段映射（`llvm-readelf -l`）读出字面量并比对。
-结果：**6 个未改行为的函数合计 102 条差异指令，全部解析为「同一对象成员」或
+结果：**5 个未改行为的攻击函数合计 102 条差异指令，全部解析为「同一对象成员」或
 「同一字符串字面量」，0 例指向不同目标**（`do_kernel5_fake_lock_route` 之外）。
+102 为单实例口径（`do_one_write` 取一个 middleware 实例）；其三个实例各 16 条，
+全部计入为 134 条。
 结论：差异均为链接期数据/字符串布局位移引起的**地址编码与最近的符号注解**变化，
 不包含结构体成员偏移变化、不包含控制流或语句顺序变化。
 
@@ -125,7 +173,12 @@ PR 正文草稿在仓库外（`PR-vr-guard.md`），推送时使用。
 ### 复核脚本
 
 `tmp_resolve2.py` / `tmp_resolve_diffs.py`（工作区 `ghostlock-analysis/`，一次性工具，不入库）
-可按上述方法复算本表；输出即上表结论。
+可按上述方法复算本表；WSL 下运行时把脚本内 `BIN` 与 `read_cstr` 的路径换成 `/mnt/e/...`。
+`count_diffs.py`（仓库根，未入库）给出未截断的逐函数计数。
+
+2026-10-02 复算：`owner_thread` 1 对象 + 1 字面量；`waiter_thread` 15 + 16；
+`consumer_thread` 5 + 3；`run_main_route_threads` 33 + 11（另 1 条手工解析）；
+`attack_write`×3 每实例 6 + 10。`DIFFERENT obj/str` 全为 0。
 
 ## 真机门禁
 
@@ -161,10 +214,12 @@ KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 
 ## 进度
 
-- [x] multicast 重复投毒（`747b7d74`）
-- [x] vr.ko guard 实现（`f37116ac`）
-- [x] BTF 推导 + profile-core 镜像 + 内置 profile（`1e8a32c2`）
-- [x] 结构体布局回归修复（新字段落 padding）+ 适配器绑定 session 全局（2026-10-02）
+- [x] multicast 重复投毒（`7bbaab08`）
+- [x] vr.ko guard 实现（`9f2f9048`）
+- [x] BTF 推导 + profile-core 镜像 + 内置 profile（`60eef53a`）
+- [x] 结构体布局回归修复（新字段落 padding）+ 适配器绑定 session 全局（`2912fca4`）
+- [x] multicast 调参键的 Kotlin 镜像（`1dc8d2e3`）
+- [x] 新内置触发的两项修复：导出器合并隔离（`67a792c3`）+ 迁移夹具覆盖（`a329df60`）
 - [x] 主机测试 25/25、NDK 0 warning、lint rc=0、cmp_disasm 复核记录（本文档）
 - [ ] 冷启动真机门禁复跑 + 日志归档（需设备接线）
 - [ ] 推送分支并开 PR（本机无 `gh`；步骤见 `SUBMIT.md`）
