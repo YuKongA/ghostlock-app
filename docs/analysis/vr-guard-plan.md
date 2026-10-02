@@ -223,6 +223,11 @@ KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 （`KERNEL-PANIC-01` 类，环境/时序，不归因代码）；本机开机后 ≈60–90s 的低噪声窗口
 （套件 README 的经验）明显优于 240s+ 窗口（后者 6/6 失败）。
 
+**评审修正后的复跑（2026-10-02，ANC-02）**：修正批次 tip `ff2bd110`（攻击路径修正
+`e493f110`）的二进制（SHA-256 `9cfd7c83…`）在相同条件下**第 1 次尝试 PASS**；新判据在真机
+日志中可见（`sockopt=-1` 而 `success=1`，`status=0` 单独由 consumer 的验证写入支撑）。归档：
+`docs/analysis/device-gates/ANC-02-20261002-multicast-postreview-pass.md`。
+
 ## 明确保留
 
 - 不新增 `ExploitSession` 字段（guide §7）。

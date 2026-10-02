@@ -51,6 +51,10 @@
 | 硬编码 (4,5) 会成为所有具备 4/5 核心设备的默认核对 | 改为**按 profile 推荐**（`BuiltinProfileCatalog` + `UserProfileStore`，与 `recommend_shizuku` 同一机制），用户显式选择优先 |
 | 非 conf 格式在缺 `tracepoint.funcs` 时整体解析失败 | `OPTIONAL_STRUCT_FIELDS` 增加 `vr_tracepoint_funcs`，JSON/text 输出保持可用 |
 
+修正后已在真机上复跑门禁：冷启动 / 锁屏 / multicast、**第一次尝试通过**
+（`ANC-02`：`child is root!` → `KernelSU ready`，`su` = root；新判据在日志中可见 ——
+`sockopt=-1` 而 `success=1`，`status=0` 单独由 consumer 的验证写入支撑）。
+
 ## 新内置条目附带的两项修复
 
 新内置条目把两个既有缺陷变成可见失败，随本 PR 一并修复：
@@ -114,7 +118,7 @@
 | 反汇编核对 | `tools/cmp_disasm.py <baseline> build/native/ghostlock` | 见下 |
 | Rust | `cargo test --release`（extract_rs） | 34/34；`--format conf` 对本机 boot.img 复核输出 `vr_sys_exit_tp=37532032`、`tracepoint_funcs=64` |
 | Kotlin | `./gradlew :profile-core:test :app:testDebugUnitTest` | 全绿：**80 app 测试 + 17 profile-core**（含新增 vr.ko 往返夹具、multicast 调参键向量，及上节两处修复的回归） |
-| 真机门禁 | 冷启动、锁屏、multicast、`main=4 consumer=5` | **PASS**：2026-09-30（旧二进制）与 2026-10-02（最终二进制）各一次，日志如下；归档记录 `docs/analysis/device-gates/ANC-01-20261002-multicast-direct-pass.md` |
+| 真机门禁 | 冷启动、锁屏、multicast、`main=4 consumer=5` | **PASS**：2026-09-30（旧二进制）、2026-10-02 两次 —— 其中一次为**评审修正后的二进制**（`ANC-02`，首次尝试即通过）；归档 `docs/analysis/device-gates/ANC-0{1,2}-*.md` |
 
 反汇编核对（基线 `deff0b1b` 干净构建，md5 `27879fa7`；候选本分支，md5 `02f2be01`；工具为
 本分支自带的 `tools/cmp_disasm.py`，另用 `origin/main` 的两级版本交叉核对）：
