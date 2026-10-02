@@ -125,18 +125,22 @@ namespace ghostlock::route {
         close(fd);
         status.userspace_clean = 1;
         status.kernel_disarmed = 1;
-        if (stamp_result == 0 ||
-            session::g_exploit_session.race.consumer_success.load() > 0) {
+        /* Only the consumer's verified write makes this route OK: a setsockopt
+         * return code merely means the copy landed, and the warm-up attempts
+         * never arm the consumer at all (select_stack judges its runs the same
+         * way). Reporting OK without it would let the caller skip its retry on
+         * an unverified write. */
+        if (session::g_exploit_session.race.consumer_success.load() > 0) {
             status.step = 0;
             status.error_number = 0;
             status.code = ROUTE_OK;
         } else {
             status.code = ROUTE_FALLBACK_SAFE;
         }
-        pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d "
+        pr_info("multicast route status=%d clean=%d/%d step=%d sockopt=%d errno=%d "
                 "attempts=%d calls=%d success=%d\n",
                 status.code, status.userspace_clean, status.kernel_disarmed,
-                status.step, status.error_number, attempts_used,
+                status.step, stamp_result, status.error_number, attempts_used,
                 session::g_exploit_session.race.consumer_calls.load(),
                 session::g_exploit_session.race.consumer_success.load());
         return status;
