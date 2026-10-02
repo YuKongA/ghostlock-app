@@ -64,7 +64,7 @@ namespace ghostlock::binary_profile {
             PLAIN("fallback_route", meta.fallback_route),
             PLAIN("safe_mode", meta.safe_mode),
                     /* Ancillary behavior gate (vivo vr.ko guard). */
-            PLAIN("vr_guard", meta.vr_guard),
+            PLAIN("vr_guard", misc.vr_guard),
         };
 
         constexpr Field kTask[] = {
@@ -110,7 +110,7 @@ namespace ghostlock::binary_profile {
             PLAIN("slide_loggers_0_1", offsets.slide_loggers_0_1),
             PLAIN("slide_boot_id", offsets.slide_boot_id),
             /* Ancillary vr.ko guard: the tracepoint the vendor probe hangs off. */
-            PLAIN("vr_sys_exit_tp", offsets.vr_sys_exit_tp),
+            PLAIN("vr_sys_exit_tp", misc.vr_sys_exit_tp),
         };
 
         constexpr Field kKernel[] = {
@@ -173,7 +173,7 @@ namespace ghostlock::binary_profile {
         /* Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs),
          * derived from the image's BTF. Not a kernel-version lookup. */
         constexpr Field kVrGuard[] = {
-            OPT("tracepoint_funcs", geometry.vr_tracepoint_funcs),
+            PLAIN("tracepoint_funcs", misc.vr_tracepoint_funcs),
         };
 
         constexpr Field kRouteTcp[] = {
@@ -196,9 +196,9 @@ namespace ghostlock::binary_profile {
             OPT("task_offset", geometry.mcast_task_offset),
             OPT("lock_offset", geometry.mcast_lock_offset),
             /* Poison/walk repetition; 0 means "keep the route default". */
-            PLAIN("attempts", execution.mcast_attempts),
-            PLAIN("arm_sequence", execution.mcast_arm_sequence),
-            PLAIN("arm_hold", execution.mcast_arm_hold),
+            PLAIN("attempts", mcast_attempts),
+            PLAIN("arm_sequence", mcast_arm_sequence),
+            PLAIN("arm_hold", mcast_arm_hold),
         };
 
         struct Section {

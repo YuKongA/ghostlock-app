@@ -27,8 +27,6 @@ namespace ghostlock::profile {
         uint32_t w3_chain_rounds, w3_attempts, w3_settle_us;
         uint32_t tcp_attempts, tcp_arm_sequence;
         uint32_t tcp_post_receive_hold_iterations;
-        /* Multicast route poison/walk repetition; 0 keeps the route default. */
-        uint32_t mcast_attempts, mcast_arm_sequence, mcast_arm_hold;
         uint32_t select_enter_delay_us, select_timeout_us;
         uint32_t select_consumer_max_calls, select_consumer_burst_calls;
         uint32_t handoff_pre_dispatch_settle_ms, handoff_module_poll_attempts;
@@ -85,11 +83,6 @@ namespace ghostlock::profile {
         uint8_t recommend_shizuku = 0;
         uint8_t fallback_route = 0;
         uint8_t safe_mode = 0;
-        /* Support-list gate for the vivo vr.ko guard (ancillary behavior).
-         * Fail closed: 0 leaves the behavior off no matter what the rest of the
-         * profile carries. Runtime applicability is decided separately, see
-         * session/ancillary/vr_guard.hpp. */
-        uint8_t vr_guard = 0;
     };
 
     struct TaskStructOffsets {
@@ -113,26 +106,34 @@ namespace ghostlock::profile {
         uint64_t root_task_group = 0, selinux_enforcing = 0;
         uint64_t selinux_blob_sizes = 0, security_hook_heads = 0;
         uint64_t slide_nfulnl_logger = 0, slide_loggers_0_1 = 0, slide_boot_id = 0;
-        /* Image offset of __tracepoint_sys_exit (the tracepoint the vivo vr.ko
-         * probe hangs off). 0 = the profile does not carry it. */
-        uint64_t vr_sys_exit_tp = 0;
     };
 
     struct KernelMisc {
         std::optional<uint64_t> kernel_phys_load;
         std::optional<uint8_t> compact_waiter;
+        /* Ancillary vr.ko guard, occupying this struct's existing padding so the
+         * frozen session offsets do not move: the gate (fail closed), the
+         * tracepoint the vendor probe hangs off, and offsetof(struct tracepoint,
+         * funcs). A zero tracepoint_funcs means the image did not yield it. */
+        uint8_t vr_guard = 0;
+        uint8_t vr_tracepoint_funcs = 0;
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
+        uint32_t vr_sys_exit_tp = 0;
     };
 
     struct RouteGeometry {
-        /* Ancillary vr.ko guard layout (see VrGuardLayout). */
-        std::optional<uint32_t> vr_tracepoint_funcs;
         std::optional<int32_t> pselect_waiter_shift;
         std::optional<int32_t> mcast_waiter_off;
         std::optional<uint32_t> mcast_buffer_size;
         std::optional<uint32_t> mcast_task_offset;
         std::optional<uint32_t> mcast_lock_offset;
+    };
+
+    /* Multicast route poison/walk repetition; 0 keeps the route default. Values
+     * are the ones the geometry was measured with (128/16/20000). */
+    struct McastTuning {
+        uint32_t attempts = 0, arm_sequence = 0, arm_hold = 0;
     };
 
     /* Native transport representation of one Kotlin-resolved profile. */
@@ -146,6 +147,13 @@ namespace ghostlock::profile {
         KernelMisc misc;
         RouteGeometry geometry;
         struct execution_settings execution;
+        /* Multicast route poison/walk repetition; 0 keeps the route default.
+         * These four bytes live in this struct's existing tail padding: the
+         * attack code reads session members by offset and the cmp_disasm gate
+         * requires its instructions to stay byte-identical, so nothing here may
+         * change sizeof(). */
+        uint8_t mcast_attempts = 0, mcast_arm_sequence = 0;
+        uint16_t mcast_arm_hold = 0;
 
         /* Typed view of the wire route field so callers need no cast. */
         [[nodiscard]] RouteKind route_kind() const noexcept {
@@ -269,9 +277,6 @@ namespace ghostlock::profile {
         GHOSTLOCK_EXEC_U32(tcp_attempts)
         GHOSTLOCK_EXEC_U32(tcp_arm_sequence)
         GHOSTLOCK_EXEC_U32(tcp_post_receive_hold_iterations)
-        GHOSTLOCK_EXEC_U32(mcast_attempts)
-        GHOSTLOCK_EXEC_U32(mcast_arm_sequence)
-        GHOSTLOCK_EXEC_U32(mcast_arm_hold)
         GHOSTLOCK_EXEC_U32(select_enter_delay_us)
         GHOSTLOCK_EXEC_U32(select_timeout_us)
         GHOSTLOCK_EXEC_U32(select_consumer_max_calls)
@@ -294,16 +299,24 @@ namespace ghostlock::profile {
         /* Ancillary vr.ko guard: gate + layout. Absent members mean the
          * profile does not enable the behavior (see vr_guard.hpp plan()). */
         [[nodiscard]] bool vr_guard_enabled() const noexcept {
-            return loaded_ && values_.meta.vr_guard != 0;
+            return loaded_ && values_.misc.vr_guard != 0;
         }
 
         [[nodiscard]] VrGuardLayout vr_guard_layout() const noexcept {
-            return loaded_ ? (VrGuardLayout){.tracepoint_funcs = values_.geometry.vr_tracepoint_funcs}
-                           : VrGuardLayout{};
+            if (!loaded_ || values_.misc.vr_tracepoint_funcs == 0) return VrGuardLayout{};
+            return (VrGuardLayout){
+                    .tracepoint_funcs = static_cast<uint32_t>(values_.misc.vr_tracepoint_funcs)};
         }
 
         [[nodiscard]] uint64_t vr_sys_exit_tp() const noexcept {
-            return loaded_ ? values_.offsets.vr_sys_exit_tp : 0;
+            return loaded_ ? values_.misc.vr_sys_exit_tp : 0;
+        }
+
+        [[nodiscard]] McastTuning mcast_tuning() const noexcept {
+            return loaded_ ? (McastTuning){.attempts = values_.mcast_attempts,
+                                           .arm_sequence = values_.mcast_arm_sequence,
+                                           .arm_hold = values_.mcast_arm_hold}
+                           : McastTuning{};
         }
 
         [[nodiscard]] MulticastWaiterLayout multicast_layout() const noexcept {

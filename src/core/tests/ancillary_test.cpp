@@ -65,9 +65,9 @@ int main() {
     /* Ancillary vr.ko guard: the gate, the fail-closed plan, and the pure
      * target arithmetic the device write performs. */
     profile::kernel_offsets vr_values{};
-    vr_values.meta.vr_guard = 1;
-    vr_values.offsets.vr_sys_exit_tp = 0x021a1020; /* measured on vivo 6.1 */
-    vr_values.geometry.vr_tracepoint_funcs = 0x40; /* BTF: sizeof(tracepoint) 0x48 */
+    vr_values.misc.vr_guard = 1;
+    vr_values.misc.vr_sys_exit_tp = 0x021a1020; /* measured on vivo 6.1 */
+    vr_values.misc.vr_tracepoint_funcs = 0x40; /* BTF: sizeof(tracepoint) 0x48 */
     const profile::TargetProfile vr_profile = profile::TargetProfile::from(&vr_values);
     assert(VrGuardPolicy::enabled(vr_profile));
     const std::optional<VrGuardPlan> vr_plan = plan_vr_guard(vr_profile);
@@ -79,7 +79,7 @@ int main() {
      * arithmetic over the layout, so it still describes the write when the gate
      * is off — it is `enabled()` that keeps a gated-off behavior from running. */
     profile::kernel_offsets vr_no_gate = vr_values;
-    vr_no_gate.meta.vr_guard = 0;
+    vr_no_gate.misc.vr_guard = 0;
     const profile::TargetProfile vr_no_gate_profile =
             profile::TargetProfile::from(&vr_no_gate);
     assert(!VrGuardPolicy::enabled(vr_no_gate_profile));
@@ -89,11 +89,11 @@ int main() {
      * describes no tracepoint can never produce a write. */
 
     profile::kernel_offsets vr_no_funcs = vr_values;
-    vr_no_funcs.geometry.vr_tracepoint_funcs = std::nullopt;
+    vr_no_funcs.misc.vr_tracepoint_funcs = 0;
     assert(!VrGuardPolicy::enabled(profile::TargetProfile::from(&vr_no_funcs)));
 
     profile::kernel_offsets vr_no_symbol = vr_values;
-    vr_no_symbol.offsets.vr_sys_exit_tp = 0;
+    vr_no_symbol.misc.vr_sys_exit_tp = 0;
     assert(!VrGuardPolicy::enabled(profile::TargetProfile::from(&vr_no_symbol)));
 
     /* The controller exposes the stage entry the backend calls. */

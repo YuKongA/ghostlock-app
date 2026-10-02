@@ -52,9 +52,11 @@ namespace ghostlock::attack {
                  e->tcp_post_receive_hold_iterations);
         log_exec("routes.select_stack.enter_delay_us", e->select_enter_delay_us);
         log_exec("routes.select_stack.timeout_us", e->select_timeout_us);
-        log_exec("routes.multicast_waiter.attempts", e->mcast_attempts);
-        log_exec("routes.multicast_waiter.arm_sequence", e->mcast_arm_sequence);
-        log_exec("routes.multicast_waiter.arm_hold", e->mcast_arm_hold);
+        const profile::McastTuning mcast =
+                session::g_exploit_session.profile.mcast_tuning();
+        log_exec("routes.multicast_waiter.attempts", mcast.attempts);
+        log_exec("routes.multicast_waiter.arm_sequence", mcast.arm_sequence);
+        log_exec("routes.multicast_waiter.arm_hold", mcast.arm_hold);
         log_exec("routes.select_stack.consumer_max_calls", e->select_consumer_max_calls);
         log_exec("routes.select_stack.consumer_burst_calls",
                  e->select_consumer_burst_calls);

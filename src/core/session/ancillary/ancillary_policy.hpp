@@ -34,9 +34,10 @@ namespace ghostlock::session::ancillary {
      * attack path free of virtual dispatch, and naming the effect rather than
      * the middleware's request type keeps this header (and every behavior's
      * plan) host-compilable — the host test passes a stub, the device build
-     * passes the middleware's write. */
-    using AncillaryZeroFn = Status (*)(ExploitSession &session, std::uintptr_t target,
-                                       const char *desc);
+     * passes the middleware's write. The adapter binds the session global, so
+     * adding it does not add a parameter-derived call site to `attack_write`
+     * (the disassembly gate requires that function's code to stay put). */
+    using AncillaryZeroFn = Status (*)(std::uintptr_t target, const char *desc);
 
     /* Capabilities a behavior needs from the backend: the write primitive and the
      * stage-R read-back. Injected at the call site so this header stays

