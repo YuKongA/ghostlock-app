@@ -30,7 +30,11 @@ object ProfileMerger {
         routePresets: Map<String, ValueMap>,
     ): ValueMap {
         val defaults = valueMapOf("release" to deviceRelease).apply {
-            if (tuningExecution != null) put("execution", tuningExecution)
+            /* Copy: deepMergeValues writes into the maps it is given, so a shared
+             * preset instance would carry one profile's execution overrides into
+             * every profile merged after it (the exporter merges all builtins in
+             * one process). */
+            if (tuningExecution != null) put("execution", tuningExecution.copyValue())
         }
         val resolved = mergeSource(
             mergeSource(
