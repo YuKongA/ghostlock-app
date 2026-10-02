@@ -133,6 +133,29 @@ object ProfileResolver {
                 }
             }
         }
+        /* Narrow wire fields: reject values the native widths cannot carry
+         * instead of letting the typed casts wrap them (the poison/walk tuning
+         * is u8/u8/u16, the vr.ko guard layout is u8). This is the shared
+         * validation, so the exporter and every other caller are covered too. */
+        val widths = buildList {
+            if (route == "multicast_waiter") {
+                add("route.multicast_waiter.attempts" to 0xffL)
+                add("route.multicast_waiter.arm_sequence" to 0xffL)
+                add("route.multicast_waiter.arm_hold" to 0xffffL)
+            }
+            if (fallbackTo == "multicast_waiter") {
+                add("fallback.route.multicast_waiter.attempts" to 0xffL)
+                add("fallback.route.multicast_waiter.arm_sequence" to 0xffL)
+                add("fallback.route.multicast_waiter.arm_hold" to 0xffffL)
+            }
+            add("vr_guard.tracepoint_funcs" to 0xffL)
+        }
+        for ((path, max) in widths) {
+            val value = profile.getLongAt(path) ?: continue
+            if (value < 0L || value > max) {
+                errors += ConfigError(path, "outside 0..$max")
+            }
+        }
         return errors
     }
 
