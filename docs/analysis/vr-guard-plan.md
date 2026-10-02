@@ -132,7 +132,7 @@ flowchart TD
 | 反汇编核对 | `tools/cmp_disasm.py <baseline> build/native/ghostlock` | 见下节 |
 | Rust | `cargo test`（extract_rs） | 34/34（2026-09-30）；`--format conf` 对本机 boot.img 复核输出 `vr_sys_exit_tp=37532032`、`tracepoint_funcs=64`（2026-10-02） |
 | Kotlin | `:profile-core:test` + `:app:testDebugUnitTest` | 全绿（**80 app 测试 + 17 profile-core**，2026-10-02；含新增 vr.ko 往返夹具、multicast 调参键向量与两处修复的回归） |
-| 真机门禁 | 冷启动 / 锁屏 / multicast | 2026-09-30 PASS；2026-10-02 重构后需复跑一次再合并（待设备接线） |
+| 真机门禁 | 冷启动 / 锁屏 / multicast | 2026-09-30 PASS（旧二进制）；**2026-10-02 最终二进制复跑 PASS**，见 `docs/analysis/device-gates/ANC-01-20261002-multicast-direct-pass.md` |
 
 ## 反汇编核对记录（cmp_disasm）
 
@@ -182,7 +182,7 @@ flowchart TD
 
 ## 真机门禁
 
-2026-09-30，冷启动、锁屏未解锁、multicast、`main=4 consumer=5`：
+2026-09-30（旧二进制），冷启动、锁屏未解锁、multicast、`main=4 consumer=5`：
 
 ```
 [*] cpu pair: main=4 consumer=5
@@ -198,12 +198,16 @@ flowchart TD
 `su -c id` → `uid=0(root) context=u:r:ksu:s0`；设备未 panic，`loadavg` 0.65 平稳；
 KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 
-**待补**（合并前完成）：
+**已补（2026-10-02）**：最终二进制（代码 tip `a329df60`，`build/native/ghostlock` SHA-256
+`7d85c26b…`）在冷启动、锁屏、multicast、`main=4 consumer=5` 上复跑 **PASS**：
+`vr guard: sys_exit probe disabled` → `child is root!` → `KernelSU ready`，`su -c id` =
+`uid=0(root) context=u:r:ksu:s0`，设备未 panic、SELinux 回到 Enforcing。归档记录：
+`docs/analysis/device-gates/ANC-01-20261002-multicast-direct-pass.md`（含逐次尝试统计、
+`--dump-kernel-log` 证据包与设备侧 `ghostlock_ksu.log`）。
 
-1. 设备侧日志包（`Download/ghostlock-debug-log/<时间>/`）归档到 `docs/analysis/device-gates/`
-   —— 记录时设备离线，无法拉取。
-2. 2026-10-02 的 padding / 适配器批次改变了二进制（行为中性，见上节），
-   **需在冷启动上复跑一次**并按模板归档。
+两条观察（写进记录）：本次 9 次尝试 1 次完整通过，失败均为 route 阶段 panic
+（`KERNEL-PANIC-01` 类，环境/时序，不归因代码）；本机开机后 ≈60–90s 的低噪声窗口
+（套件 README 的经验）明显优于 240s+ 窗口（后者 6/6 失败）。
 
 ## 明确保留
 
@@ -221,5 +225,5 @@ KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 - [x] multicast 调参键的 Kotlin 镜像（`1dc8d2e3`）
 - [x] 新内置触发的两项修复：导出器合并隔离（`67a792c3`）+ 迁移夹具覆盖（`a329df60`）
 - [x] 主机测试 25/25、NDK 0 warning、lint rc=0、cmp_disasm 复核记录（本文档）
-- [ ] 冷启动真机门禁复跑 + 日志归档（需设备接线）
+- [x] 冷启动真机门禁复跑 + 日志归档（ANC-01，2026-10-02，PASS）
 - [ ] 推送分支并开 PR（本机无 `gh`；步骤见 `SUBMIT.md`）

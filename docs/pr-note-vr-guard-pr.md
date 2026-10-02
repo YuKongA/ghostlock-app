@@ -2,7 +2,7 @@
 
 - Head：`vr-guard-pr`（代码 tip `a329df60`，其上为本 `docs:` 提交）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：8 commits（含本 `docs:` 提交）、25 files、+1099 / −35（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
+- 规模：9 commits（含本 `docs:` 提交）、26 files、+1217 / −35（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
@@ -79,7 +79,7 @@
 | 反汇编核对 | `tools/cmp_disasm.py <baseline> build/native/ghostlock` | 见下 |
 | Rust | `cargo test --release`（extract_rs） | 34/34；`--format conf` 对本机 boot.img 复核输出 `vr_sys_exit_tp=37532032`、`tracepoint_funcs=64` |
 | Kotlin | `./gradlew :profile-core:test :app:testDebugUnitTest` | 全绿：**80 app 测试 + 17 profile-core**（含新增 vr.ko 往返夹具、multicast 调参键向量，及上节两处修复的回归） |
-| 真机门禁 | 冷启动、锁屏、multicast、`main=4 consumer=5` | 2026-09-30 PASS（日志如下）；**最终二进制复跑待补**，见「风险与未验证」 |
+| 真机门禁 | 冷启动、锁屏、multicast、`main=4 consumer=5` | **PASS**：2026-09-30（旧二进制）与 2026-10-02（最终二进制）各一次，日志如下；归档记录 `docs/analysis/device-gates/ANC-01-20261002-multicast-direct-pass.md` |
 
 反汇编核对（基线 `deff0b1b` 干净构建，md5 `27879fa7`；候选本分支，md5 `02f2be01`；工具为
 本分支自带的 `tools/cmp_disasm.py`，另用 `origin/main` 的两级版本交叉核对）：
@@ -94,19 +94,33 @@
 - `multicast_owner_worker` / `multicast_waiter_worker`：两侧都不存在（本分支未实例化这两个
   worker，与 `kernel-phys-offset-plan.md` 的同类记录一致）。
 
-真机门禁日志（2026-09-30，冷启动、锁屏未解锁）：
+真机门禁日志（2026-10-02，最终二进制；冷启动、锁屏未解锁、运行起步 `boot_ms≈79s`）：
 
 ```
 [*] cpu pair: main=4 consumer=5
+[*] === W1: SELinux === target=0xffffff802a558f40 mode=1 leaf=0
 [*] multicast route status=0 clean=1/1 step=0 errno=0 attempts=16 calls=1 success=1
+[+] SELinux permissive
+[*] [T+11100ms] Write 1 complete
 [*] vr guard: neutralizing __tracepoint_sys_exit.funcs image=ffffffc0823cb1c0 target=ffffff802a3cb1c0 width=8
 [+] vr guard: sys_exit probe disabled (attempt 1)
+[*] child uid = 0
 [+] child is root!
+[*] handoff: root shell worker pid=10055
+[*] enforce=1 (enforcing)
 [+] KernelSU ready
 ```
 
-`su -c id` → `uid=0(root) context=u:r:ksu:s0`；设备未 panic；KSU 管理器模块页正常（#154/#201
-的失败形态未复现）。
+设备侧根脚本日志：`late-load kmi=android14-6.1`、`late-load exit=0`、`[+] KernelSU module loaded`。
+
+`su -c id` → `uid=0(root) context=u:r:ksu:s0`（连续 3 次 `id -u` = 0）；
+`grep kernelsu /proc/modules` → `Live`；设备未 panic、SELinux 回到 Enforcing（2026-09-30
+的旧二进制门禁结论一致）。
+
+关于成功率（如实）：本次 9 次完整尝试 1 次通过，失败全部发生在 route 阶段的内核 panic
+（multicast 单次未命中，属 AGENTS.md 的 `KERNEL-PANIC-01` 类环境/时序问题，不归因代码；
+失败与通过同等记录在归档里）。另外观察到本机开机后 ≈60–90s 的低噪声窗口（参考套件 README
+的经验）明显优于 `uptime ≥ 240s` 窗口，后者 6/6 失败。
 
 ## 为什么 multicast 提交在同一个 PR
 
@@ -125,11 +139,13 @@ rebase 掉它另开 PR。
 
 ## 风险与未验证
 
-- **最终二进制的真机门禁复跑未完成**：`2912fca4`（padding / 适配器批次）改动了二进制
-  （行为中性，见反汇编核对），记录中的真机门禁早于它。设备恢复后按 `docs/analysis/device-gates/`
-  模板补跑并归档（含设备日志包与 `profile.conf`/`profile.bin`）。
 - 6.6 内核的 `funcs=0x48` 路径只有 BTF 推导，无该内核设备实测。
 - BTF / 符号缺失的镜像：提取器不输出对应字段，行为保持关闭（fail closed）。
+- 门禁环境注记：运行机当前未安装 KernelSU 管理器，handoff 的 ksud 取自参考套件
+  `files/ksud`（`ksud 3.3.0 (uapi: 2)`，与官方管理器 32601 同版），与套件 README 的手动步骤同一
+  路径；不涉及本 PR 的代码路径。另：本机 `/data/local/tmp` 开机即清空，验证时文件在 boot 后重新
+  推送；`.ghostlock_iomem` 用本机实测存档播种（native 在无缓存时按内置几何继续，行为等价于
+  更宽的界，缓存只会收窄它）。
 
 ## 明确保留
 
