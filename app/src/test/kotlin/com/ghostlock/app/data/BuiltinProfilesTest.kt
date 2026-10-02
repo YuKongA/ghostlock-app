@@ -43,6 +43,19 @@ class BuiltinProfilesTest {
     }
 
     @Test
+    fun `cpu pair suggestions follow the profiles that carry them`() {
+        val catalog = BuiltinProfileCatalog(context)
+        /* The iQOO 12 entry recommends the pair the reference kit measured. */
+        assertEquals(
+            4 to 5,
+            catalog.recommendedCpus["6.1.145-android14-11-maybe-dirty"],
+        )
+        /* No other profile silently defaults to that pair. */
+        val others = catalog.recommendedCpus.filterKeys { it != "6.1.145-android14-11-maybe-dirty" }
+        assertTrue(others.none { it.value == (4 to 5) })
+    }
+
+    @Test
     fun `every builtin profile resolves cleanly and round trips`() = runBlocking {
         val root = Files.createTempDirectory("builtin-profiles").toFile()
         try {
