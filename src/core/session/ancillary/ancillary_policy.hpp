@@ -29,13 +29,23 @@ namespace ghostlock::session::ancillary {
         PreHandoff = 2,
     };
 
+    /* The backend's kernel write, injected at the call site: zero one word at an
+     * already-translated kernel address. A plain function pointer keeps the
+     * attack path free of virtual dispatch, and naming the effect rather than
+     * the middleware's request type keeps this header (and every behavior's
+     * plan) host-compilable — the host test passes a stub, the device build
+     * passes the middleware's write. */
+    using AncillaryZeroFn = Status (*)(ExploitSession &session, std::uintptr_t target,
+                                       const char *desc);
+
     /* Capabilities a behavior needs from the backend: the write primitive and the
      * stage-R read-back. Injected at the call site so this header stays
-     * host-compilable; the flags stay false until stage C wires the backend
-     * primitives into the controller. */
+     * host-compilable; `write` is null where the backend has none to offer (the
+     * host test), and a behavior that needs it must fail safe. */
     struct AncillaryContext {
         bool write_available = false;
         bool read_available = false;
+        AncillaryZeroFn write_zero = nullptr;
     };
 
     /* Neutral defaults so the controller can walk every registered behavior. A
