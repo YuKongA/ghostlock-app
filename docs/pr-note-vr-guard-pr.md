@@ -55,6 +55,31 @@
    每个现行 6.x 内置。remote/main 时代没有 multicast 路由，新条目以嵌套 `route` 对象声明
    （转换器对该形态原样透传），迁移解析结果与内置文档逐字节一致。
 
+## 参考的方案与同期工作
+
+实现依据：
+
+- 本分支自己的设计文档 `docs/analysis/ancillary-controller-guide.md` §4–§9（behavior contract、
+  stage、运行时适用性、profile 契约）与分支上的 `VrGuardPolicy` 骨架；
+- 分支内既有的 **per-task 清 tag**（`cve_2026_43499_backend.cpp` 的 w2b 路径，`VR_TAG_B_OFF`，
+  注释注明 ported from root.c）—— 它只覆盖 exploit 子进程；本 PR 补的是 root 之后 ksud 与
+  它派生的 shell 的存活（#154/#201/#61）；
+- 设备侧对 vivo `vr.ko` 的确认：`commit_creds` 上给 uid 0 打 tag、`__tracepoint_sys_exit` 上
+  执行；
+- 内核侧依据：tracepoint 迭代器在 `funcs == NULL` 时跳过全部探针
+  （`for (func = tp->funcs; func && func->func; func++)`），因此清空是安全的全局中和；
+- 参考套件 `zhubaohe123/ghostlock-kit` 在同内核线上的实测参数与流程（multicast 几何、
+  重复投毒 128/16/20000、CPU 4/5、iomem 缓存、锁屏低噪声窗口）；
+- 布局不按内核版本查表，而由**镜像自身 BTF** 推导（guide §5/§6 的要求）。
+
+提交前核对了上游同期/历史同类工作（**本 PR 未使用其代码**）：
+
+| 编号 | 作者 | 状态 | 做法 | 与本 PR 的差别 |
+|---|---|---|---|---|
+| #141 | abdulla-li | closed（未合并） | 旧 C 架构的 vr.ko 全局中和 | 架构已迁移；思路相同，本 PR 按新架构重做 |
+| #220 / #221 | abdulla-li | #220 closed；#221 open（base 为 `main`） | 在 `main` 的 w2b 块里清 `funcs`；布局用 `target.h` 里**按版本硬编码的常量**（6.1=0x40 / 6.6=0x48），符号只加进一个内置 profile | 本 PR 在 `vr-ko-bypass-dev` 的 ancillary 架构内实现（guide 契约、`PreSpawn` 固定调用点、profile gate + fail-closed）；布局由**镜像 BTF** 推导、提取器对所有镜像产出；结构体只用既有 padding 以保持 `cmp_disasm` 冻结；并带真机门禁 PASS（见上） |
+| #201 / #206 | issues | open | 需求 / 问题报告 | 本 PR 提供实现 |
+
 ## 关键设计点
 
 1. **布局冻结**：攻击函数按偏移读写 session 成员，`cmp_disasm` 要求其机器码不变，所以新
