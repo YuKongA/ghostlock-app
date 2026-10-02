@@ -22,6 +22,7 @@ import com.ghostlock.app.domain.usecase.ParseSourceUseCase
 import com.ghostlock.app.domain.usecase.ReadDocumentUseCase
 import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -1071,7 +1072,7 @@ class GhostlockViewModel(
             } catch (error: Exception) {
                 appendLog("import offsets failed: ${error.message}")
                 appendLog("result: import failed")
-                send(GhostlockEffect.Toast(R.string.import_failed))
+                showNotice(R.string.import_result_title, R.string.import_failed)
             } finally {
                 endOperation()
             }
@@ -1096,28 +1097,27 @@ class GhostlockViewModel(
                 val deviceRelease = state.value.kernelRelease
                 val matchesDevice = deviceRelease.isEmpty() ||
                         result.releases.any { it == deviceRelease }
-                send(
-                    GhostlockEffect.Toast(
-                        if (matchesDevice) R.string.import_success else R.string.import_no_match,
-                    ),
+                showNotice(
+                    R.string.import_result_title,
+                    if (matchesDevice) R.string.import_success else R.string.import_no_match,
                 )
             }
 
             OffsetImportResult.AlreadyPresent -> {
                 appendLog("result: offsets already present")
-                send(GhostlockEffect.Toast(R.string.offsets_already_exist))
+                showNotice(R.string.import_result_title, R.string.offsets_already_exist)
             }
 
             is OffsetImportResult.MissingIncludes -> {
                 appendLog("import offsets missing includes: ${result.files.joinToString()}")
                 appendLog("result: import failed")
-                send(GhostlockEffect.Toast(R.string.import_missing_includes))
+                showNotice(R.string.import_result_title, R.string.import_missing_includes)
             }
 
             is OffsetImportResult.Failed -> {
                 appendLog("import offsets failed: ${result.reason}")
                 appendLog("result: import failed")
-                send(GhostlockEffect.Toast(R.string.import_failed))
+                showNotice(R.string.import_result_title, R.string.import_failed)
             }
         }
     }
@@ -1162,7 +1162,7 @@ class GhostlockViewModel(
             } catch (error: Exception) {
                 appendLog("parse error: ${error.message}")
                 appendLog("result: parse failed")
-                send(GhostlockEffect.Toast(R.string.parse_failed))
+                showNotice(R.string.parse_result_title, R.string.parse_failed)
             }
         }
     }
@@ -1185,7 +1185,7 @@ class GhostlockViewModel(
             } catch (error: Exception) {
                 appendLog("parse error: ${error.message}")
                 appendLog("result: parse failed")
-                send(GhostlockEffect.Toast(R.string.parse_failed))
+                showNotice(R.string.parse_result_title, R.string.parse_failed)
             }
         }
     }
@@ -1203,7 +1203,7 @@ class GhostlockViewModel(
             } catch (error: Exception) {
                 appendLog("parse error: ${error.message}")
                 appendLog("result: parse failed")
-                send(GhostlockEffect.Toast(R.string.parse_failed))
+                showNotice(R.string.parse_result_title, R.string.parse_failed)
             }
         }
     }
@@ -1219,7 +1219,7 @@ class GhostlockViewModel(
             } catch (error: Exception) {
                 appendLog("parse error: ${error.message}")
                 appendLog("result: parse failed")
-                send(GhostlockEffect.Toast(R.string.parse_failed))
+                showNotice(R.string.parse_result_title, R.string.parse_failed)
             }
         }
     }
@@ -1229,12 +1229,37 @@ class GhostlockViewModel(
         if (url.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) {
             appendLog("error: invalid OTA URL: $url")
             appendLog("result: parse failed")
-            send(GhostlockEffect.Toast(R.string.parse_failed_url))
+            showNotice(R.string.parse_result_title, R.string.parse_failed_url)
             return
         }
         appendLog("parse OTA: $url")
         viewModelScope.launch(Dispatchers.IO) { runParse(url) }
     }
+
+    /** Confirm/notice popup for an extractor outcome; unlike a Toast it waits
+     * for the user and can link the matching documentation page. */
+    private fun showNotice(titleRes: Int, messageRes: Int, docUrl: String? = null) {
+        mutableState.update {
+            it.copy(
+                dialogVisible = true,
+                dialogType = DialogType.NOTICE,
+                dialogTitleRes = titleRes,
+                dialogMessageRes = messageRes,
+                dialogDocUrl = docUrl,
+                dialogConfirmLabelRes = R.string.dialog_dismiss,
+            )
+        }
+    }
+
+    private fun isMediaTek(): Boolean {
+        val soc = kernelSnapshot?.socName?.lowercase(Locale.ROOT).orEmpty()
+        return soc.contains("mediatek") || soc.contains("mtk") ||
+                soc.contains("dimensity") || soc.contains("helio")
+    }
+
+    private fun mediatekDocUrl(): String =
+        "https://github.com/YuKongA/ghostlock-app/blob/main/docs/kernel_profiles/" +
+                if (Locale.getDefault().language == "zh") "MEDIATEK_ZH.md" else "MEDIATEK.md"
 
     private suspend fun runParse(
         input: String,
@@ -1260,27 +1285,36 @@ class GhostlockViewModel(
                     if (result.documentName != null) {
                         appendLog("auto-loading parsed profile: ${result.documentName}")
                         selectUserProfile(result.documentName)
-                    } else {
-                        send(GhostlockEffect.Toast(R.string.parse_success))
                     }
                     if (result.missing.isNotEmpty()) {
                         appendLog(
                             "warning: missing ${result.missing.joinToString()}; " +
-                                    "attach xbl_config.img or uefi.img to fill it",
+                                    "run the MediaTek extractor or attach xbl_config.img / uefi.img",
                         )
-                        send(GhostlockEffect.Toast(R.string.parse_missing_phys_hint))
+                        val mediaTek = isMediaTek()
+                        showNotice(
+                            titleRes = R.string.parse_result_title,
+                            messageRes = if (mediaTek) {
+                                R.string.parse_missing_phys_mediatek
+                            } else {
+                                R.string.parse_missing_phys_hint
+                            },
+                            docUrl = if (mediaTek) mediatekDocUrl() else null,
+                        )
+                    } else if (result.documentName == null) {
+                        showNotice(R.string.parse_result_title, R.string.parse_success)
                     }
                 }
 
                 ParseResult.AlreadyPresent -> {
                     appendLog("result: offsets already present")
-                    send(GhostlockEffect.Toast(R.string.offsets_already_exist))
+                    showNotice(R.string.parse_result_title, R.string.offsets_already_exist)
                 }
 
                 is ParseResult.Failed -> {
                     result.reason?.let { appendLog("parse failed: $it") }
                     appendLog("result: ${parseFailureResult(result.code)}")
-                    send(GhostlockEffect.Toast(parseFailureToast(result.code)))
+                    showNotice(R.string.parse_result_title, parseFailureToast(result.code))
                 }
             }
         } finally {
@@ -1377,6 +1411,7 @@ class GhostlockViewModel(
                 dialogCurrentItemIndex = -1,
                 dialogInput = "",
                 dialogConfirmLabelRes = R.string.parse_start,
+                dialogDocUrl = null,
                 userProfileRenameTarget = null,
             )
         }

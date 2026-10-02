@@ -14,11 +14,19 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("off_security_hook_heads", "security_hook_heads"),
     ("off_slide_nfulnl_logger", "nfulnl_logger"),
     ("off_slide_boot_id", "sysctl_bootid"),
+    // Ancillary vr.ko guard (vivo/iQOO): the tracepoint the vendor's
+    // enforcement probe hangs off. Present on every GKI build; the profile gate
+    // and the runtime /proc/modules check decide whether it is acted on.
+    ("off_vr_sys_exit_tp", "__tracepoint_sys_exit"),
 ];
 
 /// GKI kernels drop some data symbols; unresolved optionals emit 0 and the
 /// runtime falls back to target.h defaults.
-pub const OPTIONAL_SYMBOLS: &[&str] = &["off_security_hook_heads"];
+pub const OPTIONAL_SYMBOLS: &[&str] = &[
+    "off_security_hook_heads",
+    // May be absent on stripped or vendor kernels; 0 disables the guard.
+    "off_vr_sys_exit_tp",
+];
 
 /// struct name -> (offset macro, BTF field)
 pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
@@ -72,6 +80,15 @@ pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ("seccomp_mode", "mode"),
             ("seccomp_filter_count", "filter_count"),
             ("seccomp_filter", "filter"),
+        ],
+    ),
+    (
+        // struct tracepoint, for the ancillary vr.ko guard: offsetof(funcs)
+        // moved from 0x40 (6.1) to 0x48 (6.6, which added probestub), so it is
+        // read per image instead of being derived from the release.
+        "tracepoint",
+        &[
+            ("vr_tracepoint_funcs", "funcs"),
         ],
     ),
 ];

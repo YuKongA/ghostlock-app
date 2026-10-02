@@ -37,7 +37,7 @@ ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
 ./gradlew exportKernelProfiles        # 生成 GLK1 .bin 到 build/kernel-profiles/
-cargo test --release --manifest-path tools/extract_rs/Cargo.toml
+(cd tools/extract_rs && cargo test --release)
 
 # 攻击函数形状对比（攻击路径改动必须跑）
 python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
@@ -113,7 +113,8 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
   S/CPP/U01/NS\* 证据链样例）。
 - `KERNEL-PANIC-01` 是已知环境/时序问题：同构建可 PASS/panic/PASS，判定因果要求同构建
   复现 + 冷机复跑，不要仅凭一次 panic 归因代码。
-
+- 现实状态：Multicast（5.15）、TCP、Select 三条路径均已由开发者真机验证；新 profile
+  未过真机不得标 supported。
 
 ## 文档约定
 

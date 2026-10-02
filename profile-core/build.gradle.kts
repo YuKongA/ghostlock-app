@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
 }
 
+// Keep this module's output under the repository-root build/ directory.
+layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("profile-core"))
+
 kotlin {
     jvmToolchain(21)
 }

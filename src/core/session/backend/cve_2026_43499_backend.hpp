@@ -39,6 +39,12 @@ namespace ghostlock::session::backend {
                                                  const memory::WriteRequest &request,
                                                  const char *desc);
 
+        /* Ancillary-context adapter: zero one word at an already-translated
+         * kernel address through this middleware's write. Behaviors receive it
+         * as a plain function pointer so they never name the middleware. */
+        template <class Middleware>
+        [[nodiscard]] static Status zero_word(uintptr_t target, const char *desc);
+
         /* Stage: process setup and profile installation (middleware-free). */
         [[nodiscard]] static StageResult run_setup(ExploitSession &session,
                                                    const profile::kernel_offsets &decoded,

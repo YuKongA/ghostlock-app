@@ -12,7 +12,10 @@ object ProfileResolver {
     private val KnownTopLevel = setOf(
         "release", "schema_version", "kernel_major", "recommend_shizuku",
         "route", "fallback", "kernelsnitch", "task_struct", "cred", "offset",
-        "kernel_phys_load", "execution",
+        "kernel_phys_load", "kernel_phys_offset", "execution",
+        /* Ancillary vr.ko guard: the gate (mirrors recommend_shizuku) and the
+         * layout section derived from the image's BTF. */
+        "recommend_vr_guard", "vr_guard",
     )
     private val RequiredTopLevel = setOf(
         "release", "schema_version", "kernel_major", "route", "task_struct", "cred", "offset",
@@ -128,6 +131,29 @@ object ProfileResolver {
                         errors += ConfigError("offset.$field", "zero")
                     }
                 }
+            }
+        }
+        /* Narrow wire fields: reject values the native widths cannot carry
+         * instead of letting the typed casts wrap them (the poison/walk tuning
+         * is u8/u8/u16, the vr.ko guard layout is u8). This is the shared
+         * validation, so the exporter and every other caller are covered too. */
+        val widths = buildList {
+            if (route == "multicast_waiter") {
+                add("route.multicast_waiter.attempts" to 0xffL)
+                add("route.multicast_waiter.arm_sequence" to 0xffL)
+                add("route.multicast_waiter.arm_hold" to 0xffffL)
+            }
+            if (fallbackTo == "multicast_waiter") {
+                add("fallback.route.multicast_waiter.attempts" to 0xffL)
+                add("fallback.route.multicast_waiter.arm_sequence" to 0xffL)
+                add("fallback.route.multicast_waiter.arm_hold" to 0xffffL)
+            }
+            add("vr_guard.tracepoint_funcs" to 0xffL)
+        }
+        for ((path, max) in widths) {
+            val value = profile.getLongAt(path) ?: continue
+            if (value < 0L || value > max) {
+                errors += ConfigError(path, "outside 0..$max")
             }
         }
         return errors

@@ -38,12 +38,24 @@ adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/prof
 `tools/extract_rs` derives offsets from a `boot.img` (plus optional `xbl_config.img`), a full OTA ZIP, or an `http(s)` URL pointing at one. kallsyms come from `--kallsyms` or are recovered from the image's embedded table. `pselect_waiter_shift` and `off_slide_loggers_0_1` are derived by the built-in arm64 disassembler. MediaTek images have no `xbl_config.img` and usually no BTF: the physical load address is derived from kallsyms `_text` (override with `--phys`).
 
 ```powershell
-cargo build --release --manifest-path tools/extract_rs/Cargo.toml
+Push-Location tools/extract_rs
+cargo build --release
+Pop-Location
 build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format conf --out profile.conf
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
 `--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
+
+### MediaTek
+
+MediaTek images have no `xbl_config.img` and usually no embedded BTF, so the
+extractor cannot derive the two physical addresses (`kernel_phys_load`,
+`kernel_phys_offset`) from the image and leaves them `null`. The runtime then
+falls back to the SoC formula, which fails at W1 on MediaTek. Fill both by
+running the separate `tools/mtk-phys/` extractor on a rooted device (it reads
+`/proc/iomem`) and pasting the values into the app's advanced overrides. See
+[MEDIATEK.md](docs/kernel_profiles/MEDIATEK.md).
 
 ### Preflight
 
@@ -61,7 +73,9 @@ $ndk = "$env:ANDROID_HOME\ndk\<version>\toolchains\llvm\prebuilt\windows-x86_64\
 $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android
-cargo build --release --target aarch64-linux-android --manifest-path tools/extract_rs/Cargo.toml
+Push-Location tools/extract_rs
+cargo build --release --target aarch64-linux-android
+Pop-Location
 adb push build/extract/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
 adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 ```

@@ -80,6 +80,11 @@ namespace ghostlock::memory {
             return -1;
         }
         init_cred_image = *image;
+        /* DRAM base for the image->direct-map translation: profile override
+         * wins, otherwise the compiled P0 default keeps every existing
+         * device byte-identical. */
+        phys_offset = static_cast<uintptr_t>(
+            values->misc.kernel_phys_offset.value_or(kernel::P0_PHYS_OFFSET));
         if (values->misc.kernel_phys_load.value_or(0)) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 values->misc.kernel_phys_load.value_or(0));
@@ -117,9 +122,9 @@ namespace ghostlock::memory {
         if (image < kernel::KIMAGE_TEXT_BASE) return std::nullopt;
         const uintptr_t offset = image - kernel::KIMAGE_TEXT_BASE;
         const auto physical = kernel_phys_load.checked_add(offset);
-        if (!physical || physical->value() < kernel::P0_PHYS_OFFSET) return std::nullopt;
+        if (!physical || physical->value() < phys_offset) return std::nullopt;
         const uintptr_t direct =
-                (physical->value() - kernel::P0_PHYS_OFFSET) | kernel::P0_PAGE_OFFSET;
+                (physical->value() - phys_offset) | kernel::P0_PAGE_OFFSET;
         if (direct < kernel::P0_PAGE_OFFSET) return std::nullopt;
         return target::KernelAddress<target::DirectMapAddressDomain>(direct);
     }

@@ -97,7 +97,32 @@ fn probe(
 
 /// Probes the three route paths the same way for `--analysis` and the
 /// `--format conf` route suggestion; the only authority for the probe list.
-pub fn probe_paths(symbols: &BTreeMap<String, BTreeSet<u64>>) -> Vec<PathCandidate> {
+/// The TCP path probe: the `tcp_zerocopy_receive` symbol, or, when that symbol
+/// was inlined into the option handler, an inline-confirmed marker.
+fn tcp_zerocopy_probe(
+    symbols: &BTreeMap<String, BTreeSet<u64>>,
+    kernel: &[u8],
+    rel_symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> (&'static str, Option<u64>) {
+    if let Some(address) = probe(symbols, "tcp_zerocopy_receive", &["zerocopy_receive"]) {
+        return ("tcp_zerocopy_receive", Some(address));
+    }
+    if crate::derive::tcp_zerocopy_receive_inlined(kernel, rel_symbols, sorted_offsets) {
+        return (
+            "tcp_zerocopy_receive_inlined",
+            probe(symbols, "do_tcp_getsockopt", &["do_tcp_getsockopt"]),
+        );
+    }
+    ("tcp_zerocopy_receive", None)
+}
+
+pub fn probe_paths(
+    symbols: &BTreeMap<String, BTreeSet<u64>>,
+    kernel: &[u8],
+    rel_symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> Vec<PathCandidate> {
     let build_path =
         |route: &'static str, probes: Vec<(&'static str, Option<u64>)>, require_all: bool| {
             let available = if require_all {
@@ -125,9 +150,11 @@ pub fn probe_paths(symbols: &BTreeMap<String, BTreeSet<u64>>) -> Vec<PathCandida
         ),
         build_path(
             "tcp_zerocopy",
-            vec![(
-                "tcp_zerocopy_receive",
-                probe(symbols, "tcp_zerocopy_receive", &["zerocopy_receive"]),
+            vec![tcp_zerocopy_probe(
+                symbols,
+                kernel,
+                rel_symbols,
+                sorted_offsets,
             )],
             false,
         ),
@@ -210,7 +237,12 @@ pub fn build(input: Input<'_>) -> Analysis {
         },
     };
 
-    let paths = probe_paths(input.symbols);
+    let paths = probe_paths(
+        input.symbols,
+        input.kernel,
+        input.rel_symbols,
+        input.sorted_offsets,
+    );
     let pselect_derived = matches!(pselect, PselectOutcome::Derived(_));
     let (suggestion, suggestion_confidence, suggestion_reasons) =
         suggest_route(pselect_derived, &paths, input.release);
@@ -274,6 +306,14 @@ fn suggest(
             (None, Confidence::Low, reasons)
         }
     }
+}
+
+/// Routes whose layout is only meaningful when this image's pselect/futex
+/// stack geometry was derived. A profile that selects one of these must be
+/// rejected when the derivation was infeasible; every other route is
+/// independent of that geometry.
+pub fn route_depends_on_pselect_layout(route: &str) -> bool {
+    route == "select_stack"
 }
 
 fn render_waiter(fields: &BTreeMap<String, u32>, size: Option<u32>) -> String {
@@ -425,6 +465,20 @@ mod tests {
     }
 
     #[test]
+    fn android14_61_prefers_tcp_when_pselect_is_not_derived() {
+        let available = |route: &str| route == "tcp_zerocopy";
+        let (route, confidence, _) = suggest(
+            false,
+            &available,
+            Some("STRUCT_OFFSETS_6_1"),
+            Some(6),
+            Some(1),
+        );
+        assert_eq!(route, Some("tcp_zerocopy"));
+        assert_eq!(confidence, Confidence::Medium);
+    }
+
+    #[test]
     fn family_defaults_are_low_confidence() {
         let (route, confidence, _) = suggest(
             false,
@@ -445,5 +499,12 @@ mod tests {
         let (route, confidence, _) = suggest_route(false, &paths, Some("6.6.92-generic-build"));
         assert_eq!(route, None);
         assert_eq!(confidence, Confidence::Low);
+    }
+
+    #[test]
+    fn only_select_stack_depends_on_the_pselect_layout() {
+        assert!(route_depends_on_pselect_layout("select_stack"));
+        assert!(!route_depends_on_pselect_layout("tcp_zerocopy"));
+        assert!(!route_depends_on_pselect_layout("multicast_waiter"));
     }
 }

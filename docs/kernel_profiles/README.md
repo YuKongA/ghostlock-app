@@ -62,7 +62,7 @@ and doesn't repeat the field reference.
    Build and run the extractor:
 
    ```sh
-   cargo build --release --manifest-path tools/extract_rs/Cargo.toml
+   (cd tools/extract_rs && cargo build --release)
    build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
    ```
 
@@ -99,7 +99,7 @@ and doesn't repeat the field reference.
 
    ```sh
    jq . app/src/main/assets/kernel_profiles/index.conf
-   cargo test --manifest-path tools/extract_rs/Cargo.toml
+   (cd tools/extract_rs && cargo test)
    ./gradlew clean :app:assembleDebug
    ```
 

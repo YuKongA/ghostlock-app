@@ -94,6 +94,31 @@ pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
     dis.iter().any(|line| mrs_current.is_match(line))
 }
 
+/// Some Android kernels inline `tcp_zerocopy_receive()` into the TCP option
+/// handler, so its symbol disappears while the `TCP_ZEROCOPY_RECEIVE` path
+/// stays. `tcp_zerocopy_vm_insert_batch` is only reachable from
+/// `tcp_zerocopy_receive`, so a direct call to it from the option handler
+/// proves the inlined path is present.
+pub fn tcp_zerocopy_receive_inlined(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> bool {
+    let Some(batch) = unique_offset_optional(symbols, "tcp_zerocopy_vm_insert_batch") else {
+        return false;
+    };
+    for handler in ["do_tcp_getsockopt", "do_tcp_setsockopt"] {
+        let Ok(dis) = disassemble_symbol(kernel, symbols, sorted_offsets, handler, OBJDUMP_CAP)
+        else {
+            continue;
+        };
+        if has_direct_call(&dis, batch) {
+            return true;
+        }
+    }
+    false
+}
+
 /// One-shot multicast stack geometry derived from the target kernel image
 /// (no device, no root). Depths are measured from the syscall stack top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -89,6 +89,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
+    /** True once the user picked a pair (or one was restored); only then does it
+     * override the profile's suggestion (mirrors shizukuPreferenceSet). */
+    private var cpuPairPreferenceSet = false
     private var safeModeEnabled = false
     private var forceAttackTest = false
     private var shizukuEnabled = false
@@ -101,6 +104,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     init {
         buildCpuPairs()
         restoreCpuPair()
+        applyRecommendedCpuPair(System.getProperty("os.version", "").orEmpty())
         restoreShizukuPreference()
         restoreForceAttackTest()
         dropLegacyOffsetsCache()
@@ -150,6 +154,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun snapshot(): KernelSnapshot {
         val release = System.getProperty("os.version", "unknown").orEmpty()
+        /* A profile imported after start-up can still carry a pair suggestion. */
+        applyRecommendedCpuPair(release)
         /* PROFILE-SUGGEST-01: recommend_shizuku is a suggestion. It seeds the
          * toggle until the user makes an explicit choice, which then overrides
          * it in both directions. */
@@ -176,6 +182,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
         selectedCpuPair = index
+        cpuPairPreferenceSet = true
         appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
                 putString("cpu_pair", cpuPairs[index].toString())
             }
@@ -935,12 +942,54 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val freq = readMaxFreq(0)
             cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
         }
+        if (CpuPair(0, 1) !in cpuPairs) {
+            cpuPairs += CpuPair(0, 1)
+            val freq = readMaxFreq(0)
+            cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
+        }
     }
+
+    /**
+     * Offers the pair the profile for [release] recommends and, until the user
+     * picks one explicitly, makes it the default (mirrors the recommend_shizuku
+     * flow). The per-cluster pairing cannot express a pair that straddles two
+     * frequency groups, so the suggestion may be one the list does not carry.
+     */
+    private fun applyRecommendedCpuPair(release: String) {
+        val preferred = builtinProfiles.recommendedCpus[release]
+            ?: importedOffsetsRecommendedCpuPair(release)
+            ?: return
+        val pair = CpuPair(preferred.first, preferred.second)
+        val primaryFreq = readMaxFreq(pair.primary)
+        val consumerFreq = readMaxFreq(pair.consumer)
+        if (primaryFreq <= 0 || consumerFreq <= 0) return
+        val index = cpuPairs.indexOf(pair)
+        if (index >= 0) {
+            /* Offered already: only the default selection follows the profile. */
+            if (!cpuPairPreferenceSet) selectedCpuPair = index
+            return
+        }
+        cpuPairs.add(0, pair)
+        cpuPairLabels.add(
+            0,
+            "${pair.primary},${pair.consumer} · " +
+                listOf(primaryFreq, consumerFreq).joinToString("/") { formatFreq(it) },
+        )
+        if (!cpuPairPreferenceSet) selectedCpuPair = 0
+    }
+
+    private fun importedOffsetsRecommendedCpuPair(release: String): Pair<Int, Int>? =
+        userProfileStore.recommendedCpus(release)
 
     private fun restoreCpuPair() {
         val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
-        if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
+        if (pair.size == 2) {
+            cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let {
+                selectedCpuPair = it
+                cpuPairPreferenceSet = true
+            }
+        }
     }
 
     private fun restoreShizukuPreference() {

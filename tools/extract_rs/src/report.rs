@@ -92,6 +92,66 @@ const CONF_TASK_FIELDS: &[(&str, &str)] = &[
     ("task_seccomp", "seccomp"),
 ];
 
+/// Full route field universe per branch (authoritative: Kotlin
+/// `RouteConfig.entries()` / native `kSections`). A missing value renders as
+/// `null` so every generated profile carries every field of its route.
+const CONF_ROUTE_FIELDS: &[(&str, &[&str])] = &[
+    ("tcp_zerocopy", &["compact_waiter"]),
+    ("select_stack", &["waiter_shift"]),
+    (
+        "multicast_waiter",
+        &[
+            "waiter_off",
+            "buffer_size",
+            "task_offset",
+            "lock_offset",
+            "compact_waiter",
+        ],
+    ),
+];
+
+/// Full credential field universe (native `kCred` / `credential-6x.conf`).
+const CONF_CRED_FIELDS: &[&str] = &[
+    "copy_size",
+    "usage_offset",
+    "usage_value",
+    "caps_offset",
+    "caps_count",
+    "caps_value",
+    "ref_count",
+    "ref0_offset",
+    "ref1_offset",
+    "ref2_offset",
+    "ref3_offset",
+    "ref0_image",
+    "ref1_image",
+    "ref2_image",
+    "ref3_image",
+];
+
+/// Full offset field universe (native `kOffset`).
+const CONF_OFFSET_FIELDS: &[&str] = &[
+    "init_task",
+    "init_cred",
+    "empty_zero_page",
+    "root_task_group",
+    "selinux_enforcing",
+    "selinux_blob_sizes",
+    "security_hook_heads",
+    "slide_nfulnl_logger",
+    "slide_loggers_0_1",
+    "slide_boot_id",
+];
+
+/// Looks up a key in `(key, value)` entries, or `"null"` when absent.
+fn conf_lookup(entries: &[(String, String)], key: &str) -> String {
+    entries
+        .iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value.clone())
+        .unwrap_or_else(|| "null".to_string())
+}
+
 /// Extra `offset.*` keys the extractor resolves outside the `off_*` symbol
 /// table (kallsyms-only symbols). Kept in its bundled-profile position.
 #[derive(Debug, Clone, Default)]
@@ -206,6 +266,8 @@ fn conf_offsets(
         ("slide_nfulnl_logger", symbol("off_slide_nfulnl_logger")),
         ("slide_boot_id", symbol("off_slide_boot_id")),
         ("slide_loggers_0_1", symbol("off_slide_loggers_0_1")),
+        // Ancillary vr.ko guard: the tracepoint the vendor probe hangs off.
+        ("vr_sys_exit_tp", symbol("off_vr_sys_exit_tp")),
     ]
     .into_iter()
     .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
@@ -228,6 +290,9 @@ fn push_conf_block(lines: &mut Vec<String>, name: &str, entries: &[(String, Stri
 pub struct ConfInputs<'a> {
     pub release: &'a str,
     pub phys: Option<u64>,
+    /// DRAM base (linear-map PHYS_OFFSET); normally supplied by hand, so the
+    /// extractor writes an explicit `null` unless one is known.
+    pub phys_offset: Option<u64>,
     pub symbols: &'a BTreeMap<String, Option<u64>>,
     pub structs: &'a BTreeMap<String, Option<u32>>,
     pub route: Option<&'a str>,
@@ -253,17 +318,40 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         format!("kernel_major = {}", major.unwrap_or(0)),
         "recommend_shizuku = 0".to_string(),
     ];
-    if let Some(phys) = input.phys {
-        lines.push(format!("kernel_phys_load = 0x{phys:X}"));
-    }
+    lines.push(match input.phys {
+        // Decimal only: HOCON has no `0x` literal, and the Kotlin reader
+        // (`getLongAt`) accepts a Number only, so a hex spelling would be
+        // silently dropped on import. An unknown phys is an explicit `null`.
+        Some(phys) => format!("kernel_phys_load = {phys}"),
+        None => "kernel_phys_load = null".to_string(),
+    });
+    lines.push(match input.phys_offset {
+        Some(offset) => format!("kernel_phys_offset = {offset}"),
+        None => "kernel_phys_offset = null".to_string(),
+    });
     if let Some(route) = input.route {
-        // A candidate profile keeps the chosen route even when no geometry
-        // could be derived, so the import carries the recommendation and the
-        // missing fields surface as invalid paths on the Kotlin side.
+        // The chosen route keeps its whole field universe even when no
+        // geometry could be derived, so the import carries the recommendation
+        // and the missing fields surface as invalid paths on the Kotlin side.
         lines.push("route {".to_string());
         lines.push(format!("  {route} {{"));
-        for (key, value) in input.route_geometry {
-            lines.push(format!("    {key} = {value}"));
+        match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
+            Some((_, fields)) => {
+                for field in *fields {
+                    let value = input
+                        .route_geometry
+                        .iter()
+                        .find(|(key, _)| key == field)
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_else(|| "null".to_string());
+                    lines.push(format!("    {field} = {value}"));
+                }
+            }
+            None => {
+                for (key, value) in input.route_geometry {
+                    lines.push(format!("    {key} = {value}"));
+                }
+            }
         }
         lines.push("  }".to_string());
         lines.push("}".to_string());
@@ -274,9 +362,9 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         &[("to".to_string(), "\"none\"".to_string())],
     );
 
-    // KernelSnitch defaults are emitted for a verified train, and for every
-    // 5.x kernel (the android13-5.15 measured defaults are 5.x-wide and are
-    // required for the profile to run). An unverified release omits them.
+    // KernelSnitch: full universe. `collisions` is emitted for a verified
+    // train (and every 5.x kernel); `mm_struct_sz` only where it applies. An
+    // unverified release keeps both as `null` rather than omitting the block.
     let mut snitch = Vec::new();
     if kernel_layout_verified(Some(release)) || major == Some(5) {
         match major {
@@ -297,25 +385,74 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
             _ => {}
         }
     }
-    push_conf_block(&mut lines, "kernelsnitch", &snitch);
+    push_conf_block(
+        &mut lines,
+        "kernelsnitch",
+        &[
+            ("collisions".to_string(), conf_lookup(&snitch, "collisions")),
+            (
+                "mm_struct_sz".to_string(),
+                conf_lookup(&snitch, "mm_struct_sz"),
+            ),
+        ],
+    );
 
     let task: Vec<(String, String)> = CONF_TASK_FIELDS
         .iter()
-        .filter_map(|(macro_name, key)| {
-            input
-                .structs
-                .get(*macro_name)
-                .copied()
-                .flatten()
-                .map(|value| ((*key).to_string(), value.to_string()))
+        .map(|(macro_name, key)| {
+            (
+                (*key).to_string(),
+                input
+                    .structs
+                    .get(*macro_name)
+                    .copied()
+                    .flatten()
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "null".to_string()),
+            )
         })
         .collect();
     push_conf_block(&mut lines, "task_struct", &task);
 
-    push_conf_block(&mut lines, "cred", input.cred);
+    let cred: Vec<(String, String)> = CONF_CRED_FIELDS
+        .iter()
+        .map(|key| ((*key).to_string(), conf_lookup(input.cred, key)))
+        .collect();
+    push_conf_block(&mut lines, "cred", &cred);
 
-    let offset = conf_offsets(input.symbols, input.extra_offsets);
+    let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
+    let offset: Vec<(String, String)> = CONF_OFFSET_FIELDS
+        .iter()
+        .map(|key| ((*key).to_string(), conf_lookup(&offset_entries, key)))
+        .collect();
     push_conf_block(&mut lines, "offset", &offset);
+
+    // Ancillary vr.ko guard. The gate mirrors recommend_shizuku: it says the
+    // profile enables the behavior; whether vr.ko is on the running device is a
+    // separate decision, taken there (see docs/analysis/ancillary-controller-guide.md).
+    // Both facts are per-image and come from this image's BTF — nothing here
+    // reads the kernel release. The layout travels as a u8, so an offset that
+    // does not fit is dropped instead of being narrowed to a different member;
+    // without the layout the guard stays off (fail closed).
+    if let Some(funcs) = input
+        .structs
+        .get("vr_tracepoint_funcs")
+        .copied()
+        .flatten()
+        .filter(|value| (1..=u8::MAX as u32).contains(value))
+    {
+        let gate = lines
+            .iter()
+            .position(|line| line.starts_with("recommend_shizuku"))
+            .map(|index| index + 1)
+            .unwrap_or(lines.len());
+        lines.insert(gate, "recommend_vr_guard = 1".to_string());
+        push_conf_block(
+            &mut lines,
+            "vr_guard",
+            &[("tracepoint_funcs".to_string(), funcs.to_string())],
+        );
+    }
 
     lines.join("\n") + "\n"
 }
@@ -345,9 +482,11 @@ pub fn optional_symbols() -> BTreeSet<&'static str> {
 }
 
 /// BTF struct fields a kernel may legitimately lack: the 5.15 GKI BTF has no
-/// `slab` type, so `struct_slab_cache` is missing there. Reported as missing,
-/// but not failing the extract.
-const OPTIONAL_STRUCT_FIELDS: &[&str] = &["struct_slab_cache"];
+/// `slab` type, so `struct_slab_cache` is missing there, and a stripped or
+/// vendor BTF may not describe `struct tracepoint` at all. Reported as missing,
+/// but not failing the extract — the consumers of these fields either carry a
+/// fallback or treat their absence as "feature off".
+const OPTIONAL_STRUCT_FIELDS: &[&str] = &["struct_slab_cache", "vr_tracepoint_funcs"];
 
 pub fn optional_struct_fields() -> BTreeSet<&'static str> {
     OPTIONAL_STRUCT_FIELDS.iter().copied().collect()
@@ -360,7 +499,7 @@ mod tests {
         conf_route_geometry, pselect_waiter_shift_for, render_conf,
     };
     use crate::derive::Cred5x;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn conf_fixture() -> (BTreeMap<String, Option<u64>>, BTreeMap<String, Option<u32>>) {
         let mut symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
@@ -379,12 +518,56 @@ mod tests {
     }
 
     #[test]
+    fn conf_emits_the_vr_guard_only_when_the_layout_fits_the_transport() {
+        let (symbols, base_structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
+        let render = |funcs: Option<Option<u32>>| {
+            let mut structs = base_structs.clone();
+            if let Some(value) = funcs {
+                structs.insert("vr_tracepoint_funcs".to_string(), value);
+            }
+            render_conf(&ConfInputs {
+                release: "6.1.145-android14-11-maybe-dirty",
+                phys: None,
+                symbols: &symbols,
+                structs: &structs,
+                route: Some("select_stack"),
+                route_geometry: &geometry,
+                cred: &conf_cred_6x(),
+                extra_offsets: &no_extra_offsets(),
+            })
+        };
+        let fitted = render(Some(Some(0x40)));
+        assert!(fitted.contains("recommend_vr_guard = 1"));
+        assert!(fitted.contains("vr_guard {\n  tracepoint_funcs = 64\n}"));
+        /* An offset that cannot travel in the u8 layout is dropped instead of
+         * being narrowed onto a different tracepoint member: guard off. */
+        for bad in [Some(Some(0x140u32)), Some(Some(0)), None] {
+            let out = render(bad);
+            assert!(!out.contains("vr_guard"));
+            assert!(!out.contains("recommend_vr_guard"));
+        }
+    }
+
+    #[test]
+    fn optional_struct_fields_cover_the_vr_guard_layout() {
+        let mut structs: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        structs.insert("task_prio".to_string(), Some(132));
+        structs.insert("vr_tracepoint_funcs".to_string(), None);
+        /* A kernel whose BTF lacks `struct tracepoint` still extracts in every
+         * format: the guard layout is optional, the rest is required. */
+        assert!(super::require_fields(&structs, &super::optional_struct_fields()).is_ok());
+        assert!(super::require_fields(&structs, &BTreeSet::new()).is_err());
+    }
+
+    #[test]
     fn conf_is_flattened_and_inlines_the_6x_shared_constants() {
         let (symbols, structs) = conf_fixture();
         let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
         let out = render_conf(&ConfInputs {
             release: "6.6.89-android15-8-g0889fe95bb10-ab14402178-4k",
             phys: Some(0x4000_0000),
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("select_stack"),
@@ -393,13 +576,15 @@ mod tests {
             extra_offsets: &no_extra_offsets(),
         });
         assert!(!out.contains("include"));
-        assert!(out.contains("kernel_phys_load = 0x40000000"));
+        assert!(out.contains("kernel_phys_load = 1073741824"));
         assert!(out.contains("route {\n  select_stack {\n    waiter_shift = -2\n  }\n}"));
         assert!(out.contains("collisions = 4"));
-        assert!(!out.contains("mm_struct_sz"));
+        assert!(out.contains("mm_struct_sz = null"));
         assert!(!out.contains("task_prio"));
         assert!(out.contains("  prio = 132"));
-        assert!(out.contains("cred {\n  caps_offset = 48\n  copy_size = 136"));
+        assert!(out.contains("cred {"));
+        assert!(out.contains("copy_size = 136"));
+        assert!(out.contains("caps_offset = 48"));
         assert!(out.contains("caps_value = -1"));
         assert!(out.contains("init_task = 34595456"));
         assert!(out.contains("security_hook_heads = 0"));
@@ -413,6 +598,7 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "6.1.118-android14-11-gca0ef6d17716-ab13624819",
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("tcp_zerocopy"),
@@ -422,7 +608,7 @@ mod tests {
         });
         assert!(out.contains("tcp_zerocopy {\n    compact_waiter = 1"));
         assert!(out.contains("mm_struct_sz = 1024"));
-        assert!(!out.contains("kernel_phys_load"));
+        assert!(out.contains("kernel_phys_load = null"));
     }
 
     #[test]
@@ -452,6 +638,7 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -468,7 +655,9 @@ mod tests {
         assert!(out.contains("compact_waiter = 1"));
         assert!(out.contains("collisions = 8"));
         assert!(out.contains("mm_struct_sz = 1024"));
-        assert!(out.contains("cred {\n  caps_offset = 48\n  copy_size = 176\n  usage_value = 256"));
+        assert!(out.contains("cred {"));
+        assert!(out.contains("copy_size = 176"));
+        assert!(out.contains("usage_value = 256"));
         assert!(out.contains("caps_count = 3"));
         assert!(out.contains("caps_value = 2199023255551"));
         assert!(out.contains("ref0_offset = 128"));
@@ -577,6 +766,7 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "5.15.178-g3575c47dc7ce-dirty",
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -597,6 +787,7 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "6.7.1-generic",
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: None,
@@ -604,7 +795,9 @@ mod tests {
             cred: &[],
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(!out.contains("kernelsnitch"));
+        assert!(out.contains("kernelsnitch {"));
+        assert!(out.contains("collisions = null"));
+        assert!(out.contains("mm_struct_sz = null"));
     }
 
     #[test]
@@ -619,6 +812,7 @@ mod tests {
         let out = render_conf(&ConfInputs {
             release: "5.15.178-g3575c47dc7ce-dirty",
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),
@@ -785,6 +979,7 @@ mod tests {
         let generated = render_conf(&ConfInputs {
             release: &release,
             phys: None,
+            phys_offset: None,
             symbols: &symbols,
             structs: &structs,
             route: Some("multicast_waiter"),

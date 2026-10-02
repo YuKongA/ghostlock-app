@@ -28,6 +28,7 @@ CXX_SRCS := \
   core/race/pi_race.cpp \
   core/route/route_controller.cpp \
   core/route/route_middleware.cpp \
+  core/session/ancillary/vr_guard.cpp \
   core/race/threads.cpp \
   core/route/tcp_zerocopy_route.cpp \
   core/route/select_stack_route.cpp \
@@ -103,7 +104,7 @@ $(NATIVE_BUILD_DIR)/%.o: %.cpp $(HDRS)
 	@mkdir -p $(dir $@)
 	$(NDK_CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests lint-tidy
+.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
 
@@ -122,13 +123,47 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test cpp_link_probe_test ancillary_test
+  run_state_test address_space_test cpp_link_probe_test ancillary_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
+
+# Host attack data-flow harness: the real backend/frontend compiled unmodified,
+# with the side-effecting primitives replaced by scriptable host stubs. The
+# shadow include path makes the backend resolve the host attack/ops.hpp.
+HOST_ATTACK_DATAFLOW_SOURCES := \
+  core/tests/host/backend_dataflow_test.cpp \
+  core/tests/host/host_attack_script.cpp \
+  core/tests/host/attack_stub.cpp \
+  core/tests/host/support_stub.cpp \
+  core/tests/host/route_stub.cpp \
+  core/tests/host/victim_stub.cpp \
+  core/tests/host/handoff_stub.cpp \
+  core/tests/host/glue_stub.cpp \
+  core/session/backend/cve_2026_43499_backend.cpp \
+  core/session/root_child_frontend.cpp \
+  core/session/exploit_session.cpp \
+  core/session/runtime_config.cpp \
+  core/memory/heap_context.cpp \
+  core/memory/address_space.cpp \
+  core/race/pi_race.cpp \
+  core/support/native_resource.cpp \
+  core/support/run_state.cpp
+
+HOST_ATTACK_DATAFLOW_INCLUDES := -Icore/tests/host/include -Icore/tests/host -Icore \
+  -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
+
+.PHONY: host-attack-dataflow-test
+host-attack-dataflow-test: $(HOST_BUILD_DIR)/host_attack_dataflow_test
+	$(HOST_BUILD_DIR)/host_attack_dataflow_test
+
+$(HOST_BUILD_DIR)/host_attack_dataflow_test: $(HOST_ATTACK_DATAFLOW_SOURCES) $(HDRS)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) $(HOST_ATTACK_DATAFLOW_INCLUDES) \
+	  $(HOST_ATTACK_DATAFLOW_SOURCES) -pthread -o $@
 
 # CPP14 selected clang-tidy subset; the check list and its reviewed
 # exclusions live in .clang-tidy. Requires the NDK so the Android and
@@ -161,6 +196,10 @@ $(HOST_BUILD_DIR)/native_resource_test: core/tests/native_resource_test.cpp core
 $(HOST_BUILD_DIR)/run_state_test: core/tests/run_state_test.cpp core/support/run_state.cpp core/support/run_state.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/run_state_test.cpp core/support/run_state.cpp -o $@
+
+$(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/memory/address_space.cpp core/memory/address_space.h core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/address_space_test.cpp core/memory/address_space.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)

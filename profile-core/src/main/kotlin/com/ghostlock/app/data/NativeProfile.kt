@@ -21,12 +21,17 @@ data class NativeProfileDocument(
     val routeKind: UInt,
     val kernelMajor: UInt,
     val recommendShizuku: UInt,
+    /** Gate for the ancillary vr.ko guard (see docs/analysis/ancillary-controller-guide.md). */
+    val vrGuard: UInt,
     val fallbackRoute: UInt,
     val taskStruct: TaskStructOffsets,
     val cred: CredTemplate,
     val kernelOffset: KernelOffsetTable,
     val kernelPhysLoad: ULong?,
+    val kernelPhysOffset: ULong?,
     val compactWaiter: UByte?,
+    /** vr_guard.tracepoint_funcs, when the image's BTF yielded it. */
+    val vrGuardTracepointFuncs: UInt?,
     val kernelsnitchCollisions: UInt?,
     val mmStructSz: UInt?,
     val execution: ExecutionTuning,
@@ -79,7 +84,7 @@ data class NativeProfileDocument(
                     "recommend_shizuku" to recommendShizuku.toULong(),
                     "fallback_route" to fallbackRoute.toULong(),
                     "safe_mode" to safeMode.toULong(),
-                ),
+                ) + listOfNotNull(vrGuard.takeIf { it != 0u }?.let { "vr_guard" to it.toULong() }),
             ),
         )
         add(Section("task_struct", taskEntries()))
@@ -153,6 +158,17 @@ data class NativeProfileDocument(
             ),
         )
         routeSection()?.let(::add)
+        vrGuardSection()?.let(::add)
+    }
+
+    /**
+     * Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs), read from
+     * the image's BTF by the extractor. Absent when the profile does not carry
+     * it, which keeps the behavior fail-closed on the native side.
+     */
+    private fun vrGuardSection(): Section? {
+        val funcs = vrGuardTracepointFuncs ?: return null
+        return Section("vr_guard", listOf("tracepoint_funcs" to funcs.toULong()))
     }
 
     private fun taskEntries(): List<Pair<String, ULong>> = listOf(
@@ -191,7 +207,14 @@ data class NativeProfileDocument(
         "ref3_image" to cred.ref3Image,
     )
 
-    private fun offsetEntries(): List<Pair<String, ULong>> = listOf(
+    private fun offsetEntries(): List<Pair<String, ULong>> = buildList {
+        addAll(baseOffsetEntries())
+        /* Ancillary vr.ko guard: omitted when the profile does not carry it, so
+         * profiles without the behavior keep byte-identical output. */
+        kernelOffset.vrSysExitTp.takeIf { it != 0uL }?.let { add("vr_sys_exit_tp" to it) }
+    }
+
+    private fun baseOffsetEntries(): List<Pair<String, ULong>> = listOf(
         "init_task" to kernelOffset.initTask,
         "init_cred" to kernelOffset.initCred,
         "empty_zero_page" to kernelOffset.emptyZeroPage,
@@ -207,6 +230,7 @@ data class NativeProfileDocument(
     private fun kernelSection(): Section? {
         val entries = buildList {
             kernelPhysLoad?.let { add("kernel_phys_load" to it) }
+            kernelPhysOffset?.let { add("kernel_phys_offset" to it) }
             compactWaiter?.let { add("compact_waiter" to it.toULong()) }
             kernelsnitchCollisions?.let { add("kernelsnitch_collisions" to it.toULong()) }
             mmStructSz?.let { add("mm_struct_sz" to it.toULong()) }
@@ -352,6 +376,7 @@ data class NativeProfileDocument(
                 routeKind = routeKind(route),
                 kernelMajor = vu("kernel_major"),
                 recommendShizuku = vu("recommend_shizuku"),
+                vrGuard = vu("recommend_vr_guard"),
                 fallbackRoute = routeKind(fallbackTo),
                 taskStruct = TaskStructOffsets(
                     prio = vu("task_struct.prio"),
@@ -398,9 +423,12 @@ data class NativeProfileDocument(
                     slideNfulnlLogger = vul("offset.slide_nfulnl_logger"),
                     slideLoggers01 = vul("offset.slide_loggers_0_1"),
                     slideBootId = vul("offset.slide_boot_id"),
+                    vrSysExitTp = vul("offset.vr_sys_exit_tp"),
                 ),
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
+                kernelPhysOffset = vulOrNull("kernel_phys_offset"),
                 compactWaiter = vbOrNull("compact_waiter"),
+                vrGuardTracepointFuncs = vuOrNull("vr_guard.tracepoint_funcs"),
                 kernelsnitchCollisions = vuOrNull("kernelsnitch.collisions"),
                 mmStructSz = vuOrNull("kernelsnitch.mm_struct_sz"),
                 execution = ExecutionTuning(
@@ -443,10 +471,13 @@ data class NativeProfileDocument(
             private var metaRecommendShizuku = 0u
             private var metaFallbackRoute = 0u
             private var metaSafeMode = 0u
+            private var metaVrGuard = 0u
+            private var vrGuardTracepointFuncs: UInt? = null
             private var task = TaskStructOffsets()
             private var credential = CredTemplate()
             private var offsets = KernelOffsetTable()
             private var kernelPhysLoad: ULong? = null
+            private var kernelPhysOffset: ULong? = null
             private var compactWaiter: UByte? = null
             private var kernelsnitchCollisions: UInt? = null
             private var mmStructSz: UInt? = null
@@ -464,6 +495,7 @@ data class NativeProfileDocument(
                         "recommend_shizuku" -> metaRecommendShizuku = raw.toUInt()
                         "fallback_route" -> metaFallbackRoute = raw.toUInt()
                         "safe_mode" -> metaSafeMode = raw.toUInt()
+                        "vr_guard" -> metaVrGuard = raw.toUInt()
                     }
 
                     "task_struct" -> task = when (key) {
@@ -515,11 +547,17 @@ data class NativeProfileDocument(
                         "slide_nfulnl_logger" -> offsets.copy(slideNfulnlLogger = raw)
                         "slide_loggers_0_1" -> offsets.copy(slideLoggers01 = raw)
                         "slide_boot_id" -> offsets.copy(slideBootId = raw)
+                        "vr_sys_exit_tp" -> offsets.copy(vrSysExitTp = raw)
                         else -> offsets
+                    }
+
+                    "vr_guard" -> when (key) {
+                        "tracepoint_funcs" -> vrGuardTracepointFuncs = raw.toUInt()
                     }
 
                     "kernel" -> when (key) {
                         "kernel_phys_load" -> kernelPhysLoad = raw
+                        "kernel_phys_offset" -> kernelPhysOffset = raw
                         "compact_waiter" -> compactWaiter = raw.toUByte()
                         "kernelsnitch_collisions" -> kernelsnitchCollisions = raw.toUInt()
                         "mm_struct_sz" -> mmStructSz = raw.toUInt()
@@ -605,11 +643,14 @@ data class NativeProfileDocument(
                 cred = credential,
                 kernelOffset = offsets,
                 kernelPhysLoad = kernelPhysLoad,
+                kernelPhysOffset = kernelPhysOffset,
                 compactWaiter = compactWaiter,
                 kernelsnitchCollisions = kernelsnitchCollisions,
                 mmStructSz = mmStructSz,
                 execution = execution,
                 safeMode = metaSafeMode,
+                vrGuard = metaVrGuard,
+                vrGuardTracepointFuncs = vrGuardTracepointFuncs,
                 routeConfig = routeConfig,
             )
         }
@@ -672,6 +713,8 @@ data class KernelOffsetTable(
     val slideNfulnlLogger: ULong = 0uL,
     val slideLoggers01: ULong = 0uL,
     val slideBootId: ULong = 0uL,
+    /** Image offset of __tracepoint_sys_exit (ancillary vr.ko guard). */
+    val vrSysExitTp: ULong = 0uL,
 )
 
 data class ExecutionTuning(

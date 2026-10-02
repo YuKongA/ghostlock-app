@@ -43,6 +43,19 @@ class BuiltinProfilesTest {
     }
 
     @Test
+    fun `cpu pair suggestions follow the profiles that carry them`() {
+        val catalog = BuiltinProfileCatalog(context)
+        /* The iQOO 12 entry recommends the pair the reference kit measured. */
+        assertEquals(
+            4 to 5,
+            catalog.recommendedCpus["6.1.145-android14-11-maybe-dirty"],
+        )
+        /* No other profile silently defaults to that pair. */
+        val others = catalog.recommendedCpus.filterKeys { it != "6.1.145-android14-11-maybe-dirty" }
+        assertTrue(others.none { it.value == (4 to 5) })
+    }
+
+    @Test
     fun `every builtin profile resolves cleanly and round trips`() = runBlocking {
         val root = Files.createTempDirectory("builtin-profiles").toFile()
         try {
@@ -93,6 +106,58 @@ class BuiltinProfilesTest {
                 assertNotNull("${entry.release}: native document failed to decode", profile)
                 assertEquals(entry.release, profile!!.release)
                 assertEquals(route, profile.route.token)
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun leafPaths(nodes: List<com.ghostlock.app.domain.model.ProfileFieldNode>): List<String> =
+        nodes.flatMap { node ->
+            if (node.isGroup) leafPaths(node.children) else listOf(node.path)
+        }
+
+    @Test
+    fun `advanced editor exposes the complete route and shared geometry`() = runBlocking {
+        val root = Files.createTempDirectory("editor-fields").toFile()
+        try {
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = UserProfileStore(
+                    directory = root.resolve("user_profiles"),
+                    assetLoader = AssetConfigLoader(context),
+                ),
+                preferences = context.getSharedPreferences("editor-fields", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            for (entry in builtinEntries()) {
+                val config = controller.load(entry.release, pair)
+                val paths = leafPaths(config.roots)
+                assertTrue("${entry.release}: kernel_phys_load missing", "kernel_phys_load" in paths)
+                for (field in listOf(
+                    "prio", "normal_prio", "sched_task_group", "pi_lock", "pi_waiters",
+                    "pi_top_task", "pi_blocked_on", "pid", "tgid", "atomic_flags", "real_cred",
+                    "cred", "comm", "tasks", "seccomp",
+                )) {
+                    assertTrue("${entry.release}: task_struct.$field missing", "task_struct.$field" in paths)
+                }
+                for (field in listOf("copy_size", "caps_count", "ref0_offset", "ref3_image")) {
+                    assertTrue("${entry.release}: cred.$field missing", "cred.$field" in paths)
+                }
+                for (field in listOf(
+                    "init_task", "init_cred", "empty_zero_page", "root_task_group",
+                    "slide_nfulnl_logger", "slide_boot_id",
+                )) {
+                    assertTrue("${entry.release}: offset.$field missing", "offset.$field" in paths)
+                }
+                assertTrue("${entry.release}: kernelsnitch.collisions missing",
+                    "kernelsnitch.collisions" in paths)
+                assertTrue("${entry.release}: route branch missing",
+                    paths.any { it.startsWith("route.") })
+                /* Execution tuning belongs to the general page, never here. */
+                assertTrue("${entry.release}: execution leaked into advanced tree",
+                    paths.none { it.startsWith("execution") })
             }
         } finally {
             root.deleteRecursively()

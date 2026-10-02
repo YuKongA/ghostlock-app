@@ -20,6 +20,9 @@ namespace ghostlock::memory {
     struct ResolvedAddresses {
         SocFamily soc;
         target::KernelAddress<target::PhysicalAddressDomain> kernel_phys_load;
+        /* DRAM base (linear-map PHYS_OFFSET). Defaults to the compiled
+         * P0_PHYS_OFFSET; a profile may override it via kernel_phys_offset. */
+        uintptr_t phys_offset = 0;
         target::KernelAddress<target::ImageAddressDomain> init_cred_image;
 
         int32_t init(const ghostlock::profile::TargetProfile *profile);

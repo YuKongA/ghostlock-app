@@ -63,7 +63,11 @@ internal class AndroidProfileConfigController(
         /* Invalid fields missing from the resolved document still get a row,
          * otherwise the run stays blocked with no red field to fix. */
         materializeInvalidPaths(full, invalidPaths)
-        val roots = buildTree(full, "", baseline, advanced)
+        /* The editor shows every field of the active route plus the shared
+         * geometry, so a field the profile did not carry appears as an
+         * editable `null` row instead of being invisible. */
+        val complete = completeProfileFields(full, route, fallbackTo)
+        val roots = buildTree(complete, "", baseline, advanced)
         cache(deviceRelease, buildNativeDocument(deviceRelease, full))
         return ProfileConfig(
             release = deviceRelease,
@@ -171,6 +175,12 @@ internal class AndroidProfileConfigController(
                 } else if (compact < 0L || compact > 0xffL) {
                     invalid += "$routePrefix.compact_waiter"
                 }
+                for ((field, max) in RouteMulticastTuning) {
+                    val current = value("$routePrefix.$field")
+                    if (current != null && (current < 0L || current > max)) {
+                        invalid += "$routePrefix.$field"
+                    }
+                }
                 requireNonZero(
                     "kernelsnitch.mm_struct_sz",
                     "offset.empty_zero_page",
@@ -222,6 +232,12 @@ internal class AndroidProfileConfigController(
                         if (current == null || current == 0L) {
                             invalid += "$fallbackPrefix.$field"
                         } else if (current < 0L || current > UInt.MAX_VALUE.toLong()) {
+                            invalid += "$fallbackPrefix.$field"
+                        }
+                    }
+                    for ((field, max) in RouteMulticastTuning) {
+                        val current = value("$fallbackPrefix.$field")
+                        if (current != null && (current < 0L || current > max)) {
                             invalid += "$fallbackPrefix.$field"
                         }
                     }
@@ -692,6 +708,46 @@ internal class AndroidProfileConfigController(
             .map { "execution.routes.$route.$it" }
     }
 
+    /**
+     * Fills every field of the shared geometry and the active route with an
+     * explicit `null` when the resolved profile omitted it, so the advanced
+     * editor always presents the complete editable surface.
+     */
+    private fun completeProfileFields(
+        profile: ValueMap,
+        route: String?,
+        fallbackTo: String?,
+    ): ValueMap {
+        val out = profile.copyValue().asValueMap() ?: return profile
+        if (!out.containsKey("kernel_phys_load")) out["kernel_phys_load"] = null
+        if (!out.containsKey("kernel_phys_offset")) out["kernel_phys_offset"] = null
+        completeSection(out, "task_struct", TaskStructFieldNames)
+        completeSection(out, "cred", CredFieldNames)
+        completeSection(out, "offset", OffsetFieldNames)
+        completeSection(out, "kernelsnitch", KernelsnitchFieldNames)
+        route?.let { completeRouteBranch(out["route"].asValueMap(), it) }
+        if (fallbackTo != null && fallbackTo != "none") {
+            completeRouteBranch(
+                out["fallback"].asValueMap()?.get("route").asValueMap(),
+                fallbackTo,
+            )
+        }
+        return out
+    }
+
+    private fun completeSection(out: ValueMap, section: String, fields: List<String>) {
+        val target = out[section].asValueMap() ?: valueMapOf().also { out[section] = it }
+        for (field in fields) if (!target.containsKey(field)) target[field] = null
+    }
+
+    private fun completeRouteBranch(container: ValueMap?, route: String) {
+        val fields = RouteBranchFields[route] ?: return
+        val containerMap = container ?: return
+        val branch = containerMap[route].asValueMap()
+            ?: valueMapOf().also { containerMap[route] = it }
+        for (field in fields) if (!branch.containsKey(field)) branch[field] = null
+    }
+
     private fun buildTree(
         node: ValueMap,
         prefix: String,
@@ -704,7 +760,9 @@ internal class AndroidProfileConfigController(
             val path = if (prefix.isEmpty()) key else "$prefix.$key"
             when {
                 value is Map<*, *> -> {
-                    if (path == "execution.selected_cpus" || path == "execution.routes") continue
+                    /* Execution tuning is edited on the general page
+                     * (ProfileOverrideScreen / ExecutionEditor), not here. */
+                    if (key == "execution") continue
                     val children = buildTree(value.asValueMap() ?: valueMapOf(), path, baseline, override)
                     if (children.isNotEmpty()) {
                         groups += ProfileFieldNode(
@@ -807,6 +865,31 @@ internal class AndroidProfileConfigController(
             "task_struct.prio", "task_struct.pi_lock", "task_struct.pi_waiters", "task_struct.pi_blocked_on",
             "task_struct.cred", "task_struct.seccomp",
         )
+        /**
+         * Optional poison/walk tuning and the native field widths (u8/u8/u16).
+         * A value outside the width is reported instead of being wrapped by the
+         * typed cast, per the route-config contract.
+         */
+        private val RouteMulticastTuning = listOf(
+            "attempts" to 0xffL, "arm_sequence" to 0xffL, "arm_hold" to 0xffffL,
+        )
+        /** Full shared-geometry field universes (native `kTask`/`kCred`/`kOffset`). */
+        private val TaskStructFieldNames = listOf(
+            "prio", "normal_prio", "sched_task_group", "pi_lock", "pi_waiters", "pi_top_task",
+            "pi_blocked_on", "pid", "tgid", "atomic_flags", "real_cred", "cred", "comm", "tasks",
+            "seccomp",
+        )
+        private val CredFieldNames = listOf(
+            "copy_size", "usage_offset", "usage_value", "caps_offset", "caps_count", "caps_value",
+            "ref_count", "ref0_offset", "ref1_offset", "ref2_offset", "ref3_offset",
+            "ref0_image", "ref1_image", "ref2_image", "ref3_image",
+        )
+        private val OffsetFieldNames = listOf(
+            "init_task", "init_cred", "empty_zero_page", "root_task_group", "selinux_enforcing",
+            "selinux_blob_sizes", "security_hook_heads", "slide_nfulnl_logger", "slide_loggers_0_1",
+            "slide_boot_id",
+        )
+        private val KernelsnitchFieldNames = listOf("collisions", "mm_struct_sz")
         /** Fields each route branch carries, used to seed a switched-to route. */
         private val RouteBranchFields = mapOf(
             "tcp_zerocopy" to listOf("compact_waiter"),
@@ -814,7 +897,7 @@ internal class AndroidProfileConfigController(
             "multicast_waiter" to listOf(
                 "waiter_off", "buffer_size", "task_offset", "lock_offset",
                 "compact_waiter",
-            ),
+            ) + RouteMulticastTuning.map { it.first },
         )
         private val RouteMulticastFields = listOf(
             "buffer_size", "task_offset", "lock_offset",

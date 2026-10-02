@@ -112,6 +112,27 @@ internal class UserProfileStore(
     }
 
     /**
+     * The CPU pair a stored document recommends for [release], mirroring
+     * [recommendsShizuku]: kernel/device metadata, independent of which
+     * document is currently loaded.
+     */
+    fun recommendedCpus(release: String): Pair<Int, Int>? {
+        val byName = documents()
+        return files().firstNotNullOfOrNull { file ->
+            val text = runCatching { file.readText() }.getOrNull() ?: return@firstNotNullOfOrNull null
+            val entry = runCatching { parseWith(text, byName) }.getOrNull()
+                ?.firstOrNull { it["release"] == release }
+                ?: return@firstNotNullOfOrNull null
+            LegacyProfileConverter.convertValue(entry)
+            val cpus = entry["execution"].asValueMap()?.get("recommended_cpus").asValueMap()
+                ?: return@firstNotNullOfOrNull null
+            val main = (cpus["main"] as? Number)?.toInt()
+            val consumer = (cpus["consumer"] as? Number)?.toInt()
+            if (main != null && consumer != null) main to consumer else null
+        }
+    }
+
+    /**
      * Saves a picked document verbatim under a unique name derived from the
      * original file name. Returns the stored file name.
      */

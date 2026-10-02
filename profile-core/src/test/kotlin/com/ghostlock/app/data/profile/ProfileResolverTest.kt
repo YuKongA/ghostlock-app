@@ -84,6 +84,38 @@ class ProfileResolverTest {
         assertEquals(0uL, flat["recommended_cpus.main"])
     }
 
+    @Test
+    fun `validateMerged rejects tuning values outside the native widths`() {
+        fun multicast(attempts: Long, armSequence: Long, armHold: Long) = validProfile() + mapOf(
+            "route" to valueMapOf(
+                "multicast_waiter" to valueMapOf(
+                    "attempts" to attempts, "arm_sequence" to armSequence, "arm_hold" to armHold,
+                ),
+            ),
+        )
+        val tooWide = ProfileResolver.validateMerged(
+            multicast(attempts = 256, armSequence = 16, armHold = 20000), "multicast_waiter", "none",
+        )
+        assertTrue(tooWide.any { it.fieldPath == "route.multicast_waiter.attempts" })
+        val holdWide = ProfileResolver.validateMerged(
+            multicast(attempts = 128, armSequence = 16, armHold = 65536), "multicast_waiter", "none",
+        )
+        assertTrue(holdWide.any { it.fieldPath == "route.multicast_waiter.arm_hold" })
+        assertEquals(
+            emptyList<ConfigError>(),
+            ProfileResolver.validateMerged(
+                multicast(attempts = 128, armSequence = 16, armHold = 20000), "multicast_waiter", "none",
+            ),
+        )
+    }
+
+    @Test
+    fun `validateMerged rejects a vr guard layout the transport cannot carry`() {
+        val profile = validProfile() + ("vr_guard" to valueMapOf("tracepoint_funcs" to 0x140L))
+        val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
+        assertTrue(errors.any { it.fieldPath == "vr_guard.tracepoint_funcs" })
+    }
+
     private fun validProfile(): MutableMap<String, Any?> = valueMapOf(
         "release" to "test",
         "schema_version" to 1,

