@@ -391,7 +391,7 @@ mod tests {
         conf_route_geometry, pselect_waiter_shift_for, render_conf,
     };
     use crate::derive::Cred5x;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn conf_fixture() -> (BTreeMap<String, Option<u64>>, BTreeMap<String, Option<u32>>) {
         let mut symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
@@ -443,7 +443,13 @@ mod tests {
 
     #[test]
     fn optional_struct_fields_cover_the_vr_guard_layout() {
-        assert!(super::optional_struct_fields().contains("vr_tracepoint_funcs"));
+        let mut structs: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        structs.insert("task_prio".to_string(), Some(132));
+        structs.insert("vr_tracepoint_funcs".to_string(), None);
+        /* A kernel whose BTF lacks `struct tracepoint` still extracts in every
+         * format: the guard layout is optional, the rest is required. */
+        assert!(super::require_fields(&structs, &super::optional_struct_fields()).is_ok());
+        assert!(super::require_fields(&structs, &BTreeSet::new()).is_err());
     }
 
     #[test]
