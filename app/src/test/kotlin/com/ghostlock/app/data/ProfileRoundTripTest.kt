@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -47,6 +48,9 @@ class ProfileRoundTripTest {
         "mcast.buffer_size" to 512L,
         "mcast.task_offset" to 0x40L,
         "mcast.lock_offset" to 0x50L,
+        "mcast.attempts" to 128L,
+        "mcast.arm_sequence" to 16L,
+        "mcast.arm_hold" to 20000L,
     )
 
     private fun document(
@@ -94,8 +98,13 @@ class ProfileRoundTripTest {
         assertEquals(true, profile.hasCompactWaiter())
         assertEquals(0x4000u, profile.mmStructStride(fallback = 1u))
         assertEquals(264, profile.multicastLayout().waiterOffset)
-        /* Consumer cadence rides its own execution section, not the multicast one. */
         val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        /* Poison/walk repetition rides the same route section. */
+        val multicastConfig = decoded.routeConfig as MulticastConfig
+        assertEquals(128u.toUByte(), multicastConfig.attempts)
+        assertEquals(16u.toUByte(), multicastConfig.armSequence)
+        assertEquals(20000u.toUShort(), multicastConfig.armHold)
+        /* Consumer cadence rides its own execution section, not the multicast one. */
         assertEquals(1u, decoded.execution.consumerMaxCalls)
         assertEquals(1u, decoded.execution.consumerBurstCalls)
 

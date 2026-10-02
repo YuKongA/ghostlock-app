@@ -145,6 +145,30 @@ class NativeProfileDocumentTest {
     }
 
     @Test
+    fun `multicast tuning keys mirror the native route section`() {
+        val bytes = doc(
+            "multicast_waiter",
+            mapOf(
+                "mcast.attempts" to 128L,
+                "mcast.arm_sequence" to 16L,
+                "mcast.arm_hold" to 20000L,
+            ),
+        ).toBinary()
+        val route = entriesOf(bytes, "route.multicast_waiter")
+        assertEquals(listOf("attempts", "arm_sequence", "arm_hold"), route.map { it.first })
+        val config = NativeProfileDocument.fromBinary(bytes)!!.routeConfig as MulticastConfig
+        assertEquals(128u.toUByte(), config.attempts)
+        assertEquals(16u.toUByte(), config.armSequence)
+        assertEquals(20000u.toUShort(), config.armHold)
+        /* Absent keys keep the compiled route defaults and stay out of the bytes. */
+        val bare = doc("multicast_waiter", mapOf("mcast.waiter_off" to 264L)).toBinary()
+        assertEquals(
+            listOf("waiter_off"),
+            entriesOf(bare, "route.multicast_waiter").map { it.first },
+        )
+    }
+
+    @Test
     fun `signed values keep their two's complement bits`() {
         val bytes = doc("select_stack", mapOf("pselect_waiter_shift" to -2L)).toBinary()
         assertEquals(-2L, entriesOf(bytes, "route.select_stack").toMap()["waiter_shift"]!!)
