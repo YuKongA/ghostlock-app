@@ -224,6 +224,8 @@ KSU 管理器模块页正常渲染（#154/#201 的失败形态未复现）。
 - [x] 结构体布局回归修复（新字段落 padding）+ 适配器绑定 session 全局（`2912fca4`）
 - [x] multicast 调参键的 Kotlin 镜像（`1dc8d2e3`）
 - [x] 新内置触发的两项修复：导出器合并隔离（`67a792c3`）+ 迁移夹具覆盖（`a329df60`）
+- [x] 编辑器/校验收录调参键 + schema/模板收录（`13f4a7b4`、`b099a1b7`）
+- [x] CPU 配对修复（`efcf8374`）+ 参考方案与同期工作（#141/#220/#221）对比（`3c94485b`）
 - [x] 主机测试 25/25、NDK 0 warning、lint rc=0、cmp_disasm 复核记录（本文档）
 - [x] 冷启动真机门禁复跑 + 日志归档（ANC-01，2026-10-02，PASS）
-- [ ] 推送分支并开 PR（本机无 `gh`；步骤见 `SUBMIT.md`）
+- [x] 推送分支并开 PR：https://github.com/YuKongA/ghostlock-app/pull/228

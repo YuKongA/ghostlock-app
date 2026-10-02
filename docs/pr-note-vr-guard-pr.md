@@ -1,8 +1,8 @@
 # PR note：`vr-guard-pr` → `vr-ko-bypass-dev`
 
-- Head：`vr-guard-pr`（代码 tip `a329df60`，其上为本 `docs:` 提交）
+- Head：`vr-guard-pr`（原生二进制构建自 C++ 树最后一次变更 `2912fca4`，其后仅 Kotlin / 测试 / 文档）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：12 commits（含本 `docs:` 提交）、36 files、+1367 / −36（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
+- 规模：15 commits（含本 `docs:` 提交）、37 files、+1412 / −37（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
