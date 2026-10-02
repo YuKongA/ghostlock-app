@@ -4,7 +4,7 @@
 
 ## 文档
 
-- [Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 HOCON 文件，`index.conf` 保存运行索引，`<major.minor>-template.conf` 提供各内核大版本模板。
+- [Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。
 - [支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
 - [公共执行默认值](docs/kernel_profiles/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。
 - [Profile 结构文档](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md) —— profile 的完整结构、字段语义与数据流。
@@ -16,9 +16,9 @@
 
 ## 快速开始
 
-打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
+打开 **GhostLock** 点击 **执行**。如果系统中有可用的提权运行时，可以使用它完成执行流程；否则应用会回退到直接执行路径。
 
-执行链由三类组件构成：frontend（`root_child` 启动/交接）、backend（CVE-2026-43499 futex 原语）与 middleware 路线。**编目组合在构建期实例化，具体运行哪一个由解析后的 profile 选择**。路线是双核竞争：6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。CPU 对同样由解析后的 profile 决定。
+执行链由三类组件构成：frontend（`root_child` 启动/交接）、backend（CVE-2026-43499 futex 原语）与 middleware 路线。**编目组合在构建期实例化，具体运行哪一路由由活动 profile 决定。**
 
 ## 命令行调试
 
@@ -35,7 +35,7 @@ adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/prof
 
 ## 偏移量提取
 
-`tools/extract_rs` 从 `boot.img`（可加 `xbl_config.img`）、完整 OTA zip 或指向它的 `http(s)` 链接解析偏移量。kallsyms 传 `--kallsyms`，或省略以直接恢复镜像内嵌表。`pselect_waiter_shift` 与 `off_slide_loggers_0_1` 由内置 arm64 反汇编器推导。联发科镜像没有 `xbl_config.img` 且通常无内嵌 BTF：物理加载地址由 kallsyms `_text` 推导（可用 `--phys` 覆盖）。
+`tools/extract_rs` 从 `boot.img`（可加 `xbl_config.img`）、完整 OTA zip 或指向它的 `http(s)` 链接解析偏移量。kallsyms 传 `--kallsyms`，或省略以直接恢复镜像内嵌符号表。route 由内核证据推荐，也可用 `--route` 覆盖。
 
 ```powershell
 Push-Location tools/extract_rs
@@ -45,14 +45,11 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段直接省略，不会用相邻内核族的猜测值（未验证族的 6.6、缺省 `-2`、5.15 multicast 常量、phys 默认）补齐；route 由 `--analysis` 证据建议、`--route` 可覆盖。输出一律是 **unverified candidate**：可导入、可解析，缺失或无效字段由 App 在执行前校验拦截，不能仅凭生成成功声明设备支持。5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
+提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段省略，不会用相邻内核族的猜测值补齐。
 
 ### 联发科
 
-联发科镜像没有 `xbl_config.img`，通常也没有内嵌 BTF，提取器无法从镜像推导两个物理地址
-（`kernel_phys_load`、`kernel_phys_offset`），会把它们留成 `null`。运行时按 SoC 公式回退，在联发科上
-会在 W1 失败。请先在已 root 的设备上运行单独的 `tools/mtk-phys/` 提取器（读取 `/proc/iomem`），
-再把两个值填入 App 的高级参数覆盖。参见 [MEDIATEK_ZH.md](docs/kernel_profiles/MEDIATEK_ZH.md)。
+联发科镜像没有 `xbl_config.img`，通常也没有内嵌 BTF，提取器无法从镜像推导两个物理地址（`kernel_phys_load`、`kernel_phys_offset`），会把它们留成 `null`。运行时按 SoC 公式回退，在联发科上会在 W1 失败。请先在已 root 的设备上运行单独的 `tools/mtk-phys/` 提取器（读取 `/proc/iomem`），再把两个值填入 App 的高级参数覆盖。参见 [MEDIATEK_ZH.md](docs/kernel_profiles/MEDIATEK_ZH.md)。
 
 ### 前置检查
 
@@ -77,9 +74,9 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 
 ### 外部导入偏移，免去重新构建应用
 
-新增内核不再需要重新打包 App：点击 **导入 offsets.conf (HOCON)** 选择提取器产出的扁平 `.conf`，旧 JSON 报告仍可通过 **导入 offsets.json (v1)** 导入。v1 JSON 由 App 侧转成 GLK1，无需再把文件推到设备；native 始终只接收 App 经 stdin 传入的 GLK1 文档，并先按当前 `uname -r` 匹配解析后的 profile，匹配成功才视为受支持。多次导入会合并；新文件含已存内核时，App 会先询问是否覆盖。
+新增内核不再需要重新打包 App：点击 **导入 offsets.conf (HOCON)** 选择提取器产出的扁平 `.conf`，旧 JSON 报告仍可通过 **导入 offsets.json (v1)** 导入。v1 JSON 会在 App 内转成当前布局，因此无需向设备推送二进制：Native 始终从 App 发送到 stdin 的 GLK1 文档开始，并在匹配当前 `uname -r` 后再决定是否拒绝该内核。多个导入文件会合并；若某个 release 已存在则会提示覆盖。
 
-App 也能直接生成这份 profile：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，成功后把一份扁平 `.conf` 写入 App 数据目录：
+App 也能直接生成这份 profile：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，并在成功后把扁平 `.conf` 写到 App 数据目录：
 
 ```hocon
 # GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
