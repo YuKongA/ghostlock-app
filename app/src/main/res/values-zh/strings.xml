@@ -209,6 +209,9 @@
     <string name="field_kernel_major">内核主版本</string>
     <string name="field_kernel_phys_load">内核物理加载地址</string>
     <string name="field_kernelsnitch_collisions">碰撞数量</string>
+    <string name="field_mcast_arm_hold">多播抛毒后自旋量</string>
+    <string name="field_mcast_arm_sequence">多播起臂轮次</string>
+    <string name="field_mcast_attempts">多播投毒次数</string>
     <string name="field_mcast_buffer_size">多播缓冲区大小</string>
     <string name="field_mcast_lock_offset">多播锁偏移</string>
     <string name="field_mcast_task_offset">多播任务偏移</string>

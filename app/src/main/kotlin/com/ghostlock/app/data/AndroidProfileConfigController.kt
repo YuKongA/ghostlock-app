@@ -171,6 +171,12 @@ internal class AndroidProfileConfigController(
                 } else if (compact < 0L || compact > 0xffL) {
                     invalid += "$routePrefix.compact_waiter"
                 }
+                for ((field, max) in RouteMulticastTuning) {
+                    val current = value("$routePrefix.$field")
+                    if (current != null && (current < 0L || current > max)) {
+                        invalid += "$routePrefix.$field"
+                    }
+                }
                 requireNonZero(
                     "kernelsnitch.mm_struct_sz",
                     "offset.empty_zero_page",
@@ -222,6 +228,12 @@ internal class AndroidProfileConfigController(
                         if (current == null || current == 0L) {
                             invalid += "$fallbackPrefix.$field"
                         } else if (current < 0L || current > UInt.MAX_VALUE.toLong()) {
+                            invalid += "$fallbackPrefix.$field"
+                        }
+                    }
+                    for ((field, max) in RouteMulticastTuning) {
+                        val current = value("$fallbackPrefix.$field")
+                        if (current != null && (current < 0L || current > max)) {
                             invalid += "$fallbackPrefix.$field"
                         }
                     }
@@ -807,6 +819,14 @@ internal class AndroidProfileConfigController(
             "task_struct.prio", "task_struct.pi_lock", "task_struct.pi_waiters", "task_struct.pi_blocked_on",
             "task_struct.cred", "task_struct.seccomp",
         )
+        /**
+         * Optional poison/walk tuning and the native field widths (u8/u8/u16).
+         * A value outside the width is reported instead of being wrapped by the
+         * typed cast, per the route-config contract.
+         */
+        private val RouteMulticastTuning = listOf(
+            "attempts" to 0xffL, "arm_sequence" to 0xffL, "arm_hold" to 0xffffL,
+        )
         /** Fields each route branch carries, used to seed a switched-to route. */
         private val RouteBranchFields = mapOf(
             "tcp_zerocopy" to listOf("compact_waiter"),
@@ -814,7 +834,7 @@ internal class AndroidProfileConfigController(
             "multicast_waiter" to listOf(
                 "waiter_off", "buffer_size", "task_offset", "lock_offset",
                 "compact_waiter",
-            ),
+            ) + RouteMulticastTuning.map { it.first },
         )
         private val RouteMulticastFields = listOf(
             "buffer_size", "task_offset", "lock_offset",

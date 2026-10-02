@@ -3,6 +3,7 @@ package com.ghostlock.app.data
 import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ProfileConfig
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -526,5 +527,94 @@ class ControllerOverrideTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `multicast tuning outside the native widths is reported invalid`() = runBlocking {
+        val pair = CpuPair(primary = 0, consumer = 1)
+
+        suspend fun load(name: String, attempts: Long, armSequence: Long, armHold: Long): ProfileConfig {
+            val root = Files.createTempDirectory(name).toFile()
+            try {
+                val store = UserProfileStore(
+                    directory = root.resolve("user_profiles"),
+                    assetLoader = AssetConfigLoader(context),
+                )
+                store.save(
+                    "tuning.conf",
+                    tuningReport(deviceRelease, attempts, armSequence, armHold),
+                )
+                val controller = AndroidProfileConfigController(
+                    context = context,
+                    filesDir = root,
+                    userProfiles = store,
+                    preferences = context.getSharedPreferences(name, 0)
+                        .also { it.edit().clear().commit() },
+                )
+                controller.selectUserProfile("tuning.conf", deviceRelease, pair)
+                return controller.load(deviceRelease, pair)
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+        /* attempts is an 8-bit field: 256 must surface, not wrap to 0. */
+        val bad = load("controller-mcast-tuning-bad", attempts = 256, armSequence = 16, armHold = 20000)
+        assertTrue("profile did not resolve", bad.hasProfile)
+        assertTrue(
+            "attempts was not surfaced: ${bad.invalidPaths}",
+            "route.multicast_waiter.attempts" in bad.invalidPaths,
+        )
+
+        /* The documented recipe values pass their own branch untouched. */
+        val ok = load("controller-mcast-tuning-ok", attempts = 128, armSequence = 16, armHold = 20000)
+        assertTrue(
+            "tuning values were rejected: " +
+                ok.invalidPaths.filter { it.startsWith("route.multicast_waiter") },
+            ok.invalidPaths.none { it.startsWith("route.multicast_waiter.") },
+        )
+    }
+
+    /** Multicast user profile with the poison/walk tuning knobs parameterised. */
+    private fun tuningReport(
+        deviceRelease: String,
+        attempts: Long,
+        armSequence: Long,
+        armHold: Long,
+    ): String = """
+        schema_version = 1
+        release = "$deviceRelease"
+        kernel_major = 6
+        route {
+          multicast_waiter {
+            waiter_off = 80
+            buffer_size = 264
+            task_offset = 48
+            lock_offset = 56
+            compact_waiter = 1
+            attempts = $attempts
+            arm_sequence = $armSequence
+            arm_hold = $armHold
+          }
+        }
+        fallback { to = "none" }
+        task_struct {
+          prio = 148
+          pi_lock = 2540
+          pi_waiters = 2560
+          pi_blocked_on = 2584
+          cred = 2304
+          seccomp = 2504
+        }
+        offset {
+          init_task = 37801728
+          init_cred = 37891184
+          root_task_group = 40097152
+          selinux_enforcing = 40408272
+        }
+    """.trimIndent()
+
+    private companion object {
+        private const val deviceRelease = "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k"
     }
 }

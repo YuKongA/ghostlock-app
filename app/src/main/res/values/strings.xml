@@ -209,6 +209,9 @@
     <string name="field_kernel_major">kernel_major</string>
     <string name="field_kernel_phys_load">kernel_phys_load</string>
     <string name="field_kernelsnitch_collisions">kernelsnitch_collisions</string>
+    <string name="field_mcast_arm_hold">mcast_arm_hold</string>
+    <string name="field_mcast_arm_sequence">mcast_arm_sequence</string>
+    <string name="field_mcast_attempts">mcast_attempts</string>
     <string name="field_mcast_buffer_size">mcast_buffer_size</string>
     <string name="field_mcast_lock_offset">mcast_lock_offset</string>
     <string name="field_mcast_task_offset">mcast_task_offset</string>

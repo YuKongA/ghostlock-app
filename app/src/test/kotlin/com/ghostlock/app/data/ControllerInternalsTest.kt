@@ -95,5 +95,11 @@ class ControllerInternalsTest {
             val branches = snapshot["route"].asValueMap()?.keys.orEmpty()
             assertEquals(listOf("multicast_waiter"), branches.toList())
             assertFalse(snapshot["fallback"].asValueMap()?.containsKey("route") == true)
+            /* The switched-to branch carries every multicast field, tuning included,
+             * as an editable placeholder. */
+            val seeded = snapshot["route"].asValueMap()?.get("multicast_waiter").asValueMap()
+            for (field in listOf("waiter_off", "attempts", "arm_sequence", "arm_hold")) {
+                assertTrue("$field was not seeded", seeded?.containsKey(field) == true)
+            }
         }
 }
