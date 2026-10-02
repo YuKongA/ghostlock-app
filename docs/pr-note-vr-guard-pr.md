@@ -2,7 +2,7 @@
 
 - Head：`vr-guard-pr`（代码 tip `a329df60`，其上为本 `docs:` 提交）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：10 commits（含 `docs:` 提交）、26 files、+1223 / −35（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
+- 规模：12 commits（含本 `docs:` 提交）、36 files、+1367 / −36（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
@@ -35,7 +35,7 @@
 | 读取点 | `src/core/attack/ops.cpp`、`src/core/route/multicast_waiter_route.cpp` | 调参经 `mcast_tuning()` 读取 |
 | multicast route | `src/core/route/multicast_waiter_route.cpp` | 重复投毒 / 重复 walk；`attempts/arm_sequence/arm_hold` 默认 128/16/20000，profile 可覆盖，0 保持默认 |
 | 提取器 | `tools/extract_rs/src/{symbols,report}.rs` | `__tracepoint_sys_exit`（optional）；`struct tracepoint.funcs` 由 BTF 取；`--format conf` 输出三项 |
-| profile-core / app | `NativeProfile.kt`、`ProfileResolver.kt`、`MulticastConfig.kt`、往返测试、内置 profile + `index.conf` | 三字段读写与白名单；multicast `attempts/arm_sequence/arm_hold` 的 Kotlin 镜像补齐（原先只存在于 native 字段表）；新增 iQOO 12（`6.1.145-android14-11-maybe-dirty`）内置条目 |
+| profile-core / app | `NativeProfile.kt`、`ProfileResolver.kt`、`MulticastConfig.kt`、编辑器（`AndroidProfileConfigController`/`FieldLabels`）、往返测试、内置 profile + `index.conf` | 三字段读写与白名单；multicast `attempts/arm_sequence/arm_hold` 的 Kotlin 镜像补齐（原先只存在于 native 字段表），并收录进编辑器（换路由时作为占位播种、补标签）与范围校验（8/8/16 位，越界上报而不是被类型转换绕回）；新增 iQOO 12（`6.1.145-android14-11-maybe-dirty`）内置条目 |
 | 修复 1 | `profile-core/.../ProfileMerger.kt` | 合并基准改为深拷贝共享 execution 预设（见下节） |
 | 修复 2 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 迁移夹具（实测值、嵌套 `route` 声明）；夹具尺寸断言 52 → 53 |
 | 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
@@ -138,10 +138,11 @@ rebase 掉它另开 PR。
    保留 presence 语义（0 与缺失不同）需要更多字节，会超出 padding，需重新评估布局冻结方案。
 4. 与主线新约定的对齐（`origin/main` 2026-09-30 起、本分支基线尚未包含）：`2d9d8016` 为
    profile/提取器引入「整域 + 显式 null」规则（缺值写 null 而不是省略），`a9518142` 新增可配
-   `kernel_phys_offset`。本 PR 按本分支既有 presence 语义实现；合并到含该规则的主线时，把
+   `kernel_phys_offset`。本 PR 已把三个调参键收录进编辑器与校验（见改动表）；其余按本分支既有
+   presence 语义实现（缺值不写键），合并到含该规则的主线时，把
    `vr_guard.tracepoint_funcs` 与 `route.multicast_waiter.{attempts,arm_sequence,arm_hold}`
-   纳入各自的 field universe（缺值写显式 null）即可，属机械改动。若需要，我可以现在就把这
-   部分对齐做进 PR。
+   纳入提取器/编辑器的 field universe（缺值写显式 null）即可，属机械改动。若需要，我可以现在
+   就把这部分对齐做进 PR。
 
 ## 风险与未验证
 

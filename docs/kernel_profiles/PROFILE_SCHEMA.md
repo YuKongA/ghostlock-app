@@ -260,6 +260,7 @@ addresses.
 | `route.multicast_waiter.waiter_off` | Offset of the waiter in the multicast buffer (must be > 0) |
 | `route.multicast_waiter.buffer_size` | Forged buffer size |
 | `route.multicast_waiter.task_offset` / `route.multicast_waiter.lock_offset` | Task / lock field offsets in the buffer |
+| `route.multicast_waiter.attempts` / `route.multicast_waiter.arm_sequence` / `route.multicast_waiter.arm_hold` | Optional poison/walk repetition tuning (re-poisons per W1, the attempt the walk is armed from, the yield hold after arming); widths 8/8/16 bits, absent or 0 keeps the compiled default, and existing profiles are unaffected |
 | `offset.empty_zero_page` | `empty_zero_page` offset |
 
 ### 4.6 KernelSnitch values (`kernelsnitch`)

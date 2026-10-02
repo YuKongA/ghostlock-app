@@ -217,6 +217,7 @@ cred
 | `route.multicast_waiter.waiter_off` | 多播缓冲区中 waiter 的偏移（必须 > 0） |
 | `route.multicast_waiter.buffer_size` | 伪造缓冲区大小 |
 | `route.multicast_waiter.task_offset` / `route.multicast_waiter.lock_offset` | 缓冲区中任务 / 锁字段偏移 |
+| `route.multicast_waiter.attempts` / `route.multicast_waiter.arm_sequence` / `route.multicast_waiter.arm_hold` | 可选的投毒/走查重复调参（同一 W1 内的重复投毒次数、起臂轮次、起臂后 yield 自旋量）；宽 8/8/16 位，缺省或 0 用编译期内置值，不写不影响既有 profile |
 | `offset.empty_zero_page` | `empty_zero_page` 偏移 |
 
 ### 4.6 KernelSnitch 参数（`kernelsnitch`）

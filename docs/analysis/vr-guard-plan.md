@@ -51,7 +51,7 @@ PR 正文见 `docs/pr-note-vr-guard-pr.md`。
 | 读取点 | `src/core/attack/ops.cpp`、`src/core/route/multicast_waiter_route.cpp` | `mcast_*` 改经 `mcast_tuning()` 读取 |
 | multicast 路由 | `src/core/route/multicast_waiter_route.cpp` | 单次投毒 → 重复投毒 / 重复 walk（`attempts/arm_sequence/arm_hold`，默认 128/16/20000） |
 | 提取器 | `tools/extract_rs/src/{symbols,report}.rs` | `__tracepoint_sys_exit`（optional）+ BTF `tracepoint.funcs`；`--format conf` 输出 gate/符号/布局 |
-| profile-core | `profile-core/.../NativeProfile.kt` 等 | gate/符号/布局的读写、导出与解析器白名单；另镜像 multicast `attempts/arm_sequence/arm_hold`（`MulticastConfig`，随新内置一并补齐）；冻结 golden 夹具不变 |
+| profile-core | `profile-core/.../NativeProfile.kt` 等 | gate/符号/布局的读写、导出与解析器白名单；另镜像 multicast `attempts/arm_sequence/arm_hold`（`MulticastConfig`，随新内置一并补齐），并收录进编辑器（换路由播种 + 标签）与范围校验（8/8/16 位，越界上报）；冻结 golden 夹具不变 |
 | 导出器合并修复 | `profile-core/.../ProfileMerger.kt` | 合并基准改为**深拷贝**共享 execution 预设（见下节） |
 | 迁移夹具 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 夹具（实测值 + 嵌套 `route` 声明）；尺寸断言 52 → 53 |
 | 内置 profile | `app/src/main/assets/kernel_profiles/6.1.145-android14-11-maybe-dirty.conf`（新增）+ `index.conf` | iQOO 12 条目：gate on、布局 64、multicast 几何与调参、cred refs |
