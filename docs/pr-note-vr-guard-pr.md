@@ -2,7 +2,7 @@
 
 - Head：`vr-guard-pr`（代码 tip `a329df60`，其上为本 `docs:` 提交）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：9 commits（含本 `docs:` 提交）、26 files、+1217 / −35（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
+- 规模：10 commits（含 `docs:` 提交）、26 files、+1223 / −35（`git diff --stat vr-ko-bypass-dev...vr-guard-pr`）
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
@@ -136,6 +136,12 @@ rebase 掉它另开 PR。
    避免行为引用 middleware 的 `WriteRequest`）。若倾向更通用的 `write` 形态，我可以改。
 3. `vr_guard.tracepoint_funcs` 现为 `u8` 标量（0 = 未提供，与 `offset.*` 的惯例一致）。若希望
    保留 presence 语义（0 与缺失不同）需要更多字节，会超出 padding，需重新评估布局冻结方案。
+4. 与主线新约定的对齐（`origin/main` 2026-09-30 起、本分支基线尚未包含）：`2d9d8016` 为
+   profile/提取器引入「整域 + 显式 null」规则（缺值写 null 而不是省略），`a9518142` 新增可配
+   `kernel_phys_offset`。本 PR 按本分支既有 presence 语义实现；合并到含该规则的主线时，把
+   `vr_guard.tracepoint_funcs` 与 `route.multicast_waiter.{attempts,arm_sequence,arm_hold}`
+   纳入各自的 field universe（缺值写显式 null）即可，属机械改动。若需要，我可以现在就把这
+   部分对齐做进 PR。
 
 ## 风险与未验证
 
