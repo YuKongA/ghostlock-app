@@ -42,6 +42,14 @@ interface GhostlockRepository {
 
     suspend fun cacheDocument(uri: String, fileName: String): String
 
+    /**
+     * Absolute path of an already staged image (`cacheDocument` target), or
+     * null when nothing is staged under that name. The native runtime reads
+     * the same directory through GHOSTLOCK_HOME, so the app can report the
+     * state it will actually see.
+     */
+    fun stagedImagePath(fileName: String): String?
+
     suspend fun publishOffsets(candidate: OffsetCandidate): String
 
     /** Verbatim user-imported documents, newest first. */

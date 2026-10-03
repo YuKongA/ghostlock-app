@@ -141,6 +141,7 @@ const CONF_OFFSET_FIELDS: &[&str] = &[
     "slide_nfulnl_logger",
     "slide_loggers_0_1",
     "slide_boot_id",
+    "sys_exit_tp_funcs",
 ];
 
 /// Looks up a key in `(key, value)` entries, or `"null"` when absent.
@@ -157,6 +158,12 @@ fn conf_lookup(entries: &[(String, String)], key: &str) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct ConfExtraOffsets {
     pub empty_zero_page: Option<u64>,
+    /// Final image offset of `&__tracepoint_sys_exit->funcs`, the address the
+    /// vr.ko bypass NULLs so every sys_exit probe becomes a no-op. Needs both
+    /// the kallsyms symbol and the BTF member offset, so it stays `None` (and
+    /// the key stays `null`) when either is missing — the runtime then derives
+    /// the value from the boot image instead of guessing.
+    pub sys_exit_tp_funcs: Option<u64>,
 }
 
 /// The shared 6.x credential template (`credential-6x.conf`), in the bundled
@@ -263,6 +270,10 @@ fn conf_offsets(
         ("slide_nfulnl_logger", symbol("off_slide_nfulnl_logger")),
         ("slide_boot_id", symbol("off_slide_boot_id")),
         ("slide_loggers_0_1", symbol("off_slide_loggers_0_1")),
+        (
+            "sys_exit_tp_funcs",
+            extra.sys_exit_tp_funcs.map(|value| value.to_string()),
+        ),
     ]
     .into_iter()
     .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
@@ -452,7 +463,7 @@ pub fn optional_symbols() -> BTreeSet<&'static str> {
 /// BTF struct fields a kernel may legitimately lack: the 5.15 GKI BTF has no
 /// `slab` type, so `struct_slab_cache` is missing there. Reported as missing,
 /// but not failing the extract.
-const OPTIONAL_STRUCT_FIELDS: &[&str] = &["struct_slab_cache"];
+const OPTIONAL_STRUCT_FIELDS: &[&str] = &["struct_slab_cache", "tracepoint_funcs"];
 
 pub fn optional_struct_fields() -> BTreeSet<&'static str> {
     OPTIONAL_STRUCT_FIELDS.iter().copied().collect()
@@ -534,6 +545,40 @@ mod tests {
         assert!(out.contains("kernel_phys_load = null"));
     }
 
+    /// The vr.ko anchor must come out as the *measured* final offset, not the
+    /// symbol offset: `__tracepoint_sys_exit + offsetof(tracepoint, funcs)`.
+    /// Both numbers below are the offline measurements from the PD2463 and
+    /// iQOO15 boot images (see OFFSET_DATACARD), so a member-offset regression
+    /// (e.g. resolving `funcs` at the static-call-free layout) fails here.
+    #[test]
+    fn vrko_anchor_matches_the_measured_device_values() {
+        let (symbols, structs) = conf_fixture();
+        for (symbol_off, expected) in [
+            (0x22a_2220u64, 36_315_752u64), // PD2463  6.6.89: 0x22a2220 + 0x48
+            (0x26d_9360u64, 40_735_656u64), // iQOO15 6.12.58: 0x26d9360 + 0x48
+        ] {
+            let extra = ConfExtraOffsets {
+                empty_zero_page: None,
+                sys_exit_tp_funcs: Some(symbol_off + 0x48),
+            };
+            let out = render_conf(&ConfInputs {
+                release: "6.6.89-android15-8-g1f71897ac249-abogki467805059-4k",
+                phys: None,
+                phys_offset: None,
+                symbols: &symbols,
+                structs: &structs,
+                route: None,
+                route_geometry: &[],
+                cred: &[],
+                extra_offsets: &extra,
+            });
+            assert!(
+                out.contains(&format!("sys_exit_tp_funcs = {expected}\n")),
+                "anchor 0x{symbol_off:x} + 0x48 must render {expected}"
+            );
+        }
+    }
+
     #[test]
     fn conf_5x_carries_the_derived_credential_and_multicast_geometry() {
         let (symbols, structs) = conf_fixture();
@@ -565,6 +610,7 @@ mod tests {
             cred: &conf_cred_5x(&cred, 176),
             extra_offsets: &ConfExtraOffsets {
                 empty_zero_page: Some(47_529_984),
+                sys_exit_tp_funcs: None,
             },
         });
         assert!(out.contains("multicast_waiter {\n    waiter_off = 96"));
@@ -695,6 +741,7 @@ mod tests {
             cred: &[],
             extra_offsets: &ConfExtraOffsets {
                 empty_zero_page: None,
+                sys_exit_tp_funcs: None,
             },
         });
         assert!(out.contains("route {"));
@@ -883,6 +930,10 @@ mod tests {
         let cred = conf_cred_5x(&cred5x, 176);
         let extra = ConfExtraOffsets {
             empty_zero_page: Some(47_529_984),
+            /* This fixture models an image whose vr.ko anchor was not resolved
+             * (no kallsyms symbol + BTF member pair), which is the case the
+             * runtime covers by parsing the boot image itself. */
+            sys_exit_tp_funcs: None,
         };
         (release.to_string(), symbols, structs, cred, extra)
     }
@@ -911,6 +962,13 @@ mod tests {
         let bundled = flatten_conf(&bundled);
 
         assert!(generated.contains_key("route.multicast_waiter.waiter_off"));
+        /* The vr.ko anchor is emitted for every 6.x/5.15 conf: a resolved value
+         * when kallsyms and BTF both yield it, `null` otherwise, so the app can
+         * tell "not provided" from "provided as zero". */
+        assert_eq!(
+            generated.get("offset.sys_exit_tp_funcs").map(String::as_str),
+            Some("null")
+        );
         // The one intentional difference: shizuku defaults to off in generated
         // confs, the bundled profile recommends it.
         assert_eq!(

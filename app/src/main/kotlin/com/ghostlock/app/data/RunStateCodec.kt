@@ -9,8 +9,10 @@ import com.ghostlock.app.data.RunStateCodec.Steps
  * trivially parseable and inspectable.
  */
 object RunStateCodec {
-    /** Every step the native backend reports, in execution order. */
-    val Steps = listOf("w1a", "w1b", "w2a", "w2b", "w3a", "w3b", "w3c")
+    /** Every step the native backend reports, in execution order.
+     *  `vr1`: optional vr.ko global probe kill-switch (PR #241 direction) —
+     *  runs after the W1 stage, before the W2 victim work. */
+    val Steps = listOf("w1a", "w1b", "vr1", "w2a", "w2b", "w3a", "w3b", "w3c")
 
     const val NotStarted = "not_start"
     const val InProgress = "in_progress"

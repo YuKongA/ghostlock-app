@@ -50,9 +50,24 @@ fn main() {
         operations: vec![install_op(boot.len() as u64, xbl.len() as u64, block_size)],
         ..Default::default()
     };
+    let vendor_boot = std::fs::read(&args[4]).unwrap();
+    let vendor_boot_offset = (boot.len() + xbl.len()) as u64;
+    let vendor_boot_part = PartitionUpdate {
+        partition_name: "vendor_boot".to_string(),
+        new_partition_info: Some(PartitionInfo {
+            size: Some(vendor_boot.len() as u64),
+            ..Default::default()
+        }),
+        operations: vec![install_op(
+            vendor_boot_offset,
+            vendor_boot.len() as u64,
+            block_size,
+        )],
+        ..Default::default()
+    };
     let manifest = DeltaArchiveManifest {
         block_size: Some(block_size),
-        partitions: vec![boot_part, xbl_part],
+        partitions: vec![boot_part, xbl_part, vendor_boot_part],
         ..Default::default()
     };
     let manifest_bytes = manifest.encode_to_vec();
@@ -65,12 +80,14 @@ fn main() {
     payload.extend_from_slice(&manifest_bytes);
     payload.extend_from_slice(&boot);
     payload.extend_from_slice(&xbl);
+    payload.extend_from_slice(&vendor_boot);
     std::fs::write(out_path, &payload).unwrap();
     println!(
-        "wrote {} bytes (boot={} xbl={} manifest={})",
+        "wrote {} bytes (boot={} xbl={} vendor_boot={} manifest={})",
         payload.len(),
         boot.len(),
         xbl.len(),
+        vendor_boot.len(),
         manifest_bytes.len()
     );
 }
