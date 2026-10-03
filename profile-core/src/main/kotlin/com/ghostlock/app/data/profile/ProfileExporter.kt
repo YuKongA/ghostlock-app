@@ -75,14 +75,17 @@ object ProfileExporter {
             if (errors.isNotEmpty()) {
                 error("$file fails validation: ${errors.joinToString()}")
             }
-            val bytes = NativeProfileDocument.from(
+            val document = NativeProfileDocument.from(
                 release = actualRelease,
                 route = RouteKind.fromToken(route)?.token,
                 fallbackTo = RouteKind.fromToken(fallbackTo)?.token,
                 value = { path -> ProfileResolver.nativeValue(merged, route, fallbackTo, path) },
                 text = { path -> ProfileResolver.nativeText(merged, path) },
                 bool = { path -> ProfileResolver.nativeBool(merged, path) },
-            ).toBinary()
+            )
+            /* GLKv3-4: the exporter emits the production v3 MessagePack wire;
+             * the native reader still accepts v2 for prebuilt/imported bytes. */
+            val bytes = Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document))
             File(staging, "$actualRelease.bin").writeBytes(bytes)
             count++
             println("exportKernelProfiles: $actualRelease (${bytes.size} bytes)")

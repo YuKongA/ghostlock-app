@@ -4,7 +4,8 @@
 /* Binary transport for the resolved profile, shared with Kotlin
  * (profile-core/.../NativeProfile.kt). Little-endian.
  *
- * v2 (the only format; object sections):
+ * v2 (legacy read path; the branch writes GLKv3, see profile/glkv3_parse.hpp.
+ * Object sections):
  *   u32 magic, u16 version(2), u16 terminal_id, u16 backend_id,
  *   u16 middleware_id, u16 release_length, release,
  *   u16 section_count, then per section:
@@ -16,7 +17,8 @@
  * adding a field or an object never moves anything else.
  *
  * v1 JSON profiles never reach this unit: imports are converted by Kotlin's
- * LegacyProfileConverter, and the runtime path always uses this typed layout. */
+ * LegacyProfileConverter, the runtime path always uses this typed layout, and
+ * profile_entry::decode() probes GLKv3 first and falls back to this v2 reader. */
 
 #include "profile/model.h"
 
@@ -97,8 +99,27 @@ namespace ghostlock::binary_profile {
               struct ghostlock::profile::Document *document_out = nullptr,
               struct ghostlock::backend::Cve2026_43284Profile *profile_43284_out = nullptr);
 
-    /* Serialize the same layout (host tests and tooling). */
+    /* Bind an already-framed neutral Document onto the frozen transport. Both
+     * the v2 decoder and the GLKv3 bridge (profile/glkv3_parse.cpp) share this
+     * so identical logical documents land identical values on either wire.
+     * `document` is consumed; its release string is copied into `release_buf`,
+     * which `out->uname_r` points at. `route` is the resolved route wire value
+     * (kRouteAuto is legal only for the 43284 backend, which has no route). */
+    int32_t bind_document(struct ghostlock::profile::Document &&document, uint8_t route,
+                          uint16_t terminal, uint16_t backend, uint16_t middleware,
+                          struct ghostlock::profile::kernel_offsets *out,
+                          char *release_buf, size_t release_buf_cap,
+                          component_ids *ids = nullptr,
+                          struct ghostlock::profile::Document *document_out = nullptr,
+                          struct ghostlock::backend::Cve2026_43284Profile *profile_43284_out = nullptr);
+
+    /* v2 writer: golden/equivalence host tests only. Production and export
+     * write GLKv3 (GLKv3-4) and never call this; v2 is read-only there. The
+     * macro is defined only for the host test build (src/Makefile
+     * HOST_CXXFLAGS), so the device object carries no v2 serializer. */
+#if defined(GHOSTLOCK_ENABLE_V2_WRITER)
     int32_t serialize(const struct ghostlock::profile::kernel_offsets *in, char *buffer, size_t capacity);
+#endif
 } // namespace ghostlock::binary_profile
 
 #endif

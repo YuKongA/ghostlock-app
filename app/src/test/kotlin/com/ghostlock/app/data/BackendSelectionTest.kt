@@ -3,6 +3,7 @@ package com.ghostlock.app.data
 import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.domain.model.CpuPair
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -16,8 +17,8 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * B7: the app-level backend selection reaches the native wire header. The
- * controller injects the selected token into the profile builder, and the
+ * B7: the app-level backend selection reaches the native GLKv3 wire document.
+ * The controller injects the selected token into the profile builder, and the
  * document codec fails an unavailable backend closed to the 43499 default.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -42,17 +43,18 @@ class BackendSelectionTest {
         return controller to root
     }
 
-    private fun headerBackendId(bytes: ByteArray): Int =
-        (bytes[8].toInt() and 0xff) or ((bytes[9].toInt() and 0xff) shl 8)
+    /** The resolved backend token in the production GLKv3 document. */
+    private fun backendToken(bytes: ByteArray): String? =
+        Glkv3Decoder.decode(bytes)?.backend
 
     @Test
-    fun `selected backend is written into the native header`() = runBlocking {
+    fun `selected backend is written into the native document`() = runBlocking {
         val (controller, root) = controller("backend-selection-43499", BackendKind.Cve2026_43499)
         try {
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
             val bytes = requireNotNull(controller.nativeDocument(config))
-            assertEquals(1, headerBackendId(bytes))
+            assertEquals("cve_2026_43499", backendToken(bytes))
         } finally {
             root.deleteRecursively()
         }
@@ -65,7 +67,7 @@ class BackendSelectionTest {
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
             val bytes = requireNotNull(controller.nativeDocument(config))
-            assertEquals(1, headerBackendId(bytes))
+            assertEquals("cve_2026_43499", backendToken(bytes))
         } finally {
             root.deleteRecursively()
         }

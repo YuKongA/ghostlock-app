@@ -240,7 +240,9 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 ### 5.1 内核 ABI 结构（最高风险区）
 
-- `profile/binary.cpp` 的 GLK1 wire v2 section/key 表是**契约权威**：字段名、类型与位型一经发布不可改；
+- **GLKv3（MessagePack）为迁移目标格式**：权威设计见 `docs/analysis/wire-transport-model.md`；native 侧 `profile/glkv3.*`（MPack）、
+  Kotlin 侧 `data/profile/Glkv3Encoder.kt`；v2 迁移期只读。
+- `profile/binary.cpp` 的 GLK1 wire v2 section/key 表（迁移期）是**契约权威**：字段名、类型与位型一经发布不可改；
   新增字段 = 在该 section 追加一个条目（section/entry 顺序无关），并与 Kotlin `NativeProfile.kt` 同步。
   **重写后分层**：framing（magic/version/组件 id/sections）中性；`sections → TargetProfile` 的绑定归
   **backend**（见 ADR-0001 §12/§17，F6）。

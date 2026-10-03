@@ -46,7 +46,7 @@ class NativeDocumentEquivalenceTest {
             for ((release, expected) in golden) {
                 val config = controller.load(release, pair)
                 assertTrue("$release did not resolve", config.hasProfile)
-                val bytes = controller.nativeDocument(config)
+                val bytes = controller.nativeDocumentV2(config)
                 assertNotNull("$release has no native document", bytes)
                 assertEquals("$release wire bytes drifted", expected, sha256(bytes!!))
             }

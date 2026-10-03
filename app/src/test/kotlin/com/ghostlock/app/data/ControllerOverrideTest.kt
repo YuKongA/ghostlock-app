@@ -141,7 +141,7 @@ class ControllerOverrideTest {
             val pair = CpuPair(primary = 2, consumer = 3)
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
-            val document = requireNotNull(controller.nativeDocument(config))
+            val document = requireNotNull(controller.nativeDocumentV2(config))
             val decoded = requireNotNull(NativeProfileDocument.fromBinary(document))
             assertEquals(2u, decoded.execution.recommendedMainCpu)
             assertEquals(3u, decoded.execution.recommendedConsumerCpu)

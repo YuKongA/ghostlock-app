@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import androidx.annotation.VisibleForTesting
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
@@ -69,6 +70,12 @@ internal data class Profile(
     fun selectStackLayout(): SelectStackLayout =
         SelectStackLayout(waiterShift = pselectWaiterShift, compactWaiter = compactWaiter)
 
+    /**
+     * v2 writer delegate: golden/equivalence tests only. Production and export
+     * encode GLKv3 via [com.ghostlock.app.data.profile.Glkv3Encoder]; v2 is
+     * read-only on device (GLKv3-5).
+     */
+    @VisibleForTesting
     fun toBinary(): ByteArray = document.toBinary()
 
     companion object {

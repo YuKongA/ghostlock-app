@@ -88,11 +88,13 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
 - 配置权威是 GLK1 profile + HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
-- **不要随意新增或叠加配置/profile 传输格式版本号**。本分支统一为 **v2**（对象分段：
-  `header + sections[name → fields[name → u64]]`，presence 由键是否出现表达，值按位严格保存）。
-  Kotlin 与 native 版本绑定，同一分支内直接替换，不做旧版本兼容；不同 branch 需要不同格式时，
-  先改本节与 `docs/development/`，不要就地再起 v3/v4。
-- v1（旧 `offsets.json`）**只在 Kotlin 侧**由 `LegacyProfileConverter.kt` 转换为 v2；
+- **不要随意新增或叠加配置/profile 传输格式版本号**。本分支正由 **v2**（对象分段：
+  `header + sections[name → fields[name → u64]]`，presence 由键是否出现表达）迁移到 **v3（GLKv3）**：
+  **MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`third_party/mpack`），
+  canonical = 最短整数 + 键按 UTF-8 字节序排序；**静态策略进文档，运行时密钥/SPI/端口绝不进文档**（走会话帧，用后清零）。
+  格式权威见 `docs/analysis/wire-transport-model.md`。迁移期：写出 v3、v2 **只读**；Kotlin 与 native 版本绑定，同一分支内直接替换，
+  不做长期并存；再需要不同格式时先改本节与 `docs/development/`，不要就地再起 v4/v5。
+- v1（旧 `offsets.json`）**只在 Kotlin 侧**由 `LegacyProfileConverter.kt` 转换；
   native **不再解析 v1**（`src/core/legacy/` 的 JSON 路径已删除）。新 route/新字段不要改 v1 转换。
 
 ## 核心攻击代码审查（仅触及时执行）

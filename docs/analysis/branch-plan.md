@@ -75,6 +75,7 @@
 - [x] B4：`backend.cve_2026_43284` 私有 section（7 字段，数值 policy token；strict 仅 backend==6 接受；manifest 94→101；提交 `663bc10`）。
 - [~] B5：43284 原语/LKM 链。**设计已完成**：`cve-2026-43284-b5-design.md`（519 行，参考 DirtyFrag-Android-Root-Jailbreak/LSPromise/DFReroot/DirtyInit；选定 IpSecManager+CBC-16B+crash_dump+libc++ sentry+DFRoot LKM/UMH 链；B5-0..B5-7 分批）。
   **硬前置**：① 运行时参数通道（GLK1 v2 仅 u64，载不下 IpSec SPI/ports/32B+32B 密钥）需决策；② 需可审计且与 KMI 匹配的 `dirtyfrag.ko` + 可加载设备（公开发布 `.ko` 与源码不一致）；③ `BackendExecution` 需泛化到 `TerminalInput`（R10 延续），`platform/abi|vivo` 不存在。**未获资产前不实现、不标 supported**。
+  追加（B5-0）：改造计划 `cve-2026-43284-refactor-plan.md`（428 行，28 个 vendored 文件逐文件映射）+ 目标模块骨架 `src/core/backend/cve_2026_43284/{ipsec,pagecache,lkm,steps}/`（仅头，不进构建）。**通道 A/B 待拍板（计划推荐 B：`--ghostlock-app-call` stdin 第二段长度前缀会话秘密帧，84B，密钥不落盘）**。
 - [ ] B6：`umh_forward` 执行 + `RootProgram` 启动 + 真机（依赖 B5）。
 - [x] B7：Kotlin backend 选择（`BackendKind` 含 43284 wire 6/available=false；HOCON `backend.kind`；UI 置灰；偏好迁移）——Gradle exit 0、golden 未动。
 - 教训：委派重试前先确认原 subagent 确实结束（`send_message` 返回 not found 不可靠）；本轮出现两个 B7 并发写同一 Kotlin 文件，已中断重试并未造成损坏。
@@ -99,6 +100,24 @@
 
 **bool 解析缺口（必须一并修）**：`getLongAt` 只认 `Number`；当前 `from()` 用 `vu("recommend_vr_guard")`（NativeProfile.kt:394）与
 `vbOrNull("compact_waiter")`（:443，经 `nativeValue` 分支映射），改 T/F 后会**静默丢值** → 换 `bool` 访问器，并让 `compact_waiter` 分支查找支持布尔。
+## 3.5 wire 重设计（GLKv3，跨流前置）
+
+- **GLKv3 = 纯 MessagePack 文档**（根 map + 必填 `schema`），解析用成熟单文件库 **MPack**（MIT）；**无 magic/独立头**，
+  I/O 分帧（stdin 4B 长度前缀）保留；**静态策略进文档，运行时密钥走会话帧、永不进文档**。
+- 设计与决策：`wire-transport-model.md`（**定稿：MessagePack**）。
+- [x] **GLKv3-1**（native，提交 `ea4870d`）：MPack 接入（C 编译、告警隔离）+ `profile/glkv3.{hpp,cpp}`（expect API 零拷贝 decode、canonical encode、schema 校验、fail-closed、界）+ `glkv3_codec_test`（往返/确定性/拒绝向量/fuzz）。host/NDK/lint/cmp 全绿；生产未切换。
+- [x] GLKv3-2 Kotlin canonical 编码（`org.msgpack:msgpack-core:0.9.12`，提交 `e20a547`）：UTF-8 键序/最短整数，4 组 native 逐字节 golden 对拍；`:profile-core:test` 36 / `:app` 96 全绿。
+- [x] GLKv3-3 path→type schema（43499 94 项 / 43284 7 项）+ Kotlin 适配器 + manifest v3（提交 `f4ea1c6`）。
+- [x] GLKv3-4 生产/导出切 v3（写 v3、读 v3+v2，提交 `af0c9c0`）+ v3 golden + **真机 PASS**（记录 `GLKv3-20261003-multicast-direct-pass.md`）。
+- [x] **GLKv3-5 移除 v2 写路径**（提交 `1860bda`）：native v2 `serialize` 收进 `GHOSTLOCK_ENABLE_V2_WRITER`（仅 host 测试编译），设备 binary 无 v2 写符号；Kotlin v2 写函数 `@VisibleForTesting`；**v2 只读保留**。GLKv3 迁移收尾。
+- [x] B5-1 运行时会话秘密帧（通道 B，提交 `0de4ed8`）：84B（BE）+ 4B 长度前缀；native `session_frame`/`ipsec::zeroize`、仅 43284+frame 路径读、fail-closed；Kotlin `SessionSecretFrame`；golden 逐字节一致；门禁全绿。生产 wiring 待 IpSec 产密钥后接入（B5-7）。
+- [x] B5-2 `ipsec/` 原语（提交 `c7ded3c`）：AES-256 ECB/CBC、HMAC-SHA256、ESP 布局/ICV/verify、`compute_cbc_iv`；FIPS-197 / SP800-38A / RFC 4231 KAT + IV 恒等式；Odzhan BSD-3 署名。门禁全绿。
+- [x] B5-3 `pagecache/`（提交 `86b3303`）：`write16`/块序列 + 可注入 `SpliceIoOps` + `FileCacheWriteOps`；fake splice/pipe host 测试（并抓出 seq 偏移 bug）。
+- [x] B5-4 `lkm/`（提交 `2052b97`）：8 KMI 表 fail-closed、`.ko` ELF/`.modinfo` 预检、UMH `late-load` argv（无 shell 拼接）；host 测试；门禁全绿。
+- [x] B5-5 `steps/` ELF+Hook（提交 `9e463b2`）：ELF64/AArch64 解析、符号定位、hook 方案（BTI/PAC 拒绝、relocation 冲突）、shellcode 模板；合成 fixture host 测试；门禁全绿。
+- [ ] B5-6 `steps/` chain（crash_dump 桥、vendor 载体回退、patch 校验、trigger、清理）。
+- 它与 S1（A2-3c）与 S3（B5 通道）都有交叠，故列为本分支的**跨流前置**：先定 GLKv3，再继续 A2-4/5、B5。
+
 ## 4. 唯一执行顺序（下一步）
 
 ```

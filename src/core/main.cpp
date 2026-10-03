@@ -13,6 +13,7 @@
 #include "common.h"
 
 #include "profile/entry.h"
+#include "backend/cve_2026_43284/session_frame.hpp"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
 #include "pipeline/orchestrator.hpp"
@@ -21,6 +22,8 @@
 #include <memory>
 #include <string>
 #include <string_view>
+
+#include <unistd.h>
 
 using namespace ghostlock;
 
@@ -102,6 +105,25 @@ int main(int argc, char **argv) {
             .steps = static_cast<pipeline::StepSetKind>(ids.steps),
             .terminal = static_cast<pipeline::TerminalKind>(ids.terminal),
         };
+        /* B5-1 (channel B): only the cve_2026_43284 backend MAY be followed by
+         * the optional runtime session-secret frame on the same stdin, after
+         * the length-prefixed GLKv3 document. Every other backend -- 43499
+         * included -- never reads it, so their stdin/status-ACK behavior is
+         * unchanged. On the 43284 path an absent or malformed frame is
+         * fail-closed. The secrets stay process-local and are zeroized at scope
+         * exit; they never reach a profile, a file, argv or a log. */
+        backend::cve_2026_43284::ScopedIpsecSaParams session_secrets;
+        if (app_call && status_record &&
+            selection.backend == pipeline::BackendKind::Cve2026_43284) {
+            const backend::cve_2026_43284::SessionFrameStatus frame_status =
+                    backend::cve_2026_43284::read_session_secret_frame(
+                            STDIN_FILENO, &session_secrets.value);
+            if (frame_status !=
+                backend::cve_2026_43284::SessionFrameStatus::Ok) {
+                pr_error("session secret frame rejected\n");
+                throw FatalError{};
+            }
+        }
         if (!pipeline::selection_supported(selection)) {
             /* Known-but-unavailable ids land here (unknown ids were rejected at
              * decode time), named for diagnosis. */

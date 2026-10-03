@@ -1,0 +1,110 @@
+package com.ghostlock.app.data
+
+import android.app.Application
+import androidx.core.content.edit
+import com.ghostlock.app.data.profile.Glkv3Decoder
+import com.ghostlock.app.data.profile.Glkv3Document
+import com.ghostlock.app.data.profile.Glkv3Value
+import com.ghostlock.app.domain.model.CpuPair
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import java.nio.file.Files
+import java.security.MessageDigest
+
+/**
+ * GLKv3-4 production wire lock: every builtin profile now resolves to a
+ * canonical GLKv3 document, frozen in `native-doc-golden-v3.sha256`. The v2
+ * golden ([NativeDocumentEquivalenceTest]) still pins the retained v2 writer.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class NativeDocumentV3EquivalenceTest {
+    private val context: Application = RuntimeEnvironment.getApplication()
+    private val pair = CpuPair(primary = 0, consumer = 1)
+    private val release = "6.1.145-android14-11-maybe-dirty"
+
+    private fun newController(name: String, root: java.io.File): AndroidProfileConfigController =
+        AndroidProfileConfigController(
+            context = context,
+            filesDir = root,
+            userProfiles = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            ),
+            preferences = context.getSharedPreferences(name, 0)
+                .also { it.edit().clear().commit() },
+        )
+
+    @Test
+    fun `builtin v3 native documents match the frozen golden`() = runBlocking {
+        val golden = readGolden()
+        assertTrue("golden fixture is empty", golden.isNotEmpty())
+        assertEquals("v3 golden must cover every exported release", 58, golden.size)
+
+        val root = Files.createTempDirectory("native-doc-v3-equivalence").toFile()
+        try {
+            val controller = newController("native-doc-v3-equivalence", root)
+            for ((release, expected) in golden) {
+                val config = controller.load(release, pair)
+                assertTrue("$release did not resolve", config.hasProfile)
+                val bytes = controller.nativeDocument(config)
+                assertNotNull("$release has no v3 native document", bytes)
+                assertEquals("$release v3 wire bytes drifted", expected, sha256(bytes!!))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `safe mode patch flips only meta safe mode on the v3 wire`() = runBlocking {
+        val root = Files.createTempDirectory("native-doc-v3-safemode").toFile()
+        try {
+            val controller = newController("native-doc-v3-safemode", root)
+            val config = controller.load(release, pair)
+            val original = requireNotNull(controller.nativeDocument(config))
+            val decoded = requireNotNull(Glkv3Decoder.decode(original))
+            assertEquals(false, safeModeOf(decoded))
+
+            val patched = requireNotNull(NativeProfileDocument.patchSafeMode(original))
+            val decodedPatched = requireNotNull(Glkv3Decoder.decode(patched))
+            assertEquals(true, safeModeOf(decodedPatched))
+            assertEquals("release", decoded.release, decodedPatched.release)
+            assertEquals("backend", decoded.backend, decodedPatched.backend)
+            assertEquals("terminal", decoded.terminal, decodedPatched.terminal)
+            assertEquals("route", decoded.route, decodedPatched.route)
+            assertEquals("section count", decoded.sections.size, decodedPatched.sections.size)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun safeModeOf(document: Glkv3Document): Boolean? =
+        document.sections.firstOrNull { it.name == "meta" }
+            ?.entries?.firstOrNull { it.key == "safe_mode" }
+            ?.value?.let { it as? Glkv3Value.Bool }?.value
+
+    private fun readGolden(): Map<String, String> {
+        val text = checkNotNull(
+            javaClass.classLoader?.getResourceAsStream("native-doc-golden-v3.sha256"),
+        ).bufferedReader().use { it.readText() }
+        return text.lineSequence()
+            .filter { it.isNotBlank() }
+            .associate { line ->
+                val parts = line.trim().split(' ')
+                parts[0] to parts[1]
+            }
+    }
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+}

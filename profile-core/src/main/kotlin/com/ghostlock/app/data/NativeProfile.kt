@@ -1,7 +1,9 @@
 package com.ghostlock.app.data
 
+import androidx.annotation.VisibleForTesting
 import com.ghostlock.app.data.NativeProfileDocument.Companion.fromBinary
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.NoRouteConfig
@@ -20,6 +22,10 @@ import java.nio.ByteOrder
  * occurrence (an omitted field is not the same as a provided 0), the u64 is a
  * raw bit container (signed values use two's complement), and values are never
  * clamped. Only the active route's `route.*` section is written or accepted.
+ *
+ * GLKv3-5: v2 is read-only in production. The only v2 writer is
+ * [toBinary] and it is golden/equivalence-test-only; every production and
+ * export path writes GLKv3 through [com.ghostlock.app.data.profile.Glkv3Encoder].
  */
 data class NativeProfileDocument(
     val release: String,
@@ -60,6 +66,15 @@ data class NativeProfileDocument(
      */
     val cve2026_43284: Cve2026_43284Config? = null,
 ) {
+    /**
+     * v2 writer: golden/equivalence tests only. Production and export never
+     * write v2 -- the app-side `Profile.toBinary()` and the native side's
+     * GLKv3 encoder are the only writers, and v2 stays read-only on device
+     * (GLKv3-5). Retained so `native-doc-golden.sha256`,
+     * `NativeDocumentEquivalenceTest` and
+     * `profile_v3_test`'s v2<->v3 equivalence can pin the frozen v2 bytes.
+     */
+    @VisibleForTesting
     fun toBinary(): ByteArray {
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
         require(releaseBytes.size <= 0xffff) { "release is too long" }
@@ -96,7 +111,7 @@ data class NativeProfileDocument(
         return buffer.array()
     }
 
-    private fun sections(): List<Section> = buildList {
+    internal fun sections(): List<Section> = buildList {
         add(
             Section(
                 "meta",
@@ -312,11 +327,18 @@ data class NativeProfileDocument(
         fun routeKind(route: String?): UInt = RouteKind.fromToken(route)?.wire ?: 0u
 
         /**
-         * Rewrites the `meta.safe_mode` entry of a v2 document to 1, returning a
-         * copy, or null when the blob is not a well-formed v2 document. v2 has
-         * no fixed slot offset, so the section/entry is located by scanning.
+         * Rewrites `meta.safe_mode` to true, returning a copy, or null when the
+         * blob is not a well-formed document. GLKv3 (map-rooted, no magic) is
+         * patched through the codec so the bool value type is preserved; v2 has
+         * no fixed slot offset, so its section/entry is located by scanning.
          */
         fun patchSafeMode(document: ByteArray): ByteArray? {
+            if (document.isEmpty()) return null
+            /* GLKv3 has no magic: a MessagePack map root is the format probe. */
+            val first = document[0].toInt() and 0xff
+            if ((first and 0xf0) == 0x80 || first == 0xde || first == 0xdf) {
+                return Glkv3Decoder.patchSafeMode(document)
+            }
             if (document.size < HeaderSize) return null
             val buffer = ByteBuffer.wrap(document).order(ByteOrder.LITTLE_ENDIAN)
             if (buffer.int.toUInt() != Magic) return null
@@ -892,7 +914,7 @@ private val BackendWireCve202643499: UInt = BackendKind.Cve2026_43499.wire.toUIn
 private val BackendWireCve20264560: UInt = BackendKind.Cve2026_64560.wire.toUInt()
 private val BackendWireCve202643284: UInt = BackendKind.Cve2026_43284.wire.toUInt()
 
-private data class Section(val name: String, val entries: List<Pair<String, ULong>>)
+internal data class Section(val name: String, val entries: List<Pair<String, ULong>>)
 
 private fun routeSectionName(route: UInt): String = when (RouteKind.fromWire(route)) {
     RouteKind.TCP_ZEROCOPY -> "route.tcp_zerocopy"

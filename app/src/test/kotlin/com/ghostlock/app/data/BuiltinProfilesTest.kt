@@ -100,7 +100,7 @@ class BuiltinProfilesTest {
                 }
 
                 /* The resolved document re-encodes and decodes identically. */
-                val bytes = controller.nativeDocument(config)
+                val bytes = controller.nativeDocumentV2(config)
                 assertNotNull("${entry.release}: no native document", bytes)
                 val profile = Profile.fromBinary(bytes!!)
                 assertNotNull("${entry.release}: native document failed to decode", profile)

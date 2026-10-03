@@ -47,7 +47,7 @@ class Sog10ProfileRegressionTest {
             assertTrue("cred.usage_offset must remain editable", "cred.usage_offset" in advancedPaths)
             assertTrue(advancedPaths.none { it.startsWith("execution.") })
 
-            val binary = requireNotNull(controller.nativeDocument(config))
+            val binary = requireNotNull(controller.nativeDocumentV2(config))
             val decoded = requireNotNull(NativeProfileDocument.fromBinary(binary))
             assertEquals(release, decoded.release)
             assertEquals(2u, decoded.steps)

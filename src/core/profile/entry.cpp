@@ -4,6 +4,7 @@
 #include "profile/entry.h"
 
 #include "profile/binary.h"
+#include "profile/glkv3_parse.hpp"
 #include "support/native_resource.hpp"
 
 #include <cerrno>
@@ -62,9 +63,16 @@ namespace ghostlock::profile_entry {
         int32_t decode(const std::string &document, profile::kernel_offsets *out,
                    char *release_buf, size_t release_buf_cap,
                    binary_profile::component_ids *ids) {
-            return ghostlock::binary_profile::parse(
-                std::string_view(document.data(), document.size()), out,
-                release_buf, release_buf_cap, ids);
+            const std::string_view view(document.data(), document.size());
+            /* GLKv3 is map-rooted and has no magic; v2 starts with the
+             * little-endian magic byte 0x21. A map root that then fails to
+             * decode is rejected whole (fail-closed), never retried as v2. */
+            if (binary_profile::looks_like_glkv3(view)) {
+                return binary_profile::parse_v3(view, out, release_buf,
+                                                release_buf_cap, ids);
+            }
+            return binary_profile::parse(view, out, release_buf,
+                                         release_buf_cap, ids);
         }
     } // namespace
 

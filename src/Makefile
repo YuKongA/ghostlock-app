@@ -22,6 +22,17 @@ C_SRCS :=
 CXX_SRCS := \
   core/main.cpp \
   core/profile/entry.cpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+  core/backend/cve_2026_43284/session_frame.cpp \
+  core/backend/cve_2026_43284/pagecache/pagecache.cpp \
+  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
+  core/backend/cve_2026_43284/lkm/lkm_image.cpp \
+  core/backend/cve_2026_43284/steps/elf_hook.cpp \
+  core/backend/cve_2026_43284/steps/shellcode.cpp \
+  core/backend/cve_2026_43284/steps/chain.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
   core/race/pi_race.cpp \
@@ -36,6 +47,8 @@ CXX_SRCS := \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
   core/profile/binary.cpp \
+  core/profile/glkv3.cpp \
+  core/profile/glkv3_parse.cpp \
   core/support/util.cpp \
   core/platform/runtime.cpp \
   core/session/core_session.cpp \
@@ -57,9 +70,23 @@ CXX_SRCS := \
 # lives in src/ and is expected to run from there (`make -C src ...`).
 BUILD_ROOT ?= ../build
 NATIVE_BUILD_DIR := $(BUILD_ROOT)/native
+
+# Vendored MessagePack amalgamation (third_party/mpack, MIT). It is C99 and
+# third-party, so it is compiled by the C compiler with its own flag set and
+# -w keeps its warnings out of the project zero-warning policy. Only the
+# reader/expect/writer are kept: stdio, nodes, extensions and read/write
+# tracking are disabled.
+MPACK_DIR := ../third_party/mpack
+MPACK_SRC := $(MPACK_DIR)/mpack.c
+MPACK_HDR := $(MPACK_DIR)/mpack.h
+MPACK_DEFINES := -DMPACK_STDIO=0 -DMPACK_EXTENSIONS=0 -DMPACK_NODE=0 \
+  -DMPACK_READ_TRACKING=0 -DMPACK_WRITE_TRACKING=0
+MPACK_CFLAGS := -std=c99 -w $(MPACK_DEFINES)
+MPACK_OBJ := $(NATIVE_BUILD_DIR)/third_party/mpack/mpack.o
+
 C_OBJS := $(patsubst %.c,$(NATIVE_BUILD_DIR)/%.o,$(C_SRCS))
 CXX_OBJS := $(patsubst %.cpp,$(NATIVE_BUILD_DIR)/%.o,$(CXX_SRCS))
-OBJS := $(C_OBJS) $(CXX_OBJS)
+OBJS := $(C_OBJS) $(CXX_OBJS) $(MPACK_OBJ)
 
 # Native interface and target headers also trigger a rebuild.
 HDRS := $(wildcard core/*.h core/*.hpp core/*/*.h core/*/*.hpp core/*/*/*.h core/*/*/*.hpp)
@@ -69,14 +96,16 @@ TARGET_CONFIG ?= memory/target.h
 
 COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
   -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
-  -Icore -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
+  -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 CFLAGS := $(COMMON_FLAGS) -std=gnu11
 CXXFLAGS := $(COMMON_FLAGS) -std=c++23 -fno-rtti
 LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 
 HOST_CC ?= cc
 HOST_CXX ?= c++
-HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
+# Host tests keep the frozen v2 serializer for the golden/equivalence vectors.
+# The device build never defines this macro, so no v2 write path is compiled in.
+HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion -DGHOSTLOCK_ENABLE_V2_WRITER -isystem $(MPACK_DIR)
 # The size-stripping link flag is spelled differently per linker: Darwin's ld
 # uses -dead_strip, while GNU ld on a Linux host rejects it and needs
 # --gc-sections instead. Keep each spelling in its own variable so the commas
@@ -110,6 +139,10 @@ $(NATIVE_BUILD_DIR)/%.o: %.cpp $(HDRS)
 	@mkdir -p $(dir $@)
 	$(NDK_CXX) $(CXXFLAGS) -c $< -o $@
 
+$(MPACK_OBJ): $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(dir $@)
+	$(NDK_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
+
 .PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
@@ -132,8 +165,11 @@ NATIVE_HOST_TESTS := \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
   contract_capabilities_test terminal_input_test \
   document_schema_test owner_schema_test cve_2026_43284_schema_test \
-  profile_manifest_test \
-  host_attack_dataflow_test
+  profile_manifest_test profile_manifest_v3_test \
+  glkv3_codec_test glkv3_schema_test profile_v3_test profile_entry_test \
+  session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
+  cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
+  cve_2026_43284_chain_test host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -186,7 +222,7 @@ lint-tidy:
 	@status=0; for f in $(CXX_SRCS); do \
 	  $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/clang-tidy "$$f" \
 	    --warnings-as-errors='*' -- \
-	    -std=c++23 -fno-rtti -Icore \
+	    -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) \
 	    --target=aarch64-linux-android$(API) \
 	    --sysroot=$(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/sysroot \
 	    -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\" || status=1; \
@@ -297,8 +333,150 @@ $(HOST_BUILD_DIR)/profile_manifest_test: core/tests/profile_manifest_test.cpp co
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_test.cpp -o $@
 
-profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_test
+profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_test $(HOST_BUILD_DIR)/profile_manifest_v3_test
 	$(HOST_BUILD_DIR)/profile_manifest_test --write
+	$(HOST_BUILD_DIR)/profile_manifest_v3_test --write
+
+# GLKv3 codec: the host test compiles the codec against the vendored MPack
+# amalgamation. MPack is built as C with -w (third-party warning isolation).
+$(HOST_BUILD_DIR)/glkv3_codec_test: core/tests/glkv3_codec_test.cpp core/profile/glkv3.cpp core/profile/glkv3.hpp $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/glkv3_codec_test.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/mpack.o -o $@
+
+# GLKv3 owner path -> type lists (GLKv3-3): codec-linked so the test can also
+# round-trip a full document through the combined root + owner Schema.
+$(HOST_BUILD_DIR)/glkv3_schema_test: core/tests/glkv3_schema_test.cpp \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/backend/cve_2026_43499/glkv3_schema.hpp \
+  core/backend/cve_2026_43284/glkv3_schema.hpp \
+  core/backend/cve_2026_43499/schema.hpp \
+  core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp \
+  core/profile/model.h $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/glkv3_schema_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/glkv3_schema_test.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/glkv3_schema_mpack.o -o $@
+
+# Production profile entry dispatch (GLKv3-4): v3 + v2 auto-detection through
+# the real read_glk1_file path, linked with the entry unit itself.
+$(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
+  core/profile/entry.cpp core/profile/entry.h \
+  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+  core/profile/binary.cpp core/profile/binary.h \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/backend/cve_2026_43499/schema.hpp \
+  core/backend/cve_2026_43499/glkv3_schema.hpp \
+  core/backend/cve_2026_43284/schema.hpp \
+  core/backend/cve_2026_43284/glkv3_schema.hpp \
+  core/backend/cve_2026_43284_state.hpp \
+  core/support/native_resource.cpp core/support/native_resource.hpp \
+  core/profile/document.hpp core/profile/schema.hpp core/profile/model.h \
+  $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_entry_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/profile_entry_test.cpp \
+	  core/profile/entry.cpp core/profile/glkv3_parse.cpp core/profile/binary.cpp \
+	  core/profile/glkv3.cpp core/support/native_resource.cpp \
+	  $(HOST_BUILD_DIR)/profile_entry_mpack.o -o $@
+
+# B5-1 runtime session-secret frame (channel B): codec + zeroize, no other
+# production dependency.
+$(HOST_BUILD_DIR)/session_frame_test: core/tests/session_frame_test.cpp   core/backend/cve_2026_43284/session_frame.cpp   core/backend/cve_2026_43284/session_frame.hpp   core/backend/cve_2026_43284/ipsec/ipsec.cpp   core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/session_frame_test.cpp 	  core/backend/cve_2026_43284/session_frame.cpp 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp 	  core/backend/cve_2026_43284/ipsec/aes256.cpp 	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+
+# B5-2 IpSec/ESP primitives: AES-256 (FIPS-197), HMAC-SHA256 (RFC 4231) and
+# the ESP/CBC IV model. Links the same units as the device build.
+$(HOST_BUILD_DIR)/cve_2026_43284_ipsec_test: core/tests/cve_2026_43284_ipsec_test.cpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_ipsec_test.cpp \
+	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+
+# B5-3 page-cache block write: the executable pagecache.cpp linked against
+# the real ipsec units. splice_io.cpp is device-only; the host test binds a fake
+# SpliceIoOps with no syscall dependency.
+$(HOST_BUILD_DIR)/cve_2026_43284_pagecache_test: core/tests/cve_2026_43284_pagecache_test.cpp \
+  core/backend/cve_2026_43284/pagecache/pagecache.cpp core/backend/cve_2026_43284/pagecache/pagecache.hpp \
+  core/backend/cve_2026_43284/pagecache/splice_io.hpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_pagecache_test.cpp \
+	  core/backend/cve_2026_43284/pagecache/pagecache.cpp \
+	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+
+# B5-4 LKM KMI policy, .ko .modinfo precheck and UMH late-load argv: host-only,
+# no device and no module load. The .ko fixtures are synthesized in the test.
+$(HOST_BUILD_DIR)/cve_2026_43284_lkm_test: core/tests/cve_2026_43284_lkm_test.cpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
+  core/terminal/root_program.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_lkm_test.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_image.cpp -o $@
+
+# B5-5 read-only ELF parsing, hook-target/trampoline planning and parameterized
+# shellcode: pure byte-span units, no device or target .so. The ELF fixture is
+# synthesized in the test.
+$(HOST_BUILD_DIR)/cve_2026_43284_elf_hook_test: core/tests/cve_2026_43284_elf_hook_test.cpp \
+  core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
+  core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_elf_hook_test.cpp \
+	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
+	  core/backend/cve_2026_43284/steps/shellcode.cpp -o $@
+
+# B5-6 endgame chain: carrier fallback, per-block verify/rollback and the single
+# terminus. The test binds a fake FileCacheWriteOps plus fake read/trigger/wait;
+# no device, syscall or fork. It links the executable chain.cpp unit.
+$(HOST_BUILD_DIR)/cve_2026_43284_chain_test: core/tests/cve_2026_43284_chain_test.cpp \
+  core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
+  core/contract/capabilities.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_chain_test.cpp \
+	  core/backend/cve_2026_43284/steps/chain.cpp -o $@
+
+# GLKv3 decode bridge (GLKv3-4): the real codec + owner schemas + the shared
+# v2/v3 binder, so the v3 wire is exercised end to end and against a v2
+# document with the same logical content.
+$(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
+  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+  core/profile/binary.cpp core/profile/binary.h \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/backend/cve_2026_43499/schema.hpp \
+  core/backend/cve_2026_43499/glkv3_schema.hpp \
+  core/backend/cve_2026_43284/schema.hpp \
+  core/backend/cve_2026_43284/glkv3_schema.hpp \
+  core/backend/cve_2026_43284_state.hpp \
+  core/profile/document.hpp core/profile/schema.hpp core/profile/model.h \
+  $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_v3_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_v3_test.cpp \
+	  core/profile/glkv3_parse.cpp core/profile/binary.cpp core/profile/glkv3.cpp \
+	  $(HOST_BUILD_DIR)/profile_v3_mpack.o -o $@
+
+# GLKv3 path -> type manifest (GLKv3-3): native exports its FieldSpec lists and
+# Kotlin (ProfileManifestV3AgreementTest) asserts its adapter table equals it.
+$(HOST_BUILD_DIR)/profile_manifest_v3_test: core/tests/profile_manifest_v3_test.cpp \
+  core/backend/cve_2026_43499/glkv3_schema.hpp \
+  core/backend/cve_2026_43284/glkv3_schema.hpp core/profile/glkv3.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_v3_test.cpp -o $@
+
+profile-manifest-v3: $(HOST_BUILD_DIR)/profile_manifest_v3_test
+	$(HOST_BUILD_DIR)/profile_manifest_v3_test --write
 
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)

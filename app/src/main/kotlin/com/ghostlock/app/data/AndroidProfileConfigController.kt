@@ -2,10 +2,13 @@ package com.ghostlock.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.profile.CpuPairView
+import com.ghostlock.app.data.profile.Glkv3Encoder
+import com.ghostlock.app.data.profile.NativeProfileGlkv3Adapter
 import com.ghostlock.app.data.profile.ProfileMerger
 import com.ghostlock.app.data.profile.ProfileResolver
 import com.ghostlock.app.data.route.RouteKind
@@ -524,7 +527,26 @@ internal class AndroidProfileConfigController(
         return load(deviceRelease, pair)
     }
 
+    /**
+     * Production wire: the resolved v2 logical document is translated to the
+     * typed GLKv3 document and written as canonical MessagePack, the format the
+     * native reader consumes (GLKv3-4).
+     */
     override fun nativeDocument(config: ProfileConfig): ByteArray? = synchronized(lock) {
+        if (cachedRelease != config.release) return@synchronized null
+        cachedProfile?.let { profile ->
+            Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(profile.document))
+        }
+    }
+
+    /**
+     * v2 wire: golden/equivalence tests only. Production and export write v3
+     * through [nativeDocument]; native still *reads* v2 for prebuilt/imported
+     * documents, but nothing on device writes v2 (GLKv3-5). Retained for the
+     * frozen `native-doc-golden.sha256` and the v2-specific tests.
+     */
+    @VisibleForTesting
+    internal fun nativeDocumentV2(config: ProfileConfig): ByteArray? = synchronized(lock) {
         if (cachedRelease == config.release) cachedProfile?.toBinary() else null
     }
 
