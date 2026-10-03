@@ -1,0 +1,832 @@
+package com.ghostlock.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ghostlock.app.R
+import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionFieldValue
+import com.ghostlock.app.domain.model.ProfileFieldNode
+import com.ghostlock.app.domain.model.ShizukuStatus
+import com.ghostlock.app.domain.model.UserProfileFile
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Copy
+import top.yukonga.miuix.kmp.nav.core.NavBackStack
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.navBackStackOf
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+
+data class GhostlockUiState(
+    val deviceName: String = "",
+    val kernelRelease: String = "",
+    val socName: String = "",
+    val kernelSupported: Boolean = false,
+    val shizukuEnabled: Boolean = false,
+    val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
+    val running: Boolean = false,
+    val cpuPairLabels: List<String> = emptyList(),
+    val cpuPairIndex: Int = 0,
+    /** CPU pair from the resolved profile when it differs from the device pick. */
+    val customCpuPair: CpuPair? = null,
+    val safeModeEnabled: Boolean = false,
+    val forceAttackTestEnabled: Boolean = false,
+    val tcpRouteEnabled: Boolean = true,
+    val compact: Boolean = false,
+    val executionSheetVisible: Boolean = false,
+    val executionSheetDismissible: Boolean = false,
+    val dialogVisible: Boolean = false,
+    val dialogType: DialogType = DialogType.NONE,
+    val dialogTitleRes: Int = 0,
+    val dialogMessage: String = "",
+    val dialogMessageRes: Int = 0,
+    val dialogItems: List<String> = emptyList(),
+    val dialogItemResIds: List<Int> = emptyList(),
+    val dialogCurrentItemIndex: Int = -1,
+    val dialogInput: String = "",
+    val dialogConfirmLabelRes: Int = R.string.parse_start,
+    /** Documentation URL shown as an extra button on a NOTICE dialog. */
+    val dialogDocUrl: String? = null,
+    val overwriteDialogVisible: Boolean = false,
+    val overwriteMessage: String = "",
+    val logLines: List<GhostlockLogLine> = emptyList(),
+    val executionRelease: String = "",
+    val executionHasProfile: Boolean = false,
+    val executionFields: List<ExecutionFieldValue> = emptyList(),
+    val executionEditing: Map<String, String> = emptyMap(),
+    val advancedScreenVisible: Boolean = false,
+    val debugExportEnabled: Boolean = true,
+    val debugExportLocation: String = "",
+    val debugKernelLogEnabled: Boolean = true,
+    val aboutVisible: Boolean = false,
+    val parametersVisible: Boolean = false,
+    val profileOverrideVisible: Boolean = false,
+    val advancedOverrideVisible: Boolean = false,
+    /** Stored document edited by the open session; null for the builtin. */
+    val editTargetName: String? = null,
+    val profileOverrideRelease: String = "",
+    val profileOverrideRoots: List<ProfileFieldNode> = emptyList(),
+    val profileOverrideEditing: Map<String, String> = emptyMap(),
+    /** Controller-reported geometry violations, dotted paths. */
+    val profileInvalidPaths: Set<String> = emptySet(),
+    /** Explicit route from the profile; null means geometry inference. */
+    val profileRoute: String? = null,
+    /** Declared fallback route; null/"none" means disabled. */
+    val profileFallback: String? = null,
+    /** Manually selected builtin source; null means automatic matching. */
+    val activeBuiltinProfile: String? = null,
+    val builtinScreenVisible: Boolean = false,
+    /** Unfilled reference templates, listed separately on the builtin picker. */
+    val builtinTemplates: List<String> = emptyList(),
+    /** Builtin releases sorted by similarity to the device kernel. */
+    val builtinProfiles: List<String> = emptyList(),
+    val loadConfigVisible: Boolean = false,
+    /** Verbatim documents in the user profile folder, newest first. */
+    val userProfiles: List<UserProfileFile> = emptyList(),
+    /** Loaded user document feeding the imported layer; null means none. */
+    val activeUserProfile: String? = null,
+    /** File name of the open user-profile detail screen, null when closed. */
+    val userProfileDetail: String? = null,
+    val userProfileRenameTarget: String? = null,
+    val userProfileDeleteTarget: String? = null,
+)
+
+enum class DialogType { NONE, LIST, INPUT, CONFIRM, NOTICE }
+
+data class GhostlockLogLine(val text: String, val color: Int)
+
+interface GhostlockActions {
+    fun onRun()
+    fun onProfileInvalid()
+    fun onStatusClick()
+    fun onCloseExecutionSheet()
+    fun onCopyLogs()
+    fun onImportOffsetsHocon()
+    fun onImportOffsetsJson()
+    fun onDocumentsResult(request: DocumentRequest, uris: List<String>)
+    fun onParseOta()
+    fun onParseImage()
+    fun onCpuPairSelected(index: Int)
+    fun onSafeModeChanged(enabled: Boolean)
+    fun onForceAttackTestChanged(enabled: Boolean)
+    fun onShizukuChanged(enabled: Boolean)
+    fun onDialogItemSelected(index: Int)
+    fun onDialogInputChange(value: String)
+    fun onDialogConfirm(value: String)
+    fun onDialogDismiss()
+    fun onDialogDismissFinished()
+    fun onOverwriteConfirm()
+    fun onOverwriteDismiss()
+    fun onExecutionFieldChanged(path: String, value: String)
+    fun onRouteChanged(index: Int)
+    fun onFallbackChanged(index: Int)
+    fun onExportProfile()
+    fun onSaveProfileEdits()
+    fun onSaveProfileAs()
+    fun onExportProfileEdits()
+    fun onRevertProfileEdits()
+    fun onOpenAdvanced()
+    fun onCloseAdvanced()
+    fun onShowAbout()
+    fun onCloseAbout()
+    fun onDebugExportChanged(enabled: Boolean)
+    fun onDebugExportLocationPick()
+    fun onDebugKernelLogChanged(enabled: Boolean)
+    fun onOpenParameters()
+    fun onCloseParameters()
+    fun onOpenLoadConfig()
+    fun onCloseLoadConfig()
+    fun onOpenUserProfileDetail(name: String)
+    fun onCloseUserProfileDetail()
+    fun onLoadUserProfile(name: String)
+    fun onUnloadUserProfile()
+    fun onEditUserProfile(name: String)
+    fun onUserProfileRename(name: String)
+    fun onUserProfileExport(name: String)
+    fun onConvertUserProfile(name: String)
+    fun onUserProfileDelete(name: String)
+    fun onUserProfileDeleteConfirm()
+    fun onUserProfileDeleteDismiss()
+    fun onOpenBuiltinProfiles()
+    fun onCloseBuiltinProfiles()
+    fun onSelectBuiltinProfile(release: String?)
+    fun onOpenProfileOverrides()
+    fun onCloseProfileOverrides()
+    fun onOpenAdvancedOverrides()
+    fun onCloseAdvancedOverrides()
+    fun onProfileOverrideChanged(path: String, value: String)
+}
+
+internal sealed interface GhostlockScreen : NavKey {
+    data object Main : GhostlockScreen
+    data object Advanced : GhostlockScreen
+    data object About : GhostlockScreen
+    data object Parameters : GhostlockScreen
+    data object LoadConfig : GhostlockScreen
+    data object Builtin : GhostlockScreen
+    data class UserProfileDetail(val name: String) : GhostlockScreen
+    data object ProfileOverride : GhostlockScreen
+    data object AdvancedOverride : GhostlockScreen
+}
+
+internal fun navigationPath(state: GhostlockUiState): List<GhostlockScreen> {
+    return listOf(GhostlockScreen.Main)
+}
+
+internal fun syncNavigationPath(backStack: NavBackStack, desired: List<GhostlockScreen>) {
+    backStack.clear()
+    backStack.addAll(desired)
+}
+
+private fun closeScreen(screen: GhostlockScreen, actions: GhostlockActions) {
+    when (screen) {
+        GhostlockScreen.Main -> Unit
+        GhostlockScreen.Advanced -> actions.onCloseAdvanced()
+        GhostlockScreen.About -> actions.onCloseAbout()
+        GhostlockScreen.Parameters -> actions.onCloseParameters()
+        GhostlockScreen.LoadConfig -> actions.onCloseLoadConfig()
+        GhostlockScreen.Builtin -> actions.onCloseBuiltinProfiles()
+        is GhostlockScreen.UserProfileDetail -> actions.onCloseUserProfileDetail()
+        GhostlockScreen.ProfileOverride -> actions.onCloseProfileOverrides()
+        GhostlockScreen.AdvancedOverride -> actions.onCloseAdvancedOverrides()
+    }
+}
+
+@Composable
+internal fun GhostlockApp(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    MiuixTheme(
+        colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+    ) {
+        val desiredPath = navigationPath(state)
+        val backStack = remember {
+            navBackStackOf(GhostlockScreen.Main).apply { addAll(desiredPath.drop(1)) }
+        }
+        LaunchedEffect(desiredPath) { syncNavigationPath(backStack, desiredPath) }
+        Scaffold(modifier = Modifier.fillMaxSize()) { _ ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                NavDisplay(
+                    backStack = backStack,
+                    modifier = Modifier.fillMaxSize(),
+                    effects = NavDisplayEffects(cornerClipRadius = rememberNavSystemCornerRadius()),
+                    onBack = {
+                        if (state.executionSheetVisible) {
+                            if (state.executionSheetDismissible) actions.onCloseExecutionSheet()
+                        } else if (state.overwriteDialogVisible) {
+                            actions.onOverwriteDismiss()
+                        } else if (state.dialogVisible) {
+                            actions.onDialogDismiss()
+                        } else if (state.userProfileDeleteTarget != null) {
+                            actions.onUserProfileDeleteDismiss()
+                        }
+                    },
+                ) {
+                    entry<GhostlockScreen.Main>(swipeDismiss = NavSwipeDirection.None) {
+                        MainScreen(state = state, actions = actions)
+                    }
+                }
+                GhostlockDialog(state = state, actions = actions)
+                GhostlockOverwriteDialog(state = state, actions = actions)
+                GhostlockExecutionSheet(state = state, actions = actions)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainScreen(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = "GhostLock",
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { paddingValues ->
+        MainContent(
+            state = state,
+            actions = actions,
+            scrollBehavior = scrollBehavior,
+            scaffoldPadding = paddingValues,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+internal fun pageContentPadding(
+    scaffoldPadding: PaddingValues,
+    top: Dp = 8.dp,
+    bottom: Dp = 12.dp,
+    horizontalMin: Dp = 12.dp,
+): PaddingValues {
+    val windowWidth = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.width.toDp()
+    }
+    val horizontal = ((windowWidth - 800.dp) / 2).coerceAtLeast(horizontalMin)
+    return PaddingValues(
+        start = horizontal,
+        end = horizontal,
+        top = scaffoldPadding.calculateTopPadding() + top,
+        bottom = scaffoldPadding.calculateBottomPadding() + bottom,
+    )
+}
+
+@Composable
+private fun GhostlockExecutionSheet(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    OverlayBottomSheet(
+        show = state.executionSheetVisible,
+        title = stringResource(R.string.log_title),
+        allowDismiss = state.executionSheetDismissible,
+        onDismissRequest = actions::onCloseExecutionSheet,
+        startAction = {
+            IconButton(onClick = actions::onCopyLogs) {
+                Icon(
+                    imageVector = MiuixIcons.Copy,
+                    contentDescription = stringResource(R.string.action_copy),
+                    tint = MiuixTheme.colorScheme.onBackground,
+                )
+            }
+        },
+        endAction = {
+            IconButton(
+                enabled = state.executionSheetDismissible,
+                onClick = actions::onCloseExecutionSheet,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Close,
+                    contentDescription = stringResource(R.string.action_close),
+                )
+            }
+        },
+        content = {
+            LogPanel(
+                lines = state.logLines,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 240.dp, max = 520.dp)
+                    .navigationBarsPadding(),
+            )
+        },
+    )
+}
+
+@Composable
+private fun GhostlockDialog(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    OverlayDialog(
+        show = state.dialogVisible,
+        title = if (state.dialogType == DialogType.NONE) null else stringResource(state.dialogTitleRes),
+        onDismissRequest = actions::onDialogDismiss,
+        onDismissFinished = actions::onDialogDismissFinished,
+        content = {
+            when (state.dialogType) {
+                DialogType.LIST -> {
+                    val items = state.dialogItems.ifEmpty { state.dialogItemResIds.map { stringResource(it) } }
+                    items.forEachIndexed { index, item ->
+                        TextButton(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            text = if (index == state.dialogCurrentItemIndex) {
+                                stringResource(R.string.export_current_marker, item)
+                            } else {
+                                item
+                            },
+                            onClick = { actions.onDialogItemSelected(index) },
+                        )
+                    }
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        text = stringResource(R.string.cancel),
+                        onClick = actions::onDialogDismiss,
+                    )
+                }
+
+                DialogType.INPUT -> {
+                    TextField(
+                        value = state.dialogInput,
+                        onValueChange = actions::onDialogInputChange,
+                        label = stringResource(state.dialogMessageRes),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                    ) {
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.cancel),
+                            onClick = actions::onDialogDismiss,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(state.dialogConfirmLabelRes),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = { actions.onDialogConfirm(state.dialogInput) },
+                        )
+                    }
+                }
+
+                DialogType.CONFIRM -> {
+                    Text(
+                        text = stringResource(state.dialogMessageRes),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                    ) {
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.cancel),
+                            onClick = actions::onDialogDismiss,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.w3_shizuku_hint_enable),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = { actions.onDialogConfirm("") },
+                        )
+                    }
+                }
+
+                DialogType.NOTICE -> {
+                    Text(
+                        text = stringResource(state.dialogMessageRes),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                    ) {
+                        state.dialogDocUrl?.let { docUrl ->
+                            val uriHandler = LocalUriHandler.current
+                            TextButton(
+                                modifier = Modifier.weight(1f),
+                                text = stringResource(R.string.dialog_open_guide),
+                                onClick = { uriHandler.openUri(docUrl) },
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+                        TextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.dialog_dismiss),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = actions::onDialogDismiss,
+                        )
+                    }
+                }
+
+                DialogType.NONE -> Unit
+            }
+        },
+    )
+}
+
+@Composable
+private fun GhostlockOverwriteDialog(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    OverlayDialog(
+        show = state.overwriteDialogVisible,
+        title = stringResource(R.string.overwrite_title),
+        summary = stringResource(R.string.overwrite_message, state.overwriteMessage),
+        onDismissRequest = actions::onOverwriteDismiss,
+        content = {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.cancel),
+                    onClick = actions::onOverwriteDismiss,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.overwrite_yes),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = actions::onOverwriteConfirm,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun MainContent(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+    scrollBehavior: ScrollBehavior,
+    scaffoldPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier
+            .scrollEndHaptic()
+            .overScrollVertical()
+            .fillMaxHeight()
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .imePadding(),
+        contentPadding = pageContentPadding(scaffoldPadding),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "status") {
+            MinimalStatusCard(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item(key = "run") {
+            RunButton(
+                running = state.running,
+                supported = state.kernelSupported && state.executionHasProfile,
+                profileValid = state.profileInvalidPaths.isEmpty(),
+                labelRes = R.string.action_run,
+                onClick = actions::onRun,
+                onBlockedClick = actions::onProfileInvalid,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MinimalStatusCard(
+    state: GhostlockUiState,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.defaultColors(color = if (state.kernelSupported) MiuixTheme.colorScheme.secondaryContainer else MiuixTheme.colorScheme.errorContainer),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = state.deviceName.ifEmpty { "Device" },
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = state.kernelRelease.ifEmpty { "Kernel: waiting for detection" },
+                fontSize = 14.sp,
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+            )
+            Text(
+                text = if (state.kernelSupported) {
+                    if (state.executionHasProfile) "Profile ready. Tap Run to execute." else "Profile not loaded yet."
+                } else {
+                    "Kernel not supported by current profile."
+                },
+                fontSize = 13.sp,
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ControlPanel(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        MinimalStatusCard(
+            state = state,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun ActivationStatusCard(
+    supported: Boolean,
+    profileAvailable: Boolean,
+    profileValid: Boolean,
+    shizukuEnabled: Boolean,
+    shizukuStatus: ShizukuStatus,
+    onParametersClick: () -> Unit,
+    onShizukuClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val title = if (supported) R.string.kernel_supported else R.string.kernel_unsupported
+    val summary = if (supported) R.string.kernel_profile_ready else R.string.kernel_unsupported_summary
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.defaultColors(color = if (supported) MiuixTheme.colorScheme.secondaryContainer else MiuixTheme.colorScheme.errorContainer),
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(text = stringResource(title), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(text = stringResource(summary), fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun DeviceInfoCard(
+    deviceName: String,
+    socName: String,
+    kernelRelease: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        insideMargin = PaddingValues(16.dp),
+    ) {
+        SelectionContainer {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                DeviceInfoItem(
+                    title = stringResource(R.string.device_label),
+                    value = deviceName,
+                )
+                DeviceInfoItem(
+                    title = stringResource(R.string.kernel_label),
+                    value = kernelRelease,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceInfoItem(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.padding(top = 2.dp),
+            fontSize = 14.sp,
+            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+        )
+    }
+}
+
+/* profile-ui: resolved execution view with auto-saved sparse overrides. */
+@Composable
+internal fun ExecutionEditor(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        for (field in state.executionFields) {
+            val text = state.executionEditing[field.path] ?: field.value.toString()
+            val invalid = isFieldInputInvalid(text) || field.path in state.profileInvalidPaths
+            TextField(
+                value = text,
+                onValueChange = { value -> actions.onExecutionFieldChanged(field.path, value) },
+                label = fieldLabel(field.path, field.path.substringAfterLast('.')),
+                colors = when {
+                    invalid ->
+                        TextFieldDefaults.textFieldColors(labelColor = FieldErrorHighlight)
+
+                    field.overridden ->
+                        TextFieldDefaults.textFieldColors(labelColor = OverrideHighlight)
+
+                    else -> TextFieldDefaults.textFieldColors()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        }
+    }
+}
+
+internal val OverrideHighlight = Color(0xFFF5A623)
+
+/** Red marks an unfilled or non-numeric field in the parameter editors. */
+internal val FieldErrorHighlight = Color(0xFFE53935)
+
+internal fun isFieldInputInvalid(text: String): Boolean = text.trim().toLongOrNull() == null
+
+@Composable
+private fun RunButton(
+    running: Boolean,
+    supported: Boolean,
+    profileValid: Boolean,
+    labelRes: Int,
+    onClick: () -> Unit,
+    onBlockedClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        TextButton(
+            text = stringResource(if (running) R.string.action_running else labelRes),
+            enabled = supported && profileValid && !running,
+            colors = ButtonDefaults.textButtonColorsPrimary(),
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (!running && (!supported || !profileValid)) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { onBlockedClick() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LogPanel(
+    lines: List<GhostlockLogLine>,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(lines.size) {
+        if (lines.isNotEmpty()) listState.scrollToItem(lines.lastIndex)
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF0B1220))
+            .padding(12.dp),
+    ) {
+        SelectionContainer {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 8.dp),
+            ) {
+                items(lines) { line ->
+                    Text(
+                        text = line.text.trimEnd('\r', '\n'),
+                        color = lineColor(line.color),
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun lineColor(color: Int): Color = when (color) {
+    1 -> Color(0xFF7CE7C7)
+    2 -> Color(0xFFFFB74D)
+    3 -> Color(0xFFFF6F6F)
+    else -> Color(0xFFE6EEF8)
+}
+
+internal fun fieldLabel(path: String, fallback: String): String = fallback
+
+path
