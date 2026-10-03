@@ -1,0 +1,147 @@
+package com.ghostlock.app.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ghostlock.app.R
+import com.ghostlock.app.domain.repository.GhostlockRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+sealed interface GhostlockEffect {
+    data class Toast(val resourceId: Int) : GhostlockEffect
+    data class Clipboard(val text: String) : GhostlockEffect
+    data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
+}
+
+data class GhostlockUiState(
+    val deviceName: String = "",
+    val kernelRelease: String = "",
+    val socName: String = "",
+    val kernelSupported: Boolean = false,
+    val running: Boolean = false,
+    val autoProfileReady: Boolean = false,
+    val logLines: List<GhostlockLogLine> = emptyList(),
+    val executionSheetVisible: Boolean = false,
+    val executionSheetDismissible: Boolean = false,
+)
+
+data class GhostlockLogLine(val text: String, val color: Int)
+
+class GhostlockViewModel(
+    private val repository: GhostlockRepository,
+) : ViewModel() {
+    private val effectChannel = Channel<GhostlockEffect>(Channel.BUFFERED)
+    private val mutableState = MutableStateFlow(GhostlockUiState())
+    val state = mutableState.asStateFlow()
+    val effects = effectChannel.receiveAsFlow()
+
+    private var initialized = false
+
+    fun initialize() {
+        if (initialized) return
+        initialized = true
+        viewModelScope.launch { refreshSnapshot() }
+    }
+
+    fun refreshAccessStatus() {
+        if (initialized) viewModelScope.launch { refreshSnapshot() }
+    }
+
+    private suspend fun refreshSnapshot() {
+        val snapshot = runCatching { repository.snapshot() }.getOrNull() ?: return
+        mutableState.update {
+            it.copy(
+                deviceName = snapshot.deviceName,
+                kernelRelease = snapshot.kernelRelease,
+                socName = snapshot.socName,
+                kernelSupported = snapshot.kernelSupported,
+                autoProfileReady = snapshot.kernelSupported,
+            )
+        }
+    }
+
+    fun onRun() {
+        viewModelScope.launch {
+            val snapshot = runCatching { repository.snapshot() }.getOrNull()
+            if (snapshot == null || !snapshot.kernelSupported) {
+                send(GhostlockEffect.Toast(R.string.kernel_unsupported_summary))
+                return@launch
+            }
+
+            val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair)
+            if (pair == null) {
+                send(GhostlockEffect.Toast(R.string.kernel_unsupported_summary))
+                return@launch
+            }
+
+            mutableState.update {
+                it.copy(
+                    running = true,
+                    executionSheetVisible = true,
+                    executionSheetDismissible = false,
+                    logLines = emptyList(),
+                )
+            }
+            send(GhostlockEffect.KeepScreenAwake(true))
+            appendLog("==== Exploit Execution Started ====")
+            appendLog("CPU Pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
+            appendLog("Device: ${snapshot.deviceName}")
+            appendLog("Kernel: ${snapshot.kernelRelease}")
+            appendLog("")
+
+            withContext(Dispatchers.IO) {
+                try {
+                    appendLog("Running exploit...")
+                    val code = repository.runExploit(pair) { log ->
+                        appendLog(log)
+                    }
+                    appendLog("")
+                    appendLog(if (code == 0) "Result: Exploit completed successfully" else "Result: Exploit failed (exit code=$code)")
+                    appendLog("Exit Code: $code")
+                } catch (e: Exception) {
+                    appendLog("Error: ${e.message ?: "Unknown error"}")
+                    appendLog(e.stackTraceToString())
+                } finally {
+                    mutableState.update { it.copy(running = false, executionSheetDismissible = true) }
+                    send(GhostlockEffect.KeepScreenAwake(false))
+                }
+            }
+        }
+    }
+
+    fun onCloseExecutionSheet() {
+        mutableState.update { it.copy(executionSheetVisible = false) }
+    }
+
+    fun copyLogs() {
+        val text = state.value.logLines.joinToString(separator = "\n") { it.text }
+        send(GhostlockEffect.Clipboard(text))
+        send(GhostlockEffect.Toast(R.string.copied))
+    }
+
+    private fun appendLog(line: String) {
+        val color = when {
+            line.startsWith("Result:") -> 2
+            line.startsWith("Error:") -> 3
+            line.startsWith("==== Exploit") -> 1
+            line.startsWith("Exit Code:") -> 2
+            else -> 1
+        }
+        mutableState.update { it.copy(logLines = it.logLines + GhostlockLogLine(line, color)) }
+    }
+
+    private fun send(effect: GhostlockEffect) {
+        viewModelScope.launch { effectChannel.send(effect) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        repository.close()
+    }
+}

@@ -7,9 +7,7 @@
 - `kernel_phys_load` —— `_text` 的物理加载地址。
 - `kernel_phys_offset` —— DRAM 基址（linear-map `PHYS_OFFSET`）。
 
-提取器无法从镜像取得这两个值（见
-[MEDIATEK_ZH.md](../../docs/kernel_profiles/MEDIATEK_ZH.md)）；本脚本改从
-`/proc/iomem` 与 `/proc/kallsyms` 读取。
+提取器无法从镜像取得这两个值（见 [MEDIATEK_ZH.md](../../docs/kernel_profiles/MEDIATEK_ZH.md)）；本脚本改从 `/proc/iomem` 与 `/proc/kallsyms` 读取。
 
 ## 文件
 
@@ -42,8 +40,7 @@ tools\mtk-phys\extract_phys.bat     # Windows
 ## 前置要求
 
 - root shell：userdebug/eng 构建下的 `adb root`，或等效的 root。无需任何管理器应用。
-- **内核未被 KernelSU 修补**（无论以模块加载还是编入/修补进内核）。被 KernelSU
-  修补过的内核会干扰攻击，脚本检测到即拒绝运行。
+- **内核未被第三方模块修补**（无论以模块加载还是编入/修补进内核）。被模块修补过的内核会干扰攻击，脚本检测到即拒绝运行。
 
 ## 计算方式
 
