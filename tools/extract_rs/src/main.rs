@@ -74,6 +74,17 @@ struct Cli {
     /// the system temp dir (pass an app-writable dir when running on Android)
     #[arg(long)]
     work_dir: Option<PathBuf>,
+    /// also pull one partition out of a payload.bin / OTA zip into --dump-out.
+    /// No offset is derived from it: the vivo/iQOO vr.ko probe needs
+    /// vendor_boot.img, which carries the module rather than the kernel.
+    #[arg(long, value_name = "NAME")]
+    dump_partition: Option<String>,
+    /// destination path for --dump-partition (written only on success)
+    #[arg(long, value_name = "PATH", requires = "dump_partition")]
+    dump_out: Option<PathBuf>,
+    /// stop after --dump-partition instead of extracting offsets
+    #[arg(long, requires = "dump_partition")]
+    dump_only: bool,
 }
 
 fn parse_int(text: &str) -> Result<u64> {
@@ -185,11 +196,61 @@ fn resolve_kallsyms(
         .map_err(|err| ExtractError::kallsyms(err.to_string()))
 }
 
+/// `--dump-partition`: copy one partition out of a payload for the runtime.
+///
+/// Kept separate from the offset extraction on purpose: the caller may want the
+/// image without re-deriving offsets, and a dump failure must not be reported as
+/// an offsets failure. The partition is extracted into a private staging
+/// directory and only copied to its destination once it is complete, so a
+/// half-written file can never be mistaken for a usable image.
+fn dump_partition_request(cli: &Cli, work_root: &Path) -> Result<()> {
+    let Some(partition) = cli.dump_partition.as_deref() else {
+        return Ok(());
+    };
+    let Some(out) = cli.dump_out.as_deref() else {
+        return Err(ExtractError::new("--dump-partition requires --dump-out"));
+    };
+    let input = cli.image.to_string_lossy().into_owned();
+    if !payload::looks_like_payload(&input) {
+        return Err(ExtractError::new(format!(
+            "--dump-partition needs a payload.bin or OTA zip input; '{input}' is a kernel image"
+        )));
+    }
+
+    let staging = work_root.join(format!("ghostlock-dump-{}", std::process::id()));
+    let partitions = vec![partition.to_string()];
+    let view = payload::open_payload_for(&input, &staging, &partitions, download_progress())
+        .map_err(|err| ExtractError::new(format!("{err:#}")))?;
+    let produced = payload::extract_partitions(&view, &staging, &partitions)
+        .map_err(|err| ExtractError::new(format!("{err:#}")))?;
+    let extracted = produced
+        .first()
+        .ok_or_else(|| ExtractError::new("payload produced no file for the requested partition"))?;
+
+    if let Some(parent) = out.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| ExtractError::new(format!("mkdir {}: {err}", parent.display())))?;
+        }
+    }
+    std::fs::copy(extracted, out)
+        .map_err(|err| ExtractError::new(format!("copy to {}: {err}", out.display())))?;
+    let written = std::fs::metadata(out).map(|meta| meta.len()).unwrap_or(0);
+    let _ = std::fs::remove_dir_all(&staging);
+    eprintln!("info: dumped {partition} -> {} ({written} bytes)", out.display());
+    Ok(())
+}
+
 fn run(cli: &Cli) -> Result<i32> {
     let mut boot_path = cli.image.clone();
     let mut xbl_path = cli.xbl_config.clone();
     let mut uefi_path = cli.uefi.clone();
     let work_root = cli.work_dir.clone().unwrap_or_else(std::env::temp_dir);
+
+    dump_partition_request(cli, &work_root)?;
+    if cli.dump_only {
+        return Ok(0);
+    }
 
     if payload::looks_like_payload(cli.image.to_string_lossy().as_ref()) {
         let work_dir = work_root.join(format!("ghostlock-payload-{}", std::process::id()));
@@ -683,6 +744,18 @@ fn run(cli: &Cli) -> Result<i32> {
         let extra_offsets = report::ConfExtraOffsets {
             empty_zero_page: kallsyms::unique(&symbols, "empty_zero_page")
                 .and_then(|value| value.checked_sub(base)),
+            /* vr.ko global kill-switch: the profile stores the final image
+             * offset of `&__tracepoint_sys_exit->funcs`. The symbol offset comes
+             * from kallsyms, the member offset from the embedded BTF, and BOTH
+             * must resolve — a value derived from only one of them would point
+             * at the tracepoint base or at an unrelated field, and the runtime
+             * zeroes eight bytes there. When either part is missing the key is
+             * emitted as null and the runtime falls back to parsing the boot
+             * image on the device. */
+            sys_exit_tp_funcs: kallsyms::unique(&symbols, "__tracepoint_sys_exit")
+                .and_then(|value| value.checked_sub(base))
+                .zip(struct_offsets.get("tracepoint_funcs").copied().flatten())
+                .map(|(symbol_off, funcs_off)| symbol_off + u64::from(funcs_off)),
         };
         report::render_conf(&report::ConfInputs {
             release: release_text,

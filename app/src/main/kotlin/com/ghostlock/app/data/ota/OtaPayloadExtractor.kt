@@ -17,14 +17,43 @@ import kotlin.math.min
 object OtaPayloadExtractor {
 
     data class ExtractedPartitions(
-        val bootFile: File, val xblConfigFile: File? = null
+        val bootFile: File,
+        val xblConfigFile: File? = null,
+        /**
+         * `vendor_boot` when the payload carries it. No offset is derived from
+         * it: the vivo/iQOO runtime probe reads the vr.ko module out of its
+         * ramdisk, so this is the image the app stages for that probe.
+         */
+        val vendorBootFile: File? = null,
+        /**
+         * `uefi` when it was the chosen physical-load source (no `xbl_config`
+         * in the package). The runtime keeps this one to cross-check the
+         * profile's physical base, so the caller stages it instead of deleting.
+         */
+        val uefiFile: File? = null,
     )
 
     private const val END_BYTES_SIZE = 65536
     private const val LOCAL_HEADER_PROBE_SIZE = 256
 
+    /**
+     * Partitions the caller would accept, intersected with what the package has.
+     *
+     * The physical-load sources are alternatives rather than complements: the
+     * xbl_config FDT map is preferred and the uefi table is only pulled when the
+     * package carries no xbl_config, so a parse never downloads both.
+     */
+    private val PhysSourceCandidates = listOf("xbl_config", "uefi")
+
+    /** Everything a full-package parse may want, subject to the rules above. */
+    val DefaultCandidates: Set<String> = setOf("boot", "vendor_boot", "xbl_config", "uefi")
+
     suspend fun extractPartitions(
-        url: String, workDir: File, onLog: (String) -> Unit
+        url: String,
+        workDir: File,
+        onLog: (String) -> Unit,
+        wantVendorBoot: Boolean = true,
+        candidates: Set<String> = DefaultCandidates,
     ): ExtractedPartitions {
         val reader = HttpRangeReader()
         val fileLength = reader.fileLength(url) ?: throw IOException("Failed to connect or determine file length from URL")
@@ -58,11 +87,21 @@ object OtaPayloadExtractor {
         if ("boot" !in partitions) {
             throw IOException("Payload does not contain 'boot' partition (found: ${partitions.joinToString()})")
         }
-        val want = mutableListOf("boot")
-        if ("xbl_config" in partitions) {
-            want.add("xbl_config")
+        /* Decide from the manifest before any data is downloaded: only the
+         * partitions this parse actually consumes are pulled, and the ones the
+         * runtime does not keep are deleted by the caller afterwards. */
+        val physSource = PhysSourceCandidates.firstOrNull { it in partitions && it in candidates }
+        val want = buildList {
+            add("boot")
+            if (wantVendorBoot && "vendor_boot" in partitions && "vendor_boot" in candidates) {
+                add("vendor_boot")
+            }
+            physSource?.let(::add)
         }
         onLog("analyzing partitions: ${want.joinToString(", ")}")
+        if (wantVendorBoot && "vendor_boot" !in partitions) {
+            onLog("vendor_boot: not present in this package")
+        }
 
         val blockSize = PayloadBinUtils.blockSize(manifest)
         val dataBase = payloadStart + PayloadBinUtils.HEADER_SIZE + payloadHeader.manifestSize + payloadHeader.signatureSize
@@ -99,11 +138,18 @@ object OtaPayloadExtractor {
         val timestamp = System.currentTimeMillis()
         var bootFile: File? = null
         var xblConfigFile: File? = null
+        var vendorBootFile: File? = null
+        var uefiFile: File? = null
 
         try {
             for ((name, ops) in partitionOps) {
                 val outFile = File(workDir, "ghostlock_ota_${name}_$timestamp.img")
-                if (name == "boot") bootFile = outFile else xblConfigFile = outFile
+                when (name) {
+                    "boot" -> bootFile = outFile
+                    "vendor_boot" -> vendorBootFile = outFile
+                    "uefi" -> uefiFile = outFile
+                    else -> xblConfigFile = outFile
+                }
 
                 val totalSize = ops.flatMap { it.destExtents }.maxOfOrNull { (it.startBlock + it.numBlocks) * blockSize }
                     ?: throw IOException("Partition '$name' has zero length")
@@ -160,10 +206,12 @@ object OtaPayloadExtractor {
                 onLog("extracted $name=${outFile.name} (${formatSize(outFile.length())}) from payload")
             }
             reportProgress(force = true)
-            return ExtractedPartitions(bootFile!!, xblConfigFile)
+            return ExtractedPartitions(bootFile!!, xblConfigFile, vendorBootFile, uefiFile)
         } catch (e: Exception) {
             bootFile?.delete()
             xblConfigFile?.delete()
+            vendorBootFile?.delete()
+            uefiFile?.delete()
             throw e
         }
     }

@@ -46,6 +46,18 @@ namespace ghostlock::binary_profile {
                     o.member = from_raw<decltype(o.member)>(r);                 \
                 }                                                            \
     }
+/* Like PLAIN, but the key is written only when the value is non-zero. Absence
+ * is how this wire says "not provided" (the same thing the optional kernel_*
+ * fields express), and always writing a zero would change every profile's
+ * bytes without carrying any information. */
+#define PLAIN_IF_SET(key, member)                                                \
+    {                                                                            \
+        key, [](const profile::kernel_offsets &o) { return o.member != 0; },      \
+                [](const profile::kernel_offsets &o) { return to_raw(o.member); },\
+                [](profile::kernel_offsets &o, uint64_t r) {                    \
+                    o.member = from_raw<decltype(o.member)>(r);                 \
+                }                                                            \
+    }
 #define OPT(key, member)                                                         \
     {                                                                            \
         key, [](const profile::kernel_offsets &o) { return o.member.has_value(); },\
@@ -107,6 +119,10 @@ namespace ghostlock::binary_profile {
             PLAIN("slide_nfulnl_logger", offsets.slide_nfulnl_logger),
             PLAIN("slide_loggers_0_1", offsets.slide_loggers_0_1),
             PLAIN("slide_boot_id", offsets.slide_boot_id),
+            /* Optional vr.ko global kill-switch anchor: omitted unless the
+             * profile carries a measured value, so the runtime sees 0 and
+             * derives it from the boot image instead. */
+            PLAIN_IF_SET("sys_exit_tp_funcs", offsets.sys_exit_tp_funcs),
         };
 
         constexpr Field kKernel[] = {

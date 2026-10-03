@@ -183,6 +183,7 @@ cred
 | `offset.selinux_enforcing` | `selinux_state.enforcing` 偏移（W1 写 0） |
 | `offset.selinux_blob_sizes` / `offset.security_hook_heads` | SELinux/安全钩子相关偏移 |
 | `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | 地址滑移（KASLR）定位点 |
+| `offset.sys_exit_tp_funcs` | **可选项（缺省 `null`）。** `&__tracepoint_sys_exit->funcs` 的最终镜像偏移，即 `__tracepoint_sys_exit` + `offsetof(struct tracepoint, funcs)`——蓝厂 `vr.ko` 绕过把它写 NULL，使所有 `sys_exit` 探针变成空操作。提取器在 kallsyms **与** BTF 同时解析成功时才会写出该键；键缺失时运行时改为在设备上从 boot 镜像现场解析（解析失败则跳过全局写）。**不要猜**：错误的值会让写入落在内核数据里偏移约 8 字节的位置 |
 | `kernel_phys_load` | 内核物理加载地址（0 时按 SoC 公式回退） |
 | `kernel_phys_offset` | DRAM 基址 / linear-map `PHYS_OFFSET`，用于 image→direct-map 换算（缺省用编译期 `P0_PHYS_OFFSET = 0x80000000`）。DRAM 基址不同的设备需填写（如 MTK `0x40000000`）；无法从 `boot.img` 提取，取自 `/proc/iomem` |
 | `recommend_shizuku` | 该内核是否建议走 Shizuku（0/1，所有 profile 必填，默认 0；仅提示不强制）。不在任何编辑器中显示：推荐内核在**每次启动时自动打开**主页“Run via Shizuku”开关，会话内可手动关闭，关闭后本次会话不再要求 Shizuku |
