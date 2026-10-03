@@ -1,6 +1,7 @@
 package com.ghostlock.app.data
 
 import com.ghostlock.app.data.route.MulticastConfig
+import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.SelectConfig
 import com.ghostlock.app.data.route.TcpConfig
 import org.junit.Assert.assertEquals
@@ -19,6 +20,9 @@ class NativeProfileDocumentTest {
 
     private fun doc(route: String?, values: Map<String, Long> = emptyMap()) =
         NativeProfileDocument.from(release, route, null) { values[it] }
+
+    private fun baseDocument() =
+        NativeProfileDocument.from(release, "select_stack", null) { null }
 
     private fun readU16(bytes: ByteArray, offset: Int): Int =
         (bytes[offset].toInt() and 0xff) or ((bytes[offset + 1].toInt() and 0xff) shl 8)
@@ -233,6 +237,113 @@ class NativeProfileDocumentTest {
         val bytes = doc("select_stack").toBinary()
         val badRoute = bytes.copyOf().also { it[10] = 99 }
         assertNull(NativeProfileDocument.fromBinary(badRoute))
+    }
+
+    private fun docWithBackend(backend: String?) =
+        NativeProfileDocument.from(
+            release = release,
+            route = "select_stack",
+            fallbackTo = null,
+            text = { if (it == "backend.kind") backend else null },
+        ) { null }
+
+    @Test
+    fun `backend kind selects the header backend id`() {
+        val bytes = docWithBackend("cve_2026_43499").toBinary()
+        assertEquals(1, readU16(bytes, 8))
+        assertTrue(sections(bytes).none { it.name == "backend.cve_2026_43284" })
+    }
+
+    @Test
+    fun `an unavailable backend falls back to the 43499 header id`() {
+        /* 43284 is known-but-unavailable: the HOCON token must not reach the
+         * wire, so the document stays on the default backend and emits its
+         * private section nowhere. */
+        val bytes = docWithBackend("cve_2026_43284").toBinary()
+        assertEquals(1, readU16(bytes, 8))
+        assertTrue(sections(bytes).none { it.name == "backend.cve_2026_43284" })
+    }
+
+    @Test
+    fun `absent backend kind keeps the 43499 default`() {
+        val bytes = docWithBackend(null).toBinary()
+        assertEquals(1, readU16(bytes, 8))
+    }
+
+    @Test
+    fun `backend 43284 writes and reads its private section`() {
+        val document = baseDocument().copy(
+            backendKind = 6u,
+            routeKind = 0u,
+            routeConfig = NoRouteConfig,
+            steps = 3u,
+            cve2026_43284 = Cve2026_43284Config(
+                carrierPath = 0x11uL,
+                lkmPath = 0x22uL,
+                kmi = 515u,
+                selinuxExecContext = 0x33uL,
+                lateLoadArgs = 0x44uL,
+                defexSymbol = 0x55uL,
+            ),
+        )
+        val bytes = document.toBinary()
+        assertEquals(6, readU16(bytes, 8)) // header backend id
+        assertEquals(0, readU16(bytes, 10)) // 43284 has no route
+        assertTrue(sections(bytes).none { it.name == "backend.cve_2026_43499" })
+        assertEquals(
+            listOf(
+                "carrier_path", "lkm_path", "kmi", "selinux_exec_context",
+                "late_load_args", "defex_symbol", "steps",
+            ),
+            entriesOf(bytes, "backend.cve_2026_43284").map { it.first },
+        )
+        val entries = entriesOf(bytes, "backend.cve_2026_43284").toMap()
+        assertEquals(0x11L, entries["carrier_path"])
+        assertEquals(0x22L, entries["lkm_path"])
+        assertEquals(515L, entries["kmi"])
+        assertEquals(0x33L, entries["selinux_exec_context"])
+        assertEquals(0x44L, entries["late_load_args"])
+        assertEquals(0x55L, entries["defex_symbol"])
+        assertEquals(3L, entries["steps"])
+
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(6u, decoded.backendKind)
+        assertEquals(0u, decoded.routeKind)
+        assertEquals(3u, decoded.steps)
+        val config = decoded.cve2026_43284!!
+        assertEquals(0x11uL, config.carrierPath)
+        assertEquals(0x22uL, config.lkmPath)
+        assertEquals(515u, config.kmi)
+        assertEquals(0x33uL, config.selinuxExecContext)
+        assertEquals(0x44uL, config.lateLoadArgs)
+        assertEquals(0x55uL, config.defexSymbol)
+    }
+
+    @Test
+    fun `backend 43499 never emits the 43284 section`() {
+        val bytes = baseDocument().copy(
+            cve2026_43284 = Cve2026_43284Config(carrierPath = 1uL),
+        ).toBinary()
+        assertEquals(1, readU16(bytes, 8))
+        assertTrue(sections(bytes).none { it.name == "backend.cve_2026_43284" })
+    }
+
+    @Test
+    fun `43284 omits absent fields and keeps a provided zero`() {
+        val bytes = baseDocument().copy(
+            backendKind = 6u,
+            routeKind = 0u,
+            routeConfig = NoRouteConfig,
+            cve2026_43284 = Cve2026_43284Config(carrierPath = 0uL),
+        ).toBinary()
+        assertEquals(
+            listOf("carrier_path"),
+            entriesOf(bytes, "backend.cve_2026_43284").map { it.first },
+        )
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(0uL, decoded.cve2026_43284!!.carrierPath)
+        assertNull(decoded.cve2026_43284!!.lkmPath)
+        assertEquals(0u, decoded.steps)
     }
 
     @Test

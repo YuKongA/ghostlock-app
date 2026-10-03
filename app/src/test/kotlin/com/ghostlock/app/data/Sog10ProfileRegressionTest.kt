@@ -50,7 +50,7 @@ class Sog10ProfileRegressionTest {
             val binary = requireNotNull(controller.nativeDocument(config))
             val decoded = requireNotNull(NativeProfileDocument.fromBinary(binary))
             assertEquals(release, decoded.release)
-            assertEquals(1u, decoded.recommendShizuku)
+            assertEquals(2u, decoded.steps)
             assertNull(decoded.kernelPhysLoad)
             assertEquals(0u, decoded.cred.usageOffset)
             assertEquals(35027464uL, decoded.kernelOffset.selinuxBlobSizes)

@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.RouteKind
@@ -29,6 +30,10 @@ internal data class Profile(
     val invalidPaths: Set<String> = emptySet(),
 ) {
     val release: String get() = document.release
+
+    /** Backend selection carried in the wire header; defaults to 43499. */
+    val backendKind: BackendKind
+        get() = BackendKind.fromWire(document.backendKind.toInt()) ?: BackendKind.Default
 
     /** Resolved route; throws only if a route-less document slipped through. */
     val route: RouteKind
@@ -87,9 +92,9 @@ internal data class Profile(
             route: RouteKind?,
             fallbackTo: RouteKind?,
             invalidPaths: Set<String> = emptySet(),
-            value: (String) -> Long?,
             text: (String) -> String? = { null },
             bool: (String) -> Boolean? = { null },
+            value: (String) -> Long?,
         ): Profile? = fromNativeDocument(
             document = NativeProfileDocument.from(
                 release = release,

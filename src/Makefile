@@ -42,6 +42,7 @@ CXX_SRCS := \
   core/backend/cve_2026_43499_state.cpp \
   core/backend/cve_2026_43499/bootstrap.cpp \
   core/backend/cve_2026_43499/primitives.cpp \
+  core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_script.cpp \
   core/terminal/root_child.cpp \
   core/backend/cve_2026_43499_backend.cpp \
@@ -109,7 +110,7 @@ $(NATIVE_BUILD_DIR)/%.o: %.cpp $(HDRS)
 	@mkdir -p $(dir $@)
 	$(NDK_CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test lint-tidy
+.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
 
@@ -130,6 +131,8 @@ NATIVE_HOST_TESTS := \
   runtime_paths_test handoff_probe_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
   contract_capabilities_test terminal_input_test \
+  document_schema_test owner_schema_test cve_2026_43284_schema_test \
+  profile_manifest_test \
   host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
@@ -152,6 +155,7 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/tests/host/ancillary_stub.cpp \
   core/tests/host/glue_stub.cpp \
   core/backend/cve_2026_43499_backend.cpp \
+  core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_child.cpp \
   core/session/core_session.cpp \
   core/backend/cve_2026_43499_state.cpp \
@@ -235,7 +239,7 @@ $(HOST_BUILD_DIR)/backend_contract_test: core/tests/backend_contract_test.cpp \
   core/backend/cve_2026_43499/route/route_policy.hpp core/pipeline/terminal_contract.hpp core/session/stage_types.hpp \
   core/backend/cve_2026_43499_backend.hpp core/backend/cve_2026_64560_backend.hpp \
   core/backend/cve_2026_31431_backend.hpp core/backend/cve_2026_43503_backend.hpp \
-  core/backend/cve_2026_23274_backend.hpp \
+  core/backend/cve_2026_23274_backend.hpp core/backend/cve_2026_43284_backend.hpp \
   core/session/core_session.hpp core/backend/cve_2026_43499_state.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/backend_contract_test.cpp -o $@
@@ -270,6 +274,31 @@ $(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/profile/model.h
 
 $(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/model.h
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile/binary.cpp -o $@
+
+$(HOST_BUILD_DIR)/document_schema_test: core/tests/document_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/document_schema_test.cpp core/profile/binary.cpp -o $@
+
+$(HOST_BUILD_DIR)/owner_schema_test: core/tests/owner_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/backend/cve_2026_43499/schema.hpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/owner_schema_test.cpp core/profile/binary.cpp -o $@
+
+$(HOST_BUILD_DIR)/cve_2026_43284_schema_test: core/tests/cve_2026_43284_schema_test.cpp \
+  core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp \
+  core/profile/schema.hpp core/backend/cve_2026_43284/schema.hpp \
+  core/backend/cve_2026_43284_state.hpp core/backend/cve_2026_43499/schema.hpp \
+  core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_schema_test.cpp core/profile/binary.cpp -o $@
+
+# Native is the SSOT for the wire field universe; this test exports the owner
+# Schema to app/src/test/resources/profile-manifest.tsv and checks it in.
+$(HOST_BUILD_DIR)/profile_manifest_test: core/tests/profile_manifest_test.cpp core/backend/cve_2026_43499/schema.hpp core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp core/profile/schema.hpp core/profile/document.hpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_test.cpp -o $@
+
+profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_test
+	$(HOST_BUILD_DIR)/profile_manifest_test --write
 
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)

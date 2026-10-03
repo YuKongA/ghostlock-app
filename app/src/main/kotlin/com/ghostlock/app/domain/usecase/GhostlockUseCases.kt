@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.usecase
 
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.repository.GhostlockRepository
 
 class LoadKernelSnapshotUseCase(private val repository: GhostlockRepository) {
@@ -27,9 +28,16 @@ class ParseSourceUseCase(private val repository: GhostlockRepository) {
 }
 
 class RunExploitUseCase(private val repository: GhostlockRepository) {
-    suspend operator fun invoke(pair: CpuPair, useShizuku: Boolean, onLog: (String) -> Unit) =
-        if (useShizuku) repository.runExploitWithShizuku(pair, onLog)
-        else repository.runExploit(pair, onLog)
+    /**
+     * Dispatches by entry: Shizuku runs through its shell runner, General runs
+     * the app-side binary. UMH only reaches here once its terminal is available.
+     */
+    suspend operator fun invoke(pair: CpuPair, mode: ExecutionMode, onLog: (String) -> Unit) =
+        when (mode) {
+            ExecutionMode.General -> repository.runExploit(pair, onLog)
+            ExecutionMode.Shizuku -> repository.runExploitWithShizuku(pair, onLog)
+            ExecutionMode.Umh -> error("UMH terminal is not available yet")
+        }
 }
 
 class ReadDocumentUseCase(private val repository: GhostlockRepository) {

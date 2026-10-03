@@ -6,8 +6,8 @@
 > 请先 root 设备，再按 [MEDIATEK_ZH.md](MEDIATEK_ZH.md) 取得两个物理地址
 > （`kernel_phys_load` / `kernel_phys_offset`）。
 
-标记为**推荐 Shizuku**的固件，其 profile 中 `recommend_shizuku = 1`。每次启动时，应用会为主页的
-**通过 Shizuku 执行**开关自动打开；你可以在本次会话中关掉它，关掉后应用在本次会话内不再要求 Shizuku。
+`backend.steps = "w1_w2"` 的固件选择 Shizuku/UMH 路径并跳过 W3 seccomp 阶段；应用会默认该模式，
+root 程序与接管方式由 terminal 选择决定；你可以在本次会话中关掉 Shizuku，关掉后应用在本次会话内不再要求它。
 
 Shizuku 以 shell 用户身份执行攻击，而 shell 没有 seccomp 过滤，因此会跳过 W3 seccomp bypass 阶段。
 使用步骤：
@@ -15,8 +15,8 @@ Shizuku 以 shell 用户身份执行攻击，而 shell 没有 seccomp 过滤，�
 1. 先启动 Shizuku（例如通过 ADB）并保持运行。
 2. 点击应用顶部的状态卡，在弹出的请求中授予权限。
 
-未标记的固件不会自动打开该开关，但**任何设备都可以手动开启**：通过 Shizuku 执行同样会跳过
-W3 seccomp bypass，即使并非必需，也能节省时间。
+`backend.steps = "w1_w3"` 的固件不会自动选择该路径，但**任何设备都可以手动开启 Shizuku**：
+通过 Shizuku 执行同样会跳过 W3 seccomp bypass，即使并非必需，也能节省时间。
 
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|

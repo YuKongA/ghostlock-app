@@ -42,7 +42,7 @@
 - [x] A2-2a–e：attack 模块拆空（timer→support、bootstrap→backend、root script→terminal、primitive→backend）。
 - [x] A2-3a：`in_direct_map` → `memory`，删除 `attack/`。
 - [x] A2-3b：`AddressSpace` / `ResolvedAddresses` 拆分（布局不变）。
-- [ ] A2-3c：offset SSOT（ADR-0003 注册模型）。
+- [ ] A2-3c：offset SSOT（ADR-0003 注册模型）。**已执行 -1/-2/-3**（提交 `d131197`/`6e6d155`/下一提交）：Document+Schema 影子 bind、43499 owner Schema 迁 parse、生产 strict + 三端 manifest（58/58 资产 strict 通过）；**-4（物理抽离）并入 A2-4**。**裁决**：-1..3 只做声明/校验所有权与 bind，不动 `kernel_offsets`/`TargetProfile` 物理布局（保 8 攻击函数 byte-identical）；物理拆分留 -4/A2-4。
 - [ ] A2-4/5：platform/ancillary 分层；传输/入口去绑定；`common.h` 去耦。
 - [ ] A 批 4（可选）：`stage_types` 拆分 + route 契约归位。
 - [ ] A3：kernelsnitch 拆分（保留许可）。
@@ -54,25 +54,51 @@
 - [x] T1：`StepSetKind` + 三维 selection + 稀疏 catalog + 测试（真机 `T1` PASS）。
 - [x] T2：`TerminalExecution<T::Input>` + `ActivationContext`（二进制与 T1 逐字节相同，T1 真机覆盖）。
 - [x] T3a：native wire `steps`（backend 私有 section）+ `main` 使用 + 真机 `T3` PASS；Kotlin `steps` 字段 + `StepSetKind` 枚举。
-- [ ] **T3b（下一步）**：Kotlin 字符串/布尔解析接入——`NativeProfileDocument.from` 加 `text`/`bool` 访问器；
-  `steps = StepSetKind.fromToken(text("backend.steps"))?.wire ?: 0u`；调用点 `Profile.kt`/`ProfileExporter.kt`/测试改传访问器。
-- [ ] **T3c**：`recommend_shizuku` 项由 `backend.steps` **取代**（移除旧项，清理 `BuiltinProfileCatalog`/`UserProfileStore`/
-  `AndroidGhostlockRepository`/`GhostlockViewModel`/`GhostlockUserService`/`AndroidProfileConfigController`/`meta` 段 + 测试）；
-  HOCON 资产二元项改 `true`/`false`（`backend.steps = "w1_w3"`、`vr_guard`、`compact_waiter`、`safe_mode` 等）；
-  **C++ 标志字段改 `bool`**（配 `cmp_disasm` 复核，记录差异理由）。
-- [ ] **T3d**：「一般执行 / Shizuku / UMH」三选 UI（替换 `shizukuEnabled: Boolean`；语义 一般=app+W1W3+root_child、
-  Shizuku=shell+W1W2+root_child、UMH=umh_forward（T5 后可用））。
-- [ ] T4：`Cve2026_43499Backend<StepSet>`（`W1W2`/`W1W3`）+ `attack_write` 非模板基类。
-- [ ] T5：`umh_forward` 执行 + `RootProgram` 启动 + 真机。
-- [ ] T4：`Cve2026_43499Backend<StepSet>`（`W1W2`/`W1W3`）+ `attack_write` 非模板基类。
+- [x] **T3b**：Kotlin `text`/`bool` 访问器 + `backend.steps` 字符串解析；`value` 放参数末位保住尾随 lambda 调用点；
+  `:profile-core:test` 13/0 通过、`:app:compileDebugKotlin`/`compileDebugUnitTestKotlin` exit 0（子智能体 A 执行）。
+  注：T3b 代码随文档提交 `2fdf961`（当时误用 `git add -A` 收进），提交信息不含 T3b，内容无误。
+- [x] **T3c**：文档/模板（子智能体 D，`d3b41ce`）；协议代码+资产+extractor（子智能体 C）。
+  门禁（委派子智能体）：host/NDK/lint/`profile-core:test`/`app:testDebugUnitTest`(83)/`cargo test`(40) 全 PASS；
+  `cmp_disasm --reviewed`：`do_one_write` OPERAND-SHIFT；**`consumer_thread` 单条 `cbz w8`→`tbz w8,#0`**
+  系 `optional<uint8_t>::value_or(0)!=0`→`optional<bool>::value_or(false)` 的必然结果（寄存器/指令数/分支目标不变），
+  已作为**显式带理由的 `REVIEWED_SHAPE`** 写入 `tools/cmp_disasm.py` 并复核，`RESULT: PASS`。真机 3 次冷机 2 PASS/1 FAIL(W1 flake) → PASS，记录 `T3c-…-direct-pass.md`。
+- [x] **T3d**：「一般 / Shizuku / UMH」三选 UI（提交 `a427471`；`ExecutionModeMapping` 单一权威；UMH 置灰；未按 mode 覆写 profile 的 `backend.steps`）。
+- [x] T4：`Cve2026_43499Backend<StepSet>`（`W1W2`/`W1W3`）+ `Cve43499Primitives` 非模板基类（提交 `91723e7`；host/NDK/lint/cmp PASS；`attack_write` 符号改 `Cve43499Primitives::*`，cmp 加拼写）。真机 `T4` PASS（一次冷机，multicast ×4→root→KernelSU）。
 - [ ] T5：`umh_forward` 执行 + `RootProgram` 启动 + 真机。
 
 **S3 43284 backend**
 - [x] 评估 + L 级计划；B0 登记。
 - [x] B1a：`contract/capabilities.hpp`（`KernelMemoryOps`/`FileCacheWriteOps`）。
 - [x] B1b：`RootProgram`/`TerminalInput`（现由 S2 统一）。
-- [ ] B2–B7：per-backend 状态构造、identity/catalog、wire 私有 section、原语/LKM 链、UMH、Kotlin —— **S2 的 T1–T5 完成后按其落点收尾**。
+- [x] B2：per-backend 状态构造（提交 `ec58b1a`；`BackendState` 概念 + `Pipeline` RAII；host/NDK/lint/cmp PASS；真机 `B2` PASS（一次冷机））。
+- [x] B3：43284 known-but-unavailable identity/catalog/contract/wire 解码（提交 `59985fc`）。
+- [x] B4：`backend.cve_2026_43284` 私有 section（7 字段，数值 policy token；strict 仅 backend==6 接受；manifest 94→101；提交 `663bc10`）。
+- [~] B5：43284 原语/LKM 链。**设计已完成**：`cve-2026-43284-b5-design.md`（519 行，参考 DirtyFrag-Android-Root-Jailbreak/LSPromise/DFReroot/DirtyInit；选定 IpSecManager+CBC-16B+crash_dump+libc++ sentry+DFRoot LKM/UMH 链；B5-0..B5-7 分批）。
+  **硬前置**：① 运行时参数通道（GLK1 v2 仅 u64，载不下 IpSec SPI/ports/32B+32B 密钥）需决策；② 需可审计且与 KMI 匹配的 `dirtyfrag.ko` + 可加载设备（公开发布 `.ko` 与源码不一致）；③ `BackendExecution` 需泛化到 `TerminalInput`（R10 延续），`platform/abi|vivo` 不存在。**未获资产前不实现、不标 supported**。
+- [ ] B6：`umh_forward` 执行 + `RootProgram` 启动 + 真机（依赖 B5）。
+- [x] B7：Kotlin backend 选择（`BackendKind` 含 43284 wire 6/available=false；HOCON `backend.kind`；UI 置灰；偏好迁移）——Gradle exit 0、golden 未动。
+- 教训：委派重试前先确认原 subagent 确实结束（`send_message` 返回 not found 不可靠）；本轮出现两个 B7 并发写同一 Kotlin 文件，已中断重试并未造成损坏。
 
+### T3c 精确范围（只读调研结论，2026-10-03）
+
+**移除 `recommend_shizuku`**：
+- native：`model.h:83`、`binary.cpp:63`（`kMeta` 表）、`profile_binary_test.cpp:96,117`；native 无其它消费者。
+- Kotlin：`NativeProfile.kt`（:23 属性、:90 序列化、:393 `from`、:487/:512 Builder、:659 build）；
+  `BuiltinProfileCatalog`（:15/:31-33/:65）、`UserProfileStore`（:102-112）、`AndroidProfileConfigController`（:778/:791）、
+  `ProfileResolver.KnownTopLevel`（:14）、`AndroidGhostlockRepository`（:159-175/:927/:954）、`GhostlockModels.KernelSnapshot`（:19）、
+  `GhostlockViewModel`（:87/:92/:98-103/:830）、`GhostlockUserService`（:47-52）、相关测试 5 个。
+- HOCON：62 个 assets（56×`=0`、2×`=1`：`…ab14110541.conf:6`、`…ab14546557.conf:5`；4 模板 `=null`；`6.1.145-maybe-dirty.conf:29`）。
+- Extractor/doc：`tools/extract_rs/src/report.rs:319`（`=0`）与 :449；README/PROFILE_SCHEMA/SUPPORTED_DEVICES/templates。
+
+**HOCON 布尔项实际只有**：`recommend_shizuku`（移除）、`compact_waiter`（`route.*` 段，25 文件）、`recommend_vr_guard`（1 文件）。
+`safe_mode` **不在 HOCON**（仅 wire `meta.safe_mode`，`patchSafeMode()` 运行时改写）——branch-plan 之前把它列为 HOCON 项有误，已修正。
+
+**native 标志改 `bool`**（候选，须保 `sizeof`/尾部 padding 与攻击代码 byte-identical）：
+- `ProfileMeta::safe_mode`（model.h:85）、`KernelMisc::vr_guard`（:123）、`KernelMisc::compact_waiter`（`optional<bool>`，:118）；
+- 连带：`binary.cpp:12-28/61-68/116-122/192-197`、`model.h:308-314` 访问器。
+
+**bool 解析缺口（必须一并修）**：`getLongAt` 只认 `Number`；当前 `from()` 用 `vu("recommend_vr_guard")`（NativeProfile.kt:394）与
+`vbOrNull("compact_waiter")`（:443，经 `nativeValue` 分支映射），改 T/F 后会**静默丢值** → 换 `bool` 访问器，并让 `compact_waiter` 分支查找支持布尔。
 ## 4. 唯一执行顺序（下一步）
 
 ```

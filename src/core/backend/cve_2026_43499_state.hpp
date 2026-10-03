@@ -58,6 +58,11 @@ namespace ghostlock::backend {
 
     /* Idempotent in-place construction (outside the PI window). */
     void cve43499_state_construct(CoreSession &state) noexcept;
+
+    /* Idempotent in-place destruction, paired with the construct above. Clears
+     * the ready flag and the dtor hook so a later CoreSession destructor does
+     * not run the state destructor twice. */
+    void cve43499_state_destroy(CoreSession &state) noexcept;
 } // namespace ghostlock::backend
 
 #endif

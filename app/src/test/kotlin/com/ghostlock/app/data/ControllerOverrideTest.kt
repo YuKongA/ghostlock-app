@@ -376,7 +376,6 @@ class ControllerOverrideTest {
             release = "$release"
             schema_version = 1
             kernel_major = 5
-            recommend_shizuku = 0
             kernel_phys_load = 0xA8000000
             route {
               multicast_waiter {

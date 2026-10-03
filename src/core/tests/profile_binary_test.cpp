@@ -3,7 +3,13 @@
  *
  * Black box: round trips and rejected vectors through parse/serialize.
  * White box: a local builder injects anything (unknown keys, other sections,
- * duplicates, truncations) and pins the header bytes. */
+ * duplicates, truncations) and pins the header bytes.
+ *
+ * A2-3c-3 production strict: the attack path decodes with
+ * DecodeMode::Production, so an unknown section or an unknown key inside an
+ * owned section is Rejected rather than silently ignored (design §2.5). The
+ * old tolerate-and-ignore expectations are flipped below; Tooling tolerance is
+ * still covered by document_schema_test / owner_schema_test. */
 
 #include "profile/binary.h"
 
@@ -93,7 +99,6 @@ int32_t main(void) {
     values.uname_r = "6.6.77-transport-test";
     values.route = ghostlock::profile::kRouteMulticastWaiter;
     values.meta.kernel_major = 6;
-    values.meta.recommend_shizuku = 1;
     values.meta.fallback_route = ghostlock::profile::kRouteSelectStack;
     values.task.prio = 132;
     values.task.real_cred = 0x12345678;
@@ -101,7 +106,7 @@ int32_t main(void) {
     values.credential.caps_value = 0xffffffffffffffffULL;
     values.offsets.init_task = 0x20dc000;
     values.offsets.slide_boot_id = 0x2336600;
-    values.misc.compact_waiter = 1;
+    values.misc.compact_waiter = true;
     values.misc.kernelsnitch_collisions = 4;
     values.misc.mm_struct_sz = 0x400;
     values.execution.w1_attempts = 15;
@@ -114,7 +119,6 @@ int32_t main(void) {
     assert(strcmp(release, values.uname_r) == 0);
     assert(strcmp(parsed.uname_r, values.uname_r) == 0);
     assert(parsed.meta.kernel_major == 6);
-    assert(parsed.meta.recommend_shizuku == 1);
     assert(parsed.route == ghostlock::profile::kRouteMulticastWaiter);
     assert(parsed.meta.fallback_route == ghostlock::profile::kRouteSelectStack);
     assert(parsed.task.prio == 132);
@@ -123,7 +127,7 @@ int32_t main(void) {
     assert(parsed.credential.caps_value == 0xffffffffffffffffULL);
     assert(parsed.offsets.init_task == 0x20dc000);
     assert(parsed.offsets.slide_boot_id == 0x2336600);
-    assert(parsed.misc.compact_waiter.value_or(0) == 1);
+    assert(parsed.misc.compact_waiter.value_or(false));
     assert(parsed.misc.kernelsnitch_collisions.value_or(0) == 4);
     assert(parsed.misc.mm_struct_sz.value_or(0) == 0x400);
     assert(parsed.execution.w1_attempts == 15);
@@ -195,19 +199,28 @@ int32_t main(void) {
         assert(bytes[16] == '6'); /* release starts right after the 16-byte header */
     }
 
-    /* ---- White box: section/entry decoding. ---- */
+    /* ---- White box: section/entry decoding under production strict. ---- */
     {
-        /* Unknown section is skipped; unknown key is ignored; known keys apply. */
+        /* An unknown section is Rejected instead of being skipped. */
         std::string doc = build_doc(
-            ghostlock::profile::kRouteTcpZerocopy, "unknown",
-            {
-                {"not_a_section", {{"x", 1}}},
-                {"route.tcp_zerocopy", {{"not_a_field", 123}, {"attempts", 2000}}},
-            });
+            ghostlock::profile::kRouteTcpZerocopy, "unknown_section",
+            {{"not_a_section", {{"x", 1}}}});
+        assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
+
+        /* An unknown key inside an owned section is Rejected too. */
+        doc = build_doc(
+            ghostlock::profile::kRouteTcpZerocopy, "unknown_key",
+            {{"route.tcp_zerocopy", {{"not_a_field", 123}}}});
+        assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
+
+        /* A known key in the active route still applies. */
+        doc = build_doc(ghostlock::profile::kRouteTcpZerocopy, "known",
+                        {{"route.tcp_zerocopy", {{"attempts", 2000}}}});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(parsed.execution.tcp_attempts == 2000);
 
-        /* A key of another section is ignored. */
+        /* A known route section belonging to another route is allowed but not
+         * merged: the decoder drops it before the strict bind. */
         doc = build_doc(ghostlock::profile::kRouteTcpZerocopy, "other",
                         {{"route.select_stack", {{"waiter_shift", 9}}}});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
@@ -280,6 +293,11 @@ int32_t main(void) {
         assert(parse_doc(build_doc(ghostlock::profile::kRouteSelectStack, "b",
                                    {}, binary_profile::kTerminalRootChild, 9),
                          &parsed, release, sizeof(release)) == -1);
+        /* A known-but-unavailable backend id (6) passes the decode gate. */
+        assert(parse_doc(build_doc(ghostlock::profile::kRouteSelectStack, "b6", {},
+                                   binary_profile::kTerminalRootChild,
+                                   binary_profile::kBackendCve202643284),
+                         &parsed, release, sizeof(release)) == 0);
 
         /* Component ids decode and are reported. */
         profile::kernel_offsets ids_values = {};
@@ -300,6 +318,7 @@ int32_t main(void) {
         assert(binary_profile::backend_known(binary_profile::kBackendCve202631431));
         assert(binary_profile::backend_known(binary_profile::kBackendCve202643503));
         assert(binary_profile::backend_known(binary_profile::kBackendCve202623274));
+        assert(binary_profile::backend_known(binary_profile::kBackendCve202643284));
         assert(!binary_profile::backend_known(99));
 
         /* A profile without a declared route never serializes. */

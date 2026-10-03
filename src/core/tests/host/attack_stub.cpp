@@ -1,4 +1,8 @@
 #include "backend/cve_2026_43499/bootstrap.hpp"
+#include "backend/cve_2026_43499/primitives.hpp"
+#include "backend/cve_2026_43499/route/route_middleware.hpp"
+#include "backend/cve_2026_43499/route/route_policy.hpp"
+#include "session/core_session.hpp"
 #include "host_attack_script.hpp"
 
 /* Host stubs for the attack-path externals: no syscalls, no kernel work. */
@@ -34,3 +38,35 @@ namespace ghostlock::platform::runtime {
         return host::script().process_has_seccomp_value;
     }
 } // namespace ghostlock::platform::runtime
+
+/* Host stand-in for the non-template base's write primitives (T4): the Android
+ * unit keeps the real heap spray + PI race, while the host script only needs the
+ * route outcome. run_middleware_route is itself a host stub. */
+namespace ghostlock::backend {
+    template <class M>
+    Status Cve43499Primitives::attack_write(session::CoreSession &session,
+                                            const memory::WriteRequest &request,
+                                            const char *) {
+        return ghostlock::backend::cve_2026_43499::route::middleware::run_middleware_route(
+            session, request);
+    }
+
+    template <class M>
+    Status Cve43499Primitives::zero_word(uintptr_t, const char *) {
+        return true;
+    }
+
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(
+        session::CoreSession &, const memory::WriteRequest &, const char *);
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(
+        session::CoreSession &, const memory::WriteRequest &, const char *);
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(
+        session::CoreSession &, const memory::WriteRequest &, const char *);
+
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(
+        uintptr_t, const char *);
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(
+        uintptr_t, const char *);
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(
+        uintptr_t, const char *);
+} // namespace ghostlock::backend

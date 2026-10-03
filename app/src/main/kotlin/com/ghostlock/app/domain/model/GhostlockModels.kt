@@ -1,5 +1,7 @@
 package com.ghostlock.app.domain.model
 
+import com.ghostlock.app.data.component.BackendKind
+
 data class CpuPair(val primary: Int, val consumer: Int) {
     override fun toString(): String = "$primary,$consumer"
 }
@@ -15,14 +17,22 @@ data class KernelSnapshot(
     val safeModeEnabled: Boolean,
     /** Skip the pre-attack KernelSU check and run the exploit as a test. */
     val forceAttackTest: Boolean = false,
-    /** Profile/imported offsets force the Shizuku path. */
-    val recommendShizuku: Boolean,
-    /** User-selected Shizuku path for kernels that do not require it. */
-    val shizukuEnabled: Boolean = false,
+    /** User-selected entry/execution mode; the wire selection derives from it. */
+    val executionMode: ExecutionMode = ExecutionMode.General,
+    /** Header backend selection (native `kBackend*`); 43284 stays unavailable. */
+    val backendKind: BackendKind = BackendKind.Default,
     val shizukuStatus: ShizukuStatus,
 )
 
 enum class ShizukuStatus { NOT_REQUIRED, NOT_RUNNING, PERMISSION_REQUIRED, READY }
+
+/**
+ * Entry/execution selection shown to the user. It is an app concept, not a wire
+ * value: `data/ExecutionModeMapping.kt` derives the StepSet and terminal from it
+ * (ADR-0004 R18/R19). UMH stays unavailable until the native
+ * `terminal_available(umh_forward)` is true (T5).
+ */
+enum class ExecutionMode { General, Shizuku, Umh }
 
 enum class LogTone { Default, Error, Success, Warning, Progress, Kotlin, Shizuku }
 

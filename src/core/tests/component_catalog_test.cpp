@@ -25,6 +25,7 @@ int32_t main(void) {
     assert(!pipeline::backend_available(BackendKind::Cve2026_31431));
     assert(!pipeline::backend_available(BackendKind::Cve2026_43503));
     assert(!pipeline::backend_available(BackendKind::Cve2026_23274));
+    assert(!pipeline::backend_available(BackendKind::Cve2026_43284));
     for (StepSetKind s : {StepSetKind::W1W2, StepSetKind::W1W3, StepSetKind::PageCacheWrite}) {
         assert(pipeline::stepset_available(s));
     }
@@ -38,6 +39,8 @@ int32_t main(void) {
                                           TerminalKind::RootChild}));
     assert(!pipeline::selection_supported({BackendKind::Cve2026_64560, StepSetKind::W1W3,
                                            TerminalKind::RootChild}));
+    assert(!pipeline::selection_supported({BackendKind::Cve2026_43284, StepSetKind::W1W3,
+                                           TerminalKind::RootChild}));
     assert(!pipeline::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
                                            TerminalKind::UmhForward}));
 
@@ -45,7 +48,7 @@ int32_t main(void) {
     const TerminalKind terminals[] = {TerminalKind::RootChild, TerminalKind::UmhForward};
     const BackendKind backends[] = {
         BackendKind::Cve2026_43499, BackendKind::Cve2026_64560, BackendKind::Cve2026_31431,
-        BackendKind::Cve2026_43503, BackendKind::Cve2026_23274};
+        BackendKind::Cve2026_43503, BackendKind::Cve2026_23274, BackendKind::Cve2026_43284};
     const StepSetKind stepsets[] = {StepSetKind::W1W2, StepSetKind::W1W3,
                                     StepSetKind::PageCacheWrite};
     int32_t catalogued = 0;
@@ -62,10 +65,10 @@ int32_t main(void) {
             }
         }
     }
-    assert(catalogued == 1);
+    assert(catalogued == 2);
     assert(pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W3, TerminalKind::RootChild}));
-    assert(!pipeline::combination_supported(
+    assert(pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W2, TerminalKind::RootChild}));
     assert(!pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W3, TerminalKind::UmhForward}));
@@ -82,7 +85,7 @@ int32_t main(void) {
     static_assert(pipeline::dispatch_target_of(
                       BackendKind::Cve2026_43499, StepSetKind::W1W2,
                       TerminalKind::RootChild) ==
-                  pipeline::DispatchTarget::None);
+                  pipeline::DispatchTarget::Cve43499W1W2_RootChild);
     static_assert(pipeline::dispatch_target_of(
                       BackendKind::Cve2026_43499, StepSetKind::W1W3,
                       TerminalKind::UmhForward) ==
@@ -90,6 +93,7 @@ int32_t main(void) {
 
     assert(pipeline::terminal_name(TerminalKind::RootChild) == "root_child");
     assert(pipeline::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");
+    assert(pipeline::backend_name(BackendKind::Cve2026_43284) == "cve_2026_43284");
     assert(pipeline::stepset_name(StepSetKind::W1W3) == "w1_w3");
     assert(pipeline::middleware_name(MiddlewareKind::MulticastWaiter) == "multicast_waiter");
     assert(pipeline::middleware_name(MiddlewareKind::Auto) == "auto");

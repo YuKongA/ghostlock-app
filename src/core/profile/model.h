@@ -80,9 +80,8 @@ namespace ghostlock::profile {
      * meaningful). The wire carries presence by key occurrence. */
     struct ProfileMeta {
         uint8_t kernel_major = 0;
-        uint8_t recommend_shizuku = 0;
         uint8_t fallback_route = 0;
-        uint8_t safe_mode = 0;
+        bool safe_mode = false;
     };
 
     struct TaskStructOffsets {
@@ -115,12 +114,12 @@ namespace ghostlock::profile {
          * devices whose DRAM base differs from the built-in default can
          * override it without a rebuild. */
         std::optional<uint64_t> kernel_phys_offset;
-        std::optional<uint8_t> compact_waiter;
+        std::optional<bool> compact_waiter;
         /* Ancillary vr.ko guard, occupying this struct's existing padding so the
          * frozen session offsets do not move: the gate (fail closed), the
          * tracepoint the vendor probe hangs off, and offsetof(struct tracepoint,
          * funcs). A zero tracepoint_funcs means the image did not yield it. */
-        uint8_t vr_guard = 0;
+        bool vr_guard = false;
         uint8_t vr_tracepoint_funcs = 0;
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
@@ -306,7 +305,7 @@ namespace ghostlock::profile {
 #undef GHOSTLOCK_EXEC_U32
 
         [[nodiscard]] bool has_compact_waiter() const noexcept {
-            return loaded_ && values_.misc.compact_waiter.value_or(0) != 0;
+            return loaded_ && values_.misc.compact_waiter.value_or(false);
         }
 
         [[nodiscard]] bool safe_mode() const noexcept {
@@ -316,7 +315,7 @@ namespace ghostlock::profile {
         /* Ancillary vr.ko guard: gate + layout. Absent members mean the
          * profile does not enable the behavior (see vr_guard.hpp plan()). */
         [[nodiscard]] bool vr_guard_enabled() const noexcept {
-            return loaded_ && values_.misc.vr_guard != 0;
+            return loaded_ && values_.misc.vr_guard;
         }
 
         [[nodiscard]] VrGuardLayout vr_guard_layout() const noexcept {
@@ -403,6 +402,17 @@ namespace ghostlock::profile {
         std::array<char, 256> release_{};
         bool loaded_ = false;
     };
+
+    /* Layout guard (ADR-0003 / A2-3c-1): offset-based attack code reads session
+     * members and the 43499 machine code is frozen by cmp_disasm, so the size and
+     * alignment of the transport struct and its runtime wrapper must not move.
+     * Changing either is a deliberate, reviewed act that updates these literals
+     * together with session_layout_test. Verified identical for the host and the
+     * aarch64 NDK target (520/8 and 784/8). */
+    static_assert(sizeof(kernel_offsets) == 520, "kernel_offsets layout changed");
+    static_assert(alignof(kernel_offsets) == 8, "kernel_offsets alignment changed");
+    static_assert(sizeof(TargetProfile) == 784, "TargetProfile layout changed");
+    static_assert(alignof(TargetProfile) == 8, "TargetProfile alignment changed");
 } // namespace ghostlock::profile
 
 #endif

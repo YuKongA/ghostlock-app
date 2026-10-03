@@ -22,4 +22,13 @@ namespace ghostlock::backend {
             static_cast<Cve2026_43499State *>(raw)->~Cve2026_43499State();
         };
     }
+
+    void cve43499_state_destroy(CoreSession &state) noexcept {
+        if (!state.backend_state_ready) return;
+        if (state.backend_state_dtor != nullptr) {
+            state.backend_state_dtor(state.backend_state);
+            state.backend_state_dtor = nullptr;
+        }
+        state.backend_state_ready = false;
+    }
 } // namespace ghostlock::backend

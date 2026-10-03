@@ -22,6 +22,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ghostlock.app.GhostlockApplication
 import com.ghostlock.app.R
+import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.domain.model.ExecutionMode
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<GhostlockViewModel> {
@@ -186,7 +188,11 @@ private fun GhostlockRoute(
             override fun onForceAttackTestChanged(enabled: Boolean) =
                 viewModel.toggleForceAttackTest(enabled)
 
-            override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
+            override fun onExecutionModeChanged(mode: ExecutionMode) =
+                viewModel.setExecutionMode(mode)
+
+            override fun onBackendChanged(kind: BackendKind) =
+                viewModel.setBackendKind(kind)
             override fun onDialogItemSelected(index: Int) = viewModel.onDialogItemSelected(index)
             override fun onDialogInputChange(value: String) = viewModel.onDialogInputChange(value)
             override fun onDialogConfirm(value: String) = viewModel.onDialogConfirm(value)

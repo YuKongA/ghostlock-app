@@ -37,7 +37,6 @@ class UserProfileStoreTest {
         release = "6.6.89-test"
         schema_version = 1
         kernel_major = 6
-        recommend_shizuku = 0
         kernel_phys_load = 0xA8000000
         route {
           select_stack {
@@ -77,7 +76,6 @@ class UserProfileStoreTest {
         release = "5.15.178-g3575c47dc7ce-dirty"
         schema_version = 1
         kernel_major = 5
-        recommend_shizuku = 0
         route {
           multicast_waiter {
             task_offset = 48
@@ -216,15 +214,6 @@ class UserProfileStoreTest {
             val profiles = store.list().associateBy { it.name }
             assertEquals(1, profiles.getValue("offsets.json").version)
             assertEquals(2, profiles.getValue("converted.conf").version)
-        }
-    }
-
-    @Test
-    fun `shizuku recommendation comes from any stored document`() {
-        withStore { store ->
-            store.save("rec.json", """[{"release": "r", "recommend_shizuku": 1}]""")
-            assertTrue(store.recommendsShizuku("r"))
-            assertFalse(store.recommendsShizuku("other"))
         }
     }
 

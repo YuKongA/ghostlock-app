@@ -1,9 +1,14 @@
 package com.ghostlock.app.data
 
 import com.ghostlock.app.data.NativeProfileDocument.Companion.fromBinary
+import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.route.MulticastConfig
+import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.RouteConfig
 import com.ghostlock.app.data.route.RouteKind
+import com.ghostlock.app.data.route.SelectConfig
+import com.ghostlock.app.data.route.TcpConfig
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -20,7 +25,6 @@ data class NativeProfileDocument(
     val release: String,
     val routeKind: UInt,
     val kernelMajor: UInt,
-    val recommendShizuku: UInt,
     /** Gate for the ancillary vr.ko guard (see docs/analysis/ancillary-controller-guide.md). */
     val vrGuard: UInt,
     val fallbackRoute: UInt,
@@ -44,6 +48,17 @@ data class NativeProfileDocument(
      * StepSet instead of defaulting, and the app prompts the user to fill it.
      */
     val steps: UInt = 0u,
+    /**
+     * Backend id carried in the header (native `kBackend*`). Defaults to
+     * cve_2026_43499. [BackendWireCve202643284] selects the 43284 private
+     * section; every existing caller keeps the 43499 default and byte output.
+     */
+    val backendKind: UInt = BackendWireCve202643499,
+    /**
+     * cve_2026_43284 private policy (S3 B4); only written or read when
+     * [backendKind] is the 43284 id. Null means "no 43284 section".
+     */
+    val cve2026_43284: Cve2026_43284Config? = null,
 ) {
     fun toBinary(): ByteArray {
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
@@ -60,7 +75,7 @@ data class NativeProfileDocument(
         buffer.putInt(Magic.toInt())
         buffer.putShort(Version.toShort())
         buffer.putShort(FrontendRootChild.toShort())
-        buffer.putShort(BackendCve202643499.toShort())
+        buffer.putShort(backendKind.toShort())
         buffer.putShort(routeKind.toShort())
         buffer.putShort(releaseBytes.size.toShort())
         buffer.putShort(Reserved.toShort())
@@ -87,7 +102,6 @@ data class NativeProfileDocument(
                 "meta",
                 listOf(
                     "kernel_major" to kernelMajor.toULong(),
-                    "recommend_shizuku" to recommendShizuku.toULong(),
                     "fallback_route" to fallbackRoute.toULong(),
                     "safe_mode" to safeMode.toULong(),
                 ) + listOfNotNull(vrGuard.takeIf { it != 0u }?.let { "vr_guard" to it.toULong() }),
@@ -166,13 +180,40 @@ data class NativeProfileDocument(
         routeSection()?.let(::add)
         vrGuardSection()?.let(::add)
         backendSection()?.let(::add)
+        backend43284Section()?.let(::add)
     }
 
-    /** Backend-private StepSet section (cve_2026_43499). */
+    /** Backend-private StepSet section (cve_2026_43499); 43284 has its own. */
     private fun backendSection(): Section? =
-        steps.takeIf { it != 0u }?.let {
-            Section("backend.cve_2026_43499", listOf("steps" to it.toULong()))
+        if (backendKind == BackendWireCve202643284) {
+            null
+        } else {
+            steps.takeIf { it != 0u }?.let {
+                Section("backend.cve_2026_43499", listOf("steps" to it.toULong()))
+            }
         }
+
+    /**
+     * cve_2026_43284 backend-private policy section (S3 B4). Written only when
+     * the header backend id is 43284; an absent field stays absent (presence is
+     * carried by key occurrence, so a provided 0 is distinct from omitted).
+     */
+    private fun backend43284Section(): Section? {
+        if (backendKind != BackendWireCve202643284) return null
+        val config = cve2026_43284 ?: Cve2026_43284Config()
+        val entries = buildList {
+            config.carrierPath?.let { add("carrier_path" to it) }
+            config.lkmPath?.let { add("lkm_path" to it) }
+            config.kmi?.let { add("kmi" to it.toULong()) }
+            config.selinuxExecContext?.let { add("selinux_exec_context" to it) }
+            config.lateLoadArgs?.let { add("late_load_args" to it) }
+            config.defexSymbol?.let { add("defex_symbol" to it) }
+            steps.takeIf { it != 0u }?.let { add("steps" to it.toULong()) }
+        }
+        return entries.takeIf { it.isNotEmpty() }?.let {
+            Section("backend.cve_2026_43284", it)
+        }
+    }
 
     /**
      * Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs), read from
@@ -265,8 +306,6 @@ data class NativeProfileDocument(
 
         private const val FrontendRootChild: UShort = 1u
         private const val FrontendUmhForward: UShort = 2u
-        private const val BackendCve202643499: UShort = 1u
-        private const val BackendCve20264560: UShort = 2u
         private const val HeaderSize = 16
         private const val Reserved: UShort = 0u
 
@@ -332,8 +371,21 @@ data class NativeProfileDocument(
             /* Unknown ids are rejected here; known-but-unavailable ids (UMH,
              * cve_2026_64560) decode and are rejected by the orchestrator. */
             if (frontend != FrontendRootChild && frontend != FrontendUmhForward) return null
-            if (backend != BackendCve202643499 && backend != BackendCve20264560) return null
-            val kind = RouteKind.fromWire(middleware.toUInt()) ?: return null
+            if (backend != BackendWireCve202643499.toUShort() &&
+                backend != BackendWireCve20264560.toUShort() &&
+                backend != BackendWireCve202643284.toUShort()
+            ) {
+                return null
+            }
+            /* The 43284 backend has no route; kRouteAuto (0) is legal for it
+             * only. Every other backend must declare a resolved route. */
+            val kind = if (backend == BackendWireCve202643284.toUShort() &&
+                middleware == 0.toUShort()
+            ) {
+                null
+            } else {
+                RouteKind.fromWire(middleware.toUInt()) ?: return null
+            }
             val releaseLength = buffer.short.toInt() and 0xffff
             buffer.short // reserved
             if (buffer.remaining() < releaseLength + 2) return null
@@ -341,8 +393,8 @@ data class NativeProfileDocument(
             buffer.get(releaseBytes)
             val release = String(releaseBytes, Charsets.UTF_8)
 
-            val builder = Builder(release, kind)
-            val activeRoute = routeSectionName(kind.wire)
+            val builder = Builder(release, kind, backend)
+            val activeRoute = routeSectionName(kind?.wire ?: 0u)
             val sectionCount = buffer.short.toInt() and 0xffff
             repeat(sectionCount) {
                 if (buffer.remaining() < 1) return null
@@ -376,22 +428,38 @@ data class NativeProfileDocument(
             release: String,
             route: String?,
             fallbackTo: String?,
-            value: (String) -> Long?,
             text: (String) -> String? = { null },
             bool: (String) -> Boolean? = { null },
+            value: (String) -> Long?,
         ): NativeProfileDocument {
             fun vu(path: String): UInt = value(path)?.toUInt() ?: 0u
             fun vul(path: String): ULong = value(path)?.toULong() ?: 0uL
             fun vuOrNull(path: String): UInt? = value(path)?.toUInt()
             fun vulOrNull(path: String): ULong? = value(path)?.toULong()
-            fun vbOrNull(path: String): UByte? = value(path)?.toUByte()
+            /* Boolean HOCON flags prefer the bool accessor; the route branch is
+             * consulted first (mirroring nativeValue), and a legacy numeric
+             * spelling still decodes for imported v1 profiles. */
+            fun flagAt(path: String): Boolean? {
+                route?.let { name -> bool("route.$name.$path")?.let { return it } }
+                if (fallbackTo != null && fallbackTo != "none") {
+                    bool("fallback.route.$fallbackTo.$path")?.let { return it }
+                }
+                return bool(path) ?: value(path)?.let { it != 0L }
+            }
             val routeConfig = RouteKind.fromToken(route)?.buildConfig(value) ?: NoRouteConfig
+            /* Backend selection is a profile/wire choice read from HOCON
+             * (`backend.kind`), consistent with the `backend.steps` token. An
+             * unavailable backend (43284 until its backend lands) fails closed to
+             * the 43499 default instead of building a document the orchestrator
+             * would reject; absent selection keeps the existing default and bytes. */
+            val backendKind = BackendKind.selectableOrFallback(
+                BackendKind.fromToken(text("backend.kind")),
+            )
             return NativeProfileDocument(
                 release = release,
                 routeKind = routeKind(route),
                 kernelMajor = vu("kernel_major"),
-                recommendShizuku = vu("recommend_shizuku"),
-                vrGuard = vu("recommend_vr_guard"),
+                vrGuard = if (flagAt("recommend_vr_guard") == true) 1u else 0u,
                 fallbackRoute = routeKind(fallbackTo),
                 taskStruct = TaskStructOffsets(
                     prio = vu("task_struct.prio"),
@@ -442,7 +510,7 @@ data class NativeProfileDocument(
                 ),
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
                 kernelPhysOffset = vulOrNull("kernel_phys_offset"),
-                compactWaiter = vbOrNull("compact_waiter"),
+                compactWaiter = flagAt("compact_waiter")?.let { if (it) 1u.toUByte() else 0u.toUByte() },
                 vrGuardTracepointFuncs = vuOrNull("vr_guard.tracepoint_funcs"),
                 kernelsnitchCollisions = vuOrNull("kernelsnitch.collisions"),
                 mmStructSz = vuOrNull("kernelsnitch.mm_struct_sz"),
@@ -475,16 +543,124 @@ data class NativeProfileDocument(
                 safeMode = 0u,
                 routeConfig = routeConfig,
                 steps = StepSetKind.fromToken(text("backend.steps"))?.wire ?: 0u,
+                backendKind = backendKind.wire.toUInt(),
             )
+        }
+
+        /**
+         * Every wire (section, key) a fully populated document can carry, for
+         * the native-manifest agreement test (A2-3c-3). Derived from the actual
+         * [sections] writer for each route, so any key the app can emit is
+         * enumerated here and cannot silently drift from the manifest.
+         */
+        fun declaredWireKeys(): Set<Pair<String, String>> {
+            val keys = linkedSetOf<Pair<String, String>>()
+            for (kind in RouteKind.values()) {
+                val routeConfig: RouteConfig = when (kind) {
+                    RouteKind.TCP_ZEROCOPY -> TcpConfig(1u, 1u, 1u, 1L, 1uL, 1uL, 1uL)
+                    RouteKind.SELECT_STACK -> SelectConfig(1, 1u, 1u, 1u)
+                    RouteKind.MULTICAST_WAITER ->
+                        MulticastConfig(MulticastGeometry(1, 1u, 1u, 1u), 1u, 1u, 1u)
+                }
+                val document = NativeProfileDocument(
+                    release = "manifest",
+                    routeKind = kind.wire,
+                    kernelMajor = 1u,
+                    vrGuard = 1u,
+                    fallbackRoute = 1u,
+                    taskStruct = TaskStructOffsets(
+                        prio = 1u, normalPrio = 1u, schedTaskGroup = 1u, piLock = 1u,
+                        piWaiters = 1u, piTopTask = 1u, piBlockedOn = 1u, pid = 1u,
+                        tgid = 1u, atomicFlags = 1u, realCred = 1u, cred = 1u,
+                        comm = 1u, tasks = 1u, seccomp = 1u,
+                    ),
+                    cred = CredTemplate(
+                        copySize = 1u, usageOffset = 1u, usageValue = 1u, capsOffset = 1u,
+                        capsCount = 1u, capsValue = 1uL, refCount = 1u, ref0Offset = 1u,
+                        ref1Offset = 1u, ref2Offset = 1u, ref3Offset = 1u,
+                        ref0Image = 1uL, ref1Image = 1uL, ref2Image = 1uL, ref3Image = 1uL,
+                    ),
+                    kernelOffset = KernelOffsetTable(
+                        initTask = 1uL, initCred = 1uL, emptyZeroPage = 1uL,
+                        rootTaskGroup = 1uL, selinuxEnforcing = 1uL,
+                        selinuxBlobSizes = 1uL, securityHookHeads = 1uL,
+                        slideNfulnlLogger = 1uL, slideLoggers01 = 1uL,
+                        slideBootId = 1uL, vrSysExitTp = 1uL,
+                    ),
+                    kernelPhysLoad = 1uL,
+                    kernelPhysOffset = 1uL,
+                    compactWaiter = 1u.toUByte(),
+                    vrGuardTracepointFuncs = 1u,
+                    kernelsnitchCollisions = 1u,
+                    mmStructSz = 1u,
+                    execution = ExecutionTuning(
+                        recommendedMainCpu = 1u, recommendedConsumerCpu = 1u,
+                        heapPrepareMaxAttempts = 1u, heapPrepareTimeoutMs = 1u,
+                        heapKernelsnitchTimeoutMs = 1u, raceRouteWaitMs = 1u,
+                        raceRouteDoneTimeoutMs = 1u, raceSetupSettleUs = 1u,
+                        raceStatePollIntervalUs = 1u, w1Attempts = 1u,
+                        w1SettleUs = 1u, w1ScratchRepairAttempts = 1u,
+                        w2Attempts = 1u, w2SettleUs = 1u, w3ChainRounds = 1u,
+                        w3Attempts = 1u, w3SettleUs = 1u,
+                        handoffPreDispatchSettleMs = 1u,
+                        handoffModulePollAttempts = 1u,
+                        handoffModulePollIntervalMs = 1u,
+                        handoffEnforcePollAttempts = 1u,
+                        handoffEnforcePollIntervalMs = 1u,
+                        consumerMaxCalls = 1u, consumerBurstCalls = 1u,
+                    ),
+                    safeMode = 1u,
+                    routeConfig = routeConfig,
+                    steps = 1u,
+                )
+                for (section in document.sections()) {
+                    for ((key, _) in section.entries) keys += section.name to key
+                }
+            }
+            /* The 43284 private section (S3 B4): a fully populated 43284
+             * document, so every key the app can emit appears here. */
+            val cve43284 = NativeProfileDocument(
+                release = "manifest",
+                routeKind = 0u,
+                kernelMajor = 1u,
+                vrGuard = 1u,
+                fallbackRoute = 1u,
+                taskStruct = TaskStructOffsets(),
+                cred = CredTemplate(),
+                kernelOffset = KernelOffsetTable(),
+                kernelPhysLoad = null,
+                kernelPhysOffset = null,
+                compactWaiter = null,
+                vrGuardTracepointFuncs = null,
+                kernelsnitchCollisions = null,
+                mmStructSz = null,
+                execution = ExecutionTuning(),
+                safeMode = 1u,
+                routeConfig = NoRouteConfig,
+                steps = 3u,
+                backendKind = BackendWireCve202643284,
+                cve2026_43284 = Cve2026_43284Config(
+                    carrierPath = 1uL,
+                    lkmPath = 1uL,
+                    kmi = 1u,
+                    selinuxExecContext = 1uL,
+                    lateLoadArgs = 1uL,
+                    defexSymbol = 1uL,
+                ),
+            )
+            for (section in cve43284.sections()) {
+                for ((key, _) in section.entries) keys += section.name to key
+            }
+            return keys
         }
 
         /** Section-scoped entry accumulator used by [fromBinary]. */
         private class Builder(
             private val release: String,
-            private val routeKind: RouteKind,
+            private val routeKind: RouteKind?,
+            private val backendKind: UShort,
         ) {
             private var metaKernelMajor = 0u
-            private var metaRecommendShizuku = 0u
             private var metaFallbackRoute = 0u
             private var metaSafeMode = 0u
             private var metaVrGuard = 0u
@@ -498,8 +674,9 @@ data class NativeProfileDocument(
             private var kernelsnitchCollisions: UInt? = null
             private var mmStructSz: UInt? = null
             private var execution = ExecutionTuning()
-            private var routeConfig: RouteConfig = routeKind.emptyConfig()
+            private var routeConfig: RouteConfig = routeKind?.emptyConfig() ?: NoRouteConfig
             private var steps = 0u
+            private var cve43284 = Cve2026_43284Config()
 
             fun apply(section: String, key: String, raw: ULong) {
                 if (section.startsWith("route.")) {
@@ -509,7 +686,6 @@ data class NativeProfileDocument(
                 when (section) {
                     "meta" -> when (key) {
                         "kernel_major" -> metaKernelMajor = raw.toUInt()
-                        "recommend_shizuku" -> metaRecommendShizuku = raw.toUInt()
                         "fallback_route" -> metaFallbackRoute = raw.toUInt()
                         "safe_mode" -> metaSafeMode = raw.toUInt()
                         "vr_guard" -> metaVrGuard = raw.toUInt()
@@ -649,14 +825,25 @@ data class NativeProfileDocument(
                     }
 
                     "backend.cve_2026_43499" -> if (key == "steps") steps = raw.toUInt()
+
+                    "backend.cve_2026_43284" -> when (key) {
+                        "carrier_path" -> cve43284 = cve43284.copy(carrierPath = raw)
+                        "lkm_path" -> cve43284 = cve43284.copy(lkmPath = raw)
+                        "kmi" -> cve43284 = cve43284.copy(kmi = raw.toUInt())
+                        "selinux_exec_context" ->
+                            cve43284 = cve43284.copy(selinuxExecContext = raw)
+
+                        "late_load_args" -> cve43284 = cve43284.copy(lateLoadArgs = raw)
+                        "defex_symbol" -> cve43284 = cve43284.copy(defexSymbol = raw)
+                        "steps" -> steps = raw.toUInt()
+                    }
                 }
             }
 
             fun build(): NativeProfileDocument = NativeProfileDocument(
                 release = release,
-                routeKind = routeKind.wire,
+                routeKind = routeKind?.wire ?: 0u,
                 kernelMajor = metaKernelMajor,
-                recommendShizuku = metaRecommendShizuku,
                 fallbackRoute = metaFallbackRoute,
                 taskStruct = task,
                 cred = credential,
@@ -672,10 +859,38 @@ data class NativeProfileDocument(
                 vrGuardTracepointFuncs = vrGuardTracepointFuncs,
                 routeConfig = routeConfig,
                 steps = steps,
+                backendKind = backendKind.toUInt(),
+                cve2026_43284 =
+                    if (backendKind == BackendWireCve202643284.toUShort()) {
+                        cve43284
+                    } else {
+                        null
+                    },
             )
         }
     }
 }
+
+/**
+ * cve_2026_43284 backend-private policy values (S3 B4). GLK1 v2 values are
+ * fixed 64-bit slots, so each field is a numeric policy token resolved by the
+ * 43284 backend; null means absent (presence is carried by key occurrence).
+ */
+data class Cve2026_43284Config(
+    val carrierPath: ULong? = null,
+    val lkmPath: ULong? = null,
+    val kmi: UInt? = null,
+    val selinuxExecContext: ULong? = null,
+    val lateLoadArgs: ULong? = null,
+    val defexSymbol: ULong? = null,
+)
+
+/* Header backend ids (native `kBackend*`) derived from the App-side enum
+ * authority. File-level so the data class default and the nested Builder share
+ * them. */
+private val BackendWireCve202643499: UInt = BackendKind.Cve2026_43499.wire.toUInt()
+private val BackendWireCve20264560: UInt = BackendKind.Cve2026_64560.wire.toUInt()
+private val BackendWireCve202643284: UInt = BackendKind.Cve2026_43284.wire.toUInt()
 
 private data class Section(val name: String, val entries: List<Pair<String, ULong>>)
 

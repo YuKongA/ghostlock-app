@@ -6,10 +6,11 @@
 > Root the device first, then follow [MEDIATEK.md](MEDIATEK.md) to obtain the
 > two physical addresses (`kernel_phys_load` / `kernel_phys_offset`).
 
-Rows marked **Shizuku recommended** ship a profile with `recommend_shizuku = 1`.
-The app automatically turns on the home-screen **Run via Shizuku** switch for
-them at every start; you can switch it off for the current session, and while it
-is off the app stops asking for Shizuku until the next start.
+Profiles with `backend.steps = "w1_w2"` select the Shizuku/UMH path and skip
+the W3 seccomp stage; the app defaults to that mode. The root program and its
+handoff are chosen by the terminal selection. You can switch Shizuku off for the
+current session, and while it is off the app stops asking for Shizuku until the
+next start.
 
 Shizuku runs the exploit as the shell user, which has no seccomp filter, so the
 W3 seccomp bypass stage is skipped. To use it:
@@ -17,9 +18,10 @@ W3 seccomp bypass stage is skipped. To use it:
 1. Start Shizuku (for example over ADB) and keep it running.
 2. Tap the status card at the top of the app and grant access when prompted.
 
-Rows without the marker don't turn the switch on automatically, but **you can
-enable it manually on any device**. Running via Shizuku skips the W3 seccomp
-bypass there as well, so it saves time even where it isn't required.
+Profiles with `backend.steps = "w1_w3"` don't select that path automatically,
+but **you can enable Shizuku manually on any device**. Running via Shizuku skips
+the W3 seccomp bypass there as well, so it saves time even where it isn't
+required.
 
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|

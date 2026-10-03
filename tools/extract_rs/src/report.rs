@@ -143,6 +143,45 @@ const CONF_OFFSET_FIELDS: &[&str] = &[
     "slide_boot_id",
 ];
 
+/// Native wire `(section, key)` pairs the extractor can cause the app to emit,
+/// with the HOCON -> wire translation applied. The manifest test asserts every
+/// pair is present in the native owner manifest
+/// (`app/src/test/resources/profile-manifest.tsv`); the check is a subset
+/// because the extractor only derives image-dependent fields while the manifest
+/// is the full owner schema.
+pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = vec![
+        // Top-level HOCON paths that the app folds into a wire section/key.
+        ("meta", "kernel_major"),
+        ("backend.cve_2026_43499", "steps"),
+        ("kernel", "kernel_phys_load"),
+        ("kernel", "kernel_phys_offset"),
+        ("kernel", "kernelsnitch_collisions"),
+        ("kernel", "mm_struct_sz"),
+        // Every `route.<route>.compact_waiter` gate (tcp/select/multicast) maps
+        // onto the shared wire `kernel.compact_waiter` slot.
+        ("kernel", "compact_waiter"),
+        ("vr_guard", "tracepoint_funcs"),
+    ];
+    for (_, key) in CONF_TASK_FIELDS.iter().copied() {
+        out.push(("task_struct", key));
+    }
+    for key in CONF_CRED_FIELDS.iter().copied() {
+        out.push(("cred", key));
+    }
+    for key in CONF_OFFSET_FIELDS.iter().copied() {
+        out.push(("offset", key));
+    }
+    // HOCON `route.<token>.<key>` stays verbatim on the wire for these fields
+    // (the tokens match the wire section suffixes).
+    out.push(("route.select_stack", "waiter_shift"));
+    out.push(("route.multicast_waiter", "waiter_off"));
+    out.push(("route.multicast_waiter", "buffer_size"));
+    out.push(("route.multicast_waiter", "task_offset"));
+    out.push(("route.multicast_waiter", "lock_offset"));
+    out
+}
+
 /// Looks up a key in `(key, value)` entries, or `"null"` when absent.
 fn conf_lookup(entries: &[(String, String)], key: &str) -> String {
     entries
@@ -316,7 +355,9 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         format!("release = \"{release}\""),
         "schema_version = 1".to_string(),
         format!("kernel_major = {}", major.unwrap_or(0)),
-        "recommend_shizuku = 0".to_string(),
+        "backend {".to_string(),
+        "  steps = \"w1_w3\"".to_string(),
+        "}".to_string(),
     ];
     lines.push(match input.phys {
         // Decimal only: HOCON has no `0x` literal, and the Kotlin reader
@@ -342,7 +383,17 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
                         .route_geometry
                         .iter()
                         .find(|(key, _)| key == field)
-                        .map(|(_, value)| value.to_string())
+                        .map(|(_, value)| {
+                            if *field == "compact_waiter" {
+                                if *value != 0 {
+                                    "true".to_string()
+                                } else {
+                                    "false".to_string()
+                                }
+                            } else {
+                                value.to_string()
+                            }
+                        })
                         .unwrap_or_else(|| "null".to_string());
                     lines.push(format!("    {field} = {value}"));
                 }
@@ -443,10 +494,10 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
     {
         let gate = lines
             .iter()
-            .position(|line| line.starts_with("recommend_shizuku"))
-            .map(|index| index + 1)
+            .position(|line| line.starts_with("kernel_major"))
+            .map(|i| i + 1)
             .unwrap_or(lines.len());
-        lines.insert(gate, "recommend_vr_guard = 1".to_string());
+        lines.insert(gate, "recommend_vr_guard = true".to_string());
         push_conf_block(
             &mut lines,
             "vr_guard",
@@ -529,6 +580,7 @@ mod tests {
             render_conf(&ConfInputs {
                 release: "6.1.145-android14-11-maybe-dirty",
                 phys: None,
+                phys_offset: None,
                 symbols: &symbols,
                 structs: &structs,
                 route: Some("select_stack"),
@@ -538,7 +590,7 @@ mod tests {
             })
         };
         let fitted = render(Some(Some(0x40)));
-        assert!(fitted.contains("recommend_vr_guard = 1"));
+        assert!(fitted.contains("recommend_vr_guard = true"));
         assert!(fitted.contains("vr_guard {\n  tracepoint_funcs = 64\n}"));
         /* An offset that cannot travel in the u8 layout is dropped instead of
          * being narrowed onto a different tracepoint member: guard off. */
@@ -606,7 +658,7 @@ mod tests {
             cred: &conf_cred_6x(),
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(out.contains("tcp_zerocopy {\n    compact_waiter = 1"));
+        assert!(out.contains("tcp_zerocopy {\n    compact_waiter = true"));
         assert!(out.contains("mm_struct_sz = 1024"));
         assert!(out.contains("kernel_phys_load = null"));
     }
@@ -652,7 +704,7 @@ mod tests {
         assert!(out.contains("buffer_size = 264"));
         assert!(out.contains("task_offset = 48"));
         assert!(out.contains("lock_offset = 56"));
-        assert!(out.contains("compact_waiter = 1"));
+        assert!(out.contains("compact_waiter = true"));
         assert!(out.contains("collisions = 8"));
         assert!(out.contains("mm_struct_sz = 1024"));
         assert!(out.contains("cred {"));
@@ -822,11 +874,11 @@ mod tests {
         });
         // Without this image's static derivation the unverified candidate must
         // not borrow the hardware-probed frame/copy-window constants.
-        assert!(!out.contains("waiter_off"));
-        assert!(!out.contains("buffer_size"));
+        assert!(out.contains("waiter_off = null"));
+        assert!(out.contains("buffer_size = null"));
         assert!(out.contains("task_offset = 48"));
         assert!(out.contains("lock_offset = 56"));
-        assert!(out.contains("compact_waiter = 1"));
+        assert!(out.contains("compact_waiter = true"));
         // The 5.x KernelSnitch defaults are required to run and are emitted even
         // without the "-android13-" train tag.
         assert!(out.contains("kernelsnitch"));
@@ -996,21 +1048,7 @@ mod tests {
         let bundled = flatten_conf(&bundled);
 
         assert!(generated.contains_key("route.multicast_waiter.waiter_off"));
-        // The one intentional difference: shizuku defaults to off in generated
-        // confs, the bundled profile recommends it.
-        assert_eq!(
-            generated.get("recommend_shizuku").map(String::as_str),
-            Some("0")
-        );
-        assert_eq!(
-            bundled.get("recommend_shizuku").map(String::as_str),
-            Some("1")
-        );
-
         for key in bundled.keys() {
-            if key == "recommend_shizuku" {
-                continue;
-            }
             assert_eq!(
                 generated.get(key),
                 bundled.get(key),
@@ -1022,6 +1060,40 @@ mod tests {
             assert!(
                 bundled.contains_key(key),
                 "generated profile has unexpected field {key}"
+            );
+        }
+    }
+
+    /// A2-3c-3 three-end manifest agreement (extractor leg): every native
+    /// (section, key) the extractor can emit must be declared by the native
+    /// owner Schema. A rename on either side fails here instead of surfacing as
+    /// a startup rejection in the field.
+    #[test]
+    fn conf_wire_fields_are_in_the_native_owner_manifest() {
+        let manifest = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../app/src/test/resources/profile-manifest.tsv"
+        ))
+        .expect("native owner manifest");
+        let fields: BTreeSet<(String, String)> = manifest
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#')
+            })
+            .map(|line| {
+                let mut columns = line.split('\t');
+                columns.next(); // owner
+                let section = columns.next().expect("manifest section column");
+                let key = columns.next().expect("manifest key column");
+                (section.to_string(), key.to_string())
+            })
+            .collect();
+        assert!(!fields.is_empty(), "manifest is empty");
+        for (section, key) in super::conf_wire_fields() {
+            assert!(
+                fields.contains(&(section.to_string(), key.to_string())),
+                "extractor key {section}.{key} is missing from the native owner manifest"
             );
         }
     }

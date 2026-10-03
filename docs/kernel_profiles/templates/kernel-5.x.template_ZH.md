@@ -14,7 +14,7 @@
 <tr><td><code>kernel_major</code></td><td><code>5</code></td><td>内核主版本（5 或 6），供地址解析和合法性检查使用。</td></tr>
 <tr><td><code>kernel_phys_load</code></td><td></td><td>内核物理加载地址（0 时按 SoC 公式回退）。</td></tr>
 <tr><td><code>kernel_phys_offset</code></td><td></td><td>DRAM 基址 / linear-map <code>PHYS_OFFSET</code>，用于 image&rarr;direct-map 换算；取自 <code>/proc/iomem</code>，无法从 <code>boot.img</code> 提取。</td></tr>
-<tr><td><code>recommend_shizuku</code></td><td><code>1</code></td><td>是否建议在这台设备上通过 Shizuku 运行（0/1，默认 0，仅提示）。</td></tr>
+<tr><td><code>backend.steps</code></td><td><code>w1_w3</code></td><td>执行步骤集：<code>w1_w3</code> 为一般路径（App/zygote，执行 W3），<code>w1_w2</code> 为 Shizuku/UMH 路径（shell，跳过 W3）；与 terminal 选择共同决定 root 程序与执行模式。</td></tr>
 <tr><th rowspan="15">task_struct 结构偏移</th><td><code>task_struct.prio</code></td><td></td><td><code>task_struct.prio</code>，PI 优先级提升判定会读它。</td><td rowspan="15">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="15">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>task_struct.normal_prio</code></td><td></td><td>常规调度优先级字段。</td></tr>
 <tr><td><code>task_struct.sched_task_group</code></td><td></td><td>调度组指针 <code>sched_task_group</code> 的偏移。</td></tr>
@@ -44,7 +44,7 @@
 <tr><td><code>cred.ref1_image</code></td><td></td><td>第 2 个引用槽对应的内核镜像偏移（5.x）。</td></tr>
 <tr><td><code>cred.ref2_image</code></td><td></td><td>第 3 个引用槽对应的内核镜像偏移（5.x）。</td></tr>
 <tr><td><code>cred.ref3_image</code></td><td></td><td>第 4 个引用槽对应的内核镜像偏移（5.x）。</td></tr>
-<tr><th rowspan="13">waiter、堆与路线几何</th><td><code>route.multicast_waiter.compact_waiter</code></td><td><code>1</code></td><td>紧凑 waiter 布局标记（0/1），写在所属路由分支内（tcp 或 multicast）。</td><td rowspan="13">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="13">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
+<tr><th rowspan="13">waiter、堆与路线几何</th><td><code>route.multicast_waiter.compact_waiter</code></td><td><code>true</code></td><td>紧凑 waiter 布局标记（<code>true</code>/<code>false</code>），写在所属路由分支内（tcp 或 multicast）。</td><td rowspan="13">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="13">该值保持 5.x 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>kernelsnitch.mm_struct_sz</code></td><td></td><td><code>mm_struct</code> 的 SLUB 大小，KernelSnitch 搜堆时使用。</td></tr>
 <tr><td><code>route.select_stack.waiter_shift</code></td><td></td><td>select 等待栈上 waiter 的相对位移（0 合法，负值常见）；作为回退时写在 <code>fallback.route.select_stack</code>。</td></tr>
 <tr><td><code>route.multicast_waiter.waiter_off</code></td><td><code>96</code></td><td>多播缓冲区中 waiter 的偏移（必须大于 0）。</td></tr>

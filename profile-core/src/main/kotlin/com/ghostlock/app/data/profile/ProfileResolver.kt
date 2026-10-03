@@ -11,11 +11,14 @@ import com.ghostlock.app.data.route.RouteKind
  */
 object ProfileResolver {
     private val KnownTopLevel = setOf(
-        "release", "schema_version", "kernel_major", "recommend_shizuku",
+        "release", "schema_version", "kernel_major",
         "route", "fallback", "kernelsnitch", "task_struct", "cred", "offset",
         "kernel_phys_load", "kernel_phys_offset", "execution",
-        /* Ancillary vr.ko guard: the gate (mirrors recommend_shizuku) and the
-         * layout section derived from the image's BTF. */
+        /* Backend-private selection (ADR-0004 R18): backend.steps names the
+         * StepSet the cve_2026_43499 backend runs. */
+        "backend",
+        /* Ancillary vr.ko guard: the gate and the layout section derived from
+         * the image's BTF. */
         "recommend_vr_guard", "vr_guard",
     )
     private val RequiredTopLevel = setOf(
@@ -56,10 +59,10 @@ object ProfileResolver {
         }
         if (branchField != null) {
             route?.let { name ->
-                profile.getLongAt("route.$name.$branchField")?.let { return it }
+                profile.getFlagLongAt("route.$name.$branchField")?.let { return it }
             }
             if (fallbackTo != null && fallbackTo != "none") {
-                profile.getLongAt("fallback.route.$fallbackTo.$branchField")?.let { return it }
+                profile.getFlagLongAt("fallback.route.$fallbackTo.$branchField")?.let { return it }
             }
         }
         if (path.startsWith("mcast.")) {
@@ -72,8 +75,20 @@ object ProfileResolver {
             }
             profile.getLongAt("mcast.$field")?.let { return it }
         }
-        return profile.getLongAt(path)
+        /* Also accepts a HOCON boolean for direct dotted paths such as
+         * route.tcp_zerocopy.compact_waiter (the controller validates those). */
+        return profile.getFlagLongAt(path)
     }
+
+    /**
+     * Numeric view that also accepts a HOCON boolean (true=1, false=0); the
+     * compact-waiter branch is a boolean in the shipped profiles.
+     */
+    private fun Map<String, Any?>.getFlagLongAt(path: String): Long? =
+        when (val value = getValueAt(path)) {
+            is Boolean -> if (value) 1L else 0L
+            else -> getLongAt(path)
+        }
 
     /**
      * String accessor over the same dotted-path lookup as [nativeValue]. HOCON

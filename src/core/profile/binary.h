@@ -25,13 +25,21 @@
 
 #include <string_view>
 
+namespace ghostlock::profile {
+    struct Document;
+}
+
+namespace ghostlock::backend {
+    struct Cve2026_43284Profile;
+}
+
 namespace ghostlock::binary_profile {
     inline constexpr uint32_t kMagic = 0x0D000721u;
     inline constexpr uint16_t kVersion = 2u;
     /* Known component ids. The full catalog is decoded here; an id that is
-     * known but unavailable (UMH / cve_2026_64560 / 31431 / 43503 / 23274) is
-     * accepted at decode time and rejected by the orchestrator before the
-     * attack starts. */
+     * known but unavailable (UMH / cve_2026_64560 / 31431 / 43503 / 23274 /
+     * 43284) is accepted at decode time and rejected by the orchestrator
+     * before the attack starts. */
     inline constexpr uint16_t kTerminalRootChild = 1u;
     inline constexpr uint16_t kTerminalUmhForward = 2u;
     inline constexpr uint16_t kBackendCve202643499 = 1u;
@@ -39,6 +47,7 @@ namespace ghostlock::binary_profile {
     inline constexpr uint16_t kBackendCve202631431 = 3u;
     inline constexpr uint16_t kBackendCve202643503 = 4u;
     inline constexpr uint16_t kBackendCve202623274 = 5u;
+    inline constexpr uint16_t kBackendCve202643284 = 6u;
 
     /* StepSet ids (ADR-0004 R18); carried in the backend's private section
      * (`backend.cve_2026_43499`, field `steps`), never in the header. */
@@ -57,7 +66,7 @@ namespace ghostlock::binary_profile {
     [[nodiscard]] constexpr bool backend_known(uint16_t id) noexcept {
         return id == kBackendCve202643499 || id == kBackendCve20264560 ||
                id == kBackendCve202631431 || id == kBackendCve202643503 ||
-               id == kBackendCve202623274;
+               id == kBackendCve202623274 || id == kBackendCve202643284;
     }
 
     /* Component selection as decoded from the transport. v2 fills the single
@@ -74,9 +83,19 @@ namespace ghostlock::binary_profile {
     };
 
     /* Parse one binary document into the native transport struct. `ids`, when
-     * given, receives the decoded component selection. */
+     * given, receives the decoded component selection. `document_out`, when
+     * given, additionally receives the neutral framing result (shadow path,
+     * A2-3c-1); it never changes the transport decode or its return value.
+     *
+     * `profile_43284_out`, when given, receives the bound
+     * backend.cve_2026_43284 private View (S3 B4). The section is accepted only
+     * when the header backend id is kBackendCve202643284; for every other
+     * backend it is an unknown section and Production rejects the document. The
+     * View is not a CoreSession slot and never changes the 43499 layout. */
     int32_t parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,
-              char *release_buf, size_t release_buf_cap, component_ids *ids = nullptr);
+              char *release_buf, size_t release_buf_cap, component_ids *ids = nullptr,
+              struct ghostlock::profile::Document *document_out = nullptr,
+              struct ghostlock::backend::Cve2026_43284Profile *profile_43284_out = nullptr);
 
     /* Serialize the same layout (host tests and tooling). */
     int32_t serialize(const struct ghostlock::profile::kernel_offsets *in, char *buffer, size_t capacity);

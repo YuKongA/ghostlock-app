@@ -34,7 +34,7 @@
 <tr><td><code>cred.caps_offset</code></td><td><code>48</code></td><td>capability 集合在 <code>cred</code> 中的偏移。</td></tr>
 <tr><td><code>cred.caps_count</code></td><td><code>5</code></td><td><code>cred</code> 携带的 capability 数量。</td></tr>
 <tr><td><code>cred.caps_value</code></td><td><code>-1</code></td><td>capability 位图的填充值。</td></tr>
-<tr><th rowspan="4">waiter、堆与路线几何</th><td><code>route.tcp_zerocopy.compact_waiter</code></td><td><code>1</code></td><td>紧凑 waiter 布局标记（0/1），写在所属路由分支内（tcp 或 multicast）。</td><td rowspan="4">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="4">该值保持 6.1 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
+<tr><th rowspan="4">waiter、堆与路线几何</th><td><code>route.tcp_zerocopy.compact_waiter</code></td><td><code>true</code></td><td>紧凑 waiter 布局标记（<code>true</code>/<code>false</code>），写在所属路由分支内（tcp 或 multicast）。</td><td rowspan="4">错误值会改变目标选择、结构边界或竞态时序，可能导致失败、死锁、内存破坏、黑屏或重启。</td><td rowspan="4">该值保持 6.1 已验证基线，但不是稳定 ABI；新设备必须用同一目标镜像逐项复核。</td></tr>
 <tr><td><code>kernelsnitch.mm_struct_sz</code></td><td></td><td><code>mm_struct</code> 的 SLUB 大小，KernelSnitch 搜堆时使用。</td></tr>
 <tr><td><code>kernelsnitch.collisions</code></td><td><code>4</code></td><td>KernelSnitch 需要的 futex 碰撞数量。</td></tr>
 <tr><td><code>fallback.route.select_stack.waiter_shift</code></td><td></td><td>select 等待栈上 waiter 的相对位移（0 合法，负值常见）；作为回退时写在 <code>fallback.route.select_stack</code>。</td></tr>

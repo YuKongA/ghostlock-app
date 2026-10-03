@@ -10,14 +10,17 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
+import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.data.ota.OtaPayloadExtractor
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
 import com.ghostlock.app.domain.model.ProfileConfig
+import com.ghostlock.app.domain.model.ShizukuStatus
 import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.repository.ProfileConfigController
@@ -45,6 +48,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val EditSessionPreferences = "ghostlock_edit_session"
         const val ExtractBinaryName = "libextract.so"
         const val DefaultDebugLocation = "Download/ghostlock-debug-log"
+        const val PrefExecutionMode = "execution_mode"
+        /* Legacy boolean key (pre-T3d); read once to migrate to [PrefExecutionMode]. */
+        const val PrefLegacyShizukuEnabled = "shizuku_enabled"
+        /* Header backend selection; the stored value is normalized to a token. */
+        const val PrefBackendKind = "backend_kind"
         const val PrefForceAttackTest = "force_attack_test"
         const val PrefDebugExportEnabled = "debug_export_enabled"
         const val PrefDebugExportLocation = "debug_export_location"
@@ -80,24 +88,24 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         directory = File(filesDir, UserProfilesDirectoryName),
         assetLoader = assetConfigLoader,
     )
+    /** Header backend selection; 43284 stays unavailable so it cannot be set. */
+    private var backendKind = BackendKind.Default
     private val profileController = AndroidProfileConfigController(
         appContext,
         filesDir,
         userProfileStore,
         preferences,
+        backendSelection = { backendKind },
     )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
     /** True once the user picked a pair (or one was restored); only then does it
-     * override the profile's suggestion (mirrors shizukuPreferenceSet). */
+     * override the profile's suggestion. */
     private var cpuPairPreferenceSet = false
     private var safeModeEnabled = false
     private var forceAttackTest = false
-    private var shizukuEnabled = false
-    /** True once the user flipped the toggle; only then does it override the
-     * profile suggestion (PROFILE-SUGGEST-01). */
-    private var shizukuPreferenceSet = false
+    private var executionMode = ExecutionMode.General
     private var pendingParsedDocument: PendingParsedDocument? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
 
@@ -105,7 +113,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         buildCpuPairs()
         restoreCpuPair()
         applyRecommendedCpuPair(System.getProperty("os.version", "").orEmpty())
-        restoreShizukuPreference()
+        restoreExecutionMode()
+        restoreBackendKind()
         restoreForceAttackTest()
         dropLegacyOffsetsCache()
         migrateLegacyOffsetsStore()
@@ -156,12 +165,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val release = System.getProperty("os.version", "unknown").orEmpty()
         /* A profile imported after start-up can still carry a pair suggestion. */
         applyRecommendedCpuPair(release)
-        /* PROFILE-SUGGEST-01: recommend_shizuku is a suggestion. It seeds the
-         * toggle until the user makes an explicit choice, which then overrides
-         * it in both directions. */
-        val recommendShizuku = release in builtinProfiles.recommendShizuku ||
-            importedOffsetsRecommendShizuku(release)
-        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else recommendShizuku
         return KernelSnapshot(
             deviceName = resolveDeviceName(),
             kernelRelease = release,
@@ -172,10 +175,10 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
             forceAttackTest = forceAttackTest,
-            recommendShizuku = recommendShizuku,
-            shizukuEnabled = shizukuActive,
-            shizukuStatus = if (shizukuActive) shizukuRunner.status()
-            else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
+            executionMode = executionMode,
+            backendKind = backendKind,
+            shizukuStatus = if (executionMode.requiresShizuku) shizukuRunner.status()
+            else ShizukuStatus.NOT_REQUIRED,
         )
     }
 
@@ -197,15 +200,23 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
     }
 
-    override fun setShizukuEnabled(enabled: Boolean) {
-        shizukuEnabled = enabled
-        shizukuPreferenceSet = true
-        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .edit {
-                putBoolean("shizuku_enabled", enabled)
-                putBoolean("shizuku_explicit", true)
-            }
-        if (enabled) shizukuRunner.requestPermission()
+    override fun setExecutionMode(mode: ExecutionMode) {
+        /* An unavailable entry (UMH until T5) can never become active. */
+        if (!mode.isAvailable) return
+        executionMode = mode
+        preferences.edit {
+            putString(PrefExecutionMode, mode.name)
+            /* Keep the retired boolean in sync so downgraded builds still read it. */
+            putBoolean(PrefLegacyShizukuEnabled, mode == ExecutionMode.Shizuku)
+        }
+        if (mode.requiresShizuku) shizukuRunner.requestPermission()
+    }
+
+    override fun setBackendKind(kind: BackendKind) {
+        /* A known-but-unavailable backend can never become active. */
+        if (!kind.available) return
+        backendKind = kind
+        preferences.edit { putString(PrefBackendKind, kind.token) }
     }
 
     override fun profileController(): ProfileConfigController = profileController
@@ -783,6 +794,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 filesDir = filesDir,
                 userProfiles = userProfileStore,
                 preferences = sessionPreferences,
+                backendSelection = { backendKind },
                 forcedUserProfile = name,
                 forcedBuiltinRelease = profileController.activeBuiltinRelease(),
             )
@@ -924,9 +936,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private fun importedOffsetsMatch(version: String): Boolean =
         userProfileStore.containsRelease(version)
 
-    private fun importedOffsetsRecommendShizuku(version: String): Boolean =
-        userProfileStore.recommendsShizuku(version)
-
     private fun buildCpuPairs() {
         cpuPairs.clear()
         cpuPairLabels.clear()
@@ -951,8 +960,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     /**
      * Offers the pair the profile for [release] recommends and, until the user
-     * picks one explicitly, makes it the default (mirrors the recommend_shizuku
-     * flow). The per-cluster pairing cannot express a pair that straddles two
+     * picks one explicitly, makes it the default. The per-cluster pairing cannot
+     * express a pair that straddles two
      * frequency groups, so the suggestion may be one the list does not carry.
      */
     private fun applyRecommendedCpuPair(release: String) {
@@ -992,10 +1001,36 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private fun restoreShizukuPreference() {
-        val prefs = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-        shizukuPreferenceSet = prefs.getBoolean("shizuku_explicit", false)
-        shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
+    /**
+     * Restores the persisted mode. The legacy `shizuku_enabled` boolean (pre-T3d)
+     * maps to General/Shizuku; a stored mode that is unavailable (UMH until T5)
+     * falls back to General so a stale preference cannot select a dead path.
+     */
+    private fun restoreExecutionMode() {
+        val stored = preferences.getString(PrefExecutionMode, null)
+        val restored = stored?.let { name -> ExecutionMode.entries.firstOrNull { it.name == name } }
+            ?: if (preferences.getBoolean(PrefLegacyShizukuEnabled, false)) {
+                ExecutionMode.Shizuku
+            } else {
+                ExecutionMode.General
+            }
+        executionMode = restored.takeIf { it.isAvailable } ?: ExecutionMode.General
+    }
+
+    /**
+     * Restores the persisted backend selection. Any historical spelling (the
+     * canonical token, the enum name, or a legacy numeric wire id) is parsed and
+     * normalized; an unavailable backend (43284) falls back to 43499 so a stale
+     * preference cannot select a dead path. The canonical token is written back,
+     * migrating old values in place.
+     */
+    private fun restoreBackendKind() {
+        val stored = preferences.getString(PrefBackendKind, null)
+        val selected = BackendKind.selectableOrFallback(BackendKind.fromStored(stored))
+        backendKind = selected
+        if (stored != null && stored != selected.token) {
+            preferences.edit { putString(PrefBackendKind, selected.token) }
+        }
     }
 
     private fun restoreForceAttackTest() {

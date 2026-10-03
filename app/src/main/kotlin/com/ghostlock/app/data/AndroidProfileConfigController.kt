@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.profile.CpuPairView
 import com.ghostlock.app.data.profile.ProfileMerger
 import com.ghostlock.app.data.profile.ProfileResolver
@@ -32,6 +33,11 @@ internal class AndroidProfileConfigController(
     private val filesDir: File,
     private val userProfiles: UserProfileStore,
     private val preferences: SharedPreferences,
+    /**
+     * App-level backend selection injected into every document this controller
+     * builds. Defaults to 43499 so existing callers keep byte-identical output.
+     */
+    private val backendSelection: () -> BackendKind = { BackendKind.Default },
     /**
      * Editing sessions pin the imported document instead of consulting the
      * live selection, and keep their overrides in [preferences] (a private
@@ -90,7 +96,11 @@ internal class AndroidProfileConfigController(
         fallbackTo: String?,
     ): Set<String> {
         val invalid = mutableSetOf<String>()
-        fun value(path: String): Long? = profile.getLongAt(path)
+        /* HOCON booleans (compact_waiter / recommend_vr_guard) read as 1/0. */
+        fun value(path: String): Long? = when (val raw = profile.getValueAt(path)) {
+            is Boolean -> if (raw) 1L else 0L
+            else -> profile.getLongAt(path)
+        }
         fun requireNonZero(vararg paths: String) {
             paths.forEach { path ->
                 val current = value(path)
@@ -522,11 +532,20 @@ internal class AndroidProfileConfigController(
     private fun buildNativeDocument(release: String, profile: ValueMap): Profile? {
         val route = routeNameOf(profile)
         val fallbackTo = fallbackTargetOf(profile)
+        /* Backend choice is an app-level preference, not profile text: inject the
+         * selected token so NativeProfileDocument.from reads it from the same
+         * `backend.kind` path the exporter and imported profiles already use. The
+         * copy keeps the resolved HOCON (editor tree, exports) free of the
+         * app-only selection. */
+        val resolved = profile.copyValue().asValueMap() ?: profile
+        resolved.mutableChild("backend")["kind"] = backendSelection().token
         return Profile.fromValueMap(
             release = release,
             route = RouteKind.fromToken(route),
             fallbackTo = RouteKind.fromToken(fallbackTo),
-        ) { path -> ProfileResolver.nativeValue(profile, route, fallbackTo, path) }
+            text = { path -> ProfileResolver.nativeText(resolved, path) },
+            bool = { path -> ProfileResolver.nativeBool(resolved, path) },
+        ) { path -> ProfileResolver.nativeValue(resolved, route, fallbackTo, path) }
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----
@@ -774,9 +793,7 @@ internal class AndroidProfileConfigController(
                     }
                 }
 
-                value is Number -> if (path != "schema_version" && path != "release" &&
-                    path != "recommend_shizuku"
-                ) {
+                value is Number -> if (path != "schema_version" && path != "release") {
                     val overrideValue = override.getLongAt(path)
                     leaves += ProfileFieldNode(
                         path = path,
@@ -787,9 +804,19 @@ internal class AndroidProfileConfigController(
                     )
                 }
 
-                value == null -> if (path != "schema_version" && path != "release" &&
-                    path != "recommend_shizuku"
-                ) {
+                /* HOCON booleans surface as an editable 1/0 leaf. */
+                value is Boolean -> if (path != "schema_version" && path != "release") {
+                    val overrideValue = override.getLongAt(path)
+                    leaves += ProfileFieldNode(
+                        path = path,
+                        name = key,
+                        value = if (value) 1L else 0L,
+                        overridden = overrideValue != null &&
+                            overrideValue != baseline.getLongAt(path),
+                    )
+                }
+
+                value == null -> if (path != "schema_version" && path != "release") {
                     leaves += ProfileFieldNode(
                         path = path,
                         name = key,

@@ -19,7 +19,7 @@ Where the pieces live:
   dispatch authority: `combination_supported()`, `DispatchTarget` and
   `dispatch_target_of()`.
 - `pipeline/backend_policy.hpp` / `pipeline/backend_contract.hpp` - the declared
-  backend identities plus the `BackendIdentity` / `BackendExecution<B, M>`
+  backend identities plus the `BackendIdentity` / `BackendExecution<B, Input>`
   concepts and the identity registry (`for_each_backend`).
 - `pipeline/terminal_contract.hpp` - the declared terminal ids and reasons.
 - `backend/cve_2026_43499/route/route_policy.hpp` - the middleware policies: compile-time capabilities
@@ -52,7 +52,15 @@ Where the pieces live:
   (`root_child_terminal.*`), stage types, handoff probes and the victim pipe
   context.
 - `profile/`: the GLK1 v2 transport (object sections: `binary.cpp` / `model.h`),
-  its typed model, accessors and entry points.
+  its typed model, accessors and entry points. `document.hpp` frames the
+  sections without naming a field; `schema.hpp` binds an owner Schema onto a
+  typed View (the 43499 owner declares its keys in
+  `backend/cve_2026_43499/schema.hpp`). Production decode is strict: an
+  unknown section, an unknown key in an owned section, or an unknown
+  `route.*` section is rejected at startup instead of being silently ignored
+  (Tooling tolerance is reserved for offline tools). The owner Schema is
+  exported to `app/src/test/resources/profile-manifest.tsv`, and the native,
+  Kotlin and extractor tests cross-check their field sets against it.
 - `kernel/`: target ABI, constants and offset tables.
 - `support/`: generic C++ result/RAII helpers, time and the fatal-error type.
 - `kernelsnitch/`: kernel-address discovery implementation.

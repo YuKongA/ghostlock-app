@@ -19,7 +19,6 @@ class HoconSupportTest {
         val entries = valueListOf(
             valueMapOf(
                 "release" to "6.1.115-test",
-                "recommend_shizuku" to 0,
                 "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to 1)),
                 "fallback" to valueMapOf(
                     "to" to "select_stack",
@@ -127,7 +126,6 @@ class HoconSupportTest {
     fun `value model round trips nested route and fallback`() {
         val map = valueMapOf(
             "release" to "6.1.115-test",
-            "recommend_shizuku" to 0,
             "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to 1)),
             "fallback" to valueMapOf(
                 "to" to "select_stack",

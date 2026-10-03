@@ -100,7 +100,9 @@ success:
 release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
 schema_version = 1
 kernel_major = 6
-recommend_shizuku = 0
+backend {
+  steps = "w1_w3"
+}
 kernel_phys_load = 0xC7800000
 route {
   select_stack {

@@ -79,6 +79,7 @@ selection or an explicit imported/override value).
 release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
 schema_version = 1
 kernel_major = 6
+backend { steps = "w1_w3" }
 route {
   select_stack { waiter_shift = -2 }
 }
@@ -95,6 +96,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 | `release` | string | Must match the device's `uname -r` exactly (case and suffix); template files never participate in matching |
 | `schema_version` | int | Always `1` |
 | `kernel_major` | int | `5` or `6`; used for address resolution and sanity checks, no longer selects the route |
+| `backend` | object | `steps` string: `"w1_w3"` (general path; runs W3) or `"w1_w2"` (Shizuku/UMH; shell, skips W3). Together with the terminal selection it fixes the root program / execution mode |
 | `route` | object | Explicit route parent with exactly one branch; see section 3 |
 | `fallback` | object | Fallback declaration (`to` plus an optional `route` branch); see section 3 |
 | geometry | object/int | Grouped by namespace: `task_struct` / `cred` / `offset` / `kernelsnitch`. Omit unused route-specific fields entirely — don't write `0` or placeholders. `null` only appears in templates and in-progress edits |
@@ -107,7 +109,7 @@ exist: the profile declares it explicitly. `route` is a parent with **exactly
 one branch**:
 
 ```hocon
-route { tcp_zerocopy { compact_waiter = 1 } }
+route { tcp_zerocopy { compact_waiter = true } }
 route { select_stack { waiter_shift = -2 } }
 route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 ```
@@ -221,14 +223,13 @@ addresses.
 | `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | KASLR slide anchors |
 | `kernel_phys_load` | Kernel physical load address (0 falls back to the SoC formula) |
 | `kernel_phys_offset` | DRAM base / linear-map `PHYS_OFFSET` used for image→direct-map translation (default: compiled `P0_PHYS_OFFSET = 0x80000000`). Set it for devices whose DRAM base differs (e.g. MTK `0x40000000`); not derivable from `boot.img`, take it from `/proc/iomem` |
-| `recommend_shizuku` | Whether this kernel recommends the Shizuku path (0/1, required in every profile, default 0; advisory only). It is not shown in any editor: for recommended kernels the app **turns the home-screen "Run via Shizuku" switch on at every start**. You can turn it off for the session, and once off the app stops requiring Shizuku for that session |
 
 ### 4.4 select_stack / tcp route fields
 
 | Field | Meaning |
 |---|---|
 | `route.select_stack.waiter_shift` | Relative shift of the select-route waiter on the stack (0 is valid); under a fallback declaration this is `fallback.route.select_stack.waiter_shift` |
-| `route.tcp_zerocopy.compact_waiter` | Compact-waiter layout flag for the tcp route; the multicast branch needs it too (`route.multicast_waiter.compact_waiter`) |
+| `route.tcp_zerocopy.compact_waiter` | Compact-waiter boolean layout flag (`true`/`false`) for the tcp route; the multicast branch needs it too (`route.multicast_waiter.compact_waiter`) |
 
 ### 4.5 multicast_waiter route fields (`route.multicast_waiter`)
 

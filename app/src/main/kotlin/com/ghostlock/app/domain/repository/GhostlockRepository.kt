@@ -1,7 +1,9 @@
 package com.ghostlock.app.domain.repository
 
+import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
 import com.ghostlock.app.domain.model.OffsetImportResult
@@ -19,7 +21,11 @@ interface GhostlockRepository {
     /** Skip the pre-attack KernelSU check and run the exploit as a test. */
     fun setForceAttackTest(enabled: Boolean)
 
-    fun setShizukuEnabled(enabled: Boolean)
+    /** Persists the entry/execution selection (unavailable modes are ignored). */
+    fun setExecutionMode(mode: ExecutionMode)
+
+    /** Persists the header backend selection (unavailable backends are ignored). */
+    fun setBackendKind(kind: BackendKind)
 
     /**
      * Imports one or more picked documents (file name -> text). Includes are

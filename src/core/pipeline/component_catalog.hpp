@@ -9,8 +9,8 @@
 namespace ghostlock::pipeline {
     /* Stable component ids. Explicit numeric values; never rely on the
      * compiler's enum layout. The UMH terminal and the cve_2026_64560/31431/
-     * 43503/23274 backends are reserved and report unavailable until their own
-     * batches land. */
+     * 43503/23274/43284 backends are reserved and report unavailable until
+     * their own batches land. */
     enum class TerminalKind : std::uint8_t {
         RootChild = 1,
         UmhForward = 2,
@@ -22,6 +22,7 @@ namespace ghostlock::pipeline {
         Cve2026_31431 = 3,
         Cve2026_43503 = 4,
         Cve2026_23274 = 5,
+        Cve2026_43284 = 6,
     };
 
     /* StepSet is backend-owned (ADR-0004 R18) but App-visible: the profile names
@@ -81,7 +82,8 @@ namespace ghostlock::pipeline {
     [[nodiscard]] constexpr bool combination_supported(
         const ComponentSelection &selection) noexcept {
         return selection.backend == BackendKind::Cve2026_43499 &&
-               selection.steps == StepSetKind::W1W3 &&
+               (selection.steps == StepSetKind::W1W3 ||
+                selection.steps == StepSetKind::W1W2) &&
                selection.terminal == TerminalKind::RootChild;
     }
 
@@ -91,6 +93,7 @@ namespace ghostlock::pipeline {
     enum class DispatchTarget : std::uint8_t {
         None,
         Cve43499W1W3_RootChild,
+        Cve43499W1W2_RootChild,
     };
 
     [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
@@ -98,6 +101,10 @@ namespace ghostlock::pipeline {
         if (backend == BackendKind::Cve2026_43499 && steps == StepSetKind::W1W3 &&
             terminal == TerminalKind::RootChild) {
             return DispatchTarget::Cve43499W1W3_RootChild;
+        }
+        if (backend == BackendKind::Cve2026_43499 && steps == StepSetKind::W1W2 &&
+            terminal == TerminalKind::RootChild) {
+            return DispatchTarget::Cve43499W1W2_RootChild;
         }
         return DispatchTarget::None;
     }
@@ -119,6 +126,7 @@ namespace ghostlock::pipeline {
             case BackendKind::Cve2026_31431: return "cve_2026_31431";
             case BackendKind::Cve2026_43503: return "cve_2026_43503";
             case BackendKind::Cve2026_23274: return "cve_2026_23274";
+            case BackendKind::Cve2026_43284: return "cve_2026_43284";
             default: return "unknown";
         }
     }

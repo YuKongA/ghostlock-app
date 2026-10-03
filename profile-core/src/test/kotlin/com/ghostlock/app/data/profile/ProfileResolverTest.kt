@@ -29,6 +29,17 @@ class ProfileResolverTest {
         )
         assertEquals(1L, ProfileResolver.nativeValue(profile, "tcp_zerocopy", "none", "compact_waiter"))
 
+        /* The shipped profiles spell compact_waiter as a HOCON boolean; the
+         * route branch lookup folds true/false onto the wire's 1/0. */
+        val booleanBranch = valueMapOf(
+            "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to true)),
+        )
+        assertEquals(1L, ProfileResolver.nativeValue(booleanBranch, "tcp_zerocopy", "none", "compact_waiter"))
+        val offBranch = valueMapOf(
+            "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to false)),
+        )
+        assertEquals(0L, ProfileResolver.nativeValue(offBranch, "tcp_zerocopy", "none", "compact_waiter"))
+
         val fallbackOnly = valueMapOf(
             "fallback" to valueMapOf(
                 "route" to valueMapOf("select_stack" to valueMapOf("waiter_shift" to -2)),
@@ -159,7 +170,7 @@ class ProfileResolverTest {
 
     @Test
     fun `HOCON backend steps token maps through StepSetKind`() {
-        val merged = HoconSupport.parseValue("{ backend { steps = \"w1_w3\" } }").asValueMap()
+        val merged = requireNotNull(HoconSupport.parseValue("{ backend { steps = \"w1_w3\" } }").asValueMap())
         val document = NativeProfileDocument.from(
             release = "test",
             route = "select_stack",

@@ -158,14 +158,83 @@ using Cve43499_W1W2 = Cve2026_43499Backend<W1W2Steps>;
 ### 门禁
 
 host 全绿 + NDK 零告警 + lint 0 + `cmp_disasm`（`do_one_write` 稳定；`run_steps` 差异复核）+ 真机（43499 multicast 冷机）。
+## 13. T3d 设计（「一般执行 / Shizuku / UMH」三选 UI）
+
+目标：把 `GhostlockUI.kt` 的 `shizukuEnabled: Boolean` 开关替换为三选，并让它可以驱动 profile 的 `backend.steps`/terminal。
+
+### 语义
+
+| 选项 | 入口 | StepSet | terminal | 备注 |
+|---|---|---|---|---|
+| 一般执行 | app（zygote，有 seccomp） | `W1W3` | `root_child` | 现状默认 |
+| Shizuku | shell（无 seccomp） | `W1W2` | `root_child` | Shizuku 拉起 native |
+| UMH | 任意 | `W1W2` | `umh_forward` | T5 落地后可用；当前应置灰 |
+
+### 触点
+
+| 位置 | 文件 | 改动 |
+|---|---|---|
+| 模型 | `ui/GhostlockUI.kt` 状态 | `shizukuEnabled: Boolean` → `executionMode: ExecutionMode`（enum，UI 层） |
+| 动作 | `ui/GhostlockUI.kt` actions | `onShizukuChanged` → `onExecutionModeChanged(ExecutionMode)` |
+| 渲染 | `ui/GhostlockUI.kt` | 开关 → 三选控件；UMH 在 catalog 不可用时禁用并提示 |
+| ViewModel | `ui/GhostlockViewModel.kt` | 状态与启动路径按 mode 分派（Shizuku→`ShizukuExploitRunner`；一般→app 启动） |
+| 资源 | `res/values/strings.xml` + `values-zh` | 三选标签/说明 |
+| profile | Kotlin profile 层 | 由 mode 决定 `backend.steps`（一般=w1_w3、Shizuku/UMH=w1_w2）与 terminal（UMH） |
+
+### 决策与约束
+
+- `ExecutionMode` 是 **UI/入口层概念**，不直接进 wire；由它派生 `backend.steps` 与 terminal 选择。
+- 与 `recommend_shizuku` 的关系：T3c 移除该项后，**默认 mode** 由 kernel profile 的 `backend.steps` 推导
+  （`w1_w3`→一般、`w1_w2`→Shizuku/UMH），不再有独立的 recommend 布尔。
+- UMH 选项在 `terminal_available(UmhForward)==true`（T5）之前必须禁用。
+
+### 门禁
+
+Kotlin 单测（mode→steps/terminal 映射 + catalog 禁用）+ Gradle 编译；无 native 改动。
+## 14. T5 设计（`umh_forward` 执行 + `RootProgram` 启动）
+
+目标：让 `umh_forward` 从占位变为可用 terminal；它把 App 选的 `RootProgram` 交给**内核发起的 UMH 通道**执行。
+
+### 前置
+
+- 需要一个**后端提供的 UMH 通道**（43284 的 LKM：`call_usermodehelper` / netlink / 设备节点）。43499 没有该通道，
+  故 T5 与 **S3 的 43284 backend（B5）** 绑定。
+- `TerminalInput.root_program`（已落）携带程序与参数。
+
+### 形状
+
+```cpp
+// terminal/umh_forward.{hpp,cpp}
+struct UmhForwardPolicy {
+    static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::UmhForward;
+    using Input = UmhForwardInput;                 // 已声明
+    static constexpr ActivationContext activation = ActivationContext::KernelSpawned;
+    [[nodiscard]] static StageResult run(CoreSession&, Input&);
+};
+// Input 需扩展：UMH 通道句柄/描述符 + lkm_loaded（backend 填）
+```
+
+- `run`：校验 `lkm_loaded` 与通道有效 → 把 `RootProgram`（token+argv）写入通道 → 轮询/确认 KernelSU 或所选程序就绪
+  （KernelSU 验证仍属 `handoff_probe`，但**不默认绑定**：只有程序是 ksud 时才走 KSU 探测）。
+- 缺失通道/`lkm_loaded=false` → `Failed`（fail-closed），不退化为 root_child。
+
+### catalog 与选择
+
+- `terminal_available(TerminalKind::UmhForward)` → true；`combination_supported` 加 `{Cve2026_43284, PageCacheWrite, UmhForward}`；
+  `DispatchTarget::Cve43284PageCache_UmhForward`；orchestrator case。
+- **不合法组合直接 Rejected**（R20）：如 `{43499, *, UmhForward}`（43499 无 UMH 通道）。
+
+### 门禁
+
+host 契约（`TerminalExecution<UmhForwardPolicy>` 翻真）+ fake backend stub + 真机（43284 路径，另需 `.ko`/设备适配，未过真机不得标 supported）。
 ## 11. 进度
 
 - [x] T0：设计 + ADR R18–R21
 - [x] T1：三维 selection + 稀疏 catalog（真机 `T1` PASS）
 - [x] T2：`TerminalExecution<T::Input>` + `ActivationContext`（二进制与 T1 相同）
 - [x] T3a：native wire `steps`（backend 私有 section）+ Kotlin `StepSetKind`（真机 `T3` PASS）
-- [ ] T3b：Kotlin `text`/`bool` 解析访问器 + `backend.steps` 字符串
-- [ ] T3c：移除 `recommend_shizuku`；HOCON 改 T/F；C++ 标志改 `bool`
-- [ ] T3d：「一般 / Shizuku / UMH」三选 UI
-- [ ] T4：`Cve2026_43499Backend<StepSet>`
+- [x] T3b：Kotlin `text`/`bool` 解析访问器 + `backend.steps` 字符串（Gradle 测试 exit 0）
+- [x] T3c：移除 `recommend_shizuku`；HOCON 改 T/F；C++ 标志改 `bool`（真机 PASS）
+- [x] T3d：「一般 / Shizuku / UMH」三选 UI（`a427471`）
+- [x] T4：`Cve2026_43499Backend<StepSet>`（`91723e7`）
 - [ ] T5：`umh_forward` 执行 + 真机

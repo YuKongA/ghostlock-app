@@ -69,6 +69,12 @@ TARGETS = [
         "do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
     ]),
     ("do_one_write", [
+        "bool ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
@@ -178,6 +184,22 @@ def layout(text):
     return re.sub(r"0x[0-9a-f]+", "0xH", text)
 
 
+# Reviewed shape diffs: (label, base mnemonic, candidate mnemonic) -> rationale.
+# A shape change is accepted ONLY under --reviewed AND only when every differing
+# line matches an allowlisted pair (same instruction count). Each entry is a
+# manual review recorded in docs/analysis/device-gates/ (ADR-0004 第九轮).
+REVIEWED_SHAPE = {
+    ("consumer_thread", "cbz", "tbz"):
+        "optional<uint8_t>::value_or(0)!=0 -> optional<bool>::value_or(false): "
+        "compare-to-zero becomes test-bit on the same register; instruction count "
+        "and branch target unchanged (T3c C++ bool)",
+}
+
+
+def mnemonic_of(line):
+    return line.split(None, 1)[0]
+
+
 def operands_shift_equal(base, cur):
     """True when base and cur differ only in global-data `#0x` displacements.
 
@@ -228,6 +250,17 @@ def main():
         lb = [layout(x) for x in b]
         lc = [layout(x) for x in c]
         if lb != lc:
+            diffs = [i for i, (x, y) in enumerate(zip(lb, lc)) if x != y]
+            reviewed = GLOBAL_SHIFT and all(
+                (label, mnemonic_of(b[i]), mnemonic_of(c[i])) in REVIEWED_SHAPE
+                for i in diffs
+            )
+            if reviewed:
+                print(f"REVIEWED-SHAPE {label}: {len(diffs)} reviewed mnemonic change(s)")
+                for i in diffs[:5]:
+                    print(f"  [{i}] base: {b[i]}")
+                    print(f"  [{i}] cur:  {c[i]}")
+                continue
             failed += 1
             print(f"SHAPE-DIFF {label} ({len(b)} instructions)")
             shown = 0

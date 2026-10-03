@@ -49,7 +49,11 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.R
+import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.isAvailable
+import com.ghostlock.app.data.requiresShizuku
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.ExecutionFieldValue
 import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.model.ShizukuStatus
@@ -83,6 +87,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
@@ -96,7 +102,9 @@ data class GhostlockUiState(
     val kernelRelease: String = "",
     val socName: String = "",
     val kernelSupported: Boolean = false,
-    val shizukuEnabled: Boolean = false,
+    val executionMode: ExecutionMode = ExecutionMode.General,
+    /** Header backend selection; unavailable backends are shown greyed out. */
+    val backendKind: BackendKind = BackendKind.Default,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
@@ -183,7 +191,8 @@ interface GhostlockActions {
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
     fun onForceAttackTestChanged(enabled: Boolean)
-    fun onShizukuChanged(enabled: Boolean)
+    fun onExecutionModeChanged(mode: ExecutionMode)
+    fun onBackendChanged(kind: BackendKind)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -643,7 +652,9 @@ private fun MainContent(
                 running = state.running,
                 supported = state.kernelSupported &&
                         state.executionHasProfile &&
-                        (!state.shizukuEnabled ||
+                        state.executionMode.isAvailable &&
+                        state.backendKind.available &&
+                        (!state.executionMode.requiresShizuku ||
                                 state.shizukuStatus == ShizukuStatus.READY),
                 profileValid = state.profileInvalidPaths.isEmpty(),
                 labelRes = R.string.action_run,
@@ -666,7 +677,7 @@ private fun ControlPanel(
             supported = state.kernelSupported,
             profileAvailable = state.executionHasProfile,
             profileValid = state.profileInvalidPaths.isEmpty(),
-            shizukuEnabled = state.shizukuEnabled,
+            executionMode = state.executionMode,
             shizukuStatus = state.shizukuStatus,
             onParametersClick = actions::onOpenParameters,
             onShizukuClick = actions::onStatusClick,
@@ -704,25 +715,14 @@ private fun ControlPanel(
                 title = stringResource(R.string.safe_mode_label),
                 summary = stringResource(R.string.safe_mode_summary),
             )
-            /* PROFILE-SUGGEST-01: the profile suggestion seeds the toggle but no
-             * longer hides it; an explicit user choice overrides either way. */
-            SwitchPreference(
-                checked = state.shizukuEnabled,
-                onCheckedChange = actions::onShizukuChanged,
-                title = stringResource(R.string.shizuku_label),
-                summary = stringResource(
-                    when {
-                        !state.shizukuEnabled -> R.string.shizuku_summary
-                        state.shizukuStatus == ShizukuStatus.READY -> R.string.shizuku_status_ready
-                        state.shizukuStatus == ShizukuStatus.PERMISSION_REQUIRED ->
-                            R.string.shizuku_status_permission_required
-
-                        state.shizukuStatus == ShizukuStatus.NOT_RUNNING ->
-                            R.string.shizuku_status_not_running
-
-                        else -> R.string.shizuku_status_checking
-                    },
-                ),
+            ExecutionModeSelector(
+                executionMode = state.executionMode,
+                shizukuStatus = state.shizukuStatus,
+                onExecutionModeChanged = actions::onExecutionModeChanged,
+            )
+            BackendSelector(
+                backendKind = state.backendKind,
+                onBackendChanged = actions::onBackendChanged,
             )
         }
         Card(modifier = modifier.padding(top = 12.dp)) {
@@ -735,18 +735,113 @@ private fun ControlPanel(
     }
 }
 
+/* T3d: the old Shizuku boolean is now a three-way entry selection. UMH is
+ * disabled until the native umh_forward terminal exists (T5); the summary
+ * explains why. The Shizuku row also carries its live shell status. */
+@Composable
+private fun ExecutionModeSelector(
+    executionMode: ExecutionMode,
+    shizukuStatus: ShizukuStatus,
+    onExecutionModeChanged: (ExecutionMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.padding(top = 12.dp)) {
+        Text(
+            text = stringResource(R.string.execution_mode_label),
+            fontSize = 14.sp,
+            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
+        )
+        ExecutionMode.entries.forEach { mode ->
+            RadioButtonPreference(
+                title = stringResource(mode.titleRes),
+                summary = stringResource(mode.summaryRes(shizukuStatus)),
+                selected = executionMode == mode,
+                onClick = { onExecutionModeChanged(mode) },
+                enabled = mode.isAvailable,
+                radioButtonLocation = RadioButtonLocation.End,
+            )
+        }
+    }
+}
+
+private val ExecutionMode.titleRes: Int
+    get() = when (this) {
+        ExecutionMode.General -> R.string.execution_mode_general
+        ExecutionMode.Shizuku -> R.string.execution_mode_shizuku
+        ExecutionMode.Umh -> R.string.execution_mode_umh
+    }
+
+private fun ExecutionMode.summaryRes(shizukuStatus: ShizukuStatus): Int = when (this) {
+    ExecutionMode.General -> R.string.execution_mode_general_summary
+    ExecutionMode.Shizuku -> when (shizukuStatus) {
+        ShizukuStatus.READY -> R.string.shizuku_status_ready
+        ShizukuStatus.PERMISSION_REQUIRED -> R.string.shizuku_status_permission_required
+        ShizukuStatus.NOT_RUNNING -> R.string.shizuku_status_not_running
+        ShizukuStatus.NOT_REQUIRED -> R.string.execution_mode_shizuku_summary
+    }
+
+    ExecutionMode.Umh -> R.string.execution_mode_umh_summary
+}
+
+/* B7: backend (vulnerability primitive) selection. The wire header id is written
+ * by the profile builder; 43284 is shown greyed until its backend is
+ * implemented, so it can never actually run. */
+@Composable
+private fun BackendSelector(
+    backendKind: BackendKind,
+    onBackendChanged: (BackendKind) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.padding(top = 12.dp)) {
+        Text(
+            text = stringResource(R.string.backend_label),
+            fontSize = 14.sp,
+            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
+        )
+        ShownBackends.forEach { backend ->
+            RadioButtonPreference(
+                title = stringResource(backend.titleRes),
+                summary = stringResource(backend.summaryRes),
+                selected = backendKind == backend,
+                onClick = { onBackendChanged(backend) },
+                enabled = backend.available,
+                radioButtonLocation = RadioButtonLocation.End,
+            )
+        }
+    }
+}
+
+/** Backends the selector exposes; only 43499 is selectable today. */
+private val ShownBackends = listOf(BackendKind.Cve2026_43499, BackendKind.Cve2026_43284)
+
+private val BackendKind.titleRes: Int
+    get() = when (this) {
+        BackendKind.Cve2026_43499 -> R.string.backend_cve_2026_43499
+        BackendKind.Cve2026_43284 -> R.string.backend_cve_2026_43284
+        else -> R.string.backend_cve_2026_43499
+    }
+
+private val BackendKind.summaryRes: Int
+    get() = when (this) {
+        BackendKind.Cve2026_43499 -> R.string.backend_cve_2026_43499_summary
+        BackendKind.Cve2026_43284 -> R.string.backend_cve_2026_43284_summary
+        else -> R.string.backend_cve_2026_43499_summary
+    }
+
 @Composable
 private fun ActivationStatusCard(
     supported: Boolean,
     profileAvailable: Boolean,
     profileValid: Boolean,
-    shizukuEnabled: Boolean,
+    executionMode: ExecutionMode,
     shizukuStatus: ShizukuStatus,
     onParametersClick: () -> Unit,
     onShizukuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val accessReady = !shizukuEnabled || shizukuStatus == ShizukuStatus.READY
+    val accessReady = !executionMode.requiresShizuku || shizukuStatus == ShizukuStatus.READY
     val ready = supported && profileAvailable && profileValid && accessReady
     val missing = !supported || !profileAvailable
     val (backgroundColor, title, icon) = when {
@@ -777,7 +872,7 @@ private fun ActivationStatusCard(
         )
     }
     val summary = when {
-        ready && shizukuEnabled -> R.string.kernel_profile_ready_shizuku
+        ready && executionMode == ExecutionMode.Shizuku -> R.string.kernel_profile_ready_shizuku
         ready -> R.string.kernel_profile_ready
         !supported -> R.string.kernel_unsupported_summary
         !profileAvailable -> R.string.kernel_profile_required_summary

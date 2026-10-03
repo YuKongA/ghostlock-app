@@ -59,7 +59,10 @@ class Sog10ProfileCoreRegressionTest {
             release = release,
             route = route,
             fallbackTo = fallback,
-        ) { path -> ProfileResolver.nativeValue(profile, route, fallback, path) }
+            value = { path -> ProfileResolver.nativeValue(profile, route, fallback, path) },
+            text = { path -> ProfileResolver.nativeText(profile, path) },
+            bool = { path -> ProfileResolver.nativeBool(profile, path) },
+        )
         val bytes = document(merged).toBinary()
         // Explicit null is a completeness marker, not a guessed zero/address.
         val previouslySparse = parse(File(profiles, "$release.conf"))
@@ -72,7 +75,7 @@ class Sog10ProfileCoreRegressionTest {
         assertEquals(release, decoded.release)
         assertEquals(3u, decoded.routeKind)
         assertEquals(0u, decoded.fallbackRoute)
-        assertEquals(1u, decoded.recommendShizuku)
+        assertEquals(2u, decoded.steps)
         assertNull(decoded.kernelPhysLoad)
         assertEquals(0u, decoded.cred.usageOffset)
         assertEquals(-274698454400L, decoded.cred.ref0Image.toLong())

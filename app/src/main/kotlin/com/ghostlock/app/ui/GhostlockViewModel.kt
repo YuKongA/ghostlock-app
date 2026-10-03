@@ -5,7 +5,13 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
+import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.isAvailable
+import com.ghostlock.app.data.requiresShizuku
+import com.ghostlock.app.data.steps
+import com.ghostlock.app.data.terminal
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.LogTone
 import com.ghostlock.app.domain.model.OffsetImportResult
@@ -84,23 +90,8 @@ class GhostlockViewModel(
         repository.setShizukuStatusListener { refreshAccessStatus() }
         viewModelScope.launch {
             refreshSnapshot()
-            applyRecommendedShizuku()
             maybeSuggestShizukuForW3()
         }
-    }
-
-    private var recommendedShizukuApplied = false
-
-    /**
-     * Kernels that recommend Shizuku start with the toggle on at every launch;
-     * a manual switch-off still applies for the rest of the session.
-     */
-    private fun applyRecommendedShizuku() {
-        if (recommendedShizukuApplied) return
-        recommendedShizukuApplied = true
-        val snapshot = kernelSnapshot ?: return
-        if (!snapshot.recommendShizuku || state.value.shizukuEnabled) return
-        toggleShizuku(true)
     }
 
     private var w3HintChecked = false
@@ -113,7 +104,7 @@ class GhostlockViewModel(
         if (w3HintChecked) return
         w3HintChecked = true
         val step = runCatching { repository.lastRunStuckStep() }.getOrNull() ?: return
-        if (state.value.shizukuEnabled) return
+        if (state.value.executionMode != ExecutionMode.General) return
         /* Any interrupted step is reported; only a W3 stall offers Shizuku,
          * because Shizuku (shell uid, no seccomp) skips exactly that stage. */
         val isW3 = step.startsWith("w3")
@@ -824,15 +815,21 @@ class GhostlockViewModel(
         mutableState.update { it.copy(forceAttackTestEnabled = enabled) }
     }
 
-    fun toggleShizuku(enabled: Boolean) {
-        repository.setShizukuEnabled(enabled)
-        mutableState.update { it.copy(shizukuEnabled = enabled) }
-        if (!enabled && kernelSnapshot?.recommendShizuku == true) {
-            send(GhostlockEffect.Toast(R.string.shizuku_recommended_hint))
-        }
+    fun setExecutionMode(mode: ExecutionMode) {
+        repository.setExecutionMode(mode)
+        mutableState.update { it.copy(executionMode = mode) }
         // The grant dialog lands in another app, so the status is re-read and
         // onResume() refreshes it again when the dialog closes.
         viewModelScope.launch { refreshSnapshot() }
+    }
+
+    /** Unavailable backends (43284) are never selected, mirroring the selector. */
+    fun setBackendKind(kind: BackendKind) {
+        if (!kind.available) return
+        repository.setBackendKind(kind)
+        mutableState.update { it.copy(backendKind = kind) }
+        // The built document carries the header id, so re-resolve it.
+        loadExecutionProfile(preserveEditing = true)
     }
 
     fun onRun() = runExploit()
@@ -842,7 +839,7 @@ class GhostlockViewModel(
         val state = state.value
         val messageRes = when {
             !state.executionHasProfile -> R.string.run_blocked_no_profile
-            state.shizukuEnabled && state.shizukuStatus != ShizukuStatus.READY ->
+            state.executionMode.requiresShizuku && state.shizukuStatus != ShizukuStatus.READY ->
                 R.string.run_blocked_shizuku
 
             else -> R.string.profile_invalid
@@ -852,9 +849,8 @@ class GhostlockViewModel(
 
     fun onStatusClick() {
         val snapshot = kernelSnapshot ?: return
-        /* shizukuEnabled already carries the profile suggestion unless the
-         * user overrode it (PROFILE-SUGGEST-01). */
-        if (!snapshot.shizukuEnabled) return
+        /* Only the Shizuku entry runs through the shell; General/UMH do not. */
+        if (!snapshot.executionMode.requiresShizuku) return
         when (snapshot.shizukuStatus) {
             ShizukuStatus.NOT_RUNNING -> send(GhostlockEffect.OpenShizuku)
             ShizukuStatus.PERMISSION_REQUIRED -> repository.requestShizukuPermission()
@@ -873,19 +869,39 @@ class GhostlockViewModel(
             }
             return
         }
-        val useShizuku = snapshot.shizukuEnabled
-        if (useShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
+        val mode = snapshot.executionMode
+        if (!mode.isAvailable) {
+            if (beginOperation()) {
+                appendLog("result: execution mode ${mode.name} is not available")
+                endOperation()
+            }
+            return
+        }
+        /* Fail closed on an unavailable backend (43284) even if a stale state
+         * somehow carried it; the selector never offers it. */
+        if (!snapshot.backendKind.available) {
+            if (beginOperation()) {
+                appendLog("result: backend ${snapshot.backendKind.token} is not available")
+                endOperation()
+            }
+            return
+        }
+        if (mode.requiresShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
             onStatusClick()
             return
         }
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
-        appendLog("==== start ${if (useShizuku) "Shizuku/V20" else "base"} ====")
+        /* The mode derives the entry/steps/terminal; log the selection it made. */
+        appendLog(
+            "==== start ${if (mode == ExecutionMode.Shizuku) "Shizuku/V20" else "base"} " +
+                "(steps=${mode.steps.token}, terminal=${mode.terminal.token}) ====",
+        )
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val code = runExploitUseCase(pair, useShizuku, ::appendLog)
+                val code = runExploitUseCase(pair, mode, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
             } finally {
@@ -1009,7 +1025,7 @@ class GhostlockViewModel(
         when {
             renameTarget != null -> renameUserProfile(renameTarget, value)
             dialogType == DialogType.INPUT -> parseUrl(value)
-            dialogType == DialogType.CONFIRM -> toggleShizuku(true)
+            dialogType == DialogType.CONFIRM -> setExecutionMode(ExecutionMode.Shizuku)
             else -> Unit
         }
     }
@@ -1047,7 +1063,8 @@ class GhostlockViewModel(
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
                 forceAttackTestEnabled = snapshot.forceAttackTest,
-                shizukuEnabled = snapshot.shizukuEnabled,
+                executionMode = snapshot.executionMode,
+                backendKind = snapshot.backendKind,
                 shizukuStatus = snapshot.shizukuStatus,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,

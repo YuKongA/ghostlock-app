@@ -37,6 +37,10 @@
 | ActivationContext / 非法即拒 | terminal 声明 `Descendant`/`KernelSpawned`；`combination_supported(backend, steps, terminal)` 校验三元组，不自洽直接 `Rejected` | ADR-0004 R20；同上 | 已定 |
 | cmp_disasm 定位 | 攻击路径改动必跑并记录差异理由；默认求稳定，允许有理由的机器码变化；`attack_write` 建议置非模板基类以稳定 `do_one_write` | ADR-0004 第九轮；同上 | 已定 |
 
+| profile 二元项 / 字符串 | HOCON 二元项写 `true`/`false`；`backend.steps` 用字符串（`w1_w2`/`w1_w3`），加载时 token→enum→wire；native 标志字段改 `bool`（保布局） | ADR-0004 R18；`branch-plan.md` T3c；只读调研清单 | T3c 执行中 |
+
+| BackendExecution 泛化 | `BackendExecution<B, Input>`（`Input` 派生 `TerminalInput`）；43499 保持 `run(RootedChild&)`，43284 走 `UmhForwardInput` | ADR-0004 R10；`terminal-steps-redesign.md` | 已执行（pre/post 严格 IDENTICAL） |
+
 ## 说明
 
 - 旧编号（F/O/C/E/A/CF/T）不再作为寻址主键；如需追溯，用主题在本表与 `architecture-review-log.md` 里定位。

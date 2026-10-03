@@ -44,13 +44,6 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 }
                 val release = System.getProperty("os.version", "").orEmpty()
                 require(profileBlob.size >= 16) { "profile blob is too short" }
-                // PROFILE-SUGGEST-01: recommend_shizuku is a suggestion; the
-                // blob's meta section carries it, and the app already chose the
-                // Shizuku path, so it is logged, never a gate.
-                if (NativeProfileDocument.fromBinary(profileBlob)?.recommendShizuku != 1u) {
-                    callback.onLog("<s> kernel does not require Shizuku; running on user request")
-                }
-
                 val binary = File(context.applicationInfo.nativeLibraryDir, "libghostlock.so")
                 require(binary.isFile) { "missing GhostLock binary: ${binary.absolutePath}" }
 

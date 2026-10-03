@@ -58,6 +58,7 @@ filesDir/offsets.conf                     解析/导入的偏移（imported，HO
 release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
 schema_version = 1
 kernel_major = 6
+backend { steps = "w1_w3" }
 route {
   select_stack { waiter_shift = -2 }
 }
@@ -74,6 +75,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 | `release` | string | 必须与设备 `uname -r` 完全一致（区分大小写/后缀）；模板文件不参与匹配 |
 | `schema_version` | int | 固定为 `1` |
 | `kernel_major` | int | `5` 或 `6`；用于地址解析与合法性检查，不再决定路由 |
+| `backend` | object | `steps` 字符串：`"w1_w3"`（一般路径，执行 W3）或 `"w1_w2"`（Shizuku/UMH，shell 跳过 W3）；与 terminal 选择共同决定 root 程序与执行模式 |
 | `route` | object | 显式路由父项，只含一个分支，见第 3 节 |
 | `fallback` | object | 回退声明（`to` + 可选 `route` 分支），见第 3 节 |
 | 几何字段 | object/int | 按命名空间分组：`task_struct` / `cred` / `offset` / `kernelsnitch`；当前路由的全字段与公共几何**必须全部出现**，无法提供的值写显式 `null`（不要用 `0` 占位）；非当前路由的分支省略 |
@@ -84,7 +86,7 @@ offset { init_task = 34464384, init_cred = 34538824 }
 路由不再由内核版本或字段存在性推断，而是由配置显式声明。`route` 是父项，**只允许一个分支**：
 
 ```hocon
-route { tcp_zerocopy { compact_waiter = 1 } }
+route { tcp_zerocopy { compact_waiter = true } }
 route { select_stack { waiter_shift = -2 } }
 route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 ```
@@ -185,14 +187,13 @@ cred
 | `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | 地址滑移（KASLR）定位点 |
 | `kernel_phys_load` | 内核物理加载地址（0 时按 SoC 公式回退） |
 | `kernel_phys_offset` | DRAM 基址 / linear-map `PHYS_OFFSET`，用于 image→direct-map 换算（缺省用编译期 `P0_PHYS_OFFSET = 0x80000000`）。DRAM 基址不同的设备需填写（如 MTK `0x40000000`）；无法从 `boot.img` 提取，取自 `/proc/iomem` |
-| `recommend_shizuku` | 该内核是否建议走 Shizuku（0/1，所有 profile 必填，默认 0；仅提示不强制）。不在任何编辑器中显示：推荐内核在**每次启动时自动打开**主页“Run via Shizuku”开关，会话内可手动关闭，关闭后本次会话不再要求 Shizuku |
 
 ### 4.4 select_stack / tcp 路由字段
 
 | 字段 | 含义 |
 |---|---|
 | `route.select_stack.waiter_shift` | select 路由 waiter 在栈上的相对位移（0 合法）；回退声明下对应 `fallback.route.select_stack.waiter_shift` |
-| `route.tcp_zerocopy.compact_waiter` | tcp 路由的紧凑 waiter 布局标记；multicast 分支下同样需要（`route.multicast_waiter.compact_waiter`） |
+| `route.tcp_zerocopy.compact_waiter` | tcp 路由的紧凑 waiter 布尔布局标记（`true`/`false`）；multicast 分支下同样需要（`route.multicast_waiter.compact_waiter`） |
 
 ### 4.5 multicast_waiter 路由字段（`route.multicast_waiter`）
 

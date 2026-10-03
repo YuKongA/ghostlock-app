@@ -1,9 +1,14 @@
 #include "profile/binary.h"
 
+#include "backend/cve_2026_43284/schema.hpp"
+#include "backend/cve_2026_43499/schema.hpp"
+#include "profile/document.hpp"
+
 #include <cstring>
 #include <iterator>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace ghostlock::binary_profile {
     namespace {
@@ -60,7 +65,6 @@ namespace ghostlock::binary_profile {
 
         constexpr Field kMeta[] = {
             PLAIN("kernel_major", meta.kernel_major),
-            PLAIN("recommend_shizuku", meta.recommend_shizuku),
             PLAIN("fallback_route", meta.fallback_route),
             PLAIN("safe_mode", meta.safe_mode),
                     /* Ancillary behavior gate (vivo vr.ko guard). */
@@ -273,7 +277,9 @@ namespace ghostlock::binary_profile {
 
         int32_t parse_v2(std::string_view document, profile::kernel_offsets *out,
                          char *release_buf, size_t release_buf_cap,
-                         component_ids *ids) {
+                         component_ids *ids,
+                         profile::Document *document_out,
+                         ghostlock::backend::Cve2026_43284Profile *profile_43284_out) {
             const auto *bytes = reinterpret_cast<const uint8_t *>(document.data());
             const auto *end = bytes + document.size();
             if (document.size() < kHeaderSize) return -1;
@@ -290,22 +296,42 @@ namespace ghostlock::binary_profile {
             memcpy(release_buf, bytes + kHeaderSize, release_length);
             release_buf[release_length] = '\0';
 
-            *out = profile::kernel_offsets{};
-            out->uname_r = release_buf;
-            out->route = static_cast<uint8_t>(middleware & 0xff);
+            const uint8_t route = static_cast<uint8_t>(middleware & 0xff);
             /* The route is profile-controlled: an unresolved or unknown route
-             * is rejected instead of being inferred. */
-            if (out->route != profile::kRouteTcpZerocopy &&
-                out->route != profile::kRouteSelectStack &&
-                out->route != profile::kRouteMulticastWaiter) {
+             * is rejected instead of being inferred. The 43284 backend has no
+             * route (assessment §4.4), so for it kRouteAuto is a legal
+             * "no route" value; every other backend still requires one. */
+            const bool route_known =
+                    route == profile::kRouteTcpZerocopy ||
+                    route == profile::kRouteSelectStack ||
+                    route == profile::kRouteMulticastWaiter;
+            const bool route_less_43284 =
+                    backend == kBackendCve202643284 && route == profile::kRouteAuto;
+            if (!route_known && !route_less_43284) {
                 return -1;
             }
 
+            /* A2-3c-3: frame the whole wire into the neutral Document without
+             * interpreting a field, then bind the 43499 owner Schema onto its
+             * View and land that View on the frozen transport.
+             *
+             * Production is strict (design §2.5): any section the owner does
+             * not declare, any key inside an owned section, and any unknown
+             * route.* section make the whole document Rejected at startup
+             * instead of being silently ignored. Known-but-inactive route
+             * sections were dropped above, so they stay allowed without being
+             * merged. Tooling tolerance is reserved for offline tools; the
+             * attack path must never run a partially understood profile. */
+            profile::Document framed;
+            framed.release.assign(release_buf, release_length);
+            framed.terminal = terminal;
+            framed.backend = backend;
+            framed.middleware = middleware;
+
             const uint8_t *p = bytes + kHeaderSize + release_length;
             if (p + 2 > end) return -1;
-            size_t sections = static_cast<size_t>(read_le(p, 2));
+            const size_t sections = static_cast<size_t>(read_le(p, 2));
             p += 2;
-            uint16_t steps = 0;
             for (size_t s = 0; s < sections; s++) {
                 if (p + 1 > end) return -1;
                 const size_t name_len = *p++;
@@ -315,18 +341,7 @@ namespace ghostlock::binary_profile {
                 p += name_len;
                 const size_t entries = static_cast<size_t>(read_le(p, 4));
                 p += 4;
-                const Section *section = nullptr;
-                /* A route section only applies to the document's own route;
-                 * other-route sections are ignored (never silently merged). */
-                if (!name.starts_with("route.") ||
-                    name == route_section_name(out->route)) {
-                    for (const Section &candidate: kSections) {
-                        if (candidate.name == name) {
-                            section = &candidate;
-                            break;
-                        }
-                    }
-                }
+                profile::Section &framed_section = framed.append_section(name);
                 for (size_t e = 0; e < entries; e++) {
                     if (p + 1 > end) return -1;
                     const size_t key_len = *p++;
@@ -335,30 +350,85 @@ namespace ghostlock::binary_profile {
                                                key_len);
                     const uint64_t raw = read_le(p + key_len, 8);
                     p += key_len + 8;
-                    /* Backend-private StepSet lives outside the generic field
-                     * table (it targets the selection, not kernel_offsets). */
-                    if (name == "backend.cve_2026_43499" && key == "steps") {
-                        steps = static_cast<uint16_t>(raw & 0xffffu);
-                        continue;
-                    }
-                    if (!section) continue;
-                    for (size_t i = 0; i < section->count; i++) {
-                        if (section->fields[i].key == key) {
-                            section->fields[i].store(*out, raw);
-                            break;
-                        }
-                    }
+                    framed_section.add(key, raw);
                 }
             }
+
+            /* Only the document's own route section is materialised; the other
+             * known route sections are dropped exactly as the legacy field
+             * walk skipped them. Unknown sections stay in for the mode to
+             * judge. */
+            profile::Document active;
+            active.release = framed.release;
+            active.terminal = framed.terminal;
+            active.backend = framed.backend;
+            active.middleware = framed.middleware;
+            const std::string_view active_route = route_section_name(route);
+            for (const profile::Section &section: framed.sections) {
+                const bool known_route = section.name == "route.tcp_zerocopy" ||
+                                         section.name == "route.select_stack" ||
+                                         section.name == "route.multicast_waiter";
+                if (known_route && section.name != active_route) continue;
+                active.sections.push_back(section);
+            }
+
+            /* S3 B4: the 43284 backend carries its policy in its own section.
+             * It is accepted only for backend id 6; for any other backend the
+             * section stays in `active` and the strict 43499 bind below rejects
+             * it as UnknownSection. Binding here is fail-closed: an unknown key
+             * inside the section rejects the whole document. The bound View is
+             * backend-private and never enters CoreSession. */
+            ghostlock::backend::Cve2026_43284Profile profile_43284{};
+            if (backend == kBackendCve202643284) {
+                profile::Document owned_43284;
+                owned_43284.release = active.release;
+                owned_43284.terminal = active.terminal;
+                owned_43284.backend = active.backend;
+                owned_43284.middleware = active.middleware;
+                for (auto it = active.sections.begin(); it != active.sections.end();) {
+                    if (it->name == ghostlock::backend::kCve2026_43284Section) {
+                        owned_43284.sections.push_back(*it);
+                        it = active.sections.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                const profile::BindStatus status_43284 =
+                        profile::bind<ghostlock::backend::Cve2026_43284Schema>(
+                                owned_43284, profile_43284,
+                                profile::DecodeMode::Production);
+                if (!status_43284.ok()) return -1;
+            }
+
+            backend::Cve2026_43499View view{};
+            const profile::BindStatus status =
+                    profile::bind<backend::Cve2026_43499Schema>(
+                            active, view, profile::DecodeMode::Production);
+            if (!status.ok()) return -1;
+
+            *out = view.values;
+            out->uname_r = release_buf;
+            out->route = route;
+            /* The backend-private StepSet id: 43284 uses its own section. */
+            uint16_t steps = view.steps;
+            if (backend == kBackendCve202643284 && profile_43284.steps) {
+                steps = *profile_43284.steps;
+            }
+            framed.steps = steps;
             if (ids) *ids = {terminal, backend, middleware, steps};
+            if (profile_43284_out) *profile_43284_out = profile_43284;
+            if (document_out) *document_out = std::move(framed);
             return 0;
         }
     } // namespace
 
     int32_t parse(std::string_view document, profile::kernel_offsets *out,
-                  char *release_buf, size_t release_buf_cap, component_ids *ids) {
+                  char *release_buf, size_t release_buf_cap, component_ids *ids,
+                  profile::Document *document_out,
+                  ghostlock::backend::Cve2026_43284Profile *profile_43284_out) {
         if (!out || !release_buf || document.size() < kHeaderSize) return -1;
-        return parse_v2(document, out, release_buf, release_buf_cap, ids);
+        return parse_v2(document, out, release_buf, release_buf_cap, ids,
+                        document_out, profile_43284_out);
     }
 
     int32_t serialize(const profile::kernel_offsets *in, char *buffer,

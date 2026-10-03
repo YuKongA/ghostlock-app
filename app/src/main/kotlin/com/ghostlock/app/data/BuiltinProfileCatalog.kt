@@ -12,7 +12,6 @@ internal class BuiltinProfileCatalog(context: Context) {
 
     private data class Entry(
         val release: String,
-        val recommendShizuku: Boolean,
         /** `execution.recommended_cpus`, when the profile carries one. */
         val recommendedCpus: Pair<Int, Int>?,
         val fields: Map<String, Long>,
@@ -28,11 +27,7 @@ internal class BuiltinProfileCatalog(context: Context) {
         entries.mapTo(linkedSetOf()) { it.release }.filterTo(linkedSetOf()) { !isTemplate(it) }
     }
 
-    val recommendShizuku: Set<String> by lazy {
-        entries.filter { it.recommendShizuku }.mapTo(linkedSetOf()) { it.release }
-    }
-
-    /** Per-release CPU pair suggestion, mirroring [recommendShizuku]. */
+    /** Per-release CPU pair suggestion. */
     val recommendedCpus: Map<String, Pair<Int, Int>> by lazy {
         entries.mapNotNull { entry -> entry.recommendedCpus?.let { entry.release to it } }.toMap()
     }
@@ -62,7 +57,6 @@ internal class BuiltinProfileCatalog(context: Context) {
                 }
             Entry(
                 release,
-                recommendShizuku = fields["recommend_shizuku"] == 1L,
                 recommendedCpus = recommendedCpus,
                 fields = fields,
             )
