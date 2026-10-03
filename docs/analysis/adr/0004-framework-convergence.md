@@ -170,6 +170,39 @@ capabilities）**。原评审表用 `handoff` 指 terminal 轴，按 R3 更正�
   **不重命名既有 section**（避免 wire 破坏与版本号），新 section 采用 `platform.*` / `backend.<cve>.*` 命名；
   提取器/Kotlin 按 owner 对齐。
 
+## 第九轮复核：Steps 可见化与 terminal 统一接口（R18–R21，2026-10-03）
+
+动因：接入 CVE-2026-43284（页缓存写 + LKM/UMH 终态）时发现，seccomp bypass（W3）既不是 backend 固有、
+也不是 terminal 固有，而取决于「root 程序跑在谁的谱系」：**seccomp-bpf 过滤器随 fork/exec 继承**，
+app（zygote）谱系的 root 子进程仍带过滤器、必须清（W3）；内核 UMH 起的新 usermode 任务不继承 app 过滤器，
+无需 W3。据此裁决如下（取代/补充 R10、R12）。
+
+- **R18（Steps 可见且隶属 backend）**：攻击步骤集 `StepSet` 是 backend 的模板实参（`Backend<StepSet>`），
+  **对 App 可见**，作为一个选择项经 **backend 私有 GLK1 section** 下发（选项 A：不动 header 布局、不 bump 版本）。
+  **profile 是 Steps 的唯一权威**：native 不设默认、不做 `Auto` 推导；缺失或未知 → **Reject**；
+  Kotlin 在加载 profile 时提示用户补齐。不同 backend 自持步骤词汇（43499 为 W1W2/W1W3；43284 为页缓存链，
+  不认识 W1/W2/W3）。
+- **R19（terminal 统一接口）**：`TerminalExecution<T>` 以 `T::Input&`（`Input` 派生自中性 `terminal::TerminalInput`）
+  为签名；每个 terminal 提供 `Input` 类型与 `run(CoreSession&, Input&)`；**所有 terminal 都必须支持 `RootProgram`
+  并实际启动所选程序**（ksud / folkpatch / 自定义 + 参数）。不引入虚表：用概念 + 静态 policy（`-fno-rtti`、
+  攻击路径禁间接分派）。`RootedChild`/`UmhForwardInput` 均派生 `TerminalInput`。
+- **R20（ActivationContext 与非法即拒）**：terminal 声明 `ActivationContext ∈ {Descendant, KernelSpawned}`；
+  `combination_supported(backend, steps, terminal)` 校验三元组自洽（如 `W1W3` 配 `KernelSpawned` 无意义、
+  `W1W2` 配 app-入 `Descendant` 会失败）；**不自洽直接 `Rejected`**（fail-closed），不自动降级、不在 native 推导。
+  seccomp 需要与否由 StepSet 表达，不由运行期 `process_has_seccomp()` 反推（该检查保留为第二道保险）。
+- **R21（selection 与 catalog 形状）**：`ComponentSelection = {BackendKind, StepSetKind, TerminalKind}`；
+  catalog 是**稀疏枚举**的合法三元组（不是稠密积）；`DispatchTarget` 每个三元组一项；orchestrator 每项一个 case
+  + `static_assert`。新增 backend/steps/terminal 只增显式条目，保持线性，禁止按轴笛卡尔展开。
+- **R12′（修订 R12）**：backend **不行为依赖** terminal；pipeline 以 `Terminal::Input` 作为 backend 的编译期输入类型，
+  并可用 `StepSet` 实例化 backend（`Pipeline<Backend<StepSet>, Terminal>`）。terminal 仍由 pipeline 选择。
+
+### cmp_disasm 定位（2026-10-03）
+
+`tools/cmp_disasm.py` 回到其原始定位：**攻击路径改动后的机器码核对/调试工具**，不是绝对不变约束。
+规则：默认仍求稳定；允许**有理由的机器码变化**，但每次攻击路径改动都必须运行并把差异理由记入门禁记录。
+工程上建议把 `attack_write`/`zero_word` 放在**非模板基类**，使 `do_one_write` 符号与机器码免费保持稳定；
+`run_steps`/`w3` 随 `StepSet` 重组产生的变化按上述规则复核即可。
+
 ## 验证
 
 - 结构：include 防火墙测试 + `backend_contract_test`/`component_catalog_test` 适配（R1）；

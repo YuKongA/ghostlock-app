@@ -25,10 +25,11 @@ namespace ghostlock::pipeline {
     template <class Backend, class Terminal>
     struct Pipeline final {
         static constexpr BackendKind backend = Backend::kind;
+        static constexpr StepSetKind steps = Backend::steps;
         static constexpr TerminalKind terminal = Terminal::kind;
-        static constexpr DispatchTarget target = dispatch_target_of(terminal, backend);
+        static constexpr DispatchTarget target = dispatch_target_of(backend, steps, terminal);
         static_assert(target != DispatchTarget::None,
-                      "pipeline must be a catalogued (backend, terminal) pair");
+                      "pipeline must be a catalogued (backend, steps, terminal) triple");
         static_assert(TerminalExecution<Terminal>,
                       "terminal must satisfy the terminal execution contract");
         static_assert(BackendExecution<Backend>,
@@ -37,8 +38,8 @@ namespace ghostlock::pipeline {
         [[nodiscard]] static RunResult run(session::CoreSession &exploit_session,
                                            const profile::kernel_offsets &decoded,
                                            const char *debug_dir, bool force_attack) {
-            ghostlock::terminal::RootedChild child{};
-            switch (Backend::run(exploit_session, decoded, debug_dir, force_attack, child)) {
+            typename Terminal::Input input{};
+            switch (Backend::run(exploit_session, decoded, debug_dir, force_attack, input)) {
                 case session::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend};
                 case session::StageResult::Done:
@@ -46,7 +47,7 @@ namespace ghostlock::pipeline {
                 case session::StageResult::Continue:
                     break;
             }
-            switch (Terminal::run(exploit_session, child)) {
+            switch (Terminal::run(exploit_session, input)) {
                 case session::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Terminal};
                 case session::StageResult::Done:

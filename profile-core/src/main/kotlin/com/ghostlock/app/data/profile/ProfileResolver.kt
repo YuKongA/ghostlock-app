@@ -1,6 +1,7 @@
 package com.ghostlock.app.data.profile
 
 import com.ghostlock.app.data.getLongAt
+import com.ghostlock.app.data.getValueAt
 import com.ghostlock.app.data.route.RouteKind
 
 /**
@@ -73,6 +74,31 @@ object ProfileResolver {
         }
         return profile.getLongAt(path)
     }
+
+    /**
+     * String accessor over the same dotted-path lookup as [nativeValue]. HOCON
+     * tokens such as `backend.steps` cannot ride the numeric accessor; a node
+     * that is not a string returns null.
+     */
+    fun nativeText(profile: Map<String, Any?>, path: String): String? =
+        profile.getValueAt(path) as? String
+
+    /**
+     * Boolean accessor over the same dotted-path lookup. Accepts a native
+     * boolean or the HOCON string spellings true/false/1/0/yes/no/on/off
+     * (case-insensitive, surrounding whitespace ignored); anything else is null.
+     */
+    fun nativeBool(profile: Map<String, Any?>, path: String): Boolean? =
+        when (val value = profile.getValueAt(path)) {
+            is Boolean -> value
+            is String -> when (value.trim().lowercase()) {
+                "true", "1", "yes", "on" -> true
+                "false", "0", "no", "off" -> false
+                else -> null
+            }
+
+            else -> null
+        }
 
     /** Fail-closed structural validation of a merged profile. */
     fun validateMerged(

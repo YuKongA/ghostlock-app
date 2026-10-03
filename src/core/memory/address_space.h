@@ -15,17 +15,14 @@ namespace ghostlock::memory {
         Google,
     };
 
-    /* Addresses derived once from an immutable target profile and the device SoC.
- * This is the authoritative input for image-to-direct-map translation. */
-    struct ResolvedAddresses {
+    /* Generic image<->direct-map translation derived once from an immutable
+     * target profile and the device SoC. Backend-agnostic. */
+    struct AddressSpace {
         SocFamily soc;
         target::KernelAddress<target::PhysicalAddressDomain> kernel_phys_load;
         /* DRAM base (linear-map PHYS_OFFSET). Defaults to the compiled
          * P0_PHYS_OFFSET; a profile may override it via kernel_phys_offset. */
         uintptr_t phys_offset = 0;
-        target::KernelAddress<target::ImageAddressDomain> init_cred_image;
-
-        int32_t init(const ghostlock::profile::TargetProfile *profile);
 
         int32_t init_for_soc(const ghostlock::profile::TargetProfile *profile, SocFamily family);
 
@@ -38,11 +35,19 @@ namespace ghostlock::memory {
             return kernel_phys_load.value();
         }
 
+        [[nodiscard]] const char *soc_name(const ghostlock::profile::TargetProfile *profile) const;
+    };
+
+    /* cve_2026_43499-resolved addresses: the generic space plus the credential
+     * image address. Base-first layout keeps Cve2026_43499State offsets fixed. */
+    struct ResolvedAddresses : AddressSpace {
+        target::KernelAddress<target::ImageAddressDomain> init_cred_image;
+
+        int32_t init(const ghostlock::profile::TargetProfile *profile);
+
         [[nodiscard]] uintptr_t init_cred_image_addr() const {
             return init_cred_image.value();
         }
-
-        [[nodiscard]] const char *soc_name(const ghostlock::profile::TargetProfile *profile) const;
     };
 } // namespace ghostlock::memory
 

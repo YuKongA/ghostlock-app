@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
             static_cast<uint16_t>(pipeline::TerminalKind::RootChild),
             static_cast<uint16_t>(pipeline::BackendKind::Cve2026_43499),
             0,
+            0,
         };
 
         bool app_call = false;
@@ -97,18 +98,20 @@ int main(int argc, char **argv) {
             decoded.route = static_cast<uint8_t>(ids.middleware);
         }
         const pipeline::ComponentSelection selection{
-            static_cast<pipeline::TerminalKind>(ids.terminal),
-            static_cast<pipeline::BackendKind>(ids.backend),
+            .backend = static_cast<pipeline::BackendKind>(ids.backend),
+            .steps = static_cast<pipeline::StepSetKind>(ids.steps),
+            .terminal = static_cast<pipeline::TerminalKind>(ids.terminal),
         };
         if (!pipeline::selection_supported(selection)) {
             /* Known-but-unavailable ids land here (unknown ids were rejected at
              * decode time), named for diagnosis. */
             const std::string terminal(pipeline::terminal_name(selection.terminal));
             const std::string backend(pipeline::backend_name(selection.backend));
+            const std::string steps(pipeline::stepset_name(selection.steps));
             const std::string route(pipeline::middleware_name(
                 static_cast<pipeline::MiddlewareKind>(ids.middleware)));
-            pr_error("unsupported component selection: terminal=%s backend=%s route=%s\n",
-                     terminal.c_str(), backend.c_str(), route.c_str());
+            pr_error("unsupported component selection: backend=%s steps=%s terminal=%s route=%s\n",
+                     backend.c_str(), steps.c_str(), terminal.c_str(), route.c_str());
             throw FatalError{};
         }
         /* Batch 4 (D1=B): the orchestrator dispatches the catalogued pipeline

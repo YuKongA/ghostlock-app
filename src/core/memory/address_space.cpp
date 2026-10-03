@@ -64,22 +64,15 @@ namespace ghostlock::memory {
     }
 #endif
 
-    int32_t ResolvedAddresses::init_for_soc(const profile::TargetProfile *profile,
+    int32_t AddressSpace::init_for_soc(const profile::TargetProfile *profile,
                                         SocFamily family) {
         const profile::kernel_offsets *values = profile->values();
-        if (!values || !values->uname_r || !values->offsets.init_cred) {
+        if (!values || !values->uname_r) {
             errno = EINVAL;
             return -1;
         }
-        *this = ResolvedAddresses{};
+        *this = AddressSpace{};
         soc = family;
-        const auto image = target::KernelAddress<target::ImageAddressDomain>(memory::KIMAGE_TEXT_BASE)
-                .checked_add(values->offsets.init_cred);
-        if (!image) {
-            errno = ERANGE;
-            return -1;
-        }
-        init_cred_image = *image;
         /* DRAM base for the image->direct-map translation: profile override
          * wins, otherwise the compiled P0 default keeps every existing
          * device byte-identical. */
@@ -106,17 +99,31 @@ namespace ghostlock::memory {
     }
 
     int32_t ResolvedAddresses::init(const profile::TargetProfile *profile) {
-        return init_for_soc(profile, detect_target_soc());
+        const profile::kernel_offsets *values = profile->values();
+        if (!values || !values->uname_r || !values->offsets.init_cred) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (init_for_soc(profile, detect_target_soc()) != 0) return -1;
+        const auto image =
+            target::KernelAddress<target::ImageAddressDomain>(memory::KIMAGE_TEXT_BASE)
+                .checked_add(values->offsets.init_cred);
+        if (!image) {
+            errno = ERANGE;
+            return -1;
+        }
+        init_cred_image = *image;
+        return 0;
     }
 
-    uintptr_t ResolvedAddresses::data_alias(uintptr_t image_addr) const {
+    uintptr_t AddressSpace::data_alias(uintptr_t image_addr) const {
         const auto result = data_alias_checked(
             target::KernelAddress<target::ImageAddressDomain>(image_addr));
         return result ? result->value() : 0;
     }
 
     std::optional<target::KernelAddress<target::DirectMapAddressDomain> >
-    ResolvedAddresses::data_alias_checked(
+    AddressSpace::data_alias_checked(
         target::KernelAddress<target::ImageAddressDomain> image_address) const noexcept {
         const uintptr_t image = image_address.value();
         if (image < memory::KIMAGE_TEXT_BASE) return std::nullopt;
@@ -129,7 +136,7 @@ namespace ghostlock::memory {
         return target::KernelAddress<target::DirectMapAddressDomain>(direct);
     }
 
-    const char *ResolvedAddresses::soc_name(const profile::TargetProfile *profile) const {
+    const char *AddressSpace::soc_name(const profile::TargetProfile *profile) const {
         if (soc == SocFamily::Mtk) return "mtk";
         if (soc == SocFamily::Xring) return "xring";
         const profile::kernel_offsets *values = profile->values();

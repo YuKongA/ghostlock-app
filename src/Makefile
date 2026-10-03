@@ -129,6 +129,7 @@ NATIVE_HOST_TESTS := \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
+  contract_capabilities_test terminal_input_test \
   host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
@@ -204,6 +205,14 @@ $(HOST_BUILD_DIR)/native_resource_test: core/tests/native_resource_test.cpp core
 $(HOST_BUILD_DIR)/run_state_test: core/tests/run_state_test.cpp core/support/run_state.cpp core/support/run_state.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/run_state_test.cpp core/support/run_state.cpp -o $@
+
+$(HOST_BUILD_DIR)/terminal_input_test: core/tests/terminal_input_test.cpp core/terminal/terminal_input.hpp core/terminal/root_program.hpp core/terminal/rooted_child.hpp core/support/native_resource.cpp core/support/native_resource.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/terminal_input_test.cpp core/support/native_resource.cpp -o $@
+
+$(HOST_BUILD_DIR)/contract_capabilities_test: core/tests/contract_capabilities_test.cpp core/contract/capabilities.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 $(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/memory/address_space.cpp core/memory/address_space.h core/profile/model.h
 	@mkdir -p $(HOST_BUILD_DIR)

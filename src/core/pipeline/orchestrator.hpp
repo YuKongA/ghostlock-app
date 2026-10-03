@@ -22,10 +22,10 @@ namespace ghostlock::pipeline {
          * any component reads it (ADR-0002 / Phase 0). */
         ghostlock::backend::cve43499_state_construct(exploit_session);
         switch (dispatch_target(selection)) {
-            case DispatchTarget::Cve43499_RootChild: {
+            case DispatchTarget::Cve43499W1W3_RootChild: {
                 using P = Pipeline<ghostlock::backend::Cve2026_43499Policy,
                                    ghostlock::terminal::RootChildPolicy>;
-                static_assert(P::target == DispatchTarget::Cve43499_RootChild,
+                static_assert(P::target == DispatchTarget::Cve43499W1W3_RootChild,
                               "dispatch case must match the pipeline's target");
                 return P::run(exploit_session, decoded, debug_dir, force_attack);
             }

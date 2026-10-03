@@ -38,6 +38,12 @@ data class NativeProfileDocument(
     val safeMode: UInt,
     /** Route-specific configuration; never part of the shared schema. */
     val routeConfig: RouteConfig,
+    /**
+     * StepSet id for the cve_2026_43499 backend (ADR-0004 R18), carried in the
+     * backend's own section. 0 = absent: the native selection rejects a missing
+     * StepSet instead of defaulting, and the app prompts the user to fill it.
+     */
+    val steps: UInt = 0u,
 ) {
     fun toBinary(): ByteArray {
         val releaseBytes = release.toByteArray(Charsets.UTF_8)
@@ -159,7 +165,14 @@ data class NativeProfileDocument(
         )
         routeSection()?.let(::add)
         vrGuardSection()?.let(::add)
+        backendSection()?.let(::add)
     }
+
+    /** Backend-private StepSet section (cve_2026_43499). */
+    private fun backendSection(): Section? =
+        steps.takeIf { it != 0u }?.let {
+            Section("backend.cve_2026_43499", listOf("steps" to it.toULong()))
+        }
 
     /**
      * Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs), read from
@@ -364,6 +377,8 @@ data class NativeProfileDocument(
             route: String?,
             fallbackTo: String?,
             value: (String) -> Long?,
+            text: (String) -> String? = { null },
+            bool: (String) -> Boolean? = { null },
         ): NativeProfileDocument {
             fun vu(path: String): UInt = value(path)?.toUInt() ?: 0u
             fun vul(path: String): ULong = value(path)?.toULong() ?: 0uL
@@ -459,6 +474,7 @@ data class NativeProfileDocument(
                 ),
                 safeMode = 0u,
                 routeConfig = routeConfig,
+                steps = StepSetKind.fromToken(text("backend.steps"))?.wire ?: 0u,
             )
         }
 
@@ -483,6 +499,7 @@ data class NativeProfileDocument(
             private var mmStructSz: UInt? = null
             private var execution = ExecutionTuning()
             private var routeConfig: RouteConfig = routeKind.emptyConfig()
+            private var steps = 0u
 
             fun apply(section: String, key: String, raw: ULong) {
                 if (section.startsWith("route.")) {
@@ -630,6 +647,8 @@ data class NativeProfileDocument(
                         "burst_calls" -> execution.copy(consumerBurstCalls = raw.toUInt())
                         else -> execution
                     }
+
+                    "backend.cve_2026_43499" -> if (key == "steps") steps = raw.toUInt()
                 }
             }
 
@@ -652,6 +671,7 @@ data class NativeProfileDocument(
                 vrGuard = metaVrGuard,
                 vrGuardTracepointFuncs = vrGuardTracepointFuncs,
                 routeConfig = routeConfig,
+                steps = steps,
             )
         }
     }

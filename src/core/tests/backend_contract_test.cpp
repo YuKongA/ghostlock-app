@@ -13,6 +13,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <type_traits>
 
 using namespace ghostlock;
 
@@ -41,12 +42,20 @@ int32_t main(void) {
     /* Pipeline is the composition entry: one (backend, terminal) pair. */
     using RootChildPipeline = pipeline::Pipeline<backend::Cve2026_43499Policy,
                                                 terminal::RootChildPolicy>;
-    static_assert(RootChildPipeline::target == pipeline::DispatchTarget::Cve43499_RootChild);
+    static_assert(RootChildPipeline::target == pipeline::DispatchTarget::Cve43499W1W3_RootChild);
 
     static_assert(pipeline::TerminalIdentity<terminal::RootChildPolicy>);
     static_assert(pipeline::TerminalExecution<terminal::RootChildPolicy>);
     static_assert(pipeline::TerminalIdentity<terminal::UmhForwardPolicy>);
     static_assert(!pipeline::TerminalExecution<terminal::UmhForwardPolicy>);
+
+    /* Unified interface (R19/R20): every terminal declares Input + activation. */
+    static_assert(std::is_same_v<terminal::RootChildPolicy::Input, terminal::RootedChild>);
+    static_assert(std::is_base_of_v<terminal::TerminalInput, terminal::RootChildPolicy::Input>);
+    static_assert(terminal::RootChildPolicy::activation == terminal::ActivationContext::Descendant);
+    static_assert(std::is_same_v<terminal::UmhForwardPolicy::Input, terminal::UmhForwardInput>);
+    static_assert(terminal::UmhForwardPolicy::activation ==
+                  terminal::ActivationContext::KernelSpawned);
 
     int32_t known = 0;
     pipeline::for_each_backend([&]<class B>() {

@@ -88,12 +88,16 @@ internal data class Profile(
             fallbackTo: RouteKind?,
             invalidPaths: Set<String> = emptySet(),
             value: (String) -> Long?,
+            text: (String) -> String? = { null },
+            bool: (String) -> Boolean? = { null },
         ): Profile? = fromNativeDocument(
             document = NativeProfileDocument.from(
                 release = release,
                 route = route?.token,
                 fallbackTo = fallbackTo?.token,
                 value = value,
+                text = text,
+                bool = bool,
             ),
             invalidPaths = invalidPaths,
         )

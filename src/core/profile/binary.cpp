@@ -305,6 +305,7 @@ namespace ghostlock::binary_profile {
             if (p + 2 > end) return -1;
             size_t sections = static_cast<size_t>(read_le(p, 2));
             p += 2;
+            uint16_t steps = 0;
             for (size_t s = 0; s < sections; s++) {
                 if (p + 1 > end) return -1;
                 const size_t name_len = *p++;
@@ -334,6 +335,12 @@ namespace ghostlock::binary_profile {
                                                key_len);
                     const uint64_t raw = read_le(p + key_len, 8);
                     p += key_len + 8;
+                    /* Backend-private StepSet lives outside the generic field
+                     * table (it targets the selection, not kernel_offsets). */
+                    if (name == "backend.cve_2026_43499" && key == "steps") {
+                        steps = static_cast<uint16_t>(raw & 0xffffu);
+                        continue;
+                    }
                     if (!section) continue;
                     for (size_t i = 0; i < section->count; i++) {
                         if (section->fields[i].key == key) {
@@ -343,7 +350,7 @@ namespace ghostlock::binary_profile {
                     }
                 }
             }
-            if (ids) *ids = {terminal, backend, middleware};
+            if (ids) *ids = {terminal, backend, middleware, steps};
             return 0;
         }
     } // namespace

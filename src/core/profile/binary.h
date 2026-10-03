@@ -40,6 +40,16 @@ namespace ghostlock::binary_profile {
     inline constexpr uint16_t kBackendCve202643503 = 4u;
     inline constexpr uint16_t kBackendCve202623274 = 5u;
 
+    /* StepSet ids (ADR-0004 R18); carried in the backend's private section
+     * (`backend.cve_2026_43499`, field `steps`), never in the header. */
+    inline constexpr uint16_t kStepSetW1W2 = 1u;
+    inline constexpr uint16_t kStepSetW1W3 = 2u;
+    inline constexpr uint16_t kStepSetPageCacheWrite = 3u;
+
+    [[nodiscard]] constexpr bool stepset_known(uint16_t id) noexcept {
+        return id == kStepSetW1W2 || id == kStepSetW1W3 || id == kStepSetPageCacheWrite;
+    }
+
     [[nodiscard]] constexpr bool terminal_known(uint16_t id) noexcept {
         return id == kTerminalRootChild || id == kTerminalUmhForward;
     }
@@ -58,6 +68,9 @@ namespace ghostlock::binary_profile {
         uint16_t terminal;
         uint16_t backend;
         uint16_t middleware;
+        /* 0 = absent; the native selection rejects a missing/unknown StepSet
+         * rather than defaulting (R18). */
+        uint16_t steps;
     };
 
     /* Parse one binary document into the native transport struct. `ids`, when

@@ -2,6 +2,7 @@
 #define GHOSTLOCK_TERMINAL_ROOTED_CHILD_HPP
 
 #include "support/native_resource.hpp"
+#include "terminal/terminal_input.hpp"
 
 #include <csignal>
 #include <sys/types.h>
@@ -14,7 +15,7 @@ namespace ghostlock::terminal {
  * terminal boundary (VictimContext::release_child + the parked command fd);
  * scope exit closes the command fd but never signals the child -- retire() is
  * the only kill path, mirroring VictimContext's explicit-retirement contract. */
-    struct RootedChild final {
+    struct RootedChild final : TerminalInput {
         pid_t pid = -1;
         ghostlock::support::UniqueFd command{};
         /* Victim-context read end handed over so the terminal resets it at the

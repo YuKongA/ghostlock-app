@@ -24,13 +24,19 @@ namespace ghostlock::terminal {
      * execution policies carry only the id and, when available, the step. */
     struct RootChildPolicy final {
         static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::RootChild;
+        using Input = RootedChild;
+        static constexpr ActivationContext activation = ActivationContext::Descendant;
 
         /* Terminal step: settle, root-shell handoff and KernelSU late-load. */
-        [[nodiscard]] static StageResult run(CoreSession &session, ghostlock::terminal::RootedChild &child);
+        [[nodiscard]] static StageResult run(CoreSession &session, Input &child);
     };
 
+    /* umh_forward is still declaration-only (no run); its Input/activation are
+     * declared so the unified interface is fixed before the execution lands. */
     struct UmhForwardPolicy final {
         static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::UmhForward;
+        using Input = UmhForwardInput;
+        static constexpr ActivationContext activation = ActivationContext::KernelSpawned;
     };
 
     static_assert(RootChildPolicy::kind == pipeline::terminal::RootChildTerminal::kind);

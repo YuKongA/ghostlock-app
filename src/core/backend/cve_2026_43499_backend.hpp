@@ -26,6 +26,8 @@ namespace ghostlock::backend {
      * for the catalogued middleware policies; callers only include this header. */
     struct Cve2026_43499Policy final {
         static constexpr pipeline::BackendKind kind = pipeline::BackendKind::Cve2026_43499;
+        /* T1: single step set; T4 turns this into template<class StepSet>. */
+        static constexpr pipeline::StepSetKind steps = pipeline::StepSetKind::W1W3;
 
         /* setup -> W1 -> W2/W3 chain, then hand the rooted child to the terminal
          * (see pipeline::Pipeline::run). Route comes from the profile and is

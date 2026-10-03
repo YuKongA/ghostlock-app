@@ -1,5 +1,7 @@
 # 顶级架构重写 计划（2026-10-03）
 
+> **全局顺序/状态以 `docs/analysis/branch-plan.md`（分支总 plan）为准**；本文件只负责本主题细节。
+
 对应决策：`adr/0001`（Option C 完整重写）· `adr/0002`（CoreSession）· `adr/0003`（profile 注册）·
 `adr/0004`（框架收敛裁决 R1–R17）。背景：`placeholder-backend-survey.md`。
 闭包状态见 `architecture-findings-register.md`；历轮审查原文见 `architecture-review-log.md`（归档，不是权威）。
@@ -43,15 +45,31 @@ src/core
 `backend→{contract,memory,session,platform,ancillary,terminal,profile}`；
 `pipeline→{contract,memory,session,backend,terminal,profile}`。**backend 不 include pipeline**。
 
-## 选择与组件模型（ADR-0004 R2/R3/R10/R12）
+## 选择与组件模型（ADR-0004 R2/R3/R10/R12/R18–R21）
 
 - **2 装配轴**：`backend`（漏洞）× `terminal`（提权后接管）；`route` 在 backend 内按 profile 选；
   `platform`/`capabilities` 为横切。
 - `Pipeline<Backend, Terminal>::run(CoreSession&)`：先 `B::run(CoreSession&, RootedChild&)`（backend 填
   终端输入、转移 victim 所有权），再 `T::run(CoreSession&, RootedChild&)`；terminal 返回 `Continue` = 契约违反。
-- `ComponentSelection = {BackendKind, TerminalKind}`（`TerminalKind` = GLK1 `frontend_id` 语义，wire 不变）；
-  catalog 按 `(backend, terminal)` 枚举，每 backend 声明允许的 terminal 集。
+- `ComponentSelection = {BackendKind, StepSetKind, TerminalKind}`；catalog 是**稀疏枚举**的合法三元组（不是稠密积），
+  每个三元组一个 `DispatchTarget`；非法即 `Rejected`（ADR-0004 R18/R20/R21）。
+- **Steps 可见且隶属 backend**：`Backend<StepSet>` 实例化（43499 的 `W1W2`/`W1W3`；43284 的页缓存链）；
+  `StepSetKind` 经 **backend 私有 GLK1 section** 下发（不动 header、不 bump 版本）；profile 唯一权威，native 不设默认。
+- `TerminalKind` = GLK1 `frontend_id` 语义；每个 terminal 声明 `ActivationContext`（R19/R20）。
 - `terminal::RootedChild`（move-only）：pid + command fd + alive/seccomp/ever_rooted + `retire()`/`detach()`。
+
+## 非 43499 backend 预留（CVE-2026-43284）
+
+43284（ESP 对共享 frag 就地解密 → 任意 16B 页缓存写）作为首个非 43499 backend，用以验证 ADR-0004 中性性。
+设计见 `docs/analysis/cve-2026-43284-backend-plan.md`；评估见 `cve-2026-43284-backend-assessment.md`。两条新条目：
+
+- **非内核内存 capability**：`contract` 增与 `KernelMemoryOps` 平级的 `FileCacheWriteOps`（同族 43503 复用）；
+  backend 声明其能力集。现有 T0/T1/T2 阶梯是内核内存形状，覆盖不了页缓存文件写。→ ADR-0004 待补 R。
+- **`umh_forward` 转正**：terminal 输入从 `RootedChild` 泛化为 `TerminalInput`（`RootedChild` 为其中一种）；
+  UMH terminal 不绑 KernelSU，也不绑具体 root 程序——**root 程序由 App 选择**（ksud、folkpatch 等，作为
+  profile/wire 参数）。→ ADR-0004 R10 延续。
+
+其余撞击点：组合根按 `selection.backend` 构造状态槽；43284 私有 GLK1 section（不复用 43499 槽）；无 route。
 
 ## 控制流时序（ADR-0004 R13–R17）
 
@@ -278,7 +296,9 @@ T1 引导写的具体调用点。细节“一边做一边定”，不再新增�
 - [x] Phase A2-2c：bootstrap 三函数 → `backend/cve_2026_43499/bootstrap.*`（落点修正：不进 pipeline，遵守 R1；真机 PASS）
 - [x] Phase A2-2d：`write_root_script` → `terminal/root_script.*`（真机 PASS）
 - [x] Phase A2-2e：`slab_drain`/`perf_find_task` → `backend/cve_2026_43499/primitives.*`（真机 PASS，首跑抖动已复跑排除）
-- [ ] Phase A2-3/4/5：见“Phase A2 分批”
+- [x] Phase A2-3a：`in_direct_map` → `memory/direct_map.hpp`，删除 `attack/`（真机 `A2-3a` PASS；二进制与 A2-2e 逐字节相同）
+- [x] Phase A2-3b：`AddressSpace` 拆出 `ResolvedAddresses`（基类前置、布局不变；真机 PASS）
+- [ ] Phase A2-3c、A2-4/5：见“Phase A2 分批”
 - [ ] Phase B
 - [ ] Phase C（另 PR）
 - [ ] 完整门禁 + 归档

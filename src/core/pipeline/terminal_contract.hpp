@@ -9,7 +9,7 @@
 
 #include "pipeline/component_catalog.hpp"
 #include "session/stage_types.hpp"
-#include "terminal/rooted_child.hpp"
+#include "terminal/terminal_input.hpp"
 
 namespace ghostlock::session {
     struct CoreSession;
@@ -59,11 +59,19 @@ namespace ghostlock::pipeline {
         { F::kind } -> std::convertible_to<TerminalKind>;
     };
 
+    /* Unified terminal interface (ADR-0004 R19): an available terminal declares
+     * its Input (derived from TerminalInput), its ActivationContext, and the step
+     * that launches the App-selected RootProgram. Identity without a step is a
+     * declaration-only placeholder (e.g. umh_forward before its execution lands). */
     template <class F>
     concept TerminalExecution = TerminalIdentity<F> &&
-        requires(session::CoreSession &exploit_session,
-                 ghostlock::terminal::RootedChild &child) {
-            { F::run(exploit_session, child) } -> std::same_as<session::StageResult>;
+        requires {
+            typename F::Input;
+            requires std::derived_from<typename F::Input, ghostlock::terminal::TerminalInput>;
+            { F::activation } -> std::convertible_to<ghostlock::terminal::ActivationContext>;
+        } &&
+        requires(session::CoreSession &exploit_session, typename F::Input &input) {
+            { F::run(exploit_session, input) } -> std::same_as<session::StageResult>;
         };
 
     /* The declared registry; for_each keeps enumeration automatic as it grows. */

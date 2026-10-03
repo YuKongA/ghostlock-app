@@ -1,8 +1,12 @@
 package com.ghostlock.app.data.profile
 
+import com.ghostlock.app.data.HoconSupport
+import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.StepSetKind
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.valueMapOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -114,6 +118,57 @@ class ProfileResolverTest {
         val profile = validProfile() + ("vr_guard" to valueMapOf("tracepoint_funcs" to 0x140L))
         val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
         assertTrue(errors.any { it.fieldPath == "vr_guard.tracepoint_funcs" })
+    }
+
+    @Test
+    fun `nativeText resolves a dotted string path`() {
+        val profile = valueMapOf("backend" to valueMapOf("steps" to "w1_w3"))
+        assertEquals("w1_w3", ProfileResolver.nativeText(profile, "backend.steps"))
+        assertNull(ProfileResolver.nativeText(profile, "backend.missing"))
+        assertNull(ProfileResolver.nativeText(profile, "backend"))
+    }
+
+    @Test
+    fun `nativeBool accepts booleans and HOCON string spellings`() {
+        val profile = valueMapOf(
+            "flag_bool" to true,
+            "flag_true" to " TRUE ",
+            "flag_one" to "1",
+            "flag_yes" to "yes",
+            "flag_on" to "On",
+            "flag_false" to "false",
+            "flag_zero" to "0",
+            "flag_no" to "no",
+            "flag_off" to "off",
+            "flag_bogus" to "maybe",
+            "flag_number" to 1,
+        )
+        assertEquals(true, ProfileResolver.nativeBool(profile, "flag_bool"))
+        assertEquals(true, ProfileResolver.nativeBool(profile, "flag_true"))
+        assertEquals(true, ProfileResolver.nativeBool(profile, "flag_one"))
+        assertEquals(true, ProfileResolver.nativeBool(profile, "flag_yes"))
+        assertEquals(true, ProfileResolver.nativeBool(profile, "flag_on"))
+        assertEquals(false, ProfileResolver.nativeBool(profile, "flag_false"))
+        assertEquals(false, ProfileResolver.nativeBool(profile, "flag_zero"))
+        assertEquals(false, ProfileResolver.nativeBool(profile, "flag_no"))
+        assertEquals(false, ProfileResolver.nativeBool(profile, "flag_off"))
+        assertNull(ProfileResolver.nativeBool(profile, "flag_bogus"))
+        assertNull(ProfileResolver.nativeBool(profile, "flag_number"))
+        assertNull(ProfileResolver.nativeBool(profile, "flag_missing"))
+    }
+
+    @Test
+    fun `HOCON backend steps token maps through StepSetKind`() {
+        val merged = HoconSupport.parseValue("{ backend { steps = \"w1_w3\" } }").asValueMap()
+        val document = NativeProfileDocument.from(
+            release = "test",
+            route = "select_stack",
+            fallbackTo = null,
+            value = { path -> ProfileResolver.nativeValue(merged, "select_stack", "none", path) },
+            text = { path -> ProfileResolver.nativeText(merged, path) },
+        )
+        assertEquals(StepSetKind.W1W3.wire, document.steps)
+        assertEquals(2u, document.steps)
     }
 
     private fun validProfile(): MutableMap<String, Any?> = valueMapOf(
