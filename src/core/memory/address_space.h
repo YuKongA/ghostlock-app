@@ -2,7 +2,7 @@
 #define GHOSTLOCK_ADDRESS_SPACE_H
 
 #include "profile/model.h"
-#include "kernel/target_constants.hpp"
+#include "memory/target_constants.hpp"
 #include <optional>
 
 #include <cstdint>

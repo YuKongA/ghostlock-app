@@ -14,6 +14,7 @@
 | 操作指南 | 完成一个任务 | `docs/development/*` |
 | 参考 | 字段、命令、结构 | `docs/kernel_profiles/PROFILE_SCHEMA.md`、`defaults.md`、`src/core/README.md` |
 | 解释 | 为什么这样设计 | `design-philosophy.md`、`engineering-standards.md`、`docs/analysis/**`（历史） |
+| 决策记录（ADR） | 一次架构决策：背景/决策/备选/后果 | `docs/analysis/adr/NNNN-*.md` |
 | 计划 | L 级改动开始前 | `docs/analysis/*-plan.md`（完成后可归档） |
 | 门禁记录 | 真机验证之后 | `docs/analysis/device-gates/`（归档，永久保留） |
 | 发布说明 | 每个版本 | `docs/release-note-*.md`（归档） |

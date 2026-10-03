@@ -182,6 +182,11 @@ namespace ghostlock::binary_profile {
             PLAIN("arm_sequence", execution.tcp_arm_sequence),
             PLAIN("post_receive_hold_iterations",
                   execution.tcp_post_receive_hold_iterations),
+            /* TCP payload placement (required; presence enforced by the route). */
+            OPT("payload_delta", geometry.tcp_payload_delta),
+            OPT("chunk_bias", geometry.tcp_chunk_bias),
+            OPT("fake_task_off", geometry.tcp_fake_task_off),
+            OPT("cred_copy_off", geometry.tcp_cred_copy_off),
         };
 
         constexpr Field kRouteSelect[] = {
@@ -274,10 +279,10 @@ namespace ghostlock::binary_profile {
             if (document.size() < kHeaderSize) return -1;
             if (read_le(bytes, 4) != kMagic) return -1;
             if (read_le(bytes + 4, 2) != kVersion) return -1;
-            const uint16_t frontend = static_cast<uint16_t>(read_le(bytes + 6, 2));
+            const uint16_t terminal = static_cast<uint16_t>(read_le(bytes + 6, 2));
             const uint16_t backend = static_cast<uint16_t>(read_le(bytes + 8, 2));
             const uint16_t middleware = static_cast<uint16_t>(read_le(bytes + 10, 2));
-            if (!frontend_known(frontend) || !backend_known(backend)) return -1;
+            if (!terminal_known(terminal) || !backend_known(backend)) return -1;
             if (middleware > 0xff) return -1;
             const size_t release_length = static_cast<size_t>(read_le(bytes + 12, 2));
             if (kHeaderSize + release_length > document.size()) return -1;
@@ -338,7 +343,7 @@ namespace ghostlock::binary_profile {
                     }
                 }
             }
-            if (ids) *ids = {frontend, backend, middleware};
+            if (ids) *ids = {terminal, backend, middleware};
             return 0;
         }
     } // namespace
@@ -381,7 +386,7 @@ namespace ghostlock::binary_profile {
         memset(bytes, 0, kHeaderSize);
         write_le(bytes, kMagic, 4);
         write_le(bytes + 4, kVersion, 2);
-        write_le(bytes + 6, kFrontendRootChild, 2);
+        write_le(bytes + 6, kTerminalRootChild, 2);
         write_le(bytes + 8, kBackendCve202643499, 2);
         write_le(bytes + 10, in->route, 2);
         write_le(bytes + 12, release_length, 2);

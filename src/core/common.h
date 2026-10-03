@@ -5,17 +5,17 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernel/offset.h"
-#include "kernel/runtime_struct_offsets.h"
+#include "memory/offset.h"
+#include "profile/runtime_struct_offsets.h"
 #include "memory/address_space.h"
 #include "memory/payload_builder.h"
 #include "session/runtime_config.h"
 #include "support/time.h"
 #include "memory/heap_context.h"
 #include "race/pi_race.h"
-#include "session/exploit_session.hpp"
+#include "session/core_session.hpp"
 
-#include "kernel/constants.hpp"
+#include "memory/constants.hpp"
 
 #include <dirent.h>
 #include <cerrno>
@@ -48,6 +48,7 @@
 
 #include "profile/accessors.hpp"
 #include "support/decls.hpp"
-#include "route/route_api.hpp"
+#include "support/timing.hpp"
+#include "backend/cve_2026_43499/route/route_api.hpp"
 
 #endif

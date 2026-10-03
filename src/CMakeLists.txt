@@ -57,18 +57,19 @@ set(SOURCES
         core/memory/address_space.cpp
         core/memory/heap_context.cpp
         core/race/pi_race.cpp
-        core/route/route_controller.cpp
+        core/backend/cve_2026_43499/route/route_controller.cpp
         core/race/threads.cpp
-        core/route/tcp_zerocopy_route.cpp
-        core/route/select_stack_route.cpp
-        core/route/multicast_waiter_route.cpp
+        core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp
+        core/backend/cve_2026_43499/route/select_stack_route.cpp
+        core/backend/cve_2026_43499/route/multicast_waiter_route.cpp
         core/memory/payload_builder.cpp
         core/session/runtime_config.cpp
         core/support/util.cpp
-        core/session/exploit_session.cpp
-        core/session/handoff_probe.cpp
-        core/session/victim_process.cpp
-        core/session/victim_context.cpp
+        core/session/core_session.cpp
+        core/backend/cve_2026_43499_state.cpp
+        core/terminal/handoff_probe.cpp
+        core/backend/victim/victim_process.cpp
+        core/backend/victim/victim_context.cpp
         core/support/native_resource.cpp
 )
 

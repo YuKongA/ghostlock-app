@@ -5,7 +5,7 @@
  * (profile-core/.../NativeProfile.kt). Little-endian.
  *
  * v2 (the only format; object sections):
- *   u32 magic, u16 version(2), u16 frontend_id, u16 backend_id,
+ *   u32 magic, u16 version(2), u16 terminal_id, u16 backend_id,
  *   u16 middleware_id, u16 release_length, release,
  *   u16 section_count, then per section:
  *     u8 name_len, name, u32 entry_count, then per entry:
@@ -29,27 +29,33 @@ namespace ghostlock::binary_profile {
     inline constexpr uint32_t kMagic = 0x0D000721u;
     inline constexpr uint16_t kVersion = 2u;
     /* Known component ids. The full catalog is decoded here; an id that is
-     * known but unavailable (UMH / cve_2026_64560) is accepted at decode time
-     * and rejected by the orchestrator before the attack starts. */
-    inline constexpr uint16_t kFrontendRootChild = 1u;
-    inline constexpr uint16_t kFrontendUmhForward = 2u;
+     * known but unavailable (UMH / cve_2026_64560 / 31431 / 43503 / 23274) is
+     * accepted at decode time and rejected by the orchestrator before the
+     * attack starts. */
+    inline constexpr uint16_t kTerminalRootChild = 1u;
+    inline constexpr uint16_t kTerminalUmhForward = 2u;
     inline constexpr uint16_t kBackendCve202643499 = 1u;
     inline constexpr uint16_t kBackendCve20264560 = 2u;
+    inline constexpr uint16_t kBackendCve202631431 = 3u;
+    inline constexpr uint16_t kBackendCve202643503 = 4u;
+    inline constexpr uint16_t kBackendCve202623274 = 5u;
 
-    [[nodiscard]] constexpr bool frontend_known(uint16_t id) noexcept {
-        return id == kFrontendRootChild || id == kFrontendUmhForward;
+    [[nodiscard]] constexpr bool terminal_known(uint16_t id) noexcept {
+        return id == kTerminalRootChild || id == kTerminalUmhForward;
     }
 
     [[nodiscard]] constexpr bool backend_known(uint16_t id) noexcept {
-        return id == kBackendCve202643499 || id == kBackendCve20264560;
+        return id == kBackendCve202643499 || id == kBackendCve20264560 ||
+               id == kBackendCve202631431 || id == kBackendCve202643503 ||
+               id == kBackendCve202623274;
     }
 
     /* Component selection as decoded from the transport. v2 fills the single
-     * shipped frontend/backend; v3 carries the wire ids. Kept out of
+     * shipped terminal/backend; v3 carries the wire ids. Kept out of
      * kernel_offsets so the execution struct layout (and attack codegen) does
      * not move. */
     struct component_ids {
-        uint16_t frontend;
+        uint16_t terminal;
         uint16_t backend;
         uint16_t middleware;
     };

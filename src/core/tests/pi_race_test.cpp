@@ -63,7 +63,7 @@ int32_t main(void) {
     assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
     assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
     assert(race.request == nullptr);
-    assert(race.route_status.code == ghostlock::route::ROUTE_RETRYABLE);
+    assert(race.route_status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE);
 
     /* reset is idempotent and clears previous values. */
     assert(race.reset(1, 0, 1));
@@ -121,25 +121,25 @@ int32_t main(void) {
 
     /* Outcome merge: Ok without a winning consumer call degrades to Retryable,
    * everything else is passed through untouched. */
-    ghostlock::route::RouteStatus ok{};
-    ok.code = ghostlock::route::ROUTE_OK;
+    ghostlock::backend::cve_2026_43499::route::RouteStatus ok{};
+    ok.code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK;
     ok.userspace_clean = 1;
     ok.kernel_disarmed = 1;
-    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 3, 2).code == ghostlock::route::ROUTE_OK);
+    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 3, 2).code == ghostlock::backend::cve_2026_43499::route::ROUTE_OK);
     assert(ghostlock::race::PiRace::outcome_with_counters(ok, 0, 0).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
+           ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE);
     assert(ghostlock::race::PiRace::outcome_with_counters(ok, 3, 0).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
+           ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE);
     assert(ghostlock::race::PiRace::outcome_with_counters(ok, 0, 2).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
+           ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE);
 
-    ghostlock::route::RouteStatus dirty{};
-    dirty.code = ghostlock::route::ROUTE_DIRTY_FAILURE;
+    ghostlock::backend::cve_2026_43499::route::RouteStatus dirty{};
+    dirty.code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE;
     dirty.step = 59;
     dirty.userspace_clean = 1;
     dirty.kernel_disarmed = 0;
-    const ghostlock::route::RouteStatus kept = ghostlock::race::PiRace::outcome_with_counters(dirty, 10, 10);
-    assert(kept.code == ghostlock::route::ROUTE_DIRTY_FAILURE);
+    const ghostlock::backend::cve_2026_43499::route::RouteStatus kept = ghostlock::race::PiRace::outcome_with_counters(dirty, 10, 10);
+    assert(kept.code == ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE);
     assert(kept.step == 59);
     assert(kept.userspace_clean == 1);
     assert(kept.kernel_disarmed == 0);

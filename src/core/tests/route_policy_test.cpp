@@ -4,7 +4,7 @@
  * White box: capabilities are asserted per policy (including the inherited
  * RoutePolicyDefaults) and every dispatch path is counted through stubs. */
 
-#include "route/route_policy.hpp"
+#include "backend/cve_2026_43499/route/route_policy.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -14,9 +14,9 @@ using namespace ghostlock;
 
 namespace {
     struct StubState {
-        route::RouteStatus select_status = {.code = route::ROUTE_OK};
-        route::RouteStatus tcp_status = {.code = route::ROUTE_OK};
-        route::RouteStatus multicast_status = {.code = route::ROUTE_OK};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus select_status = {.code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus tcp_status = {.code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus multicast_status = {.code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK};
         int32_t select_calls = 0;
         int32_t tcp_calls = 0;
         int32_t multicast_calls = 0;
@@ -37,7 +37,7 @@ namespace {
     }
 } // namespace
 
-namespace ghostlock::route {
+namespace ghostlock::backend::cve_2026_43499::route {
     RouteStatus do_pselect_fake_lock_route(const memory::WriteRequest *request) {
         assert(request);
         state.select_calls++;
@@ -55,10 +55,10 @@ namespace ghostlock::route {
         state.multicast_calls++;
         return state.multicast_status;
     }
-} // namespace ghostlock::route
+} // namespace ghostlock::backend::cve_2026_43499::route
 
 int32_t main(void) {
-    using namespace ghostlock::route;
+    using namespace ghostlock::backend::cve_2026_43499::route;
     using ghostlock::profile::RouteKind;
 
     /* ---- White box: capabilities, including the base-class defaults. ---- */

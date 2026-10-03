@@ -1,14 +1,26 @@
-#include "attack/ops.hpp"
-
+#include "backend/cve_2026_43499/bootstrap.hpp"
 #include "host_attack_script.hpp"
 
-/* Host stubs for the ghostlock::attack surface: no syscalls, no kernel work.
- * Probes return the scripted verdict; side-effecting primitives are no-ops. */
-namespace ghostlock::attack {
-    int32_t in_direct_map(uintptr_t target) {
-        (void) target;
-        return 1;
+/* Host stubs for the attack-path externals: no syscalls, no kernel work. */
+namespace ghostlock::backend {
+    void slab_drain(void) {}
+
+    uintptr_t perf_find_task(void) { return 0; }
+} // namespace ghostlock::backend
+
+namespace ghostlock::terminal {
+    void write_root_script(void) {}
+} // namespace ghostlock::terminal
+
+namespace ghostlock::backend {
+    void install_profile(const ghostlock::profile::kernel_offsets &decoded) {
+        (void) decoded;
     }
+} // namespace ghostlock::backend
+
+/* Scripted platform runtime probes (mirrors the attack stubs above). */
+namespace ghostlock::platform::runtime {
+    void apply_iomem_cache(const char *, const char *) {}
 
     int32_t check_selinux_off(void) {
         return host::script().selinux_off_initial;
@@ -21,26 +33,4 @@ namespace ghostlock::attack {
     int32_t process_has_seccomp(void) {
         return host::script().process_has_seccomp_value;
     }
-
-    void log_execution_settings(const struct ghostlock::profile::kernel_offsets *profile) {
-        (void) profile;
-    }
-
-    void resolve_profile_addresses(void) {}
-
-    void install_profile(const struct ghostlock::profile::kernel_offsets &decoded) {
-        (void) decoded;
-    }
-
-    void apply_iomem_cache(void) {}
-
-    void slab_drain(void) {}
-
-    void write_root_script(void) {}
-
-    uintptr_t perf_find_task(void) { return 0; }
-
-    void timer_reset(void) {}
-
-    void timer_mark(const char *label) { (void) label; }
-} // namespace ghostlock::attack
+} // namespace ghostlock::platform::runtime

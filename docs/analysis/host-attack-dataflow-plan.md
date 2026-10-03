@@ -78,6 +78,7 @@ flowchart LR
 | `victim_stub.cpp` | `victim::spawn_victim` / `verify_selinux_stage` / `verify_w2_stage` / `verify_seccomp_probe_stage` / `verify_leaf_dir_stage` | 假 {pid,task}；从脚本队列返回 |
 | `handoff_stub.cpp` | `handoff_probe_run` / `kernelsu_module_visible` / `ksu_root_owned` / `scan_ksu_log` | `ready()` 按脚本；`ksu_root_owned`→false |
 | `config_stub.cpp` | `config::runtime_config_snapshot()` | 返回默认 `RuntimeConfig`（不读环境） |
+| `ancillary_stub.cpp` | `VrGuardPolicy::apply<M>` / `VrTaskTagPolicy::apply<M>`（backend 的 PreSpawn/PostSpawn 调用点） | 返回 true；Android-only behavior body 不参与 host 链接 |
 
 实链接（host 安全、无副作用）：`profile/model.h` 的 `TargetProfile`（测试用默认构造）、
 `support/native_resource.cpp`（fd RAII）、`support/run_state.cpp`（纯状态）。
@@ -138,4 +139,7 @@ host：同一源码序列不变，只是这些调用落到 stub，返回脚本�
 - [x] `src/Makefile` `host-attack-dataflow-test` 目标（生产 backend/frontend 未改动）
 - [x] 测试用例：happy / W2 重试 / W2 耗尽 / SELinux 重试
 - [x] 验证：`make -C src host-attack-dataflow-test` 输出 `backend_dataflow_test: ok` 且 exit 0；`make -C src native-host-tests` 全绿
+- [x] 维护（2026-10-02）：backend 增加 ancillary PreSpawn/PostSpawn 调用点后，链接缺
+      `VrGuardPolicy/VrTaskTagPolicy::apply<M>`；补 `tests/host/ancillary_stub.cpp` 恢复
+      `host-attack-dataflow-test` 通过，并纳入 `native-host-tests` 聚合
 - 说明：未改任何生产源码，故 Android 构建与 `cmp_disasm` 不受影响（无需重跑）

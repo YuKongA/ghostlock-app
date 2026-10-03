@@ -21,29 +21,34 @@ C_SRCS :=
 
 CXX_SRCS := \
   core/main.cpp \
-  core/attack/ops.cpp \
   core/profile/entry.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
   core/race/pi_race.cpp \
-  core/route/route_controller.cpp \
-  core/route/route_middleware.cpp \
-  core/session/ancillary/vr_guard.cpp \
+  core/backend/cve_2026_43499/route/route_controller.cpp \
+  core/backend/cve_2026_43499/route/route_middleware.cpp \
+  core/ancillary/vr_guard.cpp \
+  core/ancillary/vr_task_tag.cpp \
   core/race/threads.cpp \
-  core/route/tcp_zerocopy_route.cpp \
-  core/route/select_stack_route.cpp \
-  core/route/multicast_waiter_route.cpp \
+  core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp \
+  core/backend/cve_2026_43499/route/select_stack_route.cpp \
+  core/backend/cve_2026_43499/route/multicast_waiter_route.cpp \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
   core/profile/binary.cpp \
   core/support/util.cpp \
-  core/session/exploit_session.cpp \
-  core/session/root_child_frontend.cpp \
-  core/session/backend/cve_2026_43499_backend.cpp \
-  core/session/ancillary/ancillary_controller.cpp \
-  core/session/handoff_probe.cpp \
-  core/session/victim_process.cpp \
-  core/session/victim_context.cpp \
+  core/platform/runtime.cpp \
+  core/session/core_session.cpp \
+  core/backend/cve_2026_43499_state.cpp \
+  core/backend/cve_2026_43499/bootstrap.cpp \
+  core/backend/cve_2026_43499/primitives.cpp \
+  core/terminal/root_script.cpp \
+  core/terminal/root_child.cpp \
+  core/backend/cve_2026_43499_backend.cpp \
+  core/ancillary/ancillary_controller.cpp \
+  core/terminal/handoff_probe.cpp \
+  core/backend/victim/victim_process.cpp \
+  core/backend/victim/victim_context.cpp \
   core/support/native_resource.cpp \
   core/support/run_state.cpp
 
@@ -56,10 +61,10 @@ CXX_OBJS := $(patsubst %.cpp,$(NATIVE_BUILD_DIR)/%.o,$(CXX_SRCS))
 OBJS := $(C_OBJS) $(CXX_OBJS)
 
 # Native interface and target headers also trigger a rebuild.
-HDRS := $(wildcard core/*.h core/*.hpp core/*/*.h core/*/*.hpp)
+HDRS := $(wildcard core/*.h core/*.hpp core/*/*.h core/*/*.hpp core/*/*/*.h core/*/*/*.hpp)
 
 # Device offsets are selected at runtime from uname -r.
-TARGET_CONFIG ?= kernel/target.h
+TARGET_CONFIG ?= memory/target.h
 
 COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
   -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function \
@@ -123,7 +128,8 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test address_space_test cpp_link_probe_test ancillary_test
+  run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
+  host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -131,7 +137,7 @@ native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
 
-# Host attack data-flow harness: the real backend/frontend compiled unmodified,
+# Host attack data-flow harness: the real backend/terminal compiled unmodified,
 # with the side-effecting primitives replaced by scriptable host stubs. The
 # shadow include path makes the backend resolve the host attack/ops.hpp.
 HOST_ATTACK_DATAFLOW_SOURCES := \
@@ -142,10 +148,12 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/tests/host/route_stub.cpp \
   core/tests/host/victim_stub.cpp \
   core/tests/host/handoff_stub.cpp \
+  core/tests/host/ancillary_stub.cpp \
   core/tests/host/glue_stub.cpp \
-  core/session/backend/cve_2026_43499_backend.cpp \
-  core/session/root_child_frontend.cpp \
-  core/session/exploit_session.cpp \
+  core/backend/cve_2026_43499_backend.cpp \
+  core/terminal/root_child.cpp \
+  core/session/core_session.cpp \
+  core/backend/cve_2026_43499_state.cpp \
   core/session/runtime_config.cpp \
   core/memory/heap_context.cpp \
   core/memory/address_space.cpp \
@@ -185,7 +193,7 @@ $(HOST_BUILD_DIR)/cpp_link_probe_test: core/tests/cpp_link_probe.cpp core/tests/
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore -c core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
 
-$(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/kernel/target.h core/kernel/target_constants.hpp
+$(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/memory/target.h core/memory/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/target_constants_test.cpp -o $@
 
@@ -201,7 +209,11 @@ $(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/mem
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/address_space_test.cpp core/memory/address_space.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/route/route_status.h
+$(HOST_BUILD_DIR)/session_layout_test: core/tests/session_layout_test.cpp core/session/core_session.hpp core/backend/cve_2026_43499_state.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/session_layout_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/route_status_test: core/tests/route_status_test.cpp core/backend/cve_2026_43499/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
@@ -210,10 +222,12 @@ $(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/suppo
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 $(HOST_BUILD_DIR)/backend_contract_test: core/tests/backend_contract_test.cpp \
-  core/route/backend_contract.hpp core/route/backend_policy.hpp core/route/component_catalog.hpp \
-  core/route/route_policy.hpp core/route/frontend_contract.hpp core/session/stage_types.hpp \
-  core/session/backend/cve_2026_43499_backend.hpp core/session/backend/cve_2026_64560_backend.hpp \
-  core/session/exploit_session.hpp
+  core/pipeline/backend_contract.hpp core/pipeline/backend_policy.hpp core/pipeline/component_catalog.hpp \
+  core/backend/cve_2026_43499/route/route_policy.hpp core/pipeline/terminal_contract.hpp core/session/stage_types.hpp \
+  core/backend/cve_2026_43499_backend.hpp core/backend/cve_2026_64560_backend.hpp \
+  core/backend/cve_2026_31431_backend.hpp core/backend/cve_2026_43503_backend.hpp \
+  core/backend/cve_2026_23274_backend.hpp \
+  core/session/core_session.hpp core/backend/cve_2026_43499_state.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/backend_contract_test.cpp -o $@
 
@@ -221,22 +235,23 @@ $(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/pro
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_catalog_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/route/component_catalog.hpp core/profile/model.h
+$(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/pipeline/component_catalog.hpp core/profile/model.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/component_catalog_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/route/route_policy.hpp core/route/route_status.h core/profile/model.h core/memory/payload_builder.h
+$(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/backend/cve_2026_43499/route/route_policy.hpp core/backend/cve_2026_43499/route/route_status.h core/profile/model.h core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/route_policy_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/ancillary_test: core/tests/ancillary_test.cpp \
-  core/session/ancillary/ancillary_policy.hpp core/session/ancillary/vr_guard.hpp \
-  core/session/ancillary/ancillary_controller.hpp core/session/exploit_session.hpp \
+  core/ancillary/ancillary_policy.hpp core/ancillary/vr_guard.hpp \
+  core/ancillary/vr_task_tag.hpp core/ancillary/ancillary_controller.hpp \
+  core/session/core_session.hpp core/memory/target.h core/profile/macros.h \
   core/profile/model.h core/support/status.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/ancillary_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/route/route_lifecycle.hpp core/route/route_status.h
+$(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/backend/cve_2026_43499/route/route_lifecycle.hpp core/backend/cve_2026_43499/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_lifecycle_test.cpp -o $@
 
@@ -259,21 +274,21 @@ $(HOST_BUILD_DIR)/kernelsnitch_scan_bounds_test: core/tests/kernelsnitch_scan_bo
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/route_controller_test: core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/route_controller_test: core/tests/route_controller_test.cpp core/backend/cve_2026_43499/route/route_controller.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -pthread -Icore core/tests/route_controller_test.cpp core/route/route_controller.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -pthread -Icore core/tests/route_controller_test.cpp core/backend/cve_2026_43499/route/route_controller.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/pi_race_test: core/tests/pi_race_test.cpp core/race/pi_race.cpp core/race/pi_race.h core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/pi_race_test.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: core/tests/tcp_zerocopy_route_test.cpp core/route/tcp_zerocopy_route.cpp core/route/tcp_zerocopy_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/tcp_zerocopy_route_test: core/tests/tcp_zerocopy_route_test.cpp core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp core/backend/cve_2026_43499/route/tcp_zerocopy_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/tcp_zerocopy_route_test.cpp core/route/tcp_zerocopy_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/tcp_zerocopy_route_test.cpp core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/select_stack_route_test: core/tests/select_stack_route_test.cpp core/route/select_stack_route.cpp core/route/select_stack_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/select_stack_route_test: core/tests/select_stack_route_test.cpp core/backend/cve_2026_43499/route/select_stack_route.cpp core/backend/cve_2026_43499/route/select_stack_route.h core/race/pi_race.cpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/select_stack_route_test.cpp core/route/select_stack_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/select_stack_route_test.cpp core/backend/cve_2026_43499/route/select_stack_route.cpp core/race/pi_race.cpp core/support/native_resource.cpp -o $@
 
 $(HOST_BUILD_DIR)/futex_hash_test: core/tests/futex_hash_test.cpp core/kernelsnitch/futex_hash.h
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -287,13 +302,13 @@ $(HOST_BUILD_DIR)/runtime_paths_test: core/tests/runtime_paths_test.cpp core/ses
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/handoff_probe_test: core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp core/session/handoff_probe.hpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/handoff_probe_test: core/tests/handoff_probe_test.cpp core/terminal/handoff_probe.cpp core/terminal/handoff_probe.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/handoff_probe_test.cpp core/session/handoff_probe.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/handoff_probe_test.cpp core/terminal/handoff_probe.cpp core/support/native_resource.cpp -o $@
 
-$(HOST_BUILD_DIR)/victim_context_test: core/tests/victim_context_test.cpp core/session/victim_context.cpp core/session/victim_context.hpp core/support/native_resource.cpp core/support/native_resource.hpp
+$(HOST_BUILD_DIR)/victim_context_test: core/tests/victim_context_test.cpp core/backend/victim/victim_context.cpp core/backend/victim/victim_context.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/victim_context_test.cpp core/session/victim_context.cpp core/support/native_resource.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/victim_context_test.cpp core/backend/victim/victim_context.cpp core/support/native_resource.cpp -o $@
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: $(GHOSTLOCK_BIN) ==="

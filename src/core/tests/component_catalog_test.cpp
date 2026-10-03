@@ -1,11 +1,11 @@
-/* Host test for the Batch 3 component catalog: stable ids, availability and
- * selection rejection. The orchestrator reuses the profile route enum for the
- * middleware, so Auto must never be selectable. */
+/* Host test for the component catalog: stable ids, availability and the
+ * catalogued (backend, terminal) pairs. Route is backend-internal, so Auto
+ * never enters the selection. */
 
-#include "route/backend_policy.hpp"
-#include "route/component_catalog.hpp"
-#include "route/frontend_contract.hpp"
-#include "route/pipeline.hpp"
+#include "pipeline/backend_policy.hpp"
+#include "pipeline/component_catalog.hpp"
+#include "pipeline/pipeline.hpp"
+#include "pipeline/terminal_contract.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -13,127 +13,69 @@
 using namespace ghostlock;
 
 int32_t main(void) {
-    using runtime::BackendKind;
-    using runtime::FrontendKind;
-    using runtime::MiddlewareKind;
+    using pipeline::BackendKind;
+    using pipeline::MiddlewareKind;
+    using pipeline::TerminalKind;
 
-    assert(runtime::frontend_available(FrontendKind::RootChild));
-    assert(!runtime::frontend_available(FrontendKind::UmhForward));
-    assert(runtime::backend_available(BackendKind::Cve2026_43499));
-    assert(!runtime::backend_available(BackendKind::Cve2026_64560));
+    assert(pipeline::terminal_available(TerminalKind::RootChild));
+    assert(!pipeline::terminal_available(TerminalKind::UmhForward));
+    assert(pipeline::backend_available(BackendKind::Cve2026_43499));
+    assert(!pipeline::backend_available(BackendKind::Cve2026_64560));
+    assert(!pipeline::backend_available(BackendKind::Cve2026_31431));
+    assert(!pipeline::backend_available(BackendKind::Cve2026_43503));
+    assert(!pipeline::backend_available(BackendKind::Cve2026_23274));
 
     for (MiddlewareKind kind : {MiddlewareKind::TcpZerocopy, MiddlewareKind::SelectStack,
                                 MiddlewareKind::MulticastWaiter}) {
-        assert(runtime::middleware_available(kind));
+        assert(pipeline::middleware_available(kind));
     }
-    assert(!runtime::middleware_available(MiddlewareKind::Auto));
+    assert(!pipeline::middleware_available(MiddlewareKind::Auto));
 
-    /* Only fully-available combinations are supported. */
-    assert(runtime::selection_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::SelectStack}));
-    assert(!runtime::selection_supported(
-        {FrontendKind::UmhForward, BackendKind::Cve2026_43499, MiddlewareKind::SelectStack}));
-    assert(!runtime::selection_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_64560, MiddlewareKind::SelectStack}));
-    assert(!runtime::selection_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::Auto}));
+    assert(pipeline::selection_supported({TerminalKind::RootChild, BackendKind::Cve2026_43499}));
+    assert(!pipeline::selection_supported({TerminalKind::UmhForward, BackendKind::Cve2026_43499}));
+    assert(!pipeline::selection_supported({TerminalKind::RootChild, BackendKind::Cve2026_64560}));
 
-    /* combination_supported is THE dispatch authority. Every admitted tuple
-     * must also pass the per-id pre-check, and the current catalogue admits
-     * exactly root_child x cve_2026_43499 x {tcp, select, multicast}. */
-    const FrontendKind frontends[] = {FrontendKind::RootChild, FrontendKind::UmhForward};
-    const BackendKind backends[] = {BackendKind::Cve2026_43499, BackendKind::Cve2026_64560};
-    const MiddlewareKind middlewares[] = {MiddlewareKind::TcpZerocopy, MiddlewareKind::SelectStack,
-                                          MiddlewareKind::MulticastWaiter, MiddlewareKind::Auto};
+    /* combination_supported is THE dispatch authority: exactly one pair. */
+    const TerminalKind terminals[] = {TerminalKind::RootChild, TerminalKind::UmhForward};
+    const BackendKind backends[] = {
+        BackendKind::Cve2026_43499, BackendKind::Cve2026_64560, BackendKind::Cve2026_31431,
+        BackendKind::Cve2026_43503, BackendKind::Cve2026_23274};
     int32_t catalogued = 0;
-    for (FrontendKind f : frontends) {
+    for (TerminalKind t : terminals) {
         for (BackendKind b : backends) {
-            for (MiddlewareKind m : middlewares) {
-                const runtime::ComponentSelection s{f, b, m};
-                if (runtime::combination_supported(s)) {
-                    catalogued++;
-                    assert(runtime::selection_supported(s));
-                }
+            const pipeline::ComponentSelection s{t, b};
+            if (pipeline::combination_supported(s)) {
+                catalogued++;
+                assert(pipeline::selection_supported(s));
             }
+            assert((pipeline::dispatch_target(s) != pipeline::DispatchTarget::None) ==
+                   pipeline::combination_supported(s));
         }
     }
-    assert(catalogued == 3);
-    assert(runtime::combination_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::TcpZerocopy}));
-    assert(runtime::combination_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::SelectStack}));
-    assert(runtime::combination_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::MulticastWaiter}));
-    assert(!runtime::combination_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_43499, MiddlewareKind::Auto}));
-    assert(!runtime::combination_supported(
-        {FrontendKind::UmhForward, BackendKind::Cve2026_43499, MiddlewareKind::TcpZerocopy}));
-    assert(!runtime::combination_supported(
-        {FrontendKind::RootChild, BackendKind::Cve2026_64560, MiddlewareKind::TcpZerocopy}));
+    assert(catalogued == 1);
+    assert(pipeline::combination_supported({TerminalKind::RootChild, BackendKind::Cve2026_43499}));
+    assert(!pipeline::combination_supported({TerminalKind::UmhForward, BackendKind::Cve2026_43499}));
+    assert(!pipeline::combination_supported({TerminalKind::RootChild, BackendKind::Cve2026_64560}));
 
-    /* dispatch_target() is the exact value the orchestrator switch enumerates;
-     * it must agree with the catalogue for every triple (P2 review), so the
-     * predicate and the dispatch cannot drift. */
-    for (FrontendKind f : frontends) {
-        for (BackendKind b : backends) {
-            for (MiddlewareKind m : middlewares) {
-                const runtime::ComponentSelection s{f, b, m};
-                assert((runtime::dispatch_target(s) != runtime::DispatchTarget::None) ==
-                       runtime::combination_supported(s));
-            }
-        }
-    }
-    assert(runtime::dispatch_target(
-               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                MiddlewareKind::SelectStack}) ==
-           runtime::DispatchTarget::RootChild_Cve43499_SelectStack);
-    assert(runtime::dispatch_target(
-               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                MiddlewareKind::TcpZerocopy}) ==
-           runtime::DispatchTarget::RootChild_Cve43499_TcpZerocopy);
-    assert(runtime::dispatch_target(
-               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                MiddlewareKind::MulticastWaiter}) ==
-           runtime::DispatchTarget::RootChild_Cve43499_MulticastWaiter);
-    assert(runtime::dispatch_target(
-               {FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                MiddlewareKind::Auto}) == runtime::DispatchTarget::None);
-    assert(runtime::dispatch_target(
-               {FrontendKind::UmhForward, BackendKind::Cve2026_43499,
-                MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::None);
-    assert(runtime::dispatch_target(
-               {FrontendKind::RootChild, BackendKind::Cve2026_64560,
-                MiddlewareKind::TcpZerocopy}) == runtime::DispatchTarget::None);
+    assert(pipeline::dispatch_target({TerminalKind::RootChild, BackendKind::Cve2026_43499}) ==
+           pipeline::DispatchTarget::Cve43499_RootChild);
+    assert(pipeline::dispatch_target({TerminalKind::UmhForward, BackendKind::Cve2026_43499}) ==
+           pipeline::DispatchTarget::None);
+    assert(pipeline::dispatch_target({TerminalKind::RootChild, BackendKind::Cve2026_64560}) ==
+           pipeline::DispatchTarget::None);
 
-    /* The full-combination mapping is one function; Pipeline and the
-     * orchestrator cases assert against it, so a mis-wired branch cannot pass. */
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                      MiddlewareKind::SelectStack) ==
-                  runtime::DispatchTarget::RootChild_Cve43499_SelectStack);
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                      MiddlewareKind::TcpZerocopy) ==
-                  runtime::DispatchTarget::RootChild_Cve43499_TcpZerocopy);
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                      MiddlewareKind::MulticastWaiter) ==
-                  runtime::DispatchTarget::RootChild_Cve43499_MulticastWaiter);
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::RootChild, BackendKind::Cve2026_43499,
-                      MiddlewareKind::Auto) == runtime::DispatchTarget::None);
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::UmhForward, BackendKind::Cve2026_43499,
-                      MiddlewareKind::SelectStack) == runtime::DispatchTarget::None);
-    static_assert(runtime::dispatch_target_of(
-                      FrontendKind::RootChild, BackendKind::Cve2026_64560,
-                      MiddlewareKind::SelectStack) == runtime::DispatchTarget::None);
+    static_assert(pipeline::dispatch_target_of(TerminalKind::RootChild, BackendKind::Cve2026_43499) ==
+                  pipeline::DispatchTarget::Cve43499_RootChild);
+    static_assert(pipeline::dispatch_target_of(TerminalKind::UmhForward, BackendKind::Cve2026_43499) ==
+                  pipeline::DispatchTarget::None);
+    static_assert(pipeline::dispatch_target_of(TerminalKind::RootChild, BackendKind::Cve2026_64560) ==
+                  pipeline::DispatchTarget::None);
 
-    /* Names are stable for diagnostics. */
-    assert(runtime::frontend_name(FrontendKind::RootChild) == "root_child");
-    assert(runtime::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");
-    assert(runtime::middleware_name(MiddlewareKind::MulticastWaiter) == "multicast_waiter");
-    assert(runtime::middleware_name(MiddlewareKind::Auto) == "auto");
+    assert(pipeline::terminal_name(TerminalKind::RootChild) == "root_child");
+    assert(pipeline::backend_name(BackendKind::Cve2026_43499) == "cve_2026_43499");
+    assert(pipeline::backend_name(BackendKind::Cve2026_64560) == "cve_2026_64560");
+    assert(pipeline::middleware_name(MiddlewareKind::MulticastWaiter) == "multicast_waiter");
+    assert(pipeline::middleware_name(MiddlewareKind::Auto) == "auto");
 
     puts("component_catalog_test: ok");
     return 0;

@@ -1,5 +1,5 @@
 #include "tests/cpp_link_probe.h"
-#include "kernel/target_constants.hpp"
+#include "memory/target_constants.hpp"
 
 #include <cerrno>
 #include <cstddef>

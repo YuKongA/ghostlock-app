@@ -2,7 +2,7 @@
  * marker matching and the poll-policy short circuits; the enforce path is a
  * real syscall and is only checked when the host exposes the file. */
 
-#include "session/handoff_probe.hpp"
+#include "terminal/handoff_probe.hpp"
 
 #include <cassert>
 #include <fcntl.h>
@@ -44,7 +44,7 @@ namespace {
 int32_t main(void) {
     bool loaded = false;
     bool failed = false;
-    assert(!ghostlock::session::scan_ksu_log("/nonexistent/.ghostlock_ksu.log",
+    assert(!ghostlock::terminal::scan_ksu_log("/nonexistent/.ghostlock_ksu.log",
                                              loaded, failed));
     assert(!loaded && !failed);
 
@@ -52,19 +52,19 @@ int32_t main(void) {
         "[*] unrelated\n[+] KernelSU module loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(loaded_dir.log_path, loaded, failed));
+    assert(ghostlock::terminal::scan_ksu_log(loaded_dir.log_path, loaded, failed));
     assert(loaded && !failed);
 
     TempLogDir already_dir = make_temp_log_dir("[+] KernelSU already loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(already_dir.log_path, loaded, failed));
+    assert(ghostlock::terminal::scan_ksu_log(already_dir.log_path, loaded, failed));
     assert(loaded && !failed);
 
     TempLogDir failed_dir = make_temp_log_dir("[!] KernelSU module not loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(failed_dir.log_path, loaded, failed));
+    assert(ghostlock::terminal::scan_ksu_log(failed_dir.log_path, loaded, failed));
     assert(!loaded && failed);
 
     /* Both markers accumulate independently, mirroring the legacy scan. */
@@ -72,28 +72,28 @@ int32_t main(void) {
         "[!] KernelSU module not loaded\n[+] KernelSU already loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(both_dir.log_path, loaded, failed));
+    assert(ghostlock::terminal::scan_ksu_log(both_dir.log_path, loaded, failed));
     assert(loaded && failed);
 
     /* A zero policy performs no poll and no sleep. */
-    ghostlock::session::HandoffPollPolicy idle_policy;
+    ghostlock::terminal::HandoffPollPolicy idle_policy;
     idle_policy.module_poll_attempts = 0;
     idle_policy.enforce_poll_attempts = 0;
     idle_policy.log_poll_attempts = 0;
-    const ghostlock::session::HandoffProbeResult idle =
+    const ghostlock::terminal::HandoffProbeResult idle =
             handoff_probe_run(idle_policy, loaded_dir.log_path);
     assert(!idle.module_visible && !idle.ksu_log_loaded &&
            !idle.ksu_log_failed && !idle.enforce_ok && !idle.ready());
 
     /* The log marker wins without any module visibility, and the default
    * enforce cadence probes once. */
-    ghostlock::session::HandoffPollPolicy policy;
+    ghostlock::terminal::HandoffPollPolicy policy;
     policy.module_poll_attempts = 0;
     policy.enforce_poll_attempts = 1;
     policy.enforce_poll_interval_ms = 0;
     policy.log_poll_attempts = 1;
     policy.log_poll_interval_ms = 0;
-    const ghostlock::session::HandoffProbeResult probe =
+    const ghostlock::terminal::HandoffProbeResult probe =
             handoff_probe_run(policy, loaded_dir.log_path);
     assert(!probe.module_visible);
     assert(probe.ksu_log_loaded && !probe.ksu_log_failed);
@@ -104,7 +104,7 @@ int32_t main(void) {
     }
 
     /* A missing per-run log leaves the log probes false. */
-    const ghostlock::session::HandoffProbeResult missing = handoff_probe_run(
+    const ghostlock::terminal::HandoffProbeResult missing = handoff_probe_run(
         policy, "/nonexistent-home/.ghostlock_ksu.log");
     assert(!missing.ksu_log_loaded && !missing.ksu_log_failed);
     assert(!missing.ready());

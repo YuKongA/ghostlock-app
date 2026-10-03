@@ -43,12 +43,12 @@ namespace {
     /* Builds one v2 document byte by byte so tests can inject anything. */
     std::string build_doc(uint8_t route, const std::string &release,
                           const std::vector<Section> &sections,
-                          uint16_t frontend = binary_profile::kFrontendRootChild,
+                          uint16_t terminal = binary_profile::kTerminalRootChild,
                           uint16_t backend = binary_profile::kBackendCve202643499) {
         std::string out;
         put_u32(out, binary_profile::kMagic);
         put_u16(out, binary_profile::kVersion);
-        put_u16(out, frontend);
+        put_u16(out, terminal);
         put_u16(out, backend);
         put_u16(out, route);
         put_u16(out, static_cast<uint16_t>(release.size()));
@@ -278,7 +278,7 @@ int32_t main(void) {
                                    binary_profile::kBackendCve202643499),
                          &parsed, release, sizeof(release)) == -1);
         assert(parse_doc(build_doc(ghostlock::profile::kRouteSelectStack, "b",
-                                   {}, binary_profile::kFrontendRootChild, 9),
+                                   {}, binary_profile::kTerminalRootChild, 9),
                          &parsed, release, sizeof(release)) == -1);
 
         /* Component ids decode and are reported. */
@@ -291,9 +291,16 @@ int32_t main(void) {
         binary_profile::component_ids ids{};
         assert(binary_profile::parse(std::string_view(idbuf, static_cast<size_t>(idsize)), &parsed,
                                      release, sizeof(release), &ids) == 0);
-        assert(ids.frontend == binary_profile::kFrontendRootChild);
+        assert(ids.terminal == binary_profile::kTerminalRootChild);
         assert(ids.backend == binary_profile::kBackendCve202643499);
         assert(ids.middleware == ghostlock::profile::kRouteSelectStack);
+
+        /* Known-but-unavailable backend ids pass the decode gate (the
+         * orchestrator rejects them later); unknown ids do not. */
+        assert(binary_profile::backend_known(binary_profile::kBackendCve202631431));
+        assert(binary_profile::backend_known(binary_profile::kBackendCve202643503));
+        assert(binary_profile::backend_known(binary_profile::kBackendCve202623274));
+        assert(!binary_profile::backend_known(99));
 
         /* A profile without a declared route never serializes. */
         values.route = ghostlock::profile::kRouteAuto;

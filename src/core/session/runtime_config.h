@@ -34,7 +34,7 @@ namespace ghostlock::config {
         void log() const;
     };
 
-    /* The process snapshot is owned by ExploitSession. Callers reach it through
+    /* The process snapshot is owned by CoreSession. Callers reach it through
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
     RuntimeConfig &runtime_config_snapshot() noexcept;
 } // namespace ghostlock::config

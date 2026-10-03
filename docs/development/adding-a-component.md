@@ -1,9 +1,16 @@
-# 如何新增组件（middleware / backend / frontend）
+# 如何新增组件（route / backend / terminal / platform / ancillary）
 
-GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期固定：
+> **重写目标（ADR-0001/0002/0004 + `top-level-architecture-rewrite-plan.md`）**：组件模型由三轴
+> （frontend × backend × middleware）收敛为 **2 装配轴 `backend × terminal` + backend 内 route + 2 横切
+> `platform`（厂商/设备/内核对策）· `capabilities`**，即 `Pipeline<Backend, Terminal>`（terminal 由 pipeline
+> 编排，ADR-0004 R12）；route 是 backend 内部策略。本文其余部分描述**重写前现状**；触点清单在重写 Phase B
+> 按目标模型更新。
+
+GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期固定（现状）：
 
 - **frontend**：启动/交接（当前 `root_child`；`umh_forward` 为声明但不可用的占位）；
-- **backend**：漏洞原语与写入步骤（当前 `cve_2026_43499`；`cve_2026_64560` 为纯头占位，不可用）；
+- **backend**：漏洞原语与写入步骤（当前 `cve_2026_43499`；`cve_2026_64560` / `cve_2026_31431` /
+  `cve_2026_43503` / `cve_2026_23274` 为纯头占位，不可用）；
 - **middleware**：一次写的 route（`select_stack` / `tcp_zerocopy` / `multicast_waiter`）。
 
 组件如何被选择、组合与执行，由以下唯一权威决定：

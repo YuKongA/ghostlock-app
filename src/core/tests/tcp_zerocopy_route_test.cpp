@@ -1,4 +1,4 @@
-#include "route/tcp_zerocopy_route.h"
+#include "backend/cve_2026_43499/route/tcp_zerocopy_route.h"
 
 #include <cassert>
 #include <cstdint>
@@ -15,7 +15,7 @@ int32_t main(void) {
     ghostlock::memory::WriteRequest request{};
     const profile::TargetProfile profile{};
 
-    ghostlock::route::tcp_zerocopy::TcpZerocopyRoute context(&race, &request, profile, 16 * 1024 * 1024);
+    ghostlock::backend::cve_2026_43499::route::tcp_zerocopy::TcpZerocopyRoute context(&race, &request, profile, 16 * 1024 * 1024);
     assert(context.race == &race);
     assert(context.request == &request);
     assert(&context.profile == &profile);
@@ -29,14 +29,14 @@ int32_t main(void) {
     assert(context.punch_stop.load() == 0);
     assert(context.punch_phase.load() == 0);
     assert(context.punch_failed.load() == 0);
-    assert(context.status.code == ghostlock::route::ROUTE_RETRYABLE);
+    assert(context.status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE);
     assert(context.status.userspace_clean == 0);
     assert(context.status.kernel_disarmed == 0);
 
     /* Move-only: no copy, resources transfer with the move. */
-    static_assert(!std::is_copy_constructible_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
-    static_assert(!std::is_copy_assignable_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
-    static_assert(!std::is_move_constructible_v<ghostlock::route::tcp_zerocopy::TcpZerocopyRoute>);
+    static_assert(!std::is_copy_constructible_v<ghostlock::backend::cve_2026_43499::route::tcp_zerocopy::TcpZerocopyRoute>);
+    static_assert(!std::is_copy_assignable_v<ghostlock::backend::cve_2026_43499::route::tcp_zerocopy::TcpZerocopyRoute>);
+    static_assert(!std::is_move_constructible_v<ghostlock::backend::cve_2026_43499::route::tcp_zerocopy::TcpZerocopyRoute>);
 
     /* disarm is idempotent and stops the shared consumer trigger. */
     context.disarm();
@@ -48,7 +48,7 @@ int32_t main(void) {
     context.destroy();
     context.destroy();
     assert(context.status.userspace_clean == 1);
-    assert(context.status.code == ghostlock::route::ROUTE_FALLBACK_SAFE);
+    assert(context.status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_FALLBACK_SAFE);
 
     /* fail() records step and errno for the caller's log. */
     assert(context.fail(59, 5) == -1);

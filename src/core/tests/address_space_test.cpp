@@ -4,7 +4,7 @@
  * needed; init_for_soc takes the SoC family explicitly.
  */
 
-#include "kernel/target.h"
+#include "memory/target.h"
 #include "memory/address_space.h"
 #include "profile/model.h"
 
@@ -29,9 +29,9 @@ namespace {
 }
 
 int main() {
-    using ghostlock::kernel::KIMAGE_TEXT_BASE;
-    using ghostlock::kernel::P0_PAGE_OFFSET;
-    using ghostlock::kernel::P0_PHYS_OFFSET;
+    using ghostlock::memory::KIMAGE_TEXT_BASE;
+    using ghostlock::memory::P0_PAGE_OFFSET;
+    using ghostlock::memory::P0_PHYS_OFFSET;
 
     const uint64_t off = 0x237a0e8; /* e.g. selinux_enforcing */
     const uint64_t image = KIMAGE_TEXT_BASE + off;

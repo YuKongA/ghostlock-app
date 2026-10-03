@@ -32,7 +32,7 @@ bool ghostlock::race::PiRace::reset(
     main_cpu = main_cpu_value;
     consumer_cpu = consumer_cpu_value;
     request = nullptr;
-    route_status = route::RouteStatus{.code = route::ROUTE_RETRYABLE};
+    route_status = ghostlock::backend::cve_2026_43499::route::RouteStatus{.code = ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE};
     return true;
 }
 
@@ -52,8 +52,8 @@ noexcept
     if (error) {
         const int32_t cleanup_error = abort_startup();
         if (cleanup_error != 0) {
-            route_status = route::RouteStatus{
-                .code = route::ROUTE_DIRTY_FAILURE,
+            route_status = ghostlock::backend::cve_2026_43499::route::RouteStatus{
+                .code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE,
                 .step = 19,
                 .error_number = cleanup_error,
             };
@@ -65,8 +65,8 @@ noexcept
     if (error) {
         const int32_t cleanup_error = abort_startup();
         if (cleanup_error != 0) {
-            route_status = route::RouteStatus{
-                .code = route::ROUTE_DIRTY_FAILURE,
+            route_status = ghostlock::backend::cve_2026_43499::route::RouteStatus{
+                .code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE,
                 .step = 19,
                 .error_number = cleanup_error,
             };
@@ -111,11 +111,11 @@ int32_t ghostlock::race::PiRace::join() noexcept {
     return first_error;
 }
 
-ghostlock::route::RouteStatus ghostlock::race::PiRace::outcome_with_counters(
-    const route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept {
-    if (outcome.code == route::ROUTE_OK && (calls == 0 || success == 0)) {
-        route::RouteStatus retryable = outcome;
-        retryable.code = route::ROUTE_RETRYABLE;
+ghostlock::backend::cve_2026_43499::route::RouteStatus ghostlock::race::PiRace::outcome_with_counters(
+    const ghostlock::backend::cve_2026_43499::route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept {
+    if (outcome.code == ghostlock::backend::cve_2026_43499::route::ROUTE_OK && (calls == 0 || success == 0)) {
+        ghostlock::backend::cve_2026_43499::route::RouteStatus retryable = outcome;
+        retryable.code = ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE;
         return retryable;
     }
     return outcome;

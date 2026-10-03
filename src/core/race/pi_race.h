@@ -2,7 +2,7 @@
 #define PI_RACE_H
 
 #include "memory/payload_builder.h"
-#include "route/route_status.h"
+#include "backend/cve_2026_43499/route/route_status.h"
 #include "support/native_resource.hpp"
 
 #include <pthread.h>
@@ -44,7 +44,7 @@ namespace ghostlock::race {
          * the returned outcome degrades to Retryable, matching the bool the
          * previous free function returned. The wait itself is unbounded today:
          * see TODO(pi-timeout-01). */
-        [[nodiscard]] ghostlock::route::RouteStatus run() noexcept;
+        [[nodiscard]] ghostlock::backend::cve_2026_43499::route::RouteStatus run() noexcept;
 
         /* Business stop signal for the three workers; idempotent. */
         void request_stop() noexcept;
@@ -54,8 +54,8 @@ namespace ghostlock::race {
 
         /* Testable counter merge used by run(): Ok with zero calls or zero
          * successes is not a routed attempt. */
-        [[nodiscard]] static ghostlock::route::RouteStatus outcome_with_counters(
-            const ghostlock::route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept;
+        [[nodiscard]] static ghostlock::backend::cve_2026_43499::route::RouteStatus outcome_with_counters(
+            const ghostlock::backend::cve_2026_43499::route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept;
 
         /* C atomics cannot carry initializers in C++; static instances are
          * zero-initialized and every dynamic path calls reset() first.
@@ -85,7 +85,7 @@ namespace ghostlock::race {
         ghostlock::support::PthreadOwner owner_owner;
         ghostlock::support::PthreadOwner consumer_owner;
         const ghostlock::memory::WriteRequest *request = nullptr;
-        ghostlock::route::RouteStatus route_status{};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus route_status{};
 
     private:
         [[nodiscard]] int32_t abort_startup() noexcept;

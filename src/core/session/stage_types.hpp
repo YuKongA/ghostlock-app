@@ -19,12 +19,12 @@ namespace ghostlock::session {
         Rooted,
     };
 
-    /* State handed from the W2/W3 victim chain to the frontend handoff
+    /* State handed from the W2/W3 victim chain to the terminal handoff
      * (Batch 4 review P4). Ownership contract:
      *   - session.victim / session.parked_victim* are the authority for the
      *     child pid, its pipes and the parked child;
      *   - VictimChain is a single-threaded, transferred stage summary: written
-     *     by the backend before run() returns it and read by the frontend
+     *     by the backend before run() returns it and read by the terminal
      *     afterwards on the same thread (ever_rooted = a child was rooted,
      *     seccomp_ok = W3 result, child_alive = last observation). The handoff
      *     still acts on the session's fds/pid; the chain only selects the path,

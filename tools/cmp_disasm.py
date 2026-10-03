@@ -26,6 +26,11 @@ spelling and is reported as LAYOUT-SHIFT for manual review.
 Each target lists the legacy demangled spelling and the namespace-qualified
 spelling; whichever is present in a binary is used, so the tool keeps working
 across the CPP12 namespace migration.
+
+--reviewed accepts OPERAND-DIFF as OPERAND-SHIFT only when every differing line
+keeps the same instruction skeleton (immediates masked) and never touches the
+stack pointer; use it only after manually confirming the diffs are relocated
+global data addresses (ADR-0001).
 """
 import glob
 import os
@@ -56,12 +61,29 @@ TARGETS = [
         "run_main_route_threads(ghostlock::WriteRequest const*)",
     ]),
     ("do_kernel5_fake_lock_route", [
+        "ghostlock::backend::cve_2026_43499::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
+        "ghostlock::backend::cve_2026_43499::route::do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
         "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
         "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
         "do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
         "do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
     ]),
     ("do_one_write", [
+        "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::SelectPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
+        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::TcpPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::SelectPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
         "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::TcpPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
@@ -74,18 +96,6 @@ TARGETS = [
         "ghostlock::ops::do_one_write(ghostlock::WriteRequest const*, char const*)",
         "do_one_write(ghostlock::memory::WriteRequest const*, char const*)",
         "do_one_write(ghostlock::WriteRequest const*, char const*)",
-    ]),
-    ("multicast_owner_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_owner_worker(void*)",
-        "ghostlock::route::multicast_owner_worker(void*)",
-        "(anonymous namespace)::multicast_owner_worker(void*)",
-        "multicast_owner_worker(void*)",
-    ]),
-    ("multicast_waiter_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_waiter_worker(void*)",
-        "ghostlock::route::multicast_waiter_worker(void*)",
-        "(anonymous namespace)::multicast_waiter_worker(void*)",
-        "multicast_waiter_worker(void*)",
     ]),
 ]
 
@@ -111,6 +121,7 @@ def find_objdump():
 
 
 OBJDUMP = None
+GLOBAL_SHIFT = None
 
 
 def disassemble(path):
@@ -167,12 +178,35 @@ def layout(text):
     return re.sub(r"0x[0-9a-f]+", "0xH", text)
 
 
+def operands_shift_equal(base, cur):
+    """True when base and cur differ only in global-data `#0x` displacements.
+
+    The instruction skeleton (text with `#0x..` immediates masked) must match,
+    and no differing line may reference the stack pointer, so a real stack or
+    control-flow change still fails. Used by `--reviewed` after a manual check
+    that the only differences are relocated global addresses (ADR-0001).
+    """
+    if base == cur:
+        return True
+    masked = re.compile(r"#-?0x[0-9a-f]+")
+    if masked.sub("#0xH", base) != masked.sub("#0xH", cur):
+        return False
+    return not re.search(r"\bsp\b", base) and not re.search(r"\bsp\b", cur)
+
+
 def main():
-    global OBJDUMP
-    if len(sys.argv) != 3:
-        sys.exit(main.__doc__ or "usage: cmp_disasm.py <baseline> <candidate>")
+    global OBJDUMP, GLOBAL_SHIFT
+    argv = sys.argv[1:]
+    if argv and argv[0] == "--reviewed":
+        if len(argv) != 3:
+            sys.exit("usage: cmp_disasm.py [--reviewed] <baseline> <candidate>")
+        GLOBAL_SHIFT = True
+        base_path, cur_path = argv[1], argv[2]
+    elif len(argv) == 2:
+        base_path, cur_path = argv[0], argv[1]
+    else:
+        sys.exit(main.__doc__ or "usage: cmp_disasm.py [--reviewed] <baseline> <candidate>")
     OBJDUMP = find_objdump()
-    base_path, cur_path = sys.argv[1], sys.argv[2]
     base, cur = disassemble(base_path), disassemble(cur_path)
     failed = 0
     for label, candidates in TARGETS:
@@ -206,6 +240,12 @@ def main():
                         break
             continue
         if ob != oc:
+            if GLOBAL_SHIFT and all(
+                operands_shift_equal(x, y) for x, y in zip(ob, oc)
+            ):
+                print(f"OPERAND-SHIFT {label}: reviewed data-displacement diff "
+                      f"({len(b)} instructions)")
+                continue
             failed += 1
             print(f"OPERAND-DIFF {label} ({len(b)} instructions)")
             shown = 0

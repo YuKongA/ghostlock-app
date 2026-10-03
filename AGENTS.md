@@ -19,10 +19,11 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 - 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
   `<uname-r>.conf` 每 release 一份、`execution-*.conf` 公共/分 route 调参、
   `credential-6x.conf`、`kernelsnitch-6x.conf`。格式为 HOCON（支持 `include`）。
-- 组件模型：frontend（`root_child`；`umh_forward` 占位不可用）× backend（`cve_2026_43499`；
-  `cve_2026_64560` 占位不可用）× middleware（`select_stack` / `tcp_zerocopy` / `multicast_waiter`），
-  由 `Pipeline<F,B,M>` 编译期固定。组合与可用性的唯一权威是 `route/component_catalog.hpp`，
-  选择显式来自 profile/wire，不从 kernel 版本推断。
+- 组件模型（重写目标，ADR-0004）：装配轴 backend（`cve_2026_43499`；其余 CVE 占位不可用）× terminal
+  （`root_child`；`umh_forward`/`file_write`/`panic` 占位不可用），由 `Pipeline<Backend, Terminal>` 编译期固定；
+  route（`select_stack`/`tcp_zerocopy`/`multicast_waiter`）是 backend 内部策略，按 profile 选；
+  `platform`/`ancillary` 为横切。组合与可用性的唯一权威是 catalog（重写后 `pipeline`）；选择显式来自
+  profile/wire，不从 kernel 版本推断。
 
 ## 常用命令
 
@@ -55,8 +56,9 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 2. **Design**：S 级（注释/格式）直接改；M 级写清动机/影响文件/行为差异/验证计划；**L 级**
    （攻击关键路径、wire/profile 格式、跨 Native↔Kotlin 契约、公共数据结构、新增 route）
    必须先产出计划文档（模板见 `docs/development/documentation-standards.md`）并获用户认可，再写代码。
-3. **Implement**：最小改动，只碰设计列出的文件；不动 `kernelsnitch/`、`LegacyProfileConverter.kt` 的 v1 转换与
-   规范中的"明确保留"清单。
+3. **Implement**：最小改动，只碰设计列出的文件；不动 `LegacyProfileConverter.kt` 的 v1 转换与
+   规范中的"明确保留"清单。`kernelsnitch/` 上游已冻结，可在顶级架构重构中作为 backend 模块
+   拆分/改写，但必须先有设计与测试，不得顺手改。
 4. **Verify**：按级别跑满 §1.3 门槛并保留证据；汇报时给出命令与结果，不写"应该没问题"。
 
 - 攻击路径改动 = `cmp_disasm`（8 函数）+ 真机门禁 + 门禁记录（格式见
@@ -67,16 +69,18 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 
 - C++23、`-fno-rtti`、静态 libc++；`-Wall -Wextra -Wconversion -Wsign-conversion`，
   新代码不得引入告警。include 用相对 `src/core` 的路径（如 `#include "route/tcp_zerocopy_route.h"`）。
-- 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`；
-  `kernelsnitch/` 是上游原样移植代码，不要顺手重写。
+- 命名空间分层（现状）：`ghostlock::{route,session,memory,attack,race,support,profile}`；**重写目标**：
+  `ghostlock::{contract,memory,session,pipeline,backend,platform,ancillary,terminal,profile,support}`
+  （`kernel` 并入 `memory`）；
+  `kernelsnitch/` 上游已冻结、可改写（归属 backend `leak` 模块），但须在顶级重构拆分后进行
+  并保测试，不得顺手改。
 - 全局状态只允许 `g_exploit_session`（进程唯一 singleton）与启动期只读的
   `g_direct_map_end`；新代码不得再引入可变全局或引用别名。审计记录见
   `docs/analysis/native-global-state.md`（git 历史）。
-- 组件结构 = identity（kind，声明型，必须 host 可编译）+ 执行 policy（frontend/backend 步骤或
-  middleware route）。middleware policy 以编译期能力 + 静态 hook 表达，backend 步骤模板化在
-  middleware 上直接调用（不用虚基类）；Route 类满足 `prepare → execute → disarm → destroy`，
-  仅经 `status` 汇报。新增组件（middleware/backend/frontend）的完整触点清单见
-  `docs/development/adding-a-component.md`。
+- 组件结构 = identity（kind，声明型，必须 host 可编译）+ 执行 policy（backend 步骤 / terminal 接管 /
+  backend 内 route）。route policy 以编译期能力 + 静态 hook 表达，backend 步骤模板化在 route 上直接调用
+  （不用虚基类）；Route 类满足 `prepare → execute → disarm → destroy`，仅经 `status` 汇报。新增组件
+  （route/backend/terminal/platform/ancillary）的完整触点清单见 `docs/development/adding-a-component.md`。
 - 双侧一致性（改了必须两边同步，测试会抓）：
   - Native `profile/model.h` 的 `RouteKind`/`kRouteCatalog` ↔ Kotlin `data/route/RouteKind.kt`
     （`route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt` 断言同一列表）

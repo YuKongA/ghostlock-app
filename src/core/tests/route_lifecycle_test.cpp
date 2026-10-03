@@ -2,7 +2,7 @@
  * required shape, and run_route_lifecycle fixes the prepare/execute/disarm/
  * destroy order with its gating rule. */
 
-#include "route/route_lifecycle.hpp"
+#include "backend/cve_2026_43499/route/route_lifecycle.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -19,23 +19,23 @@ namespace {
         int32_t disarm_calls = 0;
         int32_t destroy_calls = 0;
         std::string order;
-        route::RouteStatus status{.code = route::ROUTE_RETRYABLE};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus status{.code = ghostlock::backend::cve_2026_43499::route::ROUTE_RETRYABLE};
 
         [[nodiscard]] int32_t prepare() noexcept {
             prepare_calls++;
             order += "P";
             if (fail_prepare) {
-                status.code = route::ROUTE_DIRTY_FAILURE;
+                status.code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE;
                 status.step = 7;
                 return 1;
             }
             return prepare_result;
         }
 
-        [[nodiscard]] route::RouteStatus execute() noexcept {
+        [[nodiscard]] ghostlock::backend::cve_2026_43499::route::RouteStatus execute() noexcept {
             execute_calls++;
             order += "E";
-            status = {.code = route::ROUTE_OK, .userspace_clean = 1, .kernel_disarmed = 1};
+            status = {.code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK, .userspace_clean = 1, .kernel_disarmed = 1};
             return status;
         }
 
@@ -53,19 +53,19 @@ namespace {
     /* Missing destroy(): the structural contract must reject it. */
     struct IncompleteRoute {
         [[nodiscard]] int32_t prepare() noexcept { return 0; }
-        [[nodiscard]] route::RouteStatus execute() noexcept { return status; }
+        [[nodiscard]] ghostlock::backend::cve_2026_43499::route::RouteStatus execute() noexcept { return status; }
         void disarm() noexcept {
         }
 
-        route::RouteStatus status{};
+        ghostlock::backend::cve_2026_43499::route::RouteStatus status{};
     };
 
-    static_assert(route::RouteLifecycle<FakeRoute>);
-    static_assert(!route::RouteLifecycle<IncompleteRoute>);
+    static_assert(ghostlock::backend::cve_2026_43499::route::RouteLifecycle<FakeRoute>);
+    static_assert(!ghostlock::backend::cve_2026_43499::route::RouteLifecycle<IncompleteRoute>);
 } // namespace
 
 int32_t main(void) {
-    using namespace ghostlock::route;
+    using namespace ghostlock::backend::cve_2026_43499::route;
 
     /* Prepare succeeds: the full sequence runs once, in order, and the route's
      * published status is returned. */

@@ -7,7 +7,7 @@
  * This translation unit is the thin adapter: parse, run the stage sequence and
  * map the outcome to the process exit code. Setup, attack primitives, victim
  * protocol and stage policy live in their own units under ghostlock::attack,
- * ghostlock::session::victim, ghostlock::race and ghostlock::session::stages.
+ * ghostlock::backend::victim, ghostlock::race and ghostlock::session::stages.
  */
 
 #include "common.h"
@@ -15,7 +15,7 @@
 #include "profile/entry.h"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
-#include "route/orchestrator.hpp"
+#include "pipeline/orchestrator.hpp"
 
 #include <array>
 #include <memory>
@@ -30,8 +30,8 @@ int main(int argc, char **argv) {
         profile::kernel_offsets decoded = {};
         std::array<char, 256> release_buf{};
         binary_profile::component_ids ids{
-            static_cast<uint16_t>(runtime::FrontendKind::RootChild),
-            static_cast<uint16_t>(runtime::BackendKind::Cve2026_43499),
+            static_cast<uint16_t>(pipeline::TerminalKind::RootChild),
+            static_cast<uint16_t>(pipeline::BackendKind::Cve2026_43499),
             0,
         };
 
@@ -91,34 +91,39 @@ int main(int argc, char **argv) {
         if (ids.middleware == 0) {
             ids.middleware = static_cast<uint16_t>(decoded.route_kind());
         }
-        const runtime::ComponentSelection selection{
-            static_cast<runtime::FrontendKind>(ids.frontend),
-            static_cast<runtime::BackendKind>(ids.backend),
-            static_cast<runtime::MiddlewareKind>(ids.middleware),
+        /* Route is backend-internal (ADR-0004 R12): fold the wire selector into
+         * the decoded profile the backend switches on. */
+        if (decoded.route == profile::kRouteAuto && ids.middleware != 0) {
+            decoded.route = static_cast<uint8_t>(ids.middleware);
+        }
+        const pipeline::ComponentSelection selection{
+            static_cast<pipeline::TerminalKind>(ids.terminal),
+            static_cast<pipeline::BackendKind>(ids.backend),
         };
-        if (!runtime::selection_supported(selection)) {
+        if (!pipeline::selection_supported(selection)) {
             /* Known-but-unavailable ids land here (unknown ids were rejected at
-             * decode time), with the three dimensions named for diagnosis. */
-            const std::string frontend(runtime::frontend_name(selection.frontend));
-            const std::string backend(runtime::backend_name(selection.backend));
-            const std::string middleware(runtime::middleware_name(selection.middleware));
-            pr_error("unsupported component selection: frontend=%s backend=%s middleware=%s\n",
-                     frontend.c_str(), backend.c_str(), middleware.c_str());
+             * decode time), named for diagnosis. */
+            const std::string terminal(pipeline::terminal_name(selection.terminal));
+            const std::string backend(pipeline::backend_name(selection.backend));
+            const std::string route(pipeline::middleware_name(
+                static_cast<pipeline::MiddlewareKind>(ids.middleware)));
+            pr_error("unsupported component selection: terminal=%s backend=%s route=%s\n",
+                     terminal.c_str(), backend.c_str(), route.c_str());
             throw FatalError{};
         }
         /* Batch 4 (D1=B): the orchestrator dispatches the catalogued pipeline
-         * directly (backend steps + frontend handoff). DiagnosticStop is a
+         * directly (backend steps + terminal handoff). DiagnosticStop is a
          * successful early stop (objective already met), not a full run. */
-        const runtime::RunResult result = runtime::run_orchestrated_pipeline(
+        const pipeline::RunResult result = pipeline::run_orchestrated_pipeline(
             session, selection, decoded, dump_dir, force_attack);
         switch (result.code) {
-            case runtime::RunCode::Rejected:
+            case pipeline::RunCode::Rejected:
                 pr_error("orchestrator rejected the component selection\n");
                 throw FatalError{};
-            case runtime::RunCode::Failed:
+            case pipeline::RunCode::Failed:
                 return 1;
-            case runtime::RunCode::Completed:
-            case runtime::RunCode::DiagnosticStop:
+            case pipeline::RunCode::Completed:
+            case pipeline::RunCode::DiagnosticStop:
                 return 0;
         }
         throw FatalError{};

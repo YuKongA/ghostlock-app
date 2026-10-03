@@ -1,6 +1,6 @@
 #include "memory/address_space.h"
 
-#include "kernel/target.h"
+#include "memory/target.h"
 
 #include <cerrno>
 #include <array>
@@ -11,9 +11,9 @@
 /* Measured direct-map end. Defaults to the built-in bound and can only be
  * narrowed by a rooted /proc/iomem dump (apply_iomem_cache). KernelSnitch
  * reads it to bound its scan; it is never an authority wider than target.h. */
-namespace ghostlock::kernel {
+namespace ghostlock::memory {
     uint64_t g_direct_map_end = DIRECT_MAP_END;
-} // namespace ghostlock::kernel
+} // namespace ghostlock::memory
 
 namespace ghostlock::memory {
 #if defined(__ANDROID__)
@@ -73,7 +73,7 @@ namespace ghostlock::memory {
         }
         *this = ResolvedAddresses{};
         soc = family;
-        const auto image = target::KernelAddress<target::ImageAddressDomain>(kernel::KIMAGE_TEXT_BASE)
+        const auto image = target::KernelAddress<target::ImageAddressDomain>(memory::KIMAGE_TEXT_BASE)
                 .checked_add(values->offsets.init_cred);
         if (!image) {
             errno = ERANGE;
@@ -84,23 +84,23 @@ namespace ghostlock::memory {
          * wins, otherwise the compiled P0 default keeps every existing
          * device byte-identical. */
         phys_offset = static_cast<uintptr_t>(
-            values->misc.kernel_phys_offset.value_or(kernel::P0_PHYS_OFFSET));
+            values->misc.kernel_phys_offset.value_or(memory::P0_PHYS_OFFSET));
         if (values->misc.kernel_phys_load.value_or(0)) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 values->misc.kernel_phys_load.value_or(0));
         } else if (soc == SocFamily::Mtk || soc == SocFamily::Google) {
             /* Tensor G4/G5 (zumapro) loads the Image at the DRAM base like MTK. */
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
-                kernel::KIMAGE_TEXT_BASE - kernel::MTK_VADDR_BASE);
+                memory::KIMAGE_TEXT_BASE - memory::MTK_VADDR_BASE);
         } else if (soc == SocFamily::Xring) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
-                kernel::XRING_KERNEL_PHYS_LOAD);
+                memory::XRING_KERNEL_PHYS_LOAD);
         } else if (std::string_view(values->uname_r).starts_with("6.12.")) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
-                kernel::QC_GKI_6_12_PHYS_LOAD);
+                memory::QC_GKI_6_12_PHYS_LOAD);
         } else {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
-                kernel::P0_KERNEL_PHYS_LOAD);
+                memory::P0_KERNEL_PHYS_LOAD);
         }
         return 0;
     }
@@ -119,13 +119,13 @@ namespace ghostlock::memory {
     ResolvedAddresses::data_alias_checked(
         target::KernelAddress<target::ImageAddressDomain> image_address) const noexcept {
         const uintptr_t image = image_address.value();
-        if (image < kernel::KIMAGE_TEXT_BASE) return std::nullopt;
-        const uintptr_t offset = image - kernel::KIMAGE_TEXT_BASE;
+        if (image < memory::KIMAGE_TEXT_BASE) return std::nullopt;
+        const uintptr_t offset = image - memory::KIMAGE_TEXT_BASE;
         const auto physical = kernel_phys_load.checked_add(offset);
         if (!physical || physical->value() < phys_offset) return std::nullopt;
         const uintptr_t direct =
-                (physical->value() - phys_offset) | kernel::P0_PAGE_OFFSET;
-        if (direct < kernel::P0_PAGE_OFFSET) return std::nullopt;
+                (physical->value() - phys_offset) | memory::P0_PAGE_OFFSET;
+        if (direct < memory::P0_PAGE_OFFSET) return std::nullopt;
         return target::KernelAddress<target::DirectMapAddressDomain>(direct);
     }
 

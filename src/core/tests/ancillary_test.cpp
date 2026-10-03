@@ -2,7 +2,7 @@
  * profile gate and the stage-dispatch signature. No session is constructed and
  * no behavior body runs yet, so this links without the Android write path. */
 
-#include "session/ancillary/ancillary_controller.hpp"
+#include "ancillary/ancillary_controller.hpp"
 
 #include <cassert>
 #include <optional>
@@ -17,9 +17,9 @@ namespace {
 
     /* A behavior that opts in, to exercise the enabled-traversal independent of
      * the (currently off) registered VrGuardPolicy. */
-    struct OnPolicy : session::ancillary::AncillaryPolicyDefaults {
-        static constexpr session::ancillary::AncillaryKind kind =
-                session::ancillary::AncillaryKind::VrGuard;
+    struct OnPolicy : ancillary::AncillaryPolicyDefaults {
+        static constexpr ancillary::AncillaryKind kind =
+                ancillary::AncillaryKind::VrGuard;
 
         static bool enabled(const profile::TargetProfile &) noexcept {
             return true;
@@ -34,22 +34,25 @@ namespace {
 } // namespace
 
 int main() {
-    using namespace session::ancillary;
+    using namespace ancillary;
 
-    /* Both the registered behavior and an opting-in one satisfy the contract. */
+    /* Both registered behaviors and an opting-in one satisfy the contract. */
     static_assert(AncillaryPolicyFor<VrGuardPolicy, EmptyMiddleware>);
+    static_assert(AncillaryPolicyFor<VrTaskTagPolicy, EmptyMiddleware>);
     static_assert(AncillaryPolicyFor<OnPolicy, EmptyMiddleware>);
 
-    /* The registry currently holds exactly the vr.ko guard. */
-    static_assert(std::tuple_size_v<AncillaryPolicyList> == 1);
+    /* The registry holds the guard and the per-task tag remover. */
+    static_assert(std::tuple_size_v<AncillaryPolicyList> == 2);
 
     int visited = 0;
     bool saw_vr_guard = false;
+    bool saw_vr_task_tag = false;
     for_each_ancillary_policy([&]<class P>() {
         ++visited;
         if (P::kind == AncillaryKind::VrGuard) saw_vr_guard = true;
+        if (P::kind == AncillaryKind::VrTaskTag) saw_vr_task_tag = true;
     });
-    assert(visited == 1 && saw_vr_guard);
+    assert(visited == 2 && saw_vr_guard && saw_vr_task_tag);
 
     const profile::TargetProfile profile = make_profile();
 
@@ -96,9 +99,26 @@ int main() {
     vr_no_symbol.misc.vr_sys_exit_tp = 0;
     assert(!VrGuardPolicy::enabled(profile::TargetProfile::from(&vr_no_symbol)));
 
+    /* Ancillary vr.ko per-task tag removal: it shares the guard's profile gate
+     * but needs no per-image facts, so a gated profile with no tracepoint layout
+     * still enables it. */
+    assert(VrTaskTagPolicy::enabled(vr_profile));
+    assert(!VrTaskTagPolicy::enabled(profile));
+    assert(VrTaskTagPolicy::enabled(profile::TargetProfile::from(&vr_no_funcs)));
+    assert(VrTaskTagPolicy::enabled(profile::TargetProfile::from(&vr_no_symbol)));
+
+    /* The pure plan is the two address arithmetic steps the device write
+     * performs: the flags word at child_task+0 and tag B aligned down from
+     * child_task+VR_TAG_B_OFF. */
+    const uintptr_t child_task = 0xffff000012340000ULL;
+    const VrTaskTagPlan tag_plan = plan_vr_task_tag(child_task);
+    assert(tag_plan.flags_word == child_task + 0u);
+    assert(tag_plan.tag_b_word == ((child_task + 0x2cu) & ~static_cast<uintptr_t>(7)));
+    assert((tag_plan.tag_b_word & 7u) == 0);
+
     /* The controller exposes the stage entry the backend calls. */
     static_assert(
-        requires(session::ExploitSession &session, AncillaryContext &context) {
+        requires(session::CoreSession &session, AncillaryContext &context) {
             {
                 AncillaryController<EmptyMiddleware>::apply(
                     AncillaryStage::PreSpawn, session, context)

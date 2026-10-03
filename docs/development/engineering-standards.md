@@ -71,6 +71,30 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ## 2. 架构规范
 
+### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002 + `top-level-architecture-rewrite-plan.md`）
+
+> 本节描述重写后的**目标模型**，随重写落地取代 §2.1/§2.2 的现状描述。
+
+**结构（2 装配轴 + backend 内 route + 2 横切）**：
+装配轴 `backend`（漏洞）× `terminal`（提权后接管）；`route`（含 primitive/victim）在 backend 内按 profile 选；
+横切 `platform`（厂商/设备/内核对策，profile 门控）· `capabilities`（可选能力）。
+
+**命名空间（目标）**：
+`ghostlock::{contract, memory, session, pipeline, backend, platform, ancillary, terminal, profile, support}`（`kernel` 并入 `memory`）。
+
+- `contract`：真通用值（`StageResult`、身份词汇 `BackendKind`/`TerminalKind`）+ **可选能力公共父接口**（`RunResult`/`RunCode`/`RunStage` 在 `pipeline`）
+  （`CapabilityKind`/`Capability` concept/`Capabilities` + 能力 `KernelMemoryOps`/`AddressDiscoveryOps`）。
+- `session`：**组合根** `CoreSession`（框架状态 + `Capabilities` + backend 状态槽；establish 后只读）。
+- `backend::<cve>`：漏洞专属（`backend_profile` · primitive · route · victim · service · steps · `backend_terminal` 选择）。
+- `platform`：横切对策（`abi` ABI/phys · `runtime` 设备探测 · `vivo` 厂商 vr）。
+- `terminal`：跨 backend 终止接管策略（root_child/umh_forward/file_write/panic）；`ancillary`：中性阶段钩子机制
+  （行为取 `Capabilities&`，由 platform/backend 注册）；`profile`：GLK1 容器 framing + 中性 Document。
+- **判据**：中性=跨所有轴通用；`platform`=跨 backend 绑设备/厂商/内核；`backend`=绑该漏洞。
+- **能力模型**：接口（`Capability` 父接口 + `*Ops`）中性、实现在 backend/platform、句柄存
+  `CoreSession.capabilities`（组合根）；空句柄 = fail-closed；组件取窄视图
+  （backend `CoreSession&`、ancillary `Capabilities&`）。
+- 可选发现（`kernelsnitch`/`perf_find_task`）为 `AddressDiscovery` 实现，默认随 backend，复用再提升。
+
 ### 2.1 三层与依赖方向
 
 ```
@@ -84,21 +108,24 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
   必须经 profile 或文件，不得发明新环境变量（§3.1）。
 - Kotlin 分层：`ui → domain → data`；平台 I/O 只允许在 `data/`；`shizuku/` 是执行入口的变体，
   不承载业务规则。
-- Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`；
-  include 一律相对 `src/core`（`#include "route/..."`），让所有权在调用点可见。
+- Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`（**重写目标见
+  §2.0**）；include 一律相对 `src/core`（`#include "route/..."`），让所有权在调用点可见。
 
 ### 2.2 route 结构（本项目核心扩展点）
+
+> 现状描述；重写后 `route` 为 **backend 内部策略**（见 §2.0 / ADR-0001）：`Pipeline<Backend, Terminal>`，
+> route 由 backend 按 profile 选择；terminal 由 pipeline 编排（R12）。
 
 每条 route 由三个部件构成，**不得使用虚基类**（PI 竞争窗口内不允许间接调用）：
 
 1. **Policy**（`route/route_policy.hpp`）：编译期能力声明 + `kind` + `supported()` + `run()`。
    **必须 host 可编译**（主机测试引用每个 Policy）。
-2. **Procedure**（`session/exploit_procedure.hpp` 子类）：只覆盖与共享流程不同的步骤；
-   共享步骤（setup/W1/handoff/retry）严禁复制到 route 内。
+2. **Procedure**（已退役：原 `session/exploit_procedure.hpp`；执行策略现由 backend 步骤 + route policy 承担）：
+   只覆盖与共享流程不同的步骤；共享步骤（setup/W1/terminal/retry）严禁复制到 route 内。
 3. **Route 类**：`prepare → execute → disarm → destroy` 固定生命周期（概念见 `route_lifecycle.hpp`），
    结果只经 `status` 汇报。`execute` 仅在 `prepare` 返回 0 时调用。
 
-新增组件（middleware/backend/frontend）的完整触点清单以 `docs/development/adding-a-component.md`
+新增组件（route/backend/terminal/platform/ancillary）的完整触点清单以 `docs/development/adding-a-component.md`
 为唯一权威，必须逐项核对。
 
 ### 2.3 编译边界与条件编译
@@ -109,14 +136,16 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 
 ### 2.4 全局状态
 
-- 唯一进程 singleton 为 `g_exploit_session`；另允许启动期只读的 `g_direct_map_end`。
+- 唯一进程 singleton 为 `g_exploit_session`（**重写后为组合根 `CoreSession`**，能力句柄存
+  `CoreSession.capabilities`，见 §2.0 / ADR-0002）；另允许启动期只读的 `g_direct_map_end`。
   **新代码不得引入任何可变全局或进程级引用别名**（审计口径见 git 历史 `docs/analysis/native-global-state.md`）。
 - route 级 static 属于受限例外，必须：匿名 namespace、单例访问器、`stop()` 后归零，并在计划中说明。
 
 ### 2.5 上游移植代码与 v1 legacy
 
-- `kernelsnitch/`（含 `futex_hash.h`、`utils.h` 的 `pr_*` 宏）是上游原样移植：**不重写、不顺手现代化**；
-  确需改动时单独立项并说明理由。
+- `kernelsnitch/`（含 `futex_hash.h`、`utils.h` 的 `pr_*` 宏）是上游移植代码，**上游已冻结、不再更新
+  → 可改写**；但必须在**顶级架构重构拆分之后**作为 backend `leak` 模块进行，并保测试，不得顺手改
+  （见 ADR-0001 §17 与 `AGENTS.md`）。
 - v1（旧 `offsets.json`）只在 Kotlin 侧由 `LegacyProfileConverter.kt` 转换；native 不再解析 v1。新 route/新字段
   **不得**修改 legacy 转换；兼容输入只做一次性转换。
 
@@ -180,7 +209,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 - 每阶段返回结构化结果，重试统一走 `retry_write_stage()`；**不得**在 route 或阶段里各自实现重试。
 - W1/W2/W3 的目标地址与写模式来自不可变 `WriteRequest`；stage 之间不共享可变中间态，
-  共享状态只经 `ExploitSession`/`VictimChain` 显式传递。
+  共享状态只经 `CoreSession` 显式传递；terminal 输入用 `terminal::RootedChild`（ADR-0004 R10）。
 - handoff 后的子进程所有权经 `release_child()` 显式转移；探针失败走"退休"而不是盲写。
 
 ### 4.2 PI 竞争窗口规则
@@ -199,9 +228,11 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 | `std::expected`/`Result<T>` | 可恢复失败（带 errno 语义） | I/O、解析 |
 | `Status`(bool) | 无数据的成败 | 阶段推进 |
 | `RouteStatus` | route 结果：OK / fallback-safe / dirty | 只经 `status` 汇报 |
+| 能力不可用（`Capabilities` 空句柄） | **fail-closed、非致命** | `KernelMemory`/`AddressDiscovery` 未建立 |
 
 - Native 以 `-fno-exceptions` 语义设计：除 `FatalError` 外不得抛异常；不得用异常表达可恢复错误。
 - 失败必须**早失败、带上下文**（profile 校验拒绝发布 active profile；KernelSnitch 越界拒绝）。
+- 能力（§2.0）以“空句柄”表达不可用，调用方 fail-closed；**异常与间接分派绝不进 PI 窗口**（E2/E3）。
 
 ---
 
@@ -211,6 +242,8 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 - `profile/binary.cpp` 的 GLK1 wire v2 section/key 表是**契约权威**：字段名、类型与位型一经发布不可改；
   新增字段 = 在该 section 追加一个条目（section/entry 顺序无关），并与 Kotlin `NativeProfile.kt` 同步。
+  **重写后分层**：framing（magic/version/组件 id/sections）中性；`sections → TargetProfile` 的绑定归
+  **backend**（见 ADR-0001 §12/§17，F6）。
 - Kotlin↔Native 双侧注册表（`RouteKind`、字段表）由测试锁定（`route_catalog_test` /
   `RouteCatalogAgreementTest`）；键名逐字一致，顺序逐项一致。
 - 枚举带显式 wire 值并写入合同注释（`0` 值语义特殊时不得被当普通值使用，如 `kRouteAuto` 不出现在 Kotlin）。
@@ -232,8 +265,9 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 ### 5.4 已登记例外（保留，不改）
 
 `fdset_put/get_word` 的 `reinterpret_cast`（POSIX ABI）、`put32/put64`（内核布局写入）、
-`iomem_map_span` 的 getline/free、`PayloadPage` 无析构、全局 session 单例、`binary.cpp` 的 `FIELD` 宏、
-`kernelsnitch` 移植代码。新增例外必须进计划文档并给出理由。
+`iomem_map_span` 的 getline/free、`PayloadPage` 无析构、全局 session 单例、`binary.cpp` 的 `FIELD` 宏。
+（`kernelsnitch` 已从“永久例外”移出：上游冻结，可在重构后改写，见 §2.5。）
+新增例外必须进计划文档并给出理由。
 
 ---
 
@@ -298,9 +332,9 @@ ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Min
 
 ### 8.1 验证金字塔
 
-1. **主机单元测试**（`make -C src native-host-tests`，23 个）：固定向量、生命周期、几何边界、
-   双侧一致性；新增数据结构/route 必须补测试（登记进 `NATIVE_HOST_TESTS`）；无对应测试的功能变更
-   视为不完整。
+1. **主机单元测试**（`make -C src native-host-tests`，全量含 host 数据流 harness）：固定向量、
+   生命周期、几何边界、双侧一致性；新增数据结构/route 必须补测试（登记进 `NATIVE_HOST_TESTS`）；
+   无对应测试的功能变更视为不完整。
 2. **Kotlin 单测**（`./gradlew :app:testDebugUnitTest`）与 **Rust 测试**（`cargo test --release`）。
 3. **形状对比**（攻击路径专用，§8.2）。
 4. **真机门禁**（§8.3）。
@@ -342,7 +376,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 - [ ] 确认不变量（profile 权威、全局状态清单、wire 兼容、保留清单）
 
 **实施中**
-- [ ] 最小改动；不碰设计外文件；不动 kernelsnitch/`LegacyProfileConverter.kt`/保留清单
+- [ ] 最小改动；不碰设计外文件；不动 `LegacyProfileConverter.kt`/保留清单；`kernelsnitch` 仅可在顶级重构中作为 backend `leak` 模块改写（先设计+测试，见 §2.5）
 - [ ] 双侧同步：Native↔Kotlin 注册表与字段表逐字一致；文档同步（含 `_ZH`）
 - [ ] 新代码零告警；显式类型转换；RAII 所有权；不可变性优先
 

@@ -3,40 +3,42 @@
 ## Components and pipeline
 
 The execution chain is composed from three component kinds, fixed at compile
-time by `Pipeline<Frontend, Backend, Middleware>`:
+time by `Pipeline<Terminal, Backend, Middleware>`:
 
-- **frontend** - startup/handoff (`root_child`; `umh_forward` is a declared but
-  unavailable placeholder in `frontend_contract.hpp`).
+- **terminal** - startup/handoff (`root_child`; `umh_forward` is a declared but
+  unavailable placeholder in `terminal_contract.hpp`).
 - **backend** - the vulnerability primitive and its write stages
-  (`cve_2026_43499`; `cve_2026_64560` is a header-only unavailable placeholder).
+  (`cve_2026_43499`; `cve_2026_64560` / `cve_2026_31431` / `cve_2026_43503` /
+  `cve_2026_23274` are header-only unavailable placeholders).
 - **middleware** - the route realizing one write (`select_stack` / `tcp_zerocopy`
   / `multicast_waiter`).
 
 Where the pieces live:
 
-- `route/component_catalog.hpp` - component ids, availability and the single
+- `pipeline/component_catalog.hpp` - component ids, availability and the single
   dispatch authority: `combination_supported()`, `DispatchTarget` and
   `dispatch_target_of()`.
-- `route/backend_policy.hpp` / `route/backend_contract.hpp` - the declared
+- `pipeline/backend_policy.hpp` / `pipeline/backend_contract.hpp` - the declared
   backend identities plus the `BackendIdentity` / `BackendExecution<B, M>`
   concepts and the identity registry (`for_each_backend`).
-- `route/frontend_contract.hpp` - the declared frontend ids and reasons.
-- `route/route_policy.hpp` - the middleware policies: compile-time capabilities
+- `pipeline/terminal_contract.hpp` - the declared terminal ids and reasons.
+- `backend/cve_2026_43499/route/route_policy.hpp` - the middleware policies: compile-time capabilities
   plus the static route hooks (`w2_fast_repair_*`); a policy that
   needs different behavior redeclares the hook and the Android-only definition
   lives in that middleware's route unit. `MiddlewarePolicy` is the contract.
-- `route/pipeline.hpp` - `Pipeline<F, B, M>`: the only execution entry. It
+- `pipeline/pipeline.hpp` - `Pipeline<F, B, M>`: the only execution entry. It
   static-asserts the catalogued combination, the middleware and backend
   contracts, exposes the dispatch `target` and returns `RunResult`.
-- `route/orchestrator.hpp` - `run_orchestrated_pipeline`: switches on
+- `pipeline/orchestrator.hpp` - `run_orchestrated_pipeline`: switches on
   `dispatch_target()` and asserts each case against `Pipeline::target`.
 - `route/*_route.{h,cpp}` - the per-middleware route classes and entry points
   (`multicast_waiter_route.cpp` / `tcp_zerocopy_route.cpp` /
   `select_stack_route.cpp`), including each policy's Android hook definitions.
-- `session/backend/cve_2026_43499_backend.*` - the available backend's W1/W2/W3
+- `backend/cve_2026_43499_backend.*` - the available backend's W1/W2/W3
   steps, templated on the middleware policy (explicitly instantiated for the
-  catalogued middleware); `session/backend/cve_2026_64560_backend.hpp` is the
-  unavailable placeholder.
+  catalogued middleware); `backend/cve_2026_64560_backend.hpp` (and the
+  `cve_2026_31431` / `cve_2026_43503` / `cve_2026_23274` headers) are the
+  unavailable placeholders.
 
 ## Other directories
 
@@ -44,9 +46,10 @@ Where the pieces live:
 - `race/`: the PI race owner and its waiter/owner/consumer threads.
 - `memory/`: address resolution, heap/page state and route-neutral payload
   encoding.
-- `session/`: one-invocation state owner (`exploit_session.*`, which carries the
-  per-field ownership contract), runtime configuration, the frontend handoff
-  (`root_child_frontend.*`), stage types, handoff probes and the victim pipe
+- `session/`: the shared state container (`core_session.*`; backend-specific state in
+  `backend/cve_2026_43499_state.*`). Also carries the
+  per-field ownership contract), runtime configuration, the terminal handoff
+  (`root_child_terminal.*`), stage types, handoff probes and the victim pipe
   context.
 - `profile/`: the GLK1 v2 transport (object sections: `binary.cpp` / `model.h`),
   its typed model, accessors and entry points.
@@ -64,7 +67,7 @@ Where the pieces live:
   middleware hooks' bodies) stays in the route/backend units, under
   `#if defined(__ANDROID__)` or in files that only the Android build compiles.
 - Includes use paths relative to `src/core` (for example,
-  `#include "route/tcp_zerocopy_route.h"`) so ownership stays visible at call
+  `#include "backend/cve_2026_43499/route/tcp_zerocopy_route.h"`) so ownership stays visible at call
   sites without adding every subdirectory to the compiler search path.
 
 ## Tests and gates
@@ -76,4 +79,4 @@ Where the pieces live:
 - `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock` - attack
   function disassembly gate (runs for attack-path changes).
 - Session ownership: the per-field owner / borrower / release / termination
-  table lives in `session/exploit_session.hpp`.
+  table lives in `session/core_session.hpp`.
