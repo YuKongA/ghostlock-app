@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GhostLock</string>
+    <string name="action_run">Run</string>
+    <string name="action_running">Running…</string>
+    <string name="log_title">Execution Log</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_close">Close</string>
+    <string name="copied">Log copied</string>
+    <string name="kernel_unsupported_summary">Kernel not supported</string>
+</resources>
