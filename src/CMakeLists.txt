@@ -52,7 +52,6 @@ endif ()
 
 set(SOURCES
         core/main.cpp
-        core/attack/ops.cpp
         core/profile/entry.cpp
         core/memory/address_space.cpp
         core/memory/heap_context.cpp
@@ -71,6 +70,7 @@ set(SOURCES
         core/backend/victim/victim_process.cpp
         core/backend/victim/victim_context.cpp
         core/support/native_resource.cpp
+        core/support/cli.cpp
 )
 
 add_executable(src ${SOURCES})

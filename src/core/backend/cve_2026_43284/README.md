@@ -4,7 +4,7 @@ CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与
 [docs/analysis/cve-2026-43284-refactor-plan.md](../../../../docs/analysis/cve-2026-43284-refactor-plan.md)；
 设计见 [cve-2026-43284-b5-design.md](../../../../docs/analysis/cve-2026-43284-b5-design.md)。
 
-## 状态（截至 B5-5）
+## 状态（截至 B5-9c）
 
 | 批次 | 内容 | 状态 |
 |---|---|---|
@@ -16,6 +16,9 @@ CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与
 | B5-6 | `steps/` chain（crash_dump 桥、vendor 载体回退、patch 校验、trigger） | ⬜ 需设备 |
 | B5-7 | `backend_terminal` + `platform`：`BackendExecution<B,Input>`、`UmhForwardInput` 填充、设备事实探测 | ⬜ 部分需设备 |
 | B5-8 | 组合：catalog/orchestrator/pipeline + `umh_forward` + 43499 回归 | ⬜ |
+| B5-9a | 只读真机诊断入口（`--probe-cve-2026-43284`）+ 只读 ChainOps 绑定 | ✅ 真机 PASS（A301SO / android13-5.15） |
+| B5-9b | 受限 kallsyms / selinux_state 缺失降级为记录项，不再秒退 | ✅ 修复 + 真机 PASS |
+| B5-9c | 真实 ChainOps 绑定 + 分阶段执行入口（`--run-cve-2026-43284`） | 🔶 实现 + host 测试；真机分阶段验证待做 |
 | B5-9 | 真机门禁（逐 KMI）+ `.ko` 审计 + 归档 | ⬜ 需 `.ko` + 设备 + ksud |
 
 `pipeline::component_catalog::backend_available(Cve2026_43284)` 仍为 **false**；未过真机前不得标 supported。
@@ -34,6 +37,8 @@ CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与
 | `steps/elf_hook.hpp,.cpp` | 只读 ELF 解析/符号定位/PT_LOAD/.text/.rela 校验 + hook site（BTI/PAC 策略），纯 byte-span（B5-5） |
 | `steps/shellcode.hpp,.cpp` | shellcode 槽位参数化（MOVZ/MOVK、branch 编码）+ trampoline patch 描述（不写文件，B5-5） |
 | `steps/steps.hpp` | PageCacheWrite step-set 壳（不含 pipeline，ADR-0004 R1） |
+| `real_ops.hpp,.cpp` | 真实 ChainOps 绑定：pagecache write（real_splice_io）+ pread 读 + double-fork trigger + LKM/UMH 终态探测 + release 清零；`run_ready()` 要求全绑定且 DeviceProbeOps 可用 |
+| `stage_runner.hpp,.cpp` | `--run-cve-2026-43284` 分阶段入口：plan/write/trigger/full + 结构化状态记录；host 可注入 fake ops |
 | `schema.hpp`、`glkv3_schema.hpp` | 43284 私有 GLK section 的 v2/v3 schema |
 
 设备侧未验证项：splice 页是否真被共享并就地解密、`.ko` 真加载（vermagic/modversions/未签名/kCFI）、`crash_dump64`/vendor 载体/Defex 符号。

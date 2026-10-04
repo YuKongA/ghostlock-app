@@ -13,7 +13,10 @@
 #include "common.h"
 
 #include "profile/entry.h"
+#include "backend/cve_2026_43284/diagnostic.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
+#include "backend/cve_2026_43284/stage_runner.hpp"
+#include "support/cli.hpp"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
 #include "pipeline/orchestrator.hpp"
@@ -39,36 +42,65 @@ int main(int argc, char **argv) {
             0,
         };
 
-        bool app_call = false;
-        bool force_attack = false;
-        bool status_record = false;
-        const char *prebuilt_path = nullptr;
-        const char *dump_dir = nullptr;
-        for (int32_t i = 1; i < argc; i++) {
-            if (std::string_view(argv[i]) == "--ghostlock-app-call") {
-                app_call = true;
-            } else if (std::string_view(argv[i]) == "--force-attack") {
-                force_attack = true;
-            } else if (std::string_view(argv[i]) == "--enable-status-record") {
-                status_record = true;
-            } else if (std::string_view(argv[i]) == "--load-prebuilt-profile" &&i + 1 < argc) {
-                prebuilt_path = argv[++i];
-            } else if (std::string_view(argv[i]) == "--dump-kernel-log" && i + 1 < argc) {
-                dump_dir = argv[++i];
-            } else {
-                pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
-                " [--dump-kernel-log <dir>] [--force-attack] [--enable-status-record]\n", argv[0]);
-                return 1;
+        support::cli::Options options{};
+        support::cli::ParseError parse_error;
+        if (!support::cli::parse_arguments(argc, argv, options, parse_error)) {
+            switch (parse_error) {
+                case support::cli::ParseError::MultipleEntrypoints:
+                    pr_error("choose one entrypoint\n");
+                    break;
+                case support::cli::ParseError::StatusRequiresAppCall:
+                    pr_error("--enable-status-record requires --ghostlock-app-call\n");
+                    break;
+                case support::cli::ParseError::ProbeConflict:
+                    pr_error("--probe-cve-2026-43284 cannot be combined with other flags\n");
+                    break;
+                case support::cli::ParseError::RunConflict:
+                    pr_error("--run-cve-2026-43284 cannot be combined with"
+                             " --force-attack/--dump-kernel-log/--enable-status-record\n");
+                    break;
+                case support::cli::ParseError::BadStage:
+                    pr_error("--stage must be one of plan|write|trigger|full\n");
+                    break;
+                case support::cli::ParseError::StageRequiresRun:
+                    pr_error("--stage requires --run-cve-2026-43284\n");
+                    break;
+                case support::cli::ParseError::DevTargetRequiresRun:
+                    pr_error("--allow-dev-target requires --run-cve-2026-43284\n");
+                    break;
+                default:
+                    pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin> |"
+                             " --probe-cve-2026-43284 <ko-path> |"
+                             " --run-cve-2026-43284 <ko-path> <target-file>"
+                             " [--stage=plan|write|trigger|full]"
+                             " [--allow-dev-target]]"
+                             " [--dump-kernel-log <dir>] [--force-attack]"
+                             " [--enable-status-record]\n",
+                             argv[0]);
+                    break;
             }
-        }
-        if (app_call && prebuilt_path) {
-            pr_error("choose one entrypoint\n");
             return 1;
         }
-        if (status_record && !app_call) {
-            pr_error("--enable-status-record requires --ghostlock-app-call\n");
-            return 1;
+        if (options.mode == support::cli::Mode::ProbeCve2026_43284) {
+            return backend::cve_2026_43284::diagnostic::run_diagnostic_cli(
+                    options.probe_module_path);
         }
+        if (options.mode == support::cli::Mode::RunCve2026_43284) {
+            /* Explicit staged execution: never reachable from a profile/wire
+             * selection, so backend_available(Cve2026_43284) stays false and
+             * the default pipeline never runs it. */
+            const auto stage = static_cast<
+                    backend::cve_2026_43284::stage_runner::Stage>(
+                    static_cast<std::uint8_t>(options.run_stage));
+            return backend::cve_2026_43284::stage_runner::run_stage_cli(
+                    options.run_module_path, options.run_target_path, stage,
+                    options.allow_dev_target);
+        }
+        const bool app_call = options.mode == support::cli::Mode::AppCall;
+        const bool force_attack = options.force_attack;
+        const bool status_record = options.status_record;
+        const char *prebuilt_path = options.load_prebuilt_profile;
+        const char *dump_dir = options.dump_kernel_log;
         support::run_state::configure(status_record);
 
         int32_t loaded;

@@ -12,6 +12,7 @@
 #include "backend/cve_2026_64560_backend.hpp"
 #include "terminal/root_child.hpp"
 #include "terminal/terminal_input.hpp"
+#include "terminal/umh_forward.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -51,6 +52,9 @@ int32_t main(void) {
     static_assert(!BackendExecution<backend::Cve2026_43503Policy, terminal::RootedChild>);
     static_assert(!BackendExecution<backend::Cve2026_23274Policy, terminal::RootedChild>);
     static_assert(!BackendExecution<backend::Cve2026_43284Policy, terminal::RootedChild>);
+    /* B5-7: the 43284 execution/state contracts land for its paired terminal
+     * input while the backend stays uncatalogued (backend_available is false). */
+    static_assert(BackendExecution<backend::Cve2026_43284Policy, terminal::UmhForwardInput>);
 
     /* R10 continuation: BackendExecution is parameterised on the terminal input
      * type. cve_2026_43499 only fills RootedChild, so it does not satisfy the
@@ -68,7 +72,7 @@ int32_t main(void) {
     static_assert(!BackendState<backend::Cve2026_31431Policy>);
     static_assert(!BackendState<backend::Cve2026_43503Policy>);
     static_assert(!BackendState<backend::Cve2026_23274Policy>);
-    static_assert(!BackendState<backend::Cve2026_43284Policy>);
+    static_assert(BackendState<backend::Cve2026_43284Policy>);
 
     static_assert(backend::Cve2026_43499Policy::kind ==
                   pipeline::backend::Cve2026_43499::kind);
@@ -93,13 +97,30 @@ int32_t main(void) {
     static_assert(pipeline::TerminalIdentity<terminal::RootChildPolicy>);
     static_assert(pipeline::TerminalExecution<terminal::RootChildPolicy>);
     static_assert(pipeline::TerminalIdentity<terminal::UmhForwardPolicy>);
-    static_assert(!pipeline::TerminalExecution<terminal::UmhForwardPolicy>);
+    /* B5-8 landed the umh_forward step; availability stays false (B5-9). */
+    static_assert(pipeline::TerminalExecution<terminal::UmhForwardPolicy>);
+    static_assert(!pipeline::terminal_available(terminal::UmhForwardPolicy::kind));
+
+    /* B5-8: the 43284 + PageCacheWrite + UmhForward triple is a catalogued,
+     * compilable Pipeline instance even though its backend is unavailable. The
+     * pipeline's target static_assert proves the dispatch table has the entry;
+     * the orchestrator's selection_supported() gate keeps it from running. */
+    using UmhPipeline = pipeline::Pipeline<backend::Cve2026_43284Policy,
+                                           terminal::UmhForwardPolicy>;
+    static_assert(UmhPipeline::backend == pipeline::BackendKind::Cve2026_43284);
+    static_assert(UmhPipeline::steps == pipeline::StepSetKind::PageCacheWrite);
+    static_assert(UmhPipeline::terminal == pipeline::TerminalKind::UmhForward);
+    static_assert(UmhPipeline::target ==
+                  pipeline::DispatchTarget::Cve43284PageCache_UmhForward);
+    static_assert(!pipeline::backend_available(pipeline::BackendKind::Cve2026_43284));
 
     /* Unified interface (R19/R20): every terminal declares Input + activation. */
     static_assert(std::is_same_v<terminal::RootChildPolicy::Input, terminal::RootedChild>);
     static_assert(std::is_base_of_v<terminal::TerminalInput, terminal::RootChildPolicy::Input>);
     static_assert(terminal::RootChildPolicy::activation == terminal::ActivationContext::Descendant);
     static_assert(std::is_same_v<terminal::UmhForwardPolicy::Input, terminal::UmhForwardInput>);
+    static_assert(std::is_base_of_v<terminal::TerminalInput,
+                                    terminal::UmhForwardPolicy::Input>);
     static_assert(terminal::UmhForwardPolicy::activation ==
                   terminal::ActivationContext::KernelSpawned);
 

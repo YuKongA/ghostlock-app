@@ -10,6 +10,10 @@
  * failure rollback, ICV truncation, the FileCacheWriteOps positive/negative
  * contract and the secret wipe.
  *
+ * The two injected fallbacks are covered too: the OldPageSource read fallback
+ * and the HelperWriteSource used when file_fd < 0 (the App cannot open the
+ * vendor file at all). Both fail the block closed when unbound or failing.
+ *
  * No device, kernel or real syscall dependency: the test links the same
  * translation units the device build uses. */
 
@@ -233,6 +237,49 @@ namespace {
         return ghostlock::backend::cve_2026_43284::pagecache::SpliceIoOps{
                 &fake_pipe2, &fake_splice, &fake_vmsplice, &fake_send_datagram,
                 &fake_read_at, &fake_close_fd};
+    }
+
+    /* Vendor old-page source: mirrors the fake page cache (so the ciphertext
+     * the write splices is the same block), or returns an injected result. */
+    struct FakeOldPage final {
+        long result = 16;
+        int calls = 0;
+    };
+
+    long fake_old_read16(void *raw, std::uint64_t offset,
+                         std::uint8_t out[16]) noexcept {
+        auto *fake = static_cast<FakeOldPage *>(raw);
+        if (fake == nullptr || out == nullptr) return -EINVAL;
+        ++fake->calls;
+        if (fake->result != 16) return fake->result;
+        if (offset + 16U > g_fake.file.size()) return -EIO;
+        for (std::size_t i = 0; i < 16U; ++i) {
+            out[i] = g_fake.file[static_cast<std::size_t>(offset) + i];
+        }
+        return 16;
+    }
+
+    /* Helper write source: splice(2)s the fake page into the write pipe exactly
+     * as the patched crash_dump64 would, or returns an injected result. */
+    struct FakeHelper final {
+        long result = 16;
+        int calls = 0;
+    };
+
+    long fake_helper_splice16(void *raw, int pipe_write_fd,
+                              std::uint64_t offset) noexcept {
+        auto *fake = static_cast<FakeHelper *>(raw);
+        if (fake == nullptr) return -EINVAL;
+        ++fake->calls;
+        if (pipe_write_fd != kPipeWriteFd) return -EBADF;
+        if (fake->result != 16) return fake->result;
+        if (offset + 16U > g_fake.file.size()) return -EIO;
+        for (std::size_t i = 0; i < 16U; ++i) {
+            g_fake.pipe.push_back(
+                    g_fake.file[static_cast<std::size_t>(offset) + i]);
+        }
+        g_fake.pending_page_offset = offset;
+        return 16;
     }
 
     void reset_fake(std::size_t file_bytes, std::uint8_t fill) {
@@ -634,6 +681,253 @@ int main() {
         for (const auto b : ctx.sa.aes_key) assert(b == 0U);
         for (const auto b : ctx.sa.hmac_key) assert(b == 0U);
         assert(ctx.sa.spi == 0U);
+    }
+
+    /* ---- old_page fallback: direct read fails, the bridge supplies the
+     * block and the write still succeeds. ---- */
+    {
+        reset_fake(32U, 0xB7U);
+        g_fake.read_errno = EIO;
+        PageCacheWriteContext ctx = make_ctx();
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+
+        std::array<std::uint8_t, 16> out{};
+        assert(read_block(ctx, 0U, out.data()) == WriteResult::Ok);
+        for (const auto b : out) assert(b == 0xB7U);
+        assert(old.calls == 1);
+
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x42U);
+        assert(write16(ctx, 16U, desired.data()) == WriteResult::Ok);
+        assert(old.calls == 2);
+        assert(g_fake.datagrams.size() == 1U);
+        assert(esp_verify_datagram(ctx.sa, g_fake.datagrams[0].data(),
+                                   g_fake.datagrams[0].size()));
+        /* The ciphertext spliced from the page is the bridged old block. */
+        assert(datagram_all(g_fake.datagrams[0], kEspCiphertextOffset, 16U, 0xB7U));
+        for (std::size_t i = 0; i < 16U; ++i) {
+            assert(g_fake.file[16U + i] == 0x42U);
+        }
+        assert(ctx.stats.blocks_written == 1U);
+        assert(ctx.stats.blocks_failed == 0U);
+    }
+
+    /* ---- the direct read wins: the bridge is not consulted. ---- */
+    {
+        reset_fake(16U, 0x24U);
+        PageCacheWriteContext ctx = make_ctx();
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        std::array<std::uint8_t, 16> out{};
+        assert(read_block(ctx, 0U, out.data()) == WriteResult::Ok);
+        for (const auto b : out) assert(b == 0x24U);
+        assert(old.calls == 0);
+    }
+
+    /* ---- bridge failure is fail-closed: no datagram, page unchanged. ---- */
+    {
+        reset_fake(16U, 0x33U);
+        g_fake.read_errno = EACCES;
+        PageCacheWriteContext ctx = make_ctx();
+        FakeOldPage old{};
+        old.result = -EIO;
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x77U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::IoError);
+        assert(old.calls == 1);
+        assert(g_fake.datagrams.empty());
+        assert(ctx.stats.blocks_written == 0U);
+        assert(ctx.stats.blocks_failed == 1U);
+        assert(ctx.next_seq == 1U);
+        assert(g_fake.file[0] == 0x33U);
+    }
+
+    /* ---- a bridge short read is also fail-closed. ---- */
+    {
+        reset_fake(16U, 0x33U);
+        g_fake.read_errno = EIO;
+        PageCacheWriteContext ctx = make_ctx();
+        FakeOldPage old{};
+        old.result = 0;
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        std::array<std::uint8_t, 16> out{};
+        assert(read_block(ctx, 0U, out.data()) == WriteResult::ShortRead);
+        assert(old.calls == 1);
+        assert(g_fake.datagrams.empty());
+    }
+
+    /* ---- an unbound old_page keeps the exact direct failure code. ---- */
+    {
+        reset_fake(16U, 0x00U);
+        g_fake.read_errno = EIO;
+        PageCacheWriteContext ctx = make_ctx();
+        std::array<std::uint8_t, 16> out{};
+        assert(read_block(ctx, 0U, out.data()) == WriteResult::IoError);
+    }
+
+
+    /* ---- helper write source: file_fd < 0 + bridge -> helper completes the
+     * 16-byte write through the same pipe/datagram path. ---- */
+    {
+        reset_fake(32U, 0xC3U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        FakeHelper helper{};
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+
+        /* The capability advertises itself without a file fd. */
+        FileCacheWriteOps ops = make_file_cache_write_ops(ctx);
+        assert(ops.available());
+
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x5EU);
+        assert(write16(ctx, 16U, desired.data()) == WriteResult::Ok);
+        assert(helper.calls == 1);
+        assert(old.calls == 1);
+        assert(g_fake.splice_file_calls == 0);
+        assert(g_fake.datagrams.size() == 1U);
+        assert(g_fake.datagram_page_offsets[0] == 16U);
+        assert(esp_verify_datagram(ctx.sa, g_fake.datagrams[0].data(),
+                                   g_fake.datagrams[0].size()));
+        /* The ciphertext comes from the helper-spliced page, not the direct
+         * file splice. */
+        assert(datagram_all(g_fake.datagrams[0], kEspCiphertextOffset, 16U, 0xC3U));
+        for (std::size_t i = 0; i < 16U; ++i) {
+            assert(g_fake.file[16U + i] == 0x5EU);
+        }
+        assert(ctx.stats.blocks_written == 1U);
+        assert(ctx.stats.blocks_failed == 0U);
+        assert(ctx.stats.datagrams_sent == 1U);
+        assert(ctx.next_seq == 2U);
+    }
+
+    /* ---- helper unavailable with file_fd < 0 is NotAvailable: no datagram,
+     * no page change, the read bridge is not consulted. ---- */
+    {
+        reset_fake(16U, 0x00U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        assert(!make_file_cache_write_ops(ctx).available());
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x11U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::NotAvailable);
+        assert(old.calls == 0);
+        assert(g_fake.datagrams.empty());
+        assert(g_fake.file[0] == 0x00U);
+    }
+
+    /* ---- helper failure is fail-closed: no datagram, blocks_failed, page
+     * unchanged. ---- */
+    {
+        reset_fake(16U, 0x44U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        FakeHelper helper{};
+        helper.result = -EIO;
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x66U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::IoError);
+        assert(helper.calls == 1);
+        assert(g_fake.datagrams.empty());
+        assert(ctx.stats.blocks_written == 0U);
+        assert(ctx.stats.blocks_failed == 1U);
+        assert(ctx.next_seq == 1U);
+        assert(g_fake.file[0] == 0x44U);
+    }
+
+    /* ---- a short helper transfer is ShortWrite, fail-closed. ---- */
+    {
+        reset_fake(16U, 0x44U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeOldPage old{};
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        FakeHelper helper{};
+        helper.result = 8;
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x66U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::ShortWrite);
+        assert(helper.calls == 1);
+        assert(g_fake.datagrams.empty());
+        assert(ctx.stats.blocks_failed == 1U);
+        assert(g_fake.file[0] == 0x44U);
+    }
+
+    /* ---- the direct fd wins: a bound helper is never consulted. ---- */
+    {
+        reset_fake(16U, 0x24U);
+        PageCacheWriteContext ctx = make_ctx();
+        FakeHelper helper{};
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x42U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::Ok);
+        assert(helper.calls == 0);
+        assert(g_fake.splice_file_calls == 1);
+        assert(g_fake.file[0] == 0x42U);
+    }
+
+    /* ---- file_fd < 0 + helper but a failing read (no old_page) fails closed
+     * before the helper splice. ---- */
+    {
+        reset_fake(16U, 0x44U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeHelper helper{};
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x66U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::IoError);
+        assert(helper.calls == 0);
+        assert(g_fake.datagrams.empty());
+        assert(ctx.stats.blocks_failed == 1U);
+        assert(g_fake.file[0] == 0x44U);
+    }
+
+    /* ---- file_fd < 0: a failing read bridge fails closed before the helper
+     * is ever invoked. ---- */
+    {
+        reset_fake(16U, 0x44U);
+        PageCacheWriteContext ctx = make_ctx();
+        ctx.file_fd = -1;
+        FakeOldPage old{};
+        old.result = -EIO;
+        ctx.old_page.ctx = &old;
+        ctx.old_page.read16 = &fake_old_read16;
+        FakeHelper helper{};
+        ctx.helper_write.ctx = &helper;
+        ctx.helper_write.splice16 = &fake_helper_splice16;
+        std::array<std::uint8_t, 16> desired{};
+        desired.fill(0x66U);
+        assert(write16(ctx, 0U, desired.data()) == WriteResult::IoError);
+        assert(old.calls == 1);
+        assert(helper.calls == 0);
+        assert(g_fake.datagrams.empty());
+        assert(ctx.stats.blocks_failed == 1U);
+        assert(g_fake.file[0] == 0x44U);
     }
 
     std::puts("cve_2026_43284_pagecache_test: OK");

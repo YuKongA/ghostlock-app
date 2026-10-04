@@ -1,0 +1,41 @@
+# ghostlock avb_guard baseline v1 (TSV, columns below)
+# serial=QV770MFGJ1
+# date=2026-10-04T01:08:02Z
+# image_dir=build/device-backup/QV770MFGJ1-20261003
+# columns=name	class	size	sha256	source
+# device=A301SO
+# model=A301SO
+# release=15
+# fingerprint=Sony/A301SO/A301SO:15/67.2.A.3.178/067002A003017800602211349:user/release-keys
+# verifiedbootstate=green
+# vbmeta_device_state=locked
+# slot=_a
+# scope=ALL AVB-verified content: vbmeta*/boot*/init_boot*/dtbo*/vendor_boot*/recovery*/vm-bootsys* + super + 7 read-only verity views
+# post-check=2026-10-04 full check over ALL 26 entries: 25 identical, metadata expected-variable; the mid-run USB unplug produced 4 spurious reads, rechecked CONSISTENT on wireless adb
+# avbtool=absent (not used)
+super	avb	14495514624	cfffdbb6a991ab23fa908e9d8e0361baa2c3bb9a257a1006ea2f70a59fa55b10	cold-restart-verified
+misc	state	1048576	8da2a417164d16dc15e3d41de1e769b8cf652c65254f784055d3c82a25c56a06	cold-restart-verified
+metadata	state	67108864	615de84231645433765c9867b12fac60f2997df224606aac277613a290da2e80	cold-restart-verified
+vbmeta_a	avb	65536	ea7e866b28a140e3b210bb3aac22659be96a1548b61b249e2b086a11dfd706b7	cold-restart-verified
+vbmeta_b	avb	65536	af4e9459965a26e4967aa974c0335e10921c80e1a806df9d1dfbfd22e5c2006f	cold-restart-verified
+vbmeta_system_a	avb	65536	01ec6e4d076ed6314ec7c724ff384f6e8e8ae320e192f0da519047a1c89011fc	cold-restart-verified
+vbmeta_system_b	avb	65536	8ab167bece9e97614a2ecbfc74b1fbde8697a990f224708b1aa701e63cfb97cb	cold-restart-verified
+boot_a	avb	100663296	7c9e0777dfcaf571f1baf0fb8760edda36fe7ba25c1656299f51108043880342	cold-restart-verified
+boot_b	avb	100663296	e5f600b0d94c574f6bab103d3fbcd59c59e2f28aad29e4129ae4852fd160f854	cold-restart-verified
+init_boot_a	avb	8388608	443be2277d516e8e27cf2819ff86930c5cc474606037a96dd133a2ab9adeaefa	cold-restart-verified
+init_boot_b	avb	8388608	28553b370ea677775d6fe06df59b4a3da2664427da55d8a20611da393baed738	cold-restart-verified
+dtbo_a	avb	25165824	7e4e0bc9199f2a26c52c0c1081b95a2c5e151cc2949cb4d4fd4f055c9a66f77d	cold-restart-verified
+dtbo_b	avb	25165824	3dca7338a617a4c5de9ec6b2e726da60aad3c14f9d0985fc1ae7e84b14594944	cold-restart-verified
+vendor_boot_a	avb	100663296	3d36db28b21ad097379b5d90b047a41e959b2f4f6b07a1b93ec7948a469e6b74	cold-restart-verified
+vendor_boot_b	avb	100663296	7af6f8408ed449a322d776b66bb61a1352e2af5071f5e97a99f9d5b4058dd47f	cold-restart-verified
+recovery_a	avb	104857600	a804d1252a71749ee03d7e9126056b5a623d37e4b0c647b152274edcf2ce44e2	cold-restart-verified
+recovery_b	avb	104857600	7127e8bc0ab145a08c50ba049564b89f8acfef630c7cd1a6a9a5255da0762a80	cold-restart-verified
+vm-bootsys_a	avb	274878464	03002b32151bb79b9a290959e72efef6b44cc8227126e402b02a482b2f17f56c	cold-restart-verified
+vm-bootsys_b	avb	274878464	03002b32151bb79b9a290959e72efef6b44cc8227126e402b02a482b2f17f56c	cold-restart-verified
+system-verity	verity	1016561664	963abe178549497bce2fe336865e2662413c7ba8a8ef5c37fd6b7f1981fada3c	cold-restart-verified
+system_ext-verity	verity	1272631296	2063d9af607e7879f82918dcc4ef3f8ba0178080d9a4c84122871569bde8f8a8	cold-restart-verified
+product-verity	verity	3956236288	ffb08802c4b3d2464393c78e2a60d2cee369dfc0fb12d00cec2c3bc4a9fc8a65	cold-restart-verified
+vendor-verity	verity	1857650688	d09b211ba452a498477bb5ad8d1f622c7ab5996bc67e40404f7bb89299b04a5d	cold-restart-verified
+odm-verity	verity	24203264	2ef687e0f0cfa47cbb442e26538933b317905e9d1961c912982c4f4540f39191	cold-restart-verified
+system_dlkm-verity	verity	352256	870ec74d51e9fd975ca483248dab7dfa56ca8e461ccbbd52da0f3e9d538e5bcb	cold-restart-verified
+vendor_dlkm-verity	verity	82427904	4bd02aa9bc826310ad181b770109c0cde063ecbcc24b28b03ab7379caf6465de	cold-restart-verified

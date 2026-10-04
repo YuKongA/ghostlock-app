@@ -115,30 +115,49 @@
 - [x] B5-3 `pagecache/`（提交 `86b3303`）：`write16`/块序列 + 可注入 `SpliceIoOps` + `FileCacheWriteOps`；fake splice/pipe host 测试（并抓出 seq 偏移 bug）。
 - [x] B5-4 `lkm/`（提交 `2052b97`）：8 KMI 表 fail-closed、`.ko` ELF/`.modinfo` 预检、UMH `late-load` argv（无 shell 拼接）；host 测试；门禁全绿。
 - [x] B5-5 `steps/` ELF+Hook（提交 `9e463b2`）：ELF64/AArch64 解析、符号定位、hook 方案（BTI/PAC 拒绝、relocation 冲突）、shellcode 模板；合成 fixture host 测试；门禁全绿。
-- [ ] B5-6 `steps/` chain（crash_dump 桥、vendor 载体回退、patch 校验、trigger、清理）。
+- [x] B5-6 `steps/` chain（提交 `9999aed`）：编排（写→校验→触发→等待→清理）、载体回退（写前才回退）、写失败/校验失败回滚、终结点恰好一次；host 注入测试；门禁全绿。
+- [x] B5-7 `backend_terminal` + `platform`（提交 `27792ee`）：`DeviceProbeOps`/`DeviceFacts` fail-closed、`UmhForwardInput`、`run_backend_terminal`（steps→facts→LKM→UMH→carrier→chain）；fake 覆盖；门禁全绿。
+- [x] B5-8 组合（提交 `7aabcb2`）：43284 三元组接入 dispatch（`combination_supported`=已接线）、`selection_supported` 为运行时 fail-closed 闸（43284 仍 false）、`run_orchestrated_pipeline` 顶部 guard、`UmhForwardPolicy::run` + `UmhForwardChannel`；编译期契约 + fake 覆盖；43499 未动。
+- [x] B5-9a 真机**只读**诊断（提交 `950cbe4`/`818b99d`）：设备事实齐备、KMI `android13-5.15` 匹配、内置 `.ko` 预检 pass → `ready`（PASS）。
+- [x] B5-9b 修复（提交 `950cbe4`）：kallsyms 受限/`selinux_state` 符号缺失降级为记录项（不再 device_blocked）。
+- [x] B5-9c 真实 ChainOps + 分阶段入口 `--run-cve-2026-43284 <ko> <target> --stage=plan|write|trigger|full`（提交 `352cab5`）；生产仍 fail-closed。
+- [x] B5-9d 写原语真机 PASS（`f0f09a6`）：`--stage=write` `written=698 verified=698`，目标内容变为 ELF 头（`.ko` 写完）。
+- [x] 安全网：分区备份 + 冷机复核（`6d7f201`）+ AVB guard 基线/检查/告警/修复（`895c467`/`a37cb31`），26/26 一致（`metadata` 预期可变）。备份在**仓库外** `../ghostlock-device-backup`。
+- [x] B5-9e（提交 `68abcfb`）：patch #1 内嵌自建 splicehelper、crash_dump 读桥、libc++ hook 应用/恢复、LKM 预检接线、终态判据（`/dev/df`、`/sys/module/dirtyfrag`）、退出码对齐上游；host 门禁全绿。
+  ~~已知缺口~~ 已在 B5-9f（提交 `536dc5f`）闭环：写侧 `OldPageSource`（pread 被拒时经 crash_dump 桥取旧页）+ 内嵌 `libcxx_blob`（472B，源 `libcxx.S@de2ab7b`，sha256 `d226d2e7…`）与参数化绑定（carrier/selinux ctx/insmod/mutex/attr_exec）。
+  **① 已闭环**：B5-9g（提交 `a329104`）实现 `file_fd<0` 的 `HelperWriteSource`（helper 把 vendor 页 splice 进写管道）。
+- [x] **写前断言**（提交 `bc86eeb`）：目标边界/区域闭合/pre-image 断言 + `run.target` 诊断（offset/len/size/preimage）。
+- [x] **`cmp_disasm` 重定位归一化**（提交 `bc86eeb`）：`adrp`+内存操作数按**有效地址**比较（非白名单；只读数据不同字节仍 `RELOC-DIFF` FAIL），严格模式行为不变。
+- [x] **安全网扩展**（提交 `f528c13`）：文件级页缓存守卫（`files-baseline`/`files-check`）、`verity-status`（dm-verity `V/E`）、vendored AOSP `avbtool` + `avb-verify`（hash/hashtree 描述符）、`check-all`。
+- [x] **设备端 `avbcheck`**（提交 `c39a117`）：NDK 静态 aarch64 原生工具（`hash`/`baseline`/`check`/`avb-verify`/`verity-status`），**本机**读 `/dev/block/*`，含 **raw RSA 签名校验**（`sig_ok=5`，含 chain）；真机 `avb-verify --slot _a` 12 描述符全 `[ok]`、`verity 34×V / E=0`；与宿主 Python 摘要逐字节一致。
+  **剩余（B5-9h）**：① 设备侧资产：`/system/lib64/libc++.so` 镜像、按真机 sentry 前导指令选 `hook_guard`、vendor 载体路径；② 冷机 `plan→write→trigger→full` 门禁（每步前后 `avbcheck` + `files-check` + `verity-status`，异常 `alert`+`repair`）；③ 通过后翻转 43284 可用性并归档。
 - 它与 S1（A2-3c）与 S3（B5 通道）都有交叠，故列为本分支的**跨流前置**：先定 GLKv3，再继续 A2-4/5、B5。
 
 ## 4. 唯一执行顺序（下一步）
 
 ```
-已完成：T1 → T2 → T3a
-接着：  T3b → T3c → T3d → T4 → T5
-并行：  B2（组合根 per-backend 状态构造，43499 机器码不变）
-随后：  A2-3c → A2-4/5 → S3 B3–B7 → A3 → B → C
+已完成：T0 → T1 → T2 → T3a → T3b → T3c → T3d → T4
+        GLKv3-1..5（wire 迁移，真机 PASS）
+        B0 → B1a → B1b → B2 → B3 → B4 → B5-1..B5-9g
+        安全网：分区备份/冷机复核 + AVB guard + 设备端 avbcheck
+待办主线：B5-9h（43284 真机 plan→write→trigger→full，含资产与可用性翻转）
+随后：    A2-4/5 → A3 → B → C（S1 剩余）；T5 由 B5-8/B5-9e 的 UmhForwardPolicy 覆盖，待真机
+可选：    DirtyInit 式（init 中继）/ DFReroot 式（system-UID 持久化）作为 terminal #3/#4
 ```
 
-- **默认下一步 = T3b**（Kotlin `text`/`bool` 解析接入；不改 native 行为）。
-- T3b→T3c→T3d 必须**按序**：先有解析访问器，才能移除 `recommend_shizuku` 与改 HOCON T/F；UI 最后消费。
-- T4 在 T3d 之后（`Backend<StepSet>` 需要 `steps` 已能从 profile 正确到达）。
-- B2 可与 T3b–T3d 并行；A2-3c 是 S3 剩余项的前置。
+- **默认下一步 = B5-9h**：先在设备端跑 `avbcheck avb-verify --slot _a` + `check-all` 建立当前态；再冷机（KernelSU 未加载）→ 43499 取 root → `plan`（只读）→ `write` → `trigger` → `full`，每步前后跑 AVB/文件/verity 检查；异常 `alert`+`repair`。
+- 需要设备侧资产：`/system/lib64/libc++.so` 镜像、按真机 sentry 前导指令选 `hook_guard`、vendor 载体路径；`.ko` 预检已 PASS。
+- 真机通过后才翻转 `backend_available(43284)`/`terminal_available(UmhForward)` 并归档 `device-gates/`。
 - 每批门禁：host + NDK + lint；触攻击路径/公共契约加 `cmp_disasm` + 真机并归档；
-  `cmp_disasm` 按 ADR-0004 第九轮定位（必跑、记录差异理由、允许有理由的机器码变化）。
+  `cmp_disasm` 按 ADR-0004 第九轮定位（必跑、记录差异理由；`--reviewed` 现含 adrp 有效地址归一化）。
 
 ## 5. 当前基线
 
-- HEAD `93afccc`；工作树按批次提交；`build/native/ghostlock-B0` 为攻击函数基线。
+- HEAD 以 `git log -1` 为准；工作树按批次提交；`build/native/ghostlock-B0` 为攻击函数基线。
+- 备份/安全网：仓库外 `../ghostlock-device-backup`（22GB，26 分区 + 文件基线）；`tools/device-guard/`（guard）与 `tools/avbcheck/`（设备端）。
 - 已通过的整体真机证据：`P0-01`、`A3-01`、`A2-1`、`A2-2a`、`A2-2b`、`A2-2c`、`A2-2d`、`A2-2e`、`A2-3a`（第 3 次）、`A2-3b`、`B1b`、`T1`、`T3`（native）。
-- 设备：A301SO / `5.15.189-android13-8-00016-…-ab14546557`；冷机、固定 CPU 对 0/1；adb serial `QV770MFGJ1`。
+- 设备：A301SO / `5.15.189-android13-8-00016-…-ab14546557`；冷机、固定 CPU 对 0/1。
+- adb：USB 拔线后现走**无线调试**（`adb-QV770MFGJ1-XxNlpb…`）；USB serial 仍为 `QV770MFGJ1`。
 
 ## 6. 约束与保留
 
@@ -150,3 +169,4 @@
 
 - 2026-10-03：建立分支总 plan；合并 S1/S2/S3 顺序。
 - 2026-10-03：T1/T2/T3a 完成；T3 拆为 T3a–T3d，明确 **T3b→T3c→T3d→T4→T5** 的顺序；HOCON T/F + C++ bool 并入 T3c。
+- 2026-10-04：T3b/T3c/T3d/T4、GLKv3-1..5、B0–B8、B5-1..B5-9g 完成；安全网（分区备份 + AVB guard + 设备端 avbcheck）就绪；下一步收敛为 **B5-9h**（43284 真机收尾）。

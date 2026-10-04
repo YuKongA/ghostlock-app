@@ -11,6 +11,12 @@ import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.ipsec.AndroidIpsecSessionFactory
+import com.ghostlock.app.data.ipsec.IpsecSession
+import com.ghostlock.app.data.ipsec.IpsecSessionFactory
+import com.ghostlock.app.data.ipsec.IpsecSessionResult
+import com.ghostlock.app.data.profile.ChannelBStdin
+import com.ghostlock.app.data.profile.SessionSecretFrame
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.ExecutionMode
@@ -108,6 +114,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var executionMode = ExecutionMode.General
     private var pendingParsedDocument: PendingParsedDocument? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
+    /** Channel B (cve_2026_43284 only): builds the runtime IpSec SA. */
+    private val ipsecSessionFactory: IpsecSessionFactory = AndroidIpsecSessionFactory(appContext)
 
     init {
         buildCpuPairs()
@@ -443,12 +451,41 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                         profileBlob
                     }
                     dumpRuntimeProfile(archivedLog, writeSidecar, release, pair, runtimeBlob)
-                    archivedLog("<b> starting UserService")
-                    resetRunState()
-                    shizukuRunner.run(
-                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
-                    ) { step, status ->
-                        if (status == "disabled") clearRunState() else applyRunStatus(step, status)
+                    /* Channel B: only cve_2026_43284 consumes a session frame.
+                     * Every other backend sends the GLKv3 document alone, so its
+                     * bytes and stdin behavior are unchanged. */
+                    var channelBSession: IpsecSession? = null
+                    try {
+                        val sessionFrame = if (ChannelBStdin.requiresSessionFrame(backendKind)) {
+                            when (val result = ipsecSessionFactory.create()) {
+                                is IpsecSessionResult.Ready -> {
+                                    channelBSession = result.session
+                                    archivedLog("<s> ipsec SA ready (spi/ports present, keys withheld)")
+                                    SessionSecretFrame.encodeFramed(result.session.secrets)
+                                }
+
+                                is IpsecSessionResult.Failure -> {
+                                    archivedLog(
+                                        "<s> error: cannot establish ipsec SA: " +
+                                            result.reason +
+                                            (result.detail?.let { " ($it)" } ?: ""),
+                                    )
+                                    return@withDebugAttackLog 1
+                                }
+                            }
+                        } else {
+                            ByteArray(0)
+                        }
+                        archivedLog("<b> starting UserService")
+                        resetRunState()
+                        shizukuRunner.run(
+                            pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
+                            sessionFrame = sessionFrame,
+                        ) { step, status ->
+                            if (status == "disabled") clearRunState() else applyRunStatus(step, status)
+                        }
+                    } finally {
+                        channelBSession?.close()
                     }
                 }
             }

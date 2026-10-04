@@ -43,8 +43,15 @@ int32_t main(void) {
                                            TerminalKind::RootChild}));
     assert(!pipeline::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
                                            TerminalKind::UmhForward}));
+    /* B5-8: the 43284 triple is catalogued (wired) but its backend is not
+     * device-verified, so the availability gate stays false. */
+    assert(!pipeline::selection_supported({BackendKind::Cve2026_43284,
+                                           StepSetKind::PageCacheWrite,
+                                           TerminalKind::UmhForward}));
 
-    /* combination_supported is THE dispatch authority: exactly one triple. */
+    /* combination_supported is THE catalogue/dispatch authority: every wired
+     * triple has a DispatchTarget, and only selection_supported() says whether it
+     * may run. */
     const TerminalKind terminals[] = {TerminalKind::RootChild, TerminalKind::UmhForward};
     const BackendKind backends[] = {
         BackendKind::Cve2026_43499, BackendKind::Cve2026_64560, BackendKind::Cve2026_31431,
@@ -57,21 +64,33 @@ int32_t main(void) {
             for (TerminalKind t : terminals) {
                 const pipeline::ComponentSelection s{b, st, t};
                 if (pipeline::combination_supported(s)) {
-                    catalogued++;
-                    assert(pipeline::selection_supported(s));
+                    /* Catalogued/wired, not necessarily device-verified: the
+                     * 43284 triple is wired for B5-8 coverage while
+                     * selection_supported() keeps it fail-closed. */
+                    ++catalogued;
+                    assert(pipeline::dispatch_target(s) !=
+                           pipeline::DispatchTarget::None);
                 }
                 assert((pipeline::dispatch_target(s) != pipeline::DispatchTarget::None) ==
                        pipeline::combination_supported(s));
             }
         }
     }
-    assert(catalogued == 2);
+    assert(catalogued == 3);
     assert(pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W3, TerminalKind::RootChild}));
     assert(pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W2, TerminalKind::RootChild}));
+    assert(pipeline::combination_supported(
+        {BackendKind::Cve2026_43284, StepSetKind::PageCacheWrite,
+         TerminalKind::UmhForward}));
     assert(!pipeline::combination_supported(
         {BackendKind::Cve2026_43499, StepSetKind::W1W3, TerminalKind::UmhForward}));
+    assert(!pipeline::combination_supported(
+        {BackendKind::Cve2026_43284, StepSetKind::W1W3, TerminalKind::UmhForward}));
+    assert(!pipeline::combination_supported(
+        {BackendKind::Cve2026_43284, StepSetKind::PageCacheWrite,
+         TerminalKind::RootChild}));
     assert(!pipeline::combination_supported(
         {BackendKind::Cve2026_64560, StepSetKind::W1W3, TerminalKind::RootChild}));
 
@@ -89,6 +108,21 @@ int32_t main(void) {
     static_assert(pipeline::dispatch_target_of(
                       BackendKind::Cve2026_43499, StepSetKind::W1W3,
                       TerminalKind::UmhForward) ==
+                  pipeline::DispatchTarget::None);
+    /* B5-8: the 43284 triple has a dispatch target even though it stays
+     * unavailable; dispatch reaches the wired branch, the orchestrator gate
+     * rejects it before running. */
+    assert(pipeline::dispatch_target(
+               {BackendKind::Cve2026_43284, StepSetKind::PageCacheWrite,
+                TerminalKind::UmhForward}) ==
+           pipeline::DispatchTarget::Cve43284PageCache_UmhForward);
+    static_assert(pipeline::dispatch_target_of(
+                      BackendKind::Cve2026_43284, StepSetKind::PageCacheWrite,
+                      TerminalKind::UmhForward) ==
+                  pipeline::DispatchTarget::Cve43284PageCache_UmhForward);
+    static_assert(pipeline::dispatch_target_of(
+                      BackendKind::Cve2026_43284, StepSetKind::PageCacheWrite,
+                      TerminalKind::RootChild) ==
                   pipeline::DispatchTarget::None);
 
     assert(pipeline::terminal_name(TerminalKind::RootChild) == "root_child");

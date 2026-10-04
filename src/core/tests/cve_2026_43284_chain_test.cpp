@@ -47,13 +47,17 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
     using ghostlock::backend::cve_2026_43284::steps::run_chain;
     using ghostlock::backend::cve_2026_43284::steps::valid_carrier_path;
+    using ghostlock::backend::cve_2026_43284::steps::valid_dev_carrier_path;
 
     enum class Op : std::uint8_t {
         BuildPlan = 0U,
+        CrashDump,
         Read,
         Write,
+        Hook,
         Trigger,
         Wait,
+        Restore,
         Release,
     };
 
@@ -73,6 +77,8 @@ namespace {
         int read_calls = 0;
         int write_calls = 0;
         std::uint32_t release_calls = 0U;
+        ChainError patch_crash_dump_error = ChainError::None;
+        ChainError apply_hook_error = ChainError::None;
         std::array<std::uint8_t, 32> secret{};
 
         PatchPlan planned_plan{};
@@ -182,6 +188,23 @@ namespace {
         }
     }
 
+    ChainError fake_patch_crash_dump(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::CrashDump);
+        return g.patch_crash_dump_error;
+    }
+
+    ChainError fake_apply_hook(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::Hook);
+        return g.apply_hook_error;
+    }
+
+    void fake_restore_hook(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::Restore);
+    }
+
     ChainOps make_ops() noexcept {
         ChainOps ops{};
         ops.write.ctx = &g;
@@ -190,6 +213,14 @@ namespace {
         ops.trigger = fake_trigger;
         ops.wait_result = fake_wait;
         ops.release = fake_release;
+        return ops;
+    }
+
+    ChainOps make_ops_full() noexcept {
+        ChainOps ops = make_ops();
+        ops.patch_crash_dump = fake_patch_crash_dump;
+        ops.apply_hook = fake_apply_hook;
+        ops.restore_hook = fake_restore_hook;
         return ops;
     }
 
@@ -208,6 +239,19 @@ namespace {
         assert(!valid_carrier_path("/system/lib64/libc++.so"));
         assert(!valid_carrier_path("/vendor/lib64/bad path.so"));
         assert(!valid_carrier_path("/vendor/lib64/bad\tname.so"));
+
+        /* Dev-only relaxation: the same structural checks without the
+         * /vendor prefix. Relative, empty, whitespace-bearing and over-long
+         * paths stay rejected. */
+        assert(valid_dev_carrier_path("/data/local/tmp/ghostlock-dev.bin"));
+        assert(valid_dev_carrier_path("/vendor/lib64/libbinderdebug.so"));
+        assert(valid_dev_carrier_path("/system/lib64/libc++.so"));
+        assert(!valid_dev_carrier_path(""));
+        assert(!valid_dev_carrier_path("data/local/tmp/x"));
+        assert(!valid_dev_carrier_path("/data/local/tmp/bad path.so"));
+        assert(!valid_dev_carrier_path("/data/local/tmp/bad\tname.so"));
+        assert(!valid_dev_carrier_path(
+                "/data/local/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bin"));
 
         CarrierTarget only[2] = {
             {"/vendor/lib64/primary.so", 4096U},
@@ -235,6 +279,47 @@ namespace {
         CarrierList empty{};
         assert(build_carrier_list(nullptr, 0U, empty));
         assert(empty.count == kDefaultCarriers.size());
+    }
+
+    /* ---- dev-only staged-run hatch: non-vendor carrier accepted only when
+     *      the request opts in; the default stays fail-closed ---- */
+
+    void test_dev_carrier_escape() {
+        reset();
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x5AU);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "dev"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/data/local/tmp/ghostlock-dev.bin", 0U}};
+
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+        ChainOps ops = make_ops();
+        ChainWorkspace workspace{};
+        ChainResult result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::NoCarrier);
+        assert(result.blocks_written == 0U);
+        assert(g.write_calls == 0);
+        assert(g.release_calls == 1U);
+        assert(workspace.carrier_attempt_count == 1U);
+        assert(workspace.carrier_attempts[0].error == ChainError::CarrierUnusable);
+
+        reset();
+        request.allow_dev_carrier_path = true;
+        workspace = ChainWorkspace{};
+        result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::None);
+        assert(result.blocks_written == 1U);
+        assert(result.blocks_verified == 1U);
+        assert(result.carrier == &carriers[0]);
+        assert(result.cleanup_ran);
+        assert(g.write_calls == 1);
+        assert(g.release_calls == 1U);
+        for (std::size_t i = 0U; i < payload.size(); ++i) {
+            assert(g.file[i] == 0x5AU);
+        }
     }
 
     /* ---- happy path: stage order, per-block verify, terminus ---- */
@@ -289,6 +374,85 @@ namespace {
             assert(g.file[64U + i] == payload_b[i]);
         }
         assert(g.file[32U] == 0U);
+    }
+
+    /* ---- patch #1 / hook ordering, failure propagation and restore. ---- */
+
+    void test_hook_stage_order() {
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x5AU);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "h"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/libbinderdebug.so", 0U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        /* success: patch #1 -> carrier write/verify -> hook -> trigger -> wait
+         * -> restore -> release. */
+        reset();
+        {
+            ChainOps ops = make_ops_full();
+            ChainWorkspace workspace{};
+            const ChainResult result = run_chain(request, ops, workspace);
+            assert(result.error == ChainError::None);
+            assert(result.crash_dump_patched);
+            assert(result.hook_applied);
+            assert(result.hook_restored);
+            assert(events_are({Op::CrashDump, Op::Read, Op::Write, Op::Read,
+                               Op::Hook, Op::Trigger, Op::Wait, Op::Restore,
+                               Op::Release}));
+        }
+
+        /* patch #1 failure: no carrier write, no hook, but restore + release
+         * still run (unconditional terminus). */
+        reset();
+        g.patch_crash_dump_error = ChainError::CrashDumpFailed;
+        {
+            ChainOps ops = make_ops_full();
+            ChainWorkspace workspace{};
+            const ChainResult result = run_chain(request, ops, workspace);
+            assert(result.error == ChainError::CrashDumpFailed);
+            assert(!result.crash_dump_patched);
+            assert(!result.hook_applied);
+            assert(!result.lkm_loaded);
+            assert(g.release_calls == 1U);
+            assert(events_are({Op::CrashDump, Op::Restore, Op::Release}));
+        }
+
+        /* hook apply failure: the carrier write happened, no trigger, and the
+         * terminus still restores and releases. */
+        reset();
+        g.apply_hook_error = ChainError::HookFailed;
+        {
+            ChainOps ops = make_ops_full();
+            ChainWorkspace workspace{};
+            const ChainResult result = run_chain(request, ops, workspace);
+            assert(result.error == ChainError::HookFailed);
+            assert(result.crash_dump_patched);
+            assert(!result.hook_applied);
+            assert(result.hook_restored);
+            assert(events_are({Op::CrashDump, Op::Read, Op::Write, Op::Read,
+                               Op::Hook, Op::Restore, Op::Release}));
+        }
+
+        /* the dev-only escape hatch must not patch crash_dump64. */
+        reset();
+        {
+            ChainRequest dev = request;
+            dev.allow_dev_carrier_path = true;
+            CarrierTarget dev_carriers[1] = {{"/data/local/tmp/x.bin", 0U}};
+            dev.carriers = dev_carriers;
+            ChainOps ops = make_ops_full();
+            ChainWorkspace workspace{};
+            const ChainResult result = run_chain(dev, ops, workspace);
+            assert(result.error == ChainError::None);
+            assert(!result.crash_dump_patched);
+            assert(result.hook_applied);
+            assert(events_are({Op::Read, Op::Write, Op::Read, Op::Hook,
+                               Op::Trigger, Op::Wait, Op::Restore, Op::Release}));
+        }
     }
 
     /* ---- carrier fallback: first unusable, second succeeds ---- */
@@ -643,11 +807,129 @@ namespace {
         assert(g.file[0] == 0x99U);
     }
 
+    /* ---- target boundary assert: a region past target_size writes nothing ---- */
+
+    void test_target_out_of_bounds() {
+        reset();
+        std::array<std::uint8_t, 32> payload{};
+        payload.fill(0x5AU);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "oob"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 64U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+        /* The region spans [0, 32); the file is only 16 bytes. */
+        request.target_size = 16U;
+
+        ChainOps ops = make_ops();
+        ChainWorkspace workspace{};
+        const ChainResult result = run_chain(request, ops, workspace);
+
+        assert(result.error == ChainError::TargetOutOfBounds);
+        assert(result.blocks_written == 0U);
+        assert(g.write_calls == 0);
+        assert(g.read_calls == 0);
+        assert(g.release_calls == 1U);
+        assert(events_are({Op::Release}));
+    }
+
+    /* ---- region closure: overlap and declared extent are rejected pre-write ---- */
+
+    void test_region_closure() {
+        reset();
+        std::array<std::uint8_t, 16> a{};
+        std::array<std::uint8_t, 16> b{};
+        a.fill(0x11U);
+        b.fill(0x22U);
+        PatchRegion overlap[2] = {
+            {0U, a.data(), a.size(), true, true, "a"},
+            {8U, b.data(), b.size(), true, true, "b"},
+        };
+        PatchPlan plan{overlap, 2U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 64U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        ChainOps ops = make_ops();
+        ChainWorkspace workspace{};
+        ChainResult result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::InvalidPlan);
+        assert(result.blocks_written == 0U);
+        assert(g.write_calls == 0);
+        assert(g.read_calls == 0);
+        assert(events_are({Op::Release}));
+
+        /* Declared plan extent smaller than the single region. */
+        reset();
+        PatchRegion big{0U, a.data(), 32U, true, true, "big"};
+        PatchPlan declared{&big, 1U, 16U};
+        request.plan = declared;
+        ops = make_ops();
+        workspace = ChainWorkspace{};
+        result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::InvalidPlan);
+        assert(g.write_calls == 0);
+        assert(events_are({Op::Release}));
+    }
+
+    /* ---- optional pre-image assert: match proceeds, mismatch is final ---- */
+
+    void test_preimage_assert() {
+        std::array<std::uint8_t, 32> payload{};
+        payload.fill(0x33U);
+        std::array<std::uint8_t, 32> expected{};
+        expected.fill(0x44U);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "pre"};
+        region.preimage = expected.data();
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 64U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        /* Match: the target already holds the declared original. The pre-image
+         * pass reads both blocks before the journal/write/verify loop. */
+        reset();
+        for (std::size_t i = 0U; i < expected.size(); ++i) {
+            g.file[i] = expected[i];
+        }
+        ChainOps ops = make_ops();
+        ChainWorkspace workspace{};
+        ChainResult result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::None);
+        assert(result.preimage_checked);
+        assert(result.blocks_written == 2U);
+        assert(result.blocks_verified == 2U);
+        assert(events_are({Op::Read, Op::Read,
+                           Op::Read, Op::Write, Op::Read,
+                           Op::Read, Op::Write, Op::Read,
+                           Op::Trigger, Op::Wait, Op::Release}));
+
+        /* Mismatch: no byte is written and the failure is final. */
+        reset();
+        ops = make_ops();
+        workspace = ChainWorkspace{};
+        result = run_chain(request, ops, workspace);
+        assert(result.error == ChainError::PreImageMismatch);
+        assert(!result.preimage_checked);
+        assert(result.blocks_written == 0U);
+        assert(g.write_calls == 0);
+        assert(g.release_calls == 1U);
+        assert(events_are({Op::Read, Op::Release}));
+    }
+
 } // namespace
 
 int main() {
     test_carrier_paths();
+    test_dev_carrier_escape();
     test_success_order();
+    test_hook_stage_order();
     test_carrier_fallback();
     test_all_carriers_unusable();
     test_write_failure_rollback();
@@ -657,6 +939,9 @@ int main() {
     test_early_returns();
     test_build_plan_injection();
     test_journal_overflow();
+    test_target_out_of_bounds();
+    test_region_closure();
+    test_preimage_assert();
 
     std::puts("cve_2026_43284_chain_test: OK");
     return 0;

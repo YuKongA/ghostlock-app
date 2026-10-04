@@ -39,8 +39,10 @@ namespace ghostlock::pipeline::terminal {
 
     struct UmhForwardTerminal final {
         static constexpr TerminalKind kind = TerminalKind::UmhForward;
+        /* B5-8 landed the execution policy; availability still reflects the
+         * missing device-verified kernel UMH channel (B5-9), not missing code. */
         static constexpr std::string_view unavailable_reason =
-            "umh_forward terminal is not implemented";
+            "umh_forward terminal is not device-verified";
     };
 
     /* Declarations must match the catalog authority. */
@@ -59,10 +61,11 @@ namespace ghostlock::pipeline {
         { F::kind } -> std::convertible_to<TerminalKind>;
     };
 
-    /* Unified terminal interface (ADR-0004 R19): an available terminal declares
-     * its Input (derived from TerminalInput), its ActivationContext, and the step
-     * that launches the App-selected RootProgram. Identity without a step is a
-     * declaration-only placeholder (e.g. umh_forward before its execution lands). */
+    /* Unified terminal interface (ADR-0004 R19): every terminal declares its
+     * Input (derived from TerminalInput), its ActivationContext, and the step
+     * that launches the App-selected RootProgram. Both current terminals provide
+     * the step; availability is still owned separately by the catalogue, so a
+     * terminal can satisfy this contract while remaining unavailable. */
     template <class F>
     concept TerminalExecution = TerminalIdentity<F> &&
         requires {

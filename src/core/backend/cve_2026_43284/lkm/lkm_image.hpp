@@ -17,6 +17,7 @@
 
 #include "backend/cve_2026_43284/lkm/lkm_policy.hpp"
 #include "terminal/root_program.hpp"
+#include "terminal/umh_command.hpp"
 
 #include <array>
 #include <cstddef>
@@ -25,26 +26,14 @@
 
 namespace ghostlock::backend::cve_2026_43284::lkm {
 
-    inline constexpr std::size_t kUmhMaxArgc = 8U;
-    inline constexpr std::size_t kUmhArgBytes = 96U;
+    /* The argv surface is terminal-neutral (R1/R19): the type and its bounds
+     * live in terminal/umh_command.hpp and the backend names them here so the
+     * lkm policy keeps its existing vocabulary. */
+    using UmhCommand = terminal::UmhCommand;
+    inline constexpr std::size_t kUmhMaxArgc = terminal::kUmhMaxArgc;
+    inline constexpr std::size_t kUmhArgBytes = terminal::kUmhArgBytes;
     inline constexpr std::size_t kModuleMinBytes = 64U;
     inline constexpr std::size_t kModuleMaxBytes = std::size_t{64U} * 1024U * 1024U;
-
-    /* call_usermodehelper-style argv plus the SELinux exec context selected for
-     * the transition. argv entries are NUL-terminated and one spare slot is
-     * always kept for the kernel's NULL terminator. */
-    struct UmhCommand final {
-        std::array<std::array<char, kUmhArgBytes>, kUmhMaxArgc> argv{};
-        std::size_t argc = 0;
-        std::uint32_t selinux_exec_context = 0;
-
-        [[nodiscard]] std::string_view arg(std::size_t index) const noexcept {
-            if (index >= argc) {
-                return {};
-            }
-            return std::string_view(argv[index].data());
-        }
-    };
 
     enum class UmhCommandError : std::uint8_t {
         None = 0,

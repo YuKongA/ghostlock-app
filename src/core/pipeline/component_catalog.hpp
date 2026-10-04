@@ -64,8 +64,11 @@ namespace ghostlock::pipeline {
                kind == MiddlewareKind::MulticastWaiter;
     }
 
-    /* Per-id availability pre-check; says nothing about whether the triple is a
-     * catalogued pipeline. */
+    /* Per-axis availability pre-check: the runtime fail-closed gate, and the
+     * only fact that says a selection may actually run on this build/device.
+     * backend_available(Cve2026_43284) stays false until the B5-9 device gate
+     * even though the 43284 triple is catalogued below; the composition root
+     * checks this before dispatch, so catalogued-but-unverified never runs. */
     [[nodiscard]] constexpr bool selection_supported(
         const ComponentSelection &selection) noexcept {
         return backend_available(selection.backend) &&
@@ -73,18 +76,28 @@ namespace ghostlock::pipeline {
                terminal_available(selection.terminal);
     }
 
-    /* THE dispatch authority: the exact (backend, steps, terminal) triples the
-     * orchestrator can enumerate and run. Route is chosen by the backend from
-     * the profile, so it is not part of this catalogue. Adding a component
+    /* THE dispatch authority: the exact (backend, steps, terminal) triples wired
+     * into DispatchTarget and the orchestrator switch. This is the *catalogue*:
+     * a triple is listed once it has a compile-time Pipeline instantiation and an
+     * orchestrator case, independent of whether its backend is device-verified.
+     * The orchestrator additionally requires selection_supported(), so wiring a
+     * triple here does not make it runnable -- the two predicates answer
+     * different questions (wired vs. verified). Route is chosen by the backend
+     * from the profile, so it is not part of this catalogue. Adding a component
      * updates this catalogue and the orchestrator switch together; the host test
      * asserts the two never diverge. This is a sparse enumeration, never a dense
      * product (ADR-0004 R21). */
     [[nodiscard]] constexpr bool combination_supported(
         const ComponentSelection &selection) noexcept {
-        return selection.backend == BackendKind::Cve2026_43499 &&
-               (selection.steps == StepSetKind::W1W3 ||
-                selection.steps == StepSetKind::W1W2) &&
-               selection.terminal == TerminalKind::RootChild;
+        if (selection.backend == BackendKind::Cve2026_43499 &&
+            (selection.steps == StepSetKind::W1W3 ||
+             selection.steps == StepSetKind::W1W2) &&
+            selection.terminal == TerminalKind::RootChild) {
+            return true;
+        }
+        return selection.backend == BackendKind::Cve2026_43284 &&
+               selection.steps == StepSetKind::PageCacheWrite &&
+               selection.terminal == TerminalKind::UmhForward;
     }
 
     /* Dispatch target for one catalogued triple. Pipeline exposes it as
@@ -94,6 +107,9 @@ namespace ghostlock::pipeline {
         None,
         Cve43499W1W3_RootChild,
         Cve43499W1W2_RootChild,
+        /* B5-8: wired for compile-time/orchestrator coverage; the backend stays
+         * unavailable (selection_supported false) until the B5-9 device gate. */
+        Cve43284PageCache_UmhForward,
     };
 
     [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
@@ -105,6 +121,11 @@ namespace ghostlock::pipeline {
         if (backend == BackendKind::Cve2026_43499 && steps == StepSetKind::W1W2 &&
             terminal == TerminalKind::RootChild) {
             return DispatchTarget::Cve43499W1W2_RootChild;
+        }
+        if (backend == BackendKind::Cve2026_43284 &&
+            steps == StepSetKind::PageCacheWrite &&
+            terminal == TerminalKind::UmhForward) {
+            return DispatchTarget::Cve43284PageCache_UmhForward;
         }
         return DispatchTarget::None;
     }

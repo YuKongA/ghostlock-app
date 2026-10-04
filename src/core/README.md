@@ -5,8 +5,9 @@
 The execution chain is composed from three component kinds, fixed at compile
 time by `Pipeline<Terminal, Backend, Middleware>`:
 
-- **terminal** - startup/handoff (`root_child`; `umh_forward` is a declared but
-  unavailable placeholder in `terminal_contract.hpp`).
+- **terminal** - startup/handoff (`root_child`; `umh_forward` landed its
+  execution policy in B5-8 but is not device-verified, so it stays unavailable in
+  `terminal_contract.hpp`).
 - **backend** - the vulnerability primitive and its write stages
   (`cve_2026_43499`; `cve_2026_64560` / `cve_2026_31431` / `cve_2026_43503` /
   `cve_2026_23274` are header-only unavailable placeholders).
@@ -15,9 +16,9 @@ time by `Pipeline<Terminal, Backend, Middleware>`:
 
 Where the pieces live:
 
-- `pipeline/component_catalog.hpp` - component ids, availability and the single
-  dispatch authority: `combination_supported()`, `DispatchTarget` and
-  `dispatch_target_of()`.
+- `pipeline/component_catalog.hpp` - component ids, per-axis availability
+  (`selection_supported()`, the runtime fail-closed gate) and the wired dispatch
+  catalogue (`combination_supported()`, `DispatchTarget`, `dispatch_target_of()`).
 - `pipeline/backend_policy.hpp` / `pipeline/backend_contract.hpp` - the declared
   backend identities plus the `BackendIdentity` / `BackendExecution<B, Input>`
   concepts and the identity registry (`for_each_backend`).

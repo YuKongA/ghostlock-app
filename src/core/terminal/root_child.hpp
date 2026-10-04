@@ -31,20 +31,9 @@ namespace ghostlock::terminal {
         [[nodiscard]] static StageResult run(CoreSession &session, Input &child);
     };
 
-    /* umh_forward is still declaration-only (no run); its Input/activation are
-     * declared so the unified interface is fixed before the execution lands. */
-    struct UmhForwardPolicy final {
-        static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::UmhForward;
-        using Input = UmhForwardInput;
-        static constexpr ActivationContext activation = ActivationContext::KernelSpawned;
-    };
-
     static_assert(RootChildPolicy::kind == pipeline::terminal::RootChildTerminal::kind);
-    static_assert(UmhForwardPolicy::kind == pipeline::terminal::UmhForwardTerminal::kind);
     static_assert(pipeline::TerminalIdentity<RootChildPolicy>);
     static_assert(pipeline::TerminalExecution<RootChildPolicy>);
-    static_assert(pipeline::TerminalIdentity<UmhForwardPolicy>);
-    static_assert(!pipeline::TerminalExecution<UmhForwardPolicy>);
 } // namespace ghostlock::terminal
 
 #endif

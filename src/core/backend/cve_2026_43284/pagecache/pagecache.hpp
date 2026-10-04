@@ -69,6 +69,14 @@ namespace ghostlock::backend::cve_2026_43284 {
         std::uint32_t next_seq = 1U;
         int pipe_flags = 0;
         pagecache::SpliceIoOps io{};
+        /* Optional alternate source for the old 16-byte block. Unbound keeps
+         * the direct file_fd read; vendor carriers bind the crash_dump bridge
+         * here after the direct read fails (real_ops.cpp). */
+        pagecache::OldPageSource old_page{};
+        /* Optional alternate source for the ciphertext page. Unbound keeps the
+         * direct file_fd splice; a vendor carrier the App cannot open at all
+         * binds the crash_dump helper here (real_ops.cpp). */
+        pagecache::HelperWriteSource helper_write{};
         PageCacheWriteStats stats{};
     };
 

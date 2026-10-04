@@ -1,0 +1,19 @@
+# ghostlock files baseline v1 (TSV, columns below)
+# serial=QV770MFGJ1
+# date=2026-10-04T03:09:04Z
+# columns=path	class	status	size	sha256	source
+# device=A301SO
+# model=A301SO
+# release=15
+# fingerprint=Sony/A301SO/A301SO:15/67.2.A.3.178/067002A003017800602211349:user/release-keys
+# verifiedbootstate=green
+# slot=_a
+# note=read through page cache (su cat PATH | sha256sum)
+# scope= /apex/com.android.runtime/bin/crash_dump64|fixed /system/lib64/libc++.so|fixed /vendor/lib64/libbinderdebug.so|vendor /vendor/lib64/libstagefrighthw.so|vendor /vendor/lib64/libstagefright_aidl_bufferpool2.so|vendor /vendor/lib64/libbsp_module.so|vendor /vendor/lib64/libCB.so|vendor-scan
+/apex/com.android.runtime/bin/crash_dump64	fixed	ok	482904	15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066	device:QV770MFGJ1:/apex/com.android.runtime/bin/crash_dump64
+/system/lib64/libc++.so	fixed	ok	1083168	794eb8fafd7be35da3725e9ec0b15189c6f4f2544f5b78afd8a647dde5b69195	device:QV770MFGJ1:/system/lib64/libc++.so
+/vendor/lib64/libbinderdebug.so	vendor	ok	109688	576875bd2b82e166f1c0758c7f27b9a18881df1e09a9b6556d48157c76ef5e2c	device:QV770MFGJ1:/vendor/lib64/libbinderdebug.so
+/vendor/lib64/libstagefrighthw.so	vendor	ok	27768	f10b42ef97da79dcd3dd9c4d8dd52c3b9e9187f0f842f24d525bbc1d989f1d7a	device:QV770MFGJ1:/vendor/lib64/libstagefrighthw.so
+/vendor/lib64/libstagefright_aidl_bufferpool2.so	vendor	absent	-	-	device:QV770MFGJ1:/vendor/lib64/libstagefright_aidl_bufferpool2.so
+/vendor/lib64/libbsp_module.so	vendor	absent	-	-	device:QV770MFGJ1:/vendor/lib64/libbsp_module.so
+/vendor/lib64/libCB.so	vendor-scan	ok	2778840	dd9b5f6dd062b7bf8ad5ebe83f98306b2898a4a7306d78ae44c431e3b83e2a28	device:QV770MFGJ1:/vendor/lib64/libCB.so

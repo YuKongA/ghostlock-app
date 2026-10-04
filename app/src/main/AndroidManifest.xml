@@ -28,6 +28,14 @@
             android:name=".shizuku.GhostlockUserService"
             android:exported="false"
             tools:ignore="Instantiatable" />
+        <!-- Explicit adb-only cve_2026_43284 staged entry (debug builds only;
+             disabled in release via the bool override). Never shown in the UI. -->
+        <activity
+            android:name=".dev.DevCve43284Activity"
+            android:enabled="@bool/dev_cve_43284_enabled"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true" />
         <activity
             android:name=".ui.MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
