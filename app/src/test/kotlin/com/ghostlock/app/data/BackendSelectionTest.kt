@@ -3,6 +3,8 @@ package com.ghostlock.app.data
 import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.data.profile.Glkv3Value
 import com.ghostlock.app.domain.model.CpuPair
@@ -30,7 +32,11 @@ class BackendSelectionTest {
     private val release = "6.1.118-android14-11-ga3b9c44908dd-ab13320413"
     private val pair = CpuPair(primary = 0, consumer = 1)
 
-    private fun controller(name: String, backend: BackendKind): Pair<AndroidProfileConfigController, File> {
+    private fun controller(
+        name: String,
+        backend: BackendKind,
+        combination: CombinationSpec? = null,
+    ): Pair<AndroidProfileConfigController, File> {
         val root = Files.createTempDirectory(name).toFile()
         val controller = AndroidProfileConfigController(
             context = context,
@@ -41,6 +47,7 @@ class BackendSelectionTest {
             ),
             preferences = context.getSharedPreferences(name, 0).also { it.edit().clear().commit() },
             backendSelection = { backend },
+            combinationSelection = combination?.let { combo -> { combo } },
         )
         return controller to root
     }
@@ -77,7 +84,30 @@ class BackendSelectionTest {
                 .first { it.name == "backend.cve_2026_43284" }
                 .entries.first { it.key == "steps" }
                 .value
-            assertEquals(Glkv3Value.UInt(3uL), steps)
+            assertEquals(Glkv3Value.Str("umh"), steps)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `combination token reaches the wire as exactly one string and derives route and terminal`() = runBlocking {
+        val (controller, root) = controller(
+            "combination-selection",
+            BackendKind.Cve2026_43499,
+            requireNotNull(CombinationCatalog.resolve("pselect_shizuku")) { "pselect_shizuku" },
+        )
+        try {
+            val config = controller.load(release, pair)
+            assertTrue(config.hasProfile)
+            val decoded = requireNotNull(Glkv3Decoder.decode(requireNotNull(controller.nativeDocument(config))))
+            assertEquals("cve_2026_43499", decoded.backend)
+            /* The token derives the root terminal and route. */
+            assertEquals("root_child", decoded.terminal)
+            assertEquals("select_stack", decoded.route)
+            val steps = decoded.sections.flatMap { it.entries }.filter { it.key == "steps" }
+            assertEquals("exactly one token may ride the wire", 1, steps.size)
+            assertEquals(Glkv3Value.Str("pselect_shizuku"), steps.single().value)
         } finally {
             root.deleteRecursively()
         }

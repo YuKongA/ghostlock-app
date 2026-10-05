@@ -26,6 +26,12 @@ int32_t main(void) {
         assert(profile::kRouteCatalog[i].wire == expected[i].wire);
         assert(profile::route_kind_from_string(expected[i].token) == expected[i].wire);
     }
+    /* F3: None (no route axis) is deliberately not a catalogue route, and an
+     * unknown token resolves to it instead of the deprecated legacy Auto. */
+    assert(profile::route_kind_from_string("none") == profile::kRouteNone);
+    assert(profile::route_kind_from_string("not_a_route") == profile::kRouteNone);
+    assert(profile::kRouteNone != profile::kRouteAuto);
+    assert(static_cast<uint8_t>(profile::RouteKind::None) == profile::kRouteNone);
     puts("route_catalog_test: ok");
     return 0;
 }

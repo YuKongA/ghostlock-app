@@ -10,7 +10,7 @@
  * invocations and this test proves the count stays zero. */
 
 #include "plugin/loader.hpp"
-#include "plugin/sha256.hpp"
+#include "support/sha256.hpp"
 
 #include "contract/countermeasure.hpp"
 #include "contract/abi/glk_contract_abi.h"
@@ -38,8 +38,8 @@ using ghostlock::plugin::LoaderOps;
 using ghostlock::plugin::LoadResult;
 using ghostlock::plugin::LoadStatus;
 using ghostlock::plugin::load_status_name;
-using ghostlock::plugin::sha256;
-using ghostlock::plugin::sha256_file;
+using ghostlock::support::sha256;
+using ghostlock::support::sha256_file;
 
 using ghostlock::contract::Capability;
 using ghostlock::contract::kHostImplementedCaps;

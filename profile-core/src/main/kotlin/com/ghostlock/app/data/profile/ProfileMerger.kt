@@ -98,19 +98,13 @@ object ProfileMerger {
         }
     }
 
-    /** deepMerge plus branch-replacement semantics for route/fallback.route. */
+    /** deepMerge plus branch-replacement semantics for the selected route. */
     private fun mergeSource(base: ValueMap, incoming: ValueMap?): ValueMap {
         val baseRoute = base["route"].asValueMap()?.copyValue().asValueMap()
-        val baseFallbackRoute = base["fallback"].asValueMap()
-            ?.get("route").asValueMap()?.copyValue().asValueMap()
         val merged = deepMergeValues(base, incoming)
         if (incoming == null) return merged
         incoming["route"].asValueMap()?.let { route ->
             mergeRouteObjects(baseRoute, route)?.let { merged["route"] = it }
-        }
-        incoming["fallback"].asValueMap()?.get("route").asValueMap()?.let { fallbackRoute ->
-            val fallback = merged["fallback"].asValueMap() ?: return@let
-            mergeRouteObjects(baseFallbackRoute, fallbackRoute)?.let { fallback["route"] = it }
         }
         return merged
     }

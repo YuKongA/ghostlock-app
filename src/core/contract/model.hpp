@@ -48,16 +48,28 @@ namespace ghostlock::profile {
 
 
     /* Explicit route selection written by the profile ("route": "<name>").
-     * Geometry inference below exists only for profiles predating the field. */
+     *
+     * F3 (R6b v3 design patch 7.2): Auto is the LEGACY v1/v2 wire value 0,
+     * meaning "no explicit route, infer from geometry". It is deprecated: the
+     * v3 resolver never infers a route, and only the legacy decode paths may
+     * produce it. None is the current value for a backend WITHOUT a route axis
+     * (cve_2026_43284): no geometry is validated and no route policy is
+     * selected, which is a different fact from "route not chosen yet". */
     enum class RouteKind : uint8_t {
-        Auto = 0,
+        Auto [[deprecated("v1/v2 legacy route value; use RouteKind::None for a "
+                          "backend without a route axis")]] = 0,
         TcpZerocopy = 1,
         SelectStack = 2,
         MulticastWaiter = 3,
+        None = 4,
     };
 
-    /* Wire values for the v2 binary transport and the v1 JSON converter. */
-    inline constexpr uint8_t kRouteAuto = std::to_underlying(RouteKind::Auto);
+    /* Wire values for the legacy decode paths and the route catalogue.
+     * kRouteAuto is the v1/v2 value 0; it is deliberately spelled as a literal
+     * here so the legacy call sites it feeds compile without naming the
+     * deprecated enumerator. */
+    inline constexpr uint8_t kRouteAuto = 0;
+    inline constexpr uint8_t kRouteNone = std::to_underlying(RouteKind::None);
     inline constexpr uint8_t kRouteTcpZerocopy =
             std::to_underlying(RouteKind::TcpZerocopy);
     inline constexpr uint8_t kRouteSelectStack =
@@ -78,11 +90,15 @@ namespace ghostlock::profile {
         {"multicast_waiter", kRouteMulticastWaiter},
     };
 
+    /* Token -> wire value. A token that names no catalogue route resolves to
+     * kRouteNone ("this is not a route"); the GLKv3 resolver compares the
+     * result with the token's declared route and rejects a mismatch, so an
+     * unknown or absent route fails closed without a second sentinel. */
     [[nodiscard]] inline uint8_t route_kind_from_string(std::string_view name) {
         for (const RouteCatalogEntry &entry : kRouteCatalog) {
             if (name == entry.token) return entry.wire;
         }
-        return kRouteAuto;
+        return kRouteNone;
     }
 
     /* Wire v2 model objects, one per transport section. Signedness/width mirror
@@ -92,7 +108,6 @@ namespace ghostlock::profile {
      * meaningful). The wire carries presence by key occurrence. */
     struct ProfileMeta {
         uint8_t kernel_major = 0;
-        uint8_t fallback_route = 0;
         bool safe_mode = false;
     };
 
@@ -255,12 +270,9 @@ namespace ghostlock::profile {
 
         [[nodiscard]] bool loaded() const noexcept { return loaded_; }
 
+        /* An unloaded profile has no route: None, never the legacy Auto. */
         [[nodiscard]] RouteKind route() const noexcept {
-            return loaded_ ? static_cast<RouteKind>(values_.route) : RouteKind::Auto;
-        }
-
-        [[nodiscard]] RouteKind fallback_route() const noexcept {
-            return loaded_ ? static_cast<RouteKind>(values_.meta.fallback_route) : RouteKind::Auto;
+            return loaded_ ? static_cast<RouteKind>(values_.route) : RouteKind::None;
         }
 
         [[nodiscard]] bool supports(RouteKind kind) const noexcept {

@@ -37,6 +37,12 @@ namespace ghostlock::profile::glkv3 {
         Str,
         Bin,
         Array,
+        /* Union of the scalar kinds {uint,int,bool,str}, used by the S4 P1
+         * dynamic plugin paths (plugin.<id>.params.* / .extract.*) whose exact
+         * type is fixed by the plugin descriptor. The manifest writes the
+         * members explicitly as a "|"-separated union; a manifest type token
+         * outside the wire-kind vocabulary is rejected (fail-closed). */
+        Union,
     };
 
     [[nodiscard]] constexpr std::string_view wire_type_name(WireType type) noexcept {
@@ -47,8 +53,23 @@ namespace ghostlock::profile::glkv3 {
             case WireType::Str: return "str";
             case WireType::Bin: return "bin";
             case WireType::Array: return "array";
+            case WireType::Union: return "uint|int|bool|str";
         }
         return "unknown";
+    }
+
+    /* The union members of WireType::Union, in canonical order. The manifest
+     * "type" column may carry a "|"-separated union; every member must come
+     * from this list, and the parser rejects an unknown member. */
+    inline constexpr WireType kUnionScalarTypes[] = {
+        WireType::UInt, WireType::Int, WireType::Bool, WireType::Str,
+    };
+
+    [[nodiscard]] constexpr bool wire_type_is_union_member(WireType type) noexcept {
+        for (const WireType member : kUnionScalarTypes) {
+            if (member == type) return true;
+        }
+        return false;
     }
 
     inline constexpr uint64_t kSchemaVersion = 3u;

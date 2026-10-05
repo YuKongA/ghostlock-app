@@ -20,12 +20,17 @@ namespace ghostlock::backend::cve_2026_43284 {
 
     bool select_single_carrier(std::string_view path,
                                const platform::DeviceProbeOps &device,
-                               steps::CarrierTarget &out) noexcept {
+                               steps::CarrierTarget &out,
+                               bool allow_dev_path) noexcept {
         out = steps::CarrierTarget{};
         if (!path.empty()) {
             /* An explicit path comes straight from the profile; reject a
-             * malformed one fail-closed instead of writing somewhere else. */
-            if (!steps::valid_carrier_path(path)) {
+             * malformed one fail-closed instead of writing somewhere else. The
+             * --allow-dev-target safety switch widens the SHAPE rule to the
+             * non-vendor one-shot form (device gates only); it never bypasses
+             * the absolute/shape checks themselves. */
+            if (allow_dev_path ? !steps::valid_dev_carrier_path(path)
+                               : !steps::valid_carrier_path(path)) {
                 return false;
             }
             out.path = path;
@@ -207,6 +212,10 @@ namespace ghostlock::backend::cve_2026_43284 {
         /* Target size from the composition root's fstat(2) of the same carrier
          * fd; 0 == unknown keeps the carrier's declared size authoritative. */
         request.target_size = deps.target_size;
+        /* --allow-dev-target: the carrier was already chosen with the widened
+         * shape rule; the chain must validate it the same way and must not use
+         * the vendor-only crash_dump fallbacks for it. */
+        request.allow_dev_carrier_path = deps.allow_dev_carrier_path;
         /* The composition root's module write plan. A null plan leaves the
          * request plan empty, which validate_plan_closure() rejects before any
          * patch #1 / hook / trigger, so a missing module fails closed. */

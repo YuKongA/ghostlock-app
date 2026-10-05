@@ -1,6 +1,10 @@
 package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.plugin.PluginEmission
+import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.RouteConfig
@@ -25,7 +29,6 @@ data class NativeProfileDocument(
     val kernelMajor: UInt,
     /** Gate for the ancillary vr.ko guard (see docs/analysis/ancillary-controller-guide.md). */
     val vrGuard: UInt,
-    val fallbackRoute: UInt,
     val taskStruct: TaskStructOffsets,
     val cred: CredTemplate,
     val kernelOffset: KernelOffsetTable,
@@ -41,11 +44,12 @@ data class NativeProfileDocument(
     /** Route-specific configuration; never part of the shared schema. */
     val routeConfig: RouteConfig,
     /**
-     * StepSet id for the cve_2026_43499 backend (ADR-0004 R18), carried in the
-     * backend's own section. 0 = absent: the native selection rejects a missing
-     * StepSet instead of defaulting, and the app prompts the user to fill it.
+     * S4 R6b combination token selection (ADR-0006 T5). Carried as a string at
+     * backend.<id>.steps; it derives the route, step set and terminal. Null =
+     * no token: the native selection rejects a missing token instead of
+     * defaulting. [StepSetKind] survives only as the derived vocabulary.
      */
-    val steps: UInt = 0u,
+    val combination: CombinationSpec? = null,
     /**
      * Backend id carried in the logical document (native `kBackend*`). Defaults
      * to cve_2026_43499. [BackendWireCve202643284] selects the 43284 private
@@ -57,6 +61,12 @@ data class NativeProfileDocument(
      * [backendKind] is the 43284 id. Null means "no 43284 section".
      */
     val cve2026_43284: Cve2026_43284Config? = null,
+    /**
+     * P1: ENABLED plugins only (see [PluginEmission.of]). Empty means the
+     * document carries no `plugin.*` section at all, so every existing caller
+     * keeps byte-identical output.
+     */
+    val plugins: List<PluginEmission> = emptyList(),
 ) {
     internal fun sections(): List<Section> = buildList {
         add(
@@ -64,7 +74,6 @@ data class NativeProfileDocument(
                 "meta",
                 listOf(
                     "kernel_major" to kernelMajor.toULong(),
-                    "fallback_route" to fallbackRoute.toULong(),
                     "safe_mode" to safeMode.toULong(),
                 ) + listOfNotNull(vrGuard.takeIf { it != 0u }?.let { "vr_guard" to it.toULong() }),
             ),
@@ -200,16 +209,44 @@ data class NativeProfileDocument(
                 }
             }
         }
-        return out.filter { it.entries.isNotEmpty() || it.textEntries.isNotEmpty() }
+        if (plugins.isNotEmpty()) {
+            /* Canonical plugin shape (contract-design 3.14.7.5, plugin/schema.hpp,
+             * plugin/wire.cpp): ONE section named `plugin`, every key spelled
+             * `<id>.<field>` — the id may itself contain dots. The static fields
+             * are declared `plugin.<id>.{enabled,stage,module_path,module_hash}`
+             * (enabled is a bool) and the parameter values are typed by the
+             * descriptor. `extract.*` is NOT emitted here: it is the extractor
+             * projection, not an App runtime setting. */
+            val static = mutableListOf<Pair<String, String>>()
+            val dynamic = mutableListOf<Pair<String, PluginValue>>()
+            for (plugin in plugins) {
+                dynamic += plugin.id + ".enabled" to PluginValue.Bool(true)
+                plugin.stage?.let { static += plugin.id + ".stage" to it }
+                static += plugin.id + ".module_path" to plugin.modulePath
+                static += plugin.id + ".module_hash" to plugin.moduleHash
+                for (param in plugin.params) {
+                    dynamic += plugin.id + ".params." + param.name to param.value
+                }
+            }
+            out += Section(
+                name = "plugin",
+                entries = emptyList(),
+                textEntries = static,
+                pluginEntries = dynamic,
+            )
+        }
+        return out.filter {
+            it.entries.isNotEmpty() || it.textEntries.isNotEmpty() || it.pluginEntries.isNotEmpty()
+        }
     }
 
-    /** Backend-private StepSet section (cve_2026_43499); 43284 has its own. */
+    /** Backend-private combination token section (cve_2026_43499). */
     private fun backendSection(): Section? =
         if (backendKind == BackendWireCve202643284) {
             null
         } else {
-            steps.takeIf { it != 0u }?.let {
-                Section("backend.cve_2026_43499", listOf("steps" to it.toULong()))
+            combination?.takeIf { it.backend == BackendKind.Cve2026_43499 }?.let {
+                Section("backend.cve_2026_43499", emptyList(), listOf("steps" to it.token))
             }
         }
 
@@ -225,12 +262,14 @@ data class NativeProfileDocument(
             config.carrierPath?.let { add("carrier_path" to it) }
             config.lkmPath?.let { add("lkm_path" to it) }
             config.defexSymbol?.let { add("defex_symbol" to it) }
+            combination?.takeIf { it.backend == BackendKind.Cve2026_43284 }?.let {
+                add("steps" to it.token)
+            }
         }
         val entries = buildList {
             config.kmi?.let { add("kmi" to it.toULong()) }
             config.selinuxExecContext?.let { add("selinux_exec_context" to it) }
             config.lateLoadArgs?.let { add("late_load_args" to it) }
-            steps.takeIf { it != 0u }?.let { add("steps" to it.toULong()) }
             config.waitTimeoutMs?.let { add("wait_timeout_ms" to it.toULong()) }
             config.modulePollAttempts?.let { add("module_poll_attempts" to it.toULong()) }
             config.modulePollIntervalMs?.let { add("module_poll_interval_ms" to it.toULong()) }
@@ -326,7 +365,8 @@ data class NativeProfileDocument(
     }
 
     companion object {
-        fun routeKind(route: String?): UInt = RouteKind.fromToken(route)?.wire ?: 0u
+        fun routeKind(route: String?): UInt =
+            RouteKind.resolve(RouteKind.normalize(route))?.wire ?: 0u
 
         /**
          * Returns a canonical copy of the GLKv3 [document] with `common.safe_mode`
@@ -341,34 +381,49 @@ data class NativeProfileDocument(
         fun from(
             release: String,
             route: String?,
-            fallbackTo: String?,
             text: (String) -> String? = { null },
             bool: (String) -> Boolean? = { null },
             value: (String) -> Long?,
+            /** P1: enabled plugins only; empty keeps every caller byte-identical. */
+            plugins: List<PluginEmission> = emptyList(),
         ): NativeProfileDocument {
             fun vu(path: String): UInt = value(path)?.toUInt() ?: 0u
             fun vul(path: String): ULong = value(path)?.toULong() ?: 0uL
             fun vuOrNull(path: String): UInt? = value(path)?.toUInt()
             fun vulOrNull(path: String): ULong? = value(path)?.toULong()
+            /* S4 R6b: the combination token at backend.steps is the single
+             * selection source. It is resolved against the selected backend and
+             * derives the route / step set / terminal. An unknown token fails
+             * closed with the token text echoed. */
+            val backendKind = BackendKind.resolve(BackendKind.normalize(text("backend.kind")))
+                ?: BackendKind.Default
+            val combinationToken = text("backend.steps")
+            val combination = if (combinationToken == null) {
+                null
+            } else {
+                /* Accept both the canonical combination token and a legacy step
+                 * id (migrated through the declared route), mirroring the HOCON
+                 * migration; an unknown value fails closed with its text. */
+                CombinationCatalog.fromLegacySteps(
+                    backendKind, combinationToken, RouteKind.resolve(RouteKind.normalize(route)),
+                ) ?: throw IllegalArgumentException(
+                    "backend.steps is not a known combination token for " +
+                        "${backendKind.token}: $combinationToken",
+                )
+            }
+            /* The token derives the route, so the geometry lookup follows it
+             * rather than the independently declared profile route. */
+            val effectiveRoute = combination?.route?.token ?: route
+            val derivedRouteKind = combination?.let { it.route?.wire ?: 0u } ?: routeKind(route)
             /* Boolean HOCON flags prefer the bool accessor; the route branch is
              * consulted first (mirroring nativeValue), and a legacy numeric
              * spelling still decodes for imported v1 profiles. */
             fun flagAt(path: String): Boolean? {
-                route?.let { name -> bool("route.$name.$path")?.let { return it } }
-                if (fallbackTo != null && fallbackTo != "none") {
-                    bool("fallback.route.$fallbackTo.$path")?.let { return it }
-                }
+                effectiveRoute?.let { name -> bool("route.$name.$path")?.let { return it } }
                 return bool(path) ?: value(path)?.let { it != 0L }
             }
-            val routeConfig = RouteKind.fromToken(route)?.buildConfig(value) ?: NoRouteConfig
-            /* Backend selection is a profile/wire choice read from HOCON
-             * (`backend.kind`), consistent with the `backend.steps` token. An
-             * unavailable backend (43284 until its backend lands) fails closed to
-             * the 43499 default instead of building a document the orchestrator
-             * would reject; absent selection keeps the existing default and bytes. */
-            val backendKind = BackendKind.selectableOrFallback(
-                BackendKind.fromToken(text("backend.kind")),
-            )
+            val routeConfig = RouteKind.resolve(RouteKind.normalize(effectiveRoute))?.buildConfig(value)
+                ?: NoRouteConfig
             /* S4 R4: the 43284 policy paths and handshake tuning ride the same
              * dotted-path accessors. Only a 43284 selection builds the private
              * config; an absent key stays absent (no default is injected here,
@@ -394,10 +449,9 @@ data class NativeProfileDocument(
             }
             return NativeProfileDocument(
                 release = release,
-                routeKind = routeKind(route),
+                routeKind = derivedRouteKind,
                 kernelMajor = vu("kernel_major"),
                 vrGuard = if (flagAt("recommend_vr_guard") == true) 1u else 0u,
-                fallbackRoute = routeKind(fallbackTo),
                 taskStruct = TaskStructOffsets(
                     prio = vu("task_struct.prio"),
                     normalPrio = vu("task_struct.normal_prio"),
@@ -479,9 +533,10 @@ data class NativeProfileDocument(
                 ),
                 safeMode = 0u,
                 routeConfig = routeConfig,
-                steps = StepSetKind.fromToken(text("backend.steps"))?.wire ?: 0u,
+                combination = combination,
                 backendKind = backendKind.wire.toUInt(),
                 cve2026_43284 = config43284,
+                plugins = plugins,
             )
         }
 
@@ -517,6 +572,12 @@ internal data class Section(
     val entries: List<Pair<String, ULong>>,
     /** S4 R4: WireKind::String values, emitted as GLKv3 str (<=256 UTF-8 bytes). */
     val textEntries: List<Pair<String, String>> = emptyList(),
+    /**
+     * P1: dynamically typed plugin parameters. Their concrete kind comes from
+     * the plugin descriptor, so the manifest declares them as a union and the
+     * adapter checks membership instead of picking a fixed kind.
+     */
+    val pluginEntries: List<Pair<String, PluginValue>> = emptyList(),
 )
 
 /** S4 R2 split of the legacy `cred` logical section: platform ABI offsets. */

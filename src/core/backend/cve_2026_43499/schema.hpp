@@ -24,6 +24,7 @@
  * these declarations. */
 
 #include "backend/cve_2026_43499/backend_profile/model.hpp"
+#include "contract/identity.hpp"
 #include "platform/abi.hpp"
 #include "profile/registry.hpp"
 #include "profile/schema.hpp"
@@ -72,16 +73,21 @@ namespace ghostlock::backend {
                 } \
     }
 
-/* Backend-private StepSet id; never touches kernel_offsets. */
+/* Backend-private combination token (S4 R6b); never touches kernel_offsets.
+ * The token is stringified; the internal numeric step-set id is derived from
+ * the shared contract whitelist so there is one vocabulary authority. A legacy
+ * numeric value is rewritten to its token by profile/glkv3_parse.cpp before the
+ * bind runs, so this field can remain a strict String. */
 #define GLK_43499_STEPS(section, key) \
     { \
-        section, key, 2, false, false, \
-                [](Cve2026_43499View &view, uint64_t raw) { \
-                    view.steps = static_cast<uint16_t>(raw); \
-                }, \
+        section, key, 0, false, false, nullptr, \
                 profile::DefaultValue::none(), profile::FieldSource::Profile, \
-                profile::WireKind::UInt, \
-                "Backend-private StepSet id (ADR-0004 R18)." \
+                profile::WireKind::String, \
+                "Combination token <route>_<path> (S4 R6b).", \
+                [](Cve2026_43499View &view, std::string_view text) { \
+                    view.steps = contract::combination_stepset_wire( \
+                            contract::BackendKind::Cve2026_43499, text); \
+                } \
     }
 
     struct Cve2026_43499Schema {
@@ -89,7 +95,6 @@ namespace ghostlock::backend {
 
         static constexpr Cve2026_43499Field kFields[] = {
             GLK_43499_PLAIN("common", "kernel_major", meta.kernel_major, 1),
-            GLK_43499_PLAIN("common", "fallback_route", meta.fallback_route, 1),
             GLK_43499_PLAIN("common", "safe_mode", meta.safe_mode, 1),
             GLK_43499_PLAIN("common", "vr_guard", misc.vr_guard, 1),
             GLK_43499_PLAIN("backend.cve_2026_43499.cred", "copy_size", credential.copy_size, 4),

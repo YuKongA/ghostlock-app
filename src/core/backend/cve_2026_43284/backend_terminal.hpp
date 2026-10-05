@@ -38,7 +38,9 @@ namespace ghostlock::backend::cve_2026_43284 {
     /* Single-candidate carrier policy (B6/T5, stringified S4 R4). Exactly one
      * candidate is chosen:
      *   - a non-empty explicit carrier path selects that path (validated with
-     *     steps::valid_carrier_path; an invalid one fails closed);
+     *     steps::valid_carrier_path, or valid_dev_carrier_path when
+     *     allow_dev_path is set by the --allow-dev-target safety switch; an
+     *     invalid one fails closed);
      *   - an empty/absent path selects the first kDefaultCarriers entry the
      *     device probe reports present, else the first default (the probe is
      *     best-effort; the chain fails closed later if the choice is unusable).
@@ -48,7 +50,8 @@ namespace ghostlock::backend::cve_2026_43284 {
     [[nodiscard]] bool select_single_carrier(
             std::string_view path,
             const platform::DeviceProbeOps &device,
-            steps::CarrierTarget &out) noexcept;
+            steps::CarrierTarget &out,
+            bool allow_dev_path = false) noexcept;
 
     /* Injected dependencies. `device` and `chain` are the ways the
      * orchestration reaches a device; both default to an unavailable surface so
@@ -68,6 +71,11 @@ namespace ghostlock::backend::cve_2026_43284 {
         std::string_view lkm_image_path{};
         /* Chain wait budget, forwarded to ChainRequest::wait_timeout_ms. */
         std::uint32_t wait_timeout_ms = 5000U;
+        /* --allow-dev-target safety switch: forwarded to
+         * ChainRequest::allow_dev_carrier_path so the chain validates the
+         * carrier with valid_dev_carrier_path() and skips the vendor-only
+         * crash_dump fallbacks. Default false keeps the vendor-only rule. */
+        bool allow_dev_carrier_path = false;
         /* B6/T5: exactly one composition-root-selected carrier. run_backend_
          * terminal binds this candidate and never falls back; a null/empty
          * carrier fails closed (CarrierRejected) before patch #1 or any write.

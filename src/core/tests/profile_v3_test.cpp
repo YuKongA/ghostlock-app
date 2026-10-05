@@ -54,7 +54,6 @@ namespace {
         doc.has_route = true;
         doc.route = "multicast_waiter";
         put(doc, "common", "kernel_major", u(6));
-        put(doc, "common", "fallback_route", u(2));
         put(doc, "common", "safe_mode", b(true));
         put(doc, "common", "vr_guard", b(true));
         put(doc, "platform.abi.task_struct", "prio", u(132));
@@ -87,7 +86,6 @@ int main() {
     assert(std::strcmp(v3parsed.uname_r, release) == 0);
     assert(v3parsed.route == ghostlock::profile::kRouteMulticastWaiter);
     assert(v3parsed.meta.kernel_major == 6);
-    assert(v3parsed.meta.fallback_route == ghostlock::profile::kRouteSelectStack);
     assert(v3parsed.meta.safe_mode);
     assert(v3parsed.misc.vr_guard);
     assert(v3parsed.task.prio == 132);
@@ -123,7 +121,7 @@ int main() {
         doc.has_release = true;
         doc.release = "6.12.38-v3-43284";
         doc.has_terminal = true;
-        doc.terminal = "root_child";
+        doc.terminal = "umh_forward";
         doc.has_backend = true;
         doc.backend = "cve_2026_43284";
         put(doc, "backend.cve_2026_43284", "kmi", u(5150));
@@ -136,9 +134,9 @@ int main() {
         assert(parse_v3(encoded, &parsed, buf, sizeof(buf), &ids, nullptr,
                         &profile_43284) == 0);
         assert(ids.backend == static_cast<uint16_t>(ghostlock::contract::BackendKind::Cve2026_43284));
-        assert(ids.terminal == static_cast<uint16_t>(ghostlock::contract::TerminalKind::RootChild));
-        assert(ids.middleware == ghostlock::profile::kRouteAuto);
-        assert(parsed.route == ghostlock::profile::kRouteAuto);
+        assert(ids.terminal == static_cast<uint16_t>(ghostlock::contract::TerminalKind::UmhForward));
+        assert(ids.middleware == ghostlock::profile::kRouteNone);
+        assert(parsed.route == ghostlock::profile::kRouteNone);
         assert(profile_43284.kmi.value_or(0) == 5150);
         assert(profile_43284.steps.value_or(0) == 3);
         assert(ids.steps == 3);

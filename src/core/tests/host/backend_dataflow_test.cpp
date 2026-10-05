@@ -13,7 +13,7 @@
 #include "pipeline/pipeline.hpp"
 #include "backend/cve_2026_43499_backend.hpp"
 #include "session/core_session.hpp"
-#include "terminal/root_child.hpp"
+#include "backend/cve_2026_43499/terminal/root_child.hpp"
 
 #include <cstddef>
 #include <cstdio>
@@ -73,7 +73,7 @@ namespace {
          * hook is a host no-op (attack_stub.cpp). */
         return ghostlock::pipeline::Pipeline<
             Backend,
-            ghostlock::terminal::RootChildPolicy>::run(
+            ghostlock::backend::cve_2026_43499::terminal::RootChildPolicy>::run(
             ghostlock::session::g_exploit_session, document, nullptr, true);
     }
 

@@ -2,6 +2,7 @@ package com.ghostlock.app.data.profile
 
 import com.ghostlock.app.data.HoconSupport
 import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.ProfileLayout
 import com.ghostlock.app.data.ValueMap
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.route.RouteKind
@@ -35,10 +36,10 @@ object ProfileExporter {
         }
 
         val routes = RouteKind.entries.map { it.token }
-        val tuningExecution = parseFile(File(srcDir, "execution-tuning.conf"), srcDir)
+        val tuningExecution = parseFile(File(srcDir, "execution-tuning.conf"), srcDir, normalize = true)
             ?.get("execution").asValueMap()
         val routePresets = routes.mapNotNull { route ->
-            parseFile(File(srcDir, "execution-${route.replace('_', '-')}.conf"), srcDir)
+            parseFile(File(srcDir, "execution-${route.replace('_', '-')}.conf"), srcDir, normalize = true)
                 ?.get("execution").asValueMap()
                 ?.get("routes").asValueMap()
                 ?.get(route).asValueMap()
@@ -57,11 +58,11 @@ object ProfileExporter {
             val release = entry["release"] as? String ?: error("index entry missing 'release'")
             /* Reference templates are not device profiles and are not exported. */
             if (release.endsWith("-template")) continue
-            val parsed = parseFile(File(srcDir, file), srcDir) ?: error("cannot parse $file")
+            val parsed = parseFile(File(srcDir, file), srcDir, normalize = true)
+                ?: error("cannot parse $file")
             val actualRelease = parsed["release"] as? String ?: error("$file has no release")
             require(actualRelease == release) { "index/file release mismatch for $file" }
             val route = routeNameOf(parsed, routes)
-            val fallbackTo = fallbackOf(parsed)
             val merged = ProfileMerger.resolveMerged(
                 deviceRelease = actualRelease,
                 builtin = parsed,
@@ -71,15 +72,14 @@ object ProfileExporter {
                 pair = CpuPairView(0, 1),
                 routePresets = routePresets,
             )
-            val errors = ProfileResolver.validateMerged(merged, route, fallbackTo)
+            val errors = ProfileResolver.validateMerged(merged, route)
             if (errors.isNotEmpty()) {
                 error("$file fails validation: ${errors.joinToString()}")
             }
             val document = NativeProfileDocument.from(
                 release = actualRelease,
-                route = RouteKind.fromToken(route)?.token,
-                fallbackTo = RouteKind.fromToken(fallbackTo)?.token,
-                value = { path -> ProfileResolver.nativeValue(merged, route, fallbackTo, path) },
+                route = RouteKind.resolve(RouteKind.normalize(route))?.token,
+                value = { path -> ProfileResolver.nativeValue(merged, route, path) },
                 text = { path -> ProfileResolver.nativeText(merged, path) },
                 bool = { path -> ProfileResolver.nativeBool(merged, path) },
             )
@@ -144,17 +144,13 @@ object ProfileExporter {
             else -> null
         }
 
-    private fun fallbackOf(profile: Map<*, *>): String? {
-        val to = ((profile["fallback"] as? Map<*, *>)?.get("to") as? String)
-            ?.takeIf { it.isNotEmpty() && it != "null" }
-        if (to != null) return to
-        return (profile["fallback_to"] as? String)?.takeIf { it.isNotEmpty() && it != "null" }
-    }
-
-    private fun parseFile(file: File, baseDir: File): ValueMap? {
+    private fun parseFile(file: File, baseDir: File, normalize: Boolean = false): ValueMap? {
         if (!file.isFile) return null
-        return runCatching { HoconSupport.parseValue(expand(file, baseDir, linkedSetOf())).asValueMap() }
-            .getOrNull()
+        return runCatching {
+            val value = HoconSupport.parseValue(expand(file, baseDir, linkedSetOf())).asValueMap()
+            if (normalize && value != null) ProfileLayout.applyNormalize(value)
+            value
+        }.getOrNull()
     }
 
     private fun expand(file: File, baseDir: File, visiting: MutableSet<String>): String {

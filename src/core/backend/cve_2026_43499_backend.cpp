@@ -68,7 +68,8 @@ namespace ghostlock::backend {
                     "(cold boot for a clean run, or enable the forced test)\n");
                 return StageResult::Done;
             }
-            terminal::write_root_script();
+            terminal::write_root_script(
+                    ghostlock::backend::cve43499_state(session).profile.safe_mode());
 
             const profile::kernel_offsets *iomem_values =
                 ghostlock::backend::cve43499_state(session).profile.values();

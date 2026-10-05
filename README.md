@@ -18,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
 
-The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time. The catalogue wires three sparse triples: `cve_2026_43499 x {w1_w3, w1_w2} x root_child` (available) and `cve_2026_43284 x pagecache_write x umh_forward` (wired but not device-verified, so it fails closed). `root_child` is the only available terminal (`umh_forward` has its execution policy but is not verified); `cve_2026_43499` is the only available backend, and the other CVEs are header-only placeholders. The route (`select_stack` / `tcp_zerocopy` / `multicast_waiter`) is backend-internal policy selected by the resolved profile, not a separate component. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
+The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time. Selection is exactly **one combination token** carried in `backend.<id>.steps`; `contract::kCombinationCatalog` is the single authority — **12 tokens = 7 available + 5 planned**. Available: the six `cve_2026_43499` tokens `{multicast_waiter, select_stack, tcp_zerocopy} x {rootchild, shizuku}` plus `cve_2026_43284 x umh`. Planned (`available=false`): `{mcast, pselect, tcp}_umh` and `cve_2026_43284 x {rootchild, shizuku}` — they parse, but the selection gate rejects them and the app greys them out. Both terminals (`root_child`, `umh_forward`) and both backends (`cve_2026_43499`, `cve_2026_43284`) are available; the other CVEs are header-only placeholders. The route (`select_stack` / `tcp_zerocopy` / `multicast_waiter`) is backend-internal policy **derived from the token**, not a separate component. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
 
 ## Command-Line Debugging
 
@@ -32,6 +32,8 @@ adb push build/kernel-profiles/<release>.bin /data/local/tmp/profile.bin
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
+
+The CLI carries transport, run control, safety and observability only (S4 R2b): `--ghostlock-app-call`, `--load-prebuilt-profile <bin>`, `--enable-status-record`, `--dump-kernel-log <dir>`, `--force-attack`, `--allow-dev-target` (relaxes only the binding-time carrier check), plus the read-only diagnostics `--probe-cve-2026-43284 <ko>` and `--plugin-probe <path.so> [--expect-sha256 <hex>]`. Selection and policy never come from the CLI: the staged entry and the `--cve43284-*` selectors were removed, and an unknown flag fails closed.
 
 ## Offset Extraction
 
@@ -85,8 +87,8 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 New kernels no longer need an app rebuild: tap **Import offsets.conf (HOCON)**
 and pick the extractor's flattened `.conf`, or use **Import offsets.json (v1)**
 for an older JSON report. v1 JSON is converted in-app, so nothing has to be
-pushed to the device: native always starts from the GLKv3 document (MessagePack,
-`schema == 3`; v2 is read-only) the app sends on stdin, and matches the current
+pushed to the device: native always starts from the GLKv3 document (MessagePack root map with
+`schema == 3`; the removed v2 binary is rejected) the app sends on stdin, and matches the current
 `uname -r` against the resolved profile
 before rejecting the kernel. Imports merge across files; a release already
 stored prompts before overwrite.
@@ -97,41 +99,43 @@ extractor in-process and write a flattened `.conf` into the app data dir on
 success:
 
 ```hocon
-# GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
-release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
-schema_version = 1
-kernel_major = 6
-backend {
-  steps = "w1_w3"
-}
-kernel_phys_load = 0xC7800000
-route {
-  select_stack {
-    waiter_shift = 0
+# GhostLock kernel profile (HOCON, canonical owner-qualified layout).
+ghostlock {
+  schema_version = 3
+  release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
+  selection {
+    backend  = "cve_2026_43499"
+    terminal = "root_child"
+  }
+  common { kernel_major = 6 }
+  platform {
+    abi {
+      kernel { kernel_phys_load = 0xC7800000 }
+      task_struct { prio = 148, cred = 2304 }
+    }
+  }
+  backend {
+    cve_2026_43499 {
+      steps = "mcast_rootchild"        # the ONE user-visible selection token
+      route { multicast_waiter { waiter_shift = 0 } }
+      cred { caps_offset = 48, copy_size = 136, caps_count = 5, caps_value = -1 }
+      offset { init_task = 37801728, init_cred = 37891184 }
+    }
   }
 }
-fallback {
-  to = "none"
-}
-kernelsnitch {
-  collisions = 4
-}
-task_struct {
-  prio = 148
-  cred = 2304
-}
-cred {
-  caps_offset = 48
-  copy_size = 136
-  usage_value = 1
-  caps_count = 5
-  caps_value = -1
-}
-offset {
-  init_task = 37801728
-  init_cred = 37891184
-}
 ```
+
+The exact field list lives in [PROFILE_SCHEMA.md](docs/kernel_profiles/PROFILE_SCHEMA.md); the extractor emits this same canonical layout.
+
+## Plugins (P1)
+
+Import a countermeasure `.so` from the settings page: the app copies it into its no-backup
+`countermeasures/` root, hashes it locally, and reads its self-description through the read-only
+native probe (`--plugin-probe`, never `dlopen` inside the JVM). Only **enabled** plugins are emitted
+as `plugin.<id>.*` in the GLKv3 document (default off; `params.*` values are typed by the plugin's
+own descriptor, and an enabled=false section is rejected). **P1 ships the declare → validate → bind
+wire layer only**: the runtime that loads the module and invokes it at its stage is not wired yet
+(tracked as task-9 in the branch plan, and it needs its own L-level design and device gate).
 
 ## Credits & License
 

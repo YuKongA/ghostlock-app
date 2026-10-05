@@ -57,6 +57,11 @@ struct Cli {
     /// route written to --format conf; defaults to the analysis suggestion
     #[arg(long, value_parser = ["tcp_zerocopy", "select_stack", "multicast_waiter"])]
     route: Option<String>,
+    /// combination step path in the backend token written to --format conf;
+    /// rootchild is the only path the extractor derives (shizuku/umh are App
+    /// terminal choices that share the same 43499 route geometry)
+    #[arg(long, value_parser = ["rootchild", "shizuku", "umh"], default_value = "rootchild")]
+    steps_path: String,
     /// treat every unresolved symbol as optional (emit 0)
     #[arg(long)]
     allow_missing: bool,
@@ -691,7 +696,9 @@ fn run(cli: &Cli) -> Result<i32> {
             phys_offset: kernel_phys_offset,
             symbols: &symbol_offsets,
             structs: &struct_offsets,
+            backend: report::BACKEND_43499,
             route: route.as_deref(),
+            steps_path: &cli.steps_path,
             route_geometry: &geometry,
             cred: &cred,
             extra_offsets: &extra_offsets,

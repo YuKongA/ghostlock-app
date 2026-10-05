@@ -90,14 +90,16 @@ namespace ghostlock::backend::cve_2026_43284 {
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
             std::string_view module_path,
-            const platform::DeviceProbeOps &device);
+            const platform::DeviceProbeOps &device,
+            bool allow_dev_target = false);
 
     /* Production entry point. Reads $GHOSTLOCK_HOME/helper.ko, builds the
      * aligned single-region write plan, selects/binds the one carrier, arms the
      * real chain context and installs everything into the 43284 state. */
     [[nodiscard]] ExecutionBindResult bind_production_execution(
             session::CoreSession &session, ProductionResources &resources,
-            const profile::Document &document, const IpsecSaParams &sa);
+            const profile::Document &document, const IpsecSaParams &sa,
+            bool allow_dev_target = false);
 
 } // namespace ghostlock::backend::cve_2026_43284
 

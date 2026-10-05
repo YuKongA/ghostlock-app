@@ -7,15 +7,12 @@ namespace ghostlock::backend::cve_2026_43499::route {
                                const profile::TargetProfile *profile_ptr) {
         race = race_ptr;
         profile = profile_ptr;
-        fallback_used = 0;
     }
 
     RouteStatus RouteController::execute(const memory::WriteRequest *request) {
         if (!race || !profile || !request) {
             return RouteStatus{.code = ROUTE_UNSUPPORTED};
         }
-        const RouteRunResult result = run_route(*profile, request, 1);
-        fallback_used = result.fallback_used ? 1 : 0;
-        return result.status;
+        return run_route(*profile, request);
     }
 } // namespace ghostlock::backend::cve_2026_43499::route

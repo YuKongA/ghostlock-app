@@ -11,6 +11,17 @@ import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.plugin.NativePluginProbeInvoker
+import com.ghostlock.app.data.plugin.EnabledPlugin
+import com.ghostlock.app.data.plugin.PluginDescriptor
+import com.ghostlock.app.data.plugin.PluginImportResult
+import com.ghostlock.app.data.plugin.PluginImportService
+import com.ghostlock.app.data.plugin.PluginManifestEntry
+import com.ghostlock.app.data.plugin.PluginPaths
+import com.ghostlock.app.data.plugin.PluginStore
+import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.ipsec.AndroidIpsecSessionFactory
 import com.ghostlock.app.data.ipsec.IpsecSession
 import com.ghostlock.app.data.ipsec.IpsecSessionFactory
@@ -60,6 +71,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val PrefLegacyShizukuEnabled = "shizuku_enabled"
         /* Header backend selection; the stored value is normalized to a token. */
         const val PrefBackendKind = "backend_kind"
+        /* S4 R6b: the single combination token selection authority. */
+        const val PrefCombination = "combination_kind"
         const val PrefForceAttackTest = "force_attack_test"
         const val PrefDebugExportEnabled = "debug_export_enabled"
         const val PrefDebugExportLocation = "debug_export_location"
@@ -97,13 +110,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     )
     /** Header backend selection; 43284 stays unavailable so it cannot be set. */
     private var backendKind = BackendKind.Default
+    /** S4 R6b: the single selection authority; backend/mode derive from it. */
+    private var combination = CombinationCatalog.defaultSpec
     private val profileController = AndroidProfileConfigController(
         appContext,
         filesDir,
         userProfileStore,
         preferences,
-        backendSelection = { backendKind },
-        executionModeSelection = { executionMode },
+        backendSelection = { combination.backend },
+        executionModeSelection = { combination.toExecutionMode() },
+        combinationSelection = { combination },
+        pluginSelection = { enabledPlugins() },
     )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
@@ -116,6 +133,50 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var executionMode = ExecutionMode.General
     private var pendingParsedDocument: PendingParsedDocument? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
+    /**
+     * P1: imported plugins live in the App's no-backup directory (a .so and its
+     * registry must never ride Android auto-backup), under the root the native
+     * loader uses as its whitelist (<GHOSTLOCK_HOME>/countermeasures).
+     */
+    private val pluginStore = PluginStore(File(appContext.noBackupFilesDir, PluginPaths.COUNTERMEASURES_ROOT))
+    /**
+     * P1: the descriptors of the installed plugins, refreshed when the settings
+     * page opens (the probe re-checks each module against its pinned digest).
+     */
+    @Volatile
+    private var pluginDescriptors: Map<String, PluginDescriptor> = emptyMap()
+
+    /**
+     * The ENABLED plugins to put on the wire. An enabled plugin whose descriptor
+     * is unknown fails the document build: silently dropping it would run a
+     * different chain than the user configured.
+     */
+    private fun enabledPlugins(): List<EnabledPlugin> {
+        val entries = runCatching { pluginStore.load() }.getOrElse { return emptyList() }
+        return entries.filter { it.enabled }.map { entry ->
+            val descriptor = pluginDescriptors[entry.id]
+                ?: error(
+                    "plugin " + entry.id +
+                        " is enabled but could not be described; open the plugins page to re-check it",
+                )
+            EnabledPlugin(entry, descriptor)
+        }
+    }
+
+    /** P1 import pipeline: the probe runs as its own process, never in-JVM. */
+    private val pluginImportService by lazy {
+        PluginImportService(
+            /* homeDir is the GHOSTLOCK_HOME equivalent: the service creates
+             * <homeDir>/countermeasures/... through PluginPaths. */
+            homeDir = appContext.noBackupFilesDir,
+            store = pluginStore,
+            invoker = NativePluginProbeInvoker(
+                binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so"),
+                workDir = File(appContext.cacheDir, "ghostlock-plugin-probe"),
+                homeDir = filesDir,
+            ),
+        )
+    }
     /** Channel B (cve_2026_43284 only): builds the runtime IpSec SA. */
     private val ipsecSessionFactory: IpsecSessionFactory = AndroidIpsecSessionFactory(appContext)
 
@@ -125,6 +186,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         applyRecommendedCpuPair(System.getProperty("os.version", "").orEmpty())
         restoreExecutionMode()
         restoreBackendKind()
+        restoreCombination()
         restoreForceAttackTest()
         dropLegacyOffsetsCache()
         migrateLegacyOffsetsStore()
@@ -151,7 +213,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 val overrides = valueMapOf()
                 (entry.remove("execution") as? Map<*, *>)?.let { overrides["execution"] = it }
                 (entry.remove("route") as? Map<*, *>)?.let { overrides["route"] = it }
-                (entry.remove("fallback") as? Map<*, *>)?.let { overrides["fallback"] = it }
+                /* R6a: legacy fallback overrides are recognized and dropped. */
+                entry.remove("fallback")
                 if (overrides.isNotEmpty()) mergeLegacyOverrides(release, overrides)
                 if (entry.size > 1) {
                     userProfileStore.save("$release.conf", HoconSupport.render(entry))
@@ -234,6 +297,23 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         backendKind = kind
         preferences.edit { putString(PrefBackendKind, kind.token) }
     }
+
+    override fun setCombination(spec: CombinationSpec) {
+        /* A planned (known-but-unavailable) combination can never become active. */
+        if (!spec.available) return
+        combination = spec
+        val mode = spec.toExecutionMode()
+        preferences.edit {
+            putString(PrefCombination, spec.token)
+            /* Keep the derived compat keys in sync for downgraded readers. */
+            putString(PrefBackendKind, spec.backend.token)
+            putString(PrefExecutionMode, mode.name)
+            putBoolean(PrefLegacyShizukuEnabled, mode == ExecutionMode.Shizuku)
+        }
+        if (mode.requiresShizuku) shizukuRunner.requestPermission()
+    }
+
+    override fun currentCombination(): CombinationSpec = combination
 
     override fun profileController(): ProfileConfigController = profileController
 
@@ -620,6 +700,87 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
+    override suspend fun pluginEntries(): List<PluginManifestEntry> = withContext(Dispatchers.IO) {
+        /* A malformed registry is a fail-closed load: report "none" instead of
+         * crashing the settings page (the file is diagnostic-visible). */
+        runCatching { pluginStore.load() }.getOrElse { emptyList() }
+    }
+
+    override suspend fun setPluginEnabled(
+        id: String,
+        enabled: Boolean,
+    ): List<PluginManifestEntry> = withContext(Dispatchers.IO) {
+        pluginStore.setEnabled(id, enabled)
+    }
+
+    override suspend fun describePlugins(): Map<String, PluginDescriptor> =
+        withContext(Dispatchers.IO) {
+            val entries = runCatching { pluginStore.load() }.getOrElse { emptyList() }
+            val described = linkedMapOf<String, PluginDescriptor>()
+            for (entry in entries) {
+                val descriptor = pluginImportService.describe(entry) ?: continue
+                described[entry.id] = descriptor
+            }
+            pluginDescriptors = described
+            described
+        }
+
+    override suspend fun pluginParamOverrides(): Map<String, Map<String, PluginValue>> =
+        withContext(Dispatchers.IO) {
+            val entries = runCatching { pluginStore.load() }.getOrElse { return@withContext emptyMap() }
+            val release = System.getProperty("os.version", "").orEmpty()
+            entries.mapNotNull { entry ->
+                val descriptor = pluginDescriptors[entry.id] ?: return@mapNotNull null
+                entry.id to profileController.pluginOverrides(release, entry.id, descriptor)
+            }.toMap()
+        }
+
+    override suspend fun setPluginParam(id: String, name: String, value: PluginValue?) =
+        withContext(Dispatchers.IO) {
+            val release = System.getProperty("os.version", "").orEmpty()
+            profileController.setPluginParam(release, id, name, value)
+        }
+
+    override fun pluginImportAvailable(): Boolean =
+        File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so").isFile
+
+    override suspend fun importPlugin(
+        uri: String,
+        displayName: String?,
+    ): PluginImportResult = withContext(Dispatchers.IO) {
+        /* Stage the picked document in the cache first: the App hashes it, hands
+         * the path to the probe process and only then installs it. A rejection
+         * leaves the registry and the no-backup root untouched. */
+        val temp = File(appContext.cacheDir, "ghostlock-plugin-import.so")
+        try {
+            val input = appContext.contentResolver.openInputStream(uri.toUri())
+                ?: return@withContext PluginImportResult.Rejected("cannot open the picked file")
+            input.use { source ->
+                temp.outputStream().use { target ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read <= 0) break
+                        total += read
+                        if (total > PluginPaths.MAX_MODULE_BYTES) {
+                            return@withContext PluginImportResult.Rejected(
+                                "the picked file exceeds " +
+                                    PluginPaths.MAX_MODULE_BYTES / (1024 * 1024) + " MiB",
+                            )
+                        }
+                        target.write(buffer, 0, read)
+                    }
+                }
+            }
+            pluginImportService.import(temp, displayName)
+        } catch (error: Exception) {
+            PluginImportResult.Rejected(error.message ?: "cannot read the picked file")
+        } finally {
+            temp.delete()
+        }
+    }
+
     override fun requestShizukuPermission() = shizukuRunner.requestPermission()
 
     override fun setShizukuStatusListener(listener: (() -> Unit)?) =
@@ -672,7 +833,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
              * the GLKv3 document; every other backend sends the document alone,
              * so its bytes and stdin behavior are unchanged. */
             val effectiveBackend = Glkv3Decoder.decode(profileBlob)?.backend
-                ?.let(BackendKind::fromToken)
+                ?.let(BackendKind::resolve)
             var channelBSession: IpsecSession? = null
             val sessionFrame: ByteArray = if (ChannelBStdin.requiresSessionFrame(effectiveBackend)) {
                 when (val result = ipsecSessionFactory.create()) {
@@ -866,8 +1027,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 filesDir = filesDir,
                 userProfiles = userProfileStore,
                 preferences = sessionPreferences,
-                backendSelection = { backendKind },
-                executionModeSelection = { executionMode },
+                backendSelection = { combination.backend },
+                executionModeSelection = { combination.toExecutionMode() },
+                combinationSelection = { combination },
                 forcedUserProfile = name,
                 forcedBuiltinRelease = profileController.activeBuiltinRelease(),
             )
@@ -1103,6 +1265,35 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         backendKind = selected
         if (stored != null && stored != selected.token) {
             preferences.edit { putString(PrefBackendKind, selected.token) }
+        }
+    }
+
+    /**
+     * Restores the persisted combination token (S4 R6b). A build without the
+     * token migrates the legacy backend/mode pair through the catalogued
+     * triple. Unknown, planned or uncatalogued tokens fall back to
+     * [CombinationCatalog.defaultSpec] so a stale preference cannot select a
+     * dead path. The canonical token plus its derived backend/mode are written
+     * back.
+     *
+     * The persisted string is an input boundary, so the stored spelling is
+     * normalized explicitly and then resolved EXACTLY; only the resolved
+     * canonical token is written back.
+     */
+    private fun restoreCombination() {
+        val stored = preferences.getString(PrefCombination, null)
+        val restored = CombinationCatalog.resolve(CombinationCatalog.normalize(stored))
+            ?.takeIf { it.available }
+            ?: resolveExecutionSelection(executionMode, backendKind).asCombination()
+                ?.takeIf { it.available }
+            ?: CombinationCatalog.defaultSpec
+        combination = restored
+        backendKind = restored.backend
+        executionMode = restored.toExecutionMode()
+        preferences.edit {
+            putString(PrefCombination, restored.token)
+            putString(PrefBackendKind, restored.backend.token)
+            putString(PrefExecutionMode, executionMode.name)
         }
     }
 

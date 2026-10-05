@@ -1,12 +1,16 @@
 #ifndef GHOSTLOCK_COMPONENT_CATALOG_HPP
 #define GHOSTLOCK_COMPONENT_CATALOG_HPP
 
-/* ADR-0004 composition catalogue: the sparse (backend, steps, terminal) triple
- * table and its dispatch targets, over the identity vocabulary declared in
- * contract/identity.hpp. Identity, availability and the execution contracts
- * live in contract; this header keeps only composition. Route is backend-
- * internal, so it is chosen by the backend from the profile and is not part of
- * the catalogue. */
+/* ADR-0004 + ADR-0006 T5 / S4 R6b composition catalogue.
+ *
+ * The composition authority is now (backend, token): the token lives in
+ * backend.<id>.steps and already contains the route + terminal/path choice.
+ * The sparse dispatch targets below are the path-level pipeline instantiations
+ * (three wired paths); every wired token maps onto exactly one of them and
+ * every Pipeline asserts its target at compile time. The token vocabulary
+ * itself lives in contract/identity.hpp (kCombinationCatalog); this header only
+ * composes it. Route stays backend-internal for the run itself (the token
+ * selects it explicitly and the document middleware carries it). */
 
 #include <cstdint>
 #include <string_view>
@@ -16,7 +20,8 @@
 
 namespace ghostlock::pipeline {
     /* Route is backend-internal (ADR-0004 R2/R12): it reuses the profile route
-     * enum and never appears in the selection. Auto means "unresolved". */
+     * enum and never appears in the selection. None means the backend has no
+     * route axis; Auto is the deprecated legacy wire value 0. */
     using MiddlewareKind = ghostlock::profile::RouteKind;
 
     [[nodiscard]] constexpr bool middleware_available(MiddlewareKind kind) noexcept {
@@ -25,43 +30,20 @@ namespace ghostlock::pipeline {
                kind == MiddlewareKind::MulticastWaiter;
     }
 
-    /* THE dispatch authority: the exact (backend, steps, terminal) triples wired
-     * into DispatchTarget and the orchestrator switch. This is the *catalogue*:
-     * a triple is listed once it has a compile-time Pipeline instantiation and an
-     * orchestrator case, independent of whether its backend is device-verified.
-     * The orchestrator additionally requires contract::selection_supported(), so
-     * wiring a triple here does not make it runnable -- the two predicates answer
-     * different questions (wired vs. verified). Route is chosen by the backend
-     * from the profile, so it is not part of this catalogue. Adding a component
-     * updates this catalogue and the orchestrator switch together; the host test
-     * asserts the two never diverge. This is a sparse enumeration, never a dense
-     * product (ADR-0004 R21). */
-    [[nodiscard]] constexpr bool combination_supported(
-        const contract::ComponentSelection &selection) noexcept {
-        if (selection.backend == contract::BackendKind::Cve2026_43499 &&
-            (selection.steps == contract::StepSetKind::W1W3 ||
-             selection.steps == contract::StepSetKind::W1W2) &&
-            selection.terminal == contract::TerminalKind::RootChild) {
-            return true;
-        }
-        return selection.backend == contract::BackendKind::Cve2026_43284 &&
-               selection.steps == contract::StepSetKind::PageCacheWrite &&
-               selection.terminal == contract::TerminalKind::UmhForward;
-    }
-
-    /* Dispatch target for one catalogued triple. Pipeline exposes it as
-     * Pipeline::target and every orchestrator case asserts against that value,
-     * so a branch cannot be wired to another supported triple. */
+    /* THE dispatch authority. The path-level target is the compile-time
+     * Pipeline instantiation; dispatch_target_of(token) maps every wired token
+     * onto it. A planned token (available=false) has no target. */
     enum class DispatchTarget : std::uint8_t {
         None,
         Cve43499W1W3_RootChild,
         Cve43499W1W2_RootChild,
-        /* B5-8: wired for compile-time/orchestrator coverage; the backend stays
-         * unavailable (selection_supported false) until the B5-9 device gate. */
         Cve43284PageCache_UmhForward,
     };
 
-    [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
+    /* Path-level target used by Pipeline<Backend, Terminal>; kept separate so the
+     * pipeline asserts the path it is instantiated for while the catalogue
+     * remains token-keyed. */
+    [[nodiscard]] constexpr DispatchTarget path_target_of(
         contract::BackendKind backend, contract::StepSetKind steps,
         contract::TerminalKind terminal) noexcept {
         if (backend == contract::BackendKind::Cve2026_43499 &&
@@ -82,28 +64,101 @@ namespace ghostlock::pipeline {
         return DispatchTarget::None;
     }
 
+    /* Token -> path-level dispatch target. Only wired (available) tokens have a
+     * target; a planned token maps to None. */
+    [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
+        contract::BackendKind backend, contract::CombinationKind combination) noexcept {
+        const contract::CombinationSpec *spec = contract::combination_spec(combination);
+        if (spec == nullptr || spec->backend != backend || !spec->available) {
+            return DispatchTarget::None;
+        }
+        return path_target_of(backend, spec->steps, spec->terminal);
+    }
+
+    [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
+        contract::CombinationKind combination) noexcept {
+        const contract::CombinationSpec *spec = contract::combination_spec(combination);
+        return spec != nullptr ? dispatch_target_of(spec->backend, combination)
+                               : DispatchTarget::None;
+    }
+
+    /* Path-level compatibility alias (route is not part of the decomposed
+     * triple). Prefer the token-keyed overload above. */
+    [[nodiscard]] constexpr DispatchTarget dispatch_target_of(
+        contract::BackendKind backend, contract::StepSetKind steps,
+        contract::TerminalKind terminal) noexcept {
+        return path_target_of(backend, steps, terminal);
+    }
+
+    /* Token-keyed wiring predicate. combination_supported() says the token is
+     * wired (has a Pipeline and a dispatch case); it is independent of device
+     * availability, which stays in contract::selection_supported(). */
+    [[nodiscard]] constexpr bool combination_supported(
+        contract::BackendKind backend, contract::CombinationKind combination) noexcept {
+        return dispatch_target_of(backend, combination) != DispatchTarget::None;
+    }
+
+    /* Compatibility predicate for callers that still hold the decomposed
+     * (backend, steps, terminal) selection (main.cpp, legacy tests): true when
+     * SOME wired token decomposes to that triple. Route is not part of
+     * ComponentSelection, so this cannot be route-exact; the authoritative
+     * checks are the token-keyed ones above. */
+    [[nodiscard]] constexpr bool combination_supported(
+        const contract::ComponentSelection &selection) noexcept {
+        for (const contract::CombinationSpec &spec : contract::kCombinationCatalog) {
+            if (spec.backend == selection.backend && spec.steps == selection.steps &&
+                spec.terminal == selection.terminal && spec.available) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] constexpr DispatchTarget dispatch_target(
         const contract::ComponentSelection &selection) noexcept {
         if (!combination_supported(selection)) return DispatchTarget::None;
-        return dispatch_target_of(selection.backend, selection.steps, selection.terminal);
+        return path_target_of(selection.backend, selection.steps, selection.terminal);
+    }
+
+    [[nodiscard]] constexpr contract::CombinationKind combination_from_token(
+        contract::BackendKind backend, std::string_view token) noexcept {
+        contract::CombinationKind out = contract::CombinationKind::Unknown;
+        if (!contract::combination_resolve(backend, token, out)) {
+            return contract::CombinationKind::Unknown;
+        }
+        return out;
+    }
+
+    [[nodiscard]] constexpr std::string_view combination_name(
+        contract::CombinationKind kind) noexcept {
+        return contract::combination_name(kind);
+    }
+
+    [[nodiscard]] constexpr bool combination_available(
+        contract::CombinationKind kind) noexcept {
+        return contract::combination_available(kind);
+    }
+
+    [[nodiscard]] constexpr contract::TerminalKind combination_terminal(
+        contract::CombinationKind kind) noexcept {
+        const contract::CombinationSpec *spec = contract::combination_spec(kind);
+        return spec != nullptr ? spec->terminal : contract::TerminalKind::RootChild;
+    }
+
+    [[nodiscard]] constexpr MiddlewareKind combination_route(
+        contract::CombinationKind kind) noexcept {
+        const contract::CombinationSpec *spec = contract::combination_spec(kind);
+        return spec != nullptr ? spec->route : MiddlewareKind::None;
     }
 
     [[nodiscard]] constexpr std::string_view terminal_name(
         contract::TerminalKind kind) noexcept {
-        return kind == contract::TerminalKind::RootChild ? "root_child" : "umh_forward";
+        return contract::terminal_token_name(kind);
     }
 
     [[nodiscard]] constexpr std::string_view backend_name(
         contract::BackendKind kind) noexcept {
-        switch (kind) {
-            case contract::BackendKind::Cve2026_43499: return "cve_2026_43499";
-            case contract::BackendKind::Cve2026_64560: return "cve_2026_64560";
-            case contract::BackendKind::Cve2026_31431: return "cve_2026_31431";
-            case contract::BackendKind::Cve2026_43503: return "cve_2026_43503";
-            case contract::BackendKind::Cve2026_23274: return "cve_2026_23274";
-            case contract::BackendKind::Cve2026_43284: return "cve_2026_43284";
-            default: return "unknown";
-        }
+        return contract::backend_token_name(kind);
     }
 
     [[nodiscard]] constexpr std::string_view stepset_name(
@@ -116,13 +171,13 @@ namespace ghostlock::pipeline {
         }
     }
 
+    /* Name of a route/middleware kind: the ONE spelling table lives in the
+     * contract (contract::route_name) so the catalogue, the exported manifests
+     * and this accessor cannot drift. RouteKind::None and the deprecated legacy
+     * wire value 0 (no enumerator in the current vocabulary) both report as
+     * "none". */
     [[nodiscard]] constexpr std::string_view middleware_name(MiddlewareKind kind) noexcept {
-        switch (kind) {
-            case MiddlewareKind::TcpZerocopy: return "tcp_zerocopy";
-            case MiddlewareKind::SelectStack: return "select_stack";
-            case MiddlewareKind::MulticastWaiter: return "multicast_waiter";
-            default: return "auto";
-        }
+        return contract::route_name(kind);
     }
 
     /* Wire-token resolution. The GLKv3 root names the terminal/backend as text;
@@ -141,16 +196,7 @@ namespace ghostlock::pipeline {
 
     [[nodiscard]] constexpr bool backend_from_token(std::string_view token,
                                                     contract::BackendKind &out) noexcept {
-        for (const contract::BackendKind kind :
-             {contract::BackendKind::Cve2026_43499, contract::BackendKind::Cve2026_64560,
-              contract::BackendKind::Cve2026_31431, contract::BackendKind::Cve2026_43503,
-              contract::BackendKind::Cve2026_23274, contract::BackendKind::Cve2026_43284}) {
-            if (token == backend_name(kind)) {
-                out = kind;
-                return true;
-            }
-        }
-        return false;
+        return contract::backend_kind_from_token(token, out);
     }
 } // namespace ghostlock::pipeline
 

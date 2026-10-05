@@ -4,9 +4,10 @@
 
 The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time:
 
-- **terminal** - startup/handoff. `root_child` is available; `umh_forward` landed
-  its execution policy in B5-8 but is not device-verified, so it stays unavailable
-  in `contract/identity.hpp`.
+- **terminal** - startup/handoff. Both `root_child` and `umh_forward` are
+  available and device-verified. The root_child policy is declared by its owning
+  backend (`backend/cve_2026_43499/terminal/root_child.hpp`, ADR-0006 T5); the
+  neutral umh_forward policy and the shared inputs/probes stay in `terminal/`.
 - **backend** - the vulnerability primitive and its write stages.
   `cve_2026_43499` is available; `cve_2026_43284` is wired but not
   device-verified; `cve_2026_64560` / `cve_2026_31431` / `cve_2026_43503` /
@@ -15,9 +16,13 @@ The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time:
   (`select_stack` / `tcp_zerocopy` / `multicast_waiter`). It is chosen by the
   backend from the resolved profile and is **not** an assembly axis.
 
-The catalogue wires three sparse triples: `cve_2026_43499 x {w1_w3, w1_w2} x
-root_child` (available) and `cve_2026_43284 x pagecache_write x umh_forward`
-(catalogued/wired, availability false until the B5-9 device gate).
+The catalogue is a **token whitelist**: the composition authority is
+`contract::kCombinationCatalog` (token -> {backend, route, steps, terminal,
+available}), and the wired combinations are `cve_2026_43499` x
+`{mcast,pselect,tcp}_{rootchild,shizuku}` plus `cve_2026_43284` x `umh`.
+Planned entries (`{mcast,pselect,tcp}_umh`, `rootchild`, `shizuku`) are
+registered with `available = false`: they parse but the selection gate rejects
+them, echoing the token.
 
 Where the pieces live:
 
@@ -29,10 +34,11 @@ Where the pieces live:
   `TerminalIdentity` / `TerminalExecution` concepts with the identity registries
   (`for_each_backend`, `for_each_terminal`). It must stay host-compilable and
   must not include `backend/`, `pipeline/`, `platform/` or `terminal/`.
-- `pipeline/component_catalog.hpp` - the sparse wired dispatch catalogue
-  (`combination_supported()`, `DispatchTarget`, `dispatch_target_of()`,
-  `middleware_available()`, and the wire token/name helpers). This is the
-  composition authority; the vocabulary comes from `contract/identity.hpp`.
+- `contract/identity.hpp` (`kCombinationCatalog`) - **the composition
+authority**: the token whitelist with availability. `pipeline/component_catalog.hpp`
+  only *dispatches* on it (`combination_supported()`, `DispatchTarget`,
+  `dispatch_target_of()`, `path_target_of()`), and `Pipeline<Backend, ...>`
+  static-asserts each wired combination.
 - `pipeline/pipeline.hpp` - `Pipeline<Backend, Terminal>`: the only execution
   entry. It static-asserts the catalogued triple and both execution concepts,
   binds the optional backend State through RAII, exposes the dispatch `target`
@@ -54,11 +60,14 @@ Where the pieces live:
   `Cve2026_43284Policy`. The placeholder backends have one header each
   (`backend/cve_2026_64560_backend.hpp` etc.).
 - `backend/victim/` - the victim child lifecycle and pipe context.
-- `terminal/root_child.*` - the available terminal (`RootChildPolicy`,
-  `run_root_child_handoff`); `terminal/umh_forward.*` - the `UmhForwardPolicy`
-  (forward/wait over an injected `UmhForwardChannel`, fail-closed). The neutral
-  terminal input payloads are in `terminal/terminal_input.hpp` /
-  `terminal/rooted_child.hpp` / `terminal/root_program.hpp`.
+- `backend/cve_2026_43499/terminal/root_child.{hpp,cpp}` - the `RootChildPolicy`
+  **declaration** and its 43499-specific handoff implementation, both owned by the
+  backend (ADR-0006 T5 completed; the declaration moved out of `terminal/`).
+  `terminal/` keeps only the neutral pieces: `umh_forward.*` (the `UmhForwardPolicy`,
+  forward/wait over an injected `UmhForwardChannel`, fail-closed),
+  `root_script.*` (script text generation), `handoff_probe.*`,
+  `umh_command.hpp`, `root_program.hpp`, `rooted_child.hpp` and
+  `terminal_input.hpp`.
 - `platform/abi.hpp` - the task/cred/symbol/phys owner Schema and View plus the
   mechanical `apply_to()` merge into the frozen transport; `platform/runtime.*`
   - environment probing (iomem cache, seccomp, SELinux enforce);
@@ -68,7 +77,8 @@ Where the pieces live:
 - `plugin/` - the countermeasure plugin facility: `controller.hpp` / `policy.hpp`
   (the neutral mechanism (`PluginStage`, `PluginPolicyFor`) and the
   injected controller), the out-of-tree hook `registry.hpp`, and the fail-closed
-  `loader.hpp` / `sha256.hpp`. Behaviors consume the non-owning
+  `loader.hpp` (digest via the shared `support/sha256.*`). Behaviors
+  consume the non-owning
   `contract::Capabilities` aggregate, and the registry, gate and context are
   supplied by the caller. It loads against the C ABI in
   `contract/abi/glk_contract_abi.h` (C++ mapping: `contract/countermeasure.hpp`).
@@ -110,7 +120,23 @@ Where the pieces live:
 - The owner GLKv3 FieldSpec sets are exported to
   `profile-manifest-v3.tsv` (app test resource + profile-core runtime
   resource); the native, Kotlin and extractor tests cross-check their field
-  sets against it.
+  sets against it, and the exporter bare run verifies BOTH copies
+  byte-for-byte (header included), so a stale runtime copy cannot pass.
+- The combination-token whitelist (`contract::kCombinationCatalog`) is exported
+  the same way to `combination-manifest.tsv` (`make -C src combination-manifest`,
+  app test resource + profile-core runtime resource, both copies verified
+  byte-for-byte). The Kotlin catalogue and the UI dropdown parse that resource;
+  no runtime Kotlin hard-codes a token (checked by `CombinationTokenHardcodeTest`).
+- The same command writes the test-only `combination-resolve-vectors.tsv` (one
+  copy): canonical / cross-backend / case / whitespace / empty / unknown /
+  planned / no-catalogue-backend inputs with their native resolution, pinning
+  Kotlin `resolve` (exact) + `normalize` (trim, lowercase) against
+  `contract::combination_resolve`.
+- F1: every catalogue row is also exposed as
+  `CombinationId{backend, route, path}` (`combination_id` /
+  `combination_from_id`). The path is a third orthogonal axis, not a terminal
+  alias (rootchild and shizuku both enter the root child and differ only in the
+  step set). The compact `CombinationKind` id and the wire byte are unchanged.
 
 ## Compilation boundaries
 
@@ -145,6 +171,7 @@ Backend code nests per CVE (`backend::cve_2026_43499::{route,backend_profile}`,
 - `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` -
   attack-function disassembly gate (runs for attack-path changes).
 - `./gradlew :app:testDebugUnitTest --offline` - Kotlin agreement tests
-  (`ProfileManifestV3AgreementTest`, `RouteCatalogAgreementTest`).
+  (`ProfileManifestV3AgreementTest`, `RouteCatalogAgreementTest`,
+  `CombinationTokenAgreementTest`).
 - Session ownership: the per-field owner / borrower / release / termination
   table lives in `session/core_session.hpp`.

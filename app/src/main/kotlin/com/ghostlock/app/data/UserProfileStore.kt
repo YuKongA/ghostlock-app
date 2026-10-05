@@ -59,9 +59,21 @@ internal class UserProfileStore(
      * rewrite is an old-layout one; stored text stays untouched either way.
      */
     private fun needsConversion(entry: ValueMap): Boolean {
+        if (ProfileLayout.isCanonical(entry)) return false
         val converted = entry.copyValue().asValueMap() ?: return true
         LegacyProfileConverter.convertValue(converted)
-        return converted != entry
+        /* R6a: fallback is no longer part of the current layout, but the frozen
+         * v1 converter still seeds a `fallback` declaration. Ignore it here so
+         * an already-current document is not reported as a legacy one. */
+        return withoutLegacyFallback(converted) != withoutLegacyFallback(entry)
+    }
+
+    /** A copy of [entry] with the ignored R6a fallback keys removed. */
+    private fun withoutLegacyFallback(entry: ValueMap): ValueMap {
+        val copy = entry.copyValue().asValueMap() ?: return entry
+        copy.remove("fallback")
+        copy.remove("fallback_to")
+        return copy
     }
 
     /** Releases carried by the stored document [name], in document order. */
@@ -95,7 +107,9 @@ internal class UserProfileStore(
             /* Single migration point: a legacy document is converted here and
              * its schema_version normalised, so every consumer downstream sees
              * the canonical version. An unknown version is rejected. */
+            if (ProfileLayout.isCanonical(entry)) ProfileLayout.applyNormalize(entry)
             LegacyProfileConverter.convertValue(entry)
+            ProfileLayout.applyNormalize(entry)
             entry["schema_version"] = LegacyProfileConverter.normalizeSchemaVersion(
                 entry["schema_version"], file.name,
             )
@@ -113,7 +127,9 @@ internal class UserProfileStore(
             val entry = runCatching { parseWith(text, byName) }.getOrNull()
                 ?.firstOrNull { it["release"] == release }
                 ?: return@firstNotNullOfOrNull null
+            if (ProfileLayout.isCanonical(entry)) ProfileLayout.applyNormalize(entry)
             LegacyProfileConverter.convertValue(entry)
+            ProfileLayout.applyNormalize(entry)
             val cpus = entry["execution"].asValueMap()?.get("recommended_cpus").asValueMap()
                 ?: return@firstNotNullOfOrNull null
             val main = (cpus["main"] as? Number)?.toInt()
@@ -170,7 +186,9 @@ internal class UserProfileStore(
         val entries = runCatching { parseEntries(text) }.getOrNull() ?: return null
         if (entries.isEmpty()) return null
         entries.forEach {
+            if (ProfileLayout.isCanonical(it)) ProfileLayout.applyNormalize(it)
             LegacyProfileConverter.convertValue(it)
+            ProfileLayout.applyNormalize(it)
             /* Exports carry the canonical schema version: the conversion has
              * seeded any legacy gap, and the marker keeps a re-import from being
              * seeded again. */
@@ -224,13 +242,15 @@ internal class UserProfileStore(
     private fun parseWith(text: String, byName: Map<String, String>): List<ValueMap> {
         val expanded = expandIncludes(text, byName, emptyList())
         val entries = ValueList()
-        when (val value = HoconSupport.parseValue(expanded)) {
-            is Map<*, *> -> value.asValueMap()
+        val parsed = HoconSupport.unwrapProfileDocument(HoconSupport.parseValue(expanded))
+        when (parsed) {
+            is Map<*, *> -> parsed.asValueMap()
                 ?.takeIf { it.containsKey("release") }
                 ?.let(entries::add)
 
-            is List<*> -> value.forEach { item ->
-                item.asValueMap()?.takeIf { it.containsKey("release") }?.let(entries::add)
+            is List<*> -> parsed.forEach { item ->
+                HoconSupport.unwrapProfileDocument(item)
+                    .asValueMap()?.takeIf { it.containsKey("release") }?.let(entries::add)
             }
         }
         return entries.mapNotNull { it.asValueMap() }

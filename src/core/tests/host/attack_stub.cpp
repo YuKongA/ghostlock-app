@@ -13,7 +13,7 @@ namespace ghostlock::backend {
 } // namespace ghostlock::backend
 
 namespace ghostlock::terminal {
-    void write_root_script(void) {}
+    void write_root_script(bool) {}
 } // namespace ghostlock::terminal
 
 namespace ghostlock::backend {

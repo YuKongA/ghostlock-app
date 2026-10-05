@@ -5,6 +5,13 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.plugin.EnabledPlugin
+import com.ghostlock.app.data.plugin.PluginDescriptor
+import com.ghostlock.app.data.plugin.PluginEmission
+import com.ghostlock.app.data.plugin.PluginOverrides
+import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.profile.CpuPairView
 import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
 import com.ghostlock.app.data.profile.Glkv3Encoder
@@ -29,7 +36,7 @@ import java.nio.charset.StandardCharsets
  * document handed to the native process.
  *
  * Imported profiles come verbatim from [userProfiles]; every edit (general,
- * route/fallback and advanced) persists as a sparse override in preferences,
+ * route and advanced) persists as a sparse override in preferences,
  * so stored user documents are never rewritten.
  */
 internal class AndroidProfileConfigController(
@@ -49,6 +56,20 @@ internal class AndroidProfileConfigController(
      * Defaults to General so existing callers stay byte-identical.
      */
     private val executionModeSelection: () -> ExecutionMode = { ExecutionMode.General },
+    /**
+     * S4 R6b combination token selection. When present it is the single
+     * selection authority (backend, steps, route and terminal all derive from
+     * it); null keeps the legacy mode/backend pair as the selection source for
+     * byte-compatible callers.
+     */
+    private val combinationSelection: (() -> CombinationSpec)? = null,
+    /**
+     * P1: the ENABLED plugins (registry row + probe descriptor) the repository
+     * resolved. The controller applies the user's overrides to them, because the
+     * override store is the controller's. Null/empty keeps every existing caller
+     * byte-identical.
+     */
+    private val pluginSelection: (() -> List<EnabledPlugin>)? = null,
     /**
      * Editing sessions pin the imported document instead of consulting the
      * live selection, and keep their overrides in [preferences] (a private
@@ -74,17 +95,16 @@ internal class AndroidProfileConfigController(
         }
         val baseline = resolveCurrent(deviceRelease, pair, null, includeImported = false) ?: full
         val route = routeNameOf(full)
-        val fallbackTo = fallbackTargetOf(full)
-        val invalidPaths = validateProfileFields(full, route, fallbackTo) +
+        val invalidPaths = validateProfileFields(full, route) +
             validate43284Fields(full) +
-            ProfileResolver.validateMerged(full, route, fallbackTo).mapTo(mutableSetOf()) { it.fieldPath }
+            ProfileResolver.validateMerged(full, route).mapTo(mutableSetOf()) { it.fieldPath }
         /* Invalid fields missing from the resolved document still get a row,
          * otherwise the run stays blocked with no red field to fix. */
         materializeInvalidPaths(full, invalidPaths)
         /* The editor shows every field of the active route plus the shared
          * geometry, so a field the profile did not carry appears as an
          * editable `null` row instead of being invisible. */
-        val complete = completeProfileFields(full, route, fallbackTo)
+        val complete = completeProfileFields(full, route)
         complete43284Fields(complete)
         val roots = buildTree(complete, "", baseline, advanced)
         cache(deviceRelease, buildNativeDocument(deviceRelease, full))
@@ -92,9 +112,8 @@ internal class AndroidProfileConfigController(
             release = deviceRelease,
             hasProfile = true,
             roots = roots,
-            general = generalFields(full, baseline, route, fallbackTo),
+            general = generalFields(full, baseline, route),
             route = route,
-            fallbackTo = fallbackTo,
             invalidPaths = invalidPaths,
         )
     }
@@ -106,7 +125,6 @@ internal class AndroidProfileConfigController(
     private fun validateProfileFields(
         profile: ValueMap,
         explicitRoute: String?,
-        fallbackTo: String?,
     ): Set<String> {
         val invalid = mutableSetOf<String>()
         /* HOCON booleans (compact_waiter / recommend_vr_guard) read as 1/0. */
@@ -162,10 +180,10 @@ internal class AndroidProfileConfigController(
         }
 
         val routePrefix = route?.let { "route.$it" } ?: "route"
-        val fallbackPrefix = fallbackTo?.takeIf { it != "none" }
-            ?.let { "fallback.route.$it" }
-        when (route) {
-            "tcp_zerocopy" -> {
+        /* Vocabulary keys come from the enum, never from literals; an
+         * unrecognised spelling still falls through to the else branch. */
+        when (RouteKind.resolve(route)) {
+            RouteKind.TCP_ZEROCOPY -> {
                 val compact = value("$routePrefix.compact_waiter")
                 if (compact == null || compact == 0L) {
                     invalid += "$routePrefix.compact_waiter"
@@ -174,7 +192,7 @@ internal class AndroidProfileConfigController(
                 }
             }
 
-            "select_stack" -> {
+            RouteKind.SELECT_STACK -> {
                 val shift = value("$routePrefix.waiter_shift")
                 if (shift == null ||
                     shift < Int.MIN_VALUE.toLong() || shift > Int.MAX_VALUE.toLong()
@@ -183,7 +201,7 @@ internal class AndroidProfileConfigController(
                 }
             }
 
-            "multicast_waiter" -> {
+            RouteKind.MULTICAST_WAITER -> {
                 for (field in RouteMulticastFields) {
                     val current = value("$routePrefix.$field")
                     if (current == null || current == 0L) {
@@ -226,46 +244,10 @@ internal class AndroidProfileConfigController(
                     invalid += "$routePrefix.buffer_size"
                 }
             }
-        }
-        if (fallbackTo != null && fallbackTo != "none" && fallbackTo !in ProfileConfig.Routes) {
-            invalid += "fallback.to"
-        } else if (fallbackPrefix != null) {
-            when (fallbackTo) {
-                "tcp_zerocopy" -> {
-                    val compact = value("$fallbackPrefix.compact_waiter")
-                    if (compact == null || compact == 0L) {
-                        invalid += "$fallbackPrefix.compact_waiter"
-                    } else if (compact < 0L || compact > 0xffL) {
-                        invalid += "$fallbackPrefix.compact_waiter"
-                    }
-                }
 
-                "select_stack" -> {
-                    val shift = value("$fallbackPrefix.waiter_shift")
-                    if (shift == null ||
-                        shift < Int.MIN_VALUE.toLong() || shift > Int.MAX_VALUE.toLong()
-                    ) {
-                        invalid += "$fallbackPrefix.waiter_shift"
-                    }
-                }
-
-                "multicast_waiter" -> {
-                    for (field in RouteMulticastFields) {
-                        val current = value("$fallbackPrefix.$field")
-                        if (current == null || current == 0L) {
-                            invalid += "$fallbackPrefix.$field"
-                        } else if (current < 0L || current > UInt.MAX_VALUE.toLong()) {
-                            invalid += "$fallbackPrefix.$field"
-                        }
-                    }
-                    for ((field, max) in RouteMulticastTuning) {
-                        val current = value("$fallbackPrefix.$field")
-                        if (current != null && (current < 0L || current > max)) {
-                            invalid += "$fallbackPrefix.$field"
-                        }
-                    }
-                }
-            }
+            /* No route declared, or a spelling the vocabulary does not know:
+             * keep the previous behaviour (no route-specific validation). */
+            else -> Unit
         }
         return invalid
     }
@@ -292,8 +274,10 @@ internal class AndroidProfileConfigController(
     }
 
     /** True when the effective wire backend is cve_2026_43284. */
-    private fun is43284Selection(): Boolean =
-        BackendKind.selectableOrFallback(backendSelection()) == BackendKind.Cve2026_43284
+    private fun is43284Selection(): Boolean {
+        combinationSelection?.invoke()?.let { return it.backend == BackendKind.Cve2026_43284 }
+        return BackendKind.selectableOrFallback(backendSelection()) == BackendKind.Cve2026_43284
+    }
 
     /**
      * Surfaces the editable 43284 policy/tuning surface for a 43284 selection
@@ -319,16 +303,6 @@ internal class AndroidProfileConfigController(
         }
     }
 
-    private fun fallbackTargetOf(profile: ValueMap): String? {
-        profile["fallback"].asValueMap()?.let { fallback ->
-            val to = fallback["to"] as? String ?: ""
-            if (to.isNotEmpty() && to != "null") return to
-        }
-        /* Legacy flat spelling from transition builds. */
-        return (profile["fallback_to"] as? String)
-            ?.takeIf { it.isNotEmpty() && it != "null" }
-    }
-
     override suspend fun updateRoute(
         release: String,
         pair: CpuPair,
@@ -342,32 +316,6 @@ internal class AndroidProfileConfigController(
                 ?: routeBranchTemplate(route)
             override["route"] = valueMapOf(route to existingBranch)
             pruneOverrideBranches(override, "route", route)
-        }
-        writeAdvancedOverride(release, override)
-        persistSnapshot(release, pair)
-        return load(release, pair)
-    }
-
-    override suspend fun updateFallback(
-        release: String,
-        pair: CpuPair,
-        fallbackTo: String?,
-    ): ProfileConfig {
-        val override = readAdvancedOverride(release)
-        if (fallbackTo.isNullOrBlank()) {
-            override.remove("fallback")
-        } else {
-            val fallback = override["fallback"].asValueMap() ?: valueMapOf()
-            fallback["to"] = fallbackTo
-            if (fallbackTo in ProfileConfig.Routes) {
-                val branch = fallback["route"].asValueMap()?.get(fallbackTo).asValueMap()
-                    ?: routeBranchTemplate(fallbackTo)
-                fallback["route"] = valueMapOf(fallbackTo to branch)
-            } else {
-                fallback.remove("route")
-            }
-            override["fallback"] = fallback
-            pruneOverrideBranches(override, "fallback", fallbackTo.takeIf { it in ProfileConfig.Routes })
         }
         writeAdvancedOverride(release, override)
         persistSnapshot(release, pair)
@@ -430,21 +378,13 @@ internal class AndroidProfileConfigController(
                     }
                 }
             }
-            /* The advanced editor carries neither the fallback choice nor the
+            /* The advanced editor carries neither the route choice nor the
              * selected CPUs (and may drop a route branch the baseline already
-             * matches); keep all three. */
+             * matches); keep both. */
             val current = readAdvancedOverride(release)
             current["route"].asValueMap()?.let { route -> rebuilt.putIfAbsent("route", route) }
             current["execution"].asValueMap()?.get("selected_cpus")?.let { cpus ->
                 rebuilt.mutableChild("execution")["selected_cpus"] = cpus
-            }
-            current["fallback"].asValueMap()?.let { fallback ->
-                val rebuiltFallback = rebuilt["fallback"].asValueMap()
-                if (rebuiltFallback == null) {
-                    rebuilt["fallback"] = fallback
-                } else {
-                    fallback["to"]?.let { rebuiltFallback["to"] = it }
-                }
             }
             writeAdvancedOverride(release, rebuilt)
             persistSnapshot(release, pair)
@@ -533,6 +473,41 @@ internal class AndroidProfileConfigController(
     fun overridesSnapshot(release: String): ValueMap =
         readAdvancedOverride(release).copyValue().asValueMap() ?: valueMapOf()
 
+    /**
+     * P1: stores or clears ONE plugin parameter override in the existing
+     * advanced override tree (dotted path `plugin.<id>.params.<name>`). Null
+     * clears it, so the descriptor's default applies again; an explicit value is
+     * stored verbatim, even when it equals the default, because "the user chose
+     * this" and "the plugin defaults to this" must stay distinguishable.
+     */
+    fun setPluginParam(release: String, id: String, name: String, value: PluginValue?) {
+        val overrides = readAdvancedOverride(release)
+        val pluginSection = overrides.mutableChild("plugin")
+        val plugin = pluginSection.mutableChild(id)
+        val params = plugin.mutableChild("params")
+        if (value == null) {
+            params.remove(name)
+            if (params.isEmpty()) plugin.remove("params")
+            if (plugin.isEmpty()) pluginSection.remove(id)
+        } else {
+            params[name] = when (value) {
+                is PluginValue.UInt -> value.value.toLong()
+                is PluginValue.Int -> value.value
+                is PluginValue.Bool -> value.value
+                is PluginValue.Str -> value.value
+            }
+        }
+        writeAdvancedOverride(release, overrides)
+    }
+
+    /** P1: the explicit parameter overrides of one installed plugin. */
+    fun pluginOverrides(
+        release: String,
+        id: String,
+        descriptor: PluginDescriptor,
+    ): Map<String, PluginValue> =
+        PluginOverrides.params(readAdvancedOverride(release), id, descriptor)
+
     /** Replaces the sparse overrides stored for [release]. */
     fun replaceOverrides(release: String, override: ValueMap) {
         writeAdvancedOverride(release, override.copyValue().asValueMap() ?: valueMapOf())
@@ -602,9 +577,7 @@ internal class AndroidProfileConfigController(
     override fun nativeDocument(config: ProfileConfig): ByteArray? = synchronized(lock) {
         if (cachedRelease != config.release) return@synchronized null
         cachedProfile?.let { profile ->
-            Glkv3Encoder.encode(
-                NativeProfileGlkv3Adapter.adapt(profile.document, resolvedSelection().terminal.token),
-            )
+            Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(profile.document))
         }
     }
 
@@ -615,29 +588,54 @@ internal class AndroidProfileConfigController(
     /** Builds the single resolved authority native consumes at run time. */
     private fun buildNativeDocument(release: String, profile: ValueMap): Profile? {
         val route = routeNameOf(profile)
-        val fallbackTo = fallbackTargetOf(profile)
         /* Backend choice is an app-level preference, not profile text: inject the
          * selected token so NativeProfileDocument.from reads it from the same
          * `backend.kind` path the exporter and imported profiles already use. The
          * copy keeps the resolved HOCON (editor tree, exports) free of the
          * app-only selection. */
         val resolved = profile.copyValue().asValueMap() ?: profile
-        val selection = resolvedSelection()
         val backend = resolved.mutableChild("backend")
-        backend["kind"] = selection.backend.token
-        /* The 43284 private section owns its StepSet key; inject the fixed
-         * pagecache_write vocabulary so no route/profile text can address an
-         * uncatalogued triple. 43499 keeps its profile/backend.steps value. */
-        if (selection.backend == BackendKind.Cve2026_43284) {
-            backend["steps"] = selection.steps.token
+        val combination = combinationSelection?.invoke()
+        if (combination != null) {
+            /* S4 R6b: the single token is the selection authority; write exactly
+             * one token into backend.<id>.steps and derive the backend from it. */
+            backend["kind"] = combination.backend.token
+            backend["steps"] = combination.token
+        } else {
+            val selection = resolvedSelection()
+            backend["kind"] = selection.backend.token
+            /* Legacy mode/backend pair: 43284's sparse triple is fixed, so inject
+             * its token resolved from the manifest (F4: no token literal here);
+             * 43499 keeps its profile-owned token. */
+            if (selection.backend == BackendKind.Cve2026_43284) {
+                CombinationCatalog.fromDerived(
+                    selection.backend, selection.steps, selection.terminal,
+                )?.let { backend["steps"] = it.token }
+            }
         }
         return Profile.fromValueMap(
             release = release,
-            route = RouteKind.fromToken(route),
-            fallbackTo = RouteKind.fromToken(fallbackTo),
+            route = RouteKind.resolve(RouteKind.normalize(route)),
             text = { path -> ProfileResolver.nativeText(resolved, path) },
             bool = { path -> ProfileResolver.nativeBool(resolved, path) },
-        ) { path -> ProfileResolver.nativeValue(resolved, route, fallbackTo, path) }
+            value = { path -> ProfileResolver.nativeValue(resolved, route, path) },
+            /* P1: only enabled plugins, and only the parameters the user
+             * explicitly overrode (the descriptor keeps the defaults). The
+             * override tree is the controller's, so it is applied here. */
+            plugins = pluginSelection?.invoke().orEmpty().map { enabled ->
+                requireNotNull(
+                    PluginEmission.of(
+                        enabled.entry,
+                        enabled.descriptor,
+                        PluginOverrides.params(
+                            overridesSnapshot(release),
+                            enabled.entry.id,
+                            enabled.descriptor,
+                        ),
+                    ),
+                ) { "enabled plugin produced no emission: " + enabled.entry.id }
+            },
+        )
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----
@@ -677,6 +675,9 @@ internal class AndroidProfileConfigController(
             (HoconSupport.parseValue(readAsset("$BuiltinDirectory/$path")).asValueMap()
                 ?: error("profile is not an object"))
                 .also {
+                    /* R3: normalize the canonical owner-qualified layout (or a
+                     * legacy flat document) at parse time. */
+                    ProfileLayout.applyNormalize(it)
                     LegacyProfileConverter.normalizeSchemaVersion(
                         it["schema_version"], "$BuiltinDirectory/$path",
                     )
@@ -702,7 +703,7 @@ internal class AndroidProfileConfigController(
 
     /**
      * Native decodes one complete `execution.routes` object, while profiles only
-     * include the route they use (plus their fallback). Missing groups are
+     * include the route they use. Missing groups are
      * filled from the shared `execution-<route>.conf` files.
      */
     private fun fillRouteExecutionDefaults(profile: ValueMap) {
@@ -715,7 +716,8 @@ internal class AndroidProfileConfigController(
     private fun readExecutionRoute(route: String): ValueMap? = runCatching {
         HoconSupport.parseValue(
             readAsset("$BuiltinDirectory/execution-${route.replace('_', '-')}.conf"),
-        ).asValueMap()?.get("execution").asValueMap()?.get("routes").asValueMap()?.get(route).asValueMap()
+        ).asValueMap()?.also { ProfileLayout.applyNormalize(it) }
+            ?.get("execution").asValueMap()?.get("routes").asValueMap()?.get(route).asValueMap()
     }.getOrNull()
 
     private fun readIndex(): ValueMap? = runCatching {
@@ -732,7 +734,8 @@ internal class AndroidProfileConfigController(
 
     /** Shared execution tuning every profile includes ("execution-tuning.conf"). */
     private fun readExecutionTuning(): ValueMap? = runCatching {
-        HoconSupport.parseValue(readAsset("$BuiltinDirectory/execution-tuning.conf")).asValueMap()
+        HoconSupport.parseValue(readAsset("$BuiltinDirectory/execution-tuning.conf"))
+            .asValueMap()?.also { ProfileLayout.applyNormalize(it) }
     }.getOrNull()
 
     /** Creates null placeholders for invalid fields the document does not carry. */
@@ -750,38 +753,19 @@ internal class AndroidProfileConfigController(
     /** Initialises a switched-to branch with its fields so they can be filled. */
     private fun routeBranchTemplate(route: String): ValueMap {
         val template = valueMapOf()
-        RouteBranchFields[route].orEmpty().forEach { template[it] = null }
+        RouteBranchFields[RouteKind.resolve(route)].orEmpty().forEach { template[it] = null }
         return template
     }
 
     /**
-     * After a route/fallback switch only the selected branch survives in the
-     * advanced override; edits of the previous branch would otherwise pull the
-     * choice back or shadow the new branch's fields.
+     * After a route switch only the selected branch survives in the advanced
+     * override; edits of the previous branch would otherwise pull the choice
+     * back or shadow the new branch's fields.
      */
     private fun pruneOverrideBranches(entry: ValueMap, key: String, keep: String?) {
-        val container = if (key == "fallback") {
-            entry["fallback"].asValueMap()?.get("route").asValueMap()
-        } else {
-            entry[key].asValueMap()
-        }
-        if (container != null) {
-            container.keys.toList()
-                .filter { it != keep }
-                .forEach(container::remove)
-            if (container.isEmpty()) {
-                if (key == "fallback") {
-                    entry["fallback"].asValueMap()?.remove("route")
-                } else {
-                    entry.remove(key)
-                }
-            }
-        }
-        if (key == "fallback") {
-            entry["fallback"].asValueMap()?.let { fallback ->
-                if (fallback.isEmpty()) entry.remove("fallback")
-            }
-        }
+        val container = entry[key].asValueMap() ?: return
+        container.keys.toList().filter { it != keep }.forEach(container::remove)
+        if (container.isEmpty()) entry.remove(key)
     }
 
     // ---- controller model helpers ----
@@ -790,7 +774,6 @@ internal class AndroidProfileConfigController(
         profile: ValueMap,
         baseline: ValueMap,
         route: String?,
-        fallbackTo: String?,
     ): List<ExecutionFieldValue> {
         fun read(root: ValueMap, path: String): Long? = if (path.startsWith("execution.")) {
             root["execution"].asValueMap()?.getLongAt(path.removePrefix("execution."))
@@ -798,13 +781,12 @@ internal class AndroidProfileConfigController(
             root.getLongAt(path)
         }
         /* Route tuning is appended from the resolved document itself: only the
-         * active route's leaves (sorted, so the order is stable), plus the
-         * declared fallback's, so the editor never offers another route's
-         * knobs. Both route groups are filled into `execution.routes` during
-         * resolution, so the keys come straight from the HOCON. */
+         * active route's leaves (sorted, so the order is stable), so the editor
+         * never offers another route's knobs. The group is filled into
+         * `execution.routes` during resolution, so the keys come straight from
+         * the HOCON. */
         val paths = ProfileConfig.GeneralPaths +
-            routeTuningPaths(profile, route) +
-            routeTuningPaths(profile, fallbackTo?.takeIf { it != "none" && it != route })
+            routeTuningPaths(profile, route)
         return paths.map { path ->
             val value = read(profile, path) ?: 0L
             ExecutionFieldValue(
@@ -831,7 +813,6 @@ internal class AndroidProfileConfigController(
     private fun completeProfileFields(
         profile: ValueMap,
         route: String?,
-        fallbackTo: String?,
     ): ValueMap {
         val out = profile.copyValue().asValueMap() ?: return profile
         if (!out.containsKey("kernel_phys_load")) out["kernel_phys_load"] = null
@@ -841,12 +822,6 @@ internal class AndroidProfileConfigController(
         completeSection(out, "offset", OffsetFieldNames)
         completeSection(out, "kernelsnitch", KernelsnitchFieldNames)
         route?.let { completeRouteBranch(out["route"].asValueMap(), it) }
-        if (fallbackTo != null && fallbackTo != "none") {
-            completeRouteBranch(
-                out["fallback"].asValueMap()?.get("route").asValueMap(),
-                fallbackTo,
-            )
-        }
         return out
     }
 
@@ -856,7 +831,7 @@ internal class AndroidProfileConfigController(
     }
 
     private fun completeRouteBranch(container: ValueMap?, route: String) {
-        val fields = RouteBranchFields[route] ?: return
+        val fields = RouteBranchFields[RouteKind.resolve(route)] ?: return
         val containerMap = container ?: return
         val branch = containerMap[route].asValueMap()
             ?: valueMapOf().also { containerMap[route] = it }
@@ -865,7 +840,7 @@ internal class AndroidProfileConfigController(
 
     /** True when the GLKv3 manifest declares [path] as a wire `str` field. */
     private fun isStringFieldPath(path: String): Boolean =
-        NativeProfileGlkv3Adapter.declaredTypes()[path] ==
+        NativeProfileGlkv3Adapter.declaredWire(path) ==
             NativeProfileGlkv3Adapter.WireType.Str
 
     private fun buildTree(
@@ -919,7 +894,7 @@ internal class AndroidProfileConfigController(
 
                 /* S4 R4 string leaves (the 43284 policy paths). Only paths the
                  * GLKv3 manifest declares as wire `str` are editable here;
-                 * other HOCON strings (fallback.to, backend.steps/kind) are
+                 * other HOCON strings (backend.steps/kind) are
                  * selection tokens owned by their dedicated controls. */
                 value is String -> if (path != "schema_version" && path != "release" &&
                     isStringFieldPath(path)
@@ -960,7 +935,7 @@ internal class AndroidProfileConfigController(
             .getOrDefault(valueMapOf())
     }
 
-    /** Sparse overrides for [release]: general, route/fallback and advanced. */
+    /** Sparse overrides for [release]: general, route and advanced. */
     private fun readAdvancedOverride(release: String): ValueMap =
         readDebugOverrides()[release].asValueMap() ?: valueMapOf()
 
@@ -979,7 +954,7 @@ internal class AndroidProfileConfigController(
             ) ?: return
             val exportView = resolved.copyValue().asValueMap() ?: return
             /* Renderer-side completeness: pull in the tuning of the selected
-             * route and its fallback, then drop the groups that are not used. */
+             * route, then drop the groups that are not used. */
             fillRouteExecutionDefaults(exportView)
             trimRouteTuning(exportView)
             File(filesDir, snapshotName(release))
@@ -993,12 +968,11 @@ internal class AndroidProfileConfigController(
     private fun snapshotName(release: String): String =
         "${release.replace(Regex("[^A-Za-z0-9._-]"), "_")}.conf"
 
-    /** The exported document keeps only the selected route's tuning (+ fallback). */
+    /** The exported document keeps only the selected route's tuning. */
     private fun trimRouteTuning(profile: ValueMap) {
         val routes = profile["execution"].asValueMap()?.get("routes").asValueMap() ?: return
         val keep = buildSet {
             routeNameOf(profile)?.let(::add)
-            fallbackTargetOf(profile)?.takeIf { it != "none" }?.let(::add)
         }
         routes.keys.toList().filter { it !in keep }.forEach(routes::remove)
     }
@@ -1037,9 +1011,9 @@ internal class AndroidProfileConfigController(
         private val KernelsnitchFieldNames = listOf("collisions", "mm_struct_sz")
         /** Fields each route branch carries, used to seed a switched-to route. */
         private val RouteBranchFields = mapOf(
-            "tcp_zerocopy" to listOf("compact_waiter"),
-            "select_stack" to listOf("waiter_shift"),
-            "multicast_waiter" to listOf(
+            RouteKind.TCP_ZEROCOPY to listOf("compact_waiter"),
+            RouteKind.SELECT_STACK to listOf("waiter_shift"),
+            RouteKind.MULTICAST_WAITER to listOf(
                 "waiter_off", "buffer_size", "task_offset", "lock_offset",
                 "compact_waiter",
             ) + RouteMulticastTuning.map { it.first },

@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.model
 
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.route.RouteKind
 
 data class CpuPair(val primary: Int, val consumer: Int) {
     override fun toString(): String = "$primary,$consumer"
@@ -92,19 +93,21 @@ data class ProfileConfig(
     val general: List<ExecutionFieldValue> = emptyList(),
     /** Explicit route from the profile; null means geometry inference. */
     val route: String? = null,
-    /** Declared fallback route ("none"/"<route>"); null means unset. */
-    val fallbackTo: String? = null,
     /** Dotted paths whose resolved value violates the geometry rules. */
     val invalidPaths: Set<String> = emptySet(),
 ) {
     companion object {
-        /** Routes a profile may declare ("" is the inference fallback). */
-        val Routes = listOf("tcp_zerocopy", "select_stack", "multicast_waiter")
+        /**
+         * Routes a profile may declare. Derived from the single Kotlin route
+         * vocabulary ([RouteKind]); the wire ids are pinned against native by
+         * RouteCatalogAgreementTest, so this is not a second authority.
+         */
+        val Routes = RouteKind.entries.map { it.token }
 
         /**
          * Route-independent execution tuning paths the general editor always
          * exposes. Route-specific tuning is appended dynamically from the
-         * resolved profile for the active route (plus its fallback), so a
+         * resolved profile for the active route , so a
          * profile never shows another route's knobs.
          */
         val GeneralPaths = listOf(

@@ -14,14 +14,15 @@ int32_t main() {
     static_assert(sizeof(ghostlock::backend::cve_2026_43499::route::RouteStatus) == sizeof(int32_t) * 5);
     static_assert(offsetof(ghostlock::backend::cve_2026_43499::route::RouteStatus, kernel_disarmed) == sizeof(int32_t) * 4);
 
-    constexpr ghostlock::backend::cve_2026_43499::route::RouteStatus fallback{
+    /* R6a: FallbackSafe is now just a clean-failure code; there is no
+     * can_fallback() capability any more (fallback left the wire). */
+    constexpr ghostlock::backend::cve_2026_43499::route::RouteStatus clean{
         .code = ghostlock::backend::cve_2026_43499::route::ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     };
-    static_assert(fallback.is_clean());
-    static_assert(!fallback.is_dirty());
-    static_assert(fallback.can_fallback());
+    static_assert(clean.is_clean());
+    static_assert(!clean.is_dirty());
 
     constexpr ghostlock::backend::cve_2026_43499::route::RouteStatus dirty{
         .code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE,
@@ -30,6 +31,5 @@ int32_t main() {
     };
     static_assert(!dirty.is_clean());
     static_assert(dirty.is_dirty());
-    static_assert(!dirty.can_fallback());
     return 0;
 }

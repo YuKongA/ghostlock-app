@@ -76,6 +76,11 @@ namespace ghostlock::profile::glkv3 {
             out = Value{};
             out.type = expected;
             switch (expected) {
+                /* S4 P1: WireType::Union declares the dynamic plugin keys in the
+                 * manifest; it is never a concrete wire value, so any static
+                 * decode/write/convert path that meets it fails closed. */
+                case WireType::Union:
+                    return false;
                 case WireType::UInt:
                     out.uint_value = mpack_expect_u64(ctx.reader);
                     return check(ctx);
@@ -422,6 +427,12 @@ namespace ghostlock::profile::glkv3 {
 
         void write_value(mpack_writer_t *writer, const Value &value) {
             switch (value.type) {
+                /* S4 P1: WireType::Union declares the dynamic plugin keys in the
+                 * manifest; it is never a concrete wire value, so any static
+                 * decode/write/convert path that meets it fails closed. */
+                case WireType::Union:
+                    (void)mpack_write_nil(writer);
+                    break;
                 case WireType::UInt:
                     mpack_write_uint(writer, value.uint_value);
                     break;

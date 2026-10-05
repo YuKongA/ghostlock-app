@@ -13,8 +13,8 @@ import org.junit.Test
 
 class ProfileRoundTripTest {
     /* Route-independent values plus per-route values. The logical document
-     * carries the resolved route's tuning plus the fallback target; the GLKv3
-     * adapter maps them onto the owner-qualified wire paths. */
+     * carries only the resolved route's tuning (R6a dropped the fallback); the
+     * GLKv3 adapter maps them onto the owner-qualified wire paths. */
     private val common = mapOf(
         "kernel_major" to 6L,
         "compact_waiter" to 1L,
@@ -60,17 +60,15 @@ class ProfileRoundTripTest {
 
     private fun document(
         route: String?,
-        fallback: String?,
         vals: Map<String, Long>,
     ): NativeProfileDocument =
-        NativeProfileDocument.from("6.1.0-test", route, fallback) { vals[it] }
+        NativeProfileDocument.from("6.1.0-test", route, value = { vals[it] })
 
     private fun encoded(
         route: String?,
-        fallback: String?,
         vals: Map<String, Long>,
     ): ByteArray =
-        Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document(route, fallback, vals)))
+        Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document(route, vals)))
 
     private fun entry(document: Glkv3Document, section: String, key: String): Glkv3Value =
         document.sections
@@ -82,12 +80,12 @@ class ProfileRoundTripTest {
     @Test
     fun `route kind maps token and wire both ways`() {
         for (kind in RouteKind.entries) {
-            assertEquals(kind, RouteKind.fromToken(kind.token))
+            assertEquals(kind, RouteKind.resolve(kind.token))
             assertEquals(kind, RouteKind.fromWire(kind.wire))
         }
         assertNull(RouteKind.fromWire(0u))
-        assertNull(RouteKind.fromToken("unknown"))
-        assertNull(RouteKind.fromToken(null))
+        assertNull(RouteKind.resolve("unknown"))
+        assertNull(RouteKind.resolve(null))
     }
 
     @Test
@@ -97,7 +95,7 @@ class ProfileRoundTripTest {
             "select_stack" to selectValues,
             "multicast_waiter" to multicastValues,
         )) {
-            val adapted = NativeProfileGlkv3Adapter.adapt(document(route, "select_stack", vals))
+            val adapted = NativeProfileGlkv3Adapter.adapt(document(route, vals))
             val bytes = Glkv3Encoder.encode(adapted)
             val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
             assertEquals(adapted.release, decoded.release)
@@ -112,14 +110,10 @@ class ProfileRoundTripTest {
     @Test
     fun `multicast round trip exposes route semantics`() {
         val decoded = requireNotNull(
-            Glkv3Decoder.decode(encoded("multicast_waiter", "select_stack", multicastValues)),
+            Glkv3Decoder.decode(encoded("multicast_waiter", multicastValues)),
         )
         val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
         assertEquals("multicast_waiter", decoded.route)
-        assertEquals(
-            Glkv3Value.UInt(RouteKind.SELECT_STACK.wire.toULong()),
-            entry(decoded, "common", "fallback_route"),
-        )
         assertEquals(Glkv3Value.UInt(6u), entry(decoded, "common", "kernel_major"))
         assertEquals(
             Glkv3Value.Bool(true),
@@ -144,7 +138,7 @@ class ProfileRoundTripTest {
     @Test
     fun `vr guard round trip carries gate layout and symbol`() {
         val decoded = requireNotNull(
-            Glkv3Decoder.decode(encoded("multicast_waiter", "none", multicastValues)),
+            Glkv3Decoder.decode(encoded("multicast_waiter", multicastValues)),
         )
         assertEquals(Glkv3Value.Bool(true), entry(decoded, "common", "vr_guard"))
         assertEquals(
@@ -157,14 +151,14 @@ class ProfileRoundTripTest {
         )
         /* The layout is per-image: a profile without it keeps the section absent. */
         val withoutLayout = requireNotNull(
-            Glkv3Decoder.decode(encoded("multicast_waiter", "none", common - "vr_guard.tracepoint_funcs")),
+            Glkv3Decoder.decode(encoded("multicast_waiter", common - "vr_guard.tracepoint_funcs")),
         )
         assertNull(withoutLayout.sections.firstOrNull { it.name == "countermeasure.vivo_vr_guard" })
     }
 
     @Test
     fun `patch safe mode lands on the common entry`() {
-        val original = encoded("multicast_waiter", null, multicastValues)
+        val original = encoded("multicast_waiter", multicastValues)
         assertEquals(
             Glkv3Value.Bool(false),
             entry(requireNotNull(Glkv3Decoder.decode(original)), "common", "safe_mode"),
@@ -187,7 +181,7 @@ class ProfileRoundTripTest {
 
     @Test
     fun `unresolved route is rejected by the authority`() {
-        val unresolved = document(route = null, fallback = null, vals = tcpValues)
+        val unresolved = document(route = null, vals = tcpValues)
         assertNull(Profile.fromNativeDocument(unresolved))
     }
 
@@ -196,11 +190,9 @@ class ProfileRoundTripTest {
         val profile = Profile.fromValueMap(
             release = "6.1.0-test",
             route = RouteKind.TCP_ZEROCOPY,
-            fallbackTo = null,
             value = { tcpValues[it] },
         )!!
         assertEquals(RouteKind.TCP_ZEROCOPY, profile.route)
-        assertNull(profile.fallback)
         assertEquals("tcp_zerocopy", NativeProfileGlkv3Adapter.adapt(profile.document).route)
     }
 }

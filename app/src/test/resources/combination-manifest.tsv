@@ -1,0 +1,19 @@
+# GhostLock combination-token manifest (ADR-0006 T5 / S4 R6b F4).
+# Authoritative native export of contract::kCombinationCatalog, in catalogue order;
+# regenerate with: make -C src combination-manifest
+# Columns: token<TAB>backend<TAB>route<TAB>path<TAB>steps<TAB>terminal<TAB>available<TAB>doc
+# route is a kRouteCatalog token or none (backend without a route axis);
+# available is 1 (wired/selectable) or 0 (planned: parses, selection gate rejects);
+# doc is the dropdown summary, derived from this row (columns joined by ' · ').
+mcast_rootchild	cve_2026_43499	multicast_waiter	rootchild	w1_w3	root_child	1	cve_2026_43499 · multicast_waiter · w1_w3 · root_child
+pselect_rootchild	cve_2026_43499	select_stack	rootchild	w1_w3	root_child	1	cve_2026_43499 · select_stack · w1_w3 · root_child
+tcp_rootchild	cve_2026_43499	tcp_zerocopy	rootchild	w1_w3	root_child	1	cve_2026_43499 · tcp_zerocopy · w1_w3 · root_child
+mcast_shizuku	cve_2026_43499	multicast_waiter	shizuku	w1_w2	root_child	1	cve_2026_43499 · multicast_waiter · w1_w2 · root_child
+pselect_shizuku	cve_2026_43499	select_stack	shizuku	w1_w2	root_child	1	cve_2026_43499 · select_stack · w1_w2 · root_child
+tcp_shizuku	cve_2026_43499	tcp_zerocopy	shizuku	w1_w2	root_child	1	cve_2026_43499 · tcp_zerocopy · w1_w2 · root_child
+mcast_umh	cve_2026_43499	multicast_waiter	umh	w1_w3	umh_forward	0	cve_2026_43499 · multicast_waiter · w1_w3 · umh_forward
+pselect_umh	cve_2026_43499	select_stack	umh	w1_w3	umh_forward	0	cve_2026_43499 · select_stack · w1_w3 · umh_forward
+tcp_umh	cve_2026_43499	tcp_zerocopy	umh	w1_w3	umh_forward	0	cve_2026_43499 · tcp_zerocopy · w1_w3 · umh_forward
+umh	cve_2026_43284	none	umh	pagecache_write	umh_forward	1	cve_2026_43284 · pagecache_write · umh_forward
+rootchild	cve_2026_43284	none	rootchild	pagecache_write	root_child	0	cve_2026_43284 · pagecache_write · root_child
+shizuku	cve_2026_43284	none	shizuku	pagecache_write	root_child	0	cve_2026_43284 · pagecache_write · root_child

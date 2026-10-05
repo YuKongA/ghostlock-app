@@ -2,301 +2,266 @@
 
 > English: [PROFILE_SCHEMA.md](PROFILE_SCHEMA.md)
 
-本文档描述 `app/src/main/assets/kernel_profiles/` 下内核配置（profile）的完整结构、字段语义、路由机制与校验规则，以及配置在 Kotlin / native 之间的流转方式。
+本文档是 `app/src/main/assets/kernel_profiles/` 下内核配置（profile）的参考：HOCON
+布局、字段分组、组合 token 选择、插件段、GLKv3 wire，以及加载/校验流水线。
 
-> 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优建议见 [defaults_ZH.md](defaults_ZH.md)。
+> 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优默认值见
+> [defaults_ZH.md](defaults_ZH.md)。**本文不重复画结构图**：全流程结构（IPO / 状态机 /
+> Class / Sequence）的唯一权威是
+> [full-process-uml.md](../development/full-process-uml.md)。
 
-> **两个"版本"是彼此独立的东西**（不要当成同一条版本序列）：
-> - **Profile schema 版本**：HOCON 配置代际，由每份 profile 里的 `schema_version` 字段表达（见第 2 节）。
-> - **Binary wire 版本**：magic `0x0D000721` 之后的 GLK1 传输版本。当前 writer 写 wire version `2`
->   （对象分段，见第 9 节）；它是唯一版本，Kotlin 与 native 版本绑定。
->
-> 下文全部描述当前 v2 配置；旧 v1 JSON 导入路径仅在 Kotlin 侧，集中见第 11 节。
+## 0. 版本与字段权威
 
-## 0. 文件格式（HOCON）
+版本号**只有一个**：`3`。HOCON 配置写 `ghostlock.schema_version = 3`，wire 文档是
+MessagePack 根 map、其 `schema` 必须等于 `3`；不存在按文件叠加/递增的版本。插件 C ABI
+是**另一个**计数器：`GLK_ABI_VERSION = 1`（仅尾部追加，
+`src/core/contract/abi/glk_contract_abi.h`）。
 
-内置配置、`index.conf`、共享配置与导入的偏移文件都按 **HOCON** 解析：
+| 事实 | 权威 |
+|---|---|
+| canonical profile 形状、键归属、别名归一 | 仓库内 `app/src/main/assets/kernel_profiles/*.conf`；解析器 `profile-core/.../data/ProfileLayout.kt` |
+| owner-qualified path → wire 类型（109 字段） | native 导出 `app/src/test/resources/profile-manifest-v3.tsv`（对拍副本）与 `profile-core/src/main/resources/profile-manifest-v3.tsv`（运行时副本）；生成命令 `make -C src profile-manifest-v3` |
+| 选择词汇（12 个组合 token） | `contract::kCombinationCatalog`（`src/core/contract/identity.hpp`）；导出 `make -C src combination-manifest` |
+| 插件 wire 形状与动态键 | `src/core/plugin/schema.hpp`（`kPluginGlkv3Fields`，line 95）与 `src/core/plugin/wire.{hpp,cpp}`（`validate_plugin_wire`，`wire.hpp:66`） |
+| 插件 C ABI 版本 | `src/core/contract/abi/glk_contract_abi.h:47`（`GLK_ABI_VERSION 1u`） |
+| token 目录 | `src/core/contract/identity.hpp:177`（`kCombinationCatalog`，12 行） |
+| 运行索引 | `app/src/main/assets/kernel_profiles/index.conf:3`（`schema_version = 3`） |
+| GLKv3 wire 格式 | [wire-transport-model.md](../analysis/wire-transport-model.md) |
+| 全流程结构图 | [full-process-uml.md](../development/full-process-uml.md)（唯一权威；本文只链接，不重画） |
 
-- JSON 是 HOCON 的子集；
-- 支持 `#` / `//` 注释、尾逗号、`${var}` 变量替换（可选替换写 `${?var}`）；
-- 支持 `include "file.conf"`（相对同目录、可嵌套、防循环）：读取 assets 时由 `AssetConfigLoader` 展开；
-  **导入**时优先用一并选中的文件展开，其次查包内共享文件，缺失会报错并要求重新选择；
-- 解析发生在 Kotlin 侧（`HoconSupport`），随后以类型化二进制结构体传给 native（见第 9 节）；
-- 应用内部存储与导出均为 HOCON（`ghostlock-extract --format conf` 输出 flatten 自包含
-  profile，走常规导入路径；旧 v1 JSON 导入路径见第 11 节）。
-- 提取器输出是**候选来源**：镜像实际获得多少字段就写出多少，未获得的字段省略，不会借用
-  相邻内核族的猜测值。因此候选 profile 可能不完整；导入成功后由 App 的字段校验填充
-  `invalidPaths` 并在执行前拦截，生成成功不等于设备受支持。
+## 1. 数据流
 
-## 1. 数据流总览
+1. **加载**：设备精确 `uname -r` 对应的内置 profile、共享 `execution-*.conf` preset、
+   导入/导出的用户 profile 与高级覆盖；片段通过 `include` 引入。
+2. **归一**：所有文档统一成 canonical owner-qualified 布局（`ProfileLayout`）——canonical
+   与旧的扁平写法都接受，别名被解析，未识别键带点分路径 **fail-closed**。
+3. **合并**（低 → 高）：execution preset → 内置 + 导入 profile → 高级覆盖；随后
+   `execution.selected_cpus` 按用户选择的 CPU 对强制写入（`ProfileMerger`/`ProfileResolver`）。
+4. **校验**：release 必须与设备一致；schema 必填字段必须在；默认值由 schema 物化（被默认的
+   字段以 `default_used` 报告）。
+5. **编码**：解析后的 profile 编码为 GLKv3 文档（根 map、`schema == 3`），canonical 编码
+   （最短整数、map 键按 UTF-8 字节序排序）。
+6. **分帧与交接**：App 启动 native 可执行文件，把文档按「4 字节大端长度前缀 + 文档」写入
+   stdin；同一流上可再接一帧运行时密钥。密钥绝不进文档、不进 argv、不落盘。
+7. **native 解析与绑定**：非 map 根、缺 `schema` 或 `schema != 3`、未知 section/键、类型
+   不符、截断文档、超过 1 MiB 的文档——在任何攻击阶段之前一律拒绝。
 
-```
-assets/kernel_profiles/<release>.conf     内置配置（HOCON）
-assets/kernel_profiles/execution-tuning.conf   execution 通用调优（所有内核）
-assets/kernel_profiles/execution-<route>.conf   各路由的 execution 调优 preset（由 resolver 加载）
-assets/kernel_profiles/credential-6x.conf      6.x 凭据模板共享值
-assets/kernel_profiles/kernelsnitch-6x.conf    6.x KernelSnitch 共享值
-assets/kernel_profiles/<major.minor>-template.conf  参考模板（登记 index，调试页可手动加载；不参与设备匹配与自动回退）
-filesDir/offsets.conf                     解析/导入的偏移（imported，HOCON）
-内部覆盖（advanced override，sparse）    高级参数覆盖页写入
-        │
-        ▼  ProfileConfigController.resolve（Kotlin）
-   resolved profile（单对象，全字段已合并）
-        │
-        ├──▶ 运行：类型化二进制（direct 与 Shizuku 都把字节写入 native 的 stdin）
-        │      native 只做解析与几何使用，不再做参数校验
-        ├──▶ 快照：filesDir/<release>.conf（HOCON，导出配置的源）
-        └──▶ UI：参数覆盖页 / 高级参数覆盖树
-```
+## 2. 文件格式（HOCON）
 
-合并优先级（低 → 高）：`execution-tuning`（+ 按路由的 `execution-<route>.conf`）→ `内置/profile + imported offsets` → `高级覆盖`；最后强制写入 `execution.selected_cpus`（来自手动选择或 imported/覆盖中的显式值）。
-
-## 2. 顶层结构
-
-```hocon
-# GhostLock kernel profile (HOCON; JSON stays valid)
-release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
-schema_version = 1
-kernel_major = 6
-backend { steps = "w1_w3" }
-route {
-  select_stack { waiter_shift = -2 }
-}
-fallback { to = "none" }
-kernelsnitch { collisions = 4, mm_struct_sz = 4096 }
-task_struct { prio = 132, cred = 2080, pi_lock = 2316 }
-cred { copy_size = 136, caps_offset = 48, caps_count = 5 }
-offset { init_task = 34464384, init_cred = 34538824 }
-# execution 调优由 resolver 从 preset 文件提供；只写差异
-```
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `release` | string | 必须与设备 `uname -r` 完全一致（区分大小写/后缀）；模板文件不参与匹配 |
-| `schema_version` | int | 固定为 `1` |
-| `kernel_major` | int | `5` 或 `6`；用于地址解析与合法性检查，不再决定路由 |
-| `backend` | object | `steps` 字符串：`"w1_w3"`（一般路径，执行 W3）或 `"w1_w2"`（Shizuku/UMH，shell 跳过 W3）；与 terminal 选择共同决定 root 程序与执行模式 |
-| `route` | object | 显式路由父项，只含一个分支，见第 3 节 |
-| `fallback` | object | 回退声明（`to` + 可选 `route` 分支），见第 3 节 |
-| 几何字段 | object/int | 按命名空间分组：`task_struct` / `cred` / `offset` / `kernelsnitch`；当前路由的全字段与公共几何**必须全部出现**，无法提供的值写显式 `null`（不要用 `0` 占位）；非当前路由的分支省略 |
-| `execution` | object | 调优参数（advisory）；通用项来自 `execution-tuning.conf`，路由项来自 `execution-<route>.conf`；两者由 resolver 作为 preset 加载，设备 profile 不 include。只写差异 |
-
-## 3. 路由（route）机制
-
-路由不再由内核版本或字段存在性推断，而是由配置显式声明。`route` 是父项，**只允许一个分支**：
+- 全部使用 HOCON：内置 profile、`index.conf`、片段、导入与导出文件。JSON 仍然合法；
+  接受 `#` / `//` 注释、尾逗号与 `${var}`（含 `${?var}`）替换。
+- 支持 `include "file.conf"`（同目录、可嵌套、防循环）。**被 include 的片段不带
+  `schema_version`**，只有 profile 根带。
+- `index.conf` 是运行索引：
 
 ```hocon
-route { tcp_zerocopy { compact_waiter = true } }
-route { select_stack { waiter_shift = -2 } }
-route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
+schema_version = 3
+backends = [
+  { id = "cve_2026_43499", available = true }
+  { id = "cve_2026_43284", available = true }
+]
+profiles = [
+  { release = "6.12-template", file = "6.12-template.conf" }
+  { release = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k", file = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k.conf" }
+]
 ```
 
-- 每个路由只要求自己的分支：未采用的路由分支完全不写；分支之间不得并存（一个配置一种 path）。
-- `fallback` 父项声明回退：`"to"` 取 `"none"` 或路由名；声明目标时同时给出 `"route"` 分支，
-  存放回退执行所需的字段：
-  ```hocon
-  fallback {
-    to = "select_stack"
-    route { select_stack { waiter_shift = 1 } }
+  `backends` 矩阵与 native 导出的 manifest 对拍（`BackendMatrixAgreementTest`），不会漂移。
+
+## 3. canonical 布局（owner-qualified）
+
+内置 profile 使用唯一包裹根 `ghostlock`，每个 owner 一个段。下面是一份真实 profile 的完整形状：
+
+```hocon
+# GhostLock kernel profile (HOCON, canonical R3 owner-qualified layout).
+ghostlock {
+  include "credential-6x.conf"
+  include "kernelsnitch-6x.conf"
+  schema_version = 3
+  release = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k"
+  selection {
+    backend  = "cve_2026_43499"     # 下面 steps token 的归属 backend
+    terminal = "root_child"         # 与 token 的一致性校验
   }
-  ```
-  当前实现支持 `tcp_zerocopy` 失败后回退 `select_stack`；写 `"to": "none"` 即关闭。
-- native 侧 `RouteKind` 枚举与 Kotlin 侧取值一一对应（`profile.h` / `ProfileConfig.Routes`）。
-
-### 必填矩阵
-
-| 字段组 | tcp_zerocopy | select_stack | multicast_waiter |
-|---|:---:|:---:|:---:|
-| `offset.init_task` / `offset.init_cred` / `offset.root_task_group` / `offset.selinux_enforcing` | 必填 | 必填 | 必填 |
-| `task_struct.prio` / `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_blocked_on` / `task_struct.cred` / `task_struct.seccomp` | 必填 | 必填 | 必填 |
-| `kernel_major` ∈ {5,6}、`cred.copy_size`、`cred.caps_count` 及凭据模板边界 | 必填 | 必填 | 必填 |
-| `route.tcp_zerocopy.compact_waiter` / `route.multicast_waiter.compact_waiter` | 必填 | | 必填 |
-| `route.select_stack.waiter_shift` | | 必填（0 合法） | |
-| `route.multicast_waiter.waiter_off`（>0）、`route.multicast_waiter.buffer_size`、`route.multicast_waiter.task_offset`、`route.multicast_waiter.lock_offset`、`offset.empty_zero_page`、`kernelsnitch.mm_struct_sz`、`cred.ref_count`（>0） | | | 必填 |
-
-凭据模板边界（通用）：`cred.usage_offset + 4 ≤ cred.copy_size`；`cred.caps_offset + cred.caps_count × 8 ≤ cred.copy_size`；`cred.ref_count ≤ 4`；每个 `cred.refN_image` 非零、`cred.refN_offset + 8 ≤ cred.copy_size`。`multicast_waiter` 还要求 `cred_copy_size ≥ 0xa0` 且 `route.multicast_waiter.waiter_off + route.multicast_waiter.lock_offset + 8 ≤ route.multicast_waiter.buffer_size`。
-
-## 4. 几何字段分组
-
-### 4.0 内核对象与字段映射
-
-配置字段名即内核结构成员名（`struct` 内偏移）：
-
-```
-task_struct
-├── prio             → task_prio
-├── normal_prio      → task_normal_prio
-├── sched_task_group → task_sched_task_group
-├── pi_lock          → task_pi_lock
-├── pi_waiters       → task_pi_waiters
-├── pi_top_task      → task_pi_top_task
-├── pi_blocked_on    → task_pi_blocked_on
-├── pid / tgid       → task_pid / task_tgid
-├── atomic_flags     → task_atomic_flags
-├── real_cred        → task_real_cred
-├── cred             → task_cred
-├── comm / tasks     → task_comm / task_tasks
-└── seccomp          → task_seccomp
+  common {
+    kernel_major = 6
+  }
+  platform {
+    abi {
+      task_struct { prio = 148, cred = 2304, comm = 2320 /* ... */ }
+      offset { init_task = 37736192, init_cred = 37825128 /* ... */ }
+      kernel { kernel_phys_load = null, kernel_phys_offset = null }
+    }
+  }
+  backend {
+    cve_2026_43499 {
+      steps = "pselect_rootchild"   # 唯一对用户可见的选择 token
+      route { select_stack { waiter_shift = 0 } }
+      offset { slide_loggers_0_1 = 37691640 /* ... */ }
+    }
+  }
+}
 ```
 
+按字段数的归属（native manifest，109 行）：
+
+| Owner 段 | 字段数 | 承载 |
+|---|---|---|
+| `backend.cve_2026_43499` | 58 | steps token、route 几何、凭据模板、KernelSnitch 值、execution 调优 |
+| `platform.abi` | 31 | `task_struct`、ABI 级 `offset`、`kernel_phys_*` |
+| `backend.cve_2026_43284` | 10 | 页缓存/LKM 策略：模块与 carrier 路径、握手超时 |
+| `plugin.<id>` | 6 | 插件段（4 条静态行 + 2 条动态行），见第 5 节 |
+| `countermeasure.vivo_vr_guard` | 1 | 厂商对策参数 |
+| `common` | 3 | `kernel_major`、`safe_mode`、`vr_guard` |
+
+字段数可复核：
+
+```sh
+awk -F'\t' '!/^#/{split($2,a,"."); print a[1]"."a[2]}' app/src/test/resources/profile-manifest-v3.tsv | sort | uniq -c
 ```
-cred
-├── usage            → cred_usage_offset / cred_usage_value
-├── cap_*            → cred_caps_offset / cred_caps_count / cred_caps_value
-└── 引用修复点        → cred_ref_count + cred_refN_offset / cred_refN_image
+
+规则：
+
+- 一个事实一个 owner：键放在**消费它的组件**所属段；共享值放 `common`；
+- `selection.backend` 与 `selection.terminal` 只是**一致性校验**——真正的选择是
+  `backend.<id>.steps` 里的 token；
+- 未识别的键带点分路径**拒绝**（fail-closed），不静默丢弃；
+- 旧的扁平文档在**解析期仍被接受**并归一成本布局；新写的 profile 必须是 canonical 布局。
+
+## 4. 选择：唯一组合 token
+
+对用户可见的选择只有 **一个 token**，存放在 `backend.<id>.steps`。token 派生出 route、
+step 集与 terminal；这三者不再可独立选择。
+
+| 可用（7） | 计划（5） |
+|---|---|
+| `mcast_rootchild`、`pselect_rootchild`、`tcp_rootchild` | `mcast_umh`、`pselect_umh`、`tcp_umh` |
+| `mcast_shizuku`、`pselect_shizuku`、`tcp_shizuku` | `rootchild`、`shizuku`（cve_2026_43284） |
+| `umh`（cve_2026_43284） | |
+
+- `_` 前的 owner 前缀就是 route：`mcast` = `multicast_waiter`、`pselect` =
+  `select_stack`、`tcp` = `tcp_zerocopy`；无 route 轴的 backend（cve_2026_43284）
+  用裸 path 名；
+- 计划 token 可解析、被登记，但选择门禁拒绝、App 置灰；
+- 未知 token 拒绝并回显 token 文本；缺 `steps` 键拒绝；
+- 根 `route` / `terminal` 必须与 token 一致，否则拒绝文档；
+- 旧文档里携带的数字 step id 或旧 step token 会带 stderr 诊断迁移为等价的组合 token。
+
+## 5. 插件段（P1）
+
+`plugin` 是第三类顶层 owner（既不属于某个 backend，也不是 platform）——同一对策可服务多个
+backend：
+
+| 路径 | 类型 | 规则 |
+|---|---|---|
+| `plugin.<id>.enabled` | bool | 默认 false；**只有 `true` 才会被发射** |
+| `plugin.<id>.stage` | str | host stage token 之一（`pre_spawn`、`post_spawn`、`pre_terminal`、`post_terminal`） |
+| `plugin.<id>.module_path` | str | 相对 `<GHOSTLOCK_HOME>/countermeasures`；不得绝对路径、不得含 `..`、不得含反斜杠 |
+| `plugin.<id>.module_hash` | str | 64 位小写 hex（模块的 SHA-256） |
+| `plugin.<id>.params.<key>` | 动态 | 值类型由插件描述符决定 |
+| `plugin.<id>.extract.<key>` | 动态 | 由 extractor 投影产出；此处只校验形状 |
+
+- 两条动态路径在 manifest 里以**联合类型** `uint|int|bool|str` 声明；具体键的类型由**已加载
+  模块的描述符**决定（经只读 native 探针 `--plugin-probe` 读取），不是静态表；
+- 文档 fail-closed：未知字段、`enabled` 缺失/非 bool/为 `false`、未知 stage、坏 module
+  path 或 hash、空动态键、插件数超过 16——全部在攻击前拒绝，绝不静默丢弃；
+- **没有**插件资产文件：插件配置属设备/用户特有，走覆盖存储；App 只为已启用插件写
+  `plugin.<id>.*`；
+- 插件 C ABI 是 `GLK_ABI_VERSION = 1`、仅尾部追加；探针输出 TSV 描述，其列序冻结在
+  [contract-design.md §3.14.7](../analysis/contract-design.md)；
+- **边界（P1）**：已交付「声明 → 校验 → 绑定」。加载模块并按 stage 调用它的运行时**尚未接线**
+  （见 task-9）；探针本身从不注册、也不运行 hook。
+
+## 6. 几何字段分组
+
+几何按内核对象分组，全部位于 owner 段之下：
+
+| 分组 | 段 | 字段（示例） |
+|---|---|---|
+| task 结构 | `platform.abi.task_struct` | `prio`、`normal_prio`、`pi_lock`、`pi_waiters`、`pi_top_task`、`cred`、`comm`、`tasks`、`seccomp` |
+| 内核符号 / 滑移锚点 | `platform.abi.offset`（ABI 级）与 `backend.cve_2026_43499.offset`（route 相关） | `init_task`、`init_cred`、`selinux_enforcing`、`slide_loggers_0_1` |
+| 物理映射 | `platform.abi.kernel` | `kernel_phys_load`、`kernel_phys_offset` |
+| 凭据模板 | `backend.cve_2026_43499.cred` | `copy_size`、`caps_offset`、`caps_count`、`caps_value` |
+| KernelSnitch | `backend.cve_2026_43499.kernel` | `kernelsnitch_collisions`、`mm_struct_sz`、`compact_waiter` |
+| route 几何 | `backend.cve_2026_43499.route.<route>` | `select_stack.waiter_shift`、multicast/TCP 调参 |
+
+未使用的 route 专有字段直接省略，不要写 `0` 或占位值。`null` 只出现在半填的模板里，表示
+「尚未推导」。完整的 path → 类型清单以 manifest 为准（第 0 节）。
+
+## 7. execution 调优（advisory）
+
+execution 调优由 resolver 从共享片段提供（`execution-tuning.conf` 与
+`execution-<route>.conf`）；设备 profile 通过 `include` 引入，只写差异值。字段位于
+`backend.cve_2026_43499.execution`（`recommended_cpus`、`heap`、`race`、
+`tcp`/`select`、`handoff`）。`execution.selected_cpus` 总是按解析出的 CPU 对重新推导，
+设备不会依赖过期值。
+
+## 8. GLKv3 wire
+
+- 文档就是一个 MessagePack 值，根为 **map**；`schema` 必须等于 `3`。**没有 magic、
+  没有版本前缀、没有独立头**。
+- 键：`schema`、`release`、`backend`、`terminal` 与 `sections`（owner-qualified 段名 →
+  「键 → 值」map）。
+- 类型：offset/长度用无符号整数；可能为负用有符号整数；bool（显式 `false` ≠ 缺失）；
+  token/路径用 UTF-8 字符串；字节块用 bin；另有 array 与 map。
+- canonical 编码：最短整数形式、map 键按 UTF-8 字节序、不使用 float；同一逻辑文档必须逐字节一致。
+- presence 由键是否出现表达；省略的字段不等于 0。
+- 拒绝（fail-closed，在任何阶段之前）：非 map 根、缺 `schema`、`schema != 3`、生产 schema
+  下的未知 section/键、类型不符、截断、过深/过大（文档上限 1 MiB）。
+- 传输：native 可执行文件的 stdin，4 字节大端长度前缀 + 文档（其后可选一帧运行时密钥）；
+  调试时也可用预生成的 `.bin` 文件。运行时密钥绝不进文档。
+- extractor 从不产出 wire：它产出 HOCON（`--format conf`，`schema_version = 3`）或旧 JSON 报告。
+
+## 9. 校验与诊断
+
+- `release` 必须与设备 `uname -r` 完全一致（模板永不匹配）；
+- schema 必填字段必须在；由 schema 默认物化的值以 `default_used` 报告，让「静默默认」可见；
+- 迁移过的旧 step id 会在 stderr 报告；
+- 未知键、未知 token、不可用（计划）组合、与 token 不一致的根 route/terminal，以及第 5 节的
+  任何插件规则——一律 fail-closed：拒绝文档，而不是部分生效。
+
+## 10. 存储与加载层次
+
+| 层 | 位置 |
+|---|---|
+| 内置 profile、`index.conf`、模板、片段 | `app/src/main/assets/kernel_profiles/`（只读，随 APK 分发） |
+| 导入 / 导出的用户 profile | App 私有 `user_profiles/`（App files 目录下） |
+| 高级覆盖 | App 的覆盖存储（逐字段，最后应用） |
+| 插件模块 | App 私有 **no-backup** `countermeasures/` 根（模块绝不能进 Android 自动备份） |
+| 调试用导出 wire | `./gradlew exportKernelProfiles` → `build/kernel-profiles/*.bin` |
+
+## 11. 命令与对拍测试
+
+```sh
+make -C src profile-manifest-v3      # 重新生成 path -> 类型 manifest
+make -C src combination-manifest     # 重新生成 token manifest + 解析向量
+./gradlew exportKernelProfiles       # 导出 GLKv3 .bin profile
+./gradlew :app:testDebugUnitTest :profile-core:test
 ```
 
-```
-伪造多播对象（multicast_waiter 路由）
-├── waiter 起点      → route.multicast_waiter.waiter_off
-└── task / lock      → route.multicast_waiter.task_offset / lock_offset
-```
+跨语言一致性靠测试、不靠记忆：`ProfileManifestV3AgreementTest`（Kotlin 表 == manifest）、
+`BackendMatrixAgreementTest`（`index.conf` 矩阵 == manifest）、
+`CombinationTokenAgreementTest` / `CombinationTokenHardcodeTest`（token 来自导出清单、
+运行时代码零字面量）、`ProfileLayoutEquivalenceTest` 与 `BuiltinProfilesTest`（每份内置
+profile 都能归一并通过校验）、`PluginProbeGoldenTest`（设备探针 golden）、
+`LegacyProfileConverterTest`（唯一迁移点）。
 
-`offset` 命名空间是内核映像符号偏移（`init_task`、`init_cred`、`empty_zero_page` 等），其中 `offset.slide_*` 是 KASLR 滑移探测锚点；它们与 `kernel_phys_load` 一起用于把符号地址换算为运行地址。
+## 12. 旧 JSON 导入
 
-### 4.1 任务结构偏移（`task_struct`）
+旧的 `offsets.json` 报告仍可导入。转换**只在 App 侧**发生（`LegacyProfileConverter`，
+唯一迁移点），产出当前的 `schema_version = 3` HOCON；native 可执行文件没有 JSON 或旧格式
+解码器。同一个转换器把**更早一代**的 HOCON profile（已废弃的版本号，或缺该键）归一为 `3`
+并记诊断；其它版本值一律拒绝，错误信息带实际值。
 
-| 字段 | 含义 |
-|---|---|
-| `task_struct.prio` / `task_struct.normal_prio` | 任务优先级 / 常规优先级（PI 提升判定） |
-| `task_struct.sched_task_group` | `sched_task_group` 偏移 |
-| `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_top_task` / `task_struct.pi_blocked_on` | `pi_lock`、`pi_waiters`、`pi_top_task`、`pi_blocked_on` |
-| `task_struct.pid` / `task_struct.tgid` | PID / TGID |
-| `task_struct.atomic_flags` | `atomic_flags`（用于现场清理判定） |
-| `task_struct.real_cred` / `task_struct.cred` | real cred / cred 指针 |
-| `task_struct.comm` / `task_struct.tasks` / `task_struct.seccomp` | `comm`、任务链表、`seccomp` |
+## 13. 修改配置的检查清单
 
-### 4.2 凭据模板（`cred`）
-
-| 字段 | 含义 |
-|---|---|
-| `cred.copy_size` | 凭据结构整体拷贝大小 |
-| `cred.usage_offset` / `cred.usage_value` | 引用计数字段偏移 / 目标值 |
-| `cred.caps_offset` / `cred.caps_count` / `cred.caps_value` | capability 集合偏移 / 数量 / 填充值 |
-| `cred.ref_count` | 需要修复的引用字段数量（≤4） |
-| `cred.refN_offset` / `cred.refN_image`（N=0..3） | 各引用字段偏移 / 应恢复的镜像值 |
-
-### 4.3 内核符号与滑移（`offset`）
-
-| 字段 | 含义 |
-|---|---|
-| `offset.init_task` / `offset.init_cred` | `init_task` / `init_cred` 相对内核镜像基址的偏移 |
-| `offset.root_task_group` | `root_task_group` 偏移 |
-| `offset.selinux_enforcing` | `selinux_state.enforcing` 偏移（W1 写 0） |
-| `offset.selinux_blob_sizes` / `offset.security_hook_heads` | SELinux/安全钩子相关偏移 |
-| `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | 地址滑移（KASLR）定位点 |
-| `kernel_phys_load` | 内核物理加载地址（0 时按 SoC 公式回退） |
-| `kernel_phys_offset` | DRAM 基址 / linear-map `PHYS_OFFSET`，用于 image→direct-map 换算（缺省用编译期 `P0_PHYS_OFFSET = 0x80000000`）。DRAM 基址不同的设备需填写（如 MTK `0x40000000`）；无法从 `boot.img` 提取，取自 `/proc/iomem` |
-
-### 4.4 select_stack / tcp 路由字段
-
-| 字段 | 含义 |
-|---|---|
-| `route.select_stack.waiter_shift` | select 路由 waiter 在栈上的相对位移（0 合法）；回退声明下对应 `fallback.route.select_stack.waiter_shift` |
-| `route.tcp_zerocopy.compact_waiter` | tcp 路由的紧凑 waiter 布尔布局标记（`true`/`false`）；multicast 分支下同样需要（`route.multicast_waiter.compact_waiter`） |
-
-### 4.5 multicast_waiter 路由字段（`route.multicast_waiter`）
-
-| 字段 | 含义 |
-|---|---|
-| `route.multicast_waiter.waiter_off` | 多播缓冲区中 waiter 的偏移（必须 > 0） |
-| `route.multicast_waiter.buffer_size` | 伪造缓冲区大小 |
-| `route.multicast_waiter.task_offset` / `route.multicast_waiter.lock_offset` | 缓冲区中任务 / 锁字段偏移 |
-| `route.multicast_waiter.attempts` / `route.multicast_waiter.arm_sequence` / `route.multicast_waiter.arm_hold` | 可选的投毒/走查重复调参（同一 W1 内的重复投毒次数、起臂轮次、起臂后 yield 自旋量）；宽 8/8/16 位，缺省或 0 用编译期内置值，不写不影响既有 profile |
-| `offset.empty_zero_page` | `empty_zero_page` 偏移 |
-
-### 4.6 KernelSnitch 参数（`kernelsnitch`）
-
-所有路由通用（KernelSnitch 用于 `mm_struct` 泄漏搜索），不随路由取舍：
-
-| 字段 | 含义 |
-|---|---|
-| `kernelsnitch.collisions` | 需要的 futex 碰撞数量 |
-| `kernelsnitch.mm_struct_sz` | `mm_struct` 的 SLUB 大小（未填写时使用内置默认） |
-
-## 5. execution 调优参数（advisory）
-
-`execution` 全部为建议值，随 profile 合并后传入 native；数值语义与默认值见 [defaults_ZH.md](defaults_ZH.md)。通用分组来自 `execution-tuning.conf`，路由分组由 resolver 从 `execution-<route>.conf` 加载（主路由 + 回退路由），设备 profile 不再 include 它们：
-
-- `recommended_cpus` / `selected_cpus`：推荐与本地选定核心（`selected_cpus` 由参数覆盖页“一般参数覆盖”或主页 CPU 选择维护）
-- `heap`：KernelSnitch 搜索的尝试次数与超时
-- `race`：路由竞态等待/稳定/轮询间隔
-- `stages`：W1/W2/W3 尝试次数与稳定时间
-- `routes.tcp_zerocopy` / `routes.select_stack` / `routes.multicast_waiter`：各路由的重试与等待参数，分别位于 `execution-tcp-zerocopy.conf` / `execution-select-stack.conf` / `execution-multicast-waiter.conf`；Kotlin 在合成 native 文档时会为缺失的路由组补默认值，因此 native 始终收到完整 `routes`
-- `handoff`：root 交接与 KernelSU 加载轮询
-
-## 6. 校验与反馈
-
-校验在 Kotlin（`AndroidProfileConfigController.validateProfileFields`）完成：
-
-1. 按第 3 节矩阵检查公共与所选路由的字段：缺失（`null`）或为 `0` 的必填项、越界组合（凭据/多播边界）都会记录到 `ProfileConfig.invalidPaths`。
-2. 参数覆盖页与高级参数覆盖中，非法项以红色 label 显示（未填写同样标红）；已覆盖且合法项为黄色。
-3. `fallback.to` 必须是 `"none"` 或合法路由名；声明回退时，目标分支的必填字段同样会被校验（如回退 `select_stack` 需要 `fallback.route.select_stack.waiter_shift` 存在，0 合法）。
-4. 主页“执行”按钮在 `invalidPaths` 非空时置灰，点击提示修正红色项；即使绕过，`runExploit` 也会在启动 native 前拦截并写入日志。
-5. native 不再做几何校验，只解析 v2 二进制并按组件选择与字段执行。
-
-## 7. 加载层次与存储位置
-
-| 层 | 来源 | 位置 | 写入者 |
-|---|---|---|---|
-| shared | 共享值；tuning preset 由 resolver/exporter 加载，core 共享值由设备 profile `include` | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | 随包发布 |
-| builtin | 精确 `uname -r` 命中；未命中即视为不支持 | `assets/kernel_profiles/*.conf` | 随包发布 |
-| imported | 解析/导入的偏移（同一 release entry） | `filesDir/offsets.conf` | 解析 OTA / 导入配置文件 |
-| general override | `execution.*` | `filesDir/offsets.conf` 的 release entry | 参数覆盖页“一般参数覆盖 / 重设参数” |
-| route override | `route` / `fallback.to` | `filesDir/offsets.conf` 的 release entry | 高级配置覆盖页“路由 / 回退” |
-| advanced override | 任意数值路径（sparse，HOCON 文本） | 内部 `debug_profile_overrides` | 高级配置覆盖（自动保存） |
-| 快照 | 合并后的完整 HOCON | `filesDir/<release>.conf` | 任何覆盖保存后、导出前 |
-| 手动内置来源 | 指定其他真实 release（危险） | 内部 `debug_builtin_release` | 参数页“加载其他内置配置（危险）”；覆盖仍绑定本机 release |
-
-导出配置：把该 release 的合并快照（HOCON 单文件，include 已合并、已按路由精简调优项）写入用户选择的文件夹（SAF）。
-
-## 8. 模板配置（*-template）
-
-- 每个大版本一个：`5.15-template` / `6.1-template` / `6.6-template` / `6.12-template`，登记在 `index.conf`，仅作**开发与调试参考**。
-- 所有几何/偏移字段为 `null`（未填写），`route` / `fallback` 给出完整分支结构；每个字段上方都有中文说明注释，可直接复制填写。
-- 在内置选择页的“模板（参考，未填写）”分区可手动加载，用于查看字段结构；模板**不参与设备匹配，也不做自动回退**——设备无精确命中且无 imported 时视为不支持。
-- 模板只含 core 字段（以及 core 的 include）；execution 调优由 resolver 从 `execution-*.conf` 提供，复制模板无需补 tuning include。仓库内的同步副本见 `docs/kernel_profiles/templates/`，assets 中的原文件可用 adb 查看。
-
-## 9. native 传输与解析
-
-运行时的配置传输是**类型化二进制结构体**（v2，对象分段），不再是 JSON 文本。v2 是唯一版本：Kotlin 与 native 版本绑定，不做旧版本兼容解码。
-
-- Kotlin 侧由 `NativeProfileDocument` 经 `toBinary()` 序列化：先是 16 字节小端头
-  `u32 magic(0x0D000721) + u16 version(2) + u16 frontend + u16 backend + u16 middleware + u16 release_len + u16 reserved`，
-  随后是 `release` 文本、`u16 section_count`，每个 section 为 `u8 name_len + name + u32 entry_count`，每个条目为 `u8 key_len + key + u64 value`。
-  presence 由键是否出现表达（缺席 ≠ 提供的 0）；值为 u64 原始位型（有符号为二补数），不做 clamp；只写/接受**当前 route** 的 `route.*` section；未知 section/键忽略；重复键 last-wins。`middleware` 承载 route。权威 section/键表在 `profile/binary.cpp`（`kSections`），`NativeProfile.kt` 的对象 section 必须逐字对齐。
-- 传输路径：direct 与 Shizuku 都把 profile 以 **stdin** 交给 native（`--ghostlock-app-call`），不再落盘 `active-profile.bin`、也不再使用 `--profile`。
-- native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给 `profile/binary.cpp::parse`；它不检测 magic 之外的格式，也没有 JSON 回退。
-- 内部存储与“导出配置”均为 HOCON（人类可读）；旧 v1 `offsets.json` 只在 Kotlin 侧转成 v2，见第 11 节。
-- 运行时路由与能力判断（`TargetProfile::route()`、`TargetProfile::supports()`、`route_capability`）全部基于解析后的 route。
-
-## 10. 修改配置的检查清单
-
-1. 每份 profile 都要包含当前路由的全字段与公共几何，且每项都必须出现；镜像或设备无法提供的值写显式 `null`（不要用 `0` 占位，除非 0 就是真实值）。非当前路由（及其声明的 fallback）的字段省略。`ghostlock-extract --format conf` 会输出这份完整骨架；`null` 使字段在 app 中可见可编辑，而不是悄无声息地缺失。
-2. `route` 只能有一个分支，且分支内必须给出该路由的必填字段；`fallback.to` 声明了回退目标时，`fallback.route` 分支内同样要补齐。
-   共享 core 值通过 `include` 引入，不要复制：`credential-6x.conf`（6.x 凭据模板）、`kernelsnitch-6x.conf`（6.x collisions）。execution 调优（`execution-tuning.conf` / `execution-<route>.conf`）由 resolver 作为 preset 加载，设备 profile 不要 include。
-3. 修改 `execution` 需要设备实测依据；否则保持 defaults。
-4. 本地验证：`make native-host-tests`（profiles 解码/校验向量）与 `./gradlew :app:assembleDebug`。
-5. 修改字段命名/分组时同步更新：`FieldLabels.kt` + `values*/strings.xml`、可能的 `docs/kernel_profiles/defaults*.md`。
-
-## 11. 旧 v1 JSON 导入（兼容）
-
-本节集中说明 **v1 JSON** 兼容层；第 0–10 节只描述当前 v2 配置。native 只读 v2（见第 9 节），v1 路径仅在 Kotlin 侧且自包含。
-
-- **v1 = 旧 JSON 格式**：remote/main 时代的 `offsets.json`——提取器报告（`symbols`/`struct_fields` + 4 个顶层标量 + `kimage_text_base`/`btf_size`/`kallsyms` 等元数据）。`ghostlock-extract --format json` 仍按此形状输出给外部工具。
-- 加载时会由 `LegacyProfileConverter` 把 v1 文档归一为 v2（幂等）：
-
-  | v1 内容 | 转换结果 |
-  |---|---|
-  | `symbols` 对象（`off_*` 键） | `offset.*` 命名空间 |
-  | `struct_fields` 对象（`task_*` 键） | `task_struct.*` 命名空间；`rt_mutex_waiter`/`cred_uid`/`seccomp_*` 等字段保留原处，不参与校验与比较 |
-  | 顶层 `pselect_waiter_shift` | `route.select_stack.waiter_shift`；tcp 配置则保留为 `fallback.route.select_stack.waiter_shift` |
-  | 顶层 `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
-  | `kimage_text_base` / `btf_size` / `kallsyms` | 丢弃 |
-  | 无 `route` 字段 | 按 6.x 几何推断：`compact_waiter` → tcp，否则 select |
-  | 无 cred 模板 | 写入内置 6.x 常量（`credential-6x.conf` / `kernelsnitch-6x.conf`）；5.x 凭据字段仍由作者提供 |
-
-- 旧版扁平键（`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` / `cred_*` / `off_*` / `mcast_*`）在导入旧 `offsets.json`、解析 extractor 输出或读取高级覆盖时自动归入对应命名空间。
-- 旧配置缺少 `route` 时同样按此推断：`kernel_major==5 且 mcast.waiter_off>0` → `multicast_waiter`；否则 `compact_waiter!=0` → `tcp_zerocopy`；否则 `select_stack`。v1 文档不可能选中 5.x 分支（`multicast_waiter` 仅作为受保护推断保留）。
-- 旧版 JSON 缓存**不迁移、启动即丢弃**；内部存储、快照与导出始终为 HOCON。
-- native 无 v1 解析器：native 侧 `legacy/` JSON 解码器已删除；v1 文档在传输前已由 Kotlin 侧转成 v2。
+1. 先决定 owner 段：新字段放在**消费它的组件**所属段。
+2. 在 native 侧声明（`FieldSpec`）并重新生成 manifest；**不要手改 manifest**。
+3. 若字段决定行为，优先扩展 token 目录，而不是加 CLI 开关或第二个选择键。
+4. Kotlin 侧通过生成的 manifest 更新，不要写字面量。
+5. 把字段补进对应模板/profile；片段保持不带 `schema_version`。
+6. 可选字段必须在 schema 里给出默认值；否则必须 required，缺失即 fail-closed。
+7. 跑门禁：`make -C src native-host-tests`、NDK 构建（零告警）、
+   `make -C src lint-tidy`、Gradle 测试；改动触及攻击路径时另跑真机门禁。
+8. 结构变化时，同批更新唯一权威图
+   [full-process-uml.md](../development/full-process-uml.md)。

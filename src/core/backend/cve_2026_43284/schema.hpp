@@ -121,12 +121,18 @@ namespace ghostlock::backend {
              profile::DefaultValue::literal(kCve2026_43284LateLoadArgsDefault),
              profile::FieldSource::Profile, profile::WireKind::UInt,
              "late-load argument policy bitmask; 0 = program + late-load only."},
-            {kCve2026_43284Section, "steps", 2, false, false,
-             [](Cve2026_43284Profile &view, uint64_t raw) {
-                 view.steps = static_cast<uint16_t>(raw);
-             },
+            /* S4 R6b combination token. 43284 has no route axis, so the token
+             * is the bare path name (umh today); the internal PageCacheWrite id
+             * is derived from the shared contract whitelist. A legacy numeric
+             * value is rewritten to its token before the bind runs. */
+            {kCve2026_43284Section, "steps", 0, false, false, nullptr,
              profile::DefaultValue::none(), profile::FieldSource::Profile,
-             profile::WireKind::UInt, "PageCacheWrite step-set id."},
+             profile::WireKind::String,
+             "Combination token (bare path, S4 R6b).",
+             [](Cve2026_43284Profile &view, std::string_view text) {
+                 view.steps = contract::combination_stepset_wire(
+                         contract::BackendKind::Cve2026_43284, text);
+             }},
             {kCve2026_43284Section, "wait_timeout_ms", 4, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.wait_timeout_ms = static_cast<uint32_t>(raw);

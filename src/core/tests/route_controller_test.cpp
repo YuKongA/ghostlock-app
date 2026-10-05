@@ -1,3 +1,7 @@
+/* R6a: the RouteController runs exactly the profile's one route. A clean or
+ * dirty tcp failure is returned unchanged; the select stub is never reached,
+ * because the fallback field no longer exists on the wire or in the model. */
+
 #include "backend/cve_2026_43499/route/route_controller.h"
 
 #include <cassert>
@@ -45,16 +49,15 @@ static void reset_stubs(ghostlock::backend::cve_2026_43499::route::RouteStatus s
 int32_t main(void) {
     ghostlock::race::PiRace race;
     ghostlock::memory::WriteRequest request = {.mode = ghostlock::memory::WriteMode::Zero};
-    /* The optional fallback field is present: tcp failure falls back to select. */
     profile::kernel_offsets values = {
         .route = ghostlock::profile::kRouteTcpZerocopy,
-        .meta = {.fallback_route = ghostlock::profile::kRouteSelectStack},
         .misc = {.compact_waiter = 1},
     };
     ghostlock::profile::TargetProfile profile = ghostlock::profile::TargetProfile::from(&values);
     ghostlock::backend::cve_2026_43499::route::RouteController controller;
     controller.init(&race, &profile);
 
+    /* A clean tcp failure stays put: no second route runs. */
     reset_stubs((ghostlock::backend::cve_2026_43499::route::RouteStatus)
     {
         .code = ghostlock::backend::cve_2026_43499::route::ROUTE_FALLBACK_SAFE,
@@ -62,27 +65,10 @@ int32_t main(void) {
         .kernel_disarmed = 1,
     });
     ghostlock::backend::cve_2026_43499::route::RouteStatus status = controller.execute(&request);
-    assert(status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_OK);
-    assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
-
-    /* Without the fallback field the tcp failure is returned unchanged. */
-    profile::kernel_offsets no_fallback = {
-        .route = ghostlock::profile::kRouteTcpZerocopy,
-        .misc = {.compact_waiter = 1},
-    };
-    ghostlock::profile::TargetProfile no_fallback_profile = ghostlock::profile::TargetProfile::from(&no_fallback);
-    controller.init(&race, &no_fallback_profile);
-    reset_stubs((ghostlock::backend::cve_2026_43499::route::RouteStatus)
-    {
-        .code = ghostlock::backend::cve_2026_43499::route::ROUTE_FALLBACK_SAFE,
-        .userspace_clean = 1,
-        .kernel_disarmed = 1,
-    });
-    status = controller.execute(&request);
     assert(status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_FALLBACK_SAFE);
-    assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
+    assert(tcp_calls == 1 && select_calls == 0);
 
-    controller.init(&race, &profile);
+    /* A dirty tcp failure stays put too. */
     reset_stubs((ghostlock::backend::cve_2026_43499::route::RouteStatus)
     {
         .code = ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE,
@@ -91,7 +77,22 @@ int32_t main(void) {
     });
     status = controller.execute(&request);
     assert(status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_DIRTY_FAILURE);
-    assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
+    assert(tcp_calls == 1 && select_calls == 0);
+
+    /* A route-less (None) profile is unsupported and dispatches nothing. */
+    profile::kernel_offsets none_values = {
+        .route = ghostlock::profile::kRouteNone,
+    };
+    ghostlock::profile::TargetProfile none_profile =
+        ghostlock::profile::TargetProfile::from(&none_values);
+    controller.init(&race, &none_profile);
+    reset_stubs((ghostlock::backend::cve_2026_43499::route::RouteStatus)
+    {
+        .code = ghostlock::backend::cve_2026_43499::route::ROUTE_OK
+    });
+    status = controller.execute(&request);
+    assert(status.code == ghostlock::backend::cve_2026_43499::route::ROUTE_UNSUPPORTED);
+    assert(tcp_calls == 0 && select_calls == 0);
 
     puts("route_controller_test: ok");
     return 0;

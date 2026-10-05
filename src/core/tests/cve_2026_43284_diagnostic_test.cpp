@@ -374,6 +374,13 @@ int main() {
                           opts) == ParseError::ProbeConflict);
     }
     {
+        /* S4 R2b: the carrier relaxation is a side effect, so the read-only
+         * probe rejects it like the other switches. */
+        Options opts{};
+        assert(parse_args({"--probe-cve-2026-43284", "/tmp/a.ko", "--allow-dev-target"},
+                          opts) == ParseError::ProbeConflict);
+    }
+    {
         Options opts{};
         assert(parse_args({"--enable-status-record"}, opts) == ParseError::StatusRequiresAppCall);
     }

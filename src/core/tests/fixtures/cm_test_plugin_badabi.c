@@ -26,6 +26,13 @@ static const glk_module kModule = {
     0u,
     (uint32_t)(sizeof(kHooks) / sizeof(kHooks[0])),
     kHooks,
+    /* P1 tail append: declared explicitly so the module reports the v2 size
+     * with an empty schema (no params, no extract, no stage_mask). */
+    0u,
+    NULL,
+    0u,
+    NULL,
+    0u,
 };
 
 const glk_module *glk_entry(uint32_t host_abi_version) {

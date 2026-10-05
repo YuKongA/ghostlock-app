@@ -73,7 +73,8 @@ class ControllerInternalsTest {
 
             val generalPaths = config.general.map { it.path }
             assertTrue(generalPaths.any { it.startsWith("execution.routes.tcp_zerocopy.") })
-            assertTrue(generalPaths.any { it.startsWith("execution.routes.select_stack.") })
+            /* R6a: the select fallback no longer contributes select tuning. */
+            assertTrue(generalPaths.none { it.startsWith("execution.routes.select_stack.") })
         }
 
     @Test
@@ -94,7 +95,8 @@ class ControllerInternalsTest {
             val snapshot = controller.overridesSnapshot(release)
             val branches = snapshot["route"].asValueMap()?.keys.orEmpty()
             assertEquals(listOf("multicast_waiter"), branches.toList())
-            assertFalse(snapshot["fallback"].asValueMap()?.containsKey("route") == true)
+            /* R6a: route switching never writes a fallback declaration. */
+            assertFalse(snapshot.containsKey("fallback"))
             /* The switched-to branch carries every multicast field, tuning included,
              * as an editable placeholder. */
             val seeded = snapshot["route"].asValueMap()?.get("multicast_waiter").asValueMap()

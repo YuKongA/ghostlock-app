@@ -50,7 +50,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.R
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.isAvailable
+import com.ghostlock.app.data.route.RouteKind
 import com.ghostlock.app.data.isFieldInputInvalid
 import com.ghostlock.app.data.runRequiresShizuku
 import com.ghostlock.app.domain.model.CpuPair
@@ -106,6 +109,8 @@ data class GhostlockUiState(
     val executionMode: ExecutionMode = ExecutionMode.General,
     /** Header backend selection; unavailable backends are shown greyed out. */
     val backendKind: BackendKind = BackendKind.Default,
+    /** S4 R6b single selection authority; backend/mode above derive from it. */
+    val combination: CombinationSpec = CombinationCatalog.defaultSpec,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
@@ -138,6 +143,17 @@ data class GhostlockUiState(
     val executionFields: List<ExecutionFieldValue> = emptyList(),
     val executionEditing: Map<String, String> = emptyMap(),
     val advancedScreenVisible: Boolean = false,
+    /** P1: imported-plugin settings page visibility. */
+    val pluginsScreenVisible: Boolean = false,
+    /** P1 registry rows; descriptors arrive with the native probe. */
+    val pluginRows: List<PluginRow> = emptyList(),
+    /** Schema rows per plugin id, rebuilt from the probe on every page open. */
+    val pluginParams: Map<String, List<PluginParamRow>> = emptyMap(),
+    /** P1 parameter being edited in the shared text dialog; null when none. */
+    val pluginParamEditId: String? = null,
+    val pluginParamEditName: String? = null,
+    /** False until the native probe exists (P1 second half). */
+    val pluginImportEnabled: Boolean = false,
     val debugExportEnabled: Boolean = true,
     val debugExportLocation: String = "",
     val debugKernelLogEnabled: Boolean = true,
@@ -154,8 +170,6 @@ data class GhostlockUiState(
     val profileInvalidPaths: Set<String> = emptySet(),
     /** Explicit route from the profile; null means geometry inference. */
     val profileRoute: String? = null,
-    /** Declared fallback route; null/"none" means disabled. */
-    val profileFallback: String? = null,
     /** Manually selected builtin source; null means automatic matching. */
     val activeBuiltinProfile: String? = null,
     val builtinScreenVisible: Boolean = false,
@@ -194,6 +208,7 @@ interface GhostlockActions {
     fun onForceAttackTestChanged(enabled: Boolean)
     fun onExecutionModeChanged(mode: ExecutionMode)
     fun onBackendChanged(kind: BackendKind)
+    fun onCombinationChanged(spec: CombinationSpec)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -203,7 +218,6 @@ interface GhostlockActions {
     fun onOverwriteDismiss()
     fun onExecutionFieldChanged(path: String, value: String)
     fun onRouteChanged(index: Int)
-    fun onFallbackChanged(index: Int)
     fun onExportProfile()
     fun onSaveProfileEdits()
     fun onSaveProfileAs()
@@ -218,6 +232,12 @@ interface GhostlockActions {
     fun onDebugKernelLogChanged(enabled: Boolean)
     fun onOpenParameters()
     fun onCloseParameters()
+    fun onOpenPlugins()
+    fun onClosePlugins()
+    fun onImportPlugin()
+    fun onPluginParamEdit(id: String, name: String, current: String)
+    fun onPluginBoolChanged(id: String, name: String, value: Boolean)
+    fun onPluginEnabledChanged(id: String, enabled: Boolean)
     fun onOpenLoadConfig()
     fun onCloseLoadConfig()
     fun onOpenUserProfileDetail(name: String)
@@ -251,6 +271,7 @@ internal sealed interface GhostlockScreen : NavKey {
     data class UserProfileDetail(val name: String) : GhostlockScreen
     data object ProfileOverride : GhostlockScreen
     data object AdvancedOverride : GhostlockScreen
+    data object Plugins : GhostlockScreen
 }
 
 internal fun navigationPath(state: GhostlockUiState): List<GhostlockScreen> {
@@ -259,6 +280,10 @@ internal fun navigationPath(state: GhostlockUiState): List<GhostlockScreen> {
     path += GhostlockScreen.Advanced
     if (state.aboutVisible) {
         path += GhostlockScreen.About
+        return path
+    }
+    if (state.pluginsScreenVisible) {
+        path += GhostlockScreen.Plugins
         return path
     }
     if (!state.parametersVisible) return path
@@ -300,6 +325,7 @@ private fun closeScreen(screen: GhostlockScreen, actions: GhostlockActions) {
         is GhostlockScreen.UserProfileDetail -> actions.onCloseUserProfileDetail()
         GhostlockScreen.ProfileOverride -> actions.onCloseProfileOverrides()
         GhostlockScreen.AdvancedOverride -> actions.onCloseAdvancedOverrides()
+        GhostlockScreen.Plugins -> actions.onClosePlugins()
     }
 }
 
@@ -354,6 +380,9 @@ internal fun GhostlockApp(
                     }
                     entry<GhostlockScreen.About>(swipeDismiss = swipeBack) {
                         AboutScreen(onBack = actions::onCloseAbout)
+                    }
+                    entry<GhostlockScreen.Plugins>(swipeDismiss = swipeBack) {
+                        PluginSettingsScreen(state = state, actions = actions)
                     }
                     entry<GhostlockScreen.Parameters>(swipeDismiss = swipeBack) {
                         ParameterScreen(state = state, actions = actions)
@@ -717,14 +746,9 @@ private fun ControlPanel(
                 title = stringResource(R.string.safe_mode_label),
                 summary = stringResource(R.string.safe_mode_summary),
             )
-            ExecutionModeSelector(
-                executionMode = state.executionMode,
-                shizukuStatus = state.shizukuStatus,
-                onExecutionModeChanged = actions::onExecutionModeChanged,
-            )
-            BackendSelector(
-                backendKind = state.backendKind,
-                onBackendChanged = actions::onBackendChanged,
+            CombinationSelector(
+                state = state,
+                actions = actions,
             )
         }
         Card(modifier = modifier.padding(top = 12.dp)) {
@@ -737,100 +761,48 @@ private fun ControlPanel(
     }
 }
 
-/* T3d: the old Shizuku boolean is now a three-way entry selection. UMH is
- * disabled until the native umh_forward terminal exists (T5); the summary
- * explains why. The Shizuku row also carries its live shell status. */
+/* S4 R6b: the single combination-token selector. Each row is one token; a
+ * planned token is greyed and annotated, and the row recommended for the
+ * loaded route is prefixed. Backend, route, step set and terminal all derive
+ * from the selected token, so there is no second selector. */
 @Composable
-private fun ExecutionModeSelector(
-    executionMode: ExecutionMode,
-    shizukuStatus: ShizukuStatus,
-    onExecutionModeChanged: (ExecutionMode) -> Unit,
+private fun CombinationSelector(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
     modifier: Modifier = Modifier,
 ) {
+    val route = state.profileRoute?.let { RouteKind.resolve(RouteKind.normalize(it)) }
+    val recommended = CombinationCatalog.recommended(state.backendKind, route)
     Column(modifier = modifier.padding(top = 12.dp)) {
         Text(
-            text = stringResource(R.string.execution_mode_label),
+            text = stringResource(R.string.combination_label),
             fontSize = 14.sp,
             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
             modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
         )
-        ExecutionMode.entries.forEach { mode ->
+        combinationOptions().forEach { option ->
+            val spec = option.spec
+            val plannedSuffix = if (option.planned) {
+                " (" + stringResource(R.string.combination_planned) + ")"
+            } else {
+                ""
+            }
+            val recommendedPrefix = if (spec == recommended) {
+                stringResource(R.string.combination_recommended) + " · "
+            } else {
+                ""
+            }
             RadioButtonPreference(
-                title = stringResource(mode.titleRes),
-                summary = stringResource(mode.summaryRes(shizukuStatus)),
-                selected = executionMode == mode,
-                onClick = { onExecutionModeChanged(mode) },
-                enabled = mode.isAvailable,
+                title = recommendedPrefix + spec.token + plannedSuffix,
+                summary = combinationSummary(spec),
+                selected = state.combination == spec,
+                onClick = { actions.onCombinationChanged(spec) },
+                enabled = option.enabled,
                 radioButtonLocation = RadioButtonLocation.End,
             )
         }
     }
 }
-
-private val ExecutionMode.titleRes: Int
-    get() = when (this) {
-        ExecutionMode.General -> R.string.execution_mode_general
-        ExecutionMode.Shizuku -> R.string.execution_mode_shizuku
-        ExecutionMode.Umh -> R.string.execution_mode_umh
-    }
-
-private fun ExecutionMode.summaryRes(shizukuStatus: ShizukuStatus): Int = when (this) {
-    ExecutionMode.General -> R.string.execution_mode_general_summary
-    ExecutionMode.Shizuku -> when (shizukuStatus) {
-        ShizukuStatus.READY -> R.string.shizuku_status_ready
-        ShizukuStatus.PERMISSION_REQUIRED -> R.string.shizuku_status_permission_required
-        ShizukuStatus.NOT_RUNNING -> R.string.shizuku_status_not_running
-        ShizukuStatus.NOT_REQUIRED -> R.string.execution_mode_shizuku_summary
-    }
-
-    ExecutionMode.Umh -> R.string.execution_mode_umh_summary
-}
-
-/* B7: backend (vulnerability primitive) selection. The wire header id is written
- * by the profile builder; 43284 is shown greyed until its backend is
- * implemented, so it can never actually run. */
-@Composable
-private fun BackendSelector(
-    backendKind: BackendKind,
-    onBackendChanged: (BackendKind) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier.padding(top = 12.dp)) {
-        Text(
-            text = stringResource(R.string.backend_label),
-            fontSize = 14.sp,
-            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
-        )
-        ShownBackends.forEach { backend ->
-            RadioButtonPreference(
-                title = stringResource(backend.titleRes),
-                summary = stringResource(backend.summaryRes),
-                selected = backendKind == backend,
-                onClick = { onBackendChanged(backend) },
-                enabled = backend.available,
-                radioButtonLocation = RadioButtonLocation.End,
-            )
-        }
-    }
-}
-
-/** Backends the selector exposes; only 43499 is selectable today. */
-private val ShownBackends = listOf(BackendKind.Cve2026_43499, BackendKind.Cve2026_43284)
-
-private val BackendKind.titleRes: Int
-    get() = when (this) {
-        BackendKind.Cve2026_43499 -> R.string.backend_cve_2026_43499
-        BackendKind.Cve2026_43284 -> R.string.backend_cve_2026_43284
-        else -> R.string.backend_cve_2026_43499
-    }
-
-private val BackendKind.summaryRes: Int
-    get() = when (this) {
-        BackendKind.Cve2026_43499 -> R.string.backend_cve_2026_43499_summary
-        BackendKind.Cve2026_43284 -> R.string.backend_cve_2026_43284_summary
-        else -> R.string.backend_cve_2026_43499_summary
-    }
 
 @Composable
 private fun ActivationStatusCard(

@@ -635,6 +635,27 @@ namespace {
             assert(carrier.path.empty());
         }
         {
+            /* --allow-dev-target (S4 R2b) widens exactly the VENDOR rule to the
+             * non-vendor one-shot form; the absolute/shape checks still apply. */
+            FakeDevice dev{};
+            const DeviceProbeOps probe = make_device_ops(dev);
+            carrier = CarrierTarget{};
+            assert(select_single_carrier("/data/local/tmp/evil.so", probe, carrier,
+                                         true));
+            assert(carrier.path == "/data/local/tmp/evil.so");
+            carrier = CarrierTarget{};
+            assert(select_single_carrier("/system/lib64/libc++.so", probe, carrier,
+                                         true));
+            assert(carrier.path == "/system/lib64/libc++.so");
+            /* The dev switch never relaxes the shape rules themselves. */
+            carrier = CarrierTarget{};
+            assert(!select_single_carrier("relative.so", probe, carrier, true));
+            assert(carrier.path.empty());
+            assert(!select_single_carrier("/vendor/lib64/bad path.so", probe, carrier,
+                                          true));
+            assert(carrier.path.empty());
+        }
+        {
             /* A missing device surface (no file_fact at all) also resolves to the
              * first default rather than failing: the chain decides reachability. */
             const DeviceProbeOps probe{};
@@ -709,6 +730,12 @@ namespace {
         assert(!select_single_carrier("/system/lib64/libc++.so", probe, carrier));
         assert(select_single_carrier("/system/vendor/lib64/libx.so", probe, carrier));
         assert(carrier.path == "/system/vendor/lib64/libx.so");
+        /* The same matrix under --allow-dev-target: only the /vendor-or-
+         * /system/vendor constraint is lifted. */
+        assert(select_single_carrier("/system/lib64/libc++.so", probe, carrier, true));
+        assert(select_single_carrier("/data/local/tmp/one-shot.so", probe, carrier, true));
+        assert(!select_single_carrier("relative.so", probe, carrier, true));
+        assert(!select_single_carrier("/vendor/lib64/bad path.so", probe, carrier, true));
     }
 
     void test_proc_version_marker() {

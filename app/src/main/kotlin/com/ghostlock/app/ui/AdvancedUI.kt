@@ -195,6 +195,15 @@ internal fun AdvancedScreen(
                     )
                 }
             }
+            item(key = "plugins") {
+                Card {
+                    ArrowPreference(
+                        title = stringResource(R.string.plugins),
+                        summary = stringResource(R.string.plugins_summary),
+                        onClick = actions::onOpenPlugins,
+                    )
+                }
+            }
             item(key = "export") {
                 Card {
                     Column {
@@ -956,14 +965,6 @@ internal fun AdvancedOverrideScreen(
                             selectedIndex = ProfileConfig.Routes.indexOf(state.profileRoute) + 1,
                             showValue = true,
                             onSelectedIndexChange = actions::onRouteChanged,
-                        )
-                        OverlaySpinnerPreference(
-                            title = stringResource(R.string.fallback_label),
-                            items = (listOf(stringResource(R.string.fallback_none)) + ProfileConfig.Routes)
-                                .map { DropdownItem(icon = null, title = it) },
-                            selectedIndex = ProfileConfig.Routes.indexOf(state.profileFallback) + 1,
-                            showValue = true,
-                            onSelectedIndexChange = actions::onFallbackChanged,
                         )
                     }
                 }

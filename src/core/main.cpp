@@ -19,10 +19,8 @@
 #include <cstdint>
 
 #include "profile/entry.h"
-#include "backend/cve_2026_43284/diagnostic.hpp"
-#include "backend/cve_2026_43284/execution_binding.hpp"
-#include "backend/cve_2026_43284/session_frame.hpp"
-#include "backend/cve_2026_43284/stage_runner.hpp"
+#include "backend/cve_2026_43284/entry.hpp"
+#include "plugin/probe.hpp"
 #include "support/cli.hpp"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
@@ -53,91 +51,37 @@ int main(int argc, char **argv) {
                 case support::cli::ParseError::ProbeConflict:
                     pr_error("--probe-cve-2026-43284 cannot be combined with other flags\n");
                     break;
-                case support::cli::ParseError::RunConflict:
-                    pr_error("--run-cve-2026-43284 cannot be combined with"
-                             " --force-attack/--dump-kernel-log/--enable-status-record\n");
+                case support::cli::ParseError::PluginProbeConflict:
+                    pr_error("--plugin-probe cannot be combined with other flags\n");
                     break;
-                case support::cli::ParseError::BadStage:
-                    pr_error("--stage must be one of plan|write|trigger|full\n");
-                    break;
-                case support::cli::ParseError::StageRequiresRun:
-                    pr_error("--stage requires --run-cve-2026-43284\n");
-                    break;
-                case support::cli::ParseError::DevTargetRequiresRun:
-                    pr_error("--allow-dev-target requires --run-cve-2026-43284\n");
-                    break;
-                case support::cli::ParseError::Cve43284OptionRequiresRun:
-                    pr_error("--cve43284-* options require --run-cve-2026-43284\n");
-                    break;
-                case support::cli::ParseError::BadHookGuard:
-                    pr_error("--cve43284-hook-guard must be reject|skip\n");
-                    break;
-                case support::cli::ParseError::PluginRequiresRun:
-                    pr_error("--plugin requires --run-cve-2026-43284\n");
+                case support::cli::ParseError::ExpectShaRequiresPluginProbe:
+                    pr_error("--expect-sha256 requires --plugin-probe\n");
                     break;
                 default:
                     pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin> |"
                              " --probe-cve-2026-43284 <ko-path> |"
-                             " --run-cve-2026-43284 <ko-path> <target-file>"
-                             " [--stage=plan|write|trigger|full]"
-                             " [--allow-dev-target]"
-                             " [--cve43284-hook-target <path>]"
-                             " [--cve43284-hook-symbol <mangled>]"
-                             " [--cve43284-hook-guard reject|skip]"
-                             " [--cve43284-carrier <path>]"
-                             " [--cve43284-patch1-target <path>]"
-                             " [--cve43284-allow-vermagic-rewrite]"
-                             " [--plugin <path>]]"
-                             " [--dump-kernel-log <dir>] [--force-attack]"
-                             " [--enable-status-record]\n",
+                             " --plugin-probe <path.so> [--expect-sha256 <hex>]]"
+                             " [--allow-dev-target] [--dump-kernel-log <dir>]"
+                             " [--force-attack] [--enable-status-record]\n",
                              argv[0]);
-                    pr_error("  --plugin <path> is dev/gate-only: it loads one "
-                             "countermeasure .so into the LKM residency window and "
-                             "must be combined with --run-cve-2026-43284; it is never "
-                             "read from a profile or the production app-call path.\n");
+                    pr_error("  selection and policy come from the GLK profile: the staged"
+                             " --run-cve-2026-43284/--stage/--plugin entry and the"
+                             " --cve43284-* selectors were removed in S4 R2b, so a dev"
+                             " replay uses --ghostlock-app-call with the same document and"
+                             " the same pipeline as production.\n");
                     break;
             }
             return 1;
         }
         if (options.mode == support::cli::Mode::ProbeCve2026_43284) {
-            return backend::cve_2026_43284::diagnostic::run_diagnostic_cli(
+            return backend::cve_2026_43284::entry::run_diagnostic(
                     options.probe_module_path);
         }
-        if (options.mode == support::cli::Mode::RunCve2026_43284) {
-            /* Explicit staged execution: never reachable from a profile/wire
-             * selection, so backend_available(Cve2026_43284) stays false and
-             * the default pipeline never runs it. */
-            using backend::cve_2026_43284::stage_runner::StagedRunOptions;
-            const auto stage = static_cast<
-                    backend::cve_2026_43284::stage_runner::Stage>(
-                    static_cast<std::uint8_t>(options.run_stage));
-            StagedRunOptions staged{};
-            staged.module_path = options.run_module_path;
-            staged.target_path = options.run_target_path;
-            staged.stage = stage;
-            staged.allow_dev_target = options.allow_dev_target;
-            staged.allow_vermagic_rewrite = options.allow_vermagic_rewrite;
-            if (options.run_hook_target != nullptr) {
-                staged.hook_target = options.run_hook_target;
-            }
-            if (options.run_hook_symbol != nullptr) {
-                staged.hook_symbol = options.run_hook_symbol;
-            }
-            if (options.run_carrier_path != nullptr) {
-                staged.carrier_path = options.run_carrier_path;
-            }
-            if (options.run_patch1_target != nullptr) {
-                staged.patch1_target = options.run_patch1_target;
-            }
-            if (options.run_plugin_path != nullptr) {
-                staged.plugin_path = options.run_plugin_path;
-            }
-            if (options.run_hook_guard ==
-                support::cli::Cve43284HookGuard::Reject) {
-                staged.hook_guard =
-                        backend::cve_2026_43284::steps::HookGuardPolicy::Reject;
-            }
-            return backend::cve_2026_43284::stage_runner::run_stage_cli(staged);
+        if (options.mode == support::cli::Mode::PluginProbe) {
+            /* S4 P1: read-only plugin description; never registers or runs a
+             * hook and never touches a profile or stdin. */
+            return plugin::run_plugin_probe(options.plugin_probe_path,
+                                            options.expect_sha256);
         }
         const bool app_call = options.mode == support::cli::Mode::AppCall;
         const bool force_attack = options.force_attack;
@@ -196,14 +140,10 @@ int main(int argc, char **argv) {
          * unchanged. On the 43284 path an absent or malformed frame is
          * fail-closed. The secrets stay process-local and are zeroized at scope
          * exit; they never reach a profile, a file, argv or a log. */
-        backend::cve_2026_43284::ScopedIpsecSaParams session_secrets;
+        backend::cve_2026_43284::entry::ProductionSession production{};
         if (app_call && status_record &&
             selection.backend == contract::BackendKind::Cve2026_43284) {
-            const backend::cve_2026_43284::SessionFrameStatus frame_status =
-                    backend::cve_2026_43284::read_session_secret_frame(
-                            STDIN_FILENO, &session_secrets.value);
-            if (frame_status !=
-                backend::cve_2026_43284::SessionFrameStatus::Ok) {
+            if (!production.read_side_channel(STDIN_FILENO)) {
                 pr_error("session secret frame rejected\n");
                 throw FatalError{};
             }
@@ -233,15 +173,12 @@ int main(int argc, char **argv) {
          * contract/identity.hpp for the one-line flip): the gate above rejects
          * 43284, so this seam is dormant until the main agent enables it after
          * the app-call device gate. */
-        backend::cve_2026_43284::ProductionResources production{};
         if (selection.backend == contract::BackendKind::Cve2026_43284) {
-            backend::cve_2026_43284::cve_2026_43284_state_construct(session);
-            const backend::cve_2026_43284::ExecutionBindResult bind =
-                    backend::cve_2026_43284::bind_production_execution(
-                            session, production, decoded, session_secrets.value);
-            if (bind.error != backend::cve_2026_43284::ExecutionBindError::None) {
+            const std::uint8_t bind_error =
+                    production.bind(session, decoded, options.allow_dev_target);
+            if (bind_error != 0U) {
                 pr_error("cve_2026_43284 production binding failed (%d)\n",
-                         static_cast<int>(bind.error));
+                         static_cast<int>(bind_error));
                 throw FatalError{};
             }
         }

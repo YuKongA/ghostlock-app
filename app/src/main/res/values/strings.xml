@@ -93,6 +93,9 @@
     <string name="backend_cve_2026_43499_summary">PI-futex race; W1-W3 / Shizuku</string>
     <string name="backend_cve_2026_43284">CVE-2026-43284</string>
     <string name="backend_cve_2026_43284_summary">Page-cache write + LKM channel; requires Shizuku (shell domain)</string>
+    <string name="combination_label">Execution combination</string>
+    <string name="combination_planned">planned</string>
+    <string name="combination_recommended">Recommended</string>
     <string name="shizuku_recommended_hint">This kernel recommends running via Shizuku</string>
     <string name="shizuku_status_not_running">Start Shizuku, then return here</string>
     <string name="shizuku_status_permission_required">Grant Shizuku access when asked</string>
@@ -265,7 +268,16 @@
     <string name="templates_section">Templates (reference, unfilled)</string>
     <string name="route_label">Route</string>
     <string name="route_auto">Auto (infer from geometry)</string>
-    <string name="fallback_label">Fallback route</string>
-    <string name="fallback_none">None</string>
-    <string name="field_fallback_to">fallback_to</string>
+    <string name="plugins">Plugins</string>
+    <string name="plugins_summary">Imported countermeasure plugins</string>
+    <string name="plugins_empty">No plugins imported yet</string>
+    <string name="plugin_import">Import plugin</string>
+    <string name="plugin_import_summary">Pick a .so; it is hashed and described before it is installed</string>
+    <string name="plugin_import_blocked">The native probe is not available yet, so importing is disabled</string>
+    <string name="plugin_blocked">Unavailable: %1$s</string>
+    <string name="plugin_params_title">Parameters declared by the plugin</string>
+    <string name="plugin_param_edit">Plugin parameter</string>
+    <string name="plugin_param_invalid">Invalid value for the declared type</string>
+    <string name="plugin_imported">Plugin imported</string>
+    <string name="plugin_import_failed">Import rejected: %1$s</string>
 </resources>

@@ -71,7 +71,11 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ## 2. 架构规范
 
-### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002 + `top-level-architecture-rewrite-plan.md`）
+### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `top-level-architecture-rewrite-plan.md` + 现行批次 `branch-plan.md`）
+
+> **选择权威（2026-10-05）**：装配选择由 **token 白名单**表达（`contract::kCombinationCatalog`：token → {backend, route, steps, terminal, available}），
+> token 落在 `backend.<id>.steps`；`pipeline` 只做分派。**词汇/白名单必须导出并对拍**（native → 资源 → Kotlin agreement test），
+> 不得在 Kotlin 侧手写第二份。**terminal 归属见 ADR-0006**（词汇保留、实现下放 backend、共享件中性）。
 
 > 本节描述重写后的**目标模型**，随重写落地取代 §2.1/§2.2 的现状描述。
 
@@ -425,3 +429,10 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 | 门禁记录样例 | `docs/analysis/device-gates/**`（S04–S15、CPP00–CPP17、U01、NS*、PROFILE-*） |
 | 首攻实验史（负结果） | `repro/xperia-first-success/README.md`（V1–V21） |
 | 警告/clang-tidy 策略 | `docs/analysis/native-warning-audit.md`、`src/.clang-tidy` 注释 |
+
+## 附录：批次与写入流规则增补（2026-10-05）
+
+- **单写入流**：同一时刻只允许一条写入流改共享工作树；并行工作限只读。批次落地必须**原子提交**。
+- **导出对拍**：跨语言词汇表（route 目录 / GLKv3 字段 / **组合 token 白名单** / 可用性）只有 native 一份权威，
+  必须导出到资源并由 Kotlin 运行时读取 + agreement test；Kotlin 源码中的 token 字面量只允许出现在测试里。
+- **lint 红线**：`clang-analyzer-optin.performance.Padding` 等以 `-warnings-as-errors` 生效；新增公共结构体必须一次排好字段序。

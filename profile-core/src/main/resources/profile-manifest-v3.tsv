@@ -2,7 +2,12 @@
 # Authoritative native export; regenerate with:
 #   make -C src profile-manifest-v3
 # Columns: owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc
-common	common.fallback_route	uint	0	-	profile	-
+# The wire column may be a "|"-separated UNION of wire kinds (the S4 P1
+# dynamic plugin paths plugin.<id>.params.* / plugin.<id>.extract.*); every
+# member must come from the wire-kind vocabulary and an unknown member is
+# rejected fail-closed (the Kotlin adapter parses the same union).
+# Dynamic paths resolve their concrete type from the plugin descriptor
+# (probe TSV param/extract rows), whose type literals are these same kinds.
 common	common.kernel_major	uint	0	-	profile	-
 common	common.safe_mode	bool	0	-	profile	-
 common	common.vr_guard	bool	0	-	profile	-
@@ -15,7 +20,7 @@ cve_2026_43284	backend.cve_2026_43284.lkm_path	str	0	convention:$GHOSTLOCK_HOME/
 cve_2026_43284	backend.cve_2026_43284.module_poll_attempts	uint	0	literal:40	profile	LKM window handshake retries; default 40.
 cve_2026_43284	backend.cve_2026_43284.module_poll_interval_ms	uint	0	literal:5	profile	LKM window handshake retry delay in ms; default 5.
 cve_2026_43284	backend.cve_2026_43284.selinux_exec_context	uint	0	literal:0	profile	SELinux exec context selector; 0 = vendor_modprobe.
-cve_2026_43284	backend.cve_2026_43284.steps	uint	0	-	profile	PageCacheWrite step-set id.
+cve_2026_43284	backend.cve_2026_43284.steps	str	0	-	profile	Combination token (bare path, S4 R6b).
 cve_2026_43284	backend.cve_2026_43284.wait_timeout_ms	uint	0	literal:15000	profile	Chain terminus wait budget in ms; default 15000.
 cve_2026_43499	backend.cve_2026_43499.cred.caps_count	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.cred.caps_value	uint	0	-	profile	-
@@ -74,7 +79,7 @@ cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.cred_copy_off	uint	0	-	
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.fake_task_off	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.payload_delta	int	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.post_receive_hold_iterations	uint	0	-	profile	-
-cve_2026_43499	backend.cve_2026_43499.steps	uint	0	-	profile	Backend-private StepSet id (ADR-0004 R18).
+cve_2026_43499	backend.cve_2026_43499.steps	str	0	-	profile	Combination token <route>_<path> (S4 R6b).
 platform::abi	platform.abi.cred.caps_offset	uint	0	-	profile	-
 platform::abi	platform.abi.cred.ref0_offset	uint	0	-	profile	-
 platform::abi	platform.abi.cred.ref1_offset	uint	0	-	profile	-
@@ -106,3 +111,9 @@ platform::abi	platform.abi.task_struct.sched_task_group	uint	0	-	profile	-
 platform::abi	platform.abi.task_struct.seccomp	uint	0	-	profile	-
 platform::abi	platform.abi.task_struct.tasks	uint	0	-	profile	-
 platform::abi	platform.abi.task_struct.tgid	uint	0	-	profile	-
+plugin	plugin.<id>.enabled	bool	0	literal:0	profile	Plugin enabled; default false, and only enabled=true is emitted.
+plugin	plugin.<id>.extract.*	uint|int|bool|str	0	-	profile	Dynamic: P2 extractor writes it; P1 validates shape only.
+plugin	plugin.<id>.module_hash	str	0	-	profile	Lowercase hex SHA-256 of the module file.
+plugin	plugin.<id>.module_path	str	0	-	profile	Module path RELATIVE to <GHOSTLOCK_HOME>/countermeasures.
+plugin	plugin.<id>.params.*	uint|int|bool|str	0	-	profile	Dynamic: type comes from the plugin descriptor (probe TSV param rows).
+plugin	plugin.<id>.stage	str	0	-	profile	Hook stage token (pre_spawn|post_spawn|pre_terminal|post_terminal).

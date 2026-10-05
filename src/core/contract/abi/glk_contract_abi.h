@@ -168,6 +168,42 @@ typedef struct glk_hook {
     const char *name;
 } glk_hook;
 
+/* ------------------------------------------------------------------------- *
+ * P1 append (S4 contract-design 3.14.7.3): parameter / extract schema
+ *
+ * Tail-only addition. GLK_ABI_VERSION stays 1: an old host ignores the new
+ * tail fields and an old module simply reports the smaller size, which the
+ * host detects before reading anything past the v1 fields. Nothing in the v1
+ * layout above changes.
+ * ------------------------------------------------------------------------- */
+
+/* Wire type of one parameter or extract entry. The literal spelling of each
+ * value matches GLKv3 WireKind (uint | int | bool | str) so the probe TSV, the
+ * manifest and the Kotlin adapter share one vocabulary. */
+typedef enum glk_param_type {
+    GLK_PARAM_UINT = 0,
+    GLK_PARAM_INT = 1,
+    GLK_PARAM_BOOL = 2,
+    GLK_PARAM_STR = 3
+} glk_param_type;
+
+/* One declared parameter (glk_module.params) or extract entry
+ * (glk_module.extract). The table is static and read only during load.
+ *   name           key under params.<name> / extract.<name>; NUL-terminated
+ *   type           a glk_param_type value
+ *   required       0 or 1; 1 means the profile must supply the value
+ *   default_value  numeric default for uint/int/bool; ignored for STR
+ *   default_str    NUL-terminated STR default, or NULL when absent
+ *   doc            NUL-terminated one-line description, or NULL */
+typedef struct glk_param {
+    const char *name;
+    uint32_t type;
+    uint32_t required;
+    uint64_t default_value;
+    const char *default_str;
+    const char *doc;
+} glk_param;
+
 /* What glk_entry() returns. The descriptor is owned by the loaded module;
  * the host reads it once during registration and never mutates it. */
 typedef struct glk_module {
@@ -178,7 +214,25 @@ typedef struct glk_module {
     uint32_t required_caps; /* OR of glk_capability bits; reserved bit -> reject */
     uint32_t hook_count;    /* number of entries in hooks; host-bounded */
     const glk_hook *hooks; /* static table, read only after entry returns */
+
+    /* ---- P1 tail append (S4 3.14.7.3) ----
+     * Read ONLY when size >= GLK_MODULE_SIZE_V2: a module built against the v1
+     * header reports the smaller v1 size, so the host must treat every field
+     * below as 0 / NULL and must not dereference params or extract. */
+    uint32_t param_count;      /* entries in params; 0 when none */
+    const glk_param *params;   /* static table, or NULL */
+    uint32_t extract_count;    /* entries in extract; 0 when none */
+    const glk_param *extract;  /* static table, or NULL; P1 shape == params */
+    uint32_t stage_mask;       /* OR of (1u << glk_stage) over the stages this
+                                * module declares; 0 = declare nothing (the
+                                * hook table still carries each hook stage) */
 } glk_module;
+
+/* sizeof(glk_module) as of the P1 append. The host compares module->size
+ * against it before touching the tail fields above; modules built against the
+ * v1 header report a smaller size and are read as v1 (fail-closed, never a
+ * partial read). */
+#define GLK_MODULE_SIZE_V2 ((uint32_t)sizeof(glk_module))
 
 /* ------------------------------------------------------------------------- *
  * Versioned LKM request channel (delta batch)

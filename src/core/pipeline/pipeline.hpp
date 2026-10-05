@@ -54,7 +54,7 @@ namespace ghostlock::pipeline {
         static constexpr contract::BackendKind backend = Backend::kind;
         static constexpr contract::StepSetKind steps = Backend::steps;
         static constexpr contract::TerminalKind terminal = Terminal::kind;
-        static constexpr DispatchTarget target = dispatch_target_of(backend, steps, terminal);
+        static constexpr DispatchTarget target = path_target_of(backend, steps, terminal);
         static_assert(target != DispatchTarget::None,
                       "pipeline must be a catalogued (backend, steps, terminal) triple");
         static_assert(contract::TerminalExecution<Terminal>,

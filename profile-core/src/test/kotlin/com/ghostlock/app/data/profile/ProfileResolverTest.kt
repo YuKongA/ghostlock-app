@@ -2,7 +2,7 @@ package com.ghostlock.app.data.profile
 
 import com.ghostlock.app.data.HoconSupport
 import com.ghostlock.app.data.NativeProfileDocument
-import com.ghostlock.app.data.StepSetKind
+import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.valueMapOf
 import org.junit.Assert.assertEquals
@@ -18,37 +18,27 @@ class ProfileResolverTest {
         )
         assertEquals(
             3L,
-            ProfileResolver.nativeValue(profile, "tcp_zerocopy", "none", "execution.recommended_cpus.main"),
+            ProfileResolver.nativeValue(profile, "tcp_zerocopy", "execution.recommended_cpus.main"),
         )
     }
 
     @Test
-    fun `nativeValue maps the branch fields onto route then fallback`() {
+    fun `nativeValue maps the branch fields onto the route branch`() {
         val profile = valueMapOf(
             "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to 1)),
         )
-        assertEquals(1L, ProfileResolver.nativeValue(profile, "tcp_zerocopy", "none", "compact_waiter"))
+        assertEquals(1L, ProfileResolver.nativeValue(profile, "tcp_zerocopy", "compact_waiter"))
 
         /* The shipped profiles spell compact_waiter as a HOCON boolean; the
          * route branch lookup folds true/false onto the wire's 1/0. */
         val booleanBranch = valueMapOf(
             "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to true)),
         )
-        assertEquals(1L, ProfileResolver.nativeValue(booleanBranch, "tcp_zerocopy", "none", "compact_waiter"))
+        assertEquals(1L, ProfileResolver.nativeValue(booleanBranch, "tcp_zerocopy", "compact_waiter"))
         val offBranch = valueMapOf(
             "route" to valueMapOf("tcp_zerocopy" to valueMapOf("compact_waiter" to false)),
         )
-        assertEquals(0L, ProfileResolver.nativeValue(offBranch, "tcp_zerocopy", "none", "compact_waiter"))
-
-        val fallbackOnly = valueMapOf(
-            "fallback" to valueMapOf(
-                "route" to valueMapOf("select_stack" to valueMapOf("waiter_shift" to -2)),
-            ),
-        )
-        assertEquals(
-            -2L,
-            ProfileResolver.nativeValue(fallbackOnly, "tcp_zerocopy", "select_stack", "pselect_waiter_shift"),
-        )
+        assertEquals(0L, ProfileResolver.nativeValue(offBranch, "tcp_zerocopy", "compact_waiter"))
     }
 
     @Test
@@ -56,12 +46,12 @@ class ProfileResolverTest {
         val profile = valueMapOf(
             "route" to valueMapOf("multicast_waiter" to valueMapOf("waiter_off" to 96)),
         )
-        assertEquals(96L, ProfileResolver.nativeValue(profile, "multicast_waiter", "none", "mcast.waiter_off"))
+        assertEquals(96L, ProfileResolver.nativeValue(profile, "multicast_waiter", "mcast.waiter_off"))
     }
 
     @Test
     fun `validateMerged rejects an unknown top level key`() {
-        val errors = ProfileResolver.validateMerged(validProfile() + ("bogus" to 1L), "select_stack", "none")
+        val errors = ProfileResolver.validateMerged(validProfile() + ("bogus" to 1L), "select_stack")
         assertTrue(errors.any { it.fieldPath == "bogus" })
     }
 
@@ -69,7 +59,7 @@ class ProfileResolverTest {
     fun `validateMerged rejects a missing required task field`() {
         val profile = validProfile()
         profile["task_struct"].asValueMap()!!.remove("prio")
-        val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
+        val errors = ProfileResolver.validateMerged(profile, "select_stack")
         assertTrue(errors.any { it.fieldPath == "task_struct.prio" })
     }
 
@@ -77,13 +67,13 @@ class ProfileResolverTest {
     fun `validateMerged reports a missing required cred field`() {
         val profile = validProfile()
         profile["cred"].asValueMap()!!.remove("copy_size")
-        val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
+        val errors = ProfileResolver.validateMerged(profile, "select_stack")
         assertTrue(errors.any { it.fieldPath == "cred.copy_size" && it.message == "missing" })
     }
 
     @Test
     fun `validateMerged accepts a minimal valid profile`() {
-        assertEquals(emptyList<ConfigError>(), ProfileResolver.validateMerged(validProfile(), "select_stack", "none"))
+        assertEquals(emptyList<ConfigError>(), ProfileResolver.validateMerged(validProfile(), "select_stack"))
     }
 
     @Test
@@ -109,17 +99,17 @@ class ProfileResolverTest {
             ),
         )
         val tooWide = ProfileResolver.validateMerged(
-            multicast(attempts = 256, armSequence = 16, armHold = 20000), "multicast_waiter", "none",
+            multicast(attempts = 256, armSequence = 16, armHold = 20000), "multicast_waiter",
         )
         assertTrue(tooWide.any { it.fieldPath == "route.multicast_waiter.attempts" })
         val holdWide = ProfileResolver.validateMerged(
-            multicast(attempts = 128, armSequence = 16, armHold = 65536), "multicast_waiter", "none",
+            multicast(attempts = 128, armSequence = 16, armHold = 65536), "multicast_waiter",
         )
         assertTrue(holdWide.any { it.fieldPath == "route.multicast_waiter.arm_hold" })
         assertEquals(
             emptyList<ConfigError>(),
             ProfileResolver.validateMerged(
-                multicast(attempts = 128, armSequence = 16, armHold = 20000), "multicast_waiter", "none",
+                multicast(attempts = 128, armSequence = 16, armHold = 20000), "multicast_waiter",
             ),
         )
     }
@@ -127,7 +117,7 @@ class ProfileResolverTest {
     @Test
     fun `validateMerged rejects a vr guard layout the transport cannot carry`() {
         val profile = validProfile() + ("vr_guard" to valueMapOf("tracepoint_funcs" to 0x140L))
-        val errors = ProfileResolver.validateMerged(profile, "select_stack", "none")
+        val errors = ProfileResolver.validateMerged(profile, "select_stack")
         assertTrue(errors.any { it.fieldPath == "vr_guard.tracepoint_funcs" })
     }
 
@@ -169,17 +159,32 @@ class ProfileResolverTest {
     }
 
     @Test
-    fun `HOCON backend steps token maps through StepSetKind`() {
+    fun `HOCON backend steps migrates the legacy step id to a combination token`() {
         val merged = requireNotNull(HoconSupport.parseValue("{ backend { steps = \"w1_w3\" } }").asValueMap())
         val document = NativeProfileDocument.from(
             release = "test",
             route = "select_stack",
-            fallbackTo = null,
-            value = { path -> ProfileResolver.nativeValue(merged, "select_stack", "none", path) },
+            value = { path -> ProfileResolver.nativeValue(merged, "select_stack", path) },
             text = { path -> ProfileResolver.nativeText(merged, path) },
         )
-        assertEquals(StepSetKind.W1W3.wire, document.steps)
-        assertEquals(2u, document.steps)
+        assertEquals(requireNotNull(CombinationCatalog.resolve("pselect_rootchild")) { "pselect_rootchild" }, document.combination)
+        assertEquals("pselect_rootchild", document.combination?.token)
+    }
+
+    @Test
+    fun `native document rejects an unknown combination token with its text`() {
+        val merged = requireNotNull(
+            HoconSupport.parseValue("{ backend { steps = \"bogus_token\" } }").asValueMap(),
+        )
+        val error = org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            NativeProfileDocument.from(
+                release = "test",
+                route = "select_stack",
+                value = { path -> ProfileResolver.nativeValue(merged, "select_stack", path) },
+                text = { path -> ProfileResolver.nativeText(merged, path) },
+            )
+        }
+        org.junit.Assert.assertTrue(error.message!!.contains("bogus_token"))
     }
 
     private fun validProfile(): MutableMap<String, Any?> = valueMapOf(

@@ -63,9 +63,6 @@ namespace ghostlock::race {
         ghostlock::backend::cve_2026_43499::route::RouteController controller;
         controller.init(race, &ghostlock::backend::cve43499_state(session::g_exploit_session).profile);
         race->route_status = controller.execute(request);
-        if (controller.fallback_used) {
-            pr_warning("TCP route cleanly failed; used Select Stack fallback\n");
-        }
         if (ghostlock::backend::cve_2026_43499::route::route_needs_ghost_disarm(ghostlock::backend::cve43499_state(session::g_exploit_session).profile)) {
             /* remove_waiter() left this thread's pi_blocked_on pointing at the
          * reclaimed stack waiter. Force one final slow-path removal while the

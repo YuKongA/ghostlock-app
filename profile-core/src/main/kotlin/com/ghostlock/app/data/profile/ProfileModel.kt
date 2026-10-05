@@ -18,7 +18,6 @@ data class CoreProfile(
     val offsets: KernelOffsetTable,
     val kernelPhysLoad: ULong,
     val route: RouteKind?,
-    val fallback: RouteKind?,
     val kernelsnitchCollisions: UInt,
     val mmStructSz: UInt,
     val recommendations: SparseExecutionValues,

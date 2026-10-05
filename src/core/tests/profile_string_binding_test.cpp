@@ -106,6 +106,8 @@ namespace {
                 ghostlock::profile::glkv3::Entry{"carrier_path", str_value(kCarrier)});
         section.entries.push_back(
                 ghostlock::profile::glkv3::Entry{"lkm_path", str_value(kLkm)});
+        section.entries.push_back(
+                ghostlock::profile::glkv3::Entry{"steps", str_value("umh")});
         const std::string encoded = ghostlock::profile::glkv3::encode(doc);
         assert(!encoded.empty());
 

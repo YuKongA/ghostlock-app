@@ -2,6 +2,8 @@ package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.ComponentAvailability
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.component.FrontendKind
 import com.ghostlock.app.domain.model.ExecutionMode
 
@@ -20,6 +22,22 @@ enum class ExecutionEntry { App, Shell }
  * overrides the mode-derived StepSet/terminal so the app can never address an
  * uncatalogued triple.
  */
+
+/**
+ * S4 R6b derived view: the combination token is the selection source; the
+ * legacy [ExecutionMode] is computed from it for logs/compat, never the other
+ * way around. 43284 is the UMH backend; W1W2 is the Shizuku step set; every
+ * other token is the general app-entry path.
+ */
+fun CombinationSpec.toExecutionMode(): ExecutionMode = when {
+    backend == BackendKind.Cve2026_43284 -> ExecutionMode.Umh
+    steps == StepSetKind.W1W2 -> ExecutionMode.Shizuku
+    else -> ExecutionMode.General
+}
+
+/** The token a legacy catalogued triple maps back to, when one exists. */
+fun ExecutionSelection.asCombination(): CombinationSpec? =
+    CombinationCatalog.fromDerived(backend, steps, terminal)
 
 /** General = app entry (zygote, seccomp present). */
 val ExecutionMode.entry: ExecutionEntry

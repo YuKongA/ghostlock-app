@@ -40,8 +40,12 @@ namespace ghostlock::tests::profile_bind {
                 route == profile::kRouteTcpZerocopy ||
                 route == profile::kRouteSelectStack ||
                 route == profile::kRouteMulticastWaiter;
+        /* F3: a 43284 document is route-less. The current value is kRouteNone;
+         * the legacy v1/v2 wire value 0 (kRouteAuto) is still accepted by this
+         * test-only compatibility shim. */
         const bool route_less_43284 =
-                backend == static_cast<uint16_t>(contract::BackendKind::Cve2026_43284) && route == profile::kRouteAuto;
+                backend == static_cast<uint16_t>(contract::BackendKind::Cve2026_43284) &&
+                (route == profile::kRouteNone || route == profile::kRouteAuto);
         if (!route_known && !route_less_43284) return -1;
         if (document.release.size() + 1 > release_buf_cap) return -1;
 

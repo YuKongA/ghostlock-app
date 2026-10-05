@@ -343,15 +343,65 @@ fn conf_offsets(
     .collect()
 }
 
-fn push_conf_block(lines: &mut Vec<String>, name: &str, entries: &[(String, String)]) {
-    if entries.is_empty() {
-        return;
+/// The backend whose step token carries a route prefix (S4-R6b).
+pub const BACKEND_43499: &str = "cve_2026_43499";
+/// The route-less backend whose step token is a bare path name.
+pub const BACKEND_43284: &str = "cve_2026_43284";
+
+/// Route -> short token prefix for a backend with a route axis. This is the
+/// extractor-side copy of the native token contract; the full route name still
+/// selects the geometry branch. `Auto` is deliberately absent: selection never
+/// guesses a route, so an unknown route must fail closed.
+const ROUTE_TOKEN_PREFIX: &[(&str, &str)] = &[
+    ("multicast_waiter", "mcast"),
+    ("select_stack", "pselect"),
+    ("tcp_zerocopy", "tcp"),
+];
+
+/// Path -> terminal the combination hands off to. `rootchild` and `shizuku`
+/// both enter the root child; `umh` forwards through the kernel UMH helper.
+const PATH_TERMINAL: &[(&str, &str)] = &[
+    ("rootchild", "root_child"),
+    ("shizuku", "root_child"),
+    ("umh", "umh_forward"),
+];
+
+/// Short token prefix for a route, or `None` when the route is unknown.
+pub fn route_token_prefix(route: &str) -> Option<&'static str> {
+    ROUTE_TOKEN_PREFIX
+        .iter()
+        .find(|(name, _)| *name == route)
+        .map(|(_, prefix)| *prefix)
+}
+
+/// Terminal a step path implies, or `None` when the path is unknown.
+pub fn path_terminal(path: &str) -> Option<&'static str> {
+    PATH_TERMINAL
+        .iter()
+        .find(|(name, _)| *name == path)
+        .map(|(_, terminal)| *terminal)
+}
+
+/// Compose the single `backend.<id>.steps` token per the native contract
+/// (S4-R6b): a backend with a route axis spells `<route-prefix>_<path>`, a
+/// route-less backend spells the bare `<path>`. The extractor renders 43499
+/// only, but the 43284 bare form is modelled here so the contract has one
+/// definition and the unit tests pin both shapes.
+///
+/// Fails closed (`None`) on an unknown route (including a missing route for a
+/// route-axis backend), an unknown path, or an unknown backend, so the caller
+/// can never emit a bogus token.
+pub fn combination_token(backend: &str, route: Option<&str>, path: &str) -> Option<String> {
+    // Validate the path independently of the backend spelling.
+    path_terminal(path)?;
+    match backend {
+        BACKEND_43499 => {
+            let prefix = route_token_prefix(route?)?;
+            Some(format!("{prefix}_{path}"))
+        }
+        BACKEND_43284 => Some(path.to_string()),
+        _ => None,
     }
-    lines.push(format!("{name} {{"));
-    for (key, value) in entries {
-        lines.push(format!("  {key} = {value}"));
-    }
-    lines.push("}".to_string());
 }
 
 /// Everything `render_conf` writes, in one bundle.
@@ -364,96 +414,122 @@ pub struct ConfInputs<'a> {
     pub phys_offset: Option<u64>,
     pub symbols: &'a BTreeMap<String, Option<u64>>,
     pub structs: &'a BTreeMap<String, Option<u32>>,
+    /// Backend selecting the step token spelling (`cve_2026_43499`).
+    pub backend: &'a str,
     pub route: Option<&'a str>,
+    /// Combination step path (`rootchild`/`shizuku`/`umh`). The extractor
+    /// derives the rootchild path; it never infers a route.
+    pub steps_path: &'a str,
     pub route_geometry: &'a [(&'static str, i64)],
     pub cred: &'a [(String, String)],
     pub extra_offsets: &'a ConfExtraOffsets,
 }
 
-/// Renders a flattened, self-contained GLK profile (`--format conf`): no
-/// `include` lines, the shared 6.x credential and KernelSnitch constants
-/// inlined, keys and nesting matching `app/src/main/assets/kernel_profiles/`.
-/// Fields without a derived value are omitted rather than written as `null`.
+/// Renders a canonical (R3) self-contained GLK profile (\`--format conf\`): no
+/// include lines, the shared 6.x constants inlined, owner-qualified paths
+/// matching \`app/src/main/assets/kernel_profiles/\`. Fields without a derived
+/// value are emitted as explicit \`null\`.
 pub fn render_conf(input: &ConfInputs<'_>) -> String {
     let release = input.release;
     let major = release
         .split('.')
         .next()
         .and_then(|part| part.parse::<u32>().ok());
-    let mut lines = vec![
-        format!("# GhostLock kernel profile: {release} (HOCON, self-contained)."),
-        format!("release = \"{release}\""),
-        "schema_version = 3".to_string(),
-        format!("kernel_major = {}", major.unwrap_or(0)),
-        "backend {".to_string(),
-        "  steps = \"w1_w3\"".to_string(),
-        "}".to_string(),
-    ];
-    lines.push(match input.phys {
-        // Decimal only: HOCON has no `0x` literal, and the Kotlin reader
-        // (`getLongAt`) accepts a Number only, so a hex spelling would be
-        // silently dropped on import. An unknown phys is an explicit `null`.
-        Some(phys) => format!("kernel_phys_load = {phys}"),
-        None => "kernel_phys_load = null".to_string(),
-    });
-    lines.push(match input.phys_offset {
-        Some(offset) => format!("kernel_phys_offset = {offset}"),
-        None => "kernel_phys_offset = null".to_string(),
-    });
-    if let Some(route) = input.route {
-        // The chosen route keeps its whole field universe even when no
-        // geometry could be derived, so the import carries the recommendation
-        // and the missing fields surface as invalid paths on the Kotlin side.
-        lines.push("route {".to_string());
-        lines.push(format!("  {route} {{"));
-        match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
-            Some((_, fields)) => {
-                for field in *fields {
-                    let value = input
-                        .route_geometry
-                        .iter()
-                        .find(|(key, _)| key == field)
-                        .map(|(_, value)| {
-                            if *field == "compact_waiter" {
-                                if *value != 0 {
-                                    "true".to_string()
-                                } else {
-                                    "false".to_string()
-                                }
-                            } else {
-                                value.to_string()
-                            }
-                        })
-                        .unwrap_or_else(|| "null".to_string());
-                    lines.push(format!("    {field} = {value}"));
-                }
-            }
-            None => {
-                for (key, value) in input.route_geometry {
-                    lines.push(format!("    {key} = {value}"));
-                }
-            }
-        }
-        lines.push("  }".to_string());
-        lines.push("}".to_string());
-    }
-    push_conf_block(
-        &mut lines,
-        "fallback",
-        &[("to".to_string(), "\"none\"".to_string())],
-    );
+    let vr_funcs = input
+        .structs
+        .get("vr_tracepoint_funcs")
+        .copied()
+        .flatten()
+        .filter(|value| (1..=u8::MAX as u32).contains(value));
 
-    // KernelSnitch: full universe. `collisions` is emitted for a verified
-    // train (and every 5.x kernel); `mm_struct_sz` only where it applies. An
-    // unverified release keeps both as `null` rather than omitting the block.
+    // S4-R6b: the step selection is one token under the selected backend, not
+    // a top-level `selection.steps`. A route-axis backend qualifies it with
+    // the route prefix; an unknown/absent route fails closed (no token) so the
+    // app's validation can reject the incomplete profile instead of running a
+    // guessed combination. `selection.terminal` is derived from the path.
+    let steps_token = combination_token(input.backend, input.route, input.steps_path);
+    let terminal = path_terminal(input.steps_path);
+
+    let mut lines = vec![
+        format!("# GhostLock kernel profile: {release} (HOCON, canonical R3 layout)."),
+        "ghostlock {".to_string(),
+        "  schema_version = 3".to_string(),
+        format!("  release = \"{release}\""),
+        "  selection {".to_string(),
+        format!("    backend = \"{}\"", input.backend),
+    ];
+    if let Some(terminal) = terminal {
+        lines.push(format!("    terminal = \"{terminal}\""));
+    }
+    lines.push("  }".to_string());
+    lines.push("  common {".to_string());
+    lines.push(format!("    kernel_major = {}", major.unwrap_or(0)));
+    if vr_funcs.is_some() {
+        lines.push("    vr_guard = true".to_string());
+    }
+    lines.push("  }".to_string());
+
+    lines.push("  platform {".to_string());
+    lines.push("    abi {".to_string());
+    lines.push("      kernel {".to_string());
+    lines.push(format!(
+        "        kernel_phys_load = {}",
+        input
+            .phys
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    ));
+    lines.push(format!(
+        "        kernel_phys_offset = {}",
+        input
+            .phys_offset
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    ));
+    lines.push("      }".to_string());
+    lines.push("      task_struct {".to_string());
+    for (macro_name, key) in CONF_TASK_FIELDS {
+        let value = input
+            .structs
+            .get(*macro_name)
+            .copied()
+            .flatten()
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "null".to_string());
+        lines.push(format!("        {key} = {value}"));
+    }
+    lines.push("      }".to_string());
+    lines.push("      cred {".to_string());
+    for key in CONF_CRED_FIELDS.iter().copied() {
+        if CONF_CRED_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!("        {key} = {}", conf_lookup(input.cred, key)));
+        }
+    }
+    lines.push("      }".to_string());
+    let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
+    lines.push("      offset {".to_string());
+    for key in CONF_OFFSET_FIELDS.iter().copied() {
+        if CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!("        {key} = {}", conf_lookup(&offset_entries, key)));
+        }
+    }
+    lines.push("      }".to_string());
+    lines.push("    }".to_string());
+    lines.push("  }".to_string());
+
+    lines.push("  backend {".to_string());
+    lines.push(format!("    {} {{", input.backend));
+    if let Some(token) = &steps_token {
+        lines.push(format!("      steps = \"{token}\""));
+    }
+
     let mut snitch = Vec::new();
     if kernel_layout_verified(Some(release)) || major == Some(5) {
         match major {
             Some(6) => {
                 // = kernelsnitch-6x.conf
                 snitch.push(("collisions".to_string(), "4".to_string()));
-                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1")
-                {
+                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1") {
                     // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
                     snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
                 }
@@ -466,75 +542,88 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
             _ => {}
         }
     }
-    push_conf_block(
-        &mut lines,
-        "kernelsnitch",
-        &[
-            ("collisions".to_string(), conf_lookup(&snitch, "collisions")),
-            (
-                "mm_struct_sz".to_string(),
-                conf_lookup(&snitch, "mm_struct_sz"),
-            ),
-        ],
-    );
-
-    let task: Vec<(String, String)> = CONF_TASK_FIELDS
+    lines.push("      kernel {".to_string());
+    if let Some((_, value)) = input
+        .route_geometry
         .iter()
-        .map(|(macro_name, key)| {
-            (
-                (*key).to_string(),
-                input
-                    .structs
-                    .get(*macro_name)
-                    .copied()
-                    .flatten()
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "null".to_string()),
-            )
-        })
-        .collect();
-    push_conf_block(&mut lines, "task_struct", &task);
-
-    let cred: Vec<(String, String)> = CONF_CRED_FIELDS
-        .iter()
-        .map(|key| ((*key).to_string(), conf_lookup(input.cred, key)))
-        .collect();
-    push_conf_block(&mut lines, "cred", &cred);
-
-    let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
-    let offset: Vec<(String, String)> = CONF_OFFSET_FIELDS
-        .iter()
-        .map(|key| ((*key).to_string(), conf_lookup(&offset_entries, key)))
-        .collect();
-    push_conf_block(&mut lines, "offset", &offset);
-
-    // Ancillary vr.ko guard. The gate mirrors recommend_shizuku: it says the
-    // profile enables the behavior; whether vr.ko is on the running device is a
-    // separate decision, taken there (see docs/analysis/ancillary-controller-guide.md).
-    // Both facts are per-image and come from this image's BTF — nothing here
-    // reads the kernel release. The layout travels as a u8, so an offset that
-    // does not fit is dropped instead of being narrowed to a different member;
-    // without the layout the guard stays off (fail closed).
-    if let Some(funcs) = input
-        .structs
-        .get("vr_tracepoint_funcs")
-        .copied()
-        .flatten()
-        .filter(|value| (1..=u8::MAX as u32).contains(value))
+        .find(|(key, _)| *key == "compact_waiter")
     {
-        let gate = lines
-            .iter()
-            .position(|line| line.starts_with("kernel_major"))
-            .map(|i| i + 1)
-            .unwrap_or(lines.len());
-        lines.insert(gate, "recommend_vr_guard = true".to_string());
-        push_conf_block(
-            &mut lines,
-            "vr_guard",
-            &[("tracepoint_funcs".to_string(), funcs.to_string())],
-        );
+        lines.push(format!(
+            "        compact_waiter = {}",
+            if *value != 0 { "true" } else { "false" }
+        ));
+    }
+    lines.push(format!(
+        "        kernelsnitch_collisions = {}",
+        conf_lookup(&snitch, "collisions")
+    ));
+    lines.push(format!(
+        "        mm_struct_sz = {}",
+        conf_lookup(&snitch, "mm_struct_sz")
+    ));
+    lines.push("      }".to_string());
+
+    lines.push("      cred {".to_string());
+    for key in CONF_CRED_FIELDS.iter().copied() {
+        if !CONF_CRED_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!("        {key} = {}", conf_lookup(input.cred, key)));
+        }
+    }
+    lines.push("      }".to_string());
+
+    lines.push("      offset {".to_string());
+    for key in CONF_OFFSET_FIELDS.iter().copied() {
+        if !CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!("        {key} = {}", conf_lookup(&offset_entries, key)));
+        }
+    }
+    lines.push("      }".to_string());
+
+    if let Some(route) = input.route {
+        let route_fields: Vec<&'static str> =
+            match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
+                Some((_, fields)) => fields
+                    .iter()
+                    .copied()
+                    .filter(|field| *field != "compact_waiter")
+                    .collect(),
+                None => input
+                    .route_geometry
+                    .iter()
+                    .map(|(key, _)| *key)
+                    .filter(|key| *key != "compact_waiter")
+                    .collect(),
+            };
+        lines.push("      route {".to_string());
+        if route_fields.is_empty() {
+            lines.push(format!("        {route} {{}}"));
+        } else {
+            lines.push(format!("        {route} {{"));
+            for field in route_fields {
+                let value = input
+                    .route_geometry
+                    .iter()
+                    .find(|(key, _)| *key == field)
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                lines.push(format!("          {field} = {value}"));
+            }
+            lines.push("        }".to_string());
+        }
+        lines.push("      }".to_string());
     }
 
+    lines.push("    }".to_string());
+    lines.push("  }".to_string());
+
+    if let Some(funcs) = vr_funcs {
+        lines.push("  countermeasure {".to_string());
+        lines.push("    vivo_vr_guard {".to_string());
+        lines.push(format!("      tracepoint_funcs = {funcs}"));
+        lines.push("    }".to_string());
+        lines.push("  }".to_string());
+    }
+    lines.push("}".to_string());
     lines.join("\n") + "\n"
 }
 
@@ -576,8 +665,9 @@ pub fn optional_struct_fields() -> BTreeSet<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CONF_TASK_FIELDS, ConfExtraOffsets, ConfInputs, build_report, conf_cred_5x, conf_cred_6x,
-        conf_route_geometry, pselect_waiter_shift_for, render_conf,
+        CONF_TASK_FIELDS, ConfExtraOffsets, ConfInputs, build_report, combination_token,
+        conf_cred_5x, conf_cred_6x, conf_route_geometry, path_terminal, pselect_waiter_shift_for,
+        render_conf, route_token_prefix,
     };
     use crate::derive::Cred5x;
     use std::collections::{BTreeMap, BTreeSet};
@@ -613,15 +703,17 @@ mod tests {
                 phys_offset: None,
                 symbols: &symbols,
                 structs: &structs,
+                backend: super::BACKEND_43499,
                 route: Some("select_stack"),
+                steps_path: "rootchild",
                 route_geometry: &geometry,
                 cred: &conf_cred_6x(),
                 extra_offsets: &no_extra_offsets(),
             })
         };
         let fitted = render(Some(Some(0x40)));
-        assert!(fitted.contains("recommend_vr_guard = true"));
-        assert!(fitted.contains("vr_guard {\n  tracepoint_funcs = 64\n}"));
+        assert!(fitted.contains("vr_guard = true"));
+        assert!(fitted.contains("tracepoint_funcs = 64"));
         /* An offset that cannot travel in the u8 layout is dropped instead of
          * being narrowed onto a different tracepoint member: guard off. */
         for bad in [Some(Some(0x140u32)), Some(Some(0)), None] {
@@ -652,18 +744,20 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("select_stack"),
+            steps_path: "rootchild",
             route_geometry: &geometry,
             cred: &conf_cred_6x(),
             extra_offsets: &no_extra_offsets(),
         });
         assert!(!out.contains("include"));
         assert!(out.contains("kernel_phys_load = 1073741824"));
-        assert!(out.contains("route {\n  select_stack {\n    waiter_shift = -2\n  }\n}"));
-        assert!(out.contains("collisions = 4"));
+        assert!(out.contains("select_stack {") && out.contains("waiter_shift = -2"));
+        assert!(out.contains("kernelsnitch_collisions = 4"));
         assert!(out.contains("mm_struct_sz = null"));
         assert!(!out.contains("task_prio"));
-        assert!(out.contains("  prio = 132"));
+        assert!(out.contains("prio = 132"));
         assert!(out.contains("cred {"));
         assert!(out.contains("copy_size = 136"));
         assert!(out.contains("caps_offset = 48"));
@@ -671,6 +765,10 @@ mod tests {
         assert!(out.contains("init_task = 34595456"));
         assert!(out.contains("security_hook_heads = 0"));
         assert!(!out.contains("off_absent"));
+        // S4-R6b: one token under the backend, no top-level selection.steps.
+        assert!(out.contains("steps = \"pselect_rootchild\""));
+        assert!(!out.contains("w1_w3"));
+        assert!(!out.contains("selection {\n    steps"));
     }
 
     #[test]
@@ -683,14 +781,18 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("tcp_zerocopy"),
+            steps_path: "rootchild",
             route_geometry: &geometry,
             cred: &conf_cred_6x(),
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(out.contains("tcp_zerocopy {\n    compact_waiter = true"));
+        assert!(out.contains("tcp_zerocopy {}"));
+        assert!(out.contains("compact_waiter = true"));
         assert!(out.contains("mm_struct_sz = 1024"));
         assert!(out.contains("kernel_phys_load = null"));
+        assert!(out.contains("steps = \"tcp_rootchild\""));
     }
 
     #[test]
@@ -723,19 +825,21 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("multicast_waiter"),
+            steps_path: "rootchild",
             route_geometry: &geometry,
             cred: &conf_cred_5x(&cred, 176),
             extra_offsets: &ConfExtraOffsets {
                 empty_zero_page: Some(47_529_984),
             },
         });
-        assert!(out.contains("multicast_waiter {\n    waiter_off = 96"));
+        assert!(out.contains("multicast_waiter {") && out.contains("waiter_off = 96"));
         assert!(out.contains("buffer_size = 264"));
         assert!(out.contains("task_offset = 48"));
         assert!(out.contains("lock_offset = 56"));
         assert!(out.contains("compact_waiter = true"));
-        assert!(out.contains("collisions = 8"));
+        assert!(out.contains("kernelsnitch_collisions = 8"));
         assert!(out.contains("mm_struct_sz = 1024"));
         assert!(out.contains("cred {"));
         assert!(out.contains("copy_size = 176"));
@@ -748,6 +852,8 @@ mod tests {
         assert!(out.contains("ref0_image = -274698454400"));
         assert!(out.contains("ref3_image = -274698454232"));
         assert!(out.contains("empty_zero_page = 47529984"));
+        assert!(out.contains("steps = \"mcast_rootchild\""));
+        assert!(!out.contains("w1_w3"));
     }
 
     #[test]
@@ -851,7 +957,9 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("multicast_waiter"),
+            steps_path: "rootchild",
             route_geometry: &[],
             cred: &[],
             extra_offsets: &ConfExtraOffsets {
@@ -872,14 +980,19 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: None,
+            steps_path: "rootchild",
             route_geometry: &[],
             cred: &[],
             extra_offsets: &no_extra_offsets(),
         });
-        assert!(out.contains("kernelsnitch {"));
-        assert!(out.contains("collisions = null"));
+        assert!(out.contains("kernel {"));
+        assert!(out.contains("kernelsnitch_collisions = null"));
         assert!(out.contains("mm_struct_sz = null"));
+        // Unknown route: fail closed, no bogus token at all.
+        assert!(!out.contains("steps = "));
+        assert!(out.contains("terminal = \"root_child\""));
     }
 
     #[test]
@@ -897,7 +1010,9 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("multicast_waiter"),
+            steps_path: "rootchild",
             route_geometry: &geometry,
             cred: &[],
             extra_offsets: &no_extra_offsets(),
@@ -911,8 +1026,8 @@ mod tests {
         assert!(out.contains("compact_waiter = true"));
         // The 5.x KernelSnitch defaults are required to run and are emitted even
         // without the "-android13-" train tag.
-        assert!(out.contains("kernelsnitch"));
-        assert!(out.contains("collisions = 8"));
+        assert!(out.contains("kernelsnitch_collisions"));
+        assert!(out.contains("kernelsnitch_collisions = 8"));
         assert!(out.contains("mm_struct_sz = 1024"));
     }
 
@@ -948,6 +1063,64 @@ mod tests {
             pselect_waiter_shift_for(Some("6.7.1-generic")),
         );
         assert!(report["pselect_waiter_shift"].is_null());
+    }
+
+    #[test]
+    fn combination_token_covers_the_route_catalog_and_paths() {
+        for (route, prefix) in [
+            ("multicast_waiter", "mcast"),
+            ("select_stack", "pselect"),
+            ("tcp_zerocopy", "tcp"),
+        ] {
+            assert_eq!(route_token_prefix(route), Some(prefix));
+            let expected = format!("{prefix}_rootchild");
+            assert_eq!(
+                combination_token(super::BACKEND_43499, Some(route), "rootchild").as_deref(),
+                Some(expected.as_str())
+            );
+        }
+        // 43499 planned paths keep the route prefix.
+        assert_eq!(
+            combination_token(super::BACKEND_43499, Some("multicast_waiter"), "umh").as_deref(),
+            Some("mcast_umh")
+        );
+        // 43284 has no route axis: the token is the bare path name.
+        for path in ["umh", "rootchild", "shizuku"] {
+            assert_eq!(
+                combination_token(super::BACKEND_43284, None, path).as_deref(),
+                Some(path)
+            );
+        }
+    }
+
+    #[test]
+    fn combination_token_fails_closed_on_unknown_inputs() {
+        // Missing route on a route-axis backend: no token, no guess.
+        assert_eq!(
+            combination_token(super::BACKEND_43499, None, "rootchild"),
+            None
+        );
+        // Unknown route, including the removed Auto axis.
+        assert_eq!(
+            combination_token(super::BACKEND_43499, Some("auto"), "rootchild"),
+            None
+        );
+        // Unknown path, on either backend.
+        assert_eq!(
+            combination_token(super::BACKEND_43499, Some("multicast_waiter"), "bogus"),
+            None
+        );
+        assert_eq!(combination_token(super::BACKEND_43284, None, "bogus"), None);
+        // Unknown backend.
+        assert_eq!(combination_token("cve_2026_99999", None, "umh"), None);
+    }
+
+    #[test]
+    fn path_terminal_maps_the_three_paths() {
+        assert_eq!(path_terminal("rootchild"), Some("root_child"));
+        assert_eq!(path_terminal("shizuku"), Some("root_child"));
+        assert_eq!(path_terminal("umh"), Some("umh_forward"));
+        assert_eq!(path_terminal("bogus"), None);
     }
 
     /// Flatten a HOCON-ish profile into `section.key` -> value, ignoring
@@ -1064,7 +1237,9 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            backend: super::BACKEND_43499,
             route: Some("multicast_waiter"),
+            steps_path: "rootchild",
             route_geometry: &geometry,
             cred: &cred,
             extra_offsets: &extra,
@@ -1077,7 +1252,8 @@ mod tests {
         let generated = flatten_conf(&generated);
         let bundled = flatten_conf(&bundled);
 
-        assert!(generated.contains_key("route.multicast_waiter.waiter_off"));
+        assert!(generated
+            .contains_key("ghostlock.backend.cve_2026_43499.route.multicast_waiter.waiter_off"));
         for key in bundled.keys() {
             assert_eq!(
                 generated.get(key),
@@ -1126,6 +1302,74 @@ mod tests {
                 paths.contains(&path),
                 "extractor path {path} is missing from the native GLKv3 owner manifest"
             );
+        }
+    }
+
+    /// S4 R6b/F4 three-end combination agreement (extractor leg): every token
+    /// this crate can render must be a catalogue row of the native combination
+    /// manifest, and the extractor vocabulary must not invent a third spelling.
+    ///
+    /// The extractor renders cve_2026_43499 profiles (`--route` selects the
+    /// route, `--steps-path` the path). Its `*_umh` projections are catalogued
+    /// but PLANNED (available=0): the extractor may render them and the device
+    /// selection gate rejects them, so that projection is asserted explicitly
+    /// instead of being silently treated as wired.
+    #[test]
+    fn conf_combination_tokens_are_in_the_native_combination_manifest() {
+        let manifest = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../app/src/test/resources/combination-manifest.tsv"
+        ))
+        .expect("native combination manifest");
+
+        /* token -> available; every row carries the 8 documented columns. */
+        let mut tokens: BTreeMap<String, bool> = BTreeMap::new();
+        for line in manifest.lines() {
+            let line = line.trim_end_matches('\r');
+            if line.trim().is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let columns: Vec<&str> = line.split('\t').collect();
+            assert_eq!(columns.len(), 8, "combination manifest row: {line}");
+            let available = match columns[6] {
+                "1" => true,
+                "0" => false,
+                other => panic!("available column must be 1 or 0, got {other}"),
+            };
+            assert!(
+                tokens.insert(columns[0].to_string(), available).is_none(),
+                "duplicate combination token {}",
+                columns[0]
+            );
+        }
+        assert_eq!(tokens.len(), 12, "manifest must list the 12 catalogue tokens");
+
+        /* Everything the extractor CLI can render: 43499 x 3 routes x 3 paths. */
+        let mut emitted = 0usize;
+        for route in ["tcp_zerocopy", "select_stack", "multicast_waiter"] {
+            for path in ["rootchild", "shizuku", "umh"] {
+                let token = combination_token(super::BACKEND_43499, Some(route), path)
+                    .expect("extractor renders this route/path pair");
+                let available = *tokens.get(&token).unwrap_or_else(|| {
+                    panic!("extractor token {token} is missing from the native manifest")
+                });
+                assert_eq!(
+                    available,
+                    path != "umh",
+                    "availability drift for extractor token {token}"
+                );
+                emitted += 1;
+            }
+        }
+        assert_eq!(emitted, 9);
+
+        /* Route/path vocabulary agreement: the manifest columns use the same
+         * spellings the extractor composes tokens from. */
+        for route in ["tcp_zerocopy", "select_stack", "multicast_waiter"] {
+            assert!(super::route_token_prefix(route).is_some(), "{route}");
+        }
+        for path in ["rootchild", "shizuku", "umh"] {
+            assert!(super::path_terminal(path).is_some(), "{path}");
         }
     }
 }

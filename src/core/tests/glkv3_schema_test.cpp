@@ -133,9 +133,14 @@ namespace {
             v.bool_value = value;
             return v;
         };
+        const auto str_value = [&](std::string_view value) {
+            Value v;
+            v.type = WireType::Str;
+            v.bytes = value;
+            return v;
+        };
 
         if (s == "common" && k == "kernel_major") return uint_value(5);
-        if (s == "common" && k == "fallback_route") return uint_value(2);
         if (s == "common" && k == "safe_mode") return bool_value(true);
         if (s == "common" && k == "vr_guard") return bool_value(true);
         if (s == "platform.abi.task_struct" && k == "prio") return uint_value(101);
@@ -157,7 +162,8 @@ namespace {
             return uint_value(0x400);
         if (s == "countermeasure.vivo_vr_guard" && k == "tracepoint_funcs")
             return uint_value(0x20);
-        if (s == "backend.cve_2026_43499" && k == "steps") return uint_value(2);
+        if (s == "backend.cve_2026_43499" && k == "steps")
+            return str_value("mcast_rootchild");
         if (s == kActiveRoute && k == "waiter_off") return int_value(-2);
         if (s == kActiveRoute && k == "buffer_size") return uint_value(512);
         if (s == kActiveRoute && k == "task_offset") return uint_value(0x30);

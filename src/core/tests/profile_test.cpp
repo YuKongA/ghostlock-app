@@ -47,12 +47,12 @@ int32_t main(void) {
         return 1;
     }
 
-    /* The declared route decides, and kRouteAuto selects no chain at all. */
+    /* The declared route decides; None (no route axis) selects no chain. */
     decoded.route = ghostlock::profile::kRouteTcpZerocopy;
     ghostlock::profile::TargetProfile explicit_tcp = ghostlock::profile::TargetProfile::from(&decoded);
     decoded.route = ghostlock::profile::kRouteSelectStack;
     ghostlock::profile::TargetProfile explicit_select = ghostlock::profile::TargetProfile::from(&decoded);
-    decoded.route = ghostlock::profile::kRouteAuto;
+    decoded.route = ghostlock::profile::kRouteNone;
     ghostlock::profile::TargetProfile unresolved = ghostlock::profile::TargetProfile::from(&decoded);
     if (!explicit_tcp.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
         explicit_tcp.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||

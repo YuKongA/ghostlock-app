@@ -104,7 +104,7 @@ namespace ghostlock::backend::cve_2026_43284 {
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
             std::string_view module_path,
-            const platform::DeviceProbeOps &device) {
+            const platform::DeviceProbeOps &device, bool allow_dev_target) {
         ExecutionBindResult result{};
         if (module_path.empty()) {
             result.error = ExecutionBindError::ModulePathEmpty;
@@ -122,7 +122,8 @@ namespace ghostlock::backend::cve_2026_43284 {
         const std::string_view carrier_path =
                 ghostlock::backend::string_field_from(document, "carrier_path")
                         .value_or(std::string_view{});
-        if (!select_single_carrier(carrier_path, device, resources.carrier)) {
+        if (!select_single_carrier(carrier_path, device, resources.carrier,
+                                   allow_dev_target)) {
             result.error = ExecutionBindError::CarrierRejected;
             return result;
         }
@@ -170,8 +171,11 @@ namespace ghostlock::backend::cve_2026_43284 {
         /* A vendor target the App cannot open is still reachable through the
          * crash_dump bridge (old-page read + helper splice); any other open
          * failure is fatal. */
+        /* The crash-dump bridge is a VENDOR-carrier fallback only: a one-shot
+         * --allow-dev-target carrier must be openable directly, so a failed
+         * open stays fatal for it. */
         const bool helper_carrier =
-                target_fd < 0 && ctx.bridge.available() &&
+                target_fd < 0 && !allow_dev_target && ctx.bridge.available() &&
                 steps::is_vendor_path(resources.carrier.path);
         if (target_fd < 0 && !helper_carrier) {
             result.error = ExecutionBindError::TargetUnavailable;
@@ -242,6 +246,9 @@ namespace ghostlock::backend::cve_2026_43284 {
         state.deps.carrier = &resources.carrier;
         state.deps.plan = &resources.module.plan;
         state.deps.target_size = target_size;
+        /* --allow-dev-target: the composition root already widened the carrier
+         * shape rule; the chain validates and reaches it the same way. */
+        state.deps.allow_dev_carrier_path = allow_dev_target;
         state.deps.precheck_lkm = &production_module_precheck;
         state.deps.lkm_image_path = module_path;
         /* The chain wait budget is document policy (S4 R4); the schema default
@@ -255,7 +262,8 @@ namespace ghostlock::backend::cve_2026_43284 {
 
     ExecutionBindResult bind_production_execution(
             session::CoreSession &session, ProductionResources &resources,
-            const profile::Document &document, const IpsecSaParams &sa) {
+            const profile::Document &document, const IpsecSaParams &sa,
+            bool allow_dev_target) {
         const config::RuntimeConfig &runtime =
                 config::runtime_config_snapshot();
         /* The resources object owns the path so the state's lkm_image_path view
@@ -271,7 +279,7 @@ namespace ghostlock::backend::cve_2026_43284 {
                                         : std::string(document_lkm_path);
         return bind_production_execution_with(
                 session, resources, document, sa, resources.module_path,
-                platform::real_device_probe());
+                platform::real_device_probe(), allow_dev_target);
     }
 
 } // namespace ghostlock::backend::cve_2026_43284

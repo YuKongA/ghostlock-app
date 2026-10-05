@@ -93,6 +93,9 @@
     <string name="backend_cve_2026_43499_summary">PI-futex 竞争；W1-W3 / Shizuku</string>
     <string name="backend_cve_2026_43284">CVE-2026-43284</string>
     <string name="backend_cve_2026_43284_summary">页缓存写 + LKM 通道；需 Shizuku（shell 域）</string>
+    <string name="combination_label">执行组合</string>
+    <string name="combination_planned">计划中</string>
+    <string name="combination_recommended">推荐</string>
     <string name="shizuku_recommended_hint">本内核推荐通过 Shizuku 运行</string>
     <string name="shizuku_status_not_running">请先启动 Shizuku，再回到本应用</string>
     <string name="shizuku_status_permission_required">请在弹窗中授予 Shizuku 权限</string>
@@ -265,7 +268,16 @@
     <string name="templates_section">模板（参考，未填写）</string>
     <string name="route_label">路由</string>
     <string name="route_auto">自动（按字段推断）</string>
-    <string name="fallback_label">回退路由</string>
-    <string name="fallback_none">无</string>
-    <string name="field_fallback_to">回退目标</string>
+    <string name="plugins">插件</string>
+    <string name="plugins_summary">已导入的对策插件</string>
+    <string name="plugins_empty">尚未导入任何插件</string>
+    <string name="plugin_import">导入插件</string>
+    <string name="plugin_import_summary">选择 .so，先本地哈希并经 native 探针描述，再安装</string>
+    <string name="plugin_import_blocked">native 探针尚未落地，导入暂不可用</string>
+    <string name="plugin_blocked">不可用：%1$s</string>
+    <string name="plugin_params_title">插件声明的参数</string>
+    <string name="plugin_param_edit">插件参数</string>
+    <string name="plugin_param_invalid">取值与声明类型不符</string>
+    <string name="plugin_imported">插件已导入</string>
+    <string name="plugin_import_failed">导入被拒绝：%1$s</string>
 </resources>

@@ -6,8 +6,6 @@
 
 #include "support/log.hpp"
 #include "session/runtime_config.h"
-#include "backend/cve_2026_43499_state.hpp"
-#include "session/core_session.hpp"
 
 #include <cstdio>
 
@@ -18,7 +16,7 @@
 #include <string>
 
 namespace ghostlock::terminal {
-    void write_root_script(void) {
+    void write_root_script(bool safe_mode) {
         std::string script(12288, '\0');
         support::UniqueFd sfd(
             open((config::runtime_config_snapshot().root_script_path.c_str()), O_WRONLY | O_CREAT | O_TRUNC, 0755));
@@ -206,7 +204,7 @@ namespace ghostlock::terminal {
             "fi\n",
             (config::runtime_config_snapshot().home_dir.c_str()),
             (config::runtime_config_snapshot().ksu_log_path.c_str()),
-            ghostlock::backend::cve43499_state(session::g_exploit_session).profile.safe_mode() ? 1 : 0,
+            safe_mode ? 1 : 0,
             (config::runtime_config_snapshot().debug_dir.c_str()));
         if (n < 0 || n >= static_cast<int32_t>(script.size())) {
             pr_warning("root script too long\n");

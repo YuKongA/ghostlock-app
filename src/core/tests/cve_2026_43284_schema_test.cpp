@@ -52,7 +52,7 @@ namespace {
         Document doc;
         doc.release = "6.6.77-43284-schema";
         doc.backend = 6;
-        doc.middleware = ghostlock::profile::kRouteAuto;
+        doc.middleware = ghostlock::profile::kRouteNone;
         for (const auto &field : Cve2026_43284Schema::kFields) {
             if (field.wire == ghostlock::profile::WireKind::String) continue;
             add(doc, field.section, field.key, 1ULL);
@@ -62,6 +62,7 @@ namespace {
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "lkm_path", kLkm);
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "defex_symbol",
                  kDefex);
+        add_text(doc, ghostlock::backend::kCve2026_43284Section, "steps", "umh");
         return doc;
     }
 
@@ -114,7 +115,8 @@ int main() {
         assert(view.kmi == 1);
         assert(view.selinux_exec_context == 1);
         assert(view.late_load_args == 1);
-        assert(view.steps == 1);
+        /* The "umh" token derives the internal PageCacheWrite id. */
+        assert(view.steps == 3);
         assert(view.wait_timeout_ms == 1);
         assert(view.module_poll_attempts == 1);
         assert(view.module_poll_interval_ms == 1);

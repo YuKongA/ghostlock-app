@@ -37,7 +37,7 @@ interface ProfileConfigController {
     /** Drops only the general (execution tuning) overrides. */
     suspend fun resetGeneral(release: String, pair: CpuPair): ProfileConfig
 
-    /** Drops route/fallback and advanced overrides, keeping general ones. */
+    /** Drops route and advanced overrides, keeping general ones. */
     suspend fun resetAdvanced(release: String, pair: CpuPair): ProfileConfig
 
     /** Removes the explicit CPU selection override for the release. */
@@ -45,9 +45,6 @@ interface ProfileConfigController {
 
     /** Sets the explicit route; null restores geometry inference. */
     suspend fun updateRoute(release: String, pair: CpuPair, route: String?): ProfileConfig
-
-    /** Sets "fallback_to"; "none" disables, null removes the declaration. */
-    suspend fun updateFallback(release: String, pair: CpuPair, fallbackTo: String?): ProfileConfig
 
     /** Writes the merged profile into the document the user picked. */
     suspend fun export(release: String, pair: CpuPair, documentUri: String): Boolean

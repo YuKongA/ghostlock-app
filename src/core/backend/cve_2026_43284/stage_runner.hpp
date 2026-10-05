@@ -1,39 +1,35 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43284_STAGE_RUNNER_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43284_STAGE_RUNNER_HPP
 
-/* B5-9c staged execution entry for CVE-2026-43284.
+/* B5-9c .ko plan/precheck/hook helpers for CVE-2026-43284.
  *
- * An explicit operator flag (--run-cve-2026-43284 <ko-path> <target-file>
- * --stage=plan|write|trigger|full) drives one verifiable step of the endgame so
- * the stage can be validated on a real device in isolation:
+ * This unit used to own the staged device entry (--run-cve-2026-43284 <ko-path>
+ * <target-file> --stage=plan|write|trigger|full). S4 R2b removed that entry with
+ * the rest of the staged CLI surface, so what remains is the reusable core the
+ * production path and the host tests share:
  *
- *   plan     read the .ko, build the 16-byte-aligned write plan and print it;
- *            no file is written and no device op is bound;
- *   write    write + read-back verify every planned block, never trigger;
- *   trigger  write + verify + fire the double-fork sentry and poll the LKM/UMH
- *            terminus; the terminus outcome is reported but does not fail the
- *            stage (use full when readiness must be proven);
- *   full     the complete chain; success requires the clean terminus
- *            (lkm_loaded) in addition to a verified write.
+ *   build_module_plan()        read the .ko and build the aligned write plan;
+ *   precheck_staged_module()   fail-closed ELF/.modinfo/vermagic/__versions/
+ *                              signature precheck of the exact bytes to write;
+ *   reconcile_module_vermagic() optional in-place vermagic rewrite of the plan
+ *                              mirror (used by run_stage(); the production path
+ *                              deliberately does not call it -- see R2b);
+ *   prepare_staged_hook()/plan_staged_hook()  read + arm the libc++ hook asset;
+ *   run_stage()                the pure stage semantics over injected ChainOps.
  *
- * A dev-only --allow-dev-target flag additionally lets the staged entry accept
- * a non-vendor one-shot target (for example under /data/local/tmp) so the write
- * primitive can be validated on a disposable file. It relaxes only this staged
- * entry through ChainRequest::allow_dev_carrier_path: valid_carrier_path(),
- * build_carrier_list() and the default pipeline keep the /vendor constraint,
- * and the records mark the mode as run.dev_target allow=1 to prevent misuse.
+ * Consumers: execution_binding.cpp binds build_module_plan()/
+ * precheck_staged_module()/prepare_staged_hook() for the production chain, and
+ * cve_2026_43284_stage_runner_test.cpp drives run_stage() with fakes (no fork,
+ * no write, no module load). The stage vocabulary and its structured report
+ * stay because that is the shared diagnostic format, not a CLI contract.
  *
- * Every stage emits structured, 0x1e-framed status records in the same style as
- * --enable-status-record. The records carry paths, counts and enum names only;
- * SPI/ports/keys never reach a log. The staged entry is not part of any default
- * pipeline selection: backend_available(Cve2026_43284) and
- * selection_supported() stay false, and without the explicit flag nothing here
- * is reachable.
- *
- * run_stage() is pure over injected ChainOps, so host tests exercise the stage
- * semantics and the failure propagation with fakes and never fork or write.
- * run_stage_cli() is the device entry that binds the real ops. */
-
+ * Stage semantics preserved by run_stage(): plan reads and prints without
+ * writing; write verifies every block and never triggers; trigger fires the
+ * double-fork sentry and polls the terminus; full additionally requires the
+ * clean terminus. The report records carry paths, counts and enum names only;
+ * SPI/ports/keys never reach a log. The dev-carrier relaxation now belongs to
+ * the production --allow-dev-target switch (ChainRequest::allow_dev_carrier_path
+ * and valid_dev_carrier_path()), not to this unit. */
 #include "backend/cve_2026_43284/lkm/lkm_image.hpp"
 #include "backend/cve_2026_43284/lkm/lkm_policy.hpp"
 #include "backend/cve_2026_43284/real_ops.hpp"
@@ -84,9 +80,11 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
          * write face. The stage continues without the Hook binding and reports
          * hook_armed=0 rather than silently claiming success. */
         HookIoUnavailable,
-        /* delta-4 dev/gate-only --plugin: the countermeasure .so failed to
-         * load/register (missing, bad hash/path, ABI mismatch, reserved
-         * stage/capability). Fail-closed; the window never opens. */
+        /* A countermeasure module failed to load/register (missing, bad
+         * hash/path, ABI mismatch, reserved stage/capability). Fail-closed; the
+         * LKM window never opens. The dev-only --plugin CLI flag that produced
+         * it was removed in S4 R2b; the value stays reserved for the wire-carried
+         * plugin.<id>.module_path selection (P1). */
         PluginRejected,
     };
 
@@ -294,46 +292,6 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
      * 2 timeout, 3 patch/write/trigger/cleanup failure. */
     [[nodiscard]] int stage_exit_code(const StageReport &report) noexcept;
 
-    /* B5-9h-1 staged entry options. target_path is the positional carrier and
-     * the default when carrier_path is empty; patch1_target overrides the
-     * crash_dump64 path; hook_target/hook_symbol/hook_guard select the libc++
-     * hook asset. All defaults reproduce the pre-B5-9h-1 behaviour. */
-    struct StagedRunOptions final {
-        std::string_view module_path{};
-        std::string_view target_path{};
-        Stage stage = Stage::Full;
-        bool allow_dev_target = false;
-        std::string_view hook_target = steps::kLibcxxPath;
-        std::string_view hook_symbol = steps::kLibcxxSentrySymbol;
-        steps::HookGuardPolicy hook_guard = steps::HookGuardPolicy::Skip;
-        std::string_view carrier_path{};
-        std::string_view patch1_target = steps::kCrashDump64Path;
-        /* B5-9h-3 explicit policy switch: only an operator who has attested the
-         * module source and the target build facts may let the runner rewrite a
-         * mismatched vermagic in place. Default false keeps the reject. */
-        bool allow_vermagic_rewrite = false;
-        /* delta-4 dev/gate-only: an out-of-tree countermeasure shared object
-         * loaded through plugin/loader and attached to the LKM window runtime.
-         * Empty (the default) loads nothing, so a normal staged run is
-         * unchanged. Only valid together with --run-cve-2026-43284; the CLI
-         * parser rejects it for every other mode. It is NOT part of any profile
-         * and never reachable from the production app-call path. */
-        std::string_view plugin_path{};
-    };
-
-    /* Device entry: build the plan, read the optional session-secret frame from
-     * stdin (write stages), open the target, bind make_real_chain_ops() and run
-     * one stage. For --stage=plan it additionally reads the hook target image
-     * and prints the read-only hook plan. Prints the structured records. Not
-     * noexcept (allocation). allow_dev_target is the explicit
-     * --allow-dev-target escape hatch: it is forwarded to
-     * ChainRequest::allow_dev_carrier_path and echoed as run.dev_target; the
-     * default false keeps the /vendor-only carrier rule. plugin_path, when
-     * non-empty (the dev/gate-only --plugin flag), is loaded through
-     * plugin/loader and attached to the LKM window runtime before the chain;
-     * a load failure is reported as PluginRejected and the window never
-     * opens. */
-    int run_stage_cli(const StagedRunOptions &options);
 
 } // namespace ghostlock::backend::cve_2026_43284::stage_runner
 

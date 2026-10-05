@@ -1,6 +1,11 @@
 package com.ghostlock.app.domain.repository
 
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.plugin.PluginDescriptor
+import com.ghostlock.app.data.plugin.PluginImportResult
+import com.ghostlock.app.data.plugin.PluginManifestEntry
+import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.ExecutionMode
@@ -26,6 +31,16 @@ interface GhostlockRepository {
 
     /** Persists the header backend selection (unavailable backends are ignored). */
     fun setBackendKind(kind: BackendKind)
+
+    /**
+     * Persists the single combination token; this is the selection authority.
+     * Backend and execution mode are derived from it for compat. Planned
+     * (unavailable) combinations are ignored.
+     */
+    fun setCombination(spec: CombinationSpec)
+
+    /** The restored/current combination, used to seed the UI on start-up. */
+    fun currentCombination(): CombinationSpec
 
     /**
      * Imports one or more picked documents (file name -> text). Includes are
@@ -125,6 +140,41 @@ interface GhostlockRepository {
     fun requestShizukuPermission()
 
     fun setShizukuStatusListener(listener: (() -> Unit)?)
+
+    /**
+     * P1: the imported-plugin registry (no-backup root). The rows are the
+     * App-side record of what was imported; the plugin's own schema comes from
+     * the native probe, never from here.
+     */
+    suspend fun pluginEntries(): List<PluginManifestEntry>
+
+    /** Enables or disables an imported plugin; returns the refreshed registry. */
+    suspend fun setPluginEnabled(id: String, enabled: Boolean): List<PluginManifestEntry>
+
+    /**
+     * P1: stages the picked document, hashes it, describes it with the native
+     * probe under that digest, and installs it under the no-backup root. A
+     * rejection installs nothing.
+     */
+    suspend fun importPlugin(uri: String, displayName: String?): PluginImportResult
+
+    /**
+     * Re-describes the installed modules with the native probe, keyed by id.
+     * A module the probe cannot describe is simply absent (the page greys it).
+     */
+    suspend fun describePlugins(): Map<String, PluginDescriptor>
+
+    /** P1: the explicit parameter overrides of every described plugin. */
+    suspend fun pluginParamOverrides(): Map<String, Map<String, PluginValue>>
+
+    /**
+     * P1: stores one plugin parameter override (dotted path in the existing
+     * advanced override tree); null clears it so the descriptor default applies.
+     */
+    suspend fun setPluginParam(id: String, name: String, value: PluginValue?)
+
+    /** True when the native probe binary is present, so importing can be offered. */
+    fun pluginImportAvailable(): Boolean
 
     fun close()
 }

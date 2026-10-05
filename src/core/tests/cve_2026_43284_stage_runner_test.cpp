@@ -76,11 +76,6 @@ namespace {
     using ghostlock::platform::DeviceProbeOps;
     using ghostlock::platform::FileFact;
     using ghostlock::platform::VendorCandidate;
-    using ghostlock::support::cli::Cve43284HookGuard;
-    using ghostlock::support::cli::Cve43284Stage;
-    using ghostlock::support::cli::Mode;
-    using ghostlock::support::cli::Options;
-    using ghostlock::support::cli::ParseError;
     using ghostlock::backend::cve_2026_43284::stage_runner::hook_error_name;
     using ghostlock::backend::cve_2026_43284::stage_runner::hook_guard_name;
     using ghostlock::backend::cve_2026_43284::stage_runner::plan_staged_hook;
@@ -487,22 +482,6 @@ namespace {
         return out;
     }
 
-    ParseError parse_args(std::vector<std::string> args, Options &opts) {
-        static std::vector<std::string> storage;
-        storage = std::move(args);
-        static char program[] = "ghostlock";
-        std::vector<char *> argv;
-        argv.reserve(storage.size() + 1U);
-        argv.push_back(program);
-        for (std::string &arg : storage) {
-            argv.push_back(arg.data());
-        }
-        ParseError error = ParseError::None;
-        (void)ghostlock::support::cli::parse_arguments(static_cast<int>(argv.size()),
-                                                      argv.data(), opts, error);
-        return error;
-    }
-
     /* ---- B5-9h-1 hook-plan fixture ----
      *
      * A minimal ELF64 AArch64 image with a sentry symbol, an optionally guarded
@@ -674,118 +653,6 @@ namespace {
 } // namespace
 
 int main() {
-    /* ---- CLI parsing: the staged entry and its stage selector. ---- */
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "/tmp/a.ko", "/vendor/x.so"}, opts) ==
-               ParseError::None);
-        assert(opts.mode == Mode::RunCve2026_43284);
-        assert(std::string_view(opts.run_module_path) == "/tmp/a.ko");
-        assert(std::string_view(opts.run_target_path) == "/vendor/x.so");
-        assert(opts.run_stage == Cve43284Stage::Full);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--stage=plan"}, opts) ==
-               ParseError::None);
-        assert(opts.run_stage == Cve43284Stage::Plan);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--stage=write"}, opts) ==
-               ParseError::None);
-        assert(opts.run_stage == Cve43284Stage::Write);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--stage=trigger"}, opts) ==
-               ParseError::None);
-        assert(opts.run_stage == Cve43284Stage::Trigger);
-    }
-    {
-        /* The dev-target hatch is off by default and only accepted with the
-         * staged entry. */
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b"}, opts) == ParseError::None);
-        assert(!opts.allow_dev_target);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--allow-dev-target"}, opts) ==
-               ParseError::None);
-        assert(opts.mode == Mode::RunCve2026_43284);
-        assert(opts.allow_dev_target);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--allow-dev-target"}, opts) ==
-               ParseError::DevTargetRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--ghostlock-app-call", "--allow-dev-target"}, opts) ==
-               ParseError::DevTargetRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--probe-cve-2026-43284", "a", "--allow-dev-target"}, opts) ==
-               ParseError::ProbeConflict);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a"}, opts) == ParseError::MissingArgument);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--stage=bogus"}, opts) ==
-               ParseError::BadStage);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--stage"}, opts) ==
-               ParseError::MissingArgument);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--stage=plan"}, opts) == ParseError::StageRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--probe-cve-2026-43284", "a", "--stage=plan"}, opts) ==
-               ParseError::StageRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--force-attack"}, opts) ==
-               ParseError::RunConflict);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--enable-status-record"}, opts) ==
-               ParseError::RunConflict);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--dump-kernel-log", "d"}, opts) ==
-               ParseError::RunConflict);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b", "--ghostlock-app-call"}, opts) ==
-               ParseError::MultipleEntrypoints);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--probe-cve-2026-43284", "c"}, opts) ==
-               ParseError::MultipleEntrypoints);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--ghostlock-app-call"}, opts) == ParseError::None);
-        assert(opts.mode == Mode::AppCall);
-    }
-
     /* ---- Catalog stays fail-closed. ---- */
     {
         using ghostlock::contract::BackendKind;
@@ -1621,122 +1488,6 @@ int main() {
         assert(error == LkmImageError::NotElf);
         assert(outcome == VermagicOutcome::Unchecked);
         assert(not_elf == not_elf_before);
-    }
-
-    /* ---- B5-9h-1 CLI: staged-hook asset selectors. ---- */
-    {
-        /* Defaults: unset path overrides, guard skip. */
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b"}, opts) ==
-               ParseError::None);
-        assert(opts.run_hook_target == nullptr);
-        assert(opts.run_hook_symbol == nullptr);
-        assert(opts.run_hook_guard == Cve43284HookGuard::Skip);
-        assert(opts.run_carrier_path == nullptr);
-        assert(opts.run_patch1_target == nullptr);
-        assert(!opts.allow_vermagic_rewrite);
-    }
-    {
-        /* B5-9h-3 explicit rewrite policy. */
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--cve43284-allow-vermagic-rewrite"},
-                          opts) == ParseError::None);
-        assert(opts.allow_vermagic_rewrite);
-        assert(parse_args({"--cve43284-allow-vermagic-rewrite"}, opts) ==
-               ParseError::Cve43284OptionRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--cve43284-hook-target", "/system/lib64/libc++.so",
-                           "--cve43284-hook-symbol", "_ZNfoo",
-                           "--cve43284-hook-guard", "reject",
-                           "--cve43284-carrier", "/vendor/lib64/x.so",
-                           "--cve43284-patch1-target", "/apex/x/crash_dump64"},
-                          opts) == ParseError::None);
-        assert(opts.mode == Mode::RunCve2026_43284);
-        assert(std::string_view(opts.run_hook_target) == "/system/lib64/libc++.so");
-        assert(std::string_view(opts.run_hook_symbol) == "_ZNfoo");
-        assert(opts.run_hook_guard == Cve43284HookGuard::Reject);
-        assert(std::string_view(opts.run_carrier_path) == "/vendor/lib64/x.so");
-        assert(std::string_view(opts.run_patch1_target) ==
-               "/apex/x/crash_dump64");
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--cve43284-hook-guard", "skip"}, opts) ==
-               ParseError::None);
-        assert(opts.run_hook_guard == Cve43284HookGuard::Skip);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--cve43284-hook-guard", "bogus"}, opts) ==
-               ParseError::BadHookGuard);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--cve43284-hook-target", "x"}, opts) ==
-               ParseError::Cve43284OptionRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--cve43284-carrier", "x"}, opts) ==
-               ParseError::Cve43284OptionRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--ghostlock-app-call", "--cve43284-patch1-target",
-                           "x"}, opts) ==
-               ParseError::Cve43284OptionRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--cve43284-hook-target"}, opts) ==
-               ParseError::MissingArgument);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--cve43284-hook-guard"}, opts) ==
-               ParseError::MissingArgument);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--probe-cve-2026-43284", "a",
-                           "--cve43284-carrier", "x"}, opts) ==
-               ParseError::ProbeConflict);
-    }
-
-    /* ---- delta-4 dev/gate-only --plugin: legal only with the staged run. ---- */
-    {
-        Options opts{};
-        assert(parse_args({"--run-cve-2026-43284", "a", "b",
-                           "--plugin", "/data/local/tmp/cm.so"}, opts) ==
-               ParseError::None);
-        assert(opts.run_plugin_path != nullptr);
-        assert(std::string(opts.run_plugin_path) == "/data/local/tmp/cm.so");
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--plugin", "/data/local/tmp/cm.so"}, opts) ==
-               ParseError::PluginRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--ghostlock-app-call", "--plugin", "x"}, opts) ==
-               ParseError::PluginRequiresRun);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--probe-cve-2026-43284", "a", "--plugin", "x"},
-                          opts) == ParseError::ProbeConflict);
-    }
-    {
-        Options opts{};
-        assert(parse_args({"--plugin"}, opts) == ParseError::MissingArgument);
     }
 
     /* ---- B5-9h-1 staged hook plan (read-only) and diagnostics. ---- */

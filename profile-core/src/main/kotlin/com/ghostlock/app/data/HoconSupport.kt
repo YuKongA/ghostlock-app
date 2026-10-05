@@ -30,6 +30,19 @@ object HoconSupport {
         return normalize(value)
     }
 
+    /**
+     * Unwraps the R3 canonical profile root (ghostlock { ... }) so callers that
+     * key on the document's own fields (release, ...) see the inner map. A
+     * document without the wrapper is returned unchanged.
+     */
+    fun unwrapProfileDocument(value: Any?): Any? {
+        val map = value as? Map<*, *> ?: return value
+        if (map.size == 1 && map.containsKey(ProfileLayout.Wrapper)) {
+            return map[ProfileLayout.Wrapper]
+        }
+        return value
+    }
+
     private fun normalize(value: Any?): Any? = when (value) {
         is Map<*, *> -> linkedMapOf<String, Any?>().apply {
             value.forEach { (key, item) -> put(key.toString(), normalize(item)) }

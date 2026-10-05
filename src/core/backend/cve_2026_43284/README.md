@@ -30,7 +30,7 @@ CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与
 | `session_frame.hpp/.cpp` | 会话语密钥帧（通道 B）编解码/校验/清零 |
 | `ipsec/ipsec.hpp,.cpp` | `IpsecSaParams`、ESP 尺寸/组包/ICV/verify、`compute_cbc_iv`、`zeroize_bytes` |
 | `ipsec/aes256.hpp,.cpp` | AES-256 ECB/CBC（Odzhan BSD-3 署名） |
-| `ipsec/hmac_sha256.hpp,.cpp` | HMAC-SHA256（Odzhan BSD-3 署名） |
+| （HMAC-SHA256 已上移） | S4 R8：`ipsec/hmac_sha256.*` 与 `plugin/sha256.*` 合一为 `support/sha256.hpp,.cpp`（Odzhan BSD-3 署名保留） |
 | `pagecache/pagecache.hpp,.cpp` | `PageCacheWriteContext`、`write16`/`write_block`/`read_block`、`make_file_cache_write_ops` |
 | `pagecache/splice_io.hpp,.cpp` | 可注入 syscall 面（`pipe2`/`splice`/`vmsplice`/…）+ `real_splice_io()`（`__linux__`） |
 | `lkm/lkm_policy.hpp`、`lkm/lkm_image.hpp` | KMI/vermagic/`.ko` 解析与 UMH late-load 命令（B5-4） |

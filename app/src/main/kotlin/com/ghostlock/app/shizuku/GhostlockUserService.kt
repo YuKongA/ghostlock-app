@@ -21,7 +21,6 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         const val StatusMarker = "\u001eGLK_STATUS"
         const val StatusAck = "\u001eGLK_STATUS_ACK\n"
         const val StatusDisabled = "\u001eGLK_STATUS_DISABLED"
-        val Stages = setOf("plan", "write", "trigger", "full")
     }
 
     override fun runExploit(
@@ -32,6 +31,60 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         profileBlob: ByteArray,
         sessionFrame: ByteArray,
         debugDir: String?,
+        callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
+    ) {
+        startAppCall(
+            safeMode = safeMode,
+            forceAttack = forceAttack,
+            profileBlob = profileBlob,
+            sessionFrame = sessionFrame,
+            debugDir = debugDir,
+            allowDevTarget = false,
+            callback = callback,
+            statusCallback = statusCallback,
+        )
+    }
+
+    /**
+     * R2b dev entry (debug builds only; never reachable from the production UI).
+     * It runs the SAME document-driven app-call path as [runExploit]: the caller
+     * built the effective GLKv3 document in the app process, so the only
+     * difference is the dev-only carrier opt-in appended to the argv. There is
+     * no stage vocabulary and no separate staged runner.
+     */
+    override fun runDevExploit(
+        profileBlob: ByteArray,
+        sessionFrame: ByteArray,
+        allowDevTarget: Boolean,
+        callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
+    ) {
+        startAppCall(
+            safeMode = false,
+            forceAttack = false,
+            profileBlob = profileBlob,
+            sessionFrame = sessionFrame,
+            debugDir = null,
+            allowDevTarget = allowDevTarget,
+            callback = callback,
+            statusCallback = statusCallback,
+        )
+    }
+
+    /**
+     * One app-call run: validate the shell domain, write the length-prefixed
+     * GLKv3 document (plus the optional channel-B frame) to native stdin, then
+     * relay the native log file and answer the status ACKs. Production and the
+     * dev entry share this body; only the argv flags differ.
+     */
+    private fun startAppCall(
+        safeMode: Boolean,
+        forceAttack: Boolean,
+        profileBlob: ByteArray,
+        sessionFrame: ByteArray,
+        debugDir: String?,
+        allowDevTarget: Boolean,
         callback: IGhostlockCallback,
         statusCallback: IGhostlockStatusCallback,
     ) {
@@ -73,23 +126,22 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 }
                 // Channel B: only cve_2026_43284 consumes the session frame.
                 // Anything else sends the GLKv3 document alone, exactly as before.
-                val backend = Glkv3Decoder.decode(effectiveBlob)?.backend?.let(BackendKind::fromToken)
+                /* The wire carries canonical tokens: resolve EXACTLY, as native does. */
+                val backend = Glkv3Decoder.decode(effectiveBlob)?.backend?.let(BackendKind::resolve)
                 if (ChannelBStdin.requiresSessionFrame(backend)) {
                     require(sessionFrame.size ==
                         SessionSecretFrame.LENGTH_PREFIX_SIZE + SessionSecretFrame.PAYLOAD_SIZE) {
                         "cve_2026_43284 requires an 84-byte channel-B session frame"
                     }
                 }
-                val argv = mutableListOf(
-                    binary.absolutePath,
-                    "--ghostlock-app-call",
-                    "--enable-status-record",
+                val argv = appCallArgs(
+                    binaryPath = binary.absolutePath,
+                    forceAttack = forceAttack,
+                    debugDir = debugDir,
+                    allowDevTarget = allowDevTarget,
                 )
-                if (forceAttack) {
-                    argv += "--force-attack"
-                }
-                if (!debugDir.isNullOrEmpty()) {
-                    argv += listOf("--dump-kernel-log", debugDir)
+                if (allowDevTarget) {
+                    callback.onLog("<b> dev carrier opt-in: --allow-dev-target")
                 }
                 callback.onLog("<b> starting native: ${binary.absolutePath}")
                 ProcessBuilder(argv)
@@ -148,101 +200,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         }, "ghostlock-shizuku-runner").start()
     }
 
-    /**
-     * Explicit staged cve_2026_43284 entry (dev only; never reachable from the
-     * production UI). The caller supplies the already-framed 84-byte channel-B
-     * session frame; the staged native entry reads exactly that frame from
-     * stdin, so stdin is closed after the write.
-     */
-    override fun runStaged43284(
-        modulePath: String,
-        targetPath: String,
-        stage: String,
-        sessionFrame: ByteArray,
-        allowDevTarget: Boolean,
-        callback: IGhostlockCallback,
-    ) {
-        if (!running.compareAndSet(false, true)) {
-            callback.onLog("<s> error: another GhostLock process is already running")
-            callback.onComplete(1)
-            return
-        }
-        Thread({
-            val exitCode = runCatching {
-                require(Process.myUid() == Process.SHELL_UID) {
-                    "Shizuku UserService uid=${Process.myUid()}, expected ${Process.SHELL_UID}"
-                }
-                val status = File("/proc/self/status").readText()
-                require(Regex("(?m)^Seccomp:\\s*0$").containsMatchIn(status)) {
-                    "Shizuku UserService is still seccomp-filtered"
-                }
-                require(modulePath.isNotEmpty()) { "module path is empty" }
-                require(targetPath.isNotEmpty()) { "target path is empty" }
-                require(stage in Stages) { "invalid stage: $stage" }
-                require(sessionFrame.size ==
-                    SessionSecretFrame.LENGTH_PREFIX_SIZE + SessionSecretFrame.PAYLOAD_SIZE) {
-                    "staged cve_2026_43284 requires an 84-byte channel-B session frame"
-                }
-                val binary = File(context.applicationInfo.nativeLibraryDir, "libghostlock.so")
-                require(binary.isFile) { "missing GhostLock binary: ${binary.absolutePath}" }
-                val workDir = File("/data/local/tmp/ghostlock-app").apply {
-                    require(isDirectory || mkdirs()) { "cannot create $absolutePath" }
-                }
-                callback.onLog("<s> Shizuku ready: uid=${Process.myUid()} Seccomp=0")
-                val nativeLog = File(workDir, ".ghostlock_native.log")
-                val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
-                val argv = staged43284Args(
-                    binaryPath = binary.absolutePath,
-                    modulePath = modulePath,
-                    targetPath = targetPath,
-                    stage = stage,
-                    allowDevTarget = allowDevTarget,
-                )
-                callback.onLog("<b> starting staged native: stage=$stage allowDevTarget=$allowDevTarget")
-                ProcessBuilder(argv)
-                    .directory(workDir)
-                    .redirectErrorStream(true)
-                    .redirectOutput(nativeLog)
-                    .apply {
-                        environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
-                        environment()["TMPDIR"] = workDir.absolutePath
-                        environment()["HOME"] = workDir.absolutePath
-                        environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
-                    }
-                    .start()
-                    .let { process ->
-                        /* The staged runner consumes one frame then no more stdio. */
-                        process.outputStream.use { stdinOut ->
-                            stdinOut.write(sessionFrame)
-                            stdinOut.flush()
-                        }
-                        val tailer = Thread({
-                            relayLog(nativeLog, callback, null, null)
-                        }, "ghostlock-shizuku-staged-tailer").apply {
-                            isDaemon = true
-                            start()
-                        }
-                        val exitCode = process.waitFor()
-                        callback.onLog("<b> staged native exited code=$exitCode")
-                        Thread.sleep(200)
-                        tailer.interrupt()
-                        tailer.join(1000)
-                        exitCode
-                    }
-            }.getOrElse { error ->
-                runCatching { callback.onLog("<s> error: ${error.message}") }
-                1
-            }
-            running.set(false)
-            runCatching { callback.onComplete(exitCode) }
-        }, "ghostlock-shizuku-staged-runner").start()
-    }
-
     /** Forward complete native log lines without ever blocking the native
      * process; the file is the transport, binder is only the display path. */
     /** Forwards status events to the app (persist) and ACKs the native process;
-     *  returns true when the line was a status event. A null status callback
-     *  (staged entry) relays every line as a log instead. */
+     *  returns true when the line was a status event. Every app-call entry
+     *  answers the ACKs, so a dev run cannot stall the chain. */
     private fun handleStatusLine(
         line: String,
         statusCallback: IGhostlockStatusCallback?,

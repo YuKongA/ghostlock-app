@@ -84,12 +84,9 @@ class BuiltinProfilesTest {
                 val route = config.route
                 assertNotNull("${entry.release}: route unresolved", route)
 
-                /* The general list offers the active route (and its fallback)
-                 * tuning, and nothing from another route. */
-                val allowed = setOfNotNull(
-                    route,
-                    config.fallbackTo?.takeIf { it != "none" },
-                )
+                /* The general list offers the active route's tuning and
+                 * nothing from another route (R6a removed the fallback). */
+                val allowed = setOfNotNull(route)
                 val routePaths = config.general.map { it.path }
                     .filter { it.startsWith("execution.routes.") }
                 for (path in routePaths) {
@@ -168,10 +165,14 @@ class BuiltinProfilesTest {
     @Test
     fun `legacy shared defaults stay in sync with the bundled 6x templates`() {
         val loader = AssetConfigLoader(context)
-        val cred = HoconSupport.parseValue(loader.load("kernel_profiles/credential-6x.conf"))
-            .asValueMap()!!["cred"].asValueMap()!!
-        val snitch = HoconSupport.parseValue(loader.load("kernel_profiles/kernelsnitch-6x.conf"))
-            .asValueMap()!!["kernelsnitch"].asValueMap()!!
+        val credProfile = HoconSupport.parseValue(loader.load("kernel_profiles/credential-6x.conf"))
+            .asValueMap()!!
+        ProfileLayout.applyNormalize(credProfile)
+        val cred = credProfile["cred"].asValueMap()!!
+        val snitchProfile = HoconSupport.parseValue(loader.load("kernel_profiles/kernelsnitch-6x.conf"))
+            .asValueMap()!!
+        ProfileLayout.applyNormalize(snitchProfile)
+        val snitch = snitchProfile["kernelsnitch"].asValueMap()!!
 
         /* LegacyProfileConverter seeds these values into imported reports and
          * carries its own copies; changing the assets requires updating it. */

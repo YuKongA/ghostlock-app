@@ -54,7 +54,6 @@ namespace ghostlock::backend::cve_2026_43499::route {
         static constexpr bool w2_fast_repair = false;
         static constexpr bool w3_exact_target = false;
         static constexpr bool tcp_payload_layout = false;
-        static constexpr bool allows_fallback = false;
 
         /* Middleware route hooks (Batch 4, D1=B). Only the route steps with side
          * effects are hooks; pure capability queries stay on the
@@ -90,7 +89,6 @@ namespace ghostlock::backend::cve_2026_43499::route {
         static constexpr RouteKind kind = RouteKind::TcpZerocopy;
         static constexpr bool w3_exact_target = true;
         static constexpr bool tcp_payload_layout = true;
-        static constexpr bool allows_fallback = true;
 
         static bool supported(const profile::TargetProfile &profile) noexcept {
             return profile.supports(kind);
@@ -219,52 +217,32 @@ namespace ghostlock::backend::cve_2026_43499::route {
         return status;
     }
 
-    struct RouteRunResult {
-        RouteStatus status{};
-        bool fallback_used = false;
-    };
-
+    /* Select and run exactly the one resolved policy. There is no fallback:
+     * a failed route returns its failure unchanged (R6a, fallback left the
+     * wire). Returns ROUTE_UNSUPPORTED when no policy matches the profile. */
     template<RoutePolicy Policy>
-    RouteRunResult run_route_policy(const profile::TargetProfile &profile,
-                                    const memory::WriteRequest *request,
-                                    int32_t allow_fallback) {
-        RouteRunResult result{};
+    RouteStatus run_route_policy(const profile::TargetProfile &profile,
+                                 const memory::WriteRequest *request) {
         if (!Policy::supported(profile)) {
-            result.status = RouteStatus{.code = ROUTE_UNSUPPORTED};
-            return result;
+            return RouteStatus{.code = ROUTE_UNSUPPORTED};
         }
-        result.status = Policy::run(request);
-        if constexpr (Policy::allows_fallback) {
-            if (result.status.code != ROUTE_OK && allow_fallback &&
-                result.status.can_fallback()) {
-                const RouteKind fallback = profile.fallback_route();
-                if (fallback != RouteKind::Auto && fallback != Policy::kind) {
-                    const RouteStatus next = run_policy_by_kind(fallback, request);
-                    if (next.code != ROUTE_UNSUPPORTED) {
-                        result.status = next;
-                        result.fallback_used = true;
-                    }
-                }
-            }
-        }
-        return result;
+        return Policy::run(request);
     }
 
     /* Select and run the resolved policy with a direct dispatch chain (no
      * std::visit), for the PI-window caller. */
-    [[nodiscard]] inline RouteRunResult run_route(
+    [[nodiscard]] inline RouteStatus run_route(
         const profile::TargetProfile &profile,
-        const memory::WriteRequest *request, int32_t allow_fallback) {
-        RouteRunResult result{};
+        const memory::WriteRequest *request) {
+        RouteStatus status{.code = ROUTE_UNSUPPORTED};
         bool handled = false;
         for_each_policy([&]<class P>() {
             if (!handled && P::supported(profile)) {
-                result = run_route_policy<P>(profile, request, allow_fallback);
+                status = run_route_policy<P>(profile, request);
                 handled = true;
             }
         });
-        if (!handled) result.status = RouteStatus{.code = ROUTE_UNSUPPORTED};
-        return result;
+        return status;
     }
 
     /* True when the resolved policy needs the post-race ghost disarm. */

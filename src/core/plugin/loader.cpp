@@ -4,7 +4,7 @@
 
 #include "plugin/loader.hpp"
 
-#include "plugin/sha256.hpp"
+#include "support/sha256.hpp"
 
 #include <array>
 #include <cstdio>
@@ -49,12 +49,12 @@ namespace ghostlock::plugin {
             if (hex == nullptr) {
                 return false;
             }
-            for (std::size_t i = 0u; i < kSha256HexLength; ++i) {
+            for (std::size_t i = 0u; i < support::kSha256HexLength; ++i) {
                 if (!is_hex_digit(hex[i])) {
                     return false;
                 }
             }
-            return hex[kSha256HexLength] == '\0';
+            return hex[support::kSha256HexLength] == '\0';
         }
 
         [[nodiscard]] char lower_hex(char c) noexcept {
@@ -65,7 +65,7 @@ namespace ghostlock::plugin {
         }
 
         [[nodiscard]] bool sha256_equal(const char *lhs, const char *rhs) noexcept {
-            for (std::size_t i = 0u; i < kSha256HexLength; ++i) {
+            for (std::size_t i = 0u; i < support::kSha256HexLength; ++i) {
                 if (lower_hex(lhs[i]) != lower_hex(rhs[i])) {
                     return false;
                 }
@@ -123,7 +123,7 @@ namespace ghostlock::plugin {
 
         std::int32_t default_sha256_file(const char *path, char *out_hex,
                                          std::size_t cap) {
-            return sha256_file(path, out_hex, cap);
+            return support::sha256_file(path, out_hex, cap);
         }
 
         std::int32_t default_canonicalize(const char *path, char *out,
@@ -167,7 +167,8 @@ namespace ghostlock::plugin {
         if (ghostlock_home == nullptr || ghostlock_home[0] == '\0') {
             return {};
         }
-        return std::string(ghostlock_home) + "/countermeasures";
+        return std::string(ghostlock_home) + "/" +
+               std::string(kCountermeasuresDirName);
     }
 
     const char *load_status_name(LoadStatus status) noexcept {
@@ -346,7 +347,7 @@ namespace ghostlock::plugin {
         if (ops_.sha256_file == nullptr) {
             return fail(LoadStatus::HashRejected, "no sha256 implementation configured");
         }
-        char actual[kSha256HexLength + 1u] = {};
+        char actual[support::kSha256HexLength + 1u] = {};
         if (ops_.sha256_file(canonical_path.c_str(), actual, sizeof(actual)) != 0) {
             return fail(LoadStatus::HashRejected, "countermeasure sha256 could not be computed");
         }

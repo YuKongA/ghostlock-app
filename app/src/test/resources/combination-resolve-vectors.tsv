@@ -1,0 +1,52 @@
+# GhostLock combination-token resolve vectors (native SSOT, ADR-0006 T5 / S4 R6b F4).
+# Authoritative native export; regenerate with: make -C src combination-manifest
+# Columns: backend<TAB>input<TAB>expected_token|--
+# input escapes: \s = space, \t = tab, \\ = backslash; the input column never
+# contains a literal TAB.
+# expected_token is computed by contract::combination_resolve, which is EXACT
+# (case-sensitive, no trimming); "--" means the pair does not resolve.
+# The column is the token, NOT its availability: planned rows resolve here and are
+# reported with available=0 in combination-manifest.tsv.
+# Single copy on purpose: this is a test-only agreement vector with no runtime
+# consumer, so unlike combination-manifest.tsv it is NOT duplicated into
+# profile-core (do not add a copy).
+cve_2026_43499	mcast_rootchild	mcast_rootchild
+cve_2026_43499	pselect_rootchild	pselect_rootchild
+cve_2026_43499	tcp_rootchild	tcp_rootchild
+cve_2026_43499	mcast_shizuku	mcast_shizuku
+cve_2026_43499	pselect_shizuku	pselect_shizuku
+cve_2026_43499	tcp_shizuku	tcp_shizuku
+cve_2026_43499	mcast_umh	mcast_umh
+cve_2026_43499	pselect_umh	pselect_umh
+cve_2026_43499	tcp_umh	tcp_umh
+cve_2026_43284	umh	umh
+cve_2026_43284	rootchild	rootchild
+cve_2026_43284	shizuku	shizuku
+cve_2026_43284	mcast_rootchild	--
+cve_2026_43284	pselect_rootchild	--
+cve_2026_43284	tcp_rootchild	--
+cve_2026_43284	mcast_shizuku	--
+cve_2026_43284	pselect_shizuku	--
+cve_2026_43284	tcp_shizuku	--
+cve_2026_43284	mcast_umh	--
+cve_2026_43284	pselect_umh	--
+cve_2026_43284	tcp_umh	--
+cve_2026_43499	umh	--
+cve_2026_43499	rootchild	--
+cve_2026_43499	shizuku	--
+cve_2026_43499	MCAST_ROOTCHILD	--
+cve_2026_43284	UMH	--
+cve_2026_43284	Rootchild	--
+cve_2026_43499	\smcast_rootchild	--
+cve_2026_43499	mcast_rootchild\s	--
+cve_2026_43284	\tumh	--
+cve_2026_43284	\sumh\s	--
+cve_2026_43499		--
+cve_2026_43284		--
+cve_2026_43499	bogus	--
+cve_2026_43499	mcast_	--
+cve_2026_43499	_rootchild	--
+cve_2026_43499	mcast_rootchild_umh	--
+cve_2026_43284	UMH_	--
+cve_2026_64560	umh	--
+cve_2026_64560		--

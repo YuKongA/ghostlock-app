@@ -580,6 +580,8 @@ struct glk_lkm_req {
 
 ## 3.13 插件调用点在两条链上的锚定（设计）
 
+> **现状注（2026-10-05）**：本节的阶段表是 **R6b 之前的推演**，已被 **§3.14.7.8 的按-backend 核实结论**取代——43499 只有 `pre_terminal` 可用（`pre_spawn`/`post_spawn`/`post_terminal` 声明但不可用），43284 只有 `post_terminal` 可用（仅 LKM 驻留窗口内）。下表保留作历史；引用时以 §3.14.7.8 与设计 `plugin-runtime-integration-design.md` §12 为准。
+
 **四条锚定原则**
 
 1. **只在竞态窗口外**：PI 窗口在 `attack_write<M>` / route 内部；插件点必须落在其**之前或之后**，
@@ -594,11 +596,11 @@ struct glk_lkm_req {
 | 插件阶段（CM 名） | 锚点（真实步骤） | 与窗口关系 | 该点可用能力（状态） | 现有/预期用户 |
 |---|---|---|---|---|
 | `PRE_ROUTE`（链首） | `W1` 之前（`W1W3Steps::run` 入口） | 窗口外 | Tier 1 `KernelMemory`（`write_zero`）可用；Tier 2 `NotAvailable` | —— |
-| **`POST_SETUP`（= 现 `PreSpawn`）** | `W1` 完成、SELinux 已 permissive、victim 未 spawn（`steps.cpp:409-430`） | 窗口外 | `KernelAlias@Available`、Tier 1 `KernelMemory@Available`；`ChildTask@NotAvailable` | **`vr_guard`** |
-| **`POST_SPAWN`（= 现 `PostSpawn`）** | `w2` 内：`child_task` 已知、**W2 verify 之前**（`steps.cpp:176-199`） | 窗口外（竞态线程空闲） | 上述 + `ChildTask@Available` | **`vr_task_tag`** |
+| ~~**`POST_SETUP`（= 现 `PreSpawn`）**~~ **43499 不可用**（窗口按写尝试开关，无「窗口关闭且 child 未建立」的点；§3.14.7.8） | ~~`W1` 完成、SELinux 已 permissive、victim 未 spawn（`steps.cpp:409-430`）~~ | —— | —— | 已废止 |
+| ~~**`POST_SPAWN`（= 现 `PostSpawn`）**~~ **43499 不可用**（child 建立后窗口仍会为后续写尝试重开；§3.14.7.8） | ~~`w2` 内：`child_task` 已知、**W2 verify 之前**（`steps.cpp:176-199`）~~ | —— | —— | 已废止 |
 | `PRE_ROUTE`（每次写前） | 每个 `attack_write<M>` 调用**之前**（`steps.cpp:100/282/293/346`） | **紧邻窗口**（窗口在其内部） | 同 `POST_SPAWN` | ——（预留给写前校验类对策） |
 | `PRE_TERMINAL` | W3 完成、handoff 之前（`steps.cpp:464` 前） | 窗口外 | 已 arming 的全部能力 | 现 `PreHandoff` 枚举（未被 vivo 使用） |
-| `POST_TERMINAL` | root child 完成（KernelSU 就绪）后 | —— | 若此时加载了 LKM → `LkmProxy@Available` | 预留 |
+| ~~`POST_TERMINAL`~~ | **43499 不可用**（root 接管后控制流不回宿主；§3.14.7.8） | —— | —— | 已废止 |
 
 > 每轮 W2/W3 会**重复**触发 `POST_SPAWN`／`PRE_ROUTE`：对策插件必须**幂等**（现状 `vr_task_tag` 就是重试安全的）。
 
@@ -610,14 +612,12 @@ struct glk_lkm_req {
 | `PRE_WRITE` | `Write` 之前（`PatchCrashDump` 之后） | 窗口外 | `FileCacheWrite`（arming 中） | 页缓存层对策 |
 | `POST_WRITE` | `Verify` 之后、`Hook` 之前 | 窗口外 | `FileCacheWrite@Available` | 页缓存层对策 |
 | `PRE_TERMINAL` | `Trigger` 之后、`WaitResult` 之前 | 窗口外 | `FileCacheWrite@Available` | —— |
-| **`POST_TERMINAL`（内核态对策的唯一机会）** | `WaitResult` 成功后、`Cleanup` 之前（LKM 已加载、KernelSU 就绪） | 窗口外 | **`KernelMemory/LkmProxy@Available`**；`KernelHook@Available` | **LKM 驻留窗口内**；插件需在自卸载前完成 |
+| **`POST_TERMINAL`（内核态对策的唯一机会）** | `WaitResult` 成功后、`Cleanup` 之前（LKM 已加载、KernelSU 就绪） | **窗口内**（LKM 驻留） | **`KernelMemory/LkmProxy@Available`**；`KernelHook@Available` | **LKM 驻留窗口内**；插件需在自卸载前完成 |
 | `Cleanup`（终结点） | 链末 | —— | 关闭所有 arming 的能力 → `Closed` | 与「尽快自卸载」对齐：**先关能力，再卸载** |
 
 ### 由锚定得出的两条设计结论
 
-1. **两条链的插件点集合不同但有共同骨架**：`PRE_ROUTE`(链首) / 关键写前后 / `PRE_TERMINAL` / `POST_TERMINAL`；
-   43499 多一个 `POST_SPAWN`（有 victim/child task 概念），43284 多一个 `PRE_WRITE`/`POST_WRITE`（页缓存写前后）。
-   → CM 阶段枚举应扩为：`PRE_ROUTE, POST_SETUP, PRE_WRITE, POST_WRITE, POST_SPAWN, PRE_TERMINAL, POST_TERMINAL`（7 个，原 5 个 + `POST_SETUP`/`PRE_WRITE`/`POST_WRITE`）。
+1. ~~两条链的插件点集合不同但有共同骨架~~ → **（已被 §3.14.7.8 取代）**：按代码核实，每个 backend **只有一个**可用插入点——43499 = `pre_terminal`，43284 = `post_terminal`（LKM 驻留窗口内）；词汇表固定四词，可用性按 backend 表达，**不再扩阶段枚举**。
 2. **43284 的内核态对策略只能挂在 `POST_TERMINAL`**（LKM 驻留窗口内）——这直接回答了待确认 #12 的**调用点**问题：
    无论插件代码跑在 LKM 内还是 native 转发，**调用点都必须在窗口内**；窗口外声明 `KernelMemory` 需求的插件
    在**注册期就会被拒**（§6 + §3.12.1 规则 4）。
@@ -751,7 +751,6 @@ plugin {
 
 对应 wire 路径（与 §4.2b 的 owner-qualified 规则一致）：
 `plugin.<id>.enabled` / `.stage` / `.module_path` / `.module_hash` / `.required_caps` / `.params.<key>`。
-```
 
 **为什么放 `plugin` 大项而不是塞进 backend 段**：插件是**跨 backend 的设施**（同一对策可服务 43284 与 43499），
 其配置必须与 backend 正交；但**插件能做什么**仍受「注册阶段 + 能力授予」约束（§3.8/§3.13），
@@ -761,6 +760,7 @@ plugin {
 
 - **单一管理点**：`app/src/main/assets/kernel_profiles/plugin.conf`（随 App 资产版本化）；
   profile 文件可用 `include` 引入，形成「一个插件配置 → 所有设备 profile 共用」；
+  **现状注（2026-10-05）：该资产已取消**——插件配置属设备/用户特有，改走**覆盖存储**；见 §3.14.7.5；
 - **解析链**：`plugin.conf` → Kotlin 归一化（类型按插件注册的 `ParamSpec`）→ wire `plugin.*` 段 →
   native 绑定到插件加载器（`plugin/loader`）；
 - **默认值权威**：参数默认值写在**插件注册的 `ParamSpec`**（不是 HOCON），HOCON 只写覆盖值 → 与 R1 一致；
@@ -796,6 +796,146 @@ plugin {
 插件运行时通过 `RuntimeInfo`/参数读取，而不是硬编码在 `.so` 里。
 
 **实现顺序（相对 S4）**：R1（schema 权威）→ R2（wire `plugin` 大项 + 生成式映射）→ **P1** native 探针 + Kotlin 导入/校验 UI → **P2** extractor 投影 → P3 参考插件（=CM-4）。
+
+### 3.14.7 P1 接口冻结（2026-10-05）
+
+**冻结范围**：P1 落实 §3.14.6 四投影中的 **native + Kotlin** 两投影——探针 CLI、探针 stdout 描述、C ABI 尾部追加、`countermeasures/` 根、`plugin.*` wire 字段。
+**extractor 投影 = P2**（`extract_schema` / `plugin.<id>.extract.*`），**参考插件 = P3（= CM-4）**。
+本节条文自 2026-10-05 起**冻结**：`native-core` 与 `kotlin-app` 按此编码；需要偏离时先改本节（= Lead 裁决）再改代码。
+本节未冻结的细节只有一处：`RuntimeInfo`（见 3.14.7.3 末条）。
+
+#### 3.14.7.1 探针 CLI
+
+```
+ghostlock --plugin-probe <path.so> [--expect-sha256 <hex>]
+```
+
+- 独立入口 `support::cli::Mode::PluginProbe`，与 `--ghostlock-app-call` / `--load-prebuilt-profile` / `--probe-cve-2026-43284` **互斥**（多入口 = 参数错误，fail-closed）；
+- **不读 profile、不读 stdin**，不需要 root；只读描述后 **`dlclose` 即退出**，**不注册 hook、不运行 hook**、不保留 Fd 或映射；
+- 独立进程运行，启动即 `prctl(PR_SET_NO_NEW_PRIVS, 1)`；
+- `--expect-sha256` 给定时先对文件算 SHA-256：不一致 → 拒绝（`reject` 行 + 非 0 退出码），且**不进 `dlopen`**；
+- 退出码：0 = 正常产出描述；非 0 = 路径 / 哈希 / ABI / 描述错误（原因进 `reject` 行与 stderr）。
+
+#### 3.14.7.2 stdout 描述格式（TSV）
+
+stdout **只**输出 TSV（诊断走 stderr）。**描述行的第一列是 `kind`；列序（TAB 分隔）为冻结值**——P1 起不得增删或改序，扩展只能整列追加并同批改本节：
+
+| kind | 列序（TAB 分隔） |
+|---|---|
+| `plugin` | `kind, id, version, abi_version, size, sha256, stages, required_caps` |
+| `hook` | `kind, id, trigger, stage, priority, name` |
+| `param` | `kind, id, name, type, required, default, doc` |
+| `extract` | `kind, id, name, type, required, default, doc` |
+| `reject` | `kind, id, reason` |
+
+- `id`：该行所属插件的稳定 id（`reject` 行写被拒插件 id；路径不可解析时写 `-`）；
+- `stages` / `required_caps` 为**逗号分隔**列表，空写 `-`（「空 = 全集」语义由 `stage_mask` / host 侧判定，不由本格式推断）；
+- `default` 空写 `-`；`type` ∈ `uint | int | bool | str`，与 GLKv3 `WireKind` **同字面量**（两侧同一份对拍）；
+- `required` 为 `0 | 1`；`priority` 为十进制整数；`size` 为十进制字节数；`sha256` 为小写 hex；
+- **空值一律写 `-`**；
+- header 行块（在描述行之前，首列是**键名**而不是 kind）：**必须**含
+  `host_abi`（= `GLK_ABI_VERSION`）、`countermeasures_root`（= **相对目录名 `countermeasures`**，不是绝对路径）、
+  `host_stages`（host 实现的 stage 列表）、`host_caps`（host 实现的 capability 位）；
+- `countermeasures_root` 取相对目录名的理由：**环境无关**——探针进程的 `GHOSTLOCK_HOME` 与 App 的 `filesDir` 未必相同，绝对路径无法对拍；
+- App 侧**精确匹配该字面量 `countermeasures`**；`-` 仅表示探针无 home、不可校验。
+- 解析规则：首列命中 kind 词汇即为描述行，其前为 header 行（`键<TAB>值`）——该区分规则为冻结语义；
+- 对拍测试（native ↔ Kotlin agreement test）按上表逐列断言。
+
+行形状示意（`→` 仅表示 TAB；列序即上表冻结值）：
+
+```
+host_abi→1
+countermeasures_root→countermeasures
+host_stages→pre_spawn,post_spawn,pre_terminal,post_terminal
+host_caps→kernel_read,kernel_write,alias,child_task
+plugin→<id>→<version>→1→<size>→<sha256>→<stages>→<required_caps>
+hook→<id>→<trigger>→<stage>→<priority>→<name>
+param→<id>→<name>→uint→1→200→<doc>
+extract→<id>→<name>→str→0→-→<doc>
+reject→<id>→<reason>
+```
+
+#### 3.14.7.3 C ABI：只允许尾部追加（**不 bump `GLK_ABI_VERSION`**）
+
+- 新增 `glk_param_type`（`uint | int | bool | str`，枚举值与 GLKv3 `WireKind` 同源）与 `glk_param`（name / type / required / default_value / doc）；
+- `glk_module` **尾部追加**：`param_count` / `params` / `extract_count` / `extract` / `stage_mask`；既有 7 个字段（abi_version / size / name / version / required_caps / hook_count / hooks）的顺序、含义与数值**冻结**（见 `contract/abi/glk_contract_abi.h` 的 append-only 约定）；
+- **size 门控读取**：host 按 `module->size` 判断尾部字段是否存在；v1 模块（size = v1 结构大小）的尾部字段视为 0/NULL，**不得解引用**；v2 头给出 `GLK_MODULE_SIZE_V2 = sizeof(glk_module)`；
+- **不 bump `GLK_ABI_VERSION`**（保持 1）：追加字段对旧 host / 旧模块都是安全忽略；`abi_version` 只表达**不兼容**变化，新增能力用「声明 + 忽略」而非版本号；
+- extract 条目在 P1 与 `glk_param` 同构（name / type / required / doc）；P2 若需扩展，按同一「尾部追加」规则处理；
+- `RuntimeInfo`（§3.14.1）**不属于 P1**：留待 P3，避免把「当前 backend / stage」这类运行时值提前塞进静态描述。
+
+#### 3.14.7.4 常量与目录：唯一权威
+
+- 插件根目录 = `<GHOSTLOCK_HOME>/countermeasures`（`default_countermeasure_dir()`，`plugin/loader.cpp:166`），P1 起为唯一权威；
+- `plugin.<id>.module_path` 是**相对 `<GHOSTLOCK_HOME>/countermeasures`** 的路径，形如 `<id>/<version>/<file>.so`：加载器对非绝对路径做 `target = whitelist_dir_ + "/" + target`（`plugin/loader.cpp:296`；`whitelist_dir_` = `default_countermeasure_dir()`）。**绝对路径不属于 P1 契约**；
+- 探针 header 的 `countermeasures_root` 报告**相对目录名 `countermeasures`**（不是绝对路径）：探针进程与 App 的 home 未必相同，绝对路径无法对拍；
+- 该字面量与拼接规则**必须**同时出现在探针 header 与 Kotlin agreement test 中并对拍，不允许第二份手写常量。
+
+#### 3.14.7.5 wire / HOCON
+
+- 路径冻结：`plugin.<id>.enabled` / `.stage` / `.module_path` / `.module_hash` / `.params.<key>` / `.extract.<key>`（§3.14.3 / §3.14.4）；
+- **native 先行**：先落 `FieldSpec` 与 `profile-manifest-v3.tsv` 的 `plugin.*` 字段（类型 / 必填 / 默认值），Kotlin 只按 manifest 生成映射（沿用 R2 生成式映射与 F4 禁硬编码机制）；
+- **`plugin.conf` 资产取消（裁决 2026-10-05）**：插件配置属**设备/用户特有**，走既有**覆盖存储**（导入流程与高级设置写入用户配置），**不加资产、不改 67 个资产的 `include`（含 `index.conf`）**；`ProfileLayout` 的键白名单接受 `plugin.<id>.*` 并 **fail-closed**（未声明前缀 / 未识别键仍拒绝）；§3.14.4 的「统一管理点 + include」表述由本条取代；
+- `module_path` / `module_hash` **不进资产**（由导入流程写入用户配置）；`module_path` 的相对基准见 §3.14.7.4（`<GHOSTLOCK_HOME>/countermeasures`）；
+- **默认关闭**：`enabled` 缺省 false；只有 `enabled = true` 时 Kotlin 才把该插件的 `plugin.<id>.*` 写进文档，未启用插件不得出现在 wire 里。
+
+#### 3.14.7.6 切分与顺序（硬约束）
+
+1. **native 半场**：探针 CLI + TSV 输出 + ABI 尾部追加 + `plugin.*` FieldSpec/manifest + wire 绑定（含 fail-closed 校验）；
+2. **Kotlin 半场**：导入（文件选择器 → 私有目录 → SHA-256 清单）→ 经探针解析自描述 → 按 schema 校验 → UI 高级设置 → 只写启用项的 `plugin.<id>.*`；
+3. 顺序不可交换：manifest 是 Kotlin 映射的权威，Kotlin 不得先于 native 半场硬编码字段；
+4. **门禁**：host / NDK / lint / Kotlin 测试 + 真机（delta4 试验台，外加 App 内导入一次——需维护者操作）；真机结果按 `docs/analysis/device-gates/` 归档。
+
+#### 3.14.7.7 动态键声明（`params.*` / `extract.*`）
+
+**背景**：`plugin.<id>.params.<key>` / `.extract.<key>` 的键与类型由插件自身的 `ParamSpec` 决定（探针 TSV 的 `param` / `extract` 行，§3.14.7.2），静态 manifest 无法逐条枚举；而 `NativeProfileGlkv3Adapter` 只认 manifest 里的精确 path。
+
+**裁决（A）：动态声明进 native `FieldSpec` / manifest（单一权威）**
+
+1. manifest 增**两条通配行**：`plugin.<id>.params.<key>` 与 `plugin.<id>.extract.<key>`，`type` 列写**联合字面量 `uint|int|bool|str`**——这是**唯一允许的联合**，且成员集合必须**恰好等于**这四个（由测试钉死）；`doc` 列 params 行写「Dynamic: type comes from the plugin descriptor (probe TSV param rows)」，extract 行写 P2 语义；
+2. **语法扩展**：manifest 的 `type` 列允许 `|` 分隔的**联合**（成员取自既有 wire kind 词表）；Kotlin adapter 按联合解析，**未知成员 fail-closed**；
+3. **native 绑定**：`params.*` / `extract.*` 按前缀接受，只做「值类型 ∈ 联合集合」检查；**键是否存在、required、类型是否与描述符一致** 在插件实例化 / 门禁阶段按探针描述符 fail-closed 校验；
+4. **通配必须显式存在**：任一侧都不得写隐式前缀规则；其它 owner 前缀仍严格 fail-closed（未声明的路径一律拒绝）；
+5. **对拍测试**：用探针 fixture 的 `param` / `extract` 行做正例（描述符内的键全接受）与负例（描述符外的键拒绝）。
+
+**静态四行**（`plugin` 为第三类顶层 owner，`<id>` 是路径占位符）：
+`plugin.<id>.enabled`（bool，默认 `literal:0` = 关闭）/ `.stage`（str，host stage token）/
+`.module_path`（str，**相对 `<GHOSTLOCK_HOME>/countermeasures`**，不含额外一层）/ `.module_hash`（str，64 位小写 hex）。
+
+**绑定 / 校验规则**：`enabled` bool；`stage` ∈ host stage token 集合；`module_path` 相对路径、无 `..`、非绝对；`module_hash` 64 位小写 hex；`params.*` / `extract.*` 键非空、类型按**描述符**校验；**未启用的插件不得出现在 wire 文档里**（§3.14.7.5）。
+
+**实现出处（回填，2026-10-05）**
+- **动态行**：`src/core/plugin/schema.hpp` 的 `kPluginGlkv3Fields` 以 `profile::glkv3::WireType::Union` 声明 `plugin.<id>.params.*` / `.extract.*`；清单拼写 `uint|int|bool|str` 即 `wire_type_name(WireType::Union)`，联合成员表 `kUnionScalarTypes` **恰好 4 个**（`src/core/profile/glkv3.hpp`）；commit `4d25d6e7`；`profile-manifest-v3.tsv` 字段数 **103 → 109**（plugin 行 6 条，其中 union 2 条，L114–L119）；
+- **绑定与门禁**：`src/core/plugin/wire.{hpp,cpp}` —— `validate_plugin_wire()` 遍历文档 `plugin` 段，`PluginWireError` 覆盖 `UnknownField` / `EnabledMissing` / `EnabledNotBool` / `DisabledPresent` / `StageMissing` / `StageUnknown` / `ModulePathRejected` / `ModuleHashRejected` / `ParamKeyRejected` / `ParamTypeRejected` / `TooManyPlugins`；前缀匹配的**唯一入口**是 `plugin_dynamic_key()`（`schema.hpp`，无隐式前缀规则）；`kMaxPluginsPerDocument = 16`，容量不足报 `TooManyPlugins` 而非静默丢弃；
+- **描述符门禁**：`plugin_descriptor_declares(module, kind, name, type_out)` 按 **size 门控**读取——v1 模块没有尾部字段，因此声明为空（拒绝）；
+- **Kotlin**：`NativeProfileGlkv3Adapter` 解析 manifest 的 `|` 联合（未知成员 fail-closed）、按 `<id>` 占位行解析具体路径（**无隐式前缀规则**），并以 `declaredTypeNames()` / `declaredWire()` 暴露声明；commit `0b1c0fa0`。
+
+**判据**
+- **native**：`src/core/tests/plugin_wire_test.cpp` —— `std::size(kUnionScalarTypes) == 4` 且联合拼写 `uint|int|bool|str`；`kPluginGlkv3Fields` 6 行中恰 2 条 union；`plugin_dynamic_key` matcher 矩阵（params / extract / 空 key / 前导点 / 非 plugin 段）；**11 例文档校验**（none + good 两例通过，其余命中上述错误名）；`plugin_descriptor_declares` 的 **v1-size 拒绝**；
+- **Kotlin**：`PluginProbeGoldenTest`（设备 golden 硬断言）+ `PluginProbeTest` / `PluginConfigValidatorTest` / `PluginManifestTest`；
+- **设备 golden**：`app/src/test/resources/plugin-probe-golden.tsv`（commit `7d54ce78`，**11 行、逐字节来自设备探针 stdout**，覆盖 4 种 param 类型 + `hook` 行 + 多值 `stages`/`caps`；消费方 `app/src/test/kotlin/com/ghostlock/app/data/plugin/PluginProbeGoldenTest.kt`），完整 stdout 见 `docs/analysis/device-gates/s4-p1-probe-20261005-pass.md` §5。
+
+#### 3.14.7.8 阶段可用性（按 backend 核实，取代一切旧推演）
+
+**结论**：四词词汇表（`pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`）保持不变，**可用性按 backend 表达**——每个 backend **只有一个**可用插入点，其余阶段是「**声明但不可用**」（注册期拒绝，不是沉默缺席）：
+
+| backend | 可用 | 声明但不可用 |
+|---|---|---|
+| `cve_2026_43499` | **`pre_terminal`**（`steps.cpp:484-490` / `:517-521`） | `pre_spawn` / `post_spawn` / `post_terminal` |
+| `cve_2026_43284` | **`post_terminal`**（`lkm_window.cpp:99-107`，仅在 LKM 驻留窗口内） | `pre_spawn` / `post_spawn` / `pre_terminal` |
+
+**依据（代码为准；设计 `docs/analysis/plugin-runtime-integration-design.md` §12，commit `ab0561f8`）**：
+
+- **43499 的 race 窗口按「写尝试」开关**：`steps.cpp:118` 的 `Cve43499Primitives::attack_write<M>(...)` 位于每次写尝试的循环内（`:100-130`），`userspace_clean` 由 route 在**同一次调用内**置位（`route/multicast_waiter_route.cpp:53/71/86/133`、`route/select_stack_route.cpp:125`、`route/tcp_zerocopy_route.cpp:95`），而 victim/child 就在该写循环里建立（`steps.cpp:480` 的 w2 victim round）。因此**不存在「窗口已关闭且 child 未建立」的点**：`pre_spawn` 与 `post_spawn` 不可用（child 建立后仍会有后续写尝试再次开窗）；
+- **43499 `pre_terminal`**：`steps.cpp:484-490`（W1W3：w3 之后、`return StageResult::Continue` 之前）/ `:517-521`（W1W2 同形），随后 `cve_2026_43499_backend.cpp:136` 检查结果 → `:138-158` 移交 rooted child；该点**窗口已关闭**（最后一次 `attack_write` 已返回）且内核写能力已就绪；
+- **43284 `post_terminal`**：`lkm_window.cpp:99-107`（注释明示「POST_TERMINAL is the one stage inside the LKM residency window」，`registry_->dispatch(..., CountermeasureStage::PostTerminal, &host_ops_)`）——唯一同时具备内核能力的窗口；43284 没有 waiter/spawn 概念，`pre_spawn`/`post_spawn` 不适用，`pre_terminal` 无内核特权（按「声明但不可用」处理）；
+- 探针 header 的 `host_stages` 如实列出 host 实现的 stage；host 在 `open()` 时按 backend 校验可用集合，注册了不可用阶段的插件**在注册期即被拒绝**；只注册不可用阶段的插件必须对作者可见，不得靠沉默缺席表达。
+
+**已废弃的原假设（2026-10-05）**：本文早先写过「`pre_spawn` 不在 Pipeline 层，而是 `w1()` 成功之后、`w2()` 之前」——该假设是按 Pipeline 边界**推测**的，已被上面的「按写尝试开关的窗口」**推翻**：`w1()` 与 `w2()` 之间并不存在满足前置条件的插入点。随之，原先记的「`run<Route>` 模板体内行号待钉死」一项**关闭**（问题不再存在）。
+
+**与 §3.14.6 的关系**：P1 = native + Kotlin 两投影的落地；extractor 投影 = P2；参考插件 = P3（= CM-4）。
+
+**UML**：本节是设计冻结，尚无落地结构；P1 落地后按 AGENTS.md 同批刷新 `docs/development/full-process-uml.md` 的 §3.1 / §3.2 / §3.3（新增插件类与关系）。
 
 ## 4. 能力接口（虚）
 

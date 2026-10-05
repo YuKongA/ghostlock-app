@@ -1,0 +1,11 @@
+host_abi	1
+countermeasures_root	countermeasures
+host_stages	pre_spawn,post_spawn,pre_terminal,post_terminal
+host_caps	kernel_read,kernel_write,alias,child_task
+plugin	test.schema	1.2.3	1	80	decc767346129b6dea4a8fb8d907daa13c48d9a44fd60645d5e57e42614205cf	pre_spawn,post_terminal	kernel_read,alias
+hook	test.schema	on_stage	post_terminal	10	schema-hook
+param	test.schema	threshold	uint	1	200	uint parameter
+param	test.schema	mode	str	0	auto	string parameter
+param	test.schema	enabled	bool	0	1	bool parameter
+param	test.schema	delta	int	0	0	-
+extract	test.schema	task_offset	uint	1	0	extractor-provided offset

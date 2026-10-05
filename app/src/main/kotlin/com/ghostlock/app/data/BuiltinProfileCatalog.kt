@@ -47,6 +47,7 @@ internal class BuiltinProfileCatalog(context: Context) {
             if (release.isEmpty() || file.isEmpty()) return@mapNotNull null
             val profile = readAsset("$BuiltinDirectory/$file")
                 ?.let { HoconSupport.parseValue(it).asValueMap() } ?: return@mapNotNull null
+            ProfileLayout.applyNormalize(profile)
             val fields = flatten(profile)
             val recommendedCpus = profile["execution"].asValueMap()
                 ?.get("recommended_cpus").asValueMap()
@@ -76,15 +77,6 @@ internal class BuiltinProfileCatalog(context: Context) {
                 "route" -> raw.asValueMap()?.forEach { (name, branchRaw) ->
                     branchRaw.asValueMap()?.forEach { (field, value) ->
                         (value as? Number)?.toLong()?.let { fields[routeFieldKey(name, field)] = it }
-                    }
-                }
-
-                "fallback" -> raw.asValueMap()?.let { fallback ->
-                    val to = fallback["to"] as? String ?: ""
-                    val branch = fallback["route"].asValueMap()?.get(to).asValueMap() ?: return@let
-                    branch.forEach { (field, value) ->
-                        (value as? Number)?.toLong()
-                            ?.let { fields.putIfAbsent(routeFieldKey(to, field), it) }
                     }
                 }
 

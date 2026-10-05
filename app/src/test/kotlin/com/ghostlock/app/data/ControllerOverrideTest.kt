@@ -246,11 +246,12 @@ class ControllerOverrideTest {
             assertTrue(multicastPaths.none { it.startsWith("execution.routes.select_stack.") })
             assertTrue(multicastPaths.none { it.startsWith("execution.routes.tcp_zerocopy.") })
 
-            /* tcp profile with a select fallback: both groups, no multicast. */
+            /* tcp profile: only its own group. R6a dropped the select fallback,
+             * so the select tuning must no longer be offered. */
             val tcp = controller.load("6.1.118-android14-11-ga3b9c44908dd-ab13320413", pair)
             val tcpPaths = tcp.general.map { it.path }
             assertTrue(tcpPaths.any { it.startsWith("execution.routes.tcp_zerocopy.") })
-            assertTrue(tcpPaths.any { it.startsWith("execution.routes.select_stack.") })
+            assertTrue(tcpPaths.none { it.startsWith("execution.routes.select_stack.") })
             assertTrue(tcpPaths.none { it.startsWith("execution.routes.multicast_waiter.") })
         } finally {
             root.deleteRecursively()

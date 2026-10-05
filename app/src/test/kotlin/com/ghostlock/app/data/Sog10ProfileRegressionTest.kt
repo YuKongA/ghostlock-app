@@ -41,7 +41,6 @@ class Sog10ProfileRegressionTest {
             val config = controller.load(release, CpuPair(primary = 0, consumer = 1))
             assertTrue(config.hasProfile)
             assertEquals("multicast_waiter", config.route)
-            assertEquals("none", config.fallbackTo)
             assertTrue("unexpected invalid paths: ${config.invalidPaths}", config.invalidPaths.isEmpty())
 
             val advancedPaths = leafPaths(config.roots)
@@ -52,7 +51,7 @@ class Sog10ProfileRegressionTest {
             val bytes = requireNotNull(controller.nativeDocument(config))
             val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
             assertEquals(release, decoded.release)
-            assertEquals(Glkv3Value.UInt(2u), entry(decoded, "backend.cve_2026_43499", "steps"))
+            assertEquals(Glkv3Value.Str("mcast_rootchild"), entry(decoded, "backend.cve_2026_43499", "steps"))
             assertNull(entryOrNull(decoded, "platform.abi.kernel", "kernel_phys_load"))
             assertEquals(Glkv3Value.UInt(0u), entry(decoded, "platform.abi.cred", "usage_offset"))
             assertEquals(

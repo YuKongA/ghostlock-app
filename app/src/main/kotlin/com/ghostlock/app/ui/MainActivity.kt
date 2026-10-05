@@ -23,6 +23,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ghostlock.app.GhostlockApplication
 import com.ghostlock.app.R
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.domain.model.ExecutionMode
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +110,12 @@ class MainActivity : ComponentActivity() {
 
             is GhostlockEffect.Share -> shareOffsets(effect.uri.toUri())
             is GhostlockEffect.Toast -> Toast.makeText(this, effect.resourceId, Toast.LENGTH_SHORT).show()
+            is GhostlockEffect.ToastArgs ->
+                Toast.makeText(
+                    this,
+                    getString(effect.resourceId, effect.arg),
+                    Toast.LENGTH_LONG,
+                ).show()
             is GhostlockEffect.Clipboard -> {
                 getSystemService(ClipboardManager::class.java)
                     ?.setPrimaryClip(ClipData.newPlainText("ghostlock-log", effect.text))
@@ -193,6 +200,9 @@ private fun GhostlockRoute(
 
             override fun onBackendChanged(kind: BackendKind) =
                 viewModel.setBackendKind(kind)
+
+            override fun onCombinationChanged(spec: CombinationSpec) =
+                viewModel.setCombination(spec)
             override fun onDialogItemSelected(index: Int) = viewModel.onDialogItemSelected(index)
             override fun onDialogInputChange(value: String) = viewModel.onDialogInputChange(value)
             override fun onDialogConfirm(value: String) = viewModel.onDialogConfirm(value)
@@ -204,7 +214,6 @@ private fun GhostlockRoute(
                 viewModel.updateExecutionField(path, value)
 
             override fun onRouteChanged(index: Int) = viewModel.onRouteChanged(index)
-            override fun onFallbackChanged(index: Int) = viewModel.onFallbackChanged(index)
             override fun onExportProfile() = viewModel.onExportProfile()
             override fun onSaveProfileEdits() = viewModel.onSaveProfileEdits()
             override fun onSaveProfileAs() = viewModel.onSaveProfileAs()
@@ -221,6 +230,16 @@ private fun GhostlockRoute(
 
             override fun onOpenParameters() = viewModel.onOpenParameters()
             override fun onCloseParameters() = viewModel.onCloseParameters()
+            override fun onImportPlugin() = viewModel.onImportPlugin()
+            override fun onPluginParamEdit(id: String, name: String, current: String) =
+                viewModel.onPluginParamEdit(id, name, current)
+
+            override fun onPluginBoolChanged(id: String, name: String, value: Boolean) =
+                viewModel.onPluginBoolChanged(id, name, value)
+            override fun onOpenPlugins() = viewModel.onOpenPlugins()
+            override fun onClosePlugins() = viewModel.onClosePlugins()
+            override fun onPluginEnabledChanged(id: String, enabled: Boolean) =
+                viewModel.onPluginEnabledChanged(id, enabled)
             override fun onOpenLoadConfig() = viewModel.onOpenLoadConfig()
             override fun onCloseLoadConfig() = viewModel.onCloseLoadConfig()
             override fun onOpenUserProfileDetail(name: String) =

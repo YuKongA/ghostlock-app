@@ -13,25 +13,29 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 | Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → `--format conf`（flatten GLK profile）/ `--format json`（v1） |
 
 - Native 不是 JNI：`libghostlock.so` 是可执行 ELF，由 Kotlin `ProcessBuilder` 启动。
-  CLI：`--ghostlock-app-call`（stdin 读长度前缀的 GLKv3 文档，其后可接运行时密钥会话帧）/
-  `--load-prebuilt-profile <bin>`；另有仅用于 43284 开发/门禁的
-  `--run-cve-2026-43284 <ko> <target> --stage=plan|write|trigger|full`（生产 fail-closed）。
-  无参数的 v1 `offsets.json` 入口已移除；入口细节见
-  `docs/analysis/native-entrypoint-plan.md`（git 历史）。
+  CLI（S4 R2b 后仅 7 项，**选择与策略不得出现在 CLI**）：`--ghostlock-app-call`（stdin 读长度前缀的 GLKv3 文档，其后可接运行时密钥会话帧）/
+  `--load-prebuilt-profile <bin>` / `--enable-status-record` / `--dump-kernel-log <dir>` / `--force-attack` /
+  `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
+  `--plugin-probe <path.so> [--expect-sha256 <hex>]`（只读插件描述，不注册、不运行 hook）。
+  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）；**运行时「加载 → 按 stage 调用 → 卸载」尚未接线**（`src/core/pipeline/**` 对插件宿主零引用），属攻击关键路径，见 branch-plan `task-9`。
+  staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
+  无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
 - 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
   `<uname-r>.conf` 每 release 一份、`execution-*.conf` 公共/分 route 调参、
   `credential-6x.conf`、`kernelsnitch-6x.conf`。格式为 HOCON（支持 `include`）。
-- 组件模型（ADR-0004）：装配轴为 **backend × terminal**，由 `Pipeline<Backend, Terminal>` 编译期固定；
-  backend 提供漏洞原语与写入步骤，terminal 承载启动/交接。当前 catalog 收录 **3 个稀疏 triple**：
-  `cve_2026_43499 × {w1_w3, w1_w2} × root_child`（可用）与
-  `cve_2026_43284 × pagecache_write × umh_forward`（已接线、**已翻可用**：staged 全链真机 PASS；
-  生产 app-call 路径的门禁进度见 `docs/analysis/branch-plan.md`）。
+- 组件模型（ADR-0004 + **ADR-0006**）：**选择由 token 白名单表达**——`contract::kCombinationCatalog` 是组合的
+  **唯一权威**（token → backend/route/steps/terminal/available），token 落在 `backend.<id>.steps`；
+  `Pipeline` 按 token 编译期固定并逐组合 static_assert。当前**已接线**：`cve_2026_43499 × {mcast,pselect,tcp}_{rootchild,shizuku}`
+  与 `cve_2026_43284 × umh`；**计划项**（`available=false`）：`{mcast,pselect,tcp}_umh`、`rootchild`、`shizuku`
+  （解析接受、选择门禁拒绝、UI 置灰）。**terminal 归属见 ADR-0006**：词汇（rootchild/shizuku/umh）保留，
+  **实现下放 backend**，共享件（脚本生成/探测/UMH 命令/输入结构）中性。
   每轴可用性：backend 为 `cve_2026_43499` 与 `cve_2026_43284`；`cve_2026_64560`/`cve_2026_31431`/`cve_2026_43503`/`cve_2026_23274` 为纯头占位不可用；
   terminal 为 `root_child` 与 `umh_forward`（均已可用）；旧文档的 `file_write`/`panic` 占位**不存在**。
   route（`select_stack`/`tcp_zerocopy`/`multicast_waiter`）是 backend 内部策略，按 profile 选，不是装配轴；`platform`/`plugin` 为横切。
-- 契约/组合分工：`contract/identity.hpp` 定义 kind、每轴可用性谓词、identity 声明与执行概念（host 可编译）；
-  `pipeline/component_catalog.hpp` 是**组合（wiring）的唯一权威**——稀疏 triple、`DispatchTarget`、`combination_supported`/`dispatch_target_of`，
-  词汇来自 `contract`；`pipeline/orchestrator.hpp` 按 catalog 分派，每个 case 用 `Pipeline::target` static_assert 锁定。
+- 契约/组合分工：`contract/identity.hpp` 定义 kind、每轴可用性谓词、identity 声明与执行概念（host 可编译），
+  并且是**组合（wiring）的唯一权威**——`kCombinationCatalog`（token → backend/route/steps/terminal/available）；
+  `pipeline/component_catalog.hpp` 只**按 token 分派**（`DispatchTarget`、`combination_supported`/`dispatch_target_of`），
+  `pipeline/orchestrator.hpp` 逐 case 用 `Pipeline::target` static_assert 锁定；导出与 Kotlin 对拍见文档约定。
   `selection_supported()`（设备已核实）与 `combination_supported()`（已接线）是两个不同问题；选择显式来自 profile/wire，不从 kernel 版本推断。
 
 ## 常用命令
@@ -98,7 +102,9 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   当前白名单 4 条（`support/util.cpp` → 43499 backend：spray 直连 `state`/`route`/`accessors` 3 条，
   以及 A3-2 的 `leak/address_discovery.h` 1 条——因 `kernelsnitch.h` 的 `context_*` 非 inline、全程序只能一个 TU 包含，
   待 spray/leak 所有权搬进 backend 后移除），运行输出
-  `165 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许，
+  `177 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许；
+  历史：173 → 174 = `root_child.hpp` 随 ADR-0006 F5 移入受限的 `backend/`；174 → 172 = R8 合并两份 SHA-256 为 `support/sha256.*`（删 4 增 2）；
+  172 → 174 = P1 探针新增 `plugin/probe.{hpp,cpp}`；174 → 177 = P1 第二步新增 `plugin/{schema.hpp,wire.hpp,wire.cpp}`。**四次都无新增越层边**），
   不得 include `backend,pipeline,platform,terminal`）。新增的越层 include 会 FAIL；
   白名单条目对应的 include 消失（stale）同样 FAIL。新增组件优先不引入越层边，确需临时豁免时必须在
   `kWhitelist` 登记并写明 owner 批次，不得静默通过。
@@ -108,6 +114,15 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   - GLKv3 path→type FieldSpec ↔ Kotlin `NativeProfileGlkv3Adapter`，导出
     `app/src/test/resources/profile-manifest-v3.tsv`（`profile_manifest_v3_test.cpp` /
     `ProfileManifestV3AgreementTest.kt`）
+  - **组合 token 白名单** ↔ Kotlin `CombinationCatalog`，导出
+    `combination-manifest.tsv`（两份：`app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；
+    `combination_manifest_test.cpp` 裸跑断言两份逐字节等于 `kCombinationCatalog`；
+    `CombinationTokenAgreementTest.kt` / `CombinationTokenHardcodeTest.kt`）。生成命令：`make -C src combination-manifest`。
+  - **组件词汇 manifest** ↔ Kotlin `VocabularyCatalog`，导出 `vocabulary-manifest.tsv`
+    （4 类 kind = `backend` / `frontend` / `stepset` / `route`，**14 行**，两份逐字节一致：
+    `app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；权威是
+    `contract/identity.hpp` 的 kind 声明与 `kRouteCatalog`；生成命令 `make -C src vocabulary-manifest`；
+    `vocabulary_manifest_test.cpp` 裸跑断言，Kotlin 侧 `ComponentKindTest` / `VocabularyManifestAgreementTest` 对拍）。
   - **v2 owner Schema 的 manifest 已随 v2 一并删除**（S4-R2c）：`profile-manifest.tsv`、`profile_manifest_test.cpp`、
     `ProfileManifestAgreementTest.kt` 都不再存在；owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）
     仍由 GLKv3 的 `schema == 3` 绑定路径使用，其声明权威是 `profile-manifest-v3.tsv`。
@@ -142,6 +157,11 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ## 子智能体委派与停止规则
 
 - **凡是可并行、可自包含的工作，优先委派给子智能体**（不限于门禁）；**若被委派任务本身还能再并行拆分，子智能体应继续递归创建自己的子智能体**，并把写范围继续切分到互不重叠。
+- **子智能体要能复用（强制）**：优先用 `spawn_teammate` 建**常驻 teammate**（稳定 target、可 `send_message` 追加任务、可 `interrupt`），
+  而非每批新起一次性 agent；**同一模块/写范围固定由同一个 teammate 负责**，其历史上下文因此可复用（不必每次重新通读仓库）。
+  任务一律登记到**共享任务板**（`team_task_create`：owner + 精确 write scope + blocked_by），Lead 负责门禁与归档；
+  常驻流建议划分：`native-core`（src/core）、`kotlin-app`（profile-core + app + assets）、`docs-uml`（docs/UML/计划/门禁归档）。
+  同一时刻只允许**一条写入流**；未获指派的 teammate 只做只读勘察。
   - **门禁**（host / NDK / lint / cmp_disasm / 真机）——耗时长，委派后主智能体继续推进；
   - **独立实现/调研**：写范围与主线不重叠的文件改动、上游事实核查、测试补写、文档起草、跨模块对拍。
 - 委派必须给出：自包含的目标、涉及的精确文件/写范围、命令与期望结果、验收标准；子智能体只做被委派的事。
@@ -170,10 +190,14 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - 完整规范见 `docs/development/documentation-standards.md`（分类地图、命名与结构、中英写作、
   RFC 2119 用语、画图要求、计划/门禁模板、归档流程、检查清单；依据 ISO/IEC/IEEE 42010/15289/2651x、
   Diátaxis、DITA、Minimalism、Google style）。
-- **结构与流程变化必须同步更新对应 Mermaid/UML 图**：L 级改动（route、跨层契约、会话/资源所有权、
-  攻击阶段机、清理边界）必须画图；一个结构只保留一处权威图，其他文档链接它。
+- **改动必须更新 UML（强制）**：全流程权威图 = `docs/development/full-process-uml.md`
+  （IPO / 状态机 / Class / Sequence 四类；Class 按 C++ `namespace`、Kotlin `package`、Rust `module` 分组）。
+  任何**结构性改动**——新增/删除 backend、terminal、插件、**组合 token**、状态机状态、wire 字段，
+  或类/函数的职责与归属变化——必须**在同批**更新该文件，并在提交信息里写明「更新了哪一张图」；
+  评审与门禁按此检查。一个结构只保留一处权威图，其他文档链接它，不重复画同一结构。
 - 双语：`README.md` + `README_ZH.md`；`docs/**` 下有 `*_ZH.md` 对应的保持同步。
 - 现行文档：`README.md`、`docs/kernel_profiles/*`、`docs/development/adding-a-component.md`、
+  **`docs/development/full-process-uml.md`（全流程 UML 权威：IPO/状态机/Class/Sequence，改动必更新）**、
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、
   `docs/development/documentation-standards.md`（文档规范）、`src/core/README.md`。

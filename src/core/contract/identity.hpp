@@ -20,6 +20,7 @@
 #include <tuple>
 #include <utility>
 
+#include "contract/model.hpp"
 #include "contract/stage_result.hpp"
 #include "profile/schema.hpp"
 
@@ -94,6 +95,252 @@ namespace ghostlock::contract {
     [[nodiscard]] constexpr bool stepset_available(StepSetKind kind) noexcept {
         return kind == StepSetKind::W1W2 || kind == StepSetKind::W1W3 ||
                kind == StepSetKind::PageCacheWrite;
+    }
+
+    /* ---- S4 R6b combination tokens (ADR-0006 T5) ----
+     *
+     * The user-visible selection is ONE token living in backend.<id>.steps. A
+     * token is "<route>_<path>" for a backend with a route axis (cve_2026_43499)
+     * and a bare "<path>" for a backend without one (cve_2026_43284). The token
+     * derives the internal (route, step set, terminal/path) triple; that derived
+     * triple is an implementation detail, no longer independently selectable.
+     *
+     * This table is the vocabulary authority (contract); pipeline/catalog only
+     * composes it. available=false is a *planned* item: it parses and is known,
+     * but the selection gate rejects it (and the App greys it out).
+     *
+     * F3: a backend without a route axis carries RouteKind::None, never the
+     * deprecated legacy Auto; the GLKv3 resolver rejects a document whose root
+     * route disagrees with this column and rejects a token that needs a route
+     * when the document declares none. */
+    enum class CombinationKind : std::uint8_t {
+        Unknown = 0,
+        /* cve_2026_43499: route prefix required. */
+        McastRootchild,
+        PselectRootchild,
+        TcpRootchild,
+        McastShizuku,
+        PselectShizuku,
+        TcpShizuku,
+        McastUmh,
+        PselectUmh,
+        TcpUmh,
+        /* cve_2026_43284: no route axis, bare path. */
+        Umh,
+        Rootchild,
+        Shizuku,
+    };
+
+    /* F1 (R6b v3 design patch 7.1): the flat product is decomposed into two
+     * ORTHOGONAL vocabularies plus the owning backend. PathKind is the
+     * user-visible handoff path; it is not derivable from the terminal (both
+     * rootchild and shizuku enter the root child and differ only in the step
+     * set), which is exactly why it needs its own axis.
+     *
+     * CombinationKind stays the compact id (its enum value is the uint8 wire
+     * slot in profile::Document::combination), so this decomposition is a
+     * compile-time view and NOT a wire or storage change. New backends extend
+     * the catalogue by adding rows, not by adding enum values per route/path
+     * product. */
+    enum class PathKind : std::uint8_t {
+        Rootchild = 1,
+        Shizuku = 2,
+        Umh = 3,
+    };
+
+    struct CombinationId final {
+        BackendKind backend;
+        profile::RouteKind route;
+        PathKind path;
+    };
+
+    /* Field order is padding-optimal (two 16-byte views first, then the small
+     * enum ids and the flag) so clang-analyzer's performance.Padding check stays
+     * clean: 16 + 16 + 7 one-byte fields = 39 bytes, which the 8-byte alignment
+     * rounds to 40 with no interior padding. */
+    struct CombinationSpec final {
+        std::string_view token;
+        /* Dropdown summary the App shows, carried as catalogue DATA so the UI
+         * text has one authority instead of a second formatting table. */
+        std::string_view doc;
+        BackendKind backend;
+        CombinationKind kind;
+        profile::RouteKind route;
+        PathKind path;
+        StepSetKind steps;
+        TerminalKind terminal;
+        bool available;
+    };
+
+    /* The whitelist. Only these 12 tokens are ever accepted; anything else is
+     * rejected with the token text echoed by the composition root. */
+    inline constexpr CombinationSpec kCombinationCatalog[] = {
+        {"mcast_rootchild", "cve_2026_43499 \u00b7 multicast_waiter \u00b7 w1_w3 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::McastRootchild,
+         profile::RouteKind::MulticastWaiter, PathKind::Rootchild, StepSetKind::W1W3, TerminalKind::RootChild, true},
+        {"pselect_rootchild", "cve_2026_43499 \u00b7 select_stack \u00b7 w1_w3 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::PselectRootchild,
+         profile::RouteKind::SelectStack, PathKind::Rootchild, StepSetKind::W1W3, TerminalKind::RootChild, true},
+        {"tcp_rootchild", "cve_2026_43499 \u00b7 tcp_zerocopy \u00b7 w1_w3 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::TcpRootchild,
+         profile::RouteKind::TcpZerocopy, PathKind::Rootchild, StepSetKind::W1W3, TerminalKind::RootChild, true},
+        {"mcast_shizuku", "cve_2026_43499 \u00b7 multicast_waiter \u00b7 w1_w2 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::McastShizuku,
+         profile::RouteKind::MulticastWaiter, PathKind::Shizuku, StepSetKind::W1W2, TerminalKind::RootChild, true},
+        {"pselect_shizuku", "cve_2026_43499 \u00b7 select_stack \u00b7 w1_w2 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::PselectShizuku,
+         profile::RouteKind::SelectStack, PathKind::Shizuku, StepSetKind::W1W2, TerminalKind::RootChild, true},
+        {"tcp_shizuku", "cve_2026_43499 \u00b7 tcp_zerocopy \u00b7 w1_w2 \u00b7 root_child",
+         BackendKind::Cve2026_43499, CombinationKind::TcpShizuku,
+         profile::RouteKind::TcpZerocopy, PathKind::Shizuku, StepSetKind::W1W2, TerminalKind::RootChild, true},
+        {"mcast_umh", "cve_2026_43499 \u00b7 multicast_waiter \u00b7 w1_w3 \u00b7 umh_forward",
+         BackendKind::Cve2026_43499, CombinationKind::McastUmh,
+         profile::RouteKind::MulticastWaiter, PathKind::Umh, StepSetKind::W1W3, TerminalKind::UmhForward, false},
+        {"pselect_umh", "cve_2026_43499 \u00b7 select_stack \u00b7 w1_w3 \u00b7 umh_forward",
+         BackendKind::Cve2026_43499, CombinationKind::PselectUmh,
+         profile::RouteKind::SelectStack, PathKind::Umh, StepSetKind::W1W3, TerminalKind::UmhForward, false},
+        {"tcp_umh", "cve_2026_43499 \u00b7 tcp_zerocopy \u00b7 w1_w3 \u00b7 umh_forward",
+         BackendKind::Cve2026_43499, CombinationKind::TcpUmh,
+         profile::RouteKind::TcpZerocopy, PathKind::Umh, StepSetKind::W1W3, TerminalKind::UmhForward, false},
+        {"umh", "cve_2026_43284 \u00b7 pagecache_write \u00b7 umh_forward",
+         BackendKind::Cve2026_43284, CombinationKind::Umh,
+         profile::RouteKind::None, PathKind::Umh, StepSetKind::PageCacheWrite, TerminalKind::UmhForward, true},
+        {"rootchild", "cve_2026_43284 \u00b7 pagecache_write \u00b7 root_child",
+         BackendKind::Cve2026_43284, CombinationKind::Rootchild,
+         profile::RouteKind::None, PathKind::Rootchild, StepSetKind::PageCacheWrite, TerminalKind::RootChild, false},
+        {"shizuku", "cve_2026_43284 \u00b7 pagecache_write \u00b7 root_child",
+         BackendKind::Cve2026_43284, CombinationKind::Shizuku,
+         profile::RouteKind::None, PathKind::Shizuku, StepSetKind::PageCacheWrite, TerminalKind::RootChild, false},
+    };
+
+    [[nodiscard]] constexpr const CombinationSpec *combination_spec(
+            CombinationKind kind) noexcept {
+        for (const CombinationSpec &spec : kCombinationCatalog) {
+            if (spec.kind == kind) return &spec;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] constexpr bool combination_resolve(
+            BackendKind backend, std::string_view token,
+            CombinationKind &out) noexcept {
+        for (const CombinationSpec &spec : kCombinationCatalog) {
+            if (spec.backend == backend && spec.token == token) {
+                out = spec.kind;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] constexpr std::string_view combination_name(
+            CombinationKind kind) noexcept {
+        const CombinationSpec *spec = combination_spec(kind);
+        return spec != nullptr ? spec->token : std::string_view{};
+    }
+
+    [[nodiscard]] constexpr bool combination_available(CombinationKind kind) noexcept {
+        const CombinationSpec *spec = combination_spec(kind);
+        return spec != nullptr && spec->available;
+    }
+
+    /* F1 decomposition accessors. The token table stays the single authority:
+     * the id is a VIEW of a catalogue row (never an independent selection), and
+     * the reverse lookup is total over the 12 rows because (backend, route,
+     * path) is unique there (asserted by combination_manifest_test). */
+    [[nodiscard]] constexpr bool combination_id(CombinationKind kind,
+                                                CombinationId &out) noexcept {
+        const CombinationSpec *spec = combination_spec(kind);
+        if (spec == nullptr) return false;
+        out = CombinationId{spec->backend, spec->route, spec->path};
+        return true;
+    }
+
+    [[nodiscard]] constexpr CombinationKind combination_from_id(
+            CombinationId id) noexcept {
+        for (const CombinationSpec &spec : kCombinationCatalog) {
+            if (spec.backend == id.backend && spec.route == id.route &&
+                spec.path == id.path) {
+                return spec.kind;
+            }
+        }
+        return CombinationKind::Unknown;
+    }
+
+    /* Handoff-path token (App dropdown and the exported manifests). */
+    [[nodiscard]] constexpr std::string_view path_name(PathKind kind) noexcept {
+        switch (kind) {
+            case PathKind::Rootchild: return "rootchild";
+            case PathKind::Shizuku: return "shizuku";
+            case PathKind::Umh: return "umh";
+        }
+        return "unknown";
+    }
+
+    /* Route/middleware token spelling. This is the ONE route name table:
+     * pipeline::middleware_name forwards here, and the exported manifests use
+     * it too. RouteKind::None, the deprecated legacy Auto value 0 (deliberately
+     * not named) and any unknown id all report as "none". */
+    [[nodiscard]] constexpr std::string_view route_name(profile::RouteKind kind) noexcept {
+        switch (kind) {
+            case profile::RouteKind::TcpZerocopy: return "tcp_zerocopy";
+            case profile::RouteKind::SelectStack: return "select_stack";
+            case profile::RouteKind::MulticastWaiter: return "multicast_waiter";
+            default: return "none";
+        }
+    }
+
+    /* Token -> internal StepSet id (the owner Schema's numeric View slot). */
+    [[nodiscard]] constexpr std::uint16_t combination_stepset_wire(
+            BackendKind backend, std::string_view token) noexcept {
+        CombinationKind kind = CombinationKind::Unknown;
+        if (!combination_resolve(backend, token, kind)) return 0;
+        const CombinationSpec *spec = combination_spec(kind);
+        return spec != nullptr ? static_cast<std::uint16_t>(spec->steps) : 0;
+    }
+
+    /* Stable backend token <-> id (owner section prefix / root selection). The
+     * composition root and the profile framing bridge share this vocabulary so
+     * it cannot drift from the catalogue. */
+    [[nodiscard]] constexpr std::string_view backend_token_name(BackendKind kind) noexcept {
+        switch (kind) {
+            case BackendKind::Cve2026_43499: return "cve_2026_43499";
+            case BackendKind::Cve2026_64560: return "cve_2026_64560";
+            case BackendKind::Cve2026_31431: return "cve_2026_31431";
+            case BackendKind::Cve2026_43503: return "cve_2026_43503";
+            case BackendKind::Cve2026_23274: return "cve_2026_23274";
+            case BackendKind::Cve2026_43284: return "cve_2026_43284";
+        }
+        return "unknown";
+    }
+
+    [[nodiscard]] constexpr std::string_view terminal_token_name(
+            TerminalKind kind) noexcept {
+        return kind == TerminalKind::RootChild ? "root_child" : "umh_forward";
+    }
+
+    [[nodiscard]] constexpr bool terminal_kind_from_token(
+            std::string_view token, TerminalKind &out) noexcept {
+        for (const TerminalKind kind : {TerminalKind::RootChild, TerminalKind::UmhForward}) {
+            if (token == terminal_token_name(kind)) {
+                out = kind;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] constexpr bool backend_kind_from_token(
+            std::string_view token, BackendKind &out) noexcept {
+        for (const BackendKind kind : {BackendKind::Cve2026_43499, BackendKind::Cve2026_64560,
+                                       BackendKind::Cve2026_31431, BackendKind::Cve2026_43503,
+                                       BackendKind::Cve2026_23274, BackendKind::Cve2026_43284}) {
+            if (token == backend_token_name(kind)) {
+                out = kind;
+                return true;
+            }
+        }
+        return false;
     }
 
     /* Per-axis availability pre-check: the runtime fail-closed gate, and the

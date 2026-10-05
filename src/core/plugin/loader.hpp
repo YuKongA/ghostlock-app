@@ -24,9 +24,9 @@
  * mapping (contract/countermeasure.hpp) still owns the ABI values; the
  * adjudicated implemented sets it exposes are the load-time acceptance sets.
  *
- * The loader deliberately depends only on contract/ and, through sha256.hpp,
- * the C/C++ runtime: it must not reach backend/, pipeline/ or terminal/
- * (ADR-0004 R1). */
+ * The loader deliberately depends only on contract/ and, through the shared
+ * support/sha256.hpp, the C/C++ runtime: it must not reach backend/, pipeline/
+ * or terminal/ (ADR-0004 R1; S4 R8 moved the digest there). */
 
 #include <cstddef>
 #include <cstdint>
@@ -85,8 +85,15 @@ namespace ghostlock::plugin {
     };
 
     /* Production ops: dlopen(RTLD_NOW|RTLD_LOCAL), dlsym, dlclose, stat,
-     * realpath and plugin::sha256_file. */
+     * realpath and support::sha256_file. */
     [[nodiscard]] LoaderOps default_loader_ops() noexcept;
+
+    /* Relative name of the countermeasure root inside GHOSTLOCK_HOME. It is the
+     * ONE authority for the literal: the loader builds <home>/<name> with it and
+     * the P1 probe reports it verbatim as the countermeasures_root header value
+     * (a relative name, so the App can compare it without sharing the probe's
+     * environment; contract-design 3.14.7.4). */
+    inline constexpr std::string_view kCountermeasuresDirName = "countermeasures";
 
     /* The plan's default root is "<dir>/countermeasures/". CM-5 will supply the
      * real app-private home; CM-2 lets the caller name the whitelist root and

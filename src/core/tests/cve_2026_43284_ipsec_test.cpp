@@ -10,7 +10,7 @@
  * translation units the device build uses. */
 
 #include "backend/cve_2026_43284/ipsec/aes256.hpp"
-#include "backend/cve_2026_43284/ipsec/hmac_sha256.hpp"
+#include "support/sha256.hpp"
 #include "backend/cve_2026_43284/ipsec/ipsec.hpp"
 
 #include <array>
@@ -34,7 +34,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::esp_datagram_bytes;
     using ghostlock::backend::cve_2026_43284::esp_decrypt_block;
     using ghostlock::backend::cve_2026_43284::esp_verify_datagram;
-    using ghostlock::backend::cve_2026_43284::hmac_sha256;
+    using ghostlock::support::hmac_sha256;
     using ghostlock::backend::cve_2026_43284::kEspDatagramBytes;
     using ghostlock::backend::cve_2026_43284::zeroize_bytes;
 

@@ -40,8 +40,16 @@ namespace {
         Document doc;
         doc.release = "6.6.77-owner-schema";
         for (const auto &field : Cve2026_43499Schema::kFields) {
+            /* S4 R6b: the combination token is a String field; a numeric value
+             * would be a type mismatch. */
+            if (field.wire == ghostlock::profile::WireKind::String) continue;
             add(doc, field.section, field.key, 1ULL);
         }
+        Section *backend_section = doc.find_section("backend.cve_2026_43499");
+        if (backend_section == nullptr) {
+            backend_section = &doc.append_section("backend.cve_2026_43499");
+        }
+        backend_section->add_text("steps", "mcast_shizuku");
         return doc;
     }
 
@@ -49,7 +57,6 @@ namespace {
      * sections). Retained as the owner-schema value fixture. */
     [[maybe_unused]] void fill_all(kernel_offsets &v) {
         v.meta.kernel_major = 6;
-        v.meta.fallback_route = ghostlock::profile::kRouteSelectStack;
         v.meta.safe_mode = true;
         v.task.prio = 101;
         v.task.normal_prio = 102;
@@ -206,8 +213,14 @@ int main() {
             add(doc, field.section, field.key, 7ULL);
         }
         for (const auto &field : Cve2026_43499Schema::kFields) {
+            if (field.wire == ghostlock::profile::WireKind::String) continue;
             add(doc, field.section, field.key, 3ULL);
         }
+        Section *union_backend = doc.find_section("backend.cve_2026_43499");
+        if (union_backend == nullptr) {
+            union_backend = &doc.append_section("backend.cve_2026_43499");
+        }
+        union_backend->add_text("steps", "mcast_rootchild");
         /* No (section, key) is declared by both owners. */
         for (const auto &p : ghostlock::platform::abi::Schema::kFields) {
             for (const auto &b : Cve2026_43499Schema::kFields) {

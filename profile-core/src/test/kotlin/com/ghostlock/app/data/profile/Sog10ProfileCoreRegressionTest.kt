@@ -2,6 +2,7 @@ package com.ghostlock.app.data.profile
 
 import com.ghostlock.app.data.HoconSupport
 import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.ProfileLayout
 import com.ghostlock.app.data.ValueMap
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.route.RouteKind
@@ -26,11 +27,10 @@ class Sog10ProfileCoreRegressionTest {
         assertNull(cred["usage_offset"])
         assertEquals(47529984L, (builtin["offset"].asValueMap()!!["empty_zero_page"] as Number).toLong())
         assertEquals(setOf("multicast_waiter"), builtin["route"].asValueMap()!!.keys)
-        assertEquals(setOf("to"), builtin["fallback"].asValueMap()!!.keys)
+        assertNull(builtin["fallback"])
 
         val tuning = parse(File(profiles, "execution-tuning.conf"))["execution"].asValueMap()
         val route = "multicast_waiter"
-        val fallback = "none"
 
         val presets = RouteKind.entries.mapNotNull { kind ->
             val file = File(profiles, "execution-${kind.token.replace('_', '-')}.conf")
@@ -52,13 +52,12 @@ class Sog10ProfileCoreRegressionTest {
             routePresets = presets,
         )
         val merged = resolve(builtin)
-        assertEquals(emptyList<ConfigError>(), ProfileResolver.validateMerged(merged, route, fallback))
+        assertEquals(emptyList<ConfigError>(), ProfileResolver.validateMerged(merged, route))
 
         fun document(profile: ValueMap) = NativeProfileDocument.from(
             release = release,
             route = route,
-            fallbackTo = fallback,
-            value = { path -> ProfileResolver.nativeValue(profile, route, fallback, path) },
+            value = { path -> ProfileResolver.nativeValue(profile, route, path) },
             text = { path -> ProfileResolver.nativeText(profile, path) },
             bool = { path -> ProfileResolver.nativeBool(profile, path) },
         )
@@ -83,8 +82,8 @@ class Sog10ProfileCoreRegressionTest {
         val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
         assertEquals(release, decoded.release)
         assertEquals("multicast_waiter", decoded.route)
-        assertEquals(Glkv3Value.UInt(0u), entry(decoded, "common", "fallback_route"))
-        assertEquals(Glkv3Value.UInt(2u), entry(decoded, "backend.cve_2026_43499", "steps"))
+        assertNull(entryOrNull(decoded, "common", "fallback_route"))
+        assertEquals(Glkv3Value.Str("mcast_rootchild"), entry(decoded, "backend.cve_2026_43499", "steps"))
         assertNull(entryOrNull(decoded, "platform.abi.kernel", "kernel_phys_load"))
         assertEquals(Glkv3Value.UInt(0u), entry(decoded, "platform.abi.cred", "usage_offset"))
         assertEquals(
@@ -137,9 +136,13 @@ class Sog10ProfileCoreRegressionTest {
         ?.firstOrNull { it.key == key }
         ?.value
 
-    private fun parse(file: File) = requireNotNull(
-        HoconSupport.parseValue(file.readText()).asValueMap(),
-    ) { "cannot parse ${file.path}" }
+    private fun parse(file: File): ValueMap {
+        val parsed = requireNotNull(
+            HoconSupport.parseValue(file.readText()).asValueMap(),
+        ) { "cannot parse ${file.path}" }
+        ProfileLayout.applyNormalize(parsed)
+        return parsed
+    }
 
     private fun repoRoot(): File {
         var current = File(System.getProperty("user.dir")).canonicalFile

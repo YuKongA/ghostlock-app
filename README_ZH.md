@@ -18,7 +18,7 @@
 
 打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
 
-执行链由 `Pipeline<Backend, Terminal>` 在编译期固定。catalog 收录 3 个稀疏 triple：`cve_2026_43499 x {w1_w3, w1_w2} x root_child`（可用）与 `cve_2026_43284 x pagecache_write x umh_forward`（已接线、未过真机，因此 fail-closed）。terminal 仅 `root_child` 可用（`umh_forward` 的执行 policy 已落但未验证）；backend 仅 `cve_2026_43499` 可用，其余 CVE 为纯头占位。route（`select_stack` / `tcp_zerocopy` / `multicast_waiter`）是 backend 内部策略、由解析后的 profile 选择，不是独立组件。路线是双核竞争：6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。CPU 对同样由解析后的 profile 决定。
+执行链由 `Pipeline<Backend, Terminal>` 在编译期固定。选择是 **`backend.<id>.steps` 里的唯一组合 token**；`contract::kCombinationCatalog` 是唯一权威——**12 token = 7 可用 + 5 计划**。可用：`cve_2026_43499` 的六个 `{multicast_waiter, select_stack, tcp_zerocopy} × {rootchild, shizuku}` 与 `cve_2026_43284 × umh`；计划项（`available=false`）：`{mcast, pselect, tcp}_umh` 与 `cve_2026_43284 × {rootchild, shizuku}`——可解析，但选择门禁拒绝、App 置灰。两个 terminal（`root_child`、`umh_forward`）与两个 backend（`cve_2026_43499`、`cve_2026_43284`）均可用，其余 CVE 为纯头占位。route（`select_stack` / `tcp_zerocopy` / `multicast_waiter`）是**由 token 派生**的 backend 内部策略，不是独立组件。路线是双核竞争：6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。CPU 对同样由解析后的 profile 决定。
 
 ## 命令行调试
 
@@ -32,6 +32,8 @@ adb push build/kernel-profiles/<release>.bin /data/local/tmp/profile.bin
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
+
+CLI 只承载**传输 / 运行控制 / 安全 / 可观测**（S4 R2b）：`--ghostlock-app-call`、`--load-prebuilt-profile <bin>`、`--enable-status-record`、`--dump-kernel-log <dir>`、`--force-attack`、`--allow-dev-target`（只放宽**绑定期** carrier 校验），以及只读诊断 `--probe-cve-2026-43284 <ko>` 与 `--plugin-probe <path.so> [--expect-sha256 <hex>]`。**选择与策略绝不来自 CLI**：staged 入口与 `--cve43284-*` 选择器已删除，未知参数直接 fail-closed。
 
 ## 偏移量提取
 
@@ -77,46 +79,42 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 
 ### 外部导入偏移，免去重新构建应用
 
-新增内核不再需要重新打包 App：点击 **导入 offsets.conf (HOCON)** 选择提取器产出的扁平 `.conf`，旧 JSON 报告仍可通过 **导入 offsets.json (v1)** 导入。v1 JSON 由 App 侧转换，无需再把文件推到设备；native 接收 App 经 stdin 传入的 GLKv3 文档（MessagePack，`schema == 3`；v2 只读），并先按当前 `uname -r` 匹配解析后的 profile，匹配成功才视为受支持。多次导入会合并；新文件含已存内核时，App 会先询问是否覆盖。
+新增内核不再需要重新打包 App：点击 **导入 offsets.conf (HOCON)** 选择提取器产出的扁平 `.conf`，旧 JSON 报告仍可通过 **导入 offsets.json (v1)** 导入。v1 JSON 由 App 侧转换，无需再把文件推到设备；native 接收 App 经 stdin 传入的 GLKv3 文档（MessagePack 根 map，`schema == 3`；已删除的 v2 二进制一律拒绝），并先按当前 `uname -r` 匹配解析后的 profile，匹配成功才视为受支持。多次导入会合并；新文件含已存内核时，App 会先询问是否覆盖。
 
 App 也能直接生成这份 profile：**解析完整包链接**（完整 OTA zip 的 `http(s)` 链接）与 **解析镜像**（`boot.img` + 可选 `xbl_config.img`）都在 App 进程内跑提取器，成功后把一份扁平 `.conf` 写入 App 数据目录：
 
 ```hocon
-# GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
-release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
-schema_version = 1
-kernel_major = 6
-backend {
-  steps = "w1_w3"
-}
-kernel_phys_load = 0xC7800000
-route {
-  select_stack {
-    waiter_shift = 0
+# GhostLock kernel profile（HOCON，canonical owner-qualified 布局）。
+ghostlock {
+  schema_version = 3
+  release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
+  selection {
+    backend  = "cve_2026_43499"
+    terminal = "root_child"
+  }
+  common { kernel_major = 6 }
+  platform {
+    abi {
+      kernel { kernel_phys_load = 0xC7800000 }
+      task_struct { prio = 148, cred = 2304 }
+    }
+  }
+  backend {
+    cve_2026_43499 {
+      steps = "mcast_rootchild"        # 唯一对用户可见的选择 token
+      route { multicast_waiter { waiter_shift = 0 } }
+      cred { caps_offset = 48, copy_size = 136, caps_count = 5, caps_value = -1 }
+      offset { init_task = 37801728, init_cred = 37891184 }
+    }
   }
 }
-fallback {
-  to = "none"
-}
-kernelsnitch {
-  collisions = 4
-}
-task_struct {
-  prio = 148
-  cred = 2304
-}
-cred {
-  caps_offset = 48
-  copy_size = 136
-  usage_value = 1
-  caps_count = 5
-  caps_value = -1
-}
-offset {
-  init_task = 37801728
-  init_cred = 37891184
-}
 ```
+
+完整字段表见 [PROFILE_SCHEMA_ZH.md](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md)；提取器产出同一套 canonical 布局。
+
+## 插件（P1）
+
+在设置页导入对策 `.so`：App 把它复制到自己的 no-backup `countermeasures/` 根目录、本地算哈希，并通过**只读 native 探针**读取自描述（`--plugin-probe`，绝不在 JVM 内 `dlopen`）。只有 **enabled=true** 的插件才会以 `plugin.<id>.*` 写进 GLKv3 文档（默认关闭；`params.*` 的具体类型由插件自己的描述符决定；文档里出现 `enabled=false` 一律拒绝）。**P1 只交付「声明 → 校验 → 绑定」的 wire 层**：加载模块并按 stage 调用它的运行时**尚未接线**（见 branch-plan 的 task-9，需单独的 L 级设计与真机门禁）。
 
 ## 来源与许可证
 

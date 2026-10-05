@@ -98,7 +98,10 @@ int main() {
         assert(init != nullptr && init->raw == 0x20dc000);
         const ghostlock::profile::Value *steps =
                 doc.find_value("backend.cve_2026_43499", "steps");
-        assert(steps != nullptr && steps->raw == 2);
+        /* The legacy uint id 2 is rewritten to the equivalent token. */
+        assert(steps != nullptr && steps->is_text);
+        assert(steps->text == "pselect_rootchild");
+        assert(doc.combination != 0);
         unlink(path.c_str());
     }
 

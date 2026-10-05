@@ -7,8 +7,17 @@ import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
 import com.ghostlock.app.data.Cve2026_43284Fields
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.plugin.PluginConfigValidator
+import com.ghostlock.app.data.plugin.PluginImportResult
+import com.ghostlock.app.data.plugin.PluginParamType
+import com.ghostlock.app.data.plugin.PluginValue
+import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.isAvailable
+import com.ghostlock.app.data.backend
 import com.ghostlock.app.data.resolveExecutionSelection
+import com.ghostlock.app.data.steps
+import com.ghostlock.app.data.toExecutionMode
 import com.ghostlock.app.data.requiresShizuku
 import com.ghostlock.app.data.runRequiresShizuku
 import com.ghostlock.app.domain.model.CpuPair
@@ -46,6 +55,9 @@ sealed interface GhostlockEffect {
     data class CreateProfileDocument(val suggestedName: String) : GhostlockEffect
     data class Share(val uri: String) : GhostlockEffect
     data class Toast(val resourceId: Int) : GhostlockEffect
+
+    /** A localized message with one string argument (the UI resolves it). */
+    data class ToastArgs(val resourceId: Int, val arg: String) : GhostlockEffect
     data class Clipboard(val text: String) : GhostlockEffect
     data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
     data object OpenShizuku : GhostlockEffect
@@ -53,7 +65,7 @@ sealed interface GhostlockEffect {
 
 private const val OverwriteSummaryLimit = 12
 
-enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage, PayloadImage, UefiImage }
+enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage, PayloadImage, UefiImage, PluginModule }
 
 private enum class ParseDialogStage { Mode, Attach }
 
@@ -150,7 +162,6 @@ class GhostlockViewModel(
                 else config.general.associate { field -> field.path to field.value.toString() },
                 profileInvalidPaths = config.invalidPaths,
                 profileRoute = config.route,
-                profileFallback = config.fallbackTo,
                 activeBuiltinProfile = profileController.activeBuiltinRelease(),
                 activeUserProfile = profileController.activeUserProfile(),
                 customCpuPair = customCpuPairOf(config),
@@ -176,14 +187,6 @@ class GhostlockViewModel(
         mutableState.update { it.copy(profileRoute = route) }
     }
 
-    /** index 0 disables the fallback; the rest map to ProfileConfig.Routes. */
-    fun onFallbackChanged(index: Int) {
-        val fallback = if (index <= 0) "none" else ProfileConfig.Routes.getOrNull(index - 1)
-        val current = state.value.profileFallback
-        if (fallback == current || (fallback == "none" && current == null)) return
-        mutableState.update { it.copy(profileFallback = fallback) }
-    }
-
     /** General edits are draft-only; saving the session commits them. */
     fun updateExecutionField(path: String, value: String) {
         mutableState.update {
@@ -204,6 +207,7 @@ class GhostlockViewModel(
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
+                pluginsScreenVisible = false,
             )
         }
         loadExecutionProfile()
@@ -229,6 +233,7 @@ class GhostlockViewModel(
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
+                pluginsScreenVisible = false,
             )
         }
     }
@@ -242,6 +247,7 @@ class GhostlockViewModel(
                 builtinScreenVisible = false,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
+                pluginsScreenVisible = false,
             )
         }
         loadExecutionProfile()
@@ -259,6 +265,136 @@ class GhostlockViewModel(
         }
     }
 
+    /**
+     * P1: opens the imported-plugin page. The registry comes from the
+     * repository (no-backup store); the plugin schemas come from the native
+     * probe, which is the P1 second half, so rows stay greyed until then.
+     */
+    /** P1: pick a plugin module; the probe runs after the pick. */
+    fun onImportPlugin() {
+        send(GhostlockEffect.PickDocument(DocumentRequest.PluginModule))
+    }
+
+    fun onOpenPlugins() {
+        mutableState.update {
+            it.copy(
+                advancedScreenVisible = true,
+                pluginsScreenVisible = true,
+                aboutVisible = false,
+                parametersVisible = false,
+                loadConfigVisible = false,
+                builtinScreenVisible = false,
+                profileOverrideVisible = false,
+                advancedOverrideVisible = false,
+            )
+        }
+        refreshPlugins()
+    }
+
+    fun onClosePlugins() {
+        mutableState.update { it.copy(pluginsScreenVisible = false) }
+    }
+
+    /** Persists an enable/disable toggle and republishes the registry rows. */
+    fun onPluginEnabledChanged(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val entries = runCatching { repository.setPluginEnabled(id, enabled) }.getOrNull()
+                ?: return@launch
+            mutableState.update { it.copy(pluginRows = pluginRows(entries, emptyMap())) }
+        }
+    }
+
+    private fun refreshPlugins() {
+        viewModelScope.launch {
+            val entries = runCatching { repository.pluginEntries() }.getOrElse { emptyList() }
+            val importAvailable = runCatching { repository.pluginImportAvailable() }
+                .getOrDefault(false)
+            /* The probe re-describes every installed module against its pinned
+             * digest, so the page renders the schema the module declares now. */
+            val descriptors = runCatching { repository.describePlugins() }
+                .getOrDefault(emptyMap())
+            /* The user's explicit overrides come from the controller's store;
+             * the descriptor supplies the defaults and the types. */
+            val overrides = runCatching { repository.pluginParamOverrides() }
+                .getOrDefault(emptyMap())
+            mutableState.update {
+                it.copy(
+                    pluginRows = pluginRows(entries, descriptors),
+                    pluginParams = descriptors.mapValues { (id, descriptor) ->
+                        val entry = entries.firstOrNull { it.id == id }
+                        val applied = overrides[id].orEmpty()
+                        val errors = PluginConfigValidator.validate(
+                            descriptor,
+                            enabled = entry?.enabled == true,
+                            stage = entry?.stage,
+                            overrides = applied,
+                        )
+                        pluginParamRows(descriptor, applied, errors)
+                    },
+                    pluginImportEnabled = importAvailable,
+                )
+            }
+        }
+    }
+
+    /**
+     * P1: edits one plugin parameter through the shared text dialog. The draft
+     * is validated against the descriptor before it is stored; an empty draft
+     * clears the override, so the descriptor default applies again.
+     */
+    fun onPluginParamEdit(id: String, name: String, current: String) {
+        mutableState.update {
+            it.copy(
+                pluginParamEditId = id,
+                pluginParamEditName = name,
+                dialogVisible = true,
+                dialogType = DialogType.INPUT,
+                dialogTitleRes = R.string.plugin_param_edit,
+                dialogMessage = name,
+                dialogMessageRes = 0,
+                dialogInput = current,
+                dialogConfirmLabelRes = R.string.plugin_param_edit,
+            )
+        }
+    }
+
+    /** P1: a bool parameter is stored straight from its switch. */
+    fun onPluginBoolChanged(id: String, name: String, value: Boolean) {
+        viewModelScope.launch {
+            runCatching { repository.setPluginParam(id, name, PluginValue.Bool(value)) }
+            refreshPlugins()
+        }
+    }
+
+    private fun setPluginParam(id: String, name: String, text: String) {
+        val type = state.value.pluginParams[id]?.firstOrNull { it.name == name }?.type
+        if (type == null) {
+            send(GhostlockEffect.Toast(R.string.plugin_param_invalid))
+            return
+        }
+        val value = if (text.isBlank()) null else pluginValueFromText(type, text)
+        if (text.isNotBlank() && value == null) {
+            send(GhostlockEffect.Toast(R.string.plugin_param_invalid))
+            return
+        }
+        viewModelScope.launch {
+            runCatching { repository.setPluginParam(id, name, value) }
+            refreshPlugins()
+        }
+    }
+
+    /** Text -> typed value for the editor; null when the text is invalid. */
+    private fun pluginValueFromText(type: PluginParamType, text: String): PluginValue? {
+        val trimmed = text.trim()
+        return when (type) {
+            PluginParamType.UInt -> trimmed.toULongOrNull()?.let { PluginValue.UInt(it) }
+            PluginParamType.Int -> trimmed.toLongOrNull()?.let { PluginValue.Int(it) }
+            /* Bool is edited with a switch, so no text spelling is accepted. */
+            PluginParamType.Bool -> null
+            PluginParamType.Str -> PluginValue.Str(text)
+        }
+    }
+
     /** Opens the configuration-loading screen and refreshes the stored list. */
     fun onOpenLoadConfig() {
         mutableState.update {
@@ -268,6 +404,7 @@ class GhostlockViewModel(
                 userProfileDetail = null,
                 profileOverrideVisible = false,
                 advancedOverrideVisible = false,
+                pluginsScreenVisible = false,
             )
         }
         viewModelScope.launch(Dispatchers.IO) { refreshUserProfiles() }
@@ -545,7 +682,7 @@ class GhostlockViewModel(
         }
     }
 
-    /** Writes the draft (general, route/fallback, advanced) into the session. */
+    /** Writes the draft (general, route, advanced) into the session. */
     private suspend fun commitDraftToSession(): ProfileConfig? {
         val snapshot = kernelSnapshot ?: return null
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return null
@@ -556,7 +693,6 @@ class GhostlockViewModel(
         }.toMap()
         session.updateGeneral(release, pair, general)
         session.updateRoute(release, pair, mutableState.value.profileRoute)
-        session.updateFallback(release, pair, mutableState.value.profileFallback)
         /* General edits share the execution.* tree paths. The advanced rebuild
          * replaces the whole override entry, so the drafts must be merged in or
          * the general edits would be dropped. */
@@ -786,7 +922,6 @@ class GhostlockViewModel(
                 },
                 profileInvalidPaths = config.invalidPaths,
                 profileRoute = config.route,
-                profileFallback = config.fallbackTo,
                 activeBuiltinProfile = profileController.activeBuiltinRelease(),
                 activeUserProfile = profileController.activeUserProfile(),
             )
@@ -827,7 +962,24 @@ class GhostlockViewModel(
         mutableState.update { it.copy(forceAttackTestEnabled = enabled) }
     }
 
+    /**
+     * Compatibility entry point: maps the mode onto a catalogued combination,
+     * preserving the selected route, and delegates to [setCombination] so the
+     * single selection authority never desyncs (the W3 hint uses this to switch
+     * to Shizuku). An off-catalogue mode keeps the legacy path.
+     */
     fun setExecutionMode(mode: ExecutionMode) {
+        val current = repository.currentCombination()
+        val targetBackend = mode.backend
+        val targetRoute = if (targetBackend == BackendKind.Cve2026_43499) current.route else null
+        val target = CombinationCatalog.specs.firstOrNull {
+            it.available && it.backend == targetBackend && it.steps == mode.steps &&
+                it.route == targetRoute
+        }
+        if (target != null) {
+            setCombination(target)
+            return
+        }
         repository.setExecutionMode(mode)
         mutableState.update { it.copy(executionMode = mode) }
         // The mode picks the backend/StepSet/terminal baked into the document,
@@ -838,13 +990,42 @@ class GhostlockViewModel(
         viewModelScope.launch { refreshSnapshot() }
     }
 
-    /** Unavailable backends are never selected, mirroring the selector. */
+    /** Compatibility entry point for the backend selector; delegates likewise. */
     fun setBackendKind(kind: BackendKind) {
         if (!kind.available) return
+        val current = repository.currentCombination()
+        val targetRoute = if (kind == BackendKind.Cve2026_43499) current.route else null
+        val target = CombinationCatalog.specs.firstOrNull {
+            it.available && it.backend == kind && it.steps == current.steps &&
+                it.route == targetRoute
+        } ?: CombinationCatalog.availableForBackend(kind).firstOrNull()
+        if (target != null) {
+            setCombination(target)
+            return
+        }
         repository.setBackendKind(kind)
         mutableState.update { it.copy(backendKind = kind) }
         // The built document carries the header id, so re-resolve it.
         loadExecutionProfile(preserveEditing = true)
+    }
+
+    /**
+     * S4 R6b: the combination token is the single selection authority. The
+     * derived backend/execution mode are kept in the state for the run button
+     * and the activation card, and the document is re-resolved.
+     */
+    fun setCombination(spec: CombinationSpec) {
+        if (!spec.available) return
+        repository.setCombination(spec)
+        mutableState.update {
+            it.copy(
+                combination = spec,
+                backendKind = spec.backend,
+                executionMode = spec.toExecutionMode(),
+            )
+        }
+        loadExecutionProfile(preserveEditing = true)
+        viewModelScope.launch { refreshSnapshot() }
     }
 
     fun onRun() = runExploit()
@@ -998,11 +1179,34 @@ class GhostlockViewModel(
 
     fun onDocumentResult(request: DocumentRequest, uri: String) {
         when (request) {
+            DocumentRequest.PluginModule -> importPlugin(uri)
             DocumentRequest.BootImage -> stageBoot(uri)
             DocumentRequest.XblImage -> stageXbl(uri)
             DocumentRequest.UefiImage -> stageUefi(uri)
             DocumentRequest.PayloadImage -> stagePayload(uri)
             DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson -> Unit
+        }
+    }
+
+    /**
+     * P1 import: the repository stages, hashes and probes the picked module; the
+     * page is refreshed with the probe result and the outcome is toasted.
+     */
+    private fun importPlugin(uri: String) {
+        viewModelScope.launch {
+            val result = runCatching {
+                repository.importPlugin(uri, uri.substringAfterLast('/'))
+            }.getOrElse { PluginImportResult.Rejected(it.message ?: "cannot import the plugin") }
+            refreshPlugins()
+            when (result) {
+                is PluginImportResult.Imported -> send(
+                    GhostlockEffect.Toast(R.string.plugin_imported),
+                )
+
+                is PluginImportResult.Rejected -> send(
+                    GhostlockEffect.ToastArgs(R.string.plugin_import_failed, result.reason),
+                )
+            }
         }
     }
 
@@ -1012,6 +1216,7 @@ class GhostlockViewModel(
             DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson ->
                 importDocuments(uris)
 
+            DocumentRequest.PluginModule -> uris.firstOrNull()?.let(::importPlugin)
             DocumentRequest.BootImage -> uris.firstOrNull()?.let(::stageBoot)
             DocumentRequest.XblImage -> uris.firstOrNull()?.let(::stageXbl)
             DocumentRequest.UefiImage -> uris.firstOrNull()?.let(::stageUefi)
@@ -1041,8 +1246,11 @@ class GhostlockViewModel(
     fun onDialogConfirm(value: String) {
         val dialogType = state.value.dialogType
         val renameTarget = state.value.userProfileRenameTarget
+        val pluginId = state.value.pluginParamEditId
+        val pluginName = state.value.pluginParamEditName
         dismissDialog(clearConfirmation = false)
         when {
+            pluginId != null && pluginName != null -> setPluginParam(pluginId, pluginName, value)
             renameTarget != null -> renameUserProfile(renameTarget, value)
             dialogType == DialogType.INPUT -> parseUrl(value)
             dialogType == DialogType.CONFIRM -> setExecutionMode(ExecutionMode.Shizuku)
@@ -1085,6 +1293,7 @@ class GhostlockViewModel(
                 forceAttackTestEnabled = snapshot.forceAttackTest,
                 executionMode = snapshot.executionMode,
                 backendKind = snapshot.backendKind,
+                combination = repository.currentCombination(),
                 shizukuStatus = snapshot.shizukuStatus,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,
@@ -1450,6 +1659,8 @@ class GhostlockViewModel(
                 dialogConfirmLabelRes = R.string.parse_start,
                 dialogDocUrl = null,
                 userProfileRenameTarget = null,
+                pluginParamEditId = null,
+                pluginParamEditName = null,
             )
         }
     }

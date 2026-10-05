@@ -24,7 +24,7 @@ CXX_SRCS := \
   core/profile/entry.cpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+  core/support/sha256.cpp \
   core/backend/cve_2026_43284/session_frame.cpp \
   core/backend/cve_2026_43284/pagecache/pagecache.cpp \
   core/backend/cve_2026_43284/pagecache/splice_io.cpp \
@@ -40,6 +40,7 @@ CXX_SRCS := \
   core/backend/cve_2026_43284/backend_terminal.cpp \
   core/backend/cve_2026_43284/diagnostic.cpp \
   core/backend/cve_2026_43284/execution_binding.cpp \
+  core/backend/cve_2026_43284/entry.cpp \
   core/backend/cve_2026_43284/real_ops.cpp \
   core/backend/cve_2026_43284/lkm_window.cpp \
   core/backend/cve_2026_43284/stage_runner.cpp \
@@ -51,7 +52,8 @@ CXX_SRCS := \
   core/platform/vivo/vr_guard.cpp \
   core/platform/vivo/vr_task_tag.cpp \
   core/plugin/loader.cpp \
-  core/plugin/sha256.cpp \
+  core/plugin/probe.cpp \
+  core/plugin/wire.cpp \
   core/plugin/kernel_channel.cpp \
   core/plugin/host_ops.cpp \
   core/race/threads.cpp \
@@ -73,7 +75,7 @@ CXX_SRCS := \
   core/backend/cve_2026_43499/primitives.cpp \
   core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_script.cpp \
-  core/terminal/root_child.cpp \
+  core/backend/cve_2026_43499/terminal/root_child.cpp \
   core/terminal/umh_forward.cpp \
   core/backend/cve_2026_43499_backend.cpp \
   core/plugin/controller.cpp \
@@ -163,7 +165,7 @@ $(MPACK_OBJ): $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(dir $@)
 	$(NDK_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
 
-.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest lint-tidy
+.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest combination-manifest vocabulary-manifest lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
 
@@ -192,6 +194,8 @@ NATIVE_HOST_TESTS := \
   profile_registry_test \
   profile_manifest_v3_test \
   glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
+  combination_token_test combination_manifest_test support_cli_test \
+  plugin_probe_test plugin_wire_test vocabulary_manifest_test \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
   cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
@@ -224,7 +228,7 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/backend/cve_2026_43499_backend.cpp \
   core/backend/cve_2026_43499/steps.cpp \
   core/backend/cve_2026_43499/backend_profile.cpp \
-  core/terminal/root_child.cpp \
+  core/backend/cve_2026_43499/terminal/root_child.cpp \
   core/session/core_session.cpp \
   core/backend/cve_2026_43499_state.cpp \
   core/backend/cve_2026_43499/backend_offsets.cpp \
@@ -328,7 +332,9 @@ CM_PLUGIN_DIR := $(HOST_BUILD_DIR)/cm
 CM_PLUGIN_SRCS := \
   core/tests/fixtures/cm_test_plugin.c \
   core/tests/fixtures/cm_test_plugin_badabi.c \
-  core/tests/fixtures/cm_test_plugin_missing_entry.c
+  core/tests/fixtures/cm_test_plugin_missing_entry.c \
+  core/tests/fixtures/cm_test_plugin_schema.c \
+  core/tests/fixtures/cm_test_plugin_v1size.c
 CM_PLUGIN_SOS := $(patsubst core/tests/fixtures/%.c,$(CM_PLUGIN_DIR)/%.so,$(CM_PLUGIN_SRCS))
 
 $(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/abi/glk_contract_abi.h Makefile
@@ -336,15 +342,42 @@ $(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/abi/glk_contract_ab
 	$(HOST_CC) -std=c99 -Wall -Wextra -fPIC -shared -Icore $< -o $@
 	@chmod 755 $@
 
+# S4 P1 read-only plugin probe: real dlopen against the C99 fixtures, the
+# shared support/sha256.cpp and the loader vocabulary. The fixture set includes
+# a v2 module with param/extract schema and a v1-size module whose P1 tail is
+# poisoned, so the size gate is proven rather than assumed.
+# S4 P1 plugin wire: wildcard declaration + fail-closed document validation,
+# header-only apart from plugin/wire.cpp (no loader, no dlopen needed).
+$(HOST_BUILD_DIR)/plugin_wire_test: core/tests/plugin_wire_test.cpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/profile/glkv3.hpp core/profile/document.hpp \
+  core/contract/abi/glk_contract_abi.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_wire_test.cpp \
+	  core/plugin/wire.cpp -o $@
+
+$(HOST_BUILD_DIR)/plugin_probe_test: core/tests/plugin_probe_test.cpp \
+  core/plugin/probe.cpp core/plugin/probe.hpp \
+  core/plugin/loader.cpp core/plugin/loader.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp \
+  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+  $(CM_PLUGIN_SOS)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
+	  -DGLK_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
+	  core/tests/plugin_probe_test.cpp \
+	  core/plugin/probe.cpp core/plugin/loader.cpp core/support/sha256.cpp \
+	  -pthread $(HOST_DL_LIB) -o $@
+
 $(HOST_BUILD_DIR)/countermeasure_loader_test: core/tests/countermeasure_loader_test.cpp \
   core/plugin/loader.cpp core/plugin/loader.hpp \
-  core/plugin/sha256.cpp core/plugin/sha256.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp \
   core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h $(CM_PLUGIN_SOS)
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
 	  -DGLK_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
 	  core/tests/countermeasure_loader_test.cpp \
-	  core/plugin/loader.cpp core/plugin/sha256.cpp \
+	  core/plugin/loader.cpp core/support/sha256.cpp \
 	  -pthread $(HOST_DL_LIB) -o $@
 
 # CM-3 runtime registry + controller external dispatch: the registry is
@@ -509,6 +542,38 @@ $(HOST_BUILD_DIR)/profile_registry_test: core/tests/profile_registry_test.cpp \
 profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_v3_test
 	$(HOST_BUILD_DIR)/profile_manifest_v3_test --write
 
+# Native is the SSOT for the combination-token whitelist; this test exports the
+# contract::kCombinationCatalog rows to combination-manifest.tsv (app test
+# resource + profile-core runtime resource) and checks them in. The Kotlin
+# catalogue parses the runtime resource, so a token/availability change lands in
+# exactly one place.
+$(HOST_BUILD_DIR)/combination_manifest_test: core/tests/combination_manifest_test.cpp \
+  core/contract/identity.hpp core/contract/model.hpp core/pipeline/component_catalog.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/combination_manifest_test.cpp -o $@
+
+combination-manifest: $(HOST_BUILD_DIR)/combination_manifest_test
+	$(HOST_BUILD_DIR)/combination_manifest_test --write
+
+# S4 task-6: the three component vocabularies (backend/frontend/stepset) are
+# exported from contract/identity.hpp to vocabulary-manifest.tsv (app test +
+# profile-core runtime), so Kotlin stops carrying its own expectation tables.
+$(HOST_BUILD_DIR)/vocabulary_manifest_test: core/tests/vocabulary_manifest_test.cpp \
+  core/contract/identity.hpp core/pipeline/component_catalog.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/vocabulary_manifest_test.cpp -o $@
+
+vocabulary-manifest: $(HOST_BUILD_DIR)/vocabulary_manifest_test
+	$(HOST_BUILD_DIR)/vocabulary_manifest_test --write
+
+# S4 R2b CLI surface: transport / run control / safety / observability only.
+# Pure support/cli.cpp, so the test links no attack runtime and no NDK.
+$(HOST_BUILD_DIR)/support_cli_test: core/tests/support_cli_test.cpp \
+  core/support/cli.cpp core/support/cli.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/support_cli_test.cpp \
+	  core/support/cli.cpp -o $@
+
 # GLKv3 codec: the host test compiles the codec against the vendored MPack
 # amalgamation. MPack is built as C with -w (third-party warning isolation).
 $(HOST_BUILD_DIR)/glkv3_codec_test: core/tests/glkv3_codec_test.cpp core/profile/glkv3.cpp core/profile/glkv3.hpp $(MPACK_SRC) $(MPACK_HDR)
@@ -571,21 +636,21 @@ $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
 # production dependency.
 $(HOST_BUILD_DIR)/session_frame_test: core/tests/session_frame_test.cpp   core/backend/cve_2026_43284/session_frame.cpp   core/backend/cve_2026_43284/session_frame.hpp   core/backend/cve_2026_43284/ipsec/ipsec.cpp   core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+  core/support/sha256.cpp core/support/sha256.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/session_frame_test.cpp 	  core/backend/cve_2026_43284/session_frame.cpp 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp 	  core/backend/cve_2026_43284/ipsec/aes256.cpp 	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/session_frame_test.cpp 	  core/backend/cve_2026_43284/session_frame.cpp 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp 	  core/backend/cve_2026_43284/ipsec/aes256.cpp 	  core/support/sha256.cpp -o $@
 
 # B5-2 IpSec/ESP primitives: AES-256 (FIPS-197), HMAC-SHA256 (RFC 4231) and
 # the ESP/CBC IV model. Links the same units as the device build.
 $(HOST_BUILD_DIR)/cve_2026_43284_ipsec_test: core/tests/cve_2026_43284_ipsec_test.cpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+  core/support/sha256.cpp core/support/sha256.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_ipsec_test.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+	  core/support/sha256.cpp -o $@
 
 # B5-3 page-cache block write: the executable pagecache.cpp linked against
 # the real ipsec units. splice_io.cpp is device-only; the host test binds a fake
@@ -595,13 +660,13 @@ $(HOST_BUILD_DIR)/cve_2026_43284_pagecache_test: core/tests/cve_2026_43284_pagec
   core/backend/cve_2026_43284/pagecache/splice_io.hpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp
+  core/support/sha256.cpp core/support/sha256.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_pagecache_test.cpp \
 	  core/backend/cve_2026_43284/pagecache/pagecache.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp -o $@
+	  core/support/sha256.cpp -o $@
 
 # B5-4 LKM KMI policy, .ko .modinfo precheck and UMH late-load argv: host-only,
 # no device and no module load. The .ko fixtures are synthesized in the test.
@@ -674,7 +739,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_backend_terminal_test: core/tests/cve_2026_4328
   core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp \
   core/terminal/terminal_input.hpp core/terminal/umh_command.hpp core/terminal/root_program.hpp \
   core/session/core_session.cpp core/session/core_session.hpp core/contract/capabilities.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -685,7 +750,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_backend_terminal_test: core/tests/cve_2026_4328
 	  core/backend/cve_2026_43284/lkm/lkm_image.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/support/sha256.cpp \
 	  core/platform/device_facts.cpp \
 	  core/session/core_session.cpp -o $@
 
@@ -709,7 +774,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diag
   core/backend/cve_2026_43284/pagecache/splice_io.hpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp \
   core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp \
   core/backend/cve_2026_43284/lkm/lkm_image.cpp core/backend/cve_2026_43284/lkm/lkm_image.hpp \
   core/platform/device_facts.cpp core/platform/device_facts.hpp \
@@ -735,7 +800,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diag
 	  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/support/sha256.cpp \
 	  core/platform/device_facts.cpp \
 	  core/support/cli.cpp \
 	  core/support/run_state.cpp -o $@
@@ -763,7 +828,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_stage_runner_test: core/tests/cve_2026_43284_st
   core/backend/cve_2026_43284/pagecache/splice_io.hpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/ipsec.hpp \
   core/backend/cve_2026_43284/ipsec/aes256.cpp core/backend/cve_2026_43284/ipsec/aes256.hpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/ipsec/hmac_sha256.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp \
   core/backend/cve_2026_43284/session_frame.cpp core/backend/cve_2026_43284/session_frame.hpp \
   core/platform/device_facts.cpp core/platform/device_facts.hpp \
   core/support/cli.cpp core/support/cli.hpp \
@@ -789,7 +854,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_stage_runner_test: core/tests/cve_2026_43284_st
 	  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/support/sha256.cpp \
 	  core/backend/cve_2026_43284/session_frame.cpp \
 	  core/platform/device_facts.cpp \
 	  core/support/cli.cpp \
@@ -818,7 +883,7 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
   core/backend/cve_2026_43284/pagecache/pagecache.cpp core/backend/cve_2026_43284/pagecache/pagecache.hpp \
   core/backend/cve_2026_43284/pagecache/splice_io.cpp core/backend/cve_2026_43284/pagecache/splice_io.hpp \
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/aes256.cpp \
-  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp core/backend/cve_2026_43284/session_frame.cpp \
+  core/support/sha256.cpp core/backend/cve_2026_43284/session_frame.cpp \
   core/platform/device_facts.cpp core/terminal/umh_forward.cpp \
   core/session/core_session.cpp core/support/run_state.cpp
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -843,7 +908,7 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
 	  core/backend/cve_2026_43284/pagecache/splice_io.cpp \
 	  core/backend/cve_2026_43284/ipsec/ipsec.cpp \
 	  core/backend/cve_2026_43284/ipsec/aes256.cpp \
-	  core/backend/cve_2026_43284/ipsec/hmac_sha256.cpp \
+	  core/support/sha256.cpp \
 	  core/backend/cve_2026_43284/session_frame.cpp \
 	  core/platform/device_facts.cpp \
 	  core/terminal/umh_forward.cpp \
@@ -870,6 +935,19 @@ $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
 	  core/tests/profile_bind_compat.cpp \
 	  core/profile/glkv3_parse.cpp core/profile/glkv3.cpp \
 	  $(HOST_BUILD_DIR)/profile_v3_mpack.o -o $@
+
+# S4 R6b combination-token framing: real GLKv3 codec + the neutral framing
+# bridge, no owner bind.
+$(HOST_BUILD_DIR)/combination_token_test: core/tests/combination_token_test.cpp \
+  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/profile/document.hpp core/contract/identity.hpp core/contract/model.hpp \
+  core/profile/schema.hpp $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/combination_token_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/combination_token_test.cpp \
+	  core/profile/glkv3_parse.cpp core/profile/glkv3.cpp \
+	  $(HOST_BUILD_DIR)/combination_token_mpack.o -o $@
 
 # GLKv3 path -> type manifest (GLKv3-3): native exports its FieldSpec lists and
 # Kotlin (ProfileManifestV3AgreementTest) asserts its adapter table equals it.

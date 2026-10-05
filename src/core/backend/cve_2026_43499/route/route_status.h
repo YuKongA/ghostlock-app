@@ -28,10 +28,6 @@ namespace ghostlock::backend::cve_2026_43499::route {
         [[nodiscard]] constexpr bool is_dirty() const noexcept {
             return code == RouteResultCode::DirtyFailure || !is_clean();
         }
-
-        [[nodiscard]] constexpr bool can_fallback() const noexcept {
-            return code == RouteResultCode::FallbackSafe && is_clean();
-        }
     };
 
     static_assert(std::is_standard_layout_v<RouteStatus>);

@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <type_traits>
 
 #include "contract/abi/glk_contract_abi.h"
@@ -111,6 +112,17 @@ struct Hook final {
     const char *name = nullptr;
 };
 
+/* POD wrapper of glk_param (P1 tail append): one parameter or extract entry.
+ * Field order and types mirror the C struct exactly. */
+struct Param final {
+    const char *name = nullptr;
+    std::uint32_t type = 0;
+    std::uint32_t required = 0;
+    std::uint64_t default_value = 0;
+    const char *default_str = nullptr;
+    const char *doc = nullptr;
+};
+
 struct Module final {
     std::uint32_t abi_version = GLK_ABI_VERSION;
     std::uint32_t size = sizeof(glk_module);
@@ -119,6 +131,13 @@ struct Module final {
     Capability required_caps = Capability::None;
     std::uint32_t hook_count = 0;
     const Hook *hooks = nullptr;
+    /* ---- P1 tail append (S4 3.14.7.3). Read only when size >=
+     * GLK_MODULE_SIZE_V2; a v1 module reports the smaller v1 size. */
+    std::uint32_t param_count = 0;
+    const Param *params = nullptr;
+    std::uint32_t extract_count = 0;
+    const Param *extract = nullptr;
+    std::uint32_t stage_mask = 0;
 };
 
 /* ---- ABI <-> C++ consistency ------------------------------------------- */
@@ -182,6 +201,21 @@ static_assert(offsetof(Hook, fn) == offsetof(glk_hook, fn));
 static_assert(offsetof(Hook, user) == offsetof(glk_hook, user));
 static_assert(offsetof(Hook, name) == offsetof(glk_hook, name));
 
+static_assert(std::is_trivially_copyable_v<Param>);
+static_assert(std::is_standard_layout_v<Param>);
+static_assert(sizeof(Param) == sizeof(glk_param));
+static_assert(alignof(Param) == alignof(glk_param));
+static_assert(offsetof(Param, name) == offsetof(glk_param, name));
+static_assert(offsetof(Param, type) == offsetof(glk_param, type));
+static_assert(offsetof(Param, required) == offsetof(glk_param, required));
+static_assert(offsetof(Param, default_value) == offsetof(glk_param, default_value));
+static_assert(offsetof(Param, default_str) == offsetof(glk_param, default_str));
+static_assert(offsetof(Param, doc) == offsetof(glk_param, doc));
+static_assert(static_cast<std::uint32_t>(GLK_PARAM_UINT) == 0u);
+static_assert(static_cast<std::uint32_t>(GLK_PARAM_INT) == 1u);
+static_assert(static_cast<std::uint32_t>(GLK_PARAM_BOOL) == 2u);
+static_assert(static_cast<std::uint32_t>(GLK_PARAM_STR) == 3u);
+
 static_assert(std::is_trivially_copyable_v<Module>);
 static_assert(std::is_standard_layout_v<Module>);
 static_assert(sizeof(Module) == sizeof(glk_module));
@@ -194,6 +228,14 @@ static_assert(offsetof(Module, required_caps) ==
               offsetof(glk_module, required_caps));
 static_assert(offsetof(Module, hook_count) == offsetof(glk_module, hook_count));
 static_assert(offsetof(Module, hooks) == offsetof(glk_module, hooks));
+/* P1 tail append: v1 offsets are frozen, the new fields follow them, and the
+ * size macro names the struct the host must see before reading the tail. */
+static_assert(offsetof(Module, param_count) == offsetof(glk_module, param_count));
+static_assert(offsetof(Module, params) == offsetof(glk_module, params));
+static_assert(offsetof(Module, extract_count) == offsetof(glk_module, extract_count));
+static_assert(offsetof(Module, extract) == offsetof(glk_module, extract));
+static_assert(offsetof(Module, stage_mask) == offsetof(glk_module, stage_mask));
+static_assert(GLK_MODULE_SIZE_V2 == sizeof(glk_module));
 
 /* The C structs are POD in the C++ sense as well. */
 static_assert(std::is_trivially_copyable_v<glk_contract_ops>);
@@ -220,6 +262,48 @@ static_assert(kHostImplementedTriggers == trigger_bit(CountermeasureTrigger::OnS
 static_assert((kHostImplementedTriggers & trigger_bit(CountermeasureTrigger::OnLoad)) == 0u);
 static_assert((kHostImplementedTriggers & trigger_bit(CountermeasureTrigger::OnBootReady)) == 0u);
 static_assert((kHostImplementedTriggers & trigger_bit(CountermeasureTrigger::Periodic)) == 0u);
+
+/* S4 P1: the token spelling of the three vocabularies. These strings are the
+ * frozen glue between the C ABI values, the probe TSV (contract-design
+ * 3.14.7.2), the plugin manifest and the Kotlin descriptor parser, so they live
+ * once, here, next to the enums they name. */
+[[nodiscard]] constexpr std::string_view stage_token(
+        CountermeasureStage stage) noexcept {
+    switch (stage) {
+        case CountermeasureStage::PreSpawn: return "pre_spawn";
+        case CountermeasureStage::PostSpawn: return "post_spawn";
+        case CountermeasureStage::PreTerminal: return "pre_terminal";
+        case CountermeasureStage::PreRoute: return "pre_route";
+        case CountermeasureStage::PostTerminal: return "post_terminal";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] constexpr std::string_view trigger_token(
+        CountermeasureTrigger trigger) noexcept {
+    switch (trigger) {
+        case CountermeasureTrigger::OnStage: return "on_stage";
+        case CountermeasureTrigger::OnLoad: return "on_load";
+        case CountermeasureTrigger::OnBootReady: return "on_boot_ready";
+        case CountermeasureTrigger::Periodic: return "periodic";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] constexpr std::string_view capability_token(
+        Capability capability) noexcept {
+    switch (capability) {
+        case Capability::None: return "-";
+        case Capability::KernelRead: return "kernel_read";
+        case Capability::KernelWrite: return "kernel_write";
+        case Capability::Alias: return "alias";
+        case Capability::ChildTask: return "child_task";
+        case Capability::FileCacheWrite: return "file_cache_write";
+        case Capability::Exec: return "exec";
+        case Capability::KernelHook: return "kernel_hook";
+    }
+    return "unknown";
+}
 
 } // namespace ghostlock::contract
 

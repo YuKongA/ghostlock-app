@@ -1,6 +1,7 @@
 package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.plugin.PluginEmission
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.RouteKind
@@ -35,12 +36,10 @@ internal data class Profile(
     val backendKind: BackendKind
         get() = BackendKind.fromWire(document.backendKind.toInt()) ?: BackendKind.Default
 
-    /** Resolved route; throws only if a route-less document slipped through. */
-    val route: RouteKind
+    /** Resolved route; null for a route-less backend (cve_2026_43284). */
+    val route: RouteKind?
         get() = RouteKind.fromWire(document.routeKind)
-            ?: error("profile route is unresolved")
 
-    val fallback: RouteKind? get() = RouteKind.fromWire(document.fallbackRoute)
     val kernelMajor: UInt get() = document.kernelMajor
     val cred: CredTemplate get() = document.cred
     val multicast: MulticastGeometry
@@ -70,33 +69,44 @@ internal data class Profile(
         SelectStackLayout(waiterShift = pselectWaiterShift, compactWaiter = compactWaiter)
 
     companion object {
-        /** Wraps a decoded document, rejecting an unresolved route. */
+        /**
+         * Wraps a decoded document. A route is required for a route-axis backend
+         * (cve_2026_43499); only cve_2026_43284, which has no route axis, may
+         * carry routeKind 0. Anything else fails closed.
+         */
         fun fromNativeDocument(
             document: NativeProfileDocument,
             invalidPaths: Set<String> = emptySet(),
-        ): Profile? = if (RouteKind.fromWire(document.routeKind) == null) {
-            null
-        } else {
-            Profile(document, invalidPaths)
+        ): Profile? {
+            if (RouteKind.fromWire(document.routeKind) != null) {
+                return Profile(document, invalidPaths)
+            }
+            val routeLessBackend = document.backendKind == BackendKind.Cve2026_43284.wire.toUInt()
+            return if (document.routeKind == 0u && routeLessBackend) {
+                Profile(document, invalidPaths)
+            } else {
+                null
+            }
         }
 
         /** Forward: resolved values by dotted path -> authority. */
         fun fromValueMap(
             release: String,
             route: RouteKind?,
-            fallbackTo: RouteKind?,
             invalidPaths: Set<String> = emptySet(),
             text: (String) -> String? = { null },
             bool: (String) -> Boolean? = { null },
             value: (String) -> Long?,
+            /** P1: enabled plugins only; empty keeps every caller byte-identical. */
+            plugins: List<PluginEmission> = emptyList(),
         ): Profile? = fromNativeDocument(
             document = NativeProfileDocument.from(
                 release = release,
                 route = route?.token,
-                fallbackTo = fallbackTo?.token,
                 value = value,
                 text = text,
                 bool = bool,
+                plugins = plugins,
             ),
             invalidPaths = invalidPaths,
         )

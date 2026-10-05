@@ -10,7 +10,7 @@
 #include "backend/cve_2026_43499_backend.hpp"
 #include "backend/cve_2026_43503_backend.hpp"
 #include "backend/cve_2026_64560_backend.hpp"
-#include "terminal/root_child.hpp"
+#include "backend/cve_2026_43499/terminal/root_child.hpp"
 #include "terminal/terminal_input.hpp"
 #include "terminal/umh_forward.hpp"
 
@@ -19,6 +19,10 @@
 #include <type_traits>
 
 using namespace ghostlock;
+
+/* F5 / ADR-0006 T5: the root_child policy declaration now lives with its
+ * backend; the neutral terminal vocabulary stays under ghostlock::terminal. */
+namespace backend_terminal = ghostlock::backend::cve_2026_43499::terminal;
 
 namespace {
     /* B5 contract test double (§5.6): a backend whose *only* terminal input is
@@ -86,7 +90,7 @@ int32_t main(void) {
 
     /* Pipeline is the composition entry: one (backend, terminal) pair. */
     using RootChildPipeline = pipeline::Pipeline<backend::Cve2026_43499Policy,
-                                                terminal::RootChildPolicy>;
+                                                backend_terminal::RootChildPolicy>;
     static_assert(RootChildPipeline::target == pipeline::DispatchTarget::Cve43499W1W3_RootChild);
 
     /* T4: the second catalogued step set is a distinct compile-time instance. */
@@ -94,11 +98,11 @@ int32_t main(void) {
     static_assert(backend::Cve43499_W1W3::steps == contract::StepSetKind::W1W3);
     static_assert(backend::Cve43499_W1W2::steps == contract::StepSetKind::W1W2);
     using W1W2Pipeline = pipeline::Pipeline<backend::Cve43499_W1W2,
-                                            terminal::RootChildPolicy>;
+                                            backend_terminal::RootChildPolicy>;
     static_assert(W1W2Pipeline::target == pipeline::DispatchTarget::Cve43499W1W2_RootChild);
 
-    static_assert(contract::TerminalIdentity<terminal::RootChildPolicy>);
-    static_assert(contract::TerminalExecution<terminal::RootChildPolicy>);
+    static_assert(contract::TerminalIdentity<backend_terminal::RootChildPolicy>);
+    static_assert(contract::TerminalExecution<backend_terminal::RootChildPolicy>);
     static_assert(contract::TerminalIdentity<terminal::UmhForwardPolicy>);
     /* B5-8 landed the umh_forward step; B6/T5 wired its production probe and the
      * app-call device gate passed, so it is now available. */
@@ -119,9 +123,9 @@ int32_t main(void) {
     static_assert(contract::backend_available(contract::BackendKind::Cve2026_43284));
 
     /* Unified interface (R19/R20): every terminal declares Input + activation. */
-    static_assert(std::is_same_v<terminal::RootChildPolicy::Input, terminal::RootedChild>);
-    static_assert(std::is_base_of_v<terminal::TerminalInput, terminal::RootChildPolicy::Input>);
-    static_assert(terminal::RootChildPolicy::activation == terminal::ActivationContext::Descendant);
+    static_assert(std::is_same_v<backend_terminal::RootChildPolicy::Input, terminal::RootedChild>);
+    static_assert(std::is_base_of_v<terminal::TerminalInput, backend_terminal::RootChildPolicy::Input>);
+    static_assert(backend_terminal::RootChildPolicy::activation == terminal::ActivationContext::Descendant);
     static_assert(std::is_same_v<terminal::UmhForwardPolicy::Input, terminal::UmhForwardInput>);
     static_assert(std::is_base_of_v<terminal::TerminalInput,
                                     terminal::UmhForwardPolicy::Input>);

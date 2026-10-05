@@ -38,12 +38,11 @@ object ProfileResolver {
      * Canonical native field lookup over the declared route branches. The GLKv3
      * wire carries `recommended_cpus`, so the effective `selected_cpus`
      * is folded into those slots; `compact_waiter`/`pselect_waiter_shift`/
-     * `mcast.*` map onto `route.<name>.*` then `fallback.route.<name>.*`.
+     * `mcast.*` map onto `route.<name>.*`. R6a removed the fallback branch.
      */
     fun nativeValue(
         profile: Map<String, Any?>,
         route: String?,
-        fallbackTo: String?,
         path: String,
     ): Long? {
         if (path == "execution.recommended_cpus.main" ||
@@ -61,17 +60,11 @@ object ProfileResolver {
             route?.let { name ->
                 profile.getFlagLongAt("route.$name.$branchField")?.let { return it }
             }
-            if (fallbackTo != null && fallbackTo != "none") {
-                profile.getFlagLongAt("fallback.route.$fallbackTo.$branchField")?.let { return it }
-            }
         }
         if (path.startsWith("mcast.")) {
             val field = path.removePrefix("mcast.")
             route?.let { name ->
                 profile.getLongAt("route.$name.$field")?.let { return it }
-            }
-            if (fallbackTo != null && fallbackTo != "none") {
-                profile.getLongAt("fallback.route.$fallbackTo.$field")?.let { return it }
             }
             profile.getLongAt("mcast.$field")?.let { return it }
         }
@@ -119,7 +112,6 @@ object ProfileResolver {
     fun validateMerged(
         profile: Map<String, Any?>,
         route: String?,
-        fallbackTo: String?,
     ): List<ConfigError> {
         val errors = mutableListOf<ConfigError>()
         for (key in profile.keys) {
@@ -134,9 +126,6 @@ object ProfileResolver {
         }
         if (route == null || route !in RouteNames) {
             errors += ConfigError("route", "missing or unknown route")
-        }
-        if (fallbackTo != null && fallbackTo != "none" && fallbackTo !in RouteNames) {
-            errors += ConfigError("fallback.to", "unknown fallback route")
         }
         val task = profile["task_struct"] as? Map<*, *>
         if (task == null) {
@@ -179,15 +168,10 @@ object ProfileResolver {
          * is u8/u8/u16, the vr.ko guard layout is u8). This is the shared
          * validation, so the exporter and every other caller are covered too. */
         val widths = buildList {
-            if (route == "multicast_waiter") {
+            if (RouteKind.resolve(route) == RouteKind.MULTICAST_WAITER) {
                 add("route.multicast_waiter.attempts" to 0xffL)
                 add("route.multicast_waiter.arm_sequence" to 0xffL)
                 add("route.multicast_waiter.arm_hold" to 0xffffL)
-            }
-            if (fallbackTo == "multicast_waiter") {
-                add("fallback.route.multicast_waiter.attempts" to 0xffL)
-                add("fallback.route.multicast_waiter.arm_sequence" to 0xffL)
-                add("fallback.route.multicast_waiter.arm_hold" to 0xffffL)
             }
             add("vr_guard.tracepoint_funcs" to 0xffL)
         }

@@ -1,5 +1,6 @@
 /* Host test for the route-policy registry: compile-time capabilities, policy
- * selection, direct dispatch and the declared fallback.
+ * selection and direct dispatch. R6a removed the declared fallback: native runs
+ * exactly the one resolved route, and a failure is returned unchanged.
  *
  * White box: capabilities are asserted per policy (including the inherited
  * RoutePolicyDefaults) and every dispatch path is counted through stubs. */
@@ -28,13 +29,19 @@ namespace {
         state = StubState{};
     }
 
-    profile::TargetProfile profile_with(uint8_t route, uint8_t fallback) {
+    profile::TargetProfile profile_with(uint8_t route) {
         static profile::kernel_offsets values;
         values = {};
         values.route = route;
-        values.meta.fallback_route = fallback;
         return profile::TargetProfile::from(&values);
     }
+
+    /* R6a compile-time guard: the fallback surface is gone. */
+    template<class P>
+    concept HasAllowsFallback = requires { P::allows_fallback; };
+
+    template<class T>
+    concept HasFallbackRoute = requires(const T &p) { p.fallback_route(); };
 } // namespace
 
 namespace ghostlock::backend::cve_2026_43499::route {
@@ -67,29 +74,39 @@ int32_t main(void) {
     static_assert(MulticastPolicy::kind == RouteKind::MulticastWaiter);
 
     static_assert(!SelectPolicy::multicast && !SelectPolicy::w2_fast_repair &&
-                  !SelectPolicy::w3_exact_target && !SelectPolicy::tcp_payload_layout &&
-                  !SelectPolicy::allows_fallback);
+                  !SelectPolicy::w3_exact_target && !SelectPolicy::tcp_payload_layout);
     static_assert(!TcpPolicy::multicast && !TcpPolicy::w2_fast_repair &&
-                  TcpPolicy::w3_exact_target && TcpPolicy::tcp_payload_layout &&
-                  TcpPolicy::allows_fallback);
+                  TcpPolicy::w3_exact_target && TcpPolicy::tcp_payload_layout);
     static_assert(MulticastPolicy::multicast && MulticastPolicy::w2_fast_repair &&
-                  !MulticastPolicy::w3_exact_target && !MulticastPolicy::tcp_payload_layout &&
-                  !MulticastPolicy::allows_fallback);
+                  !MulticastPolicy::w3_exact_target && !MulticastPolicy::tcp_payload_layout);
+
+    /* R6a: no policy exposes allows_fallback and TargetProfile has no
+     * fallback_route(); the fallback branch cannot come back silently. */
+    static_assert(!HasAllowsFallback<RoutePolicyDefaults>);
+    static_assert(!HasAllowsFallback<SelectPolicy>);
+    static_assert(!HasAllowsFallback<TcpPolicy>);
+    static_assert(!HasAllowsFallback<MulticastPolicy>);
+    static_assert(!HasFallbackRoute<profile::TargetProfile>);
 
     /* Every policy satisfies the registry concept. */
     static_assert(RoutePolicy<SelectPolicy> && RoutePolicy<TcpPolicy> &&
                   RoutePolicy<MulticastPolicy>);
 
-    const profile::TargetProfile select_profile = profile_with(profile::kRouteSelectStack, 0);
-    const profile::TargetProfile tcp_profile = profile_with(profile::kRouteTcpZerocopy, 0);
-    const profile::TargetProfile mcast_profile = profile_with(profile::kRouteMulticastWaiter, 0);
-    const profile::TargetProfile auto_profile = profile_with(profile::kRouteAuto, 0);
+    const profile::TargetProfile select_profile = profile_with(profile::kRouteSelectStack);
+    const profile::TargetProfile tcp_profile = profile_with(profile::kRouteTcpZerocopy);
+    const profile::TargetProfile mcast_profile = profile_with(profile::kRouteMulticastWaiter);
+    const profile::TargetProfile none_profile = profile_with(profile::kRouteNone);
+    /* The deprecated legacy v1/v2 value 0 resolves no policy either. */
+    const profile::TargetProfile legacy_auto_profile = profile_with(profile::kRouteAuto);
 
     assert(SelectPolicy::supported(select_profile) && !SelectPolicy::supported(tcp_profile));
     assert(TcpPolicy::supported(tcp_profile) && !TcpPolicy::supported(mcast_profile));
     assert(MulticastPolicy::supported(mcast_profile) && !MulticastPolicy::supported(select_profile));
-    assert(!SelectPolicy::supported(auto_profile) && !TcpPolicy::supported(auto_profile) &&
-           !MulticastPolicy::supported(auto_profile));
+    assert(!SelectPolicy::supported(none_profile) && !TcpPolicy::supported(none_profile) &&
+           !MulticastPolicy::supported(none_profile));
+    assert(!SelectPolicy::supported(legacy_auto_profile) &&
+           !TcpPolicy::supported(legacy_auto_profile) &&
+           !MulticastPolicy::supported(legacy_auto_profile));
 
     /* make_route_policy resolves the supported policy (first match wins). */
     assert(std::holds_alternative<SelectPolicy>(make_route_policy(select_profile)));
@@ -114,73 +131,48 @@ int32_t main(void) {
 
     /* ---- Dispatch: only the resolved route runs. ---- */
     reset();
-    RouteRunResult result = run_route(select_profile, &request, 1);
-    assert(result.status.code == ROUTE_OK && !result.fallback_used);
+    RouteStatus result = run_route(select_profile, &request);
+    assert(result.code == ROUTE_OK);
     assert(state.select_calls == 1 && state.tcp_calls == 0 && state.multicast_calls == 0);
 
     reset();
-    result = run_route(tcp_profile, &request, 1);
-    assert(result.status.code == ROUTE_OK && !result.fallback_used);
+    result = run_route(tcp_profile, &request);
+    assert(result.code == ROUTE_OK);
     assert(state.tcp_calls == 1 && state.select_calls == 0);
 
     reset();
-    result = run_route(mcast_profile, &request, 1);
-    assert(result.status.code == ROUTE_OK);
+    result = run_route(mcast_profile, &request);
+    assert(result.code == ROUTE_OK);
     assert(state.multicast_calls == 1 && state.select_calls == 0);
 
     /* Unsupported routes never dispatch. */
     reset();
-    result = run_route(auto_profile, &request, 1);
-    assert(result.status.code == ROUTE_UNSUPPORTED && !result.fallback_used);
+    result = run_route(none_profile, &request);
+    assert(result.code == ROUTE_UNSUPPORTED);
     assert(state.select_calls == 0 && state.tcp_calls == 0 && state.multicast_calls == 0);
 
-    /* ---- Fallback: only an allowed, clean failure may fall back. ---- */
-    const profile::TargetProfile tcp_with_select = profile_with(profile::kRouteTcpZerocopy,
-                                                                profile::kRouteSelectStack);
-    state = StubState{};
-    state.tcp_status = {.code = ROUTE_FALLBACK_SAFE, .userspace_clean = 1, .kernel_disarmed = 1};
-    state.select_status = {.code = ROUTE_OK};
-    result = run_route(tcp_with_select, &request, 1);
-    assert(result.status.code == ROUTE_OK && result.fallback_used);
-    assert(state.tcp_calls == 1 && state.select_calls == 1);
-
-    /* allow_fallback=0 keeps the tcp failure. */
+    /* ---- R6a: a clean tcp failure is returned unchanged; no other route
+     * runs, even though select geometry is present in the profile. ---- */
     reset();
     state.tcp_status = {.code = ROUTE_FALLBACK_SAFE, .userspace_clean = 1, .kernel_disarmed = 1};
-    result = run_route(tcp_with_select, &request, 0);
-    assert(result.status.code == ROUTE_FALLBACK_SAFE && !result.fallback_used);
+    result = run_route(tcp_profile, &request);
+    assert(result.code == ROUTE_FALLBACK_SAFE);
     assert(state.tcp_calls == 1 && state.select_calls == 0);
 
-    /* A dirty failure is never fallback-safe. */
+    /* A dirty failure is returned unchanged too. */
     reset();
     state.tcp_status = {.code = ROUTE_DIRTY_FAILURE, .userspace_clean = 0, .kernel_disarmed = 1};
-    result = run_route(tcp_with_select, &request, 1);
-    assert(result.status.code == ROUTE_DIRTY_FAILURE && !result.fallback_used);
-    assert(state.select_calls == 0);
-
-    /* Select declares no fallback, so a clean select failure stays put. */
-    const profile::TargetProfile select_with_fallback = profile_with(
-        profile::kRouteSelectStack, profile::kRouteTcpZerocopy);
-    reset();
-    state.select_status = {.code = ROUTE_FALLBACK_SAFE, .userspace_clean = 1,
-                           .kernel_disarmed = 1};
-    result = run_route(select_with_fallback, &request, 1);
-    assert(result.status.code == ROUTE_FALLBACK_SAFE && !result.fallback_used);
-    assert(state.select_calls == 1 && state.tcp_calls == 0);
-
-    /* A declared fallback equal to the primary route is ignored. */
-    reset();
-    state.tcp_status = {.code = ROUTE_FALLBACK_SAFE, .userspace_clean = 1, .kernel_disarmed = 1};
-    result = run_route(profile_with(profile::kRouteTcpZerocopy, profile::kRouteTcpZerocopy),
-                       &request, 1);
-    assert(result.status.code == ROUTE_FALLBACK_SAFE && !result.fallback_used);
-    assert(state.tcp_calls == 1);
+    result = run_route(tcp_profile, &request);
+    assert(result.code == ROUTE_DIRTY_FAILURE);
+    assert(state.tcp_calls == 1 && state.select_calls == 0);
 
     /* run_policy_by_kind maps wire kinds to the matching policy only. */
     reset();
     RouteStatus by_kind = run_policy_by_kind(RouteKind::MulticastWaiter, &request);
     assert(by_kind.code == ROUTE_OK && state.multicast_calls == 1);
-    by_kind = run_policy_by_kind(RouteKind::Auto, &request);
+    by_kind = run_policy_by_kind(RouteKind::None, &request);
+    assert(by_kind.code == ROUTE_UNSUPPORTED);
+    by_kind = run_policy_by_kind(static_cast<RouteKind>(profile::kRouteAuto), &request);
     assert(by_kind.code == ROUTE_UNSUPPORTED);
 
     puts("route_policy_test: ok");

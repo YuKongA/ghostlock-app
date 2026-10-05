@@ -34,7 +34,6 @@
 namespace ghostlock::backend {
     inline constexpr profile::glkv3::FieldSpec kCve2026_43499Glkv3Fields[] = {
         {"common", "kernel_major", profile::glkv3::WireType::UInt, false},
-        {"common", "fallback_route", profile::glkv3::WireType::UInt, false},
         {"common", "safe_mode", profile::glkv3::WireType::Bool, false},
         {"common", "vr_guard", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499.cred", "copy_size", profile::glkv3::WireType::UInt, false},
@@ -95,7 +94,7 @@ namespace ghostlock::backend {
         {"backend.cve_2026_43499.kernel", "compact_waiter", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499.kernel", "kernelsnitch_collisions", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.kernel", "mm_struct_sz", profile::glkv3::WireType::UInt, false},
-        {"backend.cve_2026_43499", "steps", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499", "steps", profile::glkv3::WireType::Str, false},
     };
 
     inline constexpr profile::glkv3::Schema kCve2026_43499Glkv3Schema{

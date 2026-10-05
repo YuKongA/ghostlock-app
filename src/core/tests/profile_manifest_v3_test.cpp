@@ -15,15 +15,18 @@
  * itself parses the same manifest resource, so a key or wire type added to only
  * one side fails that side's test instead of silently reaching production.
  *
- * Run bare to verify the committed manifest; run with --write to regenerate the
- * app test resource and the profile-core runtime resource (make -C src
- * profile-manifest-v3). */
+ * Run bare to verify every committed copy: the app test resource and the
+ * profile-core runtime resource must each resolve to exactly one path AND match
+ * the exported text byte-for-byte (header included). Comparing only the first
+ * copy that opens would leave the runtime consumer unchecked; run with --write
+ * to regenerate both (make -C src profile-manifest-v3). */
 
 #include "backend/cve_2026_43284/glkv3_schema.hpp"
 #include "backend/cve_2026_43284/schema.hpp"
 #include "backend/cve_2026_43499/glkv3_schema.hpp"
 #include "backend/cve_2026_43499/schema.hpp"
 #include "platform/abi.hpp"
+#include "plugin/schema.hpp"
 #include "profile/glkv3.hpp"
 #include "profile/schema.hpp"
 
@@ -58,13 +61,20 @@ namespace {
         return "# GhostLock GLKv3 owner-qualified manifest (GLKv3 schema 3 / generated form R2).\n"
                "# Authoritative native export; regenerate with:\n"
                "#   make -C src profile-manifest-v3\n"
-               "# Columns: owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc\n";
+               "# Columns: owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc\n"
+               "# The wire column may be a \"|\"-separated UNION of wire kinds (the S4 P1\n"
+               "# dynamic plugin paths plugin.<id>.params.* / plugin.<id>.extract.*); every\n"
+               "# member must come from the wire-kind vocabulary and an unknown member is\n"
+               "# rejected fail-closed (the Kotlin adapter parses the same union).\n"
+               "# Dynamic paths resolve their concrete type from the plugin descriptor\n"
+               "# (probe TSV param/extract rows), whose type literals are these same kinds.\n";
     }
 
     std::string_view owner_for(std::string_view section) {
         if (section == "common") return "common";
         if (section.starts_with("platform.")) return "platform::abi";
         if (section.starts_with("countermeasure.")) return "countermeasure::vivo";
+        if (section.starts_with("plugin")) return "plugin";
         if (section.starts_with("backend.cve_2026_43284")) return "cve_2026_43284";
         if (section.starts_with("backend.cve_2026_43499")) return "cve_2026_43499";
         return "unknown";
@@ -119,7 +129,8 @@ namespace {
                 lookup_v2<ghostlock::backend::Cve2026_43499Schema>(section, key, def,
                                                                    source, doc) ||
                 lookup_v2<ghostlock::backend::Cve2026_43284Schema>(section, key, def,
-                                                                   source, doc);
+                                                                   source, doc) ||
+                lookup_v2<ghostlock::plugin::Schema>(section, key, def, source, doc);
         if (!found) {
             def = "-";
             source = "-";
@@ -153,6 +164,7 @@ namespace {
         append_owner(lines, ghostlock::platform::abi::kPlatformAbiGlkv3Fields);
         append_owner(lines, ghostlock::backend::kCve2026_43499Glkv3Fields);
         append_owner(lines, ghostlock::backend::kCve2026_43284Glkv3Fields);
+        append_owner(lines, ghostlock::plugin::kPluginGlkv3Fields);
         std::sort(lines.begin(), lines.end());
         return lines;
     }
@@ -218,6 +230,22 @@ namespace {
             std::fprintf(stderr, "manifest-v3 extra:   %s\n", line.c_str());
         }
     }
+
+    /* 1-based number of the first line where the two texts differ, or 0 when
+     * they are identical. Used to point at the diverging copy instead of only
+     * reporting that the row SET changed. */
+    std::size_t first_differing_line(const std::string &a, const std::string &b) {
+        std::size_t line = 1;
+        std::size_t i = 0;
+        std::size_t j = 0;
+        while (i < a.size() && j < b.size()) {
+            if (a[i] != b[j]) return line;
+            if (a[i] == '\n') line++;
+            i++;
+            j++;
+        }
+        return (i != a.size() || j != b.size()) ? line : 0;
+    }
 } // namespace
 
 int main(int argc, char **argv) {
@@ -245,37 +273,55 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    const char *found = nullptr;
-    std::string text;
-    const char *all[] = {
-        "app/src/test/resources/profile-manifest-v3.tsv",
-        "../app/src/test/resources/profile-manifest-v3.tsv",
-        "../../app/src/test/resources/profile-manifest-v3.tsv",
-        "profile-core/src/main/resources/profile-manifest-v3.tsv",
-        "../profile-core/src/main/resources/profile-manifest-v3.tsv",
+    /* Verify EVERY committed copy, not just the first one that opens. The app
+     * test resource and the profile-core runtime resource are consumed by
+     * different legs (native/Kotlin agreement vs the production adapter), so a
+     * stale copy on either side must fail here: comparing only the first hit
+     * would leave the runtime consumer unchecked. Each group must resolve to
+     * exactly one path from the current working directory. */
+    std::string expected_text = manifest_header();
+    for (const std::string &line : expected) expected_text += line + "\n";
+
+    const struct {
+        const char *const *candidates;
+        std::size_t count;
+        const char *label;
+    } groups[] = {
+        {kAppResourceCandidates, std::size(kAppResourceCandidates), "app"},
+        {kRuntimeResourceCandidates, std::size(kRuntimeResourceCandidates), "runtime"},
     };
-    for (const char *path : all) {
-        if (read_file(path, text)) {
-            found = path;
-            break;
+    for (const auto &group : groups) {
+        const char *found = nullptr;
+        std::string text;
+        int hits = 0;
+        for (std::size_t i = 0; i < group.count; i++) {
+            std::string candidate;
+            if (!read_file(group.candidates[i], candidate)) continue;
+            hits++;
+            if (found == nullptr) {
+                found = group.candidates[i];
+                text = std::move(candidate);
+            }
         }
-    }
-    if (found == nullptr) {
-        std::fprintf(stderr,
-                     "profile_manifest_v3_test: manifest not found in any candidate\n");
-        return 1;
+        if (hits != 1) {
+            std::fprintf(stderr,
+                         "profile_manifest_v3_test: expected exactly one %s manifest "
+                         "(%d found)\n",
+                         group.label, hits);
+            return 1;
+        }
+        if (text != expected_text) {
+            std::fprintf(stderr,
+                         "profile_manifest_v3_test: %s manifest drift (%s), first "
+                         "differing line %zu\n",
+                         group.label, found, first_differing_line(text, expected_text));
+            print_diff(expected, field_lines(text));
+            return 1;
+        }
+        std::printf("profile_manifest_v3_test: %s ok (%s)\n", group.label, found);
     }
 
-    const std::vector<std::string> actual = field_lines(text);
-    if (expected != actual) {
-        std::fprintf(stderr,
-                     "profile_manifest_v3_test: manifest drift (%zu schema vs %zu file)\n",
-                     expected.size(), actual.size());
-        print_diff(expected, actual);
-        return 1;
-    }
-
-    std::printf("profile_manifest_v3_test: ok (%zu fields, %s)\n", expected.size(),
-                found);
+    std::printf("profile_manifest_v3_test: ok (%zu fields, both copies)\n",
+                expected.size());
     return 0;
 }

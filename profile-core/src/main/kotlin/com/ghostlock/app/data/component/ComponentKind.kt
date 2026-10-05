@@ -15,10 +15,30 @@ package com.ghostlock.app.data.component
  * known-but-unavailable backend can be displayed but never selected or run.
  */
 
-/** Frontend component ids; wire values match native `kFrontend*`. */
+/**
+ * Frontend component ids; wire values match native `kFrontend*`.
+ *
+ * The vocabulary exposes the shared two-operation contract (task-7):
+ * [resolve] is an EXACT lookup for the contract surface (wire tokens, manifest
+ * rows, already-canonical values), [normalize] is the trim + lower-case leniency
+ * applied only at a HOCON/UI input boundary. Call sites at a boundary read
+ * `resolve(normalize(value))`.
+ */
 enum class FrontendKind(val wire: Int, val token: String, val available: Boolean) {
     RootChild(1, "root_child", true),
     UmhForward(2, "umh_forward", true),
+    ;
+
+    companion object {
+        /** EXACT contract-surface lookup; no trimming, no case folding. */
+        fun resolve(token: String?): FrontendKind? =
+            token?.let { value -> entries.firstOrNull { it.token == value } }
+
+        /** HOCON/UI input leniency: trim + lower-case. */
+        fun normalize(token: String?): String? = token?.trim()?.lowercase()
+
+        fun fromWire(wire: Int): FrontendKind? = entries.firstOrNull { it.wire == wire }
+    }
 }
 
 /**
@@ -29,6 +49,11 @@ enum class FrontendKind(val wire: Int, val token: String, val available: Boolean
 enum class BackendKind(val wire: Int, val token: String, val available: Boolean) {
     Cve2026_43499(1, "cve_2026_43499", true),
     Cve2026_64560(2, "cve_2026_64560", false),
+    /* Pure-header placeholders: declared in the native catalog, displayable,
+     * never selectable (VocabularyCatalog.available mirrors native). */
+    Cve2026_31431(3, "cve_2026_31431", false),
+    Cve2026_43503(4, "cve_2026_43503", false),
+    Cve2026_23274(5, "cve_2026_23274", false),
     Cve2026_43284(6, "cve_2026_43284", true),
     ;
 
@@ -38,10 +63,12 @@ enum class BackendKind(val wire: Int, val token: String, val available: Boolean)
 
         fun fromWire(wire: Int): BackendKind? = entries.firstOrNull { it.wire == wire }
 
-        fun fromToken(token: String?): BackendKind? {
-            val normalized = token?.trim()?.lowercase() ?: return null
-            return entries.firstOrNull { it.token == normalized }
-        }
+        /** EXACT contract-surface lookup; no trimming, no case folding. */
+        fun resolve(token: String?): BackendKind? =
+            token?.let { value -> entries.firstOrNull { it.token == value } }
+
+        /** HOCON/UI input leniency: trim + lower-case. */
+        fun normalize(token: String?): String? = token?.trim()?.lowercase()
 
         /**
          * Parses a persisted selection in any historical spelling: the canonical
@@ -50,9 +77,11 @@ enum class BackendKind(val wire: Int, val token: String, val available: Boolean)
          * back instead of selecting a dead backend.
          */
         fun fromStored(value: String?): BackendKind? {
-            val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            /* A persisted preference is an input boundary, so the stored
+             * spelling is normalized once and then resolved exactly. */
+            val raw = normalize(value)?.takeIf { it.isNotEmpty() } ?: return null
             val wire = raw.toIntOrNull()
-            return fromToken(raw)
+            return resolve(raw)
                 ?: wire?.let(::fromWire)
                 ?: entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
         }

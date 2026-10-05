@@ -1,0 +1,21 @@
+# GhostLock component vocabulary manifest (S4 task-6).
+# Authoritative native export of contract/identity.hpp, catalogue order;
+# regenerate with: make -C src vocabulary-manifest
+# Columns: kind<TAB>token<TAB>wire<TAB>available<TAB>doc
+# kind is backend | frontend | stepset | route; wire is the numeric id native stores
+# in the document slots; route wire values come from kRouteCatalog; available is
+# 1 (usable) or 0 (declared, rejected).
+backend	cve_2026_43499	1	1	backend identity; unavailable ids are declared placeholders
+backend	cve_2026_64560	2	0	backend identity; unavailable ids are declared placeholders
+backend	cve_2026_31431	3	0	backend identity; unavailable ids are declared placeholders
+backend	cve_2026_43503	4	0	backend identity; unavailable ids are declared placeholders
+backend	cve_2026_23274	5	0	backend identity; unavailable ids are declared placeholders
+backend	cve_2026_43284	6	1	backend identity; unavailable ids are declared placeholders
+frontend	root_child	1	1	handoff frontend; the terminal that takes over
+frontend	umh_forward	2	1	handoff frontend; the terminal that takes over
+route	tcp_zerocopy	1	1	route policy; backend-internal, selected by the document
+route	select_stack	2	1	route policy; backend-internal, selected by the document
+route	multicast_waiter	3	1	route policy; backend-internal, selected by the document
+stepset	w1_w2	1	1	backend step set; Unknown=0 is a native sentinel
+stepset	w1_w3	2	1	backend step set; Unknown=0 is a native sentinel
+stepset	pagecache_write	3	1	backend step set; Unknown=0 is a native sentinel

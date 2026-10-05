@@ -73,8 +73,8 @@ class Cve2026_43284OverrideTest {
         withController("43284-tokens") { controller ->
             val config = controller.load(release, pair)
             val paths = flatten(config.roots).map { it.path }.toSet()
-            /* fallback.to / backend.steps are selection tokens owned by their
-             * dedicated controls, never the generic string editor. */
+            /* backend.steps is a selection token owned by its dedicated
+             * control, never the generic string editor (R6a dropped fallback). */
             assertFalse("fallback.to" in paths)
             assertFalse("backend.steps" in paths)
         }

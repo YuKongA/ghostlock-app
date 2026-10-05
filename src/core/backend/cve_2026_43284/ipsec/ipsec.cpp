@@ -1,12 +1,12 @@
 /* CVE-2026-43284 IpSec primitive helpers (B5-2): ESP framing, truncation ICV,
  * CBC IV derivation and the explicit wipe the session-secret lifecycle
- * requires (plan section 6.5). The AES/HMAC cores live in aes256.cpp and
- * hmac_sha256.cpp. */
+ * requires (plan section 6.5). The AES core lives in aes256.cpp; the HMAC core
+ * is the shared support/sha256.cpp (S4 R8). */
 
 #include "backend/cve_2026_43284/ipsec/ipsec.hpp"
 
 #include "backend/cve_2026_43284/ipsec/aes256.hpp"
-#include "backend/cve_2026_43284/ipsec/hmac_sha256.hpp"
+#include "support/sha256.hpp"
 
 #include <array>
 #include <cstddef>
@@ -74,7 +74,8 @@ namespace ghostlock::backend::cve_2026_43284 {
         }
 
         std::array<std::uint8_t, kEspIcvMaxBytes> full{};
-        hmac_sha256(sa.hmac_key.data(), sa.hmac_key.size(), mac_input.data(),
+        ghostlock::support::hmac_sha256(sa.hmac_key.data(), sa.hmac_key.size(),
+                                      mac_input.data(),
                     mac_input.size(), full.data());
         for (std::size_t i = 0; i < icv_len; ++i) icv_out[i] = full[i];
 

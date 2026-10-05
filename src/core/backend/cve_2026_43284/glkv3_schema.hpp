@@ -22,7 +22,7 @@ namespace ghostlock::backend {
         {"backend.cve_2026_43284", "kmi", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43284", "selinux_exec_context", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43284", "late_load_args", profile::glkv3::WireType::UInt, false},
-        {"backend.cve_2026_43284", "steps", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43284", "steps", profile::glkv3::WireType::Str, false},
         {"backend.cve_2026_43284", "wait_timeout_ms", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43284", "module_poll_attempts", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43284", "module_poll_interval_ms", profile::glkv3::WireType::UInt, false},

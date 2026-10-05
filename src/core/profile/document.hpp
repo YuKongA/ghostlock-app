@@ -86,6 +86,11 @@ namespace ghostlock::profile {
         uint16_t backend = 0;
         uint16_t middleware = 0;
         uint16_t steps = 0;
+        /* S4 R6b: the resolved combination token, as contract::CombinationKind.
+         * profile/glkv3_parse.cpp resolves it from backend.<id>.steps (or the
+         * legacy uint id + root route) and validates it fail-closed; the
+         * composition root derives route/terminal/step set from it. */
+        uint8_t combination = 0;
         /* GLKv3 root selection tokens. The v2 transport carries numeric ids in
          * its header, so these stay empty there; the GLKv3 container has no
          * header and names the components as text, which only the composition
