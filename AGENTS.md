@@ -93,8 +93,10 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   （不用虚基类）；Route 类满足 `prepare → execute → disarm → destroy`，仅经 `status` 汇报。新增组件
   （route/backend/terminal/platform/ancillary）的完整触点清单见 `docs/development/adding-a-component.md`。
 - 分层依赖由 **R1 include 防火墙**（`tests/include_firewall_test.cpp`）在 host 测试里强制：8 个受限源层，
-  当前白名单 3 条（均为 `support/util.cpp` → 43499 backend，注明 owner 批次），运行输出
-  `142 files, 3 forbidden-layer edges, 3 whitelisted, 0 unexpected, 0 stale`。新增的越层 include 会 FAIL；
+  当前白名单 4 条（`support/util.cpp` → 43499 backend：spray 直连 `state`/`route`/`accessors` 3 条，
+  以及 A3-2 的 `leak/address_discovery.h` 1 条——因 `kernelsnitch.h` 的 `context_*` 非 inline、全程序只能一个 TU 包含，
+  待 spray/leak 所有权搬进 backend 后移除），运行输出
+  `159 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`。新增的越层 include 会 FAIL；
   白名单条目对应的 include 消失（stale）同样 FAIL。新增组件优先不引入越层边，确需临时豁免时必须在
   `kWhitelist` 登记并写明 owner 批次，不得静默通过。
 - 双侧一致性（改了必须两边同步，测试会抓）：
@@ -110,7 +112,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - 配置权威是 GLK profile（当前 wire 为 GLKv3）+ HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
 - **不要随意新增或叠加配置/profile 传输格式版本号**。本分支的 wire 已是 **v3（GLKv3）**：
-  **MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`third_party/mpack`），
+  **MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`src/lib/mpack`），
   canonical = 最短整数 + 键按 UTF-8 字节序排序；写出 v3，v2（对象分段
   `header + sections[name → fields[name → u64]]`，presence 由键是否出现表达）**只读**兼容。
   **静态策略进文档，运行时密钥/SPI/端口绝不进文档**（走会话帧，用后清零）。

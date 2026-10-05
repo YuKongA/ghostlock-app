@@ -1,17 +1,9 @@
-#ifndef GHOSTLOCK_STAGE_TYPES_HPP
-#define GHOSTLOCK_STAGE_TYPES_HPP
+#ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_STAGE_TYPES_HPP
+#define GHOSTLOCK_BACKEND_CVE_2026_43499_STAGE_TYPES_HPP
 
 #include <cstdint>
 
-namespace ghostlock::session {
-    /* Outcome of one orchestration stage. Failed maps to exit code 1, Continue
-     * proceeds to the next stage and Done stops with exit code 0 (diagnostics). */
-    enum class StageResult {
-        Failed,
-        Continue,
-        Done,
-    };
-
+namespace ghostlock::backend {
     /* Outcome of one W2/W3 victim round. */
     enum class VictimRound {
         Failed,
@@ -37,6 +29,6 @@ namespace ghostlock::session {
     };
 
     using write_stage_verify_fn = int32_t (*)(void *context);
-} // namespace ghostlock::session
+} // namespace ghostlock::backend
 
 #endif

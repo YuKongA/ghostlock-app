@@ -140,3 +140,20 @@ Based on the following projects, licensed under Apache License 2.0 (see [LICENSE
 - [NebuSec/CyberMeowfia](https://github.com/NebuSec/CyberMeowfia)
 - [JoinChang/ghostlock-oneplus](https://github.com/JoinChang/ghostlock-oneplus)
 - [x-spy/CVE-2026-43499-popsicle](https://github.com/x-spy/CVE-2026-43499-popsicle)
+
+### CVE-2026-43284 references
+
+The 43284 backend is an independent rewrite written with reference to the following upstream
+projects (consulted, not vendored). Several of them ship **no LICENSE file**, so no upstream code
+is redistributed here and reusing it upstream requires their permission:
+
+- [ankitrawatgit/DirtyFrag-Android-Root-Jailbreak](https://github.com/ankitrawatgit/DirtyFrag-Android-Root-Jailbreak) (`de2ab7b`) — IpSec + crash_dump + libc++ sentry + LKM/UMH chain
+- [lsposed/lspromise](https://github.com/lsposed/lspromise) (`0258165`) — page-cache splice primitive
+- [diabl0w/DFRoot](https://github.com/diabl0w/DFRoot) (`3050d5b`) — LKM/UMH (soft_reboot)
+- [polygraphene/DFReroot](https://github.com/polygraphene/DFReroot) (`9edc769`) — minimal SELinux LKM
+- [combeng6th/DirtyInit](https://github.com/combeng6th/DirtyInit) (`3409c35`) — unprivileged XFRM/IpSec approach
+
+### Vendored libraries
+
+- [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`src/lib/mpack/`](src/lib/mpack/) with its LICENSE kept alongside.
+

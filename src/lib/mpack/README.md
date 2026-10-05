@@ -1,4 +1,4 @@
-# third_party/mpack —— MessagePack 单文件库（vendored）
+# src/lib/mpack —— MessagePack 单文件库（vendored）
 
 > 来源：[ludocode/mpack](https://github.com/ludocode/mpack)，commit `c9d1820`，MIT（见 `LICENSE`）。
 > 使用其 **amalgamation**（`tools/amalgamate.sh`）产物：单 `mpack.c` + `mpack.h`。

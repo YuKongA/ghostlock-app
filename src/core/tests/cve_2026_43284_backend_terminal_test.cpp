@@ -11,7 +11,7 @@
 #include "backend/cve_2026_43284/steps/steps.hpp"
 #include "platform/device_facts.hpp"
 #include "session/core_session.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 #include "terminal/terminal_input.hpp"
 
 #include <array>
@@ -30,6 +30,7 @@ using ghostlock::backend::cve_2026_43284::kCarrierTokenLibbinderdebug;
 using ghostlock::backend::cve_2026_43284::kCarrierTokenMax;
 using ghostlock::backend::cve_2026_43284::resolve_carrier_token;
 using ghostlock::backend::cve_2026_43284::run_backend_terminal;
+using ghostlock::backend::cve_2026_43284::select_single_carrier;
 using ghostlock::backend::Cve2026_43284Policy;
 using ghostlock::backend::Cve2026_43284Profile;
 using ghostlock::backend::cve_2026_43284::IpsecSaParams;
@@ -49,13 +50,12 @@ using ghostlock::platform::DeviceProbeOps;
 using ghostlock::platform::FileFact;
 using ghostlock::platform::VendorCandidate;
 using ghostlock::session::CoreSession;
-using ghostlock::session::StageResult;
+using ghostlock::contract::StageResult;
 using ghostlock::terminal::RootProgram;
 using ghostlock::terminal::RootProgramKind;
-using ghostlock::terminal::UmhCommand;
 using ghostlock::terminal::UmhForwardInput;
-using ghostlock::terminal::UmhForwardOutcome;
 using ghostlock::terminal::UmhLkmSource;
+using ghostlock::terminal::UmhReadyState;
 
 namespace {
 
@@ -76,6 +76,9 @@ namespace {
         bool defex_user_exec = false;
         bool defex_get_dpath = false;
         bool precheck_ok = true;
+        /* Default carriers [0, first_present_default) report absent; this
+         * exercises the token-0 "first present" selection. */
+        std::size_t first_present_default = 0U;
     };
 
     long dev_read_release(void *ctx, char *out, std::size_t capacity) noexcept {
@@ -118,6 +121,13 @@ namespace {
             out.label.set("u:object_r:crash_dump_exec:s0");
             out.label_known = f->crash_dump_label;
             out.verity = f->crash_dump_verity;
+            return true;
+        }
+        for (std::size_t i = 0U; i < kDefaultCarriers.size(); ++i) {
+            if (std::string_view(path) == kDefaultCarriers[i].path) {
+                out.exists = i >= f->first_present_default;
+                return true;
+            }
         }
         return true;
     }
@@ -268,6 +278,11 @@ namespace {
         BackendTerminalDeps deps{};
         deps.device = make_device_ops(dev);
         deps.chain = make_chain_ops(chain);
+        /* The composition root binds exactly one carrier; the state's
+         * single-carrier slot points into the static default table. */
+        deps.carrier = &kDefaultCarriers[0];
+        /* The chain gets its plan from ChainOps::build_plan in these tests. */
+        deps.plan = nullptr;
         return deps;
     }
 
@@ -394,11 +409,13 @@ namespace {
             assert(r.error == BackendTerminalError::StepsMismatch);
         }
         {
+            /* An absent SELinux context token means the standard vendor_modprobe
+             * domain, so the run proceeds instead of failing the profile check. */
             Cve2026_43284Profile p = make_profile();
             p.selinux_exec_context.reset();
             FakeChain chain{}; reset_chain(chain); UmhForwardInput out{};
             const BackendTerminalResult r = run_case(p, dev, chain, out);
-            assert(r.error == BackendTerminalError::ProfileIncomplete);
+            assert(r.error != BackendTerminalError::ProfileIncomplete);
         }
         {
             Cve2026_43284Profile p = make_profile();
@@ -410,21 +427,83 @@ namespace {
                    ghostlock::backend::cve_2026_43284::lkm::LkmPolicyError::KmiFieldMismatch);
         }
         {
+            /* An absent lkm_path token defaults to bundled; the production path
+             * binds its own module mirror, so this is not a rejection. */
             Cve2026_43284Profile p = make_profile();
             p.lkm_path.reset();
             FakeChain chain{}; reset_chain(chain); UmhForwardInput out{};
             const BackendTerminalResult r = run_case(p, dev, chain, out);
-            assert(r.error == BackendTerminalError::LkmPolicyRejected);
-            assert(r.lkm_error ==
-                   ghostlock::backend::cve_2026_43284::lkm::LkmPolicyError::MissingLkmPath);
+            assert(r.error != BackendTerminalError::LkmPolicyRejected);
+        }
+    }
+
+    /* ---- B6/T5: exactly one carrier is bound; no multi-candidate fallback ---- */
+
+    void test_carrier_single_selection() {
+        const ghostlock::backend::cve_2026_43284::steps::CarrierTarget *carrier =
+                nullptr;
+        {
+            /* Explicit token 1 selects kDefaultCarriers[0]. */
+            FakeDevice dev{};
+            const DeviceProbeOps probe = make_device_ops(dev);
+            assert(select_single_carrier(kCarrierTokenLibbinderdebug, probe, carrier));
+            assert(carrier == &kDefaultCarriers[0]);
         }
         {
-            Cve2026_43284Profile p = make_profile();
-            p.carrier_path = 99U;
-            FakeChain chain{}; reset_chain(chain); UmhForwardInput out{};
-            const BackendTerminalResult r = run_case(p, dev, chain, out);
-            assert(r.error == BackendTerminalError::CarrierRejected);
+            /* Token 0 picks the first default the device reports present. */
+            FakeDevice dev{};
+            dev.first_present_default = 2U;
+            const DeviceProbeOps probe = make_device_ops(dev);
+            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
+            assert(carrier == &kDefaultCarriers[2]);
         }
+        {
+            /* Token 0 with no default the probe can confirm still resolves to the
+             * first default: the probe is a plain stat() that privileged domains
+             * are denied on some devices, while the chain reaches such a vendor
+             * carrier through the crash-dump bridge. */
+            FakeDevice dev{};
+            dev.first_present_default = kDefaultCarriers.size();
+            const DeviceProbeOps probe = make_device_ops(dev);
+            carrier = nullptr;
+            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
+            assert(carrier == &kDefaultCarriers[0]);
+        }
+        {
+            /* An unknown token fails closed. */
+            FakeDevice dev{};
+            const DeviceProbeOps probe = make_device_ops(dev);
+            carrier = nullptr;
+            assert(!select_single_carrier(99U, probe, carrier));
+            assert(carrier == nullptr);
+        }
+        {
+            /* A missing device surface (no file_fact at all) also resolves to the
+             * first default rather than failing: the chain decides reachability. */
+            const DeviceProbeOps probe{};
+            carrier = nullptr;
+            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
+            assert(carrier == &kDefaultCarriers[0]);
+        }
+    }
+
+    void test_missing_single_carrier_rejected() {
+        /* The production binding must install a carrier; a null one is
+         * fail-closed before patch #1 or any write. */
+        FakeDevice dev{};
+        FakeChain chain{};
+        reset_chain(chain);
+        RootProgram root{};
+        root.kind = RootProgramKind::KernelSU;
+        root.set_argv("/data/adb/ksud");
+        IpsecSaParams sa{};
+        BackendTerminalDeps deps = make_deps(dev, chain);
+        deps.carrier = nullptr;
+        UmhForwardInput out{};
+        const BackendTerminalResult r =
+                run_backend_terminal(make_profile(), root, sa, deps, false, out);
+        assert(r.error == BackendTerminalError::CarrierRejected);
+        assert(!r.ready);
     }
 
     void test_precheck_rejected() {
@@ -483,12 +562,9 @@ namespace {
 
     /* ---- B5-8: the injected UMH channel handle reaches the terminal input ---- */
 
-    UmhForwardOutcome dummy_forward(void *, const RootProgram &, const UmhCommand &,
-                                    std::uint32_t) noexcept {
-        return UmhForwardOutcome::Ready;
-    }
+    UmhReadyState dummy_ready(void *) noexcept { return UmhReadyState::Ready; }
 
-    void test_umh_channel_handoff() {
+    void test_umh_readiness_handoff() {
         FakeDevice dev{};
         FakeChain chain{};
         reset_chain(chain);
@@ -498,16 +574,14 @@ namespace {
         IpsecSaParams sa{};
         BackendTerminalDeps deps = make_deps(dev, chain);
         deps.umh_channel.ctx = &dev;
-        deps.umh_channel.forward = dummy_forward;
-        deps.umh_channel.wait_timeout_ms = 777U;
+        deps.umh_channel.ready = dummy_ready;
         UmhForwardInput out{};
 
         const BackendTerminalResult r =
                 run_backend_terminal(make_profile(), root, sa, deps, false, out);
         assert(r.ready);
         assert(out.channel.ctx == &dev);
-        assert(out.channel.forward == dummy_forward);
-        assert(out.channel.wait_timeout_ms == 777U);
+        assert(out.channel.ready == dummy_ready);
         assert(out.channel.valid());
     }
 
@@ -546,8 +620,10 @@ int main() {
     test_precheck_rejected();
     test_chain_rejected();
     test_carrier_tokens();
+    test_carrier_single_selection();
+    test_missing_single_carrier_rejected();
     test_proc_version_marker();
-    test_umh_channel_handoff();
+    test_umh_readiness_handoff();
     test_policy_state_seam();
     std::puts("cve_2026_43284_backend_terminal_test: OK");
     return 0;

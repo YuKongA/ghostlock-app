@@ -1,180 +1,120 @@
-/* Host contract test for the B5-8 umh_forward terminal policy.
+/* Host contract test for the B6/T5 umh_forward terminal policy.
  *
- * The kernel UMH channel is an injected fake, so nothing touches a device,
- * forks or writes a file. Every fail-closed path and the positive forward/wait
- * path are exercised against the real production unit. */
+ * The readiness probe is an injected fake, so nothing touches a device, forks
+ * or writes a file. The terminal is read-only: it confirms the LKM/UMH
+ * readiness markers and never forwards the UMH command or reads the session
+ * secrets. Every fail-closed path and the positive Ready path are exercised
+ * against the real production unit. */
 
 #include "terminal/umh_forward.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <string_view>
 
-using ghostlock::session::StageResult;
+using ghostlock::contract::StageResult;
+using ghostlock::terminal::production_umh_channel;
 using ghostlock::terminal::run_umh_forward;
-using ghostlock::terminal::RootProgram;
-using ghostlock::terminal::RootProgramKind;
-using ghostlock::terminal::UmhCommand;
 using ghostlock::terminal::UmhForwardChannel;
 using ghostlock::terminal::UmhForwardInput;
-using ghostlock::terminal::UmhForwardOutcome;
 using ghostlock::terminal::UmhReadyState;
 
 namespace {
 
-    struct FakeUmh final {
-        UmhForwardOutcome outcome = UmhForwardOutcome::Ready;
+    struct FakeProbe final {
         UmhReadyState ready = UmhReadyState::Ready;
         std::uint32_t calls = 0U;
-        std::uint32_t ready_calls = 0U;
-        std::uint32_t seen_timeout = 0U;
-        std::string_view seen_program{};
-        std::size_t seen_argc = 0U;
+        void *seen_ctx = nullptr;
     };
 
-    UmhForwardOutcome fake_forward(void *ctx, const RootProgram &program,
-                                   const UmhCommand &command,
-                                   std::uint32_t wait_timeout_ms) noexcept {
-        auto *f = static_cast<FakeUmh *>(ctx);
-        ++f->calls;
-        f->seen_timeout = wait_timeout_ms;
-        f->seen_program = program.argv_view();
-        f->seen_argc = command.argc;
-        return f->outcome;
-    }
-
     UmhReadyState fake_ready(void *ctx) noexcept {
-        auto *f = static_cast<FakeUmh *>(ctx);
-        ++f->ready_calls;
+        auto *f = static_cast<FakeProbe *>(ctx);
+        ++f->calls;
+        f->seen_ctx = ctx;
         return f->ready;
     }
 
-    /* A fully-populated backend handoff; tests knock out one field at a time. */
-    UmhForwardInput make_input(FakeUmh &fake, RootProgramKind kind = RootProgramKind::KernelSU,
-                               bool bind_channel = true, bool bind_probe = true) {
+    /* The terminal only needs the terminus flag and a bound readiness probe. The
+     * legacy command/argv/secrets fields are deliberately left empty to prove
+     * the terminal does not gate on them (they are chain/composition-root state). */
+    UmhForwardInput make_input(FakeProbe &probe, bool bind_probe = true) {
         UmhForwardInput in{};
         in.lkm_loaded = true;
-        in.root_program.kind = kind;
-        in.root_program.set_argv("/data/adb/ksud");
-        in.command.argc = 2U;
-        std::strncpy(in.command.argv[0].data(), "/data/adb/ksud",
-                     in.command.argv[0].size() - 1U);
-        std::strncpy(in.command.argv[1].data(), "late-load",
-                     in.command.argv[1].size() - 1U);
-        in.session_secrets = &fake;
-        in.session_secrets_size = sizeof(fake);
-        if (bind_channel) {
-            in.channel.ctx = &fake;
-            in.channel.forward = fake_forward;
-            in.channel.wait_timeout_ms = 4321U;
-        }
         if (bind_probe) {
-            in.channel.ready_ctx = &fake;
+            in.channel.ctx = &probe;
             in.channel.ready = fake_ready;
         }
         return in;
     }
 
-    void test_positive_ksud() {
-        FakeUmh fake{};
-        UmhForwardInput in = make_input(fake);
+    void test_positive_ready() {
+        FakeProbe probe{};
+        UmhForwardInput in = make_input(probe);
         assert(run_umh_forward(in) == StageResult::Done);
-        assert(fake.calls == 1U);
-        assert(fake.ready_calls == 1U);
-        assert(fake.seen_timeout == 4321U);
-        assert(fake.seen_program == "/data/adb/ksud");
-        assert(fake.seen_argc == 2U);
+        assert(probe.calls == 1U);
+        assert(probe.seen_ctx == &probe);
     }
 
-    void test_non_ksud_needs_no_probe() {
-        FakeUmh fake{};
-        UmhForwardInput in =
-                make_input(fake, RootProgramKind::FolkPatch, true, false);
+    void test_read_only_ignores_command_and_secrets() {
+        /* Empty command/argv and no session secrets must still succeed when the
+         * probe reports Ready: the chain consumed the secrets and completed the
+         * load; the terminal only confirms readiness. */
+        FakeProbe probe{};
+        UmhForwardInput in = make_input(probe);
+        in.command.argc = 0U;
+        in.root_program.set_argv("");
+        in.session_secrets = nullptr;
+        in.session_secrets_size = 0U;
         assert(run_umh_forward(in) == StageResult::Done);
-        assert(fake.calls == 1U);
-        assert(fake.ready_calls == 0U);
+        assert(probe.calls == 1U);
     }
 
     void test_fail_closed_terminus_and_channel() {
-        FakeUmh fake{};
+        FakeProbe probe{};
         {
-            UmhForwardInput in = make_input(fake);
+            UmhForwardInput in = make_input(probe);
             in.lkm_loaded = false;
             assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
+            assert(probe.calls == 0U);
         }
         {
-            UmhForwardInput in = make_input(fake);
-            in.command.argc = 0U;
+            UmhForwardInput in = make_input(probe, false);
             assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
-        }
-        {
-            UmhForwardInput in = make_input(fake);
-            in.root_program.set_argv("");
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
-        }
-        {
-            UmhForwardInput in = make_input(fake);
-            in.session_secrets = nullptr;
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
-        }
-        {
-            UmhForwardInput in = make_input(fake);
-            in.session_secrets_size = 0U;
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
-        }
-        {
-            UmhForwardInput in = make_input(fake, RootProgramKind::KernelSU, false);
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 0U);
+            assert(probe.calls == 0U);
         }
     }
 
-    void test_forward_outcomes() {
-        for (const UmhForwardOutcome outcome :
-             {UmhForwardOutcome::Rejected, UmhForwardOutcome::Timeout,
-              UmhForwardOutcome::Failed}) {
-            FakeUmh fake{};
-            fake.outcome = outcome;
-            UmhForwardInput in = make_input(fake);
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 1U);
-            assert(fake.ready_calls == 0U);
-        }
-    }
-
-    void test_ksud_readiness_probe() {
-        {
-            FakeUmh fake{};
-            UmhForwardInput in =
-                    make_input(fake, RootProgramKind::KernelSU, true, false);
-            assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.calls == 1U);
-        }
+    void test_probe_states() {
         for (const UmhReadyState ready :
              {UmhReadyState::NotReady, UmhReadyState::Unavailable}) {
-            FakeUmh fake{};
-            fake.ready = ready;
-            UmhForwardInput in = make_input(fake);
+            FakeProbe probe{};
+            probe.ready = ready;
+            UmhForwardInput in = make_input(probe);
             assert(run_umh_forward(in) == StageResult::Failed);
-            assert(fake.ready_calls == 1U);
+            assert(probe.calls == 1U);
         }
+    }
+
+    void test_production_channel_host_binding() {
+        /* The production channel is valid on Linux (the probe is bound) and
+         * invalid elsewhere (fail-closed); both are compiled-in behavior. */
+        const UmhForwardChannel channel = production_umh_channel();
+#if defined(__linux__)
+        assert(channel.valid());
+        assert(channel.ready != nullptr);
+#else
+        assert(!channel.valid());
+#endif
     }
 
 } // namespace
 
 int main() {
-    test_positive_ksud();
-    test_non_ksud_needs_no_probe();
+    test_positive_ready();
+    test_read_only_ignores_command_and_secrets();
     test_fail_closed_terminus_and_channel();
-    test_forward_outcomes();
-    test_ksud_readiness_probe();
+    test_probe_states();
+    test_production_channel_host_binding();
     std::puts("umh_forward_test: ok");
     return 0;
 }

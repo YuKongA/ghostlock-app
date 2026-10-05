@@ -6,7 +6,7 @@
  * key layout or mask must update them deliberately.
  */
 
-#include "../kernelsnitch/futex_hash.h"
+#include "../backend/cve_2026_43499/leak/futex_hash.h"
 
 #include <cassert>
 #include <cstdint>

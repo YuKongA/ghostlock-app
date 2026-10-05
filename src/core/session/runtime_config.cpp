@@ -2,7 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 
 #include <sched.h>
 

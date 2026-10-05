@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.profile.Glkv3Decoder
+import com.ghostlock.app.data.profile.Glkv3Value
 import com.ghostlock.app.domain.model.CpuPair
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -17,9 +18,10 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * B7: the app-level backend selection reaches the native GLKv3 wire document.
- * The controller injects the selected token into the profile builder, and the
- * document codec fails an unavailable backend closed to the 43499 default.
+ * B7/T5: the app-level backend selection reaches the native GLKv3 wire
+ * document. The controller injects the selected token into the profile builder;
+ * the available 43284 backend carries the sparse pagecache_write + umh_forward
+ * triple, while a placeholder backend still fails closed to the 43499 default.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -55,14 +57,35 @@ class BackendSelectionTest {
             assertTrue(config.hasProfile)
             val bytes = requireNotNull(controller.nativeDocument(config))
             assertEquals("cve_2026_43499", backendToken(bytes))
+            assertEquals("root_child", Glkv3Decoder.decode(bytes)?.terminal)
         } finally {
             root.deleteRecursively()
         }
     }
 
     @Test
-    fun `unavailable backend falls back to 43499 in the native document`() = runBlocking {
+    fun `available 43284 backend reaches the wire with the sparse triple`() = runBlocking {
         val (controller, root) = controller("backend-selection-43284", BackendKind.Cve2026_43284)
+        try {
+            val config = controller.load(release, pair)
+            assertTrue(config.hasProfile)
+            val bytes = requireNotNull(controller.nativeDocument(config))
+            val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
+            assertEquals("cve_2026_43284", decoded.backend)
+            assertEquals("umh_forward", decoded.terminal)
+            val steps = decoded.sections
+                .first { it.name == "backend.cve_2026_43284" }
+                .entries.first { it.key == "steps" }
+                .value
+            assertEquals(Glkv3Value.UInt(3uL), steps)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `placeholder backend falls back to 43499 in the native document`() = runBlocking {
+        val (controller, root) = controller("backend-selection-64560", BackendKind.Cve2026_64560)
         try {
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)

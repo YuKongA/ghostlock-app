@@ -4,8 +4,8 @@
 /* CVE-2026-43284 read-only ELF hook-target location (B5-5, host part).
  *
  * Independent rewrite of the upstream ELF parser used by the DirtyFrag chain:
- *   third_party/dirtyfrag/usermode/ankit/elf_parser.c
- *   third_party/dirtyfrag/usermode/lspromise/elf_parser.c
+ *   DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/elf_parser.c
+ *   lspromise@0258165 usermode/elf_parser.c
  * Upstream opens a path and seeks with lseek64/read and never validates the
  * section/segment ranges. Here every traversal is over a caller-owned, fully
  * validated read-only byte span: nothing is allocated, no file descriptor or

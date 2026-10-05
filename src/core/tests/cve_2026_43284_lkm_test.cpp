@@ -93,6 +93,10 @@ namespace {
         bool present_modinfo = true;
         std::uint16_t machine = kMachineAarch64;
         std::uint32_t versions_size = 0U;
+        /* When set, the section is named __versions and carries SHF_ALLOC, so
+         * the kernel's find_sec() finds it (empty or not) and has_crcs is true. */
+        bool present_versions = true;
+        bool versions_alloc = false;
         std::string tail{};
     };
 
@@ -174,8 +178,10 @@ namespace {
         put64(section + 0x20U, spec.present_modinfo ? spec.modinfo.size() : 0U);
 
         section = shoff + 192U;
-        put32(section, static_cast<std::uint32_t>(versions_name));
+        put32(section, static_cast<std::uint32_t>(spec.present_versions ? versions_name
+                                                                         : 0U));
         put32(section + 4U, 1U);
+        put64(section + 0x08U, spec.versions_alloc ? 2U : 0U); /* SHF_ALLOC */
         put64(section + 0x18U, versions_off);
         put64(section + 0x20U, spec.versions_size);
 
@@ -370,11 +376,12 @@ int main() {
         input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::PatchedKernel);
 
-        /* Missing profile kmi. */
+        /* Missing profile kmi: the KMI is a device fact, so it resolves from the
+         * release instead of failing the run. */
         input = LkmPolicyInput{};
-        input.facts.release = "5.15.202-android14-6-g0";
+        input.facts.release = "5.15.202-android13-8-g0";
         input.lkm_path_token = kLkmPathTokenBundled;
-        expect_resolve(input, false, LkmPolicyError::MissingProfileKmi);
+        expect_resolve(input, true, LkmPolicyError::None);
 
         /* profile kmi must equal the release-derived kmi. */
         input = LkmPolicyInput{};
@@ -397,11 +404,12 @@ int main() {
         input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::UnsupportedKmi);
 
-        /* Missing lkm_path token. */
+        /* Missing lkm_path token: the production path supplies its own module
+         * mirror, so an absent token defaults to the bundled selection. */
         input = LkmPolicyInput{};
-        input.facts.release = "5.15.202-android14-6-g0";
+        input.facts.release = "5.15.202-android13-8-g0";
         input.profile_kmi = 5015U;
-        expect_resolve(input, false, LkmPolicyError::MissingLkmPath);
+        expect_resolve(input, true, LkmPolicyError::None);
 
         /* Unknown lkm_path token. */
         input = LkmPolicyInput{};
@@ -429,7 +437,7 @@ int main() {
         assert(precheck_module_bytes(good.data(), good.size(), release, facts, error));
         assert(error == LkmImageError::None);
         assert(facts.elf_valid && facts.has_modinfo && facts.has_name && facts.has_vermagic);
-        assert(facts.vermagic_matches && facts.versions_empty);
+        assert(facts.vermagic_matches && !facts.has_crcs && facts.versions_empty);
         assert(!facts.signed_module && !facts.kcfi_present);
         assert(facts.vermagic_diff == VermagicDiffReason::None);
         assert(std::string_view(facts.module_vermagic) == kRequired);
@@ -452,13 +460,65 @@ int main() {
         assert(error == LkmImageError::SignedModule);
         assert(facts.signed_module);
 
-        /* A non-empty __versions (MODVERSIONS CRCs) is rejected. */
-        ElfSpec versions{};
-        versions.versions_size = 4U;
-        const std::vector<std::uint8_t> versions_bytes = build_elf(versions);
-        assert(!precheck_module_bytes(versions_bytes.data(), versions_bytes.size(), release,
-                                      facts, error));
-        assert(error == LkmImageError::NonEmptyVersions);
+        /* A loadable (SHF_ALLOC) zero-length __versions still makes the kernel
+         * take the tail-only same_magic() path; this is the real DDK module. */
+        ElfSpec empty_versions{};
+        empty_versions.versions_alloc = true;
+        const std::vector<std::uint8_t> empty_versions_bytes = build_elf(empty_versions);
+        assert(precheck_module_bytes(empty_versions_bytes.data(), empty_versions_bytes.size(),
+                                     release, facts, error));
+        assert(error == LkmImageError::None);
+        assert(facts.has_crcs && facts.vermagic_matches && facts.versions_empty);
+
+        /* With CRCs the UTS_RELEASE token is ignored: same tail -> accepted. */
+        ElfSpec crc_release{};
+        crc_release.versions_size = 4U;
+        crc_release.versions_alloc = true;
+        crc_release.modinfo = std::string(kModinfoMismatch, sizeof(kModinfoMismatch) - 1U);
+        const std::vector<std::uint8_t> crc_release_bytes = build_elf(crc_release);
+        assert(precheck_module_bytes(crc_release_bytes.data(), crc_release_bytes.size(),
+                                     release, facts, error));
+        assert(error == LkmImageError::None);
+        assert(facts.has_crcs && !facts.versions_empty && facts.vermagic_matches);
+        assert(facts.vermagic_diff == VermagicDiffReason::None);
+
+        /* The same release mismatch without __versions is rejected in full. */
+        ElfSpec nocrc_release{};
+        nocrc_release.present_versions = false;
+        nocrc_release.modinfo = std::string(kModinfoMismatch, sizeof(kModinfoMismatch) - 1U);
+        const std::vector<std::uint8_t> nocrc_release_bytes = build_elf(nocrc_release);
+        assert(!precheck_module_bytes(nocrc_release_bytes.data(), nocrc_release_bytes.size(),
+                                      release, facts, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(!facts.has_crcs && !facts.vermagic_matches);
+        assert(facts.vermagic_diff == VermagicDiffReason::Release);
+
+        /* A loadable __versions whose option tail differs is still rejected. */
+        ElfSpec crc_tail{};
+        crc_tail.versions_size = 4U;
+        crc_tail.versions_alloc = true;
+        crc_tail.modinfo = std::string(kModinfoOptionsTail,
+                                       sizeof(kModinfoOptionsTail) - 1U);
+        const std::vector<std::uint8_t> crc_tail_bytes = build_elf(crc_tail);
+        assert(!precheck_module_bytes(crc_tail_bytes.data(), crc_tail_bytes.size(),
+                                      release, facts, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(facts.has_crcs && !facts.vermagic_matches);
+        assert(facts.vermagic_diff == VermagicDiffReason::Options);
+
+        /* A __versions without SHF_ALLOC is invisible to the kernel's find_sec()
+         * and must not take the lenient tail-only path. */
+        ElfSpec nonalloc_versions{};
+        nonalloc_versions.versions_size = 4U;
+        nonalloc_versions.versions_alloc = false;
+        nonalloc_versions.modinfo = std::string(kModinfoMismatch,
+                                                sizeof(kModinfoMismatch) - 1U);
+        const std::vector<std::uint8_t> nonalloc_versions_bytes =
+                build_elf(nonalloc_versions);
+        assert(!precheck_module_bytes(nonalloc_versions_bytes.data(),
+                                      nonalloc_versions_bytes.size(), release, facts, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(!facts.has_crcs && facts.vermagic_diff == VermagicDiffReason::Release);
 
         /* Missing .modinfo section. */
         ElfSpec no_modinfo{};
@@ -785,6 +845,71 @@ int main() {
         command = build_umh(semicolon, error);
         assert(error == UmhCommandError::None);
         assert(command.arg(3U) == "me.weishu.kernelsu; id");
+    }
+
+    /* ---- Real DDK module self-proof: kernel same_magic() tail rule. ---- */
+    {
+        constexpr const char kRealModinfo[] =
+                "license=GPL\0name=ghostlock\0"
+                "vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt "
+                "mod_unload modversions aarch64\0";
+        DeviceKernelFacts device{};
+        device.release = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557";
+        device.preempt = true;
+        device.modversions = true;
+        device.module_force_unload = false;
+
+        /* Deterministic equivalent of the real module: a CRC-bearing .ko whose
+         * UTS_RELEASE differs but whose pre-first-space tail matches. */
+        ElfSpec synthetic{};
+        synthetic.modinfo = std::string(kRealModinfo, sizeof(kRealModinfo) - 1U);
+        synthetic.versions_size = 8U;
+        synthetic.versions_alloc = true;
+        const std::vector<std::uint8_t> synth_bytes = build_elf(synthetic);
+        ModuleFacts synth_facts{};
+        LkmImageError synth_error = LkmImageError::None;
+        const bool synth_ok = precheck_module_bytes(synth_bytes.data(), synth_bytes.size(),
+                                                    device, synth_facts, synth_error);
+        std::printf("[self-proof] synthetic CRC .ko: ok=%d has_crcs=%d "
+                    "versions_empty=%d match=%d error=%d\n",
+                    synth_ok ? 1 : 0, synth_facts.has_crcs ? 1 : 0,
+                    synth_facts.versions_empty ? 1 : 0,
+                    synth_facts.vermagic_matches ? 1 : 0,
+                    static_cast<int>(synth_error));
+        assert(synth_ok && synth_facts.has_crcs && synth_facts.vermagic_matches);
+
+        /* The real artifact when present (the host test runs under src/ or the
+         * repo root depending on the caller). */
+        const char *candidates[] = {
+            "tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko",
+            "../tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko",
+            "../../tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko",
+            "../../../tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko",
+        };
+        const char *real_ko = nullptr;
+        for (const char *candidate : candidates) {
+            if (::access(candidate, R_OK) == 0) {
+                real_ko = candidate;
+                break;
+            }
+        }
+        if (real_ko != nullptr) {
+            ModuleFacts real_facts{};
+            LkmImageError real_error = LkmImageError::None;
+            const bool real_ok = precheck_module_file(real_ko, device, real_facts, real_error);
+            std::printf("[self-proof] real .ko %s: ok=%d has_crcs=%d "
+                        "versions_empty=%d match=%d error=%d\n",
+                        real_ko, real_ok ? 1 : 0, real_facts.has_crcs ? 1 : 0,
+                        real_facts.versions_empty ? 1 : 0,
+                        real_facts.vermagic_matches ? 1 : 0,
+                        static_cast<int>(real_error));
+            assert(real_ok);
+            assert(real_facts.has_crcs);
+            assert(real_facts.vermagic_matches);
+            assert(real_facts.versions_empty);
+        } else {
+            std::printf("[self-proof] real .ko not present; synthetic only\n");
+        }
     }
 
     std::puts("cve_2026_43284_lkm_test: OK");

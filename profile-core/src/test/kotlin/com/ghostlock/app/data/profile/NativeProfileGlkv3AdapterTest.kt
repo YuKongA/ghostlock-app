@@ -83,6 +83,22 @@ class NativeProfileGlkv3AdapterTest {
         val adapted = NativeProfileGlkv3Adapter.adapt(document)
         assertEquals("cve_2026_43284", adapted.backend)
         assertEquals(null, adapted.route)
+        assertEquals(NativeProfileGlkv3Adapter.TERMINAL_ROOT_CHILD, adapted.terminal)
+    }
+
+    @Test
+    fun adapterCarriesTheResolvedTerminalToken() {
+        val document = fixture().copy(
+            backendKind = BackendKind.Cve2026_43284.wire.toUInt(),
+            routeKind = 0u,
+            cve2026_43284 = null,
+        )
+        val adapted = NativeProfileGlkv3Adapter.adapt(
+            document,
+            NativeProfileGlkv3Adapter.TERMINAL_UMH_FORWARD,
+        )
+        assertEquals("cve_2026_43284", adapted.backend)
+        assertEquals("umh_forward", adapted.terminal)
     }
 
     /**

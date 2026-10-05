@@ -16,6 +16,9 @@ namespace ghostlock::config {
     /* Capacities match the historical fixed buffers (content bytes + NUL). */
     inline constexpr size_t kHomeDirCapacity = 256;
     inline constexpr size_t kRootScriptPathCapacity = 300;
+    /* CVE-2026-43284 convention module path capacity (same class as the root
+     * script path). */
+    inline constexpr size_t kHelperModulePathCapacity = 300;
 
     /* Copy at most capacity-1 bytes (the previous snprintf truncation), then drop
  * trailing slashes but never the root slash itself. */
@@ -37,6 +40,19 @@ namespace ghostlock::config {
         result += "/.ghostlock_root.sh";
         if (result.size() > kRootScriptPathCapacity - 1) {
             result.resize(kRootScriptPathCapacity - 1);
+        }
+        return result;
+    }
+
+    /* home_dir + "/helper.ko", truncated to the helper-module capacity. This is
+     * the convention source for the CVE-2026-43284 backend's kernel module; a
+     * future backend.cve_2026_43284.module_path profile field can replace it
+     * without touching the wire. */
+    [[nodiscard]] inline std::string helper_module_file(std::string_view home_dir) {
+        std::string result(home_dir);
+        result += "/helper.ko";
+        if (result.size() > kHelperModulePathCapacity - 1) {
+            result.resize(kHelperModulePathCapacity - 1);
         }
         return result;
     }

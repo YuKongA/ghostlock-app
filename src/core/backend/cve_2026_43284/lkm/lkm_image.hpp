@@ -11,9 +11,25 @@
  * the running kernel's required value. Real finit_module/insmod and the actual
  * call_usermodehelper path are device steps (B5-9).
  *
- * The precheck mirrors third_party/dirtyfrag/usermode/ankit/exp.c
- * read_custom_ko plus the design 4.1 facts: full vermagic equality, empty
- * __versions, unsigned. Fail-closed: anything unverifiable is rejected.
+ * The precheck mirrors the kernel's own check_modinfo() -> same_magic()
+ * (kernel/module.c, 5.15):
+ *     same_magic(amagic, bmagic, has_crcs) {
+ *         if (has_crcs) { amagic += strcspn(amagic, " ");
+ *                         bmagic += strcspn(bmagic, " "); }
+ *         return strcmp(amagic, bmagic) == 0;
+ *     }
+ * with has_crcs = info->index.vers = find_sec("__versions"). find_sec() matches
+ * any SHF_ALLOC section with that name, so the kernel takes the tail-only path
+ * whenever a loadable __versions section is present -- even a zero-length one.
+ * Only a module with no such section is compared in full. ModuleFacts::has_crcs
+ * records that selector (section present with SHF_ALLOC); versions_empty records
+ * that no CRC entries are carried (section absent, not SHF_ALLOC, or length 0).
+ * A real DDK module therefore carries a present, SHF_ALLOC, usually empty
+ * __versions and is accepted when its UTS_RELEASE differs but the pre-first-
+ * space tail matches. The earlier precheck's full-string equality and its
+ * rejection of any non-empty __versions were both opposite to the kernel; the
+ * NonEmptyVersions enum value is retained for compatibility but is never
+ * returned now.
  *
  * B5-9h-3 constructs the required value from the running kernel's
  * VERMAGIC_STRING (include/linux/vermagic.h and arch/arm64/include/asm/
@@ -21,9 +37,7 @@
  *     UTS_RELEASE " " [SMP ] [preempt ] [mod_unload ] [modversions ]aarch64
  * The target rule maps mod_unload to CONFIG_MODULE_FORCE_UNLOAD being unset
  * and modversions to CONFIG_MODVERSIONS; every argument is explicit in
- * DeviceKernelFacts so no field is guessed here. Kernel 5.15's check_modinfo()
- * calls same_magic() and compares the strings in full when the module carries
- * no __versions CRCs, which is exactly the module this path validates.
+ * DeviceKernelFacts so no field is guessed here.
  *
  * backend -> terminal is an allowed edge (ADR-0004 R1); pipeline/ is not. */
 
@@ -48,8 +62,8 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     inline constexpr std::size_t kModuleMaxBytes = std::size_t{64U} * 1024U * 1024U;
 
     /* Required and observed vermagic strings are bounded well above UTS_RELEASE
-     * (64) plus the longest flag set; the comparison itself always uses the
-     * full parsed string, never the truncated diagnostic copy. */
+     * (64) plus the longest flag set; the comparison always uses the bounded
+     * copies, never a truncated diagnostic snippet. */
     inline constexpr std::size_t kVermagicMaxBytes = 192U;
 
     enum class UmhCommandError : std::uint8_t {
@@ -92,14 +106,18 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         VermagicMismatch,
         /* The original vermagic= slot cannot hold the required string. */
         VermagicSlotTooSmall,
+        /* Retained for compatibility; same_magic() never rejects a module for
+         * carrying CRCs, so precheck_module_bytes no longer returns this. */
         NonEmptyVersions,
         SignedModule,
     };
 
-    /* Why a full-string comparison failed; informational, the reject is the
-     * mismatch itself. Release means the UTS_RELEASE token differs, Options
-     * means only the SMP/preempt/mod_unload/modversions/aarch64 tail differs,
-     * Unparsable means one side carried no release token. */
+    /* Why a comparison failed; informational, the reject is the mismatch
+     * itself. Options means the pre-first-space option tail differs (the only
+     * part same_magic() compares when the module has CRCs). Release means the
+     * tails agree and only the UTS_RELEASE token differs, which the kernel
+     * ignores for a CRC module but rejects for a CRC-less one. Unparsable
+     * means one side was empty. */
     enum class VermagicDiffReason : std::uint8_t {
         None = 0,
         Release,
@@ -130,6 +148,10 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         bool has_vermagic = false;
         bool vermagic_matches = false;
         bool vermagic_rewritten = false;
+        /* Kernel same_magic() selector: a SHF_ALLOC __versions section is
+         * present, so only the pre-first-space tail is compared. */
+        bool has_crcs = false;
+        /* No CRC entries are carried (section absent, not SHF_ALLOC, or empty). */
         bool versions_empty = true;
         bool signed_module = false;
         bool kcfi_present = false;
@@ -150,8 +172,10 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
                                          std::size_t capacity,
                                          std::size_t &length) noexcept;
 
-    /* Precheck an in-memory .ko against the kernel-required vermagic. Never
-     * loads or executes anything. Returns false with the first failing rule. */
+    /* Precheck an in-memory .ko against the kernel-required vermagic using
+     * same_magic() semantics (tail-only when has_crcs, full string otherwise).
+     * Never loads or executes anything. Returns false with the first failing
+     * rule. */
     [[nodiscard]] bool precheck_module_bytes(const std::uint8_t *data, std::size_t size,
                                              const DeviceKernelFacts &required,
                                              ModuleFacts &facts,

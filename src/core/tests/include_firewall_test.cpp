@@ -85,8 +85,11 @@ namespace {
         {"support/util.cpp", "backend/cve_2026_43499/backend_profile/accessors.hpp",
          "A2-4-4: 43499 slide accessors moved out of profile; util still reads them "
          "until the A2-5-4 include decoupling lands"},
+        {"support/util.cpp", "backend/cve_2026_43499/leak/address_discovery.h",
+         "A3-2: the one TU that owns the frozen kernelsnitch provider includes its "
+         "leak-module adapter; the spray/leak ownership move (F15) removes it"},
     };
-    static_assert(sizeof(kWhitelist) / sizeof(kWhitelist[0]) == 3,
+    static_assert(sizeof(kWhitelist) / sizeof(kWhitelist[0]) == 4,
                   "A2-5-5: whitelist ledger changed; update the list and its count together");
 
     bool has_source_extension(const std::string &path) {

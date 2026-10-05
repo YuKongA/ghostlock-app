@@ -7,9 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.isAvailable
+import com.ghostlock.app.data.resolveExecutionSelection
 import com.ghostlock.app.data.requiresShizuku
-import com.ghostlock.app.data.steps
-import com.ghostlock.app.data.terminal
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -818,6 +817,9 @@ class GhostlockViewModel(
     fun setExecutionMode(mode: ExecutionMode) {
         repository.setExecutionMode(mode)
         mutableState.update { it.copy(executionMode = mode) }
+        // The mode picks the backend/StepSet/terminal baked into the document,
+        // so re-resolve the cached native blob before the next run.
+        loadExecutionProfile(preserveEditing = true)
         // The grant dialog lands in another app, so the status is re-read and
         // onResume() refreshes it again when the dialog closes.
         viewModelScope.launch { refreshSnapshot() }
@@ -893,10 +895,12 @@ class GhostlockViewModel(
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
-        /* The mode derives the entry/steps/terminal; log the selection it made. */
+        /* The mode + backend derive the catalogued triple; log what it resolved. */
+        val selection = resolveExecutionSelection(mode, snapshot.backendKind)
         appendLog(
             "==== start ${if (mode == ExecutionMode.Shizuku) "Shizuku/V20" else "base"} " +
-                "(steps=${mode.steps.token}, terminal=${mode.terminal.token}) ====",
+                "(backend=${selection.backend.token}, steps=${selection.steps.token}, " +
+                "terminal=${selection.terminal.token}) ====",
         )
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {

@@ -3,16 +3,21 @@
 > 范围：只读分析上游处理方式，并与本项目 GhostLock 的 CVE-2026-43284 分阶段入口对照。
 > 本文只描述事实与差异，不修改任何源码，不构成对真机行为的保证。
 
+> **状态更新（2026-10-05）**：本仓库**已删除** vendored 的 `DirtyFrag-Android-Root-Jailbreak@de2ab7b ` 目录（理由：不参与构建；
+> 上游 repo 可直接查阅，来源与 commit 记入 `README.md`/`README_ZH.md` 的「Credits & License」）。
+> 本文中 `DirtyFrag-Android-Root-Jailbreak@de2ab7b ...` 的旧引用已改写为 `上游仓库@commit <path>`；文中「逐字节一致」的结论
+> 是当时 vendored 状态下得出的，仍然有效，但现在需按上游 commit 自行 clone 复核。
+
 ## 0. 资料与引用约定
 
 - 上游 clone：`/tmp/upstream/ankitrawatgit_DirtyFrag-Android-Root-Jailbreak`，HEAD
   `de2ab7be69dc159af508d584523fd4d5c0b7cc7a`（2026-10-04 +0530，remote
   `ankitrawatgit/DirtyFrag-Android-Root-Jailbreak`）。
-- 本文行号引用格式：`上游 <path>:<line>`。本仓库 `third_party/dirtyfrag/usermode/ankit/`
+- 本文行号引用格式：`上游 <path>:<line>`。本仓库 `DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/`
   与上游 `app/src/main/jni/` 的 `exp.c`、`libcxx.S`、`elf_parser.c`、`include.inc`、
   `CMakeLists.txt` **逐字节一致**（`splicehelper.c` 不在 ankit 目录，见下）；
-  `third_party/dirtyfrag/app-reference/ExploitRunner.java` 与上游一致；
-  `third_party/dirtyfrag/lkm/ankit/dirtyfrag.c` 与上游 `dirtyfrag-lkm/dirtyfrag.c` 一致。
+  `DirtyFrag-Android-Root-Jailbreak@de2ab7b app-reference/ExploitRunner.java` 与上游一致；
+  `DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/dirtyfrag.c` 与上游 `dirtyfrag-lkm/dirtyfrag.c` 一致。
 - 项目侧引用格式：`<path>:<line>`（仓库根相对）。
 - **未验证**标记：无上游代码/机制直接支撑、只能真机或内核行为确认的点。
 
@@ -169,7 +174,7 @@
    `get_dc_target_dpath` 挂 pre_handler，把返回值置 0、`pc = lr` 以旁路 Defex；
    `umh_exec(info, UMH_WAIT_PROC)`；最后 `return -E2BIG` 让模块自身装载失败/卸载
    （源码注释：没有 `module_exit`，不长期驻留）。
-   证据：`上游 dirtyfrag-lkm/dirtyfrag.c:16-88`（镜像 `third_party/dirtyfrag/lkm/ankit/dirtyfrag.c`）。
+   证据：`上游 dirtyfrag-lkm/dirtyfrag.c:16-88`（镜像 `DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/dirtyfrag.c`）。
 7. `ksud` asset 脚本：自定义 `ksud.custom`（可执行）优先，否则查 KernelSU Manager 的
    `libksud.so`，再 ReSukiSU，再 `/data/adb/ksu/bin/ksud`；`chmod` 后可执行；
    `exec "$KSUD" late-load --kmi`（KMI 取 uname 的 androidN + major.minor）。

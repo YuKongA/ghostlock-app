@@ -10,7 +10,7 @@
  *   LKM/UMH result -> cleanup.
  *
  * Independent rewrite of the upstream control flow in
- * third_party/dirtyfrag/usermode/ankit/exp.c (configure_vendor_targets,
+ * DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c (configure_vendor_targets,
  * valid_vendor_target, patch_ko, patch_file_cbc, patch_hook, restore_hook,
  * createOrphanProcess, nativeRunAll). The upstream repository ships no
  * LICENSE, so this is an independent rewrite with attribution.
@@ -234,8 +234,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         ChainError (*apply_hook)(void *ctx) noexcept = nullptr;
 
         /* Unconditional hook restore, called in the terminus before release on
-         * every path. Optional. */
-        void (*restore_hook)(void *ctx) noexcept = nullptr;
+         * every path. Optional. Returns true only when a restore was actually
+         * owed and attempted; a no-op returns false so hook_restored is a
+         * decidable field rather than "a callback was bound". */
+        bool (*restore_hook)(void *ctx) noexcept = nullptr;
 
         /* Launches the double-fork sentry trigger (B5-9). 0 == launched. */
         int (*trigger)(void *ctx) noexcept = nullptr;

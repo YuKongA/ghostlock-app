@@ -29,14 +29,16 @@ class ParseSourceUseCase(private val repository: GhostlockRepository) {
 
 class RunExploitUseCase(private val repository: GhostlockRepository) {
     /**
-     * Dispatches by entry: Shizuku runs through its shell runner, General runs
-     * the app-side binary. UMH only reaches here once its terminal is available.
+     * Dispatches by entry: Shizuku runs through its shell runner; General and
+     * UMH run the app-side binary. The selected mode/backend fix the sparse
+     * triple in the profile document (43284 -> pagecache_write + umh_forward),
+     * and the binary path appends the channel-B frame the 43284 document
+     * requires, so UMH never needs the shell.
      */
     suspend operator fun invoke(pair: CpuPair, mode: ExecutionMode, onLog: (String) -> Unit) =
         when (mode) {
-            ExecutionMode.General -> repository.runExploit(pair, onLog)
+            ExecutionMode.General, ExecutionMode.Umh -> repository.runExploit(pair, onLog)
             ExecutionMode.Shizuku -> repository.runExploitWithShizuku(pair, onLog)
-            ExecutionMode.Umh -> error("UMH terminal is not available yet")
         }
 }
 

@@ -5,9 +5,9 @@
  *
  * Mapping to the vendored sources and the project idioms is in
  * docs/analysis/cve-2026-43284-refactor-plan.md:
- *   third_party/dirtyfrag/usermode/ankit/exp.c (compute_iv, do_one_write_cbc,
+ *   DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c (compute_iv, do_one_write_cbc,
  *     patch_file_cbc)
- *   third_party/dirtyfrag/usermode/dirtyinit/dfi_exploit.c (compatibility)
+ *   DirtyInit@3409c35 dfi_exploit.c (compatibility)
  *
  * The primitive is AES-256-CBC ESP-in-UDP. One ESP datagram writes exactly one
  * 16-byte file page-cache block:

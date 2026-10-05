@@ -5,7 +5,7 @@
 
 #if defined(__ANDROID__)
 #include "memory/offset.h"
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "backend/cve_2026_43499/backend_profile/accessors.hpp"
 #include "support/decls.hpp"
 

@@ -14,6 +14,7 @@
 #include "profile/schema.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace ghostlock::backend {
@@ -61,6 +62,21 @@ namespace ghostlock::backend {
     [[nodiscard]] inline uint16_t steps_from(const profile::Document &document) noexcept {
         const profile::Value *value = document.find_value(kCve2026_43284Section, "steps");
         return value != nullptr ? static_cast<uint16_t>(value->raw) : 0;
+    }
+
+    /* The carrier selector token carried by the 43284 section, or nullopt when
+     * the key is absent. The composition root reads this to select and bind the
+     * single carrier before Pipeline::run, since the chain's page-cache target
+     * must be opened before the backend decodes the profile. A future
+     * backend.cve_2026_43284.module_path field would be read the same way. */
+    [[nodiscard]] inline std::optional<uint64_t> carrier_path_token_from(
+            const profile::Document &document) noexcept {
+        const profile::Value *value =
+                document.find_value(kCve2026_43284Section, "carrier_path");
+        if (value == nullptr) {
+            return std::nullopt;
+        }
+        return value->raw;
     }
 } // namespace ghostlock::backend
 

@@ -5,7 +5,7 @@
  * HMAC-SHA256 (RFC 2104) over SHA-256 (FIPS 180-4).
  *
  * Ported/rewritten for GhostLock from
- * third_party/dirtyfrag/usermode/ankit/hmac_sha256.h
+ * DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/hmac_sha256.h
  * (ankitrawatgit/DirtyFrag-Android-Root-Jailbreak, commit de2ab7b), whose
  * SHA-256/HMAC core derives from Odzhan's BSD-3-Clause implementation. The
  * upstream repository ships no top-level LICENSE, so this is an independent

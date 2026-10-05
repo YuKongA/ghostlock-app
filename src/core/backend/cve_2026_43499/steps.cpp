@@ -21,7 +21,7 @@
 #endif
 
 #include "memory/offset.h"
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "profile/runtime_struct_offsets.h"
 #include "backend/cve_2026_43499/backend_profile/accessors.hpp"
 #include "support/timing.hpp"
@@ -46,11 +46,10 @@
 
 namespace ghostlock::backend {
     /* The session types this unit used to see through the enclosing session
-     * namespace (victim, ancillary, g_exploit_session, VictimRound, ...). */
+     * namespace (victim, ancillary, g_exploit_session, ...). */
     using namespace ghostlock::session;
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
-    using ghostlock::session::VictimChain;
+    using ghostlock::contract::StageResult;
     namespace {
         /* Injected image->direct-map translation for the vendor behaviors.
          * Like Cve43499Primitives::zero_word it binds the session global, so the

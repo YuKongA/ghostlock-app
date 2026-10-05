@@ -3,7 +3,7 @@
  * Android/Linux only; any other host gets an all-null surface so the module
  * still links and available() stays false. Host tests bind their own fake.
  *
- * Mapping to third_party/dirtyfrag/usermode/ankit/exp.c (do_one_write_cbc) and
+ * Mapping to DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c (do_one_write_cbc) and
  * dirtyinit/dfi_exploit.c (do_cbc_block_splice) plus
  * lspromise/splicehelper.c. The upstream repositories ship no LICENSE, so this
  * is an independent rewrite with attribution. */

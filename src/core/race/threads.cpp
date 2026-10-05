@@ -4,7 +4,7 @@
 
 #include "memory/constants.hpp"
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 
 #include <sys/syscall.h>
 #include <linux/futex.h>

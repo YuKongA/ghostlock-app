@@ -112,9 +112,11 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
         if (module_path.empty()) {
             report.image_error = lkm::LkmImageError::ReadFailed;
         } else if (report.release_parsed) {
-            /* B5-9h-3: the precheck compares the full VERMAGIC_STRING. preempt
-             * comes from /proc/version; modversions/module_force_unload are the
-             * audited-target defaults in DeviceKernelFacts. */
+            /* B5-9h-3: the precheck uses the kernel's same_magic() rule
+             * (tail-only when the module carries a loadable __versions, full
+             * string otherwise). preempt comes from /proc/version;
+             * modversions/module_force_unload are the audited-target defaults in
+             * DeviceKernelFacts. */
             lkm::DeviceKernelFacts required{};
             required.release = report.facts.release.view();
             required.preempt = lkm::proc_version_has_preempt(
@@ -254,6 +256,8 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
                               : std::string_view("-");
             status += " versions_empty=";
             append_bool(status, module.versions_empty);
+            status += " has_crcs=";
+            append_bool(status, module.has_crcs);
             status += " signed=";
             append_bool(status, module.signed_module);
             status += " kcfi=";

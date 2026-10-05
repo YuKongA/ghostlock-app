@@ -4,7 +4,7 @@
 /*
  * Host shim: macOS has no <sys/prctl.h>. The attack data-flow test does not
  * call prctl (the route/heap units are stubbed); it satisfies the
- * <sys/prctl.h> include from kernelsnitch/utils.h and any constant reference.
+ * <sys/prctl.h> include from support/log.hpp and any constant reference.
  */
 
 #ifdef __cplusplus

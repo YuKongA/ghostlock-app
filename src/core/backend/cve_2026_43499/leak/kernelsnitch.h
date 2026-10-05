@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils.h"
+#include "support/log.hpp"
 #include "timeutils.h"
 #include "futex_hash.h"
 #include "scan_bounds.h"

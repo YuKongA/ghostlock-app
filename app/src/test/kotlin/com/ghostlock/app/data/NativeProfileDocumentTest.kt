@@ -256,12 +256,18 @@ class NativeProfileDocumentTest {
 
     @Test
     fun `an unavailable backend falls back to the 43499 header id`() {
-        /* 43284 is known-but-unavailable: the HOCON token must not reach the
-         * wire, so the document stays on the default backend and emits its
+        /* 64560 is a pure-header placeholder: the HOCON token must not reach
+         * the wire, so the document stays on the default backend and emits its
          * private section nowhere. */
-        val bytes = docWithBackend("cve_2026_43284").toBinary()
+        val bytes = docWithBackend("cve_2026_64560").toBinary()
         assertEquals(1, readU16(bytes, 8))
-        assertTrue(sections(bytes).none { it.name == "backend.cve_2026_43284" })
+    }
+
+    @Test
+    fun `an available backend token selects its header id`() {
+        /* 43284 is catalogued/available, so the token reaches the header. */
+        val bytes = docWithBackend("cve_2026_43284").toBinary()
+        assertEquals(6, readU16(bytes, 8))
     }
 
     @Test

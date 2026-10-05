@@ -40,6 +40,9 @@ object NativeProfileGlkv3Adapter {
     /** v2 fixes the frontend to the root_child terminal (header `kTerminalRootChild`). */
     const val TERMINAL_ROOT_CHILD: String = "root_child"
 
+    /** The umh_forward terminal token (43284's catalogued handoff). */
+    const val TERMINAL_UMH_FORWARD: String = "umh_forward"
+
     /**
      * Native path -> GLKv3 wire type. Kept byte-for-byte in step with the two
      * native GLKv3 FieldSpec lists; [declaredTypes] is asserted against the
@@ -152,8 +155,16 @@ object NativeProfileGlkv3Adapter {
     /** Every (path, wire) pair this adapter can emit, for manifest agreement. */
     fun declaredTypes(): Map<String, WireType> = TYPE_BY_PATH
 
-    /** Translates a v2 logical document into the canonical GLKv3 logical document. */
-    fun adapt(document: NativeProfileDocument): Glkv3Document {
+    /**
+     * Translates a v2 logical document into the canonical GLKv3 logical
+     * document. [terminal] is the resolved terminal token; it defaults to the
+     * root_child terminal so every existing caller keeps byte-identical output.
+     * The sparse catalogue resolves 43284 to [TERMINAL_UMH_FORWARD].
+     */
+    fun adapt(
+        document: NativeProfileDocument,
+        terminal: String = TERMINAL_ROOT_CHILD,
+    ): Glkv3Document {
         val sections = document.sections().map { section ->
             Glkv3Section(
                 name = section.name,
@@ -167,7 +178,7 @@ object NativeProfileGlkv3Adapter {
         }
         return Glkv3Document(
             release = document.release,
-            terminal = TERMINAL_ROOT_CHILD,
+            terminal = terminal,
             /* 43284 documents are route-less (native kRouteAuto); fromWire(0) is
              * null, so the root "route" key is omitted, matching v2. */
             backend = BackendKind.fromWire(document.backendKind.toInt())?.token,

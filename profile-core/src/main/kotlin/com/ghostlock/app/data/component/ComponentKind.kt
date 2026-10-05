@@ -5,8 +5,10 @@ package com.ghostlock.app.data.component
  * their availability. It mirrors the native authority
  * (`pipeline/component_catalog.hpp` + `frontend_contract.hpp` /
  * `backend_policy.hpp`): unknown ids are rejected at decode time, while
- * known-but-unavailable ids (umh_forward / cve_2026_64560 / cve_2026_43284)
- * decode and are rejected before the attack.
+ * known-but-unavailable ids (cve_2026_64560 and the other pure-header
+ * placeholders) decode and are rejected before the attack. The two wired
+ * terminals (root_child / umh_forward) and the two implemented backends
+ * (cve_2026_43499 / cve_2026_43284) are available.
  *
  * The backend enum is the App-side authority for the header backend selection
  * (native `kBackend*`); [BackendKind.available] mirrors the native catalog, so a
@@ -14,9 +16,9 @@ package com.ghostlock.app.data.component
  */
 
 /** Frontend component ids; wire values match native `kFrontend*`. */
-enum class FrontendKind(val wire: Int, val token: String) {
-    RootChild(1, "root_child"),
-    UmhForward(2, "umh_forward"),
+enum class FrontendKind(val wire: Int, val token: String, val available: Boolean) {
+    RootChild(1, "root_child", true),
+    UmhForward(2, "umh_forward", true),
 }
 
 /**
@@ -27,7 +29,7 @@ enum class FrontendKind(val wire: Int, val token: String) {
 enum class BackendKind(val wire: Int, val token: String, val available: Boolean) {
     Cve2026_43499(1, "cve_2026_43499", true),
     Cve2026_64560(2, "cve_2026_64560", false),
-    Cve2026_43284(6, "cve_2026_43284", false),
+    Cve2026_43284(6, "cve_2026_43284", true),
     ;
 
     companion object {
@@ -63,6 +65,6 @@ enum class BackendKind(val wire: Int, val token: String, val available: Boolean)
 
 /** Availability is owned here for the App, mirroring the native catalog. */
 object ComponentAvailability {
-    fun frontendAvailable(kind: FrontendKind): Boolean = kind == FrontendKind.RootChild
+    fun frontendAvailable(kind: FrontendKind): Boolean = kind.available
     fun backendAvailable(kind: BackendKind): Boolean = kind.available
 }

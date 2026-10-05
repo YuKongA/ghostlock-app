@@ -14,6 +14,7 @@ import com.ghostlock.app.data.profile.ProfileResolver
 import com.ghostlock.app.data.route.RouteKind
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
+import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.repository.ProfileConfigController
@@ -41,6 +42,13 @@ internal class AndroidProfileConfigController(
      * builds. Defaults to 43499 so existing callers keep byte-identical output.
      */
     private val backendSelection: () -> BackendKind = { BackendKind.Default },
+    /**
+     * App-level execution mode injected alongside [backendSelection]. It fixes
+     * the sparse triple the document addresses: 43284 (or the UMH mode) emits
+     * pagecache_write + umh_forward, while the 43499 modes keep their mapping.
+     * Defaults to General so existing callers stay byte-identical.
+     */
+    private val executionModeSelection: () -> ExecutionMode = { ExecutionMode.General },
     /**
      * Editing sessions pin the imported document instead of consulting the
      * live selection, and keep their overrides in [preferences] (a private
@@ -535,7 +543,9 @@ internal class AndroidProfileConfigController(
     override fun nativeDocument(config: ProfileConfig): ByteArray? = synchronized(lock) {
         if (cachedRelease != config.release) return@synchronized null
         cachedProfile?.let { profile ->
-            Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(profile.document))
+            Glkv3Encoder.encode(
+                NativeProfileGlkv3Adapter.adapt(profile.document, resolvedSelection().terminal.token),
+            )
         }
     }
 
@@ -550,6 +560,10 @@ internal class AndroidProfileConfigController(
         if (cachedRelease == config.release) cachedProfile?.toBinary() else null
     }
 
+    /** The sparse triple the live UI selection addresses. */
+    private fun resolvedSelection(): ExecutionSelection =
+        resolveExecutionSelection(executionModeSelection(), backendSelection())
+
     /** Builds the single resolved authority native consumes at run time. */
     private fun buildNativeDocument(release: String, profile: ValueMap): Profile? {
         val route = routeNameOf(profile)
@@ -560,7 +574,15 @@ internal class AndroidProfileConfigController(
          * copy keeps the resolved HOCON (editor tree, exports) free of the
          * app-only selection. */
         val resolved = profile.copyValue().asValueMap() ?: profile
-        resolved.mutableChild("backend")["kind"] = backendSelection().token
+        val selection = resolvedSelection()
+        val backend = resolved.mutableChild("backend")
+        backend["kind"] = selection.backend.token
+        /* The 43284 private section owns its StepSet key; inject the fixed
+         * pagecache_write vocabulary so no route/profile text can address an
+         * uncatalogued triple. 43499 keeps its profile/backend.steps value. */
+        if (selection.backend == BackendKind.Cve2026_43284) {
+            backend["steps"] = selection.steps.token
+        }
         return Profile.fromValueMap(
             release = release,
             route = RouteKind.fromToken(route),

@@ -5,7 +5,8 @@
  *
  * The kernel module itself stays out-of-tree (an external, rebuilt-and-audited
  * asset); this module only validates device facts and resolves profile tokens.
- * Mapped from third_party/dirtyfrag/lkm/{ankit,dfroot,dfreroot}/dirtyfrag.c and
+ * Mapped from DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/dirtyfrag.c,
+ * DFRoot@3050d5b lkm/, DFReroot@9edc769 lkm/ and
  * usermode/ankit/exp.c (select_ko_image, read_device_versions).
  *
  * Fail-closed contract: an unparsable release, a missing/mismatched profile
@@ -47,7 +48,7 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     inline constexpr std::size_t kSupportedKmiCount = 8U;
 
     /* The eight KMIs the DirtyFrag build.sh / select_ko_image tables support
-     * (third_party/dirtyfrag/lkm/ankit/build.sh). Order matches upstream. */
+     * (DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/build.sh). Order matches upstream. */
     inline constexpr std::array<SupportedKmi, kSupportedKmiCount> kSupportedKmis = {{
         {12U, 5U, 10U, 5010U, "android12-5.10"},
         {13U, 5U, 10U, 5010U, "android13-5.10"},

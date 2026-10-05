@@ -16,6 +16,7 @@ import com.ghostlock.app.data.ipsec.IpsecSession
 import com.ghostlock.app.data.ipsec.IpsecSessionFactory
 import com.ghostlock.app.data.ipsec.IpsecSessionResult
 import com.ghostlock.app.data.profile.ChannelBStdin
+import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.data.profile.SessionSecretFrame
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
@@ -102,6 +103,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         userProfileStore,
         preferences,
         backendSelection = { backendKind },
+        executionModeSelection = { executionMode },
     )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
@@ -660,6 +662,31 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 profileBlob = NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
             }
             dumpRuntimeProfile(onLog, writeSidecar, release, pair, profileBlob)
+            /* Channel B: 43284 consumes the runtime session-secret frame after
+             * the GLKv3 document; every other backend sends the document alone,
+             * so its bytes and stdin behavior are unchanged. */
+            val effectiveBackend = Glkv3Decoder.decode(profileBlob)?.backend
+                ?.let(BackendKind::fromToken)
+            var channelBSession: IpsecSession? = null
+            val sessionFrame: ByteArray = if (ChannelBStdin.requiresSessionFrame(effectiveBackend)) {
+                when (val result = ipsecSessionFactory.create()) {
+                    is IpsecSessionResult.Ready -> {
+                        channelBSession = result.session
+                        onLog("<b> ipsec SA ready (spi/ports present, keys withheld)")
+                        SessionSecretFrame.encodeFramed(result.session.secrets)
+                    }
+
+                    is IpsecSessionResult.Failure -> {
+                        onLog(
+                            "<b> error: cannot establish ipsec SA: " + result.reason +
+                                (result.detail?.let { " ($it)" } ?: ""),
+                        )
+                        return 1
+                    }
+                }
+            } else {
+                ByteArray(0)
+            }
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
             val processRef = AtomicReference<Process?>(null)
@@ -714,6 +741,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     captureOutput = false,
                     stdin = profileBlob,
                     frameStdin = true,
+                    sessionFrame = sessionFrame,
                     onProcess = { processRef.set(it) },
                 )
                 onLog("<b> native exited code=$nativeCode")
@@ -725,6 +753,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     tailKsuLog(nativeLog, nativeOffset, onLog)
                     tailKsuLog(ksuLog, ksuOffset, ksuSink)
                 }
+                runCatching { channelBSession?.close() }
             }
         } catch (error: CancellationException) {
             throw error
@@ -832,6 +861,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 userProfiles = userProfileStore,
                 preferences = sessionPreferences,
                 backendSelection = { backendKind },
+                executionModeSelection = { executionMode },
                 forcedUserProfile = name,
                 forcedBuiltinRelease = profileController.activeBuiltinRelease(),
             )
@@ -1157,6 +1187,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         captureOutput: Boolean = true,
         stdin: ByteArray? = null,
         frameStdin: Boolean = false,
+        sessionFrame: ByteArray = ByteArray(0),
         onProcess: ((Process) -> Unit)? = null,
     ): Int = runInterruptible {
         val process = builder.start()
@@ -1177,6 +1208,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                         ),
                     )
                     out.write(stdin)
+                    if (sessionFrame.isNotEmpty()) out.write(sessionFrame)
                     out.flush()
                 }
             } else {

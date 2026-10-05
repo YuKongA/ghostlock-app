@@ -3,7 +3,7 @@
 
 /* CVE-2026-43284 parameterized sentry shellcode and trampoline plan (B5-5).
  *
- * Upstream (third_party/dirtyfrag/usermode/ankit/libcxx.S and
+ * Upstream (DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/libcxx.S and
  * lspromise/stage1.S) hard-codes the mutex path, the SELinux exec context, the
  * module and binary paths, and pokes the displaced instruction and the jump
  * back into fixed offsets with raw pointer stores. Here the same blob is a

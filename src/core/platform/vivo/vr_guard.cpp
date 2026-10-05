@@ -22,7 +22,7 @@
 #include <string_view>
 #include <unistd.h>
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "memory/target.h"
 #include "support/native_resource.hpp"
 

@@ -30,6 +30,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace ghostlock::backend::cve_2026_43284 {
@@ -44,17 +45,30 @@ namespace ghostlock::backend::cve_2026_43284 {
     inline constexpr std::uint64_t kCarrierTokenMax = kCarrierTokenLibbspModule;
 
     /* Resolves a carrier_path token against the ordered default table. Token 0
-     * means defaults only (primary == nullptr, count == 0); 1..4 makes the
-     * matching default the primary candidate, with the remaining defaults kept
-     * as fallback by build_carrier_list(). An unknown token fails closed. The
-     * returned pointer is into the static kDefaultCarriers table. */
+     * means "no explicit primary" (primary == nullptr, count == 0); 1..4 makes
+     * the matching default the primary candidate. An unknown token fails
+     * closed. The returned pointer is into the static kDefaultCarriers table.
+     * Production no longer uses this with build_carrier_list(): the composition
+     * root calls select_single_carrier() and binds exactly one candidate. */
     [[nodiscard]] bool resolve_carrier_token(std::uint64_t token,
                                              const steps::CarrierTarget *&primary,
                                              std::size_t &primary_count) noexcept;
 
-    /* Injected dependencies. `device` and `chain` are the only ways the
+    /* Single-candidate carrier policy (B6/T5). Exactly one default is chosen:
+     * an explicit token 1..4 selects that entry; token 0/absent selects the
+     * first kDefaultCarriers entry the device probe reports present. On success
+     * the output points into the static kDefaultCarriers table (stable for the
+     * run); nothing is written. Returns false when no candidate is usable, so a
+     * caller can fail closed. */
+    [[nodiscard]] bool select_single_carrier(
+            std::optional<std::uint64_t> token,
+            const platform::DeviceProbeOps &device,
+            const steps::CarrierTarget *&out) noexcept;
+
+    /* Injected dependencies. `device` and `chain` are the ways the
      * orchestration reaches a device; both default to an unavailable surface so
-     * a run with no bindings fails closed with a diagnostic. */
+     * a run with no bindings fails closed with a diagnostic. The single carrier
+     * and the module plan are composition-root-owned and must outlive the run. */
     struct BackendTerminalDeps final {
         platform::DeviceProbeOps device{};
         steps::ChainOps chain{};
@@ -69,10 +83,25 @@ namespace ghostlock::backend::cve_2026_43284 {
         std::string_view lkm_image_path{};
         /* Chain wait budget, forwarded to ChainRequest::wait_timeout_ms. */
         std::uint32_t wait_timeout_ms = 5000U;
-        /* B5-8: the umh_forward terminal's forward/wait handle. Copied into
-         * UmhForwardInput::channel once the terminus is clean; the default
-         * (null) handle makes the terminal fail closed until B5-9 binds the
-         * kernel UMH channel. */
+        /* B6/T5: exactly one composition-root-selected carrier. run_backend_
+         * terminal binds this candidate and never falls back; a null/empty
+         * carrier fails closed (CarrierRejected) before patch #1 or any write.
+         * The pointer must outlive the run; it normally names the state's
+         * single-carrier slot, itself pointing into static kDefaultCarriers. */
+        const steps::CarrierTarget *carrier = nullptr;
+        /* Composition-root-built module write plan. When ChainOps::build_plan is
+         * null the chain uses this pre-computed plan; when both are null the
+         * empty plan fails closed (InvalidPlan) before patch #1 / hook /
+         * trigger. The region bytes must outlive the run. */
+        const steps::PatchPlan *plan = nullptr;
+        /* Target-file size from fstat(2) on the already-opened carrier fd
+         * (0 == unknown). Forwarded to ChainRequest::target_size so the closure
+         * check rejects an out-of-bounds region before any byte is written. */
+        std::uint64_t target_size = 0U;
+        /* B5-8: the umh_forward terminal's read-only readiness handle. Copied
+         * into UmhForwardInput::channel once the terminus is clean; the default
+         * (invalid) handle makes the terminal fail closed until the composition
+         * root binds the production probe. */
         terminal::UmhForwardChannel umh_channel{};
     };
 

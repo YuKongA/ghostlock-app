@@ -5,7 +5,7 @@
  * ERANGE overflow reporting. An empty string is the legacy "valid zero" case,
  * even though platforms differ on the errno strtoul reports for it. */
 
-#include "../kernelsnitch/number_parse.h"
+#include "../support/number_parse.h"
 
 #include <cassert>
 #include <climits>

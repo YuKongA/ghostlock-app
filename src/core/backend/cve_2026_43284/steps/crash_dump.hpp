@@ -4,7 +4,7 @@
 /* CVE-2026-43284 patch #1 and the crash_dump domain read bridge (B5-6 endgame).
  *
  * Independent rewrite of the upstream functionality in
- * third_party/dirtyfrag/usermode/ankit/exp.c:
+ * DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c:
  *   - patch_ko() patch #1: pad16(splicehelper) -> crash_dump64+0, then verify
  *     the 16-byte window at offset 16 (exp.c:612-648);
  *   - read_vendor_content(): exec the already-patched crash_dump64 in splice

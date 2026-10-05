@@ -10,7 +10,7 @@
  * interface: the device binding is real_splice_io(); host tests bind a fake and
  * pagecache.cpp therefore has no direct syscall dependency.
  *
- * Mapping to third_party/dirtyfrag/usermode/{ankit/exp.c,
+ * Mapping to DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/{ankit/exp.c,
  * lspromise/splicehelper.c, dirtyinit/dfi_exploit.c}: the 16-byte page-frag
  * splice and the vmsplice header/IV/ICV pipe assembly. Attribution follows the
  * vendored-source plan (docs/analysis/cve-2026-43284-refactor-plan.md section

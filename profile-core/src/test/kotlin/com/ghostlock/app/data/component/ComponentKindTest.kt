@@ -26,31 +26,35 @@ class ComponentKindTest {
     }
 
     @Test
-    fun `only implemented components are available`() {
+    fun `implemented frontends and backends are available`() {
         assertTrue(ComponentAvailability.frontendAvailable(FrontendKind.RootChild))
-        assertFalse(ComponentAvailability.frontendAvailable(FrontendKind.UmhForward))
+        assertTrue(ComponentAvailability.frontendAvailable(FrontendKind.UmhForward))
         assertTrue(ComponentAvailability.backendAvailable(BackendKind.Cve2026_43499))
-        assertFalse(ComponentAvailability.backendAvailable(BackendKind.Cve2026_64560))
-        assertFalse(ComponentAvailability.backendAvailable(BackendKind.Cve2026_43284))
+        assertTrue(ComponentAvailability.backendAvailable(BackendKind.Cve2026_43284))
     }
 
     @Test
-    fun `unavailable backend is never selected`() {
-        assertEquals(
-            BackendKind.Cve2026_43499,
-            BackendKind.selectableOrFallback(BackendKind.Cve2026_43284),
-        )
+    fun `placeholder cve stays unavailable and is never selected`() {
+        assertFalse(ComponentAvailability.backendAvailable(BackendKind.Cve2026_64560))
         assertEquals(
             BackendKind.Cve2026_43499,
             BackendKind.selectableOrFallback(BackendKind.Cve2026_64560),
         )
+    }
+
+    @Test
+    fun `available backend is selected as-is`() {
         assertEquals(
-            BackendKind.Cve2026_43499,
-            BackendKind.selectableOrFallback(null),
+            BackendKind.Cve2026_43284,
+            BackendKind.selectableOrFallback(BackendKind.Cve2026_43284),
         )
         assertEquals(
             BackendKind.Cve2026_43499,
             BackendKind.selectableOrFallback(BackendKind.Cve2026_43499),
+        )
+        assertEquals(
+            BackendKind.Cve2026_43499,
+            BackendKind.selectableOrFallback(null),
         )
     }
 

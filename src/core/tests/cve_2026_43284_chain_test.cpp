@@ -46,6 +46,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::PatchPlan;
     using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
     using ghostlock::backend::cve_2026_43284::steps::run_chain;
+    using ghostlock::backend::cve_2026_43284::steps::validate_plan_closure;
     using ghostlock::backend::cve_2026_43284::steps::valid_carrier_path;
     using ghostlock::backend::cve_2026_43284::steps::valid_dev_carrier_path;
 
@@ -200,9 +201,12 @@ namespace {
         return g.apply_hook_error;
     }
 
-    void fake_restore_hook(void *ctx) noexcept {
+    bool fake_restore_hook(void *ctx) noexcept {
         (void)ctx;
         record(Op::Restore);
+        /* The fake counts a real restore on every call; the hook-applied flag
+         * is tracked separately by the caller. */
+        return true;
     }
 
     ChainOps make_ops() noexcept {
@@ -722,14 +726,25 @@ namespace {
         assert(result.blocks_written == 0U);
         assert(events_are({Op::Release}));
 
-        /* Empty / malformed plan. */
+        /* Empty / malformed plan. The B6/T5 fail-closed guard: a plan with no
+         * regions must be rejected by validate_plan_closure() before patch #1,
+         * the hook or the trigger can run. This is the production binding's
+         * safety net when no module/plan was installed. */
+        assert(validate_plan_closure(PatchPlan{}, 0U, 0U) ==
+               ChainError::InvalidPlan);
         reset();
         request.plan = PatchPlan{};
         ops = make_ops();
+        ops.apply_hook = fake_apply_hook;
         workspace = ChainWorkspace{};
         result = run_chain(request, ops, workspace);
         assert(result.error == ChainError::InvalidPlan);
         assert(result.cleanup_ran);
+        assert(result.blocks_written == 0U);
+        assert(g.read_calls == 0);
+        assert(g.write_calls == 0);
+        assert(g.release_calls == 1U);
+        /* Only the single terminus runs: no crash_dump patch, hook or trigger. */
         assert(events_are({Op::Release}));
 
         reset();

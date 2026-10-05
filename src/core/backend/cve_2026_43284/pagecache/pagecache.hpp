@@ -13,11 +13,13 @@
  *
  * Every syscall comes from the injected pagecache::SpliceIoOps (see
  * splice_io.hpp), so the whole core is host-testable and has no direct syscall
- * dependency. The mapping to third_party/dirtyfrag/usermode/ankit/exp.c
- * (compute_iv, read_vendor_content, do_one_write_cbc, patch_file_cbc),
- * lspromise/splicehelper.c and dirtyinit/dfi_exploit.c is in
- * docs/analysis/cve-2026-43284-refactor-plan.md. The upstream repositories ship
- * no LICENSE, so this is an independent rewrite with attribution.
+ * dependency. The mapping to the upstream references
+ * (ankitrawatgit/DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c:
+ * compute_iv, read_vendor_content, do_one_write_cbc, patch_file_cbc;
+ * lsposed/lspromise@0258165 splicehelper.c; combeng6th/DirtyInit@3409c35
+ * dfi_exploit.c) is in docs/analysis/cve-2026-43284-refactor-plan.md. The tree is
+ * not vendored any more; the upstream repositories ship no LICENSE, so this is an
+ * independent rewrite with attribution (see README "Credits & License").
  *
  * contract::FileCacheWriteOps is the neutral capability: availability is
  * derived from the returned handle (its write16 pointer), never a separate

@@ -18,13 +18,13 @@ int32_t main(void) {
     using contract::TerminalKind;
 
     assert(contract::terminal_available(TerminalKind::RootChild));
-    assert(!contract::terminal_available(TerminalKind::UmhForward));
+    assert(contract::terminal_available(TerminalKind::UmhForward));
     assert(contract::backend_available(BackendKind::Cve2026_43499));
     assert(!contract::backend_available(BackendKind::Cve2026_64560));
     assert(!contract::backend_available(BackendKind::Cve2026_31431));
     assert(!contract::backend_available(BackendKind::Cve2026_43503));
     assert(!contract::backend_available(BackendKind::Cve2026_23274));
-    assert(!contract::backend_available(BackendKind::Cve2026_43284));
+    assert(contract::backend_available(BackendKind::Cve2026_43284));
     for (StepSetKind s : {StepSetKind::W1W2, StepSetKind::W1W3, StepSetKind::PageCacheWrite}) {
         assert(contract::stepset_available(s));
     }
@@ -38,14 +38,24 @@ int32_t main(void) {
                                           TerminalKind::RootChild}));
     assert(!contract::selection_supported({BackendKind::Cve2026_64560, StepSetKind::W1W3,
                                            TerminalKind::RootChild}));
-    assert(!contract::selection_supported({BackendKind::Cve2026_43284, StepSetKind::W1W3,
-                                           TerminalKind::RootChild}));
-    assert(!contract::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
-                                           TerminalKind::UmhForward}));
-    /* B5-8: the 43284 triple is catalogued (wired) but its backend is not
-     * device-verified, so the availability gate stays false. */
-    assert(!contract::selection_supported({BackendKind::Cve2026_43284,
-                                           StepSetKind::PageCacheWrite,
+    /* 43284 is per-axis available now, but this triple is not in the sparse
+     * catalog: the combination gate (not selection_supported) rejects it. */
+    assert(!pipeline::combination_supported({BackendKind::Cve2026_43284, StepSetKind::W1W3,
+                                             TerminalKind::RootChild}));
+    assert(pipeline::dispatch_target({BackendKind::Cve2026_43284, StepSetKind::W1W3,
+                                      TerminalKind::RootChild}) ==
+           pipeline::DispatchTarget::None);
+    /* Each axis is available, but 43499 with the UMH terminal is not a catalogued
+     * combination (only 43284 pairs with UmhForward). */
+    assert(!pipeline::combination_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
+                                             TerminalKind::UmhForward}));
+    assert(pipeline::dispatch_target({BackendKind::Cve2026_43499, StepSetKind::W1W3,
+                                      TerminalKind::UmhForward}) ==
+           pipeline::DispatchTarget::None);
+    /* B6/T5: the 43284 triple is catalogued and its production seam passed the
+     * app-call device gate, so the availability gate is now true. */
+    assert(contract::selection_supported({BackendKind::Cve2026_43284,
+                                          StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward}));
 
     /* combination_supported is THE catalogue/dispatch authority: every wired

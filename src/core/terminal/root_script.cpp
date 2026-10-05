@@ -4,7 +4,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "session/runtime_config.h"
 #include "backend/cve_2026_43499_state.hpp"
 #include "session/core_session.hpp"

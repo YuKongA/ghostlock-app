@@ -4,7 +4,7 @@
 #include "backend/cve_2026_43499/backend_profile/model.hpp"
 #include "contract/identity.hpp"
 #include "session/core_session.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 #include "terminal/rooted_child.hpp"
 
 #include "backend/cve_2026_43499/primitives.hpp"
@@ -13,7 +13,7 @@
 
 namespace ghostlock::backend {
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
+    using ghostlock::contract::StageResult;
 
     /* cve_2026_43499 backend: the setup stage (in the unit) plus one step set.
      * The step vocabulary is the template parameter (ADR-0004 R18): W1W3 and

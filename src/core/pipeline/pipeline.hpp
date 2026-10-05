@@ -5,7 +5,7 @@
 #include "pipeline/component_catalog.hpp"
 #include "contract/model.hpp"
 #include "session/core_session.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 #include "terminal/rooted_child.hpp"
 
 namespace ghostlock::pipeline {
@@ -73,19 +73,19 @@ namespace ghostlock::pipeline {
             }
             typename Terminal::Input input{};
             switch (Backend::run(exploit_session, debug_dir, force_attack, input)) {
-                case session::StageResult::Failed:
+                case contract::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend};
-                case session::StageResult::Done:
+                case contract::StageResult::Done:
                     return RunResult{.code = RunCode::DiagnosticStop, .stage = RunStage::Backend};
-                case session::StageResult::Continue:
+                case contract::StageResult::Continue:
                     break;
             }
             switch (Terminal::run(exploit_session, input)) {
-                case session::StageResult::Failed:
+                case contract::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Terminal};
-                case session::StageResult::Done:
+                case contract::StageResult::Done:
                     return RunResult{.code = RunCode::Completed, .stage = RunStage::Terminal};
-                case session::StageResult::Continue:
+                case contract::StageResult::Continue:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Terminal};
             }
             return RunResult{.code = RunCode::Failed, .stage = RunStage::Terminal};

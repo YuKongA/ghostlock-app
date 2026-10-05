@@ -7,7 +7,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/timing.hpp"
 
 #include <sys/syscall.h>

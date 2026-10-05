@@ -3,7 +3,7 @@
 
 /*
  * Host shim: macOS <sched.h> lacks the Linux CPU-set API that
- * kernelsnitch/utils.h and runtime_config.cpp use. Include the real
+ * support/log.hpp and runtime_config.cpp use. Include the real
  * <sched.h> first (glibc already provides the API, so the block below is
  * skipped there) and add a portable cpu_set_t on platforms that need it.
  */

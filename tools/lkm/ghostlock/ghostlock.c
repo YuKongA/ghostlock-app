@@ -54,6 +54,13 @@ static int defex = 0;
 module_param(defex, int, 0400);
 MODULE_PARM_DESC(defex, "Hook Samsung Defex entry points when present");
 
+/* Finish like the 43499 root script: once the command (KernelSU late-load) has
+ * completed, put SELinux back to enforcing. Only acts when this module was the
+ * one that turned it permissive, so permissive=0 stays a pure no-op. */
+static int restore_enforce = 1;
+module_param(restore_enforce, int, 0400);
+MODULE_PARM_DESC(restore_enforce, "Restore SELinux enforcing after the command");
+
 typedef unsigned long (*kallsyms_lookup_name_t)(const char *);
 typedef void *(*umh_setup_t)(const char *, char **, char **, gfp_t,
                              int (*)(struct subprocess_info *, struct cred *),
@@ -78,6 +85,8 @@ static int __init ghostlock_init(void)
     umh_setup_t umh_setup;
     umh_exec_t umh_exec;
     struct subprocess_info *info;
+    bool *selinux_state = NULL;
+    bool selinux_touched = false;
     int ret;
 
     if (cmd == NULL || *cmd == '\0' || strlen(cmd) >= GHOSTLOCK_CMD_MAX) {
@@ -97,14 +106,19 @@ static int __init ghostlock_init(void)
     get_addr = (kallsyms_lookup_name_t)kln_kp.addr;
     unregister_kprobe(&kln_kp);
 
-    /* 2. SELinux permissive (opt out with permissive=0). */
+    /* 2. SELinux permissive (opt out with permissive=0). The first byte of
+     * selinux_state is the "enforcing" flag; we keep the pointer so the finish
+     * step can put the flag back. */
+    if (permissive || restore_enforce) {
+        selinux_state = (bool *)get_addr("selinux_state");
+    }
     if (permissive) {
-        bool *selinux_state = (bool *)get_addr("selinux_state");
         if (selinux_state == NULL) {
             pr_err("ghostlock: selinux_state not found; refusing to continue\n");
             return -EINVAL;
         }
         WRITE_ONCE(*selinux_state, false);
+        selinux_touched = true;
         pr_info("ghostlock: selinux_state set permissive\n");
     } else {
         pr_info("ghostlock: permissive=0, SELinux untouched\n");
@@ -138,6 +152,15 @@ static int __init ghostlock_init(void)
     info->path = sh;
     ret = umh_exec(info, UMH_WAIT_PROC);
     pr_info("ghostlock: umh exec returned %d for cmd=%s\n", ret, cmd);
+
+    /* Finish (43499-style): the command has returned, so KernelSU either loaded
+     * or failed; put SELinux back to enforcing when this module relaxed it. */
+    if (selinux_touched && restore_enforce) {
+        WRITE_ONCE(*selinux_state, true);
+        pr_info("ghostlock: selinux_state restored to enforcing\n");
+    } else if (selinux_touched) {
+        pr_info("ghostlock: restore_enforce=0, SELinux left permissive\n");
+    }
 
     /* Deliberate failure so the module is unloaded and never stays resident. */
     return -E2BIG;

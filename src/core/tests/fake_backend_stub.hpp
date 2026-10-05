@@ -27,7 +27,7 @@
 #include "pipeline/pipeline.hpp"
 #include "profile/schema.hpp"
 #include "session/core_session.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 #include "terminal/terminal_input.hpp"
 
 #include <array>
@@ -128,7 +128,7 @@ namespace ghostlock::tests::fake_backend {
             return {};
         }
 
-        [[nodiscard]] static session::StageResult run(
+        [[nodiscard]] static contract::StageResult run(
                 session::CoreSession &exploit_session, const char *, bool,
                 FakeTerminalInput &out) {
             ++trace.backend_runs;
@@ -136,7 +136,7 @@ namespace ghostlock::tests::fake_backend {
             trace.state_visible_in_run =
                     state->magic == kFakeStateMagic && state->bound;
             out.forwarded = state->payload;
-            return session::StageResult::Continue;
+            return contract::StageResult::Continue;
         }
     };
 
@@ -146,10 +146,10 @@ namespace ghostlock::tests::fake_backend {
         static constexpr terminal::ActivationContext activation =
                 terminal::ActivationContext::KernelSpawned;
 
-        [[nodiscard]] static session::StageResult run(session::CoreSession &, Input &input) {
+        [[nodiscard]] static contract::StageResult run(session::CoreSession &, Input &input) {
             ++trace.terminal_runs;
             trace.terminal_input = input.forwarded;
-            return session::StageResult::Done;
+            return contract::StageResult::Done;
         }
     };
 

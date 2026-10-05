@@ -5,7 +5,7 @@
  * AES-256 (FIPS 197): single-block ECB and whole-block CBC.
  *
  * Ported/rewritten for GhostLock from
- * third_party/dirtyfrag/usermode/ankit/aes256.h
+ * DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/aes256.h
  * (ankitrawatgit/DirtyFrag-Android-Root-Jailbreak, commit de2ab7b), whose AES
  * core derives from Odzhan's BSD-3-Clause implementation. The upstream
  * repository ships no top-level LICENSE, so this is an independent rewrite

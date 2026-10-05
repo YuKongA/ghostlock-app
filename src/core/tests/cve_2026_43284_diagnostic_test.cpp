@@ -402,8 +402,8 @@ int main() {
         const ComponentSelection selection{BackendKind::Cve2026_43284,
                                            StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward};
-        assert(!ghostlock::contract::selection_supported(selection));
-        assert(!ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
+        assert(ghostlock::contract::selection_supported(selection));
+        assert(ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
         /* The triple stays catalogued/wired, so wiring and availability remain
          * two distinct facts. */
         assert(ghostlock::pipeline::combination_supported(selection));
@@ -468,6 +468,7 @@ int main() {
         assert(report.module_facts.has_name);
         assert(report.module_facts.vermagic_matches);
         assert(report.module_facts.versions_empty);
+        assert(!report.module_facts.has_crcs);
         assert(!report.module_facts.signed_module);
         assert(diagnostic_exit_code(report) == 0);
 
@@ -491,6 +492,7 @@ int main() {
         assert(text.find("diag.lkm_selection matched error=None label=android14-5.15") !=
                std::string::npos);
         assert(text.find("diag.module_precheck pass error=None") != std::string::npos);
+        assert(text.find("versions_empty=1 has_crcs=0") != std::string::npos);
         assert(text.find("cve_2026_43284_diag ready") != std::string::npos);
         ::unlink(path.c_str());
     }

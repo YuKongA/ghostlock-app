@@ -3,7 +3,7 @@
 #include "memory/target.h"
 
 #include "platform/runtime.hpp"
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/native_resource.hpp"
 
 #include <array>

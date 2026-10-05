@@ -280,8 +280,7 @@ namespace {
          * It runs on every terminus path (success, failure, early exit); the
          * callback itself is a no-op when no hook was applied. */
         if (ops.restore_hook != nullptr) {
-            ops.restore_hook(ops.write.ctx);
-            result.hook_restored = true;
+            result.hook_restored = ops.restore_hook(ops.write.ctx);
         }
         if (ops.release != nullptr) {
             ops.release(ops.write.ctx);

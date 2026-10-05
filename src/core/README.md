@@ -44,8 +44,10 @@ Where the pieces live:
   available backend: `Cve2026_43499Policy` / `Cve43499_W1W2` over
   `Cve43499Primitives`, its `route/route_policy.hpp` middleware policies with
   the static route hooks (capabilities + `w2_fast_repair_*`), the per-route
-  implementations under `route/`, and the owner binding / GLKv3 schema in
-  `backend_profile/` + `glkv3_schema.hpp` + `schema.hpp`.
+  implementations under `route/`, the owner binding / GLKv3 schema in
+  `backend_profile/` + `glkv3_schema.hpp` + `schema.hpp`, and the frozen
+  upstream kernel-address discovery provider under `leak/` (relocated from
+  `kernelsnitch/` in A3-2).
 - `backend/cve_2026_43284/` - the wired-but-unavailable backend: `ipsec/`,
   `pagecache/`, `lkm/`, `steps/`, `backend_terminal.hpp`, `session_frame.*`,
   `glkv3_schema.hpp`, `schema.hpp`; `backend/cve_2026_43284_backend.hpp` holds
@@ -74,7 +76,6 @@ Where the pieces live:
   (`config::*` in `runtime_config.h` / `runtime_paths.h`), stage types,
   handoff probes and the victim pipe context.
 - `race/` - the PI race owner and its waiter/owner/consumer threads.
-- `kernelsnitch/` - the frozen upstream kernel-address discovery implementation.
 - `support/` - generic result/RAII helpers, time, CLI parsing and the
   fatal-error type.
 - `tests/` - host-side fixed-vector and lifecycle tests, including the C/C++

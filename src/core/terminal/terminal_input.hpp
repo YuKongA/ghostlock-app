@@ -27,61 +27,43 @@ namespace ghostlock::terminal {
     inline constexpr std::size_t kUmhKmiLabelBytes = 32U;
     inline constexpr std::size_t kUmhCarrierPathBytes = 64U;
 
-    /* Result of forwarding the App-selected root program to the kernel UMH
-     * channel. Rejected/Timeout/Failed are all terminal failures; only Ready lets
-     * the terminal report success. */
-    enum class UmhForwardOutcome : std::uint8_t {
-        Ready = 0,
-        Rejected,
-        Timeout,
-        Failed,
-    };
-
-    /* One forward attempt: write the backend-built UMH command to the channel and
-     * wait up to wait_timeout_ms for the kernel helper to run it. Returned by the
-     * injected channel; the production binding lands in B5-9. */
-    using UmhForwardFn = UmhForwardOutcome (*)(void *ctx,
-                                               const RootProgram &root_program,
-                                               const UmhCommand &command,
-                                               std::uint32_t wait_timeout_ms) noexcept;
-
-    /* Post-forward readiness of the selected program. KernelSU readiness is a
-     * device fact (handoff_probe); the terminal only consults it when the App
-     * selected a ksud-style program and a probe is bound. */
+    /* Read-only LKM/UMH readiness. The endgame chain -- our own LKM plus the
+     * kernel-side call_usermodehelper it performs -- completes the module load;
+     * the umh_forward terminal writes nothing, forwards nothing and execs
+     * nothing. It only reads back the two device facts the decision names:
+     * /dev/dfm0 exists and /proc/modules contains "kernelsu". */
     enum class UmhReadyState : std::uint8_t {
         Ready = 0,
         NotReady,
         Unavailable,
     };
 
+    /* Read-only readiness probe bound by the composition root. Returns Ready
+     * only when both markers are observed; it performs no write. */
     using UmhReadyFn = UmhReadyState (*)(void *ctx) noexcept;
 
-    /* Neutral UMH channel handle (ADR-0004 R19): the backend copies the handle it
-     * was handed into UmhForwardInput after a clean terminus; the umh_forward
-     * terminal performs the forward/wait. A null handle fails closed, so an
-     * unbound channel can never be treated as success. Function pointers keep the
-     * handle host-testable without a device; the kernel binding is B5-9. */
+    /* Neutral UMH readiness handle (ADR-0004 R19): the backend copies the
+     * handle it was handed into UmhForwardInput after a clean terminus; the
+     * umh_forward terminal performs the read-only probe. ctx is optional (the
+     * production probe ignores it); a null ready fn fails closed, so an
+     * unbound channel can never be treated as success. Function pointers keep
+     * the handle host-testable without a device. */
     struct UmhForwardChannel final {
         void *ctx = nullptr;
-        UmhForwardFn forward = nullptr;
-        void *ready_ctx = nullptr;
         UmhReadyFn ready = nullptr;
-        std::uint32_t wait_timeout_ms = 5000U;
 
-        [[nodiscard]] bool valid() const noexcept {
-            return ctx != nullptr && forward != nullptr;
-        }
+        [[nodiscard]] bool valid() const noexcept { return ready != nullptr; }
     };
 
     /* Input for the umh_forward terminal: the backend reports the UMH/LKM state
-     * and the terminal forwards to the selected root program.
+     * and the read-only readiness handle; the terminal only confirms readiness.
      *
-     * B5-7 backend handoff. The cve_2026_43284 backend fills every field after
-     * its endgame terminus; the terminal only reads them. session_secrets is an
-     * opaque, non-owning reference to the backend-owned IpsecSaParams: it is
-     * valid through Terminal::run and is zeroized by the backend state
-     * destructor. The terminal must never persist, copy to a profile, or log
-     * it. */
+     * B5-7/B6-T5 backend handoff. The cve_2026_43284 backend fills every field
+     * after its endgame terminus; the terminal only reads them. session_secrets
+     * is an opaque, non-owning reference to the backend-owned IpsecSaParams: the
+     * composition root injects it and the chain consumes it, valid through
+     * Terminal::run and zeroized by the backend state destructor. The terminal
+     * must never persist, copy to a profile, forward or log it. */
     struct UmhForwardInput : TerminalInput {
         bool lkm_loaded = false;
 

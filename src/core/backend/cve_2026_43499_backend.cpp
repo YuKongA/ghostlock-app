@@ -21,7 +21,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "backend/cve_2026_43499/route/route_api.hpp"
 #include "support/timing.hpp"
 
@@ -34,11 +34,10 @@
 
 namespace ghostlock::backend {
     /* The session types this unit used to see through the enclosing session
-     * namespace (victim, ancillary, g_exploit_session, VictimRound, ...). */
+     * namespace (victim, ancillary, g_exploit_session, ...). */
     using namespace ghostlock::session;
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
-    using ghostlock::session::VictimChain;
+    using ghostlock::contract::StageResult;
     namespace {
         /* Stage: process setup and profile installation (middleware-free). */
         StageResult run_setup(CoreSession &session, const char *debug_dir,

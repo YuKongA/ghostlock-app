@@ -14,12 +14,13 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 
 #include <cstdint>
 
 #include "profile/entry.h"
 #include "backend/cve_2026_43284/diagnostic.hpp"
+#include "backend/cve_2026_43284/execution_binding.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "backend/cve_2026_43284/stage_runner.hpp"
 #include "support/cli.hpp"
@@ -208,6 +209,31 @@ int main(int argc, char **argv) {
                      backend.c_str(), steps.c_str(), terminal.c_str(), route.c_str());
             throw FatalError{};
         }
+        /* B6/T5 production seam. The orchestrator routes app-call 43284 through
+         * Pipeline, but the per-run resources are composition-root facts: the
+         * helper.ko module mirror + write plan, the single carrier, the real
+         * chain ops, the session secrets and the read-only UMH readiness probe.
+         * Install them into the 43284 state before dispatch; a failed bind is
+         * fail-closed and never reaches patch #1 / hook / trigger. The
+         * resources outlive the pipeline call and the pipeline's RAII guard
+         * destroys the state on every exit path.
+         *
+         * Availability is intentionally still false in this batch (see
+         * contract/identity.hpp for the one-line flip): the gate above rejects
+         * 43284, so this seam is dormant until the main agent enables it after
+         * the app-call device gate. */
+        backend::cve_2026_43284::ProductionResources production{};
+        if (selection.backend == contract::BackendKind::Cve2026_43284) {
+            backend::cve_2026_43284::cve_2026_43284_state_construct(session);
+            const backend::cve_2026_43284::ExecutionBindResult bind =
+                    backend::cve_2026_43284::bind_production_execution(
+                            session, production, decoded, session_secrets.value);
+            if (bind.error != backend::cve_2026_43284::ExecutionBindError::None) {
+                pr_error("cve_2026_43284 production binding failed (%d)\n",
+                         static_cast<int>(bind.error));
+                throw FatalError{};
+            }
+        }
         /* Batch 4 (D1=B): the orchestrator dispatches the catalogued pipeline
          * directly (backend steps + terminal handoff). DiagnosticStop is a
          * successful early stop (objective already met), not a full run. */
@@ -218,6 +244,11 @@ int main(int argc, char **argv) {
                 pr_error("orchestrator rejected the component selection\n");
                 throw FatalError{};
             case pipeline::RunCode::Failed:
+                /* Name the failing stage: the backend/terminal report carries the
+                 * detailed reason, but a silent exit 1 is undiagnosable from the
+                 * App, which only sees the process status. */
+                pr_error("orchestrated pipeline failed at stage=%d\n",
+                         static_cast<int>(result.stage));
                 return 1;
             case pipeline::RunCode::Completed:
             case pipeline::RunCode::DiagnosticStop:

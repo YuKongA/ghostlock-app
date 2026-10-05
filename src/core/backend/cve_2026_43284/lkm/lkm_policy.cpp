@@ -123,11 +123,13 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             error = LkmPolicyError::PatchedKernel;
             return false;
         }
-        if (!input.profile_kmi.has_value()) {
-            error = LkmPolicyError::MissingProfileKmi;
-            return false;
-        }
-        if (input.profile_kmi.value() != release.kmi) {
+        /* The KMI is a device fact derived from the running release, not policy:
+         * the App-driven production path is not expected to repeat it, so an
+         * absent token resolves to the derived value. An explicit token that
+         * disagrees is still rejected (a profile written for another KMI must not
+         * silently run). */
+        const std::uint16_t kmi_token = input.profile_kmi.value_or(release.kmi);
+        if (kmi_token != release.kmi) {
             error = LkmPolicyError::KmiFieldMismatch;
             return false;
         }
@@ -136,12 +138,11 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             error = LkmPolicyError::UnsupportedKmi;
             return false;
         }
-        if (!input.lkm_path_token.has_value()) {
-            error = LkmPolicyError::MissingLkmPath;
-            return false;
-        }
+        /* The source token picks bundled-vs-custom for the legacy UMH late-load
+         * args; the production 43284 path supplies its own $GHOSTLOCK_HOME/
+         * helper.ko mirror, so an absent token defaults to bundled. */
         LkmSource source = LkmSource::BundledKmi;
-        switch (input.lkm_path_token.value()) {
+        switch (input.lkm_path_token.value_or(kLkmPathTokenBundled)) {
         case kLkmPathTokenBundled:
             source = LkmSource::BundledKmi;
             break;

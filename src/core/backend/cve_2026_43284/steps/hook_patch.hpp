@@ -4,7 +4,7 @@
 /* CVE-2026-43284 libc++ sentry hook application and unconditional restore.
  *
  * Independent rewrite of the upstream patch_hook()/restore_hook() pair in
- * third_party/dirtyfrag/usermode/ankit/exp.c:
+ * DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c:
  *   1. locate the hook site in the in-memory libc++.so (ELF .dynsym) with the
  *      B5-5 elf_hook locator and compute the shellcode/trampoline offsets with
  *      build_hook_plan();

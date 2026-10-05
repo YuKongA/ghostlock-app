@@ -1,7 +1,12 @@
 #pragma once
 
-/* Upstream POC arch discriminator: this target is ARM64. Kept with the
- * kernelsnitch headers so the define stays owned by the code that selects
+/* Neutral logging / platform macro layer (A3-2).
+ *
+ * Moved verbatim out of kernelsnitch/utils.h so that the kernelsnitch provider
+ * can live under backend/cve_2026_43499/leak/ without dragging every neutral
+ * translation unit into a support -> backend include edge. The pr_* /
+ * SYSCHK / ASSERT macros and the ghostlock::memory process helpers below are
+ * unchanged; the upstream __ARM discriminator stays with the code that selects
  * the cntvct_el0 clock. */
 #ifndef __ARM
 #define __ARM 1
@@ -28,7 +33,7 @@
 #include <sys/types.h>
 #include <sys/prctl.h>
 
-#include "number_parse.h"
+#include "support/number_parse.h"
 #include "support/time.h"
 #include "support/native_resource.hpp"
 

@@ -30,8 +30,10 @@
 #include <vector>
 
 namespace {
+    using ghostlock::backend::cve_2026_43284::PageCacheWriteContext;
     using ghostlock::backend::cve_2026_43284::RealChainContext;
     using ghostlock::backend::cve_2026_43284::chain_error_name;
+    using ghostlock::backend::cve_2026_43284::make_real_hook_io;
     using ghostlock::backend::cve_2026_43284::chain_wait_name;
     using ghostlock::backend::cve_2026_43284::make_real_chain_ops;
     using ghostlock::backend::cve_2026_43284::real_chain_read_block;
@@ -41,6 +43,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::stage_runner::format_stage_report;
     using ghostlock::backend::cve_2026_43284::lkm::LkmImageError;
     using ghostlock::backend::cve_2026_43284::lkm::ModuleFacts;
+    using ghostlock::backend::cve_2026_43284::lkm::VermagicDiffReason;
     using ghostlock::backend::cve_2026_43284::stage_runner::parse_stage;
     using ghostlock::backend::cve_2026_43284::stage_runner::precheck_staged_module;
     using ghostlock::backend::cve_2026_43284::stage_runner::reconcile_module_vermagic;
@@ -75,9 +78,12 @@ namespace {
     using ghostlock::backend::cve_2026_43284::stage_runner::hook_error_name;
     using ghostlock::backend::cve_2026_43284::stage_runner::hook_guard_name;
     using ghostlock::backend::cve_2026_43284::stage_runner::plan_staged_hook;
+    using ghostlock::backend::cve_2026_43284::stage_runner::prepare_staged_hook;
     using ghostlock::backend::cve_2026_43284::stage_runner::read_hook_image;
+    using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookAssets;
     using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookPlan;
     using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookRequest;
+    using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookStatus;
     using ghostlock::backend::cve_2026_43284::steps::HookGuardPolicy;
     using ghostlock::backend::cve_2026_43284::steps::HookPatchError;
     using ghostlock::backend::cve_2026_43284::steps::HookPatchIo;
@@ -93,9 +99,13 @@ namespace {
         bool ignore_write = false;
         int trigger_rc = 0;
         ChainWaitOutcome wait = ChainWaitOutcome::LkmLoaded;
+        ChainError hook_error = ChainError::None;
         std::uint32_t writes = 0U;
         std::uint32_t triggers = 0U;
         std::uint32_t releases = 0U;
+        /* B5-9h-4 hook stage call counts. */
+        std::uint32_t hook_applies = 0U;
+        std::uint32_t hook_restores = 0U;
     };
 
     std::int32_t fake_write16(void *raw, std::uint64_t offset,
@@ -145,11 +155,33 @@ namespace {
         }
     }
 
+    ChainError fake_apply_hook(void *raw) noexcept {
+        auto *target = static_cast<FakeTarget *>(raw);
+        if (target == nullptr) {
+            return ChainError::NotAvailable;
+        }
+        ++target->hook_applies;
+        return target->hook_error;
+    }
+
+    bool fake_restore_hook(void *raw) noexcept {
+        auto *target = static_cast<FakeTarget *>(raw);
+        if (target == nullptr) {
+            return false;
+        }
+        ++target->hook_restores;
+        /* Mirror the real binding: a restore is owed only after an apply was
+         * attempted, so hook_restored stays a decidable field. */
+        return target->hook_applies != 0U;
+    }
+
     ChainOps fake_ops(FakeTarget &target) noexcept {
         ChainOps ops{};
         ops.write.ctx = &target;
         ops.write.write16 = &fake_write16;
         ops.read_block = &fake_read_block;
+        ops.apply_hook = &fake_apply_hook;
+        ops.restore_hook = &fake_restore_hook;
         ops.trigger = &fake_trigger;
         ops.wait_result = &fake_wait;
         ops.release = &fake_release;
@@ -314,9 +346,17 @@ namespace {
             "license=GPL\0name=dirtyfrag\0"
             "vermagic=9.99.999-android14-8-gabc SMP preempt mod_unload modversions "
             "aarch64\0";
+    /* Same wire length as the required value but a different option tail, so the
+     * in-place rewrite fits and the mismatch is a tail (Options) one. */
+    constexpr char kKoTailMismatch[] =
+            "license=GPL\0name=dirtyfrag\0"
+            "vermagic=5.15.202-android14-8-gabc SMP preempt modversions mod_unload "
+            "aarch64\0";
 
-    /* Minimal ELF64 AArch64 .ko with .modinfo and an empty __versions, enough
-     * for the B5-4 precheck. Mirrors cve_2026_43284_lkm_test's fixture. */
+    /* Minimal ELF64 AArch64 .ko with .modinfo and an empty __versions whose
+     * section header does not set SHF_ALLOC, so the kernel's find_sec() would
+     * not select it and the full-string same_magic() path applies. Mirrors
+     * cve_2026_43284_lkm_test's fixture. */
     std::vector<std::uint8_t> build_ko_elf(std::string_view modinfo) {
         std::string shstr;
         shstr.push_back('\0');
@@ -703,8 +743,8 @@ int main() {
         const ComponentSelection selection{BackendKind::Cve2026_43284,
                                            StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward};
-        assert(!ghostlock::contract::selection_supported(selection));
-        assert(!ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
+        assert(ghostlock::contract::selection_supported(selection));
+        assert(ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
         assert(ghostlock::pipeline::combination_supported(selection));
     }
 
@@ -970,6 +1010,59 @@ int main() {
         assert(stage_exit_code(report) == 3);
     }
     {
+        /* B5-9h-4 hook stage: write stops after Verify and never applies the
+         * hook; trigger/full apply it once after the carrier verify and the
+         * terminus restores it once. */
+        PlanFixture fixture = make_plan();
+        CarrierTarget carrier = make_carrier();
+        const ChainRequest request = make_request(fixture.plan, carrier);
+
+        FakeTarget write_target{};
+        ChainWorkspace write_ws{};
+        const StageReport write_report =
+                run_stage(Stage::Write, request, fake_ops(write_target), write_ws);
+        assert(write_report.error == StageError::None);
+        assert(!write_report.chain.hook_applied);
+        /* The terminus always calls the restore callback, but the fake reports
+         * no real restore because no apply was attempted. */
+        assert(!write_report.chain.hook_restored);
+        assert(write_target.hook_applies == 0U);
+        assert(write_target.hook_restores == 1U);
+
+        FakeTarget trigger_target{};
+        ChainWorkspace trigger_ws{};
+        const StageReport trigger_report = run_stage(
+                Stage::Trigger, request, fake_ops(trigger_target), trigger_ws);
+        assert(trigger_report.error == StageError::None);
+        assert(trigger_report.chain.hook_applied);
+        assert(trigger_report.chain.hook_restored);
+        assert(trigger_target.hook_applies == 1U);
+        assert(trigger_target.hook_restores == 1U);
+
+        FakeTarget full_target{};
+        ChainWorkspace full_ws{};
+        const StageReport full_report =
+                run_stage(Stage::Full, request, fake_ops(full_target), full_ws);
+        assert(full_report.error == StageError::None);
+        assert(full_target.hook_applies == 1U);
+        assert(full_target.hook_restores == 1U);
+
+        /* A hook apply failure stops the chain before the trigger (the sentry
+         * must not fire against an unpatched image) and still runs the
+         * terminus restore. */
+        FakeTarget fail_target{};
+        fail_target.hook_error = ChainError::HookFailed;
+        ChainWorkspace fail_ws{};
+        const StageReport fail_report =
+                run_stage(Stage::Trigger, request, fake_ops(fail_target), fail_ws);
+        assert(fail_report.chain.error == ChainError::HookFailed);
+        assert(!fail_report.chain.hook_applied);
+        assert(fail_ws.journal_count == 0U);
+        assert(fail_target.hook_restores == 1U);
+        assert(fail_target.triggers == 0U);
+        assert(fail_report.error == StageError::WriteRejected);
+    }
+    {
         /* invalid plan fails before any op is bound. */
         PatchPlan empty{};
         CarrierTarget carrier = make_carrier();
@@ -1080,6 +1173,43 @@ int main() {
         assert(text.find("aes") == std::string::npos);
     }
 
+    /* ---- B5-9h-4 hook diagnostics in the run.chain record. ---- */
+    {
+        PlanFixture fixture = make_plan();
+        CarrierTarget carrier = make_carrier();
+        const ChainRequest request = make_request(fixture.plan, carrier);
+
+        FakeTarget armed_target{};
+        ChainWorkspace armed_ws{};
+        StageReport armed_report =
+                run_stage(Stage::Full, request, fake_ops(armed_target), armed_ws);
+        armed_report.hook_planned = true;
+        armed_report.hook_armed = true;
+        armed_report.hook_error = StageError::None;
+        const std::string armed_text =
+                format_stage_report(armed_report, "/tmp/a.ko", carrier.path, 100U);
+        assert(armed_text.find(" hook_planned=1 hook_armed=1 hook=1") !=
+               std::string::npos);
+        assert(armed_text.find(" hook_restored=1 hook_error=None") !=
+               std::string::npos);
+        assert(armed_text.find("run.trigger fired=1") != std::string::npos);
+
+        /* An unwired hook is greppable: planned but not armed, the hook did not
+         * apply and the reason is a named enum. */
+        StageReport unwired{};
+        unwired.stage = Stage::Trigger;
+        unwired.hook_planned = true;
+        unwired.hook_armed = false;
+        unwired.hook_error = StageError::HookIoUnavailable;
+        unwired.error = StageError::WriteRejected;
+        const std::string unwired_text =
+                format_stage_report(unwired, "/tmp/a.ko", carrier.path, 100U);
+        assert(unwired_text.find(" hook_planned=1 hook_armed=0 hook=0") !=
+               std::string::npos);
+        assert(unwired_text.find(" hook_restored=0 hook_error=HookIoUnavailable") !=
+               std::string::npos);
+    }
+
     /* ---- Real-op binding and run_ready. ---- */
     {
         RealChainContext ctx{};
@@ -1180,6 +1310,100 @@ int main() {
         assert(!ctx.run_ready());
     }
 
+    /* ---- B5-9h-4 staged hook arming and conditional apply_hook binding. ---- */
+    {
+        const std::vector<std::uint8_t> image = build_hook_fixture(0x400U);
+        const std::string path = temp_module_path("hook-arm");
+        assert(write_bytes(path, image));
+        FakeHookImage fake{image, 0U, false};
+        std::array<std::uint8_t, kShellcodeMaxBytes> shell{};
+        std::array<std::uint8_t, kShellcodeMaxBytes> shell_orig{};
+
+        /* The image is read from disk and the context is armed, so the real
+         * ops bind the hook stage. */
+        RealChainContext armed{};
+        std::vector<std::uint8_t> armed_image{};
+        const StagedHookAssets armed_assets = prepare_staged_hook(
+                armed, path, kLibcxxSentrySymbol, HookGuardPolicy::Skip,
+                armed_image, shell.data(), shell.size(), shell_orig.data(),
+                fake_hook_io(fake));
+        assert(armed_assets.status == StagedHookStatus::Armed);
+        assert(armed_assets.error == StageError::None);
+        assert(armed.libcxx_image == armed_image.data());
+        assert(armed.libcxx_image_size == armed_image.size());
+        assert(armed.hook_io.available());
+        assert(armed.hook_io.ctx == static_cast<void *>(&fake));
+        assert(armed.hook_shellcode == shell.data());
+        assert(armed.hook_shellcode_cap == shell.size());
+        assert(armed.hook_shellcode_orig == shell_orig.data());
+        assert(armed.hook_guard == HookGuardPolicy::Skip);
+        const ChainOps armed_ops = make_real_chain_ops(armed);
+        assert(armed_ops.apply_hook != nullptr);
+        assert(armed_ops.restore_hook != nullptr);
+
+        /* A missing image is an explicit fatal error and never arms. */
+        RealChainContext missing{};
+        std::vector<std::uint8_t> missing_image{};
+        const StagedHookAssets missing_assets = prepare_staged_hook(
+                missing, "/nonexistent/ghostlock-hook.so", kLibcxxSentrySymbol,
+                HookGuardPolicy::Skip, missing_image, shell.data(), shell.size(),
+                shell_orig.data(), fake_hook_io(fake));
+        assert(missing_assets.status == StagedHookStatus::ImageReadFailed);
+        assert(missing_assets.error == StageError::HookReadFailed);
+        assert(missing.libcxx_image == nullptr);
+        assert(make_real_chain_ops(missing).apply_hook == nullptr);
+        assert(make_real_chain_ops(missing).restore_hook == nullptr);
+
+        /* No page-cache write face: stay unarmed and report the reason rather
+         * than applying through a null surface. */
+        RealChainContext no_io{};
+        std::vector<std::uint8_t> no_io_image{};
+        const StagedHookAssets no_io_assets = prepare_staged_hook(
+                no_io, path, kLibcxxSentrySymbol, HookGuardPolicy::Skip,
+                no_io_image, shell.data(), shell.size(), shell_orig.data(),
+                HookPatchIo{});
+        assert(no_io_assets.status == StagedHookStatus::IoUnavailable);
+        assert(no_io_assets.error == StageError::HookIoUnavailable);
+        assert(no_io.libcxx_image == nullptr);
+        assert(!no_io.hook_io.available());
+        assert(make_real_chain_ops(no_io).apply_hook == nullptr);
+
+        /* Null shellcode buffers are an unavailable arm too. */
+        RealChainContext no_buf{};
+        std::vector<std::uint8_t> no_buf_image{};
+        const StagedHookAssets no_buf_assets = prepare_staged_hook(
+                no_buf, path, kLibcxxSentrySymbol, HookGuardPolicy::Skip,
+                no_buf_image, nullptr, 0U, nullptr, fake_hook_io(fake));
+        assert(no_buf_assets.status == StagedHookStatus::IoUnavailable);
+        assert(no_buf_assets.error == StageError::HookIoUnavailable);
+        ::unlink(path.c_str());
+    }
+    {
+        /* make_real_hook_io derives availability from the page-cache write
+         * readiness: bound io/fds/icv is usable, a missing ciphertext source is
+         * not. */
+        PageCacheWriteContext ready{};
+        ready.io = fake_splice_io();
+        ready.file_fd = 7;
+        ready.socket_fd = 8;
+        ready.sa.icv_len = 16U;
+        assert(make_real_hook_io(ready).available());
+
+        PageCacheWriteContext no_source{};
+        no_source.io = fake_splice_io();
+        no_source.file_fd = -1;
+        no_source.socket_fd = 8;
+        no_source.sa.icv_len = 16U;
+        assert(!make_real_hook_io(no_source).available());
+
+        PageCacheWriteContext no_socket{};
+        no_socket.io = fake_splice_io();
+        no_socket.file_fd = 7;
+        no_socket.socket_fd = -1;
+        no_socket.sa.icv_len = 16U;
+        assert(!make_real_hook_io(no_socket).available());
+    }
+
     /* ---- real read_block still works for the B5-9a read-only context. ---- */
     {
         const std::string path = temp_module_path("read");
@@ -1225,8 +1449,8 @@ int main() {
         assert(precheck_staged_module(good, required, facts, error));
         assert(error == LkmImageError::None);
         assert(facts.elf_valid && facts.has_modinfo && facts.has_name &&
-               facts.has_vermagic && facts.vermagic_matches && facts.versions_empty &&
-               !facts.signed_module);
+               facts.has_vermagic && facts.vermagic_matches && !facts.has_crcs &&
+               facts.versions_empty && !facts.signed_module);
 
         /* An empty release cannot construct a required value: fail closed even
          * for a well-formed module. */
@@ -1261,25 +1485,40 @@ int main() {
         assert(outcome == VermagicOutcome::Original);
         assert(facts.vermagic_matches && !facts.vermagic_rewritten);
 
-        /* Mismatch with the policy off: rejected with the image untouched. */
-        std::vector<std::uint8_t> bad = build_ko_elf(
-                std::string_view(kKoMismatch, sizeof(kKoMismatch) - 1U));
-        const std::vector<std::uint8_t> bad_before = bad;
+        /* Option-tail mismatch with the policy off: rejected, image untouched. */
+        std::vector<std::uint8_t> tail = build_ko_elf(
+                std::string_view(kKoTailMismatch, sizeof(kKoTailMismatch) - 1U));
+        const std::vector<std::uint8_t> tail_before = tail;
         outcome = VermagicOutcome::Unchecked;
-        assert(!reconcile_module_vermagic(bad.data(), bad.size(), required, false,
+        assert(!reconcile_module_vermagic(tail.data(), tail.size(), required, false,
                                           facts, outcome, error));
         assert(error == LkmImageError::VermagicMismatch);
         assert(outcome == VermagicOutcome::Required);
-        assert(bad == bad_before);
+        assert(facts.vermagic_diff == VermagicDiffReason::Options);
+        assert(tail == tail_before);
 
-        /* Mismatch with the policy on: rewritten in place and re-verified. */
+        /* Option-tail mismatch with the policy on: rewritten and re-verified. */
         outcome = VermagicOutcome::Unchecked;
         error = LkmImageError::None;
-        assert(reconcile_module_vermagic(bad.data(), bad.size(), required, true,
+        assert(reconcile_module_vermagic(tail.data(), tail.size(), required, true,
                                          facts, outcome, error));
         assert(outcome == VermagicOutcome::Rewritten);
         assert(facts.vermagic_matches && facts.vermagic_rewritten);
         assert(vermagic_outcome_name(outcome) == "rewritten");
+
+        /* A release-token-only mismatch is not a tail fix: even with the policy
+         * on it is refused and the image is left untouched. */
+        std::vector<std::uint8_t> release_only = build_ko_elf(
+                std::string_view(kKoMismatch, sizeof(kKoMismatch) - 1U));
+        const std::vector<std::uint8_t> release_before = release_only;
+        outcome = VermagicOutcome::Unchecked;
+        error = LkmImageError::None;
+        assert(!reconcile_module_vermagic(release_only.data(), release_only.size(),
+                                          required, true, facts, outcome, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(outcome == VermagicOutcome::Required);
+        assert(facts.vermagic_diff == VermagicDiffReason::Release);
+        assert(release_only == release_before);
 
         /* A non-vermagic precheck failure is never rewritten. */
         std::vector<std::uint8_t> not_elf(80U, 0U);
@@ -1390,6 +1629,8 @@ int main() {
         assert(stage_error_name(StageError::HookReadFailed) == "HookReadFailed");
         assert(stage_error_name(StageError::HookImageTooLarge) ==
                "HookImageTooLarge");
+        assert(stage_error_name(StageError::HookIoUnavailable) ==
+               "HookIoUnavailable");
         StageReport code_report{};
         code_report.error = StageError::HookPlanFailed;
         assert(stage_exit_code(code_report) == 2);

@@ -11,7 +11,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/decls.hpp"
 
 #include "memory/payload_builder.h"

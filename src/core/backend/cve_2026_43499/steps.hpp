@@ -1,8 +1,9 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_STEPS_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43499_STEPS_HPP
 
+#include "backend/cve_2026_43499/stage_types.hpp"
 #include "contract/identity.hpp"
-#include "session/stage_types.hpp"
+#include "contract/stage_result.hpp"
 
 namespace ghostlock::session {
     struct CoreSession;
@@ -21,16 +22,16 @@ namespace ghostlock::backend {
         static constexpr contract::StepSetKind kind = contract::StepSetKind::W1W3;
 
         template <class M>
-        [[nodiscard]] static session::StageResult run(session::CoreSession &session,
-                                                      session::VictimChain &chain);
+        [[nodiscard]] static contract::StageResult run(session::CoreSession &session,
+                                                      VictimChain &chain);
     };
 
     struct W1W2Steps final {
         static constexpr contract::StepSetKind kind = contract::StepSetKind::W1W2;
 
         template <class M>
-        [[nodiscard]] static session::StageResult run(session::CoreSession &session,
-                                                      session::VictimChain &chain);
+        [[nodiscard]] static contract::StageResult run(session::CoreSession &session,
+                                                      VictimChain &chain);
     };
 } // namespace ghostlock::backend
 

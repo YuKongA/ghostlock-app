@@ -8,8 +8,8 @@
  * device):
  *   source      upstream ankitrawatgit/DirtyFrag-Android-Root-Jailbreak
  *               usermode/ankit/libcxx.S, upstream commit
- *               de2ab7be69dc159af508d584523fd4d5c0b7cc7a
- *               (vendored into third_party/dirtyfrag at c8dddde)
+ *               de2ab7be69dc159af508d584523fd4d5c0b7cc7a (not vendored; see
+ *               README "Credits & License")
  *   build       NDK 30.0.16248370, from usermode/ankit/:
  *                 aarch64-linux-android30-clang --target=aarch64-linux-android30 \
  *                   -c libcxx.S -o libcxx.o -I .

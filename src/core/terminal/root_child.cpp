@@ -2,7 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "kernelsnitch/utils.h"
+#include "support/log.hpp"
 #include "support/timing.hpp"
 
 /*
@@ -26,7 +26,7 @@
 
 namespace ghostlock::terminal {
     using ghostlock::session::CoreSession;
-    using ghostlock::session::StageResult;
+    using ghostlock::contract::StageResult;
     StageResult RootChildPolicy::run(CoreSession &session, ghostlock::terminal::RootedChild &child) {
         return run_root_child_handoff(session, child);
     }
