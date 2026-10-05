@@ -74,6 +74,16 @@ pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ("seccomp_filter", "filter"),
         ],
     ),
+    (
+        /* vr.ko global kill-switch anchor. `&__tracepoint_sys_exit->funcs` is
+         * the __tracepoint_sys_exit image offset plus this member offset; the
+         * pair is combined in report.rs, so this entry is never emitted alone.
+         * The member sits at +0x48 on kernels built with static calls and at
+         * +0x20/+0x30 without, which is exactly why the derived value is
+         * stored instead of the layout constant. */
+        "tracepoint",
+        &[("tracepoint_funcs", "funcs")],
+    ),
 ];
 
 pub type ResolvedSymbols = BTreeMap<String, Option<u64>>;

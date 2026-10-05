@@ -22,6 +22,7 @@ import com.ghostlock.app.domain.usecase.ParseSourceUseCase
 import com.ghostlock.app.domain.usecase.ReadDocumentUseCase
 import com.ghostlock.app.domain.usecase.RunExploitUseCase
 import com.ghostlock.app.domain.usecase.SelectCpuPairUseCase
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,9 @@ sealed interface GhostlockEffect {
 
 private const val OverwriteSummaryLimit = 12
 
-enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage, PayloadImage, UefiImage }
+enum class DocumentRequest {
+    ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage, UefiImage, PayloadImage, VendorBootImage
+}
 
 private enum class ParseDialogStage { Mode, Attach }
 
@@ -70,12 +73,16 @@ class GhostlockViewModel(
     val effects = effectChannel.receiveAsFlow()
 
     private var kernelSnapshot: KernelSnapshot? = null
-    private var pendingParseWithXbl = false
-    private var pendingParseWithUefi = false
     private var pendingBootPath: String? = null
+    private var pendingPayloadPath: String? = null
+    private var pendingUrl: String? = null
     private var pendingXblPath: String? = null
     private var pendingUefiPath: String? = null
+    private var pendingVendorBootPath: String? = null
     private var parseDialogStage = ParseDialogStage.Mode
+    /* Queued vendor_boot request, shown as soon as the current dialog closes. */
+    private var vendorBootPromptPending = false
+    private var vendorBootImported = false
     private var pendingConfirmation: PendingConfirmation? = null
 
     fun initialize() {
@@ -929,7 +936,14 @@ class GhostlockViewModel(
     }
 
     /** boot.img was chosen: let the user attach xbl_config / uefi (optional). */
-    private fun promptBootAttach() {
+    /**
+     * Attachment step: shown once a source is staged and re-shown after every
+     * extra image, so any combination is reachable without one entry per
+     * combination. vendor_boot.img belongs here — on vivo/iQOO it carries the
+     * vr.ko module the runtime probe reads (no offset is derived from it), and
+     * the automatic prompt cannot cover a device it fails to identify.
+     */
+    private fun promptAttach() {
         parseDialogStage = ParseDialogStage.Attach
         mutableState.update {
             it.copy(
@@ -938,10 +952,16 @@ class GhostlockViewModel(
                 dialogTitleRes = R.string.parse_boot_attach_title,
                 dialogItems = emptyList(),
                 dialogItemResIds = listOf(
-                    R.string.parse_attach_none,
+                    R.string.parse_attach_start,
                     R.string.parse_attach_xbl,
                     R.string.parse_attach_uefi,
-                    R.string.parse_attach_xbl_uefi,
+                    /* Already staged: say so, so "nothing happened" cannot be the
+                     * user's only signal that the import worked. */
+                    if (vendorBootImported || stagedVendorBoot() != null) {
+                        R.string.parse_attach_vendor_boot_staged
+                    } else {
+                        R.string.parse_attach_vendor_boot
+                    },
                 ),
             )
         }
@@ -966,8 +986,100 @@ class GhostlockViewModel(
             DocumentRequest.XblImage -> stageXbl(uri)
             DocumentRequest.UefiImage -> stageUefi(uri)
             DocumentRequest.PayloadImage -> stagePayload(uri)
+            DocumentRequest.VendorBootImage -> stageVendorBoot(uri)
             DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson -> Unit
         }
+    }
+
+    /**
+     * Asks once per process for the vendor_boot image when the device looks
+     * like vivo/iQOO and no image has been imported yet. The dialog reuses the
+     * shared overlay, so the confirm button carries the theme accent colour.
+     *
+     * Without the image the runtime falls back to the built-in tag A offset
+     * (0x06); on a 6.1-family kernel that is 0x04, so the per-task clear wipes
+     * the wrong byte and the child still dies on its first syscall exit.
+     */
+    /**
+     * vivo/iQOO without a vendor_boot image: ask for it. Called from the parse
+     * result, not from launch — the image only matters once a profile exists.
+     * The request queues itself when another dialog is on screen and is shown
+     * after it closes, so the two results never replace each other.
+     */
+    fun promptVendorBootIfNeeded() {
+        if (!looksLikeVivoIqoo() || vendorBootImported) return
+        /* A previously imported image survives restarts in the app's files
+         * directory, and the native runtime reads that same path, so the prompt
+         * only belongs on screen when nothing is staged. */
+        adoptStagedVendorBoot()?.let { return }
+        vendorBootPromptPending = true
+        if (!state.value.dialogVisible) showVendorBootPrompt()
+    }
+
+    /** Shows the prompt itself; called when no other dialog is in the way. */
+    private fun showVendorBootPrompt() {
+        vendorBootPromptPending = false
+        mutableState.update {
+            it.copy(
+                dialogVisible = true,
+                dialogType = DialogType.VENDOR_BOOT,
+                dialogTitleRes = R.string.vivo_vendor_boot_prompt_title,
+                dialogMessageRes = R.string.vivo_vendor_boot_prompt_message,
+                dialogConfirmLabelRes = R.string.vivo_vendor_boot_import,
+                dialogDocUrl = null,
+            )
+        }
+    }
+
+    /** Absolute path of a staged vendor_boot.img, or null when there is none. */
+    private fun stagedVendorBoot(): String? =
+        runCatching { repository.stagedImagePath(VendorBootFileName) }.getOrNull()
+
+    /**
+     * Marks an already staged vendor_boot.img as imported and reports it once,
+     * so a restart does not ask for a file the app still has. Returns the path
+     * when one is present.
+     */
+    private fun adoptStagedVendorBoot(): String? {
+        val path = runCatching { repository.stagedImagePath(VendorBootFileName) }.getOrNull()
+            ?: return null
+        if (!vendorBootImported) {
+            vendorBootImported = true
+            viewModelScope.launch(Dispatchers.IO) {
+                appendLog("vendor_boot.img already staged: $path")
+            }
+        }
+        return path
+    }
+
+    /** Confirm button: open the picker for vendor_boot.img. */
+    fun onVendorBootImport() {
+        dismissDialog()
+        send(GhostlockEffect.PickDocument(DocumentRequest.VendorBootImage))
+    }
+
+    /** Set once the user picks a vendor_boot image (success or failure of the parse). */
+    private fun markVendorBootImported() {
+        vendorBootImported = true
+        vendorBootPromptPending = false
+    }
+
+    /**
+     * vivo / iQOO detection.
+     *
+     * `Build.MANUFACTURER` / `Build.BRAND` are the authoritative fields (iQOO
+     * handsets report manufacturer "vivo" with brand "iQOO"), so they are
+     * checked first. `deviceName` is only a fallback: for vivo it resolves to
+     * the market name, which may be just a model string like "X100 Pro" and
+     * carry neither marker.
+     */
+    private fun looksLikeVivoIqoo(): Boolean {
+        val identity = listOf(
+            android.os.Build.MANUFACTURER,
+            android.os.Build.BRAND,
+            kernelSnapshot?.deviceName,
+        ).joinToString(" ").lowercase(Locale.ROOT)
+        return identity.contains("vivo") || identity.contains("iqoo")
     }
 
     /** Multi-picked documents (a profile plus any include dependencies). */
@@ -980,6 +1092,7 @@ class GhostlockViewModel(
             DocumentRequest.XblImage -> uris.firstOrNull()?.let(::stageXbl)
             DocumentRequest.UefiImage -> uris.firstOrNull()?.let(::stageUefi)
             DocumentRequest.PayloadImage -> uris.firstOrNull()?.let(::stagePayload)
+            DocumentRequest.VendorBootImage -> uris.firstOrNull()?.let(::stageVendorBoot)
         }
     }
 
@@ -988,14 +1101,15 @@ class GhostlockViewModel(
         when (parseDialogStage) {
             ParseDialogStage.Mode -> when (index) {
                 0 -> pickPayload()
-                1 -> promptBootAttach()
+                1 -> pickBoot()
             }
 
             ParseDialogStage.Attach -> when (index) {
-                0 -> pickBoot(withXbl = false, withUefi = false)
-                1 -> pickBoot(withXbl = true, withUefi = false)
-                2 -> pickBoot(withXbl = false, withUefi = true)
-                3 -> pickBoot(withXbl = true, withUefi = true)
+                /* Start, or attach one more image and come straight back here. */
+                0 -> startPendingParse()
+                1 -> send(GhostlockEffect.PickDocument(DocumentRequest.XblImage))
+                2 -> send(GhostlockEffect.PickDocument(DocumentRequest.UefiImage))
+                3 -> onVendorBootImport()
             }
         }
     }
@@ -1019,6 +1133,10 @@ class GhostlockViewModel(
     fun onDialogDismissFinished() {
         if (!state.value.dialogVisible) {
             clearDialog()
+            if (vendorBootPromptPending) {
+                vendorBootPromptPending = false
+                promptVendorBootIfNeeded()
+            }
         }
     }
 
@@ -1123,19 +1241,49 @@ class GhostlockViewModel(
     }
 
     private fun pickPayload() {
-        pendingParseWithXbl = false
-        pendingParseWithUefi = false
+        pendingPayloadPath = null
+        pendingXblPath = null
+        pendingUefiPath = null
         send(GhostlockEffect.Toast(R.string.parse_pick_payload_hint))
         send(GhostlockEffect.PickDocument(DocumentRequest.PayloadImage))
     }
 
-    private fun pickBoot(withXbl: Boolean, withUefi: Boolean) {
-        pendingParseWithXbl = withXbl
-        pendingParseWithUefi = withUefi
+    private fun pickBoot() {
+        pendingBootPath = null
         pendingXblPath = null
         pendingUefiPath = null
-        if (withXbl) send(GhostlockEffect.Toast(R.string.parse_pick_boot_hint))
         send(GhostlockEffect.PickDocument(DocumentRequest.BootImage))
+    }
+
+    /**
+     * Runs the parse for whichever source was staged, with whatever images the
+     * user attached in the loop. Called by the attachment step's first item, so
+     * starting a parse is the same action on every path.
+     */
+    private fun startPendingParse() {
+        parseDialogStage = ParseDialogStage.Mode
+        val boot = pendingBootPath
+        val payload = pendingPayloadPath
+        val url = pendingUrl
+        val xbl = pendingXblPath
+        val uefi = pendingUefiPath
+        pendingBootPath = null
+        pendingPayloadPath = null
+        pendingUrl = null
+        pendingXblPath = null
+        pendingUefiPath = null
+        when {
+            url != null -> parseUrl(url, xbl, uefi)
+            payload != null -> viewModelScope.launch(Dispatchers.IO) {
+                runParse(payload, xblPath = xbl, uefiPath = uefi)
+            }
+
+            boot != null -> viewModelScope.launch(Dispatchers.IO) {
+                runParse(boot, xblPath = xbl, uefiPath = uefi)
+            }
+
+            else -> Unit
+        }
     }
 
     private fun stageBoot(uri: String) {
@@ -1143,20 +1291,13 @@ class GhostlockViewModel(
             try {
                 val bootPath = readDocumentUseCase.cache(uri, "boot.img")
                 pendingBootPath = bootPath
+                pendingPayloadPath = null
+                pendingUrl = null
                 appendLog("boot.img ready: $bootPath")
-                when {
-                    pendingParseWithXbl -> {
-                        send(GhostlockEffect.Toast(R.string.parse_pick_xbl_hint))
-                        send(GhostlockEffect.PickDocument(DocumentRequest.XblImage))
-                    }
-
-                    pendingParseWithUefi -> {
-                        send(GhostlockEffect.Toast(R.string.parse_pick_uefi_hint))
-                        send(GhostlockEffect.PickDocument(DocumentRequest.UefiImage))
-                    }
-
-                    else -> runParse(bootPath)
-                }
+                /* Ask about attachments before parsing: this is where
+                 * vendor_boot.img (vivo/iQOO vr.ko), xbl_config.img and uefi.img
+                 * are offered. */
+                promptAttach()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1170,16 +1311,10 @@ class GhostlockViewModel(
     private fun stageXbl(uri: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val bootPath = requireNotNull(pendingBootPath) { "boot.img is not staged" }
                 val xblPath = readDocumentUseCase.cache(uri, "xbl_config.img")
                 pendingXblPath = xblPath
                 appendLog("xbl_config.img ready: $xblPath")
-                if (pendingParseWithUefi) {
-                    send(GhostlockEffect.Toast(R.string.parse_pick_uefi_hint))
-                    send(GhostlockEffect.PickDocument(DocumentRequest.UefiImage))
-                } else {
-                    runParse(bootPath, xblPath = xblPath)
-                }
+                promptAttach()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1193,11 +1328,10 @@ class GhostlockViewModel(
     private fun stageUefi(uri: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val bootPath = requireNotNull(pendingBootPath) { "boot.img is not staged" }
                 val uefiPath = readDocumentUseCase.cache(uri, "uefi.img")
                 pendingUefiPath = uefiPath
                 appendLog("uefi.img ready: $uefiPath")
-                runParse(bootPath, xblPath = pendingXblPath, uefiPath = uefiPath)
+                promptAttach()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1208,12 +1342,90 @@ class GhostlockViewModel(
         }
     }
 
+    private companion object {
+        const val VendorBootFileName = "vendor_boot.img"
+
+        /** A real vendor_boot is tens of megabytes; below this it is not one. */
+        const val MinVendorBootBytes = 64L * 1024
+
+        /**
+         * First bytes of the file, or "" when they cannot be read.
+         *
+         * Reads until the buffer is full: one `read()` may return fewer bytes
+         * than asked for, and treating that as a short file would reject a valid
+         * image at random.
+         */
+        fun readMagic(path: String, size: Int = VendorBootMagic.length): String = runCatching {
+            val header = ByteArray(size)
+            File(path).inputStream().use { input ->
+                var filled = 0
+                while (filled < size) {
+                    val read = input.read(header, filled, size - filled)
+                    if (read <= 0) return@runCatching ""
+                    filled += read
+                }
+            }
+            String(header, Charsets.US_ASCII)
+        }.getOrDefault("")
+
+        const val VendorBootMagic = "VNDRBOOT"
+    }
+
+    private fun isVivoOrIqoo(): Boolean {
+        val soc = kernelSnapshot?.socName?.lowercase(Locale.ROOT).orEmpty()
+        return soc.contains("vivo") || soc.contains("iqoo")
+    }
+
+    /**
+     * Stages vendor_boot.img: keeps the cached path for the native side and
+     * logs the vr.ko tag offsets it carries, when the probe can read them.
+     */
+    private fun stageVendorBoot(uri: String) {
+        markVendorBootImported()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val vbPath = readDocumentUseCase.cache(uri, VendorBootFileName)
+                val sizeBytes = File(vbPath).length()
+                appendLog("vendor_boot.img ready: $vbPath ($sizeBytes bytes)")
+                /* Check the magic before the image is trusted: a boot.img or
+                 * init_boot.img picked by mistake would be staged under a name
+                 * the runtime reads, and the failure would only surface mid-run.
+                 * Rejecting here keeps the staged state honest. */
+                val magic = readMagic(vbPath)
+                if (magic != "VNDRBOOT" || sizeBytes < MinVendorBootBytes) {
+                    File(vbPath).delete()
+                    vendorBootImported = false
+                    appendLog("vendor_boot rejected: magic=\"$magic\" size=$sizeBytes")
+                    appendLog("result: not a vendor_boot image")
+                    showNotice(R.string.parse_result_title, R.string.vivo_vendor_boot_invalid)
+                    return@launch
+                }
+                pendingVendorBootPath = vbPath
+                vendorBootImported = true
+                appendLog("vr.ko tag offsets will be parsed from this image at run time")
+                send(GhostlockEffect.Toast(R.string.vivo_vendor_boot_imported))
+                /* Mid-parse: hand control back to the attachment step so xbl /
+                 * uefi can still be added before the parse runs. */
+                if (parseDialogStage == ParseDialogStage.Attach) promptAttach()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                appendLog("vendor_boot error: ${error.message}")
+                appendLog("result: vendor_boot import failed")
+                showNotice(R.string.parse_result_title, R.string.parse_failed)
+            }
+        }
+    }
+
     private fun stagePayload(uri: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val payloadPath = readDocumentUseCase.cache(uri, "payload.bin")
+                pendingPayloadPath = payloadPath
+                pendingBootPath = null
+                pendingUrl = null
                 appendLog("payload.bin ready: $payloadPath")
-                runParse(payloadPath)
+                promptAttach()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1232,8 +1444,21 @@ class GhostlockViewModel(
             showNotice(R.string.parse_result_title, R.string.parse_failed_url)
             return
         }
+        pendingUrl = url
+        pendingBootPath = null
+        pendingPayloadPath = null
+        appendLog("OTA link ready: $url")
+        /* Attachments first: a full package already carries vendor_boot and a
+         * physical-load source, so the user usually just confirms. */
+        promptAttach()
+    }
+
+    /** Confirm path used by [startPendingParse] once the URL was staged. */
+    private fun parseUrl(url: String, xblPath: String?, uefiPath: String?) {
         appendLog("parse OTA: $url")
-        viewModelScope.launch(Dispatchers.IO) { runParse(url) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runParse(url, xblPath = xblPath, uefiPath = uefiPath)
+        }
     }
 
     /** Confirm/notice popup for an extractor outcome; unlike a Toast it waits
@@ -1304,6 +1529,11 @@ class GhostlockViewModel(
                     } else if (result.documentName == null) {
                         showNotice(R.string.parse_result_title, R.string.parse_success)
                     }
+                    /* The profile is in place: this is when a vivo/iQOO device
+                     * needs to know that vendor_boot.img was not part of the
+                     * parse, because vr1 reads the vr.ko tag offsets out of it.
+                     * Queued behind the notice above when one is showing. */
+                    promptVendorBootIfNeeded()
                 }
 
                 ParseResult.AlreadyPresent -> {

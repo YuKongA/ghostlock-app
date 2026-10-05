@@ -192,18 +192,31 @@ data class NativeProfileDocument(
         "ref3_image" to cred.ref3Image,
     )
 
-    private fun offsetEntries(): List<Pair<String, ULong>> = listOf(
-        "init_task" to kernelOffset.initTask,
-        "init_cred" to kernelOffset.initCred,
-        "empty_zero_page" to kernelOffset.emptyZeroPage,
-        "root_task_group" to kernelOffset.rootTaskGroup,
-        "selinux_enforcing" to kernelOffset.selinuxEnforcing,
-        "selinux_blob_sizes" to kernelOffset.selinuxBlobSizes,
-        "security_hook_heads" to kernelOffset.securityHookHeads,
-        "slide_nfulnl_logger" to kernelOffset.slideNfulnlLogger,
-        "slide_loggers_0_1" to kernelOffset.slideLoggers01,
-        "slide_boot_id" to kernelOffset.slideBootId,
-    )
+    private fun offsetEntries(): List<Pair<String, ULong>> = buildList {
+        addAll(
+            listOf(
+                "init_task" to kernelOffset.initTask,
+                "init_cred" to kernelOffset.initCred,
+                "empty_zero_page" to kernelOffset.emptyZeroPage,
+                "root_task_group" to kernelOffset.rootTaskGroup,
+                "selinux_enforcing" to kernelOffset.selinuxEnforcing,
+                "selinux_blob_sizes" to kernelOffset.selinuxBlobSizes,
+                "security_hook_heads" to kernelOffset.securityHookHeads,
+                "slide_nfulnl_logger" to kernelOffset.slideNfulnlLogger,
+                "slide_loggers_0_1" to kernelOffset.slideLoggers01,
+                "slide_boot_id" to kernelOffset.slideBootId,
+            ),
+        )
+        /* Optional vr.ko global kill-switch anchor. Emitted only when the
+         * profile carries a measured value: absence is the wire's "not
+         * provided", which the native side reads as 0 and answers by parsing
+         * the boot image on the device. Writing the zero unconditionally would
+         * change every other profile's bytes for no information (see the
+         * frozen wire fixture `native-doc-golden.sha256`). */
+        if (kernelOffset.sysExitTpFuncs != 0uL) {
+            add("sys_exit_tp_funcs" to kernelOffset.sysExitTpFuncs)
+        }
+    }
 
     private fun kernelSection(): Section? {
         val entries = buildList {
@@ -400,6 +413,7 @@ data class NativeProfileDocument(
                     slideNfulnlLogger = vul("offset.slide_nfulnl_logger"),
                     slideLoggers01 = vul("offset.slide_loggers_0_1"),
                     slideBootId = vul("offset.slide_boot_id"),
+                    sysExitTpFuncs = vul("offset.sys_exit_tp_funcs"),
                 ),
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
                 kernelPhysOffset = vulOrNull("kernel_phys_offset"),
@@ -519,6 +533,7 @@ data class NativeProfileDocument(
                         "slide_nfulnl_logger" -> offsets.copy(slideNfulnlLogger = raw)
                         "slide_loggers_0_1" -> offsets.copy(slideLoggers01 = raw)
                         "slide_boot_id" -> offsets.copy(slideBootId = raw)
+                        "sys_exit_tp_funcs" -> offsets.copy(sysExitTpFuncs = raw)
                         else -> offsets
                     }
 
@@ -678,6 +693,10 @@ data class KernelOffsetTable(
     val slideNfulnlLogger: ULong = 0uL,
     val slideLoggers01: ULong = 0uL,
     val slideBootId: ULong = 0uL,
+    /** Optional vr.ko global kill-switch (PR #241 direction): image offset of
+     *  &__tracepoint_sys_exit->funcs, precomputed by the extractor. 0 (default)
+     *  keeps only the per-task tag clear. */
+    val sysExitTpFuncs: ULong = 0uL,
 )
 
 data class ExecutionTuning(

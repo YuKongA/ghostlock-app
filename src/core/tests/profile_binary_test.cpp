@@ -295,6 +295,34 @@ int32_t main(void) {
         assert(ids.backend == binary_profile::kBackendCve202643499);
         assert(ids.middleware == ghostlock::profile::kRouteSelectStack);
 
+        /* ---- The optional vr.ko anchor: absent unless a value is carried. ----
+         * Absence is what "not provided" looks like on this wire, and the
+         * runtime answers it by parsing the boot image. Writing the zero
+         * unconditionally would also change every other profile's bytes. */
+        {
+            profile::kernel_offsets anchor = values;
+            anchor.route = ghostlock::profile::kRouteSelectStack;
+            anchor.offsets.sys_exit_tp_funcs = 0;
+            char buf[8192];
+            const int32_t zero_size =
+                binary_profile::serialize(&anchor, buf, sizeof(buf));
+            assert(zero_size > 0);
+            const std::string_view zero_doc(buf, static_cast<size_t>(zero_size));
+            assert(zero_doc.find("sys_exit_tp_funcs") == std::string_view::npos);
+            assert(binary_profile::parse(zero_doc, &parsed, release, sizeof(release)) == 0);
+            assert(parsed.offsets.sys_exit_tp_funcs == 0);
+
+            /* The measured PD2463 value must survive the round trip. */
+            anchor.offsets.sys_exit_tp_funcs = 36315752;
+            const int32_t set_size =
+                binary_profile::serialize(&anchor, buf, sizeof(buf));
+            assert(set_size > 0);
+            const std::string_view set_doc(buf, static_cast<size_t>(set_size));
+            assert(set_doc.find("sys_exit_tp_funcs") != std::string_view::npos);
+            assert(binary_profile::parse(set_doc, &parsed, release, sizeof(release)) == 0);
+            assert(parsed.offsets.sys_exit_tp_funcs == 36315752);
+        }
+
         /* A profile without a declared route never serializes. */
         values.route = ghostlock::profile::kRouteAuto;
         assert(binary_profile::serialize(&values, buffer, sizeof(buffer)) == -1);

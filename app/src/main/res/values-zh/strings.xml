@@ -27,11 +27,12 @@
     <string name="parse_title">解析来源</string>
     <string name="parse_option_payload">payload.bin</string>
     <string name="parse_option_boot">boot.img</string>
-    <string name="parse_boot_attach_title">附加 xbl_config.img / uefi.img（可选）</string>
-    <string name="parse_attach_none">直接解析（不附加）</string>
+    <string name="parse_boot_attach_title">附加镜像（可选）</string>
     <string name="parse_attach_xbl">附加 xbl_config.img</string>
     <string name="parse_attach_uefi">附加 uefi.img</string>
-    <string name="parse_attach_xbl_uefi">附加 xbl_config.img + uefi.img</string>
+    <string name="parse_attach_start">开始解析</string>
+    <string name="parse_attach_vendor_boot">附加 vendor_boot.img</string>
+    <string name="parse_attach_vendor_boot_staged">替换 vendor_boot.img（已导入）</string>
     <string name="parse_url_title">完整包链接</string>
     <string name="parse_url_hint">粘贴完整 OTA zip 链接</string>
     <string name="parse_start">开始解析</string>
@@ -45,7 +46,7 @@
     <string name="parse_failed_kallsyms">无法从该内核恢复符号表</string>
     <string name="parse_failed_fixed">此内核已修复该漏洞</string>
     <string name="parse_failed_url">OTA 链接无效</string>
-    <string name="parse_missing_phys_hint">缺少 kernel_phys_load，附加 xbl_config.img 或 uefi.img 后重新解析可补齐</string>
+    <string name="parse_missing_phys_hint">缺少 kernel_phys_load（内核物理加载地址）：boot.img 本身通常不含该值。附加 xbl_config.img（该包没有 xbl_config 时改附加 uefi.img），再重新解析即可补齐。</string>
     <string name="parse_missing_phys_mediatek">缺少 kernel_phys_load / kernel_phys_offset。联发科镜像没有 xbl_config 或 BTF，提取器无法从 boot.img 推导，运行时回退会在 W1 失败。请在已 root 的设备上运行单独的 tools/mtk-phys 提取器，再把两个值填入高级参数覆盖。</string>
     <string name="parse_result_title">解析结果</string>
     <string name="import_result_title">导入结果</string>
@@ -254,4 +255,11 @@
     <string name="fallback_label">回退路由</string>
     <string name="fallback_none">无</string>
     <string name="field_fallback_to">回退目标</string>
+    <!-- vivo/iQOO vendor_boot 提示 -->
+    <string name="vivo_vendor_boot_prompt_title">检测到 vivo/iQOO 设备</string>
+    <string name="vivo_vendor_boot_prompt_message">本机为 vivo/iQOO 机型，vr.ko 的 tag 偏移需要从 vendor_boot.img 中读取。\n\n未导入时只能使用内置固定偏移，攻击很可能失败。</string>
+    <string name="vivo_vendor_boot_import">导入 vendor_boot.img</string>
+    <string name="vivo_vendor_boot_imported">vendor_boot.img 已导入，运行时将从它解析 vr.ko 偏移</string>
+    <string name="vivo_vendor_boot_invalid">这个文件不是 vendor_boot 镜像（magic 与大小校验未通过）。请选择固件里的 vendor_boot.img —— boot.img 与 init_boot.img 是不同的分区，无法用来解析 vr.ko。</string>
+    <string name="vivo_vendor_boot_cancel">取消</string>
 </resources>

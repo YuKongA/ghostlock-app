@@ -66,17 +66,22 @@ TARGETS = [
         "do_one_write(ghostlock::memory::WriteRequest const*, char const*)",
         "do_one_write(ghostlock::WriteRequest const*, char const*)",
     ]),
-    ("multicast_owner_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_owner_worker(void*)",
-        "ghostlock::route::multicast_owner_worker(void*)",
-        "(anonymous namespace)::multicast_owner_worker(void*)",
-        "multicast_owner_worker(void*)",
+    # The two multicast worker entry points this list used to carry were folded
+    # into the shared race threads during the route refactor: they exist in no
+    # build, so the gate could never report PASS. The route-specific attack code
+    # that does exist now is listed instead -- the TCP punch thread and the
+    # multicast fast-repair hooks.
+    ("tcp_punch_thread", [
+        "ghostlock::route::tcp_punch_thread(void*)",
+        "tcp_punch_thread(void*)",
     ]),
-    ("multicast_waiter_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_waiter_worker(void*)",
-        "ghostlock::route::multicast_waiter_worker(void*)",
-        "(anonymous namespace)::multicast_waiter_worker(void*)",
-        "multicast_waiter_worker(void*)",
+    ("multicast_fast_repair_prebuild", [
+        "ghostlock::route::MulticastPolicy::w2_fast_repair_prebuild(ghostlock::session::ExploitSession&)",
+        "MulticastPolicy::w2_fast_repair_prebuild(ghostlock::session::ExploitSession&)",
+    ]),
+    ("multicast_fast_repair_activate", [
+        "ghostlock::route::MulticastPolicy::w2_fast_repair_activate(ghostlock::session::ExploitSession&)",
+        "MulticastPolicy::w2_fast_repair_activate(ghostlock::session::ExploitSession&)",
     ]),
 ]
 

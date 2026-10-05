@@ -3,6 +3,13 @@
 
 #include <cstdint>
 
+#ifdef PAGE_SIZE
+#undef PAGE_SIZE
+#endif
+#ifdef PAGE_SHIFT
+#undef PAGE_SHIFT
+#endif
+
 #include "kernel/offset.h"
 
 namespace ghostlock::kernel {

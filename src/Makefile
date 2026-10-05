@@ -1,5 +1,10 @@
 API ?= 35
 
+# C++ runtime linkage flag for the toolchain in use. The NDK ships
+# libstdc++.a, the Termux wrappers link their own libc++ automatically, so
+# the value is decided per branch below (and defaults to the NDK form).
+CXX_RT_LDFLAGS := -static-libstdc++
+
 # Auto-detect NDK
 ifeq ($(OS),Windows_NT)
   NDK_ROOT ?= $(subst \,/,$(firstword $(wildcard     $(subst \,/,$(LOCALAPPDATA))/Android/Sdk/ndk/*     $(subst \,/,$(ANDROID_HOME))/ndk/*     D:/AndroidSDK/ndk/*)))
@@ -10,11 +15,30 @@ ifeq ($(OS),Windows_NT)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANG_BASE).cmd
   NDK_CXX := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANGXX_BASE).cmd
 else
-  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT))
   UNAME_S := $(shell uname -s)
   PREBUILT := $(if $(filter Darwin,$(UNAME_S)),darwin-x86_64,linux-x86_64)
-  NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang
-  NDK_CXX := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang++
+  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT))
+  NDK_CC_NDK := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang
+  NDK_CXX_NDK := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang++
+  # On-device (Termux) fallback: the standalone wrappers already target
+  # aarch64-linux-android and need no NDK checkout. Only used when the NDK
+  # path above does not exist, so a desktop build is unaffected.
+  NDK_CC_TERMUX := $(shell command -v aarch64-linux-android-clang 2>/dev/null)
+  NDK_CXX_TERMUX := $(shell command -v aarch64-linux-android-clang++ 2>/dev/null)
+  ifneq ($(wildcard $(NDK_CXX_NDK)),)
+    NDK_CC := $(NDK_CC_NDK)
+    NDK_CXX := $(NDK_CXX_NDK)
+    CXX_RT_LDFLAGS := -static-libstdc++
+  else ifneq ($(NDK_CXX_TERMUX),)
+    NDK_CC := $(NDK_CC_TERMUX)
+    NDK_CXX := $(NDK_CXX_TERMUX)
+    # Termux clang++ links its own libc++ automatically.
+    CXX_RT_LDFLAGS :=
+  else
+    NDK_CC := $(NDK_CC_NDK)
+    NDK_CXX := $(NDK_CXX_NDK)
+    CXX_RT_LDFLAGS := -static-libstdc++
+  endif
 endif
 
 C_SRCS :=
@@ -40,6 +64,11 @@ CXX_SRCS := \
   core/session/root_child_frontend.cpp \
   core/session/backend/cve_2026_43499_backend.cpp \
   core/session/handoff_probe.cpp \
+  core/bootimg/header.cpp \
+  core/bootimg/kallsyms.cpp \
+  core/bootimg/btf.cpp \
+  core/bootimg/extract.cpp \
+  core/bootimg/physmap.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \
   core/support/native_resource.cpp \
@@ -64,11 +93,11 @@ COMMON_FLAGS := -O2 -flto -Wall -Wextra -Wconversion -Wsign-conversion \
   -Icore -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 CFLAGS := $(COMMON_FLAGS) -std=gnu11
 CXXFLAGS := $(COMMON_FLAGS) -std=c++23 -fno-rtti
-LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
+LDFLAGS := -fPIE -pie -pthread -flto $(CXX_RT_LDFLAGS) -llog
 
 HOST_CC ?= cc
 HOST_CXX ?= c++
-HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion
+HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\"
 # The size-stripping link flag is spelled differently per linker: Darwin's ld
 # uses -dead_strip, while GNU ld on a Linux host rejects it and needs
 # --gc-sections instead. Keep each spelling in its own variable so the commas
@@ -112,6 +141,12 @@ target-constants-test: $(HOST_BUILD_DIR)/target_constants_test
 native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 	$(HOST_BUILD_DIR)/native_resource_test
 
+bootimg-uefi-test: $(HOST_BUILD_DIR)/bootimg_uefi_test
+	$(HOST_BUILD_DIR)/bootimg_uefi_test
+
+bootimg-vendor-boot-test: $(HOST_BUILD_DIR)/bootimg_vendor_boot_test
+	$(HOST_BUILD_DIR)/bootimg_vendor_boot_test
+
 NATIVE_HOST_TESTS := \
   profile_test payload_builder_test heap_context_test route_status_test \
   route_catalog_test component_catalog_test backend_contract_test route_policy_test \
@@ -121,7 +156,8 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test address_space_test cpp_link_probe_test
+  run_state_test address_space_test cpp_link_probe_test bootimg_uefi_test \
+  bootimg_vendor_boot_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -182,6 +218,16 @@ $(HOST_BUILD_DIR)/cpp_link_probe_test: core/tests/cpp_link_probe.cpp core/tests/
 	$(HOST_CC) -std=c11 -Icore -c core/tests/cpp_link_probe_test.c -o $(HOST_BUILD_DIR)/cpp_link_probe_test.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore -c core/tests/cpp_link_probe.cpp -o $(HOST_BUILD_DIR)/cpp_link_probe.o
 	$(HOST_CXX) $(HOST_BUILD_DIR)/cpp_link_probe_test.o $(HOST_BUILD_DIR)/cpp_link_probe.o -o $@
+
+$(HOST_BUILD_DIR)/bootimg_vendor_boot_test: core/tests/bootimg_vendor_boot_test.cpp \
+    core/bootimg/physmap.cpp core/bootimg/physmap.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/bootimg_vendor_boot_test.cpp core/bootimg/physmap.cpp -o $@
+
+$(HOST_BUILD_DIR)/bootimg_uefi_test: core/tests/bootimg_uefi_test.cpp \
+    core/bootimg/physmap.cpp core/bootimg/physmap.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/bootimg_uefi_test.cpp core/bootimg/physmap.cpp -o $@
 
 $(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/kernel/target.h core/kernel/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
