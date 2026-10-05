@@ -21,7 +21,7 @@ CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与
 | B5-9c | 真实 ChainOps 绑定 + 分阶段执行入口（`--run-cve-2026-43284`） | 🔶 实现 + host 测试；真机分阶段验证待做 |
 | B5-9 | 真机门禁（逐 KMI）+ `.ko` 审计 + 归档 | ⬜ 需 `.ko` + 设备 + ksud |
 
-`pipeline::component_catalog::backend_available(Cve2026_43284)` 仍为 **false**；未过真机前不得标 supported。
+`contract::backend_available(Cve2026_43284)` 仍为 **false**；未过真机前不得标 supported。
 
 ## 布局
 

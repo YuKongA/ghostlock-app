@@ -61,7 +61,7 @@ namespace ghostlock::backend::cve_2026_43284 {
         /* Optional .ko precheck. Skipped when null or when lkm_image_path is
          * empty. `precheck_ctx` is passed as the first argument. */
         bool (*precheck_lkm)(void *ctx, std::string_view path,
-                             const lkm::KernelRelease &release,
+                             const lkm::DeviceKernelFacts &required,
                              lkm::ModuleFacts &facts,
                              lkm::LkmImageError &error) noexcept = nullptr;
         void *precheck_ctx = nullptr;

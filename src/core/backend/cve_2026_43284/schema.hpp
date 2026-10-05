@@ -55,6 +55,13 @@ namespace ghostlock::backend {
 #undef GLK_43284_OPT_U16
 
     static_assert(profile::SchemaDefinition<Cve2026_43284Schema>);
+
+    /* The backend-private StepSet id carried by the 43284 section (0 when the
+     * key is absent). Consumed by the composition root before dispatch. */
+    [[nodiscard]] inline uint16_t steps_from(const profile::Document &document) noexcept {
+        const profile::Value *value = document.find_value(kCve2026_43284Section, "steps");
+        return value != nullptr ? static_cast<uint16_t>(value->raw) : 0;
+    }
 } // namespace ghostlock::backend
 
 #endif

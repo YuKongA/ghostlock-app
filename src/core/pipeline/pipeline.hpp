@@ -1,10 +1,9 @@
 #ifndef GHOSTLOCK_PIPELINE_HPP
 #define GHOSTLOCK_PIPELINE_HPP
 
-#include "profile/model.h"
-#include "pipeline/backend_contract.hpp"
+#include "contract/identity.hpp"
 #include "pipeline/component_catalog.hpp"
-#include "pipeline/terminal_contract.hpp"
+#include "contract/model.hpp"
 #include "session/core_session.hpp"
 #include "session/stage_types.hpp"
 #include "terminal/rooted_child.hpp"
@@ -30,7 +29,7 @@ namespace ghostlock::pipeline {
 
             explicit BackendStateGuard(session::CoreSession &exploit_session) noexcept
                 : session(exploit_session) {
-                if constexpr (BackendState<Backend>) {
+                if constexpr (contract::BackendState<Backend>) {
                     Backend::state_construct(session);
                 }
             }
@@ -40,7 +39,7 @@ namespace ghostlock::pipeline {
             BackendStateGuard &operator=(const BackendStateGuard &) = delete;
 
             ~BackendStateGuard() noexcept {
-                if constexpr (BackendState<Backend>) {
+                if constexpr (contract::BackendState<Backend>) {
                     Backend::state_destroy(session);
                 }
             }
@@ -52,23 +51,28 @@ namespace ghostlock::pipeline {
      * backend, so it is not a template parameter. */
     template <class Backend, class Terminal>
     struct Pipeline final {
-        static constexpr BackendKind backend = Backend::kind;
-        static constexpr StepSetKind steps = Backend::steps;
-        static constexpr TerminalKind terminal = Terminal::kind;
+        static constexpr contract::BackendKind backend = Backend::kind;
+        static constexpr contract::StepSetKind steps = Backend::steps;
+        static constexpr contract::TerminalKind terminal = Terminal::kind;
         static constexpr DispatchTarget target = dispatch_target_of(backend, steps, terminal);
         static_assert(target != DispatchTarget::None,
                       "pipeline must be a catalogued (backend, steps, terminal) triple");
-        static_assert(TerminalExecution<Terminal>,
+        static_assert(contract::TerminalExecution<Terminal>,
                       "terminal must satisfy the terminal execution contract");
-        static_assert(BackendExecution<Backend, typename Terminal::Input>,
+        static_assert(contract::BackendExecution<Backend, typename Terminal::Input>,
                       "backend must satisfy the execution contract for the terminal input");
 
         [[nodiscard]] static RunResult run(session::CoreSession &exploit_session,
-                                           const profile::kernel_offsets &decoded,
+                                           const profile::Document &document,
                                            const char *debug_dir, bool force_attack) {
             const detail::BackendStateGuard<Backend> state_guard(exploit_session);
+            /* Bind/install the backend profile outside the PI window; a
+             * rejected document never reaches the attack. */
+            if (!Backend::state_from(exploit_session, document).ok()) {
+                return RunResult{.code = RunCode::Rejected, .stage = RunStage::Backend};
+            }
             typename Terminal::Input input{};
-            switch (Backend::run(exploit_session, decoded, debug_dir, force_attack, input)) {
+            switch (Backend::run(exploit_session, debug_dir, force_attack, input)) {
                 case session::StageResult::Failed:
                     return RunResult{.code = RunCode::Failed, .stage = RunStage::Backend};
                 case session::StageResult::Done:

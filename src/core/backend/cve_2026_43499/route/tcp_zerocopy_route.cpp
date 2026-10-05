@@ -4,7 +4,13 @@
 #include <sys/mman.h>
 
 #if defined(__ANDROID__)
-#include "common.h"
+#include "memory/offset.h"
+#include "kernelsnitch/utils.h"
+#include "backend/cve_2026_43499/backend_profile/accessors.hpp"
+#include "support/decls.hpp"
+
+#include <sys/syscall.h>
+
 #include "backend/cve_2026_43499/route/route_lifecycle.hpp"
 
 #include <linux/falloc.h>

@@ -16,6 +16,7 @@
 
 #include "backend/cve_2026_43284/glkv3_schema.hpp"
 #include "backend/cve_2026_43499/glkv3_schema.hpp"
+#include "platform/abi.hpp"
 #include "profile/glkv3.hpp"
 
 #include <algorithm>
@@ -57,6 +58,8 @@ namespace {
 
     std::vector<std::string> schema_lines() {
         std::vector<std::string> lines;
+        append_owner(lines, "platform::abi",
+                     ghostlock::platform::abi::kPlatformAbiGlkv3Fields);
         append_owner(lines, "cve_2026_43499",
                      ghostlock::backend::kCve2026_43499Glkv3Fields);
         append_owner(lines, "cve_2026_43284",

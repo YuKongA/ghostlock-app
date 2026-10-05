@@ -17,6 +17,7 @@
 
 #include "backend/cve_2026_43284/schema.hpp"
 #include "backend/cve_2026_43499/schema.hpp"
+#include "platform/abi.hpp"
 #include "profile/schema.hpp"
 
 #include <algorithm>
@@ -60,10 +61,12 @@ namespace {
     }
 
     /* One manifest body line per owned field, stable-sorted. Native is the
-     * authority for every owner: the 43499 transport and the 43284 private
-     * section (S3 B4). */
+     * authority for every owner: the platform ABI keys, the 43499 backend keys
+     * and the 43284 private section (S3 B4). The owner column moved for the
+     * A2-4-3 platform split while the (section, key) set stayed put. */
     std::vector<std::string> schema_lines() {
         std::vector<std::string> lines;
+        append_owner<ghostlock::platform::abi::Schema>(lines, "platform::abi");
         append_owner<ghostlock::backend::Cve2026_43499Schema>(
                 lines, "cve_2026_43499");
         append_owner<ghostlock::backend::Cve2026_43284Schema>(

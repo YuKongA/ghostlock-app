@@ -1,4 +1,4 @@
-#include "profile/model.h"
+#include "contract/model.hpp"
 
 #include <cstdio>
 

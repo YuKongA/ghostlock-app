@@ -46,8 +46,10 @@ CXX_SRCS := \
   core/race/pi_race.cpp \
   core/backend/cve_2026_43499/route/route_controller.cpp \
   core/backend/cve_2026_43499/route/route_middleware.cpp \
-  core/ancillary/vr_guard.cpp \
-  core/ancillary/vr_task_tag.cpp \
+  core/platform/vivo/vr_guard.cpp \
+  core/platform/vivo/vr_task_tag.cpp \
+  core/platform/countermeasure/loader.cpp \
+  core/platform/countermeasure/sha256.cpp \
   core/race/threads.cpp \
   core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp \
   core/backend/cve_2026_43499/route/select_stack_route.cpp \
@@ -62,14 +64,16 @@ CXX_SRCS := \
   core/platform/device_facts.cpp \
   core/session/core_session.cpp \
   core/backend/cve_2026_43499_state.cpp \
+  core/backend/cve_2026_43499/backend_offsets.cpp \
   core/backend/cve_2026_43499/bootstrap.cpp \
+  core/backend/cve_2026_43499/backend_profile.cpp \
   core/backend/cve_2026_43499/primitives.cpp \
   core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_script.cpp \
   core/terminal/root_child.cpp \
   core/terminal/umh_forward.cpp \
   core/backend/cve_2026_43499_backend.cpp \
-  core/ancillary/ancillary_controller.cpp \
+  core/ancillary/controller.cpp \
   core/terminal/handoff_probe.cpp \
   core/backend/victim/victim_process.cpp \
   core/backend/victim/victim_context.cpp \
@@ -124,6 +128,8 @@ HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversi
 HOST_LD_GC_DARWIN := -Wl,-dead_strip
 HOST_LD_GC_ELF := -Wl,--gc-sections
 HOST_LD_GC := $(if $(filter Darwin,$(shell uname -s)),$(HOST_LD_GC_DARWIN),$(HOST_LD_GC_ELF))
+# dlopen is in libc on Darwin and musl, but glibc hosts still need -ldl.
+HOST_DL_LIB := $(if $(filter Darwin,$(shell uname -s)),,-ldl)
 HOST_BUILD_DIR := $(BUILD_ROOT)/host-test
 
 # Every generated artifact stays under build/ so nothing lands in the repo root.
@@ -174,7 +180,9 @@ NATIVE_HOST_TESTS := \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
-  contract_capabilities_test terminal_input_test \
+  platform_vivo_test platform_abi_test \
+  contract_capabilities_test countermeasure_abi_test address_discovery_test terminal_input_test \
+  countermeasure_loader_test countermeasure_registry_test \
   document_schema_test owner_schema_test cve_2026_43284_schema_test \
   profile_manifest_test profile_manifest_v3_test \
   glkv3_codec_test glkv3_schema_test profile_v3_test profile_entry_test \
@@ -185,6 +193,7 @@ NATIVE_HOST_TESTS := \
   cve_2026_43284_stage_runner_test \
   cve_2026_43284_crash_dump_test \
   cve_2026_43284_hook_patch_test \
+  include_firewall_test fake_backend_test \
   host_attack_dataflow_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
@@ -208,9 +217,11 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/tests/host/glue_stub.cpp \
   core/backend/cve_2026_43499_backend.cpp \
   core/backend/cve_2026_43499/steps.cpp \
+  core/backend/cve_2026_43499/backend_profile.cpp \
   core/terminal/root_child.cpp \
   core/session/core_session.cpp \
   core/backend/cve_2026_43499_state.cpp \
+  core/backend/cve_2026_43499/backend_offsets.cpp \
   core/session/runtime_config.cpp \
   core/memory/heap_context.cpp \
   core/memory/address_space.cpp \
@@ -272,7 +283,7 @@ $(HOST_BUILD_DIR)/umh_forward_test: core/tests/umh_forward_test.cpp \
   core/terminal/umh_forward.cpp core/terminal/umh_forward.hpp \
   core/terminal/terminal_input.hpp core/terminal/root_program.hpp \
   core/terminal/umh_command.hpp core/pipeline/component_catalog.hpp \
-  core/pipeline/terminal_contract.hpp core/session/stage_types.hpp
+  core/contract/identity.hpp core/session/stage_types.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/umh_forward_test.cpp \
 	  core/terminal/umh_forward.cpp -o $@
@@ -281,7 +292,58 @@ $(HOST_BUILD_DIR)/contract_capabilities_test: core/tests/contract_capabilities_t
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/memory/address_space.cpp core/memory/address_space.h core/profile/model.h
+# A3 address-discovery contract: the optional capability handle / fail-closed
+# result are header-only, so the fake provider runs without a device.
+$(HOST_BUILD_DIR)/address_discovery_test: core/tests/address_discovery_test.cpp core/contract/address_discovery.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
+
+# CM-1 countermeasure plugin ABI: the ABI header is a self-contained C99 header,
+# so a project include or non-C99 syntax leaking into it fails here; the C++
+# mapping and the contract test are declaration-only (no loader in CM-1).
+$(HOST_BUILD_DIR)/countermeasure_abi_test: core/tests/countermeasure_abi_test.cpp core/contract/countermeasure.hpp core/contract/glk_cm_abi.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/glk_cm_abi.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
+
+# CM-2 countermeasure loader: real dlopen/dlsym/dlclose against the C test
+# plugins built here (C99 proves the ABI header's C usability). This target has
+# its own explicit rule -- adding a name to NATIVE_HOST_TESTS alone is not
+# enough; the plugins are prerequisites so they exist before the test runs.
+CM_PLUGIN_DIR := $(HOST_BUILD_DIR)/cm
+CM_PLUGIN_SRCS := \
+  core/tests/fixtures/cm_test_plugin.c \
+  core/tests/fixtures/cm_test_plugin_badabi.c \
+  core/tests/fixtures/cm_test_plugin_missing_entry.c
+CM_PLUGIN_SOS := $(patsubst core/tests/fixtures/%.c,$(CM_PLUGIN_DIR)/%.so,$(CM_PLUGIN_SRCS))
+
+$(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/glk_cm_abi.h Makefile
+	@mkdir -p $(dir $@)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fPIC -shared -Icore $< -o $@
+	@chmod 755 $@
+
+$(HOST_BUILD_DIR)/countermeasure_loader_test: core/tests/countermeasure_loader_test.cpp \
+  core/platform/countermeasure/loader.cpp core/platform/countermeasure/loader.hpp \
+  core/platform/countermeasure/sha256.cpp core/platform/countermeasure/sha256.hpp \
+  core/contract/countermeasure.hpp core/contract/glk_cm_abi.h $(CM_PLUGIN_SOS)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
+	  -DGLK_CM_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
+	  core/tests/countermeasure_loader_test.cpp \
+	  core/platform/countermeasure/loader.cpp core/platform/countermeasure/sha256.cpp \
+	  -pthread $(HOST_DL_LIB) -o $@
+
+# CM-3 runtime registry + controller external dispatch: the registry is
+# header-only and borrows the fake hook table; the loader is not linked and no
+# real module is opened. The same explicit-rule pattern as CM-2 applies.
+$(HOST_BUILD_DIR)/countermeasure_registry_test: core/tests/countermeasure_registry_test.cpp \
+  core/ancillary/external_registry.hpp core/ancillary/controller.hpp \
+  core/ancillary/ancillary_policy.hpp core/contract/countermeasure.hpp \
+  core/contract/glk_cm_abi.h core/session/core_session.hpp core/support/status.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/countermeasure_registry_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/memory/address_space.cpp core/memory/address_space.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/address_space_test.cpp core/memory/address_space.cpp -o $@
 
@@ -298,8 +360,8 @@ $(HOST_BUILD_DIR)/runtime_time_test: core/tests/runtime_time_test.cpp core/suppo
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 $(HOST_BUILD_DIR)/backend_contract_test: core/tests/backend_contract_test.cpp \
-  core/pipeline/backend_contract.hpp core/pipeline/backend_policy.hpp core/pipeline/component_catalog.hpp \
-  core/backend/cve_2026_43499/route/route_policy.hpp core/pipeline/terminal_contract.hpp core/session/stage_types.hpp \
+  core/contract/identity.hpp core/pipeline/pipeline.hpp core/pipeline/component_catalog.hpp \
+  core/backend/cve_2026_43499/route/route_policy.hpp core/session/stage_types.hpp \
   core/backend/cve_2026_43499_backend.hpp core/backend/cve_2026_64560_backend.hpp \
   core/backend/cve_2026_31431_backend.hpp core/backend/cve_2026_43503_backend.hpp \
   core/backend/cve_2026_23274_backend.hpp core/backend/cve_2026_43284_backend.hpp \
@@ -307,56 +369,87 @@ $(HOST_BUILD_DIR)/backend_contract_test: core/tests/backend_contract_test.cpp \
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/backend_contract_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/profile/model.h
+$(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_catalog_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/pipeline/component_catalog.hpp core/profile/model.h
+$(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/pipeline/component_catalog.hpp core/contract/identity.hpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/component_catalog_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/backend/cve_2026_43499/route/route_policy.hpp core/backend/cve_2026_43499/route/route_status.h core/profile/model.h core/memory/payload_builder.h
+$(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/backend/cve_2026_43499/route/route_policy.hpp core/backend/cve_2026_43499/route/route_status.h core/contract/model.hpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/route_policy_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/ancillary_test: core/tests/ancillary_test.cpp \
-  core/ancillary/ancillary_policy.hpp core/ancillary/vr_guard.hpp \
-  core/ancillary/vr_task_tag.hpp core/ancillary/ancillary_controller.hpp \
-  core/session/core_session.hpp core/memory/target.h core/profile/macros.h \
-  core/profile/model.h core/support/status.hpp
+  core/ancillary/ancillary_policy.hpp core/ancillary/controller.hpp \
+  core/session/core_session.hpp core/support/status.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/ancillary_test.cpp -o $@
+
+# platform::abi owner schema/view (A2-4-3): the platform field declaration, the
+# pure offset accessors and the mechanical View -> kernel_offsets merge. Header
+# only; no session or backend state is linked.
+$(HOST_BUILD_DIR)/platform_abi_test: core/tests/platform_abi_test.cpp \
+  core/platform/abi.hpp core/profile/schema.hpp core/profile/document.hpp \
+  core/contract/model.hpp core/profile/glkv3.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/platform_abi_test.cpp -o $@
+
+# platform::vivo vendor behaviors: the profile->View adapter, the gates and the
+# pure plan arithmetic. Header-only (the device execution bodies are not linked
+# and the policies' apply templates are not instantiated here).
+$(HOST_BUILD_DIR)/platform_vivo_test: core/tests/platform_vivo_test.cpp \
+  core/platform/vivo/registry.hpp core/platform/vivo/schema.hpp \
+  core/platform/vivo/vr_guard.hpp core/platform/vivo/vr_task_tag.hpp \
+  core/platform/vivo/kind.hpp core/platform/vivo/macros.h \
+  core/ancillary/ancillary_policy.hpp core/ancillary/controller.hpp \
+  core/session/core_session.hpp core/memory/target.h core/contract/model.hpp \
+  core/support/status.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/platform_vivo_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/backend/cve_2026_43499/route/route_lifecycle.hpp core/backend/cve_2026_43499/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_lifecycle_test.cpp -o $@
 
-$(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/profile/model.h
+$(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/model.h
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile/binary.cpp -o $@
+# A2-5 test-only legacy decode shim: the host vectors still call the old
+# binary_profile::parse / parse_v3 names, so they link this compatibility unit
+# (frame + owner bind) and the GLKv3 codec it depends on.
+PROFILE_COMPAT_SRCS := core/tests/profile_bind_compat.cpp core/profile/glkv3.cpp core/profile/glkv3_parse.cpp
 
-$(HOST_BUILD_DIR)/document_schema_test: core/tests/document_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/profile/model.h
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/document_schema_test.cpp core/profile/binary.cpp -o $@
+$(HOST_BUILD_DIR)/profile_bind_mpack.o: $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
 
-$(HOST_BUILD_DIR)/owner_schema_test: core/tests/owner_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/backend/cve_2026_43499/schema.hpp core/profile/model.h
+$(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile/binary.cpp core/profile/binary.h core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/owner_schema_test.cpp core/profile/binary.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
+
+$(HOST_BUILD_DIR)/document_schema_test: core/tests/document_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/document_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
+
+$(HOST_BUILD_DIR)/owner_schema_test: core/tests/owner_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/backend/cve_2026_43499/schema.hpp core/platform/abi.hpp core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/owner_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
 
 $(HOST_BUILD_DIR)/cve_2026_43284_schema_test: core/tests/cve_2026_43284_schema_test.cpp \
   core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp \
   core/profile/schema.hpp core/backend/cve_2026_43284/schema.hpp \
   core/backend/cve_2026_43284_state.hpp core/backend/cve_2026_43499/schema.hpp \
-  core/profile/model.h
+  core/platform/abi.hpp \
+  core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_schema_test.cpp core/profile/binary.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
 
 # Native is the SSOT for the wire field universe; this test exports the owner
 # Schema to app/src/test/resources/profile-manifest.tsv and checks it in.
-$(HOST_BUILD_DIR)/profile_manifest_test: core/tests/profile_manifest_test.cpp core/backend/cve_2026_43499/schema.hpp core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp core/profile/schema.hpp core/profile/document.hpp core/profile/model.h
+$(HOST_BUILD_DIR)/profile_manifest_test: core/tests/profile_manifest_test.cpp core/backend/cve_2026_43499/schema.hpp core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp core/platform/abi.hpp core/profile/schema.hpp core/profile/document.hpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_test.cpp -o $@
 
@@ -379,7 +472,8 @@ $(HOST_BUILD_DIR)/glkv3_schema_test: core/tests/glkv3_schema_test.cpp \
   core/backend/cve_2026_43284/glkv3_schema.hpp \
   core/backend/cve_2026_43499/schema.hpp \
   core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp \
-  core/profile/model.h $(MPACK_SRC) $(MPACK_HDR)
+  core/platform/abi.hpp \
+  core/contract/model.hpp $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/glkv3_schema_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/glkv3_schema_test.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/glkv3_schema_mpack.o -o $@
@@ -397,7 +491,7 @@ $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
   core/backend/cve_2026_43284/glkv3_schema.hpp \
   core/backend/cve_2026_43284_state.hpp \
   core/support/native_resource.cpp core/support/native_resource.hpp \
-  core/profile/document.hpp core/profile/schema.hpp core/profile/model.h \
+  core/profile/document.hpp core/profile/schema.hpp core/contract/model.hpp \
   $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_entry_mpack.o
@@ -551,7 +645,7 @@ $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diag
   core/platform/device_facts.cpp core/platform/device_facts.hpp \
   core/support/cli.cpp core/support/cli.hpp \
   core/support/run_state.cpp core/support/run_state.hpp \
-  core/pipeline/component_catalog.hpp core/profile/model.h
+  core/contract/identity.hpp core/pipeline/component_catalog.hpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_diagnostic_test.cpp \
 	  core/backend/cve_2026_43284/diagnostic.cpp \
@@ -634,11 +728,13 @@ $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
   core/backend/cve_2026_43284/schema.hpp \
   core/backend/cve_2026_43284/glkv3_schema.hpp \
   core/backend/cve_2026_43284_state.hpp \
-  core/profile/document.hpp core/profile/schema.hpp core/profile/model.h \
+  core/platform/abi.hpp \
+  core/profile/document.hpp core/profile/schema.hpp core/contract/model.hpp \
   $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_v3_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_v3_test.cpp \
+	  core/tests/profile_bind_compat.cpp \
 	  core/profile/glkv3_parse.cpp core/profile/binary.cpp core/profile/glkv3.cpp \
 	  $(HOST_BUILD_DIR)/profile_v3_mpack.o -o $@
 
@@ -646,7 +742,7 @@ $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
 # Kotlin (ProfileManifestV3AgreementTest) asserts its adapter table equals it.
 $(HOST_BUILD_DIR)/profile_manifest_v3_test: core/tests/profile_manifest_v3_test.cpp \
   core/backend/cve_2026_43499/glkv3_schema.hpp \
-  core/backend/cve_2026_43284/glkv3_schema.hpp core/profile/glkv3.hpp
+  core/backend/cve_2026_43284/glkv3_schema.hpp core/platform/abi.hpp core/profile/glkv3.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_v3_test.cpp -o $@
 
@@ -700,6 +796,29 @@ $(HOST_BUILD_DIR)/handoff_probe_test: core/tests/handoff_probe_test.cpp core/ter
 $(HOST_BUILD_DIR)/victim_context_test: core/tests/victim_context_test.cpp core/backend/victim/victim_context.cpp core/backend/victim/victim_context.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/victim_context_test.cpp core/backend/victim/victim_context.cpp core/support/native_resource.cpp -o $@
+
+# A2-5-5 include firewall: a host-only static scan of src/core. It walks every
+# production source file, reads each quoted #include and rejects an edge that
+# breaks the ADR-0004 R1 allowed-edge graph; the explicit whitelist ledger names
+# every tolerated legacy violation with its pending batch. GHOSTLOCK_FIREWALL_ROOT
+# is baked from $(CURDIR) so the test finds the tree independently of its cwd.
+$(HOST_BUILD_DIR)/include_firewall_test: core/tests/include_firewall_test.cpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -DGHOSTLOCK_FIREWALL_ROOT='"$(CURDIR)"' -Icore core/tests/include_firewall_test.cpp -o $@
+
+# A2-5-5/R8 fake backend: a second (backend, terminal) pair with its own State,
+# schema and input, assembled through the real Pipeline template. Host-only; it
+# links the neutral session container so the state lifecycle is exercised for
+# real. No production backend, route or device code is linked.
+$(HOST_BUILD_DIR)/fake_backend_test: core/tests/fake_backend_test.cpp \
+  core/tests/fake_backend_stub.hpp \
+  core/pipeline/pipeline.hpp core/contract/identity.hpp \
+  core/pipeline/component_catalog.hpp \
+  core/session/core_session.cpp core/session/core_session.hpp \
+  core/profile/schema.hpp core/profile/document.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/fake_backend_test.cpp \
+	  core/session/core_session.cpp -o $@
 
 product: ghostlock
 	@echo "=== ghostlock binary ready: $(GHOSTLOCK_BIN) ==="

@@ -73,6 +73,8 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
             case lkm::LkmImageError::MissingName: return "MissingName";
             case lkm::LkmImageError::VermagicMissing: return "VermagicMissing";
             case lkm::LkmImageError::VermagicMismatch: return "VermagicMismatch";
+            case lkm::LkmImageError::VermagicSlotTooSmall:
+                return "VermagicSlotTooSmall";
             case lkm::LkmImageError::NonEmptyVersions: return "NonEmptyVersions";
             case lkm::LkmImageError::SignedModule: return "SignedModule";
         }
@@ -110,8 +112,15 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
         if (module_path.empty()) {
             report.image_error = lkm::LkmImageError::ReadFailed;
         } else if (report.release_parsed) {
+            /* B5-9h-3: the precheck compares the full VERMAGIC_STRING. preempt
+             * comes from /proc/version; modversions/module_force_unload are the
+             * audited-target defaults in DeviceKernelFacts. */
+            lkm::DeviceKernelFacts required{};
+            required.release = report.facts.release.view();
+            required.preempt = lkm::proc_version_has_preempt(
+                    report.facts.proc_version.view());
             report.module_checked = lkm::precheck_module_file(
-                    module_path, report.release, report.module_facts, report.image_error);
+                    module_path, required, report.module_facts, report.image_error);
         }
 
         if (!report.release_parsed || !report.kmi_resolved || !report.module_checked) {
@@ -233,6 +242,16 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
             append_bool(status, module.has_vermagic);
             status += " match=";
             append_bool(status, module.vermagic_matches);
+            status += " ver_diff=";
+            status += lkm::vermagic_diff_reason_name(module.vermagic_diff);
+            status += " ko_vermagic=";
+            status += module.module_vermagic[0] != '\0'
+                              ? std::string_view(module.module_vermagic)
+                              : std::string_view("-");
+            status += " req_vermagic=";
+            status += module.required_vermagic[0] != '\0'
+                              ? std::string_view(module.required_vermagic)
+                              : std::string_view("-");
             status += " versions_empty=";
             append_bool(status, module.versions_empty);
             status += " signed=";

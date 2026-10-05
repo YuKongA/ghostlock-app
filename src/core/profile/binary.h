@@ -16,11 +16,13 @@
  * bit-exactly (signed via two's complement). There is no positional layout, so
  * adding a field or an object never moves anything else.
  *
- * v1 JSON profiles never reach this unit: imports are converted by Kotlin's
- * LegacyProfileConverter, the runtime path always uses this typed layout, and
- * profile_entry::decode() probes GLKv3 first and falls back to this v2 reader. */
+ * This unit is framing only (A2-5): it turns the wire into the neutral
+ * profile::Document without naming a field or knowing an owner. The owner
+ * binding lives in the selected backend (backend/cve_2026_43499/backend_profile
+ * and backend/cve_2026_43284). v1 JSON profiles never reach this unit: imports
+ * are converted by Kotlin's LegacyProfileConverter. */
 
-#include "profile/model.h"
+#include "profile/document.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,12 +30,10 @@
 #include <string_view>
 
 namespace ghostlock::profile {
-    struct Document;
-}
-
-namespace ghostlock::backend {
-    struct Cve2026_43284Profile;
-}
+    /* Defined in contract/model.hpp; the v2 writer declaration below only needs the
+     * name so this framing header stays independent of the frozen ABI type. */
+    struct kernel_offsets;
+} // namespace ghostlock::profile
 
 namespace ghostlock::binary_profile {
     inline constexpr uint32_t kMagic = 0x0D000721u;
@@ -74,7 +74,8 @@ namespace ghostlock::binary_profile {
     /* Component selection as decoded from the transport. v2 fills the single
      * shipped terminal/backend; v3 carries the wire ids. Kept out of
      * kernel_offsets so the execution struct layout (and attack codegen) does
-     * not move. */
+     * not move. Retained as a transport-level selection value; the production
+     * read path derives its selection from the Document. */
     struct component_ids {
         uint16_t terminal;
         uint16_t backend;
@@ -84,34 +85,11 @@ namespace ghostlock::binary_profile {
         uint16_t steps;
     };
 
-    /* Parse one binary document into the native transport struct. `ids`, when
-     * given, receives the decoded component selection. `document_out`, when
-     * given, additionally receives the neutral framing result (shadow path,
-     * A2-3c-1); it never changes the transport decode or its return value.
-     *
-     * `profile_43284_out`, when given, receives the bound
-     * backend.cve_2026_43284 private View (S3 B4). The section is accepted only
-     * when the header backend id is kBackendCve202643284; for every other
-     * backend it is an unknown section and Production rejects the document. The
-     * View is not a CoreSession slot and never changes the 43499 layout. */
-    int32_t parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,
-              char *release_buf, size_t release_buf_cap, component_ids *ids = nullptr,
-              struct ghostlock::profile::Document *document_out = nullptr,
-              struct ghostlock::backend::Cve2026_43284Profile *profile_43284_out = nullptr);
-
-    /* Bind an already-framed neutral Document onto the frozen transport. Both
-     * the v2 decoder and the GLKv3 bridge (profile/glkv3_parse.cpp) share this
-     * so identical logical documents land identical values on either wire.
-     * `document` is consumed; its release string is copied into `release_buf`,
-     * which `out->uname_r` points at. `route` is the resolved route wire value
-     * (kRouteAuto is legal only for the 43284 backend, which has no route). */
-    int32_t bind_document(struct ghostlock::profile::Document &&document, uint8_t route,
-                          uint16_t terminal, uint16_t backend, uint16_t middleware,
-                          struct ghostlock::profile::kernel_offsets *out,
-                          char *release_buf, size_t release_buf_cap,
-                          component_ids *ids = nullptr,
-                          struct ghostlock::profile::Document *document_out = nullptr,
-                          struct ghostlock::backend::Cve2026_43284Profile *profile_43284_out = nullptr);
+    /* Frame one v2 document into the neutral profile::Document. Validates the
+     * magic/version, the known component ids and the route selection (an
+     * unresolved route is rejected, except the route-less 43284 backend); it
+     * never names a field and never binds an owner. */
+    int32_t frame(std::string_view document, struct ghostlock::profile::Document *out);
 
     /* v2 writer: golden/equivalence host tests only. Production and export
      * write GLKv3 (GLKv3-4) and never call this; v2 is read-only there. The

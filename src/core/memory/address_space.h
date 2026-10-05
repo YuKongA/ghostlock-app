@@ -1,7 +1,6 @@
 #ifndef GHOSTLOCK_ADDRESS_SPACE_H
 #define GHOSTLOCK_ADDRESS_SPACE_H
 
-#include "profile/model.h"
 #include "memory/target_constants.hpp"
 #include <optional>
 
@@ -15,8 +14,20 @@ namespace ghostlock::memory {
         Google,
     };
 
+    /* Neutral bootstrap inputs the address space needs, decoupled from the
+     * backend profile type (ADR-0004 R1: memory must not depend on
+     * profile/backend). Assembled by the backend from its resolved profile.
+     * The optionals preserve wire presence: a provided 0 is distinct from
+     * absence, exactly as in the original profile fields. */
+    struct LaunchGeometry final {
+        const char *uname_r = nullptr;
+        std::optional<uint64_t> kernel_phys_load;
+        std::optional<uint64_t> kernel_phys_offset;
+        uint64_t init_cred_offset = 0;
+    };
+
     /* Generic image<->direct-map translation derived once from an immutable
-     * target profile and the device SoC. Backend-agnostic. */
+     * target geometry and the device SoC. Backend-agnostic. */
     struct AddressSpace {
         SocFamily soc;
         target::KernelAddress<target::PhysicalAddressDomain> kernel_phys_load;
@@ -24,7 +35,7 @@ namespace ghostlock::memory {
          * P0_PHYS_OFFSET; a profile may override it via kernel_phys_offset. */
         uintptr_t phys_offset = 0;
 
-        int32_t init_for_soc(const ghostlock::profile::TargetProfile *profile, SocFamily family);
+        int32_t init_for_soc(const LaunchGeometry &geometry, SocFamily family);
 
         uintptr_t data_alias(uintptr_t image_addr) const;
 
@@ -35,7 +46,7 @@ namespace ghostlock::memory {
             return kernel_phys_load.value();
         }
 
-        [[nodiscard]] const char *soc_name(const ghostlock::profile::TargetProfile *profile) const;
+        [[nodiscard]] const char *soc_name(const LaunchGeometry &geometry) const;
     };
 
     /* cve_2026_43499-resolved addresses: the generic space plus the credential
@@ -43,7 +54,7 @@ namespace ghostlock::memory {
     struct ResolvedAddresses : AddressSpace {
         target::KernelAddress<target::ImageAddressDomain> init_cred_image;
 
-        int32_t init(const ghostlock::profile::TargetProfile *profile);
+        int32_t init(const LaunchGeometry &geometry);
 
         [[nodiscard]] uintptr_t init_cred_image_addr() const {
             return init_cred_image.value();

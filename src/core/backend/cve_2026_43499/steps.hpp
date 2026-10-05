@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_STEPS_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43499_STEPS_HPP
 
-#include "pipeline/component_catalog.hpp"
+#include "contract/identity.hpp"
 #include "session/stage_types.hpp"
 
 namespace ghostlock::session {
@@ -18,7 +18,7 @@ namespace ghostlock::backend {
      * clear, so W3 is not part of this type at all (it is never instantiated for
      * a W1W2 route). W1W3 keeps the original app-descendant sequence. */
     struct W1W3Steps final {
-        static constexpr pipeline::StepSetKind kind = pipeline::StepSetKind::W1W3;
+        static constexpr contract::StepSetKind kind = contract::StepSetKind::W1W3;
 
         template <class M>
         [[nodiscard]] static session::StageResult run(session::CoreSession &session,
@@ -26,7 +26,7 @@ namespace ghostlock::backend {
     };
 
     struct W1W2Steps final {
-        static constexpr pipeline::StepSetKind kind = pipeline::StepSetKind::W1W2;
+        static constexpr contract::StepSetKind kind = contract::StepSetKind::W1W2;
 
         template <class M>
         [[nodiscard]] static session::StageResult run(session::CoreSession &session,

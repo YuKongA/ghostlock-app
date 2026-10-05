@@ -185,26 +185,44 @@ namespace ghostlock::profile::glkv3 {
             return check(ctx);
         }
 
-        const FieldSpec *lookup(const Schema &schema, std::string_view section,
+        /* A null schema is the neutral (schema-free) framing walk: every
+         * section/key is accepted and preserved, and only the numeric wire types
+         * are admitted for section values. */
+        const FieldSpec *lookup(const Schema *schema, std::string_view section,
                                std::string_view key) {
-            for (const FieldSpec &field : schema.fields) {
+            if (schema == nullptr) return nullptr;
+            for (const FieldSpec &field : schema->fields) {
                 if (field.section == section && field.key == key) return &field;
             }
             return nullptr;
         }
 
-        bool section_known(const Schema &schema, std::string_view name) {
-            for (const FieldSpec &field : schema.fields) {
+        bool section_known(const Schema *schema, std::string_view name) {
+            if (schema == nullptr) return true;
+            for (const FieldSpec &field : schema->fields) {
                 if (!field.section.empty() && field.section == name) return true;
             }
             return false;
         }
 
-        size_t field_index(const Schema &schema, const FieldSpec *field) {
-            return static_cast<size_t>(field - schema.fields.data());
+        size_t field_index(const Schema *schema, const FieldSpec *field) {
+            return static_cast<size_t>(field - schema->fields.data());
         }
 
-        bool read_sections(Ctx &ctx, const Schema &schema, Document &staged,
+        bool read_numeric(Ctx &ctx, Value &out) {
+            mpack_tag_t tag = mpack_peek_tag(ctx.reader);
+            if (!check(ctx)) return false;
+            switch (mpack_tag_type(&tag)) {
+                case mpack_type_uint: return read_scalar(ctx, WireType::UInt, out);
+                case mpack_type_int: return read_scalar(ctx, WireType::Int, out);
+                case mpack_type_bool: return read_scalar(ctx, WireType::Bool, out);
+                default:
+                    ctx.error = DecodeCode::TypeMismatch;
+                    return false;
+            }
+        }
+
+        bool read_sections(Ctx &ctx, const Schema *schema, Document &staged,
                            std::vector<uint8_t> &present, DecodeMode mode) {
             const uint32_t section_count =
                     mpack_expect_map_max(ctx.reader, kMaxSections);
@@ -230,7 +248,7 @@ namespace ghostlock::profile::glkv3 {
                     if (!read_key(ctx, key)) return false;
                     ctx.key = key;
                     const FieldSpec *field = lookup(schema, name, key);
-                    if (field == nullptr) {
+                    if (field == nullptr && schema != nullptr) {
                         if (mode == DecodeMode::Production) {
                             ctx.error = DecodeCode::UnknownKey;
                             return false;
@@ -239,9 +257,13 @@ namespace ghostlock::profile::glkv3 {
                         continue;
                     }
                     Value value;
-                    if (!read_scalar(ctx, field->type, value)) return false;
+                    if (schema == nullptr) {
+                        if (!read_numeric(ctx, value)) return false;
+                    } else {
+                        if (!read_scalar(ctx, field->type, value)) return false;
+                        present[field_index(schema, field)] = uint8_t{1};
+                    }
                     section.entries.push_back(Entry{key, std::move(value)});
-                    present[field_index(schema, field)] = uint8_t{1};
                 }
                 mpack_done_map(ctx.reader);
                 if (!check(ctx)) return false;
@@ -252,8 +274,8 @@ namespace ghostlock::profile::glkv3 {
         }
     } // namespace
 
-    DecodeStatus decode(std::string_view input, const Schema &schema, Document &out,
-                        DecodeMode mode) {
+    static DecodeStatus decode_impl(std::string_view input, const Schema *schema,
+                                   Document &out, DecodeMode mode) {
         if (input.size() > kMaxDocumentBytes) {
             return DecodeStatus{DecodeCode::DocumentTooLarge, {}, {}};
         }
@@ -266,7 +288,8 @@ namespace ghostlock::profile::glkv3 {
         ctx.reader = &reader;
 
         Document staged;
-        std::vector<uint8_t> present(schema.fields.size(), uint8_t{0});
+        std::vector<uint8_t> present(
+                schema != nullptr ? schema->fields.size() : size_t{0}, uint8_t{0});
         bool saw_schema = false;
 
         mpack_tag_t root = mpack_peek_tag(&reader);
@@ -300,8 +323,12 @@ namespace ghostlock::profile::glkv3 {
                 }
                 continue;
             }
+            const bool neutral = schema == nullptr;
+            const bool is_string_root =
+                    neutral && (key == "release" || key == "terminal" ||
+                                key == "backend" || key == "route");
             const FieldSpec *field = lookup(schema, std::string_view{}, key);
-            if (field == nullptr) {
+            if (!is_string_root && field == nullptr) {
                 if (mode == DecodeMode::Production) {
                     return DecodeStatus{DecodeCode::UnknownKey, {}, key};
                 }
@@ -311,10 +338,11 @@ namespace ghostlock::profile::glkv3 {
                 continue;
             }
             Value value;
-            if (!read_scalar(ctx, field->type, value)) {
+            const WireType expected = field != nullptr ? field->type : WireType::Str;
+            if (!read_scalar(ctx, expected, value)) {
                 return DecodeStatus{ctx.error, {}, key};
             }
-            if (field->type != WireType::Str) {
+            if (expected != WireType::Str) {
                 return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
             }
             if (key == "release") {
@@ -332,7 +360,7 @@ namespace ghostlock::profile::glkv3 {
             } else {
                 return DecodeStatus{DecodeCode::UnknownKey, {}, key};
             }
-            present[field_index(schema, field)] = uint8_t{1};
+            if (field != nullptr) present[field_index(schema, field)] = uint8_t{1};
         }
         mpack_done_map(&reader);
         if (!check(ctx)) return DecodeStatus{ctx.error, {}, {}};
@@ -342,16 +370,27 @@ namespace ghostlock::profile::glkv3 {
         }
         if (!saw_schema) return DecodeStatus{DecodeCode::MissingSchema, {}, "schema"};
 
-        for (size_t i = 0; i < schema.fields.size(); ++i) {
-            const FieldSpec &field = schema.fields[i];
-            if (field.required && present[i] == 0u) {
-                return DecodeStatus{DecodeCode::MissingRequired, field.section,
-                                    field.key};
+        if (schema != nullptr) {
+            for (size_t i = 0; i < schema->fields.size(); ++i) {
+                const FieldSpec &field = schema->fields[i];
+                if (field.required && present[i] == 0u) {
+                    return DecodeStatus{DecodeCode::MissingRequired, field.section,
+                                        field.key};
+                }
             }
         }
 
         out = std::move(staged);
         return DecodeStatus{};
+    }
+
+    DecodeStatus decode(std::string_view input, const Schema &schema, Document &out,
+                        DecodeMode mode) {
+        return decode_impl(input, &schema, out, mode);
+    }
+
+    DecodeStatus decode_neutral(std::string_view input, Document &out, DecodeMode mode) {
+        return decode_impl(input, nullptr, out, mode);
     }
 
     namespace {

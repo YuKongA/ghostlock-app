@@ -3,8 +3,7 @@
 
 #include <string_view>
 
-#include "pipeline/backend_contract.hpp"
-#include "pipeline/component_catalog.hpp"
+#include "contract/identity.hpp"
 
 namespace ghostlock::backend {
     /* CVE-2026-23274 backend placeholder. Upstream: "netfilter: xt_IDLETIMER:
@@ -16,17 +15,17 @@ namespace ghostlock::backend {
      * in this backend's own wire section and must never reuse the
      * cve_2026_43499 slots.
      *
-     * Availability is owned by component_catalog::backend_available(); this
+     * Availability is owned by contract::backend_available(); this
      * type only carries the stable id, the identity contract and the reason. */
     struct Cve2026_23274Policy final {
-        static constexpr pipeline::BackendKind kind = pipeline::BackendKind::Cve2026_23274;
+        static constexpr contract::BackendKind kind = contract::BackendKind::Cve2026_23274;
         static constexpr std::string_view unavailable_reason =
             "cve_2026_23274 backend is not implemented";
     };
 
-    static_assert(pipeline::BackendIdentity<Cve2026_23274Policy>);
-    static_assert(!pipeline::backend_available(Cve2026_23274Policy::kind));
-    static_assert(Cve2026_23274Policy::kind == pipeline::backend::Cve2026_23274::kind);
+    static_assert(contract::BackendIdentity<Cve2026_23274Policy>);
+    static_assert(!contract::backend_available(Cve2026_23274Policy::kind));
+    static_assert(Cve2026_23274Policy::kind == contract::backend::Cve2026_23274::kind);
 } // namespace ghostlock::backend
 
 #endif

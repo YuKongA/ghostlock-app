@@ -1,21 +1,30 @@
 #ifndef RUNTIME_STRUCT_OFFSETS_H
 #define RUNTIME_STRUCT_OFFSETS_H
 
-#include "profile/model.h"
-#include "backend/cve_2026_43499_state.hpp"
-#include "session/core_session.hpp"
+#include "memory/target.h"
+#include "contract/model.hpp"
+
+#include <cstdint>
 
 namespace ghostlock::profile {
+    /* Active-profile seam (A2-4-3). The frozen transport is owned by the
+     * selected backend, which defines these two accessors
+     * (backend/cve_2026_43499/backend_offsets.cpp). Declaring them here keeps
+     * this header neutral (no backend include) while the offset accessors below
+     * stay byte-identical; LTO inlines both, so no new call site appears. */
+    [[nodiscard]] const TargetProfile *active_profile() noexcept;
+    [[nodiscard]] uintptr_t active_data_alias(uintptr_t image_offset) noexcept;
+
     /* Value from the loaded profile, falling back to the compile-time default. */
     inline uint32_t symbol_or_default(uint32_t value, uint32_t fallback) {
-        return ghostlock::backend::cve43499_state(ghostlock::session::g_exploit_session).profile.or_default(value, fallback);
+        return active_profile()->or_default(value, fallback);
     }
 
     /* The transport is split into objects (wire v2), so a field is read through
      * a getter rather than a kernel_offsets member pointer. */
     template<typename F>
     inline uint32_t symbol_u32(F get, uint32_t fallback) {
-        const kernel_offsets *values = ghostlock::backend::cve43499_state(ghostlock::session::g_exploit_session).profile.values();
+        const kernel_offsets *values = active_profile()->values();
         return symbol_or_default(values ? static_cast<uint32_t>(get(*values)) : 0,
                                  fallback);
     }

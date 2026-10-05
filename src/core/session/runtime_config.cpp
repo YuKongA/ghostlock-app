@@ -1,4 +1,11 @@
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+
+#include <sched.h>
+
 #include "session/runtime_config.h"
 #include "session/runtime_paths.h"
 

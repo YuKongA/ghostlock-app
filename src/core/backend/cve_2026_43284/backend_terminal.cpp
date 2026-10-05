@@ -6,8 +6,11 @@
 
 #include "backend/cve_2026_43284/backend_terminal.hpp"
 
+#include "backend/cve_2026_43284/schema.hpp"
 #include "backend/cve_2026_43284_backend.hpp"
 #include "backend/cve_2026_43284/steps/steps.hpp"
+#include "profile/document.hpp"
+#include "profile/schema.hpp"
 
 #include <cstddef>
 #include <new>
@@ -108,9 +111,16 @@ namespace ghostlock::backend::cve_2026_43284 {
         }
 
         if (deps.precheck_lkm != nullptr && !deps.lkm_image_path.empty()) {
+            /* B5-9h-3: the precheck now needs the full VERMAGIC_STRING inputs.
+             * preempt comes from /proc/version; modversions/module_force_unload
+             * keep the audited-target defaults (not probeable unprivileged). */
+            lkm::DeviceKernelFacts required{};
+            required.release = facts.release.view();
+            required.has_f4c50a4 = facts.has_f4c50a4;
+            required.preempt = lkm::proc_version_has_preempt(facts.proc_version.view());
             lkm::ModuleFacts module_facts{};
-            if (!deps.precheck_lkm(deps.precheck_ctx, deps.lkm_image_path,
-                                   selection.release, module_facts, result.image_error)) {
+            if (!deps.precheck_lkm(deps.precheck_ctx, deps.lkm_image_path, required,
+                                   module_facts, result.image_error)) {
                 result.error = BackendTerminalError::LkmPrecheckRejected;
                 return result;
             }
@@ -186,11 +196,27 @@ namespace ghostlock::backend {
     using ghostlock::session::CoreSession;
     using ghostlock::session::StageResult;
 
+    profile::BindStatus Cve2026_43284Policy::state_from(
+            CoreSession &session, const profile::Document &document) {
+        profile::Document owned;
+        owned.release = document.release;
+        owned.terminal = document.terminal;
+        owned.backend = document.backend;
+        owned.middleware = document.middleware;
+        for (const profile::Section &section : document.sections) {
+            if (section.name == kCve2026_43284Section) owned.sections.push_back(section);
+        }
+        Cve2026_43284Profile view{};
+        const profile::BindStatus status = profile::bind<Cve2026_43284Schema>(
+                owned, view, profile::DecodeMode::Production);
+        if (!status.ok()) return status;
+        cve_2026_43284::cve_2026_43284_state(session).profile = view;
+        return status;
+    }
+
     StageResult Cve2026_43284Policy::run(CoreSession &session,
-                                         const profile::kernel_offsets &decoded,
                                          const char *debug_dir, bool force_attack,
                                          ghostlock::terminal::UmhForwardInput &out) {
-        (void)decoded;
         (void)debug_dir;
         cve_2026_43284::Cve2026_43284State &state =
                 cve_2026_43284::cve_2026_43284_state(session);

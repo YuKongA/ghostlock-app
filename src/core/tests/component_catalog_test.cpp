@@ -2,10 +2,9 @@
  * sparse (backend, steps, terminal) catalogue. Route is backend-internal, so
  * Auto never enters the selection. */
 
-#include "pipeline/backend_policy.hpp"
+#include "contract/identity.hpp"
 #include "pipeline/component_catalog.hpp"
 #include "pipeline/pipeline.hpp"
-#include "pipeline/terminal_contract.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -13,21 +12,21 @@
 using namespace ghostlock;
 
 int32_t main(void) {
-    using pipeline::BackendKind;
+    using contract::BackendKind;
     using pipeline::MiddlewareKind;
-    using pipeline::StepSetKind;
-    using pipeline::TerminalKind;
+    using contract::StepSetKind;
+    using contract::TerminalKind;
 
-    assert(pipeline::terminal_available(TerminalKind::RootChild));
-    assert(!pipeline::terminal_available(TerminalKind::UmhForward));
-    assert(pipeline::backend_available(BackendKind::Cve2026_43499));
-    assert(!pipeline::backend_available(BackendKind::Cve2026_64560));
-    assert(!pipeline::backend_available(BackendKind::Cve2026_31431));
-    assert(!pipeline::backend_available(BackendKind::Cve2026_43503));
-    assert(!pipeline::backend_available(BackendKind::Cve2026_23274));
-    assert(!pipeline::backend_available(BackendKind::Cve2026_43284));
+    assert(contract::terminal_available(TerminalKind::RootChild));
+    assert(!contract::terminal_available(TerminalKind::UmhForward));
+    assert(contract::backend_available(BackendKind::Cve2026_43499));
+    assert(!contract::backend_available(BackendKind::Cve2026_64560));
+    assert(!contract::backend_available(BackendKind::Cve2026_31431));
+    assert(!contract::backend_available(BackendKind::Cve2026_43503));
+    assert(!contract::backend_available(BackendKind::Cve2026_23274));
+    assert(!contract::backend_available(BackendKind::Cve2026_43284));
     for (StepSetKind s : {StepSetKind::W1W2, StepSetKind::W1W3, StepSetKind::PageCacheWrite}) {
-        assert(pipeline::stepset_available(s));
+        assert(contract::stepset_available(s));
     }
     for (MiddlewareKind kind : {MiddlewareKind::TcpZerocopy, MiddlewareKind::SelectStack,
                                 MiddlewareKind::MulticastWaiter}) {
@@ -35,17 +34,17 @@ int32_t main(void) {
     }
     assert(!pipeline::middleware_available(MiddlewareKind::Auto));
 
-    assert(pipeline::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
+    assert(contract::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
                                           TerminalKind::RootChild}));
-    assert(!pipeline::selection_supported({BackendKind::Cve2026_64560, StepSetKind::W1W3,
+    assert(!contract::selection_supported({BackendKind::Cve2026_64560, StepSetKind::W1W3,
                                            TerminalKind::RootChild}));
-    assert(!pipeline::selection_supported({BackendKind::Cve2026_43284, StepSetKind::W1W3,
+    assert(!contract::selection_supported({BackendKind::Cve2026_43284, StepSetKind::W1W3,
                                            TerminalKind::RootChild}));
-    assert(!pipeline::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
+    assert(!contract::selection_supported({BackendKind::Cve2026_43499, StepSetKind::W1W3,
                                            TerminalKind::UmhForward}));
     /* B5-8: the 43284 triple is catalogued (wired) but its backend is not
      * device-verified, so the availability gate stays false. */
-    assert(!pipeline::selection_supported({BackendKind::Cve2026_43284,
+    assert(!contract::selection_supported({BackendKind::Cve2026_43284,
                                            StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward}));
 
@@ -62,7 +61,7 @@ int32_t main(void) {
     for (BackendKind b : backends) {
         for (StepSetKind st : stepsets) {
             for (TerminalKind t : terminals) {
-                const pipeline::ComponentSelection s{b, st, t};
+                const contract::ComponentSelection s{b, st, t};
                 if (pipeline::combination_supported(s)) {
                     /* Catalogued/wired, not necessarily device-verified: the
                      * 43284 triple is wired for B5-8 coverage while

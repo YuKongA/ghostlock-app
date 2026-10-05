@@ -1,8 +1,8 @@
 #pragma once
 
 /* Upstream POC arch discriminator: this target is ARM64. Kept with the
- * kernelsnitch headers instead of common.h so the define stays owned by the
- * code that selects the cntvct_el0 clock. */
+ * kernelsnitch headers so the define stays owned by the code that selects
+ * the cntvct_el0 clock. */
 #ifndef __ARM
 #define __ARM 1
 #endif

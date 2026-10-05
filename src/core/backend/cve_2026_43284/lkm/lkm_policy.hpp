@@ -91,11 +91,29 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     inline constexpr std::uint32_t kSelinuxExecContextMax = kSelinuxExecContextCustom;
 
     /* Facts supplied by the platform; the backend never probes them itself and
-     * platform never includes a 43284 header (ADR-0004 R1). */
+     * platform never includes a 43284 header (ADR-0004 R1).
+     *
+     * B5-9h-3 adds the three module-build facts that complete the kernel's
+     * VERMAGIC_STRING (include/linux/vermagic.h):
+     *     UTS_RELEASE " " SMP [preempt ] [mod_unload ] [modversions ]aarch64
+     * They are not derivable from an unprivileged userspace probe (there is no
+     * readable /proc/config.gz), so the caller declares them. The defaults
+     * encode the audited target GKI build (CONFIG_MODVERSIONS=y,
+     * CONFIG_MODULE_FORCE_UNLOAD unset); a caller that cannot attest them must
+     * leave the rewrite policy off, which keeps the wrong-vermagic path
+     * fail-closed. */
     struct DeviceKernelFacts final {
-        std::string_view release{}; /* uname -r */
+        std::string_view release{}; /* uname -r / the release token of /proc/version */
         bool has_f4c50a4 = false;   /* true = already patched, not applicable */
+        bool preempt = false;       /* CONFIG_PREEMPT -> "preempt" */
+        bool module_force_unload = false; /* when unset, advertise "mod_unload" */
+        bool modversions = true;    /* CONFIG_MODVERSIONS -> "modversions" */
     };
+
+    /* True when a /proc/version line advertises a preemptible kernel. Pure so
+     * the collector and the tests agree; PREEMPT_RT is intentionally not
+     * modeled (the target kernel is plain PREEMPT). */
+    [[nodiscard]] bool proc_version_has_preempt(std::string_view proc_version) noexcept;
 
     enum class LkmPolicyError : std::uint8_t {
         None = 0,

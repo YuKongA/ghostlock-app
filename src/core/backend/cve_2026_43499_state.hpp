@@ -3,7 +3,7 @@
 
 #include "memory/address_space.h"
 #include "memory/heap_context.h"
-#include "profile/model.h"
+#include "backend/cve_2026_43499/backend_profile/model.hpp"
 #include "race/pi_race.h"
 #include "session/core_session.hpp"
 #include "backend/victim/victim_context.hpp"

@@ -15,13 +15,12 @@
  * missing channel, a missing terminus or a non-Ready forward can never be
  * treated as success and never degrades to root_child.
  *
- * Availability is owned by component_catalog::terminal_available(); this type
+ * Availability is owned by contract::terminal_available(); this type
  * carries only the stable id, the input/activation and the step. The terminal
  * stays unavailable (not device-verified) until the B5-9 gate, so wiring it into
  * the catalogue never makes it runnable on a device. */
 
-#include "pipeline/component_catalog.hpp"
-#include "pipeline/terminal_contract.hpp"
+#include "contract/identity.hpp"
 #include "session/stage_types.hpp"
 #include "terminal/terminal_input.hpp"
 
@@ -39,16 +38,16 @@ namespace ghostlock::terminal {
     [[nodiscard]] StageResult run_umh_forward(UmhForwardInput &input) noexcept;
 
     struct UmhForwardPolicy final {
-        static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::UmhForward;
+        static constexpr contract::TerminalKind kind = contract::TerminalKind::UmhForward;
         using Input = UmhForwardInput;
         static constexpr ActivationContext activation = ActivationContext::KernelSpawned;
 
         [[nodiscard]] static StageResult run(CoreSession &session, Input &input);
     };
 
-    static_assert(UmhForwardPolicy::kind == pipeline::terminal::UmhForwardTerminal::kind);
-    static_assert(pipeline::TerminalIdentity<UmhForwardPolicy>);
-    static_assert(pipeline::TerminalExecution<UmhForwardPolicy>);
+    static_assert(UmhForwardPolicy::kind == contract::terminal::UmhForwardTerminal::kind);
+    static_assert(contract::TerminalIdentity<UmhForwardPolicy>);
+    static_assert(contract::TerminalExecution<UmhForwardPolicy>);
 } // namespace ghostlock::terminal
 
 #endif

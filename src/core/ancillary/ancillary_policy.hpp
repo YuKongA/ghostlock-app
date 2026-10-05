@@ -4,7 +4,6 @@
 #include <concepts>
 #include <cstdint>
 
-#include "profile/model.h"
 #include "support/status.hpp"
 
 namespace ghostlock::session {
@@ -13,13 +12,6 @@ namespace ghostlock::session {
 
 namespace ghostlock::ancillary {
     using ghostlock::session::CoreSession;
-    /* Stable ancillary-behavior ids. Explicit numeric values; never rely on the
-     * compiler's enum layout. A new behavior appends an id here and a policy to
-     * the registry. */
-    enum class AncillaryKind : std::uint8_t {
-        VrGuard = 1,
-        VrTaskTag = 2,
-    };
 
     /* When the controller runs a behavior, relative to the backend attack steps:
      *   PreSpawn   - W1 done, before the victim is spawned;
@@ -35,51 +27,56 @@ namespace ghostlock::ancillary {
      * already-translated kernel address. A plain function pointer keeps the
      * attack path free of virtual dispatch, and naming the effect rather than
      * the middleware's request type keeps this header (and every behavior's
-     * plan) host-compilable — the host test passes a stub, the device build
+     * plan) host-compilable - the host test passes a stub, the device build
      * passes the middleware's write. The adapter binds the session global, so
      * adding it does not add a parameter-derived call site to `attack_write`
      * (the disassembly gate requires that function's code to stay put). */
     using AncillaryZeroFn = Status (*)(std::uintptr_t target, const char *desc);
 
-    /* Capabilities a behavior needs from the backend: the write primitive and the
-     * stage-R read-back. Injected at the call site so this header stays
-     * host-compilable; `write` is null where the backend has none to offer (the
-     * host test), and a behavior that needs it must fail safe. */
-    struct AncillaryContext {
+    /* Caller-injected image-address -> direct-map translation. Same reasoning as
+     * `AncillaryZeroFn`: a plain function pointer, no backend or middleware type
+     * named, so a behavior with an image-relative target can resolve it without
+     * this header ever seeing a backend address space. */
+    using AncillaryAliasFn = std::uintptr_t (*)(std::uintptr_t image_addr);
+
+    /* Per-invocation data the caller threads to the behaviors: availability of
+     * the write/read capabilities, the injected write/alias handles, and the
+     * rooted child's task at the PostSpawn call site. Neutral in that it names
+     * no backend, profile or middleware type; the caller fills it in. (ADR-0004
+     * R4 retires the old `AncillaryContext` in favour of
+     * `contract::Capabilities`; this shape is the interim hand-rolled handle.) */
+    struct AncillaryOps {
         bool write_available = false;
         bool read_available = false;
         AncillaryZeroFn write_zero = nullptr;
+        AncillaryAliasFn image_to_direct_map = nullptr;
         /* The rooted child's `struct task`, set at the PostSpawn call site.
          * Behaviors that strip per-task state address it relative to this. */
         std::uintptr_t child_task = 0;
     };
 
-    /* Neutral defaults so the controller can walk every registered behavior. A
-     * behavior that is off reports false; an empty apply is a no-op success. */
+    /* Neutral defaults so a behavior can opt into the no-op path. The gate is
+     * the caller's now (the controller consults an injected functor), so the
+     * mechanism carries no `enabled(view)` here. */
     struct AncillaryPolicyDefaults {
-        static bool enabled(const profile::TargetProfile &) noexcept {
-            return false;
-        }
-
-        template <class Middleware>
-        static Status apply(AncillaryStage, CoreSession &, AncillaryContext &) noexcept {
+        template <class Middleware, class Context>
+        static Status apply(AncillaryStage, CoreSession &, AncillaryOps &,
+                            const Context &) noexcept {
             return true;
         }
     };
 
-    /* Ancillary-behavior contract. `kind` names the behavior, `enabled` gates it
-     * from the resolved profile, and `apply<Middleware>` is the stage entry. The
-     * write primitive depends on the middleware, so apply is templated like the
-     * backend's steps. */
-    template <class P, class Middleware>
-    concept AncillaryPolicyFor = requires(const profile::TargetProfile &profile,
-                                          CoreSession &session,
-                                          AncillaryContext &context) {
-        { P::kind } -> std::convertible_to<AncillaryKind>;
-        { P::enabled(profile) } -> std::same_as<bool>;
-        { P::template apply<Middleware>(AncillaryStage::PreSpawn, session, context) }
-            -> std::same_as<Status>;
-    };
+    /* Ancillary-behavior contract: one stage entry, templated on the backend
+     * middleware (so a behavior can reach that middleware's primitives) and on
+     * the caller-supplied Context (the neutral view the behavior reads). The
+     * contract deliberately says nothing about how a behavior is gated: the
+     * caller injects both the registry (a tuple) and the gate. */
+    template <class P, class Middleware, class Context>
+    concept AncillaryPolicyFor =
+        requires(CoreSession &session, AncillaryOps &ops, const Context &context) {
+            { P::template apply<Middleware>(AncillaryStage::PreSpawn, session, ops,
+                                            context) } -> std::same_as<Status>;
+        };
 } // namespace ghostlock::ancillary
 
 #endif

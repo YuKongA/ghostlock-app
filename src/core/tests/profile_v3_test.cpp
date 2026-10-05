@@ -9,6 +9,7 @@
  * and the route-less 43284 selection is covered. */
 
 #include "profile/glkv3_parse.hpp"
+#include "profile_bind_compat.hpp"
 
 #include "backend/cve_2026_43284_state.hpp"
 #include "profile/binary.h"

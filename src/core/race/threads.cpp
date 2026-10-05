@@ -1,4 +1,16 @@
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "memory/constants.hpp"
+
+#include "kernelsnitch/utils.h"
+
+#include <sys/syscall.h>
+#include <linux/futex.h>
+
+#include "support/decls.hpp"
+
 /*
  * GhostLock — PI race worker threads and the per-write route entry.
  *
@@ -8,7 +20,7 @@
 #include "race/threads.hpp"
 #include "backend/cve_2026_43499_state.hpp"
 
-#include "profile/model.h"
+#include "contract/model.hpp"
 #include "backend/cve_2026_43499/route/route_controller.h"
 #include "backend/cve_2026_43499/route/route_policy.hpp"
 #include "session/core_session.hpp"

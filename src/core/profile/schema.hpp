@@ -17,6 +17,7 @@
 #include <concepts>
 #include <cstdint>
 #include <string_view>
+#include <type_traits>
 
 namespace ghostlock::profile {
     enum class DecodeMode : uint8_t { Production, Tooling };
@@ -27,6 +28,10 @@ namespace ghostlock::profile {
         UnknownKey,
         MissingRequired,
         WidthMismatch,
+        /* Transport-level rejection the field walk cannot express: an unusable
+         * route selection or a release string that does not fit the caller's
+         * buffer. */
+        Invalid,
     };
 
     struct BindStatus {
@@ -50,6 +55,8 @@ namespace ghostlock::profile {
                 return "missing_required";
             case BindCode::WidthMismatch:
                 return "width_mismatch";
+            case BindCode::Invalid:
+                return "invalid";
         }
         return "unknown";
     }
@@ -89,6 +96,54 @@ namespace ghostlock::profile {
                 Schema::kFields;
             } && std::default_initializable<typename Schema::View>;
 
+    namespace schema_detail {
+        /* Validate + materialise one owner's View (steps 2/3 of the
+         * single-owner bind). The caller owns the section/key ownership check. */
+        template<SchemaDefinition Schema>
+        [[nodiscard]] BindStatus materialize(const Document &document,
+                                             typename Schema::View &out) {
+            using View = typename Schema::View;
+            constexpr auto &fields = Schema::kFields;
+            for (const FieldSpec<View> &field : fields) {
+                const Value *value = document.find_value(field.section, field.key);
+                if (!value || !value->present) {
+                    if (field.required) {
+                        return BindStatus{BindCode::MissingRequired, field.section, field.key};
+                    }
+                    continue;
+                }
+                if (!value_fits_width(value->raw, field.width, field.is_signed)) {
+                    return BindStatus{BindCode::WidthMismatch, field.section, field.key};
+                }
+            }
+            View staged{};
+            for (const FieldSpec<View> &field : fields) {
+                const Value *value = document.find_value(field.section, field.key);
+                if (!value || !value->present) continue;
+                field.store(staged, value->raw);
+            }
+            out = staged;
+            return BindStatus{};
+        }
+
+        template<SchemaDefinition Schema>
+        [[nodiscard]] bool declares_section(std::string_view name) noexcept {
+            for (const auto &field : Schema::kFields) {
+                if (field.section == name) return true;
+            }
+            return false;
+        }
+
+        template<SchemaDefinition Schema>
+        [[nodiscard]] bool declares_key(std::string_view section,
+                                        std::string_view key) noexcept {
+            for (const auto &field : Schema::kFields) {
+                if (field.section == section && field.key == key) return true;
+            }
+            return false;
+        }
+    } // namespace schema_detail
+
     template<SchemaDefinition Schema>
     [[nodiscard]] BindStatus bind(const Document &document,
                                   typename Schema::View &out,
@@ -124,29 +179,41 @@ namespace ghostlock::profile {
             }
         }
 
-        /* 2. Validate everything before touching the caller's View. */
-        for (const FieldSpec<View> &field : fields) {
-            const Value *value = document.find_value(field.section, field.key);
-            if (!value || !value->present) {
-                if (field.required) {
-                    return BindStatus{BindCode::MissingRequired, field.section, field.key};
-                }
-                continue;
-            }
-            if (!value_fits_width(value->raw, field.width, field.is_signed)) {
-                return BindStatus{BindCode::WidthMismatch, field.section, field.key};
-            }
-        }
+        return schema_detail::materialize<Schema>(document, out);
+    }
 
-        /* 3. Commit to a staged View, then publish atomically. */
-        View staged{};
-        for (const FieldSpec<View> &field : fields) {
-            const Value *value = document.find_value(field.section, field.key);
-            if (!value || !value->present) continue;
-            field.store(staged, value->raw);
+    /* Union bind for owners that share a section (ADR-0003 decisions 4/5, plan
+     * section 3.3): validate the (section, key) union once, then materialise each
+     * owner View without the single-schema unknown rejection. */
+    template<SchemaDefinition... Schemas>
+    [[nodiscard]] BindStatus bind_all(const Document &document, DecodeMode mode,
+                                      typename Schemas::View &...views) {
+        if (mode == DecodeMode::Production) {
+            for (const Section &section : document.sections) {
+                const bool section_known =
+                        (schema_detail::declares_section<Schemas>(section.name) || ...);
+                if (!section_known) {
+                    return BindStatus{BindCode::UnknownSection, section.name, {}};
+                }
+                for (const Entry &entry : section.entries) {
+                    const bool key_known =
+                            (schema_detail::declares_key<Schemas>(section.name, entry.key) ||
+                             ...);
+                    if (!key_known) {
+                        return BindStatus{BindCode::UnknownKey, section.name, entry.key};
+                    }
+                }
+            }
         }
-        out = staged;
-        return BindStatus{};
+        BindStatus status{};
+        const auto bind_one = [&](auto tag, auto &view) -> bool {
+            if (!status.ok()) return false;
+            status = schema_detail::materialize<typename decltype(tag)::type>(document,
+                                                                             view);
+            return status.ok();
+        };
+        (bind_one(std::type_identity<Schemas>{}, views) && ...);
+        return status;
     }
 } // namespace ghostlock::profile
 

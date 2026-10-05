@@ -1,7 +1,10 @@
 #ifndef GHOSTLOCK_ROUTE_THREADS_HPP
 #define GHOSTLOCK_ROUTE_THREADS_HPP
 
-#include "common.h"
+namespace ghostlock::memory {
+    struct WriteRequest;
+} // namespace ghostlock::memory
+
 #include "support/status.hpp"
 
 namespace ghostlock::race {

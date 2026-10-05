@@ -1,7 +1,9 @@
 #ifndef GHOSTLOCK_VICTIM_PROCESS_HPP
 #define GHOSTLOCK_VICTIM_PROCESS_HPP
 
-#include "common.h"
+#include <cstdint>
+#include <sys/types.h>
+
 #include "backend/victim/victim_context.hpp"
 
 #include <optional>

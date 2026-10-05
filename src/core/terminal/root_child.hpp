@@ -1,8 +1,7 @@
 #ifndef GHOSTLOCK_TERMINAL_ROOT_CHILD_HPP
 #define GHOSTLOCK_TERMINAL_ROOT_CHILD_HPP
 
-#include "pipeline/component_catalog.hpp"
-#include "pipeline/terminal_contract.hpp"
+#include "contract/identity.hpp"
 #include "session/stage_types.hpp"
 #include "terminal/rooted_child.hpp"
 
@@ -17,13 +16,13 @@ namespace ghostlock::terminal {
      * of the retired ExploitProcedure so the terminal is a pipeline component.
      * Statement order, ownership and the log text are unchanged. The child
      * lifecycle (victim_context/process) and the KernelSU handoff verification
-     * (handoff_probe) stay separate concerns, as noted in terminal_contract. */
+     * (handoff_probe) stay separate concerns, as noted in contract/identity.hpp. */
     StageResult run_root_child_handoff(CoreSession &session, ghostlock::terminal::RootedChild &child);
 
-    /* Availability is owned by component_catalog::terminal_available(); the
+    /* Availability is owned by contract::terminal_available(); the
      * execution policies carry only the id and, when available, the step. */
     struct RootChildPolicy final {
-        static constexpr pipeline::TerminalKind kind = pipeline::TerminalKind::RootChild;
+        static constexpr contract::TerminalKind kind = contract::TerminalKind::RootChild;
         using Input = RootedChild;
         static constexpr ActivationContext activation = ActivationContext::Descendant;
 
@@ -31,9 +30,9 @@ namespace ghostlock::terminal {
         [[nodiscard]] static StageResult run(CoreSession &session, Input &child);
     };
 
-    static_assert(RootChildPolicy::kind == pipeline::terminal::RootChildTerminal::kind);
-    static_assert(pipeline::TerminalIdentity<RootChildPolicy>);
-    static_assert(pipeline::TerminalExecution<RootChildPolicy>);
+    static_assert(RootChildPolicy::kind == contract::terminal::RootChildTerminal::kind);
+    static_assert(contract::TerminalIdentity<RootChildPolicy>);
+    static_assert(contract::TerminalExecution<RootChildPolicy>);
 } // namespace ghostlock::terminal
 
 #endif

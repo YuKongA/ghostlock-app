@@ -191,6 +191,16 @@ namespace ghostlock::profile::glkv3 {
     [[nodiscard]] DecodeStatus decode(std::string_view input, const Schema &schema,
                                       Document &out,
                                       DecodeMode mode = DecodeMode::Production);
+
+    /* Schema-free framing decode (A2-5): the same MPack walk and fail-closed
+     * structural rules, but with no owner declaration. Unknown section/key are
+     * preserved instead of rejected (the owner bind that follows rejects them),
+     * while section values stay numeric (UInt/Int/Bool) exactly as the owner
+     * wire declares. Used by profile_entry to produce a neutral Document before
+     * any backend is selected. */
+    [[nodiscard]] DecodeStatus decode_neutral(
+            std::string_view input, Document &out,
+            DecodeMode mode = DecodeMode::Production);
     [[nodiscard]] std::string encode(const Document &document);
 } // namespace ghostlock::profile::glkv3
 

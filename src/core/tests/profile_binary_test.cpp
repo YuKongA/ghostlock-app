@@ -12,6 +12,7 @@
  * still covered by document_schema_test / owner_schema_test. */
 
 #include "profile/binary.h"
+#include "profile_bind_compat.hpp"
 
 #include <cassert>
 #include <cstdio>

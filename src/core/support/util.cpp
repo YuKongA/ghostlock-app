@@ -1,4 +1,20 @@
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "memory/constants.hpp"
+#include "memory/offset.h"
+
+#include "kernelsnitch/utils.h"
+#include "support/decls.hpp"
+#include "support/time.h"
+#include "memory/heap_context.h"
+#include "session/runtime_config.h"
+#include "backend/cve_2026_43499/backend_profile/accessors.hpp"
+
+#include <sys/socket.h>
+#include <sys/wait.h>
+
 #include "backend/cve_2026_43499_state.hpp"
 #include "profile/runtime_struct_offsets.h"
 
@@ -9,6 +25,10 @@
 #include "support/native_resource.hpp"
 #include "memory/target.h"
 #include "kernelsnitch/kernelsnitch.h"
+/* A3: mounts the optional contract::AddressDiscoveryOps adapter on the one TU
+ * that already owns kernelsnitch.h; the live spray keeps its existing path in
+ * this batch, so this only keeps the adapter compiled/lint-checked. */
+#include "kernelsnitch/address_discovery.h"
 
 /* Session aliases kept from the preprocessor era: the attack statements were
  * written with these short names, and references preserve every call site

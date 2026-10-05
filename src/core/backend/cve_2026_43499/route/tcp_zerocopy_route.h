@@ -3,7 +3,7 @@
 
 #include "memory/payload_builder.h"
 #include "race/pi_race.h"
-#include "profile/model.h"
+#include "backend/cve_2026_43499/backend_profile/model.hpp"
 #include "backend/cve_2026_43499/route/route_status.h"
 #include "support/native_resource.hpp"
 

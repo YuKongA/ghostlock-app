@@ -93,6 +93,10 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         return true;
     }
 
+    bool proc_version_has_preempt(std::string_view proc_version) noexcept {
+        return proc_version.find("PREEMPT") != std::string_view::npos;
+    }
+
     const SupportedKmi *find_supported_kmi(std::uint8_t android_release,
                                            std::uint16_t kmi) noexcept {
         for (const SupportedKmi &entry : kSupportedKmis) {

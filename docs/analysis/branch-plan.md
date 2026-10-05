@@ -42,12 +42,32 @@
 - [x] A2-2a–e：attack 模块拆空（timer→support、bootstrap→backend、root script→terminal、primitive→backend）。
 - [x] A2-3a：`in_direct_map` → `memory`，删除 `attack/`。
 - [x] A2-3b：`AddressSpace` / `ResolvedAddresses` 拆分（布局不变）。
-- [ ] A2-3c：offset SSOT（ADR-0003 注册模型）。**已执行 -1/-2/-3**（提交 `d131197`/`6e6d155`/下一提交）：Document+Schema 影子 bind、43499 owner Schema 迁 parse、生产 strict + 三端 manifest（58/58 资产 strict 通过）；**-4（物理抽离）并入 A2-4**。**裁决**：-1..3 只做声明/校验所有权与 bind，不动 `kernel_offsets`/`TargetProfile` 物理布局（保 8 攻击函数 byte-identical）；物理拆分留 -4/A2-4。
-- [ ] A2-4/5：platform/ancillary 分层；传输/入口去绑定；`common.h` 去耦。
-- [ ] A 批 4（可选）：`stage_types` 拆分 + route 契约归位。
-- [ ] A3：kernelsnitch 拆分（保留许可）。
-- [ ] B：契约/自动化同步（README/adding-a-component/AGENTS、Kotlin/wire 对拍）。
-- [ ] C：`KernelMemory` 功能（另 PR）。
+- [x] A2-3c：offset SSOT（ADR-0003 注册模型）。**已执行 -1/-2/-3**（提交 `d131197`/`6e6d155`/下一提交）：Document+Schema 影子 bind、43499 owner Schema 迁 parse、生产 strict + 三端 manifest（58/58 资产 strict 通过）；**-4（物理抽离）并入 A2-4**。**裁决**：-1..3 只做声明/校验所有权与 bind，不动 `kernel_offsets`/`TargetProfile` 物理布局（保 8 攻击函数 byte-identical）；物理拆分留 -4/A2-4。
+- [x] A2-4/5 进行中（逐文件计划 `a2-4-5-plan.md`）：**A2-4-1**（`0f86b02` 中性 ancillary）、**A2-4-2**（`ab92439` 厂商下放 `platform::vivo`）、**A2-5-4**（`7f3d015` 删 `common.h`，新旧二进制 sha256 相同）、**A2-5-1/2**（`504583d` entry→中性 `Document`、owner 绑定移入 `backend_profile`；真机 `A2-5-1-20261004-…-pass.md` PASS）。
+- [x] **A2-4-5**（`46224d8`）`AddressSpace` 解耦 `profile::TargetProfile`（新中性 POD `memory::LaunchGeometry`）；cmp 6/6 IDENTICAL；真机 `A2-4-5-…-pass.md` PASS。
+- [x] A2-5-3（GLKv3 去 backend）随 A2-5-1/2 完成。
+- [x] **A2-5-5**（`b5d7fb9`）include 防火墙（137→139 文件、白名单 18 条、stale 会 FAIL）+ fake backend（R8）；cmp 6/6 IDENTICAL。
+- [x] **A2-4-3**（`9ceef1c`）`platform::abi` owner schema（31 key）+ `bind_all` 合并 shim；访问器去 backend（`active_profile()` 间接层）；白名单 18→16；真机 `A2-4-3-…-pass.md` PASS。
+- [x] **身份词汇 → `contract`**（`4a06c66`）：`pipeline/{backend_contract,backend_policy,terminal_contract}` 删除，新增 `contract/identity.hpp`（kinds/availability/concepts/identities；中性终端接口词汇随迁并按 `using` 再导出）；防火墙白名单 **16→2**（仅 `support/util.cpp→backend`）；cmp 零影响；真机 `contract-identity-…-pass.md` PASS。
+- [x] **A2-4-4（已裁决修正，`e549eeb`）**：字面「`kernel_offsets`/`TargetProfile` → backend」与 R1 冲突（`platform::abi`/`platform/vivo`/`memory` 都消费这两个类型，而 R1 禁止 `platform→backend`、`memory→backend`）。**裁决**：中性**数据词汇**迁 `contract`（`platform→contract`、`memory→contract` 合法），backend **策略**类型（`execution_settings`/`RouteKind`/`kRouteCatalog`）迁 `backend_profile`；`profile` 只留容器 framing/Document。实际实现以 `backend_profile/model.hpp` facade 再导出策略名（它们是冻结聚合的按值成员，物理迁 backend 会破 R1 或改 sizeof）。**二进制 sha256 与批前相同**；真机 `A2-4-4-…-pass.md` PASS。
+- **A2-4 全部完成**（-1/-2/-3/-5 + -4 修正版）。
+- [x] **A3-1**（`2e9bc58`）`contract::AddressDiscovery` + kernelsnitch 可选实现 + 契约测试；cmp 6/6 IDENTICAL；真机 `A3-1-…-pass.md` PASS；门禁记录 `6295dff`。
+- [ ] **A3-2**：kernelsnitch provider → `backend/.../leak/`、`utils.h` 日志拆 `support`、喷雾尾部接线（依赖完整泄漏门禁）。
+- [x] **B 契约/自动化同步**（本批）：`AGENTS.md`、`README.md`/`README_ZH.md`、`src/core/README.md`、
+  `docs/development/adding-a-component.md` 已同步到当前 `Pipeline<Backend, Terminal>` /
+  `pipeline/component_catalog.hpp` catalog / GLKv3 / R1 防火墙 / cmp 基线 `build/native/ghostlock-B0`；
+  Kotlin/native/wire 对拍实跑：`make -C src native-host-tests`（`include_firewall_test`、`fake_backend_test`、
+  `profile_manifest_test`、`profile_manifest_v3_test` 全绿）与 `./gradlew :app:testDebugUnitTest --offline`
+  （`ProfileManifestAgreementTest`、`ProfileManifestV3AgreementTest`、`RouteCatalogAgreementTest` 通过）。
+- [ ] **C**：`KernelMemory` 功能（另 PR）。
+
+**CM 平台对策插件化（新增流，设计 `countermeasure-plugin-plan.md`）**
+- [x] **CM-1**：ABI 头 `contract/glk_cm_abi.h`（自包含 C99，**全声明、最小实现**：阶段 5 个/触发器 4 个/能力 7 位全声明，宿主只实现 `ON_STAGE` + `{KERNEL_READ,KERNEL_WRITE,ALIAS,CHILD_TASK}`；预留项在加载期拒绝并记录）+ C++ 映射 `contract/countermeasure.hpp` + 契约测试（预留项若被标成实现即 FAIL）。host/NDK/lint/cmp 全绿（cmp 6/6 IDENTICAL）。
+- [ ] **CM-2**：`platform::countermeasure::Loader`（白名单/哈希/dlopen/probe）+ 测试插件 `.so` + fail-closed 用例。
+- [ ] **CM-3**：`ancillary::RuntimeRegistry` + Controller 分派（阶段/优先级/gate）+ 诊断；真机门禁（无插件时行为不变）。
+- [ ] **CM-4**：在树对策（建议 `vr_task_tag`）写成参考插件验证语义一致 + ADR-0005（修订 R14）。
+- [ ] **CM-5**：profile 加载清单/哈希字段 + Android assets 打包解出加载 + ABI 导出到 SDK 目录。
+- [ ] **A 批 4（可选）**：`stage_types` 拆分 + route 契约归位。
 
 **S2 Steps/Terminal 重设计**
 - [x] T0：设计 + ADR-0004 R18–R21。
@@ -141,7 +161,7 @@
         B0 → B1a → B1b → B2 → B3 → B4 → B5-1..B5-9g
         安全网：分区备份/冷机复核 + AVB guard + 设备端 avbcheck
 待办主线：B5-9h（43284 真机 plan→write→trigger→full，含资产与可用性翻转）
-随后：    A2-4/5 → A3 → B → C（S1 剩余）；T5 由 B5-8/B5-9e 的 UmhForwardPolicy 覆盖，待真机
+随后：    A3-2 -> C（S1 剩余；A2-4/5 已完成，B 文档/对拍同步已完成）；T5 由 B5-8/B5-9e 的 UmhForwardPolicy 覆盖，待真机
 可选：    DirtyInit 式（init 中继）/ DFReroot 式（system-UID 持久化）作为 terminal #3/#4
 ```
 
@@ -155,6 +175,7 @@
 
 - HEAD 以 `git log -1` 为准；工作树按批次提交；`build/native/ghostlock-B0` 为攻击函数基线。
 - 备份/安全网：仓库外 `../ghostlock-device-backup`（22GB，26 分区 + 文件基线）；`tools/device-guard/`（guard）与 `tools/avbcheck/`（设备端）。
+- **攻击函数基线 `build/native/ghostlock-B0` 已刷新**为当前 HEAD 构建（sha256 `fc44c344…`，自比 6/6 IDENTICAL）。之前 B0 已过期，`--reviewed` 里的位移多为 B0↔HEAD 既有差异；后续批次应期望「无新增差异」。
 - 已通过的整体真机证据：`P0-01`、`A3-01`、`A2-1`、`A2-2a`、`A2-2b`、`A2-2c`、`A2-2d`、`A2-2e`、`A2-3a`（第 3 次）、`A2-3b`、`B1b`、`T1`、`T3`（native）。
 - 设备：A301SO / `5.15.189-android13-8-00016-…-ab14546557`；冷机、固定 CPU 对 0/1。
 - adb：USB 拔线后现走**无线调试**（`adb-QV770MFGJ1-XxNlpb…`）；USB serial 仍为 `QV770MFGJ1`。
@@ -162,7 +183,7 @@
 ## 6. 约束与保留
 
 - ADR-0004 R1–R21（含 R18–R21）；错误分层 E1–E3；所有权 O1–O5；控制流 CF1–CF5。
-- GLK1 v2 容器中性、不改版本号；profile 唯一配置权威；`kernelsnitch/` 上游冻结边界。
+- GLKv3（MessagePack，无独立头）文档中性，v2 只读兼容、不改版本号；profile 唯一配置权威；`kernelsnitch/` 上游冻结边界。
 - 新计划/分册出现时，**只在本文件登记一行并给出权威指向**，不再各自维护全局顺序。
 
 ## 7. 变更记录
@@ -170,3 +191,4 @@
 - 2026-10-03：建立分支总 plan；合并 S1/S2/S3 顺序。
 - 2026-10-03：T1/T2/T3a 完成；T3 拆为 T3a–T3d，明确 **T3b→T3c→T3d→T4→T5** 的顺序；HOCON T/F + C++ bool 并入 T3c。
 - 2026-10-04：T3b/T3c/T3d/T4、GLKv3-1..5、B0–B8、B5-1..B5-9g 完成；安全网（分区备份 + AVB guard + 设备端 avbcheck）就绪；下一步收敛为 **B5-9h**（43284 真机收尾）。
+- 2026-10-04：**B 契约/自动化同步完成**：文档同步到现状（AGENTS/README 双语文/core README/adding-a-component），host 对拍与 Kotlin 对拍实跑通过；S1 剩余收敛为 **A3-2**、**C**（A 批 4 可选）。

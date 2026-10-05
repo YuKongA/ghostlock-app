@@ -18,6 +18,7 @@
 #include "backend/cve_2026_43284/schema.hpp"
 #include "backend/cve_2026_43499/glkv3_schema.hpp"
 #include "backend/cve_2026_43499/schema.hpp"
+#include "platform/abi.hpp"
 #include "profile/glkv3.hpp"
 
 #include <cassert>
@@ -34,6 +35,7 @@ using ghostlock::backend::Cve2026_43284Schema;
 using ghostlock::backend::Cve2026_43499Schema;
 using ghostlock::backend::kCve2026_43284Glkv3Fields;
 using ghostlock::backend::kCve2026_43499Glkv3Fields;
+using ghostlock::platform::abi::kPlatformAbiGlkv3Fields;
 using ghostlock::profile::glkv3::DecodeCode;
 using ghostlock::profile::glkv3::DecodeMode;
 using ghostlock::profile::glkv3::DecodeStatus;
@@ -174,6 +176,11 @@ namespace {
         doc.has_route = true;
         doc.route = kRouteToken;
 
+        for (const FieldSpec &field : kPlatformAbiGlkv3Fields) {
+            Section *section = doc.find_section(field.section);
+            if (section == nullptr) section = &doc.append_section(field.section);
+            section->entries.push_back(Entry{field.key, value_for(field)});
+        }
         for (const FieldSpec &field : kCve2026_43499Glkv3Fields) {
             if (is_route_section(field.section) && field.section != kActiveRoute) {
                 continue;
@@ -209,6 +216,9 @@ namespace {
 } // namespace
 
 int main() {
+    check_owner<ghostlock::platform::abi::Schema>(
+            kPlatformAbiGlkv3Fields, std::size(kPlatformAbiGlkv3Fields),
+            "platform::abi");
     check_owner<Cve2026_43499Schema>(kCve2026_43499Glkv3Fields,
                                      std::size(kCve2026_43499Glkv3Fields),
                                      "cve_2026_43499");
@@ -224,6 +234,8 @@ int main() {
 
         std::vector<FieldSpec> combined(std::begin(kRootFields),
                                         std::end(kRootFields));
+        combined.insert(combined.end(), std::begin(kPlatformAbiGlkv3Fields),
+                        std::end(kPlatformAbiGlkv3Fields));
         combined.insert(combined.end(), std::begin(kCve2026_43499Glkv3Fields),
                         std::end(kCve2026_43499Glkv3Fields));
         const Schema schema{combined};

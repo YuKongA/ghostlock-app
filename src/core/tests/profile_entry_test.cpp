@@ -1,17 +1,17 @@
-/* Host test for the production profile entry dispatch (profile/entry.cpp,
- * GLKv3-4). It writes a GLKv3 document and a v2 document to disk and reads them
- * back through the same read_glk1_file() the --load-prebuilt-profile and
- * --ghostlock-app-call paths use, so the map-root probe, the MPack decode and
- * the v2 fallback are exercised together. A map-rooted document that is not
- * valid GLKv3 must fail closed instead of being retried as v2.
- *
- * The stdin variants share decode(), so covering the file entry covers the
- * auto-detection. */
+/* Host test for the production profile entry dispatch (profile/entry.cpp, A2-5).
+ * It writes a GLKv3 document and a v2 document to disk and reads them back
+ * through the same read_glk1_file() the --load-prebuilt-profile and
+ * --ghostlock-app-call paths use, so the map-root probe and the neutral framing
+ * are exercised together. The result is a neutral profile::Document (no owner
+ * bound); a map-rooted document that is not valid GLKv3 fails closed instead of
+ * being retried as v2. */
 
 #include "profile/entry.h"
 
 #include "profile/binary.h"
+#include "profile/document.hpp"
 #include "profile/glkv3.hpp"
+#include "contract/model.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -78,28 +78,32 @@ namespace {
 } // namespace
 
 int main() {
-    char release[64] = {0};
-    ghostlock::profile::kernel_offsets parsed = {};
-    ghostlock::binary_profile::component_ids ids = {};
-
-    /* ---- v3 document: map root, schema 3, token selection. ---- */
+    /* ---- v3 document: map root, schema 3, token selection, neutral carry. ---- */
     {
         const std::string path = temp_path("v3");
         const std::string bytes = ghostlock::profile::glkv3::encode(make_v3());
         assert(write_file(path, bytes));
-        assert(ghostlock::profile_entry::read_glk1_file(
-                       path.c_str(), &parsed, release, sizeof(release), &ids) == 0);
-        assert(std::strcmp(release, "6.6.77-entry-test") == 0);
-        assert(parsed.route == ghostlock::profile::kRouteSelectStack);
-        assert(parsed.meta.kernel_major == 6);
-        assert(parsed.offsets.init_task == 0x20dc000);
-        assert(ids.terminal == ghostlock::binary_profile::kTerminalRootChild);
-        assert(ids.backend == ghostlock::binary_profile::kBackendCve202643499);
-        assert(ids.steps == 2);
+        const ghostlock::profile_entry::ReadResult result =
+                ghostlock::profile_entry::read_glk1_file(path.c_str());
+        assert(result.error == 0);
+        const ghostlock::profile::Document &doc = result.document;
+        assert(doc.release == "6.6.77-entry-test");
+        assert(doc.middleware == ghostlock::profile::kRouteSelectStack);
+        assert(doc.terminal_token == "root_child");
+        assert(doc.backend_token == "cve_2026_43499");
+        const ghostlock::profile::Value *major =
+                doc.find_value("meta", "kernel_major");
+        assert(major != nullptr && major->raw == 6);
+        const ghostlock::profile::Value *init =
+                doc.find_value("offset", "init_task");
+        assert(init != nullptr && init->raw == 0x20dc000);
+        const ghostlock::profile::Value *steps =
+                doc.find_value("backend.cve_2026_43499", "steps");
+        assert(steps != nullptr && steps->raw == 2);
         unlink(path.c_str());
     }
 
-    /* ---- v2 document: magic root, object sections. ---- */
+    /* ---- v2 document: magic root, object sections, numeric ids. ---- */
     {
         ghostlock::profile::kernel_offsets values = {};
         values.uname_r = "6.6.77-entry-test";
@@ -112,12 +116,17 @@ int main() {
         assert(size > 0);
         const std::string path = temp_path("v2");
         assert(write_file(path, std::string(buffer, static_cast<size_t>(size))));
-        parsed = {};
-        assert(ghostlock::profile_entry::read_glk1_file(
-                       path.c_str(), &parsed, release, sizeof(release), &ids) == 0);
-        assert(std::strcmp(release, "6.6.77-entry-test") == 0);
-        assert(parsed.route == ghostlock::profile::kRouteSelectStack);
-        assert(parsed.offsets.init_task == 0x20dc000);
+        const ghostlock::profile_entry::ReadResult result =
+                ghostlock::profile_entry::read_glk1_file(path.c_str());
+        assert(result.error == 0);
+        const ghostlock::profile::Document &doc = result.document;
+        assert(doc.release == "6.6.77-entry-test");
+        assert(doc.middleware == ghostlock::profile::kRouteSelectStack);
+        assert(doc.terminal == ghostlock::binary_profile::kTerminalRootChild);
+        assert(doc.backend == ghostlock::binary_profile::kBackendCve202643499);
+        const ghostlock::profile::Value *init =
+                doc.find_value("offset", "init_task");
+        assert(init != nullptr && init->raw == 0x20dc000);
         unlink(path.c_str());
     }
 
@@ -127,8 +136,9 @@ int main() {
         /* map { "schema": 2 } - a valid MessagePack map with a wrong schema. */
         const std::string bytes = std::string("\x81\xa6schema\x02", 9);
         assert(write_file(path, bytes));
-        assert(ghostlock::profile_entry::read_glk1_file(
-                       path.c_str(), &parsed, release, sizeof(release), &ids) == -1);
+        const ghostlock::profile_entry::ReadResult result =
+                ghostlock::profile_entry::read_glk1_file(path.c_str());
+        assert(result.error == -1);
         unlink(path.c_str());
     }
 

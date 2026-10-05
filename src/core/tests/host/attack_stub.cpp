@@ -17,9 +17,9 @@ namespace ghostlock::terminal {
 } // namespace ghostlock::terminal
 
 namespace ghostlock::backend {
-    void install_profile(const ghostlock::profile::kernel_offsets &decoded) {
-        (void) decoded;
-    }
+    /* state_from now owns the bind; the profile install/logging is a no-op on
+     * the host (no uname match, no runtime_config apply). */
+    void install_profile() {}
 } // namespace ghostlock::backend
 
 /* Scripted platform runtime probes (mirrors the attack stubs above). */

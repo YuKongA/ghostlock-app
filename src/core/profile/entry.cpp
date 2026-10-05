@@ -1,6 +1,7 @@
 /* Profile entry points: the App path (stdin) and the prebuilt-profile path
- * (file). Both decode the typed transport directly (v3, with v2 still
- * accepted); no JSON or legacy rules reach this unit. */
+ * (file). Both discriminate GLKv3 from v2 and frame the result into the
+ * neutral profile::Document (A2-5): owner binding happens later, in the
+ * selected backend, never here. */
 #include "profile/entry.h"
 
 #include "profile/binary.h"
@@ -60,66 +61,72 @@ namespace ghostlock::profile_entry {
             return 0;
         }
 
-        int32_t decode(const std::string &document, profile::kernel_offsets *out,
-                   char *release_buf, size_t release_buf_cap,
-                   binary_profile::component_ids *ids) {
+        /* GLKv3 is map-rooted and has no magic; v2 starts with the
+         * little-endian magic byte 0x21. A map root that then fails to decode is
+         * rejected whole (fail-closed), never retried as v2. */
+        int32_t decode(const std::string &document, profile::Document *out) {
             const std::string_view view(document.data(), document.size());
-            /* GLKv3 is map-rooted and has no magic; v2 starts with the
-             * little-endian magic byte 0x21. A map root that then fails to
-             * decode is rejected whole (fail-closed), never retried as v2. */
             if (binary_profile::looks_like_glkv3(view)) {
-                return binary_profile::parse_v3(view, out, release_buf,
-                                                release_buf_cap, ids);
+                return binary_profile::frame_v3(view, out);
             }
-            return binary_profile::parse(view, out, release_buf,
-                                         release_buf_cap, ids);
+            return binary_profile::frame(view, out);
         }
     } // namespace
 
-    int32_t read_glk1_stdin(profile::kernel_offsets *out, char *release_buf,
-                        size_t release_buf_cap, binary_profile::component_ids *ids) {
-        if (!out || !release_buf || release_buf_cap == 0) {
-            errno = EINVAL;
-            return -1;
-        }
+    ReadResult read_glk1_stdin() {
+        ReadResult result;
         std::string document;
-        if (read_all(STDIN_FILENO, &document) != 0) return -1;
-        return decode(document, out, release_buf, release_buf_cap, ids);
+        if (read_all(STDIN_FILENO, &document) != 0) {
+            result.error = -1;
+            return result;
+        }
+        result.error = decode(document, &result.document);
+        return result;
     }
 
-    int32_t read_glk1_frame_stdin(profile::kernel_offsets *out, char *release_buf,
-                        size_t release_buf_cap, binary_profile::component_ids *ids) {
-        if (!out || !release_buf || release_buf_cap == 0) {
-            errno = EINVAL;
-            return -1;
-        }
+    ReadResult read_glk1_frame_stdin() {
+        ReadResult result;
         unsigned char header[4];
-        if (read_exact(STDIN_FILENO, header, sizeof(header)) != 0) return -1;
+        if (read_exact(STDIN_FILENO, header, sizeof(header)) != 0) {
+            result.error = -1;
+            return result;
+        }
         const size_t length = (static_cast<size_t>(header[0]) << 24) |
                               (static_cast<size_t>(header[1]) << 16) |
                               (static_cast<size_t>(header[2]) << 8) |
                               static_cast<size_t>(header[3]);
         if (length == 0 || length > kMaxDocument) {
             errno = EFBIG;
-            return -1;
+            result.error = -1;
+            return result;
         }
         std::string document(length, '\0');
-        if (read_exact(STDIN_FILENO, document.data(), length) != 0) return -1;
-        return decode(document, out, release_buf, release_buf_cap, ids);
+        if (read_exact(STDIN_FILENO, document.data(), length) != 0) {
+            result.error = -1;
+            return result;
+        }
+        result.error = decode(document, &result.document);
+        return result;
     }
 
-    int32_t read_glk1_file(const char *path, profile::kernel_offsets *out,
-                       char *release_buf, size_t release_buf_cap,
-                       binary_profile::component_ids *ids) {
-        if (!path || !out || !release_buf || release_buf_cap == 0) {
+    ReadResult read_glk1_file(const char *path) {
+        ReadResult result;
+        if (!path) {
             errno = EINVAL;
-            return -1;
+            result.error = -1;
+            return result;
         }
         ghostlock::support::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
-        if (!fd.valid()) return -1;
+        if (!fd.valid()) {
+            result.error = -1;
+            return result;
+        }
         std::string document;
-        const int32_t rc = read_all(fd.get(), &document);
-        if (rc != 0) return -1;
-        return decode(document, out, release_buf, release_buf_cap, ids);
+        if (read_all(fd.get(), &document) != 0) {
+            result.error = -1;
+            return result;
+        }
+        result.error = decode(document, &result.document);
+        return result;
     }
 } // namespace ghostlock::profile_entry

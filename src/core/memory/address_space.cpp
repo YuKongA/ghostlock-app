@@ -64,23 +64,22 @@ namespace ghostlock::memory {
     }
 #endif
 
-    int32_t AddressSpace::init_for_soc(const profile::TargetProfile *profile,
+    int32_t AddressSpace::init_for_soc(const LaunchGeometry &geometry,
                                         SocFamily family) {
-        const profile::kernel_offsets *values = profile->values();
-        if (!values || !values->uname_r) {
+        if (!geometry.uname_r) {
             errno = EINVAL;
             return -1;
         }
         *this = AddressSpace{};
         soc = family;
-        /* DRAM base for the image->direct-map translation: profile override
+        /* DRAM base for the image->direct-map translation: geometry override
          * wins, otherwise the compiled P0 default keeps every existing
          * device byte-identical. */
         phys_offset = static_cast<uintptr_t>(
-            values->misc.kernel_phys_offset.value_or(memory::P0_PHYS_OFFSET));
-        if (values->misc.kernel_phys_load.value_or(0)) {
+            geometry.kernel_phys_offset.value_or(memory::P0_PHYS_OFFSET));
+        if (geometry.kernel_phys_load.value_or(0)) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
-                values->misc.kernel_phys_load.value_or(0));
+                geometry.kernel_phys_load.value_or(0));
         } else if (soc == SocFamily::Mtk || soc == SocFamily::Google) {
             /* Tensor G4/G5 (zumapro) loads the Image at the DRAM base like MTK. */
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
@@ -88,7 +87,7 @@ namespace ghostlock::memory {
         } else if (soc == SocFamily::Xring) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 memory::XRING_KERNEL_PHYS_LOAD);
-        } else if (std::string_view(values->uname_r).starts_with("6.12.")) {
+        } else if (std::string_view(geometry.uname_r).starts_with("6.12.")) {
             kernel_phys_load = target::KernelAddress<target::PhysicalAddressDomain>(
                 memory::QC_GKI_6_12_PHYS_LOAD);
         } else {
@@ -98,16 +97,15 @@ namespace ghostlock::memory {
         return 0;
     }
 
-    int32_t ResolvedAddresses::init(const profile::TargetProfile *profile) {
-        const profile::kernel_offsets *values = profile->values();
-        if (!values || !values->uname_r || !values->offsets.init_cred) {
+    int32_t ResolvedAddresses::init(const LaunchGeometry &geometry) {
+        if (!geometry.uname_r || !geometry.init_cred_offset) {
             errno = EINVAL;
             return -1;
         }
-        if (init_for_soc(profile, detect_target_soc()) != 0) return -1;
+        if (init_for_soc(geometry, detect_target_soc()) != 0) return -1;
         const auto image =
             target::KernelAddress<target::ImageAddressDomain>(memory::KIMAGE_TEXT_BASE)
-                .checked_add(values->offsets.init_cred);
+                .checked_add(geometry.init_cred_offset);
         if (!image) {
             errno = ERANGE;
             return -1;
@@ -136,15 +134,14 @@ namespace ghostlock::memory {
         return target::KernelAddress<target::DirectMapAddressDomain>(direct);
     }
 
-    const char *AddressSpace::soc_name(const profile::TargetProfile *profile) const {
+    const char *AddressSpace::soc_name(const LaunchGeometry &geometry) const {
         if (soc == SocFamily::Mtk) return "mtk";
         if (soc == SocFamily::Xring) return "xring";
-        const profile::kernel_offsets *values = profile->values();
         if (soc == SocFamily::Google) {
-            return values && values->misc.kernel_phys_load.value_or(0) ? "google/tensor" : "tensor";
+            return geometry.kernel_phys_load.value_or(0) ? "google/tensor" : "tensor";
         }
-        return values && !values->misc.kernel_phys_load.value_or(0) && values->uname_r &&
-               std::string_view(values->uname_r).starts_with("6.12.")
+        return !geometry.kernel_phys_load.value_or(0) && geometry.uname_r &&
+               std::string_view(geometry.uname_r).starts_with("6.12.")
                    ? "qcom/6.12"
                    : "qcom/other";
     }

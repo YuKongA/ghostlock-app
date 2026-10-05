@@ -14,7 +14,16 @@
  * diagnostic and the staged runner reject them so neither can inherit a side
  * effect from the legacy switches. The dev-only --allow-dev-target is valid
  * only with --run-cve-2026-43284; without it the flag is a parse error. With
- * no diagnostic flag the existing behavior is preserved. */
+ * no diagnostic flag the existing behavior is preserved.
+ *
+ * B5-9h-1 adds the staged-hook asset selectors, all valid only with
+ * --run-cve-2026-43284: --cve43284-hook-target <path> (default
+ * /system/lib64/libc++.so), --cve43284-hook-symbol <mangled> (default the
+ * libc++ ostream sentry C1 constructor), --cve43284-hook-guard reject|skip
+ * (default skip), --cve43284-carrier <path> (default: the positional target)
+ * and --cve43284-patch1-target <path> (default
+ * /apex/com.android.runtime/bin/crash_dump64). Without the staged entry point
+ * any of them is a parse error. */
 
 #include <cstdint>
 
@@ -36,6 +45,15 @@ namespace ghostlock::support::cli {
         Full,
     };
 
+    /* Staged libc++ hook guard policy for --cve43284-hook-guard; the backend
+     * maps it onto steps::HookGuardPolicy. Skip is the default because the
+     * device's libc++.so has a BTI/PACIASP guard on the sentry entry and the
+     * upstream rule advances +4 over it. */
+    enum class Cve43284HookGuard : std::uint8_t {
+        Reject = 0,
+        Skip,
+    };
+
     struct Options final {
         Mode mode = Mode::None;
         const char *load_prebuilt_profile = nullptr;
@@ -50,6 +68,17 @@ namespace ghostlock::support::cli {
          * target (for example under /data/local/tmp). Valid only with
          * --run-cve-2026-43284; any other combination is a parse error. */
         bool allow_dev_target = false;
+        /* B5-9h-1 staged-hook assets. All are null/unset by default and are
+         * only legal with --run-cve-2026-43284. A null path keeps the
+         * documented default at the call site. */
+        const char *run_hook_target = nullptr;
+        const char *run_hook_symbol = nullptr;
+        Cve43284HookGuard run_hook_guard = Cve43284HookGuard::Skip;
+        const char *run_carrier_path = nullptr;
+        const char *run_patch1_target = nullptr;
+        /* B5-9h-3 explicit policy: allow the runner to rewrite a mismatched
+         * vermagic in the carrier image before it is written. Off by default. */
+        bool allow_vermagic_rewrite = false;
         bool force_attack = false;
         bool status_record = false;
     };
@@ -65,6 +94,10 @@ namespace ghostlock::support::cli {
         BadStage,
         StageRequiresRun,
         DevTargetRequiresRun,
+        /* A --cve43284-* asset selector without --run-cve-2026-43284. */
+        Cve43284OptionRequiresRun,
+        /* --cve43284-hook-guard was not reject|skip. */
+        BadHookGuard,
     };
 
     /* Parses argv[1..argc). On success fills the output and returns true with

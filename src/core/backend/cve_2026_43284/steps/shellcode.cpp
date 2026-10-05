@@ -276,6 +276,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         out.guard_instruction = target.guard_instruction;
         out.entry_offset = entry_offset;
         out.jump_back_offset = jump_at;
+        out.payload_max_bytes = target.payload_max_bytes;
         return true;
     }
 

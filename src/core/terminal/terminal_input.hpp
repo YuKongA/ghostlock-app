@@ -1,6 +1,13 @@
 #ifndef GHOSTLOCK_TERMINAL_TERMINAL_INPUT_HPP
 #define GHOSTLOCK_TERMINAL_TERMINAL_INPUT_HPP
 
+/* Concrete terminal input payloads. The neutral base (TerminalInput,
+ * ActivationContext, RootProgram) is identity/interface vocabulary and lives in
+ * contract/identity.hpp (ADR-0004) so the execution contracts can name it
+ * without a contract -> terminal include edge; it is re-exported here under
+ * ghostlock::terminal for the terminal-facing call sites. */
+
+#include "contract/identity.hpp"
 #include "terminal/root_program.hpp"
 #include "terminal/umh_command.hpp"
 
@@ -10,17 +17,8 @@
 #include <string_view>
 
 namespace ghostlock::terminal {
-    /* How a terminal launches the root program (ADR-0004 R19/R20). Descendant
-     * inherits the entry process's seccomp filter; KernelSpawned (UMH) does not. */
-    enum class ActivationContext : std::uint8_t { Descendant, KernelSpawned };
-
-    /* Neutral terminal input (ADR-0004 R10/D2): what a backend hands to the
-     * terminal, independent of the concrete terminal. Every terminal input
-     * carries the App-selected root program. RootedChild and UmhForwardInput
-     * derive from it; the pipeline passes the base reference. */
-    struct TerminalInput {
-        RootProgram root_program{};
-    };
+    using contract::ActivationContext;
+    using contract::TerminalInput;
 
     /* Where the kernel module image came from; neutral mirror of the backend's
      * lkm_path token so the terminal need not include a backend header. */

@@ -11,6 +11,7 @@
 #include "backend/cve_2026_43284/schema.hpp"
 #include "backend/cve_2026_43499/schema.hpp"
 #include "profile/binary.h"
+#include "profile_bind_compat.hpp"
 #include "profile/document.hpp"
 #include "profile/schema.hpp"
 

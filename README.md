@@ -8,7 +8,7 @@
 - [Supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) - the built-in kernel list.
 - [Shared execution defaults](docs/kernel_profiles/defaults.md) - every execution-tuning field, its default, and why.
 - [Profile schema](docs/kernel_profiles/PROFILE_SCHEMA.md) - full profile structure and data flow.
-- [Adding a component](docs/development/adding-a-component.md) - developer guide for a new native middleware / backend / frontend (Chinese).
+- [Adding a component](docs/development/adding-a-component.md) - developer guide for a new native backend / terminal / route (Chinese).
 
 For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/kernel_profiles/README.md).
 
@@ -18,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
 
-The execution chain is a pipeline of three components: a frontend (`root_child` startup/handoff), a backend (the CVE-2026-43499 futex primitive), and a middleware route. The catalogued combinations are instantiated at build time; the resolved profile selects which one runs. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
+The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time. The catalogue wires three sparse triples: `cve_2026_43499 x {w1_w3, w1_w2} x root_child` (available) and `cve_2026_43284 x pagecache_write x umh_forward` (wired but not device-verified, so it fails closed). `root_child` is the only available terminal (`umh_forward` has its execution policy but is not verified); `cve_2026_43499` is the only available backend, and the other CVEs are header-only placeholders. The route (`select_stack` / `tcp_zerocopy` / `multicast_waiter`) is backend-internal policy selected by the resolved profile, not a separate component. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
 
 ## Command-Line Debugging
 
@@ -85,8 +85,9 @@ adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 New kernels no longer need an app rebuild: tap **Import offsets.conf (HOCON)**
 and pick the extractor's flattened `.conf`, or use **Import offsets.json (v1)**
 for an older JSON report. v1 JSON is converted in-app, so nothing has to be
-pushed to the device: native always starts from the GLK1 document the app sends
-on stdin, and matches the current `uname -r` against the resolved profile
+pushed to the device: native always starts from the GLKv3 document (MessagePack,
+`schema == 3`; v2 is read-only) the app sends on stdin, and matches the current
+`uname -r` against the resolved profile
 before rejecting the kernel. Imports merge across files; a release already
 stored prompts before overwrite.
 

@@ -12,6 +12,7 @@
 #include "backend/cve_2026_43284/real_ops.hpp"
 #include "backend/cve_2026_43284/stage_runner.hpp"
 #include "backend/cve_2026_43284/steps/chain.hpp"
+#include "backend/cve_2026_43284/steps/hook_patch.hpp"
 #include "pipeline/component_catalog.hpp"
 #include "platform/device_facts.hpp"
 #include "support/cli.hpp"
@@ -42,6 +43,10 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::ModuleFacts;
     using ghostlock::backend::cve_2026_43284::stage_runner::parse_stage;
     using ghostlock::backend::cve_2026_43284::stage_runner::precheck_staged_module;
+    using ghostlock::backend::cve_2026_43284::stage_runner::reconcile_module_vermagic;
+    using ghostlock::backend::cve_2026_43284::lkm::DeviceKernelFacts;
+    using ghostlock::backend::cve_2026_43284::lkm::VermagicOutcome;
+    using ghostlock::backend::cve_2026_43284::lkm::vermagic_outcome_name;
     using ghostlock::backend::cve_2026_43284::stage_runner::PlanBuffer;
     using ghostlock::backend::cve_2026_43284::stage_runner::run_stage;
     using ghostlock::backend::cve_2026_43284::stage_runner::stage_error_name;
@@ -62,10 +67,23 @@ namespace {
     using ghostlock::platform::DeviceProbeOps;
     using ghostlock::platform::FileFact;
     using ghostlock::platform::VendorCandidate;
+    using ghostlock::support::cli::Cve43284HookGuard;
     using ghostlock::support::cli::Cve43284Stage;
     using ghostlock::support::cli::Mode;
     using ghostlock::support::cli::Options;
     using ghostlock::support::cli::ParseError;
+    using ghostlock::backend::cve_2026_43284::stage_runner::hook_error_name;
+    using ghostlock::backend::cve_2026_43284::stage_runner::hook_guard_name;
+    using ghostlock::backend::cve_2026_43284::stage_runner::plan_staged_hook;
+    using ghostlock::backend::cve_2026_43284::stage_runner::read_hook_image;
+    using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookPlan;
+    using ghostlock::backend::cve_2026_43284::stage_runner::StagedHookRequest;
+    using ghostlock::backend::cve_2026_43284::steps::HookGuardPolicy;
+    using ghostlock::backend::cve_2026_43284::steps::HookPatchError;
+    using ghostlock::backend::cve_2026_43284::steps::HookPatchIo;
+    using ghostlock::backend::cve_2026_43284::steps::kHookTrampolineBytes;
+    using ghostlock::backend::cve_2026_43284::steps::kLibcxxSentrySymbol;
+    using ghostlock::backend::cve_2026_43284::steps::kShellcodeMaxBytes;
 
     /* ---- fake chain over a 64-byte in-memory target ---- */
 
@@ -288,10 +306,14 @@ namespace {
 
     constexpr char kKoPositive[] =
             "license=GPL\0name=dirtyfrag\0"
-            "vermagic=5.15.202-dirty SMP preempt mod_unload modversions aarch64\0";
+            "vermagic=5.15.202-android14-8-gabc SMP preempt mod_unload modversions "
+            "aarch64\0";
+    /* Same wire length as the required value but a different release token, so
+     * the rewrite fits the original vermagic slot. */
     constexpr char kKoMismatch[] =
             "license=GPL\0name=dirtyfrag\0"
-            "vermagic=6.1.100-dirty SMP preempt mod_unload modversions aarch64\0";
+            "vermagic=9.99.999-android14-8-gabc SMP preempt mod_unload modversions "
+            "aarch64\0";
 
     /* Minimal ELF64 AArch64 .ko with .modinfo and an empty __versions, enough
      * for the B5-4 precheck. Mirrors cve_2026_43284_lkm_test's fixture. */
@@ -387,6 +409,175 @@ namespace {
         (void)ghostlock::support::cli::parse_arguments(static_cast<int>(argv.size()),
                                                       argv.data(), opts, error);
         return error;
+    }
+
+    /* ---- B5-9h-1 hook-plan fixture ----
+     *
+     * A minimal ELF64 AArch64 image with a sentry symbol, an optionally guarded
+     * second entry and an executable segment large enough for the 480-byte
+     * libcxx payload. The in-memory read surface serves the image; the write
+     * surface only counts calls so a plan run is proven zero-write. */
+
+    constexpr std::uint32_t kFixtureNop = 0xD503201FU;
+    constexpr std::uint32_t kFixturePaciasp = 0xD503233FU;
+    constexpr std::uint32_t kFixtureBranch = 0x14000000U;
+
+    constexpr std::uint64_t kHookTextOff = 0x100U;
+    constexpr std::uint64_t kHookTextVaddr = 0x1000U;
+    constexpr std::uint64_t kHookTextSize = 0x40U;
+    constexpr std::uint64_t kHookDynstrOff = 0x200U;
+    constexpr std::uint64_t kHookDynsymOff = 0x280U;
+    constexpr std::uint64_t kHookShstrOff = 0x300U;
+    constexpr std::uint64_t kHookShoff = 0x340U;
+    constexpr std::uint64_t kHookImageBytes = 0x480U;
+
+    void hook_put16(std::vector<std::uint8_t> &out, std::size_t at,
+                    std::uint16_t value) {
+        out[at] = static_cast<std::uint8_t>(value & 0xFFU);
+        out[at + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    }
+    void hook_put32(std::vector<std::uint8_t> &out, std::size_t at,
+                    std::uint32_t value) {
+        out[at] = static_cast<std::uint8_t>(value & 0xFFU);
+        out[at + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+        out[at + 2U] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+        out[at + 3U] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+    }
+    void hook_put64(std::vector<std::uint8_t> &out, std::size_t at,
+                    std::uint64_t value) {
+        for (std::size_t i = 0U; i < 8U; ++i) {
+            out[at + i] = static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        }
+    }
+
+    std::vector<std::uint8_t> build_hook_fixture(
+            std::uint64_t exec_memsz = 0x400U,
+            std::uint32_t sentry_first = kFixtureNop) {
+        std::vector<std::uint8_t> out(kHookImageBytes, 0U);
+        out[0] = 0x7FU;
+        out[1] = 'E';
+        out[2] = 'L';
+        out[3] = 'F';
+        out[4] = 2U;
+        out[5] = 1U;
+        out[6] = 1U;
+        hook_put16(out, 0x10U, 3U);    /* ET_DYN */
+        hook_put16(out, 0x12U, 0xB7U); /* EM_AARCH64 */
+        hook_put32(out, 0x14U, 1U);
+        hook_put64(out, 0x20U, 0x40U); /* e_phoff */
+        hook_put64(out, 0x28U, kHookShoff);
+        hook_put16(out, 0x36U, 56U);
+        hook_put16(out, 0x38U, 1U);
+        hook_put16(out, 0x3AU, 64U);
+        hook_put16(out, 0x3CU, 5U);
+        hook_put16(out, 0x3EU, 4U);
+
+        hook_put32(out, 0x40U, 1U);            /* PT_LOAD */
+        hook_put32(out, 0x44U, 5U);            /* PF_R | PF_X */
+        hook_put64(out, 0x48U, kHookTextOff);
+        hook_put64(out, 0x50U, kHookTextVaddr);
+        hook_put64(out, 0x58U, kHookTextVaddr);
+        hook_put64(out, 0x60U, kHookTextSize); /* p_filesz */
+        hook_put64(out, 0x68U, exec_memsz);    /* p_memsz */
+
+        for (std::size_t i = 0U; i < kHookTextSize / 4U; ++i) {
+            hook_put32(out, static_cast<std::size_t>(kHookTextOff) + i * 4U,
+                       kFixtureNop);
+        }
+        hook_put32(out, static_cast<std::size_t>(kHookTextOff) + 0x8U,
+                   sentry_first);
+        hook_put32(out, static_cast<std::size_t>(kHookTextOff) + 0x10U,
+                   kFixturePaciasp);
+        hook_put32(out, static_cast<std::size_t>(kHookTextOff) + 0x14U,
+                   kFixtureNop);
+
+        std::string dynstr;
+        dynstr.push_back('\0');
+        const std::uint32_t sentry_name = static_cast<std::uint32_t>(dynstr.size());
+        dynstr += kLibcxxSentrySymbol;
+        dynstr.push_back('\0');
+        const std::uint32_t pac_name = static_cast<std::uint32_t>(dynstr.size());
+        dynstr += "pac_entry";
+        dynstr.push_back('\0');
+        std::memcpy(out.data() + kHookDynstrOff, dynstr.data(), dynstr.size());
+        const auto put_symbol = [&out](std::size_t index, std::uint32_t name,
+                                       std::uint64_t value) {
+            const std::size_t at =
+                    static_cast<std::size_t>(kHookDynsymOff) + index * 24U;
+            hook_put32(out, at, name);
+            out[at + 4U] = 0x12U; /* GLOBAL | FUNC */
+            hook_put16(out, at + 6U, 1U);
+            hook_put64(out, at + 8U, value);
+            hook_put64(out, at + 16U, 8U);
+        };
+        put_symbol(1U, sentry_name, kHookTextVaddr + 0x8U);
+        put_symbol(2U, pac_name, kHookTextVaddr + 0x10U);
+
+        const char shstr[] = "\0.text\0.dynstr\0.dynsym\0.shstrtab\0";
+        std::memcpy(out.data() + kHookShstrOff, shstr, sizeof(shstr));
+
+        const auto put_section = [&out](std::size_t index, std::uint32_t name,
+                                        std::uint32_t type, std::uint64_t flags,
+                                        std::uint64_t addr, std::uint64_t off,
+                                        std::uint64_t size, std::uint32_t link,
+                                        std::uint64_t entsize) {
+            const std::size_t at =
+                    static_cast<std::size_t>(kHookShoff) + index * 64U;
+            hook_put32(out, at, name);
+            hook_put32(out, at + 4U, type);
+            hook_put64(out, at + 8U, flags);
+            hook_put64(out, at + 0x10U, addr);
+            hook_put64(out, at + 0x18U, off);
+            hook_put64(out, at + 0x20U, size);
+            hook_put32(out, at + 0x28U, link);
+            hook_put64(out, at + 0x38U, entsize);
+        };
+        put_section(1U, 1U, 1U, 0x6U, kHookTextVaddr, kHookTextOff, kHookTextSize,
+                    0U, 0U);
+        put_section(2U, 7U, 3U, 0x2U, 0x2000U, kHookDynstrOff, dynstr.size(), 0U,
+                    0U);
+        put_section(3U, 15U, 11U, 0x2U, 0x3000U, kHookDynsymOff, 72U, 2U, 24U);
+        put_section(4U, 23U, 3U, 0U, 0U, kHookShstrOff, sizeof(shstr), 0U, 0U);
+        return out;
+    }
+
+    struct FakeHookImage final {
+        std::vector<std::uint8_t> bytes{};
+        std::uint32_t writes = 0U;
+        bool fail_read = false;
+    };
+
+    std::int32_t fake_hook_write16(void *raw, std::uint64_t,
+                                   const void *) noexcept {
+        auto *image = static_cast<FakeHookImage *>(raw);
+        if (image == nullptr) {
+            return 1;
+        }
+        ++image->writes;
+        return 1;
+    }
+
+    long fake_hook_read16(void *raw, std::uint64_t offset,
+                          std::uint8_t out[16]) noexcept {
+        auto *image = static_cast<FakeHookImage *>(raw);
+        if (image == nullptr || out == nullptr || image->fail_read) {
+            return -1;
+        }
+        if (offset > image->bytes.size() ||
+            image->bytes.size() - static_cast<std::size_t>(offset) < 16U) {
+            return -1;
+        }
+        std::memcpy(out, image->bytes.data() + static_cast<std::size_t>(offset),
+                    16U);
+        return 16;
+    }
+
+    HookPatchIo fake_hook_io(FakeHookImage &image) noexcept {
+        HookPatchIo io{};
+        io.ctx = &image;
+        io.write16 = &fake_hook_write16;
+        io.read16 = &fake_hook_read16;
+        return io;
     }
 } // namespace
 
@@ -505,15 +696,15 @@ int main() {
 
     /* ---- Catalog stays fail-closed. ---- */
     {
-        using ghostlock::pipeline::BackendKind;
-        using ghostlock::pipeline::ComponentSelection;
-        using ghostlock::pipeline::StepSetKind;
-        using ghostlock::pipeline::TerminalKind;
+        using ghostlock::contract::BackendKind;
+        using ghostlock::contract::ComponentSelection;
+        using ghostlock::contract::StepSetKind;
+        using ghostlock::contract::TerminalKind;
         const ComponentSelection selection{BackendKind::Cve2026_43284,
                                            StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward};
-        assert(!ghostlock::pipeline::selection_supported(selection));
-        assert(!ghostlock::pipeline::backend_available(BackendKind::Cve2026_43284));
+        assert(!ghostlock::contract::selection_supported(selection));
+        assert(!ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
         assert(ghostlock::pipeline::combination_supported(selection));
     }
 
@@ -1008,43 +1199,353 @@ int main() {
         ::unlink(path.c_str());
     }
 
-    /* ---- B5-4 staged .ko precheck wiring (fail-closed). ---- */
+    /* ---- B5-4/B5-9h-3 staged .ko precheck wiring (fail-closed). ---- */
     {
-        const char release[] = "5.15.202-android14-8-gabc";
+        DeviceKernelFacts required{};
+        required.release = "5.15.202-android14-8-gabc";
+        required.preempt = true;
+        required.modversions = true;
+        required.module_force_unload = false;
         ModuleFacts facts{};
         LkmImageError error = LkmImageError::ReadFailed;
 
         error = LkmImageError::None;
-        assert(!precheck_staged_module("", release, facts, error));
+        assert(!precheck_staged_module("", required, facts, error));
         assert(error == LkmImageError::ReadFailed);
 
         error = LkmImageError::None;
-        assert(!precheck_staged_module(temp_module_path("precheck-missing"), release,
+        assert(!precheck_staged_module(temp_module_path("precheck-missing"), required,
                                        facts, error));
-        assert(error == LkmImageError::ReadFailed);
-
-        error = LkmImageError::None;
-        assert(!precheck_staged_module("/tmp/ghostlock-precheck.ko", "", facts, error));
         assert(error == LkmImageError::ReadFailed);
 
         const std::string good = temp_module_path("precheck-good");
         assert(write_bytes(good, build_ko_elf(std::string_view(
                                          kKoPositive, sizeof(kKoPositive) - 1U))));
         error = LkmImageError::None;
-        assert(precheck_staged_module(good, release, facts, error));
+        assert(precheck_staged_module(good, required, facts, error));
         assert(error == LkmImageError::None);
         assert(facts.elf_valid && facts.has_modinfo && facts.has_name &&
                facts.has_vermagic && facts.vermagic_matches && facts.versions_empty &&
                !facts.signed_module);
+
+        /* An empty release cannot construct a required value: fail closed even
+         * for a well-formed module. */
+        DeviceKernelFacts no_release{};
+        error = LkmImageError::None;
+        assert(!precheck_staged_module(good, no_release, facts, error));
+        assert(error == LkmImageError::VermagicMissing);
         ::unlink(good.c_str());
 
         const std::string bad = temp_module_path("precheck-bad");
         assert(write_bytes(bad, build_ko_elf(std::string_view(
                                         kKoMismatch, sizeof(kKoMismatch) - 1U))));
         error = LkmImageError::None;
-        assert(!precheck_staged_module(bad, release, facts, error));
+        assert(!precheck_staged_module(bad, required, facts, error));
         assert(error == LkmImageError::VermagicMismatch);
         ::unlink(bad.c_str());
+    }
+
+    /* ---- B5-9h-3 reconcile: the rewrite policy and the in-place fix. ---- */
+    {
+        DeviceKernelFacts required{};
+        required.release = "5.15.202-android14-8-gabc";
+        required.preempt = true;
+
+        std::vector<std::uint8_t> good = build_ko_elf(
+                std::string_view(kKoPositive, sizeof(kKoPositive) - 1U));
+        ModuleFacts facts{};
+        VermagicOutcome outcome = VermagicOutcome::Unchecked;
+        LkmImageError error = LkmImageError::None;
+        assert(reconcile_module_vermagic(good.data(), good.size(), required, false,
+                                         facts, outcome, error));
+        assert(outcome == VermagicOutcome::Original);
+        assert(facts.vermagic_matches && !facts.vermagic_rewritten);
+
+        /* Mismatch with the policy off: rejected with the image untouched. */
+        std::vector<std::uint8_t> bad = build_ko_elf(
+                std::string_view(kKoMismatch, sizeof(kKoMismatch) - 1U));
+        const std::vector<std::uint8_t> bad_before = bad;
+        outcome = VermagicOutcome::Unchecked;
+        assert(!reconcile_module_vermagic(bad.data(), bad.size(), required, false,
+                                          facts, outcome, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(outcome == VermagicOutcome::Required);
+        assert(bad == bad_before);
+
+        /* Mismatch with the policy on: rewritten in place and re-verified. */
+        outcome = VermagicOutcome::Unchecked;
+        error = LkmImageError::None;
+        assert(reconcile_module_vermagic(bad.data(), bad.size(), required, true,
+                                         facts, outcome, error));
+        assert(outcome == VermagicOutcome::Rewritten);
+        assert(facts.vermagic_matches && facts.vermagic_rewritten);
+        assert(vermagic_outcome_name(outcome) == "rewritten");
+
+        /* A non-vermagic precheck failure is never rewritten. */
+        std::vector<std::uint8_t> not_elf(80U, 0U);
+        const std::vector<std::uint8_t> not_elf_before = not_elf;
+        outcome = VermagicOutcome::Unchecked;
+        error = LkmImageError::None;
+        assert(!reconcile_module_vermagic(not_elf.data(), not_elf.size(), required, true,
+                                          facts, outcome, error));
+        assert(error == LkmImageError::NotElf);
+        assert(outcome == VermagicOutcome::Unchecked);
+        assert(not_elf == not_elf_before);
+    }
+
+    /* ---- B5-9h-1 CLI: staged-hook asset selectors. ---- */
+    {
+        /* Defaults: unset path overrides, guard skip. */
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b"}, opts) ==
+               ParseError::None);
+        assert(opts.run_hook_target == nullptr);
+        assert(opts.run_hook_symbol == nullptr);
+        assert(opts.run_hook_guard == Cve43284HookGuard::Skip);
+        assert(opts.run_carrier_path == nullptr);
+        assert(opts.run_patch1_target == nullptr);
+        assert(!opts.allow_vermagic_rewrite);
+    }
+    {
+        /* B5-9h-3 explicit rewrite policy. */
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--cve43284-allow-vermagic-rewrite"},
+                          opts) == ParseError::None);
+        assert(opts.allow_vermagic_rewrite);
+        assert(parse_args({"--cve43284-allow-vermagic-rewrite"}, opts) ==
+               ParseError::Cve43284OptionRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--cve43284-hook-target", "/system/lib64/libc++.so",
+                           "--cve43284-hook-symbol", "_ZNfoo",
+                           "--cve43284-hook-guard", "reject",
+                           "--cve43284-carrier", "/vendor/lib64/x.so",
+                           "--cve43284-patch1-target", "/apex/x/crash_dump64"},
+                          opts) == ParseError::None);
+        assert(opts.mode == Mode::RunCve2026_43284);
+        assert(std::string_view(opts.run_hook_target) == "/system/lib64/libc++.so");
+        assert(std::string_view(opts.run_hook_symbol) == "_ZNfoo");
+        assert(opts.run_hook_guard == Cve43284HookGuard::Reject);
+        assert(std::string_view(opts.run_carrier_path) == "/vendor/lib64/x.so");
+        assert(std::string_view(opts.run_patch1_target) ==
+               "/apex/x/crash_dump64");
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--cve43284-hook-guard", "skip"}, opts) ==
+               ParseError::None);
+        assert(opts.run_hook_guard == Cve43284HookGuard::Skip);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--cve43284-hook-guard", "bogus"}, opts) ==
+               ParseError::BadHookGuard);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--cve43284-hook-target", "x"}, opts) ==
+               ParseError::Cve43284OptionRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--cve43284-carrier", "x"}, opts) ==
+               ParseError::Cve43284OptionRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--ghostlock-app-call", "--cve43284-patch1-target",
+                           "x"}, opts) ==
+               ParseError::Cve43284OptionRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--cve43284-hook-target"}, opts) ==
+               ParseError::MissingArgument);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--cve43284-hook-guard"}, opts) ==
+               ParseError::MissingArgument);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--probe-cve-2026-43284", "a",
+                           "--cve43284-carrier", "x"}, opts) ==
+               ParseError::ProbeConflict);
+    }
+
+    /* ---- B5-9h-1 staged hook plan (read-only) and diagnostics. ---- */
+    {
+        assert(hook_error_name(HookPatchError::GuardRejected) == "GuardRejected");
+        assert(hook_error_name(HookPatchError::TargetNotFound) == "TargetNotFound");
+        assert(hook_guard_name(HookGuardPolicy::Skip) == "skip");
+        assert(hook_guard_name(HookGuardPolicy::Reject) == "reject");
+        assert(stage_error_name(StageError::HookPlanFailed) == "HookPlanFailed");
+        assert(stage_error_name(StageError::HookReadFailed) == "HookReadFailed");
+        assert(stage_error_name(StageError::HookImageTooLarge) ==
+               "HookImageTooLarge");
+        StageReport code_report{};
+        code_report.error = StageError::HookPlanFailed;
+        assert(stage_exit_code(code_report) == 2);
+
+        const std::vector<std::uint8_t> image = build_hook_fixture(0x400U);
+        FakeHookImage fake{image, 0U, false};
+        std::array<std::uint8_t, kShellcodeMaxBytes> shell{};
+        std::array<std::uint8_t, kShellcodeMaxBytes> shell_orig{};
+
+        StagedHookRequest req{};
+        req.image = image.data();
+        req.image_size = image.size();
+        req.hook_target = "/system/lib64/libc++.so";
+        req.symbol = kLibcxxSentrySymbol;
+        req.guard = HookGuardPolicy::Reject;
+        req.carrier_path = "/vendor/lib64/libstagefrighthw.so";
+        req.io = fake_hook_io(fake);
+        req.shellcode_buf = shell.data();
+        req.shellcode_cap = shell.size();
+        req.shellcode_orig_buf = shell_orig.data();
+
+        /* Positive: unguarded sentry, reject policy. */
+        StagedHookPlan good{};
+        assert(plan_staged_hook(req, good));
+        assert(good.attempted);
+        assert(good.valid);
+        assert(!good.steal_unsafe);
+        assert(good.error == StageError::None);
+        assert(good.hook_error == HookPatchError::None);
+        assert(good.hook_file_offset == kHookTextOff + 0x8U);
+        assert(good.hook_vaddr == kHookTextVaddr + 0x8U);
+        assert(good.displaced_instruction == kFixtureNop);
+        assert(good.guard_instruction == 0U);
+        assert(!good.guard_skipped);
+        assert(good.shellcode_len == 480U);
+        assert(good.shellcode_file_offset == kHookTextOff + kHookTextSize);
+        assert(good.shellcode_vaddr == kHookTextVaddr + kHookTextSize);
+        /* B5-9h-2: the executable page tail can exceed the BSS tail, but this
+         * fixture's p_memsz - p_filesz (0x3c0) still dominates. */
+        assert(good.payload_max == 0x3C0U);
+        assert(good.trampoline_len == kHookTrampolineBytes);
+        assert(good.trampoline_offset == kHookTextOff);
+        assert(good.trampoline_pos == 8U);
+        assert(fake.writes == 0U); /* the plan never writes */
+
+        /* The structured record carries every required diagnostic. */
+        StageReport hook_report{};
+        hook_report.stage = Stage::Plan;
+        hook_report.hook = good;
+        const std::string hook_text = format_stage_report(
+                hook_report, "/tmp/a.ko", "/system/lib64/libc++.so", 100U);
+        assert(hook_text.find("run.hook hook_target=/system/lib64/libc++.so") !=
+               std::string::npos);
+        assert(hook_text.find("hook_symbol=" +
+                              std::string(kLibcxxSentrySymbol)) !=
+               std::string::npos);
+        assert(hook_text.find(" hook_guard=reject") != std::string::npos);
+        assert(hook_text.find(" hook_vma=0x") != std::string::npos);
+        assert(hook_text.find(" hook_steal=0x") != std::string::npos);
+        assert(hook_text.find(" shellcode_len=480") != std::string::npos);
+        assert(hook_text.find(" payload_max=960") != std::string::npos);
+        assert(hook_text.find(" trampoline_len=16") != std::string::npos);
+        assert(hook_text.find(" hook_error=None") != std::string::npos);
+
+        /* Guard present + Skip: advance +4 over PACIASP. */
+        StagedHookPlan skipped{};
+        req.symbol = "pac_entry";
+        req.guard = HookGuardPolicy::Skip;
+        assert(plan_staged_hook(req, skipped));
+        assert(skipped.valid);
+        assert(skipped.guard_skipped);
+        assert(skipped.guard_instruction == kFixturePaciasp);
+        assert(skipped.hook_vaddr == kHookTextVaddr + 0x14U);
+        assert(skipped.hook_file_offset == kHookTextOff + 0x14U);
+        assert(fake.writes == 0U);
+
+        /* Guard present + Reject: fail-closed. */
+        StagedHookPlan rejected{};
+        req.guard = HookGuardPolicy::Reject;
+        assert(!plan_staged_hook(req, rejected));
+        assert(!rejected.valid);
+        assert(rejected.hook_error == HookPatchError::GuardRejected);
+        assert(rejected.error == StageError::HookPlanFailed);
+        assert(fake.writes == 0U);
+
+        /* Missing symbol: fail-closed. */
+        StagedHookPlan missing{};
+        req.symbol = "no_such_symbol";
+        req.guard = HookGuardPolicy::Skip;
+        assert(!plan_staged_hook(req, missing));
+        assert(missing.hook_error == HookPatchError::TargetNotFound);
+        assert(fake.writes == 0U);
+
+        /* PC-relative displaced word: fail-closed before any write path. */
+        const std::vector<std::uint8_t> pc_image =
+                build_hook_fixture(0x400U, kFixtureBranch);
+        FakeHookImage pc_fake{pc_image, 0U, false};
+        StagedHookPlan pc_plan{};
+        req.image = pc_image.data();
+        req.image_size = pc_image.size();
+        req.symbol = kLibcxxSentrySymbol;
+        req.guard = HookGuardPolicy::Reject;
+        req.io = fake_hook_io(pc_fake);
+        assert(!plan_staged_hook(req, pc_plan));
+        assert(pc_plan.steal_unsafe);
+        assert(pc_plan.error == StageError::HookPlanFailed);
+        assert(pc_fake.writes == 0U);
+
+        /* Shellcode capacity below the padded template: fail-closed. */
+        StagedHookPlan small{};
+        req.image = image.data();
+        req.image_size = image.size();
+        req.io = fake_hook_io(fake);
+        req.shellcode_cap = 16U;
+        assert(!plan_staged_hook(req, small));
+        assert(small.hook_error == HookPatchError::ShellcodeBuildFailed);
+        req.shellcode_cap = shell.size();
+
+        /* Unavailable read surface: fail-closed. */
+        StagedHookPlan no_io{};
+        req.io = HookPatchIo{};
+        assert(!plan_staged_hook(req, no_io));
+        assert(no_io.hook_error == HookPatchError::IoUnavailable);
+        req.io = fake_hook_io(fake);
+
+        /* A hook-region read failure propagates. */
+        StagedHookPlan read_fail{};
+        fake.fail_read = true;
+        assert(!plan_staged_hook(req, read_fail));
+        assert(read_fail.hook_error == HookPatchError::ReadFailed);
+        fake.fail_read = false;
+        assert(fake.writes == 0U);
+    }
+
+    /* ---- B5-9h-1 hook image reader (read-only, bounded). ---- */
+    {
+        std::vector<std::uint8_t> image{};
+        StageError error = StageError::None;
+        assert(!read_hook_image("/nonexistent/ghostlock-hook.so", 1024U, image,
+                                error));
+        assert(error == StageError::HookReadFailed);
+        assert(!read_hook_image("", 1024U, image, error));
+        assert(error == StageError::HookReadFailed);
+
+        const std::string path = temp_module_path("hookimage");
+        const std::vector<std::uint8_t> bytes(64U, 0x33U);
+        assert(write_bytes(path, bytes));
+        error = StageError::None;
+        assert(!read_hook_image(path, 16U, image, error));
+        assert(error == StageError::HookImageTooLarge);
+        assert(image.empty());
+        error = StageError::None;
+        assert(read_hook_image(path, 64U, image, error));
+        assert(error == StageError::None);
+        assert(image == bytes);
+        ::unlink(path.c_str());
     }
 
     std::puts("cve_2026_43284_stage_runner_test: OK");

@@ -35,7 +35,7 @@ namespace ghostlock::memory {
     inline constexpr unsigned TASK_COMM_LEN = 16;
 
     /* `select_stack_route.h` keeps a host-safe fallback macro under this name, so a
- * TU that includes it before common.h must not also declare the constexpr. */
+ * TU that includes it before this header must not also declare the constexpr. */
 #ifndef PSELECT_ROUTE_NFDS
     inline constexpr unsigned PSELECT_ROUTE_NFDS = 320;
 #endif

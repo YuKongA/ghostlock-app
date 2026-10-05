@@ -54,9 +54,13 @@ namespace {
 
     constexpr std::uint16_t kMachineAarch64 = 0xB7U;
 
+    /* Must equal the full required vermagic built from FakeDevice's release
+     * ("5.15.202-android14-6-gabc") plus preempt (proc_version PREEMPT) and the
+     * audited defaults (mod_unload, modversions). */
     const char kModinfoGood[] =
             "license=GPL\0name=dirtyfrag\0"
-            "vermagic=5.15.202-dirty SMP preempt mod_unload modversions aarch64\0";
+            "vermagic=5.15.202-android14-6-gabc SMP preempt mod_unload modversions "
+            "aarch64\0";
 
     struct ElfSpec final {
         std::string modinfo = std::string(kModinfoGood, sizeof(kModinfoGood) - 1U);
@@ -157,7 +161,8 @@ namespace {
 
     struct FakeDevice final {
         std::string release = "5.15.202-android14-6-gabc";
-        std::string proc_version = "Linux version 5.15.202-dirty (build@host)";
+        std::string proc_version =
+                "Linux version 5.15.202-android14-6-gabc (build@host) #1 SMP PREEMPT";
         bool selinux_readable = true;
         int selinux_enforce = 0;
         bool crash_exists = true;
@@ -390,15 +395,15 @@ int main() {
 
     /* ---- Catalog: 43284 stays unavailable / not executable. ---- */
     {
-        using ghostlock::pipeline::BackendKind;
-        using ghostlock::pipeline::ComponentSelection;
-        using ghostlock::pipeline::StepSetKind;
-        using ghostlock::pipeline::TerminalKind;
+        using ghostlock::contract::BackendKind;
+        using ghostlock::contract::ComponentSelection;
+        using ghostlock::contract::StepSetKind;
+        using ghostlock::contract::TerminalKind;
         const ComponentSelection selection{BackendKind::Cve2026_43284,
                                            StepSetKind::PageCacheWrite,
                                            TerminalKind::UmhForward};
-        assert(!ghostlock::pipeline::selection_supported(selection));
-        assert(!ghostlock::pipeline::backend_available(BackendKind::Cve2026_43284));
+        assert(!ghostlock::contract::selection_supported(selection));
+        assert(!ghostlock::contract::backend_available(BackendKind::Cve2026_43284));
         /* The triple stays catalogued/wired, so wiring and availability remain
          * two distinct facts. */
         assert(ghostlock::pipeline::combination_supported(selection));

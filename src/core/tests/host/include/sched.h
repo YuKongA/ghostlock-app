@@ -2,8 +2,8 @@
 #define GHOSTLOCK_HOST_SCHED_H
 
 /*
- * Host shim: macOS <sched.h> lacks the Linux CPU-set API that common.h pulls in
- * through kernelsnitch/utils.h and runtime_config.cpp. Include the real
+ * Host shim: macOS <sched.h> lacks the Linux CPU-set API that
+ * kernelsnitch/utils.h and runtime_config.cpp use. Include the real
  * <sched.h> first (glibc already provides the API, so the block below is
  * skipped there) and add a portable cpu_set_t on platforms that need it.
  */

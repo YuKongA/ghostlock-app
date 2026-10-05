@@ -44,27 +44,33 @@ namespace {
 
     template <class Backend>
     ghostlock::pipeline::RunResult run_once_with() {
-        ghostlock::profile::kernel_offsets decoded{};
-        decoded.meta.kernel_major = 6;
-        decoded.execution.w1_attempts = 3;
-        decoded.execution.w1_scratch_repair_attempts = 1;
-        decoded.execution.w2_attempts = 4;
-        decoded.execution.w3_chain_rounds = 2;
-        decoded.route = ghostlock::profile::kRouteSelectStack;
-        decoded.execution.w3_attempts = 3;
-        /* Pre-install the profile so run_setup skips install_profile (no uname
-         * match on the host). Pipeline::run constructs the state idempotently
-         * here and destroys it through its RAII guard on exit. */
-        ghostlock::backend::cve43499_state_construct(
-                ghostlock::session::g_exploit_session);
-        auto &state = ghostlock::backend::cve43499_state(
-                ghostlock::session::g_exploit_session);
-        state.profile = ghostlock::profile::TargetProfile::from(&decoded);
-        last_w2_attempts = state.profile.w2_attempts();
+        ghostlock::profile::Document document;
+        document.release = "6.6.77-host-dataflow";
+        document.terminal = static_cast<uint16_t>(
+                ghostlock::contract::TerminalKind::RootChild);
+        document.backend = static_cast<uint16_t>(
+                ghostlock::contract::BackendKind::Cve2026_43499);
+        document.middleware = ghostlock::profile::kRouteSelectStack;
+        const auto add = [&document](std::string_view section,
+                                     std::string_view key, uint64_t raw) {
+            ghostlock::profile::Section *found = document.find_section(section);
+            if (found == nullptr) found = &document.append_section(section);
+            found->add(key, raw);
+        };
+        add("meta", "kernel_major", 6);
+        add("execution.stages", "w1_attempts", 3);
+        add("execution.stages", "w1_scratch_repair_attempts", 1);
+        add("execution.stages", "w2_attempts", 4);
+        add("execution.stages", "w3_chain_rounds", 2);
+        add("execution.stages", "w3_attempts", 3);
+        last_w2_attempts = 4;
+        /* Pipeline::run constructs the backend state, state_from binds the
+         * Document, and its RAII guard destroys the state on exit. The install
+         * hook is a host no-op (attack_stub.cpp). */
         return ghostlock::pipeline::Pipeline<
             Backend,
             ghostlock::terminal::RootChildPolicy>::run(
-            ghostlock::session::g_exploit_session, decoded, nullptr, true);
+            ghostlock::session::g_exploit_session, document, nullptr, true);
     }
 
     ghostlock::pipeline::RunResult run_once() {

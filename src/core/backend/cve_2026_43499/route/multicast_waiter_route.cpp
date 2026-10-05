@@ -7,7 +7,13 @@
 #pragma clang diagnostic ignored "-Wvla-cxx-extension"
 #endif
 
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "support/decls.hpp"
+
 #include "memory/payload_builder.h"
 #include "backend/cve_2026_43499/route/route_status.h"
 #include "session/core_session.hpp"

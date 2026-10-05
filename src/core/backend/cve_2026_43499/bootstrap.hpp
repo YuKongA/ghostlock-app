@@ -1,7 +1,7 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_BOOTSTRAP_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43499_BOOTSTRAP_HPP
 
-#include "profile/model.h"
+#include "backend/cve_2026_43499/backend_profile/model.hpp"
 
 namespace ghostlock::backend {
     /* cve_2026_43499 bootstrap: validate/install the resolved profile into the
@@ -12,7 +12,10 @@ namespace ghostlock::backend {
 
     void resolve_profile_addresses();
 
-    void install_profile(const profile::kernel_offsets &decoded);
+    /* Validate the running kernel against the already-bound state profile,
+     * publish the execution tuning and resolve the profile addresses. The
+     * Document bind happened in the backend's state_from. */
+    void install_profile();
 } // namespace ghostlock::backend
 
 #endif

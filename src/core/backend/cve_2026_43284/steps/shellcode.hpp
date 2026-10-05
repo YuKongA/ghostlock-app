@@ -133,6 +133,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::uint32_t guard_instruction = 0U;
         std::size_t entry_offset = 0U;      /* executable entry within payload */
         std::size_t jump_back_offset = 0U;  /* where jump_back_instruction goes */
+        /* Landing room reported by locate_hook_target(); carried here so the
+         * staged plan can echo it (B5-9h-2). */
+        std::uint64_t payload_max_bytes = 0U;
     };
 
     enum class HookPlanError : std::uint8_t {

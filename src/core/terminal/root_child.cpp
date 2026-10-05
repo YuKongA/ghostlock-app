@@ -1,4 +1,10 @@
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "support/timing.hpp"
+
 /*
  * GhostLock — root_child terminal procedure (Batch 4, D1=B).
  *

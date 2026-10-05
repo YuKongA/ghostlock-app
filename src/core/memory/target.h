@@ -8,8 +8,8 @@
  * The values fall into three groups: address-layout and payload-slot values
  * forwarded from target_constants.hpp, device/profile defaults, and the
  * symbol/slide/struct offsets that the profile may override through the
- * runtime_struct_offsets.h accessors. Nothing here is a second authority; a
- * resolved profile still wins wherever a value is optional. */
+ * platform::abi / backend offset accessors. Nothing here is a second authority;
+ * a resolved profile still wins wherever a value is optional. */
 
 namespace ghostlock::memory {
     inline constexpr const char *BUILD_VARIANT_LABEL = "ghostlock_oplus";

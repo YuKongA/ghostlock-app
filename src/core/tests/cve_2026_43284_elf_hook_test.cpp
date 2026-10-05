@@ -244,6 +244,43 @@ namespace {
         assert(error == ElfError::None);
         return image;
     }
+
+    /* B5-9h-2 payload-room fixtures: reuse the base ELF and retune the
+     * executable PT_LOAD. When add_next_load is set a second, non-executable
+     * PT_LOAD is written into the free program-header slot at 0x78 (the base
+     * fixture declares one header). file_size may be enlarged: the parser only
+     * validates referenced ranges against the image size. */
+    Fixture build_room_fixture(std::uint64_t filesz, std::uint64_t memsz,
+                               std::uint64_t align, std::size_t file_size,
+                               bool add_next_load, std::uint64_t next_offset,
+                               std::uint64_t next_vaddr, std::uint64_t next_filesz) {
+        Fixture fx = build_fixture(false);
+        fx.bytes.resize(file_size, 0U);
+        put64(fx.bytes, 0x60U, filesz); /* exec p_filesz */
+        put64(fx.bytes, 0x68U, memsz);  /* exec p_memsz */
+        put64(fx.bytes, 0x70U, align);  /* exec p_align */
+        if (add_next_load) {
+            put16(fx.bytes, 0x38U, 2U); /* e_phnum */
+            put32(fx.bytes, 0x78U, 1U); /* PT_LOAD */
+            put32(fx.bytes, 0x7CU, 6U); /* PF_R | PF_W */
+            put64(fx.bytes, 0x80U, next_offset);
+            put64(fx.bytes, 0x88U, next_vaddr);
+            put64(fx.bytes, 0x90U, next_filesz);
+            put64(fx.bytes, 0x98U, next_filesz);
+            put64(fx.bytes, 0xA0U, align);
+        }
+        return fx;
+    }
+
+    HookTarget locate_room_target(const Fixture &fx, ElfImage &image) {
+        image = parse_or_die(fx);
+        HookTarget target{};
+        ElfError error = ElfError::None;
+        assert(locate_hook_target(fx.bytes.data(), fx.bytes.size(), image, "hook_me",
+                                  HookGuardPolicy::Reject, target, error));
+        assert(error == ElfError::None);
+        return target;
+    }
 } // namespace
 
 int main() {
@@ -412,7 +449,12 @@ int main() {
         assert(!target.guard_skipped);
         assert(target.payload_file_offset == kPayloadOff);
         assert(target.payload_vaddr == kPayloadVaddr);
-        assert(target.payload_max_bytes == kPayloadMax);
+        /* Fixture A keeps the historical BSS tail (p_memsz - p_filesz = 0x100)
+         * but the page-aligned tail of the segment's last file page reaches EOF
+         * first, so the reported room is the larger page-tail value. */
+        assert(target.payload_max_bytes ==
+               static_cast<std::uint64_t>(fixture.bytes.size()) - kPayloadOff);
+        assert(target.payload_max_bytes >= kPayloadMax);
 
         /* BTI/PAC at the entry: Reject fails, Skip advances one word. */
         assert(!locate_hook_target(fixture.bytes.data(), fixture.bytes.size(), image,
@@ -645,6 +687,61 @@ int main() {
         assert(plan_error == HookPlanError::InvalidTarget);
     }
 
+    /* ---- B5-9h-2 payload room: BSS tail vs executable page tail. ---- */
+    {
+        /* B: filesz == memsz (no BSS tail) but the segment end is mid-page, so
+         * the page-aligned tail supplies the room -- the real libc++
+         * executable-LOAD shape. p_align mirrors the device's 0x4000, which must
+         * not inflate the 4 KiB mapping. */
+        const Fixture roomy = build_room_fixture(0xC00U, 0xC00U, 0x4000U, 0x2000U,
+                                                 false, 0U, 0U, 0U);
+        ElfImage image{};
+        const HookTarget target = locate_room_target(roomy, image);
+        assert(image.exec_align == 0x4000U);
+        assert(target.payload_file_offset == 0xD00U); /* 0x100 + 0xC00 */
+        assert(target.payload_vaddr == 0x2C00U);       /* 0x2000 + 0xC00 */
+        assert(target.payload_max_bytes == 0x300U);    /* 0xd00 -> 0x1000 */
+        HookPlan plan{};
+        HookPlanError plan_error = HookPlanError::None;
+        assert(build_hook_plan(target, 480U, plan, plan_error));
+        assert(plan_error == HookPlanError::None);
+        assert(plan.payload_max_bytes == 0x300U);
+    }
+    {
+        /* C: a following non-executable PT_LOAD's page-aligned mapping covers
+         * the segment end, so the page tail is rejected. */
+        const Fixture covered = build_room_fixture(0xC00U, 0xC00U, 0x1000U, 0x2000U,
+                                                   true, 0xE00U, 0x2E00U, 0x300U);
+        ElfImage image{};
+        const HookTarget target = locate_room_target(covered, image);
+        assert(image.phnum == 2U);
+        assert(target.payload_max_bytes == 0U);
+        HookPlan plan{};
+        HookPlanError plan_error = HookPlanError::None;
+        assert(!build_hook_plan(target, 480U, plan, plan_error));
+        assert(plan_error == HookPlanError::PayloadNotMapped);
+    }
+    {
+        /* D: the page tail would cross EOF, so it is clipped to the file end. */
+        const Fixture eof = build_room_fixture(0x1D00U, 0x1D00U, 0x1000U, 0x1F00U,
+                                               false, 0U, 0U, 0U);
+        ElfImage image{};
+        const HookTarget target = locate_room_target(eof, image);
+        assert(target.payload_file_offset == 0x1E00U);
+        assert(target.payload_max_bytes == 0x100U); /* 0x1e00 -> 0x1f00 EOF */
+    }
+    {
+        /* E: a page tail below the 480-byte shellcode stays fail-closed. */
+        const Fixture tight = build_room_fixture(0xE00U, 0xE00U, 0x1000U, 0x2000U,
+                                                 false, 0U, 0U, 0U);
+        ElfImage image{};
+        const HookTarget target = locate_room_target(tight, image);
+        assert(target.payload_max_bytes == 0x100U); /* 0xf00 -> 0x1000 */
+        HookPlan plan{};
+        HookPlanError plan_error = HookPlanError::None;
+        assert(!build_hook_plan(target, 480U, plan, plan_error));
+        assert(plan_error == HookPlanError::PayloadNotMapped);
+    }
     std::puts("cve_2026_43284_elf_hook_test: OK");
     return 0;
 }

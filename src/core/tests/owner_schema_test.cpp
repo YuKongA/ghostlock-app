@@ -7,7 +7,9 @@
  * for each route, proving the View lands on the frozen kernel_offsets layout. */
 
 #include "backend/cve_2026_43499/schema.hpp"
+#include "platform/abi.hpp"
 #include "profile/binary.h"
+#include "profile_bind_compat.hpp"
 #include "profile/document.hpp"
 #include "profile/schema.hpp"
 
@@ -229,6 +231,50 @@ int main() {
                               ghostlock::profile::kRouteMulticastWaiter}) {
             assert(round_trip(route, values, first, sizeof(first), size) == 0);
         }
+    }
+
+    /* ---- A2-4-3: platform + backend union binds with one ownership
+     * picture, and the platform View merges into the frozen transport. ---- */
+    {
+        Document doc;
+        doc.release = "6.6.77-union";
+        for (const auto &field : ghostlock::platform::abi::Schema::kFields) {
+            add(doc, field.section, field.key, 7ULL);
+        }
+        for (const auto &field : Cve2026_43499Schema::kFields) {
+            add(doc, field.section, field.key, 3ULL);
+        }
+        /* No (section, key) is declared by both owners. */
+        for (const auto &p : ghostlock::platform::abi::Schema::kFields) {
+            for (const auto &b : Cve2026_43499Schema::kFields) {
+                assert(!(p.section == b.section && p.key == b.key));
+            }
+        }
+        ghostlock::platform::abi::View abi_view{};
+        Cve2026_43499View view{};
+        const auto status = ghostlock::profile::bind_all<
+                ghostlock::platform::abi::Schema, Cve2026_43499Schema>(
+                doc, DecodeMode::Production, abi_view, view);
+        assert(status.ok());
+        assert(abi_view.task.prio == 7);
+        assert(abi_view.offset.init_task == 7);
+        assert(view.values.credential.copy_size == 3);
+        ghostlock::platform::abi::apply_to(abi_view, view.values);
+        assert(view.values.task.prio == 7);
+        assert(view.values.credential.usage_offset == 7);
+        assert(view.values.offsets.init_task == 7);
+        assert(view.values.misc.kernel_phys_load.value_or(0) == 7);
+        assert(view.values.credential.copy_size == 3);
+
+        /* Union validation still rejects an unknown key. */
+        Document bad = doc;
+        bad.find_section("meta")->add("bogus", 1ULL);
+        ghostlock::platform::abi::View abi2{};
+        Cve2026_43499View view2{};
+        const auto blocked = ghostlock::profile::bind_all<
+                ghostlock::platform::abi::Schema, Cve2026_43499Schema>(
+                bad, DecodeMode::Production, abi2, view2);
+        assert(blocked.code == BindCode::UnknownKey);
     }
 
     std::printf("owner_schema_test: ok\n");

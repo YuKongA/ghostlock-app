@@ -1,14 +1,15 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_GLKV3_SCHEMA_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43499_GLKV3_SCHEMA_HPP
 
-/* GLKv3 (MessagePack) path -> type declaration for the cve_2026_43499 owner
- * (GLKv3-3, ADR-0003 wire migration).
+/* GLKv3 (MessagePack) path -> type declaration for the cve_2026_43499 backend
+ * keys (GLKv3-3, ADR-0003 wire migration; split by A2-4-3).
  *
  * kCve2026_43499Glkv3Fields is the single GLKv3 statement of every (section,key)
- * this owner reads. It mirrors schema.hpp's v2 owner Schema one-for-one: the key
- * names are byte-for-byte identical and the set of (section,key) pairs is equal
- * (asserted by glkv3_schema_test), so the v2 field table and the v3 type table
- * cannot drift while the migration is in flight.
+ * this backend owner interprets; the platform ABI keys live in
+ * platform::abi (kPlatformAbiGlkv3Fields). It mirrors schema.hpp's v2 owner
+ * Schema one-for-one: the key names are byte-for-byte identical and the set of
+ * (section,key) pairs is equal (asserted by glkv3_schema_test), so the v2 field
+ * table and the v3 type table cannot drift while the migration is in flight.
  *
  * WireType is chosen from the semantic type of the v2 field (see
  * docs/analysis/wire-transport-model.md section 4):
@@ -30,43 +31,14 @@ namespace ghostlock::backend {
         {"meta", "fallback_route", profile::glkv3::WireType::UInt, false},
         {"meta", "safe_mode", profile::glkv3::WireType::Bool, false},
         {"meta", "vr_guard", profile::glkv3::WireType::Bool, false},
-        {"task_struct", "prio", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "normal_prio", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "sched_task_group", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "pi_lock", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "pi_waiters", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "pi_top_task", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "pi_blocked_on", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "pid", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "tgid", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "atomic_flags", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "real_cred", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "cred", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "comm", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "tasks", profile::glkv3::WireType::UInt, false},
-        {"task_struct", "seccomp", profile::glkv3::WireType::UInt, false},
         {"cred", "copy_size", profile::glkv3::WireType::UInt, false},
-        {"cred", "usage_offset", profile::glkv3::WireType::UInt, false},
         {"cred", "usage_value", profile::glkv3::WireType::UInt, false},
-        {"cred", "caps_offset", profile::glkv3::WireType::UInt, false},
         {"cred", "caps_count", profile::glkv3::WireType::UInt, false},
         {"cred", "caps_value", profile::glkv3::WireType::UInt, false},
-        {"cred", "ref_count", profile::glkv3::WireType::UInt, false},
-        {"cred", "ref0_offset", profile::glkv3::WireType::UInt, false},
-        {"cred", "ref1_offset", profile::glkv3::WireType::UInt, false},
-        {"cred", "ref2_offset", profile::glkv3::WireType::UInt, false},
-        {"cred", "ref3_offset", profile::glkv3::WireType::UInt, false},
         {"cred", "ref0_image", profile::glkv3::WireType::UInt, false},
         {"cred", "ref1_image", profile::glkv3::WireType::UInt, false},
         {"cred", "ref2_image", profile::glkv3::WireType::UInt, false},
         {"cred", "ref3_image", profile::glkv3::WireType::UInt, false},
-        {"offset", "init_task", profile::glkv3::WireType::UInt, false},
-        {"offset", "init_cred", profile::glkv3::WireType::UInt, false},
-        {"offset", "empty_zero_page", profile::glkv3::WireType::UInt, false},
-        {"offset", "root_task_group", profile::glkv3::WireType::UInt, false},
-        {"offset", "selinux_enforcing", profile::glkv3::WireType::UInt, false},
-        {"offset", "selinux_blob_sizes", profile::glkv3::WireType::UInt, false},
-        {"offset", "security_hook_heads", profile::glkv3::WireType::UInt, false},
         {"offset", "slide_nfulnl_logger", profile::glkv3::WireType::UInt, false},
         {"offset", "slide_loggers_0_1", profile::glkv3::WireType::UInt, false},
         {"offset", "slide_boot_id", profile::glkv3::WireType::UInt, false},
@@ -114,8 +86,6 @@ namespace ghostlock::backend {
         {"route.multicast_waiter", "task_offset", profile::glkv3::WireType::UInt, false},
         {"route.multicast_waiter", "lock_offset", profile::glkv3::WireType::UInt, false},
         {"vr_guard", "tracepoint_funcs", profile::glkv3::WireType::UInt, false},
-        {"kernel", "kernel_phys_load", profile::glkv3::WireType::UInt, false},
-        {"kernel", "kernel_phys_offset", profile::glkv3::WireType::UInt, false},
         {"kernel", "compact_waiter", profile::glkv3::WireType::Bool, false},
         {"kernel", "kernelsnitch_collisions", profile::glkv3::WireType::UInt, false},
         {"kernel", "mm_struct_sz", profile::glkv3::WireType::UInt, false},

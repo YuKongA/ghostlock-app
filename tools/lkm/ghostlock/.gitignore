@@ -1,0 +1,10 @@
+# Kernel module build outputs (DDK container build; see build.sh).
+*.o
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
+out/

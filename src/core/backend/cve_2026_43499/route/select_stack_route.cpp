@@ -130,7 +130,12 @@ namespace ghostlock::backend::cve_2026_43499::route::select_stack {
 } // namespace ghostlock::backend::cve_2026_43499::route::select_stack
 
 #if defined(__ANDROID__)
-#include "common.h"
+#include "memory/constants.hpp"
+
+#include "kernelsnitch/utils.h"
+#include "support/decls.hpp"
+
+#include <sys/syscall.h>
 
 #include <array>
 #include <ctime>

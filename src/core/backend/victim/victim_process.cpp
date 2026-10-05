@@ -1,4 +1,13 @@
-#include "common.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "kernelsnitch/utils.h"
+#include "session/runtime_config.h"
+
+#include <sys/syscall.h>
+#include <sys/wait.h>
+
 /*
  * GhostLock — victim process protocol: spawn, command pipe loop, root handoff.
  *

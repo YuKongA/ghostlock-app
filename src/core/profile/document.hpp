@@ -64,6 +64,12 @@ namespace ghostlock::profile {
         uint16_t backend = 0;
         uint16_t middleware = 0;
         uint16_t steps = 0;
+        /* GLKv3 root selection tokens. The v2 transport carries numeric ids in
+         * its header, so these stay empty there; the GLKv3 container has no
+         * header and names the components as text, which only the composition
+         * root (which owns the component vocabulary) resolves to the ids. */
+        std::string terminal_token;
+        std::string backend_token;
         std::vector<Section> sections;
 
         [[nodiscard]] const Section *find_section(std::string_view name) const noexcept {

@@ -33,8 +33,16 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::LkmPolicyInput;
     using ghostlock::backend::cve_2026_43284::lkm::LkmSelection;
     using ghostlock::backend::cve_2026_43284::lkm::LkmSource;
+    using ghostlock::backend::cve_2026_43284::lkm::DeviceKernelFacts;
     using ghostlock::backend::cve_2026_43284::lkm::ModuleFacts;
     using ghostlock::backend::cve_2026_43284::lkm::UmhCommand;
+    using ghostlock::backend::cve_2026_43284::lkm::kVermagicMaxBytes;
+    using ghostlock::backend::cve_2026_43284::lkm::proc_version_has_preempt;
+    using ghostlock::backend::cve_2026_43284::lkm::required_vermagic;
+    using ghostlock::backend::cve_2026_43284::lkm::rewrite_vermagic;
+    using ghostlock::backend::cve_2026_43284::lkm::uts_release_token;
+    using ghostlock::backend::cve_2026_43284::lkm::vermagic_diff_reason_name;
+    using ghostlock::backend::cve_2026_43284::lkm::VermagicDiffReason;
     using ghostlock::backend::cve_2026_43284::lkm::UmhCommandError;
     using ghostlock::backend::cve_2026_43284::lkm::build_late_load_command;
     using ghostlock::backend::cve_2026_43284::lkm::default_root_package;
@@ -61,6 +69,11 @@ namespace {
     constexpr std::uint16_t kMachineAarch64 = 0xB7U;
     constexpr std::uint16_t kMachineX86_64 = 62U;
 
+    /* The target release these fixtures must match in full (B5-9h-3). */
+    constexpr std::string_view kRelease = "5.15.202-dirty";
+    constexpr std::string_view kRequired =
+            "5.15.202-dirty SMP preempt mod_unload modversions aarch64";
+
     const char kModinfoPositive[] =
             "license=GPL\0name=dirtyfrag\0"
             "vermagic=5.15.202-dirty SMP preempt mod_unload modversions aarch64\0";
@@ -71,6 +84,9 @@ namespace {
             "license=GPL\0"
             "vermagic=5.15.202-dirty SMP preempt mod_unload modversions aarch64\0";
     const char kModinfoNoVermagic[] = "license=GPL\0name=dirtyfrag\0";
+    const char kModinfoOptionsTail[] =
+            "license=GPL\0name=dirtyfrag\0"
+            "vermagic=5.15.202-dirty SMP preempt mod_unload aarch64\0";
 
     struct ElfSpec final {
         std::string modinfo = std::string(kModinfoPositive, sizeof(kModinfoPositive) - 1U);
@@ -169,13 +185,15 @@ namespace {
         return out;
     }
 
-    KernelRelease release_5_15() {
-        KernelRelease release{};
-        release.android_release = 14U;
-        release.kernel_major = 5U;
-        release.kernel_minor = 15U;
-        release.kmi = 5015U;
-        return release;
+    /* The audited target facts: plain PREEMPT, CONFIG_MODVERSIONS=y and
+     * CONFIG_MODULE_FORCE_UNLOAD unset -> the full required string above. */
+    DeviceKernelFacts target_facts_5_15() {
+        DeviceKernelFacts facts{};
+        facts.release = kRelease;
+        facts.preempt = true;
+        facts.modversions = true;
+        facts.module_force_unload = false;
+        return facts;
     }
 
     void expect_resolve(const LkmPolicyInput &input, bool want_ok, LkmPolicyError want_error) {
@@ -403,7 +421,7 @@ int main() {
 
     /* ---- precheck_module_bytes: positive and each negative rule. ---- */
     {
-        const KernelRelease release = release_5_15();
+        const DeviceKernelFacts release = target_facts_5_15();
         ModuleFacts facts{};
         LkmImageError error = LkmImageError::None;
 
@@ -413,6 +431,10 @@ int main() {
         assert(facts.elf_valid && facts.has_modinfo && facts.has_name && facts.has_vermagic);
         assert(facts.vermagic_matches && facts.versions_empty);
         assert(!facts.signed_module && !facts.kcfi_present);
+        assert(facts.vermagic_diff == VermagicDiffReason::None);
+        assert(std::string_view(facts.module_vermagic) == kRequired);
+        assert(std::string_view(facts.required_vermagic) == kRequired);
+        assert(!facts.vermagic_rewritten);
 
         /* kCFI markers are reported but do not decide pass/fail. */
         ElfSpec cfi{};
@@ -462,13 +484,29 @@ int main() {
                                       facts, error));
         assert(error == LkmImageError::VermagicMissing);
 
-        /* Vermagic for a different kernel. */
+        /* Vermagic for a different kernel: full-string mismatch, not a
+         * release-prefix test, with both sides and the reason recorded. */
         ElfSpec mismatch{};
         mismatch.modinfo = std::string(kModinfoMismatch, sizeof(kModinfoMismatch) - 1U);
         const std::vector<std::uint8_t> mismatch_bytes = build_elf(mismatch);
         assert(!precheck_module_bytes(mismatch_bytes.data(), mismatch_bytes.size(), release, facts,
                                       error));
         assert(error == LkmImageError::VermagicMismatch);
+        assert(!facts.vermagic_matches);
+        assert(facts.vermagic_diff == VermagicDiffReason::Release);
+        assert(std::string_view(facts.module_vermagic) ==
+               "6.1.100-dirty SMP preempt mod_unload modversions aarch64");
+        assert(std::string_view(facts.required_vermagic) == kRequired);
+
+        /* Only the options tail differs -> Options reason, still rejected. */
+        ElfSpec options_tail{};
+        options_tail.modinfo = std::string(kModinfoOptionsTail,
+                                           sizeof(kModinfoOptionsTail) - 1U);
+        const std::vector<std::uint8_t> options_tail_bytes = build_elf(options_tail);
+        assert(!precheck_module_bytes(options_tail_bytes.data(), options_tail_bytes.size(),
+                                      release, facts, error));
+        assert(error == LkmImageError::VermagicMismatch);
+        assert(facts.vermagic_diff == VermagicDiffReason::Options);
 
         /* Wrong machine. */
         ElfSpec x86{};
@@ -488,7 +526,7 @@ int main() {
 
     /* ---- precheck_module_file: existence, regular-file and size rules. ---- */
     {
-        const KernelRelease release = release_5_15();
+        const DeviceKernelFacts release = target_facts_5_15();
         ModuleFacts facts{};
         LkmImageError error = LkmImageError::None;
 
@@ -513,6 +551,150 @@ int main() {
 
         assert(!precheck_module_file("", release, facts, error));
         assert(error == LkmImageError::ReadFailed);
+    }
+
+    /* ---- B5-9h-3 required vermagic construction. ---- */
+    {
+        char buf[kVermagicMaxBytes] = {};
+        std::size_t len = 0U;
+
+        /* uname -r form, full flag set; only the first token is the release. */
+        DeviceKernelFacts full{};
+        full.release = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557";
+        full.preempt = true;
+        full.modversions = true;
+        full.module_force_unload = false;
+        assert(required_vermagic(full, buf, sizeof(buf), len));
+        assert(std::string_view(buf, len) ==
+               "5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt "
+               "mod_unload modversions aarch64");
+
+        /* /proc/version form: the release token after "Linux version ". */
+        DeviceKernelFacts proc{};
+        proc.release =
+                "Linux version 5.15.189-android13-8-0-gabc (build) #1 SMP PREEMPT";
+        proc.preempt = true;
+        proc.modversions = false;
+        proc.module_force_unload = true;
+        assert(required_vermagic(proc, buf, sizeof(buf), len));
+        assert(std::string_view(buf, len) ==
+               "5.15.189-android13-8-0-gabc SMP preempt aarch64");
+
+        /* Every optional token off: forced unload removes mod_unload and
+         * modversions=off removes the CRC token. */
+        DeviceKernelFacts minimal{};
+        minimal.release = "6.1.100";
+        minimal.preempt = false;
+        minimal.modversions = false;
+        minimal.module_force_unload = true;
+        assert(required_vermagic(minimal, buf, sizeof(buf), len));
+        assert(std::string_view(buf, len) == "6.1.100 SMP aarch64");
+
+        /* Default facts (caller declares nothing) advertise the audited target:
+         * mod_unload + modversions. */
+        DeviceKernelFacts defaults{};
+        defaults.release = "6.1.100";
+        assert(required_vermagic(defaults, buf, sizeof(buf), len));
+        assert(std::string_view(buf, len) ==
+               "6.1.100 SMP mod_unload modversions aarch64");
+
+        /* Empty release and undersized capacity fail closed with out[0]==0. */
+        DeviceKernelFacts empty{};
+        char tiny[8] = {'x'};
+        assert(!required_vermagic(empty, tiny, sizeof(tiny), len));
+        assert(tiny[0] == '\0');
+        assert(!required_vermagic(full, tiny, sizeof(tiny), len));
+        assert(tiny[0] == '\0');
+        assert(!required_vermagic(full, nullptr, 0U, len));
+
+        assert(uts_release_token("5.15.202-dirty extra") == "5.15.202-dirty");
+        assert(uts_release_token("Linux version 5.15.189-x (b) #1 SMP") ==
+               "5.15.189-x");
+        assert(uts_release_token("").empty());
+        assert(proc_version_has_preempt("Linux version 5.15 PREEMPT #1"));
+        assert(!proc_version_has_preempt("Linux version 5.15 #1"));
+        assert(vermagic_diff_reason_name(VermagicDiffReason::Release) == "Release");
+    }
+
+    /* ---- B5-9h-3 in-place vermagic rewrite. ---- */
+    {
+        /* Normal rewrite: a shorter value that fits the old slot is written
+         * NUL-padded, the other entries and the section length are unchanged. */
+        std::vector<std::uint8_t> image = build_elf(ElfSpec{});
+        const std::vector<std::uint8_t> before = image;
+        const std::string_view prefix = "vermagic=";
+        std::size_t at = 0U;
+        bool found = false;
+        for (std::size_t i = 0U; i + prefix.size() <= image.size(); ++i) {
+            if (std::memcmp(image.data() + i, prefix.data(), prefix.size()) == 0) {
+                at = i;
+                found = true;
+                break;
+            }
+        }
+        assert(found);
+        const std::size_t old_value_len = kRequired.size();
+        const std::size_t slot = prefix.size() + old_value_len + 1U;
+        const std::string_view shorter = "5.15.202-dirty SMP modversions aarch64";
+        assert(shorter.size() < old_value_len);
+        LkmImageError rw_error = LkmImageError::None;
+        assert(rewrite_vermagic(image.data(), image.size(), shorter, rw_error));
+        assert(rw_error == LkmImageError::None);
+        assert(std::memcmp(image.data() + at, prefix.data(), prefix.size()) == 0);
+        assert(std::memcmp(image.data() + at + prefix.size(), shorter.data(),
+                           shorter.size()) == 0);
+        for (std::size_t i = shorter.size(); i < old_value_len; ++i) {
+            assert(image[at + prefix.size() + i] == 0U);
+        }
+        /* Every byte outside the slot - including the other .modinfo entries -
+         * is unchanged. */
+        for (std::size_t i = 0U; i < image.size(); ++i) {
+            if (i >= at && i < at + slot) {
+                continue;
+            }
+            assert(image[i] == before[i]);
+        }
+        /* The rewritten image now passes the matching-required precheck. */
+        DeviceKernelFacts shorter_facts{};
+        shorter_facts.release = "5.15.202-dirty";
+        shorter_facts.preempt = false;
+        shorter_facts.modversions = true;
+        shorter_facts.module_force_unload = true;
+        ModuleFacts rewritten_facts{};
+        rw_error = LkmImageError::None;
+        assert(precheck_module_bytes(image.data(), image.size(), shorter_facts,
+                                     rewritten_facts, rw_error));
+        assert(rewritten_facts.vermagic_matches);
+    }
+    {
+        /* Slot too small: required longer than "vermagic=" + old + NUL fails
+         * closed with the image byte-identical. */
+        std::vector<std::uint8_t> image = build_elf(ElfSpec{});
+        const std::vector<std::uint8_t> before = image;
+        LkmImageError error = LkmImageError::None;
+        const std::string_view too_long =
+                "9.9.9-deliberately-longer-required-vermagic SMP preempt mod_unload "
+                "modversions aarch64";
+        assert(!rewrite_vermagic(image.data(), image.size(), too_long, error));
+        assert(error == LkmImageError::VermagicSlotTooSmall);
+        assert(image == before);
+
+        /* Missing vermagic= entry fails closed and leaves the image alone. */
+        ElfSpec no_vermagic{};
+        no_vermagic.modinfo =
+                std::string(kModinfoNoVermagic, sizeof(kModinfoNoVermagic) - 1U);
+        std::vector<std::uint8_t> no_v = build_elf(no_vermagic);
+        const std::vector<std::uint8_t> no_v_before = no_v;
+        error = LkmImageError::None;
+        assert(!rewrite_vermagic(no_v.data(), no_v.size(), "x", error));
+        assert(error == LkmImageError::VermagicMissing);
+        assert(no_v == no_v_before);
+
+        /* An empty required value is rejected. */
+        std::vector<std::uint8_t> image2 = build_elf(ElfSpec{});
+        error = LkmImageError::None;
+        assert(!rewrite_vermagic(image2.data(), image2.size(), "", error));
+        assert(error == LkmImageError::VermagicMissing);
     }
 
     /* ---- UMH argv: ksud late-load variant, boundaries and injection. ---- */

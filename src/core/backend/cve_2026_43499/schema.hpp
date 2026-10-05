@@ -1,12 +1,16 @@
 #ifndef GHOSTLOCK_BACKEND_CVE_2026_43499_SCHEMA_HPP
 #define GHOSTLOCK_BACKEND_CVE_2026_43499_SCHEMA_HPP
 
-/* Owner schema for the cve_2026_43499 profile transport (ADR-0003 / A2-3c-2).
+/* Owner schema for the cve_2026_43499 backend keys (ADR-0003 / A2-3c-2,
+ * split by A2-4-3).
  *
- * kFields is the single declaration of every wire (section, key) the 43499
- * owner reads. It reproduces binary.cpp's former kSections key names, widths,
- * signedness and destinations verbatim, so a bind of a well-formed document
- * yields exactly the same kernel_offsets the legacy field-table walk produced.
+ * kFields declares exactly the (section, key) pairs this owner *interprets*:
+ * the step set, the credential template values, the KASLR slide targets, the
+ * route/spray geometry, execution tuning and the 43499 policy meta. The
+ * platform ABI keys (task_struct layout, cred layout offsets, symbol offsets,
+ * device phys) moved to platform::abi (platform/abi.hpp); composition binds
+ * both owners and merges the platform View into the frozen transport (see
+ * backend_profile.cpp).
  *
  * backend.cve_2026_43499.steps is a backend-private key: it selects the step
  * set (ADR-0004 R18), not a kernel offset, so it binds to View::steps instead
@@ -14,13 +18,12 @@
  * (Production) bind accept a real document rather than rejecting the private
  * section as unknown.
  *
- * A2-3c keeps kernel_offsets/TargetProfile physically frozen, so this View
- * wraps the transport instead of replacing it; materialising the View onto the
- * transport is a plain member copy in binary.cpp. The serializer there still
- * uses its legacy Field table; owner_schema_test's full round trip keeps the
- * two declarations in lockstep. */
+ * kernel_offsets/TargetProfile stay physically frozen, so this View wraps the
+ * transport instead of replacing it. The v2 serializer in binary.cpp still
+ * uses its legacy Field table; the manifest keeps the declarations in
+ * lockstep. */
 
-#include "profile/model.h"
+#include "backend/cve_2026_43499/backend_profile/model.hpp"
 #include "profile/schema.hpp"
 
 #include <cstdint>
@@ -84,43 +87,14 @@ namespace ghostlock::backend {
             GLK_43499_PLAIN("meta", "fallback_route", meta.fallback_route, 1),
             GLK_43499_PLAIN("meta", "safe_mode", meta.safe_mode, 1),
             GLK_43499_PLAIN("meta", "vr_guard", misc.vr_guard, 1),
-            GLK_43499_PLAIN("task_struct", "prio", task.prio, 4),
-            GLK_43499_PLAIN("task_struct", "normal_prio", task.normal_prio, 4),
-            GLK_43499_PLAIN("task_struct", "sched_task_group", task.sched_task_group, 4),
-            GLK_43499_PLAIN("task_struct", "pi_lock", task.pi_lock, 4),
-            GLK_43499_PLAIN("task_struct", "pi_waiters", task.pi_waiters, 4),
-            GLK_43499_PLAIN("task_struct", "pi_top_task", task.pi_top_task, 4),
-            GLK_43499_PLAIN("task_struct", "pi_blocked_on", task.pi_blocked_on, 4),
-            GLK_43499_PLAIN("task_struct", "pid", task.pid, 4),
-            GLK_43499_PLAIN("task_struct", "tgid", task.tgid, 4),
-            GLK_43499_PLAIN("task_struct", "atomic_flags", task.atomic_flags, 4),
-            GLK_43499_PLAIN("task_struct", "real_cred", task.real_cred, 4),
-            GLK_43499_PLAIN("task_struct", "cred", task.cred, 4),
-            GLK_43499_PLAIN("task_struct", "comm", task.comm, 4),
-            GLK_43499_PLAIN("task_struct", "tasks", task.tasks, 4),
-            GLK_43499_PLAIN("task_struct", "seccomp", task.seccomp, 4),
             GLK_43499_PLAIN("cred", "copy_size", credential.copy_size, 4),
-            GLK_43499_PLAIN("cred", "usage_offset", credential.usage_offset, 4),
             GLK_43499_PLAIN("cred", "usage_value", credential.usage_value, 4),
-            GLK_43499_PLAIN("cred", "caps_offset", credential.caps_offset, 4),
             GLK_43499_PLAIN("cred", "caps_count", credential.caps_count, 4),
             GLK_43499_PLAIN("cred", "caps_value", credential.caps_value, 8),
-            GLK_43499_PLAIN("cred", "ref_count", credential.ref_count, 4),
-            GLK_43499_PLAIN("cred", "ref0_offset", credential.ref0_offset, 4),
-            GLK_43499_PLAIN("cred", "ref1_offset", credential.ref1_offset, 4),
-            GLK_43499_PLAIN("cred", "ref2_offset", credential.ref2_offset, 4),
-            GLK_43499_PLAIN("cred", "ref3_offset", credential.ref3_offset, 4),
             GLK_43499_PLAIN("cred", "ref0_image", credential.ref0_image, 8),
             GLK_43499_PLAIN("cred", "ref1_image", credential.ref1_image, 8),
             GLK_43499_PLAIN("cred", "ref2_image", credential.ref2_image, 8),
             GLK_43499_PLAIN("cred", "ref3_image", credential.ref3_image, 8),
-            GLK_43499_PLAIN("offset", "init_task", offsets.init_task, 8),
-            GLK_43499_PLAIN("offset", "init_cred", offsets.init_cred, 8),
-            GLK_43499_PLAIN("offset", "empty_zero_page", offsets.empty_zero_page, 8),
-            GLK_43499_PLAIN("offset", "root_task_group", offsets.root_task_group, 8),
-            GLK_43499_PLAIN("offset", "selinux_enforcing", offsets.selinux_enforcing, 8),
-            GLK_43499_PLAIN("offset", "selinux_blob_sizes", offsets.selinux_blob_sizes, 8),
-            GLK_43499_PLAIN("offset", "security_hook_heads", offsets.security_hook_heads, 8),
             GLK_43499_PLAIN("offset", "slide_nfulnl_logger", offsets.slide_nfulnl_logger, 8),
             GLK_43499_PLAIN("offset", "slide_loggers_0_1", offsets.slide_loggers_0_1, 8),
             GLK_43499_PLAIN("offset", "slide_boot_id", offsets.slide_boot_id, 8),
@@ -158,8 +132,6 @@ namespace ghostlock::backend {
             GLK_43499_PLAIN("route.multicast_waiter", "arm_sequence", mcast_arm_sequence, 1),
             GLK_43499_PLAIN("route.multicast_waiter", "arm_hold", mcast_arm_hold, 2),
             GLK_43499_PLAIN("vr_guard", "tracepoint_funcs", misc.vr_tracepoint_funcs, 1),
-            GLK_43499_OPT("kernel", "kernel_phys_load", misc.kernel_phys_load, 8, false),
-            GLK_43499_OPT("kernel", "kernel_phys_offset", misc.kernel_phys_offset, 8, false),
             GLK_43499_OPT("kernel", "compact_waiter", misc.compact_waiter, 1, false),
             GLK_43499_OPT("kernel", "kernelsnitch_collisions", misc.kernelsnitch_collisions, 4, false),
             GLK_43499_OPT("kernel", "mm_struct_sz", misc.mm_struct_sz, 4, false),
