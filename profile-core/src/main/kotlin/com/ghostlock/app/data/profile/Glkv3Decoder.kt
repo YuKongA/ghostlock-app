@@ -68,28 +68,28 @@ object Glkv3Decoder {
     }
 
     /**
-     * Returns a canonical copy of a GLKv3 [document] with meta.safe_mode set to
+     * Returns a canonical copy of a GLKv3 [document] with common.safe_mode set to
      * true, or null when [document] is not a well-formed GLKv3 document.
      */
     fun patchSafeMode(document: ByteArray): ByteArray? {
         val decoded = decode(document) ?: return null
         val patched = decoded.sections.map { section ->
-            if (section.name != "meta") {
+            if (section.name != "common") {
                 section
             } else {
                 Glkv3Section(
-                    name = "meta",
+                    name = "common",
                     entries = section.entries.filterNot { it.key == "safe_mode" } +
                         Glkv3Entry("safe_mode", Glkv3Value.Bool(true)),
                 )
             }
         }
-        val withMeta = if (patched.any { it.name == "meta" }) {
+        val withCommon = if (patched.any { it.name == "common" }) {
             patched
         } else {
-            patched + Glkv3Section("meta", listOf(Glkv3Entry("safe_mode", Glkv3Value.Bool(true))))
+            patched + Glkv3Section("common", listOf(Glkv3Entry("safe_mode", Glkv3Value.Bool(true))))
         }
-        return Glkv3Encoder.encode(decoded.copy(sections = withMeta))
+        return Glkv3Encoder.encode(decoded.copy(sections = withCommon))
     }
 
     private fun decodeSections(value: Value): List<Glkv3Section>? {

@@ -19,3 +19,5 @@ target/
 /.codex/
 /src/.codex/config.toml
 /ghostlock *
+build.nosync/
+/build

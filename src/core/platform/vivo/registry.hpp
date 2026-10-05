@@ -10,7 +10,7 @@ namespace ghostlock::platform::vivo {
     /* The vivo vendor behaviors, injected by the backend call site as one
      * caller-supplied policy list (ADR-0004 R14: compile-time list, no runtime
      * registry). */
-    using VivoAncillaryPolicies =
+    using VivoPluginPolicies =
             std::tuple<VrGuardPolicy, VrTaskTagPolicy>;
 } // namespace ghostlock::platform::vivo
 

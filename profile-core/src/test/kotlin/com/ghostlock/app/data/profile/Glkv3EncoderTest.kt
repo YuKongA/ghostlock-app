@@ -4,6 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.msgpack.core.MessagePack
 import org.msgpack.value.Value
@@ -178,6 +179,39 @@ class Glkv3EncoderTest {
         val root = unpackRoot(sampleDocument())
         // backend, release, route, schema, sections, terminal.
         assertEquals(6, root.asMapValue().size())
+    }
+
+    /* ---- R2 bounded UTF-8 strings ---- */
+
+    @Test
+    fun stringValueRoundTripsAtTheByteBound() {
+        val text = "日本語-" + "a".repeat(256 - "日本語-".toByteArray(Charsets.UTF_8).size)
+        assertEquals(Glkv3Encoder.MAX_STRING_BYTES, text.toByteArray(Charsets.UTF_8).size)
+        val document = Glkv3Document(
+            release = "r",
+            terminal = "root_child",
+            backend = "cve_2026_43499",
+            sections = listOf(Glkv3Section("s", listOf(Glkv3Entry("k", Glkv3Value.Str(text))))),
+        )
+        val decoded = Glkv3Decoder.decode(Glkv3Encoder.encode(document))
+        assertEquals(
+            Glkv3Value.Str(text),
+            decoded!!.sections.first { it.name == "s" }.entries.first { it.key == "k" }.value,
+        )
+    }
+
+    @Test
+    fun stringLongerThanTheBoundIsRejected() {
+        val tooLong = "a".repeat(Glkv3Encoder.MAX_STRING_BYTES + 1)
+        val document = Glkv3Document(
+            sections = listOf(Glkv3Section("s", listOf(Glkv3Entry("k", Glkv3Value.Str(tooLong))))),
+        )
+        try {
+            Glkv3Encoder.encode(document)
+            fail("encoder accepted a string over MAX_STRING_BYTES")
+        } catch (_: IllegalArgumentException) {
+            // expected: fail closed before the wire
+        }
     }
 
     /* ---- Helpers ---- */

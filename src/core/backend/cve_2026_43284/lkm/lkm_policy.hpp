@@ -60,11 +60,79 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         {17U, 6U, 18U, 6018U, "android17-6.18"},
     }};
 
+    namespace kmi_detail {
+        inline constexpr std::string_view kAndroidSuffix = "android";
+
+        /* Parse 1..n ASCII digits at text[pos]; rejects overflow past max. */
+        inline bool parse_u32(std::string_view text, std::size_t &pos,
+                              std::uint32_t &out, std::uint32_t max) noexcept {
+            const std::size_t begin = pos;
+            std::uint32_t value = 0;
+            while (pos < text.size() && text[pos] >= '0' && text[pos] <= '9') {
+                const std::uint32_t digit =
+                        static_cast<std::uint32_t>(text[pos] - '0');
+                if (value > (max - digit) / 10U) return false;
+                value = value * 10U + digit;
+                ++pos;
+            }
+            if (pos == begin) return false;
+            out = value;
+            return true;
+        }
+
+        inline bool parse_major_minor(std::string_view text, std::size_t pos,
+                                      std::uint16_t &major,
+                                      std::uint16_t &minor) noexcept {
+            std::uint32_t maj = 0;
+            std::uint32_t min = 0;
+            if (!parse_u32(text, pos, maj, 65535U)) return false;
+            if (pos >= text.size() || text[pos] != '.') return false;
+            ++pos;
+            if (!parse_u32(text, pos, min, 65535U)) return false;
+            major = static_cast<std::uint16_t>(maj);
+            minor = static_cast<std::uint16_t>(min);
+            return true;
+        }
+    } // namespace kmi_detail
+
     /* Parse either a canonical KMI label (android13-5.15) or a uname -r
-     * release (5.15.202-android13-8-g...). Returns false when the string is
-     * not a well-formed release; it does not consult the supported table. */
-    [[nodiscard]] bool parse_kernel_release(std::string_view release,
-                                            KernelRelease &out) noexcept;
+     * release (5.15.202-android13-8-g...). Header-inline (S4 R1) so a schema
+     * default that derives the KMI does not force every including TU to link a
+     * .cpp; still the single implementation used by resolve_lkm_selection. */
+    [[nodiscard]] inline bool parse_kernel_release(std::string_view release,
+                                                   KernelRelease &out) noexcept {
+        KernelRelease parsed{};
+        const std::size_t android_pos = release.find(kmi_detail::kAndroidSuffix);
+        if (android_pos == std::string_view::npos) {
+            std::size_t pos = 0;
+            if (!kmi_detail::parse_major_minor(release, pos, parsed.kernel_major,
+                                               parsed.kernel_minor)) {
+                return false;
+            }
+        } else {
+            std::size_t pos = android_pos + kmi_detail::kAndroidSuffix.size();
+            std::uint32_t android = 0;
+            if (!kmi_detail::parse_u32(release, pos, android, 255U)) return false;
+            parsed.android_release = static_cast<std::uint8_t>(android);
+            std::size_t kernel_pos = 0;
+            if (android_pos == 0U) {
+                if (pos >= release.size() || release[pos] != '-') return false;
+                kernel_pos = pos + 1U;
+            }
+            if (!kmi_detail::parse_major_minor(release, kernel_pos,
+                                               parsed.kernel_major,
+                                               parsed.kernel_minor)) {
+                return false;
+            }
+        }
+        const std::uint32_t kmi =
+                static_cast<std::uint32_t>(parsed.kernel_major) * 1000U +
+                static_cast<std::uint32_t>(parsed.kernel_minor);
+        if (kmi > 65535U) return false;
+        parsed.kmi = static_cast<std::uint16_t>(kmi);
+        out = parsed;
+        return true;
+    }
 
     /* Exact (android_release, kmi) lookup; nullptr when unsupported. Never
      * guesses across android releases that share a kmi. */
@@ -72,10 +140,6 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             std::uint8_t android_release, std::uint16_t kmi) noexcept;
 
     enum class LkmSource : std::uint8_t { BundledKmi = 0, CustomFile = 1 };
-
-    /* lkm_path token vocabulary (GLK u64 cannot carry a literal path). */
-    inline constexpr std::uint64_t kLkmPathTokenBundled = 0U;
-    inline constexpr std::uint64_t kLkmPathTokenCustomFile = 1U;
 
     /* late_load_args policy bitmask (design 5.2). lkm_image turns the selected
      * bits into argv; unknown bits fail closed. */
@@ -129,11 +193,15 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         UnknownLateLoadArgs,
     };
 
-    /* Policy inputs; optional mirrors the GLK field presence semantics. */
+    /* Policy inputs; optional mirrors the GLK field presence semantics. A
+     * present (non-empty) lkm_path means the profile names its own .ko
+     * (CustomFile); absent means the bundled $GHOSTLOCK_HOME/helper.ko mirror
+     * (BundledKmi). The path is consumed by the composition root; this policy
+     * only classifies the delivery source. */
     struct LkmPolicyInput final {
         DeviceKernelFacts facts{};
         std::optional<std::uint16_t> profile_kmi{};
-        std::optional<std::uint64_t> lkm_path_token{};
+        std::optional<std::string_view> lkm_path{};
         std::optional<std::uint64_t> late_load_args_token{};
     };
 

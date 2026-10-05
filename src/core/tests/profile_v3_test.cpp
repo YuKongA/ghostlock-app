@@ -3,16 +3,14 @@
  * Exercises the production v3 reader end to end: the canonical MessagePack
  * encoder feeds parse_v3, which decodes against the combined root + owner
  * declaration, maps the token selection to the binary ids and lands the values
- * on the frozen transport. A v2 document with the same logical content is
- * parsed through the v2 reader and the two results are compared field by field,
- * so the two wires cannot drift. Rejection vectors pin the fail-closed rules
- * and the route-less 43284 selection is covered. */
+ * on the frozen transport. Rejection vectors pin the fail-closed rules and the
+ * route-less 43284 selection is covered. The v2 comparison vectors were removed
+ * in S4 R2c with the v2 wire. */
 
 #include "profile/glkv3_parse.hpp"
 #include "profile_bind_compat.hpp"
 
 #include "backend/cve_2026_43284_state.hpp"
-#include "profile/binary.h"
 #include "profile/glkv3.hpp"
 
 #include <cassert>
@@ -24,9 +22,9 @@
 #include <utility>
 #include <vector>
 
-using ghostlock::binary_profile::component_ids;
-using ghostlock::binary_profile::looks_like_glkv3;
-using ghostlock::binary_profile::parse_v3;
+using ghostlock::tests::profile_bind::component_ids;
+using ghostlock::profile::looks_like_glkv3;
+using ghostlock::tests::profile_bind::parse_v3;
 using ghostlock::profile::glkv3::Document;
 using ghostlock::profile::glkv3::Entry;
 using ghostlock::profile::glkv3::Section;
@@ -55,65 +53,26 @@ namespace {
         doc.backend = "cve_2026_43499";
         doc.has_route = true;
         doc.route = "multicast_waiter";
-        put(doc, "meta", "kernel_major", u(6));
-        put(doc, "meta", "fallback_route", u(2));
-        put(doc, "meta", "safe_mode", b(true));
-        put(doc, "meta", "vr_guard", b(true));
-        put(doc, "task_struct", "prio", u(132));
-        put(doc, "task_struct", "real_cred", u(0x12345678));
-        put(doc, "cred", "copy_size", u(0x88));
-        put(doc, "cred", "caps_value", u(0xffffffffffffffffULL));
-        put(doc, "offset", "init_task", u(0x20dc000));
-        put(doc, "offset", "vr_sys_exit_tp", u(0x2a));
-        put(doc, "kernel", "compact_waiter", b(true));
-        put(doc, "kernel", "kernelsnitch_collisions", u(4));
-        put(doc, "kernel", "mm_struct_sz", u(0x400));
-        put(doc, "execution.stages", "w1_attempts", u(15));
-        put(doc, "route.multicast_waiter", "waiter_off", i(96));
-        put(doc, "route.multicast_waiter", "buffer_size", u(512));
+        put(doc, "common", "kernel_major", u(6));
+        put(doc, "common", "fallback_route", u(2));
+        put(doc, "common", "safe_mode", b(true));
+        put(doc, "common", "vr_guard", b(true));
+        put(doc, "platform.abi.task_struct", "prio", u(132));
+        put(doc, "platform.abi.task_struct", "real_cred", u(0x12345678));
+        put(doc, "backend.cve_2026_43499.cred", "copy_size", u(0x88));
+        put(doc, "backend.cve_2026_43499.cred", "caps_value", u(0xffffffffffffffffULL));
+        put(doc, "platform.abi.offset", "init_task", u(0x20dc000));
+        put(doc, "backend.cve_2026_43499.offset", "vr_sys_exit_tp", u(0x2a));
+        put(doc, "backend.cve_2026_43499.kernel", "compact_waiter", b(true));
+        put(doc, "backend.cve_2026_43499.kernel", "kernelsnitch_collisions", u(4));
+        put(doc, "backend.cve_2026_43499.kernel", "mm_struct_sz", u(0x400));
+        put(doc, "backend.cve_2026_43499.execution.stages", "w1_attempts", u(15));
+        put(doc, "backend.cve_2026_43499.route.multicast_waiter", "waiter_off", i(96));
+        put(doc, "backend.cve_2026_43499.route.multicast_waiter", "buffer_size", u(512));
         put(doc, "backend.cve_2026_43499", "steps", u(2));
         return doc;
     }
 
-    namespace v2 {
-        void put_u16(std::string &out, uint16_t value) {
-            out.push_back(static_cast<char>(value & 0xff));
-            out.push_back(static_cast<char>((value >> 8) & 0xff));
-        }
-        void put_u32(std::string &out, uint32_t value) {
-            for (int k = 0; k < 4; k++) out.push_back(static_cast<char>((value >> (8 * k)) & 0xff));
-        }
-        void put_u64(std::string &out, uint64_t value) {
-            for (int k = 0; k < 8; k++) out.push_back(static_cast<char>((value >> (8 * k)) & 0xff));
-        }
-        struct VEntry { std::string key; int64_t value; };
-        struct VSection { std::string name; std::vector<VEntry> entries; };
-
-        std::string build_43499(const std::string &release,
-                                const std::vector<VSection> &sections) {
-            std::string out;
-            put_u32(out, ghostlock::binary_profile::kMagic);
-            put_u16(out, ghostlock::binary_profile::kVersion);
-            put_u16(out, ghostlock::binary_profile::kTerminalRootChild);
-            put_u16(out, ghostlock::binary_profile::kBackendCve202643499);
-            put_u16(out, ghostlock::profile::kRouteMulticastWaiter);
-            put_u16(out, static_cast<uint16_t>(release.size()));
-            put_u16(out, 0);
-            out += release;
-            put_u16(out, static_cast<uint16_t>(sections.size()));
-            for (const VSection &section : sections) {
-                out.push_back(static_cast<char>(section.name.size()));
-                out += section.name;
-                put_u32(out, static_cast<uint32_t>(section.entries.size()));
-                for (const VEntry &entry : section.entries) {
-                    out.push_back(static_cast<char>(entry.key.size()));
-                    out += entry.key;
-                    put_u64(out, static_cast<uint64_t>(entry.value));
-                }
-            }
-            return out;
-        }
-    } // namespace v2
 } // namespace
 
 int main() {
@@ -143,51 +102,18 @@ int main() {
     assert(v3parsed.execution.w1_attempts == 15);
     assert(v3parsed.geometry.mcast_waiter_off.value_or(0) == 96);
     assert(v3parsed.geometry.mcast_buffer_size.value_or(0) == 512);
-    assert(v3ids.terminal == ghostlock::binary_profile::kTerminalRootChild);
-    assert(v3ids.backend == ghostlock::binary_profile::kBackendCve202643499);
+    assert(v3ids.terminal == static_cast<uint16_t>(ghostlock::contract::TerminalKind::RootChild));
+    assert(v3ids.backend == static_cast<uint16_t>(ghostlock::contract::BackendKind::Cve2026_43499));
     assert(v3ids.middleware == ghostlock::profile::kRouteMulticastWaiter);
     assert(v3ids.steps == 2);
 
-    /* ---- v2 and v3 with the same logical content agree field by field. ---- */
+    /* ---- Negative: the v2 magic root is not GLKv3 and is rejected. ---- */
     {
-        const std::string v2doc = v2::build_43499("6.6.77-v3-transport-test", {
-            {"meta", {{"kernel_major", 6}, {"fallback_route", 2}, {"safe_mode", 1}, {"vr_guard", 1}}},
-            {"task_struct", {{"prio", 132}, {"real_cred", 0x12345678}}},
-            {"cred", {{"copy_size", 0x88}, {"caps_value", -1}}},
-            {"offset", {{"init_task", 0x20dc000}, {"vr_sys_exit_tp", 0x2a}}},
-            {"kernel", {{"compact_waiter", 1}, {"kernelsnitch_collisions", 4}, {"mm_struct_sz", 0x400}}},
-            {"execution.stages", {{"w1_attempts", 15}}},
-            {"route.multicast_waiter", {{"waiter_off", 96}, {"buffer_size", 512}}},
-            {"backend.cve_2026_43499", {{"steps", 2}}},
-        });
-        char v2release[64] = {0};
-        ghostlock::profile::kernel_offsets v2parsed = {};
-        component_ids v2ids = {};
+        char buf[64] = {0};
+        ghostlock::profile::kernel_offsets parsed = {};
+        const std::string v2doc("\x21\x07\x00\x0d\x02\x00", 6);
         assert(!looks_like_glkv3(v2doc));
-        assert(ghostlock::binary_profile::parse(v2doc, &v2parsed, v2release,
-                                                sizeof(v2release), &v2ids) == 0);
-        assert(std::strcmp(v2release, release) == 0);
-        assert(v2parsed.route == v3parsed.route);
-        assert(v2parsed.meta.kernel_major == v3parsed.meta.kernel_major);
-        assert(v2parsed.meta.fallback_route == v3parsed.meta.fallback_route);
-        assert(v2parsed.meta.safe_mode == v3parsed.meta.safe_mode);
-        assert(v2parsed.misc.vr_guard == v3parsed.misc.vr_guard);
-        assert(v2parsed.task.prio == v3parsed.task.prio);
-        assert(v2parsed.task.real_cred == v3parsed.task.real_cred);
-        assert(v2parsed.credential.copy_size == v3parsed.credential.copy_size);
-        assert(v2parsed.credential.caps_value == v3parsed.credential.caps_value);
-        assert(v2parsed.offsets.init_task == v3parsed.offsets.init_task);
-        assert(v2parsed.misc.vr_sys_exit_tp == v3parsed.misc.vr_sys_exit_tp);
-        assert(v2parsed.misc.compact_waiter == v3parsed.misc.compact_waiter);
-        assert(v2parsed.misc.kernelsnitch_collisions == v3parsed.misc.kernelsnitch_collisions);
-        assert(v2parsed.misc.mm_struct_sz == v3parsed.misc.mm_struct_sz);
-        assert(v2parsed.execution.w1_attempts == v3parsed.execution.w1_attempts);
-        assert(v2parsed.geometry.mcast_waiter_off == v3parsed.geometry.mcast_waiter_off);
-        assert(v2parsed.geometry.mcast_buffer_size == v3parsed.geometry.mcast_buffer_size);
-        assert(v2ids.terminal == v3ids.terminal);
-        assert(v2ids.backend == v3ids.backend);
-        assert(v2ids.middleware == v3ids.middleware);
-        assert(v2ids.steps == v3ids.steps);
+        assert(parse_v3(v2doc, &parsed, buf, sizeof(buf)) == -1);
     }
 
     /* ---- Route-less 43284 v3 selection + private section. ---- */
@@ -209,8 +135,8 @@ int main() {
         char buf[64] = {0};
         assert(parse_v3(encoded, &parsed, buf, sizeof(buf), &ids, nullptr,
                         &profile_43284) == 0);
-        assert(ids.backend == ghostlock::binary_profile::kBackendCve202643284);
-        assert(ids.terminal == ghostlock::binary_profile::kTerminalRootChild);
+        assert(ids.backend == static_cast<uint16_t>(ghostlock::contract::BackendKind::Cve2026_43284));
+        assert(ids.terminal == static_cast<uint16_t>(ghostlock::contract::TerminalKind::RootChild));
         assert(ids.middleware == ghostlock::profile::kRouteAuto);
         assert(parsed.route == ghostlock::profile::kRouteAuto);
         assert(profile_43284.kmi.value_or(0) == 5150);
@@ -222,7 +148,6 @@ int main() {
     {
         char buf[64] = {0};
         ghostlock::profile::kernel_offsets parsed = {};
-        component_ids ids = {};
 
         assert(!looks_like_glkv3(std::string_view("\x01", 1)));
         assert(parse_v3(std::string_view("\x01", 1), &parsed, buf, sizeof(buf)) == -1);
@@ -236,7 +161,7 @@ int main() {
         assert(parse_v3(ghostlock::profile::glkv3::encode(unknown_section), &parsed, buf, sizeof(buf)) == -1);
 
         Document unknown_key = make_43499();
-        put(unknown_key, "meta", "nope", u(1));
+        put(unknown_key, "common", "nope", u(1));
         assert(parse_v3(ghostlock::profile::glkv3::encode(unknown_key), &parsed, buf, sizeof(buf)) == -1);
 
         Document wrong_backend_section = make_43499();

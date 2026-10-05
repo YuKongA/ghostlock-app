@@ -6,6 +6,8 @@
 
 #include "backend/cve_2026_43284/lkm/lkm_image.hpp"
 
+#include "backend/cve_2026_43284/schema.hpp"
+
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -338,15 +340,11 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         }
     } // namespace
 
+    /* S4 R1: the package-name convention is declared by the owner schema; see
+     * backend/cve_2026_43284/schema.hpp root_package_convention. Values are
+     * unchanged: KernelSU -> me.weishu.kernelsu, every other kind -> empty. */
     std::string_view default_root_package(terminal::RootProgramKind kind) noexcept {
-        switch (kind) {
-        case terminal::RootProgramKind::KernelSU:
-            return "me.weishu.kernelsu";
-        case terminal::RootProgramKind::FolkPatch:
-        case terminal::RootProgramKind::Custom:
-        default:
-            return {};
-        }
+        return root_package_convention(kind);
     }
 
     std::string_view vermagic_diff_reason_name(VermagicDiffReason reason) noexcept {

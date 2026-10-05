@@ -15,6 +15,17 @@ KSUD="$HOME_DIR/ksud"
 echo "[*] lkm cmd start uid=$(id -u) selinux=$(getenforce 2>/dev/null)" >"$LOG"
 chmod 644 "$LOG" 2>/dev/null
 
+# The resident channel node is created by ueventd as 0600 root and carries the
+# generic u:object_r:device:s0 label (Android ignores miscdevice.mode, and
+# /dev/glk is not covered by the vendor file_contexts). The client is an ordinary
+# process, so relax BOTH for the session-bound window: ueventd's DAC mode, and
+# the SELinux type -- null_device is a chr_file type the shell domain may
+# read/write/ioctl. This runs as root while SELinux is still permissive.
+chmod 666 /dev/glk 2>/dev/null
+chcon u:object_r:null_device:s0 /dev/glk 2>/dev/null
+# NOTE(App path): untrusted_app may lack ioctl on null_device; an App-driven run
+# needs its own label decision (tracked in docs/analysis/contract-design.md).
+
 # --- ksud discovery (same manager list as the 43499 root script) ---
 [ -x "$KSUD" ] || KSUD=$(find /data/app -path '*/me.weishu.kernelsu.pr*/lib/arm64/libksud.so' 2>/dev/null | head -1)
 [ -x "$KSUD" ] || KSUD=$(find /data/app -path '*/me.weishu.kernelsu-*/lib/arm64/libksud.so' 2>/dev/null | head -1)
@@ -26,19 +37,19 @@ echo "[*] ksud=$KSUD" >>"$LOG"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo '[!] not uid 0; aborting' >>"$LOG"
-  touch /dev/dfm1
+  touch /dev/dfm1 /data/local/tmp/.ghostlock_lkm_fail
   exit 1
 fi
 
 if grep -q '^kernelsu[[:space:]]' /proc/modules 2>/dev/null; then
   echo '[+] KernelSU already loaded' >>"$LOG"
-  touch /dev/dfm0
+  touch /dev/dfm0 /data/local/tmp/.ghostlock_lkm_ok
   exit 0
 fi
 
 if [ ! -x "$KSUD" ]; then
   echo '[!] ksud missing' >>"$LOG"
-  touch /dev/dfm1
+  touch /dev/dfm1 /data/local/tmp/.ghostlock_lkm_fail
   exit 1
 fi
 
@@ -46,7 +57,7 @@ KVER=$(uname -r | cut -d. -f1-2)
 AVER=$(uname -r | grep -o 'android[0-9]*' | head -1)
 if [ -z "$AVER" ] || [ -z "$KVER" ]; then
   echo '[!] cannot parse KMI from uname -r' >>"$LOG"
-  touch /dev/dfm1
+  touch /dev/dfm1 /data/local/tmp/.ghostlock_lkm_fail
   exit 1
 fi
 KMI="$AVER-$KVER"
@@ -60,11 +71,11 @@ echo "[*] late-load exit=$?" >>"$LOG"
 for i in $(seq 1 50); do
   if grep -q kernelsu /proc/modules 2>/dev/null; then
     echo '[+] KernelSU module loaded' >>"$LOG"
-    touch /dev/dfm0
+    touch /dev/dfm0 /data/local/tmp/.ghostlock_lkm_ok
     exit 0
   fi
   sleep 0.1
 done
 echo '[!] KernelSU module not loaded' >>"$LOG"
-touch /dev/dfm1
+touch /dev/dfm1 /data/local/tmp/.ghostlock_lkm_fail
 exit 1

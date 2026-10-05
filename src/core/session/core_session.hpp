@@ -1,6 +1,7 @@
 #ifndef GHOSTLOCK_CORE_SESSION_HPP
 #define GHOSTLOCK_CORE_SESSION_HPP
 
+#include "contract/capabilities.hpp"
 #include "session/runtime_config.h"
 
 #include <cstddef>
@@ -22,6 +23,15 @@ namespace ghostlock::session {
         alignas(kBackendStateAlign) std::byte backend_state[kBackendStateBytes]{};
         bool backend_state_ready = false;
         void (*backend_state_dtor)(void *) noexcept = nullptr;
+
+        /* Non-owning capability view (contract-design.md section 5). Appended
+         * last so no pre-existing field offset moves (session_layout_test locks
+         * those). The composition root fills this in with implementations whose
+         * lifetime covers the chain; a call-block-local view (for example the
+         * 43499 Tier 1 adapter built in steps.cpp) is passed directly and must
+         * NOT be stored here, because its adapters die with the block. A null
+         * member means "not provided" (R7: unsupported is an error, never 0). */
+        contract::Capabilities capabilities{};
 
         CoreSession() noexcept;
 

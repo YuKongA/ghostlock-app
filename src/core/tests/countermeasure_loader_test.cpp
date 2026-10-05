@@ -1,4 +1,4 @@
-/* Host test for the CM-2 countermeasure loader (platform/countermeasure).
+/* Host test for the CM-2 countermeasure loader (plugin).
  *
  * The positive path is a real dlopen/dlsym/dlclose of the C test plugins built
  * next to this binary; the negative paths mix real plugins (bad ABI, missing
@@ -9,11 +9,11 @@
  * No hook is ever dispatched here (CM-3 owns dispatch); the valid plugin counts
  * invocations and this test proves the count stays zero. */
 
-#include "platform/countermeasure/loader.hpp"
-#include "platform/countermeasure/sha256.hpp"
+#include "plugin/loader.hpp"
+#include "plugin/sha256.hpp"
 
 #include "contract/countermeasure.hpp"
-#include "contract/glk_cm_abi.h"
+#include "contract/abi/glk_contract_abi.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -27,19 +27,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifndef GLK_CM_TEST_PLUGIN_DIR
-#define GLK_CM_TEST_PLUGIN_DIR "."
+#ifndef GLK_TEST_PLUGIN_DIR
+#define GLK_TEST_PLUGIN_DIR "."
 #endif
 
-using ghostlock::platform::countermeasure::default_loader_ops;
-using ghostlock::platform::countermeasure::kMaxHooks;
-using ghostlock::platform::countermeasure::Loader;
-using ghostlock::platform::countermeasure::LoaderOps;
-using ghostlock::platform::countermeasure::LoadResult;
-using ghostlock::platform::countermeasure::LoadStatus;
-using ghostlock::platform::countermeasure::load_status_name;
-using ghostlock::platform::countermeasure::sha256;
-using ghostlock::platform::countermeasure::sha256_file;
+using ghostlock::plugin::default_loader_ops;
+using ghostlock::plugin::kMaxHooks;
+using ghostlock::plugin::Loader;
+using ghostlock::plugin::LoaderOps;
+using ghostlock::plugin::LoadResult;
+using ghostlock::plugin::LoadStatus;
+using ghostlock::plugin::load_status_name;
+using ghostlock::plugin::sha256;
+using ghostlock::plugin::sha256_file;
 
 using ghostlock::contract::Capability;
 using ghostlock::contract::kHostImplementedCaps;
@@ -80,7 +80,7 @@ namespace {
     }
 
     std::string plugin_path(const char *name) {
-        return std::string(GLK_CM_TEST_PLUGIN_DIR) + "/" + name;
+        return std::string(GLK_TEST_PLUGIN_DIR) + "/" + name;
     }
 
     std::string hex_of(const std::uint8_t digest[32]) {
@@ -98,7 +98,7 @@ namespace {
 
     namespace fake {
 
-        const glk_cm_module *g_module = nullptr;
+        const glk_module *g_module = nullptr;
         std::uint32_t g_mode = 0100644u;
         bool g_exists = true;
         bool g_open_ok = true;
@@ -108,13 +108,13 @@ namespace {
         int g_close = 0;
         char g_digest[65] = {};
 
-        glk_cm_hook g_hook{};
-        glk_cm_module g_module_storage{};
+        glk_hook g_hook{};
+        glk_module g_module_storage{};
         int g_handle_token = 0;
 
-        int32_t hook_fn(void *, glk_cm_stage, const glk_host_ops *) { return 0; }
+        int32_t hook_fn(void *, glk_stage, const glk_contract_ops *) { return 0; }
 
-        const glk_cm_module *entry(uint32_t) { return g_module; }
+        const glk_module *entry(uint32_t) { return g_module; }
 
         void *open_lib(const char *) {
             ++g_open;
@@ -124,7 +124,7 @@ namespace {
         void close_lib(void *) { ++g_close; }
 
         void *sym(void *, const char *name) {
-            if (!g_symbol_ok || std::strcmp(name, "glk_cm_entry") != 0) {
+            if (!g_symbol_ok || std::strcmp(name, "glk_entry") != 0) {
                 return nullptr;
             }
             return reinterpret_cast<void *>(&entry);
@@ -179,22 +179,22 @@ namespace {
             g_close = 0;
             std::memcpy(g_digest, kGoodSha, sizeof(g_digest));
 
-            g_hook = glk_cm_hook{};
-            g_hook.trigger = GLK_CM_TRIGGER_ON_STAGE;
-            g_hook.stage = GLK_CM_STAGE_PRE_SPAWN;
+            g_hook = glk_hook{};
+            g_hook.trigger = GLK_TRIGGER_ON_STAGE;
+            g_hook.stage = GLK_STAGE_PRE_SPAWN;
             g_hook.priority = 0u;
             g_hook.period_ms = 0u;
             g_hook.fn = &hook_fn;
             g_hook.user = nullptr;
             g_hook.name = "fake.hook";
 
-            g_module_storage = glk_cm_module{};
-            g_module_storage.abi_version = GLK_CM_ABI_VERSION;
-            g_module_storage.size = static_cast<std::uint32_t>(sizeof(glk_cm_module));
+            g_module_storage = glk_module{};
+            g_module_storage.abi_version = GLK_ABI_VERSION;
+            g_module_storage.size = static_cast<std::uint32_t>(sizeof(glk_module));
             g_module_storage.name = "fake.module";
             g_module_storage.version = "1.0";
             g_module_storage.required_caps =
-                    static_cast<std::uint32_t>(GLK_CM_CAP_KERNEL_READ);
+                    static_cast<std::uint32_t>(GLK_CAP_KERNEL_READ);
             g_module_storage.hook_count = 1u;
             g_module_storage.hooks = &g_hook;
 
@@ -264,7 +264,7 @@ namespace {
         check(sha256_file(path.c_str(), digest, sizeof(digest)) == 0, "sha256_file valid");
         check(std::strlen(digest) == 64u, "digest length");
 
-        const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), default_loader_ops());
+        const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), default_loader_ops());
         LoadResult result =
                 loader.load(path.c_str(), digest, kHostImplementedCaps,
                             kHostImplementedTriggers);
@@ -278,8 +278,8 @@ namespace {
               "required caps");
         check(result.hook_count == 1u, "borrowed hook count");
         check(result.hooks != nullptr, "borrowed hooks");
-        check(result.hooks[0].trigger == GLK_CM_TRIGGER_ON_STAGE, "hook trigger");
-        check(result.hooks[0].stage == GLK_CM_STAGE_PRE_SPAWN, "hook stage");
+        check(result.hooks[0].trigger == GLK_TRIGGER_ON_STAGE, "hook trigger");
+        check(result.hooks[0].stage == GLK_STAGE_PRE_SPAWN, "hook stage");
         check(result.hooks[0].fn != nullptr, "hook fn");
         check(std::strcmp(result.hooks[0].name, "test.pre_spawn") == 0, "hook name");
 
@@ -288,7 +288,7 @@ namespace {
         check(handle != nullptr, "independent dlopen");
         using InvocationsFn = int (*)();
         auto invocations =
-                reinterpret_cast<InvocationsFn>(::dlsym(handle, "glk_cm_test_invocations"));
+                reinterpret_cast<InvocationsFn>(::dlsym(handle, "glk_test_invocations"));
         check(invocations != nullptr, "invocations symbol");
         check(invocations() == 0, "loader invoked no hook");
         (void)::dlclose(handle);
@@ -296,7 +296,7 @@ namespace {
 
     void test_hash_mismatch_real() {
         const std::string path = plugin_path("cm_test_plugin.so");
-        const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), default_loader_ops());
+        const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), default_loader_ops());
         const LoadResult result =
                 loader.load(path.c_str(), kBadSha, kHostImplementedCaps,
                             kHostImplementedTriggers);
@@ -309,7 +309,7 @@ namespace {
             const std::string path = plugin_path("cm_test_plugin_badabi.so");
             char digest[65] = {};
             check(sha256_file(path.c_str(), digest, sizeof(digest)) == 0, "sha badabi");
-            const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), default_loader_ops());
+            const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), default_loader_ops());
             const LoadResult result =
                     loader.load(path.c_str(), digest, kHostImplementedCaps,
                                 kHostImplementedTriggers);
@@ -320,7 +320,7 @@ namespace {
             const std::string path = plugin_path("cm_test_plugin_missing_entry.so");
             char digest[65] = {};
             check(sha256_file(path.c_str(), digest, sizeof(digest)) == 0, "sha missing");
-            const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), default_loader_ops());
+            const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), default_loader_ops());
             const LoadResult result =
                     loader.load(path.c_str(), digest, kHostImplementedCaps,
                                 kHostImplementedTriggers);
@@ -330,9 +330,9 @@ namespace {
     }
 
     void test_path_rejections() {
-        const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), default_loader_ops());
+        const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), default_loader_ops());
         const std::string parent =
-                std::string(GLK_CM_TEST_PLUGIN_DIR) + "/../cm/cm_test_plugin.so";
+                std::string(GLK_TEST_PLUGIN_DIR) + "/../cm/cm_test_plugin.so";
         check_status(loader.load(parent.c_str(), kGoodSha, kHostImplementedCaps,
                                  kHostImplementedTriggers),
                      LoadStatus::PathRejected, "parent component");
@@ -354,7 +354,7 @@ namespace {
 
     void test_symlink_escape_real() {
         const std::string valid = plugin_path("cm_test_plugin.so");
-        char tmpl[] = "/tmp/glk_cm_link_XXXXXX";
+        char tmpl[] = "/tmp/glk_plugin_link_XXXXXX";
         char *dir = ::mkdtemp(tmpl);
         check(dir != nullptr, "mkdtemp");
         const std::string link = std::string(dir) + "/escape.so";
@@ -381,7 +381,7 @@ namespace {
 
         counted::reset();
         {
-            const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), counted::ops());
+            const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), counted::ops());
             LoadResult result =
                     loader.load(valid.c_str(), good_digest, kHostImplementedCaps,
                                 kHostImplementedTriggers);
@@ -394,7 +394,7 @@ namespace {
         check(counted::g_open == 1 && counted::g_close == 1, "released exactly once");
 
         counted::reset();
-        const Loader loader(std::string(GLK_CM_TEST_PLUGIN_DIR), counted::ops());
+        const Loader loader(std::string(GLK_TEST_PLUGIN_DIR), counted::ops());
         for (int i = 0; i < 3; ++i) {
             const LoadResult result =
                     loader.load(badabi.c_str(), bad_digest, kHostImplementedCaps,
@@ -410,7 +410,7 @@ namespace {
         {
             fake::prepare();
             fake::g_module_storage.required_caps =
-                    static_cast<std::uint32_t>(GLK_CM_CAP_FILE_CACHE_WRITE);
+                    static_cast<std::uint32_t>(GLK_CAP_FILE_CACHE_WRITE);
             const LoadResult result = fake_load(kGoodSha);
             check_status(result, LoadStatus::CapsRejected, "reserved capability");
             check(fake::g_close == 1, "reserved capability closed handle");
@@ -422,24 +422,28 @@ namespace {
         }
         {
             fake::prepare();
-            fake::g_hook.trigger = GLK_CM_TRIGGER_PERIODIC;
+            fake::g_hook.trigger = GLK_TRIGGER_PERIODIC;
             check_status(fake_load(kGoodSha), LoadStatus::TriggerRejected, "reserved trigger");
         }
         {
             fake::prepare();
-            fake::g_hook.trigger = GLK_CM_TRIGGER_ON_LOAD;
+            fake::g_hook.trigger = GLK_TRIGGER_ON_LOAD;
             check_status(fake_load(kGoodSha), LoadStatus::TriggerRejected, "on-load trigger");
         }
         {
             fake::prepare();
-            fake::g_hook.stage = GLK_CM_STAGE_PRE_ROUTE;
+            fake::g_hook.stage = GLK_STAGE_PRE_ROUTE;
             check_status(fake_load(kGoodSha), LoadStatus::StageRejected, "reserved stage");
         }
         {
+            /* delta-4: POST_TERMINAL is now implemented by the 43284 LKM
+             * residency window (contract-design.md 3.13), so it loads. PRE_ROUTE
+             * stays reserved (asserted above). */
             fake::prepare();
-            fake::g_hook.stage = GLK_CM_STAGE_POST_TERMINAL;
-            check_status(fake_load(kGoodSha), LoadStatus::StageRejected,
-                         "post-terminal stage");
+            fake::g_hook.stage = GLK_STAGE_POST_TERMINAL;
+            const LoadResult result = fake_load(kGoodSha);
+            check_status(result, LoadStatus::Ok, "post-terminal stage");
+            check(result.module.valid(), "post-terminal module valid");
         }
         {
             fake::prepare();
@@ -479,7 +483,7 @@ namespace {
         }
         {
             fake::prepare();
-            fake::g_module_storage.abi_version = GLK_CM_ABI_VERSION + 1u;
+            fake::g_module_storage.abi_version = GLK_ABI_VERSION + 1u;
             check_status(fake_load(kGoodSha), LoadStatus::AbiMismatch, "fake bad abi");
         }
         {

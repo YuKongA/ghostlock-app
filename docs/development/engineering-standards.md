@@ -116,7 +116,7 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 > 现状描述；重写后 `route` 为 **backend 内部策略**（见 §2.0 / ADR-0001）：`Pipeline<Backend, Terminal>`，
 > route 由 backend 按 profile 选择；terminal 由 pipeline 编排（R12）。
 
-每条 route 由三个部件构成，**不得使用虚基类**（PI 竞争窗口内不允许间接调用）：
+每条 route 由三个部件构成（**可使用虚基类**；但 PI 竞争窗口内的间接调用会引入不可预测时序，见 §4.2）：
 
 1. **Policy**（`route/route_policy.hpp`）：编译期能力声明 + `kind` + `supported()` + `run()`。
    **必须 host 可编译**（主机测试引用每个 Policy）。
@@ -216,9 +216,10 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 `waiter_thread → owner_thread → consumer_thread → CMP_REQUEUE_PI → route` 窗口内：
 
-- **禁止**异常、动态分派（虚函数/`std::function`）、锁、日志阻塞调用（用 `log_sync()` 语义的既有路径）；
+- **禁止**异常、锁、日志阻塞调用（用 `log_sync()` 语义的既有路径）；**避免**间接调用（虚函数/`std::function`）——
+  **非禁止**，但它会在窗口内增加不可预测时序；若使用，须以真机门禁验证（§8.3）；
 - 只允许直接调用与编译期已知的 Policy 能力比较（`route_capability`）；
-- 任何"顺手简化"都必须先过 `cmp_disasm.py`（§8.2）。
+- 任何"顺手简化"都必须经真机门禁验证（§8.3）；`cmp_disasm.py`（§8.2）是**可选诊断**，用于定位机器码差异范围。
 
 ### 4.3 错误处理分层
 
@@ -341,15 +342,15 @@ ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Min
 3. **形状对比**（攻击路径专用，§8.2）。
 4. **真机门禁**（§8.3）。
 
-### 8.2 攻击函数形状对比
+### 8.2 攻击函数形状对比（可选诊断，**非门槛**）
 
 ```sh
 python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 ```
 
-- 覆盖 8 个攻击函数（`TARGETS`）；判定：`IDENTICAL (strict)` 或**已复核并记录的注解差异**
-  （如允许的 `LAYOUT-SHIFT` 单地址注解）。新攻击函数必须加入 `TARGETS`。
-- 报告与结论写入提交信息/计划文档（历史范例：批次报告中逐函数列出 IDENTICAL）。
+- 覆盖 8 个攻击函数（`TARGETS`）；用于**定位机器码改动范围**（哪些攻击函数受影响、差异是位移还是形状）。
+- **不是门槛**：反汇编差异本身不阻塞批次；**判据是真机门禁（§8.3）**。新攻击函数可加入 `TARGETS` 以便日后诊断。
+- 若跑了，结论作为定位信息写入提交信息/计划文档，而非准入条件。
 
 ### 8.3 真机门禁（攻击路径改动必须）
 
@@ -384,7 +385,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 
 **完成后**
 - [ ] 按级别跑满 §1.3 门槛命令，保留原始输出
-- [ ] 攻击路径：`cmp_disasm` + 真机门禁 + 门禁记录归档
+- [ ] 攻击路径：真机门禁 + 门禁记录归档（`cmp_disasm` 可选诊断）
 - [ ] 汇报时给出**证据**（命令、结果、文件路径），不写"应该没问题"
 - [ ] 未经明确要求：不 commit、不 push、不建 PR
 

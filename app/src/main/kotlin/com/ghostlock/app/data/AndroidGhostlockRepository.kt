@@ -187,8 +187,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             forceAttackTest = forceAttackTest,
             executionMode = executionMode,
             backendKind = backendKind,
-            shizukuStatus = if (executionMode.requiresShizuku) shizukuRunner.status()
-            else ShizukuStatus.NOT_REQUIRED,
+            /* The shell route is required by the Shizuku mode AND by the
+             * cve_2026_43284 backend, so the status must reflect that or the run
+             * button would be disabled with no way to start Shizuku. */
+            shizukuStatus = if (runRequiresShizuku(executionMode, backendKind)) {
+                shizukuRunner.status()
+            } else {
+                ShizukuStatus.NOT_REQUIRED
+            },
         )
     }
 
@@ -656,8 +662,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
             var profileBlob = profileController.nativeDocument(config)
                 ?: error("profile is unavailable for $release")
-            // v2: safe_mode lives in the meta section; there is no fixed slot
-            // offset, so the blob is rescanned and rewritten.
+            // GLKv3: safe_mode lives in the common section; there is no fixed slot
+            // offset, so the codec locates and rewrites the map value.
             if (safeModeEnabled) {
                 profileBlob = NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
             }

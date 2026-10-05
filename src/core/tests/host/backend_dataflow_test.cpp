@@ -8,13 +8,17 @@
 #include "host_attack_script.hpp"
 #include "backend/cve_2026_43499_state.hpp"
 
+#include "backend/cve_2026_43499/capability_adapters.hpp"
+#include "backend/cve_2026_43499/route/route_policy.hpp"
 #include "pipeline/pipeline.hpp"
 #include "backend/cve_2026_43499_backend.hpp"
 #include "session/core_session.hpp"
 #include "terminal/root_child.hpp"
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdint>
+#include <span>
 
 namespace {
     using ghostlock::host::script;
@@ -57,12 +61,12 @@ namespace {
             if (found == nullptr) found = &document.append_section(section);
             found->add(key, raw);
         };
-        add("meta", "kernel_major", 6);
-        add("execution.stages", "w1_attempts", 3);
-        add("execution.stages", "w1_scratch_repair_attempts", 1);
-        add("execution.stages", "w2_attempts", 4);
-        add("execution.stages", "w3_chain_rounds", 2);
-        add("execution.stages", "w3_attempts", 3);
+        add("common", "kernel_major", 6);
+        add("backend.cve_2026_43499.execution.stages", "w1_attempts", 3);
+        add("backend.cve_2026_43499.execution.stages", "w1_scratch_repair_attempts", 1);
+        add("backend.cve_2026_43499.execution.stages", "w2_attempts", 4);
+        add("backend.cve_2026_43499.execution.stages", "w3_chain_rounds", 2);
+        add("backend.cve_2026_43499.execution.stages", "w3_attempts", 3);
         last_w2_attempts = 4;
         /* Pipeline::run constructs the backend state, state_from binds the
          * Document, and its RAII guard destroys the state on exit. The install
@@ -133,6 +137,44 @@ namespace {
         return ok;
     }
 
+    /* Beta: the Tier 1 KernelMemory adapter the PreSpawn/PostSpawn blocks build
+     * must report the unimplemented primitives as an explicit error, never a
+     * fake 0 (R7), and its inherited lifecycle defaults stay fail-closed. */
+    bool test_capability_adapters() {
+        using ghostlock::backend::cve_2026_43499::Tier1KernelMemory;
+        using ghostlock::backend::cve_2026_43499::route::SelectPolicy;
+        using ghostlock::contract::CapabilityError;
+        using ghostlock::contract::CapabilityState;
+        using ghostlock::contract::CarrierKind;
+        using ghostlock::contract::MemoryChannel;
+
+        Tier1KernelMemory<SelectPolicy> kernel;
+        std::byte buffer[8]{};
+        bool ok = true;
+
+        const auto read = kernel.read(
+                0x1000, std::span<std::byte>(buffer), MemoryChannel::Unavailable);
+        ok &= expect(!read.has_value(), "adapter: read returns an error");
+        ok &= expect(read.error() == CapabilityError::Unsupported,
+                     "adapter: read is Unsupported, not a fake 0");
+
+        const auto write = kernel.write(
+                0x1000, std::span<const std::byte>(buffer),
+                MemoryChannel::Unavailable);
+        ok &= expect(!write.has_value() &&
+                             write.error() == CapabilityError::Unsupported,
+                     "adapter: write is Unsupported");
+
+        ok &= expect(kernel.state(MemoryChannel::Unavailable) ==
+                             CapabilityState::NotSupported,
+                     "adapter: default state is NotSupported");
+        ok &= expect(!kernel.establish(MemoryChannel::Unavailable,
+                                       CarrierKind::Unavailable)
+                              .has_value(),
+                     "adapter: default establish is Unsupported");
+        return ok;
+    }
+
     bool test_w1w2_skips_w3() {
         reset_script();
         const auto result = run_once_with<ghostlock::backend::Cve43499_W1W2>();
@@ -153,6 +195,7 @@ int main() {
     ok &= test_w2_retry_until_success();
     ok &= test_w2_exhausts_attempts();
     ok &= test_selinux_retry_then_w2();
+    ok &= test_capability_adapters();
     ok &= test_w1w2_skips_w3();
     if (ok) {
         std::puts("backend_dataflow_test: ok");

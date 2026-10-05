@@ -26,6 +26,7 @@
 #include "backend/cve_2026_43284/backend_terminal.hpp"
 #include "backend/cve_2026_43284/ipsec/ipsec.hpp"
 #include "backend/cve_2026_43284/lkm/lkm_image.hpp"
+#include "backend/cve_2026_43284/lkm_window.hpp"
 #include "backend/cve_2026_43284/real_ops.hpp"
 #include "backend/cve_2026_43284/stage_runner.hpp"
 #include "profile/document.hpp"
@@ -62,6 +63,10 @@ namespace ghostlock::backend::cve_2026_43284 {
     struct ProductionResources final {
         stage_runner::PlanBuffer module{};
         RealChainContext chain{};
+        /* Delta-2 LKM residency window. Owns the /dev/glk adapters; the chain's
+         * lkm_window pointer aliases it, so this object must not move once
+         * bind_production_execution_with() returns. */
+        LkmWindowRuntime lkm_window{};
         steps::CarrierTarget carrier{};
         /* Owns the convention module path so the state's lkm_image_path view
          * stays valid across the run without adding a RuntimeConfig field

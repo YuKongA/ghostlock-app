@@ -65,9 +65,13 @@ Where the pieces live:
   `platform/device_facts.*` - the injectable `DeviceProbeOps` fact collector
   (B5-7, fail-closed; kernel-symbol absence is recorded, not fatal);
   `platform/vivo/` - the vendor vr.ko guard.
-- `ancillary/` - the neutral ancillary mechanism (`AncillaryStage`,
-  `AncillaryOps`, `AncillaryPolicyFor`) and the injected controller; the
-  registry, gate and context are supplied by the caller.
+- `plugin/` - the countermeasure plugin facility: `controller.hpp` / `policy.hpp`
+  (the neutral mechanism (`PluginStage`, `PluginPolicyFor`) and the
+  injected controller), the out-of-tree hook `registry.hpp`, and the fail-closed
+  `loader.hpp` / `sha256.hpp`. Behaviors consume the non-owning
+  `contract::Capabilities` aggregate, and the registry, gate and context are
+  supplied by the caller. It loads against the C ABI in
+  `contract/abi/glk_contract_abi.h` (C++ mapping: `contract/countermeasure.hpp`).
 - `memory/` - address resolution and the neutral `LaunchGeometry` bootstrap POD
   (decoupled from the backend profile), heap/page state and route-neutral payload
   encoding.
@@ -93,16 +97,20 @@ Where the pieces live:
   tokens, ordered sections with key -> Value entries); it never names a field or
   applies a default. `profile/schema.hpp` validates/binds an owner Schema onto a
   typed View in production-strict mode (unknown section/key rejected).
-- `profile/binary.*` - the legacy v2 container (object sections). Production
-  writes GLKv3 and reads v3 + v2; the v2 writer is behind
-  `GHOSTLOCK_ENABLE_V2_WRITER` (host tests only). `profile/entry.*` owns the
-  stdin/file entry points; v1 JSON never reaches native (Kotlin converts it).
+- `profile/glkv3_parse.*` - the only profile reader: it discriminates a GLKv3
+  map root (`looks_like_glkv3`), frames it (`frame_v3`) and enforces
+  `schema == 3`. `profile/entry.*` owns the stdin/file entry points and the
+  component tokens resolve through `contract::*Kind` (the composition root),
+  not through a transport-specific vocabulary. Both the v2 object-section
+  container (framer + writer) and its component-id header were removed in
+  S4 R2c/R2c-2: a v2 document is now rejected outright. v1 JSON never reaches
+  native (Kotlin converts it).
 - Owner binding lives with the selected backend
   (`backend/cve_2026_43499/backend_profile.*` and `backend/cve_2026_43284`).
-- The owner Schema / GLKv3 FieldSpec sets are exported to
-  `app/src/test/resources/profile-manifest.tsv` and
-  `profile-manifest-v3.tsv`; the native, Kotlin and extractor tests cross-check
-  their field sets against them.
+- The owner GLKv3 FieldSpec sets are exported to
+  `profile-manifest-v3.tsv` (app test resource + profile-core runtime
+  resource); the native, Kotlin and extractor tests cross-check their field
+  sets against it.
 
 ## Compilation boundaries
 
@@ -120,9 +128,9 @@ Where the pieces live:
 
 ## Namespaces
 
-Top level: `ghostlock::{contract,pipeline,backend,platform,ancillary,terminal,
-memory,session,race,kernelsnitch,support,profile,profile_entry,binary_profile,
-target,runtime_time}`; `ghostlock::config` is physically under `session/`.
+Top level: `ghostlock::{contract,pipeline,backend,platform,plugin,terminal,
+memory,session,race,kernelsnitch,support,profile,profile_entry,target,
+runtime_time}`; `ghostlock::config` is physically under `session/`.
 Backend code nests per CVE (`backend::cve_2026_43499::{route,backend_profile}`,
 `backend::cve_2026_43284::{ipsec,pagecache,lkm,steps}`), platform code nests as
 `platform::{abi,runtime,vivo}`, and the GLKv3 codec is `profile::glkv3`.
@@ -137,7 +145,6 @@ Backend code nests per CVE (`backend::cve_2026_43499::{route,backend_profile}`,
 - `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` -
   attack-function disassembly gate (runs for attack-path changes).
 - `./gradlew :app:testDebugUnitTest --offline` - Kotlin agreement tests
-  (`ProfileManifestAgreementTest`, `ProfileManifestV3AgreementTest`,
-  `RouteCatalogAgreementTest`).
+  (`ProfileManifestV3AgreementTest`, `RouteCatalogAgreementTest`).
 - Session ownership: the per-field owner / borrower / release / termination
   table lives in `session/core_session.hpp`.

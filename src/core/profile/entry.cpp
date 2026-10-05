@@ -1,10 +1,9 @@
 /* Profile entry points: the App path (stdin) and the prebuilt-profile path
- * (file). Both discriminate GLKv3 from v2 and frame the result into the
- * neutral profile::Document (A2-5): owner binding happens later, in the
- * selected backend, never here. */
+ * (file). Both frame a GLKv3 document into the neutral profile::Document
+ * (A2-5): owner binding happens later, in the selected backend, never here.
+ * v2 (object-section wire) is deprecated and rejected whole. */
 #include "profile/entry.h"
 
-#include "profile/binary.h"
 #include "profile/glkv3_parse.hpp"
 #include "support/native_resource.hpp"
 
@@ -12,6 +11,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -61,15 +61,15 @@ namespace ghostlock::profile_entry {
             return 0;
         }
 
-        /* GLKv3 is map-rooted and has no magic; v2 starts with the
-         * little-endian magic byte 0x21. A map root that then fails to decode is
-         * rejected whole (fail-closed), never retried as v2. */
+        /* Native is GLKv3-only: the root must be a MessagePack map carrying
+         * schema == 3 (the map marker is the format probe). Anything else --
+         * a non-map root (for example the little-endian v2 magic 0x21) or a
+         * map with a missing/other schema -- is rejected whole (fail-closed);
+         * a v3-shaped document that fails to decode is never retried as v2. */
         int32_t decode(const std::string &document, profile::Document *out) {
             const std::string_view view(document.data(), document.size());
-            if (binary_profile::looks_like_glkv3(view)) {
-                return binary_profile::frame_v3(view, out);
-            }
-            return binary_profile::frame(view, out);
+            if (!profile::looks_like_glkv3(view)) return -1;
+            return profile::frame_v3(view, out);
         }
     } // namespace
 
@@ -80,7 +80,10 @@ namespace ghostlock::profile_entry {
             result.error = -1;
             return result;
         }
-        result.error = decode(document, &result.document);
+        /* Keep the decode buffer alive: a String field's View aliases it. The
+         * heap string's address is stable across the return move. */
+        result.storage = std::make_unique<std::string>(std::move(document));
+        result.error = decode(*result.storage, &result.document);
         return result;
     }
 
@@ -105,7 +108,8 @@ namespace ghostlock::profile_entry {
             result.error = -1;
             return result;
         }
-        result.error = decode(document, &result.document);
+        result.storage = std::make_unique<std::string>(std::move(document));
+        result.error = decode(*result.storage, &result.document);
         return result;
     }
 
@@ -126,7 +130,8 @@ namespace ghostlock::profile_entry {
             result.error = -1;
             return result;
         }
-        result.error = decode(document, &result.document);
+        result.storage = std::make_unique<std::string>(std::move(document));
+        result.error = decode(*result.storage, &result.document);
         return result;
     }
 } // namespace ghostlock::profile_entry

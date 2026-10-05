@@ -8,7 +8,6 @@
 #include "backend/cve_2026_43284_backend.hpp"
 #include "backend/cve_2026_43499/backend_profile.hpp"
 #include "backend/cve_2026_43499_backend.hpp"
-#include "profile/binary.h"
 #include "session/core_session.hpp"
 #include "terminal/root_child.hpp"
 #include "terminal/umh_forward.hpp"
@@ -26,7 +25,8 @@ namespace ghostlock::pipeline {
      * rejects, preserving the historical fail-closed behaviour. */
     [[nodiscard]] inline contract::StepSetKind wire_stepset(const profile::Document &document) {
         const uint16_t raw =
-                document.backend == ghostlock::binary_profile::kBackendCve202643284
+                document.backend ==
+                        static_cast<uint16_t>(contract::BackendKind::Cve2026_43284)
                         ? ghostlock::backend::steps_from(document)
                         : ghostlock::backend::cve_2026_43499::backend_profile::steps_from(
                                   document);

@@ -23,12 +23,24 @@
 #include <vector>
 
 namespace ghostlock::profile {
+    /* S4 R4 string bound, mirroring profile::glkv3::kMaxStringBytes. A String
+     * field is UTF-8 text with at most this many bytes; the decoder enforces it
+     * fail-closed and an owner bind re-checks it so a hand-built Document cannot
+     * smuggle a longer value. */
+    inline constexpr std::size_t kMaxStringBytes = 256U;
+
     struct Value {
         static constexpr uint8_t kWireWidth = 8;
 
         uint64_t raw = 0;
         uint8_t width = 0;
         bool present = false;
+        /* WireKind::String payload. When is_text is true, text is the UTF-8 view
+         * into the decode buffer (or the caller's literal for a hand-built
+         * Document) and raw/width are unused; the buffer must outlive every View
+         * the bind materialises. Never copied here. */
+        bool is_text = false;
+        std::string_view text{};
     };
 
     struct Entry {
@@ -55,6 +67,16 @@ namespace ghostlock::profile {
         void add(std::string_view key, uint64_t raw,
                  uint8_t width = Value::kWireWidth) {
             entries.push_back(Entry{std::string(key), Value{raw, width, true}});
+        }
+
+        /* S4 R4: append a WireKind::String value. text is a non-owning view the
+         * caller guarantees outlives the Document's View materialisation. */
+        void add_text(std::string_view key, std::string_view text) {
+            Value value{};
+            value.present = true;
+            value.is_text = true;
+            value.text = text;
+            entries.push_back(Entry{std::string(key), value});
         }
     };
 

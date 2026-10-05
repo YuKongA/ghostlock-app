@@ -35,8 +35,8 @@ object ProfileResolver {
     )
 
     /**
-     * Canonical native field lookup over the declared route branches. The v2
-     * transport carries `recommended_cpus`, so the effective `selected_cpus`
+     * Canonical native field lookup over the declared route branches. The GLKv3
+     * wire carries `recommended_cpus`, so the effective `selected_cpus`
      * is folded into those slots; `compact_waiter`/`pselect_waiter_shift`/
      * `mcast.*` map onto `route.<name>.*` then `fallback.route.<name>.*`.
      */

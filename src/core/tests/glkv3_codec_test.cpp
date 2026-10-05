@@ -45,6 +45,7 @@ namespace {
         {"offset", "slide", WireType::Int, false},
         {"blob", "payload", WireType::Bin, false},
         {"list", "values", WireType::Array, false},
+        {"bounded", "text", WireType::Str, false},
     };
 
     const Schema kSchema{kSchemaFields};
@@ -318,6 +319,37 @@ int main() {
                     decode(encoded, kSchema, doc, DecodeMode::Production);
             assert(status.code == DecodeCode::MissingRequired);
             assert(status.key == "release");
+        }
+
+        /* R2 string bound: 256 UTF-8 bytes decode, 257 reject. */
+        {
+            const std::string text_256(256, 'a');
+            const std::string text_257(257, 'a');
+            const auto bounded_document = [](const std::string &text) {
+                Document doc;
+                doc.schema = kSchemaVersion;
+                doc.has_release = true;
+                doc.release = "r";
+                doc.has_terminal = true;
+                doc.terminal = "root_child";
+                doc.has_backend = true;
+                doc.backend = "cve_2026_43499";
+                doc.has_route = true;
+                doc.route = "multicast_waiter";
+                Section &meta = doc.append_section("meta");
+                meta.entries.push_back(entry("kernel_major", make_uint(5)));
+                meta.entries.push_back(entry("safe_mode", make_bool(false)));
+                doc.append_section("offset")
+                        .entries.push_back(entry("init_task", make_uint(1)));
+                doc.append_section("bounded")
+                        .entries.push_back(entry("text", make_str(text)));
+                return doc;
+            };
+            Document decoded;
+            assert(decode(encode(bounded_document(text_256)), kSchema, decoded,
+                          DecodeMode::Production).ok());
+            assert(decode(encode(bounded_document(text_257)), kSchema, doc,
+                          DecodeMode::Production).code == DecodeCode::TypeMismatch);
         }
 
         /* Over-deep unknown subtree: map { "schema": 3, "junk": [[...[nil]...]] }. */

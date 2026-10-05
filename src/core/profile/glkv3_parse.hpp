@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace ghostlock::binary_profile {
+namespace ghostlock::profile {
     /* True when the first wire byte is a MessagePack map marker (fixmap/map16/
      * map32). The v2 transport starts with the little-endian magic 0x21, so the
      * two formats never alias. */
@@ -35,6 +35,6 @@ namespace ghostlock::binary_profile {
      * token to the wire route value (Auto when absent). */
     int32_t frame_v3(std::string_view document,
                      struct ghostlock::profile::Document *out);
-} // namespace ghostlock::binary_profile
+} // namespace ghostlock::profile
 
 #endif

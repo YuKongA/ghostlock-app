@@ -88,6 +88,10 @@ namespace ghostlock::profile::glkv3 {
                 case WireType::Str: {
                     const uint32_t length = mpack_expect_str(ctx.reader);
                     if (!check(ctx)) return false;
+                    if (length > kMaxStringBytes) {
+                        ctx.error = DecodeCode::TypeMismatch;
+                        return false;
+                    }
                     const char *data = mpack_read_utf8_inplace(
                             ctx.reader, static_cast<size_t>(length));
                     if (!check(ctx)) return false;
@@ -209,19 +213,6 @@ namespace ghostlock::profile::glkv3 {
             return static_cast<size_t>(field - schema->fields.data());
         }
 
-        bool read_numeric(Ctx &ctx, Value &out) {
-            mpack_tag_t tag = mpack_peek_tag(ctx.reader);
-            if (!check(ctx)) return false;
-            switch (mpack_tag_type(&tag)) {
-                case mpack_type_uint: return read_scalar(ctx, WireType::UInt, out);
-                case mpack_type_int: return read_scalar(ctx, WireType::Int, out);
-                case mpack_type_bool: return read_scalar(ctx, WireType::Bool, out);
-                default:
-                    ctx.error = DecodeCode::TypeMismatch;
-                    return false;
-            }
-        }
-
         bool read_sections(Ctx &ctx, const Schema *schema, Document &staged,
                            std::vector<uint8_t> &present, DecodeMode mode) {
             const uint32_t section_count =
@@ -258,7 +249,11 @@ namespace ghostlock::profile::glkv3 {
                     }
                     Value value;
                     if (schema == nullptr) {
-                        if (!read_numeric(ctx, value)) return false;
+                        /* S4 R4 neutral framing: preserve the wire type instead
+                         * of admitting only numerics, so a later owner bind can
+                         * materialise String fields. Only uint/int/bool/str are
+                         * admitted; bin/array still fail closed here. */
+                        if (!read_element(ctx, value)) return false;
                     } else {
                         if (!read_scalar(ctx, field->type, value)) return false;
                         present[field_index(schema, field)] = uint8_t{1};

@@ -18,6 +18,20 @@
  *      "defex", default 0). On non-Samsung kernels those symbols do not exist
  *      and the failure is recorded but not fatal.
  *
+ * Delta batch: the module can additionally expose a versioned request channel
+ * (misc device /dev/glk + ioctl) that lets userspace forward kernel-memory
+ * reads/writes through it. The four steps run first, then /dev/glk is
+ * registered and module_init blocks until UNLOAD (or a bounded timeout), then
+ * returns -E2BIG. Self-unload is therefore still the same deliberate-failure
+ * path, and the device disappears with the module. See
+ * src/core/plugin/kernel_channel.hpp and docs/analysis/contract-design.md
+ * sections 3.12/3.12.1/3.12.2/3.12.3.
+ *
+ * The channel defaults to resident (module parameter "resident" = 1) because
+ * the shellcode slot table is fixed at seven entries (exe_path 19B / ko_target
+ * 64B) and cannot carry an extra "resident=1" argv; passing resident=0 still
+ * restores the legacy "run and immediately self-unload" behaviour verbatim.
+ *
  * Differences from the upstream DFRoot LKM: the Samsung-specific behaviour is
  * opt-in, the command is a bounded module parameter instead of a hard-coded
  * string, the default command is inert, every step is logged for on-device
@@ -26,17 +40,57 @@
  * Returning -E2BIG is deliberate: a failing module_init makes the kernel unload
  * the module, so nothing stays resident.
  */
+#include <linux/delay.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kmod.h>
 #include <linux/kprobes.h>
+#include <linux/miscdevice.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/ptrace.h>
 #include <linux/string.h>
+#include <linux/uaccess.h>
 #include <linux/umh.h>
+#include <linux/wait.h>
 
 #define GHOSTLOCK_CMD_MAX 512
+
+/* Mirror of src/core/contract/abi/glk_contract_abi.h (the native side is the
+ * source of truth; the out-of-tree module cannot include the userspace tree).
+ * Keep the op values, request layout and ioctl number in lockstep. */
+#define GLK_LKM_ABI_VERSION 1u
+#define GLK_LKM_MAX_XFER 4096u
+#define GLK_LKM_IOCTL 0x6747u
+/* Leak watchdog for a resident channel whose fd is never closed. Residency is
+ * bound to the opener's SESSION, not to a timer: the window ends as soon as the
+ * client fd is closed -- explicit close, process exit, or a crash that makes the
+ * kernel close it. This bound only covers the pathological case of a leaked fd
+ * that is never released, so it is deliberately far above any real window (a
+ * real window is tens of synchronous ioctls, i.e. sub-second). */
+#define GLK_LKM_WATCHDOG_MS 60000u
+
+enum glk_lkm_op {
+    GLK_LKM_PING = 0,
+    GLK_LKM_READ = 1,
+    GLK_LKM_WRITE = 2,
+    GLK_LKM_WRITE_ZERO = 3,
+    GLK_LKM_DIRECT_MAP = 4,
+    GLK_LKM_QUERY = 5,
+    GLK_LKM_LOG = 6,
+    GLK_LKM_UNLOAD = 7
+};
+
+struct glk_lkm_req {
+    u32 abi_version;
+    u32 op;
+    u64 addr;
+    u64 value;
+    u32 len;
+    u32 status;
+};
 
 /* Default command: the chain prepends no insmod argv (the libcxx hook has six
  * value slots and none carries extra arguments), so the module must know what to
@@ -61,11 +115,29 @@ static int restore_enforce = 1;
 module_param(restore_enforce, int, 0400);
 MODULE_PARM_DESC(restore_enforce, "Restore SELinux enforcing after the command");
 
+/* Delta batch: expose the versioned /dev/glk channel and keep the module
+ * resident until UNLOAD. Default 1 because the insmod shellcode cannot append
+ * a "resident=1" argv (the value-slot table is fixed); an explicit resident=0
+ * restores the legacy "run and immediately self-unload" behaviour exactly. */
+static int resident = 1;
+module_param(resident, int, 0400);
+MODULE_PARM_DESC(resident, "Expose /dev/glk and stay resident until UNLOAD");
+
 typedef unsigned long (*kallsyms_lookup_name_t)(const char *);
 typedef void *(*umh_setup_t)(const char *, char **, char **, gfp_t,
                              int (*)(struct subprocess_info *, struct cred *),
                              void (*)(struct subprocess_info *), void *);
 typedef int (*umh_exec_t)(struct subprocess_info *, int);
+
+/* Single-opener channel state. The module is unloaded when module_init returns,
+ * so this state always dies with it. */
+static struct {
+    atomic_t opened;
+    bool unload_requested;
+    bool released;
+    u32 calls;
+    wait_queue_head_t wq;
+} g_lkm_channel;
 
 static int defex_pre_handler(struct kprobe *p, struct pt_regs *regs)
 {
@@ -74,6 +146,175 @@ static int defex_pre_handler(struct kprobe *p, struct pt_regs *regs)
     regs->pc = regs->regs[30]; /* skip the body, return to the caller */
     return 1;
 }
+
+/* True only when [addr, addr+len) lies inside the kernel direct map. This is
+ * the same "is this a linear-map address" question the userspace side answers
+ * with DIRECT_MAP_BASE/g_direct_map_end; virt_addr_valid() is the in-kernel
+ * authority. An out-of-range target is refused with -EFAULT so the ioctl never
+ * becomes an arbitrary kernel pointer write hole. */
+static bool glk_lkm_addr_ok(u64 addr, u32 len)
+{
+    u64 last;
+
+    if (len == 0u || len > (u32)GLK_LKM_MAX_XFER)
+        return false;
+    if (addr > (u64)ULONG_MAX - (u64)len)
+        return false;
+    last = addr + (u64)len - 1u;
+    return virt_addr_valid((unsigned long)addr) &&
+           virt_addr_valid((unsigned long)last);
+}
+
+/* Image address -> direct-map alias. __pa_symbol is KASLR-aware on arm64 and
+ * __va returns the linear-map alias. Inputs outside the linear map and the
+ * kernel image are refused (0, which the caller reports as -EFAULT). */
+static u64 glk_lkm_direct_map(u64 image)
+{
+    unsigned long addr = (unsigned long)image;
+
+    if (addr == 0ul)
+        return 0ul;
+    if (!virt_addr_valid((void *)addr)) {
+#ifdef KIMAGE_VADDR
+        if (addr < (unsigned long)KIMAGE_VADDR)
+            return 0ul;
+#else
+        return 0ul;
+#endif
+    }
+    return (u64)(unsigned long)__va(__pa_symbol((unsigned long)addr));
+}
+
+static long glk_lkm_ioctl(struct file *file, unsigned int cmd_no, unsigned long arg)
+{
+    struct glk_lkm_req req;
+    void __user *uarg = (void __user *)arg;
+
+    (void)file;
+    if (cmd_no != (unsigned int)GLK_LKM_IOCTL)
+        return -ENOTTY;
+    if (copy_from_user(&req, uarg, sizeof(req)) != 0ul)
+        return -EFAULT;
+    if (req.abi_version != (u32)GLK_LKM_ABI_VERSION)
+        return -EPROTO;
+
+    switch (req.op) {
+    case GLK_LKM_PING:
+        req.status = 0u;
+        break;
+    case GLK_LKM_READ:
+        if (req.value == 0u || !glk_lkm_addr_ok(req.addr, req.len)) {
+            req.status = (u32)(-EFAULT);
+            break;
+        }
+        if (copy_to_user((void __user *)(unsigned long)req.value,
+                         (void *)(unsigned long)req.addr, req.len) != 0ul)
+            req.status = (u32)(-EFAULT);
+        else
+            req.status = 0u;
+        break;
+    case GLK_LKM_WRITE:
+        if (req.value == 0u || !glk_lkm_addr_ok(req.addr, req.len)) {
+            req.status = (u32)(-EFAULT);
+            break;
+        }
+        if (copy_from_user((void *)(unsigned long)req.addr,
+                           (const void __user *)(unsigned long)req.value,
+                           req.len) != 0ul)
+            req.status = (u32)(-EFAULT);
+        else
+            req.status = 0u;
+        break;
+    case GLK_LKM_WRITE_ZERO:
+        if (!glk_lkm_addr_ok(req.addr, req.len)) {
+            req.status = (u32)(-EFAULT);
+            break;
+        }
+        memset((void *)(unsigned long)req.addr, 0, (size_t)req.len);
+        req.status = 0u;
+        break;
+    case GLK_LKM_DIRECT_MAP: {
+        u64 mapped = glk_lkm_direct_map(req.value);
+
+        if (mapped == 0u) {
+            req.status = (u32)(-EFAULT);
+            break;
+        }
+        req.addr = mapped;
+        req.status = 0u;
+        break;
+    }
+    case GLK_LKM_QUERY:
+    case GLK_LKM_LOG:
+        req.status = (u32)(-EOPNOTSUPP);
+        break;
+    case GLK_LKM_UNLOAD:
+        req.status = 0u;
+        g_lkm_channel.unload_requested = true;
+        /* Respond before waking module_init: the ioctl then returns while the
+         * init thread still owns the module; release() confirms the fd is gone
+         * before module_init returns, so teardown cannot race the caller. */
+        if (copy_to_user(uarg, &req, sizeof(req)) != 0ul)
+            return -EFAULT;
+        wake_up_interruptible(&g_lkm_channel.wq);
+        return 0;
+    default:
+        req.status = (u32)(-EINVAL);
+        break;
+    }
+
+    g_lkm_channel.calls++;
+    if (copy_to_user(uarg, &req, sizeof(req)) != 0ul)
+        return -EFAULT;
+    return 0;
+}
+
+static int glk_lkm_open(struct inode *inode, struct file *file)
+{
+    (void)inode;
+    (void)file;
+    if (atomic_xchg(&g_lkm_channel.opened, 1) != 0)
+        return -EBUSY;
+    g_lkm_channel.unload_requested = false;
+    g_lkm_channel.released = false;
+    return 0;
+}
+
+static int glk_lkm_release(struct inode *inode, struct file *file)
+{
+    (void)inode;
+    (void)file;
+    atomic_set(&g_lkm_channel.opened, 0);
+    g_lkm_channel.released = true;
+    /* The session ends here: closing the fd (explicitly, on exit, or via the
+     * kernel on a crash) is what terminates the window. module_init is waiting
+     * on `released`, so wake it now. */
+    wake_up_interruptible(&g_lkm_channel.wq);
+    return 0;
+}
+
+static const struct file_operations glk_lkm_fops = {
+    .owner = THIS_MODULE,
+    .open = glk_lkm_open,
+    .release = glk_lkm_release,
+    .unlocked_ioctl = glk_lkm_ioctl,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl = glk_lkm_ioctl,
+#endif
+};
+
+static struct miscdevice glk_lkm_device = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = "glk",
+    /* The client is an ordinary process (shell uid on the adb/Shizuku path, an
+     * app uid on the App path), so the node must be reachable without root.
+     * The channel is deliberately NOT gated (maintainer decision), and its
+     * exposure is bounded instead: the node exists only inside the residency
+     * window, it is single-open (-EBUSY), and the window is session-bound. */
+    .mode = 0666,
+    .fops = &glk_lkm_fops,
+    .mode = 0600,
+};
 
 static int __init ghostlock_init(void)
 {
@@ -87,6 +328,7 @@ static int __init ghostlock_init(void)
     struct subprocess_info *info;
     bool *selinux_state = NULL;
     bool selinux_touched = false;
+    bool resident_ok = false;
     int ret;
 
     if (cmd == NULL || *cmd == '\0' || strlen(cmd) >= GHOSTLOCK_CMD_MAX) {
@@ -94,6 +336,26 @@ static int __init ghostlock_init(void)
         return -EINVAL;
     }
     argv[2] = cmd;
+
+    /* 0. Register the resident channel BEFORE the UMH runs. Android's ueventd
+     * creates /dev nodes from its own rules and ignores miscdevice.mode, so the
+     * node is always 0600 root; the root UMH script (which runs while SELinux is
+     * still permissive) is what relaxes it to 0666 for the session-bound window.
+     * Registering here is also safe for resident=0, where the node never exists. */
+    if (resident) {
+        atomic_set(&g_lkm_channel.opened, 0);
+        g_lkm_channel.unload_requested = false;
+        g_lkm_channel.released = false;
+        g_lkm_channel.calls = 0u;
+        init_waitqueue_head(&g_lkm_channel.wq);
+        ret = misc_register(&glk_lkm_device);
+        if (ret < 0) {
+            pr_err("ghostlock: misc_register failed (%d)\n", ret);
+        } else {
+            resident_ok = true;
+            pr_info("ghostlock: /dev/glk registered (pre-UMH)\n");
+        }
+    }
 
     /* 1. arbitrary symbol resolution: kallsyms_lookup_name is not exported. */
     memset(&kln_kp, 0, sizeof(kln_kp));
@@ -160,6 +422,23 @@ static int __init ghostlock_init(void)
         pr_info("ghostlock: selinux_state restored to enforcing\n");
     } else if (selinux_touched) {
         pr_info("ghostlock: restore_enforce=0, SELinux left permissive\n");
+    }
+
+    if (resident_ok) {
+        /* Delta batch: keep the module alive until the client session ends
+         * (fd close) or the leak watchdog fires. Residency is bound to the
+         * opener's session, never to a timer. */
+        const char *unload_reason = "watchdog";
+        pr_info("ghostlock: /dev/glk resident (session-bound; fd close ends the window)\n");
+        (void)wait_event_interruptible_timeout(
+                g_lkm_channel.wq, g_lkm_channel.released,
+                msecs_to_jiffies((unsigned long)GLK_LKM_WATCHDOG_MS));
+        if (g_lkm_channel.released) {
+            unload_reason = g_lkm_channel.unload_requested ? "explicit" : "fd-close";
+        }
+        misc_deregister(&glk_lkm_device);
+        pr_info("ghostlock: resident window closed (calls=%u reason=%s)\n",
+                g_lkm_channel.calls, unload_reason);
     }
 
     /* Deliberate failure so the module is unloaded and never stays resident. */

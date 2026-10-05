@@ -2,6 +2,9 @@ package com.ghostlock.app.data
 
 import android.app.Application
 import androidx.core.content.edit
+import com.ghostlock.app.data.profile.Glkv3Decoder
+import com.ghostlock.app.data.profile.Glkv3Document
+import com.ghostlock.app.data.profile.Glkv3Value
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ProfileConfig
 import kotlinx.coroutines.runBlocking
@@ -141,10 +144,11 @@ class ControllerOverrideTest {
             val pair = CpuPair(primary = 2, consumer = 3)
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
-            val document = requireNotNull(controller.nativeDocumentV2(config))
-            val decoded = requireNotNull(NativeProfileDocument.fromBinary(document))
-            assertEquals(2u, decoded.execution.recommendedMainCpu)
-            assertEquals(3u, decoded.execution.recommendedConsumerCpu)
+            val document = requireNotNull(controller.nativeDocument(config))
+            val decoded = requireNotNull(Glkv3Decoder.decode(document))
+            val cpus = "backend.cve_2026_43499.execution.recommended_cpus"
+            assertEquals(Glkv3Value.UInt(2u), entry(decoded, cpus, "main"))
+            assertEquals(Glkv3Value.UInt(3u), entry(decoded, cpus, "consumer"))
         } finally {
             root.deleteRecursively()
         }
@@ -612,6 +616,13 @@ class ControllerOverrideTest {
           selinux_enforcing = 40408272
         }
     """.trimIndent()
+
+    private fun entry(document: Glkv3Document, section: String, key: String): Glkv3Value =
+        document.sections
+            .first { it.name == section }
+            .entries
+            .first { it.key == key }
+            .value
 
     private companion object {
         private const val deviceRelease = "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k"

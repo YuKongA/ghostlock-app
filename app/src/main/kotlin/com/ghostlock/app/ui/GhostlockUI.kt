@@ -51,7 +51,8 @@ import androidx.compose.ui.unit.sp
 import com.ghostlock.app.R
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.isAvailable
-import com.ghostlock.app.data.requiresShizuku
+import com.ghostlock.app.data.isFieldInputInvalid
+import com.ghostlock.app.data.runRequiresShizuku
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.ExecutionFieldValue
@@ -654,7 +655,7 @@ private fun MainContent(
                         state.executionHasProfile &&
                         state.executionMode.isAvailable &&
                         state.backendKind.available &&
-                        (!state.executionMode.requiresShizuku ||
+                        (!runRequiresShizuku(state.executionMode, state.backendKind) ||
                                 state.shizukuStatus == ShizukuStatus.READY),
                 profileValid = state.profileInvalidPaths.isEmpty(),
                 labelRes = R.string.action_run,
@@ -678,6 +679,7 @@ private fun ControlPanel(
             profileAvailable = state.executionHasProfile,
             profileValid = state.profileInvalidPaths.isEmpty(),
             executionMode = state.executionMode,
+            backendKind = state.backendKind,
             shizukuStatus = state.shizukuStatus,
             onParametersClick = actions::onOpenParameters,
             onShizukuClick = actions::onStatusClick,
@@ -836,12 +838,14 @@ private fun ActivationStatusCard(
     profileAvailable: Boolean,
     profileValid: Boolean,
     executionMode: ExecutionMode,
+    backendKind: BackendKind,
     shizukuStatus: ShizukuStatus,
     onParametersClick: () -> Unit,
     onShizukuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val accessReady = !executionMode.requiresShizuku || shizukuStatus == ShizukuStatus.READY
+    val accessReady = !runRequiresShizuku(executionMode, backendKind) ||
+        shizukuStatus == ShizukuStatus.READY
     val ready = supported && profileAvailable && profileValid && accessReady
     val missing = !supported || !profileAvailable
     val (backgroundColor, title, icon) = when {
@@ -1008,7 +1012,8 @@ internal fun ExecutionEditor(
     ) {
         for (field in state.executionFields) {
             val text = state.executionEditing[field.path] ?: field.value.toString()
-            val invalid = isFieldInputInvalid(text) || field.path in state.profileInvalidPaths
+            val invalid =
+                isFieldInputInvalid(field.path, text) || field.path in state.profileInvalidPaths
             TextField(
                 value = text,
                 onValueChange = { value -> actions.onExecutionFieldChanged(field.path, value) },
@@ -1033,8 +1038,6 @@ internal val OverrideHighlight = Color(0xFFF5A623)
 
 /** Red marks an unfilled or non-numeric field in the parameter editors. */
 internal val FieldErrorHighlight = Color(0xFFE53935)
-
-internal fun isFieldInputInvalid(text: String): Boolean = text.trim().toLongOrNull() == null
 
 @Composable
 private fun RunButton(

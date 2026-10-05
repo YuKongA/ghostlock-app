@@ -1,6 +1,10 @@
 package com.ghostlock.app.data
 
-import com.ghostlock.app.data.route.MulticastConfig
+import com.ghostlock.app.data.profile.Glkv3Decoder
+import com.ghostlock.app.data.profile.Glkv3Document
+import com.ghostlock.app.data.profile.Glkv3Encoder
+import com.ghostlock.app.data.profile.Glkv3Value
+import com.ghostlock.app.data.profile.NativeProfileGlkv3Adapter
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -8,8 +12,9 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ProfileRoundTripTest {
-    /* Route-independent values plus per-route values. v2 only carries the
-     * route section of the document's own route. */
+    /* Route-independent values plus per-route values. The logical document
+     * carries the resolved route's tuning plus the fallback target; the GLKv3
+     * adapter maps them onto the owner-qualified wire paths. */
     private val common = mapOf(
         "kernel_major" to 6L,
         "compact_waiter" to 1L,
@@ -27,7 +32,7 @@ class ProfileRoundTripTest {
          * route (the multicast primitive uses the same PI consumer). */
         "execution.routes.select_stack.consumer_max_calls" to 1L,
         "execution.routes.select_stack.consumer_burst_calls" to 1L,
-        /* Ancillary vr.ko guard: the gate rides meta, the layout is its own
+        /* Ancillary vr.ko guard: the gate rides common, the layout is its own
          * section, and the symbol lives in offset like every other symbol. */
         "recommend_vr_guard" to 1L,
         "vr_guard.tracepoint_funcs" to 0x40L,
@@ -60,9 +65,23 @@ class ProfileRoundTripTest {
     ): NativeProfileDocument =
         NativeProfileDocument.from("6.1.0-test", route, fallback) { vals[it] }
 
+    private fun encoded(
+        route: String?,
+        fallback: String?,
+        vals: Map<String, Long>,
+    ): ByteArray =
+        Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document(route, fallback, vals)))
+
+    private fun entry(document: Glkv3Document, section: String, key: String): Glkv3Value =
+        document.sections
+            .first { it.name == section }
+            .entries
+            .first { it.key == key }
+            .value
+
     @Test
     fun `route kind maps token and wire both ways`() {
-        for (kind in RouteKind.values()) {
+        for (kind in RouteKind.entries) {
             assertEquals(kind, RouteKind.fromToken(kind.token))
             assertEquals(kind, RouteKind.fromWire(kind.wire))
         }
@@ -72,97 +91,108 @@ class ProfileRoundTripTest {
     }
 
     @Test
-    fun `binary decode fully restores the document`() {
+    fun `v3 codec round trips the adapted document for every route`() {
         for ((route, vals) in listOf(
             "tcp_zerocopy" to tcpValues,
             "select_stack" to selectValues,
             "multicast_waiter" to multicastValues,
         )) {
-            val original = document(route, "select_stack", vals)
-            val decoded = NativeProfileDocument.fromBinary(original.toBinary())
-            assertEquals(original, decoded)
+            val adapted = NativeProfileGlkv3Adapter.adapt(document(route, "select_stack", vals))
+            val bytes = Glkv3Encoder.encode(adapted)
+            val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
+            assertEquals(adapted.release, decoded.release)
+            assertEquals(adapted.terminal, decoded.terminal)
+            assertEquals(adapted.backend, decoded.backend)
+            assertEquals(adapted.route, decoded.route)
+            /* Canonical writer: re-encoding the decoded document is byte-identical. */
+            assertArrayEquals(bytes, Glkv3Encoder.encode(decoded))
         }
     }
 
     @Test
     fun `multicast round trip exposes route semantics`() {
-        val bytes = document("multicast_waiter", "select_stack", multicastValues).toBinary()
-        val profile = Profile.fromBinary(bytes)!!
-
-        assertEquals(RouteKind.MULTICAST_WAITER, profile.route)
-        assertEquals(RouteKind.SELECT_STACK, profile.fallback)
-        assertEquals("6.1.0-test", profile.release)
-        assertEquals(6u, profile.kernelMajor)
-        assertEquals(true, profile.supports(RouteKind.MULTICAST_WAITER))
-        assertEquals(false, profile.supports(RouteKind.TCP_ZEROCOPY))
-        assertEquals(true, profile.hasCompactWaiter())
-        assertEquals(0x4000u, profile.mmStructStride(fallback = 1u))
-        assertEquals(264, profile.multicastLayout().waiterOffset)
-        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        val decoded = requireNotNull(
+            Glkv3Decoder.decode(encoded("multicast_waiter", "select_stack", multicastValues)),
+        )
+        val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
+        assertEquals("multicast_waiter", decoded.route)
+        assertEquals(
+            Glkv3Value.UInt(RouteKind.SELECT_STACK.wire.toULong()),
+            entry(decoded, "common", "fallback_route"),
+        )
+        assertEquals(Glkv3Value.UInt(6u), entry(decoded, "common", "kernel_major"))
+        assertEquals(
+            Glkv3Value.Bool(true),
+            entry(decoded, "backend.cve_2026_43499.kernel", "compact_waiter"),
+        )
+        assertEquals(
+            Glkv3Value.UInt(0x4000u),
+            entry(decoded, "backend.cve_2026_43499.kernel", "mm_struct_sz"),
+        )
+        assertEquals(Glkv3Value.UInt(264u), entry(decoded, routeSection, "waiter_off"))
+        assertEquals(Glkv3Value.UInt(512u), entry(decoded, routeSection, "buffer_size"))
         /* Poison/walk repetition rides the same route section. */
-        val multicastConfig = decoded.routeConfig as MulticastConfig
-        assertEquals(128u.toUByte(), multicastConfig.attempts)
-        assertEquals(16u.toUByte(), multicastConfig.armSequence)
-        assertEquals(20000u.toUShort(), multicastConfig.armHold)
+        assertEquals(Glkv3Value.UInt(128u), entry(decoded, routeSection, "attempts"))
+        assertEquals(Glkv3Value.UInt(16u), entry(decoded, routeSection, "arm_sequence"))
+        assertEquals(Glkv3Value.UInt(20000u), entry(decoded, routeSection, "arm_hold"))
         /* Consumer cadence rides its own execution section, not the multicast one. */
-        assertEquals(1u, decoded.execution.consumerMaxCalls)
-        assertEquals(1u, decoded.execution.consumerBurstCalls)
-
-        assertArrayEquals(bytes, profile.toBinary())
+        val consumer = "backend.cve_2026_43499.execution.consumer"
+        assertEquals(Glkv3Value.UInt(1u), entry(decoded, consumer, "max_calls"))
+        assertEquals(Glkv3Value.UInt(1u), entry(decoded, consumer, "burst_calls"))
     }
 
     @Test
     fun `vr guard round trip carries gate layout and symbol`() {
-        val bytes = document("multicast_waiter", "none", multicastValues).toBinary()
-        val decoded = NativeProfileDocument.fromBinary(bytes)!!
-
-        assertEquals(1u, decoded.vrGuard)
-        assertEquals(0x40u, decoded.vrGuardTracepointFuncs)
-        assertEquals(0x21A1020uL, decoded.kernelOffset.vrSysExitTp)
-        /* The layout is per-image: a profile without it must decode as absent so
-         * the behavior stays fail-closed. */
-        val withoutLayout = document(
-            "multicast_waiter",
-            "none",
-            common - "vr_guard.tracepoint_funcs",
-        ).toBinary()
-        assertNull(NativeProfileDocument.fromBinary(withoutLayout)!!.vrGuardTracepointFuncs)
+        val decoded = requireNotNull(
+            Glkv3Decoder.decode(encoded("multicast_waiter", "none", multicastValues)),
+        )
+        assertEquals(Glkv3Value.Bool(true), entry(decoded, "common", "vr_guard"))
+        assertEquals(
+            Glkv3Value.UInt(0x40u),
+            entry(decoded, "countermeasure.vivo_vr_guard", "tracepoint_funcs"),
+        )
+        assertEquals(
+            Glkv3Value.UInt(0x21A1020u),
+            entry(decoded, "backend.cve_2026_43499.offset", "vr_sys_exit_tp"),
+        )
+        /* The layout is per-image: a profile without it keeps the section absent. */
+        val withoutLayout = requireNotNull(
+            Glkv3Decoder.decode(encoded("multicast_waiter", "none", common - "vr_guard.tracepoint_funcs")),
+        )
+        assertNull(withoutLayout.sections.firstOrNull { it.name == "countermeasure.vivo_vr_guard" })
     }
 
     @Test
-    fun `select round trip exposes waiter shift`() {
-        val bytes = document("select_stack", null, selectValues).toBinary()
-        val profile = Profile.fromBinary(bytes)!!
-        assertEquals(RouteKind.SELECT_STACK, profile.route)
-        assertEquals(-2, profile.selectStackLayout().waiterShift)
-        assertArrayEquals(bytes, profile.toBinary())
+    fun `patch safe mode lands on the common entry`() {
+        val original = encoded("multicast_waiter", null, multicastValues)
+        assertEquals(
+            Glkv3Value.Bool(false),
+            entry(requireNotNull(Glkv3Decoder.decode(original)), "common", "safe_mode"),
+        )
+        val patched = requireNotNull(NativeProfileDocument.patchSafeMode(original))
+        val decoded = requireNotNull(Glkv3Decoder.decode(patched))
+        assertEquals(Glkv3Value.Bool(true), entry(decoded, "common", "safe_mode"))
+        /* Original input is untouched. */
+        assertEquals(
+            Glkv3Value.Bool(false),
+            entry(requireNotNull(Glkv3Decoder.decode(original)), "common", "safe_mode"),
+        )
     }
 
     @Test
-    fun `patch safe mode lands on the meta entry`() {
-        val original = document("multicast_waiter", null, multicastValues)
-        val bytes = original.toBinary()
-        val patched = NativeProfileDocument.patchSafeMode(bytes)!!
-        val decoded = NativeProfileDocument.fromBinary(patched)!!
-        assertEquals(1u, decoded.safeMode)
-        assertEquals(original.copy(safeMode = 1u), decoded)
+    fun `a non-glkv3 blob is not patchable`() {
+        assertNull(NativeProfileDocument.patchSafeMode(byteArrayOf(0x21, 0x07, 0x00, 0x0D)))
+        assertNull(NativeProfileDocument.patchSafeMode(ByteArray(0)))
     }
 
     @Test
-    fun `unresolved route is rejected on decode`() {
+    fun `unresolved route is rejected by the authority`() {
         val unresolved = document(route = null, fallback = null, vals = tcpValues)
-        assertNull(Profile.fromBinary(unresolved.toBinary()))
+        assertNull(Profile.fromNativeDocument(unresolved))
     }
 
     @Test
-    fun `corrupt magic and truncated payload are rejected`() {
-        val bytes = document("select_stack", null, selectValues).toBinary()
-        assertNull(Profile.fromBinary(bytes.copyOf().also { it[0] = 0 }))
-        assertNull(Profile.fromBinary(bytes.copyOf(bytes.size - 1)))
-    }
-
-    @Test
-    fun `fromValueMap builds the same authority as fromBinary`() {
+    fun `fromValueMap builds the same authority as the logical document`() {
         val profile = Profile.fromValueMap(
             release = "6.1.0-test",
             route = RouteKind.TCP_ZEROCOPY,
@@ -171,6 +201,6 @@ class ProfileRoundTripTest {
         )!!
         assertEquals(RouteKind.TCP_ZEROCOPY, profile.route)
         assertNull(profile.fallback)
-        assertArrayEquals(document("tcp_zerocopy", null, tcpValues).toBinary(), profile.toBinary())
+        assertEquals("tcp_zerocopy", NativeProfileGlkv3Adapter.adapt(profile.document).route)
     }
 }

@@ -9,10 +9,17 @@
 #include "profile/document.hpp"
 
 #include <cstdint>
+#include <memory>
+#include <string>
 
 namespace ghostlock::profile_entry {
     struct ReadResult final {
         profile::Document document;
+        /* S4 R4: the framed bytes a String field's std::string_view aliases.
+         * Heap-owned so the address is stable across the move that returns the
+         * result, and it outlives the Document/View it is viewed through. Null
+         * only for an empty/failed read. */
+        std::unique_ptr<std::string> storage;
         /* 0 = ok; non-zero keeps the historical errno behaviour. */
         int32_t error = 0;
     };

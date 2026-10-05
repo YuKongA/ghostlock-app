@@ -16,11 +16,15 @@
  *   - kallsyms presence of selinux_state and the Defex symbols.
  *
  * Availability is derived from the bound function pointers, never a separate
- * flag. collect_device_facts() is fail-closed: the first missing mandatory fact
- * is named and the output stays all-unknown. Kernel symbol absence is never
- * mandatory, though: a restricted /proc/kallsyms (unprivileged uid) hides every
- * symbol and SELinux may be disabled via LKM, so a missing selinux_state is
- * recorded in KernelSymbolFacts and the diagnostic instead of blocking. */
+ * flag. collect_device_facts() stays fail-closed on the facts the endgame
+ * cannot continue without: an unbound surface (Unavailable), an unreadable
+ * uname -r (ReleaseMissing) and a missing crash_dump64 (CrashDumpMissing) name
+ * the first failure and leave the output all-unknown. The facts a denied
+ * (untrusted_app) probe cannot read are NOT fatal: /proc/version,
+ * /sys/fs/selinux/enforce, the crash_dump64 ls -lZ label and an empty
+ * /vendor/lib64 candidate list are recorded as explicit unknowns in
+ * DeviceFacts::degraded, never guessed. Kernel symbol absence is likewise
+ * recorded in KernelSymbolFacts, never fatal. */
 
 #include <array>
 #include <cstddef>
@@ -94,13 +98,45 @@ namespace ghostlock::platform {
         }
     };
 
+    /* Which optional-by-policy facts a probe could not observe. A degraded bit
+     * means the fact is recorded as UNKNOWN (a zero/empty value), never that a
+     * real value was substituted; collection itself still succeeds. The mask is
+     * what the diagnostic and the device gate assert on an untrusted_app run,
+     * where /proc/version, /sys/fs/selinux/enforce and the vendor list are
+     * denied by SELinux. */
+    enum class DeviceFactDegraded : std::uint8_t {
+        None = 0U,
+        ProcVersion = 1U << 0U,      /* /proc/version unreadable: f4c50a4 + preempt unknown */
+        Selinux = 1U << 1U,          /* /sys/fs/selinux/enforce unreadable */
+        VendorCandidates = 1U << 2U, /* /vendor/lib64 yielded no candidate */
+        CrashDumpLabel = 1U << 3U,   /* crash_dump64 exists, ls -lZ label unknown */
+    };
+
+    [[nodiscard]] constexpr DeviceFactDegraded operator|(DeviceFactDegraded lhs,
+                                                         DeviceFactDegraded rhs) noexcept {
+        return static_cast<DeviceFactDegraded>(static_cast<std::uint8_t>(lhs) |
+                                               static_cast<std::uint8_t>(rhs));
+    }
+
+    [[nodiscard]] constexpr DeviceFactDegraded operator&(DeviceFactDegraded lhs,
+                                                         DeviceFactDegraded rhs) noexcept {
+        return static_cast<DeviceFactDegraded>(static_cast<std::uint8_t>(lhs) &
+                                               static_cast<std::uint8_t>(rhs));
+    }
+
+    [[nodiscard]] constexpr bool degraded_any(DeviceFactDegraded bits) noexcept {
+        return static_cast<std::uint8_t>(bits) != 0U;
+    }
+
     struct DeviceFacts final {
         bool release_present = false;
         FactText<kDeviceReleaseMax> release{};
         bool proc_version_present = false;
         FactText<kDeviceProcVersionMax> proc_version{};
-        /* true when /proc/version carries the fix marker (best effort; a vendor
-         * backport without the marker cannot be ruled out). */
+        /* true only when /proc/version was actually read AND carries the fix
+         * marker (best effort; a vendor backport without the marker cannot be
+         * ruled out). An unreadable /proc/version leaves this false so an
+         * unknown never fires PatchedKernel. */
         bool has_f4c50a4 = false;
         bool selinux_enforce_readable = false;
         int selinux_enforce = 0; /* 0 permissive, 1 enforcing */
@@ -110,7 +146,28 @@ namespace ghostlock::platform {
         std::size_t vendor_candidate_count = 0U;
 
         KernelSymbolFacts symbols{};
+
+        /* Set bits name the facts that were denied/empty, so a consumer can tell
+         * "unknown" from "observed zero". */
+        DeviceFactDegraded degraded = DeviceFactDegraded::None;
+
+        [[nodiscard]] bool has_degraded() const noexcept {
+            return degraded_any(degraded);
+        }
+
+        /* PREEMPT is derived from /proc/version; when that read was denied the
+         * preempt fact is unknown rather than "not preempt". The vermagic
+         * precheck must not reject a module solely for this unknown. */
+        [[nodiscard]] bool preempt_known() const noexcept { return proc_version_present; }
     };
+
+    /* Renders the set bits as a comma-separated, order-stable token list
+     * ("proc_version,selinux,vendor,crash_dump_label") into out, NUL-terminated;
+     * returns the written length (0 for None). No allocation, so a production
+     * log path can call it directly. */
+    [[nodiscard]] std::size_t format_device_fact_degraded(DeviceFactDegraded bits,
+                                                          char *out,
+                                                          std::size_t capacity) noexcept;
 
     /* Injectable probe surface. Every entry point returns a non-negative value
      * on success (byte count / 0|1 / count) or a negative -errno; the collector
@@ -149,11 +206,16 @@ namespace ghostlock::platform {
         None = 0,
         Unavailable,             /* probe surface not fully bound */
         ReleaseMissing,          /* uname -r unreadable/empty */
-        ProcVersionMissing,      /* /proc/version unreadable/empty */
-        SelinuxMissing,          /* enforce unreadable */
-        CrashDumpMissing,        /* crash_dump64 not present */
-        CrashDumpLabelUnknown,   /* no ls -lZ label */
-        VendorCandidatesMissing, /* no /vendor/lib64 candidate found */
+        /* The four entries below are retained for ABI/name stability but are no
+         * longer produced: a denied probe cannot read them in untrusted_app, and
+         * the endgame continues with the fact recorded as unknown in
+         * DeviceFacts::degraded instead of failing. crash_dump64 EXISTENCE is
+         * still mandatory (CrashDumpMissing is still produced). */
+        ProcVersionMissing,      /* no longer produced: see DeviceFactDegraded::ProcVersion */
+        SelinuxMissing,          /* no longer produced: see DeviceFactDegraded::Selinux */
+        CrashDumpMissing,        /* crash_dump64 not present (still fatal) */
+        CrashDumpLabelUnknown,   /* no longer produced: DeviceFactDegraded::CrashDumpLabel */
+        VendorCandidatesMissing, /* no longer produced: DeviceFactDegraded::VendorCandidates */
         /* Retained for ABI/name stability, but no longer produced: a missing
          * selinux_state symbol is recorded (KernelSymbolFacts::
          * kallsyms_restricted), never fatal. */
@@ -166,8 +228,12 @@ namespace ghostlock::platform {
     [[nodiscard]] bool proc_version_indicates_fixed(std::string_view proc_version) noexcept;
 
     /* Fail-closed collection. On an error the output is reset to all-unknown
-     * and error names the first missing mandatory fact. Kernel symbol absence
-     * is always recorded, never fatal: Defex is vendor-specific, and
+     * and error names the first missing mandatory fact (Unavailable,
+     * ReleaseMissing or CrashDumpMissing). A denied/unreadable /proc/version,
+     * /sys/fs/selinux/enforce, crash_dump64 ls -lZ label or empty vendor list is
+     * recorded in DeviceFacts::degraded and collection still returns None, so
+     * the untrusted_app production path does not need Shizuku/adb. Kernel symbol
+     * absence is always recorded, never fatal: Defex is vendor-specific, and
      * selinux_state can be hidden by a restricted /proc/kallsyms or absent when
      * SELinux is disabled via LKM. */
     [[nodiscard]] DeviceFactError collect_device_facts(const DeviceProbeOps &ops,

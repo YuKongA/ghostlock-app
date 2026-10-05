@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
 import java.io.File
 import java.nio.charset.StandardCharsets
 
@@ -91,7 +92,13 @@ internal class UserProfileStore(
         val text = runCatching { file.readText() }.getOrNull() ?: return null
         val entries = runCatching { parseWith(text, byName) }.getOrNull() ?: return null
         return entries.firstOrNull { it["release"] == release }?.also { entry ->
+            /* Single migration point: a legacy document is converted here and
+             * its schema_version normalised, so every consumer downstream sees
+             * the canonical version. An unknown version is rejected. */
             LegacyProfileConverter.convertValue(entry)
+            entry["schema_version"] = LegacyProfileConverter.normalizeSchemaVersion(
+                entry["schema_version"], file.name,
+            )
         }
     }
 
@@ -164,9 +171,10 @@ internal class UserProfileStore(
         if (entries.isEmpty()) return null
         entries.forEach {
             LegacyProfileConverter.convertValue(it)
-            /* Exports are v2: the conversion has seeded any v1 gap, and the
-             * marker keeps a re-import from being seeded again. */
-            it["schema_version"] = 1
+            /* Exports carry the canonical schema version: the conversion has
+             * seeded any legacy gap, and the marker keeps a re-import from being
+             * seeded again. */
+            it["schema_version"] = GHOSTLOCK_PROFILE_SCHEMA_VERSION
         }
         return HoconSupport.render(
             if (entries.size == 1) entries.first() else ValueList().apply { addAll(entries) },

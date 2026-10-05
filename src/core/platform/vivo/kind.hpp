@@ -8,7 +8,7 @@ namespace ghostlock::platform::vivo {
      * vocabulary: they live with the vendor behaviors, not in the neutral
      * ancillary mechanism (ADR-0004 R4). The mechanism never branches on them;
      * a policy only carries its id for identification. */
-    enum class AncillaryKind : std::uint8_t {
+    enum class PluginKind : std::uint8_t {
         VrGuard = 1,
         VrTaskTag = 2,
     };

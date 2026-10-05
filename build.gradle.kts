@@ -6,6 +6,29 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.4.20" apply false
 }
 
+/*
+ * Gradle outputs live OUTSIDE the repository tree.
+ *
+ * The checkout sits in a macOS File Provider (iCloud Drive) container. Its sync
+ * daemons (bird/cloudd) race with the build and materialise conflict copies
+ * ("Foo 2.class", "lookups.tab.values 2.at", ...) inside the build directory;
+ * javac and D8 then fail with "public interface ... should be declared in a file
+ * named ..." and "Type ... is defined multiple times". A `.nosync` suffix does
+ * not help once the directory is already tracked by the provider.
+ *
+ * Keeping every module's output under one root (the previous convention) is
+ * preserved -- the root simply is `${user.home}/.ghostlock-build` instead of the
+ * synced working tree. The Make/NDK artifacts still land in `build/` (see
+ * src/Makefile), and the root `clean` removes both.
+ */
+/* The path keeps a `build` segment: ProfileExporter refuses an output directory
+ * that is not under a build tree, and that guard must stay strict. */
+val externalBuildRoot = File(System.getProperty("user.home"), ".ghostlock/build")
+layout.buildDirectory.set(externalBuildRoot.resolve("root"))
+subprojects {
+    layout.buildDirectory.set(externalBuildRoot.resolve(name))
+}
+
 private fun localProperties(): Properties = Properties().also { properties ->
     val propertiesFile = rootProject.file("local.properties")
     if (propertiesFile.isFile) {

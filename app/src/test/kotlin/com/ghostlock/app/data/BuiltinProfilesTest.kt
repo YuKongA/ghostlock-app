@@ -2,6 +2,7 @@ package com.ghostlock.app.data
 
 import android.app.Application
 import androidx.core.content.edit
+import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.domain.model.CpuPair
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -99,13 +100,13 @@ class BuiltinProfilesTest {
                     )
                 }
 
-                /* The resolved document re-encodes and decodes identically. */
-                val bytes = controller.nativeDocumentV2(config)
+                /* The resolved v3 document decodes to the expected selection. */
+                val bytes = controller.nativeDocument(config)
                 assertNotNull("${entry.release}: no native document", bytes)
-                val profile = Profile.fromBinary(bytes!!)
-                assertNotNull("${entry.release}: native document failed to decode", profile)
-                assertEquals(entry.release, profile!!.release)
-                assertEquals(route, profile.route.token)
+                val decoded = Glkv3Decoder.decode(bytes!!)
+                assertNotNull("${entry.release}: native document failed to decode", decoded)
+                assertEquals(entry.release, decoded!!.release)
+                assertEquals(route, decoded.route)
             }
         } finally {
             root.deleteRecursively()

@@ -23,7 +23,12 @@
  * (default skip), --cve43284-carrier <path> (default: the positional target)
  * and --cve43284-patch1-target <path> (default
  * /apex/com.android.runtime/bin/crash_dump64). Without the staged entry point
- * any of them is a parse error. */
+ * any of them is a parse error.
+ *
+ * delta-4 adds --plugin <path>, the dev/gate-only countermeasure loader. It is
+ * a staged-runner-only escape hatch: legal only together with
+ * --run-cve-2026-43284, rejected for every other mode, never read from a
+ * profile and never reachable from the production app-call path. */
 
 #include <cstdint>
 
@@ -55,7 +60,8 @@ namespace ghostlock::support::cli {
     };
 
     struct Options final {
-        Mode mode = Mode::None;
+        /* Pointers first: this keeps Options at one byte of tail padding, which
+         * clang-tidy's performance.Padding check enforces. */
         const char *load_prebuilt_profile = nullptr;
         const char *dump_kernel_log = nullptr;
         /* Non-null only for Mode::ProbeCve2026_43284. */
@@ -63,19 +69,23 @@ namespace ghostlock::support::cli {
         /* Non-null only for Mode::RunCve2026_43284. */
         const char *run_module_path = nullptr;
         const char *run_target_path = nullptr;
-        Cve43284Stage run_stage = Cve43284Stage::Full;
-        /* Dev-only staged-run switch: accept a non-vendor one-shot carrier
-         * target (for example under /data/local/tmp). Valid only with
-         * --run-cve-2026-43284; any other combination is a parse error. */
-        bool allow_dev_target = false;
         /* B5-9h-1 staged-hook assets. All are null/unset by default and are
          * only legal with --run-cve-2026-43284. A null path keeps the
          * documented default at the call site. */
         const char *run_hook_target = nullptr;
         const char *run_hook_symbol = nullptr;
-        Cve43284HookGuard run_hook_guard = Cve43284HookGuard::Skip;
         const char *run_carrier_path = nullptr;
         const char *run_patch1_target = nullptr;
+        /* delta-4 dev/gate-only: countermeasure .so loaded through
+         * plugin/loader and attached to the LKM window. Null by default. */
+        const char *run_plugin_path = nullptr;
+        Mode mode = Mode::None;
+        Cve43284Stage run_stage = Cve43284Stage::Full;
+        /* Dev-only staged-run switch: accept a non-vendor one-shot carrier
+         * target (for example under /data/local/tmp). Valid only with
+         * --run-cve-2026-43284; any other combination is a parse error. */
+        bool allow_dev_target = false;
+        Cve43284HookGuard run_hook_guard = Cve43284HookGuard::Skip;
         /* B5-9h-3 explicit policy: allow the runner to rewrite a mismatched
          * vermagic in the carrier image before it is written. Off by default. */
         bool allow_vermagic_rewrite = false;
@@ -98,6 +108,8 @@ namespace ghostlock::support::cli {
         Cve43284OptionRequiresRun,
         /* --cve43284-hook-guard was not reject|skip. */
         BadHookGuard,
+        /* delta-4: --plugin without --run-cve-2026-43284 (dev/gate-only flag). */
+        PluginRequiresRun,
     };
 
     /* Parses argv[1..argc). On success fills the output and returns true with

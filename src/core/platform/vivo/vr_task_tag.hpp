@@ -2,16 +2,16 @@
 #define GHOSTLOCK_PLATFORM_VIVO_VR_TASK_TAG_HPP
 
 #include <cstdint>
+#include <optional>
 
-#include "ancillary/ancillary_policy.hpp"
+#include "plugin/policy.hpp"
 #include "memory/target.h"
 #include "platform/vivo/kind.hpp"
 #include "platform/vivo/macros.h"
 #include "platform/vivo/schema.hpp"
 
 namespace ghostlock::platform::vivo {
-    using ghostlock::ancillary::AncillaryOps;
-    using ghostlock::ancillary::AncillaryStage;
+    using ghostlock::plugin::PluginStage;
     using ghostlock::session::CoreSession;
 
     /* Ancillary behavior: vivo/iQOO `vr.ko` per-task tag removal.
@@ -33,7 +33,8 @@ namespace ghostlock::platform::vivo {
      * no per-image layout to resolve.
      *
      * When it runs: `PostSpawn` - the rooted child exists but W2 verify has not
-     * yet read its uid. The backend sets `AncillaryOps::child_task`.
+     * yet read its uid. The backend provides a `contract::ChildTask`
+     * capability so a not-ready child is an explicit error, not the magic 0.
      */
 
     /* Pure plan: child task -> the two words to zero. Host-testable. */
@@ -51,12 +52,27 @@ namespace ghostlock::platform::vivo {
         };
     }
 
+    /* Resolve the rooted child's task through the capability. `nullopt` is the
+     * fail-soft skip path: the capability is absent, or it reports the child is
+     * not ready (CapabilityError::Unavailable). This replaces the old
+     * `child_task == 0` convention with the section 3.9 conclusion 4 state
+     * query, and stays host-testable (no device types). */
+    [[nodiscard]] inline std::optional<uintptr_t> resolve_vr_task_tag_target(
+        const contract::Capabilities &capabilities) noexcept {
+        if (capabilities.child == nullptr) return std::nullopt;
+        const contract::CapabilityResult<std::uint64_t> task =
+                capabilities.child->current();
+        if (!task.has_value() || task.value() == 0) return std::nullopt;
+        return static_cast<uintptr_t>(task.value());
+    }
+
     /* Device-only execution body (defined in vr_task_tag.cpp on Android, stubbed
      * on host). */
-    Status execute_vr_task_tag(AncillaryStage stage, AncillaryOps &ops) noexcept;
+    Status execute_vr_task_tag(PluginStage stage,
+                               const contract::Capabilities &capabilities) noexcept;
 
-    struct VrTaskTagPolicy : ancillary::AncillaryPolicyDefaults {
-        static constexpr AncillaryKind kind = AncillaryKind::VrTaskTag;
+    struct VrTaskTagPolicy : plugin::PluginPolicyDefaults {
+        static constexpr PluginKind kind = PluginKind::VrTaskTag;
 
         /* View gate only: the support list says the behavior applies for this
          * profile. Whether vr.ko is present on the running device is decided at
@@ -66,11 +82,11 @@ namespace ghostlock::platform::vivo {
             return view.guard_enabled;
         }
 
-        template <class Middleware>
-        static Status apply(AncillaryStage stage, CoreSession &session,
-                            AncillaryOps &ops, const View &) noexcept {
+        static Status apply(PluginStage stage, CoreSession &session,
+                            const contract::Capabilities &capabilities,
+                            const View &) noexcept {
             (void)session;
-            return execute_vr_task_tag(stage, ops);
+            return execute_vr_task_tag(stage, capabilities);
         }
     };
 } // namespace ghostlock::platform::vivo

@@ -51,8 +51,6 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::kLateLoadArgRoPartitions;
     using ghostlock::backend::cve_2026_43284::lkm::kLateLoadArgSoftReboot;
     using ghostlock::backend::cve_2026_43284::lkm::kLateLoadArgsKnown;
-    using ghostlock::backend::cve_2026_43284::lkm::kLkmPathTokenBundled;
-    using ghostlock::backend::cve_2026_43284::lkm::kLkmPathTokenCustomFile;
     using ghostlock::backend::cve_2026_43284::lkm::kSelinuxExecContextCustom;
     using ghostlock::backend::cve_2026_43284::lkm::kSelinuxExecContextInit;
     using ghostlock::backend::cve_2026_43284::lkm::kSelinuxExecContextMax;
@@ -325,7 +323,6 @@ int main() {
         LkmPolicyInput input{};
         input.facts.release = "5.15.202-android14-6-gabc";
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         input.late_load_args_token =
                 static_cast<std::uint64_t>(kLateLoadArgPackageName | kLateLoadArgRoPartitions);
         LkmSelection selection{};
@@ -341,7 +338,7 @@ int main() {
         input = LkmPolicyInput{};
         input.facts.release = "5.10.205-android13-8-g0";
         input.profile_kmi = 5010U;
-        input.lkm_path_token = kLkmPathTokenCustomFile;
+        input.lkm_path = std::string_view{"/data/local/tmp/custom.ko"};
         assert(resolve_lkm_selection(input, selection, error));
         assert(selection.kmi->label == "android13-5.10");
         assert(selection.source == LkmSource::CustomFile);
@@ -350,7 +347,6 @@ int main() {
         input = LkmPolicyInput{};
         input.facts.release = "android15-6.6";
         input.profile_kmi = 6006U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         assert(resolve_lkm_selection(input, selection, error));
         assert(selection.kmi->label == "android15-6.6");
         assert(selection.late_load_args == 0U);
@@ -358,14 +354,12 @@ int main() {
         /* Missing release. */
         input = LkmPolicyInput{};
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::MissingRelease);
 
         /* Unparsable release. */
         input = LkmPolicyInput{};
         input.facts.release = "nonsense";
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::ReleaseUnparsable);
 
         /* Already-patched kernel is not applicable. */
@@ -373,35 +367,30 @@ int main() {
         input.facts.release = "5.15.202-android14-6-g0";
         input.facts.has_f4c50a4 = true;
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::PatchedKernel);
 
         /* Missing profile kmi: the KMI is a device fact, so it resolves from the
          * release instead of failing the run. */
         input = LkmPolicyInput{};
         input.facts.release = "5.15.202-android13-8-g0";
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, true, LkmPolicyError::None);
 
         /* profile kmi must equal the release-derived kmi. */
         input = LkmPolicyInput{};
         input.facts.release = "5.15.202-android13-8-g0";
         input.profile_kmi = 5010U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::KmiFieldMismatch);
 
         /* Unsupported KMI (android11-5.4). */
         input = LkmPolicyInput{};
         input.facts.release = "5.4.200-android11-9-g0";
         input.profile_kmi = 5004U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::UnsupportedKmi);
 
         /* Android suffix absent: parse succeeds but no table row matches. */
         input = LkmPolicyInput{};
         input.facts.release = "5.15.202-dirty";
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         expect_resolve(input, false, LkmPolicyError::UnsupportedKmi);
 
         /* Missing lkm_path token: the production path supplies its own module
@@ -411,18 +400,18 @@ int main() {
         input.profile_kmi = 5015U;
         expect_resolve(input, true, LkmPolicyError::None);
 
-        /* Unknown lkm_path token. */
+        /* S4 R4: the wire carries text, so there is no unknown-token path. An
+         * explicit empty string is treated as absent (bundled). */
         input = LkmPolicyInput{};
         input.facts.release = "5.15.202-android14-6-g0";
         input.profile_kmi = 5015U;
-        input.lkm_path_token = 2U;
-        expect_resolve(input, false, LkmPolicyError::UnknownLkmSource);
+        input.lkm_path = std::string_view{};
+        expect_resolve(input, true, LkmPolicyError::None);
 
         /* Unknown late_load_args bit. */
         input = LkmPolicyInput{};
         input.facts.release = "5.15.202-android14-6-g0";
         input.profile_kmi = 5015U;
-        input.lkm_path_token = kLkmPathTokenBundled;
         input.late_load_args_token = static_cast<std::uint64_t>(kLateLoadArgsKnown) << 1U;
         expect_resolve(input, false, LkmPolicyError::UnknownLateLoadArgs);
     }

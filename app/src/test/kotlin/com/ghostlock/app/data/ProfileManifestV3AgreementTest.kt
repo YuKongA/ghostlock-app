@@ -6,14 +6,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * GLKv3-3 three-end path -> type manifest agreement (Kotlin leg).
+ * GLKv3 owner-qualified manifest agreement (Kotlin leg, S4 R2).
  *
- * The native GLKv3 FieldSpec lists are the single source of truth for the v3
- * (path, wire) universe; they are exported to
- * `profile-manifest-v3.tsv` (see src/core/tests/profile_manifest_v3_test.cpp).
- * This test fails if the Kotlin adapter table drifts from that manifest in
- * either the path set or a wire type, so a field added or retyped on only one
- * side cannot reach the GLKv3-4 production migration.
+ * The native GLKv3 FieldSpec lists are the single source of truth for the
+ * (owner, path, wire, required, default, source, doc) manifest universe; they are
+ * exported to `profile-manifest-v3.tsv` (see
+ * src/core/tests/profile_manifest_v3_test.cpp). The Kotlin adapter parses that
+ * same manifest as its runtime type map; this test fails if the app test
+ * resource and the profile-core runtime resource drift in either the path set
+ * or a wire type.
  */
 class ProfileManifestV3AgreementTest {
     @Test
@@ -25,9 +26,10 @@ class ProfileManifestV3AgreementTest {
         val manifestTypes = manifest.lineSequence()
             .filter { it.isNotBlank() && !it.startsWith("#") }
             .associate { line ->
-                val parts = line.split('	')
-                assertEquals("manifest-v3 line needs 4 tab-separated columns: " + line, 4, parts.size)
+                val parts = line.split('\t')
+                assertEquals("manifest-v3 line needs 7 tab-separated columns: " + line, 7, parts.size)
                 assertEquals("manifest-v3 fields are all optional: " + line, "0", parts[3])
+                assertEquals("manifest-v3 owner is empty: " + line, true, parts[0].isNotBlank())
                 parts[1] to parts[2]
             }
 

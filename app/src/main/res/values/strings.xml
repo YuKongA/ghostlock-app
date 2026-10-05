@@ -87,12 +87,12 @@
     <string name="execution_mode_shizuku">Shizuku</string>
     <string name="execution_mode_shizuku_summary">Run from the shell via Shizuku; W1-W2, no seccomp</string>
     <string name="execution_mode_umh">UMH</string>
-    <string name="execution_mode_umh_summary">Unavailable until the native umh_forward terminal is ready</string>
+    <string name="execution_mode_umh_summary">Shell route for cve_2026_43284 (UMH terminal); the app has no access to the device facts it needs</string>
     <string name="backend_label">Backend</string>
     <string name="backend_cve_2026_43499">CVE-2026-43499</string>
     <string name="backend_cve_2026_43499_summary">PI-futex race; W1-W3 / Shizuku</string>
     <string name="backend_cve_2026_43284">CVE-2026-43284</string>
-    <string name="backend_cve_2026_43284_summary">Not implemented</string>
+    <string name="backend_cve_2026_43284_summary">Page-cache write + LKM channel; requires Shizuku (shell domain)</string>
     <string name="shizuku_recommended_hint">This kernel recommends running via Shizuku</string>
     <string name="shizuku_status_not_running">Start Shizuku, then return here</string>
     <string name="shizuku_status_permission_required">Grant Shizuku access when asked</string>

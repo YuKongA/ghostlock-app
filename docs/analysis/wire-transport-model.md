@@ -92,20 +92,17 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 
 ## 9. 迁移
 
-状态（GLKv3-5，2026-10-03）：**v3 唯一写出；v2 只读 + 金标保留**。
+状态（**S4-R2c，2026-10-05**）：**v3 是唯一格式；v2 已弃用并删除**。
 
-- native：`v2 只读 + v3 读写`。生产/导出无 v2 写路径；`profile/binary.cpp` 的
-  `serialize`、其 `write_le`/`present_count` 及仅供写出用的 `Field`/`kSections`
-  字段表以 `GHOSTLOCK_ENABLE_V2_WRITER` 隔离，仅 host 测试编译单元定义，
-  设备对象内不含 v2 序列化器（`llvm-nm` 无 write 符号）；
-- Kotlin：生产与导出一律走 v3（`AndroidProfileConfigController.nativeDocument()`、
-  `exportKernelProfiles` → `Glkv3Encoder`）。v2 写函数
-  （`NativeProfileDocument.toBinary()`、`Profile.toBinary()`、
-  `AndroidProfileConfigController.nativeDocumentV2()`）标注 `@VisibleForTesting`，
-  仅金标/等价测试用，生产不写 v2；
-- extractor：只产出 HOCON（`--format conf`）与 JSON（v1 offsets），不产出 wire；
-- v2 只读保留：`--load-prebuilt-profile` 与 stdin 仍接受 v2；本批不删 v2 读路径；
-- 唯一权威：同分支内 v3 为唯一写出格式，v2 只读，不长期并存。
+- native：**只读/只写 v3**（`schema == 3`）。`profile/binary.cpp`（v2 framer + writer）与
+  `-DGHOSTLOCK_ENABLE_V2_WRITER` 已删除；`entry.cpp` 不再有 v2 回退——非 map 根或 `schema != 3`
+  一律拒绝（`error == -1`），负向证据见 `device-gates/s4-r2c-20261005-pass.md`；
+- Kotlin：生产与导出一律 v3（`AndroidProfileConfigController.nativeDocument()`、
+  `exportKernelProfiles` → `Glkv3Encoder`）。旧配置（HOCON `schema_version = 1` 或缺键）由
+  **`LegacyProfileConverter`（唯一迁移点）** 归一为 3；`toBinary/fromBinary` 等 v2 编解码在
+  **R2c-2** 删除（当前仅为既有测试保留；`NativeProfileDocument.patchSafeMode` 作用在 GLKv3 字节上，是活代码）；
+- extractor：只产出 HOCON（`--format conf`，`schema_version = 3`）与 JSON（v1 offsets），不产出 wire；
+- 唯一权威：**版本号统一为 3**（HOCON 与 wire 同一个数字，见 `AGENTS.md`）。
 
 ## 10. 测试
 

@@ -8,27 +8,18 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::binary_profile {
+namespace ghostlock::profile {
     namespace {
-        uint64_t raw_value(const profile::glkv3::Value &value, bool &ok) {
-            switch (value.type) {
-                case profile::glkv3::WireType::UInt:
-                    ok = true;
-                    return value.uint_value;
-                case profile::glkv3::WireType::Int:
-                    ok = true;
-                    return static_cast<uint64_t>(value.int_value);
-                case profile::glkv3::WireType::Bool:
-                    ok = true;
-                    return value.bool_value ? uint64_t{1} : uint64_t{0};
-                case profile::glkv3::WireType::Str:
-                case profile::glkv3::WireType::Bin:
-                case profile::glkv3::WireType::Array:
-                    break;
-            }
-            ok = false;
-            return 0;
+        /* R2 owner-qualified sections: a section must name a known owner
+         * prefix ("backend.<id>.*", "platform.<module>.*",
+         * "countermeasure.<id>.*") or be the public "common" section. An
+         * unknown prefix is rejected here, fail-closed, before any owner bind. */
+        bool known_owner_section(std::string_view name) {
+            return name == "common" || name.starts_with("backend.") ||
+                   name.starts_with("platform.") ||
+                   name.starts_with("countermeasure.");
         }
+
     } // namespace
 
     bool looks_like_glkv3(std::string_view document) noexcept {
@@ -60,14 +51,34 @@ namespace ghostlock::binary_profile {
         }
 
         for (const profile::glkv3::Section &section : decoded.sections) {
+            if (!known_owner_section(section.name)) return -1;
             profile::Section &target = out->append_section(section.name);
             for (const profile::glkv3::Entry &entry : section.entries) {
-                bool ok = false;
-                const uint64_t raw = raw_value(entry.value, ok);
-                if (!ok) return -1;
-                target.add(entry.key, raw);
+                /* S4 R4: preserve the wire type. Numeric slots become raw
+                 * values; a str becomes a non-owning text view into the same
+                 * decode buffer (frame_v3's caller owns it). bin/array are not
+                 * part of the owner section vocabulary and fail closed. */
+                switch (entry.value.type) {
+                    case profile::glkv3::WireType::UInt:
+                        target.add(entry.key, entry.value.uint_value);
+                        break;
+                    case profile::glkv3::WireType::Int:
+                        target.add(entry.key,
+                                   static_cast<uint64_t>(entry.value.int_value));
+                        break;
+                    case profile::glkv3::WireType::Bool:
+                        target.add(entry.key,
+                                   entry.value.bool_value ? uint64_t{1} : uint64_t{0});
+                        break;
+                    case profile::glkv3::WireType::Str:
+                        target.add_text(entry.key, entry.value.bytes);
+                        break;
+                    case profile::glkv3::WireType::Bin:
+                    case profile::glkv3::WireType::Array:
+                        return -1;
+                }
             }
         }
         return 0;
     }
-} // namespace ghostlock::binary_profile
+} // namespace ghostlock::profile

@@ -162,7 +162,7 @@ class UserProfileStoreTest {
 
             val hocon = requireNotNull(store.exportHocon("offsets.json"))
             assertTrue(hocon.contains("release = \"6.1.118-test\""))
-            assertTrue(hocon.contains("schema_version = 1"))
+            assertTrue(hocon.contains("schema_version = 3"))
             assertTrue(hocon.contains("offset {"))
             assertTrue(hocon.contains("init_task = 33420800"))
             assertFalse(hocon.contains("\"symbols\""))

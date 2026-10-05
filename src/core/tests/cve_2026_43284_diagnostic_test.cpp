@@ -44,6 +44,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::LkmPolicyError;
     using ghostlock::backend::cve_2026_43284::lkm::ModuleFacts;
     using ghostlock::backend::cve_2026_43284::steps::ChainOps;
+    using ghostlock::platform::DeviceFactDegraded;
     using ghostlock::platform::DeviceFactError;
     using ghostlock::platform::DeviceProbeOps;
     using ghostlock::platform::FileFact;
@@ -571,10 +572,33 @@ int main() {
         assert(diagnostic_exit_code(report) == 2);
     }
     {
+        /* An empty /vendor/lib64 list degrades instead of blocking: the
+         * production carrier policy has a default fallback. */
         FakeDevice device;
         device.vendor_paths.clear();
         const DiagnosticReport report = run_device_diagnostic(fake_ops(device), "/tmp/x.ko");
-        assert(report.fact_error == DeviceFactError::VendorCandidatesMissing);
+        assert(report.fact_error == DeviceFactError::None);
+        assert(report.facts_present);
+        assert(report.facts.degraded == DeviceFactDegraded::VendorCandidates);
+    }
+    {
+        /* The facts denied in the untrusted_app domain degrade to "unknown"
+         * instead of blocking the whole diagnostic. */
+        FakeDevice device;
+        device.proc_version.clear();
+        device.selinux_readable = false;
+        device.crash_label_known = false;
+        const DiagnosticReport report = run_device_diagnostic(fake_ops(device), "/tmp/x.ko");
+        assert(report.fact_error == DeviceFactError::None);
+        assert(report.facts_present);
+        assert(report.facts.degraded == (DeviceFactDegraded::ProcVersion |
+                                         DeviceFactDegraded::Selinux |
+                                         DeviceFactDegraded::CrashDumpLabel));
+        assert(!report.facts.has_f4c50a4);
+        assert(!report.facts.preempt_known());
+        assert(!report.facts.selinux_enforce_readable);
+        assert(report.facts.crash_dump.exists);
+        assert(!report.facts.crash_dump.label_known);
     }
     {
         /* Symbol absence (restricted kallsyms, or SELinux disabled via LKM) is

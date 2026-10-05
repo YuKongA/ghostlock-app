@@ -72,6 +72,9 @@ int main(int argc, char **argv) {
                 case support::cli::ParseError::BadHookGuard:
                     pr_error("--cve43284-hook-guard must be reject|skip\n");
                     break;
+                case support::cli::ParseError::PluginRequiresRun:
+                    pr_error("--plugin requires --run-cve-2026-43284\n");
+                    break;
                 default:
                     pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin> |"
                              " --probe-cve-2026-43284 <ko-path> |"
@@ -83,10 +86,15 @@ int main(int argc, char **argv) {
                              " [--cve43284-hook-guard reject|skip]"
                              " [--cve43284-carrier <path>]"
                              " [--cve43284-patch1-target <path>]"
-                             " [--cve43284-allow-vermagic-rewrite]]"
+                             " [--cve43284-allow-vermagic-rewrite]"
+                             " [--plugin <path>]]"
                              " [--dump-kernel-log <dir>] [--force-attack]"
                              " [--enable-status-record]\n",
                              argv[0]);
+                    pr_error("  --plugin <path> is dev/gate-only: it loads one "
+                             "countermeasure .so into the LKM residency window and "
+                             "must be combined with --run-cve-2026-43284; it is never "
+                             "read from a profile or the production app-call path.\n");
                     break;
             }
             return 1;
@@ -120,6 +128,9 @@ int main(int argc, char **argv) {
             }
             if (options.run_patch1_target != nullptr) {
                 staged.patch1_target = options.run_patch1_target;
+            }
+            if (options.run_plugin_path != nullptr) {
+                staged.plugin_path = options.run_plugin_path;
             }
             if (options.run_hook_guard ==
                 support::cli::Cve43284HookGuard::Reject) {

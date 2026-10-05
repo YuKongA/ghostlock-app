@@ -1,5 +1,8 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_LEGACY_SCHEMA_VERSION
+import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
+
 /**
  * Converts remote/main-era offsets.json entries into the current layout.
  *
@@ -26,6 +29,37 @@ private fun moveKey(
 }
 
 internal object LegacyProfileConverter {
+    /**
+     * Canonicalises a profile document's `schema_version`.
+     *
+     * This object is the **single migration point**: the HOCON files, the
+     * in-memory model and the GLKv3 wire all carry [GHOSTLOCK_PROFILE_SCHEMA_VERSION],
+     * so a legacy [GHOSTLOCK_PROFILE_LEGACY_SCHEMA_VERSION] is accepted here and
+     * normalized; any other value is rejected with the version actually seen.
+     * [where] labels the diagnostic only.
+     */
+    fun normalizeSchemaVersion(version: Any?, where: String): Int {
+        val seen = (version as? Number)?.toInt()
+        return when (seen) {
+            GHOSTLOCK_PROFILE_SCHEMA_VERSION -> seen
+            /* Absent counts as legacy: documents written before the version was
+             * mandatory are still our own files and are normalized here. */
+            GHOSTLOCK_PROFILE_LEGACY_SCHEMA_VERSION, null -> {
+                /* stderr instead of android.util.Log: the converter also runs in
+                 * plain JVM unit tests, where Log is not mocked. */
+                System.err.println(
+                    "GhostLockProfile: profile_schema_version=$seen normalized to " +
+                        "$GHOSTLOCK_PROFILE_SCHEMA_VERSION ($where)",
+                )
+                GHOSTLOCK_PROFILE_SCHEMA_VERSION
+            }
+            else -> error(
+                "unsupported profile schema version $seen " +
+                    "(expected $GHOSTLOCK_PROFILE_SCHEMA_VERSION)",
+            )
+        }
+    }
+
     private val MetadataKeys = listOf("kimage_text_base", "btf_size", "kallsyms")
 
     /* Only keys the current schema knows are moved; upstream reports also

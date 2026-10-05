@@ -17,7 +17,7 @@ static_assert(std::is_trivially_copyable_v<AddressDiscoveryResult>);
 static_assert(std::is_standard_layout_v<AddressDiscoveryResult>);
 static_assert(std::is_trivially_copyable_v<AddressDiscoveryOps>);
 static_assert(std::is_standard_layout_v<AddressDiscoveryOps>);
-static_assert(ghostlock::contract::AddressDiscovery<AddressDiscoveryOps>);
+static_assert(ghostlock::contract::AddressDiscoveryProvider<AddressDiscoveryOps>);
 static_assert(noexcept(AddressDiscoveryOps{}.available()));
 static_assert(noexcept(ghostlock::contract::discovery_failed()));
 static_assert(ghostlock::contract::fail_closed(

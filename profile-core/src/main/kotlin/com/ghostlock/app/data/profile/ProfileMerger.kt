@@ -43,7 +43,7 @@ object ProfileMerger {
             ),
             overrides,
         )
-        resolved["schema_version"] = 1
+        resolved["schema_version"] = GHOSTLOCK_PROFILE_SCHEMA_VERSION
         resolved["release"] = deviceRelease
         applySelectedCpus(resolved, pair)
         fillRouteExecutionDefaults(resolved, routePresets)

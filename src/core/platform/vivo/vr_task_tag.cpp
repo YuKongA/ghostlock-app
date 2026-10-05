@@ -3,8 +3,8 @@
  *
  * The plan (`plan_vr_task_tag` in vr_task_tag.hpp) is pure address arithmetic;
  * this unit carries the parts that need the device: the runtime applicability
- * check and the two kernel writes, which arrive through `AncillaryOps` injected
- * by the backend call site, so this module names no backend type.
+ * check and the two kernel writes, which arrive through the injected
+ * `contract::Capabilities` view, so this module names no backend type.
  *
  * The `/proc/modules` direction is deliberately opposite the guard's: an
  * unreadable file counts as "present" here, because this behavior is the
@@ -58,37 +58,44 @@ namespace ghostlock::platform::vivo {
         }
     } // namespace
 
-    Status execute_vr_task_tag(AncillaryStage stage, AncillaryOps &ops) noexcept {
+    Status execute_vr_task_tag(PluginStage stage,
+                               const contract::Capabilities &capabilities) noexcept {
         /* One stage only: the rooted child exists, W2 verify has not read its
          * uid yet. */
-        if (stage != AncillaryStage::PostSpawn) return true;
+        if (stage != PluginStage::PostSpawn) return true;
 
         if (!vr_module_present()) {
             pr_info("vr.ko not loaded; skipping per-task tag clear\n");
             return true;
         }
-        if (ops.child_task == 0) {
-            pr_warning("vr guard: no child task to clear; per-task tags left in "
-                       "place\n");
+        /* State, not magic 0: the capability reports NotAvailable when the child
+         * task is not ready, so the behavior fails soft and skips. */
+        const std::optional<uintptr_t> child =
+                resolve_vr_task_tag_target(capabilities);
+        if (!child.has_value()) {
+            pr_warning("vr guard: child task capability not available; per-task "
+                       "tags left in place\n");
             return false;
         }
-        if (!ops.write_available || ops.write_zero == nullptr) {
+        if (capabilities.kernel == nullptr) {
             pr_warning("vr guard: no write primitive available; per-task tags left "
                        "in place (child may be killed during W2 verify)\n");
             return false;
         }
 
-        const VrTaskTagPlan plan = plan_vr_task_tag(ops.child_task);
+        const VrTaskTagPlan plan = plan_vr_task_tag(*child);
         pr_info("vr.ko loaded; clearing per-task tags child_task=%016zx "
                 "flags=%016zx tagB=%016zx\n",
-                static_cast<size_t>(ops.child_task),
+                static_cast<size_t>(*child),
                 static_cast<size_t>(plan.flags_word),
                 static_cast<size_t>(plan.tag_b_word));
 
         /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit). */
-        Status ok = ops.write_zero(plan.flags_word, "VR: flags+tagA");
+        Status ok = capabilities.kernel->write_zero(plan.flags_word).has_value();
         /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
-        if (ok) ok = ops.write_zero(plan.tag_b_word, "VR: tagB");
+        if (ok) {
+            ok = capabilities.kernel->write_zero(plan.tag_b_word).has_value();
+        }
 
         if (ok) {
             pr_success("VR.ko per-task tags cleared\n");

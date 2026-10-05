@@ -33,21 +33,32 @@ namespace ghostlock::platform {
         }
         out.release_present = true;
 
+        /* /proc/version is denied to untrusted_app on many devices
+         * (tcontext=proc_version). Record the unknown instead of failing: the
+         * fix marker (has_f4c50a4) stays false so an unread marker can never
+         * fire PatchedKernel, and preempt stays unknown (preempt_known()==false)
+         * for the vermagic precheck. */
         const long version_len = ops.read_proc_version(ops.ctx, out.proc_version.value.data(),
                                                        out.proc_version.value.size());
-        if (version_len <= 0) {
-            return DeviceFactError::ProcVersionMissing;
+        if (version_len > 0) {
+            out.proc_version_present = true;
+            out.has_f4c50a4 = proc_version_indicates_fixed(out.proc_version.view());
+        } else {
+            out.degraded = out.degraded | DeviceFactDegraded::ProcVersion;
         }
-        out.proc_version_present = true;
-        out.has_f4c50a4 = proc_version_indicates_fixed(out.proc_version.view());
 
+        /* /sys/fs/selinux/enforce is denied to untrusted_app too. Unknown is not
+         * "permissive": selinux_enforce stays 0 and readable stays false. */
         const int enforce = ops.read_selinux_enforce(ops.ctx);
-        if (enforce < 0) {
-            return DeviceFactError::SelinuxMissing;
+        if (enforce >= 0) {
+            out.selinux_enforce_readable = true;
+            out.selinux_enforce = enforce;
+        } else {
+            out.degraded = out.degraded | DeviceFactDegraded::Selinux;
         }
-        out.selinux_enforce_readable = true;
-        out.selinux_enforce = enforce;
 
+        /* crash_dump64 is patch #1's target, so its EXISTENCE stays mandatory;
+         * only the ls -lZ label degrades to unknown. */
         if (!ops.file_fact(ops.ctx, kCrashDump64Path, out.crash_dump)) {
             return DeviceFactError::CrashDumpMissing;
         }
@@ -55,18 +66,21 @@ namespace ghostlock::platform {
             return DeviceFactError::CrashDumpMissing;
         }
         if (!out.crash_dump.label_known) {
-            return DeviceFactError::CrashDumpLabelUnknown;
+            out.degraded = out.degraded | DeviceFactDegraded::CrashDumpLabel;
         }
 
+        /* An empty list is allowed: the production carrier policy has a default
+         * fallback and the chain fails closed if the chosen carrier is
+         * unusable. */
         const std::size_t candidates =
                 ops.list_vendor_candidates(ops.ctx, out.vendor_candidates.data(),
                                            out.vendor_candidates.size());
-        if (candidates == 0U) {
-            return DeviceFactError::VendorCandidatesMissing;
-        }
         out.vendor_candidate_count = candidates < out.vendor_candidates.size()
                                              ? candidates
                                              : out.vendor_candidates.size();
+        if (out.vendor_candidate_count == 0U) {
+            out.degraded = out.degraded | DeviceFactDegraded::VendorCandidates;
+        }
 
         out.symbols.selinux_state = ops.symbol_present(ops.ctx, "selinux_state");
         /* Symbol absence is a recorded fact, never fatal (same policy as the
@@ -82,6 +96,48 @@ namespace ghostlock::platform {
         out.symbols.defex_get_dc_target_dpath =
                 ops.symbol_present(ops.ctx, "get_dc_target_dpath");
         return DeviceFactError::None;
+    }
+
+    std::size_t format_device_fact_degraded(DeviceFactDegraded bits, char *out,
+                                            std::size_t capacity) noexcept {
+        if (out == nullptr || capacity == 0U) {
+            return 0U;
+        }
+        struct Entry final {
+            DeviceFactDegraded bit;
+            std::string_view name;
+        };
+        constexpr Entry kEntries[] = {
+            {DeviceFactDegraded::ProcVersion, "proc_version"},
+            {DeviceFactDegraded::Selinux, "selinux"},
+            {DeviceFactDegraded::VendorCandidates, "vendor"},
+            {DeviceFactDegraded::CrashDumpLabel, "crash_dump_label"},
+        };
+        std::size_t written = 0U;
+        bool first = true;
+        for (const Entry &entry : kEntries) {
+            if (static_cast<std::uint8_t>(bits & entry.bit) == 0U) {
+                continue;
+            }
+            if (!first) {
+                if (written + 1U >= capacity) {
+                    break;
+                }
+                out[written] = ',';
+                ++written;
+            }
+            first = false;
+            for (const char c : entry.name) {
+                if (written + 1U >= capacity) {
+                    out[written] = '\0';
+                    return written;
+                }
+                out[written] = c;
+                ++written;
+            }
+        }
+        out[written] = '\0';
+        return written;
     }
 
 #if defined(__linux__)

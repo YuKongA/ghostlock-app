@@ -2,11 +2,11 @@ package com.ghostlock.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.annotation.VisibleForTesting
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.profile.CpuPairView
+import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
 import com.ghostlock.app.data.profile.Glkv3Encoder
 import com.ghostlock.app.data.profile.NativeProfileGlkv3Adapter
 import com.ghostlock.app.data.profile.ProfileMerger
@@ -76,6 +76,7 @@ internal class AndroidProfileConfigController(
         val route = routeNameOf(full)
         val fallbackTo = fallbackTargetOf(full)
         val invalidPaths = validateProfileFields(full, route, fallbackTo) +
+            validate43284Fields(full) +
             ProfileResolver.validateMerged(full, route, fallbackTo).mapTo(mutableSetOf()) { it.fieldPath }
         /* Invalid fields missing from the resolved document still get a row,
          * otherwise the run stays blocked with no red field to fix. */
@@ -84,6 +85,7 @@ internal class AndroidProfileConfigController(
          * geometry, so a field the profile did not carry appears as an
          * editable `null` row instead of being invisible. */
         val complete = completeProfileFields(full, route, fallbackTo)
+        complete43284Fields(complete)
         val roots = buildTree(complete, "", baseline, advanced)
         cache(deviceRelease, buildNativeDocument(deviceRelease, full))
         return ProfileConfig(
@@ -268,6 +270,45 @@ internal class AndroidProfileConfigController(
         return invalid
     }
 
+    /**
+     * S4 R4 validation for the 43284 private section. Mirrors the editor's
+     * [isFieldInputInvalid] for the resolved document so the run gate blocks an
+     * out-of-range handshake knob or a malformed policy path, not just the text
+     * field highlight. A field absent from the document is left to the native
+     * default and never flagged.
+     */
+    private fun validate43284Fields(profile: ValueMap): Set<String> {
+        if (!is43284Selection()) return emptySet()
+        val invalid = mutableSetOf<String>()
+        for (path in Cve2026_43284Fields.StringPaths) {
+            val text = profile.getValueAt(path) as? String ?: continue
+            if (Cve2026_43284Fields.isTextInvalid(path, text)) invalid += path
+        }
+        for (path in Cve2026_43284Fields.UInt32Paths) {
+            val value = (profile.getValueAt(path) as? Number)?.toLong() ?: continue
+            if (value < 0L || value > Cve2026_43284Fields.UInt32Max) invalid += path
+        }
+        return invalid
+    }
+
+    /** True when the effective wire backend is cve_2026_43284. */
+    private fun is43284Selection(): Boolean =
+        BackendKind.selectableOrFallback(backendSelection()) == BackendKind.Cve2026_43284
+
+    /**
+     * Surfaces the editable 43284 policy/tuning surface for a 43284 selection
+     * even when the resolved (43499) profile does not carry the section yet, so
+     * the advanced editor can fill it in. A value already present is kept.
+     */
+    private fun complete43284Fields(profile: ValueMap) {
+        if (!is43284Selection()) return
+        val section = profile.mutableChild("backend").mutableChild("cve_2026_43284")
+        for (path in Cve2026_43284Fields.EditablePaths) {
+            val key = path.substringAfterLast('.')
+            if (!section.containsKey(key)) section[key] = null
+        }
+    }
+
     /** The single branch key declared under "route" (string legacy allowed). */
     private fun routeNameOf(profile: ValueMap): String? {
         return when (val value = profile["route"]) {
@@ -355,21 +396,39 @@ internal class AndroidProfileConfigController(
     override suspend fun updateAdvanced(
         release: String,
         pair: CpuPair,
-        values: Map<String, Long>,
+        values: Map<String, Any>,
     ): ProfileConfig {
         /* Rebuild the sparse override from scratch: only values that differ from
          * the baseline survive, so untouched fields (including stale entries
-         * from older builds) can never stay highlighted. */
+         * from older builds) can never stay highlighted. Strings (the S4 R4
+         * 43284 policy paths) compare against the resolved baseline text; an
+         * empty draft suppresses a baseline value so "absent" can be requested
+         * explicitly, and is dropped when the baseline is already absent. */
         val baseline = resolveCurrent(release, pair, null, includeImported = true)
         if (baseline != null) {
             val rebuilt = valueMapOf()
-            for ((path, value) in values) {
+            for ((path, raw) in values) {
                 if (path.isEmpty() || path == "release" ||
                     path.startsWith("execution.selected_cpus")
                 ) {
                     continue
                 }
-                if (value != baseline.getLongAt(path)) rebuilt.setValueAt(path, value)
+                when (raw) {
+                    is String -> {
+                        val text = raw.trim()
+                        val current = baseline.getValueAt(path) as? String
+                        if (current == null) {
+                            if (text.isNotEmpty()) rebuilt.setValueAt(path, text)
+                        } else if (text != current) {
+                            rebuilt.setValueAt(path, text)
+                        }
+                    }
+
+                    is Number -> {
+                        val value = raw.toLong()
+                        if (value != baseline.getLongAt(path)) rebuilt.setValueAt(path, value)
+                    }
+                }
             }
             /* The advanced editor carries neither the fallback choice nor the
              * selected CPUs (and may drop a route branch the baseline already
@@ -446,7 +505,7 @@ internal class AndroidProfileConfigController(
             release, pair, readAdvancedOverride(release), includeImported = true,
         ) ?: return null
         val view = resolved.copyValue().asValueMap() ?: return null
-        view["schema_version"] = 1
+        view["schema_version"] = GHOSTLOCK_PROFILE_SCHEMA_VERSION
         view["release"] = release
         /* The CPU choice follows the device pair, it must not be frozen here. */
         view["execution"].asValueMap()?.remove("selected_cpus")
@@ -536,7 +595,7 @@ internal class AndroidProfileConfigController(
     }
 
     /**
-     * Production wire: the resolved v2 logical document is translated to the
+     * Production wire: the resolved logical document is translated to the
      * typed GLKv3 document and written as canonical MessagePack, the format the
      * native reader consumes (GLKv3-4).
      */
@@ -547,17 +606,6 @@ internal class AndroidProfileConfigController(
                 NativeProfileGlkv3Adapter.adapt(profile.document, resolvedSelection().terminal.token),
             )
         }
-    }
-
-    /**
-     * v2 wire: golden/equivalence tests only. Production and export write v3
-     * through [nativeDocument]; native still *reads* v2 for prebuilt/imported
-     * documents, but nothing on device writes v2 (GLKv3-5). Retained for the
-     * frozen `native-doc-golden.sha256` and the v2-specific tests.
-     */
-    @VisibleForTesting
-    internal fun nativeDocumentV2(config: ProfileConfig): ByteArray? = synchronized(lock) {
-        if (cachedRelease == config.release) cachedProfile?.toBinary() else null
     }
 
     /** The sparse triple the live UI selection addresses. */
@@ -613,7 +661,9 @@ internal class AndroidProfileConfigController(
         includeImported: Boolean,
     ): ValueMap? = runCatching {
         val index = readIndex() ?: return@runCatching null
-        require((index["schema_version"] as? Number)?.toInt() == 1) { "unsupported profile schema" }
+        LegacyProfileConverter.normalizeSchemaVersion(
+            index["schema_version"], "index.conf",
+        )
         val builtinEntry = findProfile(index["profiles"].asValueList(), profileRelease)
         val imported = if (includeImported) {
             userProfiles.loadEntry(deviceRelease, activeUserProfile())
@@ -627,7 +677,9 @@ internal class AndroidProfileConfigController(
             (HoconSupport.parseValue(readAsset("$BuiltinDirectory/$path")).asValueMap()
                 ?: error("profile is not an object"))
                 .also {
-                    require((it["schema_version"] as? Number)?.toInt() == 1) { "unsupported profile schema" }
+                    LegacyProfileConverter.normalizeSchemaVersion(
+                        it["schema_version"], "$BuiltinDirectory/$path",
+                    )
                     require(it["release"] == entry["release"]) {
                         "profile index release mismatch"
                     }
@@ -811,6 +863,11 @@ internal class AndroidProfileConfigController(
         for (field in fields) if (!branch.containsKey(field)) branch[field] = null
     }
 
+    /** True when the GLKv3 manifest declares [path] as a wire `str` field. */
+    private fun isStringFieldPath(path: String): Boolean =
+        NativeProfileGlkv3Adapter.declaredTypes()[path] ==
+            NativeProfileGlkv3Adapter.WireType.Str
+
     private fun buildTree(
         node: ValueMap,
         prefix: String,
@@ -857,6 +914,23 @@ internal class AndroidProfileConfigController(
                         value = if (value) 1L else 0L,
                         overridden = overrideValue != null &&
                             overrideValue != baseline.getLongAt(path),
+                    )
+                }
+
+                /* S4 R4 string leaves (the 43284 policy paths). Only paths the
+                 * GLKv3 manifest declares as wire `str` are editable here;
+                 * other HOCON strings (fallback.to, backend.steps/kind) are
+                 * selection tokens owned by their dedicated controls. */
+                value is String -> if (path != "schema_version" && path != "release" &&
+                    isStringFieldPath(path)
+                ) {
+                    val overrideValue = override.getValueAt(path) as? String
+                    leaves += ProfileFieldNode(
+                        path = path,
+                        name = key,
+                        textValue = value,
+                        overridden = overrideValue != null &&
+                            overrideValue != (baseline.getValueAt(path) as? String),
                     )
                 }
 

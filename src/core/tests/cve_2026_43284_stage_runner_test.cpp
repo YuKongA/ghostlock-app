@@ -9,6 +9,7 @@
  * fail-closed catalog. */
 
 #include "backend/cve_2026_43284/lkm/lkm_image.hpp"
+#include "backend/cve_2026_43284/lkm_window.hpp"
 #include "backend/cve_2026_43284/real_ops.hpp"
 #include "backend/cve_2026_43284/stage_runner.hpp"
 #include "backend/cve_2026_43284/steps/chain.hpp"
@@ -19,6 +20,7 @@
 
 #include <array>
 #include <cassert>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -67,6 +69,10 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::CarrierTarget;
     using ghostlock::backend::cve_2026_43284::steps::PatchPlan;
     using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
+    using ghostlock::backend::cve_2026_43284::LkmWindowRuntime;
+    using ghostlock::contract::CapabilityState;
+    using ghostlock::contract::MemoryChannel;
+    using ghostlock::plugin::LkmTransport;
     using ghostlock::platform::DeviceProbeOps;
     using ghostlock::platform::FileFact;
     using ghostlock::platform::VendorCandidate;
@@ -90,6 +96,52 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::kHookTrampolineBytes;
     using ghostlock::backend::cve_2026_43284::steps::kLibcxxSentrySymbol;
     using ghostlock::backend::cve_2026_43284::steps::kShellcodeMaxBytes;
+
+    /* ---- fake LKM transport for the delta-2 residency window ---- */
+
+    struct FakeLkm final {
+        bool opened = false;
+        bool closed = false;
+        bool unloaded = false;
+    };
+
+    FakeLkm g_lkm;
+
+    int fake_lkm_open(void *ctx) noexcept {
+        (void)ctx;
+        g_lkm.opened = true;
+        g_lkm.closed = false;
+        return 0;
+    }
+
+    void fake_lkm_close(void *ctx) noexcept {
+        (void)ctx;
+        g_lkm.closed = true;
+    }
+
+    int fake_lkm_call(void *ctx, glk_lkm_req &req) noexcept {
+        (void)ctx;
+        if (req.abi_version != GLK_LKM_ABI_VERSION) {
+            req.status = static_cast<std::uint32_t>(-EPROTO);
+            return 0;
+        }
+        req.status = 0U;
+        if (req.op == GLK_LKM_UNLOAD) {
+            g_lkm.unloaded = true;
+        } else if (req.op != GLK_LKM_PING) {
+            req.status = static_cast<std::uint32_t>(-EOPNOTSUPP);
+        }
+        return 0;
+    }
+
+    LkmTransport fake_lkm_transport() noexcept {
+        LkmTransport t{};
+        t.ctx = &g_lkm;
+        t.open = &fake_lkm_open;
+        t.close = &fake_lkm_close;
+        t.call = &fake_lkm_call;
+        return t;
+    }
 
     /* ---- fake chain over a 64-byte in-memory target ---- */
 
@@ -1229,6 +1281,11 @@ int main() {
         assert(ops.release != nullptr);
         assert(ops.run_ready());
         assert(!ctx.released_cleanly());
+        /* Delta-2: with no LkmWindowRuntime bound, the window callbacks stay
+         * null so the chain can never open /dev/glk by accident. */
+        assert(ops.open_lkm_channel == nullptr);
+        assert(ops.run_lkm_window == nullptr);
+        assert(ops.close_lkm_channel == nullptr);
 
         /* read_block recovers the enclosing context from the shared pointer. */
         std::uint8_t block[16] = {};
@@ -1271,6 +1328,40 @@ int main() {
             assert(ctx.page.sa.aes_key[i] == 0U);
             assert(ctx.page.sa.hmac_key[i] == 0U);
         }
+    }
+    {
+        /* Delta-2 LKM residency window: make_real_chain_ops binds all three
+         * callbacks when a runtime is present, and the callbacks recover it from
+         * the shared ctx pointer. The fake transport stands in for /dev/glk. */
+        g_lkm = FakeLkm{};
+        RealChainContext ctx{};
+        ctx.page.io = fake_splice_io();
+        ctx.page.file_fd = 7;
+        ctx.page.socket_fd = 8;
+        ctx.page.sa.icv_len = 16U;
+        FakeDevice device{};
+        ctx.device = fake_device_ops(device);
+        LkmWindowRuntime window{};
+        window.set_test_transport(fake_lkm_transport());
+        ctx.lkm_window = &window;
+
+        const ChainOps ops = make_real_chain_ops(ctx);
+        assert(ops.open_lkm_channel != nullptr);
+        assert(ops.run_lkm_window != nullptr);
+        assert(ops.close_lkm_channel != nullptr);
+
+        assert(ops.open_lkm_channel(&ctx.page));
+        assert(window.is_open());
+        assert(window.capabilities().kernel != nullptr);
+        assert(window.capabilities().alias != nullptr);
+        assert(ops.run_lkm_window(&ctx.page));
+        assert(window.window_calls() == 1U);
+        ops.close_lkm_channel(&ctx.page);
+        assert(window.is_closed());
+        assert(g_lkm.unloaded);
+        assert(window.memory()->state(MemoryChannel::LkmProxy) ==
+               CapabilityState::Closed);
+        assert(window.capabilities().kernel == nullptr);
     }
     {
         /* No device surface: run_ready fails closed even with a bound write. */
@@ -1619,6 +1710,35 @@ int main() {
                ParseError::ProbeConflict);
     }
 
+    /* ---- delta-4 dev/gate-only --plugin: legal only with the staged run. ---- */
+    {
+        Options opts{};
+        assert(parse_args({"--run-cve-2026-43284", "a", "b",
+                           "--plugin", "/data/local/tmp/cm.so"}, opts) ==
+               ParseError::None);
+        assert(opts.run_plugin_path != nullptr);
+        assert(std::string(opts.run_plugin_path) == "/data/local/tmp/cm.so");
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--plugin", "/data/local/tmp/cm.so"}, opts) ==
+               ParseError::PluginRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--ghostlock-app-call", "--plugin", "x"}, opts) ==
+               ParseError::PluginRequiresRun);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--probe-cve-2026-43284", "a", "--plugin", "x"},
+                          opts) == ParseError::ProbeConflict);
+    }
+    {
+        Options opts{};
+        assert(parse_args({"--plugin"}, opts) == ParseError::MissingArgument);
+    }
+
     /* ---- B5-9h-1 staged hook plan (read-only) and diagnostics. ---- */
     {
         assert(hook_error_name(HookPatchError::GuardRejected) == "GuardRejected");
@@ -1631,6 +1751,7 @@ int main() {
                "HookImageTooLarge");
         assert(stage_error_name(StageError::HookIoUnavailable) ==
                "HookIoUnavailable");
+        assert(stage_error_name(StageError::PluginRejected) == "PluginRejected");
         StageReport code_report{};
         code_report.error = StageError::HookPlanFailed;
         assert(stage_exit_code(code_report) == 2);

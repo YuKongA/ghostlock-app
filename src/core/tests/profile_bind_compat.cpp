@@ -11,16 +11,16 @@
 #include <string_view>
 #include <utility>
 
-namespace ghostlock::binary_profile {
+namespace ghostlock::tests::profile_bind {
     namespace {
         std::string_view route_section_name(uint8_t route) {
             switch (route) {
                 case profile::kRouteTcpZerocopy:
-                    return "route.tcp_zerocopy";
+                    return "backend.cve_2026_43499.route.tcp_zerocopy";
                 case profile::kRouteSelectStack:
-                    return "route.select_stack";
+                    return "backend.cve_2026_43499.route.select_stack";
                 case profile::kRouteMulticastWaiter:
-                    return "route.multicast_waiter";
+                    return "backend.cve_2026_43499.route.multicast_waiter";
                 default:
                     return {};
             }
@@ -41,7 +41,7 @@ namespace ghostlock::binary_profile {
                 route == profile::kRouteSelectStack ||
                 route == profile::kRouteMulticastWaiter;
         const bool route_less_43284 =
-                backend == kBackendCve202643284 && route == profile::kRouteAuto;
+                backend == static_cast<uint16_t>(contract::BackendKind::Cve2026_43284) && route == profile::kRouteAuto;
         if (!route_known && !route_less_43284) return -1;
         if (document.release.size() + 1 > release_buf_cap) return -1;
 
@@ -52,15 +52,15 @@ namespace ghostlock::binary_profile {
         active.middleware = document.middleware;
         const std::string_view active_route = route_section_name(route);
         for (const profile::Section &section : document.sections) {
-            const bool known_route = section.name == "route.tcp_zerocopy" ||
-                                     section.name == "route.select_stack" ||
-                                     section.name == "route.multicast_waiter";
+            const bool known_route = section.name == "backend.cve_2026_43499.route.tcp_zerocopy" ||
+                                     section.name == "backend.cve_2026_43499.route.select_stack" ||
+                                     section.name == "backend.cve_2026_43499.route.multicast_waiter";
             if (known_route && section.name != active_route) continue;
             active.sections.push_back(section);
         }
 
         ghostlock::backend::Cve2026_43284Profile profile_43284{};
-        if (backend == kBackendCve202643284) {
+        if (backend == static_cast<uint16_t>(contract::BackendKind::Cve2026_43284)) {
             profile::Document owned_43284;
             owned_43284.release = active.release;
             owned_43284.terminal = active.terminal;
@@ -99,7 +99,7 @@ namespace ghostlock::binary_profile {
         out->uname_r = release_buf;
         out->route = route;
         uint16_t steps = view.steps;
-        if (backend == kBackendCve202643284 && profile_43284.steps) {
+        if (backend == static_cast<uint16_t>(contract::BackendKind::Cve2026_43284) && profile_43284.steps) {
             steps = *profile_43284.steps;
         }
         document.steps = steps;
@@ -109,26 +109,12 @@ namespace ghostlock::binary_profile {
         return 0;
     }
 
-    int32_t parse(std::string_view document, profile::kernel_offsets *out,
-                  char *release_buf, size_t release_buf_cap, component_ids *ids,
-                  profile::Document *document_out,
-                  ghostlock::backend::Cve2026_43284Profile *profile_43284_out) {
-        profile::Document framed;
-        if (frame(document, &framed) != 0) return -1;
-        const uint8_t route = static_cast<uint8_t>(framed.middleware);
-        const uint16_t terminal = framed.terminal;
-        const uint16_t backend = framed.backend;
-        return bind_document(std::move(framed), route, terminal, backend, route,
-                             out, release_buf, release_buf_cap, ids, document_out,
-                             profile_43284_out);
-    }
-
     int32_t parse_v3(std::string_view document, profile::kernel_offsets *out,
                      char *release_buf, size_t release_buf_cap, component_ids *ids,
                      profile::Document *document_out,
                      ghostlock::backend::Cve2026_43284Profile *profile_43284_out) {
         profile::Document framed;
-        if (frame_v3(document, &framed) != 0) return -1;
+        if (profile::frame_v3(document, &framed) != 0) return -1;
         contract::TerminalKind terminal_kind{};
         contract::BackendKind backend_kind{};
         if (!pipeline::terminal_from_token(framed.terminal_token, terminal_kind)) {
@@ -144,4 +130,4 @@ namespace ghostlock::binary_profile {
                              out, release_buf, release_buf_cap, ids, document_out,
                              profile_43284_out);
     }
-} // namespace ghostlock::binary_profile
+} // namespace ghostlock::tests::profile_bind

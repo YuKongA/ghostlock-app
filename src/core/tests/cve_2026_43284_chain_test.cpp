@@ -60,6 +60,10 @@ namespace {
         Wait,
         Restore,
         Release,
+        /* Delta batch: LKM residency window. */
+        LkmOpen,
+        LkmWindow,
+        LkmClose,
     };
 
     struct Fake final {
@@ -83,6 +87,13 @@ namespace {
         std::array<std::uint8_t, 32> secret{};
 
         PatchPlan planned_plan{};
+
+        /* Delta batch: LKM residency window results. */
+        bool open_channel_result = true;
+        bool window_result = true;
+        int open_calls = 0;
+        int window_calls = 0;
+        int close_calls = 0;
     };
 
     Fake g;
@@ -225,6 +236,35 @@ namespace {
         ops.patch_crash_dump = fake_patch_crash_dump;
         ops.apply_hook = fake_apply_hook;
         ops.restore_hook = fake_restore_hook;
+        return ops;
+    }
+
+    bool fake_open_lkm_channel(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::LkmOpen);
+        ++g.open_calls;
+        return g.open_channel_result;
+    }
+
+    bool fake_run_lkm_window(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::LkmWindow);
+        ++g.window_calls;
+        return g.window_result;
+    }
+
+    void fake_close_lkm_channel(void *ctx) noexcept {
+        (void)ctx;
+        record(Op::LkmClose);
+        ++g.close_calls;
+    }
+
+    /* Window bindings on top of the plain fake surface. */
+    ChainOps make_ops_with_window() noexcept {
+        ChainOps ops = make_ops();
+        ops.open_lkm_channel = fake_open_lkm_channel;
+        ops.run_lkm_window = fake_run_lkm_window;
+        ops.close_lkm_channel = fake_close_lkm_channel;
         return ops;
     }
 
@@ -938,6 +978,124 @@ namespace {
         assert(events_are({Op::Read, Op::Release}));
     }
 
+    /* ---- LKM residency window (delta batch): open after LkmLoaded, close in
+     * the terminus on every path, never opened before the LKM is loaded. ---- */
+
+    void test_lkm_window_success() {
+        reset();
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x42U);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "lkm"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 0U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        ChainOps ops = make_ops_with_window();
+        ChainWorkspace workspace{};
+        const ChainResult result = run_chain(request, ops, workspace);
+
+        assert(result.error == ChainError::None);
+        assert(result.lkm_loaded);
+        assert(result.lkm_channel_opened);
+        assert(result.lkm_channel_closed);
+        assert(g.open_calls == 1);
+        assert(g.window_calls == 1);
+        assert(g.close_calls == 1);
+        assert(g.release_calls == 1U);
+        assert(events_are({Op::Read, Op::Write, Op::Read, Op::Trigger, Op::Wait,
+                           Op::LkmOpen, Op::LkmWindow, Op::LkmClose, Op::Release}));
+    }
+
+    void test_lkm_window_not_opened_without_lkm() {
+        reset();
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x42U);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "lkm"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 0U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        g.wait_outcome = ChainWaitOutcome::Failed;
+        ChainOps ops = make_ops_with_window();
+        ChainWorkspace workspace{};
+        const ChainResult result = run_chain(request, ops, workspace);
+
+        assert(result.error == ChainError::LkmFailed);
+        assert(!result.lkm_loaded);
+        assert(!result.lkm_channel_opened);
+        assert(!result.lkm_channel_closed);
+        assert(g.open_calls == 0);
+        assert(g.close_calls == 0);
+        assert(g.release_calls == 1U);
+        assert(events_end_with({Op::Trigger, Op::Wait, Op::Release}));
+    }
+
+    void test_lkm_window_closes_on_body_failure() {
+        reset();
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x42U);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "lkm"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 0U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        g.window_result = false;
+        ChainOps ops = make_ops_with_window();
+        ChainWorkspace workspace{};
+        const ChainResult result = run_chain(request, ops, workspace);
+
+        /* Countermeasures fail soft: a failing window body is recorded, the
+         * attack still completes, and the window is still closed. */
+        assert(result.error == ChainError::None);
+        assert(result.lkm_window_failed);
+        assert(result.lkm_channel_opened);
+        assert(result.lkm_channel_closed);
+        assert(g.open_calls == 1);
+        assert(g.window_calls == 1);
+        assert(g.close_calls == 1);
+        assert(g.release_calls == 1U);
+        assert(events_end_with(
+                {Op::LkmOpen, Op::LkmWindow, Op::LkmClose, Op::Release}));
+    }
+
+    void test_lkm_window_open_failure() {
+        reset();
+        std::array<std::uint8_t, 16> payload{};
+        payload.fill(0x42U);
+        PatchRegion region{0U, payload.data(), payload.size(), true, true, "lkm"};
+        PatchPlan plan{&region, 1U};
+        CarrierTarget carriers[1] = {{"/vendor/lib64/target.so", 0U}};
+        ChainRequest request{};
+        request.carriers = carriers;
+        request.carrier_count = 1U;
+        request.plan = plan;
+
+        g.open_channel_result = false;
+        ChainOps ops = make_ops_with_window();
+        ChainWorkspace workspace{};
+        const ChainResult result = run_chain(request, ops, workspace);
+
+        /* An unusable kernel channel is recorded, not fatal: the chain still
+         * reaches the terminus (same fail-soft rule). */
+        assert(result.error == ChainError::None);
+        assert(result.lkm_window_failed);
+        assert(!result.lkm_channel_opened);
+        assert(!result.lkm_channel_closed);
+        assert(g.open_calls == 1);
+        assert(g.close_calls == 0);
+        assert(g.release_calls == 1U);
+        assert(events_end_with({Op::LkmOpen, Op::Release}));
+    }
+
 } // namespace
 
 int main() {
@@ -957,6 +1115,10 @@ int main() {
     test_target_out_of_bounds();
     test_region_closure();
     test_preimage_assert();
+    test_lkm_window_success();
+    test_lkm_window_not_opened_without_lkm();
+    test_lkm_window_closes_on_body_failure();
+    test_lkm_window_open_failure();
 
     std::puts("cve_2026_43284_chain_test: OK");
     return 0;

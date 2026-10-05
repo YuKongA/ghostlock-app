@@ -29,11 +29,19 @@ class ExporterAgreementTest {
 
     @Test
     fun `exporter output matches the app native documents`() = runBlocking {
-        val exporterDir = File("../build/kernel-profiles")
+        /* The Gradle build tree lives under ~/.ghostlock/build (commit 03b4ddc
+         * moved it out of iCloud), so the exporter output is the external root
+         * build/kernel-profiles; the in-tree path is kept for the native build
+         * layout and for a developer who exports there. */
+        val exporterDir = listOf(
+            File("../build/kernel-profiles"),
+            File(System.getProperty("user.home"), ".ghostlock/build/root/kernel-profiles"),
+        ).firstOrNull { it.isDirectory }
         assertTrue(
             "exporter output missing; run :profile-core:exportKernelProfiles",
-            exporterDir.isDirectory,
+            exporterDir != null,
         )
+        val exportDir = requireNotNull(exporterDir)
 
         val index = HoconSupport.parseValue(
             AssetConfigLoader(context).load("kernel_profiles/index.conf"),
@@ -43,7 +51,7 @@ class ExporterAgreementTest {
             .mapNotNull { it["release"] as? String }
             .filterNot { it.endsWith("-template") }
             .toSortedSet()
-        val actual = exporterDir.listFiles { file -> file.isFile && file.name.endsWith(".bin") }
+        val actual = exportDir.listFiles { file -> file.isFile && file.name.endsWith(".bin") }
             .orEmpty().map { it.name.removeSuffix(".bin") }.toSortedSet()
         assertEquals("exported set must match the index (excluding templates)", expected, actual)
 
@@ -65,7 +73,7 @@ class ExporterAgreementTest {
                 assertArrayEquals(
                     "$release: exporter differs from the app",
                     appBytes,
-                    File(exporterDir, "$release.bin").readBytes(),
+                    File(exportDir, "$release.bin").readBytes(),
                 )
             }
         } finally {

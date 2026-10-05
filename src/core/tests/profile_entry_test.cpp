@@ -1,14 +1,13 @@
 /* Host test for the production profile entry dispatch (profile/entry.cpp, A2-5).
- * It writes a GLKv3 document and a v2 document to disk and reads them back
- * through the same read_glk1_file() the --load-prebuilt-profile and
- * --ghostlock-app-call paths use, so the map-root probe and the neutral framing
- * are exercised together. The result is a neutral profile::Document (no owner
- * bound); a map-rooted document that is not valid GLKv3 fails closed instead of
- * being retried as v2. */
+ * It writes a GLKv3 document to disk and reads it back through the same
+ * read_glk1_file() the --load-prebuilt-profile and --ghostlock-app-call paths
+ * use, so the map-root probe and the neutral framing are exercised together.
+ * The result is a neutral profile::Document (no owner bound). Native is
+ * GLKv3-only (S4 R2c): a map-rooted document that is not valid GLKv3 and any
+ * non-map root (the v2 magic 0x21) fail closed instead of being retried as v2. */
 
 #include "profile/entry.h"
 
-#include "profile/binary.h"
 #include "profile/document.hpp"
 #include "profile/glkv3.hpp"
 #include "contract/model.hpp"
@@ -53,8 +52,8 @@ namespace {
         doc.backend = "cve_2026_43499";
         doc.has_route = true;
         doc.route = "select_stack";
-        put(doc, "meta", "kernel_major", uint_value(6));
-        put(doc, "offset", "init_task", uint_value(0x20dc000));
+        put(doc, "common", "kernel_major", uint_value(6));
+        put(doc, "platform.abi.offset", "init_task", uint_value(0x20dc000));
         put(doc, "backend.cve_2026_43499", "steps", uint_value(2));
         return doc;
     }
@@ -92,10 +91,10 @@ int main() {
         assert(doc.terminal_token == "root_child");
         assert(doc.backend_token == "cve_2026_43499");
         const ghostlock::profile::Value *major =
-                doc.find_value("meta", "kernel_major");
+                doc.find_value("common", "kernel_major");
         assert(major != nullptr && major->raw == 6);
         const ghostlock::profile::Value *init =
-                doc.find_value("offset", "init_task");
+                doc.find_value("platform.abi.offset", "init_task");
         assert(init != nullptr && init->raw == 0x20dc000);
         const ghostlock::profile::Value *steps =
                 doc.find_value("backend.cve_2026_43499", "steps");
@@ -103,30 +102,30 @@ int main() {
         unlink(path.c_str());
     }
 
-    /* ---- v2 document: magic root, object sections, numeric ids. ---- */
+    /* ---- Negative: a v2 byte document is rejected, not retried or panicked. ---- */
     {
-        ghostlock::profile::kernel_offsets values = {};
-        values.uname_r = "6.6.77-entry-test";
-        values.route = ghostlock::profile::kRouteSelectStack;
-        values.meta.kernel_major = 6;
-        values.offsets.init_task = 0x20dc000;
-        char buffer[8192];
-        const int32_t size =
-                ghostlock::binary_profile::serialize(&values, buffer, sizeof(buffer));
-        assert(size > 0);
+        /* A well-formed v2 container: little-endian magic 0x0D000721,
+         * version 2, numeric ids, a release and an empty section list. Native
+         * no longer has a v2 reader, so the whole document must be refused
+         * (error == -1) rather than misparsed as GLKv3. */
+        std::string bytes("\x21\x07\x00\x0d\x02\x00", 6);
+        bytes += "\x01\x00"; /* terminal: root_child */
+        bytes += "\x01\x00"; /* backend: cve_2026_43499 */
+        bytes += "\x02\x00"; /* route: select_stack */
+        const std::string release = "6.6.77-entry-test";
+        bytes += static_cast<char>(release.size());
+        bytes += '\0'; /* release_length high byte */
+        bytes += '\0';
+        bytes += '\0'; /* reserved */
+        bytes += release;
+        bytes += '\0';
+        bytes += '\0'; /* section_count = 0 */
+
         const std::string path = temp_path("v2");
-        assert(write_file(path, std::string(buffer, static_cast<size_t>(size))));
+        assert(write_file(path, bytes));
         const ghostlock::profile_entry::ReadResult result =
                 ghostlock::profile_entry::read_glk1_file(path.c_str());
-        assert(result.error == 0);
-        const ghostlock::profile::Document &doc = result.document;
-        assert(doc.release == "6.6.77-entry-test");
-        assert(doc.middleware == ghostlock::profile::kRouteSelectStack);
-        assert(doc.terminal == ghostlock::binary_profile::kTerminalRootChild);
-        assert(doc.backend == ghostlock::binary_profile::kBackendCve202643499);
-        const ghostlock::profile::Value *init =
-                doc.find_value("offset", "init_task");
-        assert(init != nullptr && init->raw == 0x20dc000);
+        assert(result.error == -1);
         unlink(path.c_str());
     }
 

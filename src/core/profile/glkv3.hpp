@@ -53,6 +53,10 @@ namespace ghostlock::profile::glkv3 {
 
     inline constexpr uint64_t kSchemaVersion = 3u;
 
+    /* R2 string bound: a Str value is UTF-8 text with at most this many bytes.
+     * Enforced on decode (the Kotlin encoder enforces the same bound). */
+    inline constexpr uint32_t kMaxStringBytes = 256u;
+
     /* Hard bounds; a document that exceeds any of them is rejected whole. */
     inline constexpr size_t kMaxDocumentBytes = 1u << 20; /* 1 MiB */
     inline constexpr unsigned kMaxDepth = 24;
@@ -195,9 +199,10 @@ namespace ghostlock::profile::glkv3 {
     /* Schema-free framing decode (A2-5): the same MPack walk and fail-closed
      * structural rules, but with no owner declaration. Unknown section/key are
      * preserved instead of rejected (the owner bind that follows rejects them),
-     * while section values stay numeric (UInt/Int/Bool) exactly as the owner
-     * wire declares. Used by profile_entry to produce a neutral Document before
-     * any backend is selected. */
+     * while section values preserve their wire type (UInt/Int/Bool/Str; S4 R4
+     * added Str for string policy paths). bin/array remain rejected. Used by
+     * profile_entry to produce a neutral Document before any backend is
+     * selected. */
     [[nodiscard]] DecodeStatus decode_neutral(
             std::string_view input, Document &out,
             DecodeMode mode = DecodeMode::Production);

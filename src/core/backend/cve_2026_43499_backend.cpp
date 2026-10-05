@@ -34,7 +34,7 @@
 
 namespace ghostlock::backend {
     /* The session types this unit used to see through the enclosing session
-     * namespace (victim, ancillary, g_exploit_session, ...). */
+     * namespace (victim, plugin, g_exploit_session, ...). */
     using namespace ghostlock::session;
     using ghostlock::session::CoreSession;
     using ghostlock::contract::StageResult;

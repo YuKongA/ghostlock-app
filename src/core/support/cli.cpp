@@ -56,6 +56,7 @@ namespace ghostlock::support::cli {
         bool have_probe = false;
         bool have_run = false;
         bool have_cve43284_option = false;
+        bool have_plugin = false;
         bool stage_set = false;
         const char *stage_text = nullptr;
         for (int index = 1; index < argc; ++index) {
@@ -94,6 +95,12 @@ namespace ghostlock::support::cli {
                 out.run_module_path = argv[++index];
                 out.run_target_path = argv[++index];
                 have_run = true;
+            } else if (arg == "--plugin") {
+                if (!take_value(argc, argv, index, out.run_plugin_path)) {
+                    error = ParseError::MissingArgument;
+                    return false;
+                }
+                have_plugin = true;
             } else if (arg == "--allow-dev-target") {
                 out.allow_dev_target = true;
             } else if (arg == "--cve43284-hook-target") {
@@ -162,7 +169,7 @@ namespace ghostlock::support::cli {
              * status-record ACK channel. Reject the combination outright. */
             if (out.force_attack || out.dump_kernel_log != nullptr ||
                 out.status_record || out.allow_dev_target ||
-                have_cve43284_option) {
+                have_cve43284_option || have_plugin) {
                 error = ParseError::ProbeConflict;
                 return false;
             }
@@ -182,6 +189,10 @@ namespace ghostlock::support::cli {
             }
             out.mode = Mode::RunCve2026_43284;
             return true;
+        }
+        if (have_plugin) {
+            error = ParseError::PluginRequiresRun;
+            return false;
         }
         if (have_cve43284_option) {
             error = ParseError::Cve43284OptionRequiresRun;

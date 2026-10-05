@@ -5,10 +5,12 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ghostlock.app.R
+import com.ghostlock.app.data.Cve2026_43284Fields
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.isAvailable
 import com.ghostlock.app.data.resolveExecutionSelection
 import com.ghostlock.app.data.requiresShizuku
+import com.ghostlock.app.data.runRequiresShizuku
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionMode
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -560,9 +562,20 @@ class GhostlockViewModel(
          * the general edits would be dropped. */
         val drafts = mutableState.value.profileOverrideEditing +
                 mutableState.value.executionEditing
-        val advanced = drafts.mapNotNull { (path, text) ->
-            text.trim().toLongOrNull()?.let { value -> path to value }
-        }.toMap()
+        /* S4 R4: the 43284 policy paths are strings; every other draft is a
+         * numeric leaf. The resolved tree is the authority for which leaves are
+         * text (a materialised-but-empty policy path is covered explicitly). */
+        val stringPaths = Cve2026_43284Fields.StringPaths.toSet() +
+            flattenLeaves(mutableState.value.profileOverrideRoots)
+                .mapNotNull { node -> node.textValue?.let { node.path } }
+        val advanced = mutableMapOf<String, Any>()
+        for ((path, text) in drafts) {
+            if (path in stringPaths) {
+                advanced[path] = text.trim()
+            } else {
+                text.trim().toLongOrNull()?.let { advanced[path] = it }
+            }
+        }
         return runCatching { session.updateAdvanced(release, pair, advanced) }.getOrNull()
     }
 
@@ -769,7 +782,7 @@ class GhostlockViewModel(
                 profileOverrideRoots = config.roots,
                 profileOverrideEditing = if (preserveEditing) state.profileOverrideEditing
                 else flattenLeaves(config.roots).associate { field ->
-                    field.path to (field.value?.toString() ?: "")
+                    field.path to (field.value?.toString() ?: field.textValue ?: "")
                 },
                 profileInvalidPaths = config.invalidPaths,
                 profileRoute = config.route,
@@ -825,7 +838,7 @@ class GhostlockViewModel(
         viewModelScope.launch { refreshSnapshot() }
     }
 
-    /** Unavailable backends (43284) are never selected, mirroring the selector. */
+    /** Unavailable backends are never selected, mirroring the selector. */
     fun setBackendKind(kind: BackendKind) {
         if (!kind.available) return
         repository.setBackendKind(kind)
@@ -839,9 +852,10 @@ class GhostlockViewModel(
     /** Explains why the run button is greyed out. */
     fun onProfileInvalid() {
         val state = state.value
+        val needsShell = runRequiresShizuku(state.executionMode, state.backendKind)
         val messageRes = when {
             !state.executionHasProfile -> R.string.run_blocked_no_profile
-            state.executionMode.requiresShizuku && state.shizukuStatus != ShizukuStatus.READY ->
+            needsShell && state.shizukuStatus != ShizukuStatus.READY ->
                 R.string.run_blocked_shizuku
 
             else -> R.string.profile_invalid
@@ -851,8 +865,8 @@ class GhostlockViewModel(
 
     fun onStatusClick() {
         val snapshot = kernelSnapshot ?: return
-        /* Only the Shizuku entry runs through the shell; General/UMH do not. */
-        if (!snapshot.executionMode.requiresShizuku) return
+        /* Shizuku is the shell route; the cve_2026_43284 backend always uses it. */
+        if (!runRequiresShizuku(snapshot.executionMode, snapshot.backendKind)) return
         when (snapshot.shizukuStatus) {
             ShizukuStatus.NOT_RUNNING -> send(GhostlockEffect.OpenShizuku)
             ShizukuStatus.PERMISSION_REQUIRED -> repository.requestShizukuPermission()
@@ -888,7 +902,9 @@ class GhostlockViewModel(
             }
             return
         }
-        if (mode.requiresShizuku && snapshot.shizukuStatus != ShizukuStatus.READY) {
+        if (runRequiresShizuku(mode, snapshot.backendKind) &&
+            snapshot.shizukuStatus != ShizukuStatus.READY
+        ) {
             onStatusClick()
             return
         }
@@ -905,7 +921,7 @@ class GhostlockViewModel(
         appendLog("cpu pair: ${snapshot.cpuPairLabels.getOrElse(snapshot.selectedCpuPair) { pair.toString() }}")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val code = runExploitUseCase(pair, mode, ::appendLog)
+                val code = runExploitUseCase(pair, mode, snapshot.backendKind, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
             } finally {

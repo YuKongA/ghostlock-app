@@ -13,11 +13,11 @@
  * fails, so the ledger cannot silently rot.
  *
  * R1 table enforced here:
- *   contract/memory/session/profile/support/ancillary -> must not include
+ *   contract/memory/session/profile/support/plugin -> must not include
  *        backend/, pipeline/, platform/, terminal/
  *   backend -> must not include pipeline/
  *   platform -> must not include backend/, pipeline/, terminal/
- * ancillary -> contract/memory/support stays allowed; platform -> ancillary
+ * plugin -> contract/memory/support stays allowed; platform -> plugin
  * and backend -> platform/terminal/profile are allowed by R1.
  */
 
@@ -58,13 +58,13 @@ namespace {
          "neutral container: no reverse dependency on any layer"},
         {"support", "backend,pipeline,platform,terminal",
          "neutral leaf: support is depended on, never depends upward"},
-        {"ancillary", "backend,pipeline,platform,terminal",
-         "neutral mechanism: ancillary -> contract/memory/support"},
+        {"plugin", "backend,pipeline,platform,terminal",
+         "plugin facility: plugin -> contract/memory/support"},
         {"backend", "pipeline",
          "backend implements the contract; identity is declared in backend and "
          "pipeline consumes it one way"},
         {"platform", "backend,pipeline,terminal",
-         "platform -> contract/memory/profile/ancillary/support"},
+         "platform -> contract/memory/profile/plugin/support"},
     };
     static_assert(sizeof(kRules) / sizeof(kRules[0]) == kTrackedLayerCount,
                   "A2-5-5: the firewall rule table must cover all 8 restricted source layers");

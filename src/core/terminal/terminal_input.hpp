@@ -38,8 +38,13 @@ namespace ghostlock::terminal {
         Unavailable,
     };
 
-    /* Read-only readiness probe bound by the composition root. Returns Ready
-     * only when both markers are observed; it performs no write. */
+    /* Read-only readiness probe bound by the composition root. Markers are
+     * checked from the least privileged domain outward: the UMH script's
+     * /data/local/tmp marker first (an app-domain process may stat it), then the
+     * upstream /dev/dfm0 + /proc/modules pair. NotReady means the terminus was
+     * observed to be incomplete; Unavailable means this domain cannot observe it
+     * at all, which the terminal treats as a degraded success because the backend
+     * already proved lkm_loaded. Performs no write. */
     using UmhReadyFn = UmhReadyState (*)(void *ctx) noexcept;
 
     /* Neutral UMH readiness handle (ADR-0004 R19): the backend copies the

@@ -87,12 +87,12 @@
     <string name="execution_mode_shizuku">Shizuku</string>
     <string name="execution_mode_shizuku_summary">通过 Shizuku 以 shell 启动；执行 W1-W2（无 seccomp）</string>
     <string name="execution_mode_umh">UMH</string>
-    <string name="execution_mode_umh_summary">native umh_forward terminal 就绪前不可用</string>
+    <string name="execution_mode_umh_summary">cve_2026_43284 的 shell 路线（UMH terminal）；app 域拿不到它需要的设备事实</string>
     <string name="backend_label">Backend</string>
     <string name="backend_cve_2026_43499">CVE-2026-43499</string>
     <string name="backend_cve_2026_43499_summary">PI-futex 竞争；W1-W3 / Shizuku</string>
     <string name="backend_cve_2026_43284">CVE-2026-43284</string>
-    <string name="backend_cve_2026_43284_summary">未实现</string>
+    <string name="backend_cve_2026_43284_summary">页缓存写 + LKM 通道；需 Shizuku（shell 域）</string>
     <string name="shizuku_recommended_hint">本内核推荐通过 Shizuku 运行</string>
     <string name="shizuku_status_not_running">请先启动 Shizuku，再回到本应用</string>
     <string name="shizuku_status_permission_required">请在弹窗中授予 Shizuku 权限</string>

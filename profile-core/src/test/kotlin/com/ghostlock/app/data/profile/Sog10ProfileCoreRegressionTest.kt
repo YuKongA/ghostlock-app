@@ -4,7 +4,6 @@ import com.ghostlock.app.data.HoconSupport
 import com.ghostlock.app.data.NativeProfileDocument
 import com.ghostlock.app.data.ValueMap
 import com.ghostlock.app.data.asValueMap
-import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -17,7 +16,7 @@ class Sog10ProfileCoreRegressionTest {
     private val release = "5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541"
 
     @Test
-    fun `SOG10 profile keeps explicit nulls and round trips through GLK1`() {
+    fun `SOG10 profile keeps explicit nulls and round trips through GLKv3`() {
         val profiles = File(repoRoot(), "app/src/main/assets/kernel_profiles")
         val builtin = parse(File(profiles, "$release.conf"))
         assertTrue(builtin.containsKey("kernel_phys_load"))
@@ -63,35 +62,80 @@ class Sog10ProfileCoreRegressionTest {
             text = { path -> ProfileResolver.nativeText(profile, path) },
             bool = { path -> ProfileResolver.nativeBool(profile, path) },
         )
-        val bytes = document(merged).toBinary()
+        val bytes = Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document(merged)))
         // Explicit null is a completeness marker, not a guessed zero/address.
         val previouslySparse = parse(File(profiles, "$release.conf"))
         previouslySparse.remove("kernel_phys_load")
         previouslySparse["cred"].asValueMap()!!.remove("usage_offset")
-        assertArrayEquals(bytes, document(resolve(previouslySparse)).toBinary())
-        assertArrayEquals(byteArrayOf(0x21, 0x07, 0x00, 0x0D), bytes.copyOfRange(0, 4))
+        assertArrayEquals(
+            bytes,
+            Glkv3Encoder.encode(
+                NativeProfileGlkv3Adapter.adapt(document(resolve(previouslySparse))),
+            ),
+        )
+        // GLKv3 has no container header: the root is a MessagePack map marker.
+        assertTrue(
+            (bytes[0].toInt() and 0xff and 0xf0) == 0x80 ||
+                bytes[0] == 0xDE.toByte() ||
+                bytes[0] == 0xDF.toByte(),
+        )
 
-        val decoded = requireNotNull(NativeProfileDocument.fromBinary(bytes))
+        val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
         assertEquals(release, decoded.release)
-        assertEquals(3u, decoded.routeKind)
-        assertEquals(0u, decoded.fallbackRoute)
-        assertEquals(2u, decoded.steps)
-        assertNull(decoded.kernelPhysLoad)
-        assertEquals(0u, decoded.cred.usageOffset)
-        assertEquals(-274698454400L, decoded.cred.ref0Image.toLong())
-        assertEquals(-274696707824L, decoded.cred.ref1Image.toLong())
-        assertEquals(-274698453008L, decoded.cred.ref2Image.toLong())
-        assertEquals(-274698454232L, decoded.cred.ref3Image.toLong())
-        assertEquals(35027464uL, decoded.kernelOffset.selinuxBlobSizes)
-        assertEquals(35018112uL, decoded.kernelOffset.securityHookHeads)
+        assertEquals("multicast_waiter", decoded.route)
+        assertEquals(Glkv3Value.UInt(0u), entry(decoded, "common", "fallback_route"))
+        assertEquals(Glkv3Value.UInt(2u), entry(decoded, "backend.cve_2026_43499", "steps"))
+        assertNull(entryOrNull(decoded, "platform.abi.kernel", "kernel_phys_load"))
+        assertEquals(Glkv3Value.UInt(0u), entry(decoded, "platform.abi.cred", "usage_offset"))
+        assertEquals(
+            Glkv3Value.UInt((-274698454400L).toULong()),
+            entry(decoded, "backend.cve_2026_43499.cred", "ref0_image"),
+        )
+        assertEquals(
+            Glkv3Value.UInt((-274696707824L).toULong()),
+            entry(decoded, "backend.cve_2026_43499.cred", "ref1_image"),
+        )
+        assertEquals(
+            Glkv3Value.UInt((-274698453008L).toULong()),
+            entry(decoded, "backend.cve_2026_43499.cred", "ref2_image"),
+        )
+        assertEquals(
+            Glkv3Value.UInt((-274698454232L).toULong()),
+            entry(decoded, "backend.cve_2026_43499.cred", "ref3_image"),
+        )
+        assertEquals(
+            Glkv3Value.UInt(35027464u),
+            entry(decoded, "platform.abi.offset", "selinux_blob_sizes"),
+        )
+        assertEquals(
+            Glkv3Value.UInt(35018112u),
+            entry(decoded, "platform.abi.offset", "security_hook_heads"),
+        )
 
-        val geometry = (decoded.routeConfig as MulticastConfig).geometry
-        assertEquals(96, geometry.waiterOff)
-        assertEquals(264u, geometry.bufferSize)
-        assertEquals(48u, geometry.taskOffset)
-        assertEquals(56u, geometry.lockOffset)
+        val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
+        assertEquals(Glkv3Value.UInt(96u), entry(decoded, routeSection, "waiter_off"))
+        assertEquals(Glkv3Value.UInt(264u), entry(decoded, routeSection, "buffer_size"))
+        assertEquals(Glkv3Value.UInt(48u), entry(decoded, routeSection, "task_offset"))
+        assertEquals(Glkv3Value.UInt(56u), entry(decoded, routeSection, "lock_offset"))
         assertTrue(bytes.isNotEmpty())
     }
+
+    private fun entry(document: Glkv3Document, section: String, key: String): Glkv3Value =
+        document.sections
+            .first { it.name == section }
+            .entries
+            .first { it.key == key }
+            .value
+
+    private fun entryOrNull(
+        document: Glkv3Document,
+        section: String,
+        key: String,
+    ): Glkv3Value? = document.sections
+        .firstOrNull { it.name == section }
+        ?.entries
+        ?.firstOrNull { it.key == key }
+        ?.value
 
     private fun parse(file: File) = requireNotNull(
         HoconSupport.parseValue(file.readText()).asValueMap(),

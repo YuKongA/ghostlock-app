@@ -17,11 +17,11 @@ namespace ghostlock::backend::cve_2026_43499::backend_profile {
         std::string_view route_section_name(uint8_t route) {
             switch (route) {
                 case profile::kRouteTcpZerocopy:
-                    return "route.tcp_zerocopy";
+                    return "backend.cve_2026_43499.route.tcp_zerocopy";
                 case profile::kRouteSelectStack:
-                    return "route.select_stack";
+                    return "backend.cve_2026_43499.route.select_stack";
                 case profile::kRouteMulticastWaiter:
-                    return "route.multicast_waiter";
+                    return "backend.cve_2026_43499.route.multicast_waiter";
                 default:
                     return {};
             }
@@ -53,9 +53,9 @@ namespace ghostlock::backend::cve_2026_43499::backend_profile {
         active.backend = document.backend;
         active.middleware = document.middleware;
         for (const profile::Section &section : document.sections) {
-            const bool known_route = section.name == "route.tcp_zerocopy" ||
-                                     section.name == "route.select_stack" ||
-                                     section.name == "route.multicast_waiter";
+            const bool known_route = section.name == "backend.cve_2026_43499.route.tcp_zerocopy" ||
+                                     section.name == "backend.cve_2026_43499.route.select_stack" ||
+                                     section.name == "backend.cve_2026_43499.route.multicast_waiter";
             if (known_route && section.name != active_route) continue;
             active.sections.push_back(section);
         }

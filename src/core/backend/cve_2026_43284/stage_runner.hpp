@@ -84,6 +84,10 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
          * write face. The stage continues without the Hook binding and reports
          * hook_armed=0 rather than silently claiming success. */
         HookIoUnavailable,
+        /* delta-4 dev/gate-only --plugin: the countermeasure .so failed to
+         * load/register (missing, bad hash/path, ABI mismatch, reserved
+         * stage/capability). Fail-closed; the window never opens. */
+        PluginRejected,
     };
 
     [[nodiscard]] std::string_view stage_error_name(StageError error) noexcept;
@@ -308,6 +312,13 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
          * module source and the target build facts may let the runner rewrite a
          * mismatched vermagic in place. Default false keeps the reject. */
         bool allow_vermagic_rewrite = false;
+        /* delta-4 dev/gate-only: an out-of-tree countermeasure shared object
+         * loaded through plugin/loader and attached to the LKM window runtime.
+         * Empty (the default) loads nothing, so a normal staged run is
+         * unchanged. Only valid together with --run-cve-2026-43284; the CLI
+         * parser rejects it for every other mode. It is NOT part of any profile
+         * and never reachable from the production app-call path. */
+        std::string_view plugin_path{};
     };
 
     /* Device entry: build the plan, read the optional session-secret frame from
@@ -317,7 +328,11 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
      * noexcept (allocation). allow_dev_target is the explicit
      * --allow-dev-target escape hatch: it is forwarded to
      * ChainRequest::allow_dev_carrier_path and echoed as run.dev_target; the
-     * default false keeps the /vendor-only carrier rule. */
+     * default false keeps the /vendor-only carrier rule. plugin_path, when
+     * non-empty (the dev/gate-only --plugin flag), is loaded through
+     * plugin/loader and attached to the LKM window runtime before the chain;
+     * a load failure is reported as PluginRejected and the window never
+     * opens. */
     int run_stage_cli(const StagedRunOptions &options);
 
 } // namespace ghostlock::backend::cve_2026_43284::stage_runner

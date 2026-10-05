@@ -4,7 +4,10 @@
  * probe by injection, so these tests exercise the fail-closed paths (missing
  * path/file, no carrier) and the module-plan construction without touching a
  * device. The real device setup is compiled only under __linux__ and is
- * covered by the NDK build and the later app-call device gate. */
+ * covered by the NDK build and the later app-call device gate.
+ *
+ * S4 R4: carrier_path is a String. The accessor test reads the decoded view; the
+ * invalid-path test proves a malformed explicit carrier fails closed. */
 
 #include "backend/cve_2026_43284/execution_binding.hpp"
 
@@ -21,7 +24,7 @@
 #include <string>
 #include <string_view>
 
-using ghostlock::backend::carrier_path_token_from;
+using ghostlock::backend::string_field_from;
 using ghostlock::backend::kCve2026_43284Section;
 using ghostlock::backend::cve_2026_43284::bind_production_execution_with;
 using ghostlock::backend::cve_2026_43284::ExecutionBindError;
@@ -65,17 +68,17 @@ namespace {
         assert(std::fclose(file) == 0);
     }
 
-    void test_carrier_token_accessor() {
+    void test_carrier_string_accessor() {
         Document doc;
         ghostlock::profile::Section &section =
                 doc.append_section(kCve2026_43284Section);
-        section.add("carrier_path", 3U);
-        const auto token = carrier_path_token_from(doc);
-        assert(token.has_value());
-        assert(*token == 3U);
+        section.add_text("carrier_path", "/vendor/lib64/libstagefrighthw.so");
+        const auto path = string_field_from(doc, "carrier_path");
+        assert(path.has_value());
+        assert(*path == "/vendor/lib64/libstagefrighthw.so");
 
         Document empty;
-        assert(!carrier_path_token_from(empty).has_value());
+        assert(!string_field_from(empty, "carrier_path").has_value());
     }
 
     void test_missing_module_path_fails_closed() {
@@ -107,7 +110,7 @@ namespace {
         write_module(128U);
         CoreSession session;
         ProductionResources resources{};
-        Document doc; /* no carrier_path token -> token 0 */
+        Document doc; /* no carrier_path -> first device-present default */
         FakeDevice device{};
         device.carrier_present = false;
         IpsecSaParams sa{};
@@ -122,13 +125,14 @@ namespace {
         (void)std::remove(kModulePath);
     }
 
-    void test_unknown_carrier_token_fails_closed() {
+    void test_invalid_carrier_path_fails_closed() {
         write_module(128U);
         CoreSession session;
         ProductionResources resources{};
         Document doc;
-        /* carrier_path = 99 is outside the known token range. */
-        doc.append_section(kCve2026_43284Section).add("carrier_path", 99U);
+        /* A dev path outside /vendor is not a valid production carrier. */
+        doc.append_section(kCve2026_43284Section)
+                .add_text("carrier_path", "/data/local/tmp/evil.so");
         FakeDevice device{};
         IpsecSaParams sa{};
         const ExecutionBindResult result = bind_production_execution_with(
@@ -144,7 +148,7 @@ namespace {
         Document doc;
         ghostlock::profile::Section &section =
                 doc.append_section(kCve2026_43284Section);
-        section.add("carrier_path", 1U);
+        section.add_text("carrier_path", "/vendor/lib64/libbinderdebug.so");
         FakeDevice device{};
         IpsecSaParams sa{};
         const ExecutionBindResult result = bind_production_execution_with(
@@ -161,10 +165,11 @@ namespace {
 } // namespace
 
 int main() {
-    test_carrier_token_accessor();
+    test_carrier_string_accessor();
     test_missing_module_path_fails_closed();
     test_missing_module_file_fails_closed();
     test_unconfirmed_carrier_falls_back_to_first_default();
+    test_invalid_carrier_path_fails_closed();
     test_module_plan_built_then_host_fails_closed();
     std::puts("execution_binding_test: ok");
     return 0;

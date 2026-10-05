@@ -41,6 +41,7 @@ CXX_SRCS := \
   core/backend/cve_2026_43284/diagnostic.cpp \
   core/backend/cve_2026_43284/execution_binding.cpp \
   core/backend/cve_2026_43284/real_ops.cpp \
+  core/backend/cve_2026_43284/lkm_window.cpp \
   core/backend/cve_2026_43284/stage_runner.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
@@ -49,15 +50,16 @@ CXX_SRCS := \
   core/backend/cve_2026_43499/route/route_middleware.cpp \
   core/platform/vivo/vr_guard.cpp \
   core/platform/vivo/vr_task_tag.cpp \
-  core/platform/countermeasure/loader.cpp \
-  core/platform/countermeasure/sha256.cpp \
+  core/plugin/loader.cpp \
+  core/plugin/sha256.cpp \
+  core/plugin/kernel_channel.cpp \
+  core/plugin/host_ops.cpp \
   core/race/threads.cpp \
   core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp \
   core/backend/cve_2026_43499/route/select_stack_route.cpp \
   core/backend/cve_2026_43499/route/multicast_waiter_route.cpp \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
-  core/profile/binary.cpp \
   core/profile/glkv3.cpp \
   core/profile/glkv3_parse.cpp \
   core/support/util.cpp \
@@ -74,7 +76,7 @@ CXX_SRCS := \
   core/terminal/root_child.cpp \
   core/terminal/umh_forward.cpp \
   core/backend/cve_2026_43499_backend.cpp \
-  core/ancillary/controller.cpp \
+  core/plugin/controller.cpp \
   core/terminal/handoff_probe.cpp \
   core/backend/victim/victim_process.cpp \
   core/backend/victim/victim_context.cpp \
@@ -119,9 +121,9 @@ LDFLAGS := -fPIE -pie -pthread -flto -static-libstdc++
 
 HOST_CC ?= cc
 HOST_CXX ?= c++
-# Host tests keep the frozen v2 serializer for the golden/equivalence vectors.
-# The device build never defines this macro, so no v2 write path is compiled in.
-HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion -DGHOSTLOCK_ENABLE_V2_WRITER -isystem $(MPACK_DIR)
+# Host tests compile the same sources as the device build; the v2 serializer
+# was removed in S4 R2c, so there is no writer macro any more.
+HOST_CXXFLAGS := -std=c++23 -fno-rtti -Wall -Wextra -Wconversion -Wsign-conversion -isystem $(MPACK_DIR)
 # The size-stripping link flag is spelled differently per linker: Darwin's ld
 # uses -dead_strip, while GNU ld on a Linux host rejects it and needs
 # --gc-sections instead. Keep each spelling in its own variable so the commas
@@ -178,15 +180,18 @@ NATIVE_HOST_TESTS := \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
   target_constants_test native_resource_test \
-  profile_binary_test futex_hash_test number_parse_test \
+  futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
   platform_vivo_test platform_abi_test \
-  contract_capabilities_test countermeasure_abi_test address_discovery_test terminal_input_test \
+  contract_capabilities_test contract_vocabulary_test countermeasure_abi_test address_discovery_test terminal_input_test \
   countermeasure_loader_test countermeasure_registry_test \
+  kernel_channel_test plugin_host_ops_test \
+  cve_2026_43284_lkm_window_test \
   document_schema_test owner_schema_test cve_2026_43284_schema_test \
-  profile_manifest_test profile_manifest_v3_test \
-  glkv3_codec_test glkv3_schema_test profile_v3_test profile_entry_test \
+  profile_registry_test \
+  profile_manifest_v3_test \
+  glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
   cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
@@ -293,6 +298,14 @@ $(HOST_BUILD_DIR)/contract_capabilities_test: core/tests/contract_capabilities_t
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
+# Alpha capability vocabulary: header-only bits/state/set/interface skeleton.
+# HDRS is a wildcard, so the new contract headers trigger rebuilds automatically.
+$(HOST_BUILD_DIR)/contract_vocabulary_test: core/tests/contract_vocabulary_test.cpp \
+  core/contract/capability.hpp core/contract/kernel_memory.hpp \
+  core/contract/file_cache.hpp core/contract/address_discovery.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
+
 # A3 address-discovery contract: the optional capability handle / fail-closed
 # result are header-only, so the fake provider runs without a device.
 $(HOST_BUILD_DIR)/address_discovery_test: core/tests/address_discovery_test.cpp core/contract/address_discovery.hpp
@@ -302,9 +315,9 @@ $(HOST_BUILD_DIR)/address_discovery_test: core/tests/address_discovery_test.cpp 
 # CM-1 countermeasure plugin ABI: the ABI header is a self-contained C99 header,
 # so a project include or non-C99 syntax leaking into it fails here; the C++
 # mapping and the contract test are declaration-only (no loader in CM-1).
-$(HOST_BUILD_DIR)/countermeasure_abi_test: core/tests/countermeasure_abi_test.cpp core/contract/countermeasure.hpp core/contract/glk_cm_abi.h
+$(HOST_BUILD_DIR)/countermeasure_abi_test: core/tests/countermeasure_abi_test.cpp core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/glk_cm_abi.h
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 # CM-2 countermeasure loader: real dlopen/dlsym/dlclose against the C test
@@ -318,31 +331,68 @@ CM_PLUGIN_SRCS := \
   core/tests/fixtures/cm_test_plugin_missing_entry.c
 CM_PLUGIN_SOS := $(patsubst core/tests/fixtures/%.c,$(CM_PLUGIN_DIR)/%.so,$(CM_PLUGIN_SRCS))
 
-$(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/glk_cm_abi.h Makefile
+$(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/abi/glk_contract_abi.h Makefile
 	@mkdir -p $(dir $@)
 	$(HOST_CC) -std=c99 -Wall -Wextra -fPIC -shared -Icore $< -o $@
 	@chmod 755 $@
 
 $(HOST_BUILD_DIR)/countermeasure_loader_test: core/tests/countermeasure_loader_test.cpp \
-  core/platform/countermeasure/loader.cpp core/platform/countermeasure/loader.hpp \
-  core/platform/countermeasure/sha256.cpp core/platform/countermeasure/sha256.hpp \
-  core/contract/countermeasure.hpp core/contract/glk_cm_abi.h $(CM_PLUGIN_SOS)
+  core/plugin/loader.cpp core/plugin/loader.hpp \
+  core/plugin/sha256.cpp core/plugin/sha256.hpp \
+  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h $(CM_PLUGIN_SOS)
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
-	  -DGLK_CM_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
+	  -DGLK_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
 	  core/tests/countermeasure_loader_test.cpp \
-	  core/platform/countermeasure/loader.cpp core/platform/countermeasure/sha256.cpp \
+	  core/plugin/loader.cpp core/plugin/sha256.cpp \
 	  -pthread $(HOST_DL_LIB) -o $@
 
 # CM-3 runtime registry + controller external dispatch: the registry is
 # header-only and borrows the fake hook table; the loader is not linked and no
 # real module is opened. The same explicit-rule pattern as CM-2 applies.
 $(HOST_BUILD_DIR)/countermeasure_registry_test: core/tests/countermeasure_registry_test.cpp \
-  core/ancillary/external_registry.hpp core/ancillary/controller.hpp \
-  core/ancillary/ancillary_policy.hpp core/contract/countermeasure.hpp \
-  core/contract/glk_cm_abi.h core/session/core_session.hpp core/support/status.hpp
+  core/plugin/registry.hpp core/plugin/controller.hpp \
+  core/plugin/policy.hpp core/contract/countermeasure.hpp \
+  core/contract/abi/glk_contract_abi.h core/session/core_session.hpp core/support/status.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/countermeasure_registry_test.cpp -o $@
+
+# Delta batch LKM request channel: the real adapter linked against a fake ioctl
+# backend in the test; no /dev/glk is opened and the non-Linux device binding
+# reports -ENOSYS. The ABI header is C99-checked here as well.
+$(HOST_BUILD_DIR)/kernel_channel_test: core/tests/kernel_channel_test.cpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/contract/abi/glk_contract_abi.h core/contract/kernel_memory.hpp \
+  core/contract/kernel_alias.hpp core/contract/capability.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/kernel_channel_test.cpp \
+	  core/plugin/kernel_channel.cpp -o $@
+
+# Delta-2 LKM residency window: the runtime plus the real kernel-channel adapter
+# linked against a fake ioctl transport; no /dev/glk is opened.
+# delta-4 capability -> glk_contract_ops adapter: pure host, fakes stand in for
+# a backend; no device and no session.
+$(HOST_BUILD_DIR)/plugin_host_ops_test: core/tests/plugin_host_ops_test.cpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
+  core/contract/abi/glk_contract_abi.h core/contract/capabilities.hpp \
+  core/contract/kernel_memory.hpp core/contract/kernel_alias.hpp \
+  core/contract/child_task.hpp core/contract/capability.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_ops_test.cpp \
+	  core/plugin/host_ops.cpp -o $@
+
+$(HOST_BUILD_DIR)/cve_2026_43284_lkm_window_test: core/tests/cve_2026_43284_lkm_window_test.cpp \
+  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp core/plugin/registry.hpp \
+  core/contract/abi/glk_contract_abi.h core/contract/kernel_memory.hpp \
+  core/contract/kernel_alias.hpp core/contract/capability.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_lkm_window_test.cpp \
+	  core/backend/cve_2026_43284/lkm_window.cpp \
+	  core/plugin/kernel_channel.cpp core/plugin/host_ops.cpp -o $@
 
 $(HOST_BUILD_DIR)/address_space_test: core/tests/address_space_test.cpp core/memory/address_space.cpp core/memory/address_space.h
 	@mkdir -p $(HOST_BUILD_DIR)
@@ -384,7 +434,7 @@ $(HOST_BUILD_DIR)/route_policy_test: core/tests/route_policy_test.cpp core/backe
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/route_policy_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/ancillary_test: core/tests/ancillary_test.cpp \
-  core/ancillary/ancillary_policy.hpp core/ancillary/controller.hpp \
+  core/plugin/policy.hpp core/plugin/controller.hpp \
   core/session/core_session.hpp core/support/status.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/ancillary_test.cpp -o $@
@@ -405,8 +455,9 @@ $(HOST_BUILD_DIR)/platform_vivo_test: core/tests/platform_vivo_test.cpp \
   core/platform/vivo/registry.hpp core/platform/vivo/schema.hpp \
   core/platform/vivo/vr_guard.hpp core/platform/vivo/vr_task_tag.hpp \
   core/platform/vivo/kind.hpp core/platform/vivo/macros.h \
-  core/ancillary/ancillary_policy.hpp core/ancillary/controller.hpp \
+  core/plugin/policy.hpp core/plugin/controller.hpp \
   core/session/core_session.hpp core/memory/target.h core/contract/model.hpp \
+  core/backend/cve_2026_43499/capability_adapters.hpp \
   core/support/status.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/platform_vivo_test.cpp -o $@
@@ -420,7 +471,7 @@ $(HOST_BUILD_DIR)/profile_test: core/tests/profile_test.cpp core/contract/model.
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 # A2-5 test-only legacy decode shim: the host vectors still call the old
-# binary_profile::parse / parse_v3 names, so they link this compatibility unit
+# parse_v3 / bind_document names, so they link this compatibility unit
 # (frame + owner bind) and the GLKv3 codec it depends on.
 PROFILE_COMPAT_SRCS := core/tests/profile_bind_compat.cpp core/profile/glkv3.cpp core/profile/glkv3_parse.cpp
 
@@ -428,35 +479,34 @@ $(HOST_BUILD_DIR)/profile_bind_mpack.o: $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
 
-$(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/profile/binary.cpp core/profile/binary.h core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
+$(HOST_BUILD_DIR)/document_schema_test: core/tests/document_schema_test.cpp core/profile/document.hpp core/profile/schema.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_binary_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-$(HOST_BUILD_DIR)/document_schema_test: core/tests/document_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
+$(HOST_BUILD_DIR)/owner_schema_test: core/tests/owner_schema_test.cpp core/profile/document.hpp core/profile/schema.hpp core/backend/cve_2026_43499/schema.hpp core/platform/abi.hpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/document_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
-
-$(HOST_BUILD_DIR)/owner_schema_test: core/tests/owner_schema_test.cpp core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp core/profile/schema.hpp core/backend/cve_2026_43499/schema.hpp core/platform/abi.hpp core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/owner_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
 $(HOST_BUILD_DIR)/cve_2026_43284_schema_test: core/tests/cve_2026_43284_schema_test.cpp \
-  core/profile/binary.cpp core/profile/binary.h core/profile/document.hpp \
+  core/profile/document.hpp \
   core/profile/schema.hpp core/backend/cve_2026_43284/schema.hpp \
   core/backend/cve_2026_43284_state.hpp core/backend/cve_2026_43499/schema.hpp \
   core/platform/abi.hpp \
-  core/contract/model.hpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o
+  core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_schema_test.cpp core/profile/binary.cpp $(PROFILE_COMPAT_SRCS) $(HOST_BUILD_DIR)/profile_bind_mpack.o -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 
-# Native is the SSOT for the wire field universe; this test exports the owner
-# Schema to app/src/test/resources/profile-manifest.tsv and checks it in.
-$(HOST_BUILD_DIR)/profile_manifest_test: core/tests/profile_manifest_test.cpp core/backend/cve_2026_43499/schema.hpp core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp core/platform/abi.hpp core/profile/schema.hpp core/profile/document.hpp core/contract/model.hpp
+# S4 R1 schema registry + schema-authoritative defaults: header-only, host.
+$(HOST_BUILD_DIR)/profile_registry_test: core/tests/profile_registry_test.cpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.cpp core/backend/cve_2026_43284/lkm/lkm_policy.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_manifest_test.cpp -o $@
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_registry_test.cpp \
+	  core/backend/cve_2026_43284/lkm/lkm_policy.cpp -o $@
 
-profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_test $(HOST_BUILD_DIR)/profile_manifest_v3_test
-	$(HOST_BUILD_DIR)/profile_manifest_test --write
+# Native is the SSOT for the GLKv3 field universe; this test exports the owner
+# FieldSpecs to profile-manifest-v3.tsv (app test + profile-core runtime
+# resource) and checks them in.
+profile-manifest: $(HOST_BUILD_DIR)/profile_manifest_v3_test
 	$(HOST_BUILD_DIR)/profile_manifest_v3_test --write
 
 # GLKv3 codec: the host test compiles the codec against the vendored MPack
@@ -480,12 +530,27 @@ $(HOST_BUILD_DIR)/glkv3_schema_test: core/tests/glkv3_schema_test.cpp \
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/glkv3_schema_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/glkv3_schema_test.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/glkv3_schema_mpack.o -o $@
 
+# S4 R4 WireKind::String end to end: the owner schema-driven str decode plus the
+# neutral frame_v3 -> profile::Document -> owner bind path. Linked with the
+# codec, the framing bridge and the vendored MPack amalgamation.
+$(HOST_BUILD_DIR)/profile_string_binding_test: core/tests/profile_string_binding_test.cpp \
+  core/profile/document.hpp core/profile/schema.hpp \
+  core/profile/glkv3.hpp core/profile/glkv3.cpp \
+  core/profile/glkv3_parse.hpp core/profile/glkv3_parse.cpp \
+  core/backend/cve_2026_43284/schema.hpp core/backend/cve_2026_43284_state.hpp \
+  core/backend/cve_2026_43284/glkv3_schema.hpp \
+  core/contract/model.hpp $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/string_binding_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_string_binding_test.cpp \
+	  core/profile/glkv3.cpp core/profile/glkv3_parse.cpp \
+	  $(HOST_BUILD_DIR)/string_binding_mpack.o -o $@
+
 # Production profile entry dispatch (GLKv3-4): v3 + v2 auto-detection through
 # the real read_glk1_file path, linked with the entry unit itself.
 $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
   core/profile/entry.cpp core/profile/entry.h \
   core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
-  core/profile/binary.cpp core/profile/binary.h \
   core/profile/glkv3.cpp core/profile/glkv3.hpp \
   core/backend/cve_2026_43499/schema.hpp \
   core/backend/cve_2026_43499/glkv3_schema.hpp \
@@ -498,7 +563,7 @@ $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_entry_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/profile_entry_test.cpp \
-	  core/profile/entry.cpp core/profile/glkv3_parse.cpp core/profile/binary.cpp \
+	  core/profile/entry.cpp core/profile/glkv3_parse.cpp \
 	  core/profile/glkv3.cpp core/support/native_resource.cpp \
 	  $(HOST_BUILD_DIR)/profile_entry_mpack.o -o $@
 
@@ -630,6 +695,9 @@ $(HOST_BUILD_DIR)/cve_2026_43284_backend_terminal_test: core/tests/cve_2026_4328
 $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diagnostic_test.cpp \
   core/backend/cve_2026_43284/diagnostic.cpp core/backend/cve_2026_43284/diagnostic.hpp \
   core/backend/cve_2026_43284/real_ops.cpp core/backend/cve_2026_43284/real_ops.hpp \
+  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
   core/backend/cve_2026_43284/steps/chain.hpp core/contract/capabilities.hpp \
   core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
   core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
@@ -652,6 +720,9 @@ $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diag
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_diagnostic_test.cpp \
 	  core/backend/cve_2026_43284/diagnostic.cpp \
 	  core/backend/cve_2026_43284/real_ops.cpp \
+	  core/backend/cve_2026_43284/lkm_window.cpp \
+	  core/plugin/kernel_channel.cpp \
+	  core/plugin/host_ops.cpp \
 	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
 	  core/backend/cve_2026_43284/steps/shellcode.cpp \
 	  core/backend/cve_2026_43284/steps/crash_dump.cpp \
@@ -675,6 +746,9 @@ $(HOST_BUILD_DIR)/cve_2026_43284_diagnostic_test: core/tests/cve_2026_43284_diag
 $(HOST_BUILD_DIR)/cve_2026_43284_stage_runner_test: core/tests/cve_2026_43284_stage_runner_test.cpp \
   core/backend/cve_2026_43284/stage_runner.cpp core/backend/cve_2026_43284/stage_runner.hpp \
   core/backend/cve_2026_43284/real_ops.cpp core/backend/cve_2026_43284/real_ops.hpp \
+  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
   core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
   core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
   core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
@@ -699,6 +773,9 @@ $(HOST_BUILD_DIR)/cve_2026_43284_stage_runner_test: core/tests/cve_2026_43284_st
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_stage_runner_test.cpp \
 	  core/backend/cve_2026_43284/stage_runner.cpp \
 	  core/backend/cve_2026_43284/real_ops.cpp \
+	  core/backend/cve_2026_43284/lkm_window.cpp \
+	  core/plugin/kernel_channel.cpp \
+	  core/plugin/host_ops.cpp \
 	  core/backend/cve_2026_43284/steps/chain.cpp \
 	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
 	  core/backend/cve_2026_43284/steps/shellcode.cpp \
@@ -726,6 +803,9 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
   core/backend/cve_2026_43284/backend_terminal.cpp core/backend/cve_2026_43284/backend_terminal.hpp \
   core/backend/cve_2026_43284/stage_runner.cpp core/backend/cve_2026_43284/stage_runner.hpp \
   core/backend/cve_2026_43284/real_ops.cpp core/backend/cve_2026_43284/real_ops.hpp \
+  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
   core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
   core/backend/cve_2026_43284/steps/elf_hook.cpp core/backend/cve_2026_43284/steps/elf_hook.hpp \
   core/backend/cve_2026_43284/steps/shellcode.cpp core/backend/cve_2026_43284/steps/shellcode.hpp \
@@ -747,6 +827,9 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
 	  core/backend/cve_2026_43284/backend_terminal.cpp \
 	  core/backend/cve_2026_43284/stage_runner.cpp \
 	  core/backend/cve_2026_43284/real_ops.cpp \
+	  core/backend/cve_2026_43284/lkm_window.cpp \
+	  core/plugin/kernel_channel.cpp \
+	  core/plugin/host_ops.cpp \
 	  core/backend/cve_2026_43284/steps/chain.cpp \
 	  core/backend/cve_2026_43284/steps/elf_hook.cpp \
 	  core/backend/cve_2026_43284/steps/shellcode.cpp \
@@ -772,7 +855,6 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
 # document with the same logical content.
 $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
   core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
-  core/profile/binary.cpp core/profile/binary.h \
   core/profile/glkv3.cpp core/profile/glkv3.hpp \
   core/backend/cve_2026_43499/schema.hpp \
   core/backend/cve_2026_43499/glkv3_schema.hpp \
@@ -786,7 +868,7 @@ $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/profile_v3_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/profile_v3_test.cpp \
 	  core/tests/profile_bind_compat.cpp \
-	  core/profile/glkv3_parse.cpp core/profile/binary.cpp core/profile/glkv3.cpp \
+	  core/profile/glkv3_parse.cpp core/profile/glkv3.cpp \
 	  $(HOST_BUILD_DIR)/profile_v3_mpack.o -o $@
 
 # GLKv3 path -> type manifest (GLKv3-3): native exports its FieldSpec lists and

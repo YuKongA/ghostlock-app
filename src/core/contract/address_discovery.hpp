@@ -28,6 +28,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "contract/capability.hpp"
+
 namespace ghostlock::contract {
     /* All-or-nothing discovery result. A zero field with ok == true is "not
      * supplied"; ok == false is always the all-zero canonical failure. */
@@ -91,16 +93,35 @@ namespace ghostlock::contract {
         }
     };
 
-    /* The abstraction named by ADR-0001 section 17 / ADR-0004 T3. The handle is
-     * the canonical carrier (AddressDiscoveryOps); the concept lets a provider
-     * template validate any equivalent handle without naming the concrete type. */
+    /* The concept below lets a provider template validate an equivalent handle
+     * without naming the concrete type (ADR-0001 section 17 / ADR-0004 T3). It
+     * is named AddressDiscoveryProvider, not AddressDiscovery, because the
+     * contract-design.md section 4.2 interface takes the latter name and a
+     * concept and a class cannot share a name in one namespace. */
     template <class Ops>
-    concept AddressDiscovery = requires(Ops &ops, AddressDiscoveryResult *out) {
+    concept AddressDiscoveryProvider = requires(Ops &ops, AddressDiscoveryResult *out) {
         { ops.available() } -> std::same_as<bool>;
         { ops.discover(ops.ctx, out) } -> std::same_as<std::int32_t>;
     };
 
-    static_assert(AddressDiscovery<AddressDiscoveryOps>);
+    static_assert(AddressDiscoveryProvider<AddressDiscoveryOps>);
+
+    /* Virtual-first address discovery (contract-design.md section 4.2). A
+     * polymorphic provider is held by the capabilities aggregate; the *Ops
+     * handle above stays for the C ABI / plugin boundary. On failure discover()
+     * must return an error and must not write a partial result. */
+    class AddressDiscovery : public CapabilityInterface {
+    public:
+        [[nodiscard]] virtual CapabilityResult<AddressDiscoveryResult>
+        discover() noexcept = 0;
+
+        [[nodiscard]] CapabilityKind kind() const noexcept final {
+            return CapabilityKind::AddressDiscovery;
+        }
+
+    protected:
+        ~AddressDiscovery() override = default; /* non-owning use: never deleted via base */
+    };
 } // namespace ghostlock::contract
 
 #endif

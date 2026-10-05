@@ -25,10 +25,6 @@
 using ghostlock::backend::cve_2026_43284::BackendTerminalDeps;
 using ghostlock::backend::cve_2026_43284::BackendTerminalError;
 using ghostlock::backend::cve_2026_43284::BackendTerminalResult;
-using ghostlock::backend::cve_2026_43284::kCarrierTokenDefault;
-using ghostlock::backend::cve_2026_43284::kCarrierTokenLibbinderdebug;
-using ghostlock::backend::cve_2026_43284::kCarrierTokenMax;
-using ghostlock::backend::cve_2026_43284::resolve_carrier_token;
 using ghostlock::backend::cve_2026_43284::run_backend_terminal;
 using ghostlock::backend::cve_2026_43284::select_single_carrier;
 using ghostlock::backend::Cve2026_43284Policy;
@@ -36,7 +32,6 @@ using ghostlock::backend::Cve2026_43284Profile;
 using ghostlock::backend::cve_2026_43284::IpsecSaParams;
 using ghostlock::backend::cve_2026_43284::lkm::kLateLoadArgPackageName;
 using ghostlock::backend::cve_2026_43284::lkm::kLateLoadArgRoPartitions;
-using ghostlock::backend::cve_2026_43284::lkm::kLkmPathTokenBundled;
 using ghostlock::backend::cve_2026_43284::lkm::kSelinuxExecContextVendorModprobe;
 using ghostlock::backend::cve_2026_43284::steps::ChainError;
 using ghostlock::backend::cve_2026_43284::steps::ChainOps;
@@ -45,9 +40,13 @@ using ghostlock::backend::cve_2026_43284::steps::kDefaultCarriers;
 using ghostlock::backend::cve_2026_43284::steps::PageCacheWriteSteps;
 using ghostlock::backend::cve_2026_43284::steps::PatchPlan;
 using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
+using ghostlock::platform::collect_device_facts;
+using ghostlock::platform::DeviceFactDegraded;
 using ghostlock::platform::DeviceFactError;
+using ghostlock::platform::DeviceFacts;
 using ghostlock::platform::DeviceProbeOps;
 using ghostlock::platform::FileFact;
+using ghostlock::platform::format_device_fact_degraded;
 using ghostlock::platform::VendorCandidate;
 using ghostlock::session::CoreSession;
 using ghostlock::contract::StageResult;
@@ -257,12 +256,12 @@ namespace {
 
     Cve2026_43284Profile make_profile() noexcept {
         Cve2026_43284Profile profile{};
-        profile.carrier_path = kCarrierTokenDefault;
-        profile.lkm_path = kLkmPathTokenBundled;
+        /* Absent carrier_path/lkm_path = the composition root supplies the
+         * carrier and the bundled module mirror (BundledKmi). */
         profile.kmi = 5015;
         profile.selinux_exec_context = kSelinuxExecContextVendorModprobe;
         profile.late_load_args = kLateLoadArgPackageName | kLateLoadArgRoPartitions;
-        profile.defex_symbol = 0U;
+        profile.defex_symbol = std::string_view{"vendor_defex_hook"};
         profile.steps = PageCacheWriteSteps::id;
         return profile;
     }
@@ -364,12 +363,170 @@ namespace {
             assert(r.error == BackendTerminalError::DeviceFactsUnavailable);
             assert(r.fact_error == DeviceFactError::Unavailable);
         }
+        /* Only an unreadable uname -r and a missing crash_dump64 (patch #1's
+         * target) stay fatal; the policy-denied optional facts degrade. */
         { FakeDevice d{}; d.release_ok = false; expect_fact_error(d, DeviceFactError::ReleaseMissing); }
-        { FakeDevice d{}; d.proc_version_ok = false; expect_fact_error(d, DeviceFactError::ProcVersionMissing); }
-        { FakeDevice d{}; d.enforce_ok = false; expect_fact_error(d, DeviceFactError::SelinuxMissing); }
         { FakeDevice d{}; d.crash_dump_exists = false; expect_fact_error(d, DeviceFactError::CrashDumpMissing); }
-        { FakeDevice d{}; d.crash_dump_label = false; expect_fact_error(d, DeviceFactError::CrashDumpLabelUnknown); }
-        { FakeDevice d{}; d.vendor_count = 0U; expect_fact_error(d, DeviceFactError::VendorCandidatesMissing); }
+    }
+
+    /* Denied/empty optional facts are recorded, not fatal. Exercises the
+     * collector directly so the exact degraded mask and the log formatter are
+     * asserted, and proves an unknown f4c50a4 cannot fire PatchedKernel. */
+    void test_device_facts_degraded() {
+        FakeDevice dev{};
+        dev.proc_version_ok = false;
+        dev.enforce_ok = false;
+        dev.crash_dump_label = false;
+        dev.vendor_count = 0U;
+        DeviceFacts facts{};
+        const DeviceFactError error = collect_device_facts(make_device_ops(dev), facts);
+        assert(error == DeviceFactError::None);
+        assert(!facts.proc_version_present);
+        assert(!facts.has_f4c50a4);
+        assert(!facts.preempt_known());
+        assert(!facts.selinux_enforce_readable);
+        assert(facts.crash_dump.exists);
+        assert(!facts.crash_dump.label_known);
+        assert(facts.vendor_candidate_count == 0U);
+        const DeviceFactDegraded expected =
+                DeviceFactDegraded::ProcVersion | DeviceFactDegraded::Selinux |
+                DeviceFactDegraded::VendorCandidates | DeviceFactDegraded::CrashDumpLabel;
+        assert(facts.degraded == expected);
+        assert(facts.has_degraded());
+        char name[64] = {};
+        const std::size_t n = format_device_fact_degraded(facts.degraded, name, sizeof(name));
+        assert(n == std::string_view("proc_version,selinux,vendor,crash_dump_label").size());
+        assert(std::string_view(name) == "proc_version,selinux,vendor,crash_dump_label");
+
+        /* A fully readable probe has no degraded bit and keeps the current
+         * (shell-domain) behaviour verbatim. */
+        FakeDevice full{};
+        DeviceFacts full_facts{};
+        assert(collect_device_facts(make_device_ops(full), full_facts) ==
+               DeviceFactError::None);
+        assert(!full_facts.has_degraded());
+        assert(full_facts.preempt_known());
+        assert(!full_facts.has_f4c50a4);
+        assert(full_facts.selinux_enforce_readable);
+        assert(full_facts.crash_dump.label_known);
+        assert(full_facts.vendor_candidate_count == 2U);
+    }
+
+    void test_degraded_still_ready() {
+        FakeDevice dev{};
+        dev.proc_version_ok = false;
+        dev.enforce_ok = false;
+        dev.crash_dump_label = false;
+        dev.vendor_count = 0U;
+        FakeChain chain{};
+        reset_chain(chain);
+        UmhForwardInput out{};
+        const BackendTerminalResult r = run_case(make_profile(), dev, chain, out);
+        assert(r.error == BackendTerminalError::None);
+        assert(r.ready);
+        assert(r.fact_error == DeviceFactError::None);
+        assert(r.degraded == (DeviceFactDegraded::ProcVersion |
+                              DeviceFactDegraded::Selinux |
+                              DeviceFactDegraded::VendorCandidates |
+                              DeviceFactDegraded::CrashDumpLabel));
+        assert(out.lkm_loaded);
+
+        /* A readable marker still refuses even though /proc/version is not
+         * required to be readable. */
+        FakeDevice patched{};
+        patched.proc_version = "#1 SMP f4c50a4 dirty";
+        FakeChain chain2{};
+        reset_chain(chain2);
+        UmhForwardInput out2{};
+        const BackendTerminalResult rp = run_case(make_profile(), patched, chain2, out2);
+        assert(rp.error == BackendTerminalError::PatchedKernel);
+        assert(!rp.ready);
+    }
+
+    struct PrecheckExpect final {
+        bool preempt = false;
+        int calls = 0;
+    };
+
+    bool precheck_requires_preempt(
+            void *ctx, std::string_view,
+            const ghostlock::backend::cve_2026_43284::lkm::DeviceKernelFacts &required,
+            ghostlock::backend::cve_2026_43284::lkm::ModuleFacts &,
+            ghostlock::backend::cve_2026_43284::lkm::LkmImageError &) noexcept {
+        auto *expect = static_cast<PrecheckExpect *>(ctx);
+        ++expect->calls;
+        return required.preempt == expect->preempt;
+    }
+
+    /* When /proc/version is denied, preempt is unknown: the precheck must not
+     * reject a module merely for the missing preempt token, but a module that
+     * fails every polarity is still rejected. */
+    void test_preempt_unknown_precheck() {
+        /* A module whose vermagic carries "preempt" passes on the retry. */
+        {
+            FakeDevice dev{};
+            dev.proc_version_ok = false;
+            FakeChain chain{};
+            reset_chain(chain);
+            RootProgram root{};
+            root.kind = RootProgramKind::KernelSU;
+            root.set_argv("/data/adb/ksud");
+            IpsecSaParams sa{};
+            BackendTerminalDeps deps = make_deps(dev, chain);
+            PrecheckExpect expect{};
+            expect.preempt = true;
+            deps.precheck_lkm = precheck_requires_preempt;
+            deps.precheck_ctx = &expect;
+            deps.lkm_image_path = "/data/local/tmp/dirtyfrag.ko";
+            UmhForwardInput out{};
+            const BackendTerminalResult r =
+                    run_backend_terminal(make_profile(), root, sa, deps, false, out);
+            assert(r.ready);
+            assert(expect.calls == 2);
+        }
+        /* Readable /proc/version without PREEMPT is known: exactly one attempt. */
+        {
+            FakeDevice dev{};
+            dev.proc_version = "#1 SMP Thu Jan 1 00:00:00 UTC 2026";
+            FakeChain chain{};
+            reset_chain(chain);
+            RootProgram root{};
+            root.kind = RootProgramKind::KernelSU;
+            root.set_argv("/data/adb/ksud");
+            IpsecSaParams sa{};
+            BackendTerminalDeps deps = make_deps(dev, chain);
+            PrecheckExpect expect{};
+            expect.preempt = false;
+            deps.precheck_lkm = precheck_requires_preempt;
+            deps.precheck_ctx = &expect;
+            deps.lkm_image_path = "/data/local/tmp/dirtyfrag.ko";
+            UmhForwardInput out{};
+            const BackendTerminalResult r =
+                    run_backend_terminal(make_profile(), root, sa, deps, false, out);
+            assert(r.ready);
+            assert(expect.calls == 1);
+        }
+        /* No polarity passes: still fail closed, never blanket-accept. */
+        {
+            FakeDevice dev{};
+            dev.proc_version_ok = false;
+            dev.precheck_ok = false;
+            FakeChain chain{};
+            reset_chain(chain);
+            RootProgram root{};
+            root.kind = RootProgramKind::KernelSU;
+            root.set_argv("/data/adb/ksud");
+            IpsecSaParams sa{};
+            BackendTerminalDeps deps = make_deps(dev, chain);
+            deps.precheck_lkm = precheck_ok;
+            deps.precheck_ctx = &dev;
+            deps.lkm_image_path = "/data/local/tmp/dirtyfrag.ko";
+            UmhForwardInput out{};
+            const BackendTerminalResult r =
+                    run_backend_terminal(make_profile(), root, sa, deps, false, out);
+            assert(r.error == BackendTerminalError::LkmPrecheckRejected);
+            assert(!r.ready);
+        }
     }
 
     /* ---- symbol absence is recorded, not fatal: the remaining facts being
@@ -440,50 +597,49 @@ namespace {
     /* ---- B6/T5: exactly one carrier is bound; no multi-candidate fallback ---- */
 
     void test_carrier_single_selection() {
-        const ghostlock::backend::cve_2026_43284::steps::CarrierTarget *carrier =
-                nullptr;
+        using ghostlock::backend::cve_2026_43284::steps::CarrierTarget;
+        CarrierTarget carrier{};
         {
-            /* Explicit token 1 selects kDefaultCarriers[0]. */
+            /* An explicit valid path selects exactly that carrier. */
             FakeDevice dev{};
             const DeviceProbeOps probe = make_device_ops(dev);
-            assert(select_single_carrier(kCarrierTokenLibbinderdebug, probe, carrier));
-            assert(carrier == &kDefaultCarriers[0]);
+            assert(select_single_carrier("/vendor/lib64/libstagefrighthw.so", probe,
+                                         carrier));
+            assert(carrier.path == "/vendor/lib64/libstagefrighthw.so");
         }
         {
-            /* Token 0 picks the first default the device reports present. */
+            /* An absent path picks the first default the device reports present. */
             FakeDevice dev{};
             dev.first_present_default = 2U;
             const DeviceProbeOps probe = make_device_ops(dev);
-            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
-            assert(carrier == &kDefaultCarriers[2]);
+            assert(select_single_carrier(std::string_view{}, probe, carrier));
+            assert(carrier.path == kDefaultCarriers[2].path);
         }
         {
-            /* Token 0 with no default the probe can confirm still resolves to the
-             * first default: the probe is a plain stat() that privileged domains
-             * are denied on some devices, while the chain reaches such a vendor
+            /* No default the probe can confirm still resolves to the first
+             * default: the probe is a plain stat() that privileged domains are
+             * denied on some devices, while the chain reaches such a vendor
              * carrier through the crash-dump bridge. */
             FakeDevice dev{};
             dev.first_present_default = kDefaultCarriers.size();
             const DeviceProbeOps probe = make_device_ops(dev);
-            carrier = nullptr;
-            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
-            assert(carrier == &kDefaultCarriers[0]);
+            assert(select_single_carrier(std::string_view{}, probe, carrier));
+            assert(carrier.path == kDefaultCarriers[0].path);
         }
         {
-            /* An unknown token fails closed. */
+            /* A malformed explicit path fails closed. */
             FakeDevice dev{};
             const DeviceProbeOps probe = make_device_ops(dev);
-            carrier = nullptr;
-            assert(!select_single_carrier(99U, probe, carrier));
-            assert(carrier == nullptr);
+            carrier = CarrierTarget{};
+            assert(!select_single_carrier("/data/local/tmp/evil.so", probe, carrier));
+            assert(carrier.path.empty());
         }
         {
             /* A missing device surface (no file_fact at all) also resolves to the
              * first default rather than failing: the chain decides reachability. */
             const DeviceProbeOps probe{};
-            carrier = nullptr;
-            assert(select_single_carrier(kCarrierTokenDefault, probe, carrier));
-            assert(carrier == &kDefaultCarriers[0]);
+            assert(select_single_carrier(std::string_view{}, probe, carrier));
+            assert(carrier.path == kDefaultCarriers[0].path);
         }
     }
 
@@ -541,18 +697,18 @@ namespace {
         assert(chain.release_calls == 1U);
     }
 
-    void test_carrier_tokens() {
-        const ghostlock::backend::cve_2026_43284::steps::CarrierTarget *primary = nullptr;
-        std::size_t count = 7U;
-        assert(resolve_carrier_token(kCarrierTokenDefault, primary, count));
-        assert(primary == nullptr);
-        assert(count == 0U);
-        assert(resolve_carrier_token(kCarrierTokenLibbinderdebug, primary, count));
-        assert(primary == &kDefaultCarriers[0]);
-        assert(count == 1U);
-        assert(resolve_carrier_token(kCarrierTokenMax, primary, count));
-        assert(primary == &kDefaultCarriers[3]);
-        assert(!resolve_carrier_token(99U, primary, count));
+    /* S4 R4: the carrier token vocabulary is gone; the remaining policy is that
+     * every explicit path is validated before it can become the chain target. */
+    void test_carrier_string_paths() {
+        using ghostlock::backend::cve_2026_43284::steps::CarrierTarget;
+        FakeDevice dev{};
+        const DeviceProbeOps probe = make_device_ops(dev);
+        CarrierTarget carrier{};
+        assert(!select_single_carrier("relative.so", probe, carrier));
+        assert(!select_single_carrier("/vendor/lib64/bad path.so", probe, carrier));
+        assert(!select_single_carrier("/system/lib64/libc++.so", probe, carrier));
+        assert(select_single_carrier("/system/vendor/lib64/libx.so", probe, carrier));
+        assert(carrier.path == "/system/vendor/lib64/libx.so");
     }
 
     void test_proc_version_marker() {
@@ -614,12 +770,15 @@ namespace {
 int main() {
     test_success();
     test_device_facts_fail_closed();
+    test_device_facts_degraded();
+    test_degraded_still_ready();
+    test_preempt_unknown_precheck();
     test_symbols_restricted_still_ready();
     test_patched_kernel();
     test_policy_rejections();
     test_precheck_rejected();
     test_chain_rejected();
-    test_carrier_tokens();
+    test_carrier_string_paths();
     test_carrier_single_selection();
     test_missing_single_carrier_rejected();
     test_proc_version_marker();

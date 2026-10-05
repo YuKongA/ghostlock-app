@@ -19,11 +19,16 @@ interface ProfileConfigController {
         values: Map<String, Long>,
     ): ProfileConfig
 
-    /** Persists advanced (sparse dotted-path) edits and returns the new config. */
+    /**
+     * Persists advanced (sparse dotted-path) edits and returns the new config.
+     * Values are [Long] for numeric leaves or [String] for the S4 R4
+     * cve_2026_43284 policy paths; the controller compares each against the
+     * resolved baseline so untouched fields stay un-overridden.
+     */
     suspend fun updateAdvanced(
         release: String,
         pair: CpuPair,
-        values: Map<String, Long>,
+        values: Map<String, Any>,
     ): ProfileConfig
 
     /** Drops every general and advanced override for the release. */

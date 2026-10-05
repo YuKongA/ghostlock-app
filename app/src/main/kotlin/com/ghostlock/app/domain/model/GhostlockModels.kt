@@ -65,11 +65,16 @@ data class DebugSettings(
     val kernelLogEnabled: Boolean = true,
 )
 
-/** One node of the resolved profile tree: a JSON group or a numeric leaf. */
+/**
+ * One node of the resolved profile tree: a JSON group, a numeric leaf or a
+ * string leaf (S4 R4: the cve_2026_43284 policy paths).
+ */
 data class ProfileFieldNode(
     val path: String,
     val name: String,
     val value: Long? = null,
+    /** Resolved text for a string leaf; null for groups and numeric leaves. */
+    val textValue: String? = null,
     /** True when this field or any descendant has an explicit override. */
     val overridden: Boolean = false,
     val children: List<ProfileFieldNode> = emptyList(),

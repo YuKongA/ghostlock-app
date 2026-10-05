@@ -50,6 +50,24 @@ val ExecutionMode.requiresShizuku: Boolean
     get() = this == ExecutionMode.Shizuku
 
 /**
+ * True when the native must run in the **shell domain** (Shizuku) instead of the
+ * app process.
+ *
+ * This is the single place that decides the route. It used to force the
+ * cve_2026_43284 backend onto Shizuku because the app domain could not read the
+ * device facts that backend collected (/proc/version, the /vendor/lib64 candidate
+ * list, the SELinux enforce state). The native now degrades an unreadable fact to
+ * "unknown" and reports `device_facts degraded=...` instead of failing closed, so
+ * 43284 runs in the app domain like the upstream exploit; Shizuku remains an
+ * explicit, optional choice ([ExecutionMode.Shizuku]). The backend parameter is
+ * kept so a future backend-specific route policy has one place to live.
+ */
+fun runRequiresShizuku(
+    mode: ExecutionMode,
+    @Suppress("UNUSED_PARAMETER") backend: BackendKind,
+): Boolean = mode.requiresShizuku
+
+/**
  * A catalogued sparse-triple selection: the backend plus the StepSet and
  * terminal the native catalog wires it to.
  */

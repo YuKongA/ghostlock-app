@@ -4,13 +4,12 @@
 #include <cstdint>
 #include <optional>
 
-#include "ancillary/ancillary_policy.hpp"
+#include "plugin/policy.hpp"
 #include "platform/vivo/kind.hpp"
 #include "platform/vivo/schema.hpp"
 
 namespace ghostlock::platform::vivo {
-    using ghostlock::ancillary::AncillaryOps;
-    using ghostlock::ancillary::AncillaryStage;
+    using ghostlock::plugin::PluginStage;
     using ghostlock::session::CoreSession;
 
     /* Ancillary behavior: vivo/iQOO `vr.ko` anti-root neutralization.
@@ -38,7 +37,7 @@ namespace ghostlock::platform::vivo {
      * `nullopt` means the view does not carry both facts, which is the
      * fail-closed path: a non-vivo profile never triggers a write. The target is
      * image-relative; turning it into a direct-map alias needs the injected
-     * `AncillaryOps::image_to_direct_map` and stays in `execute_vr_guard()`.
+     * `contract::KernelAlias` and stays in `execute_vr_guard()`.
      * Host-testable (see src/core/tests/platform_vivo_test.cpp). */
     struct VrGuardPlan final {
         uint64_t image_offset = 0;
@@ -57,14 +56,14 @@ namespace ghostlock::platform::vivo {
     }
 
     /* Device-only execution body (defined in vr_guard.cpp on Android, stubbed on
-     * host). Keeping the middleware template trivial and inline here is what
-     * lets the call site instantiate the policy without naming a backend route
-     * type in this module. */
-    Status execute_vr_guard(AncillaryStage stage, AncillaryOps &ops,
+     * host). The behavior reaches the kernel through the injected capability
+     * aggregate, so this module still names no backend route type. */
+    Status execute_vr_guard(PluginStage stage,
+                            const contract::Capabilities &capabilities,
                             const View &view) noexcept;
 
-    struct VrGuardPolicy : ancillary::AncillaryPolicyDefaults {
-        static constexpr AncillaryKind kind = AncillaryKind::VrGuard;
+    struct VrGuardPolicy : plugin::PluginPolicyDefaults {
+        static constexpr PluginKind kind = PluginKind::VrGuard;
 
         /* View gate only (guide section 5): it says the support list enables the
          * behavior for this profile. Whether vr.ko is present on the running
@@ -73,11 +72,11 @@ namespace ghostlock::platform::vivo {
             return view.guard_enabled && plan_vr_guard(view).has_value();
         }
 
-        template <class Middleware>
-        static Status apply(AncillaryStage stage, CoreSession &session,
-                            AncillaryOps &ops, const View &view) noexcept {
+        static Status apply(PluginStage stage, CoreSession &session,
+                            const contract::Capabilities &capabilities,
+                            const View &view) noexcept {
             (void)session;
-            return execute_vr_guard(stage, ops, view);
+            return execute_vr_guard(stage, capabilities, view);
         }
     };
 } // namespace ghostlock::platform::vivo

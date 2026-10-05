@@ -64,8 +64,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
-                // v2: safe_mode lives in the meta section; there is no fixed
-                // slot offset, so the blob is rescanned and rewritten.
+                // GLKv3: safe_mode lives in the common section; there is no fixed
+                // slot offset, so the codec locates and rewrites the map value.
                 val effectiveBlob = if (safeMode) {
                     NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
                 } else {

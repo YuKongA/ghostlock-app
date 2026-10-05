@@ -8,8 +8,6 @@
 
 #include "backend/cve_2026_43499/schema.hpp"
 #include "platform/abi.hpp"
-#include "profile/binary.h"
-#include "profile_bind_compat.hpp"
 #include "profile/document.hpp"
 #include "profile/schema.hpp"
 
@@ -47,9 +45,9 @@ namespace {
         return doc;
     }
 
-    /* Distinctive, in-range values for every owned field, including all three
-     * route sections (the serializer emits only the active one). */
-    void fill_all(kernel_offsets &v) {
+    /* Distinctive, in-range values for every owned field (all three route
+     * sections). Retained as the owner-schema value fixture. */
+    [[maybe_unused]] void fill_all(kernel_offsets &v) {
         v.meta.kernel_major = 6;
         v.meta.fallback_route = ghostlock::profile::kRouteSelectStack;
         v.meta.safe_mode = true;
@@ -144,25 +142,6 @@ namespace {
         v.mcast_arm_hold = 20000;
     }
 
-    int32_t round_trip(uint8_t route, kernel_offsets &values, char *first,
-                       size_t capacity, int32_t &first_size) {
-        char second[8192];
-        char release[64] = {0};
-        values.route = route;
-        first_size = ghostlock::binary_profile::serialize(&values, first, capacity);
-        if (first_size <= 0) return -1;
-        kernel_offsets parsed = {};
-        const int32_t rc = ghostlock::binary_profile::parse(
-                std::string_view(first, static_cast<size_t>(first_size)),
-                &parsed, release, sizeof(release));
-        if (rc != 0) return rc;
-        const int32_t second_size = ghostlock::binary_profile::serialize(
-                &parsed, second, sizeof(second));
-        if (second_size != first_size) return -2;
-        return std::memcmp(first, second, static_cast<size_t>(first_size)) == 0
-                       ? 0
-                       : -3;
-    }
 } // namespace
 
 int main() {
@@ -209,28 +188,13 @@ int main() {
     /* ---- Production rejects an unknown key in an owned section. ---- */
     {
         Document doc = full_document();
-        doc.find_section("meta")->add("bogus", 1ULL);
+        doc.find_section("common")->add("bogus", 1ULL);
         Cve2026_43499View view{};
         const auto blocked = ghostlock::profile::bind<Cve2026_43499Schema>(
                 doc, view, DecodeMode::Production);
         assert(blocked.code == BindCode::UnknownKey);
-        assert(blocked.section == "meta");
+        assert(blocked.section == "common");
         assert(blocked.key == "bogus");
-    }
-
-    /* ---- Full transport round trip, one pass per route. ---- */
-    {
-        kernel_offsets values = {};
-        values.uname_r = "6.6.77-owner-round-trip";
-        values.meta.kernel_major = 6;
-        fill_all(values);
-        char first[8192];
-        int32_t size = 0;
-        for (uint8_t route : {ghostlock::profile::kRouteTcpZerocopy,
-                              ghostlock::profile::kRouteSelectStack,
-                              ghostlock::profile::kRouteMulticastWaiter}) {
-            assert(round_trip(route, values, first, sizeof(first), size) == 0);
-        }
     }
 
     /* ---- A2-4-3: platform + backend union binds with one ownership
@@ -268,7 +232,7 @@ int main() {
 
         /* Union validation still rejects an unknown key. */
         Document bad = doc;
-        bad.find_section("meta")->add("bogus", 1ULL);
+        bad.find_section("common")->add("bogus", 1ULL);
         ghostlock::platform::abi::View abi2{};
         Cve2026_43499View view2{};
         const auto blocked = ghostlock::profile::bind_all<

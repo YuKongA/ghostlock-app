@@ -17,7 +17,7 @@
    - **D-C**：`contract/capabilities.hpp` **已存在**且已落地 `KernelMemoryOps`/`FileCacheWriteOps`（`contract/capabilities.hpp:15-36`），但其形状是 **`ctx` + 函数指针 + `available()`**，与计划草案 §87-94（**无 ctx、含 `read64/write64/update_bits`、无 `write_zero`**）**不一致**。
    - **D-D**：`ghostlock::contract::Capability` **已被子系统 B 的 CM 插件 ABI 占用**为 `enum class Capability : uint32_t`（`contract/countermeasure.hpp:49-58`）。计划 §81-84 要求在**同一命名空间**新增 `template<class C> concept Capability`——**直接名字冲突，草案无法原样落地**。
 2. **计划草案的 `KernelMemoryOps`/`Capabilities` 形状无法支撑现有两个 vendor 行为**：VrGuard 需要**写零**与**image→direct-map 译址**（`platform/vivo/vr_guard.cpp:77-98`），VrTaskTag 需要 **child_task**（`platform/vivo/vr_task_tag.cpp:70-91`），而 §87-94 的草案既无 `write_zero`、也无 alias、也无 child_task。**Batch 1 必须先补齐这三项**。
-3. **Batch 1 只做「接口 + ancillary 消费方改造 + host stub」**，不碰 Tier 2、不碰 `WriteRequest`、不碰 `payload_builder`、不碰 profile/提取器。改动的三个 backend 落点（`steps.cpp` 的 `w1`/`w2` 内 ancillary 调用、platform/vivo 行为、contract/session 头文件）**都不在 `tools/cmp_disasm.py` 的 6 个 TARGETS 内**（`tools/cmp_disasm.py:79-143`），因此 **预计 `cmp_disasm` 6/6 IDENTICAL (strict)**（见 §3.2 的残余风险与判定条件）。
+3. **Batch 1 只做「接口 + ancillary 消费方改造 + host stub」**，不碰 Tier 2、不碰 `WriteRequest`、不碰 `payload_builder`、不碰 profile/提取器。改动的三个 backend 落点（`steps.cpp` 的 `w1`/`w2` 内 ancillary 调用、platform/vivo 行为、contract/session 头文件）**都不在 `tools/cmp_disasm.py` 的 6 个 TARGETS 内**（`tools/cmp_disasm.py:79-143`），因此 **预计 `cmp_disasm` 6/6 IDENTICAL (strict)**（见 §3.2）。注：2026-10-05 起 `cmp_disasm` **不再是门槛**，此处只作「改动很小」的旁证；准入判据是真机门禁。
 4. **批准后第一步（最小可验证动作）**：只改 `contract/capabilities.hpp` + `contract_capabilities_test.cpp` + Makefile 规则，跑 `make -C src native-host-tests`，要求 `contract_capabilities_test: ok`。此步不触任何 backend/攻击路径；接口形状先在 host 冻结，再进 ancillary 迁移。
 
 ---
@@ -40,6 +40,19 @@
 | 12 | `KernelMemory::channel_kind()`（§159） | 无任何 channel/kernel memory 实现；全仓无 `channel_kind` | 未落地（Batch 3/4 实现，Batch 1 定形状） |
 
 ---
+
+## 2.0 维护者裁决（2026-10-05，覆盖原决策 1/2）
+
+> 原话：「kernel memory 读机制应该按照 c++ 哲学全部提供，通过 enum 入参决定具体分配哪种读机制，载体也是」。
+
+- **读机制：全部提供**（B fops / C pipe_buffer / 以及后续机制的**每一种**都在契约层可见），
+  **由 `enum` 入参显式选择**用哪一种；**废除「B 主 / C 回退」的隐式降级链**。
+- **载体同样**：`ashmem_misc` / `binder_miscdev` / `loop_control` 等**全部提供**，`enum` 显式选择；
+  不再「按序尝试、失败降级」。
+- **与 R7 一致**：选了但该 backend/设备不支持 → **返回类型化错误**（`CapabilityError::Unsupported`），
+  **不得**静默改用另一种机制、不得静默 no-op。谁来做 fallback 由**调用方**决定（显式），不是能力层偷偷做。
+- **Tier 1**（只写引导）仍存在，但同样是一件**显式可选**的能力，不是「最后的降级兜底」。
+- 遗留待定：enum 的取值集合是否随 profile 可配（数据驱动）还是仅调用参数；见 §2.5 与决策 3。
 
 ## 2. 决策包（可直接裁决）
 
@@ -113,6 +126,41 @@
 | **D** | `update_bits` 语义未定 | 计划 §92 只给签名，无 RMW 语义、无大端/对齐、无并发说明 | (i) 64 位 `old=(old&~mask)|(value&mask)`，逐次 PI 竞态不保证原子；(ii) 要求对齐且原子（当前不成立） | **(i)**，并在头注释显式声明**非原子**（Tier 1 每字一次竞态） | Batch 3 写路径 | 低 |
 
 ---
+
+## 2.5 新增需求（维护者，2026-10-05）：**能力并集 + 未支持必须报错**
+
+> 原话：「A3 做的尽量全能，覆盖所有 backend 的能力，如果 backend 不支持某个具体能力则返回错误」。
+
+**要求**
+
+1. **能力词汇 = 所有 backend 的并集**：契约层（`contract/`）必须能表达**任一 backend** 的每一种能力，
+   不按当前两个 backend 裁剪；新 backend 到来时应该是**加声明**而不是改词汇。
+2. **未支持 → 显式错误**：backend 不支持某能力时，调用必须返回**类型化错误**（如
+   `CapabilityError::Unsupported`），**不得**静默 no-op、不得静默取默认值、不得靠「函数指针为空」这种
+   调用即崩的方式表达不可用。
+3. **单一来源**：`contract::Capability` 与 CM 插件 ABI 的 `glk_cm_capability` 位必须**同源**（或由
+   `static_assert` 强制逐位一致），不得各维护一份。
+4. **覆盖性测试**：host 测试断言 (a) 并集枚举每一项都有对应句柄或明确的「无句柄」说明；
+   (b) 每个 backend 的支持集**完整声明**（每项要么带非空句柄、要么显式标记 unsupported）。
+
+**与现有代码的关系（取证）**
+
+| 现有 | 位置 | 处置 |
+|---|---|---|
+| `KernelMemoryOps{ctx, read, write, available}` | `contract/capabilities.hpp:15-25` | 保留家族形状，补 `write_zero`/`update_bits`/`channel` 并**拆读写可用性**（决策 B） |
+| `FileCacheWriteOps{ctx, write16, available}` | `contract/capabilities.hpp:30-36` | 保留（43284 用） |
+| `AddressDiscoveryOps{ctx, discover, available}` | `contract/address_discovery.hpp:84-91` | 保留（43499 spray 已活体接线，A3-2 item 3） |
+| `enum class Capability` 7 位 | `contract/countermeasure.hpp:49-58` | **作为并集基座**：与 CM ABI 位对齐，其余能力（如 `ADDRESS_DISCOVERY`）按同一风格扩展 |
+| 各 backend 支持集 | 目前**未声明**（只能从代码推断） | Batch 1 起**显式声明**并测试 |
+
+**对 Batch 1 接口的影响**
+
+- `Capabilities` 结构体承载**并集**：`KernelMemoryOps kernel`、`FileCacheWriteOps file_cache`、
+  `AddressDiscoveryOps address_discovery`、`AliasOps alias`、`child_task`（按决策 C）……每项自带可用性与错误返回；
+- 调用方**不得**先探测再调用以求「优雅降级」：不支持就是错误，由调用方决定失败语义
+  （如 A3-2 的 spray 把 discovery 失败映射回历史哨兵，属于**调用方的兼容策略**，不是能力层的静默降级）；
+- `KernelMemory` facade 的 `read64/write64/update_bits` 在 `channel == Unavailable` 时**返回错误**，
+  不返回零值、不假装成功。
 
 ## 3. Batch 1 范围、不变量与 cmp_disasm 判定
 
@@ -370,7 +418,7 @@ $(HOST_BUILD_DIR)/kernel_memory_stub_test: core/tests/kernel_memory_stub_test.cp
 | include 防火墙 | 含在上面的 host 套件 | 输出 `142 files, 3 forbidden-layer edges, 3 whitelisted, 0 unexpected, 0 stale`（行数可能因新测试略增，但 unexpected/stale 必须为 0） |
 | NDK 构建 | `make -C src ghostlock` | 零告警 |
 | lint | `make -C src lint-tidy` | 0 findings |
-| 形状 | `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` | **6/6 IDENTICAL (strict)**；若只出现 reloc/annotation 差异，改用 `--reviewed` 并按工具规则裁决（`tools/cmp_disasm.py:30-69`） |
+| 形状（可选） | `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` | 用于定位差异范围；**不作为门槛**（2026-10-05 政策） |
 
 > Batch 1 **无需真机**（纯 host + 不触攻击路径）。真机门禁从 Batch 3 起按 `docs/analysis/device-gates/` 归档。
 

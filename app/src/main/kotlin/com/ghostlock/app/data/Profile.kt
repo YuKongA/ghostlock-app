@@ -1,6 +1,5 @@
 package com.ghostlock.app.data
 
-import androidx.annotation.VisibleForTesting
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
@@ -22,8 +21,8 @@ internal data class SelectStackLayout(val waiterShift: Int?, val compactWaiter: 
  * Single authority for one fully resolved profile.
  *
  * The semantic identity (route enum, capabilities, layout views) lives here,
- * while [NativeProfileDocument] remains the v2 codec so the verified byte
- * layout stays authoritative.
+ * while [NativeProfileDocument] remains the logical model that the GLKv3
+ * adapter translates to the wire.
  */
 internal data class Profile(
     val document: NativeProfileDocument,
@@ -32,7 +31,7 @@ internal data class Profile(
 ) {
     val release: String get() = document.release
 
-    /** Backend selection carried in the wire header; defaults to 43499. */
+    /** Backend selection carried in the document; defaults to 43499. */
     val backendKind: BackendKind
         get() = BackendKind.fromWire(document.backendKind.toInt()) ?: BackendKind.Default
 
@@ -70,14 +69,6 @@ internal data class Profile(
     fun selectStackLayout(): SelectStackLayout =
         SelectStackLayout(waiterShift = pselectWaiterShift, compactWaiter = compactWaiter)
 
-    /**
-     * v2 writer delegate: golden/equivalence tests only. Production and export
-     * encode GLKv3 via [com.ghostlock.app.data.profile.Glkv3Encoder]; v2 is
-     * read-only on device (GLKv3-5).
-     */
-    @VisibleForTesting
-    fun toBinary(): ByteArray = document.toBinary()
-
     companion object {
         /** Wraps a decoded document, rejecting an unresolved route. */
         fun fromNativeDocument(
@@ -88,10 +79,6 @@ internal data class Profile(
         } else {
             Profile(document, invalidPaths)
         }
-
-        /** Reverse: v2 bytes -> authority (UI / debug / tests). */
-        fun fromBinary(bytes: ByteArray): Profile? =
-            NativeProfileDocument.fromBinary(bytes)?.let { fromNativeDocument(it) }
 
         /** Forward: resolved values by dotted path -> authority. */
         fun fromValueMap(

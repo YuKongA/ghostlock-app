@@ -66,6 +66,8 @@
 | **R4** | **选择只来自 wire；CLI 只承载传输/安全/可观测** | backend/steps/terminal 与一切策略来自文档；CLI 不得出现 backend 专属标志 | staged CLI 删除；dev 走**同一文档 + 同一 Pipeline**（dev 门禁因此覆盖生产路径） |
 | **R5** | **默认值可见** | 运行期凡使用默认值，必须在诊断里记录（`default_used=<path>`） | 杜绝「默认值在代码里、Kotlin 不知道」 |
 | **R6** | **backend×terminal 兼容矩阵同源对拍、可扩展** | 兼容性由 native catalog 单一权威，Kotlin 侧**派生**投影（不硬编码） | 新增 terminal 只改 matrix + catalog 两处；UI 无需改代码 |
+| **R8** | **一个子系统一个家**：vivo 拆走后对策子系统不得跨两层 | `platform/` 只留设备/平台事实（`abi`/`device_facts`/`runtime`）；对策子系统（loader+registry+controller+policy）**集中一处**；`contract/glk_cm_abi.h`、`contract/countermeasure.hpp` 留 `contract`；**SHA-256 上移 `support/`**（现为 `platform/countermeasure/sha256.*` + `backend/.../ipsec/hmac_sha256.*` 两份，后者存在仅因 R1 禁 backend→platform） |
+| **R7** | **能力词汇 = 全 backend 并集；未支持必须报错** | `contract` 的能力词汇覆盖任一 backend 的全部能力（新 backend 只加声明、不改词汇）；backend 不支持某能力时调用返回**类型化错误**，不得静默 no-op / 静默默认 / 空指针即崩；`contract::Capability` 与 CM ABI 能力位**同源** | 见 `kernel-memory-batch1-plan.md` §2.5 |
 
 ---
 
@@ -247,6 +249,46 @@ ghostlock {
 
 **验证限制（如实记录）**：本机是 **Sony A301SO**，**无法真机验证 vivo 行为**。可验证：① host 插件生命周期/能力校验/阶段顺序/失败记录/保留项拒绝；② 设备上「无 vivo 对策 → 跳过，43499 链不受影响」；③ 43499 全链真机回归 + `cmp_disasm`。**真实 Vivo 设备门禁列为未完成项**，不得因 host 绿而标 supported。
 
+### 6.4a `support/` 是层名（保留），但 `support/util.cpp` 是错放的攻击路径
+
+**命名**：`utils`/`util` = 杂物抽屉（无边界/无归属，业界视为坏味道）；`support` = 基础设施层
+（先例：**LLVM `llvm/Support`**、Chromium `base/`、Android `libbase`）。本仓库选 `support` 是刻意的：
+AGENTS 顶层命名空间含它、R1 防火墙把它列为受限层，且目录内绝大多数文件**按用途命名**
+（`log.hpp`/`status.hpp`/`timing.hpp`/`run_state.*`/`cli.*`/`fatal_error.hpp`/`number_parse.h`）。
+
+**真问题**：`support/util.cpp`（2063 行）把 **43499 攻击路径**（`prepare_kernel_page` 喷雾、
+`prepare_skb_payload`、fake_lock/fake_w0 布置）与日志/计时/futex 封装混在一个中立层文件里，
+并直接访问 `backend::cve43499_state(...)`。
+
+**证据**：`tests/include_firewall_test.cpp` 的 **4 条白名单全部**是
+`support/util.cpp → backend/cve_2026_43499/{cve_2026_43499_state.hpp, route/route_policy.hpp,
+backend_profile/accessors.hpp, leak/address_discovery.h}` —— 即白名单不是四个无关例外，
+而是**一个错放文件的症状**。
+
+**清理方向**：保留 `support/` 层名（改名 `utils` 只会合法化杂物抽屉）；把 `util.cpp` **按用途拆分**：
+攻击/喷雾代码迁入 `backend/cve_2026_43499/`（喷雾归 `spray/` 或并入 `route/`/`primitives/`），
+其余拆成按用途命名的文件；目标是把 **防火墙白名单降到 0**（A3-2 报告已预告该去向）。
+**风险**：跨 TU 搬移会改变内联决策 → 机器码必然变化，须 `cmp` 归因 + **真机门禁**，
+按攻击路径批次的完整门槛执行。
+
+### 6.4b ancillary 与 platform 的职责划分（R8 取证）
+
+**问题**：vivo 拆成插件后，`ancillary` 与 `platform` 是否重复？**不是整体重复，但有两处真实重叠**：
+
+| 目录 | 内容 | 性质 |
+|---|---|---|
+| `platform/` | `abi.hpp`(31 字段)、`device_facts.*`、`runtime.*` | 设备/平台事实 |
+| `platform/vivo/` | `vr_guard`、`vr_task_tag` | 待删（R4c → 插件） |
+| `platform/countermeasure/` | `loader.*`(CM-2)、`sha256.*` | **非平台事实**：对策子系统的装载半边 |
+| `ancillary/` | `ancillary_policy.hpp`、`controller.*`(CM-3)、`external_registry.hpp`(CM-3) | 对策子系统的调度/注册半边 |
+
+重叠点：① 同一子系统跨两层；② SHA-256 两份（`platform/countermeasure/sha256.*` 与 `backend/.../ipsec/hmac_sha256.*`，
+前者的头注释自述「backend/ 被 R1 禁止 include platform/」所以才复制）。
+
+**目标**：`platform/` = 设备/平台事实（abi/device_facts/runtime），不含对策代码；
+对策子系统集中一处（loader+registry+controller+policy）；SHA-256 上移 `support/`。
+**待裁决**：子系统沿用 `ancillary/` 名（改动小）还是改名 `countermeasure/`（更直白，但需同步防火墙层表、AGENTS、文档）。
+
 ### 6.4 backend × terminal 兼容矩阵（当前已实现，可扩展）
 
 现状落点：`ExecutionModeMapping.kt` 的 `resolveExecutionSelection(mode, backend)`。
@@ -282,7 +324,7 @@ flowchart LR
 | 批 | 内容 | 门禁 |
 |---|---|---|
 | **R0** | 本计划 + ADR（规则 R1–R6） | 文档评审 |
-| **R1** | policy schema + registry + `bind_all` required/default（**native 内化，不动 wire**） | host / NDK / lint / `cmp_disasm`（期望 IDENTICAL）+ 真机 43499 回归 |
+| **R1** | policy schema + registry + `bind_all` required/default（**native 内化，不动 wire**） | host / NDK / lint + 真机 43499 回归（`cmp_disasm` 可选诊断） |
 | **R2** | wire：`string` 类型 + `selection` 段（D1）+ owner-qualified 路径 + manifest v4 + Kotlin **生成式**映射 | host / NDK / lint / cmp + `profile-core:test`/`:app:testDebugUnitTest` + manifest 三端对拍 |
 | **R2b** | **CLI 最小化**：删 10 个 43284 标志；dev 走同一 Pipeline；矩阵过滤 UI 缝隙 | host / NDK / lint / cmp（**IDENTICAL**：只动入口与数据流）+ 真机 43284 与 43499 各一次 dev 回放 |
 | **R3** | HOCON 布局重排（`schema_version` 仍为 1）+ 旧键别名 + 提取器改输出 + `index.conf` backend 矩阵 | 提取器 `cargo test` + Kotlin 解析测试（新旧布局都过）+ 真机 43499 |

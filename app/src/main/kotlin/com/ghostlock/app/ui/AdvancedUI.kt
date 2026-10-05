@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
+import com.ghostlock.app.data.isFieldInputInvalid
 import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.ProfileFieldNode
 import com.ghostlock.app.domain.model.UserProfileFile
@@ -1084,7 +1085,8 @@ private fun ProfileTree(
             }
         } else {
             val text = editing[node.path].orEmpty()
-            val invalid = isFieldInputInvalid(text) || node.path in invalidPaths
+            val invalid =
+                isFieldInputInvalid(node.path, text) || node.path in invalidPaths
             TextField(
                 value = text,
                 onValueChange = { value -> onValueChange(node.path, value) },

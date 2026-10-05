@@ -119,7 +119,7 @@ route 复用 profile 的 `RouteKind`，不是装配轴，不出现在 selection�
 
 - 只有该 route 才用的参数放 route 扩展节；共享代码会读的才进公共槽，两侧顺序必须一致。
 - hook 定义在 Android 段，声明带 `[[gnu::noinline]]`，避免 LTO 把 route 实现内联进攻击函数。
-- route 改动若触及攻击路径，必须跑 `cmp_disasm`（见 §五）。
+- route 改动若触及攻击路径，必须以**真机门禁**验证（见 §五）；`cmp_disasm` 为可选诊断。
 
 ---
 

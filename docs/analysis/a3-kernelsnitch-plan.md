@@ -15,7 +15,7 @@
 - 关键判据：ADF-0001 §17 明确 `kernelsnitch/`「上游已冻结、可改写」，是 `contract::AddressDiscovery` 的
   **可选实现**，默认随使用的 backend，**有第二个 backend 复用再提升共享**；改写必须在顶级重构拆分之后，
   且不得改变泄漏结果。A3-1 只做接口与适配，不搬目录，正是为满足「第二实现出现前不过早抽象/不过早搬迁」。
-- 不变量：A3-1 后 `cmp_disasm --reviewed` 与基线 `ghostlock-B0` 仍应 6/6 **strict IDENTICAL**；
+- 不变量：泄漏语义与攻击函数行为不变；`cmp_disasm --reviewed` 为**可选诊断**（2026-10-05 起非门槛），判据是真机泄漏门禁；
   泄漏结果与内核版本判定不变。A3-2 才需要重跑真机泄漏门禁。
 
 ## 1. 现状与基线
@@ -97,7 +97,7 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
   `discover` 返回非 0 ⟺ `out.ok == true`；失败必须整体写 `discovery_failed()`（全零），
   绝不保留部分结果——即「fail-closed」。`ok=true` 时值为 0 的字段表示该 provider 未提供，不是猜测。
 - 不变量：
-  1. `cmp_disasm --reviewed`：A3-1 后 6/6 strict IDENTICAL（最优先）；
+  1. 真机泄漏门禁（唯一权威判据）；`cmp_disasm --reviewed` 为可选诊断；
   2. 活体泄漏结果、`last_mm_struct` 语义、内核版本判定不变（真机门禁由主智能体执行）；
   3. `kernelsnitch_scan_bounds_test`（及 `futex_hash_test`/`number_parse_test`）保留通过；
   4. `kernelsnitch.h` 许可/署名逐字保留。

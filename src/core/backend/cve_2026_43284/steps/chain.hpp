@@ -142,6 +142,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         LkmFailed,
         WaitTimeout,
         CleanupFailed,
+        /* The LKM residency window could not be opened, or the in-window
+         * consumer failed. Appended so existing numeric values are frozen. */
+        LkmWindowFailed,
     };
 
     enum class ChainWaitOutcome : std::uint8_t {
@@ -249,6 +252,18 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          * Runs exactly once, after every other stage, on every path. */
         void (*release)(void *ctx) noexcept = nullptr;
 
+        /* LKM residency window (delta batch). open_lkm_channel is called exactly
+         * once, after the terminus reports LkmLoaded, to open the versioned
+         * /dev/glk channel and PING it. run_lkm_window is the optional
+         * in-window consumer (POST_TERMINAL); it runs between open and close.
+         * close_lkm_channel is called exactly once in finish() on every path
+         * that opened the channel: it sends UNLOAD, so a failure or rollback
+         * never leaves the module resident. Return false from open or the
+         * window body to fail closed. All three are optional. */
+        bool (*open_lkm_channel)(void *ctx) noexcept = nullptr;
+        bool (*run_lkm_window)(void *ctx) noexcept = nullptr;
+        void (*close_lkm_channel)(void *ctx) noexcept = nullptr;
+
         [[nodiscard]] bool write_ready() const noexcept { return write.write16 != nullptr; }
         [[nodiscard]] bool read_ready() const noexcept { return read_block != nullptr; }
         [[nodiscard]] bool run_ready() const noexcept {
@@ -278,6 +293,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
 
         std::array<CarrierAttempt, kChainMaxCarriers> carrier_attempts{};
         std::size_t carrier_attempt_count = 0U;
+
+        /* True once open_lkm_channel succeeded; finish() then closes it once. */
+        bool lkm_window_open = false;
     };
 
     struct ChainResult final {
@@ -299,6 +317,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          * matched before its write. Always false when no pre-image was asked
          * for, so diagnostics report preimage=absent in the default path. */
         bool preimage_checked = false;
+        /* LKM residency window: opened after LkmLoaded and closed (UNLOAD) in
+         * the terminus. Both false when no channel was bound. */
+        bool lkm_channel_opened = false;
+        /* The kernel channel (a countermeasure facility, not an attack step)
+         * could not be opened or its window body reported a failure. The chain
+         * records it and continues: countermeasures fail soft (§3.8/§3.13). */
+        bool lkm_window_failed = false;
+        bool lkm_channel_closed = false;
     };
 
     /* Runs the endgame chain. On success (error == None, lkm_loaded) every

@@ -20,9 +20,9 @@ import java.nio.file.Files
 import java.security.MessageDigest
 
 /**
- * GLKv3-4 production wire lock: every builtin profile now resolves to a
- * canonical GLKv3 document, frozen in `native-doc-golden-v3.sha256`. The v2
- * golden ([NativeDocumentEquivalenceTest]) still pins the retained v2 writer.
+ * GLKv3-4 production wire lock: every builtin profile resolves to a canonical
+ * GLKv3 document, frozen in `native-doc-golden-v3.sha256`. The GLKv3 safe-mode
+ * patch is the only mutation and is checked below.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -65,7 +65,7 @@ class NativeDocumentV3EquivalenceTest {
     }
 
     @Test
-    fun `safe mode patch flips only meta safe mode on the v3 wire`() = runBlocking {
+    fun `safe mode patch flips only common safe mode on the v3 wire`() = runBlocking {
         val root = Files.createTempDirectory("native-doc-v3-safemode").toFile()
         try {
             val controller = newController("native-doc-v3-safemode", root)
@@ -88,7 +88,7 @@ class NativeDocumentV3EquivalenceTest {
     }
 
     private fun safeModeOf(document: Glkv3Document): Boolean? =
-        document.sections.firstOrNull { it.name == "meta" }
+        document.sections.firstOrNull { it.name == "common" }
             ?.entries?.firstOrNull { it.key == "safe_mode" }
             ?.value?.let { it as? Glkv3Value.Bool }?.value
 

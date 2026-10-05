@@ -100,9 +100,10 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
         if (report.release_parsed) {
             input.profile_kmi = report.release.kmi;
         }
-        /* The operator names an explicit .ko, so the custom-file delivery token
-         * is the only one that can apply. */
-        input.lkm_path_token = lkm::kLkmPathTokenCustomFile;
+        /* The operator names an explicit .ko, so custom-file delivery applies
+         * (a non-empty path). */
+        input.lkm_path = module_path.empty() ? std::string_view{"<diagnostic>"}
+                                             : module_path;
         lkm::LkmSelection selection{};
         report.kmi_resolved = lkm::resolve_lkm_selection(input, selection, report.lkm_error);
         if (report.kmi_resolved) {

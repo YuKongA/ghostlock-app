@@ -18,7 +18,7 @@ class Glkv3DecoderTest {
         route = "multicast_waiter",
         sections = listOf(
             Glkv3Section(
-                "meta",
+                "common",
                 listOf(
                     Glkv3Entry("kernel_major", Glkv3Value.UInt(5u)),
                     Glkv3Entry("safe_mode", Glkv3Value.Bool(false)),
@@ -43,8 +43,8 @@ class Glkv3DecoderTest {
         assertEquals(sample.terminal, decoded.terminal)
         assertEquals(sample.backend, decoded.backend)
         assertEquals(sample.route, decoded.route)
-        assertEquals(Glkv3Value.UInt(5u), valueOf(decoded, "meta", "kernel_major"))
-        assertEquals(Glkv3Value.Bool(false), valueOf(decoded, "meta", "safe_mode"))
+        assertEquals(Glkv3Value.UInt(5u), valueOf(decoded, "common", "kernel_major"))
+        assertEquals(Glkv3Value.Bool(false), valueOf(decoded, "common", "safe_mode"))
         assertEquals(Glkv3Value.Int(-2), valueOf(decoded, "offset", "slide"))
         assertArrayEquals(encoded, Glkv3Encoder.encode(decoded))
     }
@@ -62,7 +62,7 @@ class Glkv3DecoderTest {
         val encoded = Glkv3Encoder.encode(sample)
         val patched = requireNotNull(Glkv3Decoder.patchSafeMode(encoded))
         val decoded = requireNotNull(Glkv3Decoder.decode(patched))
-        assertEquals(Glkv3Value.Bool(true), valueOf(decoded, "meta", "safe_mode"))
+        assertEquals(Glkv3Value.Bool(true), valueOf(decoded, "common", "safe_mode"))
         assertEquals(sample.release, decoded.release)
         assertEquals(sample.terminal, decoded.terminal)
         assertEquals(sample.backend, decoded.backend)

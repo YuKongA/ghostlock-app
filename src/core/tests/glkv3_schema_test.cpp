@@ -60,9 +60,12 @@ namespace {
         return key == "safe_mode" || key == "vr_guard" || key == "compact_waiter";
     }
 
-    WireType expected_wire_type(std::string_view key, bool is_signed) {
-        if (is_bool_field(key)) return WireType::Bool;
-        if (is_signed) return WireType::Int;
+    template<typename V2Field>
+    WireType expected_wire_type(const V2Field &field) {
+        /* S4 R4: a String owner field maps to the str wire type. */
+        if (field.wire == ghostlock::profile::WireKind::String) return WireType::Str;
+        if (is_bool_field(field.key)) return WireType::Bool;
+        if (field.is_signed) return WireType::Int;
         return WireType::UInt;
     }
 
@@ -94,8 +97,7 @@ namespace {
                 return nullptr;
             }();
             assert(match != nullptr);
-            assert(match->type ==
-                   expected_wire_type(field.key, field.is_signed));
+            assert(match->type == expected_wire_type(field));
         }
         assert(v2_keys == v3_keys);
         std::printf("glkv3_schema_test: %.*s ok (%zu fields)\n",
@@ -103,10 +105,11 @@ namespace {
     }
 
     bool is_route_section(std::string_view section) {
-        return section.rfind("route.", 0) == 0;
+        return section.starts_with("backend.cve_2026_43499.route.");
     }
 
-    constexpr std::string_view kActiveRoute = "route.multicast_waiter";
+    constexpr std::string_view kActiveRoute =
+            "backend.cve_2026_43499.route.multicast_waiter";
     constexpr std::string_view kRouteToken = "multicast_waiter";
 
     Value value_for(const FieldSpec &field) {
@@ -131,21 +134,29 @@ namespace {
             return v;
         };
 
-        if (s == "meta" && k == "kernel_major") return uint_value(5);
-        if (s == "meta" && k == "fallback_route") return uint_value(2);
-        if (s == "meta" && k == "safe_mode") return bool_value(true);
-        if (s == "meta" && k == "vr_guard") return bool_value(true);
-        if (s == "task_struct" && k == "prio") return uint_value(101);
-        if (s == "cred" && k == "caps_value") return uint_value(0x123456789abcdef0ULL);
-        if (s == "cred" && k == "ref0_image") return uint_value(0x1111111111111111ULL);
-        if (s == "offset" && k == "init_task") return uint_value(34677760);
-        if (s == "offset" && k == "vr_sys_exit_tp") return uint_value(0x2a);
-        if (s == "kernel" && k == "kernel_phys_load") return uint_value(0xb000);
-        if (s == "kernel" && k == "kernel_phys_offset") return uint_value(0xc000);
-        if (s == "kernel" && k == "compact_waiter") return bool_value(true);
-        if (s == "kernel" && k == "kernelsnitch_collisions") return uint_value(7);
-        if (s == "kernel" && k == "mm_struct_sz") return uint_value(0x400);
-        if (s == "vr_guard" && k == "tracepoint_funcs") return uint_value(0x20);
+        if (s == "common" && k == "kernel_major") return uint_value(5);
+        if (s == "common" && k == "fallback_route") return uint_value(2);
+        if (s == "common" && k == "safe_mode") return bool_value(true);
+        if (s == "common" && k == "vr_guard") return bool_value(true);
+        if (s == "platform.abi.task_struct" && k == "prio") return uint_value(101);
+        if (s == "backend.cve_2026_43499.cred" && k == "caps_value")
+            return uint_value(0x123456789abcdef0ULL);
+        if (s == "backend.cve_2026_43499.cred" && k == "ref0_image")
+            return uint_value(0x1111111111111111ULL);
+        if (s == "platform.abi.offset" && k == "init_task") return uint_value(34677760);
+        if (s == "backend.cve_2026_43499.offset" && k == "vr_sys_exit_tp")
+            return uint_value(0x2a);
+        if (s == "platform.abi.kernel" && k == "kernel_phys_load") return uint_value(0xb000);
+        if (s == "platform.abi.kernel" && k == "kernel_phys_offset")
+            return uint_value(0xc000);
+        if (s == "backend.cve_2026_43499.kernel" && k == "compact_waiter")
+            return bool_value(true);
+        if (s == "backend.cve_2026_43499.kernel" && k == "kernelsnitch_collisions")
+            return uint_value(7);
+        if (s == "backend.cve_2026_43499.kernel" && k == "mm_struct_sz")
+            return uint_value(0x400);
+        if (s == "countermeasure.vivo_vr_guard" && k == "tracepoint_funcs")
+            return uint_value(0x20);
         if (s == "backend.cve_2026_43499" && k == "steps") return uint_value(2);
         if (s == kActiveRoute && k == "waiter_off") return int_value(-2);
         if (s == kActiveRoute && k == "buffer_size") return uint_value(512);
@@ -258,11 +269,12 @@ int main() {
         assert(decoded.has_backend && decoded.backend == original.backend);
         assert(decoded.has_route && decoded.route == original.route);
 
-        const Value *safe = decoded.find("meta", "safe_mode");
+        const Value *safe = decoded.find("common", "safe_mode");
         assert(safe != nullptr && safe->type == WireType::Bool && safe->bool_value);
-        const Value *shift = decoded.find("route.multicast_waiter", "waiter_off");
+        const Value *shift = decoded.find(
+                "backend.cve_2026_43499.route.multicast_waiter", "waiter_off");
         assert(shift != nullptr && shift->type == WireType::Int && shift->int_value == -2);
-        const Value *major = decoded.find("meta", "kernel_major");
+        const Value *major = decoded.find("common", "kernel_major");
         assert(major != nullptr && major->type == WireType::UInt && major->uint_value == 5);
 
         const std::string canonical = hex(encoded);

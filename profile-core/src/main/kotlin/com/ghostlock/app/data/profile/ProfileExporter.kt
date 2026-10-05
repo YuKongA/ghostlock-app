@@ -84,7 +84,7 @@ object ProfileExporter {
                 bool = { path -> ProfileResolver.nativeBool(merged, path) },
             )
             /* GLKv3-4: the exporter emits the production v3 MessagePack wire;
-             * the native reader still accepts v2 for prebuilt/imported bytes. */
+             * native is v3-only (S4 R2c). */
             val bytes = Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document))
             File(staging, "$actualRelease.bin").writeBytes(bytes)
             count++

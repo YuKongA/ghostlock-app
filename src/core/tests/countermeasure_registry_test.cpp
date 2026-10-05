@@ -6,8 +6,8 @@
  * policies and the external hooks, and the field content of the diagnostics
  * string. */
 
-#include "ancillary/controller.hpp"
-#include "ancillary/external_registry.hpp"
+#include "plugin/controller.hpp"
+#include "plugin/registry.hpp"
 #include "contract/countermeasure.hpp"
 
 #include <cassert>
@@ -23,41 +23,38 @@ namespace {
 
     std::vector<std::string> g_calls;
 
-    const char *abi_stage_name(glk_cm_stage stage) {
+    const char *abi_stage_name(glk_stage stage) {
         switch (stage) {
-        case GLK_CM_STAGE_PRE_SPAWN: return "pre_spawn";
-        case GLK_CM_STAGE_POST_SPAWN: return "post_spawn";
-        case GLK_CM_STAGE_PRE_TERMINAL: return "pre_terminal";
-        case GLK_CM_STAGE_PRE_ROUTE: return "pre_route";
-        case GLK_CM_STAGE_POST_TERMINAL: return "post_terminal";
+        case GLK_STAGE_PRE_SPAWN: return "pre_spawn";
+        case GLK_STAGE_POST_SPAWN: return "post_spawn";
+        case GLK_STAGE_PRE_TERMINAL: return "pre_terminal";
+        case GLK_STAGE_PRE_ROUTE: return "pre_route";
+        case GLK_STAGE_POST_TERMINAL: return "post_terminal";
         }
         return "unknown";
     }
 
-    std::int32_t record_ok(void *user, glk_cm_stage stage, const glk_host_ops *) {
+    std::int32_t record_ok(void *user, glk_stage stage, const glk_contract_ops *) {
         g_calls.push_back(std::string(static_cast<const char *>(user)) + "@" +
                           abi_stage_name(stage));
         return 0;
     }
 
-    std::int32_t record_fail(void *user, glk_cm_stage stage, const glk_host_ops *) {
+    std::int32_t record_fail(void *user, glk_stage stage, const glk_contract_ops *) {
         g_calls.push_back(std::string(static_cast<const char *>(user)) + "@" +
                           abi_stage_name(stage));
         return -7;
     }
 
-    struct EmptyMiddleware final {};
-
     /* An in-tree policy; its stage is recorded so the test can assert that the
      * built-in channel still runs before the external one. */
-    struct BuiltinPolicy : ancillary::AncillaryPolicyDefaults {
-        template <class Middleware>
-        static Status apply(ancillary::AncillaryStage stage, session::CoreSession &,
-                            ancillary::AncillaryOps &, const int &) noexcept {
+    struct BuiltinPolicy : plugin::PluginPolicyDefaults {
+        static Status apply(plugin::PluginStage stage, session::CoreSession &,
+                            const contract::Capabilities &, const int &) noexcept {
             g_calls.push_back(
                     std::string("builtin@") +
-                    ancillary::countermeasure_stage_name(
-                            ancillary::to_countermeasure_stage(stage)));
+                    plugin::countermeasure_stage_name(
+                            plugin::to_countermeasure_stage(stage)));
             return true;
         }
     };
@@ -65,7 +62,7 @@ namespace {
 } // namespace
 
 int main() {
-    using namespace ancillary;
+    using namespace plugin;
 
     static char t_h2[] = "m1.h2";
     static char t_h3[] = "m1.h3";
@@ -78,15 +75,15 @@ int main() {
     static char v_m1[] = "1.0";
     static char v_m2[] = "2.0";
 
-    glk_cm_hook m1_hooks[] = {
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h2, "h2"},
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h3, "h3"},
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 1u, 0u, &record_ok, t_h4, "h4"},
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_POST_SPAWN, 5u, 0u, &record_ok, t_h5, "h5"},
+    glk_hook m1_hooks[] = {
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h2, "h2"},
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h3, "h3"},
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 1u, 0u, &record_ok, t_h4, "h4"},
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_POST_SPAWN, 5u, 0u, &record_ok, t_h5, "h5"},
     };
-    glk_cm_hook m2_hooks[] = {
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h6, "h6"},
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_POST_SPAWN, 1u, 0u, &record_ok, t_h7, "h7"},
+    glk_hook m2_hooks[] = {
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 10u, 0u, &record_ok, t_h6, "h6"},
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_POST_SPAWN, 1u, 0u, &record_ok, t_h7, "h7"},
     };
 
     RuntimeRegistry registry(contract::kHostImplementedCaps,
@@ -131,18 +128,18 @@ int main() {
      * can be called; it is never dereferenced. */
     alignas(void *) unsigned char session_storage[sizeof(void *)]{};
     auto &fake_session = *reinterpret_cast<session::CoreSession *>(session_storage);
-    AncillaryOps ops{};
+    const contract::Capabilities capabilities{};
     const int context = 0;
-    glk_host_ops host{};
+    glk_contract_ops host{};
     const auto builtin_gate = []<class P>() { return true; };
     const auto ext_always = [](const RegistryHook &) { return true; };
     const auto ext_never = [](const RegistryHook &) { return false; };
 
     /* In-tree policies first (unchanged order), then the external hooks. */
     g_calls.clear();
-    const Status ordered = AncillaryController<std::tuple<BuiltinPolicy>>::apply<
-            EmptyMiddleware>(AncillaryStage::PreSpawn, fake_session, ops,
-                             builtin_gate, context, registry, &host, ext_always);
+    const Status ordered = PluginController<std::tuple<BuiltinPolicy>>::apply(
+            PluginStage::PreSpawn, fake_session, capabilities,
+            builtin_gate, context, registry, &host, ext_always);
     assert(ordered);
     const std::vector<std::string> want_combined{
         "builtin@pre_spawn", "m1.h4@pre_spawn", "m1.h2@pre_spawn",
@@ -151,8 +148,8 @@ int main() {
 
     /* gate == false never calls the external hook. */
     g_calls.clear();
-    const Status gated = AncillaryController<std::tuple<>>::apply<EmptyMiddleware>(
-            AncillaryStage::PreSpawn, fake_session, ops, builtin_gate, context,
+    const Status gated = PluginController<std::tuple<>>::apply(
+            PluginStage::PreSpawn, fake_session, capabilities, builtin_gate, context,
             registry, &host, ext_never);
     assert(gated);
     assert(g_calls.empty());
@@ -162,23 +159,23 @@ int main() {
     static char t_fpre[] = "fail.pre";
     static char t_fpost[] = "fail.post";
     static char n_fail[] = "mod.fail";
-    glk_cm_hook fail_hooks[] = {
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 0u, 0u, &record_fail, t_fpre, "f_pre"},
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_POST_SPAWN, 0u, 0u, &record_ok, t_fpost, "f_post"},
+    glk_hook fail_hooks[] = {
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 0u, 0u, &record_fail, t_fpre, "f_pre"},
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_POST_SPAWN, 0u, 0u, &record_ok, t_fpost, "f_post"},
     };
     RuntimeRegistry failing(contract::kHostImplementedCaps,
                             contract::kHostImplementedTriggers);
     assert(failing.register_module(ExternalModuleBinding{
             n_fail, v_m1, contract::Capability::None, fail_hooks, 2u}));
     g_calls.clear();
-    const Status pre = AncillaryController<std::tuple<>>::apply<EmptyMiddleware>(
-            AncillaryStage::PreSpawn, fake_session, ops, builtin_gate, context,
+    const Status pre = PluginController<std::tuple<>>::apply(
+            PluginStage::PreSpawn, fake_session, capabilities, builtin_gate, context,
             failing, &host, ext_always);
     assert(!pre);
     assert(g_calls.size() == 1u && g_calls[0] == "fail.pre@pre_spawn");
     g_calls.clear();
-    const Status post = AncillaryController<std::tuple<>>::apply<EmptyMiddleware>(
-            AncillaryStage::PostSpawn, fake_session, ops, builtin_gate, context,
+    const Status post = PluginController<std::tuple<>>::apply(
+            PluginStage::PostSpawn, fake_session, capabilities, builtin_gate, context,
             failing, &host, ext_always);
     assert(post);
     assert(g_calls.empty());
@@ -197,18 +194,18 @@ int main() {
 
     /* Fail-closed registration: a reserved capability, stage or trigger rejects
      * the whole module and is recorded. */
-    glk_cm_hook cap_hooks[] = {
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_SPAWN, 0u, 0u, &record_ok, t_fpre, "cap"},
+    glk_hook cap_hooks[] = {
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_SPAWN, 0u, 0u, &record_ok, t_fpre, "cap"},
     };
     assert(!failing.register_module(ExternalModuleBinding{
             n_fail, v_m1, contract::Capability::KernelHook, cap_hooks, 1u}));
-    glk_cm_hook route_hooks[] = {
-        {GLK_CM_TRIGGER_ON_STAGE, GLK_CM_STAGE_PRE_ROUTE, 0u, 0u, &record_ok, t_fpre, "route"},
+    glk_hook route_hooks[] = {
+        {GLK_TRIGGER_ON_STAGE, GLK_STAGE_PRE_ROUTE, 0u, 0u, &record_ok, t_fpre, "route"},
     };
     assert(!failing.register_module(ExternalModuleBinding{
             n_fail, v_m1, contract::Capability::None, route_hooks, 1u}));
-    glk_cm_hook load_hooks[] = {
-        {GLK_CM_TRIGGER_ON_LOAD, GLK_CM_STAGE_PRE_SPAWN, 0u, 0u, &record_ok, t_fpre, "load"},
+    glk_hook load_hooks[] = {
+        {GLK_TRIGGER_ON_LOAD, GLK_STAGE_PRE_SPAWN, 0u, 0u, &record_ok, t_fpre, "load"},
     };
     assert(!failing.register_module(ExternalModuleBinding{
             n_fail, v_m1, contract::Capability::None, load_hooks, 1u}));

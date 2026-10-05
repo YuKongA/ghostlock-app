@@ -2,7 +2,12 @@
 
 #include "backend/cve_2026_43284/stage_runner.hpp"
 
+#include "backend/cve_2026_43284/lkm_window.hpp"
+#include "backend/cve_2026_43284_state.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
+#include "plugin/loader.hpp"
+#include "plugin/registry.hpp"
+#include "plugin/sha256.hpp"
 #include "support/run_state.hpp"
 
 #include <array>
@@ -243,6 +248,7 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::HookImageTooLarge: return "HookImageTooLarge";
             case StageError::HookPlanFailed: return "HookPlanFailed";
             case StageError::HookIoUnavailable: return "HookIoUnavailable";
+            case StageError::PluginRejected: return "PluginRejected";
         }
         return "Unknown";
     }
@@ -817,10 +823,75 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
             case StageError::HookImageTooLarge:
             case StageError::HookPlanFailed:
             case StageError::HookIoUnavailable:
+            case StageError::PluginRejected:
                 return 2;
         }
         return 2;
     }
+
+#if defined(__linux__)
+    /* Capabilities the LKM window provides to a plugin: KernelMemory
+     * read/write (LkmProxy) and KernelAlias. A module requiring anything else
+     * is rejected at registration (fail-closed). */
+    inline constexpr contract::Capability kLkmWindowCaps =
+            contract::Capability::KernelRead |
+            contract::Capability::KernelWrite | contract::Capability::Alias;
+
+    namespace {
+        /* delta-4 dev/gate-only plugin attachment. Owns the dlopen handle, the
+         * registry and the borrowed module metadata. Declared before the window
+         * runtime so it outlives every hook call. */
+        struct PluginAttachment final {
+            plugin::LoadResult load{};
+            plugin::RuntimeRegistry registry{};
+            bool loaded = false;
+        };
+
+        /* Loads one countermeasure .so through the ordinary fail-closed
+         * plugin/loader and registers it. The whitelist root is the plugin's own
+         * directory and the expected digest is computed from the file itself:
+         * this flag is an explicit dev/gate escape hatch, not a production
+         * trust path (production modules are profile-selected and
+         * hash-pinned). */
+        [[nodiscard]] bool load_gate_plugin(std::string_view path,
+                                            PluginAttachment &out,
+                                            std::string &reason) {
+            const std::string plugin_path(path);
+            const std::size_t slash = plugin_path.find_last_of('/');
+            std::string dir = ".";
+            if (slash != std::string::npos) {
+                dir = slash == 0U ? std::string("/")
+                                  : plugin_path.substr(0U, slash);
+            }
+            plugin::Loader loader(dir);
+            char digest[plugin::kSha256HexLength + 1U] = {};
+            if (plugin::sha256_file(plugin_path.c_str(), digest,
+                                    sizeof(digest)) != 0) {
+                reason = "plugin sha256 unavailable";
+                return false;
+            }
+            out.load = loader.load(plugin_path.c_str(), digest, kLkmWindowCaps,
+                                   contract::kHostImplementedTriggers);
+            if (out.load.status != plugin::LoadStatus::Ok) {
+                reason = plugin::load_status_name(out.load.status);
+                return false;
+            }
+            plugin::ExternalModuleBinding binding{};
+            binding.name = out.load.module_name.c_str();
+            binding.version = out.load.module_version.c_str();
+            binding.required_caps = out.load.required_caps;
+            binding.hooks = out.load.hooks;
+            binding.hook_count = out.load.hook_count;
+            out.registry.reset(kLkmWindowCaps, contract::kHostImplementedTriggers);
+            if (!out.registry.register_module(binding)) {
+                reason = "plugin registration rejected";
+                return false;
+            }
+            out.loaded = true;
+            return true;
+        }
+    } // namespace
+#endif
 
     int run_stage_cli(const StagedRunOptions &options) {
         const std::string_view module_path = options.module_path;
@@ -830,6 +901,25 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         if (module_path.empty() || target_path.empty()) {
             return 1;
         }
+        /* delta-4 dev/gate-only --plugin: load/register before touching the
+         * device so a rejected module fails fast and the window never opens.
+         * Only the device (Linux) staged path has an LKM window to attach to;
+         * the non-Linux host runner never reaches the window anyway. */
+#if defined(__linux__)
+        PluginAttachment plugin_attachment{};
+        if (!options.plugin_path.empty()) {
+            std::string plugin_reason;
+            if (!load_gate_plugin(options.plugin_path, plugin_attachment,
+                                  plugin_reason)) {
+                StageReport report{};
+                report.stage = stage;
+                report.dev_target = allow_dev_target;
+                report.error = StageError::PluginRejected;
+                emit(format_stage_report(report, module_path, target_path, 0U));
+                return stage_exit_code(report);
+            }
+        }
+#endif
         /* The carrier is separate from the patch #1 target: it defaults to the
          * positional target so the pre-B5-9h-1 invocation is unchanged. */
         const std::string carrier_path = options.carrier_path.empty()
@@ -857,7 +947,9 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         request.carriers = &carrier;
         request.carrier_count = 1U;
         request.plan = plan.plan;
-        request.wait_timeout_ms = 5000U;
+        /* S4 R4: single authority for the staged/dev wait budget (the
+         * production path reads it from the document). */
+        request.wait_timeout_ms = ghostlock::backend::kCve2026_43284WaitTimeoutDefaultMs;
         request.allow_dev_carrier_path = allow_dev_target;
 
         if (stage == Stage::Plan) {
@@ -993,6 +1085,14 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         request.target_size = target_size;
 
         RealChainContext ctx{};
+        /* Delta-2 LKM residency window: owned by this frame, aliased by the
+         * chain ops. The staged trigger/full gate therefore exercises the same
+         * open/run/close wiring the production composition root binds. */
+        LkmWindowRuntime lkm_window{};
+        if (plugin_attachment.loaded) {
+            lkm_window.attach_registry(&plugin_attachment.registry);
+        }
+        ctx.lkm_window = &lkm_window;
         ctx.page.sa = secrets.value;
         ctx.page.io = pagecache::real_splice_io();
         ctx.device = platform::real_device_probe();
@@ -1106,6 +1206,11 @@ namespace ghostlock::backend::cve_2026_43284::stage_runner {
         if (!ctx.released) {
             /* A pre-chain rejection left the fds open; close them fail-closed. */
             real_chain_release(&ctx.page);
+        }
+        if (plugin_attachment.loaded) {
+            /* Reuse the existing registry diagnostics channel so a hook failure
+             * is visible in the device log. */
+            emit(plugin::format_registry_diagnostics(plugin_attachment.registry));
         }
         emit(format_stage_report(report, module_path, target_path, plan.module_bytes));
         return stage_exit_code(report);

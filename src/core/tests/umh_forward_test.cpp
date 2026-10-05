@@ -85,12 +85,18 @@ namespace {
     }
 
     void test_probe_states() {
+        /* Observed-but-not-ready is a failure; unobservable is a degraded
+         * success: an app-domain policy hides /proc/modules and the /dev node,
+         * and the backend already proved the LKM terminus. */
         for (const UmhReadyState ready :
              {UmhReadyState::NotReady, UmhReadyState::Unavailable}) {
             FakeProbe probe{};
             probe.ready = ready;
             UmhForwardInput in = make_input(probe);
-            assert(run_umh_forward(in) == StageResult::Failed);
+            const StageResult expected = ready == UmhReadyState::Unavailable
+                                                 ? StageResult::Done
+                                                 : StageResult::Failed;
+            assert(run_umh_forward(in) == expected);
             assert(probe.calls == 1U);
         }
     }

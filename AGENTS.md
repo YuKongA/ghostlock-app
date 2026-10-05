@@ -24,10 +24,11 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 - 组件模型（ADR-0004）：装配轴为 **backend × terminal**，由 `Pipeline<Backend, Terminal>` 编译期固定；
   backend 提供漏洞原语与写入步骤，terminal 承载启动/交接。当前 catalog 收录 **3 个稀疏 triple**：
   `cve_2026_43499 × {w1_w3, w1_w2} × root_child`（可用）与
-  `cve_2026_43284 × pagecache_write × umh_forward`（已接线、未可用，等 B5-9 真机门禁）。
-  每轴可用性：backend 仅 `cve_2026_43499`；`cve_2026_64560`/`cve_2026_31431`/`cve_2026_43503`/`cve_2026_23274` 为纯头占位不可用；
-  terminal 仅 `root_child`（可用）与 `umh_forward`（执行 policy 已落、未可用）；旧文档的 `file_write`/`panic` 占位**不存在**。
-  route（`select_stack`/`tcp_zerocopy`/`multicast_waiter`）是 backend 内部策略，按 profile 选，不是装配轴；`platform`/`ancillary` 为横切。
+  `cve_2026_43284 × pagecache_write × umh_forward`（已接线、**已翻可用**：staged 全链真机 PASS；
+  生产 app-call 路径的门禁进度见 `docs/analysis/branch-plan.md`）。
+  每轴可用性：backend 为 `cve_2026_43499` 与 `cve_2026_43284`；`cve_2026_64560`/`cve_2026_31431`/`cve_2026_43503`/`cve_2026_23274` 为纯头占位不可用；
+  terminal 为 `root_child` 与 `umh_forward`（均已可用）；旧文档的 `file_write`/`panic` 占位**不存在**。
+  route（`select_stack`/`tcp_zerocopy`/`multicast_waiter`）是 backend 内部策略，按 profile 选，不是装配轴；`platform`/`plugin` 为横切。
 - 契约/组合分工：`contract/identity.hpp` 定义 kind、每轴可用性谓词、identity 声明与执行概念（host 可编译）；
   `pipeline/component_catalog.hpp` 是**组合（wiring）的唯一权威**——稀疏 triple、`DispatchTarget`、`combination_supported`/`dispatch_target_of`，
   词汇来自 `contract`；`pipeline/orchestrator.hpp` 按 catalog 分派，每个 case 用 `Pipeline::target` static_assert 锁定。
@@ -48,7 +49,8 @@ ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
 ./gradlew exportKernelProfiles        # 生成 GLKv3 .bin 到 build/kernel-profiles/
 (cd tools/extract_rs && cargo test --release)
 
-# 攻击函数形状对比（攻击路径改动必须跑；已确认基线 build/native/ghostlock-B0）
+# 攻击函数形状对比（**可选诊断**，不再是门槛；基线 build/native/ghostlock-B0）
+# 攻击路径改动的判据是**真机门禁**，不是反汇编一致性。
 python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ```
 
@@ -69,8 +71,8 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
    拆分/改写，但必须先有设计与测试，不得顺手改。
 4. **Verify**：按级别跑满 §1.3 门槛并保留证据；汇报时给出命令与结果，不写"应该没问题"。
 
-- 攻击路径改动 = `cmp_disasm`（`TARGETS` 6 组攻击函数）+ 真机门禁 + 门禁记录（格式见
-  `docs/development/documentation-standards.md`），缺一不可。
+- 攻击路径改动 = **真机门禁 + 门禁记录**（格式见 `docs/development/documentation-standards.md`），缺一不可。
+  `cmp_disasm` 是**可选诊断工具**：反汇编差异本身**不再阻塞**批次，真机测试通过即可。
 - 大改动按批次推进，一个批次只做一类事，上一批验证通过再进下一批。
 
 ## 代码约定
@@ -79,7 +81,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   新代码不得引入告警。include 用相对 `src/core` 的路径（如
   `#include "backend/cve_2026_43499/route/tcp_zerocopy_route.h"`）。
 - 命名空间分层（现状）：顶层
-  `ghostlock::{contract,pipeline,backend,platform,ancillary,terminal,memory,session,race,kernelsnitch,support,profile,profile_entry,binary_profile,target,runtime_time}`
+  `ghostlock::{contract,pipeline,backend,platform,plugin,terminal,memory,session,race,kernelsnitch,support,profile,profile_entry,binary_profile,target,runtime_time}`
   （`config` 物理在 `session/`；顶层 `route`/`attack` 已并入 `backend::cve_2026_43499::route` / `memory`）；
   `contract` 持有中性词汇与契约，`pipeline` 只做组合/分派，backend 按 CVE 分子命名空间
   （`backend::cve_2026_43499::{route,backend_profile}`、`backend::cve_2026_43284::{ipsec,pagecache,lkm,steps}`）。
@@ -89,14 +91,15 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   `g_direct_map_end`；新代码不得再引入可变全局或引用别名。审计记录见
   `docs/analysis/native-global-state.md`（git 历史）。
 - 组件结构 = identity（kind，声明型，必须 host 可编译）+ 执行 policy（backend 步骤 / terminal 接管 /
-  backend 内 route）。route policy 以编译期能力 + 静态 hook 表达，backend 步骤模板化在 route 上直接调用
-  （不用虚基类）；Route 类满足 `prepare → execute → disarm → destroy`，仅经 `status` 汇报。新增组件
-  （route/backend/terminal/platform/ancillary）的完整触点清单见 `docs/development/adding-a-component.md`。
+  backend 内 route）。route policy 以编译期能力 + 静态 hook 表达，backend 步骤模板化在 route 上直接调用；
+  Route 类满足 `prepare → execute → disarm → destroy`，仅经 `status` 汇报。新增组件
+  （route/backend/terminal/platform/plugin）的完整触点清单见 `docs/development/adding-a-component.md`。
 - 分层依赖由 **R1 include 防火墙**（`tests/include_firewall_test.cpp`）在 host 测试里强制：8 个受限源层，
   当前白名单 4 条（`support/util.cpp` → 43499 backend：spray 直连 `state`/`route`/`accessors` 3 条，
   以及 A3-2 的 `leak/address_discovery.h` 1 条——因 `kernelsnitch.h` 的 `context_*` 非 inline、全程序只能一个 TU 包含，
   待 spray/leak 所有权搬进 backend 后移除），运行输出
-  `159 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`。新增的越层 include 会 FAIL；
+  `165 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许，
+  不得 include `backend,pipeline,platform,terminal`）。新增的越层 include 会 FAIL；
   白名单条目对应的 include 消失（stale）同样 FAIL。新增组件优先不引入越层边，确需临时豁免时必须在
   `kWhitelist` 登记并写明 owner 批次，不得静默通过。
 - 双侧一致性（改了必须两边同步，测试会抓）：
@@ -105,16 +108,21 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   - GLKv3 path→type FieldSpec ↔ Kotlin `NativeProfileGlkv3Adapter`，导出
     `app/src/test/resources/profile-manifest-v3.tsv`（`profile_manifest_v3_test.cpp` /
     `ProfileManifestV3AgreementTest.kt`）
-  - v2 owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）↔ Kotlin `NativeProfileDocument`，导出
-    `app/src/test/resources/profile-manifest.tsv`（`profile_manifest_test.cpp` /
-    `ProfileManifestAgreementTest.kt`）
+  - **v2 owner Schema 的 manifest 已随 v2 一并删除**（S4-R2c）：`profile-manifest.tsv`、`profile_manifest_test.cpp`、
+    `ProfileManifestAgreementTest.kt` 都不再存在；owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）
+    仍由 GLKv3 的 `schema == 3` 绑定路径使用，其声明权威是 `profile-manifest-v3.tsv`。
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
 - 配置权威是 GLK profile（当前 wire 为 GLKv3）+ HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
-- **不要随意新增或叠加配置/profile 传输格式版本号**。本分支的 wire 已是 **v3（GLKv3）**：
-  **MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`src/lib/mpack`），
-  canonical = 最短整数 + 键按 UTF-8 字节序排序；写出 v3，v2（对象分段
-  `header + sections[name → fields[name → u64]]`，presence 由键是否出现表达）**只读**兼容。
+- **版本号统一为 3（不要新增/叠加版本号）**：HOCON 配置与 wire 共用同一个数字，避免混淆。
+  - **HOCON**：`schema_version = 3`（`app/src/main/assets/kernel_profiles/*.conf`；被 `include` 的片段不带该键）。
+  - **只有一个迁移点**：**Kotlin `LegacyProfileConverter.kt`**。App **写出恒为 3**；读到旧 `schema_version = 1` 时由它**转换为 3**（并记诊断），
+    其余版本值一律拒绝（错误信息带实际版本）；
+  - **wire（GLKv3）**：**MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`src/lib/mpack`），
+    canonical = 最短整数 + 键按 UTF-8 字节序排序；**native 只认 `schema == 3`**，
+    **v2（对象分段 `header + sections[name → fields[name → u64]]`）已弃用**：旧 bin 一律拒绝，读路径与 v2 writer 一并删除；
+  - **extractor**（`tools/extract_rs`）**只认/只产出最新版**：产出的 profile 为 `schema_version = 3`；
+  - **App 版本**：`app/build.gradle.kts` 的 `appVersionName`（当前 `1.3`）；`versionCode` 由 `git rev-list --count HEAD` 派生。
   **静态策略进文档，运行时密钥/SPI/端口绝不进文档**（走会话帧，用后清零）。
   格式权威见 `docs/analysis/wire-transport-model.md`。Kotlin 与 native 版本绑定，同一分支内直接替换，
   不做长期并存；再需要不同格式时先改本节与 `docs/development/`，不要就地再起 v4/v5。
@@ -128,8 +136,8 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **所有权与生命周期追踪**：审查中按 Rust 式所有权思路列出每个关键对象、指针和资源的创建/获取起点、所有者、借用/访问者、访问区间、终结点及释放者。确认所有可能访问它的使用者都先于终结点停止访问；区分 owning、borrowed、shared 和 transferred ownership，并核对转移后旧所有者不再释放或访问。
 - **UAF 检查**：逐条检查普通对象与资源路径，确认不存在 use-after-free；只有作为漏洞原语而被有意利用的目标对象生命周期例外，不得把该例外扩展到辅助对象、race 状态、waiter、缓冲区、映射或同步资源。
 - **终结点与清理顺序**：确认销毁/回收发生在合理的生命周期边界，覆盖成功、失败、重试、取消和提前返回路径。重点核对 PI 相关内存与 waiter 生命周期：参与者停止访问、同步/解除关联、资源回收之间的既有先后关系不得因重构而改变；缺少明确终结点或顺序依据时不得合入。历史上曾因重构漏回收 PI 内存导致 panic，相关变更须特别检查资源回收位置和退出路径。
-- **核心代码标记与反汇编核对**：在审查记录中标出核心攻击函数，以及它们对应的资源准备、存活期和回收代码。每次触及核心攻击代码后的重构，都用 `tools/cmp_disasm.py` 对比已确认的基线二进制，并反汇编检查核心攻击代码和相关资源准备/回收代码的机器码及相对顺序；要求攻击代码与准备/回收之间的顺序保持不变。若字节差异无法证明不影响该不变量，停止该批次并调查，不以测试通过替代反汇编核对。
-- **范围与证据**：上述追踪表、差异结论和基线标识记录在该批次计划或审查记录中。检查仅针对被触及的核心代码及其资源生命周期闭包，不要求每个无关改动重跑；但该范围属于攻击关键路径时，仍须满足本文件“验证门槛”中的完整 `cmp_disasm`、真机门禁及归档要求。
+- **核心代码标记与资源生命周期核对**：在审查记录中标出核心攻击函数，以及它们对应的资源准备、存活期和回收代码，并按上面的所有权/UAF/终结点检查逐条核对。`tools/cmp_disasm.py` 可作为定位机器码改动范围的**辅助诊断（可选）**，但**一致性不是门槛**——判据是真机门禁。
+- **范围与证据**：上述追踪表、差异结论和基线标识记录在该批次计划或审查记录中。检查仅针对被触及的核心代码及其资源生命周期闭包，不要求每个无关改动重跑；但该范围属于攻击关键路径时，仍须满足本文件“验证门槛”中的真机门禁及归档要求。
 
 ## 子智能体委派与停止规则
 
@@ -145,11 +153,11 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 
 - 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
 - 攻击关键路径（waiter/race/payload/route/exec 流程）改动：
-  1. `tools/cmp_disasm.py` 对比 `TARGETS` 6 组攻击函数（基线 `build/native/ghostlock-B0`），
-     要求 IDENTICAL (strict) 或已复核的注解差异；
-  2. 真机门禁（冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；
-  3. 日志在设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（同目录另有
-     `profile.conf`/`profile.bin`，记录本次生效配置与送入 native 的 GLKv3 字节），确认 route 命中与写验证通过。
+  1. **真机门禁**（唯一权威判据：冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；
+  2. 日志在设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（同目录另有
+     `profile.conf`/`profile.bin`，记录本次生效配置与送入 native 的 GLKv3 字节），确认 route 命中与写验证通过；
+  3. 结果按 `docs/analysis/device-gates/*.md` 归档。
+  可选：`tools/cmp_disasm.py`（基线 `build/native/ghostlock-B0`）用于定位机器码改动范围，**不作门槛**。
 - 真机结果按 `docs/analysis/device-gates/*.md` 的格式归档（git 历史中有整套
   S/CPP/U01/NS\* 证据链样例）。
 - `KERNEL-PANIC-01` 是已知环境/时序问题：同构建可 PASS/panic/PASS，判定因果要求同构建

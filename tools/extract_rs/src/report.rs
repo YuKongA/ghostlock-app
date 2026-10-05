@@ -143,42 +143,72 @@ const CONF_OFFSET_FIELDS: &[&str] = &[
     "slide_boot_id",
 ];
 
-/// Native wire `(section, key)` pairs the extractor can cause the app to emit,
-/// with the HOCON -> wire translation applied. The manifest test asserts every
-/// pair is present in the native owner manifest
-/// (`app/src/test/resources/profile-manifest.tsv`); the check is a subset
-/// because the extractor only derives image-dependent fields while the manifest
-/// is the full owner schema.
+/// `cred` keys that are platform-ABI facts (layout/offsets); the rest are the
+/// 43499 credential template. S4 R2 splits the wire section accordingly.
+const CONF_CRED_PLATFORM_KEYS: &[&str] = &[
+    "usage_offset",
+    "caps_offset",
+    "ref_count",
+    "ref0_offset",
+    "ref1_offset",
+    "ref2_offset",
+    "ref3_offset",
+];
+
+/// `offset` keys that are platform-ABI facts; the rest are 43499 slide offsets.
+const CONF_OFFSET_PLATFORM_KEYS: &[&str] = &[
+    "init_task",
+    "init_cred",
+    "empty_zero_page",
+    "root_task_group",
+    "selinux_enforcing",
+    "selinux_blob_sizes",
+    "security_hook_heads",
+];
+
+/// Native owner-qualified `(section, key)` pairs the extractor can cause the
+/// app to emit, with the HOCON -> wire translation applied (S4 R2). The manifest
+/// test asserts every `section.key` path is present in the native GLKv3 owner
+/// manifest (`app/src/test/resources/profile-manifest-v3.tsv`); the check is a
+/// subset because the extractor only derives image-dependent fields while the
+/// manifest is the full owner schema.
 pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
     let mut out: Vec<(&'static str, &'static str)> = vec![
         // Top-level HOCON paths that the app folds into a wire section/key.
-        ("meta", "kernel_major"),
+        // Section names are owner-qualified (S4 R2).
+        ("common", "kernel_major"),
         ("backend.cve_2026_43499", "steps"),
-        ("kernel", "kernel_phys_load"),
-        ("kernel", "kernel_phys_offset"),
-        ("kernel", "kernelsnitch_collisions"),
-        ("kernel", "mm_struct_sz"),
+        ("platform.abi.kernel", "kernel_phys_load"),
+        ("platform.abi.kernel", "kernel_phys_offset"),
+        ("backend.cve_2026_43499.kernel", "kernelsnitch_collisions"),
+        ("backend.cve_2026_43499.kernel", "mm_struct_sz"),
         // Every `route.<route>.compact_waiter` gate (tcp/select/multicast) maps
-        // onto the shared wire `kernel.compact_waiter` slot.
-        ("kernel", "compact_waiter"),
-        ("vr_guard", "tracepoint_funcs"),
+        // onto the shared 43499 `kernel.compact_waiter` slot.
+        ("backend.cve_2026_43499.kernel", "compact_waiter"),
+        ("countermeasure.vivo_vr_guard", "tracepoint_funcs"),
     ];
     for (_, key) in CONF_TASK_FIELDS.iter().copied() {
-        out.push(("task_struct", key));
+        out.push(("platform.abi.task_struct", key));
     }
     for key in CONF_CRED_FIELDS.iter().copied() {
-        out.push(("cred", key));
+        if CONF_CRED_PLATFORM_KEYS.contains(&key) {
+            out.push(("platform.abi.cred", key));
+        } else {
+            out.push(("backend.cve_2026_43499.cred", key));
+        }
     }
     for key in CONF_OFFSET_FIELDS.iter().copied() {
-        out.push(("offset", key));
+        if CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
+            out.push(("platform.abi.offset", key));
+        } else {
+            out.push(("backend.cve_2026_43499.offset", key));
+        }
     }
-    // HOCON `route.<token>.<key>` stays verbatim on the wire for these fields
-    // (the tokens match the wire section suffixes).
-    out.push(("route.select_stack", "waiter_shift"));
-    out.push(("route.multicast_waiter", "waiter_off"));
-    out.push(("route.multicast_waiter", "buffer_size"));
-    out.push(("route.multicast_waiter", "task_offset"));
-    out.push(("route.multicast_waiter", "lock_offset"));
+    out.push(("backend.cve_2026_43499.route.select_stack", "waiter_shift"));
+    out.push(("backend.cve_2026_43499.route.multicast_waiter", "waiter_off"));
+    out.push(("backend.cve_2026_43499.route.multicast_waiter", "buffer_size"));
+    out.push(("backend.cve_2026_43499.route.multicast_waiter", "task_offset"));
+    out.push(("backend.cve_2026_43499.route.multicast_waiter", "lock_offset"));
     out
 }
 
@@ -353,7 +383,7 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
     let mut lines = vec![
         format!("# GhostLock kernel profile: {release} (HOCON, self-contained)."),
         format!("release = \"{release}\""),
-        "schema_version = 1".to_string(),
+        "schema_version = 3".to_string(),
         format!("kernel_major = {}", major.unwrap_or(0)),
         "backend {".to_string(),
         "  steps = \"w1_w3\"".to_string(),
@@ -1064,36 +1094,37 @@ mod tests {
         }
     }
 
-    /// A2-3c-3 three-end manifest agreement (extractor leg): every native
-    /// (section, key) the extractor can emit must be declared by the native
-    /// owner Schema. A rename on either side fails here instead of surfacing as
-    /// a startup rejection in the field.
+    /// S4 R2 three-end manifest agreement (extractor leg): every owner-qualified
+    /// `section.key` the extractor can emit must be declared by the native GLKv3
+    /// owner FieldSpecs. A rename on either side fails here instead of surfacing
+    /// as a startup rejection in the field.
     #[test]
-    fn conf_wire_fields_are_in_the_native_owner_manifest() {
+    fn conf_wire_fields_are_in_the_native_glkv3_manifest() {
         let manifest = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../app/src/test/resources/profile-manifest.tsv"
+            "/../../app/src/test/resources/profile-manifest-v3.tsv"
         ))
-        .expect("native owner manifest");
-        let fields: BTreeSet<(String, String)> = manifest
+        .expect("native GLKv3 owner manifest");
+        let paths: BTreeSet<String> = manifest
             .lines()
             .filter(|line| {
                 let trimmed = line.trim();
                 !trimmed.is_empty() && !trimmed.starts_with('#')
             })
             .map(|line| {
-                let mut columns = line.split('\t');
-                columns.next(); // owner
-                let section = columns.next().expect("manifest section column");
-                let key = columns.next().expect("manifest key column");
-                (section.to_string(), key.to_string())
+                let path = line
+                    .split('\t')
+                    .nth(1)
+                    .expect("manifest path column");
+                path.to_string()
             })
             .collect();
-        assert!(!fields.is_empty(), "manifest is empty");
+        assert!(!paths.is_empty(), "manifest is empty");
         for (section, key) in super::conf_wire_fields() {
+            let path = format!("{section}.{key}");
             assert!(
-                fields.contains(&(section.to_string(), key.to_string())),
-                "extractor key {section}.{key} is missing from the native owner manifest"
+                paths.contains(&path),
+                "extractor path {path} is missing from the native GLKv3 owner manifest"
             );
         }
     }
