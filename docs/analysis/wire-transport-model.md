@@ -98,7 +98,7 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
   `-DGHOSTLOCK_ENABLE_V2_WRITER` 已删除；`entry.cpp` 不再有 v2 回退——非 map 根或 `schema != 3`
   一律拒绝（`error == -1`），负向证据见 `device-gates/s4-r2c-20261005-pass.md`；
 - Kotlin：生产与导出一律 v3（`AndroidProfileConfigController.nativeDocument()`、
-  `exportKernelProfiles` → `Glkv3Encoder`）。旧配置（HOCON `schema_version = 1` 或缺键）由
+  `exportProfiles` → `Glkv3Encoder`）。旧配置（HOCON `schema_version = 1` 或缺键）由
   **`LegacyProfileConverter`（唯一迁移点）** 归一为 3；`toBinary/fromBinary` 等 v2 编解码在
   **R2c-2** 删除（当前仅为既有测试保留；`NativeProfileDocument.patchSafeMode` 作用在 GLKv3 字节上，是活代码）；
 - extractor：只产出 HOCON（`--format conf`，`schema_version = 3`）与 JSON（v1 offsets），不产出 wire；

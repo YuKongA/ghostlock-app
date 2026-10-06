@@ -54,7 +54,7 @@ PR 正文见 `docs/pr-note-vr-guard-pr.md`。
 | profile-core | `profile-core/.../NativeProfile.kt` 等 | gate/符号/布局的读写、导出与解析器白名单；另镜像 multicast `attempts/arm_sequence/arm_hold`（`MulticastConfig`，随新内置一并补齐），并收录进编辑器（换路由播种 + 标签）与范围校验（8/8/16 位，越界上报）；冻结 golden 夹具不变 |
 | 导出器合并修复 | `profile-core/.../ProfileMerger.kt` | 合并基准改为**深拷贝**共享 execution 预设（见下节） |
 | 迁移夹具 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 夹具（实测值 + 嵌套 `route` 声明）；尺寸断言 52 → 53 |
-| 内置 profile | `app/src/main/assets/kernel_profiles/6.1.145-android14-11-maybe-dirty.conf`（新增）+ `index.conf` | iQOO 12 条目：gate on、布局 64、multicast 几何与调参、cred refs |
+| 内置 profile | `app/src/main/assets/profile/6.1.145-android14-11-maybe-dirty.conf`（新增）+ `index.conf` | iQOO 12 条目：gate on、布局 64、multicast 几何与调参、cred refs |
 | 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术；字段位置随 padding 重构同步 |
 
 ## 数据流/控制流差异

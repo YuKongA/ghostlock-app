@@ -9,8 +9,8 @@
 #   --force-attack     pass --force-attack (the App only does this when asked)
 #   --serial <serial>  adb serial (default: $ANDROID_SERIAL or the USB device)
 #   --binary <path>    default build/native/ghostlock
-#   --profiles <dir>   default build/kernel-profiles, falling back to
-#                      ~/.ghostlock/build/root/kernel-profiles (Gradle symlink)
+#   --profiles <dir>   default build/profiles, falling back to
+#                      ~/.ghostlock/build/root/profiles (Gradle symlink)
 #   --archive <dir>    evidence dir (default docs/analysis/device-gates/<ts>)
 #   --cpu <a,b>        CPU pair recorded in the evidence (default 0,1)
 #   --route <token>    route token recorded in the evidence (default mcast)
@@ -38,8 +38,8 @@ RELEASE=""
 RUN=0
 FORCE=0
 BINARY="build/native/ghostlock"
-PROFILES="build/kernel-profiles"
-PROFILES_FALLBACK="$HOME/.ghostlock/build/root/kernel-profiles"
+PROFILES="build/profiles"
+PROFILES_FALLBACK="$HOME/.ghostlock/build/root/profiles"
 ARCHIVE=""
 CPU="0,1"
 ROUTE="mcast"
@@ -86,7 +86,7 @@ if [ ! -f "$BIN_PATH" ] && [ -f "$PROFILES_FALLBACK/$RELEASE.bin" ]; then
   PROFILES="$PROFILES_FALLBACK"
   BIN_PATH="$PROFILES/$RELEASE.bin"
 fi
-[ -f "$BIN_PATH" ] || fail "profile bin not found for $RELEASE (run: ./gradlew :profile-core:exportKernelProfiles)"
+[ -f "$BIN_PATH" ] || fail "profile bin not found for $RELEASE (run: ./gradlew :profile-core:exportProfiles)"
 
 if [ -z "$SERIAL" ]; then
   SERIAL="$(adb devices | awk '$2 == "device" && $1 !~ /_adb-tls-connect/ {print $1; exit}')"

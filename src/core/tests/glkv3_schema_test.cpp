@@ -170,15 +170,13 @@ namespace {
             return uint_value(7);
         if (s == "backend.cve_2026_43499.kernel" && k == "mm_struct_sz")
             return uint_value(0x400);
-        if (s == "backend.cve_2026_43499" && k == "steps")
-            return str_value("mcast_rootchild");
         if (s == "backend.cve_2026_43499" && k == "route")
             return str_value("multicast_waiter");
         if (s == "backend.cve_2026_43499" && k == "experimental") return bool_value(true);
-        /* M2 declared composite: the fixture carries a one-element queue so the
-         * array-of-map path is exercised by the encode/decode round trip (the
-         * token stays present in this fixture; framing, not this test, rejects
-         * queue + token together). */
+        /* M2 declared composite + M5: the fixture carries a queue (array of map)
+         * and NO `steps` token - that is exactly what the App emits now, so the
+         * golden hex and the field fixture stay byte-comparable with the Kotlin
+         * adapter, and the normalised document never grows a removed syntax. */
         if (s == "backend.cve_2026_43499" && k == "queue") {
             Value element;
             element.type = WireType::Map;
@@ -239,6 +237,14 @@ namespace {
              * beside the component tokens (asserted below). */
             if (field.section.empty()) continue;
             if (is_route_section(field.section) && field.section != kActiveRoute) {
+                continue;
+            }
+            /* M5: the selection is `route` + `queue` and the App emits NO
+             * combination token. This fixture mirrors the App document (the
+             * golden hex and the field fixture are compared against its adapter),
+             * so the schema-recognised `steps` field is deliberately left out: it
+             * stays declared so a token can be REFUSED by name, not emitted. */
+            if (field.key == "steps" && field.section == "backend.cve_2026_43499") {
                 continue;
             }
             Section *section = doc.find_section(field.section);

@@ -51,7 +51,16 @@ class Sog10ProfileRegressionTest {
             val bytes = requireNotNull(controller.nativeDocument(config))
             val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
             assertEquals(release, decoded.release)
-            assertEquals(Glkv3Value.Str("mcast_rootchild"), entry(decoded, "backend.cve_2026_43499", "steps"))
+            /* M3: the queue replaced the token - a migrated profile must carry the
+             * queue and NO token (native rejects both at once, glkv3_parse.cpp:407-419). */
+            assertTrue(
+                "the migrated profile must not carry a token",
+                runCatching { entry(decoded, "backend.cve_2026_43499", "steps") }.isFailure,
+            )
+            assertTrue(
+                "the migrated profile must carry a queue",
+                runCatching { entry(decoded, "backend.cve_2026_43499", "queue") }.isSuccess,
+            )
             assertNull(entryOrNull(decoded, "backend.cve_2026_43499.abi.kernel", "kernel_phys_load"))
             assertEquals(Glkv3Value.UInt(0u), entry(decoded, "backend.cve_2026_43499.abi.cred", "usage_offset"))
             assertEquals(

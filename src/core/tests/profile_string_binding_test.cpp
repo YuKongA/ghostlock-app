@@ -43,6 +43,22 @@ namespace {
         return value;
     }
 
+    /* M5: the selection surface is `queue` (array of map); the combination token
+     * is gone from the wire, so fixtures declare the same shape the App emits. */
+    ghostlock::profile::glkv3::Value queue_value(std::string_view step) {
+        ghostlock::profile::glkv3::MapMember member;
+        member.key = "step";
+        member.type = ghostlock::profile::glkv3::WireType::Str;
+        member.bytes = step;
+        ghostlock::profile::glkv3::Value element;
+        element.type = ghostlock::profile::glkv3::WireType::Map;
+        element.members.push_back(member);
+        ghostlock::profile::glkv3::Value queue;
+        queue.type = ghostlock::profile::glkv3::WireType::Array;
+        queue.elements.push_back(element);
+        return queue;
+    }
+
     void test_schema_driven_string_and_bound() {
         constexpr std::string_view kCarrier = "/vendor/lib64/libstagefrighthw.so";
         {
@@ -107,7 +123,7 @@ namespace {
         section.entries.push_back(
                 ghostlock::profile::glkv3::Entry{"lkm_path", str_value(kLkm)});
         section.entries.push_back(
-                ghostlock::profile::glkv3::Entry{"steps", str_value("umh")});
+                ghostlock::profile::glkv3::Entry{"queue", queue_value("pagecache_write")});
         const std::string encoded = ghostlock::profile::glkv3::encode(doc);
         assert(!encoded.empty());
 

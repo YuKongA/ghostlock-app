@@ -1855,7 +1855,7 @@ class GhostlockViewModel(
     }
 
     private fun mediatekDocUrl(): String =
-        "https://github.com/YuKongA/ghostlock-app/blob/main/docs/kernel_profiles/" +
+        "https://github.com/YuKongA/ghostlock-app/blob/main/docs/profile/" +
                 if (Locale.getDefault().language == "zh") "MEDIATEK_ZH.md" else "MEDIATEK.md"
 
     private suspend fun runParse(

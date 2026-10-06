@@ -88,14 +88,14 @@ echo ""
 
 # 7. 文档检查
 echo "[7/7] 文档检查..."
-if [ -f "PR.md" ] && [ -f "IMPLEMENTATION_COMPLETE.patch" ] && [ -f "docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md" ]; then
+if [ -f "PR.md" ] && [ -f "IMPLEMENTATION_COMPLETE.patch" ] && [ -f "docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md" ]; then
     echo "✅ 文档完整"
 else
     echo "❌ 文档不完整"
     echo "缺少以下文件："
     [ ! -f "PR.md" ] && echo "  - PR.md"
     [ ! -f "IMPLEMENTATION_COMPLETE.patch" ] && echo "  - IMPLEMENTATION_COMPLETE.patch"
-    [ ! -f "docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md" ] && echo "  - docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md"
+    [ ! -f "docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md" ] && echo "  - docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md"
     exit 1
 fi
 echo ""

@@ -29,7 +29,7 @@
 - App 加载路径：写恒 3；读 `1` 走转换；其它值拒绝；`ProfileMerger` 写 `schema_version = 3`。
 
 **资产**
-- `app/src/main/assets/kernel_profiles/*.conf`：`schema_version = 1` → `3`（63 个；被 include 的 5 个片段不带该键）。
+- `app/src/main/assets/profile/*.conf`：`schema_version = 1` → `3`（63 个；被 include 的 5 个片段不带该键）。
 
 **文档**
 - `docs/analysis/wire-transport-model.md`：v2 段落改为「**已弃用**（native 只认 3）」；保留 v1/v2 历史说明但标注废弃；

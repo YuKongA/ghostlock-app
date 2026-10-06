@@ -8,7 +8,7 @@
 - `kernel_phys_offset` —— DRAM 基址（linear-map `PHYS_OFFSET`）。
 
 提取器无法从镜像取得这两个值（见
-[MEDIATEK_ZH.md](../../docs/kernel_profiles/MEDIATEK_ZH.md)）；本脚本改从
+[MEDIATEK_ZH.md](../../docs/profile/MEDIATEK_ZH.md)）；本脚本改从
 `/proc/iomem` 与 `/proc/kallsyms` 读取。
 
 ## 文件

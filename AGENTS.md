@@ -21,12 +21,18 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 branch-plan `task-9`。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
-- 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
+- 内置 profile 在 `app/src/main/assets/profile/`：`index.conf` 索引、
   `<uname-r>.conf` 每 release 一份、`execution-*.conf` 公共/分 route 调参、
   `credential-6x.conf`、`kernelsnitch-6x.conf`。格式为 HOCON（支持 `include`）。
-- 组件模型（ADR-0004 + **ADR-0006**）：**选择由 token 白名单表达**——`contract::kCombinationCatalog` 是组合的
-  **唯一权威**（token → backend/route/steps/terminal/available），token 落在 `backend.<id>.steps`；
-  `Pipeline` 按 token 编译期固定并逐组合 static_assert。当前**已接线**：`cve_2026_43499 × {mcast,pselect,tcp}_{rootchild,shizuku}`
+- 组件模型（ADR-0004 + **ADR-0006**）：**① 组合权威仍是 `contract::kCombinationCatalog`**——它是组合的
+  **唯一权威**（token → backend/route/steps/terminal/available），用于**内部归一化键 + `supported` 判定 + dispatch 依据**；
+  `Pipeline` 按（归一化后的）组合**编译期固定**并逐组合 static_assert。**② 用户选择面 = `backend.<id>{ route, queue }`（步骤队列）**——
+  `available` 的对象形态声明 `<backend>{ route=<str>, queue=[ 对象元素 ], experimental=<bool> }`（设计稿 `docs/analysis/step-queue-design.md`；契约 §3.20）；
+  **token 形态已删（M5 = `e59a8479`）⇒ 出现即拒**：HOCON 的**列表形态**（token 列表）**出现即拒**（两条独立具名诊断：`the token-list form was removed in M5; declare route+queue` / `empty token list is not a selection; declare route+queue`），native 侧具名拒 token（`plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`）且**归一化不再物化 token**；App **停发 wire `steps`**；**沿革**：`backend.<id>.steps` 曾是迁移期语法糖，M5 已删；**不得再读成「token 是用户选择面」**。
+  **沿革（不删历史）**：2026-10-05「选择由 token 白名单表达」→ **2026-10-06「队列取代 token」**（理由：**HOCON 可读性**；用户裁决）。
+  **对拍物证**：`ProfileLayoutAvailableTest` 等 + `profile-core/src/test/resources/glkv3-native-fixture.tsv`（**91 行**，native `--dump-fixture`）
+  + Kotlin golden（**3964 字符**）与 `make -C src glkv3-golden-hex` **逐字符相同**；本片提交 = **`4c20142f`**。
+  当前**已接线**：`cve_2026_43499 × {mcast,pselect,tcp}_{rootchild,shizuku}`
   与 `cve_2026_43284 × umh`；**计划项**（`available=false`）：`{mcast,pselect,tcp}_umh`、`rootchild`、`shizuku`
   （解析接受、选择门禁拒绝、UI 置灰）。**terminal 归属见 ADR-0006**：词汇（rootchild/shizuku/umh）保留，
   **实现下放 backend**，共享件（脚本生成/探测/UMH 命令/输入结构）中性。
@@ -54,7 +60,7 @@ ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
 # Android / 提取器
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
-./gradlew exportKernelProfiles        # 生成 GLKv3 .bin 到 build/kernel-profiles/
+./gradlew exportProfiles        # 生成 GLKv3 .bin 到 build/profile/
 (cd tools/extract_rs && cargo test --release)
 
 # 攻击函数形状对比（**可选诊断**，不再是门槛；基线 build/native/ghostlock-B0）
@@ -129,15 +135,24 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
     `app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；权威是
     `contract/identity.hpp` 的 kind 声明与 `kRouteCatalog`；生成命令 `make -C src vocabulary-manifest`；
     `vocabulary_manifest_test.cpp` 裸跑断言，Kotlin 侧 `ComponentKindTest` / `VocabularyManifestAgreementTest` 对拍）。
+  - **stepset → 步骤序列 manifest**（M2/M3）↔ M3 资产迁移，导出 `stepset-steps.tsv`
+    （`stepset<TAB>step_index<TAB>step_name`，**index 0 = 首个执行步骤**，**6 行** = 3 个 stepset；
+    权威 = `contract/step_catalog.hpp` 的 `kStepSetAliases`（每条别名带**有序** `StepId` span）
+    + `backend/cve_2026_43499/steps.hpp` 的 `W1W3Steps::kSteps`/`W1W2Steps::kSteps`（执行顺序，
+    与别名表由 `static_assert` **逐项绑定**：任一侧调序即编译不过）；两份逐字节一致：
+    `app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；生成命令
+    `make -C src stepset-steps-manifest`；`stepset_steps_manifest_test.cpp` 在 `native-host-tests` 裸跑：
+    **导出文本 == 冻结 pin** + 两份副本逐字节一致）。
   - **v2 owner Schema 的 manifest 已随 v2 一并删除**（S4-R2c）：`profile-manifest.tsv`、`profile_manifest_test.cpp`、
     `ProfileManifestAgreementTest.kt` 都不再存在；owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）
     仍由 GLKv3 的 `schema == 3` 绑定路径使用，其声明权威是 `profile-manifest-v3.tsv`。
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
-- **构建逻辑一律写进 Gradle KTS（跨平台），禁止独立 `.sh` 构建脚本**（用户指令 2026-10-05）：LKM/DDK、插件产物、native 准备等一律由 `*.gradle.kts` 任务承担；**`.sh` 仅允许用于设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷、`tools/device-guard/*`、`.github/scripts/*`）。跨平台硬要求：**不得**依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）；工具链路径（如 `llvm-objcopy`）由 AGP 的 `android.ndkDirectory` 解析，**不依赖 PATH**；容器引擎探测 `podman`→`docker` 并允许 `-PcontainerEngine=` 覆盖。**跨端列表不得手抄**（如 8 个 KMI label）：由 native 导出 manifest（`lkm-kmi-manifest.tsv`）供 Gradle 与 Kotlin 消费。
+  - **载体 vs canonical 双路径必须逐值同构（M5 教训）**：同一份选择数据经**两条读取路径**（「运行时载体」与「`available.<id>` 声明」）时必须**逐值等价**，且**声明路径只能作回退**——两条路径行为分叉＝**高危形态**（M5 前 `NativeProfileDocument.from()` 只读声明路径 ⇒ 导出的 `.bin` **静默丢队列** ✗；M5 改为「**载体优先、回退声明**」✓）。⇒ 新增任何「同一数据的第二条读取路径」必须同批补**跨路径等价对拍**。
+- **构建逻辑一律写进 Gradle KTS（跨平台），禁止独立 `.sh` 构建脚本**（用户指令 2026-10-05）：LKM/DDK、插件产物、native 准备等一律由 `*.gradle.kts` 任务承担；**`.sh` 仅允许用于设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷、`tools/device-guard/*`、`.github/scripts/*`）。跨平台硬要求：**不得**依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）；工具链路径（如 `llvm-objcopy`）由 AGP 的 `android.ndkDirectory` 解析，**不依赖 PATH**；容器引擎探测 `podman`→`docker` 并允许 `-PcontainerEngine=` 覆盖。**跨端列表不得手抄**（如 8 个 KMI label）：由 native 导出 manifest（`lkm-kmi-manifest.tsv`）供 Gradle 与 Kotlin 消费。 **LKM/DDK 现状（2026-10-06，`8187375c`）**：LKM 由 **`buildLkmImages`**（逐 label 容器构建）/ **`copyLkmIntoAssets`**（fail-closed 落 assets）承担；**8 个 label 来自 native 导出的 `lkm-kmi-manifest.tsv`**（不手抄）；产物在 **Gradle build 目录下**（`app/lkm/<label>/ghostlock.ko`，即 `~/.ghostlock/build/root/app/lkm/**`；**源码目录 `tools/lkm/ghostlock/` 始终保持干净**，容器只在 build 目录里 `make`），账本 **`app/lkm/kmis.tsv`**（9 行 = 表头 + 8），守卫 **`:app:verifyLkmLedger`**（账本 × 缓存比对，**从全量 manifest × 缓存派生**）；APK 资产 = **8 个 `assets/lkm/<label>/ghostlock.ko`**。
 - 配置权威是 GLK profile（当前 wire 为 GLKv3）+ HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
 - **版本号统一为 3（不要新增/叠加版本号）**：HOCON 配置与 wire 共用同一个数字，避免混淆。
-  - **HOCON**：`schema_version = 3`（`app/src/main/assets/kernel_profiles/*.conf`；被 `include` 的片段不带该键）。
+  - **HOCON**：`schema_version = 3`（`app/src/main/assets/profile/*.conf`；被 `include` 的片段不带该键）。
   - **只有一个迁移点**：**Kotlin `LegacyProfileConverter.kt`**。App **写出恒为 3**；读到旧 `schema_version = 1` 时由它**转换为 3**（并记诊断），
     其余版本值一律拒绝（错误信息带实际版本）；
   - **wire（GLKv3）**：**MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`src/lib/mpack`），
@@ -166,13 +181,16 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **凡是可并行、可自包含的工作，优先委派给子智能体**（不限于门禁）；**若被委派任务本身还能再并行拆分，子智能体应继续递归创建自己的子智能体**，并把写范围继续切分到互不重叠。
 - **子智能体要能复用（强制）**：优先用 `spawn_teammate` 建**常驻 teammate**（稳定 target、可 `send_message` 追加任务、可 `interrupt`），
   而非每批新起一次性 agent；**同一模块/写范围固定由同一个 teammate 负责**，其历史上下文因此可复用（不必每次重新通读仓库）。
-  任务一律登记到**共享任务板**（`team_task_create`：owner + 精确 write scope + blocked_by），Lead 负责门禁与归档；
   常驻流建议划分：`native-core`（src/core）、`kotlin-app`（profile-core + app + assets）、`docs-uml`（docs/UML/计划/门禁归档）。
   同一时刻只允许**一条写入流**；未获指派的 teammate 只做只读勘察。
   - **门禁**（host / NDK / lint / cmp_disasm / 真机）——耗时长，委派后主智能体继续推进；
   - **独立实现/调研**：写范围与主线不重叠的文件改动、上游事实核查、测试补写、文档起草、跨模块对拍。
 - 委派必须给出：自包含的目标、涉及的精确文件/写范围、命令与期望结果、验收标准；子智能体只做被委派的事。
 - **写范围不重叠**：子智能体与主智能体共享工作树，同一文件不得并行修改；门禁运行期间不得改被该门禁覆盖的源文件。
+- **共享缓存的构建必须串行（本项因一次真实撞车而设立）**：`~/.ghostlock/lkm/**` 等**跨 writer 共享的缓存/产物目录**，同一时刻**只允许一个 writer 跑构建**——本轮真实撞车一次（两个 writer 同跑 `buildLkmImages` ⇒ `work/.tmp_*` 与 `Makefile` 缺失；**锚点未被破坏**）。⇒ 需要并行时用 **`-PlkmLabel=` 单标签 + 独立 workdir**，或**串行排队**；构建期间不得有第二个 writer 触碰同一缓存。
+- **Gradle 门禁必须串行（本项因一次真实并发而设立）**：`:app:testDebugUnitTest` / `buildLkmImages` / `verifyLkmLedger` 等**写同一 build 目录与共享缓存**的任务，**同一时刻只跑一个**；并发跑会互相污染（临时候选目录被删、XML 结果被覆盖）。⇒ 门禁排队执行，或在隔离 workdir 里跑。
+- **编辑锚点必须是语义边界（禁止「文本片段」/「下一个括号」式切法）**：删改代码块时锚点必须**整语句/整块**（含结尾分号与注释），**不得**用「从某关键词到下一个 `}`」这类相对切法——本项目曾因此**截断多行语句**、留下悬空常量或未闭合注释（删 defex 时弄坏 3 个文件）。⇒ 批量编辑＝**先校验全部锚点、任一不匹配则整体不写**（事务式），改后**编译 + 门禁**验证。
+- **程序里不要用反引号（本项因一次真实截断而设立）**：用脚本/程序生成或替换文本时，**载荷里不得含反引号字符**（shell 命令替换会截断/执行它）；需要字面反引号时用 `\x60` 或写入临时文件。**脚本运行前必须自检「载荷不含反引号」**（不通过就整体不写）。
 - **同一批次门禁连续失败 2 次即停止前进**，回到 debug（复现、定位、修复）；门禁未绿不得进入下一批。
 - **提交纪律（Lead，强制；本项因两次真实事故而设立）**：提交前必须**同时**满足 ① **门禁在最终树上为绿**（脚本必须**检查退出码**，不得无条件继续到 `git commit`）、② **没有任何 writer 正在改被该门禁覆盖的文件**（有人在中途改代码时跑门禁会得到**假红**，此时**不得**据此提交或回退，应等其停手或**在隔离 worktree 上按提交验证**）。
 - **假红/假绿的处理**：门禁结果与「当前是否有 writer」冲突时，正确做法是 `git worktree add <tmp> <commit>` **在隔离检出上按该提交重跑门禁**——这既能验证提交、也不受在途改动干扰。
@@ -187,6 +205,8 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 
 - **守卫/断言必须证明「能失败」**（本项因一次真实发现而设立）：新增的守卫、断言、检查**不能只证明「现在通过」**——必须做一次**证伪实验**（临时造错 → 观察它以预期方式失败 → 撤回并核验无残留），报告里写明造错点与失败输出。本项目曾因此发现一条 **vacuous 断言**：`memcmp` 比较两个 value-init 结构时**恒非零**（padding 未归零）⇒ 删掉被保护的赋值它**仍然绿**；修法＝两侧先 `memset` 归零 + `static_assert(is_trivially_copyable)`。
 - **证伪/验证实验一律用 `make -B`**（本项因一次假证明而设立）：`make` 会因**同一秒 mtime** 判定 up-to-date 而**跑旧二进制**，给出**假证明**；凡「造错后验证会失败」的实验必须强制重建。
+- **判断产出必须数产物、不数目录（本项因一次误判而设立）**：`ls | wc -l` 会把**空目录/临时目录**算进去 ⇒ 必须数**产物文件**——LKM 例：`buildLkmImages` 的 **8 行 `LKM <label> -> … (bytes)`**、`kmis.tsv` **9 行**（表头 + 8）、`unzip -l … | grep assets/lkm/` **8 行**；判定「生成了几个」时一律用这些计数。
+- **失败数必须读 XML 全量（本项因一次真实漏数而设立）**：单测失败**不得**只看控制台尾部（会被截断/漏掉），必须**全量读** `build/test-results/**/*.xml` 统计 `tests/failures/errors/skipped`；**三桶计数（通过 / 失败 / 跳过）一律来自 XML**，控制台只作旁证。
 - 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
 - 攻击关键路径（waiter/race/payload/route/exec 流程）改动：
   1. **真机门禁**（唯一权威判据：冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；
@@ -212,7 +232,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   或类/函数的职责与归属变化——必须**在同批**更新该文件，并在提交信息里写明「更新了哪一张图」；
   评审与门禁按此检查。一个结构只保留一处权威图，其他文档链接它，不重复画同一结构。
 - 双语：`README.md` + `README_ZH.md`；`docs/**` 下有 `*_ZH.md` 对应的保持同步。
-- 现行文档：`README.md`、`docs/kernel_profiles/*`、`docs/development/adding-a-component.md`、
+- 现行文档：`README.md`、`docs/profile/*`、`docs/development/adding-a-component.md`、
   **`docs/development/full-process-uml.md`（全流程 UML 权威：IPO/状态机/Class/Sequence，改动必更新）**、
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、

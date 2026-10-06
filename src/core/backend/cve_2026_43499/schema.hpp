@@ -94,7 +94,7 @@ namespace ghostlock::backend {
         section, key, 0, false, false, nullptr, \
                 profile::DefaultValue::none(), profile::FieldSource::Profile, \
                 profile::WireKind::String, \
-                "Combination token <route>_<path> (S4 R6b).", \
+                "REMOVED selection surface (M5): a token here is REFUSED (reason=token-form-removed).", \
                 nullptr, \
                 [](Cve2026_43499View &view, std::string_view text) { \
                     return contract::combination_stepset_wire_checked( \

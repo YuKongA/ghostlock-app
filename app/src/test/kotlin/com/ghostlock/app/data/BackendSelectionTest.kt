@@ -71,7 +71,7 @@ class BackendSelectionTest {
     }
 
     @Test
-    fun `available 43284 backend reaches the wire with the sparse triple`() = runBlocking {
+    fun `available 43284 backend reaches the wire with its queue and no token`() = runBlocking {
         val (controller, root) = controller("backend-selection-43284", BackendKind.Cve2026_43284)
         try {
             val config = controller.load(release, pair)
@@ -80,18 +80,21 @@ class BackendSelectionTest {
             val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
             assertEquals("cve_2026_43284", decoded.backend)
             assertEquals("umh_forward", decoded.terminal)
-            val steps = decoded.sections
-                .first { it.name == "backend.cve_2026_43284" }
-                .entries.first { it.key == "steps" }
-                .value
-            assertEquals(Glkv3Value.Str("umh"), steps)
+            /* M5: the combination token no longer rides the wire, and 43284 carries no
+             * route (design D2'). This profile declares no queue either, so the owner
+             * may be absent entirely - the meaningful coverage here is the backend and
+             * terminal identity asserted above plus the absence of a token. */
+            assertTrue(
+                "no combination token may ride the wire",
+                decoded.sections.flatMap { it.entries }.none { it.key == "steps" },
+            )
         } finally {
             root.deleteRecursively()
         }
     }
 
     @Test
-    fun `combination token reaches the wire as exactly one string and derives route and terminal`() = runBlocking {
+    fun `combination selection derives route and terminal and carries no token`() = runBlocking {
         val (controller, root) = controller(
             "combination-selection",
             BackendKind.Cve2026_43499,
@@ -105,9 +108,13 @@ class BackendSelectionTest {
             /* The token derives the root terminal and route. */
             assertEquals("root_child", decoded.terminal)
             assertEquals("select_stack", decoded.route)
-            val steps = decoded.sections.flatMap { it.entries }.filter { it.key == "steps" }
-            assertEquals("exactly one token may ride the wire", 1, steps.size)
-            assertEquals(Glkv3Value.Str("pselect_shizuku"), steps.single().value)
+            /* M5: the token no longer rides the wire - the queue plus the queue-level
+             * route carry the selection. The token-derived terminal/route assertions
+             * above keep the coverage that still means something. */
+            assertTrue(
+                "no combination token may ride the wire",
+                decoded.sections.flatMap { it.entries }.none { it.key == "steps" },
+            )
         } finally {
             root.deleteRecursively()
         }

@@ -165,7 +165,7 @@ class ProfileLayoutTest {
               release = "r"
               kernel_major = 5
               available {
-                cve_2026_43499 = [ "mcast_rootchild" ]
+                cve_2026_43499= { route = "multicast_waiter", queue = [ { step = "w1" }, { step = "w2" }, { step = "w3" } ] }
               }
               backend {
                 cve_2026_43499 {
@@ -293,7 +293,7 @@ class ProfileLayoutTest {
             ghostlock {
               release = "r"
               available {
-                cve_2026_43499 = [ "mcast_rootchild" ]
+                cve_2026_43499= { route = "multicast_waiter", queue = [ { step = "w1" }, { step = "w2" }, { step = "w3" } ] }
               }
               backend {
                 cve_2026_43499 {
@@ -311,23 +311,26 @@ class ProfileLayoutTest {
 
     @Test
     fun plannedTokenParsesButIsUnavailable() {
-        val canonical = parse(
-            """
-            ghostlock {
-              release = "r"
-              available {
-                cve_2026_43284 = [ "rootchild" ]
-              }
-              backend {
-                cve_2026_43284 {
-                  steps = "rootchild"
+        /* M5: the token-list form is rejected, so this test keeps its CATALOGUE half
+         * (a planned combination resolves but is unavailable) and asserts the new
+         * rejection semantics for the removed list syntax. */
+        val thrown = assertThrows(IllegalArgumentException::class.java) {
+            val parsed = parse(
+                """
+                ghostlock {
+                  release = "r"
+                  available {
+                    cve_2026_43284 = [ "rootchild" ]
+                  }
                 }
-              }
-            }
-            """.trimIndent(),
+                """.trimIndent(),
+            )
+            ProfileLayout.canonicalize(parsed)
+        }
+        assertTrue(
+            "the removed list form must be named: " + thrown.message,
+            thrown.message.orEmpty().contains("removed in M5"),
         )
-        val flat = ProfileLayout.flatten(ProfileLayout.canonicalize(canonical))
-        assertEquals("rootchild", flat["backend.cve_2026_43284.steps"])
         assertFalse(CombinationCatalog.resolve(BackendKind.Cve2026_43284, "rootchild")!!.available)
     }
 }

@@ -93,7 +93,7 @@ class WireV2ReaderTest {
     }
 
     @Test
-    fun `the 43284 backend may carry Auto as "no route"`() {
+    fun `the 43284 backend may carry Auto as 'no route'`() {
         val document = WireV2Reader.read(V2(backend = 6, middleware = 0x0000).bytes())
         assertEquals(0, document.routeId)
         /* …but every other backend must carry a real route. */

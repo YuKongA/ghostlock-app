@@ -4,13 +4,13 @@
 
 ## Documentation
 
-- [Kernel Profile Porting Guide](docs/kernel_profiles/README.md) - add support for a new kernel. GhostLock matches kernels by exact `uname -r` and rejects unsupported builds, showing the status at the top. Built-in profiles live in `app/src/main/assets/kernel_profiles/`: one HOCON file per release, `index.conf` as the runtime index, and `<major.minor>-template.conf` version-family templates.
-- [Supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) - the built-in kernel list.
-- [Shared execution defaults](docs/kernel_profiles/defaults.md) - every execution-tuning field, its default, and why.
-- [Profile schema](docs/kernel_profiles/PROFILE_SCHEMA.md) - full profile structure and data flow.
+- [Kernel Profile Porting Guide](docs/profile/README.md) - add support for a new kernel. GhostLock matches kernels by exact `uname -r` and rejects unsupported builds, showing the status at the top. Built-in profiles live in `app/src/main/assets/profile/`: one HOCON file per release, `index.conf` as the runtime index, and `<major.minor>-template.conf` version-family templates.
+- [Supported devices](docs/profile/SUPPORTED_DEVICES.md) - the built-in kernel list.
+- [Shared execution defaults](docs/profile/defaults.md) - every execution-tuning field, its default, and why.
+- [Profile schema](docs/profile/PROFILE_SCHEMA.md) - full profile structure and data flow.
 - [Adding a component](docs/development/adding-a-component.md) - developer guide for a new native backend / terminal / route (Chinese).
 
-For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/kernel_profiles/README.md).
+For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/profile/README.md).
 
 Rows explicitly marked **Shizuku required** run through a shell UserService. Start Shizuku with ADB and tap the status card to grant access; all other rows use the app's normal execution path.
 
@@ -26,14 +26,14 @@ adb/shell has no seccomp filter, so W3 is skipped - handy for quick verification
 
 ```powershell
 make -C src ghostlock
-./gradlew exportKernelProfiles
+./gradlew exportProfiles
 adb push build/native/ghostlock /data/local/tmp/ghostlock
-adb push build/kernel-profiles/<release>.bin /data/local/tmp/profile.bin
+adb push build/profile/<release>.bin /data/local/tmp/profile.bin
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
 
-The CLI carries transport, run control, safety and observability only (S4 R2b): `--ghostlock-app-call`, `--load-prebuilt-profile <bin>`, `--enable-status-record`, `--dump-kernel-log <dir>`, `--force-attack`, `--allow-dev-target` (relaxes only the binding-time carrier check), plus the read-only diagnostics `--probe-cve-2026-43284 <ko>` and `--plugin-probe <path.so> [--expect-sha256 <hex>]`. Selection and policy never come from the CLI: the staged entry and the `--cve43284-*` selectors were removed, and an unknown flag fails closed.
+The CLI carries transport, run control, safety and observability only (S4 R2b): `--ghostlock-app-call`, `--load-prebuilt-profile <bin>`, `--enable-status-record`, `--dump-kernel-log <dir>`, `--force-attack`, `--allow-dev-target` (relaxes only the binding-time carrier check), plus the read-only diagnostics `--probe-cve-2026-43284 <ko>`. Selection and policy never come from the CLI: the staged entry and the `--cve43284-*` selectors were removed, and an unknown flag fails closed.
 
 ## Offset Extraction
 
@@ -47,7 +47,7 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--plugin-descriptor <probe-stdout.tsv>` (repeatable, `--format conf` only) lets a countermeasure's own probe description fill `plugin.<id>.extract.<key>`: the key names and types come from the descriptor, while the values are resolved from the profile being produced (R1), the image BTF (R3) or kallsyms (R2). It writes an `extract`-only profile fragment (not a wire document), appended after `countermeasure`; a `required` entry that cannot be resolved fails the run, an optional one is omitted and never replaced by a default, and without the flag the output is byte-for-byte unchanged. `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
+`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `profile/index.conf`. The old C `offsets.h` registry is deprecated and removed.
 
 ### MediaTek
 
@@ -57,7 +57,7 @@ extractor cannot derive the two physical addresses (`kernel_phys_load`,
 falls back to the SoC formula, which fails at W1 on MediaTek. Fill both by
 running the separate `tools/mtk-phys/` extractor on a rooted device (it reads
 `/proc/iomem`) and pasting the values into the app's advanced overrides. See
-[MEDIATEK.md](docs/kernel_profiles/MEDIATEK.md).
+[MEDIATEK.md](docs/profile/MEDIATEK.md).
 
 ### Preflight
 
@@ -125,20 +125,11 @@ ghostlock {
 }
 ```
 
-The exact field list lives in [PROFILE_SCHEMA.md](docs/kernel_profiles/PROFILE_SCHEMA.md); the extractor emits this same canonical layout.
+The exact field list lives in [PROFILE_SCHEMA.md](docs/profile/PROFILE_SCHEMA.md); the extractor emits this same canonical layout.
 
-## Plugins (P1)
+## Plugins
 
-Import a countermeasure `.so` from the settings page: the app copies it into its no-backup
-`countermeasures/` root, hashes it locally, and reads its self-description through the read-only
-native probe (`--plugin-probe`, never `dlopen` inside the JVM). Only **enabled** plugins are emitted
-as `plugin.<id>.*` in the GLKv3 document (default off; `params.*` values are typed by the plugin's
-own descriptor, and an enabled=false section is rejected). A reference countermeasure plugin lives in the standalone **`ghostlock-plugin-example`**
-project (vendored ABI header, `build.sh android|host|abi-check`, bilingual README); this
-repository keeps only `tools/plugins/README.md` as the pointer, because a plugin author
-should not need the exploit repository to build one. **P1 ships the declare → validate → bind
-wire layer only**: the runtime that loads the module and invokes it at its stage is not wired yet
-(tracked as task-9 in the branch plan, and it needs its own L-level design and device gate).
+Plugins: to be developed.
 
 ## Credits & License
 

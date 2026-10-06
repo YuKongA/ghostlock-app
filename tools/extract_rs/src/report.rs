@@ -400,7 +400,7 @@ pub const BACKEND_43499: &str = "cve_2026_43499";
 /// selected one carries `steps`.
 pub const BACKEND_43284: &str = "cve_2026_43284";
 /// 43284 execution tuning, HOCON `backend.cve_2026_43284.execution.*`, with the
-/// frozen `[literal:N]` defaults from docs/kernel_profiles/PROFILE_TEMPLATE.conf.
+/// frozen `[literal:N]` defaults from docs/profile/PROFILE_TEMPLATE.conf.
 const CONF_43284_EXECUTION: [(&str, &str); 5] = [
     ("late_load_args", "0"),
     ("selinux_exec_context", "0"),
@@ -490,7 +490,7 @@ pub struct ConfInputs<'a> {
 
 /// Renders a canonical self-contained GLK profile (`--format conf`) in the
 /// **frozen HOCON shape** (user ruling 2026-10-05; authority
-/// `docs/kernel_profiles/PROFILE_TEMPLATE.conf`): root scalars
+/// `docs/profile/PROFILE_TEMPLATE.conf`): root scalars
 /// (schema_version / release / kernel_major / kernel_minor / safe_mode),
 /// `available { <backend> = [ <combination token> ] }`, then
 /// `backend.<id> { steps, abi { task_struct, cred, kernel, offset }, ... }`.
@@ -1049,7 +1049,7 @@ mod tests {
     }
 
     /// The frozen HOCON shape (user ruling 2026-10-05; authority
-    /// `docs/kernel_profiles/PROFILE_TEMPLATE.conf`): root scalars, `available{}` and
+    /// `docs/profile/PROFILE_TEMPLATE.conf`): root scalars, `available{}` and
     /// `backend.<id>` with the platform ABI moved under the 43499 backend. Keys the
     /// refactor DELETED must stay deleted.
     #[test]
@@ -1690,7 +1690,7 @@ mod tests {
         });
         let bundled = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../app/src/main/assets/kernel_profiles/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.conf"
+            "/../../app/src/main/assets/profile/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.conf"
         ))
         .expect("bundled 5.15.189 profile");
         /* Keys that exist ONLY because of the HOCON refactor: the pre-refactor

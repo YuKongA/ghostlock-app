@@ -4,7 +4,7 @@
 
 - merge `acc5e7b`（`Merge pull request #241 from hmascs/vr-ko-bypass-dev`）带入 4 个文件，
   **未改任何 `src/` 生产代码**：本目录的 `PR.md`、`IMPLEMENTATION_COMPLETE.patch`、
-  `PR_CHECKLIST.sh`，以及移入规范路径的 `docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md`。
+  `PR_CHECKLIST.sh`，以及移入规范路径的 `docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md`。
 - 该方案引用的 `src/core/session/backend/cfi_stage.*` / `cfi_layout.hpp` /
   `WriteMode::Value` / Kotlin `vr1` **在本树不存在**；`IMPLEMENTATION_COMPLETE.patch` 也未应用。
   因此它是**提案文档**，与本分支的实现不冲突。
@@ -102,7 +102,7 @@ SM8750，kernel 6.6.89，Android 16），与本仓库**同一 CVE、同一 IonSt
 
 ## 文件索引
 
-- `docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md` — tracepoint 常量提取指南（参考）
+- `docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md` — tracepoint 常量提取指南（参考）
 - 本目录 `PR.md` — 方案与设备适配说明
 - 本目录 `IMPLEMENTATION_COMPLETE.patch` — 未应用的实现补丁（提案）
 - 本目录 `PR_CHECKLIST.sh` — 作者的提交前检查脚本（历史）

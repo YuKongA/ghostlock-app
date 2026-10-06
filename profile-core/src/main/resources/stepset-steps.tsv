@@ -1,0 +1,14 @@
+# GhostLock stepset -> step sequence manifest (M2/M3).
+# Authoritative native export of contract/step_catalog.hpp
+# (kStepSetAliases) plus the executor orders in
+# backend/cve_2026_43499/steps.hpp; regenerate with:
+#   make -C src stepset-steps-manifest
+# Columns: stepset<TAB>step_index<TAB>step_name
+# step_index 0 is the first executed step; step_name is the HOCON
+# step token M3 writes into the profile queue.
+w1_w3	0	w1
+w1_w3	1	w2
+w1_w3	2	w3
+w1_w2	0	w1
+w1_w2	1	w2
+pagecache_write	0	pagecache_write

@@ -12,7 +12,7 @@ import com.ghostlock.app.data.route.RouteKind
  * (GLKv3-3, S4 R2).
  *
  * This adapter is the production logical-document translation
- * used by `exportKernelProfiles` and the app native-document path (GLKv3-4).
+ * used by `exportProfiles` and the app native-document path (GLKv3-4).
  * It consumes [NativeProfileDocument.v3Sections], the owner-qualified and
  * selection-aware emission (only the selection's owners plus `common`).
  *

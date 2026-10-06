@@ -11,7 +11,6 @@ safe_mode	bool	true
 backend.cve_2026_43499.experimental	bool	true
 backend.cve_2026_43499.queue	array	
 backend.cve_2026_43499.route	str	multicast_waiter
-backend.cve_2026_43499.steps	str	mcast_rootchild
 backend.cve_2026_43499.abi.cred.caps_offset	uint	0
 backend.cve_2026_43499.abi.cred.ref0_offset	uint	0
 backend.cve_2026_43499.abi.cred.ref1_offset	uint	0

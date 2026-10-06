@@ -101,7 +101,7 @@ data class Glkv3Document(
  *
  * The encoder is pure and deterministic: the same logical [Glkv3Document]
  * yields the same bytes regardless of list insertion order. It is the
- * production writer for `exportKernelProfiles` and the app native-document
+ * production writer for `exportProfiles` and the app native-document
  * path (GLKv3-4).
  */
 object Glkv3Encoder {

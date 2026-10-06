@@ -10,9 +10,9 @@
 
 | 类型 | 写什么 | 放哪里 |
 |---|---|---|
-| 教程 / 快速开始 | 带人跑通一次 | `README.md`、`docs/kernel_profiles/README.md` |
+| 教程 / 快速开始 | 带人跑通一次 | `README.md`、`docs/profile/README.md` |
 | 操作指南 | 完成一个任务 | `docs/development/*` |
-| 参考 | 字段、命令、结构 | `docs/kernel_profiles/PROFILE_SCHEMA.md`、`defaults.md`、`src/core/README.md` |
+| 参考 | 字段、命令、结构 | `docs/profile/PROFILE_SCHEMA.md`、`defaults.md`、`src/core/README.md` |
 | 解释 | 为什么这样设计 | `design-philosophy.md`、`engineering-standards.md`、`docs/analysis/**`（历史） |
 | 决策记录（ADR） | 一次架构决策：背景/决策/备选/后果 | `docs/analysis/adr/NNNN-*.md` |
 | 计划 | L 级改动开始前 | `docs/analysis/*-plan.md`（完成后可归档） |
@@ -50,7 +50,7 @@
 
 ## 双语
 
-`README.md` / `README_ZH.md` 与 `docs/kernel_profiles/**` 的 `_ZH` 必须同批次修改，不允许单边漂移。
+`README.md` / `README_ZH.md` 与 `docs/profile/**` 的 `_ZH` 必须同批次修改，不允许单边漂移。
 `docs/development/**` 用中文；代码注释与提交信息用英文。
 
 ## 模板

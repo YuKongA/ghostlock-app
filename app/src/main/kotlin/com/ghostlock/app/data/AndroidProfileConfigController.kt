@@ -726,6 +726,8 @@ internal class AndroidProfileConfigController(
             text = { path -> ProfileResolver.nativeText(resolved, path) },
             bool = { path -> ProfileResolver.nativeBool(resolved, path) },
             value = { path -> ProfileResolver.nativeValue(resolved, route, path) },
+            /* M4(a): the step queue is an array of maps -> the raw accessor. */
+            raw = { path -> resolved.getValueAt(path) },
             /* plugins = emissions, -- COMMENTED OUT (user ruling 2026-10-05) */
             plugins = emptyList(),
         )
@@ -1074,7 +1076,7 @@ internal class AndroidProfileConfigController(
     }
 
     internal companion object {
-        private const val BuiltinDirectory = "kernel_profiles"
+        private const val BuiltinDirectory = "profile"
         private val RouteCommonRequired = listOf(
             "offset.init_task", "offset.init_cred", "offset.root_task_group", "offset.selinux_enforcing",
             "task_struct.prio", "task_struct.pi_lock", "task_struct.pi_waiters", "task_struct.pi_blocked_on",

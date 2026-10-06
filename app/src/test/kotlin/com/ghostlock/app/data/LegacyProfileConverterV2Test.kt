@@ -113,7 +113,7 @@ class LegacyProfileConverterV2Test {
         val route = canonicalMap["backend"].asValueMap()
             ?.get("cve_2026_43499").asValueMap()
             ?.get("route").asValueMap()
-            ?.keys?.firstOrNull()?.toString()
+            ?.keys?.firstOrNull()
         val document = NativeProfileDocument.from(
             release = (runtime["release"] as? String).orEmpty(),
             route = route,

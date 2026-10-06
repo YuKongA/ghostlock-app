@@ -210,7 +210,7 @@ flowchart LR
 
 | 文件 | 改动 |
 |---|---|
-| `docs/kernel_profiles/PROFILE_SCHEMA.md` + `_ZH.md` | 增加 manifest/strict/所有权说明 |
+| `docs/profile/PROFILE_SCHEMA.md` + `_ZH.md` | 增加 manifest/strict/所有权说明 |
 | `docs/development/adding-a-component.md` | 新字段 = 加 `FieldSpec` + 注册 + manifest 测试 |
 | `src/core/README.md` | profile 分层与 DecodeMode |
 | `docs/analysis/branch-plan.md` | 只登记 A2-3c 进度（父级维护） |

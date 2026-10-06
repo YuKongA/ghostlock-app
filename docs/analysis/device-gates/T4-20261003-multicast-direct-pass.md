@@ -1,7 +1,9 @@
+> 注（2026-10-06）：本文件中的路径引用已随本轮 profile 目录与 Gradle 任务改名更新（旧名见 git 历史）；原始日志文本未改，证据内容不变。
+
 # T4 真机门禁：`Cve2026_43499Backend<StepSet>`（multicast_waiter）— PASS
 
 对应提交 `91723e7`（T4）。候选二进制 `build/native/ghostlock` sha256
-`8f2e31a0bb4bcc24fd7b7adf28109a260b1b99301d136b311d4df77289ee9dcd`；profile `build/kernel-profiles/5.15.189-…ab14546557.bin` sha256 `8aa3200035b3768100cdf660be3b5a5a62b18936c4f653c35ee8a9243bb1b7af`。
+`8f2e31a0bb4bcc24fd7b7adf28109a260b1b99301d136b311d4df77289ee9dcd`；profile `build/profile/5.15.189-…ab14546557.bin` sha256 `8aa3200035b3768100cdf660be3b5a5a62b18936c4f653c35ee8a9243bb1b7af`。
 
 ## 设备与入口
 

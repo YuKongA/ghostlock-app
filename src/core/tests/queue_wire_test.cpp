@@ -191,15 +191,27 @@ namespace {
                          static_cast<unsigned>(kind));
             ++failures;
         }
-        /* The queue path leaves exactly what the token path leaves. */
-        const ghostlock::profile::Value *steps =
-                framed.find_value("backend.cve_2026_43499", "steps");
-        if (steps == nullptr) {
-            steps = framed.find_value("backend.cve_2026_43284", "steps");
+        /* M5-migrated coverage: these two were asserted on the removed TOKEN
+         * path - the queue path must derive the same route and terminal as the
+         * catalogue entry it normalises onto. */
+        if (framed.middleware != static_cast<uint16_t>(spec_of(kind).route) ||
+            framed.terminal_token !=
+                    ghostlock::contract::terminal_token_name(spec_of(kind).terminal)) {
+            std::fprintf(stderr,
+                         "queue_wire_test: %s: route/terminal drifted from the catalogue\n",
+                         what);
+            ++failures;
         }
-        if (steps == nullptr || !steps->is_text ||
-            steps->text != spec_of(kind).token) {
-            std::fprintf(stderr, "queue_wire_test: %s: steps slot was not canonicalised\n",
+        /* M5 guard: the plan is carried IN MEMORY (combination/middleware/
+         * terminal_token) and the normalised document must NOT grow a `steps`
+         * entry - writing the preset token back would put a removed syntax on the
+         * wire and make the document un-reparsable (a re-parse refuses it with
+         * reason=token-form-removed). */
+        if (framed.find_value("backend.cve_2026_43499", "steps") != nullptr ||
+            framed.find_value("backend.cve_2026_43284", "steps") != nullptr) {
+            std::fprintf(stderr,
+                         "queue_wire_test: %s: the normalised document must not carry "
+                         "a steps entry\n",
                          what);
             ++failures;
         }
@@ -303,6 +315,28 @@ int main() {
                                  false, false),
                   "empty-queue");
 
+    /* ---- M5: the removed token sugar is REFUSED, and named ----
+     * `backend.<id>.steps = "<combination token>"` was the migration sugar;
+     * `queue` (+ its queue-level `route`) is the only selection surface now.
+     * The key stays recognised so the refusal names the path instead of
+     * degrading into a generic unknown-key error. */
+    {
+        Document doc = make_queue_doc("cve_2026_43499", "root_child", "multicast_waiter",
+                                      true, {}, "multicast_waiter", true, false, false);
+        Section &section = doc.sections.back();
+        section.entries.clear();
+        section.entries.push_back(Entry{"steps", str_value("mcast_rootchild")});
+        expect_reject("token form (43499)", doc, "token-form-removed");
+    }
+    {
+        Document doc = make_queue_doc("cve_2026_43284", "umh_forward", "", false, {}, "",
+                                      false, false, false);
+        Section &section = doc.sections.back();
+        section.entries.clear();
+        section.entries.push_back(Entry{"steps", str_value("umh")});
+        expect_reject("token form (43284)", doc, "token-form-removed");
+    }
+
     /* ---- experimental: declared request, refused execution (design 4.3) ---- */
     expect_reject("experimental without declaration",
                   make_queue_doc("cve_2026_43499", "root_child", "select_stack", true,
@@ -329,8 +363,14 @@ int main() {
                                  "select_stack", true, false, false),
                   "route-disagrees-with-root");
 
-    /* ---- the token path keeps its behaviour, and a section route beside a
-     * token must agree with it (fail-closed) ---- */
+    /* ---- M5: the two former TOKEN cases are refusals now, and the semantics
+     * they carried live on the QUEUE path:
+     *   - route agreement: `route-disagrees-with-root` above (root route vs the
+     *     queue-derived preset route), plus `route-required` (43499 has a route
+     *     axis) and `route-not-applicable` (43284 has none);
+     *   - terminal agreement: the queue path cross-checks the declared terminal
+     *     against the preset, so a mismatching terminal is still refused (that
+     *     check reports no named reason - a pre-existing silent point). ---- */
     {
         Document doc;
         doc.schema = ghostlock::profile::glkv3::kSchemaVersion;
@@ -344,7 +384,8 @@ int main() {
         doc.route = "select_stack";
         Section &section = doc.append_section("backend.cve_2026_43499");
         section.entries.push_back(Entry{"steps", str_value("pselect_rootchild")});
-        expect_combination("token path unchanged", doc, CombinationKind::PselectRootchild);
+        expect_reject("token path (was: token path unchanged)", doc,
+                      "token-form-removed");
     }
     {
         Document doc;
@@ -360,8 +401,18 @@ int main() {
         Section &section = doc.append_section("backend.cve_2026_43499");
         section.entries.push_back(Entry{"route", str_value("multicast_waiter")});
         section.entries.push_back(Entry{"steps", str_value("pselect_rootchild")});
-        expect_reject("section route disagrees with the token", doc,
-                      "route-disagrees-with-token");
+        expect_reject("section route beside a token (was: disagrees with the token)",
+                      doc, "token-form-removed");
+    }
+    {
+        /* The migrated terminal check: the queue is a supported preset, but the
+         * declared terminal is not the preset's terminal. */
+        const Document doc =
+                make_queue_doc("cve_2026_43499", "umh_forward", "select_stack", true,
+                               steps_of(CombinationKind::PselectRootchild), "select_stack",
+                               true, false, false);
+        ghostlock::profile::Document framed;
+        assert(frame(doc, framed) != 0);
     }
 
     /* ---- declaration-driven: an Array on an undeclared key stays rejected ---- */
@@ -377,9 +428,11 @@ int main() {
         doc.has_route = true;
         doc.route = "select_stack";
         Section &section = doc.append_section("backend.cve_2026_43499");
-        /* A valid token keeps the rest of the document acceptable, so the ONLY
+        /* A valid QUEUE keeps the rest of the document acceptable, so the ONLY
          * reason to reject is the array on an undeclared key. */
-        section.entries.push_back(Entry{"steps", str_value("pselect_rootchild")});
+        section.entries.push_back(Entry{"route", str_value("select_stack")});
+        section.entries.push_back(
+                Entry{"queue", array_value({step_element("w1"), step_element("w2")})});
         section.entries.push_back(Entry{"surprise", array_value({step_element("w1")})});
         ghostlock::profile::Document framed;
         assert(frame(doc, framed) != 0);

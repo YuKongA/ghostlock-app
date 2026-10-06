@@ -26,7 +26,7 @@
   :app:generateBuildInfo SKIPPED
   :app:preBuild SKIPPED
   ...
-  :profile-core:exportKernelProfiles SKIPPED
+  :profile-core:exportProfiles SKIPPED
   :app:testDebugUnitTest SKIPPED
   ```
 
@@ -44,14 +44,14 @@
 非目标：
 - 不改任何测试代码、native 代码、profile 或 wire；
 - 不改 native 任务本身（`buildGhostlockNative` / `buildGhostlockExtract` 的输入输出与实现不变）；
-- 不改 `:profile-core:exportKernelProfiles`（`ExporterAgreementTest` 依赖它，保留 `Test.dependsOn`）。
+- 不改 `:profile-core:exportProfiles`（`ExporterAgreementTest` 依赖它，保留 `Test.dependsOn`）。
 
 ## 改动清单
 
 | 文件 | 改动 | 理由 |
 |---|---|---|
 | `app/build.gradle.kts` | `preBuild` 只保留 `generateBuildInfo`；把 `prepareGhostlockJniLibs` / `prepareGhostlockExtractJniLibs` 改挂到消费 JNI 的打包任务 `merge*JniLibFolders`（debug/release、androidTest 同名任务用 `tasks.matching` 覆盖） | 编译期需要 `BuildInfo.kt`，但单元测试不需要 `.so`；把 native 准备绑到真正会打包它的任务上 |
-| `app/build.gradle.kts` | 保留 `tasks.withType<Test>().configureEach { dependsOn(":profile-core:exportKernelProfiles") }` | 导出 profile 是单元测试的真实前置 |
+| `app/build.gradle.kts` | 保留 `tasks.withType<Test>().configureEach { dependsOn(":profile-core:exportProfiles") }` | 导出 profile 是单元测试的真实前置 |
 
 不改根 `build.gradle.kts` 的任务定义（`prepareGhostlockJniLibs` 等仍是可被依赖的独立任务）。
 
@@ -66,7 +66,7 @@ flowchart TD
     subgraph test [testDebugUnitTest]
         T[testDebugUnitTest] --> P[preBuild]
         P --> G[generateBuildInfo]
-        T --> E[profile-core:exportKernelProfiles]
+        T --> E[profile-core:exportProfiles]
     end
     subgraph pkg [assemble / bundle]
         M[merge*JniLibFolders] --> PJ[prepareGhostlockJniLibs]
@@ -95,14 +95,14 @@ flowchart TD
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| 任务图 | `./gradlew :app:testDebugUnitTest --dry-run` | 不再出现 `buildGhostlock*` / `prepareGhostlock*`；仍有 `:profile-core:exportKernelProfiles` |
+| 任务图 | `./gradlew :app:testDebugUnitTest --dry-run` | 不再出现 `buildGhostlock*` / `prepareGhostlock*`；仍有 `:profile-core:exportProfiles` |
 | 任务图 | `./gradlew :app:assembleDebug --dry-run` | 仍出现 `buildGhostlockNative` / `buildGhostlockExtract` / `prepare*JniLibs` |
 | 单测 | `./gradlew :app:testDebugUnitTest` | BUILD SUCCESSFUL；无 native 构建日志 |
 | 打包 | `./gradlew :app:assembleDebug` | BUILD SUCCESSFUL；APK 内含 `lib/arm64-v8a/libghostlock.so` 与 `libextract.so` |
 
 ## 明确保留
 
-- native 任务实现、`profile-core:exportKernelProfiles`、`generateBuildInfo`；
+- native 任务实现、`profile-core:exportProfiles`、`generateBuildInfo`；
 - 任何测试代码与资源。
 
 ## 进度

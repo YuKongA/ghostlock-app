@@ -99,6 +99,13 @@ internal data class Profile(
             value: (String) -> Long?,
             /** P1: enabled plugins only; empty keeps every caller byte-identical. */
             plugins: List<PluginEmission> = emptyList(),
+            /**
+             * M4: raw canonical payloads by dotted path. The declared step queue
+             * (`backend.<id>.queue`, an array of maps) has no scalar accessor slot,
+             * so the caller that owns the resolved map passes it here; the default
+             * reads nothing and keeps every existing caller byte-identical.
+             */
+            raw: (String) -> Any? = { null },
         ): Profile? = fromNativeDocument(
             document = NativeProfileDocument.from(
                 release = release,
@@ -107,6 +114,7 @@ internal data class Profile(
                 text = text,
                 bool = bool,
                 plugins = plugins,
+                raw = raw,
             ),
             invalidPaths = invalidPaths,
         )

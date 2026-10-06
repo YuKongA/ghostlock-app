@@ -1,0 +1,8 @@
+total 317
+drwxrwxrwx 3 root root   3452 2026-10-06 13:34 .
+drwxrwxrwx 5 root root   3452 2026-10-06 13:34 ..
+-r--r--r-- 1 root root  12806 2026-10-06 13:34 iomem.txt
+-rw-rw-rw- 1 root root 265897 2026-10-06 13:34 kernel-dmesg.log
+-rw-rw-rw- 1 root root  27082 2026-10-06 13:34 kernel-info.txt
+-rw-r--r-- 1 root root    720 2026-10-06 13:34 ksu.log
+drwxrwxrwx 2 root root   3452 2026-10-06 13:34 pstore

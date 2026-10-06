@@ -26,7 +26,7 @@ namespace ghostlock::profile {
     /* PROFILE-SUGGEST-01: only kernel geometry (kernel_major, symbol and struct
      * offsets, waiter layout, credential template) is truly required. Kotlin merges
      * the shipped execution defaults and user overrides before the profile reaches
-     * native; see docs/kernel_profiles/defaults*.md. */
+     * native; see docs/profile/defaults*.md. */
     struct execution_settings {
         uint32_t recommended_main_cpu, recommended_consumer_cpu;
         uint32_t heap_prepare_max_attempts, heap_prepare_timeout_ms;

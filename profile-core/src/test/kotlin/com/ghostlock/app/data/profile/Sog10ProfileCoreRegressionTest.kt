@@ -5,6 +5,7 @@ import com.ghostlock.app.data.NativeProfileDocument
 import com.ghostlock.app.data.ProfileLayout
 import com.ghostlock.app.data.ValueMap
 import com.ghostlock.app.data.asValueMap
+import com.ghostlock.app.data.getValueAt
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -18,7 +19,7 @@ class Sog10ProfileCoreRegressionTest {
 
     @Test
     fun `SOG10 profile keeps explicit nulls and round trips through GLKv3`() {
-        val profiles = File(repoRoot(), "app/src/main/assets/kernel_profiles")
+        val profiles = File(repoRoot(), "app/src/main/assets/profile")
         val builtin = parse(File(profiles, "$release.conf"))
         assertTrue(builtin.containsKey("kernel_phys_load"))
         assertNull(builtin["kernel_phys_load"])
@@ -57,6 +58,9 @@ class Sog10ProfileCoreRegressionTest {
         fun document(profile: ValueMap) = NativeProfileDocument.from(
             release = release,
             route = route,
+            /* M4(a) as in ProfileExporter: the declared step queue is an array of
+             * maps, and the three typed accessors cannot return an array. */
+            raw = { path -> profile.getValueAt(path) },
             value = { path -> ProfileResolver.nativeValue(profile, route, path) },
             text = { path -> ProfileResolver.nativeText(profile, path) },
             bool = { path -> ProfileResolver.nativeBool(profile, path) },
@@ -84,7 +88,16 @@ class Sog10ProfileCoreRegressionTest {
         assertEquals("multicast_waiter", decoded.route)
         /* HOCON refactor: no common owner; the kernel scalars are root values. */
         assertEquals(5uL, decoded.kernelMajor)
-        assertEquals(Glkv3Value.Str("mcast_rootchild"), entry(decoded, "backend.cve_2026_43499", "steps"))
+        /* M3/M5: the queue replaced the token - the migrated profile must carry the
+         * queue and NO token (native rejects both at once, glkv3_parse.cpp:407-419). */
+        assertTrue(
+            "the migrated profile must not carry a token",
+            runCatching { entry(decoded, "backend.cve_2026_43499", "steps") }.isFailure,
+        )
+        assertTrue(
+            "the migrated profile must carry a queue",
+            runCatching { entry(decoded, "backend.cve_2026_43499", "queue") }.isSuccess,
+        )
         assertNull(entryOrNull(decoded, "backend.cve_2026_43499.abi.kernel", "kernel_phys_load"))
         assertEquals(
             Glkv3Value.UInt(0u),
@@ -151,7 +164,7 @@ class Sog10ProfileCoreRegressionTest {
     private fun repoRoot(): File {
         var current = File(System.getProperty("user.dir")).canonicalFile
         repeat(5) {
-            if (File(current, "app/src/main/assets/kernel_profiles").isDirectory) return current
+            if (File(current, "app/src/main/assets/profile").isDirectory) return current
             current = current.parentFile ?: error("cannot locate repository root")
         }
         error("cannot locate repository root")

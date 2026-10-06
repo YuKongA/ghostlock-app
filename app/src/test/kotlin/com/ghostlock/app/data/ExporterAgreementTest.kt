@@ -31,20 +31,20 @@ class ExporterAgreementTest {
     fun `exporter output matches the app native documents`() = runBlocking {
         /* The Gradle build tree lives under ~/.ghostlock/build (commit 03b4ddc
          * moved it out of iCloud), so the exporter output is the external root
-         * build/kernel-profiles; the in-tree path is kept for the native build
+         * build/profiles; the in-tree path is kept for the native build
          * layout and for a developer who exports there. */
         val exporterDir = listOf(
-            File("../build/kernel-profiles"),
-            File(System.getProperty("user.home"), ".ghostlock/build/root/kernel-profiles"),
+            File("../build/profiles"),
+            File(System.getProperty("user.home"), ".ghostlock/build/root/profiles"),
         ).firstOrNull { it.isDirectory }
         assertTrue(
-            "exporter output missing; run :profile-core:exportKernelProfiles",
+            "exporter output missing; run :profile-core:exportProfiles",
             exporterDir != null,
         )
         val exportDir = requireNotNull(exporterDir)
 
         val index = HoconSupport.parseValue(
-            AssetConfigLoader(context).load("kernel_profiles/index.conf"),
+            AssetConfigLoader(context).load("profile/index.conf"),
         ).asValueMap() ?: error("index.conf is not an object")
         val expected = index["profiles"].asValueList().orEmpty()
             .mapNotNull { it.asValueMap() }

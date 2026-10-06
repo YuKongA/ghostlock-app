@@ -31,7 +31,7 @@ class BuiltinProfilesTest {
 
     private fun builtinEntries(): List<Entry> {
         val index = HoconSupport.parseValue(
-            AssetConfigLoader(context).load("kernel_profiles/index.conf"),
+            AssetConfigLoader(context).load("profile/index.conf"),
         ).asValueMap() ?: error("index.conf is not an object")
         return index["profiles"].asValueList().orEmpty()
             .mapNotNull { it.asValueMap() }
@@ -165,11 +165,11 @@ class BuiltinProfilesTest {
     @Test
     fun `legacy shared defaults stay in sync with the bundled 6x templates`() {
         val loader = AssetConfigLoader(context)
-        val credProfile = HoconSupport.parseValue(loader.load("kernel_profiles/credential-6x.conf"))
+        val credProfile = HoconSupport.parseValue(loader.load("profile/credential-6x.conf"))
             .asValueMap()!!
         ProfileLayout.applyNormalize(credProfile)
         val cred = credProfile["cred"].asValueMap()!!
-        val snitchProfile = HoconSupport.parseValue(loader.load("kernel_profiles/kernelsnitch-6x.conf"))
+        val snitchProfile = HoconSupport.parseValue(loader.load("profile/kernelsnitch-6x.conf"))
             .asValueMap()!!
         ProfileLayout.applyNormalize(snitchProfile)
         val snitch = snitchProfile["kernelsnitch"].asValueMap()!!

@@ -50,7 +50,7 @@ ghostlock {
 
 ## 5. 逐文件清单
 
-- **资产**：`app/src/main/assets/kernel_profiles/*.conf`（63 个主体 + `index.conf` + 5 个 `include` 片段改为新布局的片段键）；
+- **资产**：`app/src/main/assets/profile/*.conf`（63 个主体 + `index.conf` + 5 个 `include` 片段改为新布局的片段键）；
 - **Kotlin**：`HoconSupport`（包裹解包）、`ProfileMerger`/`ProfileResolver`、`AndroidProfileConfigController`、`BuiltinProfileCatalog`、`UserProfileStore`（同一归一化）、高级设置路径键；
 - **extractor**：`tools/extract_rs/src/report.rs` 输出新布局（其 `flatten_conf(generated) ≡ flatten_conf(bundled)` 测试必须继续通过）；
 - **测试**：Kotlin「新旧布局都过」+「旧键归一」+「未识别旧键报错」；extractor `cargo test`；native `profile_manifest_v3_test` 不变（wire 不动）。

@@ -94,8 +94,8 @@ for each probe in module_probes:
 | `src/core/memory/payload_builder.cpp` | 修改 | `make_value()` 工厂；布局/校验分支；compact 臂围栏 |
 | `src/core/tests/cfi_stage_test.cpp` | 新增 | 纯函数断言（镜像边界、模块区筛选、上限截断） |
 | `app/src/main/kotlin/data/runstate/RunStateCodec.kt` | 修改 | `Steps` 枚举加 `vr1` |
-| `app/src/main/assets/kernel_profiles/6.6-template.conf` | 修改 | 新增 tracepoint 常量配置节 |
-| `app/src/main/assets/kernel_profiles/<release>.conf` × N | 修改 | 为已验证设备添加 tracepoint 常量 |
+| `app/src/main/assets/profile/6.6-template.conf` | 修改 | 新增 tracepoint 常量配置节 |
+| `app/src/main/assets/profile/<release>.conf` × N | 修改 | 为已验证设备添加 tracepoint 常量 |
 
 ### 不动的文件
 
@@ -237,7 +237,7 @@ python3 tools/cmp_disasm.py baseline/build/native/ghostlock build/native/ghostlo
 ### ⏳ 待提取偏移量
 
 - 其他 vivo 设备（需 boot.img + kallsyms）
-- 提取方法见 `docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md`（相对本目录为 `../../kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md`）
+- 提取方法见 `docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md`（相对本目录为 `../../profile/EXTRACT_TRACEPOINT_CONSTANTS.md`）
 
 ---
 

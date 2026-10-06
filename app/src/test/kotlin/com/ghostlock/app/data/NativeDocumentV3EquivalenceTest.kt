@@ -91,6 +91,10 @@ class NativeDocumentV3EquivalenceTest {
      * kRootSection), no longer common.safe_mode. */
     private fun safeModeOf(document: Glkv3Document): Boolean? = document.safeMode
 
+    /* NOTE (M3, 2026-10-06): native-doc-golden-v3.sha256 encodes the QUEUE wire
+     * shape (available.<id>{ route, queue }); the token form (backend.<id>.steps)
+     * was removed from the assets in M3 and the parser support is deleted in M5.
+     * The data file must stay comment-free: readGolden() skips blank lines only. */
     private fun readGolden(): Map<String, String> {
         val text = checkNotNull(
             javaClass.classLoader?.getResourceAsStream("native-doc-golden-v3.sha256"),

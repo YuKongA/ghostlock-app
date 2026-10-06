@@ -3,7 +3,7 @@ package com.ghostlock.app.data
 import android.content.Context
 
 /**
- * Runtime catalogue of the bundled profiles, loaded from kernel_profiles/
+ * Runtime catalogue of the bundled profiles, loaded from profile/
  * index.conf on first use. Keeps the assets as the single source of truth
  * (replaces the former build-time SupportedKernels code generation).
  */
@@ -104,6 +104,6 @@ internal class BuiltinProfileCatalog(context: Context) {
     }
 
     private companion object {
-        const val BuiltinDirectory = "kernel_profiles"
+        const val BuiltinDirectory = "profile"
     }
 }

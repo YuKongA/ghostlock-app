@@ -55,7 +55,7 @@ interface ProfileConfigController {
      */
     suspend fun saveModified(release: String, pair: CpuPair): Boolean
 
-    /** Releases listed by the bundled kernel_profiles/index.conf. */
+    /** Releases listed by the bundled profile/index.conf. */
     suspend fun builtinReleases(): List<String>
 
     /** Manually selected builtin source, or null for automatic matching. */

@@ -25,7 +25,7 @@
 
 | 层 | 现状 | 双 backend 暴露的问题 |
 |---|---|---|
-| **HOCON**（`app/src/main/assets/kernel_profiles/*.conf`） | `release/kernel_major/backend{steps}/route/fallback/kernelsnitch/task_struct/cred/offset`；`index.conf` 列 release→file；`execution-*.conf` 公共调参 | ① **无 `backend.kind`**（由 Kotlin 注入）；② 组几乎全是 43499 专属，**43284 没有落脚点**；③ route 与 backend 强耦合（43284 是 route-less）；④ 没有「哪个 backend 支持哪些 steps/terminal」的矩阵 |
+| **HOCON**（`app/src/main/assets/profile/*.conf`） | `release/kernel_major/backend{steps}/route/fallback/kernelsnitch/task_struct/cred/offset`；`index.conf` 列 release→file；`execution-*.conf` 公共调参 | ① **无 `backend.kind`**（由 Kotlin 注入）；② 组几乎全是 43499 专属，**43284 没有落脚点**；③ route 与 backend 强耦合（43284 是 route-less）；④ 没有「哪个 backend 支持哪些 steps/terminal」的矩阵 |
 | **kprofile**（HOCON→运行时 profile） | `AndroidProfileConfigController` + **手写**映射 + 注入 `backend.kind`/`steps` | ① **43284 私有策略不填**（磁盘实测 section 里只有 `steps`）；② 默认值散在 native 代码，Kotlin 不知道；③ 加 backend 要改多处手写代码 |
 | **wire**（GLKv3 MessagePack，`schema==3`） | 类型只有 `uint/int/bool`（94/3/4），路径如 `backend.cve_2026_43284.carrier_path`（**数值 token**） | ① **无 string** → 路径类只能靠 token 或硬约定（本机靠 `$GHOSTLOCK_HOME/helper.ko`）；② token 语义不可自解释；③ required 与 backend 代码检查**不一致**（连续撞到 `ProfileIncomplete`/`MissingProfileKmi`/`MissingLkmPath`） |
 | **profile**（native `profile/` + owner schema） | `profile` 只做 framing；owner：`platform::abi` 31 / `cve_2026_43499` 63 / `cve_2026_43284` 7；manifest TSV 为对拍权威 | ① **required/默认值没有单一权威**（一半在 schema、一半在 `run_backend_terminal`）；② `bind_all` 与校验模式不统一；③ 新 backend 要自造 token 约定 |

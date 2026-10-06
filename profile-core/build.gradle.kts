@@ -30,11 +30,11 @@ dependencies {
  * [ProfileResolver] / `NativeProfileDocument` code as the app and encodes it
  * with `Glkv3Encoder` + `NativeProfileGlkv3Adapter`.
  */
-tasks.register<JavaExec>("exportKernelProfiles") {
+tasks.register<JavaExec>("exportProfiles") {
     description = "Serialize bundled HOCON kernel profiles into GLKv3 .bin documents"
     group = "build"
-    val profilesDir = rootProject.layout.projectDirectory.dir("app/src/main/assets/kernel_profiles")
-    val outputDir = rootProject.layout.buildDirectory.dir("kernel-profiles")
+    val profilesDir = rootProject.layout.projectDirectory.dir("app/src/main/assets/profile")
+    val outputDir = rootProject.layout.buildDirectory.dir("profiles")
     inputs.dir(profilesDir)
     outputs.dir(outputDir)
     classpath = sourceSets["main"].runtimeClasspath

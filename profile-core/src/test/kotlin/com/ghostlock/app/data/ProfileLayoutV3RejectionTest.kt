@@ -112,7 +112,7 @@ class ProfileLayoutV3RejectionTest {
                 "schema_version" to 3,
                 "release" to "6.1.145-android14-11-maybe-dirty",
                 "kernel_major" to 6,
-                "available" to valueMapOf("cve_2026_43499" to listOf("mcast_rootchild")),
+                "available" to valueMapOf("cve_2026_43499" to valueMapOf("route" to "multicast_waiter", "queue" to listOf(valueMapOf("step" to "w1"), valueMapOf("step" to "w2"), valueMapOf("step" to "w3")))),
                 "backend" to valueMapOf(
                     "cve_2026_43499" to valueMapOf(
                         "steps" to "mcast_rootchild",

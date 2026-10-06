@@ -74,7 +74,7 @@ import java.util.Locale
 /* Field reference and validation rules live in the repository docs; pick the
  * page matching the system language. */
 private const val ProfileDocsBase =
-    "https://github.com/YuKongA/ghostlock-app/blob/main/docs/kernel_profiles/"
+    "https://github.com/YuKongA/ghostlock-app/blob/main/docs/profile/"
 
 private fun profileDocsUrl(): String =
     ProfileDocsBase + if (Locale.getDefault().language == "zh") {

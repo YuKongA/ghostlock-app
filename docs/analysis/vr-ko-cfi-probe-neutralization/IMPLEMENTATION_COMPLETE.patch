@@ -318,12 +318,12 @@ val Steps = setOf(
 )
 
 // ============================================
-// 7. app/src/main/assets/kernel_profiles/6.6-template.conf
+// 7. app/src/main/assets/profile/6.6-template.conf
 // ============================================
 
 # Tracepoint constants for CFI stage (vivo vr.ko neutralization)
 # These are extracted from the device's own vmlinux.
-# See docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md for extraction guide.
+# See docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md for extraction guide.
 tracepoint {
   sys_exit {
     probestub_off = 48  # 0x30 (no CONFIG_HAVE_STATIC_CALL)

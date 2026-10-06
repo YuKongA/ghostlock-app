@@ -9,6 +9,7 @@ app/build/
 libghostlock.so
 libextract.so
 build/
+bin/
 /.build/
 .DS_Store
 __pycache__

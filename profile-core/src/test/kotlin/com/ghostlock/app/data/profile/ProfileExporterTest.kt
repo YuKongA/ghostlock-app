@@ -5,8 +5,8 @@ import org.junit.Test
 import java.io.File
 
 class ProfileExporterTest {
-    private val src = File("/repo/app/src/main/assets/kernel_profiles")
-    private val expected = File("/repo/build/kernel-profiles")
+    private val src = File("/repo/app/src/main/assets/profile")
+    private val expected = File("/repo/build/profiles")
 
     @Test
     fun `accepts the configured export dir`() {

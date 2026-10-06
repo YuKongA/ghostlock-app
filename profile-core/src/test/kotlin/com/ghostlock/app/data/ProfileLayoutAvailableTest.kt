@@ -18,17 +18,23 @@ import org.junit.Test
 class ProfileLayoutAvailableTest {
 
     @Test
-    fun `the token list form is accepted unchanged and adds no backend key`() {
-        val canonical = ProfileLayout.canonicalize(
-            document("cve_2026_43499" to listOf("mcast_rootchild")),
-        )
-        assertEquals(
-            listOf("mcast_rootchild"),
-            canonical["available"].asValueMap()?.get("cve_2026_43499"),
-        )
-        /* Zero new bytes: the list form carries no queue selection, so the
-         * backend owner keeps exactly the keys the document declared. */
-        assertEquals(setOf("steps"), owner(canonical).keys)
+    fun `the token list form was removed in M5 and is rejected with its path`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            ProfileLayout.canonicalize(document("cve_2026_43499" to listOf("mcast_rootchild")))
+        }
+        val message = error.message.orEmpty()
+        assertTrue("diagnostic must name the path: " + message, message.contains("available.cve_2026_43499"))
+        assertTrue("diagnostic must state the M5 removal: " + message, message.contains("removed in M5"))
+    }
+
+    @Test
+    fun `an empty token list is rejected by its own diagnostic`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            ProfileLayout.canonicalize(document("cve_2026_43499" to emptyList<String>()))
+        }
+        val message = error.message.orEmpty()
+        assertTrue("empty list needs its own diagnostic: " + message, message.contains("empty token list"))
+        assertTrue("empty list diagnostic must name the path: " + message, message.contains("available.cve_2026_43499"))
     }
 
     @Test
@@ -90,14 +96,13 @@ class ProfileLayoutAvailableTest {
     }
 
     @Test
-    fun `canonicalize is idempotent for both shapes`() {
+    fun `canonicalize is idempotent for the object shape`() {
         val selection = valueMapOf(
             "route" to "multicast_waiter",
             "queue" to listOf(valueMapOf("step" to "w1")),
             "experimental" to true,
         )
         val documents = listOf(
-            document("cve_2026_43499" to listOf("mcast_rootchild")),
             document("cve_2026_43499" to selection),
             document(
                 "cve_2026_43499" to selection,
@@ -164,6 +169,25 @@ class ProfileLayoutAvailableTest {
     }
 
     @Test
+    fun `a backend without a route axis rejects a queue route`() {
+        val thrown = assertThrows(IllegalArgumentException::class.java) {
+            ProfileLayout.canonicalize(
+                document(
+                    "cve_2026_43284" to valueMapOf(
+                        "route" to "multicast_waiter",
+                        "queue" to listOf(valueMapOf("step" to "pagecache_write")),
+                    ),
+                    backend = "cve_2026_43284",
+                ),
+            )
+        }
+        assertTrue(
+            thrown.message.orEmpty(),
+            thrown.message.orEmpty().contains("available.cve_2026_43284.route: route-not-applicable"),
+        )
+    }
+
+    @Test
     fun `two string route slots fail closed instead of picking a precedence`() {
         val thrown = assertThrows(IllegalArgumentException::class.java) {
             ProfileLayout.canonicalize(
@@ -184,15 +208,22 @@ class ProfileLayoutAvailableTest {
 
     @Test
     fun `a backend selection key without an available declaration is an unknown key`() {
-        val source = document("cve_2026_43499" to listOf("mcast_rootchild"))
+        /* M5: the base declaration must be the object form - the token-list form
+         * is rejected, so it could not reach the backend-owner check. */
+        val source = document(
+            "cve_2026_43499" to valueMapOf(
+                "route" to "multicast_waiter",
+                "queue" to listOf(valueMapOf("step" to "w1")),
+            ),
+        )
         val backend = source["backend"].asValueMap()!!["cve_2026_43499"].asValueMap()!!
-        backend["queue"] = listOf(valueMapOf("step" to "w1"))
+        backend["mystery"] = 1
         val thrown = assertThrows(IllegalArgumentException::class.java) {
             ProfileLayout.canonicalize(source)
         }
         assertTrue(
             thrown.message.orEmpty(),
-            thrown.message.orEmpty().contains("backend.cve_2026_43499.queue: unknown profile key"),
+            thrown.message.orEmpty().contains("backend.cve_2026_43499.mystery: unknown profile key"),
         )
     }
 

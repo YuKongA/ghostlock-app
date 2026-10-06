@@ -163,7 +163,7 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 assets HOCON（index.conf + <uname-r>.conf + execution-*.conf + 公共节）
    → Kotlin 解析/合并（include 展开、route 显式选择）
    → 用户覆盖层（按 release 稀疏保存，优先级高于内置与导入）
-   → GLK1 二进制（stdin 传给 native；exportKernelProfiles 生成 .bin）
+   → GLK1 二进制（stdin 传给 native；exportProfiles 生成 .bin）
    → native TargetProfile 只读快照（此后执行层只认它）
 ```
 
@@ -357,7 +357,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Minimalism、Google style）。
 工程侧的三条硬约束：
 
-- 双语对（`README.md`/`README_ZH.md`、`docs/kernel_profiles/**` 的 `_ZH`）必须同批次同步修改；
+- 双语对（`README.md`/`README_ZH.md`、`docs/profile/**` 的 `_ZH`）必须同批次同步修改；
 - 改动影响命令/字段/流程时，文档必须同一批次回写；
 - 计划文档与门禁记录的模板字段（含 commit 与日期）必须完整，fail/pass 同等归档。
 

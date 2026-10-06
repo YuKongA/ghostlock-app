@@ -1,0 +1,7 @@
+release=5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+route=mcast
+cpu=0,1
+serial=QV770MFGJ1
+native_exit=0
+device_log_dir=/data/local/tmp/ghostlock-gate/logs/20261006-152754
+device_log_kind=data-local-tmp (sdcard not mounted: locked device)

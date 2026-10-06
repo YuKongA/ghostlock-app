@@ -8,7 +8,7 @@ Derive the two physical addresses a profile needs, on a rooted device:
 - `kernel_phys_offset` — the DRAM base (linear-map `PHYS_OFFSET`).
 
 The extractor cannot obtain these from the image (see
-[MEDIATEK.md](../../docs/kernel_profiles/MEDIATEK.md)); the script reads them
+[MEDIATEK.md](../../docs/profile/MEDIATEK.md)); the script reads them
 from `/proc/iomem` and `/proc/kallsyms`.
 
 ## Files

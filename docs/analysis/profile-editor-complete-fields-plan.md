@@ -42,13 +42,13 @@
 | --- | --- | --- |
 | `tools/extract_rs/src/report.rs` | `render_conf`：`kernel_phys_load` 改十进制；`conf_offsets`/task/cred/route geometry/snitch 缺失项写 `null` 而非省略；route geometry 对当前 route 全字段占位 | 保证可被 Kotlin 读取 + 字段完整 |
 | `tools/extract_rs/src/main.rs` | conf 组装处传入完整字段集合（含 null 占位） | 配合上一条 |
-| `app/src/main/assets/kernel_profiles/*.conf` | 逐份补齐公共/route 字段；未知写 `null` | 满足「所有配置包含每一项」 |
+| `app/src/main/assets/profile/*.conf` | 逐份补齐公共/route 字段；未知写 `null` | 满足「所有配置包含每一项」 |
 | `app/src/main/kotlin/.../data/AndroidProfileConfigController.kt` | `buildTree`/`generalFields`/`routeTuningPaths`：以「当前 route + fallback + 公共字段」全集的**权威列表**渲染，缺失补 `null` 行 | UI 完整加载 |
 | `app/src/main/kotlin/.../domain/model/GhostlockModels.kt` | 定义「route 可编辑字段全集」常量（route 几何 + 公共几何） | 单一权威 |
 | `profile-core/.../data/NativeProfile.kt` | 明确 `null` 的写入语义（见决策点 D3） | 跨层契约 |
 | `profile-core/.../data/HoconSupport.kt` | 核对 `render` 对 `null` 的输出（已支持，补测试） | 导出保留 null |
 | `src/core/route/route_policy.hpp` | `MulticastPolicy::allows_fallback = true`（5.x mcast→select 回退） | 放开 5.15 fallback（攻击路径，见专节） |
-| `docs/kernel_profiles/PROFILE_SCHEMA*.md` | 回写字段完整性规则 | 文档同步 |
+| `docs/profile/PROFILE_SCHEMA*.md` | 回写字段完整性规则 | 文档同步 |
 | `README*.md`（如需） | 说明生成的 conf 为完整字段 | 双语同步 |
 
 ## 数据流/控制流差异
@@ -83,7 +83,7 @@ extractor conf --(十进制 + null 占位)--> HOCON(含每一项) --(Number/null
 | extractor | `cargo test --release --manifest-path tools/extract_rs/Cargo.toml` | 全过；新增「conf 数字全为十进制」「字段完整含 null」用例 |
 | Kotlin 单元 | `./gradlew :app:testDebugUnitTest` | 全过；新增「null 字段在 UI 树出现」「十进制写入 binary」用例 |
 | NDK/lint（若触及 Kotlin 无关） | `make -C src native-host-tests` + `make -C src lint-tidy` | 不变（未触 native） |
-| 端到端 | `./gradlew exportKernelProfiles` | 导出的 `.bin` 含 `kernel_phys_load` 等字段 |
+| 端到端 | `./gradlew exportProfiles` | 导出的 `.bin` 含 `kernel_phys_load` 等字段 |
 | 真机 | 门禁记录（PROFILE-* 格式） | 加载新 profile，route 命中、写验证通过 |
 
 ## 明确保留
@@ -106,7 +106,7 @@ extractor conf --(十进制 + null 占位)--> HOCON(含每一项) --(Number/null
 ### GLK1 v2 的性质（D3=A 的前提）
 
 GLK1 v2 是 Kotlin↔native 的**传输（wire）格式**，也是内置预编译 profile 的载体
-（`exportKernelProfiles` 产出 `.bin`，native `--load-prebuilt-profile`）。它**不是**用户编辑的保存格式
+（`exportProfiles` 产出 `.bin`，native `--load-prebuilt-profile`）。它**不是**用户编辑的保存格式
 （保存为 HOCON/preferences），也**不是**执行格式（native 解析后转为内存 `kernel_offsets`）。因此 D3=A
 不改动 GLK1 字节格式，只改 HOCON/UI/extractor 三层。
 

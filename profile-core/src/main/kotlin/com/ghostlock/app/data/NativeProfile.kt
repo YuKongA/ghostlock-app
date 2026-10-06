@@ -275,9 +275,10 @@ data class NativeProfileDocument(
             null
         } else {
             val token = combination?.takeIf { it.backend == BackendKind.Cve2026_43499 }?.token
-            val text = buildList {
+            /* M5: the wire carries the queue + route only; the combination token is an
+             * INTERNAL normalisation key (kCombinationCatalog) and is no longer emitted. */
+            val text = buildList<Pair<String, String>> {
                 queueRoute?.let { add("route" to it) }
-                token?.let { add("steps" to it) }
             }
             val entries = buildList {
                 /* Presence is key occurrence: the bool is only written when the
@@ -308,11 +309,8 @@ data class NativeProfileDocument(
         val config = cve2026_43284 ?: Cve2026_43284Config()
         /* kmi / lkm_path / carrier_path are native-side conventions now (the wire
          * keeps them; the profile must not provide them). */
-        val text = buildList {
-            combination?.takeIf { it.backend == BackendKind.Cve2026_43284 }?.let {
-                add("steps" to it.token)
-            }
-        }
+        /* M5: no backend.<id>.steps on the wire (43284 carries no route/queue strings). */
+        val text = buildList<Pair<String, String>> { }
         /* HOCON refactor: the execution tuning moved under `execution.*`. */
         val entries = buildList {
             config.selinuxExecContext?.let { add("selinux_exec_context" to it) }
@@ -420,7 +418,17 @@ data class NativeProfileDocument(
         fun patchSafeMode(document: ByteArray): ByteArray? =
             Glkv3Decoder.patchSafeMode(document)
 
-        /** Builds the document from resolved profile values by dotted path. */
+        /**
+         * Builds the document from resolved profile values by dotted path.
+         *
+         * [raw] is the untyped sibling of the three scalar accessors: the M4 step
+         * queue is an array of maps and cannot ride `text`/`bool`/`value`. It is
+         * read under the canonical runtime paths `backend.<id>.queue` /
+         * `.experimental` / `.queue_route` (see ProfileLayout); undeclared keys
+         * stay null, so no wire key is written and existing documents keep their
+         * exact bytes. The default reads nothing, which keeps every caller that
+         * has no queue byte-identical.
+         */
         fun from(
             release: String,
             route: String?,
@@ -429,6 +437,8 @@ data class NativeProfileDocument(
             value: (String) -> Long?,
             /** P1: enabled plugins only; empty keeps every caller byte-identical. */
             plugins: List<PluginEmission> = emptyList(),
+            /** M4: raw canonical payloads by dotted path (the step queue). */
+            raw: (String) -> Any? = { null },
         ): NativeProfileDocument {
             fun vu(path: String): UInt = value(path)?.toUInt() ?: 0u
             fun vul(path: String): ULong = value(path)?.toULong() ?: 0uL
@@ -440,6 +450,32 @@ data class NativeProfileDocument(
              * closed with the token text echoed. */
             val backendKind = BackendKind.resolve(BackendKind.normalize(text("backend.kind")))
                 ?: BackendKind.Default
+            /* M4: the declared queue selection rides the canonical backend owner
+             * (ProfileLayout.CarriedSelectionKeys) and reaches this accessor
+             * through the runtime carrier below. */
+            /* The runtime carrier is owner-qualified under a NEUTRAL key
+             * (`backend.queue_selection.<id>.{...}`): owner-qualified because the
+             * App re-kinds `backend.kind`, neutral because a `backend.<id>` key
+             * would make isCanonical mistake the runtime model for a canonical
+             * document (see ProfileLayout.QueueSelectionKey). */
+            val runtimeSelectionPath = "backend." + ProfileLayout.QueueSelectionKey + "." +
+                backendKind.token + "."
+            /* TWO callers feed TWO shapes: the App hands over the RUNTIME model
+             * (carrier above), while the Gradle exporter hands over the MERGED
+             * CANONICAL document, where the declaration
+             * `available.<id>.{route,queue,experimental}` is the single source of
+             * truth. Read the carrier first and fall back to the declaration, so
+             * both paths emit the SAME queue - without the fallback the exporter
+             * path silently emitted no queue at all (the merged document is
+             * canonical, so it has no carrier). */
+            val declaredSelectionPath = "available." + backendKind.token + "."
+            val queueRoute = text(runtimeSelectionPath + "queue_route")
+                ?.takeIf { it.isNotEmpty() }
+                ?: text(declaredSelectionPath + "route")?.takeIf { it.isNotEmpty() }
+            val experimental = bool(runtimeSelectionPath + "experimental")
+                ?: bool(declaredSelectionPath + "experimental")
+            val stepQueue = queueElements(raw(runtimeSelectionPath + "queue"))
+                ?: queueElements(raw(declaredSelectionPath + "queue"))
             val combinationToken = text("backend.steps")
             val combination = if (combinationToken == null) {
                 null
@@ -577,10 +613,33 @@ data class NativeProfileDocument(
                 backendKind = backendKind.wire.toUInt(),
                 cve2026_43284 = config43284,
                 plugins = plugins,
+                /* M4 queue carrying (null => no key => zero new bytes). */
+                queueRoute = queueRoute,
+                stepQueue = stepQueue,
+                experimental = experimental,
             )
         }
 
-
+        /**
+         * M4: the declared step queue is an array of maps (native array of Map).
+         * `ProfileLayout` already validated the declaration shape, so this only
+         * translates it; a malformed value fails closed instead of being dropped
+         * (a silently missing queue would run a different plan than declared).
+         */
+        private fun queueElements(raw: Any?): List<QueueElement>? {
+            if (raw == null) return null
+            val list = raw as? List<*>
+            require(list != null) { "backend queue must be a list of step objects" }
+            return list.map { element ->
+                val map = (element as? Map<*, *>)?.asValueMap()
+                require(map != null) { "backend queue element must be an object" }
+                QueueElement(
+                    step = map["step"] as? String,
+                    seam = map["seam"] as? String,
+                    stage = map["stage"] as? String,
+                )
+            }
+        }
     }
 }
 

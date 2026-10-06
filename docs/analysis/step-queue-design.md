@@ -46,7 +46,7 @@
 ## 2 现状与基线
 
 - 分支/基线：`very-not-stable-dev`，本稿写于 `f72b145f`（守卫批）之后；HOCON 重构 ①–④ 已落地（`b55708a8`、`23958eb0`、`0c63b56b`）。
-- 资产：`app/src/main/assets/kernel_profiles/` 共 **68** 个 `.conf`＝**58 个 release profile** + 10 个共享/片段（4 个 `*-template.conf`、`execution-tuning.conf`/`execution-{tcp-zerocopy,select-stack}.conf`、`credential-6x.conf`、`kernelsnitch-6x.conf`、`index.conf`）。（Lead 口径的「62 份」应为早期计数；以 68/58 为准，See §11-U6。）
+- 资产：`app/src/main/assets/profile/` 共 **68** 个 `.conf`＝**58 个 release profile** + 10 个共享/片段（4 个 `*-template.conf`、`execution-tuning.conf`/`execution-{tcp-zerocopy,select-stack}.conf`、`credential-6x.conf`、`kernelsnitch-6x.conf`、`index.conf`）。（Lead 口径的「62 份」应为早期计数；以 68/58 为准，See §11-U6。）
 
 ### 2.1 当前选择面（token）
 
@@ -220,7 +220,7 @@
 | **M2** | wire/native：**W2（wire 直接承载对象数组）**+ 中立 `Document` 复合值 + 声明期/启动期 fail-closed + route 三条守卫（S14a–S14d）+ token **语法糖**（解析期展开为队列）+ §10.1 静默点改硬失败与具名诊断 | 三绿 + manifest 重生成 + 防火墙 + **逐条负例证伪** + **同形对拍语料**（wire → native 解析 ⇒ 与 HOCON 语义逐字段一致）+ **真机门禁**（M2 验收判据见 §4.5：supported 逐字节同路径 / 每个 experimental 各自门禁 / 无队列零新增字节） |
 | **M3** | assets：58 个 release profile + 4 个 template + `index.conf` 的 `available{}` 改写为队列（其余 10 个共享片段中只有承载选择的那几个要改） | 逐资产「归一化计划 == 旧 token 计划」对拍（沿用 R3「扁平化等价 67/67」的做法与证据格式），0 例外 |
 | **M4** | Kotlin/UI：队列解析（B 形态）+ **UI 重做**（用户裁决 D4：现有一版不用了，旧 UI 测试不作迁移验收，替换/删除在实现批次登记）；extractor `--format conf` 同步产出 B 形态 | `:profile-core:test :app:testDebugUnitTest` 绿 + 跨语言 golden 重生成（`make -C src glkv3-golden-hex`）+ Rust `cargo test --release` |
-| **M5** | **删除 token 糖**：`backend.<id>.steps` 不再接受 token 字符串（或整键移除，由 §11-U3 决定）+ 负例（出现 token ⇒ 拒）+ 更新两张 manifest 与文档 | 三绿 + 负例证伪 + 真机门禁（43284 全链 + 43499 冷启）+ 门禁归档 |
+| **M5 ✅ 已完成（`e59a8479` + 归档 `af2feefc`）** | **token 糖已删**：HOCON 列表形态**出现即拒**（两条独立具名诊断）+ native 具名拒 token + 归一化不再物化 token + App 停发 wire `steps`；`steps` 键**保留**（§11-U7） | 三绿 ✅ + 负例 ✅ + **真机 PASS ✅**（二进制 `24e9accf84b9`）+ 门禁归档 ✅；**43284 半边由 native 单测覆盖**（本机 release profile 走 43499，设备路径未单独跑 43284） |
 
 **禁止长期双真相**：M5 是计划的一部分，不是"以后再说"；M2–M4 期间每次改动都必须保证「归一化等价」，任何一处不等价即视为迁移缺陷（比对脚本进测试）。
 
@@ -371,7 +371,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 | M2 | `src/core/profile/document.hpp`、`profile/schema.hpp` | **中立 `Document` 复合值承载（本轮最大项）** + `queue` 的 array-of-map 声明与 bind → 有序 `CanonicalPlan` |
 | M2 | `src/core/pipeline/component_catalog.hpp`、`orchestrator.hpp` | 计划 → 预设归一化键 → dispatch；**route 进 `CanonicalPlan.route`**；**七个静默点改硬失败 + 具名诊断**（§10.1，尤其 S5） |
 | M2 | `src/core/tests/profile_v3_test.cpp` 等 | 每条非法形状一个负例（含 S14a–S14d）；**同形对拍语料**（App 发射 → native 解析 ⇒ 与 HOCON 语义逐字段一致）；token 糖等价对拍 |
-| M3 | `app/src/main/assets/kernel_profiles/*.conf`（68 个：58 release + 10 共享） | token → 队列 B 形态（机械改写 + 逐资产等价对拍） |
+| M3 | `app/src/main/assets/profile/*.conf`（68 个：58 release + 10 共享） | token → 队列 B 形态（机械改写 + 逐资产等价对拍） |
 | M4 | `profile-core/**`、`app/**`、`tools/extract_rs/**` | 队列解析（B）+ **UI 重做**（D4：旧 UI 测试不作验收）+ extractor 产出 B 形态 |
 | M5 | 全部 | 删除 token 糖 + 负例 + 文档/UML 同步 |
 
@@ -453,7 +453,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - **U3 = 已裁决（D3）**：seam = **纯占位** + **复用既有插件阶段词汇**（预留标识符）+ R1 位置约束。
 - **U4 = 已裁决（Lead 采纳）**：迁移期**严格规范序**（只允许与今天两个 step set 同构的前缀子集，如 `[w1,w2]`），将来按需放宽。
 - **U6 = 已定**：资产口径 **68 个 `.conf` = 58 release + 10 共享**；**早前口径 62 是过期计数**（已按 Lead 确认更正）。
-- **U7 = 已裁决（Lead 定）**：键名 = **`queue`**（新键；不复用 `steps`，语义不同、显式优于隐式）；`steps` 是否在 M5 移除另议。
+- **U7 = 已裁决（Lead 定）**：键名 = **`queue`**（新键；不复用 `steps`，语义不同、显式优于隐式）；`steps` 是否在 M5 移除另议。 **M5 落定（`e59a8479`）：保留 `steps` 键 + 具名拒 token 取值**——**不做整键移除**（整键移除会让拒绝退化成泛化 unknown-key，DX 更差 ✗）；native 诊断 `plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`；**legacy uint 边界**：`steps` 声明为 `WireKind::String` ⇒ legacy uint 路径**保留「就地改写为 token 文本」**（改写调用方已发来的键，**不是注入糖**），不变量 = **queue 路径不得创建 `steps` 键**。
 - **U8 = 已裁决（Lead 采纳）**：`available{}` **整体判定 + 步骤级 available 仅用于诊断**（避免组合爆炸）。
 
 - **U5 = 已裁决（2026-10-06，按建议）**：实验面 opt-in = **HOCON 静态声明 `experimental`**。配套规则（三条，写进 §4.3）：
@@ -494,4 +494,4 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 
 ---
 
-**物证索引**：`contract/identity.hpp:54-62/116-214/216-234/251-268/271-300/352-357`；`pipeline/component_catalog.hpp:46-65/69-99/123-152/164-172`；`pipeline/orchestrator.hpp:30-34/44-57/61-86`；`pipeline/pipeline.hpp:53-62`；`backend/cve_2026_43499_backend.hpp:61-62`；`backend/cve_2026_43499/steps.cpp:460/497`；`profile/glkv3_parse.cpp:154-166/207-287/363`；`backend/cve_2026_43499/schema.hpp:88`；`backend/cve_2026_43284/schema.hpp:154`；`app/src/test/resources/{combination,vocabulary}-manifest.tsv`；`app/src/main/assets/kernel_profiles/`（68 `.conf`）；`profile-core/.../Glkv3Encoder.kt:16-36`；`profile-core/.../NativeProfile.kt:258/274/391-407`；`src/core/tests/profile_manifest_v3_test.cpp`（`f72b145f` 三条守卫）。
+**物证索引**：`contract/identity.hpp:54-62/116-214/216-234/251-268/271-300/352-357`；`pipeline/component_catalog.hpp:46-65/69-99/123-152/164-172`；`pipeline/orchestrator.hpp:30-34/44-57/61-86`；`pipeline/pipeline.hpp:53-62`；`backend/cve_2026_43499_backend.hpp:61-62`；`backend/cve_2026_43499/steps.cpp:460/497`；`profile/glkv3_parse.cpp:154-166/207-287/363`；`backend/cve_2026_43499/schema.hpp:88`；`backend/cve_2026_43284/schema.hpp:154`；`app/src/test/resources/{combination,vocabulary}-manifest.tsv`；`app/src/main/assets/profile/`（68 `.conf`）；`profile-core/.../Glkv3Encoder.kt:16-36`；`profile-core/.../NativeProfile.kt:258/274/391-407`；`src/core/tests/profile_manifest_v3_test.cpp`（`f72b145f` 三条守卫）。

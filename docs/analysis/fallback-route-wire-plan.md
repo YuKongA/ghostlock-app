@@ -109,7 +109,7 @@ flowchart LR
 |---|---|---|
 | 1 Native | `make -C src native-host-tests` | 新增双段固定向量通过 |
 | 2 Kotlin | `./gradlew :app:testDebugUnitTest` | 双段 round-trip、TB375FC fallback 值通过 |
-| 3 导出 | `./gradlew exportKernelProfiles` | TB375FC `.bin` 含 `route.select_stack` |
+| 3 导出 | `./gradlew exportProfiles` | TB375FC `.bin` 含 `route.select_stack` |
 | 4 构建 | `./gradlew :app:assembleDebug` + `make -C src ghostlock` | 零警告 |
 | 5 真机 | 冷机 TB375FC route tcp→fallback select 门禁 | route 命中、fallback_used、写验证通过（若设备可用） |
 

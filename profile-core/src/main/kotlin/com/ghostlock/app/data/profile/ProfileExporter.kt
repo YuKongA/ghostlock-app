@@ -5,6 +5,7 @@ import com.ghostlock.app.data.NativeProfileDocument
 import com.ghostlock.app.data.ProfileLayout
 import com.ghostlock.app.data.ValueMap
 import com.ghostlock.app.data.asValueMap
+import com.ghostlock.app.data.getValueAt
 import com.ghostlock.app.data.route.RouteKind
 import java.io.File
 
@@ -82,13 +83,15 @@ object ProfileExporter {
                 value = { path -> ProfileResolver.nativeValue(merged, route, path) },
                 text = { path -> ProfileResolver.nativeText(merged, path) },
                 bool = { path -> ProfileResolver.nativeBool(merged, path) },
+                /* M4: the declared step queue is an array of maps; read it raw. */
+                raw = { path -> merged.getValueAt(path) },
             )
             /* GLKv3-4: the exporter emits the production v3 MessagePack wire;
              * native is v3-only (S4 R2c). */
             val bytes = Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document))
             File(staging, "$actualRelease.bin").writeBytes(bytes)
             count++
-            println("exportKernelProfiles: $actualRelease (${bytes.size} bytes)")
+            println("exportProfiles: $actualRelease (${bytes.size} bytes)")
         }
 
         /* Swap without ever deleting the previous output first: move it aside,
@@ -104,7 +107,7 @@ object ProfileExporter {
         } else if (!staging.renameTo(outDir)) {
             error("cannot move staging dir into place: $outDir")
         }
-        println("exportKernelProfiles: $count profile(s) -> ${outDir.absolutePath}")
+        println("exportProfiles: $count profile(s) -> ${outDir.absolutePath}")
     }
 
     /**

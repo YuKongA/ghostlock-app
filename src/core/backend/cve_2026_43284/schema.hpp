@@ -142,14 +142,17 @@ namespace ghostlock::backend {
              profile::DefaultValue::literal(kCve2026_43284LateLoadArgsDefault),
              profile::FieldSource::Profile, profile::WireKind::UInt,
              "late-load argument policy bitmask; 0 = program + late-load only."},
-            /* S4 R6b combination token. 43284 has no route axis, so the token
-             * is the bare path name (umh today); the internal PageCacheWrite id
-             * is derived from the shared contract whitelist. A legacy numeric
-             * value is rewritten to its token before the bind runs. */
+            /* M5: the combination-token SPELLING is removed from the wire (the
+             * selection is `queue`). The field stays declared so a token sent by
+             * an older document is REFUSED BY NAME (`reason=token-form-removed`)
+             * instead of falling into the generic unknown-key path - see
+             * profile/glkv3_parse.cpp. A pre-v3 numeric id is still rewritten to
+             * its token before the bind runs. */
             {kCve2026_43284Section, "steps", 0, false, false, nullptr,
              profile::DefaultValue::none(), profile::FieldSource::Profile,
              profile::WireKind::String,
-             "Combination token (bare path, S4 R6b).", nullptr,
+             "REMOVED selection surface (M5): a token here is REFUSED (reason=token-form-removed).",
+             nullptr,
              [](Cve2026_43284Profile &view, std::string_view text) {
                  std::uint16_t resolved = 0;
                  if (!contract::combination_stepset_wire_checked(

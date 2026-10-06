@@ -758,7 +758,7 @@ plugin {
 
 ### 3.14.4 统一管理的 HOCON
 
-- **单一管理点**：`app/src/main/assets/kernel_profiles/plugin.conf`（随 App 资产版本化）；
+- **单一管理点**：`app/src/main/assets/profile/plugin.conf`（随 App 资产版本化）；
   profile 文件可用 `include` 引入，形成「一个插件配置 → 所有设备 profile 共用」；
   **现状注（2026-10-05）：该资产已取消**——插件配置属设备/用户特有，改走**覆盖存储**；见 §3.14.7.5；
 - **解析链**：`plugin.conf` → Kotlin 归一化（类型按插件注册的 `ParamSpec`）→ wire `plugin.*` 段 →
@@ -1157,7 +1157,7 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **`kmi` / `lkm_path` / `carrier_path` 从 profile 删除**：**wire 字段保留**，由 native **运行时现算注入**；`lkm_path` / `carrier_path` / 各 `.ko` 路径统一在 **GhostLock 内部目录**解析；
 - **`available` 两级**：先选可用 backend（键），再在其下选组合 token（值）；运行时的选择写入 wire 的 **`backend.<id>.steps`**；**根级 `available` 不是 wire 段**；
 - **消歧**：`index.conf` 的 `backends = [{ id, available }]` 改名 **`usable`**（构建/资产层语义），与 profile 层的 `ghostlock.available{}` **刻意不同名**；
-- **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（**已完成**：过渡层 `translate_conf_path` 删除 = **`a6241bc0`**，最终词汇 only）；`kernel_profiles-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
+- **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（**已完成**：过渡层 `translate_conf_path` 删除 = **`a6241bc0`**，最终词汇 only）；`profile-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
 
 
 ### 3.16.1 根段承载（`kRootSection`）——**不要改回具名成员**
@@ -1308,6 +1308,12 @@ available {
 - **两层词汇**：`StepSetKind` 与 `vocabulary-manifest.tsv` 的 3 行 `stepset` 保留为**内部归一化 id**（wire 数值不变）；步骤 id 是**更细的一层**；两层映射**同表声明、可对拍**，禁止两处各写一份。
 
 **迁移与门禁口径（设计稿 §4.4 批次表）**：M1 用户面零变化；**M2 = wire 类型面变更（Array + 复合值）⇒ 必须真机门禁**（三条验收判据见设计稿 §4.5/§9）；**M5 删糖是单向门**（token 出现即拒 + 负例 + 真机门禁）。
+
+**M3/M5 已落地（2026-10-06；token 形态已删）**：**M3 = `d34caa99` + `6a3d60c6`**（**62 个资产**从 token 列表迁到对象形态：`route` 由 `CombinationCatalog` 派生、`queue` 由 native **`stepset-steps.tsv`** 展开、**零字面量**；E1 逐资产计划等价全绿；E3 字节清单 **61 changed / 1 identical**；**真机 PASS** 归档 `device-gates/20261006-141317`——其间真机抓到 **`queue-and-token-both-present`** ⇒ 迁移不完整 ⇒ 修掉 token）；**M5 = `e59a8479` + 归档 `af2feefc`**：**HOCON 列表形态出现即拒**（两条独立具名诊断：`the token-list form was removed in M5; declare route+queue` / `empty token list is not a selection; declare route+queue`），App **停发 wire `steps`**，native **具名拒 token**（`plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`）且**归一化不再物化 token**；**golden 3920** / **`NO_SELECTION_HEX` 3766**（来源与 −44/−92 已写进注释）；两份 manifest **`62ea112b2caf`** 逐字节一致（说明列写明 M5 拒绝语义）；**M5 真机 PASS**（二进制 `24e9accf84b9`）。**§11-U7 决定**：**保留 `steps` 键 + 具名拒取值**（整键移除会让拒绝退化成泛化 unknown-key，DX 更差）。
+
+**载体 / canonical 双路径读取（M5 修正）**：`NativeProfileDocument.from()` 改为「**运行时载体优先、回退 `available.<id>` 声明**」——此前只读声明路径 ⇒ **导出的 `.bin` 静默丢队列**（✗）；**两条路径必须逐值同构**（新增第二条读取路径 ⇒ 同批补跨路径等价对拍）。**legacy uint 口径边界（`native-r1` 实证）**：owner schema 把 `steps` 声明为 `WireKind::String` ⇒ legacy uint 路径**必须保留「就地改写为 token 文本」**（改写**调用方已发来的键**，**不是注入糖**）；不变量 = 「**queue 路径不得创建 `steps` 键**」。
+
+**M4 收口**：M4 的 `queue` 不上 wire 缺口已由 M5 修掉；**仍未做**：**M4(b) 设备端 app 侧装载实跑**（`LkmImageProvisioner.provision` 仅纯逻辑单测 4/4）。**未做（M5 侧）**：两条证伪与三桶计数的原始记录待补。
 
 **守卫与证伪（设计稿 §10.1，v2.2 口径）**：静默默认点（S1/S3/S5/S6/S8/S9/S13）+ 新形状守卫（S14a–S14d / S15 / **S16–S18**）+ §4.2 非法形状 11 行 = **26 条守卫**，全部**硬失败 + 具名诊断**；每条在实现批次须给「**造错点 → 失败输出 → 撤回核验**」三件套，**证伪一律 `make -B`**（防同秒 mtime 跑旧二进制造成假证明）。
 

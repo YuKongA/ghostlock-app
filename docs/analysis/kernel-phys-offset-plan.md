@@ -52,7 +52,7 @@
 | `app/.../data/AndroidProfileConfigController.kt` | `completeProfileFields` 顶层补 `kernel_phys_offset = null` | 编辑页完整 |
 | `tools/extract_rs/src/report.rs` | `render_conf` 输出 `kernel_phys_offset`（默认 `null`）；`ConfInputs` 增字段 | 生成完整骨架 |
 | `tools/extract_rs/src/main.rs` | 组装 `ConfInputs.kernel_phys_offset`（默认 `None`） | 同上 |
-| `docs/kernel_profiles/PROFILE_SCHEMA.md` / `_ZH.md` | 记录 `kernel_phys_offset` 语义与默认 | 文档 |
+| `docs/profile/PROFILE_SCHEMA.md` / `_ZH.md` | 记录 `kernel_phys_offset` 语义与默认 | 文档 |
 | `docs/analysis/device-gates/*.md` | 本机门禁记录 | 归档 |
 
 ## 数据流/控制流差异

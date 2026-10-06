@@ -1,9 +1,11 @@
+> 注（2026-10-06）：本文件中的路径引用已随本轮 profile 目录与 Gradle 任务改名更新（旧名见 git 历史）；原始日志文本未改，证据内容不变。
+
 # T3c 真机门禁：profile 语义迁移（recommend_shizuku→backend.steps、HOCON 布尔、C++ bool）— PASS（3 次冷机 2/1）
 
 对应提交 `1af39d6`。候选二进制 `build/native/ghostlock` sha256
 `bda198272b5fa9b6141ea0e4f449e47c9c867471e6b23839863aa7fbde303d5f`；
-导出 profile `build/kernel-profiles/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.bin` sha256
-`8aa3200035b3768100cdf660be3b5a5a62b18936c4f653c35ee8a9243bb1b7af`（经 `./gradlew exportKernelProfiles --offline`，exit 0）。
+导出 profile `build/profile/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.bin` sha256
+`8aa3200035b3768100cdf660be3b5a5a62b18936c4f653c35ee8a9243bb1b7af`（经 `./gradlew exportProfiles --offline`，exit 0）。
 
 ## 设备与入口
 

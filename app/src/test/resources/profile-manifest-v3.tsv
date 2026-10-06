@@ -17,7 +17,7 @@ cve_2026_43284	backend.cve_2026_43284.execution.wait_timeout_ms	uint	0	literal:1
 cve_2026_43284	backend.cve_2026_43284.experimental	bool	0	-	profile	Static experimental opt-in declaration (U5).	1
 cve_2026_43284	backend.cve_2026_43284.queue	array	0	-	profile	Step queue: array of {step|seam[,stage]} (M2).	-
 cve_2026_43284	backend.cve_2026_43284.route	str	0	-	profile	Queue-level route token (M2; forbidden for this backend).	-
-cve_2026_43284	backend.cve_2026_43284.steps	str	0	-	profile	Combination token (bare path, S4 R6b).	-
+cve_2026_43284	backend.cve_2026_43284.steps	str	0	-	profile	REMOVED selection surface (M5): a token here is REFUSED (reason=token-form-removed).	-
 cve_2026_43499	backend.cve_2026_43499.abi.cred.caps_offset	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.abi.cred.ref0_offset	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.abi.cred.ref1_offset	uint	0	-	profile	-	4
@@ -109,7 +109,7 @@ cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.cred_copy_off	uint	0	-	
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.fake_task_off	uint	0	-	profile	-	8
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.payload_delta	int	0	-	profile	-	8
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.post_receive_hold_iterations	uint	0	-	profile	-	4
-cve_2026_43499	backend.cve_2026_43499.steps	str	0	-	profile	Combination token <route>_<path> (S4 R6b).	-
+cve_2026_43499	backend.cve_2026_43499.steps	str	0	-	profile	REMOVED selection surface (M5): a token here is REFUSED (reason=token-form-removed).	-
 plugin	plugin.<id>.enabled	bool	0	literal:0	profile	Plugin enabled; default false, and only enabled=true is emitted.	1
 plugin	plugin.<id>.extract.*	uint|int|bool|str	0	-	profile	Dynamic: P2 extractor writes it; P1 validates shape only.	-
 plugin	plugin.<id>.module_hash	str	0	-	profile	Lowercase hex SHA-256 of the module file.	-

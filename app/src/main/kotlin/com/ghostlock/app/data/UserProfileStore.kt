@@ -15,7 +15,7 @@ internal class UserProfileStore(
     private val assetLoader: AssetConfigLoader,
 ) {
     private companion object {
-        const val BuiltinDirectory = "kernel_profiles"
+        const val BuiltinDirectory = "profile"
         val IllegalNameCharacters = Regex("[\\\\/:*?\"<>|\\x00-\\x1f]")
     }
 

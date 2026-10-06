@@ -4,13 +4,13 @@
 
 ## 文档
 
-- [Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。内置配置位于 `app/src/main/assets/kernel_profiles/`：每个 release 一个 HOCON 文件，`index.conf` 保存运行索引，`<major.minor>-template.conf` 提供各内核大版本模板。
-- [支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
-- [公共执行默认值](docs/kernel_profiles/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。
-- [Profile 结构文档](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md) —— profile 的完整结构、字段语义与数据流。
+- [Kernel Profile 适配指南](docs/profile/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。内置配置位于 `app/src/main/assets/profile/`：每个 release 一个 HOCON 文件，`index.conf` 保存运行索引，`<major.minor>-template.conf` 提供各内核大版本模板。
+- [支持设备列表](docs/profile/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
+- [公共执行默认值](docs/profile/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。
+- [Profile 结构文档](docs/profile/PROFILE_SCHEMA_ZH.md) —— profile 的完整结构、字段语义与数据流。
 - [新增组件指南](docs/development/adding-a-component.md) —— 为 native 添加新 backend / terminal / route 的开发者指南。
 
-新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](docs/kernel_profiles/README_ZH.md)。
+新增设备的完整流程、内核版本模板跳转和公共参数理由见[Kernel Profile 适配指南](docs/profile/README_ZH.md)。
 
 明确标记为**需要 Shizuku**的固件通过 shell UserService 执行。先使用 ADB 启动 Shizuku，再点击顶部支持状态区域授权；其余固件沿用应用内执行路径。
 
@@ -26,14 +26,14 @@ adb/shell 环境无 seccomp 过滤，会跳过 W3，适合快速验证：
 
 ```powershell
 make -C src ghostlock
-./gradlew exportKernelProfiles
+./gradlew exportProfiles
 adb push build/native/ghostlock /data/local/tmp/ghostlock
-adb push build/kernel-profiles/<release>.bin /data/local/tmp/profile.bin
+adb push build/profile/<release>.bin /data/local/tmp/profile.bin
 adb shell chmod 755 /data/local/tmp/ghostlock
 adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
 
-CLI 只承载**传输 / 运行控制 / 安全 / 可观测**（S4 R2b）：`--ghostlock-app-call`、`--load-prebuilt-profile <bin>`、`--enable-status-record`、`--dump-kernel-log <dir>`、`--force-attack`、`--allow-dev-target`（只放宽**绑定期** carrier 校验），以及只读诊断 `--probe-cve-2026-43284 <ko>` 与 `--plugin-probe <path.so> [--expect-sha256 <hex>]`。**选择与策略绝不来自 CLI**：staged 入口与 `--cve43284-*` 选择器已删除，未知参数直接 fail-closed。
+CLI 只承载**传输 / 运行控制 / 安全 / 可观测**（S4 R2b）：`--ghostlock-app-call`、`--load-prebuilt-profile <bin>`、`--enable-status-record`、`--dump-kernel-log <dir>`、`--force-attack`、`--allow-dev-target`（只放宽**绑定期** carrier 校验），以及只读诊断 `--probe-cve-2026-43284 <ko>` 。**选择与策略绝不来自 CLI**：staged 入口与 `--cve43284-*` 选择器已删除，未知参数直接 fail-closed。
 
 ## 偏移量提取
 
@@ -47,14 +47,14 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段直接省略，不会用相邻内核族的猜测值（未验证族的 6.6、缺省 `-2`、5.15 multicast 常量、phys 默认）补齐；route 由 `--analysis` 证据建议、`--route` 可覆盖。输出一律是 **unverified candidate**：可导入、可解析，缺失或无效字段由 App 在执行前校验拦截，不能仅凭生成成功声明设备支持。5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--plugin-descriptor <probe-stdout.tsv>`（可重复、**仅 `--format conf`**）让对策插件自己的探针描述去填充 `plugin.<id>.extract.<key>`：键名与类型来自描述符，取值来自正在产出的 profile（R1）、镜像 BTF（R3）或 kallsyms（R2）。它只写 **`extract` 片段**（不是 wire 文档），追加在 `countermeasure` 之后；`required` 解析失败即中止，`optional` 缺失则省略、**绝不用 default 顶替**；不带该开关时输出**逐字节不变**。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
+提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段直接省略，不会用相邻内核族的猜测值（未验证族的 6.6、缺省 `-2`、5.15 multicast 常量、phys 默认）补齐；route 由 `--analysis` 证据建议、`--route` 可覆盖。输出一律是 **unverified candidate**：可导入、可解析，缺失或无效字段由 App 在执行前校验拦截，不能仅凭生成成功声明设备支持。5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `profile/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
 
 ### 联发科
 
 联发科镜像没有 `xbl_config.img`，通常也没有内嵌 BTF，提取器无法从镜像推导两个物理地址
 （`kernel_phys_load`、`kernel_phys_offset`），会把它们留成 `null`。运行时按 SoC 公式回退，在联发科上
 会在 W1 失败。请先在已 root 的设备上运行单独的 `tools/mtk-phys/` 提取器（读取 `/proc/iomem`），
-再把两个值填入 App 的高级参数覆盖。参见 [MEDIATEK_ZH.md](docs/kernel_profiles/MEDIATEK_ZH.md)。
+再把两个值填入 App 的高级参数覆盖。参见 [MEDIATEK_ZH.md](docs/profile/MEDIATEK_ZH.md)。
 
 ### 前置检查
 
@@ -110,11 +110,11 @@ ghostlock {
 }
 ```
 
-完整字段表见 [PROFILE_SCHEMA_ZH.md](docs/kernel_profiles/PROFILE_SCHEMA_ZH.md)；提取器产出同一套 canonical 布局。
+完整字段表见 [PROFILE_SCHEMA_ZH.md](docs/profile/PROFILE_SCHEMA_ZH.md)；提取器产出同一套 canonical 布局。
 
-## 插件（P1）
+## 插件
 
-在设置页导入对策 `.so`：App 把它复制到自己的 no-backup `countermeasures/` 根目录、本地算哈希，并通过**只读 native 探针**读取自描述（`--plugin-probe`，绝不在 JVM 内 `dlopen`）。只有 **enabled=true** 的插件才会以 `plugin.<id>.*` 写进 GLKv3 文档（默认关闭；`params.*` 的具体类型由插件自己的描述符决定；文档里出现 `enabled=false` 一律拒绝）。参考对策插件在独立项目 **`ghostlock-plugin-example`**（内置 ABI 头、`build.sh android|host|abi-check`、双语 README）；本仓库只留 `tools/plugins/README.md` 作为指引——插件作者不应需要 exploit 仓库才能构建。**P1 只交付「声明 → 校验 → 绑定」的 wire 层**：加载模块并按 stage 调用它的运行时**尚未接线**（见 branch-plan 的 task-9，需单独的 L 级设计与真机门禁）。
+插件：待开发。
 
 ## 来源与许可证
 

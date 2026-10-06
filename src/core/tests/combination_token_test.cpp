@@ -1,12 +1,17 @@
-/* S4 R6b combination-token framing test.
+/* S4 R6b combination-token framing test - M5 update.
  *
- * Exercises profile/glkv3_parse.cpp end to end over real GLKv3 bytes:
- *   - a wired token resolves and derives route/steps/terminal;
- *   - a planned token parses but stays unavailable;
- *   - an unknown token is rejected (fail closed);
- *   - a terminal or root route that disagrees with the token is rejected;
- *   - the legacy uint step id maps onto the equivalent token.
- * The token <-> (route, steps, path) derivation is asserted here too. */
+ * The user-visible token form is GONE (M5, design 4.4 / 11-U7): a wire
+ * `backend.<id>.steps = "<token>"` is refused with the NAMED reason
+ * `plan_error reason=token-form-removed`, and `queue` (plus its queue-level
+ * `route`) is the only selection surface. This file therefore asserts:
+ *   - every formerly ACCEPTED token spelling is refused, by name;
+ *   - a terminal / root route can no longer "disagree with the token" (there is
+ *     no token to disagree with) - the queue path owns those rules now;
+ *   - the legacy uint step id keeps its decode path and lands on the
+ *     catalogue's own combination;
+ *   - the internal catalogue (token <-> route / steps / path / terminal) is
+ *     unchanged and stays the single authority - only the wire syntax went.
+ * The queue path itself (preset equivalence) lives in queue_wire_test.cpp. */
 
 #include "contract/identity.hpp"
 #include "profile/glkv3.hpp"
@@ -15,8 +20,12 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 using ghostlock::contract::BackendKind;
 using ghostlock::contract::CombinationKind;
@@ -75,6 +84,46 @@ namespace {
         assert(found != nullptr);
         return *found;
     }
+
+    /* Capture stderr so the named diagnostic is asserted, not assumed. */
+    std::string capture_stderr(const Document &doc, int &status) {
+        char path[] = "/tmp/glk_token_diag_XXXXXX";
+        const int fd = mkstemp(path);
+        assert(fd >= 0);
+        const int saved = dup(STDERR_FILENO);
+        assert(saved >= 0);
+        assert(dup2(fd, STDERR_FILENO) >= 0);
+        ghostlock::profile::Document framed;
+        status = frame(doc, framed);
+        (void)fflush(stderr);
+        assert(dup2(saved, STDERR_FILENO) >= 0);
+        close(saved);
+        lseek(fd, 0, SEEK_SET);
+        std::string text;
+        char buffer[512];
+        ssize_t got = 0;
+        while ((got = read(fd, buffer, sizeof(buffer))) > 0) {
+            text.append(buffer, static_cast<std::size_t>(got));
+        }
+        close(fd);
+        unlink(path);
+        return text;
+    }
+
+    /* M5: the token form must be REFUSED BY NAME. */
+    void expect_token_removed(const char *what, const Document &doc) {
+        int status = 0;
+        const std::string text = capture_stderr(doc, status);
+        if (status == 0 ||
+            text.find("plan_error reason=token-form-removed") == std::string::npos) {
+            std::fprintf(
+                    stderr,
+                    "combination_token_test: %s: expected the removed token form to be "
+                    "refused with plan_error reason=token-form-removed, status=%d\n",
+                    what, status);
+            std::abort();
+        }
+    }
 } // namespace
 
 int main() {
@@ -83,109 +132,79 @@ int main() {
     using ghostlock::profile::kRouteNone;
     using ghostlock::profile::kRouteSelectStack;
 
-    /* ---- Wired token resolves and derives the triple. ---- */
+    /* ---- M5: every formerly ACCEPTED token spelling is refused, by name ----
+     * These blocks used to assert that a wired token resolved and derived its
+     * route / step set / terminal; the wire token is gone, so each now asserts
+     * the REFUSAL (captured from stderr: status != 0 AND
+     * `plan_error reason=token-form-removed`), while the contract-level
+     * expectations that do not depend on the wire syntax stay asserted. */
     {
-        const Document doc = make_doc("cve_2026_43499", "root_child",
-                                      "multicast_waiter", true,
-                                      "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("mcast_rootchild")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) == 0);
-        assert(framed.combination ==
-               static_cast<uint8_t>(CombinationKind::McastRootchild));
-        assert(framed.middleware == kRouteMulticastWaiter);
-        assert(framed.terminal_token == "root_child");
-        const ghostlock::profile::Value *steps =
-                framed.find_value("backend.cve_2026_43499", "steps");
-        assert(steps != nullptr && steps->is_text && steps->text == "mcast_rootchild");
+        expect_token_removed("wired token",
+                             make_doc("cve_2026_43499", "root_child", "multicast_waiter",
+                                      true, "backend.cve_2026_43499",
+                                      Entry{"steps", str_value("mcast_rootchild")}));
         assert(spec(CombinationKind::McastRootchild).steps == StepSetKind::W1W3);
         assert(spec(CombinationKind::McastRootchild).terminal == TerminalKind::RootChild);
     }
-
-    /* ---- A planned token parses, but the selection gate rejects it. ---- */
     {
-        const Document doc = make_doc("cve_2026_43499", "umh_forward",
-                                      "multicast_waiter", true,
-                                      "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("mcast_umh")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) == 0);
-        assert(framed.combination == static_cast<uint8_t>(CombinationKind::McastUmh));
+        expect_token_removed("planned token",
+                             make_doc("cve_2026_43499", "umh_forward", "multicast_waiter",
+                                      true, "backend.cve_2026_43499",
+                                      Entry{"steps", str_value("mcast_umh")}));
         assert(!ghostlock::contract::combination_available(CombinationKind::McastUmh));
-        assert(!ghostlock::contract::combination_available(
-                static_cast<CombinationKind>(framed.combination)));
     }
-
-    /* ---- 43284 planned bare-path token. ---- */
     {
-        const Document doc = make_doc("cve_2026_43284", "root_child", "", false,
+        expect_token_removed("43284 bare-path token",
+                             make_doc("cve_2026_43284", "root_child", "", false,
                                       "backend.cve_2026_43284",
-                                      Entry{"steps", str_value("rootchild")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) == 0);
-        assert(framed.combination == static_cast<uint8_t>(CombinationKind::Rootchild));
+                                      Entry{"steps", str_value("rootchild")}));
         assert(!ghostlock::contract::combination_available(CombinationKind::Rootchild));
         /* F3: a backend without a route axis carries None, not the legacy Auto. */
-        assert(framed.middleware == kRouteNone);
+        assert(spec(CombinationKind::Rootchild).route ==
+               ghostlock::profile::RouteKind::None);
     }
-
-    /* ---- Unknown token: rejected. ---- */
     {
-        const Document doc = make_doc("cve_2026_43499", "root_child",
-                                      "multicast_waiter", true,
+        /* The unknown-token distinction is gone with the syntax: every string
+         * here is refused by the same named rule. */
+        expect_token_removed("unknown token",
+                             make_doc("cve_2026_43499", "root_child", "multicast_waiter",
+                                      true, "backend.cve_2026_43499",
+                                      Entry{"steps", str_value("bogus_token")}));
+    }
+    /* A terminal or a root route can no longer disagree with the token - there
+     * is no token to disagree with. Those rules live on the QUEUE path now:
+     * terminal agreement inside resolve_queue, root-route agreement as
+     * `route-disagrees-with-root`, and the route-axis rules as `route-required` /
+     * `route-not-applicable` (all asserted in queue_wire_test.cpp). */
+    {
+        expect_token_removed("terminal disagreement (was: rejected)",
+                             make_doc("cve_2026_43499", "umh_forward", "multicast_waiter",
+                                      true, "backend.cve_2026_43499",
+                                      Entry{"steps", str_value("mcast_rootchild")}));
+    }
+    {
+        expect_token_removed("root route disagreement (was: rejected)",
+                             make_doc("cve_2026_43499", "root_child", "select_stack", true,
                                       "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("bogus_token")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) != 0);
+                                      Entry{"steps", str_value("mcast_rootchild")}));
     }
-
-    /* ---- Terminal that disagrees with the token: rejected. ---- */
     {
-        const Document doc = make_doc("cve_2026_43499", "umh_forward",
-                                      "multicast_waiter", true,
+        expect_token_removed("route-less document (was: rejected)",
+                             make_doc("cve_2026_43499", "root_child", "", false,
                                       "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("mcast_rootchild")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) != 0);
+                                      Entry{"steps", str_value("mcast_rootchild")}));
     }
-
-    /* ---- Root route that disagrees with the token: rejected. ---- */
     {
-        const Document doc = make_doc("cve_2026_43499", "root_child",
-                                      "select_stack", true,
-                                      "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("mcast_rootchild")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) != 0);
+        expect_token_removed("route on a route-less backend (was: rejected)",
+                             make_doc("cve_2026_43284", "umh_forward", "multicast_waiter",
+                                      true, "backend.cve_2026_43284",
+                                      Entry{"steps", str_value("umh")}));
     }
-
-    /* ---- F3: a token that requires a route rejects a route-less document. ---- */
     {
-        const Document doc = make_doc("cve_2026_43499", "root_child", "", false,
-                                      "backend.cve_2026_43499",
-                                      Entry{"steps", str_value("mcast_rootchild")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) != 0);
-    }
-
-    /* ---- F3: a backend without a route axis rejects a named route. ---- */
-    {
-        const Document doc = make_doc("cve_2026_43284", "umh_forward",
-                                      "multicast_waiter", true,
+        expect_token_removed("wired 43284 token",
+                             make_doc("cve_2026_43284", "umh_forward", "", false,
                                       "backend.cve_2026_43284",
-                                      Entry{"steps", str_value("umh")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) != 0);
-    }
-
-    /* ---- F3: the wired 43284 token derives RouteKind::None. ---- */
-    {
-        const Document doc = make_doc("cve_2026_43284", "umh_forward", "", false,
-                                      "backend.cve_2026_43284",
-                                      Entry{"steps", str_value("umh")});
-        ghostlock::profile::Document framed;
-        assert(frame(doc, framed) == 0);
-        assert(framed.middleware == kRouteNone);
+                                      Entry{"steps", str_value("umh")}));
         assert(spec(CombinationKind::Umh).route == ghostlock::profile::RouteKind::None);
     }
 
@@ -219,8 +238,9 @@ int main() {
         assert(steps != nullptr && steps->is_text && steps->text == "umh");
     }
 
-    /* ---- Wired behaviour equivalence: the old uint wire and the new token
-     * wire resolve to the exact same route / step set / terminal. ---- */
+    /* ---- M5: the LEGACY uint wire still decodes and lands on the catalogue
+     * entry itself. The modern counterpart is the QUEUE path (queue_wire_test
+     * .cpp owns the same-shape corpus and the route/terminal agreement). ---- */
     struct Equivalence {
         const char *token;
         const char *route;
@@ -235,43 +255,33 @@ int main() {
         {"tcp_shizuku", "tcp_zerocopy", 1},
     };
     for (const Equivalence &entry : equivalences) {
-        const Document modern =
-                make_doc("cve_2026_43499", "root_child", entry.route, true,
-                         "backend.cve_2026_43499",
-                         Entry{"steps", str_value(entry.token)});
+        CombinationKind expected = CombinationKind::Unknown;
+        assert(ghostlock::contract::combination_resolve(
+                BackendKind::Cve2026_43499, entry.token, expected));
         const Document legacy =
                 make_doc("cve_2026_43499", "root_child", entry.route, true,
                          "backend.cve_2026_43499",
                          Entry{"steps", uint_value(entry.legacy_id)});
-        ghostlock::profile::Document old_style;
-        ghostlock::profile::Document new_style;
-        assert(frame(modern, new_style) == 0);
-        assert(frame(legacy, old_style) == 0);
-        assert(new_style.combination == old_style.combination);
-        assert(new_style.middleware == old_style.middleware);
-        assert(new_style.terminal_token == old_style.terminal_token);
-        const ghostlock::profile::Value *new_steps =
-                new_style.find_value("backend.cve_2026_43499", "steps");
-        const ghostlock::profile::Value *old_steps =
-                old_style.find_value("backend.cve_2026_43499", "steps");
-        assert(new_steps != nullptr && old_steps != nullptr);
-        assert(new_steps->is_text && old_steps->is_text);
-        assert(new_steps->text == old_steps->text);
+        ghostlock::profile::Document framed;
+        assert(frame(legacy, framed) == 0);
+        assert(framed.combination == static_cast<uint8_t>(expected));
+        /* The legacy path keeps the key the CALLER sent and rewrites it to the
+         * catalogue token for the String bind; M5 removed only the QUEUE path
+         * write-back, where no such key existed. */
+        const ghostlock::profile::Value *steps =
+                framed.find_value("backend.cve_2026_43499", "steps");
+        assert(steps != nullptr && steps->is_text && steps->text == entry.token);
     }
     {
-        const Document modern = make_doc("cve_2026_43284", "umh_forward", "", false,
-                                         "backend.cve_2026_43284",
-                                         Entry{"steps", str_value("umh")});
         const Document legacy = make_doc("cve_2026_43284", "umh_forward", "", false,
                                          "backend.cve_2026_43284",
                                          Entry{"steps", uint_value(3)});
-        ghostlock::profile::Document new_style;
-        ghostlock::profile::Document old_style;
-        assert(frame(modern, new_style) == 0);
-        assert(frame(legacy, old_style) == 0);
-        assert(new_style.combination == old_style.combination);
-        assert(new_style.middleware == old_style.middleware);
-        assert(new_style.terminal_token == old_style.terminal_token);
+        ghostlock::profile::Document framed;
+        assert(frame(legacy, framed) == 0);
+        assert(framed.combination == static_cast<uint8_t>(CombinationKind::Umh));
+        const ghostlock::profile::Value *steps =
+                framed.find_value("backend.cve_2026_43284", "steps");
+        assert(steps != nullptr && steps->is_text && steps->text == "umh");
     }
 
     /* ---- Token <-> (route, steps, path) derivation is one authority. ---- */

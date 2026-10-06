@@ -13,7 +13,7 @@
 | **A3** | 反汇编与推导 | 符号表 + 机器码 | `disasm::disassemble_symbol`, `derive::*` | offset/几何（`task_struct`/`cred`/`offset`/route 几何） | 模式不匹配 → 字段缺失 |
 | **A4** | 物理布局 | raw image | `iomem::find_kernel_memory_map_entry`, `analysis::*` | `kernel_phys_load/offset`、`delta` | 无 iomem → 缺省 |
 | **A5** | 产出 profile | `AnalysisResult`（+ 可选 `--plugin-descriptor <probe-tsv>`，可重复） | `report::render_conf`（canonical 布局 + `schema_version = 3`；**HOCON 重构后的新形状**：根级标量 + `available{ <backend> = [tokens] }` + `backend.<id>`；`common`/`platform`/`selection` 已删除；`--route`/`--steps-path` 决定组合 token）；~~带描述符时产出 `plugin.<id>.extract.<key>`~~——**⏸ 已按用户指令注释/冻结（extract spec 产出端停止）**; `render_json`（v1） | `*.conf`（可导入 App）/`*.json` | `cargo test` 断言「生成 ≡ 内置」+「产出的 token ∈ `combination-manifest.tsv`」；required 缺失 → 失败、optional 缺失 → 省略且不写 default；**无开关时输出逐字节不变** |
-| **B1** | HOCON 加载 | `assets/kernel_profiles/*.conf` + `index.conf` + 用户导入 | `HoconSupport`（include 展开、`${}` 变量） | `ValueMap`（含 legacy 键） | 未知键 → 报错带点分路径 |
+| **B1** | HOCON 加载 | `assets/profile/*.conf` + `index.conf` + 用户导入 | `HoconSupport`（include 展开、`${}` 变量） | `ValueMap`（含 legacy 键） | 未知键 → 报错带点分路径 |
 | **B2** | 归一化 | legacy `ValueMap` | `ProfileLayout.canonicalize`（别名表：`selection.steps`/`backend.steps` → 所属 `backend.<id>.steps` 组合 token（`CombinationCatalog.fromLegacySteps`；`normalize` 仅用于输入边界）、`cred/offset` 平台/私有拆分、`meta.*`→`common.*`） | canonical owner-qualified map（steps = 解析后的 canonical token） | 未识别旧键 / 未知 legacy step id → fail-closed |
 | **B3** | 合并与校验 | canonical map + 覆盖 + 设备 `uname -r` | `ProfileMerger.resolveMerged` → `ProfileResolver.validateMerged` | `ProfileConfig`（resolved 字段集） | release 不匹配 → 拒绝 |
 | **B4** | 建文档 | `ProfileConfig` + `CombinationSpec` + 已启用插件 | `NativeProfileGlkv3Adapter.adapt`（**只发所选 backend 的段 + common + 已启用插件的 `plugin.<id>.*`**；selection 由 `CombinationCatalog` 从 `profile-core/src/main/resources/combination-manifest.tsv` 解析，运行时零 token 字面量；`plugin.<id>.params.*`/`.extract.*` 是 manifest 的 `|` 联合行，具体类型由描述符决定） | GLKv3 `Glkv3Value`（map/sections，`steps` = canonical token，plugin 段仅含 enabled=true） | 缺段 → 该字段不发射；token 未命中 / union 成员未知 → 拒绝 |
@@ -43,6 +43,8 @@
 > **HOCON 重构（**三侧已定稿**：native ①②③④ = `b55708a8` + `23958eb0`；extractor = `a6241bc0`；App 侧 ③ = `c443f5f0`）——profile 装配链**：`assets/*.conf`（**根级标量**：`schema_version`/`release`/`kernel_major`/`kernel_minor`/`safe_mode`；**`available{ <backend> = [tokens] }`** 两级；`backend.<id>`；**根级标量走「根段」承载 `kRootSection`**，使 `find_value(section,key)` 与根键同构，**勿改回具名成员**）→ Kotlin 归一/合并 → **用户在 App 里选 backend（`available` 的键）再选 token（值）** → wire `backend.<id>.steps` → native bind → Pipeline。**`common` / `platform` / `selection` 已删除**（`platform.abi.*` → `backend.cve_2026_43499.abi.*`）；**`terminal` 概念从 HOCON 移除**（token 已蕴含）；43284 的 `execution.*` 收纳执行调参，**`kmi`/`lkm_path`/`carrier_path` 从 profile 删除**（wire 保留、**运行时现算注入**）；`index.conf` 用 **`usable`**（构建/资产层）。
 >
 > **步骤队列取代 token（用户裁决 2026-10-05；**设计已定稿** `docs/analysis/step-queue-design.md`，**M1 起分段落地**）**：`available{ <backend> = [ … ] }` 的**值**将从**预烘焙 token 列表**改为**步骤队列**（**两级保留**：先 backend、再其下队列）；**不做**动态 DSL / 运行期规划（队列是**静态声明**）。连锁：`kCombinationCatalog` 12 token **降级为内部归一化/预设判定**（仍供 `supported` 与 dispatch）、`backend.<id>.steps` 值 token ⇒ 队列、**`PathKind` 按档位 (ii) 删除**、**stepset 改名任务取消**；迁移面 = **62 份资产 + UI + 组合目录 + 契约 + UML**（迁移期允许 token 作**语法糖**，改完**删糖**）。**pipeline 由「编译期固定」变「注册表 + 校验」属结构性改动 ⇒ 设计落地后同批更新本图并写明图名**（设计稿 `docs/analysis/step-queue-design.md` 由 `native-hocon` 编写，docs-uml 不动）。
+>
+> **LKM/DDK 构建里程碑（2026-10-06，`8187375c`）——本图无节点增删，仅注记**：**APK 资产包含 8 个 `assets/lkm/<label>/ghostlock.ko`**（`unzip -l … | grep assets/lkm/` = **8 行**）；构建入口 = Gradle **`buildLkmImages`**（逐 label 容器构建，官方全 8 标签 **EXIT=0**）/ **`copyLkmIntoAssets`**（fail-closed 落 assets），**8 个 label 来自 native 导出的 `lkm-kmi-manifest.tsv`**（不手抄）；产物在 `~/.ghostlock/lkm/<label>/`，账本 `kmis.tsv`（9 行），守卫 **`:app:verifyLkmLedger`**（`EXIT=0` / `LKM ledger: 8 row(s) match the cache`，证伪可复现 FAIL）；**锚点 13-5.15 `ac6681b71078` 23512 逐字节不变**（其余 4 个旧 label 同）。**未做**：三个新 label（15-6.6 / 16-6.12 / 17-6.18）**未做真机冒烟**、运行时装载的**设备端实跑**未做（仅纯逻辑单测 4/4）。
 >
 > **⏸ 用户指令（2026-10-05）**：表中 **C4c / C4d / C6c / C6d**（payload 与 root 管理器）与 **C4e / C6b / C7b**（插件宿主）对应的**运行路径已字面注释 / 不再被接受**——**IPO 行保留以记录结构，但不等于当前可达**（代码在、恢复需撤销注释；`vr_guard` 为**分两期**且**两期均已完成**（(b) profile 面 `b55708a8` / (a) **vivo 代码已删除 = `4a182217`**）、`defex` **已删除**（`a68e2d5a`）——见 §3.1 注）。
 
@@ -576,6 +578,8 @@ classDiagram
 > Kotlin 侧**没有** `CombinationKind`：白名单以 `CombinationSpec` 行表示，由 `CombinationCatalog` 从 native 导出的 `combination-manifest.tsv` 解析（两份：`app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时）。`route = null` ⇔ 清单 `route` 列 `none` ⇔ 无 route 轴（native `RouteKind::None`）；下拉摘要取清单 `doc` 列（`com.ghostlock.app.ui.CombinationPresentation` 的 `combinationSummary` / `combinationOptions`）。
 >
 > **队列承载（Kotlin 侧，2026-10-06 落地 = `4c20142f`）——无节点增删，仅注**：`ProfileLayout.validateAvailable` **双形态**（旧**列表**形态零破坏；新**对象**形态 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }`，五类拒绝：纯字符串元素 / 两键都给 / 都没有 / 未知键 / `params` 保留但拒；另**空 queue 拒**、**`stage` 必须随 `seam`**）；canonical **唯一一处**把三键归一进 `backend.<id>`，队列级 route 落 **`queue_route`**（**几何 Map `route` 不被覆盖**）；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → **wire 键仍是 `route`**；无几何时直接用 `route`；两者同时为 str ⇒ fail-closed「refusing to pick a precedence」）；**回显只认「与 `available` 声明逐值相等」**。**沿革**：`route` 撞键会静默覆盖几何 ⇒ **68 资产几何归零**，故必须分离。**M4 待办**：`NativeProfileDocument.from()` 缺 accessor ⇒ **声明 `queue` 的 profile 目前不会把 queue 发上 wire**（连 `app/src/main/.../Profile.kt` 调用点，M4 修）。
+>
+> **M3/M5 收口（2026-10-06）——本图无节点增删，仅注**：**M3 = `d34caa99` + `6a3d60c6`**（62 资产迁对象形态：`route` 派生、`queue` 由 `stepset-steps.tsv` 展开、零字面量；真机 PASS 归档 `device-gates/20261006-141317`）；**M5 = `e59a8479` + 归档 `af2feefc`**：**token 形态已删 ⇒ 出现即拒**（HOCON 列表形态两条独立具名诊断；native `token-form-removed`；**归一化不再物化 token**；App **停发 wire `steps`**）；**`NativeProfileDocument.from()` 改为「运行时载体优先、回退 `available.<id>` 声明」**——修掉「导出 `.bin` **静默丢队列**」（**两条读取路径行为分叉 = 高危形态** ⇒ 以后新增第二条路径必须同批补跨路径等价对拍）；**golden 3920 / `NO_SELECTION_HEX` 3766**；两份 manifest `62ea112b2caf` 逐字节一致；**M5 真机 PASS**（`24e9accf84b9`）。**Class 图（§3.2 Kotlin / §3.1 contract）节点未变**（改的是取值语义与读取优先级，不是结构）。
 
 > **管理器选择 + 检测 + 跳转（**跳转已落地**；选择/检测在途）**：默认档 = 「**启动 root 管理器**」+ 子菜单（「系统默认 KernelSU（默认）」= **不发射任何 payload 键**；或「**检测到的其它受支持管理器**」）；**未安装的不列出/置灰 + 具名原因**；**白名单只允许有仓库/官方证据的包名**（起点 `root_script.cpp:40-50` 四模式 + `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 需 **`<queries>`**，manifest 已声明 5 项；**未核实不得添加**；FolkPatch `me.yuki.folk` 属 P2）；**UI 已可选 ≠ 已发射**——wire `payload.root.*` 属下一批 native（当前 native 只接受 `tier ∈ {exec,script,ko}`）。**本批无新类**（沿用 `RootManager`/`RootManagerAction`）。
 >
@@ -707,7 +711,7 @@ sequenceDiagram
   PM-->>Ctrl: resolved ProfileConfig
   Ctrl->>AD: adapt(document, terminal)
   AD->>EN: encode → GLKv3 字节
-  EN-->>FS: profile.bin / exportKernelProfiles 输出
+  EN-->>FS: profile.bin / exportProfiles 输出
 ```
 
 ### 4.3 Extractor（boot.img → HOCON profile）

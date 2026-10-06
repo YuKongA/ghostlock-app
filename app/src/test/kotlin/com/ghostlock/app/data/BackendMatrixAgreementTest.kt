@@ -28,7 +28,7 @@ class BackendMatrixAgreementTest {
     fun indexBackendsMatchTheNativeOwnerManifestAndAvailability() {
         val index = requireNotNull(
             HoconSupport.parseValue(
-                AssetConfigLoader(context).load("kernel_profiles/index.conf"),
+                AssetConfigLoader(context).load("profile/index.conf"),
             ).asValueMap(),
         )
         val entries = index["backends"].asValueList().orEmpty().mapNotNull { it.asValueMap() }

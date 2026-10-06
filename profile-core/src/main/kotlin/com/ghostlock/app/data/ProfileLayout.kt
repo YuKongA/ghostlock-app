@@ -71,6 +71,30 @@ object ProfileLayout {
     private val QueueElementKeys = listOf("step", "seam", "stage")
 
     /**
+     * M4: the runtime-model carrier for the declared selection,
+     * `backend.queue_selection.<backend-id>.{queue,experimental,queue_route}`.
+     * Owner-qualified on purpose: the App re-kinds `backend.kind` when the user
+     * picks another backend, so an unscoped key would leak one backend's
+     * declaration into the other. Nested under this NEUTRAL key (not
+     * `backend.<id>`) on purpose too: a backend-token key would make
+     * [isCanonical] mistake the runtime model for a canonical document, which is
+     * the v1 save/load regression this batch fixes. Read by
+     * [com.ghostlock.app.data.NativeProfileDocument.from].
+     */
+    internal const val QueueSelectionKey = "queue_selection"
+
+    /**
+     * M4: the canonical selection keys the runtime model re-surfaces as FLAT
+     * `backend.<key>` entries (the queue-level route lives in [QueueRouteKey],
+     * never in the geometry slot `route`). Flat on purpose: an owner-qualified
+     * `backend.<id>` subtree would make [isCanonical] treat the runtime model as
+     * a canonical document. Read by
+     * [com.ghostlock.app.data.NativeProfileDocument.from] through its raw
+     * accessor; undeclared => absent, so nothing is written to the wire.
+     */
+    private val CarriedSelectionKeys = listOf("queue", "experimental", QueueRouteKey)
+
+    /**
      * Canonical slot for the queue-level route STRING when the backend owner
      * already carries the per-route geometry MAP under `route`
      * (`route.<kind>.<field>`, every bundled profile does). The wire keeps the
@@ -155,13 +179,55 @@ object ProfileLayout {
         "symbols", "struct_fields", "kimage_text_base", "btf_size", "kallsyms",
     )
 
-    /** True when [raw] is already in the canonical owner-qualified layout. */
+    /**
+     * The 15 root keys ONLY the legacy-flat / runtime projection produces. They
+     * are DISJOINT from the canonical root set (`schema_version` / `release` /
+     * `kernel_major` / `kernel_minor` / `safe_mode` / `available` / `backend` /
+     * `plugin`, i.e. [canonicalizeCanonical]'s `when`), so one hit proves the
+     * document is the runtime shape: it must be converted by [canonicalizeLegacy]
+     * and never validated as a canonical document.
+     */
+    private val RuntimeOnlyRootKeys = setOf(
+        "kernel_phys_load", "kernel_phys_offset", "route", "fallback", "fallback_to",
+        "kernelsnitch", "task_struct", "cred", "offset", "execution",
+        "symbols", "struct_fields", "kimage_text_base", "btf_size", "kallsyms",
+    )
+
+    /**
+     * The runtime projection's backend slot. A canonical `backend.<id>` owner can
+     * NEVER carry it: [validateBackend] admits only backend-token keys plus the
+     * declared selection echoes, so `kind` there is an unknown key. This is the
+     * second, independent runtime marker: it catches the runtime shape of a
+     * cve_2026_43284-only profile, which has no runtime-only root key at all.
+     */
+    private const val RuntimeBackendKindKey = "kind"
+
+    /**
+     * True when [raw] is already in the canonical owner-qualified layout.
+     *
+     * The runtime / legacy-flat projection is excluded FIRST, by its own two
+     * markers: it carries root keys the canonical root set never admits
+     * ([RuntimeOnlyRootKeys]) and a `backend.kind` slot the canonical backend
+     * owner never admits ([RuntimeBackendKindKey]). This is a TIGHTENING: a
+     * canonical document has neither, so it is still judged exactly as before,
+     * while the runtime model can no longer look canonical through its
+     * `backend.<id>` subtree (the cve_2026_43284 policy fields, the queue
+     * carrier) - the App persists that shape and re-reads it on load, and the
+     * strict canonical validator would reject it (`cred:`/`backend.kind: unknown
+     * canonical profile key`) instead of converting it.
+     */
     fun isCanonical(raw: Map<*, *>): Boolean {
         if (raw.containsKey(Wrapper)) return true
+        if (raw.keys.any { it.toString() in RuntimeOnlyRootKeys }) return false
+        val backend = raw["backend"]
+        if (backend is Map<*, *> &&
+            backend.keys.any { it.toString() == RuntimeBackendKindKey }
+        ) {
+            return false
+        }
         if (raw.keys.any { it.toString() == "available" }) {
             return true
         }
-        val backend = raw["backend"]
         return backend is Map<*, *> && backend.keys.any { it.toString() in BackendTokens }
     }
 
@@ -231,7 +297,14 @@ object ProfileLayout {
      * (`route.<kind>.<field>`, validated below) while the queue-level route is a
      * plain STRING: when the geometry map owns the key the string rides
      * [QueueRouteKey] instead (see [carryQueueRoute]), so the geometry is never
-     * overwritten and the route is never dropped. */
+     * overwritten and the route is never dropped.
+     *
+     * M4 (NOT this batch): the three carried keys are not projected into the
+     * runtime model yet and
+     * [com.ghostlock.app.data.NativeProfileDocument.from] has no accessor for
+     * them, so a profile that declares a queue still does not put it on the
+     * wire. This batch delivers the canonical carrying plus the codec capability
+     * ([com.ghostlock.app.data.NativeProfileDocument] -> GLKv3) only. */
     private fun carryAvailableSelection(out: ValueMap) {
         val available = out["available"].asValueMap() ?: return
         val owners = out["backend"].asValueMap() ?: ValueMap().also { out["backend"] = it }
@@ -279,6 +352,16 @@ object ProfileLayout {
                 owner[QueueRouteKey] = route
             }
         }
+    }
+
+    /**
+     * True when [backend] has a route axis, derived from the native-exported
+     * combination catalogue: every token of a route-less backend
+     * (cve_2026_43284) declares route = none, so no spec carries a route.
+     */
+    private fun hasRouteAxis(backend: String): Boolean {
+        val kind = BackendKind.resolve(backend) ?: return false
+        return CombinationCatalog.forBackend(kind).any { it.hasRouteAxis }
     }
 
     /** The declared selection keys of one backend, or an empty map (token list). */
@@ -343,18 +426,20 @@ object ProfileLayout {
                 out[token] = validateAvailableSelection(token, rawTokens.asValueMap() ?: ValueMap())
                 continue
             }
+            /* M5 (design step-queue-design line 394 "token 出现即拒"; line 338 records the
+             * migration-period list form): the token-list form is no longer a selection -
+             * only the object form above is. Two INDEPENDENT named diagnostics, each with
+             * the dotted path, so an empty list is never reported as a removed syntax. */
             val list = rawTokens as? List<*>
-            require(list != null && list.isNotEmpty()) {
-                "available.$token must be a non-empty list of combination tokens"
+            require(list == null || list.isEmpty()) {
+                "available.$token: the token-list form was removed in M5; declare route+queue"
             }
-            out[token] = list.map { rawToken ->
-                val text = rawToken as? String
-                val normalized = text?.let(CombinationCatalog::normalize)
-                require(normalized != null && CombinationCatalog.resolve(kind, normalized) != null) {
-                    "available.$token: not a known combination token: $rawToken"
-                }
-                normalized
+            require(list == null) {
+                "available.$token: empty token list is not a selection; declare route+queue"
             }
+            throw IllegalArgumentException(
+                "available.$token: declare route+queue (an object); got " + rawTokens,
+            )
         }
         return out
     }
@@ -371,6 +456,14 @@ object ProfileLayout {
             require(key in AvailableSelectionKeys) { "available.$backend.$key: unknown key" }
             when (key) {
                 "route" -> {
+                    /* Design 5-Q2: only a backend WITH a route axis may declare a
+                     * queue-level route. The backend catalogue is the authority (a
+                     * route-less backend's tokens all carry route = none); native
+                     * S14b `route-not-applicable` is the backstop, not the only
+                     * line of defence. */
+                    require(hasRouteAxis(backend)) {
+                        "available.$backend.route: route-not-applicable"
+                    }
                     val route = (raw as? String)?.let { RouteKind.resolve(RouteKind.normalize(it)) }
                     require(route != null) { "available.$backend.route: not a known route: $raw" }
                     out[key] = route.token
@@ -694,7 +787,10 @@ object ProfileLayout {
         dropUnknownLegacyKeys(raw["kernelsnitch"].asValueMap(), KernelsnitchFields, "kernelsnitch")
         dropUnknownLegacyKeys(
             raw["backend"].asValueMap(),
-            setOf("steps", "kind", BackendKind.Cve2026_43284.token),
+            /* QueueSelectionKey is the runtime carrier this revision writes
+             * (M4); dropping it would lose a declared queue on a save->load
+             * round-trip. */
+            setOf("steps", "kind", BackendKind.Cve2026_43284.token, QueueSelectionKey),
             "backend",
         )
         raw["route"].asValueMap()?.let { route ->
@@ -764,6 +860,25 @@ object ProfileLayout {
          * the flat `backend.steps` selection slot the logical model consumes. */
         val ownerBackend = owners?.get(selectedBackend.token).asValueMap()
         (ownerBackend?.get("steps") as? String)?.let { backend["steps"] = it }
+        /* M4 queue carrying: the canonical backend owner holds the declared
+         * selection ([CarriedSelectionKeys], written by
+         * [carryAvailableSelection]); re-surface it on the runtime model so the
+         * GLKv3 document builder can read it - an array of maps has no scalar
+         * accessor slot. The carrier is `backend.queue_selection.<id>.{...}`
+         * ([QueueSelectionKey]): owner-qualified because the App re-kinds
+         * `backend.kind`, and nested under a NEUTRAL key because a `backend.<id>`
+         * key would make [isCanonical] mistake the runtime model for the canonical
+         * document - the App persists this shape and re-validates it on load, and a
+         * saved profile with a root-level `cred` then fails the canonical
+         * validator. Undeclared => no key at all, so every existing document keeps
+         * its exact bytes. */
+        val selection = ValueMap()
+        for (key in CarriedSelectionKeys) {
+            ownerBackend?.get(key)?.let { selection[key] = it.copyValue() }
+        }
+        if (selection.isNotEmpty()) {
+            backend.mutableChild(QueueSelectionKey)[selectedBackend.token] = selection
+        }
         be?.get("cred").asValueMap()?.forEach { (k, v) -> cred[k] = v }
         be?.get("offset").asValueMap()?.forEach { (k, v) -> offset[k] = v }
         be?.get("execution")?.let { out["execution"] = it.copyValue() }

@@ -106,7 +106,7 @@ private fun extractNdkTools(): NdkTools {
 }
 
 // Every module's output lives under the root build/ directory (native,
-// host-test, extract, kernel-profiles, app). Delete the whole tree here so a
+// host-test, extract, profiles, app). Delete the whole tree here so a
 // single root `clean` resets all of them.
 tasks.register<Delete>("clean") {
     description = "Delete the root build/ directory (all module outputs)."

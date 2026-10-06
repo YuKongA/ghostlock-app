@@ -119,7 +119,7 @@ flowchart TD
 |---|---|---|
 | 单元 | `cargo test --release --manifest-path tools/extract_rs/Cargo.toml` | 固定反汇编向量 → 期望偏移全部通过；既有测试不回退 |
 | 真相机对拍 | 取有 BTF 的镜像（如 5.15.189 / 6.6.89），屏蔽 BTF 后跑新推导 | 推导值 == BTF 真值（逐字段 diff 为空），或差异可在锚点审查中解释 |
-| 构建 | `./gradlew exportKernelProfiles` / NDK 构建 | 零警告 |
+| 构建 | `./gradlew exportProfiles` / NDK 构建 | 零警告 |
 | 真机门禁 | 目标设备（issue 213）冷机、单 route、KernelSU 未加载 | route 命中、写验证通过；日志归档 `docs/analysis/device-gates/` |
 
 前置依赖：阶段 2/3 的锚点必须用**目标或同类镜像**核对（无 BTF 真值 vs BTF 真值对拍），

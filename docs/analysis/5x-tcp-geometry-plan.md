@@ -200,10 +200,10 @@ flowchart TD
 
 必填意味着所有既有 `tcp_zerocopy` profile 都要补这四个键，否则被 fail-closed 拒绝：
 
-- `app/src/main/assets/kernel_profiles/`：`6.1.115/6.1.118(x2)/6.1.138(x4)/6.1.145(x2)` 等所有
+- `app/src/main/assets/profile/`：`6.1.115/6.1.118(x2)/6.1.138(x4)/6.1.145(x2)` 等所有
   `route { tcp_zerocopy }` 的 profile；`6.1-template.conf`、`5.15-template.conf`。
 - 提取器对 6.1 一律发四键（值 = 现行常量），保证新导出与旧 assets 一致。
-- `docs/kernel_profiles/PROFILE_SCHEMA.md`（+`_ZH`）与模板字段表同步登记这四个键。
+- `docs/profile/PROFILE_SCHEMA.md`（+`_ZH`）与模板字段表同步登记这四个键。
 - 反例：任何仍只写 `compact_waiter` 的 tcp profile 都应被拒绝（由校验测试钉住）。
 
 ### 缺省与回滚

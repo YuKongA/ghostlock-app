@@ -165,7 +165,7 @@ $(MPACK_OBJ): $(MPACK_SRC) $(MPACK_HDR)
 	@mkdir -p $(dir $@)
 	$(NDK_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
 
-.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest combination-manifest vocabulary-manifest lint-tidy
+.PHONY: cpp-link-probe-test target-constants-test native-resource-test native-host-tests host-attack-dataflow-test profile-manifest combination-manifest vocabulary-manifest stepset-steps-manifest lint-tidy
 cpp-link-probe-test: $(HOST_BUILD_DIR)/cpp_link_probe_test
 	$(HOST_BUILD_DIR)/cpp_link_probe_test
 
@@ -195,7 +195,7 @@ NATIVE_HOST_TESTS := \
   profile_manifest_v3_test lkm_kmi_manifest_test \
   glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
   combination_token_test combination_manifest_test support_cli_test \
- plugin_wire_test vocabulary_manifest_test \
+ plugin_wire_test vocabulary_manifest_test stepset_steps_manifest_test \
  plugin_window_wiring_test\
   \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
@@ -623,6 +623,20 @@ $(HOST_BUILD_DIR)/vocabulary_manifest_test: core/tests/vocabulary_manifest_test.
 
 vocabulary-manifest: $(HOST_BUILD_DIR)/vocabulary_manifest_test
 	$(HOST_BUILD_DIR)/vocabulary_manifest_test --write
+
+# M2/M3: the per-step-set step SEQUENCE (execution order) is exported from
+# contract/step_catalog.hpp kStepSetAliases plus the executor orders in
+# backend/cve_2026_43499/steps.hpp (bound together by static_assert), so the M3
+# asset migration reads the order instead of re-deriving it. Two committed
+# copies (app test resource + profile-core runtime resource), byte-identical.
+$(HOST_BUILD_DIR)/stepset_steps_manifest_test: core/tests/stepset_steps_manifest_test.cpp \
+  core/contract/step_catalog.hpp core/backend/cve_2026_43499/steps.hpp \
+  core/contract/identity.hpp core/pipeline/component_catalog.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/stepset_steps_manifest_test.cpp -o $@
+
+stepset-steps-manifest: $(HOST_BUILD_DIR)/stepset_steps_manifest_test
+	$(HOST_BUILD_DIR)/stepset_steps_manifest_test --write
 
 # S4 R2b CLI surface: transport / run control / safety / observability only.
 # Pure support/cli.cpp, so the test links no attack runtime and no NDK.

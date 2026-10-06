@@ -54,6 +54,7 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/umh.h>
+#include <linux/version.h>
 #include <linux/wait.h>
 
 #define GHOSTLOCK_CMD_MAX 512
@@ -151,7 +152,16 @@ static int defex_pre_handler(struct kprobe *p, struct pt_regs *regs)
  * the same "is this a linear-map address" question the userspace side answers
  * with DIRECT_MAP_BASE/g_direct_map_end; virt_addr_valid() is the in-kernel
  * authority. An out-of-range target is refused with -EFAULT so the ioctl never
- * becomes an arbitrary kernel pointer write hole. */
+ * becomes an arbitrary kernel pointer write hole.
+ *
+ * Kernel 6.6 tightened the arm64 helper: virt_addr_valid() forwards its argument
+ * to virt_to_pfn(const void *kaddr) (arch/arm64/include/asm/memory.h), so the
+ * integer form is an incompatible integer-to-pointer conversion there. From 6.6
+ * on, hand the SAME address over as a pointer: u64 -> unsigned long -> pointer
+ * on a 64-bit ABI loses nothing (the value is already range-checked above) and
+ * virt_to_pfn() casts it straight back, so the validity decision is identical.
+ * Older kernels keep the integer form VERBATIM: their images are already
+ * device-validated and must stay byte-identical (android13-5.15 anchor). */
 static bool glk_lkm_addr_ok(u64 addr, u32 len)
 {
     u64 last;
@@ -161,8 +171,13 @@ static bool glk_lkm_addr_ok(u64 addr, u32 len)
     if (addr > (u64)ULONG_MAX - (u64)len)
         return false;
     last = addr + (u64)len - 1u;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+    return virt_addr_valid((const void *)(unsigned long)addr) &&
+           virt_addr_valid((const void *)(unsigned long)last);
+#else
     return virt_addr_valid((unsigned long)addr) &&
            virt_addr_valid((unsigned long)last);
+#endif
 }
 
 /* Image address -> direct-map alias. __pa_symbol is KASLR-aware on arm64 and

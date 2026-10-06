@@ -1,7 +1,9 @@
+> 注（2026-10-06）：本文件中的路径引用已随本轮 profile 目录与 Gradle 任务改名更新（旧名见 git 历史）；原始日志文本未改，证据内容不变。
+
 # GLKv3 真机门禁（MessagePack 生产切换）— PASS
 
 对应提交 `af0c9c0`（GLKv3-4）。候选二进制 `build/native/ghostlock` sha256 `189f7ee66e1f58d7d16885dc3b7c6b6c51805e2a77efa1715e5098b5f480d695`；
-v3 profile `build/kernel-profiles/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.bin` sha256 `b1dbcc97f86e5000dbdee3a8ff502326a866edddb8130376e54adef77ac423e3`（1592B，首字节 `0x86` = MessagePack fixmap 根）。
+v3 profile `build/profile/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.bin` sha256 `b1dbcc97f86e5000dbdee3a8ff502326a866edddb8130376e54adef77ac423e3`（1592B，首字节 `0x86` = MessagePack fixmap 根）。
 
 ## 设备与入口
 

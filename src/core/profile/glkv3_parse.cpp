@@ -255,13 +255,16 @@ namespace ghostlock::profile {
         /* M2 canonical selection: backend.<id>.queue is an array of map and
          * route is its queue-level sibling. The framed composite feeds the M1.1
          * normalizer; every declaration-time rule fails closed with its named
-         * `plan_error reason=` token. A supported plan installs the preset token
-         * into the `steps` slot, so the rest of the pipeline sees byte-for-byte
-         * what the token path produced. An experimental plan is reported and
+         * `plan_error reason=` token. A supported plan installs the preset on the
+         * NEUTRAL carrier (`Document::combination` / `middleware` /
+         * `terminal_token`), which is what the orchestrator dispatches on, and
+         * writes NO token back into the document (M5): the wire shape stays
+         * `route` + `queue`, so a normalised document still re-parses cleanly and
+         * never grows a `steps` field of its own. An experimental plan is reported and
          * refused: it has no compile-time pipeline instance yet (design doc
          * section 4.3 -- promotion needs its own device gate). */
         int32_t resolve_queue(Document *out, const glkv3::Document &decoded,
-                              contract::BackendKind backend, Section &section,
+                              contract::BackendKind backend,
                               const Value &queue_value, const Value *route_value,
                               const Value *experimental_value) {
             const std::string_view backend_token = contract::backend_token_name(backend);
@@ -362,23 +365,28 @@ namespace ghostlock::profile {
             const std::string_view terminal_token =
                     contract::terminal_token_name(spec->terminal);
             out->terminal_token.assign(terminal_token.data(), terminal_token.size());
-            /* Canonicalise the owner slot to the preset token (the token literal
-             * has static lifetime), creating it when the queue replaced it. */
-            Entry canonical;
-            canonical.key = "steps";
-            canonical.value.present = true;
-            canonical.value.is_text = true;
-            canonical.value.text = spec->token;
-            section.entries.push_back(std::move(canonical));
+            /* M5: deliberately NO `steps` entry is materialised here. The plan
+             * lives in memory on the fields above - that is what the orchestrator
+             * dispatches on (`pipeline/orchestrator.hpp` reads
+             * `document.combination`) - while writing the token back into the
+             * section would put a REMOVED syntax on the wire and make the
+             * normalised document un-reparsable (a re-parse refuses it with
+             * `reason=token-form-removed`). The section is read-only here. */
             return 0;
         }
 
-        /* Resolve backend.<id>.steps to a combination token and install the
-         * derived route / terminal / step set. A new string value is used
-         * verbatim; a legacy uint is mapped through the root route and the
-         * legacy id is reported as a diagnostic. Unknown tokens, a route or a
-         * terminal that disagrees with the token, and an absent step key all
-         * fail closed. */
+        /* M2/M5: select the plan from `backend.<id>`.
+         *
+         * `queue` (with its queue-level `route` sibling) is the ONLY selection
+         * surface. `backend.<id>.steps` is no longer accepted as a combination
+         * token (M5 removed the migration sugar): a string value there is
+         * refused with a NAMED reason that points at the path, never silently
+         * ignored. Declaring a queue AND a token is still reported as the
+         * conflict it is. The key stays recognised on purpose: an unknown-key
+         * rejection would name nothing and hide the migration from the log.
+         * The token itself lives on internally as the normalised plan key
+         * (resolve_queue writes it into the same slot) - only the user-visible
+         * wire syntax is gone. The legacy uint id keeps its decode path. */
         int32_t resolve_combination(Document *out,
                                     const glkv3::Document &decoded) noexcept {
             contract::BackendKind backend{};
@@ -419,7 +427,7 @@ namespace ghostlock::profile {
                 }
                 if (!queue_entry->value.is_array) return -1;
                 return resolve_queue(
-                        out, decoded, backend, *section, queue_entry->value,
+                        out, decoded, backend, queue_entry->value,
                         route_entry != nullptr ? &route_entry->value : nullptr,
                         experimental_entry != nullptr ? &experimental_entry->value : nullptr);
             }
@@ -427,13 +435,15 @@ namespace ghostlock::profile {
 
             contract::CombinationKind combination = contract::CombinationKind::Unknown;
             if (steps_entry->value.is_text) {
-                if (!contract::combination_resolve(backend, steps_entry->value.text,
-                                                   combination)) {
-                    (void)std::fprintf(stderr, "unknown combination token=%.*s\n",
-                                       static_cast<int>(steps_entry->value.text.size()),
-                                       steps_entry->value.text.data());
-                    return -1;
-                }
+                /* M5: the token form is removed. `reason` is the token the
+                 * tests and the docs grep for; `path` names the exact key. */
+                (void)std::fprintf(
+                        stderr,
+                        "plan_error reason=token-form-removed path=backend.%.*s.steps "
+                        "hint=declare-route-and-queue\n",
+                        static_cast<int>(contract::backend_token_name(backend).size()),
+                        contract::backend_token_name(backend).data());
+                return -1;
             } else {
                 const uint64_t legacy_id = steps_entry->value.raw;
                 (void)std::fprintf(stderr, "legacy_steps_id=%llu\n",
@@ -507,8 +517,15 @@ namespace ghostlock::profile {
             out->terminal_token.assign(terminal_token.data(), terminal_token.size());
 
             /* Canonicalise the owner slot to the resolved token text: the owner
-             * Schema declares steps as a String, so a legacy uint is rewritten
-             * to its equivalent token (the token literal has static lifetime). */
+             * Schema declares steps as a String, so a legacy uint is rewritten to
+             * its equivalent token before the bind runs (the token literal has
+             * static lifetime).
+             *
+             * M5 note: this is NOT the write-back the queue path dropped. `steps`
+             * is a key the CALLER already sent (a pre-v3 numeric id) and the bind
+             * needs its String form; the queue path, by contrast, has no such key
+             * and must not create one. The M5 shape therefore stays `route` +
+             * `queue` for every document the App emits. */
             steps_entry->value = Value{};
             steps_entry->value.present = true;
             steps_entry->value.is_text = true;
