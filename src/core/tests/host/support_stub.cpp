@@ -1,4 +1,6 @@
 #include "host_attack_script.hpp"
+
+#include "backend/cve_2026_43499/spray.hpp"
 #include "support/decls.hpp"
 
 /* Host stubs for the side-effecting support primitives the attack data flow
@@ -7,11 +9,16 @@
 namespace ghostlock::support {
     void log_sync(void) {}
 
+    void disable_rseq_for_thread(void) {}
+} // namespace ghostlock::support
+
+/* The 43499 prepare/spray primitives moved to the backend spray module (F15
+ * ownership move); the host harness links this stub file instead of spray.cpp,
+ * so the stubs keep the same signatures in the new namespace. */
+namespace ghostlock::backend::cve_2026_43499::spray {
     void log_startup_context(void) {}
 
     void init_p0_profile(void) {}
-
-    void disable_rseq_for_thread(void) {}
 
     uintptr_t prepare_good_kernel_page(const ghostlock::memory::WriteRequest &request) {
         (void) request;
@@ -23,4 +30,4 @@ namespace ghostlock::support {
     int32_t quarantine_reclaim_sockets(void) { return 1; }
 
     void release_quarantined_reclaim_sockets(void) {}
-} // namespace ghostlock::support
+} // namespace ghostlock::backend::cve_2026_43499::spray

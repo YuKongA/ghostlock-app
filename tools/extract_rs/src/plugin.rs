@@ -1110,7 +1110,7 @@ mod tests {
     fn resolution_reads_back_the_rendered_profile() {
         let mut profile: BTreeMap<String, String> = BTreeMap::new();
         profile.insert(
-            "platform.abi.task_struct.cred".to_string(),
+            "backend.cve_2026_43499.abi.task_struct.cred".to_string(),
             "1400".to_string(),
         );
         profile.insert(
@@ -1145,8 +1145,12 @@ mod tests {
             base: 0,
         };
 
-        let cred = resolve_extract("platform.abi.task_struct.cred", ExtractKind::UInt, &context)
-            .expect("profile path resolves");
+        let cred = resolve_extract(
+            "backend.cve_2026_43499.abi.task_struct.cred",
+            ExtractKind::UInt,
+            &context,
+        )
+        .expect("profile path resolves");
         assert_eq!(cred.value, Some(ExtractValue::UInt(1400)));
         assert!(cred.detail.contains("R1"));
         assert_eq!(

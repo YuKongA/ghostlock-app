@@ -149,11 +149,34 @@ namespace ghostlock::backend {
             {kCve2026_43284Section, "steps", 0, false, false, nullptr,
              profile::DefaultValue::none(), profile::FieldSource::Profile,
              profile::WireKind::String,
-             "Combination token (bare path, S4 R6b).",
+             "Combination token (bare path, S4 R6b).", nullptr,
              [](Cve2026_43284Profile &view, std::string_view text) {
-                 view.steps = contract::combination_stepset_wire(
-                         contract::BackendKind::Cve2026_43284, text);
+                 std::uint16_t resolved = 0;
+                 if (!contract::combination_stepset_wire_checked(
+                             contract::BackendKind::Cve2026_43284, text, resolved)) {
+                     return false;
+                 }
+                 view.steps = resolved;
+                 return true;
              }},
+            /* M2 queue selection (design doc 4.5/5.0): the queue is canonical,
+             * route is declared so a route-less backend can report
+             * route-not-applicable instead of unknown_key, and experimental is
+             * the U5 static opt-in. All three are selection-owned. */
+            {kCve2026_43284Section, "queue", 0, false, false, nullptr,
+             profile::DefaultValue::none(), profile::FieldSource::Profile,
+             profile::WireKind::Array,
+             "Step queue: array of {step|seam[,stage]} (M2).", nullptr, nullptr,
+             true},
+            {kCve2026_43284Section, "route", 0, false, false, nullptr,
+             profile::DefaultValue::none(), profile::FieldSource::Profile,
+             profile::WireKind::String,
+             "Queue-level route token (M2; forbidden for this backend).", nullptr,
+             nullptr, true},
+            {kCve2026_43284Section, "experimental", 1, false, false, nullptr,
+             profile::DefaultValue::none(), profile::FieldSource::Profile,
+             profile::WireKind::Bool,
+             "Static experimental opt-in declaration (U5).", nullptr, nullptr, true},
             {kCve2026_43284ExecutionSection, "wait_timeout_ms", 4, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.wait_timeout_ms = static_cast<uint32_t>(raw);

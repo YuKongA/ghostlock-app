@@ -33,7 +33,33 @@ sealed interface Glkv3Value {
     }
 
     data class Array(val elements: List<Glkv3Value>) : Glkv3Value
-}
+
+    /**
+     * MessagePack map with ordered entries.
+     *
+     * The order carried here is a CONSTRUCTION-TIME determinism device, not the
+     * wire order: the encoder re-sorts every map by the canonical rule (key
+     * UTF-8 byte order, [Glkv3Encoder.compareUtf8Bytes]) before writing, so two
+     * logically equal maps whose entries were listed differently produce
+     * identical bytes. The wire order stays canonical.
+     *
+     * Duplicate keys are rejected at CONSTRUCTION: a map must never silently
+     * drop an entry (the entry list is the authority, not a map lookup).
+     */
+    class Map(val entries: List<Pair<String, Glkv3Value>>) : Glkv3Value {
+        init {
+            val keys = entries.map { it.first }
+            require(keys.distinct().size == keys.size) {
+                "GLKv3 map has duplicate keys: " + keys.filterIndexed { i, k -> keys.indexOf(k) != i }
+            }
+        }
+
+        override fun equals(other: Any?): Boolean = other is Map && entries == other.entries
+
+        override fun hashCode(): kotlin.Int = entries.hashCode()
+
+        override fun toString(): String = "Map(" + entries.size + " entries)"
+    }}
 
 /** One section entry; canonical order is determined by the encoder, not this list. */
 data class Glkv3Entry(val key: String, val value: Glkv3Value)
@@ -53,6 +79,12 @@ data class Glkv3Document(
     val terminal: String? = null,
     val backend: String? = null,
     val route: String? = null,
+    /* HOCON refactor: the kernel scalars ride the wire ROOT (native kRootSection),
+     * exactly like `release`; presence is key occurrence, so an absent
+     * kernel_minor is simply not written. */
+    val kernelMajor: ULong? = null,
+    val kernelMinor: ULong? = null,
+    val safeMode: Boolean? = null,
     val sections: List<Glkv3Section> = emptyList(),
 )
 
@@ -113,10 +145,13 @@ object Glkv3Encoder {
     }
 
     private fun writeRoot(packer: MessagePacker, document: Glkv3Document) {
-        val keys = ArrayList<String>(6)
+        val keys = ArrayList<String>(9)
         document.backend?.let { keys += "backend" }
+        document.kernelMajor?.let { keys += "kernel_major" }
+        document.kernelMinor?.let { keys += "kernel_minor" }
         document.release?.let { keys += "release" }
         document.route?.let { keys += "route" }
+        document.safeMode?.let { keys += "safe_mode" }
         keys += "schema"
         keys += "sections"
         document.terminal?.let { keys += "terminal" }
@@ -127,8 +162,11 @@ object Glkv3Encoder {
             packer.packString(key)
             when (key) {
                 "backend" -> writeString(packer, document.backend!!)
+                "kernel_major" -> writeUnsigned(packer, document.kernelMajor!!)
+                "kernel_minor" -> writeUnsigned(packer, document.kernelMinor!!)
                 "release" -> writeString(packer, document.release!!)
                 "route" -> writeString(packer, document.route!!)
+                "safe_mode" -> packer.packBoolean(document.safeMode!!)
                 "schema" -> writeUnsigned(packer, document.schema)
                 "sections" -> writeSections(packer, document.sections)
                 "terminal" -> writeString(packer, document.terminal!!)
@@ -169,6 +207,19 @@ object Glkv3Encoder {
             is Glkv3Value.Array -> {
                 packer.packArrayHeader(value.elements.size)
                 for (element in value.elements) writeValue(packer, element)
+            }
+            is Glkv3Value.Map -> {
+                /* Canonical: keys in UTF-8 byte order (stable sort, so equal
+                 * keys would keep their input order -- construction already
+                 * rejected duplicates). */
+                val ordered = value.entries.sortedWith { a, b ->
+                    compareUtf8Bytes(a.first, b.first)
+                }
+                packer.packMapHeader(ordered.size)
+                for ((key, entryValue) in ordered) {
+                    writeString(packer, key)
+                    writeValue(packer, entryValue)
+                }
             }
         }
     }

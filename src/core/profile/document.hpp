@@ -20,6 +20,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace ghostlock::profile {
@@ -44,6 +45,58 @@ namespace ghostlock::profile {
      * smuggle a longer value. */
     inline constexpr std::size_t kMaxStringBytes = 256U;
 
+    /* M2 bounded composite (design doc 4.5 / 5.0): a DECLARED array field carries
+     * array-of-map elements. Unlike text views the composite is OWNED here: the
+     * decoded glkv3 tree dies with the framing call, so a span into it would
+     * dangle. Bounds are structural and checked fail-closed at framing time;
+     * element values are scalars only, because the queue vocabulary
+     * (step / seam / stage) is textual and a nested composite is not part of the
+     * wire vocabulary (it is reported as an unsupported member instead). */
+    inline constexpr std::size_t kMaxCompositeItems = 64U;
+    inline constexpr std::size_t kMaxCompositeKeys = 8U;
+    inline constexpr std::size_t kMaxCompositeTextBytes = kMaxStringBytes;
+
+    struct CompositeEntry {
+        std::string key;
+        bool is_text = false;
+        uint64_t raw = 0;
+        std::string text;
+        /* The wire member was not one of the admitted scalar kinds (a nested
+         * map/array/bin). Kept as a named member so the queue normalizer can
+         * report the precise reason instead of the whole document failing as
+         * malformed. */
+        bool unsupported = false;
+    };
+
+    struct CompositeItem {
+        /* false => the wire element was not a map: the rejected bare-string
+         * element form (design doc U9, reason queue-element-not-object). */
+        bool is_map = true;
+        std::vector<CompositeEntry> entries;
+    };
+
+    /* The ONLY declared composite fields (design doc 5.0: queue = array of map).
+     * Framing consults this table before admitting an Array value, so a wire
+     * array on any other key stays rejected; the GLKv3 FieldSpec tables carry the
+     * matching rows and a test pins the two views together. */
+    struct DeclaredArrayField {
+        std::string_view section;
+        std::string_view key;
+    };
+
+    inline constexpr DeclaredArrayField kDeclaredArrayFields[] = {
+        {"backend.cve_2026_43499", "queue"},
+        {"backend.cve_2026_43284", "queue"},
+    };
+
+    [[nodiscard]] constexpr bool declared_array_field(std::string_view section,
+                                                      std::string_view key) noexcept {
+        for (const DeclaredArrayField &field : kDeclaredArrayFields) {
+            if (field.section == section && field.key == key) return true;
+        }
+        return false;
+    }
+
     struct Value {
         static constexpr uint8_t kWireWidth = 8;
 
@@ -56,6 +109,10 @@ namespace ghostlock::profile {
          * the bind materialises. Never copied here. */
         bool is_text = false;
         std::string_view text{};
+        /* M2 composite payload: set only for a declared array field, empty
+         * otherwise. Owned (see CompositeItem). */
+        bool is_array = false;
+        std::vector<CompositeItem> items{};
     };
 
     struct Entry {
@@ -92,6 +149,17 @@ namespace ghostlock::profile {
             value.is_text = true;
             value.text = text;
             entries.push_back(Entry{std::string(key), value});
+        }
+
+        /* M2: append a declared composite value (array of map). Takes ownership
+         * of the materialised items; the caller has already enforced the bounds
+         * and the scalar-only element rule. */
+        void add_array(std::string_view key, std::vector<CompositeItem> items) {
+            Value value{};
+            value.present = true;
+            value.is_array = true;
+            value.items = std::move(items);
+            entries.push_back(Entry{std::string(key), std::move(value)});
         }
     };
 

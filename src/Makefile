@@ -49,8 +49,6 @@ CXX_SRCS := \
   core/race/pi_race.cpp \
   core/backend/cve_2026_43499/route/route_controller.cpp \
   core/backend/cve_2026_43499/route/route_middleware.cpp \
-  core/platform/vivo/vr_guard.cpp \
-  core/platform/vivo/vr_task_tag.cpp \
   core/plugin/loader.cpp \
   core/plugin/probe.cpp \
   core/plugin/wire.cpp \
@@ -74,6 +72,7 @@ CXX_SRCS := \
   core/backend/cve_2026_43499/bootstrap.cpp \
   core/backend/cve_2026_43499/backend_profile.cpp \
   core/backend/cve_2026_43499/primitives.cpp \
+  core/backend/cve_2026_43499/spray.cpp \
   core/backend/cve_2026_43499/steps.cpp \
   core/terminal/root_script.cpp \
   core/backend/cve_2026_43499/terminal/root_child.cpp \
@@ -178,7 +177,7 @@ native-resource-test: $(HOST_BUILD_DIR)/native_resource_test
 
 NATIVE_HOST_TESTS := \
   profile_test payload_builder_test heap_context_test route_status_test \
-  route_catalog_test component_catalog_test backend_contract_test route_policy_test \
+  route_catalog_test component_catalog_test step_catalog_test step_plan_test queue_wire_test backend_contract_test route_policy_test \
   route_lifecycle_test runtime_time_test \
   kernelsnitch_scan_bounds_test route_controller_test pi_race_test \
   tcp_zerocopy_route_test select_stack_route_test \
@@ -186,7 +185,7 @@ NATIVE_HOST_TESTS := \
   futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
-  platform_vivo_test platform_abi_test \
+  platform_abi_test \
   contract_capabilities_test contract_vocabulary_test countermeasure_abi_test address_discovery_test terminal_input_test \
   countermeasure_loader_test countermeasure_registry_test \
   kernel_channel_test\
@@ -227,7 +226,6 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/tests/host/route_stub.cpp \
   core/tests/host/victim_stub.cpp \
   core/tests/host/handoff_stub.cpp \
-  core/tests/host/ancillary_stub.cpp \
   core/tests/host/glue_stub.cpp \
   core/backend/cve_2026_43499_backend.cpp \
   core/backend/cve_2026_43499/steps.cpp \
@@ -518,6 +516,19 @@ $(HOST_BUILD_DIR)/route_catalog_test: core/tests/route_catalog_test.cpp core/con
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/route_catalog_test.cpp -o $@
 
+$(HOST_BUILD_DIR)/step_catalog_test: core/tests/step_catalog_test.cpp core/contract/step_catalog.hpp core/contract/identity.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/step_catalog_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/queue_wire_test: core/tests/queue_wire_test.cpp core/profile/glkv3_parse.cpp core/profile/glkv3.cpp core/profile/document.hpp core/profile/glkv3.hpp core/profile/glkv3_parse.hpp core/contract/identity.hpp core/contract/step_catalog.hpp core/contract/step_plan.hpp core/backend/cve_2026_43499/glkv3_schema.hpp core/backend/cve_2026_43284/glkv3_schema.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/queue_wire_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/queue_wire_test.cpp core/profile/glkv3_parse.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/queue_wire_mpack.o -o $@
+
+$(HOST_BUILD_DIR)/step_plan_test: core/tests/step_plan_test.cpp core/contract/step_plan.hpp core/contract/step_catalog.hpp core/contract/identity.hpp core/contract/model.hpp core/contract/countermeasure.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/step_plan_test.cpp -o $@
+
 $(HOST_BUILD_DIR)/component_catalog_test: core/tests/component_catalog_test.cpp core/pipeline/component_catalog.hpp core/contract/identity.hpp core/contract/model.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/component_catalog_test.cpp -o $@
@@ -541,19 +552,6 @@ $(HOST_BUILD_DIR)/platform_abi_test: core/tests/platform_abi_test.cpp \
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/platform_abi_test.cpp -o $@
 
-# platform::vivo vendor behaviors: the profile->View adapter, the gates and the
-# pure plan arithmetic. Header-only (the device execution bodies are not linked
-# and the policies' apply templates are not instantiated here).
-$(HOST_BUILD_DIR)/platform_vivo_test: core/tests/platform_vivo_test.cpp \
-  core/platform/vivo/registry.hpp core/platform/vivo/schema.hpp \
-  core/platform/vivo/vr_guard.hpp core/platform/vivo/vr_task_tag.hpp \
-  core/platform/vivo/kind.hpp core/platform/vivo/macros.h \
-  core/plugin/policy.hpp core/plugin/controller.hpp \
-  core/session/core_session.hpp core/memory/target.h core/contract/model.hpp \
-  core/backend/cve_2026_43499/capability_adapters.hpp \
-  core/support/status.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -ffunction-sections -fdata-sections $(HOST_LD_GC) -Icore core/tests/platform_vivo_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp core/backend/cve_2026_43499/route/route_lifecycle.hpp core/backend/cve_2026_43499/route/route_status.h
 	@mkdir -p $(HOST_BUILD_DIR)

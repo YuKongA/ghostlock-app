@@ -92,31 +92,25 @@ class ProfileLayoutTest {
                 prepare_max_attempts = 4
               }
             }
-            recommend_vr_guard = true
-            vr_guard {
-              tracepoint_funcs = 64
-            }
             """.trimIndent(),
         )
         val flat = ProfileLayout.flatten(ProfileLayout.canonicalize(legacy))
-        assertEquals(5L, flat["common.kernel_major"])
+        assertEquals(5L, flat["kernel_major"])
         /* R6a: the legacy fallback.to is recognized and ignored. */
-        assertNull(flat["common.fallback_route"])
-        assertEquals(true, flat["common.vr_guard"])
-        assertEquals("cve_2026_43499", flat["selection.backend"])
-        /* S4 R6b: selection.steps is cancelled from the canonical shape. */
-        assertNull(flat["selection.steps"])
-        assertEquals("root_child", flat["selection.terminal"])
-        assertEquals(123L, flat["platform.abi.kernel.kernel_phys_load"])
-        assertEquals(124L, flat["platform.abi.task_struct.prio"])
-        assertEquals(48L, flat["platform.abi.cred.caps_offset"])
-        assertEquals(1L, flat["platform.abi.offset.init_task"])
+        /* HOCON refactor: the pinned legacy token becomes the DECLARED
+         * availability, and vr_guard was deleted from the profile surface. */
+        /* The canonical map carries the DECLARED availability (the runtime
+         * projection's backend.kind is asserted by the runtime test below). */
+        assertEquals("tcp_rootchild", flat["available.cve_2026_43499.0"])
+        assertEquals(123L, flat["backend.cve_2026_43499.abi.kernel.kernel_phys_load"])
+        assertEquals(124L, flat["backend.cve_2026_43499.abi.task_struct.prio"])
+        assertEquals(48L, flat["backend.cve_2026_43499.abi.cred.caps_offset"])
+        assertEquals(1L, flat["backend.cve_2026_43499.abi.offset.init_task"])
         assertEquals(176L, flat["backend.cve_2026_43499.cred.copy_size"])
         assertEquals(2L, flat["backend.cve_2026_43499.offset.slide_boot_id"])
         assertEquals(8L, flat["backend.cve_2026_43499.kernel.kernelsnitch_collisions"])
         assertEquals(true, flat["backend.cve_2026_43499.kernel.compact_waiter"])
         assertEquals(4L, flat["backend.cve_2026_43499.execution.heap.prepare_max_attempts"])
-        assertEquals(64L, flat["countermeasure.vivo_vr_guard.tracepoint_funcs"])
         assertEquals("tcp_rootchild", flat["backend.cve_2026_43499.steps"])
     }
 
@@ -169,24 +163,18 @@ class ProfileLayoutTest {
             ghostlock {
               schema_version = 3
               release = "r"
-              selection {
-                backend = "cve_2026_43499"
-                terminal = "root_child"
-              }
-              common {
-                kernel_major = 5
-                fallback_route = "none"
-              }
-              platform {
-                abi {
-                  kernel {
-                    kernel_phys_load = 7
-                  }
-                }
+              kernel_major = 5
+              available {
+                cve_2026_43499 = [ "mcast_rootchild" ]
               }
               backend {
                 cve_2026_43499 {
                   steps = "mcast_rootchild"
+                  abi {
+                    kernel {
+                      kernel_phys_load = 7
+                    }
+                  }
                 }
               }
             }
@@ -196,7 +184,7 @@ class ProfileLayoutTest {
         assertEquals(5L, runtime.getLongAt("kernel_major"))
         assertEquals(7L, runtime.getLongAt("kernel_phys_load"))
         assertEquals("mcast_rootchild", runtime["backend"].asValueMap()?.get("steps"))
-        /* R6a: an old canonical common.fallback_route is ignored, not rejected. */
+        /* R6a: route fallback is gone from the wire, so nothing materialises. */
         assertNull(runtime["fallback"])
     }
 
@@ -222,7 +210,6 @@ class ProfileLayoutTest {
             """.trimIndent(),
         )
         val flat = ProfileLayout.flatten(ProfileLayout.canonicalize(legacy))
-        assertNull(flat["common.fallback_route"])
         assertNull(flat["backend.cve_2026_43499.route.select_stack.waiter_shift"])
         assertEquals(true, flat["backend.cve_2026_43499.kernel.compact_waiter"])
         val runtime = ProfileLayout.normalize(legacy)
@@ -268,8 +255,12 @@ class ProfileLayoutTest {
         assertTrue(error.message!!.contains("bogus"))
     }
 
+    /* User ruling 2026-10-06: the v3 shape was never released, so nothing has to
+     * be compatible with it — the pre-refactor `selection{}` block is REJECTED.
+     * This case used to assert the selection.steps -> backend.<id>.steps
+     * migration; the v1 migration point stays LegacyProfileConverter. */
     @Test
-    fun legacySelectionStepsMigrateToTheOwnerCombinationToken() {
+    fun legacySelectionBlockIsRejectedNotMigrated() {
         val canonical = parse(
             """
             ghostlock {
@@ -289,9 +280,10 @@ class ProfileLayoutTest {
             }
             """.trimIndent(),
         )
-        val flat = ProfileLayout.flatten(ProfileLayout.canonicalize(canonical))
-        assertNull(flat["selection.steps"])
-        assertEquals("mcast_rootchild", flat["backend.cve_2026_43499.steps"])
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            ProfileLayout.canonicalize(canonical)
+        }
+        assertTrue(error.message!!.contains("selection"))
     }
 
     @Test
@@ -300,9 +292,8 @@ class ProfileLayoutTest {
             """
             ghostlock {
               release = "r"
-              selection {
-                backend = "cve_2026_43499"
-                terminal = "root_child"
+              available {
+                cve_2026_43499 = [ "mcast_rootchild" ]
               }
               backend {
                 cve_2026_43499 {
@@ -324,9 +315,8 @@ class ProfileLayoutTest {
             """
             ghostlock {
               release = "r"
-              selection {
-                backend = "cve_2026_43284"
-                terminal = "root_child"
+              available {
+                cve_2026_43284 = [ "rootchild" ]
               }
               backend {
                 cve_2026_43284 {

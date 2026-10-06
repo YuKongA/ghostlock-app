@@ -70,8 +70,11 @@ namespace {
 
     template<typename V2Field>
     WireType expected_wire_type(const V2Field &field) {
-        /* S4 R4: a String owner field maps to the str wire type. */
+        /* S4 R4: a String owner field maps to the str wire type; M2 adds the
+         * declared composite (array of map) and the explicit bool fields. */
         if (field.wire == ghostlock::profile::WireKind::String) return WireType::Str;
+        if (field.wire == ghostlock::profile::WireKind::Array) return WireType::Array;
+        if (field.wire == ghostlock::profile::WireKind::Bool) return WireType::Bool;
         if (is_bool_field(field.key)) return WireType::Bool;
         if (field.is_signed) return WireType::Int;
         return WireType::UInt;
@@ -169,6 +172,26 @@ namespace {
             return uint_value(0x400);
         if (s == "backend.cve_2026_43499" && k == "steps")
             return str_value("mcast_rootchild");
+        if (s == "backend.cve_2026_43499" && k == "route")
+            return str_value("multicast_waiter");
+        if (s == "backend.cve_2026_43499" && k == "experimental") return bool_value(true);
+        /* M2 declared composite: the fixture carries a one-element queue so the
+         * array-of-map path is exercised by the encode/decode round trip (the
+         * token stays present in this fixture; framing, not this test, rejects
+         * queue + token together). */
+        if (s == "backend.cve_2026_43499" && k == "queue") {
+            Value element;
+            element.type = WireType::Map;
+            ghostlock::profile::glkv3::MapMember step;
+            step.key = "step";
+            step.type = WireType::Str;
+            step.bytes = "w1";
+            element.members.push_back(step);
+            Value array;
+            array.type = WireType::Array;
+            array.elements.push_back(element);
+            return array;
+        }
         if (s == kActiveRoute && k == "waiter_off") return int_value(-2);
         if (s == kActiveRoute && k == "buffer_size") return uint_value(512);
         if (s == kActiveRoute && k == "task_offset") return uint_value(0x30);
@@ -256,6 +279,7 @@ namespace {
             case WireType::Str: return "str";
             case WireType::Bin: return "bin";
             case WireType::Array: return "array";
+            case WireType::Map: return "map";
             case WireType::Union: return "union";
         }
         return "unknown";
@@ -335,6 +359,36 @@ namespace {
     };
 } // namespace
 
+/* Guard (M2 residual retirement): the retired vendor guard vocabulary must not
+ * come back through a declaration. The exported manifest is generated from these
+ * same two tables, so a hit here is a hit in profile-manifest-v3.tsv too. */
+template<std::size_t N>
+void check_no_retired_vendor_keys(const FieldSpec (&fields)[N], const char *owner) {
+    for (std::size_t i = 0; i < N; ++i) {
+        const std::string_view section = fields[i].section;
+        const std::string_view key = fields[i].key;
+        const bool retired_word =
+                key.find("vr_guard") != std::string_view::npos ||
+                section.find("vr_guard") != std::string_view::npos;
+        /* The live offset key vr_sys_exit_tp is the ONLY legal carrier of the
+         * "tracepoint" spelling; any other key naming it is a retired layout key. */
+        const bool retired_layout =
+                key.find("tracepoint_funcs") != std::string_view::npos &&
+                key.find("vr_sys_exit_tp") == std::string_view::npos;
+        const bool retired = retired_word || retired_layout;
+        if (retired) {
+            std::fprintf(stderr,
+                         "glkv3_schema_test: guard: retired vendor key '%.*s' in "
+
+                         "%.*s\n",
+                         static_cast<int>(key.size()), key.data(),
+                         static_cast<int>(section.size()), section.data());
+            std::abort();
+        }
+    }
+    std::printf("glkv3_schema_test: %s: no retired vendor keys\n", owner);
+}
+
 int main(int argc, char **argv) {
     /* Golden-export modes run before the assertions: this test is the native
      * producer for the Kotlin cross-language comparison (header comment). */
@@ -349,6 +403,9 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
+    check_no_retired_vendor_keys(kPlatformAbiGlkv3Fields, "platform::abi");
+    check_no_retired_vendor_keys(kCve2026_43499Glkv3Fields, "cve_2026_43499");
+    check_no_retired_vendor_keys(kCve2026_43284Glkv3Fields, "cve_2026_43284");
     check_owner<ghostlock::platform::abi::Schema>(
             kPlatformAbiGlkv3Fields, std::size(kPlatformAbiGlkv3Fields),
             "platform::abi");

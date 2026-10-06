@@ -12,11 +12,13 @@ Android app (`app/`) and the native runtime (`src/core/`). The CLI is self-docum
 | `json` | the historical analysis report (v1); untouched by the HOCON refactor. |
 
 `flatten_conf_values()` reads a rendered `conf` back onto **wire paths** — the same
-view the App folds and the plugin R1 extract lookup match against.
-`translate_conf_path()` is **transitional**: it maps the profile-only spelling
-(`backend.cve_2026_43499.abi.*`, `backend.cve_2026_43284.execution.*`, root scalars) onto
-the not-yet-renamed wire schema and is deleted once native renames the wire
-paths to match the profile.
+view the App folds and the plugin R1 extract lookup match against. The profile
+spelling **is** the wire spelling (native rename `23958eb0` / `b55708a8`): root scalars are
+bare keys, the ABI block is `backend.cve_2026_43499.abi.*`, the 43284 tuning is
+`backend.cve_2026_43284.execution.*`. There is deliberately **no path rewriting** here (the
+transitional mapping was deleted), so a document written in the deleted `common` /
+`platform` spelling keeps those legacy keys and matches nothing — it is rejected
+upstream instead of being silently accepted.
 
 ## `--plugin-descriptor` is frozen
 

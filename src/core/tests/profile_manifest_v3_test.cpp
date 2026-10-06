@@ -80,7 +80,12 @@ namespace {
         return "# GhostLock GLKv3 owner-qualified manifest (GLKv3 schema 3 / generated form R2).\n"
                "# Authoritative native export; regenerate with:\n"
                "#   make -C src profile-manifest-v3\n"
-               "# Columns: owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc\n"
+               "# Columns: owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc<TAB>width\n"
+               "# The width column is the v2 owner declaration's own bit width (1/2/4/8),"
+               "# never hand-copied, and it is a HARD VALIDATION INPUT: the Kotlin adapter"
+               "# must reject a raw numeric value that does not fit the declared width"
+               "# (e.g. 2^40 in a u32 field). str/array carry no bit width and export \"-\";"
+               "# bool always exports 1. The producer asserts width<->wire consistency.\n"
                "# The wire column may be a \"|\"-separated UNION of wire kinds (the S4 P1\n"
                "# dynamic plugin paths plugin.<id>.params.* / plugin.<id>.extract.*); every\n"
                "# member must come from the wire-kind vocabulary and an unknown member is\n"
@@ -154,6 +159,100 @@ namespace {
         return false;
     }
 
+    /* Producer-first width column: the value comes from the v2 owner declaration
+     * (the single authority), and the producer refuses to export an inconsistent
+     * or missing width. str/array have no bit width; bool is exactly one byte. */
+    std::string width_column(ghostlock::profile::WireKind wire, uint8_t width) {
+        switch (wire) {
+            case ghostlock::profile::WireKind::String:
+            case ghostlock::profile::WireKind::Array:
+                return "-";
+            case ghostlock::profile::WireKind::Bool:
+                if (width != 1U) {
+                    guard_fail("width_column(): bool declaration with width != 1");
+                }
+                return "1";
+            case ghostlock::profile::WireKind::UInt:
+            case ghostlock::profile::WireKind::Int:
+                if (width != 1U && width != 2U && width != 4U && width != 8U) {
+                    guard_fail("width_column(): numeric declaration with an illegal width");
+                }
+                return std::to_string(width);
+        }
+        guard_fail("width_column(): unknown wire kind");
+    }
+
+    /* Guard: the exported width must agree with the exported wire type. */
+    void check_width_matches_wire(ghostlock::profile::glkv3::WireType wire,
+                                  const std::string &width, std::string_view path) {
+        /* The dynamic plugin family has no static width (the descriptor owns it). */
+        if (path.starts_with("plugin.")) {
+            if (wire == ghostlock::profile::glkv3::WireType::Bool && width != "1") {
+                guard_fail("width: bool must be 1 for " + std::string(path));
+            }
+            return;
+        }
+        switch (wire) {
+            case ghostlock::profile::glkv3::WireType::UInt:
+            case ghostlock::profile::glkv3::WireType::Int:
+                /* The dynamic plugin family fixes its width in the descriptor. */
+                if (width == "-" && !path.starts_with("plugin.")) {
+                    guard_fail("width: missing numeric width for " + std::string(path));
+                }
+                break;
+            case ghostlock::profile::glkv3::WireType::Bool:
+                if (width != "1") {
+                    guard_fail("width: bool must be 1 for " + std::string(path));
+                }
+                break;
+            case ghostlock::profile::glkv3::WireType::Str:
+            case ghostlock::profile::glkv3::WireType::Array:
+                if (width != "-") {
+                    guard_fail("width: text/composite must be - for " + std::string(path));
+                }
+                break;
+            default:
+                guard_fail("width: no rule for this wire kind");
+        }
+    }
+
+    template<typename Schema>
+    bool lookup_width_v2(std::string_view section, std::string_view key,
+                         std::string &width) {
+        for (const auto &field : Schema::kFields) {
+            if (field.section != section || field.key != key) continue;
+            width = width_column(field.wire, field.width);
+            return true;
+        }
+        return false;
+    }
+
+    std::string lookup_width(std::string_view section, std::string_view key,
+                             ghostlock::profile::glkv3::WireType wire) {
+        std::string width;
+        const bool found =
+                lookup_width_v2<ghostlock::platform::abi::Schema>(section, key, width) ||
+                lookup_width_v2<ghostlock::backend::Cve2026_43499Schema>(section, key,
+                                                                        width) ||
+                lookup_width_v2<ghostlock::backend::Cve2026_43284Schema>(section, key,
+                                                                        width);
+        if (!found) {
+            /* The dynamic plugin family (plugin.<id>.params.* / .extract.* and the
+             * fixed .enabled/.stage slots) has no v2 owner declaration: its wire
+             * kind comes from the plugin descriptor, so the export carries "-" and
+             * the descriptor owns the width. Every other key must be declared. */
+            if (section.starts_with("plugin")) {
+                /* Dynamic plugin family: the fixed bool slot still has an
+                 * unambiguous width, so it exports 1 like every other bool; every
+                 * other dynamic kind stays descriptor-owned and exports "-". */
+                return wire == ghostlock::profile::glkv3::WireType::Bool ? "1" : "-";
+            }
+            guard_fail("lookup_width(): no v2 owner declaration for " +
+                       std::string(section) + "." + std::string(key));
+        }
+        return width;
+    }
+
     void lookup_declaration(std::string_view section, std::string_view key,
                             std::string &def, std::string &source,
                             std::string &doc) {
@@ -196,11 +295,13 @@ namespace {
             std::string path(field.section);
             if (!path.empty()) path.push_back('.');
             path.append(field.key);
+            const std::string width = lookup_width(field.section, field.key, field.type);
+            check_width_matches_wire(field.type, width, path);
             std::ostringstream line;
             line << owner_for(field.section) << '\t' << path << '\t'
                  << ghostlock::profile::glkv3::wire_type_name(field.type) << '\t'
                  << (field.required ? 1 : 0) << '\t' << def << '\t' << source
-                 << '\t' << doc;
+                 << '\t' << doc << '\t' << width;
             lines.push_back(line.str());
         }
     }

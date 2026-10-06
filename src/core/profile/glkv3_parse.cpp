@@ -2,6 +2,7 @@
 
 #include "contract/identity.hpp"
 #include "contract/model.hpp"
+#include "contract/step_plan.hpp"
 #include "profile/document.hpp"
 #include "profile/glkv3.hpp"
 
@@ -147,6 +148,59 @@ namespace ghostlock::profile {
 //             }
 //             return seen_paths == declared_count;
 //         }
+        /* M2: materialise a declared array field into the neutral Document
+         * composite. Bounds are structural; element maps carry scalar members
+         * only, and a non-scalar member is recorded as an unsupported member so
+         * the queue normalizer can name the precise reason. */
+        bool materialise_array(const profile::glkv3::Value &array,
+                               std::vector<profile::CompositeItem> &out) {
+            if (array.elements.size() > profile::kMaxCompositeItems) return false;
+            out.reserve(array.elements.size());
+            for (const profile::glkv3::Value &element : array.elements) {
+                profile::CompositeItem item;
+                if (element.type != profile::glkv3::WireType::Map) {
+                    /* Bare-string element (design doc U9) or any other non-map
+                     * element: recorded, not silently dropped. */
+                    item.is_map = false;
+                    out.push_back(std::move(item));
+                    continue;
+                }
+                if (element.members.size() > profile::kMaxCompositeKeys) return false;
+                item.entries.reserve(element.members.size());
+                for (const profile::glkv3::MapMember &member : element.members) {
+                    profile::CompositeEntry entry;
+                    entry.key.assign(member.key.data(), member.key.size());
+                    if (entry.key.size() > profile::kMaxCompositeTextBytes) return false;
+                    switch (member.type) {
+                        case profile::glkv3::WireType::Str:
+                            entry.is_text = true;
+                            if (member.bytes.size() > profile::kMaxCompositeTextBytes) {
+                                return false;
+                            }
+                            entry.text.assign(member.bytes.data(), member.bytes.size());
+                            break;
+                        case profile::glkv3::WireType::UInt:
+                            entry.raw = member.uint_value;
+                            break;
+                        case profile::glkv3::WireType::Int:
+                            entry.raw = static_cast<uint64_t>(member.int_value);
+                            break;
+                        case profile::glkv3::WireType::Bool:
+                            entry.raw = member.bool_value ? uint64_t{1} : uint64_t{0};
+                            break;
+                        default:
+                            /* Nested map/array/bin/union: outside the element
+                             * vocabulary; kept as a named unsupported member. */
+                            entry.unsupported = true;
+                            break;
+                    }
+                    item.entries.push_back(std::move(entry));
+                }
+                out.push_back(std::move(item));
+            }
+            return true;
+        }
+
         /* HOCON refactor owner whitelist (contract-design 3.16): the only
          * owner-qualified section family is "backend.<id>.*" -- the ABI keys are
          * backend.cve_2026_43499.abi.* now. A section with any other prefix is
@@ -198,6 +252,127 @@ namespace ghostlock::profile {
             return true;
         }
 
+        /* M2 canonical selection: backend.<id>.queue is an array of map and
+         * route is its queue-level sibling. The framed composite feeds the M1.1
+         * normalizer; every declaration-time rule fails closed with its named
+         * `plan_error reason=` token. A supported plan installs the preset token
+         * into the `steps` slot, so the rest of the pipeline sees byte-for-byte
+         * what the token path produced. An experimental plan is reported and
+         * refused: it has no compile-time pipeline instance yet (design doc
+         * section 4.3 -- promotion needs its own device gate). */
+        int32_t resolve_queue(Document *out, const glkv3::Document &decoded,
+                              contract::BackendKind backend, Section &section,
+                              const Value &queue_value, const Value *route_value,
+                              const Value *experimental_value) {
+            const std::string_view backend_token = contract::backend_token_name(backend);
+            std::vector<contract::QueueElement> elements;
+            elements.reserve(queue_value.items.size());
+            for (const CompositeItem &item : queue_value.items) {
+                contract::QueueElement element;
+                element.is_object = item.is_map;
+                for (const CompositeEntry &member : item.entries) {
+                    /* params / route are presence-only (reserved / forbidden); a
+                     * non-textual step/seam/stage cannot name a token, so it is
+                     * reported as an unknown member instead of being dropped. */
+                    if (member.key == "params") {
+                        element.has_params = true;
+                        continue;
+                    }
+                    if (member.key == "route") {
+                        element.has_step_route = true;
+                        continue;
+                    }
+                    if (!member.is_text) {
+                        if (element.unknown_key.empty()) element.unknown_key = member.key;
+                        continue;
+                    }
+                    if (member.key == "step") {
+                        element.step = member.text;
+                    } else if (member.key == "seam") {
+                        element.seam = member.text;
+                    } else if (member.key == "stage") {
+                        element.stage = member.text;
+                    } else if (element.unknown_key.empty()) {
+                        element.unknown_key = member.key;
+                    }
+                }
+                elements.push_back(element);
+            }
+
+            contract::QueueInput input;
+            input.backend = backend;
+            input.elements = elements;
+            if (route_value != nullptr && route_value->is_text) {
+                input.route = route_value->text;
+            }
+            input.experimental_declared =
+                    experimental_value != nullptr && experimental_value->present &&
+                    experimental_value->raw != 0U;
+
+            const contract::PlanResult result = contract::normalize_step_queue(input);
+            if (!result.ok()) {
+                (void)std::fprintf(stderr,
+                                   "plan_error reason=%.*s at=%zu backend=%.*s\n",
+                                   static_cast<int>(
+                                           contract::plan_error_reason(result.error).size()),
+                                   contract::plan_error_reason(result.error).data(),
+                                   result.error_index,
+                                   static_cast<int>(backend_token.size()),
+                                   backend_token.data());
+                return -1;
+            }
+            if (result.plan.verdict != contract::PlanVerdict::Supported) {
+                (void)std::fprintf(stderr,
+                                   "plan verdict=experimental declared=%d backend=%.*s\n",
+                                   input.experimental_declared ? 1 : 0,
+                                   static_cast<int>(backend_token.size()),
+                                   backend_token.data());
+                (void)std::fprintf(stderr,
+                                   "plan_error reason=experimental-not-verified backend=%.*s\n",
+                                   static_cast<int>(backend_token.size()),
+                                   backend_token.data());
+                return -1;
+            }
+
+            const contract::CombinationSpec *spec =
+                    contract::combination_spec(result.plan.preset);
+            if (spec == nullptr) return -1;
+            /* The root route token, when the document carries one, must agree with
+             * the queue-level route: two selection surfaces never disagree
+             * silently (the route-less backend has RouteKind::None on both sides). */
+            if (decoded.has_route) {
+                const RouteKind root_route = static_cast<RouteKind>(
+                        route_kind_from_string(decoded.route));
+                if (root_route != spec->route) {
+                    (void)std::fprintf(
+                            stderr,
+                            "plan_error reason=route-disagrees-with-root backend=%.*s\n",
+                            static_cast<int>(backend_token.size()),
+                            backend_token.data());
+                    return -1;
+                }
+            }
+            contract::TerminalKind terminal{};
+            if (!contract::terminal_kind_from_token(decoded.terminal, terminal) ||
+                terminal != spec->terminal) {
+                return -1;
+            }
+            out->combination = static_cast<uint8_t>(spec->kind);
+            out->middleware = static_cast<uint16_t>(spec->route);
+            const std::string_view terminal_token =
+                    contract::terminal_token_name(spec->terminal);
+            out->terminal_token.assign(terminal_token.data(), terminal_token.size());
+            /* Canonicalise the owner slot to the preset token (the token literal
+             * has static lifetime), creating it when the queue replaced it. */
+            Entry canonical;
+            canonical.key = "steps";
+            canonical.value.present = true;
+            canonical.value.is_text = true;
+            canonical.value.text = spec->token;
+            section.entries.push_back(std::move(canonical));
+            return 0;
+        }
+
         /* Resolve backend.<id>.steps to a combination token and install the
          * derived route / terminal / step set. A new string value is used
          * verbatim; a legacy uint is mapped through the root route and the
@@ -214,8 +389,39 @@ namespace ghostlock::profile {
             Section *section = out->find_section(section_name);
             if (section == nullptr) return -1;
             Entry *steps_entry = nullptr;
+            Entry *queue_entry = nullptr;
+            Entry *route_entry = nullptr;
+            Entry *experimental_entry = nullptr;
             for (Entry &entry : section->entries) {
-                if (entry.key == "steps") steps_entry = &entry;
+                if (entry.key == "steps") {
+                    steps_entry = &entry;
+                } else if (entry.key == "queue") {
+                    queue_entry = &entry;
+                } else if (entry.key == "route") {
+                    route_entry = &entry;
+                } else if (entry.key == "experimental") {
+                    experimental_entry = &entry;
+                }
+            }
+
+            /* M2: the queue is the canonical selection; the token stays as sugar
+             * for the in-repo assets. Declaring both at once is a conflict and
+             * fails closed with a named reason. */
+            if (queue_entry != nullptr) {
+                if (steps_entry != nullptr) {
+                    (void)std::fprintf(
+                            stderr,
+                            "plan_error reason=queue-and-token-both-present backend=%.*s\n",
+                            static_cast<int>(
+                                    contract::backend_token_name(backend).size()),
+                            contract::backend_token_name(backend).data());
+                    return -1;
+                }
+                if (!queue_entry->value.is_array) return -1;
+                return resolve_queue(
+                        out, decoded, backend, *section, queue_entry->value,
+                        route_entry != nullptr ? &route_entry->value : nullptr,
+                        experimental_entry != nullptr ? &experimental_entry->value : nullptr);
             }
             if (steps_entry == nullptr) return -1;
 
@@ -251,6 +457,30 @@ namespace ghostlock::profile {
 
             const contract::CombinationSpec *spec = contract::combination_spec(combination);
             if (spec == nullptr) return -1;
+
+            /* M2: a queue-level route written beside a token must name the route
+             * the token declares (and a route-less backend must not carry one), so
+             * the two selection surfaces can never disagree silently. */
+            if (route_entry != nullptr) {
+                const std::string_view declared_route_token =
+                        route_entry->value.is_text ? route_entry->value.text
+                                                   : std::string_view{};
+                const bool applies = spec->route != RouteKind::None;
+                const bool agrees =
+                        applies && !declared_route_token.empty() &&
+                        static_cast<RouteKind>(
+                                route_kind_from_string(declared_route_token)) == spec->route;
+                if (!agrees) {
+                    (void)std::fprintf(
+                            stderr,
+                            "plan_error reason=%s backend=%.*s\n",
+                            applies ? "route-disagrees-with-token" : "route-not-applicable",
+                            static_cast<int>(
+                                    contract::backend_token_name(backend).size()),
+                            contract::backend_token_name(backend).data());
+                    return -1;
+                }
+            }
 
             /* F3 fail-closed route agreement: the root route, when present,
              * must name the token's declared route; an absent route is None,
@@ -360,8 +590,20 @@ namespace ghostlock::profile {
                         target.add_text(entry.key, entry.value.bytes);
                         break;
                     case profile::glkv3::WireType::Bin:
-                    case profile::glkv3::WireType::Array:
+                    case profile::glkv3::WireType::Map:
                         return -1;
+                    case profile::glkv3::WireType::Array: {
+                        /* M2 declaration-driven composite: only a declared
+                         * array field is admitted (design doc 5.0), and the
+                         * materialisation is bounded and fail-closed. */
+                        if (!profile::declared_array_field(section.name, entry.key)) {
+                            return -1;
+                        }
+                        std::vector<profile::CompositeItem> items;
+                        if (!materialise_array(entry.value, items)) return -1;
+                        target.add_array(entry.key, std::move(items));
+                        break;
+                    }
                 }
             }
         }

@@ -27,16 +27,14 @@ data class NativeProfileDocument(
     val release: String,
     val routeKind: UInt,
     val kernelMajor: UInt,
-    /** Gate for the ancillary vr.ko guard (see docs/analysis/ancillary-controller-guide.md). */
-    val vrGuard: UInt,
+    /** Optional kernel minor (HOCON refactor); unused today, carried for the UI. */
+    val kernelMinor: UInt? = null,
     val taskStruct: TaskStructOffsets,
     val cred: CredTemplate,
     val kernelOffset: KernelOffsetTable,
     val kernelPhysLoad: ULong?,
     val kernelPhysOffset: ULong?,
     val compactWaiter: UByte?,
-    /** vr_guard.tracepoint_funcs, when the image's BTF yielded it. */
-    val vrGuardTracepointFuncs: UInt?,
     val kernelsnitchCollisions: UInt?,
     val mmStructSz: UInt?,
     val execution: ExecutionTuning,
@@ -50,6 +48,20 @@ data class NativeProfileDocument(
      * defaulting. [StepSetKind] survives only as the derived vocabulary.
      */
     val combination: CombinationSpec? = null,
+    /**
+     * M2 queue carrying (design doc 4.5 / 5-Q2): the queue-level route token,
+     * the step queue and the static experimental opt-in declared by the
+     * `available.<id>` object form. Null means "not declared": no key is
+     * written, so every pre-M2 document keeps byte-identical output.
+     *
+     * The queue-level route is carried in the canonical map as
+     * `backend.<id>.queue_route` (ProfileLayout.QueueRouteKey) because the route
+     * geometry map owns `backend.<id>.route` there; [v3Sections] is the ONE
+     * place that maps it back onto the wire key `route`.
+     */
+    val queueRoute: String? = null,
+    val stepQueue: List<QueueElement>? = null,
+    val experimental: Boolean? = null,
     /**
      * Backend id carried in the logical document (native `kBackend*`). Defaults
      * to cve_2026_43499. [BackendWireCve202643284] selects the 43284 private
@@ -69,13 +81,14 @@ data class NativeProfileDocument(
     val plugins: List<PluginEmission> = emptyList(),
 ) {
     internal fun sections(): List<Section> = buildList {
+        /* The kernel scalars are ROOT values on the wire (native kRootSection),
+         * not a section; v3Sections drops this logical section and the adapter
+         * reads the fields directly. */
         add(
             Section(
                 "meta",
-                listOf(
-                    "kernel_major" to kernelMajor.toULong(),
-                    "safe_mode" to safeMode.toULong(),
-                ) + listOfNotNull(vrGuard.takeIf { it != 0u }?.let { "vr_guard" to it.toULong() }),
+                listOf("kernel_major" to kernelMajor.toULong(), "safe_mode" to safeMode.toULong()) +
+                    listOfNotNull(kernelMinor?.let { "kernel_minor" to it.toULong() }),
             ),
         )
         add(Section("task_struct", taskEntries()))
@@ -149,9 +162,8 @@ data class NativeProfileDocument(
             ),
         )
         routeSection()?.let(::add)
-        vrGuardSection()?.let(::add)
         backendSection()?.let(::add)
-        backend43284Section()?.let(::add)
+        addAll(backend43284Sections())
     }
 
     /**
@@ -166,34 +178,40 @@ data class NativeProfileDocument(
         val out = mutableListOf<Section>()
         for (section in sections()) {
             when (section.name) {
-                "meta" -> out += Section("common", section.entries)
+                /* ROOT scalars: carried by the document, never a section. */
+                "meta" -> Unit
                 "task_struct" ->
-                    if (!is43284) out += Section("platform.abi.task_struct", section.entries)
+                    if (!is43284) out += Section("backend.cve_2026_43499.abi.task_struct", section.entries)
 
                 "cred" -> if (!is43284) {
-                    val (platform, backend) = section.entries.partition { it.first in PlatformCredKeys }
-                    out += Section("platform.abi.cred", platform)
+                    val (platform, backend) = section.entries.partition { it.first in AbiCredKeys }
+                    out += Section("backend.cve_2026_43499.abi.cred", platform)
                     out += Section("backend.cve_2026_43499.cred", backend)
                 }
 
                 "offset" -> if (!is43284) {
-                    val (platform, backend) = section.entries.partition { it.first in PlatformOffsetKeys }
-                    out += Section("platform.abi.offset", platform)
+                    val (platform, backend) = section.entries.partition { it.first in AbiOffsetKeys }
+                    out += Section("backend.cve_2026_43499.abi.offset", platform)
                     out += Section("backend.cve_2026_43499.offset", backend)
                 }
 
                 "kernel" -> if (!is43284) {
-                    val (platform, backend) = section.entries.partition { it.first in PlatformKernelKeys }
-                    if (platform.isNotEmpty()) out += Section("platform.abi.kernel", platform)
+                    val (platform, backend) = section.entries.partition { it.first in AbiKernelKeys }
+                    if (platform.isNotEmpty()) {
+                        out += Section("backend.cve_2026_43499.abi.kernel", platform)
+                    }
                     if (backend.isNotEmpty()) out += Section("backend.cve_2026_43499.kernel", backend)
                 }
-
-                "vr_guard" ->
-                    if (!is43284) out += Section("countermeasure.vivo_vr_guard", section.entries)
 
                 "backend.cve_2026_43499", "backend.cve_2026_43284" -> out += section
 
                 else -> {
+                    /* 43284 sections are already owner-qualified (the execution
+                     * tuning nests under it), so pass them through untouched. */
+                    if (section.name.startsWith("backend.cve_2026_43284.")) {
+                        if (is43284) out += section
+                        continue
+                    }
                     if (is43284) continue
                     val name = when {
                         section.name.startsWith("execution.") ->
@@ -245,13 +263,32 @@ data class NativeProfileDocument(
         }
     }
 
-    /** Backend-private combination token section (cve_2026_43499). */
+    /**
+     * Backend-private combination token section (cve_2026_43499). M2 adds the
+     * declared queue selection to it: the canonical `queue_route` token is
+     * emitted under the wire key `route` — the ONE mapping point (the canonical
+     * key exists only because the route geometry map owns `route` there), while
+     * the queue geometry keeps riding `backend.cve_2026_43499.route.<branch>.*`.
+     */
     private fun backendSection(): Section? =
         if (backendKind == BackendWireCve202643284) {
             null
         } else {
-            combination?.takeIf { it.backend == BackendKind.Cve2026_43499 }?.let {
-                Section("backend.cve_2026_43499", emptyList(), listOf("steps" to it.token))
+            val token = combination?.takeIf { it.backend == BackendKind.Cve2026_43499 }?.token
+            val text = buildList {
+                queueRoute?.let { add("route" to it) }
+                token?.let { add("steps" to it) }
+            }
+            val entries = buildList {
+                /* Presence is key occurrence: the bool is only written when the
+                 * declaration exists (U5 opt-in), never defaulted to false. */
+                experimental?.let { add("experimental" to if (it) 1uL else 0uL) }
+            }
+            val queue = buildList { stepQueue?.let { add("queue" to it) } }
+            if (entries.isEmpty() && text.isEmpty() && queue.isEmpty()) {
+                null
+            } else {
+                Section("backend.cve_2026_43499", entries, text, queueEntries = queue)
             }
         }
 
@@ -260,39 +297,41 @@ data class NativeProfileDocument(
      * the header backend id is 43284; an absent field stays absent (presence is
      * carried by key occurrence, so a provided 0 is distinct from omitted).
      */
-    private fun backend43284Section(): Section? {
-        if (backendKind != BackendWireCve202643284) return null
+    private fun backend43284Sections(): List<Section> {
+        if (backendKind != BackendWireCve202643284) return emptyList()
+        /* M2: this backend has no route axis, so a queue-level route is not
+         * applicable (native `route-not-applicable`); refusing here keeps the
+         * document from silently dropping a declared route. */
+        require(queueRoute == null) {
+            "backend.cve_2026_43284 has no route axis: queue route not applicable"
+        }
         val config = cve2026_43284 ?: Cve2026_43284Config()
+        /* kmi / lkm_path / carrier_path are native-side conventions now (the wire
+         * keeps them; the profile must not provide them). */
         val text = buildList {
-            config.carrierPath?.let { add("carrier_path" to it) }
-            config.lkmPath?.let { add("lkm_path" to it) }
             combination?.takeIf { it.backend == BackendKind.Cve2026_43284 }?.let {
                 add("steps" to it.token)
             }
         }
+        /* HOCON refactor: the execution tuning moved under `execution.*`. */
         val entries = buildList {
-            config.kmi?.let { add("kmi" to it.toULong()) }
             config.selinuxExecContext?.let { add("selinux_exec_context" to it) }
             config.lateLoadArgs?.let { add("late_load_args" to it) }
             config.waitTimeoutMs?.let { add("wait_timeout_ms" to it.toULong()) }
             config.modulePollAttempts?.let { add("module_poll_attempts" to it.toULong()) }
             config.modulePollIntervalMs?.let { add("module_poll_interval_ms" to it.toULong()) }
         }
-        return if (text.isEmpty() && entries.isEmpty()) {
-            null
-        } else {
-            Section("backend.cve_2026_43284", entries, text)
+        /* M2 queue selection (U5 experimental opt-in + step queue). */
+        val selection = buildList {
+            experimental?.let { add("experimental" to if (it) 1uL else 0uL) }
         }
-    }
-
-    /**
-     * Ancillary vr.ko guard layout: offsetof(struct tracepoint, funcs), read from
-     * the image's BTF by the extractor. Absent when the profile does not carry
-     * it, which keeps the behavior fail-closed on the native side.
-     */
-    private fun vrGuardSection(): Section? {
-        val funcs = vrGuardTracepointFuncs ?: return null
-        return Section("vr_guard", listOf("tracepoint_funcs" to funcs.toULong()))
+        val queue = buildList { stepQueue?.let { add("queue" to it) } }
+        val out = mutableListOf<Section>()
+        if (text.isNotEmpty() || selection.isNotEmpty() || queue.isNotEmpty()) {
+            out += Section("backend.cve_2026_43284", selection, text, queueEntries = queue)
+        }
+        if (entries.isNotEmpty()) out += Section("backend.cve_2026_43284.execution", entries)
+        return out
     }
 
     private fun taskEntries(): List<Pair<String, ULong>> = listOf(
@@ -438,9 +477,8 @@ data class NativeProfileDocument(
                 fun valueAt(path: String): Long? =
                     value("backend.cve_2026_43284.$path")
                 Cve2026_43284Config(
-                    carrierPath = textAt("carrier_path"),
-                    lkmPath = textAt("lkm_path"),
-                    kmi = valueAt("kmi")?.toUInt(),
+
+
                     selinuxExecContext = valueAt("selinux_exec_context")?.toULong(),
                     lateLoadArgs = valueAt("late_load_args")?.toULong(),
                     waitTimeoutMs = valueAt("wait_timeout_ms")?.toUInt(),
@@ -454,7 +492,7 @@ data class NativeProfileDocument(
                 release = release,
                 routeKind = derivedRouteKind,
                 kernelMajor = vu("kernel_major"),
-                vrGuard = if (flagAt("recommend_vr_guard") == true) 1u else 0u,
+                kernelMinor = vuOrNull("kernel_minor"),
                 taskStruct = TaskStructOffsets(
                     prio = vu("task_struct.prio"),
                     normalPrio = vu("task_struct.normal_prio"),
@@ -505,7 +543,6 @@ data class NativeProfileDocument(
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
                 kernelPhysOffset = vulOrNull("kernel_phys_offset"),
                 compactWaiter = flagAt("compact_waiter")?.let { if (it) 1u.toUByte() else 0u.toUByte() },
-                vrGuardTracepointFuncs = vuOrNull("vr_guard.tracepoint_funcs"),
                 kernelsnitchCollisions = vuOrNull("kernelsnitch.collisions"),
                 mmStructSz = vuOrNull("kernelsnitch.mm_struct_sz"),
                 execution = ExecutionTuning(
@@ -554,9 +591,6 @@ data class NativeProfileDocument(
  * carried by key occurrence, so an omitted field is not an empty string).
  */
 data class Cve2026_43284Config(
-    val carrierPath: String? = null,
-    val lkmPath: String? = null,
-    val kmi: UInt? = null,
     val selinuxExecContext: ULong? = null,
     val lateLoadArgs: ULong? = null,
     val waitTimeoutMs: UInt? = null,
@@ -580,22 +614,39 @@ internal data class Section(
      * adapter checks membership instead of picking a fixed kind.
      */
     val pluginEntries: List<Pair<String, PluginValue>> = emptyList(),
+    /**
+     * M2: composite values — the step queue is an array of maps. The manifest
+     * declares the path `array`; the adapter checks that kind before emitting.
+     */
+    val queueEntries: List<Pair<String, List<QueueElement>>> = emptyList(),
 )
 
-/** S4 R2 split of the legacy `cred` logical section: platform ABI offsets. */
-private val PlatformCredKeys = setOf(
+/**
+ * M2 one step-queue element (design 5-Q1/5-Q3): exactly one of `step`/`seam`,
+ * and `stage` (a reserved plugin-stage identifier) only rides with `seam`. The
+ * declaration shape is validated by
+ * [com.ghostlock.app.data.ProfileLayout]; the wire shape is a map of str.
+ */
+data class QueueElement(
+    val step: String? = null,
+    val seam: String? = null,
+    val stage: String? = null,
+)
+
+/** Split of the legacy `cred` logical section: ABI offsets (43499.abi.cred). */
+private val AbiCredKeys = setOf(
     "usage_offset", "caps_offset", "ref_count",
     "ref0_offset", "ref1_offset", "ref2_offset", "ref3_offset",
 )
 
-/** S4 R2 split of the legacy `offset` logical section: platform ABI symbols. */
-private val PlatformOffsetKeys = setOf(
+/** Split of the legacy `offset` logical section: ABI symbols (43499.abi.offset). */
+private val AbiOffsetKeys = setOf(
     "init_task", "init_cred", "empty_zero_page", "root_task_group",
     "selinux_enforcing", "selinux_blob_sizes", "security_hook_heads",
 )
 
-/** S4 R2 split of the legacy `kernel` logical section: platform phys facts. */
-private val PlatformKernelKeys = setOf("kernel_phys_load", "kernel_phys_offset")
+/** Split of the legacy `kernel` logical section: ABI phys facts (43499.abi.kernel). */
+private val AbiKernelKeys = setOf("kernel_phys_load", "kernel_phys_offset")
 
 private fun routeSectionName(route: UInt): String = when (RouteKind.fromWire(route)) {
     RouteKind.TCP_ZEROCOPY -> "route.tcp_zerocopy"

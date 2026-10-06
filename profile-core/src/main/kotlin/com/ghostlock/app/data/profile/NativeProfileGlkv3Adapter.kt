@@ -1,6 +1,7 @@
 package com.ghostlock.app.data.profile
 
 import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.QueueElement
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.plugin.PluginValue
@@ -46,7 +47,9 @@ object NativeProfileGlkv3Adapter {
     const val MANIFEST_RESOURCE: String = "profile-manifest-v3.tsv"
 
     /** Manifest columns: owner, path, wire, required, default, source, doc. */
-    private const val MANIFEST_COLUMNS = 7
+    /** owner, path, wire, required, default, source, doc, width (native export R2+). */
+    private const val MANIFEST_COLUMNS = 8
+    private val WIDTHS = setOf(1, 2, 4, 8)
 
     /**
      * A manifest wire declaration: exactly one kind, or a UNION of kinds for the
@@ -54,7 +57,18 @@ object NativeProfileGlkv3Adapter {
      * §3.14.7.7). Every member must come from the wire-kind vocabulary; an
      * unknown member fails closed while the manifest is parsed.
      */
-    private data class Declaration(val owner: String, val wires: List<WireType>) {
+    private data class Declaration(
+        val owner: String,
+        val wires: List<WireType>,
+        /**
+         * The v2 owner declaration's own bit width (1/2/4/8), or null for a
+         * width-less kind (str/array export \"-\"; bool always exports 1).
+         * The manifest is the single authority: this is carried so the value
+         * can be range-checked against the declared width instead of silently
+         * wrapping (e.g. 2^40 in a u32 field).
+         */
+        val width: Int?,
+    ) {
         /** The single kind; the union paths resolve theirs from the descriptor. */
         val wire: WireType
             get() = wires.singleOrNull()
@@ -72,6 +86,25 @@ object NativeProfileGlkv3Adapter {
      * authority: a field added or retyped natively only needs a regenerated
      * manifest.
      */
+    /**
+     * Fail-closed width column (native export R2+).
+     *
+     * The manifest is the single authority for a field's bit width, and the
+     * width is a HARD VALIDATION INPUT: the adapter rejects a raw numeric value
+     * that does not fit it instead of letting a typed cast wrap it. A width-less
+     * kind (str/array) exports \"-\"; bool exports 1. Anything else -- a missing
+     * column, a non-number, or a value outside 1/2/4/8 -- is a manifest defect
+     * and fails closed here rather than being defaulted silently.
+     */
+    internal fun parseWidthColumn(column: String, line: String): Int? {
+        if (column == "-") return null
+        val width = column.toIntOrNull()
+        require(width != null && width in WIDTHS) {
+            "manifest width must be one of $WIDTHS or \"-\", got \"$column\": $line"
+        }
+        return width
+    }
+
     private val DECLARATIONS: Map<String, Declaration> by lazy {
         val stream = NativeProfileGlkv3Adapter::class.java.classLoader
             ?.getResourceAsStream(MANIFEST_RESOURCE)
@@ -85,6 +118,7 @@ object NativeProfileGlkv3Adapter {
                 require(parts.size == MANIFEST_COLUMNS) {
                     "manifest line needs $MANIFEST_COLUMNS tab-separated columns: $line"
                 }
+                val width = parseWidthColumn(parts[7], line)
                 val owner = parts[0]
                 val path = parts[1]
                 val wires = parts[2].split('|').map { name ->
@@ -94,7 +128,7 @@ object NativeProfileGlkv3Adapter {
                 require(wires.isNotEmpty() && wires.distinct().size == wires.size) {
                     "malformed GLKv3 wire declaration in manifest: $line"
                 }
-                require(out.put(path, Declaration(owner, wires)) == null) {
+                require(out.put(path, Declaration(owner, wires, width)) == null) {
                     "duplicate GLKv3 manifest path: $path"
                 }
             }
@@ -106,6 +140,13 @@ object NativeProfileGlkv3Adapter {
      * Every (path, manifest wire spelling) pair this adapter can emit, for the
      * manifest agreement test. A dynamic path keeps its union spelling.
      */
+    /**
+     * Declared bit width per path (null for width-less kinds), for the manifest
+     * agreement/guard tests. The manifest stays the single authority.
+     */
+    internal fun declaredWidths(): Map<String, Int?> =
+        DECLARATIONS.mapValues { it.value.width }
+
     fun declaredTypeNames(): Map<String, String> =
         DECLARATIONS.mapValues { it.value.manifestName }
 
@@ -115,6 +156,14 @@ object NativeProfileGlkv3Adapter {
      * concrete kind use this; the union case is resolved from the descriptor.
      */
     fun declaredWire(path: String): WireType? = DECLARATIONS[path]?.wires?.singleOrNull()
+
+    /**
+     * The declared bit width for [path], or null when the path is undeclared or
+     * its kind is width-less (str/array). Mirrors [declaredWire]: the manifest is
+     * the single authority, and a malformed width already failed closed while the
+     * manifest was parsed, so this never returns a guessed default.
+     */
+    fun declaredWidth(path: String): Int? = DECLARATIONS[path]?.width
 
     /**
      * Declaration for a concrete path, including the dynamic plugin paths. The
@@ -151,6 +200,20 @@ object NativeProfileGlkv3Adapter {
         is PluginValue.Int -> WireType.Int
         is PluginValue.Bool -> WireType.Bool
         is PluginValue.Str -> WireType.Str
+    }
+
+    /** M2: one declared queue element -> its wire map (encoder sorts the keys). */
+    private fun glkv3QueueElement(element: QueueElement): Glkv3Value {
+        require((element.step == null) != (element.seam == null)) {
+            "queue element needs exactly one of step/seam"
+        }
+        return Glkv3Value.Map(
+            buildList {
+                element.step?.let { add("step" to Glkv3Value.Str(it)) }
+                element.seam?.let { add("seam" to Glkv3Value.Str(it)) }
+                element.stage?.let { add("stage" to Glkv3Value.Str(it)) }
+            },
+        )
     }
 
     private fun glkv3Of(value: PluginValue): Glkv3Value = when (value) {
@@ -199,11 +262,29 @@ object NativeProfileGlkv3Adapter {
                     }
                     add(Glkv3Entry(key, glkv3Of(value)))
                 }
+                /* M2: the step queue is an array of maps. The element shape
+                 * (exactly one of step/seam, stage only with seam) was already
+                 * validated at the declaration boundary (ProfileLayout); here
+                 * only the declared wire kind is enforced. */
+                for ((key, elements) in section.queueEntries) {
+                    val path = "${section.name}.$key"
+                    val declaration = declarationFor(path)
+                        ?: error("NativeProfileDocument emitted an unmapped GLKv3 path: $path")
+                    require(declaration.wires.singleOrNull() == WireType.Array) {
+                        "GLKv3 path $path is declared ${declaration.manifestName}, not array"
+                    }
+                    require(elements.isNotEmpty()) { "GLKv3 path $path: queue must not be empty" }
+                    add(Glkv3Entry(key, Glkv3Value.Array(elements.map(::glkv3QueueElement))))
+                }
             }
             Glkv3Section(name = section.name, entries = entries)
         }
         val is43284 = document.backendKind == BackendKind.Cve2026_43284.wire.toUInt()
         return Glkv3Document(
+            /* HOCON refactor: the kernel scalars are ROOT values. */
+            kernelMajor = document.kernelMajor.toULong(),
+            kernelMinor = document.kernelMinor?.toULong(),
+            safeMode = document.safeMode != 0u,
             release = document.release,
             terminal = document.combination?.terminal?.token ?: DEFAULT_TERMINAL,
             /* 43284 documents are route-less (native RouteKind::None since S4 F3;

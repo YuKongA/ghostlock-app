@@ -12,6 +12,8 @@ import org.junit.Test
  */
 class Glkv3DecoderTest {
     private val sample = Glkv3Document(
+        kernelMajor = 5uL,
+        safeMode = false,
         release = "5.15.189-android13-8-00016-g51bba4309aac",
         terminal = "root_child",
         backend = "cve_2026_43499",
@@ -43,8 +45,9 @@ class Glkv3DecoderTest {
         assertEquals(sample.terminal, decoded.terminal)
         assertEquals(sample.backend, decoded.backend)
         assertEquals(sample.route, decoded.route)
-        assertEquals(Glkv3Value.UInt(5u), valueOf(decoded, "common", "kernel_major"))
-        assertEquals(Glkv3Value.Bool(false), valueOf(decoded, "common", "safe_mode"))
+        /* HOCON refactor: the kernel scalars are ROOT values. */
+        assertEquals(5uL, decoded.kernelMajor)
+        assertEquals(false, decoded.safeMode)
         assertEquals(Glkv3Value.Int(-2), valueOf(decoded, "offset", "slide"))
         assertArrayEquals(encoded, Glkv3Encoder.encode(decoded))
     }
@@ -62,7 +65,7 @@ class Glkv3DecoderTest {
         val encoded = Glkv3Encoder.encode(sample)
         val patched = requireNotNull(Glkv3Decoder.patchSafeMode(encoded))
         val decoded = requireNotNull(Glkv3Decoder.decode(patched))
-        assertEquals(Glkv3Value.Bool(true), valueOf(decoded, "common", "safe_mode"))
+        assertEquals(true, decoded.safeMode)
         assertEquals(sample.release, decoded.release)
         assertEquals(sample.terminal, decoded.terminal)
         assertEquals(sample.backend, decoded.backend)

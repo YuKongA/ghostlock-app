@@ -167,32 +167,35 @@ const CONF_OFFSET_PLATFORM_KEYS: &[&str] = &[
     "security_hook_heads",
 ];
 
-/// Native owner-qualified `(section, key)` pairs the extractor can cause the
-/// app to emit, with the HOCON -> wire translation applied (S4 R2). The manifest
-/// test asserts every `section.key` path is present in the native GLKv3 owner
-/// manifest (`app/src/test/resources/profile-manifest-v3.tsv`); the check is a
+/// Native owner-qualified WIRE paths the extractor can cause the app to emit.
+/// After the HOCON/wire rename (native 23958eb0 / b55708a8) the profile spelling
+/// IS the wire spelling: a path here is exactly what `render_conf` writes, with no
+/// translation layer in between. Root scalars are BARE keys (the manifest lists
+/// them under owner `root`), which the empty section marks; every other entry is
+/// `section.key`. The manifest test asserts each path is present in the native GLKv3
+/// owner manifest (`app/src/test/resources/profile-manifest-v3.tsv`); the check is a
 /// subset because the extractor only derives image-dependent fields while the
 /// manifest is the full owner schema.
 pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
     let mut out: Vec<(&'static str, &'static str)> = vec![
-        // Top-level HOCON paths that the app folds into a wire section/key.
-        // Section names are owner-qualified (S4 R2).
-        // HOCON refactor (user ruling 2026-10-05): the root scalars live at the
-        // document root but keep their wire paths. `common.kernel_minor` is
-        // emitted by render_conf yet has no manifest row YET (the App/native half
-        // of the batch adds it), so it is deliberately not listed here -- the
-        // manifest test below is a hard subset check and must stay honest.
-        ("common", "kernel_major"),
+        // Root scalars (owner `root` in the manifest; empty section = bare key).
+        ("", "kernel_major"),
+        ("", "kernel_minor"),
+        ("", "safe_mode"),
         ("backend.cve_2026_43499", "steps"),
-        // The 43284 execution tuning moved under `execution {}` in HOCON while
-        // the wire keys stay flat.
-        ("backend.cve_2026_43284", "late_load_args"),
-        ("backend.cve_2026_43284", "selinux_exec_context"),
-        ("backend.cve_2026_43284", "module_poll_attempts"),
-        ("backend.cve_2026_43284", "module_poll_interval_ms"),
-        ("backend.cve_2026_43284", "wait_timeout_ms"),
-        ("platform.abi.kernel", "kernel_phys_load"),
-        ("platform.abi.kernel", "kernel_phys_offset"),
+        // 43284 execution tuning: the profile and the wire both spell it `execution.*`.
+        ("backend.cve_2026_43284.execution", "late_load_args"),
+        ("backend.cve_2026_43284.execution", "selinux_exec_context"),
+        ("backend.cve_2026_43284.execution", "module_poll_attempts"),
+        (
+            "backend.cve_2026_43284.execution",
+            "module_poll_interval_ms",
+        ),
+        ("backend.cve_2026_43284.execution", "wait_timeout_ms"),
+        // `platform.abi.*` no longer exists: the ABI block lives under the 43499
+        // backend in both the profile and the wire schema.
+        ("backend.cve_2026_43499.abi.kernel", "kernel_phys_load"),
+        ("backend.cve_2026_43499.abi.kernel", "kernel_phys_offset"),
         ("backend.cve_2026_43499.kernel", "kernelsnitch_collisions"),
         ("backend.cve_2026_43499.kernel", "mm_struct_sz"),
         // Every `route.<route>.compact_waiter` gate (tcp/select/multicast) maps
@@ -202,18 +205,18 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
         // render_conf no longer emits it, so it is no longer a wire field here.
     ];
     for (_, key) in CONF_TASK_FIELDS.iter().copied() {
-        out.push(("platform.abi.task_struct", key));
+        out.push(("backend.cve_2026_43499.abi.task_struct", key));
     }
     for key in CONF_CRED_FIELDS.iter().copied() {
         if CONF_CRED_PLATFORM_KEYS.contains(&key) {
-            out.push(("platform.abi.cred", key));
+            out.push(("backend.cve_2026_43499.abi.cred", key));
         } else {
             out.push(("backend.cve_2026_43499.cred", key));
         }
     }
     for key in CONF_OFFSET_FIELDS.iter().copied() {
         if CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
-            out.push(("platform.abi.offset", key));
+            out.push(("backend.cve_2026_43499.abi.offset", key));
         } else {
             out.push(("backend.cve_2026_43499.offset", key));
         }
@@ -238,15 +241,25 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
     out
 }
 
-/// The owner-qualified paths this extractor can produce, as concrete
-/// `section.key` strings — the R1 whitelist of the plugin extract projection
-/// (`plugin::resolve_extract`). A plugin extract name that names one of these
-/// fields receives the exact literal the rendered profile carries.
+/// The owner-qualified WIRE paths this extractor can produce — the R1 whitelist
+/// of the plugin extract projection (`plugin::resolve_extract`). A plugin extract
+/// name that names one of these fields receives the exact literal the rendered
+/// profile carries.
 pub fn conf_wire_paths() -> BTreeSet<String> {
     conf_wire_fields()
         .into_iter()
-        .map(|(section, key)| format!("{section}.{key}"))
+        .map(|(section, key)| wire_path(section, key))
         .collect()
+}
+
+/// `section.key`, or the bare key for a root scalar (empty section), matching
+/// `profile-manifest-v3.tsv` where root rows carry owner `root` and the bare key.
+pub(crate) fn wire_path(section: &str, key: &str) -> String {
+    if section.is_empty() {
+        key.to_string()
+    } else {
+        format!("{section}.{key}")
+    }
 }
 
 /// Looks up a key in `(key, value)` entries, or `"null"` when absent.
@@ -718,42 +731,23 @@ pub struct ResolvedPlugin {
 const HOCON_QUOTE: char = '"';
 const HOCON_BACKSLASH: char = '\u{5c}';
 
-/// HOCON path -> WIRE path translation.
-///
-/// ⏳ **TRANSITIONAL — delete after the native rename** (Lead ruling 2026-10-05:
-/// "wire 里应当对齐 profile"): native is renaming the wire paths to match the
-/// profile exactly (`backend.cve_2026_43499.abi.*`, `backend.cve_2026_43284.execution.*`,
-/// root-level scalars), at which point this function becomes the IDENTITY map and
-/// should be removed (or kept only as a consistency assertion). It cannot go yet:
-/// the plugin R1 lookup and the bundled-profile comparison read a wire schema
-/// that has not been renamed, so removing it now would turn them red.
-fn translate_conf_path(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("backend.cve_2026_43499.abi.") {
-        return format!("platform.abi.{rest}");
-    }
-    if let Some(rest) = path.strip_prefix("backend.cve_2026_43284.execution.") {
-        if CONF_43284_EXECUTION.iter().any(|(key, _)| *key == rest) {
-            /* Wire key is flat: backend.cve_2026_43284.<key>. */
-            return format!("backend.{BACKEND_43284}.{rest}");
-        }
-    }
-    match path {
-        "kernel_major" | "kernel_minor" | "safe_mode" => format!("common.{path}"),
-        _ => path.to_string(),
-    }
-}
-
 /// Flattens a rendered `--format conf` document into `path -> literal`, with the
-/// `ghostlock` wrapper stripped and every path TRANSLATED onto the WIRE path the
-/// App folds it into (the view the plugin R1 lookup and the App's own
-/// `HoconSupport` see). Comments and brace-only lines are ignored and a quoted
-/// key is unquoted. The plugin extract projection reads back the values this
-/// crate just rendered, so an R1 extract value is the profile value by
+/// `ghostlock` wrapper stripped. Comments and brace-only lines are ignored and a
+/// quoted key is unquoted. The plugin extract projection reads back the values
+/// this crate just rendered, so an extract value is the profile value by
 /// construction instead of a second derivation.
 ///
-/// HOCON refactor (user ruling 2026-10-05): the root scalars are wire
-/// `common.*`, `backend.cve_2026_43499.abi.*` is wire `platform.abi.*`, and the
-/// 43284 execution tuning folds back onto its flat wire keys.
+/// The profile spelling IS the wire spelling (native rename 23958eb0 / b55708a8),
+/// so the keys produced here are exactly the native owner paths the App folds and
+/// the plugin R1 lookup matches: bare root scalars (`kernel_major` / `kernel_minor` /
+/// `safe_mode`), `available.<backend>` (profile-only, no wire path) and
+/// `backend.<id>.…` including `backend.cve_2026_43499.abi.*` and
+/// `backend.cve_2026_43284.execution.*`.
+///
+/// NOTE: there is deliberately **no path rewriting** here. A document written in
+/// the pre-rename spelling (`platform.abi.*`, `common.*`) flattens to exactly
+/// those legacy keys and therefore matches NOTHING in the wire vocabulary — such a
+/// profile is rejected upstream instead of being silently accepted.
 pub fn flatten_conf_values(text: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut stack: Vec<String> = Vec::new();
@@ -783,7 +777,7 @@ pub fn flatten_conf_values(text: &str) -> BTreeMap<String, String> {
             .strip_prefix("ghostlock.")
             .unwrap_or(path.as_str())
             .to_string();
-        out.insert(translate_conf_path(&path), value.trim().to_string());
+        out.insert(path, value.trim().to_string());
     }
     out
 }
@@ -1135,11 +1129,11 @@ mod tests {
         }
     }
 
-    /// The refactor moved paths in the SOURCE document only: the wire schema is
-    /// untouched, so flatten_conf_values is the shared translation layer (plugin
-    /// R1 lookup + App folding).
+    /// Positive: a rendered profile flattens onto EXACTLY the native wire paths.
+    /// The profile spelling IS the wire spelling after the rename, so there is no
+    /// translation layer left to hide a mismatch.
     #[test]
-    fn flatten_conf_values_translates_the_refactored_layout() {
+    fn flatten_conf_values_matches_the_wire_paths_end_to_end() {
         let (symbols, structs) = conf_fixture();
         let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
         let out = render_conf(&ConfInputs {
@@ -1156,30 +1150,23 @@ mod tests {
             extra_offsets: &no_extra_offsets(),
         });
         let flat = super::flatten_conf_values(&out);
+        // Root scalars are BARE wire keys (manifest owner `root`).
+        assert_eq!(flat.get("kernel_major").map(String::as_str), Some("5"));
+        assert_eq!(flat.get("kernel_minor").map(String::as_str), Some("15"));
+        assert_eq!(flat.get("safe_mode").map(String::as_str), Some("false"));
+        // The ABI block keeps its profile spelling on the wire.
         assert_eq!(
-            flat.get("common.kernel_major").map(String::as_str),
-            Some("5")
-        );
-        assert_eq!(
-            flat.get("common.kernel_minor").map(String::as_str),
-            Some("15")
-        );
-        assert_eq!(
-            flat.get("common.safe_mode").map(String::as_str),
-            Some("false")
-        );
-        assert_eq!(
-            flat.get("platform.abi.kernel.kernel_phys_load")
+            flat.get("backend.cve_2026_43499.abi.kernel.kernel_phys_load")
                 .map(String::as_str),
             Some("1073741824")
         );
         assert_eq!(
-            flat.get("platform.abi.task_struct.prio")
+            flat.get("backend.cve_2026_43499.abi.task_struct.prio")
                 .map(String::as_str),
             Some("132")
         );
         assert_eq!(
-            flat.get("platform.abi.offset.init_task")
+            flat.get("backend.cve_2026_43499.abi.offset.init_task")
                 .map(String::as_str),
             Some("34595456")
         );
@@ -1194,25 +1181,59 @@ mod tests {
                 .map(String::as_str),
             Some("-2")
         );
+        // 43284: profile and wire both spell the tuning `execution.*`.
         assert_eq!(
             flat.get("backend.cve_2026_43284.steps").map(String::as_str),
             Some("\"umh\"")
         );
         assert_eq!(
-            flat.get("backend.cve_2026_43284.wait_timeout_ms")
+            flat.get("backend.cve_2026_43284.execution.wait_timeout_ms")
                 .map(String::as_str),
             Some("15000")
         );
-        // No HOCON-only source path leaks into the wire view.
-        assert!(
-            flat.keys()
-                .all(|key| !key.starts_with("backend.cve_2026_43499.abi."))
-        );
-        assert!(
-            flat.keys()
-                .all(|key| !key.starts_with("backend.cve_2026_43284.execution."))
-        );
+        // No pre-rename spelling and no wrapper prefix survives.
+        assert!(flat.keys().all(|key| !key.starts_with("platform.")));
+        assert!(flat.keys().all(|key| !key.starts_with("common.")));
         assert!(flat.keys().all(|key| !key.starts_with("ghostlock.")));
+    }
+
+    /// Negative (the point of deleting the transitional layer): the pre-rename
+    /// spelling is NOT rewritten any more. A legacy document keeps its legacy
+    /// keys, so it matches nothing in the wire vocabulary and is rejected by the
+    /// native/App validators instead of being silently accepted.
+    #[test]
+    fn flatten_conf_values_does_not_rewrite_legacy_paths() {
+        let legacy = "ghostlock {\n  common {\n    kernel_major = 5\n    safe_mode = false\n  }\n  platform {\n    abi {\n      offset {\n        init_task = 123\n      }\n    }\n  }\n}\n";
+        let flat = super::flatten_conf_values(legacy);
+        // The legacy keys survive verbatim ...
+        assert_eq!(
+            flat.get("common.kernel_major").map(String::as_str),
+            Some("5")
+        );
+        assert_eq!(
+            flat.get("common.safe_mode").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            flat.get("platform.abi.offset.init_task")
+                .map(String::as_str),
+            Some("123")
+        );
+        // ... and are NOT mapped onto the post-rename names.
+        assert_eq!(flat.get("kernel_major"), None);
+        assert_eq!(
+            flat.get("backend.cve_2026_43499.abi.offset.init_task"),
+            None
+        );
+        // The wire vocabulary only knows the post-rename spelling.
+        let wire = super::conf_wire_paths();
+        assert!(!wire.contains("platform.abi.offset.init_task"));
+        assert!(!wire.contains("common.kernel_major"));
+        assert!(wire.contains("backend.cve_2026_43499.abi.offset.init_task"));
+        assert!(wire.contains("kernel_major"));
+        assert!(wire.contains("kernel_minor"));
+        assert!(wire.contains("safe_mode"));
+        assert!(wire.contains("backend.cve_2026_43284.execution.wait_timeout_ms"));
     }
 
     #[test]
@@ -1675,7 +1696,9 @@ mod tests {
         /* Keys that exist ONLY because of the HOCON refactor: the pre-refactor
          * bundle cannot carry them (the root safe_mode/kernel_minor scalars and
          * the whole second-backend block are new). */
-        const REFACTOR_ONLY: &[&str] = &["common.kernel_minor", "common.safe_mode"];
+        /* Root scalars the bundled reference profile does not carry yet (the
+         * rename moved them OUT of the deleted `common` owner). */
+        const REFACTOR_ONLY: &[&str] = &["kernel_minor", "safe_mode"];
         /* flatten_conf_values strips the wrapper AND translates the refactored
          * source layout onto wire paths, so the new-shape generated document and
          * the old-shape bundled profile become directly comparable. */
@@ -1691,11 +1714,10 @@ mod tests {
                     value, bundled_value,
                     "field {key} differs between generated and bundled profile"
                 ),
-                /* The fields the not-yet-refactored bundle cannot carry:
-                 * `available.*` is HOCON-only (the App turns it into UI choices
-                 * and the wire receives `backend.<id>.steps`), and `kernel_minor` is
-                 * the new root scalar -> wire `common.kernel_minor` whose manifest
-                 * row lands with the App/native half of the batch. */
+                /* Fields the bundled reference profile does not carry yet:
+                 * `available.*` is profile-only (the App turns it into UI choices
+                 * and the wire receives `backend.<id>.steps`), and the generated
+                 * profile always declares the second backend's block. */
                 None => assert!(
                     REFACTOR_ONLY.contains(&key.as_str())
                         || key.starts_with("available.")
@@ -1706,6 +1728,8 @@ mod tests {
         }
         // The deleted vr_guard/defex fields must not come back through the bundle.
         assert!(!generated.contains_key("common.vr_guard"));
+        assert!(!generated.keys().any(|key| key.starts_with("common.")));
+        assert!(!generated.keys().any(|key| key.starts_with("platform.")));
         assert!(
             !generated
                 .keys()
@@ -1737,7 +1761,7 @@ mod tests {
             .collect();
         assert!(!paths.is_empty(), "manifest is empty");
         for (section, key) in super::conf_wire_fields() {
-            let path = format!("{section}.{key}");
+            let path = super::wire_path(section, key);
             assert!(
                 paths.contains(&path),
                 "extractor path {path} is missing from the native GLKv3 owner manifest"
@@ -1840,17 +1864,14 @@ mod tests {
     fn flatten_conf_values_reads_back_the_rendered_profile() {
         let flat = flatten_conf_values(&plugin_conf());
         /* The ghostlock wrapper is stripped, exactly as the App unwraps it. */
+        assert_eq!(flat.get("kernel_major").map(String::as_str), Some("6"));
         assert_eq!(
-            flat.get("common.kernel_major").map(String::as_str),
-            Some("6")
-        );
-        assert_eq!(
-            flat.get("platform.abi.task_struct.prio")
+            flat.get("backend.cve_2026_43499.abi.task_struct.prio")
                 .map(String::as_str),
             Some("132")
         );
         assert_eq!(
-            flat.get("platform.abi.offset.init_task")
+            flat.get("backend.cve_2026_43499.abi.offset.init_task")
                 .map(String::as_str),
             Some("34595456")
         );
@@ -2048,7 +2069,10 @@ mod tests {
             params: Vec::new(),
             specs: Vec::new(),
             extract: vec![
-                declared_field("platform.abi.task_struct.prio", ExtractKind::UInt),
+                declared_field(
+                    "backend.cve_2026_43499.abi.task_struct.prio",
+                    ExtractKind::UInt,
+                ),
                 declared_field("backend.cve_2026_43499.steps", ExtractKind::Str),
                 declared_field("task_defex_enforce", ExtractKind::UInt),
             ],

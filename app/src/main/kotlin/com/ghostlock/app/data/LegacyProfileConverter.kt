@@ -1,6 +1,11 @@
 package com.ghostlock.app.data
 
+import com.ghostlock.app.data.component.BackendKind
+import com.ghostlock.app.data.component.FrontendKind
+import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_LEGACY_SCHEMA_VERSION
+import com.ghostlock.app.data.route.RouteKind
+import com.ghostlock.app.data.profile.NativeProfileGlkv3Adapter
 import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
 
 /**
@@ -124,6 +129,274 @@ internal object LegacyProfileConverter {
     private val KernelsnitchDefaults6x = valueMapOf(
         "collisions" to 4L,
     )
+
+    // ---- v2 binary document -> canonical v3 (HOCON refactor) ----
+
+    /** The writer's hard-coded terminal id (binary.cpp:471 writes kTerminalRootChild). */
+    private const val V2_WRITER_TERMINAL = 1
+
+    /* The v2 header ids are resolved through the Kotlin catalogs and NEVER through
+     * hand-written token literals (CombinationTokenHardcodeTest enforces that the
+     * cross-end lists are read, not copied). */
+    private fun v2Terminal(id: Int): FrontendKind? =
+        FrontendKind.entries.firstOrNull { it.wire == id }
+
+    private fun v2Backend(id: Int): BackendKind? =
+        BackendKind.entries.firstOrNull { it.wire == id }
+
+    private fun v2Route(id: Int): RouteKind? =
+        RouteKind.entries.firstOrNull { it.wire == id.toUInt() }
+
+    /** Root scalars: `common` carries these and NOTHING else in v3. */
+    private val V2RootScalars = setOf("kernel_major", "kernel_minor", "safe_mode")
+
+    /** Split keys, copied verbatim from the removed writer's owner_section_for(). */
+    private val V2PlatformCredKeys = setOf(
+        "usage_offset", "caps_offset", "ref_count",
+        "ref0_offset", "ref1_offset", "ref2_offset", "ref3_offset",
+    )
+    private val V2PlatformOffsetKeys = setOf(
+        "init_task", "init_cred", "empty_zero_page", "root_task_group",
+        "selinux_enforcing", "selinux_blob_sizes", "security_hook_heads",
+    )
+    private val V2PlatformKernelKeys = setOf("kernel_phys_load", "kernel_phys_offset")
+
+    /**
+     * v2 binary document -> canonical v3 map (the second hop of the migration).
+     *
+     * Hop 1 re-owns the v2 section names exactly as the removed writer did
+     * (`git show acaa0ac5^:src/core/profile/binary.cpp`, owner_section_for +
+     * add_normalized): meta -> common, the key-aware cred/offset/kernel splits,
+     * route.* and execution.* under the 43499 backend. Hop 2 folds that
+     * pre-refactor shape onto the FINAL v3 shape: the kernel scalars move to the
+     * profile root, platform.abi.* moves under backend.cve_2026_43499.abi.*, every
+     * backend.* path must exist in the native-exported manifest, and the deleted
+     * vr_guard surface is dropped with a diagnostic. Anything else is rejected
+     * with its dotted path (there is NO v3 compatibility layer: it was never
+     * released).
+     *
+     * Fail-closed additions with evidence:
+     *  - the header ROUTE id is an invariant with the body - the writer emitted
+     *    only the active route's section (binary.cpp:451-455) and never wrote Auto
+     *    (:442) - so at most one route branch may appear and it must be the
+     *    header's; Auto (43284 only) allows none;
+     *  - the header terminal/backend are HARD-CODED constants in the writer
+     *    (:471/472), so a mismatch with the body is DIAGNOSED, never fatal.
+     *
+     * Presence: v2 expresses it by key occurrence, so an absent key is never
+     * materialised as 0. int targets use raw.toLong() (two's complement, and
+     * bit-preserving for uint); bool requires 0/1.
+     * TODO(width): check the native manifest's width column once it lands - today
+     * only the wire TYPE is validated.
+     */
+    fun convertV2(bytes: ByteArray): ValueMap {
+        val document = WireV2Reader.read(bytes)
+        val root = ValueMap()
+        val owners = ValueMap()
+        val routeBranches = linkedSetOf<String>()
+        var stepsToken: String? = null
+        var stepsOwnerName: String? = null
+
+        /** Nests one level per dotted segment (mutableChild treats its name as
+         * ONE literal key, so a dotted owner path must be split here). */
+        fun ownerMap(path: String): ValueMap {
+            var node: ValueMap = owners
+            for (part in path.removePrefix("backend.").split('.')) node = node.mutableChild(part)
+            return node
+        }
+
+        fun record(path: String, value: Any?) {
+            /* The owners map is attached at root["backend"], so the leading
+             * "backend." is stripped here — otherwise the flatten path would
+             * carry it twice. */
+            val ownerName = path.substringBeforeLast('.', "").removePrefix("backend.")
+            val ownerKey = path.substringAfterLast('.')
+            if (ownerName.isEmpty()) {
+                root[ownerKey] = value
+            } else {
+                ownerMap(ownerName)[ownerKey] = value
+            }
+            if (path.endsWith(".steps")) {
+                stepsToken = value as? String
+                stepsOwnerName = ownerName
+            }
+        }
+
+        /** Hop 1: the writer's owner_section_for() plus the route/execution prefixes. */
+        fun hop1(section: String, key: String): String = when {
+            section == "meta" -> "common"
+            section == "task_struct" -> "platform.abi.task_struct"
+            section == "vr_guard" -> "countermeasure.vivo_vr_guard"
+            section == "cred" -> if (key in V2PlatformCredKeys) {
+                "platform.abi.cred"
+            } else {
+                "backend.cve_2026_43499.cred"
+            }
+
+            section == "offset" -> if (key in V2PlatformOffsetKeys) {
+                "platform.abi.offset"
+            } else {
+                "backend.cve_2026_43499.offset"
+            }
+
+            section == "kernel" -> if (key in V2PlatformKernelKeys) {
+                "platform.abi.kernel"
+            } else {
+                "backend.cve_2026_43499.kernel"
+            }
+
+            section.startsWith("route.") || section.startsWith("execution.") ->
+                "backend.cve_2026_43499." + section
+
+            else -> section
+        }
+
+        for (section in document.sections) {
+            for (entry in section.entries) {
+                val hop1Section = hop1(section.name, entry.key)
+                val hop1Path = hop1Section + "." + entry.key
+                if (hop1Section == "countermeasure.vivo_vr_guard" || hop1Section == "vr_guard") {
+                    System.err.println(
+                        "ghostlock: discarded: " + hop1Path +
+                            " reason=removed-in-b55708a8/4a182217",
+                    )
+                    continue
+                }
+                val path = when {
+                    hop1Section == "common" -> entry.key
+                    hop1Section.startsWith("platform.abi.") ->
+                        "backend.cve_2026_43499.abi." +
+                            hop1Section.removePrefix("platform.abi.") + "." + entry.key
+
+                    else -> hop1Path
+                }
+                if (hop1Section == "common" && entry.key !in V2RootScalars) {
+                    throw IllegalArgumentException(hop1Path + ": deleted in the HOCON refactor")
+                }
+                if (path.startsWith("backend.cve_2026_43499.route.")) {
+                    routeBranches += path.removePrefix("backend.cve_2026_43499.route.")
+                        .substringBefore('.')
+                }
+                val wire = NativeProfileGlkv3Adapter.declaredWire(path)
+                    ?: throw IllegalArgumentException(path + ": not declared in the v3 manifest")
+                record(path, v2Value(wire, entry.raw, path))
+            }
+        }
+
+        val routeToken = v2Route(document.routeId)?.token
+        if (routeToken == null) {
+            require(routeBranches.isEmpty()) {
+                "v2: Auto route (43284) but the body declares " + routeBranches
+            }
+        } else {
+            require(routeBranches.size <= 1 && routeBranches.all { it == routeToken }) {
+                "v2: header route " + routeToken + " does not match the body route " + routeBranches
+            }
+        }
+        /* Header terminal/backend are writer constants (binary.cpp:471/472). */
+        val backendKind = requireNotNull(v2Backend(document.backendId)) {
+            "v2: unknown backend id " + document.backendId
+        }
+        val backendToken = backendKind.token
+        val stepsOwner = stepsOwnerName
+        if (stepsToken != null && stepsOwner != null && stepsOwner != backendToken) {
+            System.err.println(
+                "ghostlock: diagnostic: v2 header backend " + backendToken +
+                    " != body owner " + stepsOwnerName,
+            )
+        }
+        if (document.terminalId != V2_WRITER_TERMINAL) {
+            System.err.println(
+                "ghostlock: diagnostic: v2 header terminal id " + document.terminalId +
+                    " (the writer hard-coded " + V2_WRITER_TERMINAL + ")",
+            )
+        }
+        /* v2 has NO string area, so the combination token could not ride the body:
+         * the header (route + terminal) WAS the whole selection. Recover it by
+         * asking the catalogue which spec matches that pair - no token is ever
+         * spelled here, the catalogue is the single authority. */
+        if (stepsToken == null) {
+            val terminalKind = v2Terminal(document.terminalId)
+            val routeKind = v2Route(document.routeId)
+            val spec = if (routeKind != null && terminalKind != null) {
+                CombinationCatalog.forBackend(backendKind).firstOrNull {
+                    it.route == routeKind && it.terminal == terminalKind
+                }
+            } else {
+                null
+            }
+            if (spec != null) {
+                ownerMap(backendToken)["steps"] = spec.token
+                stepsToken = spec.token
+                stepsOwnerName = backendToken
+            } else {
+                System.err.println(
+                    "ghostlock: diagnostic: v2 header carries no resolvable selection token (" +
+                        backendToken + "/" + document.routeId + "/" + document.terminalId + ")",
+                )
+            }
+        }
+        root["schema_version"] = GHOSTLOCK_PROFILE_SCHEMA_VERSION
+        root["release"] = document.release
+        if (owners.isNotEmpty()) root["backend"] = owners
+        return root
+    }
+
+    /**
+     * Wire-type interpretation with the native manifest's WIDTH column as a hard
+     * validation input: a raw that cannot fit the declared type is rejected
+     * instead of being silently wrapped. The width is in BYTES (1/2/4/8) and is
+     * already fail-closed in the adapter; null means width-less (str/array).
+     */
+    private fun v2Value(
+        wire: NativeProfileGlkv3Adapter.WireType,
+        raw: ULong,
+        path: String,
+    ): Any {
+        val widthBytes = NativeProfileGlkv3Adapter.declaredWidth(path)
+        return when (wire) {
+            NativeProfileGlkv3Adapter.WireType.Bool -> {
+                require(raw <= 1uL) { path + ": bool target holds " + raw }
+                raw == 1uL
+            }
+
+            NativeProfileGlkv3Adapter.WireType.Int -> {
+                checkSignedFits(raw, widthBytes, path)
+                raw.toLong()
+            }
+
+            NativeProfileGlkv3Adapter.WireType.UInt -> {
+                checkUnsignedFits(raw, widthBytes, path)
+                raw.toLong()
+            }
+
+            else -> throw IllegalArgumentException(
+                path + ": v2 has no " + wire.manifestName + " source",
+            )
+        }
+    }
+
+    /** uint: the raw must fit the declared byte width. */
+    private fun checkUnsignedFits(raw: ULong, widthBytes: Int?, path: String) {
+        if (widthBytes == null) return
+        val bits = widthBytes * 8
+        if (bits >= 64) return
+        val max = (1uL shl bits) - 1uL
+        require(raw <= max) {
+            path + ": " + raw + " does not fit uint" + bits
+        }
+    }
+
+    /** int: the two's-complement value must fit the declared byte width. */
+    private fun checkSignedFits(raw: ULong, widthBytes: Int?, path: String) {
+        if (widthBytes == null) return
+        val bits = widthBytes * 8
+        if (bits >= 64) return
+        val value = raw.toLong()
+        require(value in -(1L shl (bits - 1))..((1L shl (bits - 1)) - 1)) {
+            path + ": " + value + " does not fit int" + bits
+        }
+    }
 
     fun convertValue(entry: ValueMap?): ValueMap? {
         if (entry == null) return null

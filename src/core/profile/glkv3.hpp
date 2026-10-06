@@ -37,6 +37,10 @@ namespace ghostlock::profile::glkv3 {
         Str,
         Bin,
         Array,
+        /* M2: a map value. Only a declared composite field can carry one (the
+         * queue elements), and read_map admits scalar members only, so the
+         * representation stays bounded and non-recursive. */
+        Map,
         /* Union of the scalar kinds {uint,int,bool,str}, used by the S4 P1
          * dynamic plugin paths (plugin.<id>.params.* / .extract.*) whose exact
          * type is fixed by the plugin descriptor. The manifest writes the
@@ -53,6 +57,7 @@ namespace ghostlock::profile::glkv3 {
             case WireType::Str: return "str";
             case WireType::Bin: return "bin";
             case WireType::Array: return "array";
+            case WireType::Map: return "map";
             case WireType::Union: return "uint|int|bool|str";
         }
         return "unknown";
@@ -85,6 +90,9 @@ namespace ghostlock::profile::glkv3 {
     inline constexpr uint32_t kMaxSections = 64u;
     inline constexpr uint32_t kMaxSectionEntries = 4096u;
     inline constexpr uint32_t kMaxArrayElements = 4096u;
+    /* M2 composite bound: one element map carries at most this many scalar
+     * members (the queue vocabulary is step / seam / stage / params / route). */
+    inline constexpr uint32_t kMaxMapMembers = 8u;
 
     enum class DecodeMode : uint8_t { Production = 0, Tooling };
 
@@ -150,6 +158,18 @@ namespace ghostlock::profile::glkv3 {
         std::span<const FieldSpec> fields{};
     };
 
+    /* One scalar member of a map value: the key borrows the decode buffer like
+     * every other key view. Declared before Value so the member vector holds a
+     * complete type. */
+    struct MapMember {
+        std::string_view key;
+        WireType type = WireType::UInt;
+        uint64_t uint_value = 0;
+        int64_t int_value = 0;
+        bool bool_value = false;
+        std::string_view bytes{};
+    };
+
     struct Value {
         WireType type = WireType::UInt;
         uint64_t uint_value = 0;
@@ -157,6 +177,7 @@ namespace ghostlock::profile::glkv3 {
         bool bool_value = false;
         std::string_view bytes{};
         std::vector<Value> elements{};
+        std::vector<MapMember> members{}; /* WireType::Map only */
     };
 
     struct Entry {

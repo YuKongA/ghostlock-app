@@ -971,7 +971,7 @@ reject→<id>→<reason>
 
 #### 3.14.7.9 能力位 `log` 与插件日志契约（**设计框架，待 native 设计稿定稿**）
 
-> **⏸ 工程冻结（用户指令 2026-10-05）**：本节的**运行时使用**随插件工程暂停并禁用（App **不再发射** `plugin.*`；native **字面注释掉**宿主接线（构造/打开/派发/卸载——**不是开关**；代码/测试保留，**恢复需撤销注释**；**实现待提交**））；**契约与已落地物证保留**，恢复条件 = **新架构完成 + 用户放行**。
+> **⏸ 工程冻结（用户指令 2026-10-05）**：本节的**运行时使用**随插件工程暂停并禁用（App **不再发射** `plugin.*`；native **字面注释掉**宿主接线（构造/打开/派发/卸载——**不是开关**；代码/测试保留，**恢复需撤销注释**）——**native 侧注释已提交 = `ca968a5a`**，**App 侧（停止发射/隐藏入口）在工作树、待提交**）；**契约与已落地物证保留**，恢复条件 = **新架构完成 + 用户放行**。
 > **状态**（2026-10-05）：① **A 批（43284 全链日志）已落地**（`a04bdb5b`；真机门禁 PASS `device-gates/43284-logging-20261005-pass.md`，正例 16 行 `run.43284`）；② **B 批（能力位）产出端已落地**（`2c9457fe`「batch B producer - GLK_CAP_LOG capability bit with a single capability catalog, per-module ops copy with quota/rate-limited host logging and log_calls/log_dropped accounting」）：`GLK_CAP_LOG = 1u<<7`、`Capability::Log`、**单一能力目录 `kCapabilityCatalog`**（`caps_list()` 改为遍历它，新位不会从 `host_caps` 列静默消失）、host 每模块栈上 ops 拷贝 + 前缀/截断/配额/限速 + `log_calls`/`log_dropped`；**B 批已全线落地**：产出端 `2c9457fe`（`GLK_CAP_LOG=1u<<7` + **唯一能力表 `kCapabilityCatalog[8]`** + `caps_list()` 遍历 + host 每模块 ops 拷贝/配额/限速/计数）、**Rust 消费端 `b7eb5f95`**（cap 词表接受 `log` 并被测试钉住；示例插件优先 `ops->log`、老 host 回退 stderr 同形前缀）、**Kotlin 消费端 `fe66c793`**（token 透传 + 未知未来 cap 直通断言；fixture 第 4 行加 `log`；真机采集物字节级复制为第二输入 `plugin-probe-glk-probe-device.tsv` + `PluginProbeDeviceCaptureTest`）——**影响面表已逐行标「已同步」**。**剩余仅两项设备侧待办（设备可用后）**：① **新示例插件产物 `97c50d4d…` 上机后重采真机 golden**（模块哈希行更新）；② **三张 UI 截图**（Lead / `kotlin-i18n` 拍）；**两项裁决见本节末**。用户要求「插件接口提供内置日志接口」；**ABI 与 host 已具备该入口**，缺的是**能力位**与词表登记（见下表）。**本节不含实现代码**。
 
 **现状（代码事实）**
@@ -1028,7 +1028,7 @@ reject→<id>→<reason>
 
 > **状态**：设计终稿 r2（`docs/analysis/terminal-payload-tiers-design.md`，commit `c335aabc`）+ **用户已确认**；**本仓库尚无实现**，契约先冻结。**状态回填约定**：① payload 实现批次（native 半场）落地时、② root 管理器 P1 放行时（§3.15.8），各回填一次「实现状态 + 依赖检查」——两处现在都是「设计定稿待实现」。
 >
-> **⏸ 工程冻结（用户指令 2026-10-05）**：payload / 自定义 handoff **暂停并暂时禁用**——按用户指令：**`payload` owner 不再被接受**，App **不再发射** `payload.*` 且隐藏入口（**实现待提交**）；**执行半场、step 3b、handoff 设计稿推进**均停止；**本节契约与已落地实现/测试保留**（可逆）；恢复条件 = **新架构完成 + 用户放行**。
+> **⏸ 工程冻结（用户指令 2026-10-05）**：payload / 自定义 handoff **暂停并暂时禁用**——按用户指令：**`payload` owner 不再被接受**，App **不再发射** `payload.*` 且隐藏入口（**App 侧在工作树、待提交**；**native 侧字面注释已提交 = `ca968a5a`**）；**执行半场、step 3b、handoff 设计稿推进**均停止；**本节契约与已落地实现/测试保留**（可逆）；恢复条件 = **新架构完成 + 用户放行**。
 > 依据：payload 设计 §9 的 9 条裁决；跨切面沿用 `plugin-extract-spec-design.md` §9.3（唯一命名空间）/ §9.4（诊断记实际命中）/ §9.5（分发顺序 = 准入）的做法。
 
 ### 3.15.1 定位与段名
@@ -1067,7 +1067,7 @@ reject→<id>→<reason>
 - **最终 wire 拼写（唯一权威）**：`payload.tier` / `payload.exec.{command,sha256}` / `payload.script.{path,sha256}` / `payload.ko.count` / **`payload.ko.<i>.{path,sha256}`**（`0 ≤ i < count ≤ 8`）；
 - **旧拼写 `payload.<i>.path`（无 `ko.` 前缀）现被 fail-closed 拒绝**（**负例**）——它在实现里曾与 `ko.count` 自洽但**与设计文档不一致**，且会产生「`ko.count` 在 `ko.` 下、索引却在顶层」的怪状；
 - **角括号占位符约定**：`section` + `<占位符>` 的**后缀匹配**，与 `plugin.<id>.params.*` **同规**（`plugin_dynamic_key()` 即此形态）；Kotlin 侧 `declarationFor()`（`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/NativeProfileGlkv3Adapter.kt:126`）**当前只对 `plugin.` 前缀做后缀匹配**，**具体索引路径的匹配分支留给 batch (b)**；
-- **状态：已实现（工作树，待提交）——归因更正**：对齐实现（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致）**目前在工作树里、尚未提交**；**已提交的 `74db3594` 恰恰是旧拼写那次**（其 `kPayloadGlkv3Fields` 与 manifest 仍为扁平 `<i>.path`）——**归因只写实际包含该改动的那次提交**，因此本节**暂不写提交号**。工作树现状：`kPayloadGlkv3Fields` 已改；两份 manifest（`app/src/test/resources/` 与 `profile-core/src/main/resources/profile-manifest-v3.tsv`）逐字节一致（工作树 sha256 `018804b363583612…`）；校验器工作树注释明确「**`ko.` 节点必需**，裸 `<i>.path` 拒绝」；Lead 门禁过后**按显式路径提交**，届时由 docs-uml 回填**提交号 + 承重 sha**；
+- **⏸ 状态：随 payload 冻结失效（沿革保留）**—— ① **原实现曾在工作树落地但未提交**（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致，工作树 sha256 `018804b363583612…`；**已提交的 `74db3594` 是旧拼写那次**——归因只写实际包含该改动的那次提交，故本节**不写提交号**）；② **冻结后 `payload` 段出现即拒（fail-closed）** ⇒ **`ko.<i>` 对齐当前无运行时消费者**（`kPayloadGlkv3Fields`、校验分支、manifest 8 行、相关测试与 Makefile 目标均已**字面注释**）；③ **恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md` 冻结清单与 `task-9`）；④ 上文原始裁决与拼写规则**保留不删**（沿革）；
 - **剩余（Kotlin 侧）**：`declarationFor()` 的**索引路径匹配分支**仍留给 batch (b)——Lead ping `kotlin-i18n` **重钉**其测试后，本节再补一句「Kotlin 已同步」。
 ### 3.15.3 安全边界与授权面
 
@@ -1136,16 +1136,16 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **纪律**：包名/入口**未在代码中验证过的一律不猜**（现状 `schema.hpp:68-77`：非 KernelSU → 空包名）；每个 P2 项都要 file:line 依据 + 真机门禁；
 - **待用户确认（TODO，v2 后只剩一条）**：**`kernelpatch.ko` 的制品来源**——首选已定：走**既有导入机制**（no-backup 不可变目录 + 本地 SHA-256 + 原子落盘）；待确认：是否只接受「从 FolkPatch 管理器中提取」、是否允许用户完全自备、UI 是否标注「来源不可验证」。（①分支清单、②FolkPatch 机制、④`manager` 形态均已消解，见设计稿 §11。）
 
-## 3.16 HOCON owner 集与根级键（**重构 ①–④ 已落地 2026-10-05**；native 定稿、App 跟进中）
+## 3.16 HOCON owner 集与根级键（**重构 ①–④ 已落地 2026-10-05**；native/extractor/App **三侧已定稿**）
 
-> **落地状态（2026-10-05）**：① 根级标量通道（`kernel_major`/`kernel_minor`/`safe_mode`）+ 删 `common`/`countermeasure` owner + **vr_guard (b) profile 面删除** = **`b55708a8`**；②③④ `platform.abi.*` → **`backend.cve_2026_43499.abi.*`**（62 处）+ 43284 执行项 → **`backend.cve_2026_43284.execution.*`** + **`wire_only`** 新机制 + manifest **114 行** = **`23958eb0`**。**native 已定稿；App 侧 ③（测试 + golden）尚未完成** ⇒ 跨端一致性状态记「**native 已定稿、App 跟进中**」。形状定稿本身仍来自用户裁决：HOCON 只声明**可用项**，**运行时选择权在用户/App**。
+> **落地状态（2026-10-05）**：① 根级标量通道（`kernel_major`/`kernel_minor`/`safe_mode`）+ 删 `common`/`countermeasure` owner + **vr_guard (b) profile 面删除** = **`b55708a8`**；②③④ `platform.abi.*` → **`backend.cve_2026_43499.abi.*`**（62 处）+ 43284 执行项 → **`backend.cve_2026_43284.execution.*`** + **`wire_only`** 新机制 + manifest **114 行** = **`23958eb0`**。**三侧已定稿**：native ①②③④、extractor（`a6241bc0`）、**App 侧 ③（测试 + golden）= `c443f5f0`（全绿）**。形状定稿本身仍来自用户裁决：HOCON 只声明**可用项**，**运行时选择权在用户/App**。
 
 **owner 集（fail-closed）**
 
 - **允许**：**`backend.<id>`**；根级标量 `schema_version` / `release` / `kernel_major` / `kernel_minor` / `safe_mode`（**在 manifest 里以 `owner = root`、`path = 裸键名` 单列**）；以及根级 `available { <backend> = [ tokens ] }`；
   > **⏸ 已被 2026-10-05 裁决取代（沿革保留）**：`available{ <backend> = [ … ] }` 的**值**将从**预烘焙组合 token 列表**改为**步骤队列**（可读性优先，原则 2「显式优于隐式」）；**两级结构保留**（先 backend，再其下的队列）。**不做**完全动态 DSL / 运行期自适应规划（队列是**静态声明**）。详见 §3.19。
   >
-- **已删除（出现即拒）**：**`common` owner**、**`countermeasure.*` owner**（**`b55708a8`**：`common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 连同 wire/manifest 行删除 ⇒ owner 变空 ⇒ 移出白名单；`platform/vivo/**` 与 `steps.cpp` 两处调用**保留惰性**，其彻底删除 = (a) **待设备门禁**）、**`platform` owner**（**`23958eb0`**：`platform.abi.*` → **`backend.cve_2026_43499.abi.*`**，62 处）、**`selection { backend, terminal }`**（**`terminal` 概念从 HOCON 移除**，token 已蕴含）；
+- **已删除（出现即拒）**：**`common` owner**、**`countermeasure.*` owner**（**`b55708a8`**：`common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 连同 wire/manifest 行删除 ⇒ owner 变空 ⇒ 移出白名单；`platform/vivo/**` 与 `steps.cpp` 两处调用**已于 (a) 期删除**——`src/core/platform/vivo/**` **8 文件** + `platform_vivo_test.cpp` + `host/ancillary_stub.cpp` 删除、`steps.cpp` **−95 行**（**已完成 = `4a182217`**）；**真机门禁 PASS 已归档**（`docs/analysis/device-gates/vrguard-a-20261006/`：`child is root!` → handoff `sent=1` → `KernelSU ready`，route `success=1`，设备未重启），**非行为差异**：`w2b` run-state 标记随祖先块删除 ⇒ 日志 stage 轨迹少一项（`enter/complete("w2b")`），**行为无变化**；**门禁数字**：host `EXIT=0`（告警 **9** 基线、**58 tests**、防火墙 **`174 files, 4/4/0/0`（182 → 174）**）· lint **0** · NDK **0**）、**`platform` owner**（**`23958eb0`**：`platform.abi.*` → **`backend.cve_2026_43499.abi.*`**，62 处）、**`selection { backend, terminal }`**（**`terminal` 概念从 HOCON 移除**，token 已蕴含）；
 - **当前注释中（出现即拒）**：**`plugin`** 与 **`payload`**（用户指令 2026-10-05；代码/测试保留，**恢复＝撤销注释 + 跑门禁**）；
 - **owner 白名单已收敛为 `backend.<id>`**（2026-10-05 `23958eb0` 落地后）：`platform.` 已删、`common`/`countermeasure` 已删、`plugin`/`payload` 冻结拒收；
 - 根级标量是**封闭白名单**：白名单外的一律拒绝（含未知顶层 owner，如 `plugins` / `payloads` / `root`）。
@@ -1157,7 +1157,7 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **`kmi` / `lkm_path` / `carrier_path` 从 profile 删除**：**wire 字段保留**，由 native **运行时现算注入**；`lkm_path` / `carrier_path` / 各 `.ko` 路径统一在 **GhostLock 内部目录**解析；
 - **`available` 两级**：先选可用 backend（键），再在其下选组合 token（值）；运行时的选择写入 wire 的 **`backend.<id>.steps`**；**根级 `available` 不是 wire 段**；
 - **消歧**：`index.conf` 的 `backends = [{ id, available }]` 改名 **`usable`**（构建/资产层语义），与 profile 层的 `ghostlock.available{}` **刻意不同名**；
-- **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（已派）；`kernel_profiles-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
+- **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（**已完成**：过渡层 `translate_conf_path` 删除 = **`a6241bc0`**，最终词汇 only）；`kernel_profiles-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
 
 
 ### 3.16.1 根段承载（`kRootSection`）——**不要改回具名成员**
@@ -1192,6 +1192,7 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **构建入口（Gradle-only）**：`buildLkmImages`（**显式任务**，需容器引擎 `podman`→`docker`，可 `-PcontainerEngine=` 覆盖）与 `copyLkmIntoAssets`（**fail-closed** 校验，挂 `merge*Assets`、**不挂** `preBuild`）；`tools/lkm/ghostlock/Makefile`（**容器内**配方）与 `root_cmd.sh`（**设备端**载荷）**保留**；
 - **跨平台硬要求**：构建脚本不得依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash（用 JVM/Gradle API：`MessageDigest` / `Copy` / `Sync` / `FileTree`）；工具链（如 `llvm-objcopy`）由既有 NDK 解析器（`android.ndkDirectory`）定位，**不依赖 PATH**，prebuilt host tag 用通配；
 - **`.sh` 的边界**：仅允许**设备端与运维**（如 `root_cmd.sh` 是经 `call_usermodehelper` 执行的设备载荷、`tools/device-guard/*`、`.github/scripts/*`）；**构建**一律不得用 `.sh`。
+- **设计意图的实证（2026-10-06，探针重采）**：`ko_vermagic=5.15.202-android13-5.15.202_r00-dirty` 与设备 `5.15.189-…` **不同字**，但 precheck 仍 **`match=1` / `ver_diff=None`** ⇒ **判定基于 KMI label（`5015`），不是逐字 vermagic** ⇒ 印证「**label 是交付身份、文件名跟随 label**」（`ko_filename` 由 label 派生，不由 vermagic 派生）。**物证**：`docs/analysis/device-gates/probe-resample-20261006-010653/`（原始 stdout 2470 B + `ko.sha256`；提交 `45725ba2`），**取代**旧摘要式基线 `B5-9a-20261003-readonly-probe-pass.md`（沿革保留：旧基线只存 11 行摘要，新基线存原始 stdout 全文，结论无实质差异）。
 
 ## 3.18 词汇重命名（stepset）与两轴区分（**已被队列裁决吸收：stepset 不再是用户选择面**）
 
@@ -1225,10 +1226,10 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - 二者**正交**：同一个 stepset 可以配不同 terminal（例：`rootchild` token 配 `root_child`）；`combination_supported(backend, steps, terminal)` 校验三元组自洽，不自洽直接 `Rejected`；
 - **不需要真机门禁**（不进 profile/wire 文档：资产 0 命中）——属**词汇命名**改动。
 
-## 3.19 步骤队列（取代 token）——**用户裁决 2026-10-05；待设计稿**
+## 3.19 步骤队列（取代 token）——**决定与沿革**（规则见 §3.20）
 
 > **用户原话**：「**队列直接取代 token 对于 HOCON 的可读性有极大的增强，应该改**；而『完全动态 DSL / 运行期自适应规划』这个你说的对，**不应改**」。
-> **状态**：**L 级设计稿待 Lead 产出（《步骤队列 + 步骤注册表 + 归一化支持面判定》）**，出稿先经用户评审；**在此之前两侧不动代码**（`native-hocon` / `kotlin-i18n` 均已挂起）。本节只登记决定与连锁影响，**不写实现细节**。
+> **状态**：**L 级设计稿已定稿**（`docs/analysis/step-queue-design.md`，**v2.2 = `aec777a9`（定稿，468 行）**；沿革：v1 = `e150eb2b`、v2.1 = `2b6c3f13`）；**定稿规则见 §3.20**，**实现按 M1–M5 分批**（计划条目；设计稿 §4.4）。本节只登记**决定与沿革**。
 
 **决定**
 
@@ -1248,6 +1249,79 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 
 **与两轴论述的关系**：§3.18 的「stepset = 跑哪些 W 阶段 / frontend·terminal = 谁接管」**继续成立**；队列描述的就是「跑哪些步骤」，因此**更贴合 stepset 轴的本义**，也回避了「用 path 名命名 stepset」的矛盾（43284 一 × 三 path 的硬证据见 §3.18）。
 
+
+## 3.20 步骤队列：选择面、route、seam 与支持面（**设计已定稿 2026-10-06**）
+
+> **权威**：`docs/analysis/step-queue-design.md`（**v2.2 = `aec777a9`，定稿**；沿革：v1 = `e150eb2b`、v2.1 = `2b6c3f13`）。**本节规则以 v2.2 为准**（v2.2 并入 U5/U9/U10 三条结论 + S16/S17/S18 守卫）。**本节只登记已定稿规则**；字段语义、诊断文本、改动清单**一律引用设计稿小节，不复制**（一处权威）。**实现分 M1–M5 批次**（见计划条目）；**M1 与本批文档同批提交 = `bcb94253`**（步骤目录 + 编译期注册 + S5 具名诊断 + 两张 manifest 守卫），**M1.1 归一化纯函数 = `2760a599`**（`contract/step_plan.hpp`，24 个 reason token 钉死、生产 0 接线），**M2 进行中（`native-hocon`）**。
+
+**选择面（HOCON ⇄ wire 同形）**
+
+```hocon
+available {
+  cve_2026_43499 {
+    route = "multicast_waiter"                 # 队列级，唯一
+    queue = [ { step = "w1" }, { step = "w2" }, { step = "w3" } ]
+  }
+  cve_2026_43284 {
+    queue = [ { step = "pagecache_write" }, { seam = "plugin", stage = "post_terminal" } ]
+  }
+}
+```
+
+- **队列取代 token**；**键名 `queue` 确定**；wire 形态 = **array of map**，**HOCON 与 wire 同形**（`{step:"w1"}` ⇒ `{step:"w1"}`，**不做降级映射**；设计稿 §4.5 / §5-Q1）；
+- **元素形态唯一 = 对象数组（B，U9 裁决）**：只有 `{ step = "<id>" }` 与 `{ seam = "<type>", stage = "<stage>" }` 两种；**纯数组（A）不保留**——纯字符串元素/非 map 元素 ⇒ **拒绝** `queue-element-not-object at=<i>`（**可读性交给 UI 预设按钮**，由 App 展开成对象数组再发射；**native 只认对象数组**，不引入第二种 wire 表示）；`params` **预留但未实现（U10 裁决）** ⇒ **拒绝，但报具名 reserved 而非 unknown**：`params-reserved-for-future-step-parameters at=<i>`；契约与 manifest 文档行写明「**reserved, not implemented**」（设计稿 §5.0 / §5-Q1 / §11-U9/U10）；
+- **沿革（保留）**：旧「token 两级选择」被取代（**理由：HOCON 可读性**）；「点分索引键」形态**已被用户否决**。
+
+**route：只在队列级（设计稿 §5-Q2，v2.1 = D2′）**
+
+| 情形 | 结果 |
+|---|---|
+| 43499 缺 `route` | **拒绝** `route-required`（队列取代 token 后 route **没有别的来源**） |
+| 43284 出现 `route` | **拒绝** `route-not-applicable`（无 route 轴） |
+| route 写进数组元素 | **拒绝** `step-route-not-allowed`（不是忽略、不是取最后一个） |
+| 队列级 route 重复声明 | **拒绝** `route-duplicated`（恰好一处） |
+
+`route` 进入 `CanonicalPlan.route`；`supported`/`experimental` 判定、`dispatch_target_of` 与「声明 route == 预设 route」一致性校验**都以它为准**，**不再由 token 隐含**。**明确不做**「每步换 route」（攻击路径改动 ⇒ 独立 L 级设计 + 真机门禁）；**沿革**：v1「每步一律拒绝」→ v2.0「每步可写但整条一致」→ **v2.1「只在队列级」**（证据：`pipeline.hpp:53-62`：`Pipeline` 只实例化一条 route，`Route` 满足整轮 `prepare→execute→disarm→destroy`）。
+
+**canonical 分离与唯一映射点（2026-10-06 落地 = `4c20142f`）**：canonical 里队列级 route 走 **`queue_route`（str，canonical-only 键）**，**几何 Map `route` 一律不覆盖**；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → **wire 键仍是 `route`**；**无几何时直接用 `route`**；**两者同时为 str ⇒ fail-closed「refusing to pick a precedence」**）；`ProfileLayout.validateAvailable` **双形态**（列表零破坏 / 对象 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }`，五类拒绝）；**回显只认「与 `available` 声明逐值相等」**（手工只在 `backend.<id>` 写 ⇒ 未知键拒绝）。**沿革**：`route` 撞键会在写入时**静默覆盖几何 Map ⇒ 68 资产几何归零**，故必须先分离。**M4 待办（必做）**：`NativeProfileDocument.from()` 缺 accessor ⇒ **声明 `queue` 的 profile 目前不会把 queue 发上 wire**（连同 `app/src/main/.../Profile.kt` 调用点，M4 修）。
+
+**seam：纯占位（设计稿 §5-Q3）**
+
+- **语法**：`{ seam = "plugin", stage = "<stage>" }`（`stage` 必填；`plugin` 是 seam 类型保留名）；
+- **阶段词汇 = 单一权威**：**复用冻结插件设计**已定义的 `pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`（来源：`plugin.<id>.stage`，契约 §3.14.7 与 `plugin/schema.hpp`），**不新造第二套**；
+- **R1 位置约束**：seam 合法位置**只有两类**——队列**之前**（= `pre_spawn`）与终态/驻留窗口**之后**（= `post_terminal`）；落在 `[w1..w3]` 区间内 ⇒ **拒绝** `seam-stage-illegal`（`allowed=[pre_spawn,post_terminal]`）；`stage` 必须与**位置推导的阶段**一致（显式声明 + 交叉校验）；
+- **实现仍冻结**：队列侧**只校验，不加载、不映射** `.so`；将来解冻用扩展键 `{ seam = "plugin", plugin = "<id>" }`，**不改位置/阶段语法**。
+
+**支持面判定（设计稿 §4.3 + §11-U5）**
+
+- **归一化**：`queue → CanonicalPlan { backend, route, [step id…], path/terminal }`（步骤**去参数化**；参数不影响 supported/experimental）；
+- **与已过真机的预设集合比对**：全等 ⇒ **`supported`**（复用该预设已过真机的 `DispatchTarget`/`Pipeline`，**执行路径与今天逐字节一致**）；合法但不等 ⇒ **`experimental`**；不等且未 opt-in ⇒ **拒绝（fail-closed）**；
+- **experimental 需 HOCON 静态声明 `experimental`**：未声明 ⇒ `experimental-not-declared`（**声明是请求，结论由归一化计算**——禁止「自称 supported」，也禁止把已验证预设降级为 experimental）；App 运行前显式标记；
+- **日志记录判定**（每个计划一行）：`plan verdict=supported|experimental declared=<0|1> backend=<b> steps=[…] route=<r>`；
+- **`kCombinationCatalog` 降级**：12 行 token 表**保留为内部归一化键**（`combination_resolve`/`combination_spec`/`dispatch_target_of` 的输入不再是用户写的字符串）；`available` 列语义改为「已验证预设」；**`PathKind` 按档位 (ii) 删除**（0 读者）。
+
+**步骤词汇与注册（设计稿 §4.1 / §4.2）**
+
+- **`contract/step_catalog.hpp`**（host 可编译、守 R1）+ **步骤词表 manifest**（**native 导出、Kotlin 对拍**，与 `profile-manifest-v3.tsv`/`combination-manifest.tsv`/`vocabulary-manifest.tsv` 同规）；
+- **每步字段**：`id` / `display` / `backend` / `slot` / `deps` / `skippable` / `available` / `effects`（语义见设计稿 §4.1 表）；
+- **编译期注册**：`kStepCatalog[]` + `static_assert`（id 唯一、同 backend 内 slot 唯一连续、`deps` 只指向同 backend 更小 slot）；执行体声明 `static constexpr StepId step_id`，用 `StepExecution<Exec>` + 折叠 `static_assert` 把**目录表与执行体列表绑死**（**未注册 id 编译不过**）；
+- **两层词汇**：`StepSetKind` 与 `vocabulary-manifest.tsv` 的 3 行 `stepset` 保留为**内部归一化 id**（wire 数值不变）；步骤 id 是**更细的一层**；两层映射**同表声明、可对拍**，禁止两处各写一份。
+
+**迁移与门禁口径（设计稿 §4.4 批次表）**：M1 用户面零变化；**M2 = wire 类型面变更（Array + 复合值）⇒ 必须真机门禁**（三条验收判据见设计稿 §4.5/§9）；**M5 删糖是单向门**（token 出现即拒 + 负例 + 真机门禁）。
+
+**守卫与证伪（设计稿 §10.1，v2.2 口径）**：静默默认点（S1/S3/S5/S6/S8/S9/S13）+ 新形状守卫（S14a–S14d / S15 / **S16–S18**）+ §4.2 非法形状 11 行 = **26 条守卫**，全部**硬失败 + 具名诊断**；每条在实现批次须给「**造错点 → 失败输出 → 撤回核验**」三件套，**证伪一律 `make -B`**（防同秒 mtime 跑旧二进制造成假证明）。
+
+## 3.21 兼容性政策：v1 / v2 / v3 矩阵（**用户澄清 2026-10-06**）
+
+> **用户原话**：「**v3 profile 还没正式发布，你想怎么改就怎么改无需兼容上一版；真正要兼容的是 v1 和 v2**」。
+
+| 版本 | 状态 | 兼容策略 |
+|---|---|---|
+| **v3**（GLKv3 / HOCON `schema_version = 3`） | **未正式发布** | **形状变更无需兼容上一版**——旧 `selection{}` / `common{}` / `platform{}` **一律拒绝（出现即拒）**，**不加迁移、不留过渡读路径**；这正是 HOCON 重构（§3.16）与队列改造（§3.19/§3.20）可以自由改形状的依据 |
+| **v1**（旧 HOCON `schema_version = 1`；旧 `offsets.json`） | 需兼容 | **经 Kotlin `LegacyProfileConverter`（唯一迁移点）转换**为 3 并记诊断；native **不解析 v1**（`src/core/legacy/` JSON 路径已删除）；其余版本值一律拒绝（错误带实际值） |
+| **v2**（旧 wire bin） | **当前拒绝** | 依 `docs/analysis/s4-r2c-v3-only.md` 的决策「**旧 bin 弃用**」：native 只认 `schema == 3`，v2 读路径与 writer 一并删除（`binary.{hpp,cpp}` 已删）。**⚠ 待用户确认实际需求**——Lead 正在确认是否确实存在需要读取的 v2 文件；**若需要**，另开 **Kotlin-only** 批次恢复导入/迁移（App 侧把旧 bin 转成 v3 文档），**native 仍保持 v3-only** |
+
+**边界**：兼容性只在**读入侧**（App/Kotlin）承担；**native 永远 v3-only**（这也是「Kotlin 与 native 版本绑定、同一分支内直接替换」的推论）。
 
 ## 4. 能力接口（虚）
 

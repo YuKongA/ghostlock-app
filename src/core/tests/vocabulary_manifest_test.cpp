@@ -212,6 +212,55 @@ namespace {
                 }
             }
         }
+        /* Guard (step-queue design doc 10.1-S8/S9/S13): a name that fell back to
+         * the "unknown"/"none" default must fail here instead of being exported as
+         * a legitimate vocabulary token. Both committed copies are compared byte
+         * for byte, so without this a missing *_name() branch would weaken the
+         * contract while the gate stayed green. */
+        for (const Row &row : rows) {
+            if (row.token == "unknown" || row.token == "none") {
+                std::fprintf(stderr,
+                             "vocabulary_manifest_test: guard: unmapped %.*s name\n",
+                             static_cast<int>(row.kind.size()), row.kind.data());
+                return false;
+            }
+        }
+        /* Guard: the per-kind composition is pinned (4 kinds). */
+        const struct { const char *kind; std::size_t count; } kExpectedKinds[] = {
+            {"backend", 6U}, {"frontend", 2U}, {"stepset", 3U}, {"route", 3U}};
+        for (const auto &expected : kExpectedKinds) {
+            std::size_t count = 0U;
+            for (const Row &row : rows) {
+                if (row.kind == expected.kind) ++count;
+            }
+            if (count != expected.count) {
+                std::fprintf(stderr,
+                             "vocabulary_manifest_test: guard: kind %s has %zu rows, "
+                             "expected %zu\n",
+                             expected.kind, count, expected.count);
+                return false;
+            }
+        }
+        /* Guard: the three step-set rows keep their wire ids 1/2/3 (a renumber
+         * would break the wire contract). */
+        const struct { const char *token; std::uint32_t wire; } kStepSets[] = {
+            {"w1_w2", 1U}, {"w1_w3", 2U}, {"pagecache_write", 3U}};
+        for (const auto &expected : kStepSets) {
+            bool found = false;
+            for (const Row &row : rows) {
+                if (row.kind == "stepset" && row.token == expected.token &&
+                    row.wire == expected.wire) {
+                    found = true;
+                }
+            }
+            if (!found) {
+                std::fprintf(stderr,
+                             "vocabulary_manifest_test: guard: stepset %s wire %u "
+                             "missing\n",
+                             expected.token, expected.wire);
+                return false;
+            }
+        }
         return true;
     }
 } // namespace

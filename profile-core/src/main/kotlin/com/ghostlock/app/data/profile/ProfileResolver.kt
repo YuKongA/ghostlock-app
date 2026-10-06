@@ -18,7 +18,11 @@ object ProfileResolver {
          * StepSet the cve_2026_43499 backend runs. */
         "backend",
         /* Ancillary vr.ko guard: the gate and the layout section derived from
-         * the image's BTF. */
+         * the image's BTF. v1-INPUT TOLERANCE ONLY: v1 documents may still
+         * carry these keys, so accepting them here keeps the legacy
+         * conversion path working. This does NOT mean the v3 wire carries
+         * them -- the vr_guard profile surface was removed in b55708a8 and
+         * the vocabulary retired in the native misc.vr_guard batch. */
         "recommend_vr_guard", "vr_guard",
     )
     private val RequiredTopLevel = setOf(
@@ -165,15 +169,19 @@ object ProfileResolver {
         }
         /* Narrow wire fields: reject values the native widths cannot carry
          * instead of letting the typed casts wrap them (the poison/walk tuning
-         * is u8/u8/u16, the vr.ko guard layout is u8). This is the shared
-         * validation, so the exporter and every other caller are covered too. */
+         * is u8/u8/u16). This is the shared validation, so the exporter and
+         * every other caller are covered too.
+         *
+         * The vr_guard layout bound is GONE on purpose: b55708a8 removed the
+         * vr_guard profile surface, so the v3 document no longer carries
+         * "vr_guard.tracepoint_funcs" and a width check for it would be a dead
+         * mapping (it could never fire). Re-add only together with the field. */
         val widths = buildList {
             if (RouteKind.resolve(route) == RouteKind.MULTICAST_WAITER) {
                 add("route.multicast_waiter.attempts" to 0xffL)
                 add("route.multicast_waiter.arm_sequence" to 0xffL)
                 add("route.multicast_waiter.arm_hold" to 0xffffL)
             }
-            add("vr_guard.tracepoint_funcs" to 0xffL)
         }
         for ((path, max) in widths) {
             val value = profile.getLongAt(path) ?: continue

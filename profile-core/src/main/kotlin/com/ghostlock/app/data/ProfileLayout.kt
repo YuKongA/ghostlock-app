@@ -2,47 +2,50 @@ package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
-import com.ghostlock.app.data.component.FrontendKind
 import com.ghostlock.app.data.plugin.PluginPaths
 import com.ghostlock.app.data.route.RouteKind
 
 /**
  * S4 R3 canonical HOCON layout and parse-time normalization.
  *
- * Bundled profiles live in the canonical owner-qualified layout (Wrapper root:
- * ghostlock { schema_version release selection common platform.abi backend.<id>
- * countermeasure }). The parser accepts both that layout and the legacy flat
- * one; every document is normalized at parse time into a single owner-qualified
- * canonical form and then projected onto the in-memory logical model the
- * resolver/UI already consume (toRuntime). Unrecognized keys fail closed with
- * their dotted path instead of being dropped.
+ * Bundled profiles live in the canonical layout (Wrapper root: ghostlock
+ * { schema_version release kernel_major [kernel_minor] [safe_mode] available
+ * backend.<id> }). The parser accepts both that layout and the legacy flat one;
+ * every document is normalized at parse time into a single canonical form and
+ * then projected onto the in-memory logical model the resolver/UI already
+ * consume (toRuntime). Unrecognized keys fail closed with their dotted path
+ * instead of being dropped.
  *
- * Non-identity alias exceptions (legacy -> canonical):
- *  - backend.steps / selection.steps (legacy step id) -> the owning
- *    backend.<id>.steps combination token; selection.steps is cancelled from
- *    the canonical shape (S4 R6b) and only accepted+migrated as legacy input;
- *  - kernel_major -> common.kernel_major;
- *  - fallback.to / fallback.route.<kind>.* / common.fallback_route are
- *    recognized-but-ignored legacy keys (R6a removed route fallback from the
- *    wire); they never fail as unrecognized and never reach the runtime model;
+ * HOCON refactor (2026-10-05, native b55708a8): the `common`, `platform` and
+ * `countermeasure` owners and the `selection` block are GONE — a document that
+ * still carries any of them is rejected by [canonicalizeCanonical]. The kernel
+ * scalars moved to the profile root (kernel_minor is optional and unused today),
+ * `platform.abi.*` moved under the owning backend
+ * (`backend.cve_2026_43499.abi.*`), the old `selection` became `available`
+ * (the profile DECLARES what may run; the user/App picks at run time and writes
+ * the token into `backend.<id>.steps`), and `vr_guard` disappeared entirely.
+ *
+ * Non-identity alias exceptions (legacy flat -> canonical):
+ *  - backend.steps (legacy step id) -> the owning backend.<id>.steps token;
+ *  - kernel_major / kernel_minor / safe_mode -> the profile root;
+ *  - fallback.to / fallback.route.<kind>.* are recognized-but-ignored legacy
+ *    keys (R6a removed route fallback from the wire); they never fail as
+ *    unrecognized and never reach the runtime model;
  *  - kernelsnitch.collisions -> backend.cve_2026_43499.kernel.kernelsnitch_collisions;
  *  - kernelsnitch.mm_struct_sz -> backend.cve_2026_43499.kernel.mm_struct_sz;
- *  - cred is split: platform layouts -> platform.abi.cred, the 43499 template
- *    -> backend.cve_2026_43499.cred;
- *  - offset is split: platform symbols -> platform.abi.offset, slide/vr anchors
- *    -> backend.cve_2026_43499.offset;
- *  - kernel_phys_load|offset -> platform.abi.kernel.*;
- *  - task_struct -> platform.abi.task_struct;
+ *  - cred is split: ABI cred -> backend.cve_2026_43499.abi.cred, the 43499
+ *    template -> backend.cve_2026_43499.cred;
+ *  - offset is split: ABI symbols -> backend.cve_2026_43499.abi.offset,
+ *    slide anchors -> backend.cve_2026_43499.offset;
+ *  - kernel_phys_load|offset -> backend.cve_2026_43499.abi.kernel.*;
+ *  - task_struct -> backend.cve_2026_43499.abi.task_struct;
  *  - route.<kind>.<field> -> backend.cve_2026_43499.route.<kind>.<field>;
  *  - route.<tcp_zerocopy|multicast_waiter>.compact_waiter -> the shared
  *    backend.cve_2026_43499.kernel.compact_waiter wire flag;
  *    route.select_stack.compact_waiter keeps its route field and sets the flag;
  *  - execution.* -> backend.cve_2026_43499.execution.*;
- *  - recommend_vr_guard -> common.vr_guard;
- *  - vr_guard.tracepoint_funcs -> countermeasure.vivo_vr_guard.tracepoint_funcs;
- *  - new-only selection.backend / selection.terminal have no legacy source:
- *    full legacy documents get the 43499 / root_child defaults, fragments (no
- *    release) carry no selection at all.
+ *  - recommend_vr_guard / vr_guard.* are legacy-only now: recognized and
+ *    IGNORED (the profile surface was deleted with the feature).
  */
 object ProfileLayout {
     /** Canonical root object wrapping a device profile. */
@@ -54,21 +57,56 @@ object ProfileLayout {
     )
 
     private val RouteTokens: Set<String> = RouteKind.entries.mapTo(linkedSetOf()) { it.token }
-    private val TerminalTokens: Set<String> = FrontendKind.entries.mapTo(linkedSetOf()) { it.token }
+
     /**
-     * Canonical selection keys. `steps` is deliberately absent: the token
-     * lives at backend.<id>.steps (S4 R6b). It is still accepted as a legacy
-     * step id and migrated before validation.
+     * M2 availability selection (design doc 4.5 / 5-Q1-Q3): the OBJECT form of
+     * `available.<backend>` declares the queue-level route token, the step queue
+     * and the static experimental opt-in. [carryAvailableSelection] is the ONE
+     * place that copies them into the backend owner the wire reads them from;
+     * the legacy token LIST form declares none of them and copies nothing.
      */
-    private val LegacySelectionKeys = setOf("backend", "steps", "terminal")
-    private val CommonKeys = setOf("kernel_major", "fallback_route", "safe_mode", "vr_guard")
+    private val AvailableSelectionKeys = listOf("route", "queue", "experimental")
+
+    /** Queue element keys; `params` is reserved-but-unimplemented (U10). */
+    private val QueueElementKeys = listOf("step", "seam", "stage")
+
+    /**
+     * Canonical slot for the queue-level route STRING when the backend owner
+     * already carries the per-route geometry MAP under `route`
+     * (`route.<kind>.<field>`, every bundled profile does). The wire keeps the
+     * two apart — key `route` versus the `route.<branch>.*` sections — so the
+     * canonical map needs its own slot; `NativeProfile` maps this back onto the
+     * wire key `route` (the ONE mapping point). With no geometry map the string
+     * uses `route` directly. Name follows the native declaration's own wording
+     * ("Queue-level route token", `backend/cve_2026_43499/schema.hpp`). */
+    private const val QueueRouteKey = "queue_route"
+
+    /**
+     * Canonical ROOT keys (HOCON refactor): the wrapper value may only carry
+     * these scalars plus the structural blocks. kernel_minor is optional and
+     * unused today; nothing derives from it yet (the user's ruling).
+     */
+    private val RootKeys = setOf(
+        "schema_version", "release", "kernel_major", "kernel_minor", "safe_mode",
+    )
     private val AbiKeys = setOf("kernel", "task_struct", "cred", "offset")
-    private val PlatformKernelKeys = setOf("kernel_phys_load", "kernel_phys_offset")
+    private val AbiKernelKeys = setOf("kernel_phys_load", "kernel_phys_offset")
     private val BackendKernelKeys = setOf(
         "compact_waiter", "kernelsnitch_collisions", "mm_struct_sz",
     )
-    private val Backend43499Keys = setOf("steps", "kernel", "cred", "offset", "route", "execution")
-    private val CountermeasureKeys = setOf("vivo_vr_guard")
+    private val Backend43499Keys =
+        setOf("steps", "kernel", "cred", "offset", "route", "execution", "abi")
+    /**
+     * The 43284 owner declares ONLY the selection token and the execution
+     * tuning. kmi / lkm_path / carrier_path are native-side conventions (the
+     * wire keeps them, the profile must not provide them) and the old flat
+     * execution keys moved under `execution`, so anything else fails closed.
+     */
+    private val Backend43284Keys = setOf("steps", "execution")
+    private val Backend43284ExecutionKeys = setOf(
+        "late_load_args", "selinux_exec_context", "module_poll_attempts",
+        "module_poll_interval_ms", "wait_timeout_ms",
+    )
 
     /**
      * P1 plugin section keys. This is SHAPE validation only: the layout knows
@@ -81,7 +119,6 @@ object ProfileLayout {
      */
     private val PluginKeys = setOf("enabled", "stage", "module_path", "module_hash", "params", "extract")
     private val PluginGroupKeys = listOf("params", "extract")
-    private val VivoGuardKeys = setOf("tracepoint_funcs")
 
     private val TaskFields = linkedSetOf(
         "prio", "normal_prio", "sched_task_group", "pi_lock", "pi_waiters", "pi_top_task",
@@ -100,11 +137,12 @@ object ProfileLayout {
     )
     private val KernelsnitchFields = setOf("collisions", "mm_struct_sz")
 
-    private val PlatformCredKeys = setOf(
+    /** The ABI half of a legacy flat `cred`/`offset` section. */
+    private val AbiCredKeys = setOf(
         "usage_offset", "caps_offset", "ref_count",
         "ref0_offset", "ref1_offset", "ref2_offset", "ref3_offset",
     )
-    private val PlatformOffsetKeys = setOf(
+    private val AbiOffsetKeys = setOf(
         "init_task", "init_cred", "empty_zero_page", "root_task_group",
         "selinux_enforcing", "selinux_blob_sizes", "security_hook_heads",
     )
@@ -113,14 +151,14 @@ object ProfileLayout {
         "schema_version", "release", "kernel_major", "backend",
         "kernel_phys_load", "kernel_phys_offset", "route", "fallback", "fallback_to",
         "kernelsnitch", "task_struct", "cred", "offset", "execution",
-        "recommend_vr_guard", "vr_guard", "safe_mode",
+        "kernel_minor", "safe_mode",
         "symbols", "struct_fields", "kimage_text_base", "btf_size", "kallsyms",
     )
 
     /** True when [raw] is already in the canonical owner-qualified layout. */
     fun isCanonical(raw: Map<*, *>): Boolean {
         if (raw.containsKey(Wrapper)) return true
-        if (raw.keys.any { it.toString() in setOf("selection", "common", "platform", "countermeasure") }) {
+        if (raw.keys.any { it.toString() == "available" }) {
             return true
         }
         val backend = raw["backend"]
@@ -147,116 +185,282 @@ object ProfileLayout {
     // ---- canonical validation ----
 
     private fun canonicalizeCanonical(raw: ValueMap): ValueMap {
-        val inner = migrateLegacySelection(raw[Wrapper].asValueMap() ?: raw)
+        val inner = raw[Wrapper].asValueMap() ?: raw
         val out = ValueMap()
+        /* The availability declaration is validated first, whatever its position
+         * in the map: the backend owner check must know which selection keys
+         * this document legitimately declares (see [carryAvailableSelection]). */
+        val available = inner["available"]?.let {
+            requireObject("available", it) { value -> validateAvailable(value) }
+        }
         for (key in inner.keys) {
             val value = inner[key]
             when (key) {
                 "schema_version", "release" -> out[key] = value
-                "selection" -> out[key] = requireObject("selection", value) { validateSelection(it) }
-                "common" -> out[key] = requireObject("common", value) { validateCommon(it) }
-                "platform" -> out[key] = requireObject("platform", value) { validatePlatform(it) }
-                "backend" -> out[key] = requireObject("backend", value) { validateBackend(it) }
-                "countermeasure" -> out[key] = requireObject("countermeasure", value) {
-                    validateCountermeasure(it)
+                "kernel_major", "kernel_minor" -> {
+                    require(value is Number) { "$key must be a number" }
+                    out[key] = value
                 }
 
+                "safe_mode" -> {
+                    require(value is Boolean) { "safe_mode must be a boolean" }
+                    out[key] = value
+                }
+
+                "available" -> out[key] = requireNotNull(available) { "available is not an object" }
+                "backend" -> out[key] = requireObject("backend", value) { validateBackend(it, available) }
                 "plugin" -> out[key] = requireObject("plugin", value) { validatePlugins(it) }
+                /* HOCON refactor: common / platform / selection / countermeasure
+                 * are gone — their names land here and fail closed. */
                 else -> fail(key)
+            }
+        }
+        carryAvailableSelection(out)
+        return out
+    }
+
+    /**
+     * M2 queue carrying (design doc 4.5 / 5-Q2): the ONE place where the
+     * `available.<backend>` object form's selection keys are copied into the
+     * backend owner the wire reads them from (`backend.<id>.{route,queue,
+     * experimental}`). The token LIST form copies nothing, so every existing
+     * document keeps its exact bytes; an undeclared key stays absent (presence
+     * is key occurrence).
+     *
+     * `backend.<id>.route` is ALREADY the per-route geometry map
+     * (`route.<kind>.<field>`, validated below) while the queue-level route is a
+     * plain STRING: when the geometry map owns the key the string rides
+     * [QueueRouteKey] instead (see [carryQueueRoute]), so the geometry is never
+     * overwritten and the route is never dropped. */
+    private fun carryAvailableSelection(out: ValueMap) {
+        val available = out["available"].asValueMap() ?: return
+        val owners = out["backend"].asValueMap() ?: ValueMap().also { out["backend"] = it }
+        for ((backend, declaration) in available) {
+            val selection = declaration.asValueMap() ?: continue
+            val owner = owners.mutableChild(backend)
+            selection["queue"]?.let { owner["queue"] = it.copyValue() }
+            selection["experimental"]?.let { owner["experimental"] = it.copyValue() }
+            selection["route"]?.let { carryQueueRoute(owner, backend, it as String) }
+        }
+    }
+
+    /**
+     * Carries the queue-level route STRING into the backend owner without ever
+     * touching the per-route geometry MAP that already owns `route`:
+     *
+     * - no `route` key yet (43284, or a 43499 profile without geometry) => write
+     *   `route` directly;
+     * - `route` already a STRING (a re-canonicalized map) => it must equal the
+     *   declaration, and [QueueRouteKey] must be absent (two strings would need
+     *   an arbitrary precedence => fail closed);
+     * - `route` a geometry map => the string goes to [QueueRouteKey] instead,
+     *   equal-or-absent on the second pass.
+     */
+    private fun carryQueueRoute(owner: ValueMap, backend: String, route: String) {
+        when (val existing = owner["route"]) {
+            null -> owner["route"] = route
+            is String -> {
+                require(owner[QueueRouteKey] == null) {
+                    "backend.$backend: both route and $QueueRouteKey are strings; " +
+                        "refusing to pick a precedence"
+                }
+                require(existing == route) {
+                    "backend.$backend.route conflicts with available.$backend.route: " +
+                        "$existing != $route"
+                }
+            }
+
+            else -> {
+                val carried = owner[QueueRouteKey]
+                require(carried == null || carried == route) {
+                    "backend.$backend.$QueueRouteKey conflicts with available.$backend.route: " +
+                        "$carried != $route"
+                }
+                owner[QueueRouteKey] = route
+            }
+        }
+    }
+
+    /** The declared selection keys of one backend, or an empty map (token list). */
+    private fun selectionEchoes(available: ValueMap?, backend: String): Map<String, Any?> =
+        available?.get(backend).asValueMap() ?: emptyMap()
+
+    /**
+     * The canonical keys a declared selection may occupy: the key itself, plus
+     * [QueueRouteKey] for the queue-level route (its String slot when the
+     * geometry map owns `route`).
+     */
+    private fun selectionEchoKeys(declaration: Map<String, Any?>): Set<String> = buildSet {
+        for (key in AvailableSelectionKeys) {
+            if (!declaration.containsKey(key)) continue
+            add(key)
+            if (key == "route") add(QueueRouteKey)
+        }
+    }
+
+    /**
+     * An echo is legal only while it is deep-equal to the declaration: keys the
+     * document did not declare are unknown keys (checked by the caller), and a
+     * disagreeing echo fails closed with its path instead of winning silently.
+     */
+    private fun requireSelectionEchoes(
+        map: ValueMap,
+        declaration: Map<String, Any?>,
+        path: String,
+    ) {
+        for (key in selectionEchoKeys(declaration)) {
+            val declared = declaration[if (key == QueueRouteKey) "route" else key] ?: continue
+            /* `route` may hold the geometry map; only a String is an echo. */
+            val echo = when (key) {
+                "route" -> map[key].takeIf { it is String }
+                else -> map[key]
+            } ?: continue
+            require(echo == declared) {
+                "$path.$key conflicts with the available declaration: $echo != $declared"
+            }
+        }
+    }
+
+    /**
+     * `available`: what the profile ALLOWS. Two shapes, both kept:
+     *
+     * - the legacy LIST of combination tokens (the 68 bundled assets): the
+     *   profile only declares, the user/App picks at run time and the choice is
+     *   written into `backend.<id>.steps`; each token is resolved in the shared
+     *   catalogue, so a typo fails closed here instead of on the device;
+     * - the M2 OBJECT form (design doc 4.5 / 5-Q1-Q3 / 5-Q2) declaring the
+     *   queue-level route (`route`), the step queue (`queue`) and the static
+     *   experimental opt-in (`experimental`) — see
+     *   [validateAvailableSelection]. [carryAvailableSelection] copies exactly
+     *   those three into the backend owner the wire reads them from.
+     */
+    private fun validateAvailable(available: ValueMap): ValueMap {
+        val out = ValueMap()
+        for ((token, rawTokens) in available) {
+            require(token in BackendTokens) { "available.$token: unknown backend" }
+            val kind = requireNotNull(BackendKind.resolve(token))
+            if (rawTokens is Map<*, *>) {
+                out[token] = validateAvailableSelection(token, rawTokens.asValueMap() ?: ValueMap())
+                continue
+            }
+            val list = rawTokens as? List<*>
+            require(list != null && list.isNotEmpty()) {
+                "available.$token must be a non-empty list of combination tokens"
+            }
+            out[token] = list.map { rawToken ->
+                val text = rawToken as? String
+                val normalized = text?.let(CombinationCatalog::normalize)
+                require(normalized != null && CombinationCatalog.resolve(kind, normalized) != null) {
+                    "available.$token: not a known combination token: $rawToken"
+                }
+                normalized
             }
         }
         return out
     }
 
     /**
-     * S4 R6b legacy migration: a canonical document may still carry the old
-     * `selection.steps` step id. It is read and folded into the owning
-     * `backend.<id>.steps` as the equivalent combination token (using the route
-     * the profile declares), then removed from `selection`. The resulting token
-     * is validated by [validateBackend], which fails closed with the token text.
+     * The M2 object form of one backend's declaration. Exactly the three
+     * selection keys are allowed; `route` is a known [RouteKind] (stored
+     * normalized, like the token list), `experimental` is a Boolean and
+     * `queue` is a non-empty list of step objects.
      */
-    private fun migrateLegacySelection(inner: ValueMap): ValueMap {
-        val selection = inner["selection"].asValueMap() ?: return inner
-        val legacySteps = selection["steps"] as? String ?: return inner
-        val backendSection = inner["backend"].asValueMap() ?: return inner
-        val backendKind = BackendKind.resolve(
-            BackendKind.normalize(selection["backend"] as? String),
-        ) ?: BackendKind.Default
-        val combination = CombinationCatalog.fromLegacySteps(
-            backendKind, legacySteps, declaredRoute(backendSection, backendKind),
-        ) ?: throw IllegalArgumentException(
-            "selection.steps is not a known step set for ${backendKind.token}: $legacySteps"
-        )
-        val copy = inner.copyValue().asValueMap() ?: return inner
-        copy.mutableChild("selection").remove("steps")
-        val owner = copy.mutableChild("backend").mutableChild(backendKind.token)
-        if (owner["steps"] == null) owner["steps"] = combination.token
-        return copy
+    private fun validateAvailableSelection(backend: String, selection: ValueMap): ValueMap {
+        val out = ValueMap()
+        for ((key, raw) in selection) {
+            require(key in AvailableSelectionKeys) { "available.$backend.$key: unknown key" }
+            when (key) {
+                "route" -> {
+                    val route = (raw as? String)?.let { RouteKind.resolve(RouteKind.normalize(it)) }
+                    require(route != null) { "available.$backend.route: not a known route: $raw" }
+                    out[key] = route.token
+                }
+
+                "experimental" -> {
+                    require(raw is Boolean) { "available.$backend.experimental: must be a boolean" }
+                    out[key] = raw
+                }
+
+                "queue" -> out[key] = validateQueue(backend, raw)
+            }
+        }
+        return out
     }
 
     /**
-     * The route branch a canonical owner section declares. Multiple declared
-     * branches are resolved in RouteKind catalog order (never HOCON map hash
-     * order), so migration is deterministic.
+     * One queue element is `{ step = "<id>" }` or `{ seam = "<type>",
+     * stage = "<stage>" }` (design 5-Q1/5-Q3): a plain string, a non-map, an
+     * unknown key, both or neither selector, `stage` without `seam`, a
+     * non-string value and the reserved `params` all fail closed with their
+     * dotted path. An empty queue is rejected too: "do nothing" is not an
+     * attack declaration (design 4.2c). */
+    private fun validateQueue(backend: String, raw: Any?): List<Any?> {
+        val list = raw as? List<*>
+        require(list != null && list.isNotEmpty()) {
+            "available.$backend.queue must be a non-empty list of step objects"
+        }
+        return list.mapIndexed { index, element ->
+            val path = "available.$backend.queue[$index]"
+            require(element is Map<*, *>) { "$path: queue-element-not-object" }
+            val map = element.asValueMap() ?: ValueMap()
+            for (key in map.keys) {
+                require(key in QueueElementKeys || key == "params") { "$path.$key: unknown key" }
+            }
+            require(map["params"] == null) {
+                "$path.params: params-reserved-for-future-step-parameters"
+            }
+            val step = map["step"]
+            val seam = map["seam"]
+            require((step == null) != (seam == null)) {
+                "$path: queue-element-needs-exactly-one-of-step-seam"
+            }
+            if (map["stage"] != null) {
+                require(seam != null) { "$path.stage: stage-requires-seam" }
+            }
+            for (key in QueueElementKeys) {
+                val value = map[key] ?: continue
+                require(value is String) { "$path.$key: value must be a string" }
+            }
+            /* Deterministic key order (step, seam, stage); every value is a
+             * validated string, so nothing is dropped here. */
+            val out = ValueMap()
+            for (key in QueueElementKeys) {
+                (map[key] as? String)?.let { out[key] = it }
+            }
+            out
+        }
+    }
+
+    /**
+     * @param available the validated `available` declaration, when the document
+     * has one: the canonical backend owner may ECHO the selection keys it
+     * carries ([carryAvailableSelection] writes them there), and only an echo
+     * that is deep-equal to the declaration is legal — so
+     * `canonicalize(canonicalize(m)) == canonicalize(m)` holds while a
+     * hand-written `backend.<id>.queue` without a declaration is still an
+     * unknown key.
      */
-    private fun declaredRoute(backendSection: ValueMap, backendKind: BackendKind): RouteKind? {
-        val branches = backendSection[backendKind.token].asValueMap()
-            ?.get("route").asValueMap() ?: return null
-        val keys = branches.keys.filterIsInstance<String>()
-        return RouteKind.entries.firstOrNull { it.token in keys }
-    }
-
-    private fun validateSelection(selection: ValueMap): ValueMap {
-        requireKeys(selection, LegacySelectionKeys, "selection")
-        val out = selection.copyValue().asValueMap() ?: return ValueMap()
-        /* S4 R6b: selection.steps is not part of the canonical shape. It is
-         * normally migrated into backend.<id>.steps before this runs; a leftover
-         * value means the document carried no backend owner and is dropped. */
-        out.remove("steps")
-        if (out["backend"] == null) out["backend"] = BackendKind.Default.token
-        out["backend"]?.let {
-            require(it is String && it in BackendTokens) { "selection.backend is not a known backend: $it" }
-        }
-        if (out["terminal"] == null) out["terminal"] = FrontendKind.RootChild.token
-        out["terminal"]?.let {
-            require(it is String && it in TerminalTokens) { "selection.terminal is not a known terminal: $it" }
-        }
-        return out
-    }
-
-    private fun validateCommon(common: ValueMap): ValueMap {
-        requireKeys(common, CommonKeys, "common")
-        /* R6a: an old canonical document may still carry common.fallback_route.
-         * It is recognized and ignored, never reported as an unknown key. */
-        val out = common.copyValue().asValueMap() ?: ValueMap()
-        out.remove("fallback_route")
-        return out
-    }
-
-    private fun validatePlatform(platform: ValueMap): ValueMap {
-        requireKeys(platform, setOf("abi"), "platform")
-        platform["abi"]?.let { abi ->
-            require(abi is Map<*, *>) { "platform.abi is not an object" }
-            val map = abi.asValueMap() ?: ValueMap()
-            requireKeys(map, AbiKeys, "platform.abi")
-            validateFields(map, "kernel", PlatformKernelKeys, "platform.abi")
-            validateFields(map, "task_struct", TaskFields, "platform.abi")
-            validateFields(map, "cred", CredFields, "platform.abi")
-            validateFields(map, "offset", OffsetFields, "platform.abi")
-        }
-        return platform.copyValue().asValueMap() ?: ValueMap()
-    }
-
-    private fun validateBackend(backend: ValueMap): ValueMap {
+    private fun validateBackend(backend: ValueMap, available: ValueMap?): ValueMap {
         requireKeys(backend, BackendTokens, "backend")
         backend[BackendKind.Cve2026_43499.token]?.let { section ->
             require(section is Map<*, *>) { "backend.cve_2026_43499 is not an object" }
             val map = section.asValueMap() ?: ValueMap()
-            requireKeys(map, Backend43499Keys, "backend.cve_2026_43499")
+            val echoes = selectionEchoes(available, BackendKind.Cve2026_43499.token)
+            requireKeys(map, Backend43499Keys + selectionEchoKeys(echoes), "backend.cve_2026_43499")
+            requireSelectionEchoes(map, echoes, "backend.cve_2026_43499")
             requireCombinationToken(map, BackendKind.Cve2026_43499)
             validateFields(map, "kernel", BackendKernelKeys, "backend.cve_2026_43499")
             validateFields(map, "cred", CredFields, "backend.cve_2026_43499")
             validateFields(map, "offset", OffsetFields, "backend.cve_2026_43499")
+            /* HOCON refactor: platform.abi.* lives here now. */
+            (map["abi"] as? Map<*, *>)?.let { abiRaw ->
+                val abi = abiRaw.asValueMap() ?: ValueMap()
+                requireKeys(abi, AbiKeys, "backend.cve_2026_43499.abi")
+                validateFields(abi, "kernel", AbiKernelKeys, "backend.cve_2026_43499.abi")
+                validateFields(abi, "task_struct", TaskFields, "backend.cve_2026_43499.abi")
+                validateFields(abi, "cred", CredFields, "backend.cve_2026_43499.abi")
+                validateFields(abi, "offset", OffsetFields, "backend.cve_2026_43499.abi")
+            }
             (map["route"] as? Map<*, *>)?.let { route ->
                 for (kind in route.keys) {
                     require(kind.toString() in RouteTokens) {
@@ -267,9 +471,15 @@ object ProfileLayout {
         }
         backend[BackendKind.Cve2026_43284.token]?.let { section ->
             require(section is Map<*, *>) { "backend.cve_2026_43284 is not an object" }
-            requireCombinationToken(
-                section.asValueMap() ?: ValueMap(), BackendKind.Cve2026_43284,
-            )
+            val map = section.asValueMap() ?: ValueMap()
+            /* Fail closed on kmi / lkm_path / carrier_path (native-side
+             * conventions) and on any other unknown key; the declared selection
+             * keys may only ride as equal echoes (see [validateBackend]). */
+            val echoes = selectionEchoes(available, BackendKind.Cve2026_43284.token)
+            requireKeys(map, Backend43284Keys + selectionEchoKeys(echoes), "backend.cve_2026_43284")
+            requireSelectionEchoes(map, echoes, "backend.cve_2026_43284")
+            requireCombinationToken(map, BackendKind.Cve2026_43284)
+            validateFields(map, "execution", Backend43284ExecutionKeys, "backend.cve_2026_43284")
         }
         return backend.copyValue().asValueMap() ?: ValueMap()
     }
@@ -318,15 +528,6 @@ object ProfileLayout {
         return section.copyValue().asValueMap() ?: ValueMap()
     }
 
-    private fun validateCountermeasure(section: ValueMap): ValueMap {
-        requireKeys(section, CountermeasureKeys, "countermeasure")
-        section["vivo_vr_guard"]?.let {
-            require(it is Map<*, *>) { "countermeasure.vivo_vr_guard is not an object" }
-            requireKeys(it.asValueMap() ?: ValueMap(), VivoGuardKeys, "countermeasure.vivo_vr_guard")
-        }
-        return section.copyValue().asValueMap() ?: ValueMap()
-    }
-
     private fun validateFields(map: ValueMap, section: String, allowed: Set<String>, path: String) {
         val nested = map[section] as? Map<*, *> ?: return
         requireKeys(nested.asValueMap() ?: ValueMap(), allowed, "$path.$section")
@@ -352,23 +553,16 @@ object ProfileLayout {
         raw["release"]?.let { out["release"] = it }
         val full = raw.containsKey("release")
 
-        val common = ValueMap()
-        if (raw.containsKey("kernel_major")) common["kernel_major"] = raw["kernel_major"]
-        if (raw.containsKey("recommend_vr_guard")) common["vr_guard"] = raw["recommend_vr_guard"]
-        if (raw.containsKey("safe_mode")) common["safe_mode"] = raw["safe_mode"]
-        /* R6a: fallback.to / fallback_to legacy keys are ignored (known legacy). */
-        if (common.isNotEmpty()) out["common"] = common
+        /* HOCON refactor: the kernel scalars live at the profile root; the old
+         * common.vr_guard / recommend_vr_guard keys are legacy-only and ignored
+         * (the profile surface was deleted with the feature). fallback.to /
+         * fallback_to stay recognized-and-ignored (R6a). */
+        raw["kernel_major"]?.let { out["kernel_major"] = it }
+        raw["kernel_minor"]?.let { out["kernel_minor"] = it }
+        raw["safe_mode"]?.let { out["safe_mode"] = it }
 
-        if (full) {
-            val selection = ValueMap()
-            val backend = raw["backend"].asValueMap()
-            selection["backend"] = backend?.get("kind") ?: BackendKind.Default.token
-            selection["terminal"] = FrontendKind.RootChild.token
-            out["selection"] = selection
-        }
-
-        val credSplit = splitSection(raw["cred"].asValueMap(), CredFields, PlatformCredKeys)
-        val offsetSplit = splitSection(raw["offset"].asValueMap(), OffsetFields, PlatformOffsetKeys)
+        val credSplit = splitSection(raw["cred"].asValueMap(), CredFields, AbiCredKeys)
+        val offsetSplit = splitSection(raw["offset"].asValueMap(), OffsetFields, AbiOffsetKeys)
         val abi = ValueMap()
         raw["task_struct"].asValueMap()?.let { abi["task_struct"] = it.copyValue() }
         credSplit?.first?.let { if (it.isNotEmpty()) abi["cred"] = it }
@@ -381,9 +575,10 @@ object ProfileLayout {
             platformKernel["kernel_phys_offset"] = raw["kernel_phys_offset"]
         }
         if (platformKernel.isNotEmpty()) abi["kernel"] = platformKernel
-        if (abi.isNotEmpty()) out["platform"] = valueMapOf("abi" to abi)
 
         val be = ValueMap()
+        /* HOCON refactor: platform.abi.* is owned by the 43499 backend now. */
+        if (abi.isNotEmpty()) be["abi"] = abi
         val kernel = ValueMap()
         raw["kernelsnitch"].asValueMap()?.forEach { (key, value) ->
             when (key) {
@@ -431,6 +626,15 @@ object ProfileLayout {
         if (combination != null && selectedBackend == BackendKind.Cve2026_43499) {
             be["steps"] = combination.token
         }
+        /* The legacy document pins one token; the canonical shape DECLARES it as
+         * the allowed set (or the catalogue default when nothing was pinned). */
+        if (full) {
+            val allowed = combination?.token
+                ?: CombinationCatalog.defaultFor(selectedBackend)?.token
+            if (allowed != null) {
+                out["available"] = valueMapOf(selectedBackend.token to listOf(allowed))
+            }
+        }
         credSplit?.second?.let { if (it.isNotEmpty()) be["cred"] = it }
         offsetSplit?.second?.let { if (it.isNotEmpty()) be["offset"] = it }
         raw["execution"].asValueMap()?.let { be["execution"] = it.copyValue() }
@@ -441,17 +645,20 @@ object ProfileLayout {
             if (combination != null && selectedBackend == BackendKind.Cve2026_43284) {
                 copy["steps"] = combination.token
             }
+            /* HOCON refactor: the flat execution keys move under `execution`, and
+             * kmi / lkm_path / carrier_path are native-side conventions the
+             * profile must not carry. */
+            val execution = copy["execution"].asValueMap()?.copyValue()?.asValueMap() ?: ValueMap()
+            for (key in Backend43284ExecutionKeys) {
+                copy[key]?.let { execution[key] = it }
+                copy.remove(key)
+            }
+            if (execution.isNotEmpty()) copy["execution"] = execution
+            for (key in listOf("kmi", "lkm_path", "carrier_path")) copy.remove(key)
             owners[BackendKind.Cve2026_43284.token] = copy
         }
         if (owners.isNotEmpty()) out["backend"] = owners
 
-        raw["vr_guard"].asValueMap()?.let { guard ->
-            if (guard.containsKey("tracepoint_funcs")) {
-                out["countermeasure"] = valueMapOf(
-                    "vivo_vr_guard" to valueMapOf("tracepoint_funcs" to guard["tracepoint_funcs"]),
-                )
-            }
-        }
         return out
     }
 
@@ -514,20 +721,23 @@ object ProfileLayout {
         canonical["schema_version"]?.let { out["schema_version"] = it }
         canonical["release"]?.let { out["release"] = it }
 
-        val common = canonical["common"].asValueMap()
-        common?.get("kernel_major")?.let { out["kernel_major"] = it }
-        common?.get("safe_mode")?.let { out["safe_mode"] = it }
-        common?.get("vr_guard")?.let { out["recommend_vr_guard"] = it }
+        /* Root scalars (HOCON refactor). kernel_minor is carried through for the
+         * UI/future use; nothing derives from it yet. */
+        canonical["kernel_major"]?.let { out["kernel_major"] = it }
+        canonical["kernel_minor"]?.let { out["kernel_minor"] = it }
+        canonical["safe_mode"]?.let { out["safe_mode"] = it }
 
-        val selection = canonical["selection"].asValueMap()
-        val selectedBackend = BackendKind.resolve(
-            BackendKind.normalize(selection?.get("backend") as? String),
-        )
+        /* The DECLARED availability fixes the default backend; the App lets the
+         * user pick among the declared tokens at run time. */
+        val available = canonical["available"].asValueMap() ?: ValueMap()
+        val selectedBackend = BackendKind.entries.firstOrNull { it.token in available.keys }
             ?: BackendKind.Default
         val backend = ValueMap()
-        selection?.get("backend")?.let { backend["kind"] = it }
+        if (selectedBackend.token in available.keys) backend["kind"] = selectedBackend.token
 
-        val abi = canonical["platform"].asValueMap()?.get("abi").asValueMap()
+        val abi = canonical["backend"].asValueMap()
+            ?.get(BackendKind.Cve2026_43499.token).asValueMap()
+            ?.get("abi").asValueMap()
         abi?.get("task_struct")?.let { out["task_struct"] = it.copyValue() }
         val cred = ValueMap()
         val offset = ValueMap()
@@ -579,11 +789,6 @@ object ProfileLayout {
             out["route"] = route
         }
 
-        canonical["countermeasure"].asValueMap()
-            ?.get("vivo_vr_guard").asValueMap()
-            ?.get("tracepoint_funcs")?.let {
-                out["vr_guard"] = valueMapOf("tracepoint_funcs" to it)
-            }
         return out
     }
 

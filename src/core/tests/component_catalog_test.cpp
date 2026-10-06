@@ -138,12 +138,12 @@ int32_t main(void) {
     assert(spec_of(CombinationKind::McastRootchild)->terminal == TerminalKind::RootChild);
     assert(spec_of(CombinationKind::Umh)->terminal == TerminalKind::UmhForward);
     assert(spec_of(CombinationKind::Umh)->route == profile::RouteKind::None);
-    assert(pipeline::combination_terminal(CombinationKind::TcpShizuku) ==
-           TerminalKind::RootChild);
-    assert(pipeline::combination_route(CombinationKind::PselectRootchild) ==
-           pipeline::MiddlewareKind::SelectStack);
-    assert(pipeline::combination_route(CombinationKind::Umh) ==
-           pipeline::MiddlewareKind::None);
+    /* S3 (M2 item 4): the convenience accessors are gone; the catalogue row is
+     * the authority, and a null row is impossible for a catalogued kind. */
+    assert(spec_of(CombinationKind::TcpShizuku)->terminal == TerminalKind::RootChild);
+    assert(spec_of(CombinationKind::PselectRootchild)->route ==
+           profile::RouteKind::SelectStack);
+    assert(spec_of(CombinationKind::Umh)->route == profile::RouteKind::None);
 
     /* ---- Dispatch targets are per wired path. ---- */
     assert(pipeline::dispatch_target_of(CombinationKind::McastRootchild) ==
@@ -183,6 +183,15 @@ int32_t main(void) {
                                       StepSetKind::PageCacheWrite,
                                       TerminalKind::UmhForward}) ==
            pipeline::DispatchTarget::Cve43284PageCache_UmhForward);
+
+    /* ---- S5 named diagnostic (step-queue design doc 10.1-S5). ----
+     * The orchestrator prints this verbatim on the "legal but unwired plan"
+     * branch; pinning the text here makes the diagnostic a guarded contract
+     * instead of a silent `Rejected`. */
+    assert(pipeline::no_dispatch_target_message(BackendKind::Cve2026_43499,
+                                               CombinationKind::McastRootchild) ==
+           "plan_error reason=no-dispatch-target backend=cve_2026_43499 "
+           "combination=1 token=mcast_rootchild");
 
     /* ---- Names. ---- */
     assert(pipeline::terminal_name(TerminalKind::RootChild) == "root_child");

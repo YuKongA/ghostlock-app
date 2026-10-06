@@ -56,7 +56,10 @@ namespace ghostlock::profile {
      * its FieldSpec::store_text writes it (store stays null). The decoder already
      * caps a WireType::Str at glkv3::kMaxStringBytes (256); the bind re-checks
      * that bound and the value's is_text flag fail-closed. */
-    enum class WireKind : uint8_t { UInt = 0, Int, Bool, String };
+    /* M2: Array is the declared kind of a selection-owned composite field
+     * (backend.<id>.queue, an array of map). It is validated by shape and never
+     * stored into a View member. */
+    enum class WireKind : uint8_t { UInt = 0, Int, Bool, String, Array };
 
     enum class BindCode : uint8_t {
         Ok = 0,
@@ -64,6 +67,10 @@ namespace ghostlock::profile {
         UnknownKey,
         MissingRequired,
         WidthMismatch,
+        /* S1 (M2 item 4): a text field that must resolve in a vocabulary named a
+         * value the vocabulary does not contain. The previous behaviour stored the
+         * silent 0 default; the bind now fails closed with the section and key. */
+        UnresolvedToken,
         /* Transport-level rejection the field walk cannot express: an unusable
          * route selection or a release string that does not fit the caller's
          * buffer. */
@@ -91,6 +98,8 @@ namespace ghostlock::profile {
                 return "missing_required";
             case BindCode::WidthMismatch:
                 return "width_mismatch";
+            case BindCode::UnresolvedToken:
+                return "unresolved_token";
             case BindCode::Invalid:
                 return "invalid";
         }
@@ -205,6 +214,14 @@ namespace ghostlock::profile {
          * std::string_view; the bind stores the decoded buffer view verbatim (no
          * copy). Null for every non-String field. */
         void (*store_text)(View &, std::string_view) = nullptr;
+        /* S1 (M2 item 4): a String field whose value must resolve in a
+         * vocabulary. Returns false when it does not, and the bind then fails
+         * closed with the section/key instead of storing the silent default. */
+        bool (*store_text_checked)(View &, std::string_view) = nullptr;
+        /* M2 item 6: a declaration-only field the selection owns end to end
+         * (queue / route / experimental). Shape and wire kind are validated, the
+         * value is never stored into a View member, and `store` stays null. */
+        bool selection_owned = false;
     };
 
     template<typename Schema>
@@ -224,6 +241,12 @@ namespace ghostlock::profile {
             if (field.wire == WireKind::String) {
                 return value.is_text && value.text.size() <= kMaxStringBytes;
             }
+            if (field.wire == WireKind::Array) {
+                /* M2: a declared composite (array of map). Framing already
+                 * enforced the structural bounds; here the shape must be a
+                 * composite and nothing else. */
+                return value.is_array;
+            }
             if (value.is_text) return false;
             return value_fits_width(value.raw, field.width, field.is_signed);
         }
@@ -231,13 +254,22 @@ namespace ghostlock::profile {
         /* Writes an already-validated value into the staged View. Never copies a
          * string: the View's std::string_view aliases the Document's view. */
         template<typename View>
-        void store_field(const FieldSpec<View> &field, View &view,
-                         const Value &value) {
+        [[nodiscard]] bool store_field(const FieldSpec<View> &field, View &view,
+                                       const Value &value) {
+            /* Declaration-only selection fields (queue / route / experimental)
+             * are validated by kind and shape, and deliberately never stored. */
+            if (field.selection_owned) return true;
             if (field.wire == WireKind::String) {
+                if (field.store_text_checked != nullptr) {
+                    return field.store_text_checked(view, value.text);
+                }
                 if (field.store_text != nullptr) field.store_text(view, value.text);
-                return;
+                return true;
             }
+            if (field.wire == WireKind::Array) return true; /* composite: no member */
+            if (field.store == nullptr) return false;
             field.store(view, value.raw);
+            return true;
         }
 
         /* Validate + materialise one owner's View (steps 2/3 of the
@@ -263,7 +295,10 @@ namespace ghostlock::profile {
             for (const FieldSpec<View> &field : fields) {
                 const Value *value = document.find_value(field.section, field.key);
                 if (!value || !value->present) continue;
-                store_field(field, staged, *value);
+                if (!store_field(field, staged, *value)) {
+                    return BindStatus{BindCode::UnresolvedToken, field.section,
+                                      field.key};
+                }
             }
             out = staged;
             return BindStatus{};
@@ -296,7 +331,10 @@ namespace ghostlock::profile {
             for (const FieldSpec<View> &field : fields) {
                 const Value *value = document.find_value(field.section, field.key);
                 if (value != nullptr && value->present) {
-                    store_field(field, staged, *value);
+                    if (!store_field(field, staged, *value)) {
+                        return BindStatus{BindCode::UnresolvedToken, field.section,
+                                          field.key};
+                    }
                     continue;
                 }
                 if (!field.default_value.declared()) continue;

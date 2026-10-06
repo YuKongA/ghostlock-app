@@ -297,8 +297,17 @@ internal class AndroidProfileConfigController(
         if (!is43284Selection()) return
         val section = profile.mutableChild("backend").mutableChild("cve_2026_43284")
         for (path in Cve2026_43284Fields.EditablePaths) {
-            val key = path.substringAfterLast('.')
-            if (!section.containsKey(key)) section[key] = null
+            /* Walk the whole owner-qualified path below the section so a nested
+             * field such as "...cve_2026_43284.execution.wait_timeout_ms" lands on
+             * its own level; taking only the last segment used to surface it one
+             * level up, where the advanced editor could not address it. */
+            val relative = path.removePrefix("${Cve2026_43284Fields.Section}.")
+            val segments = relative.split('.')
+            val node = segments.dropLast(1).fold(section) { current, segment ->
+                current.mutableChild(segment)
+            }
+            val key = segments.last()
+            if (!node.containsKey(key)) node[key] = null
         }
     }
 
@@ -337,13 +346,12 @@ internal class AndroidProfileConfigController(
         values: Map<String, Long>,
     ): ProfileConfig {
         val override = readAdvancedOverride(release)
-        val execution = override.mutableChild("execution")
+        /* ONE addressing scheme: the override tree IS the document shape, so a
+         * dotted path is the address, exactly as the field constants spell it.
+         * The old \`execution.\` special case was a second convention that made
+         * owner-qualified paths (backend.cve_2026_43284.execution.*) unwritable. */
         for ((path, value) in values) {
-            if (path.startsWith("execution.")) {
-                execution.setValueAt(path.removePrefix("execution."), value)
-            } else {
-                override.setValueAt(path, value)
-            }
+            override.setValueAt(path, value)
         }
         writeAdvancedOverride(release, override)
         persistSnapshot(release, pair)
@@ -863,11 +871,8 @@ internal class AndroidProfileConfigController(
         baseline: ValueMap,
         route: String?,
     ): List<ExecutionFieldValue> {
-        fun read(root: ValueMap, path: String): Long? = if (path.startsWith("execution.")) {
-            root["execution"].asValueMap()?.getLongAt(path.removePrefix("execution."))
-        } else {
-            root.getLongAt(path)
-        }
+        /* Same single convention as the write side: walk the dotted path. */
+        fun read(root: ValueMap, path: String): Long? = root.getLongAt(path)
         /* Route tuning is appended from the resolved document itself: only the
          * active route's leaves (sorted, so the order is stable), so the editor
          * never offers another route's knobs. The group is filled into
@@ -943,9 +948,12 @@ internal class AndroidProfileConfigController(
             val path = if (prefix.isEmpty()) key else "$prefix.$key"
             when {
                 value is Map<*, *> -> {
-                    /* Execution tuning is edited on the general page
-                     * (ProfileOverrideScreen / ExecutionEditor), not here. */
-                    if (key == "execution") continue
+                    /* The top-level `execution` section is edited on the general
+                     * page, so it stays out of the advanced tree. The refactor
+                     * also nests per-backend tuning under `backend.<id>.execution`,
+                     * which the advanced editor owns (Cve2026_43284Fields);
+                     * skipping the key at any depth used to swallow those rows. */
+                    if (key == "execution" && prefix.isEmpty()) continue
                     val children = buildTree(value.asValueMap() ?: valueMapOf(), path, baseline, override)
                     if (children.isNotEmpty()) {
                         groups += ProfileFieldNode(

@@ -1,0 +1,7 @@
+batch: M2 batch 1 - queue wire carrying + normalization wiring (token path regression)
+release: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+serial: QV770MFGJ1
+binary_sha256: 5d5ea34c0eb75cd1ebf32106a8884e86a2cdbf63ba64a5c1ccbaf6c892e0accf
+native_exit: 0
+verdict: PASS (cold re-run; first attempt dropped the device at CMP_REQUEUE_PI = KERNEL-PANIC-01 class one-off)
+device_log_kind: /data/local/tmp (device locked -> /sdcard not mounted)

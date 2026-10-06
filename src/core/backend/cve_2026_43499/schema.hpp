@@ -78,15 +78,28 @@ namespace ghostlock::backend {
  * the shared contract whitelist so there is one vocabulary authority. A legacy
  * numeric value is rewritten to its token by profile/glkv3_parse.cpp before the
  * bind runs, so this field can remain a strict String. */
+/* M2 item 6: a selection-owned declaration row. The key is accepted on the wire,
+ * validated by kind and shape, and never stored into a View member (the queue,
+ * the queue-level route and the experimental declaration are consumed by
+ * profile/glkv3_parse.cpp). */
+#define GLK_43499_SELECTION(section, key, wire, width, doc_text) \
+    { \
+        section, key, width, false, false, nullptr, \
+                profile::DefaultValue::none(), profile::FieldSource::Profile, \
+                wire, doc_text, nullptr, nullptr, true \
+    }
+
 #define GLK_43499_STEPS(section, key) \
     { \
         section, key, 0, false, false, nullptr, \
                 profile::DefaultValue::none(), profile::FieldSource::Profile, \
                 profile::WireKind::String, \
                 "Combination token <route>_<path> (S4 R6b).", \
+                nullptr, \
                 [](Cve2026_43499View &view, std::string_view text) { \
-                    view.steps = contract::combination_stepset_wire( \
-                            contract::BackendKind::Cve2026_43499, text); \
+                    return contract::combination_stepset_wire_checked( \
+                            contract::BackendKind::Cve2026_43499, text, \
+                            view.steps); \
                 } \
     }
 
@@ -97,8 +110,8 @@ namespace ghostlock::backend {
             /* HOCON refactor root scalars: the empty section is the document
              * root (profile/document.hpp kRootSection), where the wire and the
              * profile now agree. They replace the deleted "common" owner;
-             * common.vr_guard went with it and has no writer left (the
-             * platform/vivo code stays inert, see schema.hpp header). */
+             * common.vr_guard went with it and has no writer left (and the
+             * platform/vivo consumer was deleted in vr_guard (a)). */
             GLK_43499_PLAIN("", "kernel_major", meta.kernel_major, 1),
             GLK_43499_PLAIN("", "kernel_minor", meta.kernel_minor, 1),
             GLK_43499_PLAIN("", "safe_mode", meta.safe_mode, 1),
@@ -159,6 +172,18 @@ namespace ghostlock::backend {
             GLK_43499_OPT("backend.cve_2026_43499.route.multicast_waiter", "buffer_size", geometry.mcast_buffer_size, 4, false),
             GLK_43499_OPT("backend.cve_2026_43499.route.multicast_waiter", "task_offset", geometry.mcast_task_offset, 4, false),
             GLK_43499_OPT("backend.cve_2026_43499.route.multicast_waiter", "lock_offset", geometry.mcast_lock_offset, 4, false),
+            /* M2 queue selection (design doc 4.5/5.0): the canonical queue is an
+             * array of map, the route is its queue-level sibling and experimental
+             * is the U5 static opt-in. All three are selection-owned. */
+            GLK_43499_SELECTION("backend.cve_2026_43499", "queue",
+                                profile::WireKind::Array, 0,
+                                "Step queue: array of {step|seam[,stage]} (M2)."),
+            GLK_43499_SELECTION("backend.cve_2026_43499", "route",
+                                profile::WireKind::String, 0,
+                                "Queue-level route token (M2; required here)."),
+            GLK_43499_SELECTION("backend.cve_2026_43499", "experimental",
+                                profile::WireKind::Bool, 1,
+                                "Static experimental opt-in declaration (U5)."),
             GLK_43499_STEPS("backend.cve_2026_43499", "steps"),
         };
     };
@@ -166,6 +191,7 @@ namespace ghostlock::backend {
 #undef GLK_43499_PLAIN
 #undef GLK_43499_OPT
 #undef GLK_43499_STEPS
+#undef GLK_43499_SELECTION
 
 } // namespace ghostlock::backend
 

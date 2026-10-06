@@ -54,6 +54,8 @@ namespace {
         doc.middleware = ghostlock::profile::kRouteNone;
         for (const auto &field : Cve2026_43284Schema::kFields) {
             if (field.wire == ghostlock::profile::WireKind::String) continue;
+            /* M2: a declared composite is selection-owned and has no scalar form. */
+            if (field.wire == ghostlock::profile::WireKind::Array) continue;
             add(doc, field.section, field.key, 1ULL);
         }
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "carrier_path",
@@ -153,6 +155,21 @@ int main() {
         /* The two String conventions are declaration-only: no value stored. */
         assert(!view.carrier_path.has_value());
         assert(!view.lkm_path.has_value());
+    }
+
+    /* ---- S1 (M2 item 4): an unknown combination token is a hard bind failure
+     * that echoes the section and key. Before the checked store the bind wrote
+     * combination_stepset_wire()'s silent 0 and reported success. ---- */
+    {
+        Document doc = full_document();
+        add_text(doc, ghostlock::backend::kCve2026_43284Section, "steps", "bogus_token");
+        Cve2026_43284Profile view{};
+        const auto blocked = ghostlock::profile::bind<Cve2026_43284Schema>(
+                doc, view, DecodeMode::Production);
+        assert(blocked.code == BindCode::UnresolvedToken);
+        assert(blocked.section == ghostlock::backend::kCve2026_43284Section);
+        assert(blocked.key == "steps");
+        assert(!view.steps.has_value());
     }
 
     /* ---- S4 R4 String semantics: a view, and fail-closed over-limit. ---- */

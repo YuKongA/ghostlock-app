@@ -1,0 +1,7 @@
+batch: R1 whitelist 4 -> 0 (43499 spray/leak ownership moved into the backend TU)
+release: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+serial: QV770MFGJ1
+binary_sha256: 5731450a9030164416e79ad981fdc2df3112d9c0c1af4b7ea33b2b0633721006
+firewall: 176 files, 0 forbidden-layer edges, 0 whitelisted, 0 unexpected, 0 stale
+native_exit: 0
+verdict: PASS

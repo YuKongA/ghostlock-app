@@ -1,7 +1,8 @@
 /* Host test for the neutral ancillary mechanism: the stage vocabulary, the
  * policy contract, the caller-injected registry, gate and context. The vendor
- * vr.ko behaviors now live in platform::vivo and are checked in
- * platform_vivo_test.cpp. No session is constructed and no behavior body runs. */
+ * vr.ko behaviors were deleted in vr_guard (a) (their profile fields went in
+ * (b)), so the mechanism is exercised with test-local policies only. No
+ * session is constructed and no behavior body runs. */
 
 #include "plugin/controller.hpp"
 

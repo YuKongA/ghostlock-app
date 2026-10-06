@@ -72,8 +72,9 @@ authority**: the token whitelist with availability. `pipeline/component_catalog.
   mechanical `apply_to()` merge into the frozen transport; `platform/runtime.*`
   - environment probing (iomem cache, seccomp, SELinux enforce);
   `platform/device_facts.*` - the injectable `DeviceProbeOps` fact collector
-  (B5-7, fail-closed; kernel-symbol absence is recorded, not fatal);
-  `platform/vivo/` - the vendor vr.ko guard.
+  (B5-7, fail-closed; kernel-symbol absence is recorded, not fatal).
+  The vendor `platform/vivo/` code (vr.ko guard / per-task tag) was deleted in
+  vr_guard (a).
 - `plugin/` - the countermeasure plugin facility: `controller.hpp` / `policy.hpp`
   (the neutral mechanism (`PluginStage`, `PluginPolicyFor`) and the
   injected controller), the out-of-tree hook `registry.hpp`, and the fail-closed

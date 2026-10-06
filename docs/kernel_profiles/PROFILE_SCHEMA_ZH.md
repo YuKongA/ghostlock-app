@@ -1,6 +1,6 @@
 # Kernel Profile 结构文档（配置系统）
 
-> **状态：HOCON 重构已于 2026-10-05 在 native 落地**（① `b55708a8`：根级标量通道 + 删 `common`/`countermeasure` owner + vr_guard (b)；②③④ `23958eb0`：`platform.abi.*` → `backend.cve_2026_43499.abi.*`（62 处）+ 43284 调参入 `backend.cve_2026_43284.execution.*` + 新 `wire_only` 标记 + manifest 114 行）。**App 侧（测试 + golden）跟进中** ⇒ 跨端记「**native 已定稿、App 跟进中**」。旧的 `common` / `platform` / `selection` 布局**已删除**（出现即拒）。
+> **状态：HOCON 重构已于 2026-10-05 在 native 落地**（① `b55708a8`：根级标量通道 + 删 `common`/`countermeasure` owner + vr_guard (b)；②③④ `23958eb0`：`platform.abi.*` → `backend.cve_2026_43499.abi.*`（62 处）+ 43284 调参入 `backend.cve_2026_43284.execution.*` + 新 `wire_only` 标记 + manifest 114 行）。**App 侧 ③（测试 + golden）已全绿并提交 = `c443f5f0`** ⇒ 跨端记「**三侧已定稿**」。旧的 `common` / `platform` / `selection` 布局**已删除**（出现即拒）。
 > 旧的 `common` / `platform` / `selection` 布局**已删除**（出现即拒）。本文是**结构与流程权威**；逐字段权威仍是 `profile-manifest-v3.tsv`（native 导出，两份逐字节一致）。
 
 ## 0. 版本与字段权威
@@ -109,7 +109,7 @@ ghostlock {
 | `payload` owner | 同样冻结——不再发射 `payload.*`；执行半场停止 |
 | `countermeasure.*` owner | **已移除**（`b55708a8`）；出现即拒 |
 | defex | **已删除**（提交 `a68e2d5a`） |
-| vivo VR guard | **(b) profile 面已完成**（`b55708a8`：profile/wire/manifest 行删除）；**(a) 删代码挂账待设备门禁**——`platform/vivo/**` 与两处调用在此之前**保留（惰性）** |
+| vivo VR guard | **(b) profile 面已完成**（`b55708a8`：profile/wire/manifest 行删除）；**(a) 删代码已完成（`4a182217`；门禁归档 `device-gates/vrguard-a-20261006/`）**——`platform/vivo/**` **8 文件** + 测试 + stub 删除、`steps.cpp` **−95 行**，**真机门禁已跑**（43499 链 PASS + 无插件零新增字节）；**非行为差异**：`w2b` stage 轨迹少一项 |
 
 ## 8. GLKv3 wire
 

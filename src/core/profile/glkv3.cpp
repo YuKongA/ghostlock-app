@@ -80,6 +80,7 @@ namespace ghostlock::profile::glkv3 {
                  * manifest; it is never a concrete wire value, so any static
                  * decode/write/convert path that meets it fails closed. */
                 case WireType::Union:
+                case WireType::Map:
                     return false;
                 case WireType::UInt:
                     out.uint_value = mpack_expect_u64(ctx.reader);
@@ -131,6 +132,49 @@ namespace ghostlock::profile::glkv3 {
             return false;
         }
 
+        /* M2: one element map inside a declared composite. Scalar members only:
+         * a nested container is a TypeMismatch instead of recursion, so the
+         * representation stays bounded and depth-free. */
+        bool read_map(Ctx &ctx, Value &out) {
+            const uint32_t count = mpack_expect_map_max(ctx.reader, kMaxMapMembers);
+            if (!check(ctx)) return false;
+            out.type = WireType::Map;
+            out.members.reserve(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                std::string_view key;
+                if (!read_key(ctx, key)) return false;
+                MapMember member;
+                member.key = key;
+                mpack_tag_t tag = mpack_peek_tag(ctx.reader);
+                if (!check(ctx)) return false;
+                Value scalar;
+                switch (mpack_tag_type(&tag)) {
+                    case mpack_type_uint:
+                        if (!read_scalar(ctx, WireType::UInt, scalar)) return false;
+                        break;
+                    case mpack_type_int:
+                        if (!read_scalar(ctx, WireType::Int, scalar)) return false;
+                        break;
+                    case mpack_type_bool:
+                        if (!read_scalar(ctx, WireType::Bool, scalar)) return false;
+                        break;
+                    case mpack_type_str:
+                        if (!read_scalar(ctx, WireType::Str, scalar)) return false;
+                        break;
+                    default:
+                        ctx.error = DecodeCode::TypeMismatch;
+                        return false;
+                }
+                member.type = scalar.type;
+                member.uint_value = scalar.uint_value;
+                member.int_value = scalar.int_value;
+                member.bool_value = scalar.bool_value;
+                member.bytes = scalar.bytes;
+                out.members.push_back(member);
+            }
+            mpack_done_map(ctx.reader);
+            return check(ctx);
+        }
         bool read_element(Ctx &ctx, Value &out) {
             mpack_tag_t tag = mpack_peek_tag(ctx.reader);
             if (!check(ctx)) return false;
@@ -140,6 +184,8 @@ namespace ghostlock::profile::glkv3 {
                 case mpack_type_bool: return read_scalar(ctx, WireType::Bool, out);
                 case mpack_type_str: return read_scalar(ctx, WireType::Str, out);
                 case mpack_type_bin: return read_scalar(ctx, WireType::Bin, out);
+                case mpack_type_array: return read_array(ctx, out);
+                case mpack_type_map: return read_map(ctx, out);
                 default:
                     ctx.error = DecodeCode::TypeMismatch;
                     return false;
@@ -160,6 +206,7 @@ namespace ghostlock::profile::glkv3 {
             mpack_done_array(ctx.reader);
             return check(ctx);
         }
+
 
         bool discard_value(Ctx &ctx, unsigned depth) {
             if (depth > kMaxDepth) {
@@ -259,6 +306,11 @@ namespace ghostlock::profile::glkv3 {
                          * materialise String fields. Only uint/int/bool/str are
                          * admitted; bin/array still fail closed here. */
                         if (!read_element(ctx, value)) return false;
+                    } else if (field->type == WireType::Array) {
+                        /* M2: a declared array field (the queue) decodes as a
+                         * composite; every other declared kind stays scalar. */
+                        if (!read_array(ctx, value)) return false;
+                        present[field_index(schema, field)] = uint8_t{1};
                     } else {
                         if (!read_scalar(ctx, field->type, value)) return false;
                         present[field_index(schema, field)] = uint8_t{1};
@@ -502,6 +554,21 @@ namespace ghostlock::profile::glkv3 {
                         write_value(writer, element);
                     }
                     mpack_finish_array(writer);
+                    break;
+                case WireType::Map:
+                    mpack_start_map(writer,
+                                    static_cast<uint32_t>(value.members.size()));
+                    for (const MapMember &member : value.members) {
+                        write_key(writer, member.key);
+                        Value scalar;
+                        scalar.type = member.type;
+                        scalar.uint_value = member.uint_value;
+                        scalar.int_value = member.int_value;
+                        scalar.bool_value = member.bool_value;
+                        scalar.bytes = member.bytes;
+                        write_value(writer, scalar);
+                    }
+                    mpack_finish_map(writer);
                     break;
             }
         }

@@ -87,10 +87,9 @@ class NativeDocumentV3EquivalenceTest {
         }
     }
 
-    private fun safeModeOf(document: Glkv3Document): Boolean? =
-        document.sections.firstOrNull { it.name == "common" }
-            ?.entries?.firstOrNull { it.key == "safe_mode" }
-            ?.value?.let { it as? Glkv3Value.Bool }?.value
+    /* HOCON refactor: safe_mode is a ROOT scalar on the wire (native
+     * kRootSection), no longer common.safe_mode. */
+    private fun safeModeOf(document: Glkv3Document): Boolean? = document.safeMode
 
     private fun readGolden(): Map<String, String> {
         val text = checkNotNull(

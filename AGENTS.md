@@ -82,6 +82,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - 攻击路径改动 = **真机门禁 + 门禁记录**（格式见 `docs/development/documentation-standards.md`），缺一不可。
   `cmp_disasm` 是**可选诊断工具**：反汇编差异本身**不再阻塞**批次，真机测试通过即可。
 - 大改动按批次推进，一个批次只做一类事，上一批验证通过再进下一批。
+- **新实验必须从「生产路径」启动，不得靠新增 CLI 旗标/旁路逻辑来试（用户指令 2026-10-05）**：优先**预留扩展点/解除限制/参数化**，使实验＝**小改动或去掉一个限制**，直接在**生产路径**上跑；**禁止**为了试一个功能而临时加一堆可选 CLI 参数与旁路分支。本项目已吃过这个亏：`--cve43284-*`、`--plugin`、`--allow-vermagic-rewrite`、staged 入口等都是**先加后删**（AGENTS 已记载其删除），清理成本高且有「dev 路径与生产路径行为漂移」的风险。⇒ 任何**仅服务实验**的入口，必须在**同批**登记清理计划（谁在什么条件下删），默认视为技术债。
 
 ## 代码约定
 
@@ -103,14 +104,13 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   Route 类满足 `prepare → execute → disarm → destroy`，仅经 `status` 汇报。新增组件
   （route/backend/terminal/platform/plugin）的完整触点清单见 `docs/development/adding-a-component.md`。
 - 分层依赖由 **R1 include 防火墙**（`tests/include_firewall_test.cpp`）在 host 测试里强制：8 个受限源层，
-  当前白名单 4 条（`support/util.cpp` → 43499 backend：spray 直连 `state`/`route`/`accessors` 3 条，
-  以及 A3-2 的 `leak/address_discovery.h` 1 条——因 `kernelsnitch.h` 的 `context_*` 非 inline、全程序只能一个 TU 包含，
-  待 spray/leak 所有权搬进 backend 后移除），运行输出
-  `180 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许；
+  当前白名单 **0 条**（**空账本 + pin**：`kWhitelist` 必须为空；**R1 搬迁已完成**——`support/util.cpp` **799 → 133 行**（只留 **12 个中性函数**），14 个原 `support` 函数迁入新文件 `backend/cve_2026_43499/spray.cpp`（728 行，含匿名 namespace 门面 + 3 个文件内 static）与声明面 `spray.hpp`（51 行），9 处调用点全部改到 `cve_2026_43499::spray::*`；`kernelsnitch.h` 的**唯一 TU** 现为 `spray.cpp`（链 `spray.cpp → leak/address_discovery.h → kernelsnitch.h`）；`decls.hpp` 删 14 条声明并顺带删掉已无引用的 `memory/payload_builder.h`），运行输出
+  `176 files, 0 forbidden-layer edges, 0 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许；
   历史：173 → 174 = `root_child.hpp` 随 ADR-0006 F5 移入受限的 `backend/`；174 → 172 = R8 合并两份 SHA-256 为 `support/sha256.*`（删 4 增 2）；
   172 → 174 = P1 探针新增 `plugin/probe.{hpp,cpp}`；174 → 177 = P1 第二步新增 `plugin/{schema.hpp,wire.hpp,wire.cpp}`；
   177 → 179 = step 2 新增 `plugin/host.{hpp,cpp}`（插件宿主；step 3a 起**已接线**，但接线点在组合根与 backend 窗口，不在受限层）；
-  179 → 180 = 43284 日志批新增 `backend/cve_2026_43284/diag_line.hpp`（有界结构化日志行）。**六次都无新增越层边**），
+  179 → 180 = 43284 日志批新增 `backend/cve_2026_43284/diag_line.hpp`（有界结构化日志行）；**180 → 174 = 实测基线修正**（旧记录 180 偏高，与 UML §3.1 的「182 → 174」一致）；
+  **174 → 176 = R1 搬迁**新增 `backend/cve_2026_43499/spray.{hpp,cpp}` 2 文件）。**历次变更均无新增越层边**，且本次搬迁后**账本归零**），
   不得 include `backend,pipeline,platform,terminal`）。新增的越层 include 会 FAIL；
   白名单条目对应的 include 消失（stale）同样 FAIL。新增组件优先不引入越层边，确需临时豁免时必须在
   `kWhitelist` 登记并写明 owner 批次，不得静默通过。

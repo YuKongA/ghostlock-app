@@ -6,6 +6,7 @@ import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.asValueMap
 import com.ghostlock.app.data.valueMapOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,10 +116,14 @@ class ProfileResolverTest {
     }
 
     @Test
-    fun `validateMerged rejects a vr guard layout the transport cannot carry`() {
+    fun `the retired vr guard layout is not a v3 wire bound`() {
+        /* b55708a8 removed the vr_guard profile surface, so the v3 document no
+         * longer carries vr_guard.tracepoint_funcs: its width check is gone and
+         * an out-of-range value is no longer reported as a wire-width error.
+         * Re-adding a bound for the retired key makes this test red. */
         val profile = validProfile() + ("vr_guard" to valueMapOf("tracepoint_funcs" to 0x140L))
         val errors = ProfileResolver.validateMerged(profile, "select_stack")
-        assertTrue(errors.any { it.fieldPath == "vr_guard.tracepoint_funcs" })
+        assertFalse(errors.any { it.fieldPath == "vr_guard.tracepoint_funcs" })
     }
 
     @Test

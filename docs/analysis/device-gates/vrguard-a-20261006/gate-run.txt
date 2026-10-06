@@ -1,0 +1,8 @@
+batch: vr_guard phase (a) - vivo code deletion
+release: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+serial: QV770MFGJ1
+binary_sha256: 46265d471fbeb3e1b2c07d4a21e2be34ca59e3c17b0c2d59fbca3b93d3a4829d
+profile_sha256: ae9f4f3122a70f6bc6c3f1417662f857760ebbd7912e78357da08ec775cd222f
+device_log_kind: /data/local/tmp/gl-gate/logs (device locked -> /sdcard not mounted)
+native_exit: 0
+verdict: PASS

@@ -7,10 +7,10 @@
  * diagnostic line per checked violation, so a regression names file, line,
  * include target and the rule that was broken.
  *
- * Known, pre-existing violations are listed in kWhitelist with the owning batch
- * and the reason they are still there (pending cleanup). A non-whitelisted
- * violation fails the test; a stale whitelist entry (the include is gone) also
- * fails, so the ledger cannot silently rot.
+ * The whitelist ledger below is empty as of the spray/leak ownership move (F15):
+ * every forbidden-layer edge is now a violation and fails the test, and any
+ * entry added back must name its owning batch and is still checked for staleness,
+ * so the ledger cannot silently rot.
  *
  * R1 table enforced here:
  *   contract/memory/session/profile/support/plugin -> must not include
@@ -21,6 +21,7 @@
  * and backend -> platform/terminal/profile are allowed by R1.
  */
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -75,22 +76,16 @@ namespace {
         const char *todo;   /* owning batch / pending cleanup */
     };
 
-    /* Explicit whitelist ledger. Every entry is a real current violation with a
-     * named follow-up batch; nothing is passed silently. */
-    constexpr Exception kWhitelist[] = {
-        {"support/util.cpp", "backend/cve_2026_43499_state.hpp",
-         "A2-5-4: per-file include decoupling interim; util still reaches 43499 state"},
-        {"support/util.cpp", "backend/cve_2026_43499/route/route_policy.hpp",
-         "A2-5-2/A2-5-4: spray helpers still name the 43499 route policy"},
-        {"support/util.cpp", "backend/cve_2026_43499/backend_profile/accessors.hpp",
-         "A2-4-4: 43499 slide accessors moved out of profile; util still reads them "
-         "until the A2-5-4 include decoupling lands"},
-        {"support/util.cpp", "backend/cve_2026_43499/leak/address_discovery.h",
-         "A3-2: the one TU that owns the frozen kernelsnitch provider includes its "
-         "leak-module adapter; the spray/leak ownership move (F15) removes it"},
-    };
-    static_assert(sizeof(kWhitelist) / sizeof(kWhitelist[0]) == 4,
-                  "A2-5-5: whitelist ledger changed; update the list and its count together");
+    /* Explicit whitelist ledger, empty. The four support/util.cpp -> 43499
+     * entries were removed by the spray/leak ownership move (F15): the 43499
+     * heap prepare/spray block lives in backend/cve_2026_43499/spray.cpp, whose
+     * own layer may reach those targets. The array and the pin stay so a
+     * temporary exemption must still be declared here with its owning batch
+     * (nothing passes silently) and a stale entry still fails the run. */
+    constexpr std::array<Exception, 0> kWhitelist{};
+    static_assert(kWhitelist.size() == 0,
+                  "A2-5-5: the R1 whitelist ledger must stay empty; declare the "
+                  "exemption with its owning batch here, then update this pin");
 
     bool has_source_extension(const std::string &path) {
         const char *exts[] = {".h", ".hpp", ".cpp", ".c", ".cc"};
@@ -214,7 +209,7 @@ int32_t main(void) {
     std::vector<std::string> files;
     collect_sources(root, "", files);
 
-    const std::size_t kExceptionCount = sizeof(kWhitelist) / sizeof(kWhitelist[0]);
+    const std::size_t kExceptionCount = kWhitelist.size();
     std::size_t files_scanned = 0;
     std::size_t layer_edges = 0;
     std::size_t whitelisted_seen = 0;

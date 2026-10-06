@@ -1,6 +1,7 @@
 package com.ghostlock.app.data.profile
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -272,4 +273,60 @@ class Glkv3EncoderTest {
 
     private fun hex(bytes: ByteArray): String =
         bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+    @Test
+    fun mapEntriesAreEncodedInCanonicalKeyOrder() {
+        fun document(entries: List<Pair<String, Glkv3Value>>) = Glkv3Document(
+            release = "r",
+            sections = listOf(
+                Glkv3Section("meta", listOf(Glkv3Entry("queue", Glkv3Value.Map(entries)))),
+            ),
+        )
+        val forward = document(
+            listOf("z" to Glkv3Value.UInt(1u), "a" to Glkv3Value.UInt(2u)),
+        )
+        val reversed = document(
+            listOf("a" to Glkv3Value.UInt(2u), "z" to Glkv3Value.UInt(1u)),
+        )
+        /* The entry order carried by the Kotlin value is a construction-time
+         * determinism device only: the WIRE order is canonical (UTF-8 byte
+         * order of the keys), so both encodings must be identical. */
+        assertEquals(hex(Glkv3Encoder.encode(forward)), hex(Glkv3Encoder.encode(reversed)))
+        val payload = hex(Glkv3Encoder.encode(forward))
+        assertTrue(
+            "canonical order must put a before z: " + payload,
+            payload.indexOf("a161") < payload.indexOf("a17a"),
+        )
+    }
+
+    @Test
+    fun mapRoundTripsThroughTheDecoder() {
+        val value = Glkv3Value.Map(
+            listOf("a" to Glkv3Value.UInt(7u), "b" to Glkv3Value.Bool(true)),
+        )
+        /* The decoder validates the root: release/terminal/backend are required,
+         * only `sections` is optional. */
+        val document = Glkv3Document(
+            release = "r",
+            terminal = "root_child",
+            backend = "cve_2026_43499",
+            sections = listOf(
+                Glkv3Section("meta", listOf(Glkv3Entry("queue", value))),
+            ),
+        )
+        val decoded = requireNotNull(Glkv3Decoder.decode(Glkv3Encoder.encode(document)))
+        assertEquals(value, decoded.sections.single().entries.single().value)
+    }
+
+    @Test
+    fun duplicateMapKeysAreRejectedAtConstruction() {
+        val thrown = assertThrows(IllegalArgumentException::class.java) {
+            Glkv3Value.Map(listOf("a" to Glkv3Value.UInt(1u), "a" to Glkv3Value.UInt(2u)))
+        }
+        assertTrue(
+            "a duplicate key must be rejected: " + thrown.message,
+            thrown.message.orEmpty().contains("duplicate keys"),
+        )
+    }
+
 }

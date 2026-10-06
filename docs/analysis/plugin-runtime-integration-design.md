@@ -1,6 +1,6 @@
 # 插件运行时接线设计（P1 之后：加载 → 按 stage 调用 → 卸载）
 
-> 状态：**设计草案（L 级，待 Lead 评审）**。本文只做设计，不含实现。
+> 状态：**设计草案（L 级，待 Lead 评审）**。本文只做设计，不含实现。 **⏸ 2026-10-05 更新：本文设计的运行时接线已由 native 字面注释（`ca968a5a`）、`plugin`/`payload` 段出现即拒；下列设计保留为沿革，见 §11.6 冻结横幅。**
 > 依据：`docs/analysis/contract-design.md` §3.13 / §3.14（P1 冻结）、`docs/development/design-philosophy.md`、AGENTS.md「核心攻击代码审查」。
 > 关联：P1 已完成探针（`--plugin-probe`）、ABI 尾部追加、`plugin.*` FieldSpec/manifest、`plugin/wire.cpp` 的 fail-closed 校验；δ-4 已有 loader/registry 与 LKM 窗口内的 POST_TERMINAL 试验通道。
 
@@ -202,7 +202,7 @@ R1（插件映射不得存在于 PI waiter 存活期）必须有**可执行证�
 
 ### 11.6 实现批次的准入条件与状态
 
-**step 2（宿主接口）准入条件**：① 11.1 的调用点 file:line 回填完成；② 11.2 的 docs-uml 同步条目被接受；③ 11.5 的 `open(WindowState)` 形态写入接口草案（§7 已按此更新）——**已全部满足，step 2 已落地**。
+> **⏸ 冻结（用户指令 2026-10-05；沿革保留）**：本节的**运行时接线（step 2 / step 3a）已由 native 字面注释**——**已提交 = `ca968a5a`**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定），**`plugin`/`payload` 段出现即拒（fail-closed）**；**App 侧隐藏入口与停止发射在工作树、待提交**。**下列 step 2/3a 的代码、门禁与真机证据保留为沿革**（不得据此认为当前可达）；**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md` 文首冻结清单与 `task-9`）。
 
 **step 3a（运行时接线，2026-10-05）：代码 + host/lint/NDK 三项门禁已完成（0/0/0）；真机门禁 PASS（五条用例全绿，已归档）。**
 

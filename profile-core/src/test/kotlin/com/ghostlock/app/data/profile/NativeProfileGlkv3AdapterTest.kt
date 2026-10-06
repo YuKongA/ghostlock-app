@@ -5,6 +5,7 @@ import com.ghostlock.app.data.Cve2026_43284Config
 import com.ghostlock.app.data.ExecutionTuning
 import com.ghostlock.app.data.KernelOffsetTable
 import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.QueueElement
 import com.ghostlock.app.data.TaskStructOffsets
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
@@ -17,6 +18,8 @@ import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.RouteKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,9 +33,20 @@ import org.junit.Test
  */
 class NativeProfileGlkv3AdapterTest {
 
-    /* native glkv3_schema_test profile hex (MPack canonical writer). */
+    /**
+     * native glkv3_schema_test profile hex (MPack canonical writer), including
+     * the M2 queue selection; regenerate with `make -C src glkv3-golden-hex`
+     * whenever the native fixture changes.
+     */
     private val golden =
-        "86a76261636b656e64ae6376655f323032365f3433343939a772656c65617365d928352e31352e3138392d616e64726f696431332d382d30303031362d67353162626134333039616163a5726f757465b06d756c7469636173745f776169746572a6736368656d6103a873656374696f6e73de0011b66261636b656e642e6376655f323032365f343334393981a57374657073af6d636173745f726f6f746368696c64bb6261636b656e642e6376655f323032365f34333439392e6372656488aa636170735f636f756e7400aa636170735f76616c7565cf123456789abcdef0a9636f70795f73697a6500aa726566305f696d616765cf1111111111111111aa726566315f696d61676500aa726566325f696d61676500aa726566335f696d61676500ab75736167655f76616c756500d9296261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e636f6e73756d657282ab62757273745f63616c6c7300a96d61785f63616c6c7300d9286261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e68616e646f666685b5656e666f7263655f706f6c6c5f617474656d70747300b8656e666f7263655f706f6c6c5f696e74657276616c5f6d7300b46d6f64756c655f706f6c6c5f617474656d70747300b76d6f64756c655f706f6c6c5f696e74657276616c5f6d7300b67072655f64697370617463685f736574746c655f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e6865617083b76b65726e656c736e697463685f74696d656f75745f6d7300b4707265706172655f6d61785f617474656d70747300b2707265706172655f74696d656f75745f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7261636584b5726f7574655f646f6e655f74696d656f75745f6d7300ad726f7574655f776169745f6d7300af73657475705f736574746c655f757300b673746174655f706f6c6c5f696e74657276616c5f757300d9316261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7265636f6d6d656e6465645f6370757382a8636f6e73756d657200a46d61696e00d9276261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e73746167657388ab77315f617474656d70747300ba77315f736372617463685f7265706169725f617474656d70747300ac77315f736574746c655f757300ab77325f617474656d70747300ac77325f736574746c655f757300ab77335f617474656d70747300af77335f636861696e5f726f756e647300ac77335f736574746c655f757300bd6261636b656e642e6376655f323032365f34333439392e6b65726e656c83ae636f6d706163745f776169746572c3b76b65726e656c736e697463685f636f6c6c6973696f6e7307ac6d6d5f7374727563745f737acd0400bd6261636b656e642e6376655f323032365f34333439392e6f666673657484ad736c6964655f626f6f745f696400b1736c6964655f6c6f67676572735f305f3100b3736c6964655f6e66756c6e6c5f6c6f6767657200ae76725f7379735f657869745f74702ad92d6261636b656e642e6376655f323032365f34333439392e726f7574652e6d756c7469636173745f77616974657287a861726d5f686f6c64cd4e20ac61726d5f73657175656e636504a8617474656d70747303ab6275666665725f73697a65cd0200ab6c6f636b5f6f666673657440ab7461736b5f6f666673657430aa7761697465725f6f6666fea6636f6d6d6f6e83ac6b65726e656c5f6d616a6f7205a9736166655f6d6f6465c3a876725f6775617264c3bc636f756e7465726d6561737572652e7669766f5f76725f677561726481b07472616365706f696e745f66756e637320b1706c6174666f726d2e6162692e6372656487ab636170735f6f666673657400ab726566305f6f666673657400ab726566315f6f666673657400ab726566325f6f666673657400ab726566335f6f666673657400a97265665f636f756e7400ac75736167655f6f666673657400b3706c6174666f726d2e6162692e6b65726e656c82b06b65726e656c5f706879735f6c6f6164cdb000b26b65726e656c5f706879735f6f6666736574cdc000b3706c6174666f726d2e6162692e6f666673657487af656d7074795f7a65726f5f7061676500a9696e69745f6372656400a9696e69745f7461736bce02112400af726f6f745f7461736b5f67726f757000b373656375726974795f686f6f6b5f686561647300b273656c696e75785f626c6f625f73697a657300b173656c696e75785f656e666f7263696e6700b8706c6174666f726d2e6162692e7461736b5f7374727563748fac61746f6d69635f666c61677300a4636f6d6d00a46372656400ab6e6f726d616c5f7072696f00ad70695f626c6f636b65645f6f6e00a770695f6c6f636b00ab70695f746f705f7461736b00aa70695f7761697465727300a370696400a47072696f65a97265616c5f6372656400b073636865645f7461736b5f67726f757000a7736563636f6d7000a57461736b7300a47467696400a87465726d696e616caa726f6f745f6368696c64"
+        "89a76261636b656e64ae6376655f323032365f3433343939ac6b65726e656c5f6d616a6f7205ac6b65726e656c5f6d696e6f720fa772656c65617365d928352e31352e3138392d616e64726f696431332d382d30303031362d67353162626134333039616163a5726f757465b06d756c7469636173745f776169746572a9736166655f6d6f6465c3a6736368656d6103a873656374696f6e738fb66261636b656e642e6376655f323032365f343334393984ac6578706572696d656e74616cc3a571756575659181a473746570a27731a5726f757465b06d756c7469636173745f776169746572a57374657073af6d636173745f726f6f746368696c64bf6261636b656e642e6376655f323032365f34333439392e6162692e6372656487ab636170735f6f666673657400ab726566305f6f666673657400ab726566315f6f666673657400ab726566325f6f666673657400ab726566335f6f666673657400a97265665f636f756e7400ac75736167655f6f666673657400d9216261636b656e642e6376655f323032365f34333439392e6162692e6b65726e656c82b06b65726e656c5f706879735f6c6f6164cdb000b26b65726e656c5f706879735f6f6666736574cdc000d9216261636b656e642e6376655f323032365f34333439392e6162692e6f666673657487af656d7074795f7a65726f5f7061676500a9696e69745f6372656400a9696e69745f7461736bce02112400af726f6f745f7461736b5f67726f757000b373656375726974795f686f6f6b5f686561647300b273656c696e75785f626c6f625f73697a657300b173656c696e75785f656e666f7263696e6700d9266261636b656e642e6376655f323032365f34333439392e6162692e7461736b5f7374727563748fac61746f6d69635f666c61677300a4636f6d6d00a46372656400ab6e6f726d616c5f7072696f00ad70695f626c6f636b65645f6f6e00a770695f6c6f636b00ab70695f746f705f7461736b00aa70695f7761697465727300a370696400a47072696f65a97265616c5f6372656400b073636865645f7461736b5f67726f757000a7736563636f6d7000a57461736b7300a47467696400bb6261636b656e642e6376655f323032365f34333439392e6372656488aa636170735f636f756e7400aa636170735f76616c7565cf123456789abcdef0a9636f70795f73697a6500aa726566305f696d616765cf1111111111111111aa726566315f696d61676500aa726566325f696d61676500aa726566335f696d61676500ab75736167655f76616c756500d9296261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e636f6e73756d657282ab62757273745f63616c6c7300a96d61785f63616c6c7300d9286261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e68616e646f666685b5656e666f7263655f706f6c6c5f617474656d70747300b8656e666f7263655f706f6c6c5f696e74657276616c5f6d7300b46d6f64756c655f706f6c6c5f617474656d70747300b76d6f64756c655f706f6c6c5f696e74657276616c5f6d7300b67072655f64697370617463685f736574746c655f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e6865617083b76b65726e656c736e697463685f74696d656f75745f6d7300b4707265706172655f6d61785f617474656d70747300b2707265706172655f74696d656f75745f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7261636584b5726f7574655f646f6e655f74696d656f75745f6d7300ad726f7574655f776169745f6d7300af73657475705f736574746c655f757300b673746174655f706f6c6c5f696e74657276616c5f757300d9316261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7265636f6d6d656e6465645f6370757382a8636f6e73756d657200a46d61696e00d9276261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e73746167657388ab77315f617474656d70747300ba77315f736372617463685f7265706169725f617474656d70747300ac77315f736574746c655f757300ab77325f617474656d70747300ac77325f736574746c655f757300ab77335f617474656d70747300af77335f636861696e5f726f756e647300ac77335f736574746c655f757300bd6261636b656e642e6376655f323032365f34333439392e6b65726e656c83ae636f6d706163745f776169746572c3b76b65726e656c736e697463685f636f6c6c6973696f6e7307ac6d6d5f7374727563745f737acd0400bd6261636b656e642e6376655f323032365f34333439392e6f666673657484ad736c6964655f626f6f745f696400b1736c6964655f6c6f67676572735f305f3100b3736c6964655f6e66756c6e6c5f6c6f6767657200ae76725f7379735f657869745f74702ad92d6261636b656e642e6376655f323032365f34333439392e726f7574652e6d756c7469636173745f77616974657287a861726d5f686f6c64cd4e20ac61726d5f73657175656e636504a8617474656d70747303ab6275666665725f73697a65cd0200ab6c6f636b5f6f666673657440ab7461736b5f6f666673657430aa7761697465725f6f6666fea87465726d696e616caa726f6f745f6368696c64"
+
+    /**
+     * The SAME document with no queue selection declared (the pre-M2 native
+     * hex): an undeclared queue/route/experimental must add no bytes at all.
+     */
+    private val legacyGolden =
+        "89a76261636b656e64ae6376655f323032365f3433343939ac6b65726e656c5f6d616a6f7205ac6b65726e656c5f6d696e6f720fa772656c65617365d928352e31352e3138392d616e64726f696431332d382d30303031362d67353162626134333039616163a5726f757465b06d756c7469636173745f776169746572a9736166655f6d6f6465c3a6736368656d6103a873656374696f6e738fb66261636b656e642e6376655f323032365f343334393981a57374657073af6d636173745f726f6f746368696c64bf6261636b656e642e6376655f323032365f34333439392e6162692e6372656487ab636170735f6f666673657400ab726566305f6f666673657400ab726566315f6f666673657400ab726566325f6f666673657400ab726566335f6f666673657400a97265665f636f756e7400ac75736167655f6f666673657400d9216261636b656e642e6376655f323032365f34333439392e6162692e6b65726e656c82b06b65726e656c5f706879735f6c6f6164cdb000b26b65726e656c5f706879735f6f6666736574cdc000d9216261636b656e642e6376655f323032365f34333439392e6162692e6f666673657487af656d7074795f7a65726f5f7061676500a9696e69745f6372656400a9696e69745f7461736bce02112400af726f6f745f7461736b5f67726f757000b373656375726974795f686f6f6b5f686561647300b273656c696e75785f626c6f625f73697a657300b173656c696e75785f656e666f7263696e6700d9266261636b656e642e6376655f323032365f34333439392e6162692e7461736b5f7374727563748fac61746f6d69635f666c61677300a4636f6d6d00a46372656400ab6e6f726d616c5f7072696f00ad70695f626c6f636b65645f6f6e00a770695f6c6f636b00ab70695f746f705f7461736b00aa70695f7761697465727300a370696400a47072696f65a97265616c5f6372656400b073636865645f7461736b5f67726f757000a7736563636f6d7000a57461736b7300a47467696400bb6261636b656e642e6376655f323032365f34333439392e6372656488aa636170735f636f756e7400aa636170735f76616c7565cf123456789abcdef0a9636f70795f73697a6500aa726566305f696d616765cf1111111111111111aa726566315f696d61676500aa726566325f696d61676500aa726566335f696d61676500ab75736167655f76616c756500d9296261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e636f6e73756d657282ab62757273745f63616c6c7300a96d61785f63616c6c7300d9286261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e68616e646f666685b5656e666f7263655f706f6c6c5f617474656d70747300b8656e666f7263655f706f6c6c5f696e74657276616c5f6d7300b46d6f64756c655f706f6c6c5f617474656d70747300b76d6f64756c655f706f6c6c5f696e74657276616c5f6d7300b67072655f64697370617463685f736574746c655f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e6865617083b76b65726e656c736e697463685f74696d656f75745f6d7300b4707265706172655f6d61785f617474656d70747300b2707265706172655f74696d656f75745f6d7300d9256261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7261636584b5726f7574655f646f6e655f74696d656f75745f6d7300ad726f7574655f776169745f6d7300af73657475705f736574746c655f757300b673746174655f706f6c6c5f696e74657276616c5f757300d9316261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e7265636f6d6d656e6465645f6370757382a8636f6e73756d657200a46d61696e00d9276261636b656e642e6376655f323032365f34333439392e657865637574696f6e2e73746167657388ab77315f617474656d70747300ba77315f736372617463685f7265706169725f617474656d70747300ac77315f736574746c655f757300ab77325f617474656d70747300ac77325f736574746c655f757300ab77335f617474656d70747300af77335f636861696e5f726f756e647300ac77335f736574746c655f757300bd6261636b656e642e6376655f323032365f34333439392e6b65726e656c83ae636f6d706163745f776169746572c3b76b65726e656c736e697463685f636f6c6c6973696f6e7307ac6d6d5f7374727563745f737acd0400bd6261636b656e642e6376655f323032365f34333439392e6f666673657484ad736c6964655f626f6f745f696400b1736c6964655f6c6f67676572735f305f3100b3736c6964655f6e66756c6e6c5f6c6f6767657200ae76725f7379735f657869745f74702ad92d6261636b656e642e6376655f323032365f34333439392e726f7574652e6d756c7469636173745f77616974657287a861726d5f686f6c64cd4e20ac61726d5f73657175656e636504a8617474656d70747303ab6275666665725f73697a65cd0200ab6c6f636b5f6f666673657440ab7461736b5f6f666673657430aa7761697465725f6f6666fea87465726d696e616caa726f6f745f6368696c64"
 
     @Test
     fun adapterEncodingMatchesNativeCanonicalGolden() {
@@ -134,8 +148,8 @@ class NativeProfileGlkv3AdapterTest {
     @Test
     fun adapterAppliesNativeWireTypes() {
         val adapted = NativeProfileGlkv3Adapter.adapt(fixture())
-        assertEquals(Glkv3Value.Bool(true), valueOf(adapted, "common", "safe_mode"))
-        assertEquals(Glkv3Value.Bool(true), valueOf(adapted, "common", "vr_guard"))
+        /* HOCON refactor: root scalars, and vr_guard is gone from the wire. */
+        assertEquals(true, adapted.safeMode)
         assertEquals(
             Glkv3Value.Bool(true),
             valueOf(adapted, "backend.cve_2026_43499.kernel", "compact_waiter"),
@@ -144,7 +158,7 @@ class NativeProfileGlkv3AdapterTest {
             Glkv3Value.Int(-2),
             valueOf(adapted, "backend.cve_2026_43499.route.multicast_waiter", "waiter_off"),
         )
-        assertEquals(Glkv3Value.UInt(5u), valueOf(adapted, "common", "kernel_major"))
+        assertEquals(5uL, adapted.kernelMajor)
         assertEquals(
             Glkv3Value.Str("mcast_rootchild"),
             valueOf(adapted, "backend.cve_2026_43499", "steps"),
@@ -172,6 +186,10 @@ class NativeProfileGlkv3AdapterTest {
             routeKind = 0u,
             combination = requireNotNull(CombinationCatalog.resolve("umh")) { "umh" },
             cve2026_43284 = null,
+            /* No route axis: the M2 queue selection must be cleared too. */
+            queueRoute = null,
+            stepQueue = null,
+            experimental = null,
         )
         val adapted = NativeProfileGlkv3Adapter.adapt(document)
         assertEquals("cve_2026_43284", adapted.backend)
@@ -186,6 +204,9 @@ class NativeProfileGlkv3AdapterTest {
             routeKind = 0u,
             combination = requireNotNull(CombinationCatalog.resolve("umh")) { "umh" },
             cve2026_43284 = null,
+            queueRoute = null,
+            stepQueue = null,
+            experimental = null,
         )
         val adapted = NativeProfileGlkv3Adapter.adapt(document)
         assertEquals("cve_2026_43284", adapted.backend)
@@ -202,32 +223,39 @@ class NativeProfileGlkv3AdapterTest {
     }
 
     @Test
-    fun documentCarriesOnlyItsSelectionOwnersPlusCommon() {
-        val names43499 = NativeProfileGlkv3Adapter.adapt(fixture()).sections.map { it.name }.toSet()
-        assertTrue("43499 must carry common", "common" in names43499)
-        assertTrue("43499 must carry the platform ABI", "platform.abi.task_struct" in names43499)
+    fun documentCarriesOnlyItsSelectionOwnersAndNoLegacyOwners() {
+        val document = fixture()
+        val adapted = NativeProfileGlkv3Adapter.adapt(document)
+        val names43499 = adapted.sections.map { it.name }.toSet()
+        /* HOCON refactor: the ABI tables belong to the 43499 backend, the root
+         * scalars are ROOT values (never a section), and the common /
+         * platform / countermeasure owners are gone. */
+        assertTrue(
+            "43499 must carry its ABI tables",
+            "backend.cve_2026_43499.abi.task_struct" in names43499,
+        )
         assertTrue(
             "43499 must carry its own route",
             "backend.cve_2026_43499.route.multicast_waiter" in names43499,
         )
-        assertTrue(
-            "43499 must carry the countermeasure section",
-            "countermeasure.vivo_vr_guard" in names43499,
-        )
+        assertTrue("no legacy owners may ride the wire", names43499.none {
+            it == "common" || it == "platform.abi" || it.startsWith("platform.abi.") ||
+                it.startsWith("countermeasure.")
+        })
+        assertEquals(5uL, adapted.kernelMajor)
+        assertEquals(1u.toULong(), adapted.safeMode?.let { if (it) 1uL else 0uL })
         println("SEGMENTS_43499=" + names43499.sorted())
 
         val cve43284 = NativeProfileDocument(
             release = fixture().release,
             routeKind = 0u,
             kernelMajor = 0u,
-            vrGuard = 0u,
             taskStruct = TaskStructOffsets(),
             cred = CredTemplate(),
             kernelOffset = KernelOffsetTable(),
             kernelPhysLoad = null,
             kernelPhysOffset = null,
             compactWaiter = null,
-            vrGuardTracepointFuncs = null,
             kernelsnitchCollisions = null,
             mmStructSz = null,
             execution = ExecutionTuning(),
@@ -235,12 +263,16 @@ class NativeProfileGlkv3AdapterTest {
             routeConfig = NoRouteConfig,
             combination = requireNotNull(CombinationCatalog.resolve("umh")) { "umh" },
             backendKind = BackendKind.Cve2026_43284.wire.toUInt(),
-            cve2026_43284 = Cve2026_43284Config(kmi = 5150u),
+            /* kmi / lkm_path / carrier_path are native-side conventions now. */
+            cve2026_43284 = Cve2026_43284Config(lateLoadArgs = 0uL),
         )
         val names43284 = NativeProfileGlkv3Adapter.adapt(cve43284).sections.map { it.name }.toSet()
         println("SEGMENTS_43284_BEFORE=" + cve43284.sections().map { it.name }.sorted())
         println("SEGMENTS_43284=" + names43284.sorted())
-        assertEquals(setOf("common", "backend.cve_2026_43284"), names43284)
+        assertEquals(
+            setOf("backend.cve_2026_43284", "backend.cve_2026_43284.execution"),
+            names43284,
+        )
     }
 
     /**
@@ -252,7 +284,7 @@ class NativeProfileGlkv3AdapterTest {
         release = "5.15.189-android13-8-00016-g51bba4309aac",
         routeKind = RouteKind.MULTICAST_WAITER.wire,
         kernelMajor = 5u,
-        vrGuard = 1u,
+        kernelMinor = 15u,
         taskStruct = TaskStructOffsets(prio = 101u),
         cred = CredTemplate(
             capsValue = 0x123456789abcdef0uL,
@@ -265,7 +297,6 @@ class NativeProfileGlkv3AdapterTest {
         kernelPhysLoad = 0xb000uL,
         kernelPhysOffset = 0xc000uL,
         compactWaiter = 1u.toUByte(),
-        vrGuardTracepointFuncs = 0x20u,
         kernelsnitchCollisions = 7u,
         mmStructSz = 0x400u,
         execution = ExecutionTuning(),
@@ -283,6 +314,10 @@ class NativeProfileGlkv3AdapterTest {
         ),
         combination = requireNotNull(CombinationCatalog.resolve("mcast_rootchild")) { "mcast_rootchild" },
         backendKind = BackendKind.Cve2026_43499.wire.toUInt(),
+        /* M2 queue selection, mirroring the native fixture document. */
+        queueRoute = "multicast_waiter",
+        stepQueue = listOf(QueueElement(step = "w1")),
+        experimental = true,
     )
 
     private fun valueOf(
@@ -297,4 +332,190 @@ class NativeProfileGlkv3AdapterTest {
 
     private fun hex(bytes: ByteArray): String =
         bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+    @Test
+    fun `the manifest width column is fail-closed`() {
+        assertNull(NativeProfileGlkv3Adapter.parseWidthColumn("-", "line"))
+        assertEquals(1, NativeProfileGlkv3Adapter.parseWidthColumn("1", "line"))
+        assertEquals(4, NativeProfileGlkv3Adapter.parseWidthColumn("4", "line"))
+        assertEquals(8, NativeProfileGlkv3Adapter.parseWidthColumn("8", "line"))
+        /* The manifest is the single authority for width and it is a hard
+         * validation input, so a missing/garbled column must fail closed
+         * instead of defaulting silently. */
+        for (bad in listOf("0", "3", "16", "", "x", "-1")) {
+            val thrown = assertThrows(IllegalArgumentException::class.java) {
+                NativeProfileGlkv3Adapter.parseWidthColumn(bad, "line")
+            }
+            assertTrue(
+                "width " + bad + " must be rejected",
+                thrown.message.orEmpty().contains("width must be one of"),
+            )
+        }
+    }
+
+    @Test
+    fun `the bundled manifest declares widths consistent with its wire kinds`() {
+        val widths = NativeProfileGlkv3Adapter.declaredWidths()
+        val types = NativeProfileGlkv3Adapter.declaredTypeNames()
+        assertTrue("manifest must declare fields", widths.isNotEmpty())
+        for ((path, width) in widths) {
+            val wire = types.getValue(path)
+            /* A union spelling resolves its concrete kind from a plugin
+             * descriptor, so it is out of scope for this guard. */
+            if (wire.contains("|")) continue
+            when (wire) {
+                "str", "array" -> assertNull(path + " is width-less", width)
+                /* Native ruling (bool convention): a STATIC declaration exports
+                 * its real width -- bool => 1, uint/int => 1/2/4/8, str/array =>
+                 * "-" -- while a descriptor-owned DYNAMIC family (params.* and
+                 * extract.*) exports "-" and is skipped above as a union spelling.
+                 * So a bool row must be exactly 1; anything else is a manifest
+                 * defect and fails closed here. */
+                "bool" -> assertEquals(path + " must be 1 bit wide", 1, width)
+                else -> assertTrue(
+                    path + " declares an illegal width " + width,
+                    width != null && width in setOf(1, 2, 4, 8),
+                )
+            }
+        }
+    }
+
+
+    @Test
+    fun `declaredWidth is the single-path view of the manifest widths`() {
+        val types = NativeProfileGlkv3Adapter.declaredTypeNames()
+        val widths = NativeProfileGlkv3Adapter.declaredWidths()
+        assertTrue("manifest must declare fields", widths.isNotEmpty())
+        for ((path, width) in widths) {
+            assertEquals(
+                path + " disagrees between declaredWidth and declaredWidths",
+                width,
+                NativeProfileGlkv3Adapter.declaredWidth(path),
+            )
+        }
+        val widthless = types.entries
+            .filter { it.value == "str" || it.value == "array" }
+            .map { it.key }
+        assertTrue("the manifest must declare width-less kinds", widthless.isNotEmpty())
+        for (path in widthless) {
+            assertNull(
+                path + " must be width-less",
+                NativeProfileGlkv3Adapter.declaredWidth(path),
+            )
+        }
+        /* An undeclared path has no width: no implicit prefix rule. */
+        assertNull(
+            "an undeclared path must have no width",
+            NativeProfileGlkv3Adapter.declaredWidth("backend.cve_2026_43499.no_such_key"),
+        )
+    }
+
+    @Test
+    fun `queue selection rides the backend owner in the native wire shape`() {
+        val adapted = NativeProfileGlkv3Adapter.adapt(fixture())
+        assertEquals(
+            Glkv3Value.Str("multicast_waiter"),
+            valueOf(adapted, "backend.cve_2026_43499", "route"),
+        )
+        assertEquals(
+            Glkv3Value.Bool(true),
+            valueOf(adapted, "backend.cve_2026_43499", "experimental"),
+        )
+        assertEquals(
+            Glkv3Value.Array(listOf(Glkv3Value.Map(listOf("step" to Glkv3Value.Str("w1"))))),
+            valueOf(adapted, "backend.cve_2026_43499", "queue"),
+        )
+        /* The queue-level route token (key `route`) and the route geometry
+         * (section `...route.<branch>`) are distinct wire keys: both ride, so
+         * the canonical `queue_route` separation costs no wire shape. */
+        assertTrue(
+            "the route geometry must still ride",
+            adapted.sections.any { it.name == "backend.cve_2026_43499.route.multicast_waiter" },
+        )
+    }
+
+    @Test
+    fun `an undeclared queue selection adds no bytes`() {
+        val document = fixture().copy(queueRoute = null, stepQueue = null, experimental = null)
+        assertEquals(
+            "an undeclared queue/route/experimental must keep the pre-M2 bytes",
+            legacyGolden,
+            hex(Glkv3Encoder.encode(NativeProfileGlkv3Adapter.adapt(document))),
+        )
+    }
+
+    @Test
+    fun `the adapted document matches the native fixture field for field`() {
+        assertEquals(nativeFixtureDump(), dump(NativeProfileGlkv3Adapter.adapt(fixture())))
+    }
+
+    private fun nativeFixtureDump(): String =
+        checkNotNull(javaClass.getResourceAsStream(NATIVE_FIXTURE_RESOURCE)) {
+            "missing native fixture resource: " + NATIVE_FIXTURE_RESOURCE
+        }.bufferedReader().use { it.readText() }
+
+    /**
+     * Field-by-field rendering of an adapted document in the native
+     * `glkv3_schema_test --dump-fixture` format: the root keys in the native
+     * order, then every section entry as `path<TAB>wire<TAB>value` in canonical
+     * (UTF-8 byte) order. It is compared against the native dump itself, so a
+     * one-sided fixture change turns this red and names the diverging path.
+     */
+    private fun dump(document: Glkv3Document): String {
+        val types = NativeProfileGlkv3Adapter.declaredTypeNames()
+        val out = StringBuilder()
+        val root = linkedMapOf<String, String>()
+        root["schema"] = "uint\t" + document.schema
+        document.release?.let { root["release"] = "str\t" + it }
+        document.terminal?.let { root["terminal"] = "str\t" + it }
+        document.backend?.let { root["backend"] = "str\t" + it }
+        document.route?.let { root["route"] = "str\t" + it }
+        document.kernelMajor?.let { root["kernel_major"] = "uint\t" + it }
+        document.kernelMinor?.let { root["kernel_minor"] = "uint\t" + it }
+        document.safeMode?.let { root["safe_mode"] = "bool\t" + it }
+        out.append("# root keys\n")
+        for (key in ROOT_KEY_ORDER) {
+            root[key]?.let { out.append(key).append('\t').append(it).append('\n') }
+        }
+        out.append("# sections\n")
+        val sections = document.sections.sortedWith { a, b ->
+            Glkv3Encoder.compareUtf8Bytes(a.name, b.name)
+        }
+        for (section in sections) {
+            val entries = section.entries.sortedWith { a, b ->
+                Glkv3Encoder.compareUtf8Bytes(a.key, b.key)
+            }
+            for (entry in entries) {
+                val path = section.name + "." + entry.key
+                val wire = types[path] ?: error("no manifest declaration for " + path)
+                out.append(path).append('\t').append(wire).append('\t')
+                    .append(renderWireValue(entry.value)).append('\n')
+            }
+        }
+        return out.toString()
+    }
+
+    private fun renderWireValue(value: Glkv3Value): String = when (value) {
+        is Glkv3Value.UInt -> value.value.toString()
+        is Glkv3Value.Int -> value.value.toString()
+        is Glkv3Value.Bool -> value.value.toString()
+        is Glkv3Value.Str -> value.value
+        is Glkv3Value.Array -> ""
+        is Glkv3Value.Bin -> value.value.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        /* The wire model has no bare-map section entry (the queue rides as an
+         * array of maps), so this is a defect, not a rendering case. */
+        is Glkv3Value.Map -> error("a GLKv3 section entry is never a bare map")
+    }
+
+    private companion object {
+        /** Native `make -C src glkv3-golden-fixture` output, checked in below. */
+        const val NATIVE_FIXTURE_RESOURCE = "/glkv3-native-fixture.tsv"
+
+        /** The native dump's root-key order (not the encoder's sorted order). */
+        val ROOT_KEY_ORDER = listOf(
+            "schema", "release", "terminal", "backend", "route",
+            "kernel_major", "kernel_minor", "safe_mode",
+        )
+    }
+
 }

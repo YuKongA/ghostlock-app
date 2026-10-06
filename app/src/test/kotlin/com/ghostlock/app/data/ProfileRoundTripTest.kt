@@ -114,7 +114,7 @@ class ProfileRoundTripTest {
         )
         val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
         assertEquals("multicast_waiter", decoded.route)
-        assertEquals(Glkv3Value.UInt(6u), entry(decoded, "common", "kernel_major"))
+        assertEquals(6uL, decoded.kernelMajor)
         assertEquals(
             Glkv3Value.Bool(true),
             entry(decoded, "backend.cve_2026_43499.kernel", "compact_waiter"),
@@ -136,41 +136,14 @@ class ProfileRoundTripTest {
     }
 
     @Test
-    fun `vr guard round trip carries gate layout and symbol`() {
-        val decoded = requireNotNull(
-            Glkv3Decoder.decode(encoded("multicast_waiter", multicastValues)),
-        )
-        assertEquals(Glkv3Value.Bool(true), entry(decoded, "common", "vr_guard"))
-        assertEquals(
-            Glkv3Value.UInt(0x40u),
-            entry(decoded, "countermeasure.vivo_vr_guard", "tracepoint_funcs"),
-        )
-        assertEquals(
-            Glkv3Value.UInt(0x21A1020u),
-            entry(decoded, "backend.cve_2026_43499.offset", "vr_sys_exit_tp"),
-        )
-        /* The layout is per-image: a profile without it keeps the section absent. */
-        val withoutLayout = requireNotNull(
-            Glkv3Decoder.decode(encoded("multicast_waiter", common - "vr_guard.tracepoint_funcs")),
-        )
-        assertNull(withoutLayout.sections.firstOrNull { it.name == "countermeasure.vivo_vr_guard" })
-    }
-
-    @Test
     fun `patch safe mode lands on the common entry`() {
         val original = encoded("multicast_waiter", multicastValues)
-        assertEquals(
-            Glkv3Value.Bool(false),
-            entry(requireNotNull(Glkv3Decoder.decode(original)), "common", "safe_mode"),
-        )
+        assertEquals(false, requireNotNull(Glkv3Decoder.decode(original)).safeMode)
         val patched = requireNotNull(NativeProfileDocument.patchSafeMode(original))
         val decoded = requireNotNull(Glkv3Decoder.decode(patched))
-        assertEquals(Glkv3Value.Bool(true), entry(decoded, "common", "safe_mode"))
+        assertEquals(true, decoded.safeMode)
         /* Original input is untouched. */
-        assertEquals(
-            Glkv3Value.Bool(false),
-            entry(requireNotNull(Glkv3Decoder.decode(original)), "common", "safe_mode"),
-        )
+        assertEquals(false, requireNotNull(Glkv3Decoder.decode(original)).safeMode)
     }
 
     @Test

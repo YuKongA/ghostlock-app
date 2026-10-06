@@ -409,6 +409,60 @@ namespace {
     }
 } // namespace
 
+/* Guard (step-queue design doc 10.1-S8/S9/S13): a vocabulary name that fell back
+ * to the "unknown" default must fail here instead of shipping in the manifest, and
+ * the literal "none" is legitimate ONLY in the route column of a backend without a
+ * route axis. The two committed copies are compared byte for byte, so without this
+ * guard a missing *_name() branch would weaken the contract while the gate stayed
+ * green. The row count is pinned to the catalogue for the same reason. */
+bool check_export_rows(const std::vector<std::string> &rows) {
+    if (rows.size() != std::size(ghostlock::contract::kCombinationCatalog)) {
+        std::fprintf(stderr,
+                     "combination_manifest_test: guard: unexpected row count %zu "
+                     "(catalogue has %zu)\n",
+                     rows.size(),
+                     std::size(ghostlock::contract::kCombinationCatalog));
+        return false;
+    }
+    for (const std::string &row : rows) {
+        if (row.find("unknown") != std::string::npos) {
+            std::fprintf(stderr,
+                         "combination_manifest_test: guard: unmapped vocabulary "
+                         "name in row: %s\n",
+                         row.c_str());
+            return false;
+        }
+    }
+    for (const ghostlock::contract::CombinationSpec &spec :
+         ghostlock::contract::kCombinationCatalog) {
+        const std::string_view route = ghostlock::contract::route_name(spec.route);
+        const bool route_less = spec.route == ghostlock::profile::RouteKind::None;
+        if (route_less != (route == "none")) {
+            std::fprintf(stderr,
+                         "combination_manifest_test: guard: route column '%.*s' "
+                         "disagrees with the route axis of token '%s'\n",
+                         static_cast<int>(route.size()), route.data(),
+                         std::string(spec.token).c_str());
+            return false;
+        }
+        const std::string_view path = ghostlock::contract::path_name(spec.path);
+        const std::string_view steps = ghostlock::pipeline::stepset_name(spec.steps);
+        const std::string_view terminal =
+                ghostlock::contract::terminal_token_name(spec.terminal);
+        const std::string_view backend =
+                ghostlock::contract::backend_token_name(spec.backend);
+        if (path == "unknown" || steps == "unknown" || terminal == "unknown" ||
+            backend == "unknown") {
+            std::fprintf(stderr,
+                         "combination_manifest_test: guard: unmapped name for "
+                         "token '%s'\n",
+                         std::string(spec.token).c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char **argv) {
     bool write = false;
     for (int i = 1; i < argc; i++) {
@@ -416,6 +470,7 @@ int main(int argc, char **argv) {
     }
 
     if (!check_catalog_invariants()) return 1;
+    if (!check_export_rows(expected_rows())) return 1;
     const std::vector<VectorRow> vectors = vector_rows();
     if (!check_vector_invariants(vectors)) return 1;
 

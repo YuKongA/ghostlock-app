@@ -13,6 +13,8 @@
  * selects it explicitly and the document middleware carries it). */
 
 #include <cstdint>
+#include <sstream>
+#include <string>
 #include <string_view>
 
 #include "contract/identity.hpp"
@@ -139,17 +141,13 @@ namespace ghostlock::pipeline {
         return contract::combination_available(kind);
     }
 
-    [[nodiscard]] constexpr contract::TerminalKind combination_terminal(
-        contract::CombinationKind kind) noexcept {
-        const contract::CombinationSpec *spec = contract::combination_spec(kind);
-        return spec != nullptr ? spec->terminal : contract::TerminalKind::RootChild;
-    }
-
-    [[nodiscard]] constexpr MiddlewareKind combination_route(
-        contract::CombinationKind kind) noexcept {
-        const contract::CombinationSpec *spec = contract::combination_spec(kind);
-        return spec != nullptr ? spec->route : MiddlewareKind::None;
-    }
+    /* S3 (M2 item 4): the convenience accessors combination_terminal() and
+     * combination_route() were DELETED rather than hardened. Evidence: they had
+     * no production caller (only component_catalog_test), and each returned a
+     * silent default (RootChild / None) when the kind was not catalogued -- the
+     * exact shape the design forbids. The authority is the catalogue row itself
+     * (contract::combination_spec(kind)->terminal / ->route), which every real
+     * consumer already uses and which a test pins as non-null. */
 
     [[nodiscard]] constexpr std::string_view terminal_name(
         contract::TerminalKind kind) noexcept {
@@ -197,6 +195,23 @@ namespace ghostlock::pipeline {
     [[nodiscard]] constexpr bool backend_from_token(std::string_view token,
                                                     contract::BackendKind &out) noexcept {
         return contract::backend_kind_from_token(token, out);
+    }
+
+    /* Named diagnostic for the "legal but unwired plan" branch (step-queue
+     * design doc 10.1-S5). Pure formatting so a host test can pin the exact
+     * message; the orchestrator prints it verbatim and still returns Rejected
+     * (M1 adds the diagnostic only -- no dispatch change). Before M1 this branch
+     * returned Rejected without printing anything, so a legal but unwired plan
+     * looked like "nothing happened". */
+    [[nodiscard]] inline std::string no_dispatch_target_message(
+            contract::BackendKind backend,
+            contract::CombinationKind combination) {
+        std::ostringstream out;
+        out << "plan_error reason=no-dispatch-target backend="
+            << contract::backend_token_name(backend)
+            << " combination=" << static_cast<unsigned>(combination)
+            << " token=" << contract::combination_name(combination);
+        return out.str();
     }
 } // namespace ghostlock::pipeline
 

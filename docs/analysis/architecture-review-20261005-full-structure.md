@@ -17,7 +17,7 @@
 | `platform` | 5 文件 / 974 行 | abi/runtime/device_facts/vivo | `vivo` 仍在本层（ADR-0006/R4c 计划插件化）；`device_facts` 已支持降级（app 域可用）✓ |
 | `terminal` | 11 文件 / 865 行 | 中性终端与输入载荷 | **TERM 后**：`root_child.cpp` 已下沉 backend，但 `root_child.hpp`（声明）仍在此层 → **声明/实现分居**（G7/F5）；README 仍写 `terminal/root_child.*`（G1） |
 | `backend` | 10 顶层文件 + 各 CVE 子目录 | 按 CVE 的 backend；占位头 | 4 个占位 backend 头与真实 backend **混排**在顶层（G6）；43284 新增 `entry.{hpp,cpp}` 缝合（入口 include 4→1）✓ |
-| `session`/`memory`/`race`/`support` | 183/600/406/2086 行 | 状态容器/地址与载荷/竞争/通用件 | 未受本批影响；`support/util.cpp` 仍是防火墙白名单 4 条的唯一成因（C 批待做） |
+| `session`/`memory`/`race`/`support` | 183/600/406/2086 行 | 状态容器/地址与载荷/竞争/通用件 | **R1 搬迁已完成**：`support/util.cpp` **799 → 133 行**（12 个中性函数），14 个攻击相关件迁入 `backend::cve_2026_43499::spray`（`spray.{hpp,cpp}`），**防火墙账本归零**（`176 files, 0/0/0/0`）；`kernelsnitch.h` 的唯一 TU 现为 `spray.cpp` |
 
 ## 2. 主要类型与函数（功能 / 作用 / 影响 / 兼容性）
 

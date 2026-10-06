@@ -290,13 +290,21 @@ namespace ghostlock::contract {
         }
     }
 
-    /* Token -> internal StepSet id (the owner Schema's numeric View slot). */
-    [[nodiscard]] constexpr std::uint16_t combination_stepset_wire(
-            BackendKind backend, std::string_view token) noexcept {
+    /* Token -> internal StepSet id (the owner Schema's numeric View slot).
+     *
+     * S1 (M2 item 4): the CHECKED form. A token that names no catalogued
+     * combination for this backend returns false so the owner bind fails closed
+     * with its section and key; the previous unchecked helper returned 0, which
+     * the bind stored silently (0 is also a legitimate-looking wire value). */
+    [[nodiscard]] constexpr bool combination_stepset_wire_checked(
+            BackendKind backend, std::string_view token,
+            std::uint16_t &out) noexcept {
         CombinationKind kind = CombinationKind::Unknown;
-        if (!combination_resolve(backend, token, kind)) return 0;
+        if (!combination_resolve(backend, token, kind)) return false;
         const CombinationSpec *spec = combination_spec(kind);
-        return spec != nullptr ? static_cast<std::uint16_t>(spec->steps) : 0;
+        if (spec == nullptr) return false;
+        out = static_cast<std::uint16_t>(spec->steps);
+        return true;
     }
 
     /* Stable backend token <-> id (owner section prefix / root selection). The

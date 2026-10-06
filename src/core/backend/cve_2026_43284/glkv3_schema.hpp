@@ -31,6 +31,11 @@ namespace ghostlock::backend {
     inline constexpr profile::glkv3::FieldSpec kCve2026_43284Glkv3Fields[] = {
         /* Backend top level: selection token + the three runtime-injected,
          * wire-only keys (no profile declaration; see the header). */
+        /* M2 queue selection: see the 43499 table (each row has a matching v2
+         * selection-owned declaration). */
+        {"backend.cve_2026_43284", "queue", profile::glkv3::WireType::Array, false},
+        {"backend.cve_2026_43284", "route", profile::glkv3::WireType::Str, false},
+        {"backend.cve_2026_43284", "experimental", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43284", "steps", profile::glkv3::WireType::Str, false},
         {"backend.cve_2026_43284", "kmi", profile::glkv3::WireType::UInt, false, true},
         {"backend.cve_2026_43284", "lkm_path", profile::glkv3::WireType::Str, false, true},

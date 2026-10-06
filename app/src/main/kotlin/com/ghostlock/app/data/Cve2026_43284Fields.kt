@@ -24,28 +24,28 @@ internal object Cve2026_43284Fields {
     /** Native `uint32_t` upper bound for the handshake tuning. */
     const val UInt32Max = 0xFFFF_FFFFL
 
-    /** Wire type `str`: editable policy paths (empty = absent). */
-    val StringPaths: List<String> = listOf(
-        "$Section.carrier_path",
-        "$Section.lkm_path",
-    )
+    /**
+     * HOCON refactor: kmi / lkm_path / carrier_path are native-side conventions
+     * (derived from the release and $GHOSTLOCK_HOME, or the device's vendor
+     * library) — the profile and the App no longer provide them, and the layout
+     * rejects them on sight. Everything the editor still surfaces lives under
+     * `execution.*`.
+     */
+    val StringPaths: List<String> = emptyList()
 
     /** Wire type `uint` backed by a native `uint32_t` (0..0xFFFFFFFF). */
     val UInt32Paths: List<String> = listOf(
-        "$Section.wait_timeout_ms",
-        "$Section.module_poll_attempts",
-        "$Section.module_poll_interval_ms",
+        "$Section.execution.wait_timeout_ms",
+        "$Section.execution.module_poll_attempts",
+        "$Section.execution.module_poll_interval_ms",
     )
 
     /** Every 43284 field the advanced editor surfaces for a 43284 selection. */
     val EditablePaths: List<String> = StringPaths + UInt32Paths
 
-    /** carrier_path / lkm_path are filesystem paths: bounded UTF-8 text
-     * (<=256 bytes) that must be absolute. Empty means absent. */
-    val FilesystemPaths: List<String> = listOf(
-        "$Section.carrier_path",
-        "$Section.lkm_path",
-    )
+    /** No editable 43284 string field is left: the conventions moved native-side
+     * (see [StringPaths]). */
+    val FilesystemPaths: List<String> = emptyList()
 
     fun isTextInvalid(path: String, text: String): Boolean {
         val trimmed = text.trim()

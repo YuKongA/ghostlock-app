@@ -4,7 +4,7 @@
 /* Neutral frozen data vocabulary (ADR-0004 R1 / A2-4-4).
  *
  * Physically relocated from profile/model.h. kernel_offsets, TargetProfile and
- * every type they embed are consumed by platform (abi/vivo), memory, session,
+ * every type they embed are consumed by platform (abi), memory, session,
  * pipeline and the profile framing units, so the file is owned by contract:
  * platform->contract and memory->contract are allowed, while platform->backend
  * and memory->backend are not. The namespace stays ghostlock::profile to avoid
@@ -147,12 +147,11 @@ namespace ghostlock::profile {
          * override it without a rebuild. */
         std::optional<uint64_t> kernel_phys_offset;
         std::optional<bool> compact_waiter;
-        /* Ancillary vr.ko guard, occupying this struct's existing padding so the
-         * frozen session offsets do not move: the gate (fail closed), the
-         * tracepoint the vendor probe hangs off, and offsetof(struct tracepoint,
-         * funcs). A zero tracepoint_funcs means the image did not yield it. */
-        bool vr_guard = false;
-        uint8_t vr_tracepoint_funcs = 0;
+        /* The vendor guard gate and tracepoint layout were retired with the
+         * vendor platform code (vr_guard (a)); their two bytes occupied existing
+         * padding, so the space stays explicitly reserved -- the frozen session
+         * offsets must not move. */
+        uint8_t reserved_vendor_guard[2] = {0U, 0U};
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
         uint32_t vr_sys_exit_tp = 0;
@@ -218,10 +217,6 @@ namespace ghostlock::profile {
     /* Ancillary vr.ko guard: the two facts the write needs. Both must be
      * present; each is an image-relative image_offset and a struct-internal
      * offset, never a kernel-version lookup. */
-    struct VrGuardLayout {
-        std::optional<uint32_t> tracepoint_funcs;
-    };
-
     struct TcpZerocopyLayout {
         std::optional<uint8_t> compact_waiter;
         std::optional<int64_t> payload_delta;
@@ -341,18 +336,6 @@ namespace ghostlock::profile {
             return loaded_ && values_.meta.safe_mode;
         }
 
-        /* Ancillary vr.ko guard: gate + layout. Absent members mean the
-         * profile does not enable the behavior (see
-         * platform/vivo/vr_guard.hpp plan_vr_guard()). */
-        [[nodiscard]] bool vr_guard_enabled() const noexcept {
-            return loaded_ && values_.misc.vr_guard;
-        }
-
-        [[nodiscard]] VrGuardLayout vr_guard_layout() const noexcept {
-            if (!loaded_ || values_.misc.vr_tracepoint_funcs == 0) return VrGuardLayout{};
-            return (VrGuardLayout){
-                    .tracepoint_funcs = static_cast<uint32_t>(values_.misc.vr_tracepoint_funcs)};
-        }
 
         [[nodiscard]] uint64_t vr_sys_exit_tp() const noexcept {
             return loaded_ ? values_.misc.vr_sys_exit_tp : 0;

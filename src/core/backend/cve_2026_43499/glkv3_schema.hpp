@@ -96,6 +96,14 @@ namespace ghostlock::backend {
         {"backend.cve_2026_43499.kernel", "compact_waiter", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499.kernel", "kernelsnitch_collisions", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.kernel", "mm_struct_sz", profile::glkv3::WireType::UInt, false},
+        /* M2 queue selection (design doc 4.5/5.0): queue is an array of map,
+         * route is its queue-level sibling and experimental is the U5 static
+         * opt-in. Each row has a matching v2 selection-owned declaration in
+         * backend/cve_2026_43499/schema.hpp, which the manifest generator
+         * enforces (lookup_declaration). */
+        {"backend.cve_2026_43499", "queue", profile::glkv3::WireType::Array, false},
+        {"backend.cve_2026_43499", "route", profile::glkv3::WireType::Str, false},
+        {"backend.cve_2026_43499", "experimental", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499", "steps", profile::glkv3::WireType::Str, false},
     };
 

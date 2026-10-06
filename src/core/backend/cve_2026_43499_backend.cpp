@@ -23,6 +23,7 @@
 
 #include "support/log.hpp"
 #include "backend/cve_2026_43499/route/route_api.hpp"
+#include "backend/cve_2026_43499/spray.hpp"
 #include "support/timing.hpp"
 
 #include "support/fatal_error.hpp"
@@ -76,8 +77,8 @@ namespace ghostlock::backend {
             platform::runtime::apply_iomem_cache(
                 config::runtime_config_snapshot().home_dir.c_str(),
                 iomem_values && iomem_values->uname_r ? iomem_values->uname_r : "");
-            support::log_startup_context();
-            support::init_p0_profile();
+            cve_2026_43499::spray::log_startup_context();
+            cve_2026_43499::spray::init_p0_profile();
             memory::pin_to_core(static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
             pr_info("main thread running on cpu=%d\n", sched_getcpu());
 

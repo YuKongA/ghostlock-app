@@ -8,9 +8,11 @@
  * KernelAlias is deliberately separate from KernelMemory: it translates a
  * kernel-image relative address (pre-slide) into a direct-map virtual address,
  * so a caller cannot accidentally pass a file offset or an untranslated image
- * address to a memory primitive (section 3.5 address-kind split). 43499
- * provides it for the vivo countermeasure path; a backend without the
- * mechanism returns Unsupported rather than guessing.
+ * address to a memory primitive (section 3.5 address-kind split). 43499 used
+ * to provide it for the vivo countermeasure path, which was deleted in
+ * vr_guard (a); the capability stays as contract vocabulary (no native
+ * consumer today) and a backend without the mechanism returns Unsupported
+ * rather than guessing.
  *
  * R1: only the standard library and sibling contract headers.
  */

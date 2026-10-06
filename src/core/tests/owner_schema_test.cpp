@@ -43,6 +43,8 @@ namespace {
             /* S4 R6b: the combination token is a String field; a numeric value
              * would be a type mismatch. */
             if (field.wire == ghostlock::profile::WireKind::String) continue;
+            /* M2: a declared composite is selection-owned, not a scalar. */
+            if (field.wire == ghostlock::profile::WireKind::Array) continue;
             add(doc, field.section, field.key, 1ULL);
         }
         Section *backend_section = doc.find_section("backend.cve_2026_43499");
@@ -101,8 +103,7 @@ namespace {
         v.misc.kernel_phys_load = 0xb000;
         v.misc.kernel_phys_offset = 0xc000;
         v.misc.compact_waiter = true;
-        v.misc.vr_guard = true;
-        v.misc.vr_tracepoint_funcs = 0x20;
+        /* The retired vendor guard bytes stay reserved and zero. */
         v.misc.kernelsnitch_collisions = 7;
         v.misc.mm_struct_sz = 0x400;
         v.misc.vr_sys_exit_tp = 0x2a;
@@ -216,6 +217,7 @@ int main() {
         }
         for (const auto &field : Cve2026_43499Schema::kFields) {
             if (field.wire == ghostlock::profile::WireKind::String) continue;
+            if (field.wire == ghostlock::profile::WireKind::Array) continue;
             add(doc, field.section, field.key, 3ULL);
         }
         Section *union_backend = doc.find_section("backend.cve_2026_43499");

@@ -51,7 +51,7 @@ class BackendMatrixAgreementTest {
             assertEquals(
                 "availability drifted for $id",
                 ComponentAvailability.backendAvailable(kind!!),
-                entry["available"] as? Boolean,
+                entry["usable"] as? Boolean,
             )
         }
     }

@@ -81,6 +81,15 @@ namespace ghostlock::pipeline {
                 return P::run(exploit_session, document, debug_dir, force_attack);
             }
             case DispatchTarget::None:
+                /* Named diagnostic (step-queue design doc 10.1-S5): this branch
+                 * used to return Rejected without printing anything, so a legal
+                 * but unwired plan looked like "nothing happened". M1 adds the
+                 * diagnostic only -- the dispatch logic is unchanged; the message
+                 * itself is pinned by component_catalog_test. */
+                (void)std::fprintf(stderr, "%s\n",
+                                   no_dispatch_target_message(selection.backend,
+                                                              combination)
+                                           .c_str());
                 return RunResult{.code = RunCode::Rejected};
         }
         return RunResult{.code = RunCode::Rejected};

@@ -1,0 +1,21 @@
+GLK_STATUS cve_2026_43284_diag probe
+GLK_STATUS diag.device_facts present
+GLK_STATUS diag.device_release 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+GLK_STATUS diag.device_proc_version Linux version 5.15.189-android13-8-00016-g51bba4309aac-ab14546557 (build-user@build-host) (Android (8508608, based on r450784e) clang version 14.0.7 (https://android.googlesource.com/toolchain/llvm-project 4c603efb0cca074e9238af8b4106c30add4418f6), LLD 14.0.7) #1 SMP PREEMPT Fri Dec 5 10:55:34 UTC 2025 has_f4c50a4=0
+GLK_STATUS diag.device_selinux enforce=1
+GLK_STATUS diag.device_crash_dump64 exists=1 label=u:object_r:crash_dump_exec:s0 verity=0
+GLK_STATUS diag.device_vendor_candidate index=0 path=/vendor/lib64/libCB.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=1 path=/vendor/lib64/libEGL_adreno.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=2 path=/vendor/lib64/libGLESv2_adreno.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=3 path=/vendor/lib64/libOpenCL.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=4 path=/vendor/lib64/libadreno_app_profiles.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=5 path=/vendor/lib64/libadreno_utils.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=6 path=/vendor/lib64/libadsprpc.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_vendor_candidate index=7 path=/vendor/lib64/libcamxexternalformatutils.so label=u:object_r:same_process_hal_file:s0 vendor_file=0
+GLK_STATUS diag.device_symbols kallsyms_restricted=1 selinux_state=0 get_dc_target_dpath=
+GLK_STATUS diag.lkm_release parsed=1 android=13 kmi=5015
+GLK_STATUS diag.lkm_selection matched error=None label=android13-5.15
+GLK_STATUS diag.module path=ghostlock-android13-5.15.ko checked=1
+GLK_STATUS diag.module_precheck pass error=None elf=1 modinfo=1 name=1 vermagic=1 match=1 ver_diff=None ko_vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64 req_vermagic=5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt mod_unload modversions aarch64 versions_empty=1 has_crcs=1 signed=0 kcfi=1
+GLK_STATUS cve_2026_43284_diag ready
+EXIT=0

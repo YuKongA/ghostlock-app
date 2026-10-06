@@ -123,6 +123,7 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
   以 `cmp_disasm` 实判定；实测（2026-10-04）6/6 strict IDENTICAL，未触发。若将来触发，回退
   `support/util.cpp` 的 include，适配头改为仅由 host 契约测试覆盖（**不可**另起 device TU 只包含
   `kernelsnitch.h`：该头定义非 inline 的 `context_*`，第二个 TU 会重复符号，已实测链接失败）。
+  **进展（2026-10-06，R1 搬迁）**：该**唯一 TU 已从 `support/util.cpp` 迁移到 `backend/cve_2026_43499/spray.cpp`**（链 `spray.cpp → leak/address_discovery.h → kernelsnitch.h`），`support/util.cpp` 收窄为 133 行纯中性工具、防火墙账本归零（`176 files, 0/0/0/0`）——**R-2 的「不可另起第二个 TU」约束仍然有效**，本次只是**搬迁**（唯一 TU 从一处移到另一处），**不是新增 TU**。
 - R-3：适配语义若与 `perf_find_task`（失败 0）不一致，契约测试会暴露；两边统一走
   `discovery_*()`（0 值 → 全零失败）。
 - 回滚：A3-1 为纯新增 + 一行 include + Makefile 接线；`git checkout -- src/Makefile src/core/support/util.cpp`

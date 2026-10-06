@@ -37,6 +37,9 @@ object Glkv3Decoder {
                 var backend: String? = null
                 var route: String? = null
                 var sections: List<Glkv3Section>? = null
+                var kernelMajor: ULong? = null
+                var kernelMinor: ULong? = null
+                var safeMode: Boolean? = null
                 for ((keyValue, value) in map.map()) {
                     when (val key = keyValue.asStringValue().asString()) {
                         "schema" -> schema = (value as? IntegerValue)?.asBigInteger()?.let {
@@ -46,6 +49,14 @@ object Glkv3Decoder {
                         "terminal" -> terminal = (value as? StringValue)?.asString()
                         "backend" -> backend = (value as? StringValue)?.asString()
                         "route" -> route = (value as? StringValue)?.asString()
+                        /* HOCON refactor: root scalars (native kRootSection). */
+                        "kernel_major" -> kernelMajor = (value as? IntegerValue)?.asBigInteger()?.let {
+                            if (it.signum() < 0 || it.bitLength() > 64) null else it.toLong().toULong()
+                        }
+                        "kernel_minor" -> kernelMinor = (value as? IntegerValue)?.asBigInteger()?.let {
+                            if (it.signum() < 0 || it.bitLength() > 64) null else it.toLong().toULong()
+                        }
+                        "safe_mode" -> safeMode = (value as? BooleanValue)?.boolean
                         "sections" -> sections = decodeSections(value)
                         else -> return null
                     }
@@ -59,6 +70,9 @@ object Glkv3Decoder {
                     terminal = terminal,
                     backend = backend,
                     route = route,
+                    kernelMajor = kernelMajor,
+                    kernelMinor = kernelMinor,
+                    safeMode = safeMode,
                     sections = sections,
                 )
             }
@@ -68,28 +82,13 @@ object Glkv3Decoder {
     }
 
     /**
-     * Returns a canonical copy of a GLKv3 [document] with common.safe_mode set to
-     * true, or null when [document] is not a well-formed GLKv3 document.
+     * Returns a canonical copy of a GLKv3 [document] with the ROOT safe_mode set
+     * to true, or null when [document] is not a well-formed GLKv3 document.
+     * (HOCON refactor: safe_mode is a root scalar, no longer common.safe_mode.)
      */
     fun patchSafeMode(document: ByteArray): ByteArray? {
         val decoded = decode(document) ?: return null
-        val patched = decoded.sections.map { section ->
-            if (section.name != "common") {
-                section
-            } else {
-                Glkv3Section(
-                    name = "common",
-                    entries = section.entries.filterNot { it.key == "safe_mode" } +
-                        Glkv3Entry("safe_mode", Glkv3Value.Bool(true)),
-                )
-            }
-        }
-        val withCommon = if (patched.any { it.name == "common" }) {
-            patched
-        } else {
-            patched + Glkv3Section("common", listOf(Glkv3Entry("safe_mode", Glkv3Value.Bool(true))))
-        }
-        return Glkv3Encoder.encode(decoded.copy(sections = withCommon))
+        return Glkv3Encoder.encode(decoded.copy(safeMode = true))
     }
 
     private fun decodeSections(value: Value): List<Glkv3Section>? {
@@ -118,6 +117,12 @@ object Glkv3Decoder {
         is BinaryValue -> Glkv3Value.Bin(value.asByteArray())
         is ArrayValue -> Glkv3Value.Array(
             value.list().map { element -> decodeValue(element) ?: return null },
+        )
+        is MapValue -> Glkv3Value.Map(
+            value.map().map { (keyValue, entryValue) ->
+                val key = (keyValue as? StringValue)?.asString() ?: return null
+                key to (decodeValue(entryValue) ?: return null)
+            },
         )
         else -> null
     }

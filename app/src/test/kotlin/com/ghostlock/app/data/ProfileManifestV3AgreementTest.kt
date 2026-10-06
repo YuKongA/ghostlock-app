@@ -40,7 +40,10 @@ class ProfileManifestV3AgreementTest {
             .filter { it.isNotBlank() && !it.startsWith("#") }
             .associate { line ->
                 val parts = line.split('\t')
-                assertEquals("manifest-v3 line needs 7 tab-separated columns: " + line, 7, parts.size)
+                /* R2+ native export: owner, path, wire, required, default, source, doc, width.
+                The width column is a hard validation input consumed by
+                NativeProfileGlkv3Adapter (fail-closed parse). */
+                assertEquals("manifest-v3 line needs 8 tab-separated columns: " + line, 8, parts.size)
                 /* Required is a FLAG, not "always optional": a manifest may
                  * legitimately declare required fields (the payload owner briefly
                  * did, native 74db3594). Both values are legal; anything else is a

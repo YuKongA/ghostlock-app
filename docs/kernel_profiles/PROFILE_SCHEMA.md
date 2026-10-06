@@ -1,6 +1,6 @@
 # Kernel Profile Structure (Configuration System)
 
-> **Status: the HOCON refactor landed in native on 2026-10-05** (step ① `b55708a8`: root scalar channel plus removal of the `common` and `countermeasure` owners and vr_guard phase (b); steps ②③④ `23958eb0`: `platform.abi.*` → `backend.cve_2026_43499.abi.*` in 62 places, the 43284 tuning keys into `backend.cve_2026_43284.execution.*`, the new `wire_only` marker and a 114-line manifest). **The App side (tests + golden) is still following** ⇒ cross-end status is "native final, App in progress". The old `common` / `platform` / `selection` layout is **deleted** (appearing ⇒ rejected).
+> **Status: the HOCON refactor landed in native on 2026-10-05** (step ① `b55708a8`: root scalar channel plus removal of the `common` and `countermeasure` owners and vr_guard phase (b); steps ②③④ `23958eb0`: `platform.abi.*` → `backend.cve_2026_43499.abi.*` in 62 places, the 43284 tuning keys into `backend.cve_2026_43284.execution.*`, the new `wire_only` marker and a 114-line manifest). **the App side (tests + golden) is committed and green = `c443f5f0`** ⇒ cross-end status is "all three sides final". The old `common` / `platform` / `selection` layout is **deleted** (appearing ⇒ rejected).
 > The old `common` / `platform` / `selection` layout is **deleted** (appearing ⇒ rejected). This document is the structure and flow authority; the field-by-field authority stays `profile-manifest-v3.tsv` (native-exported, two byte-identical copies).
 
 ## 0. Versions and field authority
@@ -110,7 +110,7 @@ Owner set after the refactor: **`backend.<id>` only** (plus the root scalars and
 | `payload` owner | Same freeze — no `payload.*` emission; execution half stopped |
 | `countermeasure.*` owner | **Removed** (`b55708a8`); appearing means rejected |
 | defex | **Deleted** (commit `a68e2d5a`) |
-| vivo VR guard | **Phase (b) done** (`b55708a8`: profile/wire/manifest rows removed); **phase (a) code deletion queued behind a device gate** — `platform/vivo/**` and the two call sites stay inert until then |
+| vivo VR guard | **Phase (b) done** (`b55708a8`: profile/wire/manifest rows removed); **phase (a) code deletion done (`4a182217`; gate archived at `device-gates/vrguard-a-20261006/`)** — `platform/vivo/**` (8 files) plus its test and stub removed, `steps.cpp` **-95 lines**, **device gate PASS**; **non-behavioural difference**: the `w2b` stage trace loses one entry |
 
 ## 8. GLKv3 wire
 

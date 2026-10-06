@@ -82,10 +82,14 @@ class Sog10ProfileCoreRegressionTest {
         val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
         assertEquals(release, decoded.release)
         assertEquals("multicast_waiter", decoded.route)
-        assertNull(entryOrNull(decoded, "common", "fallback_route"))
+        /* HOCON refactor: no common owner; the kernel scalars are root values. */
+        assertEquals(5uL, decoded.kernelMajor)
         assertEquals(Glkv3Value.Str("mcast_rootchild"), entry(decoded, "backend.cve_2026_43499", "steps"))
-        assertNull(entryOrNull(decoded, "platform.abi.kernel", "kernel_phys_load"))
-        assertEquals(Glkv3Value.UInt(0u), entry(decoded, "platform.abi.cred", "usage_offset"))
+        assertNull(entryOrNull(decoded, "backend.cve_2026_43499.abi.kernel", "kernel_phys_load"))
+        assertEquals(
+            Glkv3Value.UInt(0u),
+            entry(decoded, "backend.cve_2026_43499.abi.cred", "usage_offset"),
+        )
         assertEquals(
             Glkv3Value.UInt((-274698454400L).toULong()),
             entry(decoded, "backend.cve_2026_43499.cred", "ref0_image"),
@@ -104,11 +108,11 @@ class Sog10ProfileCoreRegressionTest {
         )
         assertEquals(
             Glkv3Value.UInt(35027464u),
-            entry(decoded, "platform.abi.offset", "selinux_blob_sizes"),
+            entry(decoded, "backend.cve_2026_43499.abi.offset", "selinux_blob_sizes"),
         )
         assertEquals(
             Glkv3Value.UInt(35018112u),
-            entry(decoded, "platform.abi.offset", "security_hook_heads"),
+            entry(decoded, "backend.cve_2026_43499.abi.offset", "security_hook_heads"),
         )
 
         val routeSection = "backend.cve_2026_43499.route.multicast_waiter"

@@ -1022,7 +1022,8 @@ mod plugin_projection_tests {
         let (cli, path) = descriptor_cli(
             "ok",
             &[
-                "extract\ttest.schema\tcommon.kernel_major\tuint\t1\t0\tmajor",
+                // Root scalars are bare wire keys after the rename.
+                "extract\ttest.schema\tkernel_major\tuint\t1\t0\tmajor",
                 "extract\ttest.schema\tinit_task\tuint\t1\t0\tsymbol",
             ],
         );
@@ -1046,7 +1047,7 @@ mod plugin_projection_tests {
         .expect("both entries resolve");
         let flat = report::flatten_conf_values(&output);
         assert_eq!(
-            flat.get("plugin.test.schema.extract.common.kernel_major")
+            flat.get("plugin.test.schema.extract.kernel_major")
                 .map(String::as_str),
             Some("6")
         );

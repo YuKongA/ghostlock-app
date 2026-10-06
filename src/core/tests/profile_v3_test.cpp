@@ -92,10 +92,11 @@ int main() {
     assert(v3parsed.meta.kernel_major == 6);
     assert(v3parsed.meta.kernel_minor == 15);
     assert(v3parsed.meta.safe_mode);
-    /* vr_guard: the deleted common.vr_guard key has no writer left, so the
-     * field stays false and platform/vivo stays provably inert (phase (b)). */
-    assert(!v3parsed.misc.vr_guard);
-    assert(v3parsed.misc.vr_tracepoint_funcs == 0);
+    /* The vendor guard gate and tracepoint layout were retired with the vendor
+     * platform code: the neutral model no longer carries those bytes at all (the
+     * two reserved bytes below only keep the frozen session offsets). */
+    assert(v3parsed.misc.reserved_vendor_guard[0] == 0U);
+    assert(v3parsed.misc.reserved_vendor_guard[1] == 0U);
     assert(v3parsed.task.prio == 132);
     assert(v3parsed.task.real_cred == 0x12345678);
     assert(v3parsed.credential.copy_size == 0x88);

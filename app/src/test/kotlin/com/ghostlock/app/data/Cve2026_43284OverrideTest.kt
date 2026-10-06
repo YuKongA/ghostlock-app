@@ -63,8 +63,20 @@ class Cve2026_43284OverrideTest {
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
             val paths = flatten(config.roots).map { it.path }.toSet()
-            for (path in Cve2026_43284Fields.EditablePaths) {
+            for (path in listOf(
+                "backend.cve_2026_43284.execution.wait_timeout_ms",
+                "backend.cve_2026_43284.execution.module_poll_attempts",
+                "backend.cve_2026_43284.execution.module_poll_interval_ms",
+            )) {
                 assertTrue(path + " is missing from the advanced tree", path in paths)
+            }
+            /* The three convention keys are computed natively now, so they are
+             * not editable anywhere in the tree. */
+            for (key in listOf("kmi", "lkm_path", "carrier_path")) {
+                assertFalse(
+                    "backend.cve_2026_43284." + key + " must not be editable",
+                    "backend.cve_2026_43284." + key in paths,
+                )
             }
         }
 
@@ -80,95 +92,29 @@ class Cve2026_43284OverrideTest {
         }
 
     @Test
-    fun `string overrides reach the wire as GLKv3 str entries`() =
-        withController("43284-wire") { controller ->
+    fun `native-computed convention keys are neither editable nor on the wire`() =
+        withController("43284-conventions") { controller ->
+            val section = "backend.cve_2026_43284"
+            val convention = listOf("kmi", "lkm_path", "carrier_path")
             controller.updateAdvanced(
                 release,
                 pair,
-                mapOf(
-                    "backend.cve_2026_43284.lkm_path" to
-                        "/data/local/tmp/helper_custom.ko",
-                    "backend.cve_2026_43284.carrier_path" to
-                        "/vendor/lib64/libbinderdebug.so",
-                ),
+                convention.associate { section + "." + it to "/data/local/tmp/x" },
             )
             val config = controller.load(release, pair)
-            assertTrue(
-                "unexpected invalid paths: " + config.invalidPaths,
-                config.invalidPaths.isEmpty(),
-            )
-
-            val decoded = Glkv3Decoder.decode(requireNotNull(controller.nativeDocument(config)))
-            assertNotNull(decoded)
-            assertEquals(
-                Glkv3Value.Str("/data/local/tmp/helper_custom.ko"),
-                entry(decoded!!, "backend.cve_2026_43284", "lkm_path"),
-            )
-            assertEquals(
-                Glkv3Value.Str("/vendor/lib64/libbinderdebug.so"),
-                entry(decoded, "backend.cve_2026_43284", "carrier_path"),
-            )
-        }
-
-    @Test
-    fun `clearing a string override suppresses the baseline value`() =
-        withController("43284-clear") { controller ->
-            val section = "backend.cve_2026_43284"
-            controller.updateAdvanced(release, pair, mapOf(section + ".lkm_path" to "/tmp/x.ko"))
-            val set = controller.load(release, pair)
-            assertEquals(
-                Glkv3Value.Str("/tmp/x.ko"),
-                entry(
-                    requireNotNull(Glkv3Decoder.decode(requireNotNull(controller.nativeDocument(set)))),
-                    section,
-                    "lkm_path",
-                ),
-            )
-
-            /* An empty draft is an explicit "absent" request, so the override
-             * survives the rebuild and the key leaves the document. */
-            controller.updateAdvanced(release, pair, mapOf(section + ".lkm_path" to ""))
-            val cleared = controller.load(release, pair)
-            assertEquals(emptySet<String>(), cleared.invalidPaths)
-            val decoded = Glkv3Decoder.decode(requireNotNull(controller.nativeDocument(cleared)))
-            assertNotNull(decoded)
-            assertFalse(
-                decoded!!.sections.firstOrNull { it.name == section }
-                    ?.entries.orEmpty().any { it.key == "lkm_path" },
-            )
-        }
-
-    @Test
-    fun `out-of-range handshake tuning is reported invalid`() =
-        withController("43284-uint32") { controller ->
-            for (value in listOf(-1L, 0x1_0000_0000L)) {
-                controller.updateAdvanced(
-                    release,
-                    pair,
-                    mapOf("backend.cve_2026_43284.wait_timeout_ms" to value),
-                )
-                val config = controller.load(release, pair)
-                assertTrue(
-                    "wait_timeout_ms=" + value + " was not surfaced: " + config.invalidPaths,
-                    "backend.cve_2026_43284.wait_timeout_ms" in config.invalidPaths,
+            val paths = flatten(config.roots).map { it.path }.toSet()
+            for (key in convention) {
+                assertFalse(
+                    section + "." + key + " must not be editable",
+                    section + "." + key in paths,
                 )
             }
-        }
-
-    @Test
-    fun `malformed policy path is reported invalid`() =
-        withController("43284-path") { controller ->
-            for (bad in listOf("vendor/lib64/x.so", "/" + "a".repeat(256))) {
-                controller.updateAdvanced(
-                    release,
-                    pair,
-                    mapOf("backend.cve_2026_43284.carrier_path" to bad),
-                )
-                val config = controller.load(release, pair)
-                assertTrue(
-                    "carrier_path=" + bad.length + " was not surfaced: " + config.invalidPaths,
-                    "backend.cve_2026_43284.carrier_path" in config.invalidPaths,
-                )
+            val decoded = Glkv3Decoder.decode(requireNotNull(controller.nativeDocument(config)))
+            assertNotNull(decoded)
+            val keys = decoded!!.sections.firstOrNull { it.name == section }?.entries
+                .orEmpty().map { it.key }
+            for (key in convention) {
+                assertFalse(section + "." + key + " must not reach the wire", key in keys)
             }
         }
 

@@ -1,0 +1,11 @@
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 sockopt=-1 errno=0 attempts=16 calls=1 success=1
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 sockopt=-1 errno=0 attempts=16 calls=1 success=1
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 sockopt=-1 errno=0 attempts=16 calls=1 success=1
+[33m[*] [0mmulticast route status=0 clean=1/1 step=0 sockopt=-1 errno=0 attempts=16 calls=1 success=1
+[32m[+] [0mchild is root!
+[33m[*] [0m[T+22127ms] exploit complete
+[33m[*] [0mhandoff: child=18994 alive=1 sent=1 errno=0
+[33m[*] [0mhandoff: root script path=/data/local/tmp/.ghostlock_root.sh
+[33m[*] [0mhandoff: root shell worker pid=24195
+[33m[*] [0mhandoff: script open fd=3 errno=0 path=/data/local/tmp/.ghostlock_root.sh
+[32m[+] [0mKernelSU ready
