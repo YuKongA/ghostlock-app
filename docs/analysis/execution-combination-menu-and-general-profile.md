@@ -1,7 +1,7 @@
 # 执行组合子菜单 + 8 份 general profile + 新加载判据（L 级设计稿 v2）
 
 > 状态：**设计稿（未实现）**。v2 于 2026-10-06 依据用户最新裁决修订（见 §0.2）；仍未确认的点集中在 §4。
-> 本文只写设计，**不含任何代码/资产改动**。相关：`docs/analysis/step-queue-design.md`、`docs/analysis/branch-plan.md`、契约 §3.20。
+> 本文只写设计，**不含任何代码/资产改动**。相关：`docs/archive/README.md（已归档设计稿索引）`、`docs/plan/branch-plan.md`、契约 §3.20。
 
 ## 0 用户原话
 
@@ -72,27 +72,46 @@
 - **建议：A**（用户明确「**需要进去选择**」）。
 - **未选择时的默认值**：候选 ① 保持当前 `state.backendKind`/`combination` ② 强制选择后才允许开打 ③ 自动选唯一可用项 —— **待确认 U1**；
 - **状态机影响**：`state.backendKind`、`state.combination`、`setBackendKind()`（`GhostlockViewModel.kt:1283`）仍是**唯一选择权威**；子菜单只改呈现与筛选，**不新增第二份选择状态**；返回语义 = 取消未确认的选择（默认不写回）。
-#### 2.1.1 UI 树状结构（用户新需求 4，原话照录）
+#### 2.1.1 配置形态 = **扁平注册**；UI = **从扁平派生树**（U17 已裁决 2026-10-06）
 
-用户原话（示例照录）：
+**用户原话（照录）**：「**U17：hocon 配置内可以有扁平化 `available` 注册**，例如 **43499 可以注册多个不同 step 的项**，用树也可以但是**可能缺乏维护性和可读性**；但是如果采用扁平配置，**UI 如何生成优雅的树状选项需要思考**」。
 
-```text
-- 43284
-- 43499
-  - mcast
-    - w1,w2,w3,root child
-    - w1,w2,shizuku
-    - w1,w2,umh(未实现)
+**① 配置侧（裁决）**：**一个条目 = 一条完整路径**（`backend` + `route` + `queue`/steps + `terminal` + `priority`）；**同一 backend 允许注册多条**（用户示例：`43499` 的 mcast 下三条 = `w1,w2,w3,root child` / `w1,w2,shizuku` / `w1,w2,umh(未实现)`）；
+**② UI 侧（裁决）**：树**从扁平条目派生**（backend → route → 叶子 = 步骤序列 + terminal），**树层级不在配置里表达**；
+
+**形态问题（HOCON 对象键唯一 ⇒ 现状 `available { <backend> { … } }` 每个 backend 只能出现一次）——三条候选（并列，不预选）**：
+
+- **(a) 对象列表（建议）**：
+
+```hocon
+available = [
+  { backend = "cve_2026_43499", route = "multicast_waiter", terminal = "root_child",
+    queue = [ { step = "w1" }, { step = "w2" }, { step = "w3" } ], priority = 2 },
+  { backend = "cve_2026_43499", route = "multicast_waiter", terminal = "shizuku",
+    queue = [ { step = "w1" }, { step = "w2" } ], priority = 3 },
+  { backend = "cve_2026_43499", route = "multicast_waiter", terminal = "umh_forward",
+    queue = [ { step = "w1" }, { step = "w2" } ], priority = 4, planned = true }
+]
 ```
+  ⇒ 天然支持同 backend 多条、**优先级显式**、**无需造 id**；**代价 = 必须放开「列表形态一律拒绝」**（但**继续拒绝字符串列表**，见下）。
+  ⚠ **与 M5 的关系（用户已纠正过一次）**：M5 拒的是 **token 列表（字符串形态）**，理由「队列取代 token」；**对象列表是另一种东西**，与 M5 理念不冲突 ⇒ 采用 (a) 需要放开列表拒绝，**但必须保住 M5 的意图**：**对象列表 ⇒ 接受；字符串/其它形态 ⇒ 具名拒绝**（沿用 M5 的诊断措辞风格，例如 `available: the token-list form was removed in M5; declare objects with backend/queue` 与 `available: string entries are not a selection; declare an object with backend/queue`）。
+- **(b) 任意 id 作键**：`available.<id> { backend = …, route = …, queue = [ … ] }` ⇒ 简单、HOCON 原生；**但 `id` 相当于把 token 换个名字**（M5 刚删掉 token 概念）⇒ **不建议**；
+- **(c) 每 backend 下再嵌变体（树）**：可表达（`available.<backend>.<route>.<variant> { … }`），但**正是用户判定可读性/维护性差的那种** ⇒ **记录但不建议**。
 
-- **采纳**：§2.1 的「后端 → 路径」两级改为**三级树**：**backend → route → （步骤序列 + terminal）**；
-- **「未实现」节点的呈现规则**：直接复用既有语义——**`available=false` 的组合**（`CombinationSpec.available`）在树中**显示但不可选**，文案用现有 `planned`/置灰机制，**不新增状态**；用户示例里的 `umh(未实现)` 就对应 `{mcast,pselect,tcp}_umh` 这 3 个 `available=false` 项；
-- **同级差异（同 backend 内按 terminal 改 steps）如何表达得不麻烦**——三种配置写法（**选项 + 代价 + 建议**）：
-  - **写法甲：`queue` 挂在「路径项」上**（每个 path 项自带 `queue`）——代价：同一 backend 下重复书写公共步骤；收益：**直观、与树一一对应**、删除/新增路径不动别人；**建议：甲**；
-  - **写法乙：`queue` 留在 backend 上 + path 项只写差异覆盖**（如 `skip = ["w3"]`）——代价：需要「继承 + 差分」语义（读者要心算最终序列，违背「显式优于隐式」）；收益：书写量最小；
-  - **写法丙：`queue` 留在 backend 上 + 每个 path 项写完整 `queue`**（不继承）——代价：公共部分重复；收益：无隐式规则。
-  - ⇒ **建议甲**（最小充分语法，且**无冗余层级**：树的三级各自只承载自己的信息；route 与 terminal 不在同一层重复表达）；
-- **最小充分语法（无冗余层级的证明）**：path 项 = `{ backend, route?, queue, priority? }`——**每一个字段在树里只出现一次**（backend/route 决定位置，queue 决定叶子，priority 决定排序）；**不需要**再引入「terminal 覆盖层」「steps 覆盖层」等第二处表达；
+**选定后的影响面（三候选共用的核对清单，逐条 file:line）**：
+- **Kotlin 解析/校验**：`profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:420`（`validateAvailable`）与 `:453`（`validateAvailableSelection`）；若走 (a) 还要改 `:435`/`:438` 的**列表拒绝**语义；
+- **M5 的两条具名诊断与其测试**：`ProfileLayout.kt:435`（token-list）/`:438`（empty token list）+ `profile-core/src/test/kotlin/com/ghostlock/app/data/ProfileLayoutAvailableTest.kt:31/:36`；
+- **golden / fixture 与资产**：`profile-core/src/test/resources/glkv3-native-fixture.tsv`、Kotlin golden（现 3920 字符）与 native 导出的 golden 十六进制（生成任务见 AGENTS 的 manifest 生成约定）；**76 份**（68 release/片段 + 8 general）资产里的 `available` 段；`index.conf`（general 登记，见 U4b）；
+- **native 侧（已核实）**：`available` **不是**执行输入——native 只按 wire 的 `backend.<id>` 与 `queue`/`route` 绑定（契约 §3.20）；native 侧的 `available` 仅是**编译期组合目录**的字段（`src/core/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`），**与 profile 的 `available` 段无关** ⇒ **本裁决不影响 native** ✓。
+
+**UI 树生成规格（用户要求「思考」的点，写成可实现规格）**：
+1. **分组**：一级 = `backend`；二级 = `route`（43284 无 route 轴 ⇒ 二级退化为该 backend 自身，需在实现时明确）；叶子 = `queue`（步骤序列）+ `terminal`；**同一 (backend, route) 的多条 = 兄弟叶子**；
+2. **排序**：叶子按 **`priority` 升序**（= 默认项在前）；**同级并列时用确定性次序**（如步骤序列字符串 + terminal 名的字典序）⇒ 避免「看起来随机」；一级/二级建议按**既有目录顺序**（`CombinationCatalog`/词汇 manifest 的顺序，保持与其它 UI 一致）；
+3. **标签（本地化）**：术语来源**只用既有词汇**（backend / route / terminal / 步骤名），**不新造词**；叶子推荐格式：「**w1 → w2 → w3 → 根权限**」/「**w1 → w2 → shizuku**」（中英各一套，键见 §2.2 的 `execution_combo_*` 系列）；
+4. **「未实现」节点**：用户示例含 `umh(未实现)` ⇒ 必须能表达「**已声明但当前不可运行**」；选项：① **条目内加 `planned = true`**（建议：语义局部、与 `priority` 同级、易校验）② 由 `index.conf` 的 `usable` 表达（**不建议**：那是构建/资产层，粒度是 backend 不是路径）③ 单独的 planned 列表（**不建议**：第二处真相）；
+   ⚠ **与 U2「以声明为准」的关系（必须写清）**：`available` 里的条目 = **声明可用** ⇒ **「未实现」的条目不应写进 `available`**；若用户希望「先占位、后实现」，则用 **`planned = true`** 明确标注「**声明了但当前不可运行**」，UI **可见但不可选**并显示「未实现」——**这与 U2 不冲突**：U2 管的是「可用项以声明为准」，`planned` 管的是「声明但未实现」的**显式降级标注**；
+5. **未知形状必须 fail-visible**：配置里出现 UI/校验表不认识的 backend/route/terminal/步骤 ⇒ **报错误项（红）**，**不得静默隐藏**（与前次裁决一致）；
+6. **证伪**：① 同一 backend 注册**多条** ⇒ 树里必须是**三个叶子**（不是一条、也不是三个平铺的一级项）；② **打乱配置顺序** ⇒ 树**不变**（由 `priority` 决定）；③ **未实现条目** ⇒ **可见且有「未实现」标注**（且不可选）。
 
 #### 2.1.2 菜单生成策略（待 Lead 定的 UI 策略；已给建议）
 
@@ -313,7 +332,7 @@ index.conf                                     profiles 列表语义（唯一来
 
 **⑥ 证伪方案**：删掉一个**必须参数**（如 43499 的 `route`）⇒ **必须拒绝运行且报红**；删掉一个**可推断参数**（如 43284 的 `kmi`/路径）⇒ **必须仍可运行**且编辑器显示**黄色**提示；两次强制重跑并记录三件套。
 
-### 2.10 隐式 fallback 退役清单（**组合/选择维度**；与 §2.6 的 general 回退区分）
+### 2.10 隐式 fallback 退役清单（**组合/选择维度**；与 §2.6 的 general 回退区分） **界定（2026-10-06）**：本清单是**代码里的隐式回退**（行为），与 **v2 的 `fallback.route.*` 配置语法**（归 `LegacyProfileConverter`，见 §2.13）**不是一回事**，不得混谈。
 
 | # | 位置 | 现状 | 拟处理 |
 |---|---|---|---|
@@ -490,6 +509,8 @@ available = [
 - **v4（2026-10-06）**：优先级机制**裁决为 A（显式 `priority`）**；新增 §2.1.1（三级树 + 最小充分语法）、§2.1.2（菜单生成策略对照表，采用数据驱动 + fail-visible）、§2.11（`route` 子层扁平化，两种读法待确认）、§2.12（requirements 文件夹）、§2.13（旧 fallback → 显式 `available` 路径）、§2.6 的 **U12 事实补齐**；新增待确认 **U14–U18**。
 - **v5（2026-10-06）**：**新需求 1（扁平化 `backend.<id>.route.<route>.*` 子层）已撤回**（用户裁决：与既有 route 扩展节约定冲突，「现有的也挺好」）⇒ §2.11 标「已撤回」、勘察结果**保留为事实记录但不据此改动**、**U14 标已撤回**；其余新需求（§2.12 requirements 文件夹 / §2.13 旧 fallback 注册 / §2.1.1 树状 UI 与简化写法）与 **A（显式 `priority`）**、**U12 事实核实** 照旧推进。
 - **v6（2026-10-06）**：**U12 裁决 = 与现有配置加载机制合并** ⇒ §2.6 结论改写为「并入解析链」（`forcedBuiltinRelease` 降级为链上的 ①′ 显式指定、**必须 UI 可见**；沿革保留「显式化两做法 ⇒ 用户选合并」）；新增 **§11 profile 解析链（一等规格）**：链序 = **①′ 显式指定 → ① 用户导入精确匹配（取最新导入）→ ② 内置精确匹配 → ③ `general-<label>`**、伪码、判据（来源可见性 / 与 U7 一致）、**「最新导入」判定选项（建议显式序号/时间戳）**、**四个并列歧义表**、**四条证伪**；新增待确认 **U19–U22**。
+- **v7（2026-10-06）**：**U16 重新定性 = v2 legacy** ⇒ §2.13 整节改写（旧 `fallback.route.*` **不进入 v3**：不由 v3 资产承载、不注册 `available` 兄弟项、不参与 `priority`；归属 `LegacyProfileConverter.kt`，已核实其**当前确实处理** fallback 系键 `:457-461`/`:562-570`）；**撤回**原「兄弟项 + 低 priority」提案（沿革保留）；**§2.10 加界定**（代码隐式回退 ≠ v2 配置语法）；新增**验收守卫**（v3 资产不得含 fallback 字样 / 树 UI 无 fallback 节点 / legacy 对照）；新增待确认 **U23**（读法甲=扩展转换器接受 v2（版本政策变更）vs **读法乙=仅定性**（建议））。
+- **v8（2026-10-06）**：**U17 裁决 = 扁平注册 + UI 派生树** ⇒ **§2.1.1 整节改写**（配置侧：一条目=一条完整路径、同 backend 可多条；UI 侧：树从扁平派生、层级不入配置）+ **三条承载候选并列**（(a) 对象列表=**建议**，含放开列表拒绝但**继续拒字符串列表**的具名判据，保住 M5 意图；(b) 任意 id 作键=不建议；(c) 嵌变体树=不建议）+ **选定后影响面清单**（`ProfileLayout.kt:420/:435/:438/:453`、M5 诊断与 `ProfileLayoutAvailableTest.kt:31/:36`、golden/fixture 与 76 份资产、`index.conf`；**native 已核实不受影响**：`available` 非执行输入，native 的 `available` 是编译期目录字段）+ **UI 树生成规格**（分组/排序/本地化标签/「未实现」表达与 U2 关系/fail-visible/三条证伪）；新增待确认 **U24（形态选择）/U25（未实现表达）/U26（排序规则）**。
 
 ## 9 新增设计条目（2026-10-06 用户新需求）
 
@@ -550,21 +571,40 @@ cve_2026_43499 {
 - **⑤ 与 native 的关系**：该文件夹是 **App 侧校验元数据**，**不是 wire 的一部分**（native 不读 assets）；理由：native 只认文档，且 ABI 常量的**真实存在性**最终由 native 绑定路径判定（缺字段 ⇒ 绑定失败）⇒ **本稿不做 native 侧读取**（如将来要做，需另一份 L 级设计与真机门禁）；
 - **⑥ 证伪两条**：① 从某路径的 `required` 里删掉一个真实需求键（或相反：把某键从 `required` 移到 `derivable`）⇒ 对应配置的错误项**必须**按新分类出现/消失；② 在 profile 里删掉该路径的一个 `required` 键 ⇒ **必须**在「加载后、攻击前」报红并阻断（与 §2.9-⑦ 的证伪联动）。
 
-### 2.13 需求 3：旧 fallback 配置 → 注册为另一种 `available` 路径
+### 2.13 需求 3：旧 fallback —— **已重新定性为 v2 legacy（用户裁决 2026-10-06）**
 
-**用户原话**：「以前某些 43499 配置包含 fallback，现在全没了，他们应该作为另外一种 available 路径注册」。
+**用户原话**：「**U16 的旧 fallback 是 v2 配置，应交给 `LegacyProfileConverter` 处理**，以前的开发中 **v3 从未发布，以最新版 v3 为准**」。
 
-- **核实结论（读代码，不猜）**：**旧 fallback 派发机制已不存在**——`ProfileResolver.kt:45` 的注释明确写「**R6a removed the fallback branch**」；`fallback` 仅作为**历史键名**出现在 `ProfileResolver.kt:15` 的兼容键列表里；native 侧 `src/core/` **无 fallback 路由机制**（在 `src/core/` 里检索该词只命中了 `model.hpp` 中与「缺省值/可选字段」相关的同名词用法，**没有路由 fallback 机制**）⇒ **结论：机制已删；旧配置若仍写 `fallback.route.*`，按现有 fail-closed 策略应被拒/忽略，不能再指望它生效**；
-- **设计（把旧 fallback 变成显式路径）**：在 `available` 里**作为兄弟项注册一条显式路径**（示例：`cve_2026_43499 → mcast_fallback`，queue 写它实际使用的步骤序列），并给它 `priority`；
-- **与 `priority` 的关系**：fallback 路径的 `priority` **应大于**主路径（即排在后面）⇒ 语义 = 「主路径不可用/失败时的备选」，**由用户/App 选择**而非隐式回落；
-- **避免两套机制并存**：**明确**「`fallback.route.*` 退役」——若解析层仍在兼容键列表里保留该名（`ProfileResolver.kt:15`），**标注为 legacy-only**（不产生行为），并在面向用户文档里写明「旧 fallback 写法不再生效，改用 `available` 显式路径」；
-- **证伪**：① 在 profile 里写旧 `fallback.route.<name>.<field>` ⇒ **不得**产生任何 fallback 行为（可断言「配置项被忽略/被拒」）；② 把 fallback 路径注册为 `available` 兄弟项并给较大 `priority` ⇒ 主路径存在时默认项仍是主路径；主路径被注释掉后默认项**变成** fallback 路径。
+**结论（三条）**：
+1. **旧 `fallback.route.*` = v2 时代的配置** ⇒ **不由 v3 资产承载**，**也不在 v3 里新注册「fallback 兄弟路径」** ✗（**撤回**原提案：曾提出「注册为 `available` 兄弟项 + 较低 `priority`」，**沿革保留** ⇒ 用户裁决归 legacy）；
+2. **v3 的权威性**：**v3 从未发布** ⇒ ① **无兼容负担**（形状可变，与既有裁决一致）② **以最新 v3 为准** ⇒ **v3 里没有 fallback 这个概念**：`available` 的**路径 + `priority`** 就是全部表达；
+3. **legacy 的归属**：任何 v2 形态（含 `fallback.route.*`）⇒ **由 `LegacyProfileConverter.kt` 处理**（项目既有规矩「**只有一个迁移点**」）。**核实（读代码，file:line）**：该转换器**当前确实处理** fallback 系键——`app/src/main/kotlin/com/ghostlock/app/data/LegacyProfileConverter.kt:457-461`（`entry["fallback"].route`，空则移除该子键）与 `:562-570`（`fallback_to` 字符串 ⇒ 写入 `fallback.to`），另有 `:21`/`:91` 的说明注释 ⇒ **归 legacy 域成立** ✓。
+
+**⚠ 口径张力（待确认 U23）**：AGENTS 现行规矩是「读到旧 `schema_version = 1` 时由转换器转为 3；**其余版本值一律拒绝**」⇒ **v2 目前是被拒绝的**；那么「v2 的 fallback 交给转换器处理」有两种读法：
+- **读法甲：扩展转换器接受 v2** —— 代价：**版本政策变更**（要改 AGENTS、契约 §3.21 的兼容矩阵、转换器与测试；且需要真实的 v2 输入样本）；收益：v2 用户可平滑迁移；
+- **读法乙（Lead 建议）：仅定性**——「fallback 属 legacy 域、**v3 永不含它**」；若真有 v2 profile 进来，**按现行版本政策处理（拒绝）**，但**诊断里点名 fallback**（让用户知道这类配置该怎么迁移）；代价：v2 用户暂时仍需手工处理；收益：**不动版本政策**，与「v3 为准 + 只有一个迁移点」一致；
+- ⇒ **两条并列待用户裁决（U23）**。
+
+**连带清理（本次已执行）**：删除原 §2.13 的「注册为 v3 `available` 兄弟项 + 低 priority」提案；**§2.1.1 的树示例与 §2.1.2 的策略表均不含 fallback 概念**；**`priority` 只用于 v3 的 `available` 路径**，不用于表达 fallback。
+
+**与 §2.10 的区分（各一句界定，避免日后混淆）**：
+- **§2.10「隐式 fallback 退役清单」**：指**当前代码里的隐式回退**（例如「按后端取第一个可用组合」「把 active builtin 当 profile release」）⇒ 退役目标是**代码行为**；
+- **本节（v2 legacy fallback）**：指**旧配置语法** `fallback.route.*` / `fallback_to` ⇒ 归属 **`LegacyProfileConverter`**；**两者不是一回事**，不得互相引用为同一议题。
+
+**证伪 / 验收（作用域限定在 v3 资产与树 UI）**：
+1. **v3 资产守卫**：对 `app/src/main/assets/profile/**` 做一次字符串检索，**不得出现 `fallback` 字样**（一条可执行的 grep 守卫即可；命中 ⇒ FAIL）；
+2. **树 UI 守卫**：路径树**不得出现 fallback 节点**（用同一份资产喂给 UI 构建逻辑，断言节点集合里无 fallback 系名称）；
+3. **legacy 侧对照**：构造一份含 `fallback.route.*` 的 **v2 输入** ⇒ 走 `LegacyProfileConverter` 时**必须被处理/转换**（按 U23 的裁决：甲=转换；乙=按版本政策拒绝且诊断点名 fallback）。
 ## 10 新增待确认点（U14–U18；一律「选项 + 代价 + 建议」，不替用户决定）
 
 - **U14 · ⏸ 已撤回（用户裁决 2026-10-06）**：`route` 子层扁平化**不做**（理由：与 AGENTS「route 私有参数放 route 扩展节」约定冲突；用户判断**现状更优**）⇒ **保持现状，不据此改动**；沿革与勘察记录见 §2.11；
 - **U15（requirements 文件夹命名与粒度）**：名称取 `execution_paths` / `requirements` / `path_spec`？粒度取每 backend 一份 / 每 route 一份 / 一份总表？**建议**：`assets/execution_paths/` + **每 backend 一份**；
-- **U16（旧 fallback 的注册形态）**：旧 fallback 变成的显式路径**叫什么、放在哪一层**（例 `cve_2026_43499` 下单开 `mcast_fallback` 兄弟项 / 作为普通 route 名）？**建议**：兄弟项 + `priority` 大于主路径；
-- **U17（树中 steps 差异的配置写法）**：`queue` 挂在**路径项**上（写法甲）/ backend 上 + 差分覆盖（乙）/ backend 上 + 每项完整写（丙）？**建议：甲**（§2.1.1）；
+- **U16 · 已裁决（2026-10-06）：归 v2 legacy** —— 旧 `fallback.route.*` **不进入 v3**（不由 v3 资产承载、不注册 `available` 兄弟项、不参与 `priority`）⇒ **由 `LegacyProfileConverter.kt` 处理**（`app/src/main/kotlin/com/ghostlock/app/data/LegacyProfileConverter.kt:457-461` / `:562-570`）；原「兄弟项 + 低 priority」提案**撤回**（沿革见 §2.13）；
+- **U23（新增，口径张力）**：「v2 的 fallback 交给转换器处理」= **读法甲**（扩展转换器**接受 v2**：版本政策变更，需改 AGENTS + 契约 §3.21 + 转换器与测试 + v2 样本）还是 **读法乙**（**仅定性**：fallback 属 legacy、v3 永不含它；真有 v2 进来**按现行政策拒绝**但在诊断里点名 fallback）？**建议：乙**（不动版本政策，与「v3 为准 + 只有一个迁移点」一致）；
+- **U17 · 已裁决（2026-10-06）：配置扁平注册 + UI 从扁平派生树** —— 一个条目 = 一条完整路径（`backend`+`route`+`queue`+`terminal`+`priority`），**同一 backend 可注册多条**；树层级**不写进配置**（§2.1.1）；
+- **U24（新增，形态选择）**：扁平注册的**承载形态**取 **(a) 对象列表**（建议；需放开列表拒绝但**继续拒字符串列表**，保住 M5 意图）/ **(b) 任意 id 作键**（不建议：id 形同新 token）/ **(c) 每 backend 嵌变体树**（不建议：即可读性差的那种）？【三候选并列 + 影响面见 §2.1.1】
+- **U25（新增，「未实现」节点表达）**：取 ① 条目内 `planned = true`（**建议**）/ ② `index.conf` 的 `usable`（不建议：粒度错层）/ ③ 单独 planned 列表（不建议：第二处真相）？并确认「**未实现项不写进 `available`**，若占位则用 `planned` 显式标注」（与 U2 的关系见 §2.1.1-④）；
+- **U26（新增，树排序规则）**：叶子按 **`priority` 升序（建议）**，同级并列用**确定性次序**（步骤序列 + terminal 名的字典序）；一级/二级建议按既有目录顺序（`CombinationCatalog`/词汇 manifest 顺序）；
 - **U18（requirements 是否需要 native 侧也读）**：**建议：不做**（App 侧校验元数据；native 只认 wire 文档），如将来需要另开 L 级设计与真机门禁。
 - **U19–U22（profile 解析链的子问题）**：见 **§11.6**（最新导入判定 / `forcedBuiltinRelease` 放在链的哪一步 / 用户导入 general 是否享 ① 优先 / 允许不同 release 的显式选择）——本稿**建议**均已给出，**仍待用户确认**。
 ## 11 profile 解析链（一等规格；2026-10-06 用户裁决）

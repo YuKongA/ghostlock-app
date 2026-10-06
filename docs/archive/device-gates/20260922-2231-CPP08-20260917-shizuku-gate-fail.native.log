@@ -1,0 +1,4 @@
+> 恢复说明（2026-10-06）：原始路径 ��删除提交 ����；恢复来源 git show 064cd1e5a72bc721c835d7899caa31f4b4814ac9^:docs/analysis/device-gates/CPP08-20260917-shizuku-gate-fail.native.log；内容为删除前原文，未改动。
+
+debug log: Download/GhostLock/ghostlock-20260917-212503-943-0-shizuku.log
+error: kernel does not require Shizuku: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557

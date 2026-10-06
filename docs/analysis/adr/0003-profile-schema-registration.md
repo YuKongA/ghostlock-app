@@ -3,9 +3,9 @@
 - 状态：Proposed（待维护者确认）
 - 日期：2026-10-03
 - 基线：`acc5e7b` + 在飞改动（`B0`，见 Phase 0 计划）
-- 相关：ADR-0001 §10/§12；`docs/analysis/top-level-architecture-rewrite-plan.md` 架构审查 A；
+- 相关：ADR-0001 §10/§12；`docs/plan/top-level-architecture-rewrite-plan.md` 架构审查 A；
   `docs/profile/PROFILE_SCHEMA.md`；`docs/development/engineering-standards.md`；
-  `docs/analysis/flexible-kernel-rw-primitive-plan.md`
+  `docs/plan/flexible-kernel-rw-primitive-plan.md`
 
 ## 背景（Context）
 

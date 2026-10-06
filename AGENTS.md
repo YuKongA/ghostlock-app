@@ -17,7 +17,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `--load-prebuilt-profile <bin>` / `--enable-status-record` / `--dump-kernel-log <dir>` / `--force-attack` /
   `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
   ~~`--plugin-probe <path.so> [--expect-sha256 <hex>]`~~（只读插件描述，不注册、不运行 hook；**已按用户指令字面注释**）。
-  **⏸ 插件与 payload 工程已按用户指令暂停（2026-10-05）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md`）。
+  **⏸ 插件与 payload 工程仍按用户指令暂停（2026-10-05）；自定义 handoff 已于 2026-10-06 解冻并纳入 `available`（D1–D4 已批准）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md`）。
   插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 branch-plan `task-9`。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
@@ -27,7 +27,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 - 组件模型（ADR-0004 + **ADR-0006**）：**① 组合权威仍是 `contract::kCombinationCatalog`**——它是组合的
   **唯一权威**（token → backend/route/steps/terminal/available），用于**内部归一化键 + `supported` 判定 + dispatch 依据**；
   `Pipeline` 按（归一化后的）组合**编译期固定**并逐组合 static_assert。**② 用户选择面 = `backend.<id>{ route, queue }`（步骤队列）**——
-  `available` 的对象形态声明 `<backend>{ route=<str>, queue=[ 对象元素 ], experimental=<bool> }`（设计稿 `docs/analysis/step-queue-design.md`；契约 §3.20）；
+  `available` 的对象形态声明 `<backend>{ route=<str>, queue=[ 对象元素 ], experimental=<bool> }`（设计稿已归档，索引见 docs/archive/README.md；契约 §3.20）；
   **token 形态已删（M5 = `e59a8479`）⇒ 出现即拒**：HOCON 的**列表形态**（token 列表）**出现即拒**（两条独立具名诊断：`the token-list form was removed in M5; declare route+queue` / `empty token list is not a selection; declare route+queue`），native 侧具名拒 token（`plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`）且**归一化不再物化 token**；App **停发 wire `steps`**；**沿革**：`backend.<id>.steps` 曾是迁移期语法糖，M5 已删；**不得再读成「token 是用户选择面」**。
   **沿革（不删历史）**：2026-10-05「选择由 token 白名单表达」→ **2026-10-06「队列取代 token」**（理由：**HOCON 可读性**；用户裁决）。
   **对拍物证**：`ProfileLayoutAvailableTest` 等 + `profile-core/src/test/resources/glkv3-native-fixture.tsv`（**91 行**，native `--dump-fixture`）
@@ -76,7 +76,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 文档/验证的详细规则 + 外部标准来源）。**任何改动前必须先完成设计**：
 
 1. **Explore**：先读代码与文档；用 `git log --all -- <path>` 查历史设计与 device-gate 证据
-   （现行计划见 `docs/analysis/branch-plan.md`，其余分册在 `docs/analysis/` 或 git 历史里）。
+   （现行计划见 `docs/plan/branch-plan.md`，其余分册在 `docs/analysis/` 或 git 历史里）。
 2. **Design**：S 级（注释/格式）直接改；M 级写清动机/影响文件/行为差异/验证计划；**L 级**
    （攻击关键路径、wire/profile 格式、跨 Native↔Kotlin 契约、公共数据结构、新增 route）
    必须先产出计划文档（模板见 `docs/development/documentation-standards.md`）并获用户认可，再写代码。
@@ -205,6 +205,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 
 - **守卫/断言必须证明「能失败」**（本项因一次真实发现而设立）：新增的守卫、断言、检查**不能只证明「现在通过」**——必须做一次**证伪实验**（临时造错 → 观察它以预期方式失败 → 撤回并核验无残留），报告里写明造错点与失败输出。本项目曾因此发现一条 **vacuous 断言**：`memcmp` 比较两个 value-init 结构时**恒非零**（padding 未归零）⇒ 删掉被保护的赋值它**仍然绿**；修法＝两侧先 `memset` 归零 + `static_assert(is_trivially_copyable)`。
 - **证伪/验证实验一律用 `make -B`**（本项因一次假证明而设立）：`make` 会因**同一秒 mtime** 判定 up-to-date 而**跑旧二进制**，给出**假证明**；凡「造错后验证会失败」的实验必须强制重建。
+- **证伪实验必须清理被测二进制（本项因一次真实假红而设立）**：造错实验结束后，**不仅要还原源码，还必须删除/重建被测二进制**（`rm -f <artifact>` + `make -B` 复核）—— 源码回位 ≠ 产物回位；本项目曾因只还原源码、留下**探针二进制**，使随后跑门禁的人**跑到探针**并获得**假红**（`queue_wire_test.cpp:439` 既有断言被误报 ✗）。交回前一律 `rm -f <artifact>` 并 `make -B` 复核。
 - **判断产出必须数产物、不数目录（本项因一次误判而设立）**：`ls | wc -l` 会把**空目录/临时目录**算进去 ⇒ 必须数**产物文件**——LKM 例：`buildLkmImages` 的 **8 行 `LKM <label> -> … (bytes)`**、`kmis.tsv` **9 行**（表头 + 8）、`unzip -l … | grep assets/lkm/` **8 行**；判定「生成了几个」时一律用这些计数。
 - **失败数必须读 XML 全量（本项因一次真实漏数而设立）**：单测失败**不得**只看控制台尾部（会被截断/漏掉），必须**全量读** `build/test-results/**/*.xml` 统计 `tests/failures/errors/skipped`；**三桶计数（通过 / 失败 / 跳过）一律来自 XML**，控制台只作旁证。
 - 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
@@ -237,9 +238,11 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、
   `docs/development/documentation-standards.md`（文档规范）、`src/core/README.md`。
-- 现行分支计划：`docs/analysis/branch-plan.md`（唯一进度入口）；决策/门禁见
+- 现行分支计划：`docs/plan/branch-plan.md`（唯一进度入口）；决策/门禁见
   `docs/analysis/adr/`、`docs/analysis/device-gates/`。
-- 历史文档（已从工作树删除，需要时从 git 历史取回：`git show <commit>:<path>`）：
+- **历史文档：已恢复到 `docs/archive/`**（2026-10-06 用户指令「把以前提交又删掉的文档都找回」）：命名 = **`YYYYMMDD-HHMM-<原文件名>`**（时间 = **删除提交的时间**），每件文件头含**原始路径 / 删除提交 / 恢复来源（`git show <commit>^:<path>`）/ 恢复日期**；「删除提交 → 归档路径」完整索引见 **`docs/archive/README.md` §五**。
+  - **证据类已恢复**：`docs/analysis/device-gates/**` 历史门禁 ⇒ **已恢复到 `docs/archive/device-gates/`（164 件，实测 `find docs/archive/device-gates -type f | wc -l` = 164）**，命名与头部规则同文档类（见 `docs/archive/README.md` §七）；**未恢复**：`docs/kernel_profiles/templates/**` **4 件**（已被现役 `docs/profile/templates/**` 取代，理由见 README §六）。
+  - 兜底：仍可从 git 历史取回 `git show <commit>:<path>`。以下保留原删除清单分类作对照：
   - `docs/analysis/` 其余架构/迁移/解耦分析（routes、native-functions、native-cpp-current-uml、
     native-global-state、native-entrypoint-plan、environment-convergence-plan 等）
   - `docs/analysis/device-gates/`：S04–S15、CPP00–CPP17、U01、NSFUNC/NSMOD/NSMOD2、

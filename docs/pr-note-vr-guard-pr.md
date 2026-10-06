@@ -22,7 +22,7 @@
 
 本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
-（含逐函数反汇编核对记录、真机门禁）在 `docs/analysis/vr-guard-plan.md`。
+（含逐函数反汇编核对记录、真机门禁）在 `docs/archive/README.md（已归档计划索引）`。
 
 ## 概览
 
@@ -55,7 +55,7 @@
 | 修复 1 | `profile-core/.../ProfileMerger.kt` | 合并基准改为深拷贝共享 execution 预设（见下节） |
 | 修复 2 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 迁移夹具（实测值、嵌套 `route` 声明）；夹具尺寸断言 52 → 53 |
 | 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
-| 计划 / 证据 | `docs/analysis/vr-guard-plan.md` | 计划、反汇编核对记录、真机门禁 |
+| 计划 / 证据 | `docs/archive/README.md（已归档计划索引）` | 计划、反汇编核对记录、真机门禁 |
 
 ## 对评审的回应（全部已修复）
 

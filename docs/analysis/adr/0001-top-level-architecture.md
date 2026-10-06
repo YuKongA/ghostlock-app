@@ -2,7 +2,7 @@
 
 - 状态：Proposed（待维护者确认）；架构审查（第三轮）发现 A–I，A 的 profile 归属方向已定（本文件
   §10/§12：中性 document + backend/platform 注册 schema），B–I 采用前需修订，见
-  `docs/analysis/top-level-architecture-rewrite-plan.md` 的“架构审查”。
+  `docs/plan/top-level-architecture-rewrite-plan.md` 的“架构审查”。
 - **ADR-0004 修订本文件**：§1 的“四条正交轴”表述（R2）、§7 的 `handoff`（R3，顶级轴改 `terminal`）、
   §14 的 `ancillary`（R4，**保持顶级中性机制**，行为归 `platform::vivo`）、顶级 `kernel` 并入 `memory`（R6）、
   §21 的门禁（R7）。
@@ -10,8 +10,8 @@
   `architecture-review-log.md`。
 - 日期：2026-10-03
 - 基线：`acc5e7b`（`vr-ko-bypass-dev`）
-- 相关：`docs/analysis/top-level-architecture-rewrite-plan.md`、
-  `docs/analysis/flexible-kernel-rw-primitive-plan.md`、`docs/development/design-philosophy.md` §2/§3/§5
+- 相关：`docs/plan/top-level-architecture-rewrite-plan.md`、
+  `docs/plan/flexible-kernel-rw-primitive-plan.md`、`docs/development/design-philosophy.md` §2/§3/§5
 
 ## 背景（Context）
 
