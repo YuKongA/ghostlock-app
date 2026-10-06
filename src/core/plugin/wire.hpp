@@ -32,7 +32,7 @@ namespace ghostlock::plugin {
         None = 0,
         UnknownField,      /* a key outside the frozen plugin paths */
         EnabledMissing,    /* section present without enabled=true */
-        EnabledNotBool,    /* enabled is not a bool scalar */
+        EnabledNotBool,    /* enabled is not a 0/1 numeric scalar */
         DisabledPresent,   /* enabled=false present in the document */
         StageMissing,
         StageUnknown,

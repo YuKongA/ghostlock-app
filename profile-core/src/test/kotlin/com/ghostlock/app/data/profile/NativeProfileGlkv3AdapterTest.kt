@@ -66,12 +66,13 @@ class NativeProfileGlkv3AdapterTest {
                 "param\tdemo.plugin\tthreshold\tuint\t0\t200\tdoc\n" +
                 "param\tdemo.plugin\tmode\tstr\t0\tauto\tdoc\n" +
                 "param\tdemo.plugin\tflag\tbool\t0\t1\tdoc\n" +
-                "param\tdemo.plugin\tdelta\tint\t0\t0\tdoc\n",
+                "param\tdemo.plugin\tdelta\tint\t0\t0\tdoc\n" +
+                "extract\tdemo.plugin\toffset\tuint\t1\t-\tfrom the boot image\n",
         )
         val entry = PluginManifestEntry(
             id = "demo.plugin",
             version = "1.0",
-            abiVersion = 1,
+            abiVersion = 1u,
             sha256 = digest,
             modulePath = "demo.plugin/1.0/demo.plugin.so",
             enabled = true,
@@ -88,6 +89,7 @@ class NativeProfileGlkv3AdapterTest {
                     "flag" to PluginValue.Bool(false),
                     "delta" to PluginValue.Int(-3L),
                 ),
+                extracts = mapOf("offset" to PluginValue.UInt(4096u)),
             ),
         )
         val adapted = NativeProfileGlkv3Adapter.adapt(fixture().copy(plugins = listOf(emission)))
@@ -106,6 +108,7 @@ class NativeProfileGlkv3AdapterTest {
                 "demo.plugin.params.mode",
                 "demo.plugin.params.flag",
                 "demo.plugin.params.delta",
+                "demo.plugin.extract.offset",
             ),
             pluginSection.entries.map { it.key }.toSet(),
         )
@@ -124,7 +127,8 @@ class NativeProfileGlkv3AdapterTest {
         assertEquals(Glkv3Value.Str("manual"), valueOf(adapted, "plugin", "demo.plugin.params.mode"))
         assertEquals(Glkv3Value.Bool(false), valueOf(adapted, "plugin", "demo.plugin.params.flag"))
         assertEquals(Glkv3Value.Int(-3L), valueOf(adapted, "plugin", "demo.plugin.params.delta"))
-        assertTrue(pluginSection.entries.none { it.key.contains(".extract.") })
+        /* P2: only the declared, resolved extract key rides, in its own group. */
+        assertEquals(Glkv3Value.UInt(4096u), valueOf(adapted, "plugin", "demo.plugin.extract.offset"))
     }
 
     @Test

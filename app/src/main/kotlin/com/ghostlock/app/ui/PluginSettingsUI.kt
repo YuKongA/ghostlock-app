@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -20,14 +21,16 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /**
  * P1 plugin settings page (interface freeze 2026-10-05).
@@ -45,9 +48,16 @@ internal fun PluginSettingsScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
+    /* The words the pure projections spell out, resolved once per screen. */
+    val texts = PluginTexts(
+        required = stringResource(R.string.plugin_text_required),
+        unresolved = stringResource(R.string.plugin_text_unresolved),
+        defaultLadder = stringResource(R.string.plugin_text_default_ladder),
+    )
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.plugins),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -62,12 +72,57 @@ internal fun PluginSettingsScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .scrollEndHaptic()
+                .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = pageContentPadding(paddingValues),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            /* Batch 1: the run-level selection. The persistent switch below is
+             * "installed and trusted"; this one is "load in the next run", and
+             * the default (nothing chosen yet) is every enabled plugin. */
+            if (state.pluginRows.any { it.enabled }) {
+                val enabled = state.pluginRows.count { it.enabled }
+                val selected = state.pluginRows.count { it.selected }
+                item(key = "run-selection-title") {
+                    SmallTitle(text = stringResource(R.string.plugins_run_title))
+                }
+                item(key = "run-selection") {
+                    Card {
+                        Column {
+                            Text(
+                                text = if (selected == 0) {
+                                    stringResource(R.string.plugins_run_none)
+                                } else {
+                                    stringResource(R.string.plugins_run_summary, selected, enabled)
+                                },
+                                modifier = Modifier.padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 2.dp,
+                                    bottom = 4.dp,
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                            ArrowPreference(
+                                title = stringResource(R.string.plugins_run_select_all),
+                                onClick = actions::onPluginRunSelectAll,
+                            )
+                            ArrowPreference(
+                                title = stringResource(R.string.plugins_run_select_none),
+                                onClick = actions::onPluginRunSelectNone,
+                            )
+                        }
+                    }
+                }
+            }
+            item(key = "import-title") {
+                SmallTitle(text = stringResource(R.string.plugin_import))
+            }
             item(key = "import") {
                 Card {
                     if (state.pluginImportEnabled) {
@@ -115,13 +170,55 @@ internal fun PluginSettingsScreen(
                                 actions.onPluginEnabledChanged(row.id, enabled)
                             },
                             title = row.id + " " + row.version,
-                            summary = row.summary + " · " + row.sha256Short,
-                            enabled = row.selectable,
+                            summary = pluginSummaryText(row.summary) + " · " + row.sha256Short,
+                            /* Never gate this on run usability: a plugin that
+                             * cannot be described must still be switchable, or a
+                             * disabled plugin can never be enabled again. */
+                            enabled = row.toggleable,
                         )
+                        ArrowPreference(
+                            title = row.id + " · " + stringResource(R.string.plugin_detail_title),
+                            summary = pluginSummaryText(row.summary),
+                            onClick = { actions.onOpenPluginDetail(row.id) },
+                        )
+                        if (row.enabled) {
+                            SwitchPreference(
+                                checked = row.selected,
+                                onCheckedChange = { selected ->
+                                    actions.onPluginRunSelected(row.id, selected)
+                                },
+                                title = stringResource(R.string.plugins_run_row),
+                                summary = row.id,
+                            )
+                        }
+                        /* The probe's per-backend stage matrix, applied to the
+                         * SELECTED backend: the note is data, never a Kotlin
+                         * table, and it grey-marks the stage without inventing a
+                         * block the native side would not apply. */
+                        val stageNote = row.stageNote
+                        if (stageNote != null) {
+                            Text(
+                                text = stringResource(
+                                    R.string.plugin_stage_unavailable,
+                                    pluginLineText(stageNote),
+                                ),
+                                modifier = Modifier.padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 4.dp,
+                                    bottom = 4.dp,
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
                         val blocked = row.blockedReason
                         if (blocked != null) {
                             Text(
-                                text = stringResource(R.string.plugin_blocked, blocked),
+                                text = stringResource(
+                                    R.string.plugin_blocked,
+                                    pluginLineText(blocked),
+                                ),
                                 modifier = Modifier.padding(
                                     start = 16.dp,
                                     end = 16.dp,
@@ -152,12 +249,12 @@ internal fun PluginSettingsScreen(
                                             )
                                         },
                                         title = param.name,
-                                        summary = pluginParamSummary(param),
+                                        summary = pluginParamSummary(param, texts),
                                     )
                                 } else {
                                     ArrowPreference(
                                         title = param.name,
-                                        summary = pluginParamSummary(param),
+                                        summary = pluginParamSummary(param, texts),
                                         onClick = {
                                             actions.onPluginParamEdit(
                                                 row.id,

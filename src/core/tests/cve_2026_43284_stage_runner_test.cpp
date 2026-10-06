@@ -34,9 +34,11 @@
 namespace {
     using ghostlock::backend::cve_2026_43284::PageCacheWriteContext;
     using ghostlock::backend::cve_2026_43284::RealChainContext;
-    using ghostlock::backend::cve_2026_43284::chain_error_name;
+    /* The chain names its own outcomes: the two namers moved inline into
+     * steps/chain.hpp in the logging batch (the chain unit owns them now). */
+    using ghostlock::backend::cve_2026_43284::steps::chain_error_name;
     using ghostlock::backend::cve_2026_43284::make_real_hook_io;
-    using ghostlock::backend::cve_2026_43284::chain_wait_name;
+    using ghostlock::backend::cve_2026_43284::steps::chain_wait_name;
     using ghostlock::backend::cve_2026_43284::make_real_chain_ops;
     using ghostlock::backend::cve_2026_43284::real_chain_read_block;
     using ghostlock::backend::cve_2026_43284::real_chain_release;

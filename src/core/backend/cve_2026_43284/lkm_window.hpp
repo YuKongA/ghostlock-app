@@ -31,6 +31,12 @@
  * registry and run() reports failure; the chain terminus still closes the
  * window, so a failing plugin can never leak the residency window.
  *
+ * S4 P1 step 3a: when the composition seam attaches a PluginStageSink, run()
+ * invokes it instead, with the same glk_contract_ops view; the sink dispatches
+ * the P1 host's POST_TERMINAL stage. That path is fail-soft by contract (design
+ * section 5): the host counts hook failures and disables only the failing
+ * module, so run() stays a window-body success and no plugin can fail the chain.
+ *
  * R1: backend -> {contract, plugin}; this header includes no pipeline/terminal. */
 
 #include "backend/cve_2026_43284_state.hpp"
@@ -87,6 +93,24 @@ namespace ghostlock::backend::cve_2026_43284 {
          * plugin behaves exactly as before. */
         void attach_registry(plugin::RuntimeRegistry *registry) noexcept {
             registry_ = registry;
+        }
+
+        /* S4 P1 step 3a: the POST_TERMINAL consumer, expressed as a neutral
+         * thunk so this backend unit never names the P1 host (the same idiom as
+         * ChainOps / LkmTransport). The composition seam binds it; the caller
+         * owns ctx and keeps it alive across the window. An unavailable sink
+         * (the default) leaves run() exactly as it was. */
+        struct PluginStageSink final {
+            void (*dispatch)(void *ctx, const glk_contract_ops *ops) noexcept = nullptr;
+            void *ctx = nullptr;
+
+            [[nodiscard]] bool available() const noexcept {
+                return dispatch != nullptr;
+            }
+        };
+
+        void attach_plugin_stage(PluginStageSink sink) noexcept {
+            plugin_stage_ = sink;
         }
 
         /* Opens + PINGs the channel and, on success, fills capabilities().
@@ -160,6 +184,10 @@ namespace ghostlock::backend::cve_2026_43284 {
         plugin::HostOpsContext host_ctx_{};
         glk_contract_ops host_ops_{};
         plugin::RuntimeRegistry *registry_ = nullptr;
+        /* S4 P1 step 3a: the wired POST_TERMINAL consumer. When available it
+         * takes precedence over the legacy registry seam (production never
+         * attaches both). */
+        PluginStageSink plugin_stage_{};
         std::uint32_t window_calls_ = 0U;
         std::uint32_t hook_calls_ = 0U;
         std::uint32_t hook_failures_ = 0U;

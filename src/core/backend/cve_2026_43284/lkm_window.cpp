@@ -2,6 +2,7 @@
 
 #include "backend/cve_2026_43284/lkm_window.hpp"
 
+#include "backend/cve_2026_43284/diag_line.hpp"
 #include "plugin/registry.hpp"
 
 #include <chrono>
@@ -9,6 +10,27 @@
 #include <thread>
 
 namespace ghostlock::backend::cve_2026_43284 {
+    namespace {
+        /* The one display token for the capability errors that can end the
+         * window's open handshake (design A.3/L9): never a bare number. */
+        [[nodiscard]] const char *capability_error_name(
+                contract::CapabilityError error) noexcept {
+            switch (error) {
+            case contract::CapabilityError::None: return "None";
+            case contract::CapabilityError::Unsupported: return "Unsupported";
+            case contract::CapabilityError::Unavailable: return "Unavailable";
+            case contract::CapabilityError::Faulted: return "Faulted";
+            case contract::CapabilityError::Rejected: return "Rejected";
+            case contract::CapabilityError::Closed: return "Closed";
+            }
+            return "Unknown";
+        }
+
+        void emit_line(DiagLine &line) noexcept {
+            (void)std::fputs(line.c_str(), stderr);
+            (void)std::fflush(stderr);
+        }
+    } // namespace
 
     std::string format_lkm_window_diagnostic(bool opened, bool closed,
                                              std::uint32_t calls,
@@ -52,7 +74,9 @@ namespace ghostlock::backend::cve_2026_43284 {
         channel_.emplace(transport);
 
         contract::CapabilityStatus status{};
+        std::uint32_t attempts = 0U;
         for (std::uint32_t attempt = 0U; attempt <= open_retry_attempts_; ++attempt) {
+            ++attempts;
             status = channel_->establish();
             if (status.has_value()) {
                 break;
@@ -68,9 +92,21 @@ namespace ghostlock::backend::cve_2026_43284 {
             }
         }
         if (!status.has_value()) {
+            DiagLine line("window");
+            line.n("result", "open_failed")
+                    .u("attempts", attempts)
+                    .n("reason", capability_error_name(status.error()));
+            emit_line(line);
             channel_.reset();
             emit_diagnostic(false);
             return false;
+        }
+        {
+            /* The ABI version is reported once by the lkm_window diagnostic at
+             * close(); here the handshake cost is what matters. */
+            DiagLine line("window");
+            line.n("result", "opened").u("attempts", attempts);
+            emit_line(line);
         }
         memory_.emplace(*channel_);
         alias_.emplace(*channel_);
@@ -93,6 +129,15 @@ namespace ghostlock::backend::cve_2026_43284 {
             return false;
         }
         ++window_calls_;
+        /* S4 P1 step 3a: the wired POST_TERMINAL consumer is the production
+         * path. It is fail-soft by contract (design section 5): the host counts
+         * hook failures and disables only the failing module, so run() never
+         * reports a plugin failure to the chain. It is only reached here, while
+         * the residency window is open. */
+        if (plugin_stage_.available()) {
+            plugin_stage_.dispatch(plugin_stage_.ctx, &host_ops_);
+            return true;
+        }
         if (registry_ == nullptr) {
             return true;
         }

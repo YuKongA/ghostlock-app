@@ -39,6 +39,70 @@ class PluginImportServiceTest {
         "param\t" + id + "\tthreshold\tuint\t0\t200\tdoc\n" +
         extra
 
+    /** P0: the probe's single declared stage is pinned in the registry at import. */
+    @Test
+    fun `import pins the plugin's only declared stage`() {
+        val bytes = ByteArray(64) { it.toByte() }
+        val source = module(bytes)
+        val home = root()
+        val invoker = PluginProbeInvoker { _, _ ->
+            PluginProbeOutput(0, probeText(size = 64, sha = Sha256.bytes(bytes)), "")
+        }
+        val imported = result(home, invoker, source, "m.so") as PluginImportResult.Imported
+        assertEquals("post_terminal", imported.entry.stage)
+    }
+
+    /**
+     * P0: a re-description failure carries the probe's own reason. The old
+     * `describe` returned null for every failure, so the page (and the document
+     * build) could only say "could not be described".
+     */
+    @Test
+    fun `describe reports the probe's reason when the module cannot be described`() = runBlocking {
+        val home = root()
+        val entry = manifestEntry(Sha256.bytes(ByteArray(64)))
+        val service = PluginImportService(
+            homeDir = home,
+            store = PluginStore(File(home, PluginPaths.COUNTERMEASURES_ROOT)),
+            invoker = PluginProbeInvoker { _, _ -> PluginProbeOutput(3, "", "probe: cannot dlopen\n") },
+        )
+        val installed = installedFile(home, "countermeasures/demo.plugin/1.0/demo.plugin.so")
+        installed.parentFile!!.mkdirs()
+        installed.writeBytes(ByteArray(64))
+        assertEquals(
+            PluginDescribeResult.Failed("probe: cannot dlopen"),
+            service.describe(entry),
+        )
+    }
+
+    /** The reason names the path when the registry row points at a missing file. */
+    @Test
+    fun `describe names a missing module file`() = runBlocking {
+        val home = root()
+        val entry = manifestEntry(Sha256.bytes(ByteArray(64)))
+        val service = PluginImportService(
+            homeDir = home,
+            store = PluginStore(File(home, PluginPaths.COUNTERMEASURES_ROOT)),
+            invoker = PluginProbeInvoker { _, _ -> PluginProbeOutput(0, "", "") },
+        )
+        val installed = installedFile(home, "countermeasures/demo.plugin/1.0/demo.plugin.so")
+        assertEquals(
+            PluginDescribeResult.Failed("the module file is missing: " + installed.absolutePath),
+            service.describe(entry),
+        )
+    }
+
+    private fun manifestEntry(sha: String) = PluginManifestEntry(
+        id = "demo.plugin",
+        version = "1.0",
+        abiVersion = 1u,
+        sha256 = sha,
+        modulePath = "demo.plugin/1.0/demo.plugin.so",
+        enabled = true,
+        stage = null,
+        importedAtMs = 7L,
+    )
+
     /** [home] plays the GHOSTLOCK_HOME role: the service creates the root under it. */
     private fun result(
         home: File,
@@ -122,12 +186,14 @@ class PluginImportServiceTest {
     fun `self-inconsistent reports are rejected`() {
         val bytes = ByteArray(32)
         val sha = Sha256.bytes(bytes)
-        /* The probe claims a different size, then a different hash, then an id
-         * the loader can never accept. */
-        val wrongSize = PluginProbeInvoker { _, _ -> PluginProbeOutput(0, probeText(size = 31, sha = sha), "") }
+        /* glk_module.size is the DESCRIPTOR size, not the file length: a descriptor that
+         * cannot fit inside the file we hold is impossible (33 > 32). */
+        val oversizeDescriptor = PluginProbeInvoker { _, _ ->
+            PluginProbeOutput(0, probeText(size = 33, sha = sha), "")
+        }
         assertTrue(
-            (result(root(), wrongSize, module(bytes), "x.so") as PluginImportResult.Rejected)
-                .reason.contains("31 bytes"),
+            (result(root(), oversizeDescriptor, module(bytes), "x.so") as PluginImportResult.Rejected)
+                .reason.contains("impossible descriptor size"),
         )
         val wrongHash = PluginProbeInvoker { _, _ ->
             PluginProbeOutput(0, probeText(size = 32, sha = "0".repeat(64)), "")
@@ -143,6 +209,18 @@ class PluginImportServiceTest {
             (result(root(), badId, module(bytes), "x.so") as PluginImportResult.Rejected)
                 .reason.contains("plugin id"),
         )
+    }
+
+    @Test
+    fun `a descriptor smaller than the file is accepted`() {
+        /* Regression for the device report "the probe reports 80 bytes, the picked file is
+         * 8992": the import compared the ABI descriptor size (sizeof(glk_module)) to the
+         * picked file's length, which rejected every real plugin. */
+        val bytes = ByteArray(4096)
+        val invoker = PluginProbeInvoker { _, _ ->
+            PluginProbeOutput(0, probeText(size = 80, sha = Sha256.bytes(bytes)), "")
+        }
+        assertTrue(result(root(), invoker, module(bytes), "glk_probe.so") is PluginImportResult.Imported)
     }
 
     @Test

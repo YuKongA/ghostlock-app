@@ -14,12 +14,17 @@ import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.plugin.NativePluginProbeInvoker
-import com.ghostlock.app.data.plugin.EnabledPlugin
 import com.ghostlock.app.data.plugin.PluginDescriptor
 import com.ghostlock.app.data.plugin.PluginImportResult
 import com.ghostlock.app.data.plugin.PluginImportService
 import com.ghostlock.app.data.plugin.PluginManifestEntry
 import com.ghostlock.app.data.plugin.PluginPaths
+import com.ghostlock.app.data.payload.PayloadImportResult
+import com.ghostlock.app.data.payload.PayloadImportService
+import com.ghostlock.app.data.payload.PayloadKind
+import com.ghostlock.app.data.plugin.PluginDescribeResult
+import com.ghostlock.app.data.plugin.PluginSelection
+import com.ghostlock.app.data.plugin.PluginSelectionResolver
 import com.ghostlock.app.data.plugin.PluginStore
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.ipsec.AndroidIpsecSessionFactory
@@ -41,6 +46,7 @@ import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.ShizukuStatus
 import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
+import com.ghostlock.app.domain.repository.PluginDescriptionReport
 import com.ghostlock.app.domain.repository.ProfileConfigController
 import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
@@ -120,7 +126,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         backendSelection = { combination.backend },
         executionModeSelection = { combination.toExecutionMode() },
         combinationSelection = { combination },
-        pluginSelection = { enabledPlugins() },
+        pluginSelection = { resolveSelectedPlugins() },
     )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
@@ -147,20 +153,37 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var pluginDescriptors: Map<String, PluginDescriptor> = emptyMap()
 
     /**
-     * The ENABLED plugins to put on the wire. An enabled plugin whose descriptor
-     * is unknown fails the document build: silently dropping it would run a
-     * different chain than the user configured.
+     * Run-level selection (batch 1): null = the default, i.e. every enabled
+     * plugin. Transient by design: "what this run loads" is never persisted.
      */
-    private fun enabledPlugins(): List<EnabledPlugin> {
-        val entries = runCatching { pluginStore.load() }.getOrElse { return emptyList() }
-        return entries.filter { it.enabled }.map { entry ->
-            val descriptor = pluginDescriptors[entry.id]
-                ?: error(
-                    "plugin " + entry.id +
-                        " is enabled but could not be described; open the plugins page to re-check it",
-                )
-            EnabledPlugin(entry, descriptor)
-        }
+    @Volatile
+    private var pluginRunSelection: Set<String>? = null
+
+    /**
+     * The plugins this run loads, DESCRIBED ON DEMAND.
+     *
+     * The descriptor cache is an optimization, never a prerequisite: when the
+     * document build needs a description it runs the same probe call the plugins
+     * page runs, so an enabled plugin whose page was never opened (or a fresh
+     * process) cannot break the build. A failure is a RESULT carrying the probe's
+     * own reason — the old `error(...)` here crashed the process on every
+     * document build.
+     *
+     * Run-level selection first: an ENABLED but unselected plugin is never even
+     * resolved, so it can never block the run.
+     */
+    private suspend fun resolveSelectedPlugins(): PluginSelection {
+        val entries = runCatching { pluginStore.load() }
+            .getOrElse { return PluginSelection.Ready(emptyList()) }
+        val resolution = PluginSelectionResolver.resolve(
+            entries = entries,
+            runSelection = pluginRunSelection,
+            cached = pluginDescriptors,
+            describe = pluginImportService::describe,
+        )
+        /* The fresh descriptions are cached, so the next build reuses them. */
+        pluginDescriptors = resolution.descriptors
+        return resolution.selection
     }
 
     /** P1 import pipeline: the probe runs as its own process, never in-JVM. */
@@ -519,6 +542,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             when {
                 !config.hasProfile || profileBlob == null -> {
                     archivedLog("<s> error: profile is unavailable for $release")
+                    /* P0: a selected plugin the probe could not describe blocks the
+                     * document — the run log carries the probe's own reason. */
+                    config.pluginErrors.forEach { archivedLog("<s> error: plugin: $it") }
                     1
                 }
 
@@ -713,17 +739,31 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         pluginStore.setEnabled(id, enabled)
     }
 
-    override suspend fun describePlugins(): Map<String, PluginDescriptor> =
+    override suspend fun describePlugins(): PluginDescriptionReport =
         withContext(Dispatchers.IO) {
             val entries = runCatching { pluginStore.load() }.getOrElse { emptyList() }
             val described = linkedMapOf<String, PluginDescriptor>()
+            val failures = linkedMapOf<String, String>()
             for (entry in entries) {
-                val descriptor = pluginImportService.describe(entry) ?: continue
-                described[entry.id] = descriptor
+                when (val result = pluginImportService.describe(entry)) {
+                    is PluginDescribeResult.Described -> described[entry.id] = result.descriptor
+                    /* The probe's own reason travels to the page, so the row can
+                     * say WHY instead of a generic "not described". */
+                    is PluginDescribeResult.Failed -> failures[entry.id] = result.reason
+                }
             }
             pluginDescriptors = described
-            described
+            PluginDescriptionReport(described, failures)
         }
+
+    /**
+     * Run-level selection (batch 1): null = default (every enabled plugin).
+     * Transient by design — it is never persisted into the profile or the
+     * registry, because "what this run loads" must not become a second truth.
+     */
+    override fun setPluginRunSelection(selection: Set<String>?) {
+        pluginRunSelection = selection?.toSet()
+    }
 
     override suspend fun pluginParamOverrides(): Map<String, Map<String, PluginValue>> =
         withContext(Dispatchers.IO) {
@@ -734,6 +774,49 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 entry.id to profileController.pluginOverrides(release, entry.id, descriptor)
             }.toMap()
         }
+
+    /**
+     * payload batch (a): copies a picked script or .ko into the no-backup
+     * payload bucket. The service reads the source twice (hash, then copy) and
+     * refuses a file that changed in between.
+     */
+    override suspend fun importPayloadFile(
+        kind: PayloadKind,
+        uri: String,
+        displayName: String?,
+    ): PayloadImportResult = withContext(Dispatchers.IO) {
+        val service = PayloadImportService(appContext.noBackupFilesDir, kind)
+        fun open(): java.io.InputStream =
+            appContext.contentResolver.openInputStream(uri.toUri())
+                ?: throw IllegalStateException("cannot open the picked file")
+
+        service.import(displayName ?: uri.substringAfterLast('/'), ::open)
+    }
+
+    override suspend fun pluginExtractValues(): Map<String, Map<String, PluginValue>> =
+        withContext(Dispatchers.IO) {
+            val entries = runCatching { pluginStore.load() }.getOrElse { return@withContext emptyMap() }
+            val release = System.getProperty("os.version", "").orEmpty()
+            entries.mapNotNull { entry ->
+                val descriptor = pluginDescriptors[entry.id] ?: return@mapNotNull null
+                entry.id to profileController.pluginExtracts(release, entry.id, descriptor)
+            }.toMap()
+        }
+
+    override suspend fun clearPluginOverrides(id: String) =
+        withContext(Dispatchers.IO) {
+            val release = System.getProperty("os.version", "").orEmpty()
+            profileController.clearPluginOverrides(release, id)
+        }
+
+    override fun pluginInstalledPath(id: String): String? {
+        val entry = runCatching { pluginStore.load() }.getOrNull()
+            ?.firstOrNull { it.id == id }
+            ?: return null
+        /* The registry stores the path relative to <GHOSTLOCK_HOME>/countermeasures. */
+        return File(File(appContext.noBackupFilesDir, PluginPaths.COUNTERMEASURES_ROOT), entry.modulePath)
+            .absolutePath
+    }
 
     override suspend fun setPluginParam(id: String, name: String, value: PluginValue?) =
         withContext(Dispatchers.IO) {
@@ -809,6 +892,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 "<k> profile: hasProfile=${config.hasProfile} " +
                     "invalid=${config.invalidPaths.size} release=$release",
             )
+            /* P0: the document can be missing because a selected plugin could not
+             * be emitted — say why, with the probe's own words. */
+            config.pluginErrors.forEach { onLog("<k> error: plugin: $it") }
             if (!config.hasProfile) {
                 error(
                     "no profile matched $release; import its .conf and select it, " +

@@ -33,6 +33,7 @@
 
 #include "backend/cve_2026_43284/pagecache/pagecache.hpp"
 #include "backend/cve_2026_43284/steps/chain.hpp"
+#include "contract/abi/glk_contract_abi.h"
 #include "backend/cve_2026_43284/steps/crash_dump.hpp"
 #include "backend/cve_2026_43284/steps/hook_patch.hpp"
 #include "platform/device_facts.hpp"
@@ -92,6 +93,14 @@ namespace ghostlock::backend::cve_2026_43284 {
          * chain. A null pointer leaves the window unbound, so a run without a
          * wired channel never opens /dev/glk. */
         LkmWindowRuntime *lkm_window = nullptr;
+        /* S4 P1 step 3a: the neutral POST_TERMINAL sink the composition seam
+         * binds (execution_binding). real_chain_run_lkm_window forwards it to the
+         * window, so the P1 host's dispatch runs inside the residency window.
+         * Both fields stay null on a run without a plugin section; this unit
+         * never names the host type. */
+        void (*plugin_dispatch)(void *ctx, const glk_contract_ops *ops) noexcept =
+                nullptr;
+        void *plugin_ctx = nullptr;
         /* Read bridge + helper write source for vendor carriers. When the App
          * cannot open the vendor target at all, make_real_chain_ops binds both
          * fallbacks so the page-cache write still completes (exp.c
@@ -176,9 +185,9 @@ namespace ghostlock::backend::cve_2026_43284 {
     [[nodiscard]] bool real_chain_run_lkm_window(void *ctx) noexcept;
     void real_chain_close_lkm_channel(void *ctx) noexcept;
 
-    [[nodiscard]] std::string_view chain_error_name(steps::ChainError error) noexcept;
-    [[nodiscard]] std::string_view chain_wait_name(
-            steps::ChainWaitOutcome outcome) noexcept;
+    /* chain_error_name() / chain_wait_name() are declared inline in
+     * steps/chain.hpp: the chain names its own outcomes and host tests link
+     * chain.cpp without this device-binding unit. */
 
 } // namespace ghostlock::backend::cve_2026_43284
 

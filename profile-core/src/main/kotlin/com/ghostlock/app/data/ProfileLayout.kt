@@ -470,19 +470,40 @@ object ProfileLayout {
         return platform to model
     }
 
+    /* S4 hotfix: this validates LEGACY input, i.e. maps written by OLDER revisions
+     * (persisted HOCON / prefs) that we cannot retroactively fix. An unknown key is
+     * therefore dropped with a diagnostic instead of aborting: a fail-closed require()
+     * here turns an app upgrade into a launch crash (observed on a real device:
+     * `recommend_shizuku: unknown legacy profile key`). The precedent is already in this
+     * file: `fallback_to` / `fallback.to` are known-legacy and deliberately ignored.
+     * Fail-closed stays where this revision authors the input (canonical validation). */
     private fun validateLegacy(raw: ValueMap) {
-        for (key in raw.keys) {
-            require(key in KnownLegacyTopLevel) { "$key: unknown legacy profile key" }
+        for (key in raw.keys.filter { it !in KnownLegacyTopLevel }) {
+            System.err.println("ghostlock: ignoring unknown legacy profile key '$key'")
         }
-        raw["task_struct"].asValueMap()?.let { requireKeys(it, TaskFields, "task_struct") }
-        raw["cred"].asValueMap()?.let { requireKeys(it, CredFields, "cred") }
-        raw["offset"].asValueMap()?.let { requireKeys(it, OffsetFields, "offset") }
-        raw["kernelsnitch"].asValueMap()?.let { requireKeys(it, KernelsnitchFields, "kernelsnitch") }
-        raw["backend"].asValueMap()?.let {
-            requireKeys(it, setOf("steps", "kind", BackendKind.Cve2026_43284.token), "backend")
-        }
+        dropUnknownLegacyKeys(raw["task_struct"].asValueMap(), TaskFields, "task_struct")
+        dropUnknownLegacyKeys(raw["cred"].asValueMap(), CredFields, "cred")
+        dropUnknownLegacyKeys(raw["offset"].asValueMap(), OffsetFields, "offset")
+        dropUnknownLegacyKeys(raw["kernelsnitch"].asValueMap(), KernelsnitchFields, "kernelsnitch")
+        dropUnknownLegacyKeys(
+            raw["backend"].asValueMap(),
+            setOf("steps", "kind", BackendKind.Cve2026_43284.token),
+            "backend",
+        )
         raw["route"].asValueMap()?.let { route ->
-            for (kind in route.keys) require(kind in RouteTokens) { "route.$kind is not a known route" }
+            for (kind in route.keys.filter { it !in RouteTokens }) {
+                System.err.println("ghostlock: ignoring unknown legacy route '$kind'")
+                route.remove(kind)
+            }
+        }
+    }
+
+    /** Drops keys a newer revision no longer knows; legacy input must never abort. */
+    private fun dropUnknownLegacyKeys(map: ValueMap?, allowed: Set<String>, path: String) {
+        if (map == null) return
+        for (key in map.keys.filter { it !in allowed }) {
+            System.err.println("ghostlock: ignoring unknown legacy key '$path.$key'")
+            map.remove(key)
         }
     }
 

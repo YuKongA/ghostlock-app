@@ -7,6 +7,8 @@ import com.ghostlock.app.data.plugin.EnabledPlugin
 import com.ghostlock.app.data.plugin.PluginEmission
 import com.ghostlock.app.data.plugin.PluginManifestEntry
 import com.ghostlock.app.data.plugin.PluginProbe
+import com.ghostlock.app.data.plugin.PluginRunSelection
+import com.ghostlock.app.data.plugin.PluginSelection
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.profile.Glkv3Decoder
 import com.ghostlock.app.data.profile.Glkv3Value
@@ -16,6 +18,7 @@ import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,13 +58,14 @@ class PluginEmissionDocumentTest {
             "plugin\tdemo.plugin\t1.0\t1\t64\t" + DIGEST +
             "\tpost_terminal\tkernel_read\n" +
             "param\tdemo.plugin\tthreshold\tuint\t0\t200\tdoc\n" +
-            "param\tdemo.plugin\tmode\tstr\t0\tauto\tdoc\n",
+            "param\tdemo.plugin\tmode\tstr\t0\tauto\tdoc\n" +
+            "extract\tdemo.plugin\toffset\tuint\t1\t-\tfrom the boot image\n",
     )
 
     private fun entry(enabled: Boolean) = PluginManifestEntry(
         id = "demo.plugin",
         version = "1.0",
-        abiVersion = 1,
+        abiVersion = 1u,
         sha256 = DIGEST,
         modulePath = "demo.plugin/1.0/demo.plugin.so",
         enabled = enabled,
@@ -69,7 +73,7 @@ class PluginEmissionDocumentTest {
         importedAtMs = 7L,
     )
 
-    private fun controller(root: File, emissions: () -> List<EnabledPlugin>) =
+    private fun controller(root: File, emissions: suspend () -> PluginSelection) =
         AndroidProfileConfigController(
             context = context,
             filesDir = root,
@@ -88,8 +92,9 @@ class PluginEmissionDocumentTest {
 
     /** Builds the document the shape golden is taken from. */
     private fun goldenDocument(root: File): ByteArray = runBlocking {
-        val controller = controller(root) { listOf(EnabledPlugin(entry(true), descriptor)) }
+        val controller = controller(root) { ready(listOf(EnabledPlugin(entry(true), descriptor))) }
         controller.setPluginParam(release, "demo.plugin", "threshold", PluginValue.UInt(7u))
+        controller.setPluginExtract(release, "demo.plugin", "offset", PluginValue.UInt(4096u))
         val config = controller.load(release, pair)
         requireNotNull(controller.nativeDocument(config))
     }
@@ -97,9 +102,10 @@ class PluginEmissionDocumentTest {
     @Test
     fun editingRoundTrip() = runBlocking {
         val root = Files.createTempDirectory("glk-plugin-emission").toFile()
-        val controller = controller(root) { listOf(EnabledPlugin(entry(true), descriptor)) }
+        val controller = controller(root) { ready(listOf(EnabledPlugin(entry(true), descriptor))) }
         try {
             controller.setPluginParam(release, "demo.plugin", "threshold", PluginValue.UInt(7u))
+            controller.setPluginExtract(release, "demo.plugin", "offset", PluginValue.UInt(4096u))
             val config = controller.load(release, pair)
             assertTrue(config.hasProfile)
             val bytes = requireNotNull(controller.nativeDocument(config))
@@ -114,6 +120,7 @@ class PluginEmissionDocumentTest {
                     "demo.plugin.module_path",
                     "demo.plugin.module_hash",
                     "demo.plugin.params.threshold",
+                    "demo.plugin.extract.offset",
                 ),
                 section.entries.map { it.key }.toSet(),
             )
@@ -137,9 +144,13 @@ class PluginEmissionDocumentTest {
                 Glkv3Value.UInt(7u),
                 section.entries.first { it.key == "demo.plugin.params.threshold" }.value,
             )
-            /* Only explicit overrides ride, and extract.* is never emitted. */
+            /* P2: the resolved extractor value rides in its own group, typed. */
+            assertEquals(
+                Glkv3Value.UInt(4096u),
+                section.entries.first { it.key == "demo.plugin.extract.offset" }.value,
+            )
+            /* Only explicit overrides ride: an unset param is absent. */
             assertTrue(section.entries.none { it.key == "demo.plugin.params.mode" })
-            assertTrue(section.entries.none { it.key.contains(".extract.") })
 
             controller.setPluginParam(release, "demo.plugin", "threshold", null)
             val cleared = controller.load(release, pair)
@@ -152,6 +163,78 @@ class PluginEmissionDocumentTest {
                 Glkv3Value.Bool(true),
                 clearedSection.entries.first { it.key == "demo.plugin.enabled" }.value,
             )
+            /* Clearing a parameter leaves the extractor value untouched. */
+            assertEquals(
+                Glkv3Value.UInt(4096u),
+                clearedSection.entries.first { it.key == "demo.plugin.extract.offset" }.value,
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    /** batch ② action: clearing every override returns the declared defaults. */
+    @Test
+    fun `clearing every override returns the plugin to its declared defaults`() = runBlocking {
+        val root = Files.createTempDirectory("glk-plugin-clear").toFile()
+        val controller = controller(root) { ready(listOf(EnabledPlugin(entry(true), descriptor))) }
+        try {
+            controller.setPluginParam(release, "demo.plugin", "threshold", PluginValue.UInt(7u))
+            controller.setPluginExtract(release, "demo.plugin", "offset", PluginValue.UInt(4096u))
+            var config = controller.load(release, pair)
+            var section = requireNotNull(
+                pluginSection(requireNotNull(controller.nativeDocument(config))),
+            )
+            assertTrue(section.entries.any { it.key == "demo.plugin.params.threshold" })
+            assertTrue(section.entries.any { it.key == "demo.plugin.extract.offset" })
+
+            controller.clearPluginOverrides(release, "demo.plugin")
+            config = controller.load(release, pair)
+            section = requireNotNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
+            assertTrue(section.entries.none { it.key.startsWith("demo.plugin.params.") })
+            assertTrue(section.entries.none { it.key.startsWith("demo.plugin.extract.") })
+            /* Only the overrides went away; the static fields stay. */
+            assertEquals(
+                Glkv3Value.Bool(true),
+                section.entries.first { it.key == "demo.plugin.enabled" }.value,
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    /**
+     * Batch 1: the run-level selection is the last gate before the encoder — an
+     * empty selection must leave the document with NO plugin section at all
+     * (byte-identical to the no-plugin case), and an unknown id selects nothing.
+     */
+    @Test
+    fun `the run selection decides what the document carries`() = runBlocking {
+        val root = Files.createTempDirectory("glk-plugin-run-selection").toFile()
+        var selection: Set<String>? = null
+        val controller = controller(root) {
+            ready(
+                PluginRunSelection.of(listOf(entry(true)), selection).map {
+                    EnabledPlugin(it, descriptor)
+                },
+            )
+        }
+        try {
+            /* Default (null): every enabled plugin rides. */
+            var config = controller.load(release, pair)
+            assertNotNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
+            /* An explicit selection naming it: still rides. */
+            selection = setOf("demo.plugin")
+            config = controller.load(release, pair)
+            assertNotNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
+            /* Load nothing this run: no plugin section, exactly like no plugin. */
+            selection = emptySet()
+            config = controller.load(release, pair)
+            assertNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
+            /* An unknown id selects nothing. */
+            selection = setOf("unknown.plugin")
+            config = controller.load(release, pair)
+            assertNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
         } finally {
             root.deleteRecursively()
         }
@@ -160,7 +243,7 @@ class PluginEmissionDocumentTest {
     @Test
     fun disabledPluginEmitsNoSection() = runBlocking {
         val root = Files.createTempDirectory("glk-plugin-emission-off").toFile()
-        val controller = controller(root) { emptyList() }
+        val controller = controller(root) { ready(emptyList()) }
         try {
             val config = controller.load(release, pair)
             assertNull(pluginSection(requireNotNull(controller.nativeDocument(config))))
@@ -203,6 +286,70 @@ class PluginEmissionDocumentTest {
         val section = requireNotNull(pluginSection(bytes))
         assertTrue(section.entries.any { it.key == "demo.plugin.enabled" })
         assertTrue(section.entries.any { it.key == "demo.plugin.params.threshold" })
+        assertTrue(section.entries.any { it.key == "demo.plugin.extract.offset" })
+    }
+
+    /** One convenience: the P0 tests below read better than a bare constructor. */
+    private fun ready(plugins: List<EnabledPlugin>): PluginSelection =
+        PluginSelection.Ready(plugins)
+
+    /**
+     * P0: a SELECTED plugin the probe could not describe used to THROW inside
+     * every document build (the process died on each run). It must be a RESULT:
+     * the load returns, the document is unavailable, and the reason is visible.
+     */
+    @Test
+    fun blockedPluginSelectionDoesNotCrashAndNamesTheReason() = runBlocking {
+        val root = Files.createTempDirectory("glk-plugin-blocked").toFile()
+        val reason = "glk.probe: the module file is missing: /data/x/glk.probe.so"
+        val controller = controller(root) { PluginSelection.Blocked(listOf(reason)) }
+        try {
+            val config = controller.load(release, pair)
+            assertTrue(config.hasProfile)
+            assertNull(controller.nativeDocument(config))
+            assertEquals(listOf(reason), config.pluginErrors)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    /** P0: the run-level selection keeps a plugin this run does not load out. */
+    @Test
+    fun anEmptySelectionStillBuildsTheDocument() = runBlocking {
+        val root = Files.createTempDirectory("glk-plugin-none").toFile()
+        val controller = controller(root) { ready(emptyList()) }
+        try {
+            val config = controller.load(release, pair)
+            assertTrue(config.pluginErrors.isEmpty())
+            assertNotNull(controller.nativeDocument(config))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    /**
+     * P0 (the device path): a registry row with no pinned stage (`-` in
+     * plugins.tsv) must still emit. A plugin with ONE declared stage has a defined
+     * default policy; native fails the whole run with StageMissing otherwise.
+     */
+    @Test
+    fun anUnpinnedStageFallsBackToTheOnlyDeclaredStage() = runBlocking {
+        val root = Files.createTempDirectory("glk-plugin-stage").toFile()
+        val controller = controller(root) {
+            ready(listOf(EnabledPlugin(entry(true).copy(stage = null), descriptor)))
+        }
+        try {
+            val config = controller.load(release, pair)
+            val section = requireNotNull(
+                pluginSection(requireNotNull(controller.nativeDocument(config))),
+            )
+            assertEquals(
+                Glkv3Value.Str("post_terminal"),
+                section.entries.first { it.key == "demo.plugin.stage" }.value,
+            )
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     private companion object {

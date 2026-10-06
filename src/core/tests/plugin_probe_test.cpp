@@ -105,13 +105,17 @@ int main() {
         Capture err;
         assert(run_probe(path, nullptr, out, err, false) == 0);
         const std::vector<std::string> lines = lines_of(out);
-        assert(lines.size() >= 9u);
+        assert(lines.size() >= 10u);
         assert(lines[0] == "host_abi\t1");
         /* The relative name only: the App compares this literal, never a path. */
         assert(lines[1] == "countermeasures_root\tcountermeasures");
         assert(lines[2] ==
                "host_stages\tpre_spawn,post_spawn,pre_terminal,post_terminal");
         assert(lines[3] == "host_caps\tkernel_read,kernel_write,alias,child_task");
+        /* P1 revision: the backend stage matrix travels in the header so the App
+         * never hard-codes it (single authority: plugin/schema.hpp). */
+        assert(lines[4] ==
+               "stage_availability\t43499:pre_terminal;43284:post_terminal");
         const std::string *plugin = find_line(lines, "plugin\t");
         assert(plugin != nullptr);
         assert(count_columns(*plugin) == 8u);
@@ -125,7 +129,8 @@ int main() {
         assert(find_line(lines, "param\ttest.schema\tthreshold\tuint\t1\t200\tuint parameter") != nullptr);
         assert(find_line(lines, "param\ttest.schema\tmode\tstr\t0\tauto\tstring parameter") != nullptr);
         assert(find_line(lines, "param\ttest.schema\tenabled\tbool\t0\t1\tbool parameter") != nullptr);
-        assert(find_line(lines, "param\ttest.schema\tdelta\tint\t0\t0\t-") != nullptr);
+        /* Audit D1: an INT default is signed; -5 must not print as 2^64-5. */
+        assert(find_line(lines, "param\ttest.schema\tdelta\tint\t0\t-5\t-") != nullptr);
         assert(find_line(lines, "extract\ttest.schema\ttask_offset\tuint\t1\t0\textractor-provided offset") != nullptr);
         assert(find_line(lines, "reject\t") == nullptr);
         assert(err.text.empty());
@@ -215,6 +220,21 @@ int main() {
         assert(find_line(lines, "param\t") == nullptr);
         assert(find_line(lines, "extract\t") == nullptr);
         assert(find_line(lines, "reject\t") == nullptr);
+    }
+
+    /* ---- 5b. Audit D4/D7: a hook with a NULL name and a parameter with a
+     * control byte are NOT published as rows; only reject rows name them. ---- */
+    {
+        const std::string path = fixture_path("cm_test_plugin_nullhook.so");
+        Capture out;
+        Capture err;
+        assert(run_probe(path, nullptr, out, err, false) == 0);
+        const std::vector<std::string> lines = lines_of(out);
+        assert(find_line(lines, "plugin\tdemo.nullhook\t") != nullptr);
+        assert(find_line(lines, "hook\t") == nullptr);
+        assert(find_line(lines, "param\t") == nullptr);
+        assert(find_line(lines, "reject\tdemo.nullhook\tHooksMissing") != nullptr);
+        assert(find_line(lines, "reject\tdemo.nullhook\tInvalidArgument") != nullptr);
     }
 
     /* ---- 6. The good v1-style fixture still describes (tail zeroed). ---- */

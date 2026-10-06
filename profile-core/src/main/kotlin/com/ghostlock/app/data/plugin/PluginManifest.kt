@@ -11,7 +11,8 @@ package com.ghostlock.app.data.plugin
 data class PluginManifestEntry(
     val id: String,
     val version: String,
-    val abiVersion: Int,
+    /** uint32 in the ABI: rendered and parsed as an unsigned decimal. */
+    val abiVersion: UInt,
     /** Lower-case hex SHA-256 of the imported .so; the loader re-checks it. */
     val sha256: String,
     /** Root-relative path under GHOSTLOCK_HOME (PluginPaths layout). */
@@ -66,7 +67,7 @@ object PluginManifest {
             out += PluginManifestEntry(
                 id = id,
                 version = parts[1],
-                abiVersion = parts[2].toIntOrNull()
+                abiVersion = parts[2].toUIntOrNull()
                     ?: error("plugin manifest abi_version is not a number: " + line),
                 sha256 = sha256,
                 modulePath = modulePath,

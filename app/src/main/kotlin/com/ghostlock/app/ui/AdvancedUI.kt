@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,11 +48,11 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
@@ -150,9 +151,10 @@ internal fun AdvancedScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.advanced_settings),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -167,6 +169,7 @@ internal fun AdvancedScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
@@ -201,6 +204,15 @@ internal fun AdvancedScreen(
                         title = stringResource(R.string.plugins),
                         summary = stringResource(R.string.plugins_summary),
                         onClick = actions::onOpenPlugins,
+                    )
+                }
+            }
+            item(key = "payload") {
+                Card {
+                    ArrowPreference(
+                        title = stringResource(R.string.payload),
+                        summary = stringResource(R.string.payload_summary),
+                        onClick = actions::onOpenPayload,
                     )
                 }
             }
@@ -263,10 +275,11 @@ internal fun ParameterScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     val uriHandler = LocalUriHandler.current
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.parameters),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -281,6 +294,7 @@ internal fun ParameterScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
@@ -350,9 +364,10 @@ internal fun LoadConfigScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.load_config_title),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -367,6 +382,7 @@ internal fun LoadConfigScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
@@ -512,11 +528,12 @@ internal fun UserProfileDetailScreen(
     name: String,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     val profile = state.userProfiles.firstOrNull { it.name == name }
     val loaded = state.executionHasProfile && name == state.activeUserProfile
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.user_profile_detail),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -531,6 +548,7 @@ internal fun UserProfileDetailScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
@@ -674,9 +692,10 @@ internal fun ProfileOverrideScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.override_title),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -691,6 +710,7 @@ internal fun ProfileOverrideScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
@@ -801,9 +821,10 @@ internal fun BuiltinProfileScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.load_builtin_profile),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -818,6 +839,7 @@ internal fun BuiltinProfileScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .scrollEndHaptic()
@@ -919,10 +941,11 @@ internal fun AdvancedOverrideScreen(
     actions: GhostlockActions,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     Scaffold(
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = stringResource(R.string.debug_profile_override),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
@@ -937,6 +960,7 @@ internal fun AdvancedOverrideScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()

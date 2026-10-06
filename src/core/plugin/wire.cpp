@@ -146,7 +146,13 @@ namespace ghostlock::plugin {
                 continue;
             }
             if (split.suffix == ".enabled") {
-                if (entry.value.is_text || entry.value.width != 1u) {
+                /* The NEUTRAL Document does not preserve the GLKv3 bool/uint
+                 * distinction: a decoded bool arrives as a present numeric with
+                 * the default wire width (profile/document.hpp Section::add), so
+                 * the rule is "non-text scalar whose value is 0 or 1". A text
+                 * value or any other number is still rejected fail-closed. */
+                if (entry.value.is_text || !entry.value.present ||
+                    entry.value.raw > 1u) {
                     return fail(PluginWireError::EnabledNotBool, id, 0u);
                 }
                 group.seen_enabled = true;

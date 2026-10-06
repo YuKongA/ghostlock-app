@@ -1,0 +1,7 @@
+host_abi	1
+countermeasures_root	countermeasures
+host_stages	pre_spawn,post_spawn,pre_terminal,post_terminal
+host_caps	kernel_read,kernel_write,alias,child_task
+stage_availability	43499:pre_terminal;43284:post_terminal
+plugin	conformance.min	1.0	1	80	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef	post_terminal	kernel_read
+param	conformance.min	threshold	uint	1	5	uint doc	extra

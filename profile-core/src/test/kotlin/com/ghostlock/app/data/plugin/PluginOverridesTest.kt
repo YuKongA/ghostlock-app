@@ -18,7 +18,9 @@ class PluginOverridesTest {
             "param\tdemo.plugin\tthreshold\tuint\t0\t200\tdoc\n" +
             "param\tdemo.plugin\tdelta\tint\t0\t0\tdoc\n" +
             "param\tdemo.plugin\tflag\tbool\t0\t1\tdoc\n" +
-            "param\tdemo.plugin\tmode\tstr\t0\tauto\tdoc\n",
+            "param\tdemo.plugin\tmode\tstr\t0\tauto\tdoc\n" +
+            "extract\tdemo.plugin\toffset\tuint\t1\t-\tfrom the boot image\n" +
+            "extract\tdemo.plugin\tsymbol\tstr\t1\t-\tfrom kallsyms\n",
     )
 
     private fun tree(params: Map<String, Any?>): Map<String, Any?> =
@@ -43,6 +45,41 @@ class PluginOverridesTest {
         assertEquals(PluginValue.Bool(true), values["flag"])
         assertEquals(PluginValue.Str("manual"), values["mode"])
         assertEquals("plugin.demo.plugin.params.mode", PluginOverrides.path("demo.plugin", "mode"))
+    }
+
+    @Test
+    fun `extractor values are read from their own group with declared types`() {
+        val tree = mapOf(
+            "plugin" to mapOf(
+                "demo.plugin" to mapOf(
+                    "extract" to mapOf("offset" to 4096L, "symbol" to "task_defex_enforce"),
+                ),
+            ),
+        )
+        val values = PluginOverrides.extract(tree, "demo.plugin", descriptor)
+        assertEquals(PluginValue.UInt(4096u), values["offset"])
+        assertEquals(PluginValue.Str("task_defex_enforce"), values["symbol"])
+        assertEquals(
+            "plugin.demo.plugin.extract.offset",
+            PluginOverrides.extractPath("demo.plugin", "offset"),
+        )
+        /* params and extract never bleed into each other. */
+        assertTrue(PluginOverrides.params(tree, "demo.plugin", descriptor).isEmpty())
+        val paramsTree = tree(mapOf("offset" to 1L))
+        assertTrue(PluginOverrides.extract(paramsTree, "demo.plugin", descriptor).isEmpty())
+    }
+
+    @Test
+    fun `an undeclared or mistyped extractor value fails closed`() {
+        fun extract(values: Map<String, Any?>): Map<String, PluginValue> = PluginOverrides.extract(
+            mapOf("plugin" to mapOf("demo.plugin" to mapOf("extract" to values))),
+            "demo.plugin",
+            descriptor,
+        )
+        assertTrue(extract(emptyMap()).isEmpty())
+        assertThrows(IllegalArgumentException::class.java) { extract(mapOf("mystery" to 1L)) }
+        assertThrows(IllegalArgumentException::class.java) { extract(mapOf("offset" to "4096")) }
+        assertThrows(IllegalArgumentException::class.java) { extract(mapOf("symbol" to 7L)) }
     }
 
     @Test

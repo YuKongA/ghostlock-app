@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui
 
+import com.ghostlock.app.R
+import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.plugin.PluginConfigValidator
 import com.ghostlock.app.data.plugin.PluginManifestEntry
 import com.ghostlock.app.data.plugin.PluginParamType
@@ -16,10 +18,17 @@ class PluginPresentationTest {
 
     private val sha = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
+    /** Words distinct from the English defaults: only injection can spell them. */
+    private val words = PluginTexts(
+        required = "REQ",
+        unresolved = "UNRES",
+        defaultLadder = "LADDER",
+    )
+
     private fun entry(id: String = "demo.plugin", enabled: Boolean = false) = PluginManifestEntry(
         id = id,
         version = "1.0",
-        abiVersion = 1,
+        abiVersion = 1u,
         sha256 = sha,
         modulePath = id + "/1.0/" + id + ".so",
         enabled = enabled,
@@ -41,21 +50,85 @@ class PluginPresentationTest {
     )
 
     @Test
-    fun `a row without a descriptor is greyed but still listed`() {
-        val row = pluginRows(listOf(entry()), emptyMap()).single()
-        assertEquals("demo.plugin", row.id)
-        assertFalse(row.selectable)
-        assertTrue(row.blockedReason!!.contains("native probe"))
-        assertEquals("abi 1", row.summary)
+    fun `a stage the selected backend cannot run is noted from the probe matrix only`() {
+        /* The matrix is native data: the App only looks the selected backend up. */
+        val described = PluginProbe.parse(
+            "host_abi\t1\n" +
+                "countermeasures_root\tcountermeasures\n" +
+                "host_stages\tpre_spawn,post_spawn,pre_terminal,post_terminal\n" +
+                "host_caps\tkernel_read,alias\n" +
+                "stage_availability\t43499:pre_terminal;43284:post_terminal\n" +
+                "plugin\tdemo.plugin\t1.0\t1\t64\t" + sha + "\tpost_terminal\tkernel_read\n",
+        )
+        val rows = mapOf("demo.plugin" to described)
+        val on43499 = pluginRows(listOf(entry()), rows, BackendKind.Cve2026_43499).single()
+        val note = requireNotNull(on43499.stageNote) { "the stage note must be present" }
+        assertEquals(R.string.plugin_issue_stage_unavailable, note.resId)
+        assertTrue(note.args.contains("post_terminal"))
+        assertTrue(note.args.contains("cve_2026_43499"))
+        assertTrue(note.args.contains("pre_terminal"))
+        /* The very same plugin is fine on the backend that implements the stage. */
+        assertNull(
+            pluginRows(listOf(entry()), rows, BackendKind.Cve2026_43284).single().stageNote,
+        )
+        /* No matrix, no selected backend or no configured stage: no note. */
+        assertNull(pluginRows(listOf(entry()), mapOf("demo.plugin" to descriptor()), null).single().stageNote)
+        assertNull(
+            pluginRows(listOf(entry()), mapOf("demo.plugin" to descriptor()), BackendKind.Cve2026_43499)
+                .single().stageNote,
+        )
+        assertNull(
+            pluginRows(listOf(entry().copy(stage = null)), rows, BackendKind.Cve2026_43499)
+                .single().stageNote,
+        )
     }
 
     @Test
-    fun `a host-acceptable descriptor makes the row selectable`() {
+    fun `run selection defaults to every enabled plugin and honours an explicit set`() {
+        val enabledRow = entry(id = "alpha.plugin", enabled = true)
+        val disabledRow = entry(id = "beta.plugin", enabled = false)
+        val rows = listOf(enabledRow, disabledRow)
+        fun selected(selection: Set<String>?): List<String> =
+            pluginRows(rows, emptyMap(), null, selection).filter { it.selected }.map { it.id }
+
+        /* Default: every enabled plugin, never a disabled one. */
+        assertEquals(listOf("alpha.plugin"), selected(null))
+        assertEquals(listOf("alpha.plugin"), selected(setOf("alpha.plugin")))
+        /* An explicit empty set is "load nothing this run". */
+        assertTrue(selected(emptySet()).isEmpty())
+        /* Naming a disabled plugin does not select it. */
+        assertTrue(selected(setOf("beta.plugin")).isEmpty())
+    }
+
+    @Test
+    fun `a row without a descriptor is run-unusable but still toggleable`() {
+        val row = pluginRows(listOf(entry()), emptyMap()).single()
+        assertEquals("demo.plugin", row.id)
+        assertFalse(row.runUsable)
+        /* P0 UX: an installed row is ALWAYS switchable — otherwise disabling a
+         * plugin (which drops its fresh description) would lock the user out. */
+        assertTrue(row.toggleable)
+        assertEquals(R.string.plugin_issue_no_descriptor, row.blockedReason!!.resId)
+        assertEquals(
+            listOf(PluginLine(R.string.plugin_summary_abi, listOf("1"))),
+            row.summary,
+        )
+    }
+
+    @Test
+    fun `a host-acceptable descriptor makes the row run-usable`() {
         val row = pluginRows(listOf(entry()), mapOf("demo.plugin" to descriptor())).single()
-        assertTrue(row.selectable)
+        assertTrue(row.runUsable)
+        assertTrue(row.toggleable)
         assertNull(row.blockedReason)
-        assertTrue(row.summary.contains("post_terminal"))
-        assertTrue(row.summary.contains("kernel_read"))
+        assertEquals(
+            listOf(
+                PluginLine(R.string.plugin_summary_abi, listOf("1")),
+                PluginLine(R.string.plugin_summary_stages, listOf("post_terminal")),
+                PluginLine(R.string.plugin_summary_caps, listOf("kernel_read")),
+            ),
+            row.summary,
+        )
         assertEquals(sha.take(12), row.sha256Short)
     }
 
@@ -65,8 +138,59 @@ class PluginPresentationTest {
             listOf(entry()),
             mapOf("demo.plugin" to descriptor(caps = "kernel_read,kernel_hook")),
         ).single()
-        assertFalse(row.selectable)
-        assertTrue(row.blockedReason!!.contains("kernel_hook"))
+        assertFalse(row.runUsable)
+        /* Still switchable: an unusable plugin must be disable-able/retry-able. */
+        assertTrue(row.toggleable)
+        val blocked = requireNotNull(row.blockedReason)
+        assertEquals(R.string.plugin_issue_field_error, blocked.resId)
+        assertTrue(blocked.args.any { arg -> arg.toString().contains("kernel_hook") })
+    }
+
+    /**
+     * P0 UX regression (the device report: "after switching a plugin off, the
+     * switch greys out and it can only be switched on again from another
+     * screen"). The disable path rebuilds the rows BEFORE a fresh description
+     * exists; that state must still leave the enable switch interactive, and the
+     * re-enabled row must become run-usable as soon as the description is back.
+     */
+    @Test
+    fun `disabling a plugin never locks its enable switch`() {
+        val disabled = pluginRows(listOf(entry(enabled = false)), emptyMap()).single()
+        assertFalse(disabled.enabled)
+        assertFalse(disabled.runUsable)
+        assertTrue("the enable switch must stay interactive", disabled.toggleable)
+
+        /* Re-enabled with the description back (refreshPlugins re-describes):
+         * usable again, without leaving the page. */
+        val reenabled = pluginRows(
+            listOf(entry(enabled = true)),
+            mapOf("demo.plugin" to descriptor()),
+        ).single()
+        assertTrue(reenabled.enabled)
+        assertTrue(reenabled.runUsable)
+        assertNull(reenabled.blockedReason)
+
+        /* The device acceptance path: off → on → off → on, four times, always
+         * with the row's description-moment (empty map) in between. */
+        repeat(4) { cycle ->
+            val on = cycle % 2 == 0
+            val row = pluginRows(listOf(entry(enabled = on)), emptyMap()).single()
+            assertEquals(on, row.enabled)
+            assertTrue("cycle " + cycle + " locked the switch", row.toggleable)
+        }
+    }
+
+    /** Only ENABLED plugins can be selected for a run, whatever the selection says. */
+    @Test
+    fun `a disabled plugin can never be selected for the run`() {
+        val rows = pluginRows(
+            listOf(entry(enabled = false)),
+            mapOf("demo.plugin" to descriptor()),
+            runSelection = setOf("demo.plugin"),
+        )
+        assertFalse(rows.single().selected)
+        /* And it is not counted as a blocking selection either. */
+        assertTrue(selectedPluginErrors(rows).isEmpty())
     }
 
     @Test
@@ -122,9 +246,10 @@ class PluginPresentationTest {
             overrides = emptyMap(),
         )
         val rows = pluginParamRows(plugin, emptyMap(), errors)
-        assertEquals("arm_delay_us (uint, required) — 200", pluginParamSummary(rows[0]))
-        assertTrue(pluginParamSummary(rows[1]).startsWith("token (str, required)"))
-        assertTrue(pluginParamSummary(rows[1]).contains("required parameter"))
+        assertEquals("arm_delay_us (uint, REQ) — 200", pluginParamSummary(rows[0], words))
+        assertTrue(pluginParamSummary(rows[1], words).startsWith("token (str, REQ)"))
+        /* The reason is the validator's, not the page's, so it stays as it is. */
+        assertTrue(pluginParamSummary(rows[1], words).contains("required parameter"))
     }
 
     @Test

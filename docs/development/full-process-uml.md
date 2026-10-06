@@ -12,7 +12,7 @@
 | **A2** | 符号与类型 | raw image | `kallsyms::decode_names/decode_addresses`, `btf::parse_btf` | 符号表（名→VA）、BTF 结构 | 缺 BTF → 仅 kallsyms |
 | **A3** | 反汇编与推导 | 符号表 + 机器码 | `disasm::disassemble_symbol`, `derive::*` | offset/几何（`task_struct`/`cred`/`offset`/route 几何） | 模式不匹配 → 字段缺失 |
 | **A4** | 物理布局 | raw image | `iomem::find_kernel_memory_map_entry`, `analysis::*` | `kernel_phys_load/offset`、`delta` | 无 iomem → 缺省 |
-| **A5** | 产出 profile | `AnalysisResult` | `report::render_conf`（canonical 布局 + `schema_version = 3`；`--route`/`--steps-path` 决定组合 token）; `render_json`（v1） | `*.conf`（可导入 App）/`*.json` | `cargo test` 断言「生成 ≡ 内置」+「产出的 token ∈ `combination-manifest.tsv`」 |
+| **A5** | 产出 profile | `AnalysisResult`（+ 可选 `--plugin-descriptor <probe-tsv>`，可重复） | `report::render_conf`（canonical 布局 + `schema_version = 3`；`--route`/`--steps-path` 决定组合 token）；带描述符时按插件描述符产出 `plugin.<id>.extract.<key>`（键名/类型**只来自描述符**；R1 profile 路径 / R3 BTF / R2 kallsyms；追加在 `countermeasure` 之后）; `render_json`（v1） | `*.conf`（可导入 App）/`*.json` | `cargo test` 断言「生成 ≡ 内置」+「产出的 token ∈ `combination-manifest.tsv`」；required 缺失 → 失败、optional 缺失 → 省略且不写 default；**无开关时输出逐字节不变** |
 | **B1** | HOCON 加载 | `assets/kernel_profiles/*.conf` + `index.conf` + 用户导入 | `HoconSupport`（include 展开、`${}` 变量） | `ValueMap`（含 legacy 键） | 未知键 → 报错带点分路径 |
 | **B2** | 归一化 | legacy `ValueMap` | `ProfileLayout.canonicalize`（别名表：`selection.steps`/`backend.steps` → 所属 `backend.<id>.steps` 组合 token（`CombinationCatalog.fromLegacySteps`；`normalize` 仅用于输入边界）、`cred/offset` 平台/私有拆分、`meta.*`→`common.*`） | canonical owner-qualified map（steps = 解析后的 canonical token） | 未识别旧键 / 未知 legacy step id → fail-closed |
 | **B3** | 合并与校验 | canonical map + 覆盖 + 设备 `uname -r` | `ProfileMerger.resolveMerged` → `ProfileResolver.validateMerged` | `ProfileConfig`（resolved 字段集） | release 不匹配 → 拒绝 |
@@ -24,10 +24,15 @@
 | **C3** | 选择解析 | Document 根 token + `backend.<id>.steps` | token → `contract::kCombinationCatalog` 行 `CombinationSpec{token, doc, backend, kind, route, path, steps, terminal, available}`（12 行 = **7 可用 + 5 计划**）；`CombinationId{backend, route, path}` 是**分解视图**，`CombinationKind` 仍是 wire 紧凑 id（uint8，枚举值与顺序不变） | `DispatchTarget` + 派生 (route, steps, terminal) | 未知 token（回显）/ 计划项 `available=false` / 缺 `steps` / 根 `route`·`terminal` 与 token 不一致 → 拒绝 |
 | **C4** | 绑定 | Document + owner Schema | `SchemaRegistry::bind_all(mode=Production)`（必需性、默认值、`default_used` 诊断）；route 缺省为 `RouteKind::None`（= 4，不进 `kRouteCatalog`），组合要求 route 而文档未给 → 拒绝；`--allow-dev-target` 只在该绑定期放宽 43284 carrier 校验（链内仍拒 dev carrier） | 类型化 View（route 几何、43284 策略、握手参数） | 缺必需 / 类型不符 / route 不一致 / carrier 未过校验 → Rejected |
 | **C4b** | 插件校验 | Document `plugin` 段（仅启用插件） | `plugin::validate_plugin_wire`（fail-closed：`enabled` 必须是 true 的 bool、`stage` ∈ 4 个 host token、`module_path` 相对且无 `..`/反斜杠/≤256 B、`module_hash` 64 位小写 hex、动态键经 `plugin_dynamic_key` 匹配、未知字段拒绝、≤16 插件不静默丢弃）；实例化时 `plugin_descriptor_declares` 按 **size 门控**校验（v1 模块无尾部声明 → 拒绝） | `PluginWireEntry[]`（id / stage / module_path / module_hash / param_count / extract_count） | 任一规则失败 → Rejected（错误名由 `plugin_wire_error_name` 给出） |
+| **C4c** | payload 校验（设计，**待 native 半场**） | Document `payload` 段（缺省 ⇒ 不启用） | wire 校验：`tier` ∈ {`exec`,`script`,`ko`}；**单档互斥**；`ko.count` 1..8 且与实到数一致、`i` 十进制且 `< count`；路径相对 `<GHOSTLOCK_HOME>`、无 `..`/反斜杠/NUL、≤256 B；`sha256` 64 位小写 hex；**(terminal,tier) 矩阵外 → 拒绝** | 类型化 payload View | 任一规则失败 → Rejected；**无 `payload.*` ⇒ 逐字节不变** |
+| **C4d** | root 管理器存在性检查（**P1 必做**；设计稿 §4.1） | 用户选择的 `payload.root.{kind,manager}` + 系统事实 | **App 侧预检**（包是否安装 / `ksud` 或指定路径是否存在且可执行 / 哈希匹配）→ **native 绑定前复核**（fail-closed + 具名原因） | 可用性状态（未安装 / 不可启动） | 不存在或不可启动 ⇒ **不降级、不猜替代品**；结论标「未完成」+ 原因，**不中断攻击链**；**权威判定在 native**（UI 只是提前提示） |
+| **C4e** | 插件宿主构造/打开（**step 3a 已接线**） | 校验后的 `plugin` 段 + 所选 backend | 组合根 `PluginHost::from_document(decoded, backend)` **只登记**（无 dlopen、无文件访问）；**43284** 在 bind 前 `open(WindowState::WaiterClosed)`（该 backend 全程无 PI waiter）；**43499 绝不在这里打开**（step 3b 在 `pre_terminal` anchor，**未落地**） | 已注册 hook 集合（`registered()`） | open 失败 → 记账（fail-soft）；**无 `plugin` 段 ⇒ 全链无副作用、零新增字节** |
 | **C5** | 后端阶段 | View + `CoreSession` | route：`run_route`→`RouteStatus{code,step,errno,userspace_clean}`；步骤：spray/race/W1/W2/W3 | `StageResult`（ok/failed/degraded） | `DirtyFailure` → 终止（不换 route） |
 | **C6** | 终端阶段 | terminal 输入载荷（script / UMH channel） | `RootChildPolicy::run_handoff` 或 `UmhForwardPolicy::run`（`UmhReadyState`: Ready/NotReady/Unavailable） | root child / UMH→LKM 加载 | NotReady → Failed；Unavailable → **Done(降级)** |
-| **C6b** | 插件派发（每 backend **仅一个**可用点；task-9 设计，**待落地**） | 43499：终端接管前（`steps.cpp:484-490` / `:517-521`）；43284：LKM 驻留窗口内（`lkm_window.cpp:99-107`） | 同步派发：**43499 = `pre_terminal`**、**43284 = `post_terminal`** | hook 调用结果（fail-soft 记录） | 其余阶段「声明但不可用」（注册期拒绝）；43499 无 `post_terminal`、43284 无 `pre_spawn`/`post_spawn`/`pre_terminal` |
-| **C7** | 收尾 | 会话 | 状态记录（`--enable-status-record`）、SELinux 还原、LKM unload | 退出码 + status 记录 | 插件失败 → fail-soft 记录 |
+| **C6b** | 插件派发（每 backend **仅一个**可用点；**step 3a 已接线：43284**；43499 待 **step 3b**） | 43284：LKM 驻留窗口内（`lkm_window.cpp:102`，经中性 **`PluginStageSink`** 派发 `POST_TERMINAL`）；43499：终端接管前（`steps.cpp:484-490` / `:517-521`，**未接线**） | 同步派发：**43284 = `post_terminal`（已接线）**、**43499 = `pre_terminal`（step 3b）**；sink 由组合接缝在 `window->run()` 前 attach（`execution_binding.cpp` 的 thunk 是**唯一** `HostStage::` 调用点） | hook 调用结果（fail-soft 记账；**hook 失败绝不失败链**） | 其余阶段「声明但不可用」：**hook 级拒绝**（`StageUnavailableOnBackend`，不拒整插件）；可用性经探针 **`stage_availability`** 暴露；43499 无 `post_terminal`、43284 无 `pre_spawn`/`post_spawn`/`pre_terminal` |
+| **C6c** | payload 执行（**仅接管后**；设计，**待 native 半场**） | 校验后的 payload View + 接管上下文 | `exec`（argv，经 root child）/ `script`（经 LKM 通道）/ `ko`（1..8，late-load，**必须过 `lkm::precheck_module_file`**）；执行前哈希钉比对、先 `stat` 限长 | 逐项结果 + 运行结论摘要 | **绝不中断攻击链**；用户请求未完成 ⇒ 结论标「未完成」+ `payload_error` / `ko[i]=<reason>`；**提权记录照记**；`ko` 逐项继续、不回滚 |
+| **C6d** | root 管理器启动（**默认档**；设计稿 `root-manager-selection-design.md`，待用户确认） | 无 `payload` 段 ⇒ 现状 KernelSU/ksud；`payload.tier=root` ⇒ 显式 `payload.root.{kind,manager,argv}`（白名单；仅 custom 必填 argv） | `kernelsu`（**含各分支**，共享 `ksud`）：经**既有** late-load 路径（`build_late_load_command`，无 shell），`manager` 可选；`custom`：用户 argv 直传；**P2 = `folkpatch`**：**加载 KernelPatch 模块**（`apd insmod` 式手动重定位 + 绕过 CRC/vermagic + `init_module` + **软重启**，独立机制设计 + 独立门禁，落地前置灰） | root 管理器进程 / 模块加载结果 | 启动失败 ⇒ 结论标「未完成」，**不中断攻击链**；**包名绝不猜**（非 KernelSU 为空） |
+| **C7b** | 插件收尾（**step 3a**） | pipeline 结束后的宿主 | `plugin_host.close()` 卸载；诊断**仅 `registered() > 0` 时**打印一次（字段化 `run.plugin`，供真机 grep） | 卸载结果 + 诊断块 | 无插件 ⇒ **stdout/stderr 零新增字节**（无插件零字节回归判据） |
 | **D1** | 内核原语 | 进程 syscalls | PI-futex 竞争（waiter 覆盖）／ESP 页缓存写 | `RouteStatus.code=Ok` + `userspace_clean` | 竞争失败 → Retryable |
 | **D2** | 提权步骤 | 覆盖后的 cred/task | W1 SELinux permissive → W2 cred/uid0 → W3 seccomp 清除 | `uid=0`、`Enforcing` 可写 | 步骤失败 → Backend failed |
 | **D3** | 落地 | root script / helper.ko + 会话秘密 | UMH exec（vendor modprobe）或 root child 执行脚本 → `insmod` | `/dev/glk` 注册、module resident、KernelSU ready | 模块未驻留 → 轮询超时 |
@@ -95,7 +100,7 @@ stateDiagram-v2
   CleanFail --> [*]
 ```
 
-> **43499 只画 `pre_terminal` 一处插件派发**（`backend/cve_2026_43499/steps.cpp:484-490` / `:517-521`，随后移交 rooted child）：`pre_spawn` / `post_spawn` / `post_terminal` **声明但不可用**——race 窗口按**每次写尝试**开关（`steps.cpp:118` 的 `attack_write<M>` 位于 `:100-130` 写循环内），victim/child 就在该写循环里建立（`:480`），不存在「窗口关闭且 child 未建立」的点；root 接管后控制流也不再回宿主。依据：设计 `plugin-runtime-integration-design.md` §12（`ab0561f8`）。
+> **43499 只画 `pre_terminal` 一处插件派发**（`backend/cve_2026_43499/steps.cpp:484-490` / `:517-521`，随后移交 rooted child）：`pre_spawn` / `post_spawn` / `post_terminal` **声明但不可用**——race 窗口按**每次写尝试**开关（`steps.cpp:118` 的 `attack_write<M>` 位于 `:100-130` 写循环内），victim/child 就在该写循环里建立（`:480`），不存在「窗口关闭且 child 未建立」的点；root 接管后控制流也不再回宿主。依据：设计 `plugin-runtime-integration-design.md` §12（`ab0561f8`）；该矩阵经探针 `stage_availability` 暴露给 App（§2.4 注、设计 §13）。
 
 ### 2.3 43284 链状态机（含 LKM 窗口）
 
@@ -131,8 +136,8 @@ stateDiagram-v2
   [*] --> NotLoaded : enabled=true 且 wire 校验通过
   NotLoaded --> Loaded : load(path, hash) → LoadStatus.Ok
   NotLoaded --> Rejected : PathRejected / PermissionRejected / FileMissing / HashRejected / HashMismatch / OpenFailed
-  Loaded --> CallingPreTerminal : 43499 唯一可用阶段（终端接管前）
-  Loaded --> CallingPostTerminal : 43284 唯一可用阶段（LKM 驻留窗口内）
+  Loaded --> CallingPreTerminal : 43499 唯一可用阶段（终端接管前）——**step 3b 未落地**
+  Loaded --> CallingPostTerminal : 43284 唯一可用阶段（LKM 驻留窗口内）——**step 3a 已接线**
   Loaded --> StageUnavailable : 注册了该 backend 不可用的阶段 → 注册期拒绝
   StageUnavailable --> Rejected
   CallingPreTerminal --> Completed
@@ -142,9 +147,23 @@ stateDiagram-v2
   FailSoft --> Completed : 记录 lkm_window_failed，链路继续
   Completed --> [*]
   Rejected --> [*]
+  state "宿主生命周期（组合根，step 3a）" as HostLifecycle {
+    [*] --> Registered : PluginHost::from_document（只登记；无 dlopen/文件访问）
+    Registered --> Opened : 43284：bind 前 open(WindowState::WaiterClosed)
+    Opened --> HostDispatched : 窗口内 POST_TERMINAL（lkm_window.cpp:102）
+    HostDispatched --> Closed : pipeline 之后 close()
+    Closed --> [*]
+  }
+  note right of HostLifecycle
+    R1 不允许的转换：PI waiter 存活期不得 open。
+    43499 只在 pre_terminal anchor 打开（step 3b，未落地），
+    绝不在 bind 前打开。
+  end note
 ```
 
-> 四个 stage 词汇（`pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`）不变，**可用性按 backend 表达**：43499 = `pre_terminal`（`steps.cpp:484-490`/`:517-521`），43284 = `post_terminal`（`lkm_window.cpp:99-107`，LKM 驻留窗口内）；其余阶段由 host 在 `open()` 时按 backend 校验，**注册期拒绝**（§2.2 注、设计 §12 `ab0561f8`）。
+> **step 3a 已接线（2026-10-05）**：宿主由组合根构造（`main.cpp` 的 `PluginHost::from_document` + 43284 专属 `open(WindowState::WaiterClosed)`），43284 在 LKM 驻留窗口内经**中性 `PluginStageSink`** 派发 `POST_TERMINAL`（`lkm_window.cpp:102`；sink 由 `execution_binding.cpp` 的 thunk 转给 `HostStage::PostTerminal`，那是唯一的 `HostStage::` 调用点），**fail-soft**；pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。**真机门禁 PASS**（`device-gates/plugin-runtime-3a-20261005-pass.md`：正例 `called=1`/`calls=4`、`hook_failed` 不失败链、`StageUnavailableOnBackend`、`HashMismatch` 未 dlopen、无插件零字节回归；两条过程教训 = `kmi` 不得手写、试验台须清 `/data/local/tmp/.ghostlock_lkm_ok`）。**43499 的 `pre_terminal` 属 step 3b，未落地**——R1 约束：**PI waiter 存活期不得 open**（映射不得与 waiter 共存）。
+>
+> 四个 stage 词汇（`pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`）不变，**可用性按 backend 表达**：43499 = `pre_terminal`（`steps.cpp:484-490`/`:517-521`），43284 = `post_terminal`（`lkm_window.cpp:99-107`，LKM 驻留窗口内）；其余阶段的 hook 在 `open()` 时**按 backend 拒绝该 hook**（`StageUnavailableOnBackend`，不拒整插件），全部被拒记 `no_usable_hooks=1`。**可用性来源 = 探针 header 第 5 行 `stage_availability`**（唯一权威 `plugin/schema.hpp::stage_available_on()`；Kotlin 不得硬编码），依据 §2.2 注、设计 §12 `ab0561f8` 与 §13。
 
 ### 2.5 Route 状态机（`RouteResultCode`）
 
@@ -217,6 +236,8 @@ classDiagram
     class CombinationId
     class CombinationKind
     class PathKind
+    class RootProgramKind
+    class RootProgram
     class DispatchTarget
     class Capabilities
     class StageResult
@@ -233,6 +254,8 @@ classDiagram
     class RootChildPolicy
   }
   namespace ghostlock__backend__cve_2026_43284 {
+    class PluginStageSink
+    class DiagLine
     class BackendTerminal
     class LkmPolicy
     class PageCacheWrite
@@ -256,6 +279,13 @@ classDiagram
     class WireValidator
     class DynamicKeyMatcher
     class DescriptorGate
+    class PluginHost
+    class Probe
+  }
+  namespace ghostlock__payload {
+    class PayloadTier
+    class PayloadPolicy
+    class PayloadSchema
   }
   namespace ghostlock__profile__glkv3 {
     class WireType
@@ -330,6 +360,30 @@ classDiagram
     Array
     Union
   }
+  class Capability {
+    <<enumeration>>
+    KernelRead_1_0
+    KernelWrite_1_1
+    Alias_1_2
+    ChildTask_1_3
+    FileCacheWrite_1_4
+    Exec_1_5
+    KernelHook_1_6
+    Log_1_7_设计
+  }
+  class PayloadTier {
+    <<enumeration>>
+    Exec
+    Script
+    Ko
+    Root
+  }
+  class RootProgramKind {
+    <<enumeration>>
+    KernelSU
+    FolkPatch
+    Custom
+  }
   Document --> FieldSpec : binds
   SchemaRegistry --> FieldSpec : owns
   CombinationSpec --> CombinationId : 分解
@@ -340,6 +394,17 @@ classDiagram
   Pipeline --> RootChildPolicy : terminal（backend::cve_2026_43499::terminal）
   Pipeline --> UmhForwardPolicy : terminal
   Pipeline --> Loader : 阶段派发（43499 pre_terminal / 43284 post_terminal）
+  main --> PluginHost : from_document / open / close（组合根，step 3a）
+  PluginHost --> RuntimeRegistry : 注册与记账（registered/dispatch/close）
+  LkmWindowRuntime --> PluginStageSink : attach_plugin_stage()（中性函数指针 + ctx）
+  BackendTerminal --> DiagLine : run.43284 有界结构化行（批 A，≤256 B，无格式串/无分配/不含密钥）
+  Entry --> DiagLine : 失败路径具名原因（reason=<EnumName>）
+  PluginStageSink --> PluginHost : dispatch(POST_TERMINAL)（经 thunk，**不持有指针**）
+  RealChainContext --> PluginStageSink : 两个 sink 字段（执行接缝）
+  PayloadSchema --> PayloadTier : tier（设计）
+  Pipeline --> PayloadPolicy : 接管后执行（设计，待落地）
+  PayloadPolicy --> RootProgram : 启动 root 管理器（默认档；设计稿 v2）
+  PayloadSchema --> RootProgramKind : payload.root.kind 白名单（设计稿 v2；manager 为可选包名）
   Loader --> RuntimeRegistry
   Loader --> LkmChannel
   LkmWindowRuntime --> LkmChannel
@@ -350,12 +415,22 @@ classDiagram
   WireValidator --> PluginWireEntry : validate_plugin_wire 产出
   WireValidator --> DynamicKeyMatcher : plugin_dynamic_key
   DescriptorGate --> PluginWireEntry : plugin_descriptor_declares（size 门控）
+  Probe --> Capability : host_caps（caps_list 白名单；log 为设计，待落地）
+  PluginHost --> Capability : required_caps 校验（未知位 ⇒ caps_rejected）
   Controller --> DescriptorGate : 实例化按描述符校验
   CoreSession --> Document : selection
   DeviceProbeOps --> CoreSession : facts
 ```
 
 > S4 P1：`ghostlock__plugin` 的 `Schema`（`plugin/schema.hpp`）是 `plugin.<id>.*` 的路径/类型**唯一权威**，`WireValidator`（`plugin/wire.cpp::validate_plugin_wire`）做 fail-closed 文档校验（默认关闭、未知字段拒绝、`PluginWireError` 具名错误），`DescriptorGate`（`plugin_descriptor_declares`）按 **size 门控**校验动态键；动态两行的类型是 `profile::glkv3::WireType::Union`，清单拼写 `uint|int|bool|str`，`kUnionScalarTypes` 恰好 4 个成员。
+>
+> **43284 全链日志（批 A，**已落地** `a04bdb5b`；真机门禁 PASS `device-gates/43284-logging-20261005-pass.md`）**：`DiagLine`（`backend/cve_2026_43284/diag_line.hpp`）产出**有界结构化行** `run.43284 <phase> k=v …`——单行 ≤256 B（超出截断并追加 `truncated=1`）、**无分配**（固定缓冲，诊断绝不失败攻击步骤）、**无格式串语义**、值内控制字符归一为 `_`（防注入第二行）、**绝不含密钥**；正例 **16 行**、失败路径带 `reason=<EnumName>`；**always-on**（不引入 wire 开关）；本批**只做 43284，43499 另排**。
+>
+> **能力位词表（`Capability`）**：`glk_capability` 现为 7 位（`kernel_read(1<<0)`…`kernel_hook(1<<6)`，`glk_contract_abi.h:103-110`），词表权威是 `contract::Capability` + `capability_token()`（`contract/countermeasure.hpp:293-306`），探针经 `caps_list` 白名单输出 `host_caps`（`plugin/probe.cpp:109-122`/`:277-290`）。**设计扩展（未落地，待 native 设计稿）**：尾部追加 `GLK_CAP_LOG = 1<<7`（token `log`）——ABI 的 `glk_contract_ops.log` 与 host 实现**早已存在**（`glk_contract_abi.h:142`、`plugin/host_ops.cpp:215`、`plugin/loader.cpp:162`），缺的只是能力位；契约 §3.14.7.9。
+>
+> `ghostlock__payload`（`payload.tier` / `exec` / `script` / `ko`）是**第四类顶层 owner 的设计**（`contract-design.md` §3.15，`c335aabc`，用户已确认）——图中条目为**设计，尚未落地**；实现批次按同批刷新本图与 AGENTS 的 owner 白名单。
+>
+> **默认档 = root 管理器**：`RootProgramKind{KernelSU, FolkPatch, Custom}` 与 `RootProgram{kind, argv[192]}` 早已在 `contract/identity.hpp:366-380`，但**wire 零键**、运行时硬编码 `$GHOSTLOCK_HOME/ksud`（`execution_binding.cpp:49-56`）；`payload.tier=root`（+ `payload.root.kind/manager/argv`）把它们显式化——**设计稿 v2** `root-manager-selection-design.md`：**KernelSU 及分支共享 `ksud`**（用户口径）⇒ **P1 = `kernelsu`（默认 ksud，`manager` 可选）+ `custom`（用户 argv）+ 存在性/可启动检查（C4d，权威在 native）**；**P2 = `folkpatch`**——官方文档取证（<https://fp.mysqil.com/guide/jailbreak/>）：**加载 `kernelpatch.ko`**（`apd insmod` 手动重定位 + 绕过 modversions(CRC)/vermagic + `init_module` + **软重启生效**；前置条件正是 GhostLock 的 uid0 + Permissive），属**不同谱系**、独立机制与独立门禁；**包名绝不猜**（`schema.hpp:68-77`；E3 三条 404 即证据）。
 >
 > `RootChildPolicy` 的声明与实现都在 `ghostlock::backend::cve_2026_43499::terminal`（F5 / ADR-0006），`ghostlock__terminal` 只留中性件。`CombinationKind` 是 wire 紧凑 id（uint8，13 值 = Unknown + 12 token，枚举值与顺序不变）；`CombinationId{backend, route, path}` 与 `PathKind{Rootchild=1, Shizuku=2, Umh=3}` 是编译期分解视图，不是 wire 或存储变化。
 
@@ -368,6 +443,10 @@ classDiagram
     class CombinationCatalog
     class BackendKind
     class FrontendKind
+  }
+  namespace com__ghostlock__app__data__payload {
+    class PayloadLayout
+    class PayloadValidator
   }
   namespace com__ghostlock__app__data__plugin {
     class PluginProbe
@@ -404,6 +483,7 @@ classDiagram
     class CombinationPresentation
     class PluginPresentation
     class PluginSettingsUI
+    class PayloadSettingsUI
   }
   namespace com__ghostlock__app__shizuku {
     class GhostlockUserService
@@ -446,11 +526,15 @@ classDiagram
   GhostlockViewModel --> PluginImportService : 选择/导入
   AndroidGhostlockRepository --> PluginImportService
   AndroidGhostlockRepository --> PluginStore : no-backup 存储根
+  PayloadSettingsUI --> PayloadLayout : 分档设置页 + 执行前摘要（设计，待落地）
+  AndroidProfileConfigController --> PayloadLayout : payload 段发射（设计，待落地）
 ```
 
 > S4 P1 插件（`com.ghostlock.app.data.plugin` 在 profile-core 与 app 两个模块同名并存）：描述符解析 `PluginProbe`、注册表 `PluginManifest(Entry)`、路径/根 `PluginPaths`、校验 `PluginConfigValidator`、导入 `PluginImportService`（探针 + 原子安装 + 清单）、UI 投影 `PluginPresentation` / `PluginSettingsUI`。**插件配置无资产**：`plugin.conf` 已取消（2026-10-05 裁决），走既有覆盖存储；`ProfileLayout` 白名单接受 `plugin.<id>.*` 并 fail-closed。
 >
 > Kotlin 侧**没有** `CombinationKind`：白名单以 `CombinationSpec` 行表示，由 `CombinationCatalog` 从 native 导出的 `combination-manifest.tsv` 解析（两份：`app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时）。`route = null` ⇔ 清单 `route` 列 `none` ⇔ 无 route 轴（native `RouteKind::None`）；下拉摘要取清单 `doc` 列（`com.ghostlock.app.ui.CombinationPresentation` 的 `combinationSummary` / `combinationOptions`）。
+
+> **投影字段语义（规范 §4.4，强制）**：UI 行的 `runUsable`（本次运行是否可用——供运行级选择门控）、`toggleable`（**只要已安装即 true**——控件是否可交互）、`selected`（是否参与本次运行）是**三个不同语义**，不得互相复用；历史教训是 `selectable = descriptor != null && errors.isEmpty()` 被当作控件可交互性 ⇒ 插件「关掉后开关自己变灰、无法自救」（`PluginPresentation.kt:235` → `PluginSettingsUI.kt:174`）。错误一律以**诊断行**呈现，不用禁用控件表达。
 
 ### 3.3 Rust（按 `module` 分组）
 
@@ -478,8 +562,19 @@ classDiagram
     class report
     class AnalysisResult
   }
+  namespace extract_rs__plugin {
+    class plugin
+    class PluginDescriptor
+    class ExtractContext
+  }
   class NativeCombinationManifest {
     <<native 导出的 8 列组合清单>>
+  }
+  class ProbeTsv {
+    <<native --plugin-probe stdout（冻结 7 列 TSV）>>
+  }
+  class NativePluginManifest {
+    <<profile-manifest-v3.tsv 的 2 条 union 通配行>>
   }
   main --> boot
   boot --> fdt
@@ -491,9 +586,15 @@ classDiagram
   analysis --> report
   report --> AnalysisResult
   report --> NativeCombinationManifest : cargo test 断言产出 token ∈ 清单
+  main --> plugin
+  plugin --> ProbeTsv : 严格解析（设备 golden 对拍）
+  plugin --> btf : R3 struct./sizeof.
+  plugin --> kallsyms : R2 符号（基址相对）
+  plugin --> report : R1 读回 profile 字面量
+  plugin --> NativePluginManifest : cargo test 断言 plugin.* ∈ 清单
 ```
 
-> **插件探针 golden**：`app/src/test/resources/plugin-probe-golden.tsv`（11 行，设备探针 stdout 逐字节）由 native 探针入口产出、由 Kotlin `PluginProbeGoldenTest` 硬断言；与 Rust extractor 无关（extractor 投影 = P2，见 §3.14.6/§3.14.7.7）。
+> **插件探针 golden**：`app/src/test/resources/plugin-probe-golden.tsv`（11 行，设备探针 stdout 逐字节）由 native 探针入口产出、由 Kotlin `PluginProbeGoldenTest` 硬断言；它同时是 **extractor P2 的输入契约**——`--plugin-descriptor <probe-stdout.tsv>` 严格解析该 7 列 TSV（§4.3）。写入者仍是 extractor，P1 只校验形状（contract-design §3.14.6/§3.14.7.7）。
 >
 > 另有同一次导出产出的 `app/src/test/resources/combination-resolve-vectors.tsv`（40 行解析向量，test-only **单副本**、`\s`/`\t`/`\\` 转义、expected 由 native 现算），消费方是 Kotlin `CombinationTokenAgreementTest`，因此不在本 Rust 图内。
 
@@ -568,6 +669,7 @@ sequenceDiagram
   participant An as analysis/iomem
   participant Rep as report
   participant MF as combination-manifest.tsv（native 导出）
+  participant PD as plugin-descriptor.tsv（native --plugin-probe stdout）
   participant Out as 文件 (conf/json)
   CLI->>Boot: 读取镜像/OTA
   Boot->>Sym: 定位符号与 BTF
@@ -575,12 +677,42 @@ sequenceDiagram
   Dis->>An: 推导 offset/几何
   An->>Rep: AnalysisResult
   Rep->>Rep: render_conf → canonical 布局 (schema_version=3)
+  Rep->>PD: --plugin-descriptor（可重复；仅 --format conf）→ 严格 TSV → PluginDescriptor
+  Rep->>Rep: 解析：R1 读回 profile 字面量 / R3 BTF / R2 kallsyms（类型相矛盾 = 硬错误）
+  Rep->>Rep: required 缺失 → 失败；optional 缺失 → 省略（**不写 default**）
+  Rep->>Rep: 追加 plugin { <id> { extract { … } } }（仅 extract；countermeasure 之后；无条目则逐字节不变）
   Rep->>MF: cargo test 断言：产出的 token ∈ 12 行清单（8 列）
   Rep-->>MF: 同一导出器另写 40 行解析向量（test-only 单副本）
   Rep-->>Out: *.conf (flatten, 可再导入 App)
   Rep-->>Out: *.json (v1 offsets)
 ```
 
+### 4.4 43284 一次运行 + 一个 post_terminal 插件（step 3a 运行时接线）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant M as main（组合根）
+  participant H as PluginHost
+  participant B as production.bind（43284 接缝）
+  participant W as LkmWindowRuntime
+  participant K as LKM 驻留窗口
+  participant P as 插件 hook
+  M->>H: PluginHost::from_document(decoded, 43284)（只登记，不 dlopen）
+  M->>H: open(WindowState::WaiterClosed)（bind 之前；43284 无 PI waiter）
+  M->>B: bind(session, decoded, allow_dev, &plugin_host)
+  B->>W: attach_plugin_stage(sink)（window->run() 之前）
+  W->>K: 打开驻留窗口（pagecache 写）
+  K->>W: POST_TERMINAL（lkm_window.cpp:102，窗口内唯一派发点）
+  W->>P: sink.dispatch → host.dispatch(PostTerminal)
+  P-->>W: Ok / 类型化错误 —— fail-soft：只记账，**链继续**
+  W->>K: 关闭窗口（卸载内核侧）
+  M->>H: close()（卸载插件）
+  M->>M: registered() > 0 ? 打印 run.plugin 诊断 : **零新增字节**
+```
+
+> **一次真实返工（记进图/注）**：最初让窗口直接持有 `PluginHost*` → 5 个既有测试二进制被拖入 host 闭包并链接失败 ⇒ 改为**中性 `PluginStageSink`**（函数指针 + ctx，同 `ChainOps`/`LkmTransport` 惯例），依赖只留在组合接缝（1 条 Makefile 规则），4 条既有规则不动。
+> **43499 的 `pre_terminal`（step 3b）未落地**：打开点是 `steps.cpp:484-490`/`:517-521` 的 anchor，**R1：waiter 存活期不得 open**。
 ## 5. 维护约定
 
 - **一个结构只保留一处权威图**：IPO/状态机/Class/Sequence 都在本文件；其他文档链接本文件，不重复画同一结构。

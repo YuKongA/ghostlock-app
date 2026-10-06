@@ -95,6 +95,11 @@ data class ProfileConfig(
     val route: String? = null,
     /** Dotted paths whose resolved value violates the geometry rules. */
     val invalidPaths: Set<String> = emptySet(),
+    /**
+     * Why the native document could not include the selected plugins (P0): the
+     * probe's own reasons, user-visible. Empty on the normal path.
+     */
+    val pluginErrors: List<String> = emptyList(),
 ) {
     companion object {
         /**

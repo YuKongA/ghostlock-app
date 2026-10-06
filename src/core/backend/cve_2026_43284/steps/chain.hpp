@@ -154,6 +154,45 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         Timeout,
     };
 
+    /* Stable token for every ChainError / ChainWaitOutcome value. Declared here
+     * (not in the device-binding header) because the chain is a pure unit that
+     * names its own outcomes: chain.cpp logs them and the host test links
+     * chain.cpp alone. Both are the ONE authority for these tokens. */
+    [[nodiscard]] constexpr std::string_view chain_error_name(ChainError error) noexcept {
+        switch (error) {
+            case ChainError::None: return "None";
+            case ChainError::NotAvailable: return "NotAvailable";
+            case ChainError::NoCarrier: return "NoCarrier";
+            case ChainError::CarrierUnusable: return "CarrierUnusable";
+            case ChainError::InvalidPlan: return "InvalidPlan";
+            case ChainError::TargetOutOfBounds: return "TargetOutOfBounds";
+            case ChainError::PreImageMismatch: return "PreImageMismatch";
+            case ChainError::WriteFailed: return "WriteFailed";
+            case ChainError::ReadFailed: return "ReadFailed";
+            case ChainError::VerifyMismatch: return "VerifyMismatch";
+            case ChainError::RollbackFailed: return "RollbackFailed";
+            case ChainError::CrashDumpFailed: return "CrashDumpFailed";
+            case ChainError::HookFailed: return "HookFailed";
+            case ChainError::TriggerFailed: return "TriggerFailed";
+            case ChainError::LkmFailed: return "LkmFailed";
+            case ChainError::WaitTimeout: return "WaitTimeout";
+            case ChainError::CleanupFailed: return "CleanupFailed";
+            case ChainError::LkmWindowFailed: return "LkmWindowFailed";
+        }
+        return "Unknown";
+    }
+
+    [[nodiscard]] constexpr std::string_view chain_wait_name(
+            ChainWaitOutcome outcome) noexcept {
+        switch (outcome) {
+            case ChainWaitOutcome::Pending: return "Pending";
+            case ChainWaitOutcome::LkmLoaded: return "LkmLoaded";
+            case ChainWaitOutcome::Failed: return "Failed";
+            case ChainWaitOutcome::Timeout: return "Timeout";
+        }
+        return "Unknown";
+    }
+
     /* One contiguous, 16-byte-aligned region of the patch plan. bytes points at
      * caller-owned storage that must outlive run_chain(). rollback journals the
      * old block before each write; verify reads every written block back and
@@ -251,6 +290,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         /* Terminus: closes fds, releases buffers and wipes session secrets.
          * Runs exactly once, after every other stage, on every path. */
         void (*release)(void *ctx) noexcept = nullptr;
+
+        /* Optional structured log sink (S4 logging batch). The chain builds one
+         * BOUNDED line per milestone (<256 B, key=value, never key material) and
+         * hands it over verbatim; a null pointer keeps the unit silent (staged
+         * runs, host tests that do not capture). void return: logging can never
+         * fail or change the chain's control flow. */
+        void (*log)(void *ctx, const char *line) noexcept = nullptr;
 
         /* LKM residency window (delta batch). open_lkm_channel is called exactly
          * once, after the terminus reports LkmLoaded, to open the versioned

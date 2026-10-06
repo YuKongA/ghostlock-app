@@ -4,6 +4,8 @@ import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.plugin.PluginDescriptor
 import com.ghostlock.app.data.plugin.PluginImportResult
+import com.ghostlock.app.data.payload.PayloadImportResult
+import com.ghostlock.app.data.payload.PayloadKind
 import com.ghostlock.app.data.plugin.PluginManifestEntry
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.domain.model.CpuPair
@@ -15,6 +17,17 @@ import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
 import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.UserProfileFile
+
+/**
+ * What one plugin re-description pass produced. A module the probe cannot
+ * describe is absent from [descriptors] and carries the probe's own reason in
+ * [failures], so the page can say WHY instead of a generic "not described".
+ */
+data class PluginDescriptionReport(
+    val descriptors: Map<String, PluginDescriptor>,
+    /** Plugin id → the probe's own reason (reject line, stderr, or exit code). */
+    val failures: Map<String, String> = emptyMap(),
+)
 
 interface GhostlockRepository {
     suspend fun snapshot(): KernelSnapshot
@@ -159,10 +172,34 @@ interface GhostlockRepository {
     suspend fun importPlugin(uri: String, displayName: String?): PluginImportResult
 
     /**
-     * Re-describes the installed modules with the native probe, keyed by id.
-     * A module the probe cannot describe is simply absent (the page greys it).
+     * Re-describes the installed modules with the native probe. A module the probe
+     * cannot describe is absent from the descriptors AND present in the report's
+     * failures with the probe's own reason (the page shows why, not just "not
+     * described").
      */
-    suspend fun describePlugins(): Map<String, PluginDescriptor>
+    suspend fun describePlugins(): PluginDescriptionReport
+
+    /**
+     * Run-level plugin selection: null = the default (every enabled plugin).
+     * Transient; never persisted into the profile or the registry.
+     */
+    fun setPluginRunSelection(selection: Set<String>?)
+
+    /** payload batch (a): copies a picked script or .ko into the payload bucket. */
+    suspend fun importPayloadFile(
+        kind: PayloadKind,
+        uri: String,
+        displayName: String?,
+    ): PayloadImportResult
+
+    /** P2: the extractor values of every described plugin (read-only in the UI). */
+    suspend fun pluginExtractValues(): Map<String, Map<String, PluginValue>>
+
+    /** Absolute path of the installed module, for the detail page. */
+    fun pluginInstalledPath(id: String): String?
+
+    /** Drops every override of one plugin so the descriptor defaults apply again. */
+    suspend fun clearPluginOverrides(id: String)
 
     /** P1: the explicit parameter overrides of every described plugin. */
     suspend fun pluginParamOverrides(): Map<String, Map<String, PluginValue>>

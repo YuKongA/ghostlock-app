@@ -71,11 +71,11 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
@@ -125,14 +125,16 @@ data class GhostlockUiState(
     val executionSheetDismissible: Boolean = false,
     val dialogVisible: Boolean = false,
     val dialogType: DialogType = DialogType.NONE,
-    val dialogTitleRes: Int = 0,
+    /** Null = no title; 0 is NOT a resource and must never be rendered. */
+    val dialogTitleRes: Int? = null,
     val dialogMessage: String = "",
-    val dialogMessageRes: Int = 0,
+    /** Null = no message resource; [dialogMessage] is the plain-text fallback. */
+    val dialogMessageRes: Int? = null,
     val dialogItems: List<String> = emptyList(),
     val dialogItemResIds: List<Int> = emptyList(),
     val dialogCurrentItemIndex: Int = -1,
     val dialogInput: String = "",
-    val dialogConfirmLabelRes: Int = R.string.parse_start,
+    val dialogConfirmLabelRes: Int? = R.string.parse_start,
     /** Documentation URL shown as an extra button on a NOTICE dialog. */
     val dialogDocUrl: String? = null,
     val overwriteDialogVisible: Boolean = false,
@@ -147,11 +149,26 @@ data class GhostlockUiState(
     val pluginsScreenVisible: Boolean = false,
     /** P1 registry rows; descriptors arrive with the native probe. */
     val pluginRows: List<PluginRow> = emptyList(),
+    /** Plugin id → the probe's own reason the module could not be described. */
+    val pluginDescribeFailures: Map<String, String> = emptyMap(),
+    /** Selected plugins that block the native document; shown by the run gate. */
+    val executionPluginErrors: List<String> = emptyList(),
     /** Schema rows per plugin id, rebuilt from the probe on every page open. */
     val pluginParams: Map<String, List<PluginParamRow>> = emptyMap(),
     /** P1 parameter being edited in the shared text dialog; null when none. */
     val pluginParamEditId: String? = null,
     val pluginParamEditName: String? = null,
+    /** Run-level plugin selection; null = default (every enabled plugin). */
+    val pluginRunSelection: Set<String>? = null,
+    /** What the next run records in the log about the plugins it loads. */
+    val pluginRunLogLine: String = "",
+    /** batch ②: the plugin whose detail page is open, if any. */
+    val pluginDetailId: String? = null,
+    val pluginDetail: PluginDetailState? = null,
+    /** payload batch (a): the custom-execution draft and its confirmation. */
+    val payloadVisible: Boolean = false,
+    val payloadDraft: PayloadDraft = PayloadDraft(),
+    val payloadConfirmed: Boolean = false,
     /** False until the native probe exists (P1 second half). */
     val pluginImportEnabled: Boolean = false,
     val debugExportEnabled: Boolean = true,
@@ -237,6 +254,24 @@ interface GhostlockActions {
     fun onImportPlugin()
     fun onPluginParamEdit(id: String, name: String, current: String)
     fun onPluginBoolChanged(id: String, name: String, value: Boolean)
+    fun onOpenPayload()
+    fun onClosePayload()
+    fun onPayloadTierChanged(tier: PayloadTier?)
+    fun onPayloadCommandChanged(command: String)
+    fun onPayloadHashChanged(sha256: String)
+    fun onPayloadPickScript()
+    fun onPayloadPickKo()
+    fun onPayloadKoMove(index: Int, delta: Int)
+    fun onPayloadKoRemove(index: Int)
+    fun onPayloadConfirm()
+    fun onPayloadClear()
+    fun onOpenPluginDetail(id: String)
+    fun onClosePluginDetail()
+    fun onRecheckPlugin(id: String)
+    fun onClearPluginOverrides(id: String)
+    fun onPluginRunSelected(id: String, selected: Boolean)
+    fun onPluginRunSelectAll()
+    fun onPluginRunSelectNone()
     fun onPluginEnabledChanged(id: String, enabled: Boolean)
     fun onOpenLoadConfig()
     fun onCloseLoadConfig()
@@ -272,6 +307,8 @@ internal sealed interface GhostlockScreen : NavKey {
     data object ProfileOverride : GhostlockScreen
     data object AdvancedOverride : GhostlockScreen
     data object Plugins : GhostlockScreen
+    data class PluginDetail(val id: String) : GhostlockScreen
+    data object Payload : GhostlockScreen
 }
 
 internal fun navigationPath(state: GhostlockUiState): List<GhostlockScreen> {
@@ -284,6 +321,11 @@ internal fun navigationPath(state: GhostlockUiState): List<GhostlockScreen> {
     }
     if (state.pluginsScreenVisible) {
         path += GhostlockScreen.Plugins
+        state.pluginDetailId?.let { path += GhostlockScreen.PluginDetail(it) }
+        return path
+    }
+    if (state.payloadVisible) {
+        path += GhostlockScreen.Payload
         return path
     }
     if (!state.parametersVisible) return path
@@ -326,6 +368,8 @@ private fun closeScreen(screen: GhostlockScreen, actions: GhostlockActions) {
         GhostlockScreen.ProfileOverride -> actions.onCloseProfileOverrides()
         GhostlockScreen.AdvancedOverride -> actions.onCloseAdvancedOverrides()
         GhostlockScreen.Plugins -> actions.onClosePlugins()
+        is GhostlockScreen.PluginDetail -> actions.onClosePluginDetail()
+        GhostlockScreen.Payload -> actions.onClosePayload()
     }
 }
 
@@ -381,6 +425,12 @@ internal fun GhostlockApp(
                     entry<GhostlockScreen.About>(swipeDismiss = swipeBack) {
                         AboutScreen(onBack = actions::onCloseAbout)
                     }
+                    entry<GhostlockScreen.Payload>(swipeDismiss = swipeBack) {
+                        PayloadSettingsScreen(state = state, actions = actions)
+                    }
+                    entry<GhostlockScreen.PluginDetail>(swipeDismiss = swipeBack) {
+                        PluginDetailScreen(state = state, actions = actions)
+                    }
                     entry<GhostlockScreen.Plugins>(swipeDismiss = swipeBack) {
                         PluginSettingsScreen(state = state, actions = actions)
                     }
@@ -420,7 +470,7 @@ private fun MainScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            SmallTopAppBar(
                 title = "GhostLock",
                 scrollBehavior = scrollBehavior,
             )
@@ -504,13 +554,21 @@ private fun GhostlockDialog(
 ) {
     OverlayDialog(
         show = state.dialogVisible,
-        title = if (state.dialogType == DialogType.NONE) null else stringResource(state.dialogTitleRes),
+        title = if (state.dialogType == DialogType.NONE) {
+            null
+        } else {
+            /* A visible dialog always shows a title: never id 0. */
+            state.dialogTitleRes?.let { stringResource(it) } ?: stringResource(R.string.app_name)
+        },
         onDismissRequest = actions::onDialogDismiss,
         onDismissFinished = actions::onDialogDismissFinished,
         content = {
             when (state.dialogType) {
                 DialogType.LIST -> {
-                    val items = state.dialogItems.ifEmpty { state.dialogItemResIds.map { stringResource(it) } }
+                    val items = state.dialogItems.ifEmpty {
+                        /* 0 is not a resource: skip it instead of crashing. */
+                        state.dialogItemResIds.filter { it != 0 }.map { stringResource(it) }
+                    }
                     items.forEachIndexed { index, item ->
                         TextButton(
                             modifier = Modifier
@@ -535,7 +593,9 @@ private fun GhostlockDialog(
                     TextField(
                         value = state.dialogInput,
                         onValueChange = actions::onDialogInputChange,
-                        label = stringResource(state.dialogMessageRes),
+                        label = DialogText.of(state.dialogMessageRes, state.dialogMessage)
+                            ?.text()
+                            .orEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
@@ -552,7 +612,8 @@ private fun GhostlockDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         TextButton(
                             modifier = Modifier.weight(1f),
-                            text = stringResource(state.dialogConfirmLabelRes),
+                            text = DialogText.of(state.dialogConfirmLabelRes)?.text()
+                                ?: stringResource(R.string.dialog_dismiss),
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = { actions.onDialogConfirm(state.dialogInput) },
                         )
@@ -561,7 +622,9 @@ private fun GhostlockDialog(
 
                 DialogType.CONFIRM -> {
                     Text(
-                        text = stringResource(state.dialogMessageRes),
+                        text = DialogText.of(state.dialogMessageRes, state.dialogMessage)
+                            ?.text()
+                            .orEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -588,7 +651,9 @@ private fun GhostlockDialog(
 
                 DialogType.NOTICE -> {
                     Text(
-                        text = stringResource(state.dialogMessageRes),
+                        text = DialogText.of(state.dialogMessageRes, state.dialogMessage)
+                            ?.text()
+                            .orEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -663,7 +728,6 @@ private fun MainContent(
         modifier = modifier
             .scrollEndHaptic()
             .overScrollVertical()
-            .scrollEndHaptic()
             .fillMaxHeight()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .imePadding(),
@@ -676,6 +740,52 @@ private fun MainContent(
                 actions = actions,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+        /* Batch 1: what the next run will load, visible before it starts. */
+        if (state.pluginRows.any { it.enabled }) {
+            val enabled = state.pluginRows.count { it.enabled }
+            val selected = state.pluginRows.count { it.selected }
+            item(key = "plugin-run-hint") {
+                Text(
+                    text = if (selected == 0) {
+                        stringResource(R.string.plugins_run_none)
+                    } else {
+                        stringResource(R.string.plugins_run_summary, selected, enabled)
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
+        /* batch ② ruling 8: a selected plugin with problems fails the document
+         * build, so it is stated next to the button, not buried in a page. */
+        val brokenPlugins = selectedPluginErrors(state.pluginRows)
+        if (brokenPlugins.isNotEmpty()) {
+            item(key = "plugin-run-errors") {
+                Text(
+                    text = stringResource(R.string.plugins_run_errors, brokenPlugins.size),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.primary,
+                )
+            }
+        }
+        /* payload batch (a): what this run would execute, stated before it does. */
+        /* The default tier always has a summary line; a custom tier gets one
+         * only once it is authorised. */
+        val payloadDraft = state.payloadDraft
+        val showPayloadSummary = !payloadDraft.needsAuthorisation || state.payloadConfirmed
+        if (showPayloadSummary) {
+            item(key = "payload-run-hint") {
+                /* Localized UI text, never the English log line. */
+                Text(
+                    text = payloadRunSummaryText(payloadDraft),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
         }
         item(key = "run") {
             RunButton(

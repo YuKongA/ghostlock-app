@@ -18,12 +18,15 @@ namespace ghostlock::profile {
          * unknown prefix is rejected here, fail-closed, before any owner bind. */
         bool known_owner_section(std::string_view name) {
             /* Owner prefixes: common + the three owner-qualified families.
-             * plugin is the third top-level owner (S4 P1): one plugin serves
-             * several backends, so its section is orthogonal to them. */
+             * plugin is the third top-level owner (S4 P1) and uses ONE flat
+             * section: section "plugin" with keys "<id>.<field>" (canonical,
+             * matching plugin/schema.hpp and plugin-manifest paths). A
+             * "plugin.<id>" section shape is therefore rejected here instead of
+             * being silently accepted and then ignored by the validator. */
             return name == "common" || name.starts_with("backend.") ||
                    name.starts_with("platform.") ||
                    name.starts_with("countermeasure.") ||
-                   name.starts_with("plugin.");
+                   name == "plugin";
         }
 
         /* S4 R6b legacy compatibility: the old uint step id (1 = W1W2,

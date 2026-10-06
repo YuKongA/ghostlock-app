@@ -24,6 +24,7 @@
  * Defaults live here (the FieldSpec default), not in HOCON: a plugin writes
  * only overrides, matching the R1 schema-authority rule. */
 
+#include "contract/countermeasure.hpp"
 #include "profile/glkv3.hpp"
 #include "profile/schema.hpp"
 
@@ -165,6 +166,45 @@ namespace ghostlock::plugin {
         }
         return true;
     }
+
+    /* ---- Per-backend stage availability (Lead ruling 2026-10-05; design §12) ----
+     *
+     * The stage VOCABULARY keeps all four tokens (ABI/TSV/probe formats do not
+     * change per backend); availability is a separate, explicit matrix, exactly
+     * like the combination "planned item" pattern. Evidence:
+     *   43499: the race window opens and closes per write attempt
+     *          (steps.cpp:118 attack_write inside the write loop), so there is no
+     *          point with "window closed AND child not yet spawned"; the only
+     *          usable point is pre_terminal (steps.cpp:484-490 / :517-521).
+     *   43284: the only kernel-capable window is the LKM residency window
+     *          (lkm_window.cpp:99-107, POST_TERMINAL).
+     * A hook whose stage is unavailable on the selected backend is REJECTED AS A
+     * HOOK (not as a plugin) and accounted, so one module may declare hooks for
+     * both backends. */
+    enum class RuntimeBackend : std::uint8_t { Cve2026_43499 = 0, Cve2026_43284 };
+
+    /* Audit D5 invariant: every backend must expose at least one stage, or the
+     * probe header would carry an empty group that consumers reject. */
+
+    [[nodiscard]] constexpr std::string_view backend_short_token(
+            RuntimeBackend backend) noexcept {
+        return backend == RuntimeBackend::Cve2026_43499 ? "43499" : "43284";
+    }
+
+    [[nodiscard]] constexpr bool stage_available_on(
+            RuntimeBackend backend, contract::CountermeasureStage stage) noexcept {
+        if (backend == RuntimeBackend::Cve2026_43499) {
+            return stage == contract::CountermeasureStage::PreTerminal;
+        }
+        return stage == contract::CountermeasureStage::PostTerminal;
+    }
+
+    /* Audit D5 invariant: every backend exposes at least one stage, so the probe
+     * header can never carry an empty group that consumers would reject. */
+    static_assert(stage_available_on(RuntimeBackend::Cve2026_43499,
+                                     contract::CountermeasureStage::PreTerminal));
+    static_assert(stage_available_on(RuntimeBackend::Cve2026_43284,
+                                     contract::CountermeasureStage::PostTerminal));
 
 } // namespace ghostlock::plugin
 

@@ -10,8 +10,13 @@ use yaxpeax_arm::armv8::a64::{ARMv8, InstDecoder};
 
 use crate::error::{ExtractError, Result};
 
+/// Hard ceiling for a single disassembly window. Callers still pass their own
+/// `cap` (e.g. OBJDUMP_CAP for the in-tree derivations); the `spec` engine
+/// raises its window up to `max_scan` (<= 1 MiB, frozen by native §10/§11.6).
+pub const MAX_DISASM_RANGE: usize = 0x100000;
+
 pub fn disassemble_range(kernel: &[u8], start: usize, stop: usize) -> Result<Vec<String>> {
-    if stop <= start || stop > kernel.len() || stop - start > 0x20000 {
+    if stop <= start || stop > kernel.len() || stop - start > MAX_DISASM_RANGE {
         return Err(ExtractError::new(format!(
             "disassembly range invalid: 0x{start:x}..0x{stop:x}"
         )));

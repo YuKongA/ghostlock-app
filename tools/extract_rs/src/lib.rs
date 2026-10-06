@@ -9,5 +9,7 @@ pub mod iomem;
 pub mod kallsyms;
 pub mod kallsyms_finder;
 pub mod payload;
+pub mod plugin;
 pub mod report;
+pub mod spec;
 pub mod symbols;

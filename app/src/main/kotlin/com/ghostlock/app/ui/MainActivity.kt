@@ -96,8 +96,10 @@ class MainActivity : ComponentActivity() {
                     else -> arrayOf("*/*")
                 }
                 when (effect.request) {
-                    DocumentRequest.ImportOffsetsHocon, DocumentRequest.ImportOffsetsJson ->
-                        documentsPicker.launch(mimeTypes)
+                    DocumentRequest.ImportOffsetsHocon,
+                    DocumentRequest.ImportOffsetsJson,
+                    DocumentRequest.PayloadKo,
+                    -> documentsPicker.launch(mimeTypes)
 
                     else -> documentPicker.launch(mimeTypes)
                 }
@@ -236,6 +238,47 @@ private fun GhostlockRoute(
 
             override fun onPluginBoolChanged(id: String, name: String, value: Boolean) =
                 viewModel.onPluginBoolChanged(id, name, value)
+
+            override fun onPayloadPickScript() = viewModel.onPayloadPickScript()
+
+            override fun onPayloadPickKo() = viewModel.onPayloadPickKo()
+
+            override fun onPayloadKoMove(index: Int, delta: Int) =
+                viewModel.onPayloadKoMove(index, delta)
+
+            override fun onPayloadKoRemove(index: Int) = viewModel.onPayloadKoRemove(index)
+
+            override fun onOpenPayload() = viewModel.onOpenPayload()
+
+            override fun onClosePayload() = viewModel.onClosePayload()
+
+            override fun onPayloadTierChanged(tier: PayloadTier?) =
+                viewModel.onPayloadTierChanged(tier)
+
+            override fun onPayloadCommandChanged(command: String) =
+                viewModel.onPayloadCommandChanged(command)
+
+            override fun onPayloadHashChanged(sha256: String) =
+                viewModel.onPayloadHashChanged(sha256)
+
+            override fun onPayloadConfirm() = viewModel.onPayloadConfirm()
+
+            override fun onPayloadClear() = viewModel.onPayloadClear()
+
+            override fun onOpenPluginDetail(id: String) = viewModel.onOpenPluginDetail(id)
+
+            override fun onClosePluginDetail() = viewModel.onClosePluginDetail()
+
+            override fun onRecheckPlugin(id: String) = viewModel.onRecheckPlugin(id)
+
+            override fun onClearPluginOverrides(id: String) = viewModel.onClearPluginOverrides(id)
+
+            override fun onPluginRunSelected(id: String, selected: Boolean) =
+                viewModel.onPluginRunSelected(id, selected)
+
+            override fun onPluginRunSelectAll() = viewModel.onPluginRunSelectAll()
+
+            override fun onPluginRunSelectNone() = viewModel.onPluginRunSelectNone()
             override fun onOpenPlugins() = viewModel.onOpenPlugins()
             override fun onClosePlugins() = viewModel.onClosePlugins()
             override fun onPluginEnabledChanged(id: String, enabled: Boolean) =

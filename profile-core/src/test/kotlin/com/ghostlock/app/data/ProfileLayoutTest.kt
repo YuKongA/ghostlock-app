@@ -230,22 +230,33 @@ class ProfileLayoutTest {
         assertNull(runtime.getValueAt("route.select_stack.waiter_shift"))
     }
 
+    /* S4 hotfix: LEGACY input is data written by OLDER revisions and cannot be fixed
+     * retroactively, so an unknown key is ignored (with a stderr diagnostic) instead of
+     * aborting. A fail-closed require() here turned an app upgrade into a launch crash on
+     * a real device: `recommend_shizuku: unknown legacy profile key`. Fail-closed remains
+     * for canonical input, which this revision authors (see the test below). */
     @Test
-    fun unknownLegacyKeyFailsClosedWithItsPath() {
-        val legacy = parse("release = \"r\"\nnot_a_profile_key = 1")
-        val error = assertThrows(IllegalArgumentException::class.java) {
-            ProfileLayout.canonicalize(legacy)
-        }
-        assertTrue(error.message!!.contains("not_a_profile_key"))
+    fun unknownLegacyKeyIsIgnoredNotFatal() {
+        val legacy = parse(
+            """
+            release = "r"
+            not_a_profile_key = 1
+            recommend_shizuku = true
+            """.trimIndent(),
+        )
+        val canonical = ProfileLayout.canonicalize(legacy)
+        assertEquals("r", canonical["release"])
+        assertNull(canonical["not_a_profile_key"])
+        assertNull(canonical["recommend_shizuku"])
+        assertEquals("r", ProfileLayout.normalize(legacy)["release"])
     }
 
     @Test
-    fun unknownNestedLegacyKeyFailsClosedWithItsPath() {
+    fun unknownNestedLegacyKeyIsDroppedNotFatal() {
         val legacy = parse("release = \"r\"\ntask_struct {\n  prio = 1\n  bogus = 2\n}")
-        val error = assertThrows(IllegalArgumentException::class.java) {
-            ProfileLayout.canonicalize(legacy)
-        }
-        assertTrue(error.message!!.contains("task_struct.bogus"))
+        val flat = ProfileLayout.flatten(ProfileLayout.canonicalize(legacy))
+        assertTrue(flat.any { (key, value) -> key.endsWith(".prio") && value == 1L })
+        assertTrue(flat.keys.none { it.contains("bogus") })
     }
 
     @Test

@@ -19,25 +19,48 @@ data class EnabledPlugin(
  */
 object PluginOverrides {
     private const val PARAMS = "params"
+    private const val EXTRACT = "extract"
 
-    /** Override tree path prefix of one plugin parameter. */
+    /** Override tree path of one plugin parameter: plugin.<id>.params.<name>. */
     fun path(id: String, name: String): String = "plugin." + id + "." + PARAMS + "." + name
 
+    /** Override tree path of one extractor key: plugin.<id>.extract.<name>. */
+    fun extractPath(id: String, name: String): String =
+        "plugin." + id + "." + EXTRACT + "." + name
+
     /**
-     * The explicit overrides of [id], keyed by parameter name. [tree] is the
-     * advanced override document (nested maps); an absent plugin section means
-     * "no overrides".
+     * The explicit parameter overrides of [id], keyed by parameter name. [tree]
+     * is the advanced override document (nested maps); an absent plugin section
+     * means "no overrides".
      */
-    fun params(tree: Map<*, *>, id: String, descriptor: PluginDescriptor): Map<String, PluginValue> {
+    fun params(tree: Map<*, *>, id: String, descriptor: PluginDescriptor): Map<String, PluginValue> =
+        group(tree, id, PARAMS, "parameter", descriptor.paramsByName)
+
+    /**
+     * The extractor values of [id] (P2): `plugin.<id>.extract.<key>` in the same
+     * override document. The descriptor's extract rows are the only authority
+     * for the key names and types, so a value the module does not declare (or a
+     * value the extractor never resolved) is refused rather than emitted.
+     */
+    fun extract(tree: Map<*, *>, id: String, descriptor: PluginDescriptor): Map<String, PluginValue> =
+        group(tree, id, EXTRACT, "extract key", descriptor.extractByName)
+
+    private fun group(
+        tree: Map<*, *>,
+        id: String,
+        groupKey: String,
+        label: String,
+        declared: Map<String, PluginParam>,
+    ): Map<String, PluginValue> {
         val plugin = (tree["plugin"] as? Map<*, *>) ?: return emptyMap()
         val section = (plugin[id] as? Map<*, *>) ?: return emptyMap()
-        val raw = (section[PARAMS] as? Map<*, *>) ?: return emptyMap()
+        val raw = (section[groupKey] as? Map<*, *>) ?: return emptyMap()
         val out = linkedMapOf<String, PluginValue>()
         for ((key, value) in raw) {
             val name = key as? String ?: fail("plugin override key is not text: " + key)
-            val path = path(id, name)
-            val param = descriptor.paramsByName[name]
-                ?: fail("plugin " + id + " declares no such parameter: " + path)
+            val path = "plugin." + id + "." + groupKey + "." + name
+            val param = declared[name]
+                ?: fail("plugin " + id + " declares no such " + label + ": " + path)
             out[name] = valueOf(param.type, value, path)
         }
         return out

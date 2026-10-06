@@ -14,7 +14,7 @@ class PluginManifestTest {
     private val entry = PluginManifestEntry(
         id = "vivo.vr_guard",
         version = "1.2.0",
-        abiVersion = 1,
+        abiVersion = 1u,
         sha256 = sha,
         modulePath = "vivo.vr_guard/1.2.0/vivo_vr_guard.so",
         enabled = true,

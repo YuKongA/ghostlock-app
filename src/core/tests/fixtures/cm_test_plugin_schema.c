@@ -27,7 +27,7 @@ static const glk_param kParams[] = {
     {"threshold", GLK_PARAM_UINT, 1u, 200u, NULL, "uint parameter"},
     {"mode", GLK_PARAM_STR, 0u, 0u, "auto", "string parameter"},
     {"enabled", GLK_PARAM_BOOL, 0u, 1u, NULL, "bool parameter"},
-    {"delta", GLK_PARAM_INT, 0u, 0u, NULL, NULL},
+    {"delta", GLK_PARAM_INT, 0u, (uint64_t)(int64_t)-5, NULL, NULL},
 };
 
 static const glk_param kExtract[] = {

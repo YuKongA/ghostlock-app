@@ -193,6 +193,11 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         UnknownLateLoadArgs,
     };
 
+    /* The LkmPolicyError spelling authority for logs/reports is
+     * diagnostic::lkm_policy_error_name() (diagnostic.hpp); the run log reuses
+     * the same tokens through backend_terminal.cpp's local display mapper so the
+     * attack path never grows a link dependency on the diagnostic CLI unit. */
+
     /* Policy inputs; optional mirrors the GLK field presence semantics. A
      * present (non-empty) lkm_path means the profile names its own .ko
      * (CustomFile); absent means the bundled $GHOSTLOCK_HOME/helper.ko mirror

@@ -11,6 +11,7 @@ import com.ghostlock.app.data.plugin.EnabledPlugin
 import com.ghostlock.app.data.plugin.PluginDescriptor
 import com.ghostlock.app.data.plugin.PluginEmission
 import com.ghostlock.app.data.plugin.PluginOverrides
+import com.ghostlock.app.data.plugin.PluginSelection
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.profile.CpuPairView
 import com.ghostlock.app.data.profile.GHOSTLOCK_PROFILE_SCHEMA_VERSION
@@ -69,7 +70,7 @@ internal class AndroidProfileConfigController(
      * override store is the controller's. Null/empty keeps every existing caller
      * byte-identical.
      */
-    private val pluginSelection: (() -> List<EnabledPlugin>)? = null,
+    private val pluginSelection: (suspend () -> PluginSelection)? = null,
     /**
      * Editing sessions pin the imported document instead of consulting the
      * live selection, and keep their overrides in [preferences] (a private
@@ -107,7 +108,8 @@ internal class AndroidProfileConfigController(
         val complete = completeProfileFields(full, route)
         complete43284Fields(complete)
         val roots = buildTree(complete, "", baseline, advanced)
-        cache(deviceRelease, buildNativeDocument(deviceRelease, full))
+        val built = buildNativeDocument(deviceRelease, full)
+        cache(deviceRelease, built.profile)
         return ProfileConfig(
             release = deviceRelease,
             hasProfile = true,
@@ -115,6 +117,7 @@ internal class AndroidProfileConfigController(
             general = generalFields(full, baseline, route),
             route = route,
             invalidPaths = invalidPaths,
+            pluginErrors = built.pluginErrors,
         )
     }
 
@@ -481,16 +484,27 @@ internal class AndroidProfileConfigController(
      * this" and "the plugin defaults to this" must stay distinguishable.
      */
     fun setPluginParam(release: String, id: String, name: String, value: PluginValue?) {
+        setPluginGroup(release, id, "params", name, value)
+    }
+
+    /** Shared writer for `plugin.<id>.<group>.<name>` (params and extract). */
+    private fun setPluginGroup(
+        release: String,
+        id: String,
+        groupKey: String,
+        name: String,
+        value: PluginValue?,
+    ) {
         val overrides = readAdvancedOverride(release)
         val pluginSection = overrides.mutableChild("plugin")
         val plugin = pluginSection.mutableChild(id)
-        val params = plugin.mutableChild("params")
+        val group = plugin.mutableChild(groupKey)
         if (value == null) {
-            params.remove(name)
-            if (params.isEmpty()) plugin.remove("params")
+            group.remove(name)
+            if (group.isEmpty()) plugin.remove(groupKey)
             if (plugin.isEmpty()) pluginSection.remove(id)
         } else {
-            params[name] = when (value) {
+            group[name] = when (value) {
                 is PluginValue.UInt -> value.value.toLong()
                 is PluginValue.Int -> value.value
                 is PluginValue.Bool -> value.value
@@ -500,6 +514,15 @@ internal class AndroidProfileConfigController(
         writeAdvancedOverride(release, overrides)
     }
 
+    /**
+     * P1: stores or clears one extractor value (P2) in the same override tree,
+     * at `plugin.<id>.extract.<key>`. Null clears it, so an unresolved key is
+     * simply not emitted.
+     */
+    fun setPluginExtract(release: String, id: String, name: String, value: PluginValue?) {
+        setPluginGroup(release, id, "extract", name, value)
+    }
+
     /** P1: the explicit parameter overrides of one installed plugin. */
     fun pluginOverrides(
         release: String,
@@ -507,6 +530,26 @@ internal class AndroidProfileConfigController(
         descriptor: PluginDescriptor,
     ): Map<String, PluginValue> =
         PluginOverrides.params(readAdvancedOverride(release), id, descriptor)
+
+    /**
+     * Drops every override of one plugin (both groups) so the descriptor's
+     * defaults apply again. Only \`plugin.<id>.\` is touched.
+     */
+    fun clearPluginOverrides(release: String, id: String) {
+        val overrides = readAdvancedOverride(release)
+        val pluginSection = overrides.mutableChild("plugin")
+        pluginSection.remove(id)
+        if (pluginSection.isEmpty()) overrides.remove("plugin")
+        writeAdvancedOverride(release, overrides)
+    }
+
+    /** P2: the extractor values of one installed plugin. */
+    fun pluginExtracts(
+        release: String,
+        id: String,
+        descriptor: PluginDescriptor,
+    ): Map<String, PluginValue> =
+        PluginOverrides.extract(readAdvancedOverride(release), id, descriptor)
 
     /** Replaces the sparse overrides stored for [release]. */
     fun replaceOverrides(release: String, override: ValueMap) {
@@ -585,8 +628,21 @@ internal class AndroidProfileConfigController(
     private fun resolvedSelection(): ExecutionSelection =
         resolveExecutionSelection(executionModeSelection(), backendSelection())
 
-    /** Builds the single resolved authority native consumes at run time. */
-    private fun buildNativeDocument(release: String, profile: ValueMap): Profile? {
+    /**
+     * One document build: the resolved [profile] native consumes (null when the
+     * build is blocked) plus the user-visible [pluginErrors] that blocked it.
+     */
+    private data class NativeDocument(val profile: Profile?, val pluginErrors: List<String>)
+
+    /**
+     * Builds the single resolved authority native consumes at run time.
+     *
+     * A plugin problem is a RESULT, never an exception: this runs on every
+     * profile load (a hot path), and the old `error(...)` for a selected plugin
+     * without a descriptor crashed the process there. A selected plugin that
+     * cannot be emitted now yields [NativeDocument.pluginErrors] instead.
+     */
+    private suspend fun buildNativeDocument(release: String, profile: ValueMap): NativeDocument {
         val route = routeNameOf(profile)
         /* Backend choice is an app-level preference, not profile text: inject the
          * selected token so NativeProfileDocument.from reads it from the same
@@ -613,29 +669,51 @@ internal class AndroidProfileConfigController(
                 )?.let { backend["steps"] = it.token }
             }
         }
-        return Profile.fromValueMap(
+        val selected = when (val selection = pluginSelection?.invoke()) {
+            /* A SELECTED plugin the probe could not describe: the document stays
+             * unbuilt and the reasons travel to the UI and the run gate. */
+            is PluginSelection.Blocked -> return NativeDocument(null, selection.reasons)
+            is PluginSelection.Ready -> selection.plugins
+            null -> emptyList()
+        }
+        val pluginErrors = mutableListOf<String>()
+        /* P1: only enabled plugins, and only the parameters the user explicitly
+         * overrode (the descriptor keeps the defaults). The override tree is the
+         * controller's, so it is applied here. */
+        val emissions = selected.mapNotNull { enabled ->
+            runCatching {
+                PluginEmission.of(
+                    enabled.entry,
+                    enabled.descriptor,
+                    PluginOverrides.params(
+                        overridesSnapshot(release),
+                        enabled.entry.id,
+                        enabled.descriptor,
+                    ),
+                    /* P2: the extractor's resolved values, same override
+                     * document, same descriptor-driven typing. */
+                    PluginOverrides.extract(
+                        overridesSnapshot(release),
+                        enabled.entry.id,
+                        enabled.descriptor,
+                    ),
+                )
+            }.getOrElse { error ->
+                /* A contract disagreement is a VISIBLE blocker, never a crash. */
+                pluginErrors += "plugin " + enabled.entry.id + ": " +
+                    (error.message ?: "cannot be emitted")
+                null
+            }
+        }
+        val document = Profile.fromValueMap(
             release = release,
             route = RouteKind.resolve(RouteKind.normalize(route)),
             text = { path -> ProfileResolver.nativeText(resolved, path) },
             bool = { path -> ProfileResolver.nativeBool(resolved, path) },
             value = { path -> ProfileResolver.nativeValue(resolved, route, path) },
-            /* P1: only enabled plugins, and only the parameters the user
-             * explicitly overrode (the descriptor keeps the defaults). The
-             * override tree is the controller's, so it is applied here. */
-            plugins = pluginSelection?.invoke().orEmpty().map { enabled ->
-                requireNotNull(
-                    PluginEmission.of(
-                        enabled.entry,
-                        enabled.descriptor,
-                        PluginOverrides.params(
-                            overridesSnapshot(release),
-                            enabled.entry.id,
-                            enabled.descriptor,
-                        ),
-                    ),
-                ) { "enabled plugin produced no emission: " + enabled.entry.id }
-            },
+            plugins = emissions,
         )
+        return NativeDocument(document, pluginErrors)
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----
@@ -947,7 +1025,7 @@ internal class AndroidProfileConfigController(
 
     /* profile-export: the merged profile also lives as a plain HOCON file in the
      * app-private directory, so an export is a copy, never a re-merge. */
-    private fun persistSnapshot(release: String, pair: CpuPair) {
+    private suspend fun persistSnapshot(release: String, pair: CpuPair) {
         runCatching {
             val resolved = resolveCurrent(
                 release, pair, readAdvancedOverride(release), includeImported = true,
@@ -959,7 +1037,7 @@ internal class AndroidProfileConfigController(
             trimRouteTuning(exportView)
             File(filesDir, snapshotName(release))
                 .writeText(HoconSupport.render(exportView), StandardCharsets.UTF_8)
-            cache(release, buildNativeDocument(release, resolved))
+            cache(release, buildNativeDocument(release, resolved).profile)
         }.onFailure {
             android.util.Log.e("GhostLock", "persistSnapshot failed for $release", it)
         }

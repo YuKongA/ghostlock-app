@@ -4,6 +4,14 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
+/** Outcome of re-describing one installed module (see [PluginImportService.describe]). */
+sealed interface PluginDescribeResult {
+    data class Described(val descriptor: PluginDescriptor) : PluginDescribeResult
+
+    /** [reason] is the probe's own diagnostic, shown to the user as it is. */
+    data class Failed(val reason: String) : PluginDescribeResult
+}
+
 /** Outcome of one plugin import attempt (domain-visible, see GhostlockRepository). */
 sealed interface PluginImportResult {
     /** The module is installed and registered (disabled until the user enables it). */
@@ -57,10 +65,7 @@ internal class PluginImportService(
         }
         if (output.exitCode != 0) {
             /* The probe rejected the module: report its reason and install nothing. */
-            val reason = PluginProbe.rejections(output.stdout).firstOrNull()
-                ?: output.stderr.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
-                ?: if (output.exitCode < 0) "the probe timed out" else "probe exit " + output.exitCode
-            return reject(reason)
+            return reject(probeFailure(output))
         }
         val descriptor = runCatching { PluginProbe.parse(output.stdout) }.getOrElse {
             return reject("the probe output is malformed: " + (it.message ?: "unknown error"))
@@ -73,9 +78,15 @@ internal class PluginImportService(
                 )
             }
 
-            descriptor.size != size -> {
+            /* glk_module.size is the DESCRIPTOR STRUCT size (the ABI size gate that decides
+             * which tail fields are readable), NOT the picked file's length. Comparing the two
+             * rejects every real plugin (observed on device: "the probe reports 80 bytes, the
+             * picked file is 8992"). The structural invariant we can check without duplicating
+             * ABI constants is that the descriptor must fit inside the file we hold. */
+            descriptor.size == 0u || descriptor.size.toLong() > size -> {
                 return reject(
-                    "the probe reports " + descriptor.size + " bytes, the picked file is " + size,
+                    "the probe reports an impossible descriptor size: " + descriptor.size +
+                        " bytes (the picked file is " + size + " bytes)",
                 )
             }
 
@@ -117,7 +128,10 @@ internal class PluginImportService(
             sha256 = localHash.lowercase(),
             modulePath = PluginPaths.modulePath(descriptor.id, descriptor.version, fileName),
             enabled = false,
-            stage = null,
+            /* The plugin's only declared stage is its default policy; several
+             * declared stages stay unpinned until a picker exists (the emission
+             * then refuses with a visible reason instead of emitting none). */
+            stage = descriptor.stages.singleOrNull(),
             importedAtMs = now(),
         )
         val entries = store.upsert(entry)
@@ -128,21 +142,53 @@ internal class PluginImportService(
     }
 
     /**
-     * Re-describes an installed module for the settings page. The probe runs
-     * with the registry's digest, so a module that changed on disk since the
-     * import is reported as unavailable instead of being presented as valid.
-     * Never throws: the page shows the generic "not described" state instead.
+     * Re-describes an installed module. The probe runs with the registry's
+     * digest, so a module that changed on disk since the import is reported as
+     * unavailable instead of being presented as valid.
+     *
+     * Never throws, and never loses the reason: a failure carries the probe's own
+     * diagnostic (reject line, stderr, or exit code), because "could not be
+     * described" alone left the user with nothing to act on.
      */
-    suspend fun describe(entry: PluginManifestEntry): PluginDescriptor? {
+    suspend fun describe(entry: PluginManifestEntry): PluginDescribeResult {
         val fileName = entry.modulePath.substringAfterLast('/')
-        if (!PluginPaths.isValidFileName(fileName)) return null
+        if (!PluginPaths.isValidFileName(fileName)) {
+            return PluginDescribeResult.Failed(
+                "the registry module path is not usable: " + entry.modulePath,
+            )
+        }
         val file = File(homeDir, PluginPaths.appRelativePath(entry.id, entry.version, fileName))
-        if (!file.isFile) return null
-        val output = runCatching { invoker.invoke(file.absolutePath, entry.sha256) }.getOrNull()
-            ?: return null
-        if (output.exitCode != 0) return null
-        return runCatching { PluginProbe.parse(output.stdout) }.getOrNull()
+        if (!file.isFile) {
+            return PluginDescribeResult.Failed("the module file is missing: " + file.absolutePath)
+        }
+        val output = runCatching { invoker.invoke(file.absolutePath, entry.sha256) }.getOrElse {
+            return PluginDescribeResult.Failed(
+                "cannot run the native probe: " + (it.message ?: "unknown error"),
+            )
+        }
+        if (output.exitCode != 0) return PluginDescribeResult.Failed(probeFailure(output))
+        val descriptor = runCatching { PluginProbe.parse(output.stdout) }.getOrElse {
+            return PluginDescribeResult.Failed(
+                "the probe output is malformed: " + (it.message ?: "unknown error"),
+            )
+        }
+        if (descriptor.id != entry.id) {
+            return PluginDescribeResult.Failed(
+                "the probe describes " + descriptor.id + ", not " + entry.id,
+            )
+        }
+        return PluginDescribeResult.Described(descriptor)
     }
+
+    /**
+     * The probe's own reason for a non-zero exit: its reject line, else the first
+     * stderr line, else the exit code. ONE implementation, shared by the import
+     * path and the re-description path.
+     */
+    private fun probeFailure(output: PluginProbeOutput): String =
+        PluginProbe.rejections(output.stdout).firstOrNull()
+            ?: output.stderr.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
+            ?: if (output.exitCode < 0) "the probe timed out" else "probe exit " + output.exitCode
 
     /** Copies into a sibling temp file and renames, so the .so appears atomically. */
     private fun install(source: File, destination: File, parent: File, fileName: String) {

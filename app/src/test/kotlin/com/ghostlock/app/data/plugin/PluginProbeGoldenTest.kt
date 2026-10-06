@@ -26,15 +26,15 @@ class PluginProbeGoldenTest {
         val descriptor = PluginProbe.parse(golden())
         assertEquals("test.schema", descriptor.id)
         assertEquals("1.2.3", descriptor.version)
-        assertEquals(1, descriptor.abiVersion)
-        assertEquals(80L, descriptor.size)
+        assertEquals(1u, descriptor.abiVersion)
+        assertEquals(80u, descriptor.size)
         assertEquals(
             "decc767346129b6dea4a8fb8d907daa13c48d9a44fd60645d5e57e42614205cf",
             descriptor.sha256,
         )
         assertEquals(setOf("pre_spawn", "post_terminal"), descriptor.stages)
         assertEquals(setOf("kernel_read", "alias"), descriptor.requiredCaps)
-        assertEquals(1, descriptor.hostAbiVersion)
+        assertEquals(1u, descriptor.hostAbiVersion)
         assertEquals(setOf("pre_spawn", "post_spawn", "pre_terminal", "post_terminal"), descriptor.hostStages)
         assertEquals(setOf("kernel_read", "kernel_write", "alias", "child_task"), descriptor.hostCaps)
         assertTrue(descriptor.usable)
@@ -42,7 +42,7 @@ class PluginProbeGoldenTest {
         assertEquals(1, descriptor.hooks.size)
         assertEquals("on_stage", descriptor.hooks.single().trigger)
         assertEquals("post_terminal", descriptor.hooks.single().stage)
-        assertEquals(10, descriptor.hooks.single().priority)
+        assertEquals(10u, descriptor.hooks.single().priority)
         assertEquals("schema-hook", descriptor.hooks.single().name)
     }
 

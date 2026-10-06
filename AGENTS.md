@@ -17,7 +17,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `--load-prebuilt-profile <bin>` / `--enable-status-record` / `--dump-kernel-log <dir>` / `--force-attack` /
   `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
   `--plugin-probe <path.so> [--expect-sha256 <hex>]`（只读插件描述，不注册、不运行 hook）。
-  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）；**运行时「加载 → 按 stage 调用 → 卸载」尚未接线**（`src/core/pipeline/**` 对插件宿主零引用），属攻击关键路径，见 branch-plan `task-9`。
+  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 branch-plan `task-9`。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
 - 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
@@ -37,6 +37,10 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `pipeline/component_catalog.hpp` 只**按 token 分派**（`DispatchTarget`、`combination_supported`/`dispatch_target_of`），
   `pipeline/orchestrator.hpp` 逐 case 用 `Pipeline::target` static_assert 锁定；导出与 Kotlin 对拍见文档约定。
   `selection_supported()`（设备已核实）与 `combination_supported()`（已接线）是两个不同问题；选择显式来自 profile/wire，不从 kernel 版本推断。
+- 顶层 owner 白名单（native `known_owner_section`，`src/core/profile/glkv3_parse.cpp`）：`common` / `backend.<id>` /
+  `platform.*` / `countermeasure.*` / **精确 `plugin`**（`plugin.<id>` 段形状 fail-closed）/ **`payload`（设计已定稿 +
+  用户已确认，待 native 半场落地；契约 `docs/analysis/contract-design.md` §3.15）**；新增 owner 必须同批更新本节、
+  manifest 与 `docs/development/full-process-uml.md`。
 
 ## 常用命令
 
@@ -102,9 +106,11 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   当前白名单 4 条（`support/util.cpp` → 43499 backend：spray 直连 `state`/`route`/`accessors` 3 条，
   以及 A3-2 的 `leak/address_discovery.h` 1 条——因 `kernelsnitch.h` 的 `context_*` 非 inline、全程序只能一个 TU 包含，
   待 spray/leak 所有权搬进 backend 后移除），运行输出
-  `177 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许；
+  `180 files, 4 forbidden-layer edges, 4 whitelisted, 0 unexpected, 0 stale`（γ 批后 `ancillary` 层更名 `plugin`：`plugin -> contract/memory/support` 允许；
   历史：173 → 174 = `root_child.hpp` 随 ADR-0006 F5 移入受限的 `backend/`；174 → 172 = R8 合并两份 SHA-256 为 `support/sha256.*`（删 4 增 2）；
-  172 → 174 = P1 探针新增 `plugin/probe.{hpp,cpp}`；174 → 177 = P1 第二步新增 `plugin/{schema.hpp,wire.hpp,wire.cpp}`。**四次都无新增越层边**），
+  172 → 174 = P1 探针新增 `plugin/probe.{hpp,cpp}`；174 → 177 = P1 第二步新增 `plugin/{schema.hpp,wire.hpp,wire.cpp}`；
+  177 → 179 = step 2 新增 `plugin/host.{hpp,cpp}`（插件宿主；step 3a 起**已接线**，但接线点在组合根与 backend 窗口，不在受限层）；
+  179 → 180 = 43284 日志批新增 `backend/cve_2026_43284/diag_line.hpp`（有界结构化日志行）。**六次都无新增越层边**），
   不得 include `backend,pipeline,platform,terminal`）。新增的越层 include 会 FAIL；
   白名单条目对应的 include 消失（stale）同样 FAIL。新增组件优先不引入越层边，确需临时豁免时必须在
   `kWhitelist` 登记并写明 owner 批次，不得静默通过。

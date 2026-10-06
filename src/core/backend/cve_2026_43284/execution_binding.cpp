@@ -4,6 +4,7 @@
 #include "backend/cve_2026_43284/execution_binding.hpp"
 
 #include "backend/cve_2026_43284/schema.hpp"
+#include "plugin/host.hpp"
 #include "backend/cve_2026_43284/steps/crash_dump.hpp"
 #include "platform/device_facts.hpp"
 #include "session/runtime_config.h"
@@ -29,6 +30,19 @@
 namespace ghostlock::backend::cve_2026_43284 {
     namespace {
 #if defined(__linux__)
+        /* S4 P1 step 3a: the composition seam's POST_TERMINAL consumer. The
+         * backend window only ever sees this neutral function pointer; the P1
+         * host type stays on this side of the seam. A null ctx is a no-op (the
+         * context fields are only installed when a host was passed in). */
+        void dispatch_post_terminal(void *ctx, const glk_contract_ops *ops) noexcept {
+            auto *host = static_cast<plugin::PluginHost *>(ctx);
+            if (host == nullptr) {
+                return;
+            }
+            host->dispatch(plugin::HostStage::PostTerminal,
+                           plugin::PluginCallContext{ops});
+        }
+
         /* Builds the root-program argv from the runtime home: the Kotlin entry
          * copies ksud to $GHOSTLOCK_HOME/ksud, so the LKM's late-load command
          * names that file. Bounded; set_argv truncates. */
@@ -104,7 +118,8 @@ namespace ghostlock::backend::cve_2026_43284 {
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
             std::string_view module_path,
-            const platform::DeviceProbeOps &device, bool allow_dev_target) {
+            const platform::DeviceProbeOps &device, bool allow_dev_target,
+            plugin::PluginHost *plugin_host) {
         ExecutionBindResult result{};
         if (module_path.empty()) {
             result.error = ExecutionBindError::ModulePathEmpty;
@@ -140,6 +155,7 @@ namespace ghostlock::backend::cve_2026_43284 {
          * non-Linux host fails closed instead of pretending to bind. */
         (void)session;
         (void)sa;
+        (void)plugin_host;
         result.error = ExecutionBindError::TargetUnavailable;
         return result;
 #else
@@ -242,6 +258,13 @@ namespace ghostlock::backend::cve_2026_43284 {
          * device binding and the contract adapters; the chain opens it only
          * after WaitResult==LkmLoaded and UNLOADs it in finish() on every path. */
         ctx.lkm_window = &resources.lkm_window;
+        /* S4 P1 step 3a: the borrowed P1 host, handed to the window as the
+         * neutral thunk above, so the host's POST_TERMINAL stage runs inside the
+         * residency window. A null host keeps both fields null and the window
+         * plugin-free. */
+        ctx.plugin_dispatch =
+                plugin_host != nullptr ? &dispatch_post_terminal : nullptr;
+        ctx.plugin_ctx = plugin_host;
         state.deps.chain = make_real_chain_ops(ctx);
         state.deps.carrier = &resources.carrier;
         state.deps.plan = &resources.module.plan;
@@ -263,7 +286,7 @@ namespace ghostlock::backend::cve_2026_43284 {
     ExecutionBindResult bind_production_execution(
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
-            bool allow_dev_target) {
+            bool allow_dev_target, plugin::PluginHost *plugin_host) {
         const config::RuntimeConfig &runtime =
                 config::runtime_config_snapshot();
         /* The resources object owns the path so the state's lkm_image_path view
@@ -279,7 +302,7 @@ namespace ghostlock::backend::cve_2026_43284 {
                                         : std::string(document_lkm_path);
         return bind_production_execution_with(
                 session, resources, document, sa, resources.module_path,
-                platform::real_device_probe(), allow_dev_target);
+                platform::real_device_probe(), allow_dev_target, plugin_host);
     }
 
 } // namespace ghostlock::backend::cve_2026_43284

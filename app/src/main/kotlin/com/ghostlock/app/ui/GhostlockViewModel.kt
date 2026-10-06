@@ -8,9 +8,14 @@ import com.ghostlock.app.R
 import com.ghostlock.app.data.Cve2026_43284Fields
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.payload.PayloadImportResult
+import com.ghostlock.app.data.payload.PayloadKind
 import com.ghostlock.app.data.plugin.PluginConfigValidator
+import com.ghostlock.app.data.plugin.PluginDescriptor
+import com.ghostlock.app.data.plugin.PluginManifestEntry
 import com.ghostlock.app.data.plugin.PluginImportResult
 import com.ghostlock.app.data.plugin.PluginParamType
+import com.ghostlock.app.data.plugin.PluginRunSelection
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.isAvailable
@@ -65,9 +70,48 @@ sealed interface GhostlockEffect {
 
 private const val OverwriteSummaryLimit = 12
 
-enum class DocumentRequest { ImportOffsetsHocon, ImportOffsetsJson, BootImage, XblImage, PayloadImage, UefiImage, PluginModule }
+enum class DocumentRequest {
+    ImportOffsetsHocon,
+    ImportOffsetsJson,
+    BootImage,
+    XblImage,
+    PayloadImage,
+    UefiImage,
+    PluginModule,
+
+    /** payload batch (a): one script file / one or more .ko modules. */
+    PayloadScript,
+    PayloadKo,
+}
 
 private enum class ParseDialogStage { Mode, Attach }
+
+
+/**
+ * The shared text dialog for one plugin parameter (P1).
+ *
+ * The dialog carries NO message resource: its label is the parameter name as
+ * plain text. That is not cosmetic — the first version left the message id at 0
+ * and the page rendered it, which crashed the device with
+ * `Resources$NotFoundException: String resource ID #0x0`. Keeping the state
+ * construction here makes the path unit-testable without an Android runtime.
+ */
+internal fun pluginParamEditDialogState(
+    base: GhostlockUiState,
+    id: String,
+    name: String,
+    current: String,
+): GhostlockUiState = base.copy(
+    pluginParamEditId = id,
+    pluginParamEditName = name,
+    dialogVisible = true,
+    dialogType = DialogType.INPUT,
+    dialogTitleRes = R.string.plugin_param_edit,
+    dialogMessage = name,
+    dialogMessageRes = null,
+    dialogInput = current,
+    dialogConfirmLabelRes = R.string.plugin_param_edit,
+)
 
 class GhostlockViewModel(
     private val repository: GhostlockRepository,
@@ -157,6 +201,9 @@ class GhostlockViewModel(
             state.copy(
                 executionRelease = config.release,
                 executionHasProfile = config.hasProfile,
+                /* P0: the probe's own reasons a selected plugin blocks the
+                 * document — the run gate shows them instead of a generic line. */
+                executionPluginErrors = config.pluginErrors,
                 executionFields = config.general,
                 executionEditing = if (preserveEditing) state.executionEditing
                 else config.general.associate { field -> field.path to field.value.toString() },
@@ -295,12 +342,20 @@ class GhostlockViewModel(
         mutableState.update { it.copy(pluginsScreenVisible = false) }
     }
 
-    /** Persists an enable/disable toggle and republishes the registry rows. */
+    /**
+     * Persists an enable/disable toggle and republishes the registry rows.
+     *
+     * It re-describes through [refreshPlugins] instead of projecting the rows
+     * from the registry alone: the old version rebuilt them with NO descriptors,
+     * so every row looked unusable and every enable switch greyed out — a
+     * disabled plugin then could not be enabled again without leaving the page.
+     * Re-describing also gives the row its schema back immediately.
+     */
     fun onPluginEnabledChanged(id: String, enabled: Boolean) {
         viewModelScope.launch {
-            val entries = runCatching { repository.setPluginEnabled(id, enabled) }.getOrNull()
+            runCatching { repository.setPluginEnabled(id, enabled) }.getOrNull()
                 ?: return@launch
-            mutableState.update { it.copy(pluginRows = pluginRows(entries, emptyMap())) }
+            refreshPlugins()
         }
     }
 
@@ -311,15 +366,39 @@ class GhostlockViewModel(
                 .getOrDefault(false)
             /* The probe re-describes every installed module against its pinned
              * digest, so the page renders the schema the module declares now. */
-            val descriptors = runCatching { repository.describePlugins() }
-                .getOrDefault(emptyMap())
+            val report = runCatching { repository.describePlugins() }.getOrNull()
+            val descriptors = report?.descriptors.orEmpty()
+            val describeFailures = report?.failures.orEmpty()
             /* The user's explicit overrides come from the controller's store;
              * the descriptor supplies the defaults and the types. */
             val overrides = runCatching { repository.pluginParamOverrides() }
                 .getOrDefault(emptyMap())
+            val extractValues = runCatching { repository.pluginExtractValues() }
+                .getOrDefault(emptyMap())
+            val detailId = state.value.pluginDetailId
+            val detail = detailId?.let { id ->
+                pluginDetailState(
+                    id = id,
+                    entries = entries,
+                    descriptor = descriptors[id],
+                    describeFailure = describeFailures[id],
+                    overrides = overrides[id].orEmpty(),
+                    extracts = extractValues[id].orEmpty(),
+                    backend = state.value.backendKind,
+                    selection = state.value.pluginRunSelection,
+                )
+            }
             mutableState.update {
                 it.copy(
-                    pluginRows = pluginRows(entries, descriptors),
+                    pluginRows = pluginRows(
+                        entries,
+                        descriptors,
+                        it.backendKind,
+                        it.pluginRunSelection,
+                        describeFailures,
+                    ),
+                    pluginDescribeFailures = describeFailures,
+                    pluginRunLogLine = PluginRunSelection.logLine(entries, it.pluginRunSelection),
                     pluginParams = descriptors.mapValues { (id, descriptor) ->
                         val entry = entries.firstOrNull { it.id == id }
                         val applied = overrides[id].orEmpty()
@@ -332,9 +411,241 @@ class GhostlockViewModel(
                         pluginParamRows(descriptor, applied, errors)
                     },
                     pluginImportEnabled = importAvailable,
+                    pluginDetail = detail,
                 )
             }
         }
+    }
+
+    /**
+     * payload batch (a): the custom-execution draft. Transient UI state for now:
+     * persistence lands with the wire owner (batch b), so nothing half-wired is
+     * written into the profile yet. Any edit invalidates the confirmation.
+     */
+    fun onOpenPayload() {
+        mutableState.update {
+            it.copy(advancedScreenVisible = true, payloadVisible = true, pluginsScreenVisible = false)
+        }
+    }
+
+    fun onClosePayload() {
+        mutableState.update { it.copy(payloadVisible = false) }
+    }
+
+    /** `null` is the DEFAULT choice: no custom content, no authorisation. */
+    fun onPayloadTierChanged(tier: PayloadTier?) {
+        mutableState.update {
+            it.copy(payloadDraft = it.payloadDraft.copy(tier = tier), payloadConfirmed = false)
+        }
+    }
+
+    fun onPayloadCommandChanged(command: String) {
+        mutableState.update {
+            it.copy(
+                payloadDraft = it.payloadDraft.copy(execCommand = command),
+                payloadConfirmed = false,
+            )
+        }
+    }
+
+    fun onPayloadHashChanged(sha256: String) {
+        mutableState.update {
+            val draft = it.payloadDraft
+            it.copy(
+                payloadDraft = when (draft.tier) {
+                    PayloadTier.Exec -> draft.copy(execSha256 = sha256)
+                    PayloadTier.Script -> draft.copy(scriptSha256 = sha256)
+                    else -> draft
+                },
+                payloadConfirmed = false,
+            )
+        }
+    }
+
+    /**
+     * The explicit authorisation: only a draft with NO blocking error can be
+     * confirmed, and the confirmation is what the run summary and the log use.
+     */
+    fun onPayloadConfirm() {
+        val draft = state.value.payloadDraft
+        /* The default tier has nothing to authorise: it emits no payload at all. */
+        if (!draft.needsAuthorisation) {
+            mutableState.update { it.copy(payloadConfirmed = false) }
+            return
+        }
+        val blocking = payloadMessages(draft).filter { it.level == PluginIssueLevel.Error }
+        if (blocking.isNotEmpty()) {
+            send(GhostlockEffect.Toast(R.string.payload_blocked))
+            return
+        }
+        mutableState.update { it.copy(payloadConfirmed = true) }
+        appendLog(payloadRunLogLine(draft))
+    }
+
+    fun onPayloadPickScript() {
+        send(GhostlockEffect.PickDocument(DocumentRequest.PayloadScript))
+    }
+
+    fun onPayloadPickKo() {
+        send(GhostlockEffect.PickDocument(DocumentRequest.PayloadKo))
+    }
+
+    /** Copies the picked script; the hash it reports is the pinned one. */
+    private fun onPayloadScriptPicked(uri: String, displayName: String?) {
+        viewModelScope.launch {
+            val result = runCatching { repository.importPayloadFile(PayloadKind.Script, uri, displayName) }
+                .getOrElse { PayloadImportResult.Rejected(it.message ?: "cannot copy the script") }
+            applyPayloadImport(result) { draft, imported ->
+                draft.copy(
+                    scriptName = imported.displayName,
+                    scriptPath = imported.relativePath,
+                    scriptSha256 = imported.sha256,
+                )
+            }
+        }
+    }
+
+    /** Copies picked .ko modules, keeping the pick order as the load order. */
+    private fun onPayloadKosPicked(uris: List<String>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            var draft = state.value.payloadDraft
+            for (uri in uris.take(PAYLOAD_MAX_KO - draft.koEntries.size)) {
+                val result = runCatching {
+                    repository.importPayloadFile(PayloadKind.Ko, uri, null)
+                }.getOrElse { PayloadImportResult.Rejected(it.message ?: "cannot copy the module") }
+                when (result) {
+                    is PayloadImportResult.Imported -> {
+                        draft = draft.copy(
+                            koEntries = draft.koEntries + PayloadKoEntry(
+                                name = result.displayName,
+                                path = result.relativePath,
+                                sha256 = result.sha256,
+                            ),
+                        )
+                    }
+
+                    is PayloadImportResult.Rejected -> {
+                        send(GhostlockEffect.ToastArgs(R.string.payload_import_failed, result.reason))
+                    }
+                }
+            }
+            val updated = draft
+            mutableState.update {
+                it.copy(payloadDraft = updated, payloadConfirmed = false)
+            }
+        }
+    }
+
+    fun onPayloadKoMove(index: Int, delta: Int) {
+        mutableState.update {
+            it.copy(
+                payloadDraft = it.payloadDraft.copy(
+                    koEntries = payloadKoMove(it.payloadDraft.koEntries, index, delta),
+                ),
+                payloadConfirmed = false,
+            )
+        }
+    }
+
+    fun onPayloadKoRemove(index: Int) {
+        mutableState.update {
+            it.copy(
+                payloadDraft = it.payloadDraft.copy(
+                    koEntries = payloadKoRemove(it.payloadDraft.koEntries, index),
+                ),
+                payloadConfirmed = false,
+            )
+        }
+    }
+
+    private fun applyPayloadImport(
+        result: PayloadImportResult,
+        apply: (PayloadDraft, PayloadImportResult.Imported) -> PayloadDraft,
+    ) {
+        when (result) {
+            is PayloadImportResult.Imported -> mutableState.update {
+                it.copy(
+                    payloadDraft = apply(it.payloadDraft, result),
+                    payloadConfirmed = false,
+                )
+            }
+
+            is PayloadImportResult.Rejected -> send(
+                GhostlockEffect.ToastArgs(R.string.payload_import_failed, result.reason),
+            )
+        }
+    }
+
+    fun onPayloadClear() {
+        mutableState.update { it.copy(payloadDraft = PayloadDraft(), payloadConfirmed = false) }
+    }
+
+    /** batch ②: opens one plugin's detail page (data comes from the refresh). */
+    fun onOpenPluginDetail(id: String) {
+        mutableState.update { it.copy(pluginDetailId = id) }
+        refreshPlugins()
+    }
+
+    fun onClosePluginDetail() {
+        mutableState.update { it.copy(pluginDetailId = null, pluginDetail = null) }
+    }
+
+    /** Re-runs the probe for every installed module and rebuilds the report. */
+    fun onRecheckPlugin(id: String) {
+        mutableState.update { it.copy(pluginDetailId = id) }
+        refreshPlugins()
+    }
+
+    fun onClearPluginOverrides(id: String) {
+        viewModelScope.launch {
+            runCatching { repository.clearPluginOverrides(id) }
+            refreshPlugins()
+        }
+    }
+
+    /** Everything the detail page shows, derived from one snapshot. */
+    private suspend fun pluginDetailState(
+        id: String,
+        entries: List<PluginManifestEntry>,
+        descriptor: PluginDescriptor?,
+        describeFailure: String? = null,
+        overrides: Map<String, PluginValue>,
+        extracts: Map<String, PluginValue>,
+        backend: BackendKind,
+        selection: Set<String>?,
+    ): PluginDetailState {
+        val entry = entries.firstOrNull { it.id == id }
+            ?: return PluginDetailState(
+                id = id,
+                issues = listOf(
+                    PluginIssueRow(PluginIssueLevel.Error, R.string.plugin_issue_not_installed),
+                ),
+            )
+        val selected = entry.enabled && (selection == null || id in selection)
+        val installedPath = runCatching { repository.pluginInstalledPath(id) }.getOrNull() ?: "-"
+        return PluginDetailState(
+            id = id,
+            header = pluginHeaderRows(entry, descriptor, installedPath, selected),
+            params = descriptor?.let {
+                pluginParamRows(
+                    it,
+                    overrides,
+                    PluginConfigValidator.validate(it, entry.enabled, entry.stage, overrides),
+                )
+            }.orEmpty(),
+            extracts = descriptor?.let { pluginExtractRows(it, extracts) }.orEmpty(),
+            specs = descriptor?.let { pluginSpecRows(it, extracts) }.orEmpty(),
+            issues = pluginIssueRows(
+                descriptor = descriptor,
+                entry = entry,
+                describeFailure = describeFailure,
+                overrides = overrides,
+                extracts = extracts,
+                selectedBackend = backend,
+                selected = selected,
+            ),
+        )
     }
 
     /**
@@ -343,19 +654,30 @@ class GhostlockViewModel(
      * clears the override, so the descriptor default applies again.
      */
     fun onPluginParamEdit(id: String, name: String, current: String) {
-        mutableState.update {
-            it.copy(
-                pluginParamEditId = id,
-                pluginParamEditName = name,
-                dialogVisible = true,
-                dialogType = DialogType.INPUT,
-                dialogTitleRes = R.string.plugin_param_edit,
-                dialogMessage = name,
-                dialogMessageRes = 0,
-                dialogInput = current,
-                dialogConfirmLabelRes = R.string.plugin_param_edit,
-            )
-        }
+        mutableState.update { pluginParamEditDialogState(it, id, name, current) }
+    }
+
+    /**
+     * Batch 1: the run-level selection. Transient by design — it is pushed to
+     * the repository (which composes the document) and reset after the run, so
+     * the next run starts from the default "every enabled plugin".
+     */
+    fun onPluginRunSelected(id: String, selected: Boolean) {
+        val current = state.value.pluginRows.filter { it.enabled }.map { it.id }.toSet()
+        val next = if (selected) current + id else current - id
+        applyPluginRunSelection(next)
+    }
+
+    fun onPluginRunSelectAll() = applyPluginRunSelection(null)
+
+    fun onPluginRunSelectNone() = applyPluginRunSelection(emptySet())
+
+    private fun applyPluginRunSelection(selection: Set<String>?) {
+        repository.setPluginRunSelection(selection)
+        mutableState.update { it.copy(pluginRunSelection = selection) }
+        /* Re-project the rows from the registry, so the switch state is derived
+         * from the repository's own view rather than from a second copy. */
+        refreshPlugins()
     }
 
     /** P1: a bool parameter is stored straight from its switch. */
@@ -1028,11 +1350,37 @@ class GhostlockViewModel(
         viewModelScope.launch { refreshSnapshot() }
     }
 
-    fun onRun() = runExploit()
+    fun onRun() {
+        /* Batch 1: record what this run loads (the log travels with the run and
+         * is exported; the selection itself never reaches the wire), then reset
+         * to the default so the next run starts from "every enabled plugin". */
+        val line = state.value.pluginRunLogLine
+        if (line.isNotEmpty()) appendLog(line)
+        /* payload ruling 9: the pre-run summary is evidence, so it is logged too. */
+        val payloadDraft = state.value.payloadDraft
+        if (!payloadDraft.needsAuthorisation || state.value.payloadConfirmed) {
+            appendLog(payloadRunLogLine(payloadDraft))
+        }
+        runExploit()
+        if (state.value.pluginRunSelection != null) {
+            applyPluginRunSelection(null)
+        }
+    }
 
     /** Explains why the run button is greyed out. */
     fun onProfileInvalid() {
         val state = state.value
+        /* A selected plugin that cannot be emitted blocks the document before any
+         * of the generic reasons below apply: say WHY (the probe's own words). */
+        if (state.executionPluginErrors.isNotEmpty()) {
+            send(
+                GhostlockEffect.ToastArgs(
+                    R.string.plugin_run_blocked_plugin,
+                    state.executionPluginErrors.first(),
+                ),
+            )
+            return
+        }
         val needsShell = runRequiresShizuku(state.executionMode, state.backendKind)
         val messageRes = when {
             !state.executionHasProfile -> R.string.run_blocked_no_profile
@@ -1180,6 +1528,8 @@ class GhostlockViewModel(
     fun onDocumentResult(request: DocumentRequest, uri: String) {
         when (request) {
             DocumentRequest.PluginModule -> importPlugin(uri)
+            DocumentRequest.PayloadScript -> onPayloadScriptPicked(uri, null)
+            DocumentRequest.PayloadKo -> onPayloadKosPicked(listOf(uri))
             DocumentRequest.BootImage -> stageBoot(uri)
             DocumentRequest.XblImage -> stageXbl(uri)
             DocumentRequest.UefiImage -> stageUefi(uri)
@@ -1221,6 +1571,8 @@ class GhostlockViewModel(
             DocumentRequest.XblImage -> uris.firstOrNull()?.let(::stageXbl)
             DocumentRequest.UefiImage -> uris.firstOrNull()?.let(::stageUefi)
             DocumentRequest.PayloadImage -> uris.firstOrNull()?.let(::stagePayload)
+            DocumentRequest.PayloadKo -> onPayloadKosPicked(uris)
+            DocumentRequest.PayloadScript -> uris.firstOrNull()?.let { onPayloadScriptPicked(it, null) }
         }
     }
 
@@ -1283,6 +1635,7 @@ class GhostlockViewModel(
         kernelSnapshot = snapshot
         mutableState.update {
             it.copy(
+                executionPluginErrors = loaded?.pluginErrors.orEmpty(),
                 deviceName = snapshot.deviceName,
                 kernelRelease = snapshot.kernelRelease,
                 socName = snapshot.socName,
@@ -1649,9 +2002,9 @@ class GhostlockViewModel(
             it.copy(
                 dialogVisible = false,
                 dialogType = DialogType.NONE,
-                dialogTitleRes = 0,
+                dialogTitleRes = null,
                 dialogMessage = "",
-                dialogMessageRes = 0,
+                dialogMessageRes = null,
                 dialogItems = emptyList(),
                 dialogItemResIds = emptyList(),
                 dialogCurrentItemIndex = -1,

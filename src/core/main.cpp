@@ -20,13 +20,16 @@
 
 #include "profile/entry.h"
 #include "backend/cve_2026_43284/entry.hpp"
+#include "plugin/host.hpp"
 #include "plugin/probe.hpp"
+#include "plugin/wire.hpp"
 #include "support/cli.hpp"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
 #include "pipeline/orchestrator.hpp"
 
 #include <array>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -125,6 +128,22 @@ int main(int argc, char **argv) {
             decoded.terminal = static_cast<uint16_t>(terminal_kind);
         }
 
+        /* S4 P1: the plugin section is validated BEFORE any backend binding.
+         * Shape is canonical (section "plugin" + flattened "<id>.<field>" keys);
+         * a "plugin.<id>" section never reaches here because the owner Section
+         * whitelist rejects it at decode time. Fail-closed: an invalid plugin
+         * entry aborts the run instead of being silently ignored. */
+        plugin::PluginWireEntry plugin_entries[plugin::kMaxPluginsPerDocument]{};
+        const plugin::PluginWireResult plugin_wire = plugin::validate_plugin_wire(
+                decoded, plugin_entries, plugin::kMaxPluginsPerDocument);
+        if (plugin_wire.error != plugin::PluginWireError::None) {
+            pr_error("plugin configuration rejected: %s id=%.*s\n",
+                     plugin::plugin_wire_error_name(plugin_wire.error),
+                     static_cast<int>(plugin_wire.id.size()),
+                     plugin_wire.id.data());
+            throw FatalError{};
+        }
+
         auto &session = session::g_exploit_session;
         /* Route is backend-internal (ADR-0004 R12): the backend reads it from
          * the bound profile; the selection carries only backend/steps/terminal. */
@@ -160,6 +179,25 @@ int main(int argc, char **argv) {
                      backend.c_str(), steps.c_str(), terminal.c_str(), route.c_str());
             throw FatalError{};
         }
+        /* S4 P1 step 3a: the plugin host is a composition-root object. It only
+         * REGISTERS here (no dlopen, no file access): the P1 wire gate above
+         * already validated the section. The 43284 path opens it before the
+         * chain because that backend has no PI waiter at any point (design
+         * section 12.2, the fixed point before the page-cache write); the LKM
+         * residency window then dispatches POST_TERMINAL inside the window.
+         * 43499 opens at its pre_terminal anchor instead (step 3b), never here,
+         * because a mapping must not exist while the PI waiter is alive (R1).
+         * Without a plugin section every call below is a no-op and the run stays
+         * byte-for-byte today's run. */
+        const plugin::RuntimeBackend plugin_backend =
+                selection.backend == contract::BackendKind::Cve2026_43284
+                        ? plugin::RuntimeBackend::Cve2026_43284
+                        : plugin::RuntimeBackend::Cve2026_43499;
+        plugin::PluginHost plugin_host =
+                plugin::PluginHost::from_document(decoded, plugin_backend);
+        if (plugin_backend == plugin::RuntimeBackend::Cve2026_43284) {
+            (void)plugin_host.open(plugin::WindowState::WaiterClosed);
+        }
         /* B6/T5 production seam. The orchestrator routes app-call 43284 through
          * Pipeline, but the per-run resources are composition-root facts: the
          * helper.ko module mirror + write plan, the single carrier, the real
@@ -167,15 +205,11 @@ int main(int argc, char **argv) {
          * Install them into the 43284 state before dispatch; a failed bind is
          * fail-closed and never reaches patch #1 / hook / trigger. The
          * resources outlive the pipeline call and the pipeline's RAII guard
-         * destroys the state on every exit path.
-         *
-         * Availability is intentionally still false in this batch (see
-         * contract/identity.hpp for the one-line flip): the gate above rejects
-         * 43284, so this seam is dormant until the main agent enables it after
-         * the app-call device gate. */
+         * destroys the state on every exit path. The borrowed plugin host rides
+         * the same bind so the residency window can dispatch POST_TERMINAL. */
         if (selection.backend == contract::BackendKind::Cve2026_43284) {
-            const std::uint8_t bind_error =
-                    production.bind(session, decoded, options.allow_dev_target);
+            const std::uint8_t bind_error = production.bind(
+                    session, decoded, options.allow_dev_target, &plugin_host);
             if (bind_error != 0U) {
                 pr_error("cve_2026_43284 production binding failed (%d)\n",
                          static_cast<int>(bind_error));
@@ -187,6 +221,18 @@ int main(int argc, char **argv) {
          * successful early stop (objective already met), not a full run. */
         const pipeline::RunResult result = pipeline::run_orchestrated_pipeline(
             session, selection, decoded, dump_dir, force_attack);
+        /* S4 P1 step 3a: unload before the outcome becomes an exit code, then
+         * emit the accounting once. The registered() gate is what keeps a run
+         * without a plugin section byte-for-byte identical: no report, no new
+         * stdout/stderr bytes, and a host with no entries has nothing to unload.
+         * The report is the same field-structured style as the lkm_window and
+         * registry diagnostics, so the device gate can grep run.plugin. */
+        plugin_host.close();
+        if (plugin_host.registered() > 0u) {
+            const std::string plugin_report = plugin_host.format_diagnostics();
+            (void)std::fputs(plugin_report.c_str(), stdout);
+            (void)std::fflush(stdout);
+        }
         switch (result.code) {
             case pipeline::RunCode::Rejected:
                 pr_error("orchestrator rejected the component selection\n");

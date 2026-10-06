@@ -2,9 +2,12 @@
  *
  * See chain.hpp for the ordering, the injected surface and the terminus. This
  * translation unit contains no syscall, no fork/exec and no direct file write:
- * the device bindings (crash_dump bridge, page-cache socket, sentry trigger and
- * fd/secret release) are supplied by ChainOps and land in B5-9. */
+ * the device bindings (crash_dump bridge, page-cache socket, sentry trigger,
+ * fd/secret release) are supplied by ChainOps and land in B5-9. Structured
+ * diagnostics follow the same rule: the bounded line is built here and handed
+ * to ChainOps::log, so the unit stays device-free. */
 
+#include "backend/cve_2026_43284/diag_line.hpp"
 #include "backend/cve_2026_43284/steps/chain.hpp"
 
 #include <limits>
@@ -93,6 +96,18 @@ namespace {
     using ghostlock::backend::cve_2026_43284::steps::PatchRegion;
     using ghostlock::backend::cve_2026_43284::steps::valid_carrier_path;
     using ghostlock::backend::cve_2026_43284::steps::valid_dev_carrier_path;
+    using ghostlock::backend::cve_2026_43284::DiagLine;
+    using ghostlock::backend::cve_2026_43284::steps::chain_error_name;
+    using ghostlock::backend::cve_2026_43284::steps::chain_wait_name;
+
+    /* Emits one bounded structured line through the caller's sink. A null sink
+     * (staged runs, tests that do not capture) keeps the unit silent; logging
+     * can never change the chain's control flow. */
+    void emit(const ChainOps &ops, DiagLine &line) noexcept {
+        if (ops.log != nullptr) {
+            ops.log(ops.write.ctx, line.c_str());
+        }
+    }
 
     /* Applies the production /vendor prefix constraint unless the explicit dev
      * staged-run escape hatch is set on the request. */
@@ -149,6 +164,11 @@ namespace {
             }
         }
         result.blocks_rolled_back = rolled;
+        DiagLine line("rollback");
+        line.u("blocks", rolled)
+                .b("incomplete", workspace.rollback_incomplete)
+                .b("overflow", workspace.journal_overflow);
+        emit(ops, line);
         clear_journal(workspace);
     }
 
@@ -168,16 +188,58 @@ namespace {
                 validate_plan_closure(plan, carrier.size, target_size);
         if (closure != ChainError::None) {
             result.error = closure;
+            DiagLine line("plan");
+            line.fail(chain_error_name(closure))
+                    .u("regions", plan.region_count)
+                    .u("extent", plan.extent)
+                    .x("carrier_size", carrier.size)
+                    .u("target_size", target_size);
+            emit(ops, line);
             return ApplyOutcome::Failed;
         }
+
+        /* One line per failing block: index, offset and the named reason. The
+         * per-block success path is summarised per region below (a plan can hold
+         * ~100 blocks; the run's line budget stays bounded). */
+        const auto fail_block = [&ops, &result](ChainError error, std::size_t region_index,
+                                                std::size_t block, std::uint64_t offset) {
+            DiagLine line("write");
+            line.fail(chain_error_name(error))
+                    .u("i", region_index + 1u)
+                    .u("block", block)
+                    .x("off", offset)
+                    .u("len", kChainBlockBytes)
+                    .u("written", result.blocks_written)
+                    .u("verified", result.blocks_verified);
+            emit(ops, line);
+        };
 
         std::uint32_t wrote_here = 0U;
         for (std::size_t ri = 0U; ri < plan.region_count; ++ri) {
             const PatchRegion &region = plan.regions[ri];
             if ((region.rollback || region.verify) && !ops.read_ready()) {
                 result.error = ChainError::NotAvailable;
+                DiagLine line("write");
+                line.fail(chain_error_name(ChainError::NotAvailable))
+                        .u("i", ri + 1u)
+                        .u("of", plan.region_count)
+                        .b("verify", region.verify)
+                        .b("rollback", region.rollback);
+                emit(ops, line);
                 return ApplyOutcome::Failed;
             }
+            DiagLine region_line("write");
+            region_line.n("stage", "region")
+                    .u("i", ri + 1u)
+                    .u("of", plan.region_count)
+                    .x("off", region.offset)
+                    .u("len", region.len)
+                    .b("verify", region.verify)
+                    .b("rollback", region.rollback);
+            if (!region.label.empty()) {
+                region_line.s("label", region.label);
+            }
+            emit(ops, region_line);
 
             /* Optional pre-image assert: check the whole region against the
              * caller-supplied original before writing any of it. A mismatch is
@@ -198,6 +260,7 @@ namespace {
                             return ApplyOutcome::CarrierUnusable;
                         }
                         result.error = ChainError::ReadFailed;
+                        fail_block(ChainError::ReadFailed, ri, b, offset);
                         rollback_journal(ops, workspace, result);
                         return ApplyOutcome::Failed;
                     }
@@ -205,6 +268,7 @@ namespace {
                                      region.preimage + b * kChainBlockBytes,
                                      kChainBlockBytes)) {
                         result.error = ChainError::PreImageMismatch;
+                        fail_block(ChainError::PreImageMismatch, ri, b, offset);
                         rollback_journal(ops, workspace, result);
                         return ApplyOutcome::Failed;
                     }
@@ -227,6 +291,7 @@ namespace {
                             return ApplyOutcome::CarrierUnusable;
                         }
                         result.error = ChainError::ReadFailed;
+                        fail_block(ChainError::ReadFailed, ri, b, offset);
                         rollback_journal(ops, workspace, result);
                         return ApplyOutcome::Failed;
                     }
@@ -243,6 +308,7 @@ namespace {
                 const std::int32_t written = ops.write.write16(ops.write.ctx, offset, desired);
                 if (written != 0) {
                     result.error = ChainError::WriteFailed;
+                    fail_block(ChainError::WriteFailed, ri, b, offset);
                     rollback_journal(ops, workspace, result);
                     return ApplyOutcome::Failed;
                 }
@@ -255,17 +321,26 @@ namespace {
                     const long got = ops.read_block(ops.write.ctx, offset, back.data());
                     if (got != static_cast<long>(kChainBlockBytes)) {
                         result.error = ChainError::ReadFailed;
+                        fail_block(ChainError::ReadFailed, ri, b, offset);
                         rollback_journal(ops, workspace, result);
                         return ApplyOutcome::Failed;
                     }
                     if (!bytes_equal(back.data(), desired, kChainBlockBytes)) {
                         result.error = ChainError::VerifyMismatch;
+                        fail_block(ChainError::VerifyMismatch, ri, b, offset);
                         rollback_journal(ops, workspace, result);
                         return ApplyOutcome::Failed;
                     }
                     ++result.blocks_verified;
                 }
             }
+            DiagLine done_line("write");
+            done_line.n("result", "ok")
+                    .u("i", ri + 1u)
+                    .x("off", region.offset)
+                    .u("blocks", block_count)
+                    .u("bytes", region.len);
+            emit(ops, done_line);
         }
         return ApplyOutcome::Ok;
     }
@@ -296,6 +371,15 @@ namespace {
             result.error = ChainError::CleanupFailed;
         }
         clear_journal(workspace);
+        DiagLine summary("finish");
+        summary.n("error", chain_error_name(result.error))
+                .b("hook_restored", result.hook_restored)
+                .b("window_closed", result.lkm_channel_closed)
+                .b("cleanup", result.cleanup_ran)
+                .b("rollback_incomplete", result.rollback_incomplete)
+                .u("written", result.blocks_written)
+                .u("verified", result.blocks_verified);
+        emit(ops, summary);
         return result;
     }
 
@@ -358,6 +442,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         if (!ops.write_ready()) {
             result.last_stage = ChainStage::Write;
             result.error = ChainError::NotAvailable;
+            DiagLine line("entry");
+            line.n("stage", "write_ready").fail(chain_error_name(ChainError::NotAvailable));
+            emit(ops, line);
             return finish(result, ops, workspace);
         }
 
@@ -382,6 +469,11 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 }
             }
             result.error = ChainError::NoCarrier;
+            DiagLine line("carrier");
+            line.fail(chain_error_name(ChainError::NoCarrier))
+                    .u("candidates", request.carrier_count)
+                    .b("dev_path", request.allow_dev_carrier_path);
+            emit(ops, line);
             return finish(result, ops, workspace);
         }
 
@@ -392,6 +484,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             if (!ops.build_plan(ops.write.ctx, plan, plan_error)) {
                 result.error =
                         plan_error == ChainError::None ? ChainError::InvalidPlan : plan_error;
+                DiagLine line("plan");
+                line.n("stage", "build").fail(chain_error_name(result.error));
+                emit(ops, line);
                 return finish(result, ops, workspace);
             }
         }
@@ -401,6 +496,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         const ChainError closure = validate_plan_closure(plan, 0U, request.target_size);
         if (closure != ChainError::None) {
             result.error = closure;
+            DiagLine line("plan");
+            line.n("stage", "closure")
+                    .fail(chain_error_name(closure))
+                    .u("regions", plan.region_count)
+                    .u("extent", plan.extent)
+                    .u("target_size", request.target_size);
+            emit(ops, line);
             return finish(result, ops, workspace);
         }
 
@@ -412,9 +514,15 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const ChainError crash_error = ops.patch_crash_dump(ops.write.ctx);
             if (crash_error != ChainError::None) {
                 result.error = crash_error;
+                DiagLine line("patch");
+                line.n("stage", "crash_dump").fail(chain_error_name(crash_error));
+                emit(ops, line);
                 return finish(result, ops, workspace);
             }
             result.crash_dump_patched = true;
+            DiagLine patched("patch");
+            patched.n("stage", "crash_dump").n("result", "ok");
+            emit(ops, patched);
         }
 
         for (std::size_t i = 0U; i < request.carrier_count; ++i) {
@@ -425,6 +533,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                                       request.allow_dev_carrier_path)) {
                 attempt.error = ChainError::CarrierUnusable;
                 record_attempt(workspace, attempt);
+                DiagLine line("carrier");
+                line.s("path", candidate.path)
+                        .fail(chain_error_name(ChainError::CarrierUnusable));
+                emit(ops, line);
                 continue;
             }
 
@@ -443,6 +555,11 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             if (outcome == ApplyOutcome::CarrierUnusable) {
                 attempt.error = ChainError::CarrierUnusable;
                 record_attempt(workspace, attempt);
+                DiagLine line("carrier");
+                line.s("path", candidate.path)
+                        .fail(chain_error_name(ChainError::CarrierUnusable))
+                        .u("written", attempt.blocks_written);
+                emit(ops, line);
                 clear_journal(workspace);
                 continue;
             }
@@ -460,6 +577,11 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          * verified, before any trigger fires. The terminus (release + journal
          * scrub) still runs exactly once. */
         if (request.stop_after == ChainStopAfter::Write) {
+            DiagLine line("staged");
+            line.n("stop", "write")
+                    .u("written", result.blocks_written)
+                    .u("verified", result.blocks_verified);
+            emit(ops, line);
             return finish(result, ops, workspace);
         }
 
@@ -467,18 +589,35 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          * carrier write/verify and before the trigger (upstream order). */
         if (ops.apply_hook != nullptr) {
             result.last_stage = ChainStage::Hook;
+            DiagLine before("hook");
+            before.n("stage", "apply");
+            emit(ops, before);
             const ChainError hook_error = ops.apply_hook(ops.write.ctx);
             if (hook_error != ChainError::None) {
                 result.error = hook_error;
+                DiagLine failed("hook");
+                failed.n("stage", "apply").fail(chain_error_name(hook_error));
+                emit(ops, failed);
                 return finish(result, ops, workspace);
             }
             result.hook_applied = true;
+            DiagLine applied("hook");
+            applied.n("stage", "apply").n("result", "applied");
+            emit(ops, applied);
         }
 
         result.last_stage = ChainStage::Trigger;
         if (ops.trigger == nullptr || ops.trigger(ops.write.ctx) != 0) {
             result.error = ChainError::TriggerFailed;
+            DiagLine line("trigger");
+            line.fail(chain_error_name(ChainError::TriggerFailed));
+            emit(ops, line);
             return finish(result, ops, workspace);
+        }
+        {
+            DiagLine line("trigger");
+            line.n("result", "launched");
+            emit(ops, line);
         }
 
         result.last_stage = ChainStage::WaitResult;
@@ -487,6 +626,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return finish(result, ops, workspace);
         }
         result.wait = ops.wait_result(ops.write.ctx, request.wait_timeout_ms);
+        {
+            DiagLine line("wait");
+            line.n("outcome", chain_wait_name(result.wait))
+                    .u("timeout_ms", request.wait_timeout_ms);
+            emit(ops, line);
+        }
         if (result.wait == ChainWaitOutcome::LkmLoaded) {
             result.lkm_loaded = true;
             /* The LKM is resident now, so this is the only place the versioned
@@ -499,6 +644,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                      * (countermeasures fail soft, §3.8/§3.13). Plugins that
                      * needed it observe Unsupported. */
                     result.lkm_window_failed = true;
+                    DiagLine line("window");
+                    line.b("opened", false).b("failed", true);
+                    emit(ops, line);
                 } else {
                     workspace.lkm_window_open = true;
                     result.lkm_channel_opened = true;
@@ -506,6 +654,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         !ops.run_lkm_window(ops.write.ctx)) {
                         result.lkm_window_failed = true;
                     }
+                    DiagLine line("window");
+                    line.b("opened", true).b("failed", result.lkm_window_failed);
+                    emit(ops, line);
                 }
             }
         } else if (result.wait == ChainWaitOutcome::Failed) {

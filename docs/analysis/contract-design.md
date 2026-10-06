@@ -795,12 +795,14 @@ plugin {
 如需要的符号名、结构偏移、或从 boot.img 解析的参数；extractor 用它**校验/补全** `plugin.<id>.extract.*`，
 插件运行时通过 `RuntimeInfo`/参数读取，而不是硬编码在 `.so` 里。
 
-**实现顺序（相对 S4）**：R1（schema 权威）→ R2（wire `plugin` 大项 + 生成式映射）→ **P1** native 探针 + Kotlin 导入/校验 UI → **P2** extractor 投影 → P3 参考插件（=CM-4）。
+**P2 已落地（2026-10-05，`593e51de`）**：extractor 新增 `--plugin-descriptor <probe-stdout.tsv>`（**可重复**、**仅 `--format conf`**）——严格解析 §3.14.7.2 的 7 列 TSV → `PluginDescriptor`；取值解析顺序 **R1**（读回正在产出的 profile 字面量，限已发射路径）/ **R3**（BTF `struct.<s>.<f>` 偏移或 `sizeof.<s>`）/ **R2**（kallsyms 符号名，基址相对）。**写入者 = extractor**：输出 `plugin { <id> { extract { … } } }`——**仅 `extract`**、是**可导入片段**而非 wire 文档、追加在 `countermeasure` 之后、无条目时输出**逐字节不变**；`required` 无法解析 = 硬错误，`optional` 缺失 = 省略（**default 不顶替**），声明类型与解析值矛盾 = 硬错误；HOCON 键简单 token 裸写、含点/特殊字符加引号（R1 的 owner-qualified 键**始终加引号**，与 App `HoconSupport.keyName` 一致）。**P1 只校验形状**：键名与类型来自描述符，不由 P1 决定。
+
+**实现顺序（相对 S4）**：R1（schema 权威）→ R2（wire `plugin` 大项 + 生成式映射）→ **P1** native 探针 + Kotlin 导入/校验 UI → **P2** extractor 投影（**已落地 `593e51de`**）→ **P3 参考插件**（**已移出为独立项目 `ghostlock-plugin-example`**——插件作者不需要 exploit 仓库；本仓库只留 `tools/plugins/README.md` 指引与宿主侧 `src/core/plugin/**`；**CM-4 的 Vivo 对策仍未完成**）。
 
 ### 3.14.7 P1 接口冻结（2026-10-05）
 
 **冻结范围**：P1 落实 §3.14.6 四投影中的 **native + Kotlin** 两投影——探针 CLI、探针 stdout 描述、C ABI 尾部追加、`countermeasures/` 根、`plugin.*` wire 字段。
-**extractor 投影 = P2**（`extract_schema` / `plugin.<id>.extract.*`），**参考插件 = P3（= CM-4）**。
+**extractor 投影 = P2**（`extract_schema` / `plugin.<id>.extract.*`），**参考插件 = P3**（独立项目 `ghostlock-plugin-example`，内置 ABI 头 + `build.sh android|host|abi-check`；CM-4 的 Vivo 对策仍待真机）。
 本节条文自 2026-10-05 起**冻结**：`native-core` 与 `kotlin-app` 按此编码；需要偏离时先改本节（= Lead 裁决）再改代码。
 本节未冻结的细节只有一处：`RuntimeInfo`（见 3.14.7.3 末条）。
 
@@ -833,13 +835,31 @@ stdout **只**输出 TSV（诊断走 stderr）。**描述行的第一列是 `kin
 - `default` 空写 `-`；`type` ∈ `uint | int | bool | str`，与 GLKv3 `WireKind` **同字面量**（两侧同一份对拍）；
 - `required` 为 `0 | 1`；`priority` 为十进制整数；`size` 为十进制字节数；`sha256` 为小写 hex；
 - **空值一律写 `-`**；
-- header 行块（在描述行之前，首列是**键名**而不是 kind）：**必须**含
-  `host_abi`（= `GLK_ABI_VERSION`）、`countermeasures_root`（= **相对目录名 `countermeasures`**，不是绝对路径）、
-  `host_stages`（host 实现的 stage 列表）、`host_caps`（host 实现的 capability 位）；
-- `countermeasures_root` 取相对目录名的理由：**环境无关**——探针进程的 `GHOSTLOCK_HOME` 与 App 的 `filesDir` 未必相同，绝对路径无法对拍；
-- App 侧**精确匹配该字面量 `countermeasures`**；`-` 仅表示探针无 home、不可校验。
+- header 行块：**必须位于描述行之前**（首列是**键名**而不是 kind），且**至少**含两个**必填键**——
+  `host_abi`（= `GLK_ABI_VERSION`）、`countermeasures_root`（= **相对目录名 `countermeasures`**，不是绝对路径）；
+- 其余 header 键**可选但类型化**：`host_stages`（host 实现的 stage 列表）、`host_caps`（host 实现的 capability 位）、
+  `stage_availability`（按 backend 的阶段可用性，见下）——**出现即校验**，缺省不影响解析；
+- **未知 header 键 → 拒绝**（fail-closed）；「2 必填 + 3 可选」的放宽理由是**前向兼容**：四键旧 golden 仍可解析（已实践验证），收紧没有安全收益；
+- `stage_availability` 语法：`<backend>:<stage>[,<stage>];<backend>:<stage>[;…]`；`<backend>` 用**短 token**（`43499` / `43284`），`<stage>` 取 `pre_spawn|post_spawn|pre_terminal|post_terminal`；当前冻结字面量：`stage_availability\t43499:pre_terminal;43284:post_terminal`；
+- **唯一权威 = native `src/core/plugin/schema.hpp` 的 `RuntimeBackend` + `stage_available_on()`**（探针 header 与 host 注册校验都从它生成）；**Kotlin 不得硬编码该矩阵**（违反按 F4 的「禁硬编码」处理）；
+- **缺该行 = 无可用阶段**（保守置灰）；未知 `<backend>` / `<stage>` token → **fail-closed**；
+- `countermeasures_root` 取相对目录名的理由：**环境无关**——探针进程的 `GHOSTLOCK_HOME` 与 App 的 `filesDir` 未必相同，绝对路径无法对拍；App 侧**精确匹配该字面量 `countermeasures`**；`-` 仅表示探针无 home、不可校验；
+- **行结束**：行以 `\n` 或 `\r\n` 结束；**孤立的 `\r` 不是分隔符**（不得当换行处理）；
 - 解析规则：首列命中 kind 词汇即为描述行，其前为 header 行（`键<TAB>值`）——该区分规则为冻结语义；
 - 对拍测试（native ↔ Kotlin agreement test）按上表逐列断言。
+
+**必需列、退出码与探针/注册期一致（2026-10-05 冻结）**
+
+- **必需列**（`param` / `extract` 的 `name`、`hook` 的 `name`）**不得为空、不得为 `-`**；出现 `-` 即视为**缺失**，**消费侧必须拒绝**；
+- **产出端不得发行必需列缺失的行**：无法描述时只发 `reject` 行，不发行半成品描述行；
+- **退出码语义**：**无法描述**（哈希不匹配 / ABI 不兼容 / 入口缺失 / 打开失败）→ **非 0** + `reject` 行；**可描述但不可用**（注册期会被拒，如能力不足、阶段在该 backend 不可用）→ **0** + `reject` 行；消费侧以 `reject` 行为准判定 unusable；
+- **探针与注册期口径一致（D7）**：探针须镜像 loader 的可见判定集——`hook.name` ≤ 64、name 无控制字符、caps 位已知、trigger/stage 词表——使「探针通过 = 注册期通过」。
+
+**三端一致性与共享语料**
+
+- 审计结论（2026-10-05）：三端（`plugin/probe.cpp` 产出 / Kotlin 消费 / Rust 消费）逐条约 **30 条规则中 24 条一致**，10 条分歧已分类立项——**D1/D2/D3/D4** 缺陷、**D5/D7/D8** 硬化、**D6** 放宽、**D9/D10** 文档/注释；
+- **共享语料**：`app/src/test/resources/plugin-probe-conformance/{accept,reject}/*.tsv`（**目录即结论**：`accept/` 必须被接受、`reject/` 必须被拒），配**两侧 walker**（Kotlin / Rust）；walker 必须**自证文件集合完备**（枚举目录，不得只跑白名单）；
+- **语料取值域规则**：`accept/` 用例的每个取值必须落在 **ABI 声明域之内**——`plugin.size` / `host_abi` / `plugin.abi_version` / `hook.priority` 为 **uint32**（`src/core/contract/abi/glk_contract_abi.h` 的 `uint32_t size;` / `uint32_t abi_version;` / `uint32_t priority;`；探针按 uint32 打印，`plugin/probe.cpp:375`(size) / `:373`(abi_version) / `:358`(priority)），`required` ∈ {0,1}，bool 默认 ∈ {0,1}，列表项须为词表内 token。**越界值属「生产者不可能产出」的输入**：不得作为 `accept/` 用例（否则等于要求消费端接受一个现实中不存在的值）；若语义上应被拒，放 `reject/`。
 
 行形状示意（`→` 仅表示 TAB；列序即上表冻结值）：
 
@@ -848,6 +868,7 @@ host_abi→1
 countermeasures_root→countermeasures
 host_stages→pre_spawn,post_spawn,pre_terminal,post_terminal
 host_caps→kernel_read,kernel_write,alias,child_task
+stage_availability→43499:pre_terminal;43284:post_terminal
 plugin→<id>→<version>→1→<size>→<sha256>→<stages>→<required_caps>
 hook→<id>→<trigger>→<stage>→<priority>→<name>
 param→<id>→<name>→uint→1→200→<doc>
@@ -879,6 +900,13 @@ reject→<id>→<reason>
 - `module_path` / `module_hash` **不进资产**（由导入流程写入用户配置）；`module_path` 的相对基准见 §3.14.7.4（`<GHOSTLOCK_HOME>/countermeasures`）；
 - **默认关闭**：`enabled` 缺省 false；只有 `enabled = true` 时 Kotlin 才把该插件的 `plugin.<id>.*` 写进文档，未启用插件不得出现在 wire 里。
 
+**跨语言形状（canonical，2026-10-05 修复）**：`plugin` 是**段名**，其键是**平铺的 `<id>.<field>`**（如 `plugin` 段下的 `vivo_vr_guard.enabled`）。
+
+- owner 段白名单只认**精确 `plugin`**；`plugin.<id>` 这种「把 id 当段名」的形状在**解码期即 fail-closed**；
+- `plugin::validate_plugin_wire` **已接进生产路径**：解码之后、任何 backend 绑定之前执行；失败打印 `plugin configuration rejected: <Name> id=<id>` 并终止（fail-closed，不静默忽略）——见 `src/core/main.cpp:129-143`；
+- **缺陷记录**：此前三方形状不一致——白名单按 `plugin.` **前缀**、校验器按**裸 `plugin`**、Kotlin 发射 **`plugin.<id>` 段**；双方**各自测各自的形状**，因此都没发现。修复：`1df00435`（Kotlin 改为 `plugin` 段 + `<id>.<field>` 平铺键 + `enabled` bool）与 `e5792ead`（白名单精确 `plugin`、校验进生产、探针 header 加 `stage_availability`）；
+- **判据（物证）**：`app/src/test/resources/plugin-wire-shape-golden.bin`（**2069 B**，由 App 编码器产出，Kotlin 在 `PluginEmissionDocumentTest` 中逐字节自断言）；native 侧将以 host 测试断言「同一字节流经 `parse` + `validate_plugin_wire` 被接受」。跨语言形状**以该 golden 为物证**——只对拍各自形状不足以发现前缀/段名偏差。
+
 #### 3.14.7.6 切分与顺序（硬约束）
 
 1. **native 半场**：探针 CLI + TSV 输出 + ABI 尾部追加 + `plugin.*` FieldSpec/manifest + wire 绑定（含 fail-closed 校验）；
@@ -896,7 +924,10 @@ reject→<id>→<reason>
 2. **语法扩展**：manifest 的 `type` 列允许 `|` 分隔的**联合**（成员取自既有 wire kind 词表）；Kotlin adapter 按联合解析，**未知成员 fail-closed**；
 3. **native 绑定**：`params.*` / `extract.*` 按前缀接受，只做「值类型 ∈ 联合集合」检查；**键是否存在、required、类型是否与描述符一致** 在插件实例化 / 门禁阶段按探针描述符 fail-closed 校验；
 4. **通配必须显式存在**：任一侧都不得写隐式前缀规则；其它 owner 前缀仍严格 fail-closed（未声明的路径一律拒绝）；
-5. **对拍测试**：用探针 fixture 的 `param` / `extract` 行做正例（描述符内的键全接受）与负例（描述符外的键拒绝）。
+5. **对拍测试**：用探针 fixture 的 `param` / `extract` 行做正例（描述符内的键全接受）与负例（描述符外的键拒绝）；
+6. **按 backend 的阶段可用性与 hook 级拒绝**见 §3.14.7.8：某个 hook 的 stage 在该 backend 不可用 → **拒绝该 hook**（不拒绝整个插件）、记账并给出 `StageUnavailableOnBackend`；全部 hook 被拒则记 `no_usable_hooks=1`；
+7. **`extract.*` 的写入者是 extractor**（P2 `--plugin-descriptor`，R1/R3/R2，仅写 `extract` 片段，见 §3.14.6）；**P1 只校验形状**；HOCON 中插件 id 与含点键**加引号**；
+8. **`param` / `extract` 行的必需列 `name`** 非空且不得为 `-`（必需列语义见 §3.14.7.2）；产出端不得发行缺必需列的行；动态键解析的三端判据是共享语料 `app/src/test/resources/plugin-probe-conformance/{accept,reject}/`。
 
 **静态四行**（`plugin` 为第三类顶层 owner，`<id>` 是路径占位符）：
 `plugin.<id>.enabled`（bool，默认 `literal:0` = 关闭）/ `.stage`（str，host stage token）/
@@ -929,13 +960,143 @@ reject→<id>→<reason>
 - **43499 的 race 窗口按「写尝试」开关**：`steps.cpp:118` 的 `Cve43499Primitives::attack_write<M>(...)` 位于每次写尝试的循环内（`:100-130`），`userspace_clean` 由 route 在**同一次调用内**置位（`route/multicast_waiter_route.cpp:53/71/86/133`、`route/select_stack_route.cpp:125`、`route/tcp_zerocopy_route.cpp:95`），而 victim/child 就在该写循环里建立（`steps.cpp:480` 的 w2 victim round）。因此**不存在「窗口已关闭且 child 未建立」的点**：`pre_spawn` 与 `post_spawn` 不可用（child 建立后仍会有后续写尝试再次开窗）；
 - **43499 `pre_terminal`**：`steps.cpp:484-490`（W1W3：w3 之后、`return StageResult::Continue` 之前）/ `:517-521`（W1W2 同形），随后 `cve_2026_43499_backend.cpp:136` 检查结果 → `:138-158` 移交 rooted child；该点**窗口已关闭**（最后一次 `attack_write` 已返回）且内核写能力已就绪；
 - **43284 `post_terminal`**：`lkm_window.cpp:99-107`（注释明示「POST_TERMINAL is the one stage inside the LKM residency window」，`registry_->dispatch(..., CountermeasureStage::PostTerminal, &host_ops_)`）——唯一同时具备内核能力的窗口；43284 没有 waiter/spawn 概念，`pre_spawn`/`post_spawn` 不适用，`pre_terminal` 无内核特权（按「声明但不可用」处理）；
-- 探针 header 的 `host_stages` 如实列出 host 实现的 stage；host 在 `open()` 时按 backend 校验可用集合，注册了不可用阶段的插件**在注册期即被拒绝**；只注册不可用阶段的插件必须对作者可见，不得靠沉默缺席表达。
+- 探针 header 的 `host_stages` 如实列出 host 实现的 stage，**`stage_availability`（header 第 5 行）按 backend 导出本矩阵**（唯一权威 `schema.hpp::stage_available_on()`，语法见 §3.14.7.2）；host 在 `open()` 时按 backend 校验可用集合，只注册不可用阶段的插件必须对作者可见，不得靠沉默缺席表达；
+- **hook 级拒绝语义（与矩阵配套，host 实现）**：hook 的 stage ∉ 所选 backend 的可用集 → **拒绝该 hook**（**不是**拒绝整个插件）+ 记账 + 命名原因 **`StageUnavailableOnBackend`**；因此一个模块可以同时声明「43284 `post_terminal` + 43499 `pre_terminal`」，在两侧各自只剩可用 hook；若某插件的**全部** hook 都被拒 → 记 `no_usable_hooks=1`（fail-soft；建议不加载以避免无意义映射）。host 的注册校验直接调用 `stage_available_on()`，**不得复制矩阵字面量**。
 
 **已废弃的原假设（2026-10-05）**：本文早先写过「`pre_spawn` 不在 Pipeline 层，而是 `w1()` 成功之后、`w2()` 之前」——该假设是按 Pipeline 边界**推测**的，已被上面的「按写尝试开关的窗口」**推翻**：`w1()` 与 `w2()` 之间并不存在满足前置条件的插入点。随之，原先记的「`run<Route>` 模板体内行号待钉死」一项**关闭**（问题不再存在）。
 
-**与 §3.14.6 的关系**：P1 = native + Kotlin 两投影的落地；extractor 投影 = P2；参考插件 = P3（= CM-4）。
+**与 §3.14.6 的关系**：P1 = native + Kotlin 两投影的落地；extractor 投影 = P2；参考插件 = P3（独立项目 `ghostlock-plugin-example`）。
 
 **UML**：本节是设计冻结，尚无落地结构；P1 落地后按 AGENTS.md 同批刷新 `docs/development/full-process-uml.md` 的 §3.1 / §3.2 / §3.3（新增插件类与关系）。
+
+#### 3.14.7.9 能力位 `log` 与插件日志契约（**设计框架，待 native 设计稿定稿**）
+
+> **状态**（2026-10-05）：① **A 批（43284 全链日志）已落地**（`a04bdb5b`；真机门禁 PASS `device-gates/43284-logging-20261005-pass.md`，正例 16 行 `run.43284`）；② **B 批（能力位）设计已定稿、待放行**——依据 `docs/analysis/43284-logging-and-plugin-log-design.md`（已随 `a04bdb5b` 提交）；**两项裁决已下**（见本节末）。用户要求「插件接口提供内置日志接口」；**ABI 与 host 已具备该入口**，缺的是**能力位**与词表登记（见下表）。**本节不含实现代码**。
+
+**现状（代码事实）**
+
+| # | 事实 | 依据 |
+|---|---|---|
+| 1 | ABI 里**已有**日志入口：`void (*log)(void *ctx, int32_t level, const char *msg);` | `src/core/contract/abi/glk_contract_abi.h:142`（`glk_contract_ops`） |
+| 2 | host **已实现**：`ops.log = &log_thunk` | `src/core/plugin/host_ops.cpp:215` |
+| 3 | loader 侧默认实现：`ops.log = &default_log` | `src/core/plugin/loader.cpp:162` |
+| 4 | **能力位没有 `LOG`**：`glk_capability` = `KERNEL_READ(1<<0)`…`KERNEL_HOOK(1<<6)`，共 7 个 | `glk_contract_abi.h:103-110`；C++ 侧 `contract::Capability` + `capability_token()`（`contract/countermeasure.hpp:293-306`） |
+| 5 | 探针 `host_caps` 由 `kHostImplementedCaps` 生成、**不列 `log`**；插件 `required_caps` 含未知位即 `caps_rejected` | `src/core/plugin/probe.cpp:277-290`（`caps_list` 白名单 `:109-122`）；`contract/countermeasure.hpp:89` 与静态断言 `:254-258` |
+| 6 | **43284 全链目前 0 处 `pr_*`**：可观测输出只有 LKM 窗口诊断串 `lkm_window opened=…` | 本批 grep（`src/core/backend/cve_2026_43284/**` 计 0）；`src/core/backend/cve_2026_43284/lkm_window.cpp:17` |
+| 7 | 用户参照：上游 `V4bel/dirtyfrag` 的 `exp.c`（1952 行 / **63 处日志**，以错误路径与粗粒度进度为主），要求我们**展示更多**日志 | 用户需求 + Lead 的按文件统计（外部事实） |
+
+**契约（B 批；设计稿已定稿、两项裁决已下——A 批已落地，B 批待放行）**
+
+1. **能力位**：`glk_capability` **尾部追加** `GLK_CAP_LOG = 1u << 7`（**append-only，不 bump `GLK_ABI_VERSION`**，沿用 §3.14.7.3 纪律）；词表 token 建议 `log`（由 `capability_token()` 与探针 `caps_list` 同步）；
+2. **语义（设计稿 r1 定稿值）**：
+   - **level 词表**：`0=error / 1=warn / 2=info / 3=debug`，**越界按 1 处理并记 `level_clamped`**；
+   - **msg**：纯文本、**无格式串语义**，**上限 256 B**（超出截断并追加 `…`）；
+   - **配额/限速**：**每模块每 run 64 条**、**≥1 条/ms**（`CLOCK_MONOTONIC`），超限**丢弃并计数**（`log_dropped`，不静默）；
+   - **host 前缀**：`[countermeasure] <id> log(<level>): <msg>` → **stderr**（未知 id 降级为 `-`；现状缺 `<id>`，本次补上）；
+   - **路由**：只进运行日志 + 诊断块，**不进 `run_state`**；失败/被拒**绝不改变控制流**（fail-soft）；
+   - **按模块归因**：host 为每个模块构造栈上 `glk_contract_ops` 拷贝（`log` 换成该模块 thunk，其余 9 个转发），**不信任插件自报 id**——配额/限速/归因都必须按模块；
+   - **记账**：`HostDiagnostics` 新增 **`log_calls` / `log_dropped`**（additive，`run.plugin host` 行加这两个字段）；
+3. **为什么是能力位而不是隐式约定**：插件必须能在**注册期 fail-closed 地检测** host 是否支持日志——`required_caps` 含 `log` 而 host 无该位 ⇒ 探针 `caps_rejected` + host 注册拒绝；隐性约定无法检测、只能靠试错，且与既有 7 个能力位的做法不一致。
+
+**影响面清单（词汇变更必须全列）**
+
+| 面 | 影响 | 处置顺序 |
+|---|---|---|
+| native 产出端 | `glk_capability` + `contract::Capability` + `capability_token()` + `kHostImplementedCaps`（含 `:254-258` 静态断言）+ 探针 `caps_list` 白名单 | **先行**（枚举/词表/探针先落地） |
+| 探针 golden | `app/src/test/resources/plugin-probe-golden.tsv` 的 `host_caps` 行**必须重生成**（设备探针 stdout 逐字节） | 产出端之后立即 |
+| 共享语料 | `app/src/test/resources/plugin-probe-conformance/{accept,reject}` **63 份不需改**（输入子集仍合法，设计稿 r1 §B.4）；**要改的是 walker 的参考串**：`tools/extract_rs/src/plugin.rs:948`（以及 `:868`/`main.rs:966`/`extract_spec.rs:537` 的 `host_caps` 字面量） | 随 golden 同批 |
+| Rust 消费端 | `tools/extract_rs/src/plugin.rs`（header 键 `:123`；测试参照头 `:868`/`:948`）、`tests/extract_spec.rs:537`、`main.rs:966` 的 `host_caps` 字面量 | 产出端之后（可独立提交） |
+| Kotlin 消费端 | `PluginProbe.kt` 的 `host_caps` 词表（未知 token 仍 **fail-closed**）；`PluginProbeGoldenTest.kt:39` 的**精确集合断言加 `log`**；UI 给新能力一个显示名（未识别 token 不静默） | 产出端之后 |
+| 文档 | 本节 + UML（§3.1 能力位枚举与探针输出）+ branch-plan 条目 | 同批 |
+
+> **禁止**：消费端先行，或「两边各自加词」——先加词表、后加 golden 的顺序会产出**双方各自能过、合起来不过**的假绿（P1 形状缺陷的同类教训，见 §3.14.7.5）。golden 必须**用改了 `host_caps` 的 native 重新采集**（设备取证），**不手改**。
+
+**附：A 批（43284 全链日志）与本节的边界**——**已落地**：`a04bdb5b`「batch A logging - bounded structured run.43284 lines across the whole chain, named failure reasons, keys withheld; 16 lines on the happy path」；载体 = `backend/cve_2026_43284/diag_line.hpp` 的 `DiagLine`（固定缓冲、无分配、无格式串、值内控制字符归一 `_`、**绝不含密钥**）；结构行 `run.43284 <phase> k=v` 单行 ≤256 B（超出截断并追加 `truncated=1`），失败路径每条具名原因 + 上下文；**真机门禁 PASS**（`device-gates/43284-logging-20261005-pass.md`：五例退出码 0、正例 16 行、负例 B 不中断链、无插件回归 `run.plugin` 0 行且 43284 链日志逐行同形）。**A 批无 wire/ABI 变更**，本节的 ABI/词表变更只属 **B 批**；**本批只做 43284，43499 另排**（43499 已有多处 `pr_*`，统一另批）。
+
+**裁决已下（Lead 2026-10-05，设计稿 §E 两项均已裁定）**：① **A 批 verbosity = always-on** ✓——**不引入** `backend.cve_2026_43284.log_verbosity`（用户抱怨的就是「默认太少」，opt-in 等于没解决；保持「纯 backend、无三端同步」；有界 ≤120 行/run、单行 ≤256 B 即不会刷屏；将来要降噪再另批三端改动）；② **B 批配额照准** ✓：**每模块每 run 64 条、单条 ≤256 B、≥1 ms/条**，超限静默丢弃并计 `log_dropped`，**不改控制流**。
+
+## 3.15 `payload` 顶层 owner 契约（设计已定稿；实现待 native 半场）
+
+> **状态**：设计终稿 r2（`docs/analysis/terminal-payload-tiers-design.md`，commit `c335aabc`）+ **用户已确认**；**本仓库尚无实现**，契约先冻结。
+> 依据：payload 设计 §9 的 9 条裁决；跨切面沿用 `plugin-extract-spec-design.md` §9.3（唯一命名空间）/ §9.4（诊断记实际命中）/ §9.5（分发顺序 = 准入）的做法。
+
+### 3.15.1 定位与段名
+
+- `payload` 是**第四类顶层 owner**（`common` / `backend.<id>` / `platform.*` / `countermeasure.*` / 精确 `plugin` 之后），**与 `terminal` 正交**：terminal 决定「如何接管」，payload 决定「接管之后做什么」；
+- **不新增** combination token、不动 `kCombinationCatalog`（避免组合目录按档数炸开）；
+- 缺 `payload.*` ⇒ **文档逐字节不变**，行为与今天完全一致（默认关闭）。
+
+### 3.15.2 字段与拼写（r2 冻结）
+
+| wire 路径 | 类型 | 规则 |
+|---|---|---|
+| `payload.tier` | str | ∈ {`exec`, `script`, `ko`}；缺失/为空 ⇒ payload 不启用 |
+| `payload.exec.command` | str | **argv 形式**，≤256 B；**永不 shell 拼接** |
+| `payload.exec.sha256` | str | 可选；64 位小写 hex |
+| `payload.script.path` | str | 相对 `<GHOSTLOCK_HOME>`，≤256 B |
+| `payload.script.sha256` | str | 可选；64 位小写 hex |
+| `payload.ko.count` | uint | 1..8 |
+| `payload.ko.<i>.path` | str | `i` 十进制且 `0 ≤ i < count`；路径规则同上 |
+| `payload.ko.<i>.sha256` | str | 可选；64 位小写 hex |
+
+**fail-closed（绑定期）**：`count` 缺失/0/>8；实际 `ko.<i>.path` 个数 ≠ `count`；出现 `i ≥ count`；`i` 非十进制或重复；任一 `path` 绝对 / 含 `..` / 反斜杠 / NUL / 超长；`sha256` 存在但不是 64 位小写 hex；**单档互斥违反**（`tier=exec` 时出现 `script.*`/`ko.*`，反之亦然）⇒ **拒绝整份文档**。
+
+### 3.15.3 安全边界与授权面
+
+| 维度 | 规则 |
+|---|---|
+| 路径 | 一律相对 `<GHOSTLOCK_HOME>`；禁绝对 / `..` / 反斜杠 / NUL；**realpath 二次校验**；≤256 B（形状可复用 `plugin_module_path_valid()`，根不同） |
+| 哈希钉 | `sha256` 给定时，**执行 / 加载之前**逐字节比对（`support::sha256_file`）；不符 ⇒ fail-closed **且不执行** |
+| 大小 | 先 `stat` 大小上限、**再读入**（ko 建议 ≤64 MiB，与 43499 module 上限同量级） |
+| ko 内容 | **必须**过 `lkm::precheck_module_file`（ELF / vermagic / `__versions` / 签名）；**不得**因「用户自定义」放宽 |
+| argv vs 脚本 | `exec.command` 是 argv（native 按空白切分后以 argv 传递，不做变量 / 通配展开）；`script.path` 指向**用户自带的脚本文件**——**命令不是脚本**，禁止把命令文本当脚本执行 |
+| 授权面（App） | 每个 tier 一个专用设置页 + 确认文案 + **可撤销**；**执行前摘要**必须显示「本次将：以 root 执行 `…` / 以 LKM 执行 `…` / 加载 N 个 ko」 |
+| 不可信内容 | 用户提供的一切不可信：结果只记账，**不放宽任何既有校验** |
+
+### 3.15.4 失败语义（硬边界）
+
+- **payload 失败绝不中断攻击链**（waiter / race / handoff 不受影响）；
+- 用户**显式请求**了 payload 而未完成 ⇒ 本次运行结论标 **「未完成」** + 逐项原因 `payload_error=<reason>` / `ko[i]=<reason>`；**提权记录照记**（`uid0` / KernelSU ready）——既不谎报全成功，也不让已完成的提权白费；
+- `ko` **逐项执行**：第 i 个失败记 `ko[i]=<reason>` 后**继续下一个**，**不整体回滚**；全部成功 ⇒ payload 完成；
+- 结果只影响结论与诊断，**不**改变控制流、不放松任何检查。
+
+### 3.15.5 可用性矩阵（terminal × tier；native 导出）
+
+| terminal | `exec` | `script` | `ko` |
+|---|---|---|---|
+| `root_child` | 可用 | 不可用（无 LKM 通道） | 可用（经 root child late-load） |
+| `umh_forward` | 可用 | 可用 | 可用 |
+
+- 绑定期校验：`(terminal, tier)` **不在矩阵内 ⇒ fail-closed 拒绝**；
+- 沿用 `stage_availability` 的纪律：**native 导出矩阵**（后续可加进词汇 manifest / 探针 header），**Kotlin 不硬编码**，UI 用同一矩阵置灰并给原因；
+- 矩阵以**代码实际能力**为准，实现批次逐项核实后钉死。
+
+### 3.15.6 结构同步（同批，强制）
+
+payload 是**新顶层 owner** ⇒ 同批更新：
+- `docs/development/full-process-uml.md`：§3.1 的 owner 段与 schema（`ghostlock__payload`）、§3.2 的 Kotlin layout / UI 组、§1 IPO 的 C 段（校验 → 绑定 → 接管后执行）；
+- `AGENTS.md` 的顶层 owner 白名单表述（`common` / `backend.` / `platform.` / `countermeasure.` / 精确 `plugin` / **新增 `payload`**）；
+- 提交信息写明更新了哪几张图。
+
+### 3.15.7 门禁要求（实现批次）
+
+- **host**：编码 / 解码矩阵（tier 非法、单档互斥违反、`count` 与实到不符、`i ≥ count`、重复 / 非十进制 i、超长路径、控制字符、sha256 非 64hex）→ 全部 fail-closed；矩阵外 `(terminal,tier)` → 拒绝；**无 `payload.*` ⇒ 逐字节回归**；
+- **NDK 零告警 + lint 0 + Kotlin 测试**；
+- **真机**（攻击关键路径门槛）：三档**正例**（`exec` rc=0 / `script` 标记文件 / 2 个 ko 一好一坏 → 坏项记 `ko[1]=<reason>`、攻击链 PASS 但本次运行标「未完成」）+ **负例**（sha256 不符 / 路径含 `..` / 超限 / 矩阵外组合 → 拒绝且**不执行**）+ **无 payload 回归**；AVB 12/0；结果按 `device-gates/` 归档。
+
+### 3.15.8 `payload.root.*`（**设计稿，待用户确认**——占位）
+
+> 详细设计：`docs/analysis/root-manager-selection-design.md`（L 级设计稿 v1）。本节只登记**契约占位**，形态待用户答复后定稿；**不含实现**。
+
+- **定位**：默认档（启动 root 管理器）是 payload 轴的一种 ⇒ `payload.tier = "root"`，与 `exec`/`script`/`ko` **单档互斥**；
+- **wire 路径（草案 v2）**：`payload.root.kind` ∈ {`kernelsu`, `folkpatch`, `custom`}、`payload.root.manager`（**可选的管理器包名**，精确选择；缺省 = 代码权威 `me.weishu.kernelsu`；用户手填即其自己的声明）、`payload.root.argv`（**仅 `custom` 必填**，≤192 B = `contract::RootProgram::kArgvCapacity`）；
+- **fail-closed（草案 v2）**：`kind` 不在白名单；`custom` 缺 `argv`；`argv` 含控制字节或超长；非 `custom` 却出现 `argv`；`manager` 非合法包名（非空、`[A-Za-z0-9_.]`、≤128 B）；**管理器不存在 / 不可启动**（App 预检只是提前提示，**权威判定在 native 绑定前复核**，fail-closed + 具名原因，**不降级、不猜替代品**）；`payload.root.*` 与 `tier != "root"` 同时出现 ⇒ 拒绝整份文档；
+- **argv vs 模块**：`kernelsu` 走既有 `ksud late-load`（无 shell、无拼接）；`folkpatch` 走 **KernelPatch 模块加载**（`kernelpatch.ko` 由用户提供/导入，**软重启**为独立显式确认动作）——两者机制不同，不得互相顶替；
+- **向后兼容**：**无 `payload` 段 = 今天的行为（KernelSU/ksud）逐字节不变**；**显式 `kernelsu` 与不写等价**；
+- **P1/P2 边界（v2，用户口径 + E4）**：**P1 可落地** = `kernelsu`（**KernelSU 及分支共享 `ksud` ⇒ 默认按 ksud 走**，`manager` 可选、行为与今天等价）+ `custom`（用户指定程序/argv，不猜包名）+ **存在性/可启动检查（App 预检 + native 复核，权威在 native）**；**P2 计划中（置灰）** = `folkpatch`（**加载 KernelPatch 模块**：`apd insmod` 式手动重定位 + 绕过 CRC/vermagic + `init_module` + **软重启生效**，官方标注不稳定；需独立机制设计 + 独立真机门禁）；详见 `root-manager-selection-design.md` §2.1 E4/§4.1/§9；
+- **可用性**：native 导出矩阵（沿用 `stage_availability` 纪律），**Kotlin 不硬编码**；`folkpatch`/未核实分支一律**「计划中」**（注册、解析接受、**选择门禁拒绝**、UI 置灰）；
+- **纪律**：包名/入口**未在代码中验证过的一律不猜**（现状 `schema.hpp:68-77`：非 KernelSU → 空包名）；每个 P2 项都要 file:line 依据 + 真机门禁；
+- **待用户确认（TODO，v2 后只剩一条）**：**`kernelpatch.ko` 的制品来源**——首选已定：走**既有导入机制**（no-backup 不可变目录 + 本地 SHA-256 + 原子落盘）；待确认：是否只接受「从 FolkPatch 管理器中提取」、是否允许用户完全自备、UI 是否标注「来源不可验证」。（①分支清单、②FolkPatch 机制、④`manager` 形态均已消解，见设计稿 §11。）
 
 ## 4. 能力接口（虚）
 

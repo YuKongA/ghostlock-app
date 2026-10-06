@@ -47,7 +47,7 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
+`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--plugin-descriptor <probe-stdout.tsv>` (repeatable, `--format conf` only) lets a countermeasure's own probe description fill `plugin.<id>.extract.<key>`: the key names and types come from the descriptor, while the values are resolved from the profile being produced (R1), the image BTF (R3) or kallsyms (R2). It writes an `extract`-only profile fragment (not a wire document), appended after `countermeasure`; a `required` entry that cannot be resolved fails the run, an optional one is omitted and never replaced by a default, and without the flag the output is byte-for-byte unchanged. `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
 
 ### MediaTek
 
@@ -133,7 +133,10 @@ Import a countermeasure `.so` from the settings page: the app copies it into its
 `countermeasures/` root, hashes it locally, and reads its self-description through the read-only
 native probe (`--plugin-probe`, never `dlopen` inside the JVM). Only **enabled** plugins are emitted
 as `plugin.<id>.*` in the GLKv3 document (default off; `params.*` values are typed by the plugin's
-own descriptor, and an enabled=false section is rejected). **P1 ships the declare → validate → bind
+own descriptor, and an enabled=false section is rejected). A reference countermeasure plugin lives in the standalone **`ghostlock-plugin-example`**
+project (vendored ABI header, `build.sh android|host|abi-check`, bilingual README); this
+repository keeps only `tools/plugins/README.md` as the pointer, because a plugin author
+should not need the exploit repository to build one. **P1 ships the declare → validate → bind
 wire layer only**: the runtime that loads the module and invokes it at its stage is not wired yet
 (tracked as task-9 in the branch plan, and it needs its own L-level design and device gate).
 

@@ -7,6 +7,8 @@
 
 #include "plugin/probe.hpp"
 
+#include "plugin/schema.hpp"
+
 #include "contract/countermeasure.hpp"
 #include "support/sha256.hpp"
 
@@ -123,6 +125,25 @@ namespace ghostlock::plugin {
             return out.empty() ? std::string("-") : out;
         }
 
+        /* Audit D7/D8: names are part of the TSV and of the loader-visible
+         * descriptor, so the probe mirrors the registration checks that can be
+         * seen here: no control characters, and bounded length. A name that
+         * would be rejected at registration must not be published as if valid. */
+        bool name_has_control(std::string_view name) noexcept {
+            for (const char ch : name) {
+                const unsigned char raw = static_cast<unsigned char>(ch);
+                if (raw < 0x20u || raw == 0x7fu) return true;
+            }
+            return false;
+        }
+
+        bool param_name_valid(const glk_param &param) noexcept {
+            if (param.name == nullptr) return false;
+            const std::string_view name(param.name);
+            if (name.empty() || name.size() > kMaxHookNameLength) return false;
+            return !name_has_control(name);
+        }
+
         std::string_view param_type_token(std::uint32_t type) noexcept {
             switch (type) {
                 case GLK_PARAM_UINT: return "uint";
@@ -149,6 +170,10 @@ namespace ghostlock::plugin {
                 line += null_dash(param.default_str);
             } else if (param.type == GLK_PARAM_BOOL) {
                 line += param.default_value != 0u ? "1" : "0";
+            } else if (param.type == GLK_PARAM_INT) {
+                /* Signed type: a negative default must print signed, or every
+                 * consumer rejects the whole descriptor (audit D1). */
+                line += std::to_string(static_cast<std::int64_t>(param.default_value));
             } else {
                 line += std::to_string(param.default_value);
             }
@@ -263,6 +288,35 @@ namespace ghostlock::plugin {
             emit(out, std::string("countermeasures_root\t") + countermeasures_root());
             emit(out, std::string("host_stages\t") + stage_list(kHostImplementedStages));
             emit(out, std::string("host_caps\t") + caps_list(host_caps));
+            /* Frozen P1 revision: the per-backend stage availability matrix, so
+             * the App can grey out stages without hard-coding a second table. */
+            /* Audit D5: a backend with no available stage would produce an empty
+             * group ("43499:"), which both consumers reject. The invariant is
+             * asserted in schema.hpp; here an empty group is simply omitted and
+             * an all-empty line would fall back to "-". */
+            std::string availability = "stage_availability\t";
+            bool first_backend = true;
+            for (const RuntimeBackend backend :
+                 {RuntimeBackend::Cve2026_43499, RuntimeBackend::Cve2026_43284}) {
+                std::string group;
+                for (const contract::CountermeasureStage stage :
+                     {contract::CountermeasureStage::PreSpawn,
+                      contract::CountermeasureStage::PostSpawn,
+                      contract::CountermeasureStage::PreTerminal,
+                      contract::CountermeasureStage::PostTerminal}) {
+                    if (!stage_available_on(backend, stage)) continue;
+                    if (!group.empty()) group += ',';
+                    group += contract::stage_token(stage);
+                }
+                if (group.empty()) continue;
+                if (!first_backend) availability += ';';
+                availability += backend_short_token(backend);
+                availability += ':';
+                availability += group;
+                first_backend = false;
+            }
+            if (first_backend) availability += '-';
+            emit(out, availability);
 
             std::vector<std::string> hook_lines;
             const std::uint32_t hook_count =
@@ -279,8 +333,16 @@ namespace ghostlock::plugin {
                              static_cast<std::uint32_t>(hook.stage)))) == 0u) {
                     stage_rejected = true;
                 }
-                if (hook.fn == nullptr || hook.name == nullptr) {
+                /* Audit D4: a hook row whose required columns are missing must NOT
+                 * be emitted -- consumers reject the malformed row before they ever
+                 * see the reject line, which would hide the real reason. Required:
+                 * fn, name (non-null), and a name the loader would accept. */
+                if (hook.fn == nullptr || hook.name == nullptr ||
+                    hook.name[0] == '\0' ||
+                    std::strlen(hook.name) > kMaxHookNameLength ||
+                    name_has_control(std::string_view(hook.name))) {
                     hook_bounds_rejected = true;
+                    continue;
                 }
                 std::string line = "hook\t";
                 line += id;
@@ -327,10 +389,11 @@ namespace ghostlock::plugin {
                 rejects += '\n';
             } else {
                 for (std::uint32_t i = 0u; i < param_count; ++i) {
-                    if (params[i].type > GLK_PARAM_STR) {
+                    if (params[i].type > GLK_PARAM_STR ||
+                        !param_name_valid(params[i])) {
                         rejects += reject_line(id, LoadStatus::InvalidArgument);
                         rejects += '\n';
-                        break;
+                        continue; /* never publish a row the loader would reject */
                     }
                     emit(out, param_row("param", id, params[i]));
                 }
@@ -341,10 +404,11 @@ namespace ghostlock::plugin {
                 rejects += '\n';
             } else {
                 for (std::uint32_t i = 0u; i < extract_count; ++i) {
-                    if (extract[i].type > GLK_PARAM_STR) {
+                    if (extract[i].type > GLK_PARAM_STR ||
+                        !param_name_valid(extract[i])) {
                         rejects += reject_line(id, LoadStatus::InvalidArgument);
                         rejects += '\n';
-                        break;
+                        continue;
                     }
                     emit(out, param_row("extract", id, extract[i]));
                 }

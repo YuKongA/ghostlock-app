@@ -8,6 +8,7 @@ use clap::Parser;
 use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
+use ghostlock_extract::derive::RelSymbols;
 use ghostlock_extract::derive::{
     PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
     ensure_rtmutex_43499_unpatched, multicast_waiter_off, relative_symbols,
@@ -19,7 +20,9 @@ use ghostlock_extract::kallsyms;
 use ghostlock_extract::kallsyms::Kallsyms;
 use ghostlock_extract::kallsyms_finder;
 use ghostlock_extract::payload;
+use ghostlock_extract::plugin;
 use ghostlock_extract::report;
+use ghostlock_extract::spec;
 use ghostlock_extract::symbols::{
     kernel_layout_verified, kernel_struct_macro, resolve_structs, resolve_symbols,
 };
@@ -62,6 +65,11 @@ struct Cli {
     /// terminal choices that share the same 43499 route geometry)
     #[arg(long, value_parser = ["rootchild", "shizuku", "umh"], default_value = "rootchild")]
     steps_path: String,
+    /// native probe stdout TSV (ghostlock --plugin-probe <path.so>); its extract
+    /// rows are filled into plugin.<id>.extract.* of --format conf. Repeat the
+    /// flag for several plugins. Only valid with --format conf.
+    #[arg(long = "plugin-descriptor", value_name = "TSV")]
+    plugin_descriptors: Vec<PathBuf>,
     /// treat every unresolved symbol as optional (emit 0)
     #[arg(long)]
     allow_missing: bool,
@@ -191,6 +199,9 @@ fn resolve_kallsyms(
 }
 
 fn run(cli: &Cli) -> Result<i32> {
+    /* Plugin descriptors are accepted with every format: --format conf writes
+     * the plugin block, text/json only report the resolution diagnostics. */
+    let _ = &cli.plugin_descriptors;
     let mut boot_path = cli.image.clone();
     let mut xbl_path = cli.xbl_config.clone();
     let mut uefi_path = cli.uefi.clone();
@@ -561,6 +572,7 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
+    let mut plugin_diagnostics: Vec<serde_json::Value> = Vec::new();
     let output = if cli.format == "conf" {
         let release_text = release
             .as_deref()
@@ -688,7 +700,7 @@ fn run(cli: &Cli) -> Result<i32> {
             empty_zero_page: kallsyms::unique(&symbols, "empty_zero_page")
                 .and_then(|value| value.checked_sub(base)),
         };
-        report::render_conf(&report::ConfInputs {
+        let rendered = report::render_conf(&report::ConfInputs {
             release: release_text,
             phys: kernel_phys_load,
             /* DRAM base: from /proc/iomem when the extractor ran on a rooted
@@ -702,9 +714,50 @@ fn run(cli: &Cli) -> Result<i32> {
             route_geometry: &geometry,
             cred: &cred,
             extra_offsets: &extra_offsets,
-        })
+        });
+        apply_plugin_descriptors(
+            cli,
+            &rendered,
+            &symbols,
+            btf.as_ref(),
+            base,
+            &boot.kernel,
+            &rel_symbols,
+            &sorted_offsets,
+            &mut plugin_diagnostics,
+        )?
     } else {
-        let report_value = report::build_report(
+        /* text/json: no profile is written, but a descriptor run still reports
+         * the resolution diagnostics (native spec rows are not wired yet, so
+         * this path is exercised by tests). The plugin view is resolved against
+         * a route-less candidate: only conf mode performs route inference. */
+        if !cli.plugin_descriptors.is_empty() {
+            let rendered = report::render_conf(&report::ConfInputs {
+                release: release.as_deref().unwrap_or("0.0.0-unknown"),
+                phys: kernel_phys_load,
+                phys_offset: kernel_phys_offset,
+                symbols: &symbol_offsets,
+                structs: &struct_offsets,
+                backend: report::BACKEND_43499,
+                route: cli.route.as_deref(),
+                steps_path: &cli.steps_path,
+                route_geometry: &[],
+                cred: &report::conf_cred_6x(),
+                extra_offsets: &report::ConfExtraOffsets::default(),
+            });
+            let _ = apply_plugin_descriptors(
+                cli,
+                &rendered,
+                &symbols,
+                btf.as_ref(),
+                base,
+                &boot.kernel,
+                &rel_symbols,
+                &sorted_offsets,
+                &mut plugin_diagnostics,
+            )?;
+        }
+        let mut report_value = report::build_report(
             release.as_deref(),
             base,
             kernel_phys_load,
@@ -713,6 +766,9 @@ fn run(cli: &Cli) -> Result<i32> {
             btf_size,
             pselect_shift,
         );
+        if !plugin_diagnostics.is_empty() {
+            report_value["plugin_extract"] = serde_json::Value::Array(plugin_diagnostics.clone());
+        }
         serde_json::to_string_pretty(&report_value).unwrap() + "\n"
     };
     if let Some(out) = &cli.out {
@@ -737,6 +793,117 @@ fn run(cli: &Cli) -> Result<i32> {
     Ok(0)
 }
 
+/// Fills the P2 plugin extract projection into a rendered profile: parses the
+/// probe TSV descriptors (native --plugin-probe stdout, frozen format), resolves
+/// every declared extract name (R1 profile path, R3 BTF, R2 kallsyms symbol) and
+/// appends the `plugin` block. Required entries that cannot be derived fail
+/// closed; optional ones are omitted with a diagnostic; the descriptor default is
+/// never substituted. Without descriptors the rendered profile is returned
+/// unchanged, byte for byte.
+fn apply_plugin_descriptors(
+    cli: &Cli,
+    rendered: &str,
+    symbols: &BTreeMap<String, BTreeSet<u64>>,
+    btf: Option<&Btf>,
+    base: u64,
+    kernel: &[u8],
+    rel_symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+    diagnostics: &mut Vec<serde_json::Value>,
+) -> Result<String> {
+    if cli.plugin_descriptors.is_empty() {
+        return Ok(rendered.to_string());
+    }
+    let mut descriptors = Vec::with_capacity(cli.plugin_descriptors.len());
+    for path in &cli.plugin_descriptors {
+        let text = std::fs::read_to_string(path)
+            .map_err(|err| ExtractError::new(format!("{}: {err}", path.display())))?;
+        descriptors.push(plugin::parse_probe_tsv(&text)?);
+    }
+    plugin::validate_descriptors(&descriptors)?;
+
+    let profile = report::flatten_conf_values(rendered);
+    let profile_paths = report::conf_wire_paths();
+    let context = plugin::ExtractContext {
+        profile: &profile,
+        profile_paths: &profile_paths,
+        btf,
+        symbols,
+        base,
+    };
+    let spec_context = spec::SpecContext {
+        extract: &context,
+        kernel,
+        rel_symbols,
+        sorted_offsets,
+    };
+    let mut resolved: Vec<report::ResolvedPlugin> = Vec::with_capacity(descriptors.len());
+    for descriptor in &descriptors {
+        let outcome = plugin::resolve_descriptor(descriptor, &context)?;
+        let mut entries = outcome.entries;
+        for (name, detail) in &outcome.skipped {
+            eprintln!(
+                "warning: plugin {} extract '{name}' omitted (optional, not derivable: {detail})",
+                descriptor.id
+            );
+        }
+        /* P3 spec rows: explicit method chain, same output namespace as the
+         * extract rows. The actual hitting method is recorded for forensics
+         * (stderr always; --format json gets the structured array). */
+        for declared in &descriptor.specs {
+            let resolution = spec::resolve_spec(declared, &spec_context)?;
+            match &resolution.value {
+                Some(value) => {
+                    eprintln!(
+                        "info: plugin {} extract {} -> {}",
+                        descriptor.id,
+                        declared.name,
+                        resolution.method.map(spec::Method::token).unwrap_or("")
+                    );
+                    entries.push((declared.name.clone(), value.clone()));
+                }
+                None => {
+                    let reason = resolution.reason.clone().unwrap_or_default();
+                    if declared.required {
+                        return Err(ExtractError::unsupported(format!(
+                            "plugin {} spec '{}' is required but not derivable ({reason})",
+                            descriptor.id, declared.name
+                        )));
+                    }
+                    eprintln!(
+                        "warning: plugin {} spec '{}' omitted (optional, not derivable: {reason})",
+                        descriptor.id, declared.name
+                    );
+                }
+            }
+            diagnostics.push(serde_json::json!({
+                "id": descriptor.id,
+                "name": declared.name,
+                "resolved": resolution.value.is_some(),
+                "method": resolution.method.map(spec::Method::token),
+                "evidence": resolution.evidence,
+                "reason": resolution.reason,
+            }));
+        }
+        if entries.is_empty() {
+            eprintln!(
+                "info: plugin {} has no derivable extract entry; no plugin block written for it",
+                descriptor.id
+            );
+        }
+        resolved.push(report::ResolvedPlugin {
+            id: descriptor.id.clone(),
+            entries,
+        });
+    }
+    let written = resolved.iter().filter(|p| !p.entries.is_empty()).count();
+    eprintln!(
+        "info: plugin extract projection wrote {written} block(s) from {} descriptor(s)",
+        descriptors.len()
+    );
+    Ok(report::append_plugin_block(rendered, &resolved))
+}
+
 fn main() {
     let cli = Cli::parse();
     match run(&cli) {
@@ -758,5 +925,167 @@ fn main() {
             };
             std::process::exit(code);
         }
+    }
+}
+
+#[cfg(test)]
+mod plugin_projection_tests {
+    use super::*;
+
+    const SHA: &str = "decc767346129b6dea4a8fb8d907daa13c48d9a44fd60645d5e57e42614205cf";
+
+    /// Renders the smallest 6.1 candidate profile the projection can read back.
+    fn rendered_profile() -> String {
+        let symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        let structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        let geometry: Vec<(&'static str, i64)> = Vec::new();
+        let cred: Vec<(String, String)> = Vec::new();
+        let extra = report::ConfExtraOffsets::default();
+        report::render_conf(&report::ConfInputs {
+            release: "6.1.145-android14-11-maybe-dirty",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            backend: report::BACKEND_43499,
+            route: None,
+            steps_path: "rootchild",
+            route_geometry: &geometry,
+            cred: &cred,
+            extra_offsets: &extra,
+        })
+    }
+
+    /// Writes one probe TSV and returns the CLI that consumes it.
+    fn descriptor_cli(tag: &str, extract_rows: &[&str]) -> (Cli, PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "ghostlock-plugin-test-{}-{tag}.tsv",
+            std::process::id()
+        ));
+        let mut text = String::from(
+            "host_abi\t1\ncountermeasures_root\tcountermeasures\nhost_stages\tpre_spawn\nhost_caps\tkernel_read\n",
+        );
+        text.push_str(&format!(
+            "plugin\ttest.schema\t1.0\t1\t80\t{SHA}\tpre_spawn\tkernel_read\n"
+        ));
+        for row in extract_rows {
+            text.push_str(row);
+            text.push('\n');
+        }
+        std::fs::write(&path, text).expect("descriptor file");
+        let cli = Cli::parse_from([
+            "ghostlock-extract",
+            "unused.img",
+            "--format",
+            "conf",
+            "--plugin-descriptor",
+            path.to_string_lossy().as_ref(),
+        ]);
+        (cli, path)
+    }
+
+    #[test]
+    fn plugin_descriptor_fills_the_rendered_profile_end_to_end() {
+        let (cli, path) = descriptor_cli(
+            "ok",
+            &[
+                "extract\ttest.schema\tcommon.kernel_major\tuint\t1\t0\tmajor",
+                "extract\ttest.schema\tinit_task\tuint\t1\t0\tsymbol",
+            ],
+        );
+        let mut raw: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
+        raw.insert(
+            "init_task".to_string(),
+            BTreeSet::from([0xffff_8000_0000_0000u64 + 0x1000]),
+        );
+        let mut diagnostics = Vec::new();
+        let output = apply_plugin_descriptors(
+            &cli,
+            &rendered_profile(),
+            &raw,
+            None,
+            0xffff_8000_0000_0000,
+            &[],
+            &BTreeMap::<String, BTreeSet<u64>>::new(),
+            &[],
+            &mut diagnostics,
+        )
+        .expect("both entries resolve");
+        let flat = report::flatten_conf_values(&output);
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.common.kernel_major")
+                .map(String::as_str),
+            Some("6")
+        );
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.init_task")
+                .map(String::as_str),
+            Some("4096")
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn required_plugin_extract_fails_closed_before_any_output() {
+        let (cli, path) = descriptor_cli(
+            "required",
+            &["extract\ttest.schema\tno_such_thing\tuint\t1\t0\tmissing"],
+        );
+        let raw: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        let err = apply_plugin_descriptors(
+            &cli,
+            &rendered_profile(),
+            &raw,
+            None,
+            0,
+            &[],
+            &BTreeMap::<String, BTreeSet<u64>>::new(),
+            &[],
+            &mut diagnostics,
+        )
+        .expect_err("a required entry that cannot be derived must fail closed");
+        assert!(err.to_string().contains("required but not derivable"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn optional_plugin_extract_is_omitted_without_a_default() {
+        let (cli, path) = descriptor_cli(
+            "optional",
+            &["extract\ttest.schema\tno_such_thing\tuint\t0\t0\tmissing"],
+        );
+        let raw: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        let output = apply_plugin_descriptors(
+            &cli,
+            &rendered_profile(),
+            &raw,
+            None,
+            0,
+            &[],
+            &BTreeMap::<String, BTreeSet<u64>>::new(),
+            &[],
+            &mut diagnostics,
+        )
+        .expect("an optional miss is not fatal");
+        /* Nothing derivable: no plugin block, and no default substitution. */
+        assert_eq!(output, rendered_profile());
+        assert!(!output.contains("plugin"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn descriptor_flag_is_accepted_with_every_format() {
+        let cli = Cli::parse_from([
+            "ghostlock-extract",
+            "unused.img",
+            "--format",
+            "json",
+            "--plugin-descriptor",
+            "/tmp/does-not-matter.tsv",
+        ]);
+        assert!(!cli.plugin_descriptors.is_empty());
+        assert_ne!(cli.format, "conf");
     }
 }

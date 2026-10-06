@@ -1,10 +1,11 @@
 //! Output rendering for extracted kernel metadata.
 
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::derive::Cred5x;
 use crate::error::{ExtractError, Result};
+use crate::plugin::ExtractValue;
 use crate::symbols::{OPTIONAL_SYMBOLS, kernel_layout_verified};
 
 pub fn pselect_waiter_shift_for(release: Option<&str>) -> Option<i64> {
@@ -210,6 +211,17 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
     out.push(("backend.cve_2026_43499.route.multicast_waiter", "task_offset"));
     out.push(("backend.cve_2026_43499.route.multicast_waiter", "lock_offset"));
     out
+}
+
+/// The owner-qualified paths this extractor can produce, as concrete
+/// `section.key` strings — the R1 whitelist of the plugin extract projection
+/// (`plugin::resolve_extract`). A plugin extract name that names one of these
+/// fields receives the exact literal the rendered profile carries.
+pub fn conf_wire_paths() -> BTreeSet<String> {
+    conf_wire_fields()
+        .into_iter()
+        .map(|(section, key)| format!("{section}.{key}"))
+        .collect()
 }
 
 /// Looks up a key in `(key, value)` entries, or `"null"` when absent.
@@ -627,6 +639,183 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
     lines.join("\n") + "\n"
 }
 
+/// One plugin's resolved extract entries, in descriptor declaration order.
+#[derive(Debug, Clone)]
+pub struct ResolvedPlugin {
+    pub id: String,
+    pub entries: Vec<(String, ExtractValue)>,
+}
+
+/// HOCON quoting helpers for the plugin extract block. The backslash is written
+/// as a unicode escape so the quoting rules stay readable next to the HOCON
+/// grammar the App parses (Typesafe Config).
+const HOCON_QUOTE: char = '"';
+const HOCON_BACKSLASH: char = '\u{5c}';
+
+/// Flattens a rendered `--format conf` document into `path -> literal`, with the
+/// `ghostlock` wrapper stripped (the view the App sees after
+/// `HoconSupport.unwrapProfileDocument`). Comments and brace-only lines are
+/// ignored and a quoted key is unquoted. The plugin extract projection reads
+/// back the values this crate just rendered, so an R1 extract value is the
+/// profile value by construction instead of a second derivation.
+pub fn flatten_conf_values(text: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let mut stack: Vec<String> = Vec::new();
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(open) = line.strip_suffix('{') {
+            stack.push(unquote_hocon_key(open.trim()));
+            continue;
+        }
+        if line == "}" {
+            stack.pop();
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = unquote_hocon_key(key.trim());
+        let path = if stack.is_empty() {
+            key
+        } else {
+            format!("{}.{key}", stack.join("."))
+        };
+        let path = path
+            .strip_prefix("ghostlock.")
+            .unwrap_or(path.as_str())
+            .to_string();
+        out.insert(path, value.trim().to_string());
+    }
+    out
+}
+
+/// Appends the `plugin { <id> { extract { ... } } }` block to a rendered profile,
+/// immediately before the document's final closing brace (after
+/// `countermeasure`, the approved P2 placement). Only `extract` is written:
+/// `enabled` / `stage` / `module_path` / `module_hash` belong to the App registry
+/// and import flow, never to the extractor, so this output is an importable
+/// profile FRAGMENT, not a wire document. With no plugins (or only plugins
+/// without entries) the input is returned byte-for-byte unchanged.
+pub fn append_plugin_block(base: &str, plugins: &[ResolvedPlugin]) -> String {
+    let emitted: Vec<&ResolvedPlugin> = plugins
+        .iter()
+        .filter(|plugin| !plugin.entries.is_empty())
+        .collect();
+    if emitted.is_empty() {
+        return base.to_string();
+    }
+    let mut block: Vec<String> = vec!["  plugin {".to_string()];
+    for plugin in emitted {
+        block.push(format!("    {} {{", hocon_key(&plugin.id)));
+        block.push("      extract {".to_string());
+        for (key, value) in &plugin.entries {
+            block.push(format!(
+                "        {} = {}",
+                hocon_key(key),
+                hocon_literal(value)
+            ));
+        }
+        block.push("      }".to_string());
+        block.push("    }".to_string());
+    }
+    block.push("  }".to_string());
+
+    let mut lines: Vec<String> = base.lines().map(str::to_string).collect();
+    let Some(close) = lines.iter().rposition(|line| line.trim() == "}") else {
+        return base.to_string();
+    };
+    lines.splice(close..close, block);
+    lines.join("\n") + "\n"
+}
+
+/// HOCON key: bare for a simple token, quoted otherwise (plugin ids may contain
+/// dots; an R1 extract key is an owner-qualified path and is always quoted).
+fn hocon_key(key: &str) -> String {
+    let bare = !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+    if bare {
+        key.to_string()
+    } else {
+        hocon_quote(key)
+    }
+}
+
+fn hocon_literal(value: &ExtractValue) -> String {
+    match value {
+        ExtractValue::UInt(number) => number.to_string(),
+        ExtractValue::Int(number) => number.to_string(),
+        ExtractValue::Bool(flag) => flag.to_string(),
+        ExtractValue::Str(text) => hocon_quote(text),
+    }
+}
+
+/// HOCON string quoting, escaping what the App parser treats specially.
+fn hocon_quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push(HOCON_QUOTE);
+    for ch in text.chars() {
+        match ch {
+            HOCON_QUOTE | HOCON_BACKSLASH => {
+                out.push(HOCON_BACKSLASH);
+                out.push(ch);
+            }
+            '\n' => {
+                out.push(HOCON_BACKSLASH);
+                out.push('n');
+            }
+            '\r' => {
+                out.push(HOCON_BACKSLASH);
+                out.push('r');
+            }
+            '\t' => {
+                out.push(HOCON_BACKSLASH);
+                out.push('t');
+            }
+            other if other.is_control() => {
+                out.push(HOCON_BACKSLASH);
+                out.push('u');
+                out.push_str(&format!("{:04x}", other as u32));
+            }
+            other => out.push(other),
+        }
+    }
+    out.push(HOCON_QUOTE);
+    out
+}
+
+/// Unquotes a bare or double-quoted HOCON key produced by `hocon_key`.
+fn unquote_hocon_key(key: &str) -> String {
+    let Some(body) = key
+        .strip_prefix(HOCON_QUOTE)
+        .and_then(|rest| rest.strip_suffix(HOCON_QUOTE))
+    else {
+        return key.to_string();
+    };
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    while let Some(ch) = chars.next() {
+        if ch != HOCON_BACKSLASH {
+            out.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some(HOCON_QUOTE) => out.push(HOCON_QUOTE),
+            Some(HOCON_BACKSLASH) => out.push(HOCON_BACKSLASH),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some(other) => out.push(other),
+            None => {}
+        }
+    }
+    out
+}
+
 pub fn require_fields(
     values: &BTreeMap<String, Option<u64>>,
     optional: &BTreeSet<&str>,
@@ -644,8 +833,6 @@ pub fn require_fields(
     }
     Ok(())
 }
-
-use std::collections::BTreeSet;
 
 pub fn optional_symbols() -> BTreeSet<&'static str> {
     OPTIONAL_SYMBOLS.iter().copied().collect()
@@ -665,11 +852,16 @@ pub fn optional_struct_fields() -> BTreeSet<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CONF_TASK_FIELDS, ConfExtraOffsets, ConfInputs, build_report, combination_token,
-        conf_cred_5x, conf_cred_6x, conf_route_geometry, path_terminal, pselect_waiter_shift_for,
-        render_conf, route_token_prefix,
+        CONF_TASK_FIELDS, ConfExtraOffsets, ConfInputs, ResolvedPlugin, append_plugin_block,
+        build_report, combination_token, conf_cred_5x, conf_cred_6x, conf_route_geometry,
+        conf_wire_paths, flatten_conf_values, path_terminal, pselect_waiter_shift_for, render_conf,
+        route_token_prefix,
     };
     use crate::derive::Cred5x;
+    use crate::plugin::{
+        DeclaredField, ExtractContext, ExtractKind, ExtractValue, PluginDescriptor,
+        resolve_descriptor,
+    };
     use std::collections::{BTreeMap, BTreeSet};
 
     fn conf_fixture() -> (BTreeMap<String, Option<u64>>, BTreeMap<String, Option<u32>>) {
@@ -1370,6 +1562,266 @@ mod tests {
         }
         for path in ["rootchild", "shizuku", "umh"] {
             assert!(super::path_terminal(path).is_some(), "{path}");
+        }
+    }
+
+    /// A rendered candidate profile the plugin projection can read back.
+    fn plugin_conf() -> String {
+        let (symbols, structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
+        render_conf(&ConfInputs {
+            release: "6.1.145-android14-11-maybe-dirty",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            backend: super::BACKEND_43499,
+            route: Some("select_stack"),
+            steps_path: "rootchild",
+            route_geometry: &geometry,
+            cred: &conf_cred_6x(),
+            extra_offsets: &no_extra_offsets(),
+        })
+    }
+
+    #[test]
+    fn flatten_conf_values_reads_back_the_rendered_profile() {
+        let flat = flatten_conf_values(&plugin_conf());
+        /* The ghostlock wrapper is stripped, exactly as the App unwraps it. */
+        assert_eq!(
+            flat.get("common.kernel_major").map(String::as_str),
+            Some("6")
+        );
+        assert_eq!(
+            flat.get("platform.abi.task_struct.prio")
+                .map(String::as_str),
+            Some("132")
+        );
+        assert_eq!(
+            flat.get("platform.abi.offset.init_task")
+                .map(String::as_str),
+            Some("34595456")
+        );
+        assert_eq!(
+            flat.get("backend.cve_2026_43499.route.select_stack.waiter_shift")
+                .map(String::as_str),
+            Some("-2")
+        );
+        assert_eq!(
+            flat.get("backend.cve_2026_43499.steps")
+                .map(|value| value.trim_matches('"')),
+            Some("pselect_rootchild")
+        );
+        assert!(!flat.contains_key("ghostlock.schema_version"));
+    }
+
+    #[test]
+    fn plugin_block_is_appended_before_the_final_brace_and_round_trips() {
+        let base = plugin_conf();
+        /* No plugins: the rendered profile is returned byte for byte. */
+        assert_eq!(append_plugin_block(&base, &[]), base);
+        assert_eq!(
+            append_plugin_block(
+                &base,
+                &[ResolvedPlugin {
+                    id: "empty.plugin".to_string(),
+                    entries: Vec::new(),
+                }],
+            ),
+            base
+        );
+
+        let plugins = vec![ResolvedPlugin {
+            id: "test.schema".to_string(),
+            entries: vec![
+                (
+                    "task_defex_enforce".to_string(),
+                    ExtractValue::UInt(46_205_952),
+                ),
+                (
+                    "backend.cve_2026_43499.steps".to_string(),
+                    ExtractValue::Str("pselect_rootchild".to_string()),
+                ),
+                (
+                    "backend.cve_2026_43499.kernel.compact_waiter".to_string(),
+                    ExtractValue::Bool(true),
+                ),
+                ("waiter_shift".to_string(), ExtractValue::Int(-2)),
+            ],
+        }];
+        let augmented = append_plugin_block(&base, &plugins);
+        /* The exact emitted layout is a contract for the App's HOCON parser:
+         * owner blocks, two-space nesting, dotted keys quoted. */
+        /* A dotted plugin id is quoted: bare, HOCON would nest it. */
+        let block = "  plugin {\n    \"test.schema\" {\n      extract {\n        task_defex_enforce = 46205952\n        \"backend.cve_2026_43499.steps\" = \"pselect_rootchild\"\n        \"backend.cve_2026_43499.kernel.compact_waiter\" = true\n        waiter_shift = -2\n      }\n    }\n  }\n";
+        assert!(
+            augmented.contains(block),
+            "plugin block layout drifted:\n{augmented}"
+        );
+        let flat = flatten_conf_values(&augmented);
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.task_defex_enforce")
+                .map(String::as_str),
+            Some("46205952")
+        );
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.backend.cve_2026_43499.kernel.compact_waiter")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.waiter_shift")
+                .map(String::as_str),
+            Some("-2")
+        );
+        assert_eq!(
+            flat.get("plugin.test.schema.extract.backend.cve_2026_43499.steps")
+                .map(|value| value.trim_matches('"')),
+            Some("pselect_rootchild")
+        );
+        /* Only extract is written: enabled/stage/module_path/module_hash stay
+         * the App registry's authority. */
+        for key in ["enabled", "stage", "module_path", "module_hash"] {
+            assert!(
+                !flat.contains_key(&format!("plugin.test.schema.{key}")),
+                "the extractor must not write plugin.test.schema.{key}"
+            );
+        }
+        /* Every base field survived unchanged. */
+        let base_flat = flatten_conf_values(&base);
+        assert!(!base_flat.is_empty());
+        for (key, value) in &base_flat {
+            assert_eq!(flat.get(key), Some(value), "base field {key} changed");
+        }
+    }
+
+    /// A declared path matches either an exact manifest row or one of the two
+    /// declared dynamic rows (the only wildcards the manifest may carry).
+    fn manifest_declares(declared: &[(String, String)], path: &str) -> bool {
+        for (pattern, _) in declared {
+            if pattern == path {
+                return true;
+            }
+            let Some(prefix) = pattern.strip_suffix('*') else {
+                continue;
+            };
+            let Some((head, tail)) = prefix.split_once("<id>") else {
+                continue;
+            };
+            if !path.starts_with(head) {
+                continue;
+            }
+            let rest = &path[head.len()..];
+            if let Some(at) = rest.find(tail) {
+                if at > 0 && at + tail.len() < rest.len() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// S4 P2 three-end agreement (extractor leg): every plugin extract path this
+    /// crate can emit is declared by the native GLKv3 owner manifest, and the
+    /// dynamic rows keep the frozen four-member union spelling. A drift on
+    /// either side fails here instead of surfacing as a startup rejection.
+    #[test]
+    fn conf_plugin_extract_fields_are_in_the_native_glkv3_manifest() {
+        let manifest = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../app/src/test/resources/profile-manifest-v3.tsv"
+        ))
+        .expect("native GLKv3 owner manifest");
+        let declared: Vec<(String, String)> = manifest
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                let columns: Vec<&str> = line.split('\t').collect();
+                assert!(columns.len() >= 3, "manifest row: {line}");
+                (columns[1].to_string(), columns[2].to_string())
+            })
+            .collect();
+        let wildcards: Vec<&(String, String)> = declared
+            .iter()
+            .filter(|(path, _)| path.contains('*'))
+            .collect();
+        let wildcard_paths: Vec<&str> = wildcards.iter().map(|(path, _)| path.as_str()).collect();
+        assert_eq!(
+            wildcard_paths,
+            ["plugin.<id>.extract.*", "plugin.<id>.params.*"],
+            "the manifest's dynamic rows are the frozen two plugin wildcards"
+        );
+        for (path, wire) in wildcards {
+            assert_eq!(wire, "uint|int|bool|str", "union spelling of {path}");
+        }
+        /* The matcher is not vacuous. */
+        assert!(!manifest_declares(
+            &declared,
+            "plugin.test.schema.bogus.key"
+        ));
+        assert!(!manifest_declares(&declared, "plugin.test.schema.extract."));
+
+        /* Resolve through the real path: R1 (profile path), R2 (kallsyms symbol)
+         * and R1 str. R3 is covered by the plugin module tests. */
+        let base = plugin_conf();
+        let profile = flatten_conf_values(&base);
+        let paths = conf_wire_paths();
+        let mut symbols: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
+        symbols.insert(
+            "task_defex_enforce".to_string(),
+            BTreeSet::from([0xffff_8000_0000_0000u64 + 0x2c0_0000]),
+        );
+        let context = ExtractContext {
+            profile: &profile,
+            profile_paths: &paths,
+            btf: None,
+            symbols: &symbols,
+            base: 0xffff_8000_0000_0000,
+        };
+        let declared_field = |name: &str, kind: ExtractKind| DeclaredField {
+            name: name.to_string(),
+            kind,
+            required: true,
+            default: None,
+            doc: String::new(),
+        };
+        let descriptor = PluginDescriptor {
+            id: "test.schema".to_string(),
+            version: "1.0".to_string(),
+            sha256: "0".repeat(64),
+            stages: BTreeSet::new(),
+            required_caps: BTreeSet::new(),
+            hooks: Vec::new(),
+            params: Vec::new(),
+            specs: Vec::new(),
+            extract: vec![
+                declared_field("platform.abi.task_struct.prio", ExtractKind::UInt),
+                declared_field("backend.cve_2026_43499.steps", ExtractKind::Str),
+                declared_field("task_defex_enforce", ExtractKind::UInt),
+            ],
+            rejects: Vec::new(),
+        };
+        let outcome = resolve_descriptor(&descriptor, &context).expect("descriptor resolves");
+        assert_eq!(outcome.entries.len(), 3);
+        let rendered = append_plugin_block(
+            &base,
+            &[ResolvedPlugin {
+                id: descriptor.id.clone(),
+                entries: outcome.entries,
+            }],
+        );
+        let flat = flatten_conf_values(&rendered);
+        let emitted: Vec<&String> = flat
+            .keys()
+            .filter(|key| key.starts_with("plugin."))
+            .collect();
+        assert_eq!(emitted.len(), 3);
+        for path in emitted {
+            assert!(
+                manifest_declares(&declared, path),
+                "extractor path {path} is missing from the native GLKv3 owner manifest"
+            );
         }
     }
 }

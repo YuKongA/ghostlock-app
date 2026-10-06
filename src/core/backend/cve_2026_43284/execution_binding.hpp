@@ -38,6 +38,10 @@
 #include <string_view>
 #include <vector>
 
+namespace ghostlock::plugin {
+    class PluginHost;
+} // namespace ghostlock::plugin
+
 namespace ghostlock::backend::cve_2026_43284 {
 
     enum class ExecutionBindError : std::uint8_t {
@@ -91,7 +95,8 @@ namespace ghostlock::backend::cve_2026_43284 {
             const profile::Document &document, const IpsecSaParams &sa,
             std::string_view module_path,
             const platform::DeviceProbeOps &device,
-            bool allow_dev_target = false);
+            bool allow_dev_target = false,
+            plugin::PluginHost *plugin_host = nullptr);
 
     /* Production entry point. Reads $GHOSTLOCK_HOME/helper.ko, builds the
      * aligned single-region write plan, selects/binds the one carrier, arms the
@@ -99,7 +104,8 @@ namespace ghostlock::backend::cve_2026_43284 {
     [[nodiscard]] ExecutionBindResult bind_production_execution(
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
-            bool allow_dev_target = false);
+            bool allow_dev_target = false,
+            plugin::PluginHost *plugin_host = nullptr);
 
 } // namespace ghostlock::backend::cve_2026_43284
 

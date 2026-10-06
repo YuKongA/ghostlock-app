@@ -1,0 +1,12 @@
+host_abi	1
+countermeasures_root	countermeasures
+host_stages	pre_spawn,post_spawn,pre_terminal,post_terminal
+host_caps	kernel_read,kernel_write,alias,child_task
+stage_availability	43499:pre_terminal;43284:post_terminal
+plugin	conformance.min	1.0	1	80	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef	post_terminal	kernel_read
+hook	conformance.min	on_stage	post_terminal	0	conformance.hook
+param	conformance.min	threshold	uint	1	5	uint doc
+param	conformance.min	mode	str	0	-	string doc
+param	conformance.min	enabled	bool	0	1	bool doc
+param	conformance.min	delta	int	0	0	int doc
+extract	conformance.min	platform.abi.offset.init_task	uint	1	0	extract doc

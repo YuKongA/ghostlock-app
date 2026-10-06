@@ -190,21 +190,29 @@ namespace ghostlock::plugin {
 
 用户可见文案（Kotlin 半场）必须表达「该插件将与攻击进程同等权限运行」，本设计只固定 native 侧的边界语义。
 
-### 11.5 open() 的窗口前置断言（新增，评审第 5 条）
+### 11.5 open() 的窗口前置断言（评审第 5 条；**assert 条款作废，2026-10-05**）
 
 R1（插件映射不得存在于 PI waiter 存活期）必须有**可执行证据**，因此：
 
-- `PluginHost::open()` 的签名增加前置状态参数（或等价的状态查询）：`open(WindowState)`，其中 `WindowState ∈ {WaiterAlive, WaiterClosed}`；
-- `open(WaiterAlive)` → **拒绝并记账**（`open_rejected=1`），不 dlopen、不注册，返回 false；
-- debug 构建下同时 `assert(window == WindowState::WaiterClosed)`，让违反 R1 的调用在测试期立刻暴露；
+- `PluginHost::open()` 接收前置状态：`open(WindowState)`，`WindowState ∈ {WaiterAlive, WaiterClosed}`；
+- `open(WaiterAlive)` → **拒绝并记账**（`open_rejected++`），不 dlopen、不注册，返回 false；
+- ~~debug 构建下 `assert(window == WaiterClosed)`~~ **作废**：assert 与「可优雅拒绝」的单测不可兼得（会让 `open(WaiterAlive)` 用例 abort）；**返回 false + `open_rejected` 计数 + 单测**是更强的可执行证据，且不依赖构建类型。
 - host 测试必须覆盖：① `open(WaiterAlive)` 拒绝且 open 计数为 0；② `dispatch()` 在 `open()` 之前全部计 skipped；③ `close()` 之后不再有任何派发；
 - 真机门禁负例 C 的证据链：日志中 `route=ok`（窗口关闭）必须**早于** `plugin loaded`。
 
-### 11.6 实现批次（step 2）的准入条件
+### 11.6 实现批次的准入条件与状态
 
-1. 11.1 的调用点 file:line 回填完成；
-2. 11.2 的 docs-uml 同步条目被接受；
-3. 11.5 的 `open(WindowState)` 形态写入接口草案（§7 已按此更新）。
+**step 2（宿主接口）准入条件**：① 11.1 的调用点 file:line 回填完成；② 11.2 的 docs-uml 同步条目被接受；③ 11.5 的 `open(WindowState)` 形态写入接口草案（§7 已按此更新）——**已全部满足，step 2 已落地**。
+
+**step 3a（运行时接线，2026-10-05）：代码 + host/lint/NDK 三项门禁已完成（0/0/0）；真机门禁 PASS（五条用例全绿，已归档）。**
+
+- **接线形态**：组合根 `PluginHost::from_document(decoded, backend)`（**只登记**，无 dlopen/文件访问）→ **仅 43284** 在 bind 前 `open(WindowState::WaiterClosed)`（该 backend 全程无 PI waiter；**43499 绝不在 bind 前打开**——R1：映射不得与 PI waiter 共存，留 step 3b 在 `pre_terminal` anchor）→ `production.bind(..., &plugin_host)` → **LKM 驻留窗口内** `POST_TERMINAL` 派发 → pipeline 之后 `close()` → 诊断**仅 `registered() > 0` 时**打印（无插件 ⇒ 零新增字节）；
+- **派发路径**：中性 **`PluginStageSink`**（函数指针 + ctx，同 `ChainOps`/`LkmTransport` 惯例）+ `LkmWindowRuntime::attach_plugin_stage()`；`lkm_window.cpp:102` 在窗口内派发，**fail-soft**（hook 失败只由 host 记账，**绝不失败链**）；`execution_binding.cpp` 的 thunk 是**唯一** `HostStage::` 调用点；
+- **一次真实返工（sink 化）**：最初让窗口直接持有 `PluginHost*` → 5 个既有测试二进制被拖入 host 闭包并**链接失败**；改为中性 sink 后依赖只留在组合接缝（1 条 Makefile 规则），4 条既有规则不动；
+- **真机门禁（PASS，`device-gates/plugin-runtime-3a-20261005-pass.md`）**：五条用例退出码全 0——正例（`called=1`、`calls=4`，插件确实经 `glk_contract_ops` → LkmProxy → `/dev/glk`）、负例 B（`hook_failed=1` 但链继续）、负例 C（`StageUnavailableOnBackend`，实例级拒绝、`calls=0`）、负例 D（`HashMismatch`，未 dlopen）、**无插件零字节回归**（`run.plugin` 0 行，stdout/stderr diff 各仅 1 行）；事后设备健康 AVB 12/0、`/dev/glk` 不存在、LKM 自卸载、`Enforcing`；驱动方式为 **adb-only 试验台**（43499 bootstrap → 合成 SA + UDP 封装）；
+- **门禁过程两条教训（可复现，写入设计以免重犯）**：① **`kmi` 不得手写**——自造文档写 `kmi=5150` 而设备派生值 `5015` ⇒ `KmiFieldMismatch`（`LkmPolicyError=5`），链在 LKM 前失败且 `called=0`；修法是 `--drop backend.cve_2026_43284 kmi` 让 schema 派生（且**不得**把该错误码误判成 vermagic 不匹配——判据要由错误码枚举 + 既有物证共同支持）；② **试验台清理必须含镜像标记** `/data/local/tmp/.ghostlock_lkm_ok`——只清 `/dev/df*` 不够，残留会让 `WaitResult` 误判 `LkmLoaded`、窗口 `open()` 失败而链仍 `EXIT=0`，**静默吃掉 `called`**；
+- **未覆盖**：**App 真实路径未复跑**（本门禁走试验台合成 SA，未走 App 的 `IpSecManager`；下一轮用 App 复跑）；**43499 的 `pre_terminal` anchor + `child_task` 上下文属 step 3b，未接线**；
+- **step 3b（43499 `pre_terminal`）未开始**；`open()` 的 `WaiterAlive` 拒绝语义（§11.5）为 3b 保留。
 
 ## 12. 已核实阶段表（代码为准，取代 §3 的假设）
 
@@ -236,3 +244,42 @@ R1（插件映射不得存在于 PI waiter 存活期）必须有**可执行证�
 - 43284：仅 `post_terminal` 可用（`lkm_window.cpp:99-107`）；`pre_spawn`/`post_spawn` **不适用**；`pre_terminal` 可选但无内核特权。
 - 需同步到 `contract-design.md` §3.14.7 与 `full-process-uml.md`（§1 IPO / §2 状态机）：上述「不可用/不适用」必须**显式写出**，不得沉默缺席；43284 的 `post_terminal` 画在 LKM 驻留窗口内；43499 状态机只画 `pre_terminal` 一处插件派发。
 - 由此对 §9 落地顺序的影响：step 3 接线**先只接 43499 的 `pre_terminal` 与 43284 的 `post_terminal`**（两个真实可用的点），其余阶段在注册期即拒绝（`plugin/wire.cpp` 只接受四个 stage token，但 host 在 `open()` 时按 backend 校验可用集合——该规则写入 step 2 的 host 接口）。
+
+## 13. P1 格式修订：`stage_availability` 头行（Lead 裁决 2026-10-05）
+
+### 13.1 格式
+
+探针 stdout 的 header 块新增**一行**（位于 `host_caps` 之后，其余 header 顺序不变）：
+
+~~~
+stage_availability=<backend>:<stage>[,<stage>][;<backend>:<stage>[,...]]
+~~~
+
+当前冻结字面量（native 自断言钉死）：
+
+~~~
+stage_availability	43499:pre_terminal;43284:post_terminal
+~~~
+
+- `<backend>` = 4 位数字短 token（`43499` / `43284`）；`<stage>` = 与 TSV 其它处相同的 stage 词表 `pre_spawn|post_spawn|pre_terminal|post_terminal`；
+- 语义：**该 backend 上实际可用的阶段集合**（§12 的矩阵），其它阶段=声明但不可用（App 据此置灰并给原因）；
+- 唯一权威 = `src/core/plugin/schema.hpp` 的 `RuntimeBackend` + `stage_available_on()`；探针从它生成，App 不得硬编码第二份；
+- 消费侧（Kotlin，后续批次）：未知 backend/stage token → fail-closed 拒绝；缺失该行 → 视为「无可用阶段」（保守置灰）。
+
+### 13.2 注册语义（与矩阵配套；**口径与 host 实现对齐，2026-10-05**）
+
+- **实例注册阶段**：`plugin.<id>.stage` 是用户为该插件**实例**选择的注册阶段（Kotlin `PluginManifest` 的 Registered stage；native 缺它即 `StageMissing`）。该阶段在所选 backend **不可用** ⇒ **拒该实例**：**不 dlopen**、`diagnostics().rejected++`、记录原因 `StageUnavailableOnBackend`（entry + stage=注册阶段）；**不**降级到其它阶段（用户未授权该阶段）。
+- **hook 级**：hook 的 stage ∉ 可用集 ⇒ **拒绝该 hook**（模块保留给其它可用 hook）+ `diagnostics().stage_unavailable++` + 同名校验原因记录（entry + stage=该 hook 的 stage）。
+- **全部 hook 被拒** ⇒ 记 `NoUsableHooks` + `rejected++`，**不保留映射**。
+- **计数口径（权威在实现）**：`rejected` = 被**整体拒**的插件数；`stage_unavailable` = 被矩阵拒的 **hook** 数。定义见 `src/core/plugin/host.hpp` 的 `HostDiagnostics` 注释（`host.hpp:150-170` 一带），文档与实现必须逐字一致。
+- **为什么实例级不降级**：host 的 dispatch 以**注册阶段**为键；只删实例级门控会得到「已加载但永不派发」的**无声缺席**（比拒绝更差）；而改为按 hook 自身 stage 派发等于调用用户**未为该实例授权**的阶段 —— 授权面扩大，P1 不做。
+- 因此「一个模块同时声明 43284 `post_terminal` + 43499 `pre_terminal`」由**每个实例各自注册一个可用阶段**满足，而不是由实例级降级满足。
+### 13.3 需同步到格式文档的条目（交 docs-uml；我不跨流写）
+
+1. `docs/analysis/contract-design.md` §3.14.7.2：header 必需键由四个（`host_abi` / `countermeasures_root` / `host_stages` / `host_caps`）**增至五个**（+`stage_availability`），并写明其语法与「唯一权威在 native」；
+2. 同文档 §3.14.7.7（动态键声明）：补一段「按 backend 的阶段可用性矩阵」——四个 stage 词保留、可用性按 backend 区分、hook 级拒绝语义与 `StageUnavailableOnBackend`；
+3. `docs/development/full-process-uml.md`：§1 IPO 的插件派发列（若已加）需标注 backend 维度；本行本身不引入新结构，但矩阵是结构（与 §12.3 的同步条目合并处理）。
+
+### 13.4 对 step 2 的影响
+
+`plugin/host.{hpp,cpp}` 的注册校验直接调用 `stage_available_on()`（同一矩阵），并复用探针的自断言语义；host 不得复制矩阵字面量。

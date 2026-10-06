@@ -227,6 +227,11 @@ data class NativeProfileDocument(
                 for (param in plugin.params) {
                     dynamic += plugin.id + ".params." + param.name to param.value
                 }
+                /* P2: extractor values ride the same section, keyed
+                 * `<id>.extract.<key>`; only resolved keys are present. */
+                for (entry in plugin.extract) {
+                    dynamic += plugin.id + ".extract." + entry.name to entry.value
+                }
             }
             out += Section(
                 name = "plugin",

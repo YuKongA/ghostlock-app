@@ -16,7 +16,7 @@ class PluginStoreTest {
     private fun entry(id: String = "demo.plugin", enabled: Boolean = false) = PluginManifestEntry(
         id = id,
         version = "1.0",
-        abiVersion = 1,
+        abiVersion = 1u,
         sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         modulePath = id + "/1.0/" + id + ".so",
         enabled = enabled,

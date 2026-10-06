@@ -56,6 +56,7 @@ CXX_SRCS := \
   core/plugin/wire.cpp \
   core/plugin/kernel_channel.cpp \
   core/plugin/host_ops.cpp \
+  core/plugin/host.cpp \
   core/race/threads.cpp \
   core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp \
   core/backend/cve_2026_43499/route/select_stack_route.cpp \
@@ -196,9 +197,12 @@ NATIVE_HOST_TESTS := \
   glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
   combination_token_test combination_manifest_test support_cli_test \
   plugin_probe_test plugin_wire_test vocabulary_manifest_test \
+  plugin_host_test plugin_window_wiring_test plugin_open_site_test \
+  plugin_wire_golden_test \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
   cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
+  cve_2026_43284_logging_test \
   cve_2026_43284_diagnostic_test \
   cve_2026_43284_stage_runner_test execution_binding_test \
   cve_2026_43284_crash_dump_test \
@@ -334,7 +338,8 @@ CM_PLUGIN_SRCS := \
   core/tests/fixtures/cm_test_plugin_badabi.c \
   core/tests/fixtures/cm_test_plugin_missing_entry.c \
   core/tests/fixtures/cm_test_plugin_schema.c \
-  core/tests/fixtures/cm_test_plugin_v1size.c
+  core/tests/fixtures/cm_test_plugin_v1size.c \
+  core/tests/fixtures/cm_test_plugin_nullhook.c
 CM_PLUGIN_SOS := $(patsubst core/tests/fixtures/%.c,$(CM_PLUGIN_DIR)/%.so,$(CM_PLUGIN_SRCS))
 
 $(CM_PLUGIN_DIR)/%.so: core/tests/fixtures/%.c core/contract/abi/glk_contract_abi.h Makefile
@@ -355,6 +360,55 @@ $(HOST_BUILD_DIR)/plugin_wire_test: core/tests/plugin_wire_test.cpp \
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_wire_test.cpp \
 	  core/plugin/wire.cpp -o $@
+
+# S4 P1 step 2 plugin host: registration + window-gated load/dispatch/unload.
+# The loader's injected operations synthesize the modules, so neither a real .so
+# nor the filesystem is touched; host.cpp, wire.cpp and loader.cpp are the real
+# production units under test (loader.cpp's default ops still need sha256.cpp
+# and the platform dl library at link time).
+$(HOST_BUILD_DIR)/plugin_host_test: core/tests/plugin_host_test.cpp \
+  core/plugin/host.cpp core/plugin/host.hpp \
+  core/plugin/loader.cpp core/plugin/loader.hpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
+  core/profile/document.hpp core/profile/glkv3.hpp \
+  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+  core/support/sha256.cpp core/support/sha256.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_test.cpp \
+	  core/plugin/host.cpp core/plugin/wire.cpp core/plugin/loader.cpp \
+	  core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
+
+# S4 P1 step 3a wiring: the REAL LKM residency window (lkm_window.cpp) driving
+# the REAL plugin host over an injected LkmTransport; the loader operations
+# synthesize the module, so no device, no /dev/glk and no filesystem are touched.
+$(HOST_BUILD_DIR)/plugin_window_wiring_test: core/tests/plugin_window_wiring_test.cpp \
+  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+  core/plugin/host.cpp core/plugin/host.hpp \
+  core/plugin/loader.cpp core/plugin/loader.hpp \
+  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
+  core/profile/document.hpp core/profile/glkv3.hpp \
+  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+  core/contract/capabilities.hpp core/contract/kernel_memory.hpp \
+  core/contract/kernel_alias.hpp \
+  core/support/sha256.cpp core/support/sha256.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_window_wiring_test.cpp \
+	  core/backend/cve_2026_43284/lkm_window.cpp core/plugin/host.cpp \
+	  core/plugin/host_ops.cpp core/plugin/kernel_channel.cpp core/plugin/loader.cpp \
+	  core/plugin/wire.cpp core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
+
+# S4 P1 step 3a structural guard: the host's production call sites. The test
+# scans src/core (minus plugin/host.* and tests/) and fails on an unexpected or a
+# stale entry; GHOSTLOCK_WIRING_ROOT is baked from $(CURDIR) like the firewall.
+$(HOST_BUILD_DIR)/plugin_open_site_test: core/tests/plugin_open_site_test.cpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -DGHOSTLOCK_WIRING_ROOT='"$(CURDIR)"' -Icore core/tests/plugin_open_site_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/plugin_probe_test: core/tests/plugin_probe_test.cpp \
   core/plugin/probe.cpp core/plugin/probe.hpp \
@@ -613,6 +667,25 @@ $(HOST_BUILD_DIR)/profile_string_binding_test: core/tests/profile_string_binding
 
 # Production profile entry dispatch (GLKv3-4): v3 + v2 auto-detection through
 # the real read_glk1_file path, linked with the entry unit itself.
+# S4 P1 cross-language shape evidence: the App-encoded golden document must be
+# accepted by the GLKv3 decoder + validate_plugin_wire, and a "plugin.<id>"
+# section must be rejected. Path is baked in so the test does not depend on cwd.
+$(HOST_BUILD_DIR)/plugin_wire_golden_test: core/tests/plugin_wire_golden_test.cpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/profile/entry.cpp core/profile/entry.h \
+  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/support/native_resource.cpp core/support/native_resource.hpp \
+  $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
+	  -DGLK_PLUGIN_GOLDEN='"$(abspath ../app/src/test/resources/plugin-wire-shape-golden.bin)"' \
+	  core/tests/plugin_wire_golden_test.cpp \
+	  core/plugin/wire.cpp core/profile/entry.cpp core/profile/glkv3_parse.cpp \
+	  core/profile/glkv3.cpp core/support/native_resource.cpp \
+	  $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o -o $@
+
 $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
   core/profile/entry.cpp core/profile/entry.h \
   core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
@@ -724,6 +797,16 @@ $(HOST_BUILD_DIR)/cve_2026_43284_chain_test: core/tests/cve_2026_43284_chain_tes
   core/contract/capabilities.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_chain_test.cpp \
+	  core/backend/cve_2026_43284/steps/chain.cpp -o $@
+
+# S4 logging batch: bounded structured diagnostics. ChainOps::log is a capture
+# sink here, so the chain's milestone lines are asserted with no device; the
+# DiagLine bounds/sanitization are asserted directly as well.
+$(HOST_BUILD_DIR)/cve_2026_43284_logging_test: core/tests/cve_2026_43284_logging_test.cpp \
+  core/backend/cve_2026_43284/steps/chain.cpp core/backend/cve_2026_43284/steps/chain.hpp \
+  core/backend/cve_2026_43284/diag_line.hpp core/contract/capabilities.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/cve_2026_43284_logging_test.cpp \
 	  core/backend/cve_2026_43284/steps/chain.cpp -o $@
 
 # B5-7 backend -> umh_forward bridge: device facts, LKM/carrier policy, UMH
@@ -885,7 +968,11 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
   core/backend/cve_2026_43284/ipsec/ipsec.cpp core/backend/cve_2026_43284/ipsec/aes256.cpp \
   core/support/sha256.cpp core/backend/cve_2026_43284/session_frame.cpp \
   core/platform/device_facts.cpp core/terminal/umh_forward.cpp \
-  core/session/core_session.cpp core/support/run_state.cpp
+  core/session/core_session.cpp core/support/run_state.cpp \
+  core/plugin/host.cpp core/plugin/host.hpp \
+  core/plugin/loader.cpp core/plugin/loader.hpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/plugin/registry.hpp core/support/sha256.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/execution_binding_test.cpp \
 	  core/backend/cve_2026_43284/execution_binding.cpp \
@@ -913,7 +1000,9 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
 	  core/platform/device_facts.cpp \
 	  core/terminal/umh_forward.cpp \
 	  core/session/core_session.cpp \
-	  core/support/run_state.cpp -o $@
+	  core/support/run_state.cpp \
+	  core/plugin/host.cpp core/plugin/loader.cpp core/plugin/wire.cpp \
+	  -pthread $(HOST_DL_LIB) -o $@
 
 # GLKv3 decode bridge (GLKv3-4): the real codec + owner schemas + the shared
 # v2/v3 binder, so the v3 wire is exercised end to end and against a v2
@@ -935,6 +1024,25 @@ $(HOST_BUILD_DIR)/profile_v3_test: core/tests/profile_v3_test.cpp \
 	  core/tests/profile_bind_compat.cpp \
 	  core/profile/glkv3_parse.cpp core/profile/glkv3.cpp \
 	  $(HOST_BUILD_DIR)/profile_v3_mpack.o -o $@
+
+# S4 P1 step 3a gate tool (a TOOL, not a test; not in NATIVE_HOST_TESTS):
+# build/verify the GLKv3 documents the device gate feeds to --ghostlock-app-call,
+# using the production codec and the production frame_v3 + plugin wire gates.
+# See core/tests/gate_doc_tool.cpp for the usage.
+.PHONY: plugin-gate-doc
+plugin-gate-doc: $(HOST_BUILD_DIR)/plugin_gate_doc
+
+$(HOST_BUILD_DIR)/plugin_gate_doc: core/tests/gate_doc_tool.cpp \
+  core/profile/glkv3.cpp core/profile/glkv3.hpp \
+  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+  core/profile/document.hpp core/contract/abi/glk_contract_abi.h \
+  $(MPACK_SRC) $(MPACK_HDR)
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/plugin_gate_mpack.o
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/gate_doc_tool.cpp \
+	  core/profile/glkv3.cpp core/profile/glkv3_parse.cpp core/plugin/wire.cpp \
+	  $(HOST_BUILD_DIR)/plugin_gate_mpack.o -o $@
 
 # S4 R6b combination-token framing: real GLKv3 codec + the neutral framing
 # bridge, no owner bind.

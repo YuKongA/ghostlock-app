@@ -47,7 +47,7 @@ build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img
 build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段直接省略，不会用相邻内核族的猜测值（未验证族的 6.6、缺省 `-2`、5.15 multicast 常量、phys 默认）补齐；route 由 `--analysis` 证据建议、`--route` 可覆盖。输出一律是 **unverified candidate**：可导入、可解析，缺失或无效字段由 App 在执行前校验拦截，不能仅凭生成成功声明设备支持。5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
+提取结果使用 `--format conf` 输出：flatten（无 `include`、凭据/KernelSnitch 常量内联）的自包含 profile。提取器把镜像实际获得的所有字段都写出，未获得的字段直接省略，不会用相邻内核族的猜测值（未验证族的 6.6、缺省 `-2`、5.15 multicast 常量、phys 默认）补齐；route 由 `--analysis` 证据建议、`--route` 可覆盖。输出一律是 **unverified candidate**：可导入、可解析，缺失或无效字段由 App 在执行前校验拦截，不能仅凭生成成功声明设备支持。5.x 还会从 `init_cred` 推导凭据引用修复值、从 BTF 推导 multicast 几何（见 `docs/analysis/extractor-5x-derivation-plan.md`）。`--plugin-descriptor <probe-stdout.tsv>`（可重复、**仅 `--format conf`**）让对策插件自己的探针描述去填充 `plugin.<id>.extract.<key>`：键名与类型来自描述符，取值来自正在产出的 profile（R1）、镜像 BTF（R3）或 kallsyms（R2）。它只写 **`extract` 片段**（不是 wire 文档），追加在 `countermeasure` 之后；`required` 解析失败即中止，`optional` 缺失则省略、**绝不用 default 顶替**；不带该开关时输出**逐字节不变**。`--format json` 保留给 v1 导入路径。新增内置配置时以对应大版本模板为基础补齐和验证字段，再将独立 `.conf` 登记到 `kernel_profiles/index.conf`。旧 C `offsets.h` 注册表已经弃用并移除。
 
 ### 联发科
 
@@ -114,7 +114,7 @@ ghostlock {
 
 ## 插件（P1）
 
-在设置页导入对策 `.so`：App 把它复制到自己的 no-backup `countermeasures/` 根目录、本地算哈希，并通过**只读 native 探针**读取自描述（`--plugin-probe`，绝不在 JVM 内 `dlopen`）。只有 **enabled=true** 的插件才会以 `plugin.<id>.*` 写进 GLKv3 文档（默认关闭；`params.*` 的具体类型由插件自己的描述符决定；文档里出现 `enabled=false` 一律拒绝）。**P1 只交付「声明 → 校验 → 绑定」的 wire 层**：加载模块并按 stage 调用它的运行时**尚未接线**（见 branch-plan 的 task-9，需单独的 L 级设计与真机门禁）。
+在设置页导入对策 `.so`：App 把它复制到自己的 no-backup `countermeasures/` 根目录、本地算哈希，并通过**只读 native 探针**读取自描述（`--plugin-probe`，绝不在 JVM 内 `dlopen`）。只有 **enabled=true** 的插件才会以 `plugin.<id>.*` 写进 GLKv3 文档（默认关闭；`params.*` 的具体类型由插件自己的描述符决定；文档里出现 `enabled=false` 一律拒绝）。参考对策插件在独立项目 **`ghostlock-plugin-example`**（内置 ABI 头、`build.sh android|host|abi-check`、双语 README）；本仓库只留 `tools/plugins/README.md` 作为指引——插件作者不应需要 exploit 仓库才能构建。**P1 只交付「声明 → 校验 → 绑定」的 wire 层**：加载模块并按 stage 调用它的运行时**尚未接线**（见 branch-plan 的 task-9，需单独的 L 级设计与真机门禁）。
 
 ## 来源与许可证
 

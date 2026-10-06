@@ -47,10 +47,14 @@ namespace ghostlock::backend::cve_2026_43284::entry {
          * the ExecutionBindError value (0 == None). allow_dev_target is the
          * --allow-dev-target safety switch: it lets the single carrier be a
          * non-vendor one-shot path (device gates only) and is forwarded to the
-         * carrier selection and the chain's carrier validation. */
+         * carrier selection and the chain's carrier validation. plugin_host is
+         * the borrowed S4 P1 host (step 3a): bind stores it in the chain context
+         * so the LKM window can dispatch POST_TERMINAL; null keeps the window
+         * plugin-free. The caller keeps it alive across the pipeline call. */
         [[nodiscard]] std::uint8_t bind(session::CoreSession &session,
                                         const profile::Document &document,
-                                        bool allow_dev_target);
+                                        bool allow_dev_target,
+                                        plugin::PluginHost *plugin_host = nullptr);
 
     private:
         ScopedIpsecSaParams secrets_{};
