@@ -65,9 +65,12 @@ struct Cli {
     /// terminal choices that share the same 43499 route geometry)
     #[arg(long, value_parser = ["rootchild", "shizuku", "umh"], default_value = "rootchild")]
     steps_path: String,
-    /// native probe stdout TSV (ghostlock --plugin-probe <path.so>); its extract
-    /// rows are filled into plugin.<id>.extract.* of --format conf. Repeat the
-    /// flag for several plugins. Only valid with --format conf.
+    /// ⏸ DISABLED while the plugin project is frozen (user directive
+    /// 2026-10-05): passing it fails closed with a named error. Native rejects
+    /// the `plugin` owner outright now (the owner-list branch is commented out
+    /// there), so a profile carrying a `plugin {}` block could not be loaded.
+    /// The flag stays declared so existing invocations fail loudly instead of
+    /// silently producing a different profile. See docs/analysis/branch-plan.md.
     #[arg(long = "plugin-descriptor", value_name = "TSV")]
     plugin_descriptors: Vec<PathBuf>,
     /// treat every unresolved symbol as optional (emit 0)
@@ -199,9 +202,21 @@ fn resolve_kallsyms(
 }
 
 fn run(cli: &Cli) -> Result<i32> {
-    /* Plugin descriptors are accepted with every format: --format conf writes
-     * the plugin block, text/json only report the resolution diagnostics. */
-    let _ = &cli.plugin_descriptors;
+    /* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05; see
+     * docs/analysis/branch-plan.md). --plugin-descriptor would append a
+     * `plugin {}` block, but native now rejects the `plugin` owner outright, so
+     * any such output is unusable. Production of that block is commented out at
+     * the two call sites below (the implementation is kept intact); passing the
+     * flag fails closed here instead of silently emitting a profile WITHOUT the
+     * requested block.
+     * UNFREEZE = delete this guard + uncomment the two marked blocks
+     *            (conf call site, text/json call site) + drop the
+     *            #[allow(dead_code)] on apply_plugin_descriptors. */
+    if !cli.plugin_descriptors.is_empty() {
+        return Err(ExtractError::new(
+            "--plugin-descriptor is disabled while the plugin project is frozen (user directive 2026-10-05)",
+        ));
+    }
     let mut boot_path = cli.image.clone();
     let mut xbl_path = cli.xbl_config.clone();
     let mut uefi_path = cli.uefi.clone();
@@ -572,7 +587,8 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
-    let mut plugin_diagnostics: Vec<serde_json::Value> = Vec::new();
+    // ⏸ FROZEN: only the (commented) plugin projection fills this in.
+    // let mut plugin_diagnostics: Vec<serde_json::Value> = Vec::new();
     let output = if cli.format == "conf" {
         let release_text = release
             .as_deref()
@@ -715,48 +731,55 @@ fn run(cli: &Cli) -> Result<i32> {
             cred: &cred,
             extra_offsets: &extra_offsets,
         });
-        apply_plugin_descriptors(
-            cli,
-            &rendered,
-            &symbols,
-            btf.as_ref(),
-            base,
-            &boot.kernel,
-            &rel_symbols,
-            &sorted_offsets,
-            &mut plugin_diagnostics,
-        )?
+        /* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05) -- UNFREEZE:
+         * delete the freeze guard at the top of run() and uncomment this call. */
+        // apply_plugin_descriptors(
+        //     cli,
+        //     &rendered,
+        //     &symbols,
+        //     btf.as_ref(),
+        //     base,
+        //     &boot.kernel,
+        //     &rel_symbols,
+        //     &sorted_offsets,
+        //     &mut plugin_diagnostics,
+        // )?
+        rendered
     } else {
-        /* text/json: no profile is written, but a descriptor run still reports
-         * the resolution diagnostics (native spec rows are not wired yet, so
-         * this path is exercised by tests). The plugin view is resolved against
-         * a route-less candidate: only conf mode performs route inference. */
-        if !cli.plugin_descriptors.is_empty() {
-            let rendered = report::render_conf(&report::ConfInputs {
-                release: release.as_deref().unwrap_or("0.0.0-unknown"),
-                phys: kernel_phys_load,
-                phys_offset: kernel_phys_offset,
-                symbols: &symbol_offsets,
-                structs: &struct_offsets,
-                backend: report::BACKEND_43499,
-                route: cli.route.as_deref(),
-                steps_path: &cli.steps_path,
-                route_geometry: &[],
-                cred: &report::conf_cred_6x(),
-                extra_offsets: &report::ConfExtraOffsets::default(),
-            });
-            let _ = apply_plugin_descriptors(
-                cli,
-                &rendered,
-                &symbols,
-                btf.as_ref(),
-                base,
-                &boot.kernel,
-                &rel_symbols,
-                &sorted_offsets,
-                &mut plugin_diagnostics,
-            )?;
-        }
+        /* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05) -- UNFREEZE:
+         * delete the freeze guard at the top of run() and uncomment this block
+         * plus the plugin_extract insertion below.
+         * text/json: no profile is written, but a descriptor run used to report
+         * the resolution diagnostics (resolved against a route-less candidate:
+         * only conf mode performs route inference). */
+        // if !cli.plugin_descriptors.is_empty() {
+        //     let rendered = report::render_conf(&report::ConfInputs {
+        //         release: release.as_deref().unwrap_or("0.0.0-unknown"),
+        //         phys: kernel_phys_load,
+        //         phys_offset: kernel_phys_offset,
+        //         symbols: &symbol_offsets,
+        //         structs: &struct_offsets,
+        //         backend: report::BACKEND_43499,
+        //         route: cli.route.as_deref(),
+        //         steps_path: &cli.steps_path,
+        //         route_geometry: &[],
+        //         cred: &report::conf_cred_6x(),
+        //         extra_offsets: &report::ConfExtraOffsets::default(),
+        //     });
+        //     let _ = apply_plugin_descriptors(
+        //         cli,
+        //         &rendered,
+        //         &symbols,
+        //         btf.as_ref(),
+        //         base,
+        //         &boot.kernel,
+        //         &rel_symbols,
+        //         &sorted_offsets,
+        //         &mut plugin_diagnostics,
+        //     )?;
+        // }
+        // FROZEN: 'mut' only served the commented plugin_extract insertion.
+        #[allow(unused_mut)]
         let mut report_value = report::build_report(
             release.as_deref(),
             base,
@@ -766,9 +789,12 @@ fn run(cli: &Cli) -> Result<i32> {
             btf_size,
             pselect_shift,
         );
-        if !plugin_diagnostics.is_empty() {
-            report_value["plugin_extract"] = serde_json::Value::Array(plugin_diagnostics.clone());
-        }
+        // ⏸ FROZEN (see the banner in the branch above): the plugin_extract
+        // diagnostics array is not emitted while the plugin project is frozen.
+        // if !plugin_diagnostics.is_empty() {
+        //     report_value["plugin_extract"] =
+        //         serde_json::Value::Array(plugin_diagnostics.clone());
+        // }
         serde_json::to_string_pretty(&report_value).unwrap() + "\n"
     };
     if let Some(out) = &cli.out {
@@ -800,6 +826,11 @@ fn run(cli: &Cli) -> Result<i32> {
 /// closed; optional ones are omitted with a diagnostic; the descriptor default is
 /// never substituted. Without descriptors the rendered profile is returned
 /// unchanged, byte for byte.
+/* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05): this projection is no
+ * longer called by `run` -- the two call sites are commented out and passing
+ * `--plugin-descriptor` fails closed. The implementation is kept intact so
+ * unfreezing is "uncomment + drop this attribute" (see docs/analysis/branch-plan.md). */
+#[allow(dead_code)]
 fn apply_plugin_descriptors(
     cli: &Cli,
     rendered: &str,
@@ -963,10 +994,12 @@ mod plugin_projection_tests {
             std::process::id()
         ));
         let mut text = String::from(
-            "host_abi\t1\ncountermeasures_root\tcountermeasures\nhost_stages\tpre_spawn\nhost_caps\tkernel_read\n",
+            "host_abi\t1\ncountermeasures_root\tcountermeasures\nhost_stages\tpre_spawn\nhost_caps\tkernel_read,log\n",
         );
         text.push_str(&format!(
-            "plugin\ttest.schema\t1.0\t1\t80\t{SHA}\tpre_spawn\tkernel_read\n"
+            /* Batch B vocabulary: "log" must survive the whole --plugin-descriptor
+             * path (the extractor only carries the token; the ABI bit is native's). */
+            "plugin\ttest.schema\t1.0\t1\t80\t{SHA}\tpre_spawn\tkernel_read,log\n"
         ));
         for row in extract_rows {
             text.push_str(row);
@@ -1075,8 +1108,22 @@ mod plugin_projection_tests {
         std::fs::remove_file(&path).ok();
     }
 
+    /// ⏸ Freeze (user directive 2026-10-05): the flag must fail closed instead
+    /// of silently emitting a profile WITHOUT the requested plugin block.
+    /// Removing this guard is part of the unfreeze step list in `run`.
     #[test]
-    fn descriptor_flag_is_accepted_with_every_format() {
+    fn descriptor_flag_fails_closed_while_the_plugin_project_is_frozen() {
+        let (cli, path) =
+            descriptor_cli("frozen", &["extract\ttest.schema\tvalue\tuint\t1\t0\tdoc"]);
+        let err = run(&cli).expect_err("--plugin-descriptor must be disabled while frozen");
+        assert!(err.to_string().contains("frozen"), "{err}");
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The flag stays DECLARED (existing invocations must fail loudly, not with
+    /// an unknown-argument error) even though it is disabled.
+    #[test]
+    fn descriptor_flag_stays_declared_while_frozen() {
         let cli = Cli::parse_from([
             "ghostlock-extract",
             "unused.img",

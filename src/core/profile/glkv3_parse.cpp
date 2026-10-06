@@ -12,21 +12,158 @@
 
 namespace ghostlock::profile {
     namespace {
-        /* R2 owner-qualified sections: a section must name a known owner
-         * prefix ("backend.<id>.*", "platform.<module>.*",
-         * "countermeasure.<id>.*") or be the public "common" section. An
-         * unknown prefix is rejected here, fail-closed, before any owner bind. */
+//         /* S4 payload owner (contract-design 3.15; design r2). Shape is ONE flat
+//          * section "payload" with dotted keys; every rule is fail-closed and the
+//          * section is OPTIONAL: without it the parse result is unchanged. */
+//         constexpr std::size_t kPayloadMaxString = 256u;
+//         constexpr std::uint64_t kPayloadMaxKo = 8u;
+// 
+//         bool payload_path_ok(std::string_view path) noexcept {
+//             if (path.empty() || path.size() > kPayloadMaxString) return false;
+//             if (path.front() == '/') return false;
+//             if (path.find("..") != std::string_view::npos) return false;
+//             if (path.find('\\') != std::string_view::npos) return false;
+//             for (const char ch : path) {
+//                 const unsigned char raw = static_cast<unsigned char>(ch);
+//                 if (raw < 0x20u || raw == 0x7fu) return false;
+//             }
+//             return true;
+//         }
+// 
+//         bool payload_hash_ok(std::string_view hash) noexcept {
+//             if (hash.size() != 64u) return false;
+//             for (const char ch : hash) {
+//                 const bool digit = ch >= '0' && ch <= '9';
+//                 const bool lower = ch >= 'a' && ch <= 'f';
+//                 if (!digit && !lower) return false;
+//             }
+//             return true;
+//         }
+// 
+//         bool payload_sha_ok(const profile::Section &section, std::string_view key) noexcept {
+//             const profile::Value *value = section.find(key);
+//             if (value == nullptr) return true; /* optional */
+//             return value->is_text && payload_hash_ok(value->text);
+//         }
+// 
+//         bool payload_text_ok(const profile::Value &value) noexcept {
+//             if (!value.is_text || value.text.empty() || value.text.size() > kPayloadMaxString) {
+//                 return false;
+//             }
+//             for (const char ch : value.text) {
+//                 const unsigned char raw = static_cast<unsigned char>(ch);
+//                 if (raw < 0x20u || raw == 0x7fu) return false;
+//             }
+//             return true;
+//         }
+// 
+//         /* Splits "ko.<i>.path" / "ko.<i>.sha256": the ko index is 1..2 decimal
+//          * digits. The "ko." node is REQUIRED (design r3, ruling 2026-10-05): the
+//          * index lives under the same node as ko.count, so a bare "<i>.path" --
+//          * the earlier spelling -- or any other prefix is an unknown key and is
+//          * rejected fail-closed below. */
+//         bool payload_split_index(std::string_view key, std::string_view suffix,
+//                                  std::uint64_t &index) noexcept {
+//             constexpr std::string_view kKoPrefix = "ko.";
+//             if (!key.starts_with(kKoPrefix)) return false;
+//             key.remove_prefix(kKoPrefix.size());
+//             if (key.size() <= suffix.size()) return false;
+//             if (key.substr(key.size() - suffix.size()) != suffix) return false;
+//             const std::string_view head = key.substr(0u, key.size() - suffix.size());
+//             if (head.empty() || head.size() > 2u) return false;
+//             std::uint64_t value = 0u;
+//             for (const char ch : head) {
+//                 if (ch < '0' || ch > '9') return false;
+//                 value = value * 10u + static_cast<std::uint64_t>(ch - '0');
+//             }
+//             index = value;
+//             return true;
+//         }
+// 
+//         bool validate_payload_section(const profile::Section &section) noexcept {
+//             const profile::Value *tier = section.find("tier");
+//             if (tier == nullptr || !tier->is_text) return false;
+//             const std::string_view tier_token = tier->text;
+//             const bool is_exec = tier_token == "exec";
+//             const bool is_script = tier_token == "script";
+//             const bool is_ko = tier_token == "ko";
+//             if (!is_exec && !is_script && !is_ko) return false;
+// 
+//             std::uint64_t declared_count = 0u;
+//             bool have_count = false;
+//             std::uint64_t seen_paths = 0u;
+//             std::uint64_t path_bits = 0u;
+//             for (const profile::Entry &entry : section.entries) {
+//                 const std::string_view key = entry.key;
+//                 if (key == "tier") continue;
+//                 if (key == "exec.command") {
+//                     if (!is_exec || !payload_text_ok(entry.value)) return false;
+//                     continue;
+//                 }
+//                 if (key == "exec.sha256" || key == "script.sha256") {
+//                     const bool owner_ok = key == "exec.sha256" ? is_exec : is_script;
+//                     if (!owner_ok || !entry.value.is_text ||
+//                         !payload_hash_ok(entry.value.text)) return false;
+//                     continue;
+//                 }
+//                 if (key == "script.path") {
+//                     if (!is_script || !entry.value.is_text ||
+//                         !payload_path_ok(entry.value.text)) return false;
+//                     continue;
+//                 }
+//                 if (key == "ko.count") {
+//                     if (!is_ko || entry.value.is_text || !entry.value.present) return false;
+//                     declared_count = entry.value.raw;
+//                     have_count = true;
+//                     continue;
+//                 }
+//                 std::uint64_t index = 0u;
+//                 if (payload_split_index(key, ".path", index)) {
+//                     if (!is_ko || index >= kPayloadMaxKo || !entry.value.is_text ||
+//                         !payload_path_ok(entry.value.text)) return false;
+//                     if ((path_bits & (std::uint64_t{1} << index)) != 0u) return false;
+//                     path_bits |= std::uint64_t{1} << index;
+//                     ++seen_paths;
+//                     continue;
+//                 }
+//                 if (payload_split_index(key, ".sha256", index)) {
+//                     if (!is_ko || index >= kPayloadMaxKo || !entry.value.is_text ||
+//                         !payload_hash_ok(entry.value.text)) return false;
+//                     continue;
+//                 }
+//                 return false;
+//             }
+// 
+//             if (is_exec) {
+//                 return section.find("exec.command") != nullptr &&
+//                        payload_sha_ok(section, "exec.sha256");
+//             }
+//             if (is_script) {
+//                 return section.find("script.path") != nullptr &&
+//                        payload_sha_ok(section, "script.sha256");
+//             }
+//             if (!have_count || declared_count == 0u || declared_count > kPayloadMaxKo) {
+//                 return false;
+//             }
+//             return seen_paths == declared_count;
+//         }
+        /* HOCON refactor owner whitelist (contract-design 3.16): the only
+         * owner-qualified section family is "backend.<id>.*" -- the ABI keys are
+         * backend.cve_2026_43499.abi.* now. A section with any other prefix is
+         * rejected here, fail-closed, before any owner bind. */
         bool known_owner_section(std::string_view name) {
-            /* Owner prefixes: common + the three owner-qualified families.
-             * plugin is the third top-level owner (S4 P1) and uses ONE flat
-             * section: section "plugin" with keys "<id>.<field>" (canonical,
-             * matching plugin/schema.hpp and plugin-manifest paths). A
-             * "plugin.<id>" section shape is therefore rejected here instead of
-             * being silently accepted and then ignored by the validator. */
-            return name == "common" || name.starts_with("backend.") ||
-                   name.starts_with("platform.") ||
-                   name.starts_with("countermeasure.") ||
-                   name == "plugin";
+            /* Removed owners, all rejected on sight:
+             *   - "common": its keys became root scalars (kernel_major /
+             *     safe_mode) or disappeared (vr_guard);
+             *   - "platform.*": platform.abi.* moved to
+             *     backend.cve_2026_43499.abi.*;
+             *   - "countermeasure.*": the vr_guard fields were deleted, so the
+             *     owner became empty;
+             *   - "plugin" / "payload": paused by USER DIRECTIVE 2026-10-05;
+             *   - "selection.*" / the root scalars themselves are not sections:
+             *     a root key placed inside one is an unknown key and the owner
+             *     bind rejects it. */
+            return name.starts_with("backend.");
         }
 
         /* S4 R6b legacy compatibility: the old uint step id (1 = W1W2,
@@ -175,6 +312,25 @@ namespace ghostlock::profile {
          * declared route (None for a backend without a route axis). */
         out->middleware = profile::kRouteNone;
 
+        /* HOCON refactor root scalars: the wire carries them in the document
+         * root (never inside a section), and the owner bind reads them through
+         * the neutral root section (document.hpp kRootSection). Only a key the
+         * document actually carried is materialised: an absent scalar has no
+         * entry and no sentinel. */
+        if (decoded.has_kernel_major || decoded.has_kernel_minor ||
+            decoded.has_safe_mode) {
+            Section &root = out->append_section(kRootSection);
+            if (decoded.has_kernel_major) {
+                root.add("kernel_major", decoded.kernel_major);
+            }
+            if (decoded.has_kernel_minor) {
+                root.add("kernel_minor", decoded.kernel_minor);
+            }
+            if (decoded.has_safe_mode) {
+                root.add("safe_mode", decoded.safe_mode ? uint64_t{1} : uint64_t{0});
+            }
+        }
+
         for (const profile::glkv3::Section &section : decoded.sections) {
             if (!known_owner_section(section.name)) return -1;
             profile::Section &target = out->append_section(section.name);
@@ -209,6 +365,19 @@ namespace ghostlock::profile {
                 }
             }
         }
+//         /* S4 payload owner (contract-design 3.15): the flat section is validated
+//          * fail-closed BEFORE combination resolution. Without a payload section
+//          * nothing changes -- no payload key is ever invented here. */
+//         const profile::Section *payload_section = nullptr;
+//         for (const profile::Section &section : out->sections) {
+//             if (section.name == "payload") {
+//                 payload_section = &section;
+//                 break;
+//             }
+//         }
+//         if (payload_section != nullptr && !validate_payload_section(*payload_section)) {
+//             return -1;
+//         }
         return resolve_combination(out, decoded);
     }
 } // namespace ghostlock::profile

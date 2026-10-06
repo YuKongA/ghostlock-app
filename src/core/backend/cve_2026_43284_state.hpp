@@ -44,7 +44,6 @@ namespace ghostlock::backend {
         /* late-load argument policy bitmask (ksud/UMH argv selection). */
         std::optional<uint64_t> late_load_args;
         /* Defex symbol name, or absent (was a numeric selector token). */
-        std::optional<std::string_view> defex_symbol;
         /* StepSet id (ADR-0004 R18); PageCacheWrite is the 43284 vocabulary. */
         std::optional<uint16_t> steps;
         /* Chain terminus wait budget in ms (was hardcoded 15000). */

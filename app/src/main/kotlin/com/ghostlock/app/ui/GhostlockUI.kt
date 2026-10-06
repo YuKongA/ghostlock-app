@@ -168,7 +168,7 @@ data class GhostlockUiState(
     /** payload batch (a): the custom-execution draft and its confirmation. */
     val payloadVisible: Boolean = false,
     val payloadDraft: PayloadDraft = PayloadDraft(),
-    val payloadConfirmed: Boolean = false,
+
     /** False until the native probe exists (P1 second half). */
     val pluginImportEnabled: Boolean = false,
     val debugExportEnabled: Boolean = true,
@@ -258,13 +258,11 @@ interface GhostlockActions {
     fun onClosePayload()
     fun onPayloadTierChanged(tier: PayloadTier?)
     fun onPayloadCommandChanged(command: String)
-    fun onPayloadHashChanged(sha256: String)
+    fun onPayloadManagerChanged(manager: RootManager?)
     fun onPayloadPickScript()
     fun onPayloadPickKo()
     fun onPayloadKoMove(index: Int, delta: Int)
     fun onPayloadKoRemove(index: Int)
-    fun onPayloadConfirm()
-    fun onPayloadClear()
     fun onOpenPluginDetail(id: String)
     fun onClosePluginDetail()
     fun onRecheckPlugin(id: String)
@@ -768,22 +766,6 @@ private fun MainContent(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.primary,
-                )
-            }
-        }
-        /* payload batch (a): what this run would execute, stated before it does. */
-        /* The default tier always has a summary line; a custom tier gets one
-         * only once it is authorised. */
-        val payloadDraft = state.payloadDraft
-        val showPayloadSummary = !payloadDraft.needsAuthorisation || state.payloadConfirmed
-        if (showPayloadSummary) {
-            item(key = "payload-run-hint") {
-                /* Localized UI text, never the English log line. */
-                Text(
-                    text = payloadRunSummaryText(payloadDraft),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
         }

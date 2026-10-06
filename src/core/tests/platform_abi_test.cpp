@@ -16,7 +16,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string_view>
+#include <type_traits>
 
 using ghostlock::platform::abi::Schema;
 using ghostlock::platform::abi::View;
@@ -72,6 +74,34 @@ int main() {
     assert(out.offsets.security_hook_heads == 0x1234u);
     assert(out.misc.kernel_phys_load.value_or(0) == 0x1234u);
     assert(out.misc.kernel_phys_offset.value_or(0) == 0x1234u);
+
+    /* Exhaustive merge coverage: binding ONE declared platform field at a time
+     * must move the frozen transport. A field added to both declaration tables
+     * but forgotten in platform::abi::apply_to would otherwise leave its
+     * transport member silently 0. The loop is generated from Schema::kFields,
+     * so it cannot go stale; kCount == 31 above is the tripwire that forces
+     * this header to be reviewed whenever a field is added. */
+    static_assert(std::is_trivially_copyable_v<ghostlock::profile::kernel_offsets>);
+    for (const auto &field : Schema::kFields) {
+        Document single_doc;
+        single_doc.release = "6.6.77-platform-abi-one";
+        add(single_doc, field.section, field.key, 0x1234u);
+        View single_view{};
+        assert(ghostlock::profile::bind<Schema>(single_doc, single_view,
+                                               DecodeMode::Production)
+                       .ok());
+        ghostlock::profile::kernel_offsets moved{};
+        ghostlock::profile::kernel_offsets untouched{};
+        /* Byte-zero both sides first: value-initialisation leaves the padding
+         * bytes unspecified, and a comparison that read them would always report
+         * a difference -- a vacuous guard. kernel_offsets is trivially copyable
+         * (static_assert above) and all-zero is a valid empty value. */
+        std::memset(&moved, 0, sizeof(moved));
+        std::memset(&untouched, 0, sizeof(untouched));
+        ghostlock::platform::abi::apply_to(single_view, moved);
+        /* Any byte difference now means the bound field reached the merge. */
+        assert(std::memcmp(&moved, &untouched, sizeof(moved)) != 0);
+    }
 
     /* An absent optional stays absent after the merge. */
     {

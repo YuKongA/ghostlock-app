@@ -28,7 +28,6 @@ internal object Cve2026_43284Fields {
     val StringPaths: List<String> = listOf(
         "$Section.carrier_path",
         "$Section.lkm_path",
-        "$Section.defex_symbol",
     )
 
     /** Wire type `uint` backed by a native `uint32_t` (0..0xFFFFFFFF). */
@@ -41,9 +40,8 @@ internal object Cve2026_43284Fields {
     /** Every 43284 field the advanced editor surfaces for a 43284 selection. */
     val EditablePaths: List<String> = StringPaths + UInt32Paths
 
-    /** carrier_path / lkm_path are filesystem paths; defex_symbol is a kernel
-     * symbol name. All three are bounded UTF-8 text (<=256 bytes); only the two
-     * paths must additionally be absolute. Empty means absent. */
+    /** carrier_path / lkm_path are filesystem paths: bounded UTF-8 text
+     * (<=256 bytes) that must be absolute. Empty means absent. */
     val FilesystemPaths: List<String> = listOf(
         "$Section.carrier_path",
         "$Section.lkm_path",

@@ -5,15 +5,32 @@
  *
  *   owner<TAB>path<TAB>wire<TAB>required<TAB>default<TAB>source<TAB>doc
  *
- * where path is the owner-qualified "<section>.<key>" (R2). default/source/doc
- * are joined from the matching v2 owner Schema FieldSpec (same section/key) so
- * the manifest carries the R1 declaration once. "--" marks an empty value so
- * every line has exactly seven non-empty columns.
+ * where path is the owner-qualified "<section>.<key>" (R2). A root scalar (the
+ * HOCON-refactor kernel_major / kernel_minor / safe_mode, declared with the
+ * empty section) has no section prefix: its path is the bare key and its owner
+ * is "root". default/source/doc are joined from the matching v2 owner Schema
+ * FieldSpec (same section/key) so the manifest carries the R1 declaration once.
+ * A wire_only declaration is omitted: the key stays accepted on the wire but is
+ * not a profile key (kmi / lkm_path / carrier_path). "--" marks an empty value
+ * so every line has exactly seven non-empty columns.
  *
  * Kotlin (ProfileManifestV3AgreementTest) asserts its generated
  * NativeProfileGlkv3Adapter path -> type table equals the manifest; the adapter
  * itself parses the same manifest resource, so a key or wire type added to only
  * one side fails that side's test instead of silently reaching production.
+ *
+ * Guards (each one fails the run instead of exporting a weakened contract; the
+ * two copies are compared byte for byte, so without them a silently weakened
+ * export would still keep both copies identical and the gate green):
+ *   - owner_for(): an unmapped section prefix is a hard failure, never the
+ *     literal owner "unknown";
+ *   - lookup_declaration(): an exported (section, key) with no v2 owner
+ *     declaration is a hard failure, never "-" columns;
+ *   - check_export_shape(): the row count must equal the appended tables minus
+ *     their wire_only rows, and the owner set must equal BOTH the expected
+ *     literal set and the owner set of the registered v2 owner Schemas;
+ *   - check_wire_only_keys(): kmi / lkm_path / carrier_path stay declared in the
+ *     C++ table with wire_only=true and never appear in the export.
  *
  * Run bare to verify every committed copy: the app test resource and the
  * profile-core runtime resource must each resolve to exactly one path AND match
@@ -34,8 +51,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -70,14 +89,31 @@ namespace {
                "# (probe TSV param/extract rows), whose type literals are these same kinds.\n";
     }
 
+    /* A guard failure is a hard failure. The manifest is a cross-language
+     * contract whose two copies are compared byte for byte, so a silently
+     * weakened export (unknown owner, missing declaration, dropped table) would
+     * still keep both copies identical and the gate green. */
+    [[noreturn]] void guard_fail(const std::string &message) {
+        std::fprintf(stderr, "profile_manifest_v3_test: guard: %s\n",
+                     message.c_str());
+        std::exit(1);
+    }
+
     std::string_view owner_for(std::string_view section) {
-        if (section == "common") return "common";
-        if (section.starts_with("platform.")) return "platform::abi";
-        if (section.starts_with("countermeasure.")) return "countermeasure::vivo";
+        /* HOCON refactor: the empty section is the document root (see
+         * profile/document.hpp kRootSection). The "common" and
+         * "countermeasure.*" owners are deleted, so they have no branch. */
+        if (section.empty()) return "root";
         if (section.starts_with("plugin")) return "plugin";
+        // USER DIRECTIVE 2026-10-05: payload paused
+        // if (section.starts_with("payload")) return "payload";
         if (section.starts_with("backend.cve_2026_43284")) return "cve_2026_43284";
         if (section.starts_with("backend.cve_2026_43499")) return "cve_2026_43499";
-        return "unknown";
+        /* Guard: an unmapped owner prefix must never be exported as a literal
+         * "unknown" owner -- that would weaken the contract silently while both
+         * copies stay identical. Adding an owner means adding its branch here. */
+        guard_fail("owner_for(): no owner mapping for section '" +
+                   std::string(section) + "'");
     }
 
     std::string format_default(const ghostlock::profile::DefaultValue &value) {
@@ -132,10 +168,12 @@ namespace {
                                                                    source, doc) ||
                 lookup_v2<ghostlock::plugin::Schema>(section, key, def, source, doc);
         if (!found) {
-            def = "-";
-            source = "-";
-            doc = "-";
-            return;
+            /* Guard: a row with no v2 owner declaration would export
+             * default/source/doc as "-" -- a silent weakening of the contract.
+             * Every exported (section, key) must be declared by exactly one of
+             * the registered owner Schemas. */
+            guard_fail("lookup_declaration(): no v2 owner declaration for '" +
+                       std::string(section) + "." + std::string(key) + "'");
         }
         if (def.empty()) def = "-";
         if (source.empty()) source = "-";
@@ -145,18 +183,136 @@ namespace {
     template<typename Fields>
     void append_owner(std::vector<std::string> &lines, const Fields &fields) {
         for (const auto &field : fields) {
+            /* HOCON refactor: a wire-only key has no profile declaration -- the
+             * wire keeps it (native resolves it at the point of use) but the
+             * manifest, which is the Kotlin profile-declaration surface, must
+             * not offer it. kmi / lkm_path / carrier_path today. */
+            if (field.wire_only) continue;
             std::string def;
             std::string source;
             std::string doc;
             lookup_declaration(field.section, field.key, def, source, doc);
+            /* A root key has no section prefix: path == key. */
+            std::string path(field.section);
+            if (!path.empty()) path.push_back('.');
+            path.append(field.key);
             std::ostringstream line;
-            line << owner_for(field.section) << '\t' << field.section << '.'
-                 << field.key << '\t'
+            line << owner_for(field.section) << '\t' << path << '\t'
                  << ghostlock::profile::glkv3::wire_type_name(field.type) << '\t'
                  << (field.required ? 1 : 0) << '\t' << def << '\t' << source
                  << '\t' << doc;
             lines.push_back(line.str());
         }
+    }
+
+    /* Rows a table contributes to the manifest: every declaration except the
+     * wire-only keys, which the profile must not offer. */
+    template<typename Fields>
+    std::size_t exported_row_count(const Fields &fields) {
+        std::size_t rows = 0;
+        for (const auto &field : fields) {
+            if (!field.wire_only) ++rows;
+        }
+        return rows;
+    }
+
+    std::set<std::string> exported_owner_set(const std::vector<std::string> &lines) {
+        std::set<std::string> owners;
+        for (const std::string &line : lines) {
+            const std::size_t tab = line.find('\t');
+            owners.insert(line.substr(0, tab));
+        }
+        return owners;
+    }
+
+    /* The owner labels the registered v2 owner Schemas actually declare: the
+     * manifest side of the registry's owner set. */
+    std::set<std::string> registered_owner_set() {
+        std::set<std::string> owners;
+        for (const auto &field : ghostlock::platform::abi::Schema::kFields) {
+            owners.insert(std::string(owner_for(field.section)));
+        }
+        for (const auto &field : ghostlock::backend::Cve2026_43499Schema::kFields) {
+            owners.insert(std::string(owner_for(field.section)));
+        }
+        for (const auto &field : ghostlock::backend::Cve2026_43284Schema::kFields) {
+            owners.insert(std::string(owner_for(field.section)));
+        }
+        for (const auto &field : ghostlock::plugin::Schema::kFields) {
+            owners.insert(std::string(owner_for(field.section)));
+        }
+        return owners;
+    }
+
+    std::string join_set(const std::set<std::string> &values) {
+        std::string out;
+        for (const std::string &value : values) {
+            if (!out.empty()) out += ", ";
+            out += value;
+        }
+        return out;
+    }
+
+    /* Guard: the three runtime-injected convention keys must stay declared in
+     * the C++ table (the wire accepts them) with wire_only = true (the profile
+     * must not offer them), and must not appear in the export. This
+     * machine-checks the "wire keeps it, profile rejects it" ruling. */
+    void check_wire_only_keys(const std::vector<std::string> &lines) {
+        constexpr std::string_view kConventionKeys[] = {"kmi", "lkm_path",
+                                                        "carrier_path"};
+        for (const std::string_view key : kConventionKeys) {
+            const ghostlock::profile::glkv3::FieldSpec *found = nullptr;
+            for (const auto &field : ghostlock::backend::kCve2026_43284Glkv3Fields) {
+                if (field.section == "backend.cve_2026_43284" && field.key == key) {
+                    found = &field;
+                }
+            }
+            if (found == nullptr || !found->wire_only) {
+                guard_fail("wire_only: convention key '" + std::string(key) +
+                           "' must stay declared in the GLKv3 table with "
+                           "wire_only=true");
+            }
+            const std::string path = "backend.cve_2026_43284." + std::string(key);
+            for (const std::string &line : lines) {
+                if (line.find(path) != std::string::npos) {
+                    guard_fail("wire_only: '" + path +
+                               "' must not appear in the profile manifest");
+                }
+            }
+        }
+    }
+
+    /* Guards on the export shape. The two committed copies are compared byte for
+     * byte, so a table that stops being appended, a new owner that is only
+     * half-registered or a wire-only key that leaks would keep that comparison
+     * green while the contract silently shrinks. */
+    void check_export_shape(const std::vector<std::string> &lines) {
+        const std::size_t expected_rows =
+                exported_row_count(ghostlock::platform::abi::kPlatformAbiGlkv3Fields) +
+                exported_row_count(ghostlock::backend::kCve2026_43499Glkv3Fields) +
+                exported_row_count(ghostlock::backend::kCve2026_43284Glkv3Fields) +
+                exported_row_count(ghostlock::plugin::kPluginGlkv3Fields);
+        // USER DIRECTIVE 2026-10-05: payload paused -> kPayloadGlkv3Fields is
+        // not appended; restoring payload means adding it to this sum too.
+        if (lines.size() != expected_rows) {
+            guard_fail("row count: exported " + std::to_string(lines.size()) +
+                       " rows, declaration tables say " +
+                       std::to_string(expected_rows));
+        }
+        const std::set<std::string> exported = exported_owner_set(lines);
+        const std::set<std::string> expected_owners = {"root", "cve_2026_43499",
+                                                       "cve_2026_43284", "plugin"};
+        if (exported != expected_owners) {
+            guard_fail("owner set: exported {" + join_set(exported) +
+                       "} != expected {" + join_set(expected_owners) + "}");
+        }
+        const std::set<std::string> registered = registered_owner_set();
+        if (exported != registered) {
+            guard_fail("owner set: exported {" + join_set(exported) +
+                       "} != registered v2 owner Schemas {" +
+                       join_set(registered) + "}");
+        }
+        check_wire_only_keys(lines);
     }
 
     std::vector<std::string> schema_lines() {
@@ -165,7 +321,10 @@ namespace {
         append_owner(lines, ghostlock::backend::kCve2026_43499Glkv3Fields);
         append_owner(lines, ghostlock::backend::kCve2026_43284Glkv3Fields);
         append_owner(lines, ghostlock::plugin::kPluginGlkv3Fields);
+        // USER DIRECTIVE 2026-10-05: payload paused
+        // append_owner(lines, ghostlock::profile::kPayloadGlkv3Fields);
         std::sort(lines.begin(), lines.end());
+        check_export_shape(lines);
         return lines;
     }
 

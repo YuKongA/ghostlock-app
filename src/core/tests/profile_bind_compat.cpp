@@ -71,7 +71,9 @@ namespace ghostlock::tests::profile_bind {
             owned_43284.backend = active.backend;
             owned_43284.middleware = active.middleware;
             for (auto it = active.sections.begin(); it != active.sections.end();) {
-                if (it->name == ghostlock::backend::kCve2026_43284Section) {
+                /* Both owner sections (backend + execution) move to the 43284
+                 * copy; the predicate is the same one production uses. */
+                if (ghostlock::backend::is_cve_2026_43284_section(it->name)) {
                     owned_43284.sections.push_back(*it);
                     it = active.sections.erase(it);
                 } else {

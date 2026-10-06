@@ -19,6 +19,8 @@
 
 ⇒ 由此确定 **`kind = folkpatch` 在 GhostLock 侧的语义**：**加载 KernelPatch 内核模块**（而不是「启动 FolkPatch 管理器 App」）；它与 `kernelsu`（ksud late-load）**机制完全不同**，两者的输入 / 加载手段 / 生效条件必须分别列清（见 §4.1 对照表）。
 
+**两条轴不得重合**（用户 2026-10-05 指出）：**root 管理器轴**（本设计）=「**谁来接管 root**」，制品**必须来自系统里已安装的管理器**（用户不提供制品、也没有导入 UI）；**payload 轴** =「**接管之后对这台设备做什么**」，**用户提供内容**——「用户自备 `.ko`」正是 payload 的 **`ko` 档**。两轴的职责 / 来源 / 禁止重合见 **§4.2**。
+
 ## 2. 代码事实与依据（全部 file:line 核实）
 
 | # | 事实 | 依据 |
@@ -93,18 +95,54 @@ payload {
 | **前置条件** | 现有链已满足（uid0 + 内核写能力） | **SELinux Permissive + 设备已 Root**——**正是 GhostLock 的 W1/W2 产物**（E4，本设计的天然衔接点） |
 | **成熟度** | 生产路径已验证 | 官方标注**不稳定/尝鲜**：兼容性受限、失败可能影响稳定性（「请勿反复尝试」） |
 
+**分期状态（2026-10-05 更新）：检测 + 列表 + 默认项——UI/跳转已落地，wire/late-load 待 native**
+
+| 段 | 内容 | 状态 |
+|---|---|---|
+| **UI / 跳转（已落地）** | `app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt`：`RootManager`（**App 侧唯一包名镜像**，注释指向 native `default_root_package()`；未知 ⇒ `null`，绝不猜）+ `RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(succeeded, rootProduced, packageName, launchable)`（提交 `e500b407` + `4a02d19b`） | ✅ **已落地** |
+| **默认档 = 「启动 root 管理器」+ 子菜单（检测列表）** | 「系统默认 KernelSU（默认）」或「检测到的其它受支持管理器」；**系统默认 = 不发射任何 `payload` 键**（逐字节不变）；**未安装的不列出/置灰 + 具名原因**，不得让用户选不存在的目标 | 🚧 **在途**（UI 侧；`<queries>` 已在 manifest 声明） |
+| **wire 发射（`payload.tier = "root"` + `payload.root.*`）** | native 当前只接受 `tier ∈ {exec, script, ko}` ⇒ **UI 已可选 ≠ 已发射**；本轴 P1 的 wire 属**下一批 native** | ⏳ **待 native** |
+
+**包名白名单硬规则（只允许有仓库/官方证据的包名）**：已核实起点 = `src/core/terminal/root_script.cpp:40-50`（`me.weishu.kernelsu.pr*` / `me.weishu.kernelsu-*` / `com.resukisu.resukisu*` / `com.kowx712.supermanager*`）+ `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 检测需 **`<queries>`**（`AndroidManifest.xml` 已声明 5 项）；**未核实不得添加**（与「分支包名不得猜」同规）；FolkPatch `me.yuki.folk` 属 **P2**。
+
 **一等检查：管理器「是否存在、是否可启动」（用户第三条；P1 就做）**
 
 | kind | 检查内容（探测手段以实现时的代码/平台事实为准） |
 |---|---|
 | `kernelsu` | 管理器包是否安装（如 `pm list packages` 命中 `manager` 或默认包名）+ `ksud` 是否存在且**可执行** |
-| `folkpatch` | FolkPatch 管理器/模块是否存在且可用（P2 落地时定；当前一律「计划中」） |
+| `folkpatch` | ① FolkPatch 管理器**包是否安装**（APK 存在即可用 `packageManager` 查询）；② **APK 内是否含内置的预构建模块**（提取成功）；③ **提取物 SHA-256 匹配**（记录并供 native 复核）。任一步失败 ⇒ **置灰 + 具名原因**（不得静默、不得猜）；机制未落地前整档仍「计划中」（§4.2/§11 TODO-3） |
 | `custom` | 指定 `argv[0]` 路径**存在、可执行、且（若给 `sha256`）哈希匹配** |
 
 - **两处执行**：**App 侧**（UI 明确显示「未安装 / 不可启动」，置灰或 error）→ **native 侧**在绑定/启动前**再复核一次**（fail-closed + 具名原因）；
 - **权威判定在 native**：UI 检查只是**提前提示**，不构成放行依据；
 - **失败语义**：不存在/不可启动 ⇒ **不静默降级、不猜替代品**；按 payload 语义「**不中断攻击链** + 本次运行结论标**未完成** + 逐项原因」（§7）；
 - 该检查与上面的 fail-closed 清单**同属一节**，两者共同构成 `payload.root.*` 的准入判定。
+
+### 4.2 与 payload 轴的分工（**禁止重合**；用户裁决 2026-10-05）
+
+> **用户原话**：「**选 a**；自备文件那不就和**自定义 handoff 档位**重合了吗」——「自定义 handoff 档位」即 `payload.tier = "ko"`（「将指定的一个或多个内核扩展 ko 加载进内核」）。
+
+| 轴 | 回答的问题 | 制品来源 | 用户能否提供文件 | 契约落点 |
+|---|---|---|---|---|
+| **root 管理器轴**（默认档；本设计） | 「**谁来接管 root**」（KernelSU / FolkPatch / 自定义程序） | **必须是系统里已安装的管理器**（与其“存在且可启动”检查同源）；`kernelpatch.ko` **只从已安装的 FolkPatch 管理器 APK 提取** | **不提供**——本轴**没有任何文件导入 UI** | `payload.root.{kind,manager,argv}`（§3.15.8） |
+| **payload 轴**（另册） | 「**接管之后对这台设备做什么**」（`exec` / `script` / **`ko`**） | **用户提供内容** | **提供**（用户自备 `.ko` 正是 `ko` 档） | `payload.tier` + `payload.{exec,script,ko}.*`（`contract-design.md` §3.15） |
+
+**由此产生的硬规则**：
+
+1. **凡「用户自备 `.ko`」一律走 `payload.tier = "ko"`**——root 管理器轴**不接受**用户制品，也不得为其开导入入口（否则就是用户指出的重合）；
+2. **root 管理器轴的制品一律来自系统**：`kernelsu` 用系统里的 `ksud`（+ 可选包名）；`folkpatch` 从**已安装管理器 APK** 提取内置模块；`custom` 指向**用户指定的程序/argv**（这是「执行什么」的参数，不是「导入制品」）；
+3. 两条轴的**失败语义/授权面各自独立**：root 管理器轴不存在/不可启动 ⇒ 置灰 + 具名原因（§4.1/§7）；payload 轴按 §3.15 的失败语义——**其中「哈希录入」与「授权步骤」已被用户决定取消**（2026-10-05：App 的 payload 页**不录入哈希**、**无授权步骤**；`payload.*.sha256` 字段与 native 校验语义保留，摘要保留为**告知**）；
+4. **两条轴的“哈希”含义不同，不要混用**：本轴（root 管理器）对**系统来源制品**做**完整性钉住**（提取物 → SHA-256 → native 复核，见下方提取路径），这是「管理器 APK 提供的模块是否被篡改」的问题；payload 轴的 `sha256` 是**用户对自己内容的可选声明**，而 App 页现在**不录入**（用户自担责任）——见 `contract-design.md` §3.15.2/§3.15.3。
+
+**FolkPatch 制品的提取路径（选项 a 定案；含证据要求）**：
+
+1. App 侧 `packageManager.getApplicationInfo(pkg).sourceDir` 取**管理器 APK 路径**（FolkPatch：`applicationId = "me.yuki.folk"`，E2）；
+2. 从 APK 内取出**内置的预构建 `kernelpatch.ko`**——官方文档原文「管理器**提取内置的**预构建 `kernelpatch.ko`」（E4，<https://fp.mysqil.com/guide/jailbreak/>）；
+3. **算 SHA-256** 并落到 **no-backup 私有目录**（复用既有「不可变目录 + 哈希钉住」机制，**但来源是管理器 APK、不是文件选择器**）；
+4. 把**路径 + 哈希**交给 native；native 在加载前**复核哈希**，不符 ⇒ fail-closed **且不执行**；
+5. **不可用表现**：管理器未安装 / APK 内找不到模块 / 提取失败 / 哈希不符 ⇒ 该档位**置灰 + 具名原因**（不得静默、不得猜）。
+
+**未变**：`folkpatch` 仍属 **P2**（APatch 谱系：手动符号重定位 + 绕过 CRC/vermagic + `init_module` + **软重启需用户显式确认**，独立机制设计与独立真机门禁）；本次裁决**只解除“制品来源”这一阻塞项**，不改变 P1/P2 边界。
 
 ## 5. 可用性与「计划中」
 
@@ -154,7 +192,7 @@ payload {
 
 **P2 · 计划中（置灰）：`folkpatch`（KernelPatch 模块加载）**
 
-- **机制**（E4）：`kernelpatch.ko`（用户提供/导入）→ 手动符号重定位（`/proc/kallsyms`）+ 绕过 modversions(CRC)/vermagic + `init_module` → **软重启**生效；**不复用** `ksud late-load`；
+- **机制**（E4）：`kernelpatch.ko`（**只从已安装的 FolkPatch 管理器 APK 提取，不允许用户自备**——§4.2 提取路径 1–4）→ 手动符号重定位（`/proc/kallsyms`）+ 绕过 modversions(CRC)/vermagic + `init_module` → **软重启**生效；**不复用** `ksud late-load`；
 - **前置条件**：SELinux Permissive + 设备已 Root（**GhostLock 的 W1/W2 产物**）——是**天然衔接**，但仍需独立机制设计与**独立真机门禁**；
 - **真机门禁（P2）**：正例（`init_module` 成功 + **软重启后 Root 生效**）+ 负例（非 Permissive / 模块缺失 / 哈希不符 / 内核不兼容 → 拒绝且不执行）+ 「重启后失效」记录 + AVB 12/0；
 - 官方标注**不稳定/尝鲜**：文档与 UI 必须如实标注；**未落地前保持「计划中」**。
@@ -170,11 +208,11 @@ payload {
 - **本轮（v2）新增同步**：UML §1 增 **C4d**（管理器存在性/可启动检查，UI 预检 + native 复核）、C6d 更新为「folkpatch = KernelPatch 模块加载（P2）+ 软重启确认」；`contract-design.md` §3.15.8 同步 `manager` 可选与存在性检查；`branch-plan` 同步 P1/P2 拆分；
 - 实现落地前：若形态变化，先改本节与 §3.15 再动代码。
 
-## 11. 开放问题（本轮已消解 3 条，剩 1 条待用户确认）
+## 11. 开放问题（**用户侧问题已全部结案**；剩 1 条 P2 设计任务）
 
 - ~~**TODO-1（分支清单）**~~ **已消解（用户原话）**：「KernelSU 及其分支是个统称，因为他们都**共享 ksud**……**默认就是 ksud，无论哪个分支提供了**」⇒ 分支**不需要机制白名单**，包名**可选**（`manager`）。
 - ~~**TODO-2（FolkPatch 机制）**~~ **已消解（E4 官方文档）**：越狱模式 = 提取内置 `kernelpatch.ko` → adb-root 提权 → `apd insmod` 手动重定位（绕 CRC/vermagic）+ `init_module` → 软重启；属 P2，独立机制设计 + 独立真机门禁。
-- **TODO-3（制品来源；仍待用户确认）**：`kernelpatch.ko` 的**来源**——**首选已定**：走**既有导入机制**（no-backup 不可变目录 + 本地 SHA-256 + 原子落盘）；**待确认**：① 是否只接受「从 FolkPatch 管理器中提取后导入」；② 是否允许用户完全自备其它来源的 `kernelpatch.ko`；③ 是否需要在 UI 里标注「来源不可验证」。
+- ~~**TODO-3（制品来源）**~~ **已结案（用户答复 2026-10-05，选项 a）**：「**选 a**；自备文件那不就和**自定义 handoff 档位**重合了吗」⇒ **只从已安装的 FolkPatch 管理器 APK 提取内置模块**，**不允许用户自备**；用户自备 `.ko` 一律走 **`payload.tier = "ko"`**（§4.2 两条轴分工 + 提取路径：`getApplicationInfo(pkg).sourceDir` → APK 内取模块 → SHA-256 → no-backup 不可变目录 → 路径+哈希交 native 并复核）。
 - ~~**TODO-4（`manager` 形态）**~~ **已消解**：`manager` = **可选的管理器包名**（精确选择），不是 token 白名单；缺省用代码权威默认值；用户手填即其自己的声明（UI 提示「由你负责」）。
 - **TODO-5（新）**：FolkPatch 的**内核兼容矩阵**（预构建 `kernelpatch.ko` 只对特定内核版本有效）——P2 设计时必须给出「如何判定兼容 + 不兼容时如何 fail-closed」，不得靠试错。
 

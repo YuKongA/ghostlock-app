@@ -137,6 +137,13 @@ namespace ghostlock::profile::glkv3 {
         std::string_view key;
         WireType type = WireType::UInt;
         bool required = false;
+        /* HOCON refactor: a wire-only key has NO profile declaration. The wire
+         * still accepts the key (native resolves its value at the point of use,
+         * or a document may carry it), but the exported manifest -- the Kotlin
+         * side's profile-declaration surface -- must not list it, so a profile
+         * can never write it. kmi / lkm_path / carrier_path are the first
+         * three; every other key is profile-declarable. */
+        bool wire_only = false;
     };
 
     struct Schema {
@@ -175,10 +182,33 @@ namespace ghostlock::profile::glkv3 {
         bool has_terminal = false;
         bool has_backend = false;
         bool has_route = false;
+        /* HOCON refactor: root-level scalars. The wire carries them beside the
+         * component tokens in the document root (never inside an owner
+         * section); has_* is key occurrence, so an absent scalar keeps its
+         * 0/false value with no sentinel.
+         *
+         * ADDING A ROOT KEY means changing FOUR places together (a missed
+         * frame_v3 is silent -- the bind then sees no value and keeps the
+         * default):
+         *   1. this struct (has_* + value);
+         *   2. glkv3.cpp decode (the schema-free and the schema-driven walk);
+         *   3. glkv3.cpp encode (root key count + canonical UTF-8 order);
+         *   4. glkv3_parse.cpp frame_v3 (materialise the key into the root
+         *      section, document.hpp kRootSection).
+         * Plus the declaration row with an empty section in the v2 Schema and in
+         * the GLKv3 table, and owner_for("") == "root" in the manifest
+         * generator. The codec round-trip assertion catches a missing encode;
+         * only step 4 fails silently. */
+        bool has_kernel_major = false;
+        bool has_kernel_minor = false;
+        bool has_safe_mode = false;
         std::string_view release{};
         std::string_view terminal{};
         std::string_view backend{};
         std::string_view route{};
+        uint64_t kernel_major = 0;
+        uint64_t kernel_minor = 0;
+        bool safe_mode = false;
         std::vector<Section> sections;
 
         [[nodiscard]] const Section *find_section(std::string_view name) const noexcept {

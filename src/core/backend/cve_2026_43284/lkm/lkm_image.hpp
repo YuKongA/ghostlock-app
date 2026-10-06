@@ -82,11 +82,27 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     [[nodiscard]] std::string_view default_root_package(
             terminal::RootProgramKind kind) noexcept;
 
-    /* Build ksud-style argv: {program, "late-load", flags...}. No shell is
-     * involved and no string is concatenated, so shell metacharacters are
-     * inert; arguments are length-bounded and control-byte checked. */
+    /* Build ksud-style argv: {program, "late-load", "--kmi", <label>,
+     * "--allow-shell", flags...}. No shell is involved and no string is
+     * concatenated, so shell metacharacters are inert; arguments are
+     * length-bounded and control-byte checked.
+     *
+     * ALIGNMENT WITH THE VERIFIED 43499 PATH (S4 KernelSU-pop alignment, ruling
+     * of 2026-10-05): the 43499 root script loads KernelSU with
+     *   "$KSUD" late-load --kmi "$KMI" --allow-shell          (root_script.cpp:184)
+     * where $KMI is derived from uname -r (androidX-major.minor). The 43284 UMH
+     * path used to send a bare "late-load", so the two verified paths differed in
+     * the argv KernelSU sees. kmi_label is that same release-derived token
+     * (SupportedKmi::label, produced by find_supported_kmi(); never hand-written);
+     * an empty label omits the two flags instead of failing the build, and a
+     * KernelSU rejection is accounted by the existing LKM path (fail-soft).
+     * REJECTED ALTERNATIVE: expressing --kmi/--allow-shell through
+     * profile-configured late_load_args bits (wire + three-language change) --
+     * declined because the two flags are hard-coded policy in the verified 43499
+     * path; revisit only if a profile must control them independently. */
     [[nodiscard]] bool build_late_load_command(const terminal::RootProgram &root_program,
                                                std::string_view package_name,
+                                               std::string_view kmi_label,
                                                std::uint32_t late_load_args,
                                                std::uint32_t selinux_exec_context,
                                                UmhCommand &out,

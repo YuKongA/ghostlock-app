@@ -126,7 +126,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         backendSelection = { combination.backend },
         executionModeSelection = { combination.toExecutionMode() },
         combinationSelection = { combination },
-        pluginSelection = { resolveSelectedPlugins() },
+        /* pluginSelection = { resolveSelectedPlugins() }, -- COMMENTED OUT
+         * (user ruling 2026-10-05): the plugin run selection is withdrawn. */
     )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
@@ -159,7 +160,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     @Volatile
     private var pluginRunSelection: Set<String>? = null
 
-    /**
+    /*
+     * COMMENTED OUT (user ruling 2026-10-05): plugin selection is withdrawn while
+     * the plugin design is redone, so nothing probes an enabled plugin any more.
+     * Restore = uncomment this function, the `pluginSelection =` argument in the
+     * controller construction above, and the controller's selection/emission block.
+     *
      * The plugins this run loads, DESCRIBED ON DEMAND.
      *
      * The descriptor cache is an optimization, never a prerequisite: when the
@@ -172,19 +178,19 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
      * Run-level selection first: an ENABLED but unselected plugin is never even
      * resolved, so it can never block the run.
      */
-    private suspend fun resolveSelectedPlugins(): PluginSelection {
-        val entries = runCatching { pluginStore.load() }
-            .getOrElse { return PluginSelection.Ready(emptyList()) }
-        val resolution = PluginSelectionResolver.resolve(
-            entries = entries,
-            runSelection = pluginRunSelection,
-            cached = pluginDescriptors,
-            describe = pluginImportService::describe,
-        )
-        /* The fresh descriptions are cached, so the next build reuses them. */
-        pluginDescriptors = resolution.descriptors
-        return resolution.selection
-    }
+    // private suspend fun resolveSelectedPlugins(): PluginSelection {
+    //     val entries = runCatching { pluginStore.load() }
+    //         .getOrElse { return PluginSelection.Ready(emptyList()) }
+    //     val resolution = PluginSelectionResolver.resolve(
+    //         entries = entries,
+    //         runSelection = pluginRunSelection,
+    //         cached = pluginDescriptors,
+    //         describe = pluginImportService::describe,
+    //     )
+    //     /* The fresh descriptions are cached, so the next build reuses them. */
+    //     pluginDescriptors = resolution.descriptors
+    //     return resolution.selection
+    // }
 
     /** P1 import pipeline: the probe runs as its own process, never in-JVM. */
     private val pluginImportService by lazy {

@@ -1,0 +1,14 @@
+# GhostLock LKM KMI manifest (contract-design 3.17 / minimal-lkm-plan 2).
+# Authoritative native export of lkm::kSupportedKmis; regenerate with:
+#   make -C src lkm-kmi-manifest
+# Columns: label<TAB>android_release<TAB>kmi<TAB>ko_filename
+# android12-5.10 and android13-5.10 share kmi 5010: the label is the
+# delivery identity and the file name follows the label, never the KMI.
+android12-5.10	12	5010	ghostlock-android12-5.10.ko
+android13-5.10	13	5010	ghostlock-android13-5.10.ko
+android13-5.15	13	5015	ghostlock-android13-5.15.ko
+android14-5.15	14	5015	ghostlock-android14-5.15.ko
+android14-6.1	14	6001	ghostlock-android14-6.1.ko
+android15-6.6	15	6006	ghostlock-android15-6.6.ko
+android16-6.12	16	6012	ghostlock-android16-6.12.ko
+android17-6.18	17	6018	ghostlock-android17-6.18.ko

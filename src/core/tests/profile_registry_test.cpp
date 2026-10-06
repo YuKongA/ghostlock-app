@@ -228,7 +228,6 @@ namespace {
          * owns the actual path); only the numeric defaults are stored. */
         assert(!view.lkm_path.has_value());
         assert(!view.carrier_path.has_value());
-        assert(!view.defex_symbol.has_value());
         assert(!view.steps.has_value());
         assert(view.wait_timeout_ms.has_value() &&
                view.wait_timeout_ms.value() == 15000U);
@@ -250,10 +249,10 @@ namespace {
         Document explicit_doc;
         explicit_doc.release = "6.6.77-android15";
         add(explicit_doc, ghostlock::backend::kCve2026_43284Section, "kmi", 6006);
-        add(explicit_doc, ghostlock::backend::kCve2026_43284Section,
+        add(explicit_doc, ghostlock::backend::kCve2026_43284ExecutionSection,
             "selinux_exec_context", 1);
-        add(explicit_doc, ghostlock::backend::kCve2026_43284Section, "late_load_args",
-            2);
+        add(explicit_doc, ghostlock::backend::kCve2026_43284ExecutionSection,
+            "late_load_args", 2);
         ghostlock::profile::Section *explicit_section = explicit_doc.find_section(
                 ghostlock::backend::kCve2026_43284Section);
         if (explicit_section == nullptr) {
@@ -277,7 +276,7 @@ namespace {
          * tuning literals (lkm_path/kmi/selinux/late_load_args are explicit). */
         assert(explicit_log.count == 4);
         assert(explicit_log.last ==
-               "backend.cve_2026_43284.module_poll_interval_ms");
+               "backend.cve_2026_43284.execution.module_poll_interval_ms");
     }
 
     void test_selection_registry() {

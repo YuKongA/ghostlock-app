@@ -12,7 +12,13 @@
 #include <string_view>
 
 namespace ghostlock::terminal {
-    inline constexpr std::size_t kUmhMaxArgc = 8U;
+    /* Bounded argv capacity (one slot is always reserved for the kernel's NULL
+     * terminator). 8 was enough for {program, late-load, [--package-name X],
+     * [--ro-partitions], [--soft-reboot]}; the 43284/43499 behavior alignment
+     * (ruling 2026-10-05) adds the verified pair "--kmi <label> --allow-shell",
+     * so the worst case is 9 args + NULL. The bound moved to 12 instead of 10 to
+     * keep headroom for one more flag pair without touching the contract again. */
+    inline constexpr std::size_t kUmhMaxArgc = 12U;
     inline constexpr std::size_t kUmhArgBytes = 96U;
 
     struct UmhCommand final {

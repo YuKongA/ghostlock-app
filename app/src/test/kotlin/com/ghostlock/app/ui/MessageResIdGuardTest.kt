@@ -182,21 +182,42 @@ class MessageResIdGuardTest {
     }
 
     @Test
-    fun `every payload check line names a real resource`() {
+    fun `every payload blocker names a real resource`() {
         val drafts = listOf(
             PayloadDraft(),
-            PayloadDraft(tier = PayloadTier.Exec, execCommand = "id", execSha256 = "not-a-hash"),
+            PayloadDraft(tier = PayloadTier.Exec, execCommand = "id"),
+            PayloadDraft(tier = PayloadTier.Exec),
             PayloadDraft(tier = PayloadTier.Script),
+            PayloadDraft(tier = PayloadTier.Ko),
             PayloadDraft(
                 tier = PayloadTier.Ko,
-                koEntries = List(PAYLOAD_MAX_KO + 1) { PluginKoEntryForTest(it) },
+                koEntries = List(PAYLOAD_MAX_KO + 1) { koEntry(it) },
             ),
         )
-        drafts.flatMap { payloadMessages(it) }.forEach {
+        drafts.flatMap { payloadBlockers(it) }.forEach {
             assertTrue("a payload line has no resource: " + it, it.resId != 0)
         }
+        /* The gate's own reasons really come out of the projection. */
+        val produced = drafts.flatMap { payloadBlockers(it) }.map { it.resId }.toSet()
+        assertTrue(produced.contains(R.string.payload_block_command_empty))
+        assertTrue(produced.contains(R.string.payload_script_none))
+        assertTrue(produced.contains(R.string.payload_ko_none))
+        assertTrue(produced.contains(R.string.payload_block_ko_too_many))
     }
 
-    private fun PluginKoEntryForTest(index: Int) =
-        PayloadKoEntry(name = "k" + index + ".ko", path = "ko/k" + index + ".ko", sha256 = null)
+    /** Every manager row is either the system default or a labelled enum entry. */
+    @Test
+    fun `every manager row names a real resource`() {
+        val installed = RootManager.entries.map { it.packageName }.toSet()
+        val rows = payloadManagerRows(PayloadDraft(), installed) +
+            payloadManagerRows(PayloadDraft(rootManager = RootManager.ReSukiSU), installed)
+        rows.forEach { row ->
+            row.manager?.let { assertTrue("a manager label has no resource", it.labelRes != 0) }
+            assertTrue(row.packageName.isNotBlank())
+        }
+        assertTrue(rows.any { it.manager == null })
+    }
+
+    private fun koEntry(index: Int) =
+        PayloadKoEntry(name = "k" + index + ".ko", path = "ko/k" + index + ".ko")
 }

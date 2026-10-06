@@ -108,6 +108,11 @@ namespace ghostlock::profile {
      * meaningful). The wire carries presence by key occurrence. */
     struct ProfileMeta {
         uint8_t kernel_major = 0;
+        /* HOCON refactor: the root-level kernel_minor scalar (the wire and the
+         * profile agree on it). The third byte is absorbed by the padding that
+         * already preceded the 4-byte-aligned TaskStructOffsets, so the frozen
+         * transport size (520, layout guard below) does not move. */
+        uint8_t kernel_minor = 0;
         bool safe_mode = false;
     };
 

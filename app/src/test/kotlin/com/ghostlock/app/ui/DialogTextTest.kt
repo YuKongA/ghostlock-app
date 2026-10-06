@@ -39,7 +39,7 @@ class DialogTextTest {
             PluginHeaderValue.Words(0)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            PayloadMessage(PluginIssueLevel.Info, 0)
+            PluginHeaderRow(0, PluginHeaderValue.Data("x"))
         }
     }
 

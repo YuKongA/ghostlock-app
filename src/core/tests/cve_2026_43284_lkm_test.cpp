@@ -214,6 +214,8 @@ namespace {
     struct UmhSpec final {
         std::string program = "/data/adb/ksud";
         std::string package = "me.weishu.kernelsu";
+        /* Release-derived KMI label; "" exercises the legacy bare form. */
+        std::string kmi_label = "android13-5.15";
         std::uint32_t late_load_args = 0U;
         std::uint32_t selinux_exec_context = kSelinuxExecContextInit;
     };
@@ -223,8 +225,10 @@ namespace {
         program.kind = RootProgramKind::KernelSU;
         program.set_argv(spec.program);
         UmhCommand command{};
-        const bool ok = build_late_load_command(program, spec.package, spec.late_load_args,
-                                                spec.selinux_exec_context, command, error);
+        const bool ok =
+                build_late_load_command(program, spec.package, spec.kmi_label,
+                                        spec.late_load_args, spec.selinux_exec_context,
+                                        command, error);
         assert(ok == (error == UmhCommandError::None));
         return command;
     }
@@ -758,18 +762,36 @@ int main() {
                              kLateLoadArgSoftReboot;
         UmhCommand command = build_umh(all, error);
         assert(error == UmhCommandError::None);
-        assert(command.argc == 6U);
+        /* 43499 alignment: "--kmi <label> --allow-shell" always lead. */
+        assert(command.argc == 9U);
         assert(command.arg(0U) == "/data/adb/ksud");
         assert(command.arg(1U) == "late-load");
-        assert(command.arg(2U) == "--package-name");
-        assert(command.arg(3U) == "me.weishu.kernelsu");
-        assert(command.arg(4U) == "--ro-partitions");
-        assert(command.arg(5U) == "--soft-reboot");
+        assert(command.arg(2U) == "--kmi");
+        assert(command.arg(3U) == "android13-5.15");
+        assert(command.arg(4U) == "--allow-shell");
+        assert(command.arg(5U) == "--package-name");
+        assert(command.arg(6U) == "me.weishu.kernelsu");
+        assert(command.arg(7U) == "--ro-partitions");
+        assert(command.arg(8U) == "--soft-reboot");
         assert(command.selinux_exec_context == kSelinuxExecContextInit);
         assert(command.argv[command.argc][0] == '\0');
 
+        /* late_load_args == 0 still carries the two verified flags: this IS the
+         * behavior alignment with the 43499 path (ruling 2026-10-05). */
         UmhSpec none{};
         command = build_umh(none, error);
+        assert(error == UmhCommandError::None);
+        assert(command.argc == 5U);
+        assert(command.arg(0U) == "/data/adb/ksud");
+        assert(command.arg(1U) == "late-load");
+        assert(command.arg(2U) == "--kmi");
+        assert(command.arg(3U) == "android13-5.15");
+        assert(command.arg(4U) == "--allow-shell");
+
+        /* An empty label keeps the legacy bare argv instead of failing. */
+        UmhSpec no_label{};
+        no_label.kmi_label.clear();
+        command = build_umh(no_label, error);
         assert(error == UmhCommandError::None);
         assert(command.argc == 2U);
         assert(command.arg(0U) == "/data/adb/ksud");
@@ -778,8 +800,8 @@ int main() {
         UmhSpec ro{};
         ro.late_load_args = kLateLoadArgRoPartitions;
         command = build_umh(ro, error);
-        assert(command.argc == 3U);
-        assert(command.arg(2U) == "--ro-partitions");
+        assert(command.argc == 6U);
+        assert(command.arg(5U) == "--ro-partitions");
 
         UmhSpec custom_context{};
         custom_context.selinux_exec_context = kSelinuxExecContextCustom;
@@ -833,7 +855,8 @@ int main() {
         /* ';' and ' ' are printable, so the argv stays a single inert element. */
         command = build_umh(semicolon, error);
         assert(error == UmhCommandError::None);
-        assert(command.arg(3U) == "me.weishu.kernelsu; id");
+        /* Index 6 = the package value (2..4 are the --kmi/--allow-shell pair). */
+        assert(command.arg(6U) == "me.weishu.kernelsu; id");
     }
 
     /* ---- Real DDK module self-proof: kernel same_magic() tail rule. ---- */

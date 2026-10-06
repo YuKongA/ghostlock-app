@@ -106,7 +106,23 @@ typedef enum glk_capability {
     GLK_CAP_CHILD_TASK = 1u << 3,
     GLK_CAP_FILE_CACHE_WRITE = 1u << 4,
     GLK_CAP_EXEC = 1u << 5,
-    GLK_CAP_KERNEL_HOOK = 1u << 6
+    GLK_CAP_KERNEL_HOOK = 1u << 6,
+    /* Structured host logging (S4 logging batch, append-only: GLK_ABI_VERSION is
+     * NOT bumped). A module that ORs this bit into required_caps declares that it
+     * uses glk_contract_ops::log and expects a host that implements it; a host
+     * without the bit rejects the module at registration (fail-closed).
+     *
+     * log() contract:
+     *   - level: 0=error, 1=warn, 2=info, 3=debug. Out-of-range is mapped to 1
+     *     and the host marks the line "level_clamped=1";
+     *   - msg: plain text, NEVER a format string, at most 256 bytes; a longer
+     *     message is truncated by the host and marked;
+     *   - the host prefixes every line with "[countermeasure] <id> log(<level>): "
+     *     on its diagnostic stream (stderr);
+     *   - the host limits each module to 64 messages per run and to one message
+     *     per millisecond; dropped messages are counted, never an error;
+     *   - log() returns void and can never fail the attack chain (fail-soft). */
+    GLK_CAP_LOG = 1u << 7
 } glk_capability;
 
 /* Host-provided operation surface: the only way a countermeasure touches the

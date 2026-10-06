@@ -20,7 +20,10 @@
 #include <cstdio>
 #include <type_traits>
 
+using ghostlock::contract::capability_token;
 using ghostlock::contract::Capability;
+using ghostlock::contract::kCapabilityCatalog;
+using ghostlock::contract::kCapabilityCatalogCount;
 using ghostlock::contract::CountermeasureStage;
 using ghostlock::contract::CountermeasureTrigger;
 using ghostlock::contract::has_capability;
@@ -52,7 +55,10 @@ static_assert(std::is_standard_layout_v<glk_module>);
 /* The literal adjudicated masks (plan .9 ruling 1). A reserved item switched to
  * implemented must not match these literals. */
 namespace {
-    constexpr std::uint32_t kAdjudicatedCaps = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3);
+    /* The host also implements the structured log channel (S4 logging batch B),
+ * which is a capability bit without a kernel primitive. */
+constexpr std::uint32_t kAdjudicatedCaps =
+        (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 7);
     constexpr std::uint32_t kAdjudicatedTriggers = 1u << 0;
     constexpr std::uint32_t kReservedCaps = (1u << 4) | (1u << 5) | (1u << 6);
 } // namespace
@@ -102,7 +108,11 @@ int32_t main(void) {
     assert(static_cast<std::uint32_t>(Capability::FileCacheWrite) == (1u << 4));
     assert(static_cast<std::uint32_t>(Capability::Exec) == (1u << 5));
     assert(static_cast<std::uint32_t>(Capability::KernelHook) == (1u << 6));
-    assert(static_cast<std::uint32_t>(kAllCapabilities) == 0x7Fu);
+    /* Append-only slot 7: the ABI version itself is unchanged (GLK_ABI_VERSION). */
+    assert(static_cast<std::uint32_t>(Capability::Log) == (1u << 7));
+    assert(GLK_CAP_LOG == (1u << 7));
+    assert(capability_token(Capability::Log) == "log");
+    assert(static_cast<std::uint32_t>(kAllCapabilities) == 0xFFu);
     assert(static_cast<std::uint32_t>(kAllCapabilities) ==
            (kAdjudicatedCaps | kReservedCaps));
 
@@ -117,6 +127,19 @@ int32_t main(void) {
     assert(!has_capability(kHostImplementedCaps, Capability::FileCacheWrite));
     assert(!has_capability(kHostImplementedCaps, Capability::Exec));
     assert(!has_capability(kHostImplementedCaps, Capability::KernelHook));
+    assert(has_capability(kHostImplementedCaps, Capability::Log));
+    /* The probe iterates the catalog, so every ABI bit must be listed exactly
+     * once there; a missing entry would silently drop the host_caps token. */
+    assert(kCapabilityCatalogCount == 8u);
+    {
+        std::uint32_t seen = 0u;
+        for (const Capability bit : kCapabilityCatalog) {
+            const std::uint32_t raw = static_cast<std::uint32_t>(bit);
+            assert(raw != 0u && (seen & raw) == 0u);
+            seen |= raw;
+        }
+        assert(seen == static_cast<std::uint32_t>(kAllCapabilities));
+    }
 
     /* Same check for triggers: only ON_STAGE, no reserved bit set. */
     assert(kAdjudicatedTriggers == trigger_bit(CountermeasureTrigger::OnStage));

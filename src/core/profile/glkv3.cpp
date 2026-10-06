@@ -323,12 +323,21 @@ namespace ghostlock::profile::glkv3 {
                 }
                 continue;
             }
+            /* Root keys are not owner sections: the component tokens (release /
+             * terminal / backend / route) and the HOCON-refactor root scalars
+             * (kernel_major / kernel_minor / safe_mode) live in the document
+             * root beside "schema" and "sections". The schema-free framing walk
+             * has no declaration, so the key fixes the type; a schema-driven
+             * walk takes the declared FieldSpec type. */
             const bool neutral = schema == nullptr;
-            const bool is_string_root =
+            const bool is_token_root =
                     neutral && (key == "release" || key == "terminal" ||
                                 key == "backend" || key == "route");
+            const bool is_scalar_root =
+                    neutral && (key == "kernel_major" || key == "kernel_minor" ||
+                                key == "safe_mode");
             const FieldSpec *field = lookup(schema, std::string_view{}, key);
-            if (!is_string_root && field == nullptr) {
+            if (!is_token_root && !is_scalar_root && field == nullptr) {
                 if (mode == DecodeMode::Production) {
                     return DecodeStatus{DecodeCode::UnknownKey, {}, key};
                 }
@@ -337,26 +346,59 @@ namespace ghostlock::profile::glkv3 {
                 }
                 continue;
             }
+            WireType expected = WireType::Str;
+            if (field != nullptr) {
+                expected = field->type;
+            } else if (key == "safe_mode") {
+                expected = WireType::Bool;
+            } else if (key == "kernel_major" || key == "kernel_minor") {
+                expected = WireType::UInt;
+            }
             Value value;
-            const WireType expected = field != nullptr ? field->type : WireType::Str;
             if (!read_scalar(ctx, expected, value)) {
                 return DecodeStatus{ctx.error, {}, key};
             }
-            if (expected != WireType::Str) {
-                return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
-            }
             if (key == "release") {
+                if (value.type != WireType::Str) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
                 staged.release = value.bytes;
                 staged.has_release = true;
             } else if (key == "terminal") {
+                if (value.type != WireType::Str) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
                 staged.terminal = value.bytes;
                 staged.has_terminal = true;
             } else if (key == "backend") {
+                if (value.type != WireType::Str) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
                 staged.backend = value.bytes;
                 staged.has_backend = true;
             } else if (key == "route") {
+                if (value.type != WireType::Str) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
                 staged.route = value.bytes;
                 staged.has_route = true;
+            } else if (key == "kernel_major" || key == "kernel_minor") {
+                if (value.type != WireType::UInt) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
+                if (key == "kernel_major") {
+                    staged.kernel_major = value.uint_value;
+                    staged.has_kernel_major = true;
+                } else {
+                    staged.kernel_minor = value.uint_value;
+                    staged.has_kernel_minor = true;
+                }
+            } else if (key == "safe_mode") {
+                if (value.type != WireType::Bool) {
+                    return DecodeStatus{DecodeCode::TypeMismatch, {}, key};
+                }
+                staged.safe_mode = value.bool_value;
+                staged.has_safe_mode = true;
             } else {
                 return DecodeStatus{DecodeCode::UnknownKey, {}, key};
             }
@@ -467,15 +509,27 @@ namespace ghostlock::profile::glkv3 {
         void write_root(mpack_writer_t *writer, const Document &document) {
             uint32_t count = 2u; /* schema + sections */
             if (document.has_backend) ++count;
+            if (document.has_kernel_major) ++count;
+            if (document.has_kernel_minor) ++count;
             if (document.has_release) ++count;
             if (document.has_route) ++count;
+            if (document.has_safe_mode) ++count;
             if (document.has_terminal) ++count;
             mpack_start_map(writer, count);
-            /* Canonical root order: UTF-8 byte sort of backend, release, route,
-             * schema, sections, terminal. */
+            /* Canonical root order: UTF-8 byte sort of backend, kernel_major,
+             * kernel_minor, release, route, safe_mode, schema, sections,
+             * terminal. */
             if (document.has_backend) {
                 write_key(writer, "backend");
                 write_text(writer, document.backend);
+            }
+            if (document.has_kernel_major) {
+                write_key(writer, "kernel_major");
+                mpack_write_uint(writer, document.kernel_major);
+            }
+            if (document.has_kernel_minor) {
+                write_key(writer, "kernel_minor");
+                mpack_write_uint(writer, document.kernel_minor);
             }
             if (document.has_release) {
                 write_key(writer, "release");
@@ -484,6 +538,10 @@ namespace ghostlock::profile::glkv3 {
             if (document.has_route) {
                 write_key(writer, "route");
                 write_text(writer, document.route);
+            }
+            if (document.has_safe_mode) {
+                write_key(writer, "safe_mode");
+                mpack_write_bool(writer, document.safe_mode);
             }
             write_key(writer, "schema");
             mpack_write_uint(writer, document.schema);

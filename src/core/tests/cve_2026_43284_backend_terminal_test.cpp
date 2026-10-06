@@ -71,9 +71,6 @@ namespace {
         bool crash_dump_verity = false;
         std::size_t vendor_count = 2U;
         bool selinux_state = true;
-        bool defex_enforce = false;
-        bool defex_user_exec = false;
-        bool defex_get_dpath = false;
         bool precheck_ok = true;
         /* Default carriers [0, first_present_default) report absent; this
          * exercises the token-0 "first present" selection. */
@@ -153,15 +150,6 @@ namespace {
         const std::string_view name(symbol);
         if (name == "selinux_state") {
             return f->selinux_state;
-        }
-        if (name == "task_defex_enforce") {
-            return f->defex_enforce;
-        }
-        if (name == "task_defex_user_exec") {
-            return f->defex_user_exec;
-        }
-        if (name == "get_dc_target_dpath") {
-            return f->defex_get_dpath;
         }
         return false;
     }
@@ -261,7 +249,6 @@ namespace {
         profile.kmi = 5015;
         profile.selinux_exec_context = kSelinuxExecContextVendorModprobe;
         profile.late_load_args = kLateLoadArgPackageName | kLateLoadArgRoPartitions;
-        profile.defex_symbol = std::string_view{"vendor_defex_hook"};
         profile.steps = PageCacheWriteSteps::id;
         return profile;
     }
@@ -327,12 +314,16 @@ namespace {
         assert(out.lkm_source == UmhLkmSource::BundledKmi);
         assert(std::string_view(out.kmi_label.data()) == "android14-5.15");
         assert(std::string_view(out.carrier_path.data()) == kDefaultCarriers[0].path);
-        assert(out.command.argc == 5U);
+        /* 43499 alignment: the release-derived KMI label rides the argv. */
+        assert(out.command.argc == 8U);
         assert(out.command.arg(0) == "/data/adb/ksud");
         assert(out.command.arg(1) == "late-load");
-        assert(out.command.arg(2) == "--package-name");
-        assert(out.command.arg(3) == "me.weishu.kernelsu");
-        assert(out.command.arg(4) == "--ro-partitions");
+        assert(out.command.arg(2) == "--kmi");
+        assert(out.command.arg(3) == "android14-5.15");
+        assert(out.command.arg(4) == "--allow-shell");
+        assert(out.command.arg(5) == "--package-name");
+        assert(out.command.arg(6) == "me.weishu.kernelsu");
+        assert(out.command.arg(7) == "--ro-partitions");
         assert(out.command.selinux_exec_context == kSelinuxExecContextVendorModprobe);
         assert(out.session_secrets == &sa);
         assert(out.session_secrets_size == sizeof(IpsecSaParams));

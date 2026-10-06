@@ -266,7 +266,6 @@ data class NativeProfileDocument(
         val text = buildList {
             config.carrierPath?.let { add("carrier_path" to it) }
             config.lkmPath?.let { add("lkm_path" to it) }
-            config.defexSymbol?.let { add("defex_symbol" to it) }
             combination?.takeIf { it.backend == BackendKind.Cve2026_43284 }?.let {
                 add("steps" to it.token)
             }
@@ -444,7 +443,6 @@ data class NativeProfileDocument(
                     kmi = valueAt("kmi")?.toUInt(),
                     selinuxExecContext = valueAt("selinux_exec_context")?.toULong(),
                     lateLoadArgs = valueAt("late_load_args")?.toULong(),
-                    defexSymbol = textAt("defex_symbol"),
                     waitTimeoutMs = valueAt("wait_timeout_ms")?.toUInt(),
                     modulePollAttempts = valueAt("module_poll_attempts")?.toUInt(),
                     modulePollIntervalMs = valueAt("module_poll_interval_ms")?.toUInt(),
@@ -551,8 +549,8 @@ data class NativeProfileDocument(
 
 /**
  * cve_2026_43284 backend-private policy values (S3 B4 / stringified S4 R4).
- * carrier_path / lkm_path / defex_symbol are UTF-8 paths (<=256 bytes, absolute
- * path recommended); the rest are numeric tuning. null means absent (presence is
+ * carrier_path / lkm_path are UTF-8 paths (<=256 bytes, absolute path
+ * recommended); the rest are numeric tuning. null means absent (presence is
  * carried by key occurrence, so an omitted field is not an empty string).
  */
 data class Cve2026_43284Config(
@@ -561,7 +559,6 @@ data class Cve2026_43284Config(
     val kmi: UInt? = null,
     val selinuxExecContext: ULong? = null,
     val lateLoadArgs: ULong? = null,
-    val defexSymbol: String? = null,
     val waitTimeoutMs: UInt? = null,
     val modulePollAttempts: UInt? = null,
     val modulePollIntervalMs: UInt? = null,

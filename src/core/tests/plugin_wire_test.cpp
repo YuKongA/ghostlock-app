@@ -143,6 +143,9 @@ int main() {
                                         {"vivo.module_hash", text_value(kHash)},
                                         {"vivo.params.arm_delay_us", uint_value(200u, 8u)},
                                         {"vivo.params.mode", text_value("auto")},
+                                        /* "task_defex" is arbitrary test
+                                         * string data here, not defex logic:
+                                         * kept deliberately (defex removal batch). */
                                         {"vivo.extract.symbol", text_value("task_defex")}});
         assert(validate(good, &accepted) == PluginWireError::None);
         assert(accepted == 1u);

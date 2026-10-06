@@ -195,12 +195,14 @@ int main() {
     /* ---- Production rejects an unknown key in an owned section. ---- */
     {
         Document doc = full_document();
-        doc.find_section("common")->add("bogus", 1ULL);
+        /* The root section (empty name) carries the HOCON-refactor root
+         * scalars; an undeclared key inside it is still rejected. */
+        doc.find_section("")->add("bogus", 1ULL);
         Cve2026_43499View view{};
         const auto blocked = ghostlock::profile::bind<Cve2026_43499Schema>(
                 doc, view, DecodeMode::Production);
         assert(blocked.code == BindCode::UnknownKey);
-        assert(blocked.section == "common");
+        assert(blocked.section.empty());
         assert(blocked.key == "bogus");
     }
 
@@ -245,7 +247,7 @@ int main() {
 
         /* Union validation still rejects an unknown key. */
         Document bad = doc;
-        bad.find_section("common")->add("bogus", 1ULL);
+        bad.find_section("")->add("bogus", 1ULL);
         ghostlock::platform::abi::View abi2{};
         Cve2026_43499View view2{};
         const auto blocked = ghostlock::profile::bind_all<

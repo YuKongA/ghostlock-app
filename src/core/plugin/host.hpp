@@ -74,6 +74,31 @@
 
 namespace ghostlock::plugin {
 
+    /* ---- RUNTIME DISABLE SWITCH (user directive 2026-10-05) ----------------
+     * The plugin engineering is PAUSED until the cve_2026_43284 + multi-backend
+     * architecture work is finished, so the host is deliberately NOT wired into
+     * a run: the composition root constructs no host, opens no window and binds
+     * no sink; the residency window therefore dispatches nothing.
+     *
+     * The code, the tests and the ABI stay in place -- restoring the feature is
+     * THIS ONE LINE plus a device gate:
+     *   kPluginRuntimeEnabled = true  ->  rebuild, then run the 43284 device gate
+     *   (the positive case must show "run.plugin host ... called=1" and the
+     *    plugin's "[countermeasure] <id> log(...)" line; a run without a plugin
+     *    section must stay byte-for-byte identical).
+     *
+     * A single auditable constant is used instead of commenting the wiring out:
+     * commented-out code breaks the build and the tests, and is easy to leave
+     * half-restored. The two "if constexpr" uses are in main.cpp (construction /
+     * open / bind / close / report) and in
+     * backend/cve_2026_43284/execution_binding.cpp (sink binding). */
+    /* USER DIRECTIVE 2026-10-05: plugin runtime PAUSED (literal comment, not a
+     * switch). Restore = uncomment this constant, the commented blocks in
+     * main.cpp / execution_binding.cpp / glkv3_parse.cpp / schema.hpp, the CLI
+     * probe, the five test targets in src/Makefile, then run the 43284 device
+     * gate. */
+    // inline constexpr bool kPluginRuntimeEnabled = false;
+
     /* The PI waiter window, as seen by the host. R1: a plugin .so may only be
      * mapped once the waiter is gone, so the caller must state which window it
      * is in; the host never infers it. */
@@ -152,7 +177,10 @@ namespace ghostlock::plugin {
      *                     stage
      *   open_rejected     open(WaiterAlive) refusals (R1)
      *   stage_unavailable hooks refused because their stage is not available on
-     *                     the selected backend (StageUnavailableOnBackend) */
+     *                     the selected backend (StageUnavailableOnBackend)
+     * The two log counters are additive (S4 logging batch B): every module gets
+     * its own glk_contract_ops copy whose log() is host-owned, so emitted and
+     * dropped messages are attributed per module rather than per window. */
     struct HostDiagnostics final {
         std::uint32_t loaded = 0u;
         std::uint32_t load_failed = 0u;
@@ -162,6 +190,8 @@ namespace ghostlock::plugin {
         std::uint32_t skipped = 0u;
         std::uint32_t open_rejected = 0u;
         std::uint32_t stage_unavailable = 0u;
+        std::uint32_t log_calls = 0u;   /* module log() messages actually emitted */
+        std::uint32_t log_dropped = 0u; /* module messages dropped by budget/rate */
     };
 
     /* Per-call values handed to a hook. The ops table is BORROWED: the window

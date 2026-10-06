@@ -46,7 +46,6 @@ namespace {
 
     constexpr std::string_view kCarrier = "/vendor/lib64/libstagefrighthw.so";
     constexpr std::string_view kLkm = "/data/local/tmp/helper_custom.ko";
-    constexpr std::string_view kDefex = "vendor_defex_hook";
 
     Document full_document() {
         Document doc;
@@ -60,8 +59,6 @@ namespace {
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "carrier_path",
                  kCarrier);
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "lkm_path", kLkm);
-        add_text(doc, ghostlock::backend::kCve2026_43284Section, "defex_symbol",
-                 kDefex);
         add_text(doc, ghostlock::backend::kCve2026_43284Section, "steps", "umh");
         return doc;
     }
@@ -84,10 +81,11 @@ namespace {
 int main() {
     constexpr size_t kFieldCount = std::size(Cve2026_43284Schema::kFields);
 
-    /* ---- Ownership: unique (section, key), all in the 43284 section. ---- */
+    /* ---- Ownership: unique (section, key), all in one of the two 43284
+     * sections (backend top level + execution). ---- */
     for (size_t i = 0; i < kFieldCount; i++) {
-        assert(Cve2026_43284Schema::kFields[i].section ==
-               ghostlock::backend::kCve2026_43284Section);
+        assert(ghostlock::backend::is_cve_2026_43284_section(
+                Cve2026_43284Schema::kFields[i].section));
         for (size_t j = i + 1; j < kFieldCount; j++) {
             const bool same =
                     Cve2026_43284Schema::kFields[i].section ==
@@ -111,7 +109,6 @@ int main() {
         assert(status.ok());
         assert(view.carrier_path == kCarrier);
         assert(view.lkm_path == kLkm);
-        assert(view.defex_symbol == kDefex);
         assert(view.kmi == 1);
         assert(view.selinux_exec_context == 1);
         assert(view.late_load_args == 1);
@@ -129,7 +126,6 @@ int main() {
                        .ok());
         assert(!none.carrier_path.has_value());
         assert(!none.lkm_path.has_value());
-        assert(!none.defex_symbol.has_value());
         assert(!none.steps.has_value());
     }
 

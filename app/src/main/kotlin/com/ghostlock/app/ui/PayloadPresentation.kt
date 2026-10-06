@@ -27,27 +27,34 @@ data class PayloadKoEntry(
     val name: String,
     /** Path relative to the App's no-backup payload directory. */
     val path: String,
-    val sha256: String?,
 )
 
 /**
- * The payload as the App holds it (batch a: in-memory; persistence lands with the
- * wire owner, so nothing half-wired is written into the profile yet).
+ * The payload as the App holds it (in-memory: persistence lands with the wire
+ * owner, so nothing half-wired is written into the profile yet).
  *
- * `tier == null` is the DEFAULT choice, not a missing value: it means "no custom
- * content at all", so no `payload` section is emitted and NOTHING has to be
- * authorised. It is the initial selection. The other three tiers keep their
- * values while inactive, exactly like the plugin run selection keeps "installed"
- * and "loaded this run" apart.
+ * `tier == null` is the DEFAULT choice, not a missing value: it means "nothing
+ * custom", so no `payload` section is emitted. It is the initial selection. The
+ * other three tiers keep their values while inactive, exactly like the plugin run
+ * selection keeps "installed" and "loaded this run" apart.
+ *
+ * There is NO hash field here by the user's ruling ("assume the user knows what
+ * they passed in"): the page never asks for one. The wire contract still carries
+ * `*.sha256` — native verifies it when present, accepts when absent — it is only
+ * this page that no longer emits it.
  */
 data class PayloadDraft(
     val tier: PayloadTier? = null,
+    /**
+     * The root manager to launch, chosen in the default tier's submenu. null =
+     * the SYSTEM DEFAULT (KernelSU as the device ships it), which is also the
+     * behaviour of every run that does not pick one.
+     */
+    val rootManager: RootManager? = null,
     /** argv semantics: split on whitespace, NO shell. */
     val execCommand: String = "",
-    val execSha256: String? = null,
     val scriptName: String? = null,
     val scriptPath: String? = null,
-    val scriptSha256: String? = null,
     val koEntries: List<PayloadKoEntry> = emptyList(),
 ) {
     val active: Boolean
@@ -57,145 +64,110 @@ data class PayloadDraft(
             PayloadTier.Ko -> koEntries.isNotEmpty()
             null -> false
         }
-
-    /** True only for a custom tier: the default needs no authorisation. */
-    val needsAuthorisation: Boolean get() = tier != null
 }
 
 /** Maximum number of ko modules native accepts. */
 const val PAYLOAD_MAX_KO = 8
 
-/** `sha256:<64 hex>` value of the profile, or null when unset. */
-private fun hashValue(sha256: String?): PluginValue? =
-    sha256?.takeIf { it.isNotBlank() }?.let { PluginValue.Str(it) }
-
-/**
+/*
+ * COMMENTED OUT (user ruling 2026-10-05): the custom-execution (payload) wire
+ * values are withdrawn while that design is redone. The projections above (tier
+ * rows, blockers, manager picker, log line) still describe the page; nothing is
+ * written to the document.
+ *
+ * Restore = uncomment this function and, when batch (b) lands, its call site.
+ *
  * The payload's profile values (`payload.*`). ONLY the selected tier appears,
  * so switching tiers is the switch: nothing has to be deleted to disable one.
- * Values are spelled exactly as the frozen contract names them; a blank hash is
- * omitted rather than written empty.
+ * Values are spelled exactly as the frozen contract names them. `*.sha256` is
+ * NOT emitted: the page no longer asks for a hash (the wire field stays in the
+ * contract for anyone who writes it by hand).
  */
-fun payloadValues(draft: PayloadDraft): Map<String, PluginValue> {
-    val values = linkedMapOf<String, PluginValue>()
-    val tier = draft.tier ?: return values
-    values["tier"] = PluginValue.Str(tier.token)
-    when (tier) {
-        PayloadTier.Exec -> {
-            values["exec.command"] = PluginValue.Str(draft.execCommand)
-            hashValue(draft.execSha256)?.let { values["exec.sha256"] = it }
-        }
-
-        PayloadTier.Script -> {
-            draft.scriptPath?.let { values["script.path"] = PluginValue.Str(it) }
-            hashValue(draft.scriptSha256)?.let { values["script.sha256"] = it }
-        }
-
-        PayloadTier.Ko -> {
-            values["ko.count"] = PluginValue.UInt(draft.koEntries.size.toULong())
-            draft.koEntries.forEachIndexed { index, entry ->
-                values["ko." + index + ".path"] = PluginValue.Str(entry.path)
-                hashValue(entry.sha256)?.let { values["ko." + index + ".sha256"] = it }
-            }
-        }
-    }
-    return values
-}
-
-/** `sha256` must be 64 lower-case hex when present. */
-private val SHA256_HEX = Regex("[0-9a-f]{64}")
+// fun payloadValues(draft: PayloadDraft): Map<String, PluginValue> {
+//     val values = linkedMapOf<String, PluginValue>()
+//     val tier = draft.tier ?: return values
+//     values["tier"] = PluginValue.Str(tier.token)
+//     when (tier) {
+//         PayloadTier.Exec -> {
+//             values["exec.command"] = PluginValue.Str(draft.execCommand)
+//         }
+//
+//         PayloadTier.Script -> {
+//             draft.scriptPath?.let { values["script.path"] = PluginValue.Str(it) }
+//         }
+//
+//         PayloadTier.Ko -> {
+//             values["ko.count"] = PluginValue.UInt(draft.koEntries.size.toULong())
+//             draft.koEntries.forEachIndexed { index, entry ->
+//                 values["ko." + index + ".path"] = PluginValue.Str(entry.path)
+//             }
+//         }
+//     }
+//     return values
+// }
 
 /**
- * One line of the page's own check list. The TEXT is a resource (the page is
- * localized) while the run LOG stays English: the two must never share a
- * string, or a log sentence ends up rendered in the UI (the bug the user saw).
+ * One row of the default tier's manager picker. [manager] null = the system
+ * default, which is the first row and the initial selection.
  */
-data class PayloadMessage(
-    val level: PluginIssueLevel,
-    @StringRes val resId: Int,
-    val args: List<Any> = emptyList(),
-) {
-    init {
-        /* 0 is not a resource: rendering it crashed a real device. */
-        require(resId != 0) { "a check line needs a resource, not 0" }
-    }
-}
+data class RootManagerRow(
+    val manager: RootManager?,
+    val selected: Boolean,
+    /** The package this row would launch. */
+    val packageName: String,
+)
 
-/** The page's check list, fully localized. */
-fun payloadMessages(draft: PayloadDraft): List<PayloadMessage> = buildList {
-    val tier = draft.tier
-    if (tier == null) {
-        add(PayloadMessage(PluginIssueLevel.Info, R.string.payload_check_default))
-        return@buildList
+/**
+ * The manager rows for the default tier: the SYSTEM DEFAULT first, then every
+ * SUPPORTED manager that is actually installed and launchable ([installed] comes
+ * from `packageManager.getLaunchIntentForPackage(pkg) != null` — the same check
+ * the launch itself does, so a row can never offer a target that cannot open).
+ *
+ * A manager that is not installed is NOT listed: the user asked that no manager
+ * be offered unless it exists and can start. The default row is always there.
+ */
+fun payloadManagerRows(draft: PayloadDraft, installed: Set<String>): List<RootManagerRow> = buildList {
+    add(RootManagerRow(null, draft.rootManager == null, RootManager.KernelSU.packageName))
+    for (manager in RootManager.entries) {
+        if (manager.packageName !in installed) continue
+        add(RootManagerRow(manager, draft.rootManager == manager, manager.packageName))
     }
-    when (tier) {
-        PayloadTier.Exec -> {
-            if (draft.execCommand.isBlank()) {
-                add(PayloadMessage(PluginIssueLevel.Error, R.string.payload_check_command_empty))
-            } else if (payloadArgv(draft.execCommand).isEmpty()) {
-                add(PayloadMessage(PluginIssueLevel.Error, R.string.payload_check_command_empty))
-            }
-            if (draft.execCommand.contains('"') || draft.execCommand.contains('\'')) {
-                add(PayloadMessage(PluginIssueLevel.Warn, R.string.payload_check_command_quotes))
-            }
-            add(hashMessage(draft.execSha256))
-        }
-
-        PayloadTier.Script -> {
-            if (draft.scriptPath == null) {
-                add(PayloadMessage(PluginIssueLevel.Error, R.string.payload_check_script_missing))
-            }
-            add(hashMessage(draft.scriptSha256))
-        }
-
-        PayloadTier.Ko -> {
-            if (draft.koEntries.isEmpty()) {
-                add(PayloadMessage(PluginIssueLevel.Error, R.string.payload_check_ko_missing))
-            }
-            if (draft.koEntries.size > PAYLOAD_MAX_KO) {
-                add(
-                    PayloadMessage(
-                        PluginIssueLevel.Error,
-                        R.string.payload_check_ko_too_many,
-                        listOf(PAYLOAD_MAX_KO),
-                    ),
-                )
-            }
-            if (draft.koEntries.any { it.sha256 == null }) {
-                add(PayloadMessage(PluginIssueLevel.Warn, R.string.payload_check_ko_unverified))
-            }
-        }
-    }
-}
-
-private fun hashMessage(sha256: String?): PayloadMessage {
-    if (sha256.isNullOrBlank()) {
-        return PayloadMessage(PluginIssueLevel.Warn, R.string.payload_check_hash_unset)
-    }
-    if (!SHA256_HEX.matches(sha256)) {
-        return PayloadMessage(PluginIssueLevel.Error, R.string.payload_check_hash_invalid)
-    }
-    return PayloadMessage(PluginIssueLevel.Info, R.string.payload_check_hash_ok, listOf(sha256.take(12)))
 }
 
 /**
- * The localized line shown next to the run button. Separate from
- * [payloadRunLogLine] on purpose: the log is English evidence, the UI is
- * localized text, and sharing one string leaked English into the page.
+ * The manager this run must launch, or null when the choice stays the run's own
+ * default (the combination's terminal decides). Only the default tier carries a
+ * picker: the other tiers do not touch the manager.
  */
-@Composable
-fun payloadRunSummaryText(draft: PayloadDraft): String = when (draft.tier) {
-    null -> stringResource(R.string.payload_run_default)
-    PayloadTier.Exec -> stringResource(
-        R.string.payload_run_exec,
-        payloadArgv(draft.execCommand).joinToString(" "),
-    )
+fun payloadLaunchManager(draft: PayloadDraft): RootManager? =
+    if (draft.tier == null) draft.rootManager else null
 
-    PayloadTier.Script -> stringResource(
-        R.string.payload_run_script,
-        draft.scriptName ?: draft.scriptPath.orEmpty(),
-    )
+/**
+ * Why this draft cannot run yet, in the user's own words; EMPTY means ready.
+ *
+ * The page no longer carries a check list: a blocker is stated where it is
+ * actionable — next to the run button, and as a toast when the user taps run
+ * (the same treatment the plugin selection gets). The inline status lines reuse
+ * the same wording, so the page and the gate never disagree.
+ */
+fun payloadBlockers(draft: PayloadDraft): List<PluginLine> = when (draft.tier) {
+    null -> emptyList()
+    PayloadTier.Exec -> buildList {
+        if (payloadArgv(draft.execCommand).isEmpty()) {
+            add(PluginLine(R.string.payload_block_command_empty))
+        }
+    }
 
-    PayloadTier.Ko -> stringResource(R.string.payload_run_ko, draft.koEntries.size)
+    PayloadTier.Script -> buildList {
+        if (draft.scriptPath == null) add(PluginLine(R.string.payload_script_none))
+    }
+
+    PayloadTier.Ko -> buildList {
+        if (draft.koEntries.isEmpty()) add(PluginLine(R.string.payload_ko_none))
+        if (draft.koEntries.size > PAYLOAD_MAX_KO) {
+            add(PluginLine(R.string.payload_block_ko_too_many, listOf(PAYLOAD_MAX_KO.toString())))
+        }
+    }
 }
 
 /**
@@ -270,7 +242,7 @@ fun payloadTierRows(draft: PayloadDraft): List<PayloadTierRow> {
     }
     return listOf(
         row(null),
-        row(PayloadTier.Exec, fieldKeys = listOf("exec.command", "exec.sha256")),
+        row(PayloadTier.Exec, fieldKeys = listOf("exec.command")),
         row(PayloadTier.Script, actionKeys = listOf("script.pick")),
         row(PayloadTier.Ko, actionKeys = listOf("ko.pick")),
     )
@@ -297,13 +269,11 @@ fun payloadHeaderRows(draft: PayloadDraft): List<PayloadHeaderRow> = buildList {
     when (draft.tier) {
         PayloadTier.Exec -> {
             add(PayloadHeaderRow("command", draft.execCommand.ifBlank { "-" }))
-            add(PayloadHeaderRow("sha256", draft.execSha256 ?: "-"))
         }
 
         PayloadTier.Script -> {
             add(PayloadHeaderRow("script", draft.scriptName ?: "-"))
             add(PayloadHeaderRow("path", draft.scriptPath ?: "-"))
-            add(PayloadHeaderRow("sha256", draft.scriptSha256 ?: "-"))
         }
 
         PayloadTier.Ko -> {

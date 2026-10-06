@@ -5,6 +5,8 @@
 
 #include "plugin/host.hpp"
 
+#include "plugin/host_ops.hpp"
+
 #include <array>
 #include <cstdlib>
 #include <string>
@@ -236,9 +238,19 @@ namespace ghostlock::plugin {
                 continue;
             }
             entry.last_stage = index;
+            /* S4 logging batch B: this module is dispatched with its OWN ops
+             * table -- a copy of the caller's whose log() is host-owned and
+             * attributed to entry.id -- so a module can neither spoof another
+             * id nor exceed its per-run budget. All other entries forward to the
+             * caller's ctx unchanged. */
+            ModuleLogRouter router{};
+            router.module_id = entry.id.c_str();
+            const glk_contract_ops module_ops = make_module_ops(context.host, router);
             const RegistryRunOutcome outcome = run_registry_stage(
-                    entry.registry, to_countermeasure_stage(stage), context.host);
+                    entry.registry, to_countermeasure_stage(stage), &module_ops);
             diagnostics_.called += outcome.called;
+            diagnostics_.log_calls += router.emitted;
+            diagnostics_.log_dropped += router.dropped;
             if (outcome.failed != 0u) {
                 /* run_registry_stage already disabled this module's later hooks
                  * and recorded the failure; other modules are untouched. */
@@ -286,6 +298,10 @@ namespace ghostlock::plugin {
         out += std::to_string(diagnostics_.open_rejected);
         out += " stage_unavailable=";
         out += std::to_string(diagnostics_.stage_unavailable);
+        out += " log_calls=";
+        out += std::to_string(diagnostics_.log_calls);
+        out += " log_dropped=";
+        out += std::to_string(diagnostics_.log_dropped);
         out += '\n';
         for (std::size_t i = 0u; i < record_count_; ++i) {
             const HostRecord &record = records_[i];

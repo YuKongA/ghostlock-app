@@ -96,6 +96,7 @@ namespace {
         int g_close_count = 0;
         std::vector<std::size_t> g_close_order{};
         bool g_hash_mismatch = false;
+        bool g_log_from_hook = false;
         std::vector<std::string> g_calls{};
         glk_stage g_last_stage = GLK_STAGE_PRE_SPAWN;
         const glk_contract_ops *g_last_ops = nullptr;
@@ -106,6 +107,10 @@ namespace {
                                                                           : "?");
             g_last_stage = stage;
             g_last_ops = host;
+            if (g_log_from_hook && host != nullptr && host->log != nullptr) {
+                /* The host table always carries the log channel (batch B). */
+                host->log(host->ctx, 2, "hook log");
+            }
             return spec != nullptr ? spec->rc : 0;
         }
 
@@ -204,6 +209,7 @@ namespace {
             g_close_count = 0;
             g_close_order.clear();
             g_hash_mismatch = false;
+            g_log_from_hook = false;
             g_calls.clear();
             g_last_stage = GLK_STAGE_PRE_SPAWN;
             g_last_ops = nullptr;
@@ -452,7 +458,14 @@ namespace {
         expect(fake::g_calls[0] == "a.0" && fake::g_calls[1] == "b.0" &&
                        fake::g_calls[2] == "b.1",
                "hooks run in (priority, registration) order");
-        expect(fake::g_last_ops == &ops, "the call context reaches the hook unchanged");
+        /* Batch B: the hook is handed the HOST's per-module table, not the
+         * caller's raw pointer -- log() is host-owned so the host can attribute
+         * and limit it; every capability op forwards to the caller's table. */
+        expect(fake::g_last_ops != nullptr, "the hook receives a host ops table");
+        expect(fake::g_last_ops->log != nullptr, "the table carries the host log");
+        expect(fake::g_last_ops->ctx != nullptr, "the table carries the router ctx");
+        expect(fake::g_last_ops != &ops, "the caller's table is wrapped, not reused");
+        expect(host.diagnostics().log_calls == 0u, "a silent hook logs nothing");
         expect(fake::g_last_stage == GLK_STAGE_PRE_TERMINAL,
                "HostStage maps to the ABI stage");
 
@@ -661,9 +674,39 @@ namespace {
         std::puts("plugin_host_test: load_failure_is_fail_soft ok");
     }
 
+    /* ---- 8b. module log accounting (S4 logging batch B) ------------------- */
+
+    void test_module_log_accounting() {
+        fake::HookSet hooks;
+        hooks.add("a.log", GLK_STAGE_PRE_TERMINAL, 0u, 0);
+        const fake::ModuleSpec modules[] = {
+            {"mod.a", "1", hooks.hooks.data(), hooks.count}};
+        fake::install(modules, 1);
+        const PluginDoc plugins[] = {{"a", "pre_terminal", "a/1.0/a.so"}};
+        const Document document = make_doc(plugins, 1);
+
+        PluginHost host = PluginHost::from_document(
+                document, RuntimeBackend::Cve2026_43499, fake::ops());
+        expect(host.open(WindowState::WaiterClosed), "legal open");
+        fake::g_log_from_hook = true;
+        host.dispatch(HostStage::PreTerminal, PluginCallContext{});
+        expect(host.diagnostics().called == 1u, "the hook ran");
+        /* The hook logged exactly once: emitted, not dropped. */
+        expect(host.diagnostics().log_calls == 1u, "the module log is counted");
+        expect(host.diagnostics().log_dropped == 0u, "nothing was dropped");
+        expect(host.format_diagnostics().find("log_calls=1") != std::string::npos,
+               "the report carries the log counters");
+        host.close();
+        std::puts("plugin_host_test: module_log_accounting ok");
+    }
+
     /* ---- 9. no plugin section: today's run, byte for byte ---------------- */
 
     void test_no_plugin_section_is_a_no_op() {
+        /* Reset the loader fakes: this case asserts that an empty document
+         * touches neither the loader nor the unloader, so it must not inherit a
+         * previous case's counters. */
+        fake::install(nullptr, 0u);
         const Document empty{};
         PluginHost host = PluginHost::from_document(
                 empty, RuntimeBackend::Cve2026_43499, fake::ops());
@@ -680,7 +723,8 @@ namespace {
                        diagnostics.rejected == 0u && diagnostics.called == 0u &&
                        diagnostics.hook_failed == 0u && diagnostics.skipped == 0u &&
                        diagnostics.open_rejected == 0u &&
-                       diagnostics.stage_unavailable == 0u,
+                       diagnostics.stage_unavailable == 0u &&
+                       diagnostics.log_calls == 0u && diagnostics.log_dropped == 0u,
                "every counter stays zero");
         expect(host.records().empty(), "no records");
         expect(fake::g_open_count == 0 && fake::g_close_count == 0,
@@ -706,6 +750,7 @@ int main() {
     test_hook_failure_isolates_the_module();
     test_stage_matrix_rejects_hooks_and_plugins();
     test_load_failure_is_fail_soft();
+    test_module_log_accounting();
     test_no_plugin_section_is_a_no_op();
 
     std::puts("plugin_host_test: ok");

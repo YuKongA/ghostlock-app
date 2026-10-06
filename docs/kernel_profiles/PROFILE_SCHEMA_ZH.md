@@ -1,267 +1,158 @@
 # Kernel Profile 结构文档（配置系统）
 
-> English: [PROFILE_SCHEMA.md](PROFILE_SCHEMA.md)
-
-本文档是 `app/src/main/assets/kernel_profiles/` 下内核配置（profile）的参考：HOCON
-布局、字段分组、组合 token 选择、插件段、GLKv3 wire，以及加载/校验流水线。
-
-> 适配新内核的操作步骤见 [README_ZH.md](README_ZH.md)；`execution` 调优默认值见
-> [defaults_ZH.md](defaults_ZH.md)。**本文不重复画结构图**：全流程结构（IPO / 状态机 /
-> Class / Sequence）的唯一权威是
-> [full-process-uml.md](../development/full-process-uml.md)。
+> **状态：HOCON 重构已于 2026-10-05 在 native 落地**（① `b55708a8`：根级标量通道 + 删 `common`/`countermeasure` owner + vr_guard (b)；②③④ `23958eb0`：`platform.abi.*` → `backend.cve_2026_43499.abi.*`（62 处）+ 43284 调参入 `backend.cve_2026_43284.execution.*` + 新 `wire_only` 标记 + manifest 114 行）。**App 侧（测试 + golden）跟进中** ⇒ 跨端记「**native 已定稿、App 跟进中**」。旧的 `common` / `platform` / `selection` 布局**已删除**（出现即拒）。
+> 旧的 `common` / `platform` / `selection` 布局**已删除**（出现即拒）。本文是**结构与流程权威**；逐字段权威仍是 `profile-manifest-v3.tsv`（native 导出，两份逐字节一致）。
 
 ## 0. 版本与字段权威
 
-版本号**只有一个**：`3`。HOCON 配置写 `ghostlock.schema_version = 3`，wire 文档是
-MessagePack 根 map、其 `schema` 必须等于 `3`；不存在按文件叠加/递增的版本。插件 C ABI
-是**另一个**计数器：`GLK_ABI_VERSION = 1`（仅尾部追加，
-`src/core/contract/abi/glk_contract_abi.h`）。
-
-| 事实 | 权威 |
-|---|---|
-| canonical profile 形状、键归属、别名归一 | 仓库内 `app/src/main/assets/kernel_profiles/*.conf`；解析器 `profile-core/.../data/ProfileLayout.kt` |
-| owner-qualified path → wire 类型（109 字段） | native 导出 `app/src/test/resources/profile-manifest-v3.tsv`（对拍副本）与 `profile-core/src/main/resources/profile-manifest-v3.tsv`（运行时副本）；生成命令 `make -C src profile-manifest-v3` |
-| 选择词汇（12 个组合 token） | `contract::kCombinationCatalog`（`src/core/contract/identity.hpp`）；导出 `make -C src combination-manifest` |
-| 插件 wire 形状与动态键 | `src/core/plugin/schema.hpp`（`kPluginGlkv3Fields`，line 95）与 `src/core/plugin/wire.{hpp,cpp}`（`validate_plugin_wire`，`wire.hpp:66`） |
-| 插件 C ABI 版本 | `src/core/contract/abi/glk_contract_abi.h:47`（`GLK_ABI_VERSION 1u`） |
-| token 目录 | `src/core/contract/identity.hpp:177`（`kCombinationCatalog`，12 行） |
-| 运行索引 | `app/src/main/assets/kernel_profiles/index.conf:3`（`schema_version = 3`） |
-| GLKv3 wire 格式 | [wire-transport-model.md](../analysis/wire-transport-model.md) |
-| 全流程结构图 | [full-process-uml.md](../development/full-process-uml.md)（唯一权威；本文只链接，不重画） |
+- 只有一个数字：HOCON `schema_version = 3` 与 GLKv3 wire 的 `schema == 3` 是**同一个 3**，不要叠加版本号。
+- **唯一迁移点**：Kotlin `LegacyProfileConverter`（legacy `1`/缺键 → 3 并记诊断；其它值一律拒绝）。
+- native 只认 3；wire v2 已删除；extractor **只产出 3**（`--format conf` **同批产出新形状**）。
+- `kernel_profiles-legacy/*.conf` 是 **v1 输入夹具**，**故意保留旧形状**。
+- 字段权威：`make -C src profile-manifest-v3` → `profile-manifest-v3.tsv`（列：`owner / path / wire / required / default / source / doc`）。
+- **如何查字段**（不要把权威抄进正文）：`grep '^cve_2026_43499' app/src/test/resources/profile-manifest-v3.tsv`（或 `^countermeasure`、`^backend`），重生成命令 `make -C src profile-manifest-v3`（两份逐字节一致）。本文**刻意只写结构、搬迁与门禁**，不列字段枚举。注意 manifest 的 `required` 列表示「**无条件必需**」；**条件性（如「选中该档时必需」）属校验器语义，不得写进该列**。
+- **根级标量走「根段」承载**（`document.hpp` 的 `kRootSection`，空段名），使 owner bind 的**唯一取值路径** `find_value(section, key)` 与根键**同构**——两处按 section 拷贝的过滤副本**不会漏拷**（漏一处即静默 `kernel_major=0`）。**勿改回具名成员**。
+- **`wire_only` FieldSpec**（`kmi` / `lkm_path` / `carrier_path`）：**wire/解码接受，但不进 manifest** ⇒ App 的**可写面不含**它们。关键区分：**manifest = 「profile 可写面」，不是 wire 面**；wire 面由 native 的解码/绑定路径定义。
+- **物证（2026-10-05）**：manifest **114 行**（10 头 + **104 字段**）、两份逐字节一致 sha256 **`68bd7a506a210077`**、裸跑 `ok (104 fields, both copies)`、三个 wire-only 键 **0 命中**；门禁 host `EXIT=0`（告警 9 基线、58 tests、防火墙 `180/4/4/0/0`）· lint 0 · NDK 0；**六条负例**在 `src/core/tests/profile_v3_test.cpp:195-242`（`common.*`、`countermeasure.*`、段内 `kernel_major`、旧 `platform.abi.*`、旧扁平 43284 键 ⇒ 拒）。
 
 ## 1. 数据流
 
-1. **加载**：设备精确 `uname -r` 对应的内置 profile、共享 `execution-*.conf` preset、
-   导入/导出的用户 profile 与高级覆盖；片段通过 `include` 引入。
-2. **归一**：所有文档统一成 canonical owner-qualified 布局（`ProfileLayout`）——canonical
-   与旧的扁平写法都接受，别名被解析，未识别键带点分路径 **fail-closed**。
-3. **合并**（低 → 高）：execution preset → 内置 + 导入 profile → 高级覆盖；随后
-   `execution.selected_cpus` 按用户选择的 CPU 对强制写入（`ProfileMerger`/`ProfileResolver`）。
-4. **校验**：release 必须与设备一致；schema 必填字段必须在；默认值由 schema 物化（被默认的
-   字段以 `default_used` 报告）。
-5. **编码**：解析后的 profile 编码为 GLKv3 文档（根 map、`schema == 3`），canonical 编码
-   （最短整数、map 键按 UTF-8 字节序排序）。
-6. **分帧与交接**：App 启动 native 可执行文件，把文档按「4 字节大端长度前缀 + 文档」写入
-   stdin；同一流上可再接一帧运行时密钥。密钥绝不进文档、不进 argv、不落盘。
-7. **native 解析与绑定**：非 map 根、缺 `schema` 或 `schema != 3`、未知 section/键、类型
-   不符、截断文档、超过 1 MiB 的文档——在任何攻击阶段之前一律拒绝。
+```
+assets/kernel_profiles/*.conf（HOCON，新形状）
+   └─ Kotlin：解析 → 归一 → merge（include）→ resolve
+        ├─ App UI：从 `available` ∩ native catalog 里选 backend，再选该 backend 下的 token
+        └─ Glkv3Encoder → [4B len][GLKv3 文档][会话帧] → native stdin（--ghostlock-app-call）
+native：frame_v3（schema==3）→ Document → owner/根级键门禁 → SchemaRegistry bind → Pipeline
+```
+
+**profile 只声明可用项**；**运行时的选择权在用户/App**，并写入 wire 的 `backend.<id>.steps`。
 
 ## 2. 文件格式（HOCON）
 
-- 全部使用 HOCON：内置 profile、`index.conf`、片段、导入与导出文件。JSON 仍然合法；
-  接受 `#` / `//` 注释、尾逗号与 `${var}`（含 `${?var}`）替换。
-- 支持 `include "file.conf"`（同目录、可嵌套、防循环）。**被 include 的片段不带
-  `schema_version`**，只有 profile 根带。
-- `index.conf` 是运行索引：
+- HOCON 支持注释、`${variables}` 与 `include`；JSON 是合法 HOCON。
+- 根必须是 map，且必须含 `ghostlock { … }` 段（GLKv3 文档根）。
+- **根级标量是封闭白名单**：`schema_version`、`release`、`kernel_major`、`kernel_minor`、`safe_mode`。
+- 被 `include` 的片段不带 `schema_version`。
+
+## 3. canonical 布局（新形状）
 
 ```hocon
-schema_version = 3
-backends = [
-  { id = "cve_2026_43499", available = true }
-  { id = "cve_2026_43284", available = true }
-]
-profiles = [
-  { release = "6.12-template", file = "6.12-template.conf" }
-  { release = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k", file = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k.conf" }
-]
-```
-
-  `backends` 矩阵与 native 导出的 manifest 对拍（`BackendMatrixAgreementTest`），不会漂移。
-
-## 3. canonical 布局（owner-qualified）
-
-内置 profile 使用唯一包裹根 `ghostlock`，每个 owner 一个段。下面是一份真实 profile 的完整形状：
-
-```hocon
-# GhostLock kernel profile (HOCON, canonical R3 owner-qualified layout).
 ghostlock {
-  include "credential-6x.conf"
-  include "kernelsnitch-6x.conf"
   schema_version = 3
-  release = "6.12.23-android16-5-g16e473de48a3-abogki462654244-4k"
-  selection {
-    backend  = "cve_2026_43499"     # 下面 steps token 的归属 backend
-    terminal = "root_child"         # 与 token 的一致性校验
+  release        = "<uname -r 精确输出>"
+  kernel_major   = null            # 以后有用，先留着
+  kernel_minor   = null            # 重构新增
+  safe_mode      = false
+
+  available {                      # 两级：backend 键 → token 列表
+    cve_2026_43499 = [ "mcast_rootchild", "pselect_rootchild" ]
+    cve_2026_43284 = [ "umh" ]
   }
-  common {
-    kernel_major = 6
-  }
-  platform {
-    abi {
-      task_struct { prio = 148, cred = 2304, comm = 2320 /* ... */ }
-      offset { init_task = 37736192, init_cred = 37825128 /* ... */ }
-      kernel { kernel_phys_load = null, kernel_phys_offset = null }
-    }
-  }
+
   backend {
     cve_2026_43499 {
-      steps = "pselect_rootchild"   # 唯一对用户可见的选择 token
-      route { select_stack { waiter_shift = 0 } }
-      offset { slide_loggers_0_1 = 37691640 /* ... */ }
+      steps = "mcast_rootchild"    # 运行时由 App 选择后写入 wire
+      abi { task_struct { … } cred { … } kernel { } offset { … } }   # 原 platform.abi.*
+      route { } cred { } kernel { } offset { } execution { }
+    }
+    cve_2026_43284 {
+      steps = "umh"
+      execution {                  # late_load_args / selinux_exec_context /
+        …                          # module_poll_attempts / module_poll_interval_ms / wait_timeout_ms
+      }
     }
   }
+
+  # countermeasure { }            # **已移除**（用户裁决 2026-10-05）：`common.vr_guard` 与
+  #                               # `countermeasure.vivo_vr_guard.*`（含 wire/manifest 行）删除后 owner 变空
+  #                               # ⇒ 出现即拒
 }
 ```
 
-按字段数的归属（native manifest，109 行）：
+重构后的 owner 集：**只有 `backend.<id>`**（外加根级标量与根级 `available{}`）。**`countermeasure.*` 已移除**——vr_guard 字段删除后**再无写入者** ⇒ `vr_guard_enabled()` 恒 false ⇒ `steps.cpp` 两处 `VivoPluginPolicies::apply(...)` **可证明 no-op**（**不动攻击路径**）；`platform/vivo/**` 代码与两处调用**保留（惰性）**，其**彻底删除属 (a) 期**：攻击路径改动、**待设备门禁**，排设备可用后第一批。
 
-| Owner 段 | 字段数 | 承载 |
-|---|---|---|
-| `backend.cve_2026_43499` | 58 | steps token、route 几何、凭据模板、KernelSnitch 值、execution 调优 |
-| `platform.abi` | 31 | `task_struct`、ABI 级 `offset`、`kernel_phys_*` |
-| `backend.cve_2026_43284` | 10 | 页缓存/LKM 策略：模块与 carrier 路径、握手超时 |
-| `plugin.<id>` | 6 | 插件段（4 条静态行 + 2 条动态行），见第 5 节 |
-| `countermeasure.vivo_vr_guard` | 1 | 厂商对策参数 |
-| `common` | 3 | `kernel_major`、`safe_mode`、`vr_guard` |
+## 4. 可用项与选择
 
-字段数可复核：
+- `available { <backend> = [ tokens ] }` 是**两级**：先选可用的 **backend**，再在其下选**组合 token**。
+- **`selection { backend, terminal }` 已删除**，**`terminal` 概念从 HOCON 移除**——token 已蕴含 terminal（`*_rootchild` / `*_shizuku` / `umh`）。
+- token 词表权威是 `contract::kCombinationCatalog`（12 token = 7 已接线 + 5 计划）。App 只提供**同时存在于 `available` 与 native catalog** 的 token；运行时选择写入 wire 的 `backend.<id>.steps`。
+- `index.conf` 用 `usable = [{ id, usable }]`（**构建/资产层语义**）——与 profile 层的 `ghostlock.available{}` **刻意不同名**，避免混淆。
 
-```sh
-awk -F'\t' '!/^#/{split($2,a,"."); print a[1]"."a[2]}' app/src/test/resources/profile-manifest-v3.tsv | sort | uniq -c
-```
+## 5. 各 backend
 
-规则：
+**`cve_2026_43499`**
+- `steps`——组合 token（选择轴）。
+- `abi.*`——task_struct / cred / kernel / offset 事实；**`platform.abi.*` 迁到这里**。
+- `route` / `cred` / `kernel` / `offset` / `execution`——route 私有与几何分组，同以前。
 
-- 一个事实一个 owner：键放在**消费它的组件**所属段；共享值放 `common`；
-- `selection.backend` 与 `selection.terminal` 只是**一致性校验**——真正的选择是
-  `backend.<id>.steps` 里的 token；
-- 未识别的键带点分路径**拒绝**（fail-closed），不静默丢弃；
-- 旧的扁平文档在**解析期仍被接受**并归一成本布局；新写的 profile 必须是 canonical 布局。
+**`cve_2026_43284`**
+- `steps` 留在 backend 顶层（选择轴）；43284 无 route 轴，token 是**裸 path 名**（`umh`）。
+- `execution.*`——`late_load_args`、`selinux_exec_context`、`module_poll_attempts`、`module_poll_interval_ms`、`wait_timeout_ms`。
+- **`kmi` / `lkm_path` / `carrier_path` 从 profile 删除**：
+  - `kmi` 由 `release` 派生（`major*1000+minor`）；手写曾 fail-closed 为 `KmiFieldMismatch`——**现在键不存在（出现即拒）**；
+  - `lkm_path` / `carrier_path` / 各 `.ko` 路径统一在 **GhostLock 内部目录**解析，**运行时现算并注入 wire**；**wire 字段保留**，profile 不再承载。
 
-## 4. 选择：唯一组合 token
+## 6. countermeasure（已移除）
 
-对用户可见的选择只有 **一个 token**，存放在 `backend.<id>.steps`。token 派生出 route、
-step 集与 terminal；这三者不再可独立选择。
+- **`countermeasure.*` owner 已移除**（提交 **`b55708a8`**，用户裁决 2026-10-05 的 (b) 面）：`common.vr_guard` 与 `countermeasure.vivo_vr_guard.tracepoint_funcs` 连同其 **wire 行与 manifest 行**一起删除 ⇒ owner 变空、**出现即拒**。
+- `defex` **已完成删除**（提交 `a68e2d5a`）。
+- `platform/vivo/**`（8 文件 / 473 行）与 `backend/cve_2026_43499/steps.cpp` 的两处 `VivoPluginPolicies::apply(...)` 调用**保留（惰性）**——无写入者即**可证明 no-op**，**攻击路径不变**；其**彻底删除属 (a) 期**：攻击路径改动、**必须真机门禁**，排**设备可用后第一批**。
 
-| 可用（7） | 计划（5） |
+## 7. 已删除的 owner 与冻结的功能
+
+| 项 | 状态 |
 |---|---|
-| `mcast_rootchild`、`pselect_rootchild`、`tcp_rootchild` | `mcast_umh`、`pselect_umh`、`tcp_umh` |
-| `mcast_shizuku`、`pselect_shizuku`、`tcp_shizuku` | `rootchild`、`shizuku`（cve_2026_43284） |
-| `umh`（cve_2026_43284） | |
-
-- `_` 前的 owner 前缀就是 route：`mcast` = `multicast_waiter`、`pselect` =
-  `select_stack`、`tcp` = `tcp_zerocopy`；无 route 轴的 backend（cve_2026_43284）
-  用裸 path 名；
-- 计划 token 可解析、被登记，但选择门禁拒绝、App 置灰；
-- 未知 token 拒绝并回显 token 文本；缺 `steps` 键拒绝；
-- 根 `route` / `terminal` 必须与 token 一致，否则拒绝文档；
-- 旧文档里携带的数字 step id 或旧 step token 会带 stderr 诊断迁移为等价的组合 token。
-
-## 5. 插件段（P1）
-
-`plugin` 是第三类顶层 owner（既不属于某个 backend，也不是 platform）——同一对策可服务多个
-backend：
-
-| 路径 | 类型 | 规则 |
-|---|---|---|
-| `plugin.<id>.enabled` | bool | 默认 false；**只有 `true` 才会被发射** |
-| `plugin.<id>.stage` | str | host stage token 之一（`pre_spawn`、`post_spawn`、`pre_terminal`、`post_terminal`） |
-| `plugin.<id>.module_path` | str | 相对 `<GHOSTLOCK_HOME>/countermeasures`；不得绝对路径、不得含 `..`、不得含反斜杠 |
-| `plugin.<id>.module_hash` | str | 64 位小写 hex（模块的 SHA-256） |
-| `plugin.<id>.params.<key>` | 动态 | 值类型由插件描述符决定 |
-| `plugin.<id>.extract.<key>` | 动态 | 由 extractor 投影产出；此处只校验形状 |
-
-- 两条动态路径在 manifest 里以**联合类型** `uint|int|bool|str` 声明；具体键的类型由**已加载
-  模块的描述符**决定（经只读 native 探针 `--plugin-probe` 读取），不是静态表；
-- 文档 fail-closed：未知字段、`enabled` 缺失/非 bool/为 `false`、未知 stage、坏 module
-  path 或 hash、空动态键、插件数超过 16——全部在攻击前拒绝，绝不静默丢弃；
-- **没有**插件资产文件：插件配置属设备/用户特有，走覆盖存储；App 只为已启用插件写
-  `plugin.<id>.*`；
-- 插件 C ABI 是 `GLK_ABI_VERSION = 1`、仅尾部追加；探针输出 TSV 描述，其列序冻结在
-  [contract-design.md §3.14.7](../analysis/contract-design.md)；
-- **边界（P1）**：已交付「声明 → 校验 → 绑定」。加载模块并按 stage 调用它的运行时**尚未接线**
-  （见 task-9）；探针本身从不注册、也不运行 hook。
-
-## 6. 几何字段分组
-
-几何按内核对象分组，全部位于 owner 段之下：
-
-| 分组 | 段 | 字段（示例） |
-|---|---|---|
-| task 结构 | `platform.abi.task_struct` | `prio`、`normal_prio`、`pi_lock`、`pi_waiters`、`pi_top_task`、`cred`、`comm`、`tasks`、`seccomp` |
-| 内核符号 / 滑移锚点 | `platform.abi.offset`（ABI 级）与 `backend.cve_2026_43499.offset`（route 相关） | `init_task`、`init_cred`、`selinux_enforcing`、`slide_loggers_0_1` |
-| 物理映射 | `platform.abi.kernel` | `kernel_phys_load`、`kernel_phys_offset` |
-| 凭据模板 | `backend.cve_2026_43499.cred` | `copy_size`、`caps_offset`、`caps_count`、`caps_value` |
-| KernelSnitch | `backend.cve_2026_43499.kernel` | `kernelsnitch_collisions`、`mm_struct_sz`、`compact_waiter` |
-| route 几何 | `backend.cve_2026_43499.route.<route>` | `select_stack.waiter_shift`、multicast/TCP 调参 |
-
-未使用的 route 专有字段直接省略，不要写 `0` 或占位值。`null` 只出现在半填的模板里，表示
-「尚未推导」。完整的 path → 类型清单以 manifest 为准（第 0 节）。
-
-## 7. execution 调优（advisory）
-
-execution 调优由 resolver 从共享片段提供（`execution-tuning.conf` 与
-`execution-<route>.conf`）；设备 profile 通过 `include` 引入，只写差异值。字段位于
-`backend.cve_2026_43499.execution`（`recommended_cpus`、`heap`、`race`、
-`tcp`/`select`、`handoff`）。`execution.selected_cpus` 总是按解析出的 CPU 对重新推导，
-设备不会依赖过期值。
+| `common` owner | **已删除**——其键上提为根级标量或消失 |
+| `platform` owner | **已删除**——`platform.abi.*` → `backend.cve_2026_43499.abi.*` |
+| `selection { backend, terminal }` | **已删除**——改 `available{}`；terminal 从 HOCON 移除 |
+| `plugin` owner | 按用户指令 2026-10-05 **字面注释**（代码/测试保留；出现即拒）；恢复 = 撤销注释 + 跑门禁 |
+| `payload` owner | 同样冻结——不再发射 `payload.*`；执行半场停止 |
+| `countermeasure.*` owner | **已移除**（`b55708a8`）；出现即拒 |
+| defex | **已删除**（提交 `a68e2d5a`） |
+| vivo VR guard | **(b) profile 面已完成**（`b55708a8`：profile/wire/manifest 行删除）；**(a) 删代码挂账待设备门禁**——`platform/vivo/**` 与两处调用在此之前**保留（惰性）** |
 
 ## 8. GLKv3 wire
 
-- 文档就是一个 MessagePack 值，根为 **map**；`schema` 必须等于 `3`。**没有 magic、
-  没有版本前缀、没有独立头**。
-- 键：`schema`、`release`、`backend`、`terminal` 与 `sections`（owner-qualified 段名 →
-  「键 → 值」map）。
-- 类型：offset/长度用无符号整数；可能为负用有符号整数；bool（显式 `false` ≠ 缺失）；
-  token/路径用 UTF-8 字符串；字节块用 bin；另有 array 与 map。
-- canonical 编码：最短整数形式、map 键按 UTF-8 字节序、不使用 float；同一逻辑文档必须逐字节一致。
-- presence 由键是否出现表达；省略的字段不等于 0。
-- 拒绝（fail-closed，在任何阶段之前）：非 map 根、缺 `schema`、`schema != 3`、生产 schema
-  下的未知 section/键、类型不符、截断、过深/过大（文档上限 1 MiB）。
-- 传输：native 可执行文件的 stdin，4 字节大端长度前缀 + 文档（其后可选一帧运行时密钥）；
-  调试时也可用预生成的 `.bin` 文件。运行时密钥绝不进文档。
-- extractor 从不产出 wire：它产出 HOCON（`--format conf`，`schema_version = 3`）或旧 JSON 报告。
+- MessagePack 文档、根 map、`schema == 3`、无 magic/独立头；canonical = 最短整数 + 键按 UTF-8 字节序；stdin 长度前缀分帧。
+- **运行时注入字段**（`kmi`、模块/载体路径）由 native 从现算值写出；profile 不提供它们。
+- 运行时选择由 `backend.<id>.steps` 承载；根级 `available` **不是** wire 段。
+- 静态策略进文档；运行时密钥/SPI/端口绝不进文档（走会话帧，用后清零）。
 
 ## 9. 校验与诊断
 
-- `release` 必须与设备 `uname -r` 完全一致（模板永不匹配）；
-- schema 必填字段必须在；由 schema 默认物化的值以 `default_used` 报告，让「静默默认」可见；
-- 迁移过的旧 step id 会在 stderr 报告；
-- 未知键、未知 token、不可用（计划）组合、与 token 不一致的根 route/terminal，以及第 5 节的
-  任何插件规则——一律 fail-closed：拒绝文档，而不是部分生效。
+fail-closed（整份拒绝，绝不静默降级）：
+- 出现**已删除**的 owner（`common` / `platform` / `selection`）或**当前被注释**的 owner（`plugin` / `payload`）；
+- 根级标量不在白名单内，或未知顶层 owner（如 `plugins` / `payloads` / `root`）；
+- `available` 里的 token 不在 catalog 中，或 `steps` 与所选 token 矛盾；
+- `schema_version != 3`，或根不是 map；
+- 路径含 `..`、反斜杠或控制字符，或长度 >256 B；`sha256` 非小写 hex；
+- 手写 `kmi`（键已删除，出现即拒）。
 
 ## 10. 存储与加载层次
 
-| 层 | 位置 |
-|---|---|
-| 内置 profile、`index.conf`、模板、片段 | `app/src/main/assets/kernel_profiles/`（只读，随 APK 分发） |
-| 导入 / 导出的用户 profile | App 私有 `user_profiles/`（App files 目录下） |
-| 高级覆盖 | App 的覆盖存储（逐字段，最后应用） |
-| 插件模块 | App 私有 **no-backup** `countermeasures/` 根（模块绝不能进 Android 自动备份） |
-| 调试用导出 wire | `./gradlew exportKernelProfiles` → `build/kernel-profiles/*.bin` |
+- 内置 profile：`app/src/main/assets/kernel_profiles/`（`index.conf` + 每 release 一份 `<uname-r>.conf` + 公共 `execution-*.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf`）。
+- `index.conf`：`schema_version`、`usable`（backend 列表）与 `profiles`（release → 文件）。
+- 覆盖项在 App 覆盖存储；canonical 文档以 App 发射的为准。
 
 ## 11. 命令与对拍测试
 
 ```sh
-make -C src profile-manifest-v3      # 重新生成 path -> 类型 manifest
-make -C src combination-manifest     # 重新生成 token manifest + 解析向量
-./gradlew exportKernelProfiles       # 导出 GLKv3 .bin profile
-./gradlew :app:testDebugUnitTest :profile-core:test
+make -C src profile-manifest-v3      # 重新生成字段表（两份）
+make -C src combination-manifest     # token 白名单导出
+make -C src vocabulary-manifest      # 组件词汇导出
+make -C src native-host-tests        # host 测试（含 manifest/对拍断言）
+./gradlew :profile-core:test :app:testDebugUnitTest
 ```
-
-跨语言一致性靠测试、不靠记忆：`ProfileManifestV3AgreementTest`（Kotlin 表 == manifest）、
-`BackendMatrixAgreementTest`（`index.conf` 矩阵 == manifest）、
-`CombinationTokenAgreementTest` / `CombinationTokenHardcodeTest`（token 来自导出清单、
-运行时代码零字面量）、`ProfileLayoutEquivalenceTest` 与 `BuiltinProfilesTest`（每份内置
-profile 都能归一并通过校验）、`PluginProbeGoldenTest`（设备探针 golden）、
-`LegacyProfileConverterTest`（唯一迁移点）。
 
 ## 12. 旧 JSON 导入
 
-旧的 `offsets.json` 报告仍可导入。转换**只在 App 侧**发生（`LegacyProfileConverter`，
-唯一迁移点），产出当前的 `schema_version = 3` HOCON；native 可执行文件没有 JSON 或旧格式
-解码器。同一个转换器把**更早一代**的 HOCON profile（已废弃的版本号，或缺该键）归一为 `3`
-并记诊断；其它版本值一律拒绝，错误信息带实际值。
+- v1 `offsets.json` **只在 Kotlin** 由 `LegacyProfileConverter` 转换；native 不解析 v1。
+- `kernel_profiles-legacy/*.conf` **保留旧形状**作为夹具；它们不属于新布局，**不要**按新形状「修正」。
 
 ## 13. 修改配置的检查清单
 
-1. 先决定 owner 段：新字段放在**消费它的组件**所属段。
-2. 在 native 侧声明（`FieldSpec`）并重新生成 manifest；**不要手改 manifest**。
-3. 若字段决定行为，优先扩展 token 目录，而不是加 CLI 开关或第二个选择键。
-4. Kotlin 侧通过生成的 manifest 更新，不要写字面量。
-5. 把字段补进对应模板/profile；片段保持不带 `schema_version`。
-6. 可选字段必须在 schema 里给出默认值；否则必须 required，缺失即 fail-closed。
-7. 跑门禁：`make -C src native-host-tests`、NDK 构建（零告警）、
-   `make -C src lint-tidy`、Gradle 测试；改动触及攻击路径时另跑真机门禁。
-8. 结构变化时，同批更新唯一权威图
-   [full-process-uml.md](../development/full-process-uml.md)。
+1. 先在 native schema 加字段（唯一权威），再重生成 `profile-manifest-v3.tsv`。
+2. 同批更新 Kotlin adapter/UI、本文档与 `PROFILE_SCHEMA.md`。
+3. **不要**重新引入 `common` / `platform` / `selection`；新状态放既有 owner 或根级标量。
+4. **不要**把运行时现值（`kmi`、模块/载体路径）写进 profile。
+5. 跑 `PROFILE_TEMPLATE.conf` 里的验证配方；触及攻击路径时按 `docs/analysis/device-gates/` 归档。

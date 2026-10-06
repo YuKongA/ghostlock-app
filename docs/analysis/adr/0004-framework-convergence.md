@@ -1,6 +1,7 @@
 # ADR-0004：框架收敛（第四轮审查裁决）
 
 - 状态：Accepted（维护者授权直接裁决，2026-10-03）
+- **⏳ 词汇重命名（用户指令 2026-10-05；实现中）**：本 ADR 中出现的 `W1W2`/`W1W3`（stepset 轴）现改名为 **`shizuku_rootchild`/`rootchild`**（C++ `StepSetKind::ShizukuRootchild`/`Rootchild`；**数字 wire id 1/2 不变**）。**本文正文保留「决策当时」的类型名**，阅读时按此映射；现行词汇以契约 §3.18 与 `vocabulary-manifest.tsv` 为准。
 - 日期：2026-10-03
 - 基线：`acc5e7b` + 在飞改动（`B0`）
 - 相关：ADR-0001（§1/§7/§14 由本 ADR 修订）、ADR-0002、ADR-0003；

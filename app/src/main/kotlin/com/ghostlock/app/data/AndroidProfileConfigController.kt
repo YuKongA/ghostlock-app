@@ -64,13 +64,19 @@ internal class AndroidProfileConfigController(
      * byte-compatible callers.
      */
     private val combinationSelection: (() -> CombinationSpec)? = null,
-    /**
+    /*
+     * COMMENTED OUT (user ruling 2026-10-05): the plugin run selection is
+     * withdrawn while the plugin design is redone, so the controller neither
+     * resolves plugins nor emits them. Restore = uncomment this parameter, the
+     * selection/emission block in buildNativeDocument, the `plugins =` argument
+     * there, and the wiring in AndroidGhostlockRepository.
+     *
      * P1: the ENABLED plugins (registry row + probe descriptor) the repository
      * resolved. The controller applies the user's overrides to them, because the
      * override store is the controller's. Null/empty keeps every existing caller
      * byte-identical.
      */
-    private val pluginSelection: (suspend () -> PluginSelection)? = null,
+    // private val pluginSelection: (suspend () -> PluginSelection)? = null,
     /**
      * Editing sessions pin the imported document instead of consulting the
      * live selection, and keep their overrides in [preferences] (a private
@@ -669,51 +675,55 @@ internal class AndroidProfileConfigController(
                 )?.let { backend["steps"] = it.token }
             }
         }
-        val selected = when (val selection = pluginSelection?.invoke()) {
-            /* A SELECTED plugin the probe could not describe: the document stays
-             * unbuilt and the reasons travel to the UI and the run gate. */
-            is PluginSelection.Blocked -> return NativeDocument(null, selection.reasons)
-            is PluginSelection.Ready -> selection.plugins
-            null -> emptyList()
-        }
-        val pluginErrors = mutableListOf<String>()
-        /* P1: only enabled plugins, and only the parameters the user explicitly
-         * overrode (the descriptor keeps the defaults). The override tree is the
-         * controller's, so it is applied here. */
-        val emissions = selected.mapNotNull { enabled ->
-            runCatching {
-                PluginEmission.of(
-                    enabled.entry,
-                    enabled.descriptor,
-                    PluginOverrides.params(
-                        overridesSnapshot(release),
-                        enabled.entry.id,
-                        enabled.descriptor,
-                    ),
-                    /* P2: the extractor's resolved values, same override
-                     * document, same descriptor-driven typing. */
-                    PluginOverrides.extract(
-                        overridesSnapshot(release),
-                        enabled.entry.id,
-                        enabled.descriptor,
-                    ),
-                )
-            }.getOrElse { error ->
-                /* A contract disagreement is a VISIBLE blocker, never a crash. */
-                pluginErrors += "plugin " + enabled.entry.id + ": " +
-                    (error.message ?: "cannot be emitted")
-                null
-            }
-        }
+        /* COMMENTED OUT (user ruling 2026-10-05): plugin resolution + emission are
+         * withdrawn while the plugin design is redone. Nothing resolves the
+         * selection, so the probe never runs and no plugin.* field is written.
+         * Restore by uncommenting this block and the `plugins = emissions`
+         * argument below. */
+        // val selected = when (val selection = pluginSelection?.invoke()) {
+        //     /* A SELECTED plugin the probe could not describe: the document
+        //      * stays unbuilt and the reasons travel to the UI and the run gate. */
+        //     is PluginSelection.Blocked -> return NativeDocument(null, selection.reasons)
+        //     is PluginSelection.Ready -> selection.plugins
+        //     null -> emptyList()
+        // }
+        // val pluginErrors = mutableListOf<String>()
+        // /* P1: only enabled plugins, and only the parameters the user explicitly
+        //  * overrode (the descriptor keeps the defaults). */
+        // val emissions = selected.mapNotNull { enabled ->
+        //     runCatching {
+        //         PluginEmission.of(
+        //             enabled.entry,
+        //             enabled.descriptor,
+        //             PluginOverrides.params(
+        //                 overridesSnapshot(release),
+        //                 enabled.entry.id,
+        //                 enabled.descriptor,
+        //             ),
+        //             PluginOverrides.extract(
+        //                 overridesSnapshot(release),
+        //                 enabled.entry.id,
+        //                 enabled.descriptor,
+        //             ),
+        //         )
+        //     }.getOrElse { error ->
+        //         pluginErrors += "plugin " + enabled.entry.id + ": " +
+        //             (error.message ?: "cannot be emitted")
+        //         null
+        //     }
+        // }
         val document = Profile.fromValueMap(
             release = release,
             route = RouteKind.resolve(RouteKind.normalize(route)),
             text = { path -> ProfileResolver.nativeText(resolved, path) },
             bool = { path -> ProfileResolver.nativeBool(resolved, path) },
             value = { path -> ProfileResolver.nativeValue(resolved, route, path) },
-            plugins = emissions,
+            /* plugins = emissions, -- COMMENTED OUT (user ruling 2026-10-05) */
+            plugins = emptyList(),
         )
-        return NativeDocument(document, pluginErrors)
+        /* return NativeDocument(document, pluginErrors) -- COMMENTED OUT (user
+         * ruling 2026-10-05); with no plugin emission there can be no plugin error. */
+        return NativeDocument(document, emptyList())
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----

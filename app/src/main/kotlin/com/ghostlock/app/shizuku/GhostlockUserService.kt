@@ -47,32 +47,6 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
     }
 
     /**
-     * R2b dev entry (debug builds only; never reachable from the production UI).
-     * It runs the SAME document-driven app-call path as [runExploit]: the caller
-     * built the effective GLKv3 document in the app process, so the only
-     * difference is the dev-only carrier opt-in appended to the argv. There is
-     * no stage vocabulary and no separate staged runner.
-     */
-    override fun runDevExploit(
-        profileBlob: ByteArray,
-        sessionFrame: ByteArray,
-        allowDevTarget: Boolean,
-        callback: IGhostlockCallback,
-        statusCallback: IGhostlockStatusCallback,
-    ) {
-        startAppCall(
-            safeMode = false,
-            forceAttack = false,
-            profileBlob = profileBlob,
-            sessionFrame = sessionFrame,
-            debugDir = null,
-            allowDevTarget = allowDevTarget,
-            callback = callback,
-            statusCallback = statusCallback,
-        )
-    }
-
-    /**
      * One app-call run: validate the shell domain, write the length-prefixed
      * GLKv3 document (plus the optional channel-B frame) to native stdin, then
      * relay the native log file and answer the status ACKs. Production and the
@@ -140,9 +114,6 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     debugDir = debugDir,
                     allowDevTarget = allowDevTarget,
                 )
-                if (allowDevTarget) {
-                    callback.onLog("<b> dev carrier opt-in: --allow-dev-target")
-                }
                 callback.onLog("<b> starting native: ${binary.absolutePath}")
                 ProcessBuilder(argv)
                     .directory(workDir)
@@ -279,6 +250,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         }
     }
 
+    /**
+     * Shizuku-manager contract member (see the AIDL note): the manager calls it
+     * when it stops or unbinds the service, so having no in-repo caller is
+     * expected. Idle service process -> exit; a running exploit is left alone.
+     */
     override fun destroy() {
         if (!running.get()) kotlin.system.exitProcess(0)
     }

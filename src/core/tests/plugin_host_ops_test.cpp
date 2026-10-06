@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <span>
+#include <string>
 
 namespace {
 
@@ -320,6 +321,87 @@ namespace {
                memory.zero_calls == 0U);
     }
 
+    /* ---- S4 logging batch B: the per-module log router ---- */
+
+    void test_module_log_router() {
+        using ghostlock::plugin::format_module_log;
+        using ghostlock::plugin::kModuleLogBudgetPerRun;
+        using ghostlock::plugin::kModuleLogMinIntervalNs;
+        using ghostlock::plugin::make_module_ops;
+        using ghostlock::plugin::module_log_accept;
+        using ghostlock::plugin::ModuleLogRouter;
+
+        /* Budget + 1 ms rate limit, driven with explicit timestamps so no test
+         * ever sleeps. */
+        ModuleLogRouter router{};
+        router.module_id = "glk.probe";
+        assert(router.budget == kModuleLogBudgetPerRun);
+        router.budget = 2u; /* two messages, then the budget drops the rest */
+        assert(module_log_accept(router, 1000u));
+        assert(router.emitted == 1u && router.dropped == 0u);
+        assert(!module_log_accept(router, 1000u + kModuleLogMinIntervalNs / 2u));
+        assert(router.dropped == 1u);
+        assert(module_log_accept(router, 1000u + kModuleLogMinIntervalNs));
+        assert(!module_log_accept(router, 5000000u)); /* rate ok, budget spent */
+        assert(router.emitted == 2u && router.dropped == 2u);
+
+        /* Rendering: id + mapped level + sanitized single line. */
+        char line[ghostlock::plugin::kModuleLogMaxBytes + 64u] = {};
+        ModuleLogRouter fmt{};
+        fmt.module_id = "glk.probe";
+        const std::string_view ok =
+                format_module_log(fmt, 2, "stage=4 read=0", line, sizeof(line));
+        assert(ok == "glk.probe log(2): stage=4 read=0");
+
+        /* Out-of-range level is clamped to 1 and marked. */
+        const std::string_view clamped =
+                format_module_log(fmt, 9, "x", line, sizeof(line));
+        assert(clamped == "glk.probe log(1): x level_clamped=1");
+
+        /* A newline (or any control byte) cannot forge a second line. */
+        const std::string_view shapes =
+                format_module_log(fmt, 0, "a\nb\tc", line, sizeof(line));
+        assert(shapes == "glk.probe log(0): a_b_c");
+
+        /* An over-long message is cut and marked, still inside the cap. */
+        const std::string big(1024u, 'z');
+        const std::string_view cut =
+                format_module_log(fmt, 3, big, line, sizeof(line));
+        assert(cut.size() <= ghostlock::plugin::kModuleLogMaxBytes);
+        assert(cut.ends_with("..."));
+
+        /* The module table keeps the caller's capabilities (forwarded) and only
+         * replaces log()/ctx; child_task is carried over unchanged. */
+        FakeMemory memory{};
+        ghostlock::contract::Capabilities capabilities{};
+        capabilities.kernel = &memory;
+        HostOpsContext upstream_ctx{};
+        upstream_ctx.capabilities = &capabilities;
+        upstream_ctx.closed = false;
+        glk_contract_ops upstream{};
+        init_host_ops(upstream, upstream_ctx);
+        upstream.child_task = 0x1234u;
+
+        ModuleLogRouter module_router{};
+        module_router.module_id = "glk.probe";
+        const glk_contract_ops module = make_module_ops(&upstream, module_router);
+        assert(module.ctx == &module_router);
+        assert(module.log != upstream.log);
+        assert(module.read_u64 != nullptr && module.read_u64 != upstream.read_u64);
+        assert(module.child_task == 0x1234u);
+        assert(module.abi_version == upstream.abi_version);
+        /* Forwarding really reaches the caller's primitive. */
+        std::uint64_t value = 0u;
+        assert(module.read_u64(module.ctx, 0x1000u, &value) == 0);
+        assert(value == memory.read_value && memory.read_calls == 1u &&
+               memory.last_address == 0x1000u);
+
+        /* A null upstream yields a log-only table (logging still works). */
+        const glk_contract_ops log_only = make_module_ops(nullptr, module_router);
+        assert(log_only.log != nullptr && log_only.read_u64 == nullptr);
+        std::puts("plugin_host_ops_test: module_log_router OK");
+    }
+
 } // namespace
 
 int main() {
@@ -328,6 +410,7 @@ int main() {
     test_error_mapping();
     test_missing_capability();
     test_closed_is_terminal();
+    test_module_log_router();
     std::puts("plugin_host_ops_test: OK");
     return 0;
 }

@@ -12,14 +12,19 @@
  * S4 R1 moved the previously-scattered effective values here, byte-for-byte.
  * S4 R4 stringifies the three policy paths and moves the handshake/wait tuning
  * in:
- *   - carrier_path / lkm_path / defex_symbol -> WireKind::String paths. The two
- *     conventions that used to resolve to numeric tokens are now pure
- *     declarations (no resolver): the composition root owns the actual path
- *     (first device-present carrier; $GHOSTLOCK_HOME/helper.ko), so the View
- *     keeps presence semantics and the effective values are unchanged;
  *   - wait_timeout_ms -> literal 15000 (was execution_binding hardcode);
  *   - module_poll_attempts / module_poll_interval_ms -> literal 40 / 5 (was
  *     LkmWindowRuntime kOpenRetryAttempts/kOpenRetryDelayMs).
+ *
+ * HOCON refactor: the owner now spans TWO wire sections --
+ *   - backend.cve_2026_43284: the selection token (steps) plus the three
+ *     runtime-injected keys (kmi / lkm_path / carrier_path), which the profile
+ *     no longer declares (wire_only in the GLKv3 list, so the manifest omits
+ *     them) and native resolves at the point of use;
+ *   - backend.cve_2026_43284.execution: late_load_args / selinux_exec_context /
+ *     module_poll_attempts / module_poll_interval_ms / wait_timeout_ms.
+ * is_cve_2026_43284_section() is the single predicate for both, used by every
+ * filtered Document copy.
  *
  * RegistryForSelection composes the 43284 owner for the catalogued
  * {cve_2026_43284, PageCacheWrite, umh_forward} triple. */
@@ -39,6 +44,28 @@ namespace ghostlock::backend {
 
     inline constexpr std::string_view kCve2026_43284Section =
             "backend.cve_2026_43284";
+
+    /* HOCON refactor: the five execution knobs live in their own flat section
+     * (the wire carries the execution. level too, never a flattened key).
+     * kmi / lkm_path / carrier_path stay in the backend section: the wire keeps
+     * them, but the profile no longer declares them, so the exported manifest
+     * omits them (they are wire_only in the GLKv3 list) and native resolves each
+     * value at the point of use. */
+    inline constexpr std::string_view kCve2026_43284ExecutionSection =
+            "backend.cve_2026_43284.execution";
+
+    /* The sections this owner binds. One predicate, so a filtered Document copy
+     * cannot silently drop the execution section -- that would flip five
+     * execution fields to their defaults.
+     *
+     * A THIRD 43284-owned section MUST be added here: every filtered copy
+     * (backend_terminal.cpp state_from and tests/profile_bind_compat.cpp) asks
+     * this predicate, and a section missing from it is dropped silently. */
+    [[nodiscard]] inline bool is_cve_2026_43284_section(
+            std::string_view name) noexcept {
+        return name == kCve2026_43284Section ||
+               name == kCve2026_43284ExecutionSection;
+    }
 
     /* R1 derived default: kmi = kernel_major * 1000 + kernel_minor from the
      * document release. Returns false when the release is unparsable, in which
@@ -94,12 +121,6 @@ namespace ghostlock::backend {
              [](Cve2026_43284Profile &view, std::string_view text) {
                  view.lkm_path = text;
              }},
-            {kCve2026_43284Section, "defex_symbol", 0, false, false, nullptr,
-             profile::DefaultValue::none(), profile::FieldSource::Profile,
-             profile::WireKind::String, "Defex symbol name.",
-             [](Cve2026_43284Profile &view, std::string_view text) {
-                 view.defex_symbol = text;
-             }},
             {kCve2026_43284Section, "kmi", 2, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.kmi = static_cast<uint16_t>(raw);
@@ -107,14 +128,14 @@ namespace ghostlock::backend {
              profile::DefaultValue::derived(&derive_kmi_from_release),
              profile::FieldSource::Derived, profile::WireKind::UInt,
              "Kernel module interface, encoded major*1000 + minor."},
-            {kCve2026_43284Section, "selinux_exec_context", 8, false, false,
+            {kCve2026_43284ExecutionSection, "selinux_exec_context", 8, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.selinux_exec_context = raw;
              },
              profile::DefaultValue::literal(kCve2026_43284SelinuxDefault),
              profile::FieldSource::Profile, profile::WireKind::UInt,
              "SELinux exec context selector; 0 = vendor_modprobe."},
-            {kCve2026_43284Section, "late_load_args", 8, false, false,
+            {kCve2026_43284ExecutionSection, "late_load_args", 8, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.late_load_args = raw;
              },
@@ -133,21 +154,21 @@ namespace ghostlock::backend {
                  view.steps = contract::combination_stepset_wire(
                          contract::BackendKind::Cve2026_43284, text);
              }},
-            {kCve2026_43284Section, "wait_timeout_ms", 4, false, false,
+            {kCve2026_43284ExecutionSection, "wait_timeout_ms", 4, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.wait_timeout_ms = static_cast<uint32_t>(raw);
              },
              profile::DefaultValue::literal(kCve2026_43284WaitTimeoutDefaultMs),
              profile::FieldSource::Profile, profile::WireKind::UInt,
              "Chain terminus wait budget in ms; default 15000."},
-            {kCve2026_43284Section, "module_poll_attempts", 4, false, false,
+            {kCve2026_43284ExecutionSection, "module_poll_attempts", 4, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.module_poll_attempts = static_cast<uint32_t>(raw);
              },
              profile::DefaultValue::literal(kCve2026_43284ModulePollAttemptsDefault),
              profile::FieldSource::Profile, profile::WireKind::UInt,
              "LKM window handshake retries; default 40."},
-            {kCve2026_43284Section, "module_poll_interval_ms", 4, false, false,
+            {kCve2026_43284ExecutionSection, "module_poll_interval_ms", 4, false, false,
              [](Cve2026_43284Profile &view, uint64_t raw) {
                  view.module_poll_interval_ms = static_cast<uint32_t>(raw);
              },
@@ -193,13 +214,15 @@ namespace ghostlock::backend {
         return value->text;
     }
 
-    /* Typed uint32 accessor for one 43284 tuning field, or nullopt when absent.
-     * The schema default (15000/40/5) is applied by the bind; the composition
-     * root reads the raw document (before the bind runs) with this accessor and
-     * applies the same default constant. */
+    /* Typed uint32 accessor for one 43284 execution-tuning field, or nullopt
+     * when absent. The schema default (15000/40/5) is applied by the bind; the
+     * composition root reads the raw document (before the bind runs) with this
+     * accessor and applies the same default constant. The fields live in the
+     * execution section since the HOCON refactor. */
     [[nodiscard]] inline std::optional<uint32_t> u32_field_from(
             const profile::Document &document, std::string_view key) noexcept {
-        const profile::Value *value = document.find_value(kCve2026_43284Section, key);
+        const profile::Value *value =
+                document.find_value(kCve2026_43284ExecutionSection, key);
         if (value == nullptr || !value->present || value->is_text ||
             value->raw > 0xFFFFFFFFULL) {
             return std::nullopt;

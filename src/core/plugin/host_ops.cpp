@@ -7,6 +7,8 @@
 
 #include "plugin/host_ops.hpp"
 
+#include <ctime>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -198,7 +200,200 @@ namespace ghostlock::plugin {
                          static_cast<int>(level), msg != nullptr ? msg : "(null)");
         }
 
+        /* ---- per-module log routing (S4 logging batch B) ----------------- */
+
+        std::uint64_t monotonic_ns() noexcept {
+            struct timespec ts {};
+            if (::clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+                return 0u; /* no clock: rate limiting degrades to budget-only */
+            }
+            return static_cast<std::uint64_t>(ts.tv_sec) * 1000000000ull +
+                   static_cast<std::uint64_t>(ts.tv_nsec);
+        }
+
+        void module_log_thunk(void *raw, std::int32_t level, const char *msg) noexcept {
+            auto *router = static_cast<ModuleLogRouter *>(raw);
+            if (router == nullptr) {
+                return;
+            }
+            if (!module_log_accept(*router, monotonic_ns())) {
+                return; /* dropped: counted by module_log_accept, never an error */
+            }
+            char line[kModuleLogMaxBytes + 64u] = {};
+            const std::string_view text = format_module_log(
+                    *router, level,
+                    msg != nullptr ? std::string_view(msg) : std::string_view{}, line,
+                    sizeof(line));
+            if (!text.empty()) {
+                std::fprintf(stderr, "[countermeasure] %.*s\n",
+                             static_cast<int>(text.size()), text.data());
+                std::fflush(stderr);
+            }
+        }
+
+        /* Forwarding thunks: the module table keeps the caller's ctx/ops for
+         * every capability operation; only log() is host-owned. A null upstream
+         * operation stays null in the copy (make_module_ops only installs a
+         * thunk when the caller bound one), so a plugin's own null check still
+         * sees the truth. */
+        template <class Fn>
+        const glk_contract_ops *upstream_of(void *raw) noexcept {
+            const auto *router = static_cast<const ModuleLogRouter *>(raw);
+            return router != nullptr ? router->upstream : nullptr;
+        }
+
+        std::int32_t fwd_read_u64(void *raw, std::uint64_t va, std::uint64_t *out) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->read_u64(up->ctx, va, out);
+        }
+
+        std::int32_t fwd_write_u64(void *raw, std::uint64_t va, std::uint64_t value) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->write_u64(up->ctx, va, value);
+        }
+
+        std::int32_t fwd_read_bytes(void *raw, std::uint64_t va, void *dst,
+                                    std::uint32_t len) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->read_bytes(up->ctx, va, dst, len);
+        }
+
+        std::int32_t fwd_write_bytes(void *raw, std::uint64_t va, const void *src,
+                                     std::uint32_t len) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->write_bytes(up->ctx, va, src, len);
+        }
+
+        std::int32_t fwd_zero_word(void *raw, std::uint64_t va, const char *desc) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->zero_word(up->ctx, va, desc);
+        }
+
+        std::uint64_t fwd_image_to_direct_map(void *raw, std::uint64_t image_addr) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->image_to_direct_map(up->ctx, image_addr);
+        }
+
+        std::int32_t fwd_query_u64(void *raw, const char *path, std::uint64_t *out) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->query_u64(up->ctx, path, out);
+        }
+
+        std::int32_t fwd_query_str(void *raw, const char *path, char *buf,
+                                   std::uint32_t cap) noexcept {
+            const glk_contract_ops *up = upstream_of<void>(raw);
+            return up->query_str(up->ctx, path, buf, cap);
+        }
+
     } // namespace
+
+    bool module_log_accept(ModuleLogRouter &router, std::uint64_t now_ns) noexcept {
+        if (router.emitted >= router.budget) {
+            ++router.dropped;
+            return false;
+        }
+        if (router.last_ns != 0u && now_ns != 0u &&
+            now_ns - router.last_ns < kModuleLogMinIntervalNs) {
+            ++router.dropped;
+            return false;
+        }
+        ++router.emitted;
+        if (now_ns != 0u) {
+            router.last_ns = now_ns;
+        }
+        return true;
+    }
+
+    std::string_view format_module_log(const ModuleLogRouter &router, std::int32_t level,
+                                       std::string_view message, char *out,
+                                       std::size_t capacity) noexcept {
+        if (out == nullptr || capacity < 24u) {
+            return {};
+        }
+        std::int32_t mapped = level;
+        bool clamped = false;
+        if (mapped < 0 || mapped > 3) {
+            mapped = 1;
+            clamped = true;
+        }
+        /* The RENDERED line (prefix included) is capped too: a plugin cannot
+         * make the host print an unbounded line by sending a long message. */
+        const std::size_t limit =
+                capacity - 1u < kModuleLogMaxBytes ? capacity - 1u : kModuleLogMaxBytes;
+        std::size_t used = 0u;
+        const auto push = [&](char byte) noexcept {
+            if (used + 1u <= limit) {
+                out[used++] = byte;
+            }
+        };
+        const std::string_view id = router.module_id != nullptr ? router.module_id : "?";
+        for (const char byte : id) {
+            push(byte);
+        }
+        for (const char byte : std::string_view(" log(")) {
+            push(byte);
+        }
+        push(static_cast<char>('0' + mapped));
+        for (const char byte : std::string_view("): ")) {
+            push(byte);
+        }
+        const std::size_t reserve = clamped ? 16u : 0u; /* " level_clamped=1" */
+        const std::size_t room = limit > reserve + 3u ? limit - reserve - 3u : 0u;
+        bool cut = false;
+        for (const char byte : message) {
+            if (used >= room) {
+                cut = true;
+                break;
+            }
+            const unsigned char raw = static_cast<unsigned char>(byte);
+            push(raw >= 0x20u && raw != 0x7fu ? byte : '_');
+        }
+        if (cut) {
+            push('.');
+            push('.');
+            push('.');
+        }
+        if (clamped) {
+            for (const char byte : std::string_view(" level_clamped=1")) {
+                push(byte);
+            }
+        }
+        out[used] = '\0';
+        return std::string_view(out, used);
+    }
+
+    glk_contract_ops make_module_ops(const glk_contract_ops *upstream,
+                                     ModuleLogRouter &router) noexcept {
+        glk_contract_ops ops{};
+        if (upstream != nullptr) {
+            ops = *upstream;
+        }
+        ops.size = static_cast<std::uint32_t>(sizeof(glk_contract_ops));
+        ops.abi_version = GLK_ABI_VERSION;
+        router.upstream = upstream;
+        ops.ctx = &router;
+        ops.log = &module_log_thunk;
+        ops.read_u64 =
+                upstream != nullptr && upstream->read_u64 != nullptr ? &fwd_read_u64 : nullptr;
+        ops.write_u64 =
+                upstream != nullptr && upstream->write_u64 != nullptr ? &fwd_write_u64 : nullptr;
+        ops.read_bytes = upstream != nullptr && upstream->read_bytes != nullptr
+                                 ? &fwd_read_bytes
+                                 : nullptr;
+        ops.write_bytes = upstream != nullptr && upstream->write_bytes != nullptr
+                                  ? &fwd_write_bytes
+                                  : nullptr;
+        ops.zero_word =
+                upstream != nullptr && upstream->zero_word != nullptr ? &fwd_zero_word : nullptr;
+        ops.image_to_direct_map = upstream != nullptr && upstream->image_to_direct_map != nullptr
+                                          ? &fwd_image_to_direct_map
+                                          : nullptr;
+        ops.query_u64 =
+                upstream != nullptr && upstream->query_u64 != nullptr ? &fwd_query_u64 : nullptr;
+        ops.query_str =
+                upstream != nullptr && upstream->query_str != nullptr ? &fwd_query_str : nullptr;
+        return ops;
+    }
 
     void init_host_ops(glk_contract_ops &ops, HostOpsContext &ctx) noexcept {
         ops.size = static_cast<std::uint32_t>(sizeof(glk_contract_ops));

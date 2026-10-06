@@ -23,6 +23,8 @@
  * shared by several owners as long as their keys do not overlap. */
 
 #include "profile/document.hpp"
+// USER DIRECTIVE 2026-10-05: payload paused
+// #include "profile/glkv3.hpp"
 
 #include <concepts>
 #include <cstddef>
@@ -418,6 +420,26 @@ namespace ghostlock::profile {
         (bind_one(std::type_identity<Schemas>{}, views) && ...);
         return status;
     }
+
+//     /* S4 payload owner (contract-design 3.15): the GLKv3 path -> type mirror the
+//      * manifest export is built from. The section is validated fail-closed by
+//      * profile/glkv3_parse.cpp (validate_payload_section), not by this list: these
+//      * rows exist so both manifest copies (and the Kotlin adapter) can tell a
+//      * declared payload path from an ordinary key. The per-module rows use the
+//      * SAME wildcard convention as the plugin owner (plugin/schema.hpp): an
+//      * angle-bracketed placeholder, here the ko index <i> (0..7) under the ko.
+//      * node -- so the per-module indexes sit beside ko.count, not at top level
+//      * (design r3, ruling 2026-10-05). */
+//     inline constexpr glkv3::FieldSpec kPayloadGlkv3Fields[] = {
+//         {"payload", "tier", glkv3::WireType::Str, true},
+//         {"payload", "exec.command", glkv3::WireType::Str, false},
+//         {"payload", "exec.sha256", glkv3::WireType::Str, false},
+//         {"payload", "script.path", glkv3::WireType::Str, false},
+//         {"payload", "script.sha256", glkv3::WireType::Str, false},
+//         {"payload", "ko.count", glkv3::WireType::UInt, false},
+//         {"payload", "ko.<i>.path", glkv3::WireType::Str, false},
+//         {"payload", "ko.<i>.sha256", glkv3::WireType::Str, false},
+//     };
 } // namespace ghostlock::profile
 
 #endif

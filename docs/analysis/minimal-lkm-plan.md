@@ -30,9 +30,12 @@
 - **fail-closed**：`cmd` 非法、`kallsyms_lookup_name` 不可用、`selinux_state`/`call_usermodehelper_*`
   缺失 → **在任何状态改动之前**返回错误并自卸载；每步 `pr_info` 便于真机核验。
 - `Makefile`：`obj-m`、`-Os -fno-asynchronous-unwind-tables -fno-unwind-tables`（体积优先）。
-- `build.sh`：用 DDK 容器构建（`ghcr.io/ylarod/ddk-min:android13-5.15`，与上游同源），再用
-  `llvm-objcopy` 做 size diet（`--strip-unneeded` + 去掉 note/BTF/hyp 段），产物
-  `tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko`（**不入库**，`build/` 与 `out/` 均忽略）。
+- **构建入口 = Gradle 任务**（用户指令 2026-10-05：**构建逻辑一律进 Gradle KTS，禁用独立 `.sh` 构建脚本**）：
+  `./gradlew :app:buildLkmImages`（显式任务，需容器引擎 `podman`→`docker`，可 `-PcontainerEngine=` 覆盖）用 DDK 容器构建
+  （`ghcr.io/ylarod/ddk-min:android13-5.15`，与上游同源）+ `llvm-objcopy` 做 size diet（`--strip-unneeded` + 去掉 note/BTF/hyp 段）；
+  `./gradlew :app:copyLkmIntoAssets`（fail-closed 校验，挂 `merge*Assets`、**不挂** `preBuild`）负责落入 assets。
+  产物形如 `ghostlock-android13-5.15.ko`（**不入库**，`build/` 与 `out/` 均忽略）；**跨 KMI 的 8 个 label 由 native 导出的 `lkm-kmi-manifest.tsv` 提供，不手抄**。
+  **规约**：`.sh` **仅限设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷）；跨平台不得依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash（用 JVM/Gradle API），工具链路径由 AGP `android.ndkDirectory` 解析。详见 AGENTS「构建逻辑一律写进 Gradle KTS」。
 
 ## 3. 构建与 KMI
 

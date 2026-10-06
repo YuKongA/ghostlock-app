@@ -189,16 +189,16 @@ NATIVE_HOST_TESTS := \
   platform_vivo_test platform_abi_test \
   contract_capabilities_test contract_vocabulary_test countermeasure_abi_test address_discovery_test terminal_input_test \
   countermeasure_loader_test countermeasure_registry_test \
-  kernel_channel_test plugin_host_ops_test \
+  kernel_channel_test\
   cve_2026_43284_lkm_window_test \
   document_schema_test owner_schema_test cve_2026_43284_schema_test \
   profile_registry_test \
-  profile_manifest_v3_test \
+  profile_manifest_v3_test lkm_kmi_manifest_test \
   glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
   combination_token_test combination_manifest_test support_cli_test \
-  plugin_probe_test plugin_wire_test vocabulary_manifest_test \
-  plugin_host_test plugin_window_wiring_test plugin_open_site_test \
-  plugin_wire_golden_test \
+ plugin_wire_test vocabulary_manifest_test \
+ plugin_window_wiring_test\
+  \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
   cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
@@ -366,63 +366,68 @@ $(HOST_BUILD_DIR)/plugin_wire_test: core/tests/plugin_wire_test.cpp \
 # nor the filesystem is touched; host.cpp, wire.cpp and loader.cpp are the real
 # production units under test (loader.cpp's default ops still need sha256.cpp
 # and the platform dl library at link time).
-$(HOST_BUILD_DIR)/plugin_host_test: core/tests/plugin_host_test.cpp \
-  core/plugin/host.cpp core/plugin/host.hpp \
-  core/plugin/loader.cpp core/plugin/loader.hpp \
-  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
-  core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
-  core/profile/document.hpp core/profile/glkv3.hpp \
-  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
-  core/support/sha256.cpp core/support/sha256.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_test.cpp \
-	  core/plugin/host.cpp core/plugin/wire.cpp core/plugin/loader.cpp \
-	  core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
-
+# USER DIRECTIVE 2026-10-05: plugin paused
+# $(HOST_BUILD_DIR)/plugin_host_test: core/tests/plugin_host_test.cpp \
+#   core/plugin/host.cpp core/plugin/host.hpp \
+#   core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
+#   core/plugin/loader.cpp core/plugin/loader.hpp \
+#   core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+#   core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
+#   core/profile/document.hpp core/profile/glkv3.hpp \
+#   core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+#   core/support/sha256.cpp core/support/sha256.hpp
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_test.cpp \
+# 	  core/plugin/host.cpp core/plugin/host_ops.cpp core/plugin/wire.cpp \
+# 	  core/plugin/loader.cpp core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
+# 
 # S4 P1 step 3a wiring: the REAL LKM residency window (lkm_window.cpp) driving
 # the REAL plugin host over an injected LkmTransport; the loader operations
 # synthesize the module, so no device, no /dev/glk and no filesystem are touched.
-$(HOST_BUILD_DIR)/plugin_window_wiring_test: core/tests/plugin_window_wiring_test.cpp \
-  core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
-  core/plugin/host.cpp core/plugin/host.hpp \
-  core/plugin/loader.cpp core/plugin/loader.hpp \
-  core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
-  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
-  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
-  core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
-  core/profile/document.hpp core/profile/glkv3.hpp \
-  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
-  core/contract/capabilities.hpp core/contract/kernel_memory.hpp \
-  core/contract/kernel_alias.hpp \
-  core/support/sha256.cpp core/support/sha256.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_window_wiring_test.cpp \
-	  core/backend/cve_2026_43284/lkm_window.cpp core/plugin/host.cpp \
-	  core/plugin/host_ops.cpp core/plugin/kernel_channel.cpp core/plugin/loader.cpp \
-	  core/plugin/wire.cpp core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
-
+# USER DIRECTIVE 2026-10-05: plugin paused
+# $(HOST_BUILD_DIR)/plugin_window_wiring_test: core/tests/plugin_window_wiring_test.cpp \
+#   core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
+#   core/plugin/host.cpp core/plugin/host.hpp \
+#   core/plugin/loader.cpp core/plugin/loader.hpp \
+#   core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
+#   core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
+#   core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+#   core/plugin/registry.hpp core/plugin/controller.hpp core/plugin/policy.hpp \
+#   core/profile/document.hpp core/profile/glkv3.hpp \
+#   core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+#   core/contract/capabilities.hpp core/contract/kernel_memory.hpp \
+#   core/contract/kernel_alias.hpp \
+#   core/support/sha256.cpp core/support/sha256.hpp
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_window_wiring_test.cpp \
+# 	  core/backend/cve_2026_43284/lkm_window.cpp core/plugin/host.cpp \
+# 	  core/plugin/host_ops.cpp core/plugin/kernel_channel.cpp core/plugin/loader.cpp \
+# 	  core/plugin/wire.cpp core/support/sha256.cpp -pthread $(HOST_DL_LIB) -o $@
+# 
 # S4 P1 step 3a structural guard: the host's production call sites. The test
 # scans src/core (minus plugin/host.* and tests/) and fails on an unexpected or a
 # stale entry; GHOSTLOCK_WIRING_ROOT is baked from $(CURDIR) like the firewall.
-$(HOST_BUILD_DIR)/plugin_open_site_test: core/tests/plugin_open_site_test.cpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -DGHOSTLOCK_WIRING_ROOT='"$(CURDIR)"' -Icore core/tests/plugin_open_site_test.cpp -o $@
-
-$(HOST_BUILD_DIR)/plugin_probe_test: core/tests/plugin_probe_test.cpp \
-  core/plugin/probe.cpp core/plugin/probe.hpp \
-  core/plugin/loader.cpp core/plugin/loader.hpp \
-  core/support/sha256.cpp core/support/sha256.hpp \
-  core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
-  $(CM_PLUGIN_SOS)
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
-	  -DGLK_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
-	  core/tests/plugin_probe_test.cpp \
-	  core/plugin/probe.cpp core/plugin/loader.cpp core/support/sha256.cpp \
-	  -pthread $(HOST_DL_LIB) -o $@
-
+# USER DIRECTIVE 2026-10-05: plugin paused
+# $(HOST_BUILD_DIR)/plugin_open_site_test: core/tests/plugin_open_site_test.cpp
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -DGHOSTLOCK_WIRING_ROOT='"$(CURDIR)"' -Icore core/tests/plugin_open_site_test.cpp -o $@
+# 
+# USER DIRECTIVE 2026-10-05: plugin paused
+# $(HOST_BUILD_DIR)/plugin_probe_test: core/tests/plugin_probe_test.cpp \
+#   core/plugin/probe.cpp core/plugin/probe.hpp \
+#   core/plugin/loader.cpp core/plugin/loader.hpp \
+#   core/support/sha256.cpp core/support/sha256.hpp \
+#   core/contract/countermeasure.hpp core/contract/abi/glk_contract_abi.h \
+#   $(CM_PLUGIN_SOS)
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
+# 	  -DGLK_TEST_PLUGIN_DIR='"$(abspath $(CM_PLUGIN_DIR))"' \
+# 	  core/tests/plugin_probe_test.cpp \
+# 	  core/plugin/probe.cpp core/plugin/loader.cpp core/support/sha256.cpp \
+# 	  -pthread $(HOST_DL_LIB) -o $@
+# 
 $(HOST_BUILD_DIR)/countermeasure_loader_test: core/tests/countermeasure_loader_test.cpp \
   core/plugin/loader.cpp core/plugin/loader.hpp \
   core/support/sha256.cpp core/support/sha256.hpp \
@@ -460,16 +465,17 @@ $(HOST_BUILD_DIR)/kernel_channel_test: core/tests/kernel_channel_test.cpp \
 # linked against a fake ioctl transport; no /dev/glk is opened.
 # delta-4 capability -> glk_contract_ops adapter: pure host, fakes stand in for
 # a backend; no device and no session.
-$(HOST_BUILD_DIR)/plugin_host_ops_test: core/tests/plugin_host_ops_test.cpp \
-  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
-  core/contract/abi/glk_contract_abi.h core/contract/capabilities.hpp \
-  core/contract/kernel_memory.hpp core/contract/kernel_alias.hpp \
-  core/contract/child_task.hpp core/contract/capability.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_ops_test.cpp \
-	  core/plugin/host_ops.cpp -o $@
-
+# USER DIRECTIVE 2026-10-05: plugin paused
+# $(HOST_BUILD_DIR)/plugin_host_ops_test: core/tests/plugin_host_ops_test.cpp \
+#   core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
+#   core/contract/abi/glk_contract_abi.h core/contract/capabilities.hpp \
+#   core/contract/kernel_memory.hpp core/contract/kernel_alias.hpp \
+#   core/contract/child_task.hpp core/contract/capability.hpp
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CC) -std=c99 -Wall -Wextra -fsyntax-only -x c core/contract/abi/glk_contract_abi.h
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/plugin_host_ops_test.cpp \
+# 	  core/plugin/host_ops.cpp -o $@
+# 
 $(HOST_BUILD_DIR)/cve_2026_43284_lkm_window_test: core/tests/cve_2026_43284_lkm_window_test.cpp \
   core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
   core/plugin/kernel_channel.cpp core/plugin/kernel_channel.hpp \
@@ -649,6 +655,17 @@ $(HOST_BUILD_DIR)/glkv3_schema_test: core/tests/glkv3_schema_test.cpp \
 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/glkv3_schema_mpack.o
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/glkv3_schema_test.cpp core/profile/glkv3.cpp $(HOST_BUILD_DIR)/glkv3_schema_mpack.o -o $@
 
+# Native is the SSOT for the canonical GLKv3 encoding of the shared fixture
+# document (Kotlin's NativeProfileGlkv3AdapterTest compares its adapter bytes
+# against this hex, so a codec/fixture change is regenerated here rather than
+# recomputed on the Kotlin side). glkv3-golden-fixture dumps the same document
+# as path/wire/value rows for field-by-field alignment.
+glkv3-golden-hex: $(HOST_BUILD_DIR)/glkv3_schema_test
+	$(HOST_BUILD_DIR)/glkv3_schema_test --print-golden-hex
+
+glkv3-golden-fixture: $(HOST_BUILD_DIR)/glkv3_schema_test
+	$(HOST_BUILD_DIR)/glkv3_schema_test --dump-fixture
+
 # S4 R4 WireKind::String end to end: the owner schema-driven str decode plus the
 # neutral frame_v3 -> profile::Document -> owner bind path. Linked with the
 # codec, the framing bridge and the vendored MPack amalgamation.
@@ -670,21 +687,22 @@ $(HOST_BUILD_DIR)/profile_string_binding_test: core/tests/profile_string_binding
 # S4 P1 cross-language shape evidence: the App-encoded golden document must be
 # accepted by the GLKv3 decoder + validate_plugin_wire, and a "plugin.<id>"
 # section must be rejected. Path is baked in so the test does not depend on cwd.
-$(HOST_BUILD_DIR)/plugin_wire_golden_test: core/tests/plugin_wire_golden_test.cpp \
-  core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
-  core/profile/entry.cpp core/profile/entry.h \
-  core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
-  core/profile/glkv3.cpp core/profile/glkv3.hpp \
-  core/support/native_resource.cpp core/support/native_resource.hpp \
-  $(MPACK_SRC) $(MPACK_HDR)
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
-	  -DGLK_PLUGIN_GOLDEN='"$(abspath ../app/src/test/resources/plugin-wire-shape-golden.bin)"' \
-	  core/tests/plugin_wire_golden_test.cpp \
-	  core/plugin/wire.cpp core/profile/entry.cpp core/profile/glkv3_parse.cpp \
-	  core/profile/glkv3.cpp core/support/native_resource.cpp \
-	  $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o -o $@
+# USER DIRECTIVE 2026-10-05: plugin paused (plugin sections are now rejected)
+# $(HOST_BUILD_DIR)/plugin_wire_golden_test: core/tests/plugin_wire_golden_test.cpp \
+#   core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
+#   core/profile/entry.cpp core/profile/entry.h \
+#   core/profile/glkv3_parse.cpp core/profile/glkv3_parse.hpp \
+#   core/profile/glkv3.cpp core/profile/glkv3.hpp \
+#   core/support/native_resource.cpp core/support/native_resource.hpp \
+#   $(MPACK_SRC) $(MPACK_HDR)
+# 	@mkdir -p $(HOST_BUILD_DIR)
+# 	$(HOST_CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o
+# 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore \
+# 	  -DGLK_PLUGIN_GOLDEN='"$(abspath ../app/src/test/resources/plugin-wire-shape-golden.bin)"' \
+# 	  core/tests/plugin_wire_golden_test.cpp \
+# 	  core/plugin/wire.cpp core/profile/entry.cpp core/profile/glkv3_parse.cpp \
+# 	  core/profile/glkv3.cpp core/support/native_resource.cpp \
+# 	  $(HOST_BUILD_DIR)/plugin_wire_golden_mpack.o -o $@
 
 $(HOST_BUILD_DIR)/profile_entry_test: core/tests/profile_entry_test.cpp \
   core/profile/entry.cpp core/profile/entry.h \
@@ -970,6 +988,7 @@ $(HOST_BUILD_DIR)/execution_binding_test: core/tests/execution_binding_test.cpp 
   core/platform/device_facts.cpp core/terminal/umh_forward.cpp \
   core/session/core_session.cpp core/support/run_state.cpp \
   core/plugin/host.cpp core/plugin/host.hpp \
+  core/plugin/host_ops.cpp core/plugin/host_ops.hpp \
   core/plugin/loader.cpp core/plugin/loader.hpp \
   core/plugin/wire.cpp core/plugin/wire.hpp core/plugin/schema.hpp \
   core/plugin/registry.hpp core/support/sha256.hpp
@@ -1067,6 +1086,19 @@ $(HOST_BUILD_DIR)/profile_manifest_v3_test: core/tests/profile_manifest_v3_test.
 
 profile-manifest-v3: $(HOST_BUILD_DIR)/profile_manifest_v3_test
 	$(HOST_BUILD_DIR)/profile_manifest_v3_test --write
+
+# Native is the SSOT for the eight LKM KMI delivery rows (contract-design 3.17 /
+# minimal-lkm-plan 2): Gradle builds one ghostlock-<label>.ko per row and Kotlin
+# validates the same list, so no consumer hand-copies the labels or the file
+# names. Exports lkm-kmi-manifest.tsv to the app test resource + the profile-core
+# runtime resource (byte-identical); the bare run self-proves both copies.
+$(HOST_BUILD_DIR)/lkm_kmi_manifest_test: core/tests/lkm_kmi_manifest_test.cpp \
+  core/backend/cve_2026_43284/lkm/lkm_policy.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/lkm_kmi_manifest_test.cpp -o $@
+
+lkm-kmi-manifest: $(HOST_BUILD_DIR)/lkm_kmi_manifest_test
+	$(HOST_BUILD_DIR)/lkm_kmi_manifest_test --write
 
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)

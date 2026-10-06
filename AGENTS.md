@@ -16,7 +16,8 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   CLI（S4 R2b 后仅 7 项，**选择与策略不得出现在 CLI**）：`--ghostlock-app-call`（stdin 读长度前缀的 GLKv3 文档，其后可接运行时密钥会话帧）/
   `--load-prebuilt-profile <bin>` / `--enable-status-record` / `--dump-kernel-log <dir>` / `--force-attack` /
   `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
-  `--plugin-probe <path.so> [--expect-sha256 <hex>]`（只读插件描述，不注册、不运行 hook）。
+  ~~`--plugin-probe <path.so> [--expect-sha256 <hex>]`~~（只读插件描述，不注册、不运行 hook；**已按用户指令字面注释**）。
+  **⏸ 插件与 payload 工程已按用户指令暂停（2026-10-05）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md`）。
   插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 branch-plan `task-9`。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
@@ -37,10 +38,9 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `pipeline/component_catalog.hpp` 只**按 token 分派**（`DispatchTarget`、`combination_supported`/`dispatch_target_of`），
   `pipeline/orchestrator.hpp` 逐 case 用 `Pipeline::target` static_assert 锁定；导出与 Kotlin 对拍见文档约定。
   `selection_supported()`（设备已核实）与 `combination_supported()`（已接线）是两个不同问题；选择显式来自 profile/wire，不从 kernel 版本推断。
-- 顶层 owner 白名单（native `known_owner_section`，`src/core/profile/glkv3_parse.cpp`）：`common` / `backend.<id>` /
-  `platform.*` / `countermeasure.*` / **精确 `plugin`**（`plugin.<id>` 段形状 fail-closed）/ **`payload`（设计已定稿 +
-  用户已确认，待 native 半场落地；契约 `docs/analysis/contract-design.md` §3.15）**；新增 owner 必须同批更新本节、
-  manifest 与 `docs/development/full-process-uml.md`。
+- 顶层 owner 白名单（native `known_owner_section`，`src/core/profile/glkv3_parse.cpp`）：现为 **`backend.<id>`** 与 **`platform.*`**（后者正按 HOCON 重构**迁移**到 `backend.cve_2026_43499.abi.*`，落地后 `platform` owner 一并删除）；**`common` 与 `countermeasure` 已删除（出现即拒）**；**`plugin` 与 `payload` 按用户指令注释掉（出现即拒）**；新增 owner 必须同批更新本节、manifest 与 `docs/development/full-process-uml.md`。
+- **根级标量通道**（HOCON 重构引入）：`schema` / `release` / **`kernel_major`** / **`kernel_minor`（可缺省）** / **`safe_mode`** 位于 wire 根 map，走**特例通道**（不是段机制）；在 `profile-manifest-v3.tsv` 里以 **owner = `root`、path = 裸键名** 单列（`root\tkernel_major\tuint\t0\t-\tprofile\t-`）。实现上用**空段名「根段」**承载（`document.hpp` 的 `kRootSection`），使 owner bind 的**唯一取值路径** `find_value(section,key)` 与根键同构——**这样两处按 section 拷贝的过滤副本不会漏拷**；**若改用具名成员，漏一处即静默 `kernel_major=0`，勿改**。
+- **`vr_guard` 分两期**：**(b) profile 面已删（`b55708a8`）** —— `common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 消失 ⇒ 字段无写入者 ⇒ `vr_guard_enabled()` 恒 false ⇒ `backend/cve_2026_43499/steps.cpp` 两处 `VivoPluginPolicies::apply` **可证明 no-op**、攻击路径不变；**(a) 彻底删除 vivo 代码**（`platform/vivo/**` + 两处 include/调用 + 测试）= **攻击路径改动 ⇒ 必须真机门禁**，挂账待设备。
 
 ## 常用命令
 
@@ -133,6 +133,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
     `ProfileManifestAgreementTest.kt` 都不再存在；owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）
     仍由 GLKv3 的 `schema == 3` 绑定路径使用，其声明权威是 `profile-manifest-v3.tsv`。
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
+- **构建逻辑一律写进 Gradle KTS（跨平台），禁止独立 `.sh` 构建脚本**（用户指令 2026-10-05）：LKM/DDK、插件产物、native 准备等一律由 `*.gradle.kts` 任务承担；**`.sh` 仅允许用于设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷、`tools/device-guard/*`、`.github/scripts/*`）。跨平台硬要求：**不得**依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）；工具链路径（如 `llvm-objcopy`）由 AGP 的 `android.ndkDirectory` 解析，**不依赖 PATH**；容器引擎探测 `podman`→`docker` 并允许 `-PcontainerEngine=` 覆盖。**跨端列表不得手抄**（如 8 个 KMI label）：由 native 导出 manifest（`lkm-kmi-manifest.tsv`）供 Gradle 与 Kotlin 消费。
 - 配置权威是 GLK profile（当前 wire 为 GLKv3）+ HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
 - **版本号统一为 3（不要新增/叠加版本号）**：HOCON 配置与 wire 共用同一个数字，避免混淆。
@@ -173,10 +174,19 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - 委派必须给出：自包含的目标、涉及的精确文件/写范围、命令与期望结果、验收标准；子智能体只做被委派的事。
 - **写范围不重叠**：子智能体与主智能体共享工作树，同一文件不得并行修改；门禁运行期间不得改被该门禁覆盖的源文件。
 - **同一批次门禁连续失败 2 次即停止前进**，回到 debug（复现、定位、修复）；门禁未绿不得进入下一批。
+- **提交纪律（Lead，强制；本项因两次真实事故而设立）**：提交前必须**同时**满足 ① **门禁在最终树上为绿**（脚本必须**检查退出码**，不得无条件继续到 `git commit`）、② **没有任何 writer 正在改被该门禁覆盖的文件**（有人在中途改代码时跑门禁会得到**假红**，此时**不得**据此提交或回退，应等其停手或**在隔离 worktree 上按提交验证**）。
+- **假红/假绿的处理**：门禁结果与「当前是否有 writer」冲突时，正确做法是 `git worktree add <tmp> <commit>` **在隔离检出上按该提交重跑门禁**——这既能验证提交、也不受在途改动干扰。
+- **「是否有 writer」的判据是成员状态，不是文件 mtime**（本项因两次误判而补充）：`list_agents` 中**没有 running/provisioning 且写范围覆盖该文件的成员**时即可跑门禁与提交；**刚停手的成员会留下极新的 mtime**，按 mtime 判定会造成**假跳过**。
+- **死代码判定（本项因一次判断失误而设立）**：**跨进程 / 第三方契约的成员，「本仓无调用者」不足以判定死代码**——必须先查外部调用方（例：Shizuku 管理器会调用 UserService 的 `destroy()`；删掉会破坏服务生命周期契约）。只有「仓内与外部均无调用方」才可删。
+- **禁用而非删除时用最可逆的形式**：用户要求「暂停某功能」时，**先按其字面要求执行**（本项目用户明确要求字面注释而非开关）；恢复清单必须**逐条到 file:line**，使解冻＝撤销注释 + 跑门禁，而非考古。
+- **用户提出与既有设计/决定冲突的想法时，Lead 必须当场质疑并明确列出冲突（本项由用户明确要求而设立）**：不得因为「是用户提的」就沉默执行，也不得**悄悄**改掉既有设计。正确做法：① **先指出冲突点**（引用既有决定/代码/物证，说明为什么冲突）；② 给出**选项与代价**（含「照新想法做」这一项及其影响面）；③ 由用户裁决；④ 用户裁决后**照做**，并在计划/契约里**记录沿革**（旧决定为何被取代，不删历史）。**质疑 ≠ 拒绝**——把冲突和代价讲清是职责，最终决定权在用户。
+- **脚本化编辑必须语句级、锚点级**（本项因一次真实事故而设立）：用「行包含关键字就删」这类粗暴规则会**截断多行语句**、留下悬空常量或未闭合注释（本项目一次删 defex 时就弄坏了 3 个文件）；批量编辑必须**先校验全部锚点、任一不匹配则整体不写**（事务式），并在改后**编译 + 门禁**验证。
 - 真机门禁仍需按 `docs/analysis/device-gates/` 归档；子智能体返回原始日志与退出码，主智能体落地归档与记录。
 
 ## 验证门槛
 
+- **守卫/断言必须证明「能失败」**（本项因一次真实发现而设立）：新增的守卫、断言、检查**不能只证明「现在通过」**——必须做一次**证伪实验**（临时造错 → 观察它以预期方式失败 → 撤回并核验无残留），报告里写明造错点与失败输出。本项目曾因此发现一条 **vacuous 断言**：`memcmp` 比较两个 value-init 结构时**恒非零**（padding 未归零）⇒ 删掉被保护的赋值它**仍然绿**；修法＝两侧先 `memset` 归零 + `static_assert(is_trivially_copyable)`。
+- **证伪/验证实验一律用 `make -B`**（本项因一次假证明而设立）：`make` 会因**同一秒 mtime** 判定 up-to-date 而**跑旧二进制**，给出**假证明**；凡「造错后验证会失败」的实验必须强制重建。
 - 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
 - 攻击关键路径（waiter/race/payload/route/exec 流程）改动：
   1. **真机门禁**（唯一权威判据：冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；

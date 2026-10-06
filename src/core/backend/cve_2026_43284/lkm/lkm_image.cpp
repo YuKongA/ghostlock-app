@@ -417,6 +417,7 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
 
     bool build_late_load_command(const terminal::RootProgram &root_program,
                                  std::string_view package_name,
+                                 std::string_view kmi_label,
                                  std::uint32_t late_load_args,
                                  std::uint32_t selinux_exec_context, UmhCommand &out,
                                  UmhCommandError &error) noexcept {
@@ -442,6 +443,15 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         }
         if (!push_arg(out, program, error) || !push_arg(out, "late-load", error)) {
             return false;
+        }
+        /* The two flags the verified 43499 path always passes (root_script.cpp
+         * 184). kmi_label is release-derived by the caller; an empty label keeps
+         * the legacy bare "late-load" argv instead of failing the build. */
+        if (!kmi_label.empty()) {
+            if (!push_arg(out, "--kmi", error) || !push_arg(out, kmi_label, error) ||
+                !push_arg(out, "--allow-shell", error)) {
+                return false;
+            }
         }
         if (want_package) {
             if (!push_arg(out, "--package-name", error) ||

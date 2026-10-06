@@ -19,18 +19,36 @@ import java.io.File
  * or a wire type.
  */
 class ProfileManifestV3AgreementTest {
+    private fun manifestText(): String = checkNotNull(
+        javaClass.classLoader?.getResourceAsStream("profile-manifest-v3.tsv"),
+    ) { "missing profile-manifest-v3.tsv" }.bufferedReader().use { it.readText() }
+
+    /*
+     * COMMENTED OUT with the payload owner test below (user ruling 2026-10-05):
+     * the row reader exists only to pin the payload rows.
+     *
+     * owner/path/wire/required of every non-comment row, keyed by path.
+     */
+    // private fun manifestRows(): List<List<String>> = manifestText().lineSequence()
+    //     .filter { it.isNotBlank() && !it.startsWith("#") }
+    //     .map { it.split('\t') }
+    //     .toList()
+
     @Test
     fun kotlinAdapterPathsAndTypesMatchTheNativeGlkv3Manifest() {
-        val manifest = checkNotNull(
-            javaClass.classLoader?.getResourceAsStream("profile-manifest-v3.tsv"),
-        ).bufferedReader().use { it.readText() }
-
-        val manifestTypes = manifest.lineSequence()
+        val manifestTypes = manifestText().lineSequence()
             .filter { it.isNotBlank() && !it.startsWith("#") }
             .associate { line ->
                 val parts = line.split('\t')
                 assertEquals("manifest-v3 line needs 7 tab-separated columns: " + line, 7, parts.size)
-                assertEquals("manifest-v3 fields are all optional: " + line, "0", parts[3])
+                /* Required is a FLAG, not "always optional": a manifest may
+                 * legitimately declare required fields (the payload owner briefly
+                 * did, native 74db3594). Both values are legal; anything else is a
+                 * malformed manifest. The old "all optional" invariant is retired. */
+                assertTrue(
+                    "manifest-v3 required column must be 0 or 1: " + line,
+                    parts[3] == "0" || parts[3] == "1",
+                )
                 assertEquals("manifest-v3 owner is empty: " + line, true, parts[0].isNotBlank())
                 parts[1] to parts[2]
             }
@@ -45,6 +63,62 @@ class ProfileManifestV3AgreementTest {
             adapterTypes,
         )
     }
+
+    /*
+     * COMMENTED OUT (user ruling 2026-10-05): payload engineering is paused, so
+     * the payload owner is no longer declared in the manifest and these eight rows
+     * must not be asserted. Restore together with the payload feature (and with
+     * the native export).
+     *
+     * Batch B (native 74db3594): the payload owner is declared. The Kotlin side
+     * has NO hand-written GLKv3 path table — this adapter PARSES the manifest —
+     * so "Kotlin accepts payload.*" means exactly this assertion: the eight rows
+     * are declared and typed, index placeholders included, in the SAME
+     * angle-bracket convention the plugin owner already uses:
+     *
+     *   plugin   plugin.<id>.params.* / plugin.<id>.enabled         (placeholder <id>)
+     *   payload  payload.ko.<i>.path / payload.ko.<i>.sha256          (placeholder <i>)
+     *
+     * The ko index lives UNDER `ko.` (native 1143485c): the bare `<i>.path` and
+     * any foreign prefix are rejected fail-closed by the parser, so this row set
+     * is the whole accepted spelling.
+     *
+     * Nothing here emits, stores or persists a payload value: that is batch (b).
+     */
+    // @Test
+    // fun theManifestDeclaresThePayloadOwnerRows() {
+    //     val rows = manifestRows()
+    //         .filter { it[0] == "payload" }
+    //         .associate { it[1] to (it[2] to it[3]) }
+    //
+    //     assertEquals(
+    //         mapOf(
+    //             "payload.tier" to ("str" to "1"),
+    //             "payload.exec.command" to ("str" to "0"),
+    //             "payload.exec.sha256" to ("str" to "0"),
+    //             "payload.script.path" to ("str" to "0"),
+    //             "payload.script.sha256" to ("str" to "0"),
+    //             "payload.ko.count" to ("uint" to "0"),
+    //             "payload.ko.<i>.path" to ("str" to "0"),
+    //             "payload.ko.<i>.sha256" to ("str" to "0"),
+    //         ),
+    //         rows,
+    //     )
+    //     /* The adapter PARSES this manifest (no hand-written path table), so it
+    //      * exposes exactly the same path/type rows. */
+    //     assertEquals(
+    //         rows.mapValues { it.value.first },
+    //         NativeProfileGlkv3Adapter.declaredTypeNames().filterKeys { it.startsWith("payload") },
+    //     )
+    //     /* The owner column says payload for every one of them. */
+    //     assertEquals(
+    //         setOf("payload"),
+    //         NativeProfileGlkv3Adapter.declaredOwners()
+    //             .filterKeys { it.startsWith("payload") }
+    //             .values
+    //             .toSet(),
+    //     )
+    // }
 
     /**
      * The exporter writes the SAME text to two destinations. Loading through the

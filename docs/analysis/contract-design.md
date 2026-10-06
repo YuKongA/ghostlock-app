@@ -971,7 +971,8 @@ reject→<id>→<reason>
 
 #### 3.14.7.9 能力位 `log` 与插件日志契约（**设计框架，待 native 设计稿定稿**）
 
-> **状态**（2026-10-05）：① **A 批（43284 全链日志）已落地**（`a04bdb5b`；真机门禁 PASS `device-gates/43284-logging-20261005-pass.md`，正例 16 行 `run.43284`）；② **B 批（能力位）设计已定稿、待放行**——依据 `docs/analysis/43284-logging-and-plugin-log-design.md`（已随 `a04bdb5b` 提交）；**两项裁决已下**（见本节末）。用户要求「插件接口提供内置日志接口」；**ABI 与 host 已具备该入口**，缺的是**能力位**与词表登记（见下表）。**本节不含实现代码**。
+> **⏸ 工程冻结（用户指令 2026-10-05）**：本节的**运行时使用**随插件工程暂停并禁用（App **不再发射** `plugin.*`；native **字面注释掉**宿主接线（构造/打开/派发/卸载——**不是开关**；代码/测试保留，**恢复需撤销注释**；**实现待提交**））；**契约与已落地物证保留**，恢复条件 = **新架构完成 + 用户放行**。
+> **状态**（2026-10-05）：① **A 批（43284 全链日志）已落地**（`a04bdb5b`；真机门禁 PASS `device-gates/43284-logging-20261005-pass.md`，正例 16 行 `run.43284`）；② **B 批（能力位）产出端已落地**（`2c9457fe`「batch B producer - GLK_CAP_LOG capability bit with a single capability catalog, per-module ops copy with quota/rate-limited host logging and log_calls/log_dropped accounting」）：`GLK_CAP_LOG = 1u<<7`、`Capability::Log`、**单一能力目录 `kCapabilityCatalog`**（`caps_list()` 改为遍历它，新位不会从 `host_caps` 列静默消失）、host 每模块栈上 ops 拷贝 + 前缀/截断/配额/限速 + `log_calls`/`log_dropped`；**B 批已全线落地**：产出端 `2c9457fe`（`GLK_CAP_LOG=1u<<7` + **唯一能力表 `kCapabilityCatalog[8]`** + `caps_list()` 遍历 + host 每模块 ops 拷贝/配额/限速/计数）、**Rust 消费端 `b7eb5f95`**（cap 词表接受 `log` 并被测试钉住；示例插件优先 `ops->log`、老 host 回退 stderr 同形前缀）、**Kotlin 消费端 `fe66c793`**（token 透传 + 未知未来 cap 直通断言；fixture 第 4 行加 `log`；真机采集物字节级复制为第二输入 `plugin-probe-glk-probe-device.tsv` + `PluginProbeDeviceCaptureTest`）——**影响面表已逐行标「已同步」**。**剩余仅两项设备侧待办（设备可用后）**：① **新示例插件产物 `97c50d4d…` 上机后重采真机 golden**（模块哈希行更新）；② **三张 UI 截图**（Lead / `kotlin-i18n` 拍）；**两项裁决见本节末**。用户要求「插件接口提供内置日志接口」；**ABI 与 host 已具备该入口**，缺的是**能力位**与词表登记（见下表）。**本节不含实现代码**。
 
 **现状（代码事实）**
 
@@ -1000,16 +1001,24 @@ reject→<id>→<reason>
 
 **影响面清单（词汇变更必须全列）**
 
-| 面 | 影响 | 处置顺序 |
-|---|---|---|
-| native 产出端 | `glk_capability` + `contract::Capability` + `capability_token()` + `kHostImplementedCaps`（含 `:254-258` 静态断言）+ 探针 `caps_list` 白名单 | **先行**（枚举/词表/探针先落地） |
-| 探针 golden | `app/src/test/resources/plugin-probe-golden.tsv` 的 `host_caps` 行**必须重生成**（设备探针 stdout 逐字节） | 产出端之后立即 |
-| 共享语料 | `app/src/test/resources/plugin-probe-conformance/{accept,reject}` **63 份不需改**（输入子集仍合法，设计稿 r1 §B.4）；**要改的是 walker 的参考串**：`tools/extract_rs/src/plugin.rs:948`（以及 `:868`/`main.rs:966`/`extract_spec.rs:537` 的 `host_caps` 字面量） | 随 golden 同批 |
-| Rust 消费端 | `tools/extract_rs/src/plugin.rs`（header 键 `:123`；测试参照头 `:868`/`:948`）、`tests/extract_spec.rs:537`、`main.rs:966` 的 `host_caps` 字面量 | 产出端之后（可独立提交） |
-| Kotlin 消费端 | `PluginProbe.kt` 的 `host_caps` 词表（未知 token 仍 **fail-closed**）；`PluginProbeGoldenTest.kt:39` 的**精确集合断言加 `log`**；UI 给新能力一个显示名（未识别 token 不静默） | 产出端之后 |
-| 文档 | 本节 + UML（§3.1 能力位枚举与探针输出）+ branch-plan 条目 | 同批 |
+| 面 | 影响 | 处置顺序 | 状态 |
+|---|---|---|---|
+| native 产出端 | `glk_capability` + `contract::Capability` + `capability_token()` + **唯一能力表 `kCapabilityCatalog[8]`** + 探针 `caps_list()` **遍历该表**（新位不会静默消失） | **先行** | ✅ **已同步**（`2c9457fe`） |
+| 探针 golden（**仓库 fixture**） | `plugin-probe-golden.tsv` **第 4 行 `host_caps` 加 `log`**（**格式增量**，其余列数/列序不变）；**身份行是合成 fixture，不重采** | 产出端之后 | ✅ **已同步**（`fe66c793`，Kotlin 侧） |
+| 真机采集物（**证据**，非 fixture） | `build/gate-logs/plugin-probe-golden-device.tsv`（sha256 `1a6e49d8c015e7d0…`）**字节级复制**为第二测试输入 `app/src/test/resources/plugin-probe-glk-probe-device.tsv`（sha 一致）+ 新 `PluginProbeDeviceCaptureTest` | 采集即归档 | ✅ **已同步**（`fe66c793`）；**重采待办**见状态块（新示例插件产物 `97c50d4d…`） |
+| 共享语料 | `plugin-probe-conformance/{accept,reject}` **63 份不需改**（输入子集仍合法）；**walker 参考串**随能力表更新 | 随 fixture 同批 | ✅ **已同步**（`b7eb5f95`，Rust 侧） |
+| Rust 消费端 | `tools/extract_rs`：cap 词表**接受 `log` 并被测试钉住**；示例插件优先 `ops->log`、老 host **回退 stderr 同形前缀** | 产出端之后 | ✅ **已同步**（`b7eb5f95`） |
+| Kotlin 消费端 | `PluginProbe` 确认为 **token 透传**（**无词表校验**）⇒ 补断言钉住「`log` 直通 + **未知未来 cap 也直通**」；fixture 第 4 行；真机采集物作第二输入 | 产出端之后 | ✅ **已同步**（`fe66c793`） |
+| 文档 | 本节 + UML（§3.1 能力位枚举与探针输出）+ branch-plan 条目 | 同批 | ✅ **已同步** |
 
-> **禁止**：消费端先行，或「两边各自加词」——先加词表、后加 golden 的顺序会产出**双方各自能过、合起来不过**的假绿（P1 形状缺陷的同类教训，见 §3.14.7.5）。golden 必须**用改了 `host_caps` 的 native 重新采集**（设备取证），**不手改**。
+> **物证职责边界（必须分清）**：**golden 的用途是跨端解析一致性**，其**身份行是合成数据**（真机不可能复现），因此它的更新是**格式增量**而非「设备重采」；**真实制品的一致性由真机采集物 + 门禁日志承担**（`build/gate-logs/plugin-probe-golden-device.tsv` 一类）。两者**不可互相替代**，也不得混为一句「重采 golden」。
+>
+
+> **边界（本次确立）**：**native 新增能力位不需要 Kotlin 改动**——Kotlin 侧对 `host_caps` 只做**透传与展示**（`fe66c793` 用断言钉住「`log` 直通 + **未知未来 cap 也直通**」）。凡「Kotlin 词表必须同步」的旧说法**作废**；Kotlin 只在**需要展示名**时补 UI 文案。
+>
+> **示例 / 参考实现（取舍，理由）**：示例插件**不把 `GLK_CAP_LOG` 声明为必需**——该位语义是「**要求 host 具备日志能力**」，声明会让**老 host 拒收**整个模块；示例改为**优先 `ops->log`、老 host 回退 stderr 同形前缀**（真机 golden 的 `plugin` 行 `required_caps` 亦保持 `kernel_read,kernel_write`，`b7eb5f95`）。要「强制要求日志能力」的插件才应声明该位。
+>
+> **禁止**：消费端先行，或「两边各自加词」——先加词表、后加 fixture/golden 的顺序会产出**双方各自能过、合起来不过**的假绿（P1 形状缺陷的同类教训，见 §3.14.7.5）。
 
 **附：A 批（43284 全链日志）与本节的边界**——**已落地**：`a04bdb5b`「batch A logging - bounded structured run.43284 lines across the whole chain, named failure reasons, keys withheld; 16 lines on the happy path」；载体 = `backend/cve_2026_43284/diag_line.hpp` 的 `DiagLine`（固定缓冲、无分配、无格式串、值内控制字符归一 `_`、**绝不含密钥**）；结构行 `run.43284 <phase> k=v` 单行 ≤256 B（超出截断并追加 `truncated=1`），失败路径每条具名原因 + 上下文；**真机门禁 PASS**（`device-gates/43284-logging-20261005-pass.md`：五例退出码 0、正例 16 行、负例 B 不中断链、无插件回归 `run.plugin` 0 行且 43284 链日志逐行同形）。**A 批无 wire/ABI 变更**，本节的 ABI/词表变更只属 **B 批**；**本批只做 43284，43499 另排**（43499 已有多处 `pr_*`，统一另批）。
 
@@ -1017,7 +1026,9 @@ reject→<id>→<reason>
 
 ## 3.15 `payload` 顶层 owner 契约（设计已定稿；实现待 native 半场）
 
-> **状态**：设计终稿 r2（`docs/analysis/terminal-payload-tiers-design.md`，commit `c335aabc`）+ **用户已确认**；**本仓库尚无实现**，契约先冻结。
+> **状态**：设计终稿 r2（`docs/analysis/terminal-payload-tiers-design.md`，commit `c335aabc`）+ **用户已确认**；**本仓库尚无实现**，契约先冻结。**状态回填约定**：① payload 实现批次（native 半场）落地时、② root 管理器 P1 放行时（§3.15.8），各回填一次「实现状态 + 依赖检查」——两处现在都是「设计定稿待实现」。
+>
+> **⏸ 工程冻结（用户指令 2026-10-05）**：payload / 自定义 handoff **暂停并暂时禁用**——按用户指令：**`payload` owner 不再被接受**，App **不再发射** `payload.*` 且隐藏入口（**实现待提交**）；**执行半场、step 3b、handoff 设计稿推进**均停止；**本节契约与已落地实现/测试保留**（可逆）；恢复条件 = **新架构完成 + 用户放行**。
 > 依据：payload 设计 §9 的 9 条裁决；跨切面沿用 `plugin-extract-spec-design.md` §9.3（唯一命名空间）/ §9.4（诊断记实际命中）/ §9.5（分发顺序 = 准入）的做法。
 
 ### 3.15.1 定位与段名
@@ -1041,17 +1052,38 @@ reject→<id>→<reason>
 
 **fail-closed（绑定期）**：`count` 缺失/0/>8；实际 `ko.<i>.path` 个数 ≠ `count`；出现 `i ≥ count`；`i` 非十进制或重复；任一 `path` 绝对 / 含 `..` / 反斜杠 / NUL / 超长；`sha256` 存在但不是 64 位小写 hex；**单档互斥违反**（`tier=exec` 时出现 `script.*`/`ko.*`，反之亦然）⇒ **拒绝整份文档**。
 
+> **用户决定（2026-10-05，App 侧简化）**：**App 的 payload 页不再录入哈希**（原话：「**不要校验哈希，应当假设用户知道他们传入了什么**」）。`payload.*.sha256` 的**定义与校验语义保留**——**native 有则校验、无则接受**；字段保留给**自动化 / 将来使用**（App 不再产生它，也不因它缺失而拦截）。
+
+### 3.15.2.1 manifest `required` 列与索引键拼写（裁决 2026-10-05）
+
+**A. `required` 列 = 「无条件必需」**（澄清；此处曾被期望表带偏，按物证纠正）
+
+- **物证（按符号引用，不按行号——行号已漂过一次）**：`src/core/profile/schema.hpp` 的 **`kPayloadGlkv3Fields`** 中**只有 `payload.tier` 行是 `true`**，其余 **7 行全为 `false`**；
+- **档内条件性**（`tier=exec ⇒ exec.command`；`tier=script ⇒ script.path`；`tier=ko ⇒ ko.count`）**由校验器**保证：`profile/glkv3_parse.cpp` 的 **`validate_payload_section`**；`kPayloadGlkv3Fields` 上方注释亦写明这些行的用途是「让两份 manifest 与 Kotlin adapter 能区分**已声明的 payload 路径**与普通键」；
+- **规则**：**`required` 表达「无条件必需」，不表达「选中该档时必需」**；**档内条件性属校验器/契约语义，不得写进 manifest 的 `required` 列**。
+
+**B. 索引键最终拼写 = `ko.<i>.path` / `ko.<i>.sha256`**（裁决：**改代码对齐文档**；当前无任何发射方 ⇒ **零迁移成本**）
+
+- **最终 wire 拼写（唯一权威）**：`payload.tier` / `payload.exec.{command,sha256}` / `payload.script.{path,sha256}` / `payload.ko.count` / **`payload.ko.<i>.{path,sha256}`**（`0 ≤ i < count ≤ 8`）；
+- **旧拼写 `payload.<i>.path`（无 `ko.` 前缀）现被 fail-closed 拒绝**（**负例**）——它在实现里曾与 `ko.count` 自洽但**与设计文档不一致**，且会产生「`ko.count` 在 `ko.` 下、索引却在顶层」的怪状；
+- **角括号占位符约定**：`section` + `<占位符>` 的**后缀匹配**，与 `plugin.<id>.params.*` **同规**（`plugin_dynamic_key()` 即此形态）；Kotlin 侧 `declarationFor()`（`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/NativeProfileGlkv3Adapter.kt:126`）**当前只对 `plugin.` 前缀做后缀匹配**，**具体索引路径的匹配分支留给 batch (b)**；
+- **状态：已实现（工作树，待提交）——归因更正**：对齐实现（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致）**目前在工作树里、尚未提交**；**已提交的 `74db3594` 恰恰是旧拼写那次**（其 `kPayloadGlkv3Fields` 与 manifest 仍为扁平 `<i>.path`）——**归因只写实际包含该改动的那次提交**，因此本节**暂不写提交号**。工作树现状：`kPayloadGlkv3Fields` 已改；两份 manifest（`app/src/test/resources/` 与 `profile-core/src/main/resources/profile-manifest-v3.tsv`）逐字节一致（工作树 sha256 `018804b363583612…`）；校验器工作树注释明确「**`ko.` 节点必需**，裸 `<i>.path` 拒绝」；Lead 门禁过后**按显式路径提交**，届时由 docs-uml 回填**提交号 + 承重 sha**；
+- **剩余（Kotlin 侧）**：`declarationFor()` 的**索引路径匹配分支**仍留给 batch (b)——Lead ping `kotlin-i18n` **重钉**其测试后，本节再补一句「Kotlin 已同步」。
 ### 3.15.3 安全边界与授权面
 
 | 维度 | 规则 |
 |---|---|
 | 路径 | 一律相对 `<GHOSTLOCK_HOME>`；禁绝对 / `..` / 反斜杠 / NUL；**realpath 二次校验**；≤256 B（形状可复用 `plugin_module_path_valid()`，根不同） |
-| 哈希钉 | `sha256` 给定时，**执行 / 加载之前**逐字节比对（`support::sha256_file`）；不符 ⇒ fail-closed **且不执行** |
+| 哈希钉 | `sha256` 给定时，**执行 / 加载之前**逐字节比对（`support::sha256_file`）；不符 ⇒ fail-closed **且不执行**——**native 侧语义**；**App 页不再录入**（见 §3.15.2 用户决定） |
 | 大小 | 先 `stat` 大小上限、**再读入**（ko 建议 ≤64 MiB，与 43499 module 上限同量级） |
 | ko 内容 | **必须**过 `lkm::precheck_module_file`（ELF / vermagic / `__versions` / 签名）；**不得**因「用户自定义」放宽 |
 | argv vs 脚本 | `exec.command` 是 argv（native 按空白切分后以 argv 传递，不做变量 / 通配展开）；`script.path` 指向**用户自带的脚本文件**——**命令不是脚本**，禁止把命令文本当脚本执行 |
-| 授权面（App） | 每个 tier 一个专用设置页 + 确认文案 + **可撤销**；**执行前摘要**必须显示「本次将：以 root 执行 `…` / 以 LKM 执行 `…` / 加载 N 个 ko」 |
+| 授权面（App） | **无授权步骤**（用户决定 2026-10-05：「**无需授权**」）——不设确认门、不设可撤销开关。**界面不再有摘要行**（用户决定 2026-10-05：「**本次将：以内核权限运行 xxx 也删掉**」，**覆盖先前「保留摘要」的裁决**）；**但「运行日志行」保留**——英文、进运行日志，与「界面摘要」是**两件事**，禁止混为一谈（界面上没有告知行 ≠ 日志里不记本次将执行什么）。文案：`以 LKM 执行脚本` → **`以内核权限执行脚本`**、`内核扩展（.ko）` → **`向内核注入内核扩展`**（**文案以 App 资源为准**，本地化须**自然中文、不做逐字直译**） |
+| 检查栏（App） | **不再有独立检查栏**（用户决定：「**无需下面的检查栏**」）；**运行期校验仍在**：**native 是权威**，运行前只在**运行按钮附近提示阻断原因**（不另起一栏） |
+| 清除按钮 | **删除**（用户决定：「**无需清除按钮**」）——切到**默认档**（**`启动 root 管理器`**，见 §3.15.8）即等价清空（**只发射当前档**，不存在需要显式清除的残留） |
 | 不可信内容 | 用户提供的一切不可信：结果只记账，**不放宽任何既有校验** |
+
+**风险记录（用户决定 2026-10-05 后仍成立）**：去掉哈希录入、授权步骤与**界面摘要行** ⇒ **用户对 payload 内容自担责任**；native 侧仍 **fail-closed 校验字段与路径**（含「若给了 `sha256` 则比对」）；**可见告知只剩运行日志行**（英文，进运行日志），界面不再提示本次将执行什么。
 
 ### 3.15.4 失败语义（硬边界）
 
@@ -1093,10 +1125,129 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **fail-closed（草案 v2）**：`kind` 不在白名单；`custom` 缺 `argv`；`argv` 含控制字节或超长；非 `custom` 却出现 `argv`；`manager` 非合法包名（非空、`[A-Za-z0-9_.]`、≤128 B）；**管理器不存在 / 不可启动**（App 预检只是提前提示，**权威判定在 native 绑定前复核**，fail-closed + 具名原因，**不降级、不猜替代品**）；`payload.root.*` 与 `tier != "root"` 同时出现 ⇒ 拒绝整份文档；
 - **argv vs 模块**：`kernelsu` 走既有 `ksud late-load`（无 shell、无拼接）；`folkpatch` 走 **KernelPatch 模块加载**（`kernelpatch.ko` 由用户提供/导入，**软重启**为独立显式确认动作）——两者机制不同，不得互相顶替；
 - **向后兼容**：**无 `payload` 段 = 今天的行为（KernelSU/ksud）逐字节不变**；**显式 `kernelsu` 与不写等价**；
+- **UI 分期（本批，用户决定 2026-10-05）：默认档 = 「启动 root 管理器」+ 子菜单** —— **语义档**：`payload.tier` 的**默认**不再是「不自定义」，而是「**启动 root 管理器**」；其**子选择** = 「**系统默认 KernelSU（默认）**」或「**检测到的其它受支持管理器**」。**「系统默认 KernelSU」= 不发射任何 `payload` 键**（保持今天的逐字节行为）。
+  - **二期拆分（必须写清，避免误判）**：**本批 UI 只影响「跳转目标」（App 侧）**；**wire 发射属下一批 native**——当前 native 只接受 `tier ∈ {exec, script, ko}`，**发 `root` 会被拒**（`payload.root.*` 见上文本节）。⇒ **「UI 已可选 ≠ 已发射」**：UI 可选集合与 wire 接受集合是两件事，后者以 native 落地为准。
+  - **检测规则**（与「无论哪种管理器都要检查是否存在且可启动」同源）：**未安装的不列出**（或置灰 + 具名原因），**不得**让用户选一个系统里不存在的目标；检测失败/不可启动 ⇒ 不跳转、只提示。
+  - **包名白名单硬规则（只允许有仓库/官方证据的包名）**：已核实起点 = `src/core/terminal/root_script.cpp:40-50` 的四个查找模式（`me.weishu.kernelsu.pr*`、`me.weishu.kernelsu-*`、`com.resukisu.resukisu*`、`com.kowx712.supermanager*`）+ `lkm/lkm_image.cpp` 的 `me.weishu.kernelsu`；**Android 11+ 必须用 `<queries>` 才能检测**（现已在 `app/src/main/AndroidManifest.xml` 声明：`moe.shizuku.privileged.api`、`me.weishu.kernelsu.pr`、`me.weishu.kernelsu`、`com.resukisu.resukisu`、`com.kowx712.supermanager`）；**未核实的包名不得加入白名单**（与「分支包名不得猜」同规）；FolkPatch `me.yuki.folk` 属 **P2**；
+- **两条轴禁止重合（用户裁决 2026-10-05）**：**root 管理器轴不接受用户制品、也没有文件导入 UI**——其制品必须来自**系统里已安装的管理器**（`kernelsu` = 系统 `ksud`；`folkpatch` = **从已安装的 FolkPatch 管理器 APK 提取内置模块**：`getApplicationInfo(pkg).sourceDir` → APK 内取预构建模块 → SHA-256 → no-backup 不可变目录 → 路径+哈希交 native 并复核；不可用 ⇒ 置灰 + 具名原因，fail-closed 且不执行）；**凡「用户自备 `.ko`」一律走 `payload.tier = "ko"`**（§3.15 的 payload 轴），不得挂在 root 管理器轴上——详见 `root-manager-selection-design.md` §4.2；
+- **成功后自动跳转 root 管理器界面（**已落地** `e500b407` + `4a02d19b`）**：App 侧**唯一包名镜像** = `app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt` 的 `RootManager` 枚举（注释指向 native `lkm_image.cpp:343-348`；未知 ⇒ `null`，**绝不猜**；P1 加行时同步 schema 行），`RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(...)` 决定「打开它 / 说明它 / 什么都不做」（`force_attack_test` 不产生 root 状态 ⇒ `Skip`）；KernelSU ⇒ 目标包名 `me.weishu.kernelsu`，且**必须与 native 权威同源**——实现里**集中一处映射**并注释指向 `backend/cve_2026_43284/lkm/lkm_image.cpp:345-347`（`default_root_package()`），**不得**在 UI 里出现第二个包名真相；`custom`/未实现分支不跳转（只提示）；待 root 管理器 P1 放行时一并回填状态；
 - **P1/P2 边界（v2，用户口径 + E4）**：**P1 可落地** = `kernelsu`（**KernelSU 及分支共享 `ksud` ⇒ 默认按 ksud 走**，`manager` 可选、行为与今天等价）+ `custom`（用户指定程序/argv，不猜包名）+ **存在性/可启动检查（App 预检 + native 复核，权威在 native）**；**P2 计划中（置灰）** = `folkpatch`（**加载 KernelPatch 模块**：`apd insmod` 式手动重定位 + 绕过 CRC/vermagic + `init_module` + **软重启生效**，官方标注不稳定；需独立机制设计 + 独立真机门禁）；详见 `root-manager-selection-design.md` §2.1 E4/§4.1/§9；
 - **可用性**：native 导出矩阵（沿用 `stage_availability` 纪律），**Kotlin 不硬编码**；`folkpatch`/未核实分支一律**「计划中」**（注册、解析接受、**选择门禁拒绝**、UI 置灰）；
 - **纪律**：包名/入口**未在代码中验证过的一律不猜**（现状 `schema.hpp:68-77`：非 KernelSU → 空包名）；每个 P2 项都要 file:line 依据 + 真机门禁；
 - **待用户确认（TODO，v2 后只剩一条）**：**`kernelpatch.ko` 的制品来源**——首选已定：走**既有导入机制**（no-backup 不可变目录 + 本地 SHA-256 + 原子落盘）；待确认：是否只接受「从 FolkPatch 管理器中提取」、是否允许用户完全自备、UI 是否标注「来源不可验证」。（①分支清单、②FolkPatch 机制、④`manager` 形态均已消解，见设计稿 §11。）
+
+## 3.16 HOCON owner 集与根级键（**重构 ①–④ 已落地 2026-10-05**；native 定稿、App 跟进中）
+
+> **落地状态（2026-10-05）**：① 根级标量通道（`kernel_major`/`kernel_minor`/`safe_mode`）+ 删 `common`/`countermeasure` owner + **vr_guard (b) profile 面删除** = **`b55708a8`**；②③④ `platform.abi.*` → **`backend.cve_2026_43499.abi.*`**（62 处）+ 43284 执行项 → **`backend.cve_2026_43284.execution.*`** + **`wire_only`** 新机制 + manifest **114 行** = **`23958eb0`**。**native 已定稿；App 侧 ③（测试 + golden）尚未完成** ⇒ 跨端一致性状态记「**native 已定稿、App 跟进中**」。形状定稿本身仍来自用户裁决：HOCON 只声明**可用项**，**运行时选择权在用户/App**。
+
+**owner 集（fail-closed）**
+
+- **允许**：**`backend.<id>`**；根级标量 `schema_version` / `release` / `kernel_major` / `kernel_minor` / `safe_mode`（**在 manifest 里以 `owner = root`、`path = 裸键名` 单列**）；以及根级 `available { <backend> = [ tokens ] }`；
+  > **⏸ 已被 2026-10-05 裁决取代（沿革保留）**：`available{ <backend> = [ … ] }` 的**值**将从**预烘焙组合 token 列表**改为**步骤队列**（可读性优先，原则 2「显式优于隐式」）；**两级结构保留**（先 backend，再其下的队列）。**不做**完全动态 DSL / 运行期自适应规划（队列是**静态声明**）。详见 §3.19。
+  >
+- **已删除（出现即拒）**：**`common` owner**、**`countermeasure.*` owner**（**`b55708a8`**：`common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 连同 wire/manifest 行删除 ⇒ owner 变空 ⇒ 移出白名单；`platform/vivo/**` 与 `steps.cpp` 两处调用**保留惰性**，其彻底删除 = (a) **待设备门禁**）、**`platform` owner**（**`23958eb0`**：`platform.abi.*` → **`backend.cve_2026_43499.abi.*`**，62 处）、**`selection { backend, terminal }`**（**`terminal` 概念从 HOCON 移除**，token 已蕴含）；
+- **当前注释中（出现即拒）**：**`plugin`** 与 **`payload`**（用户指令 2026-10-05；代码/测试保留，**恢复＝撤销注释 + 跑门禁**）；
+- **owner 白名单已收敛为 `backend.<id>`**（2026-10-05 `23958eb0` 落地后）：`platform.` 已删、`common`/`countermeasure` 已删、`plugin`/`payload` 冻结拒收；
+- 根级标量是**封闭白名单**：白名单外的一律拒绝（含未知顶层 owner，如 `plugins` / `payloads` / `root`）。
+
+**根级与 43284 的具体搬迁**
+
+- **`kernel_minor` 为重构新增**；`kernel_major` / `kernel_minor` **保留**（「以后有用」）；`safe_mode` 由 `common` 上提为根级标量；
+- **43284**：`steps` 留在 backend 顶层（**选择轴**）；`late_load_args` / `selinux_exec_context` / `module_poll_attempts` / `module_poll_interval_ms` / `wait_timeout_ms` → **`execution.*`**；
+- **`kmi` / `lkm_path` / `carrier_path` 从 profile 删除**：**wire 字段保留**，由 native **运行时现算注入**；`lkm_path` / `carrier_path` / 各 `.ko` 路径统一在 **GhostLock 内部目录**解析；
+- **`available` 两级**：先选可用 backend（键），再在其下选组合 token（值）；运行时的选择写入 wire 的 **`backend.<id>.steps`**；**根级 `available` 不是 wire 段**；
+- **消歧**：`index.conf` 的 `backends = [{ id, available }]` 改名 **`usable`**（构建/资产层语义），与 profile 层的 `ghostlock.available{}` **刻意不同名**；
+- **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（已派）；`kernel_profiles-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
+
+
+### 3.16.1 根段承载（`kRootSection`）——**不要改回具名成员**
+
+- **机制**：根级标量用**空段名「根段」**承载（`document.hpp` 的 `kRootSection`），使 owner bind 的**唯一取值路径** `find_value(section, key)` 与根键**同构**；
+- **理由（真实缺陷模式）**：bind 路径上有**两处按 section 拷贝的过滤副本**；若根键改用**具名成员**，漏拷一处即**静默 `kernel_major=0`**（不报错、不 fail-closed）；空段名让两处副本天然覆盖根键；
+- **纪律**：**勿改回具名成员**（AGENTS 已写明）；新增根级标量时同时更新 manifest 的 `root` 行与本机制；
+
+### 3.16.2 `wire_only` FieldSpec 标记——**manifest = profile 可写面，不是 wire 面**
+
+- **语义**：`FieldSpec` 上的 `wire_only` 表示「**wire/解码接受，但不进 manifest**」⇒ App 的「**profile 可写面**」**不含**它；
+- **用于**：`kmi` / `lkm_path` / `carrier_path`——**wire 字段保留**（native 运行时现算注入）、**profile 拒写**（配置里出现即拒）；
+- **关键区分**：**manifest = 「profile 可写面」**（App 据此渲染/校验可写键），**不是 wire 面**；wire 面由 native 的解码/绑定路径定义。写文档或写 UI 时不得把两者混为一谈；
+- **物证**：`kmi`/`lkm_path`/`carrier_path` 在 manifest **0 命中**（`68bd7a506a210077` 版），而三约定键的 wire 保留正例仍绿（`profile_v3_test.cpp:195-242`）；
+
+### 3.16.3 同类静默错误与单一谓词（`is_cve_2026_43284_section()`）
+
+- **错误模式**：43284 的 `execution` 段落成后，**按 section 拷贝的过滤副本必须同时拷「顶层」与 `execution` 两段**；漏一段 ⇒ **5 个字段（`late_load_args` / `selinux_exec_context` / `module_poll_attempts` / `module_poll_interval_ms` / `wait_timeout_ms`）静默回落默认值**（与 §3.16.1 的 `kernel_major=0` 同类）；
+- **消除方式**：native 用**单一谓词 `is_cve_2026_43284_section()`** 判定，**生产路径与测试 shim 各一处**共用同一谓词 ⇒ 两处副本不可能再分叉；
+- **纪律**：凡「按 section 过滤/拷贝」的代码，section 集合必须来自**一个谓词/一份列表**，不得在两处各写一遍；
+
+**物证（2026-10-05）**：manifest **114 行**（= 10 头 + **104 字段**）、两份逐字节一致 **sha256 `68bd7a506a210077`**、裸跑 `ok (104 fields, both copies)`；样例行：`root	kernel_major	uint	0	-	profile	-`、`cve_2026_43499	backend.cve_2026_43499.abi.offset.init_task	…`、`cve_2026_43284	backend.cve_2026_43284.execution.wait_timeout_ms	uint	0	literal:15000	profile	…`；门禁：host `EXIT=0`（告警 9 基线、58 tests、防火墙 `180/4/4/0/0`）· lint 0 · NDK 0；**六条负例**在 `src/core/tests/profile_v3_test.cpp:195-242`（`common.*` / `countermeasure.*` / 段内 `kernel_major` / 旧 `platform.abi.*` / 旧扁平 43284 键 ⇒ 拒；三约定键 wire 保留的正例仍绿）。
+**与冻结的关系**：插件 / payload 条目按文首冻结清单**不受本节影响**（它们的 owner 仍处于「注释掉、出现即拒」状态）。
+
+## 3.17 构建期跨端清单：`lkm-kmi-manifest.tsv`（**与既有 manifest 同规**）
+
+> **用户指令（2026-10-05）**：**构建逻辑一律进 Gradle KTS，禁用独立 `.sh` 构建脚本**；**跨端列表不得手抄**。LKM 的 **8 个 KMI label** 因此由 **native 导出 manifest**，Gradle 与 Kotlin 只消费。**状态：实现中**（形状定稿；提交号/生成命令与两份副本路径待 native 落地后由 docs-uml 回填）。
+
+- **列**：`label / android_release / kmi / ko_filename`（8 行）；
+- **单一真相**：native 导出，**两份逐字节一致**（对拍副本 + 运行时副本）——与 `profile-manifest-v3.tsv`（字段表）、`combination-manifest.tsv`（组合 token）、`vocabulary-manifest.tsv`（组件词汇）**同一制度**：*native 是唯一权威，其它端只读消费、由测试对拍*；
+- **消费方**：Gradle（`buildLkmImages` 逐 KMI 构建、`copyLkmIntoAssets` 校验落 assets）与 Kotlin（UI/校验）；**任何一端都不得手写这 8 个 label**；
+- **构建入口（Gradle-only）**：`buildLkmImages`（**显式任务**，需容器引擎 `podman`→`docker`，可 `-PcontainerEngine=` 覆盖）与 `copyLkmIntoAssets`（**fail-closed** 校验，挂 `merge*Assets`、**不挂** `preBuild`）；`tools/lkm/ghostlock/Makefile`（**容器内**配方）与 `root_cmd.sh`（**设备端**载荷）**保留**；
+- **跨平台硬要求**：构建脚本不得依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash（用 JVM/Gradle API：`MessageDigest` / `Copy` / `Sync` / `FileTree`）；工具链（如 `llvm-objcopy`）由既有 NDK 解析器（`android.ndkDirectory`）定位，**不依赖 PATH**，prebuilt host tag 用通配；
+- **`.sh` 的边界**：仅允许**设备端与运维**（如 `root_cmd.sh` 是经 `call_usermodehelper` 执行的设备载荷、`tools/device-guard/*`、`.github/scripts/*`）；**构建**一律不得用 `.sh`。
+
+## 3.18 词汇重命名（stepset）与两轴区分（**已被队列裁决吸收：stepset 不再是用户选择面**）
+
+> **用户原话**：「把**后端中 43499 的 w1w2/w1w3 名称全部换成 shizuku_rootchild/rootchild**」。**实现由 `native-hocon`（native）与 `kotlin-i18n`（Kotlin）并行进行** ⇒ 状态记「**实现中**」（提交号落地后回填）。
+>
+> **⏸ 已被 2026-10-05「队列取代 token」裁决吸收（沿革保留）**：**stepset 不再是用户选择面**——HOCON 里写的是**步骤 id**（`w1`/`w2`/`w3`…），`w1_w2`/`w1_w3` **只余「预设/归一化名」**（内部用于 `supported` 判定与 dispatch），**改名任务取消**。本节其余论述（尤其「两轴正交」与 43284 一 × 三 path 的硬证据）**仍然有效**，并已并入 §3.19 的连锁影响。
+
+**重命名（只此一条轴）**
+
+| 项 | 旧 | 新 | 说明 |
+|---|---|---|---|
+| 词汇 token（manifest `stepset` 行） | `w1_w2` | **`shizuku_rootchild`** | 数字 wire id **1 不变** |
+| 词汇 token | `w1_w3` | **`rootchild`** | 数字 wire id **2 不变** |
+| 第三个 token | `pagecache_write` | 不变 | id 3 |
+| C++ | `StepSetKind::W1W2` / `W1W3`（`W1W2Steps`/`W1W3Steps`、`ChainId::Cve43499W1W2/W1W3`、`Cve43499_W1W2/W1W3` 别名） | **`ShizukuRootchild` / `Rootchild`**（随之改名） | **数字 id 1/2 不变**；实现中 |
+| 其它轴 | `PathKind` / `FrontendKind` / `TerminalKind` | **保持原样** | 本次**只改 stepset 轴** |
+
+**语义（为什么叫这两个名字）**：`W1W2`（id 1）＝**跳过 seccomp 绕过**，shell 入口/内核派生启动 ⇒ **Shizuku 路径**；`W1W3`（id 2）＝**包含 seccomp 绕过**，app 后代启动 ⇒ **rootchild 路径**。
+
+**两轴的区别（写清，避免再混）**：
+
+> **为什么两轴不能合并（硬证据，2026-10-05）**：`kCombinationCatalog` 全 12 行摊开后，**stepset 与 path 不是 1:1**：
+>
+> - **43284：同一个 stepset `pagecache_write` 对应三个 path** —— `umh`（`PathKind::Umh` · `umh_forward` · **可用**）、`rootchild`（`PathKind::Rootchild` · `root_child` · 计划）、`shizuku`（`PathKind::Shizuku` · `root_child` · 计划）；⇒ **用 path 名去命名 stepset 在 43284 上直接自相矛盾**（一个 stepset 无法同时叫 `shizuku_rootchild`、`rootchild` …）；
+> - **43499：两者只是近似重合** —— `w1_w3` 同时被 `*_rootchild`（`PathKind::Rootchild`）与 `*_umh`（`PathKind::Umh`，计划）使用，`w1_w2` 被 `*_shizuku` 使用；⇒ `Umh` 与 `Rootchild` **共用一个 stepset**，同样不是 1:1。
+>
+> ⇒ **stepset 必须按「跑哪些 W 阶段」命名（或另立中性名，如 `seccomp_bypass` 一类），不能用 path/terminal 名**；两轴合并会造成不可命名的矛盾。
+
+- **`stepset` 轴 = 「跑哪些 W 阶段」**（`W1`→`W2`（→`W3`）的执行集合；决定是否含 seccomp 绕过）；
+- **`frontend` / `terminal` 轴 = 「谁接管」**（`root_child` / `umh_forward` 等终端形态；或前端入口形态）；
+- 二者**正交**：同一个 stepset 可以配不同 terminal（例：`rootchild` token 配 `root_child`）；`combination_supported(backend, steps, terminal)` 校验三元组自洽，不自洽直接 `Rejected`；
+- **不需要真机门禁**（不进 profile/wire 文档：资产 0 命中）——属**词汇命名**改动。
+
+## 3.19 步骤队列（取代 token）——**用户裁决 2026-10-05；待设计稿**
+
+> **用户原话**：「**队列直接取代 token 对于 HOCON 的可读性有极大的增强，应该改**；而『完全动态 DSL / 运行期自适应规划』这个你说的对，**不应改**」。
+> **状态**：**L 级设计稿待 Lead 产出（《步骤队列 + 步骤注册表 + 归一化支持面判定》）**，出稿先经用户评审；**在此之前两侧不动代码**（`native-hocon` / `kotlin-i18n` 均已挂起）。本节只登记决定与连锁影响，**不写实现细节**。
+
+**决定**
+
+1. **profile/HOCON 不再选「预烘焙组合 token」，改为直接写【步骤队列】**——可读性优先（原则 2「显式优于隐式」）；**两级结构保留**：先选 backend，再写该 backend 下的队列；
+2. **不做**完全动态 DSL / 运行期自适应规划（planner / 状态机）：**队列是静态声明**，不是运行期可编程；
+3. **被取代的旧决定（沿革保留，不删）**：此前「`available { <backend> = [ tokens ] }` 两级选择」——其**值**由 **token 列表**变为**队列**；**取代理由 = HOCON 可读性**（用户裁决）；旧表述已在 §3.16 标为「已被取代」。
+
+**连锁影响（登记为待设计项；实现细节以设计稿为准）**
+
+| 面 | 影响 |
+|---|---|
+| `kCombinationCatalog`（12 token） | **降级为内部「归一化键 / 预设判定」**——不再是 HOCON 的用户选择面，但仍用于 **`supported` 判定与 dispatch** |
+| `backend.<id>.steps` | 值：**token 字符串 ⇒ 队列** |
+| `PathKind` | **按档位 (ii) 删除**（0 读者、非词汇 kind）——与本次裁决同向 |
+| `stepset` 改名任务 | **取消**（见 §3.18）：HOCON 里出现的是**步骤 id**（`w1`/`w2`/`w3`），`w1_w2`/`w1_w3` 只余**预设/归一化名** |
+| 迁移面 | **62 份资产 + UI + 组合目录 + 契约 + UML**；迁移策略由设计稿给出（**迁移期允许 token 作为语法糖**，资产改写完成后**删除糖**，避免长期双真相） |
+
+**与两轴论述的关系**：§3.18 的「stepset = 跑哪些 W 阶段 / frontend·terminal = 谁接管」**继续成立**；队列描述的就是「跑哪些步骤」，因此**更贴合 stepset 轴的本义**，也回避了「用 path 名命名 stepset」的矛盾（43284 一 × 三 path 的硬证据见 §3.18）。
+
 
 ## 4. 能力接口（虚）
 
@@ -1184,6 +1335,7 @@ public:
 };
 
 enum class ChainId : std::uint8_t { Unknown = 0, Cve43499W1W2 = 1, Cve43499W1W3 = 2, Cve43284PageCacheWrite = 3 };
+> **⏳ 词汇重命名（2026-10-05，实现中）**：`Cve43499W1W2` → **`ShizukuRootchild`**、`Cve43499W1W3` → **`Rootchild`**（**数字 1/2 不变**）；详见 §3.18。
 
 class Chain {
 public:

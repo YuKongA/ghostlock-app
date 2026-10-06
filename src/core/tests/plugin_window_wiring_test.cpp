@@ -384,6 +384,15 @@ int main() {
     test_no_dispatch_outside_the_window();
     test_no_plugin_section_leaves_the_window_unchanged();
 
+    /* RUNTIME DISABLE (user directive 2026-10-05): the mechanism asserted above
+     * is retained library behaviour, but the host is NOT wired into a run. This
+     * assert pins the disabled state so the intent stays auditable next to the
+     * tests that would otherwise imply a live dispatch path; restoring the
+     * feature flips the switch in plugin/host.hpp and runs the 43284 device gate
+     * (see the comment there). */
+    expect(!ghostlock::plugin::kPluginRuntimeEnabled,
+           "the plugin runtime is disabled by the composition-root switch");
+
     std::puts("plugin_window_wiring_test: ok");
     return 0;
 }

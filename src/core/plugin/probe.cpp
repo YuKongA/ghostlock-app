@@ -108,11 +108,10 @@ namespace ghostlock::plugin {
 
         std::string caps_list(std::uint32_t mask) {
             std::string out;
-            for (const contract::Capability capability :
-                 {contract::Capability::KernelRead, contract::Capability::KernelWrite,
-                  contract::Capability::Alias, contract::Capability::ChildTask,
-                  contract::Capability::FileCacheWrite, contract::Capability::Exec,
-                  contract::Capability::KernelHook}) {
+            /* The catalog is the ONE capability list (contract/countermeasure.hpp);
+             * iterating it here keeps a new bit from silently vanishing from the
+             * host_caps TSV column. */
+            for (const contract::Capability capability : contract::kCapabilityCatalog) {
                 const auto bit = static_cast<std::uint32_t>(capability);
                 if ((mask & bit) == 0u) {
                     continue;

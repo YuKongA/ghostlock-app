@@ -88,14 +88,6 @@ namespace ghostlock::platform {
          * via LKM legitimately lacks the symbol; the two are indistinguishable
          * here, and neither is fatal. Recorded so the diagnostic can show it. */
         bool kallsyms_restricted = false;
-        bool defex_task_defex_enforce = false;
-        bool defex_task_defex_user_exec = false;
-        bool defex_get_dc_target_dpath = false;
-
-        [[nodiscard]] bool any_defex() const noexcept {
-            return defex_task_defex_enforce || defex_task_defex_user_exec ||
-                   defex_get_dc_target_dpath;
-        }
     };
 
     /* Which optional-by-policy facts a probe could not observe. A degraded bit

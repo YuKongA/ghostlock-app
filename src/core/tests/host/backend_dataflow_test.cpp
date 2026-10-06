@@ -61,7 +61,8 @@ namespace {
             if (found == nullptr) found = &document.append_section(section);
             found->add(key, raw);
         };
-        add("common", "kernel_major", 6);
+        /* HOCON refactor: kernel_major is a root scalar (empty section). */
+        add("", "kernel_major", 6);
         add("backend.cve_2026_43499.execution.stages", "w1_attempts", 3);
         add("backend.cve_2026_43499.execution.stages", "w1_scratch_repair_attempts", 1);
         add("backend.cve_2026_43499.execution.stages", "w2_attempts", 4);

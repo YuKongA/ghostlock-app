@@ -17,6 +17,8 @@
  * allowlist entry fails just like an unexpected call site). */
 
 #include <cstdio>
+#include "plugin/host.hpp"
+
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -102,6 +104,7 @@ namespace {
 } // namespace
 
 int main() {
+    /* kPluginRuntimeEnabled lives in plugin/host.hpp (included above). */
     std::string root = std::string(GHOSTLOCK_WIRING_ROOT) + "/core";
     {
         struct stat info {};
@@ -151,8 +154,18 @@ int main() {
         }
     }
 
-    std::printf("plugin_open_site_test: %zu files, %zu call-site hits, %zu unexpected, "
-                "%zu stale\n",
+    /* RUNTIME DISABLE (user directive 2026-10-05): the allowlisted call sites
+     * above are retained in the source but are compile-time inert -- both live
+     * inside "if constexpr (plugin::kPluginRuntimeEnabled)" with the switch in
+     * plugin/host.hpp held at false. Assert the state here so a reader of this
+     * allowlist cannot mistake it for a live wiring. Restoring the feature flips
+     * that one switch and runs the 43284 device gate. */
+    if (ghostlock::plugin::kPluginRuntimeEnabled) {
+        std::printf("plugin_open_site_test: FAIL (plugin runtime unexpectedly enabled)\n");
+        return 1;
+    }
+    std::printf("plugin_open_site_test: %zu files, %zu call-site hits (runtime disabled), "
+                "%zu unexpected, %zu stale\n",
                 files.size(), hits, unexpected, stale);
     if (unexpected != 0 || stale != 0) {
         std::printf("plugin_open_site_test: FAIL\n");

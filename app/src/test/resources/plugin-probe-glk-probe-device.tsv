@@ -1,0 +1,10 @@
+host_abi	1
+countermeasures_root	countermeasures
+host_stages	pre_spawn,post_spawn,pre_terminal,post_terminal
+host_caps	kernel_read,kernel_write,alias,child_task,log
+stage_availability	43499:pre_terminal;43284:post_terminal
+plugin	glk.probe	1.0	1	80	b7e4891d89634c6a3681eb57c236e803b195e5f95ba774b9d3ba10a8f23a6253	post_terminal	kernel_read,kernel_write
+hook	glk.probe	on_stage	post_terminal	0	glk.probe
+param	glk.probe	target_va	uint	1	18446743524671239168	kernel VA the probe reads and writes back
+param	glk.probe	label	str	0	-	diagnostic label for the glk.probe log line
+extract	glk.probe	platform.abi.offset.init_task	uint	1	0	init_task image offset (base-relative), from the extractor profile path

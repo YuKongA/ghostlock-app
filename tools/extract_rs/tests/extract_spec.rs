@@ -534,11 +534,14 @@ fn probe_tsv_accepts_spec_rows_and_rejects_name_collisions() {
         "host_abi\t1",
         "countermeasures_root\tcountermeasures",
         "host_stages\tpre_spawn",
-        "host_caps\tkernel_read",
+        "host_caps\tkernel_read,log",
         "stage_availability\t43499:pre_terminal;43284:post_terminal",
     ]
     .join("\n");
-    let plugin_row = format!("plugin\ttest.schema\t1.0\t1\t80\t{SHA}\tpost_terminal\tkernel_read");
+    /* Batch B: the probe vocabulary now carries "log"; a spec-bearing descriptor
+     * must still parse (the extractor only transports the token). */
+    let plugin_row =
+        format!("plugin\ttest.schema\t1.0\t1\t80\t{SHA}\tpost_terminal\tkernel_read,log");
     let spec_row = "spec\ttest.schema\tvalue\tuint\t1\tdisasm\tpc:0\ttext\tinsn:cmp x?, #?\t-\timm:1\t-\t-\t-\t-\tdoc";
     let text = format!("{header}\n{plugin_row}\n{spec_row}\n");
     let descriptor = parse_probe_tsv(&text).expect("spec row parses");

@@ -194,12 +194,7 @@ namespace ghostlock::backend::cve_2026_43284::diagnostic {
             append_bool(status, facts.symbols.kallsyms_restricted);
             status += " selinux_state=";
             append_bool(status, facts.symbols.selinux_state);
-            status += " task_defex_enforce=";
-            append_bool(status, facts.symbols.defex_task_defex_enforce);
-            status += " task_defex_user_exec=";
-            append_bool(status, facts.symbols.defex_task_defex_user_exec);
             status += " get_dc_target_dpath=";
-            append_bool(status, facts.symbols.defex_get_dc_target_dpath);
             append_event(out, "diag.device_symbols", status);
         }
         {

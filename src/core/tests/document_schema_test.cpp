@@ -51,8 +51,8 @@ namespace {
     struct ExampleSchema {
         using View = ExampleView;
         static constexpr ghostlock::profile::FieldSpec<ExampleView> kFields[] = {
-            {"platform.abi.task_struct", "prio", 4, false, true, &set_task_prio},
-            {"platform.abi.offset", "init_task", 8, false, true, &set_init_task},
+            {"backend.cve_2026_43499.abi.task_struct", "prio", 4, false, true, &set_task_prio},
+            {"backend.cve_2026_43499.abi.offset", "init_task", 8, false, true, &set_init_task},
             {"backend.cve_2026_43499.route.select_stack", "waiter_shift", 4, true, false, &set_waiter_shift},
             {"backend.cve_2026_43499.kernel", "compact_waiter", 1, false, false, &set_compact_waiter},
         };
@@ -64,8 +64,8 @@ namespace {
         doc.terminal = 1;
         doc.backend = 1;
         doc.middleware = ghostlock::profile::kRouteSelectStack;
-        doc.append_section("platform.abi.task_struct").add("prio", 132ULL);
-        doc.append_section("platform.abi.offset").add("init_task", 0x20dc000ULL);
+        doc.append_section("backend.cve_2026_43499.abi.task_struct").add("prio", 132ULL);
+        doc.append_section("backend.cve_2026_43499.abi.offset").add("init_task", 0x20dc000ULL);
         doc.append_section("backend.cve_2026_43499.route.select_stack")
                 .add("waiter_shift", static_cast<uint64_t>(static_cast<int64_t>(-2)));
         return doc;
@@ -83,20 +83,20 @@ int main() {
         assert(!doc.empty());
         assert(doc.sections.size() == 3u);
 
-        const Section *task = doc.find_section("platform.abi.task_struct");
+        const Section *task = doc.find_section("backend.cve_2026_43499.abi.task_struct");
         assert(task != nullptr && task->contains("prio"));
         assert(doc.find_section("no_such_section") == nullptr);
 
-        const Value *prio = doc.find_value("platform.abi.task_struct", "prio");
+        const Value *prio = doc.find_value("backend.cve_2026_43499.abi.task_struct", "prio");
         assert(prio != nullptr && prio->present);
         assert(prio->raw == 132ULL);
         assert(prio->width == Value::kWireWidth);
 
         /* A miss is a non-present sentinel, not a stored zero. */
-        const Value missing = doc.get("platform.abi.task_struct", "pid");
+        const Value missing = doc.get("backend.cve_2026_43499.abi.task_struct", "pid");
         assert(!missing.present);
         assert(missing.raw == 0 && missing.width == 0);
-        assert(doc.find_value("platform.abi.task_struct", "pid") == nullptr);
+        assert(doc.find_value("backend.cve_2026_43499.abi.task_struct", "pid") == nullptr);
     }
 
     /* ---- Strict rejects an unknown section; tooling tolerates it. ---- */
@@ -120,13 +120,13 @@ int main() {
     /* ---- Strict rejects an unknown key in an owned section. ---- */
     {
         Document doc = example_document();
-        doc.find_section("platform.abi.task_struct")->add("pid", 7ULL);
+        doc.find_section("backend.cve_2026_43499.abi.task_struct")->add("pid", 7ULL);
 
         ExampleView view{};
         const auto blocked =
                 ghostlock::profile::bind<ExampleSchema>(doc, view, DecodeMode::Production);
         assert(blocked.code == BindCode::UnknownKey);
-        assert(blocked.section == "platform.abi.task_struct");
+        assert(blocked.section == "backend.cve_2026_43499.abi.task_struct");
         assert(blocked.key == "pid");
         assert(ghostlock::profile::bind<ExampleSchema>(doc, view, DecodeMode::Tooling).ok());
     }
@@ -149,27 +149,27 @@ int main() {
     /* ---- A missing required field fails closed. ---- */
     {
         Document doc;
-        doc.append_section("platform.abi.task_struct").add("prio", 132ULL);
+        doc.append_section("backend.cve_2026_43499.abi.task_struct").add("prio", 132ULL);
 
         ExampleView view{};
         const auto status = ghostlock::profile::bind<ExampleSchema>(doc, view);
         assert(status.code == BindCode::MissingRequired);
-        assert(status.section == "platform.abi.offset");
+        assert(status.section == "backend.cve_2026_43499.abi.offset");
         assert(status.key == "init_task");
     }
 
     /* ---- Width mismatch fails closed without a partial write. ---- */
     {
         Document doc;
-        doc.append_section("platform.abi.task_struct").add("prio", 0x100000000ULL);
-        doc.append_section("platform.abi.offset").add("init_task", 5ULL);
+        doc.append_section("backend.cve_2026_43499.abi.task_struct").add("prio", 0x100000000ULL);
+        doc.append_section("backend.cve_2026_43499.abi.offset").add("init_task", 5ULL);
 
         ExampleView view{};
         view.task_prio = 0xdeadbeefu;
         view.init_task = 0xfeedULL;
         const auto status = ghostlock::profile::bind<ExampleSchema>(doc, view);
         assert(status.code == BindCode::WidthMismatch);
-        assert(status.section == "platform.abi.task_struct");
+        assert(status.section == "backend.cve_2026_43499.abi.task_struct");
         assert(status.key == "prio");
         assert(view.task_prio == 0xdeadbeefu);
         assert(view.init_task == 0xfeedULL);
@@ -178,8 +178,8 @@ int main() {
     /* ---- Signed values sign-extend at their declared width. ---- */
     {
         Document doc;
-        doc.append_section("platform.abi.task_struct").add("prio", 1ULL);
-        doc.append_section("platform.abi.offset").add("init_task", 2ULL);
+        doc.append_section("backend.cve_2026_43499.abi.task_struct").add("prio", 1ULL);
+        doc.append_section("backend.cve_2026_43499.abi.offset").add("init_task", 2ULL);
         doc.append_section("backend.cve_2026_43499.route.select_stack").add("waiter_shift", 0xffffffffffffffffULL);
 
         ExampleView view{};

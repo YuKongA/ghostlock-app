@@ -198,24 +198,28 @@ internal fun AdvancedScreen(
                     )
                 }
             }
-            item(key = "plugins") {
-                Card {
-                    ArrowPreference(
-                        title = stringResource(R.string.plugins),
-                        summary = stringResource(R.string.plugins_summary),
-                        onClick = actions::onOpenPlugins,
-                    )
-                }
-            }
-            item(key = "payload") {
-                Card {
-                    ArrowPreference(
-                        title = stringResource(R.string.payload),
-                        summary = stringResource(R.string.payload_summary),
-                        onClick = actions::onOpenPayload,
-                    )
-                }
-            }
+            /* COMMENTED OUT (user ruling 2026-10-05): the plugin and custom-execution
+             * entries are withdrawn while their design is redone — a half-finished
+             * feature must not constrain the design. The screens, their routes and
+             * their strings are all kept; restore by uncommenting the two items. */
+            // item(key = "plugins") {
+            //     Card {
+            //         ArrowPreference(
+            //             title = stringResource(R.string.plugins),
+            //             summary = stringResource(R.string.plugins_summary),
+            //             onClick = actions::onOpenPlugins,
+            //         )
+            //     }
+            // }
+            // item(key = "payload") {
+            //     Card {
+            //         ArrowPreference(
+            //             title = stringResource(R.string.payload),
+            //             summary = stringResource(R.string.payload_summary),
+            //             onClick = actions::onOpenPayload,
+            //         )
+            //     }
+            // }
             item(key = "export") {
                 Card {
                     Column {

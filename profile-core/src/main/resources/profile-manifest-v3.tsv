@@ -8,20 +8,43 @@
 # rejected fail-closed (the Kotlin adapter parses the same union).
 # Dynamic paths resolve their concrete type from the plugin descriptor
 # (probe TSV param/extract rows), whose type literals are these same kinds.
-common	common.kernel_major	uint	0	-	profile	-
-common	common.safe_mode	bool	0	-	profile	-
-common	common.vr_guard	bool	0	-	profile	-
-countermeasure::vivo	countermeasure.vivo_vr_guard.tracepoint_funcs	uint	0	-	profile	-
-cve_2026_43284	backend.cve_2026_43284.carrier_path	str	0	convention:device-first-present-default	convention	Vendor carrier absolute path; absent = first device-present default.
-cve_2026_43284	backend.cve_2026_43284.defex_symbol	str	0	-	profile	Defex symbol name.
-cve_2026_43284	backend.cve_2026_43284.kmi	uint	0	derived	derived	Kernel module interface, encoded major*1000 + minor.
-cve_2026_43284	backend.cve_2026_43284.late_load_args	uint	0	literal:0	profile	late-load argument policy bitmask; 0 = program + late-load only.
-cve_2026_43284	backend.cve_2026_43284.lkm_path	str	0	convention:$GHOSTLOCK_HOME/helper.ko	convention	LKM absolute path; absent = $GHOSTLOCK_HOME/helper.ko.
-cve_2026_43284	backend.cve_2026_43284.module_poll_attempts	uint	0	literal:40	profile	LKM window handshake retries; default 40.
-cve_2026_43284	backend.cve_2026_43284.module_poll_interval_ms	uint	0	literal:5	profile	LKM window handshake retry delay in ms; default 5.
-cve_2026_43284	backend.cve_2026_43284.selinux_exec_context	uint	0	literal:0	profile	SELinux exec context selector; 0 = vendor_modprobe.
+cve_2026_43284	backend.cve_2026_43284.execution.late_load_args	uint	0	literal:0	profile	late-load argument policy bitmask; 0 = program + late-load only.
+cve_2026_43284	backend.cve_2026_43284.execution.module_poll_attempts	uint	0	literal:40	profile	LKM window handshake retries; default 40.
+cve_2026_43284	backend.cve_2026_43284.execution.module_poll_interval_ms	uint	0	literal:5	profile	LKM window handshake retry delay in ms; default 5.
+cve_2026_43284	backend.cve_2026_43284.execution.selinux_exec_context	uint	0	literal:0	profile	SELinux exec context selector; 0 = vendor_modprobe.
+cve_2026_43284	backend.cve_2026_43284.execution.wait_timeout_ms	uint	0	literal:15000	profile	Chain terminus wait budget in ms; default 15000.
 cve_2026_43284	backend.cve_2026_43284.steps	str	0	-	profile	Combination token (bare path, S4 R6b).
-cve_2026_43284	backend.cve_2026_43284.wait_timeout_ms	uint	0	literal:15000	profile	Chain terminus wait budget in ms; default 15000.
+cve_2026_43499	backend.cve_2026_43499.abi.cred.caps_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.ref0_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.ref1_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.ref2_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.ref3_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.ref_count	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.cred.usage_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.kernel.kernel_phys_load	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.kernel.kernel_phys_offset	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.empty_zero_page	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.init_cred	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.init_task	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.root_task_group	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.security_hook_heads	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.selinux_blob_sizes	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.offset.selinux_enforcing	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.atomic_flags	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.comm	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.cred	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.normal_prio	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.pi_blocked_on	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.pi_lock	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.pi_top_task	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.pi_waiters	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.pid	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.prio	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.real_cred	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.sched_task_group	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.seccomp	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.tasks	uint	0	-	profile	-
+cve_2026_43499	backend.cve_2026_43499.abi.task_struct.tgid	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.cred.caps_count	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.cred.caps_value	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.cred.copy_size	uint	0	-	profile	-
@@ -80,40 +103,12 @@ cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.fake_task_off	uint	0	-	
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.payload_delta	int	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.route.tcp_zerocopy.post_receive_hold_iterations	uint	0	-	profile	-
 cve_2026_43499	backend.cve_2026_43499.steps	str	0	-	profile	Combination token <route>_<path> (S4 R6b).
-platform::abi	platform.abi.cred.caps_offset	uint	0	-	profile	-
-platform::abi	platform.abi.cred.ref0_offset	uint	0	-	profile	-
-platform::abi	platform.abi.cred.ref1_offset	uint	0	-	profile	-
-platform::abi	platform.abi.cred.ref2_offset	uint	0	-	profile	-
-platform::abi	platform.abi.cred.ref3_offset	uint	0	-	profile	-
-platform::abi	platform.abi.cred.ref_count	uint	0	-	profile	-
-platform::abi	platform.abi.cred.usage_offset	uint	0	-	profile	-
-platform::abi	platform.abi.kernel.kernel_phys_load	uint	0	-	profile	-
-platform::abi	platform.abi.kernel.kernel_phys_offset	uint	0	-	profile	-
-platform::abi	platform.abi.offset.empty_zero_page	uint	0	-	profile	-
-platform::abi	platform.abi.offset.init_cred	uint	0	-	profile	-
-platform::abi	platform.abi.offset.init_task	uint	0	-	profile	-
-platform::abi	platform.abi.offset.root_task_group	uint	0	-	profile	-
-platform::abi	platform.abi.offset.security_hook_heads	uint	0	-	profile	-
-platform::abi	platform.abi.offset.selinux_blob_sizes	uint	0	-	profile	-
-platform::abi	platform.abi.offset.selinux_enforcing	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.atomic_flags	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.comm	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.cred	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.normal_prio	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.pi_blocked_on	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.pi_lock	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.pi_top_task	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.pi_waiters	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.pid	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.prio	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.real_cred	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.sched_task_group	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.seccomp	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.tasks	uint	0	-	profile	-
-platform::abi	platform.abi.task_struct.tgid	uint	0	-	profile	-
 plugin	plugin.<id>.enabled	bool	0	literal:0	profile	Plugin enabled; default false, and only enabled=true is emitted.
 plugin	plugin.<id>.extract.*	uint|int|bool|str	0	-	profile	Dynamic: P2 extractor writes it; P1 validates shape only.
 plugin	plugin.<id>.module_hash	str	0	-	profile	Lowercase hex SHA-256 of the module file.
 plugin	plugin.<id>.module_path	str	0	-	profile	Module path RELATIVE to <GHOSTLOCK_HOME>/countermeasures.
 plugin	plugin.<id>.params.*	uint|int|bool|str	0	-	profile	Dynamic: type comes from the plugin descriptor (probe TSV param rows).
 plugin	plugin.<id>.stage	str	0	-	profile	Hook stage token (pre_spawn|post_spawn|pre_terminal|post_terminal).
+root	kernel_major	uint	0	-	profile	-
+root	kernel_minor	uint	0	-	profile	-
+root	safe_mode	bool	0	-	profile	-

@@ -11,8 +11,15 @@
  *     with a combined root + owner Schema, and its canonical encoding is the
  *     same golden the Kotlin adapter test asserts.
  *
- * When run, the canonical hex of that profile document is printed on the
- * "glkv3_profile_hex:" line so the Kotlin golden can be regenerated. */
+ * Native is the single authority for that fixture's canonical bytes: the bare
+ * run prints them on the "glkv3_profile_hex:" line, and the two export modes
+ * below produce the artifacts the Kotlin cross-language test consumes --
+ * regenerated here, never recomputed on the Kotlin side (that would degrade the
+ * byte comparison to self-proof):
+ *   make -C src glkv3-golden-hex      -> the canonical hex, one line
+ *   make -C src glkv3-golden-fixture  -> the fixture as path/wire/value rows,
+ *                                        so Kotlin aligns the same logical
+ *                                        document field by field. */
 
 #include "backend/cve_2026_43284/glkv3_schema.hpp"
 #include "backend/cve_2026_43284/schema.hpp"
@@ -21,6 +28,7 @@
 #include "platform/abi.hpp"
 #include "profile/glkv3.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -57,7 +65,7 @@ namespace {
     }
 
     bool is_bool_field(std::string_view key) {
-        return key == "safe_mode" || key == "vr_guard" || key == "compact_waiter";
+        return key == "safe_mode" || key == "compact_waiter";
     }
 
     template<typename V2Field>
@@ -74,7 +82,9 @@ namespace {
     void check_owner(const FieldSpec *fields, size_t count, std::string_view owner) {
         std::set<std::string> v3_keys;
         for (size_t i = 0; i < count; i++) {
-            assert(fields[i].section != std::string_view{});
+            /* An empty section is the document root (the HOCON-refactor
+             * kernel_major / kernel_minor / safe_mode scalars); every other
+             * field names the owner section it belongs to. */
             assert(!fields[i].required);
             const std::string key = key_of(fields[i].section, fields[i].key);
             assert(v3_keys.insert(key).second);
@@ -140,19 +150,16 @@ namespace {
             return v;
         };
 
-        if (s == "common" && k == "kernel_major") return uint_value(5);
-        if (s == "common" && k == "safe_mode") return bool_value(true);
-        if (s == "common" && k == "vr_guard") return bool_value(true);
-        if (s == "platform.abi.task_struct" && k == "prio") return uint_value(101);
+        if (s == "backend.cve_2026_43499.abi.task_struct" && k == "prio") return uint_value(101);
         if (s == "backend.cve_2026_43499.cred" && k == "caps_value")
             return uint_value(0x123456789abcdef0ULL);
         if (s == "backend.cve_2026_43499.cred" && k == "ref0_image")
             return uint_value(0x1111111111111111ULL);
-        if (s == "platform.abi.offset" && k == "init_task") return uint_value(34677760);
+        if (s == "backend.cve_2026_43499.abi.offset" && k == "init_task") return uint_value(34677760);
         if (s == "backend.cve_2026_43499.offset" && k == "vr_sys_exit_tp")
             return uint_value(0x2a);
-        if (s == "platform.abi.kernel" && k == "kernel_phys_load") return uint_value(0xb000);
-        if (s == "platform.abi.kernel" && k == "kernel_phys_offset")
+        if (s == "backend.cve_2026_43499.abi.kernel" && k == "kernel_phys_load") return uint_value(0xb000);
+        if (s == "backend.cve_2026_43499.abi.kernel" && k == "kernel_phys_offset")
             return uint_value(0xc000);
         if (s == "backend.cve_2026_43499.kernel" && k == "compact_waiter")
             return bool_value(true);
@@ -160,8 +167,6 @@ namespace {
             return uint_value(7);
         if (s == "backend.cve_2026_43499.kernel" && k == "mm_struct_sz")
             return uint_value(0x400);
-        if (s == "countermeasure.vivo_vr_guard" && k == "tracepoint_funcs")
-            return uint_value(0x20);
         if (s == "backend.cve_2026_43499" && k == "steps")
             return str_value("mcast_rootchild");
         if (s == kActiveRoute && k == "waiter_off") return int_value(-2);
@@ -192,6 +197,14 @@ namespace {
         doc.backend = "cve_2026_43499";
         doc.has_route = true;
         doc.route = kRouteToken;
+        /* HOCON refactor root scalars: root keys, not sections (the former
+         * "common" owner). */
+        doc.has_kernel_major = true;
+        doc.kernel_major = 5;
+        doc.has_kernel_minor = true;
+        doc.kernel_minor = 15;
+        doc.has_safe_mode = true;
+        doc.safe_mode = true;
 
         for (const FieldSpec &field : kPlatformAbiGlkv3Fields) {
             Section *section = doc.find_section(field.section);
@@ -199,6 +212,9 @@ namespace {
             section->entries.push_back(Entry{field.key, value_for(field)});
         }
         for (const FieldSpec &field : kCve2026_43499Glkv3Fields) {
+            /* Root scalars are root keys, never sections: encode() writes them
+             * beside the component tokens (asserted below). */
+            if (field.section.empty()) continue;
             if (is_route_section(field.section) && field.section != kActiveRoute) {
                 continue;
             }
@@ -221,6 +237,93 @@ namespace {
         return out;
     }
 
+    /* ---- Reproducible golden export (native is the SSOT) ------------------
+     * Kotlin's NativeProfileGlkv3AdapterTest compares its adapter bytes against
+     * the canonical hex of THIS fixture, so the hex must be regenerated here
+     * whenever the codec or the fixture changes -- never recomputed on the
+     * Kotlin side (that would degrade the cross-language check to self-proof).
+     * Commands:
+     *   make -C src glkv3-golden-hex     # the canonical hex, one line
+     *   make -C src glkv3-golden-fixture # this document as path/wire/value rows
+     * The dump exists so the Kotlin fixture can be aligned field by field
+     * instead of copying the hex. */
+
+    std::string_view wire_name(WireType type) {
+        switch (type) {
+            case WireType::UInt: return "uint";
+            case WireType::Int: return "int";
+            case WireType::Bool: return "bool";
+            case WireType::Str: return "str";
+            case WireType::Bin: return "bin";
+            case WireType::Array: return "array";
+            case WireType::Union: return "union";
+        }
+        return "unknown";
+    }
+
+    std::string value_text(const Value &value) {
+        switch (value.type) {
+            case WireType::UInt: return std::to_string(value.uint_value);
+            case WireType::Int: return std::to_string(value.int_value);
+            case WireType::Bool: return value.bool_value ? "true" : "false";
+            case WireType::Str: return std::string(value.bytes);
+            default: return {};
+        }
+    }
+
+    /* --dump-fixture: the logical document as path/wire/value rows (root keys
+     * first, then the sections and their keys in canonical order). */
+    void dump_fixture() {
+        const Document doc = profile_document();
+        std::printf("# root keys\n");
+        std::printf("schema\tuint\t%llu\n",
+                    static_cast<unsigned long long>(doc.schema));
+        const auto root_text = [](const char *key, std::string_view text) {
+            std::printf("%s\tstr\t%.*s\n", key, static_cast<int>(text.size()),
+                        text.data());
+        };
+        if (doc.has_release) root_text("release", doc.release);
+        if (doc.has_terminal) root_text("terminal", doc.terminal);
+        if (doc.has_backend) root_text("backend", doc.backend);
+        if (doc.has_route) root_text("route", doc.route);
+        if (doc.has_kernel_major) {
+            std::printf("kernel_major\tuint\t%llu\n",
+                        static_cast<unsigned long long>(doc.kernel_major));
+        }
+        if (doc.has_kernel_minor) {
+            std::printf("kernel_minor\tuint\t%llu\n",
+                        static_cast<unsigned long long>(doc.kernel_minor));
+        }
+        if (doc.has_safe_mode) {
+            std::printf("safe_mode\tbool\t%s\n", doc.safe_mode ? "true" : "false");
+        }
+        std::printf("# sections\n");
+        std::vector<const Section *> sections;
+        sections.reserve(doc.sections.size());
+        for (const Section &section : doc.sections) sections.push_back(&section);
+        std::sort(sections.begin(), sections.end(),
+                  [](const Section *left, const Section *right) {
+                      return left->name < right->name;
+                  });
+        for (const Section *section : sections) {
+            std::vector<const Entry *> entries;
+            entries.reserve(section->entries.size());
+            for (const Entry &entry : section->entries) entries.push_back(&entry);
+            std::sort(entries.begin(), entries.end(),
+                      [](const Entry *left, const Entry *right) {
+                          return left->key < right->key;
+                      });
+            for (const Entry *entry : entries) {
+                std::printf("%.*s.%.*s\t%s\t%s\n",
+                            static_cast<int>(section->name.size()),
+                            section->name.data(),
+                            static_cast<int>(entry->key.size()), entry->key.data(),
+                            std::string(wire_name(entry->value.type)).c_str(),
+                            value_text(entry->value).c_str());
+            }
+        }
+    }
+
     /* Root fields are special-cased by both codec directions; a full document
      * Schema is the root declaration plus one owner's section fields. */
     constexpr FieldSpec kRootFields[] = {
@@ -232,7 +335,20 @@ namespace {
     };
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+    /* Golden-export modes run before the assertions: this test is the native
+     * producer for the Kotlin cross-language comparison (header comment). */
+    for (int i = 1; i < argc; i++) {
+        const std::string_view arg = argv[i];
+        if (arg == "--print-golden-hex") {
+            std::printf("%s\n", hex(encode(profile_document())).c_str());
+            return 0;
+        }
+        if (arg == "--dump-fixture") {
+            dump_fixture();
+            return 0;
+        }
+    }
     check_owner<ghostlock::platform::abi::Schema>(
             kPlatformAbiGlkv3Fields, std::size(kPlatformAbiGlkv3Fields),
             "platform::abi");
@@ -275,13 +391,13 @@ int main() {
         assert(decoded.has_backend && decoded.backend == original.backend);
         assert(decoded.has_route && decoded.route == original.route);
 
-        const Value *safe = decoded.find("common", "safe_mode");
-        assert(safe != nullptr && safe->type == WireType::Bool && safe->bool_value);
+        /* HOCON refactor root scalars: decoded from the document root. */
+        assert(decoded.has_kernel_major && decoded.kernel_major == 5);
+        assert(decoded.has_kernel_minor && decoded.kernel_minor == 15);
+        assert(decoded.has_safe_mode && decoded.safe_mode);
         const Value *shift = decoded.find(
                 "backend.cve_2026_43499.route.multicast_waiter", "waiter_off");
         assert(shift != nullptr && shift->type == WireType::Int && shift->int_value == -2);
-        const Value *major = decoded.find("common", "kernel_major");
-        assert(major != nullptr && major->type == WireType::UInt && major->uint_value == 5);
 
         const std::string canonical = hex(encoded);
         std::printf("glkv3_profile_hex: %s\n", canonical.c_str());

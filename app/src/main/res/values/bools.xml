@@ -2,7 +2,4 @@
 <resources>
     <bool name="window_light_status_bar">true</bool>
     <bool name="window_light_navigation_bar">true</bool>
-    <!-- Production default: the cve_2026_43284 dev entry is disabled. The debug
-         build overrides this to true (app/src/debug/res/values/bools.xml). -->
-    <bool name="dev_cve_43284_enabled">false</bool>
 </resources>

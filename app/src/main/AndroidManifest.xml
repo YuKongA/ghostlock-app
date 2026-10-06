@@ -7,6 +7,11 @@
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="me.weishu.kernelsu.pr" />
         <package android:name="me.weishu.kernelsu" />
+        <!-- Root managers the picker may detect and launch (root_script.cpp:46/49).
+             Android 11+ package visibility: an undeclared package is invisible, so
+             detection would silently report "not installed". -->
+        <package android:name="com.resukisu.resukisu" />
+        <package android:name="com.kowx712.supermanager" />
         <package android:name="com.resukisu.resukisu" />
         <package android:name="com.kowx712.supermanager" />
     </queries>
@@ -28,14 +33,6 @@
             android:name=".shizuku.GhostlockUserService"
             android:exported="false"
             tools:ignore="Instantiatable" />
-        <!-- Explicit adb-only cve_2026_43284 staged entry (debug builds only;
-             disabled in release via the bool override). Never shown in the UI. -->
-        <activity
-            android:name=".dev.DevCve43284Activity"
-            android:enabled="@bool/dev_cve_43284_enabled"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:noHistory="true" />
         <activity
             android:name=".ui.MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"

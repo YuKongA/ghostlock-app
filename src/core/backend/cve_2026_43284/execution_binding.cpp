@@ -4,7 +4,8 @@
 #include "backend/cve_2026_43284/execution_binding.hpp"
 
 #include "backend/cve_2026_43284/schema.hpp"
-#include "plugin/host.hpp"
+// USER DIRECTIVE 2026-10-05: plugin paused
+// #include "plugin/host.hpp"
 #include "backend/cve_2026_43284/steps/crash_dump.hpp"
 #include "platform/device_facts.hpp"
 #include "session/runtime_config.h"
@@ -30,18 +31,18 @@
 namespace ghostlock::backend::cve_2026_43284 {
     namespace {
 #if defined(__linux__)
-        /* S4 P1 step 3a: the composition seam's POST_TERMINAL consumer. The
-         * backend window only ever sees this neutral function pointer; the P1
-         * host type stays on this side of the seam. A null ctx is a no-op (the
-         * context fields are only installed when a host was passed in). */
-        void dispatch_post_terminal(void *ctx, const glk_contract_ops *ops) noexcept {
-            auto *host = static_cast<plugin::PluginHost *>(ctx);
-            if (host == nullptr) {
-                return;
-            }
-            host->dispatch(plugin::HostStage::PostTerminal,
-                           plugin::PluginCallContext{ops});
-        }
+//         /* S4 P1 step 3a: the composition seam's POST_TERMINAL consumer. The
+//          * backend window only ever sees this neutral function pointer; the P1
+//          * host type stays on this side of the seam. A null ctx is a no-op (the
+//          * context fields are only installed when a host was passed in). */
+//         void dispatch_post_terminal(void *ctx, const glk_contract_ops *ops) noexcept {
+//             auto *host = static_cast<plugin::PluginHost *>(ctx);
+//             if (host == nullptr) {
+//                 return;
+//             }
+//             host->dispatch(plugin::HostStage::PostTerminal,
+//                            plugin::PluginCallContext{ops});
+//         }
 
         /* Builds the root-program argv from the runtime home: the Kotlin entry
          * copies ksud to $GHOSTLOCK_HOME/ksud, so the LKM's late-load command
@@ -120,6 +121,9 @@ namespace ghostlock::backend::cve_2026_43284 {
             std::string_view module_path,
             const platform::DeviceProbeOps &device, bool allow_dev_target,
             plugin::PluginHost *plugin_host) {
+        /* USER DIRECTIVE 2026-10-05: plugin paused -> the host is no longer
+         * used here, so the parameter is explicitly discarded. */
+        (void)plugin_host;
         ExecutionBindResult result{};
         if (module_path.empty()) {
             result.error = ExecutionBindError::ModulePathEmpty;
@@ -262,9 +266,21 @@ namespace ghostlock::backend::cve_2026_43284 {
          * neutral thunk above, so the host's POST_TERMINAL stage runs inside the
          * residency window. A null host keeps both fields null and the window
          * plugin-free. */
-        ctx.plugin_dispatch =
-                plugin_host != nullptr ? &dispatch_post_terminal : nullptr;
-        ctx.plugin_ctx = plugin_host;
+//         /* RUNTIME DISABLE (user directive 2026-10-05; switch in
+//          * plugin/host.hpp). The residency window only dispatches when a sink is
+//          * bound here, so while the switch is false no sink is bound even if a
+//          * caller passes a host: the backend window is plugin-free at runtime and
+//          * the neutral dispatch code (and its HostStage call site) stays in place
+//          * for the one-line restore. */
+//         if constexpr (plugin::kPluginRuntimeEnabled) {
+//             ctx.plugin_dispatch =
+//                     plugin_host != nullptr ? &dispatch_post_terminal : nullptr;
+//             ctx.plugin_ctx = plugin_host;
+//         } else {
+//             (void)plugin_host;
+//             ctx.plugin_dispatch = nullptr;
+//             ctx.plugin_ctx = nullptr;
+//         }
         state.deps.chain = make_real_chain_ops(ctx);
         state.deps.carrier = &resources.carrier;
         state.deps.plan = &resources.module.plan;
@@ -287,6 +303,9 @@ namespace ghostlock::backend::cve_2026_43284 {
             session::CoreSession &session, ProductionResources &resources,
             const profile::Document &document, const IpsecSaParams &sa,
             bool allow_dev_target, plugin::PluginHost *plugin_host) {
+        /* USER DIRECTIVE 2026-10-05: plugin paused -> the host is no longer
+         * used here, so the parameter is explicitly discarded. */
+        (void)plugin_host;
         const config::RuntimeConfig &runtime =
                 config::runtime_config_snapshot();
         /* The resources object owns the path so the state's lkm_image_path view

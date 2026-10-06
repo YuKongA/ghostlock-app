@@ -111,7 +111,10 @@ int main() {
         assert(lines[1] == "countermeasures_root\tcountermeasures");
         assert(lines[2] ==
                "host_stages\tpre_spawn,post_spawn,pre_terminal,post_terminal");
-        assert(lines[3] == "host_caps\tkernel_read,kernel_write,alias,child_task");
+        /* S4 logging batch B: GLK_CAP_LOG joins the host capabilities; the probe
+         * prints them from contract::kCapabilityCatalog. */
+        assert(lines[3] ==
+               "host_caps\tkernel_read,kernel_write,alias,child_task,log");
         /* P1 revision: the backend stage matrix travels in the header so the App
          * never hard-codes it (single authority: plugin/schema.hpp). */
         assert(lines[4] ==

@@ -177,8 +177,20 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
     let mut out: Vec<(&'static str, &'static str)> = vec![
         // Top-level HOCON paths that the app folds into a wire section/key.
         // Section names are owner-qualified (S4 R2).
+        // HOCON refactor (user ruling 2026-10-05): the root scalars live at the
+        // document root but keep their wire paths. `common.kernel_minor` is
+        // emitted by render_conf yet has no manifest row YET (the App/native half
+        // of the batch adds it), so it is deliberately not listed here -- the
+        // manifest test below is a hard subset check and must stay honest.
         ("common", "kernel_major"),
         ("backend.cve_2026_43499", "steps"),
+        // The 43284 execution tuning moved under `execution {}` in HOCON while
+        // the wire keys stay flat.
+        ("backend.cve_2026_43284", "late_load_args"),
+        ("backend.cve_2026_43284", "selinux_exec_context"),
+        ("backend.cve_2026_43284", "module_poll_attempts"),
+        ("backend.cve_2026_43284", "module_poll_interval_ms"),
+        ("backend.cve_2026_43284", "wait_timeout_ms"),
         ("platform.abi.kernel", "kernel_phys_load"),
         ("platform.abi.kernel", "kernel_phys_offset"),
         ("backend.cve_2026_43499.kernel", "kernelsnitch_collisions"),
@@ -186,7 +198,8 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
         // Every `route.<route>.compact_waiter` gate (tcp/select/multicast) maps
         // onto the shared 43499 `kernel.compact_waiter` slot.
         ("backend.cve_2026_43499.kernel", "compact_waiter"),
-        ("countermeasure.vivo_vr_guard", "tracepoint_funcs"),
+        // countermeasure.vivo_vr_guard.* was DELETED by user ruling (not frozen):
+        // render_conf no longer emits it, so it is no longer a wire field here.
     ];
     for (_, key) in CONF_TASK_FIELDS.iter().copied() {
         out.push(("platform.abi.task_struct", key));
@@ -206,10 +219,22 @@ pub fn conf_wire_fields() -> Vec<(&'static str, &'static str)> {
         }
     }
     out.push(("backend.cve_2026_43499.route.select_stack", "waiter_shift"));
-    out.push(("backend.cve_2026_43499.route.multicast_waiter", "waiter_off"));
-    out.push(("backend.cve_2026_43499.route.multicast_waiter", "buffer_size"));
-    out.push(("backend.cve_2026_43499.route.multicast_waiter", "task_offset"));
-    out.push(("backend.cve_2026_43499.route.multicast_waiter", "lock_offset"));
+    out.push((
+        "backend.cve_2026_43499.route.multicast_waiter",
+        "waiter_off",
+    ));
+    out.push((
+        "backend.cve_2026_43499.route.multicast_waiter",
+        "buffer_size",
+    ));
+    out.push((
+        "backend.cve_2026_43499.route.multicast_waiter",
+        "task_offset",
+    ));
+    out.push((
+        "backend.cve_2026_43499.route.multicast_waiter",
+        "lock_offset",
+    ));
     out
 }
 
@@ -357,8 +382,21 @@ fn conf_offsets(
 
 /// The backend whose step token carries a route prefix (S4-R6b).
 pub const BACKEND_43499: &str = "cve_2026_43499";
-/// The route-less backend whose step token is a bare path name.
+/// The other catalogued backend. `render_conf` always emits its block (single
+/// combination, `umh`) so a generated profile declares both backends; only the
+/// selected one carries `steps`.
 pub const BACKEND_43284: &str = "cve_2026_43284";
+/// 43284 execution tuning, HOCON `backend.cve_2026_43284.execution.*`, with the
+/// frozen `[literal:N]` defaults from docs/kernel_profiles/PROFILE_TEMPLATE.conf.
+const CONF_43284_EXECUTION: [(&str, &str); 5] = [
+    ("late_load_args", "0"),
+    ("selinux_exec_context", "0"),
+    ("module_poll_attempts", "40"),
+    ("module_poll_interval_ms", "5"),
+    ("wait_timeout_ms", "15000"),
+];
+/// The route-less backend whose step token is a bare path name (declared above
+/// with the 43284 execution table).
 
 /// Route -> short token prefix for a backend with a route axis. This is the
 /// extractor-side copy of the native token contract; the full route name still
@@ -437,69 +475,66 @@ pub struct ConfInputs<'a> {
     pub extra_offsets: &'a ConfExtraOffsets,
 }
 
-/// Renders a canonical (R3) self-contained GLK profile (\`--format conf\`): no
-/// include lines, the shared 6.x constants inlined, owner-qualified paths
-/// matching \`app/src/main/assets/kernel_profiles/\`. Fields without a derived
-/// value are emitted as explicit \`null\`.
+/// Renders a canonical self-contained GLK profile (`--format conf`) in the
+/// **frozen HOCON shape** (user ruling 2026-10-05; authority
+/// `docs/kernel_profiles/PROFILE_TEMPLATE.conf`): root scalars
+/// (schema_version / release / kernel_major / kernel_minor / safe_mode),
+/// `available { <backend> = [ <combination token> ] }`, then
+/// `backend.<id> { steps, abi { task_struct, cred, kernel, offset }, ... }`.
+/// The `common` / `platform` / `selection` owners no longer exist: the platform
+/// ABI block moved under `backend.cve_2026_43499.abi`, the selection became
+/// `available`, and `vr_guard` / `defex_symbol` are deleted. Fields without a
+/// derived value are emitted as explicit `null`.
 pub fn render_conf(input: &ConfInputs<'_>) -> String {
     let release = input.release;
     let major = release
         .split('.')
         .next()
         .and_then(|part| part.parse::<u32>().ok());
-    let vr_funcs = input
-        .structs
-        .get("vr_tracepoint_funcs")
-        .copied()
-        .flatten()
-        .filter(|value| (1..=u8::MAX as u32).contains(value));
+    let minor = release
+        .split('.')
+        .nth(1)
+        .and_then(|part| part.trim().parse::<u32>().ok());
 
-    // S4-R6b: the step selection is one token under the selected backend, not
-    // a top-level `selection.steps`. A route-axis backend qualifies it with
-    // the route prefix; an unknown/absent route fails closed (no token) so the
-    // app's validation can reject the incomplete profile instead of running a
-    // guessed combination. `selection.terminal` is derived from the path.
+    // The step token under the selected backend (a route-axis backend qualifies
+    // it with the route prefix). An unknown/absent route fails closed (no token)
+    // so the app rejects the incomplete profile instead of running a guessed
+    // combination. `terminal` is gone from HOCON: the token implies it.
     let steps_token = combination_token(input.backend, input.route, input.steps_path);
-    let terminal = path_terminal(input.steps_path);
 
     let mut lines = vec![
-        format!("# GhostLock kernel profile: {release} (HOCON, canonical R3 layout)."),
+        format!("# GhostLock kernel profile: {release} (HOCON, GLKv3 schema 3)."),
         "ghostlock {".to_string(),
         "  schema_version = 3".to_string(),
         format!("  release = \"{release}\""),
-        "  selection {".to_string(),
-        format!("    backend = \"{}\"", input.backend),
+        format!("  kernel_major = {}", conf_scalar(major.map(u64::from))),
+        format!("  kernel_minor = {}", conf_scalar(minor.map(u64::from))),
+        "  safe_mode = false".to_string(),
+        /* Two levels: pick an available backend, then a combination token under
+         * it. The profile only DECLARES availability; the App/user selects. */
+        "  available {".to_string(),
     ];
-    if let Some(terminal) = terminal {
-        lines.push(format!("    terminal = \"{terminal}\""));
+    if let Some(token) = &steps_token {
+        lines.push(format!(
+            "    {} = [ \"{token}\" ]",
+            hocon_key(input.backend)
+        ));
     }
-    lines.push("  }".to_string());
-    lines.push("  common {".to_string());
-    lines.push(format!("    kernel_major = {}", major.unwrap_or(0)));
-    if vr_funcs.is_some() {
-        lines.push("    vr_guard = true".to_string());
+    if input.backend != BACKEND_43284 {
+        lines.push(format!("    {BACKEND_43284} = [ \"umh\" ]"));
     }
     lines.push("  }".to_string());
 
-    lines.push("  platform {".to_string());
-    lines.push("    abi {".to_string());
-    lines.push("      kernel {".to_string());
-    lines.push(format!(
-        "        kernel_phys_load = {}",
-        input
-            .phys
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "null".to_string())
-    ));
-    lines.push(format!(
-        "        kernel_phys_offset = {}",
-        input
-            .phys_offset
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "null".to_string())
-    ));
-    lines.push("      }".to_string());
-    lines.push("      task_struct {".to_string());
+    lines.push("  backend {".to_string());
+    lines.push(format!("    {} {{", hocon_key(input.backend)));
+    if let Some(token) = &steps_token {
+        lines.push(format!("      steps = \"{token}\""));
+    }
+
+    /* `platform.abi.*` moved here (`platform` owner deleted). The block order follows
+     * the frozen template: task_struct, cred, kernel, offset. */
+    lines.push("      abi {".to_string());
+    lines.push("        task_struct {".to_string());
     for (macro_name, key) in CONF_TASK_FIELDS {
         let value = input
             .structs
@@ -508,89 +543,44 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
             .flatten()
             .map(|value| value.to_string())
             .unwrap_or_else(|| "null".to_string());
-        lines.push(format!("        {key} = {value}"));
+        lines.push(format!("          {key} = {value}"));
     }
-    lines.push("      }".to_string());
-    lines.push("      cred {".to_string());
+    lines.push("        }".to_string());
+    lines.push("        cred {".to_string());
     for key in CONF_CRED_FIELDS.iter().copied() {
         if CONF_CRED_PLATFORM_KEYS.contains(&key) {
-            lines.push(format!("        {key} = {}", conf_lookup(input.cred, key)));
+            lines.push(format!(
+                "          {key} = {}",
+                conf_lookup(input.cred, key)
+            ));
         }
     }
-    lines.push("      }".to_string());
+    lines.push("        }".to_string());
+    lines.push("        kernel {".to_string());
+    lines.push(format!(
+        "          kernel_phys_load = {}",
+        conf_scalar(input.phys)
+    ));
+    lines.push(format!(
+        "          kernel_phys_offset = {}",
+        conf_scalar(input.phys_offset)
+    ));
+    lines.push("        }".to_string());
     let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
-    lines.push("      offset {".to_string());
+    lines.push("        offset {".to_string());
     for key in CONF_OFFSET_FIELDS.iter().copied() {
         if CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
-            lines.push(format!("        {key} = {}", conf_lookup(&offset_entries, key)));
+            lines.push(format!(
+                "          {key} = {}",
+                conf_lookup(&offset_entries, key)
+            ));
         }
     }
-    lines.push("      }".to_string());
-    lines.push("    }".to_string());
-    lines.push("  }".to_string());
-
-    lines.push("  backend {".to_string());
-    lines.push(format!("    {} {{", input.backend));
-    if let Some(token) = &steps_token {
-        lines.push(format!("      steps = \"{token}\""));
-    }
-
-    let mut snitch = Vec::new();
-    if kernel_layout_verified(Some(release)) || major == Some(5) {
-        match major {
-            Some(6) => {
-                // = kernelsnitch-6x.conf
-                snitch.push(("collisions".to_string(), "4".to_string()));
-                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1") {
-                    // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
-                    snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
-                }
-            }
-            Some(5) => {
-                // android13-5.15 measured defaults (bundled 5.15 profile).
-                snitch.push(("collisions".to_string(), "8".to_string()));
-                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
-            }
-            _ => {}
-        }
-    }
-    lines.push("      kernel {".to_string());
-    if let Some((_, value)) = input
-        .route_geometry
-        .iter()
-        .find(|(key, _)| *key == "compact_waiter")
-    {
-        lines.push(format!(
-            "        compact_waiter = {}",
-            if *value != 0 { "true" } else { "false" }
-        ));
-    }
-    lines.push(format!(
-        "        kernelsnitch_collisions = {}",
-        conf_lookup(&snitch, "collisions")
-    ));
-    lines.push(format!(
-        "        mm_struct_sz = {}",
-        conf_lookup(&snitch, "mm_struct_sz")
-    ));
+    lines.push("        }".to_string());
     lines.push("      }".to_string());
 
-    lines.push("      cred {".to_string());
-    for key in CONF_CRED_FIELDS.iter().copied() {
-        if !CONF_CRED_PLATFORM_KEYS.contains(&key) {
-            lines.push(format!("        {key} = {}", conf_lookup(input.cred, key)));
-        }
-    }
-    lines.push("      }".to_string());
-
-    lines.push("      offset {".to_string());
-    for key in CONF_OFFSET_FIELDS.iter().copied() {
-        if !CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
-            lines.push(format!("        {key} = {}", conf_lookup(&offset_entries, key)));
-        }
-    }
-    lines.push("      }".to_string());
-
+    /* Backend-scoped blocks (the 43499 route geometry and the values the App
+     * folds onto backend.cve_2026_43499.*). */
     if let Some(route) = input.route {
         let route_fields: Vec<&'static str> =
             match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
@@ -625,18 +615,94 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         lines.push("      }".to_string());
     }
 
-    lines.push("    }".to_string());
-    lines.push("  }".to_string());
-
-    if let Some(funcs) = vr_funcs {
-        lines.push("  countermeasure {".to_string());
-        lines.push("    vivo_vr_guard {".to_string());
-        lines.push(format!("      tracepoint_funcs = {funcs}"));
-        lines.push("    }".to_string());
-        lines.push("  }".to_string());
+    lines.push("      cred {".to_string());
+    for key in CONF_CRED_FIELDS.iter().copied() {
+        if !CONF_CRED_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!("        {key} = {}", conf_lookup(input.cred, key)));
+        }
     }
+    lines.push("      }".to_string());
+
+    let mut snitch = Vec::new();
+    if kernel_layout_verified(Some(release)) || major == Some(5) {
+        match major {
+            Some(6) => {
+                // = kernelsnitch-6x.conf
+                snitch.push(("collisions".to_string(), "4".to_string()));
+                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1")
+                {
+                    // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
+                    snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+                }
+            }
+            Some(5) => {
+                // android13-5.15 measured defaults (bundled 5.15 profile).
+                snitch.push(("collisions".to_string(), "8".to_string()));
+                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+            }
+            _ => {}
+        }
+    }
+    lines.push("      kernel {".to_string());
+    if let Some((_, value)) = input
+        .route_geometry
+        .iter()
+        .find(|(key, _)| *key == "compact_waiter")
+    {
+        lines.push(format!(
+            "        compact_waiter = {}",
+            if *value != 0 { "true" } else { "false" }
+        ));
+    }
+    lines.push(format!(
+        "        kernelsnitch_collisions = {}",
+        conf_lookup(&snitch, "collisions")
+    ));
+    lines.push(format!(
+        "        mm_struct_sz = {}",
+        conf_lookup(&snitch, "mm_struct_sz")
+    ));
+    lines.push("      }".to_string());
+
+    lines.push("      offset {".to_string());
+    for key in CONF_OFFSET_FIELDS.iter().copied() {
+        if !CONF_OFFSET_PLATFORM_KEYS.contains(&key) {
+            lines.push(format!(
+                "        {key} = {}",
+                conf_lookup(&offset_entries, key)
+            ));
+        }
+    }
+    lines.push("      }".to_string());
+
+    lines.push("    }".to_string());
+
+    /* The second catalogued backend is always declared (single combination). It
+     * carries no extractor-derived values: its execution tuning is the frozen
+     * `[literal:N]` set, and kmi / lkm_path / carrier_path are computed at
+     * runtime inside the GhostLock directory (they must NOT appear here). */
+    if input.backend != BACKEND_43284 {
+        lines.push(format!("    {BACKEND_43284} {{"));
+        lines.push("      steps = \"umh\"".to_string());
+        lines.push("      execution {".to_string());
+        for (key, value) in CONF_43284_EXECUTION {
+            lines.push(format!("        {key} = {value}"));
+        }
+        lines.push("      }".to_string());
+        lines.push("    }".to_string());
+    }
+
+    lines.push("  }".to_string());
     lines.push("}".to_string());
     lines.join("\n") + "\n"
+}
+
+/// `null` for an underived value, else the decimal literal (HOCON has no
+/// unsigned type; every extractor value fits u64).
+fn conf_scalar(value: Option<u64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// One plugin's resolved extract entries, in descriptor declaration order.
@@ -652,12 +718,42 @@ pub struct ResolvedPlugin {
 const HOCON_QUOTE: char = '"';
 const HOCON_BACKSLASH: char = '\u{5c}';
 
+/// HOCON path -> WIRE path translation.
+///
+/// ⏳ **TRANSITIONAL — delete after the native rename** (Lead ruling 2026-10-05:
+/// "wire 里应当对齐 profile"): native is renaming the wire paths to match the
+/// profile exactly (`backend.cve_2026_43499.abi.*`, `backend.cve_2026_43284.execution.*`,
+/// root-level scalars), at which point this function becomes the IDENTITY map and
+/// should be removed (or kept only as a consistency assertion). It cannot go yet:
+/// the plugin R1 lookup and the bundled-profile comparison read a wire schema
+/// that has not been renamed, so removing it now would turn them red.
+fn translate_conf_path(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("backend.cve_2026_43499.abi.") {
+        return format!("platform.abi.{rest}");
+    }
+    if let Some(rest) = path.strip_prefix("backend.cve_2026_43284.execution.") {
+        if CONF_43284_EXECUTION.iter().any(|(key, _)| *key == rest) {
+            /* Wire key is flat: backend.cve_2026_43284.<key>. */
+            return format!("backend.{BACKEND_43284}.{rest}");
+        }
+    }
+    match path {
+        "kernel_major" | "kernel_minor" | "safe_mode" => format!("common.{path}"),
+        _ => path.to_string(),
+    }
+}
+
 /// Flattens a rendered `--format conf` document into `path -> literal`, with the
-/// `ghostlock` wrapper stripped (the view the App sees after
-/// `HoconSupport.unwrapProfileDocument`). Comments and brace-only lines are
-/// ignored and a quoted key is unquoted. The plugin extract projection reads
-/// back the values this crate just rendered, so an R1 extract value is the
-/// profile value by construction instead of a second derivation.
+/// `ghostlock` wrapper stripped and every path TRANSLATED onto the WIRE path the
+/// App folds it into (the view the plugin R1 lookup and the App's own
+/// `HoconSupport` see). Comments and brace-only lines are ignored and a quoted
+/// key is unquoted. The plugin extract projection reads back the values this
+/// crate just rendered, so an R1 extract value is the profile value by
+/// construction instead of a second derivation.
+///
+/// HOCON refactor (user ruling 2026-10-05): the root scalars are wire
+/// `common.*`, `backend.cve_2026_43499.abi.*` is wire `platform.abi.*`, and the
+/// 43284 execution tuning folds back onto its flat wire keys.
 pub fn flatten_conf_values(text: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut stack: Vec<String> = Vec::new();
@@ -687,7 +783,7 @@ pub fn flatten_conf_values(text: &str) -> BTreeMap<String, String> {
             .strip_prefix("ghostlock.")
             .unwrap_or(path.as_str())
             .to_string();
-        out.insert(path, value.trim().to_string());
+        out.insert(translate_conf_path(&path), value.trim().to_string());
     }
     out
 }
@@ -880,16 +976,16 @@ mod tests {
         ConfExtraOffsets::default()
     }
 
+    /// User ruling 2026-10-05: vr_guard / defex are DELETED (not frozen). The
+    /// generated HOCON must not carry either, whatever the BTF supplies.
     #[test]
-    fn conf_emits_the_vr_guard_only_when_the_layout_fits_the_transport() {
+    fn conf_never_emits_the_deleted_vr_guard_or_defex_fields() {
         let (symbols, base_structs) = conf_fixture();
         let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
-        let render = |funcs: Option<Option<u32>>| {
+        for funcs in [Some(0x40u32), Some(0x140), Some(0), None] {
             let mut structs = base_structs.clone();
-            if let Some(value) = funcs {
-                structs.insert("vr_tracepoint_funcs".to_string(), value);
-            }
-            render_conf(&ConfInputs {
+            structs.insert("vr_tracepoint_funcs".to_string(), funcs);
+            let out = render_conf(&ConfInputs {
                 release: "6.1.145-android14-11-maybe-dirty",
                 phys: None,
                 phys_offset: None,
@@ -901,16 +997,11 @@ mod tests {
                 route_geometry: &geometry,
                 cred: &conf_cred_6x(),
                 extra_offsets: &no_extra_offsets(),
-            })
-        };
-        let fitted = render(Some(Some(0x40)));
-        assert!(fitted.contains("vr_guard = true"));
-        assert!(fitted.contains("tracepoint_funcs = 64"));
-        /* An offset that cannot travel in the u8 layout is dropped instead of
-         * being narrowed onto a different tracepoint member: guard off. */
-        for bad in [Some(Some(0x140u32)), Some(Some(0)), None] {
-            let out = render(bad);
-            assert!(!out.contains("vr_guard"));
+            });
+            assert!(!out.contains("vr_guard"), "vr_guard emitted: {out}");
+            assert!(!out.contains("tracepoint_funcs"));
+            assert!(!out.contains("defex_symbol"));
+            assert!(!out.contains("countermeasure"));
             assert!(!out.contains("recommend_vr_guard"));
         }
     }
@@ -961,6 +1052,167 @@ mod tests {
         assert!(out.contains("steps = \"pselect_rootchild\""));
         assert!(!out.contains("w1_w3"));
         assert!(!out.contains("selection {\n    steps"));
+    }
+
+    /// The frozen HOCON shape (user ruling 2026-10-05; authority
+    /// `docs/kernel_profiles/PROFILE_TEMPLATE.conf`): root scalars, `available{}` and
+    /// `backend.<id>` with the platform ABI moved under the 43499 backend. Keys the
+    /// refactor DELETED must stay deleted.
+    #[test]
+    fn conf_emits_the_frozen_hocon_shape() {
+        let (symbols, structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
+        let out = render_conf(&ConfInputs {
+            release: "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+            phys: Some(0x4000_0000),
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            backend: super::BACKEND_43499,
+            route: Some("select_stack"),
+            steps_path: "rootchild",
+            route_geometry: &geometry,
+            cred: &conf_cred_6x(),
+            extra_offsets: &no_extra_offsets(),
+        });
+        /* Printed so `cargo test -- --nocapture` shows the real document. */
+        println!("{out}");
+
+        // Root scalars (the `common` owner is gone).
+        assert!(out.contains("\n  kernel_major = 5\n"), "{out}");
+        assert!(out.contains("\n  kernel_minor = 15\n"), "{out}");
+        assert!(out.contains("\n  safe_mode = false\n"), "{out}");
+        // available{}: two levels, backend -> combination token(s).
+        assert!(out.contains(
+            "  available {\n    cve_2026_43499 = [ \"pselect_rootchild\" ]\n    cve_2026_43284 = [ \"umh\" ]\n  }\n"
+        ));
+        // 43499: steps, then abi{task_struct, cred, kernel, offset}, then the
+        // backend-scoped blocks.
+        assert!(out.contains(
+            "    cve_2026_43499 {\n      steps = \"pselect_rootchild\"\n      abi {\n        task_struct {\n"
+        ));
+        assert!(out.contains("        task_struct {\n          prio = 132\n"));
+        assert!(out.contains("        cred {\n"));
+        assert!(out.contains("          caps_offset = 48\n"));
+        assert!(out.contains("        kernel {\n          kernel_phys_load = 1073741824\n"));
+        assert!(out.contains("        offset {\n"));
+        assert!(out.contains("          init_task = 34595456\n"));
+        assert!(
+            out.contains("      route {\n        select_stack {\n          waiter_shift = -2\n")
+        );
+        // 43284: steps + the frozen execution literals.
+        assert!(out.contains("    cve_2026_43284 {\n      steps = \"umh\"\n      execution {\n"));
+        for (key, value) in [
+            ("late_load_args", "0"),
+            ("selinux_exec_context", "0"),
+            ("module_poll_attempts", "40"),
+            ("module_poll_interval_ms", "5"),
+            ("wait_timeout_ms", "15000"),
+        ] {
+            assert!(
+                out.contains(&format!("        {key} = {value}\n")),
+                "43284 execution field {key} missing\n{out}"
+            );
+        }
+        // Deleted owners / keys: any of these coming back is a regression.
+        for dead in [
+            "  common {",
+            "  platform {",
+            "  selection {",
+            "vr_guard",
+            "tracepoint_funcs",
+            "defex_symbol",
+            "kmi =",
+            "lkm_path",
+            "carrier_path",
+            "countermeasure {",
+            "terminal",
+        ] {
+            assert!(
+                !out.contains(dead),
+                "removed key came back ({dead}):\n{out}"
+            );
+        }
+    }
+
+    /// The refactor moved paths in the SOURCE document only: the wire schema is
+    /// untouched, so flatten_conf_values is the shared translation layer (plugin
+    /// R1 lookup + App folding).
+    #[test]
+    fn flatten_conf_values_translates_the_refactored_layout() {
+        let (symbols, structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
+        let out = render_conf(&ConfInputs {
+            release: "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+            phys: Some(0x4000_0000),
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            backend: super::BACKEND_43499,
+            route: Some("select_stack"),
+            steps_path: "rootchild",
+            route_geometry: &geometry,
+            cred: &conf_cred_6x(),
+            extra_offsets: &no_extra_offsets(),
+        });
+        let flat = super::flatten_conf_values(&out);
+        assert_eq!(
+            flat.get("common.kernel_major").map(String::as_str),
+            Some("5")
+        );
+        assert_eq!(
+            flat.get("common.kernel_minor").map(String::as_str),
+            Some("15")
+        );
+        assert_eq!(
+            flat.get("common.safe_mode").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            flat.get("platform.abi.kernel.kernel_phys_load")
+                .map(String::as_str),
+            Some("1073741824")
+        );
+        assert_eq!(
+            flat.get("platform.abi.task_struct.prio")
+                .map(String::as_str),
+            Some("132")
+        );
+        assert_eq!(
+            flat.get("platform.abi.offset.init_task")
+                .map(String::as_str),
+            Some("34595456")
+        );
+        /* String literals keep their HOCON quotes in the flattened view (that is
+         * what the profile carries); only numbers are bare. */
+        assert_eq!(
+            flat.get("backend.cve_2026_43499.steps").map(String::as_str),
+            Some("\"pselect_rootchild\"")
+        );
+        assert_eq!(
+            flat.get("backend.cve_2026_43499.route.select_stack.waiter_shift")
+                .map(String::as_str),
+            Some("-2")
+        );
+        assert_eq!(
+            flat.get("backend.cve_2026_43284.steps").map(String::as_str),
+            Some("\"umh\"")
+        );
+        assert_eq!(
+            flat.get("backend.cve_2026_43284.wait_timeout_ms")
+                .map(String::as_str),
+            Some("15000")
+        );
+        // No HOCON-only source path leaks into the wire view.
+        assert!(
+            flat.keys()
+                .all(|key| !key.starts_with("backend.cve_2026_43499.abi."))
+        );
+        assert!(
+            flat.keys()
+                .all(|key| !key.starts_with("backend.cve_2026_43284.execution."))
+        );
+        assert!(flat.keys().all(|key| !key.starts_with("ghostlock.")));
     }
 
     #[test]
@@ -1182,9 +1434,16 @@ mod tests {
         assert!(out.contains("kernel {"));
         assert!(out.contains("kernelsnitch_collisions = null"));
         assert!(out.contains("mm_struct_sz = null"));
-        // Unknown route: fail closed, no bogus token at all.
-        assert!(!out.contains("steps = "));
-        assert!(out.contains("terminal = \"root_child\""));
+        // Unknown route: fail closed -- the SELECTED backend gets no token.
+        let selected = out.split("cve_2026_43284 {").next().unwrap_or_default();
+        assert!(
+            !selected.contains("steps = "),
+            "selected backend got a token: {out}"
+        );
+        assert!(!out.contains("cve_2026_43499 = ["));
+        // The 43284 block is independent of the 43499 route axis.
+        assert!(out.contains("cve_2026_43284 = [ \"umh\" ]"));
+        assert!(out.contains("cve_2026_43284 {\n      steps = \"umh\""));
     }
 
     #[test]
@@ -1315,37 +1574,9 @@ mod tests {
         assert_eq!(path_terminal("bogus"), None);
     }
 
-    /// Flatten a HOCON-ish profile into `section.key` -> value, ignoring
-    /// comments and one level of brace nesting.
-    fn flatten_conf(text: &str) -> BTreeMap<String, String> {
-        let mut out = BTreeMap::new();
-        let mut stack: Vec<String> = Vec::new();
-        for raw in text.lines() {
-            let line = raw.split('#').next().unwrap_or("").trim();
-            if line.is_empty() {
-                continue;
-            }
-            if line.ends_with('{') {
-                stack.push(line[..line.len() - 1].trim().to_string());
-                continue;
-            }
-            if line == "}" {
-                stack.pop();
-                continue;
-            }
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                let value = value.trim();
-                let full = if stack.is_empty() {
-                    key.to_string()
-                } else {
-                    format!("{}.{}", stack.join("."), key)
-                };
-                out.insert(full, value.to_string());
-            }
-        }
-        out
-    }
+    /* The old 'flatten_conf' helper (wrapper-preserving, no HOCON->wire
+     * translation) was replaced wholesale by 'super::flatten_conf_values', which
+     * is what the App and the plugin R1 lookup actually share. */
 
     /// The values the real extractor produces for the A301SO `5.15.189` boot
     /// image, so the rendered conf can be compared field-for-field with the
@@ -1441,25 +1672,45 @@ mod tests {
             "/../../app/src/main/assets/kernel_profiles/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.conf"
         ))
         .expect("bundled 5.15.189 profile");
-        let generated = flatten_conf(&generated);
-        let bundled = flatten_conf(&bundled);
+        /* Keys that exist ONLY because of the HOCON refactor: the pre-refactor
+         * bundle cannot carry them (the root safe_mode/kernel_minor scalars and
+         * the whole second-backend block are new). */
+        const REFACTOR_ONLY: &[&str] = &["common.kernel_minor", "common.safe_mode"];
+        /* flatten_conf_values strips the wrapper AND translates the refactored
+         * source layout onto wire paths, so the new-shape generated document and
+         * the old-shape bundled profile become directly comparable. */
+        let generated = super::flatten_conf_values(&generated);
+        let bundled = super::flatten_conf_values(&bundled);
 
-        assert!(generated
-            .contains_key("ghostlock.backend.cve_2026_43499.route.multicast_waiter.waiter_off"));
-        for key in bundled.keys() {
-            assert_eq!(
-                generated.get(key),
-                bundled.get(key),
-                "field {key} differs between generated and bundled profile"
-            );
+        assert!(generated.contains_key("backend.cve_2026_43499.route.multicast_waiter.waiter_off"));
+        /* The bundled profile is still in the PRE-refactor shape; flattening both
+         * documents onto wire paths makes the two comparable field by field. */
+        for (key, value) in &generated {
+            match bundled.get(key) {
+                Some(bundled_value) => assert_eq!(
+                    value, bundled_value,
+                    "field {key} differs between generated and bundled profile"
+                ),
+                /* The fields the not-yet-refactored bundle cannot carry:
+                 * `available.*` is HOCON-only (the App turns it into UI choices
+                 * and the wire receives `backend.<id>.steps`), and `kernel_minor` is
+                 * the new root scalar -> wire `common.kernel_minor` whose manifest
+                 * row lands with the App/native half of the batch. */
+                None => assert!(
+                    REFACTOR_ONLY.contains(&key.as_str())
+                        || key.starts_with("available.")
+                        || key.starts_with("backend.cve_2026_43284."),
+                    "generated profile has unexpected field {key}"
+                ),
+            }
         }
-        // And the generated profile carries no extra non-comment field.
-        for key in generated.keys() {
-            assert!(
-                bundled.contains_key(key),
-                "generated profile has unexpected field {key}"
-            );
-        }
+        // The deleted vr_guard/defex fields must not come back through the bundle.
+        assert!(!generated.contains_key("common.vr_guard"));
+        assert!(
+            !generated
+                .keys()
+                .any(|key| key.contains("vivo_vr_guard") || key.contains("defex"))
+        );
     }
 
     /// S4 R2 three-end manifest agreement (extractor leg): every owner-qualified
@@ -1480,10 +1731,7 @@ mod tests {
                 !trimmed.is_empty() && !trimmed.starts_with('#')
             })
             .map(|line| {
-                let path = line
-                    .split('\t')
-                    .nth(1)
-                    .expect("manifest path column");
+                let path = line.split('\t').nth(1).expect("manifest path column");
                 path.to_string()
             })
             .collect();
@@ -1534,7 +1782,11 @@ mod tests {
                 columns[0]
             );
         }
-        assert_eq!(tokens.len(), 12, "manifest must list the 12 catalogue tokens");
+        assert_eq!(
+            tokens.len(),
+            12,
+            "manifest must list the 12 catalogue tokens"
+        );
 
         /* Everything the extractor CLI can render: 43499 x 3 routes x 3 paths. */
         let mut emitted = 0usize;

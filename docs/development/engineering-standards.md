@@ -339,6 +339,15 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 见 §1.5。评审批次参考 `native-cpp-migration-plan.md`：每批次一个可独立验证的提交序列，
 提交信息含变更与验证结论。
 
+### 6.5 构建脚本：Gradle-only 与跨平台（用户指令 2026-10-05）
+
+- **构建逻辑一律写进 Gradle KTS**（`*.gradle.kts`）：LKM/DDK、插件产物、native 准备等都由 Gradle 任务承担；**禁止独立 `.sh` 构建脚本**。
+- **`.sh` 仅限设备端与运维**：例如 `tools/lkm/ghostlock/root_cmd.sh`（经 `call_usermodehelper` 执行的设备载荷）、`tools/device-guard/*`、`.github/scripts/*`；**第三方/参考项目自己的 `build.sh` 与本规约无关**，文档中照原样引用。
+- **跨平台硬要求**：不得依赖 `shasum` / `sha256sum` / `mkdir -p` / `mv` / `cp` / `find` / bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）。
+- **工具链路径不依赖 PATH**：如 `llvm-objcopy` 由既有 NDK 解析器（`android.ndkDirectory`，见 root `build.gradle.kts`）定位；prebuilt host tag 用通配。
+- **容器引擎**：探测 `podman` → `docker`，允许 `-PcontainerEngine=` 覆盖；需要容器的任务（如 `buildLkmImages`）必须**显式**执行，**不挂** `preBuild`。
+- **跨端列表不得手抄**：8 个 KMI label 由 native 导出 `lkm-kmi-manifest.tsv`（两份逐字节一致）供 Gradle 与 Kotlin 消费——与 `profile-manifest-v3.tsv` / `combination-manifest.tsv` / `vocabulary-manifest.tsv` 同规。
+
 ---
 
 ## 7. 文档规范（摘要）
@@ -389,6 +398,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 - 未验证路径不得宣称支持：Multicast（5.15）、TCP、Select 三条路径均已由开发者真机验证；
   新 profile 未过真机不得标 `supported`。
 - 失败记录与通过记录**同等归档**（fail/panic 文档与 pass 文档并存，格式一致）。
+- **「已落地」必须绑定真实提交（强制）**：文档不得把**工作树状态**写成「已落地」——否则文档比代码超前，别人按文档去 `git show` 会扑空。未提交的实现只能写「**已实现（工作树，待提交）**」，并在**提交后回填提交号**；**归因只写实际包含该改动的那次提交**（本项因一次真实误归因而设立：把「对齐」记到了实际是「旧拼写」的那次提交上）。
 
 ---
 

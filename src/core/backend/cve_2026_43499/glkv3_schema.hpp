@@ -12,13 +12,15 @@
  * table and the v3 type table cannot drift while the migration is in flight.
  *
  * S4 R2 owner-qualified sections: this owner's paths are
- * backend.cve_2026_43499.* (route/execution/cred/offset/kernel/steps), the
- * public/common keys are "common" and the vivo countermeasure key is
- * countermeasure.vivo_vr_guard.
+ * backend.cve_2026_43499.* (route/execution/cred/offset/kernel/steps). The
+ * HOCON refactor deleted the "common" owner: kernel_major / kernel_minor /
+ * safe_mode are ROOT scalars now, declared here with the empty section (the
+ * root marker the codec and profile/document.hpp kRootSection share), and the
+ * vivo countermeasure key is gone with the (now empty) countermeasure owner.
  *
  * WireType is chosen from the semantic type of the v2 field (see
  * docs/analysis/wire-transport-model.md section 4):
- *   - boolean flags   -> Bool  (common.safe_mode, common.vr_guard,
+ *   - boolean flags   -> Bool  (root safe_mode,
  *                               backend.cve_2026_43499.kernel.compact_waiter,
  *                               backend.cve_2026_43499.route.select_stack.compact_waiter);
  *   - signed geometry -> Int   (...route.tcp_zerocopy.payload_delta,
@@ -33,9 +35,10 @@
 
 namespace ghostlock::backend {
     inline constexpr profile::glkv3::FieldSpec kCve2026_43499Glkv3Fields[] = {
-        {"common", "kernel_major", profile::glkv3::WireType::UInt, false},
-        {"common", "safe_mode", profile::glkv3::WireType::Bool, false},
-        {"common", "vr_guard", profile::glkv3::WireType::Bool, false},
+        /* HOCON refactor root scalars: section "" is the document root. */
+        {"", "kernel_major", profile::glkv3::WireType::UInt, false},
+        {"", "kernel_minor", profile::glkv3::WireType::UInt, false},
+        {"", "safe_mode", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499.cred", "copy_size", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.cred", "usage_value", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.cred", "caps_count", profile::glkv3::WireType::UInt, false},
@@ -90,7 +93,6 @@ namespace ghostlock::backend {
         {"backend.cve_2026_43499.route.multicast_waiter", "buffer_size", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.route.multicast_waiter", "task_offset", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.route.multicast_waiter", "lock_offset", profile::glkv3::WireType::UInt, false},
-        {"countermeasure.vivo_vr_guard", "tracepoint_funcs", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.kernel", "compact_waiter", profile::glkv3::WireType::Bool, false},
         {"backend.cve_2026_43499.kernel", "kernelsnitch_collisions", profile::glkv3::WireType::UInt, false},
         {"backend.cve_2026_43499.kernel", "mm_struct_sz", profile::glkv3::WireType::UInt, false},

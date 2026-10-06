@@ -19,7 +19,15 @@
  * The runtime offset accessors that read the active session are the neutral
  * profile/runtime_struct_offsets.h surface, bound to the backend by
  * backend/cve_2026_43499/backend_offsets.cpp; this header declares only the
- * owner Schema/View and the mechanical merge. */
+ * owner Schema/View and the mechanical merge.
+ *
+ * HOCON refactor: the wire/profile paths are now backend.cve_2026_43499.abi.*
+ * (task_struct / cred / kernel / offset). The "platform" HOCON owner is deleted
+ * and an old platform.abi.* path is rejected fail-closed by
+ * profile/glkv3_parse.cpp; this C++ owner class keeps its name and its own
+ * Schema, because it is a registry owner (one bind of two owner tables), not a
+ * HOCON owner. Both tables below must be renamed together: they declare the
+ * SAME (section, key) set and glkv3_schema_test locks them in step. */
 
 #include "profile/glkv3.hpp"
 #include "contract/model.hpp"
@@ -81,37 +89,37 @@ namespace ghostlock::platform::abi {
         using View = abi::View;
 
         static constexpr AbiField kFields[] = {
-            {"platform.abi.task_struct", "prio", 4, false, false, [](View &view, uint64_t raw) { view.task.prio = detail::from_raw<decltype(view.task.prio)>(raw); }},
-            {"platform.abi.task_struct", "normal_prio", 4, false, false, [](View &view, uint64_t raw) { view.task.normal_prio = detail::from_raw<decltype(view.task.normal_prio)>(raw); }},
-            {"platform.abi.task_struct", "sched_task_group", 4, false, false, [](View &view, uint64_t raw) { view.task.sched_task_group = detail::from_raw<decltype(view.task.sched_task_group)>(raw); }},
-            {"platform.abi.task_struct", "pi_lock", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_lock = detail::from_raw<decltype(view.task.pi_lock)>(raw); }},
-            {"platform.abi.task_struct", "pi_waiters", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_waiters = detail::from_raw<decltype(view.task.pi_waiters)>(raw); }},
-            {"platform.abi.task_struct", "pi_top_task", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_top_task = detail::from_raw<decltype(view.task.pi_top_task)>(raw); }},
-            {"platform.abi.task_struct", "pi_blocked_on", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_blocked_on = detail::from_raw<decltype(view.task.pi_blocked_on)>(raw); }},
-            {"platform.abi.task_struct", "pid", 4, false, false, [](View &view, uint64_t raw) { view.task.pid = detail::from_raw<decltype(view.task.pid)>(raw); }},
-            {"platform.abi.task_struct", "tgid", 4, false, false, [](View &view, uint64_t raw) { view.task.tgid = detail::from_raw<decltype(view.task.tgid)>(raw); }},
-            {"platform.abi.task_struct", "atomic_flags", 4, false, false, [](View &view, uint64_t raw) { view.task.atomic_flags = detail::from_raw<decltype(view.task.atomic_flags)>(raw); }},
-            {"platform.abi.task_struct", "real_cred", 4, false, false, [](View &view, uint64_t raw) { view.task.real_cred = detail::from_raw<decltype(view.task.real_cred)>(raw); }},
-            {"platform.abi.task_struct", "cred", 4, false, false, [](View &view, uint64_t raw) { view.task.cred = detail::from_raw<decltype(view.task.cred)>(raw); }},
-            {"platform.abi.task_struct", "comm", 4, false, false, [](View &view, uint64_t raw) { view.task.comm = detail::from_raw<decltype(view.task.comm)>(raw); }},
-            {"platform.abi.task_struct", "tasks", 4, false, false, [](View &view, uint64_t raw) { view.task.tasks = detail::from_raw<decltype(view.task.tasks)>(raw); }},
-            {"platform.abi.task_struct", "seccomp", 4, false, false, [](View &view, uint64_t raw) { view.task.seccomp = detail::from_raw<decltype(view.task.seccomp)>(raw); }},
-            {"platform.abi.cred", "usage_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.usage_offset = detail::from_raw<decltype(view.cred.usage_offset)>(raw); }},
-            {"platform.abi.cred", "caps_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.caps_offset = detail::from_raw<decltype(view.cred.caps_offset)>(raw); }},
-            {"platform.abi.cred", "ref_count", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref_count = detail::from_raw<decltype(view.cred.ref_count)>(raw); }},
-            {"platform.abi.cred", "ref0_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref0_offset = detail::from_raw<decltype(view.cred.ref0_offset)>(raw); }},
-            {"platform.abi.cred", "ref1_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref1_offset = detail::from_raw<decltype(view.cred.ref1_offset)>(raw); }},
-            {"platform.abi.cred", "ref2_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref2_offset = detail::from_raw<decltype(view.cred.ref2_offset)>(raw); }},
-            {"platform.abi.cred", "ref3_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref3_offset = detail::from_raw<decltype(view.cred.ref3_offset)>(raw); }},
-            {"platform.abi.offset", "init_task", 8, false, false, [](View &view, uint64_t raw) { view.offset.init_task = detail::from_raw<decltype(view.offset.init_task)>(raw); }},
-            {"platform.abi.offset", "init_cred", 8, false, false, [](View &view, uint64_t raw) { view.offset.init_cred = detail::from_raw<decltype(view.offset.init_cred)>(raw); }},
-            {"platform.abi.offset", "empty_zero_page", 8, false, false, [](View &view, uint64_t raw) { view.offset.empty_zero_page = detail::from_raw<decltype(view.offset.empty_zero_page)>(raw); }},
-            {"platform.abi.offset", "root_task_group", 8, false, false, [](View &view, uint64_t raw) { view.offset.root_task_group = detail::from_raw<decltype(view.offset.root_task_group)>(raw); }},
-            {"platform.abi.offset", "selinux_enforcing", 8, false, false, [](View &view, uint64_t raw) { view.offset.selinux_enforcing = detail::from_raw<decltype(view.offset.selinux_enforcing)>(raw); }},
-            {"platform.abi.offset", "selinux_blob_sizes", 8, false, false, [](View &view, uint64_t raw) { view.offset.selinux_blob_sizes = detail::from_raw<decltype(view.offset.selinux_blob_sizes)>(raw); }},
-            {"platform.abi.offset", "security_hook_heads", 8, false, false, [](View &view, uint64_t raw) { view.offset.security_hook_heads = detail::from_raw<decltype(view.offset.security_hook_heads)>(raw); }},
-            {"platform.abi.kernel", "kernel_phys_load", 8, false, false, [](View &view, uint64_t raw) { view.kernel.kernel_phys_load = detail::from_raw<std::remove_reference_t<decltype(*view.kernel.kernel_phys_load)>>(raw); }},
-            {"platform.abi.kernel", "kernel_phys_offset", 8, false, false, [](View &view, uint64_t raw) { view.kernel.kernel_phys_offset = detail::from_raw<std::remove_reference_t<decltype(*view.kernel.kernel_phys_offset)>>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "prio", 4, false, false, [](View &view, uint64_t raw) { view.task.prio = detail::from_raw<decltype(view.task.prio)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "normal_prio", 4, false, false, [](View &view, uint64_t raw) { view.task.normal_prio = detail::from_raw<decltype(view.task.normal_prio)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "sched_task_group", 4, false, false, [](View &view, uint64_t raw) { view.task.sched_task_group = detail::from_raw<decltype(view.task.sched_task_group)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "pi_lock", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_lock = detail::from_raw<decltype(view.task.pi_lock)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "pi_waiters", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_waiters = detail::from_raw<decltype(view.task.pi_waiters)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "pi_top_task", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_top_task = detail::from_raw<decltype(view.task.pi_top_task)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "pi_blocked_on", 4, false, false, [](View &view, uint64_t raw) { view.task.pi_blocked_on = detail::from_raw<decltype(view.task.pi_blocked_on)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "pid", 4, false, false, [](View &view, uint64_t raw) { view.task.pid = detail::from_raw<decltype(view.task.pid)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "tgid", 4, false, false, [](View &view, uint64_t raw) { view.task.tgid = detail::from_raw<decltype(view.task.tgid)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "atomic_flags", 4, false, false, [](View &view, uint64_t raw) { view.task.atomic_flags = detail::from_raw<decltype(view.task.atomic_flags)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "real_cred", 4, false, false, [](View &view, uint64_t raw) { view.task.real_cred = detail::from_raw<decltype(view.task.real_cred)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "cred", 4, false, false, [](View &view, uint64_t raw) { view.task.cred = detail::from_raw<decltype(view.task.cred)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "comm", 4, false, false, [](View &view, uint64_t raw) { view.task.comm = detail::from_raw<decltype(view.task.comm)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "tasks", 4, false, false, [](View &view, uint64_t raw) { view.task.tasks = detail::from_raw<decltype(view.task.tasks)>(raw); }},
+            {"backend.cve_2026_43499.abi.task_struct", "seccomp", 4, false, false, [](View &view, uint64_t raw) { view.task.seccomp = detail::from_raw<decltype(view.task.seccomp)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "usage_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.usage_offset = detail::from_raw<decltype(view.cred.usage_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "caps_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.caps_offset = detail::from_raw<decltype(view.cred.caps_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "ref_count", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref_count = detail::from_raw<decltype(view.cred.ref_count)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "ref0_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref0_offset = detail::from_raw<decltype(view.cred.ref0_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "ref1_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref1_offset = detail::from_raw<decltype(view.cred.ref1_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "ref2_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref2_offset = detail::from_raw<decltype(view.cred.ref2_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.cred", "ref3_offset", 4, false, false, [](View &view, uint64_t raw) { view.cred.ref3_offset = detail::from_raw<decltype(view.cred.ref3_offset)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "init_task", 8, false, false, [](View &view, uint64_t raw) { view.offset.init_task = detail::from_raw<decltype(view.offset.init_task)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "init_cred", 8, false, false, [](View &view, uint64_t raw) { view.offset.init_cred = detail::from_raw<decltype(view.offset.init_cred)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "empty_zero_page", 8, false, false, [](View &view, uint64_t raw) { view.offset.empty_zero_page = detail::from_raw<decltype(view.offset.empty_zero_page)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "root_task_group", 8, false, false, [](View &view, uint64_t raw) { view.offset.root_task_group = detail::from_raw<decltype(view.offset.root_task_group)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "selinux_enforcing", 8, false, false, [](View &view, uint64_t raw) { view.offset.selinux_enforcing = detail::from_raw<decltype(view.offset.selinux_enforcing)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "selinux_blob_sizes", 8, false, false, [](View &view, uint64_t raw) { view.offset.selinux_blob_sizes = detail::from_raw<decltype(view.offset.selinux_blob_sizes)>(raw); }},
+            {"backend.cve_2026_43499.abi.offset", "security_hook_heads", 8, false, false, [](View &view, uint64_t raw) { view.offset.security_hook_heads = detail::from_raw<decltype(view.offset.security_hook_heads)>(raw); }},
+            {"backend.cve_2026_43499.abi.kernel", "kernel_phys_load", 8, false, false, [](View &view, uint64_t raw) { view.kernel.kernel_phys_load = detail::from_raw<std::remove_reference_t<decltype(*view.kernel.kernel_phys_load)>>(raw); }},
+            {"backend.cve_2026_43499.abi.kernel", "kernel_phys_offset", 8, false, false, [](View &view, uint64_t raw) { view.kernel.kernel_phys_offset = detail::from_raw<std::remove_reference_t<decltype(*view.kernel.kernel_phys_offset)>>(raw); }},
         };
     };
 
@@ -119,37 +127,37 @@ namespace ghostlock::platform::abi {
      * asserted by glkv3_schema_test. Kept optional (presence = key occurrence)
      * exactly like the v2 Schema. */
     inline constexpr profile::glkv3::FieldSpec kPlatformAbiGlkv3Fields[] = {
-        {"platform.abi.task_struct", "prio", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "normal_prio", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "sched_task_group", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "pi_lock", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "pi_waiters", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "pi_top_task", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "pi_blocked_on", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "pid", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "tgid", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "atomic_flags", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "real_cred", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "cred", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "comm", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "tasks", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.task_struct", "seccomp", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "usage_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "caps_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "ref_count", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "ref0_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "ref1_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "ref2_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.cred", "ref3_offset", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "init_task", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "init_cred", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "empty_zero_page", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "root_task_group", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "selinux_enforcing", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "selinux_blob_sizes", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.offset", "security_hook_heads", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.kernel", "kernel_phys_load", profile::glkv3::WireType::UInt, false},
-        {"platform.abi.kernel", "kernel_phys_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "prio", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "normal_prio", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "sched_task_group", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "pi_lock", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "pi_waiters", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "pi_top_task", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "pi_blocked_on", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "pid", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "tgid", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "atomic_flags", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "real_cred", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "cred", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "comm", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "tasks", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.task_struct", "seccomp", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "usage_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "caps_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "ref_count", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "ref0_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "ref1_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "ref2_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.cred", "ref3_offset", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "init_task", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "init_cred", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "empty_zero_page", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "root_task_group", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "selinux_enforcing", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "selinux_blob_sizes", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.offset", "security_hook_heads", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.kernel", "kernel_phys_load", profile::glkv3::WireType::UInt, false},
+        {"backend.cve_2026_43499.abi.kernel", "kernel_phys_offset", profile::glkv3::WireType::UInt, false},
     };
 
 

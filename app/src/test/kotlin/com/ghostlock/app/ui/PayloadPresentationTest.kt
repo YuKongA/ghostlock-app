@@ -1,7 +1,6 @@
 package com.ghostlock.app.ui
 
 import com.ghostlock.app.R
-import com.ghostlock.app.data.plugin.PluginValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -9,12 +8,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * payload batch (a) projections: argv semantics, the values only the selected
- * tier contributes, the local pre-checks and the pre-run summary.
+ * The custom-execution projections: argv semantics, the values only the selected
+ * tier contributes, the run blockers and the pre-run summary.
+ *
+ * There is no hash anywhere in the model by the user's ruling ("assume the user
+ * knows what they passed in"); the wire keeps `*.sha256`, this page just never
+ * emits it — the tests below pin exactly that.
  */
 class PayloadPresentationTest {
-
-    private val sha = "c".repeat(64)
 
     @Test
     fun `the tier list is a radio group whose expansion belongs to the selected row`() {
@@ -41,7 +42,7 @@ class PayloadPresentationTest {
         assertTrue(default.actionKeys.isEmpty())
         /* Each custom tier opens exactly its own controls, under its own row. */
         assertEquals(
-            listOf("exec.command", "exec.sha256"),
+            listOf("exec.command"),
             rows(PayloadTier.Exec).single { it.selected }.fieldKeys,
         )
         assertEquals(listOf("script.pick"), rows(PayloadTier.Script).single { it.selected }.actionKeys)
@@ -50,24 +51,53 @@ class PayloadPresentationTest {
         assertNull(rows(null).first().tier)
     }
 
+    /**
+     * The default tier's submenu: the SYSTEM DEFAULT first (initial selection),
+     * then only the managers that are actually installed — a row can never offer
+     * a target that cannot open.
+     */
     @Test
-    fun `the default tier emits nothing, needs no authorisation and still has a summary`() {
-        val draft = PayloadDraft()
-        /* Wire: the default contributes NO payload keys at all. */
-        assertTrue(payloadValues(draft).isEmpty())
-        /* Authorisation: there is nothing custom to authorise. */
-        assertFalse(draft.needsAuthorisation)
-        assertTrue(PayloadDraft(tier = PayloadTier.Exec).needsAuthorisation)
-        /* The pre-run summary is visible for the default too. */
+    fun `the manager picker lists the system default and only installed managers`() {
+        val none = payloadManagerRows(PayloadDraft(), emptySet())
+        assertEquals(1, none.size)
+        assertNull(none.single().manager)
+        assertTrue(none.single().selected)
+        assertEquals("me.weishu.kernelsu", none.single().packageName)
+
+        val installed = setOf("me.weishu.kernelsu", "com.resukisu.resukisu")
+        val rows = payloadManagerRows(PayloadDraft(), installed)
+        assertEquals(listOf(null, RootManager.KernelSU, RootManager.ReSukiSU), rows.map { it.manager })
+        /* Not installed: never offered. */
+        assertTrue(rows.none { it.manager == RootManager.KowSU })
+        /* Still the default until the user picks one. */
+        assertEquals(1, rows.count { it.selected })
+
+        val picked = payloadManagerRows(PayloadDraft(rootManager = RootManager.ReSukiSU), installed)
+        assertEquals(RootManager.ReSukiSU, picked.single { it.selected }.manager)
+        assertEquals("com.resukisu.resukisu", picked.single { it.selected }.packageName)
+    }
+
+    /** Only the default tier carries the pick; the run's own manager applies otherwise. */
+    @Test
+    fun `the picked manager is launched, and only from the default tier`() {
+        assertNull(payloadLaunchManager(PayloadDraft()))
         assertEquals(
-            "payload: default flow (no custom content)",
-            payloadRunLogLine(draft),
+            RootManager.KowSU,
+            payloadLaunchManager(PayloadDraft(rootManager = RootManager.KowSU)),
         )
-        /* Report: context only, never an error. */
-        val messages = payloadMessages(draft)
-        assertEquals(1, messages.size)
-        assertEquals(PluginIssueLevel.Info, messages.single().level)
-        assertEquals(R.string.payload_check_default, messages.single().resId)
+        /* A custom-execution tier does not touch the manager choice. */
+        assertNull(payloadLaunchManager(PayloadDraft(tier = PayloadTier.Exec, rootManager = RootManager.KowSU)))
+    }
+
+    @Test
+    fun `the default tier is ready by definition`() {
+        val draft = PayloadDraft()
+        /* Wire: the emitter is commented out (user ruling 2026-10-05), so the
+         * payloadValues(draft).isEmpty() assertion that used to live here is
+         * withdrawn with it. */
+        /* Nothing to block: the default always runs. */
+        assertTrue(payloadBlockers(draft).isEmpty())
+        assertEquals("payload: default flow (no custom content)", payloadRunLogLine(draft))
         /* Header names the default explicitly. */
         assertEquals("default", payloadHeaderRows(draft).single().value)
     }
@@ -84,90 +114,68 @@ class PayloadPresentationTest {
         )
     }
 
+    /*
+     * COMMENTED OUT (user ruling 2026-10-05): the payload emitter itself is
+     * withdrawn (see PayloadPresentation.payloadValues), so there is no tier-value
+     * assertion to make. Restore with the emitter and, when batch (b) lands, its
+     * call site.
+     *
+     * @Test
+     * fun `no tier contributes a payload value while the feature is paused`() {
+     *     val drafts = listOf(
+     *         PayloadDraft(),
+     *         PayloadDraft(tier = PayloadTier.Exec, execCommand = "id -u"),
+     *         PayloadDraft(tier = PayloadTier.Script, scriptName = "s.sh", scriptPath = "p/s.sh"),
+     *         PayloadDraft(
+     *             tier = PayloadTier.Ko,
+     *             koEntries = listOf(PayloadKoEntry("a.ko", "payload/ko/a.ko")),
+     *         ),
+     *     )
+     *     for (draft in drafts) {
+     *         assertTrue(payloadValues(draft).isEmpty())
+     *     }
+     * }
+     */
+
+    /** Blockers are what the run gate shows; the page itself has no check list. */
     @Test
-    fun `only the selected tier contributes values`() {
-        assertTrue(payloadValues(PayloadDraft()).isEmpty())
-
-        val exec = payloadValues(
-            PayloadDraft(tier = PayloadTier.Exec, execCommand = "id -u", execSha256 = sha),
+    fun `only a custom tier that is not ready has blockers`() {
+        /* Ready drafts block nothing. */
+        assertTrue(payloadBlockers(PayloadDraft(tier = PayloadTier.Exec, execCommand = "id")).isEmpty())
+        assertTrue(
+            payloadBlockers(
+                PayloadDraft(tier = PayloadTier.Script, scriptName = "s.sh", scriptPath = "p/s.sh"),
+            ).isEmpty(),
         )
-        assertEquals(PluginValue.Str("exec"), exec["tier"])
-        assertEquals(PluginValue.Str("id -u"), exec["exec.command"])
-        assertEquals(PluginValue.Str(sha), exec["exec.sha256"])
-        assertTrue(exec.keys.none { it.startsWith("script") || it.startsWith("ko.") })
-
-        /* A blank hash is omitted, never written empty. */
-        val unpinned = payloadValues(
-            PayloadDraft(tier = PayloadTier.Exec, execCommand = "id", execSha256 = "  "),
+        assertTrue(
+            payloadBlockers(
+                PayloadDraft(tier = PayloadTier.Ko, koEntries = listOf(PayloadKoEntry("a.ko", "p/a.ko"))),
+            ).isEmpty(),
         )
-        assertTrue(unpinned.keys.none { it == "exec.sha256" })
 
-        val ko = payloadValues(
-            PayloadDraft(
-                tier = PayloadTier.Ko,
-                koEntries = listOf(
-                    PayloadKoEntry("a.ko", "payload/ko/a.ko", sha),
-                    PayloadKoEntry("b.ko", "payload/ko/b.ko", null),
-                ),
-            ),
+        /* Not ready: each tier names its own reason, in one place. */
+        assertEquals(
+            listOf(R.string.payload_block_command_empty),
+            payloadBlockers(PayloadDraft(tier = PayloadTier.Exec)).map { it.resId },
         )
-        assertEquals(PluginValue.UInt(2uL), ko["ko.count"])
-        assertEquals(PluginValue.Str("payload/ko/a.ko"), ko["ko.0.path"])
-        assertEquals(PluginValue.Str(sha), ko["ko.0.sha256"])
-        assertEquals(PluginValue.Str("payload/ko/b.ko"), ko["ko.1.path"])
-        assertTrue(ko.keys.none { it == "ko.1.sha256" })
+        assertEquals(
+            listOf(R.string.payload_script_none),
+            payloadBlockers(PayloadDraft(tier = PayloadTier.Script)).map { it.resId },
+        )
+        assertEquals(
+            listOf(R.string.payload_ko_none),
+            payloadBlockers(PayloadDraft(tier = PayloadTier.Ko)).map { it.resId },
+        )
+
+        /* More than eight modules blocks, and the reason carries the bound. */
+        val many = (0..PAYLOAD_MAX_KO).map { PayloadKoEntry("k$it.ko", "payload/ko/k$it.ko") }
+        val blocker = payloadBlockers(PayloadDraft(tier = PayloadTier.Ko, koEntries = many)).single()
+        assertEquals(R.string.payload_block_ko_too_many, blocker.resId)
+        assertEquals(listOf(PAYLOAD_MAX_KO.toString()), blocker.args)
     }
 
     @Test
-    fun `local pre-checks separate blocking errors from warnings`() {
-        fun levels(draft: PayloadDraft) = payloadMessages(draft)
-
-        /* Nothing configured is context, not an error. */
-        assertTrue(levels(PayloadDraft()).all { it.level == PluginIssueLevel.Info })
-        /* An empty command blocks. */
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Exec))
-                .any { it.level == PluginIssueLevel.Error },
-        )
-        /* Quoting cannot survive the argv split: warn, and still run. */
-        val quoted = levels(PayloadDraft(tier = PayloadTier.Exec, execCommand = "sh -c \"id\""))
-        assertTrue(quoted.any { it.level == PluginIssueLevel.Warn && it.resId == R.string.payload_check_command_quotes })
-        /* An unset hash warns; a malformed one blocks. */
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Exec, execCommand = "id"))
-                .any { it.level == PluginIssueLevel.Warn && it.resId == R.string.payload_check_hash_unset },
-        )
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Exec, execCommand = "id", execSha256 = "abc"))
-                .any { it.level == PluginIssueLevel.Error },
-        )
-        /* A script or ko tier without content blocks. */
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Script))
-                .any { it.level == PluginIssueLevel.Error },
-        )
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Ko))
-                .any { it.level == PluginIssueLevel.Error },
-        )
-        /* More than eight modules blocks; unverified ones warn. */
-        val many = (0..PAYLOAD_MAX_KO).map { PayloadKoEntry("k$it.ko", "payload/ko/k$it.ko", sha) }
-        assertTrue(
-            levels(PayloadDraft(tier = PayloadTier.Ko, koEntries = many))
-                .any { it.level == PluginIssueLevel.Error && it.resId == R.string.payload_check_ko_too_many },
-        )
-        assertTrue(
-            levels(
-                PayloadDraft(
-                    tier = PayloadTier.Ko,
-                    koEntries = listOf(PayloadKoEntry("a.ko", "payload/ko/a.ko", null)),
-                ),
-            ).any { it.level == PluginIssueLevel.Warn },
-        )
-    }
-
-    @Test
-    fun `the pre-run summary names what will happen`() {
+    fun `the pre-run log line names what will happen`() {
         assertEquals(
             "payload: run as root: id -u",
             payloadRunLogLine(PayloadDraft(tier = PayloadTier.Exec, execCommand = " id -u ")),
@@ -183,7 +191,7 @@ class PayloadPresentationTest {
             payloadRunLogLine(
                 PayloadDraft(
                     tier = PayloadTier.Ko,
-                    koEntries = listOf(PayloadKoEntry("a.ko", "payload/ko/a.ko", sha)),
+                    koEntries = listOf(PayloadKoEntry("a.ko", "payload/ko/a.ko")),
                 ),
             ),
         )
@@ -195,6 +203,7 @@ class PayloadPresentationTest {
         assertEquals("script", rows.first { it.label == "tier" }.value)
         assertEquals("s.sh", rows.first { it.label == "script" }.value)
         assertTrue(rows.none { it.label == "command" })
+        assertTrue(rows.none { it.label == "sha256" })
         assertEquals("default", payloadHeaderRows(PayloadDraft()).first { it.label == "tier" }.value)
     }
 }

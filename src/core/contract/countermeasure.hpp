@@ -19,6 +19,7 @@
  * absent from those sets, and a module that requires one must be rejected at
  * registration (fail-closed, see glk_contract_abi.h). */
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -56,6 +57,8 @@ enum class Capability : std::uint32_t {
     FileCacheWrite = static_cast<std::uint32_t>(GLK_CAP_FILE_CACHE_WRITE),
     Exec = static_cast<std::uint32_t>(GLK_CAP_EXEC),
     KernelHook = static_cast<std::uint32_t>(GLK_CAP_KERNEL_HOOK),
+    /* Host logging (append-only, GLK_ABI_VERSION unchanged). */
+    Log = static_cast<std::uint32_t>(GLK_CAP_LOG),
 };
 
 [[nodiscard]] constexpr Capability operator|(Capability lhs, Capability rhs) noexcept {
@@ -78,17 +81,29 @@ enum class Capability : std::uint32_t {
     return (static_cast<std::uint32_t>(set) & static_cast<std::uint32_t>(bit)) != 0u;
 }
 
-/* Every capability the ABI declares (all seven bits). */
+/* Every capability the ABI declares (all eight bits). */
 inline constexpr Capability kAllCapabilities =
     Capability::KernelRead | Capability::KernelWrite | Capability::Alias |
     Capability::ChildTask | Capability::FileCacheWrite | Capability::Exec |
-    Capability::KernelHook;
+    Capability::KernelHook | Capability::Log;
 
-/* Adjudicated v1 subset: only these four are implemented by the host. The other
- * three are reserved; requiring one must reject the module at registration. */
+/* Declaration order of every capability: the ONE list the probe's caps_list()
+ * iterates (a second hardcoded list is how a new bit silently disappears from
+ * the host_caps TSV column). Its OR must equal kAllCapabilities. */
+inline constexpr Capability kCapabilityCatalog[] = {
+    Capability::KernelRead,  Capability::KernelWrite, Capability::Alias,
+    Capability::ChildTask,   Capability::FileCacheWrite, Capability::Exec,
+    Capability::KernelHook,  Capability::Log,
+};
+inline constexpr std::size_t kCapabilityCatalogCount =
+    sizeof(kCapabilityCatalog) / sizeof(kCapabilityCatalog[0]);
+
+/* Adjudicated v1 subset: four capability bits plus the host logging channel.
+ * FILE_CACHE_WRITE / EXEC / KERNEL_HOOK stay reserved; requiring one must
+ * reject the module at registration. */
 inline constexpr Capability kHostImplementedCaps =
     Capability::KernelRead | Capability::KernelWrite | Capability::Alias |
-    Capability::ChildTask;
+    Capability::ChildTask | Capability::Log;
 
 /* Bit N is set when the host implements the trigger with numeric value N. The
  * v1 host implements only OnStage; the other three bits stay clear. */
@@ -178,6 +193,9 @@ static_assert(static_cast<std::uint32_t>(Capability::FileCacheWrite) ==
 static_assert(static_cast<std::uint32_t>(Capability::Exec) == GLK_CAP_EXEC);
 static_assert(static_cast<std::uint32_t>(Capability::KernelHook) ==
               GLK_CAP_KERNEL_HOOK);
+static_assert(static_cast<std::uint32_t>(Capability::Log) == GLK_CAP_LOG);
+/* GLK_CAP_LOG is the next append-only slot: the ABI version does not move. */
+static_assert(static_cast<std::uint32_t>(Capability::Log) == (1u << 7));
 
 /* The exported entry and the callback typedef keep their ABI shape. */
 static_assert(std::is_same_v<decltype(glk_entry(std::uint32_t{})),
@@ -250,13 +268,24 @@ static_assert(std::is_standard_layout_v<glk_module>);
 static_assert(kAllCapabilities == (Capability::KernelRead | Capability::KernelWrite |
                                    Capability::Alias | Capability::ChildTask |
                                    Capability::FileCacheWrite | Capability::Exec |
-                                   Capability::KernelHook));
+                                   Capability::KernelHook | Capability::Log));
 static_assert(kHostImplementedCaps == (Capability::KernelRead |
                                        Capability::KernelWrite | Capability::Alias |
-                                       Capability::ChildTask));
+                                       Capability::ChildTask | Capability::Log));
 static_assert(!has_capability(kHostImplementedCaps, Capability::FileCacheWrite));
 static_assert(!has_capability(kHostImplementedCaps, Capability::Exec));
 static_assert(!has_capability(kHostImplementedCaps, Capability::KernelHook));
+/* The catalog is complete: no ABI capability may be missing from the list the
+ * probe iterates, and no list entry may be invented. */
+[[nodiscard]] constexpr Capability catalog_union() noexcept {
+    Capability bits = Capability::None;
+    for (std::size_t i = 0u; i < kCapabilityCatalogCount; ++i) {
+        bits = bits | kCapabilityCatalog[i];
+    }
+    return bits;
+}
+static_assert(catalog_union() == kAllCapabilities);
+static_assert(kCapabilityCatalogCount == 8u);
 
 static_assert(kHostImplementedTriggers == trigger_bit(CountermeasureTrigger::OnStage));
 static_assert((kHostImplementedTriggers & trigger_bit(CountermeasureTrigger::OnLoad)) == 0u);
@@ -301,6 +330,7 @@ static_assert((kHostImplementedTriggers & trigger_bit(CountermeasureTrigger::Per
         case Capability::FileCacheWrite: return "file_cache_write";
         case Capability::Exec: return "exec";
         case Capability::KernelHook: return "kernel_hook";
+        case Capability::Log: return "log";
     }
     return "unknown";
 }

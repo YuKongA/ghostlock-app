@@ -53,14 +53,18 @@ namespace {
         doc.backend = "cve_2026_43499";
         doc.has_route = true;
         doc.route = "multicast_waiter";
-        put(doc, "common", "kernel_major", u(6));
-        put(doc, "common", "safe_mode", b(true));
-        put(doc, "common", "vr_guard", b(true));
-        put(doc, "platform.abi.task_struct", "prio", u(132));
-        put(doc, "platform.abi.task_struct", "real_cred", u(0x12345678));
+        /* HOCON refactor root scalars: root keys, not a "common" section. */
+        doc.has_kernel_major = true;
+        doc.kernel_major = 6;
+        doc.has_kernel_minor = true;
+        doc.kernel_minor = 15;
+        doc.has_safe_mode = true;
+        doc.safe_mode = true;
+        put(doc, "backend.cve_2026_43499.abi.task_struct", "prio", u(132));
+        put(doc, "backend.cve_2026_43499.abi.task_struct", "real_cred", u(0x12345678));
         put(doc, "backend.cve_2026_43499.cred", "copy_size", u(0x88));
         put(doc, "backend.cve_2026_43499.cred", "caps_value", u(0xffffffffffffffffULL));
-        put(doc, "platform.abi.offset", "init_task", u(0x20dc000));
+        put(doc, "backend.cve_2026_43499.abi.offset", "init_task", u(0x20dc000));
         put(doc, "backend.cve_2026_43499.offset", "vr_sys_exit_tp", u(0x2a));
         put(doc, "backend.cve_2026_43499.kernel", "compact_waiter", b(true));
         put(doc, "backend.cve_2026_43499.kernel", "kernelsnitch_collisions", u(4));
@@ -86,8 +90,12 @@ int main() {
     assert(std::strcmp(v3parsed.uname_r, release) == 0);
     assert(v3parsed.route == ghostlock::profile::kRouteMulticastWaiter);
     assert(v3parsed.meta.kernel_major == 6);
+    assert(v3parsed.meta.kernel_minor == 15);
     assert(v3parsed.meta.safe_mode);
-    assert(v3parsed.misc.vr_guard);
+    /* vr_guard: the deleted common.vr_guard key has no writer left, so the
+     * field stays false and platform/vivo stays provably inert (phase (b)). */
+    assert(!v3parsed.misc.vr_guard);
+    assert(v3parsed.misc.vr_tracepoint_funcs == 0);
     assert(v3parsed.task.prio == 132);
     assert(v3parsed.task.real_cred == 0x12345678);
     assert(v3parsed.credential.copy_size == 0x88);
@@ -159,7 +167,7 @@ int main() {
         assert(parse_v3(ghostlock::profile::glkv3::encode(unknown_section), &parsed, buf, sizeof(buf)) == -1);
 
         Document unknown_key = make_43499();
-        put(unknown_key, "common", "nope", u(1));
+        put(unknown_key, "backend.cve_2026_43499", "nope", u(1));
         assert(parse_v3(ghostlock::profile::glkv3::encode(unknown_key), &parsed, buf, sizeof(buf)) == -1);
 
         Document wrong_backend_section = make_43499();
@@ -183,6 +191,56 @@ int main() {
         std::string trailing = v3doc;
         trailing.push_back(static_cast<char>(0));
         assert(parse_v3(trailing, &parsed, buf, sizeof(buf)) == -1);
+
+        /* ---- HOCON refactor negatives: deleted owners and a mis-placed root
+         * scalar are rejected whole (fail-closed, never a silent downgrade). */
+
+        /* 1. Any "common.*" section: the owner is deleted -- kernel_major /
+         *    safe_mode became root scalars and vr_guard disappeared. */
+        Document common_section = make_43499();
+        put(common_section, "common", "kernel_major", u(6));
+        assert(parse_v3(ghostlock::profile::glkv3::encode(common_section), &parsed,
+                        buf, sizeof(buf)) == -1);
+
+        /* 2. Any "countermeasure.*" section: deleting common.vr_guard and
+         *    countermeasure.vivo_vr_guard.tracepoint_funcs emptied the owner,
+         *    so it left the whitelist too. */
+        Document countermeasure_section = make_43499();
+        put(countermeasure_section, "countermeasure.vivo_vr_guard",
+            "tracepoint_funcs", u(0x20));
+        assert(parse_v3(ghostlock::profile::glkv3::encode(countermeasure_section),
+                        &parsed, buf, sizeof(buf)) == -1);
+
+        /* 3. kernel_major inside a section: a root scalar lives at the document
+         *    root only, so the owner bind rejects the mis-placed key. */
+        Document scalar_in_section = make_43499();
+        put(scalar_in_section, "backend.cve_2026_43499", "kernel_major", u(6));
+        assert(parse_v3(ghostlock::profile::glkv3::encode(scalar_in_section), &parsed,
+                        buf, sizeof(buf)) == -1);
+
+        /* 4. The old "platform.abi.*" path: the platform owner is deleted and
+         *    its keys live at backend.cve_2026_43499.abi.* now, so the stale
+         *    spelling is rejected instead of being silently ignored. */
+        Document old_platform_path = make_43499();
+        put(old_platform_path, "platform.abi.task_struct", "prio", u(132));
+        assert(parse_v3(ghostlock::profile::glkv3::encode(old_platform_path), &parsed,
+                        buf, sizeof(buf)) == -1);
+
+        /* 5. The old flattened 43284 execution key: the five knobs live under
+         *    backend.cve_2026_43284.execution.* now (the wire carries the
+         *    execution. level too), so the flat spelling is rejected instead of
+         *    being silently ignored. */
+        Document flat_execution_key;
+        flat_execution_key.schema = 3;
+        flat_execution_key.has_release = true;
+        flat_execution_key.release = "6.12.38-neg-flat-execution";
+        flat_execution_key.has_terminal = true;
+        flat_execution_key.terminal = "umh_forward";
+        flat_execution_key.has_backend = true;
+        flat_execution_key.backend = "cve_2026_43284";
+        put(flat_execution_key, "backend.cve_2026_43284", "late_load_args", u(2));
+        assert(parse_v3(ghostlock::profile::glkv3::encode(flat_execution_key),
+                        &parsed, buf, sizeof(buf)) == -1);
     }
 
     std::puts("profile_v3_test: OK");

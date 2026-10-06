@@ -8,16 +8,15 @@ import org.junit.Test
  * S4 R4 pure validation rules for the advanced/execution editors.
  *
  * The cve_2026_43284 text fields are wire type `str`: empty means absent,
- * otherwise the value must be within the native 256-byte UTF-8 bound. The two
- * filesystem paths (carrier_path / lkm_path) must also be absolute; defex_symbol
- * is a kernel symbol name. The handshake knobs are native `uint32_t`
+ * otherwise the value must be within the native 256-byte UTF-8 bound, and the two
+ * filesystem paths (carrier_path / lkm_path) must be absolute. The handshake
+ * knobs are native `uint32_t`
  * (0..0xFFFFFFFF). Every other leaf keeps the historical "must parse as a Long"
  * rule.
  */
 class FieldValidationTest {
     private val carrier = Cve2026_43284Fields.Section + ".carrier_path"
     private val lkm = Cve2026_43284Fields.Section + ".lkm_path"
-    private val defex = Cve2026_43284Fields.Section + ".defex_symbol"
     private val wait = Cve2026_43284Fields.Section + ".wait_timeout_ms"
     private val pollAttempts = Cve2026_43284Fields.Section + ".module_poll_attempts"
     private val pollInterval = Cve2026_43284Fields.Section + ".module_poll_interval_ms"
@@ -26,7 +25,6 @@ class FieldValidationTest {
     fun `policy paths accept empty and absolute paths`() {
         assertFalse(isFieldInputInvalid(carrier, ""))
         assertFalse(isFieldInputInvalid(lkm, "  "))
-        assertFalse(isFieldInputInvalid(defex, "/vendor/lib64/libbinderdebug.so"))
         assertFalse(isFieldInputInvalid(carrier, "/data/local/tmp/helper_custom.ko"))
     }
 
@@ -34,9 +32,6 @@ class FieldValidationTest {
     fun `policy paths reject relative paths`() {
         assertTrue(isFieldInputInvalid(carrier, "vendor/lib64/libbinderdebug.so"))
         assertTrue(isFieldInputInvalid(lkm, "helper.ko"))
-        /* defex_symbol is a kernel symbol name, not a path. */
-        assertFalse(isFieldInputInvalid(defex, "defex_get_module_info"))
-        assertTrue(isFieldInputInvalid(defex, "x".repeat(257)))
     }
 
     @Test

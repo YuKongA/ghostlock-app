@@ -89,12 +89,6 @@ namespace ghostlock::platform {
          * rather than a kernel property; and SELinux can be disabled via LKM,
          * so native preconditions do not require the symbol. */
         out.symbols.kallsyms_restricted = !out.symbols.selinux_state;
-        out.symbols.defex_task_defex_enforce =
-                ops.symbol_present(ops.ctx, "task_defex_enforce");
-        out.symbols.defex_task_defex_user_exec =
-                ops.symbol_present(ops.ctx, "task_defex_user_exec");
-        out.symbols.defex_get_dc_target_dpath =
-                ops.symbol_present(ops.ctx, "get_dc_target_dpath");
         return DeviceFactError::None;
     }
 

@@ -66,6 +66,21 @@ sealed interface GhostlockEffect {
     data class Clipboard(val text: String) : GhostlockEffect
     data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
     data object OpenShizuku : GhostlockEffect
+
+    /**
+     * One FINISHED run: the UI decides and performs the root-manager step
+     * ([rootManagerAction]). Sent once per run from the single completion point,
+     * so a recomposition can never launch the manager twice.
+     *
+     * [succeeded] is the App's success criterion and [rootProduced] says whether
+     * this run actually left root state behind (`force_attack_test` does not):
+     * they stay separate facts, and the pure function decides.
+     */
+    data class ShowRootManager(
+        val succeeded: Boolean,
+        val rootProduced: Boolean,
+        val packageName: String?,
+    ) : GhostlockEffect
 }
 
 private const val OverwriteSummaryLimit = 12
@@ -432,54 +447,18 @@ class GhostlockViewModel(
         mutableState.update { it.copy(payloadVisible = false) }
     }
 
-    /** `null` is the DEFAULT choice: no custom content, no authorisation. */
+    /** `null` is the DEFAULT choice: nothing custom runs. */
     fun onPayloadTierChanged(tier: PayloadTier?) {
-        mutableState.update {
-            it.copy(payloadDraft = it.payloadDraft.copy(tier = tier), payloadConfirmed = false)
-        }
+        mutableState.update { it.copy(payloadDraft = it.payloadDraft.copy(tier = tier)) }
     }
 
     fun onPayloadCommandChanged(command: String) {
-        mutableState.update {
-            it.copy(
-                payloadDraft = it.payloadDraft.copy(execCommand = command),
-                payloadConfirmed = false,
-            )
-        }
+        mutableState.update { it.copy(payloadDraft = it.payloadDraft.copy(execCommand = command)) }
     }
 
-    fun onPayloadHashChanged(sha256: String) {
-        mutableState.update {
-            val draft = it.payloadDraft
-            it.copy(
-                payloadDraft = when (draft.tier) {
-                    PayloadTier.Exec -> draft.copy(execSha256 = sha256)
-                    PayloadTier.Script -> draft.copy(scriptSha256 = sha256)
-                    else -> draft
-                },
-                payloadConfirmed = false,
-            )
-        }
-    }
-
-    /**
-     * The explicit authorisation: only a draft with NO blocking error can be
-     * confirmed, and the confirmation is what the run summary and the log use.
-     */
-    fun onPayloadConfirm() {
-        val draft = state.value.payloadDraft
-        /* The default tier has nothing to authorise: it emits no payload at all. */
-        if (!draft.needsAuthorisation) {
-            mutableState.update { it.copy(payloadConfirmed = false) }
-            return
-        }
-        val blocking = payloadMessages(draft).filter { it.level == PluginIssueLevel.Error }
-        if (blocking.isNotEmpty()) {
-            send(GhostlockEffect.Toast(R.string.payload_blocked))
-            return
-        }
-        mutableState.update { it.copy(payloadConfirmed = true) }
-        appendLog(payloadRunLogLine(draft))
+    /** The default tier's manager pick; `null` = the system default. */
+    fun onPayloadManagerChanged(manager: RootManager?) {
+        mutableState.update { it.copy(payloadDraft = it.payloadDraft.copy(rootManager = manager)) }
     }
 
     fun onPayloadPickScript() {
@@ -490,7 +469,7 @@ class GhostlockViewModel(
         send(GhostlockEffect.PickDocument(DocumentRequest.PayloadKo))
     }
 
-    /** Copies the picked script; the hash it reports is the pinned one. */
+    /** Copies the picked script; the page asks for no hash (user's ruling). */
     private fun onPayloadScriptPicked(uri: String, displayName: String?) {
         viewModelScope.launch {
             val result = runCatching { repository.importPayloadFile(PayloadKind.Script, uri, displayName) }
@@ -499,7 +478,6 @@ class GhostlockViewModel(
                 draft.copy(
                     scriptName = imported.displayName,
                     scriptPath = imported.relativePath,
-                    scriptSha256 = imported.sha256,
                 )
             }
         }
@@ -520,7 +498,6 @@ class GhostlockViewModel(
                             koEntries = draft.koEntries + PayloadKoEntry(
                                 name = result.displayName,
                                 path = result.relativePath,
-                                sha256 = result.sha256,
                             ),
                         )
                     }
@@ -531,9 +508,7 @@ class GhostlockViewModel(
                 }
             }
             val updated = draft
-            mutableState.update {
-                it.copy(payloadDraft = updated, payloadConfirmed = false)
-            }
+            mutableState.update { it.copy(payloadDraft = updated) }
         }
     }
 
@@ -543,7 +518,6 @@ class GhostlockViewModel(
                 payloadDraft = it.payloadDraft.copy(
                     koEntries = payloadKoMove(it.payloadDraft.koEntries, index, delta),
                 ),
-                payloadConfirmed = false,
             )
         }
     }
@@ -554,7 +528,6 @@ class GhostlockViewModel(
                 payloadDraft = it.payloadDraft.copy(
                     koEntries = payloadKoRemove(it.payloadDraft.koEntries, index),
                 ),
-                payloadConfirmed = false,
             )
         }
     }
@@ -565,20 +538,13 @@ class GhostlockViewModel(
     ) {
         when (result) {
             is PayloadImportResult.Imported -> mutableState.update {
-                it.copy(
-                    payloadDraft = apply(it.payloadDraft, result),
-                    payloadConfirmed = false,
-                )
+                it.copy(payloadDraft = apply(it.payloadDraft, result))
             }
 
             is PayloadImportResult.Rejected -> send(
                 GhostlockEffect.ToastArgs(R.string.payload_import_failed, result.reason),
             )
         }
-    }
-
-    fun onPayloadClear() {
-        mutableState.update { it.copy(payloadDraft = PayloadDraft(), payloadConfirmed = false) }
     }
 
     /** batch ②: opens one plugin's detail page (data comes from the refresh). */
@@ -1358,7 +1324,7 @@ class GhostlockViewModel(
         if (line.isNotEmpty()) appendLog(line)
         /* payload ruling 9: the pre-run summary is evidence, so it is logged too. */
         val payloadDraft = state.value.payloadDraft
-        if (!payloadDraft.needsAuthorisation || state.value.payloadConfirmed) {
+        if (payloadDraft.tier != null && payloadBlockers(payloadDraft).isEmpty()) {
             appendLog(payloadRunLogLine(payloadDraft))
         }
         runExploit()
@@ -1437,11 +1403,33 @@ class GhostlockViewModel(
             onStatusClick()
             return
         }
+        /* A custom tier that is not ready blocks the run and SAYS WHY, right
+         * here: the page carries no check list any more. */
+        payloadBlockers(state.value.payloadDraft).firstOrNull()?.let { blocker ->
+            appendLog("result: custom execution is not ready")
+            send(
+                GhostlockEffect.ToastArgs(
+                    blocker.resId,
+                    blocker.args.firstOrNull()?.toString().orEmpty(),
+                ),
+            )
+            return
+        }
         val pair = snapshot.cpuPairs.getOrNull(snapshot.selectedCpuPair) ?: return
         if (!beginOperation()) return
         send(GhostlockEffect.KeepScreenAwake(true))
         /* The mode + backend derive the catalogued triple; log what it resolved. */
         val selection = resolveExecutionSelection(mode, snapshot.backendKind)
+        /* The manager this run leaves behind (see RootManager; the package name
+         * mirrors native `default_root_package`). */
+        /* The user's pick on the custom-execution page wins over the run's own
+         * default manager (same single table; see payloadLaunchManager). */
+        val rootManagerPackage = payloadLaunchManager(state.value.payloadDraft)?.packageName
+            ?: RootManager.of(selection.terminal)?.packageName
+        /* force_attack_test ignores an already loaded KernelSU and discards the
+         * root child: the run succeeds but leaves NO root state, so the manager
+         * step is skipped rather than showing a UI that has nothing to show. */
+        val rootProduced = !snapshot.forceAttackTest
         appendLog(
             "==== start ${if (mode == ExecutionMode.Shizuku) "Shizuku/V20" else "base"} " +
                 "(backend=${selection.backend.token}, steps=${selection.steps.token}, " +
@@ -1453,6 +1441,16 @@ class GhostlockViewModel(
                 val code = runExploitUseCase(pair, mode, snapshot.backendKind, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
+                /* Success is the App's existing criterion (exit code 0); the UI
+                 * opens the root manager once, or says it cannot. An unfinished
+                 * run never reaches this line. */
+                send(
+                    GhostlockEffect.ShowRootManager(
+                        succeeded = code == 0,
+                        rootProduced = rootProduced,
+                        packageName = rootManagerPackage,
+                    ),
+                )
             } finally {
                 endOperation()
                 send(GhostlockEffect.KeepScreenAwake(false))

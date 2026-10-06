@@ -23,6 +23,21 @@
 #include <vector>
 
 namespace ghostlock::profile {
+    /* HOCON refactor: the root section. Root-level scalars (kernel_major /
+     * kernel_minor / safe_mode) travel beside the component tokens in the GLKv3
+     * document root, never inside an owner section; the neutral Document carries
+     * them in the section with the EMPTY name -- the same marker the GLKv3
+     * FieldSpec already uses for a root key (FieldSpec::section is empty).
+     * Presence stays key occurrence: a scalar the wire did not carry has no
+     * entry (no sentinel), and an owner FieldSpec whose section is empty binds
+     * them through find_value(kRootSection, key) like any section entry.
+     *
+     * A new root key must be materialised here by glkv3_parse.cpp frame_v3 --
+     * that step is the silent one: a key decoded into glkv3::Document but not
+     * added to this section leaves the owner bind with no value and the field
+     * keeps its default (see the checklist in profile/glkv3.hpp). */
+    inline constexpr std::string_view kRootSection{};
+
     /* S4 R4 string bound, mirroring profile::glkv3::kMaxStringBytes. A String
      * field is UTF-8 text with at most this many bytes; the decoder enforces it
      * fail-closed and an owner bind re-checks it so a hand-built Document cannot

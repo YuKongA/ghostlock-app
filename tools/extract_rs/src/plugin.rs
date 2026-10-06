@@ -940,12 +940,17 @@ mod tests {
     }
 
     /// The reference plugin (`ghostlock-plugin-example`, formerly
-    /// tools/plugins) as the REAL probe reports it, captured with that project's
-    /// `build.sh host`. It pins the P1 revision's five-key header plus the
-    /// reference descriptor this crate is expected to consume.
+    /// tools/plugins) as the REAL probe reports it. It pins the frozen five-key
+    /// header plus the reference descriptor this crate is expected to consume.
+    ///
+    /// The `host_caps` line carries the batch B vocabulary
+    /// (`…,child_task,log`, per the device golden
+    /// `build/gate-logs/plugin-probe-golden-device.tsv`, sha256 1a6e49d8…);
+    /// the sha256 column stays a HOST build of the example module, not a device
+    /// capture, so it is only a fixture value here.
     #[test]
     fn probe_tsv_parses_the_reference_plugin_output() {
-        const REFERENCE: &str = "host_abi\t1\ncountermeasures_root\t-\nhost_stages\tpre_spawn,post_spawn,pre_terminal,post_terminal\nhost_caps\tkernel_read,kernel_write,alias,child_task\nstage_availability\t43499:pre_terminal;43284:post_terminal\nplugin\tglk.probe\t1.0\t1\t80\t6040107978f6211083d3730c833e0c9bd0aa74933204eb581d00eec90c97dd6b\tpost_terminal\tkernel_read,kernel_write\nhook\tglk.probe\ton_stage\tpost_terminal\t0\tglk.probe\nparam\tglk.probe\ttarget_va\tuint\t1\t18446743524671239168\tkernel VA the probe reads and writes back\nparam\tglk.probe\tlabel\tstr\t0\t-\tdiagnostic label for the glk.probe log line\nextract\tglk.probe\tplatform.abi.offset.init_task\tuint\t1\t0\tinit_task image offset (base-relative), from the extractor profile path\n";
+        const REFERENCE: &str = "host_abi\t1\ncountermeasures_root\t-\nhost_stages\tpre_spawn,post_spawn,pre_terminal,post_terminal\nhost_caps\tkernel_read,kernel_write,alias,child_task,log\nstage_availability\t43499:pre_terminal;43284:post_terminal\nplugin\tglk.probe\t1.0\t1\t80\t6040107978f6211083d3730c833e0c9bd0aa74933204eb581d00eec90c97dd6b\tpost_terminal\tkernel_read,kernel_write\nhook\tglk.probe\ton_stage\tpost_terminal\t0\tglk.probe\nparam\tglk.probe\ttarget_va\tuint\t1\t18446743524671239168\tkernel VA the probe reads and writes back\nparam\tglk.probe\tlabel\tstr\t0\t-\tdiagnostic label for the glk.probe log line\nextract\tglk.probe\tplatform.abi.offset.init_task\tuint\t1\t0\tinit_task image offset (base-relative), from the extractor profile path\n";
         let descriptor = parse_probe_tsv(REFERENCE).expect("reference plugin output parses");
         assert_eq!(descriptor.id, "glk.probe");
         assert_eq!(descriptor.version, "1.0");
@@ -969,6 +974,17 @@ mod tests {
         assert_eq!(descriptor.extract[0].kind, ExtractKind::UInt);
         assert!(descriptor.extract[0].required);
         assert!(descriptor.rejects.is_empty());
+
+        /* Batch B vocabulary: a module that REQUIRES host logging declares the
+         * `log` token; the crate must retain it (the ABI bit itself is native's
+         * authority, the extractor only carries the token through). */
+        let with_log = REFERENCE.replace(
+            "post_terminal\tkernel_read,kernel_write",
+            "post_terminal\tkernel_read,kernel_write,log",
+        );
+        let descriptor = parse_probe_tsv(&with_log).expect("log capability token parses");
+        assert!(descriptor.required_caps.contains("log"));
+        assert!(descriptor.required_caps.contains("kernel_read"));
 
         /* "-" is the legal "no availability reported" value (older probe). */
         let without = REFERENCE.replace(

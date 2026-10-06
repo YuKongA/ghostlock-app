@@ -40,7 +40,9 @@
  * standard library and contract headers. */
 
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 #include "contract/abi/glk_contract_abi.h"
 #include "contract/capabilities.hpp"
@@ -86,6 +88,46 @@ namespace ghostlock::plugin {
          * context that was never opened is closed rather than half-bound. */
         bool closed = true;
     };
+
+    /* ---- per-module log routing (S4 logging batch B) --------------------- */
+
+    /* The ABI's log() has no module id parameter, so attribution, budgeting and
+     * rate limiting need a host-owned router: the host hands each module a COPY
+     * of the caller's table whose log() is the router's thunk and whose ctx is
+     * the router; every other entry forwards to the caller's ctx/ops unchanged.
+     * A module therefore can neither spoof another id nor exceed its budget. */
+    inline constexpr std::uint32_t kModuleLogBudgetPerRun = 64u;
+    inline constexpr std::uint64_t kModuleLogMinIntervalNs = 1000000ull; /* 1 ms */
+    inline constexpr std::size_t kModuleLogMaxBytes = 256u;
+
+    struct ModuleLogRouter final {
+        const glk_contract_ops *upstream = nullptr;
+        const char *module_id = nullptr;
+        std::uint32_t budget = kModuleLogBudgetPerRun;
+        std::uint32_t emitted = 0u;
+        std::uint32_t dropped = 0u;
+        std::uint64_t last_ns = 0u;
+    };
+
+    /* Budget + rate decision. now_ns is CLOCK_MONOTONIC nanoseconds (0 = the
+     * first message). Pure so the tests can drive the limiter without sleeping. */
+    [[nodiscard]] bool module_log_accept(ModuleLogRouter &router,
+                                         std::uint64_t now_ns) noexcept;
+
+    /* Renders one accepted message into out (NUL-terminated, no newline):
+     *   "<id> log(<level>): <msg>[ level_clamped=1][ ...]"
+     * Control bytes and newlines in msg become '_' so a hostile message cannot
+     * forge a second line; an over-long message is cut at kModuleLogMaxBytes and
+     * gets a trailing "...". Pure: the thunk and the tests share it. */
+    [[nodiscard]] std::string_view format_module_log(const ModuleLogRouter &router,
+                                                     std::int32_t level,
+                                                     std::string_view message, char *out,
+                                                     std::size_t capacity) noexcept;
+
+    /* Builds the table handed to one module's hooks (upstream may be null, which
+     * yields a log-only table). router must outlive the returned table. */
+    [[nodiscard]] glk_contract_ops make_module_ops(const glk_contract_ops *upstream,
+                                                   ModuleLogRouter &router) noexcept;
 
     /* Fills ops with the ABI identity (size/abi_version/ctx) and every thunk,
      * and snapshots glk_contract_ops::child_task from ChildTask::current() when

@@ -36,7 +36,10 @@ class PluginProbeGoldenTest {
         assertEquals(setOf("kernel_read", "alias"), descriptor.requiredCaps)
         assertEquals(1u, descriptor.hostAbiVersion)
         assertEquals(setOf("pre_spawn", "post_spawn", "pre_terminal", "post_terminal"), descriptor.hostStages)
-        assertEquals(setOf("kernel_read", "kernel_write", "alias", "child_task"), descriptor.hostCaps)
+        assertEquals(
+            setOf("kernel_read", "kernel_write", "alias", "child_task", "log"),
+            descriptor.hostCaps,
+        )
         assertTrue(descriptor.usable)
         assertTrue(descriptor.rejects.isEmpty())
         assertEquals(1, descriptor.hooks.size)
@@ -44,6 +47,23 @@ class PluginProbeGoldenTest {
         assertEquals("post_terminal", descriptor.hooks.single().stage)
         assertEquals(10u, descriptor.hooks.single().priority)
         assertEquals("schema-hook", descriptor.hooks.single().name)
+    }
+
+    /**
+     * Batch B: the probe reports a `log` capability. Capabilities are OPAQUE
+     * TOKENS to this parser (no App-side vocabulary — see `PluginProbe`'s
+     * `host_caps`/`required_caps` handling), so an unknown token must pass
+     * through untouched. Pinned here so "accepts log" can never become an
+     * accident of a missing check.
+     */
+    @Test
+    fun `capability tokens are opaque, so log passes through`() {
+        assertTrue("log" in PluginProbe.parse(golden()).hostCaps)
+        /* A capability this App has never heard of still parses: adding one on
+         * the native side must not need a Kotlin change. */
+        val future = PluginProbe.parse(golden().replace("child_task,log", "child_task,some_future_cap"))
+        assertTrue("some_future_cap" in future.hostCaps)
+        assertTrue(future.usable)
     }
 
     @Test

@@ -94,9 +94,14 @@ namespace ghostlock::backend {
         using View = Cve2026_43499View;
 
         static constexpr Cve2026_43499Field kFields[] = {
-            GLK_43499_PLAIN("common", "kernel_major", meta.kernel_major, 1),
-            GLK_43499_PLAIN("common", "safe_mode", meta.safe_mode, 1),
-            GLK_43499_PLAIN("common", "vr_guard", misc.vr_guard, 1),
+            /* HOCON refactor root scalars: the empty section is the document
+             * root (profile/document.hpp kRootSection), where the wire and the
+             * profile now agree. They replace the deleted "common" owner;
+             * common.vr_guard went with it and has no writer left (the
+             * platform/vivo code stays inert, see schema.hpp header). */
+            GLK_43499_PLAIN("", "kernel_major", meta.kernel_major, 1),
+            GLK_43499_PLAIN("", "kernel_minor", meta.kernel_minor, 1),
+            GLK_43499_PLAIN("", "safe_mode", meta.safe_mode, 1),
             GLK_43499_PLAIN("backend.cve_2026_43499.cred", "copy_size", credential.copy_size, 4),
             GLK_43499_PLAIN("backend.cve_2026_43499.cred", "usage_value", credential.usage_value, 4),
             GLK_43499_PLAIN("backend.cve_2026_43499.cred", "caps_count", credential.caps_count, 4),
@@ -141,7 +146,6 @@ namespace ghostlock::backend {
             GLK_43499_PLAIN("backend.cve_2026_43499.route.multicast_waiter", "attempts", mcast_attempts, 1),
             GLK_43499_PLAIN("backend.cve_2026_43499.route.multicast_waiter", "arm_sequence", mcast_arm_sequence, 1),
             GLK_43499_PLAIN("backend.cve_2026_43499.route.multicast_waiter", "arm_hold", mcast_arm_hold, 2),
-            GLK_43499_PLAIN("countermeasure.vivo_vr_guard", "tracepoint_funcs", misc.vr_tracepoint_funcs, 1),
             GLK_43499_OPT("backend.cve_2026_43499.kernel", "compact_waiter", misc.compact_waiter, 1, false),
             GLK_43499_OPT("backend.cve_2026_43499.kernel", "kernelsnitch_collisions", misc.kernelsnitch_collisions, 4, false),
             GLK_43499_OPT("backend.cve_2026_43499.kernel", "mm_struct_sz", misc.mm_struct_sz, 4, false),

@@ -132,6 +132,34 @@ class MainActivity : ComponentActivity() {
             GhostlockEffect.OpenShizuku -> packageManager
                 .getLaunchIntentForPackage(SHIZUKU_PACKAGE)
                 ?.let(::startActivity)
+
+            is GhostlockEffect.ShowRootManager -> showRootManager(effect)
+        }
+    }
+
+    /**
+     * The root-manager step after a run: open its UI, or say it cannot be
+     * opened (never nothing). The decision itself is the pure
+     * [rootManagerAction]; only the lookup and the launch happen here.
+     */
+    private fun showRootManager(effect: GhostlockEffect.ShowRootManager) {
+        val intent = effect.packageName?.let { packageManager.getLaunchIntentForPackage(it) }
+        val action = rootManagerAction(
+            succeeded = effect.succeeded,
+            rootProduced = effect.rootProduced,
+            packageName = effect.packageName,
+            launchable = intent != null,
+        )
+        when (action) {
+            is RootManagerAction.Launch -> if (intent != null) {
+                /* NEW_TASK: the activity is started from outside a task of its own. */
+                startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+            }
+
+            RootManagerAction.Hint ->
+                Toast.makeText(this, R.string.root_manager_unavailable, Toast.LENGTH_LONG).show()
+
+            RootManagerAction.Skip -> Unit
         }
     }
 
@@ -258,12 +286,8 @@ private fun GhostlockRoute(
             override fun onPayloadCommandChanged(command: String) =
                 viewModel.onPayloadCommandChanged(command)
 
-            override fun onPayloadHashChanged(sha256: String) =
-                viewModel.onPayloadHashChanged(sha256)
-
-            override fun onPayloadConfirm() = viewModel.onPayloadConfirm()
-
-            override fun onPayloadClear() = viewModel.onPayloadClear()
+            override fun onPayloadManagerChanged(manager: RootManager?) =
+                viewModel.onPayloadManagerChanged(manager)
 
             override fun onOpenPluginDetail(id: String) = viewModel.onOpenPluginDetail(id)
 

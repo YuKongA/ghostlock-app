@@ -286,7 +286,12 @@ namespace ghostlock::backend::cve_2026_43284 {
 
         const std::string_view package = lkm::default_root_package(root_program.kind);
         lkm::UmhCommand command{};
-        if (!lkm::build_late_load_command(root_program, package,
+        /* kmi_label is the release-derived SupportedKmi::label ("android13-5.15"
+         * for this device's 5.15.189 kernel); it feeds the --kmi/--allow-shell
+         * pair the verified 43499 path uses. Never hand-written here. */
+        const std::string_view kmi_label =
+                selection.kmi != nullptr ? selection.kmi->label : std::string_view{};
+        if (!lkm::build_late_load_command(root_program, package, kmi_label,
                                           selection.late_load_args, selinux_context,
                                           command, result.command_error)) {
             result.error = BackendTerminalError::UmhCommandRejected;
@@ -490,7 +495,11 @@ namespace ghostlock::backend {
         owned.backend = document.backend;
         owned.middleware = document.middleware;
         for (const profile::Section &section : document.sections) {
-            if (section.name == kCve2026_43284Section) owned.sections.push_back(section);
+            /* Both owner sections (backend + execution): one predicate, so the
+             * execution knobs can never be dropped here and silently default. */
+            if (is_cve_2026_43284_section(section.name)) {
+                owned.sections.push_back(section);
+            }
         }
         /* S4 R1: the registry bind is the single authority for requiredness and
          * defaults; each triggered default is reported before it is stored. */

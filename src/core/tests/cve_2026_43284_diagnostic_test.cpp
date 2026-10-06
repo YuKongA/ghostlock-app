@@ -172,8 +172,7 @@ namespace {
         bool crash_verity = false;
         std::vector<std::string> vendor_paths{"/vendor/lib64/libbinderdebug.so"};
         std::vector<std::string> vendor_labels{"u:object_r:vendor_file:s0"};
-        std::vector<std::string> symbols{"selinux_state", "task_defex_enforce",
-                                         "task_defex_user_exec", "get_dc_target_dpath"};
+        std::vector<std::string> symbols{"selinux_state"};
     };
 
     long fake_read_release(void *raw, char *out, std::size_t capacity) noexcept {

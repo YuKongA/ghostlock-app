@@ -12,7 +12,7 @@
 | **A2** | 符号与类型 | raw image | `kallsyms::decode_names/decode_addresses`, `btf::parse_btf` | 符号表（名→VA）、BTF 结构 | 缺 BTF → 仅 kallsyms |
 | **A3** | 反汇编与推导 | 符号表 + 机器码 | `disasm::disassemble_symbol`, `derive::*` | offset/几何（`task_struct`/`cred`/`offset`/route 几何） | 模式不匹配 → 字段缺失 |
 | **A4** | 物理布局 | raw image | `iomem::find_kernel_memory_map_entry`, `analysis::*` | `kernel_phys_load/offset`、`delta` | 无 iomem → 缺省 |
-| **A5** | 产出 profile | `AnalysisResult`（+ 可选 `--plugin-descriptor <probe-tsv>`，可重复） | `report::render_conf`（canonical 布局 + `schema_version = 3`；`--route`/`--steps-path` 决定组合 token）；带描述符时按插件描述符产出 `plugin.<id>.extract.<key>`（键名/类型**只来自描述符**；R1 profile 路径 / R3 BTF / R2 kallsyms；追加在 `countermeasure` 之后）; `render_json`（v1） | `*.conf`（可导入 App）/`*.json` | `cargo test` 断言「生成 ≡ 内置」+「产出的 token ∈ `combination-manifest.tsv`」；required 缺失 → 失败、optional 缺失 → 省略且不写 default；**无开关时输出逐字节不变** |
+| **A5** | 产出 profile | `AnalysisResult`（+ 可选 `--plugin-descriptor <probe-tsv>`，可重复） | `report::render_conf`（canonical 布局 + `schema_version = 3`；**HOCON 重构后的新形状**：根级标量 + `available{ <backend> = [tokens] }` + `backend.<id>`；`common`/`platform`/`selection` 已删除；`--route`/`--steps-path` 决定组合 token）；~~带描述符时产出 `plugin.<id>.extract.<key>`~~——**⏸ 已按用户指令注释/冻结（extract spec 产出端停止）**; `render_json`（v1） | `*.conf`（可导入 App）/`*.json` | `cargo test` 断言「生成 ≡ 内置」+「产出的 token ∈ `combination-manifest.tsv`」；required 缺失 → 失败、optional 缺失 → 省略且不写 default；**无开关时输出逐字节不变** |
 | **B1** | HOCON 加载 | `assets/kernel_profiles/*.conf` + `index.conf` + 用户导入 | `HoconSupport`（include 展开、`${}` 变量） | `ValueMap`（含 legacy 键） | 未知键 → 报错带点分路径 |
 | **B2** | 归一化 | legacy `ValueMap` | `ProfileLayout.canonicalize`（别名表：`selection.steps`/`backend.steps` → 所属 `backend.<id>.steps` 组合 token（`CombinationCatalog.fromLegacySteps`；`normalize` 仅用于输入边界）、`cred/offset` 平台/私有拆分、`meta.*`→`common.*`） | canonical owner-qualified map（steps = 解析后的 canonical token） | 未识别旧键 / 未知 legacy step id → fail-closed |
 | **B3** | 合并与校验 | canonical map + 覆盖 + 设备 `uname -r` | `ProfileMerger.resolveMerged` → `ProfileResolver.validateMerged` | `ProfileConfig`（resolved 字段集） | release 不匹配 → 拒绝 |
@@ -39,6 +39,12 @@
 | **D4** | 退出/卸载 | fd/定时器 | 插件窗口 close → LKM unload（`explicit`/`fd-close`/`watchdog`） | 模块卸载、AVB `ok=12 fail=0` | watchdog 60s 兜底 |
 
 > 入口（R2b 后）：`--ghostlock-app-call`（stdin GLKv3，可接会话帧）与 `--load-prebuilt-profile <bin>` 二选一，另有只读 `--probe-cve-2026-43284 <ko>`；运行控制 / 安全 / 可观测开关为 `--force-attack`、`--allow-dev-target`、`--dump-kernel-log <dir>`、`--enable-status-record`（需 app-call）。**选择与策略不得出现在 CLI**：staged 入口已删除，未知参数直接失败。dev 回放构造生产形态文档走同一 app-call 路径。
+>
+> **HOCON 重构（native ①②③④ 已落地：`b55708a8` + `23958eb0`；App 侧跟进中）——profile 装配链**：`assets/*.conf`（**根级标量**：`schema_version`/`release`/`kernel_major`/`kernel_minor`/`safe_mode`；**`available{ <backend> = [tokens] }`** 两级；`backend.<id>`；**根级标量走「根段」承载 `kRootSection`**，使 `find_value(section,key)` 与根键同构，**勿改回具名成员**）→ Kotlin 归一/合并 → **用户在 App 里选 backend（`available` 的键）再选 token（值）** → wire `backend.<id>.steps` → native bind → Pipeline。**`common` / `platform` / `selection` 已删除**（`platform.abi.*` → `backend.cve_2026_43499.abi.*`）；**`terminal` 概念从 HOCON 移除**（token 已蕴含）；43284 的 `execution.*` 收纳执行调参，**`kmi`/`lkm_path`/`carrier_path` 从 profile 删除**（wire 保留、**运行时现算注入**）；`index.conf` 用 **`usable`**（构建/资产层）。
+>
+> **⏸ 步骤队列取代 token（用户裁决 2026-10-05；待 Lead 设计稿）**：`available{ <backend> = [ … ] }` 的**值**将从**预烘焙 token 列表**改为**步骤队列**（**两级保留**：先 backend、再其下队列）；**不做**动态 DSL / 运行期规划（队列是**静态声明**）。连锁：`kCombinationCatalog` 12 token **降级为内部归一化/预设判定**（仍供 `supported` 与 dispatch）、`backend.<id>.steps` 值 token ⇒ 队列、**`PathKind` 按档位 (ii) 删除**、**stepset 改名任务取消**；迁移面 = **62 份资产 + UI + 组合目录 + 契约 + UML**（迁移期允许 token 作**语法糖**，改完**删糖**）。**pipeline 由「编译期固定」变「注册表 + 校验」属结构性改动 ⇒ 设计落地后同批更新本图并写明图名**（设计稿 `docs/analysis/step-queue-design.md` 由 `native-hocon` 编写，docs-uml 不动）。
+>
+> **⏸ 用户指令（2026-10-05）**：表中 **C4c / C4d / C6c / C6d**（payload 与 root 管理器）与 **C4e / C6b / C7b**（插件宿主）对应的**运行路径已字面注释 / 不再被接受**——**IPO 行保留以记录结构，但不等于当前可达**（代码在、恢复需撤销注释；`vr_guard` 为**分两期**（(b) profile 面**实现中（native 步骤 ①；未提交）** / (a) 删代码**待设备门禁**）、`defex` **已删除**——见 §3.1 注）。
 
 ## 2. 状态机
 
@@ -162,6 +168,8 @@ stateDiagram-v2
 ```
 
 > **step 3a 已接线（2026-10-05）**：宿主由组合根构造（`main.cpp` 的 `PluginHost::from_document` + 43284 专属 `open(WindowState::WaiterClosed)`），43284 在 LKM 驻留窗口内经**中性 `PluginStageSink`** 派发 `POST_TERMINAL`（`lkm_window.cpp:102`；sink 由 `execution_binding.cpp` 的 thunk 转给 `HostStage::PostTerminal`，那是唯一的 `HostStage::` 调用点），**fail-soft**；pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。**真机门禁 PASS**（`device-gates/plugin-runtime-3a-20261005-pass.md`：正例 `called=1`/`calls=4`、`hook_failed` 不失败链、`StageUnavailableOnBackend`、`HashMismatch` 未 dlopen、无插件零字节回归；两条过程教训 = `kmi` 不得手写、试验台须清 `/data/local/tmp/.ghostlock_lkm_ok`）。**43499 的 `pre_terminal` 属 step 3b，未落地**——R1 约束：**PI waiter 存活期不得 open**（映射不得与 waiter 共存）。
+>
+> **⏸ 用户指令冻结（2026-10-05）**：插件工程与 payload/自定义 handoff **暂停并暂时禁用**——App 隐藏入口且**不再发射** `plugin.*`/`payload.*`；native 侧**字面注释掉**插件宿主接线（构造/打开/派发/卸载——**不是开关**，**恢复需撤销注释**；**实现待提交**；代码与测试保留、**可逆**）；**`payload` owner 不再被接受**。图的类/关系**保留**（代码在、但运行路径**已注释不可达**），**不画成删除**；恢复条件 = **新架构完成 + 用户放行**。
 >
 > 四个 stage 词汇（`pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`）不变，**可用性按 backend 表达**：43499 = `pre_terminal`（`steps.cpp:484-490`/`:517-521`），43284 = `post_terminal`（`lkm_window.cpp:99-107`，LKM 驻留窗口内）；其余阶段的 hook 在 `open()` 时**按 backend 拒绝该 hook**（`StageUnavailableOnBackend`，不拒整插件），全部被拒记 `no_usable_hooks=1`。**可用性来源 = 探针 header 第 5 行 `stage_availability`**（唯一权威 `plugin/schema.hpp::stage_available_on()`；Kotlin 不得硬编码），依据 §2.2 注、设计 §12 `ab0561f8` 与 §13。
 
@@ -295,6 +303,8 @@ classDiagram
     class AbiSchema
     class DeviceProbeOps
     class Runtime
+    %% HOCON 重构：profile 的 `platform` owner 已删除（platform.abi.* → backend.cve_2026_43499.abi.*）——**这是用户裁决的 HOCON 层**；
+    %% **C++ 侧 `platform/` 命名空间与 `platform/abi.hpp` 的删/改名未裁决**，属 native 实现批次 → 落地后按实际处置同批改图（**不要提前删节点**）。
   }
   namespace ghostlock__session {
     class CoreSession
@@ -393,18 +403,18 @@ classDiagram
   DispatchTarget --> Pipeline : selects
   Pipeline --> RootChildPolicy : terminal（backend::cve_2026_43499::terminal）
   Pipeline --> UmhForwardPolicy : terminal
-  Pipeline --> Loader : 阶段派发（43499 pre_terminal / 43284 post_terminal）
-  main --> PluginHost : from_document / open / close（组合根，step 3a）
-  PluginHost --> RuntimeRegistry : 注册与记账（registered/dispatch/close）
-  LkmWindowRuntime --> PluginStageSink : attach_plugin_stage()（中性函数指针 + ctx）
+  Pipeline --> Loader : 阶段派发（43499 pre_terminal / 43284 post_terminal）——⏸ **已注释（用户指令，不可达）**
+  main --> PluginHost : from_document / open / close（组合根，step 3a）——⏸ **已注释（用户指令）**
+  PluginHost --> RuntimeRegistry : 注册与记账（registered/dispatch/close）——⏸ **已注释**
+  LkmWindowRuntime --> PluginStageSink : attach_plugin_stage()（中性函数指针 + ctx）——⏸ **已注释**
   BackendTerminal --> DiagLine : run.43284 有界结构化行（批 A，≤256 B，无格式串/无分配/不含密钥）
   Entry --> DiagLine : 失败路径具名原因（reason=<EnumName>）
-  PluginStageSink --> PluginHost : dispatch(POST_TERMINAL)（经 thunk，**不持有指针**）
-  RealChainContext --> PluginStageSink : 两个 sink 字段（执行接缝）
-  PayloadSchema --> PayloadTier : tier（设计）
-  Pipeline --> PayloadPolicy : 接管后执行（设计，待落地）
-  PayloadPolicy --> RootProgram : 启动 root 管理器（默认档；设计稿 v2）
-  PayloadSchema --> RootProgramKind : payload.root.kind 白名单（设计稿 v2；manager 为可选包名）
+  PluginStageSink --> PluginHost : dispatch(POST_TERMINAL)（经 thunk，**不持有指针**）——⏸ **已注释**
+  RealChainContext --> PluginStageSink : 两个 sink 字段（执行接缝）——⏸ **已注释**
+  PayloadSchema --> PayloadTier : tier（设计）——⏸ **owner 不再被接受（用户指令，不可达）**
+  Pipeline --> PayloadPolicy : 接管后执行（设计，待落地）——⏸ **已注释**
+  PayloadPolicy --> RootProgram : 启动 root 管理器（默认档；设计稿 v2）——⏸ **已注释**
+  PayloadSchema --> RootProgramKind : payload.root.kind 白名单（设计稿 v2；manager 为可选包名）——⏸ **已注释**
   Loader --> RuntimeRegistry
   Loader --> LkmChannel
   LkmWindowRuntime --> LkmChannel
@@ -433,6 +443,12 @@ classDiagram
 > **默认档 = root 管理器**：`RootProgramKind{KernelSU, FolkPatch, Custom}` 与 `RootProgram{kind, argv[192]}` 早已在 `contract/identity.hpp:366-380`，但**wire 零键**、运行时硬编码 `$GHOSTLOCK_HOME/ksud`（`execution_binding.cpp:49-56`）；`payload.tier=root`（+ `payload.root.kind/manager/argv`）把它们显式化——**设计稿 v2** `root-manager-selection-design.md`：**KernelSU 及分支共享 `ksud`**（用户口径）⇒ **P1 = `kernelsu`（默认 ksud，`manager` 可选）+ `custom`（用户 argv）+ 存在性/可启动检查（C4d，权威在 native）**；**P2 = `folkpatch`**——官方文档取证（<https://fp.mysqil.com/guide/jailbreak/>）：**加载 `kernelpatch.ko`**（`apd insmod` 手动重定位 + 绕过 modversions(CRC)/vermagic + `init_module` + **软重启生效**；前置条件正是 GhostLock 的 uid0 + Permissive），属**不同谱系**、独立机制与独立门禁；**包名绝不猜**（`schema.hpp:68-77`；E3 三条 404 即证据）。
 >
 > `RootChildPolicy` 的声明与实现都在 `ghostlock::backend::cve_2026_43499::terminal`（F5 / ADR-0006），`ghostlock__terminal` 只留中性件。`CombinationKind` 是 wire 紧凑 id（uint8，13 值 = Unknown + 12 token，枚举值与顺序不变）；`CombinationId{backend, route, path}` 与 `PathKind{Rootchild=1, Shizuku=2, Umh=3}` 是编译期分解视图，不是 wire 或存储变化。
+>
+> **⏸ stepset 词汇重命名（用户指令 2026-10-05）——已被 2026-10-05「队列取代 token」裁决吸收：任务取消**：`StepSetKind::W1W2` → **`ShizukuRootchild`**、`W1W3` → **`Rootchild`**（词汇 token `w1_w2`/`w1_w3` → **`shizuku_rootchild`/`rootchild`**；**数字 wire id 1/2 不变**、`pagecache_write`(3) 不动）。语义：`W1W2`＝**跳过 seccomp 绕过**、shell 入口/内核派生启动 ⇒ Shizuku 路径；`W1W3`＝**包含 seccomp 绕过**、app 后代启动 ⇒ rootchild 路径。**两轴正交**：`stepset` = 跑哪些 W 阶段；`frontend`/`terminal` = 谁接管。**只改这一条轴**（`PathKind`/`FrontendKind`/`TerminalKind` 保持原样）；不进 profile/wire 文档 ⇒ **不需真机门禁**。**挂起原因（硬证据）**：`kCombinationCatalog` 显示 **stepset 与 path 不是 1:1**——43284 同一个 `pagecache_write` 对应 **三个 path**（`umh`/`rootchild`/`shizuku`），43499 内 `w1_w3` 同时被 `*_rootchild` 与 `*_umh`（计划）使用 ⇒ **不能用 path/terminal 名命名 stepset**。详见契约 §3.18（含两轴正交论述）。
+>
+> **HOCON 重构（native ①②③④ 已落地：`b55708a8` + `23958eb0`；App 跟进中）：profile owner 结构变了**——**owner 白名单收敛为 `backend.<id>`**（`platform`/`common`/`countermeasure` 已删、`plugin`/`payload` 冻结拒收）（外加**根级标量** `schema_version`/`release`/`kernel_major`/`kernel_minor`/`safe_mode` 与根级 **`available{ <backend> = [tokens] }`**）。**`common` owner 删除**；**`platform` owner 删除**（`platform.abi.*` → `backend.cve_2026_43499.abi.*`，**62 处**；C++ 侧 `ghostlock__platform` 的类型是否随迁/删除**以 native 实现为准**）；**`selection`/`terminal` 从 HOCON 移除**（选择两级：backend → token，运行时写 wire `backend.<id>.steps`）；43284 的 `execution.*` 收纳执行调参，**`kmi`/`lkm_path`/`carrier_path` 从 profile 删除**（wire 保留、运行时现算注入）。详见契约 §3.16 与 `PROFILE_SCHEMA(_ZH)`。
+>
+> **vr_guard 分两期（用户裁决 + `native-plugin` 审计，2026-10-05）**：**(b) profile 面：实现中（`native-hocon` 的 native 步骤 ①；未提交）**——`common.vr_guard` 与 `countermeasure.vivo_vr_guard.tracepoint_funcs`（含 wire/manifest 行）删除 ⇒ **再无写入者 ⇒ `vr_guard_enabled()` 恒 false ⇒ `backend/cve_2026_43499/steps.cpp` 的两处 `VivoPluginPolicies::apply(...)` 可证明 no-op**（**攻击路径不变**），**`countermeasure` owner 落地后一并移除**；**`defex` 已完成删除**（`a68e2d5a`）。**(a) 彻底删除 `platform/vivo/**`（8 文件 / 473 行）+ 两处 include/调用 + 2 测试 + stub：挂账待设备门禁**（攻击路径改动 ⇒ 43499 链 PASS + 无插件零新增字节）——**在此之前 `platform/vivo` 相关节点与调用保留（惰性），不要提前删节点**；提交号待 native 落地后回填。
 
 ### 3.2 Kotlin（按 `package` 分组）
 
@@ -484,6 +500,8 @@ classDiagram
     class PluginPresentation
     class PluginSettingsUI
     class PayloadSettingsUI
+    class RootManager
+    class RootManagerAction
   }
   namespace com__ghostlock__app__shizuku {
     class GhostlockUserService
@@ -526,7 +544,10 @@ classDiagram
   GhostlockViewModel --> PluginImportService : 选择/导入
   AndroidGhostlockRepository --> PluginImportService
   AndroidGhostlockRepository --> PluginStore : no-backup 存储根
-  PayloadSettingsUI --> PayloadLayout : 分档设置页 + 执行前摘要（设计，待落地）
+  PayloadSettingsUI --> PayloadLayout : 分档设置页 + 执行前摘要（**UI 已落地**；摘要=告知非门槛）
+  GhostlockViewModel --> RootManagerAction : rootManagerAction(succeeded, rootProduced, pkg, launchable)
+  RootManagerAction --> RootManager : "打开它 / 说明它 / 什么都不做"
+  RootManager --> FrontendKind : of(terminal)（未知 ⇒ null，绝不猜包名）
   AndroidProfileConfigController --> PayloadLayout : payload 段发射（设计，待落地）
 ```
 
@@ -534,6 +555,16 @@ classDiagram
 >
 > Kotlin 侧**没有** `CombinationKind`：白名单以 `CombinationSpec` 行表示，由 `CombinationCatalog` 从 native 导出的 `combination-manifest.tsv` 解析（两份：`app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时）。`route = null` ⇔ 清单 `route` 列 `none` ⇔ 无 route 轴（native `RouteKind::None`）；下拉摘要取清单 `doc` 列（`com.ghostlock.app.ui.CombinationPresentation` 的 `combinationSummary` / `combinationOptions`）。
 
+> **管理器选择 + 检测 + 跳转（**跳转已落地**；选择/检测在途）**：默认档 = 「**启动 root 管理器**」+ 子菜单（「系统默认 KernelSU（默认）」= **不发射任何 payload 键**；或「**检测到的其它受支持管理器**」）；**未安装的不列出/置灰 + 具名原因**；**白名单只允许有仓库/官方证据的包名**（起点 `root_script.cpp:40-50` 四模式 + `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 需 **`<queries>`**，manifest 已声明 5 项；**未核实不得添加**；FolkPatch `me.yuki.folk` 属 P2）；**UI 已可选 ≠ 已发射**——wire `payload.root.*` 属下一批 native（当前 native 只接受 `tier ∈ {exec,script,ko}`）。**本批无新类**（沿用 `RootManager`/`RootManagerAction`）。
+>
+> **成功后跳转 root 管理器（**已落地** `e500b407` + `4a02d19b`）**：`RootManager`（`app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt`）是 App 侧**唯一包名镜像**（枚举注释直接指向 native `lkm_image.cpp:343-348` 的 `default_root_package()`；未知 ⇒ `null`，**绝不猜**；P1 加行时同步 schema 行）；`RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(succeeded, rootProduced, packageName, launchable)` 决定「打开它 / 说明它 / 什么都不做」——`force_attack_test` 成功但**不产生 root 状态** ⇒ `Skip`（不得误导用户），不可启动 ⇒ `Hint`（页面必须说明）。
+>
+> **root 管理器制品提取（选项 a 定案；P2 待实现）**：两条轴禁止重合——**root 管理器轴的制品只来自系统**（`kernelsu` = 系统 `ksud`；`folkpatch` = **从已安装 FolkPatch 管理器 APK 提取内置模块**：`getApplicationInfo(pkg).sourceDir` → APK 内取模块 → **SHA-256** → no-backup 不可变目录 → 路径+哈希交 native **复核**；不可用 ⇒ 置灰 + 具名原因）；**用户自备 `.ko` 走 `payload.tier = ko`**（payload 轴），本轴**不开文件导入 UI**。落地时按结构变更补 `data.payload` / `data.plugin`-style 类与关系。
+>
+> **payload 页的用户决定（2026-10-05，UI 行为，无结构变化）**：分档页**不再录入哈希**（字段与 native「有则校验」语义保留）、**无授权步骤**、**界面不再有摘要行**（用户原话「本次将：以内核权限运行 xxx 也删掉」，**覆盖先前「保留摘要」裁决**；**运行日志行保留**——两者不可混为一谈）、**无独立检查栏**（运行期校验仍在，native 权威 + 运行前在运行按钮附近提示阻断原因）、**无清除按钮**（切到 `默认（不自定义）` 即等价清空，只发射当前档）；档位文案 **`以内核权限执行脚本`** / **`向内核注入内核扩展`**（以 App 资源为准）。契约 §3.15.2/§3.15.3。
+>
+> **失败/未完成路径不跳转**：ROOT-JUMP（成功后自动跳转 root 管理器界面，**设计待实现**）要求目标包名与 native 权威**同源**——App 侧集中一处映射并注释指向 `backend/cve_2026_43284/lkm/lkm_image.cpp:345-347`（`default_root_package()`），**禁止第二处包名真相**；`custom`/未实现分支只提示、不跳转。落地时按结构变更补 `data.payload`/UI 的类与关系。
+>
 > **投影字段语义（规范 §4.4，强制）**：UI 行的 `runUsable`（本次运行是否可用——供运行级选择门控）、`toggleable`（**只要已安装即 true**——控件是否可交互）、`selected`（是否参与本次运行）是**三个不同语义**，不得互相复用；历史教训是 `selectable = descriptor != null && errors.isEmpty()` 被当作控件可交互性 ⇒ 插件「关掉后开关自己变灰、无法自救」（`PluginPresentation.kt:235` → `PluginSettingsUI.kt:174`）。错误一律以**诊断行**呈现，不用禁用控件表达。
 
 ### 3.3 Rust（按 `module` 分组）
