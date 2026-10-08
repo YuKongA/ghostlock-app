@@ -53,11 +53,12 @@ LAYER_HEADERS := \
   core/script/layer.hpp \
   core/session/layer.hpp \
   core/profile/layer.hpp \
-  core/profile/route_catalog.hpp
+  core/profile/route_catalog.hpp \
+  core/contract/script_surface.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := core/tests/a2_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test
+EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -83,6 +84,9 @@ $(BUILD_DIR)/plan_gate_test: core/pipeline/tests/plan_gate_test.cpp core/pipelin
 $(BUILD_DIR)/a2_test: core/tests/a2_test.cpp core/race/pi_window.hpp core/race/pi_race.hpp core/memory/target_profile.hpp core/support/neutrals.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/a2_test.cpp -o $@
 
+$(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surface.hpp core/contract/layer_scope.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/surface_test.cpp -o $@
+
 check: $(P4_BINS) $(EVIDENCE_BINS)
 	@echo "check: P4 window exit paths"
 	@$(BUILD_DIR)/window_exit_paths_test
@@ -96,6 +100,11 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	echo "check: zero ordering tokens in the composition root"
 	@echo "check: A2 window constraints and profile read path"
 	@$(BUILD_DIR)/a2_test
+	@echo "check: exposure surface table"
+	@$(BUILD_DIR)/surface_test
+	@dup=$$(grep -rlE 'backend.*writeop.*settle.*handoff' core | wc -l | tr -d ' '); \
+	if [ "$$dup" -ne 1 ]; then echo "SURFACE-DUP: $$dup definition sites (expected exactly 1)"; grep -rlE 'backend.*writeop.*settle.*handoff' core; exit 1; fi; \
+	echo "check: surface names have a single definition site"
 	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
 	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
 	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
