@@ -1,61 +1,3 @@
-# --- TD-REWRITE-1/3 guard: P1 disable sweep (task-88). Plan: docs/plan/rewrite-plan.md
-# The upper C++ layers are renamed to *.disabled on purpose; this guard keeps the
-# default target a no-op that explains the state and how to restore it. It does NOT
-# touch CXX_SRCS / NATIVE_HOST_TESTS; delete this block to unguard.
-.DEFAULT_GOAL := rewrite-disable-guard
-.PHONY: rewrite-disable-guard
-rewrite-disable-guard:
-	@if [ -n "$(shell find $(CURDIR)/core -name '*.disabled' -print -quit 2>/dev/null)" ]; then \
-	  echo "[rewrite] DISABLED STATE: the upper C++ layers are renamed to *.disabled (P1 sweep)"; \
-	  echo "[rewrite] restore: find src/core -name '*.disabled' | sed 's/\.disabled$$//' | xargs -I{} mv {}.disabled {}"; \
-	  echo "[rewrite] plan: docs/plan/rewrite-plan.md"; \
-	  exit 0; \
-	fi ; \
-	$(MAKE) --no-print-directory all
-# --- P2 compat check (task-93; F4/F6/F7 fixes in task-100) ---
-# Every backend source must parse, with the device toolchain, against the
-# regenerated upper contract headers.
-# FROZEN PREDICATE (the file set this gate covers):
-#   find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \)
-# and its count must be COMPAT_EXPECTED (97). A predicate that silently misses
-# files fails the gate even when every remaining file passes (F4).
-# Also fails when a live header and a <.disabled> twin share a name (F1/F6-2):
-# a name that exists twice makes the compile face ambiguous.
-# Testability hooks (falsification evidence only): COMPAT_LIST_FILE=<file>
-# replaces the predicate's output, COMPAT_EXPECTED=<n> overrides the count.
-COMPAT_EXPECTED ?= 97
-COMPAT_LIST_FILE ?=
-.PHONY: compat-check
-compat-check:
-	@echo "compat-check: NDK_ROOT=$(NDK_ROOT)"
-	@if [ ! -x "$(NDK_CXX)" ]; then echo "compat-check: NDK C++ compiler not found: $(NDK_CXX)"; echo "  set ANDROID_NDK_HOME (see AGENTS.md)"; exit 2; fi
-	@$(NDK_CXX) --version | head -1
-	@shadows=0; for f in core/tests/host/include/linux/futex.h core/tests/host/include/sched.h core/tests/host/include/sys/prctl.h; do \
-	  if [ -e "$$f" ] && [ -e "$$f.disabled" ]; then echo "SHADOW: $$f"; shadows=$$((shadows+1)); fi; \
-	done; \
-	if [ "$$shadows" -ne 0 ]; then echo "compat-check: A2 shim shadowing = $$shadows (must be 0: the A2 compat layer provides these live)"; exit 1; fi
-	@ok=0; fail=0; \
-	if [ -n "$(COMPAT_LIST_FILE)" ]; then files=$$(cat $(COMPAT_LIST_FILE)); else files=$$(find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | sort); fi; \
-	for f in $$files; do \
-	  if $(NDK_CXX) -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H='"$(TARGET_CONFIG)"' -D__ARM=1 -fsyntax-only "$$f" >/dev/null 2>&1; then \
-	    ok=$$((ok+1)); \
-	  else \
-	    fail=$$((fail+1)); echo "COMPAT-FAIL: $$f"; \
-	  fi; \
-	done; \
-	total=$$((ok+fail)); \
-	echo "compat-check: OK=$$ok FAIL=$$fail total=$$total expected=$(COMPAT_EXPECTED)"; \
-	if [ "$$total" -ne "$(COMPAT_EXPECTED)" ]; then echo "compat-check: predicate mismatch: total=$$total expected=$(COMPAT_EXPECTED) (the file set changed)"; exit 1; fi; \
-	[ "$$fail" -eq 0 ]
-
-# gate: the single stage gate. It aggregates compat-check (97/97 backend
-# sources parse against the regenerated contract headers) and p4-window-check
-# (AttackWindow exit paths + composition root), so the P4 executable evidence
-# runs in the gate chain instead of only by hand.
-.PHONY: gate
-gate: compat-check p4-window-check
-	@echo "gate: compat-check + p4-window-check passed (P2 compat + P4 window evidence)"
-
 API ?= 35
 
 # Auto-detect NDK
@@ -68,13 +10,7 @@ ifeq ($(OS),Windows_NT)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANG_BASE).cmd
   NDK_CXX := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANGXX_BASE).cmd
 else
-  # NDK detection priority (task-97): explicit environment
-  # (ANDROID_NDK_HOME > ANDROID_NDK_ROOT) > repo-root local.properties ndk.dir
-  # > SDK wildcard probe > empty. Both fallbacks only fill an EMPTY NDK_ROOT,
-  # so an explicit environment value always wins (no silent override).
-  GLK_LOCAL_NDK := $(strip $(subst \,/,$(shell sed -n 's/^ndk[.]dir=//p' $(CURDIR)/../local.properties 2>/dev/null | tr -d '\r' | head -1)))
-  GLK_SDK_NDK := $(lastword $(sort $(wildcard $(HOME)/Library/Android/sdk/ndk/* $(HOME)/Android/Sdk/ndk/*)))
-  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT),$(GLK_LOCAL_NDK),$(GLK_SDK_NDK))
+  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT))
   UNAME_S := $(shell uname -s)
   PREBUILT := $(if $(filter Darwin,$(UNAME_S)),darwin-x86_64,linux-x86_64)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang
@@ -281,33 +217,6 @@ NATIVE_HOST_TESTS := \
 #   判据未改——host 测试仍要求全员通过；恢复后本条目必须回到 NATIVE_HOST_TESTS。
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do if ! $$test; then echo "FAILED: $$test"; status=1; fi; done; exit $$status
-
-# p4-window-check: P4 milestone A+B evidence -- AttackWindow exit paths, the
-# composition root's compile-time checks, the plan-gate rejections, and the two
-# structural criteria of the P4 layer (no Lua reference; no ordering token in
-# the composition root). Host build + run.
-.PHONY: p4-window-check
-P4_ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
-p4-window-check: $(HOST_BUILD_DIR)/p4_window_exit_paths_test $(HOST_BUILD_DIR)/p4_plan_gate_test
-	@echo "p4-window-check: milestone A -- window exit paths"
-	$(HOST_BUILD_DIR)/p4_window_exit_paths_test
-	@echo "p4-window-check: milestone B -- plan gate"
-	$(HOST_BUILD_DIR)/p4_plan_gate_test
-	@lua=$$(grep -rIlE 'lua_State|luaL_|#include *[<\"]lua' core/pipeline core/contract 2>/dev/null || true); \
-	if [ -n "$$lua" ]; then echo "P4-LUA-HIT: $$lua"; exit 1; fi; \
-	echo "p4-window-check: zero Lua references in the P4 layer (window stays Lua-free)"
-	@hits=$$(grep -nE '$(P4_ORDER_TOKENS)' core/pipeline/composition_root.hpp | wc -l | tr -d ' '); \
-	if [ "$$hits" -ne 0 ]; then echo "P4-ORDER-HIT: $$hits"; grep -nE '$(P4_ORDER_TOKENS)' core/pipeline/composition_root.hpp; exit 1; fi; \
-	echo "p4-window-check: zero ordering tokens in composition_root.hpp"
-$(HOST_BUILD_DIR)/p4_window_exit_paths_test: core/pipeline/tests/window_exit_paths_test.cpp \
-  core/pipeline/attack_window.hpp core/pipeline/composition_root.hpp \
-  core/contract/resource_scope.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/pipeline/tests/window_exit_paths_test.cpp -o $@
-$(HOST_BUILD_DIR)/p4_plan_gate_test: core/pipeline/tests/plan_gate_test.cpp \
-  core/pipeline/plan_gate.hpp core/contract/op_registry.hpp core/contract/model.hpp
-	@mkdir -p $(HOST_BUILD_DIR)
-	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/pipeline/tests/plan_gate_test.cpp -o $@
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)

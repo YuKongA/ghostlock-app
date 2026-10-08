@@ -8,11 +8,6 @@
  * SYSCHK / ASSERT macros and the ghostlock::memory process helpers below are
  * unchanged; the upstream __ARM discriminator stays with the code that selects
  * the cntvct_el0 clock. */
-/* P2 compat note (task-93): this discriminator is ALSO what selects the arch
- * branch in backend/cve_2026_43499/leak/{timeutils.h:12, kernelsnitch.h:20}.
- * Without it those headers fall back to __INTEL and emit x86 rdtsc/mfence/RDPRU
- * asm on aarch64 (measured: NDK -fsyntax-only fails with "invalid output
- * constraint '=a' in asm"). Kept verbatim from the pre-P1 header; do not drop. */
 #ifndef __ARM
 #define __ARM 1
 #endif

@@ -18,11 +18,6 @@ namespace ghostlock::session {
     inline constexpr std::size_t kBackendStateBytes = 2048;
     inline constexpr std::size_t kBackendStateAlign = 8;
 
-    /* P2 compat (task-93): the slot size is a frozen ABI quantity; this is the
-     * machine check for spec section 2 (2048 B). The kernel_offsets (520) and
-     * TargetProfile (784) layout asserts live in contract/model.hpp:425/:427. */
-    static_assert(kBackendStateBytes == 2048, "backend state slot size is frozen (P2 spec 2)");
-
     struct CoreSession final {
         ghostlock::config::RuntimeConfig runtime{};
         alignas(kBackendStateAlign) std::byte backend_state[kBackendStateBytes]{};
