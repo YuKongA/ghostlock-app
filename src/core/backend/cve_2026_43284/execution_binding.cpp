@@ -294,6 +294,29 @@ namespace ghostlock::backend::cve_2026_43284 {
          * is 15000 and run_backend_terminal reads state.profile.wait_timeout_ms.
          * deps.wait_timeout_ms keeps its host-test default. */
         state.deps.umh_channel = terminal::production_umh_channel();
+        /* M5 selection surface: hand the 43284 gate the step name of the queue the
+         * normalizer already resolved. The section comes from the DECLARED-ARRAY table
+         * and the token from the BackendKind authority - no hand-written path, and no
+         * second parse (both are the M5 lesson). Empty stays empty: the gate still
+         * refuses a run with no declared PageCacheWrite step. */
+        {
+            const std::string_view token =
+                    contract::backend_token_name(contract::BackendKind::Cve2026_43284);
+            for (const profile::DeclaredArrayField &field : profile::kDeclaredArrayFields) {
+                if (field.key != "queue") continue;
+                if (field.section.size() <= token.size()) continue;
+                if (field.section.substr(field.section.size() - token.size()) != token) continue;
+                const profile::Value *queue = document.find_value(field.section, field.key);
+                if (queue == nullptr || !queue->is_array || queue->items.empty()) break;
+                for (const profile::CompositeEntry &element : queue->items.front().entries) {
+                    if (element.key == "step") {
+                        state.deps.selection_steps_name = element.text;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
         result.error = ExecutionBindError::None;
         return result;
 #endif

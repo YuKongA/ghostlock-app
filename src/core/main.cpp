@@ -108,6 +108,10 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (read.error != 0) {
+            /* Named diagnostic (diagnostics only - no judgement change): says WHICH
+             * stage refused and with which code, so a device log stops being a
+             * generic "cannot load profile". */
+            pr_error("profile_error stage=read code=%d\n", read.error);
             pr_error("cannot load profile\n");
             throw FatalError{};
         }
@@ -118,6 +122,9 @@ int main(int argc, char **argv) {
         if (!decoded.backend_token.empty()) {
             contract::BackendKind backend_kind{};
             if (!pipeline::backend_from_token(decoded.backend_token, backend_kind)) {
+                pr_error("profile_error stage=backend token=%.*s\n",
+                         static_cast<int>(decoded.backend_token.size()),
+                         decoded.backend_token.data());
                 pr_error("cannot load profile\n");
                 throw FatalError{};
             }
@@ -126,6 +133,9 @@ int main(int argc, char **argv) {
         if (!decoded.terminal_token.empty()) {
             contract::TerminalKind terminal_kind{};
             if (!pipeline::terminal_from_token(decoded.terminal_token, terminal_kind)) {
+                pr_error("profile_error stage=terminal token=%.*s\n",
+                         static_cast<int>(decoded.terminal_token.size()),
+                         decoded.terminal_token.data());
                 pr_error("cannot load profile\n");
                 throw FatalError{};
             }

@@ -188,8 +188,13 @@ namespace ghostlock::backend::cve_2026_43284 {
         /* The forced-test switch never bypasses a fail-closed device fact. */
         (void)force_attack;
 
-        if (!profile.steps.has_value() ||
-            profile.steps.value() != steps::PageCacheWriteSteps::id) {
+        /* M5: the selection surface is the QUEUE (backend.<id>.queue), not the
+         * removed `steps` token - that field has had no writer since M5, so this
+         * gate refused every run (the device saw StepsMismatch with a valid
+         * profile). The composition root hands over the normalized queue first step
+         * name; absent, empty and different all still fail closed with the SAME
+         * named reason, so the strictness is unchanged. */
+        if (deps.selection_steps_name != steps::PageCacheWriteSteps::name) {
             result.error = BackendTerminalError::StepsMismatch;
             DiagLine line("entry");
             line.n("stage", "profile").fail(terminal_error_name(result.error));

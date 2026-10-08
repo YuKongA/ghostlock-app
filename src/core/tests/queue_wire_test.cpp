@@ -219,6 +219,30 @@ namespace {
 } // namespace
 
 int main() {
+    /* ---- D4 (handoff): a handoff that does not belong to the matched
+     * combination is refused BY NAME, and an unknown or absent terminal keeps
+     * its own reason - fail-closed preserved, never silently remapped. ---- */
+    {
+        const CombinationSpec &spec = spec_of(CombinationKind::McastRootchild);
+        const bool routed = spec.route != ghostlock::profile::RouteKind::None;
+        const std::string_view route_token = ghostlock::contract::route_name(spec.route);
+        const Document accepted = make_queue_doc(
+                ghostlock::contract::backend_token_name(spec.backend),
+                ghostlock::contract::terminal_token_name(spec.terminal), route_token, routed,
+                steps_of(CombinationKind::McastRootchild), route_token, routed, false, false);
+        expect_combination("terminal baseline", accepted, CombinationKind::McastRootchild);
+
+        Document mismatched = accepted;
+        mismatched.terminal = ghostlock::contract::terminal_token_name(
+                ghostlock::contract::TerminalKind::UmhForward);
+        expect_reject("terminal disagrees with the combination", mismatched,
+                      "terminal-disagrees-with-combination");
+
+        Document unknown = accepted;
+        unknown.terminal = "not_a_terminal";
+        expect_reject("unknown terminal", unknown, "terminal-unknown");
+    }
+
     /* ---- same-shape corpus: queue == token for every verified preset ---- */
     {
         const CombinationKind wired[] = {

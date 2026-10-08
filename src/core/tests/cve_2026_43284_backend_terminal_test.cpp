@@ -262,6 +262,9 @@ namespace {
 
     BackendTerminalDeps make_deps(FakeDevice &dev, FakeChain &chain) noexcept {
         BackendTerminalDeps deps{};
+        /* The composition root supplies the M5-normalized queue step name. */
+        deps.selection_steps_name =
+                ghostlock::backend::cve_2026_43284::steps::PageCacheWriteSteps::name;
         deps.device = make_device_ops(dev);
         deps.chain = make_chain_ops(chain);
         /* The composition root binds exactly one carrier; the state's
@@ -272,13 +275,17 @@ namespace {
         return deps;
     }
 
+    /* steps_name = the M5-normalized queue first step the composition root hands over.
+     * Defaulted to the device shape so positive cases keep exercising a PASSING gate. */
     BackendTerminalResult run_case(const Cve2026_43284Profile &profile, FakeDevice &dev,
-                                   FakeChain &chain, UmhForwardInput &out) noexcept {
+                                   FakeChain &chain, UmhForwardInput &out,
+                                   std::string_view steps_name = PageCacheWriteSteps::name) noexcept {
         RootProgram root{};
         root.kind = RootProgramKind::KernelSU;
         root.set_argv("/data/adb/ksud");
         IpsecSaParams sa{};
-        const BackendTerminalDeps deps = make_deps(dev, chain);
+        BackendTerminalDeps deps = make_deps(dev, chain);
+        deps.selection_steps_name = steps_name;
         return run_backend_terminal(profile, root, sa, deps, false, out);
     }
 
@@ -550,11 +557,21 @@ namespace {
     void test_policy_rejections() {
         FakeDevice dev{};
         {
+            /* M5 semantics: the gate reads the normalized QUEUE step name, not the
+             * removed `steps` token. A queue whose first step is not PageCacheWrite
+             * must still be refused with the SAME named reason (assert unchanged). */
             Cve2026_43284Profile p = make_profile();
-            p.steps = 2U;
+            FakeChain chain{}; reset_chain(chain); UmhForwardInput out{};
+            const BackendTerminalResult r = run_case(p, dev, chain, out, std::string_view{"w1"});
+            assert(r.error == BackendTerminalError::StepsMismatch);
+        }
+        {
+            /* Complementary case: the declared queue IS PageCacheWrite (the shape the
+             * device sends) - the gate must PASS this run instead of refusing it. */
+            Cve2026_43284Profile p = make_profile();
             FakeChain chain{}; reset_chain(chain); UmhForwardInput out{};
             const BackendTerminalResult r = run_case(p, dev, chain, out);
-            assert(r.error == BackendTerminalError::StepsMismatch);
+            assert(r.error != BackendTerminalError::StepsMismatch);
         }
         {
             /* An absent SELinux context token means the standard vendor_modprobe

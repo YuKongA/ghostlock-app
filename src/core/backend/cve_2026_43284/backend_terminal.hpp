@@ -96,6 +96,12 @@ namespace ghostlock::backend::cve_2026_43284 {
          * (invalid) handle makes the terminal fail closed until the composition
          * root binds the production probe. */
         terminal::UmhForwardChannel umh_channel{};
+        /* The FIRST step name of the M5-normalized queue this run selected - the
+         * carrier path (`queue_selection.<id>.queue`) wins and the `available.<id>`
+         * declaration is only the fallback; both were already resolved by the
+         * normalizer upstream. Read from the parsed document, NEVER a second parse
+         * path here (the M5 lesson: one selection data item, one read path). */
+        std::string_view selection_steps_name{};
     };
 
     enum class BackendTerminalError : std::uint8_t {

@@ -355,9 +355,31 @@ namespace ghostlock::profile {
                     return -1;
                 }
             }
+            /* D4 (handoff declaration): the declared handoff is a REQUEST and the
+             * matched combination is the GATE. Both refusals are named, so a
+             * mismatch is never silently remapped onto another terminal and an
+             * unknown token is never dropped. Fail-closed is kept. */
             contract::TerminalKind terminal{};
-            if (!contract::terminal_kind_from_token(decoded.terminal, terminal) ||
-                terminal != spec->terminal) {
+            if (!contract::terminal_kind_from_token(decoded.terminal, terminal)) {
+                (void)std::fprintf(
+                        stderr,
+                        "plan_error reason=terminal-unknown token=%.*s backend=%.*s "
+                        "path=terminal\n",
+                        static_cast<int>(decoded.terminal.size()), decoded.terminal.data(),
+                        static_cast<int>(backend_token.size()), backend_token.data());
+                return -1;
+            }
+            if (terminal != spec->terminal) {
+                const std::string_view combination_terminal =
+                        contract::terminal_token_name(spec->terminal);
+                (void)std::fprintf(
+                        stderr,
+                        "plan_error reason=terminal-disagrees-with-combination "
+                        "terminal=%.*s combination_terminal=%.*s backend=%.*s\n",
+                        static_cast<int>(decoded.terminal.size()), decoded.terminal.data(),
+                        static_cast<int>(combination_terminal.size()),
+                        combination_terminal.data(),
+                        static_cast<int>(backend_token.size()), backend_token.data());
                 return -1;
             }
             out->combination = static_cast<uint8_t>(spec->kind);
