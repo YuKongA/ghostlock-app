@@ -2,7 +2,7 @@
 
 - Head：`vr-guard-pr`（原生二进制构建自 C++ 树最后一次变更 `2912fca4`，其后仅 Kotlin / 测试 / 文档）
 - Base：`vr-ko-bypass-dev`（`deff0b1b`）
-- 规模：代码（`src/`、`tools/`、`profile-core/`、`app/`）35 files、+1093 / −44；文档与门禁记录
+- 规模：代码（`../../src`、`tools/`、`profile-core/`、`app/`）35 files、+1093 / −44；文档与门禁记录
   见 PR 界面的 Files changed（本说明自身也在其中，随提交演进微调）
 
 ## 需要你拍板的三件事（先说结论）
@@ -20,7 +20,7 @@
 
 其余内容：逐文件改动（§主要变化）、验证矩阵与反汇编核对、两份真机门禁、明确保留 —— 见下文。
 
-本 PR 实现 `docs/analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
+本 PR 实现 `../analysis/ancillary-controller-guide.md` §9 留下的任务：`VrGuardPolicy`
 （vivo/iQOO `vr.ko` 探针中和），并让测试设备能真正跑完一轮以做真机验证。完整计划与证据
 （含逐函数反汇编核对记录、真机门禁）在 `docs/archive/README.md（已归档计划索引）`。
 
@@ -53,8 +53,8 @@
 | 提取器 | `tools/extract_rs/src/{symbols,report}.rs` | `__tracepoint_sys_exit`（optional）；`struct tracepoint.funcs` 由 BTF 取；`--format conf` 输出三项 |
 | profile-core / app | `NativeProfile.kt`、`ProfileResolver.kt`、`MulticastConfig.kt`、编辑器（`AndroidProfileConfigController`/`FieldLabels`）、往返测试、内置 profile + `index.conf` | 三字段读写与白名单；multicast `attempts/arm_sequence/arm_hold` 的 Kotlin 镜像补齐（原先只存在于 native 字段表），并收录进编辑器（换路由时作为占位播种、补标签）与范围校验（8/8/16 位，越界上报而不是被类型转换绕回）；新增 iQOO 12（`6.1.145-android14-11-maybe-dirty`）内置条目 |
 | 修复 1 | `profile-core/.../ProfileMerger.kt` | 合并基准改为深拷贝共享 execution 预设（见下节） |
-| 修复 2 | `app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 迁移夹具（实测值、嵌套 `route` 声明）；夹具尺寸断言 52 → 53 |
-| 主机测试 | `src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
+| 修复 2 | `../../app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 迁移夹具（实测值、嵌套 `route` 声明）；夹具尺寸断言 52 → 53 |
+| 主机测试 | `../../src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
 | 计划 / 证据 | `docs/archive/README.md（已归档计划索引）` | 计划、反汇编核对记录、真机门禁 |
 
 ## 对评审的回应（全部已修复）
@@ -95,7 +95,7 @@
 
 实现依据：
 
-- 本分支自己的设计文档 `docs/analysis/ancillary-controller-guide.md` §4–§9（behavior contract、
+- 本分支自己的设计文档 `../analysis/ancillary-controller-guide.md` §4–§9（behavior contract、
   stage、运行时适用性、profile 契约）与分支上的 `VrGuardPolicy` 骨架；
 - 分支内既有的 **per-task 清 tag**（`cve_2026_43499_backend.cpp` 的 w2b 路径，`VR_TAG_B_OFF`，
   注释注明 ported from root.c）—— 它只覆盖 exploit 子进程；本 PR 补的是 root 之后 ksud 与
@@ -143,7 +143,7 @@
 | 真机门禁 | 冷启动、锁屏、multicast、`main=4 consumer=5` | **PASS**：2026-09-30（旧二进制）、2026-10-02 两次 —— 其中一次为**评审修正后的二进制**（`ANC-02`，首次尝试即通过）；归档 `docs/analysis/device-gates/ANC-0{1,2}-*.md` |
 
 反汇编核对（基线 `deff0b1b` 干净构建，md5 `27879fa7`；候选本分支，md5 `02f2be01`；工具为
-本分支自带的 `tools/cmp_disasm.py`，另用 `origin/main` 的两级版本交叉核对）：
+本分支自带的 `../../tools/cmp_disasm.py`，另用 `origin/main` 的两级版本交叉核对）：
 
 - `owner_thread`、`do_one_write`（3 个 middleware 实例）：**IDENTICAL (strict)**。
 - `waiter_thread` / `consumer_thread` / `run_main_route_threads`：5 个未改行为的攻击函数合计
@@ -154,7 +154,7 @@
   既有 poison+walk 主体；主体内语句顺序与 prepare/recycle 顺序不变。224 = 评审修正后的条数，
   见下节）。
 - `multicast_owner_worker` / `multicast_waiter_worker`：两侧都不存在（本分支未实例化这两个
-  worker，与 `docs/archive/20261007-2237-kernel-phys-offset-plan.md` 的同类记录一致）。
+  worker，与 `20261007-2237-kernel-phys-offset-plan.md` 的同类记录一致）。
 
 真机门禁日志（2026-10-02，最终二进制；冷启动、锁屏未解锁、运行起步 `boot_ms≈79s`）：
 
@@ -213,4 +213,4 @@ rebase 掉它另开 PR。
 
 - 不动 `kernelsnitch/`、v1 转换路径（`LegacyProfileConverter.kt`）与保留清单。
 - 不改 wire 版本；既有 profile 字节不变。
-- 不修改 `tools/cmp_disasm.py`。
+- 不修改 `../../tools/cmp_disasm.py`。
