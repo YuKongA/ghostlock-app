@@ -232,24 +232,24 @@ stateDiagram-v2
   Rejected --> Idle
 ```
 
-### 2.8 计划（脚本）生命周期（A6 设计 · [lua-surface-design](../analysis/lua-surface-design.md)）
+### 2.8 计划（脚本）生命周期：stage → 校验 → 按相位执行（A6 设计 · [lua-surface-design](../analysis/lua-surface-design.md)）
 
 ```mermaid
 stateDiagram-v2
   [*] --> 菜单选择
-  菜单选择 --> 录制: 选定 available 项（description + 脚本）
-  录制 --> 计划记录: 第一遍·零副作用（表内条目只记录）
-  计划记录 --> 校验: plan_gate 十条 + surface 表
+  菜单选择 --> stage: 选定 available 项（description + 脚本）
+  stage --> staged计划: 跑脚本一次·窗口外（零副作用）
+  staged计划 --> 校验: plan_gate 十条 + surface 表（校验对象 = staged）
   校验 --> 已拒绝: 具名拒绝（unknown-op/param-invalid/surface-unknown-name…）
-  校验 --> 执行: 通过
-  执行 --> 完成: 第二遍·重放一致
-  执行 --> 终止: 两遍不一致 / 脏状态
+  校验 --> 执行: 通过（按相位）
+  执行 --> 完成: 逐条对应 staged
+  执行 --> 终止: staged 不一致 / 脏状态
   已拒绝 --> [*]
   完成 --> [*]
   终止 --> [*]
 ```
 
-- **要点**：脚本在窗口内**不执行**；窗口内动作由实现层执行**已录制**步骤；表外名字 ⇒ **`surface-unknown-name`**；参数缺失 ⇒ 具名拒绝（不兜底）。
+- **要点**：**单遍**（跑脚本一次 ⇒ stage ⇒ gate 校验 staged ⇒ 按相位执行）；脚本窗口内**不执行**；窗口相位动作由实现层按 staged 计划完成；表外名字 ⇒ **`surface-unknown-name`**；参数缺失 ⇒ 具名拒绝（不兜底）。
 
 ## 3. Class 图
 
@@ -680,12 +680,12 @@ classDiagram
 classDiagram
   class LuaHost {
     +registerSurface(table)
-    +record() 零副作用
-    +replay() 按记录重放
+    +stage() 跑脚本一次·窗口外·零副作用
   }
   class SurfaceTable {
     <<constexpr>> 唯一权威
     +entries() 条目名/形态/参数界/实现层
+    +cfg 只读快照（取代 profile.get）
   }
   class ImplLayer {
     backend / support / terminal / profile
@@ -693,6 +693,7 @@ classDiagram
   LuaHost --> SurfaceTable : 按表注册（注册集合 == 表）
   SurfaceTable --> ImplLayer : 每项声明实现层
   LuaHost ..> ImplLayer : 仅经表内条目（表外 ⇒ surface-unknown-name）
+  note for ImplLayer "相位分组为运行时内部：writeop/settle 属窗口相位；脚本不表达分组"
 ```
 
 - **约束**：绑定与表**同源**（表驱动生成）；**不得**另立第二名单（grep 判据：条目名只在该表定义一次）。
@@ -813,7 +814,7 @@ sequenceDiagram
 > **一次真实返工（记进图/注）**：最初让窗口直接持有 `PluginHost*` → 5 个既有测试二进制被拖入 host 闭包并链接失败 ⇒ 改为**中性 `PluginStageSink`**（函数指针 + ctx，同 `ChainOps`/`LkmTransport` 惯例），依赖只留在组合接缝（1 条 Makefile 规则），4 条既有规则不动。
 > **43499 的 `pre_terminal`（step 3b）未落地**：打开点是 `steps.cpp:484-490`/`:517-521` 的 anchor，**R1：waiter 存活期不得 open**。
 >
-### 4.5 选菜单项 → 录制 → gate 校验 → 执行（A6 设计）
+### 4.5 选菜单项 → 跑脚本(stage) → gate 校验 → 按相位执行（A6 设计）
 
 ```mermaid
 sequenceDiagram
@@ -822,10 +823,10 @@ sequenceDiagram
   participant G as plan_gate
   participant W as 窗口宿主
   U->>L: 选 available 项（description + 脚本）
-  L->>L: 第一遍录制（零副作用）→ 计划记录
-  L->>G: 提交计划记录（条目序 + 参数）
-  G-->>L: ok / 具名拒绝（十条 + surface 表）
-  L->>W: 第二遍重放（writeop/settle 在窗口内原子执行）
+  L->>L: 跑脚本（stage·窗口外·一次）→ staged 计划
+  L->>G: 提交 staged 计划（条目序 + 参数）
+  G-->>L: ok / 具名拒绝（十条 + surface 表，校验对象 = staged）
+  L->>W: 按相位执行（writeop/settle 在窗口相位内原子执行）
   W-->>L: 结果（WriteOutcome）
   L-->>U: 诊断 / 收尾（三层）
 ```
