@@ -183,7 +183,7 @@ NATIVE_HOST_TESTS := \
   tcp_zerocopy_route_test select_stack_route_test \
   target_constants_test native_resource_test \
   futex_hash_test number_parse_test \
-  runtime_paths_test handoff_probe_test victim_context_test \
+  runtime_paths_test handoff_probe_test root_script_pin_test victim_context_test \
   run_state_test address_space_test session_layout_test cpp_link_probe_test ancillary_test \
   platform_abi_test \
   contract_capabilities_test contract_vocabulary_test countermeasure_abi_test address_discovery_test terminal_input_test \
@@ -196,8 +196,7 @@ NATIVE_HOST_TESTS := \
   glkv3_codec_test glkv3_schema_test profile_string_binding_test profile_v3_test profile_entry_test \
   combination_token_test combination_manifest_test support_cli_test \
  plugin_wire_test vocabulary_manifest_test stepset_steps_manifest_test \
- plugin_window_wiring_test\
-  \
+   \
   session_frame_test cve_2026_43284_ipsec_test cve_2026_43284_pagecache_test \
   cve_2026_43284_lkm_test cve_2026_43284_elf_hook_test \
   cve_2026_43284_chain_test cve_2026_43284_backend_terminal_test umh_forward_test \
@@ -209,8 +208,15 @@ NATIVE_HOST_TESTS := \
   include_firewall_test fake_backend_test \
   host_attack_dataflow_test
 
+# TODO(unfreeze-plugin): 恢复 src/Makefile:412-430（plugin_window_wiring_test 构建规则，现为注释）
+#   与聚合前置（原 src/Makefile:199 的 plugin_window_wiring_test 条目，本次已移除）。
+#   原因：该测试引用的 ghostlock::plugin::kPluginRuntimeEnabled 已随 2026-10-05 暂停提交
+#   移除/改名，src/core/tests/plugin_window_wiring_test.cpp:393 编译失败（实测）；
+#   插件解冻批次一并恢复（恢复清单另见 docs/archive/20261007-2237-branch-plan.md）。
+#   说明：这是对 HEAD 既存红的『显式处置』（原先前置与注释规则不一致 ⇒ 聚合永远不可能绿），
+#   判据未改——host 测试仍要求全员通过；恢复后本条目必须回到 NATIVE_HOST_TESTS。
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
-	@status=0; for test in $^; do $$test || status=1; done; exit $$status
+	@status=0; for test in $^; do if ! $$test; then echo "FAILED: $$test"; status=1; fi; done; exit $$status
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
@@ -288,6 +294,16 @@ $(HOST_BUILD_DIR)/run_state_test: core/tests/run_state_test.cpp core/support/run
 $(HOST_BUILD_DIR)/terminal_input_test: core/tests/terminal_input_test.cpp core/terminal/terminal_input.hpp core/terminal/root_program.hpp core/terminal/rooted_child.hpp core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/terminal_input_test.cpp core/support/native_resource.cpp -o $@
+
+# ADR-0006 T1-T4 pin: the generated root handoff script TEXT must not drift.
+# The reference bytes live in core/tests/data/root_script_pin/ (checked in).
+# The two -Wno- flags are scoped to this test: core/support/log.hpp carries
+# pre-existing -Wconversion/unused-function diagnostics that only surface when
+# a host TU compiles it (root_script.cpp includes it); production is unaffected.
+$(HOST_BUILD_DIR)/root_script_pin_test: core/tests/root_script_pin_test.cpp core/terminal/root_script.cpp core/terminal/root_script.hpp core/support/native_resource.cpp core/support/native_resource.hpp core/support/sha256.cpp core/support/sha256.hpp $(wildcard core/tests/data/root_script_pin/*.sh)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Wno-sign-conversion -Wno-unused-function -Icore/tests/host/include -Icore -DGHOSTLOCK_ROOT_SCRIPT_PIN_DIR='"$(CURDIR)/core/tests/data/root_script_pin"' core/tests/root_script_pin_test.cpp core/terminal/root_script.cpp core/support/native_resource.cpp core/support/sha256.cpp -o $@
+	@mkdir -p $(HOST_BUILD_DIR)
+
 
 # B5-8 umh_forward terminal: the injected channel/probe are fakes, so no device
 # is touched. Links the real production terminal unit.
@@ -383,7 +399,16 @@ $(HOST_BUILD_DIR)/plugin_wire_test: core/tests/plugin_wire_test.cpp \
 # S4 P1 step 3a wiring: the REAL LKM residency window (lkm_window.cpp) driving
 # the REAL plugin host over an injected LkmTransport; the loader operations
 # synthesize the module, so no device, no /dev/glk and no filesystem are touched.
-# USER DIRECTIVE 2026-10-05: plugin paused
+# PAUSE CONFIRMED 2026-10-07 (task-69): this rule stays COMMENTED. A restore attempt
+# (Lead order) failed at compile time, so the test cannot be built at HEAD:
+#   src/core/tests/plugin_window_wiring_test.cpp:393
+#     expect(!ghostlock::plugin::kPluginRuntimeEnabled, ...)
+#   error: no member named kPluginRuntimeEnabled in namespace ghostlock::plugin
+# (the 2026-10-05 pause commit removed/renamed that constant). The test source is
+# kept intact for the unfreeze batch; the aggregate prerequisite was removed from
+# NATIVE_HOST_TESTS with a reason note next to the native-host-tests target.
+# TODO(unfreeze-plugin): restore = re-enable this rule block + fix the symbol at
+# src/core/tests/plugin_window_wiring_test.cpp:393 + re-add the aggregate entry.
 # $(HOST_BUILD_DIR)/plugin_window_wiring_test: core/tests/plugin_window_wiring_test.cpp \
 #   core/backend/cve_2026_43284/lkm_window.cpp core/backend/cve_2026_43284/lkm_window.hpp \
 #   core/plugin/host.cpp core/plugin/host.hpp \
