@@ -27,6 +27,26 @@
 - **禁止（名字解析）**：runtime **不得做任何「名字 → 值」解析**（无符号表、无字段名表、无别名表）。
 - **与 stage 的关系**：计划在**窗口前** stage ⇒ 计划**只能表达「偏移 + 目标形态」**，**不能**表达最终绝对地址（绝对地址是运行期事实）。
 
+## §C5 三层划分（**构造 / 准备 / 机制**，2026-10-08 · 列为待裁）
+
+| 层 | 名字 | 归属/可见性 | 内容 |
+|---|---|---|---|
+| **①** | **构造** | **计划层**（脚本可见）· **显式 · 无副作用** | **选实现 + 选 route**（即 `backend(id, { route = … })`）；**语义必须读成「无副作用的选择」**，不是「取句柄即开始攻击」 |
+| **②** | **准备** | **计划层**（脚本可见）· **显式 · 可选** | 一次性准备动作（若某 backend 确需「先跑一步」⇒ 用**中性条目 `prepare{}`**，但**必须同时定义**：做什么 / 相位 / 与后续 `writeop` 的绑定） |
+| **③** | **机制** | **backend 内部 · 对脚本不可见** · 参数在 profile | **per-attempt** 链：`slab_drain` → **heap spray（挑页）** → PI 竞争 → 校验 → 退避重试（参数已在 profile：`heap_prepare_max_attempts` / `heap_prepare_timeout_ms` / `w1..w3_attempts` / `*_settle_us` …） |
+
+## §C6 spray 为什么留在 ③ 层（两条技术理由）
+
+1. **与「写什么」绑定**：旧实现把**同一个 `WriteRequest`** 同时喂给喷溅与 route（`prepare_good_kernel_page(request)` → `run_middleware_route(session, request)`）；**喷出的页必须与本次写的布局匹配**（`payload_write_layout_matches_request` / `accepts_page`）。若提到计划层 ⇒ 「**喷 A 页、写 B 请求**」的**静默错配**（无报错、行为错）。
+2. **它是重试语义的一部分**：旧实现**每次尝试都重新 drain + spray**（失败换页）⇒ 计划层一次性 spray **表达不了**「每次尝试重新喷」。
+
+## §C7 参数归属（完整清单）
+
+- **驱动器参数**（attempts / settle_us / verify / 退避）⇒ **profile 阶段策略** —— 旧实现 **30 个访问器**：`w1/w2/w3_attempts` · `w1/w2/w3_settle_us` · `w1_scratch_repair_attempts` · `w3_chain_rounds` · `heap_prepare_max_attempts` · `heap_prepare_timeout_ms` · `heap_kernelsnitch_timeout_ms` · `race_state_poll_interval_us` · `race_setup_settle_us` · `race_route_wait_ms` · `race_route_done_timeout_ms` · `select_*` · `tcp_*` · `multicast_*` · `handoff_*`（完整表格见 [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §4.2）。
+- **route 几何**（`tcp_*`/`select_*`/`multicast_*` 的布局与调参）⇒ **profile 数据面**。
+- **机制常量留 C++**：`WriteMode` 枚举 · kind 枚举 · waiter `0x30` · 页 `4096` · direct-map 守卫 · futex 码 · 字段偏移（**须注释「为何属机制」**）。
+- **运行期量不可配置**：目标绝对地址 · 喷溅命中页 · 泄漏 task · waiter 地址 · pid。
+
 ## §C4 裸名字全域审计（逐条判定）
 
 | 处 | 裸名字 | 判定 | 处理 |
