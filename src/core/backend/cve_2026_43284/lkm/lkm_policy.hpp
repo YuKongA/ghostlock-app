@@ -43,7 +43,8 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         std::uint16_t kernel_minor;
         std::uint16_t kmi;
         std::string_view label; /* canonical androidX-major.minor */
-        /* Build/delivery artifact name for this row (minimal-lkm-plan.md
+        //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+        /* Build/delivery artifact name for this row (docs/archive/20261007-2237-minimal-lkm-plan.md
          * section 2: "ghostlock-android13-5.15.ko"). The Gradle task builds one
          * image per row under this name and the exported lkm-kmi-manifest.tsv
          * carries it, so no consumer re-derives the convention. */

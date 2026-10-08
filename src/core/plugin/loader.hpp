@@ -3,7 +3,8 @@
 
 /* CM-2: fail-closed loader for out-of-tree countermeasure shared objects.
  *
- * Authority: docs/analysis/countermeasure-plugin-plan.md sections 5 and 9. The
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * Authority: docs/archive/20261007-2237-countermeasure-plugin-plan.md sections 5 and 9. The
  * loader is the only component that touches a countermeasure .so before any
  * attack stage runs. It validates, in this exact order, and never proceeds past
  * a failed step:

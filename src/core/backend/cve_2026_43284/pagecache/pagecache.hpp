@@ -17,7 +17,8 @@
  * (ankitrawatgit/DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/exp.c:
  * compute_iv, read_vendor_content, do_one_write_cbc, patch_file_cbc;
  * lsposed/lspromise@0258165 splicehelper.c; combeng6th/DirtyInit@3409c35
- * dfi_exploit.c) is in docs/analysis/cve-2026-43284-refactor-plan.md. The tree is
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * dfi_exploit.c) is in docs/archive/20261007-2237-cve-2026-43284-refactor-plan.md. The tree is
  * not vendored any more; the upstream repositories ship no LICENSE, so this is an
  * independent rewrite with attribution (see README "Credits & License").
  *

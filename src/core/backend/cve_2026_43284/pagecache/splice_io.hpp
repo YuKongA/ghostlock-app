@@ -13,7 +13,8 @@
  * Mapping to DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/{ankit/exp.c,
  * lspromise/splicehelper.c, dirtyinit/dfi_exploit.c}: the 16-byte page-frag
  * splice and the vmsplice header/IV/ICV pipe assembly. Attribution follows the
- * vendored-source plan (docs/analysis/cve-2026-43284-refactor-plan.md section
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * vendored-source plan (docs/archive/20261007-2237-cve-2026-43284-refactor-plan.md section
  * 2); the upstream repositories ship no LICENSE, so this is an independent
  * rewrite.
  *

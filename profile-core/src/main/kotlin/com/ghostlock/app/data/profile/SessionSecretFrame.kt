@@ -59,7 +59,7 @@ class IpsecSessionSecrets(
  * The `--ghostlock-app-call --enable-status-record` stdin stream is
  * `[u32 be len][GLKv3 document]` and, for the cve_2026_43284 backend only, MAY
  * be followed by `[u32 be len][session secret payload]`. See
- * docs/analysis/cve-2026-43284-refactor-plan.md section 6.4.
+ * docs/archive/20261007-2237-cve-2026-43284-refactor-plan.md section 6.4.
  *
  * Frozen 84-byte payload layout (all multi-byte fields big-endian):
  * ```

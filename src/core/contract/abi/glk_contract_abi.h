@@ -9,7 +9,8 @@
  * includes another project header, so an external author can compile it with a
  * bare C toolchain and no GhostLock source tree.
  *
- * Design authority: docs/analysis/countermeasure-plugin-plan.md (sections 4, 9
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * Design authority: docs/archive/20261007-2237-countermeasure-plugin-plan.md (sections 4, 9
  * and 10). The governing ruling is "declare the whole universe, implement the
  * minimal subset":
  *

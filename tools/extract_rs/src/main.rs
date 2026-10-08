@@ -70,7 +70,8 @@ struct Cli {
     /// the `plugin` owner outright now (the owner-list branch is commented out
     /// there), so a profile carrying a `plugin {}` block could not be loaded.
     /// The flag stays declared so existing invocations fail loudly instead of
-    /// silently producing a different profile. See docs/analysis/branch-plan.md.
+    /// //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+    /// silently producing a different profile. See docs/archive/20261007-2237-branch-plan.md.
     #[arg(long = "plugin-descriptor", value_name = "TSV")]
     plugin_descriptors: Vec<PathBuf>,
     /// treat every unresolved symbol as optional (emit 0)
@@ -203,7 +204,8 @@ fn resolve_kallsyms(
 
 fn run(cli: &Cli) -> Result<i32> {
     /* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05; see
-     * docs/analysis/branch-plan.md). --plugin-descriptor would append a
+     * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+     * docs/archive/20261007-2237-branch-plan.md). --plugin-descriptor would append a
      * `plugin {}` block, but native now rejects the `plugin` owner outright, so
      * any such output is unusable. Production of that block is commented out at
      * the two call sites below (the implementation is kept intact); passing the
@@ -829,7 +831,8 @@ fn run(cli: &Cli) -> Result<i32> {
 /* ⏸ PLUGIN PROJECT FROZEN (user directive 2026-10-05): this projection is no
  * longer called by `run` -- the two call sites are commented out and passing
  * `--plugin-descriptor` fails closed. The implementation is kept intact so
- * unfreezing is "uncomment + drop this attribute" (see docs/analysis/branch-plan.md). */
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * unfreezing is "uncomment + drop this attribute" (see docs/archive/20261007-2237-branch-plan.md). */
 #[allow(dead_code)]
 fn apply_plugin_descriptors(
     cli: &Cli,

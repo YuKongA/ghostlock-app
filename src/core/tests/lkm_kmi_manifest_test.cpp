@@ -1,7 +1,8 @@
 /* Host test / exporter for the build-time LKM KMI manifest (contract-design 3.17).
  *
  * lkm::kSupportedKmis is the single authority for the eight KMI delivery rows
- * (docs/analysis/minimal-lkm-plan.md section 2): Gradle builds one
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * (docs/archive/20261007-2237-minimal-lkm-plan.md section 2): Gradle builds one
  * "ghostlock-<label>.ko" image per row and Kotlin validates the same list, so
  * no consumer hand-copies the labels. This unit exports the table to
  *
@@ -54,8 +55,11 @@ namespace {
         "../../profile-core/src/main/resources/lkm-kmi-manifest.tsv",
     };
 
+    //TODO(mechanical-artifact-string-fix): 机械改动：注释/表头字符串中的计划名改为归档路径。
+    // 无法用「注释套住旧码」处理（这是被 Gradle/Kotlin 消费的产物表头文本，不是可注释的语句），
+    // 故按要求以独立 //TODO 标注；改后必须重导两份 lkm-kmi-manifest.tsv。
     std::string manifest_header() {
-        return "# GhostLock LKM KMI manifest (contract-design 3.17 / minimal-lkm-plan 2).\n"
+        return "# GhostLock LKM KMI manifest (contract-design 3.17 / docs/archive/20261007-2237-minimal-lkm-plan.md section 2).\n"
                "# Authoritative native export of lkm::kSupportedKmis; regenerate with:\n"
                "#   make -C src lkm-kmi-manifest\n"
                "# Columns: label<TAB>android_release<TAB>kmi<TAB>ko_filename\n"

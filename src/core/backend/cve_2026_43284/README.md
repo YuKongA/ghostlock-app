@@ -1,7 +1,7 @@
 # cve_2026_43284 backend
 
 CVE-2026-43284 page-cache-write backend. 逐文件上游映射、分批计划与运行时通道决策见
-[docs/analysis/cve-2026-43284-refactor-plan.md](../../../../docs/analysis/cve-2026-43284-refactor-plan.md)；
+[docs/archive/20261007-2237-cve-2026-43284-refactor-plan.md](../../../../docs/archive/20261007-2237-cve-2026-43284-refactor-plan.md)；
 设计见 [cve-2026-43284-b5-design.md](../../../../docs/analysis/cve-2026-43284-b5-design.md)。
 
 ## 状态（截至 B5-9c）

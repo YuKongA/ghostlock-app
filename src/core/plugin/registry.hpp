@@ -3,7 +3,8 @@
 
 /* CM-3: runtime registry for out-of-tree countermeasure hooks.
  *
- * Authority: docs/analysis/countermeasure-plugin-plan.md sections 5, 6 and 9.
+ * //TODO(mechanical-comment-path-fix): 机械改动：注释路径修正（计划已归档，路径改写；无语义变更）。
+ * Authority: docs/archive/20261007-2237-countermeasure-plugin-plan.md sections 5, 6 and 9.
  *
  * The registry borrows hook tables from modules owned by the caller (the
  * plugin::Loader owns the dlopen handle; this layer never
