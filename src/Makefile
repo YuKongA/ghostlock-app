@@ -112,8 +112,58 @@ mpack: $(BUILD_DIR)/mpack.o
 $(BUILD_DIR)/mpack.o: $(MPACK_SRC) $(MPACK_HDR) | $(BUILD_DIR)
 	$(CC) $(MPACK_CFLAGS) -c $(MPACK_SRC) -o $@
 
+# --- A6-prep: Lua 5.5.1 core-set wiring (integration only) ------------------
+# Authority: lib/lua/PROVENANCE.md. Only the 22-file core set (parser + base
+# library) is built; the interpreter (lua.c), the compiler (luac.c) and every
+# standard library that ships an opener stay out of the build, so the sandbox
+# lacks those capabilities AT THE LINK LAYER rather than by deleting tables at
+# runtime. Third-party isolation follows mpack: C99, its own flags, warnings
+# off. This batch does NOT link Lua into the skeleton (host/check unchanged).
+LUA_DIR := lib/lua/src
+LUA_CORE_FILES := lapi lauxlib lbaselib lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm lundump lvm lzio
+LUA_CORE_SRCS := $(addprefix $(LUA_DIR)/,$(addsuffix .c,$(LUA_CORE_FILES)))
+LUA_CORE_OBJS := $(addprefix $(BUILD_DIR)/lua/,$(addsuffix .o,$(LUA_CORE_FILES)))
+LUA_CORE_LIB := $(BUILD_DIR)/liblua-core.a
+LUA_CFLAGS := -std=c99 -w
+# Forbidden entry points: the interpreter/compiler mains and every library
+# opener the vendored tree can provide.
+LUA_FORBIDDEN_SYMBOLS := luaopen_io luaopen_os luaopen_package luaopen_debug luaopen_coroutine luaopen_math luaopen_string luaopen_table luaopen_utf8 luaopen_db luaopen_loadlib luaL_openlibs
+
+.PHONY: lua-core lua-core-size
+lua-core: $(LUA_CORE_LIB)
+	@echo "lua-core: built $(words $(LUA_CORE_FILES)) files into $(LUA_CORE_LIB)"
+	@hits=0; for s in $(LUA_FORBIDDEN_SYMBOLS); do \
+	  n=$$(nm -g $(LUA_CORE_LIB) 2>/dev/null | grep -c "$$s" || true); \
+	  if [ "$$n" -ne 0 ]; then echo "LUA-FORBIDDEN: $$s ($$n)"; hits=$$((hits+1)); fi; \
+	done; \
+	main=$$(nm -g $(LUA_CORE_LIB) 2>/dev/null | grep -cE ' T _?main$$' || true); \
+	if [ "$$main" -ne 0 ]; then echo "LUA-FORBIDDEN: main ($$main)"; hits=$$((hits+1)); fi; \
+	if [ "$$hits" -ne 0 ]; then echo "lua-core: forbidden capability symbols present"; exit 1; fi; \
+	echo "lua-core: nm scan clean (no library opener, no interpreter/compiler main)"
+
+$(BUILD_DIR)/lua/%.o: $(LUA_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/lua
+	$(CC) $(LUA_CFLAGS) -I$(LUA_DIR) -c $< -o $@
+
+$(LUA_CORE_LIB): $(LUA_CORE_OBJS)
+	ar rcs $@ $^
+
+# ADR-0008 size cross-check: NDK arm64, -Os, .text* sum via llvm-size sysv.
+# Name the toolchain explicitly, e.g.:
+#   make lua-core-size NDK_CC=<aarch64 clang> LLVM_SIZE=<llvm-size>
+NDK_CC ?=
+LLVM_SIZE ?=
+lua-core-size:
+	@if [ ! -x "$(NDK_CC)" ] || [ ! -x "$(LLVM_SIZE)" ]; then echo "lua-core-size: set NDK_CC and LLVM_SIZE (see lib/lua/PROVENANCE.md)"; exit 2; fi
+	@rm -rf $(BUILD_DIR)/lua-size; mkdir -p $(BUILD_DIR)/lua-size; \
+	for f in $(LUA_CORE_FILES); do \
+	  $(NDK_CC) -std=c99 -w -Os -I$(LUA_DIR) -c $(LUA_DIR)/$$f.c -o $(BUILD_DIR)/lua-size/$$f.o || exit 1; \
+	done; \
+	total=$$($(LLVM_SIZE) --format=sysv $(BUILD_DIR)/lua-size/*.o | awk '/^\.text/ {s+=$$2} END {printf "%d", s+0}'); \
+	echo "lua-core-size: text* sum = $$total B over $(words $(LUA_CORE_FILES)) files (PROVENANCE reference: 119068 B)"
+
 dangling-check:
-	@missing=0; total=0; for p in $(SKELETON_SRCS) $(LAYER_HEADERS) $(P4_TESTS) $(MPACK_SRC) $(MPACK_HDR); do \
+	@missing=0; total=0; for p in $(SKELETON_SRCS) $(LAYER_HEADERS) $(P4_TESTS) $(EVIDENCE_TESTS) $(MPACK_SRC) $(MPACK_HDR) $(LUA_CORE_SRCS); do \
 	  total=$$((total+1)); \
 	  if [ ! -e "$$p" ]; then echo "DANGLING: $$p"; missing=$$((missing+1)); fi; \
 	done; \
