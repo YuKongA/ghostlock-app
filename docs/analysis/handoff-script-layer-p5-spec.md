@@ -1,6 +1,7 @@
 # P5 设计规格：handoff / 脚本计划 / 插件层
 
 > 分析类（≤8 KiB）。**自包含**。P5 唯一权威规格（[rewrite-plan](../plan/rewrite-plan.md) §5）。判据形式 = D1（黑盒/白盒 + 极端值）。
+> **2026-10-08 部分取代（本行优先）**：脚本计划的**当前权威 = [lua-surface-design](lua-surface-design.md)**（+ `lua-surface-annex-document` / `-annex-target` / `-annex-route-switch`）—— 含：**单遍 stage**（取代本文『录制 → 重放』表述）· **`run` 移除**（收尾命令定义权归 Kotlin，见 annex-document）· **暴露面 7 条**（`backend` / `close` / `writeop` / `copyop` / `settle` / `handoff`（引用语义）/ `cfg`）· **统一拒绝码**（取代本文旧码表；权威见新 UML §3.2）。**本件保留为输入与沿革**；与之冲突时**以 lua-surface-design 为准**。
 > 上游权威：[script-plan-design](script-plan-design.md)（queue 退役 / 计划=脚本 / 内置脚本 / `plan-missing`）· [ADR-0008](adr/0008-lua-runtime-sandbox.md)（沙箱）· [ADR-0009](adr/0009-script-trust-and-hardline.md)（硬线 D29）· [ADR-0010](adr/0010-lua-cpp-resource-model.md)（资源模型）· [b1b2](handoff-payload-b1b2-runtime.md) §B2.1–B2.5 · [P4](composition-layer-p4-spec.md)（OpRegistry / plan_gate / AttackWindow）。
 
 ## §1 组件与边界（逐条「只做 / 不做」）
