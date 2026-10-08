@@ -1,92 +1,53 @@
-# ONLY FOR IDE SYNTAX ANALYSIS AND AUTO COMPLETION
-cmake_minimum_required(VERSION 4.3)
-project(src LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.20)
+project(ghostlock_skeleton LANGUAGES C CXX)
 
-set(CMAKE_C_STANDARD 11)
+# A0 skeleton build entry (rewrite-plan-v2 section 2). Mirrors src/Makefile and
+# references ONLY the new tree (core/**) plus the vendored mpack. The Android
+# cross build is a later phase and lives on the Gradle side; this file is the
+# host build for editors and local checks.
+
+set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# CLion-only configuration. The native binary is built by the parent Gradle
-# task (aarch64-linux-android / arm64-v8a), not by this CMake project.
-set(CMAKE_C_COMPILER_TARGET aarch64-linux-android CACHE STRING
-        "Android compiler target used for CLion code completion")
-set(CMAKE_SYSTEM_NAME Android CACHE STRING
-        "Target platform used for CLion code completion")
-set(CMAKE_ANDROID_ARCH_ABI arm64-v8a CACHE STRING
-        "Android ABI used for CLion code completion")
-set(CMAKE_ANDROID_API 34 CACHE STRING
-        "Android API level used for CLion code completion")
+set(SKELETON_WARNINGS -Wall -Wextra -Wconversion -Wsign-conversion)
 
-# Resolve the NDK used by the parent Gradle build so CLion can index Android
-# headers (linux/*.h, android/*.h, and the NDK toolchain headers).
-set(ANDROID_NDK_DIR "${CMAKE_ANDROID_NDK}")
-if (NOT ANDROID_NDK_DIR)
-    set(ANDROID_NDK_DIR "$ENV{ANDROID_NDK_HOME}")
-endif ()
-if (NOT ANDROID_NDK_DIR)
-    set(ANDROID_NDK_DIR "$ENV{ANDROID_NDK_ROOT}")
-endif ()
-if (NOT ANDROID_NDK_DIR)
-    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../local.properties" LOCAL_PROPERTIES)
-    foreach (PROPERTY IN LISTS LOCAL_PROPERTIES)
-        if (PROPERTY MATCHES "^ndk\.dir=(.*)$")
-            set(ANDROID_NDK_DIR "${CMAKE_MATCH_1}")
-            break()
-        endif ()
-    endforeach ()
-endif ()
-if (ANDROID_NDK_DIR)
-    file(TO_CMAKE_PATH "${ANDROID_NDK_DIR}" ANDROID_NDK_DIR)
-    set(ANDROID_NDK_SYSROOT "${ANDROID_NDK_DIR}/toolchains/llvm/prebuilt")
-    file(GLOB NDK_PREBUILTS LIST_DIRECTORIES true "${ANDROID_NDK_SYSROOT}/*")
-    if (NDK_PREBUILTS)
-        list(GET NDK_PREBUILTS 0 NDK_PREBUILT)
-        list(APPEND NDK_INCLUDE_DIRS
-                "${NDK_PREBUILT}/sysroot/usr/include"
-                "${NDK_PREBUILT}/sysroot/usr/include/aarch64-linux-android")
-    endif ()
-endif ()
-
-set(SOURCES
-        core/main.cpp
-        core/profile/entry.cpp
-        core/memory/address_space.cpp
-        core/memory/heap_context.cpp
-        core/race/pi_race.cpp
-        core/backend/cve_2026_43499/route/route_controller.cpp
-        core/race/threads.cpp
-        core/backend/cve_2026_43499/route/tcp_zerocopy_route.cpp
-        core/backend/cve_2026_43499/route/select_stack_route.cpp
-        core/backend/cve_2026_43499/route/multicast_waiter_route.cpp
-        core/memory/payload_builder.cpp
-        core/session/runtime_config.cpp
-        core/support/util.cpp
-        core/session/core_session.cpp
-        core/backend/cve_2026_43499_state.cpp
-        core/terminal/handoff_probe.cpp
-        core/backend/victim/victim_process.cpp
-        core/backend/victim/victim_context.cpp
-        core/support/native_resource.cpp
-        core/support/cli.cpp
+add_executable(ghostlock-skeleton
+  core/main.cpp
+  core/contract/layer.hpp
+  core/contract/layer_scope.hpp
+  core/contract/resource_scope.hpp
+  core/contract/op_registry.hpp
+  core/support/layer.hpp
+  core/memory/layer.hpp
+  core/race/layer.hpp
+  core/backend/layer.hpp
+  core/pipeline/layer.hpp
+  core/pipeline/attack_window.hpp
+  core/pipeline/composition_root.hpp
+  core/pipeline/plan_gate.hpp
+  core/terminal/layer.hpp
+  core/script/layer.hpp
+  core/session/layer.hpp
+  core/profile/layer.hpp
+  core/profile/route_catalog.hpp
 )
+target_include_directories(ghostlock-skeleton PRIVATE core)
+target_compile_options(ghostlock-skeleton PRIVATE ${SKELETON_WARNINGS})
 
-add_executable(src ${SOURCES})
+# Vendored MessagePack: C99 amalgamation, its own flags, warnings off, so the
+# project's zero-warning line above stays meaningful (lib/mpack/README.md).
+add_library(mpack STATIC lib/mpack/mpack.c)
+target_include_directories(mpack PUBLIC lib/mpack)
+set_source_files_properties(lib/mpack/mpack.c PROPERTIES COMPILE_OPTIONS "-w")
+target_link_libraries(ghostlock-skeleton PRIVATE mpack)
 
-# Mirror the Makefile warning policy so IDE diagnostics match the native build.
-target_compile_options(src PRIVATE
-        -fno-rtti
-        -Wall -Wextra -Wconversion -Wsign-conversion
-        -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function)
-
-target_include_directories(src PRIVATE
-        core
-        core/memory
-        core/route
-        core/session
-        core/support
-        kernels
-        ${NDK_INCLUDE_DIRS}
-)
+# P4 evidence binaries (restored in A0, see src/Makefile check target).
+add_executable(window-exit-paths core/pipeline/tests/window_exit_paths_test.cpp)
+add_executable(plan-gate core/pipeline/tests/plan_gate_test.cpp)
+foreach(evidence_target window-exit-paths plan-gate)
+  target_include_directories(${evidence_target} PRIVATE core)
+  target_compile_options(${evidence_target} PRIVATE ${SKELETON_WARNINGS})
+endforeach()
