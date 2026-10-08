@@ -16,6 +16,7 @@
 
 #include "backend/layer.hpp"
 #include "contract/layer.hpp"
+#include "contract/kind.hpp"
 #include "contract/layer_scope.hpp"
 #include "contract/resource_scope.hpp"
 #include "memory/layer.hpp"
@@ -48,5 +49,17 @@ int main() {
     }
     std::printf("resource-scope rules=%zu exit-paths=%zu\n", ghostlock::contract::kScopeRuleCount,
                 ghostlock::contract::kExitPathCount);
+    /* A1: the kind vocabulary and the two availability questions, side by side. */
+    std::printf("kinds total=%zu\n", ghostlock::contract::kKindCount);
+    for (const ghostlock::contract::ComponentEntry &entry : ghostlock::contract::kComponents) {
+        std::printf("  component %-14.*s selectable=%s\n", static_cast<int>(entry.token.size()),
+                    entry.token.data(), entry.selectable ? "yes" : "no");
+    }
+    for (std::size_t i = 0; i < ghostlock::profile::kRouteCatalogCount; ++i) {
+        const std::string_view route = ghostlock::profile::kRouteCatalog[i].token;
+        std::printf("  route %-16.*s selection=%s combination=%s\n", static_cast<int>(route.size()), route.data(),
+                    ghostlock::contract::route_selection_available(route) ? "yes" : "no",
+                    ghostlock::contract::combination_available("cve_2026_43499", i) ? "wired" : "not-wired");
+    }
     return 0;
 }

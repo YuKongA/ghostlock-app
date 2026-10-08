@@ -34,6 +34,7 @@ SKELETON_SRCS := core/main.cpp
 LAYER_HEADERS := \
   core/contract/layer.hpp \
   core/contract/layer_scope.hpp \
+  core/contract/kind.hpp \
   core/contract/resource_scope.hpp \
   core/contract/op_registry.hpp \
   core/support/layer.hpp \

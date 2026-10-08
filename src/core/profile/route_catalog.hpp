@@ -31,6 +31,27 @@ namespace ghostlock::profile {
     };
     inline constexpr std::size_t kRouteCatalogCount = sizeof(kRouteCatalog) / sizeof(kRouteCatalog[0]);
 
+    /** Sentinel for "this token names no route". */
+    inline constexpr std::size_t kNoRoute = static_cast<std::size_t>(-1);
+
+    /** Position of a token in the catalogue above; kNoRoute when absent. */
+    [[nodiscard]] constexpr std::size_t route_position(std::string_view token) noexcept {
+        for (std::size_t i = 0; i < kRouteCatalogCount; ++i) {
+            if (token == kRouteCatalog[i].token) {
+                return i;
+            }
+        }
+        return kNoRoute;
+    }
+
+    /* Named positions: derived here so that every other file refers to a route
+     * by this constant instead of spelling the token again (single authority). */
+    inline constexpr std::size_t kRouteTcpZerocopy = route_position("tcp_zerocopy");
+    inline constexpr std::size_t kRouteSelectStack = route_position("select_stack");
+    inline constexpr std::size_t kRouteMulticastWaiter = route_position("multicast_waiter");
+    static_assert(kRouteTcpZerocopy == 0 && kRouteSelectStack == 1 && kRouteMulticastWaiter == 2,
+                  "the named route positions must track the catalogue order");
+
     /** Wire values are non-zero and distinct: two rows cannot alias one route. */
     [[nodiscard]] constexpr bool route_wires_are_distinct() noexcept {
         for (std::size_t i = 0; i < kRouteCatalogCount; ++i) {
