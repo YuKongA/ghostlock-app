@@ -1,3 +1,17 @@
+# --- TD-REWRITE-1/3 guard: P1 disable sweep (task-88). Plan: docs/plan/rewrite-plan.md
+# The upper C++ layers are renamed to *.disabled on purpose; this guard keeps the
+# default target a no-op that explains the state and how to restore it. It does NOT
+# touch CXX_SRCS / NATIVE_HOST_TESTS; delete this block to unguard.
+.DEFAULT_GOAL := rewrite-disable-guard
+.PHONY: rewrite-disable-guard
+rewrite-disable-guard:
+	@if [ -n "$(shell find $(CURDIR)/core -name '*.disabled' -print -quit 2>/dev/null)" ]; then \
+	  echo "[rewrite] DISABLED STATE: the upper C++ layers are renamed to *.disabled (P1 sweep)"; \
+	  echo "[rewrite] restore: find src/core -name '*.disabled' | sed 's/\.disabled$$//' | xargs -I{} mv {}.disabled {}"; \
+	  echo "[rewrite] plan: docs/plan/rewrite-plan.md"; \
+	  exit 0; \
+	fi ; \
+	$(MAKE) --no-print-directory all
 API ?= 35
 
 # Auto-detect NDK
