@@ -43,6 +43,14 @@
  *  surface_has_no_window_prefixed_names() below, and the grep performed by
  *  "make -C src check".
  *
+ *  PHASE IS A STORED COLUMN (user ruling 2026-10-08): every row declares where
+ *  it is used -- stage (cfg) / pre_window (backend, close) / window (writeop,
+ *  copyop, settle) / terminal (handoff). It is NOT derived from window_allowed,
+ *  because that derivation lost the granularity the design states. The
+ *  vocabulary and the per-row assignment are pinned by assertions, and the
+ *  manifest export carries the same column so documents can be checked against
+ *  it.
+ *
  *  NO "run" ROW (user ruling): the shell/argv entry was removed from the
  *  surface, together with the run-form-invalid vocabulary. A named assertion
  *  (surface_has_no_run_row below) keeps it from creeping back.
@@ -92,6 +100,40 @@ namespace ghostlock::contract {
         bool required;
     };
 
+    /* ---- execution phases: a STORED column (user ruling 2026-10-08) ----
+     * The phase says WHERE in the execution plan a row is used, and it is
+     * stored rather than derived, because the derived window/outside-window
+     * pair threw away the granularity the design states:
+     *   stage      - read-only snapshot taken during the stage phase (cfg)
+     *   pre_window - construction / release around the window (backend, close)
+     *   window     - executed atomically inside the PI window (writeop, copyop, settle)
+     *   terminal   - triggers / hands over to the terminal phase (handoff) */
+    enum class SurfacePhase : unsigned char {
+        Stage = 0,
+        PreWindow = 1,
+        Window = 2,
+        Terminal = 3,
+    };
+
+    inline constexpr const char *kSurfacePhaseNames[] = {
+        "stage",
+        "pre_window",
+        "window",
+        "terminal",
+    };
+    inline constexpr std::size_t kSurfacePhaseCount =
+        sizeof(kSurfacePhaseNames) / sizeof(kSurfacePhaseNames[0]);
+
+    [[nodiscard]] constexpr const char *surface_phase_name(SurfacePhase phase) noexcept {
+        switch (phase) {
+            case SurfacePhase::Stage: return kSurfacePhaseNames[0];
+            case SurfacePhase::PreWindow: return kSurfacePhaseNames[1];
+            case SurfacePhase::Window: return kSurfacePhaseNames[2];
+            case SurfacePhase::Terminal: return kSurfacePhaseNames[3];
+        }
+        return "unknown";
+    }
+
     /** One row of the exposure surface. */
     struct SurfaceEntry final {
         const char *name;
@@ -99,6 +141,7 @@ namespace ghostlock::contract {
         const ArgSpec *args;
         std::size_t arg_count;
         const char *implements_layer;
+        SurfacePhase phase;
         bool recordable;
         bool executable;
         bool window_allowed;
@@ -248,18 +291,19 @@ namespace ghostlock::contract {
      *  four operation rows are handle methods (A4), and no window.* row may
      *  appear (see the file comment). */
     inline constexpr SurfaceEntry kSurface[] = {
-        {"backend", SurfaceForm::Call, nullptr, 0, "backend", true, false, false, true},
+        {"backend", SurfaceForm::Call, nullptr, 0, "backend", SurfacePhase::PreWindow, true, false, false,
+         true},
         {"writeop", SurfaceForm::HandleMethod, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]),
-         "backend", true, true, true, false},
+         "backend", SurfacePhase::Window, true, true, true, false},
         {"copyop", SurfaceForm::HandleMethod, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend",
-         true, true, true, false},
+         SurfacePhase::Window, true, true, true, false},
         {"settle", SurfaceForm::HandleMethod, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race",
-         true, true, true, false},
+         SurfacePhase::Window, true, true, true, false},
         {"handoff", SurfaceForm::HandleMethod, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]),
-         "terminal", true, true, false, true},
-        {"cfg", SurfaceForm::Value, nullptr, 0, "profile", true, false, false, false},
+         "terminal", SurfacePhase::Terminal, true, true, false, true},
+        {"cfg", SurfaceForm::Value, nullptr, 0, "profile", SurfacePhase::Stage, true, false, false, false},
         {"close", SurfaceForm::HandleMethod, kCloseArgs, sizeof(kCloseArgs) / sizeof(kCloseArgs[0]), "session",
-         true, true, false, false},
+         SurfacePhase::PreWindow, true, true, false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
@@ -538,7 +582,52 @@ namespace ghostlock::contract {
         return true;
     }
 
+    /** The declared phase vocabulary: four, unique, non-empty. */
+    [[nodiscard]] constexpr bool phase_names_are_closed() noexcept {
+        if (kSurfacePhaseCount != 4) {
+            return false;
+        }
+        for (std::size_t i = 0; i < kSurfacePhaseCount; ++i) {
+            if (kSurfacePhaseNames[i] == nullptr || kSurfacePhaseNames[i][0] == '\0') {
+                return false;
+            }
+            for (std::size_t j = i + 1; j < kSurfacePhaseCount; ++j) {
+                if (surface_same_text(kSurfacePhaseNames[i], kSurfacePhaseNames[j])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** The per-row phase assignment the design states (stored, not derived). */
+    [[nodiscard]] constexpr bool phases_are_assigned_per_design() noexcept {
+        struct Expectation final {
+            const char *name;
+            SurfacePhase phase;
+        };
+        const Expectation expected[] = {
+            {"cfg", SurfacePhase::Stage},
+            {"backend", SurfacePhase::PreWindow},
+            {"close", SurfacePhase::PreWindow},
+            {"writeop", SurfacePhase::Window},
+            {"copyop", SurfacePhase::Window},
+            {"settle", SurfacePhase::Window},
+            {"handoff", SurfacePhase::Terminal},
+        };
+        for (const Expectation &want : expected) {
+            const SurfaceEntry *row = surface_row(want.name);
+            if (row == nullptr || row->phase != want.phase) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     static_assert(kSurfaceCount >= 1, "the exposure surface must not be empty");
+    static_assert(phase_names_are_closed(), "the phase vocabulary is closed at four names");
+    static_assert(phases_are_assigned_per_design(),
+                  "stage=cfg, pre_window=backend/close, window=writeop/copyop/settle, terminal=handoff");
     static_assert(surface_names_are_unique_and_non_empty(), "surface names must be unique and non-empty");
     static_assert(surface_has_no_window_prefixed_names(),
                   "window.* is a runtime-internal phase grouping, never a script surface entry");

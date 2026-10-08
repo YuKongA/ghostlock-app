@@ -57,8 +57,8 @@ LAYER_HEADERS := \
   core/contract/script_surface.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test
+EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -87,6 +87,34 @@ $(BUILD_DIR)/a2_test: core/tests/a2_test.cpp core/race/pi_window.hpp core/race/p
 $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surface.hpp core/contract/layer_scope.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/surface_test.cpp -o $@
 
+$(BUILD_DIR)/surface_manifest_test: core/tests/surface_manifest_test.cpp core/contract/script_surface.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/surface_manifest_test.cpp -o $@
+
+# The surface manifest (same pattern as combination/vocabulary/stepset manifests):
+# stdout is exactly the TSV, so it can be redirected into an artifact; the
+# bare-run assertion inside the exporter compares it with the frozen pin.
+SURFACE_MANIFEST := $(BUILD_DIR)/surface-manifest.tsv
+.PHONY: surface-manifest surface-doc-check
+$(SURFACE_MANIFEST): $(BUILD_DIR)/surface_manifest_test
+	@$(BUILD_DIR)/surface_manifest_test > $@
+	@rows=$$(wc -l < $@ | tr -d ' '); \
+	if [ "$$rows" -lt 1 ]; then echo "surface-manifest: EMPTY artifact"; exit 1; fi; \
+	echo "surface-manifest: $@ ($$rows lines)"
+
+# Depends on the artifact rule so the manifest is (re)generated when missing.
+surface-manifest: $(SURFACE_MANIFEST)
+
+# Documentation cross-check (docs side owns the table): every manifest line must
+# appear verbatim in the document, so a hand-copied table cannot drift.
+#   make -C src surface-doc-check DOC=docs/development/full-process-uml.md
+DOC ?=
+surface-doc-check: $(SURFACE_MANIFEST)
+	@if [ ! -f "$(DOC)" ]; then echo "surface-doc-check: set DOC=<path> to the document holding the table"; exit 2; fi
+	@missing=$$(while IFS= read -r line; do grep -Fqx "$$line" "$(DOC)" || echo "$$line"; done < $(SURFACE_MANIFEST) | wc -l | tr -d ' '); \
+	if [ "$$missing" -ne 0 ]; then echo "surface-doc-check: $$missing manifest line(s) missing from $(DOC)"; \
+	  while IFS= read -r line; do grep -Fqx "$$line" "$(DOC)" || { echo "  MISSING: $$line"; break; }; done < $(SURFACE_MANIFEST); exit 1; fi; \
+	echo "surface-doc-check: $(DOC) carries every manifest line"
+
 check: $(P4_BINS) $(EVIDENCE_BINS)
 	@echo "check: P4 window exit paths"
 	@$(BUILD_DIR)/window_exit_paths_test
@@ -105,11 +133,11 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
-	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp'); do \
+	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp' ! -name 'surface_manifest_test.cpp'); do \
 	  if tr -d '\n' < "$$f" | grep -qE 'backend.*writeop.*settle.*handoff'; then echo "$$f"; fi; \
 	done | wc -l | tr -d ' '); \
 	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
-	echo "check: surface list has a single definition site (no other file restates it)"
+	echo "check: surface list has a single definition site (no other file restates it; the manifest pin is a deliberate copy and is checked byte-for-byte by surface-manifest)"
 	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
 	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
 	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
