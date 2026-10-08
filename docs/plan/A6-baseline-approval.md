@@ -1,5 +1,6 @@
 # A6 基线待批单（一页 · 2026-10-08）
 
+> **状态：已批准**（2026-10-08 · 用户原话「计划全部批准，开始写代码」；审查：v0.2 两轮，见 `engineering-rules.md` 审查记录区）。
 > 用途：把 **A6（Lua 脚本计划）开工所需的全部批准项**收在一页；**批准后即可进入 A6 实现批**。计划类（≤16 KiB）。
 > 权威件：[lua-surface-design](../analysis/lua-surface-design.md) · [ADR-0008/0009/0010](../analysis/adr/) · [rewrite-plan-v2](rewrite-plan-v2.md)（A6）· [PENDING-DECISIONS](PENDING-DECISIONS.md)。
 
