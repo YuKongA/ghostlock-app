@@ -30,6 +30,7 @@
 ## 口径警告（沿用 ADR-0008）
 
 `llvm-size` 的 **Berkeley `text` 列包含 `.rodata` 与 `.eh_frame`**，比指令字节高约 30 KB；**体积比较一律用 `.text*` 累计**。
+
 ## 体积实测（可复现 · 2026-10-08 补记）
 
 > 口径 = 指令字节（`llvm-size --format=sysv` 的 `.text*` 段累计）· NDK 30 / arm64 / `-Os`。**数字必须与旗标一起读**。
