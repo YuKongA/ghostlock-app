@@ -244,8 +244,8 @@ stateDiagram-v2
   校验 --> 执行: 通过（按相位）
   执行 --> 完成: 逐条对应 staged
   执行 --> 终止: staged 不一致 / 脏状态
-  完成 --> 收尾: terminal{on_success / always / on_failure}（声明式）
-  终止 --> 收尾: always + on_failure
+  完成 --> 收尾: terminal 按 Kotlin resolve 的 payload 执行（声明式三段）
+  终止 --> 收尾: always + on_failure（payload 同源）
   收尾 --> [*]: 内核兜底（C++）
   已拒绝 --> [*]
   完成 --> [*]
@@ -689,7 +689,9 @@ classDiagram
     <<constexpr>> 唯一权威
     +entries() 条目名/形态/参数界/实现层
     +cfg 只读快照（取代 profile.get）
-    +run argv|shell 二选一（terminal 相位）
+    +writeop 字写 / copyop 结构复制（写入面两形态）
+    +handoff{terminal, payload_ref} 引用语义
+    +run argv|shell（待裁定移除）
   }
   class ImplLayer {
     backend / support / terminal / profile
@@ -832,9 +834,9 @@ sequenceDiagram
   G-->>L: ok / 具名拒绝（十条 + surface 表，校验对象 = staged）
   L->>W: 按相位执行（writeop/settle 在窗口相位内原子执行）
   W-->>L: 结果（WriteOutcome）
-  L->>W: terminal 相位执行 staged run（argv|shell，root 后）
-  W-->>L: 命令结果 + 审计行
-  L-->>U: 诊断 / 声明式收尾（on_success/always/on_failure + 内核兜底）
+  L->>W: terminal 相位执行（payload 由 Kotlin resolve；声明式三段）
+  W-->>L: 结果 + 审计行
+  L-->>U: 诊断 / 收尾（内核兜底留 C++）
 ```
 
 ## 5. 维护约定
