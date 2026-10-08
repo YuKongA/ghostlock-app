@@ -38,8 +38,12 @@ LAYER_HEADERS := \
   core/contract/resource_scope.hpp \
   core/contract/op_registry.hpp \
   core/support/layer.hpp \
+  core/support/neutrals.hpp \
   core/memory/layer.hpp \
+  core/memory/target_profile.hpp \
   core/race/layer.hpp \
+  core/race/pi_window.hpp \
+  core/race/pi_race.hpp \
   core/backend/layer.hpp \
   core/pipeline/layer.hpp \
   core/pipeline/attack_window.hpp \
@@ -52,6 +56,8 @@ LAYER_HEADERS := \
   core/profile/route_catalog.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
+EVIDENCE_TESTS := core/tests/a2_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -74,7 +80,10 @@ $(BUILD_DIR)/window_exit_paths_test: core/pipeline/tests/window_exit_paths_test.
 $(BUILD_DIR)/plan_gate_test: core/pipeline/tests/plan_gate_test.cpp core/pipeline/plan_gate.hpp core/contract/op_registry.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/pipeline/tests/plan_gate_test.cpp -o $@
 
-check: $(P4_BINS)
+$(BUILD_DIR)/a2_test: core/tests/a2_test.cpp core/race/pi_window.hpp core/race/pi_race.hpp core/memory/target_profile.hpp core/support/neutrals.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/a2_test.cpp -o $@
+
+check: $(P4_BINS) $(EVIDENCE_BINS)
 	@echo "check: P4 window exit paths"
 	@$(BUILD_DIR)/window_exit_paths_test
 	@echo "check: P4 plan gate"
@@ -85,6 +94,19 @@ check: $(P4_BINS)
 	@hits=$$(grep -nE '$(ORDER_TOKENS)' core/pipeline/composition_root.hpp | wc -l | tr -d ' '); \
 	if [ "$$hits" -ne 0 ]; then echo "ORDER-HIT: $$hits"; grep -nE '$(ORDER_TOKENS)' core/pipeline/composition_root.hpp; exit 1; fi; \
 	echo "check: zero ordering tokens in the composition root"
+	@echo "check: A2 window constraints and profile read path"
+	@$(BUILD_DIR)/a2_test
+	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
+	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
+	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
+	@code=$$(sed -e 's://.*::' core/race/pi_window.hpp core/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
+	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual' || true); \
+	if [ "$$dirty" -ne 0 ]; then echo "WINDOW-DIRTY: $$dirty"; echo "$$code" | grep -nE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual'; exit 1; fi; \
+	echo "check: race window carries no allocation, logging or indirect dispatch"
+	@scode=$$(sed -e 's://.*::' $$(find core/support -name '*.hpp' -o -name '*.cpp') | grep -vE '^[[:space:]]*\*'); \
+	impure=$$(echo "$$scode" | grep -ciE 'spray|payload|route|kernel|exploit|attack|futex' || true); \
+	if [ "$$impure" -ne 0 ]; then echo "SUPPORT-IMPURE: $$impure"; echo "$$scode" | grep -niE 'spray|payload|route|kernel|exploit|attack|futex'; exit 1; fi; \
+	echo "check: support carries neutral pieces only"
 
 mpack: $(BUILD_DIR)/mpack.o
 $(BUILD_DIR)/mpack.o: $(MPACK_SRC) $(MPACK_HDR) | $(BUILD_DIR)
