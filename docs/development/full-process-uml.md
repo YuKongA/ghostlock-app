@@ -142,13 +142,15 @@ classDiagram
 
 | 条目 | 实现层 | 相位 | 备注 |
 |---|---|---|---|
-| `backend(id, {route?})` | 组合根/目录 | 窗口外 | **构造 = 无副作用的选择** |
-| `close(h)` | 组合根/目录 | 窗口外 | generation 递增；旧句柄 ⇒ `handle-stale` |
-| `b:writeop{target={kind,value}, value, width}` | backend route/step | 窗口相位 | **kind = 机制枚举**，value 来自 `cfg` |
-| `b:copyop{src,dst={kind,value}, width}` | backend route/step | 窗口相位 | 结构复制（宽度 = profile 声明尺寸） |
+| `backend(id, {route?})` | **`backend`**（构造经组合根/目录校验） | 窗口外 | **构造 = 无副作用的选择** |
+| `close(h)` | **`session`**（句柄表；构造经组合根/目录校验） | 窗口外 | generation 递增；旧句柄 ⇒ `handle-stale` |
+| `b:writeop{target={kind,value}, value, width}` | **`backend`**（route/step 为其内部） | 窗口相位 | **kind = 机制枚举**，value 来自 `cfg` |
+| `b:copyop{src,dst={kind,value}, width}` | **`backend`**（route/step 为其内部） | 窗口相位 | 结构复制（宽度 = profile 声明尺寸） |
 | `b:settle{us}` | **`race`**（代码权威：`contract/script_surface.hpp:206` 的 `implements_layer`；层级断言见 `:305`） | 窗口相位 | 参数化（不得 C++ 兜底） |
-| `b:handoff{terminal, payload_ref}` | terminal/handoff | 窗口外→terminal | **引用语义**（命令内容属 ③ 段） |
-| `cfg`（只读快照） | profile（快照注入） | stage 前 | 只读；不属句柄面 |
+| `b:handoff{terminal, payload_ref}` | **`terminal`** | 窗口外→terminal | **引用语义**（命令内容属 ③ 段） |
+| `cfg`（只读快照） | **`profile`**（快照注入） | stage 前 | 只读；不属句柄面 |
+
+- **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（`contract` · `support` · `memory` · `race` · `backend` · `pipeline` · `terminal` · `script` · `session` · `profile`）；**机器可校验**（`script_surface.hpp` 的 `implements_layer` 与 `:305` 断言）；**不得用描述性短语** —— 「**表达一致**」的一个实例。
 
 ### 3.2 拒绝码（gate + 边界校验）
 
