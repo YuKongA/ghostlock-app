@@ -73,12 +73,36 @@ namespace {
         std::printf("surface table: %zu rows (%zu value, %zu required args), invariants hold\n",
                     ghostlock::contract::kSurfaceCount, value_rows, required_args);
     }
+    /* The run row: terminal-only, and argv XOR shell at the runtime. */
+    void run_row_contract() {
+        const ghostlock::contract::SurfaceResult result = ghostlock::contract::lookup("run");
+        expect(result.code == ghostlock::contract::SurfaceLookup::Found && result.entry != nullptr,
+               "the run row must exist");
+        if (result.entry == nullptr) {
+            return;
+        }
+        expect(std::string_view(result.entry->implements_layer) == "terminal", "run is implemented by terminal");
+        expect(!result.entry->window_allowed, "run must not be reachable inside the window");
+        expect(result.entry->executable, "run is executable");
+        expect(!result.entry->holds_resource, "run holds no resource");
+        using ghostlock::contract::RunFormCheck;
+        expect(ghostlock::contract::run_form_check(true, false) == RunFormCheck::Valid, "argv alone is a valid form");
+        expect(ghostlock::contract::run_form_check(false, true) == RunFormCheck::Valid, "shell alone is a valid form");
+        expect(ghostlock::contract::run_form_check(true, true) == RunFormCheck::BothForms, "argv + shell is refused");
+        expect(ghostlock::contract::run_form_check(false, false) == RunFormCheck::NoForm, "neither form is refused");
+        expect(std::string_view(ghostlock::contract::run_form_check_name(RunFormCheck::BothForms)) ==
+                   ghostlock::contract::kRunFormInvalidReason,
+               "the refusal is spelled run-form-invalid");
+        std::printf("run row: layer=%s window=no, forms argv XOR shell -> %s\n", result.entry->implements_layer,
+                    ghostlock::contract::kRunFormInvalidReason);
+    }
 }  // namespace
 
 int main() {
     rows_are_reachable();
     unknown_name_is_named();
     invariants_hold();
+    run_row_contract();
     if (failures == 0) {
         std::printf("surface: PASS (single lookup path + named unknown-symbol + invariants)\n");
         return 0;

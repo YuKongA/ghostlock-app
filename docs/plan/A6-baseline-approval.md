@@ -3,7 +3,7 @@
 > 用途：把 **A6（Lua 脚本计划）开工所需的全部批准项**收在一页；**批准后即可进入 A6 实现批**。计划类（≤16 KiB）。
 > 权威件：[lua-surface-design](../analysis/lua-surface-design.md) · [ADR-0008/0009/0010](../analysis/adr/) · [rewrite-plan-v2](rewrite-plan-v2.md)（A6）· [PENDING-DECISIONS](PENDING-DECISIONS.md)。
 
-## 1. 待批内容（7 项）
+## 1. 待批内容（8 项）
 
 | # | 项 | 内容 | 权威件 |
 |---|---|---|---|
@@ -14,6 +14,7 @@
 | 5 | **`cfg` 快照** | stage 前注入的**只读快照**；脚本只能读字段；**不属句柄面**、不产生句柄 | 同上 §1 · ADR-0010 |
 | 6 | **句柄边界** | `{kind,index,generation}` · **有界 64** · **POD / 无 `__gc`** · **只由宿主探针在窗口外产生** · 不得自造/延长/跨域 | ADR-0010 |
 | 7 | **三条 ADR 修订点** | 0008 = 单遍 stage + 5.5 沙箱参数待办 · 0009 = 「用户脚本正确性 = 用户责任」= **`TD-RW2-1`** · 0010 = **`cfg` 不属句柄面** | 三份 ADR 修订段 |
+| 8 | **`run` 双形态 + 收尾声明式** | `run{argv\|shell, capture?, timeout_ms?}`（**argv 与 shell 二者必居其一**，违规 ⇒ **`run-form-invalid`**）· 相位 = **terminal（root 后）** · 窗口内否；收尾 = `terminal{on_success, always, on_failure}` **声明式**（内核兜底留 C++；旧 `root_cmd` 模板被取代）⇒ **`TD-RW2-2`** | [lua-surface-design](../analysis/lua-surface-design.md) §1/§4.1 |
 
 ## 2. 现状（2026-10-08）
 
@@ -41,8 +42,10 @@
 | 放宽 | **不为脚本逻辑错误做静态证明**（用户裁定：**用户脚本正确性 = 用户责任**） |
 | **保留** | **窗口内零 Lua** · **逐调用边界校验** · **`plan_gate` 校验 staged** · **预算**（指令/内存/64 KB） |
 | 代价 | 用户脚本改坏**可能 panic**（本层不拦截，如实登记） |
+
+**另：`TD-RW2-2`（`run` 双形态）** —— 允许 `shell` ⇒ **命令级白名单失效**；**剩余界** = **相位**（仅 terminal、root 后）+ **预算**（指令/内存/`timeout_ms`）+ **审计**（命令与输出入日志）；**代价** = root 后**可执行任意命令**；**偿还时机 = 首个真机门禁（G2）后复评**。
 | 偿还时机 | **首个真机门禁（G2）后复评** |
 
 ## 6. 一句批准项（可直接转给用户）
 
-> **请批准 A6 基线：Lua 5.5.1（已 vendor 且来源可核）+ 沙箱预算参数白名单 + 暴露面表（`backend`/`writeop`/`settle`/`handoff`/`cfg`，表外拒绝）+ 单遍 stage（跑脚本→gate 校验 staged→按相位执行）+ `cfg` 只读快照 + 句柄边界（有界 64 / POD / 仅宿主探针产生），并登记 `TD-RW2-1`（用户脚本正确性 = 用户责任，保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算，偿还时机 = 首个真机门禁后复评）。**
+> **请批准 A6 基线：Lua 5.5.1（已 vendor、来源可核）+ 沙箱预算参数白名单 + 暴露面表（`backend`/`writeop`/`settle`/`handoff`/`cfg`/**`run`**，表外拒绝）+ 单遍 stage（跑脚本→gate 校验 staged→按相位执行）+ `cfg` 只读快照 + 句柄边界（有界 64 / POD / 仅宿主探针产生）+ **`run` 双形态与声明式收尾**（`argv`/`shell` 二选一，`terminal{on_success, always, on_failure}`，内核兜底留 C++），并登记 **`TD-RW2-1`**（用户脚本正确性 = 用户责任；保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算）与 **`TD-RW2-2`**（允许 `shell` ⇒ 以相位+预算+审计为剩余界；两项偿还时机 = 首个真机门禁后复评）。**

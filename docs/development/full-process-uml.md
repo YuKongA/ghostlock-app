@@ -244,6 +244,9 @@ stateDiagram-v2
   校验 --> 执行: 通过（按相位）
   执行 --> 完成: 逐条对应 staged
   执行 --> 终止: staged 不一致 / 脏状态
+  完成 --> 收尾: terminal{on_success / always / on_failure}（声明式）
+  终止 --> 收尾: always + on_failure
+  收尾 --> [*]: 内核兜底（C++）
   已拒绝 --> [*]
   完成 --> [*]
   终止 --> [*]
@@ -686,6 +689,7 @@ classDiagram
     <<constexpr>> 唯一权威
     +entries() 条目名/形态/参数界/实现层
     +cfg 只读快照（取代 profile.get）
+    +run argv|shell 二选一（terminal 相位）
   }
   class ImplLayer {
     backend / support / terminal / profile
@@ -828,7 +832,9 @@ sequenceDiagram
   G-->>L: ok / 具名拒绝（十条 + surface 表，校验对象 = staged）
   L->>W: 按相位执行（writeop/settle 在窗口相位内原子执行）
   W-->>L: 结果（WriteOutcome）
-  L-->>U: 诊断 / 收尾（三层）
+  L->>W: terminal 相位执行 staged run（argv|shell，root 后）
+  W-->>L: 命令结果 + 审计行
+  L-->>U: 诊断 / 声明式收尾（on_success/always/on_failure + 内核兜底）
 ```
 
 ## 5. 维护约定

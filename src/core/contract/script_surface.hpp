@@ -27,6 +27,12 @@
  *  Language-level constructs (loops, conditionals, snapshot field access) are
  *  NOT rows: they belong to the interpreter, not to the exposed surface.
  *
+ *  run form (named rejection run-form-invalid): run takes argv XOR shell. Both
+ *  arguments are optional in the table because the RUNTIME picks one form; a
+ *  call that passes both -- or neither -- is refused as run-form-invalid. run
+ *  belongs to the terminal phase, so window_allowed is false for it and a
+ *  compile-time assertion keeps it that way.
+ *
  *  Bound relationship (numbers policy): the max below is a schema ceiling. The
  *  EFFECTIVE bound is the profile's (P4 contract/op_registry.hpp ParamSpec.max);
  *  a profile value above the ceiling is a named rejection (param-invalid) and no
@@ -83,10 +89,22 @@ namespace ghostlock::contract {
     inline constexpr ArgSpec kHandoffArgs[] = {
         {"terminal", 256U, true},
     };
+    /* run: argv XOR shell. Both are OPTIONAL on purpose -- the runtime picks
+     * exactly one form, and a script that passes both (or neither) is refused
+     * with the named reason run-form-invalid (see the file comment).
+     * timeout_ms is bounded by the PROFILE, so its schema ceiling is the whole
+     * 64-bit domain: the profile supplies the effective bound. */
+    inline constexpr ArgSpec kRunArgs[] = {
+        {"argv", 64U, false},
+        {"shell", 4096U, false},
+        {"capture", 1U, false},
+        {"timeout_ms", kValueCeiling, false},
+    };
 
     /** The surface table. Draft after the user rulings: backend / writeop /
-     *  settle / handoff / cfg. profile.get was removed (cfg replaces it) and no
-     *  window.* row may appear (see the file comment). */
+     *  settle / handoff / cfg / run. profile.get was removed (cfg replaces it)
+     *  and no window.* row may appear (see the file comment). run is the terminal
+     *  phase's command entry and is therefore NOT reachable inside the window. */
     inline constexpr SurfaceEntry kSurface[] = {
         {"backend", SurfaceForm::Call, nullptr, 0, "backend", false, false, false, false},
         {"writeop", SurfaceForm::Call, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]), "backend",
@@ -96,6 +114,8 @@ namespace ghostlock::contract {
         {"handoff", SurfaceForm::Call, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]), "terminal",
          true, true, false, true},
         {"cfg", SurfaceForm::Value, nullptr, 0, "profile", true, false, false, false},
+        {"run", SurfaceForm::Call, kRunArgs, sizeof(kRunArgs) / sizeof(kRunArgs[0]), "terminal", true, true,
+         false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
@@ -126,6 +146,38 @@ namespace ghostlock::contract {
             }
         }
         return SurfaceResult{SurfaceLookup::UnknownSymbol, nullptr};
+    }
+
+    /* ---- run form: argv XOR shell, refused by name otherwise ---- */
+    /** The named refusal a caller sees when a run call mixes the two forms. */
+    inline constexpr const char *kRunFormInvalidReason = "run-form-invalid";
+
+    /** Which refusal -- if any -- a run call earns. Mechanism only: no script
+     *  runtime is involved; the caller supplies what it saw. */
+    enum class RunFormCheck : unsigned char {
+        Valid = 0,
+        BothForms = 1,
+        NoForm = 2,
+    };
+
+    [[nodiscard]] constexpr const char *run_form_check_name(RunFormCheck check) noexcept {
+        switch (check) {
+            case RunFormCheck::Valid: return "valid";
+            case RunFormCheck::BothForms: return kRunFormInvalidReason;
+            case RunFormCheck::NoForm: return kRunFormInvalidReason;
+        }
+        return "unknown";
+    }
+
+    /** argv table or shell string: never both, never neither. */
+    [[nodiscard]] constexpr RunFormCheck run_form_check(bool has_argv, bool has_shell) noexcept {
+        if (has_argv && has_shell) {
+            return RunFormCheck::BothForms;
+        }
+        if (!has_argv && !has_shell) {
+            return RunFormCheck::NoForm;
+        }
+        return RunFormCheck::Valid;
     }
 
     /* ---- compile-time guarantees (each one can fail) ---- */
@@ -228,7 +280,38 @@ namespace ghostlock::contract {
         return true;
     }
 
+    /** The run row exists, is executable, and is NOT window-reachable. */
+    [[nodiscard]] constexpr bool surface_run_window_forbidden() noexcept {
+        const SurfaceResult result = lookup("run");
+        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+            return false;
+        }
+        return result.entry->executable && !result.entry->window_allowed && !result.entry->holds_resource;
+    }
+
+    /** Both run forms stay OPTIONAL: the runtime picks argv XOR shell. */
+    [[nodiscard]] constexpr bool surface_run_forms_are_optional() noexcept {
+        const SurfaceResult result = lookup("run");
+        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+            return false;
+        }
+        bool argv_optional = false;
+        bool shell_optional = false;
+        for (std::size_t a = 0; a < result.entry->arg_count; ++a) {
+            const ArgSpec &arg = result.entry->args[a];
+            if (surface_same_text(arg.key, "argv")) {
+                argv_optional = !arg.required;
+            }
+            if (surface_same_text(arg.key, "shell")) {
+                shell_optional = !arg.required;
+            }
+        }
+        return argv_optional && shell_optional;
+    }
+
     static_assert(kSurfaceCount >= 1, "the exposure surface must not be empty");
+    static_assert(surface_run_window_forbidden(), "run belongs to the terminal phase: window_allowed must be false");
+    static_assert(surface_run_forms_are_optional(), "run takes argv XOR shell: both arguments stay optional");
     static_assert(surface_names_are_unique_and_non_empty(), "surface names must be unique and non-empty");
     static_assert(surface_has_no_window_prefixed_names(),
                   "window.* is a runtime-internal phase grouping, never a script surface entry");
