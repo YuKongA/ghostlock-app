@@ -22,6 +22,7 @@
 | **tests** | **96** | `src/core/tests/**`（90 `.cpp` + 6 `.hpp`，含 `host/`・`fixtures/`・`data/`） | **禁用**（同上） |
 | **backend（保留）** | **88** | `src/core/backend/**`（含 `cve_2026_43499/**`、`cve_2026_43284/**`、`route/**`） | **保留、零改动**（P2 硬判据，§5） |
 | **lib（保留）** | **4** | `src/lib/mpack/**` | **保留** |
+| **禁用总数（实测）** | **197** | = 本表 **84 + 96 = 180** **+ 17 个 `.h`**（13 `.h` upper-header + 4 `.h` test-header，随后同批补禁） | 谓词 = `find src/core -name '*.disabled' \| wc -l`（实测 197 = 118 `.cpp` + 62 `.hpp` + 17 `.h`） |
 | **构建基础设施** | — | `src/Makefile`、`src/core/README.md`、`docs/**`、Gradle 侧 | **保留**（`Makefile` 只加**守卫**，不逐条删引用，§2） |
 
 - **计数命令（可复核）**：`find src/core/contract src/core/profile … -name '*.cpp' -o -name '*.hpp' | wc -l`（逐层）；`find src/core/tests \( -name '*.cpp' -o -name '*.hpp' \) | wc -l` = 96；`find src/core/backend … | wc -l` = 88。
@@ -31,7 +32,7 @@
 
 1. **命名**：`foo.cpp` → **`foo.cpp.disabled`**；`bar.hpp` → **`bar.hpp.disabled`**（**追加后缀、保留原扩展名**，避免 `.cpp`/`.hpp` 同名撞车）。
 2. **`src/Makefile` 不逐条删引用**（实测对上层目录的引用 **273 处**、对 `tests/` **174 处**）：改为**守卫** —— 默认目标检测「禁用态」（存在 `*.disabled` 且无对应 `.cpp`）⇒ 打印**明确说明**（含**恢复命令**与本文档指引）并**以 0 退出**（避免外部看起来像「构建坏了」）。
-3. **恢复清单（生成物）**：`docs/plan/rewrite-disable-manifest.tsv` —— 列 `path<TAB>kind<TAB>lines<TAB>restore_cmd`，覆盖 **84 + 96 = 180** 行（+1 表头）。生成命令：
+3. **恢复清单（生成物）**：`docs/plan/rewrite-disable-manifest.tsv` —— 列 `path<TAB>kind<TAB>lines<TAB>restore_cmd`，覆盖 **198 数据行**（= 84 `upper` + 13 `upper-header` + 96 `test` + 4 `test-header` + 1 `makefile-guard`；+1 表头 ⇒ 文件共 199 行）。生成命令：
 
    ```sh
    # 生成（在仓库根执行）
@@ -108,4 +109,17 @@
 - **反工时点**：新契约**不提供 backend 既有 include 名** ⇒ P2 就要改 88 个 backend 文件（返工 + 越界）；契约面晚定 ⇒ P3/P4 判据重写；数据形态（R10）晚裁 ⇒ P3 重复返工；窗口约束晚接 ⇒ P4 需回溯。
 - **变更控制（R22/R14）**：本计划任何变更（边界增删、门禁放宽、序列调整）**必须**：出变更说明 + 影响面 + 代价 ⇒ 用户确认 ⇒ 更新本文 + 沿革行（不删旧行）。
 - **状态记录位置**：进度 = [MASTER-PLAN](../plan/MASTER-PLAN.md) §4/§5（指针）· 禁用清单 = `rewrite-disable-manifest.tsv` · 越权与技术债 = 本文 §3 · 逐批判据 = 批次记录（`docs/analysis/`）。
+- **清理登记（临时物零容忍 · 守则 §6.2）**：
+
+  | 临时物 | 触发 | 动作 | 判据 | owner |
+  |---|---|---|---|---|
+  | **197 个 `*.disabled`** | **E2E-1 通过后** | 逐件**恢复**（按 manifest 的 `restore_cmd`）**或作废归档**（进 `docs/archive/` 索引） | `find src/core -name '*.disabled' \| wc -l` **归零**，或归档索引**覆盖 197** | **native-core** |
+
 - **风险**：① 禁用面过大导致「无参照」（缓解：backend 保留 ⇒ 攻击语义参照仍在）；② 守卫被误读为「构建坏了」（缓解：守卫打印恢复命令并以 0 退出）；③ 技术债被遗忘（缓解：§3 明确偿还时机 = E2E-1 通过后）。
+
+### §8.1 P4 里程碑 A 的实现方偏差登记（2026-10-08）
+
+| # | 偏差 | 内容 | owner | 时机/判据 |
+|---|---|---|---|---|
+| **D-1** | **R1 层表登记未做** | [P4 规格](../analysis/composition-layer-p4-spec.md) §6 要求「新增层名与边**同批**登记」，但 `src/core/tests/include_firewall_test.cpp` **当前在禁用集内**、不在里程碑 A 写范围 ⇒ **未登记**。应登记 = 新层 `pipeline`（`composition_root` / `attack_window` 两文件；允许边 `contract`/`session`/`support`/`memory`/`profile`；**边与禁用前等价、白名单保持 0 条**） | native-core | **R1 批次**（防火墙测试恢复时**同批**）；判据 = 层表含 `pipeline` 且越层边/白名单检查通过 |
+| **D-2** | **`AttackWindow` 持槽不持类型**（已知限制） | 骨架阶段用 **7 个 `void*` 槽 + generation** 表达「所有权 + 非重叠」不变量；把 `profile`/`heap`/`race`/`victim` 的**具体类型构造/析构绑进槽**属**步 4-6 与 P3 接线**范围 ⇒ 当前**未绑定类型**。**承诺不变**：`static_assert` 挂载点仍在 `AttackWindow`（唯一落点） | native-core | **P3 接线批 / P4 步 4-6**；判据 = 槽内为**具体类型**且「每条退出路径回收」的白盒判据可执行 |

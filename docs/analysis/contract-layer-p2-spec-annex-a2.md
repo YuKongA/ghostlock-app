@@ -19,7 +19,7 @@
 | `contract/stage_result.hpp` | 4 | `contract::StageResult`（`cve_2026_43284_backend.hpp:14`、`:56` 返回值） |
 | `session/runtime_config.h` · `profile/runtime_struct_offsets.h` · `platform/device_facts.hpp` | 4 · 4 · 4 | 运行期配置 · 结构偏移常量 · 设备事实 |
 
-- **口径**：本表实测 **48 头**；task-89 报 **47**，差异 1 处待核（spec §8 U-1）。
+- **口径（U-1 已结清）**：上层头 = **48**（52 个非 backend/lib include − 4 个 `leak/` 内部自有头）；**交付头集合 58** = 48 直接 + 10 传递（见 [A3](contract-layer-p2-spec-annex-a3.md)）。
 - **未在上表逐符号列出的头**：多为**类型/常量声明**或**仅传递包含**；P2 实现时逐个补齐（**缺一即 59 文件之一编译失败**）。
 
 ## §A3 本表的生成/复核方法
@@ -34,4 +34,3 @@ grep -rn "PiRace" src/core/backend --include=*.cpp --include=*.hpp | head       
 
 - **依赖面（次数列）的生成命令**见 [附件 A1](contract-layer-p2-spec-annex-a1.md) 末尾（解析 `#include` 并解析到已禁用上层头后聚合）。
 - **口径注（U-1，**已结清：48 为准**）**：`grep -rhoE '#include "[^"]+"' src/core/backend | sort -u` = **102** 个去重 include ⇒ 非 backend/lib **52** ⇒ 减去 4 个位于 `backend/cve_2026_43499/leak/` 内部的自有头（`kernelschnitch.h` / `futex_hash.h` / `scan_bounds.h` / `timeutils.h`）⇒ **上层头 = 48**（spec 的 48 正确；task-89 的 47 少算 1）。
-- **未在上表逐符号列出的头**：多为**类型/常量声明**或**仅传递包含**；P2 实现时逐个补齐（**缺一即 59 文件之一编译失败**）。
