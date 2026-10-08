@@ -12,27 +12,49 @@ rewrite-disable-guard:
 	  exit 0; \
 	fi ; \
 	$(MAKE) --no-print-directory all
-# --- P2 compat check (task-93): every backend source must parse, with the device
-# toolchain, against the regenerated upper contract headers. Expected OK=97 FAIL=0.
+# --- P2 compat check (task-93; F4/F6/F7 fixes in task-100) ---
+# Every backend source must parse, with the device toolchain, against the
+# regenerated upper contract headers.
+# FROZEN PREDICATE (the file set this gate covers):
+#   find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \)
+# and its count must be COMPAT_EXPECTED (97). A predicate that silently misses
+# files fails the gate even when every remaining file passes (F4).
+# Also fails when a live header and a <.disabled> twin share a name (F1/F6-2):
+# a name that exists twice makes the compile face ambiguous.
+# Testability hooks (falsification evidence only): COMPAT_LIST_FILE=<file>
+# replaces the predicate's output, COMPAT_EXPECTED=<n> overrides the count.
+COMPAT_EXPECTED ?= 97
+COMPAT_LIST_FILE ?=
 .PHONY: compat-check
 compat-check:
+	@echo "compat-check: NDK_ROOT=$(NDK_ROOT)"
 	@if [ ! -x "$(NDK_CXX)" ]; then echo "compat-check: NDK C++ compiler not found: $(NDK_CXX)"; echo "  set ANDROID_NDK_HOME (see AGENTS.md)"; exit 2; fi
-	@ok=0; fail=0; for f in $$(find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | sort); do \
+	@$(NDK_CXX) --version | head -1
+	@shadows=0; for f in core/tests/host/include/linux/futex.h core/tests/host/include/sched.h core/tests/host/include/sys/prctl.h; do \
+	  if [ -e "$$f" ] && [ -e "$$f.disabled" ]; then echo "SHADOW: $$f"; shadows=$$((shadows+1)); fi; \
+	done; \
+	if [ "$$shadows" -ne 0 ]; then echo "compat-check: A2 shim shadowing = $$shadows (must be 0: the A2 compat layer provides these live)"; exit 1; fi
+	@ok=0; fail=0; \
+	if [ -n "$(COMPAT_LIST_FILE)" ]; then files=$$(cat $(COMPAT_LIST_FILE)); else files=$$(find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | sort); fi; \
+	for f in $$files; do \
 	  if $(NDK_CXX) -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H='"$(TARGET_CONFIG)"' -D__ARM=1 -fsyntax-only "$$f" >/dev/null 2>&1; then \
 	    ok=$$((ok+1)); \
 	  else \
 	    fail=$$((fail+1)); echo "COMPAT-FAIL: $$f"; \
 	  fi; \
 	done; \
-	echo "compat-check: OK=$$ok FAIL=$$fail total=$$((ok+fail)) expected=97"; \
+	total=$$((ok+fail)); \
+	echo "compat-check: OK=$$ok FAIL=$$fail total=$$total expected=$(COMPAT_EXPECTED)"; \
+	if [ "$$total" -ne "$(COMPAT_EXPECTED)" ]; then echo "compat-check: predicate mismatch: total=$$total expected=$(COMPAT_EXPECTED) (the file set changed)"; exit 1; fi; \
 	[ "$$fail" -eq 0 ]
 
-# gate: the single P2 gate for this stage. It aggregates compat-check (97/97
-# backend sources parse against the regenerated contract headers) and keeps
-# compat-check's output format (OK/FAIL/total/expected).
+# gate: the single stage gate. It aggregates compat-check (97/97 backend
+# sources parse against the regenerated contract headers) and p4-window-check
+# (AttackWindow exit paths + composition root), so the P4 executable evidence
+# runs in the gate chain instead of only by hand.
 .PHONY: gate
-gate: compat-check
-	@echo "gate: compat-check passed (P2 contract compatibility)"
+gate: compat-check p4-window-check
+	@echo "gate: compat-check + p4-window-check passed (P2 compat + P4 window evidence)"
 
 API ?= 35
 
@@ -259,6 +281,17 @@ NATIVE_HOST_TESTS := \
 #   判据未改——host 测试仍要求全员通过；恢复后本条目必须回到 NATIVE_HOST_TESTS。
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do if ! $$test; then echo "FAILED: $$test"; status=1; fi; done; exit $$status
+
+# p4-window-check: P4 milestone A evidence -- AttackWindow exit paths and the
+# composition root's compile-time binding checks (host build + run).
+.PHONY: p4-window-check
+p4-window-check: $(HOST_BUILD_DIR)/p4_window_exit_paths_test
+	$(HOST_BUILD_DIR)/p4_window_exit_paths_test
+$(HOST_BUILD_DIR)/p4_window_exit_paths_test: core/pipeline/tests/window_exit_paths_test.cpp \
+  core/pipeline/attack_window.hpp core/pipeline/composition_root.hpp \
+  core/contract/resource_scope.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/pipeline/tests/window_exit_paths_test.cpp -o $@
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)

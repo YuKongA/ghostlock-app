@@ -194,6 +194,4 @@ src/core/session/runtime_paths.h	upper-header	61	mv src/core/session/runtime_pat
 src/core/support/number_parse.h	upper-header	39	mv src/core/support/number_parse.h.disabled src/core/support/number_parse.h
 src/core/support/time.h	upper-header	56	mv src/core/support/time.h.disabled src/core/support/time.h
 src/core/tests/cpp_link_probe.h	test-header	21	mv src/core/tests/cpp_link_probe.h.disabled src/core/tests/cpp_link_probe.h
-src/core/tests/host/include/linux/futex.h	test-header	10	mv src/core/tests/host/include/linux/futex.h.disabled src/core/tests/host/include/linux/futex.h
-src/core/tests/host/include/sched.h	test-header	52	mv src/core/tests/host/include/sched.h.disabled src/core/tests/host/include/sched.h
-src/core/tests/host/include/sys/prctl.h	test-header	39	mv src/core/tests/host/include/sys/prctl.h.disabled src/core/tests/host/include/sys/prctl.h
+# A2 note (task-100 F1): src/core/tests/host/include/{linux/futex.h,sched.h,sys/prctl.h} are provided live by the A2 compat layer; their .disabled twins were removed (byte-identical), so this ledger covers 194 paths, not 197.
