@@ -26,6 +26,14 @@ compat-check:
 	done; \
 	echo "compat-check: OK=$$ok FAIL=$$fail total=$$((ok+fail)) expected=97"; \
 	[ "$$fail" -eq 0 ]
+
+# gate: the single P2 gate for this stage. It aggregates compat-check (97/97
+# backend sources parse against the regenerated contract headers) and keeps
+# compat-check's output format (OK/FAIL/total/expected).
+.PHONY: gate
+gate: compat-check
+	@echo "gate: compat-check passed (P2 contract compatibility)"
+
 API ?= 35
 
 # Auto-detect NDK
@@ -38,7 +46,13 @@ ifeq ($(OS),Windows_NT)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANG_BASE).cmd
   NDK_CXX := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/$(CLANGXX_BASE).cmd
 else
-  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT))
+  # NDK detection priority (task-97): explicit environment
+  # (ANDROID_NDK_HOME > ANDROID_NDK_ROOT) > repo-root local.properties ndk.dir
+  # > SDK wildcard probe > empty. Both fallbacks only fill an EMPTY NDK_ROOT,
+  # so an explicit environment value always wins (no silent override).
+  GLK_LOCAL_NDK := $(strip $(subst \,/,$(shell sed -n 's/^ndk[.]dir=//p' $(CURDIR)/../local.properties 2>/dev/null | tr -d '\r' | head -1)))
+  GLK_SDK_NDK := $(lastword $(sort $(wildcard $(HOME)/Library/Android/sdk/ndk/* $(HOME)/Android/Sdk/ndk/*)))
+  NDK_ROOT ?= $(or $(ANDROID_NDK_HOME),$(ANDROID_NDK_ROOT),$(GLK_LOCAL_NDK),$(GLK_SDK_NDK))
   UNAME_S := $(shell uname -s)
   PREBUILT := $(if $(filter Darwin,$(UNAME_S)),darwin-x86_64,linux-x86_64)
   NDK_CC := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(PREBUILT)/bin/aarch64-linux-android$(API)-clang
