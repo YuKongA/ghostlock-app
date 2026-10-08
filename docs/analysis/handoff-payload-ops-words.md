@@ -20,5 +20,5 @@
 | `payload script` | `write_root_script`（root_script.cpp:19；调用点 `cve_2026_43499_backend.cpp:72`）+child（root_child.cpp:59/:67） | 生成脚本+root shell | 无 | 无 | 退出码+状态（root_child.cpp:91-103） |
 
 > 未注明文件的行号均在 `steps.cpp`。
-
+>
 > 行号口径：未注明文件的行号均在 `steps.cpp`（词表由 ops §1 拆分而来，内容不变）。

@@ -63,6 +63,7 @@
 ### 1.7 改名影响面（初查 **143 处**命中）
 
 - 资产目录名、`index.conf` 自引用与 `profiles[].file`、Kotlin/测试里的 `profile/...` 加载字符串（`M3ByteDeltaInventoryTest`、`ProfileLayoutEquivalenceTest`、`BuiltinProfilesTest`、`BackendMatrixAgreementTest`、`StepQueueAssetMigrationTest`、`ExporterAgreementTest` 等）、Gradle 任务 `exportProfiles`、`docs/profile/**`、`docs/development/**`、`AGENTS.md`、`README(_ZH).md`、v1 夹具 `profile-legacy/`。
+
 ## 2 逐条设计（选项 + 代价 + 建议）
 
 ### 2.1 (1) 子菜单的信息架构
@@ -72,6 +73,7 @@
 - **建议：A**（用户明确「**需要进去选择**」）。
 - **未选择时的默认值**：候选 ① 保持当前 `state.backendKind`/`combination` ② 强制选择后才允许开打 ③ 自动选唯一可用项 —— **待确认 U1**；
 - **状态机影响**：`state.backendKind`、`state.combination`、`setBackendKind()`（`GhostlockViewModel.kt:1283`）仍是**唯一选择权威**；子菜单只改呈现与筛选，**不新增第二份选择状态**；返回语义 = 取消未确认的选择（默认不写回）。
+
 #### 2.1.1 配置形态 = **扁平注册**；UI = **从扁平派生树**（U17 已裁决 2026-10-06）
 
 **用户原话（照录）**：「**U17：hocon 配置内可以有扁平化 `available` 注册**，例如 **43499 可以注册多个不同 step 的项**，用树也可以但是**可能缺乏维护性和可读性**；但是如果采用扁平配置，**UI 如何生成优雅的树状选项需要思考**」。
@@ -93,18 +95,22 @@ available = [
     queue = [ { step = "w1" }, { step = "w2" } ], priority = 4, planned = true }
 ]
 ```
+
   ⇒ 天然支持同 backend 多条、**优先级显式**、**无需造 id**；**代价 = 必须放开「列表形态一律拒绝」**（但**继续拒绝字符串列表**，见下）。
   ⚠ **与 M5 的关系（用户已纠正过一次）**：M5 拒的是 **token 列表（字符串形态）**，理由「队列取代 token」；**对象列表是另一种东西**，与 M5 理念不冲突 ⇒ 采用 (a) 需要放开列表拒绝，**但必须保住 M5 的意图**：**对象列表 ⇒ 接受；字符串/其它形态 ⇒ 具名拒绝**（沿用 M5 的诊断措辞风格，例如 `available: the token-list form was removed in M5; declare objects with backend/queue` 与 `available: string entries are not a selection; declare an object with backend/queue`）。
+
 - **(b) 任意 id 作键**：`available.<id> { backend = …, route = …, queue = [ … ] }` ⇒ 简单、HOCON 原生；**但 `id` 相当于把 token 换个名字**（M5 刚删掉 token 概念）⇒ **不建议**；
 - **(c) 每 backend 下再嵌变体（树）**：可表达（`available.<backend>.<route>.<variant> { … }`），但**正是用户判定可读性/维护性差的那种** ⇒ **记录但不建议**。
 
 **选定后的影响面（三候选共用的核对清单，逐条 file:line）**：
+
 - **Kotlin 解析/校验**：`profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:420`（`validateAvailable`）与 `:453`（`validateAvailableSelection`）；若走 (a) 还要改 `:435`/`:438` 的**列表拒绝**语义；
 - **M5 的两条具名诊断与其测试**：`ProfileLayout.kt:435`（token-list）/`:438`（empty token list）+ `profile-core/src/test/kotlin/com/ghostlock/app/data/ProfileLayoutAvailableTest.kt:31/:36`；
 - **golden / fixture 与资产**：`profile-core/src/test/resources/glkv3-native-fixture.tsv`、Kotlin golden（现 3920 字符）与 native 导出的 golden 十六进制（生成任务见 AGENTS 的 manifest 生成约定）；**76 份**（68 release/片段 + 8 general）资产里的 `available` 段；`index.conf`（general 登记，见 U4b）；
 - **native 侧（已核实）**：`available` **不是**执行输入——native 只按 wire 的 `backend.<id>` 与 `queue`/`route` 绑定（契约 §3.20）；native 侧的 `available` 仅是**编译期组合目录**的字段（`src/core/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`），**与 profile 的 `available` 段无关** ⇒ **本裁决不影响 native** ✓。
 
 **UI 树生成规格（用户要求「思考」的点，写成可实现规格）**：
+
 1. **分组**：一级 = `backend`；二级 = `route`（43284 无 route 轴 ⇒ 二级退化为该 backend 自身，需在实现时明确）；叶子 = `queue`（步骤序列）+ `terminal`；**同一 (backend, route) 的多条 = 兄弟叶子**；
 2. **排序**：叶子按 **`priority` 升序**（= 默认项在前）；**同级并列时用确定性次序**（如步骤序列字符串 + terminal 名的字典序）⇒ 避免「看起来随机」；一级/二级建议按**既有目录顺序**（`CombinationCatalog`/词汇 manifest 的顺序，保持与其它 UI 一致）；
 3. **标签（本地化）**：术语来源**只用既有词汇**（backend / route / terminal / 步骤名），**不新造词**；叶子推荐格式：「**w1 → w2 → w3 → 根权限**」/「**w1 → w2 → shizuku**」（中英各一套，键见 §2.2 的 `execution_combo_*` 系列）；
@@ -126,7 +132,6 @@ available = [
 | 与「低复杂度配置」的关系 | 配置保持最小语法（§2.1.1） | 需要维护两套形状定义 |
 
 - **采用建议（Lead 已给）**：**路线 A（数据驱动）** + **requirements 文件夹作为「形状来源」**（§2.12）+ **未知形状必须 fail-visible**（红，阻断运行）。
-
 
 ### 2.2 (2) 本地化范围（含新判据的红/黄提示语）
 
@@ -163,10 +168,12 @@ profile_check_backend_unrunnable   该后端/路径的必须参数不完整 / Re
 - **数据通路**：现成对象 = `ProfileConfig`（`AndroidProfileConfigController.load(...)` 返回，含 `hasProfile` 与 `roots`）；建议**新增一个「已解析的可用组合集合」字段**，由 `AndroidProfileConfigController` 在解析时**从同一份 canonical 文档派生**（禁止第二处解析）；
 - **降级**：`hasProfile == false`、解析失败、`available` 缺失 ⇒ 一律「不可选 + 文案」，**不得回退到编译期目录**；
 - **证伪**：把 5.15 profile 的 multicast 声明注释掉 ⇒ 该行必须消失/置灰；恢复 ⇒ 必须可选（`--rerun-tasks` 强制重跑，不依赖增量判定）。
+
 ### 2.4 (3) a301so(5.15) 声明 + **全部内置 profile 整理**（裁决 0.2-3）
 
 **a301so(5.15)**：43499 **只声明 `multicast_waiter`**（现状已如此，保持）+ **同时加入 43284 声明** ⇒ 该设备 UI 会同时出现 43284 的路径；
 **所有内置 profile 一并整理并加入默认 43284 声明**（理由：43284 声明**更简单易用**）；
+
 - **「整理」的可复核判定标准（逐条打勾）**：
   1. **声明齐全**：`available` 段存在；**43284 声明存在**；43499 声明**只含实测通过**的组合；
   2. **格式统一**：`route` 仅在 43499 下出现、43284 不得出现 `route`（契约 §3.20）；`queue` 一律对象数组形态；缩进 2 空格；无尾随空格；
@@ -186,6 +193,7 @@ assets/profile/  （改名后）
 ```
 
 - **代价**：58+ 份逐一改动，量大但机械；**风险**：误改几何/凭据 ⇒ 必须用逐资产对拍兜住。
+
 ### 2.5 (4)(0.2-1) general profile：**8 份**，每份对应一个 LKM label
 
 - **形态**：**每 label 一份**（裁决 0.2-1：不要并入一份）；**命名建议** `general-<kmi-label>.conf`（例 `general-android13-5.15.conf`、`general-android15-6.6.conf`）；**label 词表来自 `lkm-kmi-manifest.tsv`（同源、不手抄）**；
@@ -204,6 +212,7 @@ available {
 - **注释后的语义（必须写清）**：`available` **不是** native 的执行输入（native 只按 wire 的 `backend.<id>` 与 `route`/`queue` 绑定，契约 §3.20）⇒ **「注释掉」= 「未声明」**，**不是** `available = false`；**风险**：若 App 仍发射 43499 组合，native 仍会执行 ⇒ **必须由 App 侧门禁（§2.3 + §2.9）兜住**；
 - **label ↔ 族映射与冲突处理**：映射源 = `lkm-kmi-manifest.tsv`（§1.5）；**同族多 label**（5.10×2、5.15×2）⇒ **一对一，不合并**；「同族只留一份」的诉求记为后续议题（**不在本批**）；
 - **代价**：8 份内容高度相似 ⇒ **必须由生成任务从 manifest + 单一模板产出**，否则手抄必漂移；**建议**：Gradle 任务生成到 `assets/profile/`（构建逻辑一律进 Gradle KTS）；
+
 ### 2.6 (5) general 回退（**与组合维度的 fallback 是两件事**）
 
 - **触发**：**精确匹配失败**（`index.conf` 无该 release）⇒ 取**该设备 label 对应的 general**（label 由设备 release 派生，见 §2.9 可推断清单）；**该 label 无 general** ⇒ 仍不可运行（红色）；
@@ -245,11 +254,13 @@ available {
 ```
 
 - **向后兼容**：项目未发布 ⇒ **建议不留旧名别名**（避免长期双真相），并写明影响面（旧路径/任务名/本地笔记失效，机械替换即可）。
+
 ### 2.8 (补充裁决) `available` 的**声明顺序 = 优先级**，默认值 = 第一项
 
 **用户原话**：「U1 未选择时的默认值为 available 声明的第一项，同时 available 声明隐含了优先级的含义，并且确认以前的 fallback 已不存在，由 available 手动选择代替」。
 
 **规则**：
+
 - **默认值**：子菜单未选择时 ⇒ 取已加载 profile 的 `available` **第一项**（按声明顺序）；
 - **顺序即语义**：`available` 内条目的先后 = **优先级**（**不是排版**）⇒ 文档、测试、编辑器都不许重排；
 - **适用范围**：本条**只约束 Kotlin 选择/呈现**；`available` **不是** native 执行输入（§2.5 已核实）⇒ **顺序契约只约束 Kotlin** ✓。
@@ -265,6 +276,7 @@ available {
 | 缓存 | 需实测 | `AndroidProfileConfigController` 的 `cache(...)` | ⚠ 待实测：缓存是否原样回放顺序 |
 
 **守卫方案（建议）**：
+
 - 加一条**单测**：构造 `available` 两项（43284 在前、43499 在后）⇒ 断言解析结果、merge 结果、缓存回放后的**键顺序完全一致**；
 - 若某环节不保序 ⇒ **优先修该环节**（改为 `LinkedHashMap` 保序拼接）；
 - **替代方案（仅当修不动时，需用户裁决，选项 + 代价）**：
@@ -274,6 +286,7 @@ available {
   - **选项 C：显式索引键**（如 `first = "cve_2026_43284"`）——代价：多一个键要维护；收益：不依赖解析器行为。
 
 **证伪方案（写进批次门槛）**：
+
 - ① 把 `available` 里**第一项注释掉** ⇒ 默认值必须变成**新的第一项**（不得崩溃、不得回落旧值）；
 - ② 把两项**调换顺序** ⇒ 默认选项必须**随之改变**（证明顺序真是语义）；
 - 两次都强制重跑（`--rerun-tasks`），记录「造错点 → 输出 → 撤回核验」。
@@ -305,11 +318,13 @@ geometry 派生物 : 可由 extractor/设备事实推导的偏移（缺失按 nu
 
 **③ 执行层**：**App 侧（Kotlin）**——`AndroidProfileConfigController`（校验）与编辑器 UI（提示）；**native 不参与**（§1.4）⇒ **不新增 native 逻辑**；
 **③-补 · U10 已裁决（2026-10-06，按 Lead 建议）**：
+
 - **可推断（黄色）**：**由 release 可派生**的项 —— `kmi label`、`kernel_major`、`kernel_minor`、`release` 自身；
 - **必须（红色）**：**backend/route 真正要喂给内核的 ABI 常量**（结构体偏移、符号偏移、凭据几何等运行期实际读取的常量）；
 - 因此 §2.9-①②的初稿清单按此口径收敛（上面的「共同/43499/43284/terminal」条目只保留**ABI 常量类**为必须；`release` 类的派生项移入可推断）。
 
 **⑦ 新增校验点：加载后、攻击前（U2 裁决的落地形态）**
+
 - **时机**：**profile 加载完成之后、发起攻击之前**（对应 `AndroidGhostlockRepository` 的运行前置检查处，现为 `:549` 的拦截点）；
 - **谁执行**：**App（Kotlin）**——`AndroidProfileConfigController` 提供判据结果，运行前置检查负责**汇总并报错**；
 - **错误项如何呈现**：**逐项列出「错误项」**（字段路径 + 原因 + 红色），**阻断运行**；可推断项的缺失**不列入错误项**（黄色提示，见 `profile_check_derivable_missing`）；
@@ -344,6 +359,7 @@ index.conf                                     profiles 列表语义（唯一来
 | 6 | `AndroidProfileConfigController.kt:748` | `activeBuiltinRelease() ?: deviceRelease` —— **隐式**把「当前内置 release」当成 profile release | **待确认 U12**：若「active builtin」是用户显式选择 ⇒ 保留；若是隐式回落 ⇒ 删除（改用 general 回退，§2.6） |
 
 **保留（不退役）**：kernel-release 维度的 **general 回退**（§2.6）—— 用户明确要求。
+
 ## 3 分批落地顺序与门槛（按新裁决重排）
 
 | 批 | 内容 | 门槛 / 证伪 |
@@ -356,6 +372,7 @@ index.conf                                     profiles 列表语义（唯一来
 | ⑥ 可用性判据接线（§2.3） | profile → UI 通路 + 门禁 | 单测 + **证伪**（注释掉声明 ⇒ 该行不可选）+ 真机复核 a301so 只能选 multicast（+43284，默认按声明第一项） |
 
 **顺序取舍（④ 与 ⑤/⑥ 的先后）**：
+
 - **选项 A（本稿建议）**：② → ③ → ④ → ⑤ → ⑥。理由：先立「默认值/优先级」与「能不能跑」的地基，再改呈现；
 - **选项 B**：② → ③ → ⑤ → ⑥ → ④。理由：用户先看到子菜单；代价：UI 会短暂基于旧可用性语义与旧拦截规则。
 
@@ -399,6 +416,7 @@ index.conf                                     profiles 列表语义（唯一来
 - **UML 注记判定**：本批**无结构增删**（UI 呈现 + 校验语义 + 资产内容）⇒ 若 `ProfileConfig` 新增「可用组合集合（**有序**）」字段，则 **Class Kotlin（§3.2）需同批加注**（写明「有序」）；其余图不需要改；
 - **面向用户文档（补充）**：新校验点与「声明为准」需在 README(_ZH) 的「如何使用」段写一句（**只写用户可见行为，不写内部实现**，且**不要写回插件细节**）。
 - **计划**：进度登记到 `docs/archive/20261007-2237-branch-plan.md`（入口行已加，落地后按批勾选）。
+
 ## 7 A/B/C 决策简报：`available` 顺序（优先级）的三种保障方式
 
 > 背景：U1 已裁决「**默认值 = `available` 第一项**、**顺序即优先级**」⇒ 必须保证顺序**可靠可读**。本文只列事实与代价，**不替用户选择**（结论区三条并列）。
@@ -416,6 +434,7 @@ available {
 ```
 
 **② 要改的文件**
+
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt`：`validateAvailable`（`:420`）与 `validateAvailableSelection`（`:453`）新增 `priority` 键校验（整数、唯一、可缺省 ⇒ 缺省排最后）；
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:435/:438`：**不动**（列表拒绝保持）；
 - 契约 §3.20 + `docs/profile/PROFILE_SCHEMA(_ZH).md` + `PROFILE_TEMPLATE.conf`：新增 `priority` 说明；
@@ -438,6 +457,7 @@ available {
 ```
 
 **② 要改的文件**
+
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/HoconSupport.kt:11/:47`：**不改**（已用 `linkedMapOf` 保序）；
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ValueModel.kt:5`：**不改**（同一句已写明模型保序）；
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:914`：**只用于 `flatten()`（等价对拍）**，需**确认**它不进入生产 canonical 路径；若进入 ⇒ 改为保序；
@@ -462,6 +482,7 @@ available = [
 ```
 
 **② 要改的文件**
+
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:420`（`validateAvailable`）：接受**对象列表**分支；`:453`（`validateAvailableSelection`）：按元素 `backend` 字段校验；
 - `profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:435/:438`：这两条**列表拒绝**要**放宽/改写**（区分「token 列表」与「对象列表」两种形态）；
 - `profile-core/src/test/kotlin/com/ghostlock/app/data/ProfileLayoutAvailableTest.kt:31/:36`：**必须改**（「空 token 列表」用例的期望要区分形态）；
@@ -469,6 +490,7 @@ available = [
 - `index.conf` 的 `generals` 登记（U4b）与文档（契约 §3.20、PROFILE_SCHEMA(_ZH)、PROFILE_TEMPLATE.conf）同步。
 
 **③ M5 的拒绝与测试（逐条）**
+
 - **Kotlin 拒绝 1**：`ProfileLayout.kt:435`「`the token-list form was removed in M5; declare route+queue`」⇒ **保留**（只针对**字符串/token 列表**），新增「对象列表」分支**不受影响**；
 - **Kotlin 拒绝 2**：`ProfileLayout.kt:438`「`empty token list is not a selection; declare route+queue`」⇒ 需**区分**：空**对象**列表 ⇒ 新诊断（空声明不是选择）；空 **token** 列表 ⇒ 保持拒绝；
 - **Kotlin 测试**：`ProfileLayoutAvailableTest.kt:31/:36` 的「空列表」用例需**按形态拆分**（token 列表仍拒；对象列表新增正例）；
@@ -493,6 +515,7 @@ available = [
 | 证伪要点 | 非法/重复 priority 拒绝；对调 priority 默认变 | 注释首项/调换顺序 ⇒ 默认变；三环节顺序单测 | 空列表/缺 backend 拒绝；对调元素默认变；token 列表仍拒 |
 
 **结论区（2026-10-06 用户裁决：选 A）**：**优先级机制 = A（显式 `priority`，或等价显式键）** ✓
+
 - **落点**：`profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:420`（`validateAvailable`）与 `:453`（`validateAvailableSelection`）新增 `priority` 键校验（整数、唯一、可缺省 ⇒ 缺省排最后）；
 - **资产改动**：**58+ 份 release profile 与 8 份 general 逐份补 `priority`**（或依赖「缺省排最后」规则，但**建议显式写出**，便于阅读）；
 - **语义变化**：**文件顺序不再承担语义** ⇒ 编辑器可自由排序；`available` 的读取按 `priority` 升序（最小 = 默认 = 第一项），与 U1 的「默认值 = 第一项」等价（第一项 = priority 最小项）；
@@ -526,18 +549,21 @@ available = [
 **用户原话**：「hocon 配置里 `available` 里已经声明 route 了，但后端配置里还有 route 子类，把后端配置里的 route 子类里的内容扁平化」。
 
 **勘察（现状，file:line）**：
+
 - **资产结构**：`app/src/main/assets/profile/*.conf` 的 `backend.cve_2026_43499` 下有：`abi { task_struct { … } cred { … } }`（例 `5.15.189-android13-8-00016-g51bba4309aac-ab14546557.conf:14-40`）、`route { … }`（**62 个资产含 `route {` 块**；例 `5.15-template.conf:54-57` 的 `route { tcp_zerocopy {} select_stack { waiter_shift = null } … }`）、以及 `cred`/`kernel`/`offset`/`execution`；
 - **读取侧**：`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/ProfileResolver.kt:45-71` 把扁平名映射到 `route.<name>.<field>`（例 `compact_waiter` → `route.<name>.compact_waiter`、`mcast.*` → `route.<name>.<field>`）⇒ **`route` 层 + route 名层目前是「读取路径约定」的一部分**；
 - **既有约定（AGENTS）**：「**route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽**」；
 - **native 侧**：`route.<name>.<field>` 由 owner schema 绑定（`profile-manifest-v3.tsv` 的 `backend.cve_2026_43499.route.*` 行）。
 
 **「扁平化」的两种读法（**待确认 U14**）**：
+
 - **读法甲（本稿倾向）**：**保留 `route` 这一层**，只把 `route.<name>` **内部再嵌套的子层**提上来（例：`route.select_stack.waiter_shift` 已是单层，若将来出现 `route.select_stack.adv { x = 1 }` ⇒ 变成 `route.select_stack.x = 1`）；⇒ **不触碰 `route` 层与 `ProfileResolver` 的 `route.<name>.<field>` 约定**，代价最小；
 - **读法乙**：**连 `route` 层与 route 名层一起去掉**，把 `route.<name>.<field>` **并入 `backend.<id>` 平铺**（例 `backend.cve_2026_43499.waiter_shift = …`）；⇒ **与既有约定直接冲突**（AGENTS「route 私有参数放 route 扩展节」），且**无法表达「同一字段在不同 route 下取值不同」**（当前 `select_stack.waiter_shift` vs `tcp_zerocopy` 的差异正是靠这一层区分的）⇒ **代价高，需要用户明确裁决**。
 
 **与 AGENTS 约定的冲突处理**：若用户选**读法乙** ⇒ **必须同批改 AGENTS 的那句话**，并写明沿革（原约定为何存在、为何被取代），**不得静默改**；本稿**不替用户决定**。
 
 **跨端影响（逐条）**：
+
 - **native**：owner schema 的 `backend.cve_2026_43499.route.*` 行（`profile-manifest-v3.tsv`）与绑定路径 `glkv3` 解析（`src/core/profile/glkv3.cpp` 的字段收集）——读法甲**零影响**；读法乙**需要新增平铺字段并删除 route 层绑定**；
 - **Kotlin**：`ProfileResolver.kt:45-71` 的映射表（读法甲零影响 / 读法乙要删 `route.<name>` 前缀逻辑）；`ProfileLayout` 的归一化与 `flatten()` 对拍（读法乙需重生成 golden）；
 - **对拍测试**：`profile-manifest-v3.tsv` 两份副本、`ProfileLayoutEquivalenceTest`、M3 字节清单；
@@ -567,6 +593,7 @@ cve_2026_43499 {
 ```
 
 ⇒ **必须与 §2.9 的 U10 裁决一致**：`required`（红）= **真正喂内核的 ABI 常量**；`derivable`（黄）= **由 release 可派生**（kmi label / kernel_major / kernel_minor / release）；
+
 - **④ Kotlin 使用方式（数据驱动）**：读该文件夹 ⇒ 得到「该路径需要哪些键」⇒ 与**已加载 profile 的 canonical 文档**比对 ⇒ 产出**错误项（红）/ 提示项（黄）** ⇒ 交给 §2.9-⑦ 的「加载后、攻击前」校验点；**禁止**把需求清单硬编码进 Kotlin（否则回到双真相）；
 - **⑤ 与 native 的关系**：该文件夹是 **App 侧校验元数据**，**不是 wire 的一部分**（native 不读 assets）；理由：native 只认文档，且 ABI 常量的**真实存在性**最终由 native 绑定路径判定（缺字段 ⇒ 绑定失败）⇒ **本稿不做 native 侧读取**（如将来要做，需另一份 L 级设计与真机门禁）；
 - **⑥ 证伪两条**：① 从某路径的 `required` 里删掉一个真实需求键（或相反：把某键从 `required` 移到 `derivable`）⇒ 对应配置的错误项**必须**按新分类出现/消失；② 在 profile 里删掉该路径的一个 `required` 键 ⇒ **必须**在「加载后、攻击前」报红并阻断（与 §2.9-⑦ 的证伪联动）。
@@ -576,11 +603,13 @@ cve_2026_43499 {
 **用户原话**：「**U16 的旧 fallback 是 v2 配置，应交给 `LegacyProfileConverter` 处理**，以前的开发中 **v3 从未发布，以最新版 v3 为准**」。
 
 **结论（三条）**：
+
 1. **旧 `fallback.route.*` = v2 时代的配置** ⇒ **不由 v3 资产承载**，**也不在 v3 里新注册「fallback 兄弟路径」** ✗（**撤回**原提案：曾提出「注册为 `available` 兄弟项 + 较低 `priority`」，**沿革保留** ⇒ 用户裁决归 legacy）；
 2. **v3 的权威性**：**v3 从未发布** ⇒ ① **无兼容负担**（形状可变，与既有裁决一致）② **以最新 v3 为准** ⇒ **v3 里没有 fallback 这个概念**：`available` 的**路径 + `priority`** 就是全部表达；
 3. **legacy 的归属**：任何 v2 形态（含 `fallback.route.*`）⇒ **由 `LegacyProfileConverter.kt` 处理**（项目既有规矩「**只有一个迁移点**」）。**核实（读代码，file:line）**：该转换器**当前确实处理** fallback 系键——`app/src/main/kotlin/com/ghostlock/app/data/LegacyProfileConverter.kt:457-461`（`entry["fallback"].route`，空则移除该子键）与 `:562-570`（`fallback_to` 字符串 ⇒ 写入 `fallback.to`），另有 `:21`/`:91` 的说明注释 ⇒ **归 legacy 域成立** ✓。
 
 **⚠ 口径张力（待确认 U23）**：AGENTS 现行规矩是「读到旧 `schema_version = 1` 时由转换器转为 3；**其余版本值一律拒绝**」⇒ **v2 目前是被拒绝的**；那么「v2 的 fallback 交给转换器处理」有两种读法：
+
 - **读法甲：扩展转换器接受 v2** —— 代价：**版本政策变更**（要改 AGENTS、契约 §3.21 的兼容矩阵、转换器与测试；且需要真实的 v2 输入样本）；收益：v2 用户可平滑迁移；
 - **读法乙（Lead 建议）：仅定性**——「fallback 属 legacy 域、**v3 永不含它**」；若真有 v2 profile 进来，**按现行版本政策处理（拒绝）**，但**诊断里点名 fallback**（让用户知道这类配置该怎么迁移）；代价：v2 用户暂时仍需手工处理；收益：**不动版本政策**，与「v3 为准 + 只有一个迁移点」一致；
 - ⇒ **两条并列待用户裁决（U23）**。
@@ -588,13 +617,16 @@ cve_2026_43499 {
 **连带清理（本次已执行）**：删除原 §2.13 的「注册为 v3 `available` 兄弟项 + 低 priority」提案；**§2.1.1 的树示例与 §2.1.2 的策略表均不含 fallback 概念**；**`priority` 只用于 v3 的 `available` 路径**，不用于表达 fallback。
 
 **与 §2.10 的区分（各一句界定，避免日后混淆）**：
+
 - **§2.10「隐式 fallback 退役清单」**：指**当前代码里的隐式回退**（例如「按后端取第一个可用组合」「把 active builtin 当 profile release」）⇒ 退役目标是**代码行为**；
 - **本节（v2 legacy fallback）**：指**旧配置语法** `fallback.route.*` / `fallback_to` ⇒ 归属 **`LegacyProfileConverter`**；**两者不是一回事**，不得互相引用为同一议题。
 
 **证伪 / 验收（作用域限定在 v3 资产与树 UI）**：
+
 1. **v3 资产守卫**：对 `app/src/main/assets/profile/**` 做一次字符串检索，**不得出现 `fallback` 字样**（一条可执行的 grep 守卫即可；命中 ⇒ FAIL）；
 2. **树 UI 守卫**：路径树**不得出现 fallback 节点**（用同一份资产喂给 UI 构建逻辑，断言节点集合里无 fallback 系名称）；
 3. **legacy 侧对照**：构造一份含 `fallback.route.*` 的 **v2 输入** ⇒ 走 `LegacyProfileConverter` 时**必须被处理/转换**（按 U23 的裁决：甲=转换；乙=按版本政策拒绝且诊断点名 fallback）。
+
 ## 10 新增待确认点（U14–U18；一律「选项 + 代价 + 建议」，不替用户决定）
 
 - **U14 · ⏸ 已撤回（用户裁决 2026-10-06）**：`route` 子层扁平化**不做**（理由：与 AGENTS「route 私有参数放 route 扩展节」约定冲突；用户判断**现状更优**）⇒ **保持现状，不据此改动**；沿革与勘察记录见 §2.11；
@@ -607,6 +639,7 @@ cve_2026_43499 {
 - **U26（新增，树排序规则）**：叶子按 **`priority` 升序（建议）**，同级并列用**确定性次序**（步骤序列 + terminal 名的字典序）；一级/二级建议按既有目录顺序（`CombinationCatalog`/词汇 manifest 顺序）；
 - **U18（requirements 是否需要 native 侧也读）**：**建议：不做**（App 侧校验元数据；native 只认 wire 文档），如将来需要另开 L 级设计与真机门禁。
 - **U19–U22（profile 解析链的子问题）**：见 **§11.6**（最新导入判定 / `forcedBuiltinRelease` 放在链的哪一步 / 用户导入 general 是否享 ① 优先 / 允许不同 release 的显式选择）——本稿**建议**均已给出，**仍待用户确认**。
+
 ## 11 profile 解析链（一等规格；2026-10-06 用户裁决）
 
 **用户原话（照录）**：「U12 和现有配置加载机制合并吧，一般用户自行提取的都是精确匹配内核的，所以未检测到匹配的配置就加载 general（匹配机制为同时在内置，和用户导入配置中匹配，其中优先匹配用户导入的最新配置）」。
@@ -667,13 +700,3 @@ fun resolveProfile(deviceRelease): Result
 - **U20**：`forcedBuiltinRelease` 类偏好放 **①′ 显式指定（建议，UI 可见）** / 并入 ② 内置匹配？
 - **U21**：用户导入的 **general** 是否享 ① 优先？（建议：**是**）
 - **U22**：用户手动选择「release 与设备不同」的 profile 是否允许？（建议：**允许**，按新判据校验并显示来源）
-
-
-
-
-
-
-
-
-
-

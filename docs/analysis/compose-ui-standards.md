@@ -1,6 +1,7 @@
 # Compose UI 工程规范：分组列表项形状 + 禁止手调间距
 
 > **元信息**
+>
 > - 来源：调研任务（用户直接指令），2026-10-06。
 > - 写范围：**仅新增本文件**。未改动 `app/src/main/**`、`app/src/test/**`、`app/build.gradle.kts`、`profile-core/**`、`src/core/**`；未跑 Gradle。
 > - 证据基线（行号仅作定位提示，这些文件正被其他 writer 修改）：
@@ -73,6 +74,7 @@ SegmentedListItem(
 // 组与组之间的间隙也用 token，不写 dp：
 // ListItemDefaults.SegmentedGap
 ```
+
 来源：[ListItemDefaults.kt（androidx-main）](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/ListItemDefaults.kt)；[ListItemDefaults API 参考](https://developer.android.com/reference/kotlin/androidx/compose/material3/ListItemDefaults)。
 
 **Miuix 的等价写法（本项目实际要用的）**——Miuix 无 per-position API，用 per-corner 原语：
@@ -101,6 +103,7 @@ Row(
     ),
 ) { /* row content */ }
 ```
+
 - 需要**物理角**（不被 RTL 翻转）时用 `Modifier.absoluteSquircleSurface(topLeft, topRight, bottomRight, bottomLeft)`（Miuix 源码 L233-L246）。
 - 只有 fill、不裁剪子树用 `squircleBackground`；只裁剪不填充用 `squircleClip`。
 - **平台回退**：shader 版 squircle 需要 **Android API 33+**，低版本自动回退成 `RoundedCornerShape(...)`（Miuix 官方 squircle 文档 + 源码 L159-L164）⇒ **像素测试在 API 33 以下看到的是圆角而非连续角**，断言要按「圆/直角」而非具体轮廓写。
@@ -138,6 +141,7 @@ MiuixTheme(colors = ...) {
 // 消费方：只引用 token
 Column(modifier = Modifier.padding(horizontal = LocalSpacing.current.pageHorizontal))
 ```
+
 - **可复用的现成 token 优先于新 token**：Miuix 已提供一批（见 §4 表），例如 `CardDefaults.CornerRadius`、`CardDefaults.InsideMargin`、`BasicComponentDefaults.InsideMargin`、`SmallTitleDefaults.InsideMargin`、`DialogDefaults.insideMargin/outsideMargin/MaxWidth/CornerRadius`、`DropdownDefaults.InsideHorizontalPadding/FirstLastVerticalPadding/MiddleVerticalPadding`、`DividerDefaults.Thickness`。
 - 组间距优先用 `Arrangement.spacedBy(token)` / `PaddingValues(token)`，**不要**用 `Spacer(Modifier.height(x.dp))`。
 - **不引入 Material 3 的 `MaterialTheme` 来当 token 载体**：本项目依赖里没有 `androidx.compose.material3`（只有 `foundation` 与 `material-icons-extended`），且 M3 的 `MaterialTheme` 也**不含 spacing**（只有 color/typography/shape）。
@@ -157,6 +161,7 @@ Miuix 依据：`MiuixIndication` 的实现是 `drawRect(color, alpha, size = siz
 ### R4 守卫：把「禁止手调间距」做成可失败的检查
 
 **R4.1（强制）** 新增一个**源码扫描守卫测试**（建议 `app/src/test/kotlin/com/ghostlock/app/ui/UiDimensionHardcodeTest.kt`），仿 `CombinationTokenHardcodeTest.kt`（本仓已有同型守卫，「豁免必须被使用，stale 即 FAIL」）：
+
 - 扫描 `app/src/main/kotlin/**/ui/**`（token 文件与必要的绘制例外进白名单）；
 - 正则匹配 `[0-9]+.dp` / `[0-9]+.sp`；
 - 命中即 FAIL 并打印 `file:line: literal`；
@@ -274,6 +279,7 @@ item(key = "group:" + group.backend + "|" + (group.route ?: "-")) {
     }
 }
 ```
+
 要点：① 组内没有任何 `Spacer`；② 组间距来自分组之间（用 token），不是行之间；③ 圆角只出现在组容器上（首行上两角、末行下两角由容器裁剪自动得到）。
 
 ---
@@ -400,6 +406,7 @@ class GroupedRowShapeTest {
 ```
 
 **断言「组内无异常间隙」**（可选，更直接地对应用户报告）：
+
 - 结构法（推荐，稳）：取相邻两行的 `getUnclippedBoundsInRoot()`，断言 `row2.top == row1.bottom`（组内相邻行必须严格相接）。
 - 像素法：对**整组** `captureToImage()`，沿垂直中线扫描，断言两行交界处**不存在**宿主背景色像素带（圆角缺口会在两侧出现宿主色，中线扫描抓不到 ⇒ 需同时扫 x≈2 与 x≈w-3 的竖线）。
 

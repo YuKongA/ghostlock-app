@@ -59,6 +59,7 @@ f94006a0   ldr x0,  [x21, #0x08]    ; funcs[0].data
 ```
 
 **结论**：
+
 - `kTracepointProbestubOff = 0x30` (48)
 - `kTracepointFuncsOff = 0x48` (72)
 - `kTracepointFuncStride = 24` (sizeof(tracepoint_func))
@@ -73,6 +74,7 @@ delta = 0x60 (96 bytes)
 ```
 
 **验证方法**：
+
 1. 加载 vr.ko
 2. 从 `/sys/kernel/debug/tracing/events/android_rvh/commit_creds/filter` 获取 probe 地址
 3. 从 `/sys/kernel/debug/tracing/events/sys_exit/filter` 获取 probe 地址
@@ -106,6 +108,7 @@ __tracepoint_android_rvh_commit_creds = 0xffffffc0822bbc70  (相对基址 0x22bb
 ### 3. Struct Layout
 
 与 PD2463 相同（同内核版本，同样未编入 `CONFIG_HAVE_STATIC_CALL`）：
+
 - `kTracepointProbestubOff = 0x30`
 - `kTracepointFuncsOff = 0x48`
 - `kTracepointFuncStride = 24`
@@ -113,6 +116,7 @@ __tracepoint_android_rvh_commit_creds = 0xffffffc0822bbc70  (相对基址 0x22bb
 ### 4. vr.ko Delta
 
 与 PD2463 相同：
+
 - `kVrCommitToSysExitDelta = 0x60`
 
 ## Profile 配置模板
@@ -229,6 +233,7 @@ adb shell cat /sys/kernel/debug/tracing/events/sys_exit/format
 ### Q: 找不到 `__tracepoint_sys_exit` 符号？
 
 A: 尝试搜索 `__tracepoint_sys_exit` 的变体：
+
 - `__tracepoint_sys_exit`
 - `__tracepoint_sys_exit_handler`
 - `__tracepoint_sys_exit_nop`
@@ -236,12 +241,14 @@ A: 尝试搜索 `__tracepoint_sys_exit` 的变体：
 ### Q: 反汇编找不到 `ldr x21, [x8, #0xXXX]`？
 
 A: 可能是编译器优化导致的指令顺序不同。尝试：
+
 - 搜索 `cbz x21` 指令，前面的 `ldr` 就是目标
 - 或者搜索 `str x0, [x21` 指令，反向推导 offset
 
 ### Q: delta 不是 0x60？
 
 A: 可能是：
+
 1. 不同的 vr.ko 版本
 2. 不同的内核版本
 3. 不同的编译器优化级别

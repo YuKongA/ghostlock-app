@@ -25,44 +25,52 @@
 ## 2. 发现（Findings）
 
 ### F1（中）`CombinationKind` 是「backend × route × path」的扁平乘积 —— 扩展性隐患
+
 **证据**：13 个枚举值里 9 个属于 43499（3 route × 3 path）、3 个属于 43284。
 **影响**：册中还有 4 个占位 backend（`43503`/`31431`/`64560`/`23274`）。若它们各自带 route 轴，枚举将**按 backend 数线性膨胀**（每个再加 3–9 值），且 `kCombinationCatalog` 同步膨胀。
 **与哲学冲突**：原则 2「信息隐藏与契约：显式优于隐式」+ 原则 3「每个事实只有一个权威」——**组合维度**应被分解，而不是把笛卡尔积枚举化。
 **建议**：`CombinationSpec` 保留（它是权威表），但把 kind 分解为 `{BackendKind, RouteKind|None, PathKind}`（或每 backend 一张二维表），枚举只保留 **path** 词汇（`rootchild/shizuku/umh`）。
 
 ### F2（中）`CombinationSpec` 字段序 → 10 B padding，**卡住 lint**
+
 **证据**：`make -C src lint-tidy` EXIT=2，10 条 `clang-analyzer-optin.performance.Padding` 全在 `contract/identity.hpp:129`（`-warnings-as-errors`）。
 **影响**：门禁红线（lint 必须 0）；两个流都被它挡住（TERM 报告其自身文件 0 findings）。
 **建议**：字段按大小降序重排（16 B 的 `string_view` 靠前，`bool available` 与其它小字段相邻），或显式补齐并注释理由。
 
 ### F3（中）`RouteKind::Auto` 被复用为「无 route 轴」哨兵
+
 **证据**：`kCombinationCatalog` 中 43284 的三条都是 `RouteKind::Auto`；`contract/model.hpp:258` 仍以 `Auto` 作缺省。
 **影响**：`Auto` 原语义是「按几何**推断**」（R6b 明确要删除推断），现在又承担「该 backend 没有 route 轴」，**一符两义**；将来 43284 加 route 时无法区分「未选择」与「无此轴」。
 **兼容性**：`kRouteAuto` 仍被 v1/v2 遗留映射引用 → 不能直接删，但应**停止复用**。
 **建议**：新增 `RouteKind::None`（或 `std::optional<RouteKind>`）表示「无 route 轴」；`Auto` 仅保留给遗留解码路径，并在文档中标注 deprecated。
 
 ### F4（**高**）Kotlin 侧尚无 token 表：白名单与可用性**只存在于 native**
+
 **证据**：`grep -rn "mcast_rootchild|combination" profile-core/src/main app/src/main` → **无命中**（只匹配到无关的 XzDecoder 注释）。
 **影响**：UI 的「推荐/备选/计划项置灰」若硬编码，就违反了本项目既有约定（`profile-manifest-v3.tsv` = native 导出 + Kotlin 对拍 + agreement test）。一旦 native 增删 token，App 会**静默漂移**。
 **与哲学冲突**：原则 3（单一权威）+ 原则 10（机制防错，而非记忆防错）+ 工程规范「双侧一致性（改了必须两边同步，测试会抓）」。
 **建议**：像 manifest 一样**导出 token 表**（`owner/token/backend/route/steps/terminal/available`），Kotlin 读它渲染下拉并加 `CombinationTokenAgreementTest`。**这是 R6b 落地前的设计缺口，不是实现细节。**
 
 ### F5（中）TERM T2 的声明/实现分居（过渡态未收尾）
+
 **证据**：`terminal/root_child.hpp`（声明，命名空间 `ghostlock::terminal`）留在中性层，实现已移至 `backend/cve_2026_43499/terminal/root_child.cpp`；原因是 `pipeline/orchestrator.hpp` 仍需 include 该头。
 **影响**：这是**最难维护的中间态**（头在中性层、实现在 backend，读者会误判依赖方向）；ADR-0006 的目标是「实现下放」，但声明不下放会长期保留 `terminal → (无 backend)` 的假象。
 **建议**：R6b 既然已重写 `pipeline/orchestrator.hpp`，应**同批收尾**（1 处 include + 2 处限定名），或立即排 T5 尾巴。
 
 ### F6（低）「选择词汇」住在容器层：`contract` → `profile::RouteKind`
+
 **证据**：`contract/identity.hpp` 的 `CombinationSpec.route` 用 `profile::RouteKind`。
 **影响**：ADR-0001 允许该边（profile 可被所有层只读），但**语义**上「route 选择词汇」属于 `contract`；`profile` 是容器（document 解码结果）。
 **建议**：R5 清理时把 route/path 词汇上移 `contract`，`profile` 仅保留解码用的镜像。
 
 ### F7（过程，中-高）两条流并发改同一工作树，产生不可编译中间态
+
 **证据**：R6b/T5 与 TERM 同时进行 → `src/core/tests/profile_entry_test.cpp:105` 一度引用 `contract::CombinationKind` 而 host 编译失败（EXIT=2），lint 亦被 F2 阻塞；两方均报告「对方的半落地状态」。
 **与哲学冲突**：原则 5（增量交付与变更控制：未列入清单的代码即冻结）+ 工程规范「写范围不重叠 / 门禁运行期间不得改被该门禁覆盖的源文件」。
 **建议**：（a）本批**原子提交**（R6b 全部文件一次进 git）；（b）TERM 的改动**先落成 patch/分支**再合并；（c）同一时刻只允许**一条写入流**。
 
 ### F8（低）`StepSetKind` 成为 token 的派生量，但仍可直接选择
+
 **证据**：`CombinationSpec.steps` 承载 `W1W2/W1W3/PageCacheWrite`；`combination_stepset_wire` 仍输出旧 uint。
 **影响**：与「`w1_w2/w1_w3` 不再是用户可选值」的设计一致，但类型上仍可被直接使用 → 未来可能绕过 token。
 **建议**：在文档/注释中标为**内部派生**；R5 收窄其可见性（或仅在兼容映射里出现）。
@@ -101,6 +109,7 @@
 **结论**：R6b/T5 的**方向正确**（token 单一权威、编译期锁定、计划项显式），但**结构上有三处需要先补设计再落地**：F1（组合维度分解）、F3（`Auto` 双关）、F4（跨语言 token 表导出）；两处工程性问题：F2（padding 卡 lint）、F7（并发半落地）。
 
 **建议顺序**：
+
 1. **补设计**（文档）：F1 的组合维度分解方案、F3 的 `None`/optional 语义、F4 的 token 表导出格式（新增 `--export-combinations` 或并入 manifest）；
 2. **修结构**：F2 字段重排（解 lint 红线）、F3 落地 `None`；
 3. **补 Kotlin 侧**（F4）：读导出表 → 单下拉（推荐/备选/计划项置灰）+ agreement test；

@@ -39,6 +39,7 @@
 - **验收判据**：元素 map >12 ⇒ 具名 `param-invalid`；`QueueElementShape*` 两侧机器对拍；`executor-unavailable` 与 `slot.*` 边界用例。
 
 **超限拆分（独立待办，本轮不动）**：
+
 1. `adr/0004`（16624 B）：拆「正文（决策+判据）+ 附录（迁移批次与证据表）」；附录另存 `adr/0004-appendix.md`，正文 ≤8 KB 留指针。
 2. `adr/0001`（20190 B）：A–I findings 明细移交既有 `architecture-findings-register.md`，正文只留分层结论表 + 指针。
 3. `adr/0003`（8512 B）：仅超 320 B ⇒ 压缩/移除已 stale 的 GLK1 v2 段落即可。
@@ -86,4 +87,3 @@
 | **D-G** | 执行关键字段 `required` 口径 | params §2、b0 §2 |
 | **Q1–Q3** | 配额/引用/单位 | plan §9.1 |
 | **C1–C10** | design-critic 项 | queue-schema §1/§2/§7、plan §3/§9.1、b1b2 §B1.2、kotlin §1/§9 |
-

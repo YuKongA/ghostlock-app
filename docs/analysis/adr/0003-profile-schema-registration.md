@@ -95,12 +95,14 @@ backend；跨 backend 的后处理调参 → `handoff`；通用运行调参 → 
 ## 后果（Consequences）
 
 正面：
+
 - profile 能表达任意 route/path 的任意参数，且**新 backend/新参数 = 加一个 Schema + 注册 + 测试**，不改容器；
 - 平台与后端各取所需，DAG 不再有二义；P6 的“一处字段映射”有明确落点；
 - 组件/route 合法性由 owner 校验，顺带打断 catalog↔backend 环；
 - 生产 strict 拒绝未知字段，配置错误在启动期暴露。
 
 负面/风险：
+
 - `binary_profile::parse`/`serialize` 要重写为 framing-only；`profile_binary_test` 大改；
 - Kotlin `NativeProfileDocument.sections()` 与 extractor `report.rs` 需按 owner 对齐并加 manifest 测试；
 - 绑定代码在启动期（非 PI 窗口），但需确认不引入热路径间接/分配；

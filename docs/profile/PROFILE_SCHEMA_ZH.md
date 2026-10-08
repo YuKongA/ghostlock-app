@@ -81,11 +81,13 @@ ghostlock {
 ## 5. 各 backend
 
 **`cve_2026_43499`**
+
 - `steps`——组合 token（选择轴）。
 - `abi.*`——task_struct / cred / kernel / offset 事实；**`platform.abi.*` 迁到这里**。
 - `route` / `cred` / `kernel` / `offset` / `execution`——route 私有与几何分组，同以前。
 
 **`cve_2026_43284`**
+
 - `steps` 留在 backend 顶层（选择轴）；43284 无 route 轴，token 是**裸 path 名**（`umh`）。
 - `execution.*`——`late_load_args`、`selinux_exec_context`、`module_poll_attempts`、`module_poll_interval_ms`、`wait_timeout_ms`。
 - **`kmi` / `lkm_path` / `carrier_path` 从 profile 删除**：
@@ -121,6 +123,7 @@ ghostlock {
 ## 9. 校验与诊断
 
 fail-closed（整份拒绝，绝不静默降级）：
+
 - 出现**已删除**的 owner（`common` / `platform` / `selection`）或**当前不支持的 owner**；
 - 根级标量不在白名单内，或未知顶层 owner（如 `root` / `meta`）；
 - `available` 里的 token 不在 catalog 中，或 `steps` 与所选 token 矛盾；

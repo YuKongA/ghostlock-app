@@ -1,7 +1,7 @@
 # Supported Devices
 
 > 中文版本：[SUPPORTED_DEVICES_ZH.md](SUPPORTED_DEVICES_ZH.md)
-
+>
 > MediaTek device not working (no matching profile, or `W1: target 0x0`)?
 > Root the device first, then follow [MEDIATEK.md](MEDIATEK.md) to obtain the
 > two physical addresses (`kernel_phys_load` / `kernel_phys_offset`).

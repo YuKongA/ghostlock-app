@@ -1,6 +1,7 @@
 # 全流程 UML：HOCON → 配置模型 → wire → profile → 最终处理
 
 > 术语澄清（先说结论，避免混淆）：
+>
 > - **HOCON**：`app/src/main/assets/profile/*.conf`，仅 App 侧解析，文件内 `schema_version = 1`。
 > - **"kprofile"**：代码里**没有**叫这个名字的类型。实际是 HOCON 解析后的两层内存模型：`ValueMap`（原始合并结果）与 `Profile`/`ProfileConfig`（App 展示 + 原生文档载体）。
 > - **wire**：**GLKv3 MessagePack** 字节流（根 map，`schema = 3`），是唯一的跨语言传输格式。

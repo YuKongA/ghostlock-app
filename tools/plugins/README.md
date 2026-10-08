@@ -14,6 +14,7 @@ ghostlock-plugin-example/        # 独立仓库/目录：include/ + src/ + tools
 **为什么移出**：插件作者不应需要 exploit 仓库；独立项目只依赖内置的 ABI 头即可交叉编译 aarch64 产物。
 
 **本仓库保留的部分**（宿主侧契约，不要移走）：
+
 - `src/core/plugin/**`：探针、schema/wire 校验、宿主（宿主实现本身）；
 - `src/core/contract/abi/glk_contract_abi.h`：**ABI 权威**（独立项目里那份是 vendored 副本，用 `./build.sh abi-check` 对拍）；
 - `docs/analysis/contract-design.md` §3.14.7：冻结的探针 TSV 契约与阶段可用性；

@@ -2,7 +2,7 @@
 
 > 范围：只读分析上游处理方式，并与本项目 GhostLock 的 CVE-2026-43284 分阶段入口对照。
 > 本文只描述事实与差异，不修改任何源码，不构成对真机行为的保证。
-
+>
 > **状态更新（2026-10-05）**：本仓库**已删除** vendored 的 `DirtyFrag-Android-Root-Jailbreak@de2ab7b ` 目录（理由：不参与构建；
 > 上游 repo 可直接查阅，来源与 commit 记入 `README.md`/`README_ZH.md` 的「Credits & License」）。
 > 本文中 `DirtyFrag-Android-Root-Jailbreak@de2ab7b ...` 的旧引用已改写为 `上游仓库@commit <path>`；文中「逐字节一致」的结论
@@ -259,6 +259,7 @@ sequenceDiagram
 | `--allow-dev-target` | 上游无此开关；恒定要求 vendor 前缀 | 仅 staged 入口放宽 carrier 路径前缀，记录 `run.dev_target allow=1` | 项目**新增**的调试口，不能替代 missing 环节 |
 
 补充事实：
+
 - 项目 `plan` 只校验并打印一个「模块@target+0」的 region（`stage_runner.cpp:135-189`、`198-204`）。
 - 项目 `write` 会写并逐块回读校验，但 carrier 的旧值读取是 `pread`（`real_ops.cpp:95-102`），
   vendor `.so` 在 app 域不可 open 时直接 `CarrierUnusable` → 因此真机只有 `--allow-dev-target`

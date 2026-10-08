@@ -22,3 +22,6 @@ target/
 /ghostlock *
 build.nosync/
 /build
+
+# Node tooling (markdownlint-cli2) — 依赖声明进版本，安装产物不进
+node_modules/

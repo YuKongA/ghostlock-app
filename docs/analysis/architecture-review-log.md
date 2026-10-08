@@ -16,6 +16,7 @@
 从 profile 移走，而是：中性容器只存 `sections[name→fields[name→u64]]` + presence（GLK1 v2 已如此），
 **backend 与 platform 各自注册字段 schema/typed view**，对同一 document 纯派生，**每个字段恰一个 owner**。
 待细化（仍属未决，需设计）：
+
 - 注册机制：建议编译期 schema 描述表（section/field/类型宽度/必填）+ 模板遍历，不引入可变全局；
 - 字段归属划分：如 `task.cred` 归 `platform::abi`，backend 消费其 view；禁止双重声明；
 - 三端一致性：native 注册表 ↔ Kotlin（`profile-core`/编辑器）↔ extractor `symbols.rs` 的映射需各自
@@ -188,7 +189,6 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
 见 ADR-0004 A2。
 
 **结论**：S9/S15 需裁决；S10/S11/S14 是已定方向的落地清单（可随做随定，但要登记）；S12/S13 是清理。
-
 
 ## 二、来自《Phase 0 计划》
 

@@ -1,0 +1,111 @@
+# 重写计划（backend 之上的大规模重写 · 2026-10-08 用户裁定）
+
+> 计划类（≤16 KiB）。**自包含**。本文是「P1 之后重写」的唯一权威工作包：**禁用边界 / 禁用机制 / 强制越权登记 / 最小门禁 / 重写序列 / 里程碑 / 既有设计的新角色**。
+> 判据形式：D1（黑盒/白盒 + 极端输入值）—— 见 [design-review-principles](../development/design-review-principles.md) §1-D1 与 [handoff-payload-verification](../analysis/handoff-payload-verification.md) §1。
+> 沿革（**不删历史**）：本文**不改写**既有结论（MASTER-PLAN §2/§3、B0.0-REVISION、ADR-0001…0010、queue/schema 等）；它们在新序列中**改变角色**（见 §7）。
+
+## §0 前提与用户裁定
+
+- **战略裁定（用户 2026-10-08）**：**大规模重写** —— 把「backend 具体攻击**之上**」的全部 C++ 文件**禁用**（原地追加后缀，仅作参考），新文件**重写**；**在最初完整流程完成点之前不跑整体测试**；日程按此前提重排。
+- **四个已定参数（用户已确认，本文其余内容均由此推导）**：
+  1. **边界** = backend 之上（§1）；backend 与 `src/lib` **保留、零改动**；
+  2. **禁用形式** = **原地追加 `.disabled`**（`foo.cpp` → `foo.cpp.disabled`），**移动/删除一律禁止**；
+  3. **最小门禁** = 新子树**编译 0 警告** + 新子树**模块单测**（§4）；
+  4. **E2E 定义** = **host 全流程**（§6 的 E2E-1），**非真机判据**；真机判据另立 G2。
+- **为什么不是「就地小改」**：既有上层是「按旧契约/旧顺序假设」写成的；继续在旧结构上改会把旧假设固化进新实现（且无法满足 §7 的输入规格）。
+
+## §1 禁用边界（**逐层计数，实测**）
+
+| 组 | 数量 | 明细 | 处置 |
+|---|---|---|---|
+| **上层** | **84** | `contract` 13 · `profile` 8 · `plugin` 17 · `support` 15 · `terminal` 10 · `platform` 5 · `memory` 6 · `race` 3 · `pipeline` 3 · `session` 3 · `main.cpp` 1 | **禁用**（追加 `.disabled`） |
+| **tests** | **96** | `src/core/tests/**`（90 `.cpp` + 6 `.hpp`，含 `host/`・`fixtures/`・`data/`） | **禁用**（同上） |
+| **backend（保留）** | **88** | `src/core/backend/**`（含 `cve_2026_43499/**`、`cve_2026_43284/**`、`route/**`） | **保留、零改动**（P2 硬判据，§5） |
+| **lib（保留）** | **4** | `src/lib/mpack/**` | **保留** |
+| **构建基础设施** | — | `src/Makefile`、`src/core/README.md`、`docs/**`、Gradle 侧 | **保留**（`Makefile` 只加**守卫**，不逐条删引用，§2） |
+
+- **计数命令（可复核）**：`find src/core/contract src/core/profile … -name '*.cpp' -o -name '*.hpp' | wc -l`（逐层）；`find src/core/tests \( -name '*.cpp' -o -name '*.hpp' \) | wc -l` = 96；`find src/core/backend … | wc -l` = 88。
+- 合计禁用 **180** 个文件；逐文件清单见 `docs/plan/rewrite-disable-manifest.tsv`（§2-③）。
+
+## §2 禁用机制
+
+1. **命名**：`foo.cpp` → **`foo.cpp.disabled`**；`bar.hpp` → **`bar.hpp.disabled`**（**追加后缀、保留原扩展名**，避免 `.cpp`/`.hpp` 同名撞车）。
+2. **`src/Makefile` 不逐条删引用**（实测对上层目录的引用 **273 处**、对 `tests/` **174 处**）：改为**守卫** —— 默认目标检测「禁用态」（存在 `*.disabled` 且无对应 `.cpp`）⇒ 打印**明确说明**（含**恢复命令**与本文档指引）并**以 0 退出**（避免外部看起来像「构建坏了」）。
+3. **恢复清单（生成物）**：`docs/plan/rewrite-disable-manifest.tsv` —— 列 `path<TAB>kind<TAB>lines<TAB>restore_cmd`，覆盖 **84 + 96 = 180** 行（+1 表头）。生成命令：
+
+   ```sh
+   # 生成（在仓库根执行）
+   for f in $(find src/core -maxdepth 1 -name main.cpp) \
+            $(find src/core/{contract,profile,plugin,support,terminal,platform,memory,race,pipeline,session} \
+                    \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
+     printf '%s\tupper\t%s\tmv %s.disabled %s\n' "$f" "$(wc -l < "$f")" "$f" "$f"
+   done
+   for f in $(find src/core/tests \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
+     printf '%s\ttest\t%s\tmv %s.disabled %s\n' "$f" "$(wc -l < "$f")" "$f" "$f"
+   done
+   ```
+
+4. **禁用顺序纪律**：先出本文档 + 清单（B0.0 批准）⇒ 再执行禁用（native-core 面）⇒ 见 §3 的越权登记与 §4 的最小门禁。
+
+## §3 强制越权登记（AGENTS「最高思想与质疑义务」要求）
+
+**越权项（本阶段明确越过以下条款；越权与代价一并记录，不删历史）**:
+
+| # | 被越过的条款 | 本阶段实际状态 | 代价（如实） |
+|---|---|---|---|
+| **V-1** | 《软件工程守则》**§2.3**（模块级测试先行/随批） | P1 之后「上层 + tests」整体禁用 ⇒ 模块测试**在旧树上不可运行** | 旧缺陷不会在重写期被发现；新模块必须靠 §4 的最小门禁与**逐层判据**兜住 |
+| **V-2** | 守则 **:585**（前一阶段不符合项**全部改正后**才进下一阶段） | 重写期无法满足「全绿才前进」⇒ 改为**逐层可编译 + 模块单测** | 契约偏差只能在 **P2 之后逐层暴露**（越晚越贵） |
+| **V-3** | AGENTS **提交纪律①**（门禁在**最终树**上为绿） | 本阶段最终树**不满足**全量门禁（上层禁用） | 提交只能以「**分层绿**」为准；需要显式标注，避免被误读为全量绿 |
+| **V-4** | 既有真机验证结论的**可执行性** | 旧上层（含已验证路径的编排代码）成为**不可执行的参照** | 旧的「真机已验证行为」在新实现完成前**无法复跑对照** |
+
+- **谁确认**：**用户 2026-10-08**（战略裁定 + 四参数，见 §0）。
+- **技术债条目**：`TD-REWRITE-1`（全量门禁与提交纪律暂停）· `TD-REWRITE-2`（旧上层与旧 tests 的参照关系在 E2E-1 前不重建）· `TD-REWRITE-3`（Makefile 守卫期间的「不可构建」外观）。
+- **偿还时机**：**E2E-1 通过后** ⇒ ① 恢复**全量门禁**（`make -C src native-host-tests` + NDK 构建零警告 + `lint-tidy`）与**提交纪律①**；② 重建旧实现的**参照关系**（或明确宣布旧层作废并归档）；③ 移除 Makefile 守卫或改为「按层开关」。
+- **沿革**：旧纪律（守则 §2.3/:585、AGENTS 门禁与提交纪律、真机判据）**原文保留、不删**；本登记的效力**仅限本重写阶段**，E2E-1 后自动失效（除非再次强制确认）。
+
+## §4 最小门禁（用户批准）
+
+- **只跑两条**：① 新子树**编译 0 警告**（`-Wall -Wextra -Wconversion -Wsign-conversion`，与既有标准一致）；② 新子树**模块级单测**（新写，不依赖旧 tests）。
+- **不跑**：旧 `NATIVE_HOST_TESTS` 全集、NDK 构建、`lint-tidy`、以及 markdownlint 之外的一切旧门禁（markdownlint 仍保留，见 §8）。
+- **每条重写完成的判据模板**（黑盒/白盒 + 极端值，引 verification §1）：
+  - 黑盒：给定输入（含**极端值**）⇒ 观测点（退出码 / 具名诊断 / 逐字节产物）⇒ 预期；
+  - 白盒：结构约束（无越层 include、无第二读取路径、窗口内零 Lua 等）逐条可核验；
+  - **不可能用例不测**；判据必须**能失败**（证伪实验，见 AGENTS「守卫必须证明能失败」的可选手段）。
+
+## §5 重写序列（P2–P5，单变量逐层）
+
+| 阶段 | 交付 | 硬判据 |
+|---|---|---|
+| **P2 新契约层** | 中性契约（op token / `WriteOutcome` / 句柄 / 诊断）+ 参数结构（各 backend 自持） | **既有 backend 零改动可编译**：新契约需提供 backend 既有 **include 名**；若必须小改 backend ⇒ **逐条列出并登记**（不得静默） |
+| **P3 新会话 / 配置层** | 会话、profile 装载、wire（GLKv3）读写 | 数据形态随 **R10 裁定**（R3 随 R10）；无默认值语义按裁定范围 |
+| **P4 新装配 / 执行层** | `composition_root` + 窗口宿主 + 执行器 | 窗口**原子性**（多步 = 一个 op）· 窗口内**参数化**（不新增自定义）· 窗口内零 Lua |
+| **P5 新 handoff / 脚本计划 / 插件层** | handoff、计划脚本、插件接线 | **queue 退役**（出现即拒）· **计划 = 脚本**（内置计划脚本）· **ADR-0010 句柄模型** |
+
+## §6 里程碑
+
+- **E2E-1（host 全流程）**：按 [host-assembled-integration-plan](../analysis/host-assembled-integration-plan.md) 组装 `extractor → Kotlin 控制器层 → 长度前缀 GLKv3 帧 → native → dispatch`；输出**固定打印「非真机判据」**。**通过 ⇒ 恢复全量门禁 + 偿还 §3 技术债**。
+- **G2（真机门禁）**：冷机 / 固定 CPU 对 / 单 route / KernelSU 未加载的干净启动；结果归档 `docs/analysis/device-gates/*.md`。**E2E-1 之后**才排期。
+
+## §7 既有设计的新角色：R1–R11 = **新实现的输入规格**
+
+| 规格 | 权威文档 | 在新实现中的角色 |
+|---|---|---|
+| R1 契约中性化 | `handoff-payload-b0-contract.md` §3/§4 | 新契约层（P2）的**输入规格** |
+| R2 Lua↔C++ 边界 | `handoff-payload-b1b2-runtime.md` §B1.1/§B2.2 | 边界与接口权威（`composition_root`） |
+| R4 E4 实证（窗口约束） | [pi-window-constraints](../analysis/pi-window-constraints.md) | 窗口宿主（P4）的**白名单/禁项** |
+| R6 E3 重写 | `design-review-principles.md` E3 | 编译期只锁**存在性/合法性** |
+| R7 生命周期回退 | 守则 §2.2/:585/:1570 | 新流程的**阶段门与回退** |
+| R8 三端打通 | host-assembled-integration-plan | E2E-1 的定义 |
+| R9 文档三层 | `AGENTS.md`、`docs/development/introduction.md`、`docs/plan/ROADMAP.md` | 交付形态约定 |
+| **R10 数据形态** | [lua-config-structure-options](../analysis/lua-config-structure-options.md)（**待裁定**） | P3 的**前置**（裁定同时关闭 R3） |
+| **R11 queue 退役** | [script-plan-design](../analysis/script-plan-design.md) | P5 的输入；[queue-schema](../analysis/handoff-payload-queue-schema.md) 已标退役 |
+| ADR-0008 / 0009 / 0010 | `docs/analysis/adr/0008…0010` | 沙箱 / 信任硬线 / **资源模型** |
+| 窗口参数化 | `execution-tuning.conf:20-36` + `steps.cpp:77/:238` | 窗口内可变性**只能参数化** |
+| 无默认值 | R3 + R10 | 缺失即**具名拒绝** |
+
+## §8 风险 · 变更控制 · 状态记录
+
+- **反工时点**：新契约**不提供 backend 既有 include 名** ⇒ P2 就要改 88 个 backend 文件（返工 + 越界）；契约面晚定 ⇒ P3/P4 判据重写；数据形态（R10）晚裁 ⇒ P3 重复返工；窗口约束晚接 ⇒ P4 需回溯。
+- **变更控制（R22/R14）**：本计划任何变更（边界增删、门禁放宽、序列调整）**必须**：出变更说明 + 影响面 + 代价 ⇒ 用户确认 ⇒ 更新本文 + 沿革行（不删旧行）。
+- **状态记录位置**：进度 = [MASTER-PLAN](../plan/MASTER-PLAN.md) §4/§5（指针）· 禁用清单 = `rewrite-disable-manifest.tsv` · 越权与技术债 = 本文 §3 · 逐批判据 = 批次记录（`docs/analysis/`）。
+- **风险**：① 禁用面过大导致「无参照」（缓解：backend 保留 ⇒ 攻击语义参照仍在）；② 守卫被误读为「构建坏了」（缓解：守卫打印恢复命令并以 0 退出）；③ 技术债被遗忘（缓解：§3 明确偿还时机 = E2E-1 通过后）。

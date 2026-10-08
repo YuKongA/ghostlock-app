@@ -23,20 +23,24 @@
 ## 3. 逐层改动
 
 **wire/HOCON**
+
 - 删除 `common.fallback_route`（native `meta.fallback_route` 随之删除）；
 - `selection.steps` 语义改为组合 token（string，R4 的 string 类型已就绪）；HOCON 同步（R3 布局里 `selection.steps`）；
 
 **native**
+
 - 删 `contract/model.hpp` 的 `meta.fallback_route` / `fallback_route()` / `RouteKind::Auto` 的推断使用点；
 - 删 `route_policy.hpp` 的 fallback 分支与 `RouteRunResult::fallback_used`；
 - `contract::StepSetKind` 扩为组合枚举（或 `route × wset` 的 token 表）；`component_catalog` 为每个组合登记 triple 并 `Pipeline::target` static_assert 锁定；route 由 token 派生（不再独立 middleware 选择）；
 
 **Kotlin/UI**
+
 - 删除 fallback 选择器与其 UI 状态（`GhostlockViewModel` 的 `profileFallback` 等）；
 - 新增「**推荐方案 / 备选方案**」选择器：推荐由设备事实 + profile 几何计算（单一决策点，靠近 `ExecutionModeMapping`）；
 - 只把用户选定的组合写入 wire（`selection.steps`）；
 
 **extractor**
+
 - 产出新布局时不再写 `fallback`；其 `flatten(生成) ≡ flatten(内置)` 测试同步。
 
 ## 4. 门禁

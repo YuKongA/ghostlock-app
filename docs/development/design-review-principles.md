@@ -47,7 +47,10 @@
 - **E1 层间只传数据**；禁公共/控制/内容耦合。（R3）
 - **E2 功能内聚**：模块职责可一句话说清且不可再分。（R4）
 - **E3 编译期锁定**：组合→步骤集→终端在编译期绑定，运行期只做声明符合性检查。（R6）
-- **E4 PI 窗口内禁间接分派/分配/首次触碰新页**：窗口外允许虚接口（gate/计划/配置构造/终端交接）。（ADR-0001:183、ADR-0004:188-189、`route_lifecycle.hpp:9-11`）
+- **E4 PI 窗口约束（实证版）**：**白名单/禁项以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准** —— 实测死因 = 窗口内 `sched_setattr`（改 nice / SCHED_BATCH）进入内核 PI 链（`__do_sys_sched_setattr` → `__sched_scheduler` → `rt_mutex_adjust_pi`，见 device-gate `20260922-2231-CPP12x/CPP12s-*-panic`）。因此：**禁 `sched_setattr` / `setpriority` / `nice` 及任何会进入 `rt_mutex_adjust_pi` 的调用**；并保留**禁堆分配 / 禁间接分派 / 禁首次触页**（防御性条款）。窗口外允许虚接口（gate/计划/配置构造/终端交接）。
+
+> **沿革**：原 E4 表述为「PI 窗口内禁间接分派/分配/首次触碰新页」（由 ADR-0001:183、ADR-0004:188-189、`route_lifecycle.hpp:9-11` 推下）—— 该理论条款**覆盖不到实测死因**；2026-10-08 按 device-gate 记录改写为「白名单 + 禁项」，原文保留于本行。
+
 - **E5 双读取路径 = 高危形态**：同一数据的第二条读取路径必须同批补跨路径等价对拍并声明回退关系。（R2；本仓 M5 事故）
 - **E7 共享工作树保护（硬规则，2026-10-07 事故后立）**：任何 teammate **不得**执行会改变共享工作树的 git 命令（`checkout/restore/stash/reset/clean`），**也不得**等效写回（`git show REV:path > path`）；历史比较只用只读形式（`git show REV:path` 不重定向、`git diff REV -- path`、`git log`）。
 - **E8 写回完整性（硬规则，同源）**：**禁止分片读 + 全文写回**——`read(offset/limit)` 只给窗口、`write` 整体替换；读须整份读（或确认读到 `totalLines`）或改用定点 `edit`。若确需整份写回，**写回前后核对字节数与行数**并在报告给出。

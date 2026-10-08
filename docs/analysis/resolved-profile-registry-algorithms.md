@@ -6,6 +6,7 @@
 ## A. 算法（前置 / 步骤 / 后置 / 不变量）
 
 **A1 Kotlin：输入 → ResolvedProfile**（`ProfileLoader.load`）
+
 - 前置：设备 uname；`activeBuiltinRelease() ?: deviceRelease`；用户档选择（prefs）与 imported-only 设备路径（无内置档时）。
 - 步骤：① include 展开（**两个解析器**：资产文本级 / 存档目录级）② parse ③ wrapper 解包 ④ 别名归一（flat `backend.steps`：**legacy step id → 迁移**；**token 形态 → 拒**；ABI 拆分；`meta.*`→根标量（在 LPC）⑤ 校验：未知 canonical 键拒（4 类）/`available` **8 拒**/queue **7 拒**/回显逐值相等/queue_route 与几何 route 冲突 ⑥ 分层合并（**优先级：overrides > imported > builtin > tuning preset**）+ CPU 对 + route 预设 ⑦ 组装 tree（root + 选中 owner 段 + **declarations**）⑧ `safe_mode` 补丁（落 `Glkv3Decoder.patchSafeMode` 的等价位置）⑨ 逐字段对 manifest（类型/位宽/必填/来源）。
 - 后置：`ResolvedProfile{tree, declarations, provenance, diagnostics}`；失败经 `LoadResult{profile?, diagnostics}` 返回（**不再 runCatching 吞掉**）。
@@ -15,6 +16,7 @@
 **A2 Kotlin：tree → wire**（`Glkv3Writer.encode(tree) → ByteArray`）——根 9 键 UTF-8 序 / sections+entries 排序 / 最短整数 / str ≤256B / 4B 大端前缀；**会话帧由 `ChannelBStdin.appCall(bytes, frame)` 另行拼装**。
 
 **A3 Native：字节 → Document**（`frame_v3` + `Builder`）——① 根标量（`kernel_major/minor/safe_mode` → `kRootSection`）② **段名 ∈ {根段, 选中 owner}**，否则 `PathNotInSelection` ③ 键查声明表（未声明数组 → `UndeclaredArray`；Union/Bin/Map → `TypeMismatch`）④ 类型化入列，重复键 → `DuplicateKey` ⑤ `finish()`。
+
 - 不变量：**(seg,key) 唯一 / 只含选择路径 / 取值只经 `find` / 不可复制**；**缺键 = 无 Entry（取消 `Value::present`）**。
 
 **A4 Native：Document → 绑定**（`bind_view<B>(document, state, sink)`，定义在各 backend）——① `Registry::select<B>()` 编译期选行 ② `bind_all<B::Schema>`：缺键∧required → `MissingRequired`；位宽不符 → `WidthMismatch`；token 未命中 → `UnresolvedToken`；缺键∧有默认 → 采用 + `DefaultUsed` ③ 能力位 ④ 构造 `session::ResolvedProfile`（`document()/target() → const **profile::TargetProfile**&/cpus()/capabilities()/diagnostics()`）。

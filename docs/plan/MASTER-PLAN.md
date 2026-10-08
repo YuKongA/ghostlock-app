@@ -12,6 +12,7 @@
 ## §1 目标与范围
 
 **目标**：把 payload/handoff 运行时、配置模型、插件形态三块收敛为可执行、可验收的批次序列：
+
 1. **payload/handoff 运行时**：contract 化（中性 `WriteOutcome`）→ 原语注册 + gate（10 条静态原因）→ Lua 5.4 运行期（沙箱/预算/句柄/bin 承载）。
 2. **配置模型收敛**：三层同形（`ResolvedProfile` 单一权威读入口）+ 注册套件（catalog 编译期投影）+ 校验去重（registry 族 `F21`–`F24`/`I9`–`I11`）。
 3. **插件形态**：解冻后按 Lua 控制面（D31）+ `.so`/LKM 内核型保留通道（D32）。
@@ -51,6 +52,8 @@
 
 > **判据集（不复制）**：[verification](../analysis/handoff-payload-verification.md) §1 总则 · §2 样例 · §3 扩展点 · §4 技术债 · §5 CBN；本表只列极端输入摘要。
 
+- **三端打通（R8）**：全流程 host 组装测试计划见 [host-assembled-integration-plan](../analysis/host-assembled-integration-plan.md) —— **归属：B0.0 立计划 · B1 落地**（probe native 腿与 extractor 三方对拍）；**非真机判据**。
+
 ## §4 执行顺序与依赖
 
 ```mermaid
@@ -63,7 +66,7 @@ flowchart LR
   R -. "验收触发（非写依赖）" .-> B2
 ```
 
-- **串行纪律**：同一时刻**只允许一条写入流**（`AGENTS.md`）；批次顺序 **B0.1 → B0.2 → B0.3 → B1 → B2 → B3**，上一批验收未绿不得进下一批。
+- **串行纪律**：**单写入流**（AGENTS）；批次 **B0.1 → B0.2 → B0.3 → B1 → B2 → B3**，上批未绿不进下批；**B0.0** 见 [B0.0-REVISION](B0.0-REVISION.md)；**重写**见 [rewrite-plan](rewrite-plan.md)。
 - **并行约束（M2 更正）**：**写入恒为单流**（同一时刻只有一个 writer 改被门禁覆盖的文件）；**并行仅限只读勘察与门禁**，且**共享 `build/**` 与容器缓存的门禁必须串行**。WP-7（registry 族）不得与 WP-2…WP-5 并行写入。
 - **依赖**：WP-4 依赖 WP-2（层归属）；WP-5 依赖 WP-4（registry/ParamSpec）；WP-6 依赖 WP-5（同一 VM/沙箱）；WP-3 必须先于 WP-4（选路是 gate 后执行面的前提）。**WP-7 = 独立族**：其验收在 **B2 批触发**（`../analysis/resolved-profile-registry-plan.md` §6 矩阵）；图中 R ⟶ B2 为**触发边**，非写依赖。
 
@@ -99,7 +102,7 @@ flowchart LR
 | R-3 | **判据命令可执行性** | 文档判据与真实目标名不一致会失效 | 每批在 CI/本地跑 §5 命令并记录退出码 |
 | R-4 | **payload 白名单触点** | 解冻后 `backend.<id>.payload.*` 会被 fail-closed 拒 | 解冻批次为两个 `Backend*Keys` 增 `payload` + 对拍（`kotlin.md:63`） |
 | R-5 | **vacuous 断言风险回归** | 删掉被保护的赋值仍可能全绿 | 由**黑盒/白盒 + 极端值用例**覆盖（原则 v0.2 D1） |
-| R-6 | **PI 窗口时序** | 窗口内分派/分配/首次触碰新页会引入不确定性 | E4 约束 + `cmp` 归因 + 真机门禁（`route_lifecycle.hpp:9-11`） |
+| R-6 | **PI 窗口时序** | 窗口内**越界 syscall**（实测：`sched_setattr` → `rt_mutex_adjust_pi`）、分派/分配/首次触页 ⇒ 不确定性 / panic | E4（实证版：白名单 + 禁项见 [pi-window-constraints](../analysis/pi-window-constraints.md)）+ `cmp` 归因 + 真机门禁（`route_lifecycle.hpp:9-11`）；**沿革**：原表述为「分派/分配/首次触页」，2026-10-08 按 device-gate 栈改写 |
 | R-8 | **代码注释悬空计划路径**（审查时实测 **10 处**） | 注释指向**从未存在**的 `docs/analysis/<plan>.md` | owner = **native-core**（`src/core` + `tools/extract_rs`）/ **kotlin-app**（Kotlin）；**时机 = 已随本批交付完成**（见 [INDEX-plans](../archive/INDEX-plans.md) §六 末尾「悬空引用」行）；判据 = 编译通过 + `grep` 无失效引用（**现测 0**） |
 | R-7 | **技术债预判六项**（`OpRegistry` 可插拔 / 键上限顶格 / `slot.*` 持久化 / 沙箱 API 扩展 / payload 解冻 / gate 原因码） | 未来扩展成本 | 逐项偿还时机见 `../analysis/handoff-payload-verification.md` §4 |
 

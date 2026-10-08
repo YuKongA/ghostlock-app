@@ -41,5 +41,6 @@
 ```sh
 bash tools/device-guard/backup_partitions.sh restore QV770MFGJ1 build/device-backup/QV770MFGJ1-20261003 super   # 或任意分区名
 ```
+
 写回块设备需 root（KernelSU）；`super` 覆盖全部逻辑分区（system/vendor/product/system_ext/odm/dlkm）。
 `metadata` 属状态分区，**不要**用备份覆盖（会破坏当前加密状态）。

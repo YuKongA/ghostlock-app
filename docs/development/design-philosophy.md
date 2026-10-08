@@ -32,6 +32,7 @@
 ## 1. 实证主义：真机是唯一裁判
 
 **理论依据**
+
 - **Empirical / Evidence-based Software Engineering**（Kitchenham 等系统评价方法）：技术主张的有效性必须由实验、案例与重复验证支撑，而不是由权威或直觉支撑。
 - **V&V（IEEE 1012；ISO/IEC/IEEE 12207）**：*Verification* 回答"是否按规格构建（building it right）"；
   *Validation* 回答"是否构建了正确的东西（building the right thing）"。主机测试是 verification，
@@ -47,6 +48,7 @@ slide-only、超时缩短）都被真机逐一否决或确认；Multicast、TCP�
 ## 2. 信息隐藏与契约：显式优于隐式
 
 **理论依据**
+
 - **Information hiding（Parnas, CACM 1972）**：模块边界应沿"**最可能变化的设计决策**"划分，
   用稳定的接口把变化隔离在模块内部——而不是按执行步骤划分。
 - **Design by Contract（Meyer, 1988）**：接口的前置/后置条件与不变量应显式声明，而非隐含约定。
@@ -64,6 +66,7 @@ fd/pid/线程的所有权写进类型（`UniqueFd`/`VictimContext`/`PthreadOwner
 ## 3. 配置管理与基线：每个事实只有一个权威
 
 **理论依据**
+
 - **Configuration Management（SWEBOK SCM KA；ISO/IEC/IEEE 12207 technical management 过程）**：
   配置项必须被**唯一标识**、变更受控、状态被记录、配置被审计；基线一旦发布即受控。
 - **单一真实来源（SSOT）**：重复的权威不是冗余，而是延迟爆发的冲突。
@@ -79,6 +82,7 @@ singleton + 一个启动期只读上界。
 ## 4. 缺陷成本与左移：能在编译期决定的，不留给运行期
 
 **理论依据**
+
 - **Boehm（1981）的缺陷成本结论**：缺陷发现得越晚，修复成本越高（随生命周期阶段递增）；
   这是"设计评审、静态检查、编译期约束"等 **shift-left** 实践的经济学根据。
 - **C++ Core Guidelines**：P.4 静态类型安全、P.5 编译期检查优先于运行期检查、P.8 不泄漏资源。
@@ -87,16 +91,18 @@ singleton + 一个启动期只读上界。
 
 **原则**：编译期检查是免费且无法绕过的；运行期检查在攻击窗口里既昂贵又危险。
 
-**项目实例化**：Route 能力是 `constexpr`，PI 窗口内没有一次间接调用；数据结构 host 可编译以便穷举测试；
+**项目实例化**：Route 能力是 `constexpr`，PI 窗口内没有一次间接调用；数据结构 host 可编译以便穷举测试；**窗口内可调用面（白名单 + 禁项）以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准**；
 C++ 现代化以 `cmp_disasm` 8 函数逐指令验证"抽象零开销"——把理论的成本论证变成可检验的命题。
 （重写后）可选能力（`KernelMemory`/`AddressDiscovery`）以**句柄**存于组合根 `CoreSession`，只在
 **PI 窗口外**经函数指针调用；PI 窗口内仍保持零间接（见 ADR-0001/0002）。
+> **沿革（2026-10-08）**：本段原只写「PI 窗口内零间接」；现按 device-gate 实证（窗口内 `sched_setattr` 进 PI 链）改为「窗口约束以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准（白名单 + 禁项）」，理论表述保留于上行。
 
 **行为要求**：抽象要付得起；付不起就写直接代码并说明原因。新代码零告警、clang-tidy 0 findings。
 
 ## 5. 增量交付与变更控制：未列入改动清单的代码即冻结
 
 **理论依据**
+
 - **增量/迭代与螺旋模型（Boehm, 1986）**：以小的、可验证的增量推进，每一轮都重新评估风险。
 - **变更控制（SWEBOK CM / ISO 12207）**：变更必须有申请、影响分析、批准与记录；
   **scope 之外即冻结**，否则失败无法归因。
@@ -117,6 +123,7 @@ C++ 现代化以 `cmp_disasm` 8 函数逐指令验证"抽象零开销"——把�
 ## 6. 验证与确认设计：为验证而设计，证据优于断言
 
 **理论依据**
+
 - **IEEE 1012 / ISO/IEC/IEEE 12207**：V&V 是贯穿生命周期的独立过程，**验证策略必须在设计阶段确定**，
   而不是实现完后补测。
 - **ISO/IEC 25010 testability**：可测试性是设计属性（可观测、可控制、可隔离），不是事后工具问题。
@@ -132,6 +139,7 @@ C++ 现代化以 `cmp_disasm` 8 函数逐指令验证"抽象零开销"——把�
 ## 7. 无指责复盘与经验主义：诚实面对不确定性
 
 **理论依据**
+
 - **Google SRE 的无指责复盘（blameless postmortem）**：复盘的目标是理解系统性原因并落地预防动作，
   而不是追责；隐藏失败才是最大的风险（*SRE Book*, Ch.15，源于医疗与航空业）。
 - **经验主义（Agile/Scrum 的透明—检视—适应）**：决策基于观察到的现实，而非计划中的假设。
@@ -147,6 +155,7 @@ C++ 现代化以 `cmp_disasm` 8 函数逐指令验证"抽象零开销"——把�
 ## 8. 可靠性工程与防御式编程：防御性地写内核
 
 **理论依据**
+
 - **ISO/IEC 25010 reliability**：fault tolerance（故障时维持功能）与 recoverability（故障后恢复）是
   独立质量子特性；"不崩"不是"能恢复"。
 - **Defensive programming + Design by Contract**：在信任边界检查前置条件；对不可信输入早拒绝。
@@ -163,6 +172,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 ## 9. 知识管理与决策记录：可检索的记忆
 
 **理论依据**
+
 - **Knowledge management / Information management（ISO 12207 organizational / technical management 过程）**：
   知识是需要被管理的过程资产，包括来源、版本与可检索性。
 - **ADR（Nygard, 2011）**：每个架构决策记录背景、决策、理由、备选与后果——决策日志比结论更有价值。
@@ -178,6 +188,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 ## 10. 自动化与过程控制：机制防错，而非记忆防错
 
 **理论依据**
+
 - **Continuous Integration / 持续交付（Fowler；Humble & Farley, 2010）**：把质量规则编码为流水线门，
   让反馈自动化、确定化。
 - **静态分析与程序分析（SWEBOK Quality KA）**：可机械检查的规则不应依赖人工注意力。
@@ -194,6 +205,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 ## 11. 职业实践：对后来者（包括 agent）的期望
 
 **理论依据**
+
 - **SWEBOK Professional Practice KA**：职业性表现为胜任、客观、保密、诚实报告与持续改进。
 - **ACM/IEEE-CS《Software Engineering Code of Ethics and Professional Practice》（1999）**：
   以公众安全与诚实为首要义务；报告真实结果，不隐瞒缺陷。
@@ -202,6 +214,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 **原则**：先理解再设计、先证据再结论、保守而谦逊、留下痕迹。
 
 **行为要求（四条）**
+
 1. **先理解，再设计**：读代码与历史；写下改动清单和"不碰什么"；L 级改动设计先获认可。
 2. **先证据，再结论**：能跑的都跑；不能跑的标"未验证"；不写"应该没问题"。
 3. **保守而谦逊**：不炫技、不顺手、不追新；越是聪明的改动，越要证明它没有改变别的东西。
@@ -212,6 +225,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 ## 附录 A：软件工程理论依据（标准 / 文献 / 实践）
 
 **国际标准**
+
 | 来源 | 采用内容 |
 |---|---|
 | ISO/IEC/IEEE 12207:2026《系统与软件工程—软件生命周期过程》 | process/stage 区分、决策门、technical processes（requirements→design→implementation→integration→verification→validation→maintenance）、technical management 过程（decision/risk/configuration/information management）、knowledge management |
@@ -221,6 +235,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 | ISO/IEC/IEEE 24765 | 术语权威（verification/validation 定义） |
 
 **经典文献**
+
 | 来源 | 采用内容 | 对应原则 |
 |---|---|---|
 | Parnas, *On the Criteria To Be Used in Decomposing Systems into Modules*, CACM 1972 | 信息隐藏：按最可能变化的决策划分模块 | §2 |
@@ -234,6 +249,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 | Kitchenham 等, 系统评价与实证方法（2004–2009） | 证据驱动的技术选择与重复验证 | §1、§7 |
 
 **工业实践**
+
 | 来源 | 采用内容 | 对应原则 |
 |---|---|---|
 | Google SRE Book, Ch.15 *Postmortem Culture: Learning from Failure*（CC BY-NC-ND 4.0） | 无指责复盘、失败即学习、复盘必须被评审与归档 | §7 |
@@ -255,7 +271,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 | §5 冻结边界 | §1.4 批次化与明确保留、§2.5 上游/legacy |
 | §6 为验证设计 | §1.3 门槛；`documentation-standards.md`（计划/门禁模板） |
 | §7 诚实面对不确定性 | §8.4 归因纪律、§1.5 提交规范 |
-| §8 防御性内核 | §3.2 溢出与范围校验、§4.2 PI 窗口规则、§4.3 错误分层 |
+| §8 防御性内核 | §3.2 溢出与范围校验、§4.2 PI 窗口规则（**实证版**：白名单/禁项见 [pi-window-constraints](../analysis/pi-window-constraints.md)）、§4.3 错误分层 |
 | §9 可检索记忆 | `documentation-standards.md`（分类地图、ADR、归档、现状注） |
 | §10 机制防错 | 双侧一致性测试、clang-tidy 策略、`cmp_disasm`、路由模板 |
 | §11 职业实践 | §9 Agent 检查清单与禁止模式 |

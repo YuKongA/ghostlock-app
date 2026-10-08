@@ -111,6 +111,7 @@ struct CombinationId { BackendKind backend; RouteKind route; PathKind path; };
 
 **问题**：白名单与 `available` 只存在于 native；Kotlin 若手写第二份必然漂移（违反哲学 3/10 与「双侧一致性」约定）。
 **设计（v3）**：
+
 1. 新增导出（与 manifest 同机制）：`make -C src combination-manifest` → `combination-manifest.tsv`，列：
    `token<TAB>backend<TAB>route<TAB>path<TAB>steps<TAB>terminal<TAB>available<TAB>doc`；
 2. 产物写入 **`app/src/test/resources/`（对拍用）** 与 **`profile-core/src/main/resources/`（Kotlin 运行时读取）** 两份（与 `profile-manifest-v3` 同做法，两份逐字节一致）；

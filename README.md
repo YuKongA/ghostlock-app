@@ -154,4 +154,3 @@ is redistributed here and reusing it upstream requires their permission:
 ### Vendored libraries
 
 - [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`src/lib/mpack/`](src/lib/mpack/) with its LICENSE kept alongside.
-

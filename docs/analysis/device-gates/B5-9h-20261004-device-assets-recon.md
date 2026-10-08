@@ -7,6 +7,7 @@
 - 存在：1083168 B，sha256 `794eb8fafd7be35da3725e9ec0b15189c6f4f2544f5b78afd8a647dde5b69195`（与 `files-baseline` 一致）。
 - 目标符号 `_ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEE6sentryC1ERS3_`（C2 同址）**存在**，VMA `0xb70a8`。
 - **前导指令**：
+
   ```
   b70a8: d503245f  bti c        <-- entry guard
   b70ac: f9400028  ldr x8, [x1]
@@ -15,6 +16,7 @@
   ...
   b70d4: d503233f  paciasp      <-- 函数体内（非紧邻入口）
   ```
+
 - 全库 2151 处 BTI/PAC → 必须按上游 **PACIASP/BTI +4 规则**处理；本仓已实现 `HookGuardPolicy::{Reject, SkipGuard}`（常量 `kAarch64BtiC=0xD503245F`/`kAarch64Paciasp=0xD503233F`）。
 - **结论**：`hook_guard` 应选 **SkipGuard（上游 +4）**——跳过 `bti c` 后在 +4 打补丁；`bti c` 保留即满足 BTI 间接调用落地要求；`paciasp` 在函数体内，需 shellcode 恢复时保持签名/认证配对（由既有 hook 规划的 displaced-slot 机制处理）。
 
@@ -39,6 +41,7 @@
 ## 5. 代码侧缺口（B5-9h-1）
 
 链的 hook 已是**可注入**的（`real_chain_apply_hook` 需要 `libcxx_image`/`hook_guard`/`hook_io`/`hook_symbol`，默认符号 `kLibcxxSentrySymbol`），但 **staged 真机入口尚未把这些设备资产接进来**：
+
 - 需要：hook 目标路径（默认 `/system/lib64/libc++.so`）、符号（默认 sentry）、`hook_guard` 策略、carrier 路径（与 patch #1 目标**分开**）、patch #1 目标路径。
 - 之后即可在真机跑 `--stage=plan`（**只计算不写字节**）验证 hook 区域/steal 字节/`bti c` 处理与 shellcode 落位。
 

@@ -16,7 +16,7 @@
 | **B1** | HOCON 加载 | `assets/profile/*.conf` + `index.conf` + 用户导入 | `HoconSupport`（include 展开、`${}` 变量） | `ValueMap`（含 legacy 键） | 未知键 → 报错带点分路径 |
 | **B2** | 归一化 | legacy `ValueMap` | `ProfileLayout.canonicalize`（别名表：`selection.steps`/`backend.steps` → 所属 `backend.<id>.steps` 组合 token（`CombinationCatalog.fromLegacySteps`；`normalize` 仅用于输入边界）、`cred/offset` 平台/私有拆分、`meta.*`→`common.*`） | canonical owner-qualified map（steps = 解析后的 canonical token） | 未识别旧键 / 未知 legacy step id → fail-closed |
 | **B3** | 合并与校验 | canonical map + 覆盖 + 设备 `uname -r` | `ProfileMerger.resolveMerged` → `ProfileResolver.validateMerged` | `ProfileConfig`（resolved 字段集） | release 不匹配 → 拒绝 |
-| **B4** | 建文档 | `ProfileConfig` + `CombinationSpec` + 已启用插件 | `NativeProfileGlkv3Adapter.adapt`（**只发所选 backend 的段 + common + 已启用插件的 `plugin.<id>.*`**；selection 由 `CombinationCatalog` 从 `profile-core/src/main/resources/combination-manifest.tsv` 解析，运行时零 token 字面量；`plugin.<id>.params.*`/`.extract.*` 是 manifest 的 `|` 联合行，具体类型由描述符决定） | GLKv3 `Glkv3Value`（map/sections，`steps` = canonical token，plugin 段仅含 enabled=true） | 缺段 → 该字段不发射；token 未命中 / union 成员未知 → 拒绝 |
+| **B4** | 建文档 | `ProfileConfig` + `CombinationSpec` + 已启用插件 | `NativeProfileGlkv3Adapter.adapt`（**只发所选 backend 的段 + common + 已启用插件的 `plugin.<id>.*`**；selection 由 `CombinationCatalog` 从 `profile-core/src/main/resources/combination-manifest.tsv` 解析，运行时零 token 字面量；`plugin.<id>.params.*`/`.extract.*` 是 manifest 的 `\|` 联合行，具体类型由描述符决定） | GLKv3 `Glkv3Value`（map/sections，`steps` = canonical token，plugin 段仅含 enabled=true） | 缺段 → 该字段不发射；token 未命中 / union 成员未知 → 拒绝 |
 | **B5** | 编码 | `Glkv3Value` | `Glkv3Encoder.encode`（最短整数、键 UTF-8 序） | `ByteArray`（根 map，`schema=3`） | 超 1 MiB → 拒绝 |
 | **B6** | 分帧 | 文档字节 + (43284) SA 秘密 | `ChannelBStdin.frame` + `SessionSecretFrame.encode` | `[u32be len][doc]`(+仅 43284 `[u32be 84][frame]`) | 43284 缺帧 → 拒绝 |
 | **C1** | 判别 | stdin `ByteArray`（仅 `--ghostlock-app-call` / `--load-prebuilt-profile` 两种入口） | `looks_like_glkv3`（首字节 map/fixmap/map16/32） | bool | 非 map → 直接 -1 |
@@ -580,7 +580,7 @@ classDiagram
 > **队列承载（Kotlin 侧，2026-10-06 落地 = `4c20142f`）——无节点增删，仅注**：`ProfileLayout.validateAvailable` **双形态**（旧**列表**形态零破坏；新**对象**形态 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }`，五类拒绝：纯字符串元素 / 两键都给 / 都没有 / 未知键 / `params` 保留但拒；另**空 queue 拒**、**`stage` 必须随 `seam`**）；canonical **唯一一处**把三键归一进 `backend.<id>`，队列级 route 落 **`queue_route`**（**几何 Map `route` 不被覆盖**）；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → **wire 键仍是 `route`**；无几何时直接用 `route`；两者同时为 str ⇒ fail-closed「refusing to pick a precedence」）；**回显只认「与 `available` 声明逐值相等」**。**沿革**：`route` 撞键会静默覆盖几何 ⇒ **68 资产几何归零**，故必须分离。**M4 待办**：`NativeProfileDocument.from()` 缺 accessor ⇒ **声明 `queue` 的 profile 目前不会把 queue 发上 wire**（连 `app/src/main/.../Profile.kt` 调用点，M4 修）。
 >
 > **M3/M5 收口（2026-10-06）——本图无节点增删，仅注**：**M3 = `d34caa99` + `6a3d60c6`**（62 资产迁对象形态：`route` 派生、`queue` 由 `stepset-steps.tsv` 展开、零字面量；真机 PASS 归档 `device-gates/20261006-141317`）；**M5 = `e59a8479` + 归档 `af2feefc`**：**token 形态已删 ⇒ 出现即拒**（HOCON 列表形态两条独立具名诊断；native `token-form-removed`；**归一化不再物化 token**；App **停发 wire `steps`**）；**`NativeProfileDocument.from()` 改为「运行时载体优先、回退 `available.<id>` 声明」**——修掉「导出 `.bin` **静默丢队列**」（**两条读取路径行为分叉 = 高危形态** ⇒ 以后新增第二条路径必须同批补跨路径等价对拍）；**golden 3920 / `NO_SELECTION_HEX` 3766**；两份 manifest `62ea112b2caf` 逐字节一致；**M5 真机 PASS**（`24e9accf84b9`）。**Class 图（§3.2 Kotlin / §3.1 contract）节点未变**（改的是取值语义与读取优先级，不是结构）。
-
+>
 > **管理器选择 + 检测 + 跳转（**跳转已落地**；选择/检测在途）**：默认档 = 「**启动 root 管理器**」+ 子菜单（「系统默认 KernelSU（默认）」= **不发射任何 payload 键**；或「**检测到的其它受支持管理器**」）；**未安装的不列出/置灰 + 具名原因**；**白名单只允许有仓库/官方证据的包名**（起点 `root_script.cpp:40-50` 四模式 + `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 需 **`<queries>`**，manifest 已声明 5 项；**未核实不得添加**；FolkPatch `me.yuki.folk` 属 P2）；**UI 已可选 ≠ 已发射**——wire `payload.root.*` 属下一批 native（当前 native 只接受 `tier ∈ {exec,script,ko}`）。**本批无新类**（沿用 `RootManager`/`RootManagerAction`）。
 >
 > **成功后跳转 root 管理器（**已落地** `e500b407` + `4a02d19b`）**：`RootManager`（`app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt`）是 App 侧**唯一包名镜像**（枚举注释直接指向 native `lkm_image.cpp:343-348` 的 `default_root_package()`；未知 ⇒ `null`，**绝不猜**；P1 加行时同步 schema 行）；`RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(succeeded, rootProduced, packageName, launchable)` 决定「打开它 / 说明它 / 什么都不做」——`force_attack_test` 成功但**不产生 root 状态** ⇒ `Skip`（不得误导用户），不可启动 ⇒ `Hint`（页面必须说明）。
@@ -770,6 +770,7 @@ sequenceDiagram
 
 > **一次真实返工（记进图/注）**：最初让窗口直接持有 `PluginHost*` → 5 个既有测试二进制被拖入 host 闭包并链接失败 ⇒ 改为**中性 `PluginStageSink`**（函数指针 + ctx，同 `ChainOps`/`LkmTransport` 惯例），依赖只留在组合接缝（1 条 Makefile 规则），4 条既有规则不动。
 > **43499 的 `pre_terminal`（step 3b）未落地**：打开点是 `steps.cpp:484-490`/`:517-521` 的 anchor，**R1：waiter 存活期不得 open**。
+>
 ## 5. 维护约定
 
 - **一个结构只保留一处权威图**：IPO/状态机/Class/Sequence 都在本文件；其他文档链接本文件，不重复画同一结构。

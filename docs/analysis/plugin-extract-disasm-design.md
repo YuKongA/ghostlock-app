@@ -193,7 +193,7 @@
 | # | 议题 | 状态 |
 |---|---|---|
 | D1 | `pattern` 前缀与细化（`bytes:`/`insn:`、`??` 一字节、4 的倍数） | **已收敛**（native §11.1） |
-| D2 | `capture` kind 集合 = `pc|imm|disp|reg|pcoff`（删 `symbol_va`） | **已裁决冻结**（Lead 2026-10-05；native §11.2 r5） |
+| D2 | `capture` kind 集合 = `pc\|imm\|disp\|reg\|pcoff`（删 `symbol_va`） | **已裁决冻结**（Lead 2026-10-05；native §11.2 r5） |
 | D3 | `capture=-` 语义 = `pc` | **已收敛**（native §11.3） |
 | D4 | `width=auto` = 原样 u64；`signed=1 + auto` 拒行 | **已收敛**（native §11.4） |
 | D5 | `type=int & signed=0`、`type=uint & signed=1` 拒行 | **已收敛**（native §11.5） |
@@ -217,4 +217,3 @@
 6. **诊断落点**：`--format conf` 时 stderr 打 `plugin <id> extract <name> -> <method>`；`--format text|json` 时同一批诊断以稳定字段 `plugin_extract` 数组进 JSON（`id/name/resolved/method/evidence/reason`），**不进 wire/HOCON**。json 模式下解析针对一个 **route-less candidate**（只有 conf 模式做 route 推断），因此 route 相关的 profile 路径只在 conf 模式可解析——这是本批的已知边界，端到端联调（native 出 `spec` 行）时可再统一。
 7. **`--plugin-descriptor` 的格式面**：P2 曾限定仅 `--format conf`；本批放宽为任何 format（conf 写块，text/json 只出诊断），因为诊断必须能脱离 conf 输出单独查看。
 8. **共享语料不动**：conformance 语料是「探针 TSV 的 verdict 语料」，`spec` 是新能力，其用例待 native 产出 `spec` 行后按 §9.5 顺序另批进仓。
-

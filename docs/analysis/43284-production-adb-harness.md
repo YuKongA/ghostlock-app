@@ -57,8 +57,8 @@ adb shell 'cd /data/local/tmp && GHOSTLOCK_HOME=/data/local/tmp \
   ./glk --run-cve-2026-43284 /data/local/tmp/helper.ko /vendor/lib64/libbinderdebug.so --stage=full < /data/local/tmp/frame.bin'
 ```
 
-
 > **硬要求（2026-10-05 冷启实证；G1 谜团的根因）**：`--ghostlock-app-call` 的 **stdin 布局必须是 `[4B len][GLKv3 文档][会话帧]`**。用 `--enable-status-record` 时**缺会话帧**会在 **`src/core/main.cpp:106-108` 的第一个门**（`read.error != 0`）被拒，而**错误信息只显示 `cannot load profile`**——**极易误判为文档/版本问题**（本项目正是如此误判过一次）。
+>
 > - **正解载荷**：`[4B len][1883 B doc][88 B frame]` = **1975 B**（本试验台的 `appcall.bin`）；
 > - **对照证据**：**同一份** App 导出文档（1883 B）用 **`--load-prebuilt-profile`** 加载**成功**（`resolved profile loaded: 5.15.189-…`，exit 0）⇒ **文档本身可加载**，问题在载荷布局而非文档/版本；
 > - **基准样本缺口**：设备上 `/sdcard/Download/ghostlock-debug-log/` **不存在** ⇒ 目前**没有**「App 实际送出的字节」基准样本；**真实 App 路径仍需一次 App 运行**（真机门禁要求里对此已有登记）。

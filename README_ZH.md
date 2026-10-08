@@ -138,4 +138,3 @@ ghostlock {
 ### Vendored 库
 
 - [ludocode/mpack](https://github.com/ludocode/mpack) —— MessagePack 读/写库，MIT；vendored 于 [`src/lib/mpack/`](src/lib/mpack/)，LICENSE 随代码保留。
-

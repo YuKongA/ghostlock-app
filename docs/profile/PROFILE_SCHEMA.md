@@ -82,11 +82,13 @@ Owner set after the refactor: **`backend.<id>` only** (plus the root scalars and
 ## 5. Backends
 
 **`cve_2026_43499`**
+
 - `steps` — the combination token (selection axis).
 - `abi.*` — task_struct / cred / kernel / offset facts; this is where `platform.abi.*` moved.
 - `route` / `cred` / `kernel` / `offset` / `execution` — route-private and geometry groups as before.
 
 **`cve_2026_43284`**
+
 - `steps` stays at the top of the backend (selection axis); 43284 has no route axis, so the token is a bare path name (`umh`).
 - `execution.*` — `late_load_args`, `selinux_exec_context`, `module_poll_attempts`, `module_poll_interval_ms`, `wait_timeout_ms`.
 - **`kmi` / `lkm_path` / `carrier_path` are deleted from the profile**:
@@ -122,6 +124,7 @@ Owner set after the refactor: **`backend.<id>` only** (plus the root scalars and
 ## 9. Validation and diagnostics
 
 Fail-closed (whole document rejected, never a silent downgrade):
+
 - a deleted owner (`common`, `platform`, `selection`) or a currently unsupported owner appears;
 - a root scalar outside the whitelist, or an unknown top-level owner (e.g. `root`, `meta`);
 - `available` names a token that is not in the catalog, or `steps` contradicts the chosen token;

@@ -51,6 +51,7 @@ WriteOutcome write_op(OpCtx& ctx, const WriteEntryParams& entry, const Cve43499O
 ### 4.1 窗口 TU 的禁 include 判据（N9）
 
 - 机制**移出层表**（层表按层匹配，无法表达同层内按文件禁用）⇒ **窗口 TU 清单 + 文件级扫描判据** 见 [queue-schema](handoff-payload-queue-schema.md) §4；承载测试 = `tests/op_tu_isolation_test.cpp`（禁 include 头清单 + `nm` 无 `_ZTV*` + 非法输入 ≠0）。
+
 ### 4.2 分派表述（R2 统一）
 
 - **分派在 op 入口、窗口外完成**；**窗口内只执行已选定的编译期策略**（`run_route_policy<P>`）。

@@ -16,6 +16,7 @@ kernel/memory 边界、门禁策略、中立性验证、同族复用）。维护
 ## 决策（Decision）
 
 ### R1 依赖模型 = 允许依赖图（不是层次链）
+
 以**允许边（allowed edges）**为唯一权威，并加 include 防火墙测试。允许：
 
 ```
@@ -35,32 +36,39 @@ pipeline         → contract, memory, session, backend, terminal, profile, supp
 （身份声明在 backend、注册表/pipeline 单向引用；`catalog↔backend` 环由此打断，配测试）；platform 不得依赖 backend。
 
 ### R2 结构表述 = 2 装配轴 + backend 内 route + 2 横切（定版，替代“四轴”）
+
 ```
 装配轴：backend（漏洞）× terminal（提权后接管）
 后端内部：route（含 primitive/victim，按 profile 选）
 横切：platform（厂商/设备/内核对策，profile 门控）· capabilities（可选能力接口）
 ```
+
 四者不是同级的“轴”。`backend`/`terminal` 由 selection 决定；`platform` 由 profile 设备/厂商段推导，无 selection id；
 `capabilities` 是组合根注入的可选能力。ADR-0001 §1 据此修订。
 
 ### R3 terminal 成为顶级轴，handoff 降为策略内机制
+
 顶级 `terminal/`：策略 `root_child` / `umh_forward` / `file_write`(43503) / `panic`(23274)；`handoff`（KernelSU
 late-load、root script）是 `terminal::root_child` 的内部机制。`RunStage::Terminal` 与之对齐。ADR-0001 §7 修订。
 
 ### R4 ancillary 机制保持顶级，行为由 platform/backend 注册
+
 顶级 `ancillary/` 保留为**中性阶段钩子机制**（Controller/Stage；`PreSpawn`/`PostSpawn`/`PreHandoff`；
 `AncillaryContext` 退役，行为取 `contract::Capabilities&`）。**行为**（VrGuard/VrTaskTag）归 `platform::vivo`，
 未来 backend 行为各自注册；**注册表由组合点注入**（解决架构审查 C 的机制缺口）。ADR-0001 §14 修订。
 
 ### R5 platform 内部分层
+
 `platform::abi`（内核 ABI 偏移 + 设备 phys，数据/schema）/ `platform::runtime`（设备运行时探测：iomem cache、
 selinux、seccomp）/ `platform::vivo`（厂商对策）。
 
 ### R6 kernel 并入 memory
+
 取消顶级 `kernel`：通用地址词汇（`KernelAddress`/域/`DIRECT_MAP_*`/`P0_*`/struct page）与地址数学同归 `memory`。
 `kernel/target.h` 中原有的平台默认偏移/符号按 ADR-0003 归属 `platform::abi`/backend。
 
 ### R7 门禁按批推进，A2 独立完整门禁
+
 - Phase A（机械搬迁）分小批，每批 host 全绿 + NDK 零告警；
 - **Phase A2（语义收敛）独立完整门禁**：host + NDK 零告警 + `cmp_disasm` + 真机归档——语义收敛确有行为风险，
   不得并入单次最终门禁；
@@ -68,26 +76,32 @@ selinux、seccomp）/ `platform::vivo`（厂商对策）。
 改回“上一批验证通过再进下一批”（AGENTS）。
 
 ### R8 中立性/可扩展性机械验证
+
 - include 防火墙测试：中性头（`contract`/`memory`/`session`/`pipeline`/`profile`/`support`）不得拉入
   `backend`/`platform`/`terminal` 头；
 - fake backend stub：一个 State/route 都不同的第二 backend 编进 host 测试，证明可组合（仅测试，不进生产）。
 
 ### R9 同族（UAF）复用：明确延后
+
 不预抽共享“利用框架接口”。等**第二个原语不同的 backend 真正落地**，再从两个真实实现抽象。此决定写入框架文档，
 避免被读成遗漏。
 
 ### R10 terminal 输入 = 中性 `terminal::RootedChild`
+
 `root_child` 策略不收 backend 私有 `VictimChain`/`VictimContext`；改用中性、move-only 的
 `terminal::RootedChild`（pid + command fd + `alive`/`seccomp_bypassed`/`ever_rooted` + 显式 `retire()`/
 `detach()`）。backend 在 terminal 边界由 victim 状态**转移**构造（`release_child()` + fd move），terminal 消费；
 作用域退出只关 fd、不杀子进程（保持 O3）。`backend → terminal` 已是允许边。
 
 ### R11 backend 内同名子模块加 `backend_` 前缀
+
 `backend::cve_2026_43499::profile` → `backend_profile`、`...::terminal` → `backend_terminal`，与顶级 `profile`/`terminal`
 区分；其余 backend 子模块无同名，不改。
 
 ### R12 terminal 由 pipeline 编排：`Pipeline<Backend, Terminal>`
+
 terminal 是显式选择维度，由 pipeline 在编排层调用，不藏进 backend：
+
 - `ComponentSelection = {BackendKind, TerminalKind}`（`TerminalKind` = GLK1 header 的 `frontend` 字段语义，wire 字节不变）；
 - `Pipeline<Backend, Terminal>::run(CoreSession&)`：先 `B::run(session, RootedChild&)`（backend 填终端输入、转移 victim
   所有权），再 `T::run(session, RootedChild&)`；terminal 返回 `Continue` 视为契约违反；
@@ -130,11 +144,13 @@ teardown: 停止参与者 -> disarm -> 回收
 ## 后果（Consequences）
 
 正面：
+
 - 顶级命名空间收敛为 `contract / memory / session / pipeline / backend / platform / ancillary / terminal / profile / support`
   （10 个，含并入的 kernel 与保留的 ancillary）；轴与命名一致，依赖可机械检查；
 - pipeline↔backend 环被打断；中立性有测试；门禁可归因。
 
 负面/风险：
+
 - 搬迁面更大（`handoff→terminal`、`kernel→memory` 要改 include/命名空间/构建清单；ancillary 机制保持顶级但行为下放 `platform::vivo`）；
 - 需新增 include 防火墙测试与 fake backend stub，host 构建时间略增。
 

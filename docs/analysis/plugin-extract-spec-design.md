@@ -112,7 +112,6 @@ typedef struct glk_extract_spec {
 3. `method_mask = 0`（= 默认阶梯）与「显式列出四种方法」是否语义等价——我推荐**不等价**：0 表示「交给 extractor 的默认阶梯（未来可能演进）」，显式列出表示「只按我列的试」。
 4. 是否需要 `constraint`（如「命中必须落在函数 X 内」）——我建议 P1 **不做**，先用 `anchor + occurrence` 覆盖；真实需求出现再加尾部字段。
 
-
 ## 9. 裁决落实（r2，Lead 2026-10-05，7 条）
 
 ### 9.1 未知 method 的两分支规则（取代 §8 第 1 问）
@@ -168,22 +167,23 @@ kind  id  name  type  required  methods  anchor  scope  pattern  hit  capture  w
 ~~~
 
 | # | 列 | 取值域 | 缺省 `-` 的含义 |
+
 | — | **注：第 9/11/12/13 行的取值域以 §11（r4 收敛）为准** | | |
 |---|---|---|---|
 | 1 | `kind` | 字面量 `spec` | — |
 | 2 | `id` | 插件稳定 id（同 `plugin` 行） | — |
 | 3 | `name` | 非空、无控制字符、≤64B；**解析结果写到 `plugin.<id>.extract.<name>`** | — |
-| 4 | `type` | `uint|int|bool|str`（与 GLKv3 WireKind 同字面量） | — |
-| 5 | `required` | `0|1` | — |
-| 6 | `methods` | 逗号分隔、**即尝试顺序**，成员 ∈ `profile|btf|kallsyms|disasm`；无重复 | `-` = 默认阶梯 `profile→btf→kallsyms→disasm`（§9.2） |
+| 4 | `type` | `uint\|int\|bool\|str`（与 GLKv3 WireKind 同字面量） | — |
+| 5 | `required` | `0\|1` | — |
+| 6 | `methods` | 逗号分隔、**即尝试顺序**，成员 ∈ `profile\|btf\|kallsyms\|disasm`；无重复 | `-` = 默认阶梯 `profile→btf→kallsyms→disasm`（§9.2） |
 | 7 | `anchor` | `sym:<name>` / `path:<profile-path>` / `pc:<hex>` | `-` = 必需（`disasm` 在 methods 中时不得缺省） |
-| 8 | `scope` | `anchor|text` | `-` = `anchor` |
+| 8 | `scope` | `anchor\|text` | `-` = `anchor` |
 | 9 | `pattern` | `bytes:<hex 带 ?? 通配>` / `insn:<1..3 条，以 ; 分隔>`；禁止正则 | `-` = 无模式（仅 anchor + hit） |
 | 10 | `hit` | 十进制 1..64 | `-` = `1` |
-| 11 | `capture` | `[<insn_index>.]<kind>:<operand_index>`，`kind ∈ pc|imm|disp|reg|pcoff`（§11.2 裁决） | `-` = `pc`（命中指令镜像内地址，§11.3） |
-| 12 | `width` | `1|2|4|8` 或 `auto` | `-` = `auto`（由 `type`/`capture` 推导） |
-| 13 | `signed` | `0|1` | `-` = `0`（无符号扩展） |
-| 14 | `base` | `image|anchor|raw` | `-` = `image` |
+| 11 | `capture` | `[<insn_index>.]<kind>:<operand_index>`，`kind ∈ pc\|imm\|disp\|reg\|pcoff`（§11.2 裁决） | `-` = `pc`（命中指令镜像内地址，§11.3） |
+| 12 | `width` | `1\|2\|4\|8` 或 `auto` | `-` = `auto`（由 `type`/`capture` 推导） |
+| 13 | `signed` | `0\|1` | `-` = `0`（无符号扩展） |
+| 14 | `base` | `image\|anchor\|raw` | `-` = `image` |
 | 15 | `max_scan` | 十六进制（`0x…`）或十进制，1..1 MiB | `-` = `0x2000` |
 | 16 | `doc` | 自由文本（无 TAB） | `-` = 无说明 |
 
@@ -232,6 +232,7 @@ kind  id  name  type  required  methods  anchor  scope  pattern  hit  capture  w
 - 理由（Lead）：该集合与解码器操作数模型一一对应（`Operand::{Register, Immediate, ImmShift, PCOffset}`）；`symbol_va` 无独立语义（要么等于 pcoff、要么是同一概念的第二个名字，本项目禁止「两个词一个概念」）；
 - 消费端词表以此为唯一权威，**不得**再出现 `symbol_va`；实现批次按此写死并与三端对拍；
 - 扩展方式：将来若需要新 kind，按 append-only（整列/词表扩展 + 同批改本节 + 通知三方）。
+
 ### 11.3 D3 `capture = -` 的语义（采纳对方建议 ①）
 
 - `-` = **`pc`**（命中指令自身的镜像内地址）——最通用且可判定；**不再**表述为「捕获整个命中」；

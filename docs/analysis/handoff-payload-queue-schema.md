@@ -1,6 +1,6 @@
 # 队列元素 schema · 成员表 · 窗口 TU 判据（第四轮修订细则）
 
-> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md)、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[kotlin](handoff-payload-kotlin.md)、[**params**](handoff-payload-params.md)、[params-dispatch](handoff-payload-params-dispatch.md)、[batch-plan](handoff-payload-batch-plan.md)。**本文是「队列元素 schema / 成员表 / 窗口 TU 判据」的唯一权威**。**自包含，不引用任何外部计划**。
+> 分析类（≤8 KB）。⚠ **已退役（2026-10-08）**：`queue` 由用户裁定**移除** ⇒ **现行权威 = [script-plan-design](script-plan-design.md)**（计划载体改为脚本）；**原文保留作沿革**（下文为退役时快照，仅成员表/窗口 TU 判据仍可复用）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)。**自包含，不引用任何外部计划**。
 > **代码引用约定**：`document.hpp`/`glkv3_*.hpp`/`glkv3_parse.cpp`/`schema.hpp` ⇒ `src/core/profile/`；`step_plan.hpp`/`capability*.hpp` ⇒ `src/core/contract/`；`route_lifecycle.hpp`/`primitives.cpp`/`capability_adapters.hpp` ⇒ `src/core/backend/cve_2026_43499/`。
 
 ## 1. 元素键集合（7 键）
@@ -26,6 +26,7 @@ queue = [
 - **解码层失败也必须具名**：`mpack_expect_map_max` 触顶 ⇒ 不得以 TypeMismatch 结案；`reason = param-invalid`（并入既有原因码，**不因参数新增**；第 10 条由**执行器**引入 `executor-unavailable`）、`path = <section.key>`，经 **parse 错误通道**具名上报。
 - **保留**：`kMaxCompositeItems = 64`、`kMaxCompositeTextBytes = kMaxStringBytes`。
 - **pre-gate vs gate 分工**：`state_from` 的**绑定校验**（声明/类型/必需键）= **pre-gate**（不产出 gate 原因）；`plan_gate` 只做**静态策略判定**（10 条，含 `executor-unavailable`）；同时失败 ⇒ 先报 pre-gate。
+
 ## 3. 成员表落地（`DeclaredArrayField` 增 `members`）
 
 - **现状**：`document.hpp:82-85` 的 `DeclaredArrayField` 只有 `{section, key}`——只声明「哪些键是数组」，**不含成员名单**。
@@ -47,12 +48,14 @@ queue = [
   7. `backend/cve_2026_43499/spray.cpp`（**已核实**）：`route/select_stack_route.cpp:435`、`route/multicast_waiter_route.cpp:177-189` 在路由过程内直接调 `spray::prepare/stash/activate/discard_prebuilt_page` ⇒ 属窗口可达面。**传递可达也纳入扫描**：`spray.cpp → memory/{heap_context.h,target.h}`、`leak/address_discovery.h`、`route/route_policy.hpp`（只扫直接 include 会漏面）。
 - **判据承载 = `src/core/tests/op_tu_isolation_test.cpp`（文件级扫描）**：① 逐 TU 扫**禁 include 头清单**（含虚基的头）；② `nm` 检查热路径对象**无 `_ZTV*`**；③ 非法构造（给 TU 加禁 include）⇒ **退出码 ≠0**。
 - **层表职责回收**：`include_firewall_test.cpp` 只保留**层间**规则（+ `pipeline`/`script` 两项，见 b0 §4）；**同层内按文件禁用**由 `op_tu_isolation_test.cpp` 承担。
+
 > 判据形式见 [verification](handoff-payload-verification.md) §1。
 
 ## 5. 参数来源（两条既有通道）
 
 > 参数值**不进队列**（`params_ref` **已删**）：① **静态调参** = 既有 Owner Schema（如 `backend.<id>.execution.stages.*`，**权威不变**）；② **动态参数** = Lua 脚本调 op 时传表，gate 按 `OpSpec`/`ParamSpec` 校验。
 > 删 `params_ref` 的四条理由（白名单 fail-closed / manifest 无该路径族 / 与「重导空 diff」互斥 / 同一事实两处定义）、失败语义与文档同步：见 [handoff-payload-params.md](handoff-payload-params.md)。
+>
 ## 6. 数据槽与扁平 schema 的关系（D20 对齐，必改 a）
 
 - **handoff 数据槽不进队列元素**（R1 = 7 键扁平标量，元素里没有 `produces`/`consumes`）：数据槽改为 **op 级声明**——`OpSpec.produces`/`OpSpec.consumes`（b1b2 §B1.1）+ 生命周期/类型，或由**脚本 `slot.get/set` API** 承担（b1b2 §B2.2）。

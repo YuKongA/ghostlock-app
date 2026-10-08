@@ -76,7 +76,7 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 > **选择权威（2026-10-05）**：装配选择由 **token 白名单**表达（`contract::kCombinationCatalog`：token → {backend, route, steps, terminal, available}），
 > token 落在 `backend.<id>.steps`；`pipeline` 只做分派。**词汇/白名单必须导出并对拍**（native → 资源 → Kotlin agreement test），
 > 不得在 Kotlin 侧手写第二份。**terminal 归属见 ADR-0006**（词汇保留、实现下放 backend、共享件中性）。
-
+>
 > 本节描述重写后的**目标模型**，随重写落地取代 §2.1/§2.2 的现状描述。
 
 **结构（2 装配轴 + backend 内 route + 2 横切）**：
@@ -237,7 +237,8 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 - Native 以 `-fno-exceptions` 语义设计：除 `FatalError` 外不得抛异常；不得用异常表达可恢复错误。
 - 失败必须**早失败、带上下文**（profile 校验拒绝发布 active profile；KernelSnitch 越界拒绝）。
-- 能力（§2.0）以“空句柄”表达不可用，调用方 fail-closed；**异常与间接分派绝不进 PI 窗口**（E2/E3）。
+- 能力（§2.0）以“空句柄”表达不可用，调用方 fail-closed；**异常与间接分派绝不进 PI 窗口**（E2/E3）。**窗口内可调用面以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准**（实测：窗口内 `sched_setattr` 进入 `rt_mutex_adjust_pi` ⇒ 禁）。
+  > 沿革（2026-10-08）：原句仅禁「异常与间接分派」；现按 device-gate 实证追加「白名单 + 禁项」，原文保留于本行。
 
 ### 4.4 状态/投影字段语义（UI 与状态设计；从真机缺陷提炼，**强制**）
 
@@ -405,6 +406,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 ## 9. Agent 执行检查清单（先设计，后改动）
 
 **开始前**
+
 - [ ] 读 `AGENTS.md` + 本文 + 与任务直接相关的现行文档（`adding-a-component.md`、PROFILE_SCHEMA 等）
 - [ ] 用 git 历史检索是否已有同类设计与证据（`git log --all -- <path>`）
 - [ ] 判定变更级别（S/M/L）；L 级先写计划并获用户认可
@@ -412,17 +414,20 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 - [ ] 确认不变量（profile 权威、全局状态清单、wire 兼容、保留清单）
 
 **实施中**
+
 - [ ] 最小改动；不碰设计外文件；不动 `LegacyProfileConverter.kt`/保留清单；`kernelsnitch` 仅可在顶级重构中作为 backend `leak` 模块改写（先设计+测试，见 §2.5）
 - [ ] 双侧同步：Native↔Kotlin 注册表与字段表逐字一致；文档同步（含 `_ZH`）
 - [ ] 新代码零告警；显式类型转换；RAII 所有权；不可变性优先
 
 **完成后**
+
 - [ ] 按级别跑满 §1.3 门槛命令，保留原始输出
 - [ ] 攻击路径：真机门禁 + 门禁记录归档（`cmp_disasm` 可选诊断）
 - [ ] 汇报时给出**证据**（命令、结果、文件路径），不写"应该没问题"
 - [ ] 未经明确要求：不 commit、不 push、不建 PR
 
 **禁止模式**（历史失败模式）
+
 - 厨房水槽式改动（多主题混杂、顺带重构）
 - 无设计直接改攻击路径；改了不跑形状对比
 - 无证据宣称验证通过；用单次结果推翻既有归因

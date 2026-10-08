@@ -12,6 +12,7 @@
 | [0006](0006-terminal-ownership.md) | terminal 归属 | 实现下放 backend、**词汇保留**；共享件中性；装配权威在 `component_catalog` | Accepted（2026-10-05） |
 | [0008](0008-lua-runtime-sandbox.md) | Lua 运行期与沙箱 | 采用 vendored Lua 5.4（源码解析，≈107 KB/2.2%）；白名单沙箱 + 预算/内存/64 KB；`bin` 仅脚本键；句柄 `{kind,index,generation}` | Proposed（待用户批准，2026-10-07） |
 | [0009](0009-script-trust-and-hardline.md) | 脚本信任模型与能力面硬线 | 导入无限制（L2 只展示不拦截）；**硬线 = op 面无块设备/任意路径写**（D29）；句柄 D30；插件 Lua 控制面 D31/D32 | Proposed（待用户批准，2026-10-07） |
+| [0010](0010-lua-cpp-resource-model.md) | Lua 与 C++ 资源模型（作用域 · 句柄生命周期 · GC 边界） | C++ 独占所有权、Lua 只持句柄；作用域三分类（窗口/op/脚本）；八条硬规则 + 五条具名拒绝；**句柄为 POD，无 `__gc` 释放路径** | Proposed（待用户批准，2026-10-08） |
 
 ## 相关但与本文档无关的索引
 

@@ -424,6 +424,7 @@ su -c "/data/local/tmp/avbcheck verity-status"
 ```
 
 `avb-verify` 行为：
+
 - 解析 `AVB0` 头与 hash/hashtree/chain/property/kernel-cmdline 描述符；
 - hash 描述符：从 `<name><slot>` 设备读前 `image_size` 字节算 `H(salt||image)`；
 - hashtree 描述符：从 `/dev/block/mapper/<name>-verity`（活动槽）读数据区并按 avbtool 相同规则重建 Merkle root；
@@ -434,11 +435,13 @@ su -c "/data/local/tmp/avbcheck verity-status"
 ### 17.4 真机验证（2026-10-04，A301SO QV770MFGJ1，Android 15，slot _a，只读）
 
 `hash`（与 `baselines/QV770MFGJ1-avb-baseline.tsv` 完全一致）：
+
 ```
 ea7e866b28a140e3b210bb3aac22659be96a1548b61b249e2b086a11dfd706b7  65536  /dev/block/by-name/vbmeta_a
 ```
 
 `check`（用 host 基线中 4 条：vbmeta_a / boot_a / dtbo_a / system-verity）：
+
 ```
 [ok] vbmeta_a   [ok] boot_a   [ok] dtbo_a   [ok] system-verity
 # summary total=4 ok=4 fail=0 err=0 expected_variable=0
@@ -446,6 +449,7 @@ CHECK_RESULT=CONSISTENT  (exit 0)
 ```
 
 `avb-verify --slot _a`（12 描述符，5 签名，exit 0）：
+
 ```
 ### vbmeta_a (24 descriptors, avbtool 1.3.0)
 [sig-ok] vbmeta_a (embedded key)
@@ -461,6 +465,7 @@ AVB_VERIFY=OK  (exit 0)
 ```
 
 `verity-status`：
+
 ```
 devices=43 dmctl=1 dmsetup=0
 [V] x34（含 7 个 *-verity + 27 个 APEX verity）
@@ -489,12 +494,14 @@ VERITY_RESULT=OK  (exit 0)
 ### 17.5 已验证 / 未验证
 
 已验证：
+
 - aarch64 静态构建零告警；`make` / `make test` exit 0；
 - 设备端 `hash` / `baseline` / `check` / `avb-verify` / `verity-status` 只读跑通，与 host 基线/Python 摘要一致；
 - 顶层与 chain 子 vbmeta 的 `SHA256_RSA4096` 签名校验（自实现大数 modexp，PKCS#1 v1.5）；
 - hashtree Merkle root 与 avbtool `generate_hash_tree` 逐字节一致。
 
 未覆盖：
+
 - FEC（`fec_offset`/`fec_size`）只解析不校验（与 avbtool 相同，需 `fec` 工具）；
 - `blake2b-256` 等非 SHA-2 哈希记 `[ERR]`（本机描述符均为 sha256）；
 - 设备端 `avb-verify` 只证明「描述符声明摘要与当前设备内容一致」；**信任根仍是设备自身 AVB**

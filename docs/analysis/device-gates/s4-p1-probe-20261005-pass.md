@@ -39,6 +39,7 @@ hook	glk.probe	on_stage	post_terminal	0	glk.probe
 - 探针在**真机 bionic/aarch64** 上行为与冻结契约一致：成功 0 + TSV、失败非 0 + `reject` 行（原因复用 `LoadStatus` 名）、入口互斥、**哈希先于 dlopen**；
 - **未覆盖**（待 P1 第二半）：`plugin.*` wire 字段的绑定与文档发射、App 内导入闭环、`delta4` 试验台端到端——见 `task-8` / `task-4`；
 - 本批未触碰攻击关键路径（探针为独立只读入口）；无 wire 变化。
+
 ## 5. 附：带 param/extract 的完整 stdout（作 Kotlin 对拍 golden）
 
 fixture 源：`src/core/tests/fixtures/cm_test_plugin_schema.c`（`src/Makefile` 里 host 侧也用它）。

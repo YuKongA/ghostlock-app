@@ -242,3 +242,156 @@ tasks.register<Copy>("prepareGhostlockExtractJniLibs") {
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libextract.so" }
 }
+
+/* ---------------------------------------------------------------------------
+ * markdownlint（docs 渲染级检查）
+ *
+ * 目的：用 markdownlint-cli2 约束**渲染相关**的 Markdown 规则（表格列数/空行、
+ * 列表与围栏空行、引用块空行等）。规则与范围见根目录 .markdownlint.jsonc 与
+ * .markdownlint-cli2.jsonc（docs/archive 目录为历史快照，显式豁免）。
+ *
+ * 候选运行器（按序尝试；只用 JVM/进程 API，不依赖 shell）：
+ *   1) 项目本地 node_modules/markdownlint-cli2 的 bin 入口（npm ci 后离线可用）；
+ *   2) PATH 上的 npx --no-install markdownlint-cli2（npx 缓存命中时可用）；
+ *   3) -PmarkdownlintAllowInstall=true 时先 npm install（需网络），再走 1)。
+ *
+ * 判定表（**防假绿**，不依赖易抖的 --version 预探针）：
+ *   横幅出现 + exit 0      ⇒ 通过；
+ *   横幅出现 + exit ≠ 0    ⇒ lint 命中问题 ⇒ 构建失败（红）；
+ *   横幅缺失（无论 exit）  ⇒ 工具没跑起来或入口错（历史事故：库入口 .mjs 静默 exit 0）
+ *                            ⇒ 显式 SKIP，任务状态 = SKIPPED（不是 SUCCESS）；
+ *   -PmarkdownlintStrict=true ⇒ SKIP 直接失败（CI 硬门禁）。
+ *
+ * 用法：
+ *   ./gradlew markdownlint        # 检查
+ *   ./gradlew markdownlintFix     # 自动修复可修项（--fix）
+ *   MARKDOWNLINT_NODE=<path>      # 指定 node 可执行文件
+ *
+ * 实现说明：写成**类型化 DefaultTask**（而非脚本闭包），以兼容
+ * org.gradle.configuration-cache=true（脚本对象不可序列化）。
+ */
+abstract class MarkdownlintCli2Task : DefaultTask() {
+    @get:Input
+    abstract val fixMode: Property<Boolean>
+
+    @get:Input
+    abstract val strictMode: Property<Boolean>
+
+    @get:Input
+    abstract val allowInstall: Property<Boolean>
+
+    @get:Optional
+    @get:Input
+    abstract val nodeExecutable: Property<String>
+
+    @get:Internal
+    abstract val repoDir: DirectoryProperty
+
+    @TaskAction
+    fun lint() {
+        val pin = "0.23.3"
+        val root = repoDir.get().asFile
+        val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+        val node = nodeExecutable.orNull?.takeIf(String::isNotBlank) ?: "node"
+
+        data class Probe(val ok: Boolean, val output: String)
+
+        fun run(command: List<String>): Probe =
+            try {
+                val process = ProcessBuilder(command).directory(root).redirectErrorStream(true).start()
+                val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
+                val code = process.waitFor()
+                logger.lifecycle(text.trimEnd())
+                Probe(code == 0, text.trim())
+            } catch (e: Exception) {
+                Probe(false, e.message ?: e.toString())
+            }
+
+        fun giveUp(reason: String): Nothing {
+            logger.lifecycle("SKIP markdownlint: " + reason)
+            logger.lifecycle(
+                "SKIP markdownlint: 本次没有执行任何 Markdown 检查 —— 任务结果为 SKIPPED，" +
+                    "不代表 lint 通过（不假绿）；需要硬门禁请加 -PmarkdownlintStrict=true",
+            )
+            if (strictMode.get()) throw GradleException("markdownlint SKIPPED: " + reason)
+            throw StopExecutionException("markdownlint skipped: " + reason)
+        }
+
+        val nodeProbe = run(listOf(node, "--version"))
+        if (!nodeProbe.ok) {
+            giveUp("找不到可用的 node（" + nodeProbe.output.take(200) + "）；设 MARKDOWNLINT_NODE=<path> 或安装 Node.js")
+        }
+
+        // 本地安装的 **bin** 入口（不是库入口 markdownlint-cli2.mjs —— 后者静默 exit 0）。
+        fun localBin(): File? {
+            val pkgDir = File(root, "node_modules/markdownlint-cli2")
+            val pkgJson = File(pkgDir, "package.json")
+            val fromPkg = if (pkgJson.isFile) {
+                val match = Regex("\"markdownlint-cli2\"\\s*:\\s*\"([^\"]+)\"").find(pkgJson.readText())
+                match?.groupValues?.get(1)?.let { File(pkgDir, it) }
+            } else {
+                null
+            }
+            val fallback = File(pkgDir, "markdownlint-cli2-bin.mjs")
+            return listOfNotNull(fromPkg, fallback).firstOrNull { it.isFile }
+        }
+
+        val npx = if (isWindows) "npx.cmd" else "npx"
+        val candidates = mutableListOf<List<String>>()
+        localBin()?.let { candidates += listOf(node, it.absolutePath) }
+        candidates += listOf(npx, "--no-install", "markdownlint-cli2")
+
+        if (allowInstall.get() && localBin() == null) {
+            val npm = if (isWindows) "npm.cmd" else "npm"
+            logger.lifecycle("markdownlint: 本地未安装，执行 npm install（需网络）")
+            run(listOf(npm, "install", "--no-audit", "--no-fund"))
+            localBin()?.let { candidates.add(0, listOf(node, it.absolutePath)) }
+        }
+
+        val args = mutableListOf("--config", ".markdownlint-cli2.jsonc")
+        if (fixMode.get()) args += "--fix"
+
+        var lastReason = "没有任何候选运行器"
+        var ran = false
+        for (candidate in candidates) {
+            val command = candidate + args
+            logger.lifecycle("markdownlint: " + command.joinToString(" "))
+            val result = run(command)
+            if (!result.output.contains("markdownlint-cli2", ignoreCase = true)) {
+                lastReason = "运行器未产出工具横幅（" + command.joinToString(" ") + "）：" + result.output.take(200)
+                continue
+            }
+            ran = true
+            if (!result.ok) {
+                throw GradleException("markdownlint 失败：见上方 file:line:rule 输出")
+            }
+            break
+        }
+        if (!ran) {
+            giveUp(
+                "markdownlint-cli2 未能运行（" + lastReason + "）；" +
+                    "修复：npm ci（或 -PmarkdownlintAllowInstall=true 联网安装 markdownlint-cli2@" + pin + "）",
+            )
+        }
+    }
+}
+
+tasks.register<MarkdownlintCli2Task>("markdownlint") {
+    group = "verification"
+    description = "markdownlint-cli2 检查 Markdown 渲染级问题；无法运行时显式 SKIP（不假绿）。"
+    fixMode.set(false)
+    strictMode.set(providers.gradleProperty("markdownlintStrict").map(String::toBoolean).orElse(false))
+    allowInstall.set(providers.gradleProperty("markdownlintAllowInstall").map(String::toBoolean).orElse(false))
+    nodeExecutable.set(providers.environmentVariable("MARKDOWNLINT_NODE"))
+    repoDir.set(layout.projectDirectory)
+}
+
+tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
+    group = "verification"
+    description = "markdownlint-cli2 --fix（自动修复可修的渲染级问题）。"
+    fixMode.set(true)
+    strictMode.set(providers.gradleProperty("markdownlintStrict").map(String::toBoolean).orElse(false))
+    allowInstall.set(providers.gradleProperty("markdownlintAllowInstall").map(String::toBoolean).orElse(false))
+    nodeExecutable.set(providers.environmentVariable("MARKDOWNLINT_NODE"))
+    repoDir.set(layout.projectDirectory)
+}

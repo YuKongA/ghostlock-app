@@ -95,4 +95,3 @@ payload {
 1. 段名 `payload` 顶层 owner ✓；2. 用语义词 `exec/script/ko`（不用 t1/t2/t3）✓；3. 多 ko = 方案 A（`ko.<i>.{path,sha256}`，count ≤8），方案 B 否决 ✓；4. P1 单档互斥 ✓；5. **统一失败语义**：不中断攻击链，但用户显式请求未完成 ⇒ 本次运行标「未完成」+ 逐项原因，同时保留提权记录 ✓；6. 落点先随 `root_child` ✓；7. payload×terminal 可用性矩阵显式 + 绑定期 fail-closed + native 导出（Kotlin 不硬编码）✓；8. 授权面（分档设置页 + 确认文案 + 可撤销 + 执行前摘要）✓；9. argv 与脚本区别写清 ✓。
 
 **实现准入**：本设计经用户确认后由 Lead 放行；实现批次只碰 payload 相关文件。
-

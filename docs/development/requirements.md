@@ -1,10 +1,11 @@
 # 需求与裁决登记（requirements）
 
 > **重建声明（2026-10-07）**：本文件原版在 **2026-10-07 22:44** 的写操作事故中**被截断且不可恢复**（未跟踪文件 ⇒ git 无对象、无副本、本机 TM 快照时点更早；取证见 `docs/analysis/incident-20261007-agents-requirements-revert.md`）。以下内容**尽力重建**：
+>
 > - **重建来源**：① `/tmp/forensics-task67/requirements.md`（**966 B 尾部残片**：U5–U7 + 第 8 节来源索引，**逐字抄录**）；② 全仓引用反推（`docs/analysis/resolved-profile-registry-plan.md:20/:179`、`docs/analysis/handoff-payload-batch-plan.md:48-49`、`docs/analysis/handoff-payload-kotlin-io.md:26`、`docs/analysis/adr/0008:30`、`docs/plan/MASTER-PLAN.md`）；③ Lead 给定的编号含义清单。
 > - **确定性标注**：**[确定]**（有物证：残片或显式引用）｜**[推断]**（由引用反推，措辞可能与原版不同）｜**[缺失]**（原文不可恢复，**只保留编号行，不编造条文**）。
 > - **重建人/时间**：docs-uml，2026-10-07（task-71）。**请 Lead/用户核对补全；缺失项须重新编写后再批准。**
-
+>
 > **效力**：与守则冲突 ⇒ 以守则为准；与 `AGENTS.md`/`docs/plan/MASTER-PLAN.md` 内的需求性条款冲突 ⇒ 以本文件为准（那些条款视为副本，待同步）。
 > **来源**：本会话用户原话 + `AGENTS.md`（含用户裁决标注）+ `docs/plan/MASTER-PLAN.md`。
 > **编号占用注记**：本表号段已被占用（F1–F29 · I1–I14 · Q1–Q10 · U1–U7），**新增需求不得复用**；新编号从下一可用号开始。

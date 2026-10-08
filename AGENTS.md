@@ -123,6 +123,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 **同一批次内必须清零**，不得跨批次、不得进入基线；批次计划里须登记"哪几处旧码参考块待删"。
 
 **标准化注释（新增即写；改旧码时顺手补）**：
+
 - **Kotlin / Java / Gradle KTS**：**KDoc**（`/** … */`，含 `@param` / `@return` / `@throws`）。
 - **C++ / C**：**Doxygen 风格**（`/** … */`，含 `@param` / `@return` / `@note`）；不得只写 `//` 碎片注释代替文档注释。
 - **Rust**：**rustdoc**（`///`，含 `# Arguments` / `# Errors` 段）。
@@ -131,6 +132,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **触旧补注**：任何被本次改动触及的旧类/旧函数，**同批补上**上述标准注释（不得只改不注）。
 
 **例外（须用户确认）**：
+
 - **机械改动**（纯格式、重命名、错别字、注释本身）可直接改写，但**仍须**按标准补注释，并在 `//TODO(reason)` 里说明"机械改动"。
 - **无法用注释套住**的情形（例如单行 token 常量修复、仅供工具识别的字符串）⇒ 用独立的 `//TODO(reason)` 标注该处，说明为何不能套码。
 
@@ -272,7 +274,9 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ## 验证门槛
 
 - **守卫/断言必须证明「能失败」**（本项因一次真实发现而设立）：新增的守卫、断言、检查**不能只证明「现在通过」**——必须做一次**证伪实验**（临时造错 → 观察它以预期方式失败 → 撤回并核验无残留），报告里写明造错点与失败输出。本项目曾因此发现一条 **vacuous 断言**：`memcmp` 比较两个 value-init 结构时**恒非零**（padding 未归零）⇒ 删掉被保护的赋值它**仍然绿**；修法＝两侧先 `memset` 归零 + `static_assert(is_trivially_copyable)`。
+
 > 2026-10-07 用户裁定：本条由审查原则 **D1** 取代（黑盒/白盒 + 极端输入值；**不可能用例不测**）——见 `docs/development/design-review-principles.md`；**本条保留为可选手段（不再强制）**。
+
 - **证伪/验证实验一律用 `make -B`**（本项因一次假证明而设立）：`make` 会因**同一秒 mtime** 判定 up-to-date 而**跑旧二进制**，给出**假证明**；凡「造错后验证会失败」的实验必须强制重建。
 - **证伪实验必须清理被测二进制（本项因一次真实假红而设立）**：造错实验结束后，**不仅要还原源码，还必须删除/重建被测二进制**（`rm -f <artifact>` + `make -B` 复核）—— 源码回位 ≠ 产物回位；本项目曾因只还原源码、留下**探针二进制**，使随后跑门禁的人**跑到探针**并获得**假红**（`queue_wire_test.cpp:439` 既有断言被误报 ✗）。交回前一律 `rm -f <artifact>` 并 `make -B` 复核。
 - **判断产出必须数产物、不数目录（本项因一次误判而设立）**：`ls | wc -l` 会把**空目录/临时目录**算进去 ⇒ 必须数**产物文件**——LKM 例：`buildLkmImages` 的 **8 行 `LKM <label> -> … (bytes)`**、`kmis.tsv` **9 行**（表头 + 8）、`unzip -l … | grep assets/lkm/` **8 行**；判定「生成了几个」时一律用这些计数。

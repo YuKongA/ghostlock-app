@@ -9,6 +9,7 @@
 **目标**：把「已导入并被文档启用」的插件接进生产流水线：按 `plugin.<id>.stage` 在正确的阶段加载、调用其 hook、在正确的边界卸载；全过程 fail-soft、可诊断、可审计。
 
 **非目标**（本设计不覆盖，留给后续批次）：
+
 - 插件参数/提取值的**运行时读取 API**（`RuntimeInfo`，属 P3）；
 - extractor 投影（P2）；
 - 插件市场/签名体系；
@@ -111,6 +112,7 @@ namespace ghostlock::plugin {
 ## 8. 测试与真机门禁设计
 
 **host 测试（无设备、无真 .so 依赖，用 `plugin/controller` 的注入面 + 测试 .so）**：
+
 1. 未启用/加载失败 → 攻击链路径不变（用 fake backend/terminal 断言调用序列一致）；
 2. 阶段顺序：`pre_spawn → post_spawn → pre_terminal → post_terminal` 严格升序、每插件每阶段至多一次；
 3. hook 返回非 0 → 该插件后续阶段跳过，其它插件不受影响；
@@ -120,6 +122,7 @@ namespace ghostlock::plugin {
 7. 参数/哈希/路径负例沿用 P1 的 `plugin_wire_test` 矩阵。
 
 **真机门禁（唯一权威判据，冷机 + KernelSU 未加载）**：
+
 - 正例：文档启用一个真实插件（P3 参考插件或 delta-4 试验 .so）→ 43499 冷启 PASS，日志出现 `plugin=<id> stage=<s> called=1`，AVB 12/0；43284 app-call PASS（`post_terminal` 在 LKM 窗口内被调用）；
 - **负例 A（故意失败）**：插件 hook 返回非 0 → 日志记 `hook_failed`，**攻击链仍 PASS**（uid0/KernelSU 就绪），AVB 12/0；
 - **负例 B（制品被篡改）**：改了 `.so` 一字节但文档哈希未更新 → `HashMismatch`，**不 dlopen**，攻击链仍 PASS；
@@ -140,7 +143,6 @@ namespace ghostlock::plugin {
 2. 43499 的 `post_terminal` 在 root 已接管后由谁触发（root child 进程内无法回传宿主）——建议**不实现**，只在 43284 的 LKM 窗口内提供；需要在文档里写明该阶段对 43499 不可用。
 3. 多插件优先级冲突时是否需要「互斥声明」（如两个插件都要 `kernel_write`）——建议 P3 再议。
 4. 插件参数在调用期如何暴露（`glk_contract_ops.query_*` 的路径白名单内容）——与 P3 的 `RuntimeInfo` 一起定。
-
 
 ## 11. 评审结论落实（2026-10-05，Lead 5 条条件）
 
@@ -274,6 +276,7 @@ stage_availability	43499:pre_terminal;43284:post_terminal
 - **计数口径（权威在实现）**：`rejected` = 被**整体拒**的插件数；`stage_unavailable` = 被矩阵拒的 **hook** 数。定义见 `src/core/plugin/host.hpp` 的 `HostDiagnostics` 注释（`host.hpp:150-170` 一带），文档与实现必须逐字一致。
 - **为什么实例级不降级**：host 的 dispatch 以**注册阶段**为键；只删实例级门控会得到「已加载但永不派发」的**无声缺席**（比拒绝更差）；而改为按 hook 自身 stage 派发等于调用用户**未为该实例授权**的阶段 —— 授权面扩大，P1 不做。
 - 因此「一个模块同时声明 43284 `post_terminal` + 43499 `pre_terminal`」由**每个实例各自注册一个可用阶段**满足，而不是由实例级降级满足。
+
 ### 13.3 需同步到格式文档的条目（交 docs-uml；我不跨流写）
 
 1. `docs/analysis/contract-design.md` §3.14.7.2：header 必需键由四个（`host_abi` / `countermeasures_root` / `host_stages` / `host_caps`）**增至五个**（+`stage_availability`），并写明其语法与「唯一权威在 native」；

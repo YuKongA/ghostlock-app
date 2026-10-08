@@ -39,6 +39,7 @@
 允许受控重写，但必须是**有立项**的工程——完整目标设计、单分支、明确的验证与归档）。
 
 判据（关键，兼容性驱动）：
+
 - **中性可复用**：中性件必须能被一个**原语完全不同**的 backend 复用；内嵌 43499 机制/目标的
   不算中性（证据：`docs/analysis/placeholder-backend-survey.md`）。
 - **按功能切轴**：按“最可能一起变化的功能”聚合，而非按执行角色/文件。
@@ -202,10 +203,12 @@
 ## 后果（Consequences）
 
 正面：
+
 - 顶级职责沿功能/变化轴切开；原语、组合、状态、扩展框架各有其位；新增组件触点收敛。
 - `KernelMemory` 的 B/C/回退替换只动 `contract`（接口）+ `backend`（实现与机制），不波及外围。
 
 负面/风险：
+
 - **不可 bisect**：结构+符号改名一次性落地，若门禁失败要整批定位；缓解：机械搬迁与功能分离提交、
   保留完整 diff 与证据链。
 - **符号名全变**：`cmp_disasm` 的 `TARGETS` 与新基线需同步；期望“同形（指令形状一致）+ 已复核
@@ -213,6 +216,7 @@
 - LTO 重排可能移动代码/数据地址，差异需逐条折算复核。
 
 **已知遗留（本次不改，记录）**
+
 - **多 backend 前置 = ADR-0002**：`route/pipeline.hpp:76` 的 `Pipeline::run(ExploitSession&)`
   硬编码单一 session 类型，而 `ExploitSession` 内嵌 43499 专属状态（`PiRace`/`HeapContext`/
   `VictimContext`）。要让机制/route/victim 真正下放 backend，**必须先**把 `ExploitSession` 通用化
@@ -222,6 +226,7 @@
   避免 back-include。
 
 后续动作：
+
 - 先按“架构审查（第三轮，原文见 `architecture-review-log.md`）”A–I 修订本 ADR（尤其 A `platform`/backend profile 归属、B `memory→profile`
   解耦、C ancillary 注册、D handoff/terminal 边界、G route 私有化与 wire 全局 id）。
 - 依重写计划执行：单一重写分支 → 机械结构重排 → 契约/文档同步 → 功能（`KernelMemory`）→ 一次完整门禁。

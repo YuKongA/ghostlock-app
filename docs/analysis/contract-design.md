@@ -115,6 +115,7 @@ enum class AccessDomain : std::uint8_t {
 | `ChildTask` | ——（当前 child task） | —— | 任一需要标记子任务的 backend |
 
 **两个由调研直接得出的结论**
+
 1. **43503 与 43284 同域**（都是页缓存写）→ `FileCacheWrite` 是**第一个真正跨 backend 共享的能力**（计划里 B4「跨 backend 共享」的实证依据）；
 2. **43499/64560/31431 同为内核 VA 域，但 primitive/route 完全不可共享**（调研结论 1）→ 共享的是**能力接口**，不是机制；这与「契约优先、实现私有」一致。
 
@@ -440,6 +441,7 @@ private:
 | 43503 | ❌ | 页缓存域，不需要内核内存 | `NotSupported` |
 
 **要点**
+
 1. **一个适配器，多 backend 复用** → LKM 路径从「每个 backend 各写一套」变成**契约的共享实现**，
    这正是「契约优先」相对旧架构的核心收益；且 `MemoryChannel::LkmProxy` 与
    「全部机制 + enum 显式选」的裁决**完全一致**（机制是可数的取值，不是一个新接口）。
@@ -525,6 +527,7 @@ struct glk_lkm_req {
 ### 3.12.4 修正：驻留生命周期 = **客户端会话**，不是定时器（维护者 2026-10-05 指出）
 
 **问题**：δ 实现把「何时卸载」交给 `GLK_LKM_RESIDENT_TIMEOUT_MS=5000` 兜底超时。这有两个错：
+
 1. **语义错**：定时器可能在**插件执行中途**把模块抽走（对策被截断，后果不可预期）；
 2. **时序错**：窗口长度应由「要做多少事」决定，而不是某个拍出来的常数。
 
@@ -540,6 +543,7 @@ struct glk_lkm_req {
    **不再**是正常卸载路径。正常窗口应为**亚秒级**（几十次 ioctl）。
 
 **验证方式**（真机）：
+
 - 正常路径：`lkm_window{calls=n, unload_reason=explicit}`，窗口时长 **不得**接近 watchdog；
 - 崩溃路径：`kill -9` native 后 **fd 关闭 → 模块自动消失**（断言 `/dev/glk` 消失、`/proc/modules` 无残留）；
 - 插件同步性：断言「最后一个插件返回」在「UNLOAD」之前（时间戳单调），且窗口内无并发调用（`calls` 单调 + 单开 `-EBUSY`）。
@@ -785,6 +789,7 @@ plugin {
 | **wire / HOCON** | 双方 | `plugin.<id>.{ enabled, stage, module_path, module_hash, params.*, extract.* }`（§3.14.3/§3.14.4） |
 
 **导入与校验流程（安全关键）**
+
 1. App 用文件选择器导入 `.so` → 复制到应用私有目录（`filesDir/plugins/<id>/<version>/`）→ 计算 **SHA-256** → 记录清单（id/version/abi/hash/caps/stages）；
 2. **不在 JVM 内 dlopen 任意 `.so`**：Kotlin 通过 **native 探针**读取插件自描述（`--plugin-probe <path>` → 机器可读描述），
    由 Kotlin 拿到 `params_schema` / `extract_schema` 后渲染高级设置并做**类型/必填/默认值校验**（与 R1 的 `FieldSpec` 同源）；
@@ -936,12 +941,14 @@ reject→<id>→<reason>
 **绑定 / 校验规则**：`enabled` bool；`stage` ∈ host stage token 集合；`module_path` 相对路径、无 `..`、非绝对；`module_hash` 64 位小写 hex；`params.*` / `extract.*` 键非空、类型按**描述符**校验；**未启用的插件不得出现在 wire 文档里**（§3.14.7.5）。
 
 **实现出处（回填，2026-10-05）**
+
 - **动态行**：`src/core/plugin/schema.hpp` 的 `kPluginGlkv3Fields` 以 `profile::glkv3::WireType::Union` 声明 `plugin.<id>.params.*` / `.extract.*`；清单拼写 `uint|int|bool|str` 即 `wire_type_name(WireType::Union)`，联合成员表 `kUnionScalarTypes` **恰好 4 个**（`src/core/profile/glkv3.hpp`）；commit `4d25d6e7`；`profile-manifest-v3.tsv` 字段数 **103 → 109**（plugin 行 6 条，其中 union 2 条，L114–L119）；
 - **绑定与门禁**：`src/core/plugin/wire.{hpp,cpp}` —— `validate_plugin_wire()` 遍历文档 `plugin` 段，`PluginWireError` 覆盖 `UnknownField` / `EnabledMissing` / `EnabledNotBool` / `DisabledPresent` / `StageMissing` / `StageUnknown` / `ModulePathRejected` / `ModuleHashRejected` / `ParamKeyRejected` / `ParamTypeRejected` / `TooManyPlugins`；前缀匹配的**唯一入口**是 `plugin_dynamic_key()`（`schema.hpp`，无隐式前缀规则）；`kMaxPluginsPerDocument = 16`，容量不足报 `TooManyPlugins` 而非静默丢弃；
 - **描述符门禁**：`plugin_descriptor_declares(module, kind, name, type_out)` 按 **size 门控**读取——v1 模块没有尾部字段，因此声明为空（拒绝）；
 - **Kotlin**：`NativeProfileGlkv3Adapter` 解析 manifest 的 `|` 联合（未知成员 fail-closed）、按 `<id>` 占位行解析具体路径（**无隐式前缀规则**），并以 `declaredTypeNames()` / `declaredWire()` 暴露声明；commit `0b1c0fa0`。
 
 **判据**
+
 - **native**：`src/core/tests/plugin_wire_test.cpp` —— `std::size(kUnionScalarTypes) == 4` 且联合拼写 `uint|int|bool|str`；`kPluginGlkv3Fields` 6 行中恰 2 条 union；`plugin_dynamic_key` matcher 矩阵（params / extract / 空 key / 前导点 / 非 plugin 段）；**11 例文档校验**（none + good 两例通过，其余命中上述错误名）；`plugin_descriptor_declares` 的 **v1-size 拒绝**；
 - **Kotlin**：`PluginProbeGoldenTest`（设备 golden 硬断言）+ `PluginProbeTest` / `PluginConfigValidatorTest` / `PluginManifestTest`；
 - **设备 golden**：`app/src/test/resources/plugin-probe-golden.tsv`（commit `7d54ce78`，**11 行、逐字节来自设备探针 stdout**，覆盖 4 种 param 类型 + `hook` 行 + 多值 `stages`/`caps`；消费方 `app/src/test/kotlin/com/ghostlock/app/data/plugin/PluginProbeGoldenTest.kt`），完整 stdout 见 `docs/analysis/device-gates/s4-p1-probe-20261005-pass.md` §5。
@@ -1013,7 +1020,7 @@ reject→<id>→<reason>
 
 > **物证职责边界（必须分清）**：**golden 的用途是跨端解析一致性**，其**身份行是合成数据**（真机不可能复现），因此它的更新是**格式增量**而非「设备重采」；**真实制品的一致性由真机采集物 + 门禁日志承担**（`build/gate-logs/plugin-probe-golden-device.tsv` 一类）。两者**不可互相替代**，也不得混为一句「重采 golden」。
 >
-
+>
 > **边界（本次确立）**：**native 新增能力位不需要 Kotlin 改动**——Kotlin 侧对 `host_caps` 只做**透传与展示**（`fe66c793` 用断言钉住「`log` 直通 + **未知未来 cap 也直通**」）。凡「Kotlin 词表必须同步」的旧说法**作废**；Kotlin 只在**需要展示名**时补 UI 文案。
 >
 > **示例 / 参考实现（取舍，理由）**：示例插件**不把 `GLK_CAP_LOG` 声明为必需**——该位语义是「**要求 host 具备日志能力**」，声明会让**老 host 拒收**整个模块；示例改为**优先 `ops->log`、老 host 回退 stderr 同形前缀**（真机 golden 的 `plugin` 行 `required_caps` 亦保持 `kernel_read,kernel_write`，`b7eb5f95`）。要「强制要求日志能力」的插件才应声明该位。
@@ -1069,6 +1076,7 @@ reject→<id>→<reason>
 - **角括号占位符约定**：`section` + `<占位符>` 的**后缀匹配**，与 `plugin.<id>.params.*` **同规**（`plugin_dynamic_key()` 即此形态）；Kotlin 侧 `declarationFor()`（`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/NativeProfileGlkv3Adapter.kt:126`）**当前只对 `plugin.` 前缀做后缀匹配**，**具体索引路径的匹配分支留给 batch (b)**；
 - **⏸ 状态：随 payload 冻结失效（沿革保留）**—— ① **原实现曾在工作树落地但未提交**（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致，工作树 sha256 `018804b363583612…`；**已提交的 `74db3594` 是旧拼写那次**——归因只写实际包含该改动的那次提交，故本节**不写提交号**）；② **冻结后 `payload` 段出现即拒（fail-closed）** ⇒ **`ko.<i>` 对齐当前无运行时消费者**（`kPayloadGlkv3Fields`、校验分支、manifest 8 行、相关测试与 Makefile 目标均已**字面注释**）；③ **恢复＝撤销注释 + 跑门禁**（恢复清单见 `docs/archive/20261007-2237-branch-plan.md` 冻结清单与 `task-9`）；④ 上文原始裁决与拼写规则**保留不删**（沿革）；
 - **剩余（Kotlin 侧）**：`declarationFor()` 的**索引路径匹配分支**仍留给 batch (b)——Lead ping `kotlin-i18n` **重钉**其测试后，本节再补一句「Kotlin 已同步」。
+
 ### 3.15.3 安全边界与授权面
 
 | 维度 | 规则 |
@@ -1106,6 +1114,7 @@ reject→<id>→<reason>
 ### 3.15.6 结构同步（同批，强制）
 
 payload 是**新顶层 owner** ⇒ 同批更新：
+
 - `docs/development/full-process-uml.md`：§3.1 的 owner 段与 schema（`ghostlock__payload`）、§3.2 的 Kotlin layout / UI 组、§1 IPO 的 C 段（校验 → 绑定 → 接管后执行）；
 - `AGENTS.md` 的顶层 owner 白名单表述（`common` / `backend.` / `platform.` / `countermeasure.` / 精确 `plugin` / **新增 `payload`**）；
 - 提交信息写明更新了哪几张图。
@@ -1158,7 +1167,6 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **`available` 两级**：先选可用 backend（键），再在其下选组合 token（值）；运行时的选择写入 wire 的 **`backend.<id>.steps`**；**根级 `available` 不是 wire 段**；
 - **消歧**：`index.conf` 的 `backends = [{ id, available }]` 改名 **`usable`**（构建/资产层语义），与 profile 层的 `ghostlock.available{}` **刻意不同名**；
 - **extractor**：`tools/extract_rs --format conf` **同批产出新形状**（**已完成**：过渡层 `translate_conf_path` 删除 = **`a6241bc0`**，最终词汇 only）；`profile-legacy/*.conf`（v1 输入夹具）**保留旧形状**。
-
 
 ### 3.16.1 根段承载（`kRootSection`）——**不要改回具名成员**
 
@@ -1248,7 +1256,6 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 | 迁移面 | **62 份资产 + UI + 组合目录 + 契约 + UML**；迁移策略由设计稿给出（**迁移期允许 token 作为语法糖**，资产改写完成后**删除糖**，避免长期双真相） |
 
 **与两轴论述的关系**：§3.18 的「stepset = 跑哪些 W 阶段 / frontend·terminal = 谁接管」**继续成立**；队列描述的就是「跑哪些步骤」，因此**更贴合 stepset 轴的本义**，也回避了「用 path 名命名 stepset」的矛盾（43284 一 × 三 path 的硬证据见 §3.18）。
-
 
 ## 3.20 步骤队列：选择面、route、seam 与支持面（**设计已定稿 2026-10-06**）
 
@@ -1511,6 +1518,7 @@ chain 属于某个 backend（ChainId 的归属登记在 catalog）
 ### α 批逐文件清单
 
 **新增**
+
 - `src/core/contract/capability.hpp`：`CapabilityKind`（并集，低 7 位 `static_assert` 对齐 `GLK_CM_CAP_*`）、
   `CapabilityError`（含 `Closed`）、`CapabilityState`（四态 + `satisfies` 显式表）、
   `CapabilityResult<T>`、`CapabilitySet`、`CapabilityInterface`
@@ -1524,6 +1532,7 @@ chain 属于某个 backend（ChainId 的归属登记在 catalog）
   `CapabilitySet` 语义、`Ops` 仍 trivially-copyable/standard-layout
 
 **修改**
+
 - `src/core/contract/capabilities.hpp`：退化为 umbrella（`#include` 上述新头 + `Capabilities` 聚合 + `declared()`）；
   **保持既有类型名与布局不变**（`KernelMemoryOps`/`FileCacheWriteOps` 定义逐字保留，避免任何行为/布局变化）
 - `src/core/contract/address_discovery.hpp`：仅新增 `AddressDiscovery` 虚接口（`AddressDiscoveryOps` 与既有测试不动）

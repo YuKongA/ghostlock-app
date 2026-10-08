@@ -1,7 +1,7 @@
 # 支持的设备
 
 > English version: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md)
-
+>
 > 联发科（MediaTek）机型跑不通（没有匹配的 profile，或 `W1: target 0x0`）？
 > 请先 root 设备，再按 [MEDIATEK_ZH.md](MEDIATEK_ZH.md) 取得两个物理地址
 > （`kernel_phys_load` / `kernel_phys_offset`）。

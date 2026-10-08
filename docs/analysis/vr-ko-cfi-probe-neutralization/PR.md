@@ -355,6 +355,7 @@ chmod +x PR_CHECKLIST.sh
 ```
 
 验证步骤：
+
 - [ ] 所有主机单元测试通过
 - [ ] 编译真机二进制成功
 - [ ] cmp_disasm 形状验证通过

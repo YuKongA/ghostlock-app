@@ -99,7 +99,7 @@ payload {
 
 | 段 | 内容 | 状态 |
 |---|---|---|
-| **UI / 跳转（已落地）** | `app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt`：`RootManager`（**App 侧唯一包名镜像**，注释指向 native `default_root_package()`；未知 ⇒ `null`，绝不猜）+ `RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(succeeded, rootProduced, packageName, launchable)`（提交 `e500b407` + `4a02d19b`） | ✅ **已落地** |
+| **UI / 跳转（已落地）** | `app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt`：`RootManager`（**App 侧唯一包名镜像**，注释指向 native `default_root_package()`；未知 ⇒ `null`，绝不猜）+ `RootManagerAction{Launch\|Hint\|Skip}` + 纯函数 `rootManagerAction(succeeded, rootProduced, packageName, launchable)`（提交 `e500b407` + `4a02d19b`） | ✅ **已落地** |
 | **默认档 = 「启动 root 管理器」+ 子菜单（检测列表）** | 「系统默认 KernelSU（默认）」或「检测到的其它受支持管理器」；**系统默认 = 不发射任何 `payload` 键**（逐字节不变）；**未安装的不列出/置灰 + 具名原因**，不得让用户选不存在的目标 | 🚧 **在途**（UI 侧；`<queries>` 已在 manifest 声明） |
 | **wire 发射（`payload.tier = "root"` + `payload.root.*`）** | native 当前只接受 `tier ∈ {exec, script, ko}` ⇒ **UI 已可选 ≠ 已发射**；本轴 P1 的 wire 属**下一批 native** | ⏳ **待 native** |
 
