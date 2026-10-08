@@ -10,19 +10,29 @@
  *  the enforcement, and putting the table there would make the enforcement the
  *  authority over the vocabulary it must obey.
  *
- *  Fields per row: name; form (Call/Value); args (keyed specs whose max is the
- *  SCHEMA acceptance ceiling); implements_layer (must name a layer of
+ *  Fields per row: name; form (Call = an action, Value = a read-only snapshot);
+ *  args (keyed specs: max is the SCHEMA acceptance ceiling, required says
+ *  whether a script must pass it); implements_layer (must name a layer of
  *  contract::kLayers); recordable; executable; window_allowed; holds_resource
  *  (keeps a resource alive beyond the call -- handle territory, and ADR-0010 is
  *  still Proposed, so nothing here implements it).
  *
+ *  WINDOW-LEVEL OPS ARE NOT SCRIPT-VISIBLE ENTRIES (user ruling): the names
+ *  spelled window.* are a RUNTIME-INTERNAL PHASE GROUPING, not a script
+ *  capability; the exposure table therefore contains no row whose name starts
+ *  with "window.". Two machine criteria enforce it: the constexpr assertion
+ *  surface_has_no_window_prefixed_names() below, and the grep performed by
+ *  "make -C src check".
+ *
+ *  Language-level constructs (loops, conditionals, snapshot field access) are
+ *  NOT rows: they belong to the interpreter, not to the exposed surface.
+ *
  *  Bound relationship (numbers policy): the max below is a schema ceiling. The
  *  EFFECTIVE bound is the profile's (P4 contract/op_registry.hpp ParamSpec.max);
- *  a profile value above the ceiling is a named rejection (param-invalid) and
- *  no default is ever substituted. Ceilings are acceptance limits, not tuning.
- *
- *  Language-level constructs (loops, conditionals) are NOT rows: they belong to
- *  the interpreter, not to the exposed capability surface.
+ *  a profile value above the ceiling is a named rejection (param-invalid) and no
+ *  default is ever substituted. Ceilings are acceptance limits, not tuning.
+ *  Values never carry kernel offsets: a write names its target by PROFILE SYMBOL
+ *  NAME (target) plus the value/width, so no offset appears in a script.
  */
 #include <cstddef>
 #include <cstdint>
@@ -37,10 +47,12 @@ namespace ghostlock::contract {
         Value = 1,
     };
 
-    /** One keyed argument; max is the schema acceptance ceiling. */
+    /** One keyed argument; max = schema acceptance ceiling, required = must the
+     *  script pass it. */
     struct ArgSpec final {
         const char *key;
         std::uint64_t max;
+        bool required;
     };
 
     /** One row of the exposure surface. */
@@ -56,28 +68,34 @@ namespace ghostlock::contract {
         bool holds_resource;
     };
 
+    /* The whole 64-bit domain: a write value's ceiling is the field width, and
+     * the optional width argument selects the slice. */
+    inline constexpr std::uint64_t kValueCeiling = ~static_cast<std::uint64_t>(0);
+
     inline constexpr ArgSpec kWriteOpArgs[] = {
-        {"attempts", 64U},
-        {"preserve_child", 1U},
+        {"target", 256U, true},   /* profile symbol name, never an offset */
+        {"value", kValueCeiling, true},
+        {"width", 8U, false},
     };
     inline constexpr ArgSpec kSettleArgs[] = {
-        {"settle_us", 1000000U},
+        {"us", 1000000U, true},
     };
-    inline constexpr ArgSpec kProfileGetArgs[] = {
-        {"key", 256U},
+    inline constexpr ArgSpec kHandoffArgs[] = {
+        {"terminal", 256U, true},
     };
 
-    /** The surface table (draft: backend / writeop / settle / handoff /
-     *  profile.get). Loops and conditionals deliberately have no row. */
+    /** The surface table. Draft after the user rulings: backend / writeop /
+     *  settle / handoff / cfg. profile.get was removed (cfg replaces it) and no
+     *  window.* row may appear (see the file comment). */
     inline constexpr SurfaceEntry kSurface[] = {
         {"backend", SurfaceForm::Call, nullptr, 0, "backend", false, false, false, false},
         {"writeop", SurfaceForm::Call, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]), "backend",
          true, true, true, false},
         {"settle", SurfaceForm::Call, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race", true,
          true, true, false},
-        {"handoff", SurfaceForm::Call, nullptr, 0, "terminal", true, true, false, true},
-        {"profile.get", SurfaceForm::Call, kProfileGetArgs,
-         sizeof(kProfileGetArgs) / sizeof(kProfileGetArgs[0]), "profile", false, false, false, false},
+        {"handoff", SurfaceForm::Call, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]), "terminal",
+         true, true, false, true},
+        {"cfg", SurfaceForm::Value, nullptr, 0, "profile", true, false, false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
@@ -117,6 +135,28 @@ namespace ghostlock::contract {
             ++b;
         }
         return *a == *b;
+    }
+
+    /** True when the name starts with the runtime-internal phase prefix. */
+    [[nodiscard]] constexpr bool surface_is_window_prefixed(const char *name) noexcept {
+        constexpr const char *prefix = "window.";
+        std::size_t i = 0;
+        while (prefix[i] != '\0') {
+            if (name == nullptr || name[i] != prefix[i]) {
+                return false;
+            }
+            ++i;
+        }
+        return true;
+    }
+
+    [[nodiscard]] constexpr bool surface_has_no_window_prefixed_names() noexcept {
+        for (std::size_t i = 0; i < kSurfaceCount; ++i) {
+            if (surface_is_window_prefixed(kSurface[i].name)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     [[nodiscard]] constexpr bool surface_names_are_unique_and_non_empty() noexcept {
@@ -170,8 +210,9 @@ namespace ghostlock::contract {
         return true;
     }
 
-    /** A window-reachable row must be executable there; a row that holds a
-     *  resource must be recordable (it outlives its call). */
+    /** Flags and form must agree: a window-reachable row must be executable
+     *  there, a resource-holding row must be recordable, and a Value row is a
+     *  read-only snapshot -- it is never executable. */
     [[nodiscard]] constexpr bool surface_flags_are_consistent() noexcept {
         for (std::size_t i = 0; i < kSurfaceCount; ++i) {
             if (kSurface[i].window_allowed && !kSurface[i].executable) {
@@ -180,13 +221,19 @@ namespace ghostlock::contract {
             if (kSurface[i].holds_resource && !kSurface[i].recordable) {
                 return false;
             }
+            if (kSurface[i].form == SurfaceForm::Value && kSurface[i].executable) {
+                return false;
+            }
         }
         return true;
     }
 
     static_assert(kSurfaceCount >= 1, "the exposure surface must not be empty");
     static_assert(surface_names_are_unique_and_non_empty(), "surface names must be unique and non-empty");
+    static_assert(surface_has_no_window_prefixed_names(),
+                  "window.* is a runtime-internal phase grouping, never a script surface entry");
     static_assert(surface_layers_exist(), "every surface row must name a declared layer");
     static_assert(surface_args_are_well_formed(), "argument specs need unique keys and non-zero ceilings");
-    static_assert(surface_flags_are_consistent(), "window/holds_resource flags must stay consistent");
+    static_assert(surface_flags_are_consistent(),
+                  "flags must stay consistent (window/holds_resource/Value-is-read-only)");
 }  // namespace ghostlock::contract

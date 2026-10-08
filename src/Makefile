@@ -102,9 +102,14 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/a2_test
 	@echo "check: exposure surface table"
 	@$(BUILD_DIR)/surface_test
-	@dup=$$(grep -rlE 'backend.*writeop.*settle.*handoff' core | wc -l | tr -d ' '); \
-	if [ "$$dup" -ne 1 ]; then echo "SURFACE-DUP: $$dup definition sites (expected exactly 1)"; grep -rlE 'backend.*writeop.*settle.*handoff' core; exit 1; fi; \
-	echo "check: surface names have a single definition site"
+	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
+	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
+	echo "check: no window.* row in the exposure surface"
+	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp'); do \
+	  if tr -d '\n' < "$$f" | grep -qE 'backend.*writeop.*settle.*handoff'; then echo "$$f"; fi; \
+	done | wc -l | tr -d ' '); \
+	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
+	echo "check: surface list has a single definition site (no other file restates it)"
 	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
 	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
 	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"

@@ -49,10 +49,29 @@ namespace {
     void invariants_hold() {
         expect(ghostlock::contract::kSurfaceCount >= 1, "the table must not be empty");
         expect(ghostlock::contract::surface_names_are_unique_and_non_empty(), "names unique and non-empty");
+        expect(ghostlock::contract::surface_has_no_window_prefixed_names(),
+               "no window.* row may appear in the exposure surface");
         expect(ghostlock::contract::surface_layers_exist(), "layers must be declared");
         expect(ghostlock::contract::surface_args_are_well_formed(), "argument specs well formed");
         expect(ghostlock::contract::surface_flags_are_consistent(), "flags consistent");
-        std::printf("surface table: %zu rows, invariants hold\n", ghostlock::contract::kSurfaceCount);
+        std::size_t value_rows = 0;
+        std::size_t required_args = 0;
+        for (std::size_t i = 0; i < ghostlock::contract::kSurfaceCount; ++i) {
+            const ghostlock::contract::SurfaceEntry &row = ghostlock::contract::kSurface[i];
+            if (row.form == ghostlock::contract::SurfaceForm::Value) {
+                ++value_rows;
+                expect(!row.executable, "a Value row is a read-only snapshot, never executable");
+            }
+            for (std::size_t a = 0; a < row.arg_count; ++a) {
+                if (row.args[a].required) {
+                    ++required_args;
+                }
+            }
+        }
+        expect(value_rows >= 1, "at least one read-only snapshot row exists");
+        expect(required_args >= 1, "at least one required argument is declared");
+        std::printf("surface table: %zu rows (%zu value, %zu required args), invariants hold\n",
+                    ghostlock::contract::kSurfaceCount, value_rows, required_args);
     }
 }  // namespace
 
