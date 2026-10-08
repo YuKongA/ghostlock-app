@@ -282,16 +282,32 @@ NATIVE_HOST_TESTS := \
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do if ! $$test; then echo "FAILED: $$test"; status=1; fi; done; exit $$status
 
-# p4-window-check: P4 milestone A evidence -- AttackWindow exit paths and the
-# composition root's compile-time binding checks (host build + run).
+# p4-window-check: P4 milestone A+B evidence -- AttackWindow exit paths, the
+# composition root's compile-time checks, the plan-gate rejections, and the two
+# structural criteria of the P4 layer (no Lua reference; no ordering token in
+# the composition root). Host build + run.
 .PHONY: p4-window-check
-p4-window-check: $(HOST_BUILD_DIR)/p4_window_exit_paths_test
+P4_ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
+p4-window-check: $(HOST_BUILD_DIR)/p4_window_exit_paths_test $(HOST_BUILD_DIR)/p4_plan_gate_test
+	@echo "p4-window-check: milestone A -- window exit paths"
 	$(HOST_BUILD_DIR)/p4_window_exit_paths_test
+	@echo "p4-window-check: milestone B -- plan gate"
+	$(HOST_BUILD_DIR)/p4_plan_gate_test
+	@lua=$$(grep -rIlE 'lua_State|luaL_|#include *[<\"]lua' core/pipeline core/contract 2>/dev/null || true); \
+	if [ -n "$$lua" ]; then echo "P4-LUA-HIT: $$lua"; exit 1; fi; \
+	echo "p4-window-check: zero Lua references in the P4 layer (window stays Lua-free)"
+	@hits=$$(grep -nE '$(P4_ORDER_TOKENS)' core/pipeline/composition_root.hpp | wc -l | tr -d ' '); \
+	if [ "$$hits" -ne 0 ]; then echo "P4-ORDER-HIT: $$hits"; grep -nE '$(P4_ORDER_TOKENS)' core/pipeline/composition_root.hpp; exit 1; fi; \
+	echo "p4-window-check: zero ordering tokens in composition_root.hpp"
 $(HOST_BUILD_DIR)/p4_window_exit_paths_test: core/pipeline/tests/window_exit_paths_test.cpp \
   core/pipeline/attack_window.hpp core/pipeline/composition_root.hpp \
   core/contract/resource_scope.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/pipeline/tests/window_exit_paths_test.cpp -o $@
+$(HOST_BUILD_DIR)/p4_plan_gate_test: core/pipeline/tests/plan_gate_test.cpp \
+  core/pipeline/plan_gate.hpp core/contract/op_registry.hpp core/contract/model.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/pipeline/tests/plan_gate_test.cpp -o $@
 
 # Host tests must rebuild whenever any production header changes.
 $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS)): $(HDRS)
