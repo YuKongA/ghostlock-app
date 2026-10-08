@@ -28,6 +28,7 @@
 
 1. **采用 Lua 5.5.1 作为运行期脚本引擎**（2026-10-08 裁定；**替代**原记的 5.4.7，沿革保留），**vendored 到 `src/lib/lua/`**（**已就位**，含 `PROVENANCE.md`）（与 `src/lib/mpack` 同法：C99、独立 flag、`-w`；参照 `src/Makefile:94-105`）；**不引入 `luac`** 跨平台工具链（构建逻辑进 Gradle KTS、不依赖 PATH）。
 2. **保留源码解析**（脚本只在攻击前解析一次）。
+   - **修订（2026-10-08 裁定取代）**：执行模型由「两遍（录制→执行）」**修订为「单遍 stage」** —— 脚本窗口外跑一次 ⇒ **staged 计划** ⇒ `plan_gate` 校验 **staged 产物** ⇒ **按相位执行**；**逐调用边界校验保留**（见 [lua-surface-design](../analysis/lua-surface-design.md) §3）。
 3. **沙箱白名单**：**不注册** `io` / `os` / `package` / `debug` / `load` / `dofile` / `require`；只暴露 `op(token, table)` / `probe(name)` / `handle(kind)` / `slot.get|set` / `require_cap(name)`；`math` 只留整数。
 4. **预算与上限**：`lua_sethook(L, hook, LUA_MASKCOUNT, N)` ⇒ **指令预算**；`lua_setallocf` ⇒ **内存硬上限**；栈深度限制；**单脚本 ≤64 KB**；脚本**只在操作之间**运行（PI 窗口内禁调用）。
 5. **wire 承载**：脚本正文 **>256 B**（`kMaxStringBytes`，`glkv3.hpp:84`）⇒ **必须走 `bin` 键**，`width` 导出为 `-`，`kMaxBinBytes` 落 `glkv3.hpp`；**仅脚本键放开**（其余键仍拒：`glkv3_parse.cpp:631-633`）；同批改 `profile_manifest_v3_test.cpp` 的 `width_column`:165 与 `check_width_matches_wire`:186、重导双副本、重冻 golden。
