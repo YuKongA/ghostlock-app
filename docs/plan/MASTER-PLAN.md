@@ -6,6 +6,7 @@
 - **审查依据**：`docs/development/design-review-principles.md`（**v0.2**：D1 判据形式 = 黑盒/白盒 + 极端输入值；C2 扩展点；C3 成本权衡；F2 技术债预判）。
 - **策划框架**（守则 §5.1）：**输入** = 《用户需求报告》（`docs/development/requirements.md`）；**输出** = ① 软件开发计划书（**本文件**）② 质量保证计划（`design-review-principles.md` + `engineering-rules.md`）③ 配置管理计划（`AGENTS.md` 文档约定 + 本文件 §8）④ 里程碑及评审计划（本文件 §5）。
 - **生命周期模型**（守则 §2.1）：**增量 + 阶段门**（每个批次一类事，上一批验收全绿再进下一批），阶段划分 = 立项 → 需求 → 概要设计 → 详细设计 → 编码 → 测试 → 运行/维护。
+- **需求基线状态**：`F21`–`F29` / `I13` / `I14` 已恢复（[确定]）；**`F1`–`F20`、`Q1`–`Q9` 原文在 2026-10-07 事故中丢失**（`requirements.md` 标 [缺失]，见 [incident](../analysis/incident-20261007-agents-requirements-revert.md)），**待用户补写后再据此批准**。
 - **唯一性声明**：本文件是**唯一进度入口**；`docs/plan/**` 其余 28 份已归档到 `docs/archive/20261007-2237-*`（索引见 §11 与 [INDEX-plans](../archive/INDEX-plans.md)）。
 
 ## §1 目标与范围
@@ -29,7 +30,7 @@
 | 测试 | 宿主/native 构建/真机三层判据 | 测试记录 + XML 三桶计数 | **G2 真机门禁** |
 | 运行/维护 | 归档、沿革、技术债偿还 | `docs/archive/**` + 本计划 §7 | **G3 归档** |
 
-- **G0**：**design-critic 非作者评审总判 = 可进批准 gate（已过）**；**用户批准 = 待记**（`requirements.md` 的 `F21`–`F29` 与 ADR-0008/0009 状态仍为「待批准」；批准后**同批回填时间与出处**）。**不得回填未发生的批准**。
+- **G0**：**design-critic 非作者评审总判 = 可进批准 gate（已过）**；**用户批准 = 待记**（**ADR-0008/0009 状态 = Proposed（待用户批准）**；`requirements.md` 重建后**仅存编号与含义（无状态列）**；批准后**同批回填时间与出处**）。**不得回填未发生的批准**。
 - **G1**：批次验收判据全绿（§5 命令），阻断项为零。
 - **G2**：攻击路径改动 = **真机门禁唯一判据**（冷机、固定 CPU 对、单 route、KernelSU 未加载；归档 `docs/analysis/device-gates/*.md`）。
 - **G3**：批次收口时同批更新 UML、归档门禁记录、登记技术债。
@@ -99,7 +100,7 @@ flowchart LR
 | R-4 | **payload 白名单触点** | 解冻后 `backend.<id>.payload.*` 会被 fail-closed 拒 | 解冻批次为两个 `Backend*Keys` 增 `payload` + 对拍（`kotlin.md:63`） |
 | R-5 | **vacuous 断言风险回归** | 删掉被保护的赋值仍可能全绿 | 由**黑盒/白盒 + 极端值用例**覆盖（原则 v0.2 D1） |
 | R-6 | **PI 窗口时序** | 窗口内分派/分配/首次触碰新页会引入不确定性 | E4 约束 + `cmp` 归因 + 真机门禁（`route_lifecycle.hpp:9-11`） |
-| R-8 | **代码注释悬空计划路径**（审查时实测 **10 处**） | 注释指向**从未存在**的 `docs/analysis/<plan>.md` | owner = **native-core**（`src/core` + `tools/extract_rs`）/ **kotlin-app**（Kotlin）；**时机 = 本批（task-65/66）**；判据 = 编译通过 + `grep` 无失效引用（**现测 0**） |
+| R-8 | **代码注释悬空计划路径**（审查时实测 **10 处**） | 注释指向**从未存在**的 `docs/analysis/<plan>.md` | owner = **native-core**（`src/core` + `tools/extract_rs`）/ **kotlin-app**（Kotlin）；**时机 = 已随本批交付完成**（见 [INDEX-plans](../archive/INDEX-plans.md) §六 末尾「悬空引用」行）；判据 = 编译通过 + `grep` 无失效引用（**现测 0**） |
 | R-7 | **技术债预判六项**（`OpRegistry` 可插拔 / 键上限顶格 / `slot.*` 持久化 / 沙箱 API 扩展 / payload 解冻 / gate 原因码） | 未来扩展成本 | 逐项偿还时机见 `../analysis/handoff-payload-verification.md` §4 |
 
 ## §8 配置管理与变更控制
@@ -124,7 +125,7 @@ flowchart LR
 
 ## §10 度量与状态
 
-| 度量 | 当前值（2026-10-07 22:37） | 目标 |
+| 度量 | 当前值（**截至本次更新**；取证快照以 §11 归档与 §7 登记为准） | 目标 |
 |---|---|---|
 | 设计状态 | **评审已过（可进批准 gate），待用户批准**；阻断 **0** | 批准后回填 |
 | 代码改动 | **0**（本轮仅文档） | 按批次推进 |

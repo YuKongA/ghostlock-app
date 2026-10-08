@@ -104,4 +104,4 @@
 
 **引用更新（本批）**：AGENTS.md（4）· requirements.md（4）· engineering-standards.md（3）· engineering-rules.md（1）· full-process-uml.md（1）· pr-note-vr-guard-pr.md（1）· docs/analysis/**（13 份 40 处）· src README（1）。
 
-**悬空引用（M3 实测更正）**：审查时源内实测 **10 处**代码注释指向**从未存在**的 `docs/analysis/<plan>.md`（countermeasure-plugin ×3：glk_contract_abi.h:12 / loader.hpp:6 / registry.hpp:6；minimal-lkm ×1：lkm_kmi_manifest_test.cpp:4；43284-refactor ×4：pagecache.hpp:20 / splice_io.hpp:16 / ipsec.hpp:7 / SessionSecretFrame.kt:62；branch-plan ×2：main.rs:73/:206）。**本批（task-65/66）已全部修正**：现状指向 `docs/analysis/<plan>.md` 的引用 = **0**，16 处改为 archive 路径；仅 `libextract.so` 二进制字符串残留（不作判据）。
+**悬空引用（实测更正）**：审查时源内实测 **10 处**代码注释指向**从未存在**的 `docs/analysis/<plan>.md`（countermeasure-plugin ×3：glk_contract_abi.h:12 / loader.hpp:6 / registry.hpp:6；minimal-lkm ×1：lkm_kmi_manifest_test.cpp:4；43284-refactor ×4：pagecache.hpp:20 / splice_io.hpp:16 / ipsec.hpp:7 / SessionSecretFrame.kt:62；branch-plan ×2：main.rs:73/:206）。**本批已全部修正**（记录见 `docs/plan/MASTER-PLAN.md` §7 R-8）：现状指向 `docs/analysis/<plan>.md` 的引用 = **0**，16 处改为 archive 路径；仅 `libextract.so` 二进制字符串残留（不作判据）。
