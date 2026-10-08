@@ -71,7 +71,7 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ## 2. 架构规范
 
-### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `top-level-architecture-rewrite-plan.md` + 现行批次 `branch-plan.md`）
+### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `docs/archive/20261007-2237-top-level-architecture-rewrite-plan.md` + 现行批次见 `docs/plan/MASTER-PLAN.md` §4）
 
 > **选择权威（2026-10-05）**：装配选择由 **token 白名单**表达（`contract::kCombinationCatalog`：token → {backend, route, steps, terminal, available}），
 > token 落在 `backend.<id>.steps`；`pipeline` 只做分派。**词汇/白名单必须导出并对拍**（native → 资源 → Kotlin agreement test），
@@ -241,7 +241,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 ### 4.4 状态/投影字段语义（UI 与状态设计；从真机缺陷提炼，**强制**）
 
-> **来由**：同一模式在 24 小时内连续造成 3 次真机缺陷（`recommend_shizuku` 升级即崩、`enabledPlugins()` 冷启动抛异常、插件开关「关掉后自己变灰」）。缺陷与修复记录见 `../analysis/branch-plan.md` 的「规则溯源」条目。
+> **来由**：同一模式在 24 小时内连续造成 3 次真机缺陷（`recommend_shizuku` 升级即崩、`enabledPlugins()` 冷启动抛异常、插件开关「关掉后自己变灰」）。缺陷与修复记录见 `../archive/20261007-2237-branch-plan.md` 的「规则溯源」条目。
 
 1. **一个投影字段只表达一个语义**：**禁止**把一个为某用途计算的布尔（「可用性/有效性」）直接当作**另一个**用途的判据（如「控件可交互」）；跨用途复用必须**另立字段并命名**。
    示例：`runUsable`（本次运行是否可用 → 运行级选择门控）与 `toggleable`（用户能否切换 → 只要**已安装**即 true）必须分开；`selected`（是否参与本次运行）与二者都不同。

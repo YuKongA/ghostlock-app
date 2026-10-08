@@ -1,6 +1,6 @@
 # Terminal / Steps 重设计（2026-10-03）
 
-> **全局顺序/状态以 `docs/plan/branch-plan.md`（分支总 plan）为准**；本文件只负责本主题细节。
+> **全局顺序/状态以 `docs/archive/20261007-2237-branch-plan.md`（分支总 plan）为准**；本文件只负责本主题细节。
 >
 > **⏳ stepset 词汇重命名（用户指令 2026-10-05；实现中）**：本文件的 `W1W2`/`W1W3`（含 `W1W2Steps`/`W1W3Steps`、`Cve43499_W1W2/W1W3`、`DispatchTarget::Cve43499W1W2_*`）现改名为 **`ShizukuRootchild`/`Rootchild`**（词汇 token → `shizuku_rootchild`/`rootchild`）；**数字 wire id 1/2 不变**、`pagecache_write`(3) 不动。**只改 stepset 轴**（`PathKind`/`FrontendKind`/`TerminalKind` 不变）。**两轴正交**：stepset = 跑哪些 W 阶段；frontend/terminal = 谁接管（契约 §3.18）。**本文正文保留设计当时的名**，阅读时按此映射。
 

@@ -128,4 +128,4 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 
 - MessagePack spec；[MPack](https://github.com/ludocode/mpack)（MIT）；
 - `src/core/profile/{binary,document,schema}.hpp`、`profile-core/.../NativeProfile.kt`；
-- `docs/plan/offset-ssot-plan.md`、`cve-2026-43284-b5-design.md`。
+- `docs/archive/20261007-2237-offset-ssot-plan.md`、`cve-2026-43284-b5-design.md`。

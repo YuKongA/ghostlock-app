@@ -154,7 +154,7 @@
   既有 poison+walk 主体；主体内语句顺序与 prepare/recycle 顺序不变。224 = 评审修正后的条数，
   见下节）。
 - `multicast_owner_worker` / `multicast_waiter_worker`：两侧都不存在（本分支未实例化这两个
-  worker，与 `kernel-phys-offset-plan.md` 的同类记录一致）。
+  worker，与 `docs/archive/20261007-2237-kernel-phys-offset-plan.md` 的同类记录一致）。
 
 真机门禁日志（2026-10-02，最终二进制；冷启动、锁屏未解锁、运行起步 `boot_ms≈79s`）：
 

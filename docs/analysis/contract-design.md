@@ -1,8 +1,8 @@
 # 契约层设计（virtual-first：backend 实现接口，steps 拼链）
 
 > 状态：**设计草案，待批准**。2026-10-05 起**虚函数解禁**（`AGENTS.md` 已删禁令），本文以**抽象接口**为主形态重做。
-> 配套：`config-wire-redesign-plan.md`（R7 能力并集）、`kernel-memory-batch1-plan.md`（KM 接口冻结）、
-> `contract-first-chain-plan.md`（链组装）。
+> 配套：`docs/archive/20261007-2237-config-wire-redesign-plan.md`（R7 能力并集）、`docs/archive/20261007-2237-kernel-memory-batch1-plan.md`（KM 接口冻结）、
+> `docs/archive/20261007-2237-contract-first-chain-plan.md`（链组装）。
 
 ## 1. 命名原则
 
@@ -1067,7 +1067,7 @@ reject→<id>→<reason>
 - **最终 wire 拼写（唯一权威）**：`payload.tier` / `payload.exec.{command,sha256}` / `payload.script.{path,sha256}` / `payload.ko.count` / **`payload.ko.<i>.{path,sha256}`**（`0 ≤ i < count ≤ 8`）；
 - **旧拼写 `payload.<i>.path`（无 `ko.` 前缀）现被 fail-closed 拒绝**（**负例**）——它在实现里曾与 `ko.count` 自洽但**与设计文档不一致**，且会产生「`ko.count` 在 `ko.` 下、索引却在顶层」的怪状；
 - **角括号占位符约定**：`section` + `<占位符>` 的**后缀匹配**，与 `plugin.<id>.params.*` **同规**（`plugin_dynamic_key()` 即此形态）；Kotlin 侧 `declarationFor()`（`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/NativeProfileGlkv3Adapter.kt:126`）**当前只对 `plugin.` 前缀做后缀匹配**，**具体索引路径的匹配分支留给 batch (b)**；
-- **⏸ 状态：随 payload 冻结失效（沿革保留）**—— ① **原实现曾在工作树落地但未提交**（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致，工作树 sha256 `018804b363583612…`；**已提交的 `74db3594` 是旧拼写那次**——归因只写实际包含该改动的那次提交，故本节**不写提交号**）；② **冻结后 `payload` 段出现即拒（fail-closed）** ⇒ **`ko.<i>` 对齐当前无运行时消费者**（`kPayloadGlkv3Fields`、校验分支、manifest 8 行、相关测试与 Makefile 目标均已**字面注释**）；③ **恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md` 冻结清单与 `task-9`）；④ 上文原始裁决与拼写规则**保留不删**（沿革）；
+- **⏸ 状态：随 payload 冻结失效（沿革保留）**—— ① **原实现曾在工作树落地但未提交**（`kPayloadGlkv3Fields` 用 `ko.<i>.path` / `ko.<i>.sha256`、校验器**要求 `ko.` 前缀**并拒绝裸 `<i>.path`、两份 manifest 重生成且逐字节一致，工作树 sha256 `018804b363583612…`；**已提交的 `74db3594` 是旧拼写那次**——归因只写实际包含该改动的那次提交，故本节**不写提交号**）；② **冻结后 `payload` 段出现即拒（fail-closed）** ⇒ **`ko.<i>` 对齐当前无运行时消费者**（`kPayloadGlkv3Fields`、校验分支、manifest 8 行、相关测试与 Makefile 目标均已**字面注释**）；③ **恢复＝撤销注释 + 跑门禁**（恢复清单见 `docs/archive/20261007-2237-branch-plan.md` 冻结清单与 `task-9`）；④ 上文原始裁决与拼写规则**保留不删**（沿革）；
 - **剩余（Kotlin 侧）**：`declarationFor()` 的**索引路径匹配分支**仍留给 batch (b)——Lead ping `kotlin-i18n` **重钉**其测试后，本节再补一句「Kotlin 已同步」。
 ### 3.15.3 安全边界与授权面
 
@@ -1471,7 +1471,7 @@ chain 属于某个 backend（ChainId 的归属登记在 catalog）
 | `contract::Capability`（CM 枚举） | `CountermeasureCapability` | 通用词汇叫 `CapabilityKind`；**不动 C ABI 位值** |
 | `contract::StepSetKind` | `ChainId` | wire 数值 1/2/3 不变 |
 | `Cve43499Primitives::attack_write<M>` | 保留为**窗口内编译期绑定**的写原语（§7b） | 它是 Tier 1 引导 |
-| `backend/*/steps.cpp`、`steps/chain.cpp` | 逐步成为 `Step` 实现 + `Chain` 组装 | 见 `contract-first-chain-plan.md` |
+| `backend/*/steps.cpp`、`steps/chain.cpp` | 逐步成为 `Step` 实现 + `Chain` 组装 | 见 `docs/archive/20261007-2237-contract-first-chain-plan.md` |
 
 ## 9. 硬约束
 

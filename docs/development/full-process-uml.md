@@ -777,5 +777,5 @@ sequenceDiagram
 
 ## 6. 相关文档
 
-- 格式权威 `../analysis/wire-transport-model.md`；配置流水线 `../analysis/profile-pipeline-flow.md`；组合 token / 维度分解设计 `../analysis/s4-r6b-composition-design.md`（§7 v3）；决策 ADR-0001/0002/0004/**0006**；进度 `../analysis/branch-plan.md`。
+- 格式权威 `../analysis/wire-transport-model.md`；配置流水线 `../analysis/profile-pipeline-flow.md`；组合 token / 维度分解设计 `../analysis/s4-r6b-composition-design.md`（§7 v3）；决策 ADR-0001/0002/0004/**0006**；进度 `../archive/20261007-2237-branch-plan.md`。
 - 门禁证据 `../analysis/device-gates/s4-r6b-20261005-pass.md`、`../analysis/device-gates/s4-f4-f3-f5-20261005-pass.md`。

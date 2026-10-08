@@ -33,7 +33,7 @@
 
 **文档**
 - `docs/analysis/wire-transport-model.md`：v2 段落改为「**已弃用**（native 只认 3）」；保留 v1/v2 历史说明但标注废弃；
-- 本计划 + `branch-plan.md`：登记 R2c 与门禁。
+- 本计划 + `docs/archive/20261007-2237-branch-plan.md`：登记 R2c 与门禁。
 
 ## 2b. R2c 批内**无法**完成、留给 **R2c-2** 的两项（写范围所限，2026-10-05 实测）
 

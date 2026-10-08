@@ -1,6 +1,7 @@
 # ADR-0006：terminal 归属 —— **实现下放到 backend，词汇保留**
 
 - 状态：Accepted（维护者授权，2026-10-05）
+- 索引：[README.md](README.md)
 - 日期：2026-10-05
 - 基线：`be7b58e`（S4-R6a）
 - 相关：ADR-0004（组合轴 R18–R21、稀疏 triple）、`docs/analysis/s4-r6b-composition-design.md`（token）、

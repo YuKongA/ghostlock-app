@@ -202,7 +202,7 @@ R1（插件映射不得存在于 PI waiter 存活期）必须有**可执行证�
 
 ### 11.6 实现批次的准入条件与状态
 
-> **⏸ 冻结（用户指令 2026-10-05；沿革保留）**：本节的**运行时接线（step 2 / step 3a）已由 native 字面注释**——**已提交 = `ca968a5a`**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定），**`plugin`/`payload` 段出现即拒（fail-closed）**；**App 侧隐藏入口与停止发射在工作树、待提交**。**下列 step 2/3a 的代码、门禁与真机证据保留为沿革**（不得据此认为当前可达）；**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md` 文首冻结清单与 `task-9`）。
+> **⏸ 冻结（用户指令 2026-10-05；沿革保留）**：本节的**运行时接线（step 2 / step 3a）已由 native 字面注释**——**已提交 = `ca968a5a`**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定），**`plugin`/`payload` 段出现即拒（fail-closed）**；**App 侧隐藏入口与停止发射在工作树、待提交**。**下列 step 2/3a 的代码、门禁与真机证据保留为沿革**（不得据此认为当前可达）；**恢复＝撤销注释 + 跑门禁**（恢复清单见 `docs/archive/20261007-2237-branch-plan.md` 文首冻结清单与 `task-9`）。
 
 **step 3a（运行时接线，2026-10-05）：代码 + host/lint/NDK 三项门禁已完成（0/0/0）；真机门禁 PASS（五条用例全绿，已归档）。**
 

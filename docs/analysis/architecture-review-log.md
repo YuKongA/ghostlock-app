@@ -210,7 +210,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
 6. **门禁可追溯性缺口**：基线获取方式（`git worktree` + sha256）、真机门禁编号 `RW-00`、
    `cmp_disasm` 偏移位移先例（`kernel-phys-offset-plan`/`5x-tcp-geometry-plan`/`vr-guard-plan`）已补。
 7. **文档一致性**：`src/core/README.md` 路径、`engineering-standards.md`、`ancillary-controller-guide.md`
-   （“布局固定/不得新增字段”将失效）、`host-attack-dataflow-plan.md`（该计划已归档：索引见 docs/archive/README.md §八）需加现状注；上位计划“`ExploitSession`
+   （“布局固定/不得新增字段”将失效）、`host-attack-dataflow-plan.md`（该计划已归档：索引见 docs/archive/INDEX-plans.md §一）需加现状注；上位计划“`ExploitSession`
    字段布局固定 / 不移动字段”的表述与 Phase 0 矛盾，已改。
 8. **上位计划验证矩阵缺 Phase 0 行**：已补。
 
@@ -250,7 +250,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
    `run_state.cpp`。处理：**保留，并随 Phase 0 新增/改名文件同步 `SOURCES`**（加
    `core/session/core_session.cpp`、`core/session/backend/cve_2026_43499_state.cpp`），只为 IDE 索引准确；
    **不进门禁、不作为“构建成功”的证据**。
-4. **并行计划重叠需排序**：`docs/plan/flexible-kernel-rw-primitive-plan.md` 是 Phase C（`KernelMemory`）
+4. **并行计划重叠需排序**：`docs/archive/20261007-2237-flexible-kernel-rw-primitive-plan.md` 是 Phase C（`KernelMemory`）
    的已细化版本，且明确“值走 session、不给 `attack_write` 加参数”以保 disasm；`5x-tcp-geometry-plan.md`
    改 profile 字段与 TCP 路由；`placeholder-backend-survey.md` 对应占位 backend。顶层计划未给排序，
    存在同一改动两处设计与先后冲突风险。

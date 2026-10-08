@@ -17,8 +17,8 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `--load-prebuilt-profile <bin>` / `--enable-status-record` / `--dump-kernel-log <dir>` / `--force-attack` /
   `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
   ~~`--plugin-probe <path.so> [--expect-sha256 <hex>]`~~（只读插件描述，不注册、不运行 hook；**已按用户指令字面注释**）。
-  **⏸ 插件与 payload 工程仍按用户指令暂停（2026-10-05）；自定义 handoff 已于 2026-10-06 解冻并纳入 `available`（D1–D4 已批准）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `branch-plan.md`）。
-  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 branch-plan `task-9`。
+  **⏸ 插件与 payload 工程仍按用户指令暂停（2026-10-05）；自定义 handoff 已于 2026-10-06 解冻并纳入 `available`（D1–D4 已批准）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `docs/archive/20261007-2237-branch-plan.md`）。
+  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 `docs/archive/20261007-2237-branch-plan.md` task-9。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
 - 内置 profile 在 `app/src/main/assets/profile/`：`index.conf` 索引、
@@ -68,6 +68,25 @@ ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
 python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ```
 
+## 最高思想与质疑义务（2026-10-07 用户裁定 · 强制）
+
+**`docs/development/软件工程守则.md`（《软件工程教程》整理版，6018 行）是本项目的最高思想**，效力高于本文件及其它一切文档、计划、规范、约定与个人偏好。
+
+- **层级**：守则 = 最高思想。**本文件（AGENTS.md）与其它文档（`engineering-standards.md`、`design-philosophy.md`、`engineering-rules.md`、各 `plan/`、各 `analysis/`）内的一切规则、标准、设计、经验，只能作为「经验条目」**
+  —— 可补充、可细化，**不得与最高思想冲突、不得放宽、不得绕过、不得并列**。冲突时**以守则为准**，被冲突的经验条目视为**待修订**。
+- **当责（质疑—拒绝—教育）**：任何人（用户 / 开发者 / Lead / 子智能体）提出的**要求、设计、决策、流程改动或流程打断**，若
+  ① 违反守则任何条文；或
+  ② 破坏已建立的结构约束（阶段门、单变量、一处读取、单一权威、临时物零容忍、真机判据、产物身份核验等）；或
+  ③ **打断开发—设计—规划流程**（越过阶段门推进、无判据即继续、多线并行、以修改判据来通过门禁、以临时旁路替代设计）
+  ⇒ **必须当场质疑、拒绝执行，并教育提出者**：引用守则条文 + 项目物证（失败记录、指纹、判据），说明**冲突点与代价**，并给出**合规替代方案**。
+  **不得沉默服从，不得阳奉阴违，不得"先做了再说"。**
+- **唯一例外 · 强制确认**：用户**明确、知情地强制要求**越过守则（并说明接受后果）⇒ 可以执行，但必须同批留下**沿革记录**
+  （越过哪一条、谁确认、代价为何）并登记为**技术债**，约定偿还时机。**未经强制确认的越权一律拒绝。**
+- **反向义务**：对**符合**守则的要求必须**高效执行**；不得以"守则"为借口拖延、扩范围或拒绝正常需求。
+- **记录义务**：每次质疑 / 拒绝 / 教育 / 强制确认，留一行可检索记录（时间 · 条文 · 结论）。
+- **沿革**：本条由用户 2026-10-07 裁定，**取代并强化**既有条款「用户提出与既有设计/决定冲突时，Lead 必须当场质疑并明确列出冲突」
+  （旧：质疑后交用户裁决；新：**默认拒绝执行 + 教育提出者 + 仅在强制确认后放行**，且越权必留沿革与技术债）。
+
 ## 改动流程：先设计，后改动（强制）
 
 先读 `docs/development/design-philosophy.md`（设计思想：11 条原则，以 SWEBOK/ISO 12207/ISO 25010
@@ -76,7 +95,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 文档/验证的详细规则 + 外部标准来源）。**任何改动前必须先完成设计**：
 
 1. **Explore**：先读代码与文档；用 `git log --all -- <path>` 查历史设计与 device-gate 证据
-   （现行计划见 `docs/plan/branch-plan.md`，其余分册在 `docs/analysis/` 或 git 历史里）。
+   （现行计划见 `docs/plan/MASTER-PLAN.md`；历史计划在 `docs/archive/20261007-2237-*`）。
 2. **Design**：S 级（注释/格式）直接改；M 级写清动机/影响文件/行为差异/验证计划；**L 级**
    （攻击关键路径、wire/profile 格式、跨 Native↔Kotlin 契约、公共数据结构、新增 route）
    必须先产出计划文档（模板见 `docs/development/documentation-standards.md`）并获用户认可，再写代码。
@@ -89,6 +108,33 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   `cmp_disasm` 是**可选诊断工具**：反汇编差异本身**不再阻塞**批次，真机测试通过即可。
 - 大改动按批次推进，一个批次只做一类事，上一批验证通过再进下一批。
 - **新实验必须从「生产路径」启动，不得靠新增 CLI 旗标/旁路逻辑来试（用户指令 2026-10-05）**：优先**预留扩展点/解除限制/参数化**，使实验＝**小改动或去掉一个限制**，直接在**生产路径**上跑；**禁止**为了试一个功能而临时加一堆可选 CLI 参数与旁路分支。本项目已吃过这个亏：`--cve43284-*`、`--plugin`、`--allow-vermagic-rewrite`、staged 入口等都是**先加后删**（AGENTS 已记载其删除），清理成本高且有「dev 路径与生产路径行为漂移」的风险。⇒ 任何**仅服务实验**的入口，必须在**同批**登记清理计划（谁在什么条件下删），默认视为技术债。
+
+## 代码修改流程（注释套旧码 · 新码标注 · 标准化注释）（2026-10-07 用户指令 · 强制）
+
+**核心要求：不得在原有代码上直接改掉它。** 修改流程固定为五步：
+
+1. **套住旧码**：把要被修改的**原有代码用注释套住**（保留原文，作为参考）。
+2. **打标记**：在被注释的旧码与待实现的新代码之间，标记 `//TODO(reason)` —— **reason 必须写清**（为什么改、改到什么状态算完成）。
+3. **写新码**：在标记之后写新实现。
+4. **确认完成**：以该批次的**验收判据全绿** + Lead/用户确认为准（判据见"验证门槛"）。
+5. **删除旧码注释**：确认完成后**立即删除**被注释的旧代码块，并核对该文件无残留。
+
+**有界性（与最高思想对齐）**：被注释的旧码属**临时物**，受《软件工程守则》§6.2 约束 ——
+**同一批次内必须清零**，不得跨批次、不得进入基线；批次计划里须登记"哪几处旧码参考块待删"。
+
+**标准化注释（新增即写；改旧码时顺手补）**：
+- **Kotlin / Java / Gradle KTS**：**KDoc**（`/** … */`，含 `@param` / `@return` / `@throws`）。
+- **C++ / C**：**Doxygen 风格**（`/** … */`，含 `@param` / `@return` / `@note`）；不得只写 `//` 碎片注释代替文档注释。
+- **Rust**：**rustdoc**（`///`，含 `# Arguments` / `# Errors` 段）。
+- **HOCON / shell / Makefile**：`#` 注释，同义表达。
+- **最低内容**：目的（做什么/为什么）· 参数 · 返回 · 失败/错误语义 · 前提（时序/线程/生命周期，若相关）· 所属阶段或组件（若相关）。
+- **触旧补注**：任何被本次改动触及的旧类/旧函数，**同批补上**上述标准注释（不得只改不注）。
+
+**例外（须用户确认）**：
+- **机械改动**（纯格式、重命名、错别字、注释本身）可直接改写，但**仍须**按标准补注释，并在 `//TODO(reason)` 里说明"机械改动"。
+- **无法用注释套住**的情形（例如单行 token 常量修复、仅供工具识别的字符串）⇒ 用独立的 `//TODO(reason)` 标注该处，说明为何不能套码。
+
+**沿革**：本条由用户 2026-10-07 指令设立；与既有条款「禁用而非删除时用最可逆的形式（字面注释 + file:line 恢复清单）」同源并推广到**一切实质性代码修改**。
 
 ## 代码约定
 
@@ -148,7 +194,8 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
     仍由 GLKv3 的 `schema == 3` 绑定路径使用，其声明权威是 `profile-manifest-v3.tsv`。
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
   - **载体 vs canonical 双路径必须逐值同构（M5 教训）**：同一份选择数据经**两条读取路径**（「运行时载体」与「`available.<id>` 声明」）时必须**逐值等价**，且**声明路径只能作回退**——两条路径行为分叉＝**高危形态**（M5 前 `NativeProfileDocument.from()` 只读声明路径 ⇒ 导出的 `.bin` **静默丢队列** ✗；M5 改为「**载体优先、回退声明**」✓）。⇒ 新增任何「同一数据的第二条读取路径」必须同批补**跨路径等价对拍**。
-- **构建逻辑一律写进 Gradle KTS（跨平台），禁止独立 `.sh` 构建脚本**（用户指令 2026-10-05）：LKM/DDK、插件产物、native 准备等一律由 `*.gradle.kts` 任务承担；**`.sh` 仅允许用于设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷、`tools/device-guard/*`、`.github/scripts/*`）。跨平台硬要求：**不得**依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）；工具链路径（如 `llvm-objcopy`）由 AGP 的 `android.ndkDirectory` 解析，**不依赖 PATH**；容器引擎探测 `podman`→`docker` 并允许 `-PcontainerEngine=` 覆盖。**跨端列表不得手抄**（如 8 个 KMI label）：由 native 导出 manifest（`lkm-kmi-manifest.tsv`）供 Gradle 与 Kotlin 消费。 **LKM/DDK 现状（2026-10-06，`8187375c`）**：LKM 由 **`buildLkmImages`**（逐 label 容器构建）/ **`copyLkmIntoAssets`**（fail-closed 落 assets）承担；**8 个 label 来自 native 导出的 `lkm-kmi-manifest.tsv`**（不手抄）；产物在 **Gradle build 目录下**（`app/lkm/<label>/ghostlock.ko`，即 `~/.ghostlock/build/root/app/lkm/**`；**源码目录 `tools/lkm/ghostlock/` 始终保持干净**，容器只在 build 目录里 `make`），账本 **`app/lkm/kmis.tsv`**（9 行 = 表头 + 8），守卫 **`:app:verifyLkmLedger`**（账本 × 缓存比对，**从全量 manifest × 缓存派生**）；APK 资产 = **8 个 `assets/lkm/<label>/ghostlock.ko`**。
+- **构建逻辑一律写进 Gradle KTS（跨平台），禁止独立 `.sh` 构建脚本**（用户指令 2026-10-05）：LKM/DDK、插件产物、native 准备等一律由 `*.gradle.kts` 任务承担；**`.sh` 仅允许用于设备端与运维**（如 `tools/lkm/ghostlock/root_cmd.sh` 是设备载荷、`tools/device-guard/*`、`.github/scripts/*`）。跨平台硬要求：**不得**依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）；工具链路径（如 `llvm-objcopy`）由 AGP 的 `android.ndkDirectory` 解析，**不依赖 PATH**；容器引擎探测 `podman`→`docker` 并允许 `-PcontainerEngine=` 覆盖。**跨端列表不得手抄**（如 8 个 KMI label）：由 native 导出 manifest（`lkm-kmi-manifest.tsv`）供 Gradle 与 Kotlin 消费。 **LKM/DDK 现状（2026-10-06，`8187375c`）**：LKM 由 **`buildLkmImages`**（逐 label 容器构建）/ **`copyLkmIntoAssets`**（fail-closed 落 assets）承担；**8 个 label 来自 native 导出的 `lkm-kmi-manifest.tsv`**（不手抄）；产物在**【仓库内】Gradle build 目录下**（`build/app/lkm/<label>/ghostlock.ko`；**源码目录 `tools/lkm/ghostlock/` 始终保持干净**，容器只在 build 目录里 `make`），账本 **`build/app/lkm/kmis.tsv`**（9 行 = 表头 + 8；源码树里没有该文件），守卫 **`:app:verifyLkmLedger`**（账本 × 缓存比对，**从全量 manifest × 缓存派生**）；APK 资产 = **8 个 `assets/lkm/<label>/ghostlock.ko`**（生成资产在 `build/app/generated/lkmAssets`）。**沿革**：历史上曾把 build 外移/软链到 `~/.ghostlock/build/root`（iCloud 规避）；**2026-10-06 用户规则改为「所有构建必须在仓库内真实 `build/`、禁止任何链接」，外移做法已废**。
+- **构建产物必须在仓库内真实 `build/`，禁止任何链接（用户指令 2026-10-06）**：① 所有构建输出一律落 `<repo>/build/**`；② **禁止** `build` → 其他目录的**符号链接 / 硬链接 / junction**（历史做法 `build.nosync` 已废）；③ 出问题直接 `./gradlew clean` —— **产物可丢弃**，不得为保住产物而维护链接或副本；④ 若产物疑似来自旧树（历史上存在过 `build.nosync`）⇒ 用 `realpath` 核实并清理，**不要并行保留两棵树**。**依据**：本轮真实事故 —— 两套构建树并存 ⇒ 导出侧 `absolutePath` 与 `canonicalPath` 分叉 ⇒ 门禁任务图上游失败（另有 0 字节截断事故与原子写入要求）。
 - 配置权威是 GLK profile（当前 wire 为 GLKv3）+ HOCON。执行层不得读配置类环境变量，只允许进程/路径类
   （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
 - **版本号统一为 3（不要新增/叠加版本号）**：HOCON 配置与 wire 共用同一个数字，避免混淆。
@@ -187,7 +234,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   - **独立实现/调研**：写范围与主线不重叠的文件改动、上游事实核查、测试补写、文档起草、跨模块对拍。
 - 委派必须给出：自包含的目标、涉及的精确文件/写范围、命令与期望结果、验收标准；子智能体只做被委派的事。
 - **写范围不重叠**：子智能体与主智能体共享工作树，同一文件不得并行修改；门禁运行期间不得改被该门禁覆盖的源文件。
-- **共享缓存的构建必须串行（本项因一次真实撞车而设立）**：`~/.ghostlock/lkm/**` 等**跨 writer 共享的缓存/产物目录**，同一时刻**只允许一个 writer 跑构建**——本轮真实撞车一次（两个 writer 同跑 `buildLkmImages` ⇒ `work/.tmp_*` 与 `Makefile` 缺失；**锚点未被破坏**）。⇒ 需要并行时用 **`-PlkmLabel=` 单标签 + 独立 workdir**，或**串行排队**；构建期间不得有第二个 writer 触碰同一缓存。
+- **共享缓存的构建必须串行（本项因一次真实撞车而设立）**：跨 writer 共享的【**容器引擎镜像/层缓存**】与 `<repo>/build/**` 下的**共享产物**，同一时刻**只允许一个 writer 跑构建** —— 历史上曾用 `~/.ghostlock/lkm/**` 作共享目录（**现已不用**，产物一律落仓库内 `build/`）；那轮真实撞车为两个 writer 同跑 `buildLkmImages` ⇒ `work/.tmp_*` 与 `Makefile` 缺失（**锚点未被破坏**）。⇒ 需要并行时用 **`-PlkmLabel=` 单标签 + 独立 workdir**，或**串行排队**；构建期间不得有第二个 writer 触碰同一缓存。
 - **Gradle 门禁必须串行（本项因一次真实并发而设立）**：`:app:testDebugUnitTest` / `buildLkmImages` / `verifyLkmLedger` 等**写同一 build 目录与共享缓存**的任务，**同一时刻只跑一个**；并发跑会互相污染（临时候选目录被删、XML 结果被覆盖）。⇒ 门禁排队执行，或在隔离 workdir 里跑。
 - **编辑锚点必须是语义边界（禁止「文本片段」/「下一个括号」式切法）**：删改代码块时锚点必须**整语句/整块**（含结尾分号与注释），**不得**用「从某关键词到下一个 `}`」这类相对切法——本项目曾因此**截断多行语句**、留下悬空常量或未闭合注释（删 defex 时弄坏 3 个文件）。⇒ 批量编辑＝**先校验全部锚点、任一不匹配则整体不写**（事务式），改后**编译 + 门禁**验证。
 - **程序里不要用反引号（本项因一次真实截断而设立）**：用脚本/程序生成或替换文本时，**载荷里不得含反引号字符**（shell 命令替换会截断/执行它）；需要字面反引号时用 `\x60` 或写入临时文件。**脚本运行前必须自检「载荷不含反引号」**（不通过就整体不写）。
@@ -201,9 +248,31 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **脚本化编辑必须语句级、锚点级**（本项因一次真实事故而设立）：用「行包含关键字就删」这类粗暴规则会**截断多行语句**、留下悬空常量或未闭合注释（本项目一次删 defex 时就弄坏了 3 个文件）；批量编辑必须**先校验全部锚点、任一不匹配则整体不写**（事务式），并在改后**编译 + 门禁**验证。
 - 真机门禁仍需按 `docs/analysis/device-gates/` 归档；子智能体返回原始日志与退出码，主智能体落地归档与记录。
 
+- **禁止任何改变共享工作树的 git 命令与等效写回（本项因一次真实事故而设立）**：任何 teammate **不得**执行 `git checkout` / `git restore` / `git stash` / `git reset` / `git clean` 等会改变工作树内容的命令，**也不得**用等效写回（例如 `git show REV:path > path` 覆盖文件）。历史比较**只用只读形式**：`git show <rev>:<path>`（不重定向到工作树）、`git diff <rev> -- <path>`、`git log`。**依据**：本项目一次真实事故 —— 该写回把工作树未提交的今日改动整体覆盖为 HEAD 版。
+- **禁止分片读 + 全文写回（本项因同一次真实事故而设立）**：`read` 带 `offset/limit` 只返回窗口，而 `write` 会**整体替换**文件 ⇒ **禁止**把窗口内容写回。读文件必须**整份读**（不带 `offset/limit` 或确认读到 `totalLines`），或改用**定点 `edit`**；若确需整份写回，**写回前后必须核对字节数与行数**并在报告中给出（本次事故 = 5 份文件被截断，其中 1 份不可恢复）。
+
+## 设计与规划审查岗 design-critic（2026-10-07 用户裁定 · 强制）
+
+- **岗位**：常驻 teammate `design-critic`（**只读**：不写文件、不跑门禁、不碰代码）；**同一审查岗固定同一成员**，不得每批新起（复用上下文与原则版本）。
+- **审查对象**：L 级设计（`docs/analysis/**` 与 `docs/plan/**` 的设计文档）、ADR、批次计划、wire/profile 契约改动，以及任何「新增组件/功能/结构」的提案。
+- **依据**：`docs/development/design-review-principles.md`（当前 **v0.2**）；权威顺序 **守则 > AGENTS > engineering-standards/design-philosophy > analysis 文档**。
+- **强制规则**：
+  1. **非作者评审**（作者不得自审）；
+  2. 必须基于**冻结快照**，报告记录 **HEAD/文档哈希/时间**；期间有 writer 改动 ⇒ 声明「**不覆盖**」并在冻结后复跑；
+  3. **输出格式固定**：不符合项表 = `编号 | 严重度 | 位置 | 问题 | 必须怎么改 | 依据`；末尾一行总判「**可进批准 gate / 仍需修订（列必改）**」，并**单列**「验证了什么 / 没验证什么」；
+  4. 每条**依据可核验**（`file:line` 或原则编号 / R 编号）；**禁止**引用外部计划或全族**未定义标签**；
+  5. **严重度口径**：阻断 / 重要 / 建议；**阻断项未关闭不得进批准 gate**；
+  6. **设计者必须逐条回应**（接受并改 / 举证反驳），不得沉默忽略；
+  7. 用户**强制确认**的越权，审查者必须核对**沿革记录与技术债登记**是否都存在；
+  8. **触发时机**：L 级设计定稿前必审 · 批次计划变更必审 · 原则版本更新后重跑受影响范围；
+  9. **记录义务**：每次审查留一行可检索记录（时间 · 原则版本 · 总判 · 阻断数）。
+- **与其它评审的分工**：原则/简并面 = **design-critic**；native 技术面 = native-core；Kotlin/配置面 = kotlin-app；文档/配额/同批面 = docs-uml。四方结论交 Lead 合并，冲突时以**原则与物证**裁决。
+- **当责**：不得因提出者身份（用户/Lead/队友）而放行；质疑必须给出**代价与合规替代**；不得阳奉阴违。
+
 ## 验证门槛
 
 - **守卫/断言必须证明「能失败」**（本项因一次真实发现而设立）：新增的守卫、断言、检查**不能只证明「现在通过」**——必须做一次**证伪实验**（临时造错 → 观察它以预期方式失败 → 撤回并核验无残留），报告里写明造错点与失败输出。本项目曾因此发现一条 **vacuous 断言**：`memcmp` 比较两个 value-init 结构时**恒非零**（padding 未归零）⇒ 删掉被保护的赋值它**仍然绿**；修法＝两侧先 `memset` 归零 + `static_assert(is_trivially_copyable)`。
+> 2026-10-07 用户裁定：本条由审查原则 **D1** 取代（黑盒/白盒 + 极端输入值；**不可能用例不测**）——见 `docs/development/design-review-principles.md`；**本条保留为可选手段（不再强制）**。
 - **证伪/验证实验一律用 `make -B`**（本项因一次假证明而设立）：`make` 会因**同一秒 mtime** 判定 up-to-date 而**跑旧二进制**，给出**假证明**；凡「造错后验证会失败」的实验必须强制重建。
 - **证伪实验必须清理被测二进制（本项因一次真实假红而设立）**：造错实验结束后，**不仅要还原源码，还必须删除/重建被测二进制**（`rm -f <artifact>` + `make -B` 复核）—— 源码回位 ≠ 产物回位；本项目曾因只还原源码、留下**探针二进制**，使随后跑门禁的人**跑到探针**并获得**假红**（`queue_wire_test.cpp:439` 既有断言被误报 ✗）。交回前一律 `rm -f <artifact>` 并 `make -B` 复核。
 - **判断产出必须数产物、不数目录（本项因一次误判而设立）**：`ls | wc -l` 会把**空目录/临时目录**算进去 ⇒ 必须数**产物文件**——LKM 例：`buildLkmImages` 的 **8 行 `LKM <label> -> … (bytes)`**、`kmis.tsv` **9 行**（表头 + 8）、`unzip -l … | grep assets/lkm/` **8 行**；判定「生成了几个」时一律用这些计数。
@@ -238,10 +307,10 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、
   `docs/development/documentation-standards.md`（文档规范）、`src/core/README.md`。
-- 现行分支计划：`docs/plan/branch-plan.md`（唯一进度入口）；决策/门禁见
+- 现行主计划：`docs/plan/MASTER-PLAN.md`（唯一进度入口）；历史计划已归档 `docs/archive/20261007-2237-*`；决策/门禁见
   `docs/analysis/adr/`、`docs/analysis/device-gates/`。
-- **历史文档：已恢复到 `docs/archive/`**（2026-10-06 用户指令「把以前提交又删掉的文档都找回」）：命名 = **`YYYYMMDD-HHMM-<原文件名>`**（时间 = **删除提交的时间**），每件文件头含**原始路径 / 删除提交 / 恢复来源（`git show <commit>^:<path>`）/ 恢复日期**；「删除提交 → 归档路径」完整索引见 **`docs/archive/README.md` §五**。
-  - **证据类已恢复**：`docs/analysis/device-gates/**` 历史门禁 ⇒ **已恢复到 `docs/archive/device-gates/`（164 件，实测 `find docs/archive/device-gates -type f | wc -l` = 164）**，命名与头部规则同文档类（见 `docs/archive/README.md` §七）；**未恢复**：`docs/kernel_profiles/templates/**` **4 件**（已被现役 `docs/profile/templates/**` 取代，理由见 README §六）。
+- **历史文档：已恢复到 `docs/archive/`**（2026-10-06 用户指令「把以前提交又删掉的文档都找回」）：命名 = **`YYYYMMDD-HHMM-<原文件名>`**（时间 = **删除提交的时间**），每件文件头含**原始路径 / 删除提交 / 恢复来源（`git show <commit>^:<path>`）/ 恢复日期**；「删除提交 → 归档路径」完整索引见 **`docs/archive/INDEX-device-gates.md`**（README §五 为指针）。
+  - **证据类已恢复**：`docs/analysis/device-gates/**` 历史门禁 ⇒ **已恢复到 `docs/archive/device-gates/`（164 件，实测 `find docs/archive/device-gates -type f | wc -l` = 164）**，命名与头部规则同文档类（见 `docs/archive/INDEX-device-gates.md`）；**未恢复**：`docs/kernel_profiles/templates/**` **4 件**（已被现役 `docs/profile/templates/**` 取代，理由见 README §六）。
   - 兜底：仍可从 git 历史取回 `git show <commit>:<path>`。以下保留原删除清单分类作对照：
   - `docs/analysis/` 其余架构/迁移/解耦分析（routes、native-functions、native-cpp-current-uml、
     native-global-state、native-entrypoint-plan、environment-convergence-plan 等）
