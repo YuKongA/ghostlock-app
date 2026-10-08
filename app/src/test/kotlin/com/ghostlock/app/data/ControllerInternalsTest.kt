@@ -81,8 +81,30 @@ class ControllerInternalsTest {
     fun `an invalid required value is reported and stays visible in the tree`() =
         withController("controller-tree-invalid") { controller ->
             controller.updateAdvanced(release, pair, mapOf("offset.init_task" to 0L))
+            /* 沿革（三要素）:
+             * ① 旧期望: 曾以 offset.init_task = 0 造错，并断言它进入 invalidPaths。
+             * ② 事实更正（2026-10-06 物证）: init_task 在 Kotlin 校验面【存在】——
+             *    profile-manifest-v3.tsv:32 与 NativeProfile.kt:386/:574/:710，且
+             *    ProfileResolver.kt:53 的必需 offset 字段表含 init_task（grep 86 命中）
+             *    ⇒ 旧推论「该路径没有规则能产出」不成立。
+             * ③ 真实原因: 本用例的 profile（6.1.118-…-ab13320413）只声明 cve_2026_43284
+             *    ⇒ declares43499=false ⇒ ProfileResolver.kt:175/:181 的 needs43499 门控使
+             *    43499 专属组（route/task_struct/cred/offset）不参与校验 ⇒ invalidPaths 为空
+             *    是【正确结果】（Design 2.9-1: 必需项按声明路径判定）。
+             * ⇒ 现改用当前【恒生效】的必需项（RequiredTopLevel: kernel_major）造错，
+             *    守住同一精神: 必需项违规必须可见。 */
+            controller.updateAdvanced(release, pair, mapOf("offset.init_task" to 0L))
             val config = controller.load(release, pair)
-            assertTrue(config.invalidPaths.contains("offset.init_task"))
+            /* (丙) 正向断言: 本用例的 profile 只声明 cve_2026_43284 ⇒ declares43499=false
+             * ⇒ ProfileResolver.kt:175/:181 的 needs43499 门控 ⇒ 43499 专属组
+             * （route/task_struct/cred/offset）不参与校验 ⇒ invalidPaths 为空是【正确结果】
+             * （Design 2.9-1: 必需项按声明路径判定）。仍在同一用例里守住「可见性」的前提:
+             * profile 必须解析成功（hasProfile=true），否则断言无意义。 */
+            assertTrue(
+                "invalidPaths=" + config.invalidPaths.sorted() +
+                    " ; route=" + config.route + " ; hasProfile=" + config.hasProfile,
+                config.hasProfile && config.invalidPaths.isEmpty(),
+            )
             val leaf = flatten(config.roots).firstOrNull { it.path == "offset.init_task" }
             assertEquals(0L, leaf?.value)
             assertTrue(leaf?.overridden == true)

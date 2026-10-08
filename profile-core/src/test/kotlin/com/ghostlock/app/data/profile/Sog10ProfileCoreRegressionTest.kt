@@ -1,6 +1,8 @@
 package com.ghostlock.app.data.profile
 
+import com.ghostlock.app.data.AvailablePriority
 import com.ghostlock.app.data.HoconSupport
+import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.NativeProfileDocument
 import com.ghostlock.app.data.ProfileLayout
 import com.ghostlock.app.data.ValueMap
@@ -85,7 +87,40 @@ class Sog10ProfileCoreRegressionTest {
 
         val decoded = requireNotNull(Glkv3Decoder.decode(bytes))
         assertEquals(release, decoded.release)
-        assertEquals("multicast_waiter", decoded.route)
+        /* 沿革: 排序权威 = AvailablePriority（priority，其次 token 序）；此前用
+         * BackendKind 枚举序 ⇒ 43499 排在前面 ⇒ 声明默认被绕过 ⇒ A301SO 现象。
+         * 本次改为【按声明派生】期望：默认项 = orderedBackends(available) 首项，
+         * 期望 route = 该默认项在目录里的 route（43284 无 route 轴 ⇒ 期望 null）。
+         * 零硬编码：既不写 multicast_waiter，也不裸写 null。 */
+        /* 沿革: 排序权威 = AvailablePriority（priority，其次 token 序）；此前 BackendKind
+         * 枚举序把 43499 排前 ⇒ 声明被绕过 ⇒ A301SO 现象 ⇒ 本次改为【按声明派生】期望。
+         * 约束: builtin 来自本地 parse(...)，它已规范化 ⇒ 按设计不含 available（运行期投影），
+         * 因此从【同一份资产文本】用同一条解析入口（HoconSupport.parseValue）取原始 available，
+         * 只是不做 canonicalize —— 这不是第二条读取路径。零硬编码：不写 multicast_waiter。 */
+        val assetText = File(File(repoRoot(), "app/src/main/assets/profile"), "$release.conf").readText()
+        val declaredRaw = requireNotNull(HoconSupport.parseValue(assetText).asValueMap())
+        /* 资产的根形态是 ghostlock { ... }；兼容两种根形态（自诊断沿用）。 */
+        val declaredRoot = declaredRaw["ghostlock"].asValueMap() ?: declaredRaw
+        val declaredAvailable = requireNotNull(declaredRoot["available"].asValueMap()) {
+            "no available declaration in the asset; root keys=" +
+                declaredRoot.keys.sorted().joinToString(",")
+        }
+        val declaredBackends = AvailablePriority.orderedBackends(declaredAvailable)
+        require(declaredBackends.isNotEmpty()) {
+            "available declares nothing; keys=" + declaredAvailable.keys.sorted().joinToString(",")
+        }
+        val defaultBackend = declaredBackends.first()
+        val defaultRoutes = CombinationCatalog.specs
+            .filter { spec -> spec.backend.token == defaultBackend }
+            .mapNotNull { spec -> spec.route?.token }
+            .distinct()
+        /* 无歧义守卫：多于一条 route ⇒ 无法派生期望 ⇒ 明确红（否则会静默变成 null = vacuous）。 */
+        require(defaultRoutes.size <= 1) {
+            "ambiguous default backend " + defaultBackend + " declares " + defaultRoutes +
+                "; cannot derive a route expectation"
+        }
+        val expectedRoute = defaultRoutes.singleOrNull()
+        assertEquals("the document carries the DEFAULT declaration route", expectedRoute, decoded.route)
         /* HOCON refactor: no common owner; the kernel scalars are root values. */
         assertEquals(5uL, decoded.kernelMajor)
         /* M3/M5: the queue replaced the token - the migrated profile must carry the
@@ -94,45 +129,15 @@ class Sog10ProfileCoreRegressionTest {
             "the migrated profile must not carry a token",
             runCatching { entry(decoded, "backend.cve_2026_43499", "steps") }.isFailure,
         )
+        /* 沿革: 排序权威 = AvailablePriority（priority，其次 token 序）；默认项 = 声明首项。
+         * 队列属于【默认 backend】，不再写死 43499（BackendKind 枚举序曾把 43499 排前）。 */
         assertTrue(
-            "the migrated profile must carry a queue",
-            runCatching { entry(decoded, "backend.cve_2026_43499", "queue") }.isSuccess,
+            "the migrated profile must carry the default backend's queue",
+            runCatching { entry(decoded, "backend." + defaultBackend, "queue") }.isSuccess,
         )
-        assertNull(entryOrNull(decoded, "backend.cve_2026_43499.abi.kernel", "kernel_phys_load"))
-        assertEquals(
-            Glkv3Value.UInt(0u),
-            entry(decoded, "backend.cve_2026_43499.abi.cred", "usage_offset"),
-        )
-        assertEquals(
-            Glkv3Value.UInt((-274698454400L).toULong()),
-            entry(decoded, "backend.cve_2026_43499.cred", "ref0_image"),
-        )
-        assertEquals(
-            Glkv3Value.UInt((-274696707824L).toULong()),
-            entry(decoded, "backend.cve_2026_43499.cred", "ref1_image"),
-        )
-        assertEquals(
-            Glkv3Value.UInt((-274698453008L).toULong()),
-            entry(decoded, "backend.cve_2026_43499.cred", "ref2_image"),
-        )
-        assertEquals(
-            Glkv3Value.UInt((-274698454232L).toULong()),
-            entry(decoded, "backend.cve_2026_43499.cred", "ref3_image"),
-        )
-        assertEquals(
-            Glkv3Value.UInt(35027464u),
-            entry(decoded, "backend.cve_2026_43499.abi.offset", "selinux_blob_sizes"),
-        )
-        assertEquals(
-            Glkv3Value.UInt(35018112u),
-            entry(decoded, "backend.cve_2026_43499.abi.offset", "security_hook_heads"),
-        )
-
-        val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
-        assertEquals(Glkv3Value.UInt(96u), entry(decoded, routeSection, "waiter_off"))
-        assertEquals(Glkv3Value.UInt(264u), entry(decoded, routeSection, "buffer_size"))
-        assertEquals(Glkv3Value.UInt(48u), entry(decoded, routeSection, "task_offset"))
-        assertEquals(Glkv3Value.UInt(56u), entry(decoded, routeSection, "lock_offset"))
+        /* 这 12 条 43499 测量值断言（8 条 abi/cred + 4 条 route）描述的是【显式选中 43499】
+         * 时的文档形态；默认项由声明派生后默认文档是 43284 形态，故按乙移到显式路径测试
+         * Sog10ExplicitBackendOverrideTest（覆盖条数 12 -> 12，不降级）。 */
         assertTrue(bytes.isNotEmpty())
     }
 

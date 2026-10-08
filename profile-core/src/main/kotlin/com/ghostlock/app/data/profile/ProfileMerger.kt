@@ -20,6 +20,23 @@ object ProfileMerger {
      * common execution preset -> built-in -> imported -> sparse override, then
      * the session CPU pair is forced in and the selected route groups are filled.
      */
+    /**
+     * The DECLARED selection surface (`available`) merged with the SAME precedence
+     * as [resolveMerged] (builtin -> imported -> overrides), through the same
+     * helper. One merge authority, two outputs: the runtime profile and the
+     * declaration it was projected from.
+     *
+     * (B-ii) The runtime form drops `available` (ProfileLayout.buildRuntime), so
+     * the declaration is carried separately here instead of being re-derived from
+     * the runtime map - re-deriving would be a SECOND read path (M5). Each input
+     * is already an `available` map, captured before normalization by its owner.
+     */
+    fun resolveDeclarations(
+        builtin: ValueMap?,
+        imported: ValueMap?,
+        overrides: ValueMap?,
+    ): ValueMap = deepMergeValues(deepMergeValues(builtin ?: ValueMap(), imported), overrides)
+
     fun resolveMerged(
         deviceRelease: String,
         builtin: ValueMap?,

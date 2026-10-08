@@ -134,6 +134,8 @@ class GhostlockViewModel(
     private val effectChannel = Channel<GhostlockEffect>(Channel.BUFFERED)
     private val mutableState = MutableStateFlow(GhostlockUiState())
     private var initialized = false
+    /* Release whose execution profile has already been auto-loaded. */
+    private var loadedForRelease: String? = null
     private var running = false
     private val loadKernelSnapshot = LoadKernelSnapshotUseCase(repository)
     private val selectCpuPairUseCase = SelectCpuPairUseCase(repository)
@@ -216,9 +218,36 @@ class GhostlockViewModel(
             state.copy(
                 executionRelease = config.release,
                 executionHasProfile = config.hasProfile,
+                declaredCombinations = config.declaredCombinations,
+
                 /* P0: the probe's own reasons a selected plugin blocks the
                  * document — the run gate shows them instead of a generic line. */
                 executionPluginErrors = config.pluginErrors,
+                executionDeclarationErrors = config.declarationErrors,
+                /* (a) The DECLARED default decides the initial selection; the
+                 * catalogue default only covers a profile that declares nothing.
+                 * An explicit pick is never overridden: only a value still equal
+                 * to the catalogue default is replaced (HISTORY: the catalogue
+                 * default used to win over the declaration, so a 43284-first
+                 * profile emitted a 43499 document - the A301SO complaint). */
+                combination = if (state.combinationDerivedFor == config.release) {
+                    /* Same profile: an explicit pick is kept. */
+                    state.combination
+                } else {
+                    /* Profile CHANGED: re-derive from its declaration. The
+                     * catalogue default only covers a profile that declares
+                     * nothing at all (HISTORY: switching used to keep the old
+                     * value, so a general profile still showed the 43499
+                     * default - the A301SO locked-display complaint). */
+                    declaredDefaultCombination(config.declaredCombinations)
+                        ?: CombinationCatalog.defaultSpec
+                },
+                combinationDerivedFor = config.release,
+                /* A profile that DECLARES combinations yet yields no usable
+                 * default is reported, never silently papered over. */
+                executionComboUnusable = state.combinationDerivedFor != config.release &&
+                    config.declaredCombinations.isNotEmpty() &&
+                    declaredDefaultCombination(config.declaredCombinations) == null,
                 executionFields = config.general,
                 executionEditing = if (preserveEditing) state.executionEditing
                 else config.general.associate { field -> field.path to field.value.toString() },
@@ -445,6 +474,33 @@ class GhostlockViewModel(
 
     fun onClosePayload() {
         mutableState.update { it.copy(payloadVisible = false) }
+    }
+
+    fun onOpenExecutionCombination() {
+        mutableState.update { it.copy(executionComboVisible = true) }
+    }
+
+    fun onCloseExecutionCombination() {
+        mutableState.update { it.copy(executionComboVisible = false) }
+    }
+
+    fun onExecutionComboDraftChanged(entry: ExecutionComboEntry?) {
+        mutableState.update { it.copy(executionComboDraft = entry, executionComboUnusable = false) }
+    }
+
+    /** Confirm path: applies the draft through the existing selection callback. */
+    fun onExecutionComboConfirmed() {
+        val draft = mutableState.value.executionComboDraft
+        val spec = draft?.let { entry ->
+            CombinationCatalog.specs.firstOrNull { option -> option.token == entry.token }
+        }
+        if (spec == null) {
+            /* Never silent: the dialog reports why nothing was applied. */
+            mutableState.update { it.copy(executionComboUnusable = true) }
+            return
+        }
+        setCombination(spec)
+        mutableState.update { it.copy(executionComboVisible = false, executionComboUnusable = false) }
     }
 
     /** `null` is the DEFAULT choice: nothing custom runs. */
@@ -1336,6 +1392,18 @@ class GhostlockViewModel(
     /** Explains why the run button is greyed out. */
     fun onProfileInvalid() {
         val state = state.value
+        /* (b1) A combination the profile does NOT declare blocks the run first:
+         * the available declaration is the selection surface, so the refusal is
+         * named and the selection is never silently replaced. */
+        if (state.executionDeclarationErrors.isNotEmpty()) {
+            send(
+                GhostlockEffect.ToastArgs(
+                    R.string.execution_declaration_blocked,
+                    state.executionDeclarationErrors.first(),
+                ),
+            )
+            return
+        }
         /* A selected plugin that cannot be emitted blocks the document before any
          * of the generic reasons below apply: say WHY (the probe's own words). */
         if (state.executionPluginErrors.isNotEmpty()) {
@@ -1631,6 +1699,16 @@ class GhostlockViewModel(
             runCatching { profileController.load(snapshot.kernelRelease, pair) }.getOrNull()
         }
         kernelSnapshot = snapshot
+        /* A cold start can reach the UI before the snapshot exists, and
+         * loadExecutionProfile() used to drop such a request silently (it
+         * returns when kernelSnapshot is null), which left the combination
+         * chooser empty with no retry. Load once per release instead.
+         * Idempotent: a second call for the same release is skipped.
+         */
+        if (loadedForRelease != snapshot.kernelRelease) {
+            loadedForRelease = snapshot.kernelRelease
+            loadExecutionProfile()
+        }
         mutableState.update {
             it.copy(
                 executionPluginErrors = loaded?.pluginErrors.orEmpty(),

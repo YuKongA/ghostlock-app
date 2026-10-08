@@ -98,12 +98,55 @@ internal class UserProfileStore(
      * byte-for-byte as imported. Nothing is auto-selected: without an explicit
      * [preferredName] there is no imported layer.
      */
-    fun loadEntry(release: String, preferredName: String?): ValueMap? {
+    fun loadEntry(release: String, preferredName: String?): ValueMap? =
+        loadEntryWithDeclaration(release, preferredName)?.runtime
+
+    /**
+     * One imported layer: the [runtime] form every consumer already used, plus the
+     * [declaration] (`available`) captured BEFORE normalization.
+     *
+     * (B-ii) The declaration is the selection surface (design 2.9/U17) while the
+     * runtime form cannot carry it - ProfileLayout.buildRuntime drops `available`
+     * - so the layer that owns the parse must hand it out. Capturing it here,
+     * before the normalization below, keeps ONE parse path (M5): nothing re-reads
+     * or re-parses the document, and the normalization order is unchanged.
+     */
+    data class LoadedEntry(val runtime: ValueMap, val declaration: ValueMap?)
+
+    fun loadEntryWithDeclaration(release: String, preferredName: String?): LoadedEntry? {
         val byName = documents()
         val file = preferredName?.let(::fileByName) ?: return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null
         val entries = runCatching { parseWith(text, byName) }.getOrNull() ?: return null
-        return entries.firstOrNull { it["release"] == release }?.also { entry ->
+        return entries.firstOrNull { it["release"] == release }?.let { entry ->
+            /* Capture the declaration FIRST: the next three lines normalize the
+             * entry into the runtime form, which has no `available` key.
+             * The parsed entry may still carry the R3 wrapper `ghostlock { ... }`, so
+             * a top-level read returns null and the declaration was silently empty on
+             * this path too; reuse the official unwrap (same shape as the builtin and
+             * exporter captures) rather than hand-rolling one. */
+            /* CONVENTION (same as the builtin capture): `declaration` is a DOCUMENT
+             * that CARRIES the `available` key; consumers read `["available"]`. */
+            /* SELF-EXPLAINING EVIDENCE (same shape as the builtin capture): the raw
+             * text is not available here, so the proxy for "the source claims an
+             * `available` key" is the key being present before or after the unwrap. An
+             * empty declaration is legitimate; a LOST one is named with its facts. */
+            val entryUnwrapped = HoconSupport.unwrapProfileDocument(entry).asValueMap()
+            val entryAvailable = entryUnwrapped?.get("available")
+            /* Same rule as the builtin capture: only a NON-NULL value that is not a
+             * usable map is a contradiction. Missing key and null value both mean
+             * "nothing declared" and must NOT abort the load. */
+            require(entryAvailable == null || entryAvailable is Map<*, *>) {
+                "layer=store source=store/" + release +
+                    " entryHasAvailable=" + entry.containsKey("available") +
+                    " unwrappedKeys=" + (entryUnwrapped?.keys?.sorted() ?: listOf("<not-a-map>"))
+            }
+            val declaration = valueMapOf(
+                "available" to entryAvailable?.asValueMap()
+                    .asValueMap()?.get("available").asValueMap()
+                    ?.copyValue()
+                    ?.asValueMap(),
+            )
             /* Single migration point: a legacy document is converted here and
              * its schema_version normalised, so every consumer downstream sees
              * the canonical version. An unknown version is rejected. */
@@ -113,6 +156,7 @@ internal class UserProfileStore(
             entry["schema_version"] = LegacyProfileConverter.normalizeSchemaVersion(
                 entry["schema_version"], file.name,
             )
+            LoadedEntry(entry, declaration)
         }
     }
 

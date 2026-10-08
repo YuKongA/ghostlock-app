@@ -1,5 +1,10 @@
 package com.ghostlock.app.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ghostlock.app.R
+import com.ghostlock.app.data.component.stepNames
+
 import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.component.CombinationSpec
 
@@ -27,4 +32,19 @@ fun combinationOptions(): List<CombinationOption> = CombinationCatalog.specs.map
 }
 
 /** Backend + route + step set + terminal summary the manifest exports per row. */
-fun combinationSummary(spec: CombinationSpec): String = spec.doc
+/**
+ * Localised one-line summary: the DECLARED step sequence then the terminal,
+ * both from existing vocabulary (never the native English doc string). Steps
+ * come from the exported stepset manifest via stepNames(); a missing row makes
+ * that call fail hard, so the fallback shows the token instead of crashing --
+ * the sub-page still reports the failure as an error row (fail-visible).
+ */
+@Composable
+fun combinationSummary(spec: CombinationSpec): String {
+    val steps = try {
+        spec.steps.stepNames().joinToString(" > ")
+    } catch (error: IllegalArgumentException) {
+        spec.token
+    }
+    return stringResource(R.string.combination_summary_format, steps, spec.terminal.name)
+}

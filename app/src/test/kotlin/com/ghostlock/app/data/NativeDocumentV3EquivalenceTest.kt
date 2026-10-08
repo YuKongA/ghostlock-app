@@ -52,13 +52,30 @@ class NativeDocumentV3EquivalenceTest {
         val root = Files.createTempDirectory("native-doc-v3-equivalence").toFile()
         try {
             val controller = newController("native-doc-v3-equivalence", root)
+            /* SELF-DIAGNOSTICS (permanent, in the failure message - never on stdout):
+             * collect EVERY drifted release instead of aborting at the first one, so
+             * the message carries the DRIFT SET and its SIZE. That is what decides
+             * whether a re-freeze is a one-line change or an N-line one, and it
+             * distinguishes "a single asset converged" from "the declaration
+             * default took effect across the catalogue". */
+            val drift = mutableListOf<String>()
             for ((release, expected) in golden) {
                 val config = controller.load(release, pair)
                 assertTrue("$release did not resolve", config.hasProfile)
                 val bytes = controller.nativeDocument(config)
                 assertNotNull("$release has no v3 native document", bytes)
-                assertEquals("$release v3 wire bytes drifted", expected, sha256(bytes!!))
+                val actual = sha256(bytes!!)
+                if (actual != expected) {
+                    drift += release + " [golden=" + expected.take(12) +
+                        " actual=" + actual.take(12) + "]"
+                }
             }
+            assertEquals(
+                "v3 golden drift: " + drift.size + " of " + golden.size +
+                    " releases, drift set=" + drift,
+                emptyList<String>(),
+                drift,
+            )
         } finally {
             root.deleteRecursively()
         }

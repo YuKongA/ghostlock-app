@@ -368,5 +368,16 @@
     <string name="plugin_summary_stages">阶段 %1$s</string>
     <string name="plugin_summary_caps">能力 %1$s</string>
     <string name="plugin_run_blocked_plugin">已选插件有问题：%1$s</string>
+    <string name="execution_declaration_blocked">该 profile 未声明此执行路径：%1$s</string>
     <string name="root_manager_unavailable">root 管理器未安装或无法打开</string>
+    <string name="execution_combo_title">执行组合</string>
+    <string name="execution_combo_subtitle">仅显示配置声明为可用的路径</string>
+    <string name="execution_combo_backend_header">后端</string>
+    <string name="execution_combo_path_header">路径</string>
+    <string name="execution_combo_unavailable_hint">未在配置中声明可用</string>
+    <string name="execution_combo_selected">当前选择</string>
+    <string name="execution_combo_unusable">该配置声明的组合在当前目录中均不可用，未应用任何更改。</string>
+    <string name="execution_combo_confirm">使用该组合</string>
+    <string name="execution_combo_cancel">取消</string>
+    <string name="combination_summary_format">%1$s → %2$s</string>
 </resources>

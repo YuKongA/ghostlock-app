@@ -258,8 +258,15 @@ data class NativeProfileDocument(
                 pluginEntries = dynamic,
             )
         }
+        /* A section may carry ONLY a queue (the M2 selection is an array of maps):
+         * leaving `queueEntries` out of this predicate silently dropped the whole
+         * `backend.cve_2026_43284` section whenever its declaration was its only
+         * payload - i.e. exactly the case of a 43284-only profile, whose declared
+         * queue then never reached the wire (the 43499 counterpart survived only
+         * because it also carried the queue-level `route` text). */
         return out.filter {
-            it.entries.isNotEmpty() || it.textEntries.isNotEmpty() || it.pluginEntries.isNotEmpty()
+            it.entries.isNotEmpty() || it.textEntries.isNotEmpty() ||
+                it.pluginEntries.isNotEmpty() || it.queueEntries.isNotEmpty()
         }
     }
 

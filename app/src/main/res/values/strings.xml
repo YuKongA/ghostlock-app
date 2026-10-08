@@ -368,5 +368,16 @@
     <string name="plugin_summary_stages">stages %1$s</string>
     <string name="plugin_summary_caps">caps %1$s</string>
     <string name="plugin_run_blocked_plugin">Selected plugin problem: %1$s</string>
+    <string name="execution_declaration_blocked">Execution path not declared by this profile: %1$s</string>
     <string name="root_manager_unavailable">The root manager app is not installed or cannot be opened</string>
+    <string name="execution_combo_title">Execution combination</string>
+    <string name="execution_combo_subtitle">Only the paths the profile declares available</string>
+    <string name="execution_combo_backend_header">Backend</string>
+    <string name="execution_combo_path_header">Path</string>
+    <string name="execution_combo_unavailable_hint">Not declared available in the profile</string>
+    <string name="execution_combo_selected">Selected</string>
+    <string name="execution_combo_unusable">This profile declares combinations, but none is usable with the current catalogue; nothing was applied.</string>
+    <string name="execution_combo_confirm">Use this combination</string>
+    <string name="execution_combo_cancel">Cancel</string>
+    <string name="combination_summary_format">%1$s -> %2$s</string>
 </resources>

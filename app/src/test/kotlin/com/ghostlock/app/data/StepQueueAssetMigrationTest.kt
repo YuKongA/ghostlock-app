@@ -25,7 +25,9 @@ class StepQueueAssetMigrationTest {
 
     private val assetsDir = File("src/main/assets/profile")
 
-    private val sample = "5.15-template.conf"
+    /* 旧 template 已按用户 2026-10-06 ② 删除（general 取代）⇒ 样例改用真实迁移后的
+     * 资产；token 不手写，按该资产声明的 route + 步骤序列在组合目录里反查。 */
+    private val sample = "5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541.conf"
 
     /**
      * TODO(stepset-steps.tsv): the authoritative stepset -> step sequence export
@@ -40,7 +42,33 @@ class StepQueueAssetMigrationTest {
     }
 
     /** Which combination token each migrated asset was rendered from (test fixture). */
-    private val sampleTokens = mapOf("5.15-template.conf" to "tcp_rootchild")
+    /* 沿革: 旧夹具 5.15-template.conf 只有单条声明 ⇒ .single() 成立。用户 ② 删模板后改用
+     * 真实资产（2 条声明：43284 无 route 轴 + 43499 multicast_waiter）⇒ 逐条取声明的计划，
+     * 反查【限定该声明自己的 backend】+ route/stepset 双匹配；计划逐值比较，不比 id，
+     * 也不依赖单条假设（M5：两条读取路径逐值等价）。
+     * 注：queuePlan 的 backend 必须是【测试体比较的那条】（cve_2026_43499），否则派生出的
+     * token 属于别的 backend，resolve 会返回 null（这正是修复前的失败）。 */
+    private val sampleTokens: Map<String, String> by lazy {
+        val text = File(assetsDir, sample).readText()
+        /* 先算后取：把 queuePlan 移出 lambda（在 lambda 里调用它会触发编译器内部错误
+         * DELEGATE_SPECIAL_FUNCTION_RETURN_TYPE_MISMATCH），lambda 里只读字段。 */
+        val declared = StepQueueEquivalence.backendsOf(text)
+        val planByBackend = declared.map { backend -> backend to StepQueueEquivalence.queuePlan(text, backend) }
+        val routeBearing = requireNotNull(planByBackend.firstOrNull { entry -> entry.second.route != null }) {
+            sample + ": no declaration with a route axis"
+        }
+        val backend = routeBearing.first
+        val plan = routeBearing.second
+        /* 目录是权威：在【本声明的 backend】内取 route 与步骤序列都一致的那个 token。 */
+        val token = requireNotNull(
+            CombinationCatalog.specs.firstOrNull { spec ->
+                spec.backend.token == backend &&
+                    spec.route?.token == plan.route &&
+                    realStepsets[spec.steps.token] == plan.steps
+            },
+        ) { sample + ": no catalogue spec for " + backend + " with " + plan.route }.token
+        mapOf(sample to token)
+    }
 
     /** The real authority: stepset<TAB>step_index<TAB>step_name. Fail-closed. */
     private fun loadStepsetSteps(file: File): Map<String, List<String>> {

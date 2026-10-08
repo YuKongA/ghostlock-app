@@ -1,5 +1,6 @@
 package com.ghostlock.app.data
 
+
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
@@ -7,6 +8,7 @@ import androidx.core.net.toUri
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
 import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.component.stepNames
 import com.ghostlock.app.data.plugin.EnabledPlugin
 import com.ghostlock.app.data.plugin.PluginDescriptor
 import com.ghostlock.app.data.plugin.PluginEmission
@@ -30,6 +32,49 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 
 /**
+ * (b1) The named refusal for a selected combination the profile does NOT declare,
+ * or null when the selection is legal. SINGLE AUTHORITY: the emitter and the tests
+ * both read this function, so the rule cannot drift into a second copy.
+ *
+ * [declaration] is the `available` map captured before normalization (the runtime
+ * form has none), and the combination is matched on (backend, route, stepNames) -
+ * the same key the selection projection uses.
+ */
+/**
+ * (B-ii) The map the must-have judgement is run against: the runtime form with the
+ * DECLARATION (captured before normalization, official unwrap upstream) injected.
+ * Pure and side-effect free - the caller keeps its own map (materializeInvalidPaths
+ * still works on the original). Extracted so the visibility of the declaration is
+ * testable: without it the runtime map has no `available` and every declaration-
+ * driven rule is silently skipped. Same authority, no new rule.
+ */
+internal fun judgingProfileWithDeclaration(full: ValueMap, declaration: ValueMap): ValueMap =
+    if (declaration.isEmpty()) {
+        full
+    } else {
+        full.copyValue().asValueMap()?.also { it["available"] = declaration } ?: full
+    }
+
+internal fun declarationRefusalFor(
+    declaration: ValueMap,
+    combination: CombinationSpec,
+): String? {
+    val route = combination.route?.token
+    val steps = runCatching { combination.steps.stepNames() }.getOrNull()
+    val declared = declaredCombinations(declaration).any { path ->
+        path.backend == combination.backend.token &&
+            path.route == route &&
+            path.steps == steps
+    }
+    if (declared) return null
+    return "execution-combo: the selected combination is not declared by this profile: " +
+        combination.backend.token + (route?.let { "/" + it } ?: "") +
+        " steps=" + combination.steps.token +
+        "; the available declaration is the selection surface - declare this " +
+        "path or choose a declared one"
+}
+
+/**
  * Controller-centered profile architecture. HOCON is the persistence format
  * and the value model (Map/List/scalars) is the in-memory representation,
  * while this class is the single authority for loading it, merging
@@ -49,7 +94,13 @@ internal class AndroidProfileConfigController(
      * App-level backend selection injected into every document this controller
      * builds. Defaults to 43499 so existing callers keep byte-identical output.
      */
-    private val backendSelection: () -> BackendKind = { BackendKind.Default },
+    /**
+     * The backend the USER picked, or null when they never picked one. Null is
+     * meaningful since design 2.9/U17: the available declaration is then the
+     * selection surface and the backend is derived through AvailablePriority
+     * (an explicit pick still wins - design 1-prime).
+     */
+    private val backendSelection: (() -> BackendKind?)? = null,
     /**
      * App-level execution mode injected alongside [backendSelection]. It fixes
      * the sparse triple the document addresses: 43284 (or the UMH mode) emits
@@ -95,16 +146,40 @@ internal class AndroidProfileConfigController(
     override suspend fun load(release: String, pair: CpuPair): ProfileConfig {
         val deviceRelease = release
         val advanced = readAdvancedOverride(deviceRelease)
-        val full = resolveCurrent(deviceRelease, pair, advanced, includeImported = true)
+        val resolved = resolveCurrentResolved(deviceRelease, pair, advanced, includeImported = true)
+        val full = resolved?.runtime
         if (full == null) {
             cache(deviceRelease, null)
-            return ProfileConfig(release = deviceRelease, hasProfile = false)
+            return ProfileConfig(
+                release = deviceRelease,
+                hasProfile = false,
+                /* No profile resolved: there genuinely are no declared combinations. */
+                declaredCombinations = emptyList(),
+            )
         }
-        val baseline = resolveCurrent(deviceRelease, pair, null, includeImported = false) ?: full
+        /* (B-ii) the DECLARATION comes from the captured layers (window 1), not
+         * from the runtime map: the runtime projection drops `available`, so
+         * reading it there yielded an empty list (the UI then fell back to the
+         * whole catalogue - the A301SO complaint). */
+        val declaration = resolved.declaration
+        val baseline = resolveCurrent(deviceRelease, pair, null, includeImported = false)
+            ?: full
         val route = routeNameOf(full)
-        val invalidPaths = validateProfileFields(full, route) +
-            validate43284Fields(full) +
-            ProfileResolver.validateMerged(full, route).mapTo(mutableSetOf()) { it.fieldPath }
+        /* The must-have rules are judged against what the profile DECLARES (design
+         * 2.9-1: declares43499), but the runtime map has no `available` - so the
+         * 43499-specific rules were silently skipped and e.g. offset.init_task = 0
+         * stayed legal. Inject the DECLARATION (captured before normalization,
+         * official unwrap upstream) into a copy: same authority, no new rule, and the
+         * runtime values are preserved. `full` itself is left to
+         * materializeInvalidPaths exactly as before. */
+        val judgingProfile = judgingProfileWithDeclaration(full, declaration)
+        val invalidPaths = (validateProfileFields(judgingProfile, route) +
+            validate43284Fields(judgingProfile) +
+            ProfileResolver.validateMerged(judgingProfile, route).mapTo(mutableSetOf()) { it.fieldPath })
+            /* `available` is the INTERNAL declaration carrier injected above so the
+             * must-have rules can see what the profile declares (design 2.9-1); it is
+             * not a user field and must never surface as an invalid path. */
+            .filterNotTo(mutableSetOf()) { it == "available" || it.startsWith("available.") }
         /* Invalid fields missing from the resolved document still get a row,
          * otherwise the run stays blocked with no red field to fix. */
         materializeInvalidPaths(full, invalidPaths)
@@ -114,7 +189,7 @@ internal class AndroidProfileConfigController(
         val complete = completeProfileFields(full, route)
         complete43284Fields(complete)
         val roots = buildTree(complete, "", baseline, advanced)
-        val built = buildNativeDocument(deviceRelease, full)
+        val built = buildNativeDocument(deviceRelease, full, declaration)
         cache(deviceRelease, built.profile)
         return ProfileConfig(
             release = deviceRelease,
@@ -124,6 +199,13 @@ internal class AndroidProfileConfigController(
             route = route,
             invalidPaths = invalidPaths,
             pluginErrors = built.pluginErrors,
+            declarationErrors = built.declarationErrors,
+            /* Design 2.9/U17: the DECLARED combinations are projected for the
+             * selection UI, so the menu can never list a path the profile does
+             * not declare (that was the A301SO complaint). The canonical map is
+             * the only source; when it is unavailable the list stays EMPTY - it
+             * never means "all of the catalogue". */
+            declaredCombinations = declaredCombinations(declaration),
         )
     }
 
@@ -148,15 +230,27 @@ internal class AndroidProfileConfigController(
             }
         }
 
-        /* The route is profile-controlled: a missing or unknown branch is
+        /* Design 2.9-1 (shared judgement, single source): the must-have parameters
+         * belong to the paths a profile DECLARES usable. A general profile that
+         * declares only cve_2026_43284 legitimately carries no 43499 route / ABI
+         * geometry, so those requirements do not apply to it; a profile that
+         * declares 43499 is held to every rule below (zero relaxation). This is the
+         * SAME helper the exporter path uses - one criterion, two call sites. */
+        val needs43499 = ProfileResolver.declaresBackend(profile, "cve_2026_43499")
+        /* The route is 43499 profile-controlled: a missing or unknown branch is
          * invalid. Legacy documents get their route from the converter, so an
          * unresolved route here means the profile is genuinely broken. */
         val route = explicitRoute?.takeIf { it in ProfileConfig.Routes }
-        if (route == null) invalid += "route"
+        if (needs43499 && route == null) invalid += "route"
 
-        requireNonZero(*RouteCommonRequired.toTypedArray())
+        if (needs43499) requireNonZero(*RouteCommonRequired.toTypedArray())
         val major = value("kernel_major")
         if (major != 5L && major != 6L) invalid += "kernel_major"
+
+        /* Everything below is 43499-specific (its ABI template and route tuning).
+         * A profile that does not declare 43499 usable is done here: judging it by
+         * 43499 parameters would report fields it must not carry (design 2.9-1). */
+        if (!needs43499) return invalid
 
         val copySize = value("cred.copy_size")
         if (copySize == null || copySize == 0L) invalid += "cred.copy_size"
@@ -269,7 +363,7 @@ internal class AndroidProfileConfigController(
      * default and never flagged.
      */
     private fun validate43284Fields(profile: ValueMap): Set<String> {
-        if (!is43284Selection()) return emptySet()
+        if (!is43284Selection(profile)) return emptySet()
         val invalid = mutableSetOf<String>()
         for (path in Cve2026_43284Fields.StringPaths) {
             val text = profile.getValueAt(path) as? String ?: continue
@@ -283,9 +377,9 @@ internal class AndroidProfileConfigController(
     }
 
     /** True when the effective wire backend is cve_2026_43284. */
-    private fun is43284Selection(): Boolean {
+    private fun is43284Selection(profile: ValueMap): Boolean {
         combinationSelection?.invoke()?.let { return it.backend == BackendKind.Cve2026_43284 }
-        return BackendKind.selectableOrFallback(backendSelection()) == BackendKind.Cve2026_43284
+        return effectiveBackend(profile) == BackendKind.Cve2026_43284
     }
 
     /**
@@ -294,7 +388,7 @@ internal class AndroidProfileConfigController(
      * the advanced editor can fill it in. A value already present is kept.
      */
     private fun complete43284Fields(profile: ValueMap) {
-        if (!is43284Selection()) return
+        if (!is43284Selection(profile)) return
         val section = profile.mutableChild("backend").mutableChild("cve_2026_43284")
         for (path in Cve2026_43284Fields.EditablePaths) {
             /* Walk the whole owner-qualified path below the section so a nested
@@ -640,13 +734,67 @@ internal class AndroidProfileConfigController(
 
     /** The sparse triple the live UI selection addresses. */
     private fun resolvedSelection(): ExecutionSelection =
-        resolveExecutionSelection(executionModeSelection(), backendSelection())
+        resolveExecutionSelection(
+            executionModeSelection(),
+            backendSelection?.invoke() ?: BackendKind.Default,
+        )
+
+    /**
+     * The effective backend of one profile: the user preference when set (1-prime),
+     * otherwise DERIVED from the available declaration through the shared
+     * AvailablePriority authority. A 43284-only profile therefore yields a 43284
+     * document - before this, an unrelated default overrode the declaration and the
+     * declared 43284 queue never reached the wire.
+     */
+    private fun effectiveBackend(
+        profile: ValueMap,
+        /* The DECLARATION captured before normalization (the runtime map has no
+         * `available`). Deriving from `profile` alone returned null - the runtime form
+         * simply has no declaration - so the fallback silently owned the wire
+         * (BackendKind.Default = 43499) and the declared default never reached it.
+         * Declaration first, runtime second: same authority (AvailablePriority), no
+         * new rule. A document that declares nothing keeps the previous behaviour. */
+        declaration: ValueMap = ValueMap(),
+    ): BackendKind {
+        val preference = backendSelection?.invoke()
+        /* selectedBackend reads the `available` KEY from the map it is given, so the
+         * declaration must be INJECTED into a runtime copy - passing the declaration
+         * contents as the profile made that lookup miss and the call returned null
+         * (the same shape mistake as reading a wrapped HOCON root). The copy keeps the
+         * runtime carrier / backend.kind fallback effective and never mutates the
+         * caller map. Same authority, no new rule. */
+        /* `declaration` is already a document carrying `available` (see the capture
+         * convention above), so no hand-rolled wrapping is needed any more: derive
+         * from it first, then from the runtime profile (carrier / backend.kind). */
+        val derived = AvailablePriority.selectedBackend(declaration, preference?.token)
+            ?: AvailablePriority.selectedBackend(profile, preference?.token)
+        return derived?.let { BackendKind.resolve(it) } ?: preference ?: BackendKind.Default
+    }
 
     /**
      * One document build: the resolved [profile] native consumes (null when the
      * build is blocked) plus the user-visible [pluginErrors] that blocked it.
      */
-    private data class NativeDocument(val profile: Profile?, val pluginErrors: List<String>)
+    /**
+     * One parsed layer before normalization: the runtime profile plus the
+     * DECLARATION (`available`) it declared (B-ii). The declaration is captured
+     * here because the runtime projection drops it.
+     */
+    private data class BuiltinLayer(val runtime: ValueMap, val declaration: ValueMap?)
+
+    /**
+     * The resolved profile in BOTH forms: the runtime map every existing consumer
+     * uses, and the merged declaration the selection surface needs.
+     */
+    private data class ResolvedProfile(val runtime: ValueMap, val declaration: ValueMap)
+
+    private data class NativeDocument(
+        val profile: Profile?,
+        val pluginErrors: List<String>,
+        /* (b1) A selected combination the profile does not DECLARE. Named, never
+         * silently remapped: the run gate refuses while this is non-empty. */
+        val declarationErrors: List<String> = emptyList(),
+    )
 
     /**
      * Builds the single resolved authority native consumes at run time.
@@ -656,7 +804,13 @@ internal class AndroidProfileConfigController(
      * without a descriptor crashed the process there. A selected plugin that
      * cannot be emitted now yields [NativeDocument.pluginErrors] instead.
      */
-    private suspend fun buildNativeDocument(release: String, profile: ValueMap): NativeDocument {
+    private suspend fun buildNativeDocument(
+        release: String,
+        profile: ValueMap,
+        /* The DECLARATION captured before normalization (B-ii): the runtime map
+         * has no `available`, so it can never answer this question. */
+        declaration: ValueMap,
+    ): NativeDocument {
         val route = routeNameOf(profile)
         /* Backend choice is an app-level preference, not profile text: inject the
          * selected token so NativeProfileDocument.from reads it from the same
@@ -665,14 +819,23 @@ internal class AndroidProfileConfigController(
          * app-only selection. */
         val resolved = profile.copyValue().asValueMap() ?: profile
         val backend = resolved.mutableChild("backend")
+        val declarationErrors = mutableListOf<String>()
         val combination = combinationSelection?.invoke()
         if (combination != null) {
             /* S4 R6b: the single token is the selection authority; write exactly
              * one token into backend.<id>.steps and derive the backend from it. */
             backend["kind"] = combination.backend.token
             backend["steps"] = combination.token
+            /* (b1) fail-closed, never a silent fallback: a combination the profile
+             * does not declare cannot run. Judged against the DECLARATION captured
+             * before normalization (the runtime map has no `available`), so an
+             * undeclared pick is refused by name instead of being quietly replaced. */
+            declarationRefusalFor(declaration, combination)?.let { declarationErrors += it }
         } else {
-            val selection = resolvedSelection()
+            val selection = resolveExecutionSelection(
+                executionModeSelection(),
+                effectiveBackend(profile, declaration),
+            )
             backend["kind"] = selection.backend.token
             /* Legacy mode/backend pair: 43284's sparse triple is fixed, so inject
              * its token resolved from the manifest (F4: no token literal here);
@@ -733,18 +896,27 @@ internal class AndroidProfileConfigController(
         )
         /* return NativeDocument(document, pluginErrors) -- COMMENTED OUT (user
          * ruling 2026-10-05); with no plugin emission there can be no plugin error. */
-        return NativeDocument(document, emptyList())
+        return NativeDocument(document, emptyList(), declarationErrors)
     }
 
     // ---- resolution (migrated from ProfileConfiguration) ----
 
     /** Resolves through the currently selected builtin release (if any). */
+    /** The runtime form only: every legacy caller keeps its exact behaviour. */
     private fun resolveCurrent(
         deviceRelease: String,
         pair: CpuPair,
         overrides: ValueMap?,
         includeImported: Boolean,
-    ): ValueMap? {
+    ): ValueMap? = resolveCurrentResolved(deviceRelease, pair, overrides, includeImported)?.runtime
+
+    /** The runtime form PLUS the merged declaration (B-ii). */
+    private fun resolveCurrentResolved(
+        deviceRelease: String,
+        pair: CpuPair,
+        overrides: ValueMap?,
+        includeImported: Boolean,
+    ): ResolvedProfile? {
         val profileRelease = activeBuiltinRelease() ?: deviceRelease
         return resolve(deviceRelease, profileRelease, pair, overrides, includeImported)
     }
@@ -755,48 +927,100 @@ internal class AndroidProfileConfigController(
         pair: CpuPair,
         overrides: ValueMap?,
         includeImported: Boolean,
-    ): ValueMap? = runCatching {
+    ): ResolvedProfile? = runCatching {
         val index = readIndex() ?: return@runCatching null
         LegacyProfileConverter.normalizeSchemaVersion(
             index["schema_version"], "index.conf",
         )
         val builtinEntry = findProfile(index["profiles"].asValueList(), profileRelease)
-        val imported = if (includeImported) {
-            userProfiles.loadEntry(deviceRelease, activeUserProfile())
+        /* (B-ii) the imported layer hands out BOTH forms: the runtime one every
+         * consumer already used, and the declaration it had before normalization. */
+        val importedEntry = if (includeImported) {
+            userProfiles.loadEntryWithDeclaration(deviceRelease, activeUserProfile())
         } else {
             null
         }
+        val imported = importedEntry?.runtime
         LegacyProfileConverter.convertValue(overrides)
         if (builtinEntry == null && imported == null) return@runCatching null
         val builtin = builtinEntry?.let { entry ->
             val path = (entry["file"] as? String).orEmpty()
-            (HoconSupport.parseValue(readAsset("$BuiltinDirectory/$path")).asValueMap()
-                ?: error("profile is not an object"))
-                .also {
-                    /* R3: normalize the canonical owner-qualified layout (or a
-                     * legacy flat document) at parse time. */
-                    ProfileLayout.applyNormalize(it)
-                    LegacyProfileConverter.normalizeSchemaVersion(
-                        it["schema_version"], "$BuiltinDirectory/$path",
-                    )
-                    require(it["release"] == entry["release"]) {
-                        "profile index release mismatch"
-                    }
-                }
+            val assetPath = "$BuiltinDirectory/$path"
+            val rawText = readAsset(assetPath)
+            val parsed = HoconSupport.parseValue(rawText).asValueMap()
+                ?: error("profile is not an object: " + assetPath)
+            /* (B-ii) capture the DECLARATION before the normalization below
+             * replaces the canonical layout with the runtime projection (which
+             * has no `available`): same parse, no second read path (M5).
+             * The RAW parse keeps the R3 wrapper `ghostlock { ... }`, so `available`
+             * sits UNDER it - reading the top level returned null and this capture was
+             * silently EMPTY in production (the runtime carrier path masked it, so no
+             * test failed). Reuse the official unwrap; never hand-roll one. */
+            /* CONVENTION (one shape, fixed here): `declaration` is a DOCUMENT that
+             * CARRIES the `available` key - the shape every consumer expects
+             * (ProfileLayout.declaredCombinations / AvailablePriority.selectedBackend
+             * both read `["available"]`). HISTORY: it used to be the CONTENTS of
+             * `available`, so those readers got null and the projection was silently
+             * EMPTY - the UI combination tree had no rows (the A301SO / N=0 defect). */
+            /* SELF-EXPLAINING EVIDENCE (one run names the layer): the capture must
+             * either find `available` in the raw asset, or the asset genuinely has
+             * none (the "none" class). Anything else - wrong path, unmet unwrap
+             * precondition, parsed shape - is reported with all facts instead of
+             * silently projecting an empty list (the N=0 defect). */
+            val unwrapped = HoconSupport.unwrapProfileDocument(parsed).asValueMap()
+            val availableValue = unwrapped?.get("available")
+            /* Trigger on KEY PRESENCE after the unwrap, never on a substring of the
+             * raw text: a comment mentioning `available` (the general assets carry
+             * one) made the substring form fire on assets that declare nothing,
+             * aborting the load and emptying invalidPaths (a false positive). The
+             * substring stays in the MESSAGE as information only. */
+            /* Trigger ONLY on a real contradiction: the key is present with a NON-NULL
+             * value that is not a usable map. A missing key and a key whose value is
+             * null are both LEGAL encodings of "this profile declares nothing" - firing
+             * on them aborted the load and emptied invalidPaths (a false positive). */
+            require(availableValue == null || availableValue is Map<*, *>) {
+                "layer=builtin release=" + (parsed["release"] ?: path) +
+                    " asset=" + assetPath +
+                    " rawHasAvailableLiteral=" + rawText.contains("available") +
+                    " topKeys=" + parsed.keys.sorted() +
+                    " unwrappedKeys=" + (unwrapped?.keys?.sorted() ?: listOf("<not-a-map>"))
+            }
+            val declaration = valueMapOf(
+                "available" to availableValue?.asValueMap()?.copyValue()?.asValueMap(),
+            )
+            /* R3: normalize the canonical owner-qualified layout (or a
+             * legacy flat document) at parse time. */
+            ProfileLayout.applyNormalize(parsed)
+            LegacyProfileConverter.normalizeSchemaVersion(
+                parsed["schema_version"], "$BuiltinDirectory/$path",
+            )
+            require(parsed["release"] == entry["release"]) {
+                "profile index release mismatch"
+            }
+            BuiltinLayer(parsed, declaration)
         }
         val tuningExecution = readExecutionTuning()?.get("execution").asValueMap()
         val routePresets = ProfileConfig.Routes
             .mapNotNull { route -> readExecutionRoute(route)?.let { route to it } }
             .toMap()
-        ProfileMerger.resolveMerged(
+        val runtime = ProfileMerger.resolveMerged(
             deviceRelease = deviceRelease,
-            builtin = builtin,
+            builtin = builtin?.runtime,
             imported = imported,
             overrides = overrides,
             tuningExecution = tuningExecution,
             pair = CpuPairView(pair.primary, pair.consumer),
             routePresets = routePresets,
         )
+        /* One merge, two outputs (B-ii): the runtime profile above and the
+         * DECLARATION it was projected from. The declaration comes from the
+         * layers that own the parse, never from re-reading the runtime map (M5). */
+        val declaration = ProfileMerger.resolveDeclarations(
+            builtin?.declaration,
+            importedEntry?.declaration,
+            overrides?.get("available").asValueMap(),
+        )
+        ResolvedProfile(runtime, declaration)
     }.getOrNull()
 
     /**
@@ -1047,17 +1271,17 @@ internal class AndroidProfileConfigController(
      * app-private directory, so an export is a copy, never a re-merge. */
     private suspend fun persistSnapshot(release: String, pair: CpuPair) {
         runCatching {
-            val resolved = resolveCurrent(
+            val resolved = resolveCurrentResolved(
                 release, pair, readAdvancedOverride(release), includeImported = true,
             ) ?: return
-            val exportView = resolved.copyValue().asValueMap() ?: return
+            val exportView = resolved.runtime.copyValue().asValueMap() ?: return
             /* Renderer-side completeness: pull in the tuning of the selected
              * route, then drop the groups that are not used. */
             fillRouteExecutionDefaults(exportView)
             trimRouteTuning(exportView)
             File(filesDir, snapshotName(release))
                 .writeText(HoconSupport.render(exportView), StandardCharsets.UTF_8)
-            cache(release, buildNativeDocument(release, resolved).profile)
+            cache(release, buildNativeDocument(release, resolved.runtime, resolved.declaration).profile)
         }.onFailure {
             android.util.Log.e("GhostLock", "persistSnapshot failed for $release", it)
         }

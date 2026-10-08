@@ -67,15 +67,35 @@ class ExporterAgreementTest {
                 preferences = context.getSharedPreferences("exporter-agreement", 0)
                     .also { it.edit().clear().commit() },
             )
+            /* SELF-DIAGNOSTICS (permanent, in the failure message - never stdout):
+             * on any mismatch report both lengths, the FIRST differing byte offset
+             * and a short window from each side, so a one-byte divergence can be
+             * located without re-running the whole suite. */
+            val mismatches = mutableListOf<String>()
             for (release in expected) {
                 val appBytes = controller.nativeDocument(controller.load(release, pair))
                 assertNotNull("$release: app has no native document", appBytes)
-                assertArrayEquals(
-                    "$release: exporter differs from the app",
-                    appBytes,
-                    File(exportDir, "$release.bin").readBytes(),
-                )
+                val exported = File(exportDir, "$release.bin").readBytes()
+                val app = appBytes!!
+                val firstDiff = (0 until minOf(app.size, exported.size))
+                    .firstOrNull { app[it] != exported[it] }
+                if (app.size != exported.size || firstDiff != null) {
+                    val at = firstDiff ?: minOf(app.size, exported.size)
+                    fun window(text: ByteArray): String {
+                        val end = minOf(at + 24, text.size)
+                        return (at until end).joinToString(" ") { String.format("%02x", text[it]) }
+                    }
+                    mismatches += release + " app=" + app.size + "B export=" + exported.size +
+                        "B firstDiff@" + at + " app[" + window(app) + "] export[" +
+                        window(exported) + "]"
+                }
             }
+            assertEquals(
+                "exporter/app v3 mismatch: " + mismatches.size + " of " + expected.size +
+                    " releases, detail=" + mismatches,
+                emptyList<String>(),
+                mismatches,
+            )
         } finally {
             root.deleteRecursively()
         }

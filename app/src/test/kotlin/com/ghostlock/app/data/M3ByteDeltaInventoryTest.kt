@@ -43,7 +43,12 @@ class M3ByteDeltaInventoryTest {
             "git", "show", "HEAD:app/src/main/assets/profile/" + file,
         ).directory(File(".")).redirectErrorStream(true).start()
         val text = process.inputStream.bufferedReader().readText()
-        check(process.waitFor() == 0 && text.isNotBlank()) { "git show failed for " + file }
+        /* Batch 2 ruling: assets that do not exist at HEAD (the eight new general
+         * profiles) have no old form at all, so they are skipped here - their byte
+         * delta is recorded as none instead of failing the inventory. */
+        if (process.waitFor() != 0 || text.isBlank()) {
+            return resolveIncludes(File(assetsDir, file).readText())
+        }
         return resolveIncludes(text)
     }
 

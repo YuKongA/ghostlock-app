@@ -47,6 +47,66 @@ import com.ghostlock.app.data.route.RouteKind
  *  - recommend_vr_guard / vr_guard.* are legacy-only now: recognized and
  *    IGNORED (the profile surface was deleted with the feature).
  */
+
+/**
+ * One declared execution path: a READ-ONLY projection of the canonical
+ * `available.<backend>` selection. Nothing is re-parsed from an asset here, and
+ * no validation behaviour changes -- this only exposes what the canonical map
+ * already holds, so the UI and the wire read the SAME source (no second
+ * authority).
+ *
+ * @property steps display tokens for the normalised queue elements: `step` for a
+ *   `{ step = "w1" }` element, `seam` (or `seam@stage`) for a
+ *   `{ seam = "...", stage = "..." }` element. The UI prints them; it never
+ *   re-interprets the declaration.
+ * @property handoff always null for now: the declaration format has no handoff
+ *   field yet (approved separately), so it can be shown but not chosen.
+ * @property priority the declared priority, null when none was declared (which
+ *   means lowest: it sorts last, exactly like AvailablePriority).
+ */
+data class DeclaredCombination(
+    val backend: String,
+    val route: String?,
+    val steps: List<String>,
+    val handoff: String?,
+    val priority: Long?,
+)
+
+/**
+ * The declared combinations of a canonical profile, in priority order.
+ *
+ * Ordering reuses [AvailablePriority.orderedBackends] (smallest explicit
+ * priority first, undeclared last, deterministic for equal input), so there is
+ * no second ordering rule. An absent `available` object means "declares
+ * nothing", never "all of catalogue".
+ */
+fun declaredCombinations(canonical: ValueMap): List<DeclaredCombination> {
+    val available = canonical["available"].asValueMap() ?: return emptyList()
+    return AvailablePriority.orderedBackends(available).map { backend ->
+        val selection = available[backend].asValueMap() ?: ValueMap()
+        DeclaredCombination(
+            backend = backend,
+            route = selection["route"] as? String,
+            steps = declaredQueueTokens(selection["queue"]),
+            handoff = null,
+            priority = (selection[AvailablePriority.Key] as? Number)?.toLong(),
+        )
+    }
+}
+
+/** Normalised queue element -> display token (see [DeclaredCombination.steps]). */
+private fun declaredQueueTokens(raw: Any?): List<String> {
+    val list = raw as? List<*> ?: return emptyList()
+    return list.mapNotNull { element ->
+        val map = element.asValueMap() ?: return@mapNotNull null
+        val step = map["step"] as? String
+        if (step != null) return@mapNotNull step
+        val seam = map["seam"] as? String ?: return@mapNotNull null
+        val stage = map["stage"] as? String
+        if (stage != null) seam + "@" + stage else seam
+    }
+}
+
 object ProfileLayout {
     /** Canonical root object wrapping a device profile. */
     const val Wrapper: String = "ghostlock"
@@ -65,7 +125,8 @@ object ProfileLayout {
      * place that copies them into the backend owner the wire reads them from;
      * the legacy token LIST form declares none of them and copies nothing.
      */
-    private val AvailableSelectionKeys = listOf("route", "queue", "experimental")
+    private val AvailableSelectionKeys =
+        listOf("route", "queue", "experimental", AvailablePriority.Key)
 
     /** Queue element keys; `params` is reserved-but-unimplemented (U10). */
     private val QueueElementKeys = listOf("step", "seam", "stage")
@@ -375,6 +436,10 @@ object ProfileLayout {
      */
     private fun selectionEchoKeys(declaration: Map<String, Any?>): Set<String> = buildSet {
         for (key in AvailableSelectionKeys) {
+            /* Design 2.8.A: `priority` is accepted in the declaration but is
+             * presentation-only - it is never echoed into the backend owner, so it
+             * cannot reach the canonical owner or the GLKv3 wire. */
+            if (key == AvailablePriority.Key) continue
             if (!declaration.containsKey(key)) continue
             add(key)
             if (key == "route") add(QueueRouteKey)
@@ -475,6 +540,19 @@ object ProfileLayout {
                 }
 
                 "queue" -> out[key] = validateQueue(backend, raw)
+
+                AvailablePriority.Key -> {
+                    /* Design 2.8.A (user ruling A): the explicit priority replaces
+                     * the implicit declaration order. Positive integer, smallest
+                     * first; absent = lowest (sorts last). Presentation/selection
+                     * only - not carried into the owner, never on the wire. The
+                     * value is normalized to Long here so every consumer (UI,
+                     * AvailablePriority) sees one type. */
+                    val priority = AvailablePriority.priorityOf(backend, selection)
+                    out[key] = requireNotNull(priority) {
+                        "available.$backend.$key: must be a positive integer: $raw"
+                    }
+                }
             }
         }
         return out
@@ -733,6 +811,7 @@ object ProfileLayout {
         raw["execution"].asValueMap()?.let { be["execution"] = it.copyValue() }
         val owners = ValueMap()
         if (be.isNotEmpty()) owners[BackendKind.Cve2026_43499.token] = be
+
         flatBackend?.get(BackendKind.Cve2026_43284.token).asValueMap()?.let { owner43284 ->
             val copy = owner43284.copyValue().asValueMap() ?: owner43284
             if (combination != null && selectedBackend == BackendKind.Cve2026_43284) {
@@ -749,6 +828,24 @@ object ProfileLayout {
             if (execution.isNotEmpty()) copy["execution"] = execution
             for (key in listOf("kmi", "lkm_path", "carrier_path")) copy.remove(key)
             owners[BackendKind.Cve2026_43284.token] = copy
+        }
+        /* M5 round-trip (carrier <-> canonical must be value-equivalent): the
+         * RUNTIME carrier `backend.queue_selection.<id>.{queue,experimental,
+         * queue_route}` holds the declared selection that [buildRuntime] wrote.
+         * A map can be normalized MORE THAN ONCE - `UserProfileStore.loadEntry`
+         * calls `applyNormalize` twice - and this converter is the runtime ->
+         * canonical direction, so the carrier must be read back here. Without
+         * this, the second pass drops the queue: the imported layer then reaches
+         * the merge, and the wire, with no bare `backend.<id>` section at all
+         * (the App-side report: an imported profile that declares 43499 emitted
+         * only its abi/execution sub-sections). Reading it back keeps the two
+         * paths value-equivalent, which is the M5 invariant. */
+        flatBackend?.get(QueueSelectionKey).asValueMap()?.forEach { (token, rawCarried) ->
+            val carried = rawCarried.asValueMap() ?: return@forEach
+            val owner = owners.mutableChild(token)
+            carried["queue"]?.let { owner["queue"] = it.copyValue() }
+            carried["experimental"]?.let { owner["experimental"] = it.copyValue() }
+            (carried[QueueRouteKey] as? String)?.let { carryQueueRoute(owner, token, it) }
         }
         if (owners.isNotEmpty()) out["backend"] = owners
 
@@ -826,7 +923,9 @@ object ProfileLayout {
         /* The DECLARED availability fixes the default backend; the App lets the
          * user pick among the declared tokens at run time. */
         val available = canonical["available"].asValueMap() ?: ValueMap()
-        val selectedBackend = BackendKind.entries.firstOrNull { it.token in available.keys }
+        val selectedBackend = AvailablePriority.orderedBackends(available)
+            .firstOrNull()
+            ?.let { BackendKind.resolve(it) }
             ?: BackendKind.Default
         val backend = ValueMap()
         if (selectedBackend.token in available.keys) backend["kind"] = selectedBackend.token

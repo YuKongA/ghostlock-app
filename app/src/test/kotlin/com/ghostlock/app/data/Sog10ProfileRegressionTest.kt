@@ -53,46 +53,52 @@ class Sog10ProfileRegressionTest {
             assertEquals(release, decoded.release)
             /* M3: the queue replaced the token - a migrated profile must carry the
              * queue and NO token (native rejects both at once, glkv3_parse.cpp:407-419). */
+            /* 沿革: 排序权威 = AvailablePriority（priority，其次 token 序）；默认项 = 声明首项。
+             * 零硬编码：默认 backend 与其 route 都从声明派生（同 core 版口径）。 */
+            val declaredMap = HoconSupport.parseValue(
+                AssetConfigLoader(context).load("profile/" + release + ".conf"),
+            ).asValueMap()
+            val declaredRoot = declaredMap?.get("ghostlock").asValueMap() ?: declaredMap
+            val declaredAvailable = requireNotNull(declaredRoot?.get("available").asValueMap()) {
+                "no available declaration; root keys=" + declaredRoot?.keys?.sorted()
+            }
+            val defaultBackend = AvailablePriority.orderedBackends(declaredAvailable).first()
+            val defaultRoutes = com.ghostlock.app.data.component.CombinationCatalog.specs
+                .filter { spec -> spec.backend.token == defaultBackend }
+                .mapNotNull { spec -> spec.route?.token }
+                .distinct()
+            require(defaultRoutes.size <= 1) {
+                "ambiguous default backend " + defaultBackend + " => " + defaultRoutes
+            }
             assertTrue(
                 "the migrated profile must not carry a token",
                 runCatching { entry(decoded, "backend.cve_2026_43499", "steps") }.isFailure,
             )
+            /* 队列属于【默认 backend】（声明派生）；同族真缺陷守卫：wire 现由 UI 组合
+             * token 决定 ⇒ 声明被绕过 ⇒ 本条会红，等 native 修复后自然转绿（不改测试）。 */
             assertTrue(
-                "the migrated profile must carry a queue",
-                runCatching { entry(decoded, "backend.cve_2026_43499", "queue") }.isSuccess,
+                "the migrated profile must carry the default backend's queue",
+                runCatching { entry(decoded, "backend." + defaultBackend, "queue") }.isSuccess,
             )
-            assertNull(entryOrNull(decoded, "backend.cve_2026_43499.abi.kernel", "kernel_phys_load"))
-            assertEquals(Glkv3Value.UInt(0u), entry(decoded, "backend.cve_2026_43499.abi.cred", "usage_offset"))
-            assertEquals(
-                Glkv3Value.UInt(35027464u),
-                entry(decoded, "backend.cve_2026_43499.abi.offset", "selinux_blob_sizes"),
-            )
-            assertEquals(
-                Glkv3Value.UInt(35018112u),
-                entry(decoded, "backend.cve_2026_43499.abi.offset", "security_hook_heads"),
-            )
-            assertEquals(
-                Glkv3Value.UInt((-274698454400L).toULong()),
-                entry(decoded, "backend.cve_2026_43499.cred", "ref0_image"),
-            )
-            assertEquals(
-                Glkv3Value.UInt((-274696707824L).toULong()),
-                entry(decoded, "backend.cve_2026_43499.cred", "ref1_image"),
-            )
-            assertEquals(
-                Glkv3Value.UInt((-274698453008L).toULong()),
-                entry(decoded, "backend.cve_2026_43499.cred", "ref2_image"),
-            )
-            assertEquals(
-                Glkv3Value.UInt((-274698454232L).toULong()),
-                entry(decoded, "backend.cve_2026_43499.cred", "ref3_image"),
-            )
+            /* 这 8 条 43499 测量值断言描述【显式选中 43499】的文档形态；默认项由声明派生后
+             * 默认文档是 43284 形态，故按乙移到显式路径测试（覆盖 12 -> 12，不降级）。 */
 
-            val routeSection = "backend.cve_2026_43499.route.multicast_waiter"
-            assertEquals(Glkv3Value.UInt(96u), entry(decoded, routeSection, "waiter_off"))
-            assertEquals(Glkv3Value.UInt(264u), entry(decoded, routeSection, "buffer_size"))
-            assertEquals(Glkv3Value.UInt(48u), entry(decoded, routeSection, "task_offset"))
-            assertEquals(Glkv3Value.UInt(56u), entry(decoded, routeSection, "lock_offset"))
+            /* 派生（零硬编码）：期望的 route 段由【默认 backend 的声明 route】决定；
+             * 默认项无 route 轴 ⇒ 断言【不存在】该 backend 的 route 段（派生 != 删除）。 */
+            val defaultRoutePrefix = "backend." + defaultBackend + ".route."
+            val expectedRouteSection = defaultRoutes.singleOrNull()?.let { defaultRoutePrefix + it }
+            if (expectedRouteSection == null) {
+                assertTrue(
+                    "the default backend declares no route axis, so no " + defaultRoutePrefix +
+                        " section may ride the wire",
+                    decoded.sections.none { it.name.startsWith(defaultRoutePrefix) },
+                )
+            } else {
+                assertTrue(
+                    "the declared route section must ride the wire: " + expectedRouteSection,
+                    decoded.sections.any { it.name == expectedRouteSection },
+                )
+            }
         } finally {
             root.deleteRecursively()
         }

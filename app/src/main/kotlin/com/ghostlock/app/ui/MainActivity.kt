@@ -280,6 +280,15 @@ private fun GhostlockRoute(
 
             override fun onClosePayload() = viewModel.onClosePayload()
 
+            override fun onOpenExecutionCombination() = viewModel.onOpenExecutionCombination()
+
+            override fun onCloseExecutionCombination() = viewModel.onCloseExecutionCombination()
+
+            override fun onExecutionComboDraftChanged(entry: ExecutionComboEntry?) =
+                viewModel.onExecutionComboDraftChanged(entry)
+
+            override fun onExecutionComboConfirmed() = viewModel.onExecutionComboConfirmed()
+
             override fun onPayloadTierChanged(tier: PayloadTier?) =
                 viewModel.onPayloadTierChanged(tier)
 

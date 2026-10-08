@@ -280,7 +280,8 @@ object NativeProfileGlkv3Adapter {
             Glkv3Section(name = section.name, entries = entries)
         }
         val is43284 = document.backendKind == BackendKind.Cve2026_43284.wire.toUInt()
-        return Glkv3Document(
+
+        val adapted = Glkv3Document(
             /* HOCON refactor: the kernel scalars are ROOT values. */
             kernelMajor = document.kernelMajor.toULong(),
             kernelMinor = document.kernelMinor?.toULong(),
@@ -294,6 +295,21 @@ object NativeProfileGlkv3Adapter {
             route = if (is43284) null else RouteKind.fromWire(document.routeKind)?.token,
             sections = sections,
         )
+        /* PERMANENT SELF-DIAGNOSTIC (READ-BACK, deliberately NOT tautological): compare
+         * the terminal the adapter actually WROTE into the produced structure with the
+         * one the document carries. Comparing the source expression with itself would be
+         * vacuous; reading the produced value is what localises a lost terminal to THIS
+         * line (firing) or to the encoder below (passing while the bytes stay short). */
+        /* Only when the document DECLARES a combination: the "none" class legitimately
+         * has none and correctly falls back to DEFAULT_TERMINAL. */
+        val documentTerminal = document.combination?.terminal?.token
+        if (documentTerminal != null) {
+            require(adapted.terminal == documentTerminal) {
+                "adapter wrote=" + adapted.terminal + " doc=" + documentTerminal +
+                    " release=" + document.release
+            }
+        }
+        return adapted
     }
 
     private fun toValue(type: WireType, raw: ULong): Glkv3Value = when (type) {

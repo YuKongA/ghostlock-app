@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui
 
+import com.ghostlock.app.ui.theme.DefaultGhostlockSpacing
+import com.ghostlock.app.data.DeclaredCombination
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,6 +75,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -102,6 +106,14 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 data class GhostlockUiState(
+    /* Restored after GhostlockUI.kt was truncated to 0 bytes at 21:43; these
+     * are the P0 execution-combination fields the rest of the tree expects. */
+    val executionComboVisible: Boolean = false,
+    val executionComboDraft: ExecutionComboEntry? = null,
+    val declaredCombinations: List<DeclaredCombination> = emptyList(),
+    val executionDeclarationErrors: List<String> = emptyList(),
+    val combinationDerivedFor: String? = null,
+    val executionComboUnusable: Boolean = false,
     val deviceName: String = "",
     val kernelRelease: String = "",
     val socName: String = "",
@@ -210,6 +222,10 @@ enum class DialogType { NONE, LIST, INPUT, CONFIRM, NOTICE }
 data class GhostlockLogLine(val text: String, val color: Int)
 
 interface GhostlockActions {
+    fun onOpenExecutionCombination()
+    fun onCloseExecutionCombination()
+    fun onExecutionComboDraftChanged(entry: ExecutionComboEntry?)
+    fun onExecutionComboConfirmed()
     fun onRun()
     fun onProfileInvalid()
     fun onStatusClick()
@@ -454,6 +470,7 @@ internal fun GhostlockApp(
                 GhostlockDialog(state = state, actions = actions)
                 GhostlockOverwriteDialog(state = state, actions = actions)
                 GhostlockExecutionSheet(state = state, actions = actions)
+                ExecutionCombinationDialog(state = state, actions = actions)
             }
         }
     }
@@ -487,14 +504,14 @@ private fun MainScreen(
 @Composable
 internal fun pageContentPadding(
     scaffoldPadding: PaddingValues,
-    top: Dp = 8.dp,
-    bottom: Dp = 12.dp,
-    horizontalMin: Dp = 12.dp,
+    top: Dp = DefaultGhostlockSpacing.pageTop,
+    bottom: Dp = DefaultGhostlockSpacing.pageBottom,
+    horizontalMin: Dp = DefaultGhostlockSpacing.pageHorizontalMin,
 ): PaddingValues {
     val windowWidth = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.width.toDp()
     }
-    val horizontal = ((windowWidth - 800.dp) / 2).coerceAtLeast(horizontalMin)
+    val horizontal = ((windowWidth - DefaultGhostlockSpacing.contentMaxWidth) / 2).coerceAtLeast(horizontalMin)
     return PaddingValues(
         start = horizontal,
         end = horizontal,
@@ -545,6 +562,90 @@ private fun GhostlockExecutionSheet(
     )
 }
 
+/* KernelSU-style chooser (upstream ChooseKmiDialogMiuix.kt): an OverlayDialog
+ * with a DRAFT + confirm/cancel. Rows come from the DECLARED paths only, and
+ * the layout relies on the components own metrics - no hand-tuned dp spacing. */
+@Composable
+private fun ExecutionCombinationDialog(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    val tree = state.executionComboTree()
+    OverlayDialog(
+        show = state.executionComboVisible,
+        title = stringResource(R.string.execution_combo_title),
+        onDismissRequest = actions::onCloseExecutionCombination,
+        content = {
+            Column {
+                Text(text = stringResource(R.string.execution_combo_subtitle))
+                for (failure in tree.failures) {
+                    Text(text = failure)
+                }
+                if (state.executionComboUnusable) {
+                    Text(text = stringResource(R.string.execution_combo_unusable))
+                }
+                /* Relative constraint only (no pixel literals): the weighted list takes
+                 * the space the dialog gives it instead of collapsing to zero height. */
+                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                    for (group in tree.groups) {
+                        item(key = "backend:" + group.backend + "|" + (group.route ?: "-")) {
+                            SmallTitle(text = group.backend)
+                        }
+                        if (group.route != null) {
+                            item(key = "route:" + group.backend + "|" + group.route) {
+                                SmallTitle(text = group.route)
+                            }
+                        }
+                        /* ONE Card per GROUP (research doc 4.3): the group is a
+                         * single rounded surface, so the first row keeps square top corners
+                         * and the last row square bottom corners via the container clip - and
+                         * there is no gap between rows, because the Card owns the column. */
+                        item(key = "group:" + group.backend + "|" + (group.route ?: "-")) {
+                            Card {
+                                Column {
+                                    for (leaf in group.leaves) {
+                                        val note = when (leaf.note) {
+                                            ExecutionComboNote.PLANNED ->
+                                                stringResource(R.string.combination_planned)
+                                            ExecutionComboNote.UNSUPPORTED ->
+                                                stringResource(R.string.execution_combo_unavailable_hint)
+                                            null -> null
+                                        }
+                                        RadioButtonPreference(
+                                            title = leaf.entry.steps.joinToString(" > ") +
+                                                " > " + leaf.entry.terminal,
+                                            summary = note,
+                                            selected = leaf.entry == state.executionComboDraft,
+                                            onClick = {
+                                                actions.onExecutionComboDraftChanged(leaf.entry)
+                                            },
+                                            enabled = leaf.selectable,
+                                            radioButtonLocation = RadioButtonLocation.End,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    TextButton(
+                        text = stringResource(R.string.execution_combo_cancel),
+                        onClick = actions::onCloseExecutionCombination,
+                    )
+                    TextButton(
+                        text = stringResource(R.string.execution_combo_confirm),
+                        onClick = actions::onExecutionComboConfirmed,
+                        enabled = state.executionComboDraft != null,
+                    )
+                }
+            }
+        },
+    )
+}
 @Composable
 private fun GhostlockDialog(
     state: GhostlockUiState,
@@ -814,8 +915,16 @@ private fun ControlPanel(
                 .fillMaxWidth()
                 .padding(top = 12.dp),
         )
-        Card(modifier = modifier.padding(top = 12.dp)) {
+        /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker A. */
+        Text(text = "DIAG-ROW-A")
+        /* TEMPORARY DIAGNOSTIC: container swap (Card -> Column) to test whether
+         * the Miuix Card itself stops composing here. Content below is untouched. */
+        Column(modifier = modifier.padding(top = 12.dp)) {
+            /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker E. */
+            Text(text = "DIAG-ROW-E")
             if (state.cpuPairLabels.isNotEmpty()) {
+                /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker G. */
+                Text(text = "DIAG-ROW-G")
                 val customPair = state.customCpuPair
                 val customSummary = customPair?.let {
                     stringResource(
@@ -838,11 +947,15 @@ private fun ControlPanel(
                 title = stringResource(R.string.safe_mode_label),
                 summary = stringResource(R.string.safe_mode_summary),
             )
+            /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker D. */
+            Text(text = "DIAG-ROW-D")
             CombinationSelector(
                 state = state,
                 actions = actions,
             )
         }
+        /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker C. */
+        Text(text = "DIAG-ROW-C")
         Card(modifier = modifier.padding(top = 12.dp)) {
             ArrowPreference(
                 title = stringResource(R.string.advanced_settings),
@@ -850,6 +963,8 @@ private fun ControlPanel(
                 onClick = actions::onOpenAdvanced,
             )
         }
+        /* TEMPORARY DIAGNOSTIC (remove after the bisect): marker B. */
+        Text(text = "DIAG-ROW-B")
     }
 }
 
@@ -857,45 +972,25 @@ private fun ControlPanel(
  * planned token is greyed and annotated, and the row recommended for the
  * loaded route is prefixed. Backend, route, step set and terminal all derive
  * from the selected token, so there is no second selector. */
+/* P0-3: ONE entry row opens the declared-combination chooser; the rows live
+ * in the dialog below, never a flat catalogue list (undeclared paths must not
+ * be listed at all). Spacing comes from the components themselves. */
 @Composable
 private fun CombinationSelector(
     state: GhostlockUiState,
     actions: GhostlockActions,
     modifier: Modifier = Modifier,
 ) {
-    val route = state.profileRoute?.let { RouteKind.resolve(RouteKind.normalize(it)) }
-    val recommended = CombinationCatalog.recommended(state.backendKind, route)
-    Column(modifier = modifier.padding(top = 12.dp)) {
-        Text(
-            text = stringResource(R.string.combination_label),
-            fontSize = 14.sp,
-            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
-        )
-        combinationOptions().forEach { option ->
-            val spec = option.spec
-            val plannedSuffix = if (option.planned) {
-                " (" + stringResource(R.string.combination_planned) + ")"
-            } else {
-                ""
-            }
-            val recommendedPrefix = if (spec == recommended) {
-                stringResource(R.string.combination_recommended) + " · "
-            } else {
-                ""
-            }
-            RadioButtonPreference(
-                title = recommendedPrefix + spec.token + plannedSuffix,
-                summary = combinationSummary(spec),
-                selected = state.combination == spec,
-                onClick = { actions.onCombinationChanged(spec) },
-                enabled = option.enabled,
-                radioButtonLocation = RadioButtonLocation.End,
+    Column(modifier = modifier) {
+        Card {
+            ArrowPreference(
+                title = stringResource(R.string.combination_label),
+                summary = combinationSummary(state.combination),
+                onClick = actions::onOpenExecutionCombination,
             )
         }
     }
 }
-
 @Composable
 private fun ActivationStatusCard(
     supported: Boolean,

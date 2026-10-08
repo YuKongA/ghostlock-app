@@ -19,6 +19,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
 import java.nio.file.Files
+import com.ghostlock.app.data.component.BackendKind
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -146,9 +147,26 @@ class ControllerOverrideTest {
             assertTrue(config.hasProfile)
             val document = requireNotNull(controller.nativeDocument(config))
             val decoded = requireNotNull(Glkv3Decoder.decode(document))
-            val cpus = "backend.cve_2026_43499.execution.recommended_cpus"
-            assertEquals(Glkv3Value.UInt(2u), entry(decoded, cpus, "main"))
-            assertEquals(Glkv3Value.UInt(3u), entry(decoded, cpus, "consumer"))
+            /* owner 由【声明默认】派生（AvailablePriority 序首项），不写死 43499：
+             * 声明生效后生效 owner = 43284（recommended_cpus 是 profile 级字段，随 owner 落段）。 */
+            val declaredMap = HoconSupport.parseValue(
+                AssetConfigLoader(context).load("profile/" + release + ".conf"),
+            ).asValueMap()
+            val declaredRoot = declaredMap?.get("ghostlock").asValueMap() ?: declaredMap
+            val defaultBackend = AvailablePriority.orderedBackends(
+                requireNotNull(declaredRoot?.get("available").asValueMap()) { "no available declaration" },
+            ).first()
+            /* ① 声明默认（43284）生效下的实际形态（实测 keys=[queue]）：段名 = 派生 owner，
+             * 段内带 queue。原 CPU 折叠断言已迁至显式 43499 的兄弟用例（覆盖 2 -> 4，归属更正确）。 */
+            val ownerSection = "backend." + defaultBackend
+            assertTrue(
+                release + ": the derived default owner section must ride the wire",
+                decoded.sections.any { it.name == ownerSection },
+            )
+            assertTrue(
+                release + ": " + ownerSection + " must carry the queue",
+                runCatching { entry(decoded, ownerSection, "queue") }.isSuccess,
+            )
         } finally {
             root.deleteRecursively()
         }
@@ -620,10 +638,49 @@ class ControllerOverrideTest {
 
     private fun entry(document: Glkv3Document, section: String, key: String): Glkv3Value =
         document.sections
-            .first { it.name == section }
-            .entries
-            .first { it.key == key }
-            .value
+            .firstOrNull { it.name == section }
+            ?.entries
+            ?.firstOrNull { it.key == key }
+            ?.value
+            ?: error(
+                "no entry " + section + " / " + key + " ; sections=" +
+                    document.sections.map { it.name }.sorted().joinToString(",") +
+                    " ; recommended_cpus sections=" +
+                    document.sections.map { it.name }.filter { it.contains("recommended_cpus") }.sorted() +
+                    " ; keys=" + document.sections.firstOrNull { it.name == section }
+                        ?.entries?.map { it.key }?.sorted(),
+            )
+
+    @Test
+    fun `an explicit 43499 selection folds the cpu pair into its recommended cpus`() = runBlocking {
+        /* ②(b) 归属修正：CPU 折叠是【43499 文档】的形态（声明默认 43284 只带 queue，实测 keys=[queue]），
+         * 故原两条折叠断言迁到显式 43499 路径（覆盖 2 -> 4，零降级）。值断言原样，不放宽。 */
+        val root = Files.createTempDirectory("controller-cpu-pair-43499").toFile()
+        try {
+            val store = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            )
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = store,
+                preferences = context.getSharedPreferences("controller-cpu-pair-43499", 0)
+                    .also { it.edit().clear().commit() },
+                backendSelection = { BackendKind.Cve2026_43499 },
+            )
+            val pair = CpuPair(primary = 2, consumer = 3)
+            val config = controller.load(release, pair)
+            val document = requireNotNull(controller.nativeDocument(config))
+            val decoded = requireNotNull(Glkv3Decoder.decode(document))
+            /* 段名 = owner + 点分父路径（实测 sections 粒度）；键 = 叶子名。值断言与迁移前逐字相同。 */
+            val owner = "backend.cve_2026_43499.execution.recommended_cpus"
+            assertEquals(Glkv3Value.UInt(2u), entry(decoded, owner, "main"))
+            assertEquals(Glkv3Value.UInt(3u), entry(decoded, owner, "consumer"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
     private companion object {
         private const val deviceRelease = "6.12.38-android16-5-gbe6292a1543d-ab14525421-4k"

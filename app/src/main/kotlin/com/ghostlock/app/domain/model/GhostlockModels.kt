@@ -1,5 +1,6 @@
 package com.ghostlock.app.domain.model
 
+import com.ghostlock.app.data.DeclaredCombination
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.route.RouteKind
 
@@ -84,6 +85,8 @@ data class ProfileFieldNode(
 }
 
 /** Resolved execution view for the advanced editor (controller-owned). */
+
+
 data class ProfileConfig(
     val release: String,
     val hasProfile: Boolean,
@@ -100,6 +103,21 @@ data class ProfileConfig(
      * probe's own reasons, user-visible. Empty on the normal path.
      */
     val pluginErrors: List<String> = emptyList(),
+    /**
+     * (b1) A selected execution combination this profile does not declare. The
+     * run gate refuses while non-empty; the selection is never silently replaced.
+     */
+    val declarationErrors: List<String> = emptyList(),
+    /**
+     * Declared execution combinations from the profile available object
+     * (design 2.3): ONLY what the loaded profile declares. Empty means the
+     * profile declares none, never all-of-catalogue.
+     */
+    /* NO DEFAULT on purpose: every ProfileConfig construction site must state its
+     * declared combinations explicitly, so a missing one cannot silently fall back to
+     * an empty list (the N=0 defect). "No profile" is stated as emptyList() at the
+     * one site that means it. */
+    val declaredCombinations: List<DeclaredCombination>,
 ) {
     companion object {
         /**
