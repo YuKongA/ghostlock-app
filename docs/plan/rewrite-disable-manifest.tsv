@@ -180,3 +180,20 @@ src/core/tests/umh_forward_test.cpp	test	126	mv src/core/tests/umh_forward_test.
 src/core/tests/victim_context_test.cpp	test	69	mv src/core/tests/victim_context_test.cpp.disabled src/core/tests/victim_context_test.cpp
 src/core/tests/vocabulary_manifest_test.cpp	test	302	mv src/core/tests/vocabulary_manifest_test.cpp.disabled src/core/tests/vocabulary_manifest_test.cpp
 src/Makefile	makefile-guard	14	delete the TD-REWRITE-1/3 guard block at the top of src/Makefile (14 lines: .DEFAULT_GOAL + .PHONY + rewrite-disable-guard target)
+src/core/contract/abi/glk_contract_abi.h	upper-header	334	mv src/core/contract/abi/glk_contract_abi.h.disabled src/core/contract/abi/glk_contract_abi.h
+src/core/memory/address_space.h	upper-header	65	mv src/core/memory/address_space.h.disabled src/core/memory/address_space.h
+src/core/memory/heap_context.h	upper-header	111	mv src/core/memory/heap_context.h.disabled src/core/memory/heap_context.h
+src/core/memory/offset.h	upper-header	5	mv src/core/memory/offset.h.disabled src/core/memory/offset.h
+src/core/memory/payload_builder.h	upper-header	91	mv src/core/memory/payload_builder.h.disabled src/core/memory/payload_builder.h
+src/core/memory/target.h	upper-header	142	mv src/core/memory/target.h.disabled src/core/memory/target.h
+src/core/profile/entry.h	upper-header	40	mv src/core/profile/entry.h.disabled src/core/profile/entry.h
+src/core/profile/runtime_struct_offsets.h	upper-header	185	mv src/core/profile/runtime_struct_offsets.h.disabled src/core/profile/runtime_struct_offsets.h
+src/core/race/pi_race.h	upper-header	95	mv src/core/race/pi_race.h.disabled src/core/race/pi_race.h
+src/core/session/runtime_config.h	upper-header	42	mv src/core/session/runtime_config.h.disabled src/core/session/runtime_config.h
+src/core/session/runtime_paths.h	upper-header	61	mv src/core/session/runtime_paths.h.disabled src/core/session/runtime_paths.h
+src/core/support/number_parse.h	upper-header	39	mv src/core/support/number_parse.h.disabled src/core/support/number_parse.h
+src/core/support/time.h	upper-header	56	mv src/core/support/time.h.disabled src/core/support/time.h
+src/core/tests/cpp_link_probe.h	test-header	21	mv src/core/tests/cpp_link_probe.h.disabled src/core/tests/cpp_link_probe.h
+src/core/tests/host/include/linux/futex.h	test-header	10	mv src/core/tests/host/include/linux/futex.h.disabled src/core/tests/host/include/linux/futex.h
+src/core/tests/host/include/sched.h	test-header	52	mv src/core/tests/host/include/sched.h.disabled src/core/tests/host/include/sched.h
+src/core/tests/host/include/sys/prctl.h	test-header	39	mv src/core/tests/host/include/sys/prctl.h.disabled src/core/tests/host/include/sys/prctl.h
