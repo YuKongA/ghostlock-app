@@ -7,7 +7,7 @@
 
 | # | 项 | 内容 | 权威件 |
 |---|---|---|---|
-| 1 | **引擎与 vendoring** | **Lua 5.5.1** vendored 到 `src/lib/lua/`（`PROVENANCE.md`：398 643 B · sha256 前 16 `1c4b4068…` · 63/63 逐字节相同）；体积 ≈ **119 068 B ≈ 2.40%** | ADR-0008 |
+| 1 | **引擎与 vendoring** | **Lua 5.5.1** vendored 到 `src/lib/lua/`（`PROVENANCE.md`：398 643 B · sha256 前 16 `1c4b4068…` · 63/63 逐字节相同）；体积 **≈ 119 000 B ≈ 2.40%**（本仓 lua-core 口径：纯 -Os；含 -DLUA_USE_POSIX 为 119 068 B，对照见 PROVENANCE.md） | ADR-0008 |
 | 2 | **沙箱预算参数** | **不注册** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；指令预算 · 内存硬上限 · 栈深 · **单脚本 ≤64 KB** · 脚本**只在窗口外**运行（**5.5 API 逐项复核 = 待办，A6 批内**） | ADR-0008 · P5 规格 |
 | 3 | **暴露面表（写入面两形态）** | `backend(id)` · **`b:writeop{target,value,width}`（字写；**target = {kind, value}**：kind = 机制枚举、value **来自 `cfg`**）** · **`b:copyop{src,dst,width}`（结构复制；src/dst 同为目标形态）** · `b:settle{us}` · **`b:handoff{terminal,payload_ref}`（引用语义）** · `cfg`（只读快照） · **`close(h)`（句柄释放）**；**暴露面 7 条**；表外 ⇒ `surface-unknown-name` | [lua-surface-design](../analysis/lua-surface-design.md) §1/§1.1 |
 | 4 | **单遍 stage** | 跑脚本（窗口外一次）⇒ **staged 计划** ⇒ `plan_gate` **校验 staged 产物**（不重跑脚本）⇒ **按相位执行**；**逐调用边界校验保留** | 同上 §3 |
@@ -20,7 +20,7 @@
 
 - **已就位**：`src/lib/lua/`（5.5.1 + `PROVENANCE.md`）· 暴露面设计与 UML（§2.8/§3.4/§4.5 已同步 stage/相位/cfg）。
 - **未开始**：A6 实现（沙箱接线、`surface` 表、stage、gate 校验 staged、句柄表）。
-- **前置未决**：待裁三条（`settle` 进窗口 / `width` 缺省 / 脚本承载方式）；**5.5 API 逐项复核**（沙箱参数）。
+- **前置未决**：待裁三条（`settle` 进窗口 / `width` 缺省 / 脚本承载方式）+ **Q6/Q7**（`prepare{}` 要不要 · per-attempt 机制留机制层）；**5.5 API 逐项复核**（沙箱参数，A6 批内做）。
 
 ## 3. 判据（批准后 A6 的验收）
 
@@ -43,9 +43,8 @@
 | **保留** | **窗口内零 Lua** · **逐调用边界校验** · **`plan_gate` 校验 staged** · **预算**（指令/内存/64 KB） |
 | 代价 | 用户脚本改坏**可能 panic**（本层不拦截，如实登记） |
 
-**另：`TD-RW2-2`（`run` 双形态）** —— 允许 `shell` ⇒ **命令级白名单失效**；**剩余界** = **相位**（仅 terminal、root 后）+ **预算**（指令/内存/`timeout_ms`）+ **审计**（命令与输出入日志）；**代价** = root 后**可执行任意命令**；**偿还时机 = 首个真机门禁（G2）后复评**。
-| 偿还时机 | **首个真机门禁（G2）后复评** |
+**另：`TD-RW2-2`（`run` 双形态）＝ 已作废** —— 用户 2026-10-08 裁定移除 `run`（收尾命令定义权归 Kotlin，见 §1 第 8 项）⇒ 该债随之失效：**暴露面不再有执行命令的能力**，故「命令级白名单失效 / root 后可执行任意命令」的代价**不再存在**。沿革保留（不删历史）：该债曾因「允许 `run{shell}`」而立，随能力移除而关闭。
 
 ## 6. 一句批准项（可直接转给用户）
 
-> **请批准 A6 基线：Lua 5.5.1（已 vendor、来源可核）+ 沙箱预算参数白名单 + 暴露面表（`backend`/**写入面两形态 `writeop`+`copyop`**/`settle`/**`handoff` 引用语义**/`cfg`，表外拒绝）+ 单遍 stage（跑脚本→gate 校验 staged→按相位执行）+ `cfg` 只读快照 + 句柄边界（有界 64 / POD / 仅宿主探针产生）+ **`run` 双形态与声明式收尾**（`argv`/`shell` 二选一，`terminal{on_success, always, on_failure}`，内核兜底留 C++），并登记 **`TD-RW2-1`**（用户脚本正确性 = 用户责任；保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算）与 **`TD-RW2-2`**（允许 `shell` ⇒ 以相位+预算+审计为剩余界；两项偿还时机 = 首个真机门禁后复评）。**
+> **请批准 A6 基线**：**Lua 5.5.1**（已 vendor、`PROVENANCE.md` 可核）+ **沙箱预算参数**（不注册 `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；指令/内存/栈深预算；单脚本 ≤64 KB；脚本**只在窗口外**运行）+ **暴露面 7 条**（`backend(id,{route?})` · **`close(h)`** · `writeop{target={kind,value},value,width}` · **`copyop{src,dst,width}`** · `settle{us}` · **`handoff{terminal,payload_ref}`（引用语义）** · `cfg`（只读快照）；**表外 ⇒ `surface-unknown-name`**）+ **单遍 stage**（跑脚本 → `plan_gate` 校验 staged → 按相位执行）+ **句柄边界**（有界 64 · POD/无 `__gc` · 仅宿主探针产生 · 代际检查 · `handle-conflict`/`handle-stale`）+ **C++ 不得持「名字→值」表**（名字只允许 dispatch 标识符与数据面键路径）+ **收尾归 Kotlin**（resolve 产 payload ⇒ wire ⇒ native 校验落盘 ⇒ terminal 执行；内核兜底留 C++）+ **route 换法 = 方案 2**（`close` + 重新 `backend(id,{route})`），并登记 **`TD-RW2-1`**（用户脚本正确性 = 用户责任；保留窗口内零 Lua / 逐调用校验 / gate 校验 staged / 预算）。**（`TD-RW2-2` 随 `run` 移除作废。）**
