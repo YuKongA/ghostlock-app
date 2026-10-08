@@ -2,20 +2,21 @@
 /** @file contract/script_surface.hpp
  *  The script exposure surface: which names a script may reach, what each name
  *  is, and which layer implements it. MECHANISM ONLY -- this file carries no
- *  sandbox semantics, no loader and no Lua reference (the sandbox batch wires
- *  it); it is the single place the surface names are spelled.
+ *  sandbox semantics, no loader, no Lua reference and NO HANDLE TABLE (ADR-0010
+ *  is still Proposed; the handle table itself belongs to the A6 sandbox batch).
+ *  It is the single place the surface names are spelled.
  *
  *  Placement: contract/ (not script/) because the table is neutral vocabulary
  *  that the script layer, the loader and the tests all read; script/ will own
  *  the enforcement, and putting the table there would make the enforcement the
  *  authority over the vocabulary it must obey.
  *
- *  Fields per row: name; form (Call = an action, Value = a read-only snapshot);
- *  args (keyed specs: max is the SCHEMA acceptance ceiling, required says
- *  whether a script must pass it); implements_layer (must name a layer of
+ *  Fields per row: name; form (Call = an action reachable from the global
+ *  surface, Value = a read-only snapshot, HandleMethod = a method invoked ON a
+ *  handle); args (keyed specs: max is the SCHEMA acceptance ceiling, required
+ *  says whether a script must pass it); implements_layer (must name a layer of
  *  contract::kLayers); recordable; executable; window_allowed; holds_resource
- *  (keeps a resource alive beyond the call -- handle territory, and ADR-0010 is
- *  still Proposed, so nothing here implements it).
+ *  (keeps a resource alive beyond the call).
  *
  *  WINDOW-LEVEL OPS ARE NOT SCRIPT-VISIBLE ENTRIES (user ruling): the names
  *  spelled window.* are a RUNTIME-INTERNAL PHASE GROUPING, not a script
@@ -24,21 +25,28 @@
  *  surface_has_no_window_prefixed_names() below, and the grep performed by
  *  "make -C src check".
  *
+ *  NO "run" ROW (user ruling): the shell/argv entry was removed from the
+ *  surface, together with the run-form-invalid vocabulary. A named assertion
+ *  (surface_has_no_run_row below) keeps it from creeping back.
+ *
+ *  WRITE TARGETS ARE TAGGED (user ruling): a write target is the pair
+ *  {target_kind, target_value}. The kind is a CLOSED mechanism set declared once
+ *  here (kernel_offset / absolute / direct_map) and the value's effective bound
+ *  comes from the profile (schema ceiling = the whole 64-bit domain). The pair is
+ *  modelled as TWO flat ArgSpec keys rather than as a record parameter, because
+ *  the flat table is what the lookup path and the loader already consume; a
+ *  record shape would add a second table machinery that the sandbox batch does
+ *  not need yet. A compile-time assertion keeps the two keys together.
+ *
  *  Language-level constructs (loops, conditionals, snapshot field access) are
  *  NOT rows: they belong to the interpreter, not to the exposed surface.
- *
- *  run form (named rejection run-form-invalid): run takes argv XOR shell. Both
- *  arguments are optional in the table because the RUNTIME picks one form; a
- *  call that passes both -- or neither -- is refused as run-form-invalid. run
- *  belongs to the terminal phase, so window_allowed is false for it and a
- *  compile-time assertion keeps it that way.
  *
  *  Bound relationship (numbers policy): the max below is a schema ceiling. The
  *  EFFECTIVE bound is the profile's (P4 contract/op_registry.hpp ParamSpec.max);
  *  a profile value above the ceiling is a named rejection (param-invalid) and no
  *  default is ever substituted. Ceilings are acceptance limits, not tuning.
- *  Values never carry kernel offsets: a write names its target by PROFILE SYMBOL
- *  NAME (target) plus the value/width, so no offset appears in a script.
+ *  Values never carry kernel offsets: a write names its target by KIND plus the
+ *  profile-supplied value, so no raw offset appears in a script.
  */
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +59,7 @@ namespace ghostlock::contract {
     enum class SurfaceForm : unsigned char {
         Call = 0,
         Value = 1,
+        HandleMethod = 2,
     };
 
     /** One keyed argument; max = schema acceptance ceiling, required = must the
@@ -74,14 +83,106 @@ namespace ghostlock::contract {
         bool holds_resource;
     };
 
-    /* The whole 64-bit domain: a write value's ceiling is the field width, and
-     * the optional width argument selects the slice. */
+    /* The whole 64-bit domain: a value whose real bound is the profile's, and a
+     * handle word (slot + generation), are accepted at the schema level. */
     inline constexpr std::uint64_t kValueCeiling = ~static_cast<std::uint64_t>(0);
 
+    /* ---- write target kinds: the closed mechanism set ---- */
+    enum class TargetKind : unsigned char {
+        KernelOffset = 0,
+        Absolute = 1,
+        DirectMap = 2,
+    };
+
+    /** The kind vocabulary, spelled once. */
+    inline constexpr const char *kTargetKindNames[] = {
+        "kernel_offset",
+        "absolute",
+        "direct_map",
+    };
+    inline constexpr std::size_t kTargetKindCount = sizeof(kTargetKindNames) / sizeof(kTargetKindNames[0]);
+
+    [[nodiscard]] constexpr const char *target_kind_name(TargetKind kind) noexcept {
+        switch (kind) {
+            case TargetKind::KernelOffset: return kTargetKindNames[0];
+            case TargetKind::Absolute: return kTargetKindNames[1];
+            case TargetKind::DirectMap: return kTargetKindNames[2];
+        }
+        return "unknown";
+    }
+
+    /** Which refusal -- if any -- a target kind name earns. Mechanism only. */
+    enum class TargetKindCheck : unsigned char {
+        Valid = 0,
+        Unknown = 1,
+    };
+    inline constexpr const char *kTargetKindInvalidReason = "target-kind-invalid";
+
+    [[nodiscard]] constexpr const char *target_kind_check_name(TargetKindCheck check) noexcept {
+        switch (check) {
+            case TargetKindCheck::Valid: return "valid";
+            case TargetKindCheck::Unknown: return kTargetKindInvalidReason;
+        }
+        return "unknown";
+    }
+
+    [[nodiscard]] constexpr TargetKindCheck target_kind_from_name(std::string_view name) noexcept {
+        for (std::size_t i = 0; i < kTargetKindCount; ++i) {
+            if (name == kTargetKindNames[i]) {
+                return TargetKindCheck::Valid;
+            }
+        }
+        return TargetKindCheck::Unknown;
+    }
+
+    /* ---- handle rejections: mechanism skeleton only (no handle table) ---- */
+    inline constexpr const char *kHandleConflictReason = "handle-conflict";
+    inline constexpr const char *kHandleStaleReason = "handle-stale";
+
+    /** The thin check A6 will drive. slot_live = the slot still owns a resource;
+     *  generations must match, and opening onto a live slot is a conflict. */
+    enum class HandleCheck : unsigned char {
+        Valid = 0,
+        Conflict = 1,
+        Stale = 2,
+    };
+
+    [[nodiscard]] constexpr const char *handle_check_name(HandleCheck check) noexcept {
+        switch (check) {
+            case HandleCheck::Valid: return "valid";
+            case HandleCheck::Conflict: return kHandleConflictReason;
+            case HandleCheck::Stale: return kHandleStaleReason;
+        }
+        return "unknown";
+    }
+
+    /** Using a handle: stale when the slot is gone or the generation moved. */
+    [[nodiscard]] constexpr HandleCheck handle_use_check(bool slot_live, std::uint64_t slot_generation,
+                                                         std::uint64_t handle_generation) noexcept {
+        if (!slot_live || slot_generation != handle_generation) {
+            return HandleCheck::Stale;
+        }
+        return HandleCheck::Valid;
+    }
+
+    /** Opening a handle: a live slot refuses a second owner. */
+    [[nodiscard]] constexpr HandleCheck handle_open_check(bool slot_live) noexcept {
+        return slot_live ? HandleCheck::Conflict : HandleCheck::Valid;
+    }
+
+    /* ---- argument tables (schema ceilings; see the file comment) ---- */
     inline constexpr ArgSpec kWriteOpArgs[] = {
-        {"target", 256U, true},   /* profile symbol name, never an offset */
+        {"target_kind", 64U, true},          /* TargetKind name, never an offset */
+        {"target_value", kValueCeiling, true}, /* profile-bounded */
         {"value", kValueCeiling, true},
         {"width", 8U, false},
+    };
+    inline constexpr ArgSpec kCopyOpArgs[] = {
+        {"src_kind", 64U, true},
+        {"src_value", kValueCeiling, true},
+        {"dst_kind", 64U, true},
+        {"dst_value", kValueCeiling, true},
+        {"width", 8U, true},
     };
     inline constexpr ArgSpec kSettleArgs[] = {
         {"us", 1000000U, true},
@@ -89,33 +190,26 @@ namespace ghostlock::contract {
     inline constexpr ArgSpec kHandoffArgs[] = {
         {"terminal", 256U, true},
     };
-    /* run: argv XOR shell. Both are OPTIONAL on purpose -- the runtime picks
-     * exactly one form, and a script that passes both (or neither) is refused
-     * with the named reason run-form-invalid (see the file comment).
-     * timeout_ms is bounded by the PROFILE, so its schema ceiling is the whole
-     * 64-bit domain: the profile supplies the effective bound. */
-    inline constexpr ArgSpec kRunArgs[] = {
-        {"argv", 64U, false},
-        {"shell", 4096U, false},
-        {"capture", 1U, false},
-        {"timeout_ms", kValueCeiling, false},
+    inline constexpr ArgSpec kCloseArgs[] = {
+        {"handle", kValueCeiling, true}, /* slot + generation word */
     };
 
-    /** The surface table. Draft after the user rulings: backend / writeop /
-     *  settle / handoff / cfg / run. profile.get was removed (cfg replaces it)
-     *  and no window.* row may appear (see the file comment). run is the terminal
-     *  phase's command entry and is therefore NOT reachable inside the window. */
+    /** The surface table: backend / writeop / copyop / settle / handoff / cfg /
+     *  close. profile.get was removed (cfg replaces it), run was removed, and no
+     *  window.* row may appear (see the file comment). */
     inline constexpr SurfaceEntry kSurface[] = {
         {"backend", SurfaceForm::Call, nullptr, 0, "backend", false, false, false, false},
         {"writeop", SurfaceForm::Call, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]), "backend",
          true, true, true, false},
+        {"copyop", SurfaceForm::Call, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend", true,
+         true, true, false},
         {"settle", SurfaceForm::Call, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race", true,
          true, true, false},
         {"handoff", SurfaceForm::Call, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]), "terminal",
          true, true, false, true},
         {"cfg", SurfaceForm::Value, nullptr, 0, "profile", true, false, false, false},
-        {"run", SurfaceForm::Call, kRunArgs, sizeof(kRunArgs) / sizeof(kRunArgs[0]), "terminal", true, true,
-         false, false},
+        {"close", SurfaceForm::HandleMethod, kCloseArgs, sizeof(kCloseArgs) / sizeof(kCloseArgs[0]), "session",
+         true, true, false, true},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
@@ -148,38 +242,6 @@ namespace ghostlock::contract {
         return SurfaceResult{SurfaceLookup::UnknownSymbol, nullptr};
     }
 
-    /* ---- run form: argv XOR shell, refused by name otherwise ---- */
-    /** The named refusal a caller sees when a run call mixes the two forms. */
-    inline constexpr const char *kRunFormInvalidReason = "run-form-invalid";
-
-    /** Which refusal -- if any -- a run call earns. Mechanism only: no script
-     *  runtime is involved; the caller supplies what it saw. */
-    enum class RunFormCheck : unsigned char {
-        Valid = 0,
-        BothForms = 1,
-        NoForm = 2,
-    };
-
-    [[nodiscard]] constexpr const char *run_form_check_name(RunFormCheck check) noexcept {
-        switch (check) {
-            case RunFormCheck::Valid: return "valid";
-            case RunFormCheck::BothForms: return kRunFormInvalidReason;
-            case RunFormCheck::NoForm: return kRunFormInvalidReason;
-        }
-        return "unknown";
-    }
-
-    /** argv table or shell string: never both, never neither. */
-    [[nodiscard]] constexpr RunFormCheck run_form_check(bool has_argv, bool has_shell) noexcept {
-        if (has_argv && has_shell) {
-            return RunFormCheck::BothForms;
-        }
-        if (!has_argv && !has_shell) {
-            return RunFormCheck::NoForm;
-        }
-        return RunFormCheck::Valid;
-    }
-
     /* ---- compile-time guarantees (each one can fail) ---- */
     [[nodiscard]] constexpr bool surface_same_text(const char *a, const char *b) noexcept {
         while (*a != '\0' && *a == *b) {
@@ -205,6 +267,16 @@ namespace ghostlock::contract {
     [[nodiscard]] constexpr bool surface_has_no_window_prefixed_names() noexcept {
         for (std::size_t i = 0; i < kSurfaceCount; ++i) {
             if (surface_is_window_prefixed(kSurface[i].name)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The removed shell entry must not come back. */
+    [[nodiscard]] constexpr bool surface_has_no_run_row() noexcept {
+        for (std::size_t i = 0; i < kSurfaceCount; ++i) {
+            if (surface_same_text(kSurface[i].name, "run")) {
                 return false;
             }
         }
@@ -262,6 +334,74 @@ namespace ghostlock::contract {
         return true;
     }
 
+    /** True when the row declares the named argument. */
+    [[nodiscard]] constexpr bool surface_row_has_arg(const SurfaceEntry &row, const char *key) noexcept {
+        for (std::size_t a = 0; a < row.arg_count; ++a) {
+            if (surface_same_text(row.args[a].key, key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The write target is the PAIR {target_kind, target_value}: both or neither. */
+    [[nodiscard]] constexpr bool writeop_target_is_a_pair() noexcept {
+        const SurfaceResult result = lookup("writeop");
+        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+            return false;
+        }
+        const bool kind = surface_row_has_arg(*result.entry, "target_kind");
+        const bool value = surface_row_has_arg(*result.entry, "target_value");
+        return kind && value;
+    }
+
+    /** copyop carries the same tagged pair on BOTH sides, plus a width. */
+    [[nodiscard]] constexpr bool copyop_sides_are_symmetric() noexcept {
+        const SurfaceResult result = lookup("copyop");
+        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+            return false;
+        }
+        const SurfaceEntry &row = *result.entry;
+        return surface_row_has_arg(row, "src_kind") && surface_row_has_arg(row, "src_value") &&
+               surface_row_has_arg(row, "dst_kind") && surface_row_has_arg(row, "dst_value") &&
+               surface_row_has_arg(row, "width");
+    }
+
+    /** A handle method must take the handle it acts on, and it is not a window
+     *  op (closing a handle is not part of the racing phase). */
+    [[nodiscard]] constexpr bool handle_methods_are_well_formed() noexcept {
+        for (std::size_t i = 0; i < kSurfaceCount; ++i) {
+            if (kSurface[i].form != SurfaceForm::HandleMethod) {
+                continue;
+            }
+            if (!surface_row_has_arg(kSurface[i], "handle")) {
+                return false;
+            }
+            if (kSurface[i].window_allowed) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The target-kind vocabulary is closed: three names, unique, non-empty. */
+    [[nodiscard]] constexpr bool target_kind_names_are_closed() noexcept {
+        if (kTargetKindCount != 3) {
+            return false;
+        }
+        for (std::size_t i = 0; i < kTargetKindCount; ++i) {
+            if (kTargetKindNames[i] == nullptr || kTargetKindNames[i][0] == '\0') {
+                return false;
+            }
+            for (std::size_t j = i + 1; j < kTargetKindCount; ++j) {
+                if (surface_same_text(kTargetKindNames[i], kTargetKindNames[j])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     /** Flags and form must agree: a window-reachable row must be executable
      *  there, a resource-holding row must be recordable, and a Value row is a
      *  read-only snapshot -- it is never executable. */
@@ -280,43 +420,17 @@ namespace ghostlock::contract {
         return true;
     }
 
-    /** The run row exists, is executable, and is NOT window-reachable. */
-    [[nodiscard]] constexpr bool surface_run_window_forbidden() noexcept {
-        const SurfaceResult result = lookup("run");
-        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
-            return false;
-        }
-        return result.entry->executable && !result.entry->window_allowed && !result.entry->holds_resource;
-    }
-
-    /** Both run forms stay OPTIONAL: the runtime picks argv XOR shell. */
-    [[nodiscard]] constexpr bool surface_run_forms_are_optional() noexcept {
-        const SurfaceResult result = lookup("run");
-        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
-            return false;
-        }
-        bool argv_optional = false;
-        bool shell_optional = false;
-        for (std::size_t a = 0; a < result.entry->arg_count; ++a) {
-            const ArgSpec &arg = result.entry->args[a];
-            if (surface_same_text(arg.key, "argv")) {
-                argv_optional = !arg.required;
-            }
-            if (surface_same_text(arg.key, "shell")) {
-                shell_optional = !arg.required;
-            }
-        }
-        return argv_optional && shell_optional;
-    }
-
     static_assert(kSurfaceCount >= 1, "the exposure surface must not be empty");
-    static_assert(surface_run_window_forbidden(), "run belongs to the terminal phase: window_allowed must be false");
-    static_assert(surface_run_forms_are_optional(), "run takes argv XOR shell: both arguments stay optional");
     static_assert(surface_names_are_unique_and_non_empty(), "surface names must be unique and non-empty");
     static_assert(surface_has_no_window_prefixed_names(),
                   "window.* is a runtime-internal phase grouping, never a script surface entry");
+    static_assert(surface_has_no_run_row(), "the shell entry was removed: no run row may reappear");
     static_assert(surface_layers_exist(), "every surface row must name a declared layer");
     static_assert(surface_args_are_well_formed(), "argument specs need unique keys and non-zero ceilings");
+    static_assert(writeop_target_is_a_pair(), "writeop targets are the tagged pair {target_kind, target_value}");
+    static_assert(copyop_sides_are_symmetric(), "copyop needs the tagged pair on both sides plus a width");
+    static_assert(handle_methods_are_well_formed(), "a handle method takes a handle and is not a window op");
+    static_assert(target_kind_names_are_closed(), "the target-kind set is closed at three names");
     static_assert(surface_flags_are_consistent(),
                   "flags must stay consistent (window/holds_resource/Value-is-read-only)");
 }  // namespace ghostlock::contract
