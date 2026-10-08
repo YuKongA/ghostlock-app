@@ -15,7 +15,7 @@
 | **`close(h)`** | 函数（释放） | `h` = 活跃句柄 | 释放（换路 = 先 `close` 再 `backend(...)`）；**generation 递增**（旧句柄 ⇒ `handle-stale`） | 组合根/目录 | 允许 | 允许 | 窗口外 | 否 | `handle-stale` · `handle-conflict` |
 | `b:writeop{target, value, width}` | 句柄方法 | **`target = {kind, value}`**（kind = 机制枚举 · value **来自 `cfg`**）· `width` 必填 | **字写**（覆盖旧 Zero/任意字写）；窗口内原子写 | backend route / step | 允许（stage 记录） | 允许 | **窗口相位**（运行时内部分组） | 否（句柄只标识） | `param-invalid` · `geometry-missing` · `op-not-available` |
 | **`copyop{src,dst,width}`** | 句柄方法 | **`src`/`dst` = `{kind, value}`** · `width` = profile 声明结构尺寸 | **结构复制**（覆盖旧 Credential） | backend route / step | 允许 | 允许 | 窗口相位 | 否 | `param-invalid` · `width-mismatch` |
-| `b:settle{us}` | 句柄方法 | `us` ≤ profile 上界 | 时间等待（参数化，不得 C++ 兜底） | `support/timing` | 允许 | 允许 | 窗口相位 | 否 | `param-invalid` · `param-missing` |
+| `b:settle{us}` | 句柄方法 | `us` ≤ profile 上界 | 时间等待（参数化，不得 C++ 兜底） | `race` | 允许 | 允许 | 窗口相位 | 否 | `param-invalid` · `param-missing` |
 | `b:handoff{terminal, payload_ref}` | 句柄方法 | `terminal ∈` 目录 token 集 · **`payload_ref` = Kotlin resolve 生成的交付物引用** | **交接（引用语义）**：只声明 terminal 种类 + payload 引用；**命令内容不进脚本**（见 §4.2） | terminal / handoff | 允许 | 允许 | **否** | 否 | `surface-unknown-token` · `executor-unavailable` · `payload-missing` |
 | ~~`run`~~（**已移除**：属 ③ 段，见 §1.2） | — | — | — | — | — | — | — | — | — |
 | **`cfg`**（只读快照） | 表（快照） | 字段 ∈ manifest 声明集合 | **脚本可读的只读快照**（取代 `profile.get`） | profile 层（快照注入） | 允许 | 只读允许 | 否 | 否 | `cfg-unknown-field` |
