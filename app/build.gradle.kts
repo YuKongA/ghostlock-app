@@ -354,8 +354,10 @@ abstract class BuildLkmImagesTask : DefaultTask() {
     /* NOT named lkmSourceDir: that script-level val would self-reference here. */
     @get:InputDirectory abstract val moduleSourceDir: DirectoryProperty
     @get:InputDirectory abstract val ndkDir: DirectoryProperty
-    /** The output lives outside the project (~/.ghostlock/lkm), hence @Internal. */
-    @get:Internal abstract val cacheDir: DirectoryProperty
+    /* DECLARED OUTPUT: the images land here (build/app/lkm). Without an output
+     * declaration Gradle can never mark this task UP-TO-DATE, so every build re-ran
+     * the 8 container builds (~4 min) even with org.gradle.caching=true. */
+    @get:OutputDirectory abstract val cacheDir: DirectoryProperty
     @get:Input @get:Optional abstract val containerEngine: Property<String>
     /** -PlkmLabel=<label> narrows the run; empty (the default) builds all 8. */
     @get:Input @get:Optional abstract val onlyLabel: Property<String>
@@ -468,7 +470,7 @@ abstract class CopyLkmIntoAssetsTask : DefaultTask() {
 
 val buildLkmImages = tasks.register<BuildLkmImagesTask>("buildLkmImages") {
     group = "ghostlock"
-    description = "Builds the 8 DDK LKM images into ~/.ghostlock/lkm/<label> (needs podman/docker)"
+    description = "Builds the 8 DDK LKM images into build/lkm/<label> (needs podman/docker)"
     manifestFile.set(lkmManifestFile)
     moduleSourceDir.set(lkmSourceDir)
     cacheDir.set(lkmCacheDir)
@@ -482,6 +484,13 @@ val buildLkmImages = tasks.register<BuildLkmImagesTask>("buildLkmImages") {
 val copyLkmIntoAssets = tasks.register<CopyLkmIntoAssetsTask>("copyLkmIntoAssets") {
     group = "ghostlock"
     description = "Fail-closed: copies the 8 cached LKM images into the APK assets"
+    /* Cold-build self-sufficiency: after `clean` the cache is EMPTY, so the images
+     * must be BUILT here instead of assumed - `installDebug` then succeeds in one
+     * go. The fail-closed behaviour is unchanged (the copy still refuses a cache
+     * that disagrees with the manifest); it simply can no longer be reached with an
+     * empty cache. Pure JVM unit tests are unaffected: they depend on neither the
+     * packaging tasks nor this one. */
+    dependsOn(buildLkmImages)
     manifestFile.set(lkmManifestFile)
     cacheDir.set(lkmCacheDir)
     generatedDir.set(lkmGeneratedAssets)
@@ -505,7 +514,7 @@ abstract class VerifyLkmLedgerTask : DefaultTask() {
 
 val verifyLkmLedger = tasks.register<VerifyLkmLedgerTask>("verifyLkmLedger") {
     group = "ghostlock"
-    description = "Fails when kmis.tsv and ~/.ghostlock/lkm disagree (stale/deleted/replaced .ko)"
+    description = "Fails when kmis.tsv and build/lkm disagree (stale/deleted/replaced .ko)"
     manifestFile.set(lkmManifestFile)
     cacheDir.set(lkmCacheDir)
 }
@@ -537,4 +546,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
+    /* Compose UI 测试（JVM/Robolectric）：版本与本仓 compose foundation 同源（1.12.1），
+     * 无 BOM、无 version catalog ⇒ 必须显式版本。ui-test-manifest 未确认必需，暂不加。 */
+    testImplementation("androidx.compose.ui:ui-test-junit4:1.12.1")
 }

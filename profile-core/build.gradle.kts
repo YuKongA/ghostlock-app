@@ -34,14 +34,23 @@ tasks.register<JavaExec>("exportProfiles") {
     description = "Serialize bundled HOCON kernel profiles into GLKv3 .bin documents"
     group = "build"
     val profilesDir = rootProject.layout.projectDirectory.dir("app/src/main/assets/profile")
-    val outputDir = rootProject.layout.buildDirectory.dir("profiles")
+    /* ONE source for every path handed to the exporter. Deriving the output dir
+     * with absolutePath while the build dir came from canonicalPath made the
+     * containment guard fail whenever the two forms differ (a relocated or
+     * symlinked build tree, or two coexisting trees). All three now come from the
+     * same canonical value, so the guard sees one form only. */
+    val buildDirPath = rootProject.layout.buildDirectory.get().asFile.canonicalFile
+    val outputDir = buildDirPath.resolve("profiles")
     inputs.dir(profilesDir)
     outputs.dir(outputDir)
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.ghostlock.app.data.profile.ProfileExporter")
     args(
         profilesDir.asFile.absolutePath,
-        outputDir.get().asFile.absolutePath,
-        outputDir.get().asFile.absolutePath,
+        outputDir.absolutePath,
+        outputDir.absolutePath,
+        /* Same value and same form as the output dir above (was canonicalPath while
+         * the output used absolutePath). */
+        buildDirPath.absolutePath,
     )
 }

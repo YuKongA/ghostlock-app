@@ -1,3 +1,4 @@
+import java.nio.file.Files
 import java.util.Properties
 
 plugins {
@@ -7,27 +8,23 @@ plugins {
 }
 
 /*
- * Gradle outputs live OUTSIDE the repository tree.
+ * Gradle outputs stay INSIDE the repository, under each module build/
+ * directory (the Gradle default: <module>/build/, plus the root build/).
  *
- * The checkout sits in a macOS File Provider (iCloud Drive) container. Its sync
- * daemons (bird/cloudd) race with the build and materialise conflict copies
- * ("Foo 2.class", "lookups.tab.values 2.at", ...) inside the build directory;
- * javac and D8 then fail with "public interface ... should be declared in a file
- * named ..." and "Type ... is defined multiple times". A `.nosync` suffix does
- * not help once the directory is already tracked by the provider.
+ * The build directory used to be redirected to an external root under the
+ * user home. That is no longer allowed: builds and caches must live under
+ * build/ only, so the layout below is deliberately the default one and
+ * nothing is redirected.
  *
- * Keeping every module's output under one root (the previous convention) is
- * preserved -- the root simply is `${user.home}/.ghostlock-build` instead of the
- * synced working tree. The Make/NDK artifacts still land in `build/` (see
- * src/Makefile), and the root `clean` removes both.
+ * NOTE (macOS File Provider): this checkout can sit in an iCloud Drive
+ * container whose sync daemons materialise conflict copies inside build
+ * trees. If that reappears, keep everything under build/ and make the
+ * build directories non-syncing (a .nosync marker) instead of redirecting
+ * outputs out of the repository.
+ *
+ * The Make/NDK artifacts still land in build/ (see src/Makefile), and the
+ * root clean removes every module build/ directory.
  */
-/* The path keeps a `build` segment: ProfileExporter refuses an output directory
- * that is not under a build tree, and that guard must stay strict. */
-val externalBuildRoot = File(System.getProperty("user.home"), ".ghostlock/build")
-layout.buildDirectory.set(externalBuildRoot.resolve("root"))
-subprojects {
-    layout.buildDirectory.set(externalBuildRoot.resolve(name))
-}
 
 private fun localProperties(): Properties = Properties().also { properties ->
     val propertiesFile = rootProject.file("local.properties")
@@ -109,9 +106,71 @@ private fun extractNdkTools(): NdkTools {
 // host-test, extract, profiles, app). Delete the whole tree here so a
 // single root `clean` resets all of them.
 tasks.register<Delete>("clean") {
-    description = "Delete the root build/ directory (all module outputs)."
+    description = "Delete every module build/ directory."
     delete(layout.buildDirectory)
+    subprojects.forEach { delete(it.layout.buildDirectory) }
 }
+
+/**
+ * 清理 build/ 下由文件同步工具（iCloud Drive / Finder）产生的污染副本。
+ *
+ * 目的：替代整树 clean —— 后者会连增量缓存一起删掉；本任务只删除可证明来自
+ * 同步冲突的副本，保留一切真实构建产物（例如 D8 的 x 2.dex / x 2.globals 中间物）。
+ *
+ * 删除判据（满足其一，缺一不删）：
+ *   1) 形如 <base> <n>.<ext> 且同目录存在 <base>.<ext>（Finder/iCloud 冲突副本特征）；
+ *   2) 文件名含 的冲突副本 / conflicted copy / conflict 显式标记。
+ *
+ * 安全性（fail-closed）：只在根 buildDirectory（仓库内 build/）之内遍历与删除；
+ * 不跟随符号链接；任何越界路径直接抛错而不删除。
+ *
+ * 输出：POLLUTION deleted=<n> matched=<n> scanned=<n> 一行，外加删除样本。
+ */
+val pollutionRootPath = layout.buildDirectory.get().asFile.absolutePath
+
+tasks.register("cleanBuildPollution") {
+    group = "build"
+    description = "删除 build/ 下的同步冲突副本（保留真实构建产物；取代整树 clean）。"
+    val rootPath = pollutionRootPath
+    doLast {
+        val root = File(rootPath)
+        if (!root.isDirectory) {
+            logger.lifecycle("POLLUTION deleted=0 matched=0 scanned=0 (no build dir)")
+            return@doLast
+        }
+        val rootCanonical = root.canonicalPath + File.separator
+        val numericSuffix = Regex("^(.+) ([0-9]+)(\\.[^.]*)?$")
+        val explicitMarkers = listOf("的冲突副本", "conflicted copy", "conflict")
+        var scanned = 0
+        var matched = 0
+        var deleted = 0
+        val samples = mutableListOf<String>()
+        root.walkTopDown().onEnter { dir -> !Files.isSymbolicLink(dir.toPath()) }.forEach { f ->
+            if (!f.isFile) return@forEach
+            if (Files.isSymbolicLink(f.toPath())) return@forEach
+            scanned++
+            val name = f.name
+            val m = numericSuffix.matchEntire(name)
+            val bySibling = m != null && File(f.parentFile, m.groupValues[1] + m.groupValues[3]).isFile
+            val byMarker = explicitMarkers.any { name.contains(it) }
+            if (!bySibling && !byMarker) return@forEach
+            matched++
+            val canonical = f.canonicalPath
+            if (!canonical.startsWith(rootCanonical)) {
+                throw GradleException("refusing to delete outside build/: " + canonical)
+            }
+            if (f.delete()) {
+                deleted++
+                if (samples.size < 10) samples.add(f.relativeTo(root).path)
+            } else {
+                logger.warn("POLLUTION failed-to-delete " + f.relativeTo(root).path)
+            }
+        }
+        logger.lifecycle("POLLUTION deleted=" + deleted + " matched=" + matched + " scanned=" + scanned)
+        samples.forEach { logger.lifecycle("POLLUTION sample " + it) }
+    }
+}
+
 
 tasks.register<Exec>("buildGhostlockNative") {
     description = "buildGhostlockNative"
