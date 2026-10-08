@@ -12,6 +12,20 @@ rewrite-disable-guard:
 	  exit 0; \
 	fi ; \
 	$(MAKE) --no-print-directory all
+# --- P2 compat check (task-93): every backend source must parse, with the device
+# toolchain, against the regenerated upper contract headers. Expected OK=97 FAIL=0.
+.PHONY: compat-check
+compat-check:
+	@if [ ! -x "$(NDK_CXX)" ]; then echo "compat-check: NDK C++ compiler not found: $(NDK_CXX)"; echo "  set ANDROID_NDK_HOME (see AGENTS.md)"; exit 2; fi
+	@ok=0; fail=0; for f in $$(find core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | sort); do \
+	  if $(NDK_CXX) -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H='"$(TARGET_CONFIG)"' -D__ARM=1 -fsyntax-only "$$f" >/dev/null 2>&1; then \
+	    ok=$$((ok+1)); \
+	  else \
+	    fail=$$((fail+1)); echo "COMPAT-FAIL: $$f"; \
+	  fi; \
+	done; \
+	echo "compat-check: OK=$$ok FAIL=$$fail total=$$((ok+fail)) expected=97"; \
+	[ "$$fail" -eq 0 ]
 API ?= 35
 
 # Auto-detect NDK
