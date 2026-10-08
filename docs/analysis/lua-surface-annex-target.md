@@ -59,5 +59,6 @@
 | `handle-conflict` / `handle-stale` / `surface-unknown-name` / `run-form-invalid` | 拒绝码 | **① 允许**（标识符） | 保留 |
 | **`writeop{target = "selinux_enforcing"}`** / `"seccomp_mode"` / `"pagecache_slot"` | **字段名当 target** | **❌ 违规**（名字→值解析） | **改为 `{kind=…, value=cfg.…}`** |
 | **`copyop{src="cred_template", dst="cred_target"}`** | **符号名当 src/dst** | **❌ 违规** | **改为 `{kind=…, value=cfg.…}`** |
+| **`gl.sym("名字")`** | **名字→值解析** | **❌ 违规** | **已删**（见 [示例](a6-example-full-flow.md) 与 §C1） |
 
 - **审计范围与方法**：`grep -ohE '"[a-z0-9_.]+"' docs/analysis/a6-example-full-flow.md docs/analysis/lua-surface-design.md`（本次实测命中 11 个不同字面量，上表逐条判定）⇒ **违规 5 处**（含 43284 那处），**其余全部属 ①/②**。

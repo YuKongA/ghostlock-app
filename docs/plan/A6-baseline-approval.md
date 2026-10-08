@@ -4,7 +4,7 @@
 > 用途：把 **A6（Lua 脚本计划）开工所需的全部批准项**收在一页；**批准后即可进入 A6 实现批**。计划类（≤16 KiB）。
 > 权威件：[lua-surface-design](../analysis/lua-surface-design.md) · [ADR-0008/0009/0010](../analysis/adr/) · [rewrite-plan-v2](rewrite-plan-v2.md)（A6）· [PENDING-DECISIONS](PENDING-DECISIONS.md)。
 
-## 1. 待批内容（8 项）
+## 1. 待批内容（11 项）
 
 | # | 项 | 内容 | 权威件 |
 |---|---|---|---|
@@ -26,13 +26,14 @@
 |---|---|---|
 | **保留** | `assert` · `error` · `type` · `tostring` · `tonumber` · `pairs` · `ipairs` · `next` · `select` · `pcall` · `xpcall` · `rawget` · `rawset` · `rawequal` · `rawlen` | **纯语言语义**：无 I/O、无装载、无元表逃逸 |
 | **排除** | `load` · `loadfile` · `dofile`（ADR 明令） · `print`（写 stdout，属 I/O；诊断改走暴露面审计） · `warn` · **`setmetatable`/`getmetatable`**（元表是经典逃逸面；句柄方法调用不需要元表） | — |
-| **保留但受预算约束** | `collectgarbage`（脚本可主动回收；**是否暴露 = 待裁项**） | 受指令/内存预算约束 |
+| **保留但受预算约束** | `collectgarbage`（脚本可主动回收） | **保留但受内存预算约束 —— 待用户确认**（§6 未覆盖，见批准文本） |
+| **其余标准库（默认排除）** | `string` · `table` · `math` · `os` · `io` · `coroutine` · `utf8` · `package` | **一律不注册**（不调用 `luaL_openlibs`，也无 `luaopen_*` 注册调用） |
 
 ## 2. 现状（2026-10-08）
 
 - **已就位**：`src/lib/lua/`（5.5.1 + `PROVENANCE.md`）· 暴露面设计与 UML（§2.8/§3.4/§4.5 已同步 stage/相位/cfg）。
 - **未开始**：A6 实现（沙箱接线、`surface` 表、stage、gate 校验 staged、句柄表）。
-- **前置未决**：待裁三条（`settle` 进窗口 / `width` 缺省 / 脚本承载方式）+ **Q6/Q7**（`prepare{}` 要不要 · per-attempt 机制留机制层）；**5.5 API 逐项复核**（沙箱参数，A6 批内做）。
+- **已裁**：`width`（§1 3b）· 脚本承载（§6 Q3 = **① 资产路径**）· Q5/Q6/Q7（按表中**默认**：不允许自动回退 / 不要 `prepare{}` / per-attempt 留机制层）；**仍待用户**：`settle` 去留（**A13 ⇒ 用户已裁定「保留」**）· **Q4**（是否有中途换路真实用例）。**5.5 API 逐项复核**（沙箱参数，A6 批内做）。
 
 ## 3. 判据（批准后 A6 的验收）
 

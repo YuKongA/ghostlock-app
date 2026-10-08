@@ -206,7 +206,7 @@ close	handle_method	session	pre_window	false	true	true	handle	true	1844674407370
 
 | 码 | 触发 | 来源/备注 |
 |---|---|---|
-| **`surface-unknown-name`** | **表外名字**（默认拒绝，不做近似匹配） | `script_surface.hpp` 的 `SurfaceLookup::UnknownSymbol` ⇒ **代码当前打印 `unknown-symbol`，须改名对齐（owner = native-core，随 A6 批）** |
+| **`surface-unknown-name`** | **表外名字**（默认拒绝，不做近似匹配） | `script_surface.hpp` 的 `SurfaceLookup::UnknownSymbol` ⇒ ****已对齐**（`script_surface.hpp:322` 返回 `surface-unknown-name`；断言 `lookup_refusal_is_pinned()` `:545-547` 钉住）** |
 | `surface-unknown-token` | 目录/terminal token 不在词表 | catalog / surface |
 | **`handle-conflict`** | 同 backend **两个活跃句柄** | gate（校验 staged） |
 | **`handle-stale`** | 使用**已释放/陈旧**句柄（generation 已递增） | 句柄表 · ADR-0010 |

@@ -30,7 +30,7 @@
 2. **保留源码解析**（脚本只在攻击前解析一次）。
    - **修订（2026-10-08 裁定取代）**：执行模型由「两遍（录制→执行）」**修订为「单遍 stage」** —— 脚本窗口外跑一次 ⇒ **staged 计划** ⇒ `plan_gate` 校验 **staged 产物** ⇒ **按相位执行**；**逐调用边界校验保留**（见 [lua-surface-design](../analysis/lua-surface-design.md) §3）。
 3. **沙箱白名单**：**不注册** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；**脚本可见面 = 7 条**（`backend`/`close`/`writeop`/`copyop`/`settle`/`handoff`/`cfg`；**权威见 [lua-surface-design](../lua-surface-design.md) §1，本 ADR 不重复**）；**沿革**：曾为 `op(token)/probe/handle/slot/require_cap` 形态（已废）。
-3.1 **沙箱装配 = 白名单装配（**不调用基础库注册器**）** —— **5.5 源码实测**：`lbaselib.c:510-532` 的 `base_funcs[]` 注册 **23 个全局**（含 **`dofile`:512 · `loadfile`:516 · `load`:517**，另有 `print`:521 写 stdout · `warn`:522 · `getmetatable`:514/`setmetatable`:528 · `collectgarbage`:511）；`linit.c:28-39` 的 `luaL_openlibs` 库表（`base/package/coroutine/debug/io/math/os/string/table/utf8`）**未编译**（符号级证据：`nm` 无 `luaopen_*`）。⇒ **结论**：**不调用 `luaopen_base` / `luaL_openlibs`**，改由**自己逐项 `lua_setglobal` 注册白名单** ⇒ `load`/`loadfile`/`dofile` **在运行期根本不存在**（**不是**「注册后删掉」）。**理由**：「注册后删」= **fail-open**（漏删即开洞），与「**链接层就没有这些能力**」的取向不一致。宿主 API：`lua_newstate`/`lua_setallocf`/`lua_close`/`lua_setglobal`（`lua.h`）· **`lua_sethook`（`lstate.h`）** · `luaL_newstate`（`lauxlib.h`）；**`luaL_openlibs`（`lualib.h`）不调用**。白名单逐项（保留/排除/待裁）见 [A6 待批单](../../plan/A6-baseline-approval.md) §1 第 2 项。
+3.1 **沙箱装配 = 白名单装配（**不调用基础库注册器**）** —— **5.5 源码实测**：`lbaselib.c:510-532` 的 `base_funcs[]` 注册 **23 个全局**（含 **`dofile`:512 · `loadfile`:516 · `load`:517**，另有 `print`:521（stdout）· `warn`:522 · `getmetatable`:514/`setmetatable`:528 · `collectgarbage`:511）；`linit.c:28-39` 的 `luaL_openlibs` 库表**未编译**（**判据 = `nm` 无 `luaL_openlibs`**：`linit.c` 未编译进核心集 ⇒ 链不上；**运行期黑盒**：`load`/`loadfile`/`dofile`/`print`/`io`/`os`/`package`/`debug` 逐一为 **nil**；**`lbaselib`/`ldebug` 在编译集内属预期** —— 判据是**不调用注册器**，而非符号不存在）。⇒ **结论**：**不调用 `luaopen_base` / `luaL_openlibs`**，改由**逐项 `lua_setglobal` 注册白名单** ⇒ `load`/`loadfile`/`dofile` **运行期不存在**（**不是**「注册后删」）。**理由**：「注册后删」= **fail-open**（漏删即开洞）。宿主 API：`lua_newstate`/`lua_setallocf`/`lua_close`/`lua_setglobal`（`lua.h`）· **`lua_sethook`（`lstate.h`）** · `luaL_newstate`（`lauxlib.h`）；**`luaL_openlibs`（`lualib.h`）不调用**。白名单逐项见 [A6 待批单](../../plan/A6-baseline-approval.md) §1 第 2 项。
 4. **预算与上限**：`lua_sethook(L, hook, LUA_MASKCOUNT, N)` ⇒ **指令预算** · `lua_setallocf` ⇒ **内存硬上限** · 栈深限制 · **单脚本 ≤64 KB** · 脚本**只在窗口外/操作之间**运行。
 5. **wire 承载**：脚本正文 **>256 B**（`kMaxStringBytes`）⇒ **必须走 `bin` 键**，`width` 导出为 `-`；**仅脚本键放开**（其余键仍拒）；同批改 `profile_manifest_v3_test.cpp` 的 `width_column`:165 与 `check_width_matches_wire`:186、重导双副本、重冻 golden。
 6. **类型化句柄**（D30）：`{kind, index, generation}`，**有界 64**，由探针产生，使用时按 kind 校验 ⇒ **脚本无法伪造地址**。
@@ -42,8 +42,8 @@
 ## 后果（Consequences）
 
 - 二进制增大约 **119 KB（≈2.40%）**（**本仓 119 000 B**；平台宏变体 119 068 B；历史 5.4.7 ≈2.2%）；第三方源码需**登记来源与许可**并隔离告警（I12）—— **已完成**（`src/lib/lua/PROVENANCE.md`）。
-- **⚠ 待办（A6 实现批）**：**沙箱参数须按 Lua 5.5 的 API 逐项复核**（`lua_sethook` / `lua_setallocf` / `luaL_*` 装载与栈深限制等；5.5 与 5.4 的 API/默认行为差异须逐条核对并留证），复核前不得把本节参数视为已验证。
-- 沙箱参数（白名单/预算/内存/64 KB/操作间执行）为**执行期硬约束**，**不得由 profile 放宽**（I13）。
+- **⚠ 待办（A6 实现批）**：**沙箱参数按 Lua 5.5 API 逐项复核**（`lua_sethook`/`lua_setallocf`/`luaL_*` 装载与栈深；5.5↔5.4 差异逐条核对留证）；复核前本节参数**不视为已验证**。
+- 沙箱参数（白名单/预算/内存/64 KB）为**执行期硬约束**，**不得由 profile 放宽**（I13）。
 - 新增 `script/` 层与 `op_tu_isolation_test.cpp`/`plan_gate_test.cpp` 承载判据；层表登记同批。
 - 失败语义：脚本报错 / 超预算 / 无效句柄 / 越权 API ⇒ **立即终止**（脏状态语义、不换路、不回退）。
 

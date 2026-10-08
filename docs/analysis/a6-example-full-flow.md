@@ -78,12 +78,12 @@ ghostlock {
 | 3 | gate | C++ | 对 **staged 计划**（不是脚本）做十条校验 | 顺序/依赖/可用性/几何/窗口禁项 |
 | 4 | **窗口**（PI 竞争） | C++ | writeop（属窗口相位）**原子执行**；**窗口内零 Lua** | 窗口禁项扫描 · 逐退出路径回收 |
 | 5 | handoff | C++ | 交接给 terminal（root_child） | **收尾内容由 Kotlin 在 resolve 后作为输入传入**（HOCON 不定义具体命令） |
-| 6 | **terminal 相位**（root 后） | **C++ terminal 层** | 按 on_success / always / on_failure 执行 staged 的 run 条目：argv → execv；sh -c 就是一条普通 argv | 每条记 argv/命令串/exit/耗时 进日志 |
+| 6 | **terminal 相位**（root 后） | **C++ terminal 层** | 按声明式三段执行 **③ 段 payload**（Kotlin resolve 产出；`run` **已移除**）；普通 argv | 每条记 argv/命令串/exit/耗时 进日志 |
 | 7 | 内核兜底 | **C++** | 恢复 relay/enforce、watchdog | 不经 Lua |
 
 ## §3 三个一眼看懂的设计点
 
-1. **脚本只在 root 前跑一次**：第 4/6 步里**没有任何 Lua**（writeop 与 run 都是 C++ 按冻结条目执行）。
+1. **脚本只在 root 前跑一次**：第 4/6 步里**没有任何 Lua**（`writeop` 由 C++ 按冻结条目执行；**收尾命令属 ③ 段**，同样无 Lua）。
 2. **数值不落在 C++**：50000 us、w3_attempts=3、/data/local/tmp/ghostlock.ko、偏移量**全在数据面**，脚本用 cfg.* 读；改配置 = 改 HOCON，不改代码。
 3. **收尾是声明式**：on_success/always/on_failure 三个块 = 旧 root_cmd 模板 + always + 内核兜底 的取代物；**内核兜底仍在 C++**（脚本异常也不影响它）。
 
@@ -102,5 +102,5 @@ ghostlock {
 
 ## §5 待确认两处（影响本示例的最终写法）
 
-1. **`run` 是否整体移除**（**Lead 倾向移除**）：若移除，收尾部分改由 Kotlin 在 resolve 后生成并随 payload 传入，脚本内不再出现 `run`。
-2. **handoff payload 的承载**：**wire `bin` + sha256** 还是会话帧？（影响 payload 如何送进 native 与校验点。）
+1. ~~`run` 是否整体移除~~ ⇒ **已决（2026-10-08 批准）**：**移除**（收尾命令改由 Kotlin `resolve` 生成、随 ③ 段 payload 传入）。
+2. ~~handoff payload 的承载~~ ⇒ **已决（2026-10-08 批准）**：走 **wire 承载**（native 校验 sha256/大小后落盘）。
