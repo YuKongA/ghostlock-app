@@ -5,7 +5,7 @@
 
 ## §1 兼容契约（**实测**：48 个头 / 59 个 backend 文件）
 
-- **现状**：上层全禁用（`*.disabled` = **197**；上层残留 `.cpp/.hpp/.h` = **0**）；`backend/**` **88 保留、零改动**；`src/lib` **4** 保留。
+- **现状**：上层全禁用（`*.disabled` = **194**；上层残留 `.cpp/.hpp/.h` = **0**）；`backend/**` **88 保留、零改动**；`src/lib` **4** 保留。
 - **依赖面（实测）**：`backend/**` 的 `#include` 指向已禁用上层头的 —— **直接依赖头 48 个**（涉及 59 个 backend 文件）；再加 **10 个 include 闭包的传递头** ⇒ **交付头集合 = 58**（10 头清单见 [A3](contract-layer-p2-spec-annex-a3.md)；U-1 已结清）。
 - **兼容契约**：新契约层**沿用既有头路径名**，为每个头提供 **最小符号集**（backend 实际使用的类型/常量/函数/宏）⇒ 59 个文件**逐字节零改动**可编译。
 - **最小符号集 = 使用点驱动**（逐头「符号 + 使用点」表见 [A2](contract-layer-p2-spec-annex-a2.md)）：`CoreSession`（`cve_2026_43284_backend.hpp:13/:41`）· `TargetProfile`（`cve_2026_43499_state.hpp:26`）· `race::PiRace`（`:29`；route 入参 `select_stack_route.cpp:12`）· `profile::Document`（`cve_2026_43284_backend.hpp:52`）· `contract::StageResult`（`:14/:56`）· 中性支持面符号（`read_first_line`/`log_sync`/`fail_stop_dirty_race`…）。

@@ -11,7 +11,15 @@
 
 1. **允许导入脚本**（用户裁决 2026-10-07）：profile 可携带 Lua 脚本 ⇒ 需要一个**运行期脚本引擎**，且能力面必须由宿主定义。
 2. **PI 窗口约束**（ADR-0004 R16/R21 与 `route_lifecycle.hpp:9-11`）：竞争窗口内**不得有间接分派**；`-fno-rtti` 全局保持。
-3. **实测体积**（NDK 30 / arm64 / `-Os` / 静态，Lead spike）：Lua 5.4.7 核心（解析器 + base 库）`.text = 109 532 B ≈ 107 KB`（rodata ≈ 7.5 KB）；仅预编译字节码（去 llex/lparser/ldump）`.text = 88 176 B ≈ 86 KB`（省 21 KB）；参照现有 ghostlock 二进制 **4 957 648 B ≈ 4.84 MB** ⇒ 核心约 **2.2%**。
+3. **实测体积（口径已核，2026-10-08）**
+
+   - **原文数字（**已复现**：差 ≤0.1%）**：Lua 5.4.7 核心（解析器 + base 库）`.text = 109 532 B ≈ 107 KB`（rodata ≈ 7.5 KB）；去解析器（`llex`/`lparser`/`ldump`）`88 176 B ≈ 86 KB`（省 21 KB）；参照二进制 **4 957 648 B** ⇒ 核心 ≈ **2.2%**。
+   - **复测（决定性复测，正确口径 = **指令字节**）**：22 文件 = **109 620 B**；19 文件 = **88 264 B**（与原文 109 532 / 88 176 相差 **≤0.1%**）。
+   - **文件集（22 / 19）**：22 = `lapi lauxlib lbaselib lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm lundump lvm lzio`（`.c`）；**19 = 22 − `ldump`/`llex`/`lparser`**。
+   - **命令（可复核）**：源码 = `lua-5.4.7` 官方 tar.gz（**374 097 B**，sha256 前 16 = **`9fbf5e28ef86c698`**）；`CC = NDK 30.0.16248370` 的 `aarch64-linux-android35-clang`；逐文件 `$CC -c -std=c99 -Os -I. <f>.c`；**按段累加**：`$NDK/…/llvm-size --format=sysv *.o` 取 **`.text*` 各行求和**（`.text` 与各 `.text.<symbol>`）。
+   - **⚠ 口径警告（不得用于比较）**：`llvm-size` **Berkeley 格式的 `text` 列** = `.text*` **+ `.rodata` + `.eh_frame`**（含只读数据与展开表），用它求和会**偏高约 30 KB**（本例 22 文件：140 036 vs **109 620**）。算例（`lvm.o`）：**13 704（`.text*`）+ 222（`.rodata.str1.1`）+ 1 000（`.eh_frame`）= 14 926** = 其 Berkeley `text` 列。⇒ **体积比较一律用 `.text*` 累加**。
+   - **沿革**：2026-10-08 曾以**错误口径**（Berkeley `text` 列）复测并据此误判原文数字「不可复现」（当时读数 140 036 / 115 476 等）；经**决定性复测**（按段累加）纠正 —— **原文数字成立**，本节结论以本口径为准。
+   - **结论（**采用决定不变**）**：体积引用取 **109 532 / 109 620 B**（≈ **107 KB**，≈ 现役二进制的 **2.2%**）；加 `-fno-unwind-tables` 一类进一步缩小属可选优化。
 4. **选型对照**：QuickJS（官方 367 KiB x86 hello world）、Duktape（160 kB flash / 64 kB RAM）、JerryScript（<8 KB RAM）、自研字节码（最小但要自建编译器）。
 
 ## 决策（Decision）

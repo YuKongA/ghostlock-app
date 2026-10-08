@@ -7,12 +7,12 @@
 
 | 组件 | 前身 | **只做** | **不做**（边界） |
 |---|---|---|---|
-| **`composition_root`** | `pipeline/orchestrator.hpp.disabled` | **实例化 + 构造绑定 + 编译期校验** | **不决定顺序**；不持有窗口资源；不排序、不调度、不重试 |
-| **`AttackWindow`** | `pipeline/pipeline.hpp.disabled` | **窗口作用域资源的唯一所有者**；**RAII 每条退出路径回收**；`static_assert` 挂载点 | 不解释脚本、不读配置、不做策略选择 |
+| **`composition_root`** | `pipeline/orchestrator.hpp.disabled` | **实例化 + 构造绑定 + 编译期校验** | **不决定顺序**；不持有窗口资源；不排序/调度/重试 |
+| **`AttackWindow`** | `pipeline/pipeline.hpp.disabled` | **窗口资源唯一所有者**；**RAII 每条退出路径回收**；`static_assert` 挂载点 | 不解释脚本、不读配置、不做策略选择 |
 
-- **依据**：`handoff-payload-b1b2-runtime.md` §B1.1/§B2.2（接口权威收敛）+ R2（`orchestrator` → `composition_root`，顺序归计划）。
+- **依据**：`b1b2` §B1.1/§B2.2 + R2（`orchestrator` → `composition_root`，顺序归计划）。
 - **窗口作用域证据**：`src/core/backend/cve_2026_43499_state.hpp:25-40` —— `profile` / `addresses` / `heap` / `race` / `victim` / `parked_victim` / `parked_victim_cmd` 均为 **state 成员**；其构造/析构沿用旧 `pipeline.hpp:26-46` 的 **RAII guard** 形态（`state_construct` → … → `state_destroy`）。
-- **判别标准（一句话）**：资源**在 waiter 存活期内可达**且**生命周期由宿主而非脚本决定**（脚本只能持**句柄**）⇒ **窗口作用域**；op 内临时对象 ⇒ **op 作用域**；Lua 表/字符串 ⇒ **脚本作用域**（[ADR-0010](adr/0010-lua-cpp-resource-model.md)）。
+- **判别标准**：资源**在 waiter 存活期内可达**且**生命周期由宿主决定**（脚本只持**句柄**）⇒ **窗口作用域**；op 内临时对象 ⇒ op 作用域；Lua 表/字符串 ⇒ 脚本作用域（[ADR-0010](adr/0010-lua-cpp-resource-model.md)）。
 - **`static_assert` 挂载点**：`AttackWindow` 是所有窗口期不变量的**唯一**落点（槽尺寸、资源不重叠、退出路径完整性），不得分散到脚本层或 backend。
 
 ## §2 `OpRegistry` / `OpSpec` = **脚本唯一接口权威**
@@ -30,7 +30,8 @@
 - **返回结构**：`GateVerdict{ok, reason, path, index}`；`path` 语法 = `backend.<id>` → `.op[<index>]`（0 基）→ `.<field>`；**`index` 与 `[i]` 必须一致**（用例断言）。
 - **插入点**：`state_from` 成功之后、`Backend::run` **之前**（需要几何，不能更早）；**只做二值判定**，不产生备选（**禁止运行期回退**）。
 - **去重**：`selection_supported` / `combination_available` **并入** gate；同一事实**不得两处判定**。
-- **`DeviceFacts`**：由 `composition_root` 在探测后、进窗口前**填充并冻结**；gate **只读、不探测**；`capability-missing` 的事实来源 = `contract::Capabilities`（中性 POD）。
+- **`DeviceFacts`**：由 `composition_root` 探测后、进窗口前**填充并冻结**；gate **只读、不探测**；`capability-missing` 来源 = `contract::Capabilities`（中性 POD）。
+- **判定优先级（单一权威表）、空计划语义、第 4 条 op**：见 [附件](composition-layer-p4-spec-annex.md) §A1–§A3（测试按表断言，顺序不改）。
 
 ## §4 窗口原子性 · 参数化 · 窗口内零 Lua
 
@@ -49,7 +50,7 @@
 | C5 | **参数化 + 上界**：`ParamSpec.max` 唯一上界 | 黑盒：上界+1 ⇒ `param-invalid` |
 | C6 | **单一权威**：无第二读取路径 | 白盒：grep 计数 0 |
 
-- **诚实边界（不承诺）**：本层只保证「op 名合法 · 参数合法 · 能力上界 · 预算内终止 · 窗口内零 Lua」；**不承诺**脚本按正确顺序调用（**顺序不可静态判定**）；**不覆盖**内核行为 / PI 时序 ⇒ 其输出**不是真机判据**。
+- **诚实边界（不承诺）**：只保证「op 名合法 · 参数合法 · 能力上界 · 预算内终止 · 窗口内零 Lua」；**不承诺**顺序正确（不可静态判定）；**不覆盖**内核行为/PI 时序 ⇒ 输出**不是真机判据**。
 
 ## §6 R1 层表登记
 
