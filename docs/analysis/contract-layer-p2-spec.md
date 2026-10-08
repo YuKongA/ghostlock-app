@@ -6,7 +6,7 @@
 ## §1 兼容契约（**实测**：48 个头 / 59 个 backend 文件）
 
 - **现状**：上层全禁用（`*.disabled` = **197**，上层残留 `.cpp/.hpp/.h` = **0**）；`backend/**` **88 文件保留、零改动**；`src/lib` **4** 文件保留。
-- **依赖面（实测）**：`backend/**` 中 `#include` 指向已禁用上层头的 —— **去重 48 个**、涉及 **59 个 backend 文件**（task-89 报 47，差异见 §8 U-1）。
+- **依赖面（实测）**：`backend/**` 中 `#include` 指向已禁用上层头的 —— **去重 48 个**、涉及 **59 个 backend 文件**（task-89 报 47 系少算 1；见 §8 U-1）。
 - **兼容契约（P2 必须满足）**：新契约层**沿用既有头路径名**，并为每个头提供 **最小符号集**（backend 实际使用的类型/常量/函数/宏），使 59 个文件**逐字节零改动**即可编译。
 - **最小符号集 = 实测使用点驱动**（逐头「关键符号 + 使用点」**表见 annex §A2**，由 backend 实际使用点 `grep` 得出）：`CoreSession`（`cve_2026_43284_backend.hpp:13/:41`）· `TargetProfile`（`cve_2026_43499_state.hpp:26`）· `race::PiRace`（`:29`；route 入参 `select_stack_route.cpp:12`）· `profile::Document`（`cve_2026_43284_backend.hpp:52`）· `contract::StageResult`（`:14/:56`）· 中性支持面符号（`read_first_line`/`log_sync`/`fail_stop_dirty_race`…）。
 - **48 行全表**（含「仅传递包含」的头）见 annex；**必须逐一覆盖**，缺一即 59 文件之一编译失败。
