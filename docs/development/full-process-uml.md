@@ -104,7 +104,7 @@ classDiagram
   class ScriptSandbox { 注册面 == surface 表 · 预算 }
   class SurfaceTable { 唯一权威 · 7 条 + cfg }
   class Contract { kind/词汇/身份 }
-  class Pipeline { 组合固定 · 编译期 }
+  class CompositionRoot { 句柄/宿主所有者 · 组合固定 }
   class Backend { 步骤 + route（prepare→execute→disarm→destroy） }
   class Terminal { 接管 · 声明式收尾 }
   class Memory { waiter/PI 资源 · RAII }
@@ -112,6 +112,21 @@ classDiagram
   class Profile { 数据面取值 }
   class RuntimeTime { 基址/KASLR 换算 }
   class Rust { extractor：boot/OTA → conf/json }
+  class AttackWindow {
+    窗口相位宿主 · RAII 回收
+  }
+  class OpRegistry {
+    条目 → 实现登记（与 surface 表同源）
+  }
+  class ScriptSurface {
+    暴露面 7 条唯一权威
+  }
+  class PlanGate {
+    校验 staged（十条 + surface 表）
+  }
+  class Document {
+    Kotlin resolve 三段产物（数据面/计划/payload）
+  }
   Kotlin --> Wire
   Wire --> NativeEntry
   NativeEntry --> ScriptSandbox
@@ -119,14 +134,20 @@ classDiagram
   SurfaceTable --> Contract
   SurfaceTable --> Backend
   SurfaceTable --> Profile
-  NativeEntry --> Pipeline
-  Pipeline --> Backend
-  Pipeline --> Terminal
+  NativeEntry --> CompositionRoot
+  CompositionRoot --> Backend
+  CompositionRoot --> Terminal
+  Backend --> AttackWindow : 窗口相位（RAII 回收）
+  SurfaceTable --> OpRegistry : 条目 → 实现登记
+  SurfaceTable --> ScriptSurface : 暴露面 7 条
+  NativeEntry --> PlanGate : 校验 staged
   Backend --> Memory
   Backend --> RuntimeTime
   NativeEntry --> Support
   Rust --> Kotlin
 ```
+
+- **沿革（不删）**：旧树的 **`Pipeline` 类**（组合/分派层）**已删** —— 职责并入 **`CompositionRoot`**（接线）+ **`layer_scope`**（编译期校验）；本行即沿革记录（类图中已无该框）。
 
 ### 3.0 新树模块锚点（A0–A6）
 
@@ -137,6 +158,8 @@ classDiagram
 | **`script_surface`** | 契约层暴露面（**7 条 + `cfg`**） | §3 SurfaceTable · §3.1 |
 | **`plan_gate`** | 校验（校验对象 = staged） | §2.1 · §4.1 · §4.3 |
 | **`Document` 三段** | Kotlin resolve 产物 | §1 · §4.4 |
+
+- **职责权威 = 类图**（§3 的 class 框）；本表仅为**定位索引**（模块 → 本件章节），**不构成第二处权威**。
 
 ### 3.1 暴露面 7 条 → 实现层
 
@@ -152,18 +175,62 @@ classDiagram
 
 - **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（`contract` · `support` · `memory` · `race` · `backend` · `pipeline` · `terminal` · `script` · `session` · `profile`）；**机器可校验**（`script_surface.hpp` 的 `implements_layer` 与 `:305` 断言）；**不得用描述性短语** —— 「**表达一致**」的一个实例。
 
-### 3.2 拒绝码（gate + 边界校验）
+#### 3.1.1 manifest 原文（**派生源**；`make -C src surface-manifest` 生成，19 行逐字节）
 
-| 码 | 触发 |
-|---|---|
-| `surface-unknown-name` | 表外名字（默认拒绝） |
-| `handle-conflict` | 同 backend 两个活跃句柄 |
-| `handle-stale` | 使用已释放/陈旧句柄 |
-| `param-invalid` / `param-missing` | 参数越界 / 缺失（不兜底） |
-| `width-mismatch` | `copyop` 宽度 ≠ profile 声明尺寸 |
-| `geometry-missing` | 数据面缺几何/偏移 |
-| `run-form-invalid`（**已随 `run` 移除而作废**） | — |
-| `executor-unavailable` / `backend-not-available` | 可用性门禁 |
+```tsv
+backend	call	backend	pre_window	true	true	false	-	-	-
+writeop	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+writeop	handle_method	backend	window	false	true	true	target_kind	true	64
+writeop	handle_method	backend	window	false	true	true	target_value	true	18446744073709551615
+writeop	handle_method	backend	window	false	true	true	value	true	18446744073709551615
+writeop	handle_method	backend	window	false	true	true	width	true	8
+copyop	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+copyop	handle_method	backend	window	false	true	true	src_kind	true	64
+copyop	handle_method	backend	window	false	true	true	src_value	true	18446744073709551615
+copyop	handle_method	backend	window	false	true	true	dst_kind	true	64
+copyop	handle_method	backend	window	false	true	true	dst_value	true	18446744073709551615
+copyop	handle_method	backend	window	false	true	true	width	true	8
+settle	handle_method	race	window	false	true	true	handle	true	18446744073709551615
+settle	handle_method	race	window	false	true	true	us	true	1000000
+handoff	handle_method	terminal	terminal	true	true	true	handle	true	18446744073709551615
+handoff	handle_method	terminal	terminal	true	true	true	terminal	true	256
+handoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256
+cfg	value	profile	stage	false	true	false	-	-	-
+close	handle_method	session	pre_window	false	true	true	handle	true	18446744073709551615
+```
+
+- **断言**：本表与 manifest **逐项一致**（`make -C src surface-doc-check DOC=docs/development/full-process-uml.md` ⇒ **EXIT=0**）；**pin** = `src/core/tests/surface_manifest_test.cpp`（19 行）。
+- **口径**：上表（§3.1）为阅读视图；**权威 = manifest**（列 = 条目 · 形态 · 实现层 · **phase** · … · 参数名 · 必填 · 上界）。
+
+### 3.2 拒绝码（**唯一完整表**；其余文档只留指针）
+
+| 码 | 触发 | 来源/备注 |
+|---|---|---|
+| **`surface-unknown-name`** | **表外名字**（默认拒绝，不做近似匹配） | `script_surface.hpp` 的 `SurfaceLookup::UnknownSymbol` ⇒ **代码当前打印 `unknown-symbol`，须改名对齐（owner = native-core，随 A6 批）** |
+| `surface-unknown-token` | 目录/terminal token 不在词表 | catalog / surface |
+| **`handle-conflict`** | 同 backend **两个活跃句柄** | gate（校验 staged） |
+| **`handle-stale`** | 使用**已释放/陈旧**句柄（generation 已递增） | 句柄表 · ADR-0010 |
+| `param-invalid` | 参数越界（`us`/`width`/`value`） | 边界校验 |
+| `param-missing` | 脚本调用**缺参**（`width` **必填**） | 边界校验 |
+| `width-mismatch` | `copyop` 宽度 ≠ profile 声明尺寸 | 边界校验 |
+| `geometry-missing` | 数据面缺**几何/偏移** | profile 取值 |
+| **`tuning-missing`** | 调参键**缺失**（不兜底，见 [a3-tuning-migration](../analysis/a3-tuning-migration.md) §3） | profile 取值 |
+| `cfg-unknown-field` | `cfg` 字段不在 manifest 声明集合 | profile 快照 |
+| `budget-exceeded` | 超**指令/内存/规模**预算 | 沙箱 |
+| `op-not-available` / `backend-not-available` | 可用性门禁（`available=false`） | gate |
+| `executor-unavailable` | terminal 执行器不可用 | gate |
+| `payload-missing` | `handoff` 的 `payload_ref` 无交付物/校验失败 | handoff 校验 |
+| `plan-missing` | 计划为空（无 staged 产物） | gate |
+| **`target-kind-invalid`** | `writeop`/`copyop` 的 `kind` 不在机制枚举内 | **脚本/代码侧**（边界校验） |
+| **`queue-removed`** | 出现 M5 已退役的 `queue`/token 形态 | **plan_gate** |
+| **`plan-syntax`** | 脚本**语法错**（装载/stage 期解析失败） | **装载/stage 期** |
+| ~~`run-form-invalid`~~ | **作废**（`run` 已移除；双形态校验不存在） | 沿革保留 |
+
+- **判据（**可失败**）**：『**在用码集合 == 冻结清单**』——① 从**代码**（`script_surface.hpp`/`op_registry.hpp`/gate 实现）提取全部拒绝码字面量；② 与本表逐项比对；③ **多一个或少一个都 FAIL**（多 ⇒ 未登记码；少 ⇒ 表内陈码）。**首次执行前须先完成上表首行的代码改名**（否则必然差一项：`unknown-symbol` vs `surface-unknown-name`）。
+
+- **冻结清单的导出口径（2026-10-08 补）**：冻结集合 = **『代码在用码』∪『设计/plan_gate/装载在用码』** —— 代码侧实测 **5 个**（`surface-unknown-name` · **`target-kind-invalid`** · `width-mismatch` · `handle-conflict` · `handle-stale`），设计/门禁/装载侧补 **`queue-removed`**（M5 退役）· **`plan-syntax`**（装载/stage）· `surface-unknown-token` · `param-*` · `geometry-missing` · `tuning-missing` · `cfg-unknown-field` · `budget-exceeded` · `op/backend-not-available` · `executor-unavailable` · `payload-missing` · `plan-missing`；**已作废码单列**（~~`run-form-invalid`~~）。**本表自身即来源登记**，新增码须同时改代码与 `plan_gate` 并登记于此。
+
+- **指针**：条目级拒绝码散见 [lua-surface-design](../analysis/lua-surface-design.md) §1 与附件；**完整集合以本表为准**，其他处不另立清单（「表达一致」）。
 
 ### 3.3 Kotlin / Rust 位置
 

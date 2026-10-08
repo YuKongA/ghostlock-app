@@ -9,24 +9,30 @@
 
 ## §1 暴露面表（**唯一权威**；表外名字一律拒绝）
 
-| 条目名 | 形态 | 参数界 | 语义 | 实现层 | stage 期 | 执行期 | 相位 | 持资源 | 拒绝码 |
-|---|---|---|---|---|---|---|---|---|---|
-| `backend(id, {route?})` | 函数 `(id, opts) → 句柄` | `id ∈` 目录 token 集 · **`route`（可选，仅在 acquire 给）** | **构造 = 无副作用的选择**（选实现 + 选 route）；route 只在 acquire 给，无「切换」动作（三层划分见 [target 附件](lua-surface-annex-target.md) §C5） | **`backend`**（构造经组合根/目录校验） | 允许 | 允许 | 否 | 否 | `surface-unknown-token` · `backend-not-available` |
-| **`close(h)`** | 函数（释放） | `h` = 活跃句柄 | 释放（换路 = 先 `close` 再 `backend(...)`）；**generation 递增**（旧句柄 ⇒ `handle-stale`） | **`session`**（句柄表；构造经组合根/目录校验） | 允许 | 允许 | 窗口外 | 否 | `handle-stale` · `handle-conflict` |
-| `b:writeop{target, value, width}` | 句柄方法 | **`target = {kind, value}`**（kind = 机制枚举 · value **来自 `cfg`**）· `width` 必填 | **字写**（覆盖旧 Zero/任意字写）；窗口内原子写 | **`backend`**（route/step 为其内部） | 允许（stage 记录） | 允许 | **窗口相位**（运行时内部分组） | 否（句柄只标识） | `param-invalid` · `geometry-missing` · `op-not-available` |
-| **`copyop{src,dst,width}`** | 句柄方法 | **`src`/`dst` = `{kind, value}`** · `width` = profile 声明结构尺寸 | **结构复制**（覆盖旧 Credential） | **`backend`**（route/step 为其内部） | 允许 | 允许 | 窗口相位 | 否 | `param-invalid` · `width-mismatch` |
-| `b:settle{us}` | 句柄方法 | `us` ≤ profile 上界 | 时间等待（参数化，不得 C++ 兜底） | `race` | 允许 | 允许 | 窗口相位 | 否 | `param-invalid` · `param-missing` |
-| `b:handoff{terminal, payload_ref}` | 句柄方法 | `terminal ∈` 目录 token 集 · **`payload_ref` = Kotlin resolve 生成的交付物引用** | **交接（引用语义）**：只声明 terminal 种类 + payload 引用；**命令内容不进脚本**（见 §4.2） | **`terminal`** | 允许 | 允许 | **否** | 否 | `surface-unknown-token` · `executor-unavailable` · `payload-missing` |
-| ~~`run`~~（**已移除**：属 ③ 段，见 §1.2） | — | — | — | — | — | — | — | — | — |
-| **`cfg`**（只读快照） | 表（快照） | 字段 ∈ manifest 声明集合 | **脚本可读的只读快照**（取代 `profile.get`） | **`profile`**（快照注入） | 允许 | 只读允许 | 否 | 否 | `cfg-unknown-field` |
-| 语言级循环 / 条件（`for`/`while`/`if`） | **语言结构**（非条目） | 迭代次数受**预算**约束 | 控制流（录制可展开、重放须一致） | **`script`**（Lua 沙箱） | 允许 | 允许 | **否**（窗口内零 Lua） | 否 | `budget-exceeded` |
-| **表外任意名字** | — | — | — | — | **拒绝** | **拒绝** | — | — | **`surface-unknown-name`** |
+| 条目 | 形态 | 实现层 | 相位 |
+|---|---|---|---|
+| `backend(id, {route?})` | call | `backend` | **`pre_window`** |
+| **`close(h)`** | handle_method | **`session`** | **`pre_window`** |
+| `b:writeop{target, value, width}` | handle_method | `backend` | **`window`** |
+| **`copyop{src,dst,width}`** | handle_method | `backend` | **`window`** |
+| `b:settle{us}` | handle_method | `race` | **`window`** |
+| `b:handoff{terminal, payload_ref}` | handle_method | `terminal` | **`terminal`** |
+| **`cfg`**（只读快照） | value | `profile` | **`stage`** |
+| ~~`run`~~ | — | — | **已移除**（属 ③ 段） |
+| 语言级循环/条件 · 表外名字 | 语言结构 / — | `script` / — | 窗口内零 Lua / **拒绝** |
+
+- **语义与拒绝码**（逐条）：见 §4/§4.1/§4.2 与 **UML §3.2 唯一码表**；**相位列 = manifest 四词表**（`stage` · `pre_window` · `window` · `terminal`）。
 
 - **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（10 个；见 [`script_surface.hpp`](../../src/core/contract/script_surface.hpp) 的 `implements_layer` 与层级断言）；**机器可校验**，**不得用描述性短语** —— 「**表达一致**」的一个实例。
 - **列语义**：stage/执行 = 单遍两段是否放行；相位 = 内部；持资源 = 否（**实现层口径见下**）。
 - **窗口级 op 已降为内部**：脚本不表达窗口分组。
 
 - **不进表的量**（驱动器参数 · route 几何 · 机制常量 · 运行期量）⇒ 见 [target 附件](lua-surface-annex-target.md) §C5/§C7。
+
+### §1.1 派生源与验收
+
+- **派生源**：本表由 `make -C src surface-manifest` 导出；**原文 19 行**见 [manifest 附件](lua-surface-annex-manifest.md)。
+- **验收**：`make -C src surface-doc-check DOC=docs/analysis/lua-surface-annex-manifest.md` **必须 EXIT=0**（逐行对拍；pin = `src/core/tests/surface_manifest_test.cpp`）。
 
 ## §1.2 Document（Kotlin resolve 产物）
 
@@ -69,15 +75,18 @@
 
 ## §4.2 handoff 归属（Kotlin 负责）
 
+- **`payload_ref` 语义**：**document ③ 段（payload 段）内声明的交付物标识**（代码头注：`script_surface.hpp:59-61`「names the payload declared in the document's payload section」）；**解析点 = handoff 校验**；**无此标识或校验失败 ⇒ 具名 `payload-missing`**。
+
 - HOCON 只声明意图；Kotlin `resolve` 产 payload ⇒ wire ⇒ native 校验+落盘 ⇒ terminal 执行。
 
 ## §6 待裁
 
-| # | 待裁 | 选项 | 默认 |
-|---|---|---|---|
-| **Q1/Q2** | `settle` 进窗口 · `width` 缺省 | ① 允许 / ① 即拒 | **①** |
-| **Q3** | 脚本承载 | ① 资产 ② 内联 | 待定 |
-| **Q4** | 换路用例 | 有 / 无 | 待裁 |
-| **Q5** | 自动回退 | ❌ 与禁回退冲突（需强制越权） | 待裁 |
-| **Q6** | `prepare{}` 要不要 | ① 不要【Lead 倾向：构造=选实现，其余在机制层】② 要（须定义 做什么/相位/绑定） | 待裁 |
-| **Q7** | per-attempt 机制（drain/spray/竞争/退避）留机制层 | ① 同意（参数走 profile）② 不同意 | 待裁 |
+| # | 待裁 | ① 选项 | ② 选项 | 默认（含义写全） |
+|---|---|---|---|---|
+| **Q1** | `settle` 是否可进窗口 | ① 允许（`us` 受 profile 上界约束） | ② 仅窗口外 | **① = 允许进窗口**（值必须来自 `cfg`） |
+| **Q2** | `writeop`/`copyop` 的 `width` 缺省 | ① 缺省即拒（`param-missing`） | ② 从 profile 取 | **① = 缺省即拒**（与「数值不入 C++」一致；A1 已裁定） |
+| **Q3** | `available` 项脚本的承载 | ① **资产路径**（Kotlin resolve 时读资产、随 document 传入） | ② 内联（脚本正文直接进 HOCON/文档） | **① = 资产路径**（二选一已定；与 UML/待批单 item 3 同步） |
+| **Q4** | 是否有中途换路的真实用例 | ① 有（按 [route 附件](lua-surface-annex-route-switch.md) 方案 2 实现） | ② 无（不做该能力） | 待用户回答 |
+| **Q5** | 是否允许自动回退 | ① 不允许（现裁定：与「禁止运行时回退」冲突） | ② 允许（须**用户明确改口 + 强制越权登记**） | **① = 不允许**（保持现裁定） |
+| **Q6** | 是否要 `prepare{}` | ① 不要（构造 = 选实现，其余在机制层） | ② 要（须同时定义 做什么/相位/与后续 `writeop` 的绑定） | **① = 不要**（Lead 倾向） |
+| **Q7** | per-attempt 机制（drain/spray/竞争/退避）是否留机制层 | ① 同意（参数走 profile） | ② 不同意（提到计划层） | **① = 同意** |

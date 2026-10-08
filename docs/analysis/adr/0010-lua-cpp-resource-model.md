@@ -57,6 +57,8 @@
 - Lua 堆硬上限（`lua_setallocf`）只约束 **Lua 自身**内存，**与 C++ 资源无关**。
 - **C++ 回收不回调 Lua**：无终结器、无跨语言析构、无「对象销毁通知」。
 
+> **旧树引用说明（2026-10-08）**：文中 `src/core/backend/cve_2026_43499_state.hpp:` 等 `file:line` 属**旧树引用**（文件已随 [rewrite-plan-v2](../../plan/rewrite-plan-v2.md) 的 `src/core` 重写作废）。**新树等价物** = **`pipeline::AttackWindow`**（[`src/core/pipeline/attack_window.hpp:41`](../../../src/core/pipeline/attack_window.hpp)，**窗口与资源的 RAII 回收点**）· **`pipeline::CompositionRoot`**（[`src/core/pipeline/composition_root.hpp:21`](../../../src/core/pipeline/composition_root.hpp)，**句柄/宿主所有者**）。凡本文写「backend state 成员」处，**按此二者理解**。
+
 ## 判据（白盒 / 黑盒 / 极端值）
 
 - **白盒**：宿主 API 签名**无裸指针 / 地址类型**（`grep` 计数 = 0）；容量与代际单测**含回绕**与 `index = 64/65`；全仓**无 `__gc` 释放路径**。
