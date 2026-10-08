@@ -15,8 +15,26 @@
  *  surface, Value = a read-only snapshot, HandleMethod = a method invoked ON a
  *  handle); args (keyed specs: max is the SCHEMA acceptance ceiling, required
  *  says whether a script must pass it); implements_layer (must name a layer of
- *  contract::kLayers); recordable; executable; window_allowed; holds_resource
- *  (keeps a resource alive beyond the call).
+ *  contract::kLayers); recordable; executable; window_allowed.
+ *
+ *  holds_resource SEMANTICS (design-critic A3): TRUE means the call leaves the
+ *  resource ALIVE after it returns; the caller must then release it explicitly
+ *  (or hand it on). It does NOT mean "the call touches a resource". Values:
+ *  backend = true (entering a backend keeps it resident), handoff = true (the
+ *  handed-on child outlives the call), close = false (closing ends the
+ *  resource's life with the call), writeop/copyop/settle/cfg = false.
+ *
+ *  WIDTH IS ALWAYS REQUIRED (design-critic A1, blocking): writeop and copyop
+ *  must state the width. The profile's structure size is the VALIDATION
+ *  criterion, not a default: a width that disagrees with it is refused with the
+ *  named reason width-mismatch. No width is ever inferred.
+ *
+ *  HANDLES (design-critic A4): writeop, copyop, settle and handoff are
+ *  HandleMethod rows and each carries a required handle argument, so the
+ *  receiver binding is machine-checked rather than implied by the name.
+ *  close is a handle method too. (Along the way the earlier rule "a handle
+ *  method is never a window op" was dropped: after A4 three window ops ARE
+ *  handle methods. window_allowed stays per-row data.)
  *
  *  WINDOW-LEVEL OPS ARE NOT SCRIPT-VISIBLE ENTRIES (user ruling): the names
  *  spelled window.* are a RUNTIME-INTERNAL PHASE GROUPING, not a script
@@ -37,6 +55,10 @@
  *  the flat table is what the lookup path and the loader already consume; a
  *  record shape would add a second table machinery that the sandbox batch does
  *  not need yet. A compile-time assertion keeps the two keys together.
+ *
+ *  handoff carries terminal + payload_ref TOGETHER (design-critic A2):
+ *  payload_ref names the payload declared in the document's payload section, so
+ *  a handoff can never name a terminal without saying what it hands over.
  *
  *  Language-level constructs (loops, conditionals, snapshot field access) are
  *  NOT rows: they belong to the interpreter, not to the exposed surface.
@@ -135,6 +157,28 @@ namespace ghostlock::contract {
         return TargetKindCheck::Unknown;
     }
 
+    /* ---- width validation: the profile's size is the criterion (A1) ---- */
+    inline constexpr const char *kWidthMismatchReason = "width-mismatch";
+
+    enum class WidthCheck : unsigned char {
+        Match = 0,
+        Mismatch = 1,
+    };
+
+    [[nodiscard]] constexpr const char *width_check_name(WidthCheck check) noexcept {
+        switch (check) {
+            case WidthCheck::Match: return "match";
+            case WidthCheck::Mismatch: return kWidthMismatchReason;
+        }
+        return "unknown";
+    }
+
+    /** Compare the width a call states with the size the profile declares. */
+    [[nodiscard]] constexpr WidthCheck width_check(std::uint64_t declared_width,
+                                                   std::uint64_t profile_size) noexcept {
+        return declared_width == profile_size ? WidthCheck::Match : WidthCheck::Mismatch;
+    }
+
     /* ---- handle rejections: mechanism skeleton only (no handle table) ---- */
     inline constexpr const char *kHandleConflictReason = "handle-conflict";
     inline constexpr const char *kHandleStaleReason = "handle-stale";
@@ -172,48 +216,57 @@ namespace ghostlock::contract {
 
     /* ---- argument tables (schema ceilings; see the file comment) ---- */
     inline constexpr ArgSpec kWriteOpArgs[] = {
-        {"target_kind", 64U, true},          /* TargetKind name, never an offset */
+        {"handle", kValueCeiling, true},       /* receiver binding (A4) */
+        {"target_kind", 64U, true},            /* TargetKind name, never an offset */
         {"target_value", kValueCeiling, true}, /* profile-bounded */
         {"value", kValueCeiling, true},
-        {"width", 8U, false},
+        {"width", 8U, true},                   /* A1: never inferred */
     };
     inline constexpr ArgSpec kCopyOpArgs[] = {
+        {"handle", kValueCeiling, true},
         {"src_kind", 64U, true},
         {"src_value", kValueCeiling, true},
         {"dst_kind", 64U, true},
         {"dst_value", kValueCeiling, true},
-        {"width", 8U, true},
+        {"width", 8U, true},                   /* A1: never inferred */
     };
     inline constexpr ArgSpec kSettleArgs[] = {
+        {"handle", kValueCeiling, true},
         {"us", 1000000U, true},
     };
     inline constexpr ArgSpec kHandoffArgs[] = {
+        {"handle", kValueCeiling, true},
         {"terminal", 256U, true},
+        {"payload_ref", 256U, true},           /* A2: what is handed over */
     };
     inline constexpr ArgSpec kCloseArgs[] = {
-        {"handle", kValueCeiling, true}, /* slot + generation word */
+        {"handle", kValueCeiling, true},       /* slot + generation word */
     };
 
     /** The surface table: backend / writeop / copyop / settle / handoff / cfg /
-     *  close. profile.get was removed (cfg replaces it), run was removed, and no
-     *  window.* row may appear (see the file comment). */
+     *  close. profile.get was removed (cfg replaces it), run was removed, the
+     *  four operation rows are handle methods (A4), and no window.* row may
+     *  appear (see the file comment). */
     inline constexpr SurfaceEntry kSurface[] = {
-        {"backend", SurfaceForm::Call, nullptr, 0, "backend", false, false, false, false},
-        {"writeop", SurfaceForm::Call, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]), "backend",
+        {"backend", SurfaceForm::Call, nullptr, 0, "backend", true, false, false, true},
+        {"writeop", SurfaceForm::HandleMethod, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]),
+         "backend", true, true, true, false},
+        {"copyop", SurfaceForm::HandleMethod, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend",
          true, true, true, false},
-        {"copyop", SurfaceForm::Call, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend", true,
-         true, true, false},
-        {"settle", SurfaceForm::Call, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race", true,
-         true, true, false},
-        {"handoff", SurfaceForm::Call, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]), "terminal",
-         true, true, false, true},
+        {"settle", SurfaceForm::HandleMethod, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race",
+         true, true, true, false},
+        {"handoff", SurfaceForm::HandleMethod, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]),
+         "terminal", true, true, false, true},
         {"cfg", SurfaceForm::Value, nullptr, 0, "profile", true, false, false, false},
         {"close", SurfaceForm::HandleMethod, kCloseArgs, sizeof(kCloseArgs) / sizeof(kCloseArgs[0]), "session",
-         true, true, false, true},
+         true, true, false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
-    /** Lookup outcome: found, or the named rejection unknown-symbol. */
+    /** Argument counts and key names frozen for the report and the tests. */
+    inline constexpr std::size_t kHandleMethodRowCount = 5;
+
+    /** Lookup outcome: found, or the named rejection surface-unknown-name. */
     enum class SurfaceLookup : unsigned char {
         Found = 0,
         UnknownSymbol = 1,
@@ -222,7 +275,7 @@ namespace ghostlock::contract {
     [[nodiscard]] constexpr const char *surface_lookup_name(SurfaceLookup code) noexcept {
         switch (code) {
             case SurfaceLookup::Found: return "found";
-            case SurfaceLookup::UnknownSymbol: return "unknown-symbol";
+            case SurfaceLookup::UnknownSymbol: return "surface-unknown-name";
         }
         return "unknown";
     }
@@ -344,44 +397,109 @@ namespace ghostlock::contract {
         return false;
     }
 
+    /** True when the named argument is declared AND required. */
+    [[nodiscard]] constexpr bool surface_row_requires_arg(const SurfaceEntry &row, const char *key) noexcept {
+        for (std::size_t a = 0; a < row.arg_count; ++a) {
+            if (surface_same_text(row.args[a].key, key)) {
+                return row.args[a].required;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] constexpr const SurfaceEntry *surface_row(const char *name) noexcept {
+        const SurfaceResult result = lookup(name);
+        return result.entry;
+    }
+
     /** The write target is the PAIR {target_kind, target_value}: both or neither. */
     [[nodiscard]] constexpr bool writeop_target_is_a_pair() noexcept {
-        const SurfaceResult result = lookup("writeop");
-        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+        const SurfaceEntry *row = surface_row("writeop");
+        if (row == nullptr) {
             return false;
         }
-        const bool kind = surface_row_has_arg(*result.entry, "target_kind");
-        const bool value = surface_row_has_arg(*result.entry, "target_value");
+        const bool kind = surface_row_has_arg(*row, "target_kind");
+        const bool value = surface_row_has_arg(*row, "target_value");
         return kind && value;
     }
 
     /** copyop carries the same tagged pair on BOTH sides, plus a width. */
     [[nodiscard]] constexpr bool copyop_sides_are_symmetric() noexcept {
-        const SurfaceResult result = lookup("copyop");
-        if (result.code != SurfaceLookup::Found || result.entry == nullptr) {
+        const SurfaceEntry *row = surface_row("copyop");
+        if (row == nullptr) {
             return false;
         }
-        const SurfaceEntry &row = *result.entry;
-        return surface_row_has_arg(row, "src_kind") && surface_row_has_arg(row, "src_value") &&
-               surface_row_has_arg(row, "dst_kind") && surface_row_has_arg(row, "dst_value") &&
-               surface_row_has_arg(row, "width");
+        return surface_row_has_arg(*row, "src_kind") && surface_row_has_arg(*row, "src_value") &&
+               surface_row_has_arg(*row, "dst_kind") && surface_row_has_arg(*row, "dst_value") &&
+               surface_row_has_arg(*row, "width");
     }
 
-    /** A handle method must take the handle it acts on, and it is not a window
-     *  op (closing a handle is not part of the racing phase). */
+    /** A1: the width is required on both writing operations -- never inferred. */
+    [[nodiscard]] constexpr bool widths_are_required() noexcept {
+        const SurfaceEntry *write = surface_row("writeop");
+        const SurfaceEntry *copy = surface_row("copyop");
+        if (write == nullptr || copy == nullptr) {
+            return false;
+        }
+        return surface_row_requires_arg(*write, "width") && surface_row_requires_arg(*copy, "width");
+    }
+
+    /** A2: a handoff names both the terminal and the payload it hands over. */
+    [[nodiscard]] constexpr bool handoff_carries_terminal_and_payload_ref() noexcept {
+        const SurfaceEntry *row = surface_row("handoff");
+        if (row == nullptr) {
+            return false;
+        }
+        const bool terminal = surface_row_requires_arg(*row, "terminal");
+        const bool payload = surface_row_requires_arg(*row, "payload_ref");
+        return terminal && payload;
+    }
+
+    /** A4: the four operations are handle methods, each binding its receiver. */
+    [[nodiscard]] constexpr bool operations_are_handle_methods() noexcept {
+        const char *const operations[] = {"writeop", "copyop", "settle", "handoff"};
+        for (const char *name : operations) {
+            const SurfaceEntry *row = surface_row(name);
+            if (row == nullptr) {
+                return false;
+            }
+            if (row->form != SurfaceForm::HandleMethod) {
+                return false;
+            }
+            if (!surface_row_requires_arg(*row, "handle")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Every handle method declares the handle it acts on. */
     [[nodiscard]] constexpr bool handle_methods_are_well_formed() noexcept {
         for (std::size_t i = 0; i < kSurfaceCount; ++i) {
             if (kSurface[i].form != SurfaceForm::HandleMethod) {
                 continue;
             }
-            if (!surface_row_has_arg(kSurface[i], "handle")) {
-                return false;
-            }
-            if (kSurface[i].window_allowed) {
+            if (!surface_row_requires_arg(kSurface[i], "handle")) {
                 return false;
             }
         }
         return true;
+    }
+
+    /** A3: the values that carry the resource-past-return semantics. */
+    [[nodiscard]] constexpr bool resource_semantics_are_pinned() noexcept {
+        const SurfaceEntry *backend = surface_row("backend");
+        const SurfaceEntry *close = surface_row("close");
+        const SurfaceEntry *handoff = surface_row("handoff");
+        if (backend == nullptr || close == nullptr || handoff == nullptr) {
+            return false;
+        }
+        return backend->holds_resource && !close->holds_resource && handoff->holds_resource;
+    }
+
+    /** A5: the unknown-name refusal is spelled surface-unknown-name. */
+    [[nodiscard]] constexpr bool lookup_refusal_is_pinned() noexcept {
+        return surface_same_text(surface_lookup_name(SurfaceLookup::UnknownSymbol), "surface-unknown-name");
     }
 
     /** The target-kind vocabulary is closed: three names, unique, non-empty. */
@@ -429,7 +547,13 @@ namespace ghostlock::contract {
     static_assert(surface_args_are_well_formed(), "argument specs need unique keys and non-zero ceilings");
     static_assert(writeop_target_is_a_pair(), "writeop targets are the tagged pair {target_kind, target_value}");
     static_assert(copyop_sides_are_symmetric(), "copyop needs the tagged pair on both sides plus a width");
-    static_assert(handle_methods_are_well_formed(), "a handle method takes a handle and is not a window op");
+    static_assert(widths_are_required(), "A1: writeop and copyop must require width (never inferred)");
+    static_assert(handoff_carries_terminal_and_payload_ref(),
+                  "A2: handoff names the terminal AND the payload it hands over");
+    static_assert(operations_are_handle_methods(), "A4: writeop/copyop/settle/handoff are handle methods");
+    static_assert(handle_methods_are_well_formed(), "every handle method binds the handle it acts on");
+    static_assert(resource_semantics_are_pinned(), "A3: backend/handoff hold a resource, close does not");
+    static_assert(lookup_refusal_is_pinned(), "A5: the refusal is spelled surface-unknown-name");
     static_assert(target_kind_names_are_closed(), "the target-kind set is closed at three names");
     static_assert(surface_flags_are_consistent(),
                   "flags must stay consistent (window/holds_resource/Value-is-read-only)");
