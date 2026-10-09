@@ -154,4 +154,33 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         out.status = OwnerVerdict::Ok;
         return out;
     }
+
+    /**
+     *  The contract result an owner outcome means.
+     *
+     *  A pure mapping and nothing else, which is the shape the contract asks for: a discovery that
+     *  did not succeed reports so and reports nothing else. It holds no state on purpose -- the
+     *  discovery result file says why in its own words, that an adapter keeping the outcome itself
+     *  would be a mutable global by another name -- so the caller keeps the outcome and this turns
+     *  it into the two things the contract separates: whether the mechanism worked, and whether all
+     *  four addresses are known.
+     *
+     *  @param outcome What the sequence did, including the step that refused.
+     *  @return        A complete result when the sequence finished and the search found its object;
+     *                 the canonical failure otherwise, with no partial field exposed.
+     *  @note          The canonical form comes from the same call the retired tree used, so a leaked
+     *                 address becomes one the kernel can be handed, or nothing does.
+     */
+    [[nodiscard]] constexpr contract::AddressDiscoveryResult discovery_of(
+        const OwnerOutcome &outcome) noexcept {
+        if (outcome.status != OwnerVerdict::Ok || !outcome.discovery.ok) {
+            return contract::discovery_failed();
+        }
+        /* The sequence filled the object address already; the check below is what decides whether
+         *  that is an answer, and a result that fails it is not handed on half-filled. */
+        if (!contract::discovery_is_complete(outcome.discovery)) {
+            return contract::discovery_failed();
+        }
+        return outcome.discovery;
+    }
 }  // namespace ghostlock::backend::cve_2026_43499::leak

@@ -20,6 +20,8 @@
 
 namespace {
     using ghostlock::backend::cve_2026_43499::leak::CollisionBuckets;
+    using ghostlock::backend::cve_2026_43499::leak::discovery_of;
+    using ghostlock::backend::cve_2026_43499::leak::OwnerOutcome;
     using ghostlock::backend::cve_2026_43499::leak::MapResult;
     using ghostlock::backend::cve_2026_43499::leak::OwnerVerdict;
     using ghostlock::backend::cve_2026_43499::leak::RegionInputs;
@@ -166,6 +168,40 @@ namespace {
                     ghostlock::backend::cve_2026_43499::leak::region_verdict_name(out.region),
                     static_cast<unsigned>(out.poke));
     }
+    void the_mapping_hands_on_only_a_complete_answer() {
+        /* A refused sequence maps to the canonical failure, whatever it found on the way. */
+        OwnerOutcome refused{};
+        refused.status = OwnerVerdict::ObjectRefused;
+        refused.discovery.ok = true;      /* a field set by a failed run must not survive */
+        refused.discovery.mm_struct = 0x1000U;
+        const auto mapped_refused = discovery_of(refused);
+        expect(!mapped_refused.ok, "a refused sequence maps to a failure");
+        expect(mapped_refused.mm_struct == 0U && mapped_refused.init_task == 0U &&
+                   mapped_refused.target_task == 0U && mapped_refused.kaslr_base == 0U,
+               "and nothing partial survives the mapping");
+
+        /* A sequence that says it worked but did not fill every field is not an answer either. */
+        OwnerOutcome partial{};
+        partial.status = OwnerVerdict::Ok;
+        partial.discovery.ok = true;
+        partial.discovery.mm_struct = 0x1000U;
+        const auto mapped_partial = discovery_of(partial);
+        expect(!mapped_partial.ok, "an incomplete result is not handed on as an answer");
+        expect(mapped_partial.mm_struct == 0U, "and its fields are cleared rather than passed through");
+
+        /* The complete one passes through unchanged. */
+        OwnerOutcome complete{};
+        complete.status = OwnerVerdict::Ok;
+        complete.discovery.ok = true;
+        complete.discovery.kaslr_base = 0x100U;
+        complete.discovery.init_task = 0x200U;
+        complete.discovery.target_task = 0x300U;
+        complete.discovery.mm_struct = 0x400U;
+        const auto mapped_ok = discovery_of(complete);
+        expect(discovery_is_complete(mapped_ok), "a complete result maps to a complete result");
+        expect(mapped_ok.mm_struct == 0x400U && mapped_ok.kaslr_base == 0x100U,
+               "with its addresses unchanged");
+    }
 }  // namespace
 
 int main() {
@@ -175,6 +211,8 @@ int main() {
     a_region_that_cannot_be_laid_out_is_refused_the_same_way();
     std::printf("snitch owner: the poke step\n");
     the_poke_step_is_reached_and_its_refusal_is_named();
+    std::printf("snitch owner: the mapping\n");
+    the_mapping_hands_on_only_a_complete_answer();
     if (g_failures != 0U) {
         std::printf("snitch owner: FAIL (%zu)\n", g_failures);
         return 1;
