@@ -34,17 +34,46 @@
 #include "session/device_facts.hpp"
 #include "session/device_facts_linux.hpp"
 #include "profile/glkv3_document.hpp"
+
+#include <cerrno>
+#include <unistd.h>
+
 #include "profile/run_plan.hpp"
 #include "backend/cve_2026_43499/race/race_runtime.hpp"
 
 namespace {
     constexpr std::size_t kMaxDocumentBytes = 1U << 20U;
 
-    /** Read the framed document from stdin into buf; returns its length. */
+    // The retired form read through stdio, whose buffering takes bytes past the document. A session
+    // frame follows the document on the same stream, so the reader must stop exactly at the boundary.
+    // std::size_t read_document(std::uint8_t *buf, std::size_t capacity) {
+    //     std::uint8_t header[4U] = {};
+    //     if (std::fread(header, 1U, sizeof(header), stdin) != sizeof(header)) {
+    //         return 0U;
+    //     }
+    //TODO(document-boundary): the entry must not read past the document, because an optional session
+    //  frame follows it and a buffered read would consume it. Raw reads, no stdio. Delete the commented
+    //  form above once this is accepted, as the commenting rule requires.
+    /** Read the framed document from stdin into buf with raw reads; returns its length.
+     *  @note  Deliberately not stdio: a buffered read takes bytes past the document, and a session
+     *         frame follows it on the same stream, so the boundary must be exact. */
     std::size_t read_document(std::uint8_t *buf, std::size_t capacity) {
         std::uint8_t header[4U] = {};
-        if (std::fread(header, 1U, sizeof(header), stdin) != sizeof(header)) {
-            return 0U;
+        {
+            std::size_t used = 0U;
+            while (used < sizeof(header)) {
+                const ssize_t got = ::read(0, header + used, sizeof(header) - used);
+                if (got > 0) {
+                    used += static_cast<std::size_t>(got);
+                    continue;
+                }
+                if (got == 0 || errno != EINTR) {
+                    break;
+                }
+            }
+            if (used != sizeof(header)) {
+                return 0U;
+            }
         }
         const std::size_t length = (static_cast<std::size_t>(header[0U]) << 24U) |
                                    (static_cast<std::size_t>(header[1U]) << 16U) |
@@ -53,8 +82,21 @@ namespace {
         if (length == 0U || length > capacity) {
             return 0U;
         }
-        if (std::fread(buf, 1U, length, stdin) != length) {
-            return 0U;
+        {
+            std::size_t used = 0U;
+            while (used < length) {
+                const ssize_t got = ::read(0, buf + used, length - used);
+                if (got > 0) {
+                    used += static_cast<std::size_t>(got);
+                    continue;
+                }
+                if (got == 0 || errno != EINTR) {
+                    break;
+                }
+            }
+            if (used != length) {
+                return 0U;
+            }
         }
         return length;
     }
@@ -145,6 +187,7 @@ namespace {
             std::printf("%s\n", ghostlock::profile::run_plan_verdict_name(resolved.verdict));
             return 3;
         }
+
         /* The selection is one token and the chain is what it names: the other
          *  columns are derived, so printing them would be printing the same fact
          *  several times. The plan is a script, and its size and digest are what says
