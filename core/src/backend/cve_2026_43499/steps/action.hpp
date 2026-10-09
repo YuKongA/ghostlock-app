@@ -80,7 +80,12 @@ namespace ghostlock::backend::cve_2026_43499::steps {
      *
      *  A step that cannot be attempted is a failed step, not a step that did nothing: run() returns
      *  false and sets last_stage, so the runner stops at this id and names it.
+     *
+     *  The seam is a parameter, for the same reason the attempt itself takes one: the real futex
+     *  calls are not something a test should make, and a seam that records is how the order becomes
+     *  visible. Production uses the default, which is the real one.
      */
+    template <class Seam = race::FutexSeam>
     class RaceAction final {
       public:
         /** Which link answered, as its own name. Unknown only before the first run. */
@@ -103,7 +108,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
          *  @note  The window is entered by the caller before the steps run, because entering it is the
          *         caller's act: attack_window owns the exit paths and reclaims on every one of them.
          */
-        RaceAction(race::PiRace<> &race, race::WindowGuard &window,
+        RaceAction(race::PiRace<Seam> &race, race::WindowGuard &window,
                    const memory::WaiterFieldOffsets &offsets,
                    const StepTargets &targets, std::uint8_t *fragment, std::size_t fragment_size,
                    std::size_t pointer_bytes, std::uint64_t value) noexcept
@@ -139,7 +144,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         }
 
       private:
-        race::PiRace<> &race_;
+        race::PiRace<Seam> &race_;
         race::WindowGuard &window_;
         memory::WaiterFieldOffsets offsets_{};
         StepTargets targets_{};
