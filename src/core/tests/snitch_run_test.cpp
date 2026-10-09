@@ -89,6 +89,11 @@ namespace {
             if (has_target && candidate == target) { return 7U; }
             return 3U + ((address / 0x1000U) % 2U);
         }
+        /** Which bucket an address is in: the fake way of asking the same question the real
+         *  rule answers by hashing. */
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t address) const noexcept {
+            return bucket(address, address);
+        }
     };
 
     std::uint32_t kWords[2] = {0U, 0U};
@@ -137,9 +142,13 @@ namespace {
         Buckets buckets;
         buckets.target = tagged_candidate(512U, kCanonicalTag);
         buckets.has_target = true;
+        /* The armed addresses have to be in the object's bucket: this fake answers a bucket by
+         *  asking whether the candidate is the target, so saying so means being the target. The
+         *  real rule gets that from the hash, where two different addresses can share one. */
+        const std::uint64_t in_targets_bucket[2] = {buckets.target, buckets.target};
         const RunOutcome outcome = run_snitch_search<FakeSeam>(setup(), inputs(), rounds(4U), kCounterOffset,
                                                                kWordPointers, 2U, strides(), range(), false,
-                                                               buckets, kAddresses, 2U);
+                                                               buckets, in_targets_bucket, 2U);
         expect(outcome.status == RunVerdict::Found, "a run that gets its pokes and an answer finds the object");
         expect(outcome.found == tagged_candidate(512U, kCanonicalTag), "at the address the rule accepted");
         expect(outcome.probes == 3U, "after three addresses");

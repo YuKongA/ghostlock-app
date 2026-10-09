@@ -85,6 +85,11 @@ namespace {
             if (has_target && candidate == target) { return 7U; }
             return 3U + ((address / 0x1000U) % 2U);
         }
+        /** Which bucket an address is in: the fake way of asking the same question the real
+         *  rule answers by hashing. */
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t address) const noexcept {
+            return bucket(address, address);
+        }
     };
 
     std::uint32_t kWords[2] = {0U, 0U};
@@ -122,6 +127,13 @@ namespace {
         SnitchPolicy<FakeSeam, Buckets> policy;
         policy.args = args();
         policy.buckets = &buckets;
+        /* The armed addresses have to be in the target's bucket, and this fake answers a bucket
+         *  by asking whether the candidate is the target -- so the only honest way to say they
+         *  are in its bucket is for them to be the target. The real rule gets that from the
+         *  hash, where two different addresses can share a bucket. */
+        const std::uint64_t in_targets_bucket[2] = {buckets.target, buckets.target};
+        policy.args.addresses = in_targets_bucket;
+        policy.args.address_count = 2U;
         expect(policy.start(1U).ran, "a run that finds something starts cleanly");
         expect(policy.has_collision(), "and the preparation sees a collision");
         expect(policy.address() == tagged_candidate(512U, kCanonicalTag), "with the address the rule accepted");

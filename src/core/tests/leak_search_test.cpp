@@ -35,6 +35,11 @@ namespace {
 
     /** Agrees with itself only about the target. */
     struct OneAnswerBuckets final {
+        /** Which bucket an address is in: the fake way of asking the same question the real
+         *  rule answers by hashing. */
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t address) const noexcept {
+            return bucket(address, address);
+        }
         std::uint64_t target = 0U;
         bool has_target = false;
         [[nodiscard]] std::uint64_t bucket(std::uint64_t address, std::uint64_t candidate) const noexcept {
@@ -64,29 +69,33 @@ namespace {
     }
 
     void it_stops_at_the_first_answer() {
-        const std::uint64_t addresses[2] = {0x1000U, 0x2000U};
         OneAnswerBuckets buckets;
         /* The third probe of the walk is address 512, canonical. */
         buckets.target = tagged_candidate(512U, kCanonicalTag);
         buckets.has_target = true;
+        /* The armed addresses must be in the object's bucket, and this fake says which bucket a
+         *  candidate is in by asking whether it is the target -- so being in its bucket means
+         *  being it. The real rule gets that from the hash, where two addresses can share one. */
+        const std::uint64_t addresses[2] = {buckets.target, buckets.target};
         const SearchOutcome found =
-            search_for_object(small(), whole(), false, buckets, addresses, 2U);
+            search_for_object(small(), whole(), false, buckets, addresses, 2U, 1U);
         expect(found.status == SearchVerdict::Found, "the object is found");
         expect(found.found == tagged_candidate(512U, kCanonicalTag), "and it is the address the rule accepted");
         expect(found.probes == 3U, "the search stopped at the third probe, not at the end");
     }
 
     void a_tagged_object_needs_the_sweep() {
-        const std::uint64_t addresses[2] = {0x1000U, 0x2000U};
         OneAnswerBuckets buckets;
         buckets.target = tagged_candidate(256U, 5U);
         buckets.has_target = true;
+        /* As in the case above: this fake expresses the object's bucket by being the object. */
+        const std::uint64_t addresses[2] = {buckets.target, buckets.target};
         const SearchOutcome without =
-            search_for_object(small(), whole(), false, buckets, addresses, 2U);
+            search_for_object(small(), whole(), false, buckets, addresses, 2U, 1U);
         expect(without.status == SearchVerdict::NotFound,
                "without the sweep a tagged object is not found, however long the walk is");
         expect(without.probes == 32U, "and the walk goes all the way to the end first");
-        const SearchOutcome with = search_for_object(small(), whole(), true, buckets, addresses, 2U);
+        const SearchOutcome with = search_for_object(small(), whole(), true, buckets, addresses, 2U, 1U);
         expect(with.status == SearchVerdict::Found, "with it, the object is found");
         expect(with.found == tagged_candidate(256U, 5U), "under the tag it was reachable at");
         expect(with.probes == 23U,
@@ -97,7 +106,7 @@ namespace {
         const std::uint64_t addresses[2] = {0x1000U, 0x2000U};
         OneAnswerBuckets buckets;
         const SearchOutcome nothing =
-            search_for_object(small(), whole(), false, buckets, addresses, 2U);
+            search_for_object(small(), whole(), false, buckets, addresses, 2U, 1U);
         expect(nothing.status == SearchVerdict::NotFound, "a walk with no answer says so");
         expect(nothing.probes == 32U, "after trying every address in the range");
         expect(std::string_view(search_verdict_name(SearchVerdict::NotFound)) ==
@@ -112,12 +121,12 @@ namespace {
         buckets.has_target = true;
         /* One address cannot be compared against anything: the matcher refuses, and the
          *  refusal has to travel out rather than be read as a search that found nothing. */
-        expect(search_for_object(small(), whole(), false, buckets, addresses, 1U).status ==
+        expect(search_for_object(small(), whole(), false, buckets, addresses, 1U, 1U).status ==
                    SearchVerdict::GeometryMissing,
                "one address is refused rather than searched with");
         ScanStrides broken = small();
         broken.candidate = 0U;
-        expect(search_for_object(broken, whole(), false, buckets, addresses, 2U).status ==
+        expect(search_for_object(broken, whole(), false, buckets, addresses, 2U, 1U).status ==
                    SearchVerdict::GeometryMissing,
                "and a stride of zero is refused before anything is walked");
         expect(std::string_view(search_verdict_name(SearchVerdict::GeometryMissing)) ==

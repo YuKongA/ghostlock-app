@@ -35,6 +35,11 @@ namespace {
     }
 
     struct Buckets final {
+        /** Which bucket an address is in: the fake way of asking the same question the real
+         *  rule answers by hashing. */
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t address) const noexcept {
+            return bucket(address, address);
+        }
         std::uint64_t target = 0U;
         bool has_target = false;
         [[nodiscard]] std::uint64_t bucket(std::uint64_t address, std::uint64_t candidate) const noexcept {
@@ -51,19 +56,29 @@ namespace {
     }
 
     void what_it_reports() {
-        const std::uint64_t addresses[2] = {0x1000U, 0x2000U};
+        /* The armed addresses are the target here, and that is the fake being honest rather
+         *  than lazy: this fake answers a bucket by looking at the candidate, so the only way
+         *  to say "these addresses are in the target's bucket" is for them to be the target.
+         *  The real rule gets that from the hash, where two different addresses can agree. */
+        const std::uint64_t addresses[2] = {tagged_candidate(512U, kCanonicalTag),
+                                            tagged_candidate(512U, kCanonicalTag)};
         Buckets found;
         found.target = tagged_candidate(512U, kCanonicalTag);
         found.has_target = true;
-        const ObjectOutcome one = find_object(strides(), range(), false, found, addresses, 2U);
+        const ObjectOutcome one = find_object(strides(), range(), false, found, addresses, 2U, 1U);
         expect(one.status == ObjectVerdict::Found, "an object the rule accepts is found");
         expect(one.object == tagged_candidate(512U, kCanonicalTag), "and reported as itself");
         expect(one.probes == 3U, "after the probes it took");
+        /* A pair that disagrees with itself, for the cases about the agreement condition: the
+         *  fake buckets by parity, so these two are never in one bucket and no candidate can
+         *  satisfy the rule. That is a different question from the count, which the pair above
+         *  tests by sharing the target's bucket. */
+        const std::uint64_t disagreeing[2] = {0x1000U, 0x2000U};
         Buckets none;
-        const ObjectOutcome two = find_object(strides(), range(), false, none, addresses, 2U);
+        const ObjectOutcome two = find_object(strides(), range(), false, none, disagreeing, 2U, 1U);
         expect(two.status == ObjectVerdict::NotFound && two.object == 0U,
                "a range with no answer reports not found and no address");
-        const ObjectOutcome three = find_object(strides(), range(), false, none, addresses, 1U);
+        const ObjectOutcome three = find_object(strides(), range(), false, none, disagreeing, 1U, 1U);
         expect(three.status == ObjectVerdict::Refused,
                "and one address to compare is refused rather than searched with");
         expect(std::string_view(object_verdict_name(ObjectVerdict::Refused)) ==

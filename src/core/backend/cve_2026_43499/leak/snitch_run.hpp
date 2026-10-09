@@ -91,7 +91,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
                 break;
         }
         const SearchOutcome searched =
-            search_for_object(strides, range, sweep_tags, buckets, addresses, address_count);
+            search_for_object(strides, range, sweep_tags, buckets, addresses, address_count, setup.collisions);
         outcome.probes = searched.probes;
         switch (searched.status) {
             case SearchVerdict::Found:
