@@ -98,13 +98,13 @@ int main() {
     buckets.context = &hash;
 
     SnitchSetup setup{};
-    setup.collisions = 2U;
+    setup.collisions = 4U;
     setup.thread_count = 1U;
     setup.futex_table_size = 256U;
     RegionInputs region{};
     region.header_bytes = 64U;
-    region.collisions = 2U;
-    region.thread_count = 2U;
+    region.collisions = 4U;
+    region.thread_count = 4U;
     region.total_pokes = 512U;
     region.page_size = 4096U;
     region.word_bytes = 8U;
@@ -119,7 +119,10 @@ int main() {
     ScanRange range{};
     range.start = 0xffff800000000000ULL;
     range.end = range.start + (1ULL << 20U);
-    const std::uint64_t addresses[2] = {0x7040000000ULL, 0x7060000000ULL};
+    /* The addresses the rule compares are the cohort own words -- the ones the kernel has
+     *  been hashing all along. Anything else would be asking whether a set of addresses
+     *  agrees about a candidate while the cohort hammered a different set. */
+    std::uint64_t addresses[4] = {0U, 0U, 0U, 0U};
 
     /* The words live in the region the caller maps, one per collision. */
     const MapResult words_region = DeviceSeam::map_shared(4096U);
@@ -128,19 +131,24 @@ int main() {
         return 1;
     }
     auto *base = static_cast<unsigned char *>(words_region.address);
-    std::uint32_t *word_ptrs[2] = {reinterpret_cast<std::uint32_t *>(base),
-                                   reinterpret_cast<std::uint32_t *>(base + 64)};
+    std::uint32_t *word_ptrs[4] = {reinterpret_cast<std::uint32_t *>(base),
+                                   reinterpret_cast<std::uint32_t *>(base + 64),
+                                   reinterpret_cast<std::uint32_t *>(base + 128),
+                                   reinterpret_cast<std::uint32_t *>(base + 192)};
+    for (std::size_t i = 0U; i < 4U; ++i) {
+        addresses[i] = reinterpret_cast<std::uint64_t>(word_ptrs[i]);
+    }
 
-    const RunOutcome outcome = run_snitch_search<DeviceSeam>(setup, region, patience, 128U, word_ptrs, 2U,
-                                                             strides, range, false, buckets, addresses, 2U);
+    const RunOutcome outcome = run_snitch_search<DeviceSeam>(setup, region, patience, 4096U, word_ptrs, 4U,
+                                                             strides, range, false, buckets, addresses, 4U);
     std::printf("  status=%s rounds=%u pokes_wanted=%zu probes=%zu found=%llx errno=%d\n",
                 run_verdict_name(outcome.status), outcome.rounds, outcome.pokes_wanted, outcome.probes,
                 static_cast<unsigned long long>(outcome.found), outcome.error);
     if (outcome.region != nullptr) {
         const auto *back = reinterpret_cast<const volatile std::uint32_t *>(
-            static_cast<const unsigned char *>(outcome.region) + 128U);
+            static_cast<const unsigned char *>(outcome.region) + 4096U);
         const auto *stopword = reinterpret_cast<const volatile std::uint32_t *>(
-            static_cast<const unsigned char *>(outcome.region) + 132U);
+            static_cast<const unsigned char *>(outcome.region) + 4100U);
         std::printf("  region readback: counter=%u stop=%u bytes=%zu\n", *back, *stopword,
                     outcome.region_bytes);
     }
