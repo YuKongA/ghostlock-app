@@ -92,3 +92,22 @@
 - 合计约 3800 行以上
 
 ⇒ 结论：**43284 的访问实现 = 那 2100 行里与落地写相关的那部分**，终端与钩子链不在其中。下一步动它之前，仍要先读 `real_ops.cpp` 与 `pagecache.cpp` 的公开面，确认哪些函数真的属于写、哪些是被终端调用的。
+
+## 9 43284 的写面比 2100 行更小（实测公开面）
+
+读了两个候选件的公开面后，写路径的范围又收窄了一次：
+
+**`pagecache/pagecache.hpp`（这才是访问面）**：
+
+- `enum class WriteResult : std::int32_t`
+- `struct PageCacheWriteStats`
+- `struct PageCacheWriteContext` —— 一个上下文结构，正是窗口的形状
+- `void zeroize(PageCacheWriteContext &)` —— 与 43499 的 zero 引导同位
+
+**`real_ops.hpp`**：`ReadOnlyChainContext`、`real_read_block(void *ctx, uint64_t offset, ...)`（读）、`RealChainContext`（含 `plugin_dispatch` 指针，而插件面按用户指令是暂停的）。
+
+⇒ 于是 43284 的访问实现对应关系是：**`PageCacheWriteContext` 就是它的窗口**，`AccessChannel::PageCache` 加 `AccessCarrier::FilePage` 就是它的通道与载体，`zeroize` 对应零写。**读**那一侧另有 `real_read_block`，与 43499 的读同属一条规则（先声明、备好事实、否则按名拒绝）。
+
+**因此它的第一片比 §8 的估算更小**：真正要搬的是 `pagecache.cpp`（305 行）与它的上下文，而不是那 2100 行整体；`lkm` 与 `execution_binding` 属于终端侧的装载，按 ADR-0006 的归属**不搬进访问**。
+
+**还没量**：`PageCacheWriteContext` 的字段（未逐个读），以及 `pagecache.cpp` 里对旧会话/全局的耦合数（与 43499 的 22 处同类）。这两件是它切片 1 的输入。
