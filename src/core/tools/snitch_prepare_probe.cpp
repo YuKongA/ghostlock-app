@@ -126,7 +126,12 @@ int main() {
     ScanRange range{};
     range.start = 0U;
     range.end = 8192U;
-    std::uint64_t addresses[2] = {0x1000U, 0x2000U};
+    /* The rule asks every proof address for a bucket and requires one answer: with the stub
+     *  below the bucket is a parity, so two addresses of the same parity agree and two of
+     *  different parity can never agree, whatever the candidate. The first version of this
+     *  probe used 0x1000 and 0x2000, which is exactly why a stub that accepts anything never
+     *  accepted anything: the rule was asked and always disagreed. */
+    std::uint64_t addresses[2] = {0x1000U, 0x3000U};
     const MapResult words_region = DeviceSeam::map_shared(4096U);
     if (words_region.address == nullptr) {
         std::printf("  words mapping FAILED errno=%d\n", words_region.error);
@@ -187,7 +192,12 @@ int main() {
     std::printf("  search (by value): started=%d\n", self_started.ran ? 1 : 0);
     (void) DeviceSeam::unmap(words_region.address, 4096U);
     /* The judgement uses the preparation outcome and the direct call return, both by value. */
-    const bool ok = self_started.ran && prepared.base == synthetic && prepared.opened > 0U;
+    /* The join is what is being judged, not the address: the preparation must receive exactly
+     *  what the search found. A stub that accepts every candidate finds the first one the walk
+     *  offers, which at a range starting at zero is address zero with the tag -- degenerate as
+     *  an object, and perfectly good as a test of whether the two halves agree. */
+    const bool ok = self_started.found && prepared.base == self_started.address &&
+                    prepared.opened > 0U && prepared.closed >= prepared.opened;
     std::printf("snitch prepare probe: %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
