@@ -8,8 +8,10 @@
  *  function pointer, nothing the window prohibition list forbids.
  *
  *  What is NOT implemented: any geometry, timing or retry budget. The parked
- *  timeout, the requeue counts and the retry budget come from the profile
- *  (Q2 rule 1); this file only carries the ABI constants of the futex interface
+ *  timeout, the requeue counts and the retry budget arrive from the SCRIPT that
+ *  configures the run -- not from a profile read here, because the profile reaches
+ *  the execution layer only through the script (ADR-0015); this file only carries
+ *  the ABI constants of the futex interface
  *  itself, which are mechanism (see FUTEX_* below) and are commented as such.
  *
  *  Relationship to A2's window: run() is called with the window guard open, so
