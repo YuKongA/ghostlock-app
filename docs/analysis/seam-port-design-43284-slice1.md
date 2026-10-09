@@ -44,3 +44,11 @@
 ⇒ 于是 43284 的 `AccessParams` 要比 43499 多一类字段：**凭据**（`sa`）。这与 43499 的 `AccessParams`（route + offset）**不同但同构**：两者都是「这个 backend 的操作需要什么，而基类不可能知道」。
 
 **仍未量**（剩下两项）：`write16` 内部 `next_seq` 的推进语义；`write16` 对 `old_page`/`helper_write` 未绑定时的判据行号。
+
+## 最后两项：已量清
+
+**① `next_seq` 的推进**：`pagecache.cpp:192` 把当前值写进 ESP 头的 seq 字段（`store_be32(header_iv + kEspSeqOffset, ctx.next_seq)`），**写完才推进**——`:256` 是 `ctx.next_seq += 1U;`。⇒ 送到 `bring_up` 的起值与 `land_word` 之后的推进是**两件事**，且推进在**写成功之后**。
+
+**② 未绑定时的判据**：直接路径是**默认**。`pagecache.cpp:132` 走 `ctx.io.read_at(ctx.file_fd, ...)`；可选来源各自有 `available()` 闸门——`:158` `if (ctx.old_page.available())` 才走 `old_page.read16`，`:231` 才走 `helper_write.splice16`。前置条件写在 `:30`：`(ctx.file_fd >= 0 || ctx.helper_write.available())`。⇒ 与我们表里写的「默认不绑、保持直接路径」**一致**，且**判据是现成的**。
+
+⇒ 两条都已量清 ⇒ **43284 的代码切片条件齐了**（映射 ✓ 门 ✓ 宽 ✓ 凭据 ✓ 推进 ✓ 未绑定判据 ✓）。
