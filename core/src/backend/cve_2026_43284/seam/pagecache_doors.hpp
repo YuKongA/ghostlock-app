@@ -18,6 +18,8 @@
  */
 #include <cstdint>
 
+#include "backend/cve_2026_43284/access_params.hpp"
+
 namespace ghostlock::backend::cve_2026_43284::seam {
     /** The system calls the doors need. */
     class DoorOps {
@@ -29,8 +31,9 @@ namespace ghostlock::backend::cve_2026_43284::seam {
 
         /** Open the target for reading, or a negative value. */
         [[nodiscard]] virtual int open_target() noexcept = 0;
-        /** Connect the ESP socket from the key material, or a negative value. */
-        [[nodiscard]] virtual int connect_esp(const std::uint8_t key[32]) noexcept = 0;
+        /** Connect the ESP socket from the credentials, or a negative value. The credentials are
+         *  the whole frame and not just the key, because the socket needs the ports as well. */
+        [[nodiscard]] virtual int connect_esp(const AccessParams &sa) noexcept = 0;
         /** Close a descriptor this object opened. */
         virtual void close_fd(int fd) noexcept = 0;
     };
@@ -41,7 +44,7 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         PageCacheDoors(DoorOps &ops, int handed_in_fd = -1) noexcept : ops_(ops), handed_in_(handed_in_fd) {}
 
         /** Open both doors. On failure nothing is left half open. */
-        [[nodiscard]] bool open(const std::uint8_t key[32]) noexcept {
+        [[nodiscard]] bool open(const AccessParams &sa) noexcept {
             if (open_) {
                 return false;
             }
@@ -55,7 +58,7 @@ namespace ghostlock::backend::cve_2026_43284::seam {
                 }
                 owns_file_ = true;
             }
-            socket_fd_ = ops_.connect_esp(key);
+            socket_fd_ = ops_.connect_esp(sa);
             if (socket_fd_ < 0) {
                 /* The second door failed: give back the first rather than leave a half-open route. */
                 close_owned();

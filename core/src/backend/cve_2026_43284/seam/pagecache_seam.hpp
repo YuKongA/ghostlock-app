@@ -15,8 +15,11 @@
  *  runtime credential that arrives with the parameters -- so it is received and held by value so it
  *  can be zeroed on the way out.
  *
- *  Scope, stated rather than implied: one route's write face. The block read that exists beside it
- *  in the old tree is not filled here, so reads report unsupported until it is.
+ *  Scope, stated rather than implied: one route's write face. What is unfilled is the PUBLIC read
+ *  face -- can_read and the access read -- which reports unsupported until it is. The block read
+ *  itself is not optional: the old write derives its IV from the block it is about to replace, so a
+ *  window body without that read cannot land a block at all, and it belongs inside this file rather
+ *  than behind can_read.
  */
 #include <cstddef>
 #include <cstdint>

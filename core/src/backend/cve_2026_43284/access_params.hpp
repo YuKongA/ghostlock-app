@@ -25,6 +25,15 @@ namespace ghostlock::backend::cve_2026_43284 {
      *  old tree's parameter type, whose header names these as runtime credentials. */
     struct SaMaterial final {
         std::uint32_t spi = 0U;
+        /** The encapsulated port the socket connects from. The old tree's runtime frame carries it,
+         *  and the socket cannot be made without it, so it belongs to the credentials rather than
+         *  being invented at the door. */
+        std::uint16_t encap_port = 0U;
+        /** The sender port, the frame's other half of the same fact. */
+        std::uint16_t sender_port = 0U;
+        /** The integrity length in bytes: the write truncates the ICV to it, so a value of zero is
+         *  not a default to guess but something the caller must state. */
+        std::uint8_t icv_len = 0U;
         /** The AES key; the write derives its IV from it and the old block's content. */
         std::uint8_t aes_key[32] = {};
         /** The integrity key for the ESP trailer. */

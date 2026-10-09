@@ -9,9 +9,11 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
 
 namespace {
+    using ghostlock::backend::cve_2026_43284::AccessParams;
     using ghostlock::backend::cve_2026_43284::seam::DoorOps;
     using ghostlock::backend::cve_2026_43284::seam::PageCacheDoors;
 
@@ -39,7 +41,7 @@ namespace {
             }
             return next_fd++;
         }
-        [[nodiscard]] int connect_esp(const std::uint8_t *) noexcept override {
+        [[nodiscard]] int connect_esp(const AccessParams &) noexcept override {
             if (socket_fails) {
                 return -1;
             }
@@ -62,11 +64,11 @@ namespace {
     void both_doors_open_and_close_once() {
         RecordingOps ops;
         PageCacheDoors doors(ops);
-        const std::uint8_t key[32] = {};
-        expect(doors.open(key), "both doors open");
+        AccessParams params;
+        expect(doors.open(params), "both doors open");
         expect(doors.file_fd() >= 0 && doors.socket_fd() >= 0, "and both have a descriptor");
         expect(doors.owns_file(), "the file is this object's to close, since it opened it");
-        expect(!doors.open(key), "a second open is refused");
+        expect(!doors.open(params), "a second open is refused");
         expect(doors.close(), "closing works");
         expect(ops.closed_count() == 2, "and closes exactly the two it opened");
         expect(!doors.close(), "a second close is refused");
@@ -75,8 +77,8 @@ namespace {
     void a_handed_in_descriptor_is_never_closed_here() {
         RecordingOps ops;
         PageCacheDoors doors(ops, 42);
-        const std::uint8_t key[32] = {};
-        expect(doors.open(key), "a handed-in descriptor opens the file door");
+        AccessParams params;
+        expect(doors.open(params), "a handed-in descriptor opens the file door");
         expect(doors.file_fd() == 42, "the one it was given");
         expect(!doors.owns_file(), "and it is not this object's to close");
         static_cast<void>(doors.close());
@@ -87,8 +89,8 @@ namespace {
         RecordingOps ops;
         ops.socket_fails = true;
         PageCacheDoors doors(ops);
-        const std::uint8_t key[32] = {};
-        expect(!doors.open(key), "the open fails when the socket cannot be made");
+        AccessParams params;
+        expect(!doors.open(params), "the open fails when the socket cannot be made");
         expect(ops.closed_count() == 1, "and the file door it had opened is given back");
         expect(!doors.owns_file() && doors.file_fd() < 0, "leaving nothing half open");
     }
