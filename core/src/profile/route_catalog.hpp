@@ -31,6 +31,48 @@ namespace ghostlock::profile {
     };
     inline constexpr std::size_t kRouteCatalogCount = sizeof(kRouteCatalog) / sizeof(kRouteCatalog[0]);
 
+
+    /** The routes, as a type, bound to the catalogue above the way the backend ids are bound to
+     *  the component catalogue: a route added there without a row here stops the build. The
+     *  wire values are the catalogue's own and are not repeated here; this is an identity for
+     *  callers, not a second table. */
+    enum class RouteId : std::uint8_t {
+        /** Not decided; what a parameter set carries until a caller says which route. */
+        Unset = 0,
+        TcpZerocopy = 1,
+        SelectStack = 2,
+        MulticastWaiter = 3,
+    };
+    inline constexpr std::size_t kRouteIdCount = static_cast<std::size_t>(RouteId::MulticastWaiter) + 1U;
+
+    /** The token a route id spells, or empty for Unset. */
+    [[nodiscard]] constexpr std::string_view route_id_token(RouteId id) noexcept {
+        switch (id) {
+            case RouteId::Unset: return {};
+            case RouteId::TcpZerocopy: return "tcp_zerocopy";
+            case RouteId::SelectStack: return "select_stack";
+            case RouteId::MulticastWaiter: return "multicast_waiter";
+        }
+        return {};
+    }
+
+    /** The catalogue token for a route id is the row with the same wire value. Bound, not
+     *  copied: a rename on either side stops the build. */
+    [[nodiscard]] constexpr bool route_ids_match_the_catalogue() noexcept {
+        for (std::size_t i = 0U; i < kRouteCatalogCount; ++i) {
+            const RouteId id = static_cast<RouteId>(kRouteCatalog[i].wire);
+            const std::string_view known = route_id_token(id);
+            const std::string_view token = kRouteCatalog[i].token;
+            if (known.size() != token.size()) { return false; }
+            for (std::size_t c = 0U; c < known.size(); ++c) {
+                if (known[c] != token[c]) { return false; }
+            }
+        }
+        return kRouteCatalogCount + 1U == kRouteIdCount;
+    }
+    static_assert(route_ids_match_the_catalogue(),
+                  "the route ids no longer match the route catalogue");
+
     /** Sentinel for "this token names no route". */
     inline constexpr std::size_t kNoRoute = static_cast<std::size_t>(-1);
 

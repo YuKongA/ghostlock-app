@@ -143,6 +143,8 @@ LAYER_HEADERS := \
   src/contract/kernel_access.hpp \
   src/tests/kernel_access_test.cpp \
   src/backend/cve_2026_43499/session.hpp \
+  src/backend/cve_2026_43499/access_params.hpp \
+  src/profile/route_catalog.hpp \
   src/tests/target_state_test.cpp \
   src/contract/capability_catalog.hpp \
   src/backend/cve_2026_43499/capabilities.hpp \
