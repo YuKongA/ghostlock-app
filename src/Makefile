@@ -517,6 +517,26 @@ payload-manifest-regen: $(BUILD_DIR)/payload_manifest_test
 	rm -f $$tmp; \
 	echo "payload-manifest-regen: pin updated -- review the diff above and commit it with its cause"
 
+# The stepset -> step sequence manifest, restored after the rewrite retired it: the artifact
+# in the app still carried the older tokens and pointed at a command that had stopped existing.
+# Same pattern as the surface manifest: stdout is exactly the TSV, and the bare run compares
+# itself with the frozen pin.
+STEPSET_STEPS_MANIFEST := $(BUILD_DIR)/stepset-steps.tsv
+STEPSET_STEPS_PIN := core/tests/stepset-steps.pin.tsv
+.PHONY: stepset-steps-manifest stepset-steps-manifest-regen
+
+$(BUILD_DIR)/stepset_steps_manifest_test: core/tests/stepset_steps_manifest_test.cpp core/contract/step_catalog.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -DSTEPSET_STEPS_PIN='"$(STEPSET_STEPS_PIN)"' core/tests/stepset_steps_manifest_test.cpp -o $@
+
+$(STEPSET_STEPS_MANIFEST): $(BUILD_DIR)/stepset_steps_manifest_test $(STEPSET_STEPS_PIN)
+	@$(BUILD_DIR)/stepset_steps_manifest_test --export-only > $@
+	@diff -u $(STEPSET_STEPS_PIN) $@ && echo "stepset-steps-manifest: matches the pin"
+
+stepset-steps-manifest: $(STEPSET_STEPS_MANIFEST)
+
+stepset-steps-manifest-regen: $(BUILD_DIR)/stepset_steps_manifest_test
+	@$(BUILD_DIR)/stepset_steps_manifest_test --export-only > $(STEPSET_STEPS_PIN) && echo "stepset-steps-manifest-regen: pin updated -- review and commit it with its cause"
+
 # The surface manifest (same pattern as combination/vocabulary/stepset manifests):
 # stdout is exactly the TSV, so it can be redirected into an artifact; the
 # bare-run assertion inside the exporter compares it with the frozen pin.
@@ -621,6 +641,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/payload_manifest_test
 	@echo "check: step catalogue (tokens + declared orders)"
 	@$(BUILD_DIR)/step_catalog_test
+	@echo "check: stepset-steps manifest (restored, matches its pin)"
+	@$(BUILD_DIR)/stepset_steps_manifest_test
 	@echo "check: write request (pinned shape + own invariants)"
 	@$(BUILD_DIR)/write_request_test
 	@echo "check: write encoder (arm rules + bounded write)"
