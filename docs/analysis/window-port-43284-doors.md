@@ -28,3 +28,18 @@
 - 旧树里 `target_fd` **是谁 open 的**（决定门的归属：谁开谁关）
 - `connect_esp_socket` 的**失败语义**（返回 -1？errno？）
 - `pipe_flags` 的旧值来源（`:211` 附近未逐行读）
+
+## 前置已闭合：target_fd 谁 open 的（实测）
+
+- execution_binding.cpp:183 —— `const int target_fd = ::open(target_path, O_RDONLY | O_CLOEXEC);` ⇒ **绑定层开的**（带 O_CLOEXEC）
+- :185/:187 开完检查（fstat 加非零大小）；:198/:200 开失败时的后备分支；:204 赋给 ctx.page.file_fd
+- **:207-208 失败路径上它把开到的那个关掉**（`(void)::close(target_fd);`）⇒ ⇒ **谁开谁关是旧树自己的规矩**，不是我的偏好
+- :215 可选的 crash_dump 来源也是绑定层开的；:222 的 hook 页 file_fd 是**另一页**（钩子的），不属本访问
+
+## 由此得出的归属（可直接落代码）
+
+- file_fd 的来源是**一个路径**（target_path），而**路径是值** ⇒ 按 ADR-0015 **由脚本给** ⇒ ⇒ `AccessParams` 需要多一个字段：目标路径，或由调用方给的 fd —— **二选一须裁**
+- **开在 open_doors、关在 close_doors** ⇒ 与旧树的 :183 开、:208 关**同构**，且与「在 access 内初始化并回收」一致
+- 可选来源（crash_dump 那条）**默认不绑** ⇒ 保持直接路径（与切片 1 的判据一致：`:30` 的 `(ctx.file_fd >= 0 || ctx.helper_write.available())`）
+
+**仍未量**（两条，均不阻塞门这段的代码）：connect_esp_socket 的失败语义；pipe_flags 的旧值来源。
