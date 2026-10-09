@@ -51,13 +51,23 @@
 
 评审实测退休 `primitives.cpp`（202 行 ✓）至少含：
 
-| 行 | 内容 | 归类 |
-|---|---|---|
-| :95 | `for (int32_t i = 0; i < 500000; i++) syscall(__NR_getpid)` | **裸数值** ✗ ⇒ 按裁定ⓒ 归 **profile 键**（时序/次数 ✓） |
-| :77 | `__NR_perf_event_open` | syscall ⇒ **写 seam** ✓ |
-| :86 | `mmap` | syscall ⇒ **写 seam** ✓ |
-| :94 / :96 | `ioctl(PERF_EVENT_IOC_ENABLE/DISABLE)` | syscall ⇒ **写 seam** ✓ |
-| :146 | `attack_write` 的写路径 | 混合 ⇒ **决策面已有**（`write_*` ✓）+ 系统调用（⇒ seam ✓） |
+**全文枚举（202 行 ✓ 逐处 ✓ · 评审要求「不只上列 5 处」✓）**：
+
+| 行 | 内容 | 归类 | 落点 |
+|---|---|---|---|
+| :37/:42/:56 | `for (wave < waves)` · `for (i < batch)` · `terminate_and_wait(SIGKILL)` | 次数来自输入 ✓ / 信号 = 机制 ✓ | 次数 ⇒ profile ✓ · `SIGKILL` ⇒ 机制常量 ✓ |
+| :58 | `usleep(20000)` | **裸数值** ✗ ⇒ 时序 | **profile 键** ✓ |
+| :68 | `pe.sample_period = 5000` | **裸数值** ✗ ⇒ 采样周期 | **profile 键** ✓ |
+| :77 | `syscall(__NR_perf_event_open, …)` | **系统调用** | **写 seam** ✓ |
+| :82 | `constexpr size_t kPerfPageSize = 4096` | 内核几何（perf 页尺寸 ✓） | **机制常量 + 注释** ✓ |
+| :86 | `mmap(…, MAP_SHARED, fd.get(), 0)` | **系统调用** | **写 seam** ✓ |
+| :94 / :96 | `ioctl(PERF_EVENT_IOC_ENABLE / DISABLE)` | **系统调用** | **写 seam** ✓ |
+| :95 | `for (i < 500000) syscall(__NR_getpid)` | **裸数值** ✗ ⇒ 时序 | **profile 键** ✓ |
+| :102 | `std::array<uintptr_t, 256> cands` | 容量（机制 ✓） | **机制常量 + 注释** ✓ |
+| :104/:115/:130 | `while (pos < head …)` · `for (i < 32 …)` · `for (i < nc)` | 前两者**裸数值** ✗（投票窗 32）/ 第三来自输入 ✓ | 32 ⇒ **profile 键** ✓ · 其余 ⇒ 输入 ✓ |
+| :146 | `attack_write` 写路径 | **混合** | 决策面已有（`write_*` ✓）+ 系统调用 ⇒ **写 seam** ✓ |
+
+**小结**：写 seam 需含 `perf_event_open` / `mmap` / `ioctl(ENABLE|DISABLE)` / `getpid`（+ 写路径自身的系统调用 ✓，动工时逐条补 ✓）；**四个裸数值**（`20000` · `5000` · `500000` · `32`）全部 ⇒ **profile 键** ✓；两个机制常量（`4096` perf 页 ✓ · `256` 候选容量 ✓）⇒ 进代码 + 注释 ✓。
 
 **判据（可执行 ✓）**：新树对应件内**不得出现裸数值** ✗ ⇒ grep 判据（`[0-9]{3,}` 逐处须有键引用或机制常量注释 ✓）；本枚举表在 ③ 动工前**逐条补全**（202 行全文 ✓ 不只上列 5 处 ✓）。
 
