@@ -75,3 +75,5 @@
 队友的实测纠正了我 §4.3 的说法：multicast 的 route 体**不吃 `WriteRequest`**（`M:44` 实测 `(void) request;`），request 由 **race 侧线程**读（`pi_race.h:87`、`threads.cpp:33`）。
 
 裁定：**缝的形状不变**（`Window::write_word(address, value, offset)` 仍然对），**变的只是谁实现它** —— 实现者要落到 **race 侧那次写**（它持有 address/value 与 fake lock 的原语），而**不是**调 `do_multicast_fake_lock_route`。⇒ 我 §4.3 的那句就此作废（本节即其更正），切片 2 的取材目标是 **race 侧的写路径**。
+
+> 43499 侧的控制器与路线派发（§12–§15）与两处更正（§13、§16）：见同目录 `seam-port-design-43499.md`。
