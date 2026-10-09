@@ -39,6 +39,28 @@
 - **裁定ⓒ**：设备相关量 ⇒ profile 键 ✓；内核几何 ⇒ 机制常量 ✓（route 的几何按此分类 ✓）。
 - **Q2 rule 1**：C++ 不得内嵌数值 ✓ ⇒ route 的 532/372/208 行里**凡是几何/时序**都要落到 profile ✓（这是本次移植**最大的风险面** ✗，见 §4）。
 
+## 3b 现状清点（2026-10-09 · 实测树，不是计划文本）
+
+**已建成**（`find src/core/backend/cve_2026_43499 -type f` 实测）：
+
+| 面 | 文件数 | 内容 |
+|---|---|---|
+| `leak/` | 23 | 哈希 · 扫描 · 走查 · 候选 · 队列 · 搜索 · 策略 · 接合（真机通过）· **碰撞桶 · 计数** |
+| `memory/` | 18 | 页几何 · 堆几何 · 双 seam · 准备/塑形/回收 · **写请求 · 写编码 · 写布局 · 凭据镜像 · multicast 布防** |
+| `race/` | 5 | futex seam · PI 竞争 · PI 窗口 · 竞争运行时 · 层 |
+| `route/` | 6 | 期望键 · 生命周期 · **multicast 决策面 · 策略形状 · 路由状态** |
+| 顶层 | 5 | `abi` · `perf_{ring,seam,seam_linux,vote}` |
+
+**因此 §2 的六件里真正缺的只有两件半**（按计划文本读会重复劳动 —— 本轮差点重造 `write_request`，被「先读后写」守卫拦下）：
+
+| 件 | 状态 |
+|---|---|
+| ① 路由策略 | **形状已落**；multicast 的 `run` 本体缺（需消费者线程） |
+| ② 写原语 | **决策面与编码已落**（枚举 · 投票 · 环走查 · seam · 计数 · 桶） |
+| ③ 步骤 | **词汇已在 `contract/step_catalog.hpp`**（`StepId` · 两套顺序 · 表）⇒ 缺**执行**（`steps.cpp` 退休 449 行，与 session/profile 深耦合） |
+| ④ 终端 | 缺 |
+| ⑤ bootstrap | 缺 |
+
 ## 4 裁定（评审 v0.2 · 2026-10-08 · 0 阻断）
 
 1. **先 multicast ✓**（三条依据，比原稿更强）：① 最小（**208 行** ✓ 实测）；② 数据面已就位（`memory/multicast_arm` ✓）；③ **设备证据最多** —— `device-gates` 按 route 名命中数实测 **multicast_waiter 22 / select_stack 1 / tcp_zerocopy 0** ✓ ⇒ 原稿「select_stack 最常被真机验证」的前提**不成立且方向相反** ✗（已删）。另：`execution-multicast-waiter.conf` **已在**（提交 `7b34bb44` ✓）⇒ 无阻塞 ✓。
