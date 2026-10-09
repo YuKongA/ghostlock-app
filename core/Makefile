@@ -819,11 +819,16 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	done | wc -l | tr -d ' '); \
 	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
 	echo "check: surface list has a single definition site (the generated pin lives in a .tsv and is checked byte-for-byte)"
-	@allowed=$$(grep -vE "^[[:space:]]*(#|$$)" src/tests/vtable-ledger.txt || true); \
-	@found=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -E " _ZTV" | sed -e "s/.* _ZTV/_ZTV/" | sort -u || true); \
-	@stray=$$(echo "$$found" | while read -r sym; do [ -z "$$sym" ] && continue; echo "$$allowed" | grep -qxF "$$sym" || echo "$$sym"; done); \
-	if [ -n "$$stray" ]; then echo "VTT-HIT: unlisted vtable(s): $$stray"; echo "  a vtable is allowed only if it is in src/tests/vtable-ledger.txt"; exit 1; fi; \
-	echo "check: vtables (every _ZTV in the scanned binaries is listed in the ledger)"
+	# The property is source level, because it is the one this host can actually drive: a vtable
+	# symbol is emitted only when a class is used polymorphically, and the synthetic cases the
+	# compiler devirtualises emit none at all, so an nm scan could not be exercised (recorded in
+	# the commit that introduced the ledger). What can be exercised is the rule: virtual appears
+	# only where the ruling allows it, the access interface and its 43499 implementation. Tests
+	# are exempt, and the window headers are prose-only, their comments stripped first.
+	@files=$$(grep -rlE "^[[:space:]]*virtual " $$(find src -name "*.hpp" -o -name "*.cpp" | grep -v "^src/tests/") || true); \
+	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_43499/kernel_access\.hpp)$$" | grep -v "^$$" || true); \
+	if [ -n "$$stray" ]; then echo "VIRTUAL-OUTSIDE-ACCESS: $$stray"; echo "  virtual is allowed only in the access interface and its 43499 implementation"; exit 1; fi; \
+	echo "check: virtual is confined to the access interface (tests exempt)"
 	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
 	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual' || true); \
 	if [ "$$dirty" -ne 0 ]; then echo "WINDOW-DIRTY: $$dirty"; echo "$$code" | grep -nE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual'; exit 1; fi; \
