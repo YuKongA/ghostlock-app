@@ -25,7 +25,7 @@
 
 ## §3 与 P2 / P4 的接口
 
-> 脚本调用如何下落为 op（三条规则）见 [lua-surface-design](lua-surface-design.md) §「下落规则」。
+> 脚本调用如何下落为 op（**三条规则**）见 [op-fall-rule.md](op-fall-rule.md)（原指针指向不存在的 §「下落规则」，2026-10-08 更正）。
 
 - **唯一通路**：脚本调用（**`contract::kSurface` 的 7 条**，用户批准）→ staged 计划（surface 条目）→ **下落**为 `OpRegistry` 的 op 条目（**仅计划侧**，见 [lua-surface-design](lua-surface-design.md)）→ `plan_gate`；**到 op 只有这一条通路**，且 **`op(...)`/`window.*` 不是脚本可见名**（冻结判据：`surface_has_no_window_prefixed_names()` + `make -C src check` 的 grep）。token 必须 ∈ `OpRegistry`（[P4](composition-layer-p4-spec.md) §2）。
 - **`plan_gate` 调用点**：`state_from` **之后**、`Backend::run` **之前**（[P4](composition-layer-p4-spec.md) §3 / `b1b2 §B1.2`）；gate **只做二值判定**、只读 `DeviceFacts`。
@@ -62,7 +62,4 @@
 
 ## §7 取代关系与沿革
 
-- **本层取代**：`handoff-payload` 家族的**实现面**（计划/模板/执行器代码）· `src/core/plugin/**` 的**运行时接线**（构造/open/bind/close）· **`root_script` 生成器**（`src/core/terminal/root_script.{hpp,cpp}`，现为 `.disabled`）。
-- **不取代**：既有**决策记录**（D1–D33）、`handoff-payload-*.md` 的设计结论、ADR-0008/0009/0010 —— 它们**改变角色**为**输入规格**（[rewrite-plan](../plan/rewrite-plan.md) §7）。
-- **沿革（不删历史）**：token 白名单（—2026-10-06）→ queue（2026-10-06）→ **script（2026-10-08）**；插件冻结链 = P1 落地 → 冻结（2026-10-05）→ **解冻时按 D31 形态实现**（**不恢复旧 `.so` 单一通道**，D32）。
-- **取代纪律**：本层的任何「兼容旧形态」提案（例如让 queue 复活作别名）**默认拒绝**（A2「取代而非叠加」；同一事实不得两处定义）。
+- **整节已迁出**（配额）⇒ 见 **[handoff-script-layer-p5-spec-annex.md](handoff-script-layer-p5-spec-annex.md)**（取代/不取代/沿革/取代纪律四条，内容未改）。

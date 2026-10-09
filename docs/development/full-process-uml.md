@@ -282,6 +282,15 @@ close	handle_method	session	pre_window	false	true	true	handle	true	1844674407370
 | Kotlin | `app/` + `profile-core/` | HOCON 解析/合并/覆盖 · `resolve`（Document 三段）· payload 生成 |
 | Rust | `tools/extract_rs/` | boot.img / OTA → profile（`--format conf` / `json`） |
 
+### 3.5 资产视图（**B1 起**）
+
+| 类别 | 落点 | 描述什么 | 派生/权威 |
+|---|---|---|---|
+| **计划脚本资产** | `app/src/main/assets/plan/plan-<backend>-<route>.lua` | **顺序**（一个 (backend, route) 的执行顺序） | 每个**已接线** (backend, route) 一份；集合由 **`combination-manifest.tsv` 运行时副本 + `available=1` 去重派生**；`<route>` = manifest **route 列原值**，无 route 轴者写 **`none`** |
+| **profile 资产** | `app/src/main/assets/profile/**` | **设备**（几何/偏移/调参/可用性） | 按设备档（`<uname-r>.conf` + `execution-*.conf` 等） |
+
+- **两类资产分离**：前者描述**顺序**、后者描述**设备**（B1 方案 Q1 裁定）；两者**不得互相承载**（顺序不得藏进 profile、设备事实不得藏进 plan）。
+
 ## 4. Sequence（四张）
 
 ### 4.1 端到端（选菜单项 → 执行 → 收尾）
