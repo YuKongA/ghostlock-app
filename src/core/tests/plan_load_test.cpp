@@ -27,6 +27,7 @@ namespace {
     using ghostlock::script::PlanLoadInput;
     using ghostlock::script::ScriptBudget;
     using ghostlock::script::ScriptRejection;
+    using ghostlock::script::script_rejection_name;
     using ghostlock::script::StagedPlan;
 
     std::size_t g_failures = 0U;
@@ -100,7 +101,19 @@ namespace {
                "a name the surface does not declare is refused as unknown");
         expect(load("", plan) == ScriptRejection::PlanSyntax,
                "and an empty script is not a plan");
-        /* A loop that never ends, against a budget that is counted. */
+        /* A budget with no values at all: the mechanism is not configured, and that
+         *  must not be reported as a script that overran -- the two failures send
+         *  whoever reads them after different things. */
+        PlanLoadInput unconfigured;
+        unconfigured.sink.context = &plan;
+        unconfigured.sink.on_op = record_call;
+        unconfigured.sink.on_error = note_error;
+        expect(load_plan("surface.backend(cfg.probe)", unconfigured) ==
+                   ScriptRejection::TuningMissing,
+               "an unconfigured sandbox is refused as a missing tuning value");
+        expect(std::string_view(script_rejection_name(ScriptRejection::TuningMissing)) ==
+                   std::string_view("tuning-missing"),
+               "under that name rather than budget-exceeded");
         StagedPlan looped;
         PlanLoadInput input;
         input.budget = budget();

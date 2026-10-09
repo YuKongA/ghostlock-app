@@ -601,6 +601,7 @@ namespace ghostlock::script {
             case ScriptRejection::PlanSyntax: return kPlanSyntax;
             case ScriptRejection::CfgReadOnly: return kCfgReadOnly;
             case ScriptRejection::CfgUnknownField: return kCfgUnknownField;
+            case ScriptRejection::TuningMissing: return "tuning-missing";
             /* Handle refusals are spelled by the table that raises them. */
             case ScriptRejection::HandleStale: return handle_refusal_name(HandleRefusal::Stale);
             case ScriptRejection::HandleConflict: return handle_refusal_name(HandleRefusal::Conflict);
@@ -612,6 +613,11 @@ namespace ghostlock::script {
 
     bool Sandbox::open(const ScriptBudget &budget, CallSink sink) noexcept {
         if (state_ != nullptr) {
+            return false;
+        }
+        /* The configuration boundary: a budget without values is refused HERE, so an
+         *  unconfigured run can never be reported later as a script that overran. */
+        if (!script_budget_is_configured(budget)) {
             return false;
         }
         state_ = static_cast<State *>(std::calloc(1, sizeof(State)));

@@ -12,6 +12,11 @@ namespace ghostlock::script {
         if (script.data() == nullptr || script.size() == 0U) {
             return ScriptRejection::PlanSyntax;
         }
+        /* Before anything is opened: a budget the mechanism has not been given values
+         *  for is a missing tuning, not a script that overran. */
+        if (!script_budget_is_configured(input.budget)) {
+            return ScriptRejection::TuningMissing;
+        }
         Sandbox sandbox;
         if (!sandbox.open(input.budget, input.sink)) {
             /* The sandbox could not be opened at all: nothing about this script is
