@@ -54,4 +54,4 @@
 
 - **A3 落地前必须就位（否则 43499 链跑不起来）**：**`retry_backoff_ms`** · **`verify_settle_us`** · **`park_retry_settle_us`** · **`w3_retry_settle_us`** · **`w3_attempts`**（旧键已在 `stages`）· **`select_stack.consumer_settle_us`** · **`select_stack.poll_interval_us`** · **`race.state_poll_interval_us`** ⇒ **8 键**（缺一即链失败，按 §3 具名拒绝）。
 - **可随批次补**：`race.sample_period_us` · `race.thread_timeout_step_us` · `race.nice_rotation` · `race.leak_poll_interval_ms` · `pagecache_*`（43284 链，不阻塞 43499）。
-- **与 GAP-1 交叉**：`routes.multicast_waiter.*`（第 5 行）**依赖 `execution-multicast-waiter.conf` 先补齐**（实测**仍无该文件**）⇒ A3 列入 multicast 时 **GAP-1 与本表同批**（否则按 §3 `tuning-missing`）；tcp 侧同理（`execution-tcp-zerocopy.conf` 有 `arm_sequence`，**无 `arm_hold`** ⇒ 一并补）。
+- **与 GAP-1 交叉（**2026-10-08 已关闭**）**：`execution-multicast-waiter.conf` **资产已在** ✓（**1606 B** · 提交 **`7b34bb44`**）⇒ 第 5 行键可**随 A3 批次直接落**（原「依赖 GAP-1 先补齐」的前提消失）；`execution-tcp-zerocopy.conf` 仍**无 `arm_hold`** ⇒ 若 tcp 侧用到则一并补。

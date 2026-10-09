@@ -59,8 +59,15 @@
 
 | # | 缺口 | 影响 | 处置 |
 |---|---|---|---|
-| **GAP-1** | **`execution-multicast-waiter.conf` 缺失**（资产实测只有 `execution-select-stack.conf` / `execution-tcp-zerocopy.conf` / `execution-tuning.conf`） | **multicast 在补齐前不可运行**（按 §3，参数缺失不得用 C++ 默认值兜底 ⇒ 应**具名拒绝 + 上报缺口**） | 先补资产（owner = kotlin-app）或明确 multicast 在本轮 `available=false` |
 | **GAP-2** | **旧实现硬编码调参（完整 11 条，考古定稿 2026-10-08）** | 若照抄进新树即违反 §3（数值须走 profile） | **11 条**：① `steps.cpp:95` 退避 100ms ② `:103` 校验后 50ms ③ `:118` park-retry 50ms ④ `:247/:258` W3 重试 100ms ⑤ `multicast_waiter_route.cpp:36` `kMulticastArmHold=20000` ⑥ `memory/constants.hpp:43` `PSELECT_CONSUMER_SETTLE_USEC=250000` ⑦ `select_stack_route.cpp:75` `usleep(1000)` ⑧ `primitives.cpp:58` `usleep(20000)` ⑨ `:68` `sample_period=5000` ⑩ `race/threads.cpp:45` 20ms ⑪ `:141-143` nice 轮转 `(calls%19)+1` ⑫ `spray.cpp:548` 泄漏轮询 50ms —— **处置 = 全部改为 profile 参数**（缺参数 ⇒ 具名拒绝，不兜底）；**正例对照**：`steps.cpp:62-77/:101/:166` 的 `attempts`/`settle_usec` 与 `tcp_zerocopy_route.cpp:277` 的 `profile.tcp_attempts()` 已参数化 |
+
+## §4.3 已关闭缺口（沿革 · **已不再阻塞**）
+
+| # | 缺口 | 关闭事实 | 关闭日期 |
+|---|---|---|---|
+| **GAP-1** ~~`execution-multicast-waiter.conf` 缺失~~ | 原影响 = multicast 在补齐前不可运行 | **资产已在** ✓：`app/src/main/assets/profile/execution-multicast-waiter.conf`（**1606 B**）· 加入提交 **`7b34bb44`**（`feat(profile): give the multicast preset a reader…`） | **2026-10-08** |
+
+- **影响面更新**：`docs/analysis/a3-tuning-migration.md` §5 中「`routes.multicast_waiter.*` 依赖 GAP-1 先补齐」的前提**已消失**（该键可随 A3 批次直接落）⇒ 评审「先落 multicast」的排序不再受此缺口阻挡 ✓。
 
 ## §4.2 参数归属（考古定稿 · 30 个访问器 / 机制 / 运行期量）
 
