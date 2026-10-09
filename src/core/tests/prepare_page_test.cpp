@@ -112,10 +112,10 @@ namespace {
             resets = 0U;
             asked = 0U;
         }
-        static bool start(std::size_t) noexcept { started = true; return true; }
-        static bool has_collision() noexcept { ++asked; return asked > rounds_until_found; }
-        static std::uint64_t address() noexcept { return found_address; }
-        static void reset() noexcept { ++resets; }
+        bool start(std::size_t) noexcept { started = true; return true; }
+        bool has_collision() noexcept { ++asked; return asked > rounds_until_found; }
+        std::uint64_t address() const noexcept { return found_address; }
+        void reset() noexcept { ++resets; }
     };
     std::size_t FakeSnitch::rounds_until_found = 0U;
     std::uint64_t FakeSnitch::found_address = 0x1f0000U;
@@ -153,8 +153,9 @@ namespace {
 
     void a_preparation_that_finds_something() {
         FakeSeam::reset();
+        FakeSnitch snitch;
         FakeSnitch::reset_state();
-        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience());
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
         expect(outcome.status == PrepareStatus::Ok, "a preparation that finds an address is ok");
         expect(outcome.base == 0x1f0000U, "and its base is the aligned address");
         expect(outcome.base % geometry().align_region_size == 0U,
@@ -172,9 +173,10 @@ namespace {
 
     void a_search_that_finds_nothing() {
         FakeSeam::reset();
+        FakeSnitch snitch;
         FakeSnitch::reset_state();
         FakeSnitch::rounds_until_found = 1000000U;
-        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience());
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
         expect(outcome.status == PrepareStatus::NoCollision,
                "a search that finds nothing stops as no collision");
         expect(outcome.at_step == ghostlock::backend::cve_2026_43499::memory::PrepareStep::LeakLoop,
@@ -189,9 +191,10 @@ namespace {
 
     void a_call_that_fails_midway() {
         FakeSeam::reset();
+        FakeSnitch snitch;
         FakeSnitch::reset_state();
         FakeSeam::failing_fork_after = 3;
-        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience());
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
         expect(outcome.status == PrepareStatus::CallFailed, "a fork that fails stops the preparation");
         expect(outcome.error == 11, "and the errno it reported comes back with it");
         expect(FakeSeam::kill_calls >= 3U, "the children already forked are stopped");
@@ -200,9 +203,10 @@ namespace {
 
     void geometry_that_is_not_this_device() {
         FakeSeam::reset();
+        FakeSnitch snitch;
         FakeSnitch::reset_state();
         FakeSeam::reported_page = 8192U;
-        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience());
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
         expect(outcome.status == PrepareStatus::Refused,
                "a region built for another page size is refused before anything is forked");
         expect(FakeSeam::fork_calls == 0U, "with nothing forked");

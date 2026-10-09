@@ -95,6 +95,7 @@ LAYER_HEADERS := \
   core/tools/snitch_seam_probe.cpp \
   core/tools/snitch_run_probe.cpp \
   core/tools/perf_seam_probe.cpp \
+  core/tools/snitch_prepare_probe.cpp \
   core/tools/snitch_fork_probe.cpp \
   core/backend/cve_2026_43499/memory/write_request.hpp \
   core/tests/write_request_test.cpp \
@@ -240,7 +241,7 @@ $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/m
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
 ANDROID_OUT := ../build/native/ghostlock
-.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe perf-seam-probe profile-manifest-v3 profile-manifest-v3-check
+.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe perf-seam-probe snitch-prepare-probe profile-manifest-v3 profile-manifest-v3-check
 
 android: $(ANDROID_OUT)
 
@@ -287,6 +288,18 @@ snitch-fork-probe: $(SNITCH_FORK_PROBE)
 # The device probe for the sampling primitive: open, map, sample, and read the ring.
 PERF_SEAM_PROBE := ../build/native/perf_seam_probe
 perf-seam-probe: $(PERF_SEAM_PROBE)
+
+# The device probe for the join: find an address, then prepare a page with it.
+SNITCH_PREPARE_PROBE := ../build/native/snitch_prepare_probe
+snitch-prepare-probe: $(SNITCH_PREPARE_PROBE)
+
+$(SNITCH_PREPARE_PROBE): core/tools/snitch_prepare_probe.cpp core/backend/cve_2026_43499/leak/snitch_policy.hpp \
+  core/backend/cve_2026_43499/memory/prepare_page.hpp core/backend/cve_2026_43499/memory/prepare_plan.cpp \
+  core/backend/cve_2026_43499/memory/shaping_plan.cpp core/backend/cve_2026_43499/memory/reclaim_plan.cpp \
+  core/backend/cve_2026_43499/leak/snitch_setup.cpp | $(BUILD_DIR)
+	@mkdir -p ../build/native
+	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore $< core/backend/cve_2026_43499/memory/prepare_plan.cpp core/backend/cve_2026_43499/memory/shaping_plan.cpp core/backend/cve_2026_43499/memory/reclaim_plan.cpp core/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
+	@echo "snitch-prepare-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(PERF_SEAM_PROBE): core/tools/perf_seam_probe.cpp core/backend/cve_2026_43499/perf_ring.hpp \
   core/backend/cve_2026_43499/perf_seam_linux.hpp core/backend/cve_2026_43499/perf_vote.hpp \
