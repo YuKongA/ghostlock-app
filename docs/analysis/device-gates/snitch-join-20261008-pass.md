@@ -43,3 +43,20 @@ make -C src snitch-prepare-probe
 adb -s QV770MFGJ1 push build/native/snitch_prepare_probe /data/local/tmp/
 adb -s QV770MFGJ1 shell 'timeout 60 /data/local/tmp/snitch_prepare_probe; echo EXIT=$?'
 ```
+
+## 6 追加：接合在**真实规则**下复跑（非桩）
+
+桩已被 `leak/collision_buckets.hpp` 取代（内核 futex 哈希 ✓ + profile 表尺寸 256 ✓ + `mm` 占位 ✓）。
+
+```
+  self-call: started=1 ran=1 status=ok rounds=8 wanted=2048 region=0x7804463000
+  prepare: status=ok at=11 opened=6 closed=7 base=f00000000000000 errno=0
+  search (by value): started=1
+snitch prepare probe: PASS          EXIT=0
+```
+
+⇒ **同一判据、同一结果** ✓ ⇒ 接合不依赖桩的宽容度 ✓。
+
+**界限（与 `collision_buckets.hpp` 文件头一致 ✓）**：该规则的一致性检查**对任何候选都通过** ✓（它回答的是候选自己的桶 ✓）
+⇒ 真正的分辨力来自「**证明地址是被观测到相撞的那些**」+「**走查只提供调用方选定范围内的地址**」 ✓。
+因此**下一件**是把范围与证明地址换成 profile 提供的真实值 ✓（表尺寸已是 profile 键 ✓）。
