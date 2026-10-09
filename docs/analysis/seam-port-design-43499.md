@@ -23,6 +23,7 @@
 4. 接上 `RouteExec` 缝 ⇒ 43499 侧**第一写**即可在 host 上闭环到真控制器 ✓。
 
 **未量**：两个 namespace 块的分工；控制器对 race 状态的具体用法（未逐行读）。
+
 ## 13 更正（§12 的一处猜测被实测证伪）
 
 §12 我写过：旧 multicast_waiter_route.cpp 的**两个 namespace 块**「多半是 #if 分支或桩」。**实测不成立**：
@@ -33,6 +34,7 @@
 ⇒ 结论：**不存在「哪一份是活的」这个问题** ⇒ 移植时**两段都要读、都要搬**。
 
 **教训（留一行）**：§12 那句是**我从形状猜的**，一条 `grep '^#if'` 就否掉了 ⇒ 本会话反复付价换来的规矩 —— **凡是能用一条命令量出来的，就不要用形状推断**。
+
 ## 14 43499 控制器与 route 派发：已读到行级（可据此直接落代码）
 
 ### 旧 route_controller.cpp（18 行全文已读）
@@ -64,6 +66,7 @@ RouteStatus RouteController::execute(const WriteRequest *request) {
 新模板的 `Profile` 参数**就是**「执行层读 profile」这条路 ⇒ 按 ADR-0015 **是不允许的** ⇒ 移植时 `Profile` 必须换成**一组由脚本给的值**（与 43284 侧 `SaMaterial` 同一处理：结构按值传入 ✓ 执行层自己不取值 ✓）。
 
 ⇒ 于是 43499 侧接真控制器只剩三件、且都已行级明确：① `run_route` 的派发（旧 `route_policy.hpp:234`）+ 一条 route 体（切片 1 表 22 处耦合）；② `execute` 的判空（已读）；③ **`Profile` 模板参数 → 脚本给的值**。
+
 ## 15 旧 run_route 的派发体（已读，7 行）
 
 ```cpp
@@ -92,6 +95,7 @@ RouteStatus RouteController::execute(const WriteRequest *request) {
 - route 体（切片 1 表，22 处耦合）⇒ 最后搬。
 
 ⇒ 结论：**43499 侧的派发层已无未知** ⇒ 剩下的未知只在 route 体内部（切片 1 表已逐行给出 ✓）。
+
 ## 16 我的「0 耦合」说法被实测收窄（aes-port 纠正）
 
 我曾写「旧 `ipsec/aes256.cpp` 对旧会话与全局耦合 **0**」。该结论**口径太窄**：
