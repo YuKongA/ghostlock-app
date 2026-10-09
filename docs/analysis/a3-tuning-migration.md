@@ -16,7 +16,7 @@
 | 2 | 校验后 **50 ms** · `steps.cpp:103` | `execution.stages.verify_settle_us` | Uint / 0–1e6 | 否 | steps | 否 | A3-B1 |
 | 3 | park-retry **50 ms** · `steps.cpp:118` | `execution.stages.park_retry_settle_us` | Uint / 0–1e6 | 否 | steps | 否 | A3-B1 |
 | 4 | W3 重试 **100 ms ×2** · `steps.cpp:247` · `:258` | `execution.stages.w3_retry_settle_us` | Uint / 0–1e6 | 否 | steps | 否 | A3-B1 |
-| 5 | `kMulticastArmHold=20000` · `multicast_waiter_route.cpp:36` | `execution.routes.multicast_waiter.arm_hold_iterations` | Uint / 1–1e6 | 否 | route | **是** | A3-B2（**依赖 GAP-1**） |
+| 5 | `kMulticastArmHold=20000` · `multicast_waiter_route.cpp:36` | **`execution.routes.multicast_waiter.arm_hold`** | Uint / 1–1e6 | 否 | route | **是** | A3-B2（**依赖 GAP-1**） |
 | 6 | `PSELECT_CONSUMER_SETTLE_USEC=250000` · `memory/constants.hpp:43` | `execution.routes.select_stack.consumer_settle_us` | Uint / 0–1e7 | 否 | route | **是** | A3-B1 |
 | 7 | `usleep(1000)` · `select_stack_route.cpp:75` | `execution.routes.select_stack.poll_interval_us` | Uint / 1–1e5 | 否 | route | **是** | A3-B1 |
 | 8 | `usleep(20000)` · `primitives.cpp:58` | `execution.race.state_poll_interval_us`（**复用现役直同名键**） | Uint / 1–1e6 | 否 | race | 否 | A3-B1 |
@@ -26,15 +26,16 @@
 | 12 | 泄漏轮询 **50 ms** · `spray.cpp:548` | `execution.race.leak_poll_interval_ms` | Uint / 1–60000 | 否 | race/spray | 否 | A3-B2 |
 | 13 | `attempts` 缺省 **8** · `op_registry.hpp` `kWindowW1W3Params`（`required=true`） | `execution.stages.w3_attempts`（**旧键同名**） | Uint / 1–64 | **否**（required） | op_registry → steps | 否 | A3-B0 |
 | 14 | `attempts` 缺省 **8** · `op_registry.hpp` `kWindowW1W2Params`（`required=false`） | `execution.stages.w2_attempts` / `w1_attempts`（旧键） | Uint / 1–64 | 是（`false` 时可缺省） | op_registry → steps | 否 | A3-B0 |
-| 15 | `burst_calls` **64** · `settle_us` **200000** · `op_registry.hpp` `kPagecacheParams` | `execution.stages.pagecache_burst_calls` · `execution.stages.pagecache_settle_us` | Uint / 1–1024 · 0–1e7 | 是（`false`） | op_registry → route | 否 | A3-B1 |
+| 15 | `burst_calls` **64** · `settle_us` **200000** · `kPagecacheParams` | `stages.pagecache_burst_calls` · `stages.pagecache_settle_us` | Uint / 1–1024 · 0–1e7 | 是 | op_registry → route | 否 | A3-B1 |
 
+- **键名理由（2026-10-08 裁决「按推荐」）**：**与 wire/manifest 同名**（已在 `profile-manifest-v3.tsv`）；§1 规则即**不重命名旧键**；**tcp 先例 `post_receive_hold_iterations` 同名** ⇒ **三处同名**（满足「表达一致」）。
 - **口径说明（如实）**：任务口径 = 「11 + 4 = **15 行**」。实测 **site 计数 = 13 + 4 = 17**（`:247/:258` 同值两处按**一键一行**计 ⇒ GAP-2 = **12 键 / 13 site**；GAP-3 的 `burst_calls`+`settle_us` 同表并列 ⇒ **4 键**）。本表按「**一键一行**」给出 **15 行**：其中第 4 行覆盖 2 处 site、第 15 行覆盖 2 个键（`burst_calls`/`settle_us`）⇒ 若按「一 site 一行」则为 17 行。**两口径均已在本表可还原**。
 
 ## §3 缺省语义（**缺键 ⇒ 具名拒绝**）
 
 - **规则**：延续 [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §3 / Q2「**数值不入 C++、不兜底**」⇒ **缺键即拒绝**，不得使用 C++ 缺省值；`op_registry.hpp` 的 `ParamSpec.default_value` **仅作文档/对拍基线**，不作为运行期兜底（其 `required=false` 的项允许**在脚本层**省略，由 profile 提供值）。
 - **建议拒绝码**：**`tuning-missing`**（附 `path=backend.<b>.execution.<scope>.<name>` 与 hint）；与既有码分工：`geometry-missing` = 几何/偏移缺失 · **`tuning-missing` = 调参键缺失** · `param-invalid` = 值越界 · `param-missing` = **脚本调用**缺参。
-- **判据（可失败）**：① 删掉 `retry_backoff_ms` ⇒ 43499 链在 steps 首步即 **`tuning-missing`**（不是 0/默认值）；② 键值越界（如 `0`/`1e9`）⇒ `param-invalid`；③ 在 `routes.tcp_zerocopy` 下缺 `arm_hold_iterations` ⇒ 仅 tcp 拒（其他 route 不受影响）。
+- **判据（可失败）**：① 删掉 `retry_backoff_ms` ⇒ 43499 链在 steps 首步即 **`tuning-missing`**（不是 0/默认值）；② 键值越界（如 `0`/`1e9`）⇒ `param-invalid`；③ 在 `routes.tcp_zerocopy` 下缺 `arm_hold` ⇒ 仅 tcp 拒（其他 route 不受影响）。
 
 ## §4 边界与例外（**不该迁**，逐条理由）
 
@@ -53,4 +54,4 @@
 
 - **A3 落地前必须就位（否则 43499 链跑不起来）**：**`retry_backoff_ms`** · **`verify_settle_us`** · **`park_retry_settle_us`** · **`w3_retry_settle_us`** · **`w3_attempts`**（旧键已在 `stages`）· **`select_stack.consumer_settle_us`** · **`select_stack.poll_interval_us`** · **`race.state_poll_interval_us`** ⇒ **8 键**（缺一即链失败，按 §3 具名拒绝）。
 - **可随批次补**：`race.sample_period_us` · `race.thread_timeout_step_us` · `race.nice_rotation` · `race.leak_poll_interval_ms` · `pagecache_*`（43284 链，不阻塞 43499）。
-- **与 GAP-1 交叉**：`routes.multicast_waiter.*`（第 5 行）**依赖 `execution-multicast-waiter.conf` 先补齐**（实测资产**仍无该文件**）⇒ 若 A3 阶段列入 multicast，则 **GAP-1 与本表同批**（否则 multicast 链按 §3 直接 `tuning-missing`）；tcp 侧 `arm_hold_iterations` 的对应键同理（`execution-tcp-zerocopy.conf` 已有 `arm_sequence`，**当前无 `arm_hold_iterations`** ⇒ 一并补）。
+- **与 GAP-1 交叉**：`routes.multicast_waiter.*`（第 5 行）**依赖 `execution-multicast-waiter.conf` 先补齐**（实测**仍无该文件**）⇒ A3 列入 multicast 时 **GAP-1 与本表同批**（否则按 §3 `tuning-missing`）；tcp 侧同理（`execution-tcp-zerocopy.conf` 有 `arm_sequence`，**无 `arm_hold`** ⇒ 一并补）。
