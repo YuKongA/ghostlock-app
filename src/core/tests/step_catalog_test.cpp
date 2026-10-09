@@ -43,15 +43,15 @@ namespace {
     void the_vocabulary_holds() {
         expect(kStepIdCount == 5U, "five step ids are declared");
         expect(kStepCount == kStepIdCount, "every id has a catalogue row");
-        expect(std::strcmp(step_token(StepId::W1), "w1") == 0 &&
-                   std::strcmp(step_token(StepId::W2), "w2") == 0 &&
-                   std::strcmp(step_token(StepId::W3), "w3") == 0,
+        expect(std::strcmp(step_token(StepId::DisenforceSelinux), "disenforce_selinux") == 0 &&
+                   std::strcmp(step_token(StepId::CredentialForgery), "credential_forgery") == 0 &&
+                   std::strcmp(step_token(StepId::SeccompBypass), "seccomp_bypass") == 0,
                "the three window steps keep their names");
         expect(std::strcmp(step_token(StepId::PageCacheWrite), "pagecache_write") == 0,
                "the page cache step keeps its name");
-        expect(step_effect_of(StepId::W1) == StepEffect::Selinux &&
-                   step_effect_of(StepId::W2) == StepEffect::Credentials &&
-                   step_effect_of(StepId::W3) == StepEffect::Seccomp,
+        expect(step_effect_of(StepId::DisenforceSelinux) == StepEffect::Selinux &&
+                   step_effect_of(StepId::CredentialForgery) == StepEffect::Credentials &&
+                   step_effect_of(StepId::SeccompBypass) == StepEffect::Seccomp,
                "each window step keeps its side-effect domain");
         for (std::size_t i = 0U; i < kStepCount; ++i) {
             for (std::size_t j = i + 1U; j < kStepCount; ++j) {
@@ -63,16 +63,16 @@ namespace {
 
     /* ---- 2: the orders ---- */
     void the_orders_hold() {
-        const StepSetOrder *w1w3 = step_set_order(std::string_view("w1w3"));
-        expect(w1w3 != nullptr && w1w3->count == 3U, "w1w3 is a three-step chain");
-        expect(w1w3 != nullptr && w1w3->steps[0U] == StepId::W1 &&
-                   w1w3->steps[1U] == StepId::W2 && w1w3->steps[2U] == StepId::W3,
-               "w1w3 runs the selinux step first, then credentials, then seccomp");
-        const StepSetOrder *w1w2 = step_set_order(std::string_view("w1w2"));
-        expect(w1w2 != nullptr && w1w2->count == 2U, "w1w2 is a two-step chain");
-        expect(w1w2 != nullptr && w1w2->steps[0U] == StepId::W1 &&
-                   w1w2->steps[1U] == StepId::W2,
-               "w1w2 stops before seccomp");
+        const StepSetOrder *full_chain = step_set_order(std::string_view("selinux_cred_seccomp"));
+        expect(full_chain != nullptr && full_chain->count == 3U, "the full chain is three steps");
+        expect(full_chain != nullptr && full_chain->steps[0U] == StepId::DisenforceSelinux &&
+                   full_chain->steps[1U] == StepId::CredentialForgery && full_chain->steps[2U] == StepId::SeccompBypass,
+               "and runs them in that order");
+        const StepSetOrder *cred_chain = step_set_order(std::string_view("selinux_cred"));
+        expect(cred_chain != nullptr && cred_chain->count == 2U, "the credential chain is two steps");
+        expect(cred_chain != nullptr && cred_chain->steps[0U] == StepId::DisenforceSelinux &&
+                   cred_chain->steps[1U] == StepId::CredentialForgery,
+               "and stops before seccomp");
         const StepSetOrder *pagecache = step_set_order(std::string_view("pagecache"));
         expect(pagecache != nullptr && pagecache->count == 1U &&
                    pagecache->steps[0U] == StepId::PageCacheWrite,

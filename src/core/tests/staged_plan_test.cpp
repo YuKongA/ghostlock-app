@@ -85,7 +85,7 @@ namespace {
     void what_was_forwarded_comes_back() {
         StagedPlan plan;
         const ArgView first[] = {arg_u64(7U)};
-        const ArgView second[] = {arg_str("w1w3")};
+        const ArgView second[] = {arg_str("selinux_cred_seccomp")};
         const ArgView third[] = {arg_bool(true), arg_handle(2U, 5U, 9U)};
         expect(plan.record(call(0U, SurfaceForm::Call, first, 1U)), "a call is recorded");
         expect(plan.record(call(3U, SurfaceForm::HandleMethod, second, 1U)),
@@ -99,7 +99,7 @@ namespace {
         expect(plan.at(0U).arg_count == 1U && plan.at(2U).arg_count == 2U,
                "and how many arguments it carried");
         expect(plan.at(0U).args[0].u64 == 7U, "a number comes back as itself");
-        expect(plan.string_of(plan.at(1U).args[0]) == std::string_view("w1w3"),
+        expect(plan.string_of(plan.at(1U).args[0]) == std::string_view("selinux_cred_seccomp"),
                "a string comes back as the text it was");
         expect(plan.at(2U).args[0].boolean, "a boolean keeps its value");
         expect(plan.at(2U).args[1].handle.slot == 5U && plan.at(2U).args[1].handle.generation == 9U,

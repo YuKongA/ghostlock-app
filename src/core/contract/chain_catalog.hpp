@@ -3,16 +3,16 @@
  *
  *  KEY NOTE (measured, 2026-10-08): the selection key is NOT
  *  (backend, route, terminal). Four rows collide on that triple --
- *  mcast_rootchild(w1w3) vs mcast_shizuku(w1w2), the same pair for pselect and
+ *  mcast_rootchild(selinux_cred_seccomp) vs mcast_shizuku(selinux_cred), the same pair for pselect and
  *  tcp, and pagecache_rootchild vs pagecache_shizuku -- and in the last pair the
  *  step set collides too (both pagecache) while the terminal column reads
  *  root_child for both. The distinguishing column is PATH, whose own declaration
  *  calls it the user's choice: so a chain is resolved by its TOKEN (chain_of),
  *  which is one to one with the combination catalogue, and the terminal column is
  *  derived from the path rather than chosen. Evidence, for the record:
- *    COLLIDE mcast_rootchild(w1w3) vs mcast_shizuku(w1w2) : backend=cve_2026_43499 route=multicast_waiter terminal=root_child
- *    COLLIDE pselect_rootchild(w1w3) vs pselect_shizuku(w1w2) : backend=cve_2026_43499 route=select_stack terminal=root_child
- *    COLLIDE tcp_rootchild(w1w3) vs tcp_shizuku(w1w2) : backend=cve_2026_43499 route=tcp_zerocopy terminal=root_child
+ *    COLLIDE mcast_rootchild(selinux_cred_seccomp) vs mcast_shizuku(selinux_cred) : backend=cve_2026_43499 route=multicast_waiter terminal=root_child
+ *    COLLIDE pselect_rootchild(selinux_cred_seccomp) vs pselect_shizuku(selinux_cred) : backend=cve_2026_43499 route=select_stack terminal=root_child
+ *    COLLIDE tcp_rootchild(selinux_cred_seccomp) vs tcp_shizuku(selinux_cred) : backend=cve_2026_43499 route=tcp_zerocopy terminal=root_child
  *    COLLIDE rootchild(pagecache) vs shizuku(pagecache) : backend=cve_2026_43284 route= terminal=root_child
  *  (These two rows were named pagecache_rootchild and pagecache_shizuku before the
  *  tokens were aligned with the combination manifest; see the pin below.)
@@ -62,23 +62,23 @@ namespace ghostlock::contract {
 
     /** The whitelist: twelve tokens, seven of them wired. */
     inline constexpr ChainSpec kChainCatalog[] = {
-        {"mcast_rootchild", "cve_2026_43499", "multicast_waiter", "root_child", "w1w3",
+        {"mcast_rootchild", "cve_2026_43499", "multicast_waiter", "root_child", "selinux_cred_seccomp",
          "root_child", true},
-        {"pselect_rootchild", "cve_2026_43499", "select_stack", "root_child", "w1w3",
+        {"pselect_rootchild", "cve_2026_43499", "select_stack", "root_child", "selinux_cred_seccomp",
          "root_child", true},
-        {"tcp_rootchild", "cve_2026_43499", "tcp_zerocopy", "root_child", "w1w3",
+        {"tcp_rootchild", "cve_2026_43499", "tcp_zerocopy", "root_child", "selinux_cred_seccomp",
          "root_child", true},
-        {"mcast_shizuku", "cve_2026_43499", "multicast_waiter", "shizuku", "w1w2",
+        {"mcast_shizuku", "cve_2026_43499", "multicast_waiter", "shizuku", "selinux_cred",
          "root_child", true},
-        {"pselect_shizuku", "cve_2026_43499", "select_stack", "shizuku", "w1w2",
+        {"pselect_shizuku", "cve_2026_43499", "select_stack", "shizuku", "selinux_cred",
          "root_child", true},
-        {"tcp_shizuku", "cve_2026_43499", "tcp_zerocopy", "shizuku", "w1w2",
+        {"tcp_shizuku", "cve_2026_43499", "tcp_zerocopy", "shizuku", "selinux_cred",
          "root_child", true},
-        {"mcast_umh", "cve_2026_43499", "multicast_waiter", "umh", "w1w3", "umh_forward",
+        {"mcast_umh", "cve_2026_43499", "multicast_waiter", "umh", "selinux_cred_seccomp", "umh_forward",
          false},
-        {"pselect_umh", "cve_2026_43499", "select_stack", "umh", "w1w3", "umh_forward",
+        {"pselect_umh", "cve_2026_43499", "select_stack", "umh", "selinux_cred_seccomp", "umh_forward",
          false},
-        {"tcp_umh", "cve_2026_43499", "tcp_zerocopy", "umh", "w1w3", "umh_forward",
+        {"tcp_umh", "cve_2026_43499", "tcp_zerocopy", "umh", "selinux_cred_seccomp", "umh_forward",
          false},
         {"umh", "cve_2026_43284", "", "umh", "pagecache", "umh_forward", true},
         {"rootchild", "cve_2026_43284", "", "root_child", "pagecache", "root_child",
@@ -152,8 +152,8 @@ namespace ghostlock::contract {
         const char *step_set;
     };
     inline constexpr OpStepSetBinding kOpStepSetBindings[] = {
-        {"window.w1w3", "w1w3"},
-        {"window.w1w2", "w1w2"},
+        {"window.selinux_cred_seccomp", "selinux_cred_seccomp"},
+        {"window.selinux_cred", "selinux_cred"},
         {"window.pagecache", "pagecache"},
     };
     inline constexpr std::size_t kOpStepSetBindingCount =
@@ -193,7 +193,7 @@ namespace ghostlock::contract {
     [[nodiscard]] constexpr bool bindings_cover_the_drivable_ops() noexcept {
         for (std::size_t i = 0U; i < kOpCount; ++i) {
             /* Availability is the registry's own column: an op declared but not wired
-             *  (window.w1w3_umh) is rejected by the gate by name and needs no binding,
+             *  (window.selinux_cred_seccomp_umh) is rejected by the gate by name and needs no binding,
              *  which is why the test is this flag rather than a non-empty route mask. */
             if (!kOpCatalog[i].available) {
                 continue;
@@ -235,8 +235,8 @@ namespace ghostlock::contract {
         const char *chain_step_set;
     };
     inline constexpr StepSpelling kStepSpellings[] = {
-        {"w1_w3", "w1w3"},
-        {"w1_w2", "w1w2"},
+        {"w1_w3", "selinux_cred_seccomp"},
+        {"w1_w2", "selinux_cred"},
         {"pagecache_write", "pagecache"},
     };
     inline constexpr std::size_t kStepSpellingCount = sizeof(kStepSpellings) / sizeof(kStepSpellings[0]);
@@ -310,7 +310,7 @@ namespace ghostlock::contract {
      *  tables describing one selection must not drift, and a rename on either side
      *  now fails to compile rather than missing at run time. The derived columns
      *  (path, step set) keep this table's own spellings -- rootchild vs root_child,
-     *  w1_w3 vs w1w3, pagecache_write vs pagecache -- and the columns that are
+     *  the near-miss pairs, pagecache_write vs pagecache -- and the columns that are
      *  literally shared (backend, terminal) are asserted equal below. */
     inline constexpr const char *kCombinationTokens[] = {
         "mcast_rootchild", "pselect_rootchild", "tcp_rootchild",

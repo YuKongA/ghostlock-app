@@ -96,15 +96,15 @@ namespace ghostlock::contract {
 
     /** The registry table: the script token vocabulary, declared once. */
     inline constexpr OpSpec kOpCatalog[] = {
-        {"window.w1w3", kAvailableRouteMask, true, true, kWindowW1W3Params,
+        {"window.selinux_cred_seccomp", kAvailableRouteMask, true, true, kWindowW1W3Params,
          std::size(kWindowW1W3Params), "selinux+cred+seccomp", "root child handed off"},
-        {"window.w1w2", kAvailableRouteMask, true, true, kWindowW1W2Params,
+        {"window.selinux_cred", kAvailableRouteMask, true, true, kWindowW1W2Params,
          std::size(kWindowW1W2Params), "selinux+cred", "uid 0 in the session"},
         {"window.pagecache", route_bit("select_stack") | route_bit("tcp_zerocopy"), false, true,
          kPagecacheParams, std::size(kPagecacheParams), "file_cache_write", "patched bearer"},
         /* Declared but not wired yet (mirrors the catalogue's available=false
          * combinations): the gate must refuse it by name, never silently run it. */
-        {"window.w1w3_umh", kAvailableRouteMask, true, false, kWindowW1W3Params,
+        {"window.selinux_cred_seccomp_umh", kAvailableRouteMask, true, false, kWindowW1W3Params,
          std::size(kWindowW1W3Params), "umh_forward", "planned, not wired"},
     };
     inline constexpr std::size_t kOpCount = std::size(kOpCatalog);

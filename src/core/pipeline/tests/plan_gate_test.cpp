@@ -54,15 +54,15 @@ namespace {
         return in;
     }
 
-    /** The one parameter the table marks required for window.w1w3. */
+    /** The one parameter the table marks required for window.selinux_cred_seccomp. */
     const PlanParam kRequiredAttempts[] = {{"attempts", 1U}};
 
-    PlanOp window_op(const char *token = "window.w1w3", std::int32_t depends_on = -1) {
+    PlanOp window_op(const char *token = "window.selinux_cred_seccomp", std::int32_t depends_on = -1) {
         PlanOp op{};
         op.token = token;
         op.token_hash = op_token_hash(token);
         op.route_mask = kAvailableRouteMask;
-        if (std::string_view(token) == "window.w1w3") {
+        if (std::string_view(token) == "window.selinux_cred_seccomp") {
             op.params = kRequiredAttempts;
             op.param_count = 1;
         } else {
@@ -131,7 +131,7 @@ namespace {
     }
 
     void case_op_not_available() {
-        PlanOp op = window_op("window.w1w3_umh");
+        PlanOp op = window_op("window.selinux_cred_seccomp_umh");
         const PlanInput in = base_input(&op, 1);
         const GateVerdict v = plan_gate(in);
         expect(!v.ok && v.reason == GateReason::OpNotAvailable, "planned op must be refused");
@@ -157,7 +157,7 @@ namespace {
     }
 
     void case_order_violation() {
-        PlanOp ops[2] = {window_op(), window_op("window.w1w2")};
+        PlanOp ops[2] = {window_op(), window_op("window.selinux_cred")};
         ops[1].depends_on = 1;  /* must be < 1 */
         const PlanInput in = base_input(ops, 2);
         const GateVerdict v = plan_gate(in);
@@ -166,7 +166,7 @@ namespace {
     }
 
     void case_seam_in_window() {
-        PlanOp ops[2] = {window_op(), window_op("window.w1w2", 0)};
+        PlanOp ops[2] = {window_op(), window_op("window.selinux_cred", 0)};
         ops[1].seam_inside_window = true;
         const PlanInput in = base_input(ops, 2);
         const GateVerdict v = plan_gate(in);

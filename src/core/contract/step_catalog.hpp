@@ -20,9 +20,9 @@ namespace ghostlock::contract {
     /** One step. Unknown is the zero value and is never part of an order. */
     enum class StepId : std::uint8_t {
         Unknown = 0,
-        W1 = 1,
-        W2 = 2,
-        W3 = 3,
+        DisenforceSelinux = 1,
+        CredentialForgery = 2,
+        SeccompBypass = 3,
         PageCacheWrite = 4,
     };
     inline constexpr std::size_t kStepIdCount = 5U;
@@ -45,9 +45,9 @@ namespace ghostlock::contract {
     /** Every step, with the token the manifest exports for it. */
     inline constexpr StepSpec kStepCatalog[] = {
         {StepId::Unknown, "unknown", StepEffect::None},
-        {StepId::W1, "w1", StepEffect::Selinux},
-        {StepId::W2, "w2", StepEffect::Credentials},
-        {StepId::W3, "w3", StepEffect::Seccomp},
+        {StepId::DisenforceSelinux, "disenforce_selinux", StepEffect::Selinux},
+        {StepId::CredentialForgery, "credential_forgery", StepEffect::Credentials},
+        {StepId::SeccompBypass, "seccomp_bypass", StepEffect::Seccomp},
         {StepId::PageCacheWrite, "pagecache_write", StepEffect::PageCache},
     };
     inline constexpr std::size_t kStepCount = sizeof(kStepCatalog) / sizeof(kStepCatalog[0]);
@@ -59,14 +59,14 @@ namespace ghostlock::contract {
         std::size_t count;
     };
 
-    /* The three orders. Design section 4.1: w1w3 has no filter to clear, w1w2 is
+    /* The three orders. Design section 4.1: selinux_cred_seccomp has no filter to clear, selinux_cred is
      * the same chain without seccomp, and a page cache write is a single step. */
-    inline constexpr StepId kOrderW1W3[] = {StepId::W1, StepId::W2, StepId::W3};
-    inline constexpr StepId kOrderW1W2[] = {StepId::W1, StepId::W2};
+    inline constexpr StepId kOrderSelinuxCredSeccomp[] = {StepId::DisenforceSelinux, StepId::CredentialForgery, StepId::SeccompBypass};
+    inline constexpr StepId kOrderSelinuxCred[] = {StepId::DisenforceSelinux, StepId::CredentialForgery};
     inline constexpr StepId kOrderPageCache[] = {StepId::PageCacheWrite};
     inline constexpr StepSetOrder kStepSetOrders[] = {
-        {"w1w3", kOrderW1W3, sizeof(kOrderW1W3) / sizeof(kOrderW1W3[0])},
-        {"w1w2", kOrderW1W2, sizeof(kOrderW1W2) / sizeof(kOrderW1W2[0])},
+        {"selinux_cred_seccomp", kOrderSelinuxCredSeccomp, sizeof(kOrderSelinuxCredSeccomp) / sizeof(kOrderSelinuxCredSeccomp[0])},
+        {"selinux_cred", kOrderSelinuxCred, sizeof(kOrderSelinuxCred) / sizeof(kOrderSelinuxCred[0])},
         {"pagecache", kOrderPageCache, sizeof(kOrderPageCache) / sizeof(kOrderPageCache[0])},
     };
     inline constexpr std::size_t kStepSetCount =

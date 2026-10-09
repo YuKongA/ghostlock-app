@@ -74,9 +74,9 @@ namespace {
     /* ---- 3: the selections resolve ---- */
     void the_selections_resolve() {
         /* What the device's document selects for 43499: multicast, root child,
-         * and the steps w1 w2 w3 -- which the step catalogue spells w1w3. */
+         * and the three steps, which the step catalogue spells selinux_cred_seccomp. */
         const ChainSpec *mcast =
-            chain_for("cve_2026_43499", "multicast_waiter", "root_child", "w1w3");
+            chain_for("cve_2026_43499", "multicast_waiter", "root_child", "selinux_cred_seccomp");
         expect(mcast != nullptr, "the 43499 multicast selection resolves");
         expect(mcast != nullptr && std::strcmp(mcast->token, "mcast_rootchild") == 0,
                "to the token the tree used");
@@ -84,8 +84,8 @@ namespace {
         const ghostlock::contract::StepSetOrder *steps =
             mcast != nullptr ? step_set_order(std::string_view(mcast->step_set)) : nullptr;
         expect(steps != nullptr && steps->count == 3U &&
-                   steps->steps[0U] == ghostlock::contract::StepId::W1 &&
-                   steps->steps[2U] == ghostlock::contract::StepId::W3,
+                   steps->steps[0U] == ghostlock::contract::StepId::DisenforceSelinux &&
+                   steps->steps[2U] == ghostlock::contract::StepId::SeccompBypass,
                "and its steps are w1, w2, w3 in that order");
 
         /* What the device's own export selects for 43284: no route, the umh
@@ -102,14 +102,14 @@ namespace {
         expect(chain_of(std::string_view("mcast_rootchild")) == mcast, "a token finds its own row");
         expect(chain_of(std::string_view("not_a_chain")) == nullptr,
                "a token the table does not carry finds nothing");
-        /* w1w2 with multicast and a root child is the shizuku chain, so it is a
+        /* selinux_cred with multicast and a root child is the shizuku chain, so it is a
          * chain -- the two differ by their steps, not by their terminal. */
-        const ChainSpec *shizuku = chain_for("cve_2026_43499", "multicast_waiter", "root_child", "w1w2");
+        const ChainSpec *shizuku = chain_for("cve_2026_43499", "multicast_waiter", "root_child", "selinux_cred");
         expect(shizuku != nullptr && std::strcmp(shizuku->path, "shizuku") == 0,
                "the two-step selection is the shizuku path, and it says so");
-        expect(chain_for("cve_2026_43499", "multicast_waiter", "umh_forward", "w1w2") == nullptr,
+        expect(chain_for("cve_2026_43499", "multicast_waiter", "umh_forward", "selinux_cred") == nullptr,
                "a step set no row pairs with that backend, route and terminal is not a chain");
-        const ChainSpec *planned = chain_for("cve_2026_43499", "tcp_zerocopy", "umh_forward", "w1w3");
+        const ChainSpec *planned = chain_for("cve_2026_43499", "tcp_zerocopy", "umh_forward", "selinux_cred_seccomp");
         expect(planned != nullptr, "a planned row still resolves");
         expect(planned != nullptr && !planned->wired,
                "and it is marked unwired rather than silently runnable");

@@ -81,8 +81,8 @@ namespace ghostlock::contract {
         {ComponentKind::Frontend, "root_child", true},
         {ComponentKind::Frontend, "umh_forward", true},
         {ComponentKind::Frontend, "shizuku", false},
-        {ComponentKind::Stepset, "w1w3", true},
-        {ComponentKind::Stepset, "w1w2", true},
+        {ComponentKind::Stepset, "selinux_cred_seccomp", true},
+        {ComponentKind::Stepset, "selinux_cred", true},
         {ComponentKind::Stepset, "pagecache", true},
     };
     inline constexpr std::size_t kComponentCount = sizeof(kComponents) / sizeof(kComponents[0]);
