@@ -30,6 +30,14 @@ CXXFLAGS := -std=c++23 -Wall -Wextra -Wconversion -Wsign-conversion -Icore -isys
 # so the project's zero-warning line above stays meaningful.
 MPACK_CFLAGS := -std=c99 -w
 
+# The runtime binary: the entry plus the layers it reaches. The script layer is
+# not in it yet (its Lua core would have to be cross-built too), and neither is
+# the executor: the entry resolves a document and says what it would run.
+RUNTIME_SRCS := core/main.cpp \
+  core/profile/glkv3_document.cpp core/profile/payload_keys.cpp \
+  core/profile/document_pairs.cpp core/profile/run_plan.cpp \
+  core/support/sha256.cpp
+
 SKELETON_SRCS := core/main.cpp
 LAYER_HEADERS := \
   core/contract/layer.hpp \
@@ -118,8 +126,41 @@ host: $(BUILD_DIR)/ghostlock-skeleton
 	@echo "host: running the skeleton"
 	@$(BUILD_DIR)/ghostlock-skeleton
 
-$(BUILD_DIR)/ghostlock-skeleton: $(SKELETON_SRCS) $(LAYER_HEADERS) | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(SKELETON_SRCS) -o $@
+$(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/mpack.o | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(RUNTIME_SRCS) $(BUILD_DIR)/mpack.o -o $@
+
+# The device binary: the same entry, cross-built for arm64 with the NDK that every
+# Android build already needs. NDK_CC overrides the wrapper when one is not on the
+# default path. Only the layers above are compiled; the executor and the script
+# layer are named in the entry's refusal.
+NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
+NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
+ANDROID_OUT := ../build/native/ghostlock
+.PHONY: android plan-check
+
+android: $(ANDROID_OUT)
+
+$(ANDROID_OUT): $(RUNTIME_SRCS) core/contract/layer_scope.hpp core/contract/step_catalog.hpp \
+  core/profile/run_plan.hpp core/profile/glkv3_document.hpp | $(BUILD_DIR)
+	@mkdir -p ../build/native
+	$(NDK_TOOLCHAIN)/aarch64-linux-android29-clang -std=c99 -w -O2 -c $(MPACK_SRC) \
+	  -o $(BUILD_DIR)/mpack-android.o
+	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore -isystem $(MPACK_DIR) \
+	  $(RUNTIME_SRCS) $(BUILD_DIR)/mpack-android.o -o $@
+	@echo "android: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
+
+# The host entry, fed the document the device produced: the plan it reports is
+# the evidence that the document path works end to end here.
+plan-check: $(BUILD_DIR)/ghostlock-skeleton ../profile-core/src/test/resources/device-document-fixture.hex
+	@python3 -c "import sys;h=open('../profile-core/src/test/resources/device-document-fixture.hex').read().strip();b=bytes.fromhex(h);sys.stdout.buffer.write(len(b).to_bytes(4,'big')+b)" > $(BUILD_DIR)/plan-check.stdin
+	@$(BUILD_DIR)/ghostlock-skeleton --ghostlock-app-call < $(BUILD_DIR)/plan-check.stdin > $(BUILD_DIR)/plan-check.out 2>&1 || true
+	@grep -q 'plan chain=mcast_rootchild steps=w1,w2,w3 source=queue' $(BUILD_DIR)/plan-check.out \
+	  && echo "plan-check: PASS ($$(head -1 $(BUILD_DIR)/plan-check.out))" \
+	  || { echo "plan-check: FAIL"; cat $(BUILD_DIR)/plan-check.out; exit 1; }
+	@grep -q 'executor-unavailable' $(BUILD_DIR)/plan-check.out \
+	  && echo "plan-check: the run is refused, as this tree must" \
+	  || { echo "plan-check: FAIL: no refusal was reported"; exit 1; }
+
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
@@ -338,6 +379,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/step_queue_test
 	@echo "check: run plan (a document resolves to a chain and its steps)"
 	@$(BUILD_DIR)/run_plan_test
+	@$(MAKE) --no-print-directory plan-check
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
