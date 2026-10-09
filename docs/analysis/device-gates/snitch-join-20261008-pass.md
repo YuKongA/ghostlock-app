@@ -76,3 +76,27 @@ snitch prepare probe: PASS          EXIT=0
 
 **仍是合成的部分（写明）**：`mm` 为占位 ✓；证明地址为任意两个 ✓（真值应由同桶观测得出 ✓）；
 被找的地址上**并没有真实对象** ✓ ⇒ 本记录判的始终是**接合**，不是找对象 ✓。
+
+## 8 追加：证明地址改用**观测到的同桶者**
+
+```
+  proofs: bucket=220 second=ffff80000011f000 (observed, not chosen)
+  self-call: started=1 ran=1 status=ok rounds=3 wanted=2048 region=0x7f3d3f6000
+  prepare: status=ok at=11 opened=6 closed=7 base=ffff800000100000 errno=0
+  search (by value): started=1
+snitch prepare probe: PASS          EXIT=0
+```
+
+⇒ 两个证明地址不再是任意选取 ✓，而是**用真规则问出来的同桶者**（`bucket=220` ✓）⇒
+「证明地址是被观测到相撞的那些」这条要求 ✓ 在探针里**真的成立了** ✓，不再是注释里的承诺 ✓。
+
+**合成成分清单（每跑一版就短一条）**：
+
+| 成分 | 状态 |
+|---|---|
+| 桶规则 | **真**（内核 futex 哈希）✓ |
+| 表尺寸 | **真**（profile 键 256）✓ |
+| 范围 | **真地址空间**（直接映射切片）✓ |
+| 证明地址 | **观测得到的同桶者** ✓ |
+| `mm` | 占位 ✗（真值须由测量/profile 得出 ✓ —— 已登记缺口 ✓） |
+| 被找地址上的对象 | 不存在 ✓（本记录判接合 ✓，不判找对象 ✓） |

@@ -135,12 +135,25 @@ int main() {
     ScanRange range{};
     range.start = kSliceStart;
     range.end = kSliceStart + kSliceBytes;
-    /* The rule asks every proof address for a bucket and requires one answer: with the stub
-     *  below the bucket is a parity, so two addresses of the same parity agree and two of
-     *  different parity can never agree, whatever the candidate. The first version of this
-     *  probe used 0x1000 and 0x2000, which is exactly why a stub that accepts anything never
-     *  accepted anything: the rule was asked and always disagreed. */
-    std::uint64_t addresses[2] = {0x1000U, 0x3000U};
+    /* The proof addresses are observed rather than chosen: two addresses whose buckets are equal
+     *  under the real rule, found by asking it. The first version of this probe used two arbitrary
+     *  addresses, which is what a collision search cannot do -- the proofs have to be addresses
+     *  that were seen to collide, or the rule is being asked about something nobody observed. */
+    std::uint64_t addresses[2] = {0U, 0U};
+    {
+        constexpr std::uint64_t kPageBytes = 4096U; /* the device page size, measured */
+        const std::uint64_t seed = kSliceStart;
+        addresses[0] = seed;
+        const std::uint64_t wanted = buckets.bucket_of(seed);
+        for (std::uint64_t at = seed + kPageBytes; addresses[1] == 0U && at < seed + 0x100000ULL;
+             at += kPageBytes) {
+            if (buckets.bucket_of(at) == wanted) {
+                addresses[1] = at;
+            }
+        }
+        std::printf("  proofs: bucket=%llu second=%llx (observed, not chosen)\n",
+                    static_cast<unsigned long long>(wanted), static_cast<unsigned long long>(addresses[1]));
+    }
     const MapResult words_region = DeviceSeam::map_shared(4096U);
     if (words_region.address == nullptr) {
         std::printf("  words mapping FAILED errno=%d\n", words_region.error);
