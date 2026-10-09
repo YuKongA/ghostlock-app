@@ -25,11 +25,17 @@ namespace ghostlock::memory {
         }
         const std::uint64_t backstep = static_cast<std::uint64_t>(pointer_bytes);
         if (request.preserve_child) {
+            /* Aimed at the value: the left field carries the target so the write
+             * lands on it. */
             arm.pc = value;
-        } else {
-            arm.pc = request.target >= backstep ? request.target - backstep : 0U;
+            arm.left = request.target;
+            return arm;
         }
-        arm.left = request.target;
+        /* Aimed at the target itself, with both side fields zero: this is the arm
+         * the tree's own fixed vectors pin, and the one a leaf write needs -- the
+         * value would otherwise be written beside the field rather than on it. */
+        arm.pc = request.target >= backstep ? request.target - backstep : 0U;
+        arm.left = 0U;
         return arm;
     }
 

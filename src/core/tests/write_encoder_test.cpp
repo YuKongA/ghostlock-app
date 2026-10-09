@@ -55,8 +55,9 @@ namespace {
         const WriteArm leaf_write = arm_for(request(false, kTarget), kValue, kPointer);
         expect(leaf_write.pc == kTarget - kPointer,
                "a leaf write aims one pointer width before the target");
-        expect(leaf_write.left == kTarget, "and still carries the target");
-        expect(leaf_write.right == 0U, "with the side fields zero here too");
+        expect(leaf_write.left == 0U,
+               "and leaves the side fields zero, which is how the target is aimed at");
+        expect(leaf_write.right == 0U, "with the other side field zero as well");
         expect(leaf_write.pc != value_write.pc, "the two arms differ");
 
         const WriteArm tiny = arm_for(request(false, 4U), kValue, kPointer);
@@ -131,11 +132,48 @@ namespace {
                    EncodeVerdict::FragmentTooSmall,
                "a field that runs past the end is refused");
     }
+    /* ---- 1b: the tree's own fixed vectors ---- */
+    /* These are the values the retired tree pinned for the same three cases: a
+     * leaf write aims before the target with both side fields zero, and the two
+     * value writes aim at the value the caller supplies, which is the page-derived
+     * one for a zero write and the initial credential alias for a credential one. */
+    void the_fixed_vectors_hold() {
+        constexpr std::uint64_t kPage = 0xffffff8800210000ULL;
+        constexpr std::uint64_t kInitCred = 0xffffff802abfd588ULL;
+        struct Vector final {
+            std::uint64_t target;
+            WriteMode mode;
+            bool preserve;
+            std::uint64_t value;
+            std::uint64_t expected_pc;
+            std::uint64_t expected_left;
+        };
+        const Vector vectors[] = {
+            {0xffffff8000123000ULL, WriteMode::Zero, false, 0U, 0xffffff8000122ff8ULL, 0U},
+            {0xffffff8000124000ULL, WriteMode::Zero, true, kPage + 0x100ULL,
+             0xffffff8800210100ULL, 0xffffff8000124000ULL},
+            {0xffffff8000125000ULL, WriteMode::Credential, true, kInitCred,
+
+             0xffffff802abfd588ULL, 0xffffff8000125000ULL},
+        };
+        for (const Vector &vector : vectors) {
+            WriteRequest made;
+            made.target = vector.target;
+            made.mode = vector.mode;
+            made.preserve_child = vector.preserve;
+            const WriteArm arm = arm_for(made, vector.value, kPointer);
+            expect(arm.pc == vector.expected_pc, "the vector's pc word is reproduced");
+            expect(arm.left == vector.expected_left, "and its left word");
+            expect(arm.right == 0U, "and the side field is zero in every vector");
+        }
+    }
 }  // namespace
 
 int main() {
     std::printf("write encoder: arm rules\n");
     the_arm_rules_hold();
+    std::printf("write encoder: the fixed vectors\n");
+    the_fixed_vectors_hold();
     std::printf("write encoder: landing\n");
     the_arm_lands();
     std::printf("write encoder: refusals\n");
