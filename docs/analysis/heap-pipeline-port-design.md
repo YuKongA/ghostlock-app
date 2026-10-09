@@ -1,4 +1,4 @@
-# 堆/页管线移植设计（43499 的页准备）· v2
+# 堆/页管线移植设计（43499 的页准备）· v3
 
 > 分析类（≤8 KiB）· **L 级**（攻击关键路径）· 作者 Lead · v1 评审见 design-critic（0 阻断 / 重要 4）
 > 目标：让**重写后的** 43499 在**真机**上能做完页准备 ⇒ 「两 backend 真机可用」的第 1 优先级 ✓
@@ -67,8 +67,24 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 | 类 | 例 | 落点 | 缺值行为 |
 |---|---|---|---|
 | **设备相关** | 每组数量（prepare/spray/post/leak）· 碰撞数 · 各超时 | **profile 键**：`execution.heap.*`（`heap` scope 资产里已有 ✓） | **具名拒绝** ✓（不兜底 ✗） |
-| **内核几何**（K2 修正 ✓） | order-3 页尺寸 · SKB 发送尺寸 | **机制常量 + 运行时校验** ✓：seam 提供 `page_size()` ✓，计划层要求 `ORDER3_SIZE == page_size() << MM_ORDER` ✓，**不成立 ⇒ 具名拒绝 `geometry-missing`** ✓（**不得**静默按 4 KiB 跑 ✗ —— 旧树把 4096 硬编码 ✓，遇 16 KiB 页内核会整组错位 ✓） | 不适用（常量 + 校验 ✓） |
-| **mm_struct 尺寸**（K3 裁定 ✓） | `struct mm_struct` 的尺寸随内核配置变化 ✓ | **数据面（profile 键）**：`backend.cve_2026_43499.abi.mm_struct.size` ✓（沿既有 `abi.*` owner 路径 ✓）；**删除兜底** ✓（旧树 `mm_struct_stride(fallback)` 的形态随旧政策作废 ✓ —— 实测某 profile 声明 `0x580` 而兜底 `0x500` ✓） | 缺键 ⇒ **`geometry-missing`** ✓（几何类 ✓，与调参类 `tuning-missing` 分工 = 几何/偏移 vs 数量/超时 ✓） |
+| **内核几何**（K2 + L1/L2 修正 ✓） | 见下方「两个量」与「两条拒绝路」 | **机制常量 + 运行时校验** ✓ | 不适用（常量 + 校验 ✓） |
+
+**两个量，两个名字（L1 ✓）**（不许同名 ✗ —— 本仓反复出过这类事故 ✓）：
+
+| 量 | 含义 | 用途 | 来源 |
+|---|---|---|---|
+| `kernel_page_size` | 设备**内核页尺寸**（4 KiB / 16 KiB ✓） | **校验用** ✓ | seam 实测 ✓ |
+| `align_region_size` | = `kernel_page_size << MM_ORDER` ✓ | **向下取整用** ✓（`align_base` ✓） | 由上一量派生 ✓ |
+
+⇒ 校验写成 **`align_region_size == kernel_page_size << MM_ORDER`** ✓（方向不再含糊 ✓）；落地件 `page_geometry.hpp` 的字段已改名 **`align_region_size`** ✓ 并在注释里并列写明两量与关系 ✓。
+
+**两条拒绝路，两个名字（L2 ✓）**：
+
+| 情形 | 拒绝 | 分工 |
+|---|---|---|
+| **值非法**（0 / 非 2 的幂 / 越界 ✓） | **`param-invalid`** ✓ | 落地件现状 ✓（`geometry_is_usable` ✓） |
+| **缺失或不一致**（键缺 ✓ / 与设备页尺寸不符 ✓） | **`geometry-missing`** ✓ | **与常量同批落地** ✓；其证伪 = seam 的 `page_size()` 返回 8192 而常量按 4096 派生 ⇒ 必须 `geometry-missing` ✓，控制组 4096 ⇒ CHECK=0 ✓ |
+| **mm_struct 尺寸**（K3 裁定 ✓ · 随内核配置变化 ✓） | `backend.cve_2026_43499.abi.mm_struct.size` ✓（沿既有 `abi.*` owner 路径 ✓）· **删除兜底** ✓（旧树 `mm_struct_stride(fallback)` 的形态随旧政策作废 ✓ —— 实测某 profile 声明 `0x580` 而兜底 `0x500` ✓） | 缺键 ⇒ **`geometry-missing`** ✓（几何类 ✓；与调参类 `tuning-missing` 的分工 = 几何/偏移 vs 数量/超时 ✓） |
 
 **派生**：`mm_objs_per_slab = ORDER3_SIZE / mm_struct_size` ✓（由该键驱动 ✓，见 `reclaim_plan` 的 slab 步长 ✓）。
 
@@ -85,6 +101,6 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 
 - ✗ 不抄旧树全局状态；✗ 不加实验用 CLI 旁路；✗ 不猜几何（缺键即拒 ✓）；✗ 不一次性移植完（决策面 → seam → 编排，逐步真机可验 ✓）；✗ seam 内不做决策；✗ 不复制步骤顺序（权威唯一 ✓）。
 
-## 5 待评审问题（v2 仅剩一个）
+## 5 已裁定（无未决项）
 
-1. §2.5 的两类划分里，**`mm_struct` 尺寸/stride 的「机制侧缺省」**是否恰当 ✓ —— 它在旧树来自 `profile.mm_struct_stride(MM_STRUCT_SZ)` ✓，即**有 profile 入口** ⇒ 应归「设备相关（补键 ✓）」还是「内核几何（常量 ✓）」？
+- `mm_struct` 尺寸/stride ⇒ **数据面（profile 键）** ✓（评审裁定 ✓）：见 §2.5 第三行 ✓（键名 · 删兜底 · 缺键 ⇒ `geometry-missing` ✓）。

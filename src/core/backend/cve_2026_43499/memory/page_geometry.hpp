@@ -18,10 +18,19 @@
 #include <cstdint>
 
 namespace ghostlock::backend::cve_2026_43499::memory {
-    /** What a preparation needs to know about the memory it is working in. */
+    /** What a preparation needs to know about the memory it is working in.
+     *
+     *  TWO QUANTITIES, NOT ONE (named apart on purpose). The kernel's page size
+     *  (four or sixteen kilobytes, whatever the device boots with) is what a region
+     *  size has to be checked against, and the region the alignment rounds down to is
+     *  that page size shifted by the order the mechanism asks for. They differ by a
+     *  factor of eight here, so passing one where the other belongs moves the base by
+     *  tens of kilobytes without anything looking wrong -- which is why this struct
+     *  names the one it actually holds: the region, not the page. */
     struct PageGeometry final {
-        /** The size of the region the alignment rounds down to (a power of two). */
-        std::uint64_t page_size = 0U;
+        /** The region an address is rounded down to: the kernel's page size shifted by
+         *  the order the mechanism prepares. A power of two, by construction. */
+        std::uint64_t align_region_size = 0U;
         /** How many bytes the shaping send carries. */
         std::size_t send_size = 0U;
         /** The socket buffer the shaping pair is given. */
@@ -39,19 +48,19 @@ namespace ghostlock::backend::cve_2026_43499::memory {
      *  be a power of two (or the mask below picks up bits that are not a page), and
      *  the two sizes have to be non-zero. */
     [[nodiscard]] constexpr bool geometry_is_usable(const PageGeometry &geometry) noexcept {
-        if (geometry.page_size == 0U || geometry.send_size == 0U ||
+        if (geometry.align_region_size == 0U || geometry.send_size == 0U ||
             geometry.socket_buffer <= 0) {
             return false;
         }
-        return (geometry.page_size & (geometry.page_size - 1U)) == 0U;
+        return (geometry.align_region_size & (geometry.align_region_size - 1U)) == 0U;
     }
 
     /** Round a leaked address down to the start of the region it belongs to. */
     [[nodiscard]] constexpr std::uint64_t align_base(std::uint64_t leaked,
-                                                     std::uint64_t page_size) noexcept {
-        if (page_size == 0U || (page_size & (page_size - 1U)) != 0U) {
+                                                     std::uint64_t align_region_size) noexcept {
+        if (align_region_size == 0U || (align_region_size & (align_region_size - 1U)) != 0U) {
             return 0U;
         }
-        return leaked & ~(page_size - 1U);
+        return leaked & ~(align_region_size - 1U);
     }
 }  // namespace ghostlock::backend::cve_2026_43499::memory

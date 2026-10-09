@@ -55,15 +55,15 @@ namespace {
 
     void the_geometry_is_checked() {
         PageGeometry good;
-        good.page_size = 4096U;
+        good.align_region_size = 4096U;
         good.send_size = 1024U;
         good.socket_buffer = 1024 * 1024;
         expect(geometry_is_usable(good), "a geometry with all three set is usable");
         PageGeometry no_page = good;
-        no_page.page_size = 0U;
+        no_page.align_region_size = 0U;
         expect(!geometry_is_usable(no_page), "no page size is not a geometry");
         PageGeometry ragged = good;
-        ragged.page_size = 4097U;
+        ragged.align_region_size = 4097U;
         expect(!geometry_is_usable(ragged), "nor is a page size that is not a power of two");
         PageGeometry no_send = good;
         no_send.send_size = 0U;
