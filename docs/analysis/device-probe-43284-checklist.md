@@ -32,3 +32,21 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 
 1. 帧在文档**之后**读，顺序不能反；测试若先放帧的字节，探针会把它们当作文档前缀吃掉；
 2. 帧缺席时读侧会 `poll` 到超时再返回 `Missing`，所以「无帧」那一组用例会**花掉一次超时**，测试应当预期它耗时而不是判它挂住。
+
+## 设备侧执行步骤（照抄即可）
+
+前置：设备已连、构建产物已就位；SA 材料来自会话，不落盘。
+
+1. **构建**：`make -C core ghostlock`（NDK），产物 `build/native/ghostlock`。
+2. **准备输入流**：把一份长度前缀的 GLKv3 文档写进文件，其后**紧接**该会话的帧字节（84 字节，无长度前缀）。顺序不能反：文档在前，帧在后。
+3. **推送并运行**：把产物与输入流推到设备，用同一命令行喂入（`--ghostlock-app-call` 是既有入口，不需要任何新旗标）。
+4. **期望输出三行之一**：
+   - `probe-43284: no session frame, so this is not a 43284 run` —— 帧缺席，说明这次不是该后端的运行，**这是正常结果**，不表示失败；
+   - `probe-43284: the session frame was refused as N` —— 帧被拒，N 是具名状态号，按号定位；
+   - `probe-43284: write status N, value V, shutdown ok|refused` —— 走到写。status 0 与 value 16 为成功。
+5. **取证据**：设备 `Download/ghostlock-debug-log/<时间>/` 下的 `*.log.txt`、`profile.conf`、`profile.bin`，加本次运行的控制台输出。
+6. **归档**：按 `docs/analysis/device-gates/` 的格式写一份门禁记录，含 uname、页大小、时间、构建标识与上面三行之一的原文。
+7. **清理（归档后立即执行）**：删除 `core/src/pipeline/probe_43284.cpp` 与 `core/src/tests/probe_43284_test.cpp`，从 Makefile 撤掉清单行、`EVIDENCE_BINS` 项、rule 与 check 行；然后 `grep -rn probe core/src core/Makefile` 应为 0 命中，`make -C core host && make -C core check` 应为 0。
+8. **记录**：提交信息写明清理完成，并在 `pending-rulings.md` 里把相关条目划掉。
+
+**诚实说明**：以上步骤在本会话内无法执行 —— 需要设备，且 SA 材料只能来自会话。本会话能完成的是把它准备到照抄即可的程度。
