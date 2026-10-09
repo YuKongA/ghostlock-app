@@ -25,6 +25,7 @@ flowchart LR
   T --> F["内核兜底（C++：relay/enforce 恢复 + watchdog）"]
 ```
 
+- **步骤顺序**：**声明顺序与执行顺序由 `static_assert` 绑定**（`contract/step_catalog.hpp` 的 `kStepSetOrders` 三条顺序 + 两个 `static_assert`）。
 - **不变式**：脚本只在 **stage** 期运行（窗口外）；`writeop`/`copyop`/`settle` 由**实现层**在窗口相位执行；**`run` 不在暴露面**（收尾命令属 ③ 段）。
 
 ## 2. 状态机（四组）
@@ -90,6 +91,24 @@ stateDiagram-v2
   恒收尾 --> [*]: 内核兜底（C++）
 ```
 
+### 2.5 route 生命周期（**五态四步** · `backend/cve_2026_43499/route/lifecycle.hpp`）
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Prepared: prepare
+  Prepared --> Running: execute
+  Running --> Disarmed: disarm
+  Disarmed --> Destroyed: destroy
+  Idle --> Destroyed: destroy（从任何状态合法且幂等）
+  Prepared --> Destroyed: destroy（同上）
+  Running --> Destroyed: destroy（同上）
+  Destroyed --> [*]
+```
+
+- **类型**：`enum class RouteStage`（Idle · Prepared · Running · Disarmed · Destroyed）· `enum class RouteStep`（prepare · execute · disarm · destroy）· `enum class LifecycleVerdict`（拒绝经 `status` 汇报）。
+- **边注**：① **拒绝不改状态**（非法步序 ⇒ 拒绝并保持当前态）；② **`destroy` 从任何状态合法且幂等**。
+
 ## 3. Class（新树 10 层 + 资源面 + 暴露面映射）
 
 ```mermaid
@@ -148,6 +167,20 @@ classDiagram
 ```
 
 - **沿革（不删）**：旧树的 **`Pipeline` 类**（组合/分派层）**已删** —— 职责并入 **`CompositionRoot`**（接线）+ **`layer_scope`**（编译期校验）；本行即沿革记录（类图中已无该框）。
+
+### 3.4 新树模块（A6-4 · A3 前置批次；**按 namespace 分组**）
+
+| namespace | 件 | 主要声明（与代码一致） |
+|---|---|---|
+| **`profile`** | `glkv3_document.{hpp,cpp}` | `Document` · `DocumentVerdict`（`ok`/`document-invalid`/`payload-missing`）· `PayloadEntry` · `parse()` / `payload()` / `is_open()` / `reset()` |
+| **`profile`** | `payload_keys.{hpp,cpp}` | 载荷四键（`.bin`/`.sha256`/`.size`/`.kind`）三 kind + `payload_segment` / `payload_path` / `payload_name_is_valid` / `payload_key_is_declared` |
+| **`profile`** | `document_pairs.{hpp,cpp}` | `read_section_pairs` · `PairsVerdict` · `PairsResult` |
+| **`memory`** | `write_request.hpp` | `WriteRequest` · `WriteMode` · `check_request` · `RequestVerdict` · `write_mode_of` / `write_mode_token` |
+| **`memory`** | `write_encoder.{hpp,cpp}` | `WriteArm` · `WaiterFieldOffsets` · `arm_for` · `encode_waiter_arm` · `EncodeVerdict` |
+| **`backend::cve_2026_43499::route`** | `lifecycle.hpp` | `RouteStage`（五态）· `RouteStep`（四步）· `LifecycleVerdict`（图见 §2.5） |
+| **`contract`** | `step_catalog.hpp` | `StepId` · `StepEffect` · `kStepCatalog` · **`kStepSetOrders` 三条顺序** + **两个 `static_assert`** |
+
+- **既有件核对（A6-4 三件 + profile 两件）**：`terminal/payload.hpp` · `terminal/payload_store.{hpp,cpp}` · `terminal/execution.{hpp,cpp}` · `memory/target_profile.hpp` · `profile/route_catalog.hpp` —— **均已在图/本表中在位** ✓。
 
 ### 3.0 新树模块锚点（A0–A6）
 
