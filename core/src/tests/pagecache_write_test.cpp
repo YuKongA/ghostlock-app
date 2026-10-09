@@ -44,6 +44,10 @@ namespace {
         int sent = 0;
         std::uint32_t sequence_in_header = 0U;
         std::uint32_t spi_in_header = 0U;
+        /* The whole datagram, not just its first eight bytes: asserting on the header alone let a
+         *  wrong layout pass, because the header is where the mistake was not. */
+        std::uint8_t last_datagram[128] = {};
+        std::size_t last_size = 0U;
 
         [[nodiscard]] long read_at(int, std::uint8_t *out, std::size_t size,
                                    std::uint64_t) noexcept override {
@@ -55,12 +59,16 @@ namespace {
             }
             return static_cast<long>(size);
         }
-        [[nodiscard]] bool splice_one(int, const std::uint8_t *datagram, std::size_t,
+        [[nodiscard]] bool splice_one(int, const std::uint8_t *datagram, std::size_t size,
                                       std::uint64_t) noexcept override {
             if (!send_ok) {
                 return false;
             }
             ++sent;
+            last_size = size;
+            for (std::size_t i = 0U; i < size && i < sizeof(last_datagram); ++i) {
+                last_datagram[i] = datagram[i];
+            }
             spi_in_header = (static_cast<std::uint32_t>(datagram[0]) << 24U) |
                             (static_cast<std::uint32_t>(datagram[1]) << 16U) |
                             (static_cast<std::uint32_t>(datagram[2]) << 8U) |
@@ -121,6 +129,28 @@ namespace {
         expect(splice.sent == 0 && splice.iv_calls == 0, "so nothing was derived and nothing sent");
     }
 
+    /** The shape the old tree documents: spi(4) | sequence(4) | vector(16) | ciphertext(16) | check. */
+    void the_datagram_has_the_documented_shape() {
+        FakeDoors doors;
+        RecordingSplice splice;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        std::uint8_t block[16] = {};
+        block[0] = 0x48U;
+        block[15] = 0x99U;
+        expect(write.write_block(0x40U, block), "a block goes out");
+        expect(splice.last_size == 8U + 16U + 16U + 12U, "the datagram is the documented length");
+        bool vector_present = true;
+        for (std::size_t i = 0U; i < 16U; ++i) {
+            if (splice.last_datagram[8U + i] != 0x22U) {
+                vector_present = false;
+            }
+        }
+        expect(vector_present, "the derived vector is in the datagram, not left behind in a local");
+        expect(splice.last_datagram[24U] == 0x48U && splice.last_datagram[39U] == 0x99U,
+               "and the ciphertext follows it rather than being overwritten by the header");
+    }
+
     void a_failed_send_leaves_the_sequence_alone() {
         FakeDoors doors;
         RecordingSplice splice;
@@ -137,6 +167,8 @@ namespace {
 int main() {
     std::printf("page cache write: one block\n");
     one_block_is_read_vectored_and_sent();
+    std::printf("page cache write: the documented shape\n");
+    the_datagram_has_the_documented_shape();
     std::printf("page cache write: no old block\n");
     a_failed_read_means_no_datagram();
     std::printf("page cache write: a failed send\n");

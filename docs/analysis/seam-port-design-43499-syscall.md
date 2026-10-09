@@ -35,3 +35,43 @@ CT(2 blocks) = f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d
 3. **就绪前提**（实测 `page_cache_ready(ctx)` ✓）：`ctx.io.available()` ✓ · `socket_fd >= 0` ✓ · `icv_len != 0` ✓ · 且 **`file_fd >= 0` 或 `helper_write.available()`** ✓（两路来源：App 打不开厂商文件时走**注入的 crash_dump helper 写源** ✓）。
 
 **另记（路径教训）**：旧件在 **`pagecache/` 子目录**下（`pagecache/pagecache.cpp` ✓），我第一次按 `backend/cve_2026_43284/pagecache.cpp` 找 ⇒ **没命中** ✗ ⇒ 正确做法是**先 `git ls-tree` 拿文件清单再逐件读** ✓ —— 这条已在本节前半段实际用过一次（先列清单才发现 `ipsec/` `lkm/` `steps/` `embed/` 四个子目录 ✓）。
+
+## 25 缺陷（Lead 自查发现 · 未修）：写体的报文格式与旧树不一致
+
+我在 §24 里把「核对报文布局」认领给自己 ✓ ⇒ 本轮核完 ⇒ **不一致** ✗ ⇒ 这是**本批最重要的发现** ✓。
+
+### 旧树（实测 `pagecache.hpp` 文件头）
+
+```
+SPI(4) | Seq(4) | IV(16) | ciphertext(16) | ICV(icv_len)
+⇒ 总长 = 40 + icv_len（icv_len=12 时 = 52 字节）
+```
+
+### 我写体的现状（实测 `seam/pagecache_write.hpp:108-117`）
+
+```cpp
+std::uint8_t datagram[kBlockBytes] = {};        // ← 只有 16 字节 ✗
+for (i...) datagram[i] = block[i];              // ← 明文块先铺满 16 字节
+store_be32(datagram,     spi_);                 // ← 又覆写前 4 字节
+store_be32(datagram + 4, next_seq_);            // ← 再覆写 4 字节
+splice_.compute_icv(datagram, kBlockBytes, ...) // ← 只对 16 字节算 ICV ✗
+splice_.splice_one(..., datagram, kBlockBytes, position);  // ← 只发 16 字节 ✗
+```
+
+### 逐条差异（五处，都是硬差异）
+
+1. **长度**：我发 16 字节 ✗；旧发 `40 + icv_len` ✓；
+2. **IV 算了但从未放进报文** ✗（`iv` 是局部变量，算完即丢弃 ✓）；
+3. **密文与头混在一起** ✗：我先把块铺满，再用头覆写前 8 字节 ⇒ 第 8–15 字节仍是**明文块**的残段 ✓ ⇒ 整包**不是合法 ESP** ✗；
+4. **ICV 只对 16 字节算** ✗（旧对**整个报文**算 ✓）；
+5. **ICV 没有附在报文尾部** ✗（`icv` 同样是算完即丢 ✓）。
+
+### 为什么测试没抓住它 ✗
+
+`pagecache_write` 的测试用**记录用 fake** ✓，但它只断言了**头的两段**（`spi_in_header` ✓ `sequence_in_header` ✓ = 字节 0–7 ✓）⇒ **对第 8 字节之后与总长度没有断言** ✗ ⇒ ⇒ 于是它**通过**了 ✓。⇒ 这正好印证本仓那条规矩：**断言要证明它能失败** ✓ —— 这条测试**抓不住**格式错误 ✓，因为它的断言面**比错误面窄** ✗。
+
+### 处置（下一步，立即）
+
+把 `write_block` 的组装改成旧布局 ✓：`datagram[40 + icv_len]` · 先写 SPI/Seq ✓ · 再把 **IV 写入偏移 8** ✓ · 密文写偏移 24 ✓ · 对**整个 40 字节**算 ICV ✓ · 把 ICV 附在偏移 40 ✓ · 发送 **40+icv_len** 字节 ✓；并**把测试的断言扩展到字节 8 之后与总长度** ✓（否则修了也无人守 ✓）。
+
+**尚未修** ✓：本轮只做了核对与记录 ✓ ⇒ 修改留到下一轮（避免交出半成品 ✓）。
