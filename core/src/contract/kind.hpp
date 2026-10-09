@@ -274,4 +274,5 @@ namespace ghostlock::contract {
     static_assert(combination_routes_exist(), "every combination route must exist in the catalogue");
     static_assert(selection_and_combination_stay_separate(),
                   "selection availability and combination availability are different questions");
+
 }  // namespace ghostlock::contract
