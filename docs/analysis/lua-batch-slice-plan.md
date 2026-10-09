@@ -98,14 +98,15 @@ C4 + A1 + B1 ⇒ D1
 - 终端层：execution 82+56 行（FinishMoment、FinishDeclaration、ExecResult、run_payload）、payload、payload_store。
 - 表与门禁：chain_catalog（12 行链）、kind、step_catalog（StepSetOrder 与三个 order）、plan_gate、component_catalog（dispatch_target_of）、attack_window、composition_root。
 - 已落地：ADR-0016 的表与判据、C1 StageResult、C2 分派改依 chain_catalog。
+
 ### 缺口四项（**全是装配，不是重写攻击**）
 
-| # | 缺什么 | 实测依据 | 规模 |
-| --- | --- | --- | --- |
-| 1 | 43499 的 `Action`：给 `run_step_set` 用 | `run_step_set` 已泛型（62 行）；`pi_race` · `credential_image` · `heap_seam` · `write_encoder` **全在** | 小-中（胶水） |
-| 2 | `Pipeline<Backend, Terminal>` | 全树**仅一处提及**且是注释（`component_catalog.hpp:46`） | 小-中（`DispatchTarget` 正好是它的分支表） |
-| 3 | staged 计划 → 执行的传递 | `StagedPlan` 在 · `PlanOp` 在 · **中间那步没有** | 小 |
-| 4 | `main.cpp` 的生产路径驱动（**临时**，同批登记清理） | 入口现只有文档通道；探针已按清理表删除 | 小 |
+缺口四项，顺序即执行顺序，全是装配不是重写：
+
+1. 43499 的 Action，给 run_step_set 用。依据：run_step_set 已是泛型模板，pi_race、credential_image、heap_seam、write_encoder 全在。
+2. Pipeline 把后端、步骤、终端装起来。依据：全树仅一处提及且是注释，见 component_catalog.hpp:46。
+3. staged 计划到执行的传递。依据：StagedPlan 在、PlanOp 在、中间那步没有。规模：小。
+4. main.cpp 的生产路径驱动，临时件，同批登记清理。规模：小。
 
 ### 顺序与判据
 
