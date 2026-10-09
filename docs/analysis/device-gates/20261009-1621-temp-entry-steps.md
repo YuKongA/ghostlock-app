@@ -50,3 +50,36 @@ expected expression。ANDROID_NDK_HOME 不是这份 Makefile 认的变量。）
     adb -s QV770MFGJ1 push /tmp/drive_in.bin /data/local/tmp/drive_in.bin
     adb -s QV770MFGJ1 shell 'touch /data/local/tmp/ghostlock-carrier'
     adb -s QV770MFGJ1 shell '/data/local/tmp/ghostlock --ghostlock-app-call < /data/local/tmp/drive_in.bin'
+
+## 续（2026-10-09）：准备相位走到第 4 步，根因已查明
+
+设备输出（逐字）：
+
+    run-temp: prepare geometry-missing at=1 opened=0 closed=0
+    run-temp: prepare call-failed at=4 opened=3 closed=0 base=0x0 errno=0
+
+读法：at=1 被拒是因为 object_size 为 0（两尺寸除不尽，注释逐字兑现）。补成页大小之后走到 at=4，
+opened=3 说明 pre_groups 一 + spray_groups 二 的子进程都开起来了。
+
+at=4 是 PrepareStep::SprayChildren（kPrepareOrder 的第四项，at 为一基）。树里对此已写明，是本轮关键物证：
+
+    prepare_page.hpp:239-246
+      if (child.value == 0) {
+        /* In the child. Its work is NOT PORTED YET ... A child with nothing to do leaves at once.
+           The memory such a child is meant to hold is a later piece, and it cannot be held by a
+           process that exits, which is exactly why this is written down rather than left implicit. */
+        Seam::exit_child();
+      }
+
+即子进程立刻 _exit(0)，父进程随即对已退出的子进程调 open_memfd，必然失败；errno=0 是因为接缝的拒绝按值返回。
+这不是环境问题，是缺一块实现。
+
+## 待移植的那一块（真件，不是临时物）
+
+退役树里该子进程的工作有两半（spray.hpp 与 spray.cpp）：
+
+1. 跑碰撞搜索 kernelsnitch::context_find_collisions —— 新树已把它放在第 5 步 Snitch、进程内执行，不需要子进程承担；
+2. 持有一块内存：spray_ctx.childs 与 spray_ctx.memfds，容量 (1 + MM_PARTIALS) * mm_objs_per_slab，
+   回收走 close_ctx_memfds 与 free_ctx_storage。
+
+第二半尚未移植，这就是第 4 步过不去的原因。移植它属于真件补全，按旧树的形状照搬。
