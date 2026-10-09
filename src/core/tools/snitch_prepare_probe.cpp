@@ -16,6 +16,7 @@
  */
 #include <cstdio>
 #include <cstddef>
+#include <unistd.h>
 #include <cstdint>
 
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
