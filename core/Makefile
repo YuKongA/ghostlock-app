@@ -150,6 +150,7 @@ LAYER_HEADERS := \
   src/tests/multicast_window_test.cpp \
   src/backend/cve_2026_43284/access_params.hpp \
   src/backend/cve_2026_43284/seam/pagecache_seam.hpp \
+  src/backend/cve_2026_43284/kernel_access.hpp \
   src/tests/pagecache_seam_test.cpp \
   src/tests/cve43284_access_params_test.cpp \
   src/tests/multicast_seam_test.cpp \
