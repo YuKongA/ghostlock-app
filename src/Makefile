@@ -23,6 +23,11 @@ CXX_SRCS := \
   core/main.cpp \
   core/attack/ops.cpp \
   core/profile/entry.cpp \
+  core/bootimg/btf.cpp \
+  core/bootimg/extract.cpp \
+  core/bootimg/header.cpp \
+  core/bootimg/kallsyms.cpp \
+  core/bootimg/physmap.cpp \
   core/memory/address_space.cpp \
   core/memory/heap_context.cpp \
   core/race/pi_race.cpp \
@@ -39,6 +44,7 @@ CXX_SRCS := \
   core/session/exploit_session.cpp \
   core/session/root_child_frontend.cpp \
   core/session/backend/cve_2026_43499_backend.cpp \
+  core/session/backend/cfi_stage.cpp \
   core/session/handoff_probe.cpp \
   core/session/victim_process.cpp \
   core/session/victim_context.cpp \
@@ -121,7 +127,7 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test address_space_test cpp_link_probe_test
+  run_state_test address_space_test cpp_link_probe_test cfi_stage_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -142,6 +148,7 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/tests/host/handoff_stub.cpp \
   core/tests/host/glue_stub.cpp \
   core/session/backend/cve_2026_43499_backend.cpp \
+  core/session/backend/cfi_stage.cpp \
   core/session/root_child_frontend.cpp \
   core/session/exploit_session.cpp \
   core/session/runtime_config.cpp \
@@ -241,6 +248,15 @@ $(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/p
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp -o $@
+
+# The CFI stage test needs TARGET_CONFIG_H: cfi_layout.hpp reads the per-device
+# FOPS_*_OFF macros and pins them with static_asserts.
+$(HOST_BUILD_DIR)/cfi_stage_test: core/tests/cfi_stage_test.cpp \
+  core/session/backend/cfi_layout.hpp core/memory/payload_builder.cpp \
+  core/memory/payload_builder.h core/kernel/target.h core/kernel/constants.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\" \
+	  core/tests/cfi_stage_test.cpp core/memory/payload_builder.cpp -o $@
 
 $(HOST_BUILD_DIR)/heap_context_test: core/tests/heap_context_test.cpp core/memory/heap_context.cpp core/memory/heap_context.h core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)

