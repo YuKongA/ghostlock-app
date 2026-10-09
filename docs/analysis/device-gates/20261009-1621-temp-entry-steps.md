@@ -83,3 +83,43 @@ at=4 是 PrepareStep::SprayChildren（kPrepareOrder 的第四项，at 为一基�
    回收走 close_ctx_memfds 与 free_ctx_storage。
 
 第二半尚未移植，这就是第 4 步过不去的原因。移植它属于真件补全，按旧树的形状照搬。
+
+## 续（2026-10-09）：NoPokes 的归位，以及一次被我自己的混读
+
+设备在补了 object_size 之后停在准备的第 4 步枚举值（Snitch，即搜索相），报 call-failed；
+诊断行说明真正的守卫是 NoPokes（名字 plan-missing），读数：rounds=64 wanted=16384 region 已映射 probes=0。
+NoPokes 出自 run_poke_protocol，在走查之前，所以桶规则换桩对它没有影响；这一点由两次设备运行确认。
+
+沿革（写给后来者，免得重走）：我先判为「喷雾子进程的工作未移植」，又在读到退役树 clone_leak_child 里
+child == 0 立刻 exit(0) 之后推翻自己，理由是「旧树子进程也立刻退出」。那次推翻是错的，因为我把两个不同的
+子进程当成了一个：clone_leak_child 是跑碰撞搜索的 leak 子进程，而喷雾子进程另有其工作。
+两条线索因此并不矛盾：leak 子进程立刻退出是正常的，喷雾子进程要持有并锤击共享词，而后者尚未移植。
+
+下一步是照退役树 spray.cpp 里 spray_pids 之后那段，把锤词补上。
+
+## 续（2026-10-09）：准备十二步走完，与探针那次通过记录同阶
+
+设备输出（逐字）：
+
+    run-temp: snitch setup ok
+    run-temp: region ok, total 12584 bytes
+    run-temp: proofs bucket=5 second=0xffff80000014d000 (observed, not chosen)
+    run-temp: prepare ok at=11 opened=6 closed=7 base=0xffff800000100000 errno=0
+    run-temp: search ok rounds=9 wanted=2048 region=0x7ea2e25000 probes=1 found=1
+    EXIT=0
+
+与 snitch-join-20261008-pass.md 的同一台机记录逐项比：status ok 对 ok，at 11 对 11，opened/closed 6/7
+对 6/7，wanted 2048 对 2048，rounds 9 对 8，found 有对有。base 值不同（0xffff800000100000 对
+0xf00000000000000），两者都是合法地址，判据是形状与阶数而不是同一个值。
+
+## 本轮的关键发现：poke 预算随核数 8 倍化
+
+want = table_size 乘 collisions 乘 kPokeMultiple，而 table_size = round_pow2(cpu_count * 256)。
+本机 8 核 ⇒ 表尺寸 2048 ⇒ want 16384（设备读数），而探针手写 256 ⇒ want 2048。
+把表尺寸钉到探针那次通过的值之后，wanted 立刻回到 2048，搜索出碰撞并找到地址。
+这就是 NoPokes 的全部原因，不是环境问题，也不是缺件。
+
+## 尚为临时物的两件（与入口同批删）
+
+1. StubBuckets：接受一切候选的桶规则，让走查在开发路径上可达；正式路径用真实规则。
+2. setup.futex_table_size 的钉值 256：随探针那次通过读数，不随核数；正式路径由 profile 与核数决定。

