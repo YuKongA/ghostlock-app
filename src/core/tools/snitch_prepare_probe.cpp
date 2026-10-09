@@ -167,6 +167,7 @@ int main() {
     waiting.poll_rounds = 4U;
 
     /* Decisive measurement: run the policy directly first, and say what it did. */
+
     const bool self_started = policy.start(2U);
     std::printf("  self-call: started=%d ran=%d status=%s rounds=%u wanted=%zu region=%p\n",
                 self_started ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
