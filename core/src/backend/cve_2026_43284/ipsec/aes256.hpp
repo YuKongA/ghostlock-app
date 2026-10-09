@@ -1,6 +1,7 @@
 #pragma once
 /** @file backend/cve_2026_43284/ipsec/aes256.hpp
- *  AES-256 (FIPS 197) single-block ECB for the CVE-2026-43284 ESP primitive.
+ *  AES-256 (FIPS 197): single-block ECB and whole-block CBC for the CVE-2026-43284
+ *  ESP primitive.
  *
  *  Ported/rewritten for GhostLock from
  *  DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/aes256.h
@@ -9,12 +10,13 @@
  *  repository ships no top-level LICENSE, so this is an independent rewrite
  *  with attribution retained.
  *
- *  Scope: the single block only. The whole-block CBC mode that shared the old
- *  file is a separate port and is deliberately not here; single-block ECB
- *  decryption is what feeds the CBC IV identity (see the ipsec component).
+ *  Scope: the two modes the old file carried. Single-block ECB decryption is
+ *  what feeds the CBC IV identity (see the ipsec component); whole-block CBC is
+ *  the ESP transform's own mode.
  *
  *  The primitive is pure and host-testable: no syscalls, no kernel state, no
- *  mutable global state. The expanded key schedule is wiped before return.
+ *  mutable global state. The expanded key schedule and the CBC chain value are
+ *  wiped before return.
  *
  *  ---------------------------------------------------------------------------
  *  Copyright (c) 2018, Odzhan. All Rights Reserved.
@@ -70,4 +72,36 @@ namespace ghostlock::backend::cve_2026_43284::ipsec {
     [[nodiscard]] bool aes256_ecb_decrypt(const std::uint8_t key[kAes256KeyBytes],
                                           const std::uint8_t in[kAes256BlockBytes],
                                           std::uint8_t out[kAes256BlockBytes]) noexcept;
+
+    /** Whole-block CBC encryption; @p in_len must be a whole number of blocks.
+     *  @param key    The 32-byte key.
+     *  @param iv     The 16-byte initialisation vector.
+     *  @param in     The input bytes, @p in_len of them; may alias @p out. A null
+     *                pointer is allowed only when @p in_len is zero.
+     *  @param in_len The input length; a non-block length is refused.
+     *  @param out    The output bytes, @p in_len of them.
+     *  @return false on a null key, iv or out, or on a non-block length; nothing
+     *          is written then.
+     *  @note in-place (in == out) is supported; the key schedule and the chain
+     *        value are wiped before returning. */
+    [[nodiscard]] bool aes256_cbc_encrypt(const std::uint8_t key[kAes256KeyBytes],
+                                          const std::uint8_t iv[kAes256BlockBytes],
+                                          const std::uint8_t *in, std::size_t in_len,
+                                          std::uint8_t *out) noexcept;
+
+    /** Whole-block CBC decryption; @p in_len must be a whole number of blocks.
+     *  @param key    The 32-byte key.
+     *  @param iv     The 16-byte initialisation vector.
+     *  @param in     The ciphertext bytes, @p in_len of them; may alias @p out. A
+     *                null pointer is allowed only when @p in_len is zero.
+     *  @param in_len The input length; a non-block length is refused.
+     *  @param out    The plaintext bytes, @p in_len of them.
+     *  @return false on a null key, iv or out, or on a non-block length; nothing
+     *          is written then.
+     *  @note in-place (in == out) is supported; the key schedule and the chain
+     *        value are wiped before returning. */
+    [[nodiscard]] bool aes256_cbc_decrypt(const std::uint8_t key[kAes256KeyBytes],
+                                          const std::uint8_t iv[kAes256BlockBytes],
+                                          const std::uint8_t *in, std::size_t in_len,
+                                          std::uint8_t *out) noexcept;
 } // namespace ghostlock::backend::cve_2026_43284::ipsec

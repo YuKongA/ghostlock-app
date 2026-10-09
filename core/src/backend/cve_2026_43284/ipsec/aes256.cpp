@@ -1,4 +1,5 @@
-/* AES-256 (FIPS 197) single-block ECB for the CVE-2026-43284 ESP primitive.
+/* AES-256 (FIPS 197): single-block ECB and whole-block CBC for the CVE-2026-43284
+ * ESP primitive.
  *
  * Independent rewrite with attribution; the upstream AES core is Odzhan's
  * BSD-3-Clause implementation (full notice in aes256.hpp). Key schedules and
@@ -262,6 +263,55 @@ namespace ghostlock::backend::cve_2026_43284::ipsec {
             return true;
         }
 
+        /** Whole-block CBC in the selected direction, then wipe the key schedule and the chain.
+         *  @param key     The 32-byte key.
+         *  @param iv      The 16-byte initialisation vector.
+         *  @param in      The input bytes, @p in_len of them; may alias @p out. Null is allowed
+         *                 only when @p in_len is zero.
+         *  @param in_len  Must be a whole number of blocks.
+         *  @param out     The output bytes, @p in_len of them.
+         *  @param encrypt true for the forward cipher, false for the inverse.
+         *  @return false when key, iv or out is null, or when the length is not a whole number of
+         *          blocks; nothing is written then. */
+        bool cbc_crypt(const std::uint8_t key[kAes256KeyBytes],
+                       const std::uint8_t iv[kAes256BlockBytes],
+                       const std::uint8_t *in, std::size_t in_len,
+                       std::uint8_t *out, bool encrypt) noexcept {
+            if (key == nullptr || iv == nullptr || out == nullptr) return false;
+            if (in_len % kAes256BlockBytes != 0U) return false;
+            if (in == nullptr && in_len != 0U) return false;
+
+            RoundKeys rk = expand_key(key);
+            Block chain{};
+            for (std::size_t i = 0U; i < chain.size(); ++i) chain[i] = iv[i];
+
+            for (std::size_t off = 0U; off < in_len; off += kAes256BlockBytes) {
+                Block cur{};
+                for (std::size_t i = 0U; i < cur.size(); ++i) {
+                    cur[i] = in[off + i];
+                }
+                if (encrypt) {
+                    for (std::size_t i = 0U; i < cur.size(); ++i) {
+                        cur[i] = static_cast<std::uint8_t>(cur[i] ^ chain[i]);
+                    }
+                    const Block enc = encrypt_block(rk, cur.data());
+                    for (std::size_t i = 0U; i < enc.size(); ++i) {
+                        out[off + i] = enc[i];
+                        chain[i] = enc[i];
+                    }
+                } else {
+                    const Block dec = decrypt_block(rk, cur.data());
+                    for (std::size_t i = 0U; i < dec.size(); ++i) {
+                        out[off + i] = static_cast<std::uint8_t>(dec[i] ^ chain[i]);
+                    }
+                    chain = cur;
+                }
+            }
+            zeroize_bytes(&rk, sizeof(rk));
+            zeroize_bytes(chain.data(), chain.size());
+            return true;
+        }
+
     } // namespace
 
     bool aes256_ecb_encrypt(const std::uint8_t key[kAes256KeyBytes],
@@ -274,6 +324,20 @@ namespace ghostlock::backend::cve_2026_43284::ipsec {
                             const std::uint8_t in[kAes256BlockBytes],
                             std::uint8_t out[kAes256BlockBytes]) noexcept {
         return ecb_crypt(key, in, out, false);
+    }
+
+    bool aes256_cbc_encrypt(const std::uint8_t key[kAes256KeyBytes],
+                            const std::uint8_t iv[kAes256BlockBytes],
+                            const std::uint8_t *in, std::size_t in_len,
+                            std::uint8_t *out) noexcept {
+        return cbc_crypt(key, iv, in, in_len, out, true);
+    }
+
+    bool aes256_cbc_decrypt(const std::uint8_t key[kAes256KeyBytes],
+                            const std::uint8_t iv[kAes256BlockBytes],
+                            const std::uint8_t *in, std::size_t in_len,
+                            std::uint8_t *out) noexcept {
+        return cbc_crypt(key, iv, in, in_len, out, false);
     }
 
 } // namespace ghostlock::backend::cve_2026_43284::ipsec
