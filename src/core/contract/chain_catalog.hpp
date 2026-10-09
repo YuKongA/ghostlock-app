@@ -1,5 +1,23 @@
 #pragma once
 /** @file contract/chain_catalog.hpp
+ *
+ *  KEY NOTE (measured, 2026-10-08): the selection key is NOT
+ *  (backend, route, terminal). Four rows collide on that triple --
+ *  mcast_rootchild(w1w3) vs mcast_shizuku(w1w2), the same pair for pselect and
+ *  tcp, and pagecache_rootchild vs pagecache_shizuku -- and in the last pair the
+ *  step set collides too (both pagecache) while the terminal column reads
+ *  root_child for both. The distinguishing column is PATH, whose own declaration
+ *  calls it the user's choice: so a chain is resolved by its TOKEN (chain_of),
+ *  which is one to one with the combination catalogue, and the terminal column is
+ *  derived from the path rather than chosen. Evidence, for the record:
+ *    COLLIDE mcast_rootchild(w1w3) vs mcast_shizuku(w1w2) : backend=cve_2026_43499 route=multicast_waiter terminal=root_child
+ *    COLLIDE pselect_rootchild(w1w3) vs pselect_shizuku(w1w2) : backend=cve_2026_43499 route=select_stack terminal=root_child
+ *    COLLIDE tcp_rootchild(w1w3) vs tcp_shizuku(w1w2) : backend=cve_2026_43499 route=tcp_zerocopy terminal=root_child
+ *    COLLIDE rootchild(pagecache) vs shizuku(pagecache) : backend=cve_2026_43284 route= terminal=root_child
+ *  (These two rows were named pagecache_rootchild and pagecache_shizuku before the
+ *  tokens were aligned with the combination manifest; see the pin below.)
+ *  (probe compiled with the tree's headers, four lines printed, exit 0.)
+ *
  *  The chains a selection can name: a token for a whole path through the tree.
  *
  *  A selection is one token, and the token stands for an entire chain -- the
@@ -17,6 +35,7 @@
 #include <string_view>
 
 #include "contract/kind.hpp"
+#include "contract/op_registry.hpp" // the op tokens this table binds to step sets
 #include "contract/step_catalog.hpp"
 #include "profile/route_catalog.hpp"
 
@@ -62,9 +81,9 @@ namespace ghostlock::contract {
         {"tcp_umh", "cve_2026_43499", "tcp_zerocopy", "umh", "w1w3", "umh_forward",
          false},
         {"umh", "cve_2026_43284", "", "umh", "pagecache", "umh_forward", true},
-        {"pagecache_rootchild", "cve_2026_43284", "", "root_child", "pagecache", "root_child",
+        {"rootchild", "cve_2026_43284", "", "root_child", "pagecache", "root_child",
          false},
-        {"pagecache_shizuku", "cve_2026_43284", "", "shizuku", "pagecache", "root_child",
+        {"shizuku", "cve_2026_43284", "", "shizuku", "pagecache", "root_child",
          false},
     };
     inline constexpr std::size_t kChainCount = sizeof(kChainCatalog) / sizeof(kChainCatalog[0]);
@@ -91,7 +110,117 @@ namespace ghostlock::contract {
         return false;
     }
 
-    /** The row a token names, or nullptr when no row does. */
+    /** True when every row is reachable by its token and no two rows share one, and
+     *  when the full selection key -- backend, route, path and terminal -- names
+     *  exactly one row. The pair without path is NOT unique (see the note above),
+     *  which is why the key includes it and why a caller resolves by token. */
+    [[nodiscard]] constexpr bool tokens_are_unique() noexcept {
+        for (std::size_t i = 0U; i < kChainCount; ++i) {
+            std::size_t token_matches = 0U;
+            std::size_t key_matches = 0U;
+            for (std::size_t j = 0U; j < kChainCount; ++j) {
+                const std::string_view a_token(kChainCatalog[i].token);
+                const std::string_view b_token(kChainCatalog[j].token);
+                if (a_token == b_token) {
+                    ++token_matches;
+                }
+                if (std::string_view(kChainCatalog[i].backend) == std::string_view(kChainCatalog[j].backend) &&
+                    std::string_view(kChainCatalog[i].route) == std::string_view(kChainCatalog[j].route) &&
+                    std::string_view(kChainCatalog[i].path) == std::string_view(kChainCatalog[j].path) &&
+                    std::string_view(kChainCatalog[i].terminal) == std::string_view(kChainCatalog[j].terminal)) {
+                    ++key_matches;
+                }
+            }
+            if (token_matches != 1U || key_matches != 1U) {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(tokens_are_unique(),
+                  "every chain is reachable by its token, and the full selection key names one row");
+
+    /** One op token, and the step set the plan side means by it. This binding is
+     *  a declaration rather than a naming coincidence: the tokens and the step sets
+     *  are two vocabularies, and the assertion below fails if either side renames
+     *  something without the other. It is plan-side only -- a script never spells
+     *  these tokens (see op_registry.hpp's note) -- and it exists so that
+     *  pipeline::plan_gate can say which steps an op asked for without inferring
+     *  anything from a name. */
+    struct OpStepSetBinding final {
+        const char *op_token;
+        const char *step_set;
+    };
+    inline constexpr OpStepSetBinding kOpStepSetBindings[] = {
+        {"window.w1w3", "w1w3"},
+        {"window.w1w2", "w1w2"},
+        {"window.pagecache", "pagecache"},
+    };
+    inline constexpr std::size_t kOpStepSetBindingCount =
+        sizeof(kOpStepSetBindings) / sizeof(kOpStepSetBindings[0]);
+
+    /** Every bound op token is in the registry, and every bound step set is one a
+     *  chain row runs: a binding to something that does not exist reads as a plan
+     *  decision that could never be carried out. */
+    [[nodiscard]] constexpr bool bindings_are_declared() noexcept {
+        for (std::size_t i = 0U; i < kOpStepSetBindingCount; ++i) {
+            const std::string_view op(kOpStepSetBindings[i].op_token);
+            const std::string_view step_set(kOpStepSetBindings[i].step_set);
+            bool op_found = false;
+            bool step_set_found = false;
+            for (std::size_t j = 0U; j < kOpCount; ++j) {
+                if (std::string_view(kOpCatalog[j].token) == op) {
+                    op_found = true;
+                }
+            }
+            for (std::size_t j = 0U; j < kChainCount; ++j) {
+                if (std::string_view(kChainCatalog[j].step_set) == step_set) {
+                    step_set_found = true;
+                }
+            }
+            if (!op_found || !step_set_found) {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(bindings_are_declared(),
+                  "an op step-set binding must name a declared op and a step set some chain runs");
+
+    /** The tokens the combination manifest carries, in its order. The wire and the
+     *  App speak THESE spellings, so this table's tokens are pinned to them: two
+     *  tables describing one selection must not drift, and a rename on either side
+     *  now fails to compile rather than missing at run time. The derived columns
+     *  (path, step set) keep this table's own spellings -- rootchild vs root_child,
+     *  w1_w3 vs w1w3, pagecache_write vs pagecache -- and the columns that are
+     *  literally shared (backend, terminal) are asserted equal below. */
+    inline constexpr const char *kCombinationTokens[] = {
+        "mcast_rootchild", "pselect_rootchild", "tcp_rootchild",
+        "mcast_shizuku",   "pselect_shizuku",   "tcp_shizuku",
+        "mcast_umh",       "pselect_umh",       "tcp_umh",
+        "umh",             "rootchild",         "shizuku",
+    };
+    inline constexpr std::size_t kCombinationTokenCount =
+        sizeof(kCombinationTokens) / sizeof(kCombinationTokens[0]);
+    static_assert(kCombinationTokenCount == kChainCount,
+                  "the combination manifest and this table describe the same selections");
+
+    [[nodiscard]] constexpr bool tokens_match_the_combination_manifest() noexcept {
+        for (std::size_t i = 0U; i < kChainCount; ++i) {
+            const std::string_view a(kChainCatalog[i].token);
+            const std::string_view b(kCombinationTokens[i]);
+            if (a.size() != b.size() || a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(tokens_match_the_combination_manifest(),
+                  "this table's tokens must be the combination manifest's, in the same order");
+
+    /** The row a token names, or nullptr when no row does. This is the resolution
+     *  entry: the token comes from the combination catalogue, so a plan and a
+     *  selection cannot disagree about which chain is meant. */
     [[nodiscard]] constexpr const ChainSpec *chain_of(std::string_view token) noexcept {
         for (std::size_t i = 0U; i < kChainCount; ++i) {
             const std::string_view declared(kChainCatalog[i].token);
