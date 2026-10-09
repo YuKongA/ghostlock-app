@@ -254,13 +254,16 @@ class ControllerOverrideTest {
             )
             val pair = CpuPair(primary = 0, consumer = 1)
 
-            /* multicast builtin: only its own tuning, never select's. */
+            /* multicast builtin: only its own tuning, never the other routes'.
+             * task-141 added execution-multicast-waiter.conf, so the multicast
+             * group is now filled and offered (mirror of the tcp case below);
+             * before that asset existed this assertion required NONE. */
             val multicast = controller.load(
                 "5.15.189-android13-8-00016-g51bba4309aac-ab14546557", pair,
             )
             assertTrue(multicast.hasProfile)
             val multicastPaths = multicast.general.map { it.path }
-            assertTrue(multicastPaths.none { it.startsWith("execution.routes.multicast_waiter.") })
+            assertTrue(multicastPaths.any { it.startsWith("execution.routes.multicast_waiter.") })
             assertTrue(multicastPaths.none { it.startsWith("execution.routes.select_stack.") })
             assertTrue(multicastPaths.none { it.startsWith("execution.routes.tcp_zerocopy.") })
 

@@ -46,6 +46,11 @@ class ProfileLayoutEquivalenceTest {
         "execution-tuning.conf",
         "execution-select-stack.conf",
         "execution-tcp-zerocopy.conf",
+        /* Added with the multicast preset (task-141): this gate covers every
+         * bundled profile AND every shared fragment, so a new shared fragment
+         * must be listed here. It declares no selection, so it lands in the
+         * no-selection bucket and needs no legacy fixture. */
+        "execution-multicast-waiter.conf",
     )
 
     private fun fixtureText(name: String): String = requireNotNull(
