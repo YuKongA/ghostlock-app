@@ -38,3 +38,17 @@
 - `fd_set` 前戏（旧 `fdset_put_word`、`reserve_standard_io`）属 route 内部还是 `bring_up` ⇒ 搬时按行核
 - 机制 `M` 在选中 route 后如何静态绑定 ⇒ 倾向：每条 route 一个缝子类，`bring_up` 时按 `RouteId` **直接 switch**，不用虚分派
 - `RouteStatus` 的全部取值 ⇒ 需逐值映射（未逐个读）
+## 6 实测体量（2026-10-09，动工前量）
+
+- `route/multicast_waiter_route.cpp` = **208 行**，其中对旧会话与两个全局的引用 **22 处**
+- `primitives.cpp` = **202 行**
+- `route/route_middleware.cpp` / `route_controller.cpp` 各 **18 行**
+- ⇒ 一条 route 的完整搬移约 **400 行**，且是**攻击关键路径**代码
+
+**因此切片（下一轮按此做，不越片）**：
+
+1. **切片 1**：22 处耦合的**替换表**（逐处写：旧写法 ⇒ 新写法，取自 `TargetState` 或 `AccessParams`）——**先出表再动代码**
+2. **切片 2**：窗口体（`Window::write_word` 的实现，208 行里属于 Window 的那部分）
+3. **切片 3**：`primitives` 的内层（若切片 2 需要）
+
+**验收（每片都要满足）**：host 构建 0 告警 · `make -C core check` 绿 · 不引入任何可变全局 · 缝的测试保持绿（它钉的是决策，不应因窗口变真而改）
