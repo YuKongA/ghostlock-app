@@ -66,7 +66,7 @@ namespace ghostlock::profile {
             reset();
             return DocumentVerdict::Invalid;
         }
-        schema_ = mpack_node_uint(schema_node);
+        schema_ = mpack_node_u64(schema_node);
         if (schema_ != kDocumentSchema) {
             reset();
             return DocumentVerdict::Invalid;
@@ -86,6 +86,13 @@ namespace ghostlock::profile {
             !copy_bounded(key_text, sizeof(key_text), key)) {
             return DocumentVerdict::Missing;
         }
+        /* The whole chain is resolved from the root for every key. A node kept
+         * from an earlier lookup carries parse state, and reading a wide value
+         * after one makes the next lookup answer with nothing: resolving again
+         * costs a walk and is the difference between reading a document and
+         * reading part of one. The value is read as a 64-bit integer -- an
+         * unsigned int accessor truncates anything wider than 32 bits, which is
+         * how a two-gigabyte-and-a-bit offset came back as zero. */
         mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
         const mpack_node_t sections =
             mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
@@ -100,7 +107,7 @@ namespace ghostlock::profile {
         if (mpack_node_type(value) != mpack_type_uint) {
             return DocumentVerdict::Missing;
         }
-        out = mpack_node_uint(value);
+        out = mpack_node_u64(value);
         return DocumentVerdict::Ok;
     }
 
@@ -135,17 +142,31 @@ namespace ghostlock::profile {
         if (!payload_segment(segment, sizeof(segment), backend_key, name_key)) {
             return DocumentVerdict::Missing;
         }
-        const mpack_node_t node = mpack_node_map_cstr_optional(sections, segment);
-        if (!is_map(node)) {
+        if (!is_map(mpack_node_map_cstr_optional(sections, segment))) {
             return DocumentVerdict::Missing;
         }
         /* An entry that exists must carry what binds it to bytes: the three
          * keys are required together, and the kind must be one of the declared
          * values. Anything else is the same refusal as an absent entry. */
-        const mpack_node_t bin = mpack_node_map_cstr_optional(node, kPayloadKeys[0]);
-        const mpack_node_t digest = mpack_node_map_cstr_optional(node, kPayloadKeys[1]);
-        const mpack_node_t size_node = mpack_node_map_cstr_optional(node, kPayloadKeys[2]);
-        const mpack_node_t kind = mpack_node_map_cstr_optional(node, kPayloadKeys[3]);
+        /* Each key is looked up from a freshly resolved segment: a node kept from
+         * an earlier lookup carries parse state, and a value read after another
+         * lookup can come back empty for the same reason uint_key resolves its
+         * chain per key. */
+        char segment_text[192];
+        char name_text[96];
+        if (!copy_bounded(segment_text, sizeof(segment_text), backend) ||
+            !copy_bounded(name_text, sizeof(name_text), name)) {
+            return DocumentVerdict::Missing;
+        }
+        const auto segment_node = [&]() noexcept {
+            const mpack_node_t sections_now =
+                mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
+            return mpack_node_map_cstr_optional(sections_now, segment);
+        };
+        const mpack_node_t bin = mpack_node_map_cstr_optional(segment_node(), kPayloadKeys[0]);
+        const mpack_node_t digest = mpack_node_map_cstr_optional(segment_node(), kPayloadKeys[1]);
+        const mpack_node_t size_node = mpack_node_map_cstr_optional(segment_node(), kPayloadKeys[2]);
+        const mpack_node_t kind = mpack_node_map_cstr_optional(segment_node(), kPayloadKeys[3]);
         if (mpack_node_type(bin) != mpack_type_bin || mpack_node_type(digest) != mpack_type_str ||
             mpack_node_type(size_node) != mpack_type_uint) {
             return DocumentVerdict::Missing;
@@ -187,7 +208,7 @@ namespace ghostlock::profile {
         if (bytes == nullptr || size == 0U) {
             return DocumentVerdict::Missing;
         }
-        if (mpack_node_uint(size_node) != static_cast<unsigned int>(size)) {
+        if (mpack_node_u64(size_node) != static_cast<std::uint64_t>(size)) {
             return DocumentVerdict::Missing;
         }
         out.bytes = bytes;
