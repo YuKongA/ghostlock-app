@@ -95,7 +95,11 @@ namespace {
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0U);
     std::printf("snitch prepare probe\n");
-    const std::uint64_t synthetic = 0xffff800000100000ULL;
+    /* The candidates the walk hands the rule carry the canonical tag; the stub compares in the
+     *  same form, which is what the policy test does. Comparing the untagged address here was
+     *  the reason a stub that accepts one address never accepted anything. */
+    const std::uint64_t synthetic = ghostlock::backend::cve_2026_43499::leak::tagged_candidate(
+        0x100000U, ghostlock::backend::cve_2026_43499::leak::kCanonicalTag);
     StubBuckets buckets;
     buckets.accept = synthetic;
 
@@ -168,9 +172,9 @@ int main() {
 
     /* Decisive measurement: run the policy directly first, and say what it did. */
 
-    const bool self_started = policy.start(2U);
+    const auto self_started = policy.start(2U);
     std::printf("  self-call: started=%d ran=%d status=%s rounds=%u wanted=%zu region=%p\n",
-                self_started ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
+                self_started.ran ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
                 policy.outcome.rounds, policy.outcome.pokes_wanted, policy.outcome.region);
     policy.reset();
     const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, StubBuckets>>(
@@ -180,10 +184,10 @@ int main() {
     std::printf("  prepare: status=%s at=%d opened=%zu closed=%zu base=%llx errno=%d\n",
                 prepare_status_name(prepared.status), static_cast<int>(prepared.at_step), prepared.opened,
                 prepared.closed, static_cast<unsigned long long>(prepared.base), prepared.error);
-    std::printf("  search (by value): started=%d\n", self_started ? 1 : 0);
+    std::printf("  search (by value): started=%d\n", self_started.ran ? 1 : 0);
     (void) DeviceSeam::unmap(words_region.address, 4096U);
     /* The judgement uses the preparation outcome and the direct call return, both by value. */
-    const bool ok = self_started && prepared.base == synthetic && prepared.opened > 0U;
+    const bool ok = self_started.ran && prepared.base == synthetic && prepared.opened > 0U;
     std::printf("snitch prepare probe: %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

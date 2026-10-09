@@ -112,7 +112,16 @@ namespace {
             resets = 0U;
             asked = 0U;
         }
-        bool start(std::size_t) noexcept { started = true; return true; }
+        struct Answer final {
+            bool ran = false;
+            bool found = false;
+            std::uint64_t address = 0U;
+        };
+
+        Answer start(std::size_t) noexcept {
+            started = true;
+            return Answer{true, false, 0U};
+        }
         bool has_collision() noexcept { ++asked; return asked > rounds_until_found; }
         std::uint64_t address() const noexcept { return found_address; }
         void reset() noexcept { ++resets; }

@@ -44,7 +44,13 @@ namespace ghostlock::backend::cve_2026_43499::memory {
      *  back. */
     template <class Snitch>
     concept AddressSnitch = requires(Snitch &snitch, std::size_t collisions) {
-        { snitch.start(collisions) } -> std::same_as<bool>;
+        /* The answer comes back from the call, not out of the object: a device run showed the
+         *  one working and the other not, so the interface uses the one that works. What it has
+         *  to carry is spelled by member rather than by type, so this layer does not need to
+         *  know the search implementation's vocabulary. */
+        { snitch.start(collisions).ran } -> std::convertible_to<bool>;
+        { snitch.start(collisions).found } -> std::convertible_to<bool>;
+        { snitch.start(collisions).address } -> std::convertible_to<std::uint64_t>;
         { snitch.has_collision() } -> std::same_as<bool>;
         { snitch.address() } -> std::same_as<std::uint64_t>;
         { snitch.reset() } -> std::same_as<void>;
@@ -254,7 +260,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
         /* The search, then the children that wait for it. */
         outcome.at_step = PrepareStep::Snitch;
-        if (!snitch.start(plan.snitch_collisions)) {
+        if (!snitch.start(plan.snitch_collisions).ran) {
             outcome.status = PrepareStatus::CallFailed;
             detail::kill_children<Seam>(state);
             return outcome;

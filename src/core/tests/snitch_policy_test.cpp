@@ -122,11 +122,11 @@ namespace {
         SnitchPolicy<FakeSeam, Buckets> policy;
         policy.args = args();
         policy.buckets = &buckets;
-        expect(policy.start(1U), "a run that finds something starts cleanly");
+        expect(policy.start(1U).ran, "a run that finds something starts cleanly");
         expect(policy.has_collision(), "and the preparation sees a collision");
         expect(policy.address() == tagged_candidate(512U, kCanonicalTag), "with the address the rule accepted");
         const std::size_t forks_after_first = FakeSeam::forks;
-        expect(policy.start(1U), "starting again is answered the same way");
+        expect(policy.start(1U).ran, "starting again is answered the same way");
         expect(FakeSeam::forks == forks_after_first, "and does not fork a second cohort");
         policy.reset();
         expect(!policy.has_collision() && policy.address() == 0U, "a reset leaves nothing behind");
@@ -141,7 +141,7 @@ namespace {
         SnitchPolicy<FakeSeam, Buckets> policy;
         policy.args = args();
         policy.buckets = &buckets;
-        expect(!policy.start(1U), "a run that never poked does not start cleanly");
+        expect(!policy.start(1U).ran, "a run that never poked does not start cleanly");
         expect(!policy.has_collision(), "and the preparation is told there is no collision");
         expect(policy.address() == 0U,
                "rather than being handed a zero address as though it were one");
