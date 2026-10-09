@@ -672,7 +672,7 @@ namespace ghostlock::script {
         state.memory_refused = false;
         state.budget_tripped = false;
         state.instructions_left = state.budget.max_instructions;
-        if (script.size() > kScriptSizeCeiling ||
+        if (script.size() > contract::kScriptSizeCeiling ||
             script.size() > static_cast<std::size_t>(state.budget.max_script_bytes)) {
             state.last_rejection = ScriptRejection::BudgetExceeded;
             if (state.sink.on_error != nullptr) {

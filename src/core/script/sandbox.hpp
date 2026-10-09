@@ -35,8 +35,10 @@
 #include "script/call_sink.hpp"
 
 namespace ghostlock::script {
-    /** Approved baseline: one script may not exceed 64 KB (A6 baseline item 2). */
-    inline constexpr std::size_t kScriptSizeCeiling = 64U * 1024U;
+    /* The script size ceiling moved to contract/script_surface.hpp (mechanical
+     * move, no behaviour change): it is one fact shared by the sandbox and by the
+     * plan loader, and contract/ is the layer both of them already include, so the
+     * number is defined once rather than once per layer. */
 
     /** The sandbox belongs to the stage phase (no window phase is expressible). */
     inline constexpr contract::SurfacePhase kSandboxPhase = contract::SurfacePhase::Stage;

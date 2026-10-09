@@ -80,11 +80,18 @@
  */
 #include <cstddef>
 #include <cstdint>
+#include <cstdint>
 #include <string_view>
 
 #include "contract/layer_scope.hpp"
 
 namespace ghostlock::contract {
+    /** Approved baseline: one script may not exceed 64 KB (A6 baseline item 2).
+     *
+     *  One fact, one definition: the sandbox enforces it as a script size budget
+     *  and the plan loader enforces it as a delivery bound, and both layers already
+     *  include this header, so the number lives here rather than twice. */
+    inline constexpr std::size_t kScriptSizeCeiling = 64U * 1024U;
     /** How a surface name is used. */
     enum class SurfaceForm : unsigned char {
         Call = 0,
