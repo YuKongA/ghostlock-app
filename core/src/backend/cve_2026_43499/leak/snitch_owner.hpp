@@ -48,7 +48,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             case OwnerVerdict::RegionRefused: return "geometry-missing";
             case OwnerVerdict::CallFailed: return "call-failed";
             case OwnerVerdict::NoPokes: return "plan-missing";
-            case OwnerVerdict::ObjectRefused: return "plan-missing";
+            case OwnerVerdict::ObjectRefused: return "object-not-found";
         }
         return "unknown";
     }
@@ -59,6 +59,8 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         SnitchSetupVerdict setup = SnitchSetupVerdict::GeometryMissing;
         RegionVerdict region = RegionVerdict::GeometryMissing;
         ScanVerdict poke = ScanVerdict::GeometryMissing;
+        /** What the walk did, which is not the same question as what the pokes did. */
+        ObjectVerdict object = ObjectVerdict::Refused;
         std::size_t rounds = 0U;
         std::size_t pokes_wanted = 0U;
         /** The discovery, complete only when status is Ok. */
@@ -137,6 +139,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
          *    searches of their own, never from a default here. */
         const ObjectOutcome found = find_object<Buckets>(strides, range, sweep_tags, buckets, addresses,
                                                         address_count, collisions_needed);
+        out.object = found.status;
         if (found.status != ObjectVerdict::Found || found.object == 0U) {
             out.status = OwnerVerdict::ObjectRefused;
             out.discovery = contract::discovery_failed();

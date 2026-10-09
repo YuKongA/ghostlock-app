@@ -24,6 +24,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::OwnerOutcome;
     using ghostlock::backend::cve_2026_43499::leak::MapResult;
     using ghostlock::backend::cve_2026_43499::leak::OwnerVerdict;
+    using ghostlock::backend::cve_2026_43499::leak::owner_verdict_name;
     using ghostlock::backend::cve_2026_43499::leak::RegionInputs;
     using ghostlock::backend::cve_2026_43499::leak::run_snitch_owner;
     using ghostlock::backend::cve_2026_43499::leak::ScanRange;
@@ -168,6 +169,14 @@ namespace {
                     ghostlock::backend::cve_2026_43499::leak::region_verdict_name(out.region),
                     static_cast<unsigned>(out.poke));
     }
+    void two_refusals_do_not_share_one_name() {
+        /* A diagnostic that gives two different verdicts one name lies about which step
+         *  refused, and the device showed exactly that: plan-missing could have been the pokes
+         *  or the walk. They are told apart now. */
+        expect(owner_verdict_name(OwnerVerdict::NoPokes) !=
+                   owner_verdict_name(OwnerVerdict::ObjectRefused),
+               "the pokes refusing and the walk finding nothing are told apart");
+    }
     void the_mapping_hands_on_only_a_complete_answer() {
         /* A refused sequence maps to the canonical failure, whatever it found on the way. */
         OwnerOutcome refused{};
@@ -211,6 +220,8 @@ int main() {
     a_region_that_cannot_be_laid_out_is_refused_the_same_way();
     std::printf("snitch owner: the poke step\n");
     the_poke_step_is_reached_and_its_refusal_is_named();
+    std::printf("snitch owner: two refusals, two names\n");
+    two_refusals_do_not_share_one_name();
     std::printf("snitch owner: the mapping\n");
     the_mapping_hands_on_only_a_complete_answer();
     if (g_failures != 0U) {
