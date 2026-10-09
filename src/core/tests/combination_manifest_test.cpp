@@ -32,7 +32,8 @@ namespace {
 
     /** The row joined by the separator the artifact's header names. */
     int print_doc(const ghostlock::contract::ChainSpec &row) {
-        return std::printf("%s \xc2\xb7 %s \xc2\xb7 %s \xc2\xb7 %s", row.backend, row.route, row.step_set,
+        const char *route = (row.route == nullptr || row.route[0] == 0) ? "none" : row.route;
+        return std::printf("%s \xc2\xb7 %s \xc2\xb7 %s \xc2\xb7 %s", row.backend, route, row.step_set,
                            row.terminal);
     }
 
@@ -44,7 +45,11 @@ namespace {
         std::printf("# available is 1 (wired/selectable) or 0 (planned: parses, selection gate rejects).\n");
         for (std::size_t i = 0U; i < kChainCount; ++i) {
             const auto &row = kChainCatalog[i];
-            std::printf("%s\t%s\t%s\t%s\t%s\t%s\t%d\t", row.token, row.backend, row.route, row.path,
+            /* A backend with no route axis prints the sentinel the artifact header documents,
+             *  not an empty field: the artifact said none, and a second spelling of the same fact
+             *  is how two readers end up disagreeing about a row that is not in question. */
+            const char *route = (row.route == nullptr || row.route[0] == 0) ? "none" : row.route;
+            std::printf("%s\t%s\t%s\t%s\t%s\t%s\t%d\t", row.token, row.backend, route, row.path,
                         row.step_set, row.terminal, row.wired ? 1 : 0);
             (void) print_doc(row);
             std::printf("\n");

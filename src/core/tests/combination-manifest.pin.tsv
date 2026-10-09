@@ -12,6 +12,6 @@ tcp_shizuku	cve_2026_43499	tcp_zerocopy	shizuku	selinux_cred	root_child	1	cve_20
 mcast_umh	cve_2026_43499	multicast_waiter	umh	selinux_cred_seccomp	umh_forward	0	cve_2026_43499 · multicast_waiter · selinux_cred_seccomp · umh_forward
 pselect_umh	cve_2026_43499	select_stack	umh	selinux_cred_seccomp	umh_forward	0	cve_2026_43499 · select_stack · selinux_cred_seccomp · umh_forward
 tcp_umh	cve_2026_43499	tcp_zerocopy	umh	selinux_cred_seccomp	umh_forward	0	cve_2026_43499 · tcp_zerocopy · selinux_cred_seccomp · umh_forward
-umh	cve_2026_43284		umh	pagecache	umh_forward	1	cve_2026_43284 ·  · pagecache · umh_forward
-rootchild	cve_2026_43284		root_child	pagecache	root_child	0	cve_2026_43284 ·  · pagecache · root_child
-shizuku	cve_2026_43284		shizuku	pagecache	root_child	0	cve_2026_43284 ·  · pagecache · root_child
+umh	cve_2026_43284	none	umh	pagecache	umh_forward	1	cve_2026_43284 · none · pagecache · umh_forward
+rootchild	cve_2026_43284	none	root_child	pagecache	root_child	0	cve_2026_43284 · none · pagecache · root_child
+shizuku	cve_2026_43284	none	shizuku	pagecache	root_child	0	cve_2026_43284 · none · pagecache · root_child
