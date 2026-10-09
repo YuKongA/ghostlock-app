@@ -27,3 +27,13 @@
 | 7 | **read 不传指针，直接在 AccessResult 里回新 span** | `read(...) -> AccessResult<span<const byte>>`（span 指向实现自有存储，下一次调用前有效）；`write(...) -> AccessResult<size_t>` |
 
 **同日修过的两处自身缺陷**（如实记）：① 测试在**未检查 ok()** 时索引 value ⇒ 越界崩溃（139）⇒ 已加护栏；② 假件里参数名曾叫 bytes，**遮蔽成员数组** ⇒ sizeof(bytes) 取到 8 而非 64 ⇒ 边界判据把自己拒了 ⇒ 已改名。
+
+## 7 用户同日的第三批细化（三条）
+
+| # | 要求 | 落地 |
+|---|---|---|
+| 1 | **AccessState 还缺 Closed**（例：43284 后期） | 新增 `Closed`：**起来过、被有意拆掉** —— 与 `Declared`（从没起来）和 `Unsupported`（从来就没有）区分开；载体是已加载模块的后端，模块卸载后落到这里 |
+| 2 | **AccessResult 应该在基类实现好，有方便的构造函数** | 加 `static constexpr AccessResult ok(Value)` 与 `failed(Status)` ⇒ 状态与值**不可能再各说各话**（手填两个字段的写法没了） |
+| 3 | **backend 用 string_view 表示吗？不该弄个 enum 吗** | 加 **`BackendId`**（在 `contract/kind.hpp`，**权威表旁**）+ `backend_id_token`/`backend_id_of` + **绑定断言**：catalogue 里加后端而枚举没加、或 token 改了一边，**编译失败** ⇒ `KernelAccess::create(BackendId)` |
+
+**同日又修的一处自身缺陷**：脚本式替换**过于贪心**，把返回 `span` 的 `read` 里的 `BadParameters` 也改成了 `AccessResult<bool>::failed(...)` ⇒ 编译拒收 ⇒ 已按行定点改回。教训：**类型不同的分支不能用同一段文本替换**。

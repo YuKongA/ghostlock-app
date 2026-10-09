@@ -66,8 +66,7 @@ namespace {
             const AccessMiscParameters &parameters) noexcept override {
             AccessResult<bool> result{};
             if (parameters.name() != std::string_view("route")) {
-                result.status = KernelAccess::Status::BadParameters;
-                return result;
+                return AccessResult<bool>::failed(KernelAccess::Status::BadParameters);
             }
             initialized = true;
             result.status = KernelAccess::Status::Ok;

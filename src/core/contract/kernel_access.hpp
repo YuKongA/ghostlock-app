@@ -23,6 +23,8 @@
 #include <span>
 #include <string_view>
 
+#include "contract/kind.hpp"
+
 namespace ghostlock::contract {
     /** Which channel a read or write travels over. */
     enum class AccessChannel : std::uint8_t {
@@ -83,6 +85,15 @@ namespace ghostlock::contract {
             Status status = Status::Unsupported;
             Value value{};
 
+            /** A successful answer carrying its value. */
+            [[nodiscard]] static constexpr AccessResult ok(Value answer) noexcept {
+                return AccessResult{Status::Ok, answer};
+            }
+            /** A refusal carrying nothing. Why is the status. */
+            [[nodiscard]] static constexpr AccessResult failed(Status why) noexcept {
+                return AccessResult{why, Value{}};
+            }
+
             [[nodiscard]] constexpr bool ok() const noexcept { return status == Status::Ok; }
         };
 
@@ -100,6 +111,10 @@ namespace ghostlock::contract {
             Ready = 3,
             /** It was up and stopped working; the status of the last call says why. */
             Failed = 4,
+            /** It was up, and was deliberately taken down. Different from Declared, which never
+             *  came up, and from Unsupported, which never existed. A backend whose carrier is a
+             *  loaded module ends here when the module is unloaded. */
+            Closed = 5,
         };
 
         [[nodiscard]] static constexpr const char *state_name(AccessState state) noexcept {
@@ -109,6 +124,7 @@ namespace ghostlock::contract {
                 case AccessState::Initializing: return "initializing";
                 case AccessState::Ready: return "ok";
                 case AccessState::Failed: return "call-failed";
+                case AccessState::Closed: return "closed";
             }
             return "unknown";
         }
@@ -138,10 +154,12 @@ namespace ghostlock::contract {
         KernelAccess &operator=(const KernelAccess &) = delete;
         virtual ~KernelAccess() noexcept = default;
 
-        /** The factory: the instance for a named backend, or null when this build has none. It
-         *  is declared here because this is where a caller looks, and defined where the backends
-         *  are known, because this layer must not reach for them. */
-        [[nodiscard]] static std::unique_ptr<KernelAccess> create(std::string_view backend) noexcept;
+        /** The factory: the instance for a backend, or null when this build has none. The backend
+         *  is an id rather than a string, because the tokens already have an authority in the
+         *  component catalogue and an enum bound to it is how a caller names one without
+         *  inventing a spelling. Declared here and defined where the backends are known, since
+         *  this layer must not reach for them. */
+        [[nodiscard]] static std::unique_ptr<KernelAccess> create(BackendId backend) noexcept;
 
         /** Where a capability stands right now. */
         [[nodiscard]] virtual AccessState state(AccessChannel channel) const noexcept = 0;

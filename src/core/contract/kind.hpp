@@ -69,6 +69,50 @@ namespace ghostlock::contract {
         bool selectable;
     };
 
+    /** The backends, as a type. The tokens in the table below are the authority and these
+     *  are bound to them by the assertions that follow: an enum that could drift from the
+     *  catalogue would be a second answer to a question that already has one. */
+    enum class BackendId : std::uint8_t {
+        /** No backend; what an unset or unknown name resolves to. */
+        Unknown = 0,
+        Cve202643499 = 1,
+        Cve202643284 = 2,
+        Cve202664560 = 3,
+        Cve202631431 = 4,
+        Cve202643503 = 5,
+        Cve202623274 = 6,
+    };
+    inline constexpr std::size_t kBackendIdCount = 7U;
+
+    /** The token a backend id spells, or empty for Unknown. */
+    [[nodiscard]] constexpr std::string_view backend_id_token(BackendId id) noexcept {
+        switch (id) {
+            case BackendId::Unknown: return {};
+            case BackendId::Cve202643499: return "cve_2026_43499";
+            case BackendId::Cve202643284: return "cve_2026_43284";
+            case BackendId::Cve202664560: return "cve_2026_64560";
+            case BackendId::Cve202631431: return "cve_2026_31431";
+            case BackendId::Cve202643503: return "cve_2026_43503";
+            case BackendId::Cve202623274: return "cve_2026_23274";
+        }
+        return {};
+    }
+
+    /** The id a token names, or Unknown. Exact: no trimming, no case folding. */
+    [[nodiscard]] constexpr BackendId backend_id_of(std::string_view token) noexcept {
+        for (std::uint8_t i = 1U; i < static_cast<std::uint8_t>(kBackendIdCount); ++i) {
+            const auto id = static_cast<BackendId>(i);
+            const std::string_view known = backend_id_token(id);
+            if (known.size() != token.size()) { continue; }
+            bool same = true;
+            for (std::size_t c = 0U; c < known.size(); ++c) {
+                if (known[c] != token[c]) { same = false; break; }
+            }
+            if (same) { return id; }
+        }
+        return BackendId::Unknown;
+    }
+
     /** What this build offers for selection (route rows are NOT listed here:
      *  routes come from profile/route_catalog.hpp, the single authority). */
     inline constexpr ComponentEntry kComponents[] = {
@@ -86,6 +130,28 @@ namespace ghostlock::contract {
         {ComponentKind::Stepset, "pagecache", true},
     };
     inline constexpr std::size_t kComponentCount = sizeof(kComponents) / sizeof(kComponents[0]);
+
+    /** The ids are the catalogue backend rows, in order and by token. A backend added to
+     *  the table without a row here, or a token changed in one place and not the other,
+     *  stops the build. */
+    [[nodiscard]] constexpr bool backend_ids_match_the_catalogue() noexcept {
+        std::size_t seen = 0U;
+        for (std::size_t i = 0U; i < kComponentCount; ++i) {
+            if (kComponents[i].kind != ComponentKind::Backend) { continue; }
+            ++seen;
+            const auto id = static_cast<BackendId>(seen);
+            const std::string_view known = backend_id_token(id);
+            const std::string_view token = kComponents[i].token;
+            if (known.size() != token.size()) { return false; }
+            for (std::size_t c = 0U; c < known.size(); ++c) {
+                if (known[c] != token[c]) { return false; }
+            }
+        }
+        return seen + 1U == kBackendIdCount;
+    }
+    static_assert(backend_ids_match_the_catalogue(),
+                  "the backend ids no longer match the component catalogue");
+
 
     /** One wired combination: a backend and a route position (kNoRoute = the
      *  backend has no route axis, e.g. the terminal-only endgame). */
