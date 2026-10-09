@@ -62,7 +62,7 @@
 
 ### 1.7 改名影响面（初查 **143 处**命中）
 
-- 资产目录名、`index.conf` 自引用与 `profiles[].file`、Kotlin/测试里的 `profile/...` 加载字符串（`M3ByteDeltaInventoryTest`、`ProfileLayoutEquivalenceTest`、`BuiltinProfilesTest`、`BackendMatrixAgreementTest`、`StepQueueAssetMigrationTest`、`ExporterAgreementTest` 等）、Gradle 任务 `exportProfiles`、`docs/profile/**`、`docs/development/**`、`AGENTS.md`、`README(_ZH).md`、v1 夹具 `profile-legacy/`。
+- 资产目录名、`index.conf` 自引用与 `profiles[].file`、Kotlin/测试里的 `profile/...` 加载字符串（~~`M3ByteDeltaInventoryTest`~~（**该测试已随重写退役，2026-10-08 删除，见 engineering-rules 记录区**）、`ProfileLayoutEquivalenceTest`、`BuiltinProfilesTest`、`BackendMatrixAgreementTest`、`StepQueueAssetMigrationTest`、`ExporterAgreementTest` 等）、Gradle 任务 `exportProfiles`、`docs/profile/**`、`docs/development/**`、`AGENTS.md`、`README(_ZH).md`、v1 夹具 `profile-legacy/`。
 
 ## 2 逐条设计（选项 + 代价 + 建议）
 
