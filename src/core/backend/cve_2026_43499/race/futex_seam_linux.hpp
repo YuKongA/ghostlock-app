@@ -19,9 +19,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "race/pi_race.hpp"
+#include "backend/cve_2026_43499/race/pi_race.hpp"
 
-namespace ghostlock::race {
+namespace ghostlock::backend::cve_2026_43499::race {
     struct LinuxFutexSeam final {
         /** Take the lock for this thread, waiting for it if another holds it. */
         static int lock_pi(std::uint32_t *word) noexcept {
@@ -48,4 +48,4 @@ namespace ghostlock::race {
                                                target, 0));
         }
     };
-}  // namespace ghostlock::race
+}  // namespace ghostlock::backend::cve_2026_43499::race

@@ -10,15 +10,15 @@
 #include <cstdio>
 #include <string_view>
 
-#include "race/race_runtime.hpp"
+#include "backend/cve_2026_43499/race/race_runtime.hpp"
 
 namespace {
-    using ghostlock::race::attempt_outcome_name;
-    using ghostlock::race::AttemptOutcome;
-    using ghostlock::race::check_settings;
-    using ghostlock::race::RaceSettings;
-    using ghostlock::race::settings_verdict_name;
-    using ghostlock::race::SettingsVerdict;
+    using ghostlock::backend::cve_2026_43499::race::attempt_outcome_name;
+    using ghostlock::backend::cve_2026_43499::race::AttemptOutcome;
+    using ghostlock::backend::cve_2026_43499::race::check_settings;
+    using ghostlock::backend::cve_2026_43499::race::RaceSettings;
+    using ghostlock::backend::cve_2026_43499::race::settings_verdict_name;
+    using ghostlock::backend::cve_2026_43499::race::SettingsVerdict;
 
     std::size_t g_failures = 0U;
 

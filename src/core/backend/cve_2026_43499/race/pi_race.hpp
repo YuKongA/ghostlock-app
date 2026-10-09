@@ -19,9 +19,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "race/pi_window.hpp"
+#include "backend/cve_2026_43499/race/pi_window.hpp"
 
-namespace ghostlock::race {
+namespace ghostlock::backend::cve_2026_43499::race {
     /* Futex ABI constants (mechanism, not tuning): these are the kernel's own
      * operation numbers and flag values from the futex interface. They are part
      * of the protocol this layer speaks, so they belong in C++; nothing here is
@@ -146,4 +146,4 @@ namespace ghostlock::race {
         std::uint32_t *target_ = nullptr;
         RaceOutcome outcome_ = RaceOutcome::NotPrepared;
     };
-}  // namespace ghostlock::race
+}  // namespace ghostlock::backend::cve_2026_43499::race

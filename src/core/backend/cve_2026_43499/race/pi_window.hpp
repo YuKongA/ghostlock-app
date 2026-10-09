@@ -24,7 +24,7 @@
 
 #include "contract/resource_scope.hpp"
 
-namespace ghostlock::race {
+namespace ghostlock::backend::cve_2026_43499::race {
     using ExitPath = ghostlock::contract::ExitPath;
 
     /** What the window forbids; one row per prohibition, for the report and the
@@ -117,4 +117,4 @@ namespace ghostlock::race {
     static_assert(kWindowProhibitionCount == 5, "the window prohibition set is frozen at five");
     static_assert(sizeof(WindowGuard) <= 64, "the window guard stays small and allocation-free");
     static_assert(ghostlock::contract::kExitPathCount == 5, "the window has five exit paths");
-}  // namespace ghostlock::race
+}  // namespace ghostlock::backend::cve_2026_43499::race

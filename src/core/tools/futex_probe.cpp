@@ -14,7 +14,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "race/futex_seam_linux.hpp"
+#include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
 
 namespace {
     std::uint32_t g_word = 0U;
@@ -23,7 +23,7 @@ namespace {
 }  // namespace
 
 int main() {
-    using ghostlock::race::LinuxFutexSeam;
+    using ghostlock::backend::cve_2026_43499::race::LinuxFutexSeam;
     std::printf("futex probe: one round trip\n");
     std::thread second([]() {
         g_stage.store(1);

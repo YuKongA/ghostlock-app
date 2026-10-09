@@ -34,7 +34,6 @@ namespace ghostlock::contract {
         {"contract", ResourceScope::Op},
         {"support", ResourceScope::Op},
         {"memory", ResourceScope::Op},
-        {"race", ResourceScope::Op},
         {"backend", ResourceScope::Op},
         {"pipeline", ResourceScope::Window},
         {"terminal", ResourceScope::Op},
@@ -77,11 +76,14 @@ namespace ghostlock::contract {
         return count;
     }
 
-    static_assert(kLayerCount == 10, "the design family has ten layers");
+    /* Nine, corrected from ten: the race is not a layer of its own. It is 43499's
+     *  own mechanism and lives inside that backend, which is where the retired tree
+     *  kept its futex machinery too. */
+    static_assert(kLayerCount == 9, "the design family has nine layers");
     static_assert(layer_names_are_unique(), "layer names must be unique and non-empty");
     static_assert(layers_with_scope(ResourceScope::Window) == 1,
                   "exactly one layer owns window-scoped resources (pipeline)");
     static_assert(layers_with_scope(ResourceScope::Script) == 1,
                   "exactly one layer is script-scoped (script)");
-    static_assert(layers_with_scope(ResourceScope::Op) == 8, "the remaining eight layers are op-scoped");
+    static_assert(layers_with_scope(ResourceScope::Op) == 7, "the remaining seven layers are op-scoped");
 }  // namespace ghostlock::contract

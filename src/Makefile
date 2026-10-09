@@ -51,9 +51,9 @@ LAYER_HEADERS := \
   core/support/neutrals.hpp \
   core/memory/layer.hpp \
   core/memory/target_profile.hpp \
-  core/race/layer.hpp \
-  core/race/pi_window.hpp \
-  core/race/pi_race.hpp \
+  core/backend/cve_2026_43499/race/layer.hpp \
+  core/backend/cve_2026_43499/race/pi_window.hpp \
+  core/backend/cve_2026_43499/race/pi_race.hpp \
   core/backend/layer.hpp \
   core/pipeline/layer.hpp \
   core/pipeline/attack_window.hpp \
@@ -84,7 +84,7 @@ LAYER_HEADERS := \
   core/tests/payload-manifest.pin.tsv \
   core/contract/step_catalog.hpp \
   core/tests/step_catalog_test.cpp \
-  core/race/futex_seam_linux.hpp \
+  core/backend/cve_2026_43499/race/futex_seam_linux.hpp \
   core/tools/futex_probe.cpp \
   core/tools/requeue_probe.cpp \
   core/memory/write_request.hpp \
@@ -98,7 +98,7 @@ LAYER_HEADERS := \
   core/memory/credential_image.hpp \
   core/memory/credential_image.cpp \
   core/tests/credential_image_test.cpp \
-  core/race/race_runtime.hpp \
+  core/backend/cve_2026_43499/race/race_runtime.hpp \
   core/tests/race_runtime_test.cpp \
   core/contract/kmi_catalog.hpp \
   core/contract/kmi_catalog.cpp \
@@ -189,13 +189,13 @@ futex-probe: $(FUTEX_PROBE)
 REQUEUE_PROBE := ../build/native/requeue_probe
 requeue-probe: $(REQUEUE_PROBE)
 
-$(REQUEUE_PROBE): core/tools/requeue_probe.cpp core/race/futex_seam_linux.hpp | $(BUILD_DIR)
+$(REQUEUE_PROBE): core/tools/requeue_probe.cpp core/backend/cve_2026_43499/race/futex_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
 	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore -pthread $< -o $@
 	@echo "requeue-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
-$(FUTEX_PROBE): core/tools/futex_probe.cpp core/race/futex_seam_linux.hpp \
-  core/race/pi_race.hpp | $(BUILD_DIR)
+$(FUTEX_PROBE): core/tools/futex_probe.cpp core/backend/cve_2026_43499/race/futex_seam_linux.hpp \
+  core/backend/cve_2026_43499/race/pi_race.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
 	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore -pthread $< -o $@
 	@echo "futex-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
@@ -217,7 +217,7 @@ $(BUILD_DIR)/window_exit_paths_test: core/pipeline/tests/window_exit_paths_test.
 $(BUILD_DIR)/plan_gate_test: core/pipeline/tests/plan_gate_test.cpp core/pipeline/plan_gate.hpp core/contract/op_registry.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/pipeline/tests/plan_gate_test.cpp -o $@
 
-$(BUILD_DIR)/a2_test: core/tests/a2_test.cpp core/race/pi_window.hpp core/race/pi_race.hpp core/memory/target_profile.hpp core/support/neutrals.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/a2_test: core/tests/a2_test.cpp core/backend/cve_2026_43499/race/pi_window.hpp core/backend/cve_2026_43499/race/pi_race.hpp core/memory/target_profile.hpp core/support/neutrals.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/a2_test.cpp -o $@
 
 $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surface.hpp core/contract/layer_scope.hpp | $(BUILD_DIR)
@@ -305,7 +305,7 @@ $(BUILD_DIR)/kmi_catalog_test: core/tests/kmi_catalog_test.cpp \
 KMI_MANIFEST := ../profile-core/src/main/resources/lkm-kmi-manifest.tsv
 
 $(BUILD_DIR)/race_runtime_test: core/tests/race_runtime_test.cpp \
-  core/race/race_runtime.hpp core/memory/target_profile.hpp | $(BUILD_DIR)
+  core/backend/cve_2026_43499/race/race_runtime.hpp core/memory/target_profile.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/race_runtime_test.cpp -o $@
 
 $(BUILD_DIR)/credential_image_test: core/tests/credential_image_test.cpp \
@@ -490,7 +490,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
 	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
 	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
-	@code=$$(sed -e 's://.*::' core/race/pi_window.hpp core/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
+	@code=$$(sed -e 's://.*::' core/backend/cve_2026_43499/race/pi_window.hpp core/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
 	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual' || true); \
 	if [ "$$dirty" -ne 0 ]; then echo "WINDOW-DIRTY: $$dirty"; echo "$$code" | grep -nE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual'; exit 1; fi; \
 	echo "check: race window carries no allocation, logging or indirect dispatch"

@@ -15,7 +15,7 @@
 
 #include "memory/target_profile.hpp"
 
-namespace ghostlock::race {
+namespace ghostlock::backend::cve_2026_43499::race {
     /** What the profile says about one attempt. */
     struct RaceSettings final {
         /** The processors the profile names for the two sides, or -1 to leave
@@ -78,4 +78,4 @@ namespace ghostlock::race {
         }
         return "unknown";
     }
-}  // namespace ghostlock::race
+}  // namespace ghostlock::backend::cve_2026_43499::race

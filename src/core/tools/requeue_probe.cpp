@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "race/futex_seam_linux.hpp"
+#include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
 
 namespace {
     /** The kernel's own bit for "a waiter is queued on this word". */
@@ -33,7 +33,7 @@ namespace {
 }  // namespace
 
 int main() {
-    using ghostlock::race::LinuxFutexSeam;
+    using ghostlock::backend::cve_2026_43499::race::LinuxFutexSeam;
     std::printf("requeue probe: one handoff\n");
     std::thread waiter([]() {
         g_stage.store(1);

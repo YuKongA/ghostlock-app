@@ -12,8 +12,8 @@
 #include <string_view>
 
 #include "memory/target_profile.hpp"
-#include "race/pi_race.hpp"
-#include "race/pi_window.hpp"
+#include "backend/cve_2026_43499/race/pi_race.hpp"
+#include "backend/cve_2026_43499/race/pi_window.hpp"
 #include "support/neutrals.hpp"
 
 namespace {
@@ -33,9 +33,9 @@ namespace {
     using ghostlock::memory::ProfileRejection;
     using ghostlock::memory::profile_rejection_name;
     using ghostlock::memory::read_key;
-    using ghostlock::race::PiRace;
-    using ghostlock::race::RaceOutcome;
-    using ghostlock::race::WindowGuard;
+    using ghostlock::backend::cve_2026_43499::race::PiRace;
+    using ghostlock::backend::cve_2026_43499::race::RaceOutcome;
+    using ghostlock::backend::cve_2026_43499::race::WindowGuard;
 
     /* 1. every exit path reclaims exactly once. */
     void exit_paths() {
@@ -81,7 +81,7 @@ namespace {
         expect(!guard.clean_run(), "any reported violation must make the window dirty");
         expect(guard.violations().total() == 4, "all four violation kinds are counted");
         std::printf("prohibitions: %zu rows, violations counted=%u\n",
-                    ghostlock::race::kWindowProhibitionCount, guard.violations().total());
+                    ghostlock::backend::cve_2026_43499::race::kWindowProhibitionCount, guard.violations().total());
     }
 
     /* 3. the profile read path: named failures, never a default. */

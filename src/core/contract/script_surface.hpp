@@ -307,7 +307,7 @@ namespace ghostlock::contract {
          "backend", SurfacePhase::Window, true, true, true, false},
         {"copyop", SurfaceForm::HandleMethod, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend",
          SurfacePhase::Window, true, true, true, false},
-        {"settle", SurfaceForm::HandleMethod, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "race",
+        {"settle", SurfaceForm::HandleMethod, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "backend",
          SurfacePhase::Window, true, true, true, false},
         {"handoff", SurfaceForm::HandleMethod, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]),
          "terminal", SurfacePhase::Terminal, true, true, false, true},
