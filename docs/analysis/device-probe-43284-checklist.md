@@ -75,3 +75,16 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 3. 传递 —— 架子完备（plan_gate，十二种以上具名理由，含 executor_available）.
 4. 真缺件：发现与输入的发生者。memory 一族（write_layout · write_encoder · credential_image）与 leak 一族（snitch_run · leak_search · discovery_result）在树里且各有测试，但 write_layout 的调用点只有测试、LayoutInputs 只有一个测试构造点，四个地址（page_value · credential_value · default_fops · credential_fops）没有任何生产构造点。库在，驱动不在。
 5. 入口驱动，临时件，清理已登记于 checklist.
+
+## 清理表（补：临时入口的两个开发输入）
+
+与上一节同一个临时入口（`pipeline/run_pipeline_temp.{hpp,cpp}`）同批登记，两项**开发输入**：
+
+| 临时物 | 位置 | 删除条件 |
+| --- | --- | --- |
+| 开发载体路径 `kDevCarrier` | `core/src/pipeline/run_pipeline_temp.cpp`（一处常量） | 与入口同批删；正式路径里载体由选择/资源给定，见 `AccessCarrier` |
+| 开发 payload 路径（若尾步骤用到） | 同上 | 同上 |
+
+**核验**：删后 `grep -rn 'run_pipeline_temp\|kDevCarrier' core/src core/Makefile` 为 0 命中；`make -C core host && make -C core check` 为 0。
+
+**为何允许**：`--allow-dev-target` 的注释写的就是这个用途（只放宽绑定期 carrier 校验），所以这两个输入走的是既有门，不是新旁路。
