@@ -127,8 +127,6 @@ LAYER_HEADERS := \
   core/tests/multicast_arm_test.cpp \
   core/contract/chain_catalog.hpp \
   core/tests/chain_catalog_test.cpp \
-  core/profile/queue_keys.hpp \
-  core/tests/step_queue_test.cpp \
   core/profile/run_plan.hpp \
   core/profile/run_plan.cpp \
   core/tests/run_plan_test.cpp \
@@ -143,8 +141,8 @@ LAYER_HEADERS := \
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
-  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/race_runtime_test.cpp core/tests/kmi_catalog_test.cpp core/tests/device_facts_test.cpp core/tests/module_facts_test.cpp core/tests/staged_plan_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/step_queue_test.cpp core/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/step_queue_test $(BUILD_DIR)/run_plan_test
+  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/race_runtime_test.cpp core/tests/kmi_catalog_test.cpp core/tests/device_facts_test.cpp core/tests/module_facts_test.cpp core/tests/staged_plan_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/run_plan_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -229,7 +227,7 @@ $(BUILD_DIR)/run_plan_test: core/tests/run_plan_test.cpp \
   core/profile/run_plan.hpp core/profile/run_plan.cpp \
   core/profile/glkv3_document.hpp core/profile/glkv3_document.cpp \
   core/profile/payload_keys.hpp core/profile/payload_keys.cpp \
-  core/profile/queue_keys.hpp core/contract/chain_catalog.hpp \
+  core/contract/chain_catalog.hpp \
   core/contract/step_catalog.hpp core/support/sha256.hpp core/support/sha256.cpp \
   ../profile-core/src/test/resources/device-document-fixture.hex $(BUILD_DIR)/mpack.o \
   | $(BUILD_DIR)
@@ -242,13 +240,6 @@ $(BUILD_DIR)/plan_delivery_test: core/tests/plan_delivery_test.cpp \
   core/contract/script_surface.hpp core/support/sha256.hpp core/support/sha256.cpp \
   $(BUILD_DIR)/mpack.o | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/plan_delivery_test.cpp core/profile/plan_delivery.cpp core/profile/glkv3_document.cpp core/profile/payload_keys.cpp core/support/sha256.cpp $(BUILD_DIR)/mpack.o -o $@
-
-$(BUILD_DIR)/step_queue_test: core/tests/step_queue_test.cpp \
-  core/profile/glkv3_document.hpp core/profile/glkv3_document.cpp \
-  core/profile/payload_keys.hpp core/profile/payload_keys.cpp \
-  core/profile/queue_keys.hpp core/contract/step_catalog.hpp \
-  core/support/sha256.hpp core/support/sha256.cpp $(BUILD_DIR)/mpack.o | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/step_queue_test.cpp core/profile/glkv3_document.cpp core/profile/payload_keys.cpp core/support/sha256.cpp $(BUILD_DIR)/mpack.o -o $@
 
 $(BUILD_DIR)/chain_catalog_test: core/tests/chain_catalog_test.cpp \
   core/contract/chain_catalog.hpp core/contract/step_catalog.hpp \
@@ -480,8 +471,6 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/multicast_arm_test
 	@echo "check: chain catalogue (selections resolve to a wired chain)"
 	@$(BUILD_DIR)/chain_catalog_test
-	@echo "check: step queue (a backend's selected steps, in order)"
-	@$(BUILD_DIR)/step_queue_test
 	@echo "check: run plan (a document resolves to a chain and its steps)"
 	@$(BUILD_DIR)/run_plan_test
 	@$(MAKE) --no-print-directory plan-check

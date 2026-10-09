@@ -19,7 +19,6 @@
 
 #include "contract/step_catalog.hpp"
 #include "mpack.h"
-#include "profile/queue_keys.hpp"
 
 namespace ghostlock::profile {
     /** The one schema value this build reads (the tree keeps a single version). */
@@ -100,46 +99,11 @@ namespace ghostlock::profile {
                                                 ScalarKind &kind,
                                                 std::uint64_t &out) const noexcept;
 
-        /** Why a step queue could not be read. Names follow the single table. */
-        enum class QueueVerdict : unsigned char {
-            Ok = 0,
-            /** The document is not one this build reads. */
-            DocumentInvalid = 1,
-            /** The section, the queue, or an entry's step key is absent or shaped
-             *  wrongly: without a queue there is no plan to carry out. */
-            QueueMissing = 2,
-            /** A step token the catalogue does not declare. */
-            StepUnknown = 3,
-            /** The caller's array cannot hold the queue. */
-            TooManySteps = 4,
-        };
-
-        [[nodiscard]] static constexpr const char *queue_verdict_name(QueueVerdict verdict) noexcept {
-            switch (verdict) {
-                case QueueVerdict::Ok: return "ok";
-                case QueueVerdict::DocumentInvalid: return "document-invalid";
-                case QueueVerdict::QueueMissing: return "plan-missing";
-                case QueueVerdict::StepUnknown: return "unknown-op";
-                case QueueVerdict::TooManySteps: return "budget-exceeded";
-            }
-            return "unknown";
-        }
-
-        /** The outcome: how many steps are usable, and which token failed. On any
-         *  refusal count is zero, so a half-read queue can never be run. */
-        struct StepQueueResult final {
-            QueueVerdict verdict = QueueVerdict::DocumentInvalid;
-            std::size_t count = 0U;
-            /** The token that failed, copied: a wire string carries no terminator,
-             *  so handing the caller a pointer into the document would give it a
-             *  text it cannot measure. Empty when no token failed. */
-            char bad_step[32] = {};
-        };
-
-        /** Read the step queue of a backend section: an array of entries, each
-         *  naming one step by the token the catalogue declares. */
-        [[nodiscard]] StepQueueResult step_queue(std::string_view segment, contract::StepId *out,
-                                                 std::size_t capacity) const noexcept;
+        /** True when a segment exists and carries this key. This is the whole of what
+         *  the retired step queue needs: the reader that used to parse one is gone,
+         *  because a document carrying a queue is refused rather than read, and the
+         *  only question left is whether the key is there at all. */
+        [[nodiscard]] bool segment_has_key(std::string_view segment, std::string_view key) const noexcept;
 
         /** Read one root text key (the selection tokens live at the root, beside
          *  the schema, not inside a section). The text is copied: a wire string

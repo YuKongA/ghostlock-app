@@ -7,6 +7,11 @@ namespace ghostlock::profile {
     namespace {
         constexpr std::size_t kTokenCapacity = 32U;
 
+        /** The retired key: what a document must not carry any more. Spelled here,
+         *  once, because the reader that used to parse it is gone and this is the only
+         *  place left that has to know its name. */
+        constexpr const char *kRetiredQueueKey = "queue";
+
         /** The segment a backend's keys live under. */
         bool backend_section(char *out, std::size_t capacity, std::string_view backend) noexcept {
             if (out == nullptr || capacity == 0U || backend.empty()) {
@@ -52,9 +57,7 @@ namespace ghostlock::profile {
                 result.verdict = RunPlanVerdict::DocumentInvalid;
                 return result;
             }
-            contract::StepId ignored[kMaxRunSteps] = {};
-            if (document.step_queue(std::string_view(section), ignored, kMaxRunSteps).verdict !=
-                Document::QueueVerdict::QueueMissing) {
+            if (document.segment_has_key(std::string_view(section), std::string_view(kRetiredQueueKey))) {
                 result.verdict = RunPlanVerdict::QueueRemoved;
                 return result;
             }

@@ -185,85 +185,31 @@ namespace ghostlock::profile {
         return DocumentVerdict::Missing;
     }
 
-    Document::StepQueueResult Document::step_queue(std::string_view segment, contract::StepId *out,
-                                                   std::size_t capacity) const noexcept {
-        StepQueueResult result{};
-        if (out == nullptr || capacity == 0U) {
-            result.verdict = QueueVerdict::TooManySteps;
-            return result;
-        }
-        if (!open_ || segment.empty()) {
-            result.verdict = QueueVerdict::DocumentInvalid;
-            return result;
+    bool Document::segment_has_key(std::string_view segment, std::string_view key) const noexcept {
+        if (!open_ || segment.empty() || key.empty()) {
+            return false;
         }
         char segment_text[192];
-        if (!copy_bounded(segment_text, sizeof(segment_text), segment)) {
-            result.verdict = QueueVerdict::QueueMissing;
-            return result;
+        char key_text[64];
+        if (!copy_bounded(segment_text, sizeof(segment_text), segment) ||
+            !copy_bounded(key_text, sizeof(key_text), key)) {
+            return false;
         }
         /* Resolved from the root for this read, as everywhere else on this path. */
         mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
         const mpack_node_t sections =
             mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
         if (!is_map(sections)) {
-            result.verdict = QueueVerdict::QueueMissing;
-            return result;
+            return false;
         }
         const mpack_node_t section = mpack_node_map_cstr_optional(sections, segment_text);
         if (!is_map(section)) {
-            result.verdict = QueueVerdict::QueueMissing;
-            return result;
+            return false;
         }
-        const mpack_node_t queue = mpack_node_map_cstr_optional(section, kQueueKey);
-        if (mpack_node_type(queue) != mpack_type_array) {
-            result.verdict = QueueVerdict::QueueMissing;
-            return result;
-        }
-        const std::size_t length = mpack_node_array_length(queue);
-        if (length == 0U) {
-            result.verdict = QueueVerdict::QueueMissing;
-            return result;
-        }
-        if (length > capacity) {
-            result.verdict = QueueVerdict::TooManySteps;
-            return result;
-        }
-        /* Every entry is read before any of them is handed over. */
-        for (std::size_t i = 0U; i < length; ++i) {
-            const mpack_node_t entry = mpack_node_array_at(queue, i);
-            if (mpack_node_type(entry) != mpack_type_map) {
-                result.verdict = QueueVerdict::QueueMissing;
-                return result;
-            }
-            const mpack_node_t step = mpack_node_map_cstr_optional(entry, kQueueStepKey);
-            if (mpack_node_type(step) != mpack_type_str) {
-                result.verdict = QueueVerdict::QueueMissing;
-                return result;
-            }
-            const char *token = mpack_node_str(step);
-            const std::size_t token_length = mpack_node_strlen(step);
-            if (token == nullptr) {
-                result.verdict = QueueVerdict::QueueMissing;
-                return result;
-            }
-            const contract::StepId id = contract::step_from_token(std::string_view(token, token_length));
-            if (id == contract::StepId::Unknown) {
-                if (token_length + 1U > sizeof(result.bad_step)) {
-                    result.verdict = QueueVerdict::QueueMissing;
-                    return result;
-                }
-                for (std::size_t c = 0U; c < token_length; ++c) {
-                    result.bad_step[c] = token[c];
-                }
-                result.bad_step[token_length] = '\0';
-                result.verdict = QueueVerdict::StepUnknown;
-                return result;
-            }
-            out[i] = id;
-        }
-        result.verdict = QueueVerdict::Ok;
-        result.count = length;
-        return result;
+        /* Presence, not shape: the caller is asking whether a retired key is there at
+         *  all, and what it holds is the retired reader's business, not this one's. */
+        const mpack_node_t value = mpack_node_map_cstr_optional(section, key_text);
+        return mpack_node_type(value) != mpack_type_nil;
     }
 
     DocumentVerdict Document::payload(std::string_view backend, std::string_view name,
