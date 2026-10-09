@@ -29,9 +29,20 @@
 namespace ghostlock::backend::cve_2026_43499 {
     /** The record type the kernel writes for a sample: mechanism, from the perf ABI. */
     inline constexpr std::uint32_t kPerfRecordSample = 9U;
-    /** The record header: a type word followed by a size word. */
+    /** The record header: a 32-bit type, a 16-bit misc, then a 16-bit size. The size is the
+     *  narrow field at offset six, which a reader that took it as a second 32-bit word would
+     *  read half of the misc and half of itself -- found on a device, where the harness could
+     *  not find it because the harness wrote the same wrong header. */
     inline constexpr std::size_t kPerfRecordHeader = 8U;
-    /** The instruction pointer that follows the header, which the reader steps over. */
+    inline constexpr std::size_t kPerfRecordSizeOffset = 6U;
+    /** The instruction pointer that follows the header, which the reader steps over.
+     *
+     *  THIS READER ASSUMES THE SAMPLE TYPE INCLUDES THE IP. A device run showed why that
+     *  matters: with only the register sample requested, a sample is a header and one ABI word
+     *  and nothing else, and a reader that steps over an IP that is not there reads the wrong
+     *  eight bytes and finds no registers in a record full of them. The retired path asked for
+     *  the IP and so does this one; a caller that changes the sample type has to change this
+     *  step with it. */
     inline constexpr std::size_t kPerfSampleIp = 8U;
     /** How far past the instruction pointer the ABI word sits. Mechanism, from the same ABI. */
     inline constexpr std::size_t kPerfSampleAbi = 8U;
@@ -72,11 +83,12 @@ namespace ghostlock::backend::cve_2026_43499 {
             const std::size_t at = static_cast<std::size_t>(pos % ring.data_size);
             /* A record header is two 32-bit words: the type, then the size. */
             std::uint32_t type = 0U;
-            std::uint32_t size = 0U;
             for (std::size_t i = 0U; i < 4U; ++i) {
                 type |= static_cast<std::uint32_t>(ring.buffer[at + i]) << (8U * i);
-                size |= static_cast<std::uint32_t>(ring.buffer[at + 4U + i]) << (8U * i);
             }
+            const std::uint32_t size =
+                static_cast<std::uint32_t>(ring.buffer[at + kPerfRecordSizeOffset]) |
+                (static_cast<std::uint32_t>(ring.buffer[at + kPerfRecordSizeOffset + 1U]) << 8U);
             if (size == 0U) {
                 outcome.stopped_early = true;
                 break;

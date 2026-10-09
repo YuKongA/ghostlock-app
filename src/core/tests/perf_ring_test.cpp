@@ -40,6 +40,12 @@ namespace {
         }
     }
 
+    void put_word16(std::size_t at, std::uint16_t value) {
+        for (std::size_t i = 0U; i < 2U; ++i) {
+            g_ring[at + i] = static_cast<unsigned char>((value >> (8U * i)) & 0xffU);
+        }
+    }
+
     void put_word64(std::size_t at, std::uint64_t value) {
         for (std::size_t i = 0U; i < 8U; ++i) {
             g_ring[at + i] = static_cast<unsigned char>((value >> (8U * i)) & 0xffU);
@@ -60,7 +66,7 @@ namespace {
         put_word64(values_at + 8U, second);
         const std::uint32_t size = static_cast<std::uint32_t>((values_at + (8U * 32U)) - at);
         put_word32(at, kPerfRecordSample);
-        put_word32(at + 4U, size);
+        put_word16(at + 6U, static_cast<std::uint16_t>(size)); /* the size is the narrow field */
         return size;
     }
 
@@ -70,7 +76,7 @@ namespace {
         at += write_sample(at, 1U, 0xf0ff800000100000ULL, 0xf0ff800000100000ULL);
         /* Another type: not a sample, so nothing is read from it. */
         put_word32(at, 1U);
-        put_word32(at + 4U, 16U);
+        put_word16(at + 6U, 16U);
         at += 16U;
         at += write_sample(at, 3U, 0xf0ff800000300000ULL, 0xf0ff800000300000ULL); /* wrong abi */
         at += write_sample(at, kPerfAbiTwo, 0xf0ff800000100000ULL, 0xf0ff800000200000ULL);
@@ -96,7 +102,7 @@ namespace {
         at += write_sample(at, 1U, 0xf0ff800000100000ULL, 0xf0ff800000100000ULL);
         const std::size_t before_zero = at;
         put_word32(at, kPerfRecordSample);
-        put_word32(at + 4U, 0U); /* the writer has not finished this one */
+        put_word16(at + 6U, 0U); /* the writer has not finished this one */
         at += 24U;
         at += write_sample(at, 1U, 0xf0ff800000400000ULL, 0xf0ff800000400000ULL);
         std::uint64_t out[64] = {};
