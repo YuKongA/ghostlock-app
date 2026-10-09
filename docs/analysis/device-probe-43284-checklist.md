@@ -83,20 +83,21 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 | 临时物 | 位置 | 删除条件 |
 | --- | --- | --- |
 | 开发载体路径 `kDevCarrier` | `core/src/pipeline/run_pipeline_temp.cpp`（一处常量） | 与入口同批删；正式路径里载体由选择/资源给定，见 `AccessCarrier` |
-| 开发 payload 路径（若尾步骤用到） | 同上 | 同上 |
+| 开发 payload 路径 | run_pipeline_temp.cpp | 同批删 |
 
 **核验**：删后 `grep -rn 'run_pipeline_temp\|kDevCarrier' core/src core/Makefile` 为 0 命中；`make -C core host && make -C core check` 为 0。
 
 **为何允许**：`--allow-dev-target` 的注释写的就是这个用途（只放宽绑定期 carrier 校验），所以这两个输入走的是既有门，不是新旁路。
 
-| 开发布局偏移 `kDevLockOffset` 等五个常量 | `core/src/pipeline/run_pipeline_temp.cpp`（一处声明） | 与入口同批删；正式路径按 manifest 从 `backend.cve_2026_43499.abi.payload` 段读 |
+| 五个载荷偏移 | run_pipeline_temp.cpp | 同批删；正式按 manifest 从 abi.payload 段读 |
 
 **为何不是回退**：目标 profile 文件明文禁止 no default fallback，所以这五个数不是「缺键时补一个」，而是**声明式临时源**；入口在用它之前会打印一行说明它不来自文档。
 
 **真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
 **真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
 **构建**：须覆盖 NDK_TOOLCHAIN 到 NDK 30（原因与命令见门禁归档）。
-| 桩桶 | run_pipeline_temp.cpp | 同批删；正式用真实规则 |
-| 表尺寸钉值 | run_pipeline_temp.cpp | 同批删；正式按 profile 与核数 |
+| 桩桶 | run_pipeline_temp.cpp | 同批删 |
+| 表尺寸钉值 | run_pipeline_temp.cpp | 同批删 |
 
-| 声明值：三偏移（0x108/0xB8/0x2C）与两着陆地址（0x700/0x58） | run_pipeline_temp.cpp | 与入口同批删；正式路径按 profile |
+| 三偏移与两着陆地址 | run_pipeline_temp.cpp | 同批删；正式按 profile |
+| payload 路径 | run_pipeline_temp.cpp | 同批删；正式取自选择 |

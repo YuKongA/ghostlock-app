@@ -198,3 +198,39 @@ Parks here until the owner requeues it onto the target word。
 且真的有人在其上等待——这正是该原语的前提，也是 profile 里那三个偏移最终必须变成真地址的原因。
 
 **因此**：桩接缝上那一次 `steps ok=1` 是空的，不能算作落笔证据；真接缝下才是判据。
+
+## 续（2026-10-09）：单线程三连 vs 探针的两线程握手
+
+`PiRace::run` 的全文是三步，且都在**同一个线程**里：
+
+    pi_race.hpp:113  Seam::lock_pi(target_)          本线程持有 target
+    pi_race.hpp:117  Seam::wait_requeue_pi(chain, target)  本线程停在 chain 上要求 requeue 到 target
+    pi_race.hpp:121  Seam::cmp_requeue_pi(chain, target)   本线程驱动 requeue
+
+内核对「已持有 target 的线程再对其 WAIT_REQUEUE_PI」是拒绝的，所以设备那句 refused 是原语给的
+诚实回答，不是接线错误。探针 `requeue_probe.cpp` 之所以能通，是因为它把等待者放在**另一个线程**，
+注释写着 Parks here until the owner requeues it onto the target word。
+
+结论：要让真接缝下的竞态成立，角色必须拆开——一侧停在 chain 上等待 requeue，另一侧持有 target 并驱动。
+单线程三连跑不出成功，这一点由设备与内核语义双向确认。
+
+## 续（2026-10-09）：握手在真机上成立，以及那两道墙
+
+把目标字从内核地址改成进程本地字之后，设备给出：
+
+    run-temp: handshake owned=0 requeued=1 released=0 waiter=0 gave_back=0
+    run-temp: handshake ok (a count of one is a waiter that was really there)
+
+`requeued=1` 是内核说真有一个等待者被搬走了，即 PI-futex 的 lock -> park -> requeue -> handoff
+全链在本进程内成立。这用的是 requeue_probe 的握手：owner 先 lock target，waiter 另起线程停在 chain 上
+要求 requeue 到 target，owner 用 cmp_requeue_pi 驱动并 unlock 把锁递出，得到它的线程负责释放。
+
+两道墙，都已由设备证明：
+
+1. 单线程三连不行。PiRace::run 在同一个线程里 lock_pi、wait_requeue_pi、cmp_requeue_pi，
+   而内核对已持有 target 的线程再对其 WAIT_REQUEUE_PI 是拒绝的。
+2. 内核地址不行。目标立刻用 step_targets 里的 selinux 地址时，四个调用全返回 -1：
+   用户进程不能对内核地址做 FUTEX_LOCK_PI。
+
+因此 `steps ... race=refused` 有两重原因，都已定位。要真落笔，还需内核侧的参与者与内核侧的字；
+本地字只能证明机制本身。

@@ -47,7 +47,8 @@ RUNTIME_SRCS := src/main.cpp src/contract/kmi_catalog.cpp src/contract/contract.
   src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp \
   src/backend/cve_2026_43284/ipsec/aes256.cpp \
   src/backend/cve_2026_43499/abi.cpp \
-  src/support/hmac_sha256.cpp
+  src/support/hmac_sha256.cpp \
+  src/terminal/execution.cpp
 
 SKELETON_SRCS := src/main.cpp
 LAYER_HEADERS := \
