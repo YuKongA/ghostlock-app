@@ -10,10 +10,14 @@
  *  shape for what exists today is this: a search, an answer, and no claim about the other
  *  three.
  *
- *  This is deliberately NOT an implementation of the four-field contract. Dressing one found
- *  address as a discovery would make an incomplete result pass for a complete one, which is
- *  the failure that contract exists to prevent. When the other three have rules of their own,
- *  the four together will implement it.
+ *  This is not itself the contract's discovery, and it does not need to be: the contract keeps
+ *  two questions apart -- whether the mechanism worked, and whether all four addresses are known
+ *  -- and reports the first while answering no to the second. The retired tree did exactly that,
+ *  with the mm_struct alone and ok set, and its device gate shows the step that consumed it was
+ *  satisfied. The mapping from here to that result lives in discovery_result.hpp. An earlier
+ *  version of this comment claimed the contract demanded all four and that reporting less would
+ *  pass an incomplete result for a complete one; that was a misreading of the contract, and it
+ *  kept this piece unwritten for longer than it should have.
  */
 #include <cstddef>
 #include <cstdint>
