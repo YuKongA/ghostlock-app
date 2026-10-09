@@ -111,6 +111,50 @@ namespace ghostlock::profile {
         return DocumentVerdict::Ok;
     }
 
+    DocumentVerdict Document::value_key(std::string_view segment, std::string_view key,
+                                        ScalarKind &kind, std::uint64_t &out) const noexcept {
+        kind = ScalarKind::Uint;
+        out = 0U;
+        if (!open_ || segment.empty() || key.empty()) {
+            return DocumentVerdict::Invalid;
+        }
+        char segment_text[192];
+        char key_text[96];
+        if (!copy_bounded(segment_text, sizeof(segment_text), segment) ||
+            !copy_bounded(key_text, sizeof(key_text), key)) {
+            return DocumentVerdict::Missing;
+        }
+        /* Resolved from the root on every call: see uint_key. */
+        mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
+        const mpack_node_t sections =
+            mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
+        if (!is_map(sections)) {
+            return DocumentVerdict::Missing;
+        }
+        const mpack_node_t node = mpack_node_map_cstr_optional(sections, segment_text);
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        const mpack_node_t value = mpack_node_map_cstr_optional(node, key_text);
+        const mpack_type_t type = mpack_node_type(value);
+        if (type == mpack_type_uint) {
+            kind = ScalarKind::Uint;
+            out = mpack_node_u64(value);
+            return DocumentVerdict::Ok;
+        }
+        if (type == mpack_type_int) {
+            kind = ScalarKind::Int;
+            out = static_cast<std::uint64_t>(mpack_node_i64(value));
+            return DocumentVerdict::Ok;
+        }
+        if (type == mpack_type_bool) {
+            kind = ScalarKind::Bool;
+            out = mpack_node_bool(value) ? 1U : 0U;
+            return DocumentVerdict::Ok;
+        }
+        return DocumentVerdict::Missing;
+    }
+
     DocumentVerdict Document::payload(std::string_view backend, std::string_view name,
                                       PayloadEntry &out) const noexcept {
         out = PayloadEntry{};

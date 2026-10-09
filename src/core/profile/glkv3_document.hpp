@@ -81,6 +81,23 @@ namespace ghostlock::profile {
         [[nodiscard]] DocumentVerdict uint_key(std::string_view segment, std::string_view key,
                                                std::uint64_t &out) const noexcept;
 
+        /** What a scalar key carried when it was read. The caller knows which kind
+         *  it declared, so the kind is reported rather than judged here: a key that
+         *  is there but of the wrong kind must be distinguishable from one that is
+         *  not there at all. */
+        enum class ScalarKind : unsigned char {
+            Uint = 0,
+            Int = 1,
+            Bool = 2,
+        };
+
+        /** Read one scalar key, reporting its kind: an integer is sign-extended
+         *  into the value, a boolean becomes zero or one. Strings, binary, floats
+         *  and absent keys are the same refusal. */
+        [[nodiscard]] DocumentVerdict value_key(std::string_view segment, std::string_view key,
+                                                ScalarKind &kind,
+                                                std::uint64_t &out) const noexcept;
+
         /** Release the parse; a further read is a missing document. */
         void reset() noexcept;
 
