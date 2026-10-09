@@ -43,6 +43,7 @@ namespace ghostlock::script {
         bool boolean = false;
         std::uint32_t str_offset = 0U;
         std::uint32_t str_length = 0U;
+        Handle handle{};
     };
 
     /** One recorded call. The op axis is not mirrored here: op entries are the
@@ -92,6 +93,8 @@ namespace ghostlock::script {
                     arena_used_ += arg.str.size();
                 } else if (arg.kind == ArgKind::Bool) {
                     slot.boolean = arg.boolean;
+                } else if (arg.kind == ArgKind::Handle) {
+                    slot.handle = arg.handle;
                 } else {
                     slot.u64 = arg.u64;
                 }
@@ -159,6 +162,12 @@ namespace ghostlock::script {
                         }
                     } else if (arg.kind == ArgKind::Bool) {
                         if (!put(out, capacity, used, arg.boolean ? 1U : 0U)) {
+                            return 0U;
+                        }
+                    } else if (arg.kind == ArgKind::Handle) {
+                        if (!put_u64(out, capacity, used, arg.handle.kind) ||
+                            !put_u64(out, capacity, used, arg.handle.slot) ||
+                            !put_u64(out, capacity, used, arg.handle.generation)) {
                             return 0U;
                         }
                     } else if (!put_u64(out, capacity, used, arg.u64)) {

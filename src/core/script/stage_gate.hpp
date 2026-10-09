@@ -41,7 +41,11 @@ namespace ghostlock::script {
                 verdict.index = i;
                 return verdict;
             }
-            if (entry.arg_count > contract::kSurface[entry.surface_index].arg_count) {
+            /* Rows that declare no arguments are free-form by design (the
+             * acquiring row carries a backend id the table does not spell), so
+             * only rows with a declared list are checked against it. */
+            const std::size_t declared = contract::kSurface[entry.surface_index].arg_count;
+            if (declared > 0U && entry.arg_count > declared) {
                 verdict.ok = false;
                 verdict.reason = "param-invalid";
                 verdict.index = i;

@@ -59,6 +59,8 @@ namespace ghostlock::script {
         PlanSyntax = 3,
         CfgReadOnly = 4,
         CfgUnknownField = 5,
+        HandleStale = 6,
+        HandleConflict = 7,
     };
 
     [[nodiscard]] const char *script_rejection_name(ScriptRejection rejection) noexcept;

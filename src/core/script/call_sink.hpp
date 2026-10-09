@@ -19,6 +19,7 @@
 #include <string_view>
 
 #include "contract/script_surface.hpp"
+#include "script/handle_table.hpp"
 
 namespace ghostlock::script {
     /** Type tag of one forwarded argument. */
@@ -26,6 +27,8 @@ namespace ghostlock::script {
         U64 = 0,
         Str = 1,
         Bool = 2,
+        /** A typed handle: the script passes it back, never interprets it. */
+        Handle = 3,
     };
 
     /** Read-only view of one forwarded argument. */
@@ -34,6 +37,7 @@ namespace ghostlock::script {
         std::uint64_t u64 = 0;
         std::string_view str{};
         bool boolean = false;
+        Handle handle{};
     };
 
     /** One forwarded call: which surface row, how it is reached, with what. */

@@ -124,29 +124,27 @@ namespace {
                "the table declares the five shapes this test drives");
 
         char script[512];
-        std::size_t used = append_head(script, 0U, row_plain);
-        used = append_comma(script, used, 0U);
-        used = append_quoted(script, used, std::string_view("cve_2026_43499"));
-        script[used++] = ')'; script[used++] = '\n';
+        std::size_t used = append_text(script, 0U, std::string_view("local h = "));
+        used = append_head(script, used, row_plain);
+        used = append_text(script, used, std::string_view("cve_2026_43499)\n"));
         used = append_head(script, used, row_word);
-        used = append_number(script, used, 1U);
+        used = append_text(script, used, std::string_view("h"));
         used = append_comma(script, used, 1U); used = append_number(script, used, 2U);
         used = append_comma(script, used, 2U); used = append_number(script, used, 96U);
         used = append_comma(script, used, 3U); used = append_number(script, used, 7U);
         used = append_comma(script, used, 4U); used = append_number(script, used, 8U);
-        script[used++] = ')'; script[used++] = '\n';
+        used = append_text(script, used, std::string_view(")\n"));
         used = append_head(script, used, row_wait);
-        used = append_number(script, used, 1U);
+        used = append_text(script, used, std::string_view("h"));
         used = append_comma(script, used, 1U); used = append_number(script, used, 1000U);
-        script[used++] = ')'; script[used++] = '\n';
+        used = append_text(script, used, std::string_view(")\n"));
         used = append_head(script, used, row_hand);
-        used = append_number(script, used, 1U);
+        used = append_text(script, used, std::string_view("h"));
         used = append_comma(script, used, 1U); used = append_quoted(script, used, std::string_view("root_child"));
         used = append_comma(script, used, 2U); used = append_quoted(script, used, std::string_view("root.handoff"));
-        script[used++] = ')'; script[used++] = '\n';
+        used = append_text(script, used, std::string_view(")\n"));
         used = append_head(script, used, row_free);
-        used = append_number(script, used, 1U);
-        script[used++] = ')'; script[used++] = '\n';
+        used = append_text(script, used, std::string_view("h)\n"));
 
         StagedPlan plan;
         Sandbox sandbox;
@@ -177,8 +175,11 @@ namespace {
         static std::uint8_t second[8192];
         const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
         char script[256];
-        std::size_t used = append_head(script, 0U, row_word);
-        used = append_number(script, used, 1U);
+        std::size_t used = append_text(script, 0U, std::string_view("local h = "));
+        used = append_head(script, used, row_for(SurfaceForm::Call, 0U));
+        used = append_text(script, used, std::string_view("cve_2026_43499)\n"));
+        used = append_head(script, used, row_word);
+        used = append_text(script, used, std::string_view("h"));
         used = append_comma(script, used, 1U); used = append_number(script, used, 2U);
         used = append_comma(script, used, 2U); used = append_number(script, used, 96U);
         used = append_comma(script, used, 3U); used = append_number(script, used, 7U);
@@ -196,7 +197,7 @@ namespace {
         expect(two.open(budget(), ghostlock::script::staged_sink(b)), "open for run two");
         expect(two.run(text) == ScriptRejection::None, "run two succeeds");
         two.close();
-        expect(a.size() == 1U && b.size() == 1U, "both runs recorded one call");
+        expect(a.size() == 2U && b.size() == 2U, "both runs recorded the same two calls");
         const std::size_t na = a.serialize(first, sizeof(first));
         const std::size_t nb = b.serialize(second, sizeof(second));
         expect(na != 0U && na == nb, "both runs serialize to the same length");
@@ -212,12 +213,15 @@ namespace {
         const std::size_t row_wait = row_for(SurfaceForm::HandleMethod, 2U);
         char script[4096];
         std::size_t used = 0U;
+        used = append_text(script, used, std::string_view("local h = "));
+        used = append_head(script, used, row_for(SurfaceForm::Call, 0U));
+        used = append_text(script, used, std::string_view("cve_2026_43499)\n"));
         for (std::size_t i = 0U; i < 70U; ++i) {
             used = append_head(script, used, row_wait);
-            used = append_number(script, used, 1U);
+            used = append_text(script, used, std::string_view("h"));
             used = append_comma(script, used, 1U);
             used = append_number(script, used, i + 1U);
-            script[used++] = ')'; script[used++] = '\n';
+            used = append_text(script, used, std::string_view(")\n"));
         }
         StagedPlan plan;
         Sandbox sandbox;
@@ -277,11 +281,15 @@ namespace {
     void surface_entries_are_checked() {
         const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
         char script[256];
-        std::size_t used = append_head(script, 0U, row_word);
-        /* Eight arguments: inside this container's per-entry ceiling, above the
-         * five the row declares, so the recording survives and the check is what
-         * refuses it (a ninth argument would be refused by the container first). */
-        for (std::size_t i = 0U; i < 8U; ++i) {
+        std::size_t used = append_text(script, 0U, std::string_view("local h = "));
+        used = append_head(script, used, row_for(SurfaceForm::Call, 0U));
+        used = append_text(script, used, std::string_view("cve_2026_43499)\n"));
+        used = append_head(script, used, row_word);
+        used = append_text(script, used, std::string_view("h"));
+        /* Eight arguments in all: inside this container's per-entry ceiling, above
+         * the five the row declares, so the recording survives and the check is
+         * what refuses it (a ninth would be refused by the container first). */
+        for (std::size_t i = 1U; i < 8U; ++i) {
             used = append_comma(script, used, i);
             used = append_number(script, used, i + 1U);
         }
@@ -291,13 +299,13 @@ namespace {
         expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for the ceiling");
         expect(sandbox.run(std::string_view(script, used)) == ScriptRejection::None,
                "the over-long call still runs");
-        expect(plan.size() == 1U, "the call was recorded as given");
+        expect(plan.size() == 2U, "the acquisition and the call were recorded");
         const ghostlock::script::StageVerdict verdict =
             ghostlock::script::check_surface_entries(plan);
         expect(!verdict.ok, "an argument count past the row's list is refused");
         expect(std::string_view(verdict.reason) == std::string_view("param-invalid"),
                "the over-long call is refused as param-invalid");
-        expect(verdict.index == 0U, "the refusal points at the entry");
+        expect(verdict.index == 1U, "the refusal points at the over-long entry");
         sandbox.close();
     }
 
@@ -352,7 +360,9 @@ namespace {
 
         char script[256];
         std::size_t used = append_text(script, 0U, std::string_view("local v = cfg.declared\n"));
-        used = append_head(script, used, row_free);
+        /* The acquiring row takes the backend id; here it carries the cfg value,
+         * which is what proves the snapshot reached the recording. */
+        used = append_head(script, used, row_for(SurfaceForm::Call, 0U));
         used = append_text(script, used, std::string_view("v)"));
         expect(sandbox.run(std::string_view(script, used)) == ScriptRejection::None,
                "a declared field reads through and the call runs");
@@ -364,6 +374,58 @@ namespace {
                "an undeclared field is refused as cfg-unknown-field");
         expect(std::string_view(plan.refusal_name()) == std::string_view("cfg-unknown-field"),
                "the plan carries the refusal by name");
+        sandbox.close();
+    }
+
+    /* ---- 8: a script acquires, uses and releases a handle, and no more ---- */
+    void handles_flow_through_the_surface() {
+        const std::size_t row_acquire = row_for(SurfaceForm::Call, 0U);
+        const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
+        const std::size_t row_free = row_for(SurfaceForm::HandleMethod, 1U);
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for handles");
+
+        char script[512];
+        std::size_t used = append_text(script, 0U, std::string_view("local h = "));
+        used = append_head(script, used, row_acquire);
+        used = append_text(script, used, std::string_view("cve_2026_43499)\n"));
+        used = append_head(script, used, row_word);
+        used = append_text(script, used, std::string_view("h,2,96,7,8)\n"));
+        used = append_head(script, used, row_free);
+        used = append_text(script, used, std::string_view("h)\n"));
+        expect(sandbox.run(std::string_view(script, used)) == ScriptRejection::None,
+               "acquire, use and release all run");
+        expect(plan.ok() && plan.size() == 3U, "three calls were recorded");
+        expect(plan.at(1U).args[0U].kind == ArgKind::Handle,
+               "the handed-over argument is a handle, not a number");
+        expect(plan.at(1U).args[0U].handle.generation == 1U && plan.at(1U).args[0U].handle.slot == 0U,
+               "the recorded handle is the one that was issued");
+        /* Acquire, release, then use the value that was released. */
+        char reuse[512];
+        std::size_t n = append_text(reuse, 0U, std::string_view("local h = "));
+        n = append_head(reuse, n, row_acquire);
+        n = append_text(reuse, n, std::string_view("cve_2026_43499)\n"));
+        n = append_head(reuse, n, row_free);
+        n = append_text(reuse, n, std::string_view("h)\n"));
+        n = append_head(reuse, n, row_word);
+        n = append_text(reuse, n, std::string_view("h,2,96,7,8)\n"));
+        expect(sandbox.run(std::string_view(reuse, n)) == ScriptRejection::HandleStale,
+               "using a released handle is handle-stale");
+        expect(std::string_view(plan.refusal_name()) == std::string_view("handle-stale"),
+               "the plan carries handle-stale by name");
+
+        /* Two acquisitions in one run, with no release between them. This runs
+         * last on purpose: the conflict aborts before any release, so the first
+         * handle stays live and any later script would be refused an acquire. */
+        char twice[512];
+        std::size_t n2 = append_text(twice, 0U, std::string_view("local a = "));
+        n2 = append_head(twice, n2, row_acquire);
+        n2 = append_text(twice, n2, std::string_view("cve_2026_43499)\nlocal b = "));
+        n2 = append_head(twice, n2, row_acquire);
+        n2 = append_text(twice, n2, std::string_view("cve_2026_43499)\n"));
+        expect(sandbox.run(std::string_view(twice, n2)) == ScriptRejection::HandleConflict,
+               "acquiring again while one is live is handle-conflict");
         sandbox.close();
     }
 
@@ -395,6 +457,8 @@ int main() {
     gate_reasons_are_folded();
     std::printf("stage: cfg snapshot\n");
     cfg_snapshot_is_guarded();
+    std::printf("stage: handles\n");
+    handles_flow_through_the_surface();
     if (g_failures != 0U) {
         std::printf("stage: FAIL (%zu)\n", g_failures);
         return 1;

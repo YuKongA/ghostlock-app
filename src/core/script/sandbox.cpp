@@ -65,6 +65,8 @@ namespace ghostlock::script {
          * error with pcall, the run is reported as budget-exceeded. */
         bool budget_tripped = false;
         ForwardScratch scratch{};
+        /* A6-3: the typed handles this sandbox issued. One plan, one backend. */
+        HandleTable handles{};
     };
 
     namespace {
@@ -377,17 +379,87 @@ namespace ghostlock::script {
         }
 
         /* ---- surface registration, driven by kSurface[] ---- */
+        /* Refuse a handle by name: the sink hears it and the script sees it. */
+        int handle_refuse(lua_State *L, const char *code) {
+            Sandbox::State *state = sandbox_state_of(L);
+            if (state != nullptr) {
+                ++state->error_count;
+                if (state->sink.on_error != nullptr) {
+                    state->sink.on_error(state->sink.context, code);
+                }
+            }
+            return luaL_error(L, "%s", code);
+        }
+
+        /* A handle as the script sees it: three numbers in a plain table. The
+         * script may copy it, but a value the host never issued cannot pass
+         * check(), so copying buys nothing. */
+        void push_handle(lua_State *L, const Handle &handle) {
+            lua_createtable(L, 0, 3);
+            lua_pushinteger(L, static_cast<lua_Integer>(handle.kind));
+            lua_setfield(L, -2, "kind");
+            lua_pushinteger(L, static_cast<lua_Integer>(handle.slot));
+            lua_setfield(L, -2, "slot");
+            lua_pushinteger(L, static_cast<lua_Integer>(handle.generation));
+            lua_setfield(L, -2, "generation");
+        }
+
+        bool read_handle(lua_State *L, int index, Handle &out) {
+            if (!lua_istable(L, index)) {
+                return false;
+            }
+            const int top = lua_gettop(L);
+            bool ok = true;
+            lua_getfield(L, index, "kind");
+            lua_getfield(L, index, "slot");
+            lua_getfield(L, index, "generation");
+            if (!lua_isinteger(L, -3) || !lua_isinteger(L, -2) || !lua_isinteger(L, -1)) {
+                ok = false;
+            } else {
+                out.kind = static_cast<std::uint32_t>(lua_tointeger(L, -3));
+                out.slot = static_cast<std::uint32_t>(lua_tointeger(L, -2));
+                out.generation = static_cast<std::uint32_t>(lua_tointeger(L, -1));
+            }
+            lua_settop(L, top);
+            return ok;
+        }
+
         int surface_call(lua_State *L) {
             Sandbox::State *state = sandbox_state_of(L);
             if (state == nullptr) {
                 return 0;
             }
             const std::size_t index = static_cast<std::size_t>(lua_tointeger(L, lua_upvalueindex(1)));
+            /* A6-3: the acquiring row hands a handle out, every other row that
+             * declares a first argument is handed one, and both directions are
+             * checked here -- the script cannot make, extend or borrow one. */
+            const contract::SurfaceEntry &row = contract::kSurface[index];
+            const bool acquires = row.form == contract::SurfaceForm::Call;
+            const bool takes_handle = row.arg_count >= 1U;
+            Handle handle{};
+            if (acquires) {
+                const HandleRefusal refusal =
+                    state->handles.acquire(static_cast<std::uint32_t>(index), handle);
+                if (refusal != HandleRefusal::None) {
+                    return handle_refuse(L, handle_refusal_name(refusal));
+                }
+            } else if (takes_handle) {
+                if (!read_handle(L, 1, handle) ||
+                    state->handles.check(handle) != HandleRefusal::None) {
+                    return handle_refuse(L, "handle-stale");
+                }
+            }
             ForwardScratch &scratch = state->scratch;
             scratch.count = 0;
             const int top = lua_gettop(L);
             for (int i = 1; i <= top && scratch.count < kMaxForwardedArgs; ++i) {
                 ArgView &view = scratch.args[scratch.count];
+                if (takes_handle && i == 1) {
+                    view.kind = ArgKind::Handle;
+                    view.handle = handle;
+                    ++scratch.count;
+                    continue;
+                }
                 switch (lua_type(L, i)) {
                     case LUA_TNUMBER:
                         view.kind = ArgKind::U64;
@@ -423,6 +495,15 @@ namespace ghostlock::script {
                 view.args = scratch.args;
                 view.arg_count = scratch.count;
                 state->sink.on_op(state->sink.context, &view);
+            }
+            if (row.form == contract::SurfaceForm::HandleMethod && row.arg_count == 1U) {
+                /* The releasing row: the recording above carries the handle as it
+                 * was, and only now does the generation move on. */
+                (void)state->handles.release(handle);
+            }
+            if (acquires) {
+                push_handle(L, handle);
+                return 1;
             }
             return 0;
         }
@@ -520,6 +601,9 @@ namespace ghostlock::script {
             case ScriptRejection::PlanSyntax: return kPlanSyntax;
             case ScriptRejection::CfgReadOnly: return kCfgReadOnly;
             case ScriptRejection::CfgUnknownField: return kCfgUnknownField;
+            /* Handle refusals are spelled by the table that raises them. */
+            case ScriptRejection::HandleStale: return handle_refusal_name(HandleRefusal::Stale);
+            case ScriptRejection::HandleConflict: return handle_refusal_name(HandleRefusal::Conflict);
         }
         return "unknown";
     }
@@ -614,6 +698,10 @@ namespace ghostlock::script {
                     rejection = ScriptRejection::CfgUnknownField;
                 } else if (std::strstr(message, kCfgReadOnly) != nullptr) {
                     rejection = ScriptRejection::CfgReadOnly;
+                } else if (std::strstr(message, handle_refusal_name(HandleRefusal::Stale)) != nullptr) {
+                    rejection = ScriptRejection::HandleStale;
+                } else if (std::strstr(message, handle_refusal_name(HandleRefusal::Conflict)) != nullptr) {
+                    rejection = ScriptRejection::HandleConflict;
                 }
             }
             if (state.sink.on_error != nullptr) {
