@@ -92,13 +92,12 @@ C4 + A1 + B1 ⇒ D1
 
 本文早先按**旧树**估的页数（7 / 10 / 12 页）与**新树实际不符**：新树比旧树简单，命名也不同。以下按**逐件实测**重画。**旧数字不删，留作沿革**，但以本节为准。
 
-### 已确认存在（实测 ✓ 非骨架）
+### 已确认存在（实测，非骨架）
 
-- 后端 43499：`leak/` 一族 **26 件**（候选匹配 · 碰撞桶/计数/等待 · futex 哈希 · 泄漏搜索/遍历 · 扫描界/几何 · snitch 八件）· `memory/`（凭据镜像 **68 行** · 堆几何/接缝 · write_encoder/layout/request）· `perf_*` · `race/`（**`pi_race.hpp` 151 行**：`RaceOutcome` + **`FutexSeam` 四个 syscall 包装** + 可换接缝的竞争本体 · `pi_window` · `race_runtime`）· `route/`（`policy_dispatch.hpp` **66 行** 编译期链 · multicast_policy · route_policy · lifecycle · route_status）· `seam/`（multicast_seam/window）· `session.hpp` · `steps/step_runner.hpp`（**62 行** 模板：`run_step_set(StepSetOrder, Action)`）
-- 终端层：`terminal/execution.{hpp,cpp}`（**82 + 56 行**：`FinishMoment` · `FinishDeclaration` · `ExecResult` · `run_payload(path)`）· `payload` · `payload_store`
-- 表与门禁：`chain_catalog`（**12 行链**，实测）· `kind` · `step_catalog`（`StepSetOrder` + 三个 order）· `plan_gate` · `component_catalog`（`dispatch_target_of(row)`）· `attack_window` · `composition_root`
-- 已落地：ADR-0016 的表与判据 · C1 `StageResult` · C2 分派改依 `chain_catalog`
-
+- 后端 43499：leak 一族 26 件（碰撞桶/计数/等待、futex 哈希、泄漏搜索/遍历、扫描界/几何、snitch 八件）；memory 有 credential_image 68 行、堆几何/接缝、write_encoder/layout/request；另 perf 三件、race 四件（pi_race 151 行含 RaceOutcome 与 FutexSeam 的四个 syscall 包装）、route 六件（policy_dispatch 66 行）、seam 两件、session、steps/step_runner 62 行。
+- 终端层：execution 82+56 行（FinishMoment、FinishDeclaration、ExecResult、run_payload）、payload、payload_store。
+- 表与门禁：chain_catalog（12 行链）、kind、step_catalog（StepSetOrder 与三个 order）、plan_gate、component_catalog（dispatch_target_of）、attack_window、composition_root。
+- 已落地：ADR-0016 的表与判据、C1 StageResult、C2 分派改依 chain_catalog。
 ### 缺口四项（**全是装配，不是重写攻击**）
 
 | # | 缺什么 | 实测依据 | 规模 |
