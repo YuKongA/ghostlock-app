@@ -15,7 +15,7 @@
 | **`close(h)`** | handle_method | **`session`** | **`pre_window`** |
 | `b:writeop{target, value, width}` | handle_method | `backend` | **`window`** |
 | **`copyop{src,dst,width}`** | handle_method | `backend` | **`window`** |
-| `b:settle{us}` | handle_method | `race` | **`window`** |
+| `b:settle{us}` | handle_method | `backend` | **`window`** |
 | `b:handoff{terminal, payload_ref}` | handle_method | `terminal` | **`terminal`** |
 | **`cfg`**（只读快照） | value | `profile` | **`stage`** |
 | ~~`run`~~ | — | — | **已移除**（属 ③ 段） |

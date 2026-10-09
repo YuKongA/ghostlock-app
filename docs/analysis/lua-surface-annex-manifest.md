@@ -18,8 +18,8 @@ copyop	handle_method	backend	window	false	true	true	src_value	true	1844674407370
 copyop	handle_method	backend	window	false	true	true	dst_kind	true	64
 copyop	handle_method	backend	window	false	true	true	dst_value	true	18446744073709551615
 copyop	handle_method	backend	window	false	true	true	width	true	8
-settle	handle_method	race	window	false	true	true	handle	true	18446744073709551615
-settle	handle_method	race	window	false	true	true	us	true	1000000
+settle	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+settle	handle_method	backend	window	false	true	true	us	true	1000000
 handoff	handle_method	terminal	terminal	true	true	true	handle	true	18446744073709551615
 handoff	handle_method	terminal	terminal	true	true	true	terminal	true	256
 handoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256

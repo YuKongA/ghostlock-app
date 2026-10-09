@@ -110,7 +110,7 @@ stateDiagram-v2
 - **类型**：`enum class RouteStage`（Idle · Prepared · Running · Disarmed · Destroyed）· `enum class RouteStep`（prepare · execute · disarm · destroy）· `enum class LifecycleVerdict`（拒绝经 `status` 汇报）。
 - **边注**：① **拒绝不改状态**（非法步序 ⇒ 拒绝并保持当前态）；② **`destroy` 从任何状态合法且幂等**。
 
-## 3. Class（新树 10 层 + 资源面 + 暴露面映射）
+## 3. Class（新树 **9 层** + 资源面 + 暴露面映射）
 
 ```mermaid
 classDiagram
@@ -203,11 +203,11 @@ classDiagram
 | `close(h)` | **`session`**（句柄表；构造经组合根/目录校验） | 窗口外 | generation 递增；旧句柄 ⇒ `handle-stale` |
 | `b:writeop{target={kind,value}, value, width}` | **`backend`**（route/step 为其内部） | 窗口相位 | **kind = 机制枚举**，value 来自 `cfg` |
 | `b:copyop{src,dst={kind,value}, width}` | **`backend`**（route/step 为其内部） | 窗口相位 | 结构复制（宽度 = profile 声明尺寸） |
-| `b:settle{us}` | **`race`**（代码权威：`contract/script_surface.hpp:206` 的 `implements_layer`；层级断言见 `:305`） | 窗口相位 | 参数化（不得 C++ 兜底） |
+| `b:settle{us}` | **`backend`**（**2026-10-08 更正**：`race` 不再成层，PI-futex 机制并入 `backend/cve_2026_43499/race/`；代码权威 `contract/script_surface.hpp` 的 `implements_layer`） | 窗口相位 | 参数化（不得 C++ 兜底） |
 | `b:handoff{terminal, payload_ref}` | **`terminal`** | 窗口外→terminal | **引用语义**（命令内容属 ③ 段） |
 | `cfg`（只读快照） | **`profile`**（快照注入） | stage 前 | 只读；不属句柄面 |
 
-- **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（`contract` · `support` · `memory` · `race` · `backend` · `pipeline` · `terminal` · `script` · `session` · `profile`）；**机器可校验**（`script_surface.hpp` 的 `implements_layer` 与 `:305` 断言）；**不得用描述性短语** —— 「**表达一致**」的一个实例。
+- **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（**9 层**：`contract` · `support` · `memory` · `backend` · `pipeline` · `terminal` · `script` · `session` · `profile`）；**机器可校验**（`script_surface.hpp` 的 `implements_layer` 与 `:305` 断言）；**不得用描述性短语** —— 「**表达一致**」的一个实例。
 
 #### 3.1.1 manifest 原文（**派生源**；`make -C src surface-manifest` 生成，19 行逐字节）
 
@@ -224,8 +224,8 @@ copyop	handle_method	backend	window	false	true	true	src_value	true	1844674407370
 copyop	handle_method	backend	window	false	true	true	dst_kind	true	64
 copyop	handle_method	backend	window	false	true	true	dst_value	true	18446744073709551615
 copyop	handle_method	backend	window	false	true	true	width	true	8
-settle	handle_method	race	window	false	true	true	handle	true	18446744073709551615
-settle	handle_method	race	window	false	true	true	us	true	1000000
+settle	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+settle	handle_method	backend	window	false	true	true	us	true	1000000
 handoff	handle_method	terminal	terminal	true	true	true	handle	true	18446744073709551615
 handoff	handle_method	terminal	terminal	true	true	true	terminal	true	256
 handoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256
@@ -368,4 +368,5 @@ sequenceDiagram
 - **一处权威**：本文件是唯一权威 UML；其他文档**链接**本件，不重画同一结构。结构变化（新增/删除层、暴露面条目、拒绝码、相位）⇒ **同批**更新本件对应图。
 - **引用**：`docs/analysis/adr/README.md` · `handoff-payload-batch-plan.md` · `contract-design.md` · `plugin-runtime-integration-design.md` · `root-manager-selection-design.md` · `docs/archive/*` · `engineering-rules.md` · `AGENTS.md`。
 - **两条新纪律（同批留痕）**：本件任何**新条目/新相位/新实现层**必须同时满足 —— ① **无名字→值表**（名字只允许 **dispatch 标识符** 与 **数据面键路径**；见 [target 附件](../analysis/lua-surface-annex-target.md) §C1）· ② **表达一致**（同一件事只允许一种表达，不得「首设 A 语法 / 后续 B 语法」；见 [lua-surface-design](../analysis/lua-surface-design.md) 开头）。
+- **沿革（2026-10-08 · 层族 10 → 9）**：**`race` 不再是层** —— `src/core/race/**`（5 文件）整体移入 **`backend/cve_2026_43499/race/`**，命名空间 `ghostlock::race` → `ghostlock::backend::cve_2026_43499::race`；`contract/layer_scope.hpp` 删 `race` 行（断言 10→**9**、7 保持），`settle` 的 `implements_layer` 由 `race` → **`backend`**。**理由 = 纠错**：PI-futex 是 **43499 专属**机制（43284 为 pagecache/UMH，不含 PI-futex），**旧树本就把 futex 机制放在 `backend/cve_2026_43499/leak/futex_hash.h`**；重写时错误地提为公共层，本次与 AGENTS「backend 按 CVE 分子命名空间」对齐。**守卫实证**：删层行而不改断言 ⇒ **四条 static_assert 同时失败**（`kLayerCount == 10` 与 surface 行指向不存在的层）⇒ 修正后才绿。
 - **历史**：旧实现 UML = [old-full-process-uml.md](old-full-process-uml.md)（归档头含理由与恢复来源；登记见 `docs/archive/INDEX-plans.md` §七）。
