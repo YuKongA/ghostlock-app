@@ -75,6 +75,12 @@ namespace ghostlock::profile {
                                              std::string_view name,
                                              PayloadEntry &out) const noexcept;
 
+        /** Read one unsigned integer key out of a dotted segment. A key that is
+         *  absent, or present as something other than an unsigned integer, is the
+         *  same refusal: the caller asked for a number and there is none. */
+        [[nodiscard]] DocumentVerdict uint_key(std::string_view segment, std::string_view key,
+                                               std::uint64_t &out) const noexcept;
+
         /** Release the parse; a further read is a missing document. */
         void reset() noexcept;
 

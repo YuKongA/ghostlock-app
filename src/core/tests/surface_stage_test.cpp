@@ -351,7 +351,6 @@ namespace {
     /* ---- 7: the snapshot answers by declaration, never with a nil ---- */
     void cfg_snapshot_is_guarded() {
         using ghostlock::script::CfgField;
-        const std::size_t row_free = row_for(SurfaceForm::HandleMethod, 1U);
         StagedPlan plan;
         Sandbox sandbox;
         expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for the snapshot");

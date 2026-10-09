@@ -74,6 +74,36 @@ namespace ghostlock::profile {
         return DocumentVerdict::Ok;
     }
 
+    DocumentVerdict Document::uint_key(std::string_view segment, std::string_view key,
+                                       std::uint64_t &out) const noexcept {
+        out = 0U;
+        if (!open_ || segment.empty() || key.empty()) {
+            return DocumentVerdict::Invalid;
+        }
+        char segment_text[192];
+        char key_text[96];
+        if (!copy_bounded(segment_text, sizeof(segment_text), segment) ||
+            !copy_bounded(key_text, sizeof(key_text), key)) {
+            return DocumentVerdict::Missing;
+        }
+        mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
+        const mpack_node_t sections =
+            mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
+        if (!is_map(sections)) {
+            return DocumentVerdict::Missing;
+        }
+        const mpack_node_t node = mpack_node_map_cstr_optional(sections, segment_text);
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        const mpack_node_t value = mpack_node_map_cstr_optional(node, key_text);
+        if (mpack_node_type(value) != mpack_type_uint) {
+            return DocumentVerdict::Missing;
+        }
+        out = mpack_node_uint(value);
+        return DocumentVerdict::Ok;
+    }
+
     DocumentVerdict Document::payload(std::string_view backend, std::string_view name,
                                       PayloadEntry &out) const noexcept {
         out = PayloadEntry{};
