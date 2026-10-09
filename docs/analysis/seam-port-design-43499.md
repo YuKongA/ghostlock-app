@@ -110,3 +110,5 @@ RouteStatus RouteController::execute(const WriteRequest *request) {
 **教训**：`grep` 的**模式**决定结论的**口径** ⇒ 说「耦合 0」时必须写明**按什么模式量的**，否则那句话就是**过强**的。
 
 > AES 那一件的判据验证与依赖更正（§17–§18）：见同目录 `seam-port-design-43499-aes.md`。
+
+§19（43499 侧下一件的切法）已拆出：见同目录 `seam-port-design-43499-route.md`。
