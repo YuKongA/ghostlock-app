@@ -18,9 +18,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "memory/write_request.hpp"
+#include "backend/cve_2026_43499/memory/write_request.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** What the write is aimed at. */
     struct WriteLayout final {
         /** The word before the target: where a leaf write aims. */
@@ -61,4 +61,4 @@ namespace ghostlock::memory {
     [[nodiscard]] bool layout_accepts_page(const WriteRequest &request,
 
                                            const WriteLayout &layout) noexcept;
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

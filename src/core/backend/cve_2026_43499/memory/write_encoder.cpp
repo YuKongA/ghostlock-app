@@ -1,9 +1,9 @@
 /** @file memory/write_encoder.cpp
  *  The arm words, and writing them only where they fit.
  */
-#include "memory/write_encoder.hpp"
+#include "backend/cve_2026_43499/memory/write_encoder.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     namespace {
         bool fits(std::size_t size, std::size_t offset, std::size_t width) noexcept {
             return offset <= size && width <= size - offset;
@@ -60,4 +60,4 @@ namespace ghostlock::memory {
         put_word(fragment, offsets.left, arm.left, pointer_bytes);
         return EncodeVerdict::Ok;
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

@@ -1,9 +1,9 @@
 /** @file memory/reclaim_plan.cpp
  *  The order the retired tree closed in, written as a plan.
  */
-#include "memory/reclaim_plan.hpp"
+#include "backend/cve_2026_43499/memory/reclaim_plan.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     namespace {
         bool put(ReclaimStep *out, std::size_t capacity, std::size_t &at, ReclaimGroup group,
                  std::size_t index) noexcept {
@@ -66,4 +66,4 @@ namespace ghostlock::memory {
         }
         return ReclaimVerdict::Ok;
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

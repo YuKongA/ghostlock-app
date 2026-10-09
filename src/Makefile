@@ -33,7 +33,7 @@ MPACK_CFLAGS := -std=c99 -w
 # The runtime binary: the entry plus the layers it reaches. The script layer is
 # not in it yet (its Lua core would have to be cross-built too), and neither is
 # the executor: the entry resolves a document and says what it would run.
-RUNTIME_SRCS := core/main.cpp core/contract/kmi_catalog.cpp \
+RUNTIME_SRCS := core/main.cpp core/contract/kmi_catalog.cpp core/contract/contract.cpp core/memory/memory.cpp \
   core/backend/cve_2026_43284/lkm/module_facts.cpp \
   core/profile/glkv3_document.cpp core/profile/payload_keys.cpp \
   core/profile/document_pairs.cpp core/profile/run_plan.cpp \
@@ -87,22 +87,26 @@ LAYER_HEADERS := \
   core/backend/cve_2026_43499/race/futex_seam_linux.hpp \
   core/tools/futex_probe.cpp \
   core/tools/requeue_probe.cpp \
-  core/memory/write_request.hpp \
+  core/backend/cve_2026_43499/memory/write_request.hpp \
   core/tests/write_request_test.cpp \
-  core/memory/write_encoder.hpp \
-  core/memory/write_encoder.cpp \
+  core/backend/cve_2026_43499/memory/write_encoder.hpp \
+  core/backend/cve_2026_43499/memory/write_encoder.cpp \
   core/tests/write_encoder_test.cpp \
-  core/memory/write_layout.hpp \
-  core/memory/write_layout.cpp \
+  core/backend/cve_2026_43499/memory/write_layout.hpp \
+  core/backend/cve_2026_43499/memory/write_layout.cpp \
   core/tests/write_layout_test.cpp \
-  core/memory/credential_image.hpp \
-  core/memory/credential_image.cpp \
+  core/backend/cve_2026_43499/memory/credential_image.hpp \
+  core/backend/cve_2026_43499/memory/credential_image.cpp \
   core/tests/credential_image_test.cpp \
   core/backend/cve_2026_43499/race/race_runtime.hpp \
   core/tests/race_runtime_test.cpp \
   core/contract/kmi_catalog.hpp \
   core/contract/kmi_catalog.cpp \
   core/tests/kmi_catalog_test.cpp \
+  core/memory/memory.hpp \
+  core/memory/memory.cpp \
+  core/contract/contract.hpp \
+  core/contract/contract.cpp \
   core/session/device_facts.hpp \
   core/session/device_facts_linux.hpp \
   core/tests/device_facts_test.cpp \
@@ -122,8 +126,8 @@ LAYER_HEADERS := \
   core/tests/abi_offsets_test.cpp \
   core/backend/cve_2026_43499/route/expected_keys.hpp \
   core/tests/route_expected_keys_test.cpp \
-  core/memory/multicast_arm.hpp \
-  core/memory/multicast_arm.cpp \
+  core/backend/cve_2026_43499/memory/multicast_arm.hpp \
+  core/backend/cve_2026_43499/memory/multicast_arm.cpp \
   core/tests/multicast_arm_test.cpp \
   core/contract/chain_catalog.hpp \
   core/tests/chain_catalog_test.cpp \
@@ -137,8 +141,8 @@ LAYER_HEADERS := \
   core/script/plan_load.hpp \
   core/script/plan_load.cpp \
   core/tests/plan_load_test.cpp \
-  core/memory/reclaim_plan.hpp \
-  core/memory/reclaim_plan.cpp \
+  core/backend/cve_2026_43499/memory/reclaim_plan.hpp \
+  core/backend/cve_2026_43499/memory/reclaim_plan.cpp \
   core/tests/reclaim_plan_test.cpp \
   core/script/sandbox.hpp
 
@@ -250,8 +254,8 @@ $(BUILD_DIR)/chain_catalog_test: core/tests/chain_catalog_test.cpp \
 	$(CXX) $(CXXFLAGS) core/tests/chain_catalog_test.cpp -o $@
 
 $(BUILD_DIR)/multicast_arm_test: core/tests/multicast_arm_test.cpp \
-  core/memory/multicast_arm.hpp core/memory/multicast_arm.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/multicast_arm_test.cpp core/memory/multicast_arm.cpp -o $@
+  core/backend/cve_2026_43499/memory/multicast_arm.hpp core/backend/cve_2026_43499/memory/multicast_arm.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/multicast_arm_test.cpp core/backend/cve_2026_43499/memory/multicast_arm.cpp -o $@
 
 $(BUILD_DIR)/route_expected_keys_test: core/tests/route_expected_keys_test.cpp \
   core/backend/cve_2026_43499/route/expected_keys.hpp core/profile/route_catalog.hpp | $(BUILD_DIR)
@@ -309,21 +313,21 @@ $(BUILD_DIR)/race_runtime_test: core/tests/race_runtime_test.cpp \
 	$(CXX) $(CXXFLAGS) core/tests/race_runtime_test.cpp -o $@
 
 $(BUILD_DIR)/credential_image_test: core/tests/credential_image_test.cpp \
-  core/memory/credential_image.hpp core/memory/credential_image.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/credential_image_test.cpp core/memory/credential_image.cpp -o $@
+  core/backend/cve_2026_43499/memory/credential_image.hpp core/backend/cve_2026_43499/memory/credential_image.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/credential_image_test.cpp core/backend/cve_2026_43499/memory/credential_image.cpp -o $@
 
 $(BUILD_DIR)/write_layout_test: core/tests/write_layout_test.cpp \
-  core/memory/write_layout.hpp core/memory/write_layout.cpp \
-  core/memory/write_request.hpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/write_layout_test.cpp core/memory/write_layout.cpp -o $@
+  core/backend/cve_2026_43499/memory/write_layout.hpp core/backend/cve_2026_43499/memory/write_layout.cpp \
+  core/backend/cve_2026_43499/memory/write_request.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/write_layout_test.cpp core/backend/cve_2026_43499/memory/write_layout.cpp -o $@
 
 $(BUILD_DIR)/write_encoder_test: core/tests/write_encoder_test.cpp \
-  core/memory/write_encoder.hpp core/memory/write_encoder.cpp \
-  core/memory/write_request.hpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/write_encoder_test.cpp core/memory/write_encoder.cpp -o $@
+  core/backend/cve_2026_43499/memory/write_encoder.hpp core/backend/cve_2026_43499/memory/write_encoder.cpp \
+  core/backend/cve_2026_43499/memory/write_request.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/write_encoder_test.cpp core/backend/cve_2026_43499/memory/write_encoder.cpp -o $@
 
 $(BUILD_DIR)/write_request_test: core/tests/write_request_test.cpp \
-  core/memory/write_request.hpp | $(BUILD_DIR)
+  core/backend/cve_2026_43499/memory/write_request.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/write_request_test.cpp -o $@
 
 $(BUILD_DIR)/step_catalog_test: core/tests/step_catalog_test.cpp \
@@ -530,8 +534,8 @@ SCRIPT_SRCS := core/script/sandbox.cpp
 .PHONY: lua-core lua-core-size
 
 $(BUILD_DIR)/reclaim_plan_test: core/tests/reclaim_plan_test.cpp \
-  core/memory/reclaim_plan.hpp core/memory/reclaim_plan.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/reclaim_plan_test.cpp core/memory/reclaim_plan.cpp -o $@
+  core/backend/cve_2026_43499/memory/reclaim_plan.hpp core/backend/cve_2026_43499/memory/reclaim_plan.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/reclaim_plan_test.cpp core/backend/cve_2026_43499/memory/reclaim_plan.cpp -o $@
 
 $(BUILD_DIR)/plan_load_test: core/tests/plan_load_test.cpp core/script/plan_load.cpp \
   $(SCRIPT_SRCS) core/script/plan_load.hpp core/script/sandbox.hpp \

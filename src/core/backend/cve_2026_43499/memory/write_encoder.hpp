@@ -15,9 +15,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "memory/write_request.hpp"
+#include "backend/cve_2026_43499/memory/write_request.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** Where the three arm words sit inside the fragment, from the profile. */
     struct WaiterFieldOffsets final {
         std::size_t pc = 0U;
@@ -68,4 +68,4 @@ namespace ghostlock::memory {
                                                   const WriteArm &arm,
 
                                                   std::size_t pointer_bytes) noexcept;
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

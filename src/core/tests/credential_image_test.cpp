@@ -11,13 +11,13 @@
 #include <cstring>
 #include <string_view>
 
-#include "memory/credential_image.hpp"
+#include "backend/cve_2026_43499/memory/credential_image.hpp"
 
 namespace {
-    using ghostlock::memory::build_credential_image;
-    using ghostlock::memory::CredentialLayout;
-    using ghostlock::memory::credential_verdict_name;
-    using ghostlock::memory::CredentialVerdict;
+    using ghostlock::backend::cve_2026_43499::memory::build_credential_image;
+    using ghostlock::backend::cve_2026_43499::memory::CredentialLayout;
+    using ghostlock::backend::cve_2026_43499::memory::credential_verdict_name;
+    using ghostlock::backend::cve_2026_43499::memory::CredentialVerdict;
 
     std::size_t g_failures = 0U;
 

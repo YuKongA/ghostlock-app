@@ -12,17 +12,17 @@
 #include <cstring>
 #include <string_view>
 
-#include "memory/write_encoder.hpp"
+#include "backend/cve_2026_43499/memory/write_encoder.hpp"
 
 namespace {
-    using ghostlock::memory::arm_for;
-    using ghostlock::memory::encode_verdict_name;
-    using ghostlock::memory::encode_waiter_arm;
-    using ghostlock::memory::EncodeVerdict;
-    using ghostlock::memory::WaiterFieldOffsets;
-    using ghostlock::memory::WriteArm;
-    using ghostlock::memory::WriteMode;
-    using ghostlock::memory::WriteRequest;
+    using ghostlock::backend::cve_2026_43499::memory::arm_for;
+    using ghostlock::backend::cve_2026_43499::memory::encode_verdict_name;
+    using ghostlock::backend::cve_2026_43499::memory::encode_waiter_arm;
+    using ghostlock::backend::cve_2026_43499::memory::EncodeVerdict;
+    using ghostlock::backend::cve_2026_43499::memory::WaiterFieldOffsets;
+    using ghostlock::backend::cve_2026_43499::memory::WriteArm;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
+    using ghostlock::backend::cve_2026_43499::memory::WriteRequest;
 
     constexpr std::size_t kPointer = 8U;
     constexpr std::uint64_t kTarget = 0xFFFF888100001000ULL;

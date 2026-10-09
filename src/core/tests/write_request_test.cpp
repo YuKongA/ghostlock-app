@@ -11,16 +11,16 @@
 #include <cstring>
 #include <string_view>
 
-#include "memory/write_request.hpp"
+#include "backend/cve_2026_43499/memory/write_request.hpp"
 
 namespace {
-    using ghostlock::memory::check_request;
-    using ghostlock::memory::RequestVerdict;
-    using ghostlock::memory::request_verdict_name;
-    using ghostlock::memory::WriteMode;
-    using ghostlock::memory::write_mode_of;
-    using ghostlock::memory::write_mode_token;
-    using ghostlock::memory::WriteRequest;
+    using ghostlock::backend::cve_2026_43499::memory::check_request;
+    using ghostlock::backend::cve_2026_43499::memory::RequestVerdict;
+    using ghostlock::backend::cve_2026_43499::memory::request_verdict_name;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
+    using ghostlock::backend::cve_2026_43499::memory::write_mode_of;
+    using ghostlock::backend::cve_2026_43499::memory::write_mode_token;
+    using ghostlock::backend::cve_2026_43499::memory::WriteRequest;
 
     std::size_t g_failures = 0U;
 

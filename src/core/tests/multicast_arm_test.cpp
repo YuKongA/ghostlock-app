@@ -12,15 +12,15 @@
 #include <cstring>
 #include <string_view>
 
-#include "memory/multicast_arm.hpp"
+#include "backend/cve_2026_43499/memory/multicast_arm.hpp"
 
 namespace {
-    using ghostlock::memory::ArmVerdict;
-    using ghostlock::memory::arm_verdict_name;
-    using ghostlock::memory::check_geometry;
-    using ghostlock::memory::encode_multicast_arm;
-    using ghostlock::memory::MulticastGeometry;
-    using ghostlock::memory::required_bytes;
+    using ghostlock::backend::cve_2026_43499::memory::ArmVerdict;
+    using ghostlock::backend::cve_2026_43499::memory::arm_verdict_name;
+    using ghostlock::backend::cve_2026_43499::memory::check_geometry;
+    using ghostlock::backend::cve_2026_43499::memory::encode_multicast_arm;
+    using ghostlock::backend::cve_2026_43499::memory::MulticastGeometry;
+    using ghostlock::backend::cve_2026_43499::memory::required_bytes;
 
     constexpr std::size_t kWord = 8U;
     constexpr std::uint64_t kTask = 0xFFFF888100001000ULL;

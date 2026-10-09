@@ -23,7 +23,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "contract/contract.hpp"
 #include "contract/layer_scope.hpp"
+#include "memory/memory.hpp"
 #include "contract/step_catalog.hpp"
 #include "memory/target_profile.hpp"
 #include "contract/kmi_catalog.hpp"
@@ -58,10 +60,29 @@ namespace {
     }
 
     int report_identity() {
-        std::printf("ghostlock: %zu layers\n", ghostlock::contract::kLayerCount);
-        for (std::size_t i = 0U; i < ghostlock::contract::kLayerCount; ++i) {
-            std::printf("  %s\n", ghostlock::contract::kLayers[i].name);
+        /* The identity is read through the packages' own faces rather than off their
+         *  tables here: a package that publishes a structure should be the thing that
+         *  answers what it contains, and a face nobody reads is a face that drifts. */
+        const ghostlock::contract::PublishedTable *layers =
+            ghostlock::contract::Structure::layers();
+        const std::size_t layer_count = ghostlock::contract::Structure::layer_count();
+        if (layers == nullptr) {
+            std::printf("contract-invalid: the published layer list disagrees with the catalogue\n");
+            return 6;
         }
+        std::printf("ghostlock: %zu layers\n", layer_count);
+        for (std::size_t i = 0U; i < layer_count; ++i) {
+            std::printf("  %s\n", layers[i].name);
+        }
+        const ghostlock::contract::PublishedTable *tables =
+            ghostlock::contract::Structure::tables();
+        const std::size_t table_count = ghostlock::contract::Structure::table_count();
+        std::printf("contract: %zu tables\n", table_count);
+        for (std::size_t i = 0U; i < table_count; ++i) {
+            std::printf("  %s (%zu rows)\n", tables[i].name, tables[i].rows);
+        }
+        std::printf("memory: %zu pieces; %s\n", ghostlock::memory::Structure::piece_count(),
+                    ghostlock::memory::Structure::backend_owned_rule());
         return 0;
     }
 

@@ -12,16 +12,16 @@
 #include <cstdio>
 #include <string_view>
 
-#include "memory/reclaim_plan.hpp"
+#include "backend/cve_2026_43499/memory/reclaim_plan.hpp"
 
 namespace {
-    using ghostlock::memory::kMaxReclaimSteps;
-    using ghostlock::memory::plan_reclaim;
-    using ghostlock::memory::ReclaimCounts;
-    using ghostlock::memory::ReclaimGroup;
-    using ghostlock::memory::ReclaimStep;
-    using ghostlock::memory::reclaim_verdict_name;
-    using ghostlock::memory::ReclaimVerdict;
+    using ghostlock::backend::cve_2026_43499::memory::kMaxReclaimSteps;
+    using ghostlock::backend::cve_2026_43499::memory::plan_reclaim;
+    using ghostlock::backend::cve_2026_43499::memory::ReclaimCounts;
+    using ghostlock::backend::cve_2026_43499::memory::ReclaimGroup;
+    using ghostlock::backend::cve_2026_43499::memory::ReclaimStep;
+    using ghostlock::backend::cve_2026_43499::memory::reclaim_verdict_name;
+    using ghostlock::backend::cve_2026_43499::memory::ReclaimVerdict;
 
     std::size_t g_failures = 0U;
 

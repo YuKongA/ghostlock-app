@@ -1,9 +1,9 @@
 /** @file memory/multicast_arm.cpp
  *  The geometry checks and the two stores they guard.
  */
-#include "memory/multicast_arm.hpp"
+#include "backend/cve_2026_43499/memory/multicast_arm.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     namespace {
         /** A field fits when its first byte and its last byte are inside. */
         bool fits(std::size_t size, std::size_t offset, std::size_t width) noexcept {
@@ -61,4 +61,4 @@ namespace ghostlock::memory {
         put_word(buffer, geometry.waiter_offset + geometry.lock_offset, fake_lock, word_bytes);
         return ArmVerdict::Ok;
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

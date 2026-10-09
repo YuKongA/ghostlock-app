@@ -15,7 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** The geometry of one multicast buffer, from the profile. */
     struct MulticastGeometry final {
         std::size_t waiter_offset = 0U;
@@ -70,4 +70,4 @@ namespace ghostlock::memory {
                                                   std::uint64_t fake_lock,
 
                                                   std::size_t word_bytes) noexcept;
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

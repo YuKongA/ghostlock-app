@@ -20,7 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** How many descriptors each group holds. */
     struct ReclaimCounts final {
         std::size_t pre = 0U;
@@ -61,4 +61,4 @@ namespace ghostlock::memory {
     /** Write the close plan for these counts. */
     [[nodiscard]] ReclaimVerdict plan_reclaim(const ReclaimCounts &counts, ReclaimStep *out,
                                              std::size_t capacity, std::size_t &written) noexcept;
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

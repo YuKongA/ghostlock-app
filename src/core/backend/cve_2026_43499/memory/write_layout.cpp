@@ -1,9 +1,9 @@
 /** @file memory/write_layout.cpp
  *  Choosing the value, the parent word and the object a write points at.
  */
-#include "memory/write_layout.hpp"
+#include "backend/cve_2026_43499/memory/write_layout.hpp"
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     WriteLayout write_layout(const WriteRequest &request, const LayoutInputs &inputs) noexcept {
         WriteLayout layout{};
         layout.fops = inputs.default_fops;
@@ -44,4 +44,4 @@ namespace ghostlock::memory {
         }
         return true;
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

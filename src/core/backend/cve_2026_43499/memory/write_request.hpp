@@ -17,7 +17,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** What goes at the target. Disabled never reaches memory. */
     enum class WriteMode : std::int32_t {
         Disabled = 0,
@@ -91,4 +91,4 @@ namespace ghostlock::memory {
         }
         return "unknown";
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

@@ -16,7 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     /** How many reference slots the credential has; the tree's own number. */
     inline constexpr std::size_t kCredentialRefSlots = 4U;
 
@@ -65,4 +65,4 @@ namespace ghostlock::memory {
                                                           const CredentialLayout &layout,
 
                                                           std::size_t offset) noexcept;
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

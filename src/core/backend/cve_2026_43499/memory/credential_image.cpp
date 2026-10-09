@@ -1,11 +1,11 @@
 /** @file memory/credential_image.cpp
  *  The credential copy: validated first, written at once.
  */
-#include "memory/credential_image.hpp"
+#include "backend/cve_2026_43499/memory/credential_image.hpp"
 
 #include <cstring>
 
-namespace ghostlock::memory {
+namespace ghostlock::backend::cve_2026_43499::memory {
     namespace {
         bool fits(std::size_t size, std::size_t offset, std::size_t width) noexcept {
             return offset <= size && width <= size - offset;
@@ -61,4 +61,4 @@ namespace ghostlock::memory {
         }
         return CredentialVerdict::Ok;
     }
-}  // namespace ghostlock::memory
+}  // namespace ghostlock::backend::cve_2026_43499::memory

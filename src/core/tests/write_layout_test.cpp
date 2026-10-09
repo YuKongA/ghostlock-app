@@ -10,16 +10,16 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "memory/write_layout.hpp"
+#include "backend/cve_2026_43499/memory/write_layout.hpp"
 
 namespace {
-    using ghostlock::memory::layout_accepts_page;
-    using ghostlock::memory::layout_matches_request;
-    using ghostlock::memory::LayoutInputs;
-    using ghostlock::memory::WriteLayout;
-    using ghostlock::memory::WriteMode;
-    using ghostlock::memory::WriteRequest;
-    using ghostlock::memory::write_layout;
+    using ghostlock::backend::cve_2026_43499::memory::layout_accepts_page;
+    using ghostlock::backend::cve_2026_43499::memory::layout_matches_request;
+    using ghostlock::backend::cve_2026_43499::memory::LayoutInputs;
+    using ghostlock::backend::cve_2026_43499::memory::WriteLayout;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
+    using ghostlock::backend::cve_2026_43499::memory::WriteRequest;
+    using ghostlock::backend::cve_2026_43499::memory::write_layout;
 
     constexpr std::uint64_t kPageGood = 0xffffff8800210000ULL;
     constexpr std::uint64_t kPageEven = 0xffffff8800200000ULL;
