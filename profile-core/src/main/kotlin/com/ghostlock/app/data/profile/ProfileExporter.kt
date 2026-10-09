@@ -25,9 +25,9 @@ import java.io.File
 object ProfileExporter {
     @JvmStatic
     fun main(args: Array<String>) {
-        require(args.size >= 4) {
+        require(args.size in 4..6) {
             "usage: ProfileExporter <profilesDir> <outputDir> <expectedOutputDir> " +
-                "<buildDir>"
+                "<buildDir> [<finishingScriptPath> [<modulePath>]]"
         }
         val srcDir = File(args[0]).canonicalFile
         val outDir = File(args[1]).canonicalFile
@@ -42,6 +42,25 @@ object ProfileExporter {
         val buildDir = File(args[3]).canonicalFile
         require(srcDir.isDirectory) { "profiles dir does not exist: $srcDir" }
         validateOutputDir(srcDir, outDir, expectedOutDir, buildDir)
+
+        /* A6-4 document segment three: the finishing payloads. Like buildDir, the
+         * sources are PASSED IN (the Gradle task owns them) instead of being
+         * guessed from the tree; an argument that is absent means the payload is
+         * ABSENT, never a placeholder - the device-side resolve is what selects a
+         * KMI label, this path only carries the single label the task was given.
+         * The names follow the native rule: selectable terminal + suffix. */
+        val payloads = buildList {
+            args.getOrNull(4)?.takeIf { it.isNotBlank() }?.let { path ->
+                val script = File(path).canonicalFile
+                require(script.isFile) { "finishing script does not exist: $script" }
+                add(HandoffPayload.of("root_child_script", "script", script.readBytes()))
+            }
+            args.getOrNull(5)?.takeIf { it.isNotBlank() }?.let { path ->
+                val module = File(path).canonicalFile
+                require(module.isFile) { "module does not exist: $module" }
+                add(HandoffPayload.of("root_child_module", "module", module.readBytes()))
+            }
+        }
 
         val index = parseFile(File(srcDir, "index.conf"), srcDir)
             ?: error("index.conf is missing or invalid")
@@ -202,6 +221,9 @@ object ProfileExporter {
                 bool = { path -> ProfileResolver.nativeBool(merged, path) },
                 /* M4: the declared step queue is an array of maps; read it raw. */
                 raw = { path -> merged.getValueAt(path) },
+                /* A6-4: segment three; empty when the task passed no sources, which
+                 * keeps the exported bytes of every profile unchanged. */
+                payloads = payloads,
             )
             /* PERMANENT SELF-DIAGNOSTIC for the selection carrier: when the carrier
              * IS set (the declared-default path; skipped for the "none" class) the

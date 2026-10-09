@@ -6,6 +6,7 @@ import com.ghostlock.app.data.component.CombinationSpec
 import com.ghostlock.app.data.plugin.PluginEmission
 import com.ghostlock.app.data.plugin.PluginValue
 import com.ghostlock.app.data.profile.Glkv3Decoder
+import com.ghostlock.app.data.profile.HandoffPayload
 import com.ghostlock.app.data.route.NoRouteConfig
 import com.ghostlock.app.data.route.RouteConfig
 import com.ghostlock.app.data.route.RouteKind
@@ -62,6 +63,13 @@ data class NativeProfileDocument(
     val queueRoute: String? = null,
     val stepQueue: List<QueueElement>? = null,
     val experimental: Boolean? = null,
+    /**
+     * A6-4 segment three: the finishing payloads this document hands over, each
+     * with its own bytes and declared digest. EMPTY keeps every caller without
+     * payloads byte-identical: an absent payload is never declared (see
+     * [HandoffPayload]), the family is emitted only when something exists.
+     */
+    val payloads: List<HandoffPayload> = emptyList(),
     /**
      * Backend id carried in the logical document (native `kBackend*`). Defaults
      * to cve_2026_43499. [BackendWireCve202643284] selects the 43284 private
@@ -264,9 +272,22 @@ data class NativeProfileDocument(
          * payload - i.e. exactly the case of a 43284-only profile, whose declared
          * queue then never reached the wire (the 43499 counterpart survived only
          * because it also carried the queue-level `route` text). */
+        /* A6-4 segment three (the payload family): one section per payload, named
+         * by the native-owned segment rule. The three keys that bind a payload to
+         * its bytes ride three channels, so the adapter's declared-kind check
+         * applies to each of them instead of one catch-all map. */
+        for (payload in payloads) {
+            out += Section(
+                name = payload.segment,
+                entries = listOf("size" to payload.size.toULong()),
+                textEntries = listOf("sha256" to payload.sha256, "kind" to payload.kind),
+                binEntries = listOf("bin" to payload.bytes),
+            )
+        }
         return out.filter {
             it.entries.isNotEmpty() || it.textEntries.isNotEmpty() ||
-                it.pluginEntries.isNotEmpty() || it.queueEntries.isNotEmpty()
+                it.pluginEntries.isNotEmpty() || it.queueEntries.isNotEmpty() ||
+                it.binEntries.isNotEmpty()
         }
     }
 
@@ -446,6 +467,11 @@ data class NativeProfileDocument(
             plugins: List<PluginEmission> = emptyList(),
             /** M4: raw canonical payloads by dotted path (the step queue). */
             raw: (String) -> Any? = { null },
+            /**
+             * A6-4: finishing payloads (document segment three). The caller owns
+             * the sources; empty keeps every existing caller byte-identical.
+             */
+            payloads: List<HandoffPayload> = emptyList(),
         ): NativeProfileDocument {
             fun vu(path: String): UInt = value(path)?.toUInt() ?: 0u
             fun vul(path: String): ULong = value(path)?.toULong() ?: 0uL
@@ -624,6 +650,7 @@ data class NativeProfileDocument(
                 queueRoute = queueRoute,
                 stepQueue = stepQueue,
                 experimental = experimental,
+                payloads = payloads,
             )
         }
 
@@ -680,6 +707,11 @@ internal data class Section(
      * adapter checks membership instead of picking a fixed kind.
      */
     val pluginEntries: List<Pair<String, PluginValue>> = emptyList(),
+    /**
+     * A6-4: binary values — a payload's bytes are a GLKv3 bin, and the adapter
+     * requires the path to be declared bin before it writes them.
+     */
+    val binEntries: List<Pair<String, ByteArray>> = emptyList(),
     /**
      * M2: composite values — the step queue is an array of maps. The manifest
      * declares the path `array`; the adapter checks that kind before emitting.

@@ -174,6 +174,7 @@ object NativeProfileGlkv3Adapter {
      */
     private fun declarationFor(path: String): Declaration? {
         DECLARATIONS[path]?.let { return it }
+        payloadFamilyDeclaration(path)?.let { return it }
         if (!path.startsWith("plugin.")) return null
         /* A plugin id may itself contain dots (demo.plugin, vivo.vr_guard), so
          * the concrete path is matched against each declared placeholder tail:
@@ -192,6 +193,40 @@ object NativeProfileGlkv3Adapter {
             }
         }
         return null
+    }
+
+    /**
+     * A6-4: the payload family, admitted BY RULE instead of by enumerated rows.
+     *
+     * The names are bounded by the terminal catalogue plus a bounded suffix, so
+     * the manifest can keep refusing unknown paths while still accepting this
+     * family: only backend.<43499>.payload.<admissible name>.<one of four keys>
+     * resolves, with the wire kinds the native declaration fixes (bin / str /
+     * uint / str). Everything outside the family — another backend, a free name,
+     * a bare terminal, an unknown key — stays fail-closed. The rule lives in
+     * [HandoffPayload], which mirrors src/core/profile/payload_keys.hpp.
+     *
+     * @param path owner-qualified dotted path emitted by a document section.
+     * @return the declaration, or null when the path is not in the family.
+     */
+    private fun payloadFamilyDeclaration(path: String): Declaration? {
+        val prefix = HandoffPayload.SEGMENT_PREFIX + "."
+        if (!path.startsWith(prefix)) return null
+        val rest = path.removePrefix(prefix)
+        val at = rest.lastIndexOf('.')
+        if (at <= 0 || at >= rest.length - 1) return null
+        val name = rest.substring(0, at)
+        if (!HandoffPayload.nameIsValid(name)) return null
+        return when (rest.substring(at + 1)) {
+            "bin" -> Declaration(HandoffPayload.OWNER_TOKEN, listOf(WireType.Bin), null)
+            "sha256" -> Declaration(HandoffPayload.OWNER_TOKEN, listOf(WireType.Str), null)
+            /* The byte count is a uint; the width column follows the manifest
+             * convention for uint rows (8), so the value is range-checked rather
+             * than wrapped. */
+            "size" -> Declaration(HandoffPayload.OWNER_TOKEN, listOf(WireType.UInt), 8)
+            "kind" -> Declaration(HandoffPayload.OWNER_TOKEN, listOf(WireType.Str), null)
+            else -> null
+        }
     }
 
     /** Maps a dynamically typed plugin value onto its wire kind. */
@@ -249,6 +284,18 @@ object NativeProfileGlkv3Adapter {
                     val declaration = declarationFor(path)
                         ?: error("NativeProfileDocument emitted an unmapped GLKv3 path: $path")
                     add(Glkv3Entry(key, toText(declaration.wire, text)))
+                }
+                /* A6-4: a payload's bytes are a bin, and the declared kind is
+                 * checked before anything is written, exactly like the other
+                 * channels (a payload section is the only bin emitter today). */
+                for ((key, content) in section.binEntries) {
+                    val path = "${section.name}.$key"
+                    val declaration = declarationFor(path)
+                        ?: error("NativeProfileDocument emitted an unmapped GLKv3 path: $path")
+                    require(declaration.wires.singleOrNull() == WireType.Bin) {
+                        "GLKv3 path $path is declared ${declaration.manifestName}, not bin"
+                    }
+                    add(Glkv3Entry(key, Glkv3Value.Bin(content)))
                 }
                 /* P1: plugin parameters are dynamically typed; the manifest
                  * declares a union and the descriptor picked the concrete kind,
