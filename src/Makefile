@@ -87,6 +87,10 @@ LAYER_HEADERS := \
   core/backend/cve_2026_43499/race/futex_seam_linux.hpp \
   core/tools/futex_probe.cpp \
   core/tools/requeue_probe.cpp \
+  core/backend/cve_2026_43499/memory/heap_seam.hpp \
+  core/backend/cve_2026_43499/memory/heap_seam_linux.hpp \
+  core/backend/cve_2026_43499/memory/heap_geometry.hpp \
+  core/tools/heap_seam_probe.cpp \
   core/backend/cve_2026_43499/memory/write_request.hpp \
   core/tests/write_request_test.cpp \
   core/backend/cve_2026_43499/memory/write_encoder.hpp \
@@ -182,7 +186,7 @@ $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/m
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
 ANDROID_OUT := ../build/native/ghostlock
-.PHONY: android plan-check futex-probe requeue-probe
+.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe
 
 android: $(ANDROID_OUT)
 
@@ -204,6 +208,16 @@ futex-probe: $(FUTEX_PROBE)
 # The device probe for the handoff primitive: the race's reason for existing.
 REQUEUE_PROBE := ../build/native/requeue_probe
 requeue-probe: $(REQUEUE_PROBE)
+
+# The device probe for the heap seam: every platform call it makes, once.
+HEAP_SEAM_PROBE := ../build/native/heap_seam_probe
+heap-seam-probe: $(HEAP_SEAM_PROBE)
+
+$(HEAP_SEAM_PROBE): core/tools/heap_seam_probe.cpp core/backend/cve_2026_43499/memory/heap_seam.hpp \
+  core/backend/cve_2026_43499/memory/heap_seam_linux.hpp core/backend/cve_2026_43499/memory/heap_geometry.hpp | $(BUILD_DIR)
+	@mkdir -p ../build/native
+	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore $< -o $@
+	@echo "heap-seam-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(REQUEUE_PROBE): core/tools/requeue_probe.cpp core/backend/cve_2026_43499/race/futex_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
