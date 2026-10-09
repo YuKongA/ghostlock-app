@@ -162,3 +162,23 @@ want = table_size 乘 collisions 乘 kPokeMultiple，而 table_size = round_pow2
 
 **误判的因**：第 244 轮那次 `grep` 末尾带了 `head -8`，该文件落在截断之外，
 我把「没看到」当成了「不存在」。记在此处，免得后人重走。
+
+## 续（2026-10-09）：单序列接线 —— 两个序列的重叠点，以及我先前为何重复搜索
+
+树里有两个序列，它们**只在一步重叠**：
+
+- `leak/snitch_owner.hpp:130` —— 形状 → 区域 → 戳 → 走查 → 装配；**它做的是搜索**。
+- `memory/prepare_page.hpp:103` —— 十二步（Cleanup/Contexts/Pre/SprayChildren/Snitch/Post/
+  KillPartials/LeakLoop/Shaping/Pin/Reclaim/Align），**其中第 5 步 `Snitch` 就是搜索本身**。
+
+重叠处正是那一步。而 `prepare_page` 把 snitch **当参数收**（`prepare_page(inputs, geometry,
+patience, snitch)`），其注释写着：Running the whole search once. **Starting twice keeps the first
+answer**，a preparation that asked for a second search would be asking for a second cohort。
+
+**正解**：由 `prepare_page` 跑十二步（搜索在其中发生一次），对象与页面基址都从**同一只 policy**
+取；不要再单独跑 Owner。先前我把两条都接上，设备立刻报 `owner plan-missing`，而紧跟其前的
+`prepare_page` 那次搜索是成功的 —— 那就是重复搜索的确凿症状。
+
+`TargetState` 的四个字段因此有了确定的来源：`mm_struct` 取 policy 的 found（过 `report_discovery`
+取规范形），`page_base` 取十二步的 `base`，`fake_task`/`fake_lock` 取已登记的声明式偏移。
+`page_base` 只能来自准备，因为它的注释写的是「the kernel page **the preparation made ready**」。
