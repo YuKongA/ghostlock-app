@@ -7,6 +7,7 @@
 - **策划框架**（守则 §5.1）：**输入** = 《用户需求报告》（`docs/development/requirements.md`）；**输出** = ① 软件开发计划书（**本文件**）② 质量保证计划（`design-review-principles.md` + `engineering-rules.md`）③ 配置管理计划（`AGENTS.md` 文档约定 + 本文件 §8）④ 里程碑及评审计划（本文件 §5）。
 - **生命周期模型**（守则 §2.1）：**增量 + 阶段门**（每个批次一类事，上一批验收全绿再进下一批），阶段划分 = 立项 → 需求 → 概要设计 → 详细设计 → 编码 → 测试 → 运行/维护。
 - **需求基线状态**：`F21`–`F29` / `I13` / `I14` 已恢复（[确定]）；**`F1`–`F20`、`Q1`–`Q9` 原文在 2026-10-07 事故中丢失**（`requirements.md` 标 [缺失]，见 [incident](../analysis/incident-20261007-agents-requirements-revert.md)），**待用户补写后再据此批准**。
+- **待批事项**：`docs/analysis/pending-rulings.md` —— 一页列全当前**等待裁决**的事项（五项决定 + 两项登记），每项含实测依据与代价；两份相关计划的命令级清单各自指回该页。
 - **唯一性声明**：本文件是**唯一进度入口**；`docs/plan/**` 其余 28 份已归档到 `docs/archive/20261007-2237-*`（索引见 §11 与 [INDEX-plans](../archive/INDEX-plans.md)）。
 
 ## §1 目标与范围
