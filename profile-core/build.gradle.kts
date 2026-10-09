@@ -53,4 +53,33 @@ tasks.register<JavaExec>("exportProfiles") {
          * the output used absolutePath). */
         buildDirPath.absolutePath,
     )
+    /* A6-4 document segment three: an OPTIONAL single KMI label. UNSET keeps the
+     * historical four-argument invocation, which declares no payload at all, so
+     * the exported bytes of every profile stay identical. Set (-PlkmLabel=<label>)
+     * it hands the finishing script and that label's module to the document; the
+     * label is validated against the native-exported manifest (never a handwritten
+     * list) and a missing module fails loudly instead of exporting a payload with
+     * no bytes behind it. */
+    val lkmLabel = (findProperty("lkmLabel") as String?)?.takeIf { it.isNotBlank() }
+    if (lkmLabel != null) {
+        val manifest = rootProject.file("profile-core/src/main/resources/lkm-kmi-manifest.tsv")
+        check(manifest.isFile) { "missing label manifest: " + manifest }
+        val labels = manifest.readLines()
+            .map { it.trimEnd() }
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+            .map { it.substringBefore('\t') }
+        check(lkmLabel in labels) {
+            "unknown KMI label '" + lkmLabel + "'; the manifest declares: " + labels.joinToString(", ")
+        }
+        val script = rootProject.file("tools/lkm/ghostlock/root_cmd.sh")
+        check(script.isFile) { "missing finishing script: " + script }
+        val module = rootProject.file("build/app/lkm/" + lkmLabel + "/ghostlock.ko")
+        check(module.isFile) {
+            "missing module for label " + lkmLabel + ": " + module +
+                " (run ./gradlew buildLkmImages)"
+        }
+        inputs.file(script)
+        inputs.file(module)
+        args(script.absolutePath, module.absolutePath)
+    }
 }

@@ -35,6 +35,11 @@ val lkmSourceDir = rootProject.file("tools/lkm/ghostlock")
  * still under $HOME, which is what the podman VM can mount. */
 val lkmCacheDir = layout.buildDirectory.dir("lkm").get().asFile
 val lkmGeneratedAssets = layout.buildDirectory.dir("generated/lkmAssets")
+/* A6-4: the finishing script is a DEVICE PAYLOAD (tools/lkm/ghostlock/root_cmd.sh -
+ * the same file the module build ships). It is packaged as an asset so the
+ * device-side resolve can read it; being a source file it needs no container and
+ * never blocks a build, so the fail-closed rule stays on the LKM images alone. */
+val payloadGeneratedAssets = layout.buildDirectory.dir("generated/payloadAssets")
 
 /** The repository's SINGLE NDK authority (the root script resolves the same keys;
  *  AGP 8's ApplicationExtension exposes no ndkDirectory). */
@@ -110,6 +115,8 @@ android {
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
             /* LKM images are generated (never committed); AGP forbids Provider here. */
             assets.directories.add(lkmGeneratedAssets.get().asFile.absolutePath)
+            /* A6-4 finishing script, copied from the repository source. */
+            assets.directories.add(payloadGeneratedAssets.get().asFile.absolutePath)
         }
     }
     val properties = Properties()
@@ -518,6 +525,21 @@ val verifyLkmLedger = tasks.register<VerifyLkmLedgerTask>("verifyLkmLedger") {
     manifestFile.set(lkmManifestFile)
     cacheDir.set(lkmCacheDir)
 }
+
+/* A6-4: package the finishing script as a device payload asset. Plain Copy with no
+ * fail-closed gate: the source file is part of the repository, so a missing one is
+ * a broken checkout, not a device/KMI condition. */
+val copyPayloadScriptIntoAssets = tasks.register<Copy>("copyPayloadScriptIntoAssets") {
+    group = "ghostlock"
+    description = "Copies the A6-4 finishing script into the APK assets (device payload)"
+    from(rootProject.layout.projectDirectory.file("tools/lkm/ghostlock/root_cmd.sh"))
+    into(payloadGeneratedAssets.map { it.dir("payload") })
+}
+tasks.matching { task -> task.name.startsWith("merge") && task.name.endsWith("Assets") }
+    .configureEach {
+        dependsOn(copyPayloadScriptIntoAssets)
+        mustRunAfter(copyPayloadScriptIntoAssets)
+    }
 
 /* Fail-closed ONLY on the packaging path: package/bundle depend on the copy and the
  * asset merge is ordered after it, so pure JVM unit tests never need a container

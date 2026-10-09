@@ -883,6 +883,20 @@ internal class AndroidProfileConfigController(
         //         null
         //     }
         // }
+        /* A6-4 segment three: the device-side resolve hands the finishing
+         * payloads over. The terminal comes from the SAME authority that owns the
+         * document's terminal, and an artifact the APK does not carry is ABSENT -
+         * nothing is declared and no placeholder is invented. */
+        val payloads = HandoffPayloadSource.forTerminal(
+            release = release,
+            terminal = combination?.terminal?.token
+                ?: resolveExecutionSelection(
+                    executionModeSelection(),
+                    effectiveBackend(profile, declaration),
+                ).terminal.token,
+            readAsset = HandoffPayloadSource.assetReader(appContext),
+            onWarning = HandoffPayloadSource.androidWarning(),
+        )
         val document = Profile.fromValueMap(
             release = release,
             route = RouteKind.resolve(RouteKind.normalize(route)),
@@ -893,6 +907,7 @@ internal class AndroidProfileConfigController(
             raw = { path -> resolved.getValueAt(path) },
             /* plugins = emissions, -- COMMENTED OUT (user ruling 2026-10-05) */
             plugins = emptyList(),
+            payloads = payloads,
         )
         /* return NativeDocument(document, pluginErrors) -- COMMENTED OUT (user
          * ruling 2026-10-05); with no plugin emission there can be no plugin error. */

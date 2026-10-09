@@ -2,6 +2,7 @@ package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.plugin.PluginEmission
+import com.ghostlock.app.data.profile.HandoffPayload
 import com.ghostlock.app.data.route.MulticastConfig
 import com.ghostlock.app.data.route.MulticastGeometry
 import com.ghostlock.app.data.route.RouteKind
@@ -106,6 +107,12 @@ internal data class Profile(
              * reads nothing and keeps every existing caller byte-identical.
              */
             raw: (String) -> Any? = { null },
+            /**
+             * A6-4 segment three: the finishing payloads the caller produced
+             * (device-side resolve). Empty keeps every caller byte-identical:
+             * an absent payload is never declared.
+             */
+            payloads: List<HandoffPayload> = emptyList(),
         ): Profile? = fromNativeDocument(
             document = NativeProfileDocument.from(
                 release = release,
@@ -115,6 +122,7 @@ internal data class Profile(
                 bool = bool,
                 plugins = plugins,
                 raw = raw,
+                payloads = payloads,
             ),
             invalidPaths = invalidPaths,
         )
