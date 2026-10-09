@@ -2,7 +2,7 @@
 
 > 本件是 ADR-0014 的组成部分（正文 `0014-kernel-memory-only-surface.md` · 冲突件 `0014-kernel-memory-conflict.md`）· 2026-10-09
 
-### 5 用户同日的五条细化（已落进 contract/kernel_access.hpp）
+## 5 用户同日的五条细化（已落进 contract/kernel_access.hpp）
 
 | # | 要求 | 落地 |
 |---|---|---|
@@ -14,7 +14,7 @@
 
 另：NotInitialized 与 BadParameters 都是具名拒绝 —— 未初始化就用、或用错参数集，都按名拒绝而不是失败在下游。
 
-### 6 用户同日的第二批细化（七条，已落进 contract/kernel_access.hpp）
+## 6 用户同日的第二批细化（七条，已落进 contract/kernel_access.hpp）
 
 | # | 要求 | 落地 |
 |---|---|---|
