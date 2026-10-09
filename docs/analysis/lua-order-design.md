@@ -1,63 +1,92 @@
-# 设计：Lua 如何陈述执行顺序（ADR-0011 的落地面）
+# 设计：Lua 如何陈述执行顺序（ADR-0011 的落地面）· v2
 
-- 状态：**草案**（待 design-critic 评审 → 用户裁决）
-- 日期：2026-10-09 · 基线 `28c01ad8`
+- 状态：**草案 v2**（按 design-critic v0.2 评审修订：N1–N5）
+- 日期：2026-10-09 · 基线 `b4548724`
 - 权威顺序：守则 > AGENTS > 本文件；**ADR-0011** 是权威（执行顺序归 Lua）
 
-## 1 问题（一句话）
+## 0 修订记录（哪条把我改对了）
 
-ADR-0011 说「执行顺序的权威是 Lua」—— 而**三步**（`disenforce_selinux` · `credential_forgery` · `seccomp_bypass`）
-正是本项目里「执行顺序」的本体 ⇒ **Lua 必须能说出这三步及其次序**。
-问题是**以什么语法陈述** —— 本文件给两个形态、各自代价与推荐。
-
-## 2 约束（都是既有裁定，不是偏好）
-
-| # | 约束 | 出处 |
+| 评审项 | 我原来的说法 | 更正 |
 |---|---|---|
-| C1 | 队列（`backend.<id>.queue`）**见到即拒** | `profile/run_plan.hpp` 文档 · B1 |
-| C2 | **计划就是脚本**；不带计划 ⇒ `plan-missing` | 同上 |
-| C3 | `window.*` **不是脚本可见项**（用户裁决）；两条机检强制 | `contract/script_surface.hpp` |
-| C4 | op 的**参数约束**由 `pipeline::plan_gate` 执行 | `contract/op_registry.hpp` |
-| C5 | 脚本只能碰 `script_surface` 的名字（`backend` / `writeop` / `copyop` / `settle` / `handoff` / `close` / `cfg`） | 同 C3 |
-| C6 | 脚本调用被**记录**（staged）；**尚无**「op → 步骤」的映射 | `script/staged_plan.hpp` 实测 |
+| **N1 阻断** | 推荐形态 B，理由「唯一不冲突 + 改动最小」 | **两条都不成立**：B 同样触 C3 的**理由面**；且 `backend` 行**零参数**、`ArgSpec` **只有数值上限**、`steps=[…]` 需要**新参数 kind**；§5 的「参数进 ParamSpec」是**范畴错误**（`ParamSpec` 属 op 行，`backend` 是 surface 行） |
+| **N2** | 「A 与 C3 直接冲突 ⇒ 两条机检同批改写」 | 机检**只查 `window.` 前缀** ⇒ A 加步骤名**原样通过**；而且**更硬的约束漏了**：词汇里**根本没有单步集合** |
+| **N3** | 「A3-2 门禁里出现过单步用法」 | **无物证**（那条日志的 `step=0` 是 route 自己的状态计数）⇒ **撤回** |
+| **N4** | C6 只列为约束 | **C6 是落地面本体**，本设计必须覆盖「Lua 给的顺序如何成为 `StepSetOrder`」 |
+| **N5** | 只有 A/B 两形态 | **存在第三形态且支配 A/B**：**pre_window 的顺序声明** |
 
-## 3 两个形态
+## 1 问题（重述）
 
-### 形态 A：三步成为**脚本动作**
+ADR-0011：**执行顺序的权威是 Lua**。而本项目「执行顺序」的本体就是三步（`disenforce_selinux` ·
+`credential_forgery` · `seccomp_bypass`）⇒ Lua 必须能陈述次序。**两问**：
 
-`script_surface` 加三行（`Call`，`window_allowed=true`）⇒ Lua 直接写 `disenforce_selinux(h)` · `credential_forgery(h)` · `seccomp_bypass(h)`。
+1. **功能问题（交用户）**：是否需要**单步 / 任意子集**？（而不是只有整链）
+2. **形态问题（本设计）**：Lua 用什么语法陈述 —— 三形态见 §3。
 
-- **代价**：**与 C3 直接冲突** ⇒ 必须由用户**重新裁决 C3** 并留沿革；`script_surface` 的冻结判据与两条机检要同批改写。
-- **收益**：Lua 对顺序的表述**最直接**；顺序完全在 Lua 手里，**含「只跑其中一步」** —— 这也是 A3-2 门禁里出现过的用法。
+## 2 约束（更正后）
 
-### 形态 B：三步是 `backend` 的**参数**
-
-Lua 只调 `backend{ … }`，步序写在参数里（例如 `steps=[…]`）⇒ 顺序由 Lua **陈述**、由 gate **校验**、由 backend **执行**。
-
-- **代价**：与 C3 **不冲突**；但要新增**参数形态**（参数目前挂在 op 上，而 `backend` 是脚本面名字 —— 两套名字体系的衔接需要设计）。
-- **收益**：改动最小；语义与「队列退休」一致（顺序从文档里的队列搬到脚本里的参数）。
-
-## 4 推荐
-
-**形态 B** —— 理由：① 它是**唯一不与既有裁决冲突**的形态（不需要重新裁决 C3，少一次越权）；
-② 它把顺序放在**一处**（脚本的参数），而 A 会同时把三步变成**脚本面动作** ⇒ 脚本面从 7 个名字涨到 10 个，冻结判据与两条机检都要重写；
-③ **但 B 不能只跑其中一步**（三选一 ⇒ 只能整链）。
-
-⇒ 因此若需要「**单独跑某一步**」（A3-2 门禁里有过这种用法），则必须选 **A** ⇒
-**这是一条必须由用户回答的功能问题**，不是设计者能替答的。
-
-## 5 落地清单（选定后同批）
-
-| 件 | A | B |
+| # | 约束 | 出处 / 更正 |
 |---|---|---|
-| `contract/script_surface.hpp` | 加三行 + 改冻结判据 | 不改 |
-| 两条机检（`window.` 前缀不得进脚本面） | 同批改写 | 不改 |
-| `contract/op_registry.hpp` | 三行 op 与三步**对齐** | `backend` 的新参数进 `ParamSpec` |
-| `pipeline/plan_gate.hpp` | 校验三步的顺序合法性 | 校验参数里的顺序 |
-| `steps/step_runner.hpp` | **不变**（接一个 order、走完） | **不变** |
-| ADR | 新增沿革（C3 被取代） | 引用 ADR-0011 即可 |
+| C1 | 队列见到即拒 | `profile/run_plan.hpp` · B1 |
+| C2 | 计划就是脚本；无计划 ⇒ `plan-missing` | 同上 |
+| C3a | **两条机检只查「名以 `window.` 开头」** ⇒ 加步骤名**不触机检** | `script_surface.hpp:363`（N2 更正） |
+| C3b | C3 的**理由面**：窗口相位分组不得成为**脚本能力** | 步骤**就是**窗口 op 的内容（`op_registry` 的 token = step set） |
+| **C3c** | **词汇里没有单步集合**：`kOpCatalog` 只有 `window.selinux_cred_seccomp` · `window.selinux_cred` · `window.pagecache` · `…_umh`；`kStepSetOrders` 只有三元素/二元素/单步 pagecache ⇒ 要单步**必须同时扩词汇** | `op_registry.hpp:99-107` · `step_catalog.hpp` · `stepset-steps.pin.tsv`（N2 新增） |
+| C4 | op 的参数约束由 `plan_gate` 执行 | `op_registry.hpp` |
+| C5 | 脚本只能碰 `script_surface` 的名字 | `script_surface.hpp` |
+| C6 | 脚本调用被记录（staged），**尚无 op→步骤映射** ⇒ **本设计的落地面** | `script/staged_plan.hpp:10-12/:49`（N4） |
 
-## 6 不在本设计内（写明不猜）
+## 3 三个形态
 
-- 模版生成 Lua 的**时机**（构建期/导入期）与生成物是否仍需过 gate —— ADR-0011 §4 已列为 open；
-- `LegacyProfileConverter` 的具体改造 —— 属 Kotlin 车道，需单独设计（本设计只定「顺序说什么」，不定「谁生成」）。
+### 形态 C（**推荐**）：**pre_window 的顺序声明**
+
+脚本在 **pre_window** 声明顺序：`order{ steps = [disenforce_selinux, credential_forgery, seccomp_bypass] }`
+（`form=Call` · `phase=pre_window` · **`window_allowed=false`**）⇒ 实现层在窗口相位**按该声明执行**。
+
+- **不拼 `window.*`** ⇒ C3a 两条机检**原样通过**；**不是窗口相位动作** ⇒ 不触 C3b 的理由面；
+- 可表达**任意子集/次序**（含单步，**前提是 C3c 的词汇允许**）；
+- 本树已有「声明 → 实现执行」的先例：`backend` / `close` / `handoff` 都是声明式；`prepare_steps` / `reclaim_plan` 是「顺序/规则写成数据」的先例；`step_runner` 已能接一个 order 走完（头注已写「顺序期望来自 Lua」）。
+- **代价**：一处新行 + **一个列表参数 kind** + gate 的顺序合法性校验（与 B 同量级，但**功能严格更强**）。
+
+### 形态 A：三步成为脚本动作
+
+`script_surface` 加三行（`Call`，`window_allowed` 按裁决）⇒ Lua 直接调 `disenforce_selinux(h)` 等。
+
+- 机检**原样通过**（C3a）；真正冲撞的是 **C3b 的理由面** ⇒ 需用户裁决；
+- **且单步在词汇上仍不成立**（C3c）⇒ 要单步还得扩词汇 ⇒ **A 并不比 C 更直接**。
+
+### 形态 B（**已撤回推荐**）
+
+Lua 调 `backend{ steps=[…] }` ⇒ 需给**冻结的 `backend` 行**加参数 + **新参数 kind** + gate 校验；
+且**同样触 C3b 的理由面**（脚本参数决定窗口组合）⇒ 与 A 的冲突同质；**且不能只跑一步**（除非 C3c 扩词汇）。
+⇒ 保留为记录，**不作为推荐**。
+
+## 4 裁决顺序（推荐的流程）
+
+1. **用户先裁 C3c 的功能问题**：是否需要**单步 / 任意子集**？
+2. 无论答案 ⇒ **形态 C** 都可用（差别只在 C3c 是否扩词汇）；若用户要求三步作为**独立动作** ⇒ 再叠 **A**。
+3. 形态定了，再动 `script_surface` / `op_registry` / `plan_gate` 的同批清单（§5）。
+
+## 5 落地清单（按形态 C 排）
+
+| 件 | 改动 |
+|---|---|
+| `contract/script_surface.hpp` | 加 `order` 一行（`Call` · `pre_window` · `window_allowed=false`）+ **列表参数 kind**（`ArgSpec` 现在只有数值上限 ⇒ 需扩展） |
+| surface manifest / pin / 两份 doc-check | **重生成** |
+| `pipeline/plan_gate.hpp` | 校验 `order.steps` 的合法性（见 §6） |
+| `contract/op_registry.hpp` | **仅当 C3c 扩词汇**：新增单步/子集 op token ⇒ 与 step set 行同批 |
+| `steps/step_runner.hpp` | **不改**（接一个 order 走完），**除非** §6 结论要求泛化 |
+| ADR | 引用 ADR-0011 即可；C3b 的裁决若发生 ⇒ 留沿革 |
+
+## 6 C6：Lua 给的顺序**如何成为** `StepSetOrder`（本设计必须覆盖）
+
+两条路，**选定其一**（决定 `step_runner` 是否泛化）：
+
+- **匹配已声明集合**：`order.steps` 必须**恰好**等于某个已声明 step set（顺序一致）⇒ 实现只做查表 ⇒ `step_runner` **不改**；单步/新子集必须**先扩词汇**（C3c）。
+- **允许任意 span**：`order.steps` 可以是任意子集/次序 ⇒ 需要一个新的运行期结构（不是 `StepSetOrder`）⇒ `step_runner` 要**泛化**（接一个 span 而不是目录行）。
+
+⇒ 本稿**不替用户选**：这与 C3c 的功能问题**是同一个问题的两面**（要单步 ⇒ 必然 `span` 或扩词汇二选一）。
+
+## 7 不在本设计内（不猜）
+
+- 模版生成 Lua 的**时机**与生成物是否仍需过 gate —— ADR-0011 §4 的 open；
+- `LegacyProfileConverter` 的改造 —— Kotlin 车道，单独设计。
