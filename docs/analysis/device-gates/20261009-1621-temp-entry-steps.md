@@ -123,3 +123,42 @@ want = table_size 乘 collisions 乘 kPokeMultiple，而 table_size = round_pow2
 
 1. StubBuckets：接受一切候选的桶规则，让走查在开发路径上可达；正式路径用真实规则。
 2. setup.futex_table_size 的钉值 256：随探针那次通过读数，不随核数；正式路径由 profile 与核数决定。
+
+## 续（2026-10-09）：`discovery ok=1` 之后的下一步，逐件指名
+
+本轮之前已在真机验证并提交的链路（`217bbb04` 及之前）：文档 → 会话帧 → 闸门 → 载体 → 窗口 → 接缝 →
+载荷偏移 → 语料（setup/region/证物）→ 准备十二步 → 戳 → 走查 → 发现。
+最后一行是 `run-temp: discovery ok=1 mm_struct=0xffff800000100000 init_task=0x0 task=0x0 kaslr=0x0`，
+其中后三个为零是既定形状（见 `leak/snitch_discovery.hpp` 的文件注释），不是缺陷。
+
+### 剩下的四件（按依赖顺序）
+
+1. **43499 的 `AccessMiscParameters` 派生**。抽象类只有一个纯虚 `name()`（`contract/kernel_access.hpp:135`），
+   现成的派生只有 `NoMiscParameters`（返回 "none"）。43499 的那个要带 `route` 与 `offset`，并自检；
+   不认识的集合一律拒绝，不读作缺省。`Access` 落字时调 `land_word(address, value, params->offset)`，
+   并以 `params->usable_for_access()` 为准入。
+2. **三个字段地址的生产者**。`StepTargets` 的三个字段是 `uintptr_t` 绝对地址（`steps/action.hpp:30`），
+   而退役树是由 `addresses.data_alias(profile::selinux_enforcing())` 得到的，即 profile 给偏移、别名器加基址。
+   新树里没有这个别名器；偏移键只有两个：`backend.cve_2026_43499.abi.offset.selinux_blob_sizes` 与
+   `backend.cve_2026_43499.abi.offset.selinux_enforcing`。
+3. **步骤**：`write_readiness(TargetState{mm_struct/page_base/fake_task/fake_lock})` → `StepTargets` →
+   `request_for` → `write_layout` → `arm_for` → `RaceAction` 与 `run_step_set`。除第 1、2 件外，件件已在树里。
+4. **终端**：`terminal::run_payload` 与 LKM/模块加载。**只有这一步才是「启动 kernelsu 拿到 root」**。
+
+### 临时物清单（与入口同批删）
+
+载体的 dev 路径、payload 的 dev 路径、五个载荷偏移、桩桶 `StubBuckets`（现认 `address_table` 两个证物地址）、
+`snitch_inputs.possible_cpus = 1U`（表尺寸随核数 8 倍化，按探针通过读数钉住）。全部登记在
+`docs/analysis/device-probe-43284-checklist.md`。
+
+## 更正（2026-10-09）：第 ① 件早已就绪
+
+本文件上一节把 43499 的 access 参数集列为待写，**这是错的**。
+`core/src/backend/cve_2026_43499/access_params.hpp` 已存在且完整（48 行）：
+`AccessParams` 有 `route`、`offset`、`offset_set`（零是合法偏移，故用标志位区分未给），
+`name()` 返回 `cve_2026_43499`，并带 `usable_for_initialize()` 与 `usable_for_access()` 两个自检。
+文件头还记着用户的规则：一个 backend 一个 KernelAccess，route 是参数而不是独立对象，
+否则 route 就成了装配轴；route 的生命周期是 initialize 到 shutdown。
+
+**误判的因**：第 244 轮那次 `grep` 末尾带了 `head -8`，该文件落在截断之外，
+我把「没看到」当成了「不存在」。记在此处，免得后人重走。
