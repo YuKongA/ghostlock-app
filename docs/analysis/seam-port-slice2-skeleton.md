@@ -46,3 +46,20 @@
 同一文件的「未实现」段写道：几何、时序与重试预算 **come from the profile（Q2 rule 1）**。
 
 ⇒ 这与 **ADR-0015** 冲突：该裁定把值改为**经 Lua 传入**（执行层不直接读 profile）。⇒ 处置：该段表述**随切片 2 一并改写**（改为由脚本传入），并且**不得**在实现里留任何从 profile 取值的路径（否则就是同一份数据的**第二条读取路径**，正是本仓明令禁止的高危形态）。**未改动该文件**，先在表里登记。
+
+## 7 剩下两件：已量
+
+### ① 谁真正落写：waiter 线程，经 route 控制器执行 request
+
+实测 `src/core/race/threads.cpp` 三个入口：`waiter_thread`（`:31`）· `owner_thread`（`:85`）· `consumer_thread`（`:108`）。真正落写的一行是 **`:65` 的 `race->route_status = controller.execute(request);`** —— 它在 `waiter_thread` 体内（31 与 85 之间）。`:216` 再把 `route_status` 读回。
+
+⇒ ③ 的更正可以写到**行级**：窗口的实现点 = **`controller.execute(request)`** 这一次调用（request 由 race 侧构造持有），**不是** route 体（route 体拿到 request 但 `M:44` 实测忽略它）。⇒ 缝的 `land_word` 要做的是「用 address/value/offset **构造 request**，再调 `controller.execute`」—— 即我 §4.3 的原句**一半是对的**（要构造 request），错在**谁消费它**（不是 route 体，是控制器）。
+
+### ② `MulticastLimits` 与 `RaceSettings`：不合并
+
+- `MulticastLimits`（route 面）：`max_attempts` · `arm_hold`
+- `RaceSettings`（竞速面）：`main_cpu` · `consumer_cpu` · `settle_us` · `poll_us` · `poll_rounds`（末者是**派生量**，文件头写明不是独立设置）
+
+字段**不相交**，且归属**不同层**（route 策略 vs 竞速运行时）⇒ 裁定：**不合并**。理由是单一权威 —— 合并会让**两层共写一个结构**，那与「同一份事实两条路径」同类，同样被禁。
+
+⇒ 推论：**暖场轮（裁定 ②）的 `arm_sequence` 归 `MulticastLimits`**（它是 route 侧的 arm 策略，不是竞速时序）。
