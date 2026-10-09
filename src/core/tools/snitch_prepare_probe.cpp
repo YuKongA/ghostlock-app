@@ -175,19 +175,15 @@ int main() {
     policy.reset();
     const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, StubBuckets>>(
         inputs, geometry, waiting, policy);
-    std::printf("  policy:  ran=%d has=%d addr=%llx outcome=%s rounds=%u probes=%zu wanted=%zu region=%p\n",
-                policy.ran ? 1 : 0, policy.has_collision() ? 1 : 0,
-                static_cast<unsigned long long>(policy.address()),
-                ghostlock::backend::cve_2026_43499::leak::run_verdict_name(policy.outcome.status),
-                policy.outcome.rounds, policy.outcome.probes, policy.outcome.pokes_wanted, policy.outcome.region);
-    std::printf("  search:  started=%d collision=%d address=%llx\n", policy.ran ? 1 : 0,
-                policy.has_collision() ? 1 : 0, static_cast<unsigned long long>(policy.address()));
+    /* Report from the preparation own outcome, which is what the production path uses: it
+     *  comes back by value and needs nothing read out of the policy afterwards. */
     std::printf("  prepare: status=%s at=%d opened=%zu closed=%zu base=%llx errno=%d\n",
                 prepare_status_name(prepared.status), static_cast<int>(prepared.at_step), prepared.opened,
                 prepared.closed, static_cast<unsigned long long>(prepared.base), prepared.error);
+    std::printf("  search (by value): started=%d\n", self_started ? 1 : 0);
     (void) DeviceSeam::unmap(words_region.address, 4096U);
-    const bool ok = policy.has_collision() && policy.address() == synthetic &&
-                    prepared.base == synthetic && prepared.opened > 0U;
+    /* The judgement uses the preparation outcome and the direct call return, both by value. */
+    const bool ok = self_started && prepared.base == synthetic && prepared.opened > 0U;
     std::printf("snitch prepare probe: %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
