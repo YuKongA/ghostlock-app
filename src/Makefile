@@ -132,6 +132,8 @@ LAYER_HEADERS := \
   core/backend/cve_2026_43499/abi.hpp \
   core/backend/cve_2026_43499/abi.cpp \
   core/tests/abi_offsets_test.cpp \
+  core/backend/cve_2026_43499/leak/snitch_policy.hpp \
+  core/tests/snitch_policy_test.cpp \
   core/profile/key_catalog.hpp \
   core/profile/key_catalog.cpp \
   core/tools/profile_manifest_dump.cpp \
@@ -206,7 +208,7 @@ LAYER_HEADERS := \
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
   core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/race_runtime_test.cpp core/tests/kmi_catalog_test.cpp core/tests/device_facts_test.cpp core/tests/module_facts_test.cpp core/tests/staged_plan_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -600,6 +602,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/plan_load_test
 	@echo "check: reclaim plan (which descriptors are given back, and in what order)"
 	@$(BUILD_DIR)/reclaim_plan_test
+	@echo "check: snitch policy (one run, then answers the polls)"
+	@$(BUILD_DIR)/snitch_policy_test
 	@echo "check: snitch tuning (from the profile, or refused by name)"
 	@$(BUILD_DIR)/snitch_tuning_test
 	@echo "check: snitch child (a poke counts and touches)"
@@ -733,6 +737,10 @@ $(BUILD_DIR)/prepare_plan_test: core/tests/prepare_plan_test.cpp \
 $(BUILD_DIR)/page_geometry_test: core/tests/page_geometry_test.cpp \
   core/backend/cve_2026_43499/memory/page_geometry.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/page_geometry_test.cpp -o $@
+
+$(BUILD_DIR)/snitch_policy_test: core/tests/snitch_policy_test.cpp \
+  core/backend/cve_2026_43499/leak/snitch_policy.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/snitch_policy_test.cpp -o $@
 
 $(BUILD_DIR)/snitch_tuning_test: core/tests/snitch_tuning_test.cpp \
   core/backend/cve_2026_43499/leak/snitch_tuning.hpp | $(BUILD_DIR)
