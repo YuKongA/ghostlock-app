@@ -96,6 +96,8 @@ LAYER_HEADERS := \
   core/memory/credential_image.hpp \
   core/memory/credential_image.cpp \
   core/tests/credential_image_test.cpp \
+  core/race/race_runtime.hpp \
+  core/tests/race_runtime_test.cpp \
   core/backend/cve_2026_43499/route/lifecycle.hpp \
   core/tests/route_lifecycle_test.cpp \
   core/profile/document_pairs.hpp \
@@ -123,8 +125,8 @@ LAYER_HEADERS := \
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
-  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/step_queue_test.cpp core/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/step_queue_test $(BUILD_DIR)/run_plan_test
+  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/race_runtime_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/step_queue_test.cpp core/tests/run_plan_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/step_queue_test $(BUILD_DIR)/run_plan_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -187,6 +189,9 @@ plan-check: $(BUILD_DIR)/ghostlock-skeleton ../profile-core/src/test/resources/d
 	@grep -q 'plan chain=mcast_rootchild steps=w1,w2,w3 source=queue' $(BUILD_DIR)/plan-check.out \
 	  && echo "plan-check: PASS ($$(head -1 $(BUILD_DIR)/plan-check.out))" \
 	  || { echo "plan-check: FAIL"; cat $(BUILD_DIR)/plan-check.out; exit 1; }
+	@grep -q 'race main=0 consumer=1 settle=50000 poll=1000 rounds=300000 ok' $(BUILD_DIR)/plan-check.out \
+	  && echo "plan-check: the profile's own race settings are read and coherent" \
+	  || { echo "plan-check: FAIL: the race settings did not come out of the document"; cat $(BUILD_DIR)/plan-check.out; exit 1; }
 	@grep -q 'executor-unavailable' $(BUILD_DIR)/plan-check.out \
 	  && echo "plan-check: the run is refused, as this tree must" \
 	  || { echo "plan-check: FAIL: no refusal was reported"; exit 1; }
@@ -265,6 +270,10 @@ $(BUILD_DIR)/document_pairs_test: core/tests/document_pairs_test.cpp \
 $(BUILD_DIR)/route_lifecycle_test: core/tests/route_lifecycle_test.cpp \
   core/backend/cve_2026_43499/route/lifecycle.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/route_lifecycle_test.cpp -o $@
+
+$(BUILD_DIR)/race_runtime_test: core/tests/race_runtime_test.cpp \
+  core/race/race_runtime.hpp core/memory/target_profile.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/race_runtime_test.cpp -o $@
 
 $(BUILD_DIR)/credential_image_test: core/tests/credential_image_test.cpp \
   core/memory/credential_image.hpp core/memory/credential_image.cpp | $(BUILD_DIR)
@@ -404,6 +413,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/write_layout_test
 	@echo "check: credential image (the copy a credential write installs)"
 	@$(BUILD_DIR)/credential_image_test
+	@echo "check: race runtime (the settings an attempt needs)"
+	@$(BUILD_DIR)/race_runtime_test
 	@echo "check: route lifecycle (prepare, execute, disarm, destroy)"
 	@$(BUILD_DIR)/route_lifecycle_test
 	@echo "check: document pairs (segment to the memory read path)"

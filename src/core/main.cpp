@@ -25,8 +25,11 @@
 
 #include "contract/layer_scope.hpp"
 #include "contract/step_catalog.hpp"
+#include "memory/target_profile.hpp"
+#include "profile/document_pairs.hpp"
 #include "profile/glkv3_document.hpp"
 #include "profile/run_plan.hpp"
+#include "race/race_runtime.hpp"
 
 namespace {
     constexpr std::size_t kMaxDocumentBytes = 1U << 20U;
@@ -58,6 +61,45 @@ namespace {
         return 0;
     }
 
+    /** Read the race settings the document declares for this chain's backend and
+     *  report whether they are coherent. The keys are the document's own; the
+     *  rounds are derived from the timeout and the interval it declares. */
+    ghostlock::race::SettingsVerdict report_race_settings(
+        const ghostlock::profile::Document &document, const char *backend) {
+        char section[192];
+        std::snprintf(section, sizeof(section), "backend.%s.execution.recommended_cpus", backend);
+        const char *cpu_keys[] = {"main", "consumer"};
+        ghostlock::memory::KeyValue cpus[2U];
+        ghostlock::race::RaceSettings settings;
+        if (ghostlock::profile::read_section_pairs(document, std::string_view(section), cpu_keys, 2U,
+                                                   cpus, 2U)
+                .verdict == ghostlock::profile::PairsVerdict::Ok) {
+            settings.main_cpu = static_cast<int>(cpus[0U].value);
+            settings.consumer_cpu = static_cast<int>(cpus[1U].value);
+        }
+        std::snprintf(section, sizeof(section), "backend.%s.execution.race", backend);
+        const char *race_keys[] = {"setup_settle_us", "state_poll_interval_us",
+                                   "route_done_timeout_ms"};
+        ghostlock::memory::KeyValue race[3U];
+        if (ghostlock::profile::read_section_pairs(document, std::string_view(section), race_keys, 3U,
+                                                   race, 3U)
+                .verdict == ghostlock::profile::PairsVerdict::Ok) {
+            settings.settle_us = race[0U].value;
+            settings.poll_us = race[1U].value;
+            if (settings.poll_us != 0U) {
+                settings.poll_rounds = (race[2U].value * 1000U) / settings.poll_us;
+            }
+        }
+        const ghostlock::race::SettingsVerdict verdict = ghostlock::race::check_settings(settings);
+        std::printf("race main=%d consumer=%d settle=%llu poll=%llu rounds=%llu %s\n",
+                    settings.main_cpu, settings.consumer_cpu,
+                    static_cast<unsigned long long>(settings.settle_us),
+                    static_cast<unsigned long long>(settings.poll_us),
+                    static_cast<unsigned long long>(settings.poll_rounds),
+                    ghostlock::race::settings_verdict_name(verdict));
+        return verdict;
+    }
+
     /** Resolve the document and say what the run would do. Never claims to run. */
     int report_plan() {
         static std::uint8_t document_bytes[kMaxDocumentBytes];
@@ -84,9 +126,11 @@ namespace {
                         ghostlock::contract::step_token(resolved.plan.steps[i]));
         }
         std::printf(" source=%s\n", resolved.plan.from_fallback ? "chain-default" : "queue");
+        const ghostlock::race::SettingsVerdict settings =
+            report_race_settings(document, resolved.plan.chain->backend);
         /* The chain resolved; running it is what this tree cannot do yet. */
         std::printf("executor-unavailable\n");
-        return 4;
+        return settings == ghostlock::race::SettingsVerdict::Ok ? 4 : 5;
     }
 }  // namespace
 
