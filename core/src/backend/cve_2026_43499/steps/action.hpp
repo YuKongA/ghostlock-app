@@ -139,6 +139,18 @@ namespace ghostlock::backend::cve_2026_43499::steps {
             race_.prepare(reinterpret_cast<std::uint32_t *>(request.target),
                           reinterpret_cast<std::uint32_t *>(request.target));
             race_outcome_ = race_.run(window_);
+            /* The route shape is prepare, execute, disarm, destroy, and the verdict is true
+             *  only once it has been disarmed: without this the outcome stays Running and the
+             *  step reports failure for an attempt that succeeded. The device showed exactly
+             *  that, race running with everything before it ok. */
+            /* Only an attempt that ran is disarmed. Disarming unconditionally would set the
+             *  outcome to Disarmed even for one that was refused, and the refusal is what a
+             *  caller has to see: the four assertions about the closed window caught exactly
+             *  that when this was written the other way round. */
+            if (race_outcome_ == race::RaceOutcome::Running) {
+                race_.disarm();
+                race_outcome_ = race_.outcome();
+            }
             return race_outcome_ == race::RaceOutcome::Disarmed ||
                    race_outcome_ == race::RaceOutcome::Destroyed;
         }

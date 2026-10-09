@@ -182,3 +182,19 @@ answer**，a preparation that asked for a second search would be asking for a se
 `TargetState` 的四个字段因此有了确定的来源：`mm_struct` 取 policy 的 found（过 `report_discovery`
 取规范形），`page_base` 取十二步的 `base`，`fake_task`/`fake_lock` 取已登记的声明式偏移。
 `page_base` 只能来自准备，因为它的注释写的是「the kernel page **the preparation made ready**」。
+
+## 续（2026-10-09）：真接缝下的 refused，及其原语层面的原因
+
+把默认的桩接缝（`FutexSeam`，其 `lock_pi` 是 `(void)word; return 0;`）换成 `LinuxFutexSeam` 之后，
+设备上第 1 步由 ok=1 变成 ok=0，`race=refused`，SELinux 与 uid 前后不变。
+
+原因在原语层：`RaceAction` 调 `race_.prepare(target, target)`，把同一个地址同时当链字与目标字；
+而 `FUTEX_WAIT_REQUEUE_PI` 要求二者不同，内核对同字返回 EINVAL。探针 `requeue_probe.cpp` 用的是
+两个各自独立的字（`g_chain` 与 `g_target`），并且把等待者放在**另一个线程**里，注释写着
+Parks here until the owner requeues it onto the target word。
+
+还有一层更深的事实，写在同处以免后人重走：这两个字是**进程本地内存**。用它们可以让竞态机制真的跑起来，
+但落笔只会落在本地内存上，改不了任何内核字段。要改内核字段，目标字必须是内核里的**真 futex 字**，
+且真的有人在其上等待——这正是该原语的前提，也是 profile 里那三个偏移最终必须变成真地址的原因。
+
+**因此**：桩接缝上那一次 `steps ok=1` 是空的，不能算作落笔证据；真接缝下才是判据。

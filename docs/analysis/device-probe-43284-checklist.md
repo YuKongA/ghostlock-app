@@ -96,5 +96,7 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 **真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
 **真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
 **构建**：须覆盖 NDK_TOOLCHAIN 到 NDK 30（原因与命令见门禁归档）。
-| 桩桶 StubBuckets | run_pipeline_temp.cpp | 与入口同批删；正式用真实规则 |
-| 表尺寸钉值 256 | run_pipeline_temp.cpp | 与入口同批删；正式按 profile 与核数 |
+| 桩桶 | run_pipeline_temp.cpp | 同批删；正式用真实规则 |
+| 表尺寸钉值 | run_pipeline_temp.cpp | 同批删；正式按 profile 与核数 |
+
+| 声明值：三偏移（0x108/0xB8/0x2C）与两着陆地址（0x700/0x58） | run_pipeline_temp.cpp | 与入口同批删；正式路径按 profile |

