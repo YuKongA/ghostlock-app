@@ -7,9 +7,11 @@
  *  argument view to the injected sink; filling a staged plan (PlanOp[]) is
  *  A6-2's job and is not modelled here.
  *
- *  Shape: a function-pointer table, not a virtual class -- the tree's window
- *  work keeps indirect dispatch out of hot paths and the gate scans built
- *  binaries for _ZTV symbols, so no vtable is introduced.
+ *  Shape: a function-pointer table, not a virtual class. That choice was made when the gate
+ *  scanned built binaries for _ZTV symbols as a proxy for keeping indirect dispatch out of the
+ *  window; ADR-0014 replaced the proxy with a check on the window body itself, so a vtable is
+ *  no longer a violation on its own. This table stays a table: the script boundary is not the
+ *  place to change it.
  *
  *  Arguments carry a type tag plus either a u64, a string span or a bool; A6-1
  *  does not parse their semantics.

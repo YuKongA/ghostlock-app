@@ -13,7 +13,11 @@
  *   - no Lua reference (the window never interprets a script);
  *   - no heap allocation (no allocator call inside the window body);
  *   - no logging/stdio inside the window body (it allocates and may block);
- *   - no indirect dispatch (no vtable, no function-pointer hop, no type-erased callable);
+ *   - the window BODY issues no syscall and makes no indirect call. The prohibition is about
+ *     what runs inside the window, not about what exists in the binary: virtual dispatch that
+ *     enters the window from outside is safe, so a vtable in the image is not by itself a
+ *     violation. (Rewritten 2026-10-09 under the user ruling in ADR-0014; the old text banned
+ *     indirect dispatch outright and a machine check scanned binaries for vtables as a proxy.)
  *   - no tuning number: parameters arrive from the profile (Q2 rule 1).
  *
  *  Reclaim: the guard owns the window scope and reclaims on EVERY exit path --
