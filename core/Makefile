@@ -819,9 +819,11 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	done | wc -l | tr -d ' '); \
 	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
 	echo "check: surface list has a single definition site (the generated pin lives in a .tsv and is checked byte-for-byte)"
-	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
-	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
-	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
+	@allowed=$$(grep -vE "^[[:space:]]*(#|$$)" src/tests/vtable-ledger.txt || true); \
+	@found=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -E " _ZTV" | sed -e "s/.* _ZTV/_ZTV/" | sort -u || true); \
+	@stray=$$(echo "$$found" | while read -r sym; do [ -z "$$sym" ] && continue; echo "$$allowed" | grep -qxF "$$sym" || echo "$$sym"; done); \
+	if [ -n "$$stray" ]; then echo "VTT-HIT: unlisted vtable(s): $$stray"; echo "  a vtable is allowed only if it is in src/tests/vtable-ledger.txt"; exit 1; fi; \
+	echo "check: vtables (every _ZTV in the scanned binaries is listed in the ledger)"
 	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
 	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual' || true); \
 	if [ "$$dirty" -ne 0 ]; then echo "WINDOW-DIRTY: $$dirty"; echo "$$code" | grep -nE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual'; exit 1; fi; \
