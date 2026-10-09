@@ -42,6 +42,7 @@ namespace {
         inputs.page_size = 4096U;
         inputs.word_bytes = 8U;
         inputs.handle_bytes = 8U;
+        inputs.total_pokes = 8U;
         return inputs;
     }
 
@@ -62,10 +63,11 @@ namespace {
                "the address array has one slot more than there are collisions");
         expect(layout.offsets[1] == 128U && layout.offsets[2] == 128U + 24U,
                "and each part starts where the last one ended");
-        expect(layout.bytes[2] == 2U * 8U, "one timestamp per collision");
+        expect(layout.bytes[2] == 8U * 8U,
+               "one timestamp per poke, not per collision: every poke is recorded before any is compared");
         expect(layout.bytes[3] == 4U * 8U, "one handle per thread");
         expect(layout.bytes[4] == 4096U, "and the wait page is a page");
-        expect(layout.total_bytes == 128U + 24U + 16U + 32U + 4096U, "the total is the sum, once");
+        expect(layout.total_bytes == 128U + 24U + 64U + 32U + 4096U, "the total is the sum, once");
         for (std::size_t i = 1U; i < kRegionPartCount; ++i) {
             expect(layout.offsets[i] == layout.offsets[i - 1U] + layout.bytes[i - 1U],
                    "no part starts before the one before it ends");
@@ -84,6 +86,10 @@ namespace {
         no_collisions.collisions = 0U;
         expect(layout_snitch_region(no_collisions, layout) == RegionVerdict::GeometryMissing,
                "nor a search with no collisions to record");
+        RegionInputs no_pokes = typical();
+        no_pokes.total_pokes = 0U;
+        expect(layout_snitch_region(no_pokes, layout) == RegionVerdict::GeometryMissing,
+               "nor a region with nowhere to record what the cohort did");
         RegionInputs no_page = typical();
         no_page.page_size = 0U;
         expect(layout_snitch_region(no_page, layout) == RegionVerdict::GeometryMissing,
