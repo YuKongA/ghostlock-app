@@ -7,6 +7,8 @@
 
 ## 1 逐行去向
 
+缩写：`seam` = `core/src/backend/cve_2026_43284/seam/pagecache_seam.hpp`（`seam:NN` 为其行号）；其余 `file:line` 均取旧树 `b0e9f499^`。
+
 | 旧行 | 内容 | 去向与依据 |
 |---|---|---|
 | 1–7 | 文件头注释；`#include` 旧模块头 | **W**；:7 改指新缝头（`seam/pagecache_seam.hpp`）；旧 `pagecache.hpp` 不搬（其上下文已被 `SaMaterial`＋窗口状态取代，见 `-slice1.md`） |
@@ -50,7 +52,7 @@
 
 ## 5 门禁
 
-- `make -C core host` = **EXIT <host>**；`make -C core check` = **EXIT <check>**（2026-10-09；本片只写本文件；生产代码与测试未动，`pagecache_chain_test` 断言原样绿）。
+- `make -C core host` = **EXIT 0**；`make -C core check` = **EXIT 0**（2026-10-09，先 host 后 check，两条均按退出码核）。本片只写本文件、生产代码与测试未动；三条页缓存测试直跑亦绿：`build/host/pagecache_chain_test`、`pagecache_seam_test`、`pagecache_doors_test`。
 
 ## 6 未闭项（不硬凑，交 Lead 裁）
 
