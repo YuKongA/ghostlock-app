@@ -83,7 +83,7 @@ namespace {
     void construction_and_lifecycle() {
         RecordingSeam seam;
         const TargetState target = ready_target();
-        Access access(seam, target);
+        Access access(&seam, &target);
         expect(seam.up_calls == 0 && access.route() == RouteId::Unset,
                "construction decides nothing and takes nothing down");
         expect(access.state(AccessChannel::PiWindow) == Access::AccessState::Declared,
@@ -108,7 +108,7 @@ namespace {
     void writes_go_through_the_seam() {
         RecordingSeam seam;
         const TargetState target = ready_target();
-        Access access(seam, target);
+        Access access(&seam, &target);
         AccessParams params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x80U;

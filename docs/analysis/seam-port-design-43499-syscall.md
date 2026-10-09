@@ -75,3 +75,26 @@ splice_.splice_one(..., datagram, kBlockBytes, position);  // ← 只发 16 字�
 把 `write_block` 的组装改成旧布局 ✓：`datagram[40 + icv_len]` · 先写 SPI/Seq ✓ · 再把 **IV 写入偏移 8** ✓ · 密文写偏移 24 ✓ · 对**整个 40 字节**算 ICV ✓ · 把 ICV 附在偏移 40 ✓ · 发送 **40+icv_len** 字节 ✓；并**把测试的断言扩展到字节 8 之后与总长度** ✓（否则修了也无人守 ✓）。
 
 **尚未修** ✓：本轮只做了核对与记录 ✓ ⇒ 修改留到下一轮（避免交出半成品 ✓）。
+
+## 26 确认：线上那 16 字节密文来自被 splice 的页，不来自缓冲区（作者复核）
+
+`real_splice_io` 的作者**对着旧件逐字节核过**并给出契约（我已确认）：
+
+```
+① vmsplice  [0,24)    = SPI(4) | Seq(4) | IV(16)
+② splice    页 16 B   = file_fd@offset（无 fd 时走 crash_dump helper）
+③ vmsplice  [40,size) = ICV
+④ splice    pipe→socket，共 size 字节
+```
+
+**要点**：`[24,40)` 那段在内存缓冲区里**只用于算 ICV** ⇒ **线上那 16 字节是被 `splice` 的页本身** ⇒ 这正是 `splice` 的**零拷贝**意义 ⇒ 实现**必须**保持这个分工（若改成从缓冲区发那 16 字节 ⇒ 丢掉 splice 的全部价值）。
+
+**为什么值得单独记一条**：这是**读代码时最容易看错**的地方 —— 我在 §25 修缺陷时差点按「全从缓冲区发」去改；正确读法是「缓冲区里的密文槽**只为 ICV 存在**」。两份独立核对（作者对旧件 · 我对旧注释）现在一致。
+
+**旧偏移（作者实测 `ipsec.hpp`）**：SPI@0 · Seq@4 · IV@8 · ciphertext@24 · ICV@40 ⇒ 与我写体现在的组装**逐字节一致**。
+
+**两条具名拒绝**（确认）：`size < 40`（frame 放不下页）· `fd < 0` 且无 helper。**管道→socket 短传输不重试**（旧规：不能续写同一报文）。
+
+**其余实测（作者报告，与我的复核相符）**：证伪（把「页 16 字节」改成 17 ⇒ `FAIL: and it is the sixteen-byte block` + 退出 1 + 零残留）；测试覆盖短传输重试（含**重试按实际搬运前进偏移**）· `-EINTR` · 三路来源（direct/bridge/读回退）· 桥接短或错 ⇒ **socket splice 调用 0 次** · 无 fd 无 helper 连管道都不开 · `send_datagram` 槽位在 splice 路径**不被使用**。
+
+**与旧件不符（3 处，作者自报）**：① 路径与命名空间 `pagecache/splice_io` → `seam/real_splice_io`，编排收进类方法（因为新缝是 `SpliceOps` 虚类）；② 旧 `send_datagram` 实现用 `::send`，新按六调用用 **`::sendmsg`**（槽位保留但不使用）；③ 全程无分配 ⇒ 无需上界拒绝。

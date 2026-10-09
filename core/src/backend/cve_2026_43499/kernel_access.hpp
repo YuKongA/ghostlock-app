@@ -73,9 +73,19 @@ namespace ghostlock::backend::cve_2026_43499 {
         using AccessCarrier = contract::AccessCarrier;
         using AccessChannel = contract::AccessChannel;
 
-        /** Blank: construction decides nothing and takes nothing. The seam is borrowed and must
-         *  outlive this object; the target is the state the search and the preparation filled. */
-        Access(AccessSeam &seam, const TargetState &target) noexcept : seam_(seam), target_(target) {}
+        /* Construction decides nothing and takes nothing. An instance without either argument is
+         *  not usable, and every use below refuses by name rather than dereferencing, which is the
+         *  same rule write_readiness follows for a missing fact. */
+        /** Blank: construction decides nothing and takes nothing. An instance without either is not
+         *  usable, and every use below refuses by name rather than dereferencing, which is the same
+         *  rule write_readiness follows for a missing fact. */
+        Access() noexcept = default;
+        Access(AccessSeam *seam, const TargetState *target) noexcept : seam_(seam), target_(target) {}
+        /** Hand over the two things a factory could not know. */
+        void adopt(AccessSeam *seam, const TargetState *target) noexcept {
+            seam_ = seam;
+            target_ = target;
+        }
 
         [[nodiscard]] AccessState state(AccessChannel channel) const noexcept override {
             if (channel != AccessChannel::PiWindow) {
@@ -113,7 +123,7 @@ namespace ghostlock::backend::cve_2026_43499 {
             }
             phase_ = Phase::ComingUp;
             route_ = params->route;
-            if (!seam_.bring_up(route_, target_)) {
+            if (seam_ == nullptr || target_ == nullptr || !seam_->bring_up(route_, *target_)) {
                 phase_ = Phase::Broken;
                 return BoolResult::failed(AccessStatus::Failed);
             }
@@ -126,7 +136,8 @@ namespace ghostlock::backend::cve_2026_43499 {
             if (phase_ != Phase::Up) {
                 return BoolResult::failed(AccessStatus::NotInitialized);
             }
-            const bool down = seam_.tear_down();
+            /* Nothing borrowed means nothing to give back, which is a clean teardown. */
+            const bool down = seam_ == nullptr || seam_->tear_down();
             phase_ = down ? Phase::Down : Phase::Broken;
             return down ? BoolResult::ok(true) : BoolResult::failed(AccessStatus::Failed);
         }
@@ -149,14 +160,14 @@ namespace ghostlock::backend::cve_2026_43499 {
             }
             /* The facts the write lands on have to be in place before the window opens. Readiness
              *  is asked here rather than assumed, and its answer is a named refusal. */
-            if (write_readiness(target_) != WriteReadiness::Ready) {
+            if (target_ == nullptr || write_readiness(*target_) != WriteReadiness::Ready) {
                 return Result::failed(AccessStatus::NotInitialized);
             }
             std::uint64_t value = 0U;
             for (std::size_t i = 0U; i < in.size(); ++i) {
                 value |= static_cast<std::uint64_t>(std::to_integer<unsigned>(in[i])) << (8U * i);
             }
-            if (!seam_.land_word(address, value, params->offset)) {
+            if (seam_ == nullptr || !seam_->land_word(address, value, params->offset)) {
                 return Result::failed(AccessStatus::Failed);
             }
             return Result::ok(in.size());
@@ -180,11 +191,12 @@ namespace ghostlock::backend::cve_2026_43499 {
             }
             /* Arbitrary reads need the object found and a page prepared, and this backend does
              *  them later than it writes; until then the refusal is named, not silent. */
-            if (!seam_.can_read() || write_readiness(target_) != WriteReadiness::Ready) {
+            if (seam_ == nullptr || target_ == nullptr || !seam_->can_read() ||
+                write_readiness(*target_) != WriteReadiness::Ready) {
                 return ReadResult::failed(AccessStatus::Unsupported);
             }
             std::uint64_t word = 0U;
-            if (!seam_.read_word(address, params->offset, word)) {
+            if (seam_ == nullptr || !seam_->read_word(address, params->offset, word)) {
                 return ReadResult::failed(AccessStatus::Failed);
             }
             for (std::size_t i = 0U; i < sizeof(std::uint64_t); ++i) {
@@ -214,8 +226,9 @@ namespace ghostlock::backend::cve_2026_43499 {
             return static_cast<const AccessParams *>(&p);
         }
 
-        AccessSeam &seam_;
-        const TargetState &target_;
+        /* Borrowed, and nullable: a factory builds an instance before either is known. */
+        AccessSeam *seam_ = nullptr;
+        const TargetState *target_ = nullptr;
         Phase phase_ = Phase::NeverUp;
         profile::RouteId route_ = profile::RouteId::Unset;
         /** The buffer a read answer points into: owned by the access so the span a caller gets

@@ -23,3 +23,34 @@
 - 把我已落的 `seam/multicast_seam.hpp` 的 `RouteExec::execute(address, value, offset)` 接到第 2 件的 route 体上 ✓ ⇒ 那时 43499 侧**第一次在 host 上闭环到真控制器** ✓。
 
 ⇒ 这样切的好处：**第 1 件不依赖任何攻击代码** ✓ ⇒ 它可以独立完成并验收 ✓ ⇒ 即使后面两件拖延，派发层也已经是**真件**而不是占位 ✓。
+
+## 20 缺口（Lead 实测 · 真机阶段的第一步）：工厂没有定义，两个 Access 都不可达
+
+在进入真机阶段前我先量「43284 的 `Access` 有没有人调」 ⇒ 结果是**没有** ⇒ 这决定性地改变了下一步该做什么。
+
+### 实测
+
+```
+grep -rn 'KernelAccess::create|create(BackendId' core/src/
+  → 唯一命中：contract/kernel_access.hpp:162 的**声明**（static std::unique_ptr<KernelAccess> create(BackendId)）
+  → 没有任何**定义**，也没有任何**调用者**
+grep -rln 'cve_2026_43284/kernel_access.hpp' core/src/
+  → tests/pagecache_chain_test.cpp（测试）+ 该文件自身
+grep -rn 'cve_2026_43284' core/src/pipeline/ core/src/*.cpp
+  → 只命中 main.cpp 的 lkm 件（--probe 路径），**不是** KernelAccess
+```
+
+### 结论（两种说法，都要说清）
+
+1. **实现面**：两个 backend 的 `Access` 都写完了 ⇒ 这一步**可以算完成**；
+2. **可达面**：它们**从生产代码里不可达** ⇒ 契约里声明的工厂 `create(BackendId)` **没有定义** ⇒ 于是「真机测试」还差**可达性**这一步。
+
+### 因此真机阶段的第一步不是设备，而是**工厂**
+
+要做的是一件小件：给 `KernelAccess::create(BackendId)` **一个定义**（按 id 分派到各 backend 的 `make_unique` ⇒ 头文件按需 include 两个 backend 的 `kernel_access.hpp`）⇒ **并给一条「id → 正确类型」的测试**（每个 id 造一次 ⇒ 断言 `state()/supports()` 与预期的 backend 一致 ⇒ 未知 id ⇒ 空指针 ⇒ **并证伪一次**）。
+
+⇒ 这一件完成后，两个 `Access` 才**真的能被调用** ⇒ 之后的临时入口（真机用）也才有东西可调。
+
+### 与目标的关系（如实说）
+
+目标要求「完成两个 backend 的 kernelaccess 实现后 ⇒ 通过**任何临时方法**测试其在真机可用」⇒ 现在卡在**可达性**上 ⇒ 而**不是**卡在设备上（设备另有依赖：SA 材料来自会话（SPI/端口/密钥）⇒ 不在仓库里）。

@@ -74,7 +74,7 @@ namespace {
         MulticastWindow window(exec, limits);
         MulticastSeam seam(window);
         const TargetState target = prepared();
-        Access access(seam, target);
+        Access access(&seam, &target);
         AccessParams params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x40U;
@@ -99,7 +99,10 @@ namespace {
         const MulticastLimits unsaid;
         MulticastWindow window(exec, unsaid);
         MulticastSeam seam(window);
-        Access access(seam, prepared());
+        /* The facts must outlive the access now that it borrows through a pointer, so the temporary
+         *  a call would produce has to be bound to a name first. */
+        const TargetState target = prepared();
+        Access access(&seam, &target);
         AccessParams params;
         params.route = RouteId::MulticastWaiter;
         params.offset_set = true;
