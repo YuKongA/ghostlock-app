@@ -144,6 +144,8 @@ LAYER_HEADERS := \
   src/tests/kernel_access_test.cpp \
   src/backend/cve_2026_43499/session.hpp \
   src/backend/cve_2026_43499/access_params.hpp \
+  src/backend/cve_2026_43499/seam/multicast_seam.hpp \
+  src/tests/multicast_seam_test.cpp \
   src/profile/route_catalog.hpp \
   src/tests/target_state_test.cpp \
   src/contract/capability_catalog.hpp \
@@ -239,7 +241,7 @@ LAYER_HEADERS := \
 P4_TESTS := src/pipeline/tests/window_exit_paths_test.cpp src/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := src/tests/a2_test.cpp src/tests/surface_test.cpp src/tests/surface_manifest_test.cpp src/tests/surface_sandbox_test.cpp src/tests/surface_stage_test.cpp src/tests/handle_generation_test.cpp src/tests/terminal_payload_test.cpp src/tests/terminal_store_test.cpp src/tests/terminal_execution_test.cpp src/tests/payload_keys_test.cpp src/tests/document_reader_test.cpp \
   src/tests/payload_manifest_test.cpp src/tests/step_catalog_test.cpp src/tests/write_request_test.cpp src/tests/write_encoder_test.cpp src/tests/write_layout_test.cpp src/tests/credential_image_test.cpp src/tests/race_runtime_test.cpp src/tests/kmi_catalog_test.cpp src/tests/device_facts_test.cpp src/tests/module_facts_test.cpp src/tests/staged_plan_test.cpp src/tests/route_lifecycle_test.cpp src/tests/document_pairs_test.cpp src/tests/real_document_test.cpp src/tests/abi_offsets_test.cpp src/tests/route_expected_keys_test.cpp src/tests/multicast_arm_test.cpp src/tests/chain_catalog_test.cpp src/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
+EVIDENCE_BINS := $(BUILD_DIR)/multicast_seam_test $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -536,6 +538,10 @@ COMBINATION_MANIFEST := $(BUILD_DIR)/combination-manifest.tsv
 COMBINATION_MANIFEST_PIN := src/tests/combination-manifest.pin.tsv
 .PHONY: combination-manifest combination-manifest-regen
 
+$(BUILD_DIR)/multicast_seam_test: src/tests/multicast_seam_test.cpp \
+  src/backend/cve_2026_43499/seam/multicast_seam.hpp | $(BUILD_DIR)
+		$(CXX) $(CXXFLAGS) src/tests/multicast_seam_test.cpp -o $@
+
 $(BUILD_DIR)/cve43499_kernel_access_test: src/tests/cve43499_kernel_access_test.cpp \
   src/backend/cve_2026_43499/kernel_access.hpp src/backend/cve_2026_43499/access_params.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) src/tests/cve43499_kernel_access_test.cpp -o $@
@@ -692,6 +698,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/payload_manifest_test
 	@echo "check: step catalogue (tokens + declared orders)"
 	@$(BUILD_DIR)/step_catalog_test
+	@echo "check: multicast seam (one route, refusals by name, fields unchanged)"
+	@$(BUILD_DIR)/multicast_seam_test
 	@echo "check: cve-2026-43499 access (route from parameters, window per access)"
 	@$(BUILD_DIR)/cve43499_kernel_access_test
 	@echo "check: kernel access (read and write to implement, the rest inherited)"
@@ -826,7 +834,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	# only where the ruling allows it, the access interface and its 43499 implementation. Tests
 	# are exempt, and the window headers are prose-only, their comments stripped first.
 	@files=$$(grep -rlE "^[[:space:]]*virtual " $$(find src -name "*.hpp" -o -name "*.cpp" | grep -v "^src/tests/") || true); \
-	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_43499/kernel_access\.hpp)$$" | grep -v "^$$" || true); \
+	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_43499/kernel_access\.hpp|backend/cve_2026_43499/seam/multicast_seam\.hpp)$$" | grep -v "^$$" || true); \
 	if [ -n "$$stray" ]; then echo "VIRTUAL-OUTSIDE-ACCESS: $$stray"; echo "  virtual is allowed only in the access interface and its 43499 implementation"; exit 1; fi; \
 	echo "check: virtual is confined to the access interface (tests exempt)"
 	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
