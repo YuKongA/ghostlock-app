@@ -29,3 +29,20 @@
 - 新 `pi_race::run()` 的**签名与它现在做到了哪一步**（当前只读到文件头与 seam 面，未读函数体）
 - 旧 waiter/owner/consumer 三体里**哪一段真正落 request**（切片 1 表站在 route 侧，race 侧未逐段读）
 - `MulticastLimits` 与 `RaceSettings` 是否该合并（前者 route 面，后者竞速面；暖场归属其中一侧）
+
+## 5 三件未量项之一：已量 —— 落点就是 pi_race::run
+
+新 `race/pi_race.hpp`（149 行）实测：
+
+- `prepare(std::uint32_t *chain_word, std::uint32_t *target_word)` ⇒ `Prepared` / `NotPrepared`
+- **`run(WindowGuard &window)`** ⇒ **签名自带守卫** ⇒ 它**就是在窗口内跑的那一次** ⇒ 返回落在 `RaceOutcome` 轴上（未 prepare 则 `Refused`）
+- `RaceOutcome`：`NotPrepared` / `Prepared` / `Running` / `Disarmed` / `Destroyed` / `Refused`
+- 文件头自述：已实现「一次尝试的形状（两个 PI futex 字、worker 角色、结果）」；futex 操作以**编译期 policy** 提供（no vtable / no function pointer）
+
+⇒ 结论：`Window::write_word(address, value, offset)` 的实现点就是（或就在）**`pi_race::run` 的窗口体内** ⇒ 切片 2 不必猜接在哪，锚点已定。
+
+## 6 一处与新裁定冲突的表述（本轮新发现）
+
+同一文件的「未实现」段写道：几何、时序与重试预算 **come from the profile（Q2 rule 1）**。
+
+⇒ 这与 **ADR-0015** 冲突：该裁定把值改为**经 Lua 传入**（执行层不直接读 profile）。⇒ 处置：该段表述**随切片 2 一并改写**（改为由脚本传入），并且**不得**在实现里留任何从 profile 取值的路径（否则就是同一份数据的**第二条读取路径**，正是本仓明令禁止的高危形态）。**未改动该文件**，先在表里登记。
