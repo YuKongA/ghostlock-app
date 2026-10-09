@@ -418,6 +418,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/a2_test
 	@echo "check: exposure surface table"
 	@$(BUILD_DIR)/surface_test
+	@echo "check: surface manifest (the exported table is byte-identical to its pin)"
+	@$(BUILD_DIR)/surface_manifest_test
 	@echo "check: Lua sandbox (whitelist assembly + four budgets)"
 	@$(BUILD_DIR)/surface_sandbox_test
 	@echo "check: stage gate (what a call may reach, per phase)"
