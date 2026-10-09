@@ -180,6 +180,10 @@ namespace {
                "and says it stopped at the wait");
         expect(FakeSnitch::resets == 1U, "the search is reset rather than left running");
         expect(FakeSeam::close_calls > 0U, "and the descriptors are given back even so");
+        /* The device found this one: the reclaim walk skips the leak group on purpose,
+         *  so a path that stops early has to close that descriptor itself. */
+        expect(FakeSeam::closed_order[FakeSeam::close_calls - 1U] == FakeSeam::last_memfd,
+               "including the leak descriptor, which nothing else will close");
     }
 
     void a_call_that_fails_midway() {

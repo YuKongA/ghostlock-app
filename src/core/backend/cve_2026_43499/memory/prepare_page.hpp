@@ -280,6 +280,16 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             counts.mm_objs_per_slab = plan.objects_per_region;
             counts.shaped = false;
             outcome.closed = detail::close_them_all<Seam>(state, counts);
+            /* The leak descriptor goes back here too. The success path keeps it until
+             *  last because the reclaim depends on it; a preparation that stops early
+             *  has nothing left to depend on it, and a device run found this the hard
+             *  way: the walk deliberately skips the leak group, so returning without
+             *  closing it left one descriptor open on the failure a device is most
+             *  likely to hit. */
+            if (state.leak_fd >= 0) {
+                (void) Seam::close_fd(state.leak_fd);
+                ++outcome.closed;
+            }
             outcome.status = PrepareStatus::NoCollision;
             return outcome;
         }
