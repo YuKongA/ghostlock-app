@@ -126,9 +126,15 @@ int main() {
     strides.coarse = 4096U;
     strides.slab = 1024U;
     strides.candidate = 256U;
+    /* A slice of the device direct map rather than a range from zero: the walk only hashes the
+     *  addresses it is given and never touches memory, so a slice inside the map is enough to
+     *  make the candidates real direct-map addresses -- which is what the second device run
+     *  showed was missing, when a stub that accepted everything answered with address zero. */
+    constexpr std::uint64_t kSliceStart = 0xffff800000100000ULL;
+    constexpr std::uint64_t kSliceBytes = 0x10000ULL; /* sixty-four kilobytes */
     ScanRange range{};
-    range.start = 0U;
-    range.end = 8192U;
+    range.start = kSliceStart;
+    range.end = kSliceStart + kSliceBytes;
     /* The rule asks every proof address for a bucket and requires one answer: with the stub
      *  below the bucket is a parity, so two addresses of the same parity agree and two of
      *  different parity can never agree, whatever the candidate. The first version of this
