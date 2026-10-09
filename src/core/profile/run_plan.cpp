@@ -1,5 +1,5 @@
 /** @file profile/run_plan.cpp
- *  Resolving a document into a chain and an ordered list of steps.
+ *  Resolving a document into a chain and the plan it carries.
  */
 #include "profile/run_plan.hpp"
 
@@ -7,111 +7,101 @@ namespace ghostlock::profile {
     namespace {
         constexpr std::size_t kTokenCapacity = 32U;
 
-    }  // namespace
-
-    const contract::StepSetOrder *step_set_for_steps(const contract::StepId *steps,
-
-                                                     std::size_t count) noexcept {
-        if (steps == nullptr || count == 0U) {
-            return nullptr;
-        }
-        for (std::size_t i = 0U; i < contract::kStepSetCount; ++i) {
-            const contract::StepSetOrder &order = contract::kStepSetOrders[i];
-            if (order.count != count) {
-                continue;
+        /** The segment a backend's keys live under. */
+        bool backend_section(char *out, std::size_t capacity, std::string_view backend) noexcept {
+            if (out == nullptr || capacity == 0U || backend.empty()) {
+                return false;
             }
-            bool same = true;
-            for (std::size_t s = 0U; s < count; ++s) {
-                if (order.steps[s] != steps[s]) {
-                    same = false;
+            std::size_t at = 0U;
+            const auto put = [out, capacity, &at](char c) noexcept {
+                if (at + 1U < capacity) {
+                    out[at] = c;
+                    ++at;
                 }
+            };
+            for (const char c : std::string_view("backend.")) {
+                put(c);
             }
-            if (same) {
-                return &order;
+            for (const char c : backend) {
+                put(c);
             }
+            out[at] = '\0';
+            return true;
         }
-        return nullptr;
-    }
+    }  // namespace
 
     RunPlanResult resolve_run_plan(const Document &document) noexcept {
         RunPlanResult result{};
         if (!document.is_open()) {
-            result.verdict = PlanVerdict::DocumentInvalid;
+            result.verdict = RunPlanVerdict::DocumentInvalid;
             return result;
         }
-        char backend[kTokenCapacity];
-        char route[kTokenCapacity];
-        char terminal[kTokenCapacity];
-        if (document.root_text(std::string_view("backend"), backend, sizeof(backend)) !=
-
-                DocumentVerdict::Ok ||
-            document.root_text(std::string_view("terminal"), terminal, sizeof(terminal)) !=
-
-                DocumentVerdict::Ok) {
-            /* A document without a backend and a terminal asks for nothing. */
-            result.verdict = PlanVerdict::SelectionMissing;
-            return result;
-        }
-        const bool has_route =
-
-            document.root_text(std::string_view("route"), route, sizeof(route)) ==
-
-            DocumentVerdict::Ok;
-        if (!has_route) {
-            route[0U] = '\0';
-        }
-
-        /* Where the section for this backend would be, for the queue. */
-        char section[192];
-        std::size_t at = 0U;
-        const auto append = [&section, &at](std::string_view text) noexcept {
-            for (const char c : text) {
-                if (at + 1U < sizeof(section)) {
-                    section[at] = c;
-                    ++at;
-                }
+        /* The retired carrier, refused on sight and before the selection is even read:
+         *  a document that still carries a step queue is asking for something this
+         *  build no longer reads, and ignoring it would run a plan nobody asked for.
+         *  The scan is over every backend the catalogue declares, not only the one the
+         *  selection names, because the rule is about the document and a document that
+         *  carries a queue is refused whether or not it also names a chain. */
+        for (std::size_t i = 0U; i < contract::kComponentCount; ++i) {
+            if (contract::kComponents[i].kind != contract::ComponentKind::Backend) {
+                continue;
             }
-            section[at] = '\0';
-        };
-        append(std::string_view("backend."));
-        append(std::string_view(backend));
+            char section[192];
+            if (!backend_section(section, sizeof(section),
+                                 std::string_view(contract::kComponents[i].token))) {
+                result.verdict = RunPlanVerdict::DocumentInvalid;
+                return result;
+            }
+            contract::StepId ignored[kMaxRunSteps] = {};
+            if (document.step_queue(std::string_view(section), ignored, kMaxRunSteps).verdict !=
+                Document::QueueVerdict::QueueMissing) {
+                result.verdict = RunPlanVerdict::QueueRemoved;
+                return result;
+            }
+        }
 
-        contract::StepId steps[kMaxRunSteps] = {};
-        std::size_t step_count = 0U;
-        const Document::StepQueueResult queue =
-            document.step_queue(std::string_view(section), steps, kMaxRunSteps);
-        /* There is no falling back: a document that carries no queue has not said
-         * which steps to run, and "the table's default path" is not a substitute
-         * for being told. What used to be a guess here is a refusal now. */
-        if (queue.verdict != Document::QueueVerdict::Ok) {
-            result.verdict = queue.verdict == Document::QueueVerdict::StepUnknown
-                                 ? PlanVerdict::StepSetUnknown
-                                 : PlanVerdict::QueueUnusable;
+        /* One selection: the combination token. Everything about the chain follows
+         *  from it, which is why the document does not name a backend, a route or a
+         *  terminal separately -- there is nowhere for a second selection to live. */
+        char combination[kTokenCapacity];
+        if (document.root_text(std::string_view("combination"), combination,
+
+                               sizeof(combination)) != DocumentVerdict::Ok) {
+            result.verdict = RunPlanVerdict::SelectionMissing;
             return result;
         }
-        step_count = queue.count;
-        const contract::StepSetOrder *order = step_set_for_steps(steps, step_count);
-        if (order == nullptr) {
-            result.verdict = PlanVerdict::StepSetUnknown;
-            return result;
-        }
-        const contract::ChainSpec *chain =
-            contract::chain_for(std::string_view(backend), std::string_view(route),
-                                std::string_view(terminal), std::string_view(order->step_set));
+        const contract::ChainSpec *chain = contract::chain_of(std::string_view(combination));
         if (chain == nullptr) {
-            result.verdict = PlanVerdict::ChainUnknown;
+            /* The token is echoed in the refusal rather than guessed at: an unknown
+             *  selection is the one case where saying what was asked for matters. */
+            result.verdict = RunPlanVerdict::ChainUnknown;
             return result;
         }
         if (!chain->wired) {
-            result.verdict = PlanVerdict::ChainNotWired;
+            result.verdict = RunPlanVerdict::ChainNotWired;
             return result;
         }
-        result.plan.chain = chain;
-        for (std::size_t i = 0U; i < step_count; ++i) {
-            result.plan.steps[i] = steps[i];
+        /* The plan: a script the document carries, named for the terminal the chain
+         *  hands off to. The delivery reader owns the ceiling and the digest. */
+        PlanDelivery delivered;
+        const PlanVerdict delivery = read_plan_delivery(document, std::string_view(chain->backend),
+                                                        std::string_view(chain->terminal), delivered);
+        switch (delivery) {
+            case PlanVerdict::Ok:
+                break;
+            case PlanVerdict::PlanMissing:
+                result.verdict = RunPlanVerdict::PlanMissing;
+                return result;
+            case PlanVerdict::BudgetExceeded:
+                result.verdict = RunPlanVerdict::PlanTooLarge;
+                return result;
+            case PlanVerdict::DocumentInvalid:
+                result.verdict = RunPlanVerdict::DocumentInvalid;
+                return result;
         }
-        result.plan.step_count = step_count;
-        result.verdict = PlanVerdict::Ok;
+        result.plan.chain = chain;
+        result.plan.plan = delivered;
+        result.verdict = RunPlanVerdict::Ok;
         return result;
     }
 }  // namespace ghostlock::profile

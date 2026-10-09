@@ -37,6 +37,7 @@ RUNTIME_SRCS := core/main.cpp core/contract/kmi_catalog.cpp \
   core/backend/cve_2026_43284/lkm/module_facts.cpp \
   core/profile/glkv3_document.cpp core/profile/payload_keys.cpp \
   core/profile/document_pairs.cpp core/profile/run_plan.cpp \
+  core/profile/plan_delivery.cpp \
   core/support/sha256.cpp
 
 SKELETON_SRCS := core/main.cpp
@@ -203,15 +204,7 @@ $(FUTEX_PROBE): core/tools/futex_probe.cpp core/race/futex_seam_linux.hpp \
 plan-check: $(BUILD_DIR)/ghostlock-skeleton ../profile-core/src/test/resources/device-document-fixture.hex
 	@python3 -c "import sys;h=open('../profile-core/src/test/resources/device-document-fixture.hex').read().strip();b=bytes.fromhex(h);sys.stdout.buffer.write(len(b).to_bytes(4,'big')+b)" > $(BUILD_DIR)/plan-check.stdin
 	@$(BUILD_DIR)/ghostlock-skeleton --ghostlock-app-call < $(BUILD_DIR)/plan-check.stdin > $(BUILD_DIR)/plan-check.out 2>&1 || true
-	@grep -q 'plan chain=mcast_rootchild steps=w1,w2,w3 source=queue' $(BUILD_DIR)/plan-check.out \
-	  && echo "plan-check: PASS ($$(head -1 $(BUILD_DIR)/plan-check.out))" \
-	  || { echo "plan-check: FAIL"; cat $(BUILD_DIR)/plan-check.out; exit 1; }
-	@grep -q 'race main=0 consumer=1 settle=50000 poll=1000 rounds=300000 ok' $(BUILD_DIR)/plan-check.out \
-	  && echo "plan-check: the profile's own race settings are read and coherent" \
-	  || { echo "plan-check: FAIL: the race settings did not come out of the document"; cat $(BUILD_DIR)/plan-check.out; exit 1; }
-	@grep -q 'executor-unavailable' $(BUILD_DIR)/plan-check.out \
-	  && echo "plan-check: the run is refused, as this tree must" \
-	  || { echo "plan-check: FAIL: no refusal was reported"; exit 1; }
+	@if grep -q queue-removed $(BUILD_DIR)/plan-check.out; then echo plan-check: PASS - the device document is refused for the queue it still carries; else echo plan-check: FAIL; cat $(BUILD_DIR)/plan-check.out; exit 1; fi
 
 
 $(BUILD_DIR):
@@ -240,7 +233,7 @@ $(BUILD_DIR)/run_plan_test: core/tests/run_plan_test.cpp \
   core/contract/step_catalog.hpp core/support/sha256.hpp core/support/sha256.cpp \
   ../profile-core/src/test/resources/device-document-fixture.hex $(BUILD_DIR)/mpack.o \
   | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/run_plan_test.cpp core/profile/run_plan.cpp core/profile/glkv3_document.cpp core/profile/payload_keys.cpp core/support/sha256.cpp $(BUILD_DIR)/mpack.o -o $@
+	$(CXX) $(CXXFLAGS) core/tests/run_plan_test.cpp core/profile/run_plan.cpp core/profile/plan_delivery.cpp core/profile/glkv3_document.cpp core/profile/payload_keys.cpp core/support/sha256.cpp $(BUILD_DIR)/mpack.o -o $@
 
 $(BUILD_DIR)/plan_delivery_test: core/tests/plan_delivery_test.cpp \
   core/profile/plan_delivery.hpp core/profile/plan_delivery.cpp \

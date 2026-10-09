@@ -120,18 +120,19 @@ namespace {
         }
         const ghostlock::profile::RunPlanResult resolved =
             ghostlock::profile::resolve_run_plan(document);
-        if (resolved.verdict != ghostlock::profile::PlanVerdict::Ok) {
-            std::printf("%s\n", ghostlock::profile::plan_verdict_name(resolved.verdict));
+        if (resolved.verdict != ghostlock::profile::RunPlanVerdict::Ok) {
+            std::printf("%s\n", ghostlock::profile::run_plan_verdict_name(resolved.verdict));
             return 3;
         }
-        std::printf("plan chain=%s steps=", resolved.plan.chain->token);
-        for (std::size_t i = 0U; i < resolved.plan.step_count; ++i) {
-            std::printf("%s%s", i == 0U ? "" : ",",
-                        ghostlock::contract::step_token(resolved.plan.steps[i]));
-        }
-        /* Where the steps came from. The queue is the carrier today; when the
-         * script becomes the source, this is the field that says so. */
-        std::printf(" source=queue\n");
+        /* The selection is one token and the chain is what it names: the other
+         *  columns are derived, so printing them would be printing the same fact
+         *  several times. The plan is a script, and its size and digest are what says
+         *  which script this is. */
+        std::printf("plan chain=%s backend=%s path=%s terminal=%s\n", resolved.plan.chain->token,
+                    resolved.plan.chain->backend, resolved.plan.chain->path,
+                    resolved.plan.chain->terminal);
+        std::printf("plan script bytes=%zu sha256=%.16s source=document\n", resolved.plan.plan.size,
+                    resolved.plan.plan.declared_sha256);
         const ghostlock::race::SettingsVerdict settings =
             report_race_settings(document, resolved.plan.chain->backend);
         /* What the device is, and the module that would be delivered to it. */

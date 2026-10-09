@@ -187,6 +187,124 @@ namespace ghostlock::contract {
     static_assert(bindings_are_declared(),
                   "an op step-set binding must name a declared op and a step set some chain runs");
 
+    /** The same assertion, read the other way: an op this build can drive must have
+     *  a binding, or the gate could only guess which steps it means, and no step set
+     *  may be bound twice, or two ops would mean one thing. */
+    [[nodiscard]] constexpr bool bindings_cover_the_drivable_ops() noexcept {
+        for (std::size_t i = 0U; i < kOpCount; ++i) {
+            /* Availability is the registry's own column: an op declared but not wired
+             *  (window.w1w3_umh) is rejected by the gate by name and needs no binding,
+             *  which is why the test is this flag rather than a non-empty route mask. */
+            if (!kOpCatalog[i].available) {
+                continue;
+            }
+            const std::string_view token(kOpCatalog[i].token);
+            std::size_t bound = 0U;
+            for (std::size_t b = 0U; b < kOpStepSetBindingCount; ++b) {
+                if (std::string_view(kOpStepSetBindings[b].op_token) == token) {
+                    ++bound;
+                }
+            }
+            if (bound != 1U) {
+                return false;
+            }
+        }
+        for (std::size_t b = 0U; b < kOpStepSetBindingCount; ++b) {
+            const std::string_view step_set(kOpStepSetBindings[b].step_set);
+            std::size_t seen = 0U;
+            for (std::size_t c = 0U; c < kOpStepSetBindingCount; ++c) {
+                if (std::string_view(kOpStepSetBindings[c].step_set) == step_set) {
+                    ++seen;
+                }
+            }
+            if (seen != 1U) {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(bindings_cover_the_drivable_ops(),
+                  "a drivable op needs exactly one binding, and a step set is bound once");
+
+    /** The two spellings of the step sets: what the combination manifest says, and
+     *  what this table says. The manifest's spellings are the ones on the wire, so
+     *  the difference is a fact to be declared rather than remembered: a map entry
+     *  is what makes "the same step set" checkable instead of a naming coincidence. */
+    struct StepSpelling final {
+        const char *manifest_steps;
+        const char *chain_step_set;
+    };
+    inline constexpr StepSpelling kStepSpellings[] = {
+        {"w1_w3", "w1w3"},
+        {"w1_w2", "w1w2"},
+        {"pagecache_write", "pagecache"},
+    };
+    inline constexpr std::size_t kStepSpellingCount = sizeof(kStepSpellings) / sizeof(kStepSpellings[0]);
+
+    /** The two spellings of a path, same reasoning as the step sets above. */
+    struct PathSpelling final {
+        const char *manifest_path;
+        const char *chain_path;
+    };
+    inline constexpr PathSpelling kPathSpellings[] = {
+        {"rootchild", "root_child"},
+        {"shizuku", "shizuku"},
+        {"umh", "umh"},
+    };
+    inline constexpr std::size_t kPathSpellingCount = sizeof(kPathSpellings) / sizeof(kPathSpellings[0]);
+
+    /** Every step set and every path a chain row uses must be explained by the maps
+     *  above, and every map entry must be used: an unexplained spelling is a column
+     *  that could drift without anything noticing. */
+    [[nodiscard]] constexpr bool derived_columns_are_explained() noexcept {
+        for (std::size_t i = 0U; i < kChainCount; ++i) {
+            bool steps_explained = false;
+            bool path_explained = false;
+            for (std::size_t m = 0U; m < kStepSpellingCount; ++m) {
+                if (std::string_view(kChainCatalog[i].step_set) ==
+                    std::string_view(kStepSpellings[m].chain_step_set)) {
+                    steps_explained = true;
+                }
+            }
+            for (std::size_t m = 0U; m < kPathSpellingCount; ++m) {
+                if (std::string_view(kChainCatalog[i].path) ==
+                    std::string_view(kPathSpellings[m].chain_path)) {
+                    path_explained = true;
+                }
+            }
+            if (!steps_explained || !path_explained) {
+                return false;
+            }
+        }
+        for (std::size_t m = 0U; m < kStepSpellingCount; ++m) {
+            bool used = false;
+            for (std::size_t i = 0U; i < kChainCount; ++i) {
+                if (std::string_view(kChainCatalog[i].step_set) ==
+                    std::string_view(kStepSpellings[m].chain_step_set)) {
+                    used = true;
+                }
+            }
+            if (!used) {
+                return false;
+            }
+        }
+        for (std::size_t m = 0U; m < kPathSpellingCount; ++m) {
+            bool used = false;
+            for (std::size_t i = 0U; i < kChainCount; ++i) {
+                if (std::string_view(kChainCatalog[i].path) ==
+                    std::string_view(kPathSpellings[m].chain_path)) {
+                    used = true;
+                }
+            }
+            if (!used) {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(derived_columns_are_explained(),
+                  "every derived spelling a chain uses must be in the maps, and every map entry used");
+
     /** The tokens the combination manifest carries, in its order. The wire and the
      *  App speak THESE spellings, so this table's tokens are pinned to them: two
      *  tables describing one selection must not drift, and a rename on either side
@@ -232,6 +350,11 @@ namespace ghostlock::contract {
     }
 
     /** The row a selection resolves to: the backend and terminal it names, the
+     *
+     *  Legacy entry, kept only while its test still drives it: it cannot distinguish
+     *  the 43284 pair (rootchild and shizuku share backend, route, terminal and step
+     *  set, and differ in path), so it is not what a plan resolves through. The
+     *  resolver uses chain_of(token) -- see the key note at the top of this file.
      *  route it runs (none for a chain without a route axis) and the step set its
      *  steps spell out. A selection that matches no row is not a chain here. */
     [[nodiscard]] constexpr const ChainSpec *chain_for(std::string_view backend,

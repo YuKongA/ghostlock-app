@@ -1,31 +1,34 @@
 /** @file tests/run_plan_test.cpp
- *  Resolving a document into the run it asks for.
+ *  Resolving a document into the run it asks for: a chain, and a plan script.
  *
- *  The first section resolves the document the device produced for 43499, so the
- *  resolution is measured against a real one rather than one built here; the rest
- *  cover the queue-driven path and the refusals.
+ *  The first section feeds the document the device actually produced, and the
+ *  answer it now gets is the point of the retirement: that document carries a step
+ *  queue, and a document that still carries one is refused on sight rather than
+ *  quietly ignored. The rest build their documents here, because the shape a plan
+ *  travels in is exactly what these cases are about.
  */
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 #include "mpack.h"
 #include "profile/run_plan.hpp"
+#include "support/sha256.hpp"
 
 #ifndef DEVICE_DOCUMENT_HEX
 #define DEVICE_DOCUMENT_HEX "../profile-core/src/test/resources/device-document-fixture.hex"
 #endif
 
 namespace {
-    using ghostlock::contract::StepId;
     using ghostlock::profile::Document;
     using ghostlock::profile::DocumentVerdict;
-    using ghostlock::profile::plan_verdict_name;
-    using ghostlock::profile::PlanVerdict;
     using ghostlock::profile::resolve_run_plan;
     using ghostlock::profile::RunPlanResult;
+    using ghostlock::profile::RunPlanVerdict;
+    using ghostlock::profile::run_plan_verdict_name;
 
     std::size_t g_failures = 0U;
 
@@ -46,192 +49,170 @@ namespace {
         return -1;
     }
 
-    std::size_t load_device_document(std::uint8_t *out, std::size_t capacity) {
+    std::string read_device_document() {
         std::FILE *file = std::fopen(DEVICE_DOCUMENT_HEX, "rb");
         if (file == nullptr) {
-            std::printf("FAIL: cannot read %s\n", DEVICE_DOCUMENT_HEX);
-            ++g_failures;
-            return 0U;
+            return {};
         }
-        char text[8192];
-        const std::size_t got = std::fread(text, 1U, sizeof(text), file);
+        std::string hex;
+        char buffer[4096];
+        while (std::fgets(buffer, static_cast<int>(sizeof(buffer)), file) != nullptr) {
+            hex += buffer;
+        }
         std::fclose(file);
-        std::size_t digits = 0U;
-        while (digits < got && hex_digit(text[digits]) >= 0) {
-            ++digits;
+        std::string bytes;
+        for (std::size_t i = 0U; i + 1U < hex.size(); i += 2U) {
+            const int high = hex_digit(hex[i]);
+            const int low = hex_digit(hex[i + 1U]);
+            if (high < 0 || low < 0) {
+                break;
+            }
+            bytes.push_back(static_cast<char>((high << 4) | low));
         }
-        if (digits == 0U || digits % 2U != 0U || digits / 2U > capacity) {
-            ++g_failures;
-            return 0U;
-        }
-        for (std::size_t i = 0U; i < digits / 2U; ++i) {
-            out[i] = static_cast<std::uint8_t>((hex_digit(text[i * 2U]) << 4) |
-                                               hex_digit(text[i * 2U + 1U]));
-        }
-        return digits / 2U;
+        return bytes;
     }
 
-    /** A document shaped like the device's own 43284 export, queue included. */
-    char *build_43284(const char *const *steps, std::size_t count, std::size_t *out_size) {
+    std::string hex_of(const std::string &bytes) {
+        const ghostlock::support::Sha256Digest digest =
+            ghostlock::support::sha256(reinterpret_cast<const std::uint8_t *>(bytes.data()),
+                                       bytes.size());
+        char hex[ghostlock::support::kSha256HexBytes];
+        ghostlock::support::sha256_hex(digest, hex);
+        return std::string(hex);
+    }
+
+    /** A document declaring one combination, optionally a plan for a terminal, and
+     *  optionally the retired step queue the device document still carries. */
+    std::string build_document(const char *combination, const std::string &script,
+                              const char *terminal, bool with_queue = false) {
         char *data = nullptr;
         std::size_t size = 0U;
         mpack_writer_t writer;
         mpack_writer_init_growable(&writer, &data, &size);
-        mpack_start_map(&writer, 5U);
-        mpack_write_cstr(&writer, "backend");
-        mpack_write_cstr(&writer, "cve_2026_43284");
-        mpack_write_cstr(&writer, "terminal");
-        mpack_write_cstr(&writer, "umh_forward");
+        mpack_start_map(&writer, 3U);
         mpack_write_cstr(&writer, "schema");
         mpack_write_uint(&writer, 3U);
-        mpack_write_cstr(&writer, "kernel_major");
-        mpack_write_uint(&writer, 5U);
+        mpack_write_cstr(&writer, "combination");
+        mpack_write_cstr(&writer, combination);
         mpack_write_cstr(&writer, "sections");
-        mpack_start_map(&writer, 1U);
-        mpack_write_cstr(&writer, "backend.cve_2026_43284");
-        mpack_start_map(&writer, 1U);
-        mpack_write_cstr(&writer, "queue");
-        mpack_start_array(&writer, static_cast<std::uint32_t>(count));
-        for (std::size_t i = 0U; i < count; ++i) {
-            mpack_start_map(&writer, 1U);
-            mpack_write_cstr(&writer, "step");
-            mpack_write_cstr(&writer, steps[i]);
+        const std::uint32_t sections =
+            static_cast<std::uint32_t>((script.empty() ? 0U : 1U) + (with_queue ? 1U : 0U));
+        mpack_start_map(&writer, sections);
+        if (!script.empty()) {
+            const std::string segment =
+                std::string("backend.cve_2026_43499.payload.") + terminal + "_plan";
+            mpack_write_cstr(&writer, segment.c_str());
+            mpack_start_map(&writer, 4U);
+            mpack_write_cstr(&writer, "bin");
+            mpack_write_bin(&writer, script.data(), static_cast<std::uint32_t>(script.size()));
+            mpack_write_cstr(&writer, "sha256");
+            mpack_write_cstr(&writer, hex_of(script).c_str());
+            mpack_write_cstr(&writer, "size");
+            mpack_write_uint(&writer, static_cast<std::uint64_t>(script.size()));
+            mpack_write_cstr(&writer, "kind");
+            mpack_write_cstr(&writer, "plan");
             mpack_finish_map(&writer);
         }
-        mpack_finish_array(&writer);
-        mpack_finish_map(&writer);
+        if (with_queue) {
+            /* The retired queue lived under its backend's own segment, the same shape
+             *  the payload family uses: sections[segment] = { queue = [ entries ] }. */
+            mpack_write_cstr(&writer, "backend.cve_2026_43499");
+            mpack_start_map(&writer, 1U);
+            mpack_write_cstr(&writer, "queue");
+            mpack_start_array(&writer, 1U);
+            mpack_start_map(&writer, 1U);
+            mpack_write_cstr(&writer, "step");
+            mpack_write_cstr(&writer, "w1");
+            mpack_finish_map(&writer);
+            mpack_finish_array(&writer);
+            mpack_finish_map(&writer);
+        }
         mpack_finish_map(&writer);
         mpack_finish_map(&writer);
         expect(mpack_writer_destroy(&writer) == mpack_ok, "the document was written");
-        *out_size = size;
-        return data;
+        const std::string bytes(data, size);
+        MPACK_FREE(data);
+        return bytes;
     }
 
-    /* ---- 1: the document the device produced ---- */
-    void the_device_document_resolves() {
-        static std::uint8_t bytes[4096U];
-        const std::size_t size = load_device_document(bytes, sizeof(bytes));
-        if (size == 0U) {
-            return;
-        }
+    RunPlanResult resolve(const std::string &bytes) {
         Document document;
-        expect(document.parse(bytes, size) == DocumentVerdict::Ok,
-               "the device's document parses");
-        const RunPlanResult resolved = resolve_run_plan(document);
-        expect(resolved.verdict == PlanVerdict::Ok, "and resolves into a run");
+        if (document.parse(reinterpret_cast<const std::uint8_t *>(bytes.data()), bytes.size()) !=
+            DocumentVerdict::Ok) {
+            RunPlanResult failed;
+            failed.verdict = RunPlanVerdict::DocumentInvalid;
+            return failed;
+        }
+        return resolve_run_plan(document);
+    }
+
+    void the_device_document_is_refused_for_its_queue() {
+        const std::string bytes = read_device_document();
+        expect(!bytes.empty(), "the device document was read");
+        const RunPlanResult resolved = resolve(bytes);
+        expect(resolved.verdict == RunPlanVerdict::QueueRemoved,
+               "a document that still carries a step queue is refused on sight");
+        expect(std::string_view(run_plan_verdict_name(resolved.verdict)) ==
+                   std::string_view("queue-removed"),
+               "under the name the retirement gives it");
+        expect(resolved.plan.chain == nullptr && resolved.plan.plan.script == nullptr,
+               "and nothing at all is handed over");
+    }
+
+    void a_token_document_resolves() {
+        const std::string script = "-- the plan\nreturn 1\n";
+        const RunPlanResult resolved =
+            resolve(build_document("mcast_rootchild", script, "root_child"));
+        expect(resolved.verdict == RunPlanVerdict::Ok, "a token document resolves");
         expect(resolved.plan.chain != nullptr &&
                    std::strcmp(resolved.plan.chain->token, "mcast_rootchild") == 0,
-               "the chain is the multicast root-child one");
-        expect(resolved.plan.step_count == 3U && resolved.plan.steps[0U] == StepId::W1 &&
-                   resolved.plan.steps[1U] == StepId::W2 && resolved.plan.steps[2U] == StepId::W3,
-               "and the steps are w1, w2, w3 in order");
-        document.reset();
-    }
-
-    /* ---- 1b: a document that carries no queue is refused, not guessed at ---- */
-    void a_document_without_a_queue_is_refused() {
-        /* The same selection as the device's document, minus the queue: nothing
-         * says which steps to run, and the chain table's default path is not a
-         * substitute for being told. */
-        char *data = nullptr;
-        std::size_t size = 0U;
-        mpack_writer_t writer;
-        mpack_writer_init_growable(&writer, &data, &size);
-        mpack_start_map(&writer, 5U);
-        mpack_write_cstr(&writer, "backend");
-        mpack_write_cstr(&writer, "cve_2026_43499");
-        mpack_write_cstr(&writer, "route");
-        mpack_write_cstr(&writer, "multicast_waiter");
-        mpack_write_cstr(&writer, "terminal");
-        mpack_write_cstr(&writer, "root_child");
-        mpack_write_cstr(&writer, "schema");
-        mpack_write_uint(&writer, 3U);
-        mpack_write_cstr(&writer, "sections");
-        mpack_start_map(&writer, 0U);
-        mpack_finish_map(&writer);
-        mpack_finish_map(&writer);
-        expect(mpack_writer_destroy(&writer) == mpack_ok, "the document was written");
-        Document document;
-        expect(document.parse(reinterpret_cast<const std::uint8_t *>(data), size) ==
-                   DocumentVerdict::Ok,
-               "the document parses");
-        const RunPlanResult resolved = resolve_run_plan(document);
-        expect(resolved.verdict == PlanVerdict::QueueUnusable,
-               "a document that carries no queue is refused");
-        expect(std::string_view(plan_verdict_name(resolved.verdict)) ==
-                   std::string_view("plan-missing"),
-               "under the name a missing plan gets");
-        expect(resolved.plan.chain == nullptr && resolved.plan.step_count == 0U,
-               "and nothing is handed over");
-        MPACK_FREE(data);
-    }
-
-    /* ---- 2: a document that carries its queue ---- */
-    void a_queued_document_resolves() {
-        const char *steps[] = {"pagecache_write"};
-        std::size_t size = 0U;
-        char *data = build_43284(steps, 1U, &size);
-        Document document;
-        expect(document.parse(reinterpret_cast<const std::uint8_t *>(data), size) ==
-                   DocumentVerdict::Ok,
-               "the 43284 document parses");
-        const RunPlanResult resolved = resolve_run_plan(document);
-        expect(resolved.verdict == PlanVerdict::Ok, "and resolves");
+               "and the chain is the one the token names");
         expect(resolved.plan.chain != nullptr &&
-                   std::strcmp(resolved.plan.chain->token, "umh") == 0,
-               "to the umh chain");
-        expect(resolved.plan.chain != nullptr && resolved.plan.chain->wired, "which is wired");
-        expect(resolved.plan.step_count == 1U && resolved.plan.steps[0U] == StepId::PageCacheWrite,
-               "with the single page cache step");
-        expect(resolved.plan.step_count == 1U, "with its single step");
-        MPACK_FREE(data);
+                   std::strcmp(resolved.plan.chain->backend, "cve_2026_43499") == 0 &&
+                   std::strcmp(resolved.plan.chain->route, "multicast_waiter") == 0,
+               "with its backend and route derived from that token, not declared again");
+        expect(resolved.plan.plan.size == script.size() && resolved.plan.plan.script != nullptr,
+               "and the plan script comes with it");
     }
 
-    /* ---- 3: what cannot be resolved is refused by name ---- */
-    void refusals_are_named() {
-        const char *bad[] = {"w9"};
-        std::size_t size = 0U;
-        char *bad_data = build_43284(bad, 1U, &size);
-        Document bad_doc;
-        expect(bad_doc.parse(reinterpret_cast<const std::uint8_t *>(bad_data), size) ==
-                   DocumentVerdict::Ok,
-               "the document with the unknown step parses");
-        const RunPlanResult bad_plan = resolve_run_plan(bad_doc);
-        expect(bad_plan.verdict == PlanVerdict::StepSetUnknown, "an unknown step stops the plan");
-        expect(std::string_view(plan_verdict_name(bad_plan.verdict)) == std::string_view("unknown-op"),
-               "under its own name");
-        MPACK_FREE(bad_data);
-
-        const char *partial[] = {"w2"};
-        std::size_t partial_size = 0U;
-        char *partial_data = build_43284(partial, 1U, &partial_size);
-        Document partial_doc;
-        expect(partial_doc.parse(reinterpret_cast<const std::uint8_t *>(partial_data), partial_size) ==
-                   DocumentVerdict::Ok,
-               "the document with the partial step set parses");
-        expect(resolve_run_plan(partial_doc).verdict == PlanVerdict::StepSetUnknown,
-               "steps that are not a declared set stop the plan");
-        MPACK_FREE(partial_data);
-
-        Document empty;
-        expect(resolve_run_plan(empty).verdict == PlanVerdict::DocumentInvalid,
-               "an unparsed document resolves to nothing");
+    void the_selection_and_the_plan() {
+        const std::string script = "-- the plan\n";
+        expect(resolve(build_document("not_a_combination", script, "root_child")).verdict ==
+                   RunPlanVerdict::ChainUnknown,
+               "a token no chain names is refused");
+        expect(std::string_view(run_plan_verdict_name(RunPlanVerdict::ChainUnknown)) ==
+                   std::string_view("route-not-available"),
+               "under the existing name, with no new code for it");
+        expect(resolve(build_document("mcast_umh", script, "umh_forward")).verdict ==
+                   RunPlanVerdict::ChainNotWired,
+               "a chain this build does not wire is refused");
+        expect(resolve(build_document("mcast_rootchild", "", "root_child")).verdict ==
+                   RunPlanVerdict::PlanMissing,
+               "a document that carries no plan is refused as plan-missing");
+        const std::string over(64U * 1024U + 1U, 'x');
+        expect(resolve(build_document("mcast_rootchild", over, "root_child")).verdict ==
+                   RunPlanVerdict::PlanTooLarge,
+               "and one whose plan is over the ceiling as budget-exceeded");
+        expect(resolve(build_document("mcast_rootchild", script, "umh_forward")).verdict ==
+                   RunPlanVerdict::PlanMissing,
+               "a plan named for another terminal is not this chain's plan");
+        expect(resolve(build_document("mcast_rootchild", script, "root_child", true)).verdict ==
+                   RunPlanVerdict::QueueRemoved,
+               "and a queue beside a plan is still refused, not preferred");
     }
 }  // namespace
 
 int main() {
     std::printf("run plan: the device document\n");
-    the_device_document_resolves();
-    std::printf("run plan: a document with no queue\n");
-    a_document_without_a_queue_is_refused();
-    std::printf("run plan: a queued document\n");
-    a_queued_document_resolves();
-    std::printf("run plan: refusals\n");
-    refusals_are_named();
+    the_device_document_is_refused_for_its_queue();
+    std::printf("run plan: a token document\n");
+    a_token_document_resolves();
+    std::printf("run plan: what a document can get wrong\n");
+    the_selection_and_the_plan();
     if (g_failures != 0U) {
         std::printf("run plan: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("run plan: PASS (device document resolves + queue drives + refusals named)\n");
+    std::printf("run plan: PASS (token resolves + queue refused + plan delivered)\n");
     return 0;
 }
