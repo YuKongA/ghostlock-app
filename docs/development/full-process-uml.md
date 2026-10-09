@@ -221,6 +221,7 @@ close	handle_method	session	pre_window	false	true	true	handle	true	1844674407370
 | `executor-unavailable` | terminal 执行器不可用 | gate |
 | `payload-missing` | `handoff` 的 `payload_ref` 无交付物/校验失败 | handoff 校验 |
 | `plan-missing` | 计划为空（无 staged 产物） | gate |
+| **`document-invalid`** | **文档不是本构建读的那种**：`schema != kDocumentSchema(=3)`（`profile/glkv3_document.hpp:24`）· 字节非 MessagePack（解析失败）· **未解析就读取** | `glkv3_document.hpp` 的 `DocumentVerdict::Invalid`（`:35-39`，三值 = `ok`/`document-invalid`/`payload-missing`）；测试 `tests/document_reader_test.cpp` |
 | **`unknown-op`**（`plan_gate`） | 未知 op token | plan_gate |
 | **`route-not-available`**（`plan_gate`） | 该 route 不可用（未接线/未声明） | plan_gate |
 | **`capability-missing`**（`plan_gate`） | 能力缺失（所需能力未授予） | plan_gate |
