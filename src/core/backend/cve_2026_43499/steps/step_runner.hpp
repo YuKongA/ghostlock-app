@@ -8,6 +8,10 @@
  *  orders and calls the step. That is all this is: it does not decide which set to run, it does
  *  not know what a step does, and it does not retry. The set is chosen by the plan, the work is
  *  the action's, and a failure stops the chain and is reported with the step it happened at.
+
+ *  ADR-0011 makes the Lua the authority on execution order, so the order handed in here is
+ *  expected to come from there; the catalogue table is the default the Lua is generated from,
+ *  not the last word. That is why this takes an order rather than reaching for one.
  *
  *  Why a separate piece: the op registry names operations whose implementations do not exist
  *  yet, and the first thing any of them needs is this walk. Keeping it free of the session and
