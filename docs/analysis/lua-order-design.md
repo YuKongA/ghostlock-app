@@ -45,7 +45,8 @@ ADR-0011：**执行顺序的权威是 Lua**。而本项目「执行顺序」的�
 - **不拼 `window.*`** ⇒ C3a 两条机检**原样通过**；**不是窗口相位动作** ⇒ 不触 C3b 的理由面；
 - 可表达**任意子集/次序**（含单步，**前提是 C3c 的词汇允许**）；
 - 本树已有「声明 → 实现执行」的先例：`backend` / `close` / `handoff` 都是声明式；`prepare_steps` / `reclaim_plan` 是「顺序/规则写成数据」的先例；`step_runner` 已能接一个 order 走完（头注已写「顺序期望来自 Lua」）。
-- **代价**：一处新行 + **一个列表参数 kind** + gate 的顺序合法性校验（与 B 同量级，但**功能严格更强**）。
+- **代价（按 N8 的实测精确化：上修但非从零）**：① **新件** —— surface 侧确无字符串/列表 kind（`ArgSpec { key, max(u64), required }`）；② **不是新概念** —— plan/op 侧早有字符串（`ParamWire::Str = 3`，由 plan_gate 校验）；③ **解析现成** —— `step_from_token`（token→`StepId`，其注释正为「文档拼的步骤与计划写的步骤按同一表匹配」而设）与文档的 token 数组读取可复用；④ **重生成有先例** —— `make -C src stepset-steps-manifest-regen`。⇒ 合计 = 新参数 kind + manifest/pin/两份 doc-check 重生成 + gate 合法性校验 +（可选）词汇扩容。
+- **合规论证（N9）**：脚本拼的是 `disenforce_selinux` 等 token —— 属**dispatch 标识符**（用户禁则允许的两类之一），解析靠 `step_from_token` + 已声明的 step set 表 ⇒ **合规**；**不得**把顺序编码成索引数字（那才是「名字→值表」的近似形态）。另：`order` 作为行名**不触** `ORDER_TOKENS` 机检（该机检只扫 `core/pipeline/composition_root.hpp`）。
 
 ### 形态 A：三步成为脚本动作
 
@@ -75,6 +76,7 @@ Lua 调 `backend{ steps=[…] }` ⇒ 需给**冻结的 `backend` 行**加参数 
 | `pipeline/plan_gate.hpp` | 校验 `order.steps` 的合法性（见 §6） |
 | `contract/op_registry.hpp` | **仅当 C3c 扩词汇**：新增单步/子集 op token ⇒ 与 step set 行同批 |
 | `steps/step_runner.hpp` | **不改**（接一个 order 走完），**除非** §6 结论要求泛化 |
+| **禁令（N8）** | 复用文档的 `step_queue` 解析形状时 **不得复活 `queue` 键** —— `queue-removed` 判据在位（C1 仍有效） |
 | ADR | 引用 ADR-0011 即可；C3b 的裁决若发生 ⇒ 留沿革 |
 
 ## 6 C6：Lua 给的顺序**如何成为** `StepSetOrder`（本设计必须覆盖）
@@ -83,8 +85,13 @@ Lua 调 `backend{ steps=[…] }` ⇒ 需给**冻结的 `backend` 行**加参数 
 
 - **匹配已声明集合**：`order.steps` 必须**恰好**等于某个已声明 step set（顺序一致）⇒ 实现只做查表 ⇒ `step_runner` **不改**；单步/新子集必须**先扩词汇**（C3c）。
 - **允许任意 span**：`order.steps` 可以是任意子集/次序 ⇒ 需要一个新的运行期结构（不是 `StepSetOrder`）⇒ `step_runner` 要**泛化**（接一个 span 而不是目录行）。
+  **（N6 重要项）** 走这条路**必须同时定义「合法 span 集合」的数据表**（谁声明 · 何处存放 · 如何 pin · 不匹配 ⇒ **具名拒绝**）—— 否则「哪种次序在机制上合法」就成了 plan_gate 代码里的知识，与 `prepare_steps`/`reclaim_plan` 的「顺序/规则写成数据 + 编译期 pin」先例相抵，靠推断即违「不猜」。**不想引入该表 ⇒ 就走第三条路**。
+- **第三条路（N7）：声明序列 + 精确规范化 + 不匹配即拒** —— 其规范形式是「**扩已声明集合**」：每加一种合法次序就加**一行 step set**（数据 + pin，与既有先例同形），脚本语法不变，运行时**只查表** ⇒ `step_runner` **不改**。
+  两条约束：① **规范化必须精确**（近似/就近匹配 = 推断 ⇒ 违规）；② 「允许任意前缀」是可选项，但同样要有机制依据（例如 `selinux_cred` 已是被声明的合法二步集），**实现层不得自行截断**。
+  ⇒ 第三条**不是捷径**，它是「扩声明集合」的规整表述 ✓。
 
-⇒ 本稿**不替用户选**：这与 C3c 的功能问题**是同一个问题的两面**（要单步 ⇒ 必然 `span` 或扩词汇二选一）。
+⇒ 因此要「单步」**只有两条真路**：**ⓐ 扩已声明集合**（= 第三条路的规范形式）或 **ⓑ 泛化 runner**（= span 路）。
+本稿**不替用户选**：这与 C3c 的功能问题**是同一个问题的两面**。
 
 ## 7 不在本设计内（不猜）
 
