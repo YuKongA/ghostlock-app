@@ -140,6 +140,9 @@ LAYER_HEADERS := \
   core/tests/perf_vote_test.cpp \
   core/backend/cve_2026_43499/route/multicast_policy.hpp \
   core/tests/multicast_policy_test.cpp \
+  core/contract/capability_catalog.hpp \
+  core/backend/cve_2026_43499/capabilities.hpp \
+  core/tests/capability_agreement_test.cpp \
   core/backend/cve_2026_43499/steps/step_runner.hpp \
   core/tests/step_runner_test.cpp \
   core/backend/cve_2026_43499/route/route_policy.hpp \
@@ -230,7 +233,7 @@ LAYER_HEADERS := \
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
   core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/write_layout_test.cpp core/tests/credential_image_test.cpp core/tests/race_runtime_test.cpp core/tests/kmi_catalog_test.cpp core/tests/device_facts_test.cpp core/tests/module_facts_test.cpp core/tests/staged_plan_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp core/tests/chain_catalog_test.cpp core/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
+EVIDENCE_BINS := $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -527,6 +530,10 @@ COMBINATION_MANIFEST := $(BUILD_DIR)/combination-manifest.tsv
 COMBINATION_MANIFEST_PIN := core/tests/combination-manifest.pin.tsv
 .PHONY: combination-manifest combination-manifest-regen
 
+$(BUILD_DIR)/capability_agreement_test: core/tests/capability_agreement_test.cpp \
+  core/contract/capability_catalog.hpp core/backend/cve_2026_43499/capabilities.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/capability_agreement_test.cpp -o $@
+
 $(BUILD_DIR)/step_runner_test: core/tests/step_runner_test.cpp \
   core/backend/cve_2026_43499/steps/step_runner.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/step_runner_test.cpp -o $@
@@ -667,6 +674,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/payload_manifest_test
 	@echo "check: step catalogue (tokens + declared orders)"
 	@$(BUILD_DIR)/step_catalog_test
+	@echo "check: capability agreement (declared is provided, provided is declared)"
+	@$(BUILD_DIR)/capability_agreement_test
 	@echo "check: step runner (walks the declared order, stops at the first failure)"
 	@$(BUILD_DIR)/step_runner_test
 	@echo "check: combination manifest (restored, matches its pin)"
