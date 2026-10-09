@@ -8,12 +8,12 @@
  *  runs, and it is where a document that asks for something this build cannot do
  *  is refused by name rather than attempted.
  *
- *  TEMPORARY (delete me): a document that carries no queue falls back to the
- *  chain table's default path for its terminal. That fallback exists only while
- *  the documents are being brought into line; the queue is the declared carrier,
- *  and the delivery condition is that both backends' documents carry one, at
- *  which point the fallback and its test go away. Marked here so it cannot be
- *  forgotten: //TODO(temporary: delete when every document carries its queue)
+ *  There is no falling back. A document that carries no queue has not said which
+ *  steps to run, and the table's default path is not a substitute for being told:
+ *  the temporary fallback that stood here was removed once both ends' documents
+ *  carried their queue, and what used to be a guess is now a refusal named
+ *  plan-missing. The queue itself is still the carrier; when the script becomes
+ *  the source of the steps, this is where that lands.
  */
 #include <cstddef>
 #include <string_view>
@@ -60,9 +60,6 @@ namespace ghostlock::profile {
         const contract::ChainSpec *chain = nullptr;
         contract::StepId steps[kMaxRunSteps] = {};
         std::size_t step_count = 0U;
-        /** True when the steps came from the chain table rather than from a
-         *  queue the document carried: the temporary path above. */
-        bool from_fallback = false;
     };
 
     struct RunPlanResult final {

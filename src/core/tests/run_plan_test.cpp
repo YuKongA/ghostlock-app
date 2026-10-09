@@ -125,9 +125,45 @@ namespace {
         expect(resolved.plan.step_count == 3U && resolved.plan.steps[0U] == StepId::W1 &&
                    resolved.plan.steps[1U] == StepId::W2 && resolved.plan.steps[2U] == StepId::W3,
                "and the steps are w1, w2, w3 in order");
-        expect(!resolved.plan.from_fallback,
-               "and the queue the document carries is what selected them");
         document.reset();
+    }
+
+    /* ---- 1b: a document that carries no queue is refused, not guessed at ---- */
+    void a_document_without_a_queue_is_refused() {
+        /* The same selection as the device's document, minus the queue: nothing
+         * says which steps to run, and the chain table's default path is not a
+         * substitute for being told. */
+        char *data = nullptr;
+        std::size_t size = 0U;
+        mpack_writer_t writer;
+        mpack_writer_init_growable(&writer, &data, &size);
+        mpack_start_map(&writer, 5U);
+        mpack_write_cstr(&writer, "backend");
+        mpack_write_cstr(&writer, "cve_2026_43499");
+        mpack_write_cstr(&writer, "route");
+        mpack_write_cstr(&writer, "multicast_waiter");
+        mpack_write_cstr(&writer, "terminal");
+        mpack_write_cstr(&writer, "root_child");
+        mpack_write_cstr(&writer, "schema");
+        mpack_write_uint(&writer, 3U);
+        mpack_write_cstr(&writer, "sections");
+        mpack_start_map(&writer, 0U);
+        mpack_finish_map(&writer);
+        mpack_finish_map(&writer);
+        expect(mpack_writer_destroy(&writer) == mpack_ok, "the document was written");
+        Document document;
+        expect(document.parse(reinterpret_cast<const std::uint8_t *>(data), size) ==
+                   DocumentVerdict::Ok,
+               "the document parses");
+        const RunPlanResult resolved = resolve_run_plan(document);
+        expect(resolved.verdict == PlanVerdict::QueueUnusable,
+               "a document that carries no queue is refused");
+        expect(std::string_view(plan_verdict_name(resolved.verdict)) ==
+                   std::string_view("plan-missing"),
+               "under the name a missing plan gets");
+        expect(resolved.plan.chain == nullptr && resolved.plan.step_count == 0U,
+               "and nothing is handed over");
+        MPACK_FREE(data);
     }
 
     /* ---- 2: a document that carries its queue ---- */
@@ -147,8 +183,7 @@ namespace {
         expect(resolved.plan.chain != nullptr && resolved.plan.chain->wired, "which is wired");
         expect(resolved.plan.step_count == 1U && resolved.plan.steps[0U] == StepId::PageCacheWrite,
                "with the single page cache step");
-        expect(!resolved.plan.from_fallback,
-               "and the queue is what selected it, not the fallback");
+        expect(resolved.plan.step_count == 1U, "with its single step");
         MPACK_FREE(data);
     }
 
@@ -187,6 +222,8 @@ namespace {
 int main() {
     std::printf("run plan: the device document\n");
     the_device_document_resolves();
+    std::printf("run plan: a document with no queue\n");
+    a_document_without_a_queue_is_refused();
     std::printf("run plan: a queued document\n");
     a_queued_document_resolves();
     std::printf("run plan: refusals\n");

@@ -129,7 +129,9 @@ namespace {
             std::printf("%s%s", i == 0U ? "" : ",",
                         ghostlock::contract::step_token(resolved.plan.steps[i]));
         }
-        std::printf(" source=%s\n", resolved.plan.from_fallback ? "chain-default" : "queue");
+        /* Where the steps came from. The queue is the carrier today; when the
+         * script becomes the source, this is the field that says so. */
+        std::printf(" source=queue\n");
         const ghostlock::race::SettingsVerdict settings =
             report_race_settings(document, resolved.plan.chain->backend);
         /* What the device is, and the module that would be delivered to it. */

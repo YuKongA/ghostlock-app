@@ -7,27 +7,6 @@ namespace ghostlock::profile {
     namespace {
         constexpr std::size_t kTokenCapacity = 32U;
 
-        /** The chain rows that match a selection, ignoring the path. */
-        const contract::ChainSpec *chain_by_selection(std::string_view backend,
-                                                       std::string_view route,
-
-                                                       std::string_view terminal,
-
-                                                       bool prefer_path_matching_terminal) noexcept {
-            for (std::size_t i = 0U; i < contract::kChainCount; ++i) {
-                const contract::ChainSpec &row = contract::kChainCatalog[i];
-                if (std::string_view(row.backend) != backend ||
-                    std::string_view(row.route) != route ||
-                    std::string_view(row.terminal) != terminal) {
-                    continue;
-                }
-                if (prefer_path_matching_terminal && std::string_view(row.path) != terminal) {
-                    continue;
-                }
-                return &row;
-            }
-            return nullptr;
-        }
     }  // namespace
 
     const contract::StepSetOrder *step_set_for_steps(const contract::StepId *steps,
@@ -100,56 +79,25 @@ namespace ghostlock::profile {
         contract::StepId steps[kMaxRunSteps] = {};
         std::size_t step_count = 0U;
         const Document::StepQueueResult queue =
-
             document.step_queue(std::string_view(section), steps, kMaxRunSteps);
-        const bool has_queue = queue.verdict == Document::QueueVerdict::Ok;
-        if (queue.verdict != Document::QueueVerdict::Ok &&
-            queue.verdict != Document::QueueVerdict::QueueMissing) {
-            /* The queue is there and unusable: a refusal, not a fallback, and a step
-             * the catalogue does not know is named as such rather than folded into
-             * "there is no queue". */
+        /* There is no falling back: a document that carries no queue has not said
+         * which steps to run, and "the table's default path" is not a substitute
+         * for being told. What used to be a guess here is a refusal now. */
+        if (queue.verdict != Document::QueueVerdict::Ok) {
             result.verdict = queue.verdict == Document::QueueVerdict::StepUnknown
                                  ? PlanVerdict::StepSetUnknown
                                  : PlanVerdict::QueueUnusable;
             return result;
         }
-
-
-        const contract::ChainSpec *chain = nullptr;
-        if (has_queue) {
-            step_count = queue.count;
-            const contract::StepSetOrder *order = step_set_for_steps(steps, step_count);
-            if (order == nullptr) {
-                result.verdict = PlanVerdict::StepSetUnknown;
-                return result;
-            }
-            chain = contract::chain_for(std::string_view(backend), std::string_view(route),
-
-                                        std::string_view(terminal),
-
-                                        std::string_view(order->step_set));
-        } else {
-            /* TEMPORARY (see the header): the document carries no queue, so the
-             * chain table's default path for this terminal stands in for it. */
-            chain = chain_by_selection(std::string_view(backend), std::string_view(route),
-
-                                       std::string_view(terminal), true);
-            if (chain == nullptr) {
-                result.verdict = PlanVerdict::ChainUnknown;
-                return result;
-            }
-            const contract::StepSetOrder *order =
-
-                contract::step_set_order(std::string_view(chain->step_set));
-            if (order == nullptr || order->count == 0U || order->count > kMaxRunSteps) {
-                result.verdict = PlanVerdict::StepSetUnknown;
-                return result;
-            }
-            for (std::size_t i = 0U; i < order->count; ++i) {
-                steps[i] = order->steps[i];
-            }
-            step_count = order->count;
+        step_count = queue.count;
+        const contract::StepSetOrder *order = step_set_for_steps(steps, step_count);
+        if (order == nullptr) {
+            result.verdict = PlanVerdict::StepSetUnknown;
+            return result;
         }
+        const contract::ChainSpec *chain =
+            contract::chain_for(std::string_view(backend), std::string_view(route),
+                                std::string_view(terminal), std::string_view(order->step_set));
         if (chain == nullptr) {
             result.verdict = PlanVerdict::ChainUnknown;
             return result;
@@ -163,7 +111,6 @@ namespace ghostlock::profile {
             result.plan.steps[i] = steps[i];
         }
         result.plan.step_count = step_count;
-        result.plan.from_fallback = !has_queue;
         result.verdict = PlanVerdict::Ok;
         return result;
     }
