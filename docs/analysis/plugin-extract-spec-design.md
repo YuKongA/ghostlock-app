@@ -91,10 +91,12 @@ typedef struct glk_extract_spec {
 - **旧消费者的行为**：现契约「未知 kind → 按 header 解析 → 列数不符 → 拒整份描述符」⇒ 新增 `spec` 行会让**未升级**的 Kotlin/Rust 拒掉**整份描述符**；
 - 因此 §4 的「仅新尾部模块才输出 `spec`」是**硬要求**：只要插件不声明新声明，旧消费者看到的就是与今天逐字节相同的 TSV；
 - **三端同批升级顺序（硬约束）**：
+
   1. native：ABI 尾部 + 探针 `spec` kind + 自断言（本册）→ 提交；
   2. Rust extractor：认识 `spec` 行并在生成时按 `methods` 施阶梯（P2 投影）；
   3. Kotlin：认识 `spec` 行（模型/校验/UI 只读展示；不参与编辑）→ 之后再启用「带 spec 的插件导入」；
   4. 只有在 2/3 落地后，才允许分发带 `spec` 的新插件制品（否则用户导入即被拒）；
+
 - 回归证据：`extract` 行 7 列不变 + 现有 golden 与语料逐字节不变；新 fixture 才带 `spec`。
 
 ## 7. 探针自断言（保证「声明的 spec 与 ABI 尾部一致」）

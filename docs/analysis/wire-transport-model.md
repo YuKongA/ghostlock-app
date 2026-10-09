@@ -70,17 +70,23 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 
 - vendor `mpack.c`/`mpack.h`（MIT）到 `core/lib/mpack/`，附 LICENSE 与署名；
 - 编译：MPack 是 C，需以 CC 编译（Makefile 增加 C 源列表或用 `-x c`），关闭 `MPACK_STDIO`/`MPACK_EXTENSIONS`；
+
   第三方告警用单独 flag 或文件名隔离，不污染项目的零告警要求；
+
 - 解析用 **expect API**（`mpack_expect_map`/`mpack_expect_str`/`mpack_expect_uint`…）按 schema 遍历，**不建节点树、不分配**；
+
   未知键用 `mpack_discard` 通用跳过（可扩展性）；
+
 - 上层 schema 校验层（薄）：`schema==3`、必填键、路径→类型、未知 section/key 在 Production 严格拒绝；
 - 上限：文档尺寸（沿用 1 MiB）、map/array 计数与嵌套深度，越界/类型不符 → fail-closed。
 
 ## 7. Kotlin / Extractor
 
 - Kotlin：**官方 `kotlinx.serialization` 无 MessagePack 模块**（官方格式仅 JSON/CBOR/Protobuf/Properties；HOCON 由 **lightbend/config** 处理，本仓已在用）。
+
   故 Kotlin 侧用 **`org.msgpack:msgpack-core`**（或社区 `kotlinx-serialization-msgpack`）；`NativeProfile.kt` 手写二进制编解码退场，
   改为「HOCON(Typesafe) 解析 → 数据类 → MessagePack 序列化」；
+
 - Extractor（Rust）：`rmp-serde` 输出/读取同一 map；
 - 三端「路径→类型」manifest 继续对拍，防一方漂移。
 
@@ -95,12 +101,16 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 状态（**S4-R2c，2026-10-05**）：**v3 是唯一格式；v2 已弃用并删除**。
 
 - native：**只读/只写 v3**（`schema == 3`）。`profile/binary.cpp`（v2 framer + writer）与
+
   `-DGHOSTLOCK_ENABLE_V2_WRITER` 已删除；`entry.cpp` 不再有 v2 回退——非 map 根或 `schema != 3`
   一律拒绝（`error == -1`），负向证据见 `device-gates/s4-r2c-20261005-pass.md`；
+
 - Kotlin：生产与导出一律 v3（`AndroidProfileConfigController.nativeDocument()`、
+
   `exportProfiles` → `Glkv3Encoder`）。旧配置（HOCON `schema_version = 1` 或缺键）由
   **`LegacyProfileConverter`（唯一迁移点）** 归一为 3；`toBinary/fromBinary` 等 v2 编解码在
   **R2c-2** 删除（当前仅为既有测试保留；`NativeProfileDocument.patchSafeMode` 作用在 GLKv3 字节上，是活代码）；
+
 - extractor：只产出 HOCON（`--format conf`，`schema_version = 3`）与 JSON（v1 offsets），不产出 wire；
 - 唯一权威：**版本号统一为 3**（HOCON 与 wire 同一个数字，见 `AGENTS.md`）。
 

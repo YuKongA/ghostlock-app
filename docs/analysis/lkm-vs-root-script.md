@@ -28,8 +28,11 @@
 ## 3. 结论：**互补，不重叠，不能互相替代**
 
 - **43499 路径**：userspace 已经有 root → 脚本的价值在于「**修 SELinux + 找 ksud + 载 KernelSU**」，
+
   其中 SELinux 部分是**为 W1 的副作用做修复**。
+
 - **43284 路径**：一开始在 userspace **没有 root**，靠页缓存写把代码注入到 init 域；此时缺的是
+
   **内核侧**能力（解除 SELinux enforcing、绕过 UMH 限制）→ 必须由我们的 LKM 提供。
   拿到 LKM 后，**userspace 侧的「找 ksud + late-load」仍然需要有人做**，办法是把 ksud 命令作为
   LKM 的 `cmd` 参数由 UMH 执行（我们的 LKM 实测 UMH 以 **uid 0 / `u:r:kernel:s0`** 运行）。
@@ -49,5 +52,7 @@
 ## 5. 后续可选收敛
 
 - 把「ksud 发现 + KMI 解析」从 43499 脚本抽成**共用的 root 侧逻辑**（脚本或 native helper），
+
   让 43499 与 43284 两条链共享同一份实现，避免两处维护。
+
 - 若将来 43284 需要「恢复 SELinux」而不是「置 permissive」，再考虑把 policy 修复逻辑按需引入。

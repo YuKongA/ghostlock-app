@@ -72,6 +72,7 @@ pw=`race/pi_window.hpp` · rr=`race/race_runtime.hpp` · wr=`memory/write_reques
 - 本片**不改任何生产代码**；上表是切片 2 的输入。
 - 验收：`make -C core check` **EXIT=0**（2026-10-09，落盘前跑；日志 `/tmp/seamport_check.log`）。
 - 不猜（切片 2 定形状前必须回答）：
+
   1. `arm_sequence` 暖场是否保留（§2）——保留则 `MulticastLimits` 需加字段；
   2. `MulticastGeometry` / `MulticastLimits` 的值载体：`AccessParams` 加字段，或经 `bring_up` 实参（ADR-0015 §4.3：没传就按名拒，**不得回退 profile**）；
   3. **窗口体不吃 WriteRequest**：M:44 实测 `(void) request;`（设计稿 §4.3「构造 WriteRequest → 调 do_multicast_fake_lock_route」在 multicast 上不成立）；request 由 race 侧线程读（旧 pi_race.h:87、threads.cpp:33）⇒ `Window::write_word(address,value,offset)` 如何落到那次写，属切片 2。

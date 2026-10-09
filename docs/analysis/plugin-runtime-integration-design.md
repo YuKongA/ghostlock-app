@@ -167,6 +167,7 @@ namespace ghostlock::plugin {
 
 - 设计侧已在 §3 表内写明：`post_terminal` 仅在 **43284 的 LKM 驻留窗口**内提供；43499 上 root 已接管、无法回传宿主，**不提供**该阶段；
 - **需 docs-uml 同步到 `docs/analysis/contract-design.md` 与 `docs/development/full-process-uml.md`（我不跨流写）**：
+
   1. `contract-design.md` §3.14.7 增一条：`post_terminal` 对 43499 **不可用**（不是沉默缺席）；
   2. `full-process-uml.md` §2 状态机：43499 链上不出现 `post_terminal` 分支；43284 链的 `post_terminal` 明确画在 LKM 驻留窗口内；
   3. `full-process-uml.md` §1 IPO：终端阶段（C6）之后仅 43284 有插件派发列。

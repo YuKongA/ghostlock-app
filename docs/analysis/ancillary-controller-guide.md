@@ -15,8 +15,11 @@ vendor anti-root mitigations, environment fixups and similar. It is deliberately
 separate from the `frontend × backend × middleware` component axes:
 
 - those axes describe the **exploit path** (the primitive and how a kernel write is
+
   realized);
+
 - an ancillary behavior describes **extra steps around that path** and must not change
+
   how the path writes.
 
 Project-wide constraints apply (`../../AGENTS.md`): compile-time composition, no virtual
@@ -39,7 +42,9 @@ A behavior is a policy type satisfying `AncillaryPolicyFor<P, Middleware>`:
 
 - `static constexpr AncillaryKind kind` — a stable id (append one to the enum);
 - `static bool enabled(const profile::TargetProfile &)` — the profile gate. Fail
+
   closed: if the resolved profile does not enable the behavior, return `false`;
+
 - `template <class Middleware> static Status apply(AncillaryStage, ExploitSession &, AncillaryContext &)` — the stage entry.
 
 `AncillaryStage` selects **when** the behavior runs relative to the exploit steps:
@@ -72,9 +77,13 @@ call site is wired **once** and never changes when behaviors are added.
 is relevant on the running device:
 
 - the same GKI release is shipped by multiple vendors, so the kernel string / release
+
   is **not** a device identity;
+
 - therefore a behavior that targets a vendor component must **confirm at runtime** that
+
   the component is actually present, and **do nothing** when it is not (fail safe);
+
 - record that decision in `AncillaryContext` at the controller entry, not in the route.
 
 Do not key a behavior on `uname -r` or on the profile release. The profile gate and the
@@ -86,7 +95,9 @@ Behavior configuration travels in the resolved profile, never in environment var
 (`../../AGENTS.md`):
 
 - a **gate** field records whether the support list enables the behavior for this
+
   profile;
+
 - an optional **layout** section carries the behavior-specific parameters;
 - shared kernel symbol offsets live in the existing `offset` section.
 
@@ -98,11 +109,14 @@ recomputed. The exact field set for `vr.ko` is defined by the PR, not by this do
 ## 7. Constraints checklist
 
 - [ ] No mutable global state; do not add fields to `ExploitSession` — its layout is
+
       fixed so attack-function stack offsets do not move.
+
 - [ ] No indirect/virtual dispatch on the attack path.
 - [ ] Header-only parts compile on the host.
 - [ ] New code is warning-free under `-Wall -Wextra -Wconversion -Wsign-conversion`.
 - [ ] Configuration comes from the profile; no configuration-class environment
+
       variables.
 
 ## 8. Verification
@@ -111,6 +125,7 @@ recomputed. The exact field set for `vr.ko` is defined by the PR, not by this do
 - NDK build with **zero warnings**
 - `make -C core lint-tidy`
 - If the behavior touches the attack path: `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock`
+
   **and** the on-device gate (cold boot, fixed CPU pair, single route, KernelSU not
   loaded), archived under `docs/analysis/device-gates/`.
 

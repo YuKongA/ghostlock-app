@@ -7,7 +7,9 @@
 ## 1. 取证（现状）
 
 - native 的 fallback **只在一处**生效：`backend/cve_2026_43499/route/route_policy.hpp`（`run_route_with_fallback`：主 route 失败且 `allow_fallback` 时按 `profile.fallback_route()` 换一条）；
+
   数据来源 `contract/model.hpp` 的 `meta.fallback_route`（缺省 = `RouteKind::Auto`）。
+
 - 资产分布：**41 个 `fallback.to = "none"`、17 个 `fallback.to = "select_stack"`** → 删除 fallback 会让这 17 个 profile **少一次自动重试**（有意为之）。
 - route 目前**不是**装配轴：`component_catalog.hpp` 的装配是 `backend × steps(W1W2/W1W3/PageCacheWrite)`，route 是 `MiddlewareKind`（`RouteKind{Auto,TcpZerocopy,SelectStack,MulticastWaiter}`）。
 
@@ -61,9 +63,12 @@
 ## 6. 批次切分（2026-10-05）
 
 - **R6a · fallback 出栈**（不依赖组合语法，立即执行）：
+
   删除 wire 的 `common.fallback_route` 与 native 的 `meta.fallback_route` / `fallback_route()` / `route_policy` 的 fallback 分支 / `RouteRunResult::fallback_used`；
   资产移除 `common.fallback_route` 与 `fallback.route.<kind>.*`；Kotlin 删除 fallback 选择器与 UI 状态（**旧文件的 `fallback.*` 仍被识别但忽略**，不得报「未识别旧键」）；
   extractor 不再产出 fallback；manifest 与 GLKv3 金标随字段删除重生成（wire 变化是**有意**的）。
   **门禁**：host/NDK/lint + Kotlin + cargo + 真机 43499 冷启 + 43284 app-call + AVB；并断言「主 route 失败 → **直接失败**，不再自动换 route」（错误可见）。
+
 - **R6b · route 并入 step 自由组合**（**等维护者确认组合语法**后执行）：组合 token 字符串（推荐）或数组（需新增 wire array 类型）；
+
   `StepSetKind`/catalog 扩为 route × wset 的组合白名单；UI 出「推荐 + 备选」；真机 3 条 route 各跑一次。

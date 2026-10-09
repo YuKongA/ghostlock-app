@@ -26,7 +26,9 @@
 
 - `profile-core/.../NativeProfile.kt`：移除 v2 文档/写路径（若存在）；
 - `app/src/test/resources/profile-manifest.tsv` + `ProfileManifestAgreementTest`：**删除**（v2 ABI manifest 已无消费者）；
+
    保留 `profile-manifest-v3.tsv` + `ProfileManifestV3AgreementTest`（并按其新形态更新注释，不再写 “v4”）；
+
 - `LegacyProfileConverter.kt`：作为**唯一迁移点**，负责 `schema_version = 1` → 3（并记诊断）；
 - App 加载路径：写恒 3；读 `1` 走转换；其它值拒绝；`ProfileMerger` 写 `schema_version = 3`。
 

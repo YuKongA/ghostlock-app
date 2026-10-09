@@ -11,13 +11,17 @@
 ## 0. 资料与引用约定
 
 - 上游 clone：`/tmp/upstream/ankitrawatgit_DirtyFrag-Android-Root-Jailbreak`，HEAD
+
   `de2ab7be69dc159af508d584523fd4d5c0b7cc7a`（2026-10-04 +0530，remote
   `ankitrawatgit/DirtyFrag-Android-Root-Jailbreak`）。
+
 - 本文行号引用格式：`上游 <path>:<line>`。本仓库 `DirtyFrag-Android-Root-Jailbreak@de2ab7b usermode/ankit/`
+
   与上游 `app/src/main/jni/` 的 `exp.c`、`libcxx.S`、`elf_parser.c`、`include.inc`、
   `CMakeLists.txt` **逐字节一致**（`splicehelper.c` 不在 ankit 目录，见下）；
   `DirtyFrag-Android-Root-Jailbreak@de2ab7b app-reference/ExploitRunner.java` 与上游一致；
   `DirtyFrag-Android-Root-Jailbreak@de2ab7b lkm/ankit/dirtyfrag.c` 与上游 `dirtyfrag-lkm/dirtyfrag.c` 一致。
+
 - 项目侧引用格式：`<path>:<line>`（仓库根相对）。
 - **未验证**标记：无上游代码/机制直接支撑、只能真机或内核行为确认的点。
 
@@ -95,33 +99,46 @@
 ### 3.1 保存原字节并恢复的只有 libc++.so
 
 - `patch_hook()` 传入 `struct PatchRestore *restore`：
+
   - 写 shellcode 前 `pread()` 保存 `shell_off` 起 `padded` 字节到 `shell_orig`（堆）；
   - 写 trampoline 前 `pread()` 保存 `hook_off & ~15` 的 16B 块到 `tramp_orig[16]`，置 `valid=1`。
   证据：`exp.c:702-714`、`721-734`。
+
 - 若命中时 `first_insn == hook_insn`（已经 hook 过），`patch_hook` 提前返回 0，**不设置 restore**
+
   （`exp.c:691-693`）。
+
 - `restore_hook()` 用同一条 `patch_file_cbc` 先写回 `tramp_orig`（16B @ 对齐块），再写回
+
   `shell_orig`（padded @ `shell_off`）。`nativeRunAll` 的 `done:` 无条件调用它，之后
   `free(shell_orig)`。证据：`exp.c:745-753`、`887-893`。
 
 ### 3.2 不恢复的两处
 
 - **patch #1（crash_dump64）**：没有保存原字节，也没有字节级恢复；只用
+
   `fadvise_drop()` 对目标做 `POSIX_FADV_DONTNEED` 丢页缓存（best-effort）。
   证据：`exp.c:755-761`、`891`。
+
 - **patch #2（vendor `.so` 里的 `.ko`）**：既不保存也不恢复，也不 fadvise；页缓存里一直是 `.ko`
+
   内容，直到自然回读淘汰或重启。证据：`exp.c:655-674`（无 restore 调用）。
 
 ### 3.3 `patch_file_cbc` 的 `-2` 语义与「写前才可换目标」
 
 - 返回值：每块先读 `old_content`（系统文件 `pread`；vendor 用 crash_dump 桥），再算 IV、发 1 个 ESP 包。
+
   - 第 `i==0` 块读旧值失败 → `rc = -2`（**一个字节都还没写**，调用方可换目标）；
   - 第 `i>0` 块读旧值失败 → `rc = -1`（已经写过一部分，不可换）；
   - 某个 ESP 写失败 → `rc = -1`。
   证据：`exp.c:344-376`（`rc = i == 0 ? -2 : -1`）。
+
 - `patch_ko` 循环：`ret==0` break；`ret!=-2` break（视为最终失败）；`ret==-2` 打印并试下一个候选。
+
   证据：`exp.c:658-671`。
+
 - 同源镜像：项目 `core/src/backend/cve_2026_43284/steps/chain.cpp` 的 `apply_plan` 只在「本 carrier
+
   第一次读旧块失败且尚未写」时返回 `CarrierUnusable`，`run_chain` 据此换下一个 carrier，并
   `clear_journal`；写失败/校验失败则直接 `finish` 终结，不再换目标。证据：`chain.cpp:201-208`、
   `340-348`。
@@ -129,16 +146,23 @@
 ## 4. 持久性判断（分区 / 页缓存 / 是否依赖重启恢复）
 
 - 三个目标分别在 `/apex`、`/system`、`/vendor` 分区；Android 上通常是 dm-verity（或 apex 镜像）
+
   只读挂载。上游**没有写块设备**：原语是把目标页 `splice` 进 pipe，再 `splice` 到 IPsec UDP socket，
   由内核 ESP 路径在**共享的页缓存页**上就地变换。证据：`exp.c:240-282`（vmsplice 头/IV +
   `splice(file_fd -> pipe)` + `splice(pipe -> sk_send)`）。
+
 - patch #1 的 verify（读 `crash_dump64` offset 16 与注入内容比对）本身就是「改动只在页缓存可被
+
   后续读取看到」的证据；失败提示词面写的是 "crash_dump64 page cache unchanged"。
   证据：`exp.c:625-648`。
+
 - 清理手段也指向「页缓存可丢弃、重启即恢复」：只有 `restore_hook()`（字节恢复）+ `fadvise(DONTNEED)`
+
   （丢缓存），没有 fsync/flush/块设备写。证据：`exp.c:755-761`、`890-891`。
+
 - 因此**推测**：修改不落盘，重启后页缓存失效、从 verity 块重新读取 → 恢复原始内容。
 - **未验证**：
+
   1. 上游代码未显式处理 page dirty / writeback 语义；ESP 就地写是否会把页标脏、进而在回写时
      落到块设备（verity 是否拦截/报错）——未验证。
   2. 只读挂载 + dm-verity 下 `POSIX_FADV_DONTNEED` 是否真能丢弃仍被本进程/其它进程映射的页——
@@ -262,9 +286,12 @@ sequenceDiagram
 
 - 项目 `plan` 只校验并打印一个「模块@target+0」的 region（`stage_runner.cpp:135-189`、`198-204`）。
 - 项目 `write` 会写并逐块回读校验，但 carrier 的旧值读取是 `pread`（`real_ops.cpp:95-102`），
+
   vendor `.so` 在 app 域不可 open 时直接 `CarrierUnusable` → 因此真机只有 `--allow-dev-target`
   指向可读文件时 write 才能过（B5-9d 门禁即 `/data/local/tmp/target.bin`）。
+
 - B5-9d 真机证据只到 write：`docs/analysis/device-gates/B5-9d-write-20261003-pagecache-primitive-pass.md`；
+
   文档明确「未加载模块、未 fork/exec 目标；完整提权判定仍需冷机 + trigger/full」。
 
 ## 8. 真机 `trigger` / `full` 前必须补齐 / 确认的项

@@ -2,7 +2,9 @@
 
 - 日期：2026-10-05　审查人：Lead　快照：**工作树未提交状态**（R6b/T5 半落地 + TERM T1–T4 已实现）
 - 基准：`docs/development/design-philosophy.md`（11 条原则）、`engineering-standards.md`（§2 架构 / §3 数据流 / §4 控制流 / §5 数据结构）、
+
   ADR-0001（允许依赖图）、ADR-0004（组合轴）、ADR-0006（terminal 归属）
+
 - 取证：`make -C core native-host-tests` EXIT=0（防火墙 `173 files, 4/4/0/0`，61 项 ok/OK）；`git status` 30 文件 / `+661 -360`
 
 ## 1. 结构清单（逐符号：功能 / 作用 / 影响 / 兼容性）

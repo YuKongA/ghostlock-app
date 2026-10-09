@@ -13,14 +13,23 @@ backend 私有**，为架构（route/primitive 归属）提供依据。
 ## 43499 基线：机制分解
 
 - **根因**：`kernel/locking/rtmutex.c` `remove_waiter()` 误清 `current->pi_blocked_on`（应为
+
   `waiter->task->pi_blocked_on`），留下指向**内核栈上 `rt_mutex_waiter`** 的悬垂指针（UAF）。
+
 - **触发**：3-futex / 3-thread PI 环 → `FUTEX_CMP_REQUEUE_PI` → `RT_MUTEX_FULL_CHAINWALK` →
+
   `-EDEADLK` 回滚。
+
 - **写原语**：pselect / tcp_zerocopy / multicast 用可控结构覆盖 stale waiter → `rb_erase` 左子
+
   重连 → `*dest = value`（单字，带结构副作用）。
+
 - **支撑件**：KASLR slide（pselect 竞态 + nfulnl/boot_id 泄漏）、heap spray / payload 编码、
+
   victim（perf 泄漏 task + pipes）、W1/W2/W3、handoff、`KernelMemory`（Tier1 引导 + B/C 通道）。
+
 - **组件轴**：frontend/handoff · backend 步骤 · route（select/tcp/multicast）· primitive
+
   （PiRace/payload/write）· session 状态 · profile。
 
 ## 逐个调研
@@ -70,7 +79,9 @@ backend 私有**，为架构（route/primitive 归属）提供依据。
 ## 对架构的含义
 
 - 支持本次重写结论：**primitive 与 route 归机制/backend 私有**；`KernelMemory` 接口中性、
+
   实现私有；frontend/handoff、session、pipeline、profile、contract 中性。
+
 - 支持“不把 route 承诺为跨 backend 复用轴”，但保留“同族（UAF）可抽利用框架接口”的口子。
 
 ## 未验证 / 风险

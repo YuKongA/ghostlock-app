@@ -14,8 +14,10 @@
 
 - **payload 键统一落 `backend.<id>.payload.*`**：**不开新顶层 owner**（顶层仍只 `backend.<id>`；`platform.*` 在迁移中）；`payload` owner **现为注释态（出现即拒）** ⇒ **解冻批次一并恢复该 owner 的 backend 作用域键**。
 - **完整 section.key 与元素字段**：
+
   - `backend.<id>.payload.scripts[]`：元素 = `id`(str) · `sha256`(str, 64 hex) · `bytes`(**bin**，插入段 ≤64 KB) · `always` **不是**元素字段（它是**条目属性**）。**`argv` 已删除**：调用参数由**模板与 op** 决定，**不由用户传 `argv`**。
   - `backend.<id>.payload.modules[]`：元素 = `path`(str) · `sha256`(str) · `require_bypass`(bool，可缺省)；**上限 8**。
+
 - **manifest 处置**：**既有行不变；以上新键按新行补充**（预期，不是「空 diff」）；58 份 golden 因 **presence-gated** 仍逐字节不变（无 payload 键的用例）。
 
 ## 2. 导入通道（R6）

@@ -84,6 +84,7 @@ payload {
 
 - **host**：编码/解码矩阵（tier 枚举非法、单档互斥违反、`count` 与实到数不一致、`i ≥ count`、重复/非十进制 i、超长路径、控制字符、sha256 非 64hex）→ 全部 fail-closed；`(terminal,tier)` 矩阵外组合 → 拒绝；无 `payload.*` ⇒ 零行为（逐字节回归）；
 - **真机（攻击关键路径，按 AGENTS 门槛）**：
+
   1. `exec` 正例：`/data/local/tmp` 下可执行 → PASS，`uid0`/KernelSU ready 记录保留，日志含 `payload=exec rc=0`，AVB 12/0；
   2. `script` 正例：脚本创建标记文件 → 日志含 `payload=script ok`；
   3. `ko` 正例：2 个 ko（1 好 1 坏）→ 好的驻留、坏的记 `ko[1]=<reason>`，**攻击链 PASS 但本次运行标记「未完成」**；

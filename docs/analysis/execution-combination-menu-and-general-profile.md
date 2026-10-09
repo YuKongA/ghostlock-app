@@ -175,6 +175,7 @@ profile_check_backend_unrunnable   该后端/路径的必须参数不完整 / Re
 **所有内置 profile 一并整理并加入默认 43284 声明**（理由：43284 声明**更简单易用**）；
 
 - **「整理」的可复核判定标准（逐条打勾）**：
+
   1. **声明齐全**：`available` 段存在；**43284 声明存在**；43499 声明**只含实测通过**的组合；
   2. **格式统一**：`route` 仅在 43499 下出现、43284 不得出现 `route`（契约 §3.20）；`queue` 一律对象数组形态；缩进 2 空格；无尾随空格；
   3. **顺序语义**：`available` 内后端的**声明顺序即优先级**（§2.8）⇒ 整理时**不得重排**已有顺序（新增 43284 放在哪里见 U11）；
@@ -182,6 +183,7 @@ profile_check_backend_unrunnable   该后端/路径的必须参数不完整 / Re
   5. **无未使用键**：不出现已删除 owner（`common` / `platform` / `selection`）与已注释段；
   6. **同源**：8 个 label 相关文件名/字段一律来自 `lkm-kmi-manifest.tsv`（不手抄）；
   7. **逐资产对拍**：整理前后跑「归一化计划等价」对拍（沿用 `ProfileLayoutEquivalenceTest` 方式）；差异**只允许**「新增 43284 声明 + 注释 + 顺序」；
+
 - **逐文件清单（初查，实现批次以 `ls` 复核到 68 个 `.conf`）**：
 
 ```text
@@ -220,23 +222,30 @@ available {
 - **例外（仍拒绝）**：① 连 general 也缺失/解析失败；② **选择的后端/路径的必须参数缺失**（§2.9，红色）；
 - **验证口径（真机）**：构造未登记的 release（或临时移走该 release 的 conf）⇒ 期望**加载对应 general**、UI 默认项 = `available` 第一项（43284）、43284 链跑通；冷机 + 固定 CPU 对 + KernelSU 未加载；日志落 `Download/ghostlock-debug-log/<时间>/`，核对 `profile_resolved` 指向 general；
 - **⚠ 区分两类 fallback（用户裁决要求，必须写清）**：
+
 **「未验证」标注的分支规则（U7 已裁决 2026-10-06；本规则是 Lead 依该裁决推出的最小解读，用户可推翻）**：
+
 - **不加二次确认**（理由：43284 非常通用）；
 - **默认 general → 43284 路径：不加任何标注**；
 - **仅当** general 路径实际落到**非 43284** 后端（例：用户自行放开被注释的 43499 声明）时 ⇒ **保留一个轻量标注**（`execution_combo_unverified_hint`，一行提示，不阻断）；
 - **可复核判据**：`selectedBackend != cve_2026_43284` 且 `profileKind == general` ⇒ 显示标注；其余情况不显示。
+
   - **保留**：**kernel-release 维度的 general 回退** —— 用户首轮 (5) 明确要求；
   - **退役**：**组合/选择维度的隐式 fallback** —— 用户裁决「以前的 fallback 已不存在，由 available 手动选择代替」⇒ 逐条清单见 §2.10；
   - **如有歧义**（例如 `activeBuiltinRelease()` 这类「隐式换了一个 release」），列为**待确认 U12**。
 **U12 事实补齐（2026-10-06，读代码结论，不猜）**：
+
 - **定义**：`AndroidProfileConfigController.kt:585` —— `override fun activeBuiltinRelease(): String? = forcedBuiltinRelease ?: preferences.getString(PrefBuiltinRelease, null)?.takeIf { it.isNotEmpty() }`；
 - **语义（结论）**：返回值 = **用户显式指定/持久化的「内置 profile release」**（`forcedBuiltinRelease` 或偏好键 `PrefBuiltinRelease`），**不是随机回落**；**无设置时为 null**；
 - **用法**：`AndroidProfileConfigController.kt:748` 的 `val profileRelease = activeBuiltinRelease() ?: deviceRelease` ⇒ **当用户显式设了内置 release 时，App 会用那个 release 的 profile 而不是设备 release 的** ⇒ **这确实会让 App 用「别的 release 的 profile」**（**但仅在用户显式设置时**）；
 - **暴露给 UI**：`GhostlockViewModel.kt:227` / `:1213` 以 `activeBuiltinProfile` 形式暴露（供界面显示/切换）；
 - **归类（结论）**：**它属于「显式选择」而非「隐式 fallback」** ⇒ 依用户「以前 fallback 已不存在、由 available 手动选择代替」的裁决，**不建议删除**；但按「状态必须与真实一致」的纪律，**必须显式化**：
+
   - **做法①：UI 明示 profile 来源**（顶部/配置页显示「当前 profile：设备 release / 内置 release X / general-<label>」）；
   - **做法②：与 general 回退合并成一条可见的解析链**（精确匹配 → 用户显式指定 → general-<label>），并把「最终用了哪一个」写进运行日志（`profile_resolved` 已记录同类信息，`:545`）；
+
 - **U12 · 已裁决（2026-10-06）：与现有配置加载机制合并** —— 用户原话：「**U12 和现有配置加载机制合并吧**，一般用户自行提取的都是**精确匹配内核**的，所以**未检测到匹配的配置就加载 general**（**匹配机制为同时在内置，和用户导入配置中匹配，其中优先匹配用户导入的最新配置**）」。
+
   ⇒ **不再保留 `activeBuiltinRelease()` 作为独立的隐式替换路径**，而是**并入「profile 解析链」**（一等规格见 **§11**）：`forcedBuiltinRelease` 类偏好降级为链上的**「①′ 显式指定」**（优先级最高、**必须在 UI 可见**，不允许静默）；
   **沿革（不删历史）**：曾提出「显式化（做法①UI 显示来源 / 做法②与 general 回退合并）」⇒ 用户裁决**合并**（即采用做法②的方向，并进一步把「用户导入优先」写成链的显式规则）。
 
@@ -280,6 +289,7 @@ available {
 - 加一条**单测**：构造 `available` 两项（43284 在前、43499 在后）⇒ 断言解析结果、merge 结果、缓存回放后的**键顺序完全一致**；
 - 若某环节不保序 ⇒ **优先修该环节**（改为 `LinkedHashMap` 保序拼接）；
 - **替代方案（仅当修不动时，需用户裁决，选项 + 代价）**：
+
   - **选项 A：显式 `priority` 字段**（如 `cve_2026_43284 { priority = 0 }`）——代价：语法变复杂、与「顺序即优先级」的直觉不一致；收益：与实现无关；
   - **选项 B：恢复「有序列表」语法**（把 `available` 写成数组）——⚠ **与 M5 裁决冲突**：M5 刚把 HOCON 列表形态定为「出现即拒」（契约 §3.20）；若走这条路，必须**同批改 M5 的拒绝语义**并说明代价（拒绝规则退化、与 `queue` 的对象数组风格不一致）；**不建议**；
   - **更正（2026-10-06，用户纠错）**：此前把它写成「**与 M5 哲学冲突**」是**不准确**的 —— M5 拒的是 **token 列表**（字符串形态的旧语法糖），其理由是「**队列取代 token**」；而**对象列表**（每项是完整声明）**与 M5 的理念并不冲突**，真实代价只是**要放开 M5 的列表拒绝**（改诊断与测试）⇒ **属实用相邻改动，不是哲学冲突**。详见 §2.8.1 的 A/B/C 决策简报（其中 C = 对象列表）；
@@ -330,6 +340,7 @@ geometry 派生物 : 可由 extractor/设备事实推导的偏移（缺失按 nu
 - **错误项如何呈现**：**逐项列出「错误项」**（字段路径 + 原因 + 红色），**阻断运行**；可推断项的缺失**不列入错误项**（黄色提示，见 `profile_check_derivable_missing`）；
 - **必须与「声明为准」一致**：报错基于**profile 声明 + 必须参数**，**不是**基于「代码是否已接线」；
 - **证伪**：① 在一个可用 profile 里**删掉一个 ABI 必须常量** ⇒ 加载后、攻击前**必须报红色错误项并拒绝运行**；② 只删一个可推断项（如 `kmi`）⇒ **不报红**、可运行、编辑器黄色提示。
+
 **④ 用户可见行为**：必须参数缺失 ⇒ **红色**（阻断，`profile_check_missing_required`）；可推断项缺失 ⇒ **黄色**（不阻断，`profile_check_derivable_missing`）；「该后端/路径必须参数不完整」⇒ 对应行**不可选**并红色（`profile_check_backend_unrunnable`）；
 **⑤ 旧规则退役清单（逐条 file:line，实现批次全部改口）**：
 
@@ -576,13 +587,16 @@ available = [
 **用户原话**：「在 assets 里新建一个文件夹（名字待定）放一些 hocon，描述 `available` 里各执行路径需要哪些参数，并能让 Kotlin 据此检查配置是否有问题」。
 
 - **① 名称候选（选项 + 取舍 + 建议）**：
+
   - `assets/execution_paths/`——语义直白（路径 → 需求）；代价：与「路径」一词在 UI 的用法略有重复；**建议**；
   - `assets/requirements/`——简短；代价：过于泛化（谁的 requirements？）；
   - `assets/path_spec/`——偏实现术语；代价：面向用户文档里不好解释。
+
 - **② 文件粒度（选项 + 建议）**：每 backend 一份（建议：`43499.conf`、`43284.conf`，与 owner 结构同构）；每 route 一份（更细，但数量随 route 增长）；一份总表（最简，但**冲突合并困难**）⇒ **建议：每 backend 一份**；
 - **③ 格式（HOCON，键与 `available` 的路径同构）**：
 
 ```hocon
+
 # assets/execution_paths/cve_2026_43499.conf  （示意）
 cve_2026_43499 {
   multicast_waiter {

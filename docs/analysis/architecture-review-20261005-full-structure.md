@@ -2,8 +2,10 @@
 
 - 日期：2026-10-05　审查人：Lead　快照：工作树（R6b/T5 半落地 + ADR-0006 T1–T4 已实现，均未提交）
 - 方法：对照 `design-philosophy.md`（11 条）、`engineering-standards.md`（§2 架构 / §3 数据流 / §5 数据结构）、
+
   ADR-0001（允许依赖图）/ADR-0004（组合轴）/ADR-0006（terminal 归属），以及**声明结构** `core/src/README.md`；
   逐层核对「**声明职责 vs 实际代码**」，并对每个主要类型/函数给出 功能·作用·影响·兼容性。
+
 - 本轮增量审查（F1–F10）见 `architecture-review-20261005-r6b-term.md`；本文件为**全量结构审查**并吸收其结论。
 
 ## 1. 声明结构 vs 实际（逐层）

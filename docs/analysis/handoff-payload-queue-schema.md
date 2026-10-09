@@ -39,6 +39,7 @@ queue = [
 
 - **为什么移出**：`include_firewall_test.cpp:43-47` 的 `Rule{source_layer, forbidden_layers}` **按层匹配**，**无法表达同层内按文件禁用**。
 - **窗口 TU 清单（按入口链 `attack_write` → `run_route` → `run_route_lifecycle` → race 推导）**：
+
   1. `backend/cve_2026_43499/primitives.cpp`（`attack_write` 定义，:146）
   2. `backend/cve_2026_43499/route/tcp_zerocopy_route.cpp`（窗口内 `run_route_lifecycle`，:200）
   3. `backend/cve_2026_43499/route/select_stack_route.cpp`（:516）
@@ -46,6 +47,7 @@ queue = [
   5. `backend/cve_2026_43499/route/route_controller.cpp` / `route_middleware.cpp`（策略支撑，随窗口调用）
   6. `race/pi_race.cpp` / `race/threads.cpp`
   7. `backend/cve_2026_43499/spray.cpp`（**已核实**）：`route/select_stack_route.cpp:435`、`route/multicast_waiter_route.cpp:177-189` 在路由过程内直接调 `spray::prepare/stash/activate/discard_prebuilt_page` ⇒ 属窗口可达面。**传递可达也纳入扫描**：`spray.cpp → memory/{heap_context.h,target.h}`、`leak/address_discovery.h`、`route/route_policy.hpp`（只扫直接 include 会漏面）。
+
 - **判据承载 = `core/src/tests/op_tu_isolation_test.cpp`（文件级扫描）**：① 逐 TU 扫**禁 include 头清单**（含虚基的头）；② `nm` 检查热路径对象**无 `_ZTV*`**；③ 非法构造（给 TU 加禁 include）⇒ **退出码 ≠0**。
 - **层表职责回收**：`include_firewall_test.cpp` 只保留**层间**规则（+ `pipeline`/`script` 两项，见 b0 §4）；**同层内按文件禁用**由 `op_tu_isolation_test.cpp` 承担。
 
@@ -56,6 +58,7 @@ queue = [
 > 参数值**不进队列**（`params_ref` **已删**）：① **静态调参** = 既有 Owner Schema（如 `backend.<id>.execution.stages.*`，**权威不变**）；② **动态参数** = Lua 脚本调 op 时传表，gate 按 `OpSpec`/`ParamSpec` 校验。
 > 删 `params_ref` 的四条理由（白名单 fail-closed / manifest 无该路径族 / 与「重导空 diff」互斥 / 同一事实两处定义）、失败语义与文档同步：见 [handoff-payload-params.md](handoff-payload-params.md)。
 >
+
 ## 6. 数据槽与扁平 schema 的关系（D20 对齐，必改 a）
 
 - **handoff 数据槽不进队列元素**（R1 = 7 键扁平标量，元素里没有 `produces`/`consumes`）：数据槽改为 **op 级声明**——`OpSpec.produces`/`OpSpec.consumes`（b1b2 §B1.1）+ 生命周期/类型，或由**脚本 `slot.get/set` API** 承担（b1b2 §B2.2）。

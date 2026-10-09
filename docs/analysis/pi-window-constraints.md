@@ -25,12 +25,14 @@
 
 - `core/src/support/util.cpp:76-88`：`sched_setattr_tid()` 直接 `syscall(274, tid, &attr, 0)`，策略 `SCHED_BATCH`，**源码注释原文**：`nice change triggers PI walk (pi=true)`。
 - 调用点 `core/src/race/threads.cpp:144`：在 **consumer 循环**内调用 —— 此时 waiter 已停泊（`FUTEX_WAIT_REQUEUE_PI` 已提交），**正处于 PI 窗口**。
+
 ⇒ 「窗口内不许做什么」不再是从 ADR 推下的原则，而是**有实测栈支撑的条款**。
 
 ### 1.3 窗口内**没有**堆分配（排除该归因）
 
 - 实测：`core/src/race/**`、`core/src/backend/cve_2026_43499/route/**`、`core/src/backend/cve_2026_43499/spray.cpp` 中 `std::vector` / `std::string` / `new ` / `malloc` 命中 **0**；窗口内只使用栈上 `std::array` 与非拥有 `string_view`。
 - 日志中**没有**任何以分配为致因的证据（栈只指向 `rt_mutex_adjust_pi` 链）。
+
 ⇒ 保留「禁分配」为**防御性条款**（防回归），但**不作为本次死因**归因。
 
 ### 1.4 归因纪律（与 `KERNEL-PANIC-01` 并存）

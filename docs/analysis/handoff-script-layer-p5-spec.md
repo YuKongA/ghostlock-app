@@ -35,9 +35,11 @@
 ## §4 判据（可证伪 + 极端值）
 
 - **白盒**：
+
   - **沙箱未注册**（**符号级证据**）：链接产物/符号表中**不含** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`（`luaopen_*` 白名单比对，逐项可核）。
   - **句柄表有界 64** + **代际回绕后旧句柄失效**（`handle-stale`）。
   - **预算超限即终止**（`lua_sethook` 指令预算 + `lua_setallocf` 内存上限；[ADR-0008](adr/0008-lua-runtime-sandbox.md) §3 参数为**执行期硬约束、不得由 profile 放宽**）。
+
 - **黑盒（具名拒绝 + 立即终止）**：`handle-stale` / `handle-kind-mismatch` / `handle-out-of-range` / `handle-scope-denied` / `param-invalid`（[ADR-0010](adr/0010-lua-cpp-resource-model.md) §4）+ `queue-removed` + `plan-missing`。
 - **证伪（必须能失败；**指定测试** = P5 实现批的 `sandbox_api_test` / `handle_test`）**：① **放开 `load`/`dofile` 之一** ⇒ `sandbox_api_test` **必须失败**（「未注册符号」断言红）；② **去掉代际检查** ⇒ `handle_test` 的**旧句柄用例必须失败**（`handle-stale` 不再触发）；两者实验后**还原 + `rm -f` 产物 + 重建复核**。
 - **极端值**：空脚本 · 语法错 · 超预算 · **表超深** · **64 句柄用满** · **跨插件句柄** · **脚本内 queue 残留**。

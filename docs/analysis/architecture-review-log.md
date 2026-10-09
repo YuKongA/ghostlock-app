@@ -20,8 +20,11 @@
 - 注册机制：建议编译期 schema 描述表（section/field/类型宽度/必填）+ 模板遍历，不引入可变全局；
 - 字段归属划分：如 `task.cred` 归 `platform::abi`，backend 消费其 view；禁止双重声明；
 - 三端一致性：native 注册表 ↔ Kotlin（`profile-core`/编辑器）↔ extractor `symbols.rs` 的映射需各自
+
   单点并由测试对拍（P6“一处字段映射”的落点）。
+
 - **落地方案见 `docs/analysis/adr/0003-profile-schema-registration.md`**（Document/Schema/注册机制、初始
+
   字段划分表、strict 未知字段策略、三端 manifest 对拍、验证）。
 
 **B. `memory` 仍硬依赖 `profile::TargetProfile`。** 证据 `memory/address_space.h:4,28,30,45`

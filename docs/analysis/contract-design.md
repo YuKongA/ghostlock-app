@@ -204,6 +204,7 @@ class Step {
 - **注册期**：host 测试对每个已登记 chain 重跑同一折叠（防止模板外的手工组装绕过）；
 - **运行期**：设备/机制差异导致的 `NotAvailable` → 该步 fail-closed，**不跳过、不降级**；
 - **诊断**：每步执行前后记录关键能力状态（`cap=<kind> state=<…>`），使「为何跳过/失败」可回答
+
   （`NotSupported` 与 `NotAvailable` 语义不同，不能混为一谈）。
 
 **回滚**：arming 的 step 必须在 `rollback()` 里 `release()`；链层保证终结点恰一次（§6）。
@@ -388,9 +389,13 @@ R8（一个子系统一个家）与本节合成一条：**`contract/`（含 `abi
 
 - LKM 驻留 + 通用读写接口 = **新的持久攻击面**；当前 LKM 是「**4 步固定动作 + 自卸载**」，可审计性高；
 - 因此接口应是**受限命令白名单**（如 `hook_symbol` / `write_symbol_field` / `mark_task`），
+
   **而不是** `read(addr,len)`/`write(addr,len)` 的通用内核后门；
+
 - 若确实需要通用读写（`KernelMemory` 由 LKM 提供），须作为**显式高风险能力**：在 wire/UI 单独授权，
+
   并把每次调用记入诊断（`cap=KernelMemory mechanism=LkmProxy addr=…`）；
+
 - 自卸载语义要保留：**对策插件用完即走**优于「留一个常驻后门」。
 
 ## 3.12 LkmProxy 与 KernelMemory 的关系：**机制，而非并列能力**（已裁决方向）
@@ -478,6 +483,7 @@ private:
 
 ```c
 /* contract/abi/glk_contract_abi.h —— 与 C++ 契约同源导出 */
+
 #define GLK_LKM_ABI_VERSION 1u
 enum glk_lkm_op { GLK_LKM_PING=0, GLK_LKM_READ, GLK_LKM_WRITE, GLK_LKM_WRITE_ZERO,
                   GLK_LKM_DIRECT_MAP, GLK_LKM_QUERY, GLK_LKM_LOG, GLK_LKM_UNLOAD };
@@ -560,12 +566,17 @@ struct glk_lkm_req {
 ### 3.12.6 δ-4：插件 → LKM 端到端（已通，2026-10-05）
 
 - **导出点唯一**：`plugin/host_ops.{hpp,cpp}` 把本次 run 的 `contract::Capabilities` 导成 `glk_contract_ops`；
+
   错误映射（可测）：成功 0 / `Unsupported` → `-EOPNOTSUPP` / `Unavailable` → `-EAGAIN` / `Faulted` → `-EIO` /
   `Rejected` → `-EINVAL` / `Closed` → `-EBADF`；`image_to_direct_map` 失败回 0（ABI 哨兵）。**绝不伪成功**。
+
 - **窗口内同步派发**：`LkmWindowRuntime::run()` 对 `POST_TERMINAL` 的已注册 hook **一次一个同步调用**（§3.13 的唯一窗口内阶段）。
 - **失败语义 = 对策 fail-soft**：窗口打不开或窗口体失败 → 记 `ChainResult::lkm_window_failed` 并**继续攻击**；
+
   插件侧观察 `Unsupported`；窗口的创建/关闭仍由链 `finish()` 唯一保证（无泄漏）。`LkmWindowFailed` 不再是中止原因。
+
 - **端到端证据**（`device-gates/delta4-plugin-lkm-e2e-20261005-pass.md`）：真实 `.so` 插件 `glk.probe` 在窗口内
+
   `read_u64/read_bytes/write_bytes` 全 rc=0、越界读被内核拒（`bad_rejected=1`）；`lkm_window calls=4`（链自身 PING/UNLOAD 不计），
   即「插件真的经通道调用 LKM」的直接证据。
 
@@ -645,6 +656,7 @@ struct glk_lkm_req {
 - **没有第二处真相** → 不可能漂移；
 - **稀疏是自然的**：backend 没有的阶段直接不存在（`stage_supported` 为假 → 该阶段注册的插件在**注册期被拒**）；
 - **可渲染**：host 测试/工具输出矩阵（如 `contract_matrix --dump`），供评审、文档与门禁引用；
+
   文档里的表是**生成物**，不是权威。
 
 **派生矩阵示例（从上面的声明算出，非手写）**
@@ -763,10 +775,14 @@ plugin {
 ### 3.14.4 统一管理的 HOCON
 
 - **单一管理点**：`app/src/main/assets/profile/plugin.conf`（随 App 资产版本化）；
+
   profile 文件可用 `include` 引入，形成「一个插件配置 → 所有设备 profile 共用」；
   **现状注（2026-10-05）：该资产已取消**——插件配置属设备/用户特有，改走**覆盖存储**；见 §3.14.7.5；
+
 - **解析链**：`plugin.conf` → Kotlin 归一化（类型按插件注册的 `ParamSpec`）→ wire `plugin.*` 段 →
+
   native 绑定到插件加载器（`plugin/loader`）；
+
 - **默认值权威**：参数默认值写在**插件注册的 `ParamSpec`**（不是 HOCON），HOCON 只写覆盖值 → 与 R1 一致；
 - **可审计**：实际生效的插件与参数进入诊断（`plugin=<id> stage=<…> params={…}`），与 R5 同规。
 
@@ -841,9 +857,13 @@ stdout **只**输出 TSV（诊断走 stderr）。**描述行的第一列是 `kin
 - `required` 为 `0 | 1`；`priority` 为十进制整数；`size` 为十进制字节数；`sha256` 为小写 hex；
 - **空值一律写 `-`**；
 - header 行块：**必须位于描述行之前**（首列是**键名**而不是 kind），且**至少**含两个**必填键**——
+
   `host_abi`（= `GLK_ABI_VERSION`）、`countermeasures_root`（= **相对目录名 `countermeasures`**，不是绝对路径）；
+
 - 其余 header 键**可选但类型化**：`host_stages`（host 实现的 stage 列表）、`host_caps`（host 实现的 capability 位）、
+
   `stage_availability`（按 backend 的阶段可用性，见下）——**出现即校验**，缺省不影响解析；
+
 - **未知 header 键 → 拒绝**（fail-closed）；「2 必填 + 3 可选」的放宽理由是**前向兼容**：四键旧 golden 仍可解析（已实践验证），收紧没有安全收益；
 - `stage_availability` 语法：`<backend>:<stage>[,<stage>];<backend>:<stage>[;…]`；`<backend>` 用**短 token**（`43499` / `43284`），`<stage>` 取 `pre_spawn|post_spawn|pre_terminal|post_terminal`；当前冻结字面量：`stage_availability\t43499:pre_terminal;43284:post_terminal`；
 - **唯一权威 = native `core/src/plugin/schema.hpp` 的 `RuntimeBackend` + `stage_available_on()`**（探针 header 与 host 注册校验都从它生成）；**Kotlin 不得硬编码该矩阵**（违反按 F4 的「禁硬编码」处理）；
@@ -1135,9 +1155,11 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 - **argv vs 模块**：`kernelsu` 走既有 `ksud late-load`（无 shell、无拼接）；`folkpatch` 走 **KernelPatch 模块加载**（`kernelpatch.ko` 由用户提供/导入，**软重启**为独立显式确认动作）——两者机制不同，不得互相顶替；
 - **向后兼容**：**无 `payload` 段 = 今天的行为（KernelSU/ksud）逐字节不变**；**显式 `kernelsu` 与不写等价**；
 - **UI 分期（本批，用户决定 2026-10-05）：默认档 = 「启动 root 管理器」+ 子菜单** —— **语义档**：`payload.tier` 的**默认**不再是「不自定义」，而是「**启动 root 管理器**」；其**子选择** = 「**系统默认 KernelSU（默认）**」或「**检测到的其它受支持管理器**」。**「系统默认 KernelSU」= 不发射任何 `payload` 键**（保持今天的逐字节行为）。
+
   - **二期拆分（必须写清，避免误判）**：**本批 UI 只影响「跳转目标」（App 侧）**；**wire 发射属下一批 native**——当前 native 只接受 `tier ∈ {exec, script, ko}`，**发 `root` 会被拒**（`payload.root.*` 见上文本节）。⇒ **「UI 已可选 ≠ 已发射」**：UI 可选集合与 wire 接受集合是两件事，后者以 native 落地为准。
   - **检测规则**（与「无论哪种管理器都要检查是否存在且可启动」同源）：**未安装的不列出**（或置灰 + 具名原因），**不得**让用户选一个系统里不存在的目标；检测失败/不可启动 ⇒ 不跳转、只提示。
   - **包名白名单硬规则（只允许有仓库/官方证据的包名）**：已核实起点 = `core/src/terminal/root_script.cpp:40-50` 的四个查找模式（`me.weishu.kernelsu.pr*`、`me.weishu.kernelsu-*`、`com.resukisu.resukisu*`、`com.kowx712.supermanager*`）+ `lkm/lkm_image.cpp` 的 `me.weishu.kernelsu`；**Android 11+ 必须用 `<queries>` 才能检测**（现已在 `app/src/main/AndroidManifest.xml` 声明：`moe.shizuku.privileged.api`、`me.weishu.kernelsu.pr`、`me.weishu.kernelsu`、`com.resukisu.resukisu`、`com.kowx712.supermanager`）；**未核实的包名不得加入白名单**（与「分支包名不得猜」同规）；FolkPatch `me.yuki.folk` 属 **P2**；
+
 - **两条轴禁止重合（用户裁决 2026-10-05）**：**root 管理器轴不接受用户制品、也没有文件导入 UI**——其制品必须来自**系统里已安装的管理器**（`kernelsu` = 系统 `ksud`；`folkpatch` = **从已安装的 FolkPatch 管理器 APK 提取内置模块**：`getApplicationInfo(pkg).sourceDir` → APK 内取预构建模块 → SHA-256 → no-backup 不可变目录 → 路径+哈希交 native 并复核；不可用 ⇒ 置灰 + 具名原因，fail-closed 且不执行）；**凡「用户自备 `.ko`」一律走 `payload.tier = "ko"`**（§3.15 的 payload 轴），不得挂在 root 管理器轴上——详见 `root-manager-selection-design.md` §4.2；
 - **成功后自动跳转 root 管理器界面（**已落地** `e500b407` + `4a02d19b`）**：App 侧**唯一包名镜像** = `app/src/main/kotlin/com/ghostlock/app/ui/RootManagerLaunch.kt` 的 `RootManager` 枚举（注释指向 native `lkm_image.cpp:343-348`；未知 ⇒ `null`，**绝不猜**；P1 加行时同步 schema 行），`RootManagerAction{Launch|Hint|Skip}` + 纯函数 `rootManagerAction(...)` 决定「打开它 / 说明它 / 什么都不做」（`force_attack_test` 不产生 root 状态 ⇒ `Skip`）；KernelSU ⇒ 目标包名 `me.weishu.kernelsu`，且**必须与 native 权威同源**——实现里**集中一处映射**并注释指向 `backend/cve_2026_43284/lkm/lkm_image.cpp:345-347`（`default_root_package()`），**不得**在 UI 里出现第二个包名真相；`custom`/未实现分支不跳转（只提示）；待 root 管理器 P1 放行时一并回填状态；
 - **P1/P2 边界（v2，用户口径 + E4）**：**P1 可落地** = `kernelsu`（**KernelSU 及分支共享 `ksud` ⇒ 默认按 ksud 走**，`manager` 可选、行为与今天等价）+ `custom`（用户指定程序/argv，不猜包名）+ **存在性/可启动检查（App 预检 + native 复核，权威在 native）**；**P2 计划中（置灰）** = `folkpatch`（**加载 KernelPatch 模块**：`apd insmod` 式手动重定位 + 绕过 CRC/vermagic + `init_module` + **软重启生效**，官方标注不稳定；需独立机制设计 + 独立真机门禁）；详见 `root-manager-selection-design.md` §2.1 E4/§4.1/§9；
@@ -1152,8 +1174,10 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 **owner 集（fail-closed）**
 
 - **允许**：**`backend.<id>`**；根级标量 `schema_version` / `release` / `kernel_major` / `kernel_minor` / `safe_mode`（**在 manifest 里以 `owner = root`、`path = 裸键名` 单列**）；以及根级 `available { <backend> = [ tokens ] }`；
+
   > **⏸ 已被 2026-10-05 裁决取代（沿革保留）**：`available{ <backend> = [ … ] }` 的**值**将从**预烘焙组合 token 列表**改为**步骤队列**（可读性优先，原则 2「显式优于隐式」）；**两级结构保留**（先 backend，再其下的队列）。**不做**完全动态 DSL / 运行期自适应规划（队列是**静态声明**）。详见 §3.19。
   >
+
 - **已删除（出现即拒）**：**`common` owner**、**`countermeasure.*` owner**（**`b55708a8`**：`common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 连同 wire/manifest 行删除 ⇒ owner 变空 ⇒ 移出白名单；`platform/vivo/**` 与 `steps.cpp` 两处调用**已于 (a) 期删除**——`core/src/platform/vivo/**` **8 文件** + `platform_vivo_test.cpp` + `host/ancillary_stub.cpp` 删除、`steps.cpp` **−95 行**（**已完成 = `4a182217`**）；**真机门禁 PASS 已归档**（`docs/analysis/device-gates/vrguard-a-20261006/`：`child is root!` → handoff `sent=1` → `KernelSU ready`，route `success=1`，设备未重启），**非行为差异**：`w2b` run-state 标记随祖先块删除 ⇒ 日志 stage 轨迹少一项（`enter/complete("w2b")`），**行为无变化**；**门禁数字**：host `EXIT=0`（告警 **9** 基线、**58 tests**、防火墙 **`174 files, 4/4/0/0`（182 → 174）**）· lint **0** · NDK **0**）、**`platform` owner**（**`23958eb0`**：`platform.abi.*` → **`backend.cve_2026_43499.abi.*`**，62 处）、**`selection { backend, terminal }`**（**`terminal` 概念从 HOCON 移除**，token 已蕴含）；
 - **当前注释中（出现即拒）**：**`plugin`** 与 **`payload`**（用户指令 2026-10-05；代码/测试保留，**恢复＝撤销注释 + 跑门禁**）；
 - **owner 白名单已收敛为 `backend.<id>`**（2026-10-05 `23958eb0` 落地后）：`platform.` 已删、`common`/`countermeasure` 已删、`plugin`/`payload` 冻结拒收；
@@ -1520,21 +1544,28 @@ chain 属于某个 backend（ChainId 的归属登记在 catalog）
 **新增**
 
 - `core/src/contract/capability.hpp`：`CapabilityKind`（并集，低 7 位 `static_assert` 对齐 `GLK_CM_CAP_*`）、
+
   `CapabilityError`（含 `Closed`）、`CapabilityState`（四态 + `satisfies` 显式表）、
   `CapabilityResult<T>`、`CapabilitySet`、`CapabilityInterface`
+
 - `core/src/contract/kernel_memory.hpp`：`MemoryChannel`/`CarrierKind` 枚举、`KernelMemory` 虚接口
+
   （纯虚 `read/write/write_zero/supports/state/establish/close` + NVI `read64/write64` + 可覆盖 `update_bits`）、
   `KernelMemoryOps`（**原样迁入**，C 边界用）
+
 - `core/src/contract/file_cache.hpp`：`FileCacheWrite` 虚接口 + `FileCacheWriteOps`（原样迁入）
 - `core/src/contract/kernel_alias.hpp`：`KernelAlias` 虚接口
 - `core/src/contract/child_task.hpp`：`ChildTask` 虚接口
 - `core/src/tests/contract_vocabulary_test.cpp`：位对齐 static_assert、`satisfies` 真值表、四态跃迁、
+
   `CapabilitySet` 语义、`Ops` 仍 trivially-copyable/standard-layout
 
 **修改**
 
 - `core/src/contract/capabilities.hpp`：退化为 umbrella（`#include` 上述新头 + `Capabilities` 聚合 + `declared()`）；
+
   **保持既有类型名与布局不变**（`KernelMemoryOps`/`FileCacheWriteOps` 定义逐字保留，避免任何行为/布局变化）
+
 - `core/src/contract/address_discovery.hpp`：仅新增 `AddressDiscovery` 虚接口（`AddressDiscoveryOps` 与既有测试不动）
 - `core/Makefile`：`HDRS` 增新头、`NATIVE_HOST_TESTS` 增 `contract_vocabulary_test`
 
