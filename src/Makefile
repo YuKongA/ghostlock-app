@@ -93,6 +93,7 @@ LAYER_HEADERS := \
   core/tools/heap_seam_probe.cpp \
   core/tools/prepare_page_probe.cpp \
   core/tools/snitch_seam_probe.cpp \
+  core/tools/snitch_run_probe.cpp \
   core/backend/cve_2026_43499/memory/write_request.hpp \
   core/tests/write_request_test.cpp \
   core/backend/cve_2026_43499/memory/write_encoder.hpp \
@@ -220,7 +221,7 @@ $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/m
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
 ANDROID_OUT := ../build/native/ghostlock
-.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe
+.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe
 
 android: $(ANDROID_OUT)
 
@@ -255,6 +256,17 @@ prepare-page-probe: $(PREPARE_PAGE_PROBE)
 # The device probe for the collision search edge: the four calls it needs, once each.
 SNITCH_SEAM_PROBE := ../build/native/snitch_seam_probe
 snitch-seam-probe: $(SNITCH_SEAM_PROBE)
+
+# The device probe for the whole search: real forks, real pokes, real hashing.
+SNITCH_RUN_PROBE := ../build/native/snitch_run_probe
+snitch-run-probe: $(SNITCH_RUN_PROBE)
+
+$(SNITCH_RUN_PROBE): core/tools/snitch_run_probe.cpp core/backend/cve_2026_43499/leak/snitch_run.hpp \
+  core/backend/cve_2026_43499/leak/snitch_seam_linux.hpp core/backend/cve_2026_43499/leak/futex_hash.hpp \
+  core/backend/cve_2026_43499/memory/heap_seam_linux.hpp core/backend/cve_2026_43499/leak/snitch_setup.cpp | $(BUILD_DIR)
+	@mkdir -p ../build/native
+	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Icore $< core/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
+	@echo "snitch-run-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(SNITCH_SEAM_PROBE): core/tools/snitch_seam_probe.cpp core/backend/cve_2026_43499/leak/snitch_seam.hpp \
   core/backend/cve_2026_43499/leak/snitch_seam_linux.hpp | $(BUILD_DIR)

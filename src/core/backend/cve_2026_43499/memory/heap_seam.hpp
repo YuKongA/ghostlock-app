@@ -46,5 +46,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         { Seam::stop_child(pid) } -> std::same_as<SeamResult>;
         { Seam::yield_now() } -> std::same_as<SeamResult>;
         { Seam::pin_to_processor(cpu) } -> std::same_as<SeamResult>;
+        /* A forked child has to be able to end itself: returning up the call stack in a
+         *  child would run the caller code a second time. */
+        { Seam::exit_child() };
     };
 }  // namespace ghostlock::backend::cve_2026_43499::memory

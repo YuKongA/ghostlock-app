@@ -96,6 +96,10 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             return SeamResult{static_cast<std::int64_t>(rc), errno};
         }
 
+        static void exit_child() noexcept {
+            ::_exit(0);
+        }
+
         static SeamResult pin_to_processor(std::int32_t cpu) noexcept {
             errno = 0;
             cpu_set_t set;

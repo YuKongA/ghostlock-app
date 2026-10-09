@@ -66,6 +66,7 @@ namespace {
         static SeamResult stop_child(std::uint64_t) noexcept { ++kills; return SeamResult{0, 0}; }
         static SeamResult yield_now() noexcept { return SeamResult{0, 0}; }
         static SeamResult pin_to_processor(std::int32_t) noexcept { return SeamResult{0, 0}; }
+        static void exit_child() noexcept {}
         static ThreadResult start_thread(ThreadEntry, void *) noexcept { return ThreadResult{1U, 0}; }
         static SeamResult join_thread(unsigned long) noexcept { return SeamResult{0, 0}; }
         static SeamResult open_memfd(std::uint64_t) noexcept { return SeamResult{1, 0}; }

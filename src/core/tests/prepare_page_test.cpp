@@ -84,6 +84,7 @@ namespace {
         static SeamResult stop_child(std::uint64_t) noexcept { ++kill_calls; return SeamResult{0, 0}; }
         static SeamResult yield_now() noexcept { return SeamResult{0, 0}; }
         static SeamResult pin_to_processor(std::int32_t) noexcept { return SeamResult{0, 0}; }
+        static void exit_child() noexcept {}
     };
     std::int64_t FakeSeam::next_fd = 10;
     std::int64_t FakeSeam::next_pid = 1000;
