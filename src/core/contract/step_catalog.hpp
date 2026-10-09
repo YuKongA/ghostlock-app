@@ -90,6 +90,19 @@ namespace ghostlock::contract {
         return StepEffect::None;
     }
 
+    /** The step a token names, or Unknown when the catalogue has no such token.
+     *  The reverse of step_token, so a document that spells a step and a plan that
+     *  writes one are matched against the same list. */
+    [[nodiscard]] constexpr StepId step_from_token(std::string_view token) noexcept {
+        for (std::size_t i = 0U; i < kStepCount; ++i) {
+            const std::string_view declared(kStepCatalog[i].token);
+            if (declared.size() == token.size() && declared == token) {
+                return kStepCatalog[i].id;
+            }
+        }
+        return StepId::Unknown;
+    }
+
     /** The declared order of a step set, or nullptr when none is declared. */
     [[nodiscard]] constexpr const StepSetOrder *step_set_order(
         std::string_view step_set) noexcept {
