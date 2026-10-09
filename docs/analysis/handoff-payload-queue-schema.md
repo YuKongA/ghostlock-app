@@ -1,7 +1,7 @@
 # 队列元素 schema · 成员表 · 窗口 TU 判据（第四轮修订细则）
 
 > 分析类（≤8 KB）。⚠ **已退役（2026-10-08）**：`queue` 由用户裁定**移除** ⇒ **现行权威 = [script-plan-design](script-plan-design.md)**（计划载体改为脚本）；**原文保留作沿革**（下文为退役时快照，仅成员表/窗口 TU 判据仍可复用）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)。**自包含，不引用任何外部计划**。
-> **代码引用约定**：`document.hpp`/`glkv3_*.hpp`/`glkv3_parse.cpp`/`schema.hpp` ⇒ `src/core/profile/`；`step_plan.hpp`/`capability*.hpp` ⇒ `src/core/contract/`；`route_lifecycle.hpp`/`primitives.cpp`/`capability_adapters.hpp` ⇒ `src/core/backend/cve_2026_43499/`。
+> **代码引用约定**：`document.hpp`/`glkv3_*.hpp`/`glkv3_parse.cpp`/`schema.hpp` ⇒ `core/src/profile/`；`step_plan.hpp`/`capability*.hpp` ⇒ `core/src/contract/`；`route_lifecycle.hpp`/`primitives.cpp`/`capability_adapters.hpp` ⇒ `core/src/backend/cve_2026_43499/`。
 
 ## 1. 元素键集合（7 键）
 
@@ -32,7 +32,7 @@ queue = [
 - **现状**：`document.hpp:82-85` 的 `DeclaredArrayField` 只有 `{section, key}`——只声明「哪些键是数组」，**不含成员名单**。
 - **扩展为**：`{section, key, members}`，`members` = **`constexpr span<const string_view>`**（7 键，顺序同 §1）；新增 `declared_array_members(section,key)`。
 - **两侧共用同一份名单**：native 侧 = `kDeclaredArrayFields`（结构 `document.hpp:82-85`、表 `:87-98`）；**Kotlin 镜像点名 = `profile-core/src/main/kotlin/com/ghostlock/app/data/profile/NativeProfileGlkv3Adapter.kt`（:28）** 内新增同名单常量表，两侧**逐项同序**。
-- **新增对拍测试（白盒）**：`QueueElementShapeTest`（native 侧，放 `src/core/tests/`） + `QueueElementShapeAgreementTest`（Kotlin 侧，命名沿用既有对拍风格：`FieldLabelsManifestAgreementTest` / `ManifestWidthCrossModuleTest`）——断言两侧成员名单**逐项同名同序**；极端输入（改序/改名/缺项）必失败。
+- **新增对拍测试（白盒）**：`QueueElementShapeTest`（native 侧，放 `core/src/tests/`） + `QueueElementShapeAgreementTest`（Kotlin 侧，命名沿用既有对拍风格：`FieldLabelsManifestAgreementTest` / `ManifestWidthCrossModuleTest`）——断言两侧成员名单**逐项同名同序**；极端输入（改序/改名/缺项）必失败。
 - **不改 manifest 语义**（R2）：成员表**不**进 manifest 行；一致性靠上述对拍。
 
 ## 4. 窗口 TU 的禁 include 机制（移出层表，文件级承载）
@@ -46,7 +46,7 @@ queue = [
   5. `backend/cve_2026_43499/route/route_controller.cpp` / `route_middleware.cpp`（策略支撑，随窗口调用）
   6. `race/pi_race.cpp` / `race/threads.cpp`
   7. `backend/cve_2026_43499/spray.cpp`（**已核实**）：`route/select_stack_route.cpp:435`、`route/multicast_waiter_route.cpp:177-189` 在路由过程内直接调 `spray::prepare/stash/activate/discard_prebuilt_page` ⇒ 属窗口可达面。**传递可达也纳入扫描**：`spray.cpp → memory/{heap_context.h,target.h}`、`leak/address_discovery.h`、`route/route_policy.hpp`（只扫直接 include 会漏面）。
-- **判据承载 = `src/core/tests/op_tu_isolation_test.cpp`（文件级扫描）**：① 逐 TU 扫**禁 include 头清单**（含虚基的头）；② `nm` 检查热路径对象**无 `_ZTV*`**；③ 非法构造（给 TU 加禁 include）⇒ **退出码 ≠0**。
+- **判据承载 = `core/src/tests/op_tu_isolation_test.cpp`（文件级扫描）**：① 逐 TU 扫**禁 include 头清单**（含虚基的头）；② `nm` 检查热路径对象**无 `_ZTV*`**；③ 非法构造（给 TU 加禁 include）⇒ **退出码 ≠0**。
 - **层表职责回收**：`include_firewall_test.cpp` 只保留**层间**规则（+ `pipeline`/`script` 两项，见 b0 §4）；**同层内按文件禁用**由 `op_tu_isolation_test.cpp` 承担。
 
 > 判据形式见 [verification](handoff-payload-verification.md) §1。

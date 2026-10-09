@@ -2,7 +2,7 @@
 
 - 日期：2026-10-05　审查人：Lead　快照：工作树（R6b/T5 半落地 + ADR-0006 T1–T4 已实现，均未提交）
 - 方法：对照 `design-philosophy.md`（11 条）、`engineering-standards.md`（§2 架构 / §3 数据流 / §5 数据结构）、
-  ADR-0001（允许依赖图）/ADR-0004（组合轴）/ADR-0006（terminal 归属），以及**声明结构** `src/core/README.md`；
+  ADR-0001（允许依赖图）/ADR-0004（组合轴）/ADR-0006（terminal 归属），以及**声明结构** `core/src/README.md`；
   逐层核对「**声明职责 vs 实际代码**」，并对每个主要类型/函数给出 功能·作用·影响·兼容性。
 - 本轮增量审查（F1–F10）见 `architecture-review-20261005-r6b-term.md`；本文件为**全量结构审查**并吸收其结论。
 
@@ -53,8 +53,8 @@
 
 | # | 文档/条文 | 现状 | 判定 | 动作 |
 |---|---|---|---|---|
-| G1 | `src/core/README.md`：`terminal/root_child.*` 在 terminal 层 | TERM 已把实现移到 backend | **过时** | 更新为「声明在 terminal（过渡）/实现在 backend」，并写明 T5 收尾 |
-| G2 | `src/core/README.md`：`pipeline` 稀疏 triple 描述 | T5 已收敛 `(backend, token)` | **过时** | 同步；同时记录 `CombinationSpec` 权威在 `contract` |
+| G1 | `core/src/README.md`：`terminal/root_child.*` 在 terminal 层 | TERM 已把实现移到 backend | **过时** | 更新为「声明在 terminal（过渡）/实现在 backend」，并写明 T5 收尾 |
+| G2 | `core/src/README.md`：`pipeline` 稀疏 triple 描述 | T5 已收敛 `(backend, token)` | **过时** | 同步；同时记录 `CombinationSpec` 权威在 `contract` |
 | G3 | `AGENTS.md`：「防火墙 165 files」「v2 owner Schema manifest」等 | 实际 173；v2 manifest 已删 | **过时**（部分已由我修） | 补一次全文核对（含 route 并入 token 的描述） |
 | G4 | `engineering-standards.md` §2.0「权威 = ADR-0001/0002」、§2.2「route 结构」、§3.1「配置单一权威」 | 已有 ADR-0004/0006、token 单一权威、S4 批次 | **落后于已批准决策** | 更新权威链与「选择只来自 wire/token」的规则 |
 | G5 | `design-philosophy.md` 原则 3/10（单一权威、机制防错） | 跨语言 token 表**未导出**（F4） | 条文成立，**执行缺口** | 在 §3.1 增补「白名单/词汇须导出并对拍」的操作条目 |
@@ -72,7 +72,7 @@
 | F5/G7 | 中 | TERM T2 声明/实现分居（`terminal/root_child.hpp`）→ 应随 T5 收尾 |
 | F7/G6 | 中-高 | 双流并发 → 中间态不可编译；须原子提交 + 单写入流 |
 | G4 | 中 | `contract` 层职责扩张（词汇 + 组合表 + 能力 + ABI，1871 行/11 文件）→ 内部再分层 |
-| G1/G2/G3 | 中 | `src/core/README.md` 与 `AGENTS.md` 存在**过时描述**（terminal 位置、triple→token、防火墙计数） |
+| G1/G2/G3 | 中 | `core/src/README.md` 与 `AGENTS.md` 存在**过时描述**（terminal 位置、triple→token、防火墙计数） |
 | G5 | 中 | `engineering-standards.md` 权威链与规则落后于 ADR-0004/0006 |
 | G6b | 低 | `backend/` 顶层占位头与真实 backend 混排 → 建议归置或由 catalog 的 `available=false` 表达 |
 | F6 | 低 | 「选择词汇」住在容器层（`contract` → `profile::RouteKind`） |

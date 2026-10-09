@@ -37,7 +37,7 @@
 | op/step 词表 | `unknown-step-token`（step_plan.hpp:93） |
 | route 可用性 | `Unsupported`（route_status.h:9-15）；`route-not-applicable`（step_plan.hpp:99）；`experimental-not-declared`（:105） |
 | 几何缺失（D25） | 静默回落 ⇒ 改 `MissingRequired`（schema.hpp:286） |
-| 能力缺失 | `CapabilitySet`（**`src/core/contract/capability.hpp:107`**，既有定名；`capabilities.hpp` 是伞头）；`caps_rejected`（plugin/host.hpp:208）；来源 `contract::Capabilities`（core_session.hpp:34） |
+| 能力缺失 | `CapabilitySet`（**`core/src/contract/capability.hpp:107`**，既有定名；`capabilities.hpp` 是伞头）；`caps_rejected`（plugin/host.hpp:208）；来源 `contract::Capabilities`（core_session.hpp:34） |
 | 顺序/依赖 | `missing-dependency`（step_plan.hpp:96）、`not-a-canonical-prefix`（:97） |
 | 哈希身份 | `support/sha256.hpp`；`loader.hpp:82`（`sha256_file`） |
 | 参数 | `WidthMismatch`（schema.hpp:291）、`UnresolvedToken`（:299）、`params-reserved-…`（step_plan.hpp:88-89） |

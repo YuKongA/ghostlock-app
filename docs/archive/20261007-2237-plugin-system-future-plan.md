@@ -31,8 +31,8 @@
 
 ## 2 现状事实（file:line；冻结期只读，用于对齐）
 
-- **既有阶段词汇（三点 + 一点）**：`src/core/plugin/policy.hpp:20-25` 定义 `PluginStage { PreSpawn = 0, PostSpawn = 1, PreHandoff = 2 }`；`src/core/plugin/registry.hpp:45-46` 的注释记载「**裁决过的 v1 阶段**：`PRE_SPAWN` / `POST_SPAWN` / `PRE_TERMINAL`，delta-4 增加 `POST_TERMINAL`（43284 的 LKM 驻留窗口内唯一一点），**`PRE_ROUTE` 保持保留且必须拒绝**」；契约 §3.14.7 为阶段词汇的文档权威；
-- **插件 ABI**：`src/core/contract/abi/glk_contract_abi.h:142` 起为 `glk_contract_ops`（`size` / `abi_version` / `ctx` / `read_u64` / `write_u64` / `read_bytes` / `write_bytes` / `zero_word` / `image_to_direct_map` …）⇒ **结构体带 `size` 与 `abi_version`** ⇒ 扩展字段有既成的兼容手段（尾部追加 + size 判定）；
+- **既有阶段词汇（三点 + 一点）**：`core/src/plugin/policy.hpp:20-25` 定义 `PluginStage { PreSpawn = 0, PostSpawn = 1, PreHandoff = 2 }`；`core/src/plugin/registry.hpp:45-46` 的注释记载「**裁决过的 v1 阶段**：`PRE_SPAWN` / `POST_SPAWN` / `PRE_TERMINAL`，delta-4 增加 `POST_TERMINAL`（43284 的 LKM 驻留窗口内唯一一点），**`PRE_ROUTE` 保持保留且必须拒绝**」；契约 §3.14.7 为阶段词汇的文档权威；
+- **插件 ABI**：`core/src/contract/abi/glk_contract_abi.h:142` 起为 `glk_contract_ops`（`size` / `abi_version` / `ctx` / `read_u64` / `write_u64` / `read_bytes` / `write_bytes` / `zero_word` / `image_to_direct_map` …）⇒ **结构体带 `size` 与 `abi_version`** ⇒ 扩展字段有既成的兼容手段（尾部追加 + size 判定）；
 - **能力位**：`GLK_CAP_LOG = 1u<<7` 等（单一能力目录 `kCapabilityCatalog`，契约 §3.14.7.9）；
 - **冻结现状**：native 侧运行时接线（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）与 `--plugin-probe` **字面注释**；`plugin` / `payload` 段**出现即拒**；App 隐藏入口；`docs/plan/branch-plan.md` 的 `task-9` 与冻结清单为**恢复清单**（逐条 file:line）；
 - **既有插件设计文档（本轮将降级）**：`countermeasure-plugin-plan.md`、`plugin-extract-disasm-design.md`、`plugin-extract-spec-design.md`、`plugin-runtime-integration-design.md`、`43284-logging-and-plugin-log-design.md`。
@@ -62,7 +62,7 @@
 ### 3.3 backend 声明其支持的调用点
 
 - **声明位置（选项 + 建议）**：① **编译期声明**（backend 属性：它**能**派发哪些编号）+ **用户可再收窄**（profile 里只选子集）**（建议）** ② 只放 profile（不建议：用户可写任意编号 ⇒ 与「代码是否接线」混淆）③ 只放编译期（不建议：无法按设备/路径收窄）；
-- **与既有语义的关系（必须写清）**：`available`（profile）= **用户选择面**；native 的组合目录（`src/core/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`）= **编译期接线事实**；⇒ **支持的调用点集合 = 编译期声明（能力）∩ profile 收窄（选择）**，**用户不得放宽**（只能变窄）；
+- **与既有语义的关系（必须写清）**：`available`（profile）= **用户选择面**；native 的组合目录（`core/src/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`）= **编译期接线事实**；⇒ **支持的调用点集合 = 编译期声明（能力）∩ profile 收窄（选择）**，**用户不得放宽**（只能变窄）；
 - **数据形态（建议）**：每 backend 一段「支持的编号集合」（列表或位域文本），**与 `execution_paths`（§设计稿 §2.12）同族**——**一份数据一处真相**，供 UI 与校验消费；HOCON 片段示意：
 
 ```hocon

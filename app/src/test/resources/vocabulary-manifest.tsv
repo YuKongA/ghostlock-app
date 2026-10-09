@@ -1,6 +1,6 @@
 # GhostLock component vocabulary manifest (S4 task-6).
 # Authoritative native export of contract/identity.hpp, catalogue order;
-# regenerate with: make -C src vocabulary-manifest
+# regenerate with: make -C core vocabulary-manifest
 # Columns: kind<TAB>token<TAB>wire<TAB>available<TAB>doc
 # kind is backend | frontend | stepset | route; wire is the numeric id native stores
 # in the document slots; route wire values come from kRouteCatalog; available is

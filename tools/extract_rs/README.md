@@ -1,7 +1,7 @@
 # Extractor (`ghostlock-extract`)
 
 boot.img / OTA / URL -> GLK profile. Rust crate, the third layer next to the
-Android app (`app/`) and the native runtime (`src/core/`). The CLI is self-documenting
+Android app (`app/`) and the native runtime (`core/src/`). The CLI is self-documenting
 (`--help`).
 
 ## Output formats

@@ -41,7 +41,7 @@
 4. 写入/导出完整保留每一项（含 `null`）。
 
 约束（非目标）：
-- 不改攻击路径（waiter/race/payload/route/exec 流程）、不改 `src/core/` 任何 native 解析逻辑。
+- 不改攻击路径（waiter/race/payload/route/exec 流程）、不改 `core/src/` 任何 native 解析逻辑。
 - 不新增 route / 组件；不改 GLK1 wire 与 HOCON 传输格式版本（仍为 v2）。
 - 不动 `kernelsnitch/`、`LegacyProfileConverter.kt` 的 v1 转换、规范中的「明确保留」清单。
 - 不改变现有内置 profile 的**正确数值**，只补齐字段与表示。
@@ -57,7 +57,7 @@
 | `app/src/main/kotlin/.../domain/model/GhostlockModels.kt` | 定义「route 可编辑字段全集」常量（route 几何 + 公共几何） | 单一权威 |
 | `profile-core/.../data/NativeProfile.kt` | 明确 `null` 的写入语义（见决策点 D3） | 跨层契约 |
 | `profile-core/.../data/HoconSupport.kt` | 核对 `render` 对 `null` 的输出（已支持，补测试） | 导出保留 null |
-| `src/core/route/route_policy.hpp` | `MulticastPolicy::allows_fallback = true`（5.x mcast→select 回退） | 放开 5.15 fallback（攻击路径，见专节） |
+| `core/src/route/route_policy.hpp` | `MulticastPolicy::allows_fallback = true`（5.x mcast→select 回退） | 放开 5.15 fallback（攻击路径，见专节） |
 | `docs/profile/PROFILE_SCHEMA*.md` | 回写字段完整性规则 | 文档同步 |
 | `README*.md`（如需） | 说明生成的 conf 为完整字段 | 双语同步 |
 
@@ -92,13 +92,13 @@ extractor conf --(十进制 + null 占位)--> HOCON(含每一项) --(Number/null
 | --- | --- | --- |
 | extractor | `cargo test --release --manifest-path tools/extract_rs/Cargo.toml` | 全过；新增「conf 数字全为十进制」「字段完整含 null」用例 |
 | Kotlin 单元 | `./gradlew :app:testDebugUnitTest` | 全过；新增「null 字段在 UI 树出现」「十进制写入 binary」用例 |
-| NDK/lint（若触及 Kotlin 无关） | `make -C src native-host-tests` + `make -C src lint-tidy` | 不变（未触 native） |
+| NDK/lint（若触及 Kotlin 无关） | `make -C core native-host-tests` + `make -C core lint-tidy` | 不变（未触 native） |
 | 端到端 | `./gradlew exportProfiles` | 导出的 `.bin` 含 `kernel_phys_load` 等字段 |
 | 真机 | 门禁记录（PROFILE-* 格式） | 加载新 profile，route 命中、写验证通过 |
 
 ## 明确保留
 
-- `src/core/`、`kernelsnitch/`、`LegacyProfileConverter.kt` 的 v1 转换、GLK1 wire 版本。
+- `core/src/`、`kernelsnitch/`、`LegacyProfileConverter.kt` 的 v1 转换、GLK1 wire 版本。
 - 现有内置 profile 的正确数值与 `include` 结构（除非决策点选择「展开为完整字段」）。
 
 ## 决策记录（已确认）

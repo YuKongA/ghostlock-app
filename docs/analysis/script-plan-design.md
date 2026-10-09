@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **资产** | **67/72** 个 `.conf` 含 `queue`（`grep -rl queue app/src/main/assets/profile/*.conf \| wc -l` = 67） | 删除 queue 段，改由内置计划脚本或自定义脚本表达顺序 | B1 |
 | **Kotlin** | **8** 文件：`data/ProfileLayout.kt`、`data/NativeProfile.kt`、`data/profile/NativeProfileGlkv3Adapter.kt`、`data/profile/ProfileExporter.kt`、`data/component/StepSequenceCatalog.kt`、`ui/ExecutionCombinationPresentation.kt`、`data/AndroidProfileConfigController.kt`、`data/Profile.kt` | 停止发射/解析 queue；改为脚本引用与展示 | B1 |
-| **测试与对拍** | **37** 文件（native `src/core/tests` 13 + Kotlin 24；按含 `queue` 统计） | 改为 `queue-removed` / 脚本路径断言，并重冻 | B1 |
+| **测试与对拍** | **37** 文件（native `core/src/tests` 13 + Kotlin 24；按含 `queue` 统计） | 改为 `queue-removed` / 脚本路径断言，并重冻 | B1 |
 | **native** | `glkv3_parse.cpp` 的 `resolve_queue`（`:266-273` 起）与相关具名诊断 | 删除解析路径，改为「出现即拒」 | B1 |
 | **manifest / golden / fixture / native-doc-golden** | 均含 queue 相关行/字节 | **重冻**（逐项清单见 §2.1） | B1 |
 | **extractor 产出侧** | **待核**：是否发射 `queue` | 核后决定「不发射」或同批删除 | B0.0 核实 |
@@ -27,11 +27,11 @@
 
 | 资产 | 位置（file:line） | 命令 |
 |---|---|---|
-| `profile-manifest-v3.tsv`（双副本；**110 → 108 行**） | `app/src/test/resources:18/:92` + `profile-core/src/main/resources:18/:92` | `make -C src profile-manifest` |
-| `glkv3-native-fixture.tsv`（**实测 90 行**；旧版误写 91） | `:12` | `make -C src glkv3-golden-fixture` |
-| `Glkv3Golden.kt`（`SELECTION_HEX` = **3920**；旧值 3964 为 M5 前） | `:17/:20` | `make -C src glkv3-golden-hex` |
+| `profile-manifest-v3.tsv`（双副本；**110 → 108 行**） | `app/src/test/resources:18/:92` + `profile-core/src/main/resources:18/:92` | `make -C core profile-manifest` |
+| `glkv3-native-fixture.tsv`（**实测 90 行**；旧版误写 91） | `:12` | `make -C core glkv3-golden-fixture` |
+| `Glkv3Golden.kt`（`SELECTION_HEX` = **3920**；旧值 3964 为 M5 前） | `:17/:20` | `make -C core glkv3-golden-hex` |
 | `native-doc-golden-v3.sha256`（全 58 行） | 整文件 | Kotlin exporter 重生成（先例 `device-gates/s4-r2-20261005-pass.md:67`） |
-| `stepset-steps.tsv`（双副本；`:8` 仍提 step token） | `app/src/test/resources` + `profile-core/src/main/resources` | `make -C src stepset-steps-manifest` |
+| `stepset-steps.tsv`（双副本；`:8` 仍提 step token） | `app/src/test/resources` + `profile-core/src/main/resources` | `make -C core stepset-steps-manifest` |
 | **67 个 HOCON 资产** | `assets/profile/*.conf` | Kotlin 迁移 + `./gradlew exportProfiles` |
 
 - **无影响（命中 0）**：`combination-*` · `vocabulary-manifest.tsv` · `lkm-kmi-manifest.tsv` · `plugin-probe-*` · `plugin-wire-shape-golden.bin`。
@@ -77,7 +77,7 @@
 - **白盒**：`queue` 残留 = 0；op 上界校验单测；无第二处顺序来源。
 - **极端值**：空脚本 · 语法错 · 超预算 · **文档尺寸上限**（实测 `kMaxDocumentBytes = 1 MiB`，`glkv3.hpp:87`）· 引用不存在的 op · 表超深 · **脚本内 queue 残留**。
 
-> 口径说明：文档中出现的「896 KB 上限」在仓内**查无出处**（`grep -rn 896 src/core/profile` = 0）；现行上限以 `kMaxDocumentBytes`（1 MiB）为准。
+> 口径说明：文档中出现的「896 KB 上限」在仓内**查无出处**（`grep -rn 896 core/src/profile` = 0）；现行上限以 `kMaxDocumentBytes`（1 MiB）为准。
 
 ## 7. 批次归属
 

@@ -378,7 +378,7 @@ flowchart LR
 - **CLI**：15 个标志（`--ghostlock-app-call`、`--load-prebuilt-profile`、`--enable-status-record`、`--dump-kernel-log`、`--force-attack`、`--allow-dev-target`、`--run-cve-2026-43284`、`--probe-cve-2026-43284`、`--stage`、`--cve43284-hook-target`、`--cve43284-hook-symbol`、`--cve43284-hook-guard`、`--cve43284-carrier`、`--cve43284-patch1-target`、`--cve43284-allow-vermagic-rewrite`）。
 - **生产路径实证故障链**（2026-10-04 真机）：`CarrierRejected(4)` → `ProfileIncomplete(2)` → `MissingProfileKmi(4)` → `ChainRejected(10)`，逐个暴露「默认值在代码里」与「required 无单权威」。
 - **vivo 代码**：`platform/vivo/` 8 文件；`VivoAncillaryPolicies = tuple<VrGuardPolicy, VrTaskTagPolicy>`。
-- **第三方库**：`src/lib/mpack`（MIT，`MPACK_DIR := lib/mpack`）；上游 DirtyFrag 系列已**不再 vendored**，来源与 commit 记入 README 的「Credits & License」。
+- **第三方库**：`core/lib/mpack`（MIT，`MPACK_DIR := lib/mpack`）；上游 DirtyFrag 系列已**不再 vendored**，来源与 commit 记入 README 的「Credits & License」。
 
 ## 附录 B：决策记录
 
@@ -391,7 +391,7 @@ flowchart LR
 | 2026-10-04 | vivo 对策删除 → countermeasure 插件（= CM-4） | §6.3 |
 | 2026-10-04 | root 程序 + SELinux 恢复策略进 wire + Kotlin 高级设置 | §6.2 |
 | 2026-10-04 | backend×terminal 矩阵：43499→{root_child, Shizuku}、43284→{UMH}（当前已实现，可扩展） | §6.4 |
-| 2026-10-05 | `third_party/dirtyfrag` 删除（来源记入 README 致谢）；mpack 迁至 `src/lib/mpack` | 附录 A |
+| 2026-10-05 | `third_party/dirtyfrag` 删除（来源记入 README 致谢）；mpack 迁至 `core/lib/mpack` | 附录 A |
 
 ## 归档评估（2026-10-06，批次 2）
 

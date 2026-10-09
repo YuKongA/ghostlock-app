@@ -10,7 +10,7 @@ import java.io.File
 /**
  * A6-4 segment three: the payload name rule, the key and kind sets, and the
  * digest binding, every one of them checked against the pin the native side
- * exports (src/core/tests/payload-manifest.pin.tsv) instead of only against
+ * exports (core/src/tests/payload-manifest.pin.tsv) instead of only against
  * this file's own constants.
  */
 class HandoffPayloadTest {
@@ -111,7 +111,7 @@ class HandoffPayloadTest {
     }
 
     private fun pinRows(): List<Pair<String, String>> {
-        val file = File(repoRoot(), "src/core/tests/payload-manifest.pin.tsv")
+        val file = File(repoRoot(), "core/src/tests/payload-manifest.pin.tsv")
         require(file.isFile) { "missing native pin: " + file.path }
         return file.readLines()
             .map { it.trimEnd() }

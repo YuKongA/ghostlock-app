@@ -9,7 +9,7 @@ package com.ghostlock.app.data
  * to [LegacyProfileConverter] (the single migration point).
  *
  * Layout, little-endian, exactly as the removed native writer produced it
- * (evidence: \`git show acaa0ac5^:src/core/profile/binary.{h,cpp}\`):
+ * (evidence: \`git show acaa0ac5^:core/src/profile/binary.{h,cpp}\`):
  *
  *   0..3   magic   = 0x0D000721
  *   4..5   version = 2

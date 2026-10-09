@@ -20,17 +20,17 @@
 ### 1.1 基线
 
 - 分支 `vr-ko-bypass-dev`；起草时 HEAD 从 `63a45bc` 前进到 `59985fc`（`feat(backend): register cve_2026_43284 as known-but-unavailable (S3 B3)`）。A2-3c 以 `59985fc` 为基线。
-- 43284 identity/catalog/wire 已随 `59985fc` 落地：`src/Makefile`、`pipeline/{backend_contract,backend_policy,component_catalog}.hpp`、`profile/binary.h`、
+- 43284 identity/catalog/wire 已随 `59985fc` 落地：`core/Makefile`、`pipeline/{backend_contract,backend_policy,component_catalog}.hpp`、`profile/binary.h`、
   `tests/{backend_contract_test,component_catalog_test,profile_binary_test}.cpp`、`backend/cve_2026_43284_backend.hpp`。A2-3c 不再与这些文件争抢，但必须兼容其新增的 `kBackendCve202643284`/`BackendKind::Cve2026_43284` 与 43284 私有 section 规划。
 - 攻击基线二进制：`build/native/ghostlock-B0`（sha256 `ae63a890…`，见总 plan §5）。A2-3c 的目标是
   **43499 攻击函数逐字节不变**。
 
 ### 1.2 offset/字段今天如何分散
 
-1. **单一大结构 + 单一大表**：`profile::kernel_offsets`（`src/core/profile/model.h:152`）把平台 ABI
+1. **单一大结构 + 单一大表**：`profile::kernel_offsets`（`core/src/profile/model.h:152`）把平台 ABI
    （`task_struct`/`cred` 布局/`offset.*`）、设备 phys（`misc.kernel_phys_load/offset`）、厂商 vr
    （`misc.vr_guard/vr_tracepoint_funcs`）与 43499 的 route/exec/几何/尾 padding 混在一个 struct 里；
-   `binary.cpp` 的 `kSections`（`src/core/profile/binary.cpp:215`）用 `Field` 函数表
+   `binary.cpp` 的 `kSections`（`core/src/profile/binary.cpp:215`）用 `Field` 函数表
    （`:34`）直接绑定它的成员。
 2. **容器解释字段**：`binary_profile::parse`（`:273`）硬编码 `kernel_offsets*` 出参、硬编码三条合法
    route（`:297`），并把 `backend.cve_2026_43499.steps` 作为特例绕过字段表（`:339`）。容器不是中性
@@ -166,39 +166,39 @@ flowchart LR
 
 | 文件 | 改动 | 理由 |
 |---|---|---|
-| `src/core/profile/document.h` / `document.cpp` | `Document`/`Value`/`decode_document(bytes, mode) -> DecodeResult`，只做 framing 与边界校验 | 容器中性化（ADR-0003 决策 2） |
-| `src/core/profile/schema.h` | `FieldSpec`、`Schema` concept、`bind<Schema>`、`SchemaList`、`bind_all`、`BindStatus` | 注册/绑定机制（决策 3/4） |
-| `src/core/profile/composite_view.hpp` | A2-3c 过渡：把各 owner Schema 绑定结果落到冻结的 `kernel_offsets`（仅声明层分离） | 保住 §3.2 字节布局 |
-| `src/core/backend/cve_2026_43499/profile/schema.hpp` | 43499 keys + 每 route 子 schema + `steps` schema | backend owner 声明 |
-| `src/core/platform/abi/schema.hpp` | 平台 ABI keys（View 类型先空壳，物理迁移留 A2-4） | 平台 owner 声明 |
-| `src/core/platform/vivo/schema.hpp` | vr keys | 厂商 owner 声明 |
-| `src/core/pipeline/profile_binding.hpp` | 组合点唯一 `SchemaList` + `bind_all` 调用 | 装配归 pipeline（S5） |
-| `src/core/profile/manifest.cpp`（host-only 工具/测试） | 由 SchemaList 生成 manifest | 三端对拍 |
-| `src/core/tests/profile_document_test.cpp` | framing 边界/计数/截断/模式 | 容器测试 |
-| `src/core/tests/profile_schema_test.cpp` | 跨 Schema 查重、presence/宽度/必填、strict 拒绝、round-trip | 决策 9 验证 |
-| `src/core/tests/profile_manifest_test.cpp` | manifest 完整性/去重 | manifest |
+| `core/src/profile/document.h` / `document.cpp` | `Document`/`Value`/`decode_document(bytes, mode) -> DecodeResult`，只做 framing 与边界校验 | 容器中性化（ADR-0003 决策 2） |
+| `core/src/profile/schema.h` | `FieldSpec`、`Schema` concept、`bind<Schema>`、`SchemaList`、`bind_all`、`BindStatus` | 注册/绑定机制（决策 3/4） |
+| `core/src/profile/composite_view.hpp` | A2-3c 过渡：把各 owner Schema 绑定结果落到冻结的 `kernel_offsets`（仅声明层分离） | 保住 §3.2 字节布局 |
+| `core/src/backend/cve_2026_43499/profile/schema.hpp` | 43499 keys + 每 route 子 schema + `steps` schema | backend owner 声明 |
+| `core/src/platform/abi/schema.hpp` | 平台 ABI keys（View 类型先空壳，物理迁移留 A2-4） | 平台 owner 声明 |
+| `core/src/platform/vivo/schema.hpp` | vr keys | 厂商 owner 声明 |
+| `core/src/pipeline/profile_binding.hpp` | 组合点唯一 `SchemaList` + `bind_all` 调用 | 装配归 pipeline（S5） |
+| `core/src/profile/manifest.cpp`（host-only 工具/测试） | 由 SchemaList 生成 manifest | 三端对拍 |
+| `core/src/tests/profile_document_test.cpp` | framing 边界/计数/截断/模式 | 容器测试 |
+| `core/src/tests/profile_schema_test.cpp` | 跨 Schema 查重、presence/宽度/必填、strict 拒绝、round-trip | 决策 9 验证 |
+| `core/src/tests/profile_manifest_test.cpp` | manifest 完整性/去重 | manifest |
 
 ### 4.2 Native 修改
 
 | 文件 | 改动 |
 |---|---|
-| `src/core/profile/binary.{h,cpp}` | 删 `Field`/`kSections`（`:34`/`:215`）与 `parse` 的字段绑定逻辑；`parse`→`decode`（返回 `Document` + ids）；保留 `serialize`（host 测试/工具，走 Schema 或保留写表）；移除 `:339` steps 特例，改由 43499 schema 处理 |
-| `src/core/profile/model.h` | 保留 `kernel_offsets`/`TargetProfile` 布局与访问器；语义注释改为「43499 View」；新增布局 `static_assert` |
-| `src/core/profile/entry.{h,cpp}` | 三个入口改为 `decode → bind_all → kernel_offsets`（对外签名可保持 `kernel_offsets*` 以减少爆炸半径，内部走 Document） |
-| `src/core/main.cpp` | `:30` 起用 Document/`bind_all` 替代直接 `parse`；`:92` route fallback 逻辑保留但由 43499 schema 校验 |
-| `src/core/backend/cve_2026_43499_state.hpp` / `bootstrap.cpp:91` | `install_profile` 从 bound View 构造 `TargetProfile` |
-| `src/core/pipeline/{pipeline,orchestrator,backend_contract}.hpp`、`backend/cve_2026_43499_backend.{hpp,cpp}` | 过渡期 `decoded` 参数可继续传 `kernel_offsets&`；若改动，仅限类型别名/装配点 |
-| `src/core/memory/address_space.{h,cpp}`、`profile/accessors.hpp`、`runtime_struct_offsets.h`、`support/util.cpp`、`ancillary/*`、`race/threads.cpp`、route `*.{h,cpp}` | **A2-3c 默认不动**（布局不变）；仅当 View 重命名时改引用；`platform::abi::View` 迁移在 A2-3c-4/A2-4 |
-| `src/Makefile` | 新增 `document.cpp`/`manifest.cpp` 到源与 `HDRS`；新增三个测试进 `NATIVE_HOST_TESTS`（`:123`） |
+| `core/src/profile/binary.{h,cpp}` | 删 `Field`/`kSections`（`:34`/`:215`）与 `parse` 的字段绑定逻辑；`parse`→`decode`（返回 `Document` + ids）；保留 `serialize`（host 测试/工具，走 Schema 或保留写表）；移除 `:339` steps 特例，改由 43499 schema 处理 |
+| `core/src/profile/model.h` | 保留 `kernel_offsets`/`TargetProfile` 布局与访问器；语义注释改为「43499 View」；新增布局 `static_assert` |
+| `core/src/profile/entry.{h,cpp}` | 三个入口改为 `decode → bind_all → kernel_offsets`（对外签名可保持 `kernel_offsets*` 以减少爆炸半径，内部走 Document） |
+| `core/src/main.cpp` | `:30` 起用 Document/`bind_all` 替代直接 `parse`；`:92` route fallback 逻辑保留但由 43499 schema 校验 |
+| `core/src/backend/cve_2026_43499_state.hpp` / `bootstrap.cpp:91` | `install_profile` 从 bound View 构造 `TargetProfile` |
+| `core/src/pipeline/{pipeline,orchestrator,backend_contract}.hpp`、`backend/cve_2026_43499_backend.{hpp,cpp}` | 过渡期 `decoded` 参数可继续传 `kernel_offsets&`；若改动，仅限类型别名/装配点 |
+| `core/src/memory/address_space.{h,cpp}`、`profile/accessors.hpp`、`runtime_struct_offsets.h`、`support/util.cpp`、`ancillary/*`、`race/threads.cpp`、route `*.{h,cpp}` | **A2-3c 默认不动**（布局不变）；仅当 View 重命名时改引用；`platform::abi::View` 迁移在 A2-3c-4/A2-4 |
+| `core/Makefile` | 新增 `document.cpp`/`manifest.cpp` 到源与 `HDRS`；新增三个测试进 `NATIVE_HOST_TESTS`（`:123`） |
 
 ### 4.3 测试（native）
 
 | 文件 | 改动 |
 |---|---|
-| `src/core/tests/profile_binary_test.cpp` | `:196-230` 的「unknown 被忽略」期望改为 strict 拒绝（放 A2-3c-3）；round-trip/编号/header 断言保持 |
-| `src/core/tests/session_layout_test.cpp` | 增加 `TargetProfile` `sizeof`/`alignof` 显式 `static_assert`（只加不删） |
-| `src/core/tests/address_space_test.cpp` / `route_*` / `ancillary_test.cpp` / `profile_test.cpp` | 若 View 类型不变则不改；否则仅改构造方式（保持向量不变） |
-| `src/core/tests/host/backend_dataflow_test.cpp` | 改用 Document→bind 构造，host harness 断言不变 |
+| `core/src/tests/profile_binary_test.cpp` | `:196-230` 的「unknown 被忽略」期望改为 strict 拒绝（放 A2-3c-3）；round-trip/编号/header 断言保持 |
+| `core/src/tests/session_layout_test.cpp` | 增加 `TargetProfile` `sizeof`/`alignof` 显式 `static_assert`（只加不删） |
+| `core/src/tests/address_space_test.cpp` / `route_*` / `ancillary_test.cpp` / `profile_test.cpp` | 若 View 类型不变则不改；否则仅改构造方式（保持向量不变） |
+| `core/src/tests/host/backend_dataflow_test.cpp` | 改用 Document→bind 构造，host harness 断言不变 |
 
 ### 4.4 Kotlin（profile-core / app）
 
@@ -222,7 +222,7 @@ flowchart LR
 |---|---|
 | `docs/profile/PROFILE_SCHEMA.md` + `_ZH.md` | 增加 manifest/strict/所有权说明 |
 | `docs/development/adding-a-component.md` | 新字段 = 加 `FieldSpec` + 注册 + manifest 测试 |
-| `src/core/README.md` | profile 分层与 DecodeMode |
+| `core/src/README.md` | profile 分层与 DecodeMode |
 | `docs/plan/branch-plan.md` | 只登记 A2-3c 进度（父级维护） |
 
 ## 5. 分批与门禁
@@ -247,7 +247,7 @@ flowchart TD
 | A2-3c-3 | strict 拒绝 + manifest + Kotlin/extractor 对拍 | 全绿 | 零告警 | 0 | 必跑 | 冷机 multicast 最少 1 次 PASS，按 `device-gates/*.md` 归档 |
 | A2-3c-4 | 平台/vivo View 物理抽离（与 A2-4 协同） | 全绿 | 零告警 | 0 | 必跑 | 完整真机门禁（冷机、固定 CPU 对 0/1、KernelSU 未加载） |
 
-- 每批门禁命令：`make -C src native-host-tests`、`make -C src ghostlock`、`make -C src lint-tidy`、
+- 每批门禁命令：`make -C core native-host-tests`、`make -C core ghostlock`、`make -C core lint-tidy`、
   `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock`；Kotlin 批加
   `./gradlew :profile-core:test :app:testDebugUnitTest`；extractor 批加
   `(cd tools/extract_rs && cargo test --release)`。

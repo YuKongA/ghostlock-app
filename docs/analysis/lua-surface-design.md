@@ -23,7 +23,7 @@
 
 - **语义与拒绝码**（逐条）：见 §4/§4.1/§4.2 与 **UML §3.2 唯一码表**；**相位列 = manifest 四词表**（`stage` · `pre_window` · `window` · `terminal`）。
 
-- **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（10 个；见 [`script_surface.hpp`](../../src/core/contract/script_surface.hpp) 的 `implements_layer` 与层级断言）；**机器可校验**，**不得用描述性短语** —— 「**表达一致**」的一个实例。
+- **口径（实现层）**：**实现层 = `contract::kLayers` 的层名**（10 个；见 [`script_surface.hpp`](../../core/src/contract/script_surface.hpp) 的 `implements_layer` 与层级断言）；**机器可校验**，**不得用描述性短语** —— 「**表达一致**」的一个实例。
 - **列语义**：stage/执行 = 单遍两段是否放行；相位 = 内部；持资源 = 否（**实现层口径见下**）。
 - **窗口级 op 已降为内部**：脚本不表达窗口分组。
 
@@ -31,8 +31,8 @@
 
 ### §1.1 派生源与验收
 
-- **派生源**：本表由 `make -C src surface-manifest` 导出；**原文 19 行**见 [manifest 附件](lua-surface-annex-manifest.md)。
-- **验收**：`make -C src surface-doc-check DOC=docs/analysis/lua-surface-annex-manifest.md` **必须 EXIT=0**（逐行对拍；pin = `src/core/tests/surface_manifest_test.cpp`）。
+- **派生源**：本表由 `make -C core surface-manifest` 导出；**原文 19 行**见 [manifest 附件](lua-surface-annex-manifest.md)。
+- **验收**：`make -C core surface-doc-check DOC=docs/analysis/lua-surface-annex-manifest.md` **必须 EXIT=0**（逐行对拍；pin = `core/src/tests/surface_manifest_test.cpp`）。
 
 ## §1.2 Document（Kotlin resolve 产物）
 

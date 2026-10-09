@@ -18,7 +18,7 @@
   - `soc: mtk; kernel_phys_load=0x40080000`（phys 已正确加载）
   - `[-] W1: SELinux: target 0x0000000000000000 is outside the direct map, not attempting`
   - `[-] Write 1 failed`，`native exited code=1`
-- 根因：`ResolvedAddresses::data_alias_checked`（`src/core/memory/address_space.cpp:118-124`）用编译期常量
+- 根因：`ResolvedAddresses::data_alias_checked`（`core/src/memory/address_space.cpp:118-124`）用编译期常量
   `kernel::P0_PHYS_OFFSET = target::address::kPhysicalOffset = 0x80000000`
   （`target_constants.hpp:15`）作 DRAM base：
   ```cpp
@@ -51,11 +51,11 @@
 
 | 文件 | 改动 | 理由 |
 | --- | --- | --- |
-| `src/core/profile/model.h` | `KernelMisc` 增 `std::optional<uint64_t> kernel_phys_offset;` | 承载字段 |
-| `src/core/profile/binary.cpp` | `kKernel` 增 `OPT("kernel_phys_offset", misc.kernel_phys_offset)` | wire 编解码 |
-| `src/core/memory/address_space.h` | `ResolvedAddresses` 增 `uintptr_t phys_offset` + `phys_offset()` 访问器 | 解析结果缓存 |
-| `src/core/memory/address_space.cpp` | `init_for_soc` 解析 `kernel_phys_offset`（缺省 `kernel::P0_PHYS_OFFSET`）；`data_alias_checked` 用 `phys_offset` 替换 `P0_PHYS_OFFSET` | 核心修复 |
-| `src/core/support/util.cpp` | 日志 `phys_offset=` 与 `delta` 用 `addresses.phys_offset()` | 一致性 |
+| `core/src/profile/model.h` | `KernelMisc` 增 `std::optional<uint64_t> kernel_phys_offset;` | 承载字段 |
+| `core/src/profile/binary.cpp` | `kKernel` 增 `OPT("kernel_phys_offset", misc.kernel_phys_offset)` | wire 编解码 |
+| `core/src/memory/address_space.h` | `ResolvedAddresses` 增 `uintptr_t phys_offset` + `phys_offset()` 访问器 | 解析结果缓存 |
+| `core/src/memory/address_space.cpp` | `init_for_soc` 解析 `kernel_phys_offset`（缺省 `kernel::P0_PHYS_OFFSET`）；`data_alias_checked` 用 `phys_offset` 替换 `P0_PHYS_OFFSET` | 核心修复 |
+| `core/src/support/util.cpp` | 日志 `phys_offset=` 与 `delta` 用 `addresses.phys_offset()` | 一致性 |
 | `profile-core/.../data/NativeProfile.kt` | `NativeProfileDocument` 增 `kernelPhysOffset: ULong?`；`kernelSection()` 增 key；`from()`/`Builder`/`apply` 增 `kernel_phys_offset` | 双侧契约 |
 | `app/.../ui/FieldLabels.kt` | `"kernel_phys_offset" -> R.string.field_kernel_phys_offset` | 标签 |
 | `app/src/main/res/values*/strings.xml` | 新增 `field_kernel_phys_offset`（en + zh） | 双语 |
@@ -98,7 +98,7 @@ profile(kernel_phys_offset) ─> phys_offset  (缺省回退 P0_PHYS_OFFSET)
 
 | 批次 | 命令 | 预期 |
 | --- | --- | --- |
-| native host | `make -C src native-host-tests` | 新增 `address_space` 用例：profile 提供 offset → 正确 direct；缺省 → 0x80000000 路径不变 |
+| native host | `make -C core native-host-tests` | 新增 `address_space` 用例：profile 提供 offset → 正确 direct；缺省 → 0x80000000 路径不变 |
 | 编解码一致 | `./gradlew :profile-core:test` / `:app:testDebugUnitTest` | 字段双侧一致；round-trip 含 `kernel_phys_offset` |
 | extractor | `(cd tools/extract_rs && cargo test)` | conf 含 `kernel_phys_offset`（默认 null） |
 | 反汇编 | `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock` | 8 攻击函数 IDENTICAL 或已复核注解差异 |
@@ -121,7 +121,7 @@ profile(kernel_phys_offset) ─> phys_offset  (缺省回退 P0_PHYS_OFFSET)
       （如 `ldr w0,[x21,#0x190]` → `#0x140`）、随之的 `adrp/add` 数据页基址位移，以及末尾 3 条对齐填充。
     - 将指令中的立即数/绝对地址/符号名归一化后，`waiter_thread` 的助记符与寄存器序列**逐条相同**（仅余末尾 3 行对齐）。
     - 结论：PI/waiter 控制流与步骤顺序未变，属“已复核的注解/布局差异”，不改变等待者生命周期不变量。
-- lint：`make -C src lint-tidy` rc=0（0 findings）。
+- lint：`make -C core lint-tidy` rc=0（0 findings）。
 
 ## 进度
 

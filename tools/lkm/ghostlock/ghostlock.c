@@ -24,7 +24,7 @@
  * registered and module_init blocks until UNLOAD (or a bounded timeout), then
  * returns -E2BIG. Self-unload is therefore still the same deliberate-failure
  * path, and the device disappears with the module. See
- * src/core/plugin/kernel_channel.hpp and docs/analysis/contract-design.md
+ * core/src/plugin/kernel_channel.hpp and docs/analysis/contract-design.md
  * sections 3.12/3.12.1/3.12.2/3.12.3.
  *
  * The channel defaults to resident (module parameter "resident" = 1) because
@@ -59,7 +59,7 @@
 
 #define GHOSTLOCK_CMD_MAX 512
 
-/* Mirror of src/core/contract/abi/glk_contract_abi.h (the native side is the
+/* Mirror of core/src/contract/abi/glk_contract_abi.h (the native side is the
  * source of truth; the out-of-tree module cannot include the userspace tree).
  * Keep the op values, request layout and ioctl number in lockstep. */
 #define GLK_LKM_ABI_VERSION 1u

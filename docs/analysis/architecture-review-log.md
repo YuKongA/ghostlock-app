@@ -209,7 +209,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
    更新 Makefile 依赖。
 6. **门禁可追溯性缺口**：基线获取方式（`git worktree` + sha256）、真机门禁编号 `RW-00`、
    `cmp_disasm` 偏移位移先例（`kernel-phys-offset-plan`/`5x-tcp-geometry-plan`/`vr-guard-plan`）已补。
-7. **文档一致性**：`src/core/README.md` 路径、`engineering-standards.md`、`ancillary-controller-guide.md`
+7. **文档一致性**：`core/src/README.md` 路径、`engineering-standards.md`、`ancillary-controller-guide.md`
    （“布局固定/不得新增字段”将失效）、`host-attack-dataflow-plan.md`（该计划已归档：索引见 docs/archive/INDEX-plans.md §一）需加现状注；上位计划“`ExploitSession`
    字段布局固定 / 不移动字段”的表述与 Phase 0 矛盾，已改。
 8. **上位计划验证矩阵缺 Phase 0 行**：已补。
@@ -223,7 +223,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
    24 个已跟踪文件有未提交改动 + 若干未跟踪新文件，分三组在飞工作：
    - ancillary vr-task-tag 迁移：新增 `session/ancillary/vr_task_tag.{hpp,cpp}`、改
      `ancillary_controller.hpp`/`ancillary_policy.hpp`/`cve_2026_43499_backend.cpp`（vr 写移入行为）、
-     `tests/ancillary_test.cpp`、新增 `tests/host/ancillary_stub.cpp`、`src/Makefile`；
+     `tests/ancillary_test.cpp`、新增 `tests/host/ancillary_stub.cpp`、`core/Makefile`；
    - 占位 backend：新增 `session/backend/cve_2026_{31431,43503,23274}_backend.hpp`、改
      `route/component_catalog.hpp`/`backend_contract.hpp`/`backend_policy.hpp` 与测试；
    - TCP 5.x geometry：`profile/model.h`、`profile/binary.{h,cpp}` 新增 `tcp_*` 字段。
@@ -231,7 +231,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
    起点状态 = `acc5e7b` + 当前在飞改动，重写在其上叠加。
    - **基线落法（已定 a：提交 WIP/前置提交）**：把在飞改动提交到本分支（内容不变；按功能可拆 2–3 个
      提交，或一个 checkpoint 提交），该提交记为 **`B0`**。用 `git worktree add <tmp> B0` 在干净检出上
-     `make -C src ghostlock` 构建**基线二进制**，记录 `git rev-parse B0` + 二进制 sha256。现有
+     `make -C core ghostlock` 构建**基线二进制**，记录 `git rev-parse B0` + 二进制 sha256。现有
      `build/native/ghostlock`（10-02，dirty 树产物）不作基线。
    - **顺序**：`B0`（含在飞改动）→ 建基线二进制 → 修 `cmp_disasm` 的 stale `TARGETS`（纯工具改动，
      二进制不变）→ Phase 0 实现 → 门禁对比。
@@ -244,7 +244,7 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
    `multicast_owner_worker`/`multicast_waiter_worker` 均 `MISSING`，`RESULT: FAIL`；源代码中这两个
    函数已不存在（resident multicast 移除，现为 `route::do_kernel5_fake_lock_route`）。**Phase 0 必须先修
    `TARGETS`（删除/替换 stale 条目）再建新基线**，否则无论实现多正确都过不了门禁。实际攻击函数为 6 个。
-3. **`src/CMakeLists.txt` 仅用于 CLion 自动补全（用户确认），不是构建面**。权威构建面是 `src/Makefile`
+3. **`core/CMakeLists.txt` 仅用于 CLion 自动补全（用户确认），不是构建面**。权威构建面是 `core/Makefile`
    （Gradle native 任务 `commandLine("make", "ghostlock")`）。它以 `SOURCES` 给 IDE 建索引，目前缺
    `route_middleware.cpp`/`ancillary/*`/`profile/binary.cpp`/`root_child_frontend.cpp`/`backend/*`/
    `run_state.cpp`。处理：**保留，并随 Phase 0 新增/改名文件同步 `SOURCES`**（加
@@ -260,6 +260,6 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
 6. **构建面清单补齐**：`HOST_ATTACK_DATAFLOW_SOURCES` 必须新增
    `core/session/backend/cve_2026_43499_state.cpp`；`NATIVE_HOST_TESTS` 注册 `session_layout_test`；
    `HDRS` 加两个新头；`CXX_SRCS` 加两个新 `.cpp`（`core_session.cpp`、`cve_2026_43499_state.cpp`）。
-7. **文档已在 dirty 集合中被改**：`AGENTS.md`、`src/core/README.md`、`docs/development/adding-a-component.md`
+7. **文档已在 dirty 集合中被改**：`AGENTS.md`、`core/src/README.md`、`docs/development/adding-a-component.md`
    等已改动；Phase 0 的文档同步应在归位后的新基线上做，避免与在飞改动冲突。
 8. **上位计划 Phase 0 描述与 ADR-0002 矛盾**（原写 CoreSession 含 `profile`/`addresses`），已改。

@@ -35,14 +35,14 @@
 
 ### ① probe 语料缺 native 腿
 
-- **现状**：`src/core/tests/plugin_probe_test.cpp` 存在，但 `src/Makefile:441-450` 的构建规则**被注释**，不在 `native-host-tests` 聚合（`:218`）中；Rust 侧 `tools/extract_rs/tests/probe_conformance.rs` 与 Kotlin 侧 `app/src/test/resources/plugin-probe-conformance`、`plugin-probe-golden.tsv` 在跑，**native 缺席** ⇒ 三方判定无法对齐。
+- **现状**：`core/src/tests/plugin_probe_test.cpp` 存在，但 `core/Makefile:441-450` 的构建规则**被注释**，不在 `native-host-tests` 聚合（`:218`）中；Rust 侧 `tools/extract_rs/tests/probe_conformance.rs` 与 Kotlin 侧 `app/src/test/resources/plugin-probe-conformance`、`plugin-probe-golden.tsv` 在跑，**native 缺席** ⇒ 三方判定无法对齐。
 - **目标**：恢复 native 腿（受插件冻结影响的部分用**冻结期等价物**：直接喂固定语料 + 期望判定，不依赖插件运行时接线）。
 - **判据（白盒 + 极端值）**：对同一语料，native 判定 == Rust == Kotlin；极端值 = 空描述符 / 字段缺一 / 哈希全 0 / 长度 = 上限与 +1。
 - **门禁等级**：G1（宿主测试）；不触攻击路径 ⇒ **不需真机**。
 
 ### ② plugin-wire-shape-golden 的 native 校验被注释
 
-- **现状**：`app/src/test/resources/plugin-wire-shape-golden.bin` 仍是冻结前的 golden，但 `src/Makefile:728-742` 的 native 校验规则**被注释**（注释原文：*USER DIRECTIVE 2026-10-05: plugin paused*）⇒ 字节形态**只有 Kotlin 侧**在看。
+- **现状**：`app/src/test/resources/plugin-wire-shape-golden.bin` 仍是冻结前的 golden，但 `core/Makefile:728-742` 的 native 校验规则**被注释**（注释原文：*USER DIRECTIVE 2026-10-05: plugin paused*）⇒ 字节形态**只有 Kotlin 侧**在看。
 - **目标**：解冻批次恢复 native 校验；冻结期内以「native **拒绝**任何 `plugin.<id>` 段」为**契约断言**（这正是当前 fail-closed 行为）。
 - **判据（黑盒/白盒）**：黑盒 = 含 `plugin.<id>` 段的帧 ⇒ native 具名拒绝；白盒 = golden 字节在解冻后逐字节被 native 接受且与 Kotlin 一致。极端值：段名大小写变体 / 空段 / 超出上限的 id 长度。
 - **门禁等级**：G1（冻结期拒绝语义）+ 解冻批 G1+G2。
@@ -59,7 +59,7 @@
 | 资产 | 覆盖的两端 | 位置 |
 |---|---|---|
 | profile-manifest-v3 / combination / vocabulary / stepset-steps / lkm-kmi（5 张 manifest） | native ↔ Kotlin（lkm-kmi 另有 Gradle 消费） | `app/src/test/resources/` + `profile-core/src/main/resources/`（双副本 + 对拍测试） |
-| glkv3 golden-hex + fixture（91 行）+ native-doc-golden-v3.sha256 | native ↔ Kotlin | `make -C src glkv3-golden-hex` / `glkv3-native-fixture.tsv` |
+| glkv3 golden-hex + fixture（91 行）+ native-doc-golden-v3.sha256 | native ↔ Kotlin | `make -C core glkv3-golden-hex` / `glkv3-native-fixture.tsv` |
 | plugin-probe-golden.tsv + probe_conformance.rs | **Rust ↔ Kotlin**（native 腿缺，见 §3-①） | `app/src/test/resources/` + `tools/extract_rs/tests/` |
 | plugin-wire-shape-golden.bin | Kotlin（native 校验缺，见 §3-②） | `app/src/test/resources/` |
 

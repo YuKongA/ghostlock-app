@@ -81,7 +81,7 @@
 
 ## 7. G9 测试清单与 required 消费者（计划 §3.6/§4/§6 引用）
 
-**命令**：`make -C src native-host-tests`、`./gradlew :app:testDebugUnitTest`（各 EXIT=0）；重导 `make -C src profile-manifest-v3|combination-manifest|vocabulary-manifest|stepset-steps-manifest|lkm-kmi-manifest|glkv3-golden-hex`。
+**命令**：`make -C core native-host-tests`、`./gradlew :app:testDebugUnitTest`（各 EXIT=0）；重导 `make -C core profile-manifest-v3|combination-manifest|vocabulary-manifest|stepset-steps-manifest|lkm-kmi-manifest|glkv3-golden-hex`。
 
 - **改写 2**：`MergedQueueCarriageTest`、`QueueWireCarriageTest`
 - **重冻 6 类**：`native-doc-golden-v3.sha256`（58→66）、`Glkv3Golden.SELECTION_HEX`、`Glkv3Golden.NO_SELECTION_HEX`、`glkv3-native-fixture.tsv`、5 张 manifest 双副本、`combination-resolve-vectors.tsv`

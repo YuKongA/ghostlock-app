@@ -8,7 +8,7 @@
 | 原路径 | 归档路径 | 归档原因 | 日期 |
 |---|---|---|---|
 | docs/plan/gradle-test-decoupling-plan.md | docs/archive/20261006-1809-gradle-test-decoupling-plan.md | **已实行**（done=5 / open=0；产物：app/build.gradle.kts 的 generateBuildInfo 与 merge*JniLibFolders 挂接） | 2026-10-06 |
-| docs/plan/host-attack-dataflow-plan.md | docs/archive/20261006-1809-host-attack-dataflow-plan.md | **已实行**（done=7 / open=0；产物：src/Makefile 的 host-attack-dataflow-test 目标 + src/core/tests/host/host_attack_script.hpp） | 2026-10-06 |
+| docs/plan/host-attack-dataflow-plan.md | docs/archive/20261006-1809-host-attack-dataflow-plan.md | **已实行**（done=7 / open=0；产物：core/Makefile 的 host-attack-dataflow-test 目标 + core/src/tests/host/host_attack_script.hpp） | 2026-10-06 |
 
 
 ## 二、批次 2 评估记录（**0 件归档**）

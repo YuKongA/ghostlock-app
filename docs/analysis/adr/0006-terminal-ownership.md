@@ -5,7 +5,7 @@
 - 日期：2026-10-05
 - 基线：`be7b58e`（S4-R6a）
 - 相关：ADR-0004（组合轴 R18–R21、稀疏 triple）、`docs/analysis/s4-r6b-composition-design.md`（token）、
-  `src/core/pipeline/component_catalog.hpp`（装配权威）
+  `core/src/pipeline/component_catalog.hpp`（装配权威）
 
 ## 背景（Context）
 

@@ -54,7 +54,7 @@
 
 | 项 | 内容 |
 |---|---|
-| manifest 双副本 | 重导（`make -C src profile-manifest-v3`）并保持两份逐字节一致；**不新增 manifest 语义**（R2） |
+| manifest 双副本 | 重导（`make -C core profile-manifest-v3`）并保持两份逐字节一致；**不新增 manifest 语义**（R2） |
 | golden | **无脚本用例逐字节不变（58 份保）**；**含脚本用例新增 golden**（已核 58 行无脚本条目） |
 | 层表登记 | `include_firewall_test.cpp` 增 **`pipeline`**/**`script`**（清单见 b0 §4）；`kWhitelist` 保持为空 |
 | 新增 native 测试 | `op_tu_isolation_test`（窗口 TU 禁 include + 无 `_ZTV*`）、`plan_gate_test`（10 条原因）、`QueueElementShapeTest` |

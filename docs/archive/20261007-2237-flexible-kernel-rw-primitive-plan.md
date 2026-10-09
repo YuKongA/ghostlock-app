@@ -233,8 +233,8 @@ ancillary 的 detag 仍先于 W2 提权。
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| host | `make -C src native-host-tests`（含 payload 向量、`KernelMemory` stub 接口） | 全绿 |
-| NDK | `make -C src ghostlock` | 零告警 |
+| host | `make -C core native-host-tests`（含 payload 向量、`KernelMemory` stub 接口） | 全绿 |
+| NDK | `make -C core ghostlock` | 零告警 |
 | 形状 | `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock` | IDENTICAL 或已复核差异 |
 | 真机（可随时） | **Xperia 5.15**：Tier 1 值写自测 + Tier 2 通道读写自测；不回归现有 Multicast route；归档门禁 | PASS/FAIL 记录 |
 | 真机（需协调） | **vivo 6.1**：ancillary 消费方（VrGuard/VrTaskTag）行为验收 | PASS/FAIL 记录 |

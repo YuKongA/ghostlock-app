@@ -1,6 +1,6 @@
 # GhostLock LKM KMI manifest (contract-design 3.17 / docs/archive/20261007-2237-minimal-lkm-plan.md section 2).
 # Authoritative native export of lkm::kSupportedKmis; regenerate with:
-#   make -C src lkm-kmi-manifest
+#   make -C core lkm-kmi-manifest
 # Columns: label<TAB>android_release<TAB>kmi<TAB>ko_filename
 # android12-5.10 and android13-5.10 share kmi 5010: the label is the
 # delivery identity and the file name follows the label, never the KMI.

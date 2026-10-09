@@ -25,7 +25,7 @@
   # 直接依赖头（A1 口径）：48
   python3 - <<'PY'
   import os, re, collections
-  core="src/core"; dis=set()
+  core="core/src"; dis=set()
   for root,_,fs in os.walk(core):
       for f in fs:
           if f.endswith(".disabled"): dis.add(os.path.relpath(os.path.join(root,f),core)[:-9])

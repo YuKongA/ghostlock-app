@@ -204,7 +204,7 @@ object NativeProfileGlkv3Adapter {
      * resolves, with the wire kinds the native declaration fixes (bin / str /
      * uint / str). Everything outside the family — another backend, a free name,
      * a bare terminal, an unknown key — stays fail-closed. The rule lives in
-     * [HandoffPayload], which mirrors src/core/profile/payload_keys.hpp.
+     * [HandoffPayload], which mirrors core/src/profile/payload_keys.hpp.
      *
      * @param path owner-qualified dotted path emitted by a document section.
      * @return the declaration, or null when the path is not in the family.
@@ -334,26 +334,36 @@ object NativeProfileGlkv3Adapter {
             kernelMinor = document.kernelMinor?.toULong(),
             safeMode = document.safeMode != 0u,
             release = document.release,
-            terminal = document.combination?.terminal?.token ?: DEFAULT_TERMINAL,
-            /* 43284 documents are route-less (native RouteKind::None since S4 F3;
-             * the legacy kRouteAuto sentinel is decode-only): the token has no
-             * route axis, so the root "route" key is always omitted. */
-            backend = BackendKind.fromWire(document.backendKind.toInt())?.token,
-            route = if (is43284) null else RouteKind.fromWire(document.routeKind)?.token,
+            /* B1: the selection fact rides the wire as ONE root scalar; backend,
+             * route, step plan and terminal derive from it natively. The token is
+             * the catalogue's, so "selectable" and "emittable" stay one source. */
+            combination = document.combination?.token,
+            /* B1: the three root keys are GONE from what we emit. Backend, route and
+             * terminal are derived from the token natively, so writing them would be
+             * a declaration nobody reads - two channels describing one fact (the
+             * P2-A2 shape the review flagged). The SECTION key `backend.<id>.route`
+             * is a different thing (compile-time policy + geometry) and stays. */
+            backend = null,
+            route = null,
+            terminal = null,
             sections = sections,
         )
-        /* PERMANENT SELF-DIAGNOSTIC (READ-BACK, deliberately NOT tautological): compare
-         * the terminal the adapter actually WROTE into the produced structure with the
-         * one the document carries. Comparing the source expression with itself would be
-         * vacuous; reading the produced value is what localises a lost terminal to THIS
-         * line (firing) or to the encoder below (passing while the bytes stay short). */
-        /* Only when the document DECLARES a combination: the "none" class legitimately
-         * has none and correctly falls back to DEFAULT_TERMINAL. */
-        val documentTerminal = document.combination?.terminal?.token
-        if (documentTerminal != null) {
-            require(adapted.terminal == documentTerminal) {
-                "adapter wrote=" + adapted.terminal + " doc=" + documentTerminal +
+        /* SELF-DIAGNOSTIC (B1: the read-back it replaced can no longer exist). With
+         * the terminal off the wire, the meaningful check is that the token we DO
+         * write resolves in the catalogue to the terminal the document selected: a
+         * lost or mistyped token would otherwise only surface natively, far from the
+         * line that dropped it. Only when a combination is declared - the "none"
+         * class has none by design. */
+        document.combination?.let { combination ->
+            val resolved = CombinationCatalog.resolve(combination.token)
+            require(resolved != null) {
+                "adapter emitted an unknown combination token=" + combination.token +
                     " release=" + document.release
+            }
+            require(resolved.terminal == combination.terminal) {
+                "combination " + combination.token + " resolves to terminal " +
+                    resolved.terminal.token + " but the document selected " +
+                    combination.terminal.token
             }
         }
         return adapted

@@ -15,8 +15,8 @@ ghostlock-plugin-example/        # 独立仓库/目录：include/ + src/ + tools
 
 **本仓库保留的部分**（宿主侧契约，不要移走）：
 
-- `src/core/plugin/**`：探针、schema/wire 校验、宿主（宿主实现本身）；
-- `src/core/contract/abi/glk_contract_abi.h`：**ABI 权威**（独立项目里那份是 vendored 副本，用 `./build.sh abi-check` 对拍）；
+- `core/src/plugin/**`：探针、schema/wire 校验、宿主（宿主实现本身）；
+- `core/src/contract/abi/glk_contract_abi.h`：**ABI 权威**（独立项目里那份是 vendored 副本，用 `./build.sh abi-check` 对拍）；
 - `docs/analysis/contract-design.md` §3.14.7：冻结的探针 TSV 契约与阶段可用性；
 - `app/src/test/resources/*` 与 `profile-manifest-v3.tsv`：跨语言对拍物证（golden / manifest）。
 

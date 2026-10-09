@@ -22,7 +22,7 @@ plugins {
  * build directories non-syncing (a .nosync marker) instead of redirecting
  * outputs out of the repository.
  *
- * The Make/NDK artifacts still land in build/ (see src/Makefile), and the
+ * The Make/NDK artifacts still land in build/ (see core/Makefile), and the
  * root clean removes every module build/ directory.
  */
 
@@ -181,7 +181,7 @@ tasks.register<Exec>("buildGhostlockNative") {
     environment("NDK_ROOT", ndk)
     inputs.files(
         fileTree("src") { include("**/*.c", "**/*.h", "**/*.cpp", "**/*.hpp") },
-        file("src/Makefile"),
+        file("core/Makefile"),
     )
     outputs.file(file("build/native/ghostlock"))
 }

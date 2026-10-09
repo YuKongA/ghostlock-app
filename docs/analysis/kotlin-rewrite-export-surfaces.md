@@ -7,7 +7,7 @@
 
 | # | 面 | 权威 → 导出 | 重写用途 |
 |---|---|---|---|
-| 1 | **字段表** | `profile/key_catalog.hpp` → `make -C src profile-manifest-v3`（+`-check`） | 类型映射与校验（读写两侧） |
+| 1 | **字段表** | `profile/key_catalog.hpp` → `make -C core profile-manifest-v3`（+`-check`） | 类型映射与校验（读写两侧） |
 | 2 | **链/组合目录** | `contract/chain_catalog.hpp` → `combination-manifest`（+pin） | **选择面与派生规则**（token/backend/route/path/steps/terminal/available/doc） |
 | 3 | **stepset→步骤序列** | `contract/step_catalog.hpp` → `stepset-steps-manifest(-regen)`（+pin） | **种子数据**（按 ADR-0011 它**不是**顺序权威，是模版输入） |
 | 5 | **LKM KMI 目录** | `lkm::kSupportedKmis` → `lkm-kmi-manifest` | 设备侧按 `uname -r` 派生 label 取件（payload 选择面） |

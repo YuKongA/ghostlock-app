@@ -65,8 +65,8 @@
 | 层边界 0 边 | 新件 include 禁层 ⇒ FAIL + 空账本 pin | `native-host-tests`（`include_firewall_test`） | **EXIT=0**；非法输入 **≠0** |
 | 窗口 TU 禁 include / op TU 隔离 | 窗口 TU 引入禁 include 或具体 route 头 ⇒ 文件级扫描失败；热路径 `nm` 出现 `_ZTV*` ⇒ 失败（TU 清单见 [queue-schema](handoff-payload-queue-schema.md) §4） | **`tests/op_tu_isolation_test.cpp`（新）** | 非法输入 **≠0** |
 | gate 判据承载 | 未知 op/缺几何/未声明依赖 ⇒ 具名拒绝 | **`tests/plan_gate_test.cpp`（新）** | 非法输入 **≠0** |
-| 概念约束 | 去掉 `static` run/`write` 的类型 ⇒ `static_assert` 失败 | `make -C src ghostlock` | 非法输入 **≠0** |
-| 多态禁令 | 路径内引入虚基/基类指针 ⇒ `static_assert` 失败（+ `nm` 无 `_ZTV*`） | `make -C src ghostlock` | 非法输入 **≠0** |
+| 概念约束 | 去掉 `static` run/`write` 的类型 ⇒ `static_assert` 失败 | `make -C core ghostlock` | 非法输入 **≠0** |
+| 多态禁令 | 路径内引入虚基/基类指针 ⇒ `static_assert` 失败（+ `nm` 无 `_ZTV*`） | `make -C core ghostlock` | 非法输入 **≠0** |
 | 无间接调用 | 生成码出现间接 call | `tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` | 无 indirect call（可选诊断） |
 | 真机门禁 | 触碰 `steps`/`primitives` 写路径 | 设备门禁 + `device-gates/*.md` 归档 | **PASS + 日志** |
 

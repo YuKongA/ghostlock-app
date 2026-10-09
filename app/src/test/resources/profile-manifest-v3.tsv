@@ -64,9 +64,13 @@ cve_2026_43499	backend.cve_2026_43499.execution.handoff.enforce_poll_interval_ms
 cve_2026_43499	backend.cve_2026_43499.execution.handoff.module_poll_attempts	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.handoff.module_poll_interval_ms	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.handoff.pre_dispatch_settle_ms	uint	0	-	profile	-	4
+cve_2026_43499	backend.cve_2026_43499.execution.heap.kernelsnitch_collisions	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.heap.kernelsnitch_timeout_ms	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.heap.prepare_max_attempts	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.heap.prepare_timeout_ms	uint	0	-	profile	-	4
+cve_2026_43499	backend.cve_2026_43499.execution.heap.snitch_round_wait_us	uint	0	-	profile	-	4
+cve_2026_43499	backend.cve_2026_43499.execution.heap.snitch_threads	uint	0	-	profile	-	4
+cve_2026_43499	backend.cve_2026_43499.execution.heap.snitch_wake_rounds	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.race.route_done_timeout_ms	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.race.route_wait_ms	uint	0	-	profile	-	4
 cve_2026_43499	backend.cve_2026_43499.execution.race.setup_settle_us	uint	0	-	profile	-	4

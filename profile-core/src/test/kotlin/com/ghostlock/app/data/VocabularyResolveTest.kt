@@ -70,15 +70,15 @@ class VocabularyResolveTest {
 
     @Test
     fun `step set resolve is exact and normalize is the boundary`() {
-        assertEquals(StepSetKind.W1W2, StepSetKind.resolve("w1_w2"))
-        assertEquals(StepSetKind.PAGE_CACHE_WRITE, StepSetKind.resolve("pagecache_write"))
+        assertEquals(StepSetKind.SELINUX_CRED, StepSetKind.resolve("w1_w2"))
+        assertEquals(StepSetKind.PAGE_CACHE, StepSetKind.resolve("pagecache_write"))
         assertNull(StepSetKind.resolve("W1_W2"))
         assertNull(StepSetKind.resolve(" w1_w3 "))
         assertNull(StepSetKind.resolve(""))
         assertNull(StepSetKind.resolve(null))
         assertEquals("w1_w3", StepSetKind.normalize("  W1_W3 "))
         assertEquals(
-            StepSetKind.W1W3,
+            StepSetKind.SELINUX_CRED_SECCOMP,
             StepSetKind.resolve(StepSetKind.normalize(" W1_W3")),
         )
     }

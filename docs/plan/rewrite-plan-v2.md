@@ -1,11 +1,11 @@
-# 重写计划 v2（src/core 全量重写 · 2026-10-08 前提变更）
+# 重写计划 v2（core/src 全量重写 · 2026-10-08 前提变更）
 
 > 计划类（≤16 KiB）。**自包含**。本文 = **现行唯一重写计划**；v1（[rewrite-plan.md](rewrite-plan.md)）与 P2/P4/P5 各规格件**作废但原文保留**（沿革不删，见 §0）。
 > 判据形式 = D1（黑盒/白盒 + 极端值）；权威顺序 = 守则 > AGENTS > engineering-standards/design-philosophy > analysis 文档。
 
 ## §0 前提与沿革
 
-- **前提变更（用户 2026-10-08 裁定）**：**完全重写** —— `src/core` **已清空**（提交 **`b0e9f499`**），新实现**从零**建立；**旧路线整体作废**。
+- **前提变更（用户 2026-10-08 裁定）**：**完全重写** —— `core/src` **已清空**（提交 **`b0e9f499`**），新实现**从零**建立；**旧路线整体作废**。
 - **旧路线（沿革，不删原文）**：P0 规划 → P1 禁用上层（197 → 194 个 `.disabled`）→ P2 兼容层（58 同名头 · `compat-check` 97/0）→ P4 里程碑 A/B（`attack_window` / `composition_root` / `resource_scope` / `plan_gate`）。**该路线的产物已不存在于工作树**，其文档作为**输入规格与历史证据**保留：
   [rewrite-plan.md](rewrite-plan.md)（v1）· [contract-layer-p2-spec.md](../analysis/contract-layer-p2-spec.md) 及 [A1](../analysis/contract-layer-p2-spec-annex-a1.md)/[A2](../analysis/contract-layer-p2-spec-annex-a2.md)/[A3](../analysis/contract-layer-p2-spec-annex-a3.md) · [p2-compat-gate-20261008.md](../analysis/p2-compat-gate-20261008.md) · [p2-review-20261008.md](../analysis/p2-review-20261008.md)（+[附件](../analysis/p2-review-20261008-annex.md)）· [p2-minimisation-plan.md](../analysis/p2-minimisation-plan.md) · [composition-layer-p4-spec.md](../analysis/composition-layer-p4-spec.md)（+[附件](../analysis/composition-layer-p4-spec-annex.md)）· [handoff-script-layer-p5-spec.md](../analysis/handoff-script-layer-p5-spec.md)。
 - **旧实现可取回位置（**只读取回**）**：
@@ -17,8 +17,8 @@
 
 | 项 | 现状 |
 |---|---|
-| `src/core` | **0 文件**（整树清空；`.disabled` 参考件亦已不在工作树） |
-| 构建引用 | **悬空**：`src/Makefile` **621 处** `core/` 引用 · `src/CMakeLists.txt` **24 处** |
+| `core/src` | **0 文件**（整树清空；`.disabled` 参考件亦已不在工作树） |
+| 构建引用 | **悬空**：`core/Makefile` **621 处** `core/` 引用 · `core/CMakeLists.txt` **24 处** |
 | Kotlin / 资产 | **未动**（`app/**`、`profile-core/**` 工作树 clean；profile/资产与 UI 面完整） |
 | 设计族 | **完整**：`docs/analysis/**` 62 篇 + `docs/plan/**` 4 篇（含 ADR-0001…0010、窗口约束、三端打通、R 系列规格） |
 | 攻击面 | `backend/**`、`race/**`、`terminal/**` 等**均不存在** ⇒ **任何「沿用旧结构」的假设作废** |
@@ -29,7 +29,7 @@
 
 | 阶段 | 交付 | 判据（**可证伪**） | 门禁 |
 |---|---|---|---|
-| **A0 骨架与构建入口** | `src/core/` 目录骨架 + 最小入口（`main.cpp`）+ **`Makefile` / `CMakeLists.txt` 同批重写为新树**（不再引用旧 `core/` 路径）+ **含 P4 五文件按 git 恢复**（`contract/resource_scope.hpp` · `pipeline/attack_window.hpp` · `pipeline/composition_root.hpp` · `contract/op_registry.hpp` · `pipeline/plan_gate.hpp`；来源 = **`63a87af8`（A）+ `9b46d5b5`（B）**，两个测试件按需一并恢复） | host 构建 **EXIT=0**；**新子树编译 0 警告**；`core/` 悬空引用归零 | G1 |
+| **A0 骨架与构建入口** | `core/src/` 目录骨架 + 最小入口（`main.cpp`）+ **`Makefile` / `CMakeLists.txt` 同批重写为新树**（不再引用旧 `core/` 路径）+ **含 P4 五文件按 git 恢复**（`contract/resource_scope.hpp` · `pipeline/attack_window.hpp` · `pipeline/composition_root.hpp` · `contract/op_registry.hpp` · `pipeline/plan_gate.hpp`；来源 = **`63a87af8`（A）+ `9b46d5b5`（B）**，两个测试件按需一并恢复） | host 构建 **EXIT=0**；**新子树编译 0 警告**；`core/` 悬空引用归零 | G1 |
 | **A1 中性契约层** | `contract/`：identity/能力概念 + op token / `ParamSpec` / **句柄模型（[ADR-0010](../analysis/adr/0010-lua-cpp-resource-model.md)：`{kind,index,generation}`、有界 64、POD、无 `__gc`）** | 头可 **host 编译**；概念 `static_assert` **可失败**（证伪实验）；无第二处定义（E5） | G1 |
 | **A2 支持 / 内存 / 竞争** | `support/`（日志/时间/中性面）· `memory/`（`TargetProfile` 与几何常量）· `race/`（PI 竞争原语） | 各层**模块单测**；**窗口约束**接线（[pi-window-constraints](../analysis/pi-window-constraints.md) 白名单/禁项 + `nm` 无 `_ZTV*` + 逐退出路径回收） | G1 |
 | **A3 43499 攻击链** | `backend/cve_2026_43499/**`：W1–W3 步骤 + route 策略（`select_stack`/`tcp_zerocopy`/`multicast_waiter`） | 步骤级单测 + **窗口内零 Lua** + 参数化上界；**首次触真机** | **G2** |

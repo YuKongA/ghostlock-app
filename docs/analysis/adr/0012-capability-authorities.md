@@ -10,8 +10,8 @@
 
 | 事实 | 权威文件（位置） | 内容 |
 |---|---|---|
-| **接口声明能力**（上层包对世界的承诺） | **上层包**（`src/core/contract/`）一处 | 该接口**声明**要求各 backend 提供什么（能力名 · 语义 · 必需性） |
-| **backend 提供能力**（各 backend 实际给了什么） | **每个 backend 各一处**（`src/core/backend/<id>/`） | 该 backend **提供**了哪些能力（能力名 → 实现件路径 · 是否已接线） |
+| **接口声明能力**（上层包对世界的承诺） | **上层包**（`core/src/contract/`）一处 | 该接口**声明**要求各 backend 提供什么（能力名 · 语义 · 必需性） |
+| **backend 提供能力**（各 backend 实际给了什么） | **每个 backend 各一处**（`core/src/backend/<id>/`） | 该 backend **提供**了哪些能力（能力名 → 实现件路径 · 是否已接线） |
 
 **对拍三条（P2 更正：不是「双向相等」）** —— 要求相等会把本项目正当的中间态逼成红（例如 `kChainCatalog` 十二行里五行 `wired=false`），产生「为过测试而提前暴露」的反向压力：
 
@@ -23,7 +23,7 @@
 
 1. **本会话已连着吃到同类亏**：步集/词汇面**手抄镜像且无人对拍** ⇒ 改名后产物与枚举各说各话而无红；
 2. **能力事实散落在多处，且无处能按 backend 枚举能力名**（评审逐个核过，共 7 处）：
-   `ComponentEntry{kind,token,selectable}`（`kind.hpp`，**组件级**）· `kCombinations[].wired`（**backend×route**）· `ChainSpec.wired`（`chain_catalog.hpp`，**链级**）· `OpSpec.available`（`op_registry.hpp`，**op 级**）· `kAvailableRouteMask`（**构建级、非 per-backend**）· `PlanInput.capability_present`（`plan_gate.hpp`，**一个布尔且 `src/core` 内无生产者**）· 各 manifest 的 `available` 列（上述的导出镜像）；
+   `ComponentEntry{kind,token,selectable}`（`kind.hpp`，**组件级**）· `kCombinations[].wired`（**backend×route**）· `ChainSpec.wired`（`chain_catalog.hpp`，**链级**）· `OpSpec.available`（`op_registry.hpp`，**op 级**）· `kAvailableRouteMask`（**构建级、非 per-backend**）· `PlanInput.capability_present`（`plan_gate.hpp`，**一个布尔且 `core/src` 内无生产者**）· 各 manifest 的 `available` 列（上述的导出镜像）；
 3. ADR-0004/0006 已立「identity 是组合唯一权威」⇒ 本 ADR 把**能力**这一面补上同构的一条。
 
 **P1 更正（撤回一处幻影字段）**：初稿写的「`OpSpec` 的 `armed/wired` 两位」与事实不符 —— `OpSpec` 只有 `available` 一个接线布尔，**没有 `armed`**；全仓检索 `armed` 只命中测试里的 *armed addresses*（与本议题无关）。⇒ 去重对象以上面**真实的位**为准。

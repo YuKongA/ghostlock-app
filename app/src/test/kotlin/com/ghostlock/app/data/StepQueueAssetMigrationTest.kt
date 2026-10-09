@@ -31,7 +31,7 @@ class StepQueueAssetMigrationTest {
 
     /**
      * TODO(stepset-steps.tsv): the authoritative stepset -> step sequence export
-     * (`make -C src stepset-steps-manifest`) is being produced by native-core.
+     * (`make -C core stepset-steps-manifest`) is being produced by native-core.
      * Until it lands this skeleton uses an in-test stub so the generator is
      * compilable and testable; the stub MUST be deleted when the real resource
      * appears (the batch turn reads the file through [loadStepsetSteps]).
@@ -216,7 +216,7 @@ class StepQueueAssetMigrationTest {
     }
 
     /** M3: a migrated asset must carry ONLY the queue - native rejects a backend
-     *  section holding both queue and steps (src/core/profile/glkv3_parse.cpp:407-419). */
+     *  section holding both queue and steps (core/src/profile/glkv3_parse.cpp:407-419). */
     @Test
     fun aMigratedAssetCarriesNoTokenBesideItsQueue() {
         val assets = assetsDir.listFiles { file -> file.name.endsWith(".conf") }.orEmpty()

@@ -26,12 +26,12 @@ enum class ExecutionEntry { App, Shell }
 /**
  * S4 R6b derived view: the combination token is the selection source; the
  * legacy [ExecutionMode] is computed from it for logs/compat, never the other
- * way around. 43284 is the UMH backend; W1W2 is the Shizuku step set; every
+ * way around. 43284 is the UMH backend; SELINUX_CRED is the Shizuku step set; every
  * other token is the general app-entry path.
  */
 fun CombinationSpec.toExecutionMode(): ExecutionMode = when {
     backend == BackendKind.Cve2026_43284 -> ExecutionMode.Umh
-    steps == StepSetKind.W1W2 -> ExecutionMode.Shizuku
+    steps == StepSetKind.SELINUX_CRED -> ExecutionMode.Shizuku
     else -> ExecutionMode.General
 }
 
@@ -46,9 +46,9 @@ val ExecutionMode.entry: ExecutionEntry
 /** General runs W1-W3; Shizuku stops after W1-W2; UMH is the 43284 vocabulary. */
 val ExecutionMode.steps: StepSetKind
     get() = when (this) {
-        ExecutionMode.General -> StepSetKind.W1W3
-        ExecutionMode.Shizuku -> StepSetKind.W1W2
-        ExecutionMode.Umh -> StepSetKind.PAGE_CACHE_WRITE
+        ExecutionMode.General -> StepSetKind.SELINUX_CRED_SECCOMP
+        ExecutionMode.Shizuku -> StepSetKind.SELINUX_CRED
+        ExecutionMode.Umh -> StepSetKind.PAGE_CACHE
     }
 
 /** General/Shizuku hand off to the root child; UMH forwards over the terminal. */
@@ -106,7 +106,7 @@ fun resolveExecutionSelection(mode: ExecutionMode, backend: BackendKind): Execut
     if (backend == BackendKind.Cve2026_43284 || mode == ExecutionMode.Umh) {
         ExecutionSelection(
             backend = BackendKind.Cve2026_43284,
-            steps = StepSetKind.PAGE_CACHE_WRITE,
+            steps = StepSetKind.PAGE_CACHE,
             terminal = FrontendKind.UmhForward,
         )
     } else {

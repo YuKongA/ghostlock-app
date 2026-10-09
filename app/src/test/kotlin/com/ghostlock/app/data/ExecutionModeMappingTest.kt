@@ -16,10 +16,10 @@ import org.junit.Test
  */
 class ExecutionModeMappingTest {
     @Test
-    fun generalRunsFromAppWithW1W3AndRootChild() {
+    fun generalRunsFromAppWithSELINUX_CRED_SECCOMPAndRootChild() {
         val mode = ExecutionMode.General
         assertEquals(ExecutionEntry.App, mode.entry)
-        assertEquals(StepSetKind.W1W3, mode.steps)
+        assertEquals(StepSetKind.SELINUX_CRED_SECCOMP, mode.steps)
         assertEquals(FrontendKind.RootChild, mode.terminal)
         assertEquals(BackendKind.Cve2026_43499, mode.backend)
         assertTrue(mode.isAvailable)
@@ -27,10 +27,10 @@ class ExecutionModeMappingTest {
     }
 
     @Test
-    fun shizukuRunsFromShellWithW1W2AndRootChild() {
+    fun shizukuRunsFromShellWithSELINUX_CREDAndRootChild() {
         val mode = ExecutionMode.Shizuku
         assertEquals(ExecutionEntry.Shell, mode.entry)
-        assertEquals(StepSetKind.W1W2, mode.steps)
+        assertEquals(StepSetKind.SELINUX_CRED, mode.steps)
         assertEquals(FrontendKind.RootChild, mode.terminal)
         assertEquals(BackendKind.Cve2026_43499, mode.backend)
         assertTrue(mode.isAvailable)
@@ -41,7 +41,7 @@ class ExecutionModeMappingTest {
     fun umhRunsThe43284PagecacheUmhTriple() {
         val mode = ExecutionMode.Umh
         assertEquals(ExecutionEntry.Shell, mode.entry)
-        assertEquals(StepSetKind.PAGE_CACHE_WRITE, mode.steps)
+        assertEquals(StepSetKind.PAGE_CACHE, mode.steps)
         assertEquals(FrontendKind.UmhForward, mode.terminal)
         assertEquals(BackendKind.Cve2026_43284, mode.backend)
         assertTrue(mode.isAvailable)
@@ -66,7 +66,7 @@ class ExecutionModeMappingTest {
         assertEquals(
             ExecutionSelection(
                 backend = BackendKind.Cve2026_43284,
-                steps = StepSetKind.PAGE_CACHE_WRITE,
+                steps = StepSetKind.PAGE_CACHE,
                 terminal = FrontendKind.UmhForward,
             ),
             selection,
@@ -77,18 +77,18 @@ class ExecutionModeMappingTest {
     fun umhModeResolvesTo43284EvenWithTheDefaultBackend() {
         val selection = resolveExecutionSelection(ExecutionMode.Umh, BackendKind.Cve2026_43499)
         assertEquals(BackendKind.Cve2026_43284, selection.backend)
-        assertEquals(StepSetKind.PAGE_CACHE_WRITE, selection.steps)
+        assertEquals(StepSetKind.PAGE_CACHE, selection.steps)
         assertEquals(FrontendKind.UmhForward, selection.terminal)
     }
 
     @Test
     fun fourThreeFourNineNineKeepsTheModeMapping() {
         assertEquals(
-            ExecutionSelection(BackendKind.Cve2026_43499, StepSetKind.W1W3, FrontendKind.RootChild),
+            ExecutionSelection(BackendKind.Cve2026_43499, StepSetKind.SELINUX_CRED_SECCOMP, FrontendKind.RootChild),
             resolveExecutionSelection(ExecutionMode.General, BackendKind.Cve2026_43499),
         )
         assertEquals(
-            ExecutionSelection(BackendKind.Cve2026_43499, StepSetKind.W1W2, FrontendKind.RootChild),
+            ExecutionSelection(BackendKind.Cve2026_43499, StepSetKind.SELINUX_CRED, FrontendKind.RootChild),
             resolveExecutionSelection(ExecutionMode.Shizuku, BackendKind.Cve2026_43499),
         )
     }

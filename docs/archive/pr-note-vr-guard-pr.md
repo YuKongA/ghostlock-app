@@ -43,18 +43,18 @@
 
 | 领域 | 文件 | 变更 |
 |---|---|---|
-| 行为（纯函数，host 可编译） | `src/core/session/ancillary/vr_guard.hpp` | `plan_vr_guard()`：profile → `{image_offset, width_bytes}`，缺符号或布局任一事实返回 `nullopt`（fail closed）；`enabled()` 只做 profile gate |
-| 行为（设备） | `src/core/session/ancillary/vr_guard.cpp` | 运行时 `/proc/modules` 确认 vr.ko（guide §5，不按 `uname -r`）；≤5 次尝试写 `sys_exit tp->funcs`；失败只告警 |
-| 原语注入 | `src/core/session/ancillary/ancillary_policy.hpp` | `AncillaryContext` 增加 `AncillaryZeroFn write_zero`（plain 函数指针，无虚分派） |
-| 调用点 | `src/core/session/backend/cve_2026_43499_backend.{hpp,cpp}` | `w1()` 末尾固定 `PreSpawn` 调用点；`zero_word<M>()` 适配器绑定 session 全局（见设计点 2） |
-| profile 模型 / wire | `src/core/profile/{model.h,binary.cpp}` | gate / 符号 / 布局与 multicast 调参；新字段全部落既有 padding，`sizeof`/`offsetof` 不变 |
-| 读取点 | `src/core/attack/ops.cpp`、`src/core/route/multicast_waiter_route.cpp` | 调参经 `mcast_tuning()` 读取 |
-| multicast route | `src/core/route/multicast_waiter_route.cpp` | 重复投毒 / 重复 walk；`attempts/arm_sequence/arm_hold` 默认 128/16/20000，profile 可覆盖，0 保持默认 |
+| 行为（纯函数，host 可编译） | `core/src/session/ancillary/vr_guard.hpp` | `plan_vr_guard()`：profile → `{image_offset, width_bytes}`，缺符号或布局任一事实返回 `nullopt`（fail closed）；`enabled()` 只做 profile gate |
+| 行为（设备） | `core/src/session/ancillary/vr_guard.cpp` | 运行时 `/proc/modules` 确认 vr.ko（guide §5，不按 `uname -r`）；≤5 次尝试写 `sys_exit tp->funcs`；失败只告警 |
+| 原语注入 | `core/src/session/ancillary/ancillary_policy.hpp` | `AncillaryContext` 增加 `AncillaryZeroFn write_zero`（plain 函数指针，无虚分派） |
+| 调用点 | `core/src/session/backend/cve_2026_43499_backend.{hpp,cpp}` | `w1()` 末尾固定 `PreSpawn` 调用点；`zero_word<M>()` 适配器绑定 session 全局（见设计点 2） |
+| profile 模型 / wire | `core/src/profile/{model.h,binary.cpp}` | gate / 符号 / 布局与 multicast 调参；新字段全部落既有 padding，`sizeof`/`offsetof` 不变 |
+| 读取点 | `core/src/attack/ops.cpp`、`core/src/route/multicast_waiter_route.cpp` | 调参经 `mcast_tuning()` 读取 |
+| multicast route | `core/src/route/multicast_waiter_route.cpp` | 重复投毒 / 重复 walk；`attempts/arm_sequence/arm_hold` 默认 128/16/20000，profile 可覆盖，0 保持默认 |
 | 提取器 | `tools/extract_rs/src/{symbols,report}.rs` | `__tracepoint_sys_exit`（optional）；`struct tracepoint.funcs` 由 BTF 取；`--format conf` 输出三项 |
 | profile-core / app | `NativeProfile.kt`、`ProfileResolver.kt`、`MulticastConfig.kt`、编辑器（`AndroidProfileConfigController`/`FieldLabels`）、往返测试、内置 profile + `index.conf` | 三字段读写与白名单；multicast `attempts/arm_sequence/arm_hold` 的 Kotlin 镜像补齐（原先只存在于 native 字段表），并收录进编辑器（换路由时作为占位播种、补标签）与范围校验（8/8/16 位，越界上报而不是被类型转换绕回）；新增 iQOO 12（`6.1.145-android14-11-maybe-dirty`）内置条目 |
 | 修复 1 | `profile-core/.../ProfileMerger.kt` | 合并基准改为深拷贝共享 execution 预设（见下节） |
 | 修复 2 | `../../app/src/test/resources/remote-main-6x-offsets.json`、`ProfileMigrationEquivalenceTest.kt` | 新内置进入 remote/main 迁移夹具（实测值、嵌套 `route` 声明）；夹具尺寸断言 52 → 53 |
-| 主机测试 | `../../src/core/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
+| 主机测试 | `../../core/src/tests/ancillary_test.cpp` | gate 开/关、fail-closed plan、目标算术 |
 | 计划 / 证据 | `docs/archive/README.md（已归档计划索引）` | 计划、反汇编核对记录、真机门禁 |
 
 ## 对评审的回应（全部已修复）
@@ -134,9 +134,9 @@
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| 主机测试 | `make -C src native-host-tests` | **25/25 PASS**；`tcp_zerocopy_route_test` 因 AArch64 `yield` 汇编在 x86 主机上不可构建，`deff0b1b` 基线上同样失败，非本 PR 引入 |
-| NDK 构建 | `make -C src ghostlock`（ONDK r30.1） | 0 告警（二进制 md5 `02f2be01`） |
-| lint | `make -C src lint-tidy` | rc=0，用户代码 0 findings |
+| 主机测试 | `make -C core native-host-tests` | **25/25 PASS**；`tcp_zerocopy_route_test` 因 AArch64 `yield` 汇编在 x86 主机上不可构建，`deff0b1b` 基线上同样失败，非本 PR 引入 |
+| NDK 构建 | `make -C core ghostlock`（ONDK r30.1） | 0 告警（二进制 md5 `02f2be01`） |
+| lint | `make -C core lint-tidy` | rc=0，用户代码 0 findings |
 | 反汇编核对 | `tools/cmp_disasm.py <baseline> build/native/ghostlock` | 见下 |
 | Rust | `cargo test --release`（extract_rs） | 34/34；`--format conf` 对本机 boot.img 复核输出 `vr_sys_exit_tp=37532032`、`tracepoint_funcs=64` |
 | Kotlin | `./gradlew :profile-core:test :app:testDebugUnitTest` | 全绿：**80 app 测试 + 17 profile-core**（含新增 vr.ko 往返夹具、multicast 调参键向量，及上节两处修复的回归） |

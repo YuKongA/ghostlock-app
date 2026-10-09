@@ -9,11 +9,11 @@
 - **唯一迁移点**：Kotlin `LegacyProfileConverter`（legacy `1`/缺键 → 3 并记诊断；其它值一律拒绝）。
 - native 只认 3；wire v2 已删除；extractor **只产出 3**（`--format conf` **同批产出新形状**）。
 - `profile-legacy/*.conf` 是 **v1 输入夹具**，**故意保留旧形状**。
-- 字段权威：`make -C src profile-manifest-v3` → `profile-manifest-v3.tsv`（列：`owner / path / wire / required / default / source / doc`）。
-- **如何查字段**（不要把权威抄进正文）：`grep '^cve_2026_43499' app/src/test/resources/profile-manifest-v3.tsv`（或 `^countermeasure`、`^backend`），重生成命令 `make -C src profile-manifest-v3`（两份逐字节一致）。本文**刻意只写结构、搬迁与门禁**，不列字段枚举。注意 manifest 的 `required` 列表示「**无条件必需**」；**条件性（如「选中该档时必需」）属校验器语义，不得写进该列**。
+- 字段权威：`make -C core profile-manifest-v3` → `profile-manifest-v3.tsv`（列：`owner / path / wire / required / default / source / doc`）。
+- **如何查字段**（不要把权威抄进正文）：`grep '^cve_2026_43499' app/src/test/resources/profile-manifest-v3.tsv`（或 `^countermeasure`、`^backend`），重生成命令 `make -C core profile-manifest-v3`（两份逐字节一致）。本文**刻意只写结构、搬迁与门禁**，不列字段枚举。注意 manifest 的 `required` 列表示「**无条件必需**」；**条件性（如「选中该档时必需」）属校验器语义，不得写进该列**。
 - **根级标量走「根段」承载**（`document.hpp` 的 `kRootSection`，空段名），使 owner bind 的**唯一取值路径** `find_value(section, key)` 与根键**同构**——两处按 section 拷贝的过滤副本**不会漏拷**（漏一处即静默 `kernel_major=0`）。**勿改回具名成员**。
 - **`wire_only` FieldSpec**（`kmi` / `lkm_path` / `carrier_path`）：**wire/解码接受，但不进 manifest** ⇒ App 的**可写面不含**它们。关键区分：**manifest = 「profile 可写面」，不是 wire 面**；wire 面由 native 的解码/绑定路径定义。
-- **物证（2026-10-05）**：manifest **114 行**（10 头 + **104 字段**）、两份逐字节一致 sha256 **`68bd7a506a210077`**、裸跑 `ok (104 fields, both copies)`、三个 wire-only 键 **0 命中**；门禁 host `EXIT=0`（告警 9 基线、58 tests、防火墙 `180/4/4/0/0`）· lint 0 · NDK 0；**六条负例**在 `src/core/tests/profile_v3_test.cpp:195-242`（`common.*`、`countermeasure.*`、段内 `kernel_major`、旧 `platform.abi.*`、旧扁平 43284 键 ⇒ 拒）。
+- **物证（2026-10-05）**：manifest **114 行**（10 头 + **104 字段**）、两份逐字节一致 sha256 **`68bd7a506a210077`**、裸跑 `ok (104 fields, both copies)`、三个 wire-only 键 **0 命中**；门禁 host `EXIT=0`（告警 9 基线、58 tests、防火墙 `180/4/4/0/0`）· lint 0 · NDK 0；**六条负例**在 `core/src/tests/profile_v3_test.cpp:195-242`（`common.*`、`countermeasure.*`、段内 `kernel_major`、旧 `platform.abi.*`、旧扁平 43284 键 ⇒ 拒）。
 
 ## 1. 数据流
 
@@ -140,10 +140,10 @@ fail-closed（整份拒绝，绝不静默降级）：
 ## 11. 命令与对拍测试
 
 ```sh
-make -C src profile-manifest-v3      # 重新生成字段表（两份）
-make -C src combination-manifest     # token 白名单导出
-make -C src vocabulary-manifest      # 组件词汇导出
-make -C src native-host-tests        # host 测试（含 manifest/对拍断言）
+make -C core profile-manifest-v3      # 重新生成字段表（两份）
+make -C core combination-manifest     # token 白名单导出
+make -C core vocabulary-manifest      # 组件词汇导出
+make -C core native-host-tests        # host 测试（含 manifest/对拍断言）
 ./gradlew :profile-core:test :app:testDebugUnitTest
 ```
 

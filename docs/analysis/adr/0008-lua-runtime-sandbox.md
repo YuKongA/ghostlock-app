@@ -26,7 +26,7 @@
 
 ## 决策（Decision）
 
-1. **采用 Lua 5.5.1 作为运行期脚本引擎**（2026-10-08 裁定；**替代**原记的 5.4.7，沿革保留），**vendored 到 `src/lib/lua/`**（**已就位**，含 `PROVENANCE.md`）（与 `src/lib/mpack` 同法）；**不引入 `luac`** 跨平台工具链（构建逻辑进 Gradle KTS、不依赖 PATH）。
+1. **采用 Lua 5.5.1 作为运行期脚本引擎**（2026-10-08 裁定；**替代**原记的 5.4.7，沿革保留），**vendored 到 `src/lib/lua/`**（**已就位**，含 `PROVENANCE.md`）（与 `core/lib/mpack` 同法）；**不引入 `luac`** 跨平台工具链（构建逻辑进 Gradle KTS、不依赖 PATH）。
 2. **保留源码解析**（攻击前解析一次）。
    - **修订（2026-10-08）**：执行模型由「两遍」**修订为「单遍 stage」**：脚本窗口外跑一次 ⇒ **staged 计划** ⇒ gate 校验 **staged** ⇒ **按相位执行**；**逐调用边界校验保留**（见 [设计 §3](../analysis/lua-surface-design.md)）。
 3. **沙箱白名单**：**不注册** `io`/`os`/`package`/`debug`/`load`/`dofile`/`require`；**脚本可见面 = 7 条**（`backend`/`close`/`writeop`/`copyop`/`settle`/`handoff`/`cfg`；**权威见 [lua-surface-design](../lua-surface-design.md) §1，本 ADR 不重复**）；**沿革**：曾为 `op(token)/probe/handle/slot/require_cap` 形态（已废）。
@@ -37,7 +37,7 @@
 7. **gate 位置**：`plan_gate` 在 `state_from` 之后、`Backend::run` 之前；**10 条静态原因**（含 `executor-unavailable`）（unknown-op / op-not-available / route-not-available / geometry-missing / capability-missing / order-violation / hash-mismatch / param-invalid / seam-in-pi-window）；`dirty-failure` 属**运行期终止语义**，不进 gate。
 8. **`-fno-rtti` 保持**；Lua 只在**窗口外**被调用（绑定层落 `script/`，登记为受限层）。
 
-> **旧树引用说明**：本 ADR 中 `glkv3.hpp:`/`plan_gate`/`state_from`/`Backend::run` 等 `file:line` 属**历史引用**（文件已随 v2 的 `src/core` 重写作废）；语义仍作设计输入，位置以 A1/A6 新树为准。
+> **旧树引用说明**：本 ADR 中 `glkv3.hpp:`/`plan_gate`/`state_from`/`Backend::run` 等 `file:line` 属**历史引用**（文件已随 v2 的 `core/src` 重写作废）；语义仍作设计输入，位置以 A1/A6 新树为准。
 
 ## 后果（Consequences）
 

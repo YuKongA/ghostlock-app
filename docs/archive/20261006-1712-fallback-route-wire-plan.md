@@ -5,15 +5,15 @@
 
 ## 现状与基线
 
-- fallback 派发已是 native 通用逻辑（`src/core/route/route_policy.hpp:237-249`）：主 route
+- fallback 派发已是 native 通用逻辑（`core/src/route/route_policy.hpp:237-249`）：主 route
   以 `ROUTE_FALLBACK_SAFE` 干净失败且 profile 声明了 fallback 时，按
   `profile.fallback_route()` 调 `run_policy_by_kind`。fallback 的 select 分支在
-  `src/core/route/select_stack_route.cpp:507` 读 `profile.select_stack_layout()`，即
-  `geometry.pselect_waiter_shift`（`src/core/profile/model.h:118-124`）。
+  `core/src/route/select_stack_route.cpp:507` 读 `profile.select_stack_layout()`，即
+  `geometry.pselect_waiter_shift`（`core/src/profile/model.h:118-124`）。
 - wire v2 只承载单一 route 段：
   - native `parse_v2` 只接受 `route_section_name(out->route)` 的段
-    （`src/core/profile/binary.cpp:297-307`）；
-  - native `serialize` 只写 active route 段（`src/core/profile/binary.cpp:347-352`）；
+    （`core/src/profile/binary.cpp:297-307`）；
+  - native `serialize` 只写 active route 段（`core/src/profile/binary.cpp:347-352`）；
   - Kotlin 解码只应用 active route 段（`NativeProfile.kt:325-329`），构建只构造 active
     route 的 config（`NativeProfile.kt:348`）。
 - profile 声明层已经支持 fallback：
@@ -54,8 +54,8 @@
 
 | 文件 | 改动 | 理由 |
 |---|---|---|
-| `src/core/profile/binary.cpp` | `parse_v2` 改为两遍：先解析并应用非 route 段（含 `meta.fallback_route`），缓存 route 段入口；再应用名字等于 active 或 fallback route 的段。`serialize` 的段过滤改为"active 或 `meta.fallback_route`"，两者不同才写 fallback 段 | 承载并落盘 fallback geometry，其余 route 段仍旧忽略 |
-| `src/core/tests/profile_binary_test.cpp` | 新增 active=tcp + `fallback_route=select` 的文档设置 `pselect_waiter_shift` 断言；把现有"another section is ignored"改为"既非 active 也非 fallback 的段被忽略"；round-trip 覆盖两段 | wire 固定向量 |
+| `core/src/profile/binary.cpp` | `parse_v2` 改为两遍：先解析并应用非 route 段（含 `meta.fallback_route`），缓存 route 段入口；再应用名字等于 active 或 fallback route 的段。`serialize` 的段过滤改为"active 或 `meta.fallback_route`"，两者不同才写 fallback 段 | 承载并落盘 fallback geometry，其余 route 段仍旧忽略 |
+| `core/src/tests/profile_binary_test.cpp` | 新增 active=tcp + `fallback_route=select` 的文档设置 `pselect_waiter_shift` 断言；把现有"another section is ignored"改为"既非 active 也非 fallback 的段被忽略"；round-trip 覆盖两段 | wire 固定向量 |
 
 ### Kotlin / profile-core
 
@@ -107,15 +107,15 @@ flowchart LR
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| 1 Native | `make -C src native-host-tests` | 新增双段固定向量通过 |
+| 1 Native | `make -C core native-host-tests` | 新增双段固定向量通过 |
 | 2 Kotlin | `./gradlew :app:testDebugUnitTest` | 双段 round-trip、TB375FC fallback 值通过 |
 | 3 导出 | `./gradlew exportProfiles` | TB375FC `.bin` 含 `route.select_stack` |
-| 4 构建 | `./gradlew :app:assembleDebug` + `make -C src ghostlock` | 零警告 |
+| 4 构建 | `./gradlew :app:assembleDebug` + `make -C core ghostlock` | 零警告 |
 | 5 真机 | 冷机 TB375FC route tcp→fallback select 门禁 | route 命中、fallback_used、写验证通过（若设备可用） |
 
 ## 明确保留
 
-- `src/core/kernelsnitch/**`、`LegacyProfileConverter.kt` 的 v1 转换。
+- `core/src/kernelsnitch/**`、`LegacyProfileConverter.kt` 的 v1 转换。
 - route 段字段表、`kRouteCatalog`、`.conf` 中的键名与顺序。
 - 攻击阶段与资源回收顺序（本计划不触攻击关键路径代码）。
 

@@ -2,7 +2,7 @@
 
 > 级别：**攻击关键路径改动** ⇒ 按 AGENTS 需真机门禁 + 本记录 ✓
 > 设备 `QV770MFGJ1`（A301SO · Android 15 · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`）
-> 代码：`src/core/backend/cve_2026_43499/leak/{snitch_seam,snitch_seam_linux,snitch_scan,snitch_child,snitch_run,leak_search,leak_walk,snitch_region,snitch_setup,snitch_tuning,snitch_policy}`
+> 代码：`core/src/backend/cve_2026_43499/leak/{snitch_seam,snitch_seam_linux,snitch_scan,snitch_child,snitch_run,leak_search,leak_walk,snitch_region,snitch_setup,snitch_tuning,snitch_policy}`
 > 提交：`3f1453b3`（搜索端到端）· `014d9250`（按名唤醒）· `56ed2f9c`（唤醒协议）· `8faf7a45`（搜索↔页准备接合）
 
 ## 1 三支真机探针（每支**有界**运行 ✓ —— 上一轮教训已落到工具形态 ✓）
@@ -56,7 +56,7 @@ snitch run probe: PASS          EXIT=0
 ## 3 复现命令
 
 ```sh
-make -C src snitch-seam-probe snitch-fork-probe snitch-run-probe
+make -C core snitch-seam-probe snitch-fork-probe snitch-run-probe
 adb -s QV770MFGJ1 push build/native/<probe> /data/local/tmp/
 adb -s QV770MFGJ1 shell 'timeout 40 /data/local/tmp/<probe>; echo EXIT=$?'
 ```

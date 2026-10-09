@@ -11,7 +11,7 @@
 | **`AttackWindow`** | `pipeline/pipeline.hpp.disabled` | **窗口资源唯一所有者**；**RAII 每条退出路径回收**；`static_assert` 挂载点 | 不解释脚本、不读配置、不做策略选择 |
 
 - **依据**：`b1b2` §B1.1/§B2.2 + R2（`orchestrator` → `composition_root`，顺序归计划）。
-- **窗口作用域证据**：`src/core/backend/cve_2026_43499_state.hpp:25-40` —— `profile` / `addresses` / `heap` / `race` / `victim` / `parked_victim` / `parked_victim_cmd` 均为 **state 成员**；其构造/析构沿用旧 `pipeline.hpp:26-46` 的 **RAII guard** 形态（`state_construct` → … → `state_destroy`）。
+- **窗口作用域证据**：`core/src/backend/cve_2026_43499_state.hpp:25-40` —— `profile` / `addresses` / `heap` / `race` / `victim` / `parked_victim` / `parked_victim_cmd` 均为 **state 成员**；其构造/析构沿用旧 `pipeline.hpp:26-46` 的 **RAII guard** 形态（`state_construct` → … → `state_destroy`）。
 - **判别标准**：资源**在 waiter 存活期内可达**且**生命周期由宿主决定**（脚本只持**句柄**）⇒ **窗口作用域**；op 内临时对象 ⇒ op 作用域；Lua 表/字符串 ⇒ 脚本作用域（[ADR-0010](adr/0010-lua-cpp-resource-model.md)）。
 - **`static_assert` 挂载点**：`AttackWindow` 是所有窗口期不变量的**唯一**落点（槽尺寸、资源不重叠、退出路径完整性），不得分散到脚本层或 backend。
 

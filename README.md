@@ -25,7 +25,7 @@ The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time. Sel
 adb/shell has no seccomp filter, so W3 is skipped - handy for quick verification:
 
 ```powershell
-make -C src ghostlock
+make -C core ghostlock
 ./gradlew exportProfiles
 adb push build/native/ghostlock /data/local/tmp/ghostlock
 adb push build/profile/<release>.bin /data/local/tmp/profile.bin
@@ -153,4 +153,4 @@ is redistributed here and reusing it upstream requires their permission:
 
 ### Vendored libraries
 
-- [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`src/lib/mpack/`](src/lib/mpack/) with its LICENSE kept alongside.
+- [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`core/lib/mpack/`](core/lib/mpack/) with its LICENSE kept alongside.

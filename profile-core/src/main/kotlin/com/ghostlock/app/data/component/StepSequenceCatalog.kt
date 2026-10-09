@@ -6,10 +6,10 @@ import com.ghostlock.app.data.StepSetKind
  * stepset -> ordered step sequence, for read-only consumers (UI).
  *
  * SINGLE AUTHORITY: the sequence is READ from the native-exported manifest
- * [RESOURCE] (runtime copy in this module), which `make -C src
+ * [RESOURCE] (runtime copy in this module), which `make -C core
  * stepset-steps-manifest` regenerates from `contract/step_catalog.hpp` and the
  * executor orders in `backend/cve_2026_43499/steps.hpp`; the native host test
- * `src/core/tests/stepset_steps_manifest_test.cpp` pins that same text and both
+ * `core/src/tests/stepset_steps_manifest_test.cpp` pins that same text and both
  * committed copies must stay byte-identical. No step name is written here: the
  * manifest is the authority for membership AND order (`step_index` ascending).
  */
@@ -59,7 +59,7 @@ object StepSequenceCatalog {
         val mine = rows.filter { it.stepset == kind.token }
         require(mine.isNotEmpty()) {
             "the stepset manifest has no rows for " + kind.token + " (" + RESOURCE +
-                "); regenerate with: make -C src stepset-steps-manifest"
+                "); regenerate with: make -C core stepset-steps-manifest"
         }
         return mine.sortedBy { it.index }.map { it.step }
     }

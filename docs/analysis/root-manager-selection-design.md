@@ -10,7 +10,7 @@
 
 现状问题：
 
-1. **App 无法选择**：`contract::RootProgramKind` 早已存在，但 wire 侧**零键**（`src/core/profile/**` 与 Kotlin 侧 grep `root_program` 均 0 命中）——生产路径上该枚举**除测试外无人使用**；
+1. **App 无法选择**：`contract::RootProgramKind` 早已存在，但 wire 侧**零键**（`core/src/profile/**` 与 Kotlin 侧 grep `root_program` 均 0 命中）——生产路径上该枚举**除测试外无人使用**；
 2. **运行时硬编码**：43284 的 `set_root_program()` 把 argv 拼成 `$GHOSTLOCK_HOME/ksud` 且 `kind = KernelSU`，即「选择」实际被写死；
 3. **FolkPatch 是已声明的空壳**：枚举里有值、代码里无机制、包名/入口均未知；
 4. 因此今天的「默认档」= 隐式的 KernelSU；需求是**把隐式变显式**，并给未实现项一个诚实的「计划中」位。
@@ -25,12 +25,12 @@
 
 | # | 事实 | 依据 |
 |---|---|---|
-| 1 | `enum class RootProgramKind : uint8_t { KernelSU = 0, FolkPatch = 1, Custom = 2 }` 与 `struct RootProgram{kind; std::array<char,192> argv; set_argv(); argv_view();}` 已在 contract，注释原文：「Which root program the App selected for this session (single value). The program is a parameter, never a compile-time binding; both the root_child and the umh_forward terminal can launch it.」 | `src/core/contract/identity.hpp:366-380`（枚举 `:368`，结构 `:376`，`kArgvCapacity = 192` `:377`） |
-| 2 | **wire 侧零键**：App 无法选择（选择只能是文档，不能是 CLI/编译期） | 本批 grep：`src/core/profile/**`、`profile-core/src/main`、`app/src/main` 的 `root_program` 命中数 = 0 |
-| 3 | 运行时硬编码：`set_root_program()` 以 `$GHOSTLOCK_HOME/ksud` 构造 argv 并置 `kind = KernelSU`（注释：Kotlin 入口会把 ksud 拷到该路径） | `src/core/backend/cve_2026_43284/execution_binding.cpp:49-56` |
-| 4 | 43284 走 ksud late-load：`build_late_load_command(root_program, package_name, late_load_args, selinux_exec_context, UmhCommand&, …)` → `{program, "late-load", flags…}`；注释：**无 shell、不做字符串拼接**、长度有界、控制字节受检 | `src/core/backend/cve_2026_43284/lkm/lkm_image.hpp:85-92`；调用点 `backend_terminal.cpp:145-150` |
+| 1 | `enum class RootProgramKind : uint8_t { KernelSU = 0, FolkPatch = 1, Custom = 2 }` 与 `struct RootProgram{kind; std::array<char,192> argv; set_argv(); argv_view();}` 已在 contract，注释原文：「Which root program the App selected for this session (single value). The program is a parameter, never a compile-time binding; both the root_child and the umh_forward terminal can launch it.」 | `core/src/contract/identity.hpp:366-380`（枚举 `:368`，结构 `:376`，`kArgvCapacity = 192` `:377`） |
+| 2 | **wire 侧零键**：App 无法选择（选择只能是文档，不能是 CLI/编译期） | 本批 grep：`core/src/profile/**`、`profile-core/src/main`、`app/src/main` 的 `root_program` 命中数 = 0 |
+| 3 | 运行时硬编码：`set_root_program()` 以 `$GHOSTLOCK_HOME/ksud` 构造 argv 并置 `kind = KernelSU`（注释：Kotlin 入口会把 ksud 拷到该路径） | `core/src/backend/cve_2026_43284/execution_binding.cpp:49-56` |
+| 4 | 43284 走 ksud late-load：`build_late_load_command(root_program, package_name, late_load_args, selinux_exec_context, UmhCommand&, …)` → `{program, "late-load", flags…}`；注释：**无 shell、不做字符串拼接**、长度有界、控制字节受检 | `core/src/backend/cve_2026_43284/lkm/lkm_image.hpp:85-92`；调用点 `backend_terminal.cpp:145-150` |
 | 5 | 包名权威：`default_root_package(kind)` = KernelSU → `me.weishu.kernelsu`，**其它 kind → 空**（从不猜包名） | `backend/cve_2026_43284/schema.hpp:68-77`（`kCve2026_43284RootPackageKernelSU` + `root_package_convention`）、`lkm/lkm_image.cpp:346-348` |
-| 6 | 兼容头：`terminal/root_program.hpp` 只是 `contract::RootProgram(Kind)` 的别名转发 | `src/core/terminal/root_program.hpp` |
+| 6 | 兼容头：`terminal/root_program.hpp` 只是 `contract::RootProgram(Kind)` 的别名转发 | `core/src/terminal/root_program.hpp` |
 
 ### 2.1 外部事实（Lead 核实；引 URL；不在本仓库代码内）
 
@@ -52,7 +52,7 @@
 **既有模式（照抄，不另创）**：
 
 - **「计划中」token**：注册进白名单、解析接受、**选择门禁拒绝**、UI 置灰并给原因（现有 `rootchild (计划中)` 即此形态）；
-- **可用性矩阵由 native 导出、Kotlin 只消费**：`stage_availability`（`src/core/plugin/schema.hpp` 的 `RuntimeBackend`/`stage_available_on()` + `plugin/probe.cpp` 的 header 第 5 行）是范本；
+- **可用性矩阵由 native 导出、Kotlin 只消费**：`stage_availability`（`core/src/plugin/schema.hpp` 的 `RuntimeBackend`/`stage_available_on()` + `plugin/probe.cpp` 的 header 第 5 行）是范本；
 - **制品导入**：no-backup 目录 + 本地 SHA-256 + 原子落盘（插件 P1 那套）。
 
 ## 3. 方向（Lead 已定，逐条落实）
@@ -103,7 +103,7 @@ payload {
 | **默认档 = 「启动 root 管理器」+ 子菜单（检测列表）** | 「系统默认 KernelSU（默认）」或「检测到的其它受支持管理器」；**系统默认 = 不发射任何 `payload` 键**（逐字节不变）；**未安装的不列出/置灰 + 具名原因**，不得让用户选不存在的目标 | 🚧 **在途**（UI 侧；`<queries>` 已在 manifest 声明） |
 | **wire 发射（`payload.tier = "root"` + `payload.root.*`）** | native 当前只接受 `tier ∈ {exec, script, ko}` ⇒ **UI 已可选 ≠ 已发射**；本轴 P1 的 wire 属**下一批 native** | ⏳ **待 native** |
 
-**包名白名单硬规则（只允许有仓库/官方证据的包名）**：已核实起点 = `src/core/terminal/root_script.cpp:40-50`（`me.weishu.kernelsu.pr*` / `me.weishu.kernelsu-*` / `com.resukisu.resukisu*` / `com.kowx712.supermanager*`）+ `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 检测需 **`<queries>`**（`AndroidManifest.xml` 已声明 5 项）；**未核实不得添加**（与「分支包名不得猜」同规）；FolkPatch `me.yuki.folk` 属 **P2**。
+**包名白名单硬规则（只允许有仓库/官方证据的包名）**：已核实起点 = `core/src/terminal/root_script.cpp:40-50`（`me.weishu.kernelsu.pr*` / `me.weishu.kernelsu-*` / `com.resukisu.resukisu*` / `com.kowx712.supermanager*`）+ `lkm_image.cpp` 的 `me.weishu.kernelsu`；Android 11+ 检测需 **`<queries>`**（`AndroidManifest.xml` 已声明 5 项）；**未核实不得添加**（与「分支包名不得猜」同规）；FolkPatch `me.yuki.folk` 属 **P2**。
 
 **一等检查：管理器「是否存在、是否可启动」（用户第三条；P1 就做）**
 
@@ -187,7 +187,7 @@ payload {
 - 范围：`payload.root.{kind,manager,argv}` 的 wire 校验与绑定；`kind=kernelsu`（**默认按 ksud 走**，`manager` 可选，行为与今天等价）与 `kind=custom`（用户指定程序/argv，**不猜任何包名**）；native 把 kind/argv 传给**既有** late-load 构造（custom 同样走 argv 直传）；Kotlin 单选 + 发射（仅用户显式选择时）+ 矩阵消费；
 - **存在性/可启动检查（P1 必做）**：App 预检（包是否安装、`ksud`/路径是否可执行、哈希是否匹配）+ **native 绑定前复核**（fail-closed + 具名原因），口径见 §4.1；
 - **无 `payload` 段逐字节不变**；
-- 门禁：`make -C src native-host-tests` + NDK 零告警 + `make -C src lint-tidy` 0 + Gradle 测试；
+- 门禁：`make -C core native-host-tests` + NDK 零告警 + `make -C core lint-tidy` 0 + Gradle 测试；
 - **真机**（攻击关键路径门槛）：43284 全链 **无 payload 逐字节回归** + **显式 kernelsu 等价**（argv 一致）+ 43499 冷启回归；AVB 12/0；按 `device-gates/` 归档。
 
 **P2 · 计划中（置灰）：`folkpatch`（KernelPatch 模块加载）**
@@ -220,6 +220,6 @@ payload {
 
 - `docs/analysis/terminal-payload-tiers-design.md`（r2，`c335aabc`）——payload 三档与统一失败语义；
 - `docs/analysis/contract-design.md` §3.15——payload owner 契约（本设计的落点）；
-- 代码：`src/core/contract/identity.hpp:366-380`、`backend/cve_2026_43284/execution_binding.cpp:49-56`、`backend/cve_2026_43284/lkm/lkm_image.hpp:85-92`、`backend/cve_2026_43284/lkm/lkm_image.cpp:346-348`、`backend/cve_2026_43284/schema.hpp:68-77`；
+- 代码：`core/src/contract/identity.hpp:366-380`、`backend/cve_2026_43284/execution_binding.cpp:49-56`、`backend/cve_2026_43284/lkm/lkm_image.hpp:85-92`、`backend/cve_2026_43284/lkm/lkm_image.cpp:346-348`、`backend/cve_2026_43284/schema.hpp:68-77`；
 - 外部：FolkPatch 仓库 <https://github.com/LyraVoid/FolkPatch>（README 原文 + `app/build.gradle.kts` 的 `applicationId`/`namespace`，见 §2.1 E1/E2）；**FolkPatch 越狱模式官方文档 <https://fp.mysqil.com/guide/jailbreak/>**（E4：KernelPatch 模块 / `apd insmod` / `/proc/kallsyms` / modversions+vermagic / `init_module` / 软重启 / Permissive 前置；本稿已 fetch 全文核对）；KernelSU-Next / SukiSU-Ultra / ReSukiSU 的 Gradle 路径核实尝试**均 404**（§2.1 E3，记录「为什么不能猜」）；
-- 模式先例：`stage_availability`（`src/core/plugin/schema.hpp` + `plugin/probe.cpp`）、插件导入（no-backup + SHA-256 + 原子落盘）。
+- 模式先例：`stage_availability`（`core/src/plugin/schema.hpp` + `plugin/probe.cpp`）、插件导入（no-backup + SHA-256 + 原子落盘）。

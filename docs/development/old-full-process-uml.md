@@ -493,7 +493,7 @@ classDiagram
 >
 > **vr_guard 两期（用户裁决 + `native-plugin` 审计 + 本批实现；沿革不删）**：
 > **(b) profile 面（已完成 `b55708a8`）**——`common.vr_guard` 与 `countermeasure.vivo_vr_guard.tracepoint_funcs`（含 wire/manifest 行）删除 ⇒ 无写入者 ⇒ `vr_guard_enabled()` 恒 false ⇒ `steps.cpp` 两处 `VivoPluginPolicies::apply(...)` 可证明 no-op；**`countermeasure` owner 一并移除**；`defex` 已完成删除（`a68e2d5a`）。
-> **(a) 删除 vivo 代码（已完成 = `4a182217`，**10 文件**）**——`src/core/platform/vivo/**` **8 文件** + `platform_vivo_test.cpp` + `host/ancillary_stub.cpp` 删除，`steps.cpp` **−95 行**（两处 include、两个祖先块、两个只为它们存在的私有件）⇒ **`platform::vivo` 与 `VivoPluginPolicies` 已不存在**。
+> **(a) 删除 vivo 代码（已完成 = `4a182217`，**10 文件**）**——`core/src/platform/vivo/**` **8 文件** + `platform_vivo_test.cpp` + `host/ancillary_stub.cpp` 删除，`steps.cpp` **−95 行**（两处 include、两个祖先块、两个只为它们存在的私有件）⇒ **`platform::vivo` 与 `VivoPluginPolicies` 已不存在**。
 > **Class 图本批无节点/关系可删**：本图**从未列出** `platform::vivo` / `VivoPluginPolicies` 节点（上批已核并注明「不要提前删节点」）；**状态机与 Sequence 也未提及 `vr_guard` 阶段或 `w2b`** ⇒ 本批只更新注记（**已核：全图仅本注与 §1 的 IPO 注提到 vr_guard**）。
 > **非行为差异（必须记录，避免后人误判日志丢失）**：`w2b` 的 **run-state 标记随祖先块删除** ⇒ **运行日志的 stage 轨迹少一项**（不再有 `enter/complete("w2b")`）；**行为无变化**——字段无写入者 ⇒ policy `enabled()` 恒 false ⇒ **零执行字节**。**证据**：host `EXIT=0`（告警 **9** 基线、**58 tests**、防火墙 **`174 files, 4/4/0/0`（182 → 174）**）· lint **0** · NDK **0**；**真机门禁 PASS 已归档**：`docs/analysis/device-gates/vrguard-a-20261006/`——`child is root!` → handoff `sent=1` → **`KernelSU ready`**，route `success=1`，**设备未重启**；**三条偏差**：① 第一次跑设备重启 = **`KERNEL-PANIC-01` 一次性**（冷机复跑 PASS）② **锁屏 ⇒ 日志落 `/data/local/tmp`** ③ **`w2b` 标记少一项 = 预期**。
 

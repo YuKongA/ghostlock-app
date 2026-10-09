@@ -3,7 +3,7 @@
 > **元信息**
 >
 > - 来源：调研任务（用户直接指令），2026-10-06。
-> - 写范围：**仅新增本文件**。未改动 `app/src/main/**`、`app/src/test/**`、`app/build.gradle.kts`、`profile-core/**`、`src/core/**`；未跑 Gradle。
+> - 写范围：**仅新增本文件**。未改动 `app/src/main/**`、`app/src/test/**`、`app/build.gradle.kts`、`profile-core/**`、`core/src/**`；未跑 Gradle。
 > - 证据基线（行号仅作定位提示，这些文件正被其他 writer 修改）：
 >   - `app/src/main/kotlin/com/ghostlock/app/ui/GhostlockUI.kt` @ `4e0ff25a174c7d7ee95528b8bba401a0e5b9c002`
 >   - `app/src/main/kotlin/com/ghostlock/app/ui/AdvancedUI.kt` @ `d34b42d4d05b533367ed9bc9803aaeaeb7176a43`

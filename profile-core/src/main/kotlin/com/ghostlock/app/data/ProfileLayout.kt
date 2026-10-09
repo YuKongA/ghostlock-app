@@ -58,7 +58,7 @@ import com.ghostlock.app.data.route.RouteKind
  * authority).
  *
  * @property steps display tokens for the normalised queue elements: `step` for a
- *   `{ step = "w1" }` element, `seam` (or `seam@stage`) for a
+ *   `{ step = "disenforce_selinux" }` element, `seam` (or `seam@stage`) for a
  *   `{ seam = "...", stage = "..." }` element. The UI prints them; it never
  *   re-interprets the declaration.
  * @property handoff always null for now: the declaration format has no handoff

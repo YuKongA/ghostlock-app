@@ -44,12 +44,12 @@ data class CombinationSpec(
 /**
  * F4 single Kotlin authority for the combination whitelist: the native-exported
  * `combination-manifest.tsv` (runtime resource, regenerated with
- * `make -C src combination-manifest`), parsed once and never hard-coded here.
+ * `make -C core combination-manifest`), parsed once and never hard-coded here.
  *
  * Two deliberately separate operations guard the cross-language contract:
  *
  *  - [resolve] is an EXACT byte match, the same judgement as native
- *    `contract::combination_resolve` (src/core/contract/identity.hpp). It is the
+ *    `contract::combination_resolve` (core/src/contract/identity.hpp). It is the
  *    contract surface: the wire, the persisted selection and any already
  *    canonical token go through it, and a token native would reject (padded,
  *    upper-cased, unknown) resolves to null here too.
@@ -115,6 +115,12 @@ object CombinationCatalog {
             require(seen.add(token)) { "duplicate combination token: $token" }
             val backend = BackendKind.resolve(parts[1])
                 ?: error("unknown backend in combination manifest: $line")
+            /* B1: the new export spells "no route axis" as an EMPTY field (the old
+             * one carried the sentinel `none`); both are accepted so a regenerated
+             * manifest and a hand-written one agree. */
+            /* ONE spelling only (the contract's): a row without a route axis prints
+             * the sentinel `none`. Accepting a second spelling would let two readers
+             * disagree about one uncontroversial row - a high-risk shape here. */
             val route = if (parts[2] == ROUTE_NONE) {
                 null
             } else {
@@ -223,16 +229,16 @@ object CombinationCatalog {
         val normalized = normalize(stepsToken) ?: return null
         resolve(backend, normalized)?.let { return it }
         if (backend == BackendKind.Cve2026_43284) {
-            return if (normalized == StepSetKind.PAGE_CACHE_WRITE.token) {
-                fromDerived(backend, StepSetKind.PAGE_CACHE_WRITE, FrontendKind.UmhForward)
+            return if (normalized == StepSetKind.PAGE_CACHE.token) {
+                fromDerived(backend, StepSetKind.PAGE_CACHE, FrontendKind.UmhForward)
             } else {
                 null
             }
         }
         if (backend != BackendKind.Cve2026_43499) return null
         val derivedSteps = when (normalized) {
-            StepSetKind.W1W2.token -> StepSetKind.W1W2
-            StepSetKind.W1W3.token -> StepSetKind.W1W3
+            StepSetKind.SELINUX_CRED.token -> StepSetKind.SELINUX_CRED
+            StepSetKind.SELINUX_CRED_SECCOMP.token -> StepSetKind.SELINUX_CRED_SECCOMP
             else -> return null
         }
         if (route == null) return null

@@ -5,9 +5,12 @@ package com.ghostlock.app.data
  * token; the wire field (`backend.cve_2026_43499.steps`) carries [wire].
  */
 enum class StepSetKind(val token: String, val wire: UInt, val available: Boolean = true) {
-    W1W2("w1_w2", 1u),
-    W1W3("w1_w3", 2u),
-    PAGE_CACHE_WRITE("pagecache_write", 3u),
+    /* B1 rename: the tokens carry the chain catalogue's own spelling (native
+     * contract::kChainCatalog, exported to combination-manifest.tsv); the enum
+     * CONSTANT names stay as the historical ids. */
+    SELINUX_CRED("selinux_cred", 1u),
+    SELINUX_CRED_SECCOMP("selinux_cred_seccomp", 2u),
+    PAGE_CACHE("pagecache", 3u),
     ;
 
     companion object {

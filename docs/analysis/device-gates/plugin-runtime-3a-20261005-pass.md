@@ -76,7 +76,7 @@ su -c 'rm -f /dev/df /dev/dfm0 /dev/dfm1 /data/local/tmp/.ghostlock_lkm_ok /data
 
 ## 仓内 gate 工具（本批新增）
 
-`src/core/tests/gate_doc_tool.cpp` + `make -C src plugin-gate-doc` → `build/host-test/plugin_gate_doc`（**TOOL，不进 `NATIVE_HOST_TESTS`**）：
+`core/src/tests/gate_doc_tool.cpp` + `make -C core plugin-gate-doc` → `build/host-test/plugin_gate_doc`（**TOOL，不进 `NATIVE_HOST_TESTS`**）：
 
 ```sh
 plugin_gate_doc --verify <doc.bin>
@@ -95,7 +95,7 @@ plugin_gate_doc --base <doc.bin> [--drop <section> <key>] [--plugin <id> <stage>
 ## 参考
 
 - 设计与用例：`docs/analysis/plugin-runtime-integration-design.md`（§11.5 用例、§11.6 准入状态）；
-- 错误码：`src/core/backend/cve_2026_43284/lkm/lkm_policy.hpp`（`LkmPolicyError`）；
+- 错误码：`core/src/backend/cve_2026_43284/lkm/lkm_policy.hpp`（`LkmPolicyError`）；
 - 既有 43284 生产门禁：`docs/analysis/device-gates/43284-production-20261005-pass.md`；
 - 同批 UML：`00667d12`（IPO C4e/C6b/C7b、状态机宿主生命周期、Class `PluginStageSink`、Sequence §4.4）；
 - 原始日志（主机）：`/tmp/g3{pos,negb,negc,negd,noplugin}.{out,err}`。

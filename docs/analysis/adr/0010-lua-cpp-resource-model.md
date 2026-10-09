@@ -8,7 +8,7 @@
 ## 背景（Context）
 
 - **D30（2026-10-07）只定义了句柄形态**：`{kind, index, generation}`、表有界 64、由探针产生、不暴露裸指针。**生命周期、作用域与 GC 边界是缺口** —— 本节补齐。
-- C++ 侧资源是 **backend state 成员**：`src/core/backend/cve_2026_43499_state.hpp:25-40`（`addresses` / `heap` / `race` / `victim` / `parked_victim` / `parked_victim_cmd`），其构造与销毁由 **RAII guard** 固定顺序完成：`src/core/pipeline/pipeline.hpp:26-46`（`BackendStateGuard` 构造 → `state_construct`，析构 → `state_destroy`）。
+- C++ 侧资源是 **backend state 成员**：`core/src/backend/cve_2026_43499_state.hpp:25-40`（`addresses` / `heap` / `race` / `victim` / `parked_victim` / `parked_victim_cmd`），其构造与销毁由 **RAII guard** 固定顺序完成：`core/src/pipeline/pipeline.hpp:26-46`（`BackendStateGuard` 构造 → `state_construct`，析构 → `state_destroy`）。
 - 若把 C++ 资源的回收交给 Lua GC，会与 **PI 窗口的确定性**要求冲突（窗口内禁分配/禁间接分派/禁越界 syscall，见 `pi-window-constraints.md`）。
 
 ## 决策（Decision）
@@ -57,7 +57,7 @@
 - Lua 堆硬上限（`lua_setallocf`）只约束 **Lua 自身**内存，**与 C++ 资源无关**。
 - **C++ 回收不回调 Lua**：无终结器、无跨语言析构、无「对象销毁通知」。
 
-> **旧树引用说明（2026-10-08）**：文中 `src/core/backend/cve_2026_43499_state.hpp:` 等 `file:line` 属**旧树引用**（文件已随 [rewrite-plan-v2](../../plan/rewrite-plan-v2.md) 的 `src/core` 重写作废）。**新树等价物** = **`pipeline::AttackWindow`**（[`src/core/pipeline/attack_window.hpp:41`](../../../src/core/pipeline/attack_window.hpp)，**窗口与资源的 RAII 回收点**）· **`pipeline::CompositionRoot`**（[`src/core/pipeline/composition_root.hpp:21`](../../../src/core/pipeline/composition_root.hpp)，**句柄/宿主所有者**）。凡本文写「backend state 成员」处，**按此二者理解**。
+> **旧树引用说明（2026-10-08）**：文中 `core/src/backend/cve_2026_43499_state.hpp:` 等 `file:line` 属**旧树引用**（文件已随 [rewrite-plan-v2](../../plan/rewrite-plan-v2.md) 的 `core/src` 重写作废）。**新树等价物** = **`pipeline::AttackWindow`**（[`core/src/pipeline/attack_window.hpp:41`](../../../core/src/pipeline/attack_window.hpp)，**窗口与资源的 RAII 回收点**）· **`pipeline::CompositionRoot`**（[`core/src/pipeline/composition_root.hpp:21`](../../../core/src/pipeline/composition_root.hpp)，**句柄/宿主所有者**）。凡本文写「backend state 成员」处，**按此二者理解**。
 
 ## 判据（白盒 / 黑盒 / 极端值）
 

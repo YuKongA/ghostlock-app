@@ -128,7 +128,7 @@ internal object StepQueueEquivalence {
     /**
      * M3 guard predicate, extracted so it can be falsified in isolation: a
      * migrated asset must carry ONLY the queue (native rejects a backend section
-     * holding both queue and steps, src/core/profile/glkv3_parse.cpp:407-419).
+     * holding both queue and steps, core/src/profile/glkv3_parse.cpp:407-419).
      */
     fun hasTokenBesideQueue(text: String): Boolean {
         if (!isMigrated(text)) return false

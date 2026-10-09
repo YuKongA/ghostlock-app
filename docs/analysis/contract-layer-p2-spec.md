@@ -56,8 +56,8 @@
 
 ## §6 判据（**必须能失败**）
 
-- **白盒（硬判据）**：**交付头集合 == 58**（48 直接 + 10 传递，[A3](contract-layer-p2-spec-annex-a3.md)；少一即某 backend 文件编译失败）· **59 个 backend 文件零改动**编译通过（逐文件 0 error）· `git status` 证明 `src/core/backend/**` 零修改。
-- **白盒（C ABI）**：`cc -x c -fsyntax-only src/core/contract/abi/glk_contract_abi.h` ⇒ **退出 0**（证明可被 C 编译）。
+- **白盒（硬判据）**：**交付头集合 == 58**（48 直接 + 10 传递，[A3](contract-layer-p2-spec-annex-a3.md)；少一即某 backend 文件编译失败）· **59 个 backend 文件零改动**编译通过（逐文件 0 error）· `git status` 证明 `core/src/backend/**` 零修改。
+- **白盒（C ABI）**：`cc -x c -fsyntax-only core/src/contract/abi/glk_contract_abi.h` ⇒ **退出 0**（证明可被 C 编译）。
 - **白盒（冻结量）**：`static_assert` 三条（2048 槽字节数、520、784）保留且可编译。
 - **黑盒**：同一 backend 文件编译产物**链接通过**（无缺失/无重复符号）—— 观测点 = 链接器错误为空。
 - **必须能失败（证伪）**：删任一最小符号（或 2048→1024）⇒ 指定 backend 文件**必须编译失败**；实验后还原并**复核**（`rm -f` 产物 + 重建）。

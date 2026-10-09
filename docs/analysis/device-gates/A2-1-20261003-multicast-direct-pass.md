@@ -31,5 +31,5 @@ PASS（完整输出见 `.native.log`）：
 ## 变更说明
 
 `check_selinux_off`/`enforce_readable`/`process_has_seccomp` 从 `attack::ops.hpp` 迁到
-`platform::runtime`（`src/core/platform/runtime.hpp`）；host 数据流 harness 新增 `platform/runtime.hpp`
+`platform::runtime`（`core/src/platform/runtime.hpp`）；host 数据流 harness 新增 `platform/runtime.hpp`
 影集桩，脚本语义不变。`cmp_disasm --reviewed` 6 函数骨架一致。

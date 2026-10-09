@@ -27,11 +27,11 @@ version.
 
 | Path | Role |
 |---|---|
-| `../../src/core/session/ancillary/ancillary_policy.hpp` | `AncillaryKind`, `AncillaryStage`, `AncillaryContext`, `AncillaryPolicyDefaults`, and the `AncillaryPolicyFor` concept |
-| `../../src/core/session/ancillary/ancillary_controller.hpp` | the `AncillaryPolicyList` registry and the header-only dispatcher `AncillaryController<Middleware>::apply` |
-| `../../src/core/session/ancillary/ancillary_controller.cpp` | Android translation unit that pulls the header through the device build |
-| `../../src/core/session/ancillary/vr_guard.hpp` | the `vr.ko` behavior (`VrGuardPolicy`) |
-| `../../src/core/tests/ancillary_test.cpp` | host test for the registry, the profile gate and the dispatch signature |
+| `../../core/src/session/ancillary/ancillary_policy.hpp` | `AncillaryKind`, `AncillaryStage`, `AncillaryContext`, `AncillaryPolicyDefaults`, and the `AncillaryPolicyFor` concept |
+| `../../core/src/session/ancillary/ancillary_controller.hpp` | the `AncillaryPolicyList` registry and the header-only dispatcher `AncillaryController<Middleware>::apply` |
+| `../../core/src/session/ancillary/ancillary_controller.cpp` | Android translation unit that pulls the header through the device build |
+| `../../core/src/session/ancillary/vr_guard.hpp` | the `vr.ko` behavior (`VrGuardPolicy`) |
+| `../../core/src/tests/ancillary_test.cpp` | host test for the registry, the profile gate and the dispatch signature |
 
 ## 3. The behavior contract
 
@@ -51,7 +51,7 @@ plus the runtime applicability decision (§5).
 ## 4. Adding a behavior — the only touch points
 
 1. Append an id to `AncillaryKind`.
-2. Create `src/core/session/ancillary/<name>.hpp` (and `.cpp` when the body needs the
+2. Create `core/src/session/ancillary/<name>.hpp` (and `.cpp` when the body needs the
    device/attack primitives):
    - keep the **plan** — pure functions that turn the resolved profile layout and
      already-read values into an ordered list of writes — in the header; it must be
@@ -60,7 +60,7 @@ plus the runtime applicability decision (§5).
      the primitives injected through `AncillaryContext`.
 3. Append the policy type to `AncillaryPolicyList` in `ancillary_controller.hpp`.
    **This is the single registration point.** No route, frontend or backend edits.
-4. Add a host test and register it in `../../src/Makefile`.
+4. Add a host test and register it in `../../core/Makefile`.
 5. Add the behavior's profile contract on both sides (§6).
 
 The backend calls `AncillaryController<Middleware>::apply` at the fixed stages; that
@@ -107,9 +107,9 @@ recomputed. The exact field set for `vr.ko` is defined by the PR, not by this do
 
 ## 8. Verification
 
-- `make -C src native-host-tests`
+- `make -C core native-host-tests`
 - NDK build with **zero warnings**
-- `make -C src lint-tidy`
+- `make -C core lint-tidy`
 - If the behavior touches the attack path: `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock`
   **and** the on-device gate (cold boot, fixed CPU pair, single route, KernelSU not
   loaded), archived under `docs/analysis/device-gates/`.

@@ -20,7 +20,7 @@
 |---|---|---|---|---|
 | 层边界 0 边 | 新件 include 禁层（人工构造的非法 include） | 白盒 | `include_firewall_test` | 账本空 + 0 越层；非法 ⇒ 非 0 退出 |
 | 窗口 TU 禁 include | 窗口 TU 引入含虚基的头 | 白盒 | `op_tu_isolation_test` | 文件级扫描失败；`nm` 出现 `_ZTV*` ⇒ 失败 |
-| 概念约束 | 去掉 `static` run/write 的类型 | 白盒 | `make -C src ghostlock` | `static_assert` 失败（非 0） |
+| 概念约束 | 去掉 `static` run/write 的类型 | 白盒 | `make -C core ghostlock` | `static_assert` 失败（非 0） |
 | 多态禁令 | 路径内引入虚基/基类指针 | 白盒 | 同上 | 编译失败 |
 
 **queue-schema（队列元素）**：

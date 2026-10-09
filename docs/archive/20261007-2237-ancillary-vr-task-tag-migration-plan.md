@@ -77,9 +77,9 @@ flowchart TD
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| host 单测 | `make -C src native-host-tests` | 全绿；`ancillary_test` 覆盖 VrTaskTag |
+| host 单测 | `make -C core native-host-tests` | 全绿；`ancillary_test` 覆盖 VrTaskTag |
 | 形状 | `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock` | 8 函数 IDENTICAL 或已复核差异 |
-| NDK | `make -C src ghostlock` | 零告警 |
+| NDK | `make -C core ghostlock` | 零告警 |
 | 真机 | vivo：W2b 后 `VR.ko per-task tags cleared` / 子进程不被杀；日志归档 | PASS/FAIL 记录 |
 
 ## 明确保留
@@ -93,7 +93,7 @@ flowchart TD
 
 - [x] 计划
 - [x] 实施（policy + controller + backend W2b）
-- [x] host 单测（`make -C src native-host-tests` 全绿）
+- [x] host 单测（`make -C core native-host-tests` 全绿）
 - [x] `cmp_disasm`（8 函数形状一致；151 处操作数差异逐条折算为同一
       `g_exploit_session+偏移` / 同一字符串 / 同一指针重定位，0 处不同目标）
 - [x] NDK 构建（零告警）、`lint-tidy`（rc=0，用户代码 0 findings）

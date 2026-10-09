@@ -68,7 +68,7 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 
 ## 6. native 集成（MPack）
 
-- vendor `mpack.c`/`mpack.h`（MIT）到 `src/lib/mpack/`，附 LICENSE 与署名；
+- vendor `mpack.c`/`mpack.h`（MIT）到 `core/lib/mpack/`，附 LICENSE 与署名；
 - 编译：MPack 是 C，需以 CC 编译（Makefile 增加 C 源列表或用 `-x c`），关闭 `MPACK_STDIO`/`MPACK_EXTENSIONS`；
   第三方告警用单独 flag 或文件名隔离，不污染项目的零告警要求；
 - 解析用 **expect API**（`mpack_expect_map`/`mpack_expect_str`/`mpack_expect_uint`…）按 schema 遍历，**不建节点树、不分配**；
@@ -127,5 +127,5 @@ GLKv3 就是一个 MessagePack 值，根为 **map**：
 ## 13. 来源
 
 - MessagePack spec；[MPack](https://github.com/ludocode/mpack)（MIT）；
-- `src/core/profile/{binary,document,schema}.hpp`、`profile-core/.../NativeProfile.kt`；
+- `core/src/profile/{binary,document,schema}.hpp`、`profile-core/.../NativeProfile.kt`；
 - `docs/archive/20261007-2237-offset-ssot-plan.md`、`cve-2026-43284-b5-design.md`。

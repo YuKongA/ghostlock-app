@@ -105,7 +105,7 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 app/ (Kotlin, UI/domain/data/shizuku)
   │  ProcessBuilder（不是 JNI）：stdin 写 GLK1、stdout/stderr 收日志、退出码表达结果
   ▼
-src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器)
+core/src/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器)
 ```
 
 - 层间契约**只能是**进程、文件、stdin/stdout、退出码、以及 GLK1/HOCON profile 文本；新增跨层状态
@@ -113,7 +113,7 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 - Kotlin 分层：`ui → domain → data`；平台 I/O 只允许在 `data/`；`shizuku/` 是执行入口的变体，
   不承载业务规则。
 - Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`（**重写目标见
-  §2.0**）；include 一律相对 `src/core`（`#include "route/..."`），让所有权在调用点可见。
+  §2.0**）；include 一律相对 `core/src`（`#include "route/..."`），让所有权在调用点可见。
 
 ### 2.2 route 结构（本项目核心扩展点）
 
@@ -136,7 +136,7 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 
 - Policy、数据结构、纯函数**必须**能在主机（非 Android）编译；真机专属实现放在
   `#if defined(__ANDROID__)` 段内（route 的入口/Procedure/工厂即在其中）。
-- 主机测试由 `src/Makefile` 的 `NATIVE_HOST_TESTS` 登记；测试专用探针不得链接进生产二进制。
+- 主机测试由 `core/Makefile` 的 `NATIVE_HOST_TESTS` 登记；测试专用探针不得链接进生产二进制。
 
 ### 2.4 全局状态
 
@@ -300,11 +300,11 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 ## 6. 代码风格规范
 
-### 6.1 C++（`src/core`）
+### 6.1 C++（`core/src`）
 
 - 语言：C++23、`-fno-rtti`、静态 libc++；`-O2 -flto`；`-Wall -Wextra -Wconversion -Wsign-conversion`，
   **新代码不得引入任何告警**。禁止 RTTI/异常/非标准扩展。
-- 头文件：`#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `src/core`
+- 头文件：`#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `core/src`
   （项目头）、组内按字母序（沿用现有文件的实际风格，不做无关重排）。
 - 命名：函数/变量 `snake_case`；类型 `PascalCase`；编译期常量 `kCamelCase`；
   成员变量 `name_`；宏仅限已保留的移植头。
@@ -368,7 +368,7 @@ ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Min
 
 ### 8.1 验证金字塔
 
-1. **主机单元测试**（`make -C src native-host-tests`，全量含 host 数据流 harness）：固定向量、
+1. **主机单元测试**（`make -C core native-host-tests`，全量含 host 数据流 harness）：固定向量、
    生命周期、几何边界、双侧一致性；新增数据结构/route 必须补测试（登记进 `NATIVE_HOST_TESTS`）；
    无对应测试的功能变更视为不完整。
 2. **Kotlin 单测**（`./gradlew :app:testDebugUnitTest`）与 **Rust 测试**（`cargo test --release`）。

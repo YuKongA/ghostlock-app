@@ -13,7 +13,7 @@ import java.io.File
  * The native GLKv3 FieldSpec lists are the single source of truth for the
  * (owner, path, wire, required, default, source, doc) manifest universe; they are
  * exported to `profile-manifest-v3.tsv` (see
- * src/core/tests/profile_manifest_v3_test.cpp). The Kotlin adapter parses that
+ * core/src/tests/profile_manifest_v3_test.cpp). The Kotlin adapter parses that
  * same manifest as its runtime type map; this test fails if the app test
  * resource and the profile-core runtime resource drift in either the path set
  * or a wire type.
@@ -140,7 +140,7 @@ class ProfileManifestV3AgreementTest {
         assertTrue("missing runtime manifest copy: " + runtimeCopy.path, runtimeCopy.isFile)
         assertArrayEquals(
             "profile-manifest-v3.tsv drifted between the app test resource and the " +
-                "profile-core runtime resource (regenerate with make -C src profile-manifest-v3)",
+                "profile-core runtime resource (regenerate with make -C core profile-manifest-v3)",
             runtimeCopy.readBytes(),
             appCopy.readBytes(),
         )

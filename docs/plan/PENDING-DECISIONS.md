@@ -47,7 +47,7 @@
 
 ### B3 确认「最小化时机重排」（Lead 已裁决，请追认）
 
-> **状态**：**作废** —— 其对象（P2 兼容面 + `.disabled` 参考件）已随 `src/core` **全量清空**（`b0e9f499`）消失；最小化路线不再是 v2 的一部分（[rewrite-plan-v2](rewrite-plan-v2.md) §0）。
+> **状态**：**作废** —— 其对象（P2 兼容面 + `.disabled` 参考件）已随 `core/src` **全量清空**（`b0e9f499`）消失；最小化路线不再是 v2 的一部分（[rewrite-plan-v2](rewrite-plan-v2.md) §0）。
 
 - **参考**：[p2-minimisation-plan.md](../analysis/p2-minimisation-plan.md) §0（2026-10-08 重排）· [rewrite-plan.md](rewrite-plan.md) §8.1 U-4
 - **内容**：B-1..B-3（24 项）**曾执行 → 违反 R39 → 全部回退 → 净效果 0**；最小化**整体后移到 P3/P5 落地且 `.disabled` 参考件退役之后**；此前凡被 `.disabled`/`docs` 引用者 = **预留接口，不得删**
@@ -57,7 +57,7 @@
 
 > **状态**：**待重述** —— 旧 native 读取点（`backend_profile.cpp`）已不存在；**extractor 侧 `report.rs:185` 仍发射 `steps`**、`:1745` 断言仍在 ⇒ 需按新 wire 重新表述（清或保留）。
 
-- **参考**：extractor 仍发射 [report.rs:185](../../tools/extract_rs/src/report.rs) + 断言 `:1745`；native 遗留读取 [backend_profile.cpp:82-85](../../src/core/backend/cve_2026_43499/backend_profile.cpp)
+- **参考**：extractor 仍发射 [report.rs:185](../../tools/extract_rs/src/report.rs) + 断言 `:1745`；native 遗留读取 [backend_profile.cpp:82-85](../../core/src/backend/cve_2026_43499/backend_profile.cpp)
 - **建议**：与 R11/P5 的 wire 变更同批清
 
 ### B5 审查原则定稿 + **A 组是否升阻断级**；`design-critic` 是否正式启用
@@ -92,7 +92,7 @@
 
 ### C4 在途 native 改动是否已过真机门禁
 
-> **状态**：**作废** —— 所指 5 个文件随 `src/core` 清空**已不存在**；新实现走 v2 的 G2 门禁。
+> **状态**：**作废** —— 所指 5 个文件随 `core/src` 清空**已不存在**；新实现走 v2 的 G2 门禁。
 
 - **参考**：提交 `56eac698` 的 5 个文件（`backend_terminal.*` / `execution_binding.cpp` / `glkv3_parse.cpp` / `main.cpp`）；[AGENTS.md](../../AGENTS.md) 验证门槛
 - **建议**：列入第一个真机窗口（不阻塞当前）
@@ -149,7 +149,7 @@
 | 项 | 状态 |
 |---|---|
 | 分支 / 工作树 | `dev` · 干净（未提交 0） |
-| 门禁 | 旧 `gate` 两段**已无对象**（`src/core` 0 文件）；**现行** = `markdownlint`（现 1 issue，`src/lib/mpack/README.md:9`，属 `src/**` 归属）；新门禁按 v2 §4 |
+| 门禁 | 旧 `gate` 两段**已无对象**（`core/src` 0 文件）；**现行** = `markdownlint`（现 1 issue，`core/lib/mpack/README.md:9`，属 `src/**` 归属）；新门禁按 v2 §4 |
 | 已完成层 | ~~P1 禁用扫描~~ · ~~P2 兼容层~~ · ~~P4 装配/窗口/门禁~~ ⇒ **均随 `b0e9f499` 清空作废**（文档保留为输入规格） |
 | 备份 | `backup/pre-squash-20261007`（691 提交）· 基线 tag `legacy/baseline-20261008` |
 | 团队 | native-core / kotlin-app / docs-uml / design-critic（当前 docs-uml、native-core 有收尾消息在途） |

@@ -15,7 +15,7 @@ import java.io.File
  *
  * `contract::kCombinationCatalog` (native) is the single authority; it is
  * exported by `combination_manifest_test` (see
- * `make -C src combination-manifest`) into:
+ * `make -C core combination-manifest`) into:
  *
  *  - `app/src/test/resources/combination-manifest.tsv` (this test's fixture);
  *  - `profile-core/src/main/resources/combination-manifest.tsv` (the runtime
@@ -202,7 +202,7 @@ class CombinationTokenAgreementTest {
 
     /**
      * The resolution contract is EXACT, mirroring native
-     * `contract::combination_resolve` (src/core/contract/identity.hpp): every
+     * `contract::combination_resolve` (core/src/contract/identity.hpp): every
      * exported token resolves in its own backend and nowhere else, and no
      * spelling the native byte comparison would reject is accepted here.
      */

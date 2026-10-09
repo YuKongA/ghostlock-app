@@ -10,7 +10,7 @@
 
 | # | 位置 | 内容 |
 |---|---|---|
-| 1 | `src/Makefile:806-808` | `nm -C <四个二进制> \| grep -c _ZTV` ⇒ **非零即 `VTT-HIT` + `exit 1`** ⇒ 落地虚基类**当场红**；**实测今天为 0** ✓ |
+| 1 | `core/Makefile:806-808` | `nm -C <四个二进制> \| grep -c _ZTV` ⇒ **非零即 `VTT-HIT` + `exit 1`** ⇒ 落地虚基类**当场红**；**实测今天为 0** ✓ |
 | 2 | `race/pi_window.hpp:14-16/:40` | 窗口禁令之一：**no indirect dispatch（no vtable, no function-pointer hop, no type-erased callable）** ✓，且注明 **each is machine-checked** ✓；违规项原文「a vtable … makes the window shape unverifiable」✓ |
 | 3 | `script/call_sink.hpp:9-11` | 本树**既定选择**已写明：「**Shape: a function-pointer table, not a virtual class** … the gate scans built binaries for `_ZTV` symbols, so no vtable is introduced」✓ |
 

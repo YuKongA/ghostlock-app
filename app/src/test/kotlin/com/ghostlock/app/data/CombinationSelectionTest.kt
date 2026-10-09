@@ -53,7 +53,7 @@ class CombinationSelectionTest {
             assertTrue("backend unavailable for " + kind.token, kind.backend.available)
             assertTrue("terminal unavailable for " + kind.token, kind.terminal.available)
             when (kind.steps) {
-                StepSetKind.W1W2, StepSetKind.W1W3 -> {
+                StepSetKind.SELINUX_CRED, StepSetKind.SELINUX_CRED_SECCOMP -> {
                     assertEquals(
                         "w1_w2/w1_w3 must hand off to root_child (" + kind.token + ")",
                         FrontendKind.RootChild,
@@ -61,7 +61,7 @@ class CombinationSelectionTest {
                     )
                 }
 
-                StepSetKind.PAGE_CACHE_WRITE -> {
+                StepSetKind.PAGE_CACHE -> {
                     assertEquals(
                         "pagecache_write must hand off to umh_forward (" + kind.token + ")",
                         FrontendKind.UmhForward,

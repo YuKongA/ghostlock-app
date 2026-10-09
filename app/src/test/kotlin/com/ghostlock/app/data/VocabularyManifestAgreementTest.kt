@@ -41,7 +41,7 @@ class VocabularyManifestAgreementTest {
         assertTrue("missing runtime resource: " + runtimeCopy().path, runtimeCopy().isFile)
         assertArrayEquals(
             "vocabulary-manifest.tsv drifted between the app test resource and the " +
-                "profile-core runtime resource (regenerate with make -C src vocabulary-manifest)",
+                "profile-core runtime resource (regenerate with make -C core vocabulary-manifest)",
             runtimeCopy().readBytes(),
             appCopy().readBytes(),
         )

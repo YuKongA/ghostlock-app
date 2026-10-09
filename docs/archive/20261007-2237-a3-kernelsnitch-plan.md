@@ -64,14 +64,14 @@
 
 | 文件 | 行数 | 现状 | A3 判定 |
 |---|---|---|---|
-| src/core/kernelsnitch/kernelsnitch.h | 766 | provider：状态机、碰撞/扫描、`KernelSnitchOwner` RAII、上游许可注释 | **冻结不改**；A3-2 才迁 backend |
-| src/core/kernelsnitch/utils.h | 233 | `pr_*` 日志宏 + 平台宏 + 系统头；被 14 个 TU（中性层也有）包含 | 冻结；A3-2 拆分日志到 support |
-| src/core/kernelsnitch/timeutils.h | 72 | rdtsc/cntvct 时钟（namespace memory） | 冻结 |
-| src/core/kernelsnitch/futex_hash.h | 255 | 纯 jhash/桶算术；host 测试 `futex_hash_test`；含 jhash 署名 | 冻结；host 子件 |
-| src/core/kernelsnitch/number_parse.h | 39 | 纯 strtoul 包装；host 测试 `number_parse_test` | 冻结；host 子件 |
-| src/core/kernelsnitch/scan_bounds.h | 17 | 溢出安全区间钳制；host 测试 `kernelsnitch_scan_bounds_test` | 冻结；host 子件 |
-| src/core/contract/capabilities.hpp | — | `KernelMemoryOps`/`FileCacheWriteOps` 句柄范式 | 范式参照（本批新增同族） |
-| src/core/backend/cve_2026_43499/primitives.cpp | — | `perf_find_task()` | 只作语义对照；不新增适配 |
+| core/src/kernelsnitch/kernelsnitch.h | 766 | provider：状态机、碰撞/扫描、`KernelSnitchOwner` RAII、上游许可注释 | **冻结不改**；A3-2 才迁 backend |
+| core/src/kernelsnitch/utils.h | 233 | `pr_*` 日志宏 + 平台宏 + 系统头；被 14 个 TU（中性层也有）包含 | 冻结；A3-2 拆分日志到 support |
+| core/src/kernelsnitch/timeutils.h | 72 | rdtsc/cntvct 时钟（namespace memory） | 冻结 |
+| core/src/kernelsnitch/futex_hash.h | 255 | 纯 jhash/桶算术；host 测试 `futex_hash_test`；含 jhash 署名 | 冻结；host 子件 |
+| core/src/kernelsnitch/number_parse.h | 39 | 纯 strtoul 包装；host 测试 `number_parse_test` | 冻结；host 子件 |
+| core/src/kernelsnitch/scan_bounds.h | 17 | 溢出安全区间钳制；host 测试 `kernelsnitch_scan_bounds_test` | 冻结；host 子件 |
+| core/src/contract/capabilities.hpp | — | `KernelMemoryOps`/`FileCacheWriteOps` 句柄范式 | 范式参照（本批新增同族） |
+| core/src/backend/cve_2026_43499/primitives.cpp | — | `perf_find_task()` | 只作语义对照；不新增适配 |
 
 ## 4. 目标归属与依赖边
 
@@ -90,11 +90,11 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
 
 | 文件 | 改动 | 理由 |
 |---|---|---|
-| `src/core/contract/address_discovery.hpp`（新） | `AddressDiscoveryResult{ok,kaslr_base,init_task,target_task,mm_struct}`；`discovery_failed()`（全零）；`discovery_mm_struct(mm)` / `discovery_target_task(task)`（值为 0 即失败，不猜测）；`fail_closed(result)` 谓词；`AddressDiscovery` 概念（`AddressDiscoveryOps` 满足）；`AddressDiscoveryOps{ctx,discover,available()}` | T3 接口；与 `KernelMemoryOps` 同族（可用性由句柄推导，不设第二 bool 源） |
-| `src/core/kernelsnitch/address_discovery.h`（新） | `context_discover(void*,AddressDiscoveryResult*)`：入参为已跑完碰撞阶段的 `KernelSnitchContext`；调用既有 `context_scan`/`context_result`，失败（状态不符 / `~0` 哨兵）写 `discovery_failed()` 并返回 0；成功写 `mm_struct`（含 tag→canonical VA 还原）并返回 1；`address_discovery_ops(KernelSnitchContext*)` 组装句柄 | 把既有 kernelsnitch 暴露为可选 `AddressDiscoveryOps`；不改算法 |
-| `src/core/tests/address_discovery_test.cpp`（新） | host fake 覆盖：ok 成功、fail-closed（返回 0 且全零）、`fail_closed()` 对携带残余字段的失败判 false、`available()` 由句柄推导、trivially-copyable/standard-layout | 契约测试；本批验收要求 |
-| `src/Makefile` | `NATIVE_HOST_TESTS` 增 `address_discovery_test`；新增其构建规则（仅 `contract/address_discovery.hpp`） | host 门禁接线 |
-| `src/core/support/util.cpp` | 增 `#include "kernelsnitch/address_discovery.h"`（仅包含，不调用） | 让适配头进入设备 TU / clang-tidy 覆盖；不改变活体控制流与机器码 |
+| `core/src/contract/address_discovery.hpp`（新） | `AddressDiscoveryResult{ok,kaslr_base,init_task,target_task,mm_struct}`；`discovery_failed()`（全零）；`discovery_mm_struct(mm)` / `discovery_target_task(task)`（值为 0 即失败，不猜测）；`fail_closed(result)` 谓词；`AddressDiscovery` 概念（`AddressDiscoveryOps` 满足）；`AddressDiscoveryOps{ctx,discover,available()}` | T3 接口；与 `KernelMemoryOps` 同族（可用性由句柄推导，不设第二 bool 源） |
+| `core/src/kernelsnitch/address_discovery.h`（新） | `context_discover(void*,AddressDiscoveryResult*)`：入参为已跑完碰撞阶段的 `KernelSnitchContext`；调用既有 `context_scan`/`context_result`，失败（状态不符 / `~0` 哨兵）写 `discovery_failed()` 并返回 0；成功写 `mm_struct`（含 tag→canonical VA 还原）并返回 1；`address_discovery_ops(KernelSnitchContext*)` 组装句柄 | 把既有 kernelsnitch 暴露为可选 `AddressDiscoveryOps`；不改算法 |
+| `core/src/tests/address_discovery_test.cpp`（新） | host fake 覆盖：ok 成功、fail-closed（返回 0 且全零）、`fail_closed()` 对携带残余字段的失败判 false、`available()` 由句柄推导、trivially-copyable/standard-layout | 契约测试；本批验收要求 |
+| `core/Makefile` | `NATIVE_HOST_TESTS` 增 `address_discovery_test`；新增其构建规则（仅 `contract/address_discovery.hpp`） | host 门禁接线 |
+| `core/src/support/util.cpp` | 增 `#include "kernelsnitch/address_discovery.h"`（仅包含，不调用） | 让适配头进入设备 TU / clang-tidy 覆盖；不改变活体控制流与机器码 |
 
 ## 6. 数据流/控制流差异与不变量
 
@@ -115,9 +115,9 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
 ## 7. 分批与门禁
 
 - **A3-1（本批，host-only 交付）**：
-  - 门禁：`make -C src native-host-tests`（含防火墙，0 unexpected / 0 stale）；
-    `ANDROID_NDK_HOME=... make -C src ghostlock -B` 零告警；
-    `ANDROID_NDK_HOME=... make -C src lint-tidy` 0 findings；
+  - 门禁：`make -C core native-host-tests`（含防火墙，0 unexpected / 0 stale）；
+    `ANDROID_NDK_HOME=... make -C core ghostlock -B` 零告警；
+    `ANDROID_NDK_HOME=... make -C core lint-tidy` 0 findings；
     `python3 tools/cmp_disasm.py --reviewed build/native/ghostlock-B0 build/native/ghostlock` 6/6 IDENTICAL。
   - 真机：泄漏结果不变由主智能体按 A3 设备门禁执行（本批不改活体路径，预期与 A2-4-4 一致）。
 - **A3-2（后续，独立）**：provider 迁 `backend/cve_2026_43499/leak/`；`utils.h` 日志拆到
@@ -136,7 +136,7 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
   **进展（2026-10-06，R1 搬迁）**：该**唯一 TU 已从 `support/util.cpp` 迁移到 `backend/cve_2026_43499/spray.cpp`**（链 `spray.cpp → leak/address_discovery.h → kernelsnitch.h`），`support/util.cpp` 收窄为 133 行纯中性工具、防火墙账本归零（`176 files, 0/0/0/0`）——**R-2 的「不可另起第二个 TU」约束仍然有效**，本次只是**搬迁**（唯一 TU 从一处移到另一处），**不是新增 TU**。
 - R-3：适配语义若与 `perf_find_task`（失败 0）不一致，契约测试会暴露；两边统一走
   `discovery_*()`（0 值 → 全零失败）。
-- 回滚：A3-1 为纯新增 + 一行 include + Makefile 接线；`git checkout -- src/Makefile src/core/support/util.cpp`
+- 回滚：A3-1 为纯新增 + 一行 include + Makefile 接线；`git checkout -- core/Makefile core/src/support/util.cpp`
   并删除三个新文件即可无损回到 `8449cd0` 行为。
 
 ## 9. 明确保留
@@ -149,8 +149,8 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
 
 - [x] A3-1 设计文档（本文件）
 - [x] A3-1 契约头 + kernelsnitch 适配 + 契约测试 + Makefile
-      (`src/core/contract/address_discovery.hpp`、`src/core/kernelsnitch/address_discovery.h`、
-      `src/core/tests/address_discovery_test.cpp`；`src/core/support/util.cpp` 仅加一行 include)
+      (`core/src/contract/address_discovery.hpp`、`core/src/kernelsnitch/address_discovery.h`、
+      `core/src/tests/address_discovery_test.cpp`；`core/src/support/util.cpp` 仅加一行 include)
 - [x] A3-1 门禁：host / NDK 零告警 / lint / cmp 6/6 IDENTICAL
 - [ ] A3-1 真机泄漏门禁（主智能体）
 - [ ] A3-2 provider 归位 `backend::cve_2026_43499::leak` + `support/log.hpp` 拆分 + 活体接线
@@ -159,8 +159,8 @@ A3-2 目标：backend/cve_2026_43499/leak/（provider）；pr_* 日志 → suppo
 
 | 门禁 | 命令 | 结果 |
 |---|---|---|
-| host | `make -C src native-host-tests` | exit 0；36 项 ok，含 `address_discovery_test`、`kernelsnitch_scan_bounds_test`；防火墙 3 edges / 3 whitelisted / 0 unexpected / 0 stale |
-| NDK | `ANDROID_NDK_HOME=... make -C src ghostlock -B` | exit 0，零告警 |
-| lint | `ANDROID_NDK_HOME=... make -C src lint-tidy` | exit 0，0 findings（仅非用户头抑制告警） |
+| host | `make -C core native-host-tests` | exit 0；36 项 ok，含 `address_discovery_test`、`kernelsnitch_scan_bounds_test`；防火墙 3 edges / 3 whitelisted / 0 unexpected / 0 stale |
+| NDK | `ANDROID_NDK_HOME=... make -C core ghostlock -B` | exit 0，零告警 |
+| lint | `ANDROID_NDK_HOME=... make -C core lint-tidy` | exit 0，0 findings（仅非用户头抑制告警） |
 | cmp | `python3 tools/cmp_disasm.py --reviewed build/native/ghostlock-B0 build/native/ghostlock` | `RESULT: PASS`，6/6 strict IDENTICAL |
 | 真机 | 泄漏结果门禁 | 待主智能体执行（A3-1 未改活体路径） |

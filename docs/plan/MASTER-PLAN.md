@@ -74,19 +74,19 @@ flowchart LR
 
 | 里程碑 | 命令（全部需 EXIT=0，失败数读 XML 全量） | 真机 |
 |---|---|---|
-| B0.1 / B0.2 | `make -C src native-host-tests`；`make -C src ghostlock`（NDK 零告警）；`make -C src lint-tidy` | 否 |
+| B0.1 / B0.2 | `make -C core native-host-tests`；`make -C core ghostlock`（NDK 零告警）；`make -C core lint-tidy` | 否 |
 | B0.3 | 同上 + `tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock`（**可选诊断**） | **是**（动写路径） |
-| B1 | `make -C src native-host-tests`；`./gradlew :app:testDebugUnitTest` | 否 |
-| B2 | 同上 + `./gradlew :profile-core:test --tests "*QueueElementShape*"` + `make -C src profile-manifest-v3`（**既有 110 行逐字节不变；payload 新键按新行补充**） | 若动写路径 ⇒ 是 |
+| B1 | `make -C core native-host-tests`；`./gradlew :app:testDebugUnitTest` | 否 |
+| B2 | 同上 + `./gradlew :profile-core:test --tests "*QueueElementShape*"` + `make -C core profile-manifest-v3`（**既有 110 行逐字节不变；payload 新键按新行补充**） | 若动写路径 ⇒ 是 |
 | B3 | 插件解冻门禁（`AGENTS.md` 恢复清单 + 真机 + `docs/analysis/device-gates/*.md` 归档） | **是** |
-| WP-7 | 按 `resolved-profile-registry-plan.md` §6 矩阵（`make -C src native-host-tests`、`./gradlew :app:testDebugUnitTest`、5 张 manifest 目标） | B2 批触发 |
+| WP-7 | 按 `resolved-profile-registry-plan.md` §6 矩阵（`make -C core native-host-tests`、`./gradlew :app:testDebugUnitTest`、5 张 manifest 目标） | B2 批触发 |
 
 ## §6 角色与职责
 
 | 角色 | 写范围 | 职责 |
 |---|---|---|
 | **Lead** | 全局 | 裁决、批次门禁、提交纪律、冲突合并、用户沟通 |
-| **native-core** | `src/core/**` | native 设计/实现/门禁（host/NDK/lint/真机）、`file:line` 取证 |
+| **native-core** | `core/src/**` | native 设计/实现/门禁（host/NDK/lint/真机）、`file:line` 取证 |
 | **kotlin-app** | `profile-core/**`、`app/**`、assets | Kotlin/配置/UI 设计实现与对拍；不碰 native |
 | **docs-uml** | `docs/**` | UML/计划/ADR/门禁归档/配额；**唯一文档写者** |
 | **design-critic** | **只读** | 非作者评审（`AGENTS.md` 岗位节）：冻结快照 + 固定输出格式 + 总判 |
@@ -103,7 +103,7 @@ flowchart LR
 | R-4 | **payload 白名单触点** | 解冻后 `backend.<id>.payload.*` 会被 fail-closed 拒 | 解冻批次为两个 `Backend*Keys` 增 `payload` + 对拍（`kotlin.md:63`） |
 | R-5 | **vacuous 断言风险回归** | 删掉被保护的赋值仍可能全绿 | 由**黑盒/白盒 + 极端值用例**覆盖（原则 v0.2 D1） |
 | R-6 | **PI 窗口时序** | 窗口内**越界 syscall**（实测：`sched_setattr` → `rt_mutex_adjust_pi`）、分派/分配/首次触页 ⇒ 不确定性 / panic | E4（实证版：白名单 + 禁项见 [pi-window-constraints](../analysis/pi-window-constraints.md)）+ `cmp` 归因 + 真机门禁（`route_lifecycle.hpp:9-11`）；**沿革**：原表述为「分派/分配/首次触页」，2026-10-08 按 device-gate 栈改写 |
-| R-8 | **代码注释悬空计划路径**（审查时实测 **10 处**） | 注释指向**从未存在**的 `docs/analysis/<plan>.md` | owner = **native-core**（`src/core` + `tools/extract_rs`）/ **kotlin-app**（Kotlin）；**时机 = 已随本批交付完成**（见 [INDEX-plans](../archive/INDEX-plans.md) §六 末尾「悬空引用」行）；判据 = 编译通过 + `grep` 无失效引用（**现测 0**） |
+| R-8 | **代码注释悬空计划路径**（审查时实测 **10 处**） | 注释指向**从未存在**的 `docs/analysis/<plan>.md` | owner = **native-core**（`core/src` + `tools/extract_rs`）/ **kotlin-app**（Kotlin）；**时机 = 已随本批交付完成**（见 [INDEX-plans](../archive/INDEX-plans.md) §六 末尾「悬空引用」行）；判据 = 编译通过 + `grep` 无失效引用（**现测 0**） |
 | R-7 | **技术债预判六项**（`OpRegistry` 可插拔 / 键上限顶格 / `slot.*` 持久化 / 沙箱 API 扩展 / payload 解冻 / gate 原因码） | 未来扩展成本 | 逐项偿还时机见 `../analysis/handoff-payload-verification.md` §4 |
 
 ## §8 配置管理与变更控制

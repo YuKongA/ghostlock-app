@@ -15,7 +15,7 @@
 
 ## 背景（Context）
 
-对 `src/core` 命名空间级结构做了一次清点（见重写计划的现状树），结论：
+对 `core/src` 命名空间级结构做了一次清点（见重写计划的现状树），结论：
 
 - 顶级划分主要按**执行角色/状态归属**切，而非按 Parnas 的“最可能变化的决策”切（design-philosophy §2）。
 - `session` 承担 5 类职责（状态、后端过程、前端 handoff、阶段机、victim/ancillary），是最重的 god
@@ -175,7 +175,7 @@
     - **C2 host 数据流 harness**：`HOST_ATTACK_DATAFLOW_SOURCES` 与影子头
       `tests/host/include/attack/ops.hpp` 随 `attack/ops` 拆分及 backend/route/pipeline 签名变化
       （F1–F5）重接，避免静默断链（ancillary 已踩过）。
-    - **C3 构建面同批**：`src/Makefile`（`CXX_SRCS`+各 host 测试依赖）、`src/CMakeLists.txt`（`SOURCES`）、
+    - **C3 构建面同批**：`core/Makefile`（`CXX_SRCS`+各 host 测试依赖）、`core/CMakeLists.txt`（`SOURCES`）、
       `src/.clang-tidy`、`app/build.gradle.kts`（`routeFieldPaths`）、`tools/extract_rs/src/{lib,main}.rs`
       与 crate 测试。
 20. **错误分层与 fail-closed（E1–E3，已定）**：

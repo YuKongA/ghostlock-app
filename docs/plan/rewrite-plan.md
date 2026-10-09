@@ -19,29 +19,29 @@
 | 组 | 数量 | 明细 | 处置 |
 |---|---|---|---|
 | **上层** | **84** | `contract` 13 · `profile` 8 · `plugin` 17 · `support` 15 · `terminal` 10 · `platform` 5 · `memory` 6 · `race` 3 · `pipeline` 3 · `session` 3 · `main.cpp` 1 | **禁用**（追加 `.disabled`） |
-| **tests** | **96** | `src/core/tests/**`（90 `.cpp` + 6 `.hpp`，含 `host/`・`fixtures/`・`data/`） | **禁用**（同上） |
-| **backend（保留）** | **88** | `src/core/backend/**`（含 `cve_2026_43499/**`、`cve_2026_43284/**`、`route/**`） | **保留、零改动**（P2 硬判据，§5） |
-| **lib（保留）** | **4** | `src/lib/mpack/**` | **保留** |
-| **禁用总数（实测）** | **194** | = **118 `.cpp` + 62 `.hpp` + 14 `.h`**（**F1 删除 3 个 shim 孪生件**后由 197 → 194） | 谓词 = `find src/core -name '*.disabled' \| wc -l` |
-| **构建基础设施** | — | `src/Makefile`、`src/core/README.md`、`docs/**`、Gradle 侧 | **保留**（`Makefile` 只加**守卫**，不逐条删引用，§2） |
+| **tests** | **96** | `core/src/tests/**`（90 `.cpp` + 6 `.hpp`，含 `host/`・`fixtures/`・`data/`） | **禁用**（同上） |
+| **backend（保留）** | **88** | `core/src/backend/**`（含 `cve_2026_43499/**`、`cve_2026_43284/**`、`route/**`） | **保留、零改动**（P2 硬判据，§5） |
+| **lib（保留）** | **4** | `core/lib/mpack/**` | **保留** |
+| **禁用总数（实测）** | **194** | = **118 `.cpp` + 62 `.hpp` + 14 `.h`**（**F1 删除 3 个 shim 孪生件**后由 197 → 194） | 谓词 = `find core/src -name '*.disabled' \| wc -l` |
+| **构建基础设施** | — | `core/Makefile`、`core/src/README.md`、`docs/**`、Gradle 侧 | **保留**（`Makefile` 只加**守卫**，不逐条删引用，§2） |
 
-- **计数命令（可复核）**：`find src/core/contract src/core/profile … -name '*.cpp' -o -name '*.hpp' | wc -l`（逐层）；`find src/core/tests \( -name '*.cpp' -o -name '*.hpp' \) | wc -l` = 96；`find src/core/backend … | wc -l` = 88。
+- **计数命令（可复核）**：`find core/src/contract core/src/profile … -name '*.cpp' -o -name '*.hpp' | wc -l`（逐层）；`find core/src/tests \( -name '*.cpp' -o -name '*.hpp' \) | wc -l` = 96；`find core/src/backend … | wc -l` = 88。
 - 合计禁用 **180** 个文件；逐文件清单见 `docs/plan/rewrite-disable-manifest.tsv`（§2-③）。
 
 ## §2 禁用机制
 
 1. **命名**：`foo.cpp` → **`foo.cpp.disabled`**；`bar.hpp` → **`bar.hpp.disabled`**（**追加后缀、保留原扩展名**，避免 `.cpp`/`.hpp` 同名撞车）。
-2. **`src/Makefile` 不逐条删引用**（实测对上层目录的引用 **273 处**、对 `tests/` **174 处**）：改为**守卫** —— 默认目标检测「禁用态」（存在 `*.disabled` 且无对应 `.cpp`）⇒ 打印**明确说明**（含**恢复命令**与本文档指引）并**以 0 退出**（避免外部看起来像「构建坏了」）。
+2. **`core/Makefile` 不逐条删引用**（实测对上层目录的引用 **273 处**、对 `tests/` **174 处**）：改为**守卫** —— 默认目标检测「禁用态」（存在 `*.disabled` 且无对应 `.cpp`）⇒ 打印**明确说明**（含**恢复命令**与本文档指引）并**以 0 退出**（避免外部看起来像「构建坏了」）。
 3. **恢复清单（生成物）**：`docs/plan/rewrite-disable-manifest.tsv` —— 列 `path<TAB>kind<TAB>lines<TAB>restore_cmd`，覆盖 **194 个 path 行**（= **195 数据行** − 1 `makefile-guard`；再加 1 表头与 1 注释 ⇒ 文件共 **197 行**）。生成命令：
 
    ```sh
    # 生成（在仓库根执行）
-   for f in $(find src/core -maxdepth 1 -name main.cpp) \
-            $(find src/core/{contract,profile,plugin,support,terminal,platform,memory,race,pipeline,session} \
+   for f in $(find core/src -maxdepth 1 -name main.cpp) \
+            $(find core/src/{contract,profile,plugin,support,terminal,platform,memory,race,pipeline,session} \
                     \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
      printf '%s\tupper\t%s\tmv %s.disabled %s\n' "$f" "$(wc -l < "$f")" "$f" "$f"
    done
-   for f in $(find src/core/tests \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
+   for f in $(find core/src/tests \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
      printf '%s\ttest\t%s\tmv %s.disabled %s\n' "$f" "$(wc -l < "$f")" "$f" "$f"
    done
    ```
@@ -61,7 +61,7 @@
 
 - **谁确认**：**用户 2026-10-08**（战略裁定 + 四参数，见 §0）。
 - **技术债条目**：`TD-REWRITE-1`（全量门禁与提交纪律暂停）· `TD-REWRITE-2`（旧上层与旧 tests 的参照关系在 E2E-1 前不重建）· `TD-REWRITE-3`（Makefile 守卫期间的「不可构建」外观）。
-- **偿还时机**：**E2E-1 通过后** ⇒ ① 恢复**全量门禁**（`make -C src native-host-tests` + NDK 构建零警告 + `lint-tidy`）与**提交纪律①**；② 重建旧实现的**参照关系**（或明确宣布旧层作废并归档）；③ 移除 Makefile 守卫或改为「按层开关」。
+- **偿还时机**：**E2E-1 通过后** ⇒ ① 恢复**全量门禁**（`make -C core native-host-tests` + NDK 构建零警告 + `lint-tidy`）与**提交纪律①**；② 重建旧实现的**参照关系**（或明确宣布旧层作废并归档）；③ 移除 Makefile 守卫或改为「按层开关」。
 - **沿革**：旧纪律（守则 §2.3/:585、AGENTS 门禁与提交纪律、真机判据）**原文保留、不删**；本登记的效力**仅限本重写阶段**，E2E-1 后自动失效（除非再次强制确认）。
 
 ## §4 最小门禁（用户批准）
@@ -113,7 +113,7 @@
 
   | 临时物 | 触发 | 动作 | 判据 | owner |
   |---|---|---|---|---|
-  | **194 个 `*.disabled`** | **E2E-1 通过后** | 逐件**恢复**（按 manifest 的 `restore_cmd`）**或作废归档**（进 `docs/archive/` 索引） | `find src/core -name '*.disabled' \| wc -l` **归零**，或归档索引**覆盖 194** | **native-core** |
+  | **194 个 `*.disabled`** | **E2E-1 通过后** | 逐件**恢复**（按 manifest 的 `restore_cmd`）**或作废归档**（进 `docs/archive/` 索引） | `find core/src -name '*.disabled' \| wc -l` **归零**，或归档索引**覆盖 194** | **native-core** |
 
 - **风险**：① 禁用面过大导致「无参照」（缓解：backend 保留 ⇒ 攻击语义参照仍在）；② 守卫被误读为「构建坏了」（缓解：守卫打印恢复命令并以 0 退出）；③ 技术债被遗忘（缓解：§3 明确偿还时机 = E2E-1 通过后）。
 
@@ -121,11 +121,11 @@
 
 | # | 偏差 | 内容 | owner | 时机/判据 |
 |---|---|---|---|---|
-| **D-1** | **R1 层表登记未做** | [P4 规格](../analysis/composition-layer-p4-spec.md) §6 要求「新增层名与边**同批**登记」，但 `src/core/tests/include_firewall_test.cpp` **当前在禁用集内**、不在里程碑 A 写范围 ⇒ **未登记**。应登记 = 新层 `pipeline`（`composition_root` / `attack_window` 两文件；允许边 `contract`/`session`/`support`/`memory`/`profile`；**边与禁用前等价、白名单保持 0 条**） | native-core | **R1 批次**（防火墙测试恢复时**同批**）；判据 = 层表含 `pipeline` 且越层边/白名单检查通过 |
+| **D-1** | **R1 层表登记未做** | [P4 规格](../analysis/composition-layer-p4-spec.md) §6 要求「新增层名与边**同批**登记」，但 `core/src/tests/include_firewall_test.cpp` **当前在禁用集内**、不在里程碑 A 写范围 ⇒ **未登记**。应登记 = 新层 `pipeline`（`composition_root` / `attack_window` 两文件；允许边 `contract`/`session`/`support`/`memory`/`profile`；**边与禁用前等价、白名单保持 0 条**） | native-core | **R1 批次**（防火墙测试恢复时**同批**）；判据 = 层表含 `pipeline` 且越层边/白名单检查通过 |
 | **D-2** | **`AttackWindow` 持槽不持类型**（已知限制） | 骨架阶段用 **7 个 `void*` 槽 + generation** 表达「所有权 + 非重叠」不变量；把 `profile`/`heap`/`race`/`victim` 的**具体类型构造/析构绑进槽**属**步 4-6 与 P3 接线**范围 ⇒ 当前**未绑定类型**。**承诺不变**：`static_assert` 挂载点仍在 `AttackWindow`（唯一落点） | native-core | **P3 接线批 / P4 步 4-6**；判据 = 槽内为**具体类型**且「每条退出路径回收」的白盒判据可执行 |
 | **D-3** | **`plan_gate` 判定优先级** | Lead 裁定 = **以实现的优先级为准并写入 [P4 附件](../analysis/composition-layer-p4-spec-annex.md) §A1**（`plan-missing` → `queue-removed` → 全局事实 `geometry`→`capability`→`executor` → 逐 op `unknown-op`→`hash-mismatch`→`op-not-available`→`route-not-available`→`order-violation`→`param-invalid`→`seam-in-pi-window`）；**单一权威表，测试按表断言，代码顺序不改** | native-core | 接线批；判据 = 测试按 §A1 表逐条断言 |
 | **D-4** | **空计划语义** | `plan-missing` **覆盖「无可执行计划，含 op 列表为空」**（空脚本/空表/缺件同判）；极端值用例「op 列表为空 ⇒ 必须 `plan-missing`」 | native-core | 同 D-3 |
 | **D-5** | **注册表第 4 条 op** | `window.w1w3_umh`（**`available=false`，planned**）：为让 `op-not-available` **可达可测**；与 catalogue 的 `available=false` 组合同构（解析接受/门禁拒绝/UI 置灰）；**不改变**既有组合判定 | native-core | 同 D-3 |
 | **D-7** | **`StepExecution` 取代关系只在新层注释划掉** | 兼容面副本**未动**（保持 `compat-check` 97/0）⇒ 该清理**并入 U-4（逐符号最小化）** 说明（同判据、同时机） | native-core | P2 收口批（随 U-4） |
 | **D-8** | **`plan_gate` 输入形态（已知限制）** | 当前输入 = **中性输入 + 事实布尔**（`DeviceFacts`）；**真实接线**（会话/探测/执行器事实来源）属 **P3/P5** | native-core | P3 会话层 + P5 执行器面；接线时 gate **不得**自行探测 |
-| **U-4（重排 2026-10-08）** | **P2 兼容面 = 保形逐字复制**；**最小符号集未开始** | 计数（双层扫描）：487 = P3 **185** · P4 **0** · P5/C-ABI **115** · host **79** · 真死 **108**（46 卫士宏 + **24 方法演示值**）⇒ **当前可删面 = 0**；**撤销登记（按物证）**：B-1..B-3 **曾于工作树执行 24 项删除**（**未提交、未进入任何提交**）⇒ Lead 复审判**违反 R39**（**24/24 命中 `.disabled` 或 `docs` 引用**）⇒ **全部从孪生件回退**；**净效果 = 代码层零变更**（`git diff -- src/core` 空）、**无提交涉及删除** —— 事实链 = **门禁 + 复核在提交前拦下违规删除**；**执行时机 = P3/P5 落地 + `.disabled` 退役之后**（此前被引用者 = 预留接口，不得删），**B-1..B-6 全部重排**（min-plan §0）；判据 = 符号 ⊆ 使用点 + 每删一批重跑 `gate` 两段 + 头计数 | native-core | **P3/P5 之后**（原「P2 收口批」作废） |
+| **U-4（重排 2026-10-08）** | **P2 兼容面 = 保形逐字复制**；**最小符号集未开始** | 计数（双层扫描）：487 = P3 **185** · P4 **0** · P5/C-ABI **115** · host **79** · 真死 **108**（46 卫士宏 + **24 方法演示值**）⇒ **当前可删面 = 0**；**撤销登记（按物证）**：B-1..B-3 **曾于工作树执行 24 项删除**（**未提交、未进入任何提交**）⇒ Lead 复审判**违反 R39**（**24/24 命中 `.disabled` 或 `docs` 引用**）⇒ **全部从孪生件回退**；**净效果 = 代码层零变更**（`git diff -- core/src` 空）、**无提交涉及删除** —— 事实链 = **门禁 + 复核在提交前拦下违规删除**；**执行时机 = P3/P5 落地 + `.disabled` 退役之后**（此前被引用者 = 预留接口，不得删），**B-1..B-6 全部重排**（min-plan §0）；判据 = 符号 ⊆ 使用点 + 每删一批重跑 `gate` 两段 + 头计数 | native-core | **P3/P5 之后**（原「P2 收口批」作废） |

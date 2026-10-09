@@ -87,7 +87,7 @@ WriteOutcome write_op(OpCtx& ctx, const WriteEntryParams& entry, const Cve43499O
 
 ## 9. 承载测试（N14 点名）
 
-| 判据 | 测试文件（新，落 `src/core/tests/`） |
+| 判据 | 测试文件（新，落 `core/src/tests/`） |
 |---|---|
 | op TU 隔离（不含具体 route 头、只经 contract/原语） | `tests/op_tu_isolation_test.cpp` |
 | gate 判据（**10 条** + `dirty-failure` 走运行期终止） | `tests/plan_gate_test.cpp` |

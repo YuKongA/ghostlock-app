@@ -121,7 +121,7 @@
   证据：`exp.c:344-376`（`rc = i == 0 ? -2 : -1`）。
 - `patch_ko` 循环：`ret==0` break；`ret!=-2` break（视为最终失败）；`ret==-2` 打印并试下一个候选。
   证据：`exp.c:658-671`。
-- 同源镜像：项目 `src/core/backend/cve_2026_43284/steps/chain.cpp` 的 `apply_plan` 只在「本 carrier
+- 同源镜像：项目 `core/src/backend/cve_2026_43284/steps/chain.cpp` 的 `apply_plan` 只在「本 carrier
   第一次读旧块失败且尚未写」时返回 `CarrierUnusable`，`run_chain` 据此换下一个 carrier，并
   `clear_journal`；写失败/校验失败则直接 `finish` 终结，不再换目标。证据：`chain.cpp:201-208`、
   `340-348`。
@@ -242,7 +242,7 @@ sequenceDiagram
 ## 7. 与本项目分阶段入口对照
 
 对照对象：`--run-cve-2026-43284 <module> <target> --stage=plan|write|trigger|full [--allow-dev-target]`
-（`src/core/backend/cve_2026_43284/stage_runner.*` + `real_ops.*` + `steps/chain.*`）。
+（`core/src/backend/cve_2026_43284/stage_runner.*` + `real_ops.*` + `steps/chain.*`）。
 
 | 上游环节 | 上游 | 本项目现状 | 缺口判定 |
 |---|---|---|---|

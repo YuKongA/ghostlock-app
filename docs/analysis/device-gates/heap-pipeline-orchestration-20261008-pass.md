@@ -2,7 +2,7 @@
 
 > 级别：**攻击关键路径改动**（新增编排）⇒ 按 AGENTS 需真机门禁 + 本记录 ✓
 > 设备 `QV770MFGJ1`（A301SO · Android 15 · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`）
-> 代码：`src/core/backend/cve_2026_43499/memory/{prepare_page,prepare_steps,prepare_plan,reclaim_plan,shaping_plan,page_geometry,heap_geometry,heap_seam,heap_seam_linux}.hpp|cpp`
+> 代码：`core/src/backend/cve_2026_43499/memory/{prepare_page,prepare_steps,prepare_plan,reclaim_plan,shaping_plan,page_geometry,heap_geometry,heap_seam,heap_seam_linux}.hpp|cpp`
 
 ## 1 判据与结果
 
@@ -41,7 +41,7 @@ EXIT=0
 
 ## 3 证伪（守卫能失败 ✓）
 
-- 造错：把早停路径的 leak 关闭删掉 ⇒ `make -C src check` = **2** ✓，失败行 `FAIL: including the leak descriptor, which nothing else will close` ✓；还原 + `rm -f` 产物 ⇒ **0** ✓。
+- 造错：把早停路径的 leak 关闭删掉 ⇒ `make -C core check` = **2** ✓，失败行 `FAIL: including the leak descriptor, which nothing else will close` ✓；还原 + `rm -f` 产物 ⇒ **0** ✓。
 - 另：早停路径忘记 `Snitch::reset()` ⇒ 对应断言红 ✓（上一批已记 ✓）。
 
 ## 4 范围（证明什么 / 不证明什么）
@@ -53,7 +53,7 @@ EXIT=0
 ## 5 复现命令
 
 ```sh
-make -C src prepare-page-probe
+make -C core prepare-page-probe
 adb -s QV770MFGJ1 push build/native/prepare_page_probe /data/local/tmp/
 adb -s QV770MFGJ1 shell '/data/local/tmp/prepare_page_probe; echo EXIT=$?'
 adb -s QV770MFGJ1 shell 'getconf PAGESIZE'

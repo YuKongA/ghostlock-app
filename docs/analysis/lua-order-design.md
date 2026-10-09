@@ -37,7 +37,7 @@ ADR-0011：**执行顺序的权威是 Lua**。而本项目「执行顺序」的�
 - **不拼 `window.*`** ⇒ C3a 两条机检**原样通过**；**不是窗口相位动作** ⇒ 不触 C3b 的理由面；
 - 可表达**任意子集/次序**（含单步，**前提是 C3c 的词汇允许**）；
 - 本树已有「声明 → 实现执行」的先例：`backend` / `close` / `handoff` 都是声明式；`prepare_steps` / `reclaim_plan` 是「顺序/规则写成数据」的先例；`step_runner` 已能接一个 order 走完（头注已写「顺序期望来自 Lua」）。
-- **代价（按 N8 的实测精确化：上修但非从零）**：① **新件** —— surface 侧确无字符串/列表 kind（`ArgSpec { key, max(u64), required }`）；② **不是新概念** —— plan/op 侧早有字符串（`ParamWire::Str = 3`，由 plan_gate 校验）；③ **映射现成、载具另有先例** —— `step_from_token` 现成；**文档的数组读取已删**（`51a56231` 删队列读者；`step_queue`/`mpack_node_array` 在 `src/core` 零命中）⇒ 载字符串的真实先例是**脚本→staged 段**（`ArgKind::Str` + arena，上限 4096）；④ **重生成有先例** —— `make -C src stepset-steps-manifest-regen`。⇒ 合计 = 新参数 kind + manifest/pin/两份 doc-check 重生成 + gate 合法性校验 +（可选）词汇扩容。
+- **代价（按 N8 的实测精确化：上修但非从零）**：① **新件** —— surface 侧确无字符串/列表 kind（`ArgSpec { key, max(u64), required }`）；② **不是新概念** —— plan/op 侧早有字符串（`ParamWire::Str = 3`，由 plan_gate 校验）；③ **映射现成、载具另有先例** —— `step_from_token` 现成；**文档的数组读取已删**（`51a56231` 删队列读者；`step_queue`/`mpack_node_array` 在 `core/src` 零命中）⇒ 载字符串的真实先例是**脚本→staged 段**（`ArgKind::Str` + arena，上限 4096）；④ **重生成有先例** —— `make -C core stepset-steps-manifest-regen`。⇒ 合计 = 新参数 kind + manifest/pin/两份 doc-check 重生成 + gate 合法性校验 +（可选）词汇扩容。
 - **合规论证（N9）**：脚本拼的是 `disenforce_selinux` 等 token —— 属**dispatch 标识符**（用户禁则允许的两类之一），解析靠 `step_from_token` + 已声明的 step set 表 ⇒ **合规**；**不得**把顺序编码成索引数字（那才是「名字→值表」的近似形态）。另：`order` 作为行名**不触** `ORDER_TOKENS` 机检（该机检只扫 `core/pipeline/composition_root.hpp`）。
 
 ### 形态 A：三步成为脚本动作

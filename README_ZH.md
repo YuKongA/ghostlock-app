@@ -25,7 +25,7 @@
 adb/shell 环境无 seccomp 过滤，会跳过 W3，适合快速验证：
 
 ```powershell
-make -C src ghostlock
+make -C core ghostlock
 ./gradlew exportProfiles
 adb push build/native/ghostlock /data/local/tmp/ghostlock
 adb push build/profile/<release>.bin /data/local/tmp/profile.bin
@@ -137,4 +137,4 @@ ghostlock {
 
 ### Vendored 库
 
-- [ludocode/mpack](https://github.com/ludocode/mpack) —— MessagePack 读/写库，MIT；vendored 于 [`src/lib/mpack/`](src/lib/mpack/)，LICENSE 随代码保留。
+- [ludocode/mpack](https://github.com/ludocode/mpack) —— MessagePack 读/写库，MIT；vendored 于 [`core/lib/mpack/`](core/lib/mpack/)，LICENSE 随代码保留。

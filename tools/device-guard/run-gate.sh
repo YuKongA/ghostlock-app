@@ -17,7 +17,7 @@
 #
 # PAYLOAD: [4B big-endian length][GLKv3 document] (--enable-status-record). The
 # 84-byte channel-B session frame is read ONLY by cve_2026_43284
-# (src/core/main.cpp:154-166), so the 43499 path needs no frame.
+# (core/src/main.cpp:154-166), so the 43499 path needs no frame.
 #
 # LOG LOCATION: /sdcard/Download is credential-encrypted storage and is NOT
 # mounted before the first unlock, so a post-reboot gate would hang there. The
@@ -80,7 +80,7 @@ run_with_timeout() {
 }
 
 [ -n "$RELEASE" ] || fail "--release is required (the device uname -r)"
-[ -f "$BINARY" ] || fail "native binary not found: $BINARY (run: make -C src ghostlock)"
+[ -f "$BINARY" ] || fail "native binary not found: $BINARY (run: make -C core ghostlock)"
 BIN_PATH="$PROFILES/$RELEASE.bin"
 if [ ! -f "$BIN_PATH" ] && [ -f "$PROFILES_FALLBACK/$RELEASE.bin" ]; then
   PROFILES="$PROFILES_FALLBACK"

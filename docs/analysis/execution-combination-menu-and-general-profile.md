@@ -46,7 +46,7 @@
 
 ### 1.4 native 是否参与 release 匹配（已核实：不参与）
 
-- `src/core/profile/glkv3.cpp:413`、`glkv3_parse.cpp:555`：native 只把 `release` 当**文档字段**解析/携带，**没有任何 release 与设备比对**；
+- `core/src/profile/glkv3.cpp:413`、`glkv3_parse.cpp:555`：native 只把 `release` 当**文档字段**解析/携带，**没有任何 release 与设备比对**；
 - ⇒ **general 回退与新加载判据都可以在纯 Kotlin 层完成**；native 不需要改（实现批次仍需以真实调用链复核一次）。
 
 ### 1.5 LKM label ↔ 内核族（8 个 label 的权威来源）
@@ -107,7 +107,7 @@ available = [
 - **Kotlin 解析/校验**：`profile-core/src/main/kotlin/com/ghostlock/app/data/ProfileLayout.kt:420`（`validateAvailable`）与 `:453`（`validateAvailableSelection`）；若走 (a) 还要改 `:435`/`:438` 的**列表拒绝**语义；
 - **M5 的两条具名诊断与其测试**：`ProfileLayout.kt:435`（token-list）/`:438`（empty token list）+ `profile-core/src/test/kotlin/com/ghostlock/app/data/ProfileLayoutAvailableTest.kt:31/:36`；
 - **golden / fixture 与资产**：`profile-core/src/test/resources/glkv3-native-fixture.tsv`、Kotlin golden（现 3920 字符）与 native 导出的 golden 十六进制（生成任务见 AGENTS 的 manifest 生成约定）；**76 份**（68 release/片段 + 8 general）资产里的 `available` 段；`index.conf`（general 登记，见 U4b）；
-- **native 侧（已核实）**：`available` **不是**执行输入——native 只按 wire 的 `backend.<id>` 与 `queue`/`route` 绑定（契约 §3.20）；native 侧的 `available` 仅是**编译期组合目录**的字段（`src/core/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`），**与 profile 的 `available` 段无关** ⇒ **本裁决不影响 native** ✓。
+- **native 侧（已核实）**：`available` **不是**执行输入——native 只按 wire 的 `backend.<id>` 与 `queue`/`route` 绑定（契约 §3.20）；native 侧的 `available` 仅是**编译期组合目录**的字段（`core/src/pipeline/orchestrator.hpp:41-52`、`component_catalog.hpp:29-69`），**与 profile 的 `available` 段无关** ⇒ **本裁决不影响 native** ✓。
 
 **UI 树生成规格（用户要求「思考」的点，写成可实现规格）**：
 
@@ -494,7 +494,7 @@ available = [
 - **Kotlin 拒绝 1**：`ProfileLayout.kt:435`「`the token-list form was removed in M5; declare route+queue`」⇒ **保留**（只针对**字符串/token 列表**），新增「对象列表」分支**不受影响**；
 - **Kotlin 拒绝 2**：`ProfileLayout.kt:438`「`empty token list is not a selection; declare route+queue`」⇒ 需**区分**：空**对象**列表 ⇒ 新诊断（空声明不是选择）；空 **token** 列表 ⇒ 保持拒绝；
 - **Kotlin 测试**：`ProfileLayoutAvailableTest.kt:31/:36` 的「空列表」用例需**按形态拆分**（token 列表仍拒；对象列表新增正例）；
-- **native 侧**：`token-form-removed`（`src/core/tests/combination_token_test.cpp:118/:122/:139`）针对**取值**而非 `available` 形态 ⇒ **不动**（`available` 不是 native 执行输入，§1.4/§2.5）；
+- **native 侧**：`token-form-removed`（`core/src/tests/combination_token_test.cpp:118/:122/:139`）针对**取值**而非 `available` 形态 ⇒ **不动**（`available` 不是 native 执行输入，§1.4/§2.5）；
 - **契约 §3.20 的「列表形态出现即拒」表述**：需按「**区分 token 列表 / 对象列表**」改写（**这是本条的主要文档代价**）。
 
 **④ 迁移与兼容**：未发布 ⇒ 无兼容负担；但**资产需整体改写**（58+ 份 + 8 份 general）⇒ 与 §2.4 的「整理」批次可合并，但**改动面显著大于 A/B**。
@@ -564,7 +564,7 @@ available = [
 
 **跨端影响（逐条）**：
 
-- **native**：owner schema 的 `backend.cve_2026_43499.route.*` 行（`profile-manifest-v3.tsv`）与绑定路径 `glkv3` 解析（`src/core/profile/glkv3.cpp` 的字段收集）——读法甲**零影响**；读法乙**需要新增平铺字段并删除 route 层绑定**；
+- **native**：owner schema 的 `backend.cve_2026_43499.route.*` 行（`profile-manifest-v3.tsv`）与绑定路径 `glkv3` 解析（`core/src/profile/glkv3.cpp` 的字段收集）——读法甲**零影响**；读法乙**需要新增平铺字段并删除 route 层绑定**；
 - **Kotlin**：`ProfileResolver.kt:45-71` 的映射表（读法甲零影响 / 读法乙要删 `route.<name>` 前缀逻辑）；`ProfileLayout` 的归一化与 `flatten()` 对拍（读法乙需重生成 golden）；
 - **对拍测试**：`profile-manifest-v3.tsv` 两份副本、`ProfileLayoutEquivalenceTest`、M3 字节清单；
 - **资产**：62 个含 `route {` 的 profile + 8 份 general（读法甲基本不动 / 读法乙全量改写）。

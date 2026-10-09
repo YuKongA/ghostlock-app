@@ -85,14 +85,14 @@ for each probe in module_probes:
 
 | 文件 | 改动类型 | 说明 |
 |---|---|---|
-| `src/core/session/backend/cfi_layout.hpp` | 新增 | `CfiSymbols` 结构体（tracepoint 常量）；`image_contains_address()`；`collect_module_probes()` |
-| `src/core/session/backend/cfi_stage.hpp` | 修改 | 新增 `neutralize_vr_probes()` 声明 |
-| `src/core/session/backend/cfi_stage.cpp` | 新增 | `neutralize_vr_probes()` 实现（完整的中和逻辑） |
-| `src/core/session/backend/cve_2026_43499_backend.cpp` | 修改 | 在 `run_cfi_stage` 的 cfi5 之后调用 `neutralize_vr_probes()` |
-| `src/core/kernel/runtime_struct_offsets.h` | 修改 | 新增 4 个 tracepoint 取用器；`image_lo/hi` 辅助函数 |
-| `src/core/memory/payload_builder.h` | 修改 | `WriteMode::Value = 4`；`WriteRequest::value` 字段 |
-| `src/core/memory/payload_builder.cpp` | 修改 | `make_value()` 工厂；布局/校验分支；compact 臂围栏 |
-| `src/core/tests/cfi_stage_test.cpp` | 新增 | 纯函数断言（镜像边界、模块区筛选、上限截断） |
+| `core/src/session/backend/cfi_layout.hpp` | 新增 | `CfiSymbols` 结构体（tracepoint 常量）；`image_contains_address()`；`collect_module_probes()` |
+| `core/src/session/backend/cfi_stage.hpp` | 修改 | 新增 `neutralize_vr_probes()` 声明 |
+| `core/src/session/backend/cfi_stage.cpp` | 新增 | `neutralize_vr_probes()` 实现（完整的中和逻辑） |
+| `core/src/session/backend/cve_2026_43499_backend.cpp` | 修改 | 在 `run_cfi_stage` 的 cfi5 之后调用 `neutralize_vr_probes()` |
+| `core/src/kernel/runtime_struct_offsets.h` | 修改 | 新增 4 个 tracepoint 取用器；`image_lo/hi` 辅助函数 |
+| `core/src/memory/payload_builder.h` | 修改 | `WriteMode::Value = 4`；`WriteRequest::value` 字段 |
+| `core/src/memory/payload_builder.cpp` | 修改 | `make_value()` 工厂；布局/校验分支；compact 臂围栏 |
+| `core/src/tests/cfi_stage_test.cpp` | 新增 | 纯函数断言（镜像边界、模块区筛选、上限截断） |
 | `app/src/main/kotlin/data/runstate/RunStateCodec.kt` | 修改 | `Steps` 枚举加 `vr1` |
 | `app/src/main/assets/profile/6.6-template.conf` | 修改 | 新增 tracepoint 常量配置节 |
 | `app/src/main/assets/profile/<release>.conf` × N | 修改 | 为已验证设备添加 tracepoint 常量 |
@@ -179,7 +179,7 @@ constexpr int kMaxFuncEntries = 256;
 ### 主机单元测试
 
 ```sh
-make -C src native-host-tests
+make -C core native-host-tests
 ./build/host-test/cfi_stage_test
 
 # 预期输出：

@@ -1,7 +1,7 @@
 # Document ③ 段（收尾 payload）字段口径定稿 · 2026-10-08
 
 > 分析类（≤8192 B）。**本件只记录已定稿条文，不含裁决**（裁决见 Lead；有疑问回报，不自行改判）。
-> 相关：[lua-surface-annex-document.md](lua-surface-annex-document.md) §B1 · [A6 待批单](../plan/A6-baseline-approval.md) §1 第 8 项 · `src/core/terminal/payload.hpp` · `src/core/terminal/execution.hpp`。
+> 相关：[lua-surface-annex-document.md](lua-surface-annex-document.md) §B1 · [A6 待批单](../plan/A6-baseline-approval.md) §1 第 8 项 · `core/src/terminal/payload.hpp` · `core/src/terminal/execution.hpp`。
 
 ## §1 段名与键名
 
@@ -11,7 +11,7 @@
 | 键 | 类型 | 约束 |
 |---|---|---|
 | `.bin` | **bin** | 正文（收尾脚本 / LKM 字节） |
-| `.sha256` | **str** | **64 小写 hex**，与 `support::sha256_hex`（`src/core/support/sha256.hpp:28`）**同口径** |
+| `.sha256` | **str** | **64 小写 hex**，与 `support::sha256_hex`（`core/src/support/sha256.hpp:28`）**同口径** |
 | `.size` | **uint** | 字节数 |
 | `.kind` | **str** | ∈ `script` \| `module` \| `plan` |
 
@@ -21,7 +21,7 @@
 - **`name` = 以 selectable 的 Frontend token 开头 + 可选 `_<suffix>`**（`suffix` = `[a-z0-9_]{1,16}`）⇒ **不允许无关自由名**；`shizuku`（`selectable=false`）**不可作前缀**。
 - 例：某终端需两份交付物 ⇒ **`root_child_script`** / **`root_child_module`**（仍满足前缀约束）。
 - **⚠ 陷阱（2026-10-08 实测发现）**：**wire 的字符串是长度分隔、无终止符**（MessagePack str）⇒ **任何把它当 C 串用的代码都是错的**。实测：读取器第一版按 `text[64] == 0` 校验摘要 ⇒ ①**越界读** ②**对所有文档恒定误判缺件**（**必然假红**级，不是风格问题）。**修法** = 按 `mpack_node_strlen` 长度拷进**有界缓冲**再校验（载荷条目现携带定长副本 `sha256[65]` / `kind[16]`，字节仍是**带显式长度的视图**）；物证 = `tests/document_reader_test.cpp` 三段全绿。
-- **段内唯一**；**大小写敏感、无归一化**；**`handoff.payload_ref` 与 `name` 逐字相等**（直通 `store_payload` 的 name，`src/core/terminal/payload_store.hpp:30`）。
+- **段内唯一**；**大小写敏感、无归一化**；**`handoff.payload_ref` 与 `name` 逐字相等**（直通 `store_payload` 的 name，`core/src/terminal/payload_store.hpp:30`）。
 - **沿革（不删）**：先冻结为**自由名** → 读 `kind.hpp` 后改为**受终端闭集约束**（2026-10-08 修正）。
 
 ## §3 空载荷
@@ -59,4 +59,4 @@
 - 白盒：`check_payload` 对 `{bin, sha256, size, kind}` 四键齐备断言；`sha256` 口径与 `sha256_hex` **逐字符相同**；`kind` 非法值 ⇒ 拒。
 - 黑盒：`handoff.payload_ref` 与段内 `name` **逐字不等** ⇒ **`payload-missing`**；`sha256`/`size` 不符 ⇒ **`payload-missing`**；**`name` 不以声明的 terminal token 开头**（自由名）⇒ **拒绝**（Adapter 按名字规则校验；family 外路径仍 fail-closed）。
 - 顺序：manifest 未重新导出前，Kotlin 发射 ⇒ **fail-closed 拒绝**（预期红，用于证明顺序约束生效）。
-- **实证（native 已入库）**：`src/core/profile/payload_keys.hpp`（5810 B）· `payload_keys.cpp`（1462 B）· 测试 `src/core/tests/payload_keys_test.cpp`（5924 B）；**两条证伪**证明规则**可失败**：① **取全部 Frontend ⇒ 组合 token（`shizuku`）被误收**（正确实现只取 selectable）；② **去掉后缀必填 ⇒ 裸名混过**（正确实现要求 `_<suffix>`）。
+- **实证（native 已入库）**：`core/src/profile/payload_keys.hpp`（5810 B）· `payload_keys.cpp`（1462 B）· 测试 `core/src/tests/payload_keys_test.cpp`（5924 B）；**两条证伪**证明规则**可失败**：① **取全部 Frontend ⇒ 组合 token（`shizuku`）被误收**（正确实现只取 selectable）；② **去掉后缀必填 ⇒ 裸名混过**（正确实现要求 `_<suffix>`）。

@@ -22,7 +22,7 @@ EXIT=4
 
 ## 3. 含义（如实，不拔高）
 
-- **⚠ 更正（2026-10-08 · 真机实测推翻本节原推论）**：模块自述 vermagic = **`5.15.202-…`** 与设备 `5.15.189-…` 不同，但**真机实测该模块「已加载 → 已执行 → 已自卸载」**（E2BIG = 模块 `module_init` 的**故意**返回）⇒ **patch 级差异不阻止加载**。**机制**：Android GKI 开 `CONFIG_MODVERSIONS` ⇒ 内核 `same_magic()` 在这种模块上**跳过 vermagic 第一段（内核版本串）**，只比 tail（`SMP preempt mod_unload modversions aarch64`）；本产物带 `modversions` 且 `__versions` 段 **size = 0**（`objdump` 实测）⇒ 无 CRC 记录可比。**探测端 `belongs=no` 的出处与性质**：`src/core/main.cpp:175-182` 的 `vermagic_belongs_to(...)` 是**文本比较**（不符 ⇒ exit 4）⇒ **保守静态判据，不是内核加载裁决**。
+- **⚠ 更正（2026-10-08 · 真机实测推翻本节原推论）**：模块自述 vermagic = **`5.15.202-…`** 与设备 `5.15.189-…` 不同，但**真机实测该模块「已加载 → 已执行 → 已自卸载」**（E2BIG = 模块 `module_init` 的**故意**返回）⇒ **patch 级差异不阻止加载**。**机制**：Android GKI 开 `CONFIG_MODVERSIONS` ⇒ 内核 `same_magic()` 在这种模块上**跳过 vermagic 第一段（内核版本串）**，只比 tail（`SMP preempt mod_unload modversions aarch64`）；本产物带 `modversions` 且 `__versions` 段 **size = 0**（`objdump` 实测）⇒ 无 CRC 记录可比。**探测端 `belongs=no` 的出处与性质**：`core/src/main.cpp:175-182` 的 `vermagic_belongs_to(...)` 是**文本比较**（不符 ⇒ exit 4）⇒ **保守静态判据，不是内核加载裁决**。
 - ⇒ **这份资产在本设备上不可用**（**与攻击链是否就绪无关** ✓）；
 - 该结论由**只读诊断**在**加载任何东西之前**给出 —— 这正是 `--probe-cve-2026-43284` 的用途 ✓。
 

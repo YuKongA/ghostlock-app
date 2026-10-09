@@ -4,7 +4,7 @@ package com.ghostlock.app.data.profile
  * GLKv3 golden bytes for the shared fixture document.
  *
  * SELECTION_HEX is the NATIVE golden of the fixture that declares the queue
- * selection: make -C src glkv3-golden-hex, 3920 hex chars (was 3964 before M5,
+ * selection: make -C core glkv3-golden-hex, 3920 hex chars (was 3964 before M5,
  * -44 = the backend.<id>.steps entry the app no longer emits).
  *
  * NO_SELECTION_HEX is the APP-PATH encoding of the same document with no

@@ -209,7 +209,7 @@ const glk_cm_module *glk_cm_entry(uint32_t host_abi_version);
 4. **门控归属**：profile 是唯一权威，库不自行决定启用。
 5. **哈希来源**：profile 扩展节（走既有 GLKv3 字段机制）。
 6. **R14 修订**：新增 ADR-0005，并在 ADR-0004 R14 标注取代关系。
-7. **ABI 头位置**：本期放 `src/core/contract/glk_cm_abi.h`（自包含 C99、无任何项目 include，仍受 R1 防火墙与 lint 覆盖）；
+7. **ABI 头位置**：本期放 `core/src/contract/glk_cm_abi.h`（自包含 C99、无任何项目 include，仍受 R1 防火墙与 lint 覆盖）；
    待需要对外分发时（CM-5）再导出到 SDK 目录，避免过早新增顶级目录。
 8. **`PRE_ROUTE` 语义**由 backend 定义（其阶段枚举映射到 ABI 阶段），不写死某个 backend 的内部步骤。
 

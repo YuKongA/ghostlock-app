@@ -7,7 +7,7 @@
 
 | | **43499 root script** | **我们的 `ghostlock.ko`** |
 |---|---|---|
-| 位置 | [terminal/root_script.cpp](src/core/terminal/root_script.cpp)（12KB 脚本，写到 `root_script_path`） | [tools/lkm/ghostlock/ghostlock.c](tools/lkm/ghostlock/ghostlock.c) |
+| 位置 | [terminal/root_script.cpp](core/src/terminal/root_script.cpp)（12KB 脚本，写到 `root_script_path`） | [tools/lkm/ghostlock/ghostlock.c](tools/lkm/ghostlock/ghostlock.c) |
 | 执行者 | root child 交接后由 shell 执行（W2 已成功，uid 0） | 内核 `insmod` 加载（43284 链在 init/vendor_modprobe 域调用） |
 | 上下文 | **userspace，root**（su/ksu 域） | **kernel context**（`module_init`） |
 | 生效时长 | 进程存活期；改的是 /data、/sysfs、SELinux 策略加载 | 数毫秒；改的是内核内存（`selinux_state`），随后自卸载 |

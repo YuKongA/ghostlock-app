@@ -9,7 +9,7 @@ import java.security.MessageDigest
  *
  * The document carries the payload bytes and the digest they are bound to, and the
  * native side re-computes that digest before anything is written or run
- * (src/core/terminal/payload.hpp). HOCON declares intent; this object is what
+ * (core/src/terminal/payload.hpp). HOCON declares intent; this object is what
  * resolve produces (docs/analysis/lua-surface-annex-document.md section B1 row 3).
  *
  * Naming is a rule, not a convention: a name starts with a SELECTABLE terminal
@@ -17,7 +17,7 @@ import java.security.MessageDigest
  * so a handoff payload_ref always names the payload of a terminal that exists and
  * a bare terminal name (one concept, two shapes) is refused. Keys, kinds, the
  * suffix bound and the name rule are mirrored from the native authority
- * (src/core/profile/payload_keys.hpp; pin src/core/tests/payload-manifest.pin.tsv).
+ * (core/src/profile/payload_keys.hpp; pin core/src/tests/payload-manifest.pin.tsv).
  * The terminal set is READ from [FrontendKind] instead of being written down here,
  * so a terminal added to the catalogue becomes admissible without a second edit
  * (and shizuku, a combination token rather than a terminal, never is).

@@ -36,7 +36,7 @@ namespace {
      *   make -C src surface-manifest-regen   print the diff, then write the pin
      * Regeneration is explicit only; check/host never rewrite the pin. */
 #ifndef SURFACE_MANIFEST_PIN
-#define SURFACE_MANIFEST_PIN "core/tests/surface-manifest.pin.tsv"
+#define SURFACE_MANIFEST_PIN "src/tests/surface-manifest.pin.tsv"
 #endif
 
     /* Read the pin file into a caller buffer; returns the bytes read (0 on

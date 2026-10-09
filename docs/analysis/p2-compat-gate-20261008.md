@@ -6,9 +6,9 @@
 
 ## §1 门禁① compat-check（NDK 解析 97 个 backend 文件）
 
-- **实现位置**：`src/Makefile:17-27`（目标 `compat-check`；逐文件 `$(NDK_CXX) -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H=... -D__ARM=1 -fsyntax-only`；失败即打印 `COMPAT-FAIL: <file>` 并以非 0 退出）。
+- **实现位置**：`core/Makefile:17-27`（目标 `compat-check`；逐文件 `$(NDK_CXX) -std=c++23 -fno-rtti -Icore -isystem $(MPACK_DIR) -DTARGET_CONFIG_H=... -D__ARM=1 -fsyntax-only`；失败即打印 `COMPAT-FAIL: <file>` 并以非 0 退出）。
 - **旗标含义**：`-fno-rtti` = 与生产一致；`-isystem lib/mpack` = 第三方头走 system；`-DTARGET_CONFIG_H="memory/target.h"` = target 配置注入点；`-D__ARM=1` = 目标架构分支。
-- **命令**：`ANDROID_NDK_HOME=<ndk> make -C src compat-check`
+- **命令**：`ANDROID_NDK_HOME=<ndk> make -C core compat-check`
 - **原始输出**（尾部）：
 
   ```text
@@ -16,34 +16,34 @@
   EXIT=0
   ```
 
-- **计数口径**：`find src/core/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | wc -l` = **97**（= 门禁覆盖全集；其中**依赖上层头的子集 = 59**，见 A1）。`COMPAT-FAIL` 匹配数 = **0**。
+- **计数口径**：`find core/src/backend -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | wc -l` = **97**（= 门禁覆盖全集；其中**依赖上层头的子集 = 59**，见 A1）。`COMPAT-FAIL` 匹配数 = **0**。
 - **幂等性**：同命令重复运行仍 `OK=97 FAIL=0`（本次复跑 2 次）。
 
 ## §2 门禁② C ABI 头可被 C 编译
 
-- **命令**：`cc -x c -fsyntax-only src/core/contract/abi/glk_contract_abi.h`
+- **命令**：`cc -x c -fsyntax-only core/src/contract/abi/glk_contract_abi.h`
 - **结果**：**EXIT=0**（带 `-Icore` 亦为 0）⇒ 头内**无 C++ 构造**，C ABI 可用。
 
 ## §3 冻结量断言 + 独立 TU
 
 | 冻结量 | 断言位置 | 值 |
 |---|---|---|
-| 后端槽 | `src/core/session/core_session.hpp:24` | `static_assert(kBackendStateBytes == 2048, "backend state slot size is frozen (P2 spec 2)")` |
-| 槽内实际占用 | `src/core/backend/cve_2026_43499_state.hpp:41` | `static_assert(sizeof(Cve2026_43499State) <= kBackendStateBytes)`（实测 `sizeof = 1560`） |
-| `kernel_offsets` | `src/core/contract/model.hpp:425` | `== 520` |
-| `TargetProfile` | `src/core/contract/model.hpp:427` | `== 784` |
+| 后端槽 | `core/src/session/core_session.hpp:24` | `static_assert(kBackendStateBytes == 2048, "backend state slot size is frozen (P2 spec 2)")` |
+| 槽内实际占用 | `core/src/backend/cve_2026_43499_state.hpp:41` | `static_assert(sizeof(Cve2026_43499State) <= kBackendStateBytes)`（实测 `sizeof = 1560`） |
+| `kernel_offsets` | `core/src/contract/model.hpp:425` | `== 520` |
+| `TargetProfile` | `core/src/contract/model.hpp:427` | `== 784` |
 
 - **独立 TU 校验**（不依赖任何 backend 文件，证明断言在最小包含下即可编译）：
 
   ```sh
   printf '#include "contract/model.hpp"\nint main(){return 0;}\n' > /tmp/tu.cpp
-  c++ -std=c++23 -fno-rtti -Isrc/core -isystem src/lib/mpack -fsyntax-only /tmp/tu.cpp
+  c++ -std=c++23 -fno-rtti -Icore/src -isystem core/lib/mpack -fsyntax-only /tmp/tu.cpp
   # EXIT=0
   ```
 
 ## §4 门禁④ 证伪实验（**守卫必须能失败**）
 
-- **做法**：把 2048 → 1024，观察断言是否失败。**实验在 `/tmp` 隔离副本进行**（`cp -R src /tmp/p2-falsify`）—— **不触碰** `src/core/**`（该写范围属 native-core，本件不越界）；因副本与原树同源，结论等价。
+- **做法**：把 2048 → 1024，观察断言是否失败。**实验在 `/tmp` 隔离副本进行**（`cp -R src /tmp/p2-falsify`）—— **不触碰** `core/src/**`（该写范围属 native-core，本件不越界）；因副本与原树同源，结论等价。
 - **原始输出（节选）**：
 
   ```text
@@ -62,11 +62,11 @@
 ## §5 backend 零改动证明（硬判据：88 源文件一行不改）
 
 ```sh
-git status --short -- src/core/backend   # 输出为空
-git diff --stat  -- src/core/backend     # 输出为空
+git status --short -- core/src/backend   # 输出为空
+git diff --stat  -- core/src/backend     # 输出为空
 ```
 
-- 结论：**`src/core/backend/**` 零改动**（无修改、无新增、无删除）⇒ 兼容层无需改 backend 即满足 §1 门禁。
+- 结论：**`core/src/backend/**` 零改动**（无修改、无新增、无删除）⇒ 兼容层无需改 backend 即满足 §1 门禁。
 
 ## §6 两条经验（如实记录，含可复现判据）
 
@@ -80,14 +80,14 @@ git diff --stat  -- src/core/backend     # 输出为空
 | # | 未决项 | 现状（实测） | 处置 |
 |---|---|---|---|
 | U-1 | **compat-check 需显式 `ANDROID_NDK_HOME`** | 未设时：`compat-check: NDK C++ compiler not found: /toolchains/.../aarch64-linux-android35-clang++` + `make: *** [compat-check] Error 2`（**EXIT=2**；路径前缀为空 ⇒ `NDK_ROOT` 未解析） | 在 CI/脚本中**显式导出** `ANDROID_NDK_HOME`；或让 Makefile 从 `local.properties` 的 `ndk.dir` 回退解析 |
-| U-2 | 门禁尚未纳入自动化门禁链 | 现为**手动**目标（`make -C src compat-check`） | 归 P2 收口批（与 `native-host-tests` 同批接线） |
+| U-2 | 门禁尚未纳入自动化门禁链 | 现为**手动**目标（`make -C core compat-check`） | 归 P2 收口批（与 `native-host-tests` 同批接线） |
 | U-3 | 97 与「59 依赖上层」两个口径的关系 | 97 = backend 全集；59 = 依赖上层头的子集（A1） | 门禁**以 97 为准**（更严）；59 用于兼容层范围界定 |
 | **U-4** | **逐符号最小化未执行**（交付以「编译通过」为停止条件，非规格的「使用点驱动」） | 现状 = **编译驱动**；实现方已如实上报 | **子步** = 逐头核对 [A2](contract-layer-p2-spec-annex-a2.md) 使用点；**判据** = 每头**导出符号 ⊆ 使用点声明集**；**owner** = native-core；**时机** = P2 收口批（与 U-2 同批） |
 
 ## §8 受控第二定义面与判据适用范围
 
 - **F10（判据挂对象）**：**P2 无新 `.cpp`（新增 TU = 0）** ⇒ [rewrite-plan](../plan/rewrite-plan.md) §4 的「新子树编译 **0 警告**」判据**本批 N/A**（无适用对象）；compat-check 只做 `-fsyntax-only`（不带 `-Wall`），**不得**被读作已满足 0 警告。该判据**自首个新 TU 批次起生效**。
-- **F8（受控的 Linux ABI 常量第二定义面）**：`src/core/tests/host/include/` 的 **3 个 host shim**（`linux/futex.h` / `sched.h` / `sys/prctl.h`）定义以下常量 —— 均为**内核 uapi / glibc 的对照值**，实测一致：
+- **F8（受控的 Linux ABI 常量第二定义面）**：`core/src/tests/host/include/` 的 **3 个 host shim**（`linux/futex.h` / `sched.h` / `sys/prctl.h`）定义以下常量 —— 均为**内核 uapi / glibc 的对照值**，实测一致：
 
   | 常量 | 值 | 来源 |
   |---|---|---|
@@ -99,7 +99,7 @@ git diff --stat  -- src/core/backend     # 输出为空
   | `CPU_SETSIZE` | **1024** | glibc `sched.h`（`#ifndef` 守卫） |
   | `cpu_set_t`（host 替身） | **128 B**（`unsigned long bits[16]`） | 与 glibc `cpu_set_t` 同尺寸 |
 
-  - **可见范围**：仅经 `-Icore/tests/host/include`（`src/Makefile:292/:346`）进入 **host** 目标；**NDK / 生产路径不经此** ⇒ **不构成生产的第二权威**；`#include_next` + `#ifndef CPU_SETSIZE` 保证在 glibc 上整块跳过。
+  - **可见范围**：仅经 `-Icore/tests/host/include`（`core/Makefile:292/:346`）进入 **host** 目标；**NDK / 生产路径不经此** ⇒ **不构成生产的第二权威**；`#include_next` + `#ifndef CPU_SETSIZE` 保证在 glibc 上整块跳过。
   - **复核方式**：对照内核 uapi 与 glibc 头（可加 Linux CI 断言）；**任何值漂移** ⇒ 本表与 shim 同批更新。
 
 - **评审归档指针**：design-critic 的 P2 非作者评审（task-96）原文见 **[p2-review-20261008](p2-review-20261008.md)**（十行不符合项表 + 总判 + 验证范围）。

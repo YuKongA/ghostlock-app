@@ -24,7 +24,7 @@
 
 namespace {
 #ifndef STEPSET_STEPS_PIN
-#define STEPSET_STEPS_PIN "core/tests/stepset-steps.pin.tsv"
+#define STEPSET_STEPS_PIN "src/tests/stepset-steps.pin.tsv"
 #endif
 
     using ghostlock::contract::kStepSetCount;

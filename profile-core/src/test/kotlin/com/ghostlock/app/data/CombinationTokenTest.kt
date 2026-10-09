@@ -49,20 +49,20 @@ class CombinationTokenTest {
         val mcast = combination("mcast_rootchild")
         assertEquals(BackendKind.Cve2026_43499, mcast.backend)
         assertEquals(RouteKind.MULTICAST_WAITER, mcast.route)
-        assertEquals(StepSetKind.W1W3, mcast.steps)
+        assertEquals(StepSetKind.SELINUX_CRED_SECCOMP, mcast.steps)
         assertEquals(FrontendKind.RootChild, mcast.terminal)
         assertEquals("rootchild", mcast.path)
         assertTrue(mcast.hasRouteAxis)
 
         val shizuku = combination("tcp_shizuku")
         assertEquals(RouteKind.TCP_ZEROCOPY, shizuku.route)
-        assertEquals(StepSetKind.W1W2, shizuku.steps)
+        assertEquals(StepSetKind.SELINUX_CRED, shizuku.steps)
 
         val umh = combination("umh")
         assertEquals(BackendKind.Cve2026_43284, umh.backend)
         assertNull(umh.route)
         assertEquals("umh", umh.path)
-        assertEquals(StepSetKind.PAGE_CACHE_WRITE, umh.steps)
+        assertEquals(StepSetKind.PAGE_CACHE, umh.steps)
         assertEquals(FrontendKind.UmhForward, umh.terminal)
         assertFalse(umh.hasRouteAxis)
     }

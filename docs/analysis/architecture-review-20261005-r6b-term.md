@@ -3,7 +3,7 @@
 - 日期：2026-10-05　审查人：Lead　快照：**工作树未提交状态**（R6b/T5 半落地 + TERM T1–T4 已实现）
 - 基准：`docs/development/design-philosophy.md`（11 条原则）、`engineering-standards.md`（§2 架构 / §3 数据流 / §4 控制流 / §5 数据结构）、
   ADR-0001（允许依赖图）、ADR-0004（组合轴）、ADR-0006（terminal 归属）
-- 取证：`make -C src native-host-tests` EXIT=0（防火墙 `173 files, 4/4/0/0`，61 项 ok/OK）；`git status` 30 文件 / `+661 -360`
+- 取证：`make -C core native-host-tests` EXIT=0（防火墙 `173 files, 4/4/0/0`，61 项 ok/OK）；`git status` 30 文件 / `+661 -360`
 
 ## 1. 结构清单（逐符号：功能 / 作用 / 影响 / 兼容性）
 
@@ -33,7 +33,7 @@
 
 ### F2（中）`CombinationSpec` 字段序 → 10 B padding，**卡住 lint**
 
-**证据**：`make -C src lint-tidy` EXIT=2，10 条 `clang-analyzer-optin.performance.Padding` 全在 `contract/identity.hpp:129`（`-warnings-as-errors`）。
+**证据**：`make -C core lint-tidy` EXIT=2，10 条 `clang-analyzer-optin.performance.Padding` 全在 `contract/identity.hpp:129`（`-warnings-as-errors`）。
 **影响**：门禁红线（lint 必须 0）；两个流都被它挡住（TERM 报告其自身文件 0 findings）。
 **建议**：字段按大小降序重排（16 B 的 `string_view` 靠前，`bool available` 与其它小字段相邻），或显式补齐并注释理由。
 
@@ -65,7 +65,7 @@
 
 ### F7（过程，中-高）两条流并发改同一工作树，产生不可编译中间态
 
-**证据**：R6b/T5 与 TERM 同时进行 → `src/core/tests/profile_entry_test.cpp:105` 一度引用 `contract::CombinationKind` 而 host 编译失败（EXIT=2），lint 亦被 F2 阻塞；两方均报告「对方的半落地状态」。
+**证据**：R6b/T5 与 TERM 同时进行 → `core/src/tests/profile_entry_test.cpp:105` 一度引用 `contract::CombinationKind` 而 host 编译失败（EXIT=2），lint 亦被 F2 阻塞；两方均报告「对方的半落地状态」。
 **与哲学冲突**：原则 5（增量交付与变更控制：未列入清单的代码即冻结）+ 工程规范「写范围不重叠 / 门禁运行期间不得改被该门禁覆盖的源文件」。
 **建议**：（a）本批**原子提交**（R6b 全部文件一次进 git）；（b）TERM 的改动**先落成 patch/分支**再合并；（c）同一时刻只允许**一条写入流**。
 

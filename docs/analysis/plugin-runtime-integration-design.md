@@ -152,13 +152,13 @@ namespace ghostlock::plugin {
 
 **已核实（file:line，本批只读勘察）**：
 
-- `src/core/backend/cve_2026_43499_backend.cpp:111` `run_setup(...)`（middleware-free 的 setup/profile 安装）；
-- `src/core/backend/cve_2026_43499_backend.cpp:121` 起 `StepSet::run<Route>(...)` —— **route/race 与 W1/W2/W3 全在这一个调用内部**；
-- `src/core/backend/cve_2026_43499_backend.cpp:138-158` 才把 rooted child 移交给终端（`out.alive` / `release_child`）。
+- `core/src/backend/cve_2026_43499_backend.cpp:111` `run_setup(...)`（middleware-free 的 setup/profile 安装）；
+- `core/src/backend/cve_2026_43499_backend.cpp:121` 起 `StepSet::run<Route>(...)` —— **route/race 与 W1/W2/W3 全在这一个调用内部**；
+- `core/src/backend/cve_2026_43499_backend.cpp:138-158` 才把 rooted child 移交给终端（`out.alive` / `release_child`）。
 
 **结论（修正原来「W1 之后 / W2 之前」的表述）**：由于 route/race 与 W1 同处 `StepSet::run<Route>` 内部，`pre_spawn` **不能**在 `Pipeline` 层表达；它的候选锚点只有两个：
 
-1. `src/core/backend/cve_2026_43499/steps.cpp:386` 的 `w1(...)` 调用**之前**且 route 返回 Ok 之后——即「waiter 窗口已关闭、但内核写能力尚未取得」；
+1. `core/src/backend/cve_2026_43499/steps.cpp:386` 的 `w1(...)` 调用**之前**且 route 返回 Ok 之后——即「waiter 窗口已关闭、但内核写能力尚未取得」；
 2. `w1(...)` 返回成功（SELinux permissive）之后、`w2(...)`（`steps.cpp:157`）之前——即「窗口已关闭 + 已具备内核写能力」。
 
 按评审定义的原则，**方案 2 才是 `pre_spawn`**（(a)+(b) 同时成立）。`steps.cpp` 内 `w1/w2/w3` 的**调用点行号**尚未钉死（需完整读 `steps.hpp` 的 `run<Route>` 模板体），因此本条**未闭合**：实现批次（step 2）的第一步就是把该调用点写成 `file:line` 并回填本节，再动 `plugin/host.*`。
@@ -265,7 +265,7 @@ stage_availability	43499:pre_terminal;43284:post_terminal
 
 - `<backend>` = 4 位数字短 token（`43499` / `43284`）；`<stage>` = 与 TSV 其它处相同的 stage 词表 `pre_spawn|post_spawn|pre_terminal|post_terminal`；
 - 语义：**该 backend 上实际可用的阶段集合**（§12 的矩阵），其它阶段=声明但不可用（App 据此置灰并给原因）；
-- 唯一权威 = `src/core/plugin/schema.hpp` 的 `RuntimeBackend` + `stage_available_on()`；探针从它生成，App 不得硬编码第二份；
+- 唯一权威 = `core/src/plugin/schema.hpp` 的 `RuntimeBackend` + `stage_available_on()`；探针从它生成，App 不得硬编码第二份；
 - 消费侧（Kotlin，后续批次）：未知 backend/stage token → fail-closed 拒绝；缺失该行 → 视为「无可用阶段」（保守置灰）。
 
 ### 13.2 注册语义（与矩阵配套；**口径与 host 实现对齐，2026-10-05**）
@@ -273,7 +273,7 @@ stage_availability	43499:pre_terminal;43284:post_terminal
 - **实例注册阶段**：`plugin.<id>.stage` 是用户为该插件**实例**选择的注册阶段（Kotlin `PluginManifest` 的 Registered stage；native 缺它即 `StageMissing`）。该阶段在所选 backend **不可用** ⇒ **拒该实例**：**不 dlopen**、`diagnostics().rejected++`、记录原因 `StageUnavailableOnBackend`（entry + stage=注册阶段）；**不**降级到其它阶段（用户未授权该阶段）。
 - **hook 级**：hook 的 stage ∉ 可用集 ⇒ **拒绝该 hook**（模块保留给其它可用 hook）+ `diagnostics().stage_unavailable++` + 同名校验原因记录（entry + stage=该 hook 的 stage）。
 - **全部 hook 被拒** ⇒ 记 `NoUsableHooks` + `rejected++`，**不保留映射**。
-- **计数口径（权威在实现）**：`rejected` = 被**整体拒**的插件数；`stage_unavailable` = 被矩阵拒的 **hook** 数。定义见 `src/core/plugin/host.hpp` 的 `HostDiagnostics` 注释（`host.hpp:150-170` 一带），文档与实现必须逐字一致。
+- **计数口径（权威在实现）**：`rejected` = 被**整体拒**的插件数；`stage_unavailable` = 被矩阵拒的 **hook** 数。定义见 `core/src/plugin/host.hpp` 的 `HostDiagnostics` 注释（`host.hpp:150-170` 一带），文档与实现必须逐字一致。
 - **为什么实例级不降级**：host 的 dispatch 以**注册阶段**为键；只删实例级门控会得到「已加载但永不派发」的**无声缺席**（比拒绝更差）；而改为按 hook 自身 stage 派发等于调用用户**未为该实例授权**的阶段 —— 授权面扩大，P1 不做。
 - 因此「一个模块同时声明 43284 `post_terminal` + 43499 `pre_terminal`」由**每个实例各自注册一个可用阶段**满足，而不是由实例级降级满足。
 

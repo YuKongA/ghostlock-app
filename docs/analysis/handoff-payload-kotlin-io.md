@@ -4,11 +4,11 @@
 
 ## 1. 编解码边界（R5）
 
-- **常量同源**：native 侧 `glkv3::kMaxBinBytes`（新增于 `src/core/profile/glkv3.hpp`，与 `kMaxStringBytes = 256`（`:84`）并列）；Kotlin 侧在 `profile-core/src/main/kotlin/com/ghostlock/app/data/profile/Glkv3Encoder.kt:112`（`MAX_STRING_BYTES`）旁新增 `MAX_BIN_BYTES`，注释注明**镜像 native 常量**。
+- **常量同源**：native 侧 `glkv3::kMaxBinBytes`（新增于 `core/src/profile/glkv3.hpp`，与 `kMaxStringBytes = 256`（`:84`）并列）；Kotlin 侧在 `profile-core/src/main/kotlin/com/ghostlock/app/data/profile/Glkv3Encoder.kt:112`（`MAX_STRING_BYTES`）旁新增 `MAX_BIN_BYTES`，注释注明**镜像 native 常量**。
 - **编码拒绝**：`Glkv3Encoder.writeValue` 的 `Glkv3Value.Bin` 分支（`:202-205`，现无上限）⇒ 增 `require(value.value.size <= MAX_BIN_BYTES)`，**超限即编码失败（具名）**，不产出文档。
 - **解码上限**：`Glkv3Decoder` 的 `is BinaryValue -> Glkv3Value.Bin(...)`（`:117`，现无上限）⇒ 超限**返回 null（拒绝文档）**，与 native 的 fail-closed 一致。
 - **边界用例**：`Glkv3EncoderTest` / `Glkv3DecoderTest`（profile-core 侧）各增两条：`size == MAX_BIN_BYTES` 通过、`+1` 拒绝；`Glkv3Golden` 不变（无脚本用例逐字节不变）。
-- **与 native 的对拍（B5：机器对拍为必需，不是人工检查）**：① **成员表逐项同序**：native `QueueElementShapeTest` + Kotlin `QueueElementShapeAgreementTest`，两侧都必须绿（`make -C src native-host-tests` 与 `./gradlew :profile-core:test --tests "*QueueElementShape*"`）；② **常量对拍**：`kMaxMapMembers` / `MAX_BIN_BYTES` 写进 `make -C src glkv3-golden-hex` 产物**头部注释**，用例断言两侧相等；③ **边界向量**：两侧各跑「=MAX / +1」用例，期望一致（超限 ⇒ 具名拒绝）。
+- **与 native 的对拍（B5：机器对拍为必需，不是人工检查）**：① **成员表逐项同序**：native `QueueElementShapeTest` + Kotlin `QueueElementShapeAgreementTest`，两侧都必须绿（`make -C core native-host-tests` 与 `./gradlew :profile-core:test --tests "*QueueElementShape*"`）；② **常量对拍**：`kMaxMapMembers` / `MAX_BIN_BYTES` 写进 `make -C core glkv3-golden-hex` 产物**头部注释**，用例断言两侧相等；③ **边界向量**：两侧各跑「=MAX / +1」用例，期望一致（超限 ⇒ 具名拒绝）。
 
 ## 2. wire 键路径（C2a 裁决）
 
@@ -22,7 +22,7 @@
 
 - **现状**：`app/src/main/kotlin/com/ghostlock/app/data/payload/PayloadImportService.kt:21-24` 的 `enum class PayloadKind` = `Script("script", 4 MiB, ".sh")`、`Ko("ko", 64 MiB, ".ko")`。
 - **新增并存**：`LuaScript("lua", 64 * 1024L, ".lua")`——**与既有 `Script` 并存**（不替换、不改其限值）。
-- **用途区分（C2c 裁决）**：**wire 只承载「用户插入段」**（≤64 KB，走 `bin`）；**最终 `.sh` 由 native 用内置模板合成**（`terminal/root_script.cpp:15` 为 **12 KiB 生成缓冲**；**pin 产物 6096 B**：`src/core/tests/data/root_script_pin/safe_mode_{off,on}.sh`；App 只提供插入段与参数）。`PayloadKind.Script` 的 **4 MiB 仅是导入/存储上限**，**与 wire 无关**——**两个上限用途不同**（4 MiB = 导入存储；64 KB = wire 承载），不得混写为同一事实。**>64 KB 插入段 ⇒ 具名拒绝**（wire 是有界通道，理由写在此处与 ADR-0008）。
+- **用途区分（C2c 裁决）**：**wire 只承载「用户插入段」**（≤64 KB，走 `bin`）；**最终 `.sh` 由 native 用内置模板合成**（`terminal/root_script.cpp:15` 为 **12 KiB 生成缓冲**；**pin 产物 6096 B**：`core/src/tests/data/root_script_pin/safe_mode_{off,on}.sh`；App 只提供插入段与参数）。`PayloadKind.Script` 的 **4 MiB 仅是导入/存储上限**，**与 wire 无关**——**两个上限用途不同**（4 MiB = 导入存储；64 KB = wire 承载），不得混写为同一事实。**>64 KB 插入段 ⇒ 具名拒绝**（wire 是有界通道，理由写在此处与 ADR-0008）。
 - **限值来源**：`kMaxBinBytes = 64 KB`（ADR-0008 / 本文件 §1，与 I13 的「执行期硬约束」同值）；App 侧不得放宽。
 - **UTF-8 校验为新增项**：现 `PayloadImportService.import()`（`PayloadImportService.kt:47-60`）只做 **digest + copy**（有界哈希 + 复制），**无编码校验** ⇒ `LuaScript` 导入**必须新增 UTF-8 校验**（非法编码 ⇒ 具名拒绝）。
 - **导入失败归因（具名）**：超限 / 非 UTF-8 / 扩展名不符 ⇒ 逐条具名失败；**区分两个 importer**——`PayloadImportService`（payload/`LuaScript`：no-backup 目录 + 有界哈希 + 复制）与 **plugin importer**（描述符 + 探针 + 校验）；**规则不共用**，脚本侧不得引用 plugin 的信任判定。

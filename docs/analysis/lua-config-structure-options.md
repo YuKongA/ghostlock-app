@@ -10,7 +10,7 @@
 | **① 资产层** | `app/src/main/assets/profile/`：`execution-tuning.conf`、`execution-tcp-zerocopy.conf`、`execution-select-stack.conf`；per-release `*.conf` 用 `include` 片段组合 | 静态调参写死在资产里；**per-route 只有 tcp/select 两份调参文件，multicast 没有**（真机已验证的组合靠公共段 + 内置值） |
 | **② Kotlin 层** | `ProfileMerger.kt:20-25`（合并顺序 **builtin → imported → overrides**，deep merge）；`:79 fillRouteExecutionDefaults(...)`（**主动注入 route 执行默认值**）；`NativeProfile.kt:417`（route wire `?: 0u`）、`:450/:451`（`vu/vul` 取值 `?: 0u`/`?: 0uL`）、`:503`（derived route kind `?: 0u`） | **两套填默认机制**：合并器显式注入 + 访问器**零填充**；缺失键在 Kotlin 侧**不会报错** |
 | **③ manifest 层** | `app/src/test/resources/profile-manifest-v3.tsv`（列序：`owner path wire required default source doc width`）；`NativeProfileGlkv3Adapter.kt:49-70`（**只把 `width` 当硬校验输入**）、`:92-93`（width 缺失即可拒） | `default` 列**只作为导出信息存在**，native/Kotlin **没有把它当取值来源**；`required` 列在 Kotlin 侧也未见强制消费 |
-| **④ native 层** | `src/core/profile/schema.hpp:36-46`（`BindMode::Production` fail-closed：未知段/键 + **缺失 required ⇒ 拒绝**；`BindMode::Test` **放宽 required**）、`:94-100`（`BindCode::MissingRequired` → `missing_required`）；`src/core/contract/model.hpp:302-304`（`race_route_done_timeout_ms` 走 `or_default(…, 300000)`）、`:378-386`（`or_default` 实现；`:386` 未加载时再兜 `0`） | native 有**具名拒绝**能力，但只对声明为 required 的字段生效；accessor 仍保留 `or_default` 兜底（**3 处**） |
+| **④ native 层** | `core/src/profile/schema.hpp:36-46`（`BindMode::Production` fail-closed：未知段/键 + **缺失 required ⇒ 拒绝**；`BindMode::Test` **放宽 required**）、`:94-100`（`BindCode::MissingRequired` → `missing_required`）；`core/src/contract/model.hpp:302-304`（`race_route_done_timeout_ms` 走 `or_default(…, 300000)`）、`:378-386`（`or_default` 实现；`:386` 未加载时再兜 `0`） | native 有**具名拒绝**能力，但只对声明为 required 的字段生效；accessor 仍保留 `or_default` 兜底（**3 处**） |
 
 **一句话**：默认值分散**四层**；Kotlin 的「零填充 + 注入」与 native 的 `or_default` 会**掩盖缺失**，manifest 的 `required/default` 列在两端都**不是执行期权威**。
 
@@ -20,7 +20,7 @@
 |---|---|---|
 | **G-1 资产** | 每个 route/backend 都必须有可提供全部必填键的资产；`execution-*` 调参文件需**逐一补齐**；per-release `*.conf` 与 include 片段要复核 | **multicast 目前没有 tuning 资产** ⇒ 一旦全表必填，**真机已验证的 multicast 组合会被拒**（见 §6-隐患 B） |
 | **G-2 Kotlin** | `ProfileMerger.fillRouteExecutionDefaults`（注入点）与 `NativeProfile` 的 `?: 0u`/`vu`/`vul` 零填充**必须同批改**；涉及 `:app:testDebugUnitTest` 与既有 Kotlin 对拍 | 只改 manifest 不改这两处 ⇒ **零填充继续掩盖缺失**，required 形同虚设（见 §6-隐患 A） |
-| **G-3 manifest + native** | `default` 列语义作废需同步**导出器**（`make -C src profile-manifest-v3`）与对拍（`src/core/tests/profile_manifest_v3_test.cpp:69`、`ProfileManifestV3AgreementTest`）；native 侧 `or_default`（`model.hpp` 3 处）收紧、`BindMode::Test` 的 required 放宽不得用于掩盖真实缺失 | 两侧不一致 ⇒ **同一事实两处定义**（对拍会红，但需同批更新 golden） |
+| **G-3 manifest + native** | `default` 列语义作废需同步**导出器**（`make -C core profile-manifest-v3`）与对拍（`core/src/tests/profile_manifest_v3_test.cpp:69`、`ProfileManifestV3AgreementTest`）；native 侧 `or_default`（`model.hpp` 3 处）收紧、`BindMode::Test` 的 required 放宽不得用于掩盖真实缺失 | 两侧不一致 ⇒ **同一事实两处定义**（对拍会红，但需同批更新 golden） |
 
 ## §3 三形态 × 四维对比
 
@@ -39,7 +39,7 @@
 - **黑盒**：同一意图在选定形态下产出**逐字节可复现**的 wire（同一输入两次导出逐字节相同）；缺失必填键 ⇒ native 具名拒绝（`missing_required`，`path` 精确到键）。
 - **白盒**：Kotlin 侧 `?: 0u` / `fillRouteExecutionDefaults` 与 native `or_default` **不再掩盖缺失**（grep 计数为 0，或仅保留在明确标注的兼容路径）；无第二条读取路径（或已声明回退 + **逐值等价对拍**，M5 教训）。
 - **极端值**：空脚本 / 语法错 / 超指令预算 / 引用不存在参数 / 表深度超限；资产缺一个必填键 / 多一个未知键；uint64 边界与 width 不符。
-- **门禁**：**G1**（`make -C src native-host-tests` + `./gradlew :app:testDebugUnitTest` + `./gradlew markdownlint`）+ **用户裁定**（形态含产品取舍）；**不触攻击路径 ⇒ 免真机**（若形态改为运行期动态装载而触及写路径，另行评估）。
+- **门禁**：**G1**（`make -C core native-host-tests` + `./gradlew :app:testDebugUnitTest` + `./gradlew markdownlint`）+ **用户裁定**（形态含产品取舍）；**不触攻击路径 ⇒ 免真机**（若形态改为运行期动态装载而触及写路径，另行评估）。
 
 ## §5 建议与分期（建议，不代替裁定）
 

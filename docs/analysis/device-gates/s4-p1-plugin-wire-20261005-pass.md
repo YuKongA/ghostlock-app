@@ -29,7 +29,7 @@ params.threshold = 5                       # 动态键（联合类型 uint|int|b
 
 ## 3. 边界说明（必须与「通过」一起读）
 
-**本次未观察到插件的运行时调用**，且这不是测试方法问题——`grep` 检查：`src/core/pipeline/**` 对插件宿主（`plugin::{controller,host_ops,registry}`）**零引用**，唯一使用点是 `main.cpp` 的 `run_plugin_probe`（只读探针）。
+**本次未观察到插件的运行时调用**，且这不是测试方法问题——`grep` 检查：`core/src/pipeline/**` 对插件宿主（`plugin::{controller,host_ops,registry}`）**零引用**，唯一使用点是 `main.cpp` 的 `run_plugin_probe`（只读探针）。
 
 即：**P1 完成的是「声明 → 校验 → 绑定」的 wire 层**；**「加载 → 按 stage 调用 → 卸载」的运行时接线尚未存在**（历史 `default_countermeasure_dir()` 也一直无生产接线）。
 

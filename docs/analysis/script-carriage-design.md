@@ -50,13 +50,13 @@ native 的 `plan-missing` = **文档未携带 plan 交付物** ✓；裁定第 5
 
 ### 4.5 对拍与重冻
 
-**本设计不改 payload 家族的 pin 与命名规则** ✓（`src/core/tests/payload-manifest.pin.tsv`，12 行 = segment / 2 terminals / 4 keys / 3 kinds / suffix_max / bare_name ✓，由 native `payload_manifest_test.cpp:22` 与 Kotlin `HandoffPayloadTest.kt:114` **两侧**读取 ✓）；若将来需新增 kind/名字模式 ⇒ **同批改 pin 双侧 + 重冻** ✓。对拍物：`profile-manifest-v3.tsv` 双副本（新增 payload 行的**枚举规则**说明 ✓，行数按实出 ✓）· `glkv3-native-fixture.tsv` · `Glkv3Golden.kt` · `native-doc-golden-v3.sha256` —— 全部以生成命令实出为准 ✓。
+**本设计不改 payload 家族的 pin 与命名规则** ✓（`core/src/tests/payload-manifest.pin.tsv`，12 行 = segment / 2 terminals / 4 keys / 3 kinds / suffix_max / bare_name ✓，由 native `payload_manifest_test.cpp:22` 与 Kotlin `HandoffPayloadTest.kt:114` **两侧**读取 ✓）；若将来需新增 kind/名字模式 ⇒ **同批改 pin 双侧 + 重冻** ✓。对拍物：`profile-manifest-v3.tsv` 双副本（新增 payload 行的**枚举规则**说明 ✓，行数按实出 ✓）· `glkv3-native-fixture.tsv` · `Glkv3Golden.kt` · `native-doc-golden-v3.sha256` —— 全部以生成命令实出为准 ✓。
 
 ### 4.6 判据（可执行 + 边界值）
 
 | 用例 | 期望 |
 |---|---|
-| `make -C src check` | EXIT=0 ✓ |
+| `make -C core check` | EXIT=0 ✓ |
 | 正常脚本 | 通过 + 计划可解析 ✓ |
 | **恰好 64 KiB** | **通过** ✓ |
 | **64 KiB + 1** | 具名 `budget-exceeded` ✓（EXIT ≠ 0） |

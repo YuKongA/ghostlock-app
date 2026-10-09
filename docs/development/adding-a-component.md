@@ -42,7 +42,7 @@
 | 执行 policy | `backend/foo_backend.hpp`（+ `.cpp`） | `FooPolicy`：`kind`、`steps`、`state_from`、`run`；可选 `State`/`state_construct`/`state_destroy` |
 | 组合 | `pipeline/component_catalog.hpp` | `combination_supported` 收录新 triple、`DispatchTarget` 加值、`dispatch_target_of` 映射、`backend_name`/`backend_from_token` |
 | 分派 | `pipeline/orchestrator.hpp` | `Pipeline<FooPolicy, TerminalPolicy>` case + target `static_assert` |
-| 构建 | `src/Makefile`、`src/CMakeLists.txt` | 加入新 `.cpp` |
+| 构建 | `core/Makefile`、`core/CMakeLists.txt` | 加入新 `.cpp` |
 | 测试 | `backend_contract_test.cpp`、`component_catalog_test.cpp` | identity/execution/state、catalog 与 target |
 | wire | `backend/foo/glkv3_schema.hpp`（+ `schema.hpp`） | 私有字段（如有）；同步 manifest（见 §五） |
 | Kotlin | `profile-core/.../component/ComponentKind.kt` | `BackendKind` 的 `(wire, token, available)`，available 与 native 对齐 |
@@ -109,7 +109,7 @@ route 复用 profile 的 `RouteKind`，不是装配轴，不出现在 selection�
 | Policy | `backend/cve_2026_43499/route/route_policy.hpp` | `FooPolicy : RoutePolicyDefaults`（编译期能力 + 需要的静态 hook）、追加到 `RoutePolicyList` |
 | Route 本体 | `backend/cve_2026_43499/route/foo_route.{h,cpp}` | Route 类满足 `RouteLifecycle`（`prepare -> execute -> disarm -> destroy`，仅经 `status` 汇报） |
 | 实例化 | `backend/cve_2026_43499/route/route_policy.hpp` / backend.cpp | 该 policy 的显式实例化（漏掉会链接失败） |
-| 构建 | `src/Makefile`、`src/CMakeLists.txt` | 加入 `foo_route.cpp` |
+| 构建 | `core/Makefile`、`core/CMakeLists.txt` | 加入 `foo_route.cpp` |
 | 传输 | `backend/cve_2026_43499/glkv3_schema.hpp`（v2: `schema.hpp`） | route 私有参数（如有）；两侧键名逐字一致 |
 | Kotlin | `profile-core/.../data/route/RouteKind.kt` + `FooConfig.kt` | `(token, wire)` 与 `entries()/apply()/from()` |
 | 导出 | `build.gradle.kts` | `routeFieldPaths` 加该 route |
@@ -151,9 +151,9 @@ route 复用 profile 的 `RouteKind`，不是装配轴，不出现在 selection�
 8. 新攻击路径函数加进 `tools/cmp_disasm.py` 的 `TARGETS`（当前 6 组）。
 
 ```sh
-make -C src ghostlock            # 真机二进制
-make -C src native-host-tests    # 主机单元测试（含 R1 防火墙与对拍）
-make -C src lint-tidy            # clang-tidy（0 findings）
+make -C core ghostlock            # 真机二进制
+make -C core native-host-tests    # 主机单元测试（含 R1 防火墙与对拍）
+make -C core lint-tidy            # clang-tidy（0 findings）
 python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ./gradlew :app:testDebugUnitTest --offline
 ```

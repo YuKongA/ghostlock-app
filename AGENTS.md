@@ -9,7 +9,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 | 层        | 位置                | 说明                                                                                       |
 | --------- | ------------------- | ------------------------------------------------------------------------------------------ |
 | Android   | `app/`              | Kotlin/Compose UI、HOCON profile 解析/合并/覆盖、Shizuku UserService、日志                 |
-| Native    | `src/core/`         | C++23 攻击 runtime，产物 `build/native/ghostlock`                                          |
+| Native    | `core/src/`         | C++23 攻击 runtime，产物 `build/native/ghostlock`                                          |
 | Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → `--format conf`（flatten GLK profile）/ `--format json`（v1） |
 
 - Native 不是 JNI：`libghostlock.so` 是可执行 ELF，由 Kotlin `ProcessBuilder` 启动。
@@ -18,7 +18,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `--allow-dev-target`（**只放宽绑定期 carrier 校验**，链内仍拒 dev 路径） / `--probe-cve-2026-43284 <ko>`（只读诊断）/
   ~~`--plugin-probe <path.so> [--expect-sha256 <hex>]`~~（只读插件描述，不注册、不运行 hook；**已按用户指令字面注释**）。
   **⏸ 插件与 payload 工程仍按用户指令暂停（2026-10-05）；自定义 handoff 已于 2026-10-06 解冻并纳入 `available`（D1–D4 已批准）**：插件的**运行时接线**（`main.cpp` 的构造/open/bind/close、`execution_binding.cpp` 的 sink 绑定）、**`--plugin-probe` 入口**、以及 **payload owner**（`glkv3_parse.cpp` 的校验分支与 owner 名单、`schema.hpp` 的 `kPayloadGlkv3Fields`、manifest 8 行、相关测试与 Makefile 目标）**全部字面注释**；⇒ **`plugin`/`payload` 段现在出现即拒（fail-closed）**；App 侧隐藏两个入口且不再发射。代码与测试保留，**恢复＝撤销注释 + 跑门禁**（恢复清单见 `docs/archive/20261007-2237-branch-plan.md`）。
-  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`src/core/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 `docs/archive/20261007-2237-branch-plan.md` task-9。
+  插件 **P1 已落地**：导入（no-backup `countermeasures/` + 本地 SHA-256 + 探针）→ 校验（描述符驱动的 `params.*`）→ 发射（仅 `enabled=true` 写 `plugin.<id>.*`，文档里出现 `enabled=false` 一律拒绝）。**运行时「加载 → 按 stage 调用 → 卸载」已接线（step 3a）**：组合根构造 `PluginHost` 并**仅**在 43284 的 bind 前 `open(WindowState::WaiterClosed)`（**43499 的 `pre_terminal` 待 step 3b**；R1：PI waiter 存活期不得 open），LKM 驻留窗口内经中性 `PluginStageSink` 派发 `POST_TERMINAL`（fail-soft），pipeline 之后 `close()`，诊断仅 `registered() > 0` 时打印（无插件零新增字节）。`core/src/pipeline/**` 仍对插件宿主零引用——**这是设计如此**（能力点不在组合/分派层，而在组合根与 backend 窗口），不是「未接线」；见 `docs/archive/20261007-2237-branch-plan.md` task-9。
   staged 入口（`--run-cve-2026-43284`/`--stage`）与 `--plugin`、`--cve43284-*`、`--allow-vermagic-rewrite` 已删除（dev 走同一文档 + 同一 Pipeline）；
   无参数的 v1 `offsets.json` 入口已移除；入口细节见 `docs/analysis/native-entrypoint-plan.md`（git 历史）与 `docs/analysis/device-gates/s4-r2b-20261005-pass.md`。
 - 内置 profile 在 `app/src/main/assets/profile/`：`index.conf` 索引、
@@ -31,7 +31,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   **token 形态已删（M5 = `e59a8479`）⇒ 出现即拒**：HOCON 的**列表形态**（token 列表）**出现即拒**（两条独立具名诊断：`the token-list form was removed in M5; declare route+queue` / `empty token list is not a selection; declare route+queue`），native 侧具名拒 token（`plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`）且**归一化不再物化 token**；App **停发 wire `steps`**；**沿革**：`backend.<id>.steps` 曾是迁移期语法糖，M5 已删；**不得再读成「token 是用户选择面」**。
   **沿革（不删历史）**：2026-10-05「选择由 token 白名单表达」→ **2026-10-06「队列取代 token」**（理由：**HOCON 可读性**；用户裁决）。
   **对拍物证**：`ProfileLayoutAvailableTest` 等 + `profile-core/src/test/resources/glkv3-native-fixture.tsv`（**91 行**，native `--dump-fixture`）
-  + Kotlin golden（**3964 字符**）与 `make -C src glkv3-golden-hex` **逐字符相同**；本片提交 = **`4c20142f`**。
+  + Kotlin golden（**3964 字符**）与 `make -C core glkv3-golden-hex` **逐字符相同**；本片提交 = **`4c20142f`**。
   当前**已接线**：`cve_2026_43499 × {mcast,pselect,tcp}_{rootchild,shizuku}`
   与 `cve_2026_43284 × umh`；**计划项**（`available=false`）：`{mcast,pselect,tcp}_umh`、`rootchild`、`shizuku`
   （解析接受、选择门禁拒绝、UI 置灰）。**terminal 归属见 ADR-0006**：词汇（rootchild/shizuku/umh）保留，
@@ -44,7 +44,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
   `pipeline/component_catalog.hpp` 只**按 token 分派**（`DispatchTarget`、`combination_supported`/`dispatch_target_of`），
   `pipeline/orchestrator.hpp` 逐 case 用 `Pipeline::target` static_assert 锁定；导出与 Kotlin 对拍见文档约定。
   `selection_supported()`（设备已核实）与 `combination_supported()`（已接线）是两个不同问题；选择显式来自 profile/wire，不从 kernel 版本推断。
-- 顶层 owner 白名单（native `known_owner_section`，`src/core/profile/glkv3_parse.cpp`）：现为 **`backend.<id>`** 与 **`platform.*`**（后者正按 HOCON 重构**迁移**到 `backend.cve_2026_43499.abi.*`，落地后 `platform` owner 一并删除）；**`common` 与 `countermeasure` 已删除（出现即拒）**；**`plugin` 与 `payload` 按用户指令注释掉（出现即拒）**；新增 owner 必须同批更新本节、manifest 与 `docs/development/full-process-uml.md`。
+- 顶层 owner 白名单（native `known_owner_section`，`core/src/profile/glkv3_parse.cpp`）：现为 **`backend.<id>`** 与 **`platform.*`**（后者正按 HOCON 重构**迁移**到 `backend.cve_2026_43499.abi.*`，落地后 `platform` owner 一并删除）；**`common` 与 `countermeasure` 已删除（出现即拒）**；**`plugin` 与 `payload` 按用户指令注释掉（出现即拒）**；新增 owner 必须同批更新本节、manifest 与 `docs/development/full-process-uml.md`。
 - **根级标量通道**（HOCON 重构引入）：`schema` / `release` / **`kernel_major`** / **`kernel_minor`（可缺省）** / **`safe_mode`** 位于 wire 根 map，走**特例通道**（不是段机制）；在 `profile-manifest-v3.tsv` 里以 **owner = `root`、path = 裸键名** 单列（`root\tkernel_major\tuint\t0\t-\tprofile\t-`）。实现上用**空段名「根段」**承载（`document.hpp` 的 `kRootSection`），使 owner bind 的**唯一取值路径** `find_value(section,key)` 与根键同构——**这样两处按 section 拷贝的过滤副本不会漏拷**；**若改用具名成员，漏一处即静默 `kernel_major=0`，勿改**。
 - **`vr_guard` 分两期**：**(b) profile 面已删（`b55708a8`）** —— `common.vr_guard` + `countermeasure.vivo_vr_guard.tracepoint_funcs` 消失 ⇒ 字段无写入者 ⇒ `vr_guard_enabled()` 恒 false ⇒ `backend/cve_2026_43499/steps.cpp` 两处 `VivoPluginPolicies::apply` **可证明 no-op**、攻击路径不变；**(a) 彻底删除 vivo 代码**（`platform/vivo/**` + 两处 include/调用 + 测试）= **攻击路径改动 ⇒ 必须真机门禁**，挂账待设备。
 
@@ -52,10 +52,10 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 
 ```sh
 # Native
-make -C src ghostlock                 # NDK 构建（ANDROID_NDK_HOME 或 local.properties）
-make -C src native-host-tests         # 主机单元测试（含固定向量/生命周期）
-make -C src lint-tidy                 # clang-tidy，要求 0 findings
-ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
+make -C core ghostlock                 # NDK 构建（ANDROID_NDK_HOME 或 local.properties）
+make -C core native-host-tests         # 主机单元测试（含固定向量/生命周期）
+make -C core lint-tidy                 # clang-tidy，要求 0 findings
+ANDROID_NDK_HOME=... make -C core      # NDK 未自动探测时的显式写法
 
 # Android / 提取器
 ./gradlew :app:assembleDebug
@@ -141,7 +141,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 ## 代码约定
 
 - C++23、`-fno-rtti`、静态 libc++；`-Wall -Wextra -Wconversion -Wsign-conversion`，
-  新代码不得引入告警。include 用相对 `src/core` 的路径（如
+  新代码不得引入告警。include 用相对 `core/src` 的路径（如
   `#include "backend/cve_2026_43499/route/tcp_zerocopy_route.h"`）。
 - 命名空间分层（现状）：顶层
   `ghostlock::{contract,pipeline,backend,platform,plugin,terminal,memory,session,race,kernelsnitch,support,profile,profile_entry,binary_profile,target,runtime_time}`
@@ -177,11 +177,11 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   - **组合 token 白名单** ↔ Kotlin `CombinationCatalog`，导出
     `combination-manifest.tsv`（两份：`app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；
     `combination_manifest_test.cpp` 裸跑断言两份逐字节等于 `kCombinationCatalog`；
-    `CombinationTokenAgreementTest.kt` / `CombinationTokenHardcodeTest.kt`）。生成命令：`make -C src combination-manifest`。
+    `CombinationTokenAgreementTest.kt` / `CombinationTokenHardcodeTest.kt`）。生成命令：`make -C core combination-manifest`。
   - **组件词汇 manifest** ↔ Kotlin `VocabularyCatalog`，导出 `vocabulary-manifest.tsv`
     （4 类 kind = `backend` / `frontend` / `stepset` / `route`，**14 行**，两份逐字节一致：
     `app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；权威是
-    `contract/identity.hpp` 的 kind 声明与 `kRouteCatalog`；生成命令 `make -C src vocabulary-manifest`；
+    `contract/identity.hpp` 的 kind 声明与 `kRouteCatalog`；生成命令 `make -C core vocabulary-manifest`；
     `vocabulary_manifest_test.cpp` 裸跑断言，Kotlin 侧 `ComponentKindTest` / `VocabularyManifestAgreementTest` 对拍）。
   - **stepset → 步骤序列 manifest**（M2/M3）↔ M3 资产迁移，导出 `stepset-steps.tsv`
     （`stepset<TAB>step_index<TAB>step_name`，**index 0 = 首个执行步骤**，**6 行** = 3 个 stepset；
@@ -189,7 +189,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
     + `backend/cve_2026_43499/steps.hpp` 的 `W1W3Steps::kSteps`/`W1W2Steps::kSteps`（执行顺序，
     与别名表由 `static_assert` **逐项绑定**：任一侧调序即编译不过）；两份逐字节一致：
     `app/src/test/resources/` 对拍 + `profile-core/src/main/resources/` 运行时；生成命令
-    `make -C src stepset-steps-manifest`；`stepset_steps_manifest_test.cpp` 在 `native-host-tests` 裸跑：
+    `make -C core stepset-steps-manifest`；`stepset_steps_manifest_test.cpp` 在 `native-host-tests` 裸跑：
     **导出文本 == 冻结 pin** + 两份副本逐字节一致）。
   - **v2 owner Schema 的 manifest 已随 v2 一并删除**（S4-R2c）：`profile-manifest.tsv`、`profile_manifest_test.cpp`、
     `ProfileManifestAgreementTest.kt` 都不再存在；owner Schema（`platform/abi.hpp`、`backend/cve_2026_43499/*`）
@@ -204,7 +204,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   - **HOCON**：`schema_version = 3`（`app/src/main/assets/profile/*.conf`；被 `include` 的片段不带该键）。
   - **只有一个迁移点**：**Kotlin `LegacyProfileConverter.kt`**。App **写出恒为 3**；读到旧 `schema_version = 1` 时由它**转换为 3**（并记诊断），
     其余版本值一律拒绝（错误信息带实际版本）；
-  - **wire（GLKv3）**：**MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`src/lib/mpack`），
+  - **wire（GLKv3）**：**MessagePack 文档**（根 map，必填 `schema == 3`，**无 magic/独立头**），解析用成熟单文件库 **MPack**（`core/lib/mpack`），
     canonical = 最短整数 + 键按 UTF-8 字节序排序；**native 只认 `schema == 3`**，
     **v2（对象分段 `header + sections[name → fields[name → u64]]`）已弃用**：旧 bin 一律拒绝，读路径与 v2 writer 一并删除；
   - **extractor**（`tools/extract_rs`）**只认/只产出最新版**：产出的 profile 为 `schema_version = 3`；
@@ -213,7 +213,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   格式权威见 `docs/analysis/wire-transport-model.md`。Kotlin 与 native 版本绑定，同一分支内直接替换，
   不做长期并存；再需要不同格式时先改本节与 `docs/development/`，不要就地再起 v4/v5。
 - v1（旧 `offsets.json`）**只在 Kotlin 侧**由 `LegacyProfileConverter.kt` 转换；
-  native **不再解析 v1**（`src/core/legacy/` 的 JSON 路径已删除）。新 route/新字段不要改 v1 转换。
+  native **不再解析 v1**（`core/src/legacy/` 的 JSON 路径已删除）。新 route/新字段不要改 v1 转换。
 
 ## 核心攻击代码审查（仅触及时执行）
 
@@ -230,7 +230,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **凡是可并行、可自包含的工作，优先委派给子智能体**（不限于门禁）；**若被委派任务本身还能再并行拆分，子智能体应继续递归创建自己的子智能体**，并把写范围继续切分到互不重叠。
 - **子智能体要能复用（强制）**：优先用 `spawn_teammate` 建**常驻 teammate**（稳定 target、可 `send_message` 追加任务、可 `interrupt`），
   而非每批新起一次性 agent；**同一模块/写范围固定由同一个 teammate 负责**，其历史上下文因此可复用（不必每次重新通读仓库）。
-  常驻流建议划分：`native-core`（src/core）、`kotlin-app`（profile-core + app + assets）、`docs-uml`（docs/UML/计划/门禁归档）。
+  常驻流建议划分：`native-core`（core/src）、`kotlin-app`（profile-core + app + assets）、`docs-uml`（docs/UML/计划/门禁归档）。
   同一时刻只允许**一条写入流**；未获指派的 teammate 只做只读勘察。
   - **门禁**（host / NDK / lint / cmp_disasm / 真机）——耗时长，委派后主智能体继续推进；
   - **独立实现/调研**：写范围与主线不重叠的文件改动、上游事实核查、测试补写、文档起草、跨模块对拍。
@@ -281,7 +281,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
 - **证伪实验必须清理被测二进制（本项因一次真实假红而设立）**：造错实验结束后，**不仅要还原源码，还必须删除/重建被测二进制**（`rm -f <artifact>` + `make -B` 复核）—— 源码回位 ≠ 产物回位；本项目曾因只还原源码、留下**探针二进制**，使随后跑门禁的人**跑到探针**并获得**假红**（`queue_wire_test.cpp:439` 既有断言被误报 ✗）。交回前一律 `rm -f <artifact>` 并 `make -B` 复核。
 - **判断产出必须数产物、不数目录（本项因一次误判而设立）**：`ls | wc -l` 会把**空目录/临时目录**算进去 ⇒ 必须数**产物文件**——LKM 例：`buildLkmImages` 的 **8 行 `LKM <label> -> … (bytes)`**、`kmis.tsv` **9 行**（表头 + 8）、`unzip -l … | grep assets/lkm/` **8 行**；判定「生成了几个」时一律用这些计数。
 - **失败数必须读 XML 全量（本项因一次真实漏数而设立）**：单测失败**不得**只看控制台尾部（会被截断/漏掉），必须**全量读** `build/test-results/**/*.xml` 统计 `tests/failures/errors/skipped`；**三桶计数（通过 / 失败 / 跳过）一律来自 XML**，控制台只作旁证。
-- 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
+- 普通改动：`make -C core native-host-tests` + NDK 构建零警告 + `make -C core lint-tidy`。
 - 攻击关键路径（waiter/race/payload/route/exec 流程）改动：
   1. **真机门禁**（唯一权威判据：冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；
   2. 日志在设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（同目录另有
@@ -310,7 +310,7 @@ python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock
   **`docs/development/full-process-uml.md`（全流程 UML 权威：IPO/状态机/Class/Sequence，改动必更新）**、
   `docs/development/design-philosophy.md`（设计思想，改动前必读）、
   `docs/development/engineering-standards.md`（工程规范，做法与门槛）、
-  `docs/development/documentation-standards.md`（文档规范）、`src/core/README.md`。
+  `docs/development/documentation-standards.md`（文档规范）、`core/src/README.md`。
 - 现行主计划：`docs/plan/MASTER-PLAN.md`（唯一进度入口）；历史计划已归档 `docs/archive/20261007-2237-*`；决策/门禁见
   `docs/analysis/adr/`、`docs/analysis/device-gates/`。
 - **历史文档：已恢复到 `docs/archive/`**（2026-10-06 用户指令「把以前提交又删掉的文档都找回」）：命名 = **`YYYYMMDD-HHMM-<原文件名>`**（时间 = **删除提交的时间**），每件文件头含**原始路径 / 删除提交 / 恢复来源（`git show <commit>^:<path>`）/ 恢复日期**；「删除提交 → 归档路径」完整索引见 **`docs/archive/INDEX-device-gates.md`**（README §五 为指针）。

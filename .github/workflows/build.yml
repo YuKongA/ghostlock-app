@@ -81,7 +81,7 @@ jobs:
         run: |
           export ANDROID_NDK_HOME="${{ runner.temp }}/ondk"
           export NDK_ROOT="$ANDROID_NDK_HOME"
-          make -C src ghostlock
+          make -C core ghostlock
           "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all build/native/ghostlock || true
 
       - name: Build Release APK

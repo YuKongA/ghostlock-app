@@ -14,7 +14,7 @@
 
 - 分支 `vr-ko-bypass-dev`；基线 commit `583b13f`。
 - 对象：A301SO `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`（verified 5.15 train）。
-- tcp route 实现：`src/core/route/tcp_zerocopy_route.cpp`
+- tcp route 实现：`core/src/route/tcp_zerocopy_route.cpp`
   - `prepare()`（215-261）：用户态 socketpair / memfd / fallocate / mmap / punch 线程；先校验
     `heap.current.base/fake_lock/fake_fops` 非空。
   - `execute()`（264-）：`getsockopt(TCP_ZEROCOPY_RECEIVE)` 写 fake waiter
@@ -50,7 +50,7 @@
 | `tools/extract_rs/src/report.rs` | `conf_route_geometry` 的 tcp 分支增加 5.15 verified 条件；必要时发新字段 | 发 5.x tcp 几何 |
 | `tools/extract_rs/src/symbols.rs` | 5.15 train 的 tcp 布局核验标记（沿用 verified train 体系） | 与 6.1 一致 |
 | `tools/extract_rs/src/report.rs` + tests | 单测：A301SO `boot.img` 产出预期 tcp 几何 | 防回归 |
-| `src/core/...` | 若推导出需参数化的落点，扩展 `TargetProfile` / route | 视 Explore 结果 |
+| `core/src/...` | 若推导出需参数化的落点，扩展 `TargetProfile` / route | 视 Explore 结果 |
 
 ## 数据流/控制流差异
 
@@ -148,8 +148,8 @@ flowchart TD
 
 | 层 | 文件 | 改动 |
 |---|---|---|
-| native 结构 | `src/core/profile/model.h` | `TcpZerocopyLayout`（186-188）增 4 个 `std::optional<uint64_t>`；`misc` 增对应槽 |
-| native 字段表 | `src/core/profile/binary.cpp` | `kRouteTcp`（181-189）增 4 个 `OPT(...)`；键名与 Kotlin 逐字一致 |
+| native 结构 | `core/src/profile/model.h` | `TcpZerocopyLayout`（186-188）增 4 个 `std::optional<uint64_t>`；`misc` 增对应槽 |
+| native 字段表 | `core/src/profile/binary.cpp` | `kRouteTcp`（181-189）增 4 个 `OPT(...)`；键名与 Kotlin 逐字一致 |
 | Kotlin route | `profile-core/.../data/route/TcpConfig.kt` | `entries()` / `apply()` / `from()` 增 4 字段 |
 | Kotlin 解析 | `profile-core/.../profile/ProfileResolver.kt` | `KnownTopLevel`/键名映射按需登记 |
 | Kotlin 编解码 | `profile-core/.../data/NativeProfile.kt` | `compact_waiter` 同级的编解码与 route 键 `route.tcp_zerocopy` |
@@ -157,10 +157,10 @@ flowchart TD
 
 ### native 消费点
 
-- `src/core/support/util.cpp:335-372`（`prepare_skb_payload`）：把硬编码的 `payload_delta`、
+- `core/src/support/util.cpp:335-372`（`prepare_skb_payload`）：把硬编码的 `payload_delta`、
   `chunk_bias`、`fake_task_off`、`cred_copy_off` 改为从 `profile.tcp_zerocopy_layout()` 取值，
   缺省回落 `kernel::*` 常量。
-- `src/core/kernel/target_constants.hpp` / `target.h`：常量保留为默认，不删除。
+- `core/src/kernel/target_constants.hpp` / `target.h`：常量保留为默认，不删除。
 
 ### 提取器
 
@@ -199,7 +199,7 @@ flowchart TD
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| 单测 | `make -C src native-host-tests` | 全绿（含 profile binary 契约/往返） |
+| 单测 | `make -C core native-host-tests` | 全绿（含 profile binary 契约/往返） |
 | 双侧 | `./gradlew :app:testDebugUnitTest` | `RouteCatalogAgreementTest`/exporter 对拍通过 |
 | 形状 | `python3 tools/cmp_disasm.py <baseline> build/native/ghostlock` | 8 函数 IDENTICAL 或已复核差异（缺省路径不变） |
 | 提取器 | `cd tools/extract_rs && cargo test --release` | 全绿；5.15 tcp 几何用例 |
@@ -235,8 +235,8 @@ flowchart TD
 profile-core/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt； ⇒ profile-core/bin/main/com/ghostlock/app/data/profile/ProfileResolver.kt
 profile-core/src/main/kotlin/com/ghostlock/app/data/profile/ProfileResolver.kt； ⇒ profile-core/bin/main/com/ghostlock/app/data/route/TcpConfig.kt
 profile-core/src/main/kotlin/com/ghostlock/app/data/route/TcpConfig.kt（find app profile-core 实测）；
-  - **不存在（待定性质）**：`src/core/kernel/target_constants.hpp` —— 计划原文是否称「将新建」需逐句核（本窗口未定论 ⇒ **待裁**，不猜）；
-  - **检查口径问题（非产物缺失）**：`src/core/...` 为**省略号路径**，非真实路径；
+  - **不存在（待定性质）**：`core/src/kernel/target_constants.hpp` —— 计划原文是否称「将新建」需逐句核（本窗口未定论 ⇒ **待裁**，不猜）；
+  - **检查口径问题（非产物缺失）**：`core/src/...` 为**省略号路径**，非真实路径；
 - **结论**：上述片段**不影响本件作为路线图的效力** ⇒ **不归档**；正文未改（只追加本节）。
 - **定论（2026-10-06，实测）： 的常量 ⇒ 【已迁移】**，新位置 = ****（ 命名空间）。
   - 逐字取自本计划  的常量归一化结果： ⇒ （使用点 ）； ⇒ 使用点 （定义同族在 ）；// 同批迁入。

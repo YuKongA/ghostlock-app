@@ -2,7 +2,7 @@
 
 > 级别：**攻击关键路径** ⇒ 按 AGENTS 需真机门禁 + 本记录
 > 设备 `QV770MFGJ1` · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`
-> 探针：`tools/snitch_prepare_probe.cpp`（`make -C src snitch-prepare-probe`）
+> 探针：`tools/snitch_prepare_probe.cpp`（`make -C core snitch-prepare-probe`）
 > 提交：`a3d5b45b`（答案随调用返回）· 本轮（判据=接合本身）
 
 ## 1 判据与原始输出
@@ -39,7 +39,7 @@ snitch prepare probe: PASS          EXIT=0
 ## 5 复现
 
 ```sh
-make -C src snitch-prepare-probe
+make -C core snitch-prepare-probe
 adb -s QV770MFGJ1 push build/native/snitch_prepare_probe /data/local/tmp/
 adb -s QV770MFGJ1 shell 'timeout 60 /data/local/tmp/snitch_prepare_probe; echo EXIT=$?'
 ```

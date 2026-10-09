@@ -22,13 +22,13 @@
 
 1. **计划 §241 的「5 条开放决策」里，4 条计划已标「已定」（1/2/4/5），只有第 3 条「接口形态」真开放。**
    但代码取证发现 4 处「计划自述 vs 实际代码」漂移，必须先裁决，否则 Batch 1 无法开工：
-   - **D-A**：`AncillaryContext` 在代码里**不存在**；现类型是 `ancillary::AncillaryOps`（`src/core/ancillary/ancillary_policy.hpp:48`），且注释已写明它是「interim hand-rolled handle」。
+   - **D-A**：`AncillaryContext` 在代码里**不存在**；现类型是 `ancillary::AncillaryOps`（`core/src/ancillary/ancillary_policy.hpp:48`），且注释已写明它是「interim hand-rolled handle」。
    - **D-B**：`read_back` 在代码里**不存在**（全仓 grep 仅命中计划文本）；现状是 `AncillaryOps` 有一个**裸 bool** `read_available`，却**没有任何 read 函数指针**（`ancillary_policy.hpp:49-56`），属 ADR-0002 明令禁止的「第二可用性来源」。
    - **D-C**：`contract/capabilities.hpp` **已存在**且已落地 `KernelMemoryOps`/`FileCacheWriteOps`（`contract/capabilities.hpp:15-36`），但其形状是 **`ctx` + 函数指针 + `available()`**，与计划草案 §87-94（**无 ctx、含 `read64/write64/update_bits`、无 `write_zero`**）**不一致**。
    - **D-D**：`ghostlock::contract::Capability` **已被子系统 B 的 CM 插件 ABI 占用**为 `enum class Capability : uint32_t`（`contract/countermeasure.hpp:49-58`）。计划 §81-84 要求在**同一命名空间**新增 `template<class C> concept Capability`——**直接名字冲突，草案无法原样落地**。
 2. **计划草案的 `KernelMemoryOps`/`Capabilities` 形状无法支撑现有两个 vendor 行为**：VrGuard 需要**写零**与**image→direct-map 译址**（`platform/vivo/vr_guard.cpp:77-98`），VrTaskTag 需要 **child_task**（`platform/vivo/vr_task_tag.cpp:70-91`），而 §87-94 的草案既无 `write_zero`、也无 alias、也无 child_task。**Batch 1 必须先补齐这三项**。
 3. **Batch 1 只做「接口 + ancillary 消费方改造 + host stub」**，不碰 Tier 2、不碰 `WriteRequest`、不碰 `payload_builder`、不碰 profile/提取器。改动的三个 backend 落点（`steps.cpp` 的 `w1`/`w2` 内 ancillary 调用、platform/vivo 行为、contract/session 头文件）**都不在 `tools/cmp_disasm.py` 的 6 个 TARGETS 内**（`tools/cmp_disasm.py:79-143`），因此 **预计 `cmp_disasm` 6/6 IDENTICAL (strict)**（见 §3.2）。注：2026-10-05 起 `cmp_disasm` **不再是门槛**，此处只作「改动很小」的旁证；准入判据是真机门禁。
-4. **批准后第一步（最小可验证动作）**：只改 `contract/capabilities.hpp` + `contract_capabilities_test.cpp` + Makefile 规则，跑 `make -C src native-host-tests`，要求 `contract_capabilities_test: ok`。此步不触任何 backend/攻击路径；接口形状先在 host 冻结，再进 ancillary 迁移。
+4. **批准后第一步（最小可验证动作）**：只改 `contract/capabilities.hpp` + `contract_capabilities_test.cpp` + Makefile 规则，跑 `make -C core native-host-tests`，要求 `contract_capabilities_test: ok`。此步不触任何 backend/攻击路径；接口形状先在 host 冻结，再进 ancillary 迁移。
 
 ---
 
@@ -43,8 +43,8 @@
 | 5 | `AncillaryContext::read_available` 恒 false、`read_back` 注释占位（§16） | `read_available` 恒 false 属实（`steps.cpp:184`、`:415`）；`read_back` 全仓仅计划文本有 | **半漂移**：无 `read_back`；真正的问题是「有 bool、无函数指针」的第二来源 |
 | 6 | 值写改由 Tier 2；`WriteRequest{target,mode,preserve_child}`（§11） | 属实：`memory/payload_builder.h:16-32`；`WriteMode` 仅 Disabled/Zero/Credential(16-20)；值由 `payload_write_layout` 派生只有三种(56-76) | 一致（Batch 1 不改它） |
 | 7 | `attack_write` 的 cmp TARGETS 清单 | `tools/cmp_disasm.py` 现 TARGETS = owner/waiter/consumer/run_main_route_threads/do_kernel5_fake_lock_route/do_one_write，共 6 组(79-143)；**无** `multicast_owner_worker/multicast_waiter_worker` | **漂移**：计划 §20 说这两项 stale，实际已不在 TARGETS |
-| 8 | 「GLK1」传输格式（§33/198/219/239/248/262） | AGENTS.md 与 `src/core/README.md:86-94` 明确当前 wire 是 **GLKv3（MessagePack）**，GLK1 是旧称 | **术语过期**：Batch 2 应说 GLKv3 |
-| 9 | B 载体 `ashmem_misc`/`binder_miscdev`/`loop_control`、configfs、pipe_buffer 等 profile 字段（§197） | `src/core/profile` 下 grep 这些符号 **0 命中**；`tools/extract_rs` 仅 `src/symbols.rs:1` 有注释提到 ashmem，无字段 | 一致（Batch 2 才做），但**已定的是决策、不是现状** |
+| 8 | 「GLK1」传输格式（§33/198/219/239/248/262） | AGENTS.md 与 `core/src/README.md:86-94` 明确当前 wire 是 **GLKv3（MessagePack）**，GLK1 是旧称 | **术语过期**：Batch 2 应说 GLKv3 |
+| 9 | B 载体 `ashmem_misc`/`binder_miscdev`/`loop_control`、configfs、pipe_buffer 等 profile 字段（§197） | `core/src/profile` 下 grep 这些符号 **0 命中**；`tools/extract_rs` 仅 `src/symbols.rs:1` 有注释提到 ashmem，无字段 | 一致（Batch 2 才做），但**已定的是决策、不是现状** |
 | 10 | 改动清单把 ancillary 放「消费方」（§196） | 现状 ancillary 消费方已逐步归位：机制在 `ancillary/`，行为在 `platform/vivo/`（`vr_guard.hpp:1-85`、`vr_task_tag.hpp:1-78`），注册表 `VivoAncillaryPolicies` 由 backend 注入（`steps.cpp:192-195`、`:422-425`） | 一致；Batch 1 只需把「能力面」从 `AncillaryOps` 换成 `contract::Capabilities` |
 | 11 | 「`contract::Capabilities` 由 backend establish 一次写入」 | `CoreSession` **当前没有** `capabilities` 字段（`session/core_session.hpp:20-35`）；ADR-0002 §6 要求加在 backend 状态槽**之后**，且尚未落地 | **未落地**：Batch 1 需新增该字段 |
 | 12 | `KernelMemory::channel_kind()`（§159） | 无任何 channel/kernel memory 实现；全仓无 `channel_kind` | 未落地（Batch 3/4 实现，Batch 1 定形状） |
@@ -89,7 +89,7 @@
 | **选项** | (a) 按计划；(b) 只锁 ashmem+gadget=configfs，备选延后。 |
 | **建议** | **接受计划 (a) 作为目标**，但 Batch 2 提取器先只实现 **ashmem + configfs 探测**并把其余两者留 `absent`（fail-closed），避免一次背三套载体。运行时按序尝试、全失败降级 Tier 1。 |
 | **影响面** | Batch 2（profile 字段 + 提取器）、Batch 3（建立阶段按序尝试）。 |
-| **不可逆性** | **高**：载体顺序、configfs gadget、profile 字段名一旦写入 GLKv3 并被 Kotlin/提取器双侧锁定，改动需双侧同步 + manifest 重导（`src/Makefile:451-457`）。建议字段名在 Batch 1 末尾与维护者一并冻结。 |
+| **不可逆性** | **高**：载体顺序、configfs gadget、profile 字段名一旦写入 GLKv3 并被 Kotlin/提取器双侧锁定，改动需双侧同步 + manifest 重导（`core/Makefile:451-457`）。建议字段名在 Batch 1 末尾与维护者一并冻结。 |
 | **与代码自洽** | 自洽（尚未落地）。**术语须改**：写「GLKv3」，非「GLK1」（见 §1#8）。 |
 
 ### 决策 3 —— 接口形态（计划 §249，唯一真开放）
@@ -209,7 +209,7 @@
 
 ## 4. 对外接口签名草案（Batch 1 冻结）
 
-> 目标文件：`src/core/contract/capabilities.hpp`（扩展，不新建文件）。风格沿用现仓库 `ctx + *Ops` 家族（`capabilities.hpp:15-25`、`address_discovery.hpp:84-92`）。
+> 目标文件：`core/src/contract/capabilities.hpp`（扩展，不新建文件）。风格沿用现仓库 `ctx + *Ops` 家族（`capabilities.hpp:15-25`、`address_discovery.hpp:84-92`）。
 
 ```cpp
 namespace ghostlock::contract {
@@ -291,7 +291,7 @@ struct KernelMemory final {
 
 ### 4.1 CoreSession 布局
 
-`src/core/session/core_session.hpp`：在 `backend_state_dtor` 之后追加（保持 `backend_state` 在 104B）：
+`core/src/session/core_session.hpp`：在 `backend_state_dtor` 之后追加（保持 `backend_state` 在 104B）：
 
 ```cpp
 struct CoreSession final {
@@ -368,35 +368,35 @@ flowchart TD
 
 | 文件 | 动作 | 改动摘要 | 依据 |
 |---|---|---|---|
-| `src/core/contract/capabilities.hpp` | 修改 | 加 `KernelMemoryChannel`；`KernelMemoryOps` 加 `write_zero`/`channel`、拆 `write_available/read_available`；加 `AliasOps`、`Capabilities`、`KernelMemory` facade；`#include "contract/address_discovery.hpp"` | 计划 §70-128；附加决策 A/B/C/D |
-| `src/core/session/core_session.hpp` | 修改 | 末尾追加 `contract::Capabilities capabilities{}`；include capabilities 头 | ADR-0002 §6；计划 §114 |
-| `src/core/ancillary/ancillary_policy.hpp` | 修改 | **删除 `AncillaryOps`** 与 `AncillaryZeroFn`/`AncillaryAliasFn`；`AncillaryPolicyDefaults::apply` 与 `AncillaryPolicyFor` 改 `const contract::Capabilities&` | ADR-0004 R4；计划 §117/122/196 |
-| `src/core/ancillary/controller.hpp` | 修改 | `AncillaryController::apply` 去掉 `CoreSession&`/`Ops&`，改 `const contract::Capabilities&`；external 重载同步 | 计划 §122 |
-| `src/core/platform/vivo/vr_guard.hpp` | 修改 | `VrGuardPolicy::apply` 签名改 `const contract::Capabilities&`；include capabilities | §5.3 |
-| `src/core/platform/vivo/vr_guard.cpp` | 修改 | `execute_vr_guard` 签名与字段访问；可用性判定改 `write_available/alias.available` | §5.3 |
-| `src/core/platform/vivo/vr_task_tag.hpp` | 修改 | `VrTaskTagPolicy::apply` 签名；删 `using AncillaryOps` | §5.3 |
-| `src/core/platform/vivo/vr_task_tag.cpp` | 修改 | `execute_vr_task_tag` 签名与 `child_task`/`write_zero` 访问 | §5.3 |
-| `src/core/backend/cve_2026_43499/steps.cpp` | 修改 | 新增 `write_zero_adapter<M>`/`alias_adapter`；W1/W2 两处构造 `contract::Capabilities`（`channel=WriteOnly`、`read/write=nullptr`）取代 `AncillaryOps` | 计划 §195；§3.1 |
-| `src/core/primitives.cpp`/`.hpp` | **不动** | `attack_write`/`zero_word` 保持 | cmp 不变量 |
-| `src/core/memory/payload_builder.*` | **不动** | 值写语义 Batch 3 才改 | §3.1 |
-| `src/core/README.md` | 修改 | 把 `AncillaryOps` 描述改为 `Capabilities`（`README.md:66-68`） | 文档同步 |
-| `src/Makefile` | 修改 | `NATIVE_HOST_TESTS` 增测试名 + 对应显式规则 | 见 6.3 |
+| `core/src/contract/capabilities.hpp` | 修改 | 加 `KernelMemoryChannel`；`KernelMemoryOps` 加 `write_zero`/`channel`、拆 `write_available/read_available`；加 `AliasOps`、`Capabilities`、`KernelMemory` facade；`#include "contract/address_discovery.hpp"` | 计划 §70-128；附加决策 A/B/C/D |
+| `core/src/session/core_session.hpp` | 修改 | 末尾追加 `contract::Capabilities capabilities{}`；include capabilities 头 | ADR-0002 §6；计划 §114 |
+| `core/src/ancillary/ancillary_policy.hpp` | 修改 | **删除 `AncillaryOps`** 与 `AncillaryZeroFn`/`AncillaryAliasFn`；`AncillaryPolicyDefaults::apply` 与 `AncillaryPolicyFor` 改 `const contract::Capabilities&` | ADR-0004 R4；计划 §117/122/196 |
+| `core/src/ancillary/controller.hpp` | 修改 | `AncillaryController::apply` 去掉 `CoreSession&`/`Ops&`，改 `const contract::Capabilities&`；external 重载同步 | 计划 §122 |
+| `core/src/platform/vivo/vr_guard.hpp` | 修改 | `VrGuardPolicy::apply` 签名改 `const contract::Capabilities&`；include capabilities | §5.3 |
+| `core/src/platform/vivo/vr_guard.cpp` | 修改 | `execute_vr_guard` 签名与字段访问；可用性判定改 `write_available/alias.available` | §5.3 |
+| `core/src/platform/vivo/vr_task_tag.hpp` | 修改 | `VrTaskTagPolicy::apply` 签名；删 `using AncillaryOps` | §5.3 |
+| `core/src/platform/vivo/vr_task_tag.cpp` | 修改 | `execute_vr_task_tag` 签名与 `child_task`/`write_zero` 访问 | §5.3 |
+| `core/src/backend/cve_2026_43499/steps.cpp` | 修改 | 新增 `write_zero_adapter<M>`/`alias_adapter`；W1/W2 两处构造 `contract::Capabilities`（`channel=WriteOnly`、`read/write=nullptr`）取代 `AncillaryOps` | 计划 §195；§3.1 |
+| `core/src/primitives.cpp`/`.hpp` | **不动** | `attack_write`/`zero_word` 保持 | cmp 不变量 |
+| `core/src/memory/payload_builder.*` | **不动** | 值写语义 Batch 3 才改 | §3.1 |
+| `core/src/README.md` | 修改 | 把 `AncillaryOps` 描述改为 `Capabilities`（`README.md:66-68`） | 文档同步 |
+| `core/Makefile` | 修改 | `NATIVE_HOST_TESTS` 增测试名 + 对应显式规则 | 见 6.3 |
 
 ### 6.2 测试
 
 | 文件 | 动作 | 改动摘要 |
 |---|---|---|
-| `src/core/tests/contract_capabilities_test.cpp` | 修改 | 断言 `Capabilities` trivially copyable/standard-layout、`KernelMemoryChannel` 数值、只写句柄 `write_available=true && read_available=false`；facade `read64/write64/update_bits` 用 fake read/write 校验掩码与调用序列 |
-| `src/core/tests/ancillary_test.cpp` | 修改 | 假 session 改成假 `Capabilities`；`CountingPolicy::apply` 收 `const contract::Capabilities&` |
-| `src/core/tests/countermeasure_registry_test.cpp` | 修改 | `BuiltinPolicy::apply` 与两处 `AncillaryOps ops{}`(`:56,134`) 改 `const contract::Capabilities&` |
-| `src/core/tests/host/ancillary_stub.cpp` | 修改 | `execute_vr_guard`/`execute_vr_task_tag` 签名改 `const contract::Capabilities&` |
-| `src/core/tests/platform_vivo_test.cpp` | 修改（预期小） | 概念断言仍成立；如 policy `apply` 被实例化则补 `Capabilities` 参数 |
-| `src/core/tests/session_layout_test.cpp` | 修改 | 加 `capabilities` 偏移断言（§4.1） |
-| `src/core/tests/kernel_memory_stub_test.cpp` | **新增** | 纯 host：三通道（WriteOnly/Fops/Pipe）stub，验证 `available()` 门控、`update_bits` 非原子 RMW、`channel()` 日志值；不触 backend |
+| `core/src/tests/contract_capabilities_test.cpp` | 修改 | 断言 `Capabilities` trivially copyable/standard-layout、`KernelMemoryChannel` 数值、只写句柄 `write_available=true && read_available=false`；facade `read64/write64/update_bits` 用 fake read/write 校验掩码与调用序列 |
+| `core/src/tests/ancillary_test.cpp` | 修改 | 假 session 改成假 `Capabilities`；`CountingPolicy::apply` 收 `const contract::Capabilities&` |
+| `core/src/tests/countermeasure_registry_test.cpp` | 修改 | `BuiltinPolicy::apply` 与两处 `AncillaryOps ops{}`(`:56,134`) 改 `const contract::Capabilities&` |
+| `core/src/tests/host/ancillary_stub.cpp` | 修改 | `execute_vr_guard`/`execute_vr_task_tag` 签名改 `const contract::Capabilities&` |
+| `core/src/tests/platform_vivo_test.cpp` | 修改（预期小） | 概念断言仍成立；如 policy `apply` 被实例化则补 `Capabilities` 参数 |
+| `core/src/tests/session_layout_test.cpp` | 修改 | 加 `capabilities` 偏移断言（§4.1） |
+| `core/src/tests/kernel_memory_stub_test.cpp` | **新增** | 纯 host：三通道（WriteOnly/Fops/Pipe）stub，验证 `available()` 门控、`update_bits` 非原子 RMW、`channel()` 日志值；不触 backend |
 
 ### 6.3 Makefile 接线
 
-- 现有 `contract_capabilities_test` 规则：`src/Makefile:292-295`（`-Icore $<`，头文件依赖）。
+- 现有 `contract_capabilities_test` 规则：`core/Makefile:292-295`（`-Icore $<`，头文件依赖）。
 - 新增 `kernel_memory_stub_test`：
 
 ```make
@@ -405,9 +405,9 @@ $(HOST_BUILD_DIR)/kernel_memory_stub_test: core/tests/kernel_memory_stub_test.cp
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore $< -o $@
 ```
 
-  并把 `kernel_memory_stub_test` 加入 `NATIVE_HOST_TESTS`（`src/Makefile:174-198`）。
-- 注意：**只加名字不够**，必须写显式规则（`src/Makefile:311-313` 注释明确）。
-- `host_attack_dataflow_test` 的源清单已含 `core/tests/host/ancillary_stub.cpp` 与 `steps.cpp`（`src/Makefile:217,220`），签名改后会自动重编；无需改清单。
+  并把 `kernel_memory_stub_test` 加入 `NATIVE_HOST_TESTS`（`core/Makefile:174-198`）。
+- 注意：**只加名字不够**，必须写显式规则（`core/Makefile:311-313` 注释明确）。
+- `host_attack_dataflow_test` 的源清单已含 `core/tests/host/ancillary_stub.cpp` 与 `steps.cpp`（`core/Makefile:217,220`），签名改后会自动重编；无需改清单。
 
 ### 6.4 删除
 
@@ -423,11 +423,11 @@ $(HOST_BUILD_DIR)/kernel_memory_stub_test: core/tests/kernel_memory_stub_test.cp
 
 | 验证 | 命令 | 通过判据 |
 |---|---|---|
-| 编译 + 单测 | `make -C src native-host-tests` | 全绿；含新 `kernel_memory_stub_test`、改后的 `ancillary_test`/`contract_capabilities_test`/`countermeasure_registry_test`/`platform_vivo_test`/`session_layout_test` |
-| 数据流 | `make -C src host-attack-dataflow-test` | PASS（real `steps.cpp` + host stub 链接通过） |
+| 编译 + 单测 | `make -C core native-host-tests` | 全绿；含新 `kernel_memory_stub_test`、改后的 `ancillary_test`/`contract_capabilities_test`/`countermeasure_registry_test`/`platform_vivo_test`/`session_layout_test` |
+| 数据流 | `make -C core host-attack-dataflow-test` | PASS（real `steps.cpp` + host stub 链接通过） |
 | include 防火墙 | 含在上面的 host 套件 | 输出 `142 files, 3 forbidden-layer edges, 3 whitelisted, 0 unexpected, 0 stale`（行数可能因新测试略增，但 unexpected/stale 必须为 0） |
-| NDK 构建 | `make -C src ghostlock` | 零告警 |
-| lint | `make -C src lint-tidy` | 0 findings |
+| NDK 构建 | `make -C core ghostlock` | 零告警 |
+| lint | `make -C core lint-tidy` | 0 findings |
 | 形状（可选） | `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` | 用于定位差异范围；**不作为门槛**（2026-10-05 政策） |
 
 > Batch 1 **无需真机**（纯 host + 不触攻击路径）。真机门禁从 Batch 3 起按 `docs/analysis/device-gates/` 归档。
@@ -446,7 +446,7 @@ $(HOST_BUILD_DIR)/kernel_memory_stub_test: core/tests/kernel_memory_stub_test.cp
 **边界硬约束**：
 - Batch 2 不得改 `contract::Capabilities`（否则 Batch 1 的冻结失效）。
 - Batch 3/4 不得把 `Capabilities` 引入 `attack_write`/route/race 的接口或源码（架构审查 F；`docs/analysis/architecture-review.md` 历史记录），值仍走 `WriteRequest`/session 字段。
-- Batch 2 的术语用 **GLKv3**，不得写 GLK1（`src/core/README.md:86-94`）。
+- Batch 2 的术语用 **GLKv3**，不得写 GLK1（`core/src/README.md:86-94`）。
 
 ---
 
@@ -455,8 +455,8 @@ $(HOST_BUILD_DIR)/kernel_memory_stub_test: core/tests/kernel_memory_stub_test.cp
 - **本文档不是获批凭证**：上游计划 `docs/plan/flexible-kernel-rw-primitive-plan.md:260` 的「获批（修正版）」仍未勾选；L 级（跨层契约 + 公共数据结构 + 外围消费方）必须先获维护者认可再写代码（AGENTS.md「先设计后改动」）。
 - **需维护者先裁决**：§2 的 **决策 3**（接口形态，3a/3b）与 **附加决策 A/B/C/D**（命名、可用性、alias/child_task、RMW 语义）。决策 1/2/4/5 计划已定且与代码不冲突，可直接确认。
 - **批准后第一步（最小可验证动作）**：
-  1. 只改 `src/core/contract/capabilities.hpp` + `src/core/tests/contract_capabilities_test.cpp`（+ 可选 Makefile 规则）；
-  2. 运行 `make -C src native-host-tests`；
+  1. 只改 `core/src/contract/capabilities.hpp` + `core/src/tests/contract_capabilities_test.cpp`（+ 可选 Makefile 规则）；
+  2. 运行 `make -C core native-host-tests`；
   3. 期望输出含 `contract_capabilities_test: ok`，且 include firewall `0 unexpected`。
   - 此步不触 backend/攻击路径，`cmp_disasm` 自然不变；目的是**先在 host 冻结接口形状**，再进入 §6 的 ancillary 迁移。若第 2 步失败，立即回到接口设计（复现→定位→修复），不得继续改消费方。
 

@@ -19,7 +19,7 @@
 #include "profile/payload_keys.hpp"
 
 #ifndef PAYLOAD_MANIFEST_PIN
-#define PAYLOAD_MANIFEST_PIN "core/tests/payload-manifest.pin.tsv"
+#define PAYLOAD_MANIFEST_PIN "src/tests/payload-manifest.pin.tsv"
 #endif
 
 namespace {

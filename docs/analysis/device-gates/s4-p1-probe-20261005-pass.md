@@ -42,13 +42,13 @@ hook	glk.probe	on_stage	post_terminal	0	glk.probe
 
 ## 5. 附：带 param/extract 的完整 stdout（作 Kotlin 对拍 golden）
 
-fixture 源：`src/core/tests/fixtures/cm_test_plugin_schema.c`（`src/Makefile` 里 host 侧也用它）。
+fixture 源：`core/src/tests/fixtures/cm_test_plugin_schema.c`（`core/Makefile` 里 host 侧也用它）。
 
 交叉编译（NDK `30.0.16248370`）：
 
 ```
-aarch64-linux-android30-clang -shared -fPIC -I src/core \
-  -o /tmp/glk_schema_arm64.so src/core/tests/fixtures/cm_test_plugin_schema.c
+aarch64-linux-android30-clang -shared -fPIC -I core/src \
+  -o /tmp/glk_schema_arm64.so core/src/tests/fixtures/cm_test_plugin_schema.c
 ```
 
 设备：模块推送为 `/data/local/tmp/glk_schema.so`；被测 native 二进制为 `/data/local/tmp/glk-p1b`（由 `build/native/ghostlock` 推送）。

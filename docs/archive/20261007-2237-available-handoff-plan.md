@@ -18,11 +18,11 @@
 
 **执行侧（native）四轴已齐备** —— handoff **不是** step，而是独立轴：
 
-- 分派目录是 (backend, steps, terminal) 三轴：`src/core/contract/identity.hpp:10`；`ComponentSelection` 持有 `TerminalKind terminal`：`identity.hpp:64-68`；
+- 分派目录是 (backend, steps, terminal) 三轴：`core/src/contract/identity.hpp:10`；`ComponentSelection` 持有 `TerminalKind terminal`：`identity.hpp:64-68`；
 - 词表：`TerminalKind { RootChild = 1, UmhForward = 2 }`：`identity.hpp:36-39`；"user-visible handoff path" 由 `CombinationKind`（`McastRootchild`/`PselectRootchild`/`TcpRootchild`/`McastUmh`/…）：`identity.hpp:115-131` 表达；
 - 可用性由 `terminal_available()` 拥有：`identity.hpp:85-87`（`RootChild` 条件、`UmhForward` 恒真），`:364` 在组合选择时调用；
-- wire 上 handoff **已经存在**：GLKv3 根标量 `terminal`（文本 token）——解析 `src/core/profile/glkv3.cpp:419-424`（`staged.terminal` / `has_terminal`）、写回 `glkv3.cpp:631-633`；
-- 解析器**已有一致性检查**：把根 `terminal` 转成 `TerminalKind` 并要求它等于所匹配组合的 terminal，不等即拒绝：`src/core/profile/glkv3_parse.cpp:358-364`；
+- wire 上 handoff **已经存在**：GLKv3 根标量 `terminal`（文本 token）——解析 `core/src/profile/glkv3.cpp:419-424`（`staged.terminal` / `has_terminal`）、写回 `glkv3.cpp:631-633`；
+- 解析器**已有一致性检查**：把根 `terminal` 转成 `TerminalKind` 并要求它等于所匹配组合的 terminal，不等即拒绝：`core/src/profile/glkv3_parse.cpp:358-364`；
 - 组合 token 形如 backend · route · stepset · terminal（`contract::kCombinationCatalog`）。
 
 **配置侧（profile 声明）缺 handoff** —— 这就是「不统一」之处：
@@ -102,8 +102,8 @@
 
 | # | 文件:行 | 改动 | 理由 |
 | - | ------- | ---- | ---- |
-| 10 | `src/core/profile/glkv3_parse.cpp:358-364` | 保留既有"根 terminal 必须等于组合 terminal"；额外：当文档同时声明 queue 选择与根 terminal 时，冲突要给出**具名 reason**（今天只有 `return -1`） | 诊断可读；行为仍是 fail-closed |
-| 11 | `src/core/profile/glkv3.cpp:419-424` | 无改动（根 `terminal` 已是权威通道） | 已满足 |
+| 10 | `core/src/profile/glkv3_parse.cpp:358-364` | 保留既有"根 terminal 必须等于组合 terminal"；额外：当文档同时声明 queue 选择与根 terminal 时，冲突要给出**具名 reason**（今天只有 `return -1`） | 诊断可读；行为仍是 fail-closed |
+| 11 | `core/src/profile/glkv3.cpp:419-424` | 无改动（根 `terminal` 已是权威通道） | 已满足 |
 
 ### 3. manifest
 
@@ -158,7 +158,7 @@
 | App 单测 | `./gradlew :app:testDebugUnitTest` | 退出码 0（期望同步后） |
 | 构建 | `./gradlew :app:assembleDebug` | 退出码 0，零 `w: file:` |
 | 导出 | `./gradlew :profile-core:exportProfiles --rerun-tasks` | 退出码 0；**未改资产时产物逐字节不变** |
-| native（若动 10） | `make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy` | 0 findings |
+| native（若动 10） | `make -C core native-host-tests` + NDK 构建零警告 + `make -C core lint-tidy` | 0 findings |
 | 证伪 | 发射忽略声明 / 校验放行坏 token | 守卫必红，撤回后 sha 回位 |
 
 ## 明确保留

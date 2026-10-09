@@ -9,11 +9,11 @@
 - **Only migration point**: Kotlin `LegacyProfileConverter` (legacy `1`/missing key → 3 with a diagnostic; any other value is rejected).
 - native accepts only 3; wire v2 is deleted; the extractor only emits 3 (`--format conf` emits the **new shape** in the same batch).
 - `profile-legacy/*.conf` are **v1 input fixtures** and keep the **old shape** on purpose.
-- Field authority: `make -C src profile-manifest-v3` → `profile-manifest-v3.tsv` (columns `owner / path / wire / required / default / source / doc`).
-- **How to look up a field** (do not copy the authority into prose): `grep '^cve_2026_43499' app/src/test/resources/profile-manifest-v3.tsv` (or `^countermeasure`, `^backend`), and regenerate with `make -C src profile-manifest-v3` (two byte-identical copies). This document intentionally lists **structure, migrations and gates**, not field enumerations. Note the manifest `required` column means **unconditionally required**; per-tier/conditional requirements belong to the validator, never to that column.
+- Field authority: `make -C core profile-manifest-v3` → `profile-manifest-v3.tsv` (columns `owner / path / wire / required / default / source / doc`).
+- **How to look up a field** (do not copy the authority into prose): `grep '^cve_2026_43499' app/src/test/resources/profile-manifest-v3.tsv` (or `^countermeasure`, `^backend`), and regenerate with `make -C core profile-manifest-v3` (two byte-identical copies). This document intentionally lists **structure, migrations and gates**, not field enumerations. Note the manifest `required` column means **unconditionally required**; per-tier/conditional requirements belong to the validator, never to that column.
 - **Root scalars travel through the "root section"** (`document.hpp`'s `kRootSection`, an empty section name) so that the owner bind's single lookup path `find_value(section, key)` is isomorphic with root keys - the two section-copy filter copies cannot silently miss one (a miss would mean a silent `kernel_major = 0`). **Do not change this back to named members**.
 - **`wire_only` FieldSpecs** (`kmi`, `lkm_path`, `carrier_path`): accepted on the wire and decoded, but **not in the manifest** — so the App's writable surface excludes them. Key distinction: **the manifest is the profile *writable* surface, not the wire surface**; the wire surface is defined by native's decode/bind path.
-- **Evidence (2026-10-05)**: manifest **114 lines** (10 header + **104 fields**), two byte-identical copies at sha256 **`68bd7a506a210077`**, bare run `ok (104 fields, both copies)`, zero hits for the three wire-only keys; gates host `EXIT=0` (9-warning baseline, 58 tests, firewall `180/4/4/0/0`), lint 0, NDK 0; six negative cases at `src/core/tests/profile_v3_test.cpp:195-242` (`common.*`, `countermeasure.*`, in-section `kernel_major`, old `platform.abi.*`, old flat 43284 keys ⇒ rejected).
+- **Evidence (2026-10-05)**: manifest **114 lines** (10 header + **104 fields**), two byte-identical copies at sha256 **`68bd7a506a210077`**, bare run `ok (104 fields, both copies)`, zero hits for the three wire-only keys; gates host `EXIT=0` (9-warning baseline, 58 tests, firewall `180/4/4/0/0`), lint 0, NDK 0; six negative cases at `core/src/tests/profile_v3_test.cpp:195-242` (`common.*`, `countermeasure.*`, in-section `kernel_major`, old `platform.abi.*`, old flat 43284 keys ⇒ rejected).
 
 ## 1. Data flow
 
@@ -141,10 +141,10 @@ Fail-closed (whole document rejected, never a silent downgrade):
 ## 11. Commands and agreement tests
 
 ```sh
-make -C src profile-manifest-v3      # regenerate the field table (two copies)
-make -C src combination-manifest     # token whitelist export
-make -C src vocabulary-manifest      # component vocabulary export
-make -C src native-host-tests        # host tests incl. manifest/agreement assertions
+make -C core profile-manifest-v3      # regenerate the field table (two copies)
+make -C core combination-manifest     # token whitelist export
+make -C core vocabulary-manifest      # component vocabulary export
+make -C core native-host-tests        # host tests incl. manifest/agreement assertions
 ./gradlew :profile-core:test :app:testDebugUnitTest
 ```
 

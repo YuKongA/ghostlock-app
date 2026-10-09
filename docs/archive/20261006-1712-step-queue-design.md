@@ -38,7 +38,7 @@
 当前用户可见的选择面是**一个 token**（`backend.<id>.steps`，如 `mcast_rootchild`/`umh`），它一次性蕴含 route + path + step set + terminal。三个问题：
 
 1. **可读性**：profile 里写 `steps = "mcast_rootchild"` 无法表达「跑哪几步」；想跳过/组合步骤只能选预设，用户看不到步骤本身。
-2. **扩展性**：步骤顺序与依赖被编码进 C++ 模板（`Cve43499_W1W3`/`Cve43499_W1W2`，`src/core/backend/cve_2026_43499_backend.hpp:61-62`），新增一个步骤组合＝新增模板 + 目录行 + dispatch case，而不是声明。
+2. **扩展性**：步骤顺序与依赖被编码进 C++ 模板（`Cve43499_W1W3`/`Cve43499_W1W2`，`core/src/backend/cve_2026_43499_backend.hpp:61-62`），新增一个步骤组合＝新增模板 + 目录行 + dispatch case，而不是声明。
 3. **判定面**：`kCombinationCatalog`（12 行）既是「用户词汇」又是「dispatch 依据」，两个职责绑在一起；一旦用户想写非预设的步骤序列，就没有合法表达。
 
 队列取代 token 后：**用户声明步骤序列**（静态），native 负责**归一化**成内部计划、与**已过真机的预设集合**比对，决定 `supported`（复用已验证路径）还是 `experimental`（显式标记 + 警告 + 需真机门禁）。token 在迁移期降级为**语法糖**，最终删除。
@@ -52,7 +52,7 @@
 
 | 物证 | 说明 |
 |---|---|
-| `src/core/contract/identity.hpp:116-214` | `kCombinationCatalog` 12 行：token → {backend, route, path, StepSetKind, terminal, available} |
+| `core/src/contract/identity.hpp:116-214` | `kCombinationCatalog` 12 行：token → {backend, route, path, StepSetKind, terminal, available} |
 | `identity.hpp:224-234` | `combination_resolve(backend, token)`：**精确、区分大小写、无归一化** |
 | `identity.hpp:294-300` | `combination_stepset_wire()`：token → StepSetKind 数值；**未命中返回 0** |
 | `profile/glkv3_parse.cpp:207-287` | `resolve_combination()`：从 `backend.<id>.steps` 解析 token，校验 root route/terminal 一致，写 `document.combination` |
@@ -76,7 +76,7 @@
 |---|---|
 | `app/src/test/resources/combination-manifest.tsv` | 12 行，列 `token/backend/route/path/**steps**/terminal/available/doc` |
 | `app/src/test/resources/vocabulary-manifest.tsv` | **14 行**：4 kind；其中 `stepset` 3 行（`w1_w2`=1、`w1_w3`=2、`pagecache_write`=3；`Unknown=0` 是 native 哨兵，不导出） |
-| `src/core/tests/vocabulary_manifest_test.cpp:90-97` | 上述 3 行的导出点（`stepset_name()`） |
+| `core/src/tests/vocabulary_manifest_test.cpp:90-97` | 上述 3 行的导出点（`stepset_name()`） |
 | `contract/identity.hpp:54-62` | `StepSetKind{Unknown=0, W1W2=1, W1W3=2, PageCacheWrite=3}` |
 | `profile-core/src/main/kotlin/.../Glkv3Encoder.kt:16-36` | Kotlin 值模型已含 `Glkv3Value.Array` |
 
@@ -117,7 +117,7 @@
 
 ### 4.1 ① 步骤词汇（native 权威）
 
-**表位置**：新增 `src/core/contract/step_catalog.hpp`（`contract/`，**host 可编译、不 include `backend/`/`pipeline/`**，遵守 R1 防火墙）。
+**表位置**：新增 `core/src/contract/step_catalog.hpp`（`contract/`，**host 可编译、不 include `backend/`/`pipeline/`**，遵守 R1 防火墙）。
 
 **每步字段（StepSpec）**
 
@@ -219,7 +219,7 @@
 | **M1 / M1.1** | contract：`step_catalog.hpp`（目录 + 别名 + 编译期注册，**M1 已提交 `bcb94253`**）+ 静默点守卫 + **`step_plan.hpp` 归一化纯函数（M1.1：`CanonicalPlan`、全部声明期判定、supported/experimental 结论）**；**用户面零变化**（assets 不动，仍发 token；M1.1 不接生产） | host/lint/NDK 三绿 + 每条新守卫的证伪实验 |
 | **M2** | wire/native：**W2（wire 直接承载对象数组）**+ 中立 `Document` 复合值 + 声明期/启动期 fail-closed + route 三条守卫（S14a–S14d）+ token **语法糖**（解析期展开为队列）+ §10.1 静默点改硬失败与具名诊断 | 三绿 + manifest 重生成 + 防火墙 + **逐条负例证伪** + **同形对拍语料**（wire → native 解析 ⇒ 与 HOCON 语义逐字段一致）+ **真机门禁**（M2 验收判据见 §4.5：supported 逐字节同路径 / 每个 experimental 各自门禁 / 无队列零新增字节） |
 | **M3** | assets：58 个 release profile + 4 个 template + `index.conf` 的 `available{}` 改写为队列（其余 10 个共享片段中只有承载选择的那几个要改） | 逐资产「归一化计划 == 旧 token 计划」对拍（沿用 R3「扁平化等价 67/67」的做法与证据格式），0 例外 |
-| **M4** | Kotlin/UI：队列解析（B 形态）+ **UI 重做**（用户裁决 D4：现有一版不用了，旧 UI 测试不作迁移验收，替换/删除在实现批次登记）；extractor `--format conf` 同步产出 B 形态 | `:profile-core:test :app:testDebugUnitTest` 绿 + 跨语言 golden 重生成（`make -C src glkv3-golden-hex`）+ Rust `cargo test --release` |
+| **M4** | Kotlin/UI：队列解析（B 形态）+ **UI 重做**（用户裁决 D4：现有一版不用了，旧 UI 测试不作迁移验收，替换/删除在实现批次登记）；extractor `--format conf` 同步产出 B 形态 | `:profile-core:test :app:testDebugUnitTest` 绿 + 跨语言 golden 重生成（`make -C core glkv3-golden-hex`）+ Rust `cargo test --release` |
 | **M5 ✅ 已完成（`e59a8479` + 归档 `af2feefc`）** | **token 糖已删**：HOCON 列表形态**出现即拒**（两条独立具名诊断）+ native 具名拒 token + 归一化不再物化 token + App 停发 wire `steps`；`steps` 键**保留**（§11-U7） | 三绿 ✅ + 负例 ✅ + **真机 PASS ✅**（二进制 `24e9accf84b9`）+ 门禁归档 ✅；**43284 半边由 native 单测覆盖**（本机 release profile 走 43499，设备路径未单独跑 43284） |
 
 **禁止长期双真相**：M5 是计划的一部分，不是"以后再说"；M2–M4 期间每次改动都必须保证「归一化等价」，任何一处不等价即视为迁移缺陷（比对脚本进测试）。
@@ -259,7 +259,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - **canonical 只多一个键**：`ProfileLayout.validateAvailable` 接受**双形态** `available`（旧的**列表**形态**零破坏**；新对象形态 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }`），canonical 在**唯一一处**把三键归一进 `backend.<id>`，其中队列级 route 落在 **`queue_route`（str，canonical-only）**，**几何 Map `route` 一律不覆盖**。
 - **唯一映射点 = `NativeProfile.backendSection()`**：`queue_route` → **wire 键 `route`**（wire 形态不变，仍是 §4.5 的 `route: "select_stack"`）；**无几何时直接用 `route`**；**`route` 与 `queue_route` 同时为 str ⇒ fail-closed「refusing to pick a precedence」**（不猜优先级）。
 - **回显只认「与 `available` 声明逐值相等」**：手工只在 `backend.<id>` 写 route/queue（未在 `available` 声明）⇒ **未知键拒绝**；回显不是「读回任意键」，而是「与声明比对」。
-- **完成判据（已达成）**：Kotlin golden（**3964 字符**）与 `make -C src glkv3-golden-hex` **逐字符相同**；两侧 fixture 逐字段对拍（native `--dump-fixture` **91 行** ⇒ `profile-core/src/test/resources/glkv3-native-fixture.tsv`）；**未声明三键 ⇒ 零新增字节**（与 pre-M2 hex 相同）；**68 资产几何零变化**（`ProfileLayoutEquivalenceTest` ≥60 资产 flatten 对拍绿）；**5 条证伪**（删一侧发射 / 未声明也写 / 回显放宽 ×2 / 双 str route 守卫）；门禁 `:profile-core:test :app:testDebugUnitTest --rerun-tasks` **EXIT=0**。
+- **完成判据（已达成）**：Kotlin golden（**3964 字符**）与 `make -C core glkv3-golden-hex` **逐字符相同**；两侧 fixture 逐字段对拍（native `--dump-fixture` **91 行** ⇒ `profile-core/src/test/resources/glkv3-native-fixture.tsv`）；**未声明三键 ⇒ 零新增字节**（与 pre-M2 hex 相同）；**68 资产几何零变化**（`ProfileLayoutEquivalenceTest` ≥60 资产 flatten 对拍绿）；**5 条证伪**（删一侧发射 / 未声明也写 / 回显放宽 ×2 / 双 str route 守卫）；门禁 `:profile-core:test :app:testDebugUnitTest --rerun-tasks` **EXIT=0**。
 
 **成本重估（C1–C7 **上调**；按工作量从大到小）**
 
@@ -350,7 +350,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - **唯一性**：队列级 route 恰好一处；重复声明 ⇒ 拒绝：`plan_error reason=route-duplicated`。
 - **与归一化的关系**：route 进入 `CanonicalPlan.route`；`supported`/`experimental` 判定、`dispatch_target_of` 与「声明 route == 预设 route」一致性校验**都以它为准**，**不再由 token 隐含**。
 - **明确不做**：真正的「**每步换 route**」（一次运行内多轮 `prepare`/`disarm` + waiter 生命周期重排）属**攻击路径改动** ⇒ 独立 L 级设计 + 真机门禁，**本设计不做**。证据：`pipeline.hpp:53-62`（`Pipeline` 只实例化一条 route；`Route` 满足整轮 `prepare→execute→disarm→destroy`）。
-- **canonical 承载（2026-10-06 落地 = `4c20142f`）**：canonical 里队列级 route 走 **`queue_route`（str，canonical-only）**，几何 Map `route` **不被覆盖**；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → wire 键 `route`；无几何时直接用 `route`；**两者同时为 str ⇒ fail-closed「refusing to pick a precedence」**）；**回显只认「与 `available` 声明逐值相等」**（手工只在 `backend.<id>` 写 ⇒ 未知键拒绝）。**沿革（为什么必须先解决）**：`route` 撞键会让**几何 Map 被静默覆盖 ⇒ 68 资产几何归零**；完成判据 = Kotlin golden 3964 字符与 `make -C src glkv3-golden-hex` **逐字符相同** + 两侧 fixture 91 行对拍 + **未声明三键零新增字节** + `ProfileLayoutEquivalenceTest`（≥60 资产）绿 + **5 条证伪** + `:profile-core:test :app:testDebugUnitTest --rerun-tasks` EXIT=0。
+- **canonical 承载（2026-10-06 落地 = `4c20142f`）**：canonical 里队列级 route 走 **`queue_route`（str，canonical-only）**，几何 Map `route` **不被覆盖**；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → wire 键 `route`；无几何时直接用 `route`；**两者同时为 str ⇒ fail-closed「refusing to pick a precedence」**）；**回显只认「与 `available` 声明逐值相等」**（手工只在 `backend.<id>` 写 ⇒ 未知键拒绝）。**沿革（为什么必须先解决）**：`route` 撞键会让**几何 Map 被静默覆盖 ⇒ 68 资产几何归零**；完成判据 = Kotlin golden 3964 字符与 `make -C core glkv3-golden-hex` **逐字符相同** + 两侧 fixture 91 行对拍 + **未声明三键零新增字节** + `ProfileLayoutEquivalenceTest`（≥60 资产）绿 + **5 条证伪** + `:profile-core:test :app:testDebugUnitTest --rerun-tasks` EXIT=0。
 - **沿革**：v1「每步 route 一律拒绝」→ v2.0「每步可写但整条一致」（D2）→ **v2.1「只在队列级 + 必填 / 不得出现 / 唯一」**（D2′，2026-10-06）。
 
 ### Q3（已裁决 D3）seam = 纯占位 + 复用既有插件阶段标识符
@@ -364,13 +364,13 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 
 | 批次 | 文件 | 改动 |
 |---|---|---|
-| M1 | `src/core/contract/step_catalog.hpp`（新） | StepSpec 表 + 注册断言 + 归一化纯函数 + 非法形状枚举 |
-| M1 | `src/core/contract/identity.hpp` | `StepSetKind` ↔ 步骤序映射（单一权威）；**不改 12 行 token 表** |
-| M1 | `src/core/tests/step_catalog_test.cpp`（新） | 词汇/依赖/顺序/归一化 + 每条负例（含证伪实验记录） |
-| M2 | `src/core/profile/glkv3.cpp`、`glkv3.hpp`、`glkv3_parse.cpp` | **wire 直接承载数组**：放行 `Array`（`glkv3_parse.cpp:363` 现 `return -1`）+ 元素必须是 map 的校验 + 深度/长度上限 |
-| M2 | `src/core/profile/document.hpp`、`profile/schema.hpp` | **中立 `Document` 复合值承载（本轮最大项）** + `queue` 的 array-of-map 声明与 bind → 有序 `CanonicalPlan` |
-| M2 | `src/core/pipeline/component_catalog.hpp`、`orchestrator.hpp` | 计划 → 预设归一化键 → dispatch；**route 进 `CanonicalPlan.route`**；**七个静默点改硬失败 + 具名诊断**（§10.1，尤其 S5） |
-| M2 | `src/core/tests/profile_v3_test.cpp` 等 | 每条非法形状一个负例（含 S14a–S14d）；**同形对拍语料**（App 发射 → native 解析 ⇒ 与 HOCON 语义逐字段一致）；token 糖等价对拍 |
+| M1 | `core/src/contract/step_catalog.hpp`（新） | StepSpec 表 + 注册断言 + 归一化纯函数 + 非法形状枚举 |
+| M1 | `core/src/contract/identity.hpp` | `StepSetKind` ↔ 步骤序映射（单一权威）；**不改 12 行 token 表** |
+| M1 | `core/src/tests/step_catalog_test.cpp`（新） | 词汇/依赖/顺序/归一化 + 每条负例（含证伪实验记录） |
+| M2 | `core/src/profile/glkv3.cpp`、`glkv3.hpp`、`glkv3_parse.cpp` | **wire 直接承载数组**：放行 `Array`（`glkv3_parse.cpp:363` 现 `return -1`）+ 元素必须是 map 的校验 + 深度/长度上限 |
+| M2 | `core/src/profile/document.hpp`、`profile/schema.hpp` | **中立 `Document` 复合值承载（本轮最大项）** + `queue` 的 array-of-map 声明与 bind → 有序 `CanonicalPlan` |
+| M2 | `core/src/pipeline/component_catalog.hpp`、`orchestrator.hpp` | 计划 → 预设归一化键 → dispatch；**route 进 `CanonicalPlan.route`**；**七个静默点改硬失败 + 具名诊断**（§10.1，尤其 S5） |
+| M2 | `core/src/tests/profile_v3_test.cpp` 等 | 每条非法形状一个负例（含 S14a–S14d）；**同形对拍语料**（App 发射 → native 解析 ⇒ 与 HOCON 语义逐字段一致）；token 糖等价对拍 |
 | M3 | `app/src/main/assets/profile/*.conf`（68 个：58 release + 10 共享） | token → 队列 B 形态（机械改写 + 逐资产等价对拍） |
 | M4 | `profile-core/**`、`app/**`、`tools/extract_rs/**` | 队列解析（B）+ **UI 重做**（D4：旧 UI 测试不作验收）+ extractor 产出 B 形态 |
 | M5 | 全部 | 删除 token 糖 + 负例 + 文档/UML 同步 |
@@ -397,12 +397,12 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 
 | 批次 | 命令 | 预期 |
 |---|---|---|
-| M1 / M1.1 | `make -C src native-host-tests -B`、`make -C src lint-tidy`、`ANDROID_NDK_HOME=… make -C src ghostlock -B` | EXIT=0；告警 9（基线）；防火墙 `182 files, 4/4/0/0`（M1 后 181，M1.1 再加 `step_plan.hpp`） |
+| M1 / M1.1 | `make -C core native-host-tests -B`、`make -C core lint-tidy`、`ANDROID_NDK_HOME=… make -C core ghostlock -B` | EXIT=0；告警 9（基线）；防火墙 `182 files, 4/4/0/0`（M1 后 181，M1.1 再加 `step_plan.hpp`） |
 | M1/M2 | 每条守卫的证伪实验（临时造错 → 失败 → 撤回） | 每条守卫**必须**能失败；证伪一律 `make -B` |
 | M2 | 等价性对拍：token 糖 ↔ 队列；**同形对拍**（App 发射的 wire → native 解析 ⇒ 与 HOCON 语义逐字段一致） | `CanonicalPlan` 逐字段相等，0 例外 |
 | M2 | manifest 重生成（两份逐字节）+ 防火墙 + **真机门禁**（wire 类型面变更） | **M2 验收判据**：① `supported` 计划与今天**逐字节同路径**（43284 全链 + 43499 冷启）；② 每个 `experimental` 计划**各自**门禁；③ 无队列文档零新增字节；门禁归档 |
 | M3 | 逐资产等价对拍（脚本化；**68 个 .conf**） | 58 release + 10 共享全部「计划 == 旧 token 计划」，0 例外 |
-| M4 | `./gradlew :profile-core:test :app:testDebugUnitTest`、`make -C src glkv3-golden-hex`（重生成 golden）、`cargo test --release` | 全绿；跨语言 golden 由 native 重出 |
+| M4 | `./gradlew :profile-core:test :app:testDebugUnitTest`、`make -C core glkv3-golden-hex`（重生成 golden）、`cargo test --release` | 全绿；跨语言 golden 由 native 重出 |
 | M5 | 三绿 + 防火墙 + 真机门禁（43284 全链、43499 冷启） | 门禁归档到 `docs/analysis/device-gates/` |
 
 ## 10 风险
@@ -494,4 +494,4 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 
 ---
 
-**物证索引**：`contract/identity.hpp:54-62/116-214/216-234/251-268/271-300/352-357`；`pipeline/component_catalog.hpp:46-65/69-99/123-152/164-172`；`pipeline/orchestrator.hpp:30-34/44-57/61-86`；`pipeline/pipeline.hpp:53-62`；`backend/cve_2026_43499_backend.hpp:61-62`；`backend/cve_2026_43499/steps.cpp:460/497`；`profile/glkv3_parse.cpp:154-166/207-287/363`；`backend/cve_2026_43499/schema.hpp:88`；`backend/cve_2026_43284/schema.hpp:154`；`app/src/test/resources/{combination,vocabulary}-manifest.tsv`；`app/src/main/assets/profile/`（68 `.conf`）；`profile-core/.../Glkv3Encoder.kt:16-36`；`profile-core/.../NativeProfile.kt:258/274/391-407`；`src/core/tests/profile_manifest_v3_test.cpp`（`f72b145f` 三条守卫）。
+**物证索引**：`contract/identity.hpp:54-62/116-214/216-234/251-268/271-300/352-357`；`pipeline/component_catalog.hpp:46-65/69-99/123-152/164-172`；`pipeline/orchestrator.hpp:30-34/44-57/61-86`；`pipeline/pipeline.hpp:53-62`；`backend/cve_2026_43499_backend.hpp:61-62`；`backend/cve_2026_43499/steps.cpp:460/497`；`profile/glkv3_parse.cpp:154-166/207-287/363`；`backend/cve_2026_43499/schema.hpp:88`；`backend/cve_2026_43284/schema.hpp:154`；`app/src/test/resources/{combination,vocabulary}-manifest.tsv`；`app/src/main/assets/profile/`（68 `.conf`）；`profile-core/.../Glkv3Encoder.kt:16-36`；`profile-core/.../NativeProfile.kt:258/274/391-407`；`core/src/tests/profile_manifest_v3_test.cpp`（`f72b145f` 三条守卫）。

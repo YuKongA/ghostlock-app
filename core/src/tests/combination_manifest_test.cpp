@@ -24,7 +24,7 @@
 
 namespace {
 #ifndef COMBINATION_MANIFEST_PIN
-#define COMBINATION_MANIFEST_PIN "core/tests/combination-manifest.pin.tsv"
+#define COMBINATION_MANIFEST_PIN "src/tests/combination-manifest.pin.tsv"
 #endif
 
     using ghostlock::contract::kChainCatalog;

@@ -69,9 +69,9 @@ data class Glkv3Section(val name: String, val entries: List<Glkv3Entry>)
 
 /**
  * Logical GLKv3 document. The root map always carries `schema` and `sections`;
- * `release`/`terminal`/`backend`/`route` are present only when non-null,
- * because presence is expressed by key occurrence (an omitted key is not
- * 0/false/empty). See `docs/analysis/wire-transport-model.md`.
+ * `release`/`terminal`/`backend`/`route`/`combination` are present only when
+ * non-null, because presence is expressed by key occurrence (an omitted key is
+ * not 0/false/empty). See `docs/analysis/wire-transport-model.md`.
  */
 data class Glkv3Document(
     val schema: ULong = Glkv3Encoder.SCHEMA_VERSION,
@@ -79,6 +79,14 @@ data class Glkv3Document(
     val terminal: String? = null,
     val backend: String? = null,
     val route: String? = null,
+    /**
+     * The single SELECTION fact (script-plan-design B1): the combination token
+     * from `contract::kCombinationCatalog`. Backend, route, step plan and
+     * terminal are DERIVED from it natively, so the token is the only selection
+     * key the document carries. Value comes from the catalogue, never from a
+     * literal (see CombinationCatalog).
+     */
+    val combination: String? = null,
     /* HOCON refactor: the kernel scalars ride the wire ROOT (native kRootSection),
      * exactly like `release`; presence is key occurrence, so an absent
      * kernel_minor is simply not written. */
@@ -145,8 +153,9 @@ object Glkv3Encoder {
     }
 
     private fun writeRoot(packer: MessagePacker, document: Glkv3Document) {
-        val keys = ArrayList<String>(9)
+        val keys = ArrayList<String>(10)
         document.backend?.let { keys += "backend" }
+        document.combination?.let { keys += "combination" }
         document.kernelMajor?.let { keys += "kernel_major" }
         document.kernelMinor?.let { keys += "kernel_minor" }
         document.release?.let { keys += "release" }
@@ -162,6 +171,7 @@ object Glkv3Encoder {
             packer.packString(key)
             when (key) {
                 "backend" -> writeString(packer, document.backend!!)
+                "combination" -> writeString(packer, document.combination!!)
                 "kernel_major" -> writeUnsigned(packer, document.kernelMajor!!)
                 "kernel_minor" -> writeUnsigned(packer, document.kernelMinor!!)
                 "release" -> writeString(packer, document.release!!)

@@ -15,7 +15,7 @@
 | 5 | **`cfg` 快照** | stage 前注入的**只读快照**；脚本只能读字段；**不属句柄面**、不产生句柄 | 同上 §1 · ADR-0010 |
 | 6 | **句柄边界 + 禁止名字→值表** | `{kind,index,generation}` · 有界 64 · POD/无 `__gc` · 只由宿主探针产生 · 不得自造/延长/跨域；**C++ 不得持「名字→值」表**（名字只允许 dispatch 标识符与数据面键路径）⇒ [target 附件](../analysis/lua-surface-annex-target.md) | ADR-0010 · 附件 |
 | 3b | **`width` 必填 + 相位四词（A1）** | **`writeop`/`copyop` 的 `width` 必填**（**不推断**）；**profile 声明的结构尺寸 = 校验依据**，不匹配 ⇒ 具名 **`width-mismatch`**；**相位用 manifest 四词表**：`stage` · `pre_window` · `window` · `terminal`（backend/close=`pre_window` · writeop/copyop/settle=`window` · handoff=`terminal` · cfg=`stage`） | [lua-surface-design](../analysis/lua-surface-design.md) §1.1 · [manifest 附件](../analysis/lua-surface-annex-manifest.md) |
-| 3c | **manifest 对拍（新判据）** | **暴露面单一权威 = `make -C src surface-manifest` 导出 + pin**（`src/core/tests/surface_manifest_test.cpp`）；**对拍 = `make -C src surface-doc-check DOC=<文档>` 必须 EXIT=0**（**两份**：[UML](../development/full-process-uml.md) 与 [manifest 附件](../analysis/lua-surface-annex-manifest.md)） | 同上 |
+| 3c | **manifest 对拍（新判据）** | **暴露面单一权威 = `make -C core surface-manifest` 导出 + pin**（`core/src/tests/surface_manifest_test.cpp`）；**对拍 = `make -C core surface-doc-check DOC=<文档>` 必须 EXIT=0**（**两份**：[UML](../development/full-process-uml.md) 与 [manifest 附件](../analysis/lua-surface-annex-manifest.md)） | 同上 |
 | 3d | **`holds_resource` 语义（A3）** | **语义 = 调用返回后仍使资源存活** ⇒ **`backend`=true · `handoff`=true** · **`close`=false** · 其余 false（**manifest col5 实测**：`surface_manifest_test.cpp:6` 的列序 = `…phase·**holds_resource**·recordable·executable…` ⇒ **第 5 列**）；**已由 `resource_semantics_are_pinned()` 钉住**（`script_surface.hpp:541` `backend && !close && handoff`；`:644` static_assert 同义） | manifest col5 / `script_surface.hpp` |
 | 7 | **三条 ADR 修订点** | 0008 = 单遍 stage + 5.5 沙箱参数待办 · 0009 = 「用户脚本正确性 = 用户责任」= **`TD-RW2-1`** · 0010 = **`cfg` 不属句柄面** | 三份 ADR 修订段 |
 | 8 | **handoff 归属（Kotlin 负责）+ 收尾 + route 换法** | HOCON 只声明意图；**Kotlin `resolve`** 产 payload（收尾脚本 + LKM + 大小 + sha256）⇒ wire 传入 ⇒ native 校验 + 落盘 ⇒ terminal 执行（声明式三段；内核兜底留 C++）；`run` **已移除**（**`TD-RW2-2` 作废**）；**route 换法 = 方案 2（`close` + 重新 `backend(id, {route=…})`）**，同 backend 双活跃句柄 ⇒ **`handle-conflict`** | [lua-surface-design](../analysis/lua-surface-design.md) §1/§4.2 · [route 附件](../analysis/lua-surface-annex-route-switch.md) |
@@ -37,9 +37,9 @@
 
 ## 3. 判据（批准后 A6 的验收）
 
-- **白盒（入口/期望）**：`make -C src surface-doc-check DOC=<文档>` ⇒ **EXIT=0**（两份）；`make -C src native-host-tests` ⇒ **EXIT=0**；沙箱**符号级证据**（产物无 `io/os/package/debug/load/dofile/require`）；`surface` 表与绑定**同源**（注册集合 == 表；名字只定义一次）；句柄表**有界 64 + 代际**。
+- **白盒（入口/期望）**：`make -C core surface-doc-check DOC=<文档>` ⇒ **EXIT=0**（两份）；`make -C core native-host-tests` ⇒ **EXIT=0**；沙箱**符号级证据**（产物无 `io/os/package/debug/load/dofile/require`）；`surface` 表与绑定**同源**（注册集合 == 表；名字只定义一次）；句柄表**有界 64 + 代际**。
 - **黑盒**：表外名字 ⇒ `surface-unknown-name`；缺参数 ⇒ 具名拒绝（**不兜底**）；staged 计划被篡改 ⇒ gate 拒绝。
-- **证伪（两条，按 R42 执行；补可执行对象）**：① 放开 `load`/`dofile` 之一 ⇒ **沙箱测试**（A6 首批建 `src/core/tests/surface_sandbox_test.cpp`）**必须失败**，入口 `make -C src check`，**期望退出码 ≠ 0**；② 去掉代际检查 ⇒ **句柄代际用例**（A6 首批建 `src/core/tests/handle_generation_test.cpp`）**必须失败**，同入口、**期望退出码 ≠ 0**。**控制项**：未造错时二者**必须 EXIT=0**。**若测试在 A6 首批才建 ⇒ 首个 A6 批建测试并回填本表**。
+- **证伪（两条，按 R42 执行；补可执行对象）**：① 放开 `load`/`dofile` 之一 ⇒ **沙箱测试**（A6 首批建 `core/src/tests/surface_sandbox_test.cpp`）**必须失败**，入口 `make -C core check`，**期望退出码 ≠ 0**；② 去掉代际检查 ⇒ **句柄代际用例**（A6 首批建 `core/src/tests/handle_generation_test.cpp`）**必须失败**，同入口、**期望退出码 ≠ 0**。**控制项**：未造错时二者**必须 EXIT=0**。**若测试在 A6 首批才建 ⇒ 首个 A6 批建测试并回填本表**。
 - **极端值**：空脚本 · 语法错 · 超预算 · 表超深 · 64 句柄用满 · 跨插件句柄 · 脚本内 `queue` 残留。
 
 ## 4. 不批的后果

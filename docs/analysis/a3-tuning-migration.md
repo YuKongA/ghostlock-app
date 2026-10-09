@@ -1,6 +1,6 @@
 # A3 前置：GAP-2 / GAP-3 调参迁移进 profile（**只出设计**）
 
-> 分析类（≤8 KiB）。**只出设计，不动代码**。依据：task-124 考古（GAP-2 硬编码清单）· `src/core/contract/op_registry.hpp`（GAP-3 限值）· `app/src/main/assets/profile/execution-*.conf`（现役键布局）· [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §4.1/§4.2。
+> 分析类（≤8 KiB）。**只出设计，不动代码**。依据：task-124 考古（GAP-2 硬编码清单）· `core/src/contract/op_registry.hpp`（GAP-3 限值）· `app/src/main/assets/profile/execution-*.conf`（现役键布局）· [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §4.1/§4.2。
 
 ## §1 键命名方案
 

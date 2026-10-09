@@ -165,7 +165,7 @@ internal object LegacyProfileConverter {
      * v2 binary document -> canonical v3 map (the second hop of the migration).
      *
      * Hop 1 re-owns the v2 section names exactly as the removed writer did
-     * (`git show acaa0ac5^:src/core/profile/binary.cpp`, owner_section_for +
+     * (`git show acaa0ac5^:core/src/profile/binary.cpp`, owner_section_for +
      * add_normalized): meta -> common, the key-aware cred/offset/kernel splits,
      * route.* and execution.* under the 43499 backend. Hop 2 folds that
      * pre-refactor shape onto the FINAL v3 shape: the kernel scalars move to the

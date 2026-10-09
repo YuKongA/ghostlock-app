@@ -16,10 +16,10 @@
 
 **native（删除/收敛）**
 
-- `src/core/profile/entry.cpp`：去掉 `binary_profile::frame`（v2）回退；v2 与未知一律拒绝；
-- `src/core/profile/binary.{hpp,cpp}`：**删除**（v2 framer + v2 writer）；`looks_like_glkv3` 若在此则迁入 `glkv3_parse`；
-- `src/Makefile`：移除 `-DGHOSTLOCK_ENABLE_V2_WRITER`；清理相关目标/测试；
-- `src/core/README.md`：删除 v2 相关段落；
+- `core/src/profile/entry.cpp`：去掉 `binary_profile::frame`（v2）回退；v2 与未知一律拒绝；
+- `core/src/profile/binary.{hpp,cpp}`：**删除**（v2 framer + v2 writer）；`looks_like_glkv3` 若在此则迁入 `glkv3_parse`；
+- `core/Makefile`：移除 `-DGHOSTLOCK_ENABLE_V2_WRITER`；清理相关目标/测试；
+- `core/src/README.md`：删除 v2 相关段落；
 - 测试：删除 v2 专属（`profile_manifest_test` 等），保留/新增「v2 被拒」的负向用例（断言拒绝码与错误信息）。
 
 **Kotlin / profile-core**
@@ -42,7 +42,7 @@
 ## 2b. R2c 批内**无法**完成、留给 **R2c-2** 的两项（写范围所限，2026-10-05 实测）
 
 1. **native：`profile/binary.h` 只能瘦身、不能删除**
-   原因：`src/core/pipeline/orchestrator.hpp`（R2c 写范围外）include 了它，并用 `binary_profile::kBackendCve202643284`（=6）判断 43284。
+   原因：`core/src/pipeline/orchestrator.hpp`（R2c 写范围外）include 了它，并用 `binary_profile::kBackendCve202643284`（=6）判断 43284。
    R2c 的处理：保留「仅含组件 id 常量/谓词」的瘦身头、删除 `binary.cpp`（v2 framer + writer）。
    **R2c-2**：把 `orchestrator.hpp` 该处改为 `contract::BackendKind::Cve2026_43284`（一行），随后**整头删除**。
 2. **Kotlin：App 侧仍在用 v2 codec**
@@ -51,14 +51,14 @@
    R2c 的处理：**保留**这些 API（否则 `app/src/main` 编译红），只删 v2 manifest（`profile-manifest.tsv`）+ 其测试 + 仅被该测试使用的 `declaredWireKeys()`。
    **R2c-2**：把这 4 处调用迁到 v3（或删除死路径），然后删除 `NativeProfileDocument.toBinary/fromBinary` 与 `Magic/Version`。
 
-**R2c-2 完成判据**：`grep -rn` 搜 `toBinary|fromBinary|binary_profile::`（范围 `app/src/main` 与 `src/core`，排除 tests）**为空**；且 `profile/binary.h` 已删除。
+**R2c-2 完成判据**：`grep -rn` 搜 `toBinary|fromBinary|binary_profile::`（范围 `app/src/main` 与 `core/src`，排除 tests）**为空**；且 `profile/binary.h` 已删除。
 
 ### 2c. R2c-2 逐文件清单（取证：v2 codec 的消费者**只有测试**）
 
 **native**
 
-- `src/core/pipeline/orchestrator.hpp`：`binary_profile::kBackendCve202643284` → `contract::BackendKind::Cve2026_43284`（一行）；
-- 删除瘦身后的 `src/core/profile/binary.h`（R2c 已把 v2 framer/writer 从其中移走）；
+- `core/src/pipeline/orchestrator.hpp`：`binary_profile::kBackendCve202643284` → `contract::BackendKind::Cve2026_43284`（一行）；
+- 删除瘦身后的 `core/src/profile/binary.h`（R2c 已把 v2 framer/writer 从其中移走）；
 - 清理残留 `binary_profile::` 引用（grep 确认为空）。
 
 **Kotlin**（需把 `app/src/main/**` 纳入写范围）
@@ -86,7 +86,7 @@
 
 | 门槛 | 命令/判据 |
 |---|---|
-| host | `make -C src native-host-tests`（含「v2 被拒」负向用例 + 防火墙） |
+| host | `make -C core native-host-tests`（含「v2 被拒」负向用例 + 防火墙） |
 | NDK / lint | 零告警 / 0 findings |
 | extractor | `(cd tools/extract_rs && cargo test --release)`（产出 `schema_version = 3`） |
 | Kotlin | `:app:testDebugUnitTest`、`:profile-core:test`（含「旧 1 → 转换 3」用例） |

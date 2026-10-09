@@ -2,7 +2,7 @@
 
 > 级别：**攻击关键路径相关**（43499 写原语 `perf_find_task` 依赖它）⇒ 按 AGENTS 归档 ✓
 > 设备 `QV770MFGJ1` · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`
-> 探针：`tools/perf_seam_probe.cpp`（`make -C src perf-seam-probe`）
+> 探针：`tools/perf_seam_probe.cpp`（`make -C core perf-seam-probe`）
 
 ## 1 事实（原始输出）
 
@@ -32,7 +32,7 @@ perf seam probe
 ## 3 复现
 
 ```sh
-make -C src perf-seam-probe
+make -C core perf-seam-probe
 adb -s QV770MFGJ1 push build/native/perf_seam_probe /data/local/tmp/
 adb -s QV770MFGJ1 shell 'timeout 25 /data/local/tmp/perf_seam_probe'
 ```

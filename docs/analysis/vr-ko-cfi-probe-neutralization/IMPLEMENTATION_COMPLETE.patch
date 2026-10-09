@@ -2,7 +2,7 @@
 // 适用于 YuKongA/ghostlock-app 架构
 
 // ============================================
-// 1. src/core/session/backend/cfi_layout.hpp
+// 1. core/src/session/backend/cfi_layout.hpp
 // ============================================
 
 /* ---- vr.ko probe neutralisation (step 3) ----------------------------
@@ -76,7 +76,7 @@ template <class ReadFn>
 }
 
 // ============================================
-// 2. src/core/session/backend/cfi_stage.hpp
+// 2. core/src/session/backend/cfi_stage.hpp
 // ============================================
 
 /* What one vr.ko probe-neutralisation pass did, for the log and for the
@@ -107,7 +107,7 @@ struct VrNeutralizeReport final {
     const CfiSymbols &symbols) noexcept;
 
 // ============================================
-// 3. src/core/session/backend/cfi_stage.cpp
+// 3. core/src/session/backend/cfi_stage.cpp
 // ============================================
 
 #include "cfi_layout.hpp"
@@ -237,7 +237,7 @@ VrNeutralizeReport neutralize_vr_probes(const CfiKernelRw &channel,
 } // namespace ghostlock::session::backend
 
 // ============================================
-// 4. src/core/session/backend/cve_2026_43499_backend.cpp
+// 4. core/src/session/backend/cve_2026_43499_backend.cpp
 // ============================================
 
 /* After cfi5 completes and the CFI channel exists, neutralize vr.ko's
@@ -255,7 +255,7 @@ if (cfi_kernel_rw.valid() && cfi_symbols.vr_neutralize_ready()) {
 }
 
 // ============================================
-// 5. src/core/kernel/runtime_struct_offsets.h
+// 5. core/src/kernel/runtime_struct_offsets.h
 // ============================================
 
 /* Tracepoint constants for vr.ko probe neutralisation (step 3).

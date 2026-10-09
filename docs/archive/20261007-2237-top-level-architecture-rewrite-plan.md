@@ -33,7 +33,7 @@
 ## 目标结构
 
 ```
-src/core
+core/src
 ├── contract    真通用：StageResult · 身份词汇(TerminalKind/BackendKind) · BackendIdentity · Capability 父接口 · KernelMemoryOps · AddressDiscoveryOps
 ├── memory      内核地址词汇 + 地址数学：KernelAddress/域/DIRECT_MAP/P0/struct page · AddressSpace（原 kernel 并入）
 ├── session     CoreSession（状态容器）：RuntimeConfig · Selection · AddressSpace · Capabilities · backend 状态槽
@@ -131,7 +131,7 @@ B 通道 / C pipe 回退）。平台行为按声明需求取用，缺能力则�
 **Phase 0 — CoreSession 通用化（前置，ADR-0002）**：详见 `exploit-session-generalization-plan.md`。
 
 **Phase A — 机械结构重排（只搬不改语义；分小批，每批 host+NDK 零告警）**
-- `git mv` + 命名空间/include/构建清单（`src/Makefile` 权威；`CMakeLists.txt` 仅 CLion 补全）。
+- `git mv` + 命名空间/include/构建清单（`core/Makefile` 权威；`CMakeLists.txt` 仅 CLion 补全）。
 - 接口：`Pipeline<Backend, Terminal>::run(CoreSession&)`；`BackendExecution<B>::run(CoreSession&,
   terminal::RootedChild&) -> StageResult`；`RunStage::{None,Backend,Terminal}`。
 - 机制下放 backend；`stage_types` 拆分（StageResult→contract，Victim*→backend）；RouteStatus 归 backend。
@@ -289,7 +289,7 @@ T1 引导写的具体调用点。细节“一边做一边定”，不再新增�
 - [x] Phase A 批 3a：组合层 → `pipeline/`、`runtime → pipeline`、`root_child → terminal/`（提交 `3c9312c`；host/NDK/lint/cmp 全绿）
 ### A-3b 逐文件
 
-- `src/core/route/*` → `src/core/backend/cve_2026_43499/route/`（route_api/route_policy/route_middleware/
+- `core/src/route/*` → `core/src/backend/cve_2026_43499/route/`（route_api/route_policy/route_middleware/
   route_controller/route_status/route_lifecycle/select_stack/tcp_zerocopy/multicast_waiter）。
 - namespace `ghostlock::route` → `ghostlock::backend::cve_2026_43499::route`；include 路径同步。
 - Makefile/CMake 的 `core/route/*.cpp` → `core/backend/cve_2026_43499/route/*.cpp`。

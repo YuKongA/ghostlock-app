@@ -1,5 +1,5 @@
 # GhostLock combination-token resolve vectors (native SSOT, ADR-0006 T5 / S4 R6b F4).
-# Authoritative native export; regenerate with: make -C src combination-manifest
+# Authoritative native export; regenerate with: make -C core combination-manifest
 # Columns: backend<TAB>input<TAB>expected_token|--
 # input escapes: \s = space, \t = tab, \\ = backslash; the input column never
 # contains a literal TAB.

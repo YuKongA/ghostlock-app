@@ -31,7 +31,7 @@ use crate::error::{ExtractError, Result};
 use crate::kallsyms;
 use crate::spec::{ExtractSpec, MAX_SPECS, parse_spec_row};
 
-/// Mirrors native `plugin::kMaxPluginsPerDocument` (src/core/plugin/wire.hpp):
+/// Mirrors native `plugin::kMaxPluginsPerDocument` (core/src/plugin/wire.hpp):
 /// one document carries at most 16 plugins, and the extractor refuses to build
 /// more instead of silently dropping one.
 pub const MAX_PLUGINS: usize = 16;

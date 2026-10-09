@@ -181,17 +181,17 @@ class GhostlockViewModel(
         if (state.value.executionMode != ExecutionMode.General) return
         /* Any interrupted step is reported; only a W3 stall offers Shizuku,
          * because Shizuku (shell uid, no seccomp) skips exactly that stage. */
-        val isW3 = step.startsWith("w3")
+        val isSeccompBypass = step.startsWith("seccomp_bypass")
         mutableState.update {
             it.copy(
                 dialogVisible = true,
-                dialogType = if (isW3) DialogType.CONFIRM else DialogType.NOTICE,
-                dialogTitleRes = if (isW3) {
+                dialogType = if (isSeccompBypass) DialogType.CONFIRM else DialogType.NOTICE,
+                dialogTitleRes = if (isSeccompBypass) {
                     R.string.w3_shizuku_hint_title
                 } else {
                     R.string.run_interrupted_title
                 },
-                dialogMessageRes = if (isW3) {
+                dialogMessageRes = if (isSeccompBypass) {
                     R.string.w3_shizuku_hint_message
                 } else {
                     R.string.run_interrupted_message

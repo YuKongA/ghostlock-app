@@ -581,7 +581,7 @@ fn run(cli: &Cli) -> Result<i32> {
     }
     if let Some(mm_size) = struct_offsets.get("struct_mm_struct").copied().flatten() {
         eprintln!(
-            "info: sizeof(mm_struct)=0x{mm_size:X} (MM_STRUCT_SZ=0x500 in src/core/common.h)"
+            "info: sizeof(mm_struct)=0x{mm_size:X} (MM_STRUCT_SZ=0x500 in core/src/common.h)"
         );
         if mm_size > 0x500 {
             eprintln!("warning: sizeof(mm_struct) exceeds the hardcoded MM_STRUCT_SZ slab stride");

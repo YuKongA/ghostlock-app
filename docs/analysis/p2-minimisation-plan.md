@@ -7,7 +7,7 @@
 - **整体后移**：**P3/P5 落地 + `.disabled` 参考件退役后**才开始（此前只留方法、不动代码）。
 - **前置不变式**：凡被 `.disabled` 或 `docs/**` 引用的符号 = **「为新实现预留的接口」⇒ 不得删**（`.disabled` 是新实现的**输入规格**，非历史垃圾）。
 - **当前可删面 = 0**；§2/§3 的 **24** 仅作**方法演示**，**不是**可执行批次。
-- **撤销登记（按物证）**：**B-1..B-3 曾于工作树执行 24 项删除**（**未提交、未进入任何提交**）⇒ 经 Lead 复核判定**违反 R39**（**24/24 命中 `.disabled` 或 `docs` 引用**）⇒ **全部从 `.disabled` 孪生件回退**；**最终净效果 = 代码层零变更**（`git diff -- src/core` 为空）；**无提交涉及删除**。
+- **撤销登记（按物证）**：**B-1..B-3 曾于工作树执行 24 项删除**（**未提交、未进入任何提交**）⇒ 经 Lead 复核判定**违反 R39**（**24/24 命中 `.disabled` 或 `docs` 引用**）⇒ **全部从 `.disabled` 孪生件回退**；**最终净效果 = 代码层零变更**（`git diff -- core/src` 为空）；**无提交涉及删除**。
 - **根因（脚本缺项，供后续实现者校核）**：① `.disabled` 因**扩展名过滤**被整类静默跳过（`*.hpp.disabled` 不匹配 `*.hpp`）；② `docs/**` **从未走查**。修脚本后复扫三批 = **0 可删**（与 24/24 命中一致）。
 - **物证（回退前实测）**：`git diff --numstat -- src` = B-1 后 `1/2 race/pi_race.h` · `3/3 race/threads.hpp` · `2/2 support/decls.hpp` · `12/61 support/log.hpp`；B-2/B-3 后再加 `5/39 contract/identity.hpp` · `2/8 contract/step_catalog.hpp` · `1/1 platform/device_facts.hpp` · `3/4 support/native_resource.hpp`；三批回报附**逐项 span**（`hexdump L188/28`、`set_proc_name L171/3`、`step_spec_from_token L83/7`、`route_name L218/8`）；Lead 抽验符号一度 **in-tree = 0**（`gettime_ns`/`write_file`/`waiter_thread`…），回退后 **= 1**。⇒ 事实 = **「门禁 + 复核在提交前拦下违规删除」**。
 

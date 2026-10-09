@@ -81,7 +81,7 @@
 
 > **判据唯一权威** = [verification](handoff-payload-verification.md) §1–§4（黑盒/白盒 + 极端值 · 扩展点 · 技术债 · CBN）+ 各文档判据节：b0 §7、b1b2「判据」、queue-schema §4、plugin-lua §5。
 > 原表已**收敛**：**seam 位置用例删除**（操作内部在 schema 层不可表达 ⇒ 不可达）；**细粒度等价**保留为**真机门禁**项。
-> **命令**：`make -C src native-host-tests`；`./gradlew :app:testDebugUnitTest`；`./gradlew :profile-core:test --tests "*QueueElementShape*"`。**真机门禁**：触碰 `steps`/`primitives` 写路径时必须（归档 `device-gates/*.md`）。
+> **命令**：`make -C core native-host-tests`；`./gradlew :app:testDebugUnitTest`；`./gradlew :profile-core:test --tests "*QueueElementShape*"`。**真机门禁**：触碰 `steps`/`primitives` 写路径时必须（归档 `device-gates/*.md`）。
 
 ## 9. 攻击流程（端到端）
 

@@ -24,7 +24,7 @@ echo ""
 
 # 2. 编译真机二进制
 echo "[2/7] 编译真机二进制..."
-make -C src ghostlock
+make -C core ghostlock
 if [ $? -eq 0 ]; then
     echo "✅ 真机二进制编译成功"
 else
@@ -59,7 +59,7 @@ echo ""
 echo "[5/7] 核对 C++/Kotlin 键集合..."
 # TODO: 添加自动化核对脚本
 echo "⚠️ 手动核对以下内容："
-echo "  - src/core/profile/model.h 中的 kRouteCatalog"
+echo "  - core/src/profile/model.h 中的 kRouteCatalog"
 echo "  - app/src/main/kotlin/data/route/RouteKind.kt"
 echo "  - 确保 token 和 wire 值一致"
 echo ""

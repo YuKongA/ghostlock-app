@@ -9,7 +9,7 @@
 | 项 | 值 |
 |---|---|
 | 源码 | `tools/plugins/glk_probe_plugin.c`：v2 描述符（`target_va` uint required、`label` str optional、`extract platform.abi.offset.init_task` uint required；`stage_mask = 1<<POST_TERMINAL`；caps `kernel_read,kernel_write`） |
-| 构建 | `./tools/plugins/build.sh android`（NDK `30.0.16248370`，`aarch64-linux-android30-clang -std=c99 -O2 -Wall -Wextra -Werror -fPIC -shared -I src/core`） |
+| 构建 | `./tools/plugins/build.sh android`（NDK `30.0.16248370`，`aarch64-linux-android30-clang -std=c99 -O2 -Wall -Wextra -Werror -fPIC -shared -I core/src`） |
 | 产物 | ELF 64-bit LSB shared object, **ARM aarch64**，唯一导出 `glk_entry` |
 | sha256 | `5141c801fb95e0e62235b32b02c24e974123c6ef3a7f66d0465dec9022297736`（**与宿主机 `shasum -a 256` 一致**） |
 
@@ -35,9 +35,9 @@ extract	glk.probe	platform.abi.offset.init_task	uint	1	0	init_task image offset 
 ## 3. 探针 golden 刷新（4 键 → 5 键）
 
 `app/src/test/resources/plugin-probe-golden.tsv` 现为 **12 行**（header 4+1 + plugin + hook + 4 param + 1 extract），内容 = 设备上 `glk_schema.so` fixture 的 stdout **逐字节**。
-生成：`src/core/tests/fixtures/cm_test_plugin_schema.c` 交叉编译 → `/data/local/tmp/glk_schema.so` → `GHOSTLOCK_HOME=/data/local/tmp ./glk-p3 --plugin-probe …` → EXIT 0。消费方：Rust `plugin.rs`（T1）与 Kotlin `PluginProbeGoldenTest`。
+生成：`core/src/tests/fixtures/cm_test_plugin_schema.c` 交叉编译 → `/data/local/tmp/glk_schema.so` → `GHOSTLOCK_HOME=/data/local/tmp ./glk-p3 --plugin-probe …` → EXIT 0。消费方：Rust `plugin.rs`（T1）与 Kotlin `PluginProbeGoldenTest`。
 
 ## 4. 边界
 
-- 本门禁**只覆盖探针与制品形状**：插件**运行时仍不被调用**（`src/core/pipeline/**` 对插件宿主零引用）= step 3 待接线；
+- 本门禁**只覆盖探针与制品形状**：插件**运行时仍不被调用**（`core/src/pipeline/**` 对插件宿主零引用）= step 3 待接线；
 - `stage_mask = POST_TERMINAL`：`/dev/glk` 只在 LKM 驻留窗口存在，而该窗口只在 43284 的 `post_terminal` 进入（contract-design §3.14.7.8）→ 参考插件按**可用阶段**声明；面向 43499 的插件应声明 `pre_terminal`。

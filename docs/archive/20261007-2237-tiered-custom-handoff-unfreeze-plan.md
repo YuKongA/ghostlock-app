@@ -37,10 +37,10 @@
 - `b9aa31dc` feat(payload): **档位设置页**（argv 契约、consent、运行前摘要）+ 有界原子导入（两遍摘要校验）+ 可重排 ko 列表 ⇒ **payload 档位已部分落地后被冻结**
 
 ### 0.4 代码侧「字面注释」现状（**解冻清单的权威**，已抽到样本）
-- `src/core/main.cpp:23-27` —— `USER DIRECTIVE 2026-10-05: plugin paused`：`#include "plugin/host.hpp"` / `probe.hpp` / `wire.hpp` 三处 include **字面注释**
-- `src/core/main.cpp:63-69` —— `--expect-sha256` 与 `--plugin-probe` 相关分支**字面注释**（错误串 `pr_error("--expect-sha256 requires --plugin-probe\n")` 亦注释）
-- `src/core/profile/glkv3_parse.cpp:16-47` —— **payload owner 校验分支整段注释**（`payload_path_ok` / `payload_hash_ok` / `payload_sha_ok` 等，来源注释标明 contract-design 3.15 / design r2）
-- **AGENTS.md 记载的其余触点（待逐条取证）**：`src/core/profile/schema.hpp` 的 `kPayloadGlkv3Fields`；`profile-manifest-v3.tsv` 的 **8 行** payload 条目；相关测试与 Makefile 目标；`execution_binding.cpp` 的 sink 绑定（插件侧）[待补：file:line]
+- `core/src/main.cpp:23-27` —— `USER DIRECTIVE 2026-10-05: plugin paused`：`#include "plugin/host.hpp"` / `probe.hpp` / `wire.hpp` 三处 include **字面注释**
+- `core/src/main.cpp:63-69` —— `--expect-sha256` 与 `--plugin-probe` 相关分支**字面注释**（错误串 `pr_error("--expect-sha256 requires --plugin-probe\n")` 亦注释）
+- `core/src/profile/glkv3_parse.cpp:16-47` —— **payload owner 校验分支整段注释**（`payload_path_ok` / `payload_hash_ok` / `payload_sha_ok` 等，来源注释标明 contract-design 3.15 / design r2）
+- **AGENTS.md 记载的其余触点（待逐条取证）**：`core/src/profile/schema.hpp` 的 `kPayloadGlkv3Fields`；`profile-manifest-v3.tsv` 的 **8 行** payload 条目；相关测试与 Makefile 目标；`execution_binding.cpp` 的 sink 绑定（插件侧）[待补：file:line]
 
 ### 0.5 UI 侧现状（只读勘察）
 - App **隐藏两个入口且不再发射**（AGENTS 记载）；`app/src/main/kotlin/**` **本包不改** ✗ [待补：入口隐藏点 file:line]
@@ -59,31 +59,31 @@
 
 | # | 位置（file:line） | 原功能 | 恢复动作 | 所属步骤 | 备注 |
 |---|---|---|---|---|---|
-| 1 | `src/core/main.cpp:23-27` | `#include "plugin/host.hpp"` / `"plugin/probe.hpp"` / `"plugin/wire.hpp"` 三处 include | 撤销注释 | ④ | 行首标 `USER DIRECTIVE 2026-10-05: plugin paused` |
-| 2 | `src/core/main.cpp:63-69` | `--expect-sha256` 与 `--plugin-probe` 的参数分支（含错误串 `pr_error("--expect-sha256 requires --plugin-probe\n")`） | 撤销注释 | ④ | 同上 |
-| 3 | `src/core/profile/glkv3_parse.cpp:16-47` | **payload owner 校验分支整段**：`payload_path_ok` / `payload_hash_ok` / `payload_sha_ok`（来源注释指向 contract-design 3.15 / design r2） | 撤销注释 | ① | 解析层 ⇒ 见 §4 路径判定 |
-| 4 | `src/core/profile/schema.hpp:26` + `:462-473` | 行 26 = `USER DIRECTIVE 2026-10-05: payload paused`；行 462-473 = **`kPayloadGlkv3Fields[]` 表与其说明注释**（含 `{"payload","tier",Str,true}`、`{"payload","exec.command",Str,false}` 等行） | 撤销注释（表与说明同批） | ①② | GLKv3 path→type 镜像 |
+| 1 | `core/src/main.cpp:23-27` | `#include "plugin/host.hpp"` / `"plugin/probe.hpp"` / `"plugin/wire.hpp"` 三处 include | 撤销注释 | ④ | 行首标 `USER DIRECTIVE 2026-10-05: plugin paused` |
+| 2 | `core/src/main.cpp:63-69` | `--expect-sha256` 与 `--plugin-probe` 的参数分支（含错误串 `pr_error("--expect-sha256 requires --plugin-probe\n")`） | 撤销注释 | ④ | 同上 |
+| 3 | `core/src/profile/glkv3_parse.cpp:16-47` | **payload owner 校验分支整段**：`payload_path_ok` / `payload_hash_ok` / `payload_sha_ok`（来源注释指向 contract-design 3.15 / design r2） | 撤销注释 | ① | 解析层 ⇒ 见 §4 路径判定 |
+| 4 | `core/src/profile/schema.hpp:26` + `:462-473` | 行 26 = `USER DIRECTIVE 2026-10-05: payload paused`；行 462-473 = **`kPayloadGlkv3Fields[]` 表与其说明注释**（含 `{"payload","tier",Str,true}`、`{"payload","exec.command",Str,false}` 等行） | 撤销注释（表与说明同批） | ①② | GLKv3 path→type 镜像 |
 
 ### 2.2 ⚠ 来源矛盾（**如实并列，不擅自调和** ⇒ 待裁见 §9）
 
 | 来源 | 说法 | 实测 | 结论 |
 |---|---|---|---|
 | `AGENTS.md`（冻结段） | payload owner 的恢复清单含「**manifest 8 行**」 | 两份 manifest（`app/src/test/resources/profile-manifest-v3.tsv`、`profile-core/src/main/resources/profile-manifest-v3.tsv`）**各只有 1 行**含 payload 字样，且是 **`backend.cve_2026_43499.route.tcp_zerocopy.payload_delta`**（**route 字段**，与 payload owner 无关） | **不一致** ⇒ 待裁：AGENTS 的「8 行」可能指**已删除**的 payload owner 行（git 历史），或指另一份 manifest ⇒ **需 Lead/用户裁**（不改 AGENTS ✗） |
-| `AGENTS.md` | 「相关测试与 Makefile 目标」被注释 | `src/Makefile` **仍列出** plugin 源（`core/plugin/loader.cpp:52`、`probe.cpp:53`、`wire.cpp:54`、`kernel_channel.cpp:55`、`host_ops.cpp:56`、`host.cpp:57`、`controller.cpp:81`）与 `core/memory/payload_builder.cpp:62`；**尚未逐行确认是否被注释** | **待确认**（下一窗口逐行核验） |
-| `AGENTS.md` | 「`execution_binding.cpp` 的 sink 绑定」被注释 | 实测 `src/core/backend/cve_2026_43284/execution_binding.cpp` 存在（另有 `src/core/tests/execution_binding_test.cpp`）；**plugin 侧 sink 绑定位置未定位** | **待确认**（下一窗口定位：可能在 `src/core/plugin/host.cpp` 或该 backend 文件内） |
+| `AGENTS.md` | 「相关测试与 Makefile 目标」被注释 | `core/Makefile` **仍列出** plugin 源（`core/plugin/loader.cpp:52`、`probe.cpp:53`、`wire.cpp:54`、`kernel_channel.cpp:55`、`host_ops.cpp:56`、`host.cpp:57`、`controller.cpp:81`）与 `core/memory/payload_builder.cpp:62`；**尚未逐行确认是否被注释** | **待确认**（下一窗口逐行核验） |
+| `AGENTS.md` | 「`execution_binding.cpp` 的 sink 绑定」被注释 | 实测 `core/src/backend/cve_2026_43284/execution_binding.cpp` 存在（另有 `core/src/tests/execution_binding_test.cpp`）；**plugin 侧 sink 绑定位置未定位** | **待确认**（下一窗口定位：可能在 `core/src/plugin/host.cpp` 或该 backend 文件内） |
 
 ### 2.2b 三条核验结论（2026-10-06，本窗口实测；每条按「AGENTS 原话 → 实测 → 结论 → 是否建议修订 AGENTS」）
 
-1. **Makefile**：AGENTS 原话 =「相关测试与 Makefile 目标」被字面注释；实测 = `src/Makefile:` **52-57 行**（`core/plugin/{loader,probe,wire,kernel_channel,host_ops,host}.cpp`）与 **62 行**（`core/memory/payload_builder.cpp`）、**81 行**（`core/plugin/controller.cpp`）**都未被注释**（是源列表的续行）⇒ **结论：部分不符**（这几行并非注释）；**但**该文件另有 **55 行**与 plugin/payload 相关的 `#` 注释行（很可能就是 AGENTS 所指的「相关测试/目标」被注释处）⇒ **建议**：下一窗口把这 55 行逐条列出并区分「源列表（未注释）」与「目标/测试（被注释）」，再把结论写入本节；**是否修订 AGENTS ⇒ 待 Lead 裁**（本包不动 AGENTS ✗）。
-2. **plugin 侧 sink 绑定**：AGENTS 原话 =「`execution_binding.cpp` 的 sink 绑定」被注释；实测 = `src/core/plugin/host.hpp:94` 的注释**明确指向** `backend/cve_2026_43284/execution_binding.cpp (sink binding)`，且 `host.hpp:81` 写明「no sink; the residency window therefore dispatches nothing」⇒ **结论：一致（定位成立）** —— **sink 绑定在 43284 backend 侧**（`src/core/backend/cve_2026_43284/execution_binding.cpp`），plugin 侧（`plugin/host.*`）**不持有 sink**，仅通过该后端文件绑定；**是否修订 AGENTS ⇒ 建议补一句定位**（待裁）。
-3. **payload 相关测试**：AGENTS 原话 =「相关测试」被注释；实测 = `src/core/tests/profile_entry_test.cpp:80` 有 **`USER DIRECTIVE 2026-10-05: payload paused -> the payload …`**（即**确有被注释的 payload 用例**）；`src/core/tests/glkv3_codec_test.cpp:46/114/163-165` 的 payload 只是 **wire 字段名（blob→payload，Bin 类型）**，与 payload **owner** 无关 ⇒ **结论：部分相符**（payload owner 用例确有注释：`profile_entry_test.cpp:80`；其余 6 个文件里的 payload 字样多与 owner 无关）。
+1. **Makefile**：AGENTS 原话 =「相关测试与 Makefile 目标」被字面注释；实测 = `core/Makefile:` **52-57 行**（`core/plugin/{loader,probe,wire,kernel_channel,host_ops,host}.cpp`）与 **62 行**（`core/memory/payload_builder.cpp`）、**81 行**（`core/plugin/controller.cpp`）**都未被注释**（是源列表的续行）⇒ **结论：部分不符**（这几行并非注释）；**但**该文件另有 **55 行**与 plugin/payload 相关的 `#` 注释行（很可能就是 AGENTS 所指的「相关测试/目标」被注释处）⇒ **建议**：下一窗口把这 55 行逐条列出并区分「源列表（未注释）」与「目标/测试（被注释）」，再把结论写入本节；**是否修订 AGENTS ⇒ 待 Lead 裁**（本包不动 AGENTS ✗）。
+2. **plugin 侧 sink 绑定**：AGENTS 原话 =「`execution_binding.cpp` 的 sink 绑定」被注释；实测 = `core/src/plugin/host.hpp:94` 的注释**明确指向** `backend/cve_2026_43284/execution_binding.cpp (sink binding)`，且 `host.hpp:81` 写明「no sink; the residency window therefore dispatches nothing」⇒ **结论：一致（定位成立）** —— **sink 绑定在 43284 backend 侧**（`core/src/backend/cve_2026_43284/execution_binding.cpp`），plugin 侧（`plugin/host.*`）**不持有 sink**，仅通过该后端文件绑定；**是否修订 AGENTS ⇒ 建议补一句定位**（待裁）。
+3. **payload 相关测试**：AGENTS 原话 =「相关测试」被注释；实测 = `core/src/tests/profile_entry_test.cpp:80` 有 **`USER DIRECTIVE 2026-10-05: payload paused -> the payload …`**（即**确有被注释的 payload 用例**）；`core/src/tests/glkv3_codec_test.cpp:46/114/163-165` 的 payload 只是 **wire 字段名（blob→payload，Bin 类型）**，与 payload **owner** 无关 ⇒ **结论：部分相符**（payload owner 用例确有注释：`profile_entry_test.cpp:80`；其余 6 个文件里的 payload 字样多与 owner 无关）。
 
 - 相关文件：`app/src/main/kotlin/com/ghostlock/app/ui/AdvancedUI.kt`、`GhostlockUI.kt`、`GhostlockViewModel.kt`、`PayloadSettingsUI.kt`、`PluginDetailUI.kt`、`PluginCheckReport.kt`；
 - **待补**：两个入口（插件 / payload 档位）**被隐藏的确切 file:line** 与隐藏方式（注释 / 条件屏蔽）⇒ 下一窗口；**本包不改 `app/**`** ✗。
 
 ### 2.2c Makefile 的 55 行注释分类（2026-10-06 实测，逐类）
 
-**实测**：`grep -c "^#.*\(plugin\|payload\)" src/Makefile` = **55** 行。分类如下：
+**实测**：`grep -c "^#.*\(plugin\|payload\)" core/Makefile` = **55** 行。分类如下：
 
 | 类别 | 行号（实测） | 性质 | 是否属冻结 |
 |---|---|---|---|
@@ -100,7 +100,7 @@
 - **结论**：**两个入口的隐藏点是 UI 状态默认值**（`payloadVisible=false`、`pluginDetail=null`），**不是注释** ⇒ 恢复动作 = **恢复默认值/接线**（而 native 侧是撤注释）⇒ **两条恢复路径不同，§5 步骤需分别写** ✓（本包不改 `app/**` ✗）。
 
 
-- 含 payload 字样的测试文件（实测）：`src/core/tests/{fake_backend_test,glkv3_codec_test,cpp_link_probe,route_policy_test,profile_entry_test,cve_2026_43284_stage_runner_test}.cpp`；
+- 含 payload 字样的测试文件（实测）：`core/src/tests/{fake_backend_test,glkv3_codec_test,cpp_link_probe,route_policy_test,profile_entry_test,cve_2026_43284_stage_runner_test}.cpp`；
 - **待确认**：哪些用例与「payload owner」直接相关、是否有被注释的 payload 专用测试（下一窗口逐文件 grep `USER DIRECTIVE` 与被注释用例）。
 ### 2.4 测试面（已落盘，2026-10-06 实测）
 
@@ -108,13 +108,13 @@
 
 | # | 位置 | 内容 | 恢复动作 |
 |---|---|---|---|
-| T1 | src/core/tests/profile_entry_test.cpp:80 | USER DIRECTIVE 2026-10-05: payload paused -> the payload 用例被注释 | 撤销注释并恢复用例 |
-| T2 | src/Makefile:367-373 与 :379-381 | plugin_host_test 目标与其编译命令行（锚点 :367 的 USER DIRECTIVE） | 撤销注释 |
-| T3 | src/Makefile:386-387+ | plugin_window_wiring_test 目标（锚点 :386 的 USER DIRECTIVE） | 撤销注释 |
+| T1 | core/src/tests/profile_entry_test.cpp:80 | USER DIRECTIVE 2026-10-05: payload paused -> the payload 用例被注释 | 撤销注释并恢复用例 |
+| T2 | core/Makefile:367-373 与 :379-381 | plugin_host_test 目标与其编译命令行（锚点 :367 的 USER DIRECTIVE） | 撤销注释 |
+| T3 | core/Makefile:386-387+ | plugin_window_wiring_test 目标（锚点 :386 的 USER DIRECTIVE） | 撤销注释 |
 
 **与 payload owner 无关（**不计入**清单）**：
 
-- src/core/tests/glkv3_codec_test.cpp:46/114/163-165 的 payload = **wire 字段名**（blob -> payload，Bin 类型）；
+- core/src/tests/glkv3_codec_test.cpp:46/114/163-165 的 payload = **wire 字段名**（blob -> payload，Bin 类型）；
 - 其余含 payload 字样的测试（fake_backend_test / cpp_link_probe / route_policy_test / cve_2026_43284_stage_runner_test）多为 route 字段 payload_delta 或无关词汇 ⇒ 待逐条复核（不阻塞）。
 
 **解冻清单合计 = 9 条**：§2.1 的 **4** 条（native 侧解析/main）+ **§2.4 的 3 条**（1 用例 + 2 Makefile 目标）+ **§2.3 的 2 条**（UI payloadVisible / pluginDetail）。
@@ -132,13 +132,13 @@
 
 | # | 条目 | 判定 | 依据（file:line / 流程） | 真机门禁 |
 |---|---|---|---|---|
-| N1 | `src/core/profile/glkv3_parse.cpp:16-47`（payload owner 校验） | **在攻击路径（输入面）** | 该校验决定**送入 native 的文档形状**（哪些 payload 段合法）⇒ 属 exec 阶段的输入门禁，非法即拒 ⇒ 影响可执行的组合集合 | **需要** |
-| N2 | `src/core/profile/schema.hpp:26` + `:462-473`（`kPayloadGlkv3Fields[]`） | **在攻击路径（输入面）** | GLKv3 path→type 权威表：决定字段解析类型与 required；改动会改变绑定结果 ⇒ 同 N1 的输入面 | **需要** |
-| N3 | `src/core/main.cpp:23-27`（plugin include） | **在攻击路径（运行时接线）** | plugin host 的构造/open/bind/close 由**组合根**执行；既有 **R1（waiter 存活期不得 open）** 证明它与 **waiter 生命周期耦合** ⇒ 属资源准备/回收面 | **需要** |
-| N4 | `src/core/main.cpp:63-69`（`--expect-sha256` / `--plugin-probe` 分支） | **在攻击路径（间接）** | `--plugin-probe` 会在**攻击进程内 dlopen 外部 .so**（`src/core/plugin/probe.hpp:41` 提到 `PR_SET_NO_NEW_PRIVS`）⇒ 属资源准备面 | **需要** |
-| T1 | `src/core/tests/profile_entry_test.cpp:80`（被注释用例） | **不在**（测试面） | 恢复用例不改变生产二进制 | 不需要 |
-| T2 | `src/Makefile:367-373` + `:379-381`（`plugin_host_test`） | **不在**（构建面） | 仅恢复测试目标登记与编译命令行 | 不需要 |
-| T3 | `src/Makefile:386-387+`（`plugin_window_wiring_test`） | **不在**（构建面） | 同上 | 不需要 |
+| N1 | `core/src/profile/glkv3_parse.cpp:16-47`（payload owner 校验） | **在攻击路径（输入面）** | 该校验决定**送入 native 的文档形状**（哪些 payload 段合法）⇒ 属 exec 阶段的输入门禁，非法即拒 ⇒ 影响可执行的组合集合 | **需要** |
+| N2 | `core/src/profile/schema.hpp:26` + `:462-473`（`kPayloadGlkv3Fields[]`） | **在攻击路径（输入面）** | GLKv3 path→type 权威表：决定字段解析类型与 required；改动会改变绑定结果 ⇒ 同 N1 的输入面 | **需要** |
+| N3 | `core/src/main.cpp:23-27`（plugin include） | **在攻击路径（运行时接线）** | plugin host 的构造/open/bind/close 由**组合根**执行；既有 **R1（waiter 存活期不得 open）** 证明它与 **waiter 生命周期耦合** ⇒ 属资源准备/回收面 | **需要** |
+| N4 | `core/src/main.cpp:63-69`（`--expect-sha256` / `--plugin-probe` 分支） | **在攻击路径（间接）** | `--plugin-probe` 会在**攻击进程内 dlopen 外部 .so**（`core/src/plugin/probe.hpp:41` 提到 `PR_SET_NO_NEW_PRIVS`）⇒ 属资源准备面 | **需要** |
+| T1 | `core/src/tests/profile_entry_test.cpp:80`（被注释用例） | **不在**（测试面） | 恢复用例不改变生产二进制 | 不需要 |
+| T2 | `core/Makefile:367-373` + `:379-381`（`plugin_host_test`） | **不在**（构建面） | 仅恢复测试目标登记与编译命令行 | 不需要 |
+| T3 | `core/Makefile:386-387+`（`plugin_window_wiring_test`） | **不在**（构建面） | 同上 | 不需要 |
 | U1 | `app/src/main/kotlin/com/ghostlock/app/ui/GhostlockUI.kt:174`（`payloadVisible=false`） | **不在**（UI 状态默认值） | 仅控制入口可见性；不改变已发射文档 | 不需要 |
 | U2 | `app/src/main/kotlin/com/ghostlock/app/ui/GhostlockUI.kt:172`（`pluginDetail=null`） | **不在**（UI 状态默认值） | 同上 | 不需要 |
 
@@ -173,8 +173,8 @@
 ## 10 建议的 AGENTS 修订（**本包不改 AGENTS** ✗；逐条 = 原话 → 实测 → 建议新表述；待 Lead 裁后单独派）
 
 1. **插件/payload 冻结描述**：原话 =「插件的运行时接线 … 以及 payload owner … 全部字面注释」；实测 = **成立**，但**未点明 UI 侧不是注释**；建议新表述 =「native 侧按**字面注释**冻结；**UI 侧为状态默认值**（`GhostlockUI.kt:174` 的 `payloadVisible=false`、`:172` 的 `pluginDetail=null`）⇒ **解冻 = 撤注释 + 恢复默认值/接线**（两类动作）」。
-2. **sink 绑定定位**：原话 =「`execution_binding.cpp` 的 sink 绑定」；实测 = 该文件是 **`src/core/backend/cve_2026_43284/execution_binding.cpp`**（plugin 侧 `src/core/plugin/host.hpp:94` 明确指向它，`:81` 写「no sink … dispatches nothing」）；建议新表述 = 补一句「**sink 绑定归属 43284 backend**（`backend/cve_2026_43284/execution_binding.cpp`），plugin 侧不持有 sink」。
-3. **payload 测试**：原话 =「相关测试 … 字面注释」；实测 = **部分相符**（`src/core/tests/profile_entry_test.cpp:80` 确有被注释的 payload 用例；其余含 payload 字样的测试多为 **wire 字段名 `blob.payload`（Bin）**，与 owner 无关）；建议新表述 = 点名「`profile_entry_test.cpp:80` 的 payload owner 用例被注释」，避免后人按关键词误判。
+2. **sink 绑定定位**：原话 =「`execution_binding.cpp` 的 sink 绑定」；实测 = 该文件是 **`core/src/backend/cve_2026_43284/execution_binding.cpp`**（plugin 侧 `core/src/plugin/host.hpp:94` 明确指向它，`:81` 写「no sink … dispatches nothing」）；建议新表述 = 补一句「**sink 绑定归属 43284 backend**（`backend/cve_2026_43284/execution_binding.cpp`），plugin 侧不持有 sink」。
+3. **payload 测试**：原话 =「相关测试 … 字面注释」；实测 = **部分相符**（`core/src/tests/profile_entry_test.cpp:80` 确有被注释的 payload 用例；其余含 payload 字样的测试多为 **wire 字段名 `blob.payload`（Bin）**，与 owner 无关）；建议新表述 = 点名「`profile_entry_test.cpp:80` 的 payload owner 用例被注释」，避免后人按关键词误判。
 4. **manifest 8 行（已查明，AGENTS 表述准确 ✓ 无需修订）**：实测 `git show ca968a5a^:profile-core/src/main/resources/profile-manifest-v3.tsv | grep -c payload` = **9**，其中 **8 条为 payload owner 行**（`payload.exec.command` / `exec.sha256` / `ko.<i>.path` / `ko.<i>.sha256` / `ko.count` / `script.path` / `script.sha256` / `tier`）+ **1 条 route 字段** `…tcp_zerocopy.payload_delta` ⇒ **AGENTS 的「manifest 8 行」= 8 条 owner 行，准确** ✓；沿革 = 由 **`74db3594`** 加入、由 **`ca968a5a` 注释**（冻结提交）；**今天**两份 manifest 各只剩那 1 行 route 字段（owner 行已注释/移除）⇒ **建议仅补一句「今天已注释，恢复时按 8 行还原」** ✓（原「口径不清」结论作废，保留作沿革）。
 
 **同时建议（第 5 条，工具性）**：AGENTS 的冻结段加一句「**解冻清单以 `docs/plan/tiered-custom-handoff-unfreeze-plan.md` §2 为权威**」，避免两处各写一份清单。
@@ -187,8 +187,8 @@
 | A2 | **owner 模型变更** | `common.*` / `countermeasure.*` owner 已删（出现即拒；`tests/profile_v3_test.cpp:199/206` 断言）；`platform.*` 迁往 `backend.cve_2026_43499.abi.*` | 原计划若依赖这些 owner 需重新表达 |
 | A3 | **payload owner 已删** | manifest 8 行 owner 行由 **`74db3594`** 加入、**`ca968a5a`** 注释；**今天两份 manifest 各只剩 1 行**（route 字段 `payload_delta`） | 原「按 8 行还原」仅属历史 |
 | A4 | **UI 冻结形态 ≠ 注释** | `GhostlockUI.kt:174` `payloadVisible=false`、`:172` `pluginDetail=null`（状态默认值） | 恢复动作与 native 不同（见 §2.3） |
-| A5 | **插件运行时接线冻结** | `main.cpp:23-27` 三 include、`:63-69` 两 CLI 分支字面注释；**R1（waiter 存活期不得 open）**；**`POST_TERMINAL` 只在 43284 的 LKM 驻留窗口成立** —— 依据 `src/core/plugin/host.hpp:81/94`（「no sink; the residency window therefore dispatches nothing」+ sink 在 `backend/cve_2026_43284/execution_binding.cpp`） | 档位若依赖插件窗口需重新定义 |
-| A6 | **vr_guard / platform/vivo 已彻底删除** | (a) `4a182217`；`backend/cve_2026_43499/schema.hpp:114` 注明；`src/core/README.md:76` | 原计划中 vivo 条目已无对象 |
+| A5 | **插件运行时接线冻结** | `main.cpp:23-27` 三 include、`:63-69` 两 CLI 分支字面注释；**R1（waiter 存活期不得 open）**；**`POST_TERMINAL` 只在 43284 的 LKM 驻留窗口成立** —— 依据 `core/src/plugin/host.hpp:81/94`（「no sink; the residency window therefore dispatches nothing」+ sink 在 `backend/cve_2026_43284/execution_binding.cpp`） | 档位若依赖插件窗口需重新定义 |
+| A6 | **vr_guard / platform/vivo 已彻底删除** | (a) `4a182217`；`backend/cve_2026_43499/schema.hpp:114` 注明；`core/src/README.md:76` | 原计划中 vivo 条目已无对象 |
 | A7 | **general profile 设计晚于冻结** | **`docs/analysis/execution-combination-menu-and-general-profile.md`**（8 份 general + `available` 声明 + 派生 + 守卫）⇒ 该件因**被在途工作引用**而原地保留于 `docs/analysis/` | **档位必须在新声明模型里重新表达** |
 | A8 | **R1 账本归零 + 全部走 manifest** | include 防火墙 **0 白名单**；`vocabulary-manifest.tsv`、`stepset-steps.tsv` | 新增字段/轴须同批更新 manifest 与对拍 |
 | A9 | **构建/缓存硬规则（2026-10-06）** | 产物一律 `<repo>/build/**`；`~/.ghostlock` 已清空；`~/.gradle` 保留 | 重做时的构建与缓存路径按此 |

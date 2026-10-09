@@ -310,5 +310,5 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 
 ### D.3 承接原则 10（机制防错）——把上述两条编码为检查
 
-- 导出对拍：`make -C src combination-manifest` + 两侧测试（缺失即 FAIL）；
+- 导出对拍：`make -C core combination-manifest` + 两侧测试（缺失即 FAIL）；
 - 单写入流：提交前 `git status` 必须只包含**本批次**文件；`git log -1 --stat` 应能解释每一行改动。

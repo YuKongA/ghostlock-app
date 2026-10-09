@@ -509,7 +509,7 @@ class NativeProfileGlkv3AdapterTest {
     }
 
     private companion object {
-        /** Native `make -C src glkv3-golden-fixture` output, checked in below. */
+        /** Native `make -C core glkv3-golden-fixture` output, checked in below. */
         const val NATIVE_FIXTURE_RESOURCE = "/glkv3-native-fixture.tsv"
 
         /** The native dump's root-key order (not the encoder's sorted order). */

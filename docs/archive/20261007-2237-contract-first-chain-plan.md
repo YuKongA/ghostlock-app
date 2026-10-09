@@ -46,13 +46,13 @@ AGENTS.md 与本文档，且**仍需把 43499 当作长期唯一生产路径来�
 
 | 层 | 事实 | 证据 |
 |---|---|---|
-| 契约 | StepSetKind 是**整链**枚举：Unknown/W1W2/W1W3/PageCacheWrite | src/core/contract/identity.hpp:53-61 |
-| 契约 | ComponentSelection = {backend, steps, terminal} | src/core/contract/identity.hpp:63-67 |
-| 契约 | 能力句柄只有两个、且是 ctx + 函数指针 + available() 家族 | src/core/contract/capabilities.hpp:15-25（KernelMemoryOps）、:30-36（FileCacheWriteOps） |
-| 组合 | catalog 是**稀疏 triple** + DispatchTarget，combination_supported/dispatch_target_of | src/core/pipeline/component_catalog.hpp:39-50、:64-83 |
-| 组合 | Pipeline<Backend,Terminal> 每 case static_assert(P::target==...) | src/core/pipeline/pipeline.hpp:52-63；orchestrator.hpp:55-79 |
-| 43499 | Cve2026_43499Backend<StepSet> 模板，steps 直接取 StepSet::kind | src/core/backend/cve_2026_43499_backend.hpp:27-31 |
-| 43499 | W1W3Steps::run/W1W2Steps::run 是**整链**函数（W1→W2/W3 重试循环在函数体内） | src/core/backend/cve_2026_43499/steps.cpp:434-466、:471-497 |
+| 契约 | StepSetKind 是**整链**枚举：Unknown/W1W2/W1W3/PageCacheWrite | core/src/contract/identity.hpp:53-61 |
+| 契约 | ComponentSelection = {backend, steps, terminal} | core/src/contract/identity.hpp:63-67 |
+| 契约 | 能力句柄只有两个、且是 ctx + 函数指针 + available() 家族 | core/src/contract/capabilities.hpp:15-25（KernelMemoryOps）、:30-36（FileCacheWriteOps） |
+| 组合 | catalog 是**稀疏 triple** + DispatchTarget，combination_supported/dispatch_target_of | core/src/pipeline/component_catalog.hpp:39-50、:64-83 |
+| 组合 | Pipeline<Backend,Terminal> 每 case static_assert(P::target==...) | core/src/pipeline/pipeline.hpp:52-63；orchestrator.hpp:55-79 |
+| 43499 | Cve2026_43499Backend<StepSet> 模板，steps 直接取 StepSet::kind | core/src/backend/cve_2026_43499_backend.hpp:27-31 |
+| 43499 | W1W3Steps::run/W1W2Steps::run 是**整链**函数（W1→W2/W3 重试循环在函数体内） | core/src/backend/cve_2026_43499/steps.cpp:434-466、:471-497 |
 | 43499 | backend 内部步骤词汇 w1/w2/w3/retry_write_stage/park_retry_child 全在同一 .cpp 的匿名命名空间 | steps.cpp:64-116、:118-136、:140-220、:224-321、:364-430 |
 | 43499 | 共享写原语 Cve43499Primitives::attack_write<M>/zero_word<M>；值写带结构副作用、**不是干净单字写** | primitives.hpp:25-38；flexible-kernel-rw-primitive-plan.md:40-47 |
 | 43284 | run_chain 已是「写→校验→触发→等待→清理」有序链，含载体回退/回滚/终结点恰一次 | backend/cve_2026_43284/steps/chain.hpp:107-121；chain.cpp:346-491；回滚 :138-153；终结点 :275-293 |
@@ -400,7 +400,7 @@ flowchart TB
 | 批次 | 内容 | 触及攻击路径 | 门禁（真机为主；cmp 可选） |
 |---|---|---|---|
 | **B0** | 本文档 + ADR-0004 R22–R27 修订 + 更正 AGENTS.md:27 的 43284 可用性漂移 | 否 | 维护者认可；git diff 只含文档 |
-| **B1** | 契约引入：contract/step.hpp、contract/chain.hpp；StepSetKind→ChainId（数值不变）；旧整链 run() 用兼容 adapter 包成链；行为**零变化** | 否（只重排类型） | make -C src native-host-tests 全绿；NDK 零告警；make -C src lint-tidy；include 防火墙；catalog/contract 测试 |
+| **B1** | 契约引入：contract/step.hpp、contract/chain.hpp；StepSetKind→ChainId（数值不变）；旧整链 run() 用兼容 adapter 包成链；行为**零变化** | 否（只重排类型） | make -C core native-host-tests 全绿；NDK 零告警；make -C core lint-tidy；include 防火墙；catalog/contract 测试 |
 | **B2** | **43284 链化**：把 run_chain 的 stage 拆成 PageCacheWriteStep/LibcxxHookStep/TriggerSentryStep/WaitTerminusStep 等，顺序/终结点/回滚与 chain.cpp:346-491 完全一致；PageCacheWriteSteps skeleton 落地（steps/steps.hpp:16-21） | **是** | host（cve_2026_43284_chain_test、cve_2026_43284_backend_terminal_test）+ NDK + lint + **真机 app-call 门禁**，日志按 docs/analysis/device-gates/*.md 归档（AGENTS.md:152-154） |
 | **B3** | **43499 W1/W2/W3 分解**：SelinuxOffStep/ScratchRepairStep/SpawnVictimStep/CredentialWriteStep/SeccompClearStep + W2/W3 重试组；**依赖 C/KernelMemory 落地**（flexible-kernel-rw-primitive-plan.md:261-265） | **是（唯一长期生产路径）** | host + NDK + lint + include 防火墙 + **真机门禁（冷机、固定 CPU 对、单 route、KernelSU 未加载，AGENTS.md:149）** + 归档；cmp_disasm 可选诊断 |
 | **B4** | 跨 backend 共享抽取（页缓存 write/verify/rollback step 供 43503） | 视抽取范围 | 仅在**两个真实实现**都存在后做（ADR-0004 R9，adr/0004-framework-convergence.md:73-75）；host + 真机不回归 |

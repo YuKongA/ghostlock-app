@@ -5,7 +5,7 @@
 - merge `acc5e7b`（`Merge pull request #241 from hmascs/vr-ko-bypass-dev`）带入 4 个文件，
   **未改任何 `src/` 生产代码**：本目录的 `PR.md`、`IMPLEMENTATION_COMPLETE.patch`、
   `PR_CHECKLIST.sh`，以及移入规范路径的 `docs/profile/EXTRACT_TRACEPOINT_CONSTANTS.md`。
-- 该方案引用的 `src/core/session/backend/cfi_stage.*` / `cfi_layout.hpp` /
+- 该方案引用的 `core/src/session/backend/cfi_stage.*` / `cfi_layout.hpp` /
   `WriteMode::Value` / Kotlin `vr1` **在本树不存在**；`IMPLEMENTATION_COMPLETE.patch` 也未应用。
   因此它是**提案文档**，与本分支的实现不冲突。
 
