@@ -93,4 +93,6 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 
 **为何不是回退**：目标 profile 文件明文禁止 no default fallback，所以这五个数不是「缺键时补一个」，而是**声明式临时源**；入口在用它之前会打印一行说明它不来自文档。
 
-**真机结果（2026-10-09 16:08 EDT）**：六步全部在设备上成功，退出码 0 —— 读文档 1991 字节 · 收会话帧 · 过闸 admitted window.pagecache · 开载体 · 绑窗口 · 起接缝 seam up · 收尾 torn down ok · 读偏移 lock=0x58 waiter=0xb0 task=0x700。**口径：这不是 root** —— 入口尚未接发现、步骤与终端（KernelSU 模块加载）三步。
+**真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
+**真机结果**：见 docs/analysis/device-gates/20261009-1621-temp-entry-steps.md（证据归门禁归档，本表只留登记）。
+**构建**：须覆盖 NDK_TOOLCHAIN 到 NDK 30（原因与命令见门禁归档）。

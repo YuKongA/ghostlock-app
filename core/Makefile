@@ -34,6 +34,7 @@ MPACK_CFLAGS := -std=c99 -w
 # not in it yet (its Lua core would have to be cross-built too), and neither is
 # the executor: the entry resolves a document and says what it would run.
 RUNTIME_SRCS := src/main.cpp src/contract/kmi_catalog.cpp src/contract/contract.cpp src/memory/memory.cpp \
+  src/backend/cve_2026_43499/leak/snitch_setup.cpp \
   src/backend/cve_2026_43284/lkm/module_facts.cpp \
   src/profile/glkv3_document.cpp src/profile/payload_keys.cpp \
   src/profile/document_pairs.cpp src/profile/run_plan.cpp \
@@ -322,6 +323,17 @@ $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/m
 # layer are named in the entry's refusal.
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
+# Units the device chain needs and the host build does not: the search corpus and the memory
+# preparations it feeds. They were in RUNTIME_SRCS, which both targets share, and the host
+# build then had to compile the device chain.
+ANDROID_ONLY_SRCS := src/backend/cve_2026_43499/memory/credential_image.cpp \
+  src/backend/cve_2026_43499/memory/multicast_arm.cpp \
+  src/backend/cve_2026_43499/memory/prepare_plan.cpp \
+  src/backend/cve_2026_43499/memory/reclaim_plan.cpp \
+  src/backend/cve_2026_43499/memory/shaping_plan.cpp \
+  src/backend/cve_2026_43499/memory/write_encoder.cpp \
+  src/backend/cve_2026_43499/memory/write_layout.cpp
+
 ANDROID_OUT := ../build/native/ghostlock
 .PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe perf-seam-probe snitch-prepare-probe profile-manifest-v3 profile-manifest-v3-check
 
@@ -333,7 +345,7 @@ $(ANDROID_OUT): $(RUNTIME_SRCS) src/contract/layer_scope.hpp src/contract/step_c
 	$(NDK_TOOLCHAIN)/aarch64-linux-android29-clang -std=c99 -w -O2 -c $(MPACK_SRC) \
 	  -o $(BUILD_DIR)/mpack-android.o
 	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -isystem $(MPACK_DIR) \
-	  $(RUNTIME_SRCS) $(BUILD_DIR)/mpack-android.o -o $@
+	  $(RUNTIME_SRCS) $(ANDROID_ONLY_SRCS) $(BUILD_DIR)/mpack-android.o -o $@
 	@echo "android: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 # The device probe for the futex seam: one real priority-inheritance round trip.
