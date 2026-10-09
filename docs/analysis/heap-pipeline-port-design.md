@@ -3,20 +3,9 @@
 > 分析类（≤8 KiB）· **L 级**（攻击关键路径）· 作者 Lead · v1 评审见 design-critic（0 阻断 / 重要 4）
 > 目标：让**重写后的** 43499 在**真机**上能做完页准备 ⇒ 「两 backend 真机可用」的第 1 优先级 ✓
 
-## 0 v2 改了什么（逐条对 H1–H5 与三问判定）
+## 0 沿革
 
-| 项 | 处置 |
-|---|---|
-| **H1** | **顺序权威 = `src/core/backend/cve_2026_43499/memory/prepare_steps.hpp`**（本轮已入库 ✓ 12 步数据 + 三条关系断言 ✓）⇒ **`prepare_plan` 只补「每组数量与参数」** ✓，**不复制顺序** ✗ |
-| **H2** | 引用改为**可复现形式**：`git show b0e9f499^:src/core/backend/cve_2026_43499/spray.cpp`（该文件已被 b0e9f499 删除 ✓）+ **逐步行号**（评审实测 ✓ 见 §1） |
-| **H3** | 补漏三步：**skb 缓冲分配与清零** ✓ · **`prepare_skb_payload`** ✓ · **两处早退失败路径**（各自 snitch.reset + 杀 prepare 子进程 + cleanup + **return 0** ✓）⇒ §1 改为**主路径 + 失败路径**两段 ✓，且失败路径**必须进编排** ✓（否则真机留下活子进程与脏状态 ✓） |
-| **H4** | 几何量**分两类**（§2.5 ✓）：**设备相关 ⇒ profile 键**（落 `execution.heap.*` —— `heap` scope **资产里已存在** ✓；缺键 ⇒ **具名拒绝、不得 C++ 兜底** ✓）；**内核几何 ⇒ 机制常量**（单一定义处 + 注释 ✓ 同 64 KiB 先例 ✓） |
-| **H5** | seam 落点照 `futex_seam_linux.hpp` 同构 ✓：shape 宿主可测 ✓ + `heap_seam_linux.hpp` 设备专用薄边 ✓、**宿主不编译** ✓、**seam 不含任何决策** ✗ |
-| **ⓐ** | **snitch 不并入 seam** ✓ —— 它有几何/生命周期/等待 ⇒ 是独立机制 ✓（并入会让假 seam 承担策略 ✓） |
-| **ⓑ** | 判据**分层**：**(i) 主机决策面逐值相同** ✓（黄金值固化为测试 ✓）；**(ii) 真机只认具名不变式** ✓；**(iii) 同机对拍 = 旁证** ✓（真机噪声已在 AGENTS 记录 ✓） |
-| **ⓒ** | 见 H4 的两类划分 ✓ |
-
-## 1 旧实现（可核引用：`git show b0e9f499^:…/spray.cpp`，行号为评审实测 ✓）
+v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-pipeline-port-design-history](heap-pipeline-port-design-history.md) ✓ —— 本件只留结论 ✓。
 
 **主路径**
 
@@ -27,7 +16,10 @@
 | 455-456 | **skb 缓冲分配 + 清零** | 决定（尺寸来自几何） |
 | 458-461 / 463-466 | pre / spray 组：`clone_child()` + `open_memfd()` | 系统调用 |
 | 468-470 | `KernelSnitchOwner::create(...)`（MM_ORDER / cpu_count / 碰撞数） | **独立机制** |
-| 636+ | post / leak 组 + 泄漏循环（等命中，按超时 ✓） | 系统调用 + 等待 |
+| 481-483 / 484 / 485-487 | pre 组**再**派生 · `clone_leak_child()` · post 组派生 | 系统调用 |
+| 489-495 | pre / leak / post 的 fd 打开 | 系统调用 |
+| 497-505 | **杀 pre/post/spray 子进程**（保留 post 末位 ✓） | **决定** |
+| 506-583 | 泄漏循环（等命中，按 `kernelsnitch_timeout_ms` ✓） | 等待 + 判断 |
 | 600 | `base = leaked & ~(ORDER3_SIZE - 1)` | 决定（对齐） |
 | 601 | **`prepare_skb_payload(base, request)`** | 决定 + 写 |
 | 610-629 | 形状化：`socketpair` ×2 · `setsockopt(SO_SNDBUF)` · `fcntl(O_NONBLOCK)` · `sendmsg(SKB_SEND_SIZE)` | 系统调用 + 几何 |
@@ -40,6 +32,11 @@
 |---|---|---|
 | 588-598 | `leaked` 无效 | `snitch.reset()` + 杀 prepare 子进程 + `cleanup_page_prepare_state()` + **return 0** |
 | 601-608 | `prepare_skb_payload` 失败 | 同上（reset + 杀子 + cleanup + **return 0**） |
+| **555-563**（K1） | **无碰撞超时**（`!snitch.has_collisions()`） | 同上（reset + 杀 prepare 子 + cleanup + **return 0**）—— **真机最可能发生的一条** ✓（由 `kernelsnitch_timeout_ms` 驱动 ✓） |
+
+**非失败诊断**（不改变控制流 ✓）：`550-553` 的 leak child 退出码告警 ✓（旧树打印 ✓）。
+
+**粒度口径**（K4 ✓）：§2.1 的 12 步是**阶段**渲染 ✓（它把 481 的 pre 再派生折进 `PreChildren` ✓）；**阶段内**「派生 → 开 fd → 杀子」的次序是其内部机制 ✓ ⇒ 编排必须保序 ✓。
 
 ## 2 移植形态
 
@@ -70,7 +67,10 @@
 | 类 | 例 | 落点 | 缺值行为 |
 |---|---|---|---|
 | **设备相关** | 每组数量（prepare/spray/post/leak）· 碰撞数 · 各超时 | **profile 键**：`execution.heap.*`（`heap` scope 资产里已有 ✓） | **具名拒绝** ✓（不兜底 ✗） |
-| **内核几何** | order-3 页尺寸 · SKB 发送尺寸 · mm_struct 尺寸/stride 机制侧缺省 | **机制常量**（单一定义处 + 注释 ✓，同 64 KiB 先例 ✓） | 不适用（常量 ✓） |
+| **内核几何**（K2 修正 ✓） | order-3 页尺寸 · SKB 发送尺寸 | **机制常量 + 运行时校验** ✓：seam 提供 `page_size()` ✓，计划层要求 `ORDER3_SIZE == page_size() << MM_ORDER` ✓，**不成立 ⇒ 具名拒绝 `geometry-missing`** ✓（**不得**静默按 4 KiB 跑 ✗ —— 旧树把 4096 硬编码 ✓，遇 16 KiB 页内核会整组错位 ✓） | 不适用（常量 + 校验 ✓） |
+| **mm_struct 尺寸**（K3 裁定 ✓） | `struct mm_struct` 的尺寸随内核配置变化 ✓ | **数据面（profile 键）**：`backend.cve_2026_43499.abi.mm_struct.size` ✓（沿既有 `abi.*` owner 路径 ✓）；**删除兜底** ✓（旧树 `mm_struct_stride(fallback)` 的形态随旧政策作废 ✓ —— 实测某 profile 声明 `0x580` 而兜底 `0x500` ✓） | 缺键 ⇒ **`geometry-missing`** ✓（几何类 ✓，与调参类 `tuning-missing` 分工 = 几何/偏移 vs 数量/超时 ✓） |
+
+**派生**：`mm_objs_per_slab = ORDER3_SIZE / mm_struct_size` ✓（由该键驱动 ✓，见 `reclaim_plan` 的 slab 步长 ✓）。
 
 ## 3 真机判据（分步 ✓）
 
