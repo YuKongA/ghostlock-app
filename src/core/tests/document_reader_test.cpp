@@ -94,6 +94,31 @@ namespace {
         return document.parse(reinterpret_cast<const std::uint8_t *>(data), size);
     }
 
+    /** A segment with two keys, the first of them possibly wider than 32 bits. */
+    char *build_two_keys(std::uint64_t wide, std::size_t *out_size) {
+        char *data = nullptr;
+        std::size_t size = 0U;
+        mpack_writer_t writer;
+        mpack_writer_init_growable(&writer, &data, &size);
+        mpack_start_map(&writer, 2U);
+        mpack_write_cstr(&writer, "schema");
+        mpack_write_uint(&writer, kDocumentSchema);
+        mpack_write_cstr(&writer, "sections");
+        mpack_start_map(&writer, 1U);
+        mpack_write_cstr(&writer, "backend.cve_2026_43499.route.multicast_waiter");
+        mpack_start_map(&writer, 2U);
+        mpack_write_cstr(&writer, "arm_hold");
+        mpack_write_uint(&writer, wide);
+        mpack_write_cstr(&writer, "arm_sequence");
+        mpack_write_uint(&writer, 7U);
+        mpack_finish_map(&writer);
+        mpack_finish_map(&writer);
+        mpack_finish_map(&writer);
+        expect(mpack_writer_destroy(&writer) == mpack_ok, "the document was written");
+        *out_size = size;
+        return data;
+    }
+
     /* ---- 1: a well-formed document reads back whole ---- */
     void a_document_reads() {
         std::size_t size = 0U;
@@ -208,6 +233,34 @@ namespace {
             MPACK_FREE(data);
         }
     }
+    /* ---- 4: a wide value does not blind the key after it ---- */
+    void wide_values_do_not_blind_the_next_key() {
+        constexpr const char *kSegment = "backend.cve_2026_43499.route.multicast_waiter";
+        const std::uint64_t values[] = {0x100000000ULL, 0xFFFFFFFFULL, 0x7FFFFFFFFFFFFFFFULL};
+        for (const std::uint64_t wide : values) {
+            std::size_t size = 0U;
+            char *data = build_two_keys(wide, &size);
+            Document document;
+            expect(read(data, size, document) == DocumentVerdict::Ok, "the document parses");
+            std::uint64_t first = 0U;
+            std::uint64_t second = 0U;
+            expect(document.uint_key(std::string_view(kSegment), std::string_view("arm_hold"), first) ==
+                       DocumentVerdict::Ok,
+                   "a wide value reads");
+            expect(document.uint_key(std::string_view(kSegment), std::string_view("arm_sequence"),
+                                     second) == DocumentVerdict::Ok,
+                   "and the key after it still reads");
+            expect(first == wide, "the wide value came back whole, not truncated");
+            expect(second == 7U, "and the following key kept its own value");
+            std::uint64_t again = 0U;
+            expect(document.uint_key(std::string_view(kSegment), std::string_view("arm_hold"), again) ==
+                       DocumentVerdict::Ok,
+                   "and the wide value reads again");
+            expect(again == wide, "with the same value");
+            document.reset();
+            MPACK_FREE(data);
+        }
+    }
 }  // namespace
 
 int main() {
@@ -217,6 +270,8 @@ int main() {
     other_documents_are_refused();
     std::printf("document: payload refusals\n");
     payload_refusals_are_named();
+    std::printf("document: wide values\n");
+    wide_values_do_not_blind_the_next_key();
     if (g_failures != 0U) {
         std::printf("document: FAIL (%zu)\n", g_failures);
         return 1;
