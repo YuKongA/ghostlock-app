@@ -146,6 +146,7 @@ LAYER_HEADERS := \
   src/backend/cve_2026_43499/access_params.hpp \
   src/backend/cve_2026_43499/seam/multicast_seam.hpp \
   src/backend/cve_2026_43284/access_params.hpp \
+  src/backend/cve_2026_43284/seam/pagecache_seam.hpp \
   src/tests/multicast_seam_test.cpp \
   src/profile/route_catalog.hpp \
   src/tests/target_state_test.cpp \
@@ -835,7 +836,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	# only where the ruling allows it, the access interface and its 43499 implementation. Tests
 	# are exempt, and the window headers are prose-only, their comments stripped first.
 	@files=$$(grep -rlE "^[[:space:]]*virtual " $$(find src -name "*.hpp" -o -name "*.cpp" | grep -v "^src/tests/") || true); \
-	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_43499/kernel_access\.hpp|backend/cve_2026_43499/seam/multicast_seam\.hpp)$$" | grep -v "^$$" || true); \
+	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_43499/kernel_access\.hpp|backend/cve_2026_43499/seam/multicast_seam\.hpp|backend/cve_2026_43284/seam/pagecache_seam\.hpp)$$" | grep -v "^$$" || true); \
 	if [ -n "$$stray" ]; then echo "VIRTUAL-OUTSIDE-ACCESS: $$stray"; echo "  virtual is allowed only in the access interface and its 43499 implementation"; exit 1; fi; \
 	echo "check: virtual is confined to the access interface (tests exempt)"
 	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
