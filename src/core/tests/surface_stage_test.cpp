@@ -16,7 +16,9 @@
 #include <string_view>
 
 #include "contract/script_surface.hpp"
+#include "pipeline/plan_gate.hpp"
 #include "script/sandbox.hpp"
+#include "script/stage_gate.hpp"
 #include "script/staged_plan.hpp"
 
 namespace {
@@ -264,6 +266,73 @@ namespace {
 
     }
 
+    /* ---- 5: the recording is checked against the table it came from ---- */
+    void surface_entries_are_checked() {
+        const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
+        char script[256];
+        std::size_t used = append_head(script, 0U, row_word);
+        /* Eight arguments: inside this container's per-entry ceiling, above the
+         * five the row declares, so the recording survives and the check is what
+         * refuses it (a ninth argument would be refused by the container first). */
+        for (std::size_t i = 0U; i < 8U; ++i) {
+            used = append_comma(script, used, i);
+            used = append_number(script, used, i + 1U);
+        }
+        script[used++] = ')'; script[used++] = '\n';
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for the ceiling");
+        expect(sandbox.run(std::string_view(script, used)) == ScriptRejection::None,
+               "the over-long call still runs");
+        expect(plan.size() == 1U, "the call was recorded as given");
+        const ghostlock::script::StageVerdict verdict =
+            ghostlock::script::check_surface_entries(plan);
+        expect(!verdict.ok, "an argument count past the row's list is refused");
+        expect(std::string_view(verdict.reason) == std::string_view("param-invalid"),
+               "the over-long call is refused as param-invalid");
+        expect(verdict.index == 0U, "the refusal points at the entry");
+        sandbox.close();
+    }
+
+    /* ---- 6: the admission gate's own reason is folded back in ---- */
+    void gate_reasons_are_folded() {
+        using ghostlock::contract::op_token_hash;
+        using ghostlock::pipeline::gate_reason_name;
+        using ghostlock::pipeline::GateReason;
+        using ghostlock::pipeline::plan_gate;
+        using ghostlock::pipeline::PlanInput;
+        using ghostlock::pipeline::PlanOp;
+
+        PlanOp op{};
+        op.token = "not.an.op";
+        op.token_hash = op_token_hash(op.token);
+        op.route_mask = ghostlock::contract::RouteMask{1U};
+        op.params = nullptr;
+        op.param_count = 0U;
+        op.seam_inside_window = false;
+        op.depends_on = -1;
+        PlanInput input{};
+        input.backend_id = "cve_2026_43499";
+        input.ops = &op;
+        input.op_count = 1U;
+        input.script_present = true;
+        input.builtin_plan_present = false;
+        input.queue_present = false;
+        input.geometry_present = true;
+        input.capability_present = true;
+        input.executor_available = true;
+        const ghostlock::pipeline::GateVerdict verdict = plan_gate(input);
+        expect(!verdict.ok, "an unknown op token is refused by the gate");
+        expect(verdict.reason == GateReason::UnknownOp, "the reason is the unknown token");
+
+        StagedPlan plan;
+        expect(ghostlock::script::fold_refusal(plan, gate_reason_name(verdict.reason)),
+               "the gate reason folds into the plan");
+        expect(std::string_view(plan.refusal_name()) == std::string_view("unknown-op"),
+               "the plan carries the gate's own name");
+        expect(!plan.ok(), "a plan refused by the gate does not run");
+    }
+
     /* ---- 4: a sandbox refusal reaches the plan by name ---- */
     void refusals_are_recorded() {
         StagedPlan plan;
@@ -286,6 +355,10 @@ int main() {
     bounds_refuse_by_name();
     std::printf("stage: refusal names\n");
     refusals_are_recorded();
+    std::printf("stage: surface ceiling\n");
+    surface_entries_are_checked();
+    std::printf("stage: gate reasons\n");
+    gate_reasons_are_folded();
     if (g_failures != 0U) {
         std::printf("stage: FAIL (%zu)\n", g_failures);
         return 1;

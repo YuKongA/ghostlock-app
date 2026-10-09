@@ -45,14 +45,14 @@ namespace ghostlock::script {
         std::uint32_t str_length = 0U;
     };
 
-    /** One recorded call. */
+    /** One recorded call. The op axis is not mirrored here: op entries are the
+     *  host's plan declaration, carried as pipeline::PlanOp by the gate itself,
+     *  so this container holds exactly what the script produced. */
     struct StagedEntry final {
-        bool is_op = false;
         std::size_t surface_index = 0U;
         contract::SurfaceForm form = contract::SurfaceForm::Call;
         std::size_t arg_count = 0U;
         StagedArg args[kMaxStagedArgs];
-        std::uint64_t op_token_hash = 0U;
     };
 
     /** The recording of one script run. Trivially copyable, no allocation. */
@@ -137,8 +137,7 @@ namespace ghostlock::script {
             std::size_t used = 0U;
             for (std::size_t i = 0U; i < count_; ++i) {
                 const StagedEntry &entry = entries_[i];
-                if (!put(out, capacity, used, entry.is_op ? 1U : 0U) ||
-                    !put_u64(out, capacity, used, entry.surface_index) ||
+                if (!put_u64(out, capacity, used, entry.surface_index) ||
                     !put(out, capacity, used, static_cast<std::uint8_t>(entry.form)) ||
                     !put_u64(out, capacity, used, entry.arg_count)) {
                     return 0U;

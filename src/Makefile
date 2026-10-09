@@ -57,6 +57,7 @@ LAYER_HEADERS := \
   core/contract/script_surface.hpp \
   core/script/call_sink.hpp \
   core/script/staged_plan.hpp \
+  core/script/stage_gate.hpp \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
