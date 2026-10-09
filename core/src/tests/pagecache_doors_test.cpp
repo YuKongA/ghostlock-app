@@ -13,7 +13,7 @@
 #include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::AccessParams;
+    using ghostlock::backend::cve_2026_43284::SaMaterial;
     using ghostlock::backend::cve_2026_43284::seam::DoorOps;
     using ghostlock::backend::cve_2026_43284::seam::PageCacheDoors;
 
@@ -41,7 +41,7 @@ namespace {
             }
             return next_fd++;
         }
-        [[nodiscard]] int connect_esp(const AccessParams &) noexcept override {
+        [[nodiscard]] int connect_esp(const SaMaterial &) noexcept override {
             if (socket_fails) {
                 return -1;
             }
@@ -64,7 +64,7 @@ namespace {
     void both_doors_open_and_close_once() {
         RecordingOps ops;
         PageCacheDoors doors(ops);
-        AccessParams params;
+        SaMaterial params;
         expect(doors.open(params), "both doors open");
         expect(doors.file_fd() >= 0 && doors.socket_fd() >= 0, "and both have a descriptor");
         expect(doors.owns_file(), "the file is this object's to close, since it opened it");
@@ -77,7 +77,7 @@ namespace {
     void a_handed_in_descriptor_is_never_closed_here() {
         RecordingOps ops;
         PageCacheDoors doors(ops, 42);
-        AccessParams params;
+        SaMaterial params;
         expect(doors.open(params), "a handed-in descriptor opens the file door");
         expect(doors.file_fd() == 42, "the one it was given");
         expect(!doors.owns_file(), "and it is not this object's to close");
@@ -89,7 +89,7 @@ namespace {
         RecordingOps ops;
         ops.socket_fails = true;
         PageCacheDoors doors(ops);
-        AccessParams params;
+        SaMaterial params;
         expect(!doors.open(params), "the open fails when the socket cannot be made");
         expect(ops.closed_count() == 1, "and the file door it had opened is given back");
         expect(!doors.owns_file() && doors.file_fd() < 0, "leaving nothing half open");

@@ -33,7 +33,7 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         [[nodiscard]] virtual int open_target() noexcept = 0;
         /** Connect the ESP socket from the credentials, or a negative value. The credentials are
          *  the whole frame and not just the key, because the socket needs the ports as well. */
-        [[nodiscard]] virtual int connect_esp(const AccessParams &sa) noexcept = 0;
+        [[nodiscard]] virtual int connect_esp(const SaMaterial &sa) noexcept = 0;
         /** Close a descriptor this object opened. */
         virtual void close_fd(int fd) noexcept = 0;
     };
@@ -44,7 +44,7 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         PageCacheDoors(DoorOps &ops, int handed_in_fd = -1) noexcept : ops_(ops), handed_in_(handed_in_fd) {}
 
         /** Open both doors. On failure nothing is left half open. */
-        [[nodiscard]] bool open(const AccessParams &sa) noexcept {
+        [[nodiscard]] bool open(const SaMaterial &sa) noexcept {
             if (open_) {
                 return false;
             }
