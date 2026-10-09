@@ -145,6 +145,7 @@ LAYER_HEADERS := \
   src/backend/cve_2026_43499/session.hpp \
   src/backend/cve_2026_43499/access_params.hpp \
   src/backend/cve_2026_43499/seam/multicast_seam.hpp \
+  src/backend/cve_2026_43284/access_params.hpp \
   src/tests/multicast_seam_test.cpp \
   src/profile/route_catalog.hpp \
   src/tests/target_state_test.cpp \
