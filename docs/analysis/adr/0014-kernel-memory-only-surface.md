@@ -44,3 +44,5 @@
 - **原语的最小集合**：今天旧树有 `read` / `write` / `write_zero` ✓ + `MemoryChannel` / `CarrierKind` ✓ —— 新树是否照搬、以及是否需要「发现地址」这类**非写**原语（旧树的 `AddressDiscovery` 位 ✓）⇒ 设计稿定 ✓；
 - **Lua 工具库的位置与形态**（随 app 资产 / 随 profile / 内嵌 ✓）⇒ 设计稿定 ✓；
 - 旧 `script_surface` 的 7 个名字（`backend` / `writeop` / `handoff` / … ✓）**留哪些** ⇒ 设计稿定 ✓（`handoff`/`close` 属会话生命周期 ✓，与内存原语不同轴 ✓）。
+
+> **冲突与两条路（虚基类 vs 既有机器判据）：见同目录 `0014-kernel-memory-conflict.md`** —— 那是本 ADR 的必读部分（含实测证据与推荐路径）。
