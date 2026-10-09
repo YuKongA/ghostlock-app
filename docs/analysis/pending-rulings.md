@@ -43,3 +43,20 @@
 - **archive 两处**：`README.md` 的自述是目录分工，`INDEX-device-gates.md` 自述为有界的子索引（≤8 KiB）⇒ 数量少于文件数属设计如此，**不是缺漏，未改**。
 - **`MASTER-PLAN` 引用**：所引两份文档均存在，无悬空引用。
 - 方法说明：判定依据是各文件**自述的目的**，不是行数与文件数的差额。差额只能提示怀疑，不能定案。
+
+## 8 事项 2 的命令级清单（SA 帧，裁定一到即可落盘）
+
+**新件两个**：`core/src/backend/cve_2026_43284/session_frame.hpp`（照旧 95 行的公开面：7 个常量 · `SessionFrameStatus` 的 10 个取值 · 编码与读取两个函数）与 `session_frame.cpp`（照旧 174 行）。
+
+**两处替换点**（实测已定位）：
+
+- 形参类型 `IpsecSaParams` 换成新树已有的 `SaMaterial`（字段：spi · encap_port · sender_port · icv_len · aes_key[32] · hmac_key[32]）；
+- 常量 `kEspIcvBytes`：新树里对应的名字**落时先量再写**，不凭记忆。
+
+**测试判据（`core/src/tests/session_frame_test.cpp`）**：编码载荷定长 84 且不含长度前缀 · 版本 / kind / trailer 三处校验各自能拒 · 四字节大端前缀与上限 4096 的拒绝 · 编码后再读字段逐字节相等 · 并证伪一次（trailer 期望值改一位 ⇒ 对应断言必须红、退出 1、零残留）。
+
+**既有可复用的语义**：`SessionFrameStatus` 的 `Missing` 正是探针要用的那道门（可选帧缺席 ⇒ 不是 43284 的运行），所以探针的零新增分支与帧件的状态机是同一个词，不必另造。
+
+**四处接线锚点**：与既有件同法（文件清单 · `EVIDENCE_BINS` 整行做锚 · rule 2 TAB · check 行 1 TAB），落时以当时行号为准。
+
+**依赖关系**：事项 1（探针）依赖本项 —— 因为 SA 材料只能经帧进入，而帧的形态由本项定义。
