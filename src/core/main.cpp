@@ -26,7 +26,10 @@
 #include "contract/layer_scope.hpp"
 #include "contract/step_catalog.hpp"
 #include "memory/target_profile.hpp"
+#include "contract/kmi_catalog.hpp"
 #include "profile/document_pairs.hpp"
+#include "session/device_facts.hpp"
+#include "session/device_facts_linux.hpp"
 #include "profile/glkv3_document.hpp"
 #include "profile/run_plan.hpp"
 #include "race/race_runtime.hpp"
@@ -128,6 +131,19 @@ namespace {
         std::printf(" source=%s\n", resolved.plan.from_fallback ? "chain-default" : "queue");
         const ghostlock::race::SettingsVerdict settings =
             report_race_settings(document, resolved.plan.chain->backend);
+        /* What the device is, and the module that would be delivered to it. */
+        const ghostlock::session::DeviceFacts facts =
+            ghostlock::session::read_device_facts<ghostlock::session::LinuxDeviceFactsSource>();
+        char label[64];
+        const bool labelled =
+            facts.has_release &&
+            ghostlock::contract::label_for_release(facts.release, label, sizeof(label));
+        std::printf("device release=%s label=%s deliverable=%s\n",
+                    facts.has_release ? facts.release : "(none)",
+                    labelled ? label : "(none)",
+                    labelled && ghostlock::contract::kmi_of(std::string_view(label)) != nullptr
+                        ? "yes"
+                        : "no");
         /* The chain resolved; running it is what this tree cannot do yet. */
         std::printf("executor-unavailable\n");
         return settings == ghostlock::race::SettingsVerdict::Ok ? 4 : 5;
