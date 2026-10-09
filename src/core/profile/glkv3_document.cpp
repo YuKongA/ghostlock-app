@@ -111,6 +111,36 @@ namespace ghostlock::profile {
         return DocumentVerdict::Ok;
     }
 
+    DocumentVerdict Document::root_text(std::string_view key, char *out,
+                                        std::size_t capacity) const noexcept {
+        if (out == nullptr || capacity == 0U) {
+            return DocumentVerdict::Missing;
+        }
+        out[0] = '\0';
+        if (!open_ || key.empty()) {
+            return DocumentVerdict::Invalid;
+        }
+        char key_text[96];
+        if (!copy_bounded(key_text, sizeof(key_text), key)) {
+            return DocumentVerdict::Missing;
+        }
+        mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
+        const mpack_node_t node = mpack_node_map_cstr_optional(mpack_tree_root(tree), key_text);
+        if (mpack_node_type(node) != mpack_type_str) {
+            return DocumentVerdict::Missing;
+        }
+        const char *text = mpack_node_str(node);
+        const std::size_t length = mpack_node_strlen(node);
+        if (text == nullptr || length == 0U || length + 1U > capacity) {
+            return DocumentVerdict::Missing;
+        }
+        for (std::size_t i = 0U; i < length; ++i) {
+            out[i] = text[i];
+        }
+        out[length] = '\0';
+        return DocumentVerdict::Ok;
+    }
+
     DocumentVerdict Document::value_key(std::string_view segment, std::string_view key,
                                         ScalarKind &kind, std::uint64_t &out) const noexcept {
         kind = ScalarKind::Uint;

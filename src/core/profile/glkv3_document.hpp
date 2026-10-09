@@ -141,6 +141,12 @@ namespace ghostlock::profile {
         [[nodiscard]] StepQueueResult step_queue(std::string_view segment, contract::StepId *out,
                                                  std::size_t capacity) const noexcept;
 
+        /** Read one root text key (the selection tokens live at the root, beside
+         *  the schema, not inside a section). The text is copied: a wire string
+         *  carries no terminator, and the caller must be able to measure it. */
+        [[nodiscard]] DocumentVerdict root_text(std::string_view key, char *out,
+                                                std::size_t capacity) const noexcept;
+
         /** Release the parse; a further read is a missing document. */
         void reset() noexcept;
 
