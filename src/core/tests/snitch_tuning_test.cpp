@@ -16,7 +16,10 @@
 #include "backend/cve_2026_43499/leak/snitch_tuning.hpp"
 
 namespace {
+    using ghostlock::backend::cve_2026_43499::leak::apply_snitch_tuning;
     using ghostlock::backend::cve_2026_43499::leak::resolve_snitch_tuning;
+    using ghostlock::backend::cve_2026_43499::leak::SnitchPatience;
+    using ghostlock::backend::cve_2026_43499::leak::SnitchSetup;
     using ghostlock::backend::cve_2026_43499::leak::SnitchTuning;
     using ghostlock::backend::cve_2026_43499::leak::SnitchTuningKeys;
     using ghostlock::backend::cve_2026_43499::leak::tuning_verdict_name;
@@ -57,6 +60,18 @@ namespace {
                "four keys in the profile tune the search");
         expect(tuning.collisions == 4U && tuning.thread_count == 2U, "with the counts it was given");
         expect(tuning.wake_rounds == 200U && tuning.round_timeout_us == 2000, "and its patience");
+    }
+
+    void the_reader_hands_the_protocol_its_inputs() {
+        SnitchTuning tuning;
+        expect(resolve_snitch_tuning(complete(), kKeys, tuning) == TuningVerdict::Ok, "a tuning is read");
+        SnitchSetup setup;
+        SnitchPatience patience;
+        apply_snitch_tuning(tuning, setup, patience);
+        expect(setup.collisions == 4U && setup.thread_count == 2U,
+               "and handed to the protocol as the counts it runs with");
+        expect(patience.wake_rounds == 200U && patience.round_timeout_us == 2000,
+               "and as the patience it waits with, with nothing between the two but this call");
     }
 
     void a_missing_key_refuses_the_whole_thing() {
@@ -107,6 +122,8 @@ namespace {
 int main() {
     std::printf("snitch tuning: a complete profile\n");
     a_complete_profile_tunes_the_search();
+    std::printf("snitch tuning: from reader to protocol\n");
+    the_reader_hands_the_protocol_its_inputs();
     std::printf("snitch tuning: a missing key\n");
     a_missing_key_refuses_the_whole_thing();
     std::printf("snitch tuning: values that cannot be used\n");

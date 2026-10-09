@@ -78,4 +78,14 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         out.round_timeout_us = static_cast<std::int64_t>(timeout.value);
         return TuningVerdict::Ok;
     }
+    /** Hand a resolved tuning to the search: the counts it derives from and the patience it
+     *  waits with. The two structures the protocol takes are filled here so that nothing
+     *  between the profile and the protocol has to know what a key is called. */
+    constexpr void apply_snitch_tuning(const SnitchTuning &tuning, SnitchSetup &setup,
+                                       SnitchPatience &patience) noexcept {
+        setup.collisions = tuning.collisions;
+        setup.thread_count = tuning.thread_count;
+        patience.wake_rounds = tuning.wake_rounds;
+        patience.round_timeout_us = tuning.round_timeout_us;
+    }
 }  // namespace ghostlock::backend::cve_2026_43499::leak
