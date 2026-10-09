@@ -44,6 +44,7 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
    - `probe-43284: no session frame, so this is not a 43284 run` —— 帧缺席，说明这次不是该后端的运行，**这是正常结果**，不表示失败；
    - `probe-43284: the session frame was refused as N` —— 帧被拒，N 是具名状态号，按号定位；
    - `probe-43284: write status N, value V, shutdown ok|refused` —— 走到写。status 0 与 value 16 为成功。
+
 5. **取证据**：设备 `Download/ghostlock-debug-log/<时间>/` 下的 `*.log.txt`、`profile.conf`、`profile.bin`，加本次运行的控制台输出。
 6. **归档**：按 `docs/analysis/device-gates/` 的格式写一份门禁记录，含 uname、页大小、时间、构建标识与上面三行之一的原文。
 7. **清理（归档后立即执行）**：删除 `core/src/pipeline/probe_43284.cpp` 与 `core/src/tests/probe_43284_test.cpp`，从 Makefile 撤掉清单行、`EVIDENCE_BINS` 项、rule 与 check 行；然后 `grep -rn probe core/src core/Makefile` 应为 0 命中，`make -C core host && make -C core check` 应为 0。
@@ -64,3 +65,13 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 **核验**：删后 `grep -rn 'probe-43284\|drive_' core/src core/Makefile` 为 0 命中；`make -C core host && make -C core check` 为 0；`markdownlint` 为 0。
 
 **对齐**：本表把上一支探针（已删 ✓）与这一支驱动**并列登记** —— 文件名里的 43284 是沿革，覆盖范围是**两个后端**。
+
+## 到 root 的真实缺口（实测）
+
+缺口（2026-10-09 实测修正，先前那句“全是装配”过于乐观）：
+
+1. 43499 的决策与链 —— 完成（request_for · RaceAction）.
+2. 生产侧执行器 —— 完成（三条路径各一个类型，编译期 static_assert）.
+3. 传递 —— 架子完备（plan_gate，十二种以上具名理由，含 executor_available）.
+4. 真缺件：发现与输入的发生者。memory 一族（write_layout · write_encoder · credential_image）与 leak 一族（snitch_run · leak_search · discovery_result）在树里且各有测试，但 write_layout 的调用点只有测试、LayoutInputs 只有一个测试构造点，四个地址（page_value · credential_value · default_fops · credential_fops）没有任何生产构造点。库在，驱动不在。
+5. 入口驱动，临时件，清理已登记于 checklist.

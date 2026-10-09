@@ -101,12 +101,9 @@ C4 + A1 + B1 ⇒ D1
 
 ### 缺口四项（**全是装配，不是重写攻击**）
 
-缺口四项，顺序即执行顺序，全是装配不是重写：
+## 8 到 root 的真实缺口（2026-10-09 实测修正）
 
-1. 43499 的 Action，给 run_step_set 用。依据：run_step_set 已是泛型模板，pi_race、credential_image、heap_seam、write_encoder 全在。
-2. Pipeline 把后端、步骤、终端装起来。依据：全树仅一处提及且是注释，见 component_catalog.hpp:46。
-3. staged 计划到执行的传递。依据：StagedPlan 在、PlanOp 在、中间那步没有。规模：小。
-4. main.cpp 的生产路径驱动，临时件，同批登记清理。规模：小。
+先前那句“全是装配”过于乐观，已按实测更正；**表在 `device-probe-43284-checklist.md`**（执行文档，与清理表同处）。要点：机制与门禁俱在，`memory` 与 `leak` 两族**库在、驱动不在** —— 另外四条同族小段见该表。
 
 ### 顺序与判据
 
