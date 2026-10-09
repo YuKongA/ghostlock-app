@@ -1,0 +1,57 @@
+/** @file memory/write_encoder.cpp
+ *  The arm words, and writing them only where they fit.
+ */
+#include "memory/write_encoder.hpp"
+
+namespace ghostlock::memory {
+    namespace {
+        bool fits(std::size_t size, std::size_t offset, std::size_t width) noexcept {
+            return offset <= size && width <= size - offset;
+        }
+
+        void put_word(std::uint8_t *fragment, std::size_t offset, std::uint64_t value,
+                      std::size_t width) noexcept {
+            for (std::size_t i = 0U; i < width; ++i) {
+                fragment[offset + i] = static_cast<std::uint8_t>((value >> (i * 8U)) & 0xFFU);
+            }
+        }
+    }  // namespace
+
+    WriteArm arm_for(const WriteRequest &request, std::uint64_t value,
+                     std::size_t pointer_bytes) noexcept {
+        WriteArm arm{};
+        if (pointer_bytes == 0U) {
+            return arm;
+        }
+        const std::uint64_t backstep = static_cast<std::uint64_t>(pointer_bytes);
+        if (request.preserve_child) {
+            arm.pc = value;
+        } else {
+            arm.pc = request.target >= backstep ? request.target - backstep : 0U;
+        }
+        arm.left = request.target;
+        return arm;
+    }
+
+    EncodeVerdict encode_waiter_arm(std::uint8_t *fragment, std::size_t fragment_size,
+                                    const WaiterFieldOffsets &offsets, const WriteArm &arm,
+                                    std::size_t pointer_bytes) noexcept {
+        if (fragment == nullptr || fragment_size == 0U) {
+            return EncodeVerdict::FragmentTooSmall;
+        }
+        if (pointer_bytes == 0U || pointer_bytes > sizeof(std::uint64_t)) {
+            return EncodeVerdict::WidthInvalid;
+        }
+        /* Every field is checked before anything is written: a fragment that
+         * cannot hold the arm is left exactly as it was. */
+        if (!fits(fragment_size, offsets.pc, pointer_bytes) ||
+            !fits(fragment_size, offsets.right, pointer_bytes) ||
+            !fits(fragment_size, offsets.left, pointer_bytes)) {
+            return EncodeVerdict::FragmentTooSmall;
+        }
+        put_word(fragment, offsets.pc, arm.pc, pointer_bytes);
+        put_word(fragment, offsets.right, arm.right, pointer_bytes);
+        put_word(fragment, offsets.left, arm.left, pointer_bytes);
+        return EncodeVerdict::Ok;
+    }
+}  // namespace ghostlock::memory
