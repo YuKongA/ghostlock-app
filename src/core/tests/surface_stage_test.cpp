@@ -1,0 +1,295 @@
+/** @file tests/surface_stage_test.cpp
+ *  A6-2 evidence for the staged plan: one script run records calls, the
+ *  recording is deterministic and bounded, and a refusal is named.
+ *
+ *  Row names are never restated here: every call is built from
+ *  contract::kSurface, so this file cannot become a second copy of the table
+ *  (the check that enforces a single definition site looks for exactly that).
+ *
+ *  Sections: 1. a real run records every call in order; 2. two runs serialize
+ *  byte for byte identically; 3. the entry bound and the string arena refuse by
+ *  name rather than truncating; 4. a sandbox refusal reaches the plan by name.
+ */
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <string_view>
+
+#include "contract/script_surface.hpp"
+#include "script/sandbox.hpp"
+#include "script/staged_plan.hpp"
+
+namespace {
+    using ghostlock::contract::kSurface;
+    using ghostlock::contract::kSurfaceCount;
+    using ghostlock::contract::SurfaceForm;
+    using ghostlock::script::ArgKind;
+    using ghostlock::script::ArgView;
+    using ghostlock::script::CallView;
+    using ghostlock::script::kMaxStagedEntries;
+    using ghostlock::script::Sandbox;
+    using ghostlock::script::ScriptBudget;
+    using ghostlock::script::ScriptRejection;
+    using ghostlock::script::StagedPlan;
+
+    std::size_t g_failures = 0U;
+
+    void expect(bool condition, const char *what) {
+        if (!condition) {
+            std::printf("FAIL: %s\n", what);
+            ++g_failures;
+        }
+    }
+
+    /** The row index with this shape; kSurfaceCount when the table has none. */
+    std::size_t row_for(SurfaceForm form, std::size_t arg_count) {
+        for (std::size_t i = 0U; i < kSurfaceCount; ++i) {
+            if (kSurface[i].form == form && kSurface[i].arg_count == arg_count) {
+                return i;
+            }
+        }
+        return kSurfaceCount;
+    }
+
+    ScriptBudget budget() {
+        ScriptBudget b{};
+        b.max_instructions = 2000000U;
+        b.max_bytes = 1U << 20U;
+        b.max_stack_depth = 32U;
+        b.max_script_bytes = 65536U;
+        return b;
+    }
+
+    std::size_t append_head(char *out, std::size_t used, std::size_t row) {
+        const std::string_view prefix("surface.");
+        for (const char c : prefix) {
+            out[used++] = c;
+        }
+        const std::string_view name(kSurface[row].name);
+        for (const char c : name) {
+            out[used++] = c;
+        }
+        out[used++] = '(';
+        return used;
+    }
+
+    std::size_t append_number(char *out, std::size_t used, std::uint64_t value) {
+        char digits[24];
+        std::size_t n = 0U;
+        do {
+            digits[n++] = static_cast<char>('0' + (value % 10U));
+            value /= 10U;
+        } while (value != 0U);
+        while (n > 0U) {
+            out[used++] = digits[--n];
+        }
+        return used;
+    }
+
+    std::size_t append_quoted(char *out, std::size_t used, std::string_view text) {
+        out[used++] = '"';
+        for (const char c : text) {
+            out[used++] = c;
+        }
+        out[used++] = '"';
+        return used;
+    }
+
+    std::size_t append_comma(char *out, std::size_t used, std::size_t index) {
+        if (index > 0U) {
+            out[used++] = ',';
+        }
+        return used;
+    }
+
+    /* ---- 1: a real run records what the script called ---- */
+    void records_a_run() {
+        const std::size_t row_plain = row_for(SurfaceForm::Call, 0U);
+        const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
+        const std::size_t row_wait = row_for(SurfaceForm::HandleMethod, 2U);
+        const std::size_t row_hand = row_for(SurfaceForm::HandleMethod, 3U);
+        const std::size_t row_free = row_for(SurfaceForm::HandleMethod, 1U);
+        expect(row_plain < kSurfaceCount && row_word < kSurfaceCount &&
+                   row_wait < kSurfaceCount && row_hand < kSurfaceCount &&
+                   row_free < kSurfaceCount,
+               "the table declares the five shapes this test drives");
+
+        char script[512];
+        std::size_t used = append_head(script, 0U, row_plain);
+        used = append_comma(script, used, 0U);
+        used = append_quoted(script, used, std::string_view("cve_2026_43499"));
+        script[used++] = ')'; script[used++] = '\n';
+        used = append_head(script, used, row_word);
+        used = append_number(script, used, 1U);
+        used = append_comma(script, used, 1U); used = append_number(script, used, 2U);
+        used = append_comma(script, used, 2U); used = append_number(script, used, 96U);
+        used = append_comma(script, used, 3U); used = append_number(script, used, 7U);
+        used = append_comma(script, used, 4U); used = append_number(script, used, 8U);
+        script[used++] = ')'; script[used++] = '\n';
+        used = append_head(script, used, row_wait);
+        used = append_number(script, used, 1U);
+        used = append_comma(script, used, 1U); used = append_number(script, used, 1000U);
+        script[used++] = ')'; script[used++] = '\n';
+        used = append_head(script, used, row_hand);
+        used = append_number(script, used, 1U);
+        used = append_comma(script, used, 1U); used = append_quoted(script, used, std::string_view("root_child"));
+        used = append_comma(script, used, 2U); used = append_quoted(script, used, std::string_view("root.handoff"));
+        script[used++] = ')'; script[used++] = '\n';
+        used = append_head(script, used, row_free);
+        used = append_number(script, used, 1U);
+        script[used++] = ')'; script[used++] = '\n';
+
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)),
+               "the sandbox opens with a staged sink");
+        const ScriptRejection verdict = sandbox.run(std::string_view(script, used));
+        expect(verdict == ScriptRejection::None, "the script runs inside the budgets");
+        expect(plan.ok(), "no refusal was recorded");
+        expect(plan.size() == 5U, "five calls were recorded");
+        expect(plan.at(0U).surface_index == row_plain, "entry one is the no-argument row");
+        expect(plan.at(1U).surface_index == row_word, "entry two is the five-argument row");
+        expect(plan.at(3U).surface_index == row_hand, "entry four is the three-argument row");
+        expect(plan.at(4U).surface_index == row_free, "entry five is the one-argument row");
+        expect(plan.at(1U).arg_count == 5U, "the five-argument call recorded five arguments");
+        expect(plan.at(1U).args[2U].kind == ArgKind::U64 && plan.at(1U).args[2U].u64 == 96U,
+               "a numeric argument survives verbatim");
+        expect(plan.at(3U).arg_count == 3U, "the three-argument call recorded three");
+        expect(plan.string_of(plan.at(3U).args[1U]) == std::string_view("root_child"),
+               "a string argument survives verbatim");
+        expect(plan.string_of(plan.at(3U).args[2U]) == std::string_view("root.handoff"),
+               "the payload reference survives verbatim");
+        sandbox.close();
+    }
+
+    /* ---- 2: the same script stages the same bytes twice ---- */
+    void stages_are_deterministic() {
+        static std::uint8_t first[8192];
+        static std::uint8_t second[8192];
+        const std::size_t row_word = row_for(SurfaceForm::HandleMethod, 5U);
+        char script[256];
+        std::size_t used = append_head(script, 0U, row_word);
+        used = append_number(script, used, 1U);
+        used = append_comma(script, used, 1U); used = append_number(script, used, 2U);
+        used = append_comma(script, used, 2U); used = append_number(script, used, 96U);
+        used = append_comma(script, used, 3U); used = append_number(script, used, 7U);
+        used = append_comma(script, used, 4U); used = append_number(script, used, 8U);
+        script[used++] = ')'; script[used++] = '\n';
+        const std::string_view text(script, used);
+
+        StagedPlan a;
+        StagedPlan b;
+        Sandbox one;
+        expect(one.open(budget(), ghostlock::script::staged_sink(a)), "open for run one");
+        expect(one.run(text) == ScriptRejection::None, "run one succeeds");
+        one.close();
+        Sandbox two;
+        expect(two.open(budget(), ghostlock::script::staged_sink(b)), "open for run two");
+        expect(two.run(text) == ScriptRejection::None, "run two succeeds");
+        two.close();
+        expect(a.size() == 1U && b.size() == 1U, "both runs recorded one call");
+        const std::size_t na = a.serialize(first, sizeof(first));
+        const std::size_t nb = b.serialize(second, sizeof(second));
+        expect(na != 0U && na == nb, "both runs serialize to the same length");
+        bool same = na == nb;
+        for (std::size_t i = 0U; same && i < na; ++i) {
+            same = first[i] == second[i];
+        }
+        expect(same, "two stages of one script are byte-identical");
+    }
+
+    /* ---- 3: bounds refuse by name ---- */
+    void bounds_refuse_by_name() {
+        const std::size_t row_wait = row_for(SurfaceForm::HandleMethod, 2U);
+        char script[4096];
+        std::size_t used = 0U;
+        for (std::size_t i = 0U; i < 70U; ++i) {
+            used = append_head(script, used, row_wait);
+            used = append_number(script, used, 1U);
+            used = append_comma(script, used, 1U);
+            used = append_number(script, used, i + 1U);
+            script[used++] = ')'; script[used++] = '\n';
+        }
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for bounds");
+        const ScriptRejection verdict = sandbox.run(std::string_view(script, used));
+        expect(verdict == ScriptRejection::None, "the script itself completes");
+        expect(plan.size() == kMaxStagedEntries, "recording stops exactly at the entry bound");
+        expect(std::string_view(plan.refusal_name()) == std::string_view("budget-exceeded"),
+               "exceeding the entry bound is refused by name");
+        sandbox.close();
+
+        /* The arena bound belongs to the container, so it is exercised directly:
+
+         * the sandbox refuses an oversized argument earlier, by the ceiling the
+
+         * row itself declares, which is a different guard. */
+
+        StagedPlan arena_plan;
+
+        static char big[6000];
+
+        for (std::size_t i = 0U; i < sizeof(big); ++i) {
+
+            big[i] = 'x';
+
+        }
+
+        ArgView arg{};
+
+        arg.kind = ArgKind::Str;
+
+        arg.str = std::string_view(big, sizeof(big));
+
+        CallView view{};
+
+        view.surface_index = row_for(SurfaceForm::HandleMethod, 3U);
+
+        view.form = SurfaceForm::HandleMethod;
+
+        view.name = kSurface[view.surface_index].name;
+
+        view.args = &arg;
+
+        view.arg_count = 1U;
+
+        expect(!arena_plan.record(view), "a string past the arena is refused");
+
+        expect(std::string_view(arena_plan.refusal_name()) == std::string_view("budget-exceeded"),
+
+               "exceeding the string arena is refused by name");
+
+        expect(arena_plan.size() == 0U, "nothing is recorded when a bound is hit");
+
+    }
+
+    /* ---- 4: a sandbox refusal reaches the plan by name ---- */
+    void refusals_are_recorded() {
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for refusal");
+        const ScriptRejection verdict = sandbox.run("surface.this_row_does_not_exist()");
+        expect(verdict != ScriptRejection::None, "an unknown row is refused");
+        expect(std::string_view(plan.refusal_name()) == std::string_view("surface-unknown-name"),
+               "the refusal reaches the plan by name");
+        sandbox.close();
+    }
+}  // namespace
+
+int main() {
+    std::printf("stage: recording one script run\n");
+    records_a_run();
+    std::printf("stage: determinism\n");
+    stages_are_deterministic();
+    std::printf("stage: bounds\n");
+    bounds_refuse_by_name();
+    std::printf("stage: refusal names\n");
+    refusals_are_recorded();
+    if (g_failures != 0U) {
+        std::printf("stage: FAIL (%zu)\n", g_failures);
+        return 1;
+    }
+    std::printf("stage: PASS (records verbatim + deterministic + bounded + named refusals)\n");
+    return 0;
+}

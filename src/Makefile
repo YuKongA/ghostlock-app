@@ -56,12 +56,13 @@ LAYER_HEADERS := \
   core/profile/route_catalog.hpp \
   core/contract/script_surface.hpp \
   core/script/call_sink.hpp \
+  core/script/staged_plan.hpp \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test
+EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -155,6 +156,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/surface_test
 	@echo "check: Lua sandbox (whitelist assembly + four budgets)"
 	@$(BUILD_DIR)/surface_sandbox_test
+	@echo "check: staged plan (one run recorded, deterministic, bounded)"
+	@$(BUILD_DIR)/surface_stage_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
@@ -207,6 +210,12 @@ $(BUILD_DIR)/surface_sandbox_test: core/tests/surface_sandbox_test.cpp $(SCRIPT_
   core/script/sandbox.hpp core/script/call_sink.hpp core/script/lua_whitelist.hpp \
   core/contract/script_surface.hpp $(LUA_CORE_LIB) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(LUA_DIR) core/tests/surface_sandbox_test.cpp $(SCRIPT_SRCS) $(LUA_CORE_LIB) -o $@
+
+$(BUILD_DIR)/surface_stage_test: core/tests/surface_stage_test.cpp $(SCRIPT_SRCS) \
+  core/script/staged_plan.hpp core/script/sandbox.hpp core/script/call_sink.hpp \
+  core/contract/script_surface.hpp $(LUA_CORE_LIB) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(LUA_DIR) core/tests/surface_stage_test.cpp $(SCRIPT_SRCS) $(LUA_CORE_LIB) -o $@
+
 lua-core: $(LUA_CORE_LIB)
 	@echo "lua-core: built $(words $(LUA_CORE_FILES)) files into $(LUA_CORE_LIB)"
 	@hits=0; for s in $(LUA_FORBIDDEN_SYMBOLS); do \
