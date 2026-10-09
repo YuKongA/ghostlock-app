@@ -37,10 +37,12 @@ namespace {
     struct FakeSeam final {
         static unsigned char buffer[65536];
         static std::size_t forks, kills, wakes, unmaps, pokes_per_wake;
+        static std::uint32_t *woken[16];
         static bool fail_fork;
         static void reset() noexcept {
             std::memset(buffer, 0, sizeof(buffer));
             forks = kills = wakes = unmaps = 0U;
+            for (std::size_t i = 0U; i < 16U; ++i) { woken[i] = nullptr; }
             pokes_per_wake = 1U;
             fail_fork = false;
         }
@@ -50,7 +52,8 @@ namespace {
         }
         static SeamResult unmap(void *, std::size_t) noexcept { ++unmaps; return SeamResult{0, 0}; }
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
+        static SeamResult futex_wake_private(std::uint32_t *word, std::int32_t) noexcept {
+            if (wakes < 16U) { woken[wakes] = word; }
             ++wakes;
             auto *count = reinterpret_cast<std::uint32_t *>(buffer + kCounterOffset);
             *count += static_cast<std::uint32_t>(pokes_per_wake);
@@ -77,7 +80,11 @@ namespace {
     unsigned char FakeSeam::buffer[65536] = {};
     std::size_t FakeSeam::forks = 0U, FakeSeam::kills = 0U, FakeSeam::wakes = 0U;
     std::size_t FakeSeam::unmaps = 0U, FakeSeam::pokes_per_wake = 1U;
+    std::uint32_t *FakeSeam::woken[16] = {};
     bool FakeSeam::fail_fork = false;
+
+    std::uint32_t kWords[2] = {0U, 0U};
+    std::uint32_t *kWordPointers[2] = {&kWords[0], &kWords[1]};
 
     SnitchSetup setup() {
         SnitchSetup made;
@@ -105,18 +112,23 @@ namespace {
     void a_cohort_that_pokes() {
         FakeSeam::reset();
         FakeSeam::pokes_per_wake = 512U;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(64U), kCounterOffset);
+        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(64U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::Poked, "a cohort that catches up ends the protocol");
         expect(outcome.pokes_wanted == 2048U, "with the total it waited for");
         expect(outcome.rounds < 64U, "in fewer rounds than it was allowed");
         expect(FakeSeam::forks == 2U && FakeSeam::kills == 0U, "one child per collision, none stopped");
         expect(outcome.region != nullptr, "and the region is the caller's to unmap");
+        /* Each wake has to name a child's own word: waking the wrong one leaves a child
+         *  waiting and the cohort never catches up. */
+        expect(FakeSeam::wakes >= 2U, "every child of the cohort was woken");
+        expect(FakeSeam::woken[0] == kWordPointers[0] && FakeSeam::woken[1] == kWordPointers[1],
+               "and each of them on its own word, in the cohort's order");
     }
 
     void a_cohort_that_never_does() {
         FakeSeam::reset();
         FakeSeam::pokes_per_wake = 0U;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset);
+        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::NoPokes, "a cohort that never catches up is given up on");
         expect(outcome.rounds == 8U, "after exactly the rounds allowed");
         expect(FakeSeam::kills == 2U, "and its children are stopped");
@@ -127,7 +139,7 @@ namespace {
     void a_fork_that_fails() {
         FakeSeam::reset();
         FakeSeam::fail_fork = true;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset);
+        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::CallFailed, "a fork that fails stops the attempt");
         expect(outcome.error == 11, "and the errno comes back with it");
         expect(FakeSeam::kills == 1U && FakeSeam::unmaps == 1U, "the child is stopped and the region goes back");
@@ -138,16 +150,22 @@ namespace {
         FakeSeam::reset();
         RegionInputs broken = inputs();
         broken.total_pokes = 0U;
-        expect(run_poke_protocol<FakeSeam>(setup(), broken, rounds(8U), kCounterOffset).status ==
+        expect(run_poke_protocol<FakeSeam>(setup(), broken, rounds(8U), kCounterOffset, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "a region with nowhere to record pokes is refused");
         expect(FakeSeam::forks == 0U && FakeSeam::wakes == 0U, "before anything is mapped or forked");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(0U), kCounterOffset).status ==
+        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(0U), kCounterOffset, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "and so is a protocol with no rounds to run");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), 40000U).status ==
+        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), 40000U, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "as is a counter that lies outside the region");
+        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, nullptr, 2U).status ==
+                   ScanVerdict::GeometryMissing,
+               "a cohort with no words to wake is refused, not woken at nothing");
+        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 1U).status ==
+                   ScanVerdict::GeometryMissing,
+               "and one word short of the cohort is refused too");
     }
 }  // namespace
 
