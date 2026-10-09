@@ -53,3 +53,21 @@
 3. **切片 3**：`primitives` 的内层（若切片 2 需要）
 
 **验收（每片都要满足）**：host 构建 0 告警 · `make -C core check` 绿 · 不引入任何可变全局 · 缝的测试保持绿（它钉的是决策，不应因窗口变真而改）
+
+## 7 第二个 backend（43284）的实测规模与它要用的通道
+
+新树里 43284 基本是空的：只有 `lkm/module_facts.{hpp,cpp}`。旧树是一整个 backend：
+
+- `cve_2026_43284/` 共 47 件，C++ 行数合计 10781 行
+- 与访问路径相关的大件：`execution_binding.cpp`（350）、`diagnostic.cpp`（297）、`entry.cpp`（78）；`backend_terminal.cpp`（580）属终端，不是访问
+- 通道面：`lkm/`（模块镜像与策略）、`ipsec/`（含 `aes256`）、以及页缓存相关件
+
+它映射到访问接口的方式（与 43499 不同轴，但接口已能表达）：
+
+- 43499 = 竞争窗口写，即 `AccessChannel::PiWindow` 加 `AccessCarrier::KernelPage`
+- 43284 = 已加载模块或页缓存写，即 `AccessChannel::KernelModule` 或 `PageCache`，加 `AccessCarrier::ModuleWindow` 或 `FilePage`
+- 这正是把通道与载体做成枚举而不是布尔的好处：两个 backend 用同一张接口，只有选择不同
+
+因此 43284 的访问实现不是从零写，而是有选择地搬：搬它的写路径（模块面加它落地写的那一段），不搬终端与诊断（那是别的轴）。
+
+还没量：这 10781 行里属于写路径的到底是多少（未按文件逐件分），以及它的 `initialize` 要准备什么（模块装载？镜像校验？）。动它的下一个切片前必须先量这两件。
