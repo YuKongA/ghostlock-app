@@ -87,3 +87,29 @@ C4 + A1 + B1 ⇒ D1
 **四处接线锚点**：与既有件同法（文件清单 · `EVIDENCE_BINS` 整行做锚 · rule 2 TAB · check 行 1 TAB），落盘时以当时的行号为准。
 
 **证伪点**：加第四个取值 ⇒ 消费它的 `switch` 不再全覆盖 ⇒ 编译不过或断言红，二者之一必须发生。
+
+## 8 按树重画：到 root 的真实缺口（本文旧数字作废）
+
+本文早先按**旧树**估的页数（7 / 10 / 12 页）与**新树实际不符**：新树比旧树简单，命名也不同。以下按**逐件实测**重画。**旧数字不删，留作沿革**，但以本节为准。
+
+### 已确认存在（实测 ✓ 非骨架）
+
+- 后端 43499：`leak/` 一族 **26 件**（候选匹配 · 碰撞桶/计数/等待 · futex 哈希 · 泄漏搜索/遍历 · 扫描界/几何 · snitch 八件）· `memory/`（凭据镜像 **68 行** · 堆几何/接缝 · write_encoder/layout/request）· `perf_*` · `race/`（**`pi_race.hpp` 151 行**：`RaceOutcome` + **`FutexSeam` 四个 syscall 包装** + 可换接缝的竞争本体 · `pi_window` · `race_runtime`）· `route/`（`policy_dispatch.hpp` **66 行** 编译期链 · multicast_policy · route_policy · lifecycle · route_status）· `seam/`（multicast_seam/window）· `session.hpp` · `steps/step_runner.hpp`（**62 行** 模板：`run_step_set(StepSetOrder, Action)`）
+- 终端层：`terminal/execution.{hpp,cpp}`（**82 + 56 行**：`FinishMoment` · `FinishDeclaration` · `ExecResult` · `run_payload(path)`）· `payload` · `payload_store`
+- 表与门禁：`chain_catalog`（**12 行链**，实测）· `kind` · `step_catalog`（`StepSetOrder` + 三个 order）· `plan_gate` · `component_catalog`（`dispatch_target_of(row)`）· `attack_window` · `composition_root`
+- 已落地：ADR-0016 的表与判据 · C1 `StageResult` · C2 分派改依 `chain_catalog`
+
+### 缺口四项（**全是装配，不是重写攻击**）
+
+| # | 缺什么 | 实测依据 | 规模 |
+| --- | --- | --- | --- |
+| 1 | 43499 的 `Action`：给 `run_step_set` 用 | `run_step_set` 已泛型（62 行）；`pi_race` · `credential_image` · `heap_seam` · `write_encoder` **全在** | 小-中（胶水） |
+| 2 | `Pipeline<Backend, Terminal>` | 全树**仅一处提及**且是注释（`component_catalog.hpp:46`） | 小-中（`DispatchTarget` 正好是它的分支表） |
+| 3 | staged 计划 → 执行的传递 | `StagedPlan` 在 · `PlanOp` 在 · **中间那步没有** | 小 |
+| 4 | `main.cpp` 的生产路径驱动（**临时**，同批登记清理） | 入口现只有文档通道；探针已按清理表删除 | 小 |
+
+### 顺序与判据
+
+1 → 2 → 3 → 4。每项都要：**判据**（含具名拒绝与越界）+ **证伪实验**（造错 ⇒ 以预期方式失败 ⇒ 撤回 ⇒ 核零残留 ⇒ **删被测二进制**）+ 四处接线 + 先 lint 再门禁 + 提交。第 4 项另需**同批登记清理计划**（本仓硬规矩）。
+
+**真机判据（用户口径）**：**成功启动 kernelsu 获取 root**。链路跑通但未拿到 root **不算**达成。
