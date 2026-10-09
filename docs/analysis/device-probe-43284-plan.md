@@ -1,6 +1,8 @@
 # 最小临时写路径（43284 真机探针）设计稿
 
 > 2026-10-09 · Lead · 状态：待认可（L 级改动，按规矩先设计后动手）
+>
+> 本件是**待批事项 1**（见 `docs/analysis/pending-rulings.md`）。命令级清单见 `device-probe-43284-checklist.md`。
 
 ## 1 为什么需要它（实测依据）
 
