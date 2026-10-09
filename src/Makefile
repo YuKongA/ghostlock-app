@@ -64,12 +64,14 @@ LAYER_HEADERS := \
   core/terminal/payload.hpp \
   core/terminal/payload_store.hpp \
   core/terminal/payload_store.cpp \
+  core/terminal/execution.hpp \
+  core/terminal/execution.cpp \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test
+EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -171,6 +173,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/terminal_payload_test
 	@echo "check: payload store (atomic, 0600)"
 	@$(BUILD_DIR)/terminal_store_test
+	@echo "check: declarative finishing (on_success, always, on_failure)"
+	@$(BUILD_DIR)/terminal_execution_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
@@ -235,6 +239,11 @@ $(BUILD_DIR)/terminal_payload_test: core/tests/terminal_payload_test.cpp \
 $(BUILD_DIR)/terminal_store_test: core/tests/terminal_store_test.cpp \
   core/terminal/payload_store.hpp core/terminal/payload_store.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) core/tests/terminal_store_test.cpp core/terminal/payload_store.cpp -o $@
+
+$(BUILD_DIR)/terminal_execution_test: core/tests/terminal_execution_test.cpp \
+  core/terminal/execution.hpp core/terminal/execution.cpp \
+  core/terminal/payload_store.hpp core/terminal/payload_store.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/terminal_execution_test.cpp core/terminal/execution.cpp core/terminal/payload_store.cpp -o $@
 
 $(BUILD_DIR)/surface_stage_test: core/tests/surface_stage_test.cpp $(SCRIPT_SRCS) \
   core/script/staged_plan.hpp core/script/sandbox.hpp core/script/call_sink.hpp \
