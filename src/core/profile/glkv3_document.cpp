@@ -1,0 +1,168 @@
+/** @file profile/glkv3_document.cpp
+ *  Parsing the wire and reading the payload family out of it.
+ */
+#include "profile/glkv3_document.hpp"
+
+#include "profile/payload_keys.hpp"
+#include "support/sha256.hpp"
+
+namespace ghostlock::profile {
+    namespace {
+        /** Copy a caller key into a bounded buffer; false when it does not fit. */
+        bool copy_bounded(char *out, std::size_t capacity, std::string_view text) noexcept {
+            if (text.size() + 1U > capacity) {
+                return false;
+            }
+            for (std::size_t i = 0U; i < text.size(); ++i) {
+                out[i] = text[i];
+            }
+            out[text.size()] = '\0';
+            return true;
+        }
+
+        bool is_map(mpack_node_t node) noexcept {
+            return mpack_node_type(node) == mpack_type_map;
+        }
+
+        bool text_of(mpack_node_t node, const char **out, std::size_t *length) noexcept {
+            if (mpack_node_type(node) != mpack_type_str) {
+                return false;
+            }
+            *out = mpack_node_str(node);
+            *length = mpack_node_strlen(node);
+            return *out != nullptr;
+        }
+    }  // namespace
+
+    Document::~Document() noexcept { reset(); }
+
+    bool Document::is_open() const noexcept { return open_; }
+
+    std::uint64_t Document::schema() const noexcept { return schema_; }
+
+    void Document::reset() noexcept {
+        if (open_) {
+            mpack_tree_destroy(&tree_);
+            open_ = false;
+        }
+        schema_ = 0U;
+    }
+
+    DocumentVerdict Document::parse(const std::uint8_t *bytes, std::size_t size) noexcept {
+        reset();
+        if (bytes == nullptr || size == 0U) {
+            return DocumentVerdict::Invalid;
+        }
+        mpack_tree_init_data(&tree_, reinterpret_cast<const char *>(bytes), size);
+        mpack_tree_parse(&tree_);
+        if (mpack_tree_error(&tree_) != mpack_ok) {
+            mpack_tree_destroy(&tree_);
+            return DocumentVerdict::Invalid;
+        }
+        open_ = true;
+        const mpack_node_t schema_node =
+            mpack_node_map_cstr_optional(mpack_tree_root(&tree_), "schema");
+        if (mpack_node_type(schema_node) != mpack_type_uint) {
+            reset();
+            return DocumentVerdict::Invalid;
+        }
+        schema_ = mpack_node_uint(schema_node);
+        if (schema_ != kDocumentSchema) {
+            reset();
+            return DocumentVerdict::Invalid;
+        }
+        return DocumentVerdict::Ok;
+    }
+
+    DocumentVerdict Document::payload(std::string_view backend, std::string_view name,
+                                      PayloadEntry &out) const noexcept {
+        out = PayloadEntry{};
+        if (!open_) {
+            return DocumentVerdict::Invalid;
+        }
+        /* The name rule comes first: an inadmissible name is not looked up at
+         * all, so the document is never asked about a path the tree owns. */
+        if (!payload_name_is_valid(name)) {
+            return DocumentVerdict::Missing;
+        }
+        char backend_key[64];
+        char name_key[64];
+        if (!copy_bounded(backend_key, sizeof(backend_key), backend) ||
+            !copy_bounded(name_key, sizeof(name_key), name)) {
+            return DocumentVerdict::Missing;
+        }
+        /* Walk backend.<backend>.payload.<name>; every step must be a map, and
+         * a step that is not is the same refusal as a step that is not there. */
+        mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
+        mpack_node_t node = mpack_node_map_cstr_optional(mpack_tree_root(tree), "backend");
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        node = mpack_node_map_cstr_optional(node, backend_key);
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        node = mpack_node_map_cstr_optional(node, "payload");
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        node = mpack_node_map_cstr_optional(node, name_key);
+        if (!is_map(node)) {
+            return DocumentVerdict::Missing;
+        }
+        /* An entry that exists must carry what binds it to bytes: the three
+         * keys are required together, and the kind must be one of the declared
+         * values. Anything else is the same refusal as an absent entry. */
+        const mpack_node_t bin = mpack_node_map_cstr_optional(node, kPayloadKeys[0]);
+        const mpack_node_t digest = mpack_node_map_cstr_optional(node, kPayloadKeys[1]);
+        const mpack_node_t size_node = mpack_node_map_cstr_optional(node, kPayloadKeys[2]);
+        const mpack_node_t kind = mpack_node_map_cstr_optional(node, kPayloadKeys[3]);
+        if (mpack_node_type(bin) != mpack_type_bin || mpack_node_type(digest) != mpack_type_str ||
+            mpack_node_type(size_node) != mpack_type_uint) {
+            return DocumentVerdict::Missing;
+        }
+        /* A wire string carries its length and no terminator, so it is copied by
+         * that length into a bounded buffer; a digest that is not exactly the 64
+         * characters, or a kind longer than the declared values, is the same
+         * refusal as an absent entry. */
+        const char *digest_text = nullptr;
+        std::size_t digest_length = 0U;
+        if (!text_of(digest, &digest_text, &digest_length) ||
+            digest_length != support::kSha256HexBytes - 1U ||
+            digest_length + 1U > sizeof(out.sha256)) {
+            return DocumentVerdict::Missing;
+        }
+        for (std::size_t i = 0U; i < digest_length; ++i) {
+            out.sha256[i] = digest_text[i];
+        }
+        out.sha256[digest_length] = '\0';
+        if (!support::sha256_text_is_well_formed(out.sha256)) {
+            return DocumentVerdict::Missing;
+        }
+        const char *kind_text = nullptr;
+        std::size_t kind_length = 0U;
+        if (!text_of(kind, &kind_text, &kind_length) ||
+            kind_length + 1U > sizeof(out.kind)) {
+            return DocumentVerdict::Missing;
+        }
+        for (std::size_t i = 0U; i < kind_length; ++i) {
+            out.kind[i] = kind_text[i];
+        }
+        out.kind[kind_length] = '\0';
+        if (!payload_kind_is_declared(std::string_view(out.kind, kind_length))) {
+            return DocumentVerdict::Missing;
+        }
+        const std::uint8_t *bytes =
+            reinterpret_cast<const std::uint8_t *>(mpack_node_bin_data(bin));
+        const std::size_t size = mpack_node_bin_size(bin);
+        if (bytes == nullptr || size == 0U) {
+            return DocumentVerdict::Missing;
+        }
+        if (mpack_node_uint(size_node) != static_cast<unsigned int>(size)) {
+            return DocumentVerdict::Missing;
+        }
+        out.bytes = bytes;
+        out.size = size;
+        return DocumentVerdict::Ok;
+    }
+}  // namespace ghostlock::profile
