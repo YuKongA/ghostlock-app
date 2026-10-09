@@ -91,22 +91,21 @@ namespace ghostlock::profile {
             !copy_bounded(name_key, sizeof(name_key), name)) {
             return DocumentVerdict::Missing;
         }
-        /* Walk backend.<backend>.payload.<name>; every step must be a map, and
-         * a step that is not is the same refusal as a step that is not there. */
+        /* The wire keeps its segments in one flat map at the root, keyed by the
+         * dotted name; the backend token in the root is a token, not a container.
+         * The segment name comes from the one spelling the builder owns, so a
+         * reader and a writer cannot disagree about where a payload lives. */
         mpack_tree_t *tree = const_cast<mpack_tree_t *>(&tree_);
-        mpack_node_t node = mpack_node_map_cstr_optional(mpack_tree_root(tree), "backend");
-        if (!is_map(node)) {
+        const mpack_node_t sections =
+            mpack_node_map_cstr_optional(mpack_tree_root(tree), "sections");
+        if (!is_map(sections)) {
             return DocumentVerdict::Missing;
         }
-        node = mpack_node_map_cstr_optional(node, backend_key);
-        if (!is_map(node)) {
+        char segment[192];
+        if (!payload_segment(segment, sizeof(segment), backend_key, name_key)) {
             return DocumentVerdict::Missing;
         }
-        node = mpack_node_map_cstr_optional(node, "payload");
-        if (!is_map(node)) {
-            return DocumentVerdict::Missing;
-        }
-        node = mpack_node_map_cstr_optional(node, name_key);
+        const mpack_node_t node = mpack_node_map_cstr_optional(sections, segment);
         if (!is_map(node)) {
             return DocumentVerdict::Missing;
         }

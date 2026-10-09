@@ -125,6 +125,13 @@ namespace ghostlock::profile {
         return false;
     }
 
+    /** backend.<id>.payload.<name> into out: the one spelling of the segment
+     *  name, shared by the reader and the path builder so the two can never
+     *  disagree about where a payload lives. */
+    [[nodiscard]] bool payload_segment(char *out, std::size_t capacity,
+                                       std::string_view backend,
+                                       std::string_view name) noexcept;
+
     /** backend.<id>.payload.<name>.<key> into out; false when it does not fit
      *  or the name or key is not admissible (nothing is emitted then). */
     [[nodiscard]] bool payload_path(char *out, std::size_t capacity,

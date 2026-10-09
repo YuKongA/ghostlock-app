@@ -1,0 +1,12 @@
+segment	backend.cve_2026_43499.payload
+terminal	root_child
+terminal	umh_forward
+key	bin
+key	sha256
+key	size
+key	kind
+kind	plan
+kind	script
+kind	module
+suffix_max	16
+bare_name	rejected

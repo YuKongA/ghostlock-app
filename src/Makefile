@@ -70,6 +70,8 @@ LAYER_HEADERS := \
   core/profile/payload_keys.cpp \
   core/profile/glkv3_document.hpp \
   core/profile/glkv3_document.cpp \
+  core/tests/payload_manifest_test.cpp \
+  core/tests/payload-manifest.pin.tsv \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
@@ -106,6 +108,34 @@ $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surf
 
 $(BUILD_DIR)/surface_manifest_test: core/tests/surface_manifest_test.cpp core/contract/script_surface.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -DSURFACE_MANIFEST_PIN='"$(SURFACE_MANIFEST_PIN)"' core/tests/surface_manifest_test.cpp -o $@
+
+$(BUILD_DIR)/payload_manifest_test: core/tests/payload_manifest_test.cpp \
+  core/profile/payload_keys.hpp core/contract/kind.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -DPAYLOAD_MANIFEST_PIN='"$(PAYLOAD_MANIFEST_PIN)"' core/tests/payload_manifest_test.cpp -o $@
+
+# The payload manifest: the lists the other end must not hand-copy (the segment,
+# the selectable terminals, the four keys, their kinds, the suffix bound). Same
+# pattern as the other manifests: the exporter's stdout is the artifact, and its
+# bare run compares that text byte for byte with the frozen pin.
+PAYLOAD_MANIFEST := $(BUILD_DIR)/payload-manifest.tsv
+PAYLOAD_MANIFEST_PIN := core/tests/payload-manifest.pin.tsv
+.PHONY: payload-manifest payload-manifest-regen
+
+$(PAYLOAD_MANIFEST): $(BUILD_DIR)/payload_manifest_test $(PAYLOAD_MANIFEST_PIN)
+	@$(BUILD_DIR)/payload_manifest_test > $@
+	@echo "payload-manifest: $@ ($$(wc -l < $@ | tr -d ' ') lines)"
+
+payload-manifest: $(PAYLOAD_MANIFEST)
+
+# Explicit only: prints the difference for review, then writes the pin.
+payload-manifest-regen: $(BUILD_DIR)/payload_manifest_test
+	@tmp=$$(mktemp "$${TMPDIR:-/tmp}/payload-manifest.XXXXXX"); \
+	$(BUILD_DIR)/payload_manifest_test --export-only > $$tmp; \
+	echo "payload-manifest-regen: diff (pin -> export)"; \
+	diff -u $(PAYLOAD_MANIFEST_PIN) $$tmp || true; \
+	cp $$tmp $(PAYLOAD_MANIFEST_PIN); \
+	rm -f $$tmp; \
+	echo "payload-manifest-regen: pin updated -- review the diff above and commit it with its cause"
 
 # The surface manifest (same pattern as combination/vocabulary/stepset manifests):
 # stdout is exactly the TSV, so it can be redirected into an artifact; the
@@ -183,6 +213,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/payload_keys_test
 	@echo "check: GLKv3 document (schema first, payload family read)"
 	@$(BUILD_DIR)/document_reader_test
+	@echo "check: payload manifest (the other end's lists, exported)"
+	@$(BUILD_DIR)/payload_manifest_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"

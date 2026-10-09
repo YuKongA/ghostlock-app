@@ -16,6 +16,7 @@
 
 #include "mpack.h"
 #include "profile/glkv3_document.hpp"
+#include "profile/payload_keys.hpp"
 #include "support/sha256.hpp"
 
 namespace {
@@ -23,6 +24,7 @@ namespace {
     using ghostlock::profile::document_verdict_name;
     using ghostlock::profile::DocumentVerdict;
     using ghostlock::profile::kDocumentSchema;
+    using ghostlock::profile::payload_segment;
     using ghostlock::profile::PayloadEntry;
     using ghostlock::support::sha256;
     using ghostlock::support::sha256_hex;
@@ -57,7 +59,8 @@ namespace {
         mpack_finish_map(&writer);
     }
 
-    /** Build a document carrying one payload; bytes are owned by the caller. */
+    /** Build a document carrying one payload, laid out the way the encoder lays
+     *  one out: the root holds the schema and a flat map of dotted segments. */
     char *build(std::uint64_t schema, const char *name, std::uint64_t declared_size,
                 const char *kind, std::size_t *out_size) {
         char *data = nullptr;
@@ -67,18 +70,19 @@ namespace {
         mpack_start_map(&writer, 2U);
         mpack_write_cstr(&writer, "schema");
         mpack_write_uint(&writer, schema);
-        mpack_write_cstr(&writer, "backend");
-        mpack_start_map(&writer, 1U);
-        mpack_write_cstr(&writer, kBackend);
-        mpack_start_map(&writer, 1U);
-        mpack_write_cstr(&writer, "payload");
+        mpack_write_cstr(&writer, "sections");
         mpack_start_map(&writer, name == nullptr ? 0U : 1U);
         if (name != nullptr) {
-            mpack_write_cstr(&writer, name);
+            /* The segment name comes from the authority, never spelled here. A
+             * name the rule does not admit has no segment, so it is written raw:
+             * the document then really contains it, which is what makes a reader
+             * that refuses it refuse by rule rather than by absence. */
+            char segment[192];
+            const bool built = payload_segment(segment, sizeof(segment),
+                                               std::string_view(kBackend), std::string_view(name));
+            mpack_write_cstr(&writer, built ? segment : name);
             write_entry(writer, declared_size, kind);
         }
-        mpack_finish_map(&writer);
-        mpack_finish_map(&writer);
         mpack_finish_map(&writer);
         mpack_finish_map(&writer);
         expect(mpack_writer_destroy(&writer) == mpack_ok, "the document was written");
