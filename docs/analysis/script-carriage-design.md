@@ -72,6 +72,8 @@ native 的 `plan-missing` = **文档未携带 plan 交付物** ✓；裁定第 5
 | 无 plan 交付物 | 具名 `plan-missing` ✓ |
 | **控制组（证伪）** | 去掉「超限判定」⇒ 第三条用例必须红 ✓ |
 
+> 脚本调用如何下落为 op（三条规则）见 [op-fall-rule](op-fall-rule.md)。
+
 ## 5 待评审问题
 
 1. 名称 `<terminal>_plan` 是否恰当（家族规则要求以 terminal token 开头；是否应改为裸 terminal token）？
