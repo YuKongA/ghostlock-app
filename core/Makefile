@@ -40,7 +40,13 @@ RUNTIME_SRCS := src/main.cpp src/contract/kmi_catalog.cpp src/contract/contract.
   src/profile/plan_delivery.cpp \
   src/support/sha256.cpp \
   src/backend/cve_2026_43284/session_frame.cpp \
-  src/pipeline/access_factory.cpp
+  src/pipeline/access_factory.cpp \
+  src/pipeline/run_pipeline_temp.cpp \
+  src/backend/cve_2026_43284/seam/real_splice_io.cpp \
+  src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp \
+  src/backend/cve_2026_43284/ipsec/aes256.cpp \
+  src/backend/cve_2026_43499/abi.cpp \
+  src/support/hmac_sha256.cpp
 
 SKELETON_SRCS := src/main.cpp
 LAYER_HEADERS := \
@@ -190,6 +196,8 @@ LAYER_HEADERS := \
   src/tests/snitch_owner_test.cpp \
   src/backend/cve_2026_43284/seam/pagecache_door_linux.hpp \
   src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp \
+  src/pipeline/run_pipeline_temp.hpp \
+  src/pipeline/run_pipeline_temp.cpp \
   src/tests/pagecache_door_linux_test.cpp \
   src/tests/aes256_test.cpp \
   src/tests/pagecache_write_test.cpp \

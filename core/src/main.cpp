@@ -38,6 +38,14 @@
 #include <cerrno>
 #include <unistd.h>
 
+/** The temporary entry driver, defined in pipeline/run_pipeline_temp.cpp. TEMPORARY: its removal is
+ *  registered in docs/analysis/device-probe-43284-checklist.md together with its development inputs.
+ *  Declared at file scope, not inside the anonymous namespace below, where the name would nest. */
+namespace ghostlock::pipeline {
+    [[nodiscard]] int run_pagecache_path_temp(const std::uint8_t *document_bytes,
+                                              std::size_t document_length) noexcept;
+}  // namespace ghostlock::pipeline
+
 #include "profile/run_plan.hpp"
 #include "backend/cve_2026_43499/race/race_runtime.hpp"
 
@@ -180,6 +188,17 @@ namespace {
             ghostlock::profile::DocumentVerdict::Ok) {
             std::printf("document-invalid\n");
             return 2;
+        }
+        /* TEMPORARY: one page cache path from the document on stdin to the device. Called before the
+         *  plan resolves because it reads the session frame, which follows the document, and does not
+         *  read the document itself beyond its section. A run without a frame returns 3 from here and
+         *  behaves exactly as before. Removal is registered in the checklist. */
+        {
+            const int temp_code =
+                ghostlock::pipeline::run_pagecache_path_temp(document_bytes, length);
+            if (temp_code != 3) {
+                return temp_code;
+            }
         }
         const ghostlock::profile::RunPlanResult resolved =
             ghostlock::profile::resolve_run_plan(document);
