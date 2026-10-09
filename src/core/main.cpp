@@ -28,6 +28,7 @@
 #include "memory/target_profile.hpp"
 #include "contract/kmi_catalog.hpp"
 #include "profile/document_pairs.hpp"
+#include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "session/device_facts.hpp"
 #include "session/device_facts_linux.hpp"
 #include "profile/glkv3_document.hpp"
@@ -148,12 +149,45 @@ namespace {
         std::printf("executor-unavailable\n");
         return settings == ghostlock::race::SettingsVerdict::Ok ? 4 : 5;
     }
+    /** The read-only diagnostic: what a module says about itself, and whether it
+     *  belongs to the kernel this is running on. Nothing is loaded, nothing is
+     *  written: the module is read and the answer is printed. */
+    int report_module(const char *path) {
+        static std::uint8_t module[64U * 1024U * 1024U];
+        std::FILE *file = std::fopen(path, "rb");
+        if (file == nullptr) {
+            std::printf("param-invalid\n");
+            return 2;
+        }
+        const std::size_t length = std::fread(module, 1U, sizeof(module), file);
+        std::fclose(file);
+        const ghostlock::backend::cve_2026_43284::lkm::ModuleFacts facts =
+            ghostlock::backend::cve_2026_43284::lkm::read_module_facts(module, length);
+        const ghostlock::session::DeviceFacts device =
+            ghostlock::session::read_device_facts<ghostlock::session::LinuxDeviceFactsSource>();
+        if (facts.error != ghostlock::backend::cve_2026_43284::lkm::ModuleReadError::None) {
+            std::printf("module bytes=%zu %s\n", length,
+                        ghostlock::backend::cve_2026_43284::lkm::module_read_error_name(facts.error));
+            return 3;
+        }
+        const bool belongs =
+            device.has_release &&
+            ghostlock::backend::cve_2026_43284::lkm::vermagic_belongs_to(facts.vermagic,
+                                                                       device.release);
+        std::printf("module name=%s vermagic=%s\n", facts.name, facts.vermagic);
+        std::printf("device release=%s belongs=%s\n",
+                    device.has_release ? device.release : "(none)", belongs ? "yes" : "no");
+        return belongs ? 0 : 4;
+    }
 }  // namespace
 
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--ghostlock-app-call") == 0) {
             return report_plan();
+        }
+        if (std::strcmp(argv[i], "--probe-cve-2026-43284") == 0) {
+            return i + 1 < argc ? report_module(argv[i + 1]) : 2;
         }
     }
     return report_identity();

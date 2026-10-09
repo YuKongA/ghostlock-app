@@ -34,6 +34,7 @@ MPACK_CFLAGS := -std=c99 -w
 # not in it yet (its Lua core would have to be cross-built too), and neither is
 # the executor: the entry resolves a document and says what it would run.
 RUNTIME_SRCS := core/main.cpp core/contract/kmi_catalog.cpp \
+  core/backend/cve_2026_43284/lkm/module_facts.cpp \
   core/profile/glkv3_document.cpp core/profile/payload_keys.cpp \
   core/profile/document_pairs.cpp core/profile/run_plan.cpp \
   core/support/sha256.cpp
