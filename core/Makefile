@@ -838,7 +838,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@win=$$(grep -cE '\{"window\.' src/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' src/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
-	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp'); do \
+	@dup=$$(for f in $$(find . -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp'); do \
 	  if tr -d '\n' < "$$f" | grep -qE 'backend.*writeop.*settle.*handoff'; then echo "$$f"; fi; \
 	done | wc -l | tr -d ' '); \
 	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
