@@ -25,7 +25,7 @@
 
 ## §3 与 P2 / P4 的接口
 
-- **唯一通路**：脚本 → `OpRegistry`（`op(token, 参数表)`）—— token 必须 ∈ `OpRegistry`（[P4](composition-layer-p4-spec.md) §2）；**无第二条调用路径**。
+- **唯一通路**：脚本调用（**`contract::kSurface` 的 7 条**，用户批准）→ staged 计划（surface 条目）→ **下落**为 `OpRegistry` 的 op 条目（**仅计划侧**，见 [lua-surface-design](lua-surface-design.md)）→ `plan_gate`；**到 op 只有这一条通路**，且 **`op(...)`/`window.*` 不是脚本可见名**（冻结判据：`surface_has_no_window_prefixed_names()` + `make -C src check` 的 grep）。token 必须 ∈ `OpRegistry`（[P4](composition-layer-p4-spec.md) §2）。
 - **`plan_gate` 调用点**：`state_from` **之后**、`Backend::run` **之前**（[P4](composition-layer-p4-spec.md) §3 / `b1b2 §B1.2`）；gate **只做二值判定**、只读 `DeviceFacts`。
 - **窗口内零 Lua**：由 `AttackWindow` **结构性**保证（该层不引用 Lua 运行时）；`seam` **纯静态**（只能声明在操作之间）；运行期一旦观测到窗口内调用 ⇒ 缺陷 `seam-in-pi-window`。
 - **wire 通道**：脚本正文 **>256 B**（`kMaxStringBytes`）⇒ 必须走 `bin`；单脚本插入段 **≤64 KB**；其余键仍拒 `bin`（`b1b2 §B2.5`）。

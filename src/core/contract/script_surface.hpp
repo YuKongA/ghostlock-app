@@ -4,7 +4,10 @@
  *  is, and which layer implements it. MECHANISM ONLY -- this file carries no
  *  sandbox semantics, no loader, no Lua reference and NO HANDLE TABLE (ADR-0010
  *  is still Proposed; the handle table itself belongs to the A6 sandbox batch).
- *  It is the single place the surface names are spelled.
+ *  It is the single place the surface names are spelled, and it is the ONLY face
+ *  a script may reach. The op tokens in contract/op_registry.hpp are the plan
+ *  side's vocabulary, consumed by pipeline::plan_gate: a script never spells them,
+ *  and the window.* names above all are excluded by the frozen criterion below.
  *
  *  Placement: contract/ (not script/) because the table is neutral vocabulary
  *  that the script layer, the loader and the tests all read; script/ will own

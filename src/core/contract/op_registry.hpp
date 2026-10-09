@@ -1,14 +1,22 @@
 #pragma once
 /** @file contract/op_registry.hpp
- *  P4 step 4: the op registry -- the script's SOLE interface authority.
+ *  P4 step 4: the op registry -- the PLAN side's op vocabulary and parameter
+ *  bounds, consumed by pipeline::plan_gate and by nothing else. This table is NOT
+ *  the script's visible face: a script reaches only the seven names contract::kSurface
+ *  declares (user-approved, A6 baseline item 3), and the names in this table --
+ *  window.* above all -- are exactly the ones a script may never spell (the frozen
+ *  criterion surface_has_no_window_prefixed_names plus the grep in make -C src
+ *  check). A script's calls are recorded as staged surface entries and fall to
+ *  these ops on the plan side; there is no op(...) entry point in the sandbox.
  *
  *  Authority: docs/analysis/composition-layer-p4-spec.md section 2.
  *
  *  Rules this header implements:
  *   - one constexpr table, no runtime registration;
  *   - compile-time uniqueness of tokens and of the table's shape;
- *   - the script's op(token) must resolve here and nowhere else: the tokens
- *     below appear exactly once in src/core (checked by the gate's grep);
+ *   - an op token resolves here and nowhere else: the tokens below appear exactly
+ *     once in src/core (checked by the gate's grep). The reader is the plan side,
+ *     not the script: see the note above on which table a script may reach;
  *   - ParamSpec.max is the ONLY upper bound for a window parameter. The gate
  *     never invents a bound, and never hardcodes which parameter is required:
  *     it reads the flag from the table (R10 may change the flags, not the code).
