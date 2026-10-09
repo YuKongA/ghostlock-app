@@ -55,3 +55,23 @@
 **验收（每片都要满足）**：host 构建 0 告警 · `make -C core check` 绿 · 不引入任何可变全局 · 缝的测试保持绿（它钉的是决策，不应因窗口变真而改）
 
 > 第二个 backend（43284）的实测规模、写面、上下文与耦合数：见同目录 `seam-port-design-43284.md`。
+
+## 11 三件待裁：Lead 的裁定（据证据，不等指令）
+
+### ① `race.fast_repair` 的运行期 latch —— 不进窗口体
+
+证据：它服务的是 **steps 层的 W2 快速修复**（旧 `steps.cpp:89,99`），旧读者是 **waiter 线程**（`threads.cpp:44`：fast 则固定 20 ms 超时，否则 `race_route_wait_ms()`）⇒ 它是**竞速时序的两档选择**，不是窗口内的写。
+
+裁定：**不搬进窗口**，也**不凭旧默认值带回**（ADR-0015：这类值由脚本给）。⇒ 落地前它的**新归属**要定：要么成为脚本可设的**时序档**，要么明确**不保留**并记录；在此期间**保持未移植**（不静默等价）。
+
+### ② 暖场轮：**保留**
+
+证据：旧 `M:119` 有 `attempt < arm_sequence` 的暖场轮（只发 setsockopt、**不 arm** consumer），而新件 `run_multicast_handshake`（`multicast_policy.hpp:85-98`）**每轮都 arm** ⇒ 行为**不等价**。
+
+裁定：**保留暖场**。理由是本仓既有的判据顺序 —— **旧行为是真机验证过的**，新件尚未；在真机证明之前，**不得**以更简单为理由改变竞速时序。⇒ 切片 2 必须把暖场轮做回（`MulticastLimits` 缺 `arm_sequence` 字段 ⇒ 同批补字段，并把「0 = 用代码内默认」改为**具名拒绝**，因为 `pi_window.hpp:45` 禁止代码内调参数）。
+
+### ③ 写怎么落到那次写：**改的是调用对象，不是缝的形状**
+
+队友的实测纠正了我 §4.3 的说法：multicast 的 route 体**不吃 `WriteRequest`**（`M:44` 实测 `(void) request;`），request 由 **race 侧线程**读（`pi_race.h:87`、`threads.cpp:33`）。
+
+裁定：**缝的形状不变**（`Window::write_word(address, value, offset)` 仍然对），**变的只是谁实现它** —— 实现者要落到 **race 侧那次写**（它持有 address/value 与 fake lock 的原语），而**不是**调 `do_multicast_fake_lock_route`。⇒ 我 §4.3 的那句就此作废（本节即其更正），切片 2 的取材目标是 **race 侧的写路径**。
