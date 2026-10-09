@@ -32,3 +32,14 @@
 
 - **事实**：`0014-kernel-memory-only-surface.md`（Accepted，用户裁定）写的是 `contract::KernelMemory`；代码里是 `contract::KernelAccess`。
 - **建议**：一次重命名（契约 + 两 backend + 工厂 + 测试）。
+
+## 6 记项：一处配额违规（不是本批的，不擅改）
+
+- **事实**：`docs/development/design-review-principles.md` 为 **9692 B**，超过本仓文档上限 8192。它是 `MASTER-PLAN` 引用的高权威文档（design-critic 判据 v0.2），因此不由本批擅自拆改，登记待其 owner 或专门一批处理。
+
+## 7 本次索引一致性扫描的结论（已核，可复核）
+
+- **ADR 索引**：原表停在 0010 而目录已到 0016，且表头自述要求新增 ADR 同批登记 ⇒ 已补齐至 16 行（`108899ad`）。
+- **archive 两处**：`README.md` 的自述是目录分工，`INDEX-device-gates.md` 自述为有界的子索引（≤8 KiB）⇒ 数量少于文件数属设计如此，**不是缺漏，未改**。
+- **`MASTER-PLAN` 引用**：所引两份文档均存在，无悬空引用。
+- 方法说明：判定依据是各文件**自述的目的**，不是行数与文件数的差额。差额只能提示怀疑，不能定案。
