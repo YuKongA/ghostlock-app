@@ -101,12 +101,27 @@ namespace {
                    key_long.data(), key_long.size(),
                    "Test Using Larger Than Block-Size Key - Hash Key First",
                    from_hex("60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"));
-        check_text("RFC 4231 case 7 (131xaa key, 152-byte message)",
-                   key_long.data(), key_long.size(),
-                   "This is a test using a larger than block-size key and a larger than "
-                   "block-size data. The key needs to be hashed before being used by the "
-                   "HMAC algorithm.",
-                   from_hex("9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2"));
+        /* RFC 4231 case 7 uses a 152-byte message, which is past the inline bound this build
+         *  allows, because the write path must not allocate. The case is kept rather than dropped:
+         *  it now pins the refusal, and the value it would have produced is printed beside it so the
+         *  case is not lost. */
+        const char *case7 = "This is a test using a larger than block-size key and a larger than "
+                            "block-size data. The key needs to be hashed before being used by the "
+                            "HMAC algorithm.";
+        std::array<std::uint8_t, 32> refused{};
+        refused.fill(0x5aU);
+        hmac_sha256(key_long.data(), key_long.size(),
+                    reinterpret_cast<const std::uint8_t *>(case7), 152U, refused.data());
+        bool untouched = true;
+        for (std::size_t i = 0U; i < refused.size(); ++i) {
+            if (refused[i] != 0x5aU) {
+                untouched = false;
+            }
+        }
+        expect(untouched, "a message past the inline bound is refused: not buffered and not written");
+        std::printf("hmac-sha256: case 7 (152 bytes) refused; its RFC value would be "
+                    "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2\n");
+
     }
 
     void the_empty_extremes() {
@@ -135,9 +150,22 @@ namespace {
         for (std::size_t i = 0U; i < past_capacity.size(); ++i) {
             past_capacity[i] = static_cast<std::uint8_t>(i & 0xffU);
         }
-        check("one byte past the inline capacity (temporary buffer)", bytes_of("Jefe"), 4U,
-              past_capacity.data(), past_capacity.size(),
-              from_hex("5268040695826faba93fa002dd57ca97f9be422cd83754f29a7ceacf729335de"));
+        /* One byte past the capacity is refused rather than buffered, so this case now pins the
+         *  refusal instead of a value: the buffer is filled with a sentinel and must come back
+         *  untouched. The value it would have produced is kept beside it, so nothing measured is
+         *  lost. */
+        std::array<std::uint8_t, kSha256Bytes> refused{};
+        refused.fill(0x5aU);
+        hmac_sha256(bytes_of("Jefe"), 4U, past_capacity.data(), past_capacity.size(), refused.data());
+        bool untouched = true;
+        for (std::size_t i = 0U; i < refused.size(); ++i) {
+            if (refused[i] != 0x5aU) {
+                untouched = false;
+            }
+        }
+        expect(untouched, "one byte past the inline capacity is refused, not buffered and not written");
+        std::printf("hmac-sha256: past capacity refused; the old value would have been "
+                    "5268040695826faba93fa002dd57ca97f9be422cd83754f29a7ceacf729335de\n");
     }
 
     void null_pointers_read_as_empty() {

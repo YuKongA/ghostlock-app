@@ -75,3 +75,21 @@ EXIT=0
 ⇒ 新写法：`compute_icv(datagram, size, hmac_key, icv_len, out)` = 调 `support::hmac_sha256(hmac_key, key_len, datagram, size, full_mac)` ✓ 然后**按 `icv_len` 截断复制**到 `out` ✓ ⇒ 与旧树「先写满 32 字节、由 ESP 层截断」的分工**一致** ✓。
 
 ⇒ **顺序**：ECB（已交 ✓）⇒ HMAC（在跑 ✓）⇒ 两件齐即可接 ② 与 ① ✓ ⇒ 然后 43284 的写**第一次是合法 ESP** ✓。
+
+## 23 CBC 那一件的验收判据（已独立算出，供下一件用）
+
+与 AES/HMAC 同一做法：**先算再说** ✓ 用本机 OpenSSL 算 ✓ 并与 NIST 的原值核对 ✓。
+
+```
+key = 603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4
+iv  = 000102030405060708090a0b0c0d0e0f
+PT1 = 6bc1bee22e409f96e93d7e117393172a
+CT1 = f58c4c04d6e5f1ba779eabfb5f7bfbd6      ← 与 NIST SP 800-38A F.2.5 / F.2.6 原值一致 ✓
+PT2 = ae2d8a571e03ac9c9eb76fac45af8e51
+CT(2 blocks) = f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d
+                └── 第二块 9cfc4e967edb808d679f777bc6702c7d ⇒ 链式关系被验过 ✓
+```
+
+⇒ 下一件（CBC）的判据 = **单块向量 + 双块链式向量 + 反向解密 + 非块长拒绝** ✓（后一条正是 ECB 那件**做不到**而 CBC **能做**的 ✓ —— 这也是当初把判据拆分的原因 ✓）。
+
+**状态说明**：写体的 `esp_icv` 已接上真 HMAC ✓（`ef2f27f8` ✓），判据是我算的 `198a607ebc…` ✓ ⇒ **43284 的写四段全真** ✓。HMAC 那件里「>128 字节走临时 vector」的收拢（改为**上界具名拒绝** ✓）正在做 ✓ ⇒ 树里那条路径**今天不可达**（写体只传 16 字节 ✓）⇒ 属**潜在**违规 ✓ 而非活跃 ✓。

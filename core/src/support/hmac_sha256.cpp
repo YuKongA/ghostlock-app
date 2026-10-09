@@ -14,7 +14,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 
 namespace ghostlock::support {
     namespace {
@@ -65,6 +64,13 @@ namespace ghostlock::support {
         if (msg == nullptr) {
             msg_len = 0U;
         }
+        /* A message past the inline bound is refused rather than given a temporary buffer. This runs
+         *  from the write path, and the window's rules forbid allocating inside the window body, so
+         *  the bound is a property of where this is called from rather than a performance choice. A
+         *  streaming hash would lift it and is a later option, not this piece. */
+        if (msg_len > kHmacInlineMessageBytes) {
+            return;
+        }
 
         std::array<std::uint8_t, kBlockBytes> key_block{};
         normalize_key(key, key_len, key_block.data());
@@ -76,29 +82,18 @@ namespace ghostlock::support {
             outer_pad[i] = static_cast<std::uint8_t>(kOuterPadByte ^ key_block[i]);
         }
 
-        /* The inner hash: H(ipad || msg). */
+        /* The inner hash: H(ipad || msg), assembled on the stack. The bound was checked above, so
+         *  this is the only path and it needs no buffer of its own. */
         const std::size_t inner_len = kBlockBytes + msg_len;
         std::array<std::uint8_t, kBlockBytes + kHmacInlineMessageBytes> inline_input{};
-        std::vector<std::uint8_t> heap_input;
         Sha256Digest inner{};
-        if (msg_len <= kHmacInlineMessageBytes) {
-            for (std::size_t i = 0U; i < kBlockBytes; ++i) {
-                inline_input[i] = inner_pad[i];
-            }
-            for (std::size_t i = 0U; i < msg_len; ++i) {
-                inline_input[kBlockBytes + i] = msg[i];
-            }
-            inner = sha256(inline_input.data(), inner_len);
-        } else {
-            heap_input.resize(inner_len);
-            for (std::size_t i = 0U; i < kBlockBytes; ++i) {
-                heap_input[i] = inner_pad[i];
-            }
-            for (std::size_t i = 0U; i < msg_len; ++i) {
-                heap_input[kBlockBytes + i] = msg[i];
-            }
-            inner = sha256(heap_input.data(), heap_input.size());
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            inline_input[i] = inner_pad[i];
         }
+        for (std::size_t i = 0U; i < msg_len; ++i) {
+            inline_input[kBlockBytes + i] = msg[i];
+        }
+        inner = sha256(inline_input.data(), inner_len);
 
         /* The outer hash: H(opad || inner). */
         std::array<std::uint8_t, kBlockBytes + kSha256Bytes> outer_input{};
@@ -117,9 +112,6 @@ namespace ghostlock::support {
         wipe(inner_pad.data(), inner_pad.size());
         wipe(outer_pad.data(), outer_pad.size());
         wipe(inline_input.data(), inline_input.size());
-        if (!heap_input.empty()) {
-            wipe(heap_input.data(), heap_input.size());
-        }
         wipe(&inner, sizeof(inner));
         wipe(outer_input.data(), outer_input.size());
         wipe(&mac, sizeof(mac));

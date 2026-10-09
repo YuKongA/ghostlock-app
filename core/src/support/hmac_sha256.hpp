@@ -5,9 +5,12 @@
  *  The 43284 ESP write needs an ICV over one datagram; this is that MAC. The
  *  full kSha256Bytes bytes are written and the ESP layer truncates to its
  *  frame's icv_len. Neutral by construction: no I/O, no globals, no state
- *  outside the arguments; messages up to kHmacInlineMessageBytes are assembled
- *  on the stack, and the device path (an ESP-in-UDP datagram is at most 72
- *  bytes) never allocates.
+ *  outside the arguments, and no allocation on any path -- a message longer
+ *  than kHmacInlineMessageBytes is refused rather than buffered, because this
+ *  is called from the write path and the window's rules forbid allocating
+ *  inside the window body. The device path (an ESP-in-UDP datagram is at most
+ *  72 bytes) is well inside the bound; a streaming hash would lift it and is a
+ *  later option.
  *
  *  Null key or message pointers are treated as empty inputs. Key pads, a hashed
  *  key and both intermediate digests are wiped before return.
