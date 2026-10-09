@@ -16,6 +16,7 @@
 #include <cstdint>
 
 #include "backend/cve_2026_43284/ipsec/aes256.hpp"
+#include "support/hmac_sha256.hpp"
 
 namespace ghostlock::backend::cve_2026_43284::seam {
     /** The block the write deals in, which is also the size of a vector. */
@@ -30,10 +31,25 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         return ipsec::aes256_ecb_decrypt(key, old_block, out);
     }
 
-    /** The integrity check, over the datagram, truncated to the length the frame states. Not
-     *  defined yet: its core is the HMAC that is being ported, and this declaration exists so the
-     *  call site can be written without a stand-in value taking its place. */
-    [[nodiscard]] bool esp_icv(const std::uint8_t *datagram, std::size_t size,
-                               const std::uint8_t key[32], std::uint8_t icv_len,
-                               std::uint8_t *out, std::size_t capacity) noexcept;
+    /** The integrity check: the full MAC of the datagram, truncated to the length the frame states.
+     *  The old tree writes all thirty-two bytes and lets this layer cut them, and that split is kept,
+     *  because the two halves have different reasons to exist: the MAC is a standard, the length is a
+     *  field of the session. A length of zero is refused rather than read as asking for no check, and
+     *  a length longer than the MAC is refused rather than padded with anything. */
+    [[nodiscard]] inline bool esp_icv(const std::uint8_t *datagram, std::size_t size,
+                                      const std::uint8_t key[32], std::uint8_t icv_len,
+                                      std::uint8_t *out, std::size_t capacity) noexcept {
+        if (datagram == nullptr || key == nullptr || out == nullptr) {
+            return false;
+        }
+        if (icv_len == 0U || icv_len > 32U || static_cast<std::size_t>(icv_len) > capacity) {
+            return false;
+        }
+        std::uint8_t full[32] = {};
+        support::hmac_sha256(key, 32U, datagram, size, full);
+        for (std::size_t i = 0U; i < static_cast<std::size_t>(icv_len); ++i) {
+            out[i] = full[i];
+        }
+        return true;
+    }
 }  // namespace ghostlock::backend::cve_2026_43284::seam
