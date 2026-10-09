@@ -234,3 +234,22 @@ Parks here until the owner requeues it onto the target word。
 
 因此 `steps ... race=refused` 有两重原因，都已定位。要真落笔，还需内核侧的参与者与内核侧的字；
 本地字只能证明机制本身。
+
+## 续（2026-10-09）：三步全过、终端如实拒绝，以及为什么跑了不等于提权
+
+设备上的最终状态：
+
+    run-temp: step waiters started=3 parked=3 of=3
+    run-temp: steps ok=1 stage=3 request=ok encode=ok race=disarmed
+    run-temp: step results ok=1 ran=3 stopped_at=0
+    run-temp: step waiter results -99 0 0 (0 means it was requeued)
+    run-temp: terminal gate ever_rooted=0 uid=2000
+    run-temp: w2 never rooted a child; the terminal is not dispatched
+    EXIT=21；SELinux 前后都是 Enforcing；uid 仍是 2000(shell)
+
+不要把 steps ok=1 读成提权成功。它说的是三步都执行并被 disarm 收尾，而 W1/W2/W3 现在对着的是
+本进程的两个本地字（临时覆盖，已登记），所以它们过了却不改任何内核字段。终端的门 ever_rooted 用的
+就是这一点的可观测量：uid 仍非零，于是它用旧树的原话具名拒绝，不执行任何东西。
+
+要让这三步真的改内核字段，需要的是目标字成为内核里真被等待的 futex 字，且覆盖发生在内核为等待者
+建对象的那一瞬。这是本目标剩下的实质工作，而不是接线。根未拿到。

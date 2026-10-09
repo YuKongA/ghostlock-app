@@ -110,7 +110,9 @@ namespace {
         }
         static int cmp_requeue_pi(std::uint32_t *chain, std::uint32_t *target) noexcept {
             note("cmp_requeue_pi");
-            return (chain == nullptr || target == nullptr) ? -1 : 0;
+            /* The kernel moved one waiter. This is the kernel own evidence, and it is what the
+             *  owner side reads: a double that reports none is refused for having none. */
+            return (chain == nullptr || target == nullptr) ? -1 : 1;
         }
         static int unlock_pi(std::uint32_t *word) noexcept {
             note("unlock_pi");

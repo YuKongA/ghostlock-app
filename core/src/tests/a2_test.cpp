@@ -134,7 +134,13 @@ namespace {
         WindowGuard guard;
         guard.enter(ExitPath::Success);
         race.prepare(&chain, &target);
-        expect(race.run(guard) == RaceOutcome::Running, "a prepared race runs inside an open window");
+        /* No waiter is parked on the chain here, so the kernel moves none and the attempt is
+         *  refused. That is the proven shape: the owner locks the target, drives the requeue,
+         *  and the count of waiters it moved is the evidence. The success path needs a waiter,
+         *  and it was proven on the device -- owned=0 requeued=1 released=0 waiter=0 -- in the
+         *  entry that runs one. */
+        expect(race.run(guard) == RaceOutcome::Refused,
+               "an open window without a waiter is refused, because the kernel moved none");
         race.disarm();
         expect(race.outcome() == RaceOutcome::Disarmed, "disarm ends the attempt");
         race.destroy();
