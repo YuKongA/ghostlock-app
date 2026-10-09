@@ -7,6 +7,7 @@
  *  nothing else -- no retry, no fallback, no interpreting what a failure means.
  */
 #include <cerrno>
+#include <ctime>
 #include <cstddef>
 #include <cstdint>
 #include <pthread.h>
@@ -40,6 +41,17 @@ namespace ghostlock::backend::cve_2026_43499::leak {
             errno = 0;
             const long rc = ::syscall(SYS_futex, word, FUTEX_WAIT_PRIVATE,
                                       static_cast<std::uint32_t>(expected), nullptr, nullptr, 0U);
+            return SeamResult{static_cast<std::int64_t>(rc), errno};
+        }
+
+        static SeamResult futex_wait_private_until(std::uint32_t *word, std::uint32_t expected,
+                                                    std::int64_t timeout_us) noexcept {
+            errno = 0;
+            struct timespec budget {};
+            budget.tv_sec = static_cast<time_t>(timeout_us / 1000000);
+            budget.tv_nsec = static_cast<long>((timeout_us % 1000000) * 1000);
+            const long rc = ::syscall(SYS_futex, word, FUTEX_WAIT_PRIVATE,
+                                      static_cast<std::uint32_t>(expected), &budget, nullptr, 0U);
             return SeamResult{static_cast<std::int64_t>(rc), errno};
         }
 

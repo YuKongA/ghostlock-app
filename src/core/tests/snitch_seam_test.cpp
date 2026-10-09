@@ -36,6 +36,7 @@ namespace {
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
             return SeamResult{0, 0};
         }
+        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
             return SeamResult{0, 0};
         }
@@ -53,6 +54,7 @@ namespace {
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
             return SeamResult{0, 0};
         }
+        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
             return SeamResult{0, 0};
         }
@@ -68,6 +70,7 @@ namespace {
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
             return SeamResult{0, 0};
         }
+        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
             return SeamResult{0, 0};
         }

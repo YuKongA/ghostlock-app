@@ -39,11 +39,14 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     /** A word the parent and its children share, and one they don't. */
     template <class Seam>
     concept SnitchSeam = requires(std::size_t bytes, void *address, std::uint32_t *word,
-                                  std::uint32_t expected, std::int32_t waiters, ThreadEntry entry,
+                                  std::uint32_t expected, std::int32_t waiters, std::int64_t timeout_us, ThreadEntry entry,
                                   void *argument, unsigned long handle) {
         { Seam::map_shared(bytes) } -> std::same_as<MapResult>;
         { Seam::unmap(address, bytes) } -> std::same_as<SeamResult>;
         { Seam::futex_wait_private(word, expected) } -> std::same_as<SeamResult>;
+        /* The same wait with a deadline: the parent has to give its cohort time, and it
+         *  wants to wake early the moment the count it watches changes. */
+        { Seam::futex_wait_private_until(word, expected, timeout_us) } -> std::same_as<SeamResult>;
         { Seam::futex_wake_private(word, waiters) } -> std::same_as<SeamResult>;
         { Seam::start_thread(entry, argument) } -> std::same_as<ThreadResult>;
         { Seam::join_thread(handle) } -> std::same_as<SeamResult>;

@@ -56,6 +56,7 @@ namespace {
         }
         static SeamResult unmap(void *, std::size_t) noexcept { ++unmaps; return SeamResult{0, 0}; }
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return SeamResult{0, 0}; }
+        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
             ++wakes;
             auto *count = reinterpret_cast<std::uint32_t *>(buffer + kCounterOffset);
