@@ -41,6 +41,12 @@ namespace ghostlock::backend::cve_2026_43499::route {
         std::int32_t max_attempts = 0;
         /** How long each hold lasts, in whatever unit the hold counts in. */
         std::int32_t arm_hold = 0;
+        /** How many opening attempts warm the route before the consumer is armed. The old handshake
+         *  sent the socket option on those rounds and did not arm, so a run without them is not the
+         *  same run: the behaviour came from the device side and is kept. Zero means the caller did
+         *  not say, which is a named refusal where it is consumed rather than a default here, since
+         *  the window rules forbid a tuning number living in the code. */
+        std::int32_t arm_sequence = 0;
     };
 
     /** How the handshake ended. */
