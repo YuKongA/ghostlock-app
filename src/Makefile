@@ -74,13 +74,15 @@ LAYER_HEADERS := \
   core/tests/payload-manifest.pin.tsv \
   core/contract/step_catalog.hpp \
   core/tests/step_catalog_test.cpp \
+  core/memory/write_request.hpp \
+  core/tests/write_request_test.cpp \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
-  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test
+  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -111,6 +113,10 @@ $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surf
 
 $(BUILD_DIR)/surface_manifest_test: core/tests/surface_manifest_test.cpp core/contract/script_surface.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -DSURFACE_MANIFEST_PIN='"$(SURFACE_MANIFEST_PIN)"' core/tests/surface_manifest_test.cpp -o $@
+
+$(BUILD_DIR)/write_request_test: core/tests/write_request_test.cpp \
+  core/memory/write_request.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/write_request_test.cpp -o $@
 
 $(BUILD_DIR)/step_catalog_test: core/tests/step_catalog_test.cpp \
   core/contract/step_catalog.hpp core/contract/kind.hpp | $(BUILD_DIR)
@@ -224,6 +230,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/payload_manifest_test
 	@echo "check: step catalogue (tokens + declared orders)"
 	@$(BUILD_DIR)/step_catalog_test
+	@echo "check: write request (pinned shape + own invariants)"
+	@$(BUILD_DIR)/write_request_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
