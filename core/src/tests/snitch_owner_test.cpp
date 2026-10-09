@@ -194,9 +194,16 @@ namespace {
         partial.status = OwnerVerdict::Ok;
         partial.discovery.ok = true;
         partial.discovery.mm_struct = 0x1000U;
+        /* One object is the answer the search can give, and the file that maps it says so in its own
+         *  words: ok with the object, and no claim about the other three. The earlier version of
+         *  this assertion demanded all four and was wrong for the same reason the search file writes
+         *  down about itself. */
         const auto mapped_partial = discovery_of(partial);
-        expect(!mapped_partial.ok, "an incomplete result is not handed on as an answer");
-        expect(mapped_partial.mm_struct == 0U, "and its fields are cleared rather than passed through");
+        expect(mapped_partial.ok, "one object is an answer, and it is handed on as one");
+        expect(mapped_partial.mm_struct == 0x1000U, "with the object it found unchanged");
+        expect(mapped_partial.init_task == 0U && mapped_partial.target_task == 0U &&
+                   mapped_partial.kaslr_base == 0U,
+               "and with nothing claimed about the other three");
 
         /* The complete one passes through unchanged. */
         OwnerOutcome complete{};

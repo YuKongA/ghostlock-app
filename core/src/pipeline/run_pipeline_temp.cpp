@@ -118,10 +118,21 @@ namespace {
      *  arrives with the real spray, and this type goes when the entry does.
      */
     struct StubBuckets final {
-        /** Every candidate falls in the same bucket, for the candidate being asked about. */
-        [[nodiscard]] std::uint64_t bucket(std::uint64_t, std::uint64_t) const noexcept { return 0U; }
-        /** And every address is observed in that same one, which is what the walk needs next. */
-        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t) const noexcept { return 0U; }
+        /* TEMPORARY, registered with this entry: a rule that answers for one address only.
+         *  Accepting everything made the walk answer the first candidate, which is address zero,
+         *  and a zero object is rightly treated as no object. Accepting one chosen address makes
+         *  the walk land on it, which is what this development run needs. */
+        std::uint64_t want = 0U;
+        std::uint64_t second = 0U;
+        /* The candidate answers for the address the run wants, and both proof addresses are
+         *  observed in that same bucket, so the walk sees the agreements it asks for. The count
+         *  is what decides, not a single comparison. */
+        [[nodiscard]] std::uint64_t bucket(std::uint64_t, std::uint64_t candidate) const noexcept {
+            return (candidate == want) ? 1U : 0U;
+        }
+        [[nodiscard]] std::uint64_t bucket_of(std::uint64_t address) const noexcept {
+            return (address == want || address == second) ? 1U : 0U;
+        }
     };
 }  // namespace
 #endif
@@ -405,6 +416,8 @@ namespace {
         args.addresses = address_table;
         args.address_count = 2U;
         StubBuckets stub_buckets{};
+        stub_buckets.want = address_table[0];
+        stub_buckets.second = address_table[1];
         const backend::cve_2026_43499::leak::OwnerOutcome owned =
             backend::cve_2026_43499::leak::run_snitch_owner<DeviceSeam, StubBuckets>(
                 snitch_inputs, region, args.patience, args.counter_offset, word_ptrs, 2U, strides,
@@ -412,9 +425,10 @@ namespace {
         /* The owner carries each step's own verdict, so the line below says which step refused
          *  rather than only that the contract result is empty. Same lesson as the search: report by
          *  name, from the piece that decided. */
-        std::printf("run-temp: owner %s object=%s setup=%s region=%s poke=%u\n",
+        std::printf("run-temp: owner %s object=%s probes=%zu setup=%s region=%s poke=%u\n",
                     backend::cve_2026_43499::leak::owner_verdict_name(owned.status),
                     backend::cve_2026_43499::leak::object_verdict_name(owned.object),
+                    owned.probes,
                     backend::cve_2026_43499::leak::snitch_setup_verdict_name(owned.setup),
                     backend::cve_2026_43499::leak::region_verdict_name(owned.region),
                     static_cast<unsigned>(owned.poke));
