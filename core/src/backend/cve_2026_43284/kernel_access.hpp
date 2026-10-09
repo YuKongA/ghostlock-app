@@ -34,11 +34,6 @@ namespace ghostlock::backend::cve_2026_43284 {
 
         /** Blank: nothing is taken or decided here, as the ruling requires. The seam is borrowed
          *  and must outlive this object. */
-        // The retired form borrowed a reference, which cannot be default constructed.
-        // /** Blank: nothing is taken or decided here, as the ruling requires. The seam is borrowed
-        //  *  and must outlive this object. */
-        // explicit Access(seam::PageCacheSeam &seam) noexcept : seam_(seam) {}
-        //TODO(factory-reachability): the factory knows an id and nothing else, so the borrowed
         //  reference becomes a nullable pointer. Delete the commented form above once the factory
         //  and its tests pass, as the commenting rule requires.
         Access() noexcept = default;
@@ -135,9 +130,6 @@ namespace ghostlock::backend::cve_2026_43284 {
             return static_cast<const AccessParams *>(&p);
         }
 
-        // The retired member was a reference.
-        // seam::PageCacheSeam &seam_;
-        //TODO(factory-reachability): nullable, so a factory-built instance can exist.
         seam::PageCacheSeam *seam_ = nullptr;
         /** Whether the route has ever been up, so a closed route is distinguishable from one that
          *  never came up. */
