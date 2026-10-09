@@ -41,6 +41,9 @@ namespace {
         static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
             return SeamResult{0, 0};
         }
+        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept {
+            return SeamResult{0, 0};
+        }
         static std::size_t unmaps;
         static SeamResult unmap(void *, std::size_t) noexcept { ++unmaps; return SeamResult{0, 0}; }
         static SeamResult stop_child(std::uint64_t) noexcept { return SeamResult{0, 0}; }

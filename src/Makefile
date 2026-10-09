@@ -132,6 +132,9 @@ LAYER_HEADERS := \
   core/backend/cve_2026_43499/abi.hpp \
   core/backend/cve_2026_43499/abi.cpp \
   core/tests/abi_offsets_test.cpp \
+  core/profile/key_catalog.hpp \
+  core/profile/key_catalog.cpp \
+  core/tools/profile_manifest_dump.cpp \
   core/backend/cve_2026_43499/leak/snitch_tuning.hpp \
   core/tests/snitch_tuning_test.cpp \
   core/backend/cve_2026_43499/leak/snitch_child.hpp \
@@ -224,7 +227,7 @@ $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/m
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
 ANDROID_OUT := ../build/native/ghostlock
-.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe
+.PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe profile-manifest-v3 profile-manifest-v3-check
 
 android: $(ANDROID_OUT)
 
@@ -491,6 +494,28 @@ surface-manifest: $(SURFACE_MANIFEST)
 # It prints the diff for human review and then writes the new pin:
 #   the pin is a frozen copy that a human approved, so after running this the
 #   diff MUST be reviewed and committed together with the change that caused it.
+# The profile manifest is generated from the table that owns it, into both copies the app
+# reads. The check is what keeps them from drifting: it regenerates and compares, and the
+# check target runs it, so a key added in one place and not the other fails the gate.
+PROFILE_MANIFEST_DUMP := $(BUILD_DIR)/profile_manifest_dump
+PROFILE_MANIFEST_COPIES := ../app/src/test/resources/profile-manifest-v3.tsv \
+  ../profile-core/src/main/resources/profile-manifest-v3.tsv
+
+$(PROFILE_MANIFEST_DUMP): core/tools/profile_manifest_dump.cpp core/profile/key_catalog.hpp core/profile/key_catalog.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tools/profile_manifest_dump.cpp core/profile/key_catalog.cpp -o $@
+
+profile-manifest-v3: $(PROFILE_MANIFEST_DUMP)
+	@$(PROFILE_MANIFEST_DUMP) > ../build/host/profile-manifest-v3.tsv
+	@cp ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv
+	@cp ../build/host/profile-manifest-v3.tsv ../profile-core/src/main/resources/profile-manifest-v3.tsv
+	@echo "profile-manifest-v3: wrote both copies from the key table"
+
+profile-manifest-v3-check: $(PROFILE_MANIFEST_DUMP)
+	@$(PROFILE_MANIFEST_DUMP) > ../build/host/profile-manifest-v3.tsv
+	@cmp -s ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv || { echo "profile-manifest-v3-check: FAIL (app copy differs from the table)"; exit 1; }
+	@cmp -s ../build/host/profile-manifest-v3.tsv ../profile-core/src/main/resources/profile-manifest-v3.tsv || { echo "profile-manifest-v3-check: FAIL (profile-core copy differs)"; exit 1; }
+	@echo "profile-manifest-v3-check: both copies are the table"
+
 surface-manifest-regen: $(BUILD_DIR)/surface_manifest_test
 	@tmp=$$(mktemp "$${TMPDIR:-/tmp}/surface-manifest.XXXXXX"); \
 	$(BUILD_DIR)/surface_manifest_test --export-only > $$tmp; \
@@ -583,6 +608,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/snitch_run_test
 	@echo "check: leak search (stops at the answer, finds tagged objects)"
 	@$(BUILD_DIR)/leak_search_test
+	@echo "check: profile manifest (both copies are the key table)"
+	@$(MAKE) -s profile-manifest-v3-check
 	@echo "check: snitch scan (pokes finish it, silence ends it, failure tidies up)"
 	@$(BUILD_DIR)/snitch_scan_test
 	@echo "check: snitch seam (complete answers pass, partial ones do not)"
