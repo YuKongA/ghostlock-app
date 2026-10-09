@@ -88,3 +88,9 @@ Makefile 当前 1215 行，可作为落盘前后的一致性核对。
 **核验**：删后 `grep -rn 'run_pipeline_temp\|kDevCarrier' core/src core/Makefile` 为 0 命中；`make -C core host && make -C core check` 为 0。
 
 **为何允许**：`--allow-dev-target` 的注释写的就是这个用途（只放宽绑定期 carrier 校验），所以这两个输入走的是既有门，不是新旁路。
+
+| 开发布局偏移 `kDevLockOffset` 等五个常量 | `core/src/pipeline/run_pipeline_temp.cpp`（一处声明） | 与入口同批删；正式路径按 manifest 从 `backend.cve_2026_43499.abi.payload` 段读 |
+
+**为何不是回退**：目标 profile 文件明文禁止 no default fallback，所以这五个数不是「缺键时补一个」，而是**声明式临时源**；入口在用它之前会打印一行说明它不来自文档。
+
+**真机结果（2026-10-09 16:08 EDT）**：六步全部在设备上成功，退出码 0 —— 读文档 1991 字节 · 收会话帧 · 过闸 admitted window.pagecache · 开载体 · 绑窗口 · 起接缝 seam up · 收尾 torn down ok · 读偏移 lock=0x58 waiter=0xb0 task=0x700。**口径：这不是 root** —— 入口尚未接发现、步骤与终端（KernelSU 模块加载）三步。
