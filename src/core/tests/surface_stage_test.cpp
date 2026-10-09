@@ -97,6 +97,13 @@ namespace {
         return used;
     }
 
+    std::size_t append_text(char *out, std::size_t used, std::string_view text) {
+        for (const char c : text) {
+            out[used++] = c;
+        }
+        return used;
+    }
+
     std::size_t append_comma(char *out, std::size_t used, std::size_t index) {
         if (index > 0U) {
             out[used++] = ',';
@@ -333,6 +340,33 @@ namespace {
         expect(!plan.ok(), "a plan refused by the gate does not run");
     }
 
+    /* ---- 7: the snapshot answers by declaration, never with a nil ---- */
+    void cfg_snapshot_is_guarded() {
+        using ghostlock::script::CfgField;
+        const std::size_t row_free = row_for(SurfaceForm::HandleMethod, 1U);
+        StagedPlan plan;
+        Sandbox sandbox;
+        expect(sandbox.open(budget(), ghostlock::script::staged_sink(plan)), "open for the snapshot");
+        const CfgField fields[] = {{"declared", 4242U}};
+        expect(sandbox.set_cfg_snapshot(fields, 1U), "the snapshot installs");
+
+        char script[256];
+        std::size_t used = append_text(script, 0U, std::string_view("local v = cfg.declared\n"));
+        used = append_head(script, used, row_free);
+        used = append_text(script, used, std::string_view("v)"));
+        expect(sandbox.run(std::string_view(script, used)) == ScriptRejection::None,
+               "a declared field reads through and the call runs");
+        expect(plan.size() == 1U && plan.at(0U).args[0U].u64 == 4242U,
+               "the declared value reaches the recording");
+
+        const ScriptRejection missing = sandbox.run("local v = cfg.undeclared");
+        expect(missing == ScriptRejection::CfgUnknownField,
+               "an undeclared field is refused as cfg-unknown-field");
+        expect(std::string_view(plan.refusal_name()) == std::string_view("cfg-unknown-field"),
+               "the plan carries the refusal by name");
+        sandbox.close();
+    }
+
     /* ---- 4: a sandbox refusal reaches the plan by name ---- */
     void refusals_are_recorded() {
         StagedPlan plan;
@@ -359,6 +393,8 @@ int main() {
     surface_entries_are_checked();
     std::printf("stage: gate reasons\n");
     gate_reasons_are_folded();
+    std::printf("stage: cfg snapshot\n");
+    cfg_snapshot_is_guarded();
     if (g_failures != 0U) {
         std::printf("stage: FAIL (%zu)\n", g_failures);
         return 1;

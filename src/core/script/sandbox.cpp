@@ -35,6 +35,7 @@ namespace ghostlock::script {
         inline constexpr const char *kBudgetExceeded = "budget-exceeded";
         inline constexpr const char *kSurfaceUnknownName = "surface-unknown-name";
         inline constexpr const char *kCfgReadOnly = "cfg-read-only";
+        inline constexpr const char *kCfgUnknownField = "cfg-unknown-field";
         inline constexpr const char *kPlanSyntax = "plan-syntax";
 
         /* Forwarding scratch: fixed, so the call path allocates nothing. */
@@ -437,6 +438,28 @@ namespace ghostlock::script {
             return luaL_error(L, "%s", kSurfaceUnknownName);
         }
 
+        /* The cfg proxy carries this as __index, with the declared fields as its
+         * only upvalue: a read either finds a declared field or is refused by
+         * name, so an undeclared name can never look like a nil value. */
+        int cfg_index(lua_State *L) {
+            Sandbox::State *state = sandbox_state_of(L);
+            const char *name = lua_tostring(L, 2);
+            if (name != nullptr) {
+                lua_getfield(L, lua_upvalueindex(1), name);
+                if (!lua_isnil(L, -1)) {
+                    return 1;
+                }
+                lua_pop(L, 1);
+            }
+            if (state != nullptr) {
+                ++state->error_count;
+                if (state->sink.on_error != nullptr) {
+                    state->sink.on_error(state->sink.context, kCfgUnknownField);
+                }
+            }
+            return luaL_error(L, "%s", kCfgUnknownField);
+        }
+
         int cfg_read_only(lua_State *L) {
             Sandbox::State *state = sandbox_state_of(L);
             if (state != nullptr) {
@@ -496,6 +519,7 @@ namespace ghostlock::script {
             case ScriptRejection::SurfaceUnknownName: return kSurfaceUnknownName;
             case ScriptRejection::PlanSyntax: return kPlanSyntax;
             case ScriptRejection::CfgReadOnly: return kCfgReadOnly;
+            case ScriptRejection::CfgUnknownField: return kCfgUnknownField;
         }
         return "unknown";
     }
@@ -530,20 +554,26 @@ namespace ghostlock::script {
             return false;
         }
         lua_State *L = state_->L;
-        lua_createtable(L, 0, static_cast<int>(count)); /* the hidden data table */
+        /* Absolute indices, each recorded as it is created: the proxy is what the
+         * script sees, the fields table is only reachable through the reader. */
+        lua_settop(L, 0);
+        const int fields_at = lua_gettop(L) + 1;
+        lua_createtable(L, 0, static_cast<int>(count));
         for (std::size_t i = 0; i < count; ++i) {
             lua_pushinteger(L, static_cast<lua_Integer>(fields[i].value));
-            lua_setfield(L, -2, fields[i].name);
+            lua_setfield(L, fields_at, fields[i].name);
         }
-        lua_createtable(L, 0, 1); /* the exposed, empty proxy */
-        lua_insert(L, -2);
-        lua_setfield(L, -2, "__index");
+        const int proxy_at = lua_gettop(L) + 1;
+        lua_createtable(L, 0, 0);
+        const int meta_at = lua_gettop(L) + 1;
+        lua_createtable(L, 0, 2);
+        lua_pushvalue(L, fields_at);
+        lua_pushcclosure(L, cfg_index, 1); /* upvalue: the declared fields */
+        lua_setfield(L, meta_at, "__index");
         lua_pushcfunction(L, cfg_read_only);
-        lua_setfield(L, -2, "__newindex");
-        lua_newtable(L);
-        lua_insert(L, -2);
-        lua_setmetatable(L, -2);
-        lua_setglobal(L, "cfg");
+        lua_setfield(L, meta_at, "__newindex");
+        lua_setmetatable(L, proxy_at); /* pops the metatable */
+        lua_setglobal(L, "cfg");       /* pops the proxy */
         lua_settop(L, 0);
         return true;
     }
@@ -580,6 +610,8 @@ namespace ghostlock::script {
                     rejection = ScriptRejection::BudgetExceeded;
                 } else if (std::strstr(message, kSurfaceUnknownName) != nullptr) {
                     rejection = ScriptRejection::SurfaceUnknownName;
+                } else if (std::strstr(message, kCfgUnknownField) != nullptr) {
+                    rejection = ScriptRejection::CfgUnknownField;
                 } else if (std::strstr(message, kCfgReadOnly) != nullptr) {
                     rejection = ScriptRejection::CfgReadOnly;
                 }

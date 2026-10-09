@@ -58,6 +58,7 @@ namespace ghostlock::script {
         SurfaceUnknownName = 2,
         PlanSyntax = 3,
         CfgReadOnly = 4,
+        CfgUnknownField = 5,
     };
 
     [[nodiscard]] const char *script_rejection_name(ScriptRejection rejection) noexcept;
