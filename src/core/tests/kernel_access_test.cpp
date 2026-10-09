@@ -1,11 +1,11 @@
 /** @file tests/kernel_access_test.cpp
- *  The interface against a fake implementation that supports one channel and nothing else.
+ *  The interface against a fake backend that comes up in two stages and wants parameters.
  *
- *  Two things are being pinned. The convenience layer has to be usable without being
- *  implemented: the fake writes `read` and `write` and gets `read64` and `write64` for free,
- *  which is the whole reason those are non-virtual. And an implementation that does not have a
- *  channel must say so rather than pretending, so the fake answers a channel it does not support
- *  with the refusal code and the test drives that path too.
+ *  Three things are pinned. A capability reports where it is rather than whether it exists, so
+ *  the fake is declared before it is initialized and ready after, and using it in between is
+ *  refused by name. Parameters are the backend's own, so the fake accepts its own set and refuses
+ *  another by name rather than guessing. And the convenient word forms are inherited, so an
+ *  implementer writes read, write and write_zero and gets read64 and write64 for free.
  */
 #include <cstddef>
 #include <cstdint>
@@ -17,8 +17,11 @@
 namespace {
     using ghostlock::contract::AccessCarrier;
     using ghostlock::contract::AccessChannel;
+    using ghostlock::contract::AccessParameters;
+    using ghostlock::contract::AccessState;
     using ghostlock::contract::AccessStatus;
     using ghostlock::contract::KernelAccess;
+    using ghostlock::contract::NoParameters;
 
     std::size_t g_failures = 0U;
 
@@ -29,17 +32,56 @@ namespace {
         }
     }
 
-    /** One page of pretend kernel memory, reachable over one channel only. */
+    /** What this backend's write needs: a route and where in that route to write. The base
+     *  could not have known either of these, which is the reason the interface exists. */
+    class RouteParameters final : public AccessParameters {
+    public:
+        std::uint64_t route = 0U;
+        std::uint64_t offset = 0U;
+        [[nodiscard]] std::string_view name() const noexcept override { return "route"; }
+    };
+
+    /** A backend that has one channel, comes up in one step, and wants route parameters. */
     class FakeAccess final : public KernelAccess {
     public:
         static constexpr std::uint64_t kBase = 0xffff800000100000ULL;
         std::uint8_t bytes[64] = {};
         std::size_t writes = 0U;
+        bool initialized = false;
 
-        AccessStatus read(std::uint64_t address, std::span<std::byte> out,
-                          AccessChannel channel) noexcept override {
+        [[nodiscard]] AccessState state(AccessChannel channel) const noexcept override {
             if (channel != AccessChannel::PiWindow) {
-                return AccessStatus{AccessStatus::Code::Unsupported};
+                return AccessState::Unsupported;
+            }
+            return initialized ? AccessState::Ready : AccessState::Declared;
+        }
+        [[nodiscard]] bool supports(AccessChannel channel) const noexcept override {
+            return channel == AccessChannel::PiWindow;
+        }
+        [[nodiscard]] bool supports(AccessCarrier carrier) const noexcept override {
+            return carrier == AccessCarrier::KernelPage;
+        }
+
+        [[nodiscard]] AccessStatus initialize(const AccessParameters &parameters) noexcept override {
+            if (parameters.name() != std::string_view("route")) {
+                return AccessStatus{AccessStatus::Code::BadParameters};
+            }
+            initialized = true;
+            return AccessStatus{AccessStatus::Code::Ok};
+        }
+        [[nodiscard]] AccessStatus shutdown() noexcept override {
+            initialized = false;
+            return AccessStatus{AccessStatus::Code::Ok};
+        }
+
+        [[nodiscard]] AccessStatus read(std::uint64_t address, std::span<std::byte> out,
+                                        AccessChannel channel,
+                                        const AccessParameters &parameters) noexcept override {
+            if (!initialized) {
+                return AccessStatus{AccessStatus::Code::NotInitialized};
+            }
+            if (channel != AccessChannel::PiWindow || parameters.name() != std::string_view("route")) {
+                return AccessStatus{AccessStatus::Code::BadParameters};
             }
             if (address < kBase || address + out.size() > kBase + sizeof(bytes)) {
                 return AccessStatus{AccessStatus::Code::OutOfRange};
@@ -50,10 +92,14 @@ namespace {
             return AccessStatus{AccessStatus::Code::Ok};
         }
 
-        AccessStatus write(std::uint64_t address, std::span<const std::byte> in,
-                           AccessChannel channel) noexcept override {
-            if (channel != AccessChannel::PiWindow) {
-                return AccessStatus{AccessStatus::Code::Unsupported};
+        [[nodiscard]] AccessStatus write(std::uint64_t address, std::span<const std::byte> in,
+                                         AccessChannel channel,
+                                         const AccessParameters &parameters) noexcept override {
+            if (!initialized) {
+                return AccessStatus{AccessStatus::Code::NotInitialized};
+            }
+            if (channel != AccessChannel::PiWindow || parameters.name() != std::string_view("route")) {
+                return AccessStatus{AccessStatus::Code::BadParameters};
             }
             if (address < kBase || address + in.size() > kBase + sizeof(bytes)) {
                 return AccessStatus{AccessStatus::Code::OutOfRange};
@@ -65,59 +111,65 @@ namespace {
             return AccessStatus{AccessStatus::Code::Ok};
         }
 
-        AccessStatus write_zero(std::uint64_t address) noexcept override {
+        [[nodiscard]] AccessStatus write_zero(std::uint64_t address, AccessChannel channel,
+                                              const AccessParameters &parameters) noexcept override {
             const std::byte zero[8] = {};
-            return write(address, std::span<const std::byte>(zero), AccessChannel::PiWindow);
+            return write(address, std::span<const std::byte>(zero), channel, parameters);
         }
-
-        [[nodiscard]] bool supports(AccessChannel channel) const noexcept override {
-            return channel == AccessChannel::PiWindow;
-        }
-        [[nodiscard]] bool supports(AccessCarrier carrier) const noexcept override {
-            return carrier == AccessCarrier::KernelPage;
-        }
-        [[nodiscard]] bool available() const noexcept override { return true; }
     };
 
-    void the_convenience_layer_is_free() {
+    void a_capability_reports_where_it_is() {
         FakeAccess access;
-        const AccessStatus written = access.write64(FakeAccess::kBase + 8U, 0x4142434445464748ULL,
-                                                    AccessChannel::PiWindow);
-        expect(written.ok(), "a word writes through the layer the implementer did not write");
-        expect(access.writes == 1U, "and it reached the implementation once");
-        const auto back = access.read64(FakeAccess::kBase + 8U, AccessChannel::PiWindow);
-        expect(back.status.ok() && back.value == 0x4142434445464748ULL,
-               "and reads back the same word, little-endian on the way in and out");
-        const AccessStatus up = access.establish(AccessChannel::PiWindow, AccessCarrier::KernelPage);
-        const AccessStatus down = access.close(AccessCarrier::KernelPage);
-        expect(up.ok() && down.ok(), "a default establish and close succeed");
+        RouteParameters route;
+        route.route = 2U;
+        route.offset = 0x40U;
+        expect(access.state(AccessChannel::PiWindow) == AccessState::Declared,
+               "before anything is done the channel exists and is not up");
+        expect(access.state(AccessChannel::KernelModule) == AccessState::Unsupported,
+               "and a channel this backend does not have says so");
+        const auto early = access.write64(FakeAccess::kBase, 1U, AccessChannel::PiWindow, route);
+        expect(early.code == AccessStatus::Code::NotInitialized,
+               "using it before it is up is refused by name, not by failing downstream");
+        const NoParameters wrong;
+        expect(access.initialize(wrong).code == AccessStatus::Code::BadParameters,
+               "and initializing with parameters this backend does not recognise is refused too");
+        expect(!access.initialized, "which leaves it where it was");
+        const AccessStatus up = access.initialize(route);
+        expect(up.ok() && access.state(AccessChannel::PiWindow) == AccessState::Ready,
+               "the right parameters bring it up, and the state says so");
     }
 
-    void a_missing_channel_says_so() {
+    void the_word_forms_are_inherited() {
         FakeAccess access;
-        const auto via_module = access.read64(FakeAccess::kBase, AccessChannel::KernelModule);
-        expect(via_module.status.code == AccessStatus::Code::Unsupported,
-               "a channel this implementation does not have is refused, not faked");
-        expect(via_module.value == 0U, "and no value comes back with the refusal");
-        expect(access.supports(AccessChannel::PiWindow), "the channel it does have is reported");
-        expect(!access.supports(AccessCarrier::FilePage), "and the carrier it does not is not");
-        expect(access.available(), "while the implementation itself is available");
-        const auto outside = access.write64(0x1000U, 1U, AccessChannel::PiWindow);
+        RouteParameters route;
+        static_cast<void>(access.initialize(route));
+        expect(access.write64(FakeAccess::kBase + 8U, 0x4142434445464748ULL, AccessChannel::PiWindow, route).ok(),
+               "a word writes through the layer the implementer did not write");
+        expect(access.writes == 1U, "and reaches the implementation once");
+        const auto back = access.read64(FakeAccess::kBase + 8U, AccessChannel::PiWindow, route);
+        expect(back.status.ok() && back.value == 0x4142434445464748ULL,
+               "and reads back the same word");
+        expect(access.write_zero(FakeAccess::kBase, AccessChannel::PiWindow, route).ok(),
+               "and the zero write is the same path with a zero in it");
+        const auto outside = access.write64(0x1000U, 1U, AccessChannel::PiWindow, route);
         expect(outside.code == AccessStatus::Code::OutOfRange, "an address outside its range is refused");
         expect(std::strcmp(access_status_name(outside), "out-of-range") == 0,
                "under the name a caller acts on");
+        static_cast<void>(access.shutdown());
+        expect(access.state(AccessChannel::PiWindow) == AccessState::Declared,
+               "and shutting down puts it back to declared rather than unsupported");
     }
 }  // namespace
 
 int main() {
-    std::printf("kernel access: the layer implementers do not write\n");
-    the_convenience_layer_is_free();
-    std::printf("kernel access: what a missing channel reports\n");
-    a_missing_channel_says_so();
+    std::printf("kernel access: where a capability stands\n");
+    a_capability_reports_where_it_is();
+    std::printf("kernel access: the word forms are inherited\n");
+    the_word_forms_are_inherited();
     if (g_failures != 0U) {
         std::printf("kernel access: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("kernel access: PASS (read and write to implement, the rest inherited)\n");
+    std::printf("kernel access: PASS (state, parameters, and the inherited forms)\n");
     return 0;
 }
