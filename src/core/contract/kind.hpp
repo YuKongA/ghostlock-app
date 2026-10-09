@@ -72,36 +72,49 @@ namespace ghostlock::contract {
     /** The backends, as a type. The tokens in the table below are the authority and these
      *  are bound to them by the assertions that follow: an enum that could drift from the
      *  catalogue would be a second answer to a question that already has one. */
-    enum class BackendId : std::uint8_t {
+    enum class BackendId : std::uint16_t {
         /** No backend; what an unset or unknown name resolves to. */
         Unknown = 0,
-        Cve202643499 = 1,
-        Cve202643284 = 2,
-        Cve202664560 = 3,
-        Cve202631431 = 4,
-        Cve202643503 = 5,
-        Cve202623274 = 6,
+        /** The value is the number in the CVE, so a reader sees which one it is without a lookup.
+         *  The type is sixteen bits because the numbers are five digits: 43499 does not fit in
+         *  eight, and pretending it did would force either a lookup table or values that disagree
+         *  with the names. */
+        Cve_2026_43499 = 43499,
+        Cve_2026_43284 = 43284,
+        Cve_2026_64560 = 64560,
+        Cve_2026_31431 = 31431,
+        Cve_2026_43503 = 43503,
+        Cve_2026_23274 = 23274,
     };
-    inline constexpr std::size_t kBackendIdCount = 7U;
+    /** Every id but Unknown, listed rather than counted. The values are the CVE numbers, so a
+     *  lookup that walked from one upward would skip all of them. */
+    inline constexpr BackendId kBackendIds[] = {
+        BackendId::Cve_2026_43499,
+        BackendId::Cve_2026_43284,
+        BackendId::Cve_2026_64560,
+        BackendId::Cve_2026_31431,
+        BackendId::Cve_2026_43503,
+        BackendId::Cve_2026_23274,
+    };
+    inline constexpr std::size_t kBackendIdCount = sizeof(kBackendIds) / sizeof(kBackendIds[0]) + 1U;
 
     /** The token a backend id spells, or empty for Unknown. */
     [[nodiscard]] constexpr std::string_view backend_id_token(BackendId id) noexcept {
         switch (id) {
             case BackendId::Unknown: return {};
-            case BackendId::Cve202643499: return "cve_2026_43499";
-            case BackendId::Cve202643284: return "cve_2026_43284";
-            case BackendId::Cve202664560: return "cve_2026_64560";
-            case BackendId::Cve202631431: return "cve_2026_31431";
-            case BackendId::Cve202643503: return "cve_2026_43503";
-            case BackendId::Cve202623274: return "cve_2026_23274";
+            case BackendId::Cve_2026_43499: return "cve_2026_43499";
+            case BackendId::Cve_2026_43284: return "cve_2026_43284";
+            case BackendId::Cve_2026_64560: return "cve_2026_64560";
+            case BackendId::Cve_2026_31431: return "cve_2026_31431";
+            case BackendId::Cve_2026_43503: return "cve_2026_43503";
+            case BackendId::Cve_2026_23274: return "cve_2026_23274";
         }
         return {};
     }
 
     /** The id a token names, or Unknown. Exact: no trimming, no case folding. */
     [[nodiscard]] constexpr BackendId backend_id_of(std::string_view token) noexcept {
-        for (std::uint8_t i = 1U; i < static_cast<std::uint8_t>(kBackendIdCount); ++i) {
-            const auto id = static_cast<BackendId>(i);
+        for (const BackendId id : kBackendIds) {
             const std::string_view known = backend_id_token(id);
             if (known.size() != token.size()) { continue; }
             bool same = true;
@@ -139,9 +152,10 @@ namespace ghostlock::contract {
         for (std::size_t i = 0U; i < kComponentCount; ++i) {
             if (kComponents[i].kind != ComponentKind::Backend) { continue; }
             ++seen;
-            const auto id = static_cast<BackendId>(seen);
-            const std::string_view known = backend_id_token(id);
             const std::string_view token = kComponents[i].token;
+            const BackendId id = backend_id_of(token);
+            if (id == BackendId::Unknown) { return false; }
+            const std::string_view known = backend_id_token(id);
             if (known.size() != token.size()) { return false; }
             for (std::size_t c = 0U; c < known.size(); ++c) {
                 if (known[c] != token[c]) { return false; }
