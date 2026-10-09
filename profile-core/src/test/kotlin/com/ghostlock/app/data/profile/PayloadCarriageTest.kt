@@ -31,10 +31,18 @@ import java.security.MessageDigest
 class PayloadCarriageTest {
     private val release = "5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541"
 
+    /**
+     * The profile the device gate runs on (A301SO: 5.15.189-android13 / Android 15).
+     * The gate's input document is built from THIS asset - not from the frozen
+     * literal fixture, whose values are synthetic by construction.
+     */
+    private val deviceRelease = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557"
+
     /** Frozen fixture inputs: the emitted bytes are the native side's input. */
     private companion object {
         private const val FIXTURE_SCRIPT = "echo ghostlock-fixture\n"
         private const val FIXTURE_RELEASE = "7.0-fixture-payload"
+        private const val NEWLINE = "\n"
     }
 
     /**
@@ -74,7 +82,7 @@ class PayloadCarriageTest {
     fun `the declared digest binds the bytes that come back out of the wire`() {
         val table = deliverables()
         val payloads = table.values.flatten()
-        val bytes = glkv3(payloads)
+        val bytes = glkv3(payloads = payloads)
         val decoded = requireNotNull(Glkv3Decoder.decode(bytes)) { "document does not decode" }
 
         val seen = mutableSetOf<String>()
@@ -117,8 +125,8 @@ class PayloadCarriageTest {
 
     @Test
     fun `no payload declared is no payload section, and the bytes report is printed`() {
-        val withPayload = glkv3(deliverables().values.flatten())
-        val withoutPayload = glkv3(emptyList())
+        val withPayload = glkv3(payloads = deliverables().values.flatten())
+        val withoutPayload = glkv3(payloads = emptyList())
         val decodedEmpty = requireNotNull(Glkv3Decoder.decode(withoutPayload))
 
         assertTrue(
@@ -192,24 +200,105 @@ class PayloadCarriageTest {
     }
 
     /**
+     * The device gate's input, pinned: the DEVICE profile (A301SO) resolved through
+     * the exporter chain with the selection FORCED to 43499 - the declared route
+     * plus the catalogue default terminal - which is exactly what the App emits
+     * when the user picks the 43499 mode. Pin nature: the bytes are compared, never
+     * rewritten, so a profile or wire change turns this red instead of silently
+     * moving the gate's input.
+     */
+    @Test
+    fun `the device document fixture carries the profile's real ABI values`() {
+        val bytes = glkv3(deviceRelease, emptyList())
+        val decoded = requireNotNull(Glkv3Decoder.decode(bytes)) { "device document does not decode" }
+        val abiTaskStruct = requireNotNull(
+            decoded.sections.firstOrNull { it.name == "backend.cve_2026_43499.abi.task_struct" },
+        ) { "missing abi.task_struct; sections=" + decoded.sections.map { it.name } }
+        for ((key, expected) in listOf(
+            "pi_lock" to 2180uL,
+            "pi_waiters" to 2200uL,
+            "pi_top_task" to 2216uL,
+            "pi_blocked_on" to 2224uL,
+        )) {
+            assertEquals(
+                "the device asset's real value must reach the wire: " + key,
+                expected,
+                (abiTaskStruct.entries.first { it.key == key }.value as Glkv3Value.UInt).value,
+            )
+        }
+        val abiOffset = requireNotNull(
+            decoded.sections.firstOrNull { it.name == "backend.cve_2026_43499.abi.offset" },
+        ) { "missing abi.offset" }
+        assertEquals(
+            46126472uL,
+            (abiOffset.entries.first { it.key == "init_cred" }.value as Glkv3Value.UInt).value,
+        )
+        val route = requireNotNull(
+            decoded.sections.firstOrNull { it.name == "backend.cve_2026_43499.route.multicast_waiter" },
+        ) { "missing the multicast route section" }
+        assertEquals(
+            "geometry from the asset plus the three tuning keys from the preset",
+            listOf(
+                "arm_hold", "arm_sequence", "attempts", "buffer_size",
+                "lock_offset", "task_offset", "waiter_off",
+            ),
+            route.entries.map { it.key }.sorted(),
+        )
+        assertEquals(
+            96uL,
+            (route.entries.first { it.key == "waiter_off" }.value as Glkv3Value.UInt).value,
+        )
+        assertEquals(
+            20000uL,
+            (route.entries.first { it.key == "arm_hold" }.value as Glkv3Value.UInt).value,
+        )
+
+        /* The step queue: the picked combination's own step set, in order, in the
+         * same wire shape the 43284 document uses ({ step = <token> }). */
+        val backendSection = requireNotNull(
+            decoded.sections.firstOrNull { it.name == "backend.cve_2026_43499" },
+        ) { "missing backend.cve_2026_43499" }
+        assertEquals(
+            "the backend section carries the queue and the declared route",
+            listOf("queue", "route"),
+            backendSection.entries.map { it.key }.sorted(),
+        )
+        val queue = (backendSection.entries.first { it.key == "queue" }.value as Glkv3Value.Array).elements
+        val steps = queue.map { element ->
+            val map = element as Glkv3Value.Map
+            (map.entries.first { it.first == "step" }.second as Glkv3Value.Str).value
+        }
+        assertEquals(
+            "the step set of the selected combination (mcast_rootchild => w1w3), in order",
+            listOf("w1", "w2", "w3"),
+            steps,
+        )
+
+        val hex = bytes.joinToString("") { byte -> String.format("%02x", byte) }
+        val pin = File(repoRoot(), "profile-core/src/test/resources/device-document-fixture.hex")
+        println("device-doc release=" + deviceRelease + " bytes=" + bytes.size +
+            " sha256=" + digestHex(bytes))
+        for (section in decoded.sections.sortedBy { it.name }) {
+            println("device-doc section " + section.name + " keys=" + section.entries.size)
+        }
+        require(pin.isFile) {
+            "missing fixture pin " + pin.path + "; its content is:" + NEWLINE + hex
+        }
+        assertEquals(
+            "the pinned device document must match the current chain",
+            pin.readText().trim(),
+            hex,
+        )
+    }
+
+    /**
      * The exporter's own chain: asset (includes resolved, normalised) -> merge ->
      * document -> adapter -> wire. Using the exporter's shape matters: a looser
      * harness can emit a document whose sections are all empty, which would make
      * the byte numbers below meaningless.
      */
-    private fun glkv3(payloads: List<HandoffPayload>): ByteArray {
-        val merged = mergedProfile()
-        val srcDir = File(repoRoot(), "app/src/main/assets/profile")
-        val builtin = load(File(srcDir, release + ".conf"), srcDir)
-        val tuning = load(File(srcDir, "execution-tuning.conf"), srcDir)["execution"].asValueMap()
-        val routePresets = RouteKind.entries.mapNotNull { kind ->
-            val preset = File(srcDir, "execution-" + kind.token.replace('_', '-') + ".conf")
-            if (!preset.isFile) return@mapNotNull null
-            val group = load(preset, srcDir)["execution"].asValueMap()
-                ?.get("routes").asValueMap()
-                ?.get(kind.token).asValueMap()
-            group?.let { kind.token to it }
-        }.toMap()
+    private fun glkv3(release: String = this.release, payloads: List<HandoffPayload>): ByteArray {
+        val merged = mergedProfile(release)
         /* The route the document carries comes from the profile's own branch: this
          * harness needs it for the route-scoped accessors, not to re-derive the
          * combination (the exporter does that through the catalogue). */
@@ -227,7 +316,7 @@ class PayloadCarriageTest {
     }
 
     /** The exporter's merge inputs, assembled exactly like ProfileExporter does. */
-    private fun mergedProfile(): ValueMap {
+    private fun mergedProfile(release: String = this.release): ValueMap {
         val srcDir = File(repoRoot(), "app/src/main/assets/profile")
         val builtin = load(File(srcDir, release + ".conf"), srcDir)
         val tuning = load(File(srcDir, "execution-tuning.conf"), srcDir)["execution"].asValueMap()
@@ -271,6 +360,11 @@ class PayloadCarriageTest {
                 " and terminal " + terminal
         }
         merged.mutableChild("backend")["steps"] = specs.first().token
+        /* Mirror the App's pick path exactly: the selected combination's queue
+         * rides the same runtime carrier the declaration writes. Without it the
+         * 43499 document carries no queue at all (measured) and the native side
+         * cannot tell w1w3 from w1w2. */
+        ProfileLayout.carrySelectedQueue(merged, specs.first(), experimental = null)
         return merged
     }
 

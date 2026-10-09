@@ -2,6 +2,8 @@ package com.ghostlock.app.data
 
 import com.ghostlock.app.data.component.BackendKind
 import com.ghostlock.app.data.component.CombinationCatalog
+import com.ghostlock.app.data.component.CombinationSpec
+import com.ghostlock.app.data.component.stepNames
 import com.ghostlock.app.data.plugin.PluginPaths
 import com.ghostlock.app.data.route.RouteKind
 
@@ -1004,6 +1006,39 @@ object ProfileLayout {
         }
 
         return out
+    }
+
+    /**
+     * Records the queue a SELECTED combination hands to its backend on the runtime
+     * carrier `backend.queue_selection.<token>.{queue,queue_route,experimental}`.
+     *
+     * Why this exists: [buildRuntime] materialises that carrier from the
+     * DECLARATION, so a backend the user picks later (design 1-prime: an explicit
+     * choice wins) had no carrier at all. Measured: a 43499 document carried no
+     * `queue` section while the 43284 one did, so the native side could not tell
+     * w1w3 from w1w2 - both share terminal and route, and only the steps differ.
+     *
+     * The queue comes from the combination itself ([CombinationSpec.steps], whose
+     * step set the native-exported catalogue owns), never from a hand-kept list,
+     * and it rides the SAME carrier the declaration writes: one place for the
+     * wire to read, so no second read path appears (M5).
+     *
+     * @param runtime the runtime model being built ([toRuntime] output, or a copy
+     *   of it that is about to become the document's source).
+     * @param spec the selected combination.
+     * @param experimental the declaration's opt-in for that backend, or null when
+     *   it declares none (an absent key stays absent: a bool is never invented).
+     */
+    fun carrySelectedQueue(
+        runtime: ValueMap,
+        spec: CombinationSpec,
+        experimental: Boolean? = null,
+    ) {
+        val selection = ValueMap()
+        selection["queue"] = spec.steps.stepNames().map { name -> valueMapOf("step" to name) }
+        spec.route?.let { selection[QueueRouteKey] = it.token }
+        if (experimental != null) selection["experimental"] = experimental
+        runtime.mutableChild("backend").mutableChild(QueueSelectionKey)[spec.backend.token] = selection
     }
 
     // ---- flattening (equivalence gate) ----

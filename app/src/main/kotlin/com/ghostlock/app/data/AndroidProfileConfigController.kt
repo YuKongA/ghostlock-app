@@ -740,6 +740,20 @@ internal class AndroidProfileConfigController(
         )
 
     /**
+     * The declaration's `available.<token>.experimental` opt-in, or null when it
+     * declares none: an absent key stays absent, so no bool is invented.
+     *
+     * @param declaration the declaration document captured before normalization
+     *   (the runtime map has no `available`).
+     * @param token the backend token whose opt-in is asked for.
+     * @return the declared flag, or null.
+     */
+    private fun declaredExperimental(declaration: ValueMap, token: String): Boolean? =
+        declaration["available"].asValueMap()
+            ?.get(token).asValueMap()
+            ?.get("experimental") as? Boolean
+
+    /**
      * The effective backend of one profile: the user preference when set (1-prime),
      * otherwise DERIVED from the available declaration through the shared
      * AvailablePriority authority. A 43284-only profile therefore yields a 43284
@@ -831,6 +845,17 @@ internal class AndroidProfileConfigController(
              * before normalization (the runtime map has no `available`), so an
              * undeclared pick is refused by name instead of being quietly replaced. */
             declarationRefusalFor(declaration, combination)?.let { declarationErrors += it }
+            /* The picked combination is a selection like any other, so its queue
+             * rides the SAME runtime carrier the declaration writes. Without this
+             * the picked backend's queue stayed behind entirely: measured, a 43499
+             * document carried no queue section at all while the 43284 one did, so
+             * the native side could not tell w1w3 from w1w2 (same terminal, same
+             * route, only the steps differ). One carrier, one wire source. */
+            ProfileLayout.carrySelectedQueue(
+                resolved,
+                combination,
+                experimental = declaredExperimental(declaration, combination.backend.token),
+            )
         } else {
             val selection = resolveExecutionSelection(
                 executionModeSelection(),
