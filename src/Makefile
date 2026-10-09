@@ -91,13 +91,16 @@ LAYER_HEADERS := \
   core/tests/abi_offsets_test.cpp \
   core/backend/cve_2026_43499/route/expected_keys.hpp \
   core/tests/route_expected_keys_test.cpp \
+  core/memory/multicast_arm.hpp \
+  core/memory/multicast_arm.cpp \
+  core/tests/multicast_arm_test.cpp \
   core/script/lua_whitelist.hpp \
   core/script/sandbox.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp core/tests/surface_stage_test.cpp core/tests/handle_generation_test.cpp core/tests/terminal_payload_test.cpp core/tests/terminal_store_test.cpp core/tests/terminal_execution_test.cpp core/tests/payload_keys_test.cpp core/tests/document_reader_test.cpp \
-  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test
+  core/tests/payload_manifest_test.cpp core/tests/step_catalog_test.cpp core/tests/write_request_test.cpp core/tests/write_encoder_test.cpp core/tests/route_lifecycle_test.cpp core/tests/document_pairs_test.cpp core/tests/real_document_test.cpp core/tests/abi_offsets_test.cpp core/tests/route_expected_keys_test.cpp core/tests/multicast_arm_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -128,6 +131,10 @@ $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surf
 
 $(BUILD_DIR)/surface_manifest_test: core/tests/surface_manifest_test.cpp core/contract/script_surface.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -DSURFACE_MANIFEST_PIN='"$(SURFACE_MANIFEST_PIN)"' core/tests/surface_manifest_test.cpp -o $@
+
+$(BUILD_DIR)/multicast_arm_test: core/tests/multicast_arm_test.cpp \
+  core/memory/multicast_arm.hpp core/memory/multicast_arm.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) core/tests/multicast_arm_test.cpp core/memory/multicast_arm.cpp -o $@
 
 $(BUILD_DIR)/route_expected_keys_test: core/tests/route_expected_keys_test.cpp \
   core/backend/cve_2026_43499/route/expected_keys.hpp core/profile/route_catalog.hpp | $(BUILD_DIR)
@@ -294,6 +301,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/abi_offsets_test
 	@echo "check: route expected keys (what each route asks the document for)"
 	@$(BUILD_DIR)/route_expected_keys_test
+	@echo "check: multicast arm (geometry checked before the words land)"
+	@$(BUILD_DIR)/multicast_arm_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
