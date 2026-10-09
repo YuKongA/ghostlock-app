@@ -6,9 +6,17 @@
  *    name<TAB>form<TAB>implements_layer<TAB>phase<TAB>holds_resource<TAB>
  *    recordable<TAB>executable<TAB>arg_key<TAB>arg_required<TAB>arg_ceiling
  *  one line per argument (a row without arguments prints one line with "-"),
- *  then asserts the export is byte-identical to the FROZEN PIN below plus the
- *  structural invariants of the table. Any unintended change to the table
- *  therefore fails here until the pin is deliberately regenerated.
+ *  then asserts the export is byte-identical to the PIN FILE named by
+ *  SURFACE_MANIFEST_PIN plus the structural invariants of the table.
+ *
+ *  The pin is a GENERATED, human-reviewed file -- never hand-edited:
+ *    make -C src surface-manifest         verify (default path, runs this)
+ *    make -C src surface-manifest-regen   print the diff, then write the new pin
+ *  Regeneration happens only when asked for; check/host never rewrite the pin,
+ *  and the printed diff must be reviewed and committed with the change.
+ *
+ *  Invoked with --export-only it prints the export and exits 0 without asserting
+ *  (that is the mode the regeneration target uses).
  *
  *  phase is a STORED column (stage / pre_window / window / terminal) carried
  *  straight from the table, so a document that reproduces this manifest states
@@ -23,10 +31,28 @@
 #include "contract/script_surface.hpp"
 
 namespace {
-    /* FROZEN PIN -- regenerate deliberately with "make -C src surface-manifest". */
-    constexpr const char *kPin = "backend	call	backend	pre_window	true	true	false	-	-	-\nwriteop	handle_method	backend	window	false	true	true	handle	true	18446744073709551615\nwriteop	handle_method	backend	window	false	true	true	target_kind	true	64\nwriteop	handle_method	backend	window	false	true	true	target_value	true	18446744073709551615\nwriteop	handle_method	backend	window	false	true	true	value	true	18446744073709551615\nwriteop	handle_method	backend	window	false	true	true	width	true	8\ncopyop	handle_method	backend	window	false	true	true	handle	true	18446744073709551615\ncopyop	handle_method	backend	window	false	true	true	src_kind	true	64\ncopyop	handle_method	backend	window	false	true	true	src_value	true	18446744073709551615\ncopyop	handle_method	backend	window	false	true	true	dst_kind	true	64\ncopyop	handle_method	backend	window	false	true	true	dst_value	true	18446744073709551615\ncopyop	handle_method	backend	window	false	true	true	width	true	8\nsettle	handle_method	race	window	false	true	true	handle	true	18446744073709551615\nsettle	handle_method	race	window	false	true	true	us	true	1000000\nhandoff	handle_method	terminal	terminal	true	true	true	handle	true	18446744073709551615\nhandoff	handle_method	terminal	terminal	true	true	true	terminal	true	256\nhandoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256\ncfg	value	profile	stage	false	true	false	-	-	-\nclose	handle_method	session	pre_window	false	true	true	handle	true	18446744073709551615\n";
-    constexpr std::size_t kPinLines = 19;
-    constexpr std::size_t kBufferBytes = 8192;
+    /* The pin is a GENERATED, human-reviewed data file -- never hand-edited:
+     *   make -C src surface-manifest         verify (this path)
+     *   make -C src surface-manifest-regen   print the diff, then write the pin
+     * Regeneration is explicit only; check/host never rewrite the pin. */
+#ifndef SURFACE_MANIFEST_PIN
+#define SURFACE_MANIFEST_PIN "core/tests/surface-manifest.pin.tsv"
+#endif
+
+    /* Read the pin file into a caller buffer; returns the bytes read (0 on
+     * failure). Header-only helper: no allocation, no exceptions. */
+    std::size_t read_pin(char *buffer, std::size_t capacity) {
+        std::FILE *file = std::fopen(SURFACE_MANIFEST_PIN, "rb");
+        if (file == nullptr) {
+            return 0;
+        }
+        const std::size_t read = std::fread(buffer, 1, capacity - 1, file);
+        std::fclose(file);
+        buffer[read] = '\0';
+        return read;
+    }
+
+    constexpr std::size_t kBufferBytes = 16384;
 
     char g_text[kBufferBytes];
     std::size_t g_used = 0;
@@ -81,7 +107,13 @@ namespace {
     }
 }  // namespace
 
-int main() {
+int main(int argc, char **argv) {
+    bool export_only = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--export-only") == 0) {
+            export_only = true;
+        }
+    }
     std::size_t lines = 0;
     bool emitted = true;
     for (std::size_t i = 0; i < ghostlock::contract::kSurfaceCount; ++i) {
@@ -94,6 +126,11 @@ int main() {
     }
     std::fputs(g_text, stdout);
     std::fflush(stdout);
+    if (export_only) {
+        std::fprintf(stderr, "surface-manifest: exported %zu rows / %zu lines (pin not checked)\n",
+                     ghostlock::contract::kSurfaceCount, lines);
+        return 0;
+    }
 
     int failures = 0;
     if (!emitted) {
@@ -117,16 +154,19 @@ int main() {
         std::fprintf(stderr, "FAIL: a surface invariant does not hold\n");
         ++failures;
     }
-    if (lines != kPinLines) {
-        std::fprintf(stderr, "FAIL: manifest line count %zu != pinned %zu\n", lines, kPinLines);
+    char pin[kBufferBytes];
+    const std::size_t pin_bytes = read_pin(pin, sizeof(pin));
+    if (pin_bytes == 0) {
+        std::fprintf(stderr, "FAIL: cannot read the pin file %s\n", SURFACE_MANIFEST_PIN);
+        ++failures;
+    } else if (std::strcmp(g_text, pin) != 0) {
+        std::fprintf(stderr,
+                     "FAIL: the export differs from the pin %s (run surface-manifest-regen after review)\n",
+                     SURFACE_MANIFEST_PIN);
         ++failures;
     }
-    if (std::strcmp(g_text, kPin) != 0) {
-        std::fprintf(stderr, "FAIL: the export differs from the frozen pin\n");
-        ++failures;
-    }
-    std::fprintf(stderr, "surface-manifest: %zu rows, %zu manifest lines, pin %zu lines\n",
-                 ghostlock::contract::kSurfaceCount, lines, kPinLines);
+    std::fprintf(stderr, "surface-manifest: %zu rows, %zu manifest lines, pin %zu bytes\n",
+                 ghostlock::contract::kSurfaceCount, lines, pin_bytes);
     /* Diagnostics stay on stderr so that stdout is EXACTLY the manifest and can
      * be redirected into surface-manifest.tsv without filtering. */
     if (failures != 0) {

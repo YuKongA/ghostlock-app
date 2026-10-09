@@ -54,11 +54,14 @@ LAYER_HEADERS := \
   core/session/layer.hpp \
   core/profile/layer.hpp \
   core/profile/route_catalog.hpp \
-  core/contract/script_surface.hpp
+  core/contract/script_surface.hpp \
+  core/script/call_sink.hpp \
+  core/script/lua_whitelist.hpp \
+  core/script/sandbox.hpp
 
 P4_TESTS := core/pipeline/tests/window_exit_paths_test.cpp core/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test
+EVIDENCE_TESTS := core/tests/a2_test.cpp core/tests/surface_test.cpp core/tests/surface_manifest_test.cpp core/tests/surface_sandbox_test.cpp
+EVIDENCE_BINS := $(BUILD_DIR)/a2_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -88,21 +91,41 @@ $(BUILD_DIR)/surface_test: core/tests/surface_test.cpp core/contract/script_surf
 	$(CXX) $(CXXFLAGS) core/tests/surface_test.cpp -o $@
 
 $(BUILD_DIR)/surface_manifest_test: core/tests/surface_manifest_test.cpp core/contract/script_surface.hpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) core/tests/surface_manifest_test.cpp -o $@
+	$(CXX) $(CXXFLAGS) -DSURFACE_MANIFEST_PIN='"$(SURFACE_MANIFEST_PIN)"' core/tests/surface_manifest_test.cpp -o $@
 
 # The surface manifest (same pattern as combination/vocabulary/stepset manifests):
 # stdout is exactly the TSV, so it can be redirected into an artifact; the
 # bare-run assertion inside the exporter compares it with the frozen pin.
 SURFACE_MANIFEST := $(BUILD_DIR)/surface-manifest.tsv
-.PHONY: surface-manifest surface-doc-check
-$(SURFACE_MANIFEST): $(BUILD_DIR)/surface_manifest_test
+SURFACE_MANIFEST_PIN := core/tests/surface-manifest.pin.tsv
+.PHONY: surface-manifest surface-manifest-regen surface-doc-check
+
+# The artifact is the exporter's stdout; the exporter itself asserts the pin
+# (byte equality) and the table invariants, so a mismatch fails here. There is
+# deliberately NO second row-count check: the pin comparison is the single gate,
+# and an empty artifact cannot match a 19-line pin.
+$(SURFACE_MANIFEST): $(BUILD_DIR)/surface_manifest_test $(SURFACE_MANIFEST_PIN)
 	@$(BUILD_DIR)/surface_manifest_test > $@
-	@rows=$$(wc -l < $@ | tr -d ' '); \
-	if [ "$$rows" -lt 1 ]; then echo "surface-manifest: EMPTY artifact"; exit 1; fi; \
-	echo "surface-manifest: $@ ($$rows lines)"
+	@echo "surface-manifest: $@ ($$(wc -l < $@ | tr -d ' ') lines)"
 
 # Depends on the artifact rule so the manifest is (re)generated when missing.
 surface-manifest: $(SURFACE_MANIFEST)
+
+# Regeneration path -- EXPLICIT ONLY. Never a prerequisite of check/host/all.
+# It prints the diff for human review and then writes the new pin:
+#   the pin is a frozen copy that a human approved, so after running this the
+#   diff MUST be reviewed and committed together with the change that caused it.
+surface-manifest-regen: $(BUILD_DIR)/surface_manifest_test
+	@tmp=$$(mktemp "$${TMPDIR:-/tmp}/surface-manifest.XXXXXX"); \
+	$(BUILD_DIR)/surface_manifest_test --export-only > $$tmp; \
+	echo "surface-manifest-regen: diff (pin -> export)"; \
+	if diff -u $(SURFACE_MANIFEST_PIN) $$tmp; then \
+	  echo "surface-manifest-regen: no change; pin left untouched"; \
+	else \
+	  cp $$tmp $(SURFACE_MANIFEST_PIN); \
+	  echo "surface-manifest-regen: pin written to $(SURFACE_MANIFEST_PIN) -- review the diff above"; \
+	fi; \
+	rm -f $$tmp
 
 # Documentation cross-check (docs side owns the table): every manifest line must
 # appear verbatim in the document, so a hand-copied table cannot drift.
@@ -130,14 +153,16 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/a2_test
 	@echo "check: exposure surface table"
 	@$(BUILD_DIR)/surface_test
+	@echo "check: Lua sandbox (whitelist assembly + four budgets)"
+	@$(BUILD_DIR)/surface_sandbox_test
 	@win=$$(grep -cE '\{"window\.' core/contract/script_surface.hpp || true); \
 	if [ "$$win" -ne 0 ]; then echo "SURFACE-WINDOW-ROW: $$win"; grep -nE '\{"window\.' core/contract/script_surface.hpp; exit 1; fi; \
 	echo "check: no window.* row in the exposure surface"
-	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp' ! -name 'surface_manifest_test.cpp'); do \
+	@dup=$$(for f in $$(find core -type f \( -name '*.hpp' -o -name '*.cpp' \) ! -name 'script_surface.hpp'); do \
 	  if tr -d '\n' < "$$f" | grep -qE 'backend.*writeop.*settle.*handoff'; then echo "$$f"; fi; \
 	done | wc -l | tr -d ' '); \
 	if [ "$$dup" -ne 0 ]; then echo "SURFACE-DUP: $$dup other file(s) restate the surface list"; exit 1; fi; \
-	echo "check: surface list has a single definition site (no other file restates it; the manifest pin is a deliberate copy and is checked byte-for-byte by surface-manifest)"
+	echo "check: surface list has a single definition site (the generated pin lives in a .tsv and is checked byte-for-byte)"
 	@vtables=$$(nm -C $(BUILD_DIR)/ghostlock-skeleton $(BUILD_DIR)/a2_test $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test 2>/dev/null | grep -c '_ZTV' || true); \
 	if [ "$$vtables" -ne 0 ]; then echo "VTT-HIT: $$vtables (a vtable exists in the window shape)"; exit 1; fi; \
 	echo "check: nm scan _ZTV* = 0 (no vtable in any built binary)"
@@ -171,7 +196,17 @@ LUA_CFLAGS := -std=c99 -w
 # opener the vendored tree can provide.
 LUA_FORBIDDEN_SYMBOLS := luaopen_io luaopen_os luaopen_package luaopen_debug luaopen_coroutine luaopen_math luaopen_string luaopen_table luaopen_utf8 luaopen_db luaopen_loadlib luaL_openlibs
 
+# --- A6-1: the Lua sandbox (implementation + its evidence test) -------------
+# The sandbox TU is compiled together with its test so the check path really
+# builds it; the test links the 22-file Lua core set from lib/lua/src.
+SCRIPT_SRCS := core/script/sandbox.cpp
+
 .PHONY: lua-core lua-core-size
+
+$(BUILD_DIR)/surface_sandbox_test: core/tests/surface_sandbox_test.cpp $(SCRIPT_SRCS) \
+  core/script/sandbox.hpp core/script/call_sink.hpp core/script/lua_whitelist.hpp \
+  core/contract/script_surface.hpp $(LUA_CORE_LIB) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(LUA_DIR) core/tests/surface_sandbox_test.cpp $(SCRIPT_SRCS) $(LUA_CORE_LIB) -o $@
 lua-core: $(LUA_CORE_LIB)
 	@echo "lua-core: built $(words $(LUA_CORE_FILES)) files into $(LUA_CORE_LIB)"
 	@hits=0; for s in $(LUA_FORBIDDEN_SYMBOLS); do \
@@ -205,7 +240,7 @@ lua-core-size:
 	echo "lua-core-size: text* sum = $$total B over $(words $(LUA_CORE_FILES)) files (PROVENANCE reference: 119068 B)"
 
 dangling-check:
-	@missing=0; total=0; for p in $(SKELETON_SRCS) $(LAYER_HEADERS) $(P4_TESTS) $(EVIDENCE_TESTS) $(MPACK_SRC) $(MPACK_HDR) $(LUA_CORE_SRCS); do \
+	@missing=0; total=0; for p in $(SKELETON_SRCS) $(LAYER_HEADERS) $(P4_TESTS) $(EVIDENCE_TESTS) $(MPACK_SRC) $(MPACK_HDR) $(LUA_CORE_SRCS) $(SCRIPT_SRCS); do \
 	  total=$$((total+1)); \
 	  if [ ! -e "$$p" ]; then echo "DANGLING: $$p"; missing=$$((missing+1)); fi; \
 	done; \
