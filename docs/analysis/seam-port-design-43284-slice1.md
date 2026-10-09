@@ -30,3 +30,17 @@
 - `write16` 内部对 `next_seq` 的**推进语义**（本次只看到 `InvalidArgument` 系列的判据，未读到推进处）
 - `file_fd` / `socket_fd` 在旧树是**谁打开的**（终端还是 route 自己）——决定它们属 `bring_up` 还是属**脚本传入**
 - `write16` 对 `old_page` / `helper_write` 为空的**行为**（未绑定时走直接路径的判据在哪一行）
+
+## 三个未量项：第 ② 已量清（门的归属）
+
+旧树里**门不是 route 自己开的**，而是**绑定层**开的：`execution_binding.cpp:204` 设 `ctx.page.file_fd = target_fd`；`:205` 设 `ctx.page.socket_fd = connect_esp_socket(sa)`（**套接字由 SA 连出来**）；`:168` 设 `ctx.page.io = pagecache::real_splice_io()`；失败路径 `:210` 把 `file_fd` 置回 -1。
+
+**据此的归属（由用户规则直接决定，不是我的偏好）**：用户裁定「在 access 内初始化并回收」⇒
+
+- **门 ⇒ `bring_up`**：`file_fd` 与 ESP 套接字由 **access 自己打开**，并在 `tear_down` 里关闭（`zeroize` 之外再补 fd 的归还）。理由是 access 现在是**唯一被暴露的对象**，它拥有它那条 route 的资源。
+- **凭据 ⇒ 参数传入**：`sa` 是**运行时凭据**（文件头写明走运行时通道），access **打不开**它 ⇒ 只能**接收** ⇒ 落在 `AccessParams`（与该 backend 的 route 选择、偏移同处）。
+- **splice 面与序列号 ⇒ `bring_up`**：`io` 与 `next_seq` 是 route 内部状态。
+
+⇒ 于是 43284 的 `AccessParams` 要比 43499 多一类字段：**凭据**（`sa`）。这与 43499 的 `AccessParams`（route + offset）**不同但同构**：两者都是「这个 backend 的操作需要什么，而基类不可能知道」。
+
+**仍未量**（剩下两项）：`write16` 内部 `next_seq` 的推进语义；`write16` 对 `old_page`/`helper_write` 未绑定时的判据行号。
