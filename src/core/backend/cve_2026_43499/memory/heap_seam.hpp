@@ -36,7 +36,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     concept HeapSeam = requires(std::int32_t fd, std::int32_t *pair, std::int32_t bytes,
                                 std::size_t count, std::uint64_t pid, std::int32_t cpu) {
         { Seam::page_size() } -> std::same_as<SeamResult>;
-        { Seam::open_memfd() } -> std::same_as<SeamResult>;
+        { Seam::open_memfd(pid) } -> std::same_as<SeamResult>;
         { Seam::close_fd(fd) } -> std::same_as<SeamResult>;
         { Seam::socket_pair(pair) } -> std::same_as<SeamResult>;
         { Seam::set_socket_buffer(fd, bytes) } -> std::same_as<SeamResult>;

@@ -35,6 +35,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         std::size_t send_size = 0U;
         /** The socket buffer the shaping pair is given. */
         std::int32_t socket_buffer = 0;
+        /** The processor the owner side runs on, from the profile. */
+        std::int32_t main_cpu = 0;
     };
 
     /** Why a geometry cannot be acted on. Names follow the single table. */

@@ -30,7 +30,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             return SeamResult{static_cast<std::int64_t>(size), errno};
         }
 
-        static SeamResult open_memfd() noexcept {
+        static SeamResult open_memfd(std::uint64_t pid) noexcept {
+            (void) pid;
             errno = 0;
             const int fd = static_cast<int>(::syscall(SYS_memfd_create, "ghostlock", 0U));
             return SeamResult{static_cast<std::int64_t>(fd), errno};

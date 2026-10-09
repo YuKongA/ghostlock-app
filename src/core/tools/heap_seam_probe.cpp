@@ -52,7 +52,7 @@ int main() {
         ++g_failed;
     }
 
-    const SeamResult memfd = LinuxHeapSeam::open_memfd();
+    const SeamResult memfd = LinuxHeapSeam::open_memfd(0U);
     report("open_memfd", memfd, memfd.value >= 0);
     if (memfd.value >= 0) {
         report("close_fd", LinuxHeapSeam::close_fd(static_cast<std::int32_t>(memfd.value)), true);
