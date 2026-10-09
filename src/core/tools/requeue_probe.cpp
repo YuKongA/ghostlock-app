@@ -28,6 +28,7 @@ namespace {
     std::uint32_t g_target = 0U;
     std::atomic<int> g_stage{0};
     std::atomic<int> g_waiter_result{-99};
+    std::atomic<int> g_waiter_gave_back{-99};
     std::atomic<bool> g_waiter_done{false};
 }  // namespace
 
@@ -39,6 +40,11 @@ int main() {
         /* Parks here until the owner requeues it onto the target word. */
         const int result = LinuxFutexSeam::wait_requeue_pi(&g_chain, &g_target);
         g_waiter_result.store(result);
+        /* The lock is this thread's now, so releasing it is this thread's to do: a
+         * release from anywhere else is exactly the error the kernel should give. */
+        if (result == 0) {
+            g_waiter_gave_back.store(LinuxFutexSeam::unlock_pi(&g_target));
+        }
         g_waiter_done.store(true);
     });
     while (g_stage.load() == 0) {
@@ -65,12 +71,10 @@ int main() {
     }
     const int result = g_waiter_result.load();
     std::printf("  waiter: wait_requeue_pi -> %d (0 means it now owns the target)\n", result);
-    int gave_back = -99;
-    if (g_waiter_done.load() && result == 0) {
-        /* It owns the lock the kernel handed it; give it back. */
-        gave_back = LinuxFutexSeam::unlock_pi(&g_target);
-        std::printf("  waiter: unlock_pi -> %d\n", gave_back);
-    }
+    const int gave_back = g_waiter_gave_back.load();
+    std::printf("  waiter: unlock_pi -> %d (the thread that holds it is the one that "
+                "gave it back)\n",
+                gave_back);
     waiter.join();
     const bool handed_over = owned == 0 && parked && released == 0 && result == 0;
     /* The handoff is what this probe is about. The new owner failing to release it
