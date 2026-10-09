@@ -9,7 +9,7 @@
 | 设备 | **`A301SO`** · Android 15 · CPU **6 核** |
 | 内核 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557` |
 | SELinux | **Enforcing** |
-| KernelSU | **无**（`/data/adb/ksu` 与 `ksud` 均不存在） |
+| KernelSU | **已安装** ✓ · 管理器包 **`me.weishu.kernelsu`** ✓ · **`/data/adb/ksu` 存在但 root-only** ✓ · 无特权 shell **无 root** ✓（`su` 不在 PATH、`/system/bin/su` 不存在 —— 这是 KernelSU 的正常形态：root 由管理器按应用授权）；另 **`moe.shizuku.privileged.api`（Shizuku）** 亦在 ✓ |
 | 权限 | **未 root**（shell uid，无 su） |
 | 产物 | `build/native/ghostlock` · **1 760 256 B** · ELF **aarch64 PIE** · arm64 交叉构建（NDK **28.2.13676358**）· **零警告** |
 | 部署 | 推至 `/data/local/tmp/ghostlock` · 权限 **755** |

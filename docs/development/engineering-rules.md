@@ -107,3 +107,4 @@
 > `2026-10-08 · 反例记录（提交纪律旁注，Lead 自述违规）：同一次程序里先跑门禁、未检查退出码就继续 git commit ⇒ 提交落在红门禁上（check 运行导出器却未列为构建前置 ⇒ clean 构建无二进制）；已在 433050b8 补修并写入该提交信息。纪律：门禁与提交不得同段无条件串联，必须先判退出码`。
 > `2026-10-08 · 反例记录（Lead 流程违规）：A6-4 与 A3 前置批次新增/改动若干结构性件（profile 三件 · memory 两件 · route/lifecycle · contract/step_catalog）但**未同批更新 full-process-uml.md** ⇒ 违反「结构性改动必须同批更新权威 UML」；补修 = 本轮由 docs-uml 补齐（Class §3.4 · 状态机 §2.5 · IPO 补条）`。
 > `2026-10-08 · 清理事实：profile-core/src/test/resources/device-document-fixture 2.hex（3821 B · sha 8914d24f…）= 上一版固定件的陈旧副本（陈旧固定件与真 pin 并存会被误当权威）——发现并已删除`。
+> `2026-10-08 · 反例记录（Lead 方法错误 · 权限盲检测）：用「无特权 shell 里 ls /data/adb/ksu 失败」当作「未安装 KernelSU」⇒ 误判；实测四行均为 Permission denied（非 No such file）⇒ 路径存在且 root-only ✓；pm list 见 me.weishu.kernelsu ✓ + moe.shizuku.privileged.api ✓ ⇒ 该设备已装 KernelSU。规则：凡以「读不到」为据的否定结论，必须先区分「不存在」与「无权限」（Permission denied 恰证明存在）。另：AGENTS 门禁前置 = 「KernelSU 未加载的干净启动」⇒ 装有 KernelSU 属预期环境，原表述与该前置不符`。

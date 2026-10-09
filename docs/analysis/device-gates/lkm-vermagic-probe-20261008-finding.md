@@ -22,7 +22,7 @@ EXIT=4
 
 ## 3. 含义（如实，不拔高）
 
-- 模块自述 vermagic = **`5.15.202-…`**，设备内核 = **`5.15.189-…`** ⇒ **内核会以 vermagic 不符拒绝加载** ✗；
+- **⚠ 更正（2026-10-08 · 真机实测推翻本节原推论）**：模块自述 vermagic = **`5.15.202-…`** 与设备 `5.15.189-…` 不同，但**真机实测该模块「已加载 → 已执行 → 已自卸载」**（E2BIG = 模块 `module_init` 的**故意**返回）⇒ **patch 级差异不阻止加载**。**机制**：Android GKI 开 `CONFIG_MODVERSIONS` ⇒ 内核 `same_magic()` 在这种模块上**跳过 vermagic 第一段（内核版本串）**，只比 tail（`SMP preempt mod_unload modversions aarch64`）；本产物带 `modversions` 且 `__versions` 段 **size = 0**（`objdump` 实测）⇒ 无 CRC 记录可比。**探测端 `belongs=no` 的出处与性质**：`src/core/main.cpp:175-182` 的 `vermagic_belongs_to(...)` 是**文本比较**（不符 ⇒ exit 4）⇒ **保守静态判据，不是内核加载裁决**。
 - ⇒ **这份资产在本设备上不可用**（**与攻击链是否就绪无关** ✓）；
 - 该结论由**只读诊断**在**加载任何东西之前**给出 —— 这正是 `--probe-cve-2026-43284` 的用途 ✓。
 
@@ -45,8 +45,9 @@ EXIT=4
 | android16-6.12 | `6.12.76-4k` |
 | android17-6.18 | `6.18.32-4k-g47cc22554442-dirty` |
 
-- **结论（kotlin-app）**：该资产在本设备不可用的原因 = **构建树 patch level（5.15.202）与设备（5.15.189）不同**，而 vermagic 含**精确 release 串** ⇒ 内核在**加载检查处即拒**；**与攻击链状态无关** ✓。
-- **未核实（需设备侧判）**：`ksud late-load --kmi` 是否对 vermagic 另有放行（只读不可判）；**最省的证伪 = 设备上试载一次并看 dmesg 是否 `invalid module format / version magic`**。
+- **原结论（kotlin-app 早期读法，已更正 ✗）**：曾据静态 `belongs=no` 判「内核会以 vermagic 不符拒绝加载」⇒ **被真机实测推翻**（同 label 模块可加载可执行）；**沿革不删**，以 §4 上方「⚠ 更正」为准。
+- **⚠ 该推论尚未被实测证实（2026-10-08 补）**：随后以 root `insmod` 同一 label 的模块 ⇒ **`Argument list too long（E2BIG）`**（**未出现** `invalid module format` / `version magic` / `Unknown symbol` / CRC）——见 [旧版发布真机事实](legacy-release-root-20261008-finding.md) §5。⇒ **「vermagic 不符会被拒」仍是预期**（发生在内核加载检查处），而 **E2BIG 出现在更早的参数长度检查**；二者**不予归因**（该次试载后设备重启，成因未知，未再重试）。
+- **未核实（需设备侧判 · 已更正前提）**：该设备**有 KernelSU + 管理器**（`me.weishu.kernelsu` ✓，`/data/adb/ksu` root-only 存在 ✓）⇒ **决定性试载并非「没有入口」，而是「需要一次 root 授权」** ⇒ **待用户授权 root 后可执行**：设备上试载一次并看 dmesg 是否 `invalid module format / version magic`（同时可判 `ksud late-load --kmi` 是否放行）。
 - **补记（归档用）**：`app/src/main/assets/lkm/` 在源码树里为空**属正常** —— LKM 资产是**生成物**（`build/app/generated/lkmAssets/lkm/<label>/`，`build.gradle.kts:37`/`:112`/`:484-497`），**打包时才并入 APK**。
 
 ## 5. 归档附注
