@@ -24,7 +24,7 @@ fails.
 give you a root shell (`adb root` on a userdebug/eng build, or an equivalent
 root). No manager app is needed.
 
-Do **not** use KernelSU, ReSukiSU, or KowSU, including the form that patches the
+Do **not** use KernelSU, SukiSU-Ultra, ReSukiSU, or KowSU, including the form that patches the
 kernel: a KernelSU-patched kernel interferes with the exploit. The script checks
 root and KernelSU for you and stops with a message if either is not satisfied.
 
