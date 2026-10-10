@@ -107,6 +107,7 @@ namespace ghostlock::binary_profile {
             PLAIN("slide_nfulnl_logger", offsets.slide_nfulnl_logger),
             PLAIN("slide_loggers_0_1", offsets.slide_loggers_0_1),
             PLAIN("slide_boot_id", offsets.slide_boot_id),
+            PLAIN("sys_exit_tp_funcs", offsets.sys_exit_tp_funcs),
         };
 
         constexpr Field kKernel[] = {
