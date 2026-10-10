@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="me.yuki.folksu" />
         <package android:name="me.weishu.kernelsu.pr" />
         <package android:name="me.weishu.kernelsu" />
         <package android:name="com.resukisu.resukisu" />
