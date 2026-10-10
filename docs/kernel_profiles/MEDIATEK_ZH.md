@@ -17,7 +17,7 @@
 
 `/proc/iomem` 与 `/proc/kallsyms` 仅 root 可读，因此设备需能提供 root shell（userdebug/eng 构建下的 `adb root`，或等效的 root），无需任何管理器应用。
 
-**请勿**使用 KernelSU、ReSukiSU 或 KowSU，**尤其不要使用通过修补内核启用 KernelSU 的方式**：被 KernelSU 修补过的内核会干扰攻击。脚本会自动检查 root 与 KernelSU，不满足时给出提示并停止。
+**请勿**使用 KernelSU、SukiSU-Ultra、ReSukiSU 或 KowSU，**尤其不要使用通过修补内核启用 KernelSU 的方式**：被 KernelSU 修补过的内核会干扰攻击。脚本会自动检查 root 与 KernelSU，不满足时给出提示并停止。
 
 ## 第 1 步 —— 用脚本取得两个取值
 
