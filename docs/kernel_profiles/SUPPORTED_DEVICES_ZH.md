@@ -20,12 +20,13 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|
-| `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · 推荐Shizuku                                        |
+| `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · 推荐Shizuku                                         |
 | `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`      | MEIZU 21 Note                                                    |
 | `5.15.167-android13-8-00017-gb1f32b310a30-ab12826353`  | Red Magic 8 Pro                                                  |
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
 | `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
 | `6.1.25-android14-11-maybe-dirty`                      | MEIZU 21 / MEIZU 21 Pro                                          |
+| `6.1.134-android14-11-maybe-dirty`                     | Boox Onyx NoteAir6C                                              |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
@@ -39,7 +40,7 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.1.145-android14-11-g11c274d0441f-ab14259673`        | RedMagic 9(S) Pro (REDMAGICOS11.0.5MR1_GB)                       |
 | `6.1.145-android14-11-g74d1702dab4d-ab14669069`        | vivo T4, IQOO 12                                                 |
 | `6.1.145-android14-11-geaa643a2c0ee-ab14763719`        | Motorola Razr 50 Ultra / Motorola Razr+ 2024                     |
-| `6.1.145-android14-11-g9b69cc399ae1-ab14819715`        | Motorola Edge 60 Fusion                    |
+| `6.1.145-android14-11-g9b69cc399ae1-ab14819715`        | Motorola Edge 60 Fusion                                          |
 | `6.1.157-android14-11-ga8b0b542991e-ab15601211`        | Infinix GT 30 Pro (X6873)                                        |
 | `6.1.157-android14-11-gbd23337e42e7-ab14791245`        | Google Pixel 9a (Tensor G4), Google Pixel 7 (Tensor G2)          |
 | `6.1.162-android14-11-gce140c0e5bf5-ab15450923`        | Zenfone 11 Ultra                                                 |
