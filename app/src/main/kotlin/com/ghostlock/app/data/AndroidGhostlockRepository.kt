@@ -21,7 +21,6 @@ import com.ghostlock.app.domain.model.ProfileConfig
 import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
 import com.ghostlock.app.domain.repository.ProfileConfigController
-import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
@@ -91,17 +90,11 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
     private var forceAttackTest = false
-    private var shizukuEnabled = false
-    /** True once the user flipped the toggle; only then does it override the
-     * profile suggestion (PROFILE-SUGGEST-01). */
-    private var shizukuPreferenceSet = false
     private var pendingParsedDocument: PendingParsedDocument? = null
-    private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
         buildCpuPairs()
         restoreCpuPair()
-        restoreShizukuPreference()
         restoreForceAttackTest()
         dropLegacyOffsetsCache()
         migrateLegacyOffsetsStore()
@@ -148,30 +141,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         preferences.edit { putString(PrefDebugProfileOverrides, HoconSupport.render(all)) }
     }
 
-    override suspend fun snapshot(): KernelSnapshot {
-        val release = System.getProperty("os.version", "unknown").orEmpty()
-        /* PROFILE-SUGGEST-01: recommend_shizuku is a suggestion. It seeds the
-         * toggle until the user makes an explicit choice, which then overrides
-         * it in both directions. */
-        val recommendShizuku = release in builtinProfiles.recommendShizuku ||
-            importedOffsetsRecommendShizuku(release)
-        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else recommendShizuku
-        return KernelSnapshot(
-            deviceName = resolveDeviceName(),
-            kernelRelease = release,
-            socName = resolveSocName(),
-            kernelSupported = isKernelSupported(),
-            cpuPairs = cpuPairs.toList(),
-            cpuPairLabels = cpuPairLabels.toList(),
-            selectedCpuPair = selectedCpuPair,
-            safeModeEnabled = safeModeEnabled,
-            forceAttackTest = forceAttackTest,
-            recommendShizuku = recommendShizuku,
-            shizukuEnabled = shizukuActive,
-            shizukuStatus = if (shizukuActive) shizukuRunner.status()
-            else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
-        )
-    }
+    override suspend fun snapshot(): KernelSnapshot = KernelSnapshot(
+        deviceName = resolveDeviceName(),
+        kernelRelease = System.getProperty("os.version", "unknown").orEmpty(),
+        socName = resolveSocName(),
+        kernelSupported = isKernelSupported(),
+        cpuPairs = cpuPairs.toList(),
+        cpuPairLabels = cpuPairLabels.toList(),
+        selectedCpuPair = selectedCpuPair,
+        safeModeEnabled = safeModeEnabled,
+        forceAttackTest = forceAttackTest,
+    )
 
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
@@ -188,17 +168,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     override fun setForceAttackTest(enabled: Boolean) {
         forceAttackTest = enabled
         preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
-    }
-
-    override fun setShizukuEnabled(enabled: Boolean) {
-        shizukuEnabled = enabled
-        shizukuPreferenceSet = true
-        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .edit {
-                putBoolean("shizuku_enabled", enabled)
-                putBoolean("shizuku_explicit", true)
-            }
-        if (enabled) shizukuRunner.requestPermission()
     }
 
     override fun profileController(): ProfileConfigController = profileController
@@ -397,51 +366,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             runExploitBinary(pair, "libghostlock.so", archivedLog, debugDir, writeSidecar)
         }
 
-    override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
-        return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir, writeSidecar ->
-            archivedLog("<s> resolving profile")
-            val release = System.getProperty("os.version", "").orEmpty()
-            val config = profileController.load(release, pair)
-            val profileBlob = profileController.nativeDocument(config)
-            archivedLog(
-                "<s> profile resolved hasProfile=${config.hasProfile} " +
-                    "blob=${profileBlob?.size ?: 0} invalid=${config.invalidPaths.size}",
-            )
-            when {
-                !config.hasProfile || profileBlob == null -> {
-                    archivedLog("<s> error: profile is unavailable for $release")
-                    1
-                }
-
-                config.invalidPaths.isNotEmpty() -> {
-                    archivedLog(
-                        "<s> error: profile has ${config.invalidPaths.size} invalid field(s): " +
-                            config.invalidPaths.take(6).joinToString(),
-                    )
-                    1
-                }
-
-                else -> {
-                    /* Mirror the UserService patch so the dumped blob is the
-                     * effective one native will actually receive. */
-                    val runtimeBlob = if (safeModeEnabled) {
-                        NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
-                    } else {
-                        profileBlob
-                    }
-                    dumpRuntimeProfile(archivedLog, writeSidecar, release, pair, runtimeBlob)
-                    archivedLog("<b> starting UserService")
-                    resetRunState()
-                    shizukuRunner.run(
-                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
-                    ) { step, status ->
-                        if (status == "disabled") clearRunState() else applyRunStatus(step, status)
-                    }
-                }
-            }
-        }
-    }
-
     /* --- attack step status ------------------------------------------------
      * The native process reports each step over stdout and waits for an ACK on
      * stdin. The app persists the status here; a kernel panic leaves the last
@@ -561,11 +485,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             log("<k> runtime profile written: profile.conf/profile.bin")
         }
     }
-
-    override fun requestShizukuPermission() = shizukuRunner.requestPermission()
-
-    override fun setShizukuStatusListener(listener: (() -> Unit)?) =
-        shizukuRunner.setStatusListener(listener)
 
     private suspend fun runExploitBinary(
         pair: CpuPair,
@@ -862,7 +781,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     }
 
     override fun close() {
-        shizukuRunner.close()
         synchronized(processes) {
             processes.forEach(Process::destroyForcibly)
             processes.clear()
@@ -922,9 +840,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private fun importedOffsetsMatch(version: String): Boolean =
         userProfileStore.containsRelease(version)
 
-    private fun importedOffsetsRecommendShizuku(version: String): Boolean =
-        userProfileStore.recommendsShizuku(version)
-
     private fun buildCpuPairs() {
         cpuPairs.clear()
         cpuPairLabels.clear()
@@ -946,12 +861,6 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
-    }
-
-    private fun restoreShizukuPreference() {
-        val prefs = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-        shizukuPreferenceSet = prefs.getBoolean("shizuku_explicit", false)
-        shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
     }
 
     private fun restoreForceAttackTest() {
@@ -1016,22 +925,17 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private fun firstValidProperty(vararg keys: String): String? = keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
 
     private fun prepareKsud(workDir: File, onLog: (String) -> Unit): File? {
-        val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager")
-        var installed = false
-        for (packageName in packages) {
-            val appInfo = runCatching { appContext.packageManager.getApplicationInfo(packageName, 0) }.getOrNull() ?: continue
-            installed = true
-            val source = File(appInfo.nativeLibraryDir, "libksud.so")
-            if (!source.isFile) continue
-            val output = File(workDir, "ksud")
-            runCatching {
-                source.inputStream().use { input -> output.outputStream().use { input.copyTo(it) } }
-                runCatching { Os.chmod(output.absolutePath, 448) }
-                return output
-            }.onFailure { onLog("<k> copy ksud failed: ${it.message}") }
+        val source = File(appContext.applicationInfo.nativeLibraryDir, "libksud.so")
+        if (!source.isFile) {
+            onLog("<k> bundled ksud not found: ${source.absolutePath}")
+            return null
         }
-        if (!installed) onLog("<k> KernelSU/ReSukiSU/KowSU app not installed")
-        return null
+        val output = File(workDir, "ksud")
+        return runCatching {
+            source.inputStream().use { input -> output.outputStream().use { input.copyTo(it) } }
+            runCatching { Os.chmod(output.absolutePath, 448) }
+            output
+        }.onFailure { onLog("<k> copy bundled ksud failed: ${it.message}") }.getOrNull()
     }
 
     private suspend fun runProcess(

@@ -23,7 +23,6 @@ class FormatLogUseCase {
                     LogTone.Progress
                 }
 
-            text.startsWith("<s>") -> if (looksLikeError(tagged)) LogTone.Error else LogTone.Shizuku
             text.startsWith("<k>") ->
                 if (tagged.startsWith("result:")) resultTone(tagged) else LogTone.Kotlin
 

@@ -117,10 +117,6 @@ class MainActivity : ComponentActivity() {
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
-
-            GhostlockEffect.OpenShizuku -> packageManager
-                .getLaunchIntentForPackage(SHIZUKU_PACKAGE)
-                ?.let(::startActivity)
         }
     }
 
@@ -152,9 +148,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private companion object {
-        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
-    }
 }
 
 @Composable
@@ -186,7 +179,6 @@ private fun GhostlockRoute(
             override fun onForceAttackTestChanged(enabled: Boolean) =
                 viewModel.toggleForceAttackTest(enabled)
 
-            override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
             override fun onDialogItemSelected(index: Int) = viewModel.onDialogItemSelected(index)
             override fun onDialogInputChange(value: String) = viewModel.onDialogInputChange(value)
             override fun onDialogConfirm(value: String) = viewModel.onDialogConfirm(value)
