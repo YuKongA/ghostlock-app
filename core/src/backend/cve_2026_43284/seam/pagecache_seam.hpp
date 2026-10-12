@@ -15,11 +15,10 @@
  *  runtime credential that arrives with the parameters -- so it is received and held by value so it
  *  can be zeroed on the way out.
  *
- *  Scope, stated rather than implied: one route's write face. What is unfilled is the PUBLIC read
- *  face -- can_read and the access read -- which reports unsupported until it is. The block read
- *  itself is not optional: the old write derives its IV from the block it is about to replace, so a
- *  window body without that read cannot land a block at all, and it belongs inside this file rather
- *  than behind can_read.
+ *  Scope, stated rather than implied: one route, both faces. The block read was not optional even
+ *  before it was public -- the old write derives its IV from the block it is about to replace -- and
+ *  the same read is what a patch is verified against, so the read face is served from the same door
+ *  and the same surface rather than from a second path.
  */
 #include <cstddef>
 #include <cstdint>
@@ -50,8 +49,28 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         /** Write one sixteen-byte block at a position. */
         [[nodiscard]] virtual bool write_block(std::uint64_t position,
                                                const std::uint8_t block[kWriteWidth]) noexcept = 0;
-        /** Whether this route can also read. False until the block read is filled in. */
+        /** Read one sixteen-byte block at a position. The answer is the carrier's own content at
+         *  that position, which is what a patch is verified against -- the old tree read the block
+         *  back after writing it and compared, so the read is part of the write's own check rather
+         *  than a diagnostic. A window with no read face refuses instead of filling the buffer with
+         *  zeros, because zeros are a plausible block and would read as data.
+         *  @param position Where in the carrier the block starts.
+         *  @param out      Receives the block. Left untouched when the answer is false.
+         *  @return True only when a whole block was read. */
+        [[nodiscard]] virtual bool read_block(std::uint64_t position,
+                                              std::uint8_t out[kWriteWidth]) noexcept {
+            static_cast<void>(position);
+            static_cast<void>(out);
+            return false;
+        }
+        /** Whether this route can also read. The real window answers yes while its carrier door is
+         *  open; a recording window keeps the default, which is why the default exists. */
         [[nodiscard]] virtual bool can_read() const noexcept { return false; }
+        /** Continue the session's sequence from where an earlier window left it. The sequence belongs
+         *  to the security association and the kernel's inbound anti-replay window drops anything it
+         *  has seen, so a window that restarted at one writes nothing at all. A window that owns no
+         *  sequence ignores this, which is why the default does nothing. */
+        virtual void adopt_sequence(std::uint32_t) noexcept {}
     };
 
     /** The page cache route, behind the seam. */
@@ -98,6 +117,26 @@ namespace ghostlock::backend::cve_2026_43284::seam {
                 return false;
             }
             return window_.write_block(position, block);
+        }
+
+        /** Continue the session's sequence. The access calls this after bring-up when the caller
+         *  supplied one: bring-up starts a fresh route and a fresh sequence, so the adoption has to
+         *  come after it -- the device proved that ordering twice, by dropping every datagram of a
+         *  window that restarted at one. */
+        void adopt_sequence(std::uint32_t next) noexcept { window_.adopt_sequence(next); }
+
+        /** One block read back. It travels the door the write opened, so a seam that is down has no
+         *  door and refuses before the window is asked; a window that cannot read is asked anyway,
+         *  because its own answer is the honest one. */
+        [[nodiscard]] bool read_block(std::uint64_t position,
+                                      std::uint8_t out[kWriteWidth]) noexcept {
+            if (!up_) {
+                return false;
+            }
+            if (!window_.can_read()) {
+                return false;
+            }
+            return window_.read_block(position, out);
         }
 
         /** The seam base offers a word slot, and this route has no word: its unit is a

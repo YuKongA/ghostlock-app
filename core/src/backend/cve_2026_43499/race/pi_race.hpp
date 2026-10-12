@@ -1,4 +1,6 @@
 #pragma once
+#include <cerrno>
+#include <cstdio>
 /** @file race/pi_race.hpp
  *  Minimal-principle PI-futex race: prepare, run, disarm, destroy.
  *

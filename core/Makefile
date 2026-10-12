@@ -33,22 +33,29 @@ MPACK_CFLAGS := -std=c99 -w
 # The runtime binary: the entry plus the layers it reaches. The script layer is
 # not in it yet (its Lua core would have to be cross-built too), and neither is
 # the executor: the entry resolves a document and says what it would run.
+TEST_SRCS := src/backend/cve_2026_43499/steps/route_config.cpp src/backend/victim/victim_context.cpp
 RUNTIME_SRCS := src/main.cpp src/contract/kmi_catalog.cpp src/contract/contract.cpp src/memory/memory.cpp \
-  src/backend/cve_2026_43499/leak/snitch_setup.cpp \
-  src/backend/cve_2026_43284/lkm/module_facts.cpp \
-  src/profile/glkv3_document.cpp src/profile/payload_keys.cpp \
-  src/profile/document_pairs.cpp src/profile/run_plan.cpp \
-  src/profile/plan_delivery.cpp \
-  src/support/sha256.cpp \
-  src/backend/cve_2026_43284/session_frame.cpp \
-  src/pipeline/access_factory.cpp \
-  src/pipeline/run_pipeline_temp.cpp \
-  src/backend/cve_2026_43284/seam/real_splice_io.cpp \
-  src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp \
-  src/backend/cve_2026_43284/ipsec/aes256.cpp \
-  src/backend/cve_2026_43499/abi.cpp \
-  src/support/hmac_sha256.cpp \
-  src/terminal/execution.cpp
+ src/backend/cve_2026_43499/leak/snitch_setup.cpp \
+ src/backend/cve_2026_43284/lkm/module_facts.cpp \
+ src/profile/glkv3_document.cpp src/profile/payload_keys.cpp \
+ src/profile/document_pairs.cpp src/profile/run_plan.cpp \
+ src/profile/plan_delivery.cpp \
+ src/support/sha256.cpp \
+ src/backend/cve_2026_43284/session_frame.cpp \
+ src/pipeline/access_factory.cpp \
+ src/pipeline/run_pipeline_temp.cpp \
+ src/backend/cve_2026_43284/seam/real_splice_io.cpp \
+ src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp \
+ src/backend/cve_2026_43284/ipsec/aes256.cpp \
+ src/backend/cve_2026_43499/abi.cpp \
+ src/support/hmac_sha256.cpp \
+ src/terminal/execution.cpp
+SKELETON_SCRIPT_SRCS = $(sort $(SCRIPT_SRCS) src/script/wire_doc.cpp)
+# 主机可见的全部源：两组列表有重叠 ⇒ 用 $(sort) 去重（源码顺序无关）。
+# 主机可见的全部源：两组列表都含 script/*，先在合并处滤掉、再去重（源码顺序无关）。
+# 主机可见的全部源：四组列表或有重叠 ⇒ 统一 sort（既去重、又让顺序稳定；源码顺序无关）。
+HOST_ALL_SRCS = $(sort $(RUNTIME_SRCS) $(DEVICE_EXTRA_SRCS) $(SKELETON_SCRIPT_SRCS) $(TEST_SRCS))
+DEVICE_EXTRA_SRCS := src/script/sandbox.cpp src/script/wire_doc.cpp src/backend/cve_2026_43499/steps/prepare_mapping.cpp src/backend/cve_2026_43499/steps/window_steps.cpp src/backend/cve_2026_43284/steps/pagecache_step_runner.cpp src/backend/cve_2026_43284/hook/sentry_hook.cpp src/backend/cve_2026_43284/embed/libcxx_blob.cpp src/backend/cve_2026_43284/steps/pagecache_steps.cpp src/backend/cve_2026_43284/seam/crash_dump_bridge.cpp src/backend/cve_2026_43284/seam/encap_peer.cpp src/backend/cve_2026_43284/embed/splicehelper_blob.cpp 
 
 SKELETON_SRCS := src/main.cpp
 LAYER_HEADERS := \
@@ -271,6 +278,8 @@ LAYER_HEADERS := \
   src/tests/route_expected_keys_test.cpp \
   src/backend/cve_2026_43499/memory/multicast_arm.hpp \
   src/backend/cve_2026_43499/memory/multicast_arm.cpp \
+  src/backend/cve_2026_43499/seam/select_stack_route.hpp \
+  src/tests/select_stack_route_test.cpp \
   src/tests/multicast_arm_test.cpp \
   src/contract/chain_catalog.hpp \
   src/tests/chain_catalog_test.cpp \
@@ -304,9 +313,10 @@ LAYER_HEADERS := \
   src/script/sandbox.hpp
 
 P4_TESTS := src/pipeline/tests/window_exit_paths_test.cpp src/pipeline/tests/plan_gate_test.cpp
-EVIDENCE_TESTS := src/tests/a2_test.cpp src/tests/surface_test.cpp src/tests/surface_manifest_test.cpp src/tests/surface_sandbox_test.cpp src/tests/surface_stage_test.cpp src/tests/handle_generation_test.cpp src/tests/terminal_payload_test.cpp src/tests/terminal_store_test.cpp src/tests/terminal_execution_test.cpp src/tests/payload_keys_test.cpp src/tests/document_reader_test.cpp \
+EVIDENCE_TESTS := src/tests/page_slot_test.cpp src/tests/a2_test.cpp src/tests/surface_test.cpp src/tests/surface_manifest_test.cpp src/tests/surface_sandbox_test.cpp src/tests/surface_stage_test.cpp src/tests/handle_generation_test.cpp src/tests/terminal_payload_test.cpp src/tests/terminal_store_test.cpp src/tests/terminal_execution_test.cpp src/tests/payload_keys_test.cpp src/tests/document_reader_test.cpp \
   src/tests/payload_manifest_test.cpp src/tests/step_catalog_test.cpp src/tests/write_request_test.cpp src/tests/write_encoder_test.cpp src/tests/write_layout_test.cpp src/tests/credential_image_test.cpp src/tests/race_runtime_test.cpp src/tests/kmi_catalog_test.cpp src/tests/device_facts_test.cpp src/tests/module_facts_test.cpp src/tests/staged_plan_test.cpp src/tests/route_lifecycle_test.cpp src/tests/document_pairs_test.cpp src/tests/real_document_test.cpp src/tests/abi_offsets_test.cpp src/tests/route_expected_keys_test.cpp src/tests/multicast_arm_test.cpp src/tests/chain_catalog_test.cpp src/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/cve43284_access_params_test $(BUILD_DIR)/pagecache_seam_test $(BUILD_DIR)/multicast_seam_test $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test $(BUILD_DIR)/multicast_window_test $(BUILD_DIR)/access_chain_test $(BUILD_DIR)/pagecache_chain_test $(BUILD_DIR)/pagecache_doors_test $(BUILD_DIR)/pagecache_write_test $(BUILD_DIR)/aes256_test $(BUILD_DIR)/esp_crypto_test $(BUILD_DIR)/hmac_sha256_test $(BUILD_DIR)/esp_icv_test $(BUILD_DIR)/aes256_cbc_test $(BUILD_DIR)/policy_dispatch_test $(BUILD_DIR)/real_splice_io_test $(BUILD_DIR)/access_factory_test $(BUILD_DIR)/session_frame_test $(BUILD_DIR)/argument_names_test $(BUILD_DIR)/stage_result_test $(BUILD_DIR)/component_catalog_test $(BUILD_DIR)/step_action_test $(BUILD_DIR)/race_action_test $(BUILD_DIR)/executors_test $(BUILD_DIR)/abi_payload_offsets_test $(BUILD_DIR)/snitch_owner_test $(BUILD_DIR)/pagecache_door_linux_test $(BUILD_DIR)/step_targets_test
+EVIDENCE_BINS := $(BUILD_DIR)/page_slot_test $(BUILD_DIR)/cve43284_access_params_test $(BUILD_DIR)/pagecache_seam_test $(BUILD_DIR)/multicast_seam_test $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test $(BUILD_DIR)/multicast_window_test $(BUILD_DIR)/access_chain_test $(BUILD_DIR)/pagecache_chain_test $(BUILD_DIR)/pagecache_doors_test $(BUILD_DIR)/pagecache_write_test $(BUILD_DIR)/aes256_test $(BUILD_DIR)/esp_crypto_test $(BUILD_DIR)/hmac_sha256_test $(BUILD_DIR)/esp_icv_test $(BUILD_DIR)/aes256_cbc_test $(BUILD_DIR)/policy_dispatch_test $(BUILD_DIR)/real_splice_io_test $(BUILD_DIR)/access_factory_test $(BUILD_DIR)/session_frame_test $(BUILD_DIR)/argument_names_test $(BUILD_DIR)/stage_result_test $(BUILD_DIR)/component_catalog_test $(BUILD_DIR)/step_action_test $(BUILD_DIR)/race_action_test $(BUILD_DIR)/executors_test $(BUILD_DIR)/abi_payload_offsets_test $(BUILD_DIR)/snitch_owner_test $(BUILD_DIR)/pagecache_door_linux_test $(BUILD_DIR)/step_targets_test $(BUILD_DIR)/select_stack_route_test
+EVIDENCE_BINS += $(BUILD_DIR)/prepare_mapping_test $(BUILD_DIR)/window_attempt_test $(BUILD_DIR)/window_steps_test $(BUILD_DIR)/pagecache_steps_test $(BUILD_DIR)/wire_doc_test $(BUILD_DIR)/procedure_load_test $(BUILD_DIR)/route_config_test $(BUILD_DIR)/victim_context_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
 
@@ -318,37 +328,33 @@ host: $(BUILD_DIR)/ghostlock-skeleton
 	@$(BUILD_DIR)/ghostlock-skeleton
 
 $(BUILD_DIR)/ghostlock-skeleton: $(RUNTIME_SRCS) $(LAYER_HEADERS) $(BUILD_DIR)/mpack.o | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(RUNTIME_SRCS) $(BUILD_DIR)/mpack.o -o $@
+	$(CXX) $(CXXFLAGS) -I$(LUA_DIR) $(HOST_ALL_SRCS) $(BUILD_DIR)/mpack.o $(LUA_CORE_LIB) -o $@
 
 # The device binary: the same entry, cross-built for arm64 with the NDK that every
 # Android build already needs. NDK_CC overrides the wrapper when one is not on the
 # default path. Only the layers above are compiled; the executor and the script
 # layer are named in the entry's refusal.
 NDK_TOOLCHAIN ?= $(HOME)/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin
+AR_NDK := $(NDK_TOOLCHAIN)/llvm-ar
 NDK_CXX ?= $(NDK_TOOLCHAIN)/aarch64-linux-android29-clang++
 # Units the device chain needs and the host build does not: the search corpus and the memory
 # preparations it feeds. They were in RUNTIME_SRCS, which both targets share, and the host
 # build then had to compile the device chain.
-ANDROID_ONLY_SRCS := src/backend/cve_2026_43499/memory/credential_image.cpp \
-  src/backend/cve_2026_43499/memory/multicast_arm.cpp \
-  src/backend/cve_2026_43499/memory/prepare_plan.cpp \
-  src/backend/cve_2026_43499/memory/reclaim_plan.cpp \
-  src/backend/cve_2026_43499/memory/shaping_plan.cpp \
-  src/backend/cve_2026_43499/memory/write_encoder.cpp \
-  src/backend/cve_2026_43499/memory/write_layout.cpp
-
+ANDROID_ONLY_SRCS :=  \
+	  src/backend/victim/victim_process.cpp  src/backend/victim/victim_context.cpp  src/backend/cve_2026_43499/steps/route_config.cpp  src/backend/cve_2026_43499/steps/words_region.cpp  src/backend/cve_2026_43499/steps/prepare_runner.cpp  src/backend/cve_2026_43499/steps/discovery_runner.cpp  src/backend/cve_2026_43499/steps/window_runner.cpp  src/backend/cve_2026_43499/steps/window_attempt.cpp  src/backend/cve_2026_43499/memory/credential_image.cpp  src/backend/cve_2026_43499/memory/multicast_arm.cpp  src/backend/cve_2026_43499/memory/payload_page.cpp  src/backend/cve_2026_43499/seam/multicast_route_linux.cpp  src/backend/cve_2026_43499/memory/prepare_plan.cpp  src/backend/cve_2026_43499/memory/reclaim_plan.cpp  src/backend/cve_2026_43499/memory/shaping_plan.cpp  src/backend/cve_2026_43499/memory/write_encoder.cpp  src/backend/cve_2026_43499/memory/write_layout.cpp
 ANDROID_OUT := ../build/native/ghostlock
 .PHONY: android plan-check futex-probe requeue-probe heap-seam-probe prepare-page-probe snitch-seam-probe snitch-run-probe snitch-fork-probe perf-seam-probe snitch-prepare-probe profile-manifest-v3 profile-manifest-v3-check
 
 android: $(ANDROID_OUT)
 
-$(ANDROID_OUT): $(RUNTIME_SRCS) src/contract/layer_scope.hpp src/contract/step_catalog.hpp \
+$(ANDROID_OUT): $(RUNTIME_SRCS) $(LUA_CORE_ANDROID_LIB) src/contract/layer_scope.hpp src/contract/step_catalog.hpp \
   src/profile/run_plan.hpp src/profile/glkv3_document.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
 	$(NDK_TOOLCHAIN)/aarch64-linux-android29-clang -std=c99 -w -O2 -c $(MPACK_SRC) \
 	  -o $(BUILD_DIR)/mpack-android.o
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -isystem $(MPACK_DIR) \
-	  $(RUNTIME_SRCS) $(ANDROID_ONLY_SRCS) $(BUILD_DIR)/mpack-android.o -o $@
+	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -I$(LUA_DIR) -isystem $(MPACK_DIR) \
+	  $(RUNTIME_SRCS) $(ANDROID_ONLY_SRCS) $(DEVICE_EXTRA_SRCS) \
+	  $(BUILD_DIR)/mpack-android.o $(LUA_CORE_ANDROID_LIB) -o $@
 	@echo "android: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 # The device probe for the futex seam: one real priority-inheritance round trip.
@@ -466,6 +472,13 @@ $(BUILD_DIR)/plan_gate_test: src/pipeline/tests/plan_gate_test.cpp src/pipeline/
 	$(CXX) $(CXXFLAGS) src/pipeline/tests/plan_gate_test.cpp -o $@
 
 $(BUILD_DIR)/a2_test: src/tests/a2_test.cpp src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp src/memory/target_profile.hpp src/support/neutrals.hpp | $(BUILD_DIR)
+# W2「预建页」一次性槽（page_slot.hpp ✓）：主机侧自证 stash/activate/discard 的拒绝语义 ✓。
+$(BUILD_DIR)/page_slot_test: src/tests/page_slot_test.cpp src/backend/cve_2026_43499/memory/page_slot.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) src/tests/page_slot_test.cpp -o $@
+
+# a2_test 的配方（第 16 轮修复 ✓）：插入新规则时它曾被上一段的 Tab 行吸走 ✗，
+# 导致 `page_slot_test` 的产物其实是 a2 编译的结果 ✓（真机证据：跑 page_slot_test 打出 a2 的输出 ✗）。
+$(BUILD_DIR)/a2_test: src/tests/a2_test.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) src/tests/a2_test.cpp -o $@
 
 $(BUILD_DIR)/surface_test: src/tests/surface_test.cpp src/contract/script_surface.hpp src/contract/layer_scope.hpp | $(BUILD_DIR)
@@ -500,6 +513,10 @@ $(BUILD_DIR)/chain_catalog_test: src/tests/chain_catalog_test.cpp \
 $(BUILD_DIR)/multicast_arm_test: src/tests/multicast_arm_test.cpp \
   src/backend/cve_2026_43499/memory/multicast_arm.hpp src/backend/cve_2026_43499/memory/multicast_arm.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) src/tests/multicast_arm_test.cpp src/backend/cve_2026_43499/memory/multicast_arm.cpp -o $@
+
+$(BUILD_DIR)/select_stack_route_test: src/tests/select_stack_route_test.cpp \
+  src/backend/cve_2026_43499/seam/select_stack_route.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) src/tests/select_stack_route_test.cpp -o $@
 
 $(BUILD_DIR)/route_expected_keys_test: src/tests/route_expected_keys_test.cpp \
   src/backend/cve_2026_43499/route/expected_keys.hpp src/profile/route_catalog.hpp | $(BUILD_DIR)
@@ -622,6 +639,13 @@ $(BUILD_DIR)/pagecache_door_linux_test: src/tests/pagecache_door_linux_test.cpp 
   src/backend/cve_2026_43284/seam/pagecache_door_linux.hpp src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp src/backend/cve_2026_43284/seam/pagecache_doors.hpp | $(BUILD_DIR)
 		$(CXX) $(CXXFLAGS) src/tests/pagecache_door_linux_test.cpp src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp -o $@
 
+
+# 恢复用：补充测试的统一规则（定点、可核；与逐条规则等价）。
+define cve49_extra_rule
+$(BUILD_DIR)/$(1): src/tests/$(1).cpp $$(RUNTIME_SRCS) | $$(BUILD_DIR)
+	$$(CXX) $$(CXXFLAGS) -I$$(LUA_DIR) src/tests/$(1).cpp $$(filter-out src/main.cpp,$$(HOST_ALL_SRCS)) $$(LUA_CORE_LIB) $$(BUILD_DIR)/mpack.o -o $$@
+endef
+$(foreach t,prepare_mapping_test window_attempt_test window_steps_test pagecache_steps_test wire_doc_test procedure_load_test route_config_test victim_context_test,$(eval $(call cve49_extra_rule,$(t))))
 $(BUILD_DIR)/step_targets_test: src/tests/step_targets_test.cpp \
   src/backend/cve_2026_43499/steps/targets.hpp src/backend/cve_2026_43499/steps/action.hpp | $(BUILD_DIR)
 		$(CXX) $(CXXFLAGS) src/tests/step_targets_test.cpp -o $@
@@ -640,7 +664,8 @@ $(BUILD_DIR)/executors_test: src/tests/executors_test.cpp \
 
 $(BUILD_DIR)/race_action_test: src/tests/race_action_test.cpp \
   src/backend/cve_2026_43499/steps/action.hpp src/backend/cve_2026_43499/race/pi_race.hpp src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/memory/write_encoder.cpp | $(BUILD_DIR)
-		$(CXX) $(CXXFLAGS) src/tests/race_action_test.cpp src/backend/cve_2026_43499/memory/write_encoder.cpp -o $@
+		$(CXX) $(CXXFLAGS) src/tests/race_action_test.cpp src/backend/cve_2026_43499/memory/write_encoder.cpp \
+		src/backend/cve_2026_43499/memory/write_layout.cpp -o $@
 
 $(BUILD_DIR)/step_action_test: src/tests/step_action_test.cpp \
   src/backend/cve_2026_43499/steps/action.hpp src/backend/cve_2026_43499/steps/step_runner.hpp src/contract/step_catalog.hpp | $(BUILD_DIR)
@@ -852,6 +877,8 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@hits=$$(grep -nE '$(ORDER_TOKENS)' src/pipeline/composition_root.hpp | wc -l | tr -d ' '); \
 	if [ "$$hits" -ne 0 ]; then echo "ORDER-HIT: $$hits"; grep -nE '$(ORDER_TOKENS)' src/pipeline/composition_root.hpp; exit 1; fi; \
 	echo "check: zero ordering tokens in the composition root"
+	@echo "check: page slot (the one-shot W2 repair slot)"
+	@$(BUILD_DIR)/page_slot_test
 	@echo "check: A2 window constraints and profile read path"
 	@$(BUILD_DIR)/a2_test
 	@echo "check: exposure surface table"
@@ -884,6 +911,14 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/pagecache_door_linux_test
 	@echo "check: step targets (every address is a sum, a guess is refused)"
 	@$(BUILD_DIR)/step_targets_test
+	@$(BUILD_DIR)/prepare_mapping_test
+	@$(BUILD_DIR)/window_attempt_test
+	@$(BUILD_DIR)/window_steps_test
+	@$(BUILD_DIR)/pagecache_steps_test
+	@$(BUILD_DIR)/wire_doc_test
+	@$(BUILD_DIR)/procedure_load_test
+	@$(BUILD_DIR)/route_config_test
+	@$(BUILD_DIR)/victim_context_test
 	@echo "check: snitch owner (each step refuses by name, nothing partial)"
 	@$(BUILD_DIR)/snitch_owner_test
 	@echo "check: abi payload offsets (fills five, names what is absent)"
@@ -1094,6 +1129,18 @@ LUA_CORE_FILES := lapi lauxlib lbaselib lcode lctype ldebug ldo ldump lfunc lgc 
 LUA_CORE_SRCS := $(addprefix $(LUA_DIR)/,$(addsuffix .c,$(LUA_CORE_FILES)))
 LUA_CORE_OBJS := $(addprefix $(BUILD_DIR)/lua/,$(addsuffix .o,$(LUA_CORE_FILES)))
 LUA_CORE_LIB := $(BUILD_DIR)/liblua-core.a
+
+# 设备侧的 lua 核心库（与 mpack-android.o 同款做法：用 NDK 逐个编译 22 个核心文件）。
+LUA_CORE_ANDROID_OBJS := $(addprefix $(BUILD_DIR)/lua-android/,$(addsuffix .o,$(LUA_CORE_FILES)))
+LUA_CORE_ANDROID_LIB := $(BUILD_DIR)/liblua-core-android.a
+
+$(BUILD_DIR)/lua-android/%.o: $(LUA_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/lua-android
+	$(NDK_TOOLCHAIN)/aarch64-linux-android29-clang -std=c99 -w -O2 -I$(LUA_DIR) -c $< -o $@
+
+$(LUA_CORE_ANDROID_LIB): $(LUA_CORE_ANDROID_OBJS)
+	$(AR_NDK) rcs $@ $^
+
 LUA_CFLAGS := -std=c99 -w
 # Forbidden entry points: the interpreter/compiler mains and every library
 # opener the vendored tree can provide.

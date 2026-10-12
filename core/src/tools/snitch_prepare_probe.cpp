@@ -75,6 +75,9 @@ namespace {
             return LinuxHeapSeam::set_socket_buffer(fd, bytes);
         }
         static SeamResult set_nonblocking(std::int32_t fd) noexcept { return LinuxHeapSeam::set_nonblocking(fd); }
+        static SeamResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
+            return LinuxHeapSeam::send_bytes(fd, data, bytes);
+        }
         static SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
             return LinuxHeapSeam::send_buffer(fd, bytes);
         }

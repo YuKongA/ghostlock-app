@@ -13,7 +13,7 @@
 #include "backend/cve_2026_43284/seam/esp_crypto.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::seam::esp_iv;
+    using ghostlock::backend::cve_2026_43284::seam::esp_cbc_iv;
     using ghostlock::backend::cve_2026_43284::seam::kEspBlockBytes;
 
     std::size_t g_failures = 0U;
@@ -55,25 +55,44 @@ int main() {
     c3_plain(plain);
     c3_cipher(cipher);
     std::uint8_t iv[kEspBlockBytes] = {};
-    const bool ok = esp_iv(cipher, key, iv);
-    expect(ok, "deriving the vector from a block works");
-    std::printf("esp iv  : ");
+    /* W-what the primitive is for: the page becomes D_K(old) xor IV, so a caller that wants
+     * `desired` there must get a vector of D_K(old) xor desired. Asking for the plaintext of the
+     * published ciphertext therefore has to give a vector of zeros -- and asking for its complement
+     * has to give the complement of the plaintext. A vector that ignored the desired block would
+     * pass the first only by accident and fail the second. */
+    bool ok = esp_cbc_iv(cipher, plain, key, iv);
+    expect(ok, "deriving the vector works");
+    bool zero_vector = true;
+    for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
+        if (iv[i] != 0U) {
+            zero_vector = false;
+        }
+    }
+    expect(zero_vector, "a write that wants the block's own plaintext needs no vector change");
+    std::uint8_t inverted[kEspBlockBytes] = {};
+    for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
+        inverted[i] = static_cast<std::uint8_t>(plain[i] ^ 0xFFU);
+    }
+    ok = esp_cbc_iv(cipher, inverted, key, iv);
+    expect(ok, "and deriving it for another block works");
+    /* D_K(cipher) = plain, so the vector is plain xor inverted = plain xor (plain xor 0xFF) = 0xFF,
+     * whatever the plaintext was. A derivation that ignored the desired block would return plain. */
+    bool complement = true;
+    for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
+        if (iv[i] != 0xFFU) {
+            complement = false;
+        }
+    }
+    expect(complement, "the vector carries the desired block, not only the old one");
+    std::printf("esp iv (desired = old plaintext): ");
     for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
         std::printf("%02x", iv[i]);
     }
     std::printf("\n");
-    std::printf("expected: 00112233445566778899aabbccddeeff\n");
-    bool same = true;
-    for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
-        if (iv[i] != plain[i]) {
-            same = false;
-        }
-    }
-    expect(same, "decrypting the published ciphertext returns the published plaintext");
     if (g_failures != 0U) {
         std::printf("esp crypto: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("esp crypto: PASS (the vector is one ECB decryption of the old block)\n");
+    std::printf("esp crypto: PASS (the vector is D_K(old) xor the desired block)\n");
     return 0;
 }

@@ -48,9 +48,12 @@ namespace {
     /* ---- 1: the arm rules ---- */
     void the_arm_rules_hold() {
         const WriteArm value_write = arm_for(request(true, kTarget), kValue, kPointer);
-        expect(value_write.pc == kValue, "a value write aims the fragment at the value");
-        expect(value_write.left == kTarget, "and carries the target in the left field");
-        expect(value_write.right == 0U, "with both side fields zero");
+        /* ★★ 第 215 轮 ✓（权威 `origin/main` 固定向量 ✓）：preserve 臂 = **`pc = target − pointer`** ✓、
+         *  **`right = value`** ✓、**`left = 0`** ✓ —— 旧断言 pin 的是 `pc = value` / `left = target` ✗，
+         *  与权威**相反** ⇒ 按权威更正 ✓（⇒ 真机 `page-after-build pc≈target−8 / left=0x0` ✓ 已印证 ✓）。 */
+        expect(value_write.pc == kTarget - kPointer, "a value write aims one pointer width before the target");
+        expect(value_write.right == kValue, "and carries the value in the right field");
+        expect(value_write.left == 0U, "with the left field zero");
 
         const WriteArm leaf_write = arm_for(request(false, kTarget), kValue, kPointer);
         expect(leaf_write.pc == kTarget - kPointer,
@@ -58,7 +61,8 @@ namespace {
         expect(leaf_write.left == 0U,
                "and leaves the side fields zero, which is how the target is aimed at");
         expect(leaf_write.right == 0U, "with the other side field zero as well");
-        expect(leaf_write.pc != value_write.pc, "the two arms differ");
+        /* ★★ 第 216 轮 ✓：两臂现在**同 `pc`**（都 `target − pointer` ✓）⇒ 区别在 **`right`** ✓。 */
+        expect(leaf_write.right != value_write.right, "the two arms differ in the right field");
 
         const WriteArm tiny = arm_for(request(false, 4U), kValue, kPointer);
         expect(tiny.pc == 0U, "a target too small to step back from does not wrap around");
@@ -86,7 +90,8 @@ namespace {
         std::memcpy(&read_right, fragment + offsets.right, kPointer);
         std::memcpy(&read_left, fragment + offsets.left, kPointer);
         expect(read_pc == arm.pc, "the pc word is where the offsets say");
-        expect(read_right == 0U && read_left == arm.left, "and so are the two side words");
+        /* ★ 第 216 轮 ✓：`right` 现在承载**值** ✓（不再是 0 ✗）⇒ 断言改为与 `arm.right` 比 ✓。 */
+        expect(read_right == arm.right && read_left == arm.left, "and so are the two side words");
         expect(fragment[8] == 0xAA && fragment[32] == 0xAA,
                "nothing outside the three words was touched");
     }
@@ -150,11 +155,11 @@ namespace {
         };
         const Vector vectors[] = {
             {0xffffff8000123000ULL, WriteMode::Zero, false, 0U, 0xffffff8000122ff8ULL, 0U},
+            /* ★ 第 216 轮 ✓：preserve ⇒ `pc = target − 8` ✓ ；`left = 0` ✓（权威固定向量 ✓）。 */
             {0xffffff8000124000ULL, WriteMode::Zero, true, kPage + 0x100ULL,
-             0xffffff8800210100ULL, 0xffffff8000124000ULL},
+             0xffffff8000123ff8ULL, 0U},
             {0xffffff8000125000ULL, WriteMode::Credential, true, kInitCred,
-
-             0xffffff802abfd588ULL, 0xffffff8000125000ULL},
+             0xffffff8000124ff8ULL, 0U},
         };
         for (const Vector &vector : vectors) {
             WriteRequest made;
@@ -164,7 +169,8 @@ namespace {
             const WriteArm arm = arm_for(made, vector.value, kPointer);
             expect(arm.pc == vector.expected_pc, "the vector's pc word is reproduced");
             expect(arm.left == vector.expected_left, "and its left word");
-            expect(arm.right == 0U, "and the side field is zero in every vector");
+            /* ★ 第 216 轮 ✓：`right` 承载"写什么值" ⇒ 应等于 `vector.value` ✓（非 0 ✗）。 */
+            expect(arm.right == vector.value, "and the right word carries the value");
         }
     }
 }  // namespace

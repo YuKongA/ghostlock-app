@@ -17,6 +17,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::SaMaterial;
     using ghostlock::backend::cve_2026_43284::seam::DoorOps;
     using ghostlock::backend::cve_2026_43284::seam::PageCacheWrite;
+    using ghostlock::backend::cve_2026_43284::seam::ReadOutcome;
     using ghostlock::backend::cve_2026_43284::seam::SpliceOps;
     using ghostlock::backend::cve_2026_43284::seam::WriteOutcome;
 
@@ -79,15 +80,25 @@ namespace {
                                  static_cast<std::uint32_t>(datagram[7]);
             return true;
         }
-        void compute_iv(const std::uint8_t *, const std::uint8_t *,
-                        std::uint8_t *out) noexcept override {
+        void compute_iv(const std::uint8_t *, const std::uint8_t *desired_block,
+                        const std::uint8_t *, std::uint8_t *out) noexcept override {
             ++iv_calls;
             for (std::size_t i = 0U; i < 16U; ++i) {
+                /* Recorded, not ignored: the vector is what makes the in-place decryption write this
+                 * block, and a derivation that never sees it writes zeros instead. */
+                desired[i] = desired_block[i];
                 out[i] = 0x22U;
             }
         }
+        std::uint8_t desired[16] = {};
         void compute_icv(const std::uint8_t *, std::size_t, const std::uint8_t *,
                          std::uint8_t, std::uint8_t *) noexcept override {}
+        /* The surface says which halves it can serve: a carrier this process cannot open is served
+         * by a bridge, and the window asks here rather than assuming a descriptor exists. */
+        [[nodiscard]] bool can_serve_page() const noexcept override { return can_serve; }
+        [[nodiscard]] bool can_read_page() const noexcept override { return can_read_page_flag; }
+        bool can_serve = true;
+        bool can_read_page_flag = true;
     };
 
     SaMaterial frame() noexcept {
@@ -111,6 +122,8 @@ namespace {
         block[0] = 0x48U;
         expect(write.write_block(0x40U, block), "one block goes out");
         expect(splice.iv_calls == 1, "derived from the old block that was read first");
+        expect(splice.desired[0] == block[0],
+               "and from the block the caller wants in its place, which is what the vector carries");
         expect(splice.sent == 1, "and exactly one datagram was sent");
         expect(splice.spi_in_header == 0x0A0B0C0DU, "with the spi big-endian in the header");
         expect(splice.sequence_in_header == 1U, "and the first sequence in it");
@@ -147,8 +160,89 @@ namespace {
             }
         }
         expect(vector_present, "the derived vector is in the datagram, not left behind in a local");
-        expect(splice.last_datagram[24U] == 0x48U && splice.last_datagram[39U] == 0x99U,
-               "and the ciphertext follows it rather than being overwritten by the header");
+        /* The ciphertext slot holds the page's own bytes, because that is what the wire carries and
+         * what the check covers: the surface under test returns 0x11, so that is what must be there.
+         * The block the caller wants travels in the vector, not in this slot. */
+        expect(splice.last_datagram[24U] == 0x11U && splice.last_datagram[39U] == 0x11U,
+               "and the slot carries the page's bytes, not the desired ones the vector encodes");
+    }
+
+    /** The read face the verification uses: the same door and the same surface, all or nothing. */
+    void a_block_reads_back_through_the_same_surface() {
+        FakeDoors doors;
+        RecordingSplice splice;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        std::uint8_t back[16] = {};
+        expect(write.can_read(), "the window can read while its carrier door is open");
+        expect(write.read_block(0x80U, back), "a block comes back");
+        expect(write.read_outcome() == ReadOutcome::Read, "and the read says so");
+        expect(back[0] == 0x11U && back[15] == 0x11U, "carrying the surface's bytes");
+        splice.read_ok = false;
+        std::uint8_t kept[16] = {};
+        kept[0] = 0x5AU;
+        expect(!write.read_block(0x80U, kept), "a read that cannot complete is refused");
+        expect(write.read_outcome() == ReadOutcome::Incomplete, "by name");
+        expect(kept[0] == 0x5AU, "and the caller's buffer is left exactly as it was");
+        write.close_doors();
+        /* Closing the doors closes the socket and clears the keys. What the surface can still read is
+         * the surface's own answer -- a caller-owned descriptor outlives the doors -- so the refusal
+         * that matters is the seam's, and the chain test pins that one. */
+    }
+
+    /** A surface with no way to the carrier is refused by name rather than written blindly. */
+    void a_surface_that_cannot_serve_a_page_is_refused() {
+        FakeDoors doors;
+        RecordingSplice splice;
+        splice.can_serve = false;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        write.close_doors();
+        std::uint8_t block[16] = {};
+        expect(!write.write_block(0x40U, block), "no page source means no block");
+        expect(write.outcome() == WriteOutcome::NotOpen, "and the reason is named");
+        splice.can_serve = true;
+        splice.can_read_page_flag = false;
+        expect(!write.read_block(0x40U, block), "no read source means no read either");
+        expect(write.read_outcome() == ReadOutcome::NotOpen, "named as well");
+    }
+
+    /** The sequence belongs to the security association, not to the window. A second window on the
+     *  same session must continue it: the kernel's inbound anti-replay window drops anything it has
+     *  already seen, so a restart at one writes nothing at all -- measured on the device, twice. */
+    void a_second_window_continues_the_session_sequence() {
+        FakeDoors doors;
+        RecordingSplice splice;
+        PageCacheWrite first(doors, splice);
+        static_cast<void>(first.open_doors(frame()));
+        std::uint8_t block[16] = {};
+        static_cast<void>(first.write_block(0x40U, block));
+        static_cast<void>(first.write_block(0x50U, block));
+        expect(first.next_seq() == 3U, "two writes leave the sequence at three");
+        PageCacheWrite second(doors, splice);
+        static_cast<void>(second.open_doors(frame()));
+        expect(second.next_seq() == 1U, "a fresh window starts at one, because its route is fresh");
+        second.adopt_sequence(first.next_seq());
+        static_cast<void>(second.write_block(0x60U, block));
+        expect(splice.sequence_in_header == 3U,
+               "and once adopted, its datagram carries the sequence the session reached");
+        second.adopt_sequence(0U);
+        expect(second.next_seq() == 1U, "a zero adoption is refused rather than wrapping the header");
+    }
+
+    /** A verification read must not overwrite the verdict of the write it verifies. */
+    void a_read_leaves_the_write_verdict_alone() {
+        FakeDoors doors;
+        RecordingSplice splice;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        std::uint8_t block[16] = {};
+        expect(write.write_block(0x40U, block), "a block goes out");
+        std::uint8_t back[16] = {};
+        expect(write.read_block(0x40U, back), "and reads back");
+        expect(write.outcome() == WriteOutcome::Wrote,
+               "the write verdict is still the write's, not the read's");
+        expect(write.read_outcome() == ReadOutcome::Read, "with the read's own verdict beside it");
     }
 
     void a_failed_send_leaves_the_sequence_alone() {
@@ -173,10 +267,17 @@ int main() {
     a_failed_read_means_no_datagram();
     std::printf("page cache write: a failed send\n");
     a_failed_send_leaves_the_sequence_alone();
+    std::printf("page cache write: the read face\n");
+    a_block_reads_back_through_the_same_surface();
+    std::printf("page cache write: a surface with no page source\n");
+    a_surface_that_cannot_serve_a_page_is_refused();
+    std::printf("page cache write: the session sequence\n");
+    a_second_window_continues_the_session_sequence();
+    a_read_leaves_the_write_verdict_alone();
     if (g_failures != 0U) {
         std::printf("page cache write: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("page cache write: PASS (read, vector, send, then advance)\n");
+    std::printf("page cache write: PASS (read, vector, send, advance; and read back)\n");
     return 0;
 }

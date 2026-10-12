@@ -37,6 +37,7 @@ namespace ghostlock::script {
         inline constexpr const char *kCfgReadOnly = "cfg-read-only";
         inline constexpr const char *kCfgUnknownField = "cfg-unknown-field";
         inline constexpr const char *kPlanSyntax = "plan-syntax";
+        inline constexpr const char *kProcedureMalformed = "procedure-malformed";
 
         /* Forwarding scratch: fixed, so the call path allocates nothing. */
         inline constexpr std::size_t kMaxForwardedArgs = 16;
@@ -602,6 +603,7 @@ namespace ghostlock::script {
             case ScriptRejection::CfgReadOnly: return kCfgReadOnly;
             case ScriptRejection::CfgUnknownField: return kCfgUnknownField;
             case ScriptRejection::TuningMissing: return "tuning-missing";
+            case ScriptRejection::ProcedureMalformed: return kProcedureMalformed;
             /* Handle refusals are spelled by the table that raises them. */
             case ScriptRejection::HandleStale: return handle_refusal_name(HandleRefusal::Stale);
             case ScriptRejection::HandleConflict: return handle_refusal_name(HandleRefusal::Conflict);
@@ -769,6 +771,107 @@ namespace ghostlock::script {
         return absent;
     }
 
+    ScriptRejection Sandbox::run_procedure(std::string_view script) noexcept {
+        if (state_ == nullptr || state_->L == nullptr) {
+            return ScriptRejection::None;
+        }
+        State &state = *state_;
+        lua_State *L = state.L;
+        state.last_rejection = ScriptRejection::None;
+        state.memory_refused = false;
+        state.budget_tripped = false;
+        state.instructions_left = state.budget.max_instructions;
+        /* The contract's member list, spelled once: anything else is refused by name. */
+        static constexpr const char *kProcedureMembers[] = {
+            "name", "steps", "run", "on_success", "on_failure", "terminal", "payload_ref", "requirements",
+        };
+        const auto refuse = [&state](const char *why) {
+            if (state.sink.on_error != nullptr) { state.sink.on_error(state.sink.context, why); }
+            state.last_rejection = ScriptRejection::ProcedureMalformed;
+            return state.last_rejection;
+        };
+        if (script.size() > contract::kScriptSizeCeiling ||
+            script.size() > static_cast<std::size_t>(state.budget.max_script_bytes)) {
+            state.last_rejection = ScriptRejection::BudgetExceeded;
+            if (state.sink.on_error != nullptr) { state.sink.on_error(state.sink.context, kBudgetExceeded); }
+            return state.last_rejection;
+        }
+        if (luaL_loadbufferx(L, script.data(), script.size(), "=procedure", nullptr) != LUA_OK) {
+            lua_settop(L, 0);
+            state.last_rejection = ScriptRejection::PlanSyntax;
+            return state.last_rejection;
+        }
+        if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+            lua_settop(L, 0);
+            state.last_rejection = state.budget_tripped ? ScriptRejection::BudgetExceeded
+                                                        : ScriptRejection::PlanSyntax;
+            if (state.sink.on_error != nullptr) {
+                state.sink.on_error(state.sink.context, script_rejection_name(state.last_rejection));
+            }
+            return state.last_rejection;
+        }
+        if (!lua_istable(L, -1)) {
+            /* A bare chunk that already ran its own steps: nothing to load, nothing to check. */
+            lua_settop(L, 0);
+            return state.budget_tripped ? ScriptRejection::BudgetExceeded : ScriptRejection::None;
+        }
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            if (lua_type(L, -2) == LUA_TSTRING) {
+                const char *member = lua_tostring(L, -2);
+                bool known = false;
+                for (const char *allowed : kProcedureMembers) {
+                    if (member != nullptr && std::strcmp(member, allowed) == 0) { known = true; }
+                }
+                if (!known) {
+                    lua_settop(L, 0);
+                    return refuse("procedure-member-unknown");
+                }
+            }
+            lua_pop(L, 1);
+        }
+        lua_getfield(L, -1, "name");
+        const bool named = lua_type(L, -1) == LUA_TSTRING;
+        lua_pop(L, 1);
+        lua_getfield(L, -1, "run");
+        const bool runs = lua_type(L, -1) == LUA_TFUNCTION;
+        lua_pop(L, 1);
+        if (!named) {
+            lua_settop(L, 0);
+            return refuse("procedure-missing");
+        }
+        if (!runs) {
+            /* 只有声明式 steps、没有 run：原因不是「缺程序」，说清是哪一种。 */
+            lua_getfield(L, -1, "steps");
+            const bool declarative = lua_type(L, -1) == LUA_TTABLE;
+            lua_pop(L, 1);
+            lua_settop(L, 0);
+            return refuse(declarative ? "procedure-steps-not-runnable" : "procedure-missing");
+        }
+        lua_getfield(L, -1, "run");
+        lua_pushnil(L); /* ctx: the handle lives inside the entry, not in the context yet */
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            const char *message = lua_tostring(L, -1);
+            ScriptRejection rejection = state.budget_tripped ? ScriptRejection::BudgetExceeded
+                                                            : ScriptRejection::PlanSyntax;
+            if (message != nullptr && std::strstr(message, kCfgUnknownField) != nullptr) {
+                rejection = ScriptRejection::CfgUnknownField;
+            }
+            if (state.sink.on_error != nullptr) {
+                state.sink.on_error(state.sink.context, script_rejection_name(rejection));
+            }
+            lua_settop(L, 0);
+            state.last_rejection = rejection;
+            return rejection;
+        }
+        lua_settop(L, 0);
+        if (state.budget_tripped) {
+            state.last_rejection = ScriptRejection::BudgetExceeded;
+            if (state.sink.on_error != nullptr) { state.sink.on_error(state.sink.context, kBudgetExceeded); }
+            return state.last_rejection;
+        }
+        return ScriptRejection::None;
+    }
     bool Sandbox::table_keys_match(const char *table_name, const char *const *names,
                                    std::size_t count) noexcept {
         if (state_ == nullptr || state_->L == nullptr) {

@@ -107,6 +107,7 @@ namespace ghostlock::backend::cve_2026_43284::seam {
 
         /** The vector, from the primitive that owns it. */
         void compute_iv(const std::uint8_t old_block[kBlockBytes],
+                        const std::uint8_t desired_block[kBlockBytes],
                         const std::uint8_t key[32],
                         std::uint8_t out[kBlockBytes]) noexcept override;
 
@@ -115,9 +116,24 @@ namespace ghostlock::backend::cve_2026_43284::seam {
                          const std::uint8_t hmac_key[32], std::uint8_t icv_len,
                          std::uint8_t *out) noexcept override;
 
+        /** A block can be served when there is a descriptor to splice from or a bridge that splices
+         *  it: either one puts the carrier's page in the datagram. */
+        [[nodiscard]] bool can_serve_page() const noexcept override {
+            return file_fd_ >= 0 || helper_.available();
+        }
+        /** And read back when either the descriptor or the bridge can produce it -- the vector and
+         *  the verification both read the carrier. */
+        [[nodiscard]] bool can_read_page() const noexcept override {
+            return file_fd_ >= 0 || old_page_.available();
+        }
+
+        /** 最近一次 splice_one 失败的码：0 无失败；正数是四个前置检查的序号，负数是 -errno。 */
+        [[nodiscard]] int last_error() const noexcept override { return last_error_; }
+
     private:
         SpliceIoOps io_;
         int file_fd_ = -1;
+        int last_error_ = 0;
         int pipe_flags_ = 0;
         OldPageSource old_page_{};
         HelperWriteSource helper_{};

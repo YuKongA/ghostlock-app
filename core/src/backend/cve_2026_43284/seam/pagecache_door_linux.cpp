@@ -2,6 +2,7 @@
  *  Opening the carrier and connecting the peer, with nothing else in between.
  */
 #include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -67,4 +68,9 @@ namespace ghostlock::backend::cve_2026_43284::seam {
             static_cast<void>(::close(fd));
         }
     }
+
+    RemoteDoor::RemoteDoor(PageCacheDoorLinux &real) noexcept : real_(&real) {}
+    int RemoteDoor::connect_esp(const SaMaterial &sa) noexcept { return real_->connect_esp(sa); }
+    void RemoteDoor::close_fd(int fd) noexcept { real_->close_fd(fd); }
+
 }  // namespace ghostlock::backend::cve_2026_43284::seam

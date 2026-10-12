@@ -40,8 +40,10 @@ namespace {
         static std::size_t close_calls;
         static std::int32_t closed_order[64];
         static std::int32_t last_memfd;
+        static bool fail_opens;
         static std::size_t kill_calls;
         static std::size_t send_calls;
+        static std::size_t send_bytes_calls;
         static std::int64_t failing_fork_after;
         static std::uint64_t reported_page;
 
@@ -54,11 +56,15 @@ namespace {
             last_memfd = -1;
             kill_calls = 0U;
             send_calls = 0U;
+            send_bytes_calls = 0U;
             failing_fork_after = -1;
+            fail_opens = false;
             reported_page = 4096U;
         }
         static SeamResult page_size() noexcept { return SeamResult{static_cast<std::int64_t>(reported_page), 0}; }
         static SeamResult open_memfd(std::uint64_t) noexcept {
+            /* The device can refuse a descriptor; a test has to be able to ask for that. */
+            if (fail_opens) { return SeamResult{-1, 1}; }   /* a refused open is a negative fd, like the kernel gives */
             last_memfd = static_cast<std::int32_t>(next_fd);
             return SeamResult{next_fd++, 0};
         }
@@ -74,6 +80,11 @@ namespace {
         static SeamResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult set_nonblocking(std::int32_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult send_buffer(std::int32_t, std::size_t) noexcept { ++send_calls; return SeamResult{0, 0}; }
+        /** 页面的发送通道（退役 sendmsg(skb_buf) ✓）：测试只数它被叫过几次。 */
+        static SeamResult send_bytes(std::int32_t, const void *, std::size_t) noexcept {
+            ++send_bytes_calls;
+            return SeamResult{0, 0};
+        }
         static SeamResult fork_child() noexcept {
             ++fork_calls;
             if (failing_fork_after >= 0 && static_cast<std::int64_t>(fork_calls) > failing_fork_after) {
@@ -92,8 +103,10 @@ namespace {
     std::size_t FakeSeam::close_calls = 0U;
     std::int32_t FakeSeam::closed_order[64] = {};
     std::int32_t FakeSeam::last_memfd = -1;
+    bool FakeSeam::fail_opens = false;
     std::size_t FakeSeam::kill_calls = 0U;
     std::size_t FakeSeam::send_calls = 0U;
+    std::size_t FakeSeam::send_bytes_calls = 0U;
     std::int64_t FakeSeam::failing_fork_after = -1;
     std::uint64_t FakeSeam::reported_page = 4096U;
 
@@ -180,6 +193,40 @@ namespace {
         expect(FakeSeam::send_calls == 1U, "and the shaping send happened once");
     }
 
+    void a_descriptor_that_never_opened_is_counted_as_nothing() {
+        FakeSeam::reset();
+        FakeSnitch snitch;
+        FakeSnitch::reset_state();
+        FakeSnitch::rounds_until_found = 1000000U;
+        FakeSeam::fail_opens = true;
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
+        FakeSeam::fail_opens = false;
+        /* The device showed opened above closed by exactly the spray groups. The count rises
+         *  with the groups, so this asks the question the device asked: does a descriptor that
+         *  never opened still count as one more that was opened? */
+        expect(outcome.opened == 0U,
+               "a descriptor that never opened is not counted as opened");
+        expect(outcome.closed == 0U,
+               "and nothing was returned, because there was nothing to return");
+    }
+
+    void everything_opened_is_returned_when_no_collision_stops_it() {
+        FakeSeam::reset();
+        FakeSnitch snitch;
+        FakeSnitch::reset_state();
+        FakeSnitch::rounds_until_found = 1000000U;   /* nothing ever collides */
+        const auto outcome = prepare_page<FakeSeam, FakeSnitch>(inputs(), geometry(), patience(), snitch);
+        expect(outcome.status == PrepareStatus::NoCollision, "no collision stops the preparation");
+        /* The gate the device asked for: every descriptor that opened is one that was given back,
+         *  and each group accounts for itself. The device showed post 1/0 and then spray 2/1. */
+        expect(outcome.opened == outcome.closed, "every descriptor that opened is returned");
+        expect(outcome.opened_pre == outcome.closed_pre, "the pre group balances");
+        expect(outcome.opened_spray == outcome.closed_spray, "the spray group balances");
+        expect(outcome.opened_post == outcome.closed_post, "the post group balances");
+        expect(outcome.opened_pre + outcome.opened_spray + outcome.opened_post + outcome.opened_leak ==
+                       outcome.opened,
+               "and the groups add up to the total");
+    }
     void a_search_that_finds_nothing() {
         FakeSeam::reset();
         FakeSnitch snitch;
@@ -228,6 +275,8 @@ int main() {
     std::printf("prepare page: the happy path\n");
     a_preparation_that_finds_something();
     std::printf("prepare page: the failure paths\n");
+    a_descriptor_that_never_opened_is_counted_as_nothing();
+    everything_opened_is_returned_when_no_collision_stops_it();
     a_search_that_finds_nothing();
     a_call_that_fails_midway();
     geometry_that_is_not_this_device();

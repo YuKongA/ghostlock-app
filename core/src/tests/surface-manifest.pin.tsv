@@ -4,6 +4,12 @@ writeop	handle_method	backend	window	false	true	true	target_kind	true	64
 writeop	handle_method	backend	window	false	true	true	target_value	true	18446744073709551615
 writeop	handle_method	backend	window	false	true	true	value	true	18446744073709551615
 writeop	handle_method	backend	window	false	true	true	width	true	8
+kernelcall	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	op	true	64
+kernelcall	handle_method	backend	window	false	true	true	target_kind	true	64
+kernelcall	handle_method	backend	window	false	true	true	target_value	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	value	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	width	true	8
 copyop	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
 copyop	handle_method	backend	window	false	true	true	src_kind	true	64
 copyop	handle_method	backend	window	false	true	true	src_value	true	18446744073709551615
@@ -15,5 +21,7 @@ settle	handle_method	backend	window	false	true	true	us	true	1000000
 handoff	handle_method	terminal	terminal	true	true	true	handle	true	18446744073709551615
 handoff	handle_method	terminal	terminal	true	true	true	terminal	true	256
 handoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256
+step	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+step	handle_method	backend	window	false	true	true	name	true	64
 cfg	value	profile	stage	false	true	false	-	-	-
 close	handle_method	session	pre_window	false	true	true	handle	true	18446744073709551615

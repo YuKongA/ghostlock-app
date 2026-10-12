@@ -275,6 +275,16 @@ namespace ghostlock::contract {
         {"value", kValueCeiling, true},
         {"width", 8U, true},                   /* A1: never inferred */
     };
+    /* 读法②（用户目标原文 ✓）：lua 直调底层 kernelaccess 的那一行。参数与 writeop 同形，另加 `op`
+     *  选择器；本批只认 `write`（其余具名拒绝 ✓）⇒ **不新增内核行为** ✓。 */
+    inline constexpr ArgSpec kKernelCallArgs[] = {
+        {"handle", kValueCeiling, true},
+        {"op", 64U, true},
+        {"target_kind", 64U, true},
+        {"target_value", kValueCeiling, true},
+        {"value", kValueCeiling, true},
+        {"width", 8U, true},
+    };
     inline constexpr ArgSpec kCopyOpArgs[] = {
         {"handle", kValueCeiling, true},
         {"src_kind", 64U, true},
@@ -292,6 +302,14 @@ namespace ghostlock::contract {
         {"terminal", 256U, true},
         {"payload_ref", 256U, true},           /* A2: what is handed over */
     };
+    /* Encapsulated steps: the backend's own多相步骤, asked for by the name the wire declares
+     *  (backend.<id>.steps). The row carries a handle like every other handle method, and the
+     *  name is a bounded string: the step bodies live in the backend, never in this table. */
+    inline constexpr ArgSpec kStepArgs[] = {
+        {"handle", kValueCeiling, true},
+        {"name", 64U, true},
+    };
+    /** Deprecated spelling kept out on purpose: steps go through their own row. */
     inline constexpr ArgSpec kCloseArgs[] = {
         {"handle", kValueCeiling, true},       /* slot + generation word */
     };
@@ -305,20 +323,27 @@ namespace ghostlock::contract {
          true},
         {"writeop", SurfaceForm::HandleMethod, kWriteOpArgs, sizeof(kWriteOpArgs) / sizeof(kWriteOpArgs[0]),
          "backend", SurfacePhase::Window, true, true, true, false},
+        {"kernelcall", SurfaceForm::HandleMethod, kKernelCallArgs,
+         sizeof(kKernelCallArgs) / sizeof(kKernelCallArgs[0]), "backend", SurfacePhase::Window, true,
+         true, true, false},
         {"copyop", SurfaceForm::HandleMethod, kCopyOpArgs, sizeof(kCopyOpArgs) / sizeof(kCopyOpArgs[0]), "backend",
          SurfacePhase::Window, true, true, true, false},
         {"settle", SurfaceForm::HandleMethod, kSettleArgs, sizeof(kSettleArgs) / sizeof(kSettleArgs[0]), "backend",
          SurfacePhase::Window, true, true, true, false},
         {"handoff", SurfaceForm::HandleMethod, kHandoffArgs, sizeof(kHandoffArgs) / sizeof(kHandoffArgs[0]),
          "terminal", SurfacePhase::Terminal, true, true, false, true},
+        {"step", SurfaceForm::HandleMethod, kStepArgs, sizeof(kStepArgs) / sizeof(kStepArgs[0]), "backend",
+         SurfacePhase::Window, true, true, true, false},
         {"cfg", SurfaceForm::Value, nullptr, 0, "profile", SurfacePhase::Stage, true, false, false, false},
         {"close", SurfaceForm::HandleMethod, kCloseArgs, sizeof(kCloseArgs) / sizeof(kCloseArgs[0]), "session",
          SurfacePhase::PreWindow, true, true, false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
-    /** Argument counts and key names frozen for the report and the tests. */
-    inline constexpr std::size_t kHandleMethodRowCount = 5;
+    /** Argument counts and key names frozen for the report and the tests. Six since 2026-10-10:
+     *  the encapsulated step row joined the five that were there. */
+    /* 读法②（用户目标原文 ✓）加了一行 `kernelcall` ⇒ 由 6 变 7（pin 已重生成 ✓）。 */
+    inline constexpr std::size_t kHandleMethodRowCount = 7;
 
     /** Lookup outcome: found, or the named rejection surface-unknown-name. */
     enum class SurfaceLookup : unsigned char {

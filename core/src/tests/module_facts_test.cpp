@@ -23,6 +23,7 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::module_read_error_name;
     using ghostlock::backend::cve_2026_43284::lkm::read_module_facts;
     using ghostlock::backend::cve_2026_43284::lkm::vermagic_belongs_to;
+    using ghostlock::backend::cve_2026_43284::lkm::vermagic_matches_kernel;
 
     constexpr std::size_t kHeader = 64U;
     constexpr std::size_t kSectionHeader = 64U;
@@ -174,6 +175,33 @@ namespace {
         expect(!vermagic_belongs_to("6.6.118-android15 SMP aarch64", ""),
                "and an empty release matches nothing");
     }
+
+    /* ---- 4: the kernel's own rule, measured against the device ---- */
+    void the_kernels_own_comparison() {
+        /* The two strings this device actually has: the module that loaded, and the running kernel's
+         * vermagic composed from its release and the audited build features. The releases differ and
+         * the feature tails do not, which is exactly the case the strict rule refuses and the kernel
+         * accepts. */
+        const char *module =
+            "5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64";
+        const char *kernel =
+            "5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt mod_unload modversions aarch64";
+        expect(!vermagic_belongs_to(module, "5.15.189-android13-8-00016-g51bba4309aac-ab14546557"),
+               "the strict rule refuses that module: its release is another build");
+        expect(vermagic_matches_kernel(module, kernel, true),
+               "the kernel's rule accepts it: with CRCs only the feature tail is compared");
+        expect(!vermagic_matches_kernel(module, kernel, false),
+               "and without CRCs the whole string is compared, so it is refused");
+        expect(vermagic_matches_kernel(kernel, kernel, true), "the running release itself matches");
+        expect(!vermagic_matches_kernel("5.15.202-android13-5.15.202_r00-dirty SMP aarch64", kernel,
+                                        true),
+               "a different feature tail is refused even with CRCs");
+        expect(!vermagic_matches_kernel(nullptr, kernel, true), "nothing to compare is refused");
+        expect(!vermagic_matches_kernel(module, nullptr, true), "and so is no kernel string");
+        /* The kernel's arithmetic, mirrored: no space means the offset lands on the terminator. */
+        expect(vermagic_matches_kernel("release", "other", true),
+               "two single-word strings both compare as empty tails");
+    }
 }  // namespace
 
 int main() {
@@ -183,10 +211,12 @@ int main() {
     what_cannot_be_read_is_named();
     std::printf("module facts: the vermagic\n");
     vermagic_matching();
+    std::printf("module facts: the kernel's own comparison\n");
+    the_kernels_own_comparison();
     if (g_failures != 0U) {
         std::printf("module facts: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("module facts: PASS (facts read + refusals named + vermagic bounded)\n");
+    std::printf("module facts: PASS (facts read + refusals named + vermagic compared as the kernel does)\n");
     return 0;
 }

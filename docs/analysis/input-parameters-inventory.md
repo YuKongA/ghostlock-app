@@ -1,0 +1,223 @@
+# 输入参数总清单
+
+- **A. 两 backend 共通**
+  - 文档级（跨 backend）
+    - `schema` — u8，恒 3
+    - `release` — str，选型键
+    - `kernel_major` — u8
+    - `kernel_minor` — u8
+    - `safe_mode` — bool，默认 false
+    - `steps.name` — str，可选
+    - `steps.code` — str，内嵌 Lua chunk
+    - `payloads.<名>.sha256` — str
+    - `payloads.<名>.size` — i64，可省（−1＝未声明）
+    - `payloads.<名>.channel` — enum{stdin, base64}，默认 stdin
+    - 四预算（缺一即具名拒绝）
+      - `max_instructions` — u64
+      - `max_bytes` — u64
+      - `max_stack_depth` — u32
+      - `max_script_bytes` — u32
+  - 调用实参（调用自带）
+    - `address` — u64
+    - `bytes` — span
+    - `size` — size_t
+    - `channel` — AccessChannel{Unavailable, PiWindow, KernelModule, PageCache}
+    - `carrier` — AccessCarrier{None, KernelPage, FilePage, ModuleWindow}
+  - 脚本面（7 项，脚本唯一接口）
+    - `backend` — PreWindow；调用即选后端
+    - `writeop` — Window
+      - `handle`
+      - `target_kind`
+      - `target_value`
+      - `value`
+      - `width`
+    - `copyop` — Window
+      - `handle`
+      - `src_kind`
+      - `src_value`
+      - `dst_kind`
+      - `dst_value`
+      - `width`
+    - `settle` — Window
+      - `handle`
+      - `us`
+    - `handoff` — Terminal
+      - `handle`
+      - `terminal` — str，≤256
+      - `payload_ref` — str，≤256，指向载荷名
+    - `cfg` — Stage；只读视图，无参
+    - `close` — PreWindow
+      - `handle`
+  - handoff / 终端面
+    - `FinishDeclaration` — 三时机各一个载荷名，nullptr＝该时机不做
+      - `on_success` — 载荷名
+      - `always` — 载荷名
+      - `on_failure` — 载荷名
+    - `FinishMoment` — OnSuccess / Always / OnFailure
+    - `Payload` — 三种校验失败共用 `payload-missing`
+      - `bytes`
+      - `size`
+      - `declared_sha256`
+      - `declared_size` — −1＝未声明
+    - `store_payload` — 写 0600 且不外扩
+      - `directory` — 目录由终端持有
+      - `name`
+      - `bytes`
+      - `size`
+    - `StoreResult.path` — char[192]，产物
+    - `run_payload` — 执行前补 owner-exec 位
+      - `path`
+      - 产物 `ExecResult.ok` — bool
+      - 产物 `ExecResult.exit_status` — int
+  - 会话帧 / 运行期（不入文档）
+    - `SaMaterial.spi` — u32
+    - `SaMaterial.encap_port` — u16
+    - `SaMaterial.sender_port` — u16
+    - `SaMaterial.icv_len` — u8
+    - `SaMaterial.aes_key` — u8[32]
+    - `SaMaterial.hmac_key` — u8[32]
+    - `SaMaterial.set` — bool
+    - `sequence` — u32，ESP 序号属 SA，跨窗口必须连续
+    - `sequence_set` — bool
+    - `kernel_release` — str，探测（uname）
+    - `PREEMPT` — bool，探测（/proc/version）
+    - `modversions` — bool，声明
+    - `module_force_unload` — bool，声明
+
+- **B. 43499 内所有 route 共通**
+  - `route` — enum RouteId，Unset 即拒绝
+  - `offset` — u64
+  - `offset_set` — bool
+  - `stamp_waiter_offset` — u64
+  - `stamp_task_offset` — u64
+  - `stamp_lock_offset` — u64
+  - `stamp_buffer_size` — u64
+  - `max_attempts` — u32（＝`MulticastLimits.max_attempts`）
+  - `arm_hold` — u32（＝`MulticastLimits.arm_hold`）
+  - `arm_sequence` — u32（＝`MulticastLimits.arm_sequence`）
+  - `park_ms` — u32
+  - `settle_us` — u32
+  - `consumer_delay_us` — u32
+  - `burst_calls` — u32
+  - `max_calls` — u32
+  - `fallback_lock_us` — u32
+  - `nice_modulus` — u32
+  - `policy` — u32，调度策略
+  - `fake_task` — u64
+  - `fake_lock` — u64
+  - `target` — u64
+  - `value` — u64
+  - `TargetState.mm_struct` — u64，adopt
+  - `TargetState.page_base` — u64，adopt
+  - `TargetState.fake_task` — u64，adopt
+  - `TargetState.fake_lock` — u64，adopt
+  - `abi.cred.caps_offset` — u64
+  - `abi.cred.usage_offset` — u64
+  - `abi.cred.ref_count` — u64
+  - `abi.cred.ref0_offset` — u64
+  - `abi.cred.ref1_offset` — u64
+  - `abi.cred.ref2_offset` — u64
+  - `abi.cred.ref3_offset` — u64
+  - `abi.kernel.kernel_phys_load` — u64
+  - `abi.kernel.kernel_phys_offset` — u64
+  - `abi.offset.empty_zero_page` — u64
+  - `abi.offset.init_cred` — u64
+  - `abi.offset.init_task` — u64
+  - `abi.offset.root_task_group` — u64
+  - `abi.offset.security_hook_heads` — u64
+
+- **C. 43499 三个 route 各自**
+  - `multicast_waiter`
+    - `attempts` — uint
+    - `arm_hold` — uint
+    - `arm_sequence` — uint
+    - `buffer_size` — uint，给 role
+    - `lock_offset` — uint，给 role
+    - `task_offset` — uint，给 role
+    - `waiter_off` — uint，给 role
+  - `select_stack`
+    - `enter_delay_us` — uint
+    - `timeout_us` — uint
+    - `waiter_shift` — int
+    - `compact_waiter` — bool
+  - `tcp_zerocopy`
+    - `post_receive_hold_iterations` — uint
+    - `payload_delta` — int
+    - `chunk_bias` — uint
+    - `fake_task_off` — uint
+    - `cred_copy_off` — uint
+    - `arm_sequence` — uint，自带同名键
+    - `attempts` — uint，自带同名键
+
+- **D. 43284**
+  - 凭证与位置
+    - `sa` — 见「会话帧/SaMaterial」，写面凭证
+    - `offset` — u64
+    - `offset_set` — bool
+  - 目标文件
+    - `carrier` — PathView，载体路径
+    - `carrier_base` — u64，载体基址
+    - `dev_carrier` — PathView，进程自行可开的一次性载体
+    - `patch_target` — PathView，patch #1 目标
+  - 会话
+    - `sequence` — u32
+    - `sequence_set` — bool
+  - 预检查
+    - `kernel_release` — PathView，探测
+    - `kernel_modversions` — bool
+    - `kernel_module_force_unload` — bool
+    - `kernel_preempt` — bool
+  - hook
+    - `hook_image` — PathView，被 hook 的镜像（libc++）
+    - `hook_plan` — SentryPlan，镜像事实，换镜像必须换计划
+      - `hook_file_offset` — u64
+      - `hook_vaddr` — u64
+      - `guard_instruction` — u32
+      - `guard_skipped` — bool
+      - `displaced_instruction` — u32
+      - `payload_file_offset` — u64
+      - `payload_vaddr` — u64
+      - `payload_max_bytes` — u64
+      - `entry_offset` — size_t
+      - `displaced_offset` — size_t
+      - `jump_back_offset` — size_t
+    - `hook_plan_set` — bool，未给即拒绝
+  - 收尾
+    - `trigger_delay_ms` — u32
+    - `wait_ms` — u32
+    - `success_marker` — PathView
+    - `failure_marker` — PathView，先查
+    - `in_flight_marker` — PathView
+    - `module_marker` — PathView
+    - `module_name` — PathView
+  - 文档键（现状）
+    - `execution.late_load_args` — u64
+    - `execution.module_poll_attempts` — u32
+    - `execution.module_poll_interval_ms` — u32
+    - `execution.wait_timeout_ms` — u32
+    - `execution.selinux_exec_context` — u64
+  - 模块自身事实（实参/读出）
+    - 路径
+    - 大小
+    - sha256
+    - vermagic
+
+- **三处容易搞混的**
+  - `sa` 与 `sequence` 走会话帧（用后清零）；其余是静态策略，进文档
+  - B 层 `max_attempts`/`arm_hold`/`arm_sequence` 与 `MulticastLimits` 是同一批值；C 层 `arm_sequence`/`attempts` 是 tcp_zerocopy 自带的同名键 ⇒ 设计时要选一处做权威
+  - `SaMaterial` 只有 43284 用，但住在会话帧这条共通通道 ⇒ 归 A 不归 D
+
+- 新增（2026-10-10）：`steps` 的设置声明、profile／wire 两套 schema 的分工，已合入 [profile-schema-design.md](profile-schema-design.md)（一份文档，两套 schema 文件）。
+
+- **与 schema 文档的关系**（schema 见 [profile-schema-design.md](profile-schema-design.md)）
+  - 已声明进 schema（第一节有具体键与类型）：
+    - A1 全部（文档级 10 项）
+    - B 全部（43499 共通 40 项）
+    - C 全部（18 项）
+    - D 的「文档键（现状）」五条
+  - 尚未进 schema（需定归属）：
+    - A2 调用实参（5 项）
+    - A3 脚本面 7 项（7 项）
+    - A4 handoff / 终端面（8 项）
+    - A5 会话帧与探测（6 项）
+    - D 的凭证 · 目标文件（4 项）· 会话 · 预检查 · hook（hook 13 项）· 收尾（7 项）

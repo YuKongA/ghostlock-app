@@ -20,7 +20,7 @@
 
 namespace {
     using ghostlock::backend::cve_2026_43284::seam::esp_icv;
-    using ghostlock::backend::cve_2026_43284::seam::esp_iv;
+    using ghostlock::backend::cve_2026_43284::seam::esp_cbc_iv;
     using ghostlock::backend::cve_2026_43284::seam::HelperWriteSource;
     using ghostlock::backend::cve_2026_43284::seam::kBlockBytes;
     using ghostlock::backend::cve_2026_43284::seam::kHeaderBytes;
@@ -407,11 +407,24 @@ namespace {
         reset_fake();
         RealSpliceIo io(fake_io(), 7);
 
+        std::uint8_t desired[kBlockBytes] = {};
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            desired[i] = static_cast<std::uint8_t>(0x44U + i);
+        }
         std::uint8_t got[kBlockBytes] = {};
         std::uint8_t want[kBlockBytes] = {};
-        io.compute_iv(old_block, key, got);
-        static_cast<void>(esp_iv(old_block, key, want));
+        io.compute_iv(old_block, desired, key, got);
+        static_cast<void>(esp_cbc_iv(old_block, desired, key, want));
         expect(bytes_equal(got, want, kBlockBytes), "the vector is the primitive's answer");
+        std::uint8_t plain_vector[kBlockBytes] = {};
+        io.compute_iv(old_block, old_block, key, plain_vector);
+        bool differs = false;
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            if (plain_vector[i] != got[i]) {
+                differs = true;
+            }
+        }
+        expect(differs, "and it changes with the block the caller wants there");
 
         std::uint8_t frame[kFrameBytes] = {};
         for (std::size_t i = 0U; i < sizeof(frame); ++i) {

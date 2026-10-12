@@ -7,6 +7,8 @@
  *  width answer is sixteen and its refusals name the same codes for different reasons. Credentials
  *  are the condition for coming up at all, because its write cannot be made without the key
  *  material, and the material is held by the access so it can be cleared when the route goes down.
+ *  Both faces are served: a block read travels the same door the write opened, which is what a patch
+ *  verification reads, and a word read is that block projected onto its first eight bytes.
  *
  *  The route axis: empty. This backend is selected by its id and nothing inside it chooses between
  *  routes, so the route id in the parameters is not consulted; what the parameters carry is the key
@@ -19,6 +21,7 @@
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/seam/pagecache_seam.hpp"
 #include "contract/kernel_access.hpp"
+
 
 namespace ghostlock::backend::cve_2026_43284 {
     class Access final : public contract::KernelAccess {
@@ -69,6 +72,11 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (seam_ == nullptr || !seam_->bring_up_with(params->sa)) {
                 return BoolResult::failed(AccessStatus::Failed);
             }
+            /* After bring-up, never before: opening the doors starts a fresh sequence, and a session
+             *  that has already written (patch #1, or another window) must continue its own. */
+            if (params->has_sequence()) {
+                seam_->adopt_sequence(params->sequence);
+            }
             ever_up_ = true;
             return BoolResult::ok(true);
         }
@@ -115,11 +123,62 @@ namespace ghostlock::backend::cve_2026_43284 {
             return write(address, std::span<const std::byte>(zero), channel, parameters);
         }
 
-        /** Reads are not filled in yet: the block read exists beside this write in the old tree
-         *  and is not ported, so this says unsupported rather than returning zeros as data. */
-        [[nodiscard]] BlockResult read(std::uint64_t, std::size_t, AccessChannel,
-                                       const AccessMiscParameters &) noexcept override {
-            return BlockResult::failed(AccessStatus::Unsupported);
+        /** Read one block back. The unit is the same sixteen bytes the write deals in, and the
+         *  position comes from the parameters for the same reason the write takes it there: this
+         *  backend's addresses are carrier positions, and one authority for the position means a
+         *  read and the write it verifies cannot disagree about where they are. A caller wanting a
+         *  single word has read64, which is this same block projected onto its first eight bytes. */
+        [[nodiscard]] BlockResult read(std::uint64_t, std::size_t bytes, AccessChannel channel,
+                                       const AccessMiscParameters &parameters) noexcept override {
+            const auto *params = as_params(parameters);
+            if (channel != AccessChannel::PageCache) {
+                return BlockResult::failed(AccessStatus::Unsupported);
+            }
+            if (params == nullptr || !params->usable_for_access()) {
+                return BlockResult::failed(AccessStatus::BadParameters);
+            }
+            if (seam_ == nullptr || !seam_->up()) {
+                return BlockResult::failed(AccessStatus::NotInitialized);
+            }
+            if (bytes != seam::kWriteWidth) {
+                return BlockResult::failed(AccessStatus::BadWidth);
+            }
+            /* A route that cannot read and a read that failed are different answers, and the seam
+             *  is asked which one this is before any block is attempted: the first is a capability
+             *  this route does not have, the second is a call that did not come back. */
+            if (!seam_->can_read()) {
+                return BlockResult::failed(AccessStatus::Unsupported);
+            }
+            std::uint8_t block[seam::kWriteWidth] = {};
+            if (!seam_->read_block(params->offset, block)) {
+                return BlockResult::failed(AccessStatus::Failed);
+            }
+            for (std::size_t i = 0U; i < seam::kWriteWidth; ++i) {
+                block_out_[i] = static_cast<std::byte>(block[i]);
+            }
+            return BlockResult::ok(std::span<const std::byte>(block_out_, seam::kWriteWidth));
+        }
+
+        /** One word, as the first eight bytes of the block that holds it, little-endian. Reading
+         *  the whole block and projecting is the honest answer: this backend's unit is sixteen
+         *  bytes, and a word read that skipped the block read would be a second read path. */
+        [[nodiscard]] contract::KernelAccess::AccessResult<std::uint64_t> read64(
+            std::uint64_t address, AccessChannel channel,
+            const AccessMiscParameters &parameters) noexcept override {
+            const BlockResult block = read(address, seam::kWriteWidth, channel, parameters);
+            contract::KernelAccess::AccessResult<std::uint64_t> answer{};
+            answer.status = block.status;
+            if (!block.ok()) {
+                return answer;
+            }
+            std::uint64_t value = 0U;
+            for (std::size_t i = 0U; i < sizeof(std::uint64_t); ++i) {
+                value |= static_cast<std::uint64_t>(std::to_integer<unsigned>(block.value[i]))
+                         << (8U * i);
+            }
+            answer.status = AccessStatus::Ok;
+            answer.value = value;
+            return answer;
         }
 
     private:
@@ -134,5 +193,8 @@ namespace ghostlock::backend::cve_2026_43284 {
         /** Whether the route has ever been up, so a closed route is distinguishable from one that
          *  never came up. */
         bool ever_up_ = false;
+        /** The buffer a read answer points into: owned by the access so the span a caller gets stays
+         *  valid until the next call, which is what the interface promises. */
+        std::byte block_out_[seam::kWriteWidth] = {};
     };
 }  // namespace ghostlock::backend::cve_2026_43284

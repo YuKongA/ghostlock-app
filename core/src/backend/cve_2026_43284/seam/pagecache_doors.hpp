@@ -21,6 +21,10 @@
 #include "backend/cve_2026_43284/access_params.hpp"
 
 namespace ghostlock::backend::cve_2026_43284::seam {
+    class PageCacheDoorLinux;
+}  // namespace ghostlock::backend::cve_2026_43284::seam
+
+namespace ghostlock::backend::cve_2026_43284::seam {
     /** The system calls the doors need. */
     class DoorOps {
     public:
@@ -36,6 +40,9 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         [[nodiscard]] virtual int connect_esp(const SaMaterial &sa) noexcept = 0;
         /** Close a descriptor this object opened. */
         virtual void close_fd(int fd) noexcept = 0;
+        /** Whether the carrier is served remotely: this process never opens it, a bridge reads and
+         *  splices its page instead. False for every carrier this process can open itself. */
+        [[nodiscard]] virtual bool target_is_remote() const noexcept { return false; }
     };
 
     /** The doors of one route lifetime: opened once, closed once, only by their opener. */
@@ -51,7 +58,9 @@ namespace ghostlock::backend::cve_2026_43284::seam {
             /* A descriptor the caller handed in is used and NOT owned: it is never closed here. */
             file_fd_ = handed_in_;
             owns_file_ = false;
-            if (file_fd_ < 0) {
+            /* A remote carrier has no descriptor at all, and that is not a failure: the bridges serve
+             * both halves. Only a carrier this process is supposed to open can fail to open. */
+            if (file_fd_ < 0 && !ops_.target_is_remote()) {
                 file_fd_ = ops_.open_target();
                 if (file_fd_ < 0) {
                     return false;
@@ -103,5 +112,17 @@ namespace ghostlock::backend::cve_2026_43284::seam {
         int socket_fd_ = -1;
         bool owns_file_ = false;
         bool open_ = false;
+    };
+/** 本进程从不打开的那种载体：两半都交给桥，门只留套接字那一半（工具与执行体共用这一份）。 */
+    class RemoteDoor final : public DoorOps {
+    public:
+        explicit RemoteDoor(PageCacheDoorLinux &real) noexcept;
+        [[nodiscard]] int open_target() noexcept override { return -1; }
+        [[nodiscard]] int connect_esp(const SaMaterial &sa) noexcept override;
+        void close_fd(int fd) noexcept override;
+        [[nodiscard]] bool target_is_remote() const noexcept override { return true; }
+
+    private:
+        PageCacheDoorLinux *real_ = nullptr;
     };
 }  // namespace ghostlock::backend::cve_2026_43284::seam

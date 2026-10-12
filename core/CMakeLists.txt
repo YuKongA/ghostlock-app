@@ -1,10 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(ghostlock_skeleton LANGUAGES C CXX)
 
-# A0 skeleton build entry (rewrite-plan-v2 section 2). Mirrors src/Makefile and
-# references ONLY the new tree (core/**) plus the vendored mpack. The Android
-# cross build is a later phase and lives on the Gradle side; this file is the
-# host build for editors and local checks.
+# CLion-only index model. The production build remains Makefile/Gradle driven;
+# this file supplies source membership and include paths for code completion.
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -14,28 +12,41 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(SKELETON_WARNINGS -Wall -Wextra -Wconversion -Wsign-conversion)
 
-add_executable(ghostlock-skeleton
-  core/main.cpp
-  core/contract/layer.hpp
-  core/contract/layer_scope.hpp
-  core/contract/kind.hpp
-  core/contract/resource_scope.hpp
-  core/contract/op_registry.hpp
-  core/support/layer.hpp
-  core/memory/layer.hpp
-  core/race/layer.hpp
-  core/backend/layer.hpp
-  core/pipeline/layer.hpp
-  core/pipeline/attack_window.hpp
-  core/pipeline/composition_root.hpp
-  core/pipeline/plan_gate.hpp
-  core/terminal/layer.hpp
-  core/script/layer.hpp
-  core/session/layer.hpp
-  core/profile/layer.hpp
-  core/profile/route_catalog.hpp
+# Keep the source root visible even when CLion indexes a header as a standalone
+# file instead of through a compiled translation unit.
+include_directories(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/lib/lua/src"
 )
-target_include_directories(ghostlock-skeleton PRIVATE core)
+
+# TODO(dynamic-src-sources): keep this list derived from src/ so new production
+# files are visible to CLion without changing the production build system.
+file(GLOB_RECURSE GHOSTLOCK_SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
+)
+list(FILTER GHOSTLOCK_SOURCES EXCLUDE REGEX "/tests?(/|$)")
+
+# CLion may resolve an opened header independently from its including file.
+# Publish every source subdirectory so both qualified and local header names
+# remain navigable in that mode.
+set(GHOSTLOCK_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/src")
+file(GLOB_RECURSE GHOSTLOCK_TREE CONFIGURE_DEPENDS
+  LIST_DIRECTORIES true
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
+)
+foreach(path IN LISTS GHOSTLOCK_TREE)
+  if(IS_DIRECTORY "${path}" AND NOT path MATCHES "/tests?(/|$)")
+    list(APPEND GHOSTLOCK_INCLUDE_DIRS "${path}")
+  endif()
+endforeach()
+list(REMOVE_DUPLICATES GHOSTLOCK_INCLUDE_DIRS)
+include_directories(${GHOSTLOCK_INCLUDE_DIRS})
+
+add_executable(ghostlock-skeleton ${GHOSTLOCK_SOURCES})
+target_include_directories(ghostlock-skeleton PRIVATE
+  ${GHOSTLOCK_INCLUDE_DIRS}
+  "${CMAKE_CURRENT_SOURCE_DIR}/lib/lua/src"
+)
 target_compile_options(ghostlock-skeleton PRIVATE ${SKELETON_WARNINGS})
 
 # Vendored MessagePack: C99 amalgamation, its own flags, warnings off, so the
@@ -46,9 +57,11 @@ set_source_files_properties(lib/mpack/mpack.c PROPERTIES COMPILE_OPTIONS "-w")
 target_link_libraries(ghostlock-skeleton PRIVATE mpack)
 
 # P4 evidence binaries (restored in A0, see src/Makefile check target).
-add_executable(window-exit-paths core/pipeline/tests/window_exit_paths_test.cpp)
-add_executable(plan-gate core/pipeline/tests/plan_gate_test.cpp)
+add_executable(window-exit-paths src/pipeline/tests/window_exit_paths_test.cpp)
+add_executable(plan-gate src/pipeline/tests/plan_gate_test.cpp)
 foreach(evidence_target window-exit-paths plan-gate)
-  target_include_directories(${evidence_target} PRIVATE core)
+  target_include_directories(${evidence_target} PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
   target_compile_options(${evidence_target} PRIVATE ${SKELETON_WARNINGS})
 endforeach()

@@ -32,6 +32,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         out.steps = steps;
         out.step_count = step_count;
         out.pre_groups = inputs.pre_groups;
+        out.pre_shaped_groups = inputs.pre_shaped_groups;
         out.spray_groups = inputs.spray_groups;
         out.post_groups = inputs.post_groups;
         out.leak_groups = inputs.leak_groups;

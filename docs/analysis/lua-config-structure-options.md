@@ -1,6 +1,8 @@
 # Lua 配置结构选项（R10 决策简报）
 
 > 分析类（≤8 KiB）。**用途**：为 R10（Lua 配置结构设计）提供**事实底稿 + 三形态对比 + 判据/分期**，供用户裁定；**本文不替用户选形态**。
+>
+> **取代声明（2026-10-10）**：用户裁定「全 lua 配置文件」⇒ 方向为 **L-A（脚本即配置）**。本简报的三形态对比**已被** [config-wire-redesign-plan.md](config-wire-redesign-plan.md) **取代**；其 §6 两隐患与 §4 判据已并入该设计。本文保留为历史输入（不删历史）。
 > 配套：[B0.0-REVISION](../plan/B0.0-REVISION.md)（R3/R10 台账）· [handoff-payload-verification](handoff-payload-verification.md) §1（判据形式）· [handoff-plugin-lua](handoff-plugin-lua.md)（控制面）。
 
 ## §1 四层默认值事实底稿（每条 file:line）

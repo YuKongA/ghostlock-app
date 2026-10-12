@@ -12,6 +12,12 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
         constexpr std::uint16_t kElfClass64 = 2U;
         constexpr std::uint16_t kMachineAarch64 = 0xB7U;
         constexpr std::uint32_t kSectionProgbits = 1U;
+        /** SHF_ALLOC: the kernel's find_sec() only answers for an allocated section. */
+        constexpr std::uint64_t kSectionAlloc = 0x2U;
+        constexpr const char *kVersionsSection = "__versions";
+        constexpr const char *kVersionsAltSection = ".versions";
+        constexpr const char *kSignatureMarker = "~Module signature appended~";
+        constexpr const char *kCfiMarker = "__cfi_check";
 
         bool in_range(std::size_t size, std::size_t offset, std::size_t width) noexcept {
             return offset <= size && width <= size - offset;
@@ -76,6 +82,20 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             }
             return in_range(size, at + i, 1U) && bytes[at + i] == 0U;
         }
+        /** Whether the image holds this text anywhere. The loader's two markers are byte strings
+         *  in the image, and neither has a section of its own. */
+        bool contains_marker(const std::uint8_t *bytes, std::size_t size, const char *marker) noexcept {
+            const std::size_t width = std::strlen(marker);
+            if (width == 0U || width > size) {
+                return false;
+            }
+            for (std::size_t at = 0U; at + width <= size; ++at) {
+                if (std::memcmp(bytes + at, marker, width) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }  // namespace
 
     ModuleFacts read_module_facts(const std::uint8_t *bytes, std::size_t size) noexcept {
@@ -117,6 +137,28 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             facts.error = ModuleReadError::HeadersOutOfRange;
             return facts;
         }
+        /* The sections the kernel's own check reads, found by name rather than by position. The
+         *  CRC sections are looked for first: their absence or presence decides how the vermagic is
+         *  compared, and a module declares one only when it was built with versioning. */
+        for (std::uint16_t i = 0U; i < section_count; ++i) {
+            const std::size_t header =
+                static_cast<std::size_t>(sections_at) + static_cast<std::size_t>(i) * section_size;
+            const std::uint64_t flags = read_u64(bytes, header + 8U);
+            if ((flags & kSectionAlloc) == 0U) {
+                continue;
+            }
+            const std::uint32_t name_offset = read_u32(bytes, header);
+            if (section_name_is(bytes, size, names_offset, names_size, name_offset,
+                                kVersionsSection) ||
+                section_name_is(bytes, size, names_offset, names_size, name_offset,
+                                kVersionsAltSection)) {
+                /* The kernel's find_sec() answers for any allocated section of this name, even an
+                 * empty one, and that answer is what turns the comparison into a tail comparison. */
+                facts.has_crcs = true;
+            }
+        }
+        facts.signed_module = contains_marker(bytes, size, kSignatureMarker);
+        facts.cfi_present = contains_marker(bytes, size, kCfiMarker);
         /* The .modinfo section, found by name rather than by position. */
         for (std::uint16_t i = 0U; i < section_count; ++i) {
             const std::size_t header =
@@ -165,6 +207,21 @@ namespace ghostlock::backend::cve_2026_43284::lkm {
             facts.error = ModuleReadError::NoVermagic;
         }
         return facts;
+    }
+
+    bool vermagic_matches_kernel(const char *module_vermagic, const char *kernel_vermagic,
+                                 bool module_has_crcs) noexcept {
+        if (module_vermagic == nullptr || kernel_vermagic == nullptr) {
+            return false;
+        }
+        if (!module_has_crcs) {
+            return std::strcmp(module_vermagic, kernel_vermagic) == 0;
+        }
+        /* strcspn, not strchr: a string with no space moves the offset to its terminator, which is
+         * what the kernel's own arithmetic does. */
+        const char *const module_tail = module_vermagic + std::strcspn(module_vermagic, " ");
+        const char *const kernel_tail = kernel_vermagic + std::strcspn(kernel_vermagic, " ");
+        return std::strcmp(module_tail, kernel_tail) == 0;
     }
 
     bool vermagic_belongs_to(const char *vermagic, const char *release) noexcept {

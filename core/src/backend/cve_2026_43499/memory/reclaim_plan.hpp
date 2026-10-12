@@ -56,7 +56,13 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
     /** The most steps a plan can hold: the caller sizes its array, and a plan that
      *  would not fit is refused rather than truncated. */
-    inline constexpr std::size_t kMaxReclaimSteps = 64U;
+    /** 计划步数的**实现容量**（不是策略数字 ✗）：步数由 profile 的计数决定 ✓
+     *  （`pre` + `post−1` + `spray/mm_objs_per_slab` + 2 + 1 ✓）。
+     *  真机实测计数：pre=284 / spray=191 / post=32 ⇒ 计划需 **300+ 步** ✗，
+     *  而旧值 64 ✗ ⇒ `plan_reclaim` 返回 `NoRoom` ⇒ `close_them_all` **一个都不关** ⇒
+     *  fd 每轮流~1–5k ⇒ 约 7–8 轮触顶（`PFOPEN fd=512→24813` ✓，上限 32768 ✓），
+     *  表现为 `discovery call-failed` / `victim-fork-failed` ✗。见 docs/analysis/43499-fd-leak-confirmed.md ✓。 */
+    inline constexpr std::size_t kMaxReclaimSteps = 1024U;
 
     /** Write the close plan for these counts. */
     [[nodiscard]] ReclaimVerdict plan_reclaim(const ReclaimCounts &counts, ReclaimStep *out,

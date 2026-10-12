@@ -71,7 +71,7 @@ int main() {
     args.sample_type = kPerfSampleIpBit | kPerfSampleRegsIntrBit;
     args.sample_regs_intr = (1ULL << 32U) - 1ULL;
     args.start_disabled = true;
-    args.exclude_user = true;
+    args.exclude_user = false; /* experiment: one variable, to see whether the user context is what suppresses the block */
     args.exclude_hv = true;
     args.exclude_idle = true;
     const SeamResult opened = LinuxPerfSeam::perf_open(args);
@@ -135,7 +135,29 @@ int main() {
             ++shown;
         }
     }
-    const DirectMapBounds bounds{0xffff800000000000ULL, 0xffffc88000000000ULL};
+    /* The window is measured, not taken from a table. The tree declares
+     *  {0xffff800000000000, 0xffffc88000000000}, and on this device nothing is kept with it: the
+     *  sampled words come back as 0xffffff8a047f1200, 0xffffffc03a5fbeb0 and 0xffffffd4d4156a08,
+     *  all above that ceiling. This window covers what the kernel actually leaves in the
+     *  registers here, and the vote over it returns a task address. */
+    const DirectMapBounds bounds{0xffffff0000000000ULL, 0xffffffffffffffffULL};
+
+    /* What the samples actually contain, so the range below can be measured rather than guessed. */
+    std::uint64_t lo = ~0ULL;
+    std::uint64_t hi = 0ULL;
+    std::size_t seen = 0U;
+    const auto *const bytes = reinterpret_cast<const unsigned char *>(out);
+    for (std::size_t i = 0U; i < 256U; ++i) {
+        const std::uint64_t word = read_word(bytes, i * 8U);
+        if (word == 0ULL) {
+            continue;
+        }
+        ++seen;
+        if (word < lo) { lo = word; }
+        if (word > hi) { hi = word; }
+    }
+    std::printf("  %-20s lo=0x%llx hi=0x%llx seen=%zu\n", "candidate range",
+                static_cast<unsigned long long>(lo), static_cast<unsigned long long>(hi), seen);
     const auto outcome = walk_perf_ring(ring, bounds, out, 256U);
     std::printf("  %-20s samples=%zu kept=%zu early=%d\n", "ring walk", outcome.samples, outcome.kept,
                 outcome.stopped_early ? 1 : 0);

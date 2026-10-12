@@ -83,6 +83,10 @@ namespace ghostlock::script {
          *  which is a different failure from a script that ran past a bound. The
          *  name is the tree's existing one for a tuning value that is not there. */
         TuningMissing = 8,
+        /** The loaded file is not a procedure: no table came back, or the table is missing `name`
+         *  or an entry point, or it carries a member outside the contract. The precise reason
+         *  travels through the sink's on_error (procedure-missing / procedure-member-unknown). */
+        ProcedureMalformed = 9,
     };
 
     [[nodiscard]] const char *script_rejection_name(ScriptRejection rejection) noexcept;
@@ -120,6 +124,14 @@ namespace ghostlock::script {
 
         /** Compile and run one script inside the budgets. */
         [[nodiscard]] ScriptRejection run(std::string_view script) noexcept;
+
+        /** Load one procedure file the contract's way: run the chunk, and when it returns a table
+         *  check it against the `procedure` contract (members, `name`, an entry point) and call the
+         *  entry with a nil context. A chunk that returns nothing already did its own work (that is
+         *  how the bare fixtures run until every file is a procedure) and is accepted as-is.
+         *  @param script the chunk text
+         *  @return None when the file ran, a named rejection otherwise. */
+        [[nodiscard]] ScriptRejection run_procedure(std::string_view script) noexcept;
 
         void close() noexcept;
 

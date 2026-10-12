@@ -67,7 +67,10 @@ namespace ghostlock::backend::cve_2026_43499 {
     inline constexpr std::uint64_t kPerfCountSwCpuClock = 0U;
     /** The two sample-kind bits involved: the instruction pointer and the interrupted set. */
     inline constexpr std::uint32_t kPerfSampleIpBit = 1U << 0U;
-    inline constexpr std::uint32_t kPerfSampleRegsIntrBit = 1U << 14U;
+    /* The wanted sample is the interrupted register set, which the kernel numbers bit 18. Bit 14
+     *  is the user register set, and the probe excludes user sampling, so asking for that one made
+     *  the kernel omit the block and every record came back as header plus instruction pointer. */
+    inline constexpr std::uint32_t kPerfSampleRegsIntrBit = 1U << 18U;
     inline constexpr std::uint64_t kPerfEventIocDisable = 1U;
     /** Where the reader finds the two ends of the ring inside the mapped page. */
     inline constexpr std::size_t kPerfDataHeadOffset = 1024U;

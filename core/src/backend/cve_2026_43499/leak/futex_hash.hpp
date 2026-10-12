@@ -29,7 +29,11 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         return (word << (shift & 31)) | (word >> ((-shift) & 31));
     }
 
-#define fallthrough __attribute__((fallthrough));
+/* TODO(android-libc++-macro-collision): the retired compatibility macro named
+ * `fallthrough` leaked into every later header and collides with libc++'s
+ * `_LIBCPP_FALLTHROUGH` expansion. Keep the attribute local under a project
+ * name so Android and host headers see no replacement for their own token. */
+#define GHOSTLOCK_FALLTHROUGH __attribute__((fallthrough));
     // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
 
     /* jhash.h: Jenkins hash support.
@@ -126,9 +130,9 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         /* Handle the last 3 u32's: all the case statements fall through */
         switch (length) { // NOLINT(bugprone-switch-missing-default-case): 0..3 is exhaustive
             case 3: c += k[2];
-                fallthrough;
+                GHOSTLOCK_FALLTHROUGH
             case 2: b += k[1];
-                fallthrough;
+                GHOSTLOCK_FALLTHROUGH
             case 1: a += k[0];
                 __jhash_final(a, b, c);
             case 0: /* Nothing left to add */
@@ -264,4 +268,5 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         key.private_key.offset = addr & 0xfff;
         return futex_hash_context_key(context, &key);
     }
+
 } // namespace ghostlock::backend::cve_2026_43499::leak
