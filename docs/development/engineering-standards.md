@@ -302,7 +302,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 ### 6.1 C++（`core/src`）
 
-- 语言：C++23、`-fno-rtti`、静态 libc++；`-O2 -flto`；`-Wall -Wextra -Wconversion -Wsign-conversion`，
+- 语言：C++23、**RTTI 启用**（2026-10-12 用户裁定取消 `-fno-rtti`）、静态 libc++；`-O2 -flto`；`-Wall -Wextra -Wconversion -Wsign-conversion`，
   **新代码不得引入任何告警**。禁止 RTTI/异常/非标准扩展。
 - 头文件：`#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `core/src`
   （项目头）、组内按字母序（沿用现有文件的实际风格，不做无关重排）。

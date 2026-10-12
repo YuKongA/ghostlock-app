@@ -52,6 +52,13 @@ namespace {
         std::size_t last_arg_count = 0;
         std::uint64_t last_u64 = 0;
         char last_error[64] = {};
+        /* What the last forwarded call carried, kind per argument and the text of the
+         * first two: the log verb's two Str arguments are what this records. */
+        ghostlock::contract::ArgKind last_kind[4] = {ghostlock::contract::ArgKind::U64,
+                                                     ghostlock::contract::ArgKind::U64,
+                                                     ghostlock::contract::ArgKind::U64,
+                                                     ghostlock::contract::ArgKind::U64};
+        char last_str[4][64] = {};
     };
 
     void sink_on_op(void *context, const ghostlock::script::CallView *view) {
@@ -59,9 +66,18 @@ namespace {
         ++recorder->calls;
         recorder->last_surface_index = view->surface_index;
         recorder->last_arg_count = view->arg_count;
-        for (std::size_t i = 0; i < view->arg_count; ++i) {
-            if (view->args[i].kind == ghostlock::script::ArgKind::U64) {
+        for (std::size_t i = 0; i < view->arg_count && i < 4U; ++i) {
+            recorder->last_kind[i] = view->args[i].kind;
+            if (view->args[i].kind == ghostlock::contract::ArgKind::U64) {
                 recorder->last_u64 = view->args[i].u64;
+            }
+            if (view->args[i].kind == ghostlock::contract::ArgKind::Str) {
+                const std::string_view text = view->args[i].str;
+                const std::size_t limit = text.size() < 63U ? text.size() : 63U;
+                for (std::size_t c = 0; c < limit; ++c) {
+                    recorder->last_str[i][c] = text[c];
+                }
+                recorder->last_str[i][limit] = '\0';
             }
         }
     }
@@ -189,6 +205,45 @@ namespace {
                     static_cast<unsigned long long>(fixture.recorder.last_u64),
                     ghostlock::script::script_rejection_name(unknown));
     }
+    /** The log verb crosses the sandbox boundary intact: it is row 9 of the table, it takes
+     *  two Str arguments (level and key), and the body arrives DECODED as the script wrote it.
+     *  The row declares no `handle`, so the sandbox neither hands it one nor pushes a value
+     *  back (the rule is surface_row_has_arg(row, "handle"), not "the row has arguments"). */
+    void log_verb_is_forwarded(Fixture &fixture, ghostlock::script::Sandbox &sandbox) {
+        using ghostlock::contract::ArgKind;
+        using ghostlock::script::ScriptRejection;
+        std::size_t log_index = ghostlock::contract::kSurfaceCount;
+        for (std::size_t i = 0; i < ghostlock::contract::kSurfaceCount; ++i) {
+            if (std::string_view(ghostlock::contract::kSurface[i].name) == "log") {
+                log_index = i;
+            }
+        }
+        expect(log_index < ghostlock::contract::kSurfaceCount, "the table carries the log row");
+        expect(log_index == 9U, "the log row is the tenth row (index 9)");
+        if (log_index >= ghostlock::contract::kSurfaceCount) {
+            /* The row is gone: every later assertion would index past the table, so the
+             * failure above IS the verdict. Returning keeps a broken table a clean red
+             * instead of an out-of-bounds read (the first attempt segfaulted). */
+            return;
+        }
+        expect(ghostlock::contract::surface_row_has_arg(ghostlock::contract::kSurface[log_index], "handle") ==
+                   false,
+               "the log row declares no handle: it neither takes nor hands one out");
+        const std::size_t calls_before = fixture.recorder.calls;
+        const ScriptRejection outcome = sandbox.run("surface.log(\"info\", \"x\")");
+        expect(outcome == ScriptRejection::None, "the log call runs without a refusal");
+        expect(fixture.recorder.calls == calls_before + 1U, "the call reached the sink once");
+        expect(fixture.recorder.last_surface_index == log_index,
+               "the forwarded call names the log row by its table index");
+        expect(fixture.recorder.last_arg_count == 2U, "two arguments are forwarded");
+        expect(fixture.recorder.last_kind[0] == ArgKind::Str && fixture.recorder.last_kind[1] == ArgKind::Str,
+               "both arguments are strings (level and key)");
+        expect(std::strcmp(fixture.recorder.last_str[0], "info") == 0, "the level arrives as written");
+        expect(std::strcmp(fixture.recorder.last_str[1], "x") == 0, "the body arrives as written");
+        std::printf("sandbox log verb: index=%zu args=%zu kinds=str,str level=%s body=%s\n", log_index,
+                    fixture.recorder.last_arg_count, fixture.recorder.last_str[0],
+                    fixture.recorder.last_str[1]);
+    }
 }  // namespace
 
 int main() {
@@ -212,9 +267,11 @@ int main() {
     surface_registration_follows_the_table(sandbox);
     budgets_are_enforced(sandbox);
     cfg_and_unknown_names(fixture, sandbox);
+    log_verb_is_forwarded(fixture, sandbox);
     sandbox.close();
     if (failures == 0) {
-        std::printf("sandbox: PASS (whitelist set equality + forbidden absent + table-driven surface + four budgets)\n");
+        std::printf("sandbox: PASS (whitelist set equality + forbidden absent + table-driven surface + four budgets "
+                    "+ log verb forwarding)\n");
         return 0;
     }
     std::printf("sandbox: FAIL (%d)\n", failures);

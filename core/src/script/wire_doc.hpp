@@ -47,6 +47,12 @@ namespace ghostlock::script {
 
         WireDoc() noexcept = default;
 
+        /** Frees the parsed document. JsonNode::text and JsonEdge::key point into it, so a
+         *  WireDoc owns its views; copying one would alias them, hence no copy. */
+        ~WireDoc() noexcept;
+        WireDoc(const WireDoc &) = delete;
+        WireDoc &operator=(const WireDoc &) = delete;
+
         /** Read one framed message from a stream (4-byte big-endian length, then the body).
          *  @param in       the stream
          *  @param out      receives the body bytes (caller-owned buffer)
@@ -86,6 +92,11 @@ namespace ghostlock::script {
                                                        std::span<char> out) noexcept;
 
       private:
+        /** The parsed document, held so the node views can point into it. The type is defined
+         *  in the .cpp, which keeps the JSON library out of this header. */
+        struct JsonStorage;
+        JsonStorage *json_ = nullptr;
+
         JsonNode nodes_[kMaxNodes]{};
         JsonEdge edges_[kMaxEdges]{};
         std::size_t node_count_ = 0U;

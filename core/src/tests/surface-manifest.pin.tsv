@@ -25,3 +25,5 @@ step	handle_method	backend	window	false	true	true	handle	true	184467440737095516
 step	handle_method	backend	window	false	true	true	name	true	64
 cfg	value	profile	stage	false	true	false	-	-	-
 close	handle_method	session	pre_window	false	true	true	handle	true	18446744073709551615
+log	call	backend	stage	false	true	true	level	true	16
+log	call	backend	stage	false	true	true	key	true	256

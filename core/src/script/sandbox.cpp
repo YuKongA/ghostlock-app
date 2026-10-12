@@ -12,6 +12,8 @@
  */
 #include "script/sandbox.hpp"
 
+#include "support/log.hpp"   /* ★ E 段 ✓（用户裁定：暴露给 lua 的日志 ✓） */
+
 #include <cstdlib>
 #include <cstring>
 
@@ -431,17 +433,36 @@ namespace ghostlock::script {
                 return 0;
             }
             const std::size_t index = static_cast<std::size_t>(lua_tointeger(L, lua_upvalueindex(1)));
-            /* A6-3: the acquiring row hands a handle out, every other row that
-             * declares a first argument is handed one, and both directions are
-             * checked here -- the script cannot make, extend or borrow one. */
+            /* ★ E 段 ✓（design-critic L3/L4 的「每个 surface 动词调用一条」✓）：**唯一漏斗** ✓ ——
+             *  `surface_call` 由 `:582` 以闭包推出 ⇒ **每次脚本调用都经过这里** ✓✓。`debug` 级 ⇒ 逐次可见 ✓。 */
+            ghostlock::support::log("debug", "[lua] surface -> call index",
+                                    static_cast<std::int64_t>(index));
+            /* A6-3: which way a row uses a handle is a TABLE fact, never a guess from its
+             *  form or its argument count:
+             *   - a row that DECLARES a handle argument is handed one (writeop, step, close...);
+             *   - the ACQUIRING row is the Call row that declares no arguments at all -- the
+             *     backend row, per handle_table.hpp: "the script receives one when it acquires a
+             *     backend and can do nothing but hand it back";
+             *   - a Call row WITH arguments (log) is fire-and-forget: it neither takes nor hands
+             *     out a handle, and returns nothing.
+             *  LESSON (device param-invalid, 2026-10-12): the first rule used to be "any row with
+             *  at least one argument is handed one", so surface.log had its level argument
+             *  REPLACED by a handle view; the sink then saw a Handle where it required the level
+             *  string and refused param-invalid, which stopped the whole plan before W1. The
+             *  count check at stage_gate.hpp:48 and the plan gate were innocent. */
             const contract::SurfaceEntry &row = contract::kSurface[index];
-            const bool acquires = row.form == contract::SurfaceForm::Call;
-            const bool takes_handle = row.arg_count >= 1U;
+            const bool takes_handle = contract::surface_row_has_arg(row, "handle");
+            const bool acquires =
+                    row.form == contract::SurfaceForm::Call && !takes_handle && row.arg_count == 0U;
             Handle handle{};
             if (acquires) {
                 const HandleRefusal refusal =
                     state->handles.acquire(static_cast<std::uint32_t>(index), handle);
                 if (refusal != HandleRefusal::None) {
+                    /* ★ E 段 ✓：**拒绝具名** —— 直接复用既有码名 ✗（⇒ 不新造码 ✓ 合 critic L8 ✓）；
+                     *  `warn` 级 ⇒ 失败的 surface 调用会高亮 ✓✓。 */
+                    ghostlock::support::log("warn", "surface refused",
+                                            ghostlock::support::Text{handle_refusal_name(refusal)});
                     return handle_refuse(L, handle_refusal_name(refusal));
                 }
             } else if (takes_handle) {
@@ -456,32 +477,35 @@ namespace ghostlock::script {
             for (int i = 1; i <= top && scratch.count < kMaxForwardedArgs; ++i) {
                 ArgView &view = scratch.args[scratch.count];
                 if (takes_handle && i == 1) {
-                    view.kind = ArgKind::Handle;
+                    view.kind = contract::ArgKind::Handle;
                     view.handle = handle;
                     ++scratch.count;
                     continue;
                 }
                 switch (lua_type(L, i)) {
                     case LUA_TNUMBER:
-                        view.kind = ArgKind::U64;
+                        view.kind = contract::ArgKind::U64;
                         view.u64 = static_cast<std::uint64_t>(lua_tointeger(L, i));
                         break;
                     case LUA_TBOOLEAN:
-                        view.kind = ArgKind::Bool;
+                        view.kind = contract::ArgKind::Bool;
                         view.boolean = lua_toboolean(L, i) != 0;
                         break;
                     case LUA_TSTRING: {
-                        view.kind = ArgKind::Str;
+                        view.kind = contract::ArgKind::Str;
                         std::size_t length = 0;
                         const char *text = lua_tolstring(L, i, &length);
-                        const std::size_t limit = length < kMaxForwardedString ? length : kMaxForwardedString - 1;
-                        std::memcpy(scratch.strings[scratch.count], text, limit);
-                        scratch.strings[scratch.count][limit] = '\0';
-                        view.str = std::string_view(scratch.strings[scratch.count], limit);
+                        if (length >= kMaxForwardedString) {
+                            return handle_refuse(L, "param-invalid");
+                        }
+
+                        std::memcpy(scratch.strings[scratch.count], text, length);
+                        scratch.strings[scratch.count][length] = '\0';
+                        view.str = std::string_view(scratch.strings[scratch.count], length);
                         break;
                     }
                     default:
-                        view.kind = ArgKind::U64;
+                        view.kind = contract::ArgKind::U64;
                         view.u64 = 0;
                         break;
                 }

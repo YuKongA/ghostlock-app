@@ -47,7 +47,7 @@
 - **E1 层间只传数据**；禁公共/控制/内容耦合。（R3）
 - **E2 功能内聚**：模块职责可一句话说清且不可再分。（R4）
 - **E3 编译期锁定**：组合→步骤集→终端在编译期绑定，运行期只做声明符合性检查。（R6）
-- **E4 PI 窗口约束（实证版）**：**白名单/禁项以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准** —— 实测死因 = 窗口内 `sched_setattr`（改 nice / SCHED_BATCH）进入内核 PI 链（`__do_sys_sched_setattr` → `__sched_scheduler` → `rt_mutex_adjust_pi`，见 device-gate `20260922-2231-CPP12x/CPP12s-*-panic`）。因此：**禁 `sched_setattr` / `setpriority` / `nice` 及任何会进入 `rt_mutex_adjust_pi` 的调用**；并保留**禁堆分配 / 禁间接分派 / 禁首次触页**（防御性条款）。窗口外允许虚接口（gate/计划/配置构造/终端交接）。
+- **E4 PI 窗口约束（实证版）**：**白名单/禁项以 [pi-window-constraints](../analysis/pi-window-constraints.md) 为准（口径 = `inside PI`：约束只覆盖 PI 内那几段，PI 之后可打印）** —— 实测死因 = 窗口内 `sched_setattr`（改 nice / SCHED_BATCH）进入内核 PI 链（`__do_sys_sched_setattr` → `__sched_scheduler` → `rt_mutex_adjust_pi`，见 device-gate `20260922-2231-CPP12x/CPP12s-*-panic`）。因此：**禁 `sched_setattr` / `setpriority` / `nice` 及任何会进入 `rt_mutex_adjust_pi` 的调用**；并保留**禁堆分配 / 禁间接分派 / 禁首次触页**（防御性条款）。窗口外允许虚接口（gate/计划/配置构造/终端交接）。
 
 > **沿革**：原 E4 表述为「PI 窗口内禁间接分派/分配/首次触碰新页」（由 ADR-0001:183、ADR-0004:188-189、`route_lifecycle.hpp:9-11` 推下）—— 该理论条款**覆盖不到实测死因**；2026-10-08 按 device-gate 记录改写为「白名单 + 禁项」，原文保留于本行。
 

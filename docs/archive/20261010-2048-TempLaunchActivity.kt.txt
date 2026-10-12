@@ -1,0 +1,80 @@
+package com.ghostlock.app.temp
+
+import android.app.Activity
+import android.os.Bundle
+import android.util.Log
+import com.ghostlock.app.data.ipsec.AndroidIpsecSessionFactory
+import com.ghostlock.app.data.ipsec.IpsecSession
+import com.ghostlock.app.data.ipsec.IpsecSessionResult
+import com.ghostlock.app.data.profile.SessionSecretFrame
+import kotlin.concurrent.thread
+
+/**
+ * TEMPORARY launcher (2026-10-10, user request).
+ *
+ * What it is for: the page-cache kernel access needs a live ESP SA, and on a cold device the only
+ * unprivileged way to get one is IpSecManager. This activity does that one job and nothing else --
+ * create the SA with the App's own factory, frame its secrets exactly as the production stdin stream
+ * does, and leave both the SA installed and the framed bytes where the adb side can pick them up
+ * (the App's own external files directory, which is the one place an app may write and shell may
+ * read). It runs entirely in onCreate with no UI, so a locked device can drive it with adb start.
+ *
+ * The frame is a runtime secret and this is the one place it touches a file; it is a development
+ * harness, deleted together with the loader's temporary mode. Removal: when the SA provisioning
+ * lands in the production path, delete this activity, its manifest entry, and the loader's
+ * --frame-stdin mode.
+ */
+class TempLaunchActivity : Activity() {
+    private var session: IpsecSession? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        thread(name = "glk-temp-launcher") { createSaAndPublish() }
+    }
+
+    private fun createSaAndPublish() {
+        val created = runCatching { AndroidIpsecSessionFactory(this).create() }.getOrElse { error ->
+            Log.i(TAG, "SA creation threw: " + error)
+            return
+        }
+        when (created) {
+            is IpsecSessionResult.Failure -> {
+                Log.i(TAG, "SA refused: " + created.reason + " " + created.detail)
+            }
+            is IpsecSessionResult.Ready -> {
+                val ready = created.session
+                session = ready
+                val secrets = ready.secrets
+                val frame = SessionSecretFrame.encodeFramed(secrets)
+                val directory = getExternalFilesDir(null)
+                if (directory == null) {
+                    Log.i(TAG, "no external files directory; SA dropped")
+                    return
+                }
+                val target = java.io.File(directory, FRAME_NAME)
+                runCatching { target.writeBytes(frame) }.onFailure { error ->
+                    Log.i(TAG, "frame write failed: " + error)
+                }
+                Log.i(
+                    TAG,
+                    "SA ok spi=0x" + secrets.spi.toString(16) + " encap=" + secrets.encapPort +
+                        " sender=" + secrets.senderPort + " icv=" + secrets.icvLen,
+                )
+                Log.i(TAG, "READY frame=" + target.absolutePath + " bytes=" + frame.size +
+                    " (SA stays installed while this activity lives)")
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        session?.let { runCatching { it.close() } }
+        session = null
+        Log.i(TAG, "SA closed")
+        super.onDestroy()
+    }
+
+    private companion object {
+        const val TAG = "GLK-TEMP"
+        const val FRAME_NAME = "ghostlock-sa.frame"
+    }
+}

@@ -14,7 +14,6 @@
 namespace {
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
     using ghostlock::backend::cve_2026_43499::seam::MulticastWindow;
-    using ghostlock::backend::cve_2026_43499::seam::RouteExec;
     using ghostlock::backend::cve_2026_43499::seam::WindowOutcome;
 
     std::size_t g_failures = 0U;
@@ -26,7 +25,8 @@ namespace {
         }
     }
 
-    class RecordingExec final : public RouteExec {
+    /** The recording route: the window's controller. The shape is the window's concept, so no base. */
+    class RecordingExec final {
     public:
         int arms = 0;
         int executes = 0;
@@ -34,14 +34,14 @@ namespace {
         std::uint64_t value = 0U;
         std::uint64_t offset = 0U;
 
-        [[nodiscard]] bool execute(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept override {
+        [[nodiscard]] bool execute(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept {
             ++executes;
             address = a;
             value = v;
             offset = o;
             return true;
         }
-        [[nodiscard]] bool arm(std::int32_t) noexcept override {
+        [[nodiscard]] bool arm(std::int32_t) noexcept {
             ++arms;
             return true;
         }
@@ -50,7 +50,7 @@ namespace {
     void a_warm_up_count_is_required() {
         RecordingExec exec;
         const MulticastLimits unsaid;
-        MulticastWindow window(exec, unsaid);
+        MulticastWindow<RecordingExec> window(exec, unsaid);
         expect(!window.write_word(0x1000U, 1U, 0U), "a caller who never gave a warm-up count is refused");
         expect(window.outcome() == WindowOutcome::NoWarmUp, "and told so by name");
         expect(exec.arms == 0 && exec.executes == 0, "without touching the controller at all");
@@ -61,7 +61,7 @@ namespace {
         MulticastLimits limits;
         limits.max_attempts = 4;
         limits.arm_sequence = 3;
-        MulticastWindow window(exec, limits);
+        MulticastWindow<RecordingExec> window(exec, limits);
         expect(window.warm_up_rounds() == 3, "the count is the caller's, not a code default");
         expect(window.write_word(0x2000U, 0x4142434445464748ULL, 0x40U), "the write lands");
         expect(exec.arms == 3, "after exactly three opening rounds");

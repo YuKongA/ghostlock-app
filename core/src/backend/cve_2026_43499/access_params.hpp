@@ -15,7 +15,9 @@
  *  set up outlive the individual write. Switching routes means shutting down and initializing
  *  again, which is why the state a capability reports has a Closed as well as a Declared.
  */
+#include <concepts>
 #include <cstdint>
+#include <string_view>
 
 #include "contract/kernel_access.hpp"
 #include "profile/glkv3_document.hpp"
@@ -26,7 +28,11 @@ namespace ghostlock::backend::cve_2026_43499 {
      *  access reads. Both travel in the same object so a caller can set them once and keep
      *  using it, and an entry point refuses what it needs but does not find rather than
      *  substituting a default. */
-    class AccessParams final : public contract::KernelAccess::AccessMiscParameters {
+    /* 旧码（原文保留 ✓）：
+     *     class AccessParams final : public contract::KernelAccess::AccessMiscParameters {   // 旧名原文
+     *  TODO(access-split): `final` 与 2026-10-12「三个 route 各建子类」裁定冲突 ——
+     *  子类须继承本类，故去掉 `final`。完成 = 三子类落地且门禁全绿 + 用户确认 ⇒ 删本注释块。 */
+    class Access43499Parameters : public contract::KernelAccess::AccessMiscParameters {
     public:
         /** The route the access should use. Unset means not decided, which initialize refuses. */
         profile::RouteId route = profile::RouteId::Unset;
@@ -105,5 +111,50 @@ namespace ghostlock::backend::cve_2026_43499 {
         [[nodiscard]] constexpr bool usable_for_access() const noexcept {
             return usable_for_initialize() && offset_set;
         }
+    };
+
+    /* ------------------------------------------------------------------------
+     *  Per-route parameter sets (2026-10-12 ruling: init carries this route's
+     *  parameters).  Each route declares only what it alone knows; the shared
+     *  fields above stay in the base.  A subclass must NOT override name():
+     *  name() is the BACKEND identity that KernelAccess43499::as_params matches
+     *  on, and a route that answered another string would be refused as if it
+     *  came from a different backend.  The route is identified by dynamic_cast
+     *  (RTTI enabled the same day) plus the RouteId in the base.
+     * ------------------------------------------------------------------------ */
+
+    /** The route a parameter set belongs to, as the subclass's compile-time tag. */
+    template <class P>
+    concept RouteParams = std::derived_from<P, Access43499Parameters> && requires {
+        { P::kRoute } -> std::convertible_to<profile::RouteId>;
+    };
+
+    /** Parameters only the TCP-zerocopy route needs. */
+    class TcpZerocopy43499Parameters final : public Access43499Parameters {
+    public:
+        static constexpr profile::RouteId kRoute = profile::RouteId::TcpZerocopy;
+        /** The zerocopy map length the carrier is built for; zero is refused by the route. */
+        std::uint64_t zerocopy_map_bytes = 0U;
+    };
+
+    /** Parameters only the select-stack route needs: the fd_set geometry. */
+    class SelectStack43499Parameters final : public Access43499Parameters {
+    public:
+        static constexpr profile::RouteId kRoute = profile::RouteId::SelectStack;
+        /** The waiter word shift inside the fd_set, and how many words the set carries. */
+        std::uint32_t waiter_shift = 0U;
+        std::uint32_t fd_count = 0U;
+    };
+
+    /** Parameters only the multicast-waiter route needs.  The multi-step arm work
+     *  (socket, stamp packing, MCAST_BLOCK_SOURCE) is NOT write logic: it belongs to
+     *  the upper-layer prepare_multicast_route() wrapper, per the same ruling. */
+    class Multicast43499Parameters final : public Access43499Parameters {
+    public:
+        static constexpr profile::RouteId kRoute = profile::RouteId::MulticastWaiter;
+        /** How many rounds the arm may take before the route reports it did not land. */
+        std::uint32_t arm_rounds = 0U;
+        /** The waiter word shift the stamp is decoded with. */
+        std::uint32_t stamp_waiter_shift = 0U;
     };
 }  // namespace ghostlock::backend::cve_2026_43499

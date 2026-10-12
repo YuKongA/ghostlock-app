@@ -21,6 +21,11 @@
 - **第二份独立记录**：`docs/archive/device-gates/20260922-2231-CPP12s-20260918-w1-panic.dmesg-ramoops-0.log`（同一栈；另见 `-ramoops-1.log`）。
 - 两份记录**互相独立**（不同批次/不同 ramoops 槽），栈帧一致 ⇒ 机制性归因，而非单次偶发。
 
+- **PI 内的起止边界（首现处定义 · **以注释锚点为权威**）**：`waiter_main` `PI-IN` → `PI-OUT`（其后仍有 PI 段）；`owner_main` `PI-IN` → `PI-OUT`；**`trigger` `PI-IN-TRIGGER` → `PI-OUT-TRIGGER`**（**全体在 PI 内**；**其 PI-OUT 之后 PI 并未结束**——只标记本函数跨度，控制权回到 `waiter_main` 的 PI 段）；**`consumer_main` `PI-IN-CONSUMER` → `PI-OUT-CONSUMER`**；**`judge` 在 PI 之外**（豁免出处 = **`PI-EXEMPT-JUDGE`**）。
+- **锚点引证（原文逐行）** ⇒ 见 **[annex-anchors](pi-window-constraints-annex-anchors.md)**（含九条锚点原文行）。
+- **行号会漂移** ⇒ **权威 = `seam/multicast_window.hpp` / `seam/multicast_route.hpp` 里的 `PI-IN` / `PI-OUT` 注释标记**。
+- **锚点齐备**：`trigger` / `consumer_main` / `judge` 已落具名锚点 ⇒ 原「待补」项**已清**。
+
 ### 1.2 native 侧在**窗口内**发同一类 syscall
 
 - `core/src/support/util.cpp:76-88`：`sched_setattr_tid()` 直接 `syscall(274, tid, &attr, 0)`，策略 `SCHED_BATCH`，**源码注释原文**：`nice change triggers PI walk (pi=true)`。
@@ -54,7 +59,7 @@
 
 ## 3. 明确禁止（C）
 
-1. **禁 `sched_setattr`**（任何 policy / nice）——**实测死因**：`__do_sys_sched_setattr` → `__sched_setscheduler` → `rt_mutex_adjust_pi` → `rt_mutex_adjust_prio_chain`（§1.1 栈）。
+1. **`inside PI` 禁 `sched_setattr`**（任何 policy / nice）——**实测死因**：`sched_setattr` → `__sched_setscheduler` → `rt_mutex_adjust_pi` → `…_prio_chain`（§1.1 栈）。**作用域 = PI 内，不是整个窗口体**（口径：**PI 内无 syscall · 无分配 · 无打印**）。**与现路由不冲突**：本路由**有意**在 **PI 之外**调用 `Ops::setattr(tid, nice, policy)`（`seam/multicast_route.hpp`）去创造 PI 状态 —— 其义即该文件 `:9` 的「**the walk is the write**」⇒ **不属本禁令对象**；禁的是**进入 PI 之后**的调度器改动。
 2. **禁 `setpriority` / `nice` 及任何会进入 `rt_mutex_adjust_pi` 的调用**：它们与 (1) 同类（都改任务优先级/权重并触发 PI 调整）。**新增此类调用 = 设计评审否决项**。
 3. **禁堆分配**（防御性保留；§1.3 已排除为本次致因，但分配可能间接进入 PI 链或引入不确定性）。
 4. **禁间接分派**（虚接口/函数指针）：窗口内只允许具体类型 + 静态调用。
@@ -80,4 +85,4 @@
 | U-1 | `CPP12y` / `CPP17` 批次是否同栈 | **未逐一核** | 需要时按 §1.1 的 grep 方法补核 |
 | U-2 | route 侧是否有**其它**路径间接触发 PI 链 | **未核** | 白名单落定后，对 route 目录全量 syscall 面做一次分类核对 |
 | U-3 | `gettid` / `nanosleep` 等零命中项是否允许 | 当前**未用**（0 命中） | 若要用，按 §2 解释规则补证 |
-| U-4 | 白名单的机器化守卫（静态扫描） | 判据已写（§3），**尚未接线** | 归 B0.1 批次（层表/扫描同批） |
+| U-4 | 白名单的机器化守卫（静态扫描） | **守卫已接线** ✓（§3 判据有机器化守卫在位）；**机器化版后置** ⇒ 归 B0.1 批次 | 同上 |

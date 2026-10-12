@@ -25,7 +25,7 @@ namespace {
     using ghostlock::contract::kSurface;
     using ghostlock::contract::kSurfaceCount;
     using ghostlock::contract::SurfaceForm;
-    using ghostlock::script::ArgKind;
+    using ghostlock::contract::ArgKind;
     using ghostlock::script::ArgView;
     using ghostlock::script::CallView;
     using ghostlock::script::kMaxStagedEntries;
@@ -309,6 +309,115 @@ namespace {
         sandbox.close();
     }
 
+    /** A: the table's TEXT ceiling is the gate's business, and only past the ceiling. The
+     *  engine has its own 128-byte forwarding cap, so the 257-byte case is driven through
+     *  record() directly -- that is what proves the GATE holds the 256 bound of kLogArgs.
+     *  B: which way a row uses a handle is a table fact (the rule the sandbox reads). */
+    void text_bounds_and_handle_rules() {
+        using ghostlock::contract::surface_row_has_arg;
+        using ghostlock::script::staged_sink;
+        std::size_t row_log = kSurfaceCount;
+        for (std::size_t i = 0U; i < kSurfaceCount; ++i) {
+            if (std::string_view(kSurface[i].name) == "log") {
+                row_log = i;
+            }
+        }
+        expect(row_log < kSurfaceCount, "the table carries the log row");
+        if (row_log >= kSurfaceCount) {
+            return;
+        }
+        /* ---- A1: a level past 16 bytes, end to end through the engine ---- */
+        {
+            char script[512];
+            /* The log row is a CALL row: it takes no handle, so the script passes only the
+             *  level and the key. Passing a handle as well would be refused by the argument-COUNT
+             *  check instead, which would prove nothing about the text bound. */
+            std::size_t used = append_head(script, 0U, row_log);
+            char long_level[18];
+            for (std::size_t i = 0U; i < 17U; ++i) { long_level[i] = 'L'; }
+            used = append_quoted(script, used, std::string_view(long_level, 17U));
+            used = append_text(script, used, std::string_view(", "));
+            used = append_quoted(script, used, std::string_view("x"));
+            used = append_text(script, used, std::string_view(")\n"));
+            StagedPlan plan;
+            Sandbox engine;
+            expect(engine.open(budget(), staged_sink(plan)), "open for the level bound");
+            expect(engine.run(std::string_view(script, used)) == ScriptRejection::None,
+                   "the over-long level still runs (the gate is what refuses it)");
+            const ghostlock::script::StageVerdict verdict =
+                ghostlock::script::check_surface_entries(plan);
+            expect(!verdict.ok && std::string_view(verdict.reason) == std::string_view("param-invalid"),
+                   "a level past 16 bytes is refused as param-invalid");
+            engine.close();
+        }
+        /* ---- A2: a key past 256 bytes, recorded directly ---- */
+        {
+            static char long_key[257];
+            for (std::size_t i = 0U; i < sizeof(long_key); ++i) { long_key[i] = 'k'; }
+            ArgView args[2]{};
+            args[0].kind = ArgKind::Str;
+            args[0].str = std::string_view("info");
+            args[1].kind = ArgKind::Str;
+            args[1].str = std::string_view(long_key, sizeof(long_key));
+            CallView view{};
+            view.surface_index = row_log;
+            view.form = kSurface[row_log].form;
+            view.name = kSurface[row_log].name;
+            view.args = args;
+            view.arg_count = 2U;
+            StagedPlan plan;
+            expect(plan.record(view), "a 257-byte key is recorded (the container is not what refuses)");
+            const ghostlock::script::StageVerdict verdict =
+                ghostlock::script::check_surface_entries(plan);
+            expect(!verdict.ok && std::string_view(verdict.reason) == std::string_view("param-invalid"),
+                   "a key past 256 bytes is refused as param-invalid");
+        }
+        /* ---- A3: inside every bound, nothing is refused (the reverse assertion) ---- */
+        {
+            ArgView args[2]{};
+            args[0].kind = ArgKind::Str;
+            args[0].str = std::string_view("info");
+            args[1].kind = ArgKind::Str;
+            args[1].str = std::string_view("x");
+            CallView view{};
+            view.surface_index = row_log;
+            view.form = kSurface[row_log].form;
+            view.name = kSurface[row_log].name;
+            view.args = args;
+            view.arg_count = 2U;
+            StagedPlan plan;
+            expect(plan.record(view), "an in-bounds call is recorded");
+            const ghostlock::script::StageVerdict verdict =
+                ghostlock::script::check_surface_entries(plan);
+            expect(verdict.ok, "an in-bounds level and key are NOT refused");
+        }
+        /* ---- B1/B2: the handle rule as table facts ---- */
+        {
+            std::size_t row_backend = kSurfaceCount;
+            for (std::size_t i = 0U; i < kSurfaceCount; ++i) {
+                if (std::string_view(kSurface[i].name) == "backend") {
+                    row_backend = i;
+                }
+            }
+            expect(row_backend < kSurfaceCount, "the table carries the acquiring row");
+            if (row_backend < kSurfaceCount) {
+                const bool acquires = kSurface[row_backend].form == SurfaceForm::Call &&
+                                      !surface_row_has_arg(kSurface[row_backend], "handle") &&
+                                      kSurface[row_backend].arg_count == 0U;
+                expect(acquires, "the backend row is the acquiring row (Call, no handle, no arguments)");
+            }
+            const bool log_acquires = kSurface[row_log].form == SurfaceForm::Call &&
+                                      !surface_row_has_arg(kSurface[row_log], "handle") &&
+                                      kSurface[row_log].arg_count == 0U;
+            expect(!log_acquires, "the log row declares two arguments, so it is not the acquiring row");
+            expect(surface_row_has_arg(kSurface[row_for(SurfaceForm::HandleMethod, 5U)], "handle"),
+                   "a five-argument handle method declares its handle");
+            std::printf("stage: text bounds + handle rules (log row=%zu, level max=%llu, key max=%llu)\n",
+                        row_log, static_cast<unsigned long long>(kSurface[row_log].args[0].max),
+                        static_cast<unsigned long long>(kSurface[row_log].args[1].max));
+        }
+    }
+
     /* ---- 6: the admission gate's own reason is folded back in ---- */
     void gate_reasons_are_folded() {
         using ghostlock::contract::op_token_hash;
@@ -458,6 +567,8 @@ int main() {
     cfg_snapshot_is_guarded();
     std::printf("stage: handles\n");
     handles_flow_through_the_surface();
+    std::printf("stage: text bounds + handle rules\n");
+    text_bounds_and_handle_rules();
     if (g_failures != 0U) {
         std::printf("stage: FAIL (%zu)\n", g_failures);
         return 1;

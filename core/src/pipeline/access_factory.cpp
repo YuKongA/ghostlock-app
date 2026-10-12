@@ -16,10 +16,18 @@
 #include "backend/cve_2026_43499/kernel_access.hpp"
 
 namespace ghostlock::contract {
+    /* Wiring rule (2026-10-12 ruling). The contract names a backend and nothing
+     *  else, so this entry keeps handing back the backend base access.  A caller
+     *  that already knows the route asks
+     *  cve_2026_43499::create_kernel_access_43499(route) instead, which returns that
+     *  route s subclass: right subclass, right parameter type, right wrapper, decided
+     *  once at construction.  Switching a route means shutting the first access down
+     *  explicitly and creating the second -- never an implicit replacement.
+     */
     std::unique_ptr<KernelAccess> KernelAccess::create(BackendId backend) noexcept {
         switch (backend) {
             case BackendId::Cve_2026_43499:
-                return std::make_unique<::ghostlock::backend::cve_2026_43499::Access>();
+                return std::make_unique<::ghostlock::backend::cve_2026_43499::KernelAccess43499>();
             case BackendId::Cve_2026_43284:
                 return std::make_unique<::ghostlock::backend::cve_2026_43284::Access>();
             default:

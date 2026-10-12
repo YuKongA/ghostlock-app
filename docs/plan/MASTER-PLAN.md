@@ -76,12 +76,12 @@ flowchart LR
 
 | 里程碑 | 命令（全部需 EXIT=0，失败数读 XML 全量） | 真机 |
 |---|---|---|
-| B0.1 / B0.2 | `make -C core native-host-tests`；`make -C core ghostlock`（NDK 零告警）；`make -C core lint-tidy` | 否 |
+| B0.1 / B0.2 | `make -C core check`；`make -C core android`（NDK 零告警）；`./gradlew markdownlint` | 否 |
 | B0.3 | 同上 + `tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock`（**可选诊断**） | **是**（动写路径） |
-| B1 | `make -C core native-host-tests`；`./gradlew :app:testDebugUnitTest` | 否 |
-| B2 | 同上 + `./gradlew :profile-core:test --tests "*QueueElementShape*"` + `make -C core profile-manifest-v3`（**既有 110 行逐字节不变；payload 新键按新行补充**） | 若动写路径 ⇒ 是 |
+| B1 | **KernelAccess 实现面（2026-10-10 交付）**：`seam/multicast_route{,_linux}.{hpp,cpp}`（43499 路由引擎）· `memory/payload_page.{hpp,cpp}`（载荷页）· 43284 读面（`kernel_access.hpp` + `seam/pagecache_{seam,write}.hpp`）；门禁＝`make -C core check` + `make -C core android` | 否（接线前不动写路径） |
+| B2 | 同 B1 + `./gradlew :profile-core:test --tests "*QueueElementShape*"` + `make -C core profile-manifest-v3`（**既有 110 行逐字节不变；payload 新键按新行补充**） | 若动写路径 ⇒ 是 |
 | B3 | 插件解冻门禁（`AGENTS.md` 恢复清单 + 真机 + `docs/analysis/device-gates/*.md` 归档） | **是** |
-| WP-7 | 按 `resolved-profile-registry-plan.md` §6 矩阵（`make -C core native-host-tests`、`./gradlew :app:testDebugUnitTest`、5 张 manifest 目标） | B2 批触发 |
+| WP-7 | 按 `resolved-profile-registry-plan.md` §6 矩阵（`make -C core check`、`./gradlew :app:testDebugUnitTest`、5 张 manifest 目标） | B2 批触发 |
 
 ## §6 角色与职责
 
@@ -133,7 +133,7 @@ flowchart LR
 | 度量 | 当前值（**截至本次更新**；取证快照以 §11 归档与 §7 登记为准） | 目标 |
 |---|---|---|
 | 设计状态 | **评审已过（可进批准 gate），待用户批准**；阻断 **0** | 批准后回填 |
-| 代码改动 | **0**（本轮仅文档） | 按批次推进 |
+| 代码改动 | **B1「KernelAccess 实现面」已交付（2026-10-10）**：43499 路由引擎（三线程 + 平台边策略）· 43499 载荷页构建 · 43284 读面；host `check` **101 PASS**（唯一红 `plan-check`，`main.cpp` 清空所致）· `android` 零告警。**未接线**：引擎/载荷页/读面尚未进 `initialize`/`prepare_page`；临时入口 `run_pipeline_temp.cpp` 仍在 | 按批次推进（下一批＝序 1 接线） |
 | 审查阻断关闭 | **已全部关闭**（评审结论与沿革见 [decisions](../analysis/handoff-payload-decisions.md)、三族文档与 `docs/archive/20261007-2237-branch-plan.md`） | 0 未闭 |
 | 待办计数 | ADR 超限拆分 3 项 · R1 层表登记 1 项 · payload 白名单触点 1 项 · 技术债 6 项 | 按 §7 偿还 |
 | 文档配额 | 家族 15 份 + ADR-0008 全部在上限内；[archive README](../archive/README.md)、[INDEX-device-gates](../archive/INDEX-device-gates.md)、[INDEX-plans](../archive/INDEX-plans.md) 各 ≤8 KiB | 保持 |

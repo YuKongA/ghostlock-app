@@ -14,5 +14,9 @@
 namespace ghostlock::backend::cve_2026_43499::seam {
     static_assert(RouteOps<LinuxRouteOps>,
                   "the device policy provides every call one multicast attempt makes");
+    /* 路由与窗口的编译期对接（2026-10-12 裁定）：窗口以具体路由类型为模板实参直接调用，
+     *  所以「路由满足窗口的 concept」这条判据在这里成立——不满足则本行先编译不过。 */
+    static_assert(RouteExec<MulticastRoute<LinuxRouteOps>>,
+                  "the device route provides what the window asks of its controller");
 }  // namespace ghostlock::backend::cve_2026_43499::seam
 #endif

@@ -22,10 +22,18 @@ CC ?= cc
 
 BUILD_DIR := ../build/host
 MPACK_DIR := lib/mpack
+# 诊断日志（2026-10-12 用户裁定）：异步 spdlog；用 std::format 避开其 bundled fmt 与本机 clang 的
+# consteval 不兼容（实测：`FMT_USE_CONSTEVAL=0` 无效 ✗，`SPDLOG_USE_STD_FORMAT` ⇒ 0 error ✓）。
+SPDLOG_DIR := lib/spdlog
+# JSON library (user ruling 2026-10-12: delete the hand-written parser, use the library).
+# Header-only, one directory, same shape as the other vendored pieces.
+NLOHMANN_DIR := lib/nlohmann
+NLOHMANN_FLAGS := -isystem $(NLOHMANN_DIR)
+SPDLOG_FLAGS := -DSPDLOG_USE_STD_FORMAT -isystem $(SPDLOG_DIR)/include
 MPACK_SRC := $(MPACK_DIR)/mpack.c
 MPACK_HDR := $(MPACK_DIR)/mpack.h
 
-CXXFLAGS := -std=c++23 -Wall -Wextra -Wconversion -Wsign-conversion -Isrc -isystem $(MPACK_DIR)
+CXXFLAGS := -std=c++23 -Wall -Wextra -Wconversion -Wsign-conversion -Isrc -isystem $(MPACK_DIR) $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS)
 # Third-party isolation (lib/mpack/README.md): C99, its own flags, warnings off,
 # so the project's zero-warning line above stays meaningful.
 MPACK_CFLAGS := -std=c99 -w
@@ -315,7 +323,7 @@ LAYER_HEADERS := \
 P4_TESTS := src/pipeline/tests/window_exit_paths_test.cpp src/pipeline/tests/plan_gate_test.cpp
 EVIDENCE_TESTS := src/tests/page_slot_test.cpp src/tests/a2_test.cpp src/tests/surface_test.cpp src/tests/surface_manifest_test.cpp src/tests/surface_sandbox_test.cpp src/tests/surface_stage_test.cpp src/tests/handle_generation_test.cpp src/tests/terminal_payload_test.cpp src/tests/terminal_store_test.cpp src/tests/terminal_execution_test.cpp src/tests/payload_keys_test.cpp src/tests/document_reader_test.cpp \
   src/tests/payload_manifest_test.cpp src/tests/step_catalog_test.cpp src/tests/write_request_test.cpp src/tests/write_encoder_test.cpp src/tests/write_layout_test.cpp src/tests/credential_image_test.cpp src/tests/race_runtime_test.cpp src/tests/kmi_catalog_test.cpp src/tests/device_facts_test.cpp src/tests/module_facts_test.cpp src/tests/staged_plan_test.cpp src/tests/route_lifecycle_test.cpp src/tests/document_pairs_test.cpp src/tests/real_document_test.cpp src/tests/abi_offsets_test.cpp src/tests/route_expected_keys_test.cpp src/tests/multicast_arm_test.cpp src/tests/chain_catalog_test.cpp src/tests/run_plan_test.cpp
-EVIDENCE_BINS := $(BUILD_DIR)/page_slot_test $(BUILD_DIR)/cve43284_access_params_test $(BUILD_DIR)/pagecache_seam_test $(BUILD_DIR)/multicast_seam_test $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test $(BUILD_DIR)/multicast_window_test $(BUILD_DIR)/access_chain_test $(BUILD_DIR)/pagecache_chain_test $(BUILD_DIR)/pagecache_doors_test $(BUILD_DIR)/pagecache_write_test $(BUILD_DIR)/aes256_test $(BUILD_DIR)/esp_crypto_test $(BUILD_DIR)/hmac_sha256_test $(BUILD_DIR)/esp_icv_test $(BUILD_DIR)/aes256_cbc_test $(BUILD_DIR)/policy_dispatch_test $(BUILD_DIR)/real_splice_io_test $(BUILD_DIR)/access_factory_test $(BUILD_DIR)/session_frame_test $(BUILD_DIR)/argument_names_test $(BUILD_DIR)/stage_result_test $(BUILD_DIR)/component_catalog_test $(BUILD_DIR)/step_action_test $(BUILD_DIR)/race_action_test $(BUILD_DIR)/executors_test $(BUILD_DIR)/abi_payload_offsets_test $(BUILD_DIR)/snitch_owner_test $(BUILD_DIR)/pagecache_door_linux_test $(BUILD_DIR)/step_targets_test $(BUILD_DIR)/select_stack_route_test
+EVIDENCE_BINS := $(BUILD_DIR)/page_slot_test $(BUILD_DIR)/cve43284_access_params_test $(BUILD_DIR)/pagecache_seam_test $(BUILD_DIR)/multicast_seam_test $(BUILD_DIR)/cve43499_kernel_access_test $(BUILD_DIR)/kernel_access_test $(BUILD_DIR)/target_state_test $(BUILD_DIR)/capability_agreement_test $(BUILD_DIR)/step_runner_test $(BUILD_DIR)/combination_manifest_test $(BUILD_DIR)/stepset_steps_manifest_test $(BUILD_DIR)/a2_test $(BUILD_DIR)/prepare_steps_test $(BUILD_DIR)/page_geometry_test $(BUILD_DIR)/prepare_plan_test $(BUILD_DIR)/shaping_plan_test $(BUILD_DIR)/heap_geometry_test $(BUILD_DIR)/prepare_page_test $(BUILD_DIR)/perf_ring_test $(BUILD_DIR)/perf_vote_test $(BUILD_DIR)/multicast_policy_test $(BUILD_DIR)/route_policy_test $(BUILD_DIR)/route_status_test $(BUILD_DIR)/collision_count_test $(BUILD_DIR)/collision_buckets_test $(BUILD_DIR)/discovery_result_test $(BUILD_DIR)/snitch_discovery_test $(BUILD_DIR)/snitch_policy_test $(BUILD_DIR)/snitch_tuning_test $(BUILD_DIR)/snitch_child_test $(BUILD_DIR)/snitch_run_test $(BUILD_DIR)/leak_search_test $(BUILD_DIR)/snitch_scan_test $(BUILD_DIR)/snitch_seam_test $(BUILD_DIR)/collision_wait_test $(BUILD_DIR)/snitch_region_test $(BUILD_DIR)/snitch_setup_test $(BUILD_DIR)/leak_walk_test $(BUILD_DIR)/futex_hash_test $(BUILD_DIR)/candidate_match_test $(BUILD_DIR)/scan_geometry_test $(BUILD_DIR)/scan_bounds_test $(BUILD_DIR)/address_discovery_test $(BUILD_DIR)/reclaim_plan_test $(BUILD_DIR)/plan_load_test $(BUILD_DIR)/plan_delivery_test $(BUILD_DIR)/surface_test $(BUILD_DIR)/surface_manifest_test $(BUILD_DIR)/surface_sandbox_test $(BUILD_DIR)/surface_stage_test $(BUILD_DIR)/handle_generation_test $(BUILD_DIR)/terminal_payload_test $(BUILD_DIR)/terminal_store_test $(BUILD_DIR)/terminal_execution_test $(BUILD_DIR)/payload_keys_test $(BUILD_DIR)/document_reader_test $(BUILD_DIR)/payload_manifest_test $(BUILD_DIR)/step_catalog_test $(BUILD_DIR)/write_request_test $(BUILD_DIR)/write_encoder_test $(BUILD_DIR)/write_layout_test $(BUILD_DIR)/credential_image_test $(BUILD_DIR)/race_runtime_test $(BUILD_DIR)/kmi_catalog_test $(BUILD_DIR)/device_facts_test $(BUILD_DIR)/module_facts_test $(BUILD_DIR)/staged_plan_test $(BUILD_DIR)/route_lifecycle_test $(BUILD_DIR)/document_pairs_test $(BUILD_DIR)/real_document_test $(BUILD_DIR)/abi_offsets_test $(BUILD_DIR)/route_expected_keys_test $(BUILD_DIR)/multicast_arm_test $(BUILD_DIR)/chain_catalog_test $(BUILD_DIR)/run_plan_test $(BUILD_DIR)/multicast_window_test $(BUILD_DIR)/access_chain_test $(BUILD_DIR)/pagecache_chain_test $(BUILD_DIR)/pagecache_doors_test $(BUILD_DIR)/pagecache_write_test $(BUILD_DIR)/aes256_test $(BUILD_DIR)/esp_crypto_test $(BUILD_DIR)/hmac_sha256_test $(BUILD_DIR)/esp_icv_test $(BUILD_DIR)/aes256_cbc_test $(BUILD_DIR)/policy_dispatch_test $(BUILD_DIR)/real_splice_io_test $(BUILD_DIR)/access_factory_test $(BUILD_DIR)/session_frame_test $(BUILD_DIR)/argument_names_test $(BUILD_DIR)/stage_result_test $(BUILD_DIR)/component_catalog_test $(BUILD_DIR)/step_action_test $(BUILD_DIR)/race_action_test $(BUILD_DIR)/executors_test $(BUILD_DIR)/abi_payload_offsets_test $(BUILD_DIR)/snitch_owner_test $(BUILD_DIR)/pagecache_door_linux_test $(BUILD_DIR)/step_targets_test $(BUILD_DIR)/select_stack_route_test $(BUILD_DIR)/access_route_subclass_test
 EVIDENCE_BINS += $(BUILD_DIR)/prepare_mapping_test $(BUILD_DIR)/window_attempt_test $(BUILD_DIR)/window_steps_test $(BUILD_DIR)/pagecache_steps_test $(BUILD_DIR)/wire_doc_test $(BUILD_DIR)/procedure_load_test $(BUILD_DIR)/route_config_test $(BUILD_DIR)/victim_context_test
 P4_BINS := $(BUILD_DIR)/window_exit_paths_test $(BUILD_DIR)/plan_gate_test
 ORDER_TOKENS := sort|order|sequenc|index|next|step|schedul|priorit|rank
@@ -352,7 +360,7 @@ $(ANDROID_OUT): $(RUNTIME_SRCS) $(LUA_CORE_ANDROID_LIB) src/contract/layer_scope
 	@mkdir -p ../build/native
 	$(NDK_TOOLCHAIN)/aarch64-linux-android29-clang -std=c99 -w -O2 -c $(MPACK_SRC) \
 	  -o $(BUILD_DIR)/mpack-android.o
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -I$(LUA_DIR) -isystem $(MPACK_DIR) \
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc -I$(LUA_DIR) -isystem $(MPACK_DIR) \
 	  $(RUNTIME_SRCS) $(ANDROID_ONLY_SRCS) $(DEVICE_EXTRA_SRCS) \
 	  $(BUILD_DIR)/mpack-android.o $(LUA_CORE_ANDROID_LIB) -o $@
 	@echo "android: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
@@ -401,57 +409,57 @@ $(SNITCH_PREPARE_PROBE): src/tools/snitch_prepare_probe.cpp src/backend/cve_2026
   src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp \
   src/backend/cve_2026_43499/leak/snitch_setup.cpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< src/backend/cve_2026_43499/memory/prepare_plan.cpp src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp src/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< src/backend/cve_2026_43499/memory/prepare_plan.cpp src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp src/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
 	@echo "snitch-prepare-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(PERF_SEAM_PROBE): src/tools/perf_seam_probe.cpp src/backend/cve_2026_43499/perf_ring.hpp \
   src/backend/cve_2026_43499/perf_seam_linux.hpp src/backend/cve_2026_43499/perf_vote.hpp \
   src/backend/cve_2026_43499/memory/heap_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< -o $@
 	@echo "perf-seam-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(SNITCH_FORK_PROBE): src/tools/snitch_fork_probe.cpp src/backend/cve_2026_43499/leak/snitch_seam_linux.hpp \
   src/backend/cve_2026_43499/memory/heap_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< -o $@
 	@echo "snitch-fork-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(SNITCH_RUN_PROBE): src/tools/snitch_run_probe.cpp src/backend/cve_2026_43499/leak/snitch_run.hpp \
   src/backend/cve_2026_43499/leak/snitch_seam_linux.hpp src/backend/cve_2026_43499/leak/futex_hash.hpp \
   src/backend/cve_2026_43499/memory/heap_seam_linux.hpp src/backend/cve_2026_43499/leak/snitch_setup.cpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< src/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< src/backend/cve_2026_43499/leak/snitch_setup.cpp -o $@
 	@echo "snitch-run-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(SNITCH_SEAM_PROBE): src/tools/snitch_seam_probe.cpp src/backend/cve_2026_43499/leak/snitch_seam.hpp \
   src/backend/cve_2026_43499/leak/snitch_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< -o $@
 	@echo "snitch-seam-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(PREPARE_PAGE_PROBE): src/tools/prepare_page_probe.cpp src/backend/cve_2026_43499/memory/prepare_page.hpp \
   src/backend/cve_2026_43499/memory/heap_seam_linux.hpp src/backend/cve_2026_43499/memory/prepare_plan.cpp \
   src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< src/backend/cve_2026_43499/memory/prepare_plan.cpp src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< src/backend/cve_2026_43499/memory/prepare_plan.cpp src/backend/cve_2026_43499/memory/shaping_plan.cpp src/backend/cve_2026_43499/memory/reclaim_plan.cpp -o $@
 	@echo "prepare-page-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(HEAP_SEAM_PROBE): src/tools/heap_seam_probe.cpp src/backend/cve_2026_43499/memory/heap_seam.hpp \
   src/backend/cve_2026_43499/memory/heap_seam_linux.hpp src/backend/cve_2026_43499/memory/heap_geometry.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc $< -o $@
 	@echo "heap-seam-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(REQUEUE_PROBE): src/tools/requeue_probe.cpp src/backend/cve_2026_43499/race/futex_seam_linux.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -pthread $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc -pthread $< -o $@
 	@echo "requeue-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 $(FUTEX_PROBE): src/tools/futex_probe.cpp src/backend/cve_2026_43499/race/futex_seam_linux.hpp \
   src/backend/cve_2026_43499/race/pi_race.hpp | $(BUILD_DIR)
 	@mkdir -p ../build/native
-	$(NDK_CXX) -std=c++23 -O2 -fno-rtti -static-libstdc++ -Isrc -pthread $< -o $@
+	$(NDK_CXX) -std=c++23 -O2 -static-libstdc++ $(SPDLOG_FLAGS) $(NLOHMANN_FLAGS) -Isrc -pthread $< -o $@
 	@echo "futex-probe: $@ ($$(wc -c < $@ | tr -d ' ') bytes)"
 
 # The host entry, fed the document the device produced: the plan it reports is
@@ -586,6 +594,10 @@ $(BUILD_DIR)/write_encoder_test: src/tests/write_encoder_test.cpp \
   src/backend/cve_2026_43499/memory/write_encoder.hpp src/backend/cve_2026_43499/memory/write_encoder.cpp \
   src/backend/cve_2026_43499/memory/write_request.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) src/tests/write_encoder_test.cpp src/backend/cve_2026_43499/memory/write_encoder.cpp -o $@
+
+$(BUILD_DIR)/access_route_subclass_test: src/tests/access_route_subclass_test.cpp \
+		src/backend/cve_2026_43499/access_factory_43499.cpp
+	$(CXX) $(CXXFLAGS) src/tests/access_route_subclass_test.cpp src/backend/cve_2026_43499/access_factory_43499.cpp -o $@
 
 $(BUILD_DIR)/write_request_test: src/tests/write_request_test.cpp \
   src/backend/cve_2026_43499/memory/write_request.hpp | $(BUILD_DIR)
@@ -869,6 +881,8 @@ surface-doc-check: $(SURFACE_MANIFEST)
 check: $(P4_BINS) $(EVIDENCE_BINS)
 	@echo "check: P4 window exit paths"
 	@$(BUILD_DIR)/window_exit_paths_test
+	@echo "check: inside PI: no logging, allocation, stdio or indirect dispatch"
+	@python3 ../tools/window_body_guard.py src/backend/cve_2026_43499/seam/multicast_route.hpp
 	@echo "check: P4 plan gate"
 	@$(BUILD_DIR)/plan_gate_test
 	@lua=$$(grep -rIlE 'lua_State|luaL_|#include *[<"]lua' src/pipeline src/contract 2>/dev/null || true); \
@@ -985,6 +999,7 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	@$(BUILD_DIR)/write_request_test
 	@echo "check: write encoder (arm rules + bounded write)"
 	@$(BUILD_DIR)/write_encoder_test
+	@$(BUILD_DIR)/access_route_subclass_test
 	@echo "check: write layout (value, parent word and the page rule)"
 	@$(BUILD_DIR)/write_layout_test
 	@echo "check: credential image (the copy a credential write installs)"
@@ -1100,14 +1115,17 @@ check: $(P4_BINS) $(EVIDENCE_BINS)
 	# the commit that introduced the ledger). What can be exercised is the rule: virtual appears
 	# only where the ruling allows it, the access interface and its 43499 implementation. Tests
 	# are exempt, and the window headers are prose-only, their comments stripped first.
+	# seam/multicast_window.hpp joins the ledger below for the 2026-10-12 ruling's reason: the window
+	# body must reach its route through no indirect dispatch, so that header carries no virtual at
+	# all (its window-to-seam base is the seam's own interface, declared elsewhere).
 	@files=$$(grep -rlE "^[[:space:]]*virtual " $$(find src -name "*.hpp" -o -name "*.cpp" | grep -v "^src/tests/") || true); \
 	stray=$$(echo "$$files" | grep -vE "^src/(contract/kernel_access\.hpp|backend/cve_2026_[0-9]+/kernel_access\.hpp|backend/cve_2026_[0-9]+/seam/[a-z_]+\.hpp)$$" | grep -v "^$$" || true); \
 	if [ -n "$$stray" ]; then echo "VIRTUAL-OUTSIDE-ACCESS: $$stray"; echo "  virtual is allowed only in the access interface and its 43499 implementation"; exit 1; fi; \
 	echo "check: virtual is confined to the access interface (tests exempt)"
-	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp | grep -vE '^[[:space:]]*\*'); \
-	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual' || true); \
+	@code=$$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp src/backend/cve_2026_43499/seam/multicast_route_linux.hpp src/backend/cve_2026_43499/seam/multicast_window.hpp | grep -vE '^[[:space:]]*\*'); \
+	dirty=$$(echo "$$code" | grep -cE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual|spdlog|log_step' || true); \
 	if [ "$$dirty" -ne 0 ]; then echo "WINDOW-DIRTY: $$dirty"; echo "$$code" | grep -nE '\bnew\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual'; exit 1; fi; \
-	echo "check: race window carries no allocation, logging or indirect dispatch"
+	echo "check: race window and the multicast window header carry no allocation, logging or indirect dispatch"
 	@scode=$$(sed -e 's://.*::' $$(find src/support -name '*.hpp' -o -name '*.cpp') | grep -vE '^[[:space:]]*\*'); \
 	impure=$$(echo "$$scode" | grep -ciE 'spray|payload|route|kernel|exploit|attack|futex' || true); \
 	if [ "$$impure" -ne 0 ]; then echo "SUPPORT-IMPURE: $$impure"; echo "$$scode" | grep -niE 'spray|payload|route|kernel|exploit|attack|futex'; exit 1; fi; \

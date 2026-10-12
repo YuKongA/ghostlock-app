@@ -17,13 +17,12 @@
 #include "backend/cve_2026_43499/seam/multicast_window.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43499::Access;
-    using ghostlock::backend::cve_2026_43499::AccessParams;
+    using ghostlock::backend::cve_2026_43499::KernelAccess43499;
+    using ghostlock::backend::cve_2026_43499::Access43499Parameters;
     using ghostlock::backend::cve_2026_43499::TargetState;
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
     using ghostlock::backend::cve_2026_43499::seam::MulticastSeam;
     using ghostlock::backend::cve_2026_43499::seam::MulticastWindow;
-    using ghostlock::backend::cve_2026_43499::seam::RouteExec;
     using ghostlock::contract::AccessChannel;
     using ghostlock::profile::RouteId;
 
@@ -36,7 +35,8 @@ namespace {
         }
     }
 
-    class RecordingExec final : public RouteExec {
+    /** The recording route: the window's controller. The shape is the window's concept, so no base. */
+    class RecordingExec final {
     public:
         int arms = 0;
         int executes = 0;
@@ -44,14 +44,14 @@ namespace {
         std::uint64_t value = 0U;
         std::uint64_t offset = 0U;
 
-        [[nodiscard]] bool execute(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept override {
+        [[nodiscard]] bool execute(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept {
             ++executes;
             address = a;
             value = v;
             offset = o;
             return true;
         }
-        [[nodiscard]] bool arm(std::int32_t) noexcept override {
+        [[nodiscard]] bool arm(std::int32_t) noexcept {
             ++arms;
             return true;
         }
@@ -71,11 +71,11 @@ namespace {
         MulticastLimits limits;
         limits.max_attempts = 4;
         limits.arm_sequence = 2;
-        MulticastWindow window(exec, limits);
+        MulticastWindow<RecordingExec> window(exec, limits);
         MulticastSeam seam(window);
         const TargetState target = prepared();
-        Access access(&seam, &target);
-        AccessParams params;
+        KernelAccess43499 access(&seam, &target);
+        Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x40U;
         params.offset_set = true;
@@ -97,13 +97,13 @@ namespace {
     void a_chain_without_warm_up_refuses_before_the_controller() {
         RecordingExec exec;
         const MulticastLimits unsaid;
-        MulticastWindow window(exec, unsaid);
+        MulticastWindow<RecordingExec> window(exec, unsaid);
         MulticastSeam seam(window);
         /* The facts must outlive the access now that it borrows through a pointer, so the temporary
          *  a call would produce has to be bound to a name first. */
         const TargetState target = prepared();
-        Access access(&seam, &target);
-        AccessParams params;
+        KernelAccess43499 access(&seam, &target);
+        Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset_set = true;
         static_cast<void>(access.initialize(params));

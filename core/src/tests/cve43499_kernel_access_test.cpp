@@ -16,8 +16,8 @@
 #include "backend/cve_2026_43499/kernel_access.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43499::Access;
-    using ghostlock::backend::cve_2026_43499::AccessParams;
+    using ghostlock::backend::cve_2026_43499::KernelAccess43499;
+    using ghostlock::backend::cve_2026_43499::Access43499Parameters;
     using ghostlock::backend::cve_2026_43499::AccessSeam;
     using ghostlock::backend::cve_2026_43499::TargetState;
     using ghostlock::contract::AccessChannel;
@@ -83,40 +83,40 @@ namespace {
     void construction_and_lifecycle() {
         RecordingSeam seam;
         const TargetState target = ready_target();
-        Access access(&seam, &target);
+        KernelAccess43499 access(&seam, &target);
         expect(seam.up_calls == 0 && access.route() == RouteId::Unset,
                "construction decides nothing and takes nothing down");
-        expect(access.state(AccessChannel::PiWindow) == Access::AccessState::Declared,
+        expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Declared,
                "so the channel is declared and not up");
-        AccessParams params;
-        expect(access.initialize(params).status == Access::AccessStatus::BadParameters,
+        Access43499Parameters params;
+        expect(access.initialize(params).status == KernelAccess43499::AccessStatus::BadParameters,
                "initializing without a route is refused by name");
         params.route = RouteId::TcpZerocopy;
         params.offset = 0x40U;
         params.offset_set = true;
         expect(access.initialize(params).ok(), "with a route it comes up");
         expect(seam.last_route == RouteId::TcpZerocopy, "and it is the route the parameters named");
-        expect(access.state(AccessChannel::PiWindow) == Access::AccessState::Ready, "and reports ready");
-        expect(access.initialize(params).status == Access::AccessStatus::Failed,
+        expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Ready, "and reports ready");
+        expect(access.initialize(params).status == KernelAccess43499::AccessStatus::Failed,
                "a second initialize while one is up is refused");
         expect(access.shutdown().ok(), "and it shuts down");
         expect(seam.down_calls == 1, "taking the route down exactly once");
-        expect(access.state(AccessChannel::PiWindow) == Access::AccessState::Closed,
+        expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Closed,
                "after which the state is closed, not declared: it was up and it was taken down");
     }
 
     void writes_go_through_the_seam() {
         RecordingSeam seam;
         const TargetState target = ready_target();
-        Access access(&seam, &target);
-        AccessParams params;
+        KernelAccess43499 access(&seam, &target);
+        Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x80U;
         params.offset_set = true;
         const std::byte word[8] = {std::byte{0x48}, std::byte{0x47}, std::byte{0x46}, std::byte{0x45},
                                    std::byte{0x44}, std::byte{0x43}, std::byte{0x42}, std::byte{0x41}};
         expect(access.write(0x1000U, std::span<const std::byte>(word), AccessChannel::PiWindow, params).status
-                   == Access::AccessStatus::NotInitialized,
+                   == KernelAccess43499::AccessStatus::NotInitialized,
                "a write before initialize is refused by name");
         static_cast<void>(access.initialize(params));
         const auto written = access.write(0x2000U, std::span<const std::byte>(word),
@@ -127,15 +127,15 @@ namespace {
         expect(seam.last_offset == 0x80U, "with the offset from the parameters");
         const std::byte four[4] = {};
         expect(access.write(0x2000U, std::span<const std::byte>(four), AccessChannel::PiWindow, params).status
-                   == Access::AccessStatus::BadWidth,
+                   == KernelAccess43499::AccessStatus::BadWidth,
                "a narrower width is refused rather than written anyway");
         expect(seam.lands == 1, "and nothing was landed for it");
         const ForeignParams foreign;
         expect(access.write(0x2000U, std::span<const std::byte>(word), AccessChannel::PiWindow, foreign).status
-                   == Access::AccessStatus::BadParameters,
+                   == KernelAccess43499::AccessStatus::BadParameters,
                "parameters from another backend are refused, not reinterpreted");
         expect(access.read(0x2000U, 8U, AccessChannel::PiWindow, params).status
-                   == Access::AccessStatus::Unsupported,
+                   == KernelAccess43499::AccessStatus::Unsupported,
                "and a read says unsupported until a route can read, rather than returning zero");
     }
 }  // namespace

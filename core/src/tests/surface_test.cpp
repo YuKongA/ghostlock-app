@@ -56,7 +56,7 @@ namespace {
         /* Eight since 2026-10-10 (user request): the encapsulated step row joined, so a script can ask
          *  for a backend's own multi-phase step by name while the low-level rows stay as they were. */
         /* 读法②：`kernelcall` 行加入后由八行变九行（用户目标原文 ✓，pin 已重生成 ✓）。 */
-        expect(ghostlock::contract::kSurfaceCount == 9, "the table carries nine rows");
+        expect(ghostlock::contract::kSurfaceCount == 10, "the table carries ten rows");
         expect(ghostlock::contract::surface_names_are_unique_and_non_empty(), "names unique and non-empty");
         expect(ghostlock::contract::surface_has_no_window_prefixed_names(), "no window.* row");
         expect(ghostlock::contract::surface_has_no_run_row(), "no run row (removed by user ruling)");

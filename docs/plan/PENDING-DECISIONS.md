@@ -7,6 +7,8 @@
 
 ### A1 R10：静态数据（几何/调参）留 HOCON 还是进 Lua —— 解锁 **P3**
 
+> **已裁定（2026-10-10）· 本条关闭**：选 **A**（JSON + JCS + 生成式 schema）；wire＝JCS JSON + 只读视图；载荷＝stdin/base64；`profile-core` 删除（检查归 Kotlin）；**运行期由 Lua 编排，限制靠运行时**；配置内嵌 Lua steps；v1/v2 统一迁入 `LegacyProfileConverter`。结论见 [config-wire-redesign-plan.md](../analysis/config-wire-redesign-plan.md)（版本号仍是 3，同号重做）。
+>
 > **状态（2026-10-08，随 v2）**：**仍适用**（A6 前置；按用户裁定「数值不入 C++」，A1 的选项 ④「先修隐患」中 Kotlin 零填充项随新实现重写而作废，multicast 缺口见 [rewrite-plan-v2](rewrite-plan-v2.md) §4.1）。
 
 - **参考**：[lua-config-structure-options.md](../analysis/lua-config-structure-options.md)（四层默认值实测 + 三形态四维对比 + 两个先修隐患）· [composition-layer-p4-spec.md](../analysis/composition-layer-p4-spec.md) §9 未决 · P3 规格尚未撰写

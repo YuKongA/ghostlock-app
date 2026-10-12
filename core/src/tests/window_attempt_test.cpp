@@ -22,6 +22,12 @@ namespace {
         if (!ok) { std::printf("FAIL: %s\n", what); ++g_failures; }
     }
 
+    /** 尝试本体的具名回退（`route`）不在这几条用例里；它只要有个类型可点名。 */
+    struct UnusedRoute final {
+        [[nodiscard]] bool execute(std::uint64_t, std::uint64_t, std::uint64_t) noexcept { return false; }
+        [[nodiscard]] bool arm(std::int32_t) noexcept { return false; }
+    };
+
     /** 假 seam：记下四个调用；`moved` 决定内核"搬没搬"那个等待者。 */
     struct FakeSeam final {
         static int locks;
@@ -41,7 +47,7 @@ namespace {
         std::uint32_t target = 0U;
         race::WindowGuard window{};
         window.enter(contract::ExitPath::Success);
-        steps::WindowAttempt attempt{};
+        steps::WindowAttempt<UnusedRoute> attempt{};
         attempt.chain = &chain;
         attempt.target = &target;
         attempt.window = &window;
@@ -59,7 +65,7 @@ namespace {
         std::uint32_t target = 0U;
         race::WindowGuard window{};
         window.enter(contract::ExitPath::Success);
-        steps::WindowAttempt attempt{};
+        steps::WindowAttempt<UnusedRoute> attempt{};
         attempt.chain = &chain;
         attempt.target = &target;
         attempt.window = &window;
@@ -69,7 +75,7 @@ namespace {
     }
 
     void an_attempt_without_a_window_is_not_prepared() {
-        steps::WindowAttempt attempt{};
+        steps::WindowAttempt<UnusedRoute> attempt{};
         std::uint32_t chain = 0U;
         std::uint32_t target = 0U;
         attempt.chain = &chain;

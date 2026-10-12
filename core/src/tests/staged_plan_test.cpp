@@ -21,7 +21,6 @@
 
 namespace {
     using ghostlock::contract::SurfaceForm;
-    using ghostlock::script::ArgKind;
     using ghostlock::script::ArgView;
     using ghostlock::script::CallView;
     using ghostlock::script::Handle;
@@ -41,28 +40,28 @@ namespace {
 
     ArgView arg_u64(std::uint64_t value) {
         ArgView arg;
-        arg.kind = ArgKind::U64;
+        arg.kind = ghostlock::contract::ArgKind::U64;
         arg.u64 = value;
         return arg;
     }
 
     ArgView arg_str(std::string_view text) {
         ArgView arg;
-        arg.kind = ArgKind::Str;
+        arg.kind = ghostlock::contract::ArgKind::Str;
         arg.str = text;
         return arg;
     }
 
     ArgView arg_bool(bool value) {
         ArgView arg;
-        arg.kind = ArgKind::Bool;
+        arg.kind = ghostlock::contract::ArgKind::Bool;
         arg.boolean = value;
         return arg;
     }
 
     ArgView arg_handle(std::uint64_t kind, std::uint64_t slot, std::uint64_t generation) {
         ArgView arg;
-        arg.kind = ArgKind::Handle;
+        arg.kind = ghostlock::contract::ArgKind::Handle;
         /* A handle's parts are narrower than the numbers a caller has in hand. */
         arg.handle = Handle{static_cast<decltype(Handle::kind)>(kind),
                             static_cast<decltype(Handle::slot)>(slot),

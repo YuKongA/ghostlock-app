@@ -79,6 +79,26 @@ namespace {
         expect(script::WireDoc::base64_decode("not base64!", std::span<char>(out)) == 0U,
                "a malformed base64 string decodes to nothing");
     }
+    /** Str keeps the DECODED text (wire_doc.hpp:26 contract: "Num: the raw text; Str: the
+     *  decoded text") -- user ruling 2026-10-12 accepted the decoded behaviour, so this pins
+     *  it: the escape sequences must arrive as their bytes, not as the document's spelling. */
+    void strings_are_decoded() {
+        constexpr std::string_view kJson = "{\"nl\": \"x\\ny\", \"uni\": \"\\u0041\"}";
+        script::WireDoc doc{};
+        const char *refusal = nullptr;
+        expect(doc.parse(bytes_of(kJson), &refusal), "a document with escapes parses");
+        const script::JsonNode *nl = doc.find("nl");
+        std::string_view text{};
+        expect(nl != nullptr && doc.str_of(*nl, text), "the escaped string reads back");
+        expect(text.size() == 3U && text[0] == 'x' && text[1] == '\n' && text[2] == 'y',
+               "\\n arrives as the newline byte 0x0A, not as two characters");
+        expect(text.find('\\') == std::string_view::npos, "no backslash survives decoding");
+        const script::JsonNode *uni = doc.find("uni");
+        expect(uni != nullptr && doc.str_of(*uni, text), "the \\u string reads back");
+        expect(text.size() == 1U && text[0] == 'A', "\\u0041 arrives as the byte A");
+        std::printf("wire doc: decoded strings (len=%zu first=0x%02x uni=%zu)\n", 3U,
+                    static_cast<unsigned>(0x0AU), 1U);
+    }
 }  // namespace
 
 int main() {
@@ -86,10 +106,12 @@ int main() {
     a_small_tree_is_reachable();
     std::printf("wire doc: named refusals\n");
     refusals_are_named();
+    std::printf("wire doc: decoded strings\n");
+    strings_are_decoded();
     if (g_failures != 0U) {
         std::printf("wire doc: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("wire doc: PASS (tree reachable, refusals named)\n");
+    std::printf("wire doc: PASS (tree reachable, refusals named, strings decoded)\n");
     return 0;
 }

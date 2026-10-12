@@ -2,7 +2,7 @@
 /** @file contract/op_registry.hpp
  *  P4 step 4: the op registry -- the PLAN side's op vocabulary and parameter
  *  bounds, consumed by pipeline::plan_gate and by nothing else. This table is NOT
- *  the script's visible face: a script reaches only the seven names contract::kSurface
+ *  the script's visible face: a script reaches the eight names contract::kSurface
  *  declares (user-approved, A6 baseline item 3), and the names in this table --
  *  window.* above all -- are exactly the ones a script may never spell (the frozen
  *  criterion surface_has_no_window_prefixed_names plus the grep in make -C src

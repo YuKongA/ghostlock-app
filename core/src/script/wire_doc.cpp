@@ -1,10 +1,20 @@
 /** @file script/wire_doc.cpp
- *  The wire reader: framing, a bounded JSON parser, the typed reads, and base64.
+ *  The wire reader: framing, a bounded JSON tree, the typed reads, and base64.
  *  See wire_doc.hpp for the design; every failure here is a name, never an exception.
+ *
+ *  JSON comes from the vendored nlohmann library (user ruling 2026-10-12: the hand-written
+ *  parser is gone). The library is strict by default, so trailing bytes after the top-level
+ *  value are its own refusal; this file only translates library errors and the post-parse
+ *  bounds into the named refusals the rest of the tree expects.
  */
 #include "script/wire_doc.hpp"
 
 #include <cstring>
+#include <new>
+#include <string>
+#include <vector>
+
+#include <json.hpp>
 
 namespace ghostlock::script {
     namespace {
@@ -12,6 +22,7 @@ namespace ghostlock::script {
 
         bool is_digit(char c) noexcept { return c >= '0' && c <= '9'; }
 
+        /** One hexadecimal digit, or -1. Used by the TYPED READ (u64_of), not by the parser. */
         int hex_digit(char c) noexcept {
             if (c >= '0' && c <= '9') return c - '0';
             if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -19,39 +30,32 @@ namespace ghostlock::script {
             return -1;
         }
 
-        /** The parser: a cursor over the bytes with the document's pools behind it. */
-        struct Cursor final {
-            std::string_view in{};
-            std::size_t at = 0U;
-            std::size_t depth = 0U;
+        /** Which named refusal a library parse error earns.
+         *   - "unexpected end of input"  : the document stops early  => json-unexpected-end
+         *   - "expected end of input"    : content after the value   => json-trailing
+         *     (the library's strict mode is what detects it; the code stays because the
+         *      wire contract names the case)
+         *   - anything else              : malformed token           => json-bad-token */
+        const char *refusal_of_parse_error(const nlohmann::json::parse_error &error) noexcept {
+            const std::string_view what(error.what());
+            if (what.find("unexpected end of input") != std::string_view::npos) {
+                return "json-unexpected-end";
+            }
+            if (what.find("expected end of input") != std::string_view::npos) {
+                return "json-trailing";
+            }
+            return "json-bad-token";
+        }
+
+        /** Fills the caller-owned pools from a parsed document. Bounds are checked here, so
+         *  an oversized or too-deep document is a name, not a partial tree. */
+        struct PoolBuilder final {
             JsonNode *nodes = nullptr;
             JsonEdge *edges = nullptr;
             std::size_t *node_count = nullptr;
             std::size_t *edge_count = nullptr;
             const char **refusal = nullptr;
-
-            /** One open container: its node index and the head/tail/count of its own edge list. */
-            struct Open final {
-                std::uint32_t node = kNoIndex;
-                std::uint32_t head = kNoIndex;
-                std::uint32_t last = kNoIndex;
-                std::uint32_t count = 0U;
-            };
-            Open opens[WireDoc::kMaxDepth + 1U]{};
-            std::size_t open_count = 0U;
-
-            bool fail(const char *why) const noexcept {
-                *refusal = why;
-                return false;
-            }
-            bool at_end() const noexcept { return at >= in.size(); }
-            void skip_ws() noexcept {
-                while (!at_end()) {
-                    const char c = in[at];
-                    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { ++at; continue; }
-                    break;
-                }
-            }
+            std::vector<std::string> *number_texts = nullptr;
 
             std::uint32_t new_node(JsonNode::Kind kind) noexcept {
                 if (*node_count >= WireDoc::kMaxNodes) { *refusal = "json-too-large"; return kNoIndex; }
@@ -71,142 +75,82 @@ namespace ghostlock::script {
                 return index;
             }
 
-            bool literal(std::string_view word) noexcept {
-                if (in.substr(at, word.size()) != word) return fail("json-bad-token");
-                at += word.size();
-                return true;
-            }
+            using Kind = JsonNode::Kind;
+            using Json = nlohmann::json;
 
-            bool string(std::string_view &out) noexcept {
-                if (at_end() || in[at] != '"') return fail("json-bad-token");
-                const std::size_t start = ++at;
-                while (!at_end()) {
-                    const char c = in[at];
-                    if (c == '\\') { at += 2U; continue; }
-                    if (c == '"') { out = in.substr(start, at - start); ++at; return true; }
-                    ++at;
-                }
-                return fail("json-unterminated");
-            }
-
-            bool number(std::string_view &out) noexcept {
-                const std::size_t start = at;
-                if (!at_end() && in[at] == '-') ++at;
-                while (!at_end() && (is_digit(in[at]) || in[at] == '.' || in[at] == 'e' || in[at] == 'E' ||
-                                     in[at] == '+' || in[at] == '-')) { ++at; }
-                if (at == start) return fail("json-bad-number");
-                out = in.substr(start, at - start);
-                return true;
-            }
-
-            std::uint32_t value() noexcept {
-                if (depth >= WireDoc::kMaxDepth) { *refusal = "json-too-deep"; return kNoIndex; }
-                ++depth;
-                skip_ws();
-                if (at_end()) { *refusal = "json-unexpected-end"; return kNoIndex; }
-                std::uint32_t index = kNoIndex;
-                const char c = in[at];
-                if (c == '{') {
-                    index = object();
-                } else if (c == '[') {
-                    index = array();
-                } else if (c == '"') {
-                    std::string_view text{};
-                    index = string(text) ? new_node(JsonNode::Kind::Str) : kNoIndex;
-                    if (index != kNoIndex) nodes[index].text = text;
-                } else if (c == 't') {
-                    if (!literal("true")) { --depth; return kNoIndex; }
-                    index = new_node(JsonNode::Kind::Bool);
-                    if (index != kNoIndex) nodes[index].boolean = true;
-                } else if (c == 'f') {
-                    if (!literal("false")) { --depth; return kNoIndex; }
-                    index = new_node(JsonNode::Kind::Bool);
-                } else if (c == 'n') {
-                    if (!literal("null")) { --depth; return kNoIndex; }
-                    index = new_node(JsonNode::Kind::Null);
-                } else {
-                    std::string_view text{};
-                    index = number(text) ? new_node(JsonNode::Kind::Num) : kNoIndex;
-                    if (index != kNoIndex) nodes[index].text = text;
-                }
-                --depth;
-                return index;
-            }
-
-            bool push_open(std::uint32_t node) noexcept {
-                if (open_count >= WireDoc::kMaxDepth + 1U) { *refusal = "json-too-deep"; return false; }
-                opens[open_count] = Open{};
-                opens[open_count].node = node;
-                ++open_count;
-                return true;
-            }
-            bool link(std::string_view key, std::uint32_t child) noexcept {
-                if (open_count == 0U) { *refusal = "json-bad-token"; return false; }
+            /** Append one child edge to the parent's own list (document order). */
+            bool link(std::string_view key, std::uint32_t child, std::uint32_t &head, std::uint32_t &last,
+                      std::uint32_t &count) noexcept {
                 const std::uint32_t index = new_edge(key, child);
                 if (index == kNoIndex) return false;
-                Open &parent = opens[open_count - 1U];
-                if (parent.head == kNoIndex) { parent.head = index; } else { edges[parent.last].next = index; }
-                parent.last = index;
-                ++parent.count;
+                if (head == kNoIndex) { head = index; } else { edges[last].next = index; }
+                last = index;
+                ++count;
                 return true;
             }
-            void pop_open() noexcept {
-                if (open_count == 0U) return;
-                const Open &self = opens[--open_count];
-                nodes[self.node].first = self.head == kNoIndex ? 0U : self.head;
-                nodes[self.node].count = self.count;
-            }
 
-            std::uint32_t array() noexcept {
-                ++at; /* [ */
-                const std::uint32_t self = new_node(JsonNode::Kind::Arr);
-                if (self == kNoIndex) return kNoIndex;
-                if (!push_open(self)) return kNoIndex;
-                skip_ws();
-                if (!at_end() && in[at] == ']') { ++at; pop_open(); return self; }
-                while (true) {
-                    const std::uint32_t child = value();
-                    if (child == kNoIndex) return kNoIndex;
-                    if (child == kNoIndex || !link({}, child)) return kNoIndex;
-                    skip_ws();
-                    if (at_end()) { *refusal = "json-unexpected-end"; return kNoIndex; }
-                    const char c = in[at++];
-                    if (c == ']') break;
-                    if (c != ',') { *refusal = "json-bad-token"; return kNoIndex; }
+            /** One node, then its children. Depth, node and edge bounds are checked here. */
+            bool build(const Json &value, std::size_t depth, std::uint32_t &out) noexcept {
+                if (depth >= WireDoc::kMaxDepth) { *refusal = "json-too-deep"; return false; }
+                const bool container = value.is_array() || value.is_object();
+                out = new_node(value.is_null()      ? Kind::Null
+                               : value.is_boolean() ? Kind::Bool
+                               : value.is_string()  ? Kind::Str
+                               : container          ? (value.is_object() ? Kind::Obj : Kind::Arr)
+                                                    : Kind::Num);
+                if (out == kNoIndex) return false;
+                if (value.is_boolean()) {
+                    nodes[out].boolean = value.get<bool>();
+                    return true;
                 }
-                pop_open();
-                return self;
-            }
-
-            std::uint32_t object() noexcept {
-                ++at; /* { */
-                const std::uint32_t self = new_node(JsonNode::Kind::Obj);
-                if (self == kNoIndex) return kNoIndex;
-                if (!push_open(self)) return kNoIndex;
-                skip_ws();
-                if (!at_end() && in[at] == '}') { ++at; pop_open(); return self; }
-                while (true) {
-                    skip_ws();
-                    if (at_end()) { *refusal = "json-unexpected-end"; return kNoIndex; }
+                if (value.is_number()) {
+                    /* Num keeps the raw text: the dump of the parsed number is the decimal
+                     * spelling the document carried, and u64_of reads it. */
+                    number_texts->push_back(value.dump());
+                    const std::string &text = number_texts->back();
+                    nodes[out].text = std::string_view(text.data(), text.size());
+                    return true;
+                }
+                if (value.is_string()) {
+                    /* Str keeps the DECODED text, pointing into the held document. */
+                    const std::string &text = value.get_ref<const std::string &>();
+                    nodes[out].text = std::string_view(text.data(), text.size());
+                    return true;
+                }
+                if (!container) { *refusal = "json-bad-token"; return false; }
+                std::uint32_t head = kNoIndex;
+                std::uint32_t last = kNoIndex;
+                std::uint32_t count = 0U;
+                /* key() is only legal on OBJECT iterators: on an array it throws
+                 * invalid_iterator.207, which is exactly what aborted the device run. So the
+                 * container kind is decided once, before the walk, and arrays pass no key. */
+                const bool is_object = value.is_object();
+                for (auto entry = value.begin(); entry != value.end(); ++entry) {
                     std::string_view key{};
-                    if (!string(key)) return kNoIndex;
-                    skip_ws();
-                    if (at_end() || in[at] != ':') { *refusal = "json-bad-token"; return kNoIndex; }
-                    ++at;
-                    const std::uint32_t child = value();
-                    if (child == kNoIndex) return kNoIndex;
-                    if (child == kNoIndex || !link(key, child)) return kNoIndex;
-                    skip_ws();
-                    if (at_end()) { *refusal = "json-unexpected-end"; return kNoIndex; }
-                    const char c = in[at++];
-                    if (c == '}') break;
-                    if (c != ',') { *refusal = "json-bad-token"; return kNoIndex; }
+                    if (is_object) {
+                        const std::string &text = entry.key();
+                        key = std::string_view(text.data(), text.size());
+                    }
+                    std::uint32_t child = kNoIndex;
+                    if (!build(entry.value(), depth + 1U, child)) return false;
+                    if (!link(key, child, head, last, count)) return false;
                 }
-                pop_open();
-                return self;
+                nodes[out].first = head == kNoIndex ? 0U : head;
+                nodes[out].count = count;
+                return true;
             }
         };
     }  // namespace
+
+    /** The parsed document, held so JsonNode::text and JsonEdge::key can point into it: the
+     *  views stay valid exactly as long as this storage, i.e. as long as the WireDoc.
+     *  number_texts is reserved up front so element addresses never move. */
+    struct WireDoc::JsonStorage final {
+        nlohmann::json document{};
+        std::vector<std::string> number_texts{};
+    };
+
+    WireDoc::~WireDoc() noexcept { delete json_; }
 
     bool WireDoc::read_framed(std::FILE *in, std::span<std::byte> out, std::size_t &size,
                               const char **refusal) noexcept {
@@ -227,28 +171,62 @@ namespace ghostlock::script {
         return true;
     }
 
+    /** Parse bytes into the pool.
+     *  LESSON (device SIGABRT, 2026-10-12): the library THROWS for ordinary misuse too
+     *  (invalid_iterator on a non-object key(), bad_alloc, ...), and this entry point is
+     *  noexcept by contract. Therefore the WHOLE body -- the library call, the pool walk and
+     *  the bound checks -- sits inside one try/catch, and every escape becomes a NAMED
+     *  refusal instead of std::terminate. Do not lift the guard: it is the contract.
+     *  @param bytes   the framed document body
+     *  @param refusal receives the named reason on failure
+     *  @return true when the whole document fitted the pools. */
     bool WireDoc::parse(std::span<const std::byte> bytes, const char **refusal) noexcept {
         node_count_ = 0U;
         edge_count_ = 0U;
         root_ = 0U;
-        const std::string_view text(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-        Cursor cursor{};
-        cursor.in = text;
-        cursor.nodes = nodes_;
-        cursor.edges = edges_;
-        cursor.node_count = &node_count_;
-        cursor.edge_count = &edge_count_;
-        cursor.refusal = refusal;
-        const std::uint32_t root = cursor.value();
-        if (root == kNoIndex) return false;
-        cursor.skip_ws();
-        if (!cursor.at_end()) { *refusal = "json-trailing"; return false; }
-        root_ = root;
-        return true;
+        delete json_;
+        json_ = nullptr;
+        try {
+            if (bytes.empty()) { *refusal = "json-unexpected-end"; return false; }
+            if (bytes.size() > kMaxPayloadBytes) { *refusal = "json-too-large"; return false; }
+            auto *storage = new JsonStorage();
+            storage->number_texts.reserve(kMaxNodes);
+            const char *first = reinterpret_cast<const char *>(bytes.data());
+            storage->document = nlohmann::json::parse(first, first + bytes.size());
+            PoolBuilder builder{};
+            builder.nodes = nodes_;
+            builder.edges = edges_;
+            builder.node_count = &node_count_;
+            builder.edge_count = &edge_count_;
+            builder.refusal = refusal;
+            builder.number_texts = &storage->number_texts;
+            std::uint32_t root_index = kNoIndex;
+            if (builder.build(storage->document, 0U, root_index)) {
+                json_ = storage;
+                root_ = root_index;
+                return true;
+            }
+            delete storage;
+        } catch (const nlohmann::json::parse_error &error) {
+            /* Syntax trouble: the specific named code comes from the library's message. */
+            *refusal = refusal_of_parse_error(error);
+        } catch (const std::bad_alloc &) {
+            /* An allocation failure means the document outgrew what we will hold. */
+            *refusal = "json-too-large";
+        } catch (const std::exception &) {
+            /* Any other library exception (e.g. invalid_iterator): the document is malformed
+             * for our purposes, and the contract's code for that is json-bad-token. */
+            *refusal = "json-bad-token";
+        } catch (...) {
+            *refusal = "json-bad-token";
+        }
+        /* One reset for every failure path: a refused document leaves no partial tree. */
+        node_count_ = 0U;
+        edge_count_ = 0U;
+        return false;
     }
 
     const JsonNode *WireDoc::root() const noexcept { return node_count_ == 0U ? nullptr : &nodes_[root_]; }
-
     const JsonNode *WireDoc::child(const JsonNode &object, std::string_view key) const noexcept {
         if (object.kind != JsonNode::Kind::Obj) return nullptr;
         std::uint32_t index = object.first;

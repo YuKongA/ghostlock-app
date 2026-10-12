@@ -62,7 +62,13 @@ namespace ghostlock::backend::cve_2026_43499 {
 
     /** The backend's access. Owns nothing at construction; everything it owns it took in
      *  initialize and gives back in shutdown. */
-    class Access final : public contract::KernelAccess {
+    /* 旧码（原文保留 ✓）：
+     *     class Access final : public contract::KernelAccess {
+     *  TODO(access-split): 2026-10-12 裁定「三个 route 各建子类」⇒ 本类升为**基类**：
+     *  ① 改名 `KernelAccess43499`；② 去掉 `final`（子类须继承）。
+     *  机械改动（AGENTS §3 例外）：仅改名与去 final，逻辑未动。
+     *  完成 = 三子类 ＋ 工厂落地、门禁全绿、用户确认 ⇒ 删本注释块。 */
+    class KernelAccess43499 : public contract::KernelAccess {
     public:
         using AccessState = contract::KernelAccess::AccessState;
         using AccessStatus = contract::KernelAccess::Status;
@@ -79,8 +85,9 @@ namespace ghostlock::backend::cve_2026_43499 {
         /** Blank: construction decides nothing and takes nothing. An instance without either is not
          *  usable, and every use below refuses by name rather than dereferencing, which is the same
          *  rule write_readiness follows for a missing fact. */
-        Access() noexcept = default;
-        Access(AccessSeam *seam, const TargetState *target) noexcept : seam_(seam), target_(target) {}
+        KernelAccess43499() noexcept = default;
+        KernelAccess43499(AccessSeam *seam, const TargetState *target) noexcept
+            : seam_(seam), target_(target) {}
         /** Hand over the two things a factory could not know. */
         void adopt(AccessSeam *seam, const TargetState *target) noexcept {
             seam_ = seam;
@@ -133,7 +140,14 @@ namespace ghostlock::backend::cve_2026_43499 {
 
         [[nodiscard]] contract::KernelAccess::AccessResult<bool> shutdown() noexcept override {
             using BoolResult = contract::KernelAccess::AccessResult<bool>;
-            if (phase_ != Phase::Up) {
+            /* 旧码（原文保留 ✓）：
+             *     if (phase_ != Phase::Up) { return BoolResult::failed(AccessStatus::NotInitialized); }
+             *  TODO(access-split): 与 ref 冲突 —— `ghostlock-app-ref/src/core/route/route_lifecycle.hpp`
+             *  逐字：「prepare -> execute ... -> **disarm** -> **destroy**」，后两者**无条件**；
+             *  旧的 `!= Up` 门槛会让 `bring_up` 中途失败（`Broken`）**无人回收** ✗ ——
+             *  那正是旧 C「dirty failure」的同一个洞 ⇒ 改为只拒 `NeverUp`/`Down`。
+             *  完成 = 门禁全绿 ＋ 用户确认 ⇒ 删本注释块。 */
+            if (phase_ == Phase::NeverUp || phase_ == Phase::Down) {
                 return BoolResult::failed(AccessStatus::NotInitialized);
             }
             /* Nothing borrowed means nothing to give back, which is a clean teardown. */
@@ -219,11 +233,11 @@ namespace ghostlock::backend::cve_2026_43499 {
 
         /** The parameters as this backend's set, or null when they are someone else's. Checked
          *  by name, so a set from another backend is refused rather than reinterpreted. */
-        [[nodiscard]] static const AccessParams *as_params(const AccessMiscParameters &p) noexcept {
+        [[nodiscard]] static const Access43499Parameters *as_params(const AccessMiscParameters &p) noexcept {
             if (p.name() != std::string_view("cve_2026_43499")) {
                 return nullptr;
             }
-            return static_cast<const AccessParams *>(&p);
+            return static_cast<const Access43499Parameters *>(&p);
         }
 
         /* Borrowed, and nullable: a factory builds an instance before either is known. */

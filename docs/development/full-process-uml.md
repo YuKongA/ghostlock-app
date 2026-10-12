@@ -231,6 +231,16 @@ handoff	handle_method	terminal	terminal	true	true	true	terminal	true	256
 handoff	handle_method	terminal	terminal	true	true	true	payload_ref	true	256
 cfg	value	profile	stage	false	true	false	-	-	-
 close	handle_method	session	pre_window	false	true	true	handle	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	op	true	64
+kernelcall	handle_method	backend	window	false	true	true	target_kind	true	64
+kernelcall	handle_method	backend	window	false	true	true	target_value	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	value	true	18446744073709551615
+kernelcall	handle_method	backend	window	false	true	true	width	true	8
+step	handle_method	backend	window	false	true	true	handle	true	18446744073709551615
+step	handle_method	backend	window	false	true	true	name	true	64
+log	call	backend	stage	false	true	true	level	true	16
+log	call	backend	stage	false	true	true	key	true	256
 ```
 
 - **断言**：本表与 manifest **逐项一致**（`make -C core surface-doc-check DOC=docs/development/full-process-uml.md` ⇒ **EXIT=0**）；**pin** = `core/src/tests/surface_manifest_test.cpp`（19 行）。

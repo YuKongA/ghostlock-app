@@ -11,14 +11,28 @@
  *
  *  Prohibitions (each is machine-checked by "make -C src check"):
  *   - no Lua reference (the window never interprets a script);
- *   - no heap allocation (no allocator call inside the window body);
- *   - no logging/stdio inside the window body (it allocates and may block);
- *   - the window BODY issues no syscall and makes no indirect call. The prohibition is about
- *     what runs inside the window, not about what exists in the binary: virtual dispatch that
- *     enters the window from outside is safe, so a vtable in the image is not by itself a
- *     violation. (Rewritten 2026-10-09 under the user ruling in ADR-0014; the old text banned
- *     indirect dispatch outright and a machine check scanned binaries for vtables as a proxy.)
+ *   - no heap allocation inside PI;
+ *   - no logging/stdio inside PI (both allocate and may block, and either lengthens the window);
+ *   - no indirect dispatch inside PI: a vtable or function-pointer hop makes the window shape
+ *     unverifiable. (Rewritten 2026-10-09 under the user ruling in ADR-0014: what is banned is
+ *     the hop taken from inside the window, not a vtable that exists in the image.)
  *   - no tuning number: parameters arrive from the profile (Q2 rule 1).
+ *
+ *  What PI is, and why the scope is this (2026-10-12 user ruling). The prohibitions bind INSIDE
+ *  PI -- the interval a thread spends on the chain the kernel walks -- and not the whole window
+ *  body: the body may print once its PI span is over, and the readings a syscall produced inside
+ *  PI are carried out in MulticastRouteShared and printed after the last actor stopped (one
+ *  flush per attempt: seam/multicast_route.hpp report_pi_readings). Per actor the span is:
+ *  waiter_main from the PI-IN mark (the last sync before the park) to the PI-OUT mark (the
+ *  completed disarm); owner_main from its target lock to its last unlock; consumer_main and
+ *  trigger in full, because both run while the waiter is parked. judge() is outside PI by call
+ *  site (it is reached only after stop_threads()), so it prints directly and is a NAMED
+ *  exemption in the span ledger rather than a silent hole (tools/window_body_guard.py).
+ *  The measured failure and the syscall whitelist: docs/analysis/pi-window-constraints.md.
+ *
+ *  Earlier text said "the window BODY issues no syscall", which was wider than the hazard it
+ *  guards and was already false for this route (the park, the unlock and the trigger's setattr
+ *  are the protocol): the 2026-10-12 ruling replaced it with the PI scope above.
  *
  *  Reclaim: the guard owns the window scope and reclaims on EVERY exit path --
  *  success / failure / retry / cancel / early return. The evidence test drives
@@ -39,9 +53,9 @@ namespace ghostlock::backend::cve_2026_43499::race {
     };
     inline constexpr Prohibition kWindowProhibitions[] = {
         {"lua", "the window never interprets a script (structural: this layer has no Lua)"},
-        {"allocation", "an allocator call inside the window can block and lengthen the window"},
-        {"logging", "stdio/logging allocates and may block while the waiter is parked"},
-        {"indirect-dispatch", "a vtable or function-pointer hop makes the window shape unverifiable"},
+        {"allocation", "an allocator call inside PI can block and lengthen the window"},
+        {"logging", "stdio and logging allocate and may block while the waiter is parked"},
+        {"indirect-dispatch", "a vtable or function-pointer hop inside PI makes the shape unverifiable"},
         {"tuning-number", "parameters come from the profile; the window carries no tuning value"},
     };
     inline constexpr std::size_t kWindowProhibitionCount =

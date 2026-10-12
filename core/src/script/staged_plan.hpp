@@ -38,7 +38,7 @@ namespace ghostlock::script {
 
     /** One recorded argument: a type tag plus the value or a string span. */
     struct StagedArg final {
-        ArgKind kind = ArgKind::U64;
+        contract::ArgKind kind = contract::ArgKind::U64;
         std::uint64_t u64 = 0U;
         bool boolean = false;
         std::uint32_t str_offset = 0U;
@@ -81,7 +81,7 @@ namespace ghostlock::script {
                 const ArgView &arg = view.args[i];
                 StagedArg &slot = entry.args[i];
                 slot.kind = arg.kind;
-                if (arg.kind == ArgKind::Str) {
+                if (arg.kind == contract::ArgKind::Str) {
                     if (arena_used_ + arg.str.size() > kStagedArenaBytes) {
                         return refuse("budget-exceeded");
                     }
@@ -91,9 +91,9 @@ namespace ghostlock::script {
                         arena_[arena_used_ + c] = arg.str[c];
                     }
                     arena_used_ += arg.str.size();
-                } else if (arg.kind == ArgKind::Bool) {
+                } else if (arg.kind == contract::ArgKind::Bool) {
                     slot.boolean = arg.boolean;
-                } else if (arg.kind == ArgKind::Handle) {
+                } else if (arg.kind == contract::ArgKind::Handle) {
                     slot.handle = arg.handle;
                 } else {
                     slot.u64 = arg.u64;
@@ -128,7 +128,7 @@ namespace ghostlock::script {
 
         /** The string an argument points at, or empty for non-string kinds. */
         [[nodiscard]] inline std::string_view string_of(const StagedArg &arg) const noexcept {
-            if (arg.kind != ArgKind::Str) {
+            if (arg.kind != contract::ArgKind::Str) {
                 return {};
             }
             return {&arena_[arg.str_offset], static_cast<std::size_t>(arg.str_length)};
@@ -150,7 +150,7 @@ namespace ghostlock::script {
                     if (!put(out, capacity, used, static_cast<std::uint8_t>(arg.kind))) {
                         return 0U;
                     }
-                    if (arg.kind == ArgKind::Str) {
+                    if (arg.kind == contract::ArgKind::Str) {
                         const std::string_view text = string_of(arg);
                         if (!put_u64(out, capacity, used, text.size())) {
                             return 0U;
@@ -160,11 +160,11 @@ namespace ghostlock::script {
                                 return 0U;
                             }
                         }
-                    } else if (arg.kind == ArgKind::Bool) {
+                    } else if (arg.kind == contract::ArgKind::Bool) {
                         if (!put(out, capacity, used, arg.boolean ? 1U : 0U)) {
                             return 0U;
                         }
-                    } else if (arg.kind == ArgKind::Handle) {
+                    } else if (arg.kind == contract::ArgKind::Handle) {
                         if (!put_u64(out, capacity, used, arg.handle.kind) ||
                             !put_u64(out, capacity, used, arg.handle.slot) ||
                             !put_u64(out, capacity, used, arg.handle.generation)) {

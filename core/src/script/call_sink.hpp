@@ -25,17 +25,10 @@
 
 namespace ghostlock::script {
     /** Type tag of one forwarded argument. */
-    enum class ArgKind : unsigned char {
-        U64 = 0,
-        Str = 1,
-        Bool = 2,
-        /** A typed handle: the script passes it back, never interprets it. */
-        Handle = 3,
-    };
 
     /** Read-only view of one forwarded argument. */
     struct ArgView final {
-        ArgKind kind = ArgKind::U64;
+        contract::ArgKind kind = contract::ArgKind::U64;
         std::uint64_t u64 = 0;
         std::string_view str{};
         bool boolean = false;

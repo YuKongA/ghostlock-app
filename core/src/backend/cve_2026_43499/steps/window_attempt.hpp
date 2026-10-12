@@ -14,13 +14,24 @@
 #include "backend/cve_2026_43499/seam/multicast_window.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::steps {
-    /** One attempt: the two words (prepared elsewhere) and the guard this attempt runs inside. */
+    // TODO(routeexec-compile-time): 机械改动（类型形状）—— 本结构此前非模板，其 `route` 成员是
+    //   `seam::RouteExec *`（虚基类指针）。按用户裁定与 docs/analysis/43499-plan-routeexec-compile-time.md，
+    //   改以具体路由类型参数化（编译期调用）。
+    //   完成 = 三线门禁绿 ＋ 真机判据不变 ＋ Lead/用户确认 ⇒ 删本标注。
+    /** One attempt: the two words (prepared elsewhere) and the guard this attempt runs inside.
+     *  @tparam Route The route the named fallback points at, known at the call site. */
+    template <seam::RouteExec Route>
     struct WindowAttempt final {
         std::uint32_t *chain = nullptr;
         std::uint32_t *target = nullptr;
         race::WindowGuard *window = nullptr;
         /** 引擎（调用方持有）：一次尝试＝引擎跑一次；本结构只借它的指针。 */
-        seam::RouteExec *route = nullptr;
+        Route *route = nullptr;
+        /* 旧码（原文保留 ✓）：本结构此前**只有** `route` 一个写入口 ✗
+         *  TODO(access-split): 2026-10-12 裁定「旧实现接入 kernel access」—— 经 `seam_landing` 落字
+         *  （⇒ `MulticastWindow` 先 warm-up 再 execute ✓）；`route` 留作具名回退 ✓。
+         *  完成 = 门禁全绿 ＋ 真机判据 ＋ 用户确认 ⇒ 删本注释与回退。 */
+        AccessSeam *seam_landing = nullptr;
         /** 载荷那一对，转交给引擎。 */
         std::uint64_t payload_target = 0U;
         std::uint64_t payload_value = 0U;
@@ -29,8 +40,8 @@ namespace ghostlock::backend::cve_2026_43499::steps {
     };
 
     /** One attempt, over any seam. @return true when this attempt won the window. */
-    template <class Seam>
-    bool window_attempt_once(WindowAttempt &attempt) noexcept {
+    template <class Seam, class Route>
+    bool window_attempt_once(WindowAttempt<Route> &attempt) noexcept {
         if (attempt.window == nullptr) {
             attempt.outcome = race::RaceOutcome::NotPrepared;
             return false;
@@ -43,6 +54,10 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         return won;
     }
 
-    /** The device attempt: the Linux futex seam. */
+    /** The device attempt: the Linux futex seam, over the route type the caller holds.
+     *  @tparam Route The route the attempt's named fallback points at.
+     *  @return true when this attempt won the window.
+     *  @note Declared here and instantiated in the device unit for the route the device builds. */
+    template <seam::RouteExec Route>
     [[nodiscard]] bool window_attempt_once_device(void *context) noexcept;
 }  // namespace ghostlock::backend::cve_2026_43499::steps

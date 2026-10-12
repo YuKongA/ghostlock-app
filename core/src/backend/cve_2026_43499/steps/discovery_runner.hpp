@@ -32,6 +32,11 @@ namespace ghostlock::backend::cve_2026_43499::steps {
     struct DiscoveryOutcome final {
         const char *verdict = nullptr;
         std::uint64_t found = 0U;
+        /** The canonical object the address maps to, or zero when the search did not
+         *  accept one. It is what a write needs to know it has an object at all, and it
+         *  comes from the same mapping everything else uses (leak::report_discovery)
+         *  rather than from a judgement made here. */
+        std::uint64_t mm_struct = 0U;
         std::size_t probes = 0U;
         std::uint32_t rounds = 0U;
         std::size_t pokes_wanted = 0U;

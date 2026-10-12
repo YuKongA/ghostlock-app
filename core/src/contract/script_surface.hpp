@@ -104,10 +104,25 @@ namespace ghostlock::contract {
 
     /** One keyed argument; max = schema acceptance ceiling, required = must the
      *  script pass it. */
+    /** What kind of value an argument carries. Spelled once, here: the forwarding layer
+     *  (script/call_sink.hpp) used to carry its own copy with different spellings, which is
+     *  one concept split in two. The lower layer owns the vocabulary; the higher one reuses
+     *  it, because that is the direction the include firewall allows. */
+    enum class ArgKind : unsigned char {
+        U64 = 0,     /**< A bounded unsigned number: max is the bound. */
+        Str = 1,     /**< A bounded string: max is the bound in bytes. */
+        Bool = 2,    /**< A boolean. */
+        Handle = 3,  /**< A typed handle: passed back, never interpreted. */
+    };
+
     struct ArgSpec final {
         const char *key;
         std::uint64_t max;
         bool required;
+        /* Defaulted on purpose: the rows written before text arguments existed stay exactly as
+         * they are, because a defaulted member does not change what they mean. A row that does
+         * carry text says so, which is also what a reader greps for. */
+        ArgKind kind = ArgKind::U64;
     };
 
     /* ---- execution phases: a STORED column (user ruling 2026-10-08) ----
@@ -309,6 +324,15 @@ namespace ghostlock::contract {
         {"handle", kValueCeiling, true},
         {"name", 64U, true},
     };
+    /** The log verb's arguments: a level and a key, both text.
+     *  Text rather than numbers because both are names; the bounds are the length bounds an
+     *  over-long value is refused against, never truncated to (user ruling 2026-10-12: the
+     *  verb is allowed; design-critic M2: the kind and the bound must be declarable). */
+    inline constexpr ArgSpec kLogArgs[] = {
+        {"level", 16U, true, ArgKind::Str},    /* debug / info only -- warn and error stay native */
+        {"key", 256U, true, ArgKind::Str},     /* what the script is about to do */
+    };
+
     /** Deprecated spelling kept out on purpose: steps go through their own row. */
     inline constexpr ArgSpec kCloseArgs[] = {
         {"handle", kValueCeiling, true},       /* slot + generation word */
@@ -337,6 +361,13 @@ namespace ghostlock::contract {
         {"cfg", SurfaceForm::Value, nullptr, 0, "profile", SurfacePhase::Stage, true, false, false, false},
         {"close", SurfaceForm::HandleMethod, kCloseArgs, sizeof(kCloseArgs) / sizeof(kCloseArgs[0]), "session",
          SurfacePhase::PreWindow, true, true, false, false},
+        /* Eighth name (user ruling 2026-10-12: allowed in full; the count text in
+         * op_registry.hpp changes with it, and the 沿革 is recorded in
+         * docs/analysis/43499-plan-lua-log-verb.md 8). Stage, not the window: a log line
+         * never belongs inside the window body (pi_window.hpp:15), and window_allowed is
+         * false to say so rather than leaving it to a reader's memory. */
+        {"log", SurfaceForm::Call, kLogArgs, sizeof(kLogArgs) / sizeof(kLogArgs[0]), "backend",
+         SurfacePhase::Stage, true, true, false, false},
     };
     inline constexpr std::size_t kSurfaceCount = sizeof(kSurface) / sizeof(kSurface[0]);
 
