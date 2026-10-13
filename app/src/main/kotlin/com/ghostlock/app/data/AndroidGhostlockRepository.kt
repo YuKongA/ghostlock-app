@@ -51,6 +51,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
         const val PrefDebugProfileOverrides = "debug_profile_overrides"
 
+        /* Model code -> retail name for Transsion (Infinix / TECNO / itel)
+         * devices, which expose no market-name property. Add an entry only when
+         * both the model code and the retail name are confirmed. */
+        val TranssionMarketNames = mapOf(
+            "X6879" to "Infinix Note 60",
+        )
+
         /* U01-S14: per-run KernelSU log name; the resolved path travels to
          * the native process via GHOSTLOCK_KSU_LOG. */
         fun ksuLogName(runStamp: Long) = "ghostlock-ksu-$runStamp.log"
@@ -1001,11 +1008,26 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             "vivo" -> firstValidProperty("ro.vivo.market.name")
             "honor", "huawei" -> firstValidProperty("ro.config.marketing_name")
             "zte", "nubia" -> firstValidProperty("ro.vendor.product.ztename")
+            /* Transsion (Infinix / TECNO / itel) ships no market-name property:
+             * every ro.product.*.marketname is empty and ro.tr_build.sw_market
+             * holds a region code, not a retail name. Resolve from the model. */
+            "infinix", "tecno", "itel" -> transsionMarketName()
             else -> null
         }
         return marketName ?: listOfNotNull(
             manufacturer, Build.BRAND.orEmpty().takeIf { !it.equals(manufacturer, true) }, Build.MODEL.orEmpty()
         ).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    /* Retail name for a Transsion device, or null when the model code has no
+     * confirmed mapping (the generic fallback then applies). */
+    private fun transsionMarketName(): String? {
+        val code = listOf(Build.DEVICE, Build.MODEL)
+            .joinToString(" ")
+            .uppercase(Locale.ROOT)
+        return TranssionMarketNames.entries
+            .firstOrNull { (model, _) -> code.contains(model) }
+            ?.value
     }
 
     private fun resolveSocName(): String = listOf(
