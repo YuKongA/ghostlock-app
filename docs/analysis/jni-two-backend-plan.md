@@ -179,6 +179,23 @@ app/src/main/kotlin/com/ghostlock/app/data/nativeaccess/     # 新增：JNI 适�
 5. 重试次数/间隔**只**来自输入值；0 ⇒ 不重试，不填默认。
 6. 每步产出 `StepResult{step, outcome, reasonToken, receipts[]}`；日志一行/步（拒绝走 `warn`）。
 
+## §4.6 UI 裁定（2026-10-14，用户逐字追加）
+
+> 「舍弃旧 kotlin UI，测试用最小化临时 UI，以后新的 UI 将使用 materialUI 并像 kernelsu 一样可灵活切换至 miuix」
+
+落地形状（本批已实现骨架）：
+
+- `app/ui/kit/UiKit.kt`：套件枚举 + `UiKitStore` 接口 + `UiKitController`（读盘即真相，写即落盘）。
+- `app/ui/kit/AndroidUiKitStore.kt`：SharedPreferences 实现（键与取值只在此拼一次）。
+- `app/ui/kit/GhostlockKit.kt`：组件面（Actions / Action / Body）的 **两个实现**（Material3 与 Miuix），
+  界面只依赖语义、不 import 具体控件 —— 与 KernelSU「每个屏幕两套实现、同一组语义」同形。
+- `app/ui/theme/GhostlockTheme.kt`：按套件包主题（Material3 colorScheme / MiuixTheme）。
+- `app/tempui/TempUiActivity.kt`：临时界面，顶部按钮即套件切换，选择落盘、切完立刻重绘。
+
+两条环境事实（踩过就写下来）：miuix 0.9.4 依赖 material3 **1.5.0-alpha22**，声明更低会被冲突解析
+顶上来；`monetSystemColors` 是 miuix 的 **internal** API，编译期不可用，故主题用其公开的
+`light/darkColorScheme()`。
+
 ## §5 事实分工表（防第二权威）
 
 | 事实 | 产生者 | 读取者 | 备注 |

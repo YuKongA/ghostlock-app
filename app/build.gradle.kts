@@ -27,6 +27,7 @@ val gitVersionCode = runCatching {
     1
 }
 
+// //TODO(kotlin-disable-20261010): 资源路径仍在，模块已禁用；恢复见台账
 val lkmManifestFile = rootProject.file("profile-core/src/main/resources/lkm-kmi-manifest.tsv")
 val lkmSourceDir = rootProject.file("tools/lkm/ghostlock")
 /* Generated artefacts live under the Gradle build root (user instruction: "构建统一
@@ -197,7 +198,8 @@ kotlin {
 
 // The exporter-agreement test compares against the freshly exported .bin set.
 tasks.withType<Test>().configureEach {
-    dependsOn(":profile-core:exportProfiles")
+    // //TODO(kotlin-disable-20261010): profile-core 任务已禁用
+    // dependsOn(":profile-core:exportProfiles")
     /* Forward the M3 one-off write-back switch to the forked test JVM. */
     providers.systemProperty("glk.m3.writeback").orNull?.let { systemProperty("glk.m3.writeback", it) }
 }
@@ -555,6 +557,10 @@ tasks.matching { task -> task.name.startsWith("merge") && task.name.endsWith("As
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.foundation:foundation:1.12.1")
+    /* Material3：新 UI 的默认套件（另一个是 miuix，见 app/ui/kit）；本仓无 BOM，版本显式写。
+     * 1.5.0-alpha22 不是随手挑的：miuix 0.9.4 依赖的就是这一版，声明更低会被冲突解析顶上来，
+     * 而"声明与实际不符"比版本标签难看更糟；miuix 升到稳定 material3 时这两行一起抬。 */
+    implementation("androidx.compose.material3:material3:1.5.0-alpha22")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("com.typesafe:config:1.4.9")
     implementation("org.apache.commons:commons-compress:1.28.0")
@@ -564,7 +570,8 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4")
-    implementation(project(":profile-core"))
+    // //TODO(kotlin-disable-20261010): profile-core 已禁用
+    // implementation(project(":profile-core"))
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
