@@ -66,7 +66,7 @@ class TempUiActivity : Activity() {
     private fun probeNative() {
         val loaded = Native.ensureLoaded()
         append("jni: 库名=" + Native.LIBRARY + " 可加载=" + loaded)
-        append("jni: 现有入口=create/runOneWrite/destroy（legacy 三入口；四入口边界在 J1/J2 批次落地）")
+        append("jni: 入口=create/invoke/shutdown/destroy（四入口；J1 的 GLKJ 帧 + J2 的会话状态机已落地）")
     }
 
     private fun reportContracts() {

@@ -154,6 +154,8 @@ list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
 # 它的薄适配器，只在 Android 的共享库里出现（需要 jni.h）。
 set(GL_JNI_PORTABLE_SRCS
   src/jni/session_protocol.cpp
+  src/jni/session_handles.cpp
+  src/jni/session_object.cpp
 )
 
 set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS} ${GL_JNI_PORTABLE_SRCS})
@@ -260,6 +262,7 @@ set(GL_TEST_NAMES
   heap_geometry_test
   hmac_sha256_test
   jni_protocol_test
+  jni_session_lifecycle_test
   kernel_access_test
   kmi_catalog_test
   leak_search_test

@@ -1,26 +1,27 @@
 package com.ghostlock.app.jni
 
 /**
- * The Kotlin half of the boundary: three declarations and nothing else.
+ * The Kotlin half of the boundary: four declarations and nothing else.
  *
- * These were not present anywhere in the tree -- the native file declared
- * Java_com_ghostlock_app_jni_Native_* but no Kotlin side ever named them, so this file is the
- * first appearance of the Kotlin half rather than an edit of an existing one.
+ * The four entries are the whole JNI surface (see docs/analysis/jni-two-backend-plan.md §3.1):
+ * create a session, invoke one op on it, shut it down, destroy it. Everything else -- which op to
+ * run, in what order, with which values -- is Kotlin's, and the op/key/status numbering lives in
+ * the native export (build/native/jni-protocol-manifest.tsv) rather than in a hand-copied table.
  *
- * The frame the entries carry is described in core/src/jni/session_frame.hpp. Kotlin fills a
- * ByteArray there, native reads it; the layout is one proposal among three and is not yet
- * accepted, which is why the third party in the build -- the loader -- is asked to fail loudly
- * if the library is missing rather than silently returning a default.
- */
-/**
- * The name of this object is not free: the native file exports
- * Java_com_ghostlock_app_jni_Native_* , so the class holding the external declarations must be
- * called Native. Naming it anything else makes the JNI lookup fail at run time with an
- * UnsatisfiedLinkError that says only "no implementation found".
+ * Conventions the native side keeps:
+ *  - create answers a **positive handle**, or the negated protocol status code (see the manifest);
+ *  - invoke answers a reply frame (never null unless the VM is out of memory); the frame carries
+ *    its own status, so a refused op is a frame, not an exception;
+ *  - shutdown is idempotent and answers a protocol status code;
+ *  - destroy is idempotent; a handle from a destroyed session is refused as stale, never reused.
+ *
+ * The class must stay named Native: the native library exports Java_com_ghostlock_app_jni_Native_*
+ * and a different name would make the lookup fail at run time with an UnsatisfiedLinkError that
+ * says only "no implementation found".
  */
 object Native {
     /**
-     * The name of the library the three entries live in.
+     * The name of the library the entries live in.
      *
      * Declared here so a missing load fails at the point of use with a message that names the
      * library, instead of as an UnsatisfiedLinkError from inside a call.
@@ -52,26 +53,38 @@ object Native {
     }
 
     /**
-     * Create a session by handing the native side the whole frame.
+     * Create a session from a create frame: an initialize request carrying the backend id (and,
+     * once the backend's own batch lands, its parameter entries).
      *
-     * @param frame  the parameters, laid out as session_frame.hpp describes.
-     * @return a positive handle, or a negative refusal code.
+     * @param createFrame the frame, laid out by core/src/jni/session_protocol.hpp.
+     * @return a positive handle, or a negative protocol status code.
      */
-    external fun nativeSessionCreate(frame: ByteArray): Long
+    external fun nativeSessionCreate(createFrame: ByteArray): Long
 
     /**
-     * Run one write in an existing session.
+     * Run one op inside a session.
      *
-     * @param handle  a handle from nativeSessionCreate.
-     * @param frame   the frame for this write.
-     * @return 0 on a verified write, negative on a named refusal.
+     * @param handle       a handle from [nativeSessionCreate].
+     * @param op           the op code, which must equal the op the frame carries.
+     * @param requestFrame the request frame.
+     * @return the reply frame (it carries its own status), or null only if the VM could not
+     *         allocate it.
      */
-    external fun nativeRunOneWrite(handle: Long, frame: ByteArray): Int
+    external fun nativeSessionInvoke(handle: Long, op: Int, requestFrame: ByteArray): ByteArray?
 
     /**
-     * Release a session.
+     * Take a session down. Idempotent: the second call repeats the first answer and does not touch
+     * the backend again.
      *
-     * @param handle  a handle from nativeSessionCreate; zero is accepted and ignored.
+     * @param handle a handle from [nativeSessionCreate].
+     * @return the protocol status code.
+     */
+    external fun nativeSessionShutdown(handle: Long): Int
+
+    /**
+     * Release a session. Idempotent, and safe on a handle that is already gone.
+     *
+     * @param handle a handle from [nativeSessionCreate]; zero is accepted and ignored.
      */
     external fun nativeSessionDestroy(handle: Long)
 }
