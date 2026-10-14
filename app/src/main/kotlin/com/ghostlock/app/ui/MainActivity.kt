@@ -1,8 +1,10 @@
 package com.ghostlock.app.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
@@ -45,6 +47,10 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    /* The guard trip must be visible even without a UI session; ask once when
+     * auto-start is enabled (the boot receiver itself cannot show a dialog). */
+    private val notificationPermissionRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         viewModel.onDebugExportLocationPicked(uri?.let(::documentTreeRelativePath))
     }
@@ -121,6 +127,18 @@ class MainActivity : ComponentActivity() {
             GhostlockEffect.OpenShizuku -> packageManager
                 .getLaunchIntentForPackage(SHIZUKU_PACKAGE)
                 ?.let(::startActivity)
+
+            GhostlockEffect.RequestNotificationPermission ->
+                requestNotificationPermissionIfNeeded()
+        }
+    }
+    /* The guard trip must stay visible without a UI session; ask once when
+     * auto-start is enabled (the boot receiver itself cannot show a dialog). */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -187,6 +205,7 @@ private fun GhostlockRoute(
                 viewModel.toggleForceAttackTest(enabled)
 
             override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
+            override fun onAutoStartChanged(enabled: Boolean) = viewModel.toggleAutoStart(enabled)
             override fun onDialogItemSelected(index: Int) = viewModel.onDialogItemSelected(index)
             override fun onDialogInputChange(value: String) = viewModel.onDialogInputChange(value)
             override fun onDialogConfirm(value: String) = viewModel.onDialogConfirm(value)
