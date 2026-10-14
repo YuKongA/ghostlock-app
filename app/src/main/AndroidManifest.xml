@@ -7,16 +7,12 @@
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="me.weishu.kernelsu.pr" />
         <package android:name="me.weishu.kernelsu" />
-        <!-- Root managers the picker may detect and launch (root_script.cpp:46/49).
-             Android 11+ package visibility: an undeclared package is invisible, so
-             detection would silently report "not installed". -->
-        <package android:name="com.resukisu.resukisu" />
-        <package android:name="com.kowx712.supermanager" />
+        <!-- 根管理器（root_script.cpp:46/49 的检测目标）：Android 11+ 的包可见性要求显式声明，
+             否则检测会静默报「未安装」。 -->
         <package android:name="com.resukisu.resukisu" />
         <package android:name="com.kowx712.supermanager" />
     </queries>
     <application
-        android:name=".GhostlockApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
@@ -29,13 +25,12 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-        <service
-            android:name=".shizuku.GhostlockUserService"
-            android:exported="false"
-            tools:ignore="Instantiatable" />
+        <!-- 最小临时 UI（用户裁定 2026-10-14：旧 Kotlin UI 全面废弃，测试只用临时界面）。
+             组件清单从此只保留这一个 activity；恢复生产 UI 时另开批次。
+             旧注释块（Shizuku service / TempLaunchActivity / ui.MainActivity）此前是**注释嵌套**，
+             在 XML 里非法 ⇒ 解析在第 37 行失败 ⇒ :app:processDebugMainManifest 一直是红的。 -->
         <activity
-            android:name=".ui.MainActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:name=".tempui.TempUiActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
