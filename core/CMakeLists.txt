@@ -150,7 +150,13 @@ endif()
 # 项目库：宿主可编的全部层（RUNTIME - main + DEVICE_EXTRA + SHARED）。
 # ---------------------------------------------------------------------------
 list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
-set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS})
+# 边界的**协议/事务层**：JNI-free ⇒ 宿主也编、测试直接链它；JNI 入口（session_api.cpp）只是
+# 它的薄适配器，只在 Android 的共享库里出现（需要 jni.h）。
+set(GL_JNI_PORTABLE_SRCS
+  src/jni/session_protocol.cpp
+)
+
+set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS} ${GL_JNI_PORTABLE_SRCS})
 list(REMOVE_DUPLICATES GL_CORE_SRCS)
 
 add_library(ghostlock_core STATIC ${GL_CORE_SRCS})
@@ -185,6 +191,8 @@ set_target_properties(ghostlock PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR
 # ---------------------------------------------------------------------------
 if(GL_JNI)
   file(GLOB GL_JNI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/*.cpp)
+  # 工具而不是库的一部分：协议表导出器只做宿主工具（它有自己的 main）。
+  list(REMOVE_ITEM GL_JNI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/jni_protocol_manifest.cpp)
   if(GL_JNI_SOURCES)
     add_library(ghostlock_jni SHARED ${GL_JNI_SOURCES})
     target_compile_options(ghostlock_jni PRIVATE ${GL_WARNINGS})
@@ -251,6 +259,7 @@ set(GL_TEST_NAMES
   handle_generation_test
   heap_geometry_test
   hmac_sha256_test
+  jni_protocol_test
   kernel_access_test
   kmi_catalog_test
   leak_search_test
@@ -398,4 +407,15 @@ if(GL_TESTS)
   add_test(NAME structural_profile_manifest_v3
     COMMAND sh -c "../build/host/profile_manifest_dump > ../build/host/profile-manifest-v3.tsv && cmp -s ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv && cmp -s ../build/host/profile-manifest-v3.tsv ../profile-core/src/main/resources/profile-manifest-v3.tsv && echo 'profile-manifest-v3-check: both copies are the table' || { echo 'profile-manifest-v3-check: FAIL'; diff ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv | head -20; exit 1; }"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # JNI 边界协议表：由 native 导出 TSV，作为跨端唯一权威（Kotlin 侧测试读它，不手抄清单）。
+  add_executable(jni_protocol_manifest ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/jni_protocol_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/session_protocol.cpp)
+  target_compile_options(jni_protocol_manifest PRIVATE ${GL_WARNINGS})
+  target_link_libraries(jni_protocol_manifest PRIVATE ghostlock_core)
+  set_target_properties(jni_protocol_manifest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+  add_test(NAME structural_jni_protocol_manifest
+    COMMAND ${CMAKE_COMMAND}
+      -DTOOL=${GL_BIN_DIR}/jni_protocol_manifest
+      -DOUT=${GL_REPO_ROOT}/build/native/jni-protocol-manifest.tsv
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/checks/jni_protocol_manifest.cmake)
 endif()
