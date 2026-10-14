@@ -644,8 +644,11 @@ COMBINATION_MANIFEST_PIN := src/tests/combination-manifest.pin.tsv
 .PHONY: combination-manifest combination-manifest-regen
 
 $(BUILD_DIR)/cve43284_access_params_test: src/tests/cve43284_access_params_test.cpp \
-  src/backend/cve_2026_43284/access_params.hpp | $(BUILD_DIR)
-		$(CXX) $(CXXFLAGS) src/tests/cve43284_access_params_test.cpp -o $@
+  src/backend/cve_2026_43284/access_params.hpp \
+  src/backend/cve_2026_43284/hook/sentry_hook.hpp src/backend/cve_2026_43284/hook/sentry_hook.cpp \
+  src/backend/cve_2026_43284/embed/libcxx_blob.hpp src/backend/cve_2026_43284/embed/libcxx_blob.cpp | $(BUILD_DIR)
+		$(CXX) $(CXXFLAGS) src/tests/cve43284_access_params_test.cpp \
+		src/backend/cve_2026_43284/hook/sentry_hook.cpp src/backend/cve_2026_43284/embed/libcxx_blob.cpp -o $@
 
 $(BUILD_DIR)/pagecache_door_linux_test: src/tests/pagecache_door_linux_test.cpp \
   src/backend/cve_2026_43284/seam/pagecache_door_linux.hpp src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp src/backend/cve_2026_43284/seam/pagecache_doors.hpp | $(BUILD_DIR)

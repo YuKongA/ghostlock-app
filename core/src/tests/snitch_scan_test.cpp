@@ -77,6 +77,10 @@ namespace {
         static SeamResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult set_nonblocking(std::int32_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult send_buffer(std::int32_t, std::size_t) noexcept { return SeamResult{0, 0}; }
+        /* heap_seam.hpp 的 HeapSeam 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
+         *  假 seam 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
+         *  2026-10-14 补齐：与其它调用同形，参数一律忽略。 */
+        static SeamResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return SeamResult{0, 0}; }
         static SeamResult page_size() noexcept { return SeamResult{4096, 0}; }
     };
     unsigned char FakeSeam::buffer[65536] = {};
