@@ -10,6 +10,10 @@ namespace ghostlock::jni {
     }  // namespace
 
     Session::~Session() noexcept {
+        if (ops_.destroy != nullptr) {
+            ops_.destroy(ops_.self);
+            ops_ = BackendOps{};
+        }
         /* A session that was never shut down still gives its backend back: the destructor is the
          *  last chance, and skipping it would leak whatever the backend took. */
         if (access_ != nullptr && !shutdown_done_) {
@@ -30,6 +34,9 @@ namespace ghostlock::jni {
             return false;
         }
         access_ = seam.create(backend_id, seam.context);
+        if (seam.create_ops != nullptr) {
+            ops_ = seam.create_ops(backend_id, seam.context);
+        }
         if (access_ == nullptr) {
             /* Asked for a backend this build does not have. Not a crash and not a stand-in. */
             phase_ = SessionPhase::Failed;
@@ -145,6 +152,10 @@ namespace ghostlock::jni {
                                                static_cast<std::uint64_t>(phase_)));
             }
             return status;
+        }
+        if (ops_.wired()) {
+            /* This backend has its own ops: the request goes there, and its answer is the answer. */
+            return ops_.handle(ops_.self, op, request, reply);
         }
         static_cast<void>(request);
         /* Every op that a later batch owns answers by name: silence would read as success. */

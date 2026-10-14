@@ -48,12 +48,31 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kCapReadable = 1U << 3U;
     inline constexpr std::uint64_t kWidthBitShift = 8U;  /**< bit 8 = width 8, bit 16 = width 16. */
 
-    /** How a session gets a backend. Injected so the host can run the machine on a fake. */
+    /**
+     *  What a backend own ops are: **not** an interface. A function pointer and an opaque
+     *  self, because this tree confines virtual dispatch to the access interface
+     *  (tools/window_body_guard.py + the structural check): a new abstract class here would be
+     *  refused by the gate, and rightly so.
+     */
+    struct BackendOps final {
+        /** Handle one op that belongs to this backend. @return the status of the reply. */
+        FrameStatus (*handle)(void *self, FrameOp op, const FrameReader &request,
+                              FrameWriter &reply) noexcept = nullptr;
+        /** Destroy the ops object: the session does not know its type, so it is told how. */
+        void (*destroy)(void *self) noexcept = nullptr;
+        void *self = nullptr;
+
+        [[nodiscard]] bool wired() const noexcept { return handle != nullptr; }
+    };
+
+    /** How a session gets a backend and its ops. Injected so the host can run on a fake. */
     struct BackendSeam final {
         /** @return the backend, or null when this build has none for that id. */
         std::unique_ptr<contract::KernelAccess> (*create)(std::uint64_t backend_id,
                                                           void *context) noexcept = nullptr;
         void *context = nullptr;
+        /** @return the ops of this backend (an empty bundle when they are not wired yet). */
+        BackendOps (*create_ops)(std::uint64_t backend_id, void *context) noexcept = nullptr;
     };
 
     /** One session's state machine and op dispatch. */
@@ -109,6 +128,7 @@ namespace ghostlock::jni {
         void refuse(FrameWriter &reply, const char *name) noexcept;
 
         std::unique_ptr<contract::KernelAccess> access_{};
+        BackendOps ops_{};
         SessionPhase phase_ = SessionPhase::Declared;
         std::uint64_t backend_id_ = 0U;
         std::uint32_t generation_ = 0U;

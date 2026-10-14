@@ -82,6 +82,15 @@ namespace ghostlock::jni {
             case FrameKey::Secret: return FrameKey::Secret;
             case FrameKey::Image: return FrameKey::Image;
             case FrameKey::CountKey: break;
+            case FrameKey::PageBase: return FrameKey::PageBase;
+            case FrameKey::Word0: return FrameKey::Word0;
+            case FrameKey::Word1: return FrameKey::Word1;
+            case FrameKey::PayloadPage: return FrameKey::PayloadPage;
+            case FrameKey::PayloadBase: return FrameKey::PayloadBase;
+            case FrameKey::AliasDelta: return FrameKey::AliasDelta;
+            case FrameKey::Found: return FrameKey::Found;
+            case FrameKey::VictimTask: return FrameKey::VictimTask;
+            case FrameKey::VictimPid: return FrameKey::VictimPid;
         }
         return FrameKey::CountKey;
     }

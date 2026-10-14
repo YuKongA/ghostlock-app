@@ -27,7 +27,8 @@ int main() {
                     static_cast<unsigned>(i));
     }
     const std::uint16_t keys[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U,
-                                  16U, 17U, 18U, 19U, 20U, 32U, 33U, 34U, 35U, 36U};
+                                  16U, 17U, 18U, 19U, 20U, 32U, 33U, 34U, 35U, 36U,
+                                  40U, 41U, 42U, 43U, 44U, 45U, 46U, 47U, 48U};
     for (const std::uint16_t raw : keys) {
         std::printf("key\t%s\t%u\n", frame_key_name(ghostlock::jni::frame_key_of(raw)),
                     static_cast<unsigned>(raw));
