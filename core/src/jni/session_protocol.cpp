@@ -91,6 +91,11 @@ namespace ghostlock::jni {
             case FrameKey::Found: return FrameKey::Found;
             case FrameKey::VictimTask: return FrameKey::VictimTask;
             case FrameKey::VictimPid: return FrameKey::VictimPid;
+            case FrameKey::Sequence: return FrameKey::Sequence;
+            case FrameKey::BranchWord: return FrameKey::BranchWord;
+            case FrameKey::DisplacedWord: return FrameKey::DisplacedWord;
+            case FrameKey::SiteOffset: return FrameKey::SiteOffset;
+            case FrameKey::LandingOffset: return FrameKey::LandingOffset;
         }
         return FrameKey::CountKey;
     }

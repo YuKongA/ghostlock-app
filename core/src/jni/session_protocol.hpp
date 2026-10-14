@@ -175,6 +175,12 @@ namespace ghostlock::jni {
         Found = 46,      /**< u64: the address the search accepted. */
         VictimTask = 47, /**< u64: the victim task the write aims at. */
         VictimPid = 48,  /**< u64: the victim process. */
+        /* ---- 43284（页缓存链）的事实 ---- */
+        Sequence = 50,     /**< u64: the SA sequence the last block write left behind. */
+        BranchWord = 51,   /**< u64: the word the sentry hook plants at the site. */
+        DisplacedWord = 52,/**< u64: the word it displaces (the guard the caller checks). */
+        SiteOffset = 53,   /**< u64: where in the hooked image the site is. */
+        LandingOffset = 54,/**< u64: where the payload goes. */
     };
 
     /** The one spelling of a key name; the manifest exports exactly this table. */
@@ -215,6 +221,11 @@ namespace ghostlock::jni {
             case FrameKey::Found: return "found";
             case FrameKey::VictimTask: return "victim_task";
             case FrameKey::VictimPid: return "victim_pid";
+            case FrameKey::Sequence: return "sequence";
+            case FrameKey::BranchWord: return "branch_word";
+            case FrameKey::DisplacedWord: return "displaced_word";
+            case FrameKey::SiteOffset: return "site_offset";
+            case FrameKey::LandingOffset: return "landing_offset";
         }
         return "unknown";
     }
