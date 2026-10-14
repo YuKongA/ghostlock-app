@@ -21,13 +21,18 @@
 ## 二、常用命令
 
 ```sh
-# Native（core/Makefile 的真实目标：all=host / host / check / android）
-make -C core host                      # 主机构建
-make -C core check                     # 主机单元测试 + 固定向量/清单对拍
-make -C core android                   # NDK 构建 -> ../build/native/ghostlock
-ANDROID_NDK_HOME=... make -C core android    # NDK 未自动探测时的显式写法
-# 设备探针（按需）：futex-probe / requeue-probe / snitch-seam-probe / snitch-run-probe /
-#                   perf-seam-probe / prepare-page-probe / heap-seam-probe
+# Native：Gradle 是唯一入口（CMake 构建 + CTest 测试；core/Makefile 已于 2026-10-14 删除）
+./gradlew nativeTestHost       # 宿主：配置 + 构建 + 跑全部 CTest（测试/证据 + 结构性检查）
+./gradlew nativeBuildHost      # 只要构建（build/host/ghostlock + 各 *_test）
+./gradlew nativeBuildAndroid   # NDK 构建 -> build/native/{ghostlock,libghostlock_jni.so}
+./gradlew prepareGhostlockJniLibs   # 把 libghostlock_jni.so 复制进 app 的 jniLibs
+./gradlew checkAll             # 集中测试：原生 CTest + :app:testDebugUnitTest
+
+# 直接驱动 CMake（等价，调试用）
+cmake -S core -B build/cmake/host -G Ninja -DGL_TESTS=ON
+cmake --build build/cmake/host -j
+ctest --test-dir build/cmake/host --output-on-failure
+# 设备探针（按需）：加 -DGL_PROBES=ON 才会构建 src/tools/*（futex/requeue/snitch/perf/prepare-page/heap-seam）
 
 # Android / 提取器
 ./gradlew :app:assembleDebug

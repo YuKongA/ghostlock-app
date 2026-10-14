@@ -198,7 +198,7 @@ namespace {
         std::uint32_t *word = nullptr;
     };
 
-    void *increase_sleeper_main(void *argument) {
+    [[maybe_unused]] void *increase_sleeper_main(void *argument) {
         auto *const sleeper = static_cast<IncreaseSleeper *>(argument);
         (void) ::syscall(SYS_futex, sleeper->word, FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0);
         return nullptr;

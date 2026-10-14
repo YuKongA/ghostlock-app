@@ -43,6 +43,9 @@ namespace ghostlock::backend::cve_2026_43499 {
         /** The upper-layer wrapper for this route's multi-step work (socket, stamp,
          *  setsockopt).  Not write logic: it must not be reached from land_word().
          *  @return true when the route's gear is up; false keeps the omission named. */
-        [[nodiscard]] virtual bool arm_route() noexcept { return false; }
+        /* 非虚（2026-10-14 零告警批次）：本类是 final ⇒ clang 的 -Wunnecessary-virtual-specifier
+         *  指出"final 类里不可能被覆盖的虚函数"是死码。将来真要让某个路线接上层 wrapper，
+         *  先按当时的裁定把本类改成非 final，再决定是否恢复虚函数。 */
+        [[nodiscard]] bool arm_route() noexcept { return false; }
     };
 }  // namespace ghostlock::backend::cve_2026_43499

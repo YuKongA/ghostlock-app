@@ -96,7 +96,7 @@ namespace {
         const script::JsonNode *uni = doc.find("uni");
         expect(uni != nullptr && doc.str_of(*uni, text), "the \\u string reads back");
         expect(text.size() == 1U && text[0] == 'A', "\\u0041 arrives as the byte A");
-        std::printf("wire doc: decoded strings (len=%zu first=0x%02x uni=%zu)\n", 3U,
+        std::printf("wire doc: decoded strings (len=%u first=0x%02x uni=%u)\n", 3U,
                     static_cast<unsigned>(0x0AU), 1U);
     }
 }  // namespace

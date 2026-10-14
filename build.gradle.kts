@@ -83,6 +83,24 @@ private fun resolveCargoExecutable(): String {
     }
 }
 
+/**
+ * 找一个可执行工具：先看 -P<NAME>= 属性，再看同名环境变量，再扫 PATH 与 Homebrew 的常见位置。
+ *
+ * 为什么需要它：Gradle 守护进程的 PATH 往往不含 /opt/homebrew/bin（本机 cmake/ctest/ninja 都在那里），
+ * 直接 exec("cmake") 会以 "A problem occurred starting process" 失败（2026-10-14 实测）。
+ */
+private fun resolveTool(name: String): String {
+    providers.gradleProperty(name).orNull?.takeIf(String::isNotBlank)?.let { return it }
+    System.getenv(name)?.takeIf(String::isNotBlank)?.let { return it }
+    val onPath = System.getenv("PATH").orEmpty().split(File.pathSeparator)
+        .asSequence().map { File(it, name) }.firstOrNull { it.isFile && it.canExecute() }
+    if (onPath != null) return onPath.absolutePath
+    for (dir in listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")) {
+        val candidate = File(dir, name)
+        if (candidate.isFile && candidate.canExecute()) return candidate.absolutePath
+    }
+    return name
+}
 private fun extractNdkTools(): NdkTools {
     val ndk = resolveNdkDir()
     val osName = System.getProperty("os.name").lowercase()
@@ -172,40 +190,96 @@ tasks.register("cleanBuildPollution") {
 }
 
 
-tasks.register<Exec>("buildGhostlockNative") {
-    description = "buildGhostlockNative"
-    workingDir(file("src"))
-    commandLine("make", "ghostlock")
-    val ndk = resolveNdkDir()
-    environment("ANDROID_NDK_HOME", ndk)
-    environment("NDK_ROOT", ndk)
-    inputs.files(
-        fileTree("src") { include("**/*.c", "**/*.h", "**/*.cpp", "**/*.hpp") },
-        file("core/Makefile"),
-    )
-    outputs.file(file("build/native/ghostlock"))
+/* ---------------------------------------------------------------------------
+ * Native 构建（CMake）与测试（CTest）：Gradle 是唯一入口。
+ *
+ * 取代旧 Makefile 路径（make -C core host/check/android，Makefile 已删除）以及 root 里那两条
+ * 指向早已不存在的 <repo>/src 的任务。分工：CMake 负责编译与注册测试，Gradle 负责"谁跑、
+ * 跑哪些、什么时候"（见 docs/analysis/jni-two-backend-plan.md）。
+ *
+ * 目录（全部在仓库 build/ 下）：
+ *   build/cmake/host     宿主构建树（Ninja）      build/host     宿主产物（ghostlock + 各 *_test）
+ *   build/cmake/android  NDK 构建树               build/native   设备产物（ghostlock + libghostlock_jni.so）
+ * ------------------------------------------------------------------------- */
+
+private val glCmake = resolveTool("cmake")
+private val glCtest = resolveTool("ctest")
+private val glNinja = resolveTool("ninja")
+private val glCmakeCommon = listOf("-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+    "-DCMAKE_MAKE_PROGRAM=" + glNinja)
+
+tasks.register<Exec>("nativeConfigureHost") {
+    description = "配置宿主 CMake 构建树（GL_TESTS=ON，注册全部 CTest）"
+    group = "native"
+    workingDir(rootDir)
+    commandLine(listOf(glCmake, "-S", "core", "-B", "build/cmake/host") + glCmakeCommon +
+        listOf("-DGL_TESTS=ON", "-DGL_JNI=OFF"))
+    inputs.files(fileTree("core/src"), file("core/CMakeLists.txt"))
+    outputs.dir(layout.buildDirectory.dir("cmake/host"))
 }
 
-tasks.register<Copy>("prepareGhostlockJniLibs") {
-    description = "prepareGhostlockJniLibs"
-    dependsOn("buildGhostlockNative")
-    from("build/native/ghostlock")
-    into("app/src/main/jniLibs/arm64-v8a")
-    rename { "libghostlock.so" }
-    /* Strip only the packaged copy: static libc++ carries its DWARF into the
-     * binary, while the top-level ghostlock keeps its symbols for the
-     * disassembly comparisons. Paths are captured as plain strings so the
-     * configuration cache can serialize this task. */
-    val stripPath = File(extractNdkTools().clang)
-        .resolveSibling("llvm-strip").absolutePath
-    val packagedPath = File(rootDir, "app/src/main/jniLibs/arm64-v8a/libghostlock.so").absolutePath
-    doLast {
-        val code = ProcessBuilder(stripPath, "--strip-all", packagedPath)
-            .inheritIO()
-            .start()
-            .waitFor()
-        check(code == 0) { "llvm-strip failed with $code" }
+tasks.register<Exec>("nativeBuildHost") {
+    description = "构建宿主产物（ghostlock + 全部测试二进制）"
+    group = "native"
+    dependsOn("nativeConfigureHost")
+    workingDir(rootDir)
+    commandLine(glCmake, "--build", "build/cmake/host", "-j")
+    outputs.dir(layout.buildDirectory.dir("host"))
+}
+
+tasks.register<Exec>("nativeTestHost") {
+    description = "跑全部原生测试（CTest：111 个用例/证据测试 + 10 项结构性检查）"
+    group = "verification"
+    dependsOn("nativeBuildHost")
+    workingDir(rootDir)
+    commandLine(glCtest, "--test-dir", "build/cmake/host", "--output-on-failure")
+}
+
+tasks.register<Exec>("nativeConfigureAndroid") {
+    description = "配置 Android（NDK）CMake 构建树"
+    group = "native"
+    workingDir(rootDir)
+    inputs.files(fileTree("core/src"), file("core/CMakeLists.txt"))
+    outputs.dir(layout.buildDirectory.dir("cmake/android"))
+    doFirst {
+        val ndk = resolveNdkDir()
+        environment("ANDROID_NDK_HOME", ndk)
+        environment("NDK_ROOT", ndk)
+        commandLine(listOf(glCmake, "-S", "core", "-B", "build/cmake/android") + glCmakeCommon + listOf(
+            "-DCMAKE_TOOLCHAIN_FILE=" + ndk + "/build/cmake/android.toolchain.cmake",
+            "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-29",
+            "-DGL_TESTS=OFF", "-DGL_JNI=ON"))
     }
+}
+
+tasks.register<Exec>("nativeBuildAndroid") {
+    description = "构建设备产物（build/native/ghostlock + libghostlock_jni.so）"
+    group = "native"
+    dependsOn("nativeConfigureAndroid")
+    workingDir(rootDir)
+    outputs.file(file("build/native/ghostlock"))
+    doFirst {
+        val ndk = resolveNdkDir()
+        environment("ANDROID_NDK_HOME", ndk)
+        environment("NDK_ROOT", ndk)
+        commandLine(glCmake, "--build", "build/cmake/android", "-j")
+    }
+}
+
+/* JNI 边界库就位：Kotlin 侧 Native.LIBRARY == "ghostlock_jni" ⇒ 打包名必须是
+ * libghostlock_jni.so（旧任务复制成 libghostlock.so，与实际加载名对不上）。 */
+tasks.register<Copy>("prepareGhostlockJniLibs") {
+    description = "把 libghostlock_jni.so 复制进 app 的 jniLibs/arm64-v8a"
+    group = "native"
+    dependsOn("nativeBuildAndroid")
+    from("build/native/libghostlock_jni.so")
+    into("app/src/main/jniLibs/arm64-v8a")
+}
+
+tasks.register("checkAll") {
+    description = "集中测试入口：原生 CTest + Kotlin 单测"
+    group = "verification"
+    dependsOn("nativeTestHost", ":app:testDebugUnitTest")
 }
 
 tasks.register<Exec>("buildGhostlockExtract") {

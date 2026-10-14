@@ -58,7 +58,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
 
 
         inline constexpr std::size_t kWordsBytes = 64U * 1024U;   /* 字要同桶：区大一点，搜索才有位置可用 */
-        inline constexpr std::size_t kWordsStride = 64U;
+        [[maybe_unused]] inline constexpr std::size_t kWordsStride = 64U;   /* 具名依据：字的步长 */
         inline constexpr const char *kWordsUnmapped = "discovery-words-unmapped";
         inline constexpr std::size_t kMaxCollisions = 64U;
     }  // namespace

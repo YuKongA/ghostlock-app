@@ -52,10 +52,12 @@ namespace ghostlock::backend::cve_2026_43499::steps {
             static void exit_child() noexcept { memory::LinuxHeapSeam::exit_child(); }
         };
         using DevicePolicy = leak::SnitchPolicy<CompositeSeam, leak::CollisionBuckets>;
-        inline constexpr std::size_t kWordsBytes = 64U * 1024U;
-        inline constexpr std::size_t kWordsStride = 64U;
-        inline constexpr const char *kProofsMissing = "prepare-proofs-missing";
-        inline constexpr const char *kWordsUnmapped = "prepare-words-unmapped";
+        /* 这四个名字是这一段的具名依据（区大小/步长/两条拒绝名）；实现改走 words_region 的
+         *  几何后编译期不再引用 —— 保留名字并显式标注，别让零告警线把它们删成查不到的字符串。 */
+        [[maybe_unused]] inline constexpr std::size_t kWordsBytes = 64U * 1024U;
+        [[maybe_unused]] inline constexpr std::size_t kWordsStride = 64U;
+        [[maybe_unused]] inline constexpr const char *kProofsMissing = "prepare-proofs-missing";
+        [[maybe_unused]] inline constexpr const char *kWordsUnmapped = "prepare-words-unmapped";
     }  // namespace
 
     bool run_prepare(PrepareRequest &request, PrepareReport &out, const char **refusal) noexcept {

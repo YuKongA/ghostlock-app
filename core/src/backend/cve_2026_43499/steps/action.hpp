@@ -126,9 +126,9 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                     *  supplies them gets the layout rule applied to its request. */
                    const memory::LayoutInputs &layout_inputs = {}) noexcept
             : race_(race), window_(window), offsets_(offsets), targets_(targets), fragment_(fragment),
-              fragment_size_(fragment_size), pointer_bytes_(pointer_bytes), value_(value),
+              fragment_size_(fragment_size), pointer_bytes_(pointer_bytes),
               chain_word_(chain_word), target_word_override_(target_word_override),
-              layout_inputs_(layout_inputs) {}
+              layout_inputs_(layout_inputs), value_(value) {}
 
         [[nodiscard]] Stage last_stage() const noexcept { return stage_; }
         [[nodiscard]] memory::RequestVerdict last_request() const noexcept { return request_verdict_; }

