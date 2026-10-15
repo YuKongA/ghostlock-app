@@ -96,6 +96,12 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** 建 ESP socket：0 成功；失败时 refusalOut[0] 为 esp-refused。 */
+    external fun connectEsp(handle: Long, params: Init43284, refusalOut: Array<String>): Int
+
+    /** 关掉一个 socket。 */
+    external fun closeSocket(handle: Long, fd: Int, refusalOut: Array<String>): Int
+
     /** 关掉一扇门（谁开谁关）：id 无效时调用码为 -7（stale-target）。 */
     external fun closeTarget(handle: Long, targetId: Long, refusalOut: Array<String>): Int
 

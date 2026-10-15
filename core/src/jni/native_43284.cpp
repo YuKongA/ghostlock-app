@@ -323,4 +323,26 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_closeTarg
                   closed ? "" : "stale-target", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_connectEsp(
+        JNIEnv *env, jclass, jlong handle, jobject params, jobjectArray refusal_out) {
+    ghostlock::jni::Init43284Values values{};
+    ghostlock::jni::contract::ReadFailure failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, params, &values, &failure)) {
+        const auto outcome = refuse_read(handle, failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const int fd = ghostlock::jni::device_connect_esp(values);
+    if (fd < 0) {
+        return answer(env, CallCode::Failed, "esp-refused", refusal_out);
+    }
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_closeSocket(
+        JNIEnv *env, jclass, jlong, jint fd, jobjectArray refusal_out) {
+    const bool closed = ghostlock::jni::device_close_socket(static_cast<int>(fd));
+    return answer(env, closed ? CallCode::Ok : CallCode::BadParameters,
+                  closed ? "" : "bad-parameters:fd", refusal_out);
+}
+
 }  // extern "C"
