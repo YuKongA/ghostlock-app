@@ -300,3 +300,13 @@ GL_ATTACK_END_GROUP(MakeLanding43284)
 GL_ATTACK_GROUP(DestroyLanding43284)
 GL_ATTACK_FIELD(DestroyLanding43284, destroyedLanding, LONG)
 GL_ATTACK_END_GROUP(DestroyLanding43284)
+
+/* 批③（2026-10-15）：Access 的输入面（accessInitialize 需要）—— 字段名全局唯一、字节字段给上限。 */
+GL_ATTACK_GROUP(AccessParams43284)
+GL_ATTACK_BYTES_FIELD(AccessParams43284, accessCarrierPath, 4096U)
+GL_ATTACK_BYTES_FIELD(AccessParams43284, accessDevCarrierPath, 4096U)
+GL_ATTACK_BYTES_FIELD(AccessParams43284, accessPatchTargetPath, 4096U)
+GL_ATTACK_FIELD(AccessParams43284, accessCarrierBase, LONG)
+GL_ATTACK_FIELD(AccessParams43284, accessOffset, LONG)
+GL_ATTACK_FIELD(AccessParams43284, accessOffsetSet, BOOLEAN)
+GL_ATTACK_END_GROUP(AccessParams43284)
