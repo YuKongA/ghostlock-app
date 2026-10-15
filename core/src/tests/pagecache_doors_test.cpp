@@ -10,12 +10,12 @@
 #include <cstdio>
 
 #include "backend/cve_2026_43284/access_params.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43284::SaMaterial;
-    using ghostlock::backend::cve_2026_43284::seam::DoorOps;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheDoors;
+    using ghostlock::backend::cve_2026_43284::landing::DoorOps;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheDoors;
 
     std::size_t g_failures = 0U;
 

@@ -12,7 +12,7 @@ w1w2w3 与 43284 同步 ✓、lua 直调 kernelaccess（**可执行** ✓）、p
 
 | # | 已修/已证 | 依据 |
 | --- | --- | --- |
-| 1 | 默认 `FutexSeam` 是**空实现** ✗ ⇒ 绑真 seam ✓ | `pi_race.hpp:62-86` ✓ |
+| 1 | 默认 `FutexOps` 是**空实现** ✗ ⇒ 绑真 landing ✓ | `pi_race.hpp:62-86` ✓ |
 | 2 | 引擎**未武装** ✗ ⇒ `race_.prepare(wait,target)` ✓ | `run` 第一行 gate ✓ |
 | 3 | `dup2(high_read_,1)` 吃掉 stdout ⇒ **卡** ✗ ⇒ 低位 fd 改 {3,4,5} ✓ | `EXIT=124` → `EXIT=9/0` ✓ |
 | 4 | 每轮未归零 ⇒ 第二轮 `lock_pi(chain)` 死等 ✗ ⇒ 每轮归零 ✓ | `words-out chain=0x…` ✓ |

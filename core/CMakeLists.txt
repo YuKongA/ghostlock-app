@@ -78,8 +78,8 @@ set(GL_RUNTIME_SRCS
   src/backend/cve_2026_43284/session_frame.cpp
   src/pipeline/access_factory.cpp
   src/pipeline/run_pipeline_temp.cpp
-  src/backend/cve_2026_43284/seam/real_splice_io.cpp
-  src/backend/cve_2026_43284/seam/pagecache_door_linux.cpp
+  src/backend/cve_2026_43284/landing/real_splice_io.cpp
+  src/backend/cve_2026_43284/landing/pagecache_door_linux.cpp
   src/backend/cve_2026_43284/ipsec/aes256.cpp
   src/backend/cve_2026_43499/abi.cpp
   src/support/hmac_sha256.cpp
@@ -95,8 +95,8 @@ set(GL_DEVICE_EXTRA_SRCS
   src/backend/cve_2026_43284/hook/sentry_hook.cpp
   src/backend/cve_2026_43284/embed/libcxx_blob.cpp
   src/backend/cve_2026_43284/steps/pagecache_steps.cpp
-  src/backend/cve_2026_43284/seam/crash_dump_bridge.cpp
-  src/backend/cve_2026_43284/seam/encap_peer.cpp
+  src/backend/cve_2026_43284/landing/crash_dump_bridge.cpp
+  src/backend/cve_2026_43284/landing/encap_peer.cpp
   src/backend/cve_2026_43284/embed/splicehelper_blob.cpp
 )
 
@@ -134,7 +134,7 @@ set(GL_ANDROID_ONLY_SRCS
   src/backend/cve_2026_43499/memory/credential_image.cpp
   src/backend/cve_2026_43499/memory/multicast_arm.cpp
   src/backend/cve_2026_43499/memory/payload_page.cpp
-  src/backend/cve_2026_43499/seam/multicast_route_linux.cpp
+  src/backend/cve_2026_43499/landing/multicast_route_linux.cpp
   src/backend/cve_2026_43499/memory/prepare_plan.cpp
   src/backend/cve_2026_43499/memory/reclaim_plan.cpp
   src/backend/cve_2026_43499/memory/shaping_plan.cpp
@@ -327,14 +327,14 @@ set(GL_TEST_NAMES
   module_facts_test
   multicast_arm_test
   multicast_policy_test
-  multicast_seam_test
+  multicast_landing_test
   multicast_window_test
   page_geometry_test
   page_slot_test
   pagecache_chain_test
   pagecache_door_linux_test
   pagecache_doors_test
-  pagecache_seam_test
+  pagecache_landing_test
   pagecache_steps_test
   pagecache_write_test
   payload_keys_test
@@ -373,7 +373,7 @@ set(GL_TEST_NAMES
   snitch_region_test
   snitch_run_test
   snitch_scan_test
-  snitch_seam_test
+  snitch_ops_test
   snitch_setup_test
   snitch_tuning_test
   stage_result_test
@@ -433,7 +433,7 @@ endif()
 # ---------------------------------------------------------------------------
 if(GL_TESTS)
   add_test(NAME structural_window_body
-    COMMAND python3 ${GL_REPO_ROOT}/tools/window_body_guard.py src/backend/cve_2026_43499/seam/multicast_route.hpp
+    COMMAND python3 ${GL_REPO_ROOT}/tools/window_body_guard.py src/backend/cve_2026_43499/landing/multicast_route.hpp
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   add_test(NAME structural_no_lua_in_pipeline
     COMMAND sh -c "h=$(grep -rIlE 'lua_State|luaL_|#include *[<\\\"]lua' src/pipeline src/contract 2>/dev/null || true); if [ -n \"$h\" ]; then echo LUA-HIT: $h; exit 1; fi"
@@ -448,10 +448,10 @@ if(GL_TESTS)
     COMMAND sh -c "d=$(for f in $(find . -type f \\( -name '*.hpp' -o -name '*.cpp' \\) ! -name 'script_surface.hpp'); do if tr -d '\\n' < \"$f\" | grep -qE 'backend.*writeop.*settle.*handoff'; then echo \"$f\"; fi; done | wc -l | tr -d ' '); if [ \"$d\" -ne 0 ]; then echo SURFACE-DUP: $d; exit 1; fi"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   add_test(NAME structural_virtual_confined
-    COMMAND sh -c "f=$(grep -rlE '^[[:space:]]*virtual ' $(find src -name '*.hpp' -o -name '*.cpp' | grep -v '^src/tests/') || true); s=$(echo \"$f\" | grep -vE '^src/(contract/kernel_access\\.hpp|backend/cve_2026_[0-9]+/kernel_access\\.hpp|backend/cve_2026_[0-9]+/seam/[a-z_]+\\.hpp)$' | grep -v '^$' || true); if [ -n \"$s\" ]; then echo VIRTUAL-OUTSIDE-ACCESS: $s; exit 1; fi"
+    COMMAND sh -c "f=$(grep -rlE '^[[:space:]]*virtual ' $(find src -name '*.hpp' -o -name '*.cpp' | grep -v '^src/tests/') || true); s=$(echo \"$f\" | grep -vE '^src/(contract/kernel_access\\.hpp|backend/cve_2026_[0-9]+/kernel_access\\.hpp|backend/cve_2026_[0-9]+/landing/[a-z_]+\\.hpp)$' | grep -v '^$' || true); if [ -n \"$s\" ]; then echo VIRTUAL-OUTSIDE-ACCESS: $s; exit 1; fi"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   add_test(NAME structural_window_clean
-    COMMAND sh -c "c=$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp src/backend/cve_2026_43499/seam/multicast_route_linux.hpp src/backend/cve_2026_43499/seam/multicast_window.hpp | grep -vE '^[[:space:]]*\\*'); n=$(echo \"$c\" | grep -cE '\\bnew\\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual|spdlog|log_step' || true); if [ \"$n\" -ne 0 ]; then echo WINDOW-DIRTY: $n; exit 1; fi"
+    COMMAND sh -c "c=$(sed -e 's://.*::' src/backend/cve_2026_43499/race/pi_window.hpp src/backend/cve_2026_43499/race/pi_race.hpp src/backend/cve_2026_43499/landing/multicast_route_linux.hpp src/backend/cve_2026_43499/landing/multicast_window.hpp | grep -vE '^[[:space:]]*\\*'); n=$(echo \"$c\" | grep -cE '\\bnew\\b|malloc|calloc|realloc|printf|fprintf|std::string|std::vector|std::function|virtual|spdlog|log_step' || true); if [ \"$n\" -ne 0 ]; then echo WINDOW-DIRTY: $n; exit 1; fi"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   add_test(NAME structural_support_neutral
     COMMAND sh -c "c=$(sed -e 's://.*::' $(find src/support -name '*.hpp' -o -name '*.cpp') | grep -vE '^[[:space:]]*\\*'); n=$(echo \"$c\" | grep -ciE 'spray|payload|route|kernel|exploit|attack|futex' || true); if [ \"$n\" -ne 0 ]; then echo SUPPORT-IMPURE: $n; exit 1; fi"

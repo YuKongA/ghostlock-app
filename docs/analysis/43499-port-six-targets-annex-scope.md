@@ -25,10 +25,10 @@ pin_to_core · runtime_config_snapshot 的定义）。
 
 边缘件（引用 <= 2，可先删）
   steps/window_attempt.cpp(1) · steps/window_runner.cpp(1) · memory/write_encoder.cpp(1)
-  · seam/multicast_route_linux.cpp(1) · access_factory_43499.cpp(1) · steps/access_binder.hpp(2)
+  · landing/multicast_route_linux.cpp(1) · access_factory_43499.cpp(1) · steps/access_binder.hpp(2)
 枢纽件（引用 5-7，必须替换式，否则出现编不过的中间态）
-  seam/multicast_route.hpp(7) · memory/multicast_arm.hpp(6) · memory/write_layout.hpp(6)
-  · seam/multicast_window.hpp(5)
+  landing/multicast_route.hpp(7) · memory/multicast_arm.hpp(6) · memory/write_layout.hpp(6)
+  · landing/multicast_window.hpp(5)
 中间件（引用 3-4，同法）
   steps/window_attempt.hpp(3) · steps/window_runner.hpp(4) · memory/payload_page.hpp(3)
   · memory/credential_image.hpp(3) · access_multicast_waiter.hpp(3)
@@ -73,7 +73,7 @@ pin_to_core · runtime_config_snapshot 的定义）。
 TARGETS 的候选拼写与新树现状：
 
   TARGETS 候选                                  新树现状（非测试）
-  owner_thread / waiter_thread / consumer_thread 新树只有 ``*_main``（seam/multicast_route.hpp、run_pipeline_temp.cpp）
+  owner_thread / waiter_thread / consumer_thread 新树只有 ``*_main``（landing/multicast_route.hpp、run_pipeline_temp.cpp）
   run_main_route_threads                         新树无此名（0 命中）
   do_kernel5_fake_lock_route                     新树无此名（0 命中）
   do_one_write                                   新树 main.cpp 命中（可被 resolve）
@@ -89,7 +89,7 @@ TARGETS 的候选拼写与新树现状：
 ## 5. 新树有两套窗口实现，都要改名并一并处理（2026-10-12 实测）
 
 ```
-  seam/ 一套：seam/multicast_route.hpp 的 waiter_main / owner_main / consumer_main
+  landing/ 一套：landing/multicast_route.hpp 的 waiter_main / owner_main / consumer_main
   pipeline/ 一套：pipeline/run_pipeline_temp.cpp（1125 行）的 owner_main / consumer_main /
                  handshake_waiter_main（:921/:950/:973 由 pthread_create 启动）
   它自带原语：exit_child(:133) · effect_reached(:207, getuid()==0 判定) ·
@@ -107,13 +107,13 @@ TARGETS 的候选拼写与新树现状：
 
 ```
 删（我自己写的两套窗口实现，含其下层重叠件）
-  seam/ 全目录                                                2232 行  refs<=7
+  landing/ 全目录                                                2232 行  refs<=7
   race/ 全目录                                                 455 行
   pipeline/run_pipeline_temp.{cpp,hpp}                         1158 行
   steps/window_attempt.{cpp,hpp} · steps/window_runner.{cpp,hpp} · steps/window_steps.{cpp,hpp}
   steps/access_binder.hpp · pipeline/access_factory.cpp
   memory/credential_image.* · multicast_arm.* · payload_page.* · write_encoder.* · write_layout.*
-  => 小计约 4200 行（refs 除 seam 组外均 <= 6，无超级枢纽）
+  => 小计约 4200 行（refs 除 landing 组外均 <= 6，无超级枢纽）
 
 留（按 (甲)：被别处依赖的接口面与 ABI 链）
   route/ 全目录                                                510 行
@@ -123,7 +123,7 @@ TARGETS 的候选拼写与新树现状：
 
 待定（与旧树功能重叠，需逐件对照后再定）
   memory/prepare_page.hpp(517) · prepare_plan.* · prepare_steps.hpp · heap_geometry.hpp ·
-  heap_seam*.hpp · page_geometry.hpp · page_slot.hpp · reclaim_plan.* · shaping_plan.* · write_request.hpp
+  heap_ops*.hpp · page_geometry.hpp · page_slot.hpp · reclaim_plan.* · shaping_plan.* · write_request.hpp
   leak/ 全目录（12 件，约 900 行）—— 旧树 support/ 有对应喷溅件，搬入后可能整组退场
 
 连带改动（删时必须同批改的引用点，已实测）

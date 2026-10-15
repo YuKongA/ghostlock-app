@@ -44,7 +44,7 @@
 | `order-violation` | `gate_order_violation` | 「顺序/依赖不满足」 |
 | `hash-mismatch` | `gate_hash_mismatch` | 「清单哈希不匹配」 |
 | `param-invalid` | `gate_param_invalid` | 「参数类型/取值不合法」 |
-| `seam-in-pi-window` | `gate_seam_in_pi_window` | 「seam 位置非法」 |
+| `landing-in-pi-window` | `gate_landing_in_pi_window` | 「landing 位置非法」 |
 
 **L2 展示字段（`ScriptTrustView`）逐条登记**：作者 `script_author` · 来源 `script_source` · sha256 `script_sha256` · 大小 `script_size` · 原语清单 `script_primitives` · 能力 `script_caps` · 预算 `script_budget`。
 

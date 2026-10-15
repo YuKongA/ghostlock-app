@@ -97,7 +97,7 @@ namespace ghostlock::jni {
      *  Merging them into one tri-state would lose that.
      */
     struct WriteModeState final {
-        /** pselect_custom_write: 0 cleared, 1 W1, 2 W2. Set by the mode seam. */
+        /** pselect_custom_write: 0 cleared, 1 W1, 2 W2. Set by the mode landing. */
         std::int32_t pselect_custom_write = 0;
         /** pselect_child_node: preserve initialized bytes when set. Set from leaf. */
         std::int32_t pselect_child_node = 0;

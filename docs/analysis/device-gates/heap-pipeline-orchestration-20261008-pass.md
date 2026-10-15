@@ -2,7 +2,7 @@
 
 > 级别：**攻击关键路径改动**（新增编排）⇒ 按 AGENTS 需真机门禁 + 本记录 ✓
 > 设备 `QV770MFGJ1`（A301SO · Android 15 · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`）
-> 代码：`core/src/backend/cve_2026_43499/memory/{prepare_page,prepare_steps,prepare_plan,reclaim_plan,shaping_plan,page_geometry,heap_geometry,heap_seam,heap_seam_linux}.hpp|cpp`
+> 代码：`core/src/backend/cve_2026_43499/memory/{prepare_page,prepare_steps,prepare_plan,reclaim_plan,shaping_plan,page_geometry,heap_geometry,heap_ops,heap_ops_linux}.hpp|cpp`
 
 ## 1 判据与结果
 
@@ -46,9 +46,9 @@ EXIT=0
 
 ## 4 范围（证明什么 / 不证明什么）
 
-**证明** ✓：编排的**阶段顺序**、**描述符账目与回收规则**、**失败路径收尾**（含 reset / 杀子 / 归还）在**真机**上成立；seam 的每个调用在该内核可用（另见 heap seam 探针 ✓）。
+**证明** ✓：编排的**阶段顺序**、**描述符账目与回收规则**、**失败路径收尾**（含 reset / 杀子 / 归还）在**真机**上成立；landing 的每个调用在该内核可用（另见 heap landing 探针 ✓）。
 
-**不证明** ✗：① **地址搜索未实现** —— 本轮桩报“无碰撞” ⇒ 跑的是**失败路径** ✓，**成功路径在真机上尚未跑过** ✗；② `prepare_skb_payload`（页内写）与其失败路径未移植 ✗；③ fork 出的子进程在本轮**立刻 `_Exit(0)`** ✓（探针局部 seam ✓）—— 真实的子进程工作（spray/leak）未实现 ✗；④ 未做同机旧二进制对拍（仅旁证口径 ✓）。
+**不证明** ✗：① **地址搜索未实现** —— 本轮桩报“无碰撞” ⇒ 跑的是**失败路径** ✓，**成功路径在真机上尚未跑过** ✗；② `prepare_skb_payload`（页内写）与其失败路径未移植 ✗；③ fork 出的子进程在本轮**立刻 `_Exit(0)`** ✓（探针局部 landing ✓）—— 真实的子进程工作（spray/leak）未实现 ✗；④ 未做同机旧二进制对拍（仅旁证口径 ✓）。
 
 ## 5 复现命令
 

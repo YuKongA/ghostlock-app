@@ -1,6 +1,6 @@
 #pragma once
 /** @file support/log.hpp
- *  The one logging seam: a line writer with no dependencies beyond libc.
+ *  The one logging landing: a line writer with no dependencies beyond libc.
  *
  *  Why it is this small (user ruling 2026-10-14): the previous implementation pulled in spdlog, an
  *  asynchronous logger with a thread pool, formatters and sinks. The tree uses exactly one of its
@@ -86,7 +86,7 @@ namespace ghostlock::support {
         /** The message's room inside a line (after the timestamp and the level letter). */
         inline constexpr std::size_t kBodyBytes = kLineBytes - 32U;
 
-        /** The seam's whole state: opened or not, where to, and what to keep. */
+        /** The landing's whole state: opened or not, where to, and what to keep. */
         struct State final {
             std::mutex mutex{};
             std::FILE *sink = nullptr;
@@ -100,7 +100,7 @@ namespace ghostlock::support {
             return instance;
         }
 
-        /** Write one already-formatted body as a line, under the seam's mutex.
+        /** Write one already-formatted body as a line, under the landing's mutex.
          *  @note The timestamp is taken here rather than by the caller: a line's time is when it
          *        was written, not when its message was built. */
         inline void write_line(Level level, const char *body) noexcept {

@@ -34,7 +34,7 @@ TARGETS 共 6 条（每条含旧的 demangled 拼写与命名空间限定拼写�
 
 旧树 ../ghostlock-app-ref/src/core      89 文件 / 10148 行
 新树 core/src/backend/cve_2026_43499    102 文件 / 11051 行
-  逐模块：memory 2297 · leak 2172 · seam 2232 · steps 1920 · route 510 · race 455
+  逐模块：memory 2297 · leak 2172 · landing 2232 · steps 1920 · route 510 · race 455
 => 两侧规模几乎相等 —— 所以问题不在体量，在"能不能工作"。用户判定新树的不工作，故取旧树的这 6 个函数。
 
 ```
@@ -70,7 +70,7 @@ TARGETS 共 6 条（每条含旧的 demangled 拼写与命名空间限定拼写�
 ```
 
 第 1 步的删除范围：
-  (甲) 只删与这 6 个函数功能重叠的实现（memory/leak/seam/steps 里的攻击实现），保留 route 与 ABI 链
+  (甲) 只删与这 6 个函数功能重叠的实现（memory/leak/landing/steps 里的攻击实现），保留 route 与 ABI 链
   (乙) 删整个 core/src/backend/cve_2026_43499/**，连 ABI/route 一起重来
 用户原话是"把你的核心攻击代码删掉" ⇒ 字面支持 (甲)。
 => 我按 (甲) 拟，但删之前会把每条删除的引用面列给你看，不先斩后奏。
@@ -91,7 +91,7 @@ docs/analysis/config-wire-redesign-plan.md §9 P4 逐字：删 mpack/Document/�
 43499-port-six-targets-annex-scope.md（3679 B）。
 
 本节的结论两条：
-  · 删除次序：边缘件（引用 <= 2）可先删；枢纽件（引用 5-7，含 seam/multicast_route.hpp）必须替换式，
+  · 删除次序：边缘件（引用 <= 2）可先删；枢纽件（引用 5-7，含 landing/multicast_route.hpp）必须替换式，
     否则出现编不过的中间态。
   · 判据 b 的硬约束：cmp_disasm 的 MISSING 也算失败 => 不得改函数名、不得进匿名命名空间。
 ## 7. 仍待用户裁的两条（第 1、2 步开工前置）

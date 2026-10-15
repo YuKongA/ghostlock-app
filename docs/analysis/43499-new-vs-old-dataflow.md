@@ -122,7 +122,7 @@ flowchart TD
 flowchart TD
     KA["contract/kernel_access.hpp · ADR-0014<br/>脚本唯一可触<br/>AccessChannel: PiWindow/KernelModule/PageCache<br/>write64 / read64"]
     AF["pipeline/access_factory.cpp:19<br/>create(BackendId)"]
-    ACC["backend/cve_2026_43499/kernel_access.hpp<br/>class Access : KernelAccess（:65）<br/>AccessSeam（:36）<br/>Phase: NeverUp→ComingUp→Up→Down→Broken"]
+    ACC["backend/cve_2026_43499/kernel_access.hpp<br/>class Access : KernelAccess（:65）<br/>WordLanding（:36）<br/>Phase: NeverUp→ComingUp→Up→Down→Broken"]
     AP["access_params.hpp:29<br/>AccessParams: route + offset"]
     EXEC["执行层<br/>MulticastRoute + payload_page + write_encoder"]
     LEG["backend/legacy43499/（纯 C）<br/>main.c 59KB / fops.c 27KB / util.c 27KB<br/>common.h / target.h / offset.h / offsets_json.{c,h}<br/>runtime_struct_offsets.h / kernelsnitch(4 头)<br/>offsets.h 9551B + kernels/5.15.189-…（真机）"]
@@ -139,4 +139,4 @@ flowchart TD
 | # | 缺口 | 现状 | 下一步 |
 | --- | --- | --- | --- |
 | **GAP-2** | `legacy43499` 未编译 | 未进 `Makefile`；`-fsyntax-only` 两处报错 | ① `-DTARGET_CONFIG_H=` 指向 **5.15.189**；② `kernels/offsets.h:111` 仍 include `6.1.115-…` ⇒ 改指真机那份 |
-| **GAP-1** | `kernel_access` 未驱动执行层 | `Access` / `AccessSeam` 已在；`main.cpp` 直驱 | 让 `write64` 走 `do_one_write` |
+| **GAP-1** | `kernel_access` 未驱动执行层 | `Access` / `WordLanding` 已在；`main.cpp` 直驱 | 让 `write64` 走 `do_one_write` |

@@ -1,6 +1,6 @@
 /** @file tests/jni_ops_43284_test.cpp
  *  43284's op layer on the host: the sixteen-byte unit, the token, the terminal's three answers,
- *  and what the device seams are called with.
+ *  and what the device ops are called with.
  */
 #include <cstddef>
 #include <cstdint>
@@ -159,7 +159,7 @@ namespace {
         return answer.status;
     }
 
-    /** The seams a test fills in. */
+    /** The ops a test fills in. */
     struct Seams final {
         bool resolve_ok = true;
         bool write_ok = true;
@@ -183,29 +183,29 @@ namespace {
         std::size_t payload_size = 0U;
     };
 
-    bool seam_resolve(std::uint64_t, std::string_view path, std::uint64_t &token,
+    bool landing_resolve(std::uint64_t, std::string_view path, std::uint64_t &token,
                       void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        seams->last_path = path;
-        token = seams->resolve_ok ? seams->token_out : 0U;
-        return seams->resolve_ok;
+        auto *const ops = static_cast<Seams *>(context);
+        ops->last_path = path;
+        token = ops->resolve_ok ? ops->token_out : 0U;
+        return ops->resolve_ok;
     }
-    bool seam_write(std::uint64_t token, std::uint64_t offset, std::span<const std::byte> block,
+    bool landing_write(std::uint64_t token, std::uint64_t offset, std::span<const std::byte> block,
                     std::uint64_t &sequence, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        ++seams->writes;
-        seams->last_token = token;
-        seams->last_offset = offset;
-        seams->last_block = block.size();
-        if (!seams->write_ok) {
+        auto *const ops = static_cast<Seams *>(context);
+        ++ops->writes;
+        ops->last_token = token;
+        ops->last_offset = offset;
+        ops->last_block = block.size();
+        if (!ops->write_ok) {
             return false;
         }
-        sequence = seams->sequence_out;
+        sequence = ops->sequence_out;
         return true;
     }
-    bool seam_read(std::uint64_t, std::uint64_t, std::span<std::byte> block, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        if (!seams->read_ok) {
+    bool landing_read(std::uint64_t, std::uint64_t, std::span<std::byte> block, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        if (!ops->read_ok) {
             return false;
         }
         for (std::size_t i = 0U; i < block.size(); ++i) {
@@ -213,59 +213,59 @@ namespace {
         }
         return true;
     }
-    bool seam_trigger(std::uint64_t delay_ms, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        seams->last_delay = delay_ms;
-        return seams->trigger_ok;
+    bool landing_trigger(std::uint64_t delay_ms, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        ops->last_delay = delay_ms;
+        return ops->trigger_ok;
     }
-    bool seam_wait(std::uint64_t budget, std::uint64_t poll, std::string_view, TerminalState &terminal,
+    bool landing_wait(std::uint64_t budget, std::uint64_t poll, std::string_view, TerminalState &terminal,
                    void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        seams->last_budget = budget;
-        seams->last_poll = poll;
-        if (!seams->wait_ok) {
+        auto *const ops = static_cast<Seams *>(context);
+        ops->last_budget = budget;
+        ops->last_poll = poll;
+        if (!ops->wait_ok) {
             return false;
         }
-        terminal = seams->terminal;
+        terminal = ops->terminal;
         return true;
     }
-    bool seam_image(std::uint64_t role, std::span<const std::byte> &image, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        if (!seams->image_ok || role != 0U) {
+    bool landing_image(std::uint64_t role, std::span<const std::byte> &image, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        if (!ops->image_ok || role != 0U) {
             return false;
         }
-        image = std::span<const std::byte>(seams->payload, seams->payload_size);
+        image = std::span<const std::byte>(ops->payload, ops->payload_size);
         return true;
     }
-    bool seam_hook(std::uint64_t &branch, std::uint64_t &displaced, std::uint64_t &site,
+    bool landing_hook(std::uint64_t &branch, std::uint64_t &displaced, std::uint64_t &site,
                    std::uint64_t &landing, std::span<const std::byte> &payload,
                    void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        if (!seams->hook_ok) {
+        auto *const ops = static_cast<Seams *>(context);
+        if (!ops->hook_ok) {
             return false;
         }
         branch = 0x14000000ULL;
         displaced = 0xd503201fULL;
         site = 0x1234U;
         landing = 0x5678U;
-        payload = std::span<const std::byte>(seams->payload, seams->payload_size);
+        payload = std::span<const std::byte>(ops->payload, ops->payload_size);
         return true;
     }
 
-    Ops43284Seams full_seams(Seams &state) {
-        Ops43284Seams seams{};
-        seams.resolve = &seam_resolve;
-        seams.write_block = &seam_write;
-        seams.read_block = &seam_read;
-        seams.trigger = &seam_trigger;
-        seams.wait_terminal = &seam_wait;
-        seams.embedded_image = &seam_image;
-        seams.hook_words = &seam_hook;
-        seams.context = &state;
-        return seams;
+    Ops43284Seams full_ops(Seams &state) {
+        Ops43284Seams ops{};
+        ops.resolve = &landing_resolve;
+        ops.write_block = &landing_write;
+        ops.read_block = &landing_read;
+        ops.trigger = &landing_trigger;
+        ops.wait_terminal = &landing_wait;
+        ops.embedded_image = &landing_image;
+        ops.hook_words = &landing_hook;
+        ops.context = &state;
+        return ops;
     }
 
-    void an_op_without_its_seam_is_unwired_by_name() {
+    void an_op_without_its_landing_is_unwired_by_name() {
         Ops43284 ops{Ops43284Seams{}};
         Builder request;
         Answer answer;
@@ -274,7 +274,7 @@ namespace {
                                  FrameOp::HookWords}) {
             static_cast<void>(request.build(op, {{FrameKey::Mode, 1U}}, FrameKey::Bytes, {}));
             expect(run(ops, op, request.reader, answer) == FrameStatus::Unsupported,
-                   "an op without its seam is unsupported");
+                   "an op without its landing is unsupported");
             expect(answer.refusal().rfind("op-not-wired:", 0U) == 0U, "and the refusal names it");
         }
         static_cast<void>(request.build(FrameOp::WriteWord, {{FrameKey::Mode, 1U}}, FrameKey::Bytes, {}));
@@ -286,7 +286,7 @@ namespace {
 
     void a_target_is_resolved_before_any_block() {
         Seams state;
-        Ops43284 ops{full_seams(state)};
+        Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
         const std::byte block[kBlockWidth] = {};
@@ -319,12 +319,12 @@ namespace {
                "the resolve runs");
         std::uint64_t token = 0U;
         expect(answer.find(FrameKey::Token, token) && token == 0x77U, "and its token comes back");
-        expect(state.last_path == path, "the seam saw the path the caller named");
+        expect(state.last_path == path, "the landing saw the path the caller named");
     }
 
     void the_block_unit_is_exactly_sixteen_bytes() {
         Seams state;
-        Ops43284 ops{full_seams(state)};
+        Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
         const std::string_view path = "/dev/x";
@@ -360,10 +360,10 @@ namespace {
                "a sixteen-byte write at a resolved token runs");
         std::uint64_t sequence = 0U;
         expect(answer.find(FrameKey::Sequence, sequence) && sequence == 41U,
-               "and the sequence the seam left behind comes back");
+               "and the sequence the landing left behind comes back");
         expect(state.writes == 1U && state.last_token == 0x77U && state.last_offset == 32U &&
                    state.last_block == kBlockWidth,
-               "with the seam called exactly once, on the right token and offset");
+               "with the landing called exactly once, on the right token and offset");
 
         state.write_ok = false;
         static_cast<void>(request.build(FrameOp::WriteBlock,
@@ -386,7 +386,7 @@ namespace {
 
     void the_terminal_has_three_answers_and_they_are_not_interchangeable() {
         Seams state;
-        Ops43284 ops{full_seams(state)};
+        Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
 
@@ -398,7 +398,7 @@ namespace {
                                         {}));
         expect(run(ops, FrameOp::Trigger, request.reader, answer) == FrameStatus::Ok &&
                    state.last_delay == 150U,
-               "and with one, the seam sees it");
+               "and with one, the landing sees it");
 
         for (const auto pair : {std::pair<TerminalState, FrameStatus>{TerminalState::Success, FrameStatus::Ok},
                                 {TerminalState::Failure, FrameStatus::Failed},
@@ -419,7 +419,7 @@ namespace {
             }
         }
         expect(state.last_budget == 800U && state.last_poll == 10U,
-               "the wait seam saw the budget and the interval");
+               "the wait landing saw the budget and the interval");
     }
 
     void images_and_hook_words_come_back_as_bytes() {
@@ -427,7 +427,7 @@ namespace {
         const std::byte payload[4] = {std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
         state.payload = payload;
         state.payload_size = sizeof(payload);
-        Ops43284 ops{full_seams(state)};
+        Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
 
@@ -495,9 +495,9 @@ namespace {
         const std::byte payload[2] = {std::byte{9}, std::byte{9}};
         state.payload = payload;
         state.payload_size = sizeof(payload);
-        Ops43284Seams seams = full_seams(state);
+        Ops43284Seams ops = full_ops(state);
         ghostlock::jni::Session session;
-        const ghostlock::jni::BackendSeam backend{&create_quiet, &seams, &create_ops};
+        const ghostlock::jni::BackendFactory backend{&create_quiet, &ops, &create_ops};
         expect(session.open(43284U, backend, 1U), "the session opens on the quiet backend");
         Builder request;
         Answer answer;
@@ -516,8 +516,8 @@ namespace {
 }  // namespace
 
 int main() {
-    std::printf("jni ops 43284: unwired seams\n");
-    an_op_without_its_seam_is_unwired_by_name();
+    std::printf("jni ops 43284: unwired ops\n");
+    an_op_without_its_landing_is_unwired_by_name();
     std::printf("jni ops 43284: resolve\n");
     a_target_is_resolved_before_any_block();
     std::printf("jni ops 43284: block unit\n");
@@ -532,6 +532,6 @@ int main() {
         std::printf("jni ops 43284: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("jni ops 43284: PASS (width, token, terminal, seam arguments)\n");
+    std::printf("jni ops 43284: PASS (width, token, terminal, landing arguments)\n");
     return 0;
 }

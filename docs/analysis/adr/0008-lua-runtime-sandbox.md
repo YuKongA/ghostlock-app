@@ -34,7 +34,7 @@
 4. **预算与上限**：`lua_sethook(L, hook, LUA_MASKCOUNT, N)` ⇒ **指令预算** · `lua_setallocf` ⇒ **内存硬上限** · 栈深限制 · **单脚本 ≤64 KB** · 脚本**只在窗口外/操作之间**运行。
 5. **wire 承载**：脚本正文 **>256 B**（`kMaxStringBytes`）⇒ **必须走 `bin` 键**，`width` 导出为 `-`；**仅脚本键放开**（其余键仍拒）；同批改 `profile_manifest_v3_test.cpp` 的 `width_column`:165 与 `check_width_matches_wire`:186、重导双副本、重冻 golden。
 6. **类型化句柄**（D30）：`{kind, index, generation}` · **有界 64** · 探针产生 · 按 kind 校验 ⇒ **脚本无法伪造地址**。
-7. **gate 位置**：`plan_gate` 在 `state_from` 之后、`Backend::run` 之前；**10 条静态原因**（含 `executor-unavailable`）（unknown-op / op-not-available / route-not-available / geometry-missing / capability-missing / order-violation / hash-mismatch / param-invalid / seam-in-pi-window）；`dirty-failure` 属**运行期终止语义**，不进 gate。
+7. **gate 位置**：`plan_gate` 在 `state_from` 之后、`Backend::run` 之前；**10 条静态原因**（含 `executor-unavailable`）（unknown-op / op-not-available / route-not-available / geometry-missing / capability-missing / order-violation / hash-mismatch / param-invalid / landing-in-pi-window）；`dirty-failure` 属**运行期终止语义**，不进 gate。
 8. **`-fno-rtti` 保持**；Lua 只在**窗口外**被调用（绑定层落 `script/`，登记为受限层）。
 
 > **旧树引用说明**：本 ADR 中 `glkv3.hpp:`/`plan_gate`/`state_from`/`Backend::run` 等 `file:line` 属**历史引用**（文件已随 v2 的 `core/src` 重写作废）；语义仍作设计输入，位置以 A1/A6 新树为准。

@@ -1,7 +1,7 @@
 # 43499 route 执行体 · 批次计划（L 级 · 待认可）
 
 > 关系：与 `43499-prepare-step-plan.md`（准备阶段，已 status=ok）**互补不重复**；本批＝进度文档里的「**序 1 接线**」。
-> **修正（2026-10-11）**：初稿写"缺 controller/写路径"**不成立** —— B1 已交付引擎 `seam/multicast_route*`，
+> **修正（2026-10-11）**：初稿写"缺 controller/写路径"**不成立** —— B1 已交付引擎 `landing/multicast_route*`，
 > 其 `MulticastRoute::execute()` 注释明写 *"starts the three actors, performs the requeue"*。故本批**范围缩小为接线**。
 
 ## 一、目标（简）

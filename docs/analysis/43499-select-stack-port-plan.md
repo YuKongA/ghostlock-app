@@ -12,8 +12,8 @@
 
 | # | 文件 | 动作 |
 | --- | --- | --- |
-| 1 | `core/src/backend/cve_2026_43499/seam/select_stack_route.hpp` | 新增：`SelectStackRoute<Ops>`（照 `MulticastRoute` 的形状：`execute` / `report` / 三演员 ✓） |
-| 2 | `…/seam/select_stack_route_linux.hpp` | 新增：ops（socket/select 相关 syscall ✓，与 `LinuxRouteOps` 同风格 ✓） |
+| 1 | `core/src/backend/cve_2026_43499/landing/select_stack_route.hpp` | 新增：`SelectStackRoute<Ops>`（照 `MulticastRoute` 的形状：`execute` / `report` / 三演员 ✓） |
+| 2 | `…/landing/select_stack_route_linux.hpp` | 新增：ops（socket/select 相关 syscall ✓，与 `LinuxRouteOps` 同风格 ✓） |
 | 3 | `main.cpp` 路由选择处 | 现在报 `route-not-ported` ✗ ⇒ 接上（保持"未移植即具名拒绝" ✓ 的既有风格 ✓） |
 | 4 | 夹具 | 新增 `available.cve_2026_43499.route = "select_stack"` 的一份 + 该 route 的键集（形状照 multicast ✓） |
 | 5 | `procedures/` | 一份 `select_stack` 的窗口 Lua（照 `43499_window.lua` ✓，步骤名按该 route 的语义 ✓） |

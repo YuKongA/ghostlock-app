@@ -4,7 +4,7 @@
 
 ```
 ① **构建时：完全不区分** ✓
-   `Access() = default` 或 `Access(AccessSeam*, const TargetState*)` ✓
+   `Access() = default` 或 `Access(WordLanding*, const TargetState*)` ✓
    逐字：「**Construction decides nothing and takes nothing**」⇒ 构造时没有 route 概念 ✓
 
 ② **初始化时：从参数里读** ✓✓
@@ -12,8 +12,8 @@
    if (params == nullptr || !params->usable_for_initialize()) ⇒ **BadParameters** ✓
    而 `usable_for_initialize()` 逐字：`return **route != profile::RouteId::Unset**;` ✓✓
    ⇒ ⇒ **⇒ 唯一判据 = "route 已被指定"**（`Unset` ⇒ 具名拒绝 ✓）
-   随后：`route_ = params->route;` → `seam_->bring_up(route_, *target_)` ✓
-   ⇒ ⇒ **⇒ 真正的"区分"发生在 seam 内部**（route 只是被**转交** ✓）
+   随后：`route_ = params->route;` → `ops_->bring_up(route_, *target_)` ✓
+   ⇒ ⇒ **⇒ 真正的"区分"发生在 landing 内部**（route 只是被**转交** ✓）
 
 ③ **写时：不再提 route** ✓
    `usable_for_access()` 逐字：`usable_for_initialize() && **offset_set**` ✓
@@ -70,7 +70,7 @@ ref（ghostlock-app-ref/src/core/route/）：
   · `route_lifecycle.hpp` 是 **concept**（编译期 ✓）—— 逐字：「no vtable or indirect dispatch
     may enter the path」（因生命周期在 **PI race 窗口内** ✓）
   · 三个 route 并列：`multicast_waiter_route.cpp` / `select_stack_route.cpp` / `tcp_zerocopy_route.cpp` ✓
-⇒ ⇒ **⇒ 本树的 `RouteId` ＋ `seam_->bring_up(route_, target)` 与 ref 的"策略分派"同构** ✓
-   ⇒ ⇒ ⇒ **⇒ 接入时：seam 内部按 `RouteId` 分派到具体 route 实现 ✓，且**窗口内用非虚**（照抄
+⇒ ⇒ **⇒ 本树的 `RouteId` ＋ `ops_->bring_up(route_, target)` 与 ref 的"策略分派"同构** ✓
+   ⇒ ⇒ ⇒ **⇒ 接入时：landing 内部按 `RouteId` 分派到具体 route 实现 ✓，且**窗口内用非虚**（照抄
       `run_route_lifecycle` 的 concept 写法 ✓）**
 ```

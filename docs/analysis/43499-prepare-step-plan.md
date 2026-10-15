@@ -15,7 +15,7 @@
 3. 发现：`leak/snitch_policy` → `leak/snitch_run` → `leak/snitch_scan` → `leak/snitch_discovery`（配合 `leak/futex_hash`、`collision_*`、`candidate_match`）
 4. 区域与边界：`leak/snitch_region` → `leak/scan_geometry` → `leak/scan_bounds` → `leak/leak_walk`
 5. 回收与整形：`memory/reclaim_plan` → `memory/prepare_plan` → `memory/prepare_page`
-6. 武装：`memory/multicast_arm`（`check_geometry` → `encode_multicast_arm`）+ `seam/multicast_route_linux`（真正把 datagram 交出去）
+6. 武装：`memory/multicast_arm`（`check_geometry` → `encode_multicast_arm`）+ `landing/multicast_route_linux`（真正把 datagram 交出去）
 7. 产出：两个 futex 字（`chain`/`target`）与守卫；交给 `window_runner`。
 
 参考实现（**不是**可照搬的成品，是串法的参照）：`core/src/pipeline/run_pipeline_temp.cpp`（1120 行，含 plan/gate 与门拼装）。

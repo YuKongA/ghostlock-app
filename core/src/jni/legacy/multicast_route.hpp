@@ -21,7 +21,7 @@
  *      hardcoded offset inside a core function is exactly the kind of decision that belongs
  *      to the caller;
  *    3 the entry no longer takes a WriteRequest it ignores. The retired signature carried one
- *      and immediately wrote (void) request; -- see the note in seam/multicast_window.hpp,
+ *      and immediately wrote (void) request; -- see the note in landing/multicast_window.hpp,
  *      "The route body receives that request and ignores it". A parameter that is always
  *      discarded is not a parameter, so it is gone.
  *

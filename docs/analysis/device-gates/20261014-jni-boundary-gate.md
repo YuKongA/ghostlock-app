@@ -45,14 +45,14 @@ adb logcat -d -s GhostlockGate:I
 |---|---|---|
 | `open ok handle=positive` | 库在真机上加载、GLKJ 建帧被 native 接受、句柄=（索引,代）发得出来 | J1 §3.1 建会话 |
 | `snapshot ... phase=0 backend=43499 flags=0x801 width=8` | Snapshot 真实现：phase 由会话状态机发布；`0x801`=PI 窗口能力位(0x1)+宽度位(8<<8) | J2 状态机 / J3a 描述符 |
-| `write_word ... unsupported refusal=op-not-wired:write_word` | 设备 seam 未接线时，写 op **具名**拒绝（不是沉默、不是成功） | J3a §3.3 规则 1/5 |
+| `write_word ... unsupported refusal=op-not-wired:write_word` | 设备 landing 未接线时，写 op **具名**拒绝（不是沉默、不是成功） | J3a §3.3 规则 1/5 |
 | `write_block ... refusal=op-not-wired:write_block` | 同上，且两个 backend 各自路由到自己的拒绝名 | J4a |
 | `initialize ... call-failed refusal=bad-parameters` | 真后端以**空参数集**被调用时按名拒绝（参数面 J3b/J4b 才接） | J2 的 Initialize 诚实标注 |
 | `closed` ×2 | shutdown+destroy 走通且幂等；关掉后会话不再被使用 | J2 生命周期 |
 
 ## 边界（这份证据**不**证明什么）
 
-- 不证明任何写原语：`write_word`/`write_block` 在真机上的答案是 `op-not-wired`，因为设备 seam（J3b/J4b）尚未实现。
+- 不证明任何写原语：`write_word`/`write_block` 在真机上的答案是 `op-not-wired`，因为设备 landing（J3b/J4b）尚未实现。
 - 不证明 root、不证明 KernelSU 可加载、不证明 LKM：本门禁只走边界与拒绝面。
 - 不证明 43284 的 SA/门/sequence：那条链需要会话帧与设备侧 splice 栈（J4b）。
 
@@ -61,8 +61,8 @@ adb logcat -d -s GhostlockGate:I
 ## 第二次门禁：43284 的数据 op（J4b 的第一片）· 2026-10-14 20:13
 
 同一条命令链（assembleDebug → adb install -r → am start → logcat -s GhostlockGate:I）。
-这一批把 43284 的两个**不需要设备**的 seam 接上：`EmbeddedImage`（本构建自带的两张图）与
-`HookWords`（sentry 计划的两个词与两个偏移）。其余 seam（门/splice/ESP/双 fork/终态等待）仍为 null ⇒
+这一批把 43284 的两个**不需要设备**的 landing 接上：`EmbeddedImage`（本构建自带的两张图）与
+`HookWords`（sentry 计划的两个词与两个偏移）。其余 landing（门/splice/ESP/双 fork/终态等待）仍为 null ⇒
 仍旧 `op-not-wired`。
 
 ### 判据：真机日志 vs 宿主/清单（同一份字节）

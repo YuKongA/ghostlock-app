@@ -11,12 +11,12 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43284::SaMaterial;
-    using ghostlock::backend::cve_2026_43284::seam::kDoorPathBytes;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheDoorLinux;
+    using ghostlock::backend::cve_2026_43284::landing::kDoorPathBytes;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheDoorLinux;
 
     std::size_t g_failures = 0U;
 

@@ -21,7 +21,7 @@ namespace ghostlock::jni {
         }
     }
 
-    bool Session::open(std::uint64_t backend_id, const BackendSeam &seam,
+    bool Session::open(std::uint64_t backend_id, const BackendFactory &landing,
                        std::uint32_t generation) noexcept {
         if (opened_) {
             return false;
@@ -29,13 +29,13 @@ namespace ghostlock::jni {
         opened_ = true;
         backend_id_ = backend_id;
         generation_ = generation;
-        if (seam.create == nullptr) {
+        if (landing.create == nullptr) {
             phase_ = SessionPhase::Failed;
             return false;
         }
-        access_ = seam.create(backend_id, seam.context);
-        if (seam.create_ops != nullptr) {
-            ops_ = seam.create_ops(backend_id, seam.context);
+        access_ = landing.create(backend_id, landing.context);
+        if (landing.create_ops != nullptr) {
+            ops_ = landing.create_ops(backend_id, landing.context);
         }
         if (access_ == nullptr) {
             /* Asked for a backend this build does not have. Not a crash and not a stand-in. */

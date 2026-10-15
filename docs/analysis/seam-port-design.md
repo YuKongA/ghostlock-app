@@ -27,7 +27,7 @@
 
 ## 4 首批范围（先打通一条 route）
 
-1. 新件 `backend/cve_2026_43499/seam/multicast_seam.{hpp,cpp}`（**只做一条**）
+1. 新件 `backend/cve_2026_43499/landing/multicast_landing.{hpp,cpp}`（**只做一条**）
 2. `bring_up` = 旧 bootstrap 的两步（去 profile 取值）
 3. `land_word` = 构造 `WriteRequest` → `do_multicast_fake_lock_route`（从旧树**按行**搬，不带全局）
 4. host 测：一个**假窗口**（不真写）验「参数 → WriteRequest → route 调用」的字段一致性
@@ -54,7 +54,7 @@
 
 **验收（每片都要满足）**：host 构建 0 告警 · `make -C core check` 绿 · 不引入任何可变全局 · 缝的测试保持绿（它钉的是决策，不应因窗口变真而改）
 
-> 第二个 backend（43284）的实测规模、写面、上下文与耦合数：见同目录 `seam-port-design-43284.md`。
+> 第二个 backend（43284）的实测规模、写面、上下文与耦合数：见同目录 `landing-port-design-43284.md`。
 
 ## 11 三件待裁：Lead 的裁定（据证据，不等指令）
 
@@ -76,4 +76,4 @@
 
 裁定：**缝的形状不变**（`Window::write_word(address, value, offset)` 仍然对），**变的只是谁实现它** —— 实现者要落到 **race 侧那次写**（它持有 address/value 与 fake lock 的原语），而**不是**调 `do_multicast_fake_lock_route`。⇒ 我 §4.3 的那句就此作废（本节即其更正），切片 2 的取材目标是 **race 侧的写路径**。
 
-> 43499 侧的控制器与路线派发（§12–§15）与两处更正（§13、§16）：见同目录 `seam-port-design-43499.md`。
+> 43499 侧的控制器与路线派发（§12–§15）与两处更正（§13、§16）：见同目录 `landing-port-design-43499.md`。

@@ -20,7 +20,7 @@ class GateMirror(private val snapshot: KernelSnapshot)   // K-7：快照来源�
 data class HandoffPlan(val tree: ProfileTree, val scripts: List<ScriptRef>,
                        val trust: List<ScriptTrustView>)
 data class PlanItem(val backend: String?, val op: String, val route: String?,
-                    val seam: String?, val stage: String?,
+                    val landing: String?, val stage: String?,
                     val always: Boolean, val attempts: Int)
 data class ScriptRef(val id: String, val sha256: String, val bytes: ByteArray)
 data class ModuleRef(val path: String, val sha256: String, val requireBypass: Boolean)
@@ -45,7 +45,7 @@ data class ScriptTrustView(val author: String?, val source: String?, val sha256:
 queue = [
   { backend = "cve_2026_43499", op = "write.selinux", route = "tcp_zerocopy" },
   { op = "write.cred", route = "tcp_zerocopy" },   # backend 缺省 ⇒ 根 backend
-  { backend = "cve_2026_43499", seam = "plugin", stage = "init" },    # 只在条目之间
+  { backend = "cve_2026_43499", landing = "plugin", stage = "init" },    # 只在条目之间
   { backend = "cve_2026_43499", op = "write.seccomp.flags", route = "select_stack" },
   { backend = "cve_2026_43499", op = "write.seccomp.mode", route = "select_stack", attempts = 2 }
 ]
@@ -56,13 +56,13 @@ queue = [
 | `backend` | str? | 缺省 = 根 backend；必须 ∈ 已声明 owner |
 | `op` | str | ∈ `OpRegistry`（b1b2 §B1.1）；**字面量/常量表**（D28 约定，非门禁） |
 | `route` | str? | ⊆ 该 op 的 routes；缺省 = op 默认 route |
-| `seam` / `stage` | str? | **只在操作之间**；`seam` 取值即标识（合法值 `plugin`）；`stage` ∈ 合法集合 |
+| `landing` / `stage` | str? | **只在操作之间**；`landing` 取值即标识（合法值 `plugin`）；`stage` ∈ 合法集合 |
 | `always` | bool? | **条目属性**；仅脚本条目可用 |
 | `attempts` | int? | ≥1；缺省取 op 默认（D5） |
 
 - **PL 不变仅限 params**（不为参数加白名单键）；**payload 键需在解冻批次为两个 `Backend*Keys` 增 `payload` + 对拍**：触点 `ProfileLayout.kt:182-183`/`:190`（白名单）、`:620`/`:650`（`requireKeys`）、`:342`→`:1037-1038`（fail-closed）；对拍见 [verification](handoff-payload-verification.md)。
 - **R2**：既有 manifest 行不变、payload 键按新行补充；成员表权威见 [queue-schema](handoff-payload-queue-schema.md) §3（镜像 + 对拍）。
-- 解析触点/成员表/键数上限（**`id` 已删、折进 `seam` 取值**；`kMaxMapMembers`=**12**（合并口径，见 [queue-schema](handoff-payload-queue-schema.md) §2））：`glkv3_parse.cpp:151-202`、`document.hpp:55-98`；细则见 [queue-schema](handoff-payload-queue-schema.md)。
+- 解析触点/成员表/键数上限（**`id` 已删、折进 `landing` 取值**；`kMaxMapMembers`=**12**（合并口径，见 [queue-schema](handoff-payload-queue-schema.md) §2））：`glkv3_parse.cpp:151-202`、`document.hpp:55-98`；细则见 [queue-schema](handoff-payload-queue-schema.md)。
 - **R7**：`ProfileValue` 不需要 `Map` 变体（元素只含扁平标量键）。
 
 ## 4. 脚本上 wire（内联 + presence-gated + 落盘归 native）

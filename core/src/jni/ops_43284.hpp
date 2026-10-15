@@ -1,17 +1,17 @@
 #pragma once
 /** @file jni/ops_43284.hpp
- *  43284's ops: the page-cache chain's boundary half, over seams.
+ *  43284's ops: the page-cache chain's boundary half, over ops.
  *
  *  Same split as the other backend (J3a/J3b in docs/analysis/jni-two-backend-plan.md): the rules
  *  that can be decided and tested on the host live here -- the sixteen-byte width, the token a
- *  resolved target hands out, which refusal each failure gets, and what the device seams are called
+ *  resolved target hands out, which refusal each failure gets, and what the device ops are called
  *  with -- while the device work (the door, the splice surface, the ESP frame, the double fork, the
  *  terminal wait) arrives as function pointers and is implemented on a device.
  *
  *  Two things this unit deliberately does NOT own:
  *   - the sequence. It belongs to the security association, and a window that restarted at one had
  *     every datagram dropped by the kernel's inbound anti-replay window. The boundary keeps the
- *     value the seam returned and hands it back on the next call; who advances it is the seam.
+ *     value the landing returned and hands it back on the next call; who advances it is the landing.
  *   - the crypto. The keys are the credentials' business; this layer never sees them.
  */
 #include <cstdint>
@@ -25,7 +25,7 @@ namespace ghostlock::jni {
     /** The block width this backend transfers: one AES-CBC block, sixteen bytes. */
     inline constexpr std::size_t kBlockWidth = 16U;
 
-    /** What a step's own role names. The names travel in the frame; the seam maps them to paths. */
+    /** What a step's own role names. The names travel in the frame; the landing maps them to paths. */
     enum class TargetRole : std::uint64_t {
         Patch1 = 1,   /**< the helper image's target (the bridge's entry). */
         Carrier = 2,  /**< the file the module image is written into. */
@@ -85,12 +85,12 @@ namespace ghostlock::jni {
     /** The flags Snapshot's Flags entry publishes for this backend's facts. */
     inline constexpr std::uint64_t kFactResolved = 1U << 19U;
 
-    /** The device work, as function pointers. A null seam makes its op "not wired" by name. */
+    /** The device work, as function pointers. A null landing makes its op "not wired" by name. */
     struct Ops43284Seams final {
         /** Bind one door to one role's path and answer a token. */
         bool (*resolve)(std::uint64_t role, std::string_view path, std::uint64_t &token,
                         void *context) noexcept = nullptr;
-        /** Write one sixteen-byte block at @p offset through @p token; the seam advances sequence. */
+        /** Write one sixteen-byte block at @p offset through @p token; the landing advances sequence. */
         bool (*write_block)(std::uint64_t token, std::uint64_t offset, std::span<const std::byte> block,
                             std::uint64_t &sequence, void *context) noexcept = nullptr;
         /** Read one sixteen-byte block back. False means this route cannot read (or failed). */
@@ -111,11 +111,11 @@ namespace ghostlock::jni {
         void *context = nullptr;
     };
 
-    /** 43284's ops, over the seams. One instance per session; the session owns it. */
+    /** 43284's ops, over the ops. One instance per session; the session owns it. */
     class Ops43284 final {
       public:
         Ops43284() noexcept = default;
-        explicit Ops43284(Ops43284Seams seams) noexcept : seams_(seams) {}
+        explicit Ops43284(Ops43284Seams ops) noexcept : ops_(ops) {}
 
         [[nodiscard]] FrameStatus handle(FrameOp op, const FrameReader &request,
                                          FrameWriter &reply) noexcept;
@@ -131,21 +131,21 @@ namespace ghostlock::jni {
         [[nodiscard]] FrameStatus on_embedded_image(const FrameReader &request, FrameWriter &reply) noexcept;
         [[nodiscard]] FrameStatus on_hook_words(const FrameReader &request, FrameWriter &reply) noexcept;
 
-        Ops43284Seams seams_{};
+        Ops43284Seams ops_{};
         Facts43284 facts_{};
     };
 
     /**
      *  Build this backend's ops as the session's bundle.
      *
-     *  @param seams the device work; an empty seam makes its op answer "op-not-wired".
+     *  @param ops the device work; an empty landing makes its op answer "op-not-wired".
      */
-    [[nodiscard]] BackendOps make_ops_43284(Ops43284Seams seams) noexcept;
+    [[nodiscard]] BackendOps make_ops_43284(Ops43284Seams ops) noexcept;
 
     /**
-     *  The seams this build serves without a device: the bytes it carries and the hook plan it
+     *  The ops this build serves without a device: the bytes it carries and the hook plan it
      *  was built for. Everything else (door, splice, ESP, fork, wait) stays null and answers
      *  op-not-wired until J4b implements it against a device.
      */
-    [[nodiscard]] Ops43284Seams device_seams_43284() noexcept;
+    [[nodiscard]] Ops43284Seams device_landings_43284() noexcept;
 }  // namespace ghostlock::jni

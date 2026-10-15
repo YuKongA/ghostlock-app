@@ -22,8 +22,8 @@
 | 能力名（L2） | 语义一句 | 实现件（绑定列 ✓） | 已实现 |
 |---|---|---|---|
 | `futex_collision_search` | 用 futex 碰撞在地址范围内找出对象 ✓ | `backend/cve_2026_43499/leak/`（走查 + 哈希 + 计数 ✓） | ✓（真机取证 ✓） |
-| `kernel_page_prepare` | 为一次写准备好内核页与其承载 ✓ | `backend/cve_2026_43499/memory/`（页/堆几何 + 计划 + 双 seam ✓） | ✓（真机取证 ✓） |
+| `kernel_page_prepare` | 为一次写准备好内核页与其承载 ✓ | `backend/cve_2026_43499/memory/`（页/堆几何 + 计划 + 双 landing ✓） | ✓（真机取证 ✓） |
 | `arbitrary_write` | 在给定内核地址上落一次写 ✓ | 写请求 + 写编码 + 写布局 ✓（**动作本体未落** ✗） | ✗ |
-| `perf_task_sampling` | 用采样找 task ✓ | `perf_ring` / `perf_vote` / `perf_seam` ✓ | **本设备不可用** ✗（寄存器组不投递 ✓ —— 运行期事实 ✓） |
+| `perf_task_sampling` | 用采样找 task ✓ | `perf_ring` / `perf_vote` / `perf_ops` ✓ | **本设备不可用** ✗（寄存器组不投递 ✓ —— 运行期事实 ✓） |
 
 ⇒ 表本身就是**首版输入** ✓：名称 ↔ 实现件由**断言**绑定 ✓（改名即编译失败 ✓）；「已实现」是**静态**列 ✓，「本设备可用」**不在此表** ✓（属运行期 ✓，按 §3b 判定 ✓）。

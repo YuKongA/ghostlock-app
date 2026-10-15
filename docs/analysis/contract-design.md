@@ -1281,7 +1281,7 @@ payload 是**新顶层 owner** ⇒ 同批更新：
 
 **与两轴论述的关系**：§3.18 的「stepset = 跑哪些 W 阶段 / frontend·terminal = 谁接管」**继续成立**；队列描述的就是「跑哪些步骤」，因此**更贴合 stepset 轴的本义**，也回避了「用 path 名命名 stepset」的矛盾（43284 一 × 三 path 的硬证据见 §3.18）。
 
-## 3.20 步骤队列：选择面、route、seam 与支持面（**设计已定稿 2026-10-06**）
+## 3.20 步骤队列：选择面、route、landing 与支持面（**设计已定稿 2026-10-06**）
 
 > **权威**：`docs/archive/README.md（已归档设计稿索引）`（**v2.2 = `aec777a9`，定稿**；沿革：v1 = `e150eb2b`、v2.1 = `2b6c3f13`）。**本节规则以 v2.2 为准**（v2.2 并入 U5/U9/U10 三条结论 + S16/S17/S18 守卫）。**本节只登记已定稿规则**；字段语义、诊断文本、改动清单**一律引用设计稿小节，不复制**（一处权威）。**实现分 M1–M5 批次**（见计划条目）；**M1 与本批文档同批提交 = `bcb94253`**（步骤目录 + 编译期注册 + S5 具名诊断 + 两张 manifest 守卫），**M1.1 归一化纯函数 = `2760a599`**（`contract/step_plan.hpp`，24 个 reason token 钉死、生产 0 接线），**M2 进行中（`native-hocon`）**。
 
@@ -1294,13 +1294,13 @@ available {
     queue = [ { step = "w1" }, { step = "w2" }, { step = "w3" } ]
   }
   cve_2026_43284 {
-    queue = [ { step = "pagecache_write" }, { seam = "plugin", stage = "post_terminal" } ]
+    queue = [ { step = "pagecache_write" }, { landing = "plugin", stage = "post_terminal" } ]
   }
 }
 ```
 
 - **队列取代 token**；**键名 `queue` 确定**；wire 形态 = **array of map**，**HOCON 与 wire 同形**（`{step:"w1"}` ⇒ `{step:"w1"}`，**不做降级映射**；设计稿 §4.5 / §5-Q1）；
-- **元素形态唯一 = 对象数组（B，U9 裁决）**：只有 `{ step = "<id>" }` 与 `{ seam = "<type>", stage = "<stage>" }` 两种；**纯数组（A）不保留**——纯字符串元素/非 map 元素 ⇒ **拒绝** `queue-element-not-object at=<i>`（**可读性交给 UI 预设按钮**，由 App 展开成对象数组再发射；**native 只认对象数组**，不引入第二种 wire 表示）；`params` **预留但未实现（U10 裁决）** ⇒ **拒绝，但报具名 reserved 而非 unknown**：`params-reserved-for-future-step-parameters at=<i>`；契约与 manifest 文档行写明「**reserved, not implemented**」（设计稿 §5.0 / §5-Q1 / §11-U9/U10）；
+- **元素形态唯一 = 对象数组（B，U9 裁决）**：只有 `{ step = "<id>" }` 与 `{ landing = "<type>", stage = "<stage>" }` 两种；**纯数组（A）不保留**——纯字符串元素/非 map 元素 ⇒ **拒绝** `queue-element-not-object at=<i>`（**可读性交给 UI 预设按钮**，由 App 展开成对象数组再发射；**native 只认对象数组**，不引入第二种 wire 表示）；`params` **预留但未实现（U10 裁决）** ⇒ **拒绝，但报具名 reserved 而非 unknown**：`params-reserved-for-future-step-parameters at=<i>`；契约与 manifest 文档行写明「**reserved, not implemented**」（设计稿 §5.0 / §5-Q1 / §11-U9/U10）；
 - **沿革（保留）**：旧「token 两级选择」被取代（**理由：HOCON 可读性**）；「点分索引键」形态**已被用户否决**。
 
 **route：只在队列级（设计稿 §5-Q2，v2.1 = D2′）**
@@ -1316,12 +1316,12 @@ available {
 
 **canonical 分离与唯一映射点（2026-10-06 落地 = `4c20142f`）**：canonical 里队列级 route 走 **`queue_route`（str，canonical-only 键）**，**几何 Map `route` 一律不覆盖**；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → **wire 键仍是 `route`**；**无几何时直接用 `route`**；**两者同时为 str ⇒ fail-closed「refusing to pick a precedence」**）；`ProfileLayout.validateAvailable` **双形态**（列表零破坏 / 对象 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }`，五类拒绝）；**回显只认「与 `available` 声明逐值相等」**（手工只在 `backend.<id>` 写 ⇒ 未知键拒绝）。**沿革**：`route` 撞键会在写入时**静默覆盖几何 Map ⇒ 68 资产几何归零**，故必须先分离。**M4 待办（必做）**：`NativeProfileDocument.from()` 缺 accessor ⇒ **声明 `queue` 的 profile 目前不会把 queue 发上 wire**（连同 `app/src/main/.../Profile.kt` 调用点，M4 修）。
 
-**seam：纯占位（设计稿 §5-Q3）**
+**landing：纯占位（设计稿 §5-Q3）**
 
-- **语法**：`{ seam = "plugin", stage = "<stage>" }`（`stage` 必填；`plugin` 是 seam 类型保留名）；
+- **语法**：`{ landing = "plugin", stage = "<stage>" }`（`stage` 必填；`plugin` 是 landing 类型保留名）；
 - **阶段词汇 = 单一权威**：**复用冻结插件设计**已定义的 `pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`（来源：`plugin.<id>.stage`，契约 §3.14.7 与 `plugin/schema.hpp`），**不新造第二套**；
-- **R1 位置约束**：seam 合法位置**只有两类**——队列**之前**（= `pre_spawn`）与终态/驻留窗口**之后**（= `post_terminal`）；落在 `[w1..w3]` 区间内 ⇒ **拒绝** `seam-stage-illegal`（`allowed=[pre_spawn,post_terminal]`）；`stage` 必须与**位置推导的阶段**一致（显式声明 + 交叉校验）；
-- **实现仍冻结**：队列侧**只校验，不加载、不映射** `.so`；将来解冻用扩展键 `{ seam = "plugin", plugin = "<id>" }`，**不改位置/阶段语法**。
+- **R1 位置约束**：landing 合法位置**只有两类**——队列**之前**（= `pre_spawn`）与终态/驻留窗口**之后**（= `post_terminal`）；落在 `[w1..w3]` 区间内 ⇒ **拒绝** `landing-stage-illegal`（`allowed=[pre_spawn,post_terminal]`）；`stage` 必须与**位置推导的阶段**一致（显式声明 + 交叉校验）；
+- **实现仍冻结**：队列侧**只校验，不加载、不映射** `.so`；将来解冻用扩展键 `{ landing = "plugin", plugin = "<id>" }`，**不改位置/阶段语法**。
 
 **支持面判定（设计稿 §4.3 + §11-U5）**
 

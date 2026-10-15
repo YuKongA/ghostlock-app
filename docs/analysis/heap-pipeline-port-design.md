@@ -50,13 +50,13 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 | `align_base` | 对齐（几何来自 profile ✓） | 拟建 |
 | `shaping_plan` | 要开的 socket 对与参数（几何 ✓） | 拟建 |
 
-### 2.2 系统调用面（seam ✓）
+### 2.2 系统调用面（landing ✓）
 
-`heap_seam_linux.hpp`：`clone_child` / `open_memfd` / `socketpair` / `setsockopt` / `fcntl` / `sendmsg` / `close` / `kill_child` / `sched_yield` / `pin_to_core` ✓ —— **薄边，不含决策** ✗；主机用假 seam 全覆盖 ✓。
+`heap_ops_linux.hpp`：`clone_child` / `open_memfd` / `socketpair` / `setsockopt` / `fcntl` / `sendmsg` / `close` / `kill_child` / `sched_yield` / `pin_to_core` ✓ —— **薄边，不含决策** ✗；主机用假 landing 全覆盖 ✓。
 
 ### 2.3 编排
 
-`prepare_page`：按 `prepare_steps` 的顺序调用决策面与 seam ✓ —— **顺序本身是机制** ✓；**失败路径显式建模**（§1 第二张表 ✓）。
+`prepare_page`：按 `prepare_steps` 的顺序调用决策面与 landing ✓ —— **顺序本身是机制** ✓；**失败路径显式建模**（§1 第二张表 ✓）。
 
 ### 2.4 状态
 
@@ -73,7 +73,7 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 
 | 量 | 含义 | 用途 | 来源 |
 |---|---|---|---|
-| `kernel_page_size` | 设备**内核页尺寸**（4 KiB / 16 KiB ✓） | **校验用** ✓ | seam 实测 ✓ |
+| `kernel_page_size` | 设备**内核页尺寸**（4 KiB / 16 KiB ✓） | **校验用** ✓ | landing 实测 ✓ |
 | `align_region_size` | = `kernel_page_size << MM_ORDER` ✓ | **向下取整用** ✓（`align_base` ✓） | 由上一量派生 ✓ |
 
 ⇒ 校验写成 **`align_region_size == kernel_page_size << MM_ORDER`** ✓（方向不再含糊 ✓）；落地件 `page_geometry.hpp` 的字段已改名 **`align_region_size`** ✓ 并在注释里并列写明两量与关系 ✓。
@@ -83,7 +83,7 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 | 情形 | 拒绝 | 分工 |
 |---|---|---|
 | **值非法**（0 / 非 2 的幂 / 越界 ✓） | **`param-invalid`** ✓ | 落地件现状 ✓（`geometry_is_usable` ✓） |
-| **缺失或不一致**（键缺 ✓ / 与设备页尺寸不符 ✓） | **`geometry-missing`** ✓ | **与常量同批落地** ✓；其证伪 = seam 的 `page_size()` 返回 8192 而常量按 4096 派生 ⇒ 必须 `geometry-missing` ✓，控制组 4096 ⇒ CHECK=0 ✓ |
+| **缺失或不一致**（键缺 ✓ / 与设备页尺寸不符 ✓） | **`geometry-missing`** ✓ | **与常量同批落地** ✓；其证伪 = landing 的 `page_size()` 返回 8192 而常量按 4096 派生 ⇒ 必须 `geometry-missing` ✓，控制组 4096 ⇒ CHECK=0 ✓ |
 | **mm_struct 尺寸**（K3 裁定 ✓ · 随内核配置变化 ✓） | `backend.cve_2026_43499.abi.mm_struct.size` ✓（沿既有 `abi.*` owner 路径 ✓）· **删除兜底** ✓（旧树 `mm_struct_stride(fallback)` 的形态随旧政策作废 ✓ —— 实测某 profile 声明 `0x580` 而兜底 `0x500` ✓） | 缺键 ⇒ **`geometry-missing`** ✓（几何类 ✓；与调参类 `tuning-missing` 的分工 = 几何/偏移 vs 数量/超时 ✓） |
 
 **派生**：`mm_objs_per_slab = ORDER3_SIZE / mm_struct_size` ✓（由该键驱动 ✓，见 `reclaim_plan` 的 slab 步长 ✓）。
@@ -93,13 +93,13 @@ v1 → v3 的逐条改动（H1–H5、K1–K4、三问判定）见附件 [heap-p
 | 步 | 判据 |
 |---|---|
 | 决策面 | **主机**：数量/对齐/回收顺序/形状参数与旧值**逐值相同** ✓（黄金值固化 ✓） |
-| seam | **真机单探针**：`open_memfd` 真开真关 ✓ · `socketpair+sendmsg` 真发 ✓ ⇒ 每条打印 errno ✓ |
+| landing | **真机单探针**：`open_memfd` 真开真关 ✓ · `socketpair+sendmsg` 真发 ✓ ⇒ 每条打印 errno ✓ |
 | 编排 | **真机**：跑一次 ⇒ 打印每组实际数量（== profile 值 ✓）· snitch 是否命中 ✓ · 回收是否按序 ✓ · `base & (ORDER3_SIZE-1) == 0` ✓；失败给**具名**原因 ✓ |
 | 对拍 | **旁证**（非门禁 ✓）：同机同档跑旧二进制，比数量/命中/耗时量级 ✓ |
 
 ## 4 反面情形（明说不做）
 
-- ✗ 不抄旧树全局状态；✗ 不加实验用 CLI 旁路；✗ 不猜几何（缺键即拒 ✓）；✗ 不一次性移植完（决策面 → seam → 编排，逐步真机可验 ✓）；✗ seam 内不做决策；✗ 不复制步骤顺序（权威唯一 ✓）。
+- ✗ 不抄旧树全局状态；✗ 不加实验用 CLI 旁路；✗ 不猜几何（缺键即拒 ✓）；✗ 不一次性移植完（决策面 → landing → 编排，逐步真机可验 ✓）；✗ landing 内不做决策；✗ 不复制步骤顺序（权威唯一 ✓）。
 
 ## 5 已裁定（无未决项）
 

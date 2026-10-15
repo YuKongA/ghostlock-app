@@ -22,7 +22,7 @@ namespace {
     using ghostlock::contract::AccessCarrier;
     using ghostlock::contract::AccessChannel;
     using ghostlock::contract::KernelAccess;
-    using ghostlock::jni::BackendSeam;
+    using ghostlock::jni::BackendFactory;
     using ghostlock::jni::decode_handle;
     using ghostlock::jni::encode_handle;
     using ghostlock::jni::FrameKey;
@@ -113,7 +113,7 @@ namespace {
         }
     };
 
-    /** The seam the fake backend is handed out through. */
+    /** The landing the fake backend is handed out through. */
     struct SeamState final {
         FakeAccess *fake = nullptr;
         bool hand_out_nothing = false;
@@ -200,8 +200,8 @@ namespace {
         Session session;
         SeamState state;
         state.hand_out_nothing = true;
-        const BackendSeam seam{&make_backend, &state};
-        expect(!session.open(43499U, seam, 1U), "a backend this build lacks is refused");
+        const BackendFactory landing{&make_backend, &state};
+        expect(!session.open(43499U, landing, 1U), "a backend this build lacks is refused");
         expect(session.phase() == SessionPhase::Failed, "and the session is Failed, not Declared");
         Request request;
         request.make(FrameOp::WriteWord);
@@ -218,11 +218,11 @@ namespace {
         FakeAccess *const fake = new FakeAccess();
         SeamState state;
         state.fake = fake;
-        const BackendSeam seam{&make_backend, &state};
+        const BackendFactory landing{&make_backend, &state};
         Session session;
-        expect(session.open(43499U, seam, 5U), "the fake backend is taken");
+        expect(session.open(43499U, landing, 5U), "the fake backend is taken");
         expect(session.phase() == SessionPhase::Declared, "and the session is Declared");
-        expect(!session.open(43499U, seam, 6U), "a second open is refused");
+        expect(!session.open(43499U, landing, 6U), "a second open is refused");
 
         Request request;
         std::byte buffer[256]{};
@@ -268,9 +268,9 @@ namespace {
         FakeAccess *const fake = new FakeAccess();
         SeamState state;
         state.fake = fake;
-        const BackendSeam seam{&make_backend, &state};
+        const BackendFactory landing{&make_backend, &state};
         Session session;
-        expect(session.open(43284U, seam, 1U), "the session opens");
+        expect(session.open(43284U, landing, 1U), "the session opens");
         Request request;
         std::byte buffer[256]{};
         for (std::uint16_t raw = 0U; raw < static_cast<std::uint16_t>(FrameOp::Count); ++raw) {
@@ -293,9 +293,9 @@ namespace {
         FakeAccess *const fake = new FakeAccess();
         SeamState state;
         state.fake = fake;
-        const BackendSeam seam{&make_backend, &state};
+        const BackendFactory landing{&make_backend, &state};
         Session session;
-        expect(session.open(43499U, seam, 1U), "the session opens");
+        expect(session.open(43499U, landing, 1U), "the session opens");
         fake->session = &session;
         fake->reenter = 1;
         Request request;
@@ -314,9 +314,9 @@ namespace {
         FakeAccess *const fake = new FakeAccess();
         SeamState state;
         state.fake = fake;
-        const BackendSeam seam{&make_backend, &state};
+        const BackendFactory landing{&make_backend, &state};
         Session session;
-        expect(session.open(43499U, seam, 1U), "the session opens");
+        expect(session.open(43499U, landing, 1U), "the session opens");
         expect(session.shutdown() == FrameStatus::Ok, "a clean shutdown is ok");
         expect(session.phase() == SessionPhase::Closed, "and the session is Closed");
         expect(session.shutdown() == FrameStatus::Ok, "the second shutdown repeats the answer");
@@ -326,9 +326,9 @@ namespace {
         failing->shutdown_ok = false;
         SeamState failing_state;
         failing_state.fake = failing;
-        const BackendSeam failing_seam{&make_backend, &failing_state};
+        const BackendFactory failing_landing{&make_backend, &failing_state};
         Session second;
-        expect(second.open(43499U, failing_seam, 2U), "the second session opens");
+        expect(second.open(43499U, failing_landing, 2U), "the second session opens");
         expect(second.shutdown() == FrameStatus::Failed, "a shutdown that failed is reported");
         expect(second.phase() == SessionPhase::Failed, "and the session is not called Closed");
         failing->shutdown_ok = true;
@@ -353,10 +353,10 @@ namespace {
         SeamState state;
         state.fake = fake;
         fake->shutdown_sink = &shutdowns;
-        const BackendSeam seam{&make_backend, &state};
+        const BackendFactory landing{&make_backend, &state};
         {
             Session session;
-            expect(session.open(43499U, seam, 1U), "the session opens");
+            expect(session.open(43499U, landing, 1U), "the session opens");
         }
         expect(shutdowns == 1, "the destructor took the backend down");
     }

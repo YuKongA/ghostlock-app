@@ -1,8 +1,8 @@
 /** @file jni/pselect_route.cpp
  *  The pselect route, body for body from bddfea4:src/core/fops.c:495-663.
  *
- *  Every file-scope read became a field of PselectRouteInputs; every helper went to a seam or
- *  a parameter (see route_seams.hpp). Two things are kept on purpose though they look wrong:
+ *  Every file-scope read became a field of PselectRouteInputs; every helper went to a landing or
+ *  a parameter (see route_landings.hpp). Two things are kept on purpose though they look wrong:
  *  the reserve/restore around standard io, and the deliberate fd leak when the consumer is
  *  still inflight (step 34). Both are explained where they happen.
  *
@@ -12,7 +12,7 @@
  *       logs four of them: attempt, the shift, page_base and fake_lock. The seven words are
  *       not logged, because they matter only when someone checks the tables word by word;
  *    -- the original called log_sync() right after that line, which this file does not.
- *       log_sync belongs to the log verb, and this tree has its own logging seam.
+ *       log_sync belongs to the log verb, and this tree has its own logging landing.
  *  Both are omissions, not simplifications, and both are stated here on purpose: a silent
  *  omission in a file whose whole claim is "body for body" would be a lie of the worst kind.
  */
@@ -65,7 +65,7 @@ namespace ghostlock::jni {
         const SprayProducts &products = *inputs.products;
         const SprayOffsets &offsets = *inputs.offsets;
         const PselectTuning &tuning = *inputs.tuning;
-        const RouteSeams &seams = *inputs.seams;
+        const RouteSeams &ops = *inputs.ops;
         race::RaceFlags &flags = inputs.race->flags;
 
         if (inputs.addrs.page_base == 0U || inputs.addrs.fake_lock == 0U ||
@@ -96,7 +96,7 @@ namespace ghostlock::jni {
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if (compact_route && attempt > 1) {
                 /* lost race clobbers the page, respray re-derives the fake values too */
-                if (!seams.prepare_good_kernel_page(*inputs.products, seams.context)) {
+                if (!ops.prepare_good_kernel_page(*inputs.products, ops.context)) {
                     result.step = static_cast<std::int32_t>(RouteStep::PselectRetryPrepareFailed);
                     result.error_number = errno;
                     log("warning", "pselect retry page prepare failed",
@@ -142,7 +142,7 @@ namespace ghostlock::jni {
              *  because they only matter when someone is checking the tables word by word.
              *  The omission is stated in the file header as well. */
             /* fops.c:585 logged four values here: attempt, attempts, compact and the elapsed
-             *  milliseconds. The log seam takes a few numbers per call, so they arrive in
+             *  milliseconds. The log landing takes a few numbers per call, so they arrive in
              *  three calls. */
             log("info", "pselect pre-select", static_cast<std::int64_t>(attempt));
             log("info", "pselect pre-select compact", static_cast<std::int64_t>(compact_route ? 1 : 0));
@@ -152,17 +152,17 @@ namespace ghostlock::jni {
             log("info", "pselect route lock", static_cast<std::int64_t>(products.fake_lock));
 
             /* The route may replace low fds, including stdout and stderr. */
-            if (seams.reserve_standard_io == nullptr || seams.open_selected_fds == nullptr ||
-                seams.restore_standard_io == nullptr) {
+            if (ops.reserve_standard_io == nullptr || ops.open_selected_fds == nullptr ||
+                ops.restore_standard_io == nullptr) {
                 result.step = static_cast<std::int32_t>(RouteStep::PselectGuard);
-                log("error", "pselect route: a seam is absent");
+                log("error", "pselect route: a landing is absent");
                 (void) ::close(high_read);
                 (void) ::close(pipefd[0]);
                 (void) ::close(pipefd[1]);
                 return;
             }
-            seams.reserve_standard_io(seams.context);
-            (void) seams.open_selected_fds(&in, &out, &ex, high_read, pipefd[1], seams.context);
+            ops.reserve_standard_io(ops.context);
+            (void) ops.open_selected_fds(&in, &out, &ex, high_read, pipefd[1], ops.context);
             (void) ::close(high_read);
 
             flags.consumer_calls = 0;
@@ -198,7 +198,7 @@ namespace ghostlock::jni {
                 ret = ::select(nfds_of(tuning), &in, &out, &ex, &timeout);
             }
             const int saved_errno = errno;
-            seams.restore_standard_io(seams.context);
+            ops.restore_standard_io(ops.context);
             /* fops.c:609 logged five: attempt, attempts, compact, elapsed, ret. */
             log("info", "pselect post-select", static_cast<std::int64_t>(ret));
             log("info", "pselect post-select attempt", static_cast<std::int64_t>(attempt));

@@ -2,7 +2,7 @@
 
 ## 为什么必须做这一步（根因，已证）
 
-- 本树 `LinuxHeapSeam::send_buffer` 发的是**静态全零缓冲** ⇒ 内核里的 skb 数据是零 ✗；
+- 本树 `LinuxHeapOps::send_buffer` 发的是**静态全零缓冲** ⇒ 内核里的 skb 数据是零 ✗；
 - 我证对过的页面字节**从未被发送** ⇒ 内核看不见页面 ⇒ 写永不落地 ✓；
 - 本树自己承认：`prepare_page.hpp` 头部 "NOT YET IN THE SEQUENCE … **That write is not ported yet**" ✓；
 - 退役的机械（`spray.cpp`）：`base = leaked & ~(ORDER3_SIZE-1)` → `prepare_skb_payload(base, …)`（写页面）

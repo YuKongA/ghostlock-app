@@ -14,20 +14,20 @@
 #include <cstdint>
 #include <sys/wait.h>
 
-#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43499::leak::LinuxSnitchSeam;
+    using ghostlock::backend::cve_2026_43499::leak::LinuxSnitchOps;
     using ghostlock::backend::cve_2026_43499::leak::MapResult;
-    using ghostlock::backend::cve_2026_43499::memory::LinuxHeapSeam;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::LinuxHeapOps;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
 }  // namespace
 
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0U);
     std::printf("snitch fork probe: pid=%d\n", static_cast<int>(::getpid()));
-    const MapResult mapped = LinuxSnitchSeam::map_shared(4096U);
+    const MapResult mapped = LinuxSnitchOps::map_shared(4096U);
     if (mapped.address == nullptr) {
         std::printf("  map FAILED errno=%d\n", mapped.error);
         return 1;
@@ -37,22 +37,22 @@ int main() {
     *counter = 0U;
     *word = 0U;
 
-    const SeamResult child = LinuxHeapSeam::fork_child();
+    const OpsResult child = LinuxHeapOps::fork_child();
     if (child.value == 0) {
         std::printf("  child: running, pid=%d\n", static_cast<int>(::getpid()));
         for (std::uint32_t i = 0U; i < 5U; ++i) {
             *counter += 1U;
             *word += 1U;
-            (void) LinuxSnitchSeam::futex_wake_private(word, 1);
+            (void) LinuxSnitchOps::futex_wake_private(word, 1);
             std::printf("  child: poke %u, counter=%u\n", i, *counter);
         }
         std::printf("  child: leaving\n");
-        LinuxHeapSeam::exit_child();
+        LinuxHeapOps::exit_child();
     }
     std::printf("  parent: forked pid=%lld\n", static_cast<long long>(child.value));
     /* Give the child room, then look. Bounded so the probe cannot hang. */
     for (int i = 0; i < 200; ++i) {
-        (void) LinuxHeapSeam::yield_now();
+        (void) LinuxHeapOps::yield_now();
     }
     int status = 0;
     const pid_t reaped = ::waitpid(static_cast<pid_t>(child.value), &status, 0);

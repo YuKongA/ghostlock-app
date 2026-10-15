@@ -61,8 +61,8 @@ flowchart TD
 | 裁定 | 落地 |
 | --- | --- |
 | KA43499 写通用逻辑 | 基类独占：`state/supports/supports_width`、`initialize` 公共前置（取参、`phase_` 迁移、`write_readiness`）、`write/read/write_zero` 骨架、`word_out_`；子类**不得**复制 |
-| 三个 route 各建子类 | 三个 `final` 子类：绑定自己的 `RouteId`、声明自己的**参数类型**、提供自己的 `AccessSeam`、`super` 后追加特化 |
-| **init 时自动初始化并替换** | `create_kernel_access_43499(route)` ⇒ 对应子类；子类 `initialize`：**先** `KernelAccess43499::initialize(params)`（super）**再**装自己的 seam ⇒ 一次调用完成"选路＋上电" |
+| 三个 route 各建子类 | 三个 `final` 子类：绑定自己的 `RouteId`、声明自己的**参数类型**、提供自己的 `WordLanding`、`super` 后追加特化 |
+| **init 时自动初始化并替换** | `create_kernel_access_43499(route)` ⇒ 对应子类；子类 `initialize`：**先** `KernelAccess43499::initialize(params)`（super）**再**装自己的 landing ⇒ 一次调用完成"选路＋上电" |
 | 子类用 super 再加特化 | C++ 无 `super` ⇒ **显式基类调用**；子类不自行迁 `phase_`，只在该基类**成功**后特化 |
 | **init 时传入该 route 的参数** | 每 route 一个 `*Params : AccessParams`；`initialize` 里 `dynamic_cast<const MulticastParams*>(&parameters)`（RTTI ✓）⇒ 类型不符 ⇒ `BadParameters` **具名拒绝**（保留 `name()` 作 wire 侧标识） |
 | **后续能力执行利用同一个生命周期** | `initialize` → `shutdown` 之间，**每次 `write64/read64` 复用同一条已上电的 route**（不重建、不 re-prepare、不 per-write `bring_up`）—— 与 ref 逐字一致：「The route, its carrier and the landing gear **live from initialize to shutdown** and serve every access in between」 |
@@ -122,20 +122,20 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
    另有 `WindowGuard` 与 `stage_context.window` ✓
 路径 B（门面侧，本批新建 ✓）：
    create_kernel_access_43499(MulticastWaiter) ⇒ MulticastWaiterAccess
-     ⇒ MulticastSeam::land_word ⇒ MulticastWindow::write_word ⇒ RouteExec::execute
+     ⇒ MulticastLanding::land_word ⇒ MulticastWindow::write_word ⇒ RouteExec::execute
 两者共用同一个 route 体 ⇒ 机制同、**入口两处** ✗（＝"两处权威" ✗）
 ```
 
 ### 9.2 硬约束（本轮实测得到，不能蒙过去 ✗）
 
 ```
-`seam/multicast_window.hpp` 的层次（逐字 ✓）：
+`landing/multicast_window.hpp` 的层次（逐字 ✓）：
     class RouteExec  —— execute(address,value,offset) ＋ **arm(std::int32_t attempt)**
         注释：「Where a request goes: the route controller, as the old waiter thread reached it」
     class MulticastWindow : public Window —— write_word() = ① warm-up（arm）② armed attempt（execute）
 ⇒ ⇒ **⇒ `Window` 比 `RouteExec` 高一整层** ✓：arm 的编排在 `MulticastWindow` 里 ✓
 ⇒ ⇒ ⇒ **⇒ 故不能用一个"包住 Access 的 RouteExec"反向替换 ✗** ——
-   `AccessSeam`/`Window` 没有 arm 语义 ⇒ 硬写 `arm(){return true;}` 就是**撒谎** ✗
+   `WordLanding`/`Window` 没有 arm 语义 ⇒ 硬写 `arm(){return true;}` 就是**撒谎** ✗
    （＝ AGENTS「具名拒绝而非假装成功」的反面 ✗）
 ```
 
@@ -143,7 +143,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
 
 | | 改法 | 触及 | 代价 |
 | --- | --- | --- | --- |
-| **A** | 引擎改持 **`AccessSeam`/`Window`**（`stage_context.route` 改类型 ⇒ `steps/*` 契约变更）⇒ 门面成为唯一写入入口 ✓ | `steps/*`、`main.cpp`、`window_guard` 对接 | 契约变更 ＝ **L 级** ⇒ 需你认可 ✗；收益：与「旧实现接入 kernel access」同向 ✓ |
+| **A** | 引擎改持 **`WordLanding`/`Window`**（`stage_context.route` 改类型 ⇒ `steps/*` 契约变更）⇒ 门面成为唯一写入入口 ✓ | `steps/*`、`main.cpp`、`window_guard` 对接 | 契约变更 ＝ **L 级** ⇒ 需你认可 ✗；收益：与「旧实现接入 kernel access」同向 ✓ |
 | **B** | 保留引擎直持 `RouteExec` ✓，门面只作**对外接口** ✓，并把门面侧明确标为"未接线"（具名 ✓） | 仅注释/测试 | 最小 ✓；但"接入"仍未完成 ✗ ⇒ 不满足原始目标 ✗ |
 
 ### 9.4 建议（待裁定 ✓）
@@ -153,7 +153,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
     prepare ← 上层 wrapper（建 config ＋ 建页 ＋ arm 前置）；execute ← **一次窗口落字**（Access::write64 ✓）；
     disarm ← 停线程/断链（无条件）；destroy ← 回收（无条件）
 最小可逆落地：① 让 MulticastWaiterAccess 接受 MulticastWindow 作为 Window ✓；
-              ② 再把 stage_context 的 route 视角改为该 Window/AccessSeam；③ 每步门禁三线 ＋ 真机 ✓。
+              ② 再把 stage_context 的 route 视角改为该 Window/WordLanding；③ 每步门禁三线 ＋ 真机 ✓。
 ```
 
 ## 10. 接线收尾的精确清单（2026-10-12，全部有行号依据 ✓）
@@ -161,11 +161,11 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
 ### 10.1 已就位（三线门禁全绿 ✓，host 实测 ✓）
 
 ```
-· `KernelAccess43499` 基类 ＋ 三个 `*43499Parameters` ＋ 三个子类（`MulticastWaiterAccess` 已接 seam ✓）
+· `KernelAccess43499` 基类 ＋ 三个 `*43499Parameters` ＋ 三个子类（`MulticastWaiterAccess` 已接 landing ✓）
 · `create_kernel_access_43499(RouteId)` 工厂 ✓（`Unset` ⇒ nullptr ✓ 不默认 ✓）
 · `shutdown()` 对 `Broken` 仍回收 ✓（ref 的 disarm/destroy 无条件 ✓）
-· 引擎侧：`WindowStageContext.seam_landing` ✓ ⇒ `window_runner.cpp:28` 传递 ✓ ⇒ `WindowAttempt.seam_landing` ✓
-  ⇒ `window_attempt.cpp:21` 三元：有 seam ⇒ `land_word`（⇒ `MulticastWindow` 先 warm-up 再 execute ✓）；
+· 引擎侧：`WindowStageContext.landing_landing` ✓ ⇒ `window_runner.cpp:28` 传递 ✓ ⇒ `WindowAttempt.landing_landing` ✓
+  ⇒ `window_attempt.cpp:21` 三元：有 landing ⇒ `land_word`（⇒ `MulticastWindow` 先 warm-up 再 execute ✓）；
      否则 ⇒ `route->execute` **具名回退** ✓（零回归 ✓）
 · 原语：`steps/access_binder.hpp` —— `bind_multicast_access` ✓ ＋ `bind_stage_landing` ✓（拒绝时不动 context ✓）
 ```
@@ -174,7 +174,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
 
 ```
 ① **`mm_struct` 的表达**：`steps::DiscoveryOutcome`（`discovery_runner.hpp:32-39` ✓）**不含**它 ✗；
-   而 seam 的 `land_word` 要求 `TargetState.mm_struct != 0` ✓（`multicast_seam.hpp:75` ✓）。
+   而 landing 的 `land_word` 要求 `TargetState.mm_struct != 0` ✓（`multicast_landing.hpp:75` ✓）。
    · 权威映射：`leak::report_discovery(const ObjectOutcome &)` ⇒ `DiscoveryReport{ok, mm_struct}`
      （`leak/discovery_result.hpp:41` ✓，`snitch_owner.hpp:159-161` 即这么用 ✓）；
    · `ObjectOutcome{status, object, probes}`（`leak/snitch_discovery.hpp:49-55` ✓），
@@ -226,7 +226,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
                                                   std::unique_ptr<MulticastWaiterAccess> &access_owner) noexcept;
   · `report`     —— 既有的 `RunReport`（含 `doc` ✓ / `step_backend` ✓ / `victim_uid` ✓ / 各读数 ✓）
   · `step`       —— `"w1"/"w2"/"w3"` ✓
-  · `access_owner` —— **新增一个参数**：让被绑定的 access **活过整段**（⇒ seam 是**借入**指针 ✓，
+  · `access_owner` —— **新增一个参数**：让被绑定的 access **活过整段**（⇒ landing 是**借入**指针 ✓，
                      不能是局部量 ✗）。调用方（`main.cpp` 的循环 ✓）持有它 ✓，将来由 Lua 侧的会话持有 ✓。
 出口：返回 `nullptr` 或**具名**拒绝串（与现状同形 ✓，⇒ 上层不需改动判据 ✓）。
 

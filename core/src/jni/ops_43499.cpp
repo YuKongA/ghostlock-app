@@ -1,5 +1,5 @@
 /** @file jni/ops_43499.cpp
- *  43499's op bodies: read the request, check what has to be in place, call the seam, name the
+ *  43499's op bodies: read the request, check what has to be in place, call the landing, name the
  *  answer (see the header for what this unit deliberately does not do).
  */
 #include "jni/ops_43499.hpp"
@@ -77,11 +77,11 @@ namespace ghostlock::jni {
 
     FrameStatus Ops43499::on_prepare(const FrameReader &request, FrameWriter &reply) noexcept {
         static_cast<void>(request);
-        if (seams_.prepare == nullptr) {
+        if (ops_.prepare == nullptr) {
             refuse_not_wired(reply, "prepare");
             return FrameStatus::Unsupported;
         }
-        if (!seams_.prepare(facts_, seams_.context)) {
+        if (!ops_.prepare(facts_, ops_.context)) {
             refuse(reply, "prepare-refused");
             return FrameStatus::Failed;
         }
@@ -92,11 +92,11 @@ namespace ghostlock::jni {
 
     FrameStatus Ops43499::on_discover(const FrameReader &request, FrameWriter &reply) noexcept {
         static_cast<void>(request);
-        if (seams_.discover == nullptr) {
+        if (ops_.discover == nullptr) {
             refuse_not_wired(reply, "discover");
             return FrameStatus::Unsupported;
         }
-        if (!seams_.discover(facts_, seams_.context)) {
+        if (!ops_.discover(facts_, ops_.context)) {
             refuse(reply, "discovery-refused");
             return FrameStatus::Failed;
         }
@@ -107,11 +107,11 @@ namespace ghostlock::jni {
 
     FrameStatus Ops43499::on_spawn_victim(const FrameReader &request, FrameWriter &reply) noexcept {
         static_cast<void>(request);
-        if (seams_.spawn_victim == nullptr) {
+        if (ops_.spawn_victim == nullptr) {
             refuse_not_wired(reply, "spawn_victim");
             return FrameStatus::Unsupported;
         }
-        if (!seams_.spawn_victim(facts_, seams_.context)) {
+        if (!ops_.spawn_victim(facts_, ops_.context)) {
             refuse(reply, "victim-spawn-refused");
             return FrameStatus::Failed;
         }
@@ -121,7 +121,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43499::on_victim_probe(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.victim_probe == nullptr) {
+        if (ops_.victim_probe == nullptr) {
             refuse_not_wired(reply, "victim_probe");
             return FrameStatus::Unsupported;
         }
@@ -130,7 +130,7 @@ namespace ghostlock::jni {
             return FrameStatus::KeyMissing;
         }
         std::uint64_t value = 0U;
-        if (!seams_.victim_probe(kind, value, seams_.context)) {
+        if (!ops_.victim_probe(kind, value, ops_.context)) {
             refuse(reply, "victim-probe-refused");
             return FrameStatus::Failed;
         }
@@ -139,7 +139,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43499::on_write_word(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.land == nullptr) {
+        if (ops_.land == nullptr) {
             refuse_not_wired(reply, "write_word");
             return FrameStatus::Unsupported;
         }
@@ -174,7 +174,7 @@ namespace ghostlock::jni {
             refuse(reply, why);
             return FrameStatus::NotReady;
         }
-        if (!seams_.land(address, value, form, offset, seams_.context)) {
+        if (!ops_.land(address, value, form, offset, ops_.context)) {
             refuse(reply, "write-refused");
             return FrameStatus::Failed;
         }
@@ -184,7 +184,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43499::on_read_word(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.read == nullptr) {
+        if (ops_.read == nullptr) {
             /* The honest answer today: this backend's route cannot read, so a read is unsupported
              *  rather than a failure -- a caller must not retry something that does not exist. */
             refuse_not_wired(reply, "read_word");
@@ -195,7 +195,7 @@ namespace ghostlock::jni {
             return FrameStatus::KeyMissing;
         }
         std::uint64_t value = 0U;
-        if (!seams_.read(address, value, seams_.context)) {
+        if (!ops_.read(address, value, ops_.context)) {
             refuse(reply, "read-refused");
             return FrameStatus::Failed;
         }
@@ -211,8 +211,8 @@ namespace ghostlock::jni {
         void bundle_destroy(void *self) noexcept { delete static_cast<Ops43499 *>(self); }
     }  // namespace
 
-    BackendOps make_ops_43499(Ops43499Seams seams) noexcept {
-        auto *const ops = new Ops43499(seams);
+    BackendOps make_ops_43499(Ops43499Seams device_ops) noexcept {
+        auto *const ops = new Ops43499(device_ops);
         return BackendOps{&bundle_handle, &bundle_destroy, ops};
     }
 

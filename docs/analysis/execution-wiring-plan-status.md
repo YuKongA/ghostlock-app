@@ -9,17 +9,17 @@
 | 面 | 文件数 | 内容 |
 |---|---|---|
 | `leak/` | 23 | 哈希 · 扫描 · 走查 · 候选 · 队列 · 搜索 · 策略 · 接合（真机通过）· **碰撞桶 · 计数** |
-| `memory/` | 18 | 页几何 · 堆几何 · 双 seam · 准备/塑形/回收 · **写请求 · 写编码 · 写布局 · 凭据镜像 · multicast 布防** |
-| `race/` | 5 | futex seam · PI 竞争 · PI 窗口 · 竞争运行时 · 层 |
+| `memory/` | 18 | 页几何 · 堆几何 · 双 landing · 准备/塑形/回收 · **写请求 · 写编码 · 写布局 · 凭据镜像 · multicast 布防** |
+| `race/` | 5 | futex landing · PI 竞争 · PI 窗口 · 竞争运行时 · 层 |
 | `route/` | 6 | 期望键 · 生命周期 · **multicast 决策面 · 策略形状 · 路由状态** |
-| 顶层 | 5 | `abi` · `perf_{ring,seam,seam_linux,vote}` |
+| 顶层 | 5 | `abi` · `perf_{ring,landing,landing_linux,vote}` |
 
 **因此 §2 的六件里真正缺的只有两件半**（按计划文本读会重复劳动 —— 本轮差点重造 `write_request`，被「先读后写」守卫拦下）：
 
 | 件 | 状态 |
 |---|---|
 | ① 路由策略 | **形状已落**；multicast 的 `run` 本体缺（需消费者线程） |
-| ② 写原语 | **决策面与编码已落**（枚举 · 投票 · 环走查 · seam · 计数 · 桶） |
+| ② 写原语 | **决策面与编码已落**（枚举 · 投票 · 环走查 · landing · 计数 · 桶） |
 | ③ 步骤 | **词汇已在 `contract/step_catalog.hpp`**（`StepId` · 两套顺序 · 表）⇒ 缺**执行**（`steps.cpp` 退休 449 行，与 session/profile 深耦合） |
 | ④ 终端 | 缺 |
 | ⑤ bootstrap | 缺 |

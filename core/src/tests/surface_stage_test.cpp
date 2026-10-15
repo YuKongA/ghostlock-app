@@ -433,7 +433,7 @@ namespace {
         op.route_mask = ghostlock::contract::RouteMask{1U};
         op.params = nullptr;
         op.param_count = 0U;
-        op.seam_inside_window = false;
+        op.landing_inside_window = false;
         op.depends_on = -1;
         PlanInput input{};
         input.backend_id = "cve_2026_43499";

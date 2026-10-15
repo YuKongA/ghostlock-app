@@ -1,10 +1,10 @@
-# 43499 · 根因：`PiRace` 的**默认 seam 是空实现**（round 203）✓✓
+# 43499 · 根因：`PiRace` 的**默认 landing 是空实现**（round 203）✓✓
 
 ## 发现（读码即得 ✓，一行不放）
 
 ```cpp
 // pi_race.hpp:62-86
-struct FutexSeam final {                                   // ← 默认模板参数 ✗
+struct FutexOps final {                                   // ← 默认模板参数 ✗
     static int lock_pi(std::uint32_t *word)        { (void) word; return 0; }   // 空实现 ✗
     static int wait_requeue_pi(std::uint32_t *, std::uint32_t *) { return 0; }   // 空实现 ✗
     static int cmp_requeue_pi(std::uint32_t *, std::uint32_t *)  { return 0; }   // 空实现 ✗
@@ -23,7 +23,7 @@ struct FutexSeam final {                                   // ← 默认模板�
 static std::int32_t cmp_requeue_pi(std::uint32_t *chain, std::uint32_t *target) {
     return (std::int32_t)::syscall(SYS_futex, chain, FUTEX_CMP_REQUEUE_PI, 1, 1, target, 0);
 }
-// 2) route 里绑定真 seam（引擎从空实现换到真 syscall ✓）
+// 2) route 里绑定真 landing（引擎从空实现换到真 syscall ✓）
 struct SelectStackSeam { lock_pi → Ops::lock_pi ✓ / unlock_pi ✓ / cmp_requeue_pi ✓ / wait_requeue_pi ✓ };
 race::PiRace<SelectStackSeam> race_{};
 ```
@@ -31,7 +31,7 @@ race::PiRace<SelectStackSeam> race_{};
 ## 门禁与真机（本轮 ✓/✗ 如实）
 
 ```
-android → RC=0，0 error / 0 warning ✓（新 seam 编译通过 ✓）
+android → RC=0，0 error / 0 warning ✓（新 landing 编译通过 ✓）
 真机：s1/s2 撞奇偶门 ✗；s3/s4/s5 **无输出** ✗ ⇒ 真 syscall 之后跑动变慢或卡 ✓
 ⇒ 下一批先量"慢还是卡"（单跑给足时长 ✓），再取 successes/enforce ✓。
 ```

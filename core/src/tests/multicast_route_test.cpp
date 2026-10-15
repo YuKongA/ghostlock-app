@@ -21,15 +21,15 @@
 #include <thread>
 #include <vector>
 
-#include "backend/cve_2026_43499/seam/multicast_route.hpp"
+#include "backend/cve_2026_43499/landing/multicast_route.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43499::memory::MulticastGeometry;
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
     using ghostlock::backend::cve_2026_43499::route::RouteResultCode;
-    using ghostlock::backend::cve_2026_43499::seam::MulticastRoute;
-    using ghostlock::backend::cve_2026_43499::seam::MulticastRouteConfig;
-    using ghostlock::backend::cve_2026_43499::seam::RouteOps;
+    using ghostlock::backend::cve_2026_43499::landing::MulticastRoute;
+    using ghostlock::backend::cve_2026_43499::landing::MulticastRouteConfig;
+    using ghostlock::backend::cve_2026_43499::landing::RouteOps;
 
     std::size_t g_failures = 0U;
 

@@ -25,7 +25,7 @@
 
 ## §3 `plan_gate`：十条 + 两条（R11 新增）
 
-- **十条静态拒绝**（`b1b2 §B1.2`）：`unknown-op` / `op-not-available` / `route-not-available` / `geometry-missing` / `capability-missing` / `order-violation` / `hash-mismatch` / `param-invalid` / `seam-in-pi-window` / `executor-unavailable`。
+- **十条静态拒绝**（`b1b2 §B1.2`）：`unknown-op` / `op-not-available` / `route-not-available` / `geometry-missing` / `capability-missing` / `order-violation` / `hash-mismatch` / `param-invalid` / `landing-in-pi-window` / `executor-unavailable`。
 - **R11 新增两条**（[script-plan-design](script-plan-design.md)）：**`queue-removed`**（`backend.<id>.queue` 出现即拒）· **`plan-missing`**（既无脚本又无内置计划脚本）。
 - **返回结构**：`GateVerdict{ok, reason, path, index}`；`path` 语法 = `backend.<id>` → `.op[<index>]`（0 基）→ `.<field>`；**`index` 与 `[i]` 必须一致**（用例断言）。
 - **插入点**：`state_from` 成功之后、`Backend::run` **之前**（需要几何，不能更早）；**只做二值判定**，不产生备选（**禁止运行期回退**）。
@@ -35,9 +35,9 @@
 
 ## §4 窗口原子性 · 参数化 · 窗口内零 Lua
 
-1. **原子性**：窗口内多步（park → write×N → release）**必须是一个 op**；脚本只能编排 **op 之间**（`b1b2:78`「seam 只能声明在操作之间」）。
+1. **原子性**：窗口内多步（park → write×N → release）**必须是一个 op**；脚本只能编排 **op 之间**（`b1b2:78`「landing 只能声明在操作之间」）。
 2. **参数化**：窗口内可变性**一律参数化**（先例 `execution-tuning.conf:20-36` + `steps.cpp:77/:238` 的 attempts 循环）；**拆分窗口不提供额外自定义**，只带来四条代价（窗口内 Lua / 新增代码路径 / 窗口拉长 / 失败态组合爆炸）。
-3. **窗口内零 Lua**：由 `AttackWindow` **结构性保证**（该层不引用 Lua 运行时；`seam` 纯静态；运行期一旦观测到窗口内调用即按缺陷 `seam-in-pi-window`）。
+3. **窗口内零 Lua**：由 `AttackWindow` **结构性保证**（该层不引用 Lua 运行时；`landing` 纯静态；运行期一旦观测到窗口内调用即按缺陷 `landing-in-pi-window`）。
 
 ## §5 六条约束（含**诚实边界**）
 
@@ -61,7 +61,7 @@
 ## §7 可证伪判据 + 极端值
 
 - **白盒**：`composition_root` 内**无顺序分支**（顺序常量 grep = 0）；`AttackWindow` 的**每条退出路径**（成功/失败/重试/取消/提前返回）都有回收 guard —— 判据 = **枚举退出路径清单 + 逐条断言**。
-- **黑盒**：任一被禁行为 ⇒ **具名拒绝且立即终止**（`seam-in-pi-window` / 超预算 / 无效句柄 / `queue-removed` / `plan-missing`）。
+- **黑盒**：任一被禁行为 ⇒ **具名拒绝且立即终止**（`landing-in-pi-window` / 超预算 / 无效句柄 / `queue-removed` / `plan-missing`）。
 - **证伪（必须能失败）**：① 在窗口内插入一次 Lua 调用 ⇒ **指定测试必须失败**；② 让 `composition_root` 对 op 排序 ⇒ **顺序判据测试必须失败**；实验后**还原 + `rm -f` 产物重建复核**。
 - **极端值**：空计划 · 单 op · 64 句柄用满 · 代际回绕 · 参数 = 上界与上界+1 · **窗口内多步拆成两个 op（应拒绝）** · 计划引用不存在 op。
 

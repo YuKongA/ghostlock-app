@@ -3,7 +3,7 @@
 ## 一、插入点（✓，已定位到函数 ✓）
 
 ```
-文件：`core/src/backend/cve_2026_43499/seam/multicast_route.hpp` ✓；
+文件：`core/src/backend/cve_2026_43499/landing/multicast_route.hpp` ✓；
 线程体：`waiter_entry`（:578-580 ✓）= `static void *waiter_entry(void *self) { return …waiter_main(); }` ✓
 ⇒ 即 **waiter 线程的函数体 = `waiter_main(...)`** ✓ ⇒ 插入位置 = 它的**收尾**（⇒ 线程退出前 ✓）；
 参照物（本树已核对 ✓）：`:379-384` 组装 `route::RouteStatus`，其中 `status.userspace_clean = 1;` ✓

@@ -65,7 +65,7 @@
 ## 4. 窗口原子性
 
 - 窗口内多步（park → write×N → release）**必须是一个 op**（不可拆成多个脚本可见步骤）。
-- 据此脚本只能编排 **op 之间**：与 `handoff-payload-b1b2-runtime.md:78`「seam 只能声明在**操作之间**」及 ADR-0008 的窗口约束一致。
+- 据此脚本只能编排 **op 之间**：与 `handoff-payload-b1b2-runtime.md:78`「landing 只能声明在**操作之间**」及 ADR-0008 的窗口约束一致。
 
 ## 5. 单一权威校验
 

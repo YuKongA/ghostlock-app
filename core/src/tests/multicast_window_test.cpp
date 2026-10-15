@@ -9,12 +9,12 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "backend/cve_2026_43499/seam/multicast_window.hpp"
+#include "backend/cve_2026_43499/landing/multicast_window.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
-    using ghostlock::backend::cve_2026_43499::seam::MulticastWindow;
-    using ghostlock::backend::cve_2026_43499::seam::WindowOutcome;
+    using ghostlock::backend::cve_2026_43499::landing::MulticastWindow;
+    using ghostlock::backend::cve_2026_43499::landing::WindowOutcome;
 
     std::size_t g_failures = 0U;
 

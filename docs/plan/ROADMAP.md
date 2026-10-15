@@ -11,7 +11,7 @@
 | 攻击链（43499 · multicast） | 临时入口已在真机跑通「文档→…→三步→终端具名拒绝」；`KernelAccess` 的生产装配 **未接线** |
 | 攻击链（43284 · pagecache + LKM） | **已真机 PASS**（`docs/analysis/device-gates/B5-9h-20261004-full-chain-lkm-pass.md`） |
 | 文档（R9） | ① `introduction.md` ✓ ② `AGENTS.md` ≤12 KB ✓ ③ 本文件 ✓ ④ 指针表＝AGENTS §11 ✓ |
-| KernelAccess 实现（2026-10-10 交付） | **43284 读面补齐**（块读 16 B + 字读＝块前 8 B；`PageCacheWindow::read_block`/`PageCacheWrite`/`PageCacheSeam`/`Access::read`+`read64`）✓；**43499 路由引擎**（`seam/multicast_route.hpp`：waiter/owner/consumer 三线程按样板顺序，含 requeue→copy、ghost disarm、consumer 才判胜；平台边＝`RouteOps` 策略，Linux 实现 `seam/multicast_route_linux.hpp`）✓；**43499 载荷页**（`memory/payload_page.hpp/.cpp`：样板 `fill_fake_page_compact` 的锁/waiter/擦除元组/task，逐字段偏移皆输入）✓。**未接线**：两者尚未进 `initialize`/`prepare_page` |
+| KernelAccess 实现（2026-10-10 交付） | **43284 读面补齐**（块读 16 B + 字读＝块前 8 B；`PageCacheWindow::read_block`/`PageCacheWrite`/`PageCacheLanding`/`Access::read`+`read64`）✓；**43499 路由引擎**（`landing/multicast_route.hpp`：waiter/owner/consumer 三线程按样板顺序，含 requeue→copy、ghost disarm、consumer 才判胜；平台边＝`RouteOps` 策略，Linux 实现 `landing/multicast_route_linux.hpp`）✓；**43499 载荷页**（`memory/payload_page.hpp/.cpp`：样板 `fill_fake_page_compact` 的锁/waiter/擦除元组/task，逐字段偏移皆输入）✓。**未接线**：两者尚未进 `initialize`/`prepare_page` |
 | 裁定（R10） | **已裁定（2026-10-10）**：① 数据格式＝**JSON + JCS + 生成式 schema**；② wire＝**JCS JSON + 只读视图**；③ 载荷＝**stdin/base64**；④ **删除 `profile-core`**，检查归 Kotlin；⑤ **运行期由 Lua 编排，限制靠 Lua 运行时**（不新写步骤编排器）；⑥ **配置内嵌 Lua steps**；⑦ **v1/v2 统一迁入 `LegacyProfileConverter`**。结论＝[config-wire-redesign-plan.md](../analysis/config-wire-redesign-plan.md)（含被推翻条目的沿革）；**版本号不变，仍是 3**——前一套 v3 未发布生产，判为验证失败，本次为**同号重做** |
 | 真机 PASS（2026-10-10 第三轮 · **全链 + root**） | hook 站点 `0x14012d83` @ 0xb30ac、载荷 480 B @ file 0xfe628、`phase 4 ok /dev/dfm0 after 1520 ms`；**判据三连**：`su -c id` → uid=0 context=u:r:ksu:s0、`getenforce` → Enforcing、`grep -c kernelsu /proc/modules` = 1；**`su -c ls /` 以 root 打印**。整链由新 kernel access 驱动（patch #1 → 模块 → hook → 触发）。剩：hook 计划改运行期推导、入口归 main、43499 |
 | 真机 PASS（2026-10-10 第二轮 · patch #1 + 桥 + **vendor 载体**） | **helper 镜像 90/90 块写入 `/apex/com.android.runtime/bin/crash_dump64@0`；模块 769/769 块写入 `/vendor/lib64/libbinderdebug.so` 并回读校验通过**；经桥直读 vendor 页 与 `.ko` 同偏移逐字节一致。测出并修掉：① ESP 序号须按 SA 连续（per-window 重置 ⇒ anti-replay 全丢）；② block 0 的校验对 ELF 目标是假阳性（真判据 offset 0x10）。**未达成**：模块未加载（hook 链未移植，phase 4 超时） |
@@ -31,7 +31,7 @@
 | 序 | 项 | 门禁 | 动攻击路径 | 依赖 / 阻塞 |
 | --- | --- | --- | --- | --- |
 | 0 | R9 收尾（③ 本文件 + lint + 归档） | G1+G3 | 否 | — |
-| 1 | **43499 装配接线（能力面）**：`initialize` 读文档装配（`MulticastRoute`→`MulticastWindow`→`MulticastSeam`→`Access::adopt`），并把 `build_payload_page` 接进 `prepare_page`（该页正是 `TargetState.page_base` 所指对象） | G1 | **是** | 引擎/载荷页/读面**已交付**（2026-10-10），剩接线 |
+| 1 | **43499 装配接线（能力面）**：`initialize` 读文档装配（`MulticastRoute`→`MulticastWindow`→`MulticastLanding`→`Access::adopt`），并把 `build_payload_page` 接进 `prepare_page`（该页正是 `TargetState.page_base` 所指对象） | G1 | **是** | 引擎/载荷页/读面**已交付**（2026-10-10），剩接线 |
 | 2 | **`main` ＝ Lua 启动器**（2026-10-10 用户裁定）：读 wire 文档 → 起 Lua（`core/Makefile` 的 `lua-core`）→ 运行**胶水程序**；胶水经 `OpRegistry` 调 `KernelAccess` 与终端 handoff | G1 | **是** | R2 + ADR-0008/0009/0010 批准 + R10（胶水来源与形态） |
 | 2b | **43499 真机门禁**：`ls /` 以 root 打印（判据三连：`id` / `getenforce` / `grep -c kernelsu /proc/modules`） | **G2** | 是 | 1 + 2 |
 | 3 | R1 契约中性化（参数结构各 backend 自持） | G1 | 否 | — |

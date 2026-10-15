@@ -4,7 +4,7 @@
 
 ## 1. 裁决：删 `params_ref` ⇒ 队列元素 7 键
 
-- **最终键集合（7）**：`{backend, op, route, seam, stage, always, attempts}`（除 `op` 外均可缺省）。
+- **最终键集合（7）**：`{backend, op, route, landing, stage, always, attempts}`（除 `op` 外均可缺省）。
 - **`params_ref` 已删除**（~~引用 Owner Schema 参数块名~~ ⇒ 划掉保留沿革）：**参数值不进队列**，也不在队列元素里出现任何引用键。
 - **键数上限保持 `kMaxMapMembers` 唯一权威、提到 12**（留头寸；详见 [queue-schema](handoff-payload-queue-schema.md) §2）：**7 键 ⇒ 5 个键头寸**。
 
@@ -33,7 +33,7 @@
 ## 5. 文档同步（**已落地**，task-54/55）
 
 - [queue-schema](handoff-payload-queue-schema.md)：键集合 8 → **7**、删 `params_ref` 定义节、指针指向本文 ✓
-- [plan](handoff-payload-plan.md)：§3 样例与元素形态、§10 D16 改 **7 键**；`:27` 旧形态 → **`{backend, seam, stage}`** ✓
+- [plan](handoff-payload-plan.md)：§3 样例与元素形态、§10 D16 改 **7 键**；`:27` 旧形态 → **`{backend, landing, stage}`** ✓
 - [kotlin](handoff-payload-kotlin.md)：`PlanItem` 删 `paramsRef`、字段规则表删该行、样例同步；**PL 不变**（无需新增白名单键）。
 - [b1b2](handoff-payload-b1b2-runtime.md)：R1 表述改 7 键；`ParamSpec` **仍用于脚本传参校验**；`GateVerdict.path` 语法去掉 `.params_ref`。
 - [ops](handoff-payload-ops.md) / [params-dispatch](handoff-payload-params-dispatch.md)：删除对 `params_ref` 的引用，R1 行指向本文。

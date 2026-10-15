@@ -3,7 +3,7 @@
 ## 一、读数（✓✓，逐处 ✓）
 
 ```
-本树：`grep pin_to_processor|sched_setaffinity|…` ⇒ 命中**只在** `tools/*`（探针 ✓）与 seam 的**定义** ✓
+本树：`grep pin_to_processor|sched_setaffinity|…` ⇒ 命中**只在** `tools/*`（探针 ✓）与 landing 的**定义** ✓
       ⇒ **main.cpp / route / steps 的生产路径里没有绑定调用** ✗；
 归档（逐字 ✓）：`cpu pair: main=0 consumer=1` ✓ / `recommended_cpus.main=0 consumer=1` ✓
                 / `selected_cpus.main=0 consumer=1` ✓ ⇒ ⇒ **生产路径有绑定** ✓。

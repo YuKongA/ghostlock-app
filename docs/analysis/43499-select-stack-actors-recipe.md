@@ -19,7 +19,7 @@ class PiRace {
 ```cpp
 1. 循环外（一次性）：
      cve49::race::WindowGuard guard{};          // 窗口守卫 ✓
-     cve49::race::PiRace<FutexSeam> race{};     // 三演员引擎 ✓（Seam 与 multicast 同一枚 ✓）
+     cve49::race::PiRace<FutexOps> race{};     // 三演员引擎 ✓（Seam 与 multicast 同一枚 ✓）
      race.prepare(chain_word, target_word);     // 两个 futex 字（由调用方给 ✓，与 multicast 同源 ✓）
 2. 循环内（每次尝试）：
      guard.enter(ExitPath::Success);            // 进窗口 ✓（可重复 enter ✓）

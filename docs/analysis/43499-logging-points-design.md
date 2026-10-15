@@ -45,9 +45,9 @@
 
     C1 route config：全部数值（与 main: rv 同集）+ 每个缺失键具名          [info]
     C2 route 构造：route 名 / Ops / limits                                  [info]
-    C3 access 绑定：成功则 route / seam=1；失败则具名原因逐字               [info/error]
+    C3 access 绑定：成功则 route / landing=1；失败则具名原因逐字               [info/error]
     C4 stage context：chain / target / payload_target / payload_value       [info]
-    C5 每次 attempt：轮次 / 走 seam 还是回退                                [debug 逐次]
+    C5 每次 attempt：轮次 / 走 landing 还是回退                                [debug 逐次]
     C6 route 内部（每分支）：waiter（进入/lock/ready/waiting/park 前/park 结果）
        owner（进入/lock target/started/chain/chain_done）
        trigger（进入/每轮/stamp 结果/warm-up 分支/armed 分支/consumer 反馈/结束码）

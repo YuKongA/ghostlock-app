@@ -12,7 +12,7 @@
 ① 读头注判层：头注第一段就交代这件是什么层（契约/策略/约束/来源/移植/执行体）。
    判据是头注的文字，不是行数、引用数、注释占比或文件名。
 ② 分清两类高注释占比：
-     设计约束（如 seam/multicast_route.hpp 的三处细节）=> 必须保留
+     设计约束（如 landing/multicast_route.hpp 的三处细节）=> 必须保留
      试错史（如另一套实现里的"第 N 轮"注释）=> 那是重复实现的症状
 ③ 一切改动必须有能失败的外部判据（cmp_disasm 逐指令 + 真机四读数）；
    因为本树的核心风险是"错误不报错，只静默失效"。
@@ -24,10 +24,10 @@
 顶层 16 件    接口/ABI/能力/采样层
   abi.hpp(偏移来源) · access_factory_43499(按 route 选 access) · access_{multicast_waiter,select_stack,
   tcp_zerocopy}(三条 route 各一) · access_params · capabilities(能力表) · kernel_access(脚本可达面) ·
-  layout_from_document(文档->数字) · perf_ring/perf_seam/perf_seam_linux/perf_vote(采样四件) · session
+  layout_from_document(文档->数字) · perf_ring/perf_ops/perf_ops_linux/perf_vote(采样四件) · session
 
 race/ 6 件    PI 竞态层
-  futex_seam_linux(真 futex 调用，藏在 seam 后) · layer(PI-futex 竞态) · pi_race · pi_window(PI 内禁令) ·
+  futex_ops_linux(真 futex 调用，藏在 landing 后) · layer(PI-futex 竞态) · pi_race · pi_window(PI 内禁令) ·
   race_runtime(一次尝试要什么/能得出什么)
 
 route/ 6 件   路由策略层
@@ -40,7 +40,7 @@ steps/ 12 件  步骤编排与映射层
   step_runner(按契约顺序跑) · targets · words_region(承载者，把指针借给调用方) ·
   window_steps(节奏，承载 w1/w2/w3) · window_attempt(尝试，判据 cmp_requeue_pi<1) · window_runner(粘合)
 
-seam/ 2 件    窗口体与三 actor
+landing/ 2 件    窗口体与三 actor
   multicast_window(the thing called with the window open; does three things and no more) ·
   multicast_route(waiter/owner/consumer; The walk is the write; 三处细节必须保留)
 
@@ -59,7 +59,7 @@ leak/ 17 件   碰撞搜索层
 ## 4. 删 4 件（唯一站得住的）
 
 ```
-pipeline/run_pipeline_temp.{hpp,cpp}   1158 行   第二套窗口实现（与 seam 那套并列）
+pipeline/run_pipeline_temp.{hpp,cpp}   1158 行   第二套窗口实现（与 landing 那套并列）
       两套入口都是 *_main，而 cmp_disasm 的 TARGETS 要 *_thread => 两套都未被验证过
 core/cmake-build-debug   876K   未跟踪 · 含 CMakeFiles/mpack.dir 与 target-mpack-Debug-*.json
 profile-core/bin         696K   被 .gitignore:12 忽略 · 含两个夹具的构建副本
@@ -82,7 +82,7 @@ pipeline/run_pipeline_temp 同时出现在两份清单里：
 ```
 同一要求在各处措辞不同，逐层收紧：
 
-  seam/multicast_window.hpp   Zero warm-up rounds means the caller did not say,
+  landing/multicast_window.hpp   Zero warm-up rounds means the caller did not say,
                               which is refused by name rather than read as a default.
   steps/window_steps.hpp      失败一律具名：尝试用尽、钩子缺失都不是静默的零。
   steps/window_runner.hpp     缺它们时本层会具名说缺。
@@ -101,7 +101,7 @@ pipeline/run_pipeline_temp 同时出现在两份清单里：
 ```
 已覆盖的组与件数：
   顶层 16 · race 6 · route 6 · steps 12 个 .hpp 与 8 个 .cpp（一一配对） ·
-  seam 2 · memory 4 个 .hpp（+ cpp 抽查） · leak 17 个 .hpp 与 1 个 .cpp
+  landing 2 · memory 4 个 .hpp（+ cpp 抽查） · leak 17 个 .hpp 与 1 个 .cpp
 => 没有未判的件。
 ```
 

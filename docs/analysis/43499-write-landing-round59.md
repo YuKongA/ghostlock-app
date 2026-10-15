@@ -18,7 +18,7 @@
 
 ## 已就位但尚未用到的探针（登记：同批删除）
 
-- `core/src/backend/cve_2026_43499/seam/multicast_route.hpp:413` 有 `TEMPWAIT waiter ret=… errno=…` ✓；
+- `core/src/backend/cve_2026_43499/landing/multicast_route.hpp:413` 有 `TEMPWAIT waiter ret=… errno=…` ✓；
   本轮因判据先拒（`payload-layout-not-accepted` ✓）而**没跑到** ✗ ⇒ 修完奇偶后第一件事就是读它 ✓；
 - 待删清单同时包含 main 里的 `VOTES`/`PF*`/`sentinel`/`layout` 诊断打印 ✓。
 

@@ -2,11 +2,11 @@
 /** @file jni/ops_43499.hpp
  *  43499's ops: what a request means for this backend, and what its refusal is called.
  *
- *  This unit is the boundary's backend-facing half, and it is written against **seams** on purpose:
+ *  This unit is the boundary's backend-facing half, and it is written against **ops** on purpose:
  *  the device work (the heap preparation, the search, the fork, the PI window) arrives as function
  *  pointers, so the rules below -- which form maps to which landing shape, what has to be in place
  *  before a write may run, and what each refusal is called -- are decided and tested on the host.
- *  The device implementation of those seams is its own batch (recorded as J3b in
+ *  The device implementation of those ops is its own batch (recorded as J3b in
  *  docs/analysis/jni-two-backend-plan.md), because it needs a device to be verified.
  *
  *  The one thing this unit deliberately does NOT do: retry. A call is one attempt; how many
@@ -103,7 +103,7 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kFactDiscovered = 1U << 17U;
     inline constexpr std::uint64_t kFactVictim = 1U << 18U;
 
-    /** The device work, as function pointers. A null seam makes its op "not wired" by name. */
+    /** The device work, as function pointers. A null landing makes its op "not wired" by name. */
     struct Ops43499Seams final {
         /** Run the preparation and fill the facts it produced. */
         bool (*prepare)(Facts43499 &facts, void *context) noexcept = nullptr;
@@ -121,11 +121,11 @@ namespace ghostlock::jni {
         void *context = nullptr;
     };
 
-    /** 43499's ops, over the seams. One instance per session; the session owns it. */
+    /** 43499's ops, over the ops. One instance per session; the session owns it. */
     class Ops43499 final {
       public:
         Ops43499() noexcept = default;
-        explicit Ops43499(Ops43499Seams seams) noexcept : seams_(seams) {}
+        explicit Ops43499(Ops43499Seams ops) noexcept : ops_(ops) {}
 
         [[nodiscard]] FrameStatus handle(FrameOp op, const FrameReader &request,
                                          FrameWriter &reply) noexcept;
@@ -142,7 +142,7 @@ namespace ghostlock::jni {
 
         void publish_facts(FrameWriter &reply) noexcept;
 
-        Ops43499Seams seams_{};
+        Ops43499Seams ops_{};
         Facts43499 facts_{};
     };
 
@@ -150,7 +150,7 @@ namespace ghostlock::jni {
      *  Build this backend's ops as the session's bundle: the object is heap-allocated here, and
      *  the bundle carries the deleter, because the session does not know the type.
      *
-     *  @param seams the device work; an empty seam makes its op answer "op-not-wired".
+     *  @param ops the device work; an empty landing makes its op answer "op-not-wired".
      */
-    [[nodiscard]] BackendOps make_ops_43499(Ops43499Seams seams) noexcept;
+    [[nodiscard]] BackendOps make_ops_43499(Ops43499Seams ops) noexcept;
 }  // namespace ghostlock::jni

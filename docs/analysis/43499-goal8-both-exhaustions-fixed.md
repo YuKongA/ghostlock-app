@@ -6,7 +6,7 @@
 ① 成功路径也停子进程（方案 A ✓，prepare_page.hpp 成功尾部 ✓）：
    四组 pid 原先只活在栈上 ⇒ 返回即丢 ⇒ 调用方结构上无法回收 ✗ ⇒ 加 `kill_children(state)` ✓；
    真机确认**不破坏路由** ✓（`route status=0/0 attempts=16 calls=1 successes=1` 与修前一致 ✓）。
-② `stop_child` 只杀不收割（heap_seam_linux.hpp ✓）：
+② `stop_child` 只杀不收割（heap_ops_linux.hpp ✓）：
    `kill(SIGKILL)` 后无 `waitpid` ✗ ⇒ **僵尸**累积 ⇒ 同样占进程表 ⇒ EAGAIN（errno=11 ✓）；
    已改为 kill + `waitpid`（EINTR 重试 ✓，与 `VictimContext::retire_child()` 同形 ✓）+ 补 `#include <sys/wait.h>` ✓。
 ```

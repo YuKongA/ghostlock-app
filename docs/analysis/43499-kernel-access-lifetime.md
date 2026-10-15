@@ -8,11 +8,11 @@
 flowchart TD
     C["contract::KernelAccess<br/>（ADR-0014 · 脚本唯一可触）<br/>Channels: PiWindow/KernelModule/PageCache"]
     A["**Access final** : contract::KernelAccess<br/>kernel_access.hpp:65"]
-    S["**AccessSeam**（抽象接缝）<br/>kernel_access.hpp:36"]
+    S["**WordLanding**（抽象接缝）<br/>kernel_access.hpp:36"]
     P["**AccessParams** : AccessMiscParameters<br/>access_params.hpp:29<br/>route (RouteId) + offset"]
     T["TargetState<br/>session.hpp"]
     C --> A
-    A -->|持有 seam_ 非拥有指针| S
+    A -->|持有 ops_ 非拥有指针| S
     A -->|持有 target_ 非拥有指针| T
     A -->|initialize 读 route_| P
 ```
@@ -24,7 +24,7 @@ stateDiagram-v2
     [*] --> NeverUp: 构造（不取任何资源）
     NeverUp --> ComingUp: initialize(params)<br/>phase_ = ComingUp 先标记
     ComingUp --> Up: bring_up 成功
-    ComingUp --> Broken: seam_/target_ 空<br/>或 bring_up 失败
+    ComingUp --> Broken: ops_/target_ 空<br/>或 bring_up 失败
     Up --> Down: shutdown() 且 tear_down 成功
     Up --> Broken: shutdown() 且 tear_down 失败
     NeverUp --> NeverUp: initialize 参数不合格<br/>⇒ BadParameters
@@ -61,10 +61,10 @@ stateDiagram-v2
 | 对象 | 创建 | 所有者 | 借用者 | 访问区间 | 终结点 | 释放者 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `Access` | 工厂 `create(BackendId)` | 调用方（`unique_ptr`） | — | 全程 | 析构 | 调用方 |
-| `AccessSeam` | 本 backend 的 route 实现 | **外部**（非拥有） | `Access::seam_` | `initialize`→`shutdown` | `tear_down()` | **route 实现方** |
+| `WordLanding` | 本 backend 的 route 实现 | **外部**（非拥有） | `Access::ops_` | `initialize`→`shutdown` | `tear_down()` | **route 实现方** |
 | `TargetState` | 本 backend 会话 | **外部**（非拥有） | `Access::target_` | 全程 | — | 外部 |
-| route 及其载体/“着陆装置” | `seam_->bring_up()` | **seam** | `Access` 经 seam | `initialize`→`shutdown` | `seam_->tear_down()` | **seam** |
-| 一次访问的 window | 每次 `land_word` 内 | **seam** | `land_word` | **单次访问内** | 该次访问的**每条出口** | **seam** |
+| route 及其载体/“着陆装置” | `ops_->bring_up()` | **landing** | `Access` 经 landing | `initialize`→`shutdown` | `ops_->tear_down()` | **landing** |
+| 一次访问的 window | 每次 `land_word` 内 | **landing** | `land_word` | **单次访问内** | 该次访问的**每条出口** | **landing** |
 
 关键不变量（文档逐字）：
 
@@ -79,12 +79,12 @@ stateDiagram-v2
 
 ## 五、接缝四方法（＝旧实现要接的四个点）
 
-| `AccessSeam` 方法 | 语义 | 旧 C 对应（`backend/legacy43499/`） |
+| `WordLanding` 方法 | 语义 | 旧 C 对应（`backend/legacy43499/`） |
 | --- | --- | --- |
 | `bring_up(RouteId, const TargetState&)` | 上电，备好可写 | `select_offsets` → `init_cpu_config` → `apply_iomem_cache` → `spawn_victim` → `perf_find_task` |
 | `tear_down()` | 下电并回收 | `kill(-child, SIGKILL)` ＋ `waitpid` ＋ close(pipes) ＋ 路由侧清理 |
 | `land_word(address, value, offset)` | **写一个字**（“The whole point of the backend”） | `do_one_write(target, mode, leaf)` |
-| `can_read()` / `read_word(...)` | 默认 **false**（“honest answer for a window that only writes”） | 待 route 声明；`kernelsnitch` 具备读能力后由 seam 覆写 |
+| `can_read()` / `read_word(...)` | 默认 **false**（“honest answer for a window that only writes”） | 待 route 声明；`kernelsnitch` 具备读能力后由 landing 覆写 |
 
 ## 六、能力诚实性（为什么是 state 而非 bool）
 
@@ -98,9 +98,9 @@ a window write is the **bootstrap** and works **as soon as a route is up**；
 ## 七、与目标的连接（GAP-1）
 
 ```
-现在：main.cpp 直驱执行层（MulticastRoute + payload_page + write_encoder）⇒ Access/AccessSeam **空转**
+现在：main.cpp 直驱执行层（MulticastRoute + payload_page + write_encoder）⇒ Access/WordLanding **空转**
 目标：「逐步将旧实现接入 kernel access」=
-   ① 写一个 `AccessSeam` 的实现（如 `MulticastSeam`）⇒ `bring_up/tear_down/land_word` 内部调 legacy43499 ✓
+   ① 写一个 `WordLanding` 的实现（如 `MulticastLanding`）⇒ `bring_up/tear_down/land_word` 内部调 legacy43499 ✓
    ② 由此 main.cpp 的直驱改为经 `Access::write64`（粒度天然一致 ✓）
    ③ 一个 route 一个 route 地接（文档逐字：“ported one route at a time without touching it”）
 ```

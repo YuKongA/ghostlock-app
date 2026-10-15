@@ -4,7 +4,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| `seam/select_stack_route.hpp`（新增 ✓） | `SelectStackConfig`（fd_words / waiter_shift / compact / fake_waiter_prio / fake_task / fake_lock / target / value ✓，**全走文档** ✓）、`SelectStackReport`（与 multicast 同形 ✓）、`select_stack_word_site()`（词 → (组, 词) ✓）、`select_stack_compact_words()`（11 词，与快照 414-430 **同序** ✓） |
+| `landing/select_stack_route.hpp`（新增 ✓） | `SelectStackConfig`（fd_words / waiter_shift / compact / fake_waiter_prio / fake_task / fake_lock / target / value ✓，**全走文档** ✓）、`SelectStackReport`（与 multicast 同形 ✓）、`select_stack_word_site()`（词 → (组, 词) ✓）、`select_stack_compact_words()`（11 词，与快照 414-430 **同序** ✓） |
 | `tests/select_stack_route_test.cpp`（新增 ✓） | 主机自测：词 2→组0词0 ✓、词 12→组0词10 ✓、负位移被忽略 ✓、越界被拒 ✓、非 compact 不表 ✓、词值同序（tree/pi 双侧 + task/lock + prio 左移 32 后再或 3 ✓） |
 | `core/Makefile` | 源列表 +1 ✓（`:282`）、新构建规则 ✓（`:510`）、进 `EVIDENCE_BINS` ✓（`:318` 尾） |
 

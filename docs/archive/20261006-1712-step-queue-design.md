@@ -1,6 +1,6 @@
 # 步骤队列取代 token：L 级设计稿（2026-10-05）
 
-> **状态（v2.2，2026-10-06，定稿）：U5/U9/U10 已按建议裁决并入（§11「全部已裁决」）；实现自 M1 开始（用户面零变化）。v2.1 摘要：用户复裁已并入 —— ① route **回到队列级**（43499 必填 / 43284 不得出现 / 每步写 ⇒ 拒绝；「要设计好」的六条见 §5-Q2）；② **坚持改 wire**：`queue` = **对象数组**，**HOCON 与 wire 同形**（Lead 的点分索引折中已撤回，沿革见 §0.2）；W2 回到「独立大批次」，**需要真机门禁**（§4.5）。语法 = B；seam 为纯占位 + 复用既有插件阶段标识符；键名 = `queue`；UI 重做；新实验一律走生产路径。Lead 复核中。**
+> **状态（v2.2，2026-10-06，定稿）：U5/U9/U10 已按建议裁决并入（§11「全部已裁决」）；实现自 M1 开始（用户面零变化）。v2.1 摘要：用户复裁已并入 —— ① route **回到队列级**（43499 必填 / 43284 不得出现 / 每步写 ⇒ 拒绝；「要设计好」的六条见 §5-Q2）；② **坚持改 wire**：`queue` = **对象数组**，**HOCON 与 wire 同形**（Lead 的点分索引折中已撤回，沿革见 §0.2）；W2 回到「独立大批次」，**需要真机门禁**（§4.5）。语法 = B；landing 为纯占位 + 复用既有插件阶段标识符；键名 = `queue`；UI 重做；新实验一律走生产路径。Lead 复核中。**
 > **用户已裁决的两条前提（不再争论）**：① **队列直接取代 token**（理由：HOCON 可读性极大增强）；② **不做**完全动态 DSL / 运行期自适应规划（planner / 状态机）——队列是**静态声明**。
 > 命名：本文按 Lead 指定落在 `docs/archive/20261006-1712-step-queue-design.md`（即文档规范里的 L 级「计划」类文档；正式的 `*-plan.md` 归档名在实现批次启动时可改为 `step-queue-plan.md`，本文不复制结构）。
 
@@ -15,7 +15,7 @@
 | D1 | **选 B（对象数组）** | §5.0/§5-Q1：**B = 规范形态**；A 纯数组**不作为 HOCON 语法保留**（建议：可读性快捷方式放 UI，见 §5-Q1） |
 | D2（**已被 D2′ 取代**） | **route 每步带**，43284 可省略 | v2.0 曾写「每步可写、整条一致」；现按 D2′ 执行 |
 | **D2′（2026-10-06，现行）** | 「**那算了整体声明一个 route 得了，但是要设计好**」 | §5-Q2 + §10.1-S14：**route 只在队列级**（每步写 ⇒ 拒绝）；**43499 必填**、**43284 不得出现**；位置＝与 `queue` 平级的 backend 字段；进入 `CanonicalPlan.route`，判定与 dispatch 都以它为准 |
-| D3 | 插件调用点**纯占位**，但**阶段标识符先标记** | §5-Q3：seam 携带**既有插件阶段词汇**（`pre_spawn`/`post_spawn`/`pre_terminal`/`post_terminal`）作为**预留标识符**；实现仍冻结；R1 位置约束保留 |
+| D3 | 插件调用点**纯占位**，但**阶段标识符先标记** | §5-Q3：landing 携带**既有插件阶段词汇**（`pre_spawn`/`post_spawn`/`pre_terminal`/`post_terminal`）作为**预留标识符**；实现仍冻结；R1 位置约束保留 |
 | D4 | **UI 要重新改，现有 UI 测试不用测了** | §4.4-M4：UI 重做；旧 UI 测试不作迁移验收（替换/删除在实现批次登记） |
 | D5（**形态已被 D5′ 取代**） | **选 W2** + 「以后新实验尽量从已有路径启动，不要为实验加 CLI 旗标/旁路」 | v2.0 曾用 Lead 的「点分索引键」折中落地；现按 D5′ 执行 |
 | **D5′（2026-10-06，现行）** | 「**我还是坚持改 wire**」 | §4.5：**wire 直接承载数组结构**（`queue` = 对象数组，**HOCON 与 wire 同形**）；「点分索引键」折中**撤回并标为已被用户否决**（它违背「**wire 应当对齐 profile**」原则）；队列本身仍是「预留扩展性」机制（实验走生产路径，零新增 CLI） |
@@ -101,7 +101,7 @@
 ## 3 目标与约束
 
 **目标**
-1. 用户可在 HOCON 里**静态声明步骤序列**（可读、可带参数、可标 seam 位置），不再只能选预设 token。
+1. 用户可在 HOCON 里**静态声明步骤序列**（可读、可带参数、可标 landing 位置），不再只能选预设 token。
 2. **native 是步骤词汇的唯一权威**；未注册步骤 id **编译不过**（不是运行期才拒）。
 3. 每个非法声明形状 ⇒ **声明期拒绝整个文档**；每个非法形状都有一个**能被证明失败**的守卫。
 4. 归一化后的计划与**已过真机的预设集合**比对 ⇒ `supported`（复用已验证路径）/ `experimental`（显式标记 + 警告 + 需真机门禁）。
@@ -109,9 +109,9 @@
 
 **非目标（明确不做）**
 - 不做运行期自适应规划 / planner / 状态机（用户裁决 ②）；队列是静态声明，计划在解析期完全确定。
-- 不做动态 DSL（条件、循环、变量、表达式）；队列元素只有「步骤 / 参数 / seam」三类。
+- 不做动态 DSL（条件、循环、变量、表达式）；队列元素只有「步骤 / 参数 / landing」三类。
 - 不改攻击原语本身（waiter/race/route 实现）；本设计只改**选择面 + 计划归一化 + 分派**。
-- 不恢复插件工程（仍冻结；seam 只做惰性占位，见 §5-Q3）。
+- 不恢复插件工程（仍冻结；landing 只做惰性占位，见 §5-Q3）。
 
 ## 4 设计
 
@@ -171,10 +171,10 @@
 | **route 缺失**（§5-Q2） | 43499（有 route 轴）队列没有队列级 `route` | **声明期拒绝**：`route-required`（队列取代 token 后 route **没有别的来源**） |
 | **route 不适用**（§5-Q2） | 无 route 轴的 backend（43284）出现 `route` | **声明期拒绝**：`route-not-applicable` |
 | **route 重复**（§5-Q2） | 队列级 `route` 出现多处 | **声明期拒绝**：`route-duplicated` |
-| **seam 阶段/位置不符**（§5-Q3） | seam 声明的阶段与它所在位置推导的阶段不符，或落在 R1 禁区 | **声明期拒绝**：`seam-stage-illegal` |
+| **landing 阶段/位置不符**（§5-Q3） | landing 声明的阶段与它所在位置推导的阶段不符，或落在 R1 禁区 | **声明期拒绝**：`landing-stage-illegal` |
 
 **(d) 守卫要求（AGENTS 强制）**：上表**每一行**在实现批次里都要有一个守卫，并按「守卫必须能失败」的规范做证伪实验（临时造错 → 观察到预期失败 → 撤回 → 核验无残留；**证伪一律 `make -B`**，因同秒 mtime 会跑旧二进制给出假证明）。同时，§2.4 的**七个静默默认点必须逐个改成硬失败并配具名诊断**：**S1、S3、S5、S6、S8、S9、S13**（S5 是队列下最危险的一条：`DispatchTarget::None` 会让 orchestrator **不打印任何东西就 `Rejected`**，用户只看到"什么都没发生"）。**每条的诊断文本、落点与证伪方式见 §10.1**——诊断文本要进测试断言，否则会漂移。
-形状表里的 route 四条（**每步 route / 缺失 / 不适用 / 重复**）与 **seam 阶段**一条同样要有具名诊断与证伪实验（§10.1 的 S14a–S14d 与 S15 已列出草案文本）。
+形状表里的 route 四条（**每步 route / 缺失 / 不适用 / 重复**）与 **landing 阶段**一条同样要有具名诊断与证伪实验（§10.1 的 S14a–S14d 与 S15 已列出草案文本）。
 
 ### 4.3 ③ 支持面与实验面
 
@@ -238,7 +238,7 @@ backend.cve_2026_43499 {
 }
 backend.cve_2026_43284 {
   # 无 route 轴 ⇒ 不得写 route
-  queue = [ { step = "pagecache_write" }, { seam = "plugin", stage = "post_terminal" } ]
+  queue = [ { step = "pagecache_write" }, { landing = "plugin", stage = "post_terminal" } ]
 }
 ```
 
@@ -246,7 +246,7 @@ backend.cve_2026_43284 {
 # wire（App 原样发射；native 解析同一形状）
 backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"}, {step:"w3"} ] }
 ```
-（wire 是 MessagePack：`queue` = **array of map**；元素恰好含 `step` 或 `seam` 之一。）
+（wire 是 MessagePack：`queue` = **array of map**；元素恰好含 `step` 或 `landing` 之一。）
 
 **收益（用户选择的正当理由，如实写）**
 1. **单一形态** ⇒ 少掉一整类「两种写法等价性」的静默风险（不再需要跨形态一致性语料）；
@@ -268,8 +268,8 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 | C1 | **放行 `Array`** | `profile/glkv3_parse.cpp:363` 现在对段内 Array 值直接 `return -1`；需开通道：数组长度上限、元素必须是 map、嵌套深度、fail-closed | 中-大 |
 | C2 | **复合值承载（本轮最大项）** | 中立 `profile/document.hpp` 的 `Value` 只有 raw / text 两态；`queue` 的元素是 **map**（多层）⇒ 需要**有界复合值**承载 + 字符串视图仍指向 decode buffer 的生命周期约定 + 深度/大小上限 | **大** |
 | C3 | **FieldSpec / bind** | 需要 array-of-map 的声明与绑定（或专用 queue 值类型）；bind 后聚合成有序 `CanonicalPlan` | 中 |
-| C4 | **manifest / 类型面** | manifest 需表达「array of map + 元素形状」；Kotlin `Glkv3Value.Array` **已有**（`Glkv3Encoder.kt:35`），但 **manifest 驱动的 adapter 要学新 kind**（元素形状校验：恰好一个 `step` 或 `seam`） | 中 |
-| C5 | **元素形状校验 + 守卫** | 恰好一个 `step` 或 `seam`；未知键 ⇒ 拒绝；空数组 / 非 map 元素 / 重复 step / 依赖与顺序（§4.2 形状表）+ 每条守卫证伪 | 中 |
+| C4 | **manifest / 类型面** | manifest 需表达「array of map + 元素形状」；Kotlin `Glkv3Value.Array` **已有**（`Glkv3Encoder.kt:35`），但 **manifest 驱动的 adapter 要学新 kind**（元素形状校验：恰好一个 `step` 或 `landing`） | 中 |
+| C5 | **元素形状校验 + 守卫** | 恰好一个 `step` 或 `landing`；未知键 ⇒ 拒绝；空数组 / 非 map 元素 / 重复 step / 依赖与顺序（§4.2 形状表）+ 每条守卫证伪 | 中 |
 | C6 | **同形对拍语料**（替代原「跨形态一致性语料」） | App 发射 → native 解析得到的 `CanonicalPlan` 必须与 **HOCON 语义逐字段一致**；语料覆盖合法/非法元素形状 | 中 |
 | C7 | **跨端产出/编辑** | extractor `--format conf` 产出对象数组；Kotlin 解析/发射（编码器已就绪）+ **UI 重做**（D4） | 中 |
 
@@ -329,16 +329,16 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - 若用户坚持 HOCON 里也能写纯字符串数组，则它只能作为 **App 侧语法糖**（App 展开为**对象数组**再发射；**native 只认对象数组**，不引入第二种 wire 表示）⇒ 记为遗留项 **U9**。
 
 ### Q1（已裁决 D1 + D5′）队列形态 = B（对象数组），**HOCON 与 wire 同形**
-- **元素只有两种语义**：`{ step = "<id>" }` 或 `{ seam = "<type>", stage = "<stage>" }`（seam 见 Q3）；map **不得**同时带 `step` 与 `seam` ⇒ **拒绝**。
+- **元素只有两种语义**：`{ step = "<id>" }` 或 `{ landing = "<type>", stage = "<stage>" }`（landing 见 Q3）；map **不得**同时带 `step` 与 `landing` ⇒ **拒绝**。
 - **A 不保留（U9 裁决）**：纯字符串元素（含整个 `queue` 是字符串数组）⇒ **拒绝** + 具名诊断 `plan_error reason=queue-element-not-object at=<i>`；可读性交给 UI 预设按钮。
 - **`params` 预留未实现（U10 裁决）**：`params` 是**已知但保留**的键 ⇒ 拒绝，但报**具名 reserved**（不是 unknown）：`plan_error reason=params-reserved-for-future-step-parameters at=<i>`；契约与 manifest 文档行写明「reserved, not implemented」。
 - 其余未知键 ⇒ 拒绝（`plan_error reason=queue-element-unknown-key at=<i> key=<k>`）。
 - **空 `queue` ⇒ 拒绝**（`4c20142f` 补）：不得用空数组表达「什么都不跑」；
-- **`stage` 必须随 `seam`**（`4c20142f` 补）：只写 `stage` 不写 `seam`、或 `seam` 缺 `stage` ⇒ 拒绝；
+- **`stage` 必须随 `landing`**（`4c20142f` 补）：只写 `stage` 不写 `landing`、或 `landing` 缺 `stage` ⇒ 拒绝；
 - **`available` 双形态（`4c20142f`）**：列表形态（旧）**零破坏**；对象形态 `<backend>{ route=<str>, queue=[{…}], experimental=<bool> }` **五类拒绝**——纯字符串元素 / `route` 与 `queue` 都给 / 都没有 / 未知键 / `params` 保留但拒。
 - **同形对拍语料（硬要求，进 M1/M2 验收；替代原「跨形态一致性语料」）**：
   1. **正例**：App 发射的 wire 字节由 native 解析得到的 `CanonicalPlan`，必须与 **HOCON 语义逐字段一致**（HOCON 写 `{step="w1"}`，wire 就是 `{step:"w1"}`；**不做降级映射**）；
-  2. **负例**：`queue` 不是数组、元素不是 map、map 既无 `step`/`seam`、同时带两者、带未知键、空数组、重复 step、依赖/顺序非法、route 位置非法（§5-Q2）⇒ **拒绝**；
+  2. **负例**：`queue` 不是数组、元素不是 map、map 既无 `step`/`landing`、同时带两者、带未知键、空数组、重复 step、依赖/顺序非法、route 位置非法（§5-Q2）⇒ **拒绝**；
   3. **token 糖等价性**（迁移期仍需要）：任一 token 与它的队列糖必须归一化到**同一个内部键**，否则出现「写法不同、支持面判定不同」的隐性坑；
   4. 语料沿用插件探针语料的「**目录即结论**」做法（`accept/`、`reject/` + manifest + walker 自证完备）。
 
@@ -353,12 +353,12 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - **canonical 承载（2026-10-06 落地 = `4c20142f`）**：canonical 里队列级 route 走 **`queue_route`（str，canonical-only）**，几何 Map `route` **不被覆盖**；**唯一映射点 = `NativeProfile.backendSection()`**（`queue_route` → wire 键 `route`；无几何时直接用 `route`；**两者同时为 str ⇒ fail-closed「refusing to pick a precedence」**）；**回显只认「与 `available` 声明逐值相等」**（手工只在 `backend.<id>` 写 ⇒ 未知键拒绝）。**沿革（为什么必须先解决）**：`route` 撞键会让**几何 Map 被静默覆盖 ⇒ 68 资产几何归零**；完成判据 = Kotlin golden 3964 字符与 `make -C core glkv3-golden-hex` **逐字符相同** + 两侧 fixture 91 行对拍 + **未声明三键零新增字节** + `ProfileLayoutEquivalenceTest`（≥60 资产）绿 + **5 条证伪** + `:profile-core:test :app:testDebugUnitTest --rerun-tasks` EXIT=0。
 - **沿革**：v1「每步 route 一律拒绝」→ v2.0「每步可写但整条一致」（D2）→ **v2.1「只在队列级 + 必填 / 不得出现 / 唯一」**（D2′，2026-10-06）。
 
-### Q3（已裁决 D3）seam = 纯占位 + 复用既有插件阶段标识符
-- **语法**：`{ seam = "plugin", stage = "pre_spawn" }`（`stage` 必填；`plugin` 是 seam 类型的保留名）。
+### Q3（已裁决 D3）landing = 纯占位 + 复用既有插件阶段标识符
+- **语法**：`{ landing = "plugin", stage = "pre_spawn" }`（`stage` 必填；`plugin` 是 landing 类型的保留名）。
 - **阶段标识符 = 单一权威**：复用**冻结的插件设计**已定义的阶段词汇 `pre_spawn` / `post_spawn` / `pre_terminal` / `post_terminal`（来源：`plugin.<id>.stage`，见 `docs/analysis/contract-design.md` §3.14.7 与 `plugin/schema.hpp`），**不新造第二套**；登记为**预留标识符**（实现仍冻结：队列侧只校验，不加载、不映射）。
-- **位置约束（R1）**：PI waiter 存活期**不得**映射插件 `.so`（`plugin/host.hpp:107` 的 `WaiterClosed` 窗口即物化）。⇒ 队列里 seam 的合法位置只有两类：**步骤队列之前**（= `pre_spawn`）与**终态/驻留窗口之后**（= `post_terminal`）；落在 `[w1..w3]` 区间内（会推导出 `post_spawn`/`pre_terminal`）⇒ **声明期拒绝**，诊断：`plan_error reason=seam-stage-illegal stage=<s> at=<i> allowed=[pre_spawn,post_terminal]`。
-- **一致性**：seam 的 `stage` 必须与**位置推导的阶段**一致（显式声明 + 交叉校验，不一致 ⇒ 拒绝）；每个 backend 声明自己合法的阶段集合（43284 走 `/dev/glk` 驻留窗口 = `post_terminal`）。
-- **将来解冻**：`{ seam = "plugin", plugin = "<id>" }` 作为**扩展键**加入（描述符校验），不改位置/阶段语法。
+- **位置约束（R1）**：PI waiter 存活期**不得**映射插件 `.so`（`plugin/host.hpp:107` 的 `WaiterClosed` 窗口即物化）。⇒ 队列里 landing 的合法位置只有两类：**步骤队列之前**（= `pre_spawn`）与**终态/驻留窗口之后**（= `post_terminal`）；落在 `[w1..w3]` 区间内（会推导出 `post_spawn`/`pre_terminal`）⇒ **声明期拒绝**，诊断：`plan_error reason=landing-stage-illegal stage=<s> at=<i> allowed=[pre_spawn,post_terminal]`。
+- **一致性**：landing 的 `stage` 必须与**位置推导的阶段**一致（显式声明 + 交叉校验，不一致 ⇒ 拒绝）；每个 backend 声明自己合法的阶段集合（43284 走 `/dev/glk` 驻留窗口 = `post_terminal`）。
+- **将来解冻**：`{ landing = "plugin", plugin = "<id>" }` 作为**扩展键**加入（描述符校验），不改位置/阶段语法。
 
 ## 6 改动清单（未来批次，文件级）
 
@@ -418,7 +418,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 | R10 | 加内建步骤的繁琐度引发"退回运行期注册" | §4.6：3 处机械改动 + 单一权威生成 + 脚手架清单 + 错误指路；内建保持编译期注册，插件步骤走运行期注册 |
 | R5 | 步骤依赖/顺序规则与攻击语义不符（例如跳过 w1 直接 w2 在真机上必然失败） | 依赖表来自现有 `steps.cpp` 的真实先后（`W1W3Steps/W1W2Steps`）；任何放宽都要真机证据 |
 | R6 | 迁移期双真相导致长期分叉 | M5 是计划内必做项，有完成判据 |
-| R7 | seam 位置违反 R1（PI waiter 存活期映射插件） | seam 位置在声明期校验 + 负例（S8 类） |
+| R7 | landing 位置违反 R1（PI waiter 存活期映射插件） | landing 位置在声明期校验 + 负例（S8 类） |
 | R8 | **S5 型"静默 Rejected"**：接线缺一条 case，用户看到"什么都没发生"，无法自助定位 | §10.1 的 S5 具名诊断（必须回显归一化计划全字段）+ 测试断言诊断文本 |
 
 ### 10.1 静默默认点（S1/S3/S5/S6/S8/S9/S13）+ 新形状守卫（S14a–S14d / S15 / S16–S18）→ 硬失败 + **具名诊断文本**
@@ -438,7 +438,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 | **S14b**（新形状） | route **适用性**（§5-Q2） | 无（新形状） | 无 route 轴的 backend 出现 route ⇒ 拒绝 | `plan_error reason=route-not-applicable backend=cve_2026_43284` | 给 43284 写 route ⇒ 必须打印并拒绝 |
 | **S14c**（新形状） | route **唯一性**（§5-Q2） | 无（新形状） | 队列级 route 出现多处 ⇒ 拒绝 | `plan_error reason=route-duplicated` | 重复写队列级 route ⇒ 必须打印并拒绝 |
 | **S14d**（新形状） | **每步 route 禁止**（§5-Q2） | 无（新形状） | route 写进数组元素 ⇒ 拒绝 | `plan_error reason=step-route-not-allowed at=<i>` | 造含 route 的步骤元素 ⇒ 必须打印并拒绝 |
-| **S15**（新形状） | seam 阶段/位置校验（§5-Q3） | 无（新形状） | 阶段与位置不符、或落在 R1 禁区 ⇒ 拒绝 | `plan_error reason=seam-stage-illegal stage=<s> at=<i> allowed=[pre_spawn,post_terminal]` | 造 `[ {step=w2}, {seam=plugin,stage=pre_spawn} ]` ⇒ 必须打印并拒绝 |
+| **S15**（新形状） | landing 阶段/位置校验（§5-Q3） | 无（新形状） | 阶段与位置不符、或落在 R1 禁区 ⇒ 拒绝 | `plan_error reason=landing-stage-illegal stage=<s> at=<i> allowed=[pre_spawn,post_terminal]` | 造 `[ {step=w2}, {landing=plugin,stage=pre_spawn} ]` ⇒ 必须打印并拒绝 |
 | **S16**（新形状） | 元素形态（§5-Q1，U9） | 无（新形状） | 纯字符串元素 / 非 map 元素 ⇒ 拒绝 | `plan_error reason=queue-element-not-object at=<i>` | 造 `queue = [ "w1" ]` ⇒ 必须打印并拒绝 |
 | **S17**（新形状） | 实验面声明（§4.3，U5） | 无（新形状） | 未声明 + 未验证 ⇒ 拒绝；声明了但等于已验证预设 ⇒ 按 supported 跑 | `plan_error reason=experimental-not-declared backend=<b> plan=<...>`；判定行 `plan verdict=supported|experimental` | 造一个未声明的非预设计划 ⇒ 必须打印并拒绝；声明后同一计划必须判 experimental 且可执行 |
 | **S18**（新形状） | 预留键（§5-Q1，U10） | 无（新形状） | `params` ⇒ 拒绝，但报 reserved 而非 unknown | `plan_error reason=params-reserved-for-future-step-parameters at=<i>` | 造含 `params` 的元素 ⇒ 必须打印该 reason（不是 unknown） |
@@ -450,7 +450,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 **已裁决（不再是未决项）**
 - **U1 = 已裁决（D1）**：队列形态 **B（对象数组）**；A 不保留为 HOCON 语法（建议，见 §5.0）。
 - **U2 = 已裁决（D2′，2026-10-06 复裁）**：route **只在队列级**（每步写 ⇒ 拒绝）；**43499 必填 / 43284 不得出现 / 唯一**；真正的「每步换 route」**不做**（独立 L 级 + 真机门禁）。（v2.0 的「每步可写但一致」已被取代，见 §0.2。）
-- **U3 = 已裁决（D3）**：seam = **纯占位** + **复用既有插件阶段词汇**（预留标识符）+ R1 位置约束。
+- **U3 = 已裁决（D3）**：landing = **纯占位** + **复用既有插件阶段词汇**（预留标识符）+ R1 位置约束。
 - **U4 = 已裁决（Lead 采纳）**：迁移期**严格规范序**（只允许与今天两个 step set 同构的前缀子集，如 `[w1,w2]`），将来按需放宽。
 - **U6 = 已定**：资产口径 **68 个 `.conf` = 58 release + 10 共享**；**早前口径 62 是过期计数**（已按 Lead 确认更正）。
 - **U7 = 已裁决（Lead 定）**：键名 = **`queue`**（新键；不复用 `steps`，语义不同、显式优于隐式）；`steps` 是否在 M5 移除另议。 **M5 落定（`e59a8479`）：保留 `steps` 键 + 具名拒 token 取值**——**不做整键移除**（整键移除会让拒绝退化成泛化 unknown-key，DX 更差 ✗）；native 诊断 `plan_error reason=token-form-removed path=backend.<id>.steps hint=declare-route-and-queue`；**legacy uint 边界**：`steps` 声明为 `WireKind::String` ⇒ legacy uint 路径**保留「就地改写为 token 文本」**（改写调用方已发来的键，**不是注入糖**），不变量 = **queue 路径不得创建 `steps` 键**。
@@ -468,7 +468,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 - `kCombinationCatalog` 12 行与 `combination-manifest.tsv`：迁移期**保留为内部归一化键**（不改数值、不改列义，直到 M5 后的单独批次评估）。
 - `StepSetKind{1,2,3}` 与 `vocabulary-manifest.tsv` 的 3 行 stepset：保留（数值不变）。
 - `Pipeline` 的编译期 `static_assert` 与 orchestrator 的逐 case 断言：**保留**（队列不改"编译期固定组合"这一原则，只改选择的表达）。
-- 插件工程冻结与 `WaiterClosed` 窗口约束：保留；seam 只做惰性占位。
+- 插件工程冻结与 `WaiterClosed` 窗口约束：保留；landing 只做惰性占位。
 - 攻击原语（waiter/race/route/payload）：不动。
 - **不做「每步换 route」**（一次运行多轮 route prepare/disarm + waiter 生命周期重排）——攻击路径改动，需独立 L 级设计 + 真机门禁。
 - **不做 A（纯数组）的 HOCON 语法**（§5.0；如需快捷方式，放 UI 层）。
@@ -480,7 +480,7 @@ backend.cve_2026_43499 { route: "select_stack", queue: [ {step:"w1"}, {step:"w2"
 
 - [x] 设计稿骨架（本文件）
 - [x] Lead 首轮评审通过 + 三处修订（§4.5 产品意图对照 / §10.1 具名诊断 / §11 U6 口径）
-- [x] **用户裁决并入（2026-10-05，见 §0）**：D1 B 为规范形态；D2 route 每步可写但整条一致；D3 seam 纯占位 + 复用插件阶段标识符；D4 UI 重做；**D5 选 W2**；D6 键名 `queue`
+- [x] **用户裁决并入（2026-10-05，见 §0）**：D1 B 为规范形态；D2 route 每步可写但整条一致；D3 landing 纯占位 + 复用插件阶段标识符；D4 UI 重做；**D5 选 W2**；D6 键名 `queue`
 - [x] **用户复裁并入（2026-10-06，见 §0.1 D2′/D5′）**：① route **回到队列级**（43499 必填 / 43284 不得出现 / 每步写 ⇒ 拒绝 / 唯一）；② **坚持改 wire** ⇒ `queue` = 对象数组、HOCON 与 wire **同形**（点分索引折中撤回）；③ §4.5 成本重估（C1–C7 上调，C2 复合值承载为最大项）⇒ **回到独立大批次 + 真机门禁**；④ §5-Q1 语料改为**同形对拍**；⑤ §10.1 扩到 12 行（S14a–S14d），守卫总数 **23**；⑥ §11-U2 更新、U5/U9/U10 仍待用户
 - [x] §4.6 正面回答「编译期注册是否更繁琐」（3 处机械改动 + 单一权威生成 + 脚手架；内建编译期 / 插件运行期两套并存）
 - [x] 成本重估（v2.1 修正）：C1–C7 按 **wire 直接承载数组** 上调（**C2 复合值承载为最大项**；整体**回到「独立大批次」+ 真机门禁**）

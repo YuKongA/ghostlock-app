@@ -8,12 +8,12 @@
 ## 改动的形状与判据
 
 ```
-seam::RouteExec 由抽象基类改为 concept（multicast_window.hpp:42-43）
+landing::RouteExec 由抽象基类改为 concept（multicast_window.hpp:42-43）
 MulticastWindow 改为 template <RouteExec Exec>（:60）
 窗口/access/attempt/context/binder 全部以具体路由类型参数化，调用在编译期
 multicast_route_linux.cpp 增 static_assert(RouteExec<...>)，编译期对接判据
 
-可失败判据：grep -c virtual core/src/backend/cve_2026_43499/seam/multicast_window.hpp
+可失败判据：grep -c virtual core/src/backend/cve_2026_43499/landing/multicast_window.hpp
   改前 = 3（析构 + execute + arm），改后 = 0
 并纳入 check：输出两行
   check: virtual is confined to the access interface (tests exempt)
@@ -41,7 +41,7 @@ main: step result w1 => won  1     1     1    相同
 value=9（脚本 surface.log）   1     1     1    相同，逐字 [lua] surface -> call index value=9
 main: victim uid=2000       16    16    16    相同
 main: victim uid=0           0     0     0    相同（本批不改变该结果）
-access bound route=multicast_waiter seam=1  16  16  16  门面接管，fallback=0
+access bound route=multicast_waiter landing=1  16  16  16  门面接管，fallback=0
 window clean=1 violations   alloc=0 log=0 indirect=0 lua=0   四项窗口违规全 0
 前置：/data/adb/modules 空、无 /data/adb/ksu  => KernelSU 未加载
 ```

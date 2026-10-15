@@ -19,7 +19,7 @@ main.cpp:1046  stage_context.payload_value = route_values.value ✗（喂给阶�
 | 文件 | 改动 |
 | --- | --- |
 | `core/src/main.cpp` | `:1046` 改用 `page_write_value` ✓；select 分支 `select_config.value`（`:968`）同源改 ✓ |
-| `core/src/backend/cve_2026_43499/seam/select_stack_route.hpp` | 无需改（它只消费配置 ✓） |
+| `core/src/backend/cve_2026_43499/landing/select_stack_route.hpp` | 无需改（它只消费配置 ✓） |
 | `core/fixtures/wire-43499-collide-F.json` / `-select-stack.json` | 评估是否把 `payload.value` 改为**真值来源**或删除该键（若删 ⇒ 需同步 expected_keys ✓） |
 
 ## 三、行为差异（可判 ✓）

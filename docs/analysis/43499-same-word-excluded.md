@@ -17,7 +17,7 @@ requeue: wait=0x7bd6630004 ✓  chain=0x7bd6628000 ✓  target=0x7bd6630000 ✓
 | 3 | stdout 的 fd 借用致卡 ✗ | 低位 fd 改 {3,4,5} ⇒ 不再卡 ✓ |
 | 4 | 每轮未归零 ✗ | 已改每轮归零 ⇒ 路线跑完 4 轮 ✓ |
 | 5 | 引擎未武装 ✗ | 已 `race_.prepare(wait,target)` ✓ |
-| 6 | 默认 seam 是空实现 ✗ | 已绑真 seam ✓（`cmp_requeue_pi` 真 syscall ✓） |
+| 6 | 默认 landing 是空实现 ✗ | 已绑真 landing ✓（`cmp_requeue_pi` 真 syscall ✓） |
 | 7 | owner 侧多余 chain 锁 ✗ | 已清 ✓（未改变读数 ✓） |
 | 8 | 参数形状不同 ✗ | 与快照**逐字一致** ✓ |
 | 9 | 两侧不是同一个字 ✗ | 地址逐字相同 ✓（本轮 ✓） |

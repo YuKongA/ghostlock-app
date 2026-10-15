@@ -16,7 +16,7 @@
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
 
-namespace ghostlock::backend::cve_2026_43284::seam {
+namespace ghostlock::backend::cve_2026_43284::landing {
     class PageCacheDoorLinux;
 }
 #include "contract/kernel_access.hpp"
@@ -130,7 +130,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     };
 
     /** Run one step on this machine: open the door its target needs, build the page-cache stack
-     *  (door -> splice -> window -> seam -> access), initialise the access with the parameters, then
+     *  (door -> splice -> window -> landing -> access), initialise the access with the parameters, then
      *  call the body the name denotes. The door is opened once and the access is shut down before it
      *  goes out of scope. On a machine where the door cannot be opened the answer is NoDevice -- that
      *  is not a refusal, it is the absence of the device the step needs.

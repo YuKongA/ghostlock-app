@@ -59,7 +59,7 @@ namespace ghostlock::backend::cve_2026_43499::race {
 
     /** The futex operations of one platform; the policy is a compile-time type
      *  so every call below is direct (window rule: no indirect dispatch). */
-    struct FutexSeam final {
+    struct FutexOps final {
         /** Lock the target word for the caller (PI). */
         static int lock_pi(std::uint32_t *word) noexcept {
             (void) word;
@@ -86,7 +86,7 @@ namespace ghostlock::backend::cve_2026_43499::race {
 
     /** One PI race attempt. The caller owns the window guard; this class owns
      *  only the two words and its own state. */
-    template <class Seam = FutexSeam>
+    template <class Seam = FutexOps>
     class PiRace final {
       public:
         PiRace() noexcept = default;

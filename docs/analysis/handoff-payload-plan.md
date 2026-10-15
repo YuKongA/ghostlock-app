@@ -10,7 +10,7 @@
 
 | 层 | 放什么 | 不放什么 |
 |---|---|---|
-| **HOCON**（静态档） | 内核几何、执行调参、**available 按 backend 分组**（route/操作/seam/能力）；即**攻击流程配置**；**脚本来源与信任级别**（L1/L2，D27） | **handoff**（本次启动什么） |
+| **HOCON**（静态档） | 内核几何、执行调参、**available 按 backend 分组**（route/操作/landing/能力）；即**攻击流程配置**；**脚本来源与信任级别**（L1/L2，D27） | **handoff**（本次启动什么） |
 | **ResolvedProfile**（会话级） | 用户意图展开后的**完整 plan**：操作序列、执行器、脚本/模块清单、哈希、快照 | — |
 | **wire** | 该 plan（**含 plan 用到的 backend 集合**的段与几何） | 其它 backend |
 | **native** | plan → 严格执行；gate 拒绝 | 运行期决策 |
@@ -24,11 +24,11 @@
 
 ## 3. 队列模型（攻击流程配置）
 
-**细粒度操作**（取代粗粒度的 w1/w2/w3）：条目为 **{backend, op, route?, …}** 或 **{backend, seam, stage}**；**backend 轴并入队列**（与 terminal 轴同样由条目表达）。op 入口/写模式/重试来源见 [handoff-payload-ops.md](handoff-payload-ops.md) §1–§2，gate 原因见 §4。
+**细粒度操作**（取代粗粒度的 w1/w2/w3）：条目为 **{backend, op, route?, …}** 或 **{backend, landing, stage}**；**backend 轴并入队列**（与 terminal 轴同样由条目表达）。op 入口/写模式/重试来源见 [handoff-payload-ops.md](handoff-payload-ops.md) §1–§2，gate 原因见 §4。
 
     queue = [
       { backend = "cve_2026_43499", op = "write.selinux", route = "tcp_zerocopy" },
-      { backend = "cve_2026_43499", seam = "plugin", stage = "init" },          # 结构预留；插件仍冻结
+      { backend = "cve_2026_43499", landing = "plugin", stage = "init" },          # 结构预留；插件仍冻结
       { backend = "cve_2026_43499", op = "write.cred", route = "tcp_zerocopy" },
       { backend = "cve_2026_43499", op = "repair.scratch", route = "multicast_waiter" },
       { backend = "cve_2026_43499", op = "write.seccomp.flags", route = "select_stack" },
@@ -36,13 +36,13 @@
       { backend = "cve_2026_43284", op = "write.pagecache" }      # 连续块（D18）
     ]
 
-- **元素 = 扁平标量键**（R1 裁决）：`{backend, op, route?, seam?, stage?, always?, attempts?}`（**7 键**；`params_ref` **已删**）；**参数值不进队列**——参数走**两条既有通道**（见 [params](handoff-payload-params.md)）。**成员表权威见 [queue-schema](handoff-payload-queue-schema.md) §3**；**既有 manifest 行不变、payload 新键按新行补充**（R2）。
+- **元素 = 扁平标量键**（R1 裁决）：`{backend, op, route?, landing?, stage?, always?, attempts?}`（**7 键**；`params_ref` **已删**）；**参数值不进队列**——参数走**两条既有通道**（见 [params](handoff-payload-params.md)）。**成员表权威见 [queue-schema](handoff-payload-queue-schema.md) §3**；**既有 manifest 行不变、payload 新键按新行补充**（R2）。
 - **backend 可缺省**（D16）：条目未写 `backend` 时取 document 根 backend；写了即以条目为准。
 - **跨 backend 的顺序/依赖显式声明**（D19）：未声明即拒绝（gate 校验）。
 - **落盘归属（K-9）**：App 只产**字节 + sha256**；**落盘统一归 native**（攻击前写 `GHOSTLOCK_HOME` 固定路径 0600）；`.sh` 模板 = **合成在 App、落盘在 native**；**配置快照 / `HoconWriter` 仍在 Kotlin**。
 
 - **do_something(route)**：每个操作**自带 route**，init/clean **隐式**（prepare→execute→disarm→destroy 由实现完成）——**与现行「每写一实例」行为一致**，无需改 route API。
-- **seam 位置规则（纯静态）**：seam **只能声明在操作之间**，**操作内部在 schema 层不可表达**——取代「只许首/尾」。设计理由：操作边界处无存活 PI waiter——证据 `race/threads.cpp:61-65`（waiter 消失后才 `controller.execute()`）；`plugin/host.hpp:102` 只说明「`.so` 不得在 waiter 存活期映射」，**不足以单独支撑本命题**。
+- **landing 位置规则（纯静态）**：landing **只能声明在操作之间**，**操作内部在 schema 层不可表达**——取代「只许首/尾」。设计理由：操作边界处无存活 PI waiter——证据 `race/threads.cpp:61-65`（waiter 消失后才 `controller.execute()`）；`plugin/host.hpp:102` 只说明「`.so` 不得在 waiter 存活期映射」，**不足以单独支撑本命题**。
 - **payload 列表**：exec.scripts=[{id, sha256, bytes}]（**无项数上限**；正文 >256 B 走 `bin`（≤64 KB），其余键拒 `bin`）；load.modules=[{path, sha256, require_bypass?}]（**上限 8**）；**`always` 是条目属性**（非脚本项属性，与 kotlin §3 一致）。
 - **always** 是**条目属性**（无条件执行），不是 step 属性、不是独立步骤。
 - 脚本三层收尾：**模板后段**（进程内收尾；用户脚本插前段、子 shell 隔离）→ **always 条目** → **内核兜底**（relay restore_enforce / watchdog）。
@@ -80,7 +80,7 @@
 ## 8. 判据（指针）
 
 > **判据唯一权威** = [verification](handoff-payload-verification.md) §1–§4（黑盒/白盒 + 极端值 · 扩展点 · 技术债 · CBN）+ 各文档判据节：b0 §7、b1b2「判据」、queue-schema §4、plugin-lua §5。
-> 原表已**收敛**：**seam 位置用例删除**（操作内部在 schema 层不可表达 ⇒ 不可达）；**细粒度等价**保留为**真机门禁**项。
+> 原表已**收敛**：**landing 位置用例删除**（操作内部在 schema 层不可表达 ⇒ 不可达）；**细粒度等价**保留为**真机门禁**项。
 > **命令**：`make -C core native-host-tests`；`./gradlew :app:testDebugUnitTest`；`./gradlew :profile-core:test --tests "*QueueElementShape*"`。**真机门禁**：触碰 `steps`/`primitives` 写路径时必须（归档 `device-gates/*.md`）。
 
 ## 9. 攻击流程（端到端）
@@ -88,7 +88,7 @@
     P0 攻击前（Kotlin）：意图 → plan → 模板合成/包装 → **只产字节 + sha256（不落盘）** → 发射 wire
     P1 启动前（native）：**落盘脚本到 GHOSTLOCK_HOME 固定路径（0600）** → PlanGate（参数 × 能力 × 顺序）→ 启动 / Refused 具名拒绝
     P2 执行（native）：按 plan 顺序跑操作；每操作 do_something(route)（隐式 init/clean）
-                        seam 在操作边界按需插入（插件冻结期内为结构预留）
+                        landing 在操作边界按需插入（插件冻结期内为结构预留）
     P3 payload：load{modules[]} → exec{scripts[]}（always 条目无条件执行）
     P4 收尾：三层保证（模板后段 / always / 内核兜底）+ 后置条件核验
 
@@ -113,13 +113,13 @@
 | D7 | 默认**恢复 SELinux enforcing**（安全默认） |
 | D8 | 后置执行者 = **保活的用户态收尾进程**（+ 内核兜底） |
 | D9 | exec 清单**进 wire**（可校验、可对拍） |
-| D10 | seam 位置 = **纯静态判定**（只能声明在操作之间；操作内部不可表达）；插件运行时仍冻结，只预留结构 |
+| D10 | landing 位置 = **纯静态判定**（只能声明在操作之间；操作内部不可表达）；插件运行时仍冻结，只预留结构 |
 | D11 | 43499 **允许**不依赖 KernelSU 裸装 relay；失败即结束（另一次运行再选路径） |
 | D12 | **不改签名闸**：若裸装被拒，构建期就选用户态 root 路径（不在运行期关闸） |
 | D13 | KernelSU 不特殊化：它就是 load/exec 的一个条目（Kotlin 展开） |
 | D14 | **操作词表（修正版）**：write.selinux · write.cred · **write.seccomp.flags + write.seccomp.mode（两枚背靠背）** · repair.scratch · probe.selinux · **probe.leaf（仅非 tcp）** · probe.seccomp · spawn.victim · park · handoff.root_child · payload script；**drain 不独立成 op**（重试块属性）。细则见 ops §1–§2 |
 | ~~D15~~ | ~~多 backend 同场：设计上预留，本批不实现~~ → **已被 D16–D19 取代**（backend 并入队列，设计内支持）；编号留空作沿革 |
-| D16 | 条目形态 = **{backend, op, route?, seam?, stage?, always?, attempts?}（7 键）**；~~`params_ref?`/`params?`/`seam={seam,id,stage}`~~ **已划掉**；**根 backend 可缺省**；细则见 [queue-schema](handoff-payload-queue-schema.md) |
+| D16 | 条目形态 = **{backend, op, route?, landing?, stage?, always?, attempts?}（7 键）**；~~`params_ref?`/`params?`/`landing={landing,id,stage}`~~ **已划掉**；**根 backend 可缺省**；细则见 [queue-schema](handoff-payload-queue-schema.md) |
 | D17 | **document 发射 plan 用到的 backend 集合**（每个 backend 的段与几何），不再只发一个 backend |
 | D18 | 状态槽**追加式第二槽**（既有成员偏移不变；`session_layout_test` 扩展而非改）；**本批不做则走退路**：同一 backend 的操作必须相邻的连续块 |
 | D19 | **跨 backend 的顺序/依赖必须在 plan 里显式声明**，gate 校验；**未声明即拒绝** |

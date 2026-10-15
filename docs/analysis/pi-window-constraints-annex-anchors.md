@@ -3,7 +3,7 @@
 > 分析类（≤8 KiB）。**从 [pi-window-constraints.md](pi-window-constraints.md) 边界段迁出**（配额：主件并入锚点后超 8192 B）。
 > **权威 = 代码里的 `PI-*` 注释标记**；本件只逐行引其原文。**数字截至 2026-10-12，会随改动漂移**（漂移只改这里的数字）。
 
-- **waiter_main / owner_main**：`core/src/backend/cve_2026_43499/seam/multicast_route.hpp`
+- **waiter_main / owner_main**：`core/src/backend/cve_2026_43499/landing/multicast_route.hpp`
   - `:641` `/* PI-IN ：park 前最后一次同步 */`
   - `:699` `/* PI-OUT：摘除完成 => 本线程的 PI 段到此为止 */`
   - `:705` `/* PI-IN ：owner 从这里进入 PI（取目标锁） */`

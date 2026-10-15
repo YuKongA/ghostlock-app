@@ -5,7 +5,7 @@
  *  One subclass per route (2026-10-12 ruling): the shared logic stays in
  *  KernelAccess43499 and this class adds only what the route alone knows --
  *  which parameter set initialize accepts, and which upper-layer wrapper does
- *  the route's multi-step work.  The wrapper call is a seam on purpose: an
+ *  the route's multi-step work.  The wrapper call is a landing on purpose: an
  *  omission must stay visible as a named refusal, never as a silent success.
  */
 #include "backend/cve_2026_43499/access_params.hpp"

@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "backend/cve_2026_43499/race/futex_seam_linux.hpp"
+#include "backend/cve_2026_43499/race/futex_ops_linux.hpp"
 
 namespace {
     /** The kernel's own bit for "a waiter is queued on this word". */
@@ -33,24 +33,24 @@ namespace {
 }  // namespace
 
 int main() {
-    using ghostlock::backend::cve_2026_43499::race::LinuxFutexSeam;
+    using ghostlock::backend::cve_2026_43499::race::LinuxFutexOps;
     std::printf("requeue probe: one handoff\n");
     std::thread waiter([]() {
         g_stage.store(1);
         /* Parks here until the owner requeues it onto the target word. */
-        const int result = LinuxFutexSeam::wait_requeue_pi(&g_chain, &g_target);
+        const int result = LinuxFutexOps::wait_requeue_pi(&g_chain, &g_target);
         g_waiter_result.store(result);
         /* The lock is this thread's now, so releasing it is this thread's to do: a
          * release from anywhere else is exactly the error the kernel should give. */
         if (result == 0) {
-            g_waiter_gave_back.store(LinuxFutexSeam::unlock_pi(&g_target));
+            g_waiter_gave_back.store(LinuxFutexOps::unlock_pi(&g_target));
         }
         g_waiter_done.store(true);
     });
     while (g_stage.load() == 0) {
         std::this_thread::yield();
     }
-    const int owned = LinuxFutexSeam::lock_pi(&g_target);
+    const int owned = LinuxFutexOps::lock_pi(&g_target);
     std::printf("  owner: lock_pi -> %d, target word = 0x%08x\n", owned, g_target);
     /* The chain word is a plain futex: the kernel does not mark it, so parking
      *  cannot be read off it. What the kernel does report is the count of waiters
@@ -61,10 +61,10 @@ int main() {
     }
     std::printf("  chain word = 0x%08x (a plain futex; the count below is the evidence)\n",
                 g_chain);
-    const int requeued = LinuxFutexSeam::cmp_requeue_pi(&g_chain, &g_target);
+    const int requeued = LinuxFutexOps::cmp_requeue_pi(&g_chain, &g_target);
     const bool parked = requeued >= 1;
     std::printf("  owner: cmp_requeue_pi -> %d\n", requeued);
-    const int released = LinuxFutexSeam::unlock_pi(&g_target);
+    const int released = LinuxFutexOps::unlock_pi(&g_target);
     std::printf("  owner: unlock_pi -> %d, target word = 0x%08x\n", released, g_target);
     for (int i = 0; i < 2000000 && !g_waiter_done.load(); ++i) {
         std::this_thread::yield();

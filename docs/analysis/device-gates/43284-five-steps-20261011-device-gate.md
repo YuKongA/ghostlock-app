@@ -13,7 +13,7 @@
 
 - `session-frame-missing` ← fixture 缺 `required_param` + 路径未 NUL 结尾（致命，整条链在门前就断）
 - `pagecache-door-unopenable:0→:2` ← 修 NUL 副本后，主机侧的 ENOENT 也说实话
-- `step-initialize-seam-failed` ← 活 SA 的 sport 被系统会话占着、bind 失败 ⇒ 改自建 SA
+- `step-initialize-landing-failed` ← 活 SA 的 sport 被系统会话占着、bind 失败 ⇒ 改自建 SA
 - `step-image-empty` ← 补镜像（patch#1 = 内嵌 helper；carrier = 按名读 `.ko`）
 - `step-write-refused:call-failed` ← 带上访问层状态名
 - `step-write-refused:…/splice=-111` ← 给 `SpliceOps` 加带默认实现的 `last_error()`，读出 ECONNREFUSED

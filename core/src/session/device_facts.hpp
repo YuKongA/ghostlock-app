@@ -4,7 +4,7 @@
  *
  *  The kernel release is the one fact everything else follows from: the profile is
  *  matched by it and the module label is derived from it. It is read through a
- *  source type the way the race reads its syscalls through a seam, so a host test
+ *  source type the way the race reads its syscalls through a landing, so a host test
  *  can drive the shape with facts it chooses and the device build binds the real
  *  ones.
  *

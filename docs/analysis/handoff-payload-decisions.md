@@ -21,7 +21,7 @@
 | 2026-10-07 | **handoff 只在 ResolvedProfile 及以后**；HOCON 放**攻击流程配置**（available.queue），不限制动态启动 |
 | 2026-10-07 | 攻击流程配置**要拆分**（w1/w2/w3 太笼统）：queue 可声明**具体 route 操作**、**多 route 序列**、**预留 plugin 结构** |
 | 2026-10-07 | 每写都要重建 ⇒ **init/clean 简化为 do_something(route) 自动完成** |
-| 2026-10-07 | **backend 直接拆进 queue**（条目自带 backend）：现行形态 = **7 键扁平标量** `{backend, op, route, seam, stage, always, attempts}`；~~`{backend, op, route?}` / `{backend, seam, id, stage}`~~ **已划掉**（`id`/`params_ref` 已删）；**多 backend 同一 plan 内**（D16–D19） |
+| 2026-10-07 | **backend 直接拆进 queue**（条目自带 backend）：现行形态 = **7 键扁平标量** `{backend, op, route, landing, stage, always, attempts}`；~~`{backend, op, route?}` / `{backend, landing, id, stage}`~~ **已划掉**（`id`/`params_ref` 已删）；**多 backend 同一 plan 内**（D16–D19） |
 | 2026-10-07 | **自纠（Lead）**：D14 初版**漏 `probe.leaf`**、并把 `write.seccomp` **误合为一枚**；修正版 = plan §10 D14/D23 |
 | 2026-10-07 | **允许导入脚本**（用户需要导入「特殊优化的攻击路径」）：**三层信任模型** = L1 声明自由导入 / L2 脚本知情确认 / L3 沙箱硬边界（D27/D28） |
 | 2026-10-07 | **脚本引擎采用 Lua 5.4**（D22 关闭）：核心 `.text = 109 532 B ≈ 107 KB`（源码解析保留；仅字节码 86 KB）≈ 现有二进制 4.84 MB 的 **2.2%**；**不引入 luac** |

@@ -23,7 +23,7 @@
 
 - **PI 内的起止边界（首现处定义 · **以注释锚点为权威**）**：`waiter_main` `PI-IN` → `PI-OUT`（其后仍有 PI 段）；`owner_main` `PI-IN` → `PI-OUT`；**`trigger` `PI-IN-TRIGGER` → `PI-OUT-TRIGGER`**（**全体在 PI 内**；**其 PI-OUT 之后 PI 并未结束**——只标记本函数跨度，控制权回到 `waiter_main` 的 PI 段）；**`consumer_main` `PI-IN-CONSUMER` → `PI-OUT-CONSUMER`**；**`judge` 在 PI 之外**（豁免出处 = **`PI-EXEMPT-JUDGE`**）。
 - **锚点引证（原文逐行）** ⇒ 见 **[annex-anchors](pi-window-constraints-annex-anchors.md)**（含九条锚点原文行）。
-- **行号会漂移** ⇒ **权威 = `seam/multicast_window.hpp` / `seam/multicast_route.hpp` 里的 `PI-IN` / `PI-OUT` 注释标记**。
+- **行号会漂移** ⇒ **权威 = `landing/multicast_window.hpp` / `landing/multicast_route.hpp` 里的 `PI-IN` / `PI-OUT` 注释标记**。
 - **锚点齐备**：`trigger` / `consumer_main` / `judge` 已落具名锚点 ⇒ 原「待补」项**已清**。
 
 ### 1.2 native 侧在**窗口内**发同一类 syscall
@@ -59,7 +59,7 @@
 
 ## 3. 明确禁止（C）
 
-1. **`inside PI` 禁 `sched_setattr`**（任何 policy / nice）——**实测死因**：`sched_setattr` → `__sched_setscheduler` → `rt_mutex_adjust_pi` → `…_prio_chain`（§1.1 栈）。**作用域 = PI 内，不是整个窗口体**（口径：**PI 内无 syscall · 无分配 · 无打印**）。**与现路由不冲突**：本路由**有意**在 **PI 之外**调用 `Ops::setattr(tid, nice, policy)`（`seam/multicast_route.hpp`）去创造 PI 状态 —— 其义即该文件 `:9` 的「**the walk is the write**」⇒ **不属本禁令对象**；禁的是**进入 PI 之后**的调度器改动。
+1. **`inside PI` 禁 `sched_setattr`**（任何 policy / nice）——**实测死因**：`sched_setattr` → `__sched_setscheduler` → `rt_mutex_adjust_pi` → `…_prio_chain`（§1.1 栈）。**作用域 = PI 内，不是整个窗口体**（口径：**PI 内无 syscall · 无分配 · 无打印**）。**与现路由不冲突**：本路由**有意**在 **PI 之外**调用 `Ops::setattr(tid, nice, policy)`（`landing/multicast_route.hpp`）去创造 PI 状态 —— 其义即该文件 `:9` 的「**the walk is the write**」⇒ **不属本禁令对象**；禁的是**进入 PI 之后**的调度器改动。
 2. **禁 `setpriority` / `nice` 及任何会进入 `rt_mutex_adjust_pi` 的调用**：它们与 (1) 同类（都改任务优先级/权重并触发 PI 调整）。**新增此类调用 = 设计评审否决项**。
 3. **禁堆分配**（防御性保留；§1.3 已排除为本次致因，但分配可能间接进入 PI 链或引入不确定性）。
 4. **禁间接分派**（虚接口/函数指针）：窗口内只允许具体类型 + 静态调用。

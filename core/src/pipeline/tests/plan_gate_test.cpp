@@ -69,7 +69,7 @@ namespace {
             op.params = nullptr;
             op.param_count = 0;
         }
-        op.seam_inside_window = false;
+        op.landing_inside_window = false;
         op.depends_on = depends_on;
         return op;
     }
@@ -165,14 +165,14 @@ namespace {
         std::printf("case order-violation: reason=%s path=%s\n", gate_reason_name(v.reason), v.path);
     }
 
-    void case_seam_in_window() {
+    void case_landing_in_window() {
         PlanOp ops[2] = {window_op(), window_op("window.selinux_cred", 0)};
-        ops[1].seam_inside_window = true;
+        ops[1].landing_inside_window = true;
         const PlanInput in = base_input(ops, 2);
         const GateVerdict v = plan_gate(in);
-        expect(!v.ok && v.reason == GateReason::SeamInPiWindow, "seam inside the window must be refused");
-        expect(v.index == 1 && index_matches_path(v), "seam verdict index must match the path");
-        std::printf("case seam-in-pi-window: reason=%s path=%s index=%zu\n", gate_reason_name(v.reason), v.path,
+        expect(!v.ok && v.reason == GateReason::SeamInPiWindow, "landing inside the window must be refused");
+        expect(v.index == 1 && index_matches_path(v), "landing verdict index must match the path");
+        std::printf("case landing-in-pi-window: reason=%s path=%s index=%zu\n", gate_reason_name(v.reason), v.path,
                     v.index);
     }
 
@@ -236,7 +236,7 @@ int main() {
     case_route_not_available();
     case_hash_mismatch();
     case_order_violation();
-    case_seam_in_window();
+    case_landing_in_window();
     case_facts_missing();
     case_queue_and_plan_missing();
     case_multi_op_plan();

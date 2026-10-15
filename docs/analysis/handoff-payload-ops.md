@@ -28,7 +28,7 @@
 
 ## 4. Gate 原因与可复用诊断
 
-**原因码唯一权威 = b1b2 §B1.2**：**10 条静态原因**（含 `executor-unavailable`）（`unknown-op`/`op-not-available`/`route-not-available`/`geometry-missing`/`capability-missing`/`order-violation`/`hash-mismatch`/`param-invalid`/`seam-in-pi-window`）；**`dirty-failure` 移出 gate** ⇒ 运行期终止语义（不换路/不回退）。
+**原因码唯一权威 = b1b2 §B1.2**：**10 条静态原因**（含 `executor-unavailable`）（`unknown-op`/`op-not-available`/`route-not-available`/`geometry-missing`/`capability-missing`/`order-violation`/`hash-mismatch`/`param-invalid`/`landing-in-pi-window`）；**`dirty-failure` 移出 gate** ⇒ 运行期终止语义（不换路/不回退）。
 
 本表只给**可复用诊断（file:line）**：
 
@@ -41,7 +41,7 @@
 | 顺序/依赖 | `missing-dependency`（step_plan.hpp:96）、`not-a-canonical-prefix`（:97） |
 | 哈希身份 | `support/sha256.hpp`；`loader.hpp:82`（`sha256_file`） |
 | 参数 | `WidthMismatch`（schema.hpp:291）、`UnresolvedToken`（:299）、`params-reserved-…`（step_plan.hpp:88-89） |
-| seam 位置 | 纯静态判定（操作之间）；写窗口事实见 `primitives.cpp:145-176` |
+| landing 位置 | 纯静态判定（操作之间）；写窗口事实见 `primitives.cpp:145-176` |
 | 运行期终止（非 gate） | `is_dirty`（route_status.h:28-30）；`fail_stop_dirty_race`⇒`exit_group(70)`（util.cpp:36-43） |
 
 ## 5. 控制器签名草案与 gate 插入点

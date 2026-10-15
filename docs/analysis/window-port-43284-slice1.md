@@ -1,17 +1,17 @@
 # 切片 1（43284）：`pagecache.cpp` 305 行的逐行去向表
 
-- 状态：**表**（动代码前先出）· 2026-10-09 · 上游 `seam-port-design-43284.md` §7–§10、`seam-port-design-43284-slice1.md`；与 Lead 的 `window-port-43284-doors.md` 并行、不冲突
+- 状态：**表**（动代码前先出）· 2026-10-09 · 上游 `landing-port-design-43284.md` §7–§10、`landing-port-design-43284-slice1.md`；与 Lead 的 `window-port-43284-doors.md` 并行、不冲突
 - 取材：`git show b0e9f499^:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp`（`nl -ba` = 305 行；只读，未写回工作树）。下表 **:NN 均指该旧件行号**
 - 去向五类：**W** 搬进窗口体 · **O** 搬进 `open_doors` · **C** 搬进 `close_doors` · **N** 不搬 · **S** 依赖脚本输入（ADR-0015）
 - 计行：区间 1–305 **无缝隙**；空行/闭合括号随其所属构造（脚注 A）；`[S]` 是**值来源标注**，不是独立去向
 
 ## 1 逐行去向
 
-缩写：`seam` = `core/src/backend/cve_2026_43284/seam/pagecache_seam.hpp`（`seam:NN` 为其行号）；其余 `file:line` 均取旧树 `b0e9f499^`。
+缩写：`landing` = `core/src/backend/cve_2026_43284/landing/pagecache_landing.hpp`（`landing:NN` 为其行号）；其余 `file:line` 均取旧树 `b0e9f499^`。
 
 | 旧行 | 内容 | 去向与依据 |
 |---|---|---|
-| 1–7 | 文件头注释；`#include` 旧模块头 | **W**；:7 改指新缝头（`seam/pagecache_seam.hpp`）；旧 `pagecache.hpp` 不搬（其上下文已被 `SaMaterial`＋窗口状态取代，见 `-slice1.md`） |
+| 1–7 | 文件头注释；`#include` 旧模块头 | **W**；:7 改指新缝头（`landing/pagecache_landing.hpp`）；旧 `pagecache.hpp` 不搬（其上下文已被 `SaMaterial`＋窗口状态取代，见 `-slice1.md`） |
 | 8–14 | 标准头 `<array> <cerrno> <cstddef> <cstdint> <limits>` | **W**（`<cerrno>` 服务 -EINTR 重试；`<limits>` 服务写前区间判据） |
 | 15–19 | 匿名 ns；`kHeaderIvBytes` / `kIcvScratchBytes` | **W** |
 | 20–31 | `page_cache_ready`：io 面 / 门 / `icv_len` / 来源 四判据 | **O**（谁开门谁判可用；:27–29 = 凭据校验 `[S]`；:30 后半见 N） |
@@ -20,7 +20,7 @@
 | 57–78 | `splice_span`（16 字节目标页 splice） | **W** |
 | 79–90 | `splice_one_datagram` | **W** |
 | 91–101 | `close_pair`（**每次写**的管道对） | **W**（与会话门 C 不是一件事） |
-| 102–114 | `file_cache_write16_adapter` + ns 收 | **N¹**（旧 `contract::FileCacheWriteOps` 适配层；新树已无该类型；等价物＝窗口虚函数 `seam:48`＋`Access::write`） |
+| 102–114 | `file_cache_write16_adapter` + ns 收 | **N¹**（旧 `contract::FileCacheWriteOps` 适配层；新树已无该类型；等价物＝窗口虚函数 `landing:48`＋`Access::write`） |
 | 115–152 | `read_block` 的直接 `read_at(file_fd)` 段 | **W**（**写路径内部依赖**：`write16:182` 读旧密文块；不是公开读面） |
 | 153–164 | `read_block` 的 `old_page` 后备 | **N**（旧终端绑定 `execution_binding.cpp:224-228`；本片默认不绑） |
 | 165 | `return direct;` | **W** |
@@ -28,9 +28,9 @@
 | 176–224 | `write16` 主体：scratch→读密文→CBC IV→ESP 头→ICV→`pipe2`→头部 vmsplice→`file_fd` splice | **W** |
 | 225–238 | `helper_write` 后备 | **N**（同 153–164） |
 | 239–268 | ICV vmsplice→单报文 splice→`close_pair`→`next_seq+=1`→stats→清零 | **W** |
-| 269–295 | `write_block` 多块驱动（校验＋循环＋`PartialWrite`） | **N¹**（新缝一次一格：`seam:48` 单块、`Access::write` 只收 16 否则 `BadWidth`；多块＝调用方逐次发起） |
+| 269–295 | `write_block` 多块驱动（校验＋循环＋`PartialWrite`） | **N¹**（新缝一次一格：`landing:48` 单块、`Access::write` 只收 16 否则 `BadWidth`；多块＝调用方逐次发起） |
 | 296–301 | `make_file_cache_write_ops` | **N¹**（同 102–114） |
-| 302–305 | `zeroize(PageCacheWriteContext&)`＋收尾 | **C**（tear_down 清零；新缝已有 `zeroize_secrets`，`pagecache_seam.hpp:120-129`） |
+| 302–305 | `zeroize(PageCacheWriteContext&)`＋收尾 | **C**（tear_down 清零；新缝已有 `zeroize_secrets`，`pagecache_landing.hpp:120-129`） |
 
 ## 2 计数
 
@@ -45,14 +45,14 @@
 
 ## 4 与已有文档不符 / 需更正的事实
 
-1. **「读不填」只能指公开读面**：`pagecache_seam.hpp:18-19` 写旧树旁边的块读 "not filled here"，但旧 `read_block` 是 `write16:182` 的**内部依赖**（IV＝AES_ECB_DEC(K,旧块)^desired）⇒ 窗口体缺块读则 `land_block` 不成立；不填的只是 `can_read()` / `Access::read`（`kernel_access.hpp:112-117`）。
+1. **「读不填」只能指公开读面**：`pagecache_landing.hpp:18-19` 写旧树旁边的块读 "not filled here"，但旧 `read_block` 是 `write16:182` 的**内部依赖**（IV＝AES_ECB_DEC(K,旧块)^desired）⇒ 窗口体缺块读则 `land_block` 不成立；不填的只是 `can_read()` / `Access::read`（`kernel_access.hpp:112-117`）。
 2. **C 的取材不在本件**：fd 由绑定层开（`execution_binding.cpp:183`，失败自关 `:207-208`）、由 `real_chain_release` 关并清零（`real_ops.cpp:451-488`，`zeroize(ctx->page)` :490）⇒ **C 只有 `:303` 一行来自本件**；新写法「open_doors 开 / close_doors 关（谁开谁关）」与旧规矩同构。
 3. **门件两条未量已闭**：`connect_esp_socket` 失败＝返回**负 errno**（`execution_binding.cpp:77-106`，失败路径自关已开的 fd）；`pipe_flags` 旧值＝**代码默认 0** 且无其它写入者 ⇒ 无脚本来源，按 route 内部状态（`-slice1.md` §缝四格）。
 4. **耦合数 0 复核**：旧件内 `session::` / `g_exploit` / `g_direct` / `profile::` **0 命中**（与 `-43284.md` §10 一致）。
 
 ## 5 门禁
 
-- `make -C core host` = **EXIT 0**；`make -C core check` = **EXIT 0**（2026-10-09，先 host 后 check，两条均按退出码核）。本片只写本文件、生产代码与测试未动；三条页缓存测试直跑亦绿：`build/host/pagecache_chain_test`、`pagecache_seam_test`、`pagecache_doors_test`。
+- `make -C core host` = **EXIT 0**；`make -C core check` = **EXIT 0**（2026-10-09，先 host 后 check，两条均按退出码核）。本片只写本文件、生产代码与测试未动；三条页缓存测试直跑亦绿：`build/host/pagecache_chain_test`、`pagecache_landing_test`、`pagecache_doors_test`。
 
 ## 6 未闭项（不硬凑，交 Lead 裁）
 

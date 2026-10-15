@@ -14,7 +14,7 @@
 
 ```
 `PiRace::run` 做两件事：`Seam::lock_pi(target_)` ✓ 再 `Seam::cmp_requeue_pi(chain_, target_)` ✓；
-而**真 seam** 之下 `lock_pi` = 真 `FUTEX_LOCK_PI` ✗ ⇒ 只要 `target_word_` **非零**（现有持有者）就**无限等** ✓；
+而**真 landing** 之下 `lock_pi` = 真 `FUTEX_LOCK_PI` ✗ ⇒ 只要 `target_word_` **非零**（现有持有者）就**无限等** ✓；
 ⇒ 谁可能持有它：consumer 的兜底（`lock_pi(target)` ✓ 但我随后 `unlock` ✓）、或**上一轮残留** ✗；
 ⇒ 而 `execute` 开头只归零了**一次**（我 round 216 加的 ✓）⇒ **每轮之后**若未回零 ⇒ 第二轮起就会卡 ✓。
 ```

@@ -1,8 +1,8 @@
 /** @file tests/cve43499_kernel_access_test.cpp
- *  The 43499 access against a seam that records what it was asked to do.
+ *  The 43499 access against a landing that records what it was asked to do.
  *
  *  The point of the test is the decisions this class makes rather than the write itself, which is
- *  the seam's job: construction does nothing, initialize brings exactly the route the parameters
+ *  the landing's job: construction does nothing, initialize brings exactly the route the parameters
  *  named, shutdown takes it down, and a second initialize while one is up is refused. It also
  *  pins the honesty rules: a width the window cannot write is refused by name, a write before
  *  initialize is refused by name, parameters from another backend are refused rather than
@@ -18,7 +18,7 @@
 namespace {
     using ghostlock::backend::cve_2026_43499::KernelAccess43499;
     using ghostlock::backend::cve_2026_43499::Access43499Parameters;
-    using ghostlock::backend::cve_2026_43499::AccessSeam;
+    using ghostlock::backend::cve_2026_43499::WordLanding;
     using ghostlock::backend::cve_2026_43499::TargetState;
     using ghostlock::contract::AccessChannel;
     using ghostlock::contract::KernelAccess;
@@ -33,7 +33,7 @@ namespace {
         }
     }
 
-    class RecordingSeam final : public AccessSeam {
+    class RecordingOps final : public WordLanding {
     public:
         bool bring_up_ok = true;
         bool can_read_flag = false;
@@ -81,10 +81,10 @@ namespace {
     }
 
     void construction_and_lifecycle() {
-        RecordingSeam seam;
+        RecordingOps landing;
         const TargetState target = ready_target();
-        KernelAccess43499 access(&seam, &target);
-        expect(seam.up_calls == 0 && access.route() == RouteId::Unset,
+        KernelAccess43499 access(&landing, &target);
+        expect(landing.up_calls == 0 && access.route() == RouteId::Unset,
                "construction decides nothing and takes nothing down");
         expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Declared,
                "so the channel is declared and not up");
@@ -95,20 +95,20 @@ namespace {
         params.offset = 0x40U;
         params.offset_set = true;
         expect(access.initialize(params).ok(), "with a route it comes up");
-        expect(seam.last_route == RouteId::TcpZerocopy, "and it is the route the parameters named");
+        expect(landing.last_route == RouteId::TcpZerocopy, "and it is the route the parameters named");
         expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Ready, "and reports ready");
         expect(access.initialize(params).status == KernelAccess43499::AccessStatus::Failed,
                "a second initialize while one is up is refused");
         expect(access.shutdown().ok(), "and it shuts down");
-        expect(seam.down_calls == 1, "taking the route down exactly once");
+        expect(landing.down_calls == 1, "taking the route down exactly once");
         expect(access.state(AccessChannel::PiWindow) == KernelAccess43499::AccessState::Closed,
                "after which the state is closed, not declared: it was up and it was taken down");
     }
 
-    void writes_go_through_the_seam() {
-        RecordingSeam seam;
+    void writes_go_through_the_landing() {
+        RecordingOps landing;
         const TargetState target = ready_target();
-        KernelAccess43499 access(&seam, &target);
+        KernelAccess43499 access(&landing, &target);
         Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x80U;
@@ -122,14 +122,14 @@ namespace {
         const auto written = access.write(0x2000U, std::span<const std::byte>(word),
                                           AccessChannel::PiWindow, params);
         expect(written.ok() && written.value == 8U, "a word writes and says how many bytes");
-        expect(seam.lands == 1 && seam.last_value == 0x4142434445464748ULL,
-               "landing the value little-endian through the seam");
-        expect(seam.last_offset == 0x80U, "with the offset from the parameters");
+        expect(landing.lands == 1 && landing.last_value == 0x4142434445464748ULL,
+               "landing the value little-endian through the landing");
+        expect(landing.last_offset == 0x80U, "with the offset from the parameters");
         const std::byte four[4] = {};
         expect(access.write(0x2000U, std::span<const std::byte>(four), AccessChannel::PiWindow, params).status
                    == KernelAccess43499::AccessStatus::BadWidth,
                "a narrower width is refused rather than written anyway");
-        expect(seam.lands == 1, "and nothing was landed for it");
+        expect(landing.lands == 1, "and nothing was landed for it");
         const ForeignParams foreign;
         expect(access.write(0x2000U, std::span<const std::byte>(word), AccessChannel::PiWindow, foreign).status
                    == KernelAccess43499::AccessStatus::BadParameters,
@@ -144,7 +144,7 @@ int main() {
     std::printf("cve-2026-43499 access: lifecycle\n");
     construction_and_lifecycle();
     std::printf("cve-2026-43499 access: writes and refusals\n");
-    writes_go_through_the_seam();
+    writes_go_through_the_landing();
     if (g_failures != 0U) {
         std::printf("cve-2026-43499 access: FAIL (%zu)\n", g_failures);
         return 1;

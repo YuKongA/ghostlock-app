@@ -5,7 +5,7 @@
 ```
 本树**有**绑定 ✓：`prepare_page.hpp:461 Seam::pin_to_processor(geometry.main_cpu)` ✓；
 `multicast_route.hpp:456/487 pin_self(config_.main_cpu)` ✓；字段 `:108-109 main_cpu/consumer_cpu = -1` ✓；
-⇒ 我第 70 轮的 grep **漏了 `seam/` 与 `memory/` 的部分路径** ✗ ⇒ ⇒ **⇒ 结论收回** ✓：
+⇒ 我第 70 轮的 grep **漏了 `landing/` 与 `memory/` 的部分路径** ✗ ⇒ ⇒ **⇒ 结论收回** ✓：
    「生产路径缺 CPU 绑定」**不成立** ✗（⇒ 教训记一笔：grep 的**范围/词表**要覆盖全 ✓，
    第 31 轮也曾因 `head -10` 截断误判 ✓）。
 ```

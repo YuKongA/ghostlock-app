@@ -5,7 +5,7 @@
  *  Sources: bddfea4:src/core/fops.c:333-346 (word access, words per set), :348-370 (global
  *  word), :372-375 (waiter shift), :377-389 (waiter word), :431-493 (the tables).
  *
- *  These are pure computation plus fd_set writes, so they stay here instead of becoming seams:
+ *  These are pure computation plus fd_set writes, so they stay here instead of becoming ops:
  *  nothing in them touches a file, an environment variable, or a global. The two values they
  *  used to fetch from file scope (the waiter shift and the words per set) arrive as arguments.
  *

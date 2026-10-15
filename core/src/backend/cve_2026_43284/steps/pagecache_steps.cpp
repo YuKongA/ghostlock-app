@@ -4,10 +4,10 @@
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
 
 #include "backend/cve_2026_43284/kernel_access.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_seam.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_write.hpp"
-#include "backend/cve_2026_43284/seam/real_splice_io.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 
 #include <cstring>
 #include <cerrno>

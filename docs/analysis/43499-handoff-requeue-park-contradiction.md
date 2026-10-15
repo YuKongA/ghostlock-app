@@ -4,7 +4,7 @@
 
 ```
 · 标准 JSON ＋ lua 步骤 ＋ 真机执行（含 Lua 执行证据 ＋ 门禁归档）✓
-· 「实现」：门面在真机接管 —— `main: access bound` ×15 ✓（⇒ window_attempt 走 AccessSeam::land_word ✓）
+· 「实现」：门面在真机接管 —— `main: access bound` ×15 ✓（⇒ window_attempt 走 WordLanding::land_word ✓）
 · 按 ref 对齐并真机验证：cmp_requeue_pi 的 val3=0 ✓、val=1 ✓、五个 futex op 去掉 _PI_PRIVATE ✓
   ⇒ 效果：requeue 由 -1/EINVAL(22) 变为 **ret=0** ✓（本会话首次成功）
 · 三条探针读数（真机 ✓）：

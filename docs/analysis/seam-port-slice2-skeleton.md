@@ -1,6 +1,6 @@
 # 切片 2：窗口体（multicast）的映射表骨架
 
-- 状态：**骨架**（两侧锚点已量到，逐行填充在下一轮）· 2026-10-09 · 上游 `seam-port-design.md` §11（三件裁定）
+- 状态：**骨架**（两侧锚点已量到，逐行填充在下一轮）· 2026-10-09 · 上游 `landing-port-design.md` §11（三件裁定）
 - 取材目标（裁定 ③）：**race 侧那次写**，不是 route 入口
 
 ## 1 旧侧（只读 `git show b0e9f499^:<path>`）
@@ -11,10 +11,10 @@
 
 ## 2 新侧（已量到的锚点）
 
-- `race/pi_race.hpp`：`RaceOutcome`（`:35`）· **`FutexSeam`**（`:58`，静态直调，文件头写明遵守窗口规则 no indirect dispatch）· `run()` **在窗口守卫开启下被调用**（`:15`）
+- `race/pi_race.hpp`：`RaceOutcome`（`:35`）· **`FutexOps`**（`:58`，静态直调，文件头写明遵守窗口规则 no indirect dispatch）· `run()` **在窗口守卫开启下被调用**（`:15`）
 - `race/race_runtime.hpp`：**`RaceSettings`**（`:20`）· `SettingsVerdict`（`:36`）· **`check_settings`**（`:53`）· `AttemptOutcome`（`:64`）
 - `race/pi_window.hpp`：`Prohibition`（`:36`）· `WindowViolations`（`:50`）· 守卫（`:66`）· **五条退出路径的回收计数断言**（`:23-25`）
-- `race/futex_seam_linux.hpp`：平台侧 seam
+- `race/futex_ops_linux.hpp`：平台侧 landing
 
 ## 3 映射骨架（每条待填旧 file:line）
 
@@ -26,7 +26,7 @@
 
 ## 4 还没量（下一轮先做）
 
-- 新 `pi_race::run()` 的**签名与它现在做到了哪一步**（当前只读到文件头与 seam 面，未读函数体）
+- 新 `pi_race::run()` 的**签名与它现在做到了哪一步**（当前只读到文件头与 landing 面，未读函数体）
 - 旧 waiter/owner/consumer 三体里**哪一段真正落 request**（切片 1 表站在 route 侧，race 侧未逐段读）
 - `MulticastLimits` 与 `RaceSettings` 是否该合并（前者 route 面，后者竞速面；暖场归属其中一侧）
 

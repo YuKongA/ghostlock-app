@@ -1,5 +1,5 @@
 /** @file jni/ops_43284_device.cpp
- *  43284's first real seams: the bytes this build carries and the hook plan it was built for.
+ *  43284's first real ops: the bytes this build carries and the hook plan it was built for.
  *
  *  These two ops need nothing from the device to be *computed* -- the helper image, the landing
  *  payload and the sentry plan are facts about this build, not about the phone -- but they are the
@@ -7,7 +7,7 @@
  *  what came back through JNI and compares it with the digests recorded in the blobs' own headers
  *  (and with the host test that pins the same numbers).
  *
- *  The remaining seams (resolve/write_block/read_block/trigger/wait_terminal) stay null: their work
+ *  The remaining ops (resolve/write_block/read_block/trigger/wait_terminal) stay null: their work
  *  is the door, the splice surface, the ESP frame, the fork and the terminal wait -- all device work
  *  that belongs to J4b and is verified with a device, not here.
  */
@@ -32,7 +32,7 @@ namespace ghostlock::jni {
         std::size_t g_payload_size = 0U;
         bool g_payload_ready = false;
 
-        bool seam_embedded_image(std::uint64_t role, std::span<const std::byte> &image,
+        bool landing_embedded_image(std::uint64_t role, std::span<const std::byte> &image,
                                  void *) noexcept {
             using namespace ghostlock::backend::cve_2026_43284;
             if (role == kRoleSpliceHelper) {
@@ -61,7 +61,7 @@ namespace ghostlock::jni {
             return false;
         }
 
-        bool seam_hook_words(std::uint64_t &branch_word, std::uint64_t &displaced_word,
+        bool landing_hook_words(std::uint64_t &branch_word, std::uint64_t &displaced_word,
                              std::uint64_t &site_offset, std::uint64_t &landing_offset,
                              std::span<const std::byte> &payload, void *) noexcept {
             using namespace ghostlock::backend::cve_2026_43284;
@@ -88,11 +88,11 @@ namespace ghostlock::jni {
         }
     }  // namespace
 
-    /** The seams this build can serve today (see the header for what is deliberately absent). */
-    Ops43284Seams device_seams_43284() noexcept {
-        Ops43284Seams seams{};
-        seams.embedded_image = &seam_embedded_image;
-        seams.hook_words = &seam_hook_words;
-        return seams;
+    /** The ops this build can serve today (see the header for what is deliberately absent). */
+    Ops43284Seams device_landings_43284() noexcept {
+        Ops43284Seams ops{};
+        ops.embedded_image = &landing_embedded_image;
+        ops.hook_words = &landing_hook_words;
+        return ops;
     }
 }  // namespace ghostlock::jni

@@ -41,9 +41,9 @@ namespace ghostlock::backend::cve_2026_43499 {
         {"Seccomp", "backend/cve_2026_43499/steps (the step that bypasses)", false},
         {"PageCache", "(not this backend)", false},
         {"futex_collision_search", "backend/cve_2026_43499/leak (walk, hash, count)", true},
-        {"kernel_page_prepare", "backend/cve_2026_43499/memory (geometry, plans, seams)", true},
+        {"kernel_page_prepare", "backend/cve_2026_43499/memory (geometry, plans, ops)", true},
         {"arbitrary_write", "(the write primitive itself is not implemented)", false},
-        {"perf_task_sampling", "backend/cve_2026_43499/perf_{ring,vote,seam}", true},
+        {"perf_task_sampling", "backend/cve_2026_43499/perf_{ring,vote,landing}", true},
     };
     inline constexpr std::size_t kProvisionedCount = sizeof(kProvisioned) / sizeof(kProvisioned[0]);
 

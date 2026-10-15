@@ -78,7 +78,7 @@ flowchart LR
 |---|---|---|
 | B0.1 / B0.2 | `make -C core check`；`make -C core android`（NDK 零告警）；`./gradlew markdownlint` | 否 |
 | B0.3 | 同上 + `tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock`（**可选诊断**） | **是**（动写路径） |
-| B1 | **KernelAccess 实现面（2026-10-10 交付）**：`seam/multicast_route{,_linux}.{hpp,cpp}`（43499 路由引擎）· `memory/payload_page.{hpp,cpp}`（载荷页）· 43284 读面（`kernel_access.hpp` + `seam/pagecache_{seam,write}.hpp`）；门禁＝`make -C core check` + `make -C core android` | 否（接线前不动写路径） |
+| B1 | **KernelAccess 实现面（2026-10-10 交付）**：`landing/multicast_route{,_linux}.{hpp,cpp}`（43499 路由引擎）· `memory/payload_page.{hpp,cpp}`（载荷页）· 43284 读面（`kernel_access.hpp` + `landing/pagecache_{landing,write}.hpp`）；门禁＝`make -C core check` + `make -C core android` | 否（接线前不动写路径） |
 | B2 | 同 B1 + `./gradlew :profile-core:test --tests "*QueueElementShape*"` + `make -C core profile-manifest-v3`（**既有 110 行逐字节不变；payload 新键按新行补充**） | 若动写路径 ⇒ 是 |
 | B3 | 插件解冻门禁（`AGENTS.md` 恢复清单 + 真机 + `docs/analysis/device-gates/*.md` 归档） | **是** |
 | WP-7 | 按 `resolved-profile-registry-plan.md` §6 矩阵（`make -C core check`、`./gradlew :app:testDebugUnitTest`、5 张 manifest 目标） | B2 批触发 |

@@ -14,8 +14,8 @@
  *  by name until the readiness answer says otherwise. Width is a capability for the same reason:
  *  what the window writes is one whole word.
  *
- *  The seam is where the route implementation plugs in. Everything this class does is decide --
- *  which route, which width, whether the facts are in place -- and hand the decision to the seam,
+ *  The landing is where the route implementation plugs in. Everything this class does is decide --
+ *  which route, which width, whether the facts are in place -- and hand the decision to the landing,
  *  which lands the write through the window. That split is why this class is testable on the host
  *  today and why the route code can be ported one route at a time without touching it.
  */
@@ -33,12 +33,12 @@ namespace ghostlock::backend::cve_2026_43499 {
     /** What a route implementation provides to the access. One word at a time, because that is
      *  what the window does; a caller wanting fewer bytes is refused by the width rule above it
      *  rather than served by a partial write. */
-    class AccessSeam {
+    class WordLanding {
     public:
-        AccessSeam() noexcept = default;
-        AccessSeam(const AccessSeam &) = delete;
-        AccessSeam &operator=(const AccessSeam &) = delete;
-        virtual ~AccessSeam() noexcept = default;
+        WordLanding() noexcept = default;
+        WordLanding(const WordLanding &) = delete;
+        WordLanding &operator=(const WordLanding &) = delete;
+        virtual ~WordLanding() noexcept = default;
 
         /** Bring the route up: prepare what it needs and leave it ready to write. */
         [[nodiscard]] virtual bool bring_up(profile::RouteId route, const TargetState &target) noexcept = 0;
@@ -86,11 +86,11 @@ namespace ghostlock::backend::cve_2026_43499 {
          *  usable, and every use below refuses by name rather than dereferencing, which is the same
          *  rule write_readiness follows for a missing fact. */
         KernelAccess43499() noexcept = default;
-        KernelAccess43499(AccessSeam *seam, const TargetState *target) noexcept
-            : seam_(seam), target_(target) {}
+        KernelAccess43499(WordLanding *landing, const TargetState *target) noexcept
+            : ops_(landing), target_(target) {}
         /** Hand over the two things a factory could not know. */
-        void adopt(AccessSeam *seam, const TargetState *target) noexcept {
-            seam_ = seam;
+        void adopt(WordLanding *landing, const TargetState *target) noexcept {
+            ops_ = landing;
             target_ = target;
         }
 
@@ -130,7 +130,7 @@ namespace ghostlock::backend::cve_2026_43499 {
             }
             phase_ = Phase::ComingUp;
             route_ = params->route;
-            if (seam_ == nullptr || target_ == nullptr || !seam_->bring_up(route_, *target_)) {
+            if (ops_ == nullptr || target_ == nullptr || !ops_->bring_up(route_, *target_)) {
                 phase_ = Phase::Broken;
                 return BoolResult::failed(AccessStatus::Failed);
             }
@@ -151,7 +151,7 @@ namespace ghostlock::backend::cve_2026_43499 {
                 return BoolResult::failed(AccessStatus::NotInitialized);
             }
             /* Nothing borrowed means nothing to give back, which is a clean teardown. */
-            const bool down = seam_ == nullptr || seam_->tear_down();
+            const bool down = ops_ == nullptr || ops_->tear_down();
             phase_ = down ? Phase::Down : Phase::Broken;
             return down ? BoolResult::ok(true) : BoolResult::failed(AccessStatus::Failed);
         }
@@ -181,7 +181,7 @@ namespace ghostlock::backend::cve_2026_43499 {
             for (std::size_t i = 0U; i < in.size(); ++i) {
                 value |= static_cast<std::uint64_t>(std::to_integer<unsigned>(in[i])) << (8U * i);
             }
-            if (seam_ == nullptr || !seam_->land_word(address, value, params->offset)) {
+            if (ops_ == nullptr || !ops_->land_word(address, value, params->offset)) {
                 return Result::failed(AccessStatus::Failed);
             }
             return Result::ok(in.size());
@@ -205,12 +205,12 @@ namespace ghostlock::backend::cve_2026_43499 {
             }
             /* Arbitrary reads need the object found and a page prepared, and this backend does
              *  them later than it writes; until then the refusal is named, not silent. */
-            if (seam_ == nullptr || target_ == nullptr || !seam_->can_read() ||
+            if (ops_ == nullptr || target_ == nullptr || !ops_->can_read() ||
                 write_readiness(*target_) != WriteReadiness::Ready) {
                 return ReadResult::failed(AccessStatus::Unsupported);
             }
             std::uint64_t word = 0U;
-            if (seam_ == nullptr || !seam_->read_word(address, params->offset, word)) {
+            if (ops_ == nullptr || !ops_->read_word(address, params->offset, word)) {
                 return ReadResult::failed(AccessStatus::Failed);
             }
             for (std::size_t i = 0U; i < sizeof(std::uint64_t); ++i) {
@@ -241,7 +241,7 @@ namespace ghostlock::backend::cve_2026_43499 {
         }
 
         /* Borrowed, and nullable: a factory builds an instance before either is known. */
-        AccessSeam *seam_ = nullptr;
+        WordLanding *ops_ = nullptr;
         const TargetState *target_ = nullptr;
         Phase phase_ = Phase::NeverUp;
         profile::RouteId route_ = profile::RouteId::Unset;

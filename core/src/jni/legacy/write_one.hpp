@@ -34,7 +34,7 @@ namespace ghostlock::jni {
     };
 
     /**
-     *  The three steps the C body performed through file scope. They are seams on purpose:
+     *  The three steps the C body performed through file scope. They are ops on purpose:
      *  an omission must be a named refusal at the call site, not a step quietly left out.
      */
     struct WriteSeams final {
@@ -89,5 +89,5 @@ namespace ghostlock::jni {
      */
     [[nodiscard]] int do_one_write(const WriteOneParams &params, const DirectMapBounds &bounds,
                                    race::RaceContext &context, SprayProducts &products,
-                                   const WriteSeams &seams) noexcept;
+                                   const WriteSeams &ops) noexcept;
 }  // namespace ghostlock::jni

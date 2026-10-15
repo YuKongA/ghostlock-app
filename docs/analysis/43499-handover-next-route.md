@@ -32,7 +32,7 @@
 
 ## 四、执行顺序（每步可单独验 ✓）
 
-1. **本树侧新增 route 本体**（`seam/select_stack_route.hpp` + `…_linux.hpp` ✓）⇒ 只加文件、**不接线** ✗
+1. **本树侧新增 route 本体**（`landing/select_stack_route.hpp` + `…_linux.hpp` ✓）⇒ 只加文件、**不接线** ✗
    ⇒ 判据：`android` 编译通过 ✓（0 警 ✓），既有两条路行为不变 ✓；
 2. **接线选择器**（`main.cpp` ✓，`available.cve_2026_43499.route == "select_stack"` ✓）⇒ 判据：夹具跑出
    **本 route 自己的报告** ✓（不再是 `route-not-ported` ✓）；

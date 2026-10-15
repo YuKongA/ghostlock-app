@@ -32,7 +32,7 @@
 cmake -S core -B build/cmake/host -G Ninja -DGL_TESTS=ON
 cmake --build build/cmake/host -j
 ctest --test-dir build/cmake/host --output-on-failure
-# 设备探针（按需）：加 -DGL_PROBES=ON 才会构建 src/tools/*（futex/requeue/snitch/perf/prepare-page/heap-seam）
+# 设备探针（按需）：加 -DGL_PROBES=ON 才会构建 src/tools/*（futex/requeue/snitch/perf/prepare-page/heap-landing）
 
 # Android / 提取器
 ./gradlew :app:assembleDebug
@@ -68,7 +68,7 @@ ctest --test-dir build/cmake/host --output-on-failure
   - **步骤码**：`step-write-refused:<状态名>/splice=<码>` —— 正数是发送路径上的第几步（1–4 前置、10 管道、20/21/22/23 vmsplice 与切页、24 短送），负数是 `-errno`；
   - **状态机码**：`session-frame-invalid:<码>` —— 帧读取器的状态（Missing/Truncated/BadLength/…）。
 - 名字要**说缺的是哪一种**：`session-frame-{path,storage}-missing` / `unreadable` / `invalid:<码>` 四者分开；
-  `step-initialize-bad-params` 与 `step-initialize-seam-failed` 分开；**不把「缺路径」说成「缺设备」**。
+  `step-initialize-bad-params` 与 `step-initialize-landing-failed` 分开；**不把「缺路径」说成「缺设备」**。
 
 ## 四、组装与执行（`core/src/pipeline/`）
 
@@ -89,13 +89,13 @@ ctest --test-dir build/cmake/host --output-on-failure
 
 | 文件 | 职责 |
 | --- | --- |
-| `kernel_access.hpp` | `Access`（`KernelAccess` 实现）+ `AccessSeam`（`bring_up` / `tear_down` / `land_word` / `can_read` / `read_word`） |
+| `kernel_access.hpp` | `Access`（`KernelAccess` 实现）+ `WordLanding`（`bring_up` / `tear_down` / `land_word` / `can_read` / `read_word`） |
 | `access_params.hpp` | `AccessParams{route, offset, offset_set, document}` |
 | `session.hpp` | `TargetState{mm_struct, page_base, fake_task, fake_lock}` |
-| `seam/multicast_seam.hpp` | `MulticastSeam : AccessSeam`（只接 multicast） |
-| `seam/multicast_window.hpp` | `Window{write_word}` + `RouteExec{execute, arm}` + `MulticastWindow` |
-| `seam/multicast_exec.hpp` | `MulticastExec`（彩票循环：stamp → setsockopt） |
-| `seam/multicast_consumer.hpp` | `MulticastConsumerThread`（`sched_setattr` 第三位 actor） |
+| `landing/multicast_landing.hpp` | `MulticastLanding : WordLanding`（只接 multicast） |
+| `landing/multicast_window.hpp` | `Window{write_word}` + `RouteExec{execute, arm}` + `MulticastWindow` |
+| `landing/multicast_exec.hpp` | `MulticastExec`（彩票循环：stamp → setsockopt） |
+| `landing/multicast_consumer.hpp` | `MulticastConsumerThread`（`sched_setattr` 第三位 actor） |
 | `route/multicast_policy.hpp` | `MulticastLimits` / `MulticastConsumer` / `MulticastHold` / `run_multicast_handshake` |
 | `memory/multicast_arm.hpp` | `MulticastGeometry` / `encode_multicast_arm` |
 | `steps/action.hpp` | `RaceAction`（`request_for` / `arm_for` / `encode_waiter_arm`） |
@@ -107,10 +107,10 @@ ctest --test-dir build/cmake/host --output-on-failure
 | 文件 | 职责 |
 | --- | --- |
 | `kernel_access.hpp` | `Access`（43284 实现） |
-| `seam/pagecache_seam.hpp` / `pagecache_write.hpp` | `PageCacheSeam` / `PageCacheWindow` |
-| `seam/real_splice_io.hpp` / `real_splice_io.cpp` | `SpliceIoOps`（可替换系统调用面）+ 设备绑定 |
-| `seam/pagecache_doors.hpp` / `pagecache_door_linux.*` | 门 |
-| `seam/esp_crypto.hpp` | 帧加密 |
+| `landing/pagecache_landing.hpp` / `pagecache_write.hpp` | `PageCacheLanding` / `PageCacheWindow` |
+| `landing/real_splice_io.hpp` / `real_splice_io.cpp` | `SpliceIoOps`（可替换系统调用面）+ 设备绑定 |
+| `landing/pagecache_doors.hpp` / `pagecache_door_linux.*` | 门 |
+| `landing/esp_crypto.hpp` | 帧加密 |
 | `session_frame.{hpp,cpp}` | 会话帧 |
 | `lkm/` | LKM 策略 |
 
@@ -118,7 +118,7 @@ ctest --test-dir build/cmake/host --output-on-failure
 
 - **链**：`wire` → 值映射（键只写一处）→ 区域排布（`layout_snitch_region`）→ 发现（`run_discovery`）→
   准备（`run_prepare`，产出 `prepare_base`）→ 两个字（`steps::WordsRegion`，**调用方持有**）→
-  载荷页（`memory/payload_page`，落在 `WordsRegion::payload()`）→ 窗口三步（`w1/w2/w3`）→ 路由引擎（`seam::MulticastRoute`）。
+  载荷页（`memory/payload_page`，落在 `WordsRegion::payload()`）→ 窗口三步（`w1/w2/w3`）→ 路由引擎（`landing::MulticastRoute`）。
 - **归属规则（反复踩过）**：凡"要活过某一段"的东西（两个字、载荷页、引擎、守卫）都归**调用方**；
   单元返回后其内部映射即失效 ✓。
 - **路由按文档选**：`main` 读 `available.<id>.route`；本树只移植了 `multicast_waiter`，其余给

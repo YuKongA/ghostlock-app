@@ -3,7 +3,7 @@
  *  The real device facts, read from the kernel and the platform properties.
  *
  *  Android only: it calls uname and reads system properties, neither of which the
- *  host has. Kept apart from the shape above for the same reason the futex seam is
+ *  host has. Kept apart from the shape above for the same reason the futex landing is
  *  kept apart from the race: the shape is testable anywhere, this is provable on a
  *  device.
  */

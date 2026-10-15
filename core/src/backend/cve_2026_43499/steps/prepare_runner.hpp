@@ -8,7 +8,7 @@
  *    - `SnitchPolicy` 把搜索包成准备能问的 snitch；
  *    - `prepare_page(inputs, geometry, patience, policy)` 一次跑完，答案从它自己的 outcome 读。
  *
- *  设备专用（要 heap/snitch 两个 linux seam）。
+ *  设备专用（要 heap/snitch 两个 linux landing）。
  */
 #include <cstddef>
 #include <cstdint>

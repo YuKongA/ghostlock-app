@@ -4,7 +4,7 @@
 
 ## 1 现状（已就位 ✓ / 缺什么 ✗）
 
-**已就位**（新树，真机或主机已证 ✓）· **归档**：搜索与 seam 的真机证据在 `docs/analysis/device-gates/snitch-search-20261008-pass.md` ✓（本轮由评审 M2 要求补 ✓）：地址契约 ✓ · 扫描界/几何 ✓ · 候选规则 ✓ · futex 哈希（定向量复现 ✓）· 走查顺序 ✓ · 区域布局 ✓ · 搜索 seam（真机 ✓）· 唤醒协议（真机 ✓）· 子进程 poke（真机 ✓）· 整体搜索（**真机端到端 ✓**）· 调参读取+直达 ✓ · **搜索↔页准备接合 ✓** · 页准备决策面 6 件 + seam（真机 ✓）+ 编排（假平台验过失败路径 ✓）· 两个 PI-futex 原语（真机 ✓）。
+**已就位**（新树，真机或主机已证 ✓）· **归档**：搜索与 landing 的真机证据在 `docs/analysis/device-gates/snitch-search-20261008-pass.md` ✓（本轮由评审 M2 要求补 ✓）：地址契约 ✓ · 扫描界/几何 ✓ · 候选规则 ✓ · futex 哈希（定向量复现 ✓）· 走查顺序 ✓ · 区域布局 ✓ · 搜索 landing（真机 ✓）· 唤醒协议（真机 ✓）· 子进程 poke（真机 ✓）· 整体搜索（**真机端到端 ✓**）· 调参读取+直达 ✓ · **搜索↔页准备接合 ✓** · 页准备决策面 6 件 + landing（真机 ✓）+ 编排（假平台验过失败路径 ✓）· 两个 PI-futex 原语（真机 ✓）。
 
 **缺**（退休树里有、新树没有 ✗）：
 
@@ -25,7 +25,7 @@
 ```text
 ① route 形状 + 一条 route（建议 multicast ✓ —— 其数据面已就位、且旧树三条中最小 208 行 ✓）
 ② route → 页准备：route 提供 ps_page_size / mm_slab_order / 组数 ✓（编排已接 ✓）
-③ primitives 执行面（把 write_* 的决策落到 seam ✗ ⇒ 需第三条 seam：写 seam ✓）
+③ primitives 执行面（把 write_* 的决策落到 landing ✗ ⇒ 需第三条 landing：写 landing ✓）
 ④ steps（W1 SELinux → W2 凭据/uid0 → W3 seccomp，按 `contract` 的 stepset 顺序 ✓）
 ⑤ 终端（root_child ✓ 载荷件已就位 ✓）
 ⑥ bootstrap：从文档 → 选择 → route → 搜索 → 页准备 → steps → 终端 的接线 ✓
@@ -45,7 +45,7 @@
 
 1. **先 multicast ✓**（三条依据，比原稿更强）：① 最小（**208 行** ✓ 实测）；② 数据面已就位（`memory/multicast_arm` ✓）；③ **设备证据最多** —— `device-gates` 按 route 名命中数实测 **multicast_waiter 22 / select_stack 1 / tcp_zerocopy 0** ✓ ⇒ 原稿「select_stack 最常被真机验证」的前提**不成立且方向相反** ✗（已删）。另：`execution-multicast-waiter.conf` **已在**（提交 `7b34bb44` ✓）⇒ 无阻塞 ✓。
 2. **分工，不合一 ✓**（判据 = **分层防火墙**，非偏好）：`route/expected_keys.hpp:5-11` 明写「kinds 用本地枚举 **使本层不依赖 profile 层**」✓ ⇒ 把校验并进 profile 层的 `key_catalog` 会让路由层**反向依赖** ✗。正确形态 = **清单（`key_catalog` = 导出权威）× 期望（各组件自声明）**，由**组合根**匹配 ✓；退休的 `schema.hpp`+`glkv3_schema.hpp`（221+114 ✓）**不照搬形状** ✗，按「组件自声明期望」重写，键全集只留 `key_catalog` 一处 ✓。
-3. **采纳堆管线同一形态 ✓**（决策面 → seam → 编排 → 真机探针 ✓），加两条硬边界：① **seam 只含 syscall** ✓（不含决策/组数/顺序/超时 ✓，每条打印 errno ✓ —— 与 `futex_seam_linux.hpp` 的「Nothing here decides anything」同义 ✓）；② **写 seam 的清单必须自退休文件逐条枚举** ✓（见 §5 ✓）。
+3. **采纳堆管线同一形态 ✓**（决策面 → landing → 编排 → 真机探针 ✓），加两条硬边界：① **landing 只含 syscall** ✓（不含决策/组数/顺序/超时 ✓，每条打印 errno ✓ —— 与 `futex_ops_linux.hpp` 的「Nothing here decides anything」同义 ✓）；② **写 landing 的清单必须自退休文件逐条枚举** ✓（见 §5 ✓）。
 
 **同批判据（评审要求 ✓）**：补一条**对拍断言** —— 「每个已接线 route 的期望键 ∈ `key_catalog` 且 kind 兼容」✓（否则仍是两份名单 ✗）。
 
@@ -60,16 +60,16 @@
 | :37/:42/:56 | `for (wave < waves)` · `for (i < batch)` · `terminate_and_wait(SIGKILL)` | 次数来自输入 ✓ / 信号 = 机制 ✓ | 次数 ⇒ profile ✓ · `SIGKILL` ⇒ 机制常量 ✓ |
 | :58 | `usleep(20000)` | **裸数值** ✗ ⇒ 时序 | **profile 键** ✓ |
 | :68 | `pe.sample_period = 5000` | **裸数值** ✗ ⇒ 采样周期 | **profile 键** ✓ |
-| :77 | `syscall(__NR_perf_event_open, …)` | **系统调用** | **写 seam** ✓ |
+| :77 | `syscall(__NR_perf_event_open, …)` | **系统调用** | **写 landing** ✓ |
 | :82 | `constexpr size_t kPerfPageSize = 4096` | 内核几何（perf 页尺寸 ✓） | **机制常量 + 注释** ✓ |
-| :86 | `mmap(…, MAP_SHARED, fd.get(), 0)` | **系统调用** | **写 seam** ✓ |
-| :94 / :96 | `ioctl(PERF_EVENT_IOC_ENABLE / DISABLE)` | **系统调用** | **写 seam** ✓ |
+| :86 | `mmap(…, MAP_SHARED, fd.get(), 0)` | **系统调用** | **写 landing** ✓ |
+| :94 / :96 | `ioctl(PERF_EVENT_IOC_ENABLE / DISABLE)` | **系统调用** | **写 landing** ✓ |
 | :95 | `for (i < 500000) syscall(__NR_getpid)` | **裸数值** ✗ ⇒ 时序 | **profile 键** ✓ |
 | :102 | `std::array<uintptr_t, 256> cands` | 容量（机制 ✓） | **机制常量 + 注释** ✓ |
 | :104/:115/:130 | `while (pos < head …)` · `for (i < 32 …)` · `for (i < nc)` | 前两者**裸数值** ✗（投票窗 32）/ 第三来自输入 ✓ | 32 ⇒ **profile 键** ✓ · 其余 ⇒ 输入 ✓ |
-| :146 | `attack_write` 写路径 | **混合** | 决策面已有（`write_*` ✓）+ 系统调用 ⇒ **写 seam** ✓ |
+| :146 | `attack_write` 写路径 | **混合** | 决策面已有（`write_*` ✓）+ 系统调用 ⇒ **写 landing** ✓ |
 
-**小结**：写 seam 需含 `perf_event_open` / `mmap` / `ioctl(ENABLE|DISABLE)` / `getpid`（+ 写路径自身的系统调用 ✓，动工时逐条补 ✓）；**四个裸数值**（`20000` · `5000` · `500000` · `32`）全部 ⇒ **profile 键** ✓；两个机制常量（`4096` perf 页 ✓ · `256` 候选容量 ✓）⇒ 进代码 + 注释 ✓。
+**小结**：写 landing 需含 `perf_event_open` / `mmap` / `ioctl(ENABLE|DISABLE)` / `getpid`（+ 写路径自身的系统调用 ✓，动工时逐条补 ✓）；**四个裸数值**（`20000` · `5000` · `500000` · `32`）全部 ⇒ **profile 键** ✓；两个机制常量（`4096` perf 页 ✓ · `256` 候选容量 ✓）⇒ 进代码 + 注释 ✓。
 
 **判据（可执行 ✓）**：新树对应件内**不得出现裸数值** ✗ ⇒ grep 判据（`[0-9]{3,}` 逐处须有键引用或机制常量注释 ✓）；本枚举表在 ③ 动工前**逐条补全**（202 行全文 ✓ 不只上列 5 处 ✓）。
 

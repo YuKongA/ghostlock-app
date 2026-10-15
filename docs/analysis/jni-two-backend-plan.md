@@ -75,16 +75,16 @@ entry:         key u16 | kind u8 (0=u64, 1=bytes) | reserved u8 | length u32 | p
 | op | 名称 | backend | 调用者 | 输入 key（来源） | 输出 key | 具名拒绝（例） | 复用单元（不得改写） |
 |---|---|---|---|---|---|---|---|
 | 0 | Snapshot | both | 会话轮询/每步前 | — | phase, caps, facts, generation | — | 会话对象自身 |
-| 1 | Initialize | both | `open()` | 43499: route + stamp 几何(4) + route 调优(3) + 耐心(6) + consumer 策略(2) + offset；43284: SA 秘密帧(bytes) + 路径对(carrier/dev_carrier/patch_target/hook_image/kernel_release + 4 marker + module_name) + carrier_base + kernel 三布尔 + sequence? | — | `init-bad-params` / `init-seam-failed` / `session-frame-invalid:<码>` | `KernelAccess::create`+`initialize`；`session_frame.cpp` 读取器 |
+| 1 | Initialize | both | `open()` | 43499: route + stamp 几何(4) + route 调优(3) + 耐心(6) + consumer 策略(2) + offset；43284: SA 秘密帧(bytes) + 路径对(carrier/dev_carrier/patch_target/hook_image/kernel_release + 4 marker + module_name) + carrier_base + kernel 三布尔 + sequence? | — | `init-bad-params` / `init-landing-failed` / `session-frame-invalid:<码>` | `KernelAccess::create`+`initialize`；`session_frame.cpp` 读取器 |
 | 2 | Prepare | 43499 | w1 prelude | region/geometry/tuning 值 | `page_base`,`words`, `payload_page`,`payload_base`,`alias_delta` | `step-words-unprepared` | `steps::run_prepare`、`steps::WordsRegion`、`memory::prepare_page` |
 | 3 | Discover | 43499 | prelude / 修复轮 | scan 窗口值 | `found`,`probes`,`rounds` | `discovery-*` | `steps::run_discovery` |
 | 4 | SpawnVictim | 43499 | w2 prelude | — | `victim_pid`,`victim_task` | `victim-pipes` / `victim-fork` / `victim-leak` | `backend::victim::spawn_victim` |
 | 5 | VictimProbe | 43499 | w2/w3 验证 | `kind`(uid/comm) | `value` | `victim-*` | `victim_report_uid` / `_comm` |
-| 6 | WriteWord | 43499 | w1/w2/w3 | `target`,`value`(8B),`form`,`offset` | `applied`(8) | `write-refused:<stage>` / `write-indeterminate` | `KernelAccess43499::write` + `AccessSeam::land_word` + `WindowGuard` |
+| 6 | WriteWord | 43499 | w1/w2/w3 | `target`,`value`(8B),`form`,`offset` | `applied`(8) | `write-refused:<stage>` / `write-indeterminate` | `KernelAccess43499::write` + `WordLanding::land_word` + `WindowGuard` |
 | 7 | ReadWord | 43499 | 可选验证 | `address` | `value`(8B) | `unsupported`（当前 `can_read()==false`） | `KernelAccess43499::read` |
 | 8 | ResolveTarget | 43284 | 每步开头 | `role`,`path` | `token` | `role-unknown` / `door-refused` / `bridge-unbound` | `pagecache_door_linux` + `crash_dump_bridge` |
-| 9 | WriteBlock | 43284 | 每个 16B 块 | `token`,`offset`,`bytes`(16) | `applied`(16) | `block-refused:<state>/splice=<码>` | `PageCacheSeam::land_block` |
-| 10 | ReadBlock | 43284 | 读旧块/回读 | `token`,`offset` | `bytes`(16) | `read-unsupported` / `read-failed` | `PageCacheSeam::read_block` |
+| 9 | WriteBlock | 43284 | 每个 16B 块 | `token`,`offset`,`bytes`(16) | `applied`(16) | `block-refused:<state>/splice=<码>` | `PageCacheLanding::land_block` |
+| 10 | ReadBlock | 43284 | 读旧块/回读 | `token`,`offset` | `bytes`(16) | `read-unsupported` / `read-failed` | `PageCacheLanding::read_block` |
 | 11 | Trigger | 43284 | trigger 步 | `delay_ms` | — | `trigger-*` | `steps::trigger_orphan` |
 | 12 | WaitTerminal | 43284 | wait 步 | `wait_ms`,`poll_ms`,4 marker,`module_name` | `terminal`(success/failure/inflight) | `wait-budget-exceeded` / `wait-failure-marker` / `module-gone` | `steps::wait_for_module`（N5） |
 | 13 | EmbeddedImage | 43284 | patch1 步 | `role`(splice_helper / sentry_payload) | `bytes` | `image-unknown` | `embed::splicehelper_bytes` / `libcxx_blob` |
@@ -235,8 +235,8 @@ app/src/main/kotlin/com/ghostlock/app/data/nativeaccess/     # 新增：JNI 适�
 
 ### J3 43499 ops（native）
 
-- **写范围**：`core/src/jni/ops_43499.cpp`（新）、`core/src/tests/jni_ops_43499_test.cpp`（新，假 seam 记录调用顺序与参数）。
-- **动作**：实现 op 2/3/4/5/6/7；**复用**（不改写）`steps::run_prepare`/`run_discovery`、`victim::spawn_victim`、`KernelAccess43499`、`AccessSeam::land_word`、`WindowGuard`；字/载荷页/守卫由**会话对象**持有（归属规则：要活过准备那一段的东西归调用方）。
+- **写范围**：`core/src/jni/ops_43499.cpp`（新）、`core/src/tests/jni_ops_43499_test.cpp`（新，假 landing 记录调用顺序与参数）。
+- **动作**：实现 op 2/3/4/5/6/7；**复用**（不改写）`steps::run_prepare`/`run_discovery`、`victim::spawn_victim`、`KernelAccess43499`、`WordLanding::land_word`、`WindowGuard`；字/载荷页/守卫由**会话对象**持有（归属规则：要活过准备那一段的东西归调用方）。
 - **判据**：缺 facts ⇒ 具名拒绝且未进入 route；窗口守卫在成功/失败/超时三条路径都释放；`form` → `(mode, leaf)` 映射与 `memory::write_layout` 一致；`ReadWord` 在 `can_read()==false` 时返回 `unsupported`；`make -C core check` + `make -C core jni` EXIT=0。
 - **证据**：`check` 计数、.so 哈希、越界/缺项两条拒绝的原始日志。
 
@@ -245,20 +245,20 @@ app/src/main/kotlin/com/ghostlock/app/data/nativeaccess/     # 新增：JNI 适�
 J3 在执行时拆成两半，理由是**可验证性**：
 
 - **J3a（本批已完成）**：op 层本身 —— 形状闭集 `WriteForm` → `(mode, preserve)` 的映射表、
-  `Facts43499` 与"三件事实齐了才允许写"的门、每个拒绝的名字、以及 seam 被调用的实参
+  `Facts43499` 与"三件事实齐了才允许写"的门、每个拒绝的名字、以及 landing 被调用的实参
   （地址/值/偏移/形状）。全部在宿主上可测，实测 125/125 CTest 绿，并做过一次证伪（把
   `ClearLeaf` 的 preserve 反极性 ⇒ 表单测试红）。
 - **J3b（未做，需要设备）**：把 `Ops43499Seams` 接到真单元 —— `steps::run_prepare`、
   `steps::run_discovery`、`victim::spawn_victim` / `victim_report_uid`、以及 `land` 背后的
-  路由引擎（`seam::MulticastRoute` + 窗口 + `KernelAccess43499`）。没有设备就无法验证，
-  所以本批不写"看起来能跑"的设备代码：seam 为空时每个 op 都以 `op-not-wired:<名字>` 具名拒绝。
+  路由引擎（`landing::MulticastRoute` + 窗口 + `KernelAccess43499`）。没有设备就无法验证，
+  所以本批不写"看起来能跑"的设备代码：landing 为空时每个 op 都以 `op-not-wired:<名字>` 具名拒绝。
 
-> 同一条规则适用于 J4：先做可测的 op 层，设备 seam 单列。
+> 同一条规则适用于 J4：先做可测的 op 层，设备 landing 单列。
 
 ### J4 43284 ops（native）
 
 - **写范围**：`core/src/jni/ops_43284.cpp`（新）、`core/src/tests/jni_ops_43284_test.cpp`（新）。
-- **动作**：实现 op 8/9/10/11/12/13/14；复用 `PageCacheSeam`、`pagecache_door_linux`、`crash_dump_bridge`、`steps::trigger_orphan`、`steps::wait_for_module`、`embed::*`、`hook::*`。
+- **动作**：实现 op 8/9/10/11/12/13/14；复用 `PageCacheLanding`、`pagecache_door_linux`、`crash_dump_bridge`、`steps::trigger_orphan`、`steps::wait_for_module`、`embed::*`、`hook::*`。
 - **判据**：SA 帧坏 ⇒ `session-frame-invalid:<码>`；未 initialize 就写 ⇒ `not-ready`；非 16B 宽度 ⇒ `bad-width`；sequence 跨 op 递增；token 跨会话/跨 generation ⇒ `stale-target`；`make -C core check` + `make -C core jni` EXIT=0。
 - **证据**：同 J3。
 
@@ -358,8 +358,8 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 
 | backend | 已有（当前树） | 缺（J7.5 要写） |
 |---|---|---|
-| 43499 | steps/prepare_runner::run_prepare(PrepareRequest&, PrepareReport&, …)、steps/discovery_runner::run_discovery(DiscoveryRequest&, DiscoveryOutcome&, …)、steps/access_binder、seam/multicast_seam::land_word、access_multicast_waiter、race/、route/、leak/、memory/、perf_seam_linux、abi、access_factory_43499 | Ops43499Seams 的**设备实现**：prepare/discover 把 typed 请求翻成 PrepareRequest/DiscoveryRequest；spawn_victim（**当前树没有**，退役树 6f7ded87 有，按只读方式取回参考再在本树上重写）；land 走 access_binder 拿到的 seam；read 由路由能力决定（不支持时如实 op-not-wired）；finish_victim 的 retire/park/handoff |
-| 43284 | seam/pagecache_seam（write_block/read_block）、seam/real_splice_io、seam/crash_dump_bridge（patch#1 的执行器）、embed/（两张图）、hook/sentry_hook（钩子计划）、ipsec/aes256、lkm/module_facts、steps/pagecache_step_runner | Ops43284Seams 的**设备实现**：resolve（门/路径 → token）、write_block/read_block（接 pagecache_seam 与序号）、module_check（接 lkm）、trigger（双 fork）、wait_terminal（marker 轮询）；以及 43284 的 **D2 头文件重写**（Init43284 与九个请求组、ticket 不透明 index+generation、Dispatched→Applied→Verified、REMOTE_BRIDGE 依赖已验证 PATCH1） |
+| 43499 | steps/prepare_runner::run_prepare(PrepareRequest&, PrepareReport&, …)、steps/discovery_runner::run_discovery(DiscoveryRequest&, DiscoveryOutcome&, …)、steps/access_binder、landing/multicast_landing::land_word、access_multicast_waiter、race/、route/、leak/、memory/、perf_ops_linux、abi、access_factory_43499 | Ops43499Seams 的**设备实现**：prepare/discover 把 typed 请求翻成 PrepareRequest/DiscoveryRequest；spawn_victim（**当前树没有**，退役树 6f7ded87 有，按只读方式取回参考再在本树上重写）；land 走 access_binder 拿到的 landing；read 由路由能力决定（不支持时如实 op-not-wired）；finish_victim 的 retire/park/handoff |
+| 43284 | landing/pagecache_landing（write_block/read_block）、landing/real_splice_io、landing/crash_dump_bridge（patch#1 的执行器）、embed/（两张图）、hook/sentry_hook（钩子计划）、ipsec/aes256、lkm/module_facts、steps/pagecache_step_runner | Ops43284Seams 的**设备实现**：resolve（门/路径 → token）、write_block/read_block（接 pagecache_landing 与序号）、module_check（接 lkm）、trigger（双 fork）、wait_terminal（marker 轮询）；以及 43284 的 **D2 头文件重写**（Init43284 与九个请求组、ticket 不透明 index+generation、Dispatched→Applied→Verified、REMOTE_BRIDGE 依赖已验证 PATCH1） |
 
 ### §11.2 临时逻辑（本阶段允许）与它的债
 
@@ -378,16 +378,16 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 | J7.5-5 | 43499 设备缝：prepare/discover/spawn_victim/finish_victim/land/read（参数用内置临时值） | 真机：prepare/discover 给出 page_base/found；三次 write_word（W1/W3 清分别、W2 凭据） |
 | J7.5-6 | 43499 链端到端：w1 → w2 → w3 | 真机：id 输出 uid=0，原始日志归档 |
 
-### §11.5 更名批（用户裁定 2026-10-15：不要 seam 这种临时感的词）
+### §11.5 更名批（用户裁定 2026-10-15：不要 landing 这种临时感的词）
 
 名字与批次（**每批都要 132/132 与 checkAll 绿**）：
 
 | 批次 | 范围 | 旧 → 新 |
 |---|---|---|
-| R1（已做，见 git log） | JNI 边界层（我引入的那部分） | Ops43499Seams / Ops43284Seams → DeviceOps43499 / DeviceOps43284；device_seams_* → device_ops_*；成员 seams_ → device_ops_；会话模板 → 工厂 set_factory（秘密不可拷贝） |
-| R2 | 43499 的落地原语 | AccessSeam → WordLanding；MulticastSeam → MulticastLanding；race/futex_seam_linux → race/futex_linux（LinuxFutexSeam → LinuxFutex）；perf_seam* → perf_ops*；leak/snitch_seam* → leak/snitch_ops*（SnitchSeam → SnitchOps）；memory/heap_seam* → memory/heap_ops*（HeapSeam → HeapOps） |
-| R3 | 43284 的落地原语与目录 | seam/ 目录 → landing/；PageCacheSeam → PageCacheLanding；其余 seam/ 下的文件按同规则改名 |
-| R4 | 测试与文档 | FakeSeam / RecordingSeam → FakeOps / RecordingOps；SeamResult → OpsResult；文档里的「缝」统一改成「设备工作 / 落地原语」 |
+| R1（已做，见 git log） | JNI 边界层（我引入的那部分） | Ops43499Seams / Ops43284Seams → DeviceOps43499 / DeviceOps43284；device_landings_* → device_ops_*；成员 ops_ → device_ops_；会话模板 → 工厂 set_factory（秘密不可拷贝） |
+| R2 | 43499 的落地原语 | WordLanding → WordLanding；MulticastLanding → MulticastLanding；race/futex_ops_linux → race/futex_linux（LinuxFutexOps → LinuxFutex）；perf_ops* → perf_ops*；leak/snitch_ops* → leak/snitch_ops*（SnitchOps → SnitchOps）；memory/heap_ops* → memory/heap_ops*（HeapOps → HeapOps） |
+| R3 | 43284 的落地原语与目录 | landing/ 目录 → landing/；PageCacheLanding → PageCacheLanding；其余 landing/ 下的文件按同规则改名 |
+| R4 | 测试与文档 | FakeOps / RecordingOps → FakeOps / RecordingOps；OpsResult → OpsResult；文档里的「缝」统一改成「设备工作 / 落地原语」 |
 
 不做的事：不改协议字符串（op-not-wired 等），不改真机日志里已有的判据文本（证据链的可追溯性优先）。
 

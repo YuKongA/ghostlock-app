@@ -16,11 +16,11 @@ select 特有：
 | 快照 | 行 | 本树对应物 |
 | --- | --- | --- |
 | `WriteMode` / `WriteRequest` | 108-113 | `memory/write_layout.hpp` ✓（**已有** ✓） |
-| `RouteStatus` / `RouteResultCode` | 114-130 | `seam/multicast_route.hpp` 的 report 结构 ✓ |
+| `RouteStatus` / `RouteResultCode` | 114-130 | `landing/multicast_route.hpp` 的 report 结构 ✓ |
 | `PiRace`（三演员） | 146-274 | `race/pi_race.hpp` + `pi_window.hpp` ✓（**已有** ✓） |
 | `PageWriteLayout` | 275-315 | `memory/write_layout.cpp` ✓（**已有** ✓） |
 | `FakePage` | 316-374 | `memory/payload_page.{hpp,cpp}` ✓（**已有** ✓） |
-| `SelectRoute`（本 route 本体 ✓） | 375-560 | **新增**：`seam/select_stack_route.hpp` ✗ |
+| `SelectRoute`（本 route 本体 ✓） | 375-560 | **新增**：`landing/select_stack_route.hpp` ✗ |
 
 ⇒ ⇒ **公共部分本树都已具备** ✓（引擎/页面/布局/竞态 ✓）⇒ 移植面 = **一个 route 文件 + 其 ops** ✓。
 

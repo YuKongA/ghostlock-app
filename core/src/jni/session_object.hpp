@@ -66,7 +66,7 @@ namespace ghostlock::jni {
     };
 
     /** How a session gets a backend and its ops. Injected so the host can run on a fake. */
-    struct BackendSeam final {
+    struct BackendFactory final {
         /** @return the backend, or null when this build has none for that id. */
         std::unique_ptr<contract::KernelAccess> (*create)(std::uint64_t backend_id,
                                                           void *context) noexcept = nullptr;
@@ -87,12 +87,12 @@ namespace ghostlock::jni {
          *  Create the backend and hold it. Nothing is brought up yet: that is Initialize.
          *
          *  @param backend_id the BackendId the caller asked for.
-         *  @param seam       the factory; a null seam or a null result leaves the session Failed.
+         *  @param landing       the factory; a null landing or a null result leaves the session Failed.
          *  @param generation the handle generation this session was minted with (for Snapshot).
          *  @return true when a backend was taken; false when the session is already open or the
          *          build has no such backend.
          */
-        [[nodiscard]] bool open(std::uint64_t backend_id, const BackendSeam &seam,
+        [[nodiscard]] bool open(std::uint64_t backend_id, const BackendFactory &landing,
                                 std::uint32_t generation) noexcept;
 
         /**

@@ -1,6 +1,6 @@
 # 切片 1（43284）：上下文到缝的映射表
 
-- 状态：**表**（动代码前先出）· 2026-10-09 · 上游 `seam-port-design-43284.md`
+- 状态：**表**（动代码前先出）· 2026-10-09 · 上游 `landing-port-design-43284.md`
 - 取材：`git show b0e9f499^:src/core/backend/cve_2026_43284/pagecache/pagecache.hpp` 等（只读）
 
 ## 映射：`PageCacheWriteContext` 的每个字段归谁

@@ -75,17 +75,17 @@ host 上六条路径的实测输出（fixture 在 `core/fixtures/`）：
 
 钩子签名（已在单元里）：`bool (*attempt)(void *context)`，`context` 由调用方给。要接的真竞态在：
 
-- `race/pi_race.hpp`：一次 PI 竞态尝试（`RaceOutcome` 五条出口 + `FutexSeam` 四个 futex 调用）
-- `race/futex_seam_linux.hpp`：设备上的 seam；`race/pi_window.hpp`：窗口守卫（窗口内零分配/零日志/零间接调用）
+- `race/pi_race.hpp`：一次 PI 竞态尝试（`RaceOutcome` 五条出口 + `FutexOps` 四个 futex 调用）
+- `race/futex_ops_linux.hpp`：设备上的 landing；`race/pi_window.hpp`：窗口守卫（窗口内零分配/零日志/零间接调用）
 - 前置状态（chain / target 两个 futex 字）来自 `memory/` 那套：leak 搜索 → arm → prepare 页；`pipeline/run_pipeline_temp.cpp` 是把它们串起来的现成参照
 
 因此钩子的实现＝「用已准备好的两个字跑一次 `pi_race` 的尝试」，成败由 `RaceOutcome` 判；窗口守卫必须在同一次尝试内进出。
 
 ## 八、后续轮次追加的证据
 
-- `steps/window_attempt.{hpp,cpp}`：43499 的「尝试一次」本体（两个 prepared futex 字 + 窗口守卫；判据＝内核真的搬了一个等待者），假 seam 的主机测试（`window_attempt_test`）已进 check。
+- `steps/window_attempt.{hpp,cpp}`：43499 的「尝试一次」本体（两个 prepared futex 字 + 窗口守卫；判据＝内核真的搬了一个等待者），假 landing 的主机测试（`window_attempt_test`）已进 check。
 - `procedures/43499_window.lua`：43499 三步的 Lua 驱动（不碰底层行），fixture `core/fixtures/wire-43499-window.framed`；主机与设备都跑到 `step-attempt-missing`（准确名字：准备好的两个字还没接上）。
 - 构建纪律：`window_attempt.cpp` 依赖 `linux/futex.h` ⇒ 属 `ANDROID_ONLY_SRCS`，不进主机源列表。
 - `steps/prepare_mapping.{hpp,cpp}`（计划 §三 的第一刀）：15 个准备输入 → schema 键 → 常量拒绝名（`prepare-value-missing:<输入名>`）的表驱动映射；`prepare_mapping_test` 进 check，并有与 `profile-schema.json` 的独立对拍（15/15 键存在）。
 - `steps/window_runner.{hpp,cpp}`：阶段节奏 + 真尝试 + 窗口守卫粘合成执行体；缺两个字/守卫时给 `step-words-unprepared`（设备上实测过这个名字）。
-- 剩余（计划 §二 的 3–7 段）：发现（`run_snitch_search`，模板化、要假的 HeapSeam/SnitchSeam/FutexBuckets 才能主机测）、区域与边界、回收/整形、武装、产出两个字。
+- 剩余（计划 §二 的 3–7 段）：发现（`run_snitch_search`，模板化、要假的 HeapOps/SnitchOps/FutexBuckets 才能主机测）、区域与边界、回收/整形、武装、产出两个字。

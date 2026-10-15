@@ -71,7 +71,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         if (!fits_i32(values.max_calls, "max_calls", out)) { return out; }
         if (!fits_i32(values.fallback_lock_us, "fallback_lock_us", out)) { return out; }
         if (!fits_i32(values.nice_modulus, "nice_modulus", out)) { return out; }
-        seam::MulticastRouteConfig config{};
+        landing::MulticastRouteConfig config{};
         config.stamp.waiter_offset = static_cast<std::size_t>(values.waiter_offset);
         config.stamp.task_offset = static_cast<std::size_t>(values.task_offset);
         config.stamp.lock_offset = static_cast<std::size_t>(values.lock_offset);

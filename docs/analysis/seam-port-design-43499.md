@@ -1,6 +1,6 @@
 # 附：43499 侧的控制器与派发（含两处更正）
 
-> 本件是 `seam-port-design.md` 的附件 · 2026-10-09 · 由 Lead 落盘（§13 与 §16 各更正了正文一处说法）
+> 本件是 `landing-port-design.md` 的附件 · 2026-10-09 · 由 Lead 落盘（§13 与 §16 各更正了正文一处说法）
 
 ## 12 43499 侧的下一件：route 控制器（只读实测，待接线）
 
@@ -109,6 +109,6 @@ RouteStatus RouteController::execute(const WriteRequest *request) {
 
 **教训**：`grep` 的**模式**决定结论的**口径** ⇒ 说「耦合 0」时必须写明**按什么模式量的**，否则那句话就是**过强**的。
 
-> AES 那一件的判据验证与依赖更正（§17–§18）：见同目录 `seam-port-design-43499-aes.md`。
+> AES 那一件的判据验证与依赖更正（§17–§18）：见同目录 `landing-port-design-43499-aes.md`。
 
-§19（43499 侧下一件的切法）已拆出：见同目录 `seam-port-design-43499-route.md`。
+§19（43499 侧下一件的切法）已拆出：见同目录 `landing-port-design-43499-route.md`。

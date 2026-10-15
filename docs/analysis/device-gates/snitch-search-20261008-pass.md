@@ -1,16 +1,16 @@
-# 真机门禁：43499 泄漏搜索端到端 + seam（2026-10-08）
+# 真机门禁：43499 泄漏搜索端到端 + landing（2026-10-08）
 
 > 级别：**攻击关键路径改动** ⇒ 按 AGENTS 需真机门禁 + 本记录 ✓
 > 设备 `QV770MFGJ1`（A301SO · Android 15 · `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`）
-> 代码：`core/src/backend/cve_2026_43499/leak/{snitch_seam,snitch_seam_linux,snitch_scan,snitch_child,snitch_run,leak_search,leak_walk,snitch_region,snitch_setup,snitch_tuning,snitch_policy}`
+> 代码：`core/src/backend/cve_2026_43499/leak/{snitch_ops,snitch_ops_linux,snitch_scan,snitch_child,snitch_run,leak_search,leak_walk,snitch_region,snitch_setup,snitch_tuning,snitch_policy}`
 > 提交：`3f1453b3`（搜索端到端）· `014d9250`（按名唤醒）· `56ed2f9c`（唤醒协议）· `8faf7a45`（搜索↔页准备接合）
 
 ## 1 三支真机探针（每支**有界**运行 ✓ —— 上一轮教训已落到工具形态 ✓）
 
-### 1.1 seam（`snitch_seam_probe`）· 判据 PASS / EXIT=0 ✓
+### 1.1 landing（`snitch_ops_probe`）· 判据 PASS / EXIT=0 ✓
 
 ```
-snitch seam probe
+snitch landing probe
   map_shared          address=0x7fba35a000 errno=0 ok
   wait(mismatch)      value=-1 errno=11 ok        <- EAGAIN：证明 futex 调用真到了内核
   start_thread        handle=537555197104 errno=0 ok
@@ -18,7 +18,7 @@ snitch seam probe
   join_thread         value=0 ok
   the waiter came back  ok
   unmap               value=0 ok
-snitch seam probe: PASS          EXIT=0
+snitch landing probe: PASS          EXIT=0
 ```
 
 **这一行的价值** ✓：`wake(1) value=0`（**没唤到任何人**）而等待者**仍然返回** ✓ —— 正是「先查状态再睡、先改状态再唤」的健壮协议在起作用 ✓。**反例（同一探针首版）** ✗：用空转当延时 ⇒ 唤醒先到 ⇒ `join` 永久阻塞 ⇒ `timeout 10` ⇒ **EXIT=124 且零输出**（块缓冲）✓ ⇒ 该两条要求已写入 `falsification-hygiene.md` §4 ✓。
@@ -56,7 +56,7 @@ snitch run probe: PASS          EXIT=0
 ## 3 复现命令
 
 ```sh
-make -C core snitch-seam-probe snitch-fork-probe snitch-run-probe
+make -C core snitch-landing-probe snitch-fork-probe snitch-run-probe
 adb -s QV770MFGJ1 push build/native/<probe> /data/local/tmp/
 adb -s QV770MFGJ1 shell 'timeout 40 /data/local/tmp/<probe>; echo EXIT=$?'
 ```

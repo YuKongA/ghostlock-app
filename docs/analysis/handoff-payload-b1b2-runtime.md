@@ -30,8 +30,8 @@
 ```
 
 - **只做二值判定**，不产生备选（禁止运行期回退）。
-- **10 条静态拒绝原因**（**解码层超限**并入 `param-invalid`；见 [queue-schema](handoff-payload-queue-schema.md) §2）：`unknown-op` / `op-not-available` / `route-not-available` / `geometry-missing` / `capability-missing` / `order-violation` / `hash-mismatch` / `param-invalid` / `seam-in-pi-window` / **`executor-unavailable`**（构建期四选一，运行期无可用执行器 ⇒ 静态拒绝）。（**`dirty-failure` 移出 gate**：它是**运行期终止语义**——写/route 失败且未清理 ⇒ 终止进程、不换路；诊断见 ops §4。）
-- **`GateVerdict.path` 语法**：`backend.<id>` → `.op[<index>]`（0 基）→ `.<field>`（`.route`/`.seam.stage`/`.executor`）；`index` 与 `[i]` **必须一致**（用例断言）。
+- **10 条静态拒绝原因**（**解码层超限**并入 `param-invalid`；见 [queue-schema](handoff-payload-queue-schema.md) §2）：`unknown-op` / `op-not-available` / `route-not-available` / `geometry-missing` / `capability-missing` / `order-violation` / `hash-mismatch` / `param-invalid` / `landing-in-pi-window` / **`executor-unavailable`**（构建期四选一，运行期无可用执行器 ⇒ 静态拒绝）。（**`dirty-failure` 移出 gate**：它是**运行期终止语义**——写/route 失败且未清理 ⇒ 终止进程、不换路；诊断见 ops §4。）
+- **`GateVerdict.path` 语法**：`backend.<id>` → `.op[<index>]`（0 基）→ `.<field>`（`.route`/`.landing.stage`/`.executor`）；`index` 与 `[i]` **必须一致**（用例断言）。
 - **插入点**：`state_from` 成功之后、`Backend::run` 之前（需要几何，不能更早）。
 - **去重**：orchestrator 的 `selection_supported`（`main.cpp:184` 调用点）与 `combination_available` **并入 gate**；同一事实不得两处判定。
 - **`DeviceFacts`**：组合根在探测后、进 pipeline 前填充并冻结；gate 不得自行探测。
@@ -40,7 +40,7 @@
 ### B1.3 owner 面与队列元素（R1/R2/R8 裁决）
 
 - **Document 允许 owner 集合**；`Builder` 不再「单选中 owner」（`add_*` 显式给段名或走根段）。**与 D17 相容**：wire 段集合 = plan 用到的 backend 集合。
-- **R1 队列元素 = 7 键扁平标量**（`id` 已删、折进 `seam`；`params_ref` 已删）；**参数值不进队列**（见 [params](handoff-payload-params.md)）。schema/成员表见 [queue-schema](handoff-payload-queue-schema.md)。
+- **R1 队列元素 = 7 键扁平标量**（`id` 已删、折进 `landing`；`params_ref` 已删）；**参数值不进队列**（见 [params](handoff-payload-params.md)）。schema/成员表见 [queue-schema](handoff-payload-queue-schema.md)。
 - **R2**：**既有 manifest 行不变；payload 相关键按新行补充**（预期）；成员表权威见 [queue-schema](handoff-payload-queue-schema.md) §3。
 
 ## B2 Lua 运行期
@@ -75,7 +75,7 @@
 ### B2.4 校验器（gate 内）与错误语义
 
 - 校验：脚本编译通过；正文 ≤64 KB；sha256 匹配；预算声明存在；`op`/`probe`/`require_cap` 字面量 token 存在（**best-effort 静态扫描，非导入门禁**）。
-- **seam = 纯静态**：只能声明在操作之间，操作内部不可表达；运行期观测到窗口内调用即按缺陷（`seam-in-pi-window`）。
+- **landing = 纯静态**：只能声明在操作之间，操作内部不可表达；运行期观测到窗口内调用即按缺陷（`landing-in-pi-window`）。
 - 运行期错误（报错/超预算/无效句柄/越权 API）⇒ **立即终止**（不换路、不回退）。
 
 ### B2.5 wire 承载（脚本尺寸唯一权威）

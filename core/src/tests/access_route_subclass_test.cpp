@@ -9,7 +9,7 @@
 #include "backend/cve_2026_43499/access_multicast_waiter.hpp"
 #include "backend/cve_2026_43499/access_select_stack.hpp"
 #include "backend/cve_2026_43499/access_tcp_zerocopy.hpp"
-#include "backend/cve_2026_43499/seam/multicast_seam.hpp"
+#include "backend/cve_2026_43499/landing/multicast_landing.hpp"
 #include "backend/cve_2026_43499/steps/access_binder.hpp"
 
 namespace {
@@ -44,8 +44,8 @@ namespace {
         int executes = 0;
     };
 
-    /** A window that records instead of writing: the seam's decisions are what is under test. */
-    class RecordingWindow final : public cve49::seam::Window {
+    /** A window that records instead of writing: the landing's decisions are what is under test. */
+    class RecordingWindow final : public cve49::landing::Window {
     public:
         [[nodiscard]] bool write_word(std::uint64_t address, std::uint64_t value,
                                      std::uint64_t offset) noexcept override {
@@ -106,7 +106,7 @@ namespace {
         expect(tcp.initialize(multicast_params).status == KernelAccess::Status::BadParameters,
                "the tcp access refuses the multicast set by name");
 
-        /* The right set gets past the parameter door; with no seam wired the route
+        /* The right set gets past the parameter door; with no landing wired the route
          *  reports the missing wrapper rather than pretending it came up. */
         /* A bare multicast access has no window, and the route refuses **before** the
          *  base door: an unnamed access never reaches the phase machine, so it stays
@@ -128,7 +128,7 @@ namespace {
                "and it never entered the phase machine");
         /* ref: disarm and destroy are unconditional, so a failure must not strand what
          *  bring-up built. NeverUp has nothing to give back, so it stays refused -- the
-         *  Broken-then-reclaim path itself is covered where a failing seam can be built. */
+         *  Broken-then-reclaim path itself is covered where a failing landing can be built. */
         expect(!access.shutdown().ok(), "nothing was built, so there is nothing to reclaim");
 
         /* The route keeps one lifecycle: a second initialize while up would be refused,
@@ -179,17 +179,17 @@ namespace {
         RecordingExec exec;
         const cve49::route::MulticastLimits limits{1, 1, 3};
         std::unique_ptr<cve49::MulticastWaiterAccess<RecordingExec>> owner;
-        cve49::AccessSeam *seam = nullptr;
+        cve49::WordLanding *landing = nullptr;
 
         steps::AccessBindInputs<RecordingExec> no_route{};
-        expect(std::string_view(steps::bind_multicast_access(no_route, owner, seam)) ==
+        expect(std::string_view(steps::bind_multicast_access(no_route, owner, landing)) ==
                    "access-bind-missing-route",
                "no route controller is named as such");
 
         steps::AccessBindInputs<RecordingExec> no_facts{};
         no_facts.exec = &exec;
         no_facts.limits = &limits;
-        expect(std::string_view(steps::bind_multicast_access(no_facts, owner, seam)) ==
+        expect(std::string_view(steps::bind_multicast_access(no_facts, owner, landing)) ==
                    "access-bind-facts-incomplete",
                "incomplete facts are named before the page is");
 
@@ -200,25 +200,25 @@ namespace {
         ready.target.page_base = 2U;
         ready.target.fake_task = 3U;
         ready.target.fake_lock = 4U;
-        expect(steps::bind_multicast_access(ready, owner, seam) == nullptr,
+        expect(steps::bind_multicast_access(ready, owner, landing) == nullptr,
                "complete facts bind");
-        expect(seam != nullptr, "and the landing seam is handed back");
+        expect(landing != nullptr, "and the landing landing is handed back");
         expect(owner != nullptr &&
                    owner->state(contract::AccessChannel::PiWindow) == KernelAccess::AccessState::Ready,
                "the access came up");
 
-        /* The stage entry hands the same seam to the context the runner reads. */
+        /* The stage entry hands the same landing to the context the runner reads. */
         std::unique_ptr<cve49::MulticastWaiterAccess<RecordingExec>> owner2;
         steps::WindowStageContext<RecordingExec> context{};
         expect(steps::bind_stage_landing(ready, owner2, context) == nullptr,
                "the stage entry binds when the facts are complete");
-        expect(context.seam_landing != nullptr, "and the context receives the seam");
+        expect(context.landing_landing != nullptr, "and the context receives the landing");
         steps::WindowStageContext<RecordingExec> empty{};
         std::unique_ptr<cve49::MulticastWaiterAccess<RecordingExec>> owner3;
         expect(std::string_view(steps::bind_stage_landing(no_route, owner3, empty)) ==
                    "access-bind-missing-route",
                "and refuses the same way");
-        expect(empty.seam_landing == nullptr, "leaving the context untouched on a refusal");
+        expect(empty.landing_landing == nullptr, "leaving the context untouched on a refusal");
     }
 
     void both_entries_agree_on_the_backend() {

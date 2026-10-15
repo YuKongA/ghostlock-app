@@ -12,7 +12,7 @@
   `pr_info("[route] waiter parked; owner started\n");` ✓；
   `usleep(**fast_repair ? 5000 : race_setup_settle_us**);` ✓ ⇒ ⇒ **然后才** `futex_op(… CMP_REQUEUE_PI …)` ✓
   ⇒ ⇒ **⇒ 即：退役在 requeue *之前* 还有一段 settle** ✗（档案值 50000 ✓；fast_repair 时 5000 ✓）；
-⇒ 而 `grep setup_settle` 在 **main.cpp 与 seam 里都没有命中** ✗ ⇒ ⇒ **⇒ 本树缺的就是这一段** ✓✓。
+⇒ 而 `grep setup_settle` 在 **main.cpp 与 landing 里都没有命中** ✗ ⇒ ⇒ **⇒ 本树缺的就是这一段** ✓✓。
 ```
 
 ## 二、为什么这与"落不落"直接相关（✓✓✓）

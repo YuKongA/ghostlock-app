@@ -22,7 +22,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::SnitchSetup;
     using ghostlock::backend::cve_2026_43499::leak::ThreadEntry;
     using ghostlock::backend::cve_2026_43499::leak::ThreadResult;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
 
     constexpr std::size_t kCounterOffset = 8U;
     std::size_t g_failures = 0U;
@@ -34,7 +34,7 @@ namespace {
         }
     }
 
-    struct FakeSeam final {
+    struct FakeOps final {
         static unsigned char buffer[65536];
         static std::size_t forks, kills, wakes, unmaps, pokes_per_wake;
         static std::uint32_t *woken[16];
@@ -50,44 +50,44 @@ namespace {
             if (bytes > sizeof(buffer)) { return MapResult{nullptr, 12}; }
             return MapResult{buffer, 0};
         }
-        static SeamResult unmap(void *, std::size_t) noexcept { ++unmaps; return SeamResult{0, 0}; }
-        static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult futex_wake_private(std::uint32_t *word, std::int32_t) noexcept {
+        static OpsResult unmap(void *, std::size_t) noexcept { ++unmaps; return OpsResult{0, 0}; }
+        static OpsResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult futex_wake_private(std::uint32_t *word, std::int32_t) noexcept {
             if (wakes < 16U) { woken[wakes] = word; }
             ++wakes;
             auto *count = reinterpret_cast<std::uint32_t *>(buffer + kCounterOffset);
             *count += static_cast<std::uint32_t>(pokes_per_wake);
-            return SeamResult{1, 0};
+            return OpsResult{1, 0};
         }
-        static SeamResult fork_child() noexcept {
-            if (fail_fork && forks > 0U) { return SeamResult{-1, 11}; }
+        static OpsResult fork_child() noexcept {
+            if (fail_fork && forks > 0U) { return OpsResult{-1, 11}; }
             ++forks;
-            return SeamResult{static_cast<std::int64_t>(1000U + forks), 0};
+            return OpsResult{static_cast<std::int64_t>(1000U + forks), 0};
         }
-        static SeamResult stop_child(std::uint64_t) noexcept { ++kills; return SeamResult{0, 0}; }
-        static SeamResult yield_now() noexcept { return SeamResult{0, 0}; }
-        static SeamResult pin_to_processor(std::int32_t) noexcept { return SeamResult{0, 0}; }
+        static OpsResult stop_child(std::uint64_t) noexcept { ++kills; return OpsResult{0, 0}; }
+        static OpsResult yield_now() noexcept { return OpsResult{0, 0}; }
+        static OpsResult pin_to_processor(std::int32_t) noexcept { return OpsResult{0, 0}; }
         static void exit_child() noexcept {}
         static ThreadResult start_thread(ThreadEntry, void *) noexcept { return ThreadResult{1U, 0}; }
-        static SeamResult join_thread(unsigned long) noexcept { return SeamResult{0, 0}; }
-        static SeamResult open_memfd(std::uint64_t) noexcept { return SeamResult{1, 0}; }
-        static SeamResult close_fd(std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult socket_pair(std::int32_t *) noexcept { return SeamResult{0, 0}; }
-        static SeamResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult set_nonblocking(std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult send_buffer(std::int32_t, std::size_t) noexcept { return SeamResult{0, 0}; }
-        /* heap_seam.hpp 的 HeapSeam 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
-         *  假 seam 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
+        static OpsResult join_thread(unsigned long) noexcept { return OpsResult{0, 0}; }
+        static OpsResult open_memfd(std::uint64_t) noexcept { return OpsResult{1, 0}; }
+        static OpsResult close_fd(std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult socket_pair(std::int32_t *) noexcept { return OpsResult{0, 0}; }
+        static OpsResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult set_nonblocking(std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult send_buffer(std::int32_t, std::size_t) noexcept { return OpsResult{0, 0}; }
+        /* heap_ops.hpp 的 HeapOps 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
+         *  假 landing 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
          *  2026-10-14 补齐：与其它调用同形，参数一律忽略。 */
-        static SeamResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult page_size() noexcept { return SeamResult{4096, 0}; }
+        static OpsResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult page_size() noexcept { return OpsResult{4096, 0}; }
     };
-    unsigned char FakeSeam::buffer[65536] = {};
-    std::size_t FakeSeam::forks = 0U, FakeSeam::kills = 0U, FakeSeam::wakes = 0U;
-    std::size_t FakeSeam::unmaps = 0U, FakeSeam::pokes_per_wake = 1U;
-    std::uint32_t *FakeSeam::woken[16] = {};
-    bool FakeSeam::fail_fork = false;
+    unsigned char FakeOps::buffer[65536] = {};
+    std::size_t FakeOps::forks = 0U, FakeOps::kills = 0U, FakeOps::wakes = 0U;
+    std::size_t FakeOps::unmaps = 0U, FakeOps::pokes_per_wake = 1U;
+    std::uint32_t *FakeOps::woken[16] = {};
+    bool FakeOps::fail_fork = false;
 
     std::uint32_t kWords[2] = {0U, 0U};
     std::uint32_t *kWordPointers[2] = {&kWords[0], &kWords[1]};
@@ -116,60 +116,60 @@ namespace {
     }
 
     void a_cohort_that_pokes() {
-        FakeSeam::reset();
-        FakeSeam::pokes_per_wake = 512U;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(64U), kCounterOffset, kWordPointers, 2U);
+        FakeOps::reset();
+        FakeOps::pokes_per_wake = 512U;
+        const ScanOutcome outcome = run_poke_protocol<FakeOps>(setup(), inputs(), rounds(64U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::Poked, "a cohort that catches up ends the protocol");
         expect(outcome.pokes_wanted == 2048U, "with the total it waited for");
         expect(outcome.rounds < 64U, "in fewer rounds than it was allowed");
-        expect(FakeSeam::forks == 2U && FakeSeam::kills == 0U, "one child per collision, none stopped");
+        expect(FakeOps::forks == 2U && FakeOps::kills == 0U, "one child per collision, none stopped");
         expect(outcome.region != nullptr, "and the region is the caller's to unmap");
         /* Each wake has to name a child's own word: waking the wrong one leaves a child
          *  waiting and the cohort never catches up. */
-        expect(FakeSeam::wakes >= 2U, "every child of the cohort was woken");
-        expect(FakeSeam::woken[0] == kWordPointers[0] && FakeSeam::woken[1] == kWordPointers[1],
+        expect(FakeOps::wakes >= 2U, "every child of the cohort was woken");
+        expect(FakeOps::woken[0] == kWordPointers[0] && FakeOps::woken[1] == kWordPointers[1],
                "and each of them on its own word, in the cohort's order");
     }
 
     void a_cohort_that_never_does() {
-        FakeSeam::reset();
-        FakeSeam::pokes_per_wake = 0U;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
+        FakeOps::reset();
+        FakeOps::pokes_per_wake = 0U;
+        const ScanOutcome outcome = run_poke_protocol<FakeOps>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::NoPokes, "a cohort that never catches up is given up on");
         expect(outcome.rounds == 8U, "after exactly the rounds allowed");
-        expect(FakeSeam::kills == 2U, "and its children are stopped");
+        expect(FakeOps::kills == 2U, "and its children are stopped");
         expect(std::string_view(scan_verdict_name(ScanVerdict::NoPokes)) == std::string_view("plan-missing"),
                "under the name for a plan that did not happen");
     }
 
     void a_fork_that_fails() {
-        FakeSeam::reset();
-        FakeSeam::fail_fork = true;
-        const ScanOutcome outcome = run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
+        FakeOps::reset();
+        FakeOps::fail_fork = true;
+        const ScanOutcome outcome = run_poke_protocol<FakeOps>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 2U);
         expect(outcome.status == ScanVerdict::CallFailed, "a fork that fails stops the attempt");
         expect(outcome.error == 11, "and the errno comes back with it");
-        expect(FakeSeam::kills == 1U && FakeSeam::unmaps == 1U, "the child is stopped and the region goes back");
+        expect(FakeOps::kills == 1U && FakeOps::unmaps == 1U, "the child is stopped and the region goes back");
         expect(outcome.region == nullptr, "with nothing left for the caller to unmap");
     }
 
     void what_is_refused_before_anything_is_mapped() {
-        FakeSeam::reset();
+        FakeOps::reset();
         RegionInputs broken = inputs();
         broken.total_pokes = 0U;
-        expect(run_poke_protocol<FakeSeam>(setup(), broken, rounds(8U), kCounterOffset, kWordPointers, 2U).status ==
+        expect(run_poke_protocol<FakeOps>(setup(), broken, rounds(8U), kCounterOffset, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "a region with nowhere to record pokes is refused");
-        expect(FakeSeam::forks == 0U && FakeSeam::wakes == 0U, "before anything is mapped or forked");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(0U), kCounterOffset, kWordPointers, 2U).status ==
+        expect(FakeOps::forks == 0U && FakeOps::wakes == 0U, "before anything is mapped or forked");
+        expect(run_poke_protocol<FakeOps>(setup(), inputs(), rounds(0U), kCounterOffset, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "and so is a protocol with no rounds to run");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), 40000U, kWordPointers, 2U).status ==
+        expect(run_poke_protocol<FakeOps>(setup(), inputs(), rounds(8U), 40000U, kWordPointers, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "as is a counter that lies outside the region");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, nullptr, 2U).status ==
+        expect(run_poke_protocol<FakeOps>(setup(), inputs(), rounds(8U), kCounterOffset, nullptr, 2U).status ==
                    ScanVerdict::GeometryMissing,
                "a cohort with no words to wake is refused, not woken at nothing");
-        expect(run_poke_protocol<FakeSeam>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 1U).status ==
+        expect(run_poke_protocol<FakeOps>(setup(), inputs(), rounds(8U), kCounterOffset, kWordPointers, 1U).status ==
                    ScanVerdict::GeometryMissing,
                "and one word short of the cohort is refused too");
     }

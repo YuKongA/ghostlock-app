@@ -1,10 +1,10 @@
 /** @file tests/access_chain_test.cpp
- *  The three pieces wired into one: access, seam, window, controller.
+ *  The three pieces wired into one: access, landing, window, controller.
  *
  *  Each was tested alone and each test said the same thing about itself -- that it pins the
  *  decisions and not the write. This one drives the whole chain with a controller that records, so
- *  what is checked is that the pieces agree: the access takes its parameters, asks the seam for its
- *  route, the seam lands a word on the window, the window spends its warm-up rounds and then hands
+ *  what is checked is that the pieces agree: the access takes its parameters, asks the landing for its
+ *  route, the landing lands a word on the window, the window spends its warm-up rounds and then hands
  *  the address, the value and the offset to the controller, and the byte count the access reports
  *  is the width it declared rather than a number it made up.
  */
@@ -13,16 +13,16 @@
 #include <cstdio>
 
 #include "backend/cve_2026_43499/kernel_access.hpp"
-#include "backend/cve_2026_43499/seam/multicast_seam.hpp"
-#include "backend/cve_2026_43499/seam/multicast_window.hpp"
+#include "backend/cve_2026_43499/landing/multicast_landing.hpp"
+#include "backend/cve_2026_43499/landing/multicast_window.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43499::KernelAccess43499;
     using ghostlock::backend::cve_2026_43499::Access43499Parameters;
     using ghostlock::backend::cve_2026_43499::TargetState;
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
-    using ghostlock::backend::cve_2026_43499::seam::MulticastSeam;
-    using ghostlock::backend::cve_2026_43499::seam::MulticastWindow;
+    using ghostlock::backend::cve_2026_43499::landing::MulticastLanding;
+    using ghostlock::backend::cve_2026_43499::landing::MulticastWindow;
     using ghostlock::contract::AccessChannel;
     using ghostlock::profile::RouteId;
 
@@ -72,15 +72,15 @@ namespace {
         limits.max_attempts = 4;
         limits.arm_sequence = 2;
         MulticastWindow<RecordingExec> window(exec, limits);
-        MulticastSeam seam(window);
+        MulticastLanding landing(window);
         const TargetState target = prepared();
-        KernelAccess43499 access(&seam, &target);
+        KernelAccess43499 access(&landing, &target);
         Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x40U;
         params.offset_set = true;
-        expect(access.initialize(params).ok(), "the access comes up through the seam");
-        expect(seam.up(), "and the seam brought the route up");
+        expect(access.initialize(params).ok(), "the access comes up through the landing");
+        expect(landing.up(), "and the landing brought the route up");
         const std::byte word[8] = {std::byte{0x48}, std::byte{0x47}, std::byte{0x46}, std::byte{0x45},
                                    std::byte{0x44}, std::byte{0x43}, std::byte{0x42}, std::byte{0x41}};
         const auto written = access.write(0x2000U, std::span<const std::byte>(word),
@@ -91,18 +91,18 @@ namespace {
         expect(exec.address == 0x2000U && exec.value == 0x4142434445464748ULL,
                "with the address and the little-endian value reaching the controller");
         expect(exec.offset == 0x40U, "and the offset from the access parameters");
-        expect(access.shutdown().ok() && !seam.up(), "and it all comes back down");
+        expect(access.shutdown().ok() && !landing.up(), "and it all comes back down");
     }
 
     void a_chain_without_warm_up_refuses_before_the_controller() {
         RecordingExec exec;
         const MulticastLimits unsaid;
         MulticastWindow<RecordingExec> window(exec, unsaid);
-        MulticastSeam seam(window);
+        MulticastLanding landing(window);
         /* The facts must outlive the access now that it borrows through a pointer, so the temporary
          *  a call would produce has to be bound to a name first. */
         const TargetState target = prepared();
-        KernelAccess43499 access(&seam, &target);
+        KernelAccess43499 access(&landing, &target);
         Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset_set = true;
@@ -118,12 +118,12 @@ namespace {
 int main() {
     std::printf("access chain: one write, end to end\n");
     the_chain_carries_one_write_end_to_end();
-    std::printf("access chain: the refusal stops at the seam\n");
+    std::printf("access chain: the refusal stops at the landing\n");
     a_chain_without_warm_up_refuses_before_the_controller();
     if (g_failures != 0U) {
         std::printf("access chain: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("access chain: PASS (access, seam, window, controller agree)\n");
+    std::printf("access chain: PASS (access, landing, window, controller agree)\n");
     return 0;
 }

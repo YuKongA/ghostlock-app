@@ -8,7 +8,7 @@
 > **口径更新（2026-10-12）**：本节的 **M6 旧口径**（「`multicast_window.hpp` 不属窗口体、不纳入账本」）**已被取代** ✗ —— 该文件已按指令**纳入 `WINDOW-DIRTY` 账本**（4 批），**Lead 本轮裁定保留** ✓；以「**inside PI**」口径与账本现状为准。
 
 ```
-**错述** ✗：本文 §L2 曾写扫描面已扩到**三个**文件（含 `seam/multicast_window.hpp`）✗
+**错述** ✗：本文 §L2 曾写扫描面已扩到**三个**文件（含 `landing/multicast_window.hpp`）✗
   ⇒ critic 实测：该文件**既不在** `Makefile:1118` 的 sed 列表 ✗ **也不是** guard 的目标 ✗
 **更正与裁定** ✓：**该文件不属于窗口体** ⇒ **不纳入**扫描面 ✓，理由按**窗口体定义**（本稿 §L1 ✓）：
   · 窗口体 ＝ `multicast_route.hpp` 的 `trigger`／`waiter_main`／`owner_main`／`judge`／`consumer_main` ✓
@@ -50,9 +50,9 @@ critic 的要点（逐字 ✓）：「race/pi_window.hpp 的禁令含 no logging
 ## L2（重要）—— **接受** ✓
 
 ```
-"WINDOW-DIRTY 检查只 sed `pi_window.hpp` 与 `pi_race.hpp`" ✗ ⇒ 覆盖不到**实际运行窗口的 TU**（`seam/multicast_route.hpp` ✗）。
-**处置**：把扫描面扩到窗口实际运行的文件 ✓（`seam/multicast_route.hpp` ✓／`seam/multicast_route_linux.hpp` ✓／
-  `seam/multicast_window.hpp` ✓），并同步扩禁用词（⇒ 加 `spdlog` ✓／`log_step` ✓）；
+"WINDOW-DIRTY 检查只 sed `pi_window.hpp` 与 `pi_race.hpp`" ✗ ⇒ 覆盖不到**实际运行窗口的 TU**（`landing/multicast_route.hpp` ✗）。
+**处置**：把扫描面扩到窗口实际运行的文件 ✓（`landing/multicast_route.hpp` ✓／`landing/multicast_route_linux.hpp` ✓／
+  `landing/multicast_window.hpp` ✓），并同步扩禁用词（⇒ 加 `spdlog` ✓／`log_step` ✓）；
   ⇒ 判据：**在 `multicast_route.hpp` 里临时插一个 `spdlog` 调用 ⇒ 检查必须 FAIL** ✓（§8 证伪 ✓）。
 ```
 
@@ -81,7 +81,7 @@ L8：新具名串**二选一**✓：优先**复用既有码表** ✓（`plan_gat
 L9：`log_start` 里显式 `set_pattern`（含 `%Y-%m-%d %H:%M:%S.%e` ✓ · `%t` 线程标识 ✓ · `%l` ✓），
     并把「pattern 已 pin」作为 C4 的**可失败**判据 ✓（⇒ 去掉 `%t` ⇒ 红 ✓）。
 L10：增三项 ✓：日志**体积上限/轮转** ✓（⇒ 长跑不写爆设备 ✓）＋ **默认级别** ✓ ＋ **丢弃计数行** ✓（⇒ L1① 的环形缓冲配套 ✓）。
-L12：覆盖补三处 ✓：① **门面每层**（`MulticastSeam` ✓／`MulticastWindow` ✓／`RouteExec` ✓／`Access` ✓）进入 ＋ 具名拒绝 ✓；
+L12：覆盖补三处 ✓：① **门面每层**（`MulticastLanding` ✓／`MulticastWindow` ✓／`RouteExec` ✓／`Access` ✓）进入 ＋ 具名拒绝 ✓；
     ② **fork 子进程侧**一条 ✓；③ **三步各自**完整链（进入 → 写槽 → 验证 → 结果 ✓，⇒ 窗口内不便者按 L1① 用汇总替代 ✓）。
 ```
 

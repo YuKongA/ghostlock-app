@@ -60,12 +60,12 @@ namespace {
 
     /**
      *  The ops a backend gets: 43284 serves the two data ops this build can answer without a
-     *  device (its bytes and its hook plan); 43499 has none yet (its device seam is J3b), so it
+     *  device (its bytes and its hook plan); 43499 has none yet (its device landing is J3b), so it
      *  keeps answering op-not-wired.
      */
     ghostlock::jni::BackendOps ops_for(std::uint64_t backend_id, void *) noexcept {
         if (backend_id == 43284U) {
-            return ghostlock::jni::make_ops_43284(ghostlock::jni::device_seams_43284());
+            return ghostlock::jni::make_ops_43284(ghostlock::jni::device_landings_43284());
         }
         return ghostlock::jni::BackendOps{};
     }
@@ -161,8 +161,8 @@ Java_com_ghostlock_app_jni_Native_nativeSessionCreate(JNIEnv *env, jclass, jbyte
         return static_cast<jlong>(FrameStatus::Busy);
     }
     auto session = std::make_unique<Session>();
-    const ghostlock::jni::BackendSeam seam{&create_backend, nullptr, &ops_for};
-    if (!session->open(backend_id, seam, generation)) {
+    const ghostlock::jni::BackendFactory landing{&create_backend, nullptr, &ops_for};
+    if (!session->open(backend_id, landing, generation)) {
         /* The session stays alive: it answers Snapshot with Failed, which is what a caller needs to
          *  see ("this build has no such backend") instead of a handle that pretends to work. */
     }

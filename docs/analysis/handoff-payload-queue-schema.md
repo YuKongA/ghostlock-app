@@ -8,14 +8,14 @@
 ```hocon
 queue = [
   { backend = "cve_2026_43499", op = "write.selinux", route = "tcp_zerocopy" },
-  { backend = "cve_2026_43499", seam = "plugin", stage = "init" },   # 合法 seam 只有 "plugin"
+  { backend = "cve_2026_43499", landing = "plugin", stage = "init" },   # 合法 landing 只有 "plugin"
   { backend = "cve_2026_43499", op = "write.seccomp.mode", route = "select_stack", attempts = 2 }
 ]
 ```
 
-- **最终键集合（7）**：`{backend, op, route, seam, stage, always, attempts}`（除 `op` 外均可缺省）。
-- **删 `id` / `params_ref`**：接缝标识折进 `seam`（`contract/step_plan.hpp:159-161`：**合法 seam 只有 `"plugin"`**；`vrko` 只是**旧 id 举例**，已随 `id` 删除）⇒ 键数 9 → **7**（与 §2 头寸配套）。
-- **定稿**：`D16 = {backend, op, route?, seam?, stage?, always?, attempts?}（7 键）`；~~`params_ref?`/`params?`/`seam={seam,id,stage}`~~ **已划掉**。
+- **最终键集合（7）**：`{backend, op, route, landing, stage, always, attempts}`（除 `op` 外均可缺省）。
+- **删 `id` / `params_ref`**：接缝标识折进 `landing`（`contract/step_plan.hpp:159-161`：**合法 landing 只有 `"plugin"`**；`vrko` 只是**旧 id 举例**，已随 `id` 删除）⇒ 键数 9 → **7**（与 §2 头寸配套）。
+- **定稿**：`D16 = {backend, op, route?, landing?, stage?, always?, attempts?}（7 键）`；~~`params_ref?`/`params?`/`landing={landing,id,stage}`~~ **已划掉**。
 - **参数值不进队列**（`params_ref` **已删**）：参数走**两条既有通道**，见 [params](handoff-payload-params.md)。
 
 ## 2. 键数上限：合并为唯一权威 `kMaxMapMembers` = 12（含解码层具名）

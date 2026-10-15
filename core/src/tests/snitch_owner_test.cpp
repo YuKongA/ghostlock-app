@@ -1,9 +1,9 @@
 /** @file tests/snitch_owner_test.cpp
- *  The owner's sequence, with a seam of our own in place of the device's.
+ *  The owner's sequence, with a landing of our own in place of the device's.
  *
  *  The first two steps are pure: building the shape and laying out the region need no platform call,
- *  so their refusals are pinned directly. The steps after them are reached with a recording seam that
- *  never touches the kernel, which is what the seam parameter exists for -- the device header includes
+ *  so their refusals are pinned directly. The steps after them are reached with a recording landing that
+ *  never touches the kernel, which is what the landing parameter exists for -- the device header includes
  *  linux/futex.h and this file has to compile on the host.
  *
  *  The contract being checked throughout is the one the owner promises: a refusal anywhere leaves the
@@ -29,12 +29,12 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::run_snitch_owner;
     using ghostlock::backend::cve_2026_43499::leak::ScanRange;
     using ghostlock::backend::cve_2026_43499::leak::ScanStrides;
-    using ghostlock::backend::cve_2026_43499::leak::SeamResult;
+    using ghostlock::backend::cve_2026_43499::leak::OpsResult;
     using ghostlock::backend::cve_2026_43499::leak::SnitchInputs;
     using ghostlock::backend::cve_2026_43499::leak::SnitchPatience;
     using ghostlock::backend::cve_2026_43499::leak::ThreadEntry;
     using ghostlock::backend::cve_2026_43499::leak::ThreadResult;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
     using ghostlock::contract::discovery_is_complete;
 
     std::size_t g_failures = 0U;
@@ -46,41 +46,41 @@ namespace {
         }
     }
 
-    /** A seam that refuses every platform call. Nothing here reaches the kernel. */
+    /** A landing that refuses every platform call. Nothing here reaches the kernel. */
     struct RefusingSeam final {
         static MapResult map_shared(std::size_t) noexcept { return MapResult{nullptr, -1}; }
-        static SeamResult unmap(void *, std::size_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
-            return SeamResult{-1, -1};
+        static OpsResult unmap(void *, std::size_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
+            return OpsResult{-1, -1};
         }
-        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t,
+        static OpsResult futex_wait_private_until(std::uint32_t *, std::uint32_t,
                                                    std::int64_t) noexcept {
-            return SeamResult{-1, -1};
+            return OpsResult{-1, -1};
         }
-        static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
-            return SeamResult{-1, -1};
+        static OpsResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
+            return OpsResult{-1, -1};
         }
         static ThreadResult start_thread(ThreadEntry, void *) noexcept {
             return ThreadResult{0U, -1};
         }
-        static SeamResult join_thread(unsigned long) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult page_size() noexcept { return SeamResult{4096, 0}; }
-        static SeamResult open_memfd(std::uint64_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult close_fd(std::int32_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult socket_pair(std::int32_t *) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult set_socket_buffer(std::int32_t, std::int32_t) noexcept {
-            return SeamResult{-1, -1};
+        static OpsResult join_thread(unsigned long) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult page_size() noexcept { return OpsResult{4096, 0}; }
+        static OpsResult open_memfd(std::uint64_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult close_fd(std::int32_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult socket_pair(std::int32_t *) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult set_socket_buffer(std::int32_t, std::int32_t) noexcept {
+            return OpsResult{-1, -1};
         }
-        static SeamResult set_nonblocking(std::int32_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult send_buffer(std::int32_t, std::size_t) noexcept { return SeamResult{-1, -1}; }
-        /* heap_seam.hpp 的 HeapSeam 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
-         *  假 seam 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
+        static OpsResult set_nonblocking(std::int32_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult send_buffer(std::int32_t, std::size_t) noexcept { return OpsResult{-1, -1}; }
+        /* heap_ops.hpp 的 HeapOps 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
+         *  假 landing 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
          *  2026-10-14 补齐：与其它调用同形，参数一律忽略。 */
-        static SeamResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult fork_child() noexcept { return SeamResult{-1, -1}; }
-        static SeamResult stop_child(std::uint64_t) noexcept { return SeamResult{-1, -1}; }
-        static SeamResult yield_now() noexcept { return SeamResult{-1, -1}; }
-        static SeamResult pin_to_processor(std::int32_t) noexcept { return SeamResult{-1, -1}; }
+        static OpsResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult fork_child() noexcept { return OpsResult{-1, -1}; }
+        static OpsResult stop_child(std::uint64_t) noexcept { return OpsResult{-1, -1}; }
+        static OpsResult yield_now() noexcept { return OpsResult{-1, -1}; }
+        static OpsResult pin_to_processor(std::int32_t) noexcept { return OpsResult{-1, -1}; }
         /** A child ends itself rather than returning up the stack, so this one returns void. */
         static void exit_child() noexcept {}
     };
@@ -157,13 +157,13 @@ namespace {
                "the shape step passed, so the poke step was reached");
         expect(out.region == ghostlock::backend::cve_2026_43499::leak::RegionVerdict::Ok,
                "and so did the region step");
-        /* Pin the poke verdict itself, not only that something refused: a seam that refuses every
+        /* Pin the poke verdict itself, not only that something refused: a landing that refuses every
          *  platform call must be refused as a failing call, and the owner must carry that verdict
          *  rather than a verdict of its own invention. Weakening this to "not the shape refusal"
          *  would have let a relaxed check pass unnoticed, which is how this assertion was written
          *  the first time. */
         expect(out.poke == ghostlock::backend::cve_2026_43499::leak::ScanVerdict::CallFailed,
-               "the poke verdict is the seam's own, carried through");
+               "the poke verdict is the landing's own, carried through");
         expect(out.status == OwnerVerdict::CallFailed,
                "and the owner's status is that same refusal");
         expect(!out.discovery.ok && out.discovery.mm_struct == 0U,

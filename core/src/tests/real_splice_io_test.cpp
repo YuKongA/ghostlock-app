@@ -15,18 +15,18 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "backend/cve_2026_43284/seam/esp_crypto.hpp"
-#include "backend/cve_2026_43284/seam/real_splice_io.hpp"
+#include "backend/cve_2026_43284/landing/esp_crypto.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::seam::esp_icv;
-    using ghostlock::backend::cve_2026_43284::seam::esp_cbc_iv;
-    using ghostlock::backend::cve_2026_43284::seam::HelperWriteSource;
-    using ghostlock::backend::cve_2026_43284::seam::kBlockBytes;
-    using ghostlock::backend::cve_2026_43284::seam::kHeaderBytes;
-    using ghostlock::backend::cve_2026_43284::seam::OldPageSource;
-    using ghostlock::backend::cve_2026_43284::seam::RealSpliceIo;
-    using ghostlock::backend::cve_2026_43284::seam::SpliceIoOps;
+    using ghostlock::backend::cve_2026_43284::landing::esp_icv;
+    using ghostlock::backend::cve_2026_43284::landing::esp_cbc_iv;
+    using ghostlock::backend::cve_2026_43284::landing::HelperWriteSource;
+    using ghostlock::backend::cve_2026_43284::landing::kBlockBytes;
+    using ghostlock::backend::cve_2026_43284::landing::kHeaderBytes;
+    using ghostlock::backend::cve_2026_43284::landing::OldPageSource;
+    using ghostlock::backend::cve_2026_43284::landing::RealSpliceIo;
+    using ghostlock::backend::cve_2026_43284::landing::SpliceIoOps;
 
     std::size_t g_failures = 0U;
 

@@ -97,7 +97,7 @@ IN_FLIGHT，module 当前存在则继续轮询，曾存在后消失则 FAILED。
 
 ## 6. 装配与门禁
 
-create 必须经 backend factory 装入真实 seams；空 seam 只允许 host 测试库。43499 会话拥有准备
+create 必须经 backend factory 装入真实 ops；空 landing 只允许 host 测试库。43499 会话拥有准备
 区域、words、payload 映射、victim、route/window/线程；43284 拥有 SA、door/bridge、三个 target
 slot 和 sequence。shutdown 顺序：停止访问 → 等在飞事务 → disarm/停线程或 socket → 关 fd/映射
 → 按 victim 状态终结 → 清零秘密 → Closed。

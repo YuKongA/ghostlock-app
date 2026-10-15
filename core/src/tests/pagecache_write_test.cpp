@@ -11,15 +11,15 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "backend/cve_2026_43284/seam/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43284::SaMaterial;
-    using ghostlock::backend::cve_2026_43284::seam::DoorOps;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheWrite;
-    using ghostlock::backend::cve_2026_43284::seam::ReadOutcome;
-    using ghostlock::backend::cve_2026_43284::seam::SpliceOps;
-    using ghostlock::backend::cve_2026_43284::seam::WriteOutcome;
+    using ghostlock::backend::cve_2026_43284::landing::DoorOps;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheWrite;
+    using ghostlock::backend::cve_2026_43284::landing::ReadOutcome;
+    using ghostlock::backend::cve_2026_43284::landing::SpliceOps;
+    using ghostlock::backend::cve_2026_43284::landing::WriteOutcome;
 
     std::size_t g_failures = 0U;
 
@@ -187,7 +187,7 @@ namespace {
         write.close_doors();
         /* Closing the doors closes the socket and clears the keys. What the surface can still read is
          * the surface's own answer -- a caller-owned descriptor outlives the doors -- so the refusal
-         * that matters is the seam's, and the chain test pins that one. */
+         * that matters is the landing's, and the chain test pins that one. */
     }
 
     /** A surface with no way to the carrier is refused by name rather than written blindly. */

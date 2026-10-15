@@ -1,6 +1,6 @@
 # 附：43499 侧下一件的切法（一页可验收）
 
-> 本件是 `seam-port-design-43499.md` 的附件 · 2026-10-09
+> 本件是 `landing-port-design-43499.md` 的附件 · 2026-10-09
 
 ## 19 43499 侧下一件的切法（一页可验收 · 供派工时用）
 
@@ -20,7 +20,7 @@
 
 ### 第 3 件：接 `RouteExec` 缝
 
-- 把我已落的 `seam/multicast_seam.hpp` 的 `RouteExec::execute(address, value, offset)` 接到第 2 件的 route 体上 ✓ ⇒ 那时 43499 侧**第一次在 host 上闭环到真控制器** ✓。
+- 把我已落的 `landing/multicast_landing.hpp` 的 `RouteExec::execute(address, value, offset)` 接到第 2 件的 route 体上 ✓ ⇒ 那时 43499 侧**第一次在 host 上闭环到真控制器** ✓。
 
 ⇒ 这样切的好处：**第 1 件不依赖任何攻击代码** ✓ ⇒ 它可以独立完成并验收 ✓ ⇒ 即使后面两件拖延，派发层也已经是**真件**而不是占位 ✓。
 

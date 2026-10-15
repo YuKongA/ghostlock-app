@@ -15,7 +15,7 @@ expected expression。ANDROID_NDK_HOME 不是这份 Makefile 认的变量。）
 
     run-temp: document 1991 bytes
     run-temp: the gate admitted window.pagecache
-    run-temp: seam up, target fd open, window bound
+    run-temp: landing up, target fd open, window bound
     run-temp: torn down ok
     run-temp: payload offsets from the declared temporary source, not a document
     run-temp: the document has no payload section (tuning-missing), using the declared source
@@ -34,7 +34,7 @@ expected expression。ANDROID_NDK_HOME 不是这份 Makefile 认的变量。）
 | 会话帧 | 接受（无帧时打印 no session frame 并返 3；未出现） |
 | 闸门 | admitted window.pagecache |
 | 门 | 载体以 O_RDONLY 与 O_CLOEXEC 打开（dev 载体路径已 touch） |
-| 窗口与接缝 | PageCacheWrite 与 PageCacheSeam 绑定，bring_up_with(sa) 成功，tear_down 成功 |
+| 窗口与接缝 | PageCacheWrite 与 PageCacheLanding 绑定，bring_up_with(sa) 成功，tear_down 成功 |
 | 布局 | 偏移取自声明的临时源（文档缺 abi.payload 段，具名拒 tuning-missing） |
 | 语料 | setup 过关；region 12584 字节；证物地址由真实规则问出（bucket=5，second=0xffff80000014d000） |
 
@@ -185,7 +185,7 @@ answer**，a preparation that asked for a second search would be asking for a se
 
 ## 续（2026-10-09）：真接缝下的 refused，及其原语层面的原因
 
-把默认的桩接缝（`FutexSeam`，其 `lock_pi` 是 `(void)word; return 0;`）换成 `LinuxFutexSeam` 之后，
+把默认的桩接缝（`FutexOps`，其 `lock_pi` 是 `(void)word; return 0;`）换成 `LinuxFutexOps` 之后，
 设备上第 1 步由 ok=1 变成 ok=0，`race=refused`，SELinux 与 uid 前后不变。
 
 原因在原语层：`RaceAction` 调 `race_.prepare(target, target)`，把同一个地址同时当链字与目标字；

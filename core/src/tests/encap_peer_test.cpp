@@ -7,10 +7,10 @@
 #include <cstdio>
 #include <cstring>
 
-#include "backend/cve_2026_43284/seam/encap_peer.hpp"
+#include "backend/cve_2026_43284/landing/encap_peer.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::seam::EncapPeer;
+    using ghostlock::backend::cve_2026_43284::landing::EncapPeer;
 
     int failures = 0;
 

@@ -14,7 +14,7 @@ q2/q3: accepts=0 ✗ ⇒ 早退（EXIT=9 ✓ ⇒ "被门拒"的退出码是 9 �
 
 | # | 位置 | 为什么会卡 |
 | --- | --- | --- |
-| 1 | `race_.run` 的 `lock_pi(target_word_)` ★ | **真 seam 之后**（round 203 ✓）这是**真** `FUTEX_LOCK_PI` ✗ ⇒ 字非零就会**无限等** ✓ |
+| 1 | `race_.run` 的 `lock_pi(target_word_)` ★ | **真 landing 之后**（round 203 ✓）这是**真** `FUTEX_LOCK_PI` ✗ ⇒ 字非零就会**无限等** ✓ |
 | 2 | `execute` 开头 `race_.prepare` 之后的第一轮 `run_actors` | 线程创建/等待 ✓（有界 ✓） |
 | 3 | `pselect`（250 ms × 4 ✓） | 不会卡（有界 ✓） |
 | 4 | `stop_actors`（自旋上限 + detach ✓） | 有界 ✓ |

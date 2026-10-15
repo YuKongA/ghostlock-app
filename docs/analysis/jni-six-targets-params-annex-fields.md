@@ -92,7 +92,7 @@ C 侧保留：六个核心函数 · futex/sched_setattr/pin_to_core/close 原语
    owner_main 头注逐字（run_pipeline_temp.cpp:272）:
      "The target lock is taken by PiRace::run(); taking it here too deadlocked the two."
    而新树没有 PiRace => 搬 owner_main 前必须先回答"谁取目标锁"。
-   候选落点：JNI 上下文的 create 阶段，或新树 seam 层。
+   候选落点：JNI 上下文的 create 阶段，或新树 landing 层。
 
 ② consumer 的 nice 周期是硬编码
    run_pipeline_temp.cpp:297  const std::int32_t nice_value = (calls_this_seq % 19) + 1;

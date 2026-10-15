@@ -17,7 +17,7 @@
 
 #include "jni/pselect_route.hpp"
 #include "jni/race_threads.hpp"
-#include "jni/route_seams.hpp"
+#include "jni/route_landings.hpp"
 #include "jni/session_frame.hpp"
 /* 旧码（原文保留 ✓）：
  *     #include "jni/write_one.hpp"
@@ -45,8 +45,8 @@ namespace {
         ghostlock::jni::SprayOffsets offsets{};
         ghostlock::jni::PselectTuning tuning{};
         ghostlock::jni::RouteAddrs addrs{};
-        ghostlock::jni::WriteSeams seams{};
-        ghostlock::jni::RouteSeams route_seams{};
+        ghostlock::jni::WriteSeams ops{};
+        ghostlock::jni::RouteSeams route_landings{};
         ghostlock::jni::race::RaceWords words{};
         std::uint32_t waiter_shift = 0U;
         bool compact_waiter = false;

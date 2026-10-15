@@ -1,6 +1,6 @@
 # 附：CBC 判据与 syscall 面规格
 
-> 本件是 `seam-port-design-43499-aes.md` 的附件 · 2026-10-09
+> 本件是 `landing-port-design-43499-aes.md` 的附件 · 2026-10-09
 
 ## 23 CBC 那一件的验收判据（已独立算出，供下一件用）
 
@@ -30,7 +30,7 @@ CT(2 blocks) = f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d
 
 ⇒ 三条直接可用的结论：
 
-1. **旧树本来就有这道缝** ✓ 名字是 `pagecache::SpliceIoOps` ✓ ⇒ 我新树里的 `seam::SpliceOps` **不是新发明** ✓ 而是同一设计的后代 ✓ ⇒ 移植时**应沿用它的方法集**（而不是我凭需要拼一个 ✓）；
+1. **旧树本来就有这道缝** ✓ 名字是 `pagecache::SpliceIoOps` ✓ ⇒ 我新树里的 `landing::SpliceOps` **不是新发明** ✓ 而是同一设计的后代 ✓ ⇒ 移植时**应沿用它的方法集**（而不是我凭需要拼一个 ✓）；
 2. **原语是 `vmsplice`** ✓（不是 `write` ✓）：实测 `io.vmsplice(fd, data + done, remaining, 0U)` ✓ ⇒ 且**短传输要重试**（`data + done` / `remaining` ✓）、**`-EINTR` 要单独处理** ✓ ⇒ 这两条是**实测出来的行为** ✓，不是我加的 ✓；
 3. **就绪前提**（实测 `page_cache_ready(ctx)` ✓）：`ctx.io.available()` ✓ · `socket_fd >= 0` ✓ · `icv_len != 0` ✓ · 且 **`file_fd >= 0` 或 `helper_write.available()`** ✓（两路来源：App 打不开厂商文件时走**注入的 crash_dump helper 写源** ✓）。
 
@@ -47,7 +47,7 @@ SPI(4) | Seq(4) | IV(16) | ciphertext(16) | ICV(icv_len)
 ⇒ 总长 = 40 + icv_len（icv_len=12 时 = 52 字节）
 ```
 
-### 我写体的现状（实测 `seam/pagecache_write.hpp:108-117`）
+### 我写体的现状（实测 `landing/pagecache_write.hpp:108-117`）
 
 ```cpp
 std::uint8_t datagram[kBlockBytes] = {};        // ← 只有 16 字节 ✗
@@ -97,4 +97,4 @@ splice_.splice_one(..., datagram, kBlockBytes, position);  // ← 只发 16 字�
 
 **其余实测（作者报告，与我的复核相符）**：证伪（把「页 16 字节」改成 17 ⇒ `FAIL: and it is the sixteen-byte block` + 退出 1 + 零残留）；测试覆盖短传输重试（含**重试按实际搬运前进偏移**）· `-EINTR` · 三路来源（direct/bridge/读回退）· 桥接短或错 ⇒ **socket splice 调用 0 次** · 无 fd 无 helper 连管道都不开 · `send_datagram` 槽位在 splice 路径**不被使用**。
 
-**与旧件不符（3 处，作者自报）**：① 路径与命名空间 `pagecache/splice_io` → `seam/real_splice_io`，编排收进类方法（因为新缝是 `SpliceOps` 虚类）；② 旧 `send_datagram` 实现用 `::send`，新按六调用用 **`::sendmsg`**（槽位保留但不使用）；③ 全程无分配 ⇒ 无需上界拒绝。
+**与旧件不符（3 处，作者自报）**：① 路径与命名空间 `pagecache/splice_io` → `landing/real_splice_io`，编排收进类方法（因为新缝是 `SpliceOps` 虚类）；② 旧 `send_datagram` 实现用 `::send`，新按六调用用 **`::sendmsg`**（槽位保留但不使用）；③ 全程无分配 ⇒ 无需上界拒绝。

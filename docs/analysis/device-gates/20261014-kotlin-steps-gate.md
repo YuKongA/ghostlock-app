@@ -29,9 +29,9 @@ adb logcat -d -s GhostlockPlan:I
 
 ## 边界（这份证据**不**证明什么）
 
-- 不证明任何写原语：w1 停在 op-not-wired:write_word（43499 的设备 seam 属 J3b），patch1 停在
+- 不证明任何写原语：w1 停在 op-not-wired:write_word（43499 的设备 landing 属 J3b），patch1 停在
   op-not-wired:resolve_target（43284 的门属 J4b）。
-- 不证明 device seam 之后的顺序（carrier → hook → trigger → wait）：计划在第一步就停了，后面的顺序由
+- 不证明 device landing 之后的顺序（carrier → hook → trigger → wait）：计划在第一步就停了，后面的顺序由
   StepEngineTest 的假面单测覆盖（含 hook 步骤「先算计划、再解析目标」的两调用顺序）。
 - 不证明重试与冻结在真机上的行为：它们在单测里用假面验过（attempts=3 打三次、indeterminate ⇒ 冻结）。
 

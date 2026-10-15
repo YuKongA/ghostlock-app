@@ -9,13 +9,13 @@
 ## 1. 事实（已查实 ✓）
 
 ```
-· `RouteExec`（`seam/multicast_window.hpp:29-41`）：抽象基类 —— `virtual ~RouteExec()` ＋
+· `RouteExec`（`landing/multicast_window.hpp:29-41`）：抽象基类 —— `virtual ~RouteExec()` ＋
   `virtual bool execute(…)` ✗ ／ **`virtual bool arm(…) = 0`** ✗
-· **实现者只有一个** ✓✓：`class MulticastRoute final : public RouteExec`（`seam/multicast_route.hpp:211`）
+· **实现者只有一个** ✓✓：`class MulticastRoute final : public RouteExec`（`landing/multicast_route.hpp:211`）
   ⇒ ⇒ **⇒ 多态没有第二个实现 ⇒ 纯属多余** ✓（⇒ 与 `pi_window.hpp:16`「窗口体内不做间接调用」冲突 ✓）
 · 持有者（⇒ 改动面）：`MulticastWindow(RouteExec &exec, …)` ✓（`multicast_window.hpp:54/84`）／
-  `MulticastWaiterAccess(seam::RouteExec &, …)` ✓（`access_multicast_waiter.hpp:45`）／
-  `window_attempt.hpp:23 seam::RouteExec *route` ✓
+  `MulticastWaiterAccess(landing::RouteExec &, …)` ✓（`access_multicast_waiter.hpp:45`）／
+  `window_attempt.hpp:23 landing::RouteExec *route` ✓
 · **先例** ✓：`race/route_lifecycle.hpp` 与 `pi_race` 的 policy **本来就是编译期** ✓ ⇒
   其注释的理由正是"跑在 PI 竞态窗口内" ⇒ ⇒ **⇒ 与本次裁定同源** ✓✓
 ```
@@ -33,7 +33,7 @@
 ## 3. 验收（可失败 ✓）
 
 ```
-· `grep -c virtual core/src/backend/cve_2026_43499/seam/multicast_window.hpp` ⇒ **0** ✓✓（⇒ 可失败 ✓）
+· `grep -c virtual core/src/backend/cve_2026_43499/landing/multicast_window.hpp` ⇒ **0** ✓✓（⇒ 可失败 ✓）
 · 把 `multicast_window.hpp` **纳入**扫描（`Makefile` 的 WINDOW-DIRTY sed 列表 ＋ 守卫 ✓）
   ⇒ ⇒ 而这正是 critic **P1** 要求的"纳入 ＋ 消解虚调用" ✓✓
 · 三线门禁：check **109 PASS** 起只增不减 ✓／android **零告警** ✓／markdownlint 0 ✓

@@ -17,13 +17,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "backend/cve_2026_43284/seam/crash_dump_bridge.hpp"
+#include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::seam::CrashDumpBridge;
-    using ghostlock::backend::cve_2026_43284::seam::HelperWriteSource;
-    using ghostlock::backend::cve_2026_43284::seam::kBlockBytes;
-    using ghostlock::backend::cve_2026_43284::seam::OldPageSource;
+    using ghostlock::backend::cve_2026_43284::landing::CrashDumpBridge;
+    using ghostlock::backend::cve_2026_43284::landing::HelperWriteSource;
+    using ghostlock::backend::cve_2026_43284::landing::kBlockBytes;
+    using ghostlock::backend::cve_2026_43284::landing::OldPageSource;
 
     std::size_t g_failures = 0U;
 

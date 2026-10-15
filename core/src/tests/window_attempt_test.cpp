@@ -1,7 +1,7 @@
 /** @file tests/window_attempt_test.cpp
  *  43499「尝试一次」的证据：两个准备好的字 + 窗口守卫 + 一条判据（内核真的搬了一个等待者）。
  *
- *  假 seam 把四个 futex 调用记下来，所以这条路径在主机上可测：赢了会 disarm（解锁一次），
+ *  假 landing 把四个 futex 调用记下来，所以这条路径在主机上可测：赢了会 disarm（解锁一次），
  *  没搬等待者就不算赢。
  */
 #include <cstddef>
@@ -28,8 +28,8 @@ namespace {
         [[nodiscard]] bool arm(std::int32_t) noexcept { return false; }
     };
 
-    /** 假 seam：记下四个调用；`moved` 决定内核"搬没搬"那个等待者。 */
-    struct FakeSeam final {
+    /** 假 landing：记下四个调用；`moved` 决定内核"搬没搬"那个等待者。 */
+    struct FakeOps final {
         static int locks;
         static int unlocks;
         static int moved;
@@ -38,9 +38,9 @@ namespace {
         static int wait_requeue_pi(std::uint32_t *, std::uint32_t *) noexcept { return 0; }
         static int unlock_pi(std::uint32_t *) noexcept { ++unlocks; return 0; }
     };
-    int FakeSeam::locks = 0;
-    int FakeSeam::unlocks = 0;
-    int FakeSeam::moved = 0;
+    int FakeOps::locks = 0;
+    int FakeOps::unlocks = 0;
+    int FakeOps::moved = 0;
 
     void an_attempt_that_moves_a_waiter_wins() {
         std::uint32_t chain = 0U;
@@ -51,13 +51,13 @@ namespace {
         attempt.chain = &chain;
         attempt.target = &target;
         attempt.window = &window;
-        FakeSeam::locks = 0;
-        FakeSeam::unlocks = 0;
-        FakeSeam::moved = 1;
-        expect(steps::window_attempt_once<FakeSeam>(attempt), "a moved waiter is a win");
+        FakeOps::locks = 0;
+        FakeOps::unlocks = 0;
+        FakeOps::moved = 1;
+        expect(steps::window_attempt_once<FakeOps>(attempt), "a moved waiter is a win");
         expect(attempt.outcome == race::RaceOutcome::Running, "the outcome says running");
-        expect(FakeSeam::locks == 1, "the target was locked once");
-        expect(FakeSeam::unlocks == 1, "and disarmed exactly once");
+        expect(FakeOps::locks == 1, "the target was locked once");
+        expect(FakeOps::unlocks == 1, "and disarmed exactly once");
     }
 
     void an_attempt_with_nobody_to_move_loses() {
@@ -69,8 +69,8 @@ namespace {
         attempt.chain = &chain;
         attempt.target = &target;
         attempt.window = &window;
-        FakeSeam::moved = 0;
-        expect(!steps::window_attempt_once<FakeSeam>(attempt), "zero moved waiters is a loss");
+        FakeOps::moved = 0;
+        expect(!steps::window_attempt_once<FakeOps>(attempt), "zero moved waiters is a loss");
         expect(attempt.outcome == race::RaceOutcome::Refused, "and it is named Refused");
     }
 
@@ -80,7 +80,7 @@ namespace {
         std::uint32_t target = 0U;
         attempt.chain = &chain;
         attempt.target = &target;
-        expect(!steps::window_attempt_once<FakeSeam>(attempt), "no window is not a win");
+        expect(!steps::window_attempt_once<FakeOps>(attempt), "no window is not a win");
         expect(attempt.outcome == race::RaceOutcome::NotPrepared, "and it says NotPrepared");
     }
 }  // namespace

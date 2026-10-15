@@ -66,7 +66,7 @@ namespace ghostlock::backend::cve_2026_43499::race {
         HandedOver = 0,
         /** The waiter never parked within the settings' patience. */
         NeverParked = 1,
-        /** A call was refused: a seam or kernel problem, not a race outcome. */
+        /** A call was refused: a landing or kernel problem, not a race outcome. */
         Refused = 2,
     };
 

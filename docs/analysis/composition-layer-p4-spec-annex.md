@@ -15,9 +15,9 @@
 | 7 | `hash-mismatch` | 逐 op | |
 | 8 | `op-not-available` | 逐 op | `window.w1w3_umh` 即此条的可测载体（见 §A3） |
 | 9 | `route-not-available` | 逐 op | |
-| 10 | `order-violation` | 逐 op | seam 只能在操作之间 |
+| 10 | `order-violation` | 逐 op | landing 只能在操作之间 |
 | 11 | `param-invalid` | 逐 op | 上界 = `ParamSpec.max` |
-| 12 | `seam-in-pi-window` | 逐 op | 运行期观测到窗口内调用 |
+| 12 | `landing-in-pi-window` | 逐 op | 运行期观测到窗口内调用 |
 
 - **裁定（Lead 2026-10-08）**：**以实现的优先级为准并写入规格**（即本表）；**不改代码顺序**。
 - **语义**：同一次 gate 调用**按表顺序**返回**第一个**命中项；`path`/`index` 指向该命中点（语法见 P4 规格 §3）。

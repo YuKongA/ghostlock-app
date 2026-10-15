@@ -6,7 +6,7 @@
  *  -- which is why this run exercises the failure path rather than the success: on a
  *  device, the preparation must fork its children, wait, find nothing, stop every
  *  child it made and give every descriptor back. The second is the child side of a
- *  fork: this probe has no work for a child to do, so its seam exits in the child at
+ *  fork: this probe has no work for a child to do, so its landing exits in the child at
  *  once rather than letting one wander back into the probe.
  *
  *  What is real is everything else: the addresses are the device's, the descriptors
@@ -16,53 +16,53 @@
 #include <cstdint>
 #include <cstdlib>
 
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
 #include "backend/cve_2026_43499/memory/prepare_page.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43499::memory::HeapSeam;
+    using ghostlock::backend::cve_2026_43499::memory::HeapOps;
     using ghostlock::backend::cve_2026_43499::memory::PageGeometry;
     using ghostlock::backend::cve_2026_43499::memory::PrepareInputs;
     using ghostlock::backend::cve_2026_43499::memory::PreparePatience;
     using ghostlock::backend::cve_2026_43499::memory::prepare_page;
     using ghostlock::backend::cve_2026_43499::memory::prepare_status_name;
     using ghostlock::backend::cve_2026_43499::memory::region_for;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
     using ghostlock::backend::cve_2026_43499::memory::send_size_for;
-    using Platforms = ghostlock::backend::cve_2026_43499::memory::LinuxHeapSeam;
+    using Platforms = ghostlock::backend::cve_2026_43499::memory::LinuxHeapOps;
 
-    /** The device seam, with a child that leaves at once instead of running on. */
+    /** The device landing, with a child that leaves at once instead of running on. */
     struct ProbeSeam final {
-        static SeamResult page_size() noexcept { return Platforms::page_size(); }
-        static SeamResult open_memfd(std::uint64_t pid) noexcept { return Platforms::open_memfd(pid); }
-        static SeamResult close_fd(std::int32_t fd) noexcept { return Platforms::close_fd(fd); }
-        static SeamResult socket_pair(std::int32_t *out) noexcept { return Platforms::socket_pair(out); }
-        static SeamResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
+        static OpsResult page_size() noexcept { return Platforms::page_size(); }
+        static OpsResult open_memfd(std::uint64_t pid) noexcept { return Platforms::open_memfd(pid); }
+        static OpsResult close_fd(std::int32_t fd) noexcept { return Platforms::close_fd(fd); }
+        static OpsResult socket_pair(std::int32_t *out) noexcept { return Platforms::socket_pair(out); }
+        static OpsResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
             return Platforms::set_socket_buffer(fd, bytes);
         }
-        static SeamResult set_nonblocking(std::int32_t fd) noexcept {
+        static OpsResult set_nonblocking(std::int32_t fd) noexcept {
             return Platforms::set_nonblocking(fd);
         }
-        static SeamResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
+        static OpsResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
             return Platforms::send_bytes(fd, data, bytes);
         }
-        static SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
+        static OpsResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
             return Platforms::send_buffer(fd, bytes);
         }
-        static SeamResult fork_child() noexcept {
-            const SeamResult forked = Platforms::fork_child();
+        static OpsResult fork_child() noexcept {
+            const OpsResult forked = Platforms::fork_child();
             if (forked.value == 0) {
                 std::_Exit(0);
             }
             return forked;
         }
-        static SeamResult stop_child(std::uint64_t pid) noexcept { return Platforms::stop_child(pid); }
-        static SeamResult yield_now() noexcept { return Platforms::yield_now(); }
-        static SeamResult pin_to_processor(std::int32_t cpu) noexcept {
+        static OpsResult stop_child(std::uint64_t pid) noexcept { return Platforms::stop_child(pid); }
+        static OpsResult yield_now() noexcept { return Platforms::yield_now(); }
+        static OpsResult pin_to_processor(std::int32_t cpu) noexcept {
             return Platforms::pin_to_processor(cpu);
         }
     };
-    static_assert(HeapSeam<ProbeSeam>, "the probe seam answers every call the shape names");
+    static_assert(HeapOps<ProbeSeam>, "the probe landing answers every call the shape names");
 
     /** A search that never finds anything: the mechanism is not ported yet. */
     struct StubSnitch final {

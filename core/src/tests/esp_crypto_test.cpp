@@ -10,11 +10,11 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "backend/cve_2026_43284/seam/esp_crypto.hpp"
+#include "backend/cve_2026_43284/landing/esp_crypto.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43284::seam::esp_cbc_iv;
-    using ghostlock::backend::cve_2026_43284::seam::kEspBlockBytes;
+    using ghostlock::backend::cve_2026_43284::landing::esp_cbc_iv;
+    using ghostlock::backend::cve_2026_43284::landing::kEspBlockBytes;
 
     std::size_t g_failures = 0U;
 

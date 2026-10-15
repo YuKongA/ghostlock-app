@@ -19,7 +19,7 @@
 #include <span>
 
 #include "backend/cve_2026_43284/access_params.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_seam.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
 #include "contract/kernel_access.hpp"
 
 
@@ -35,20 +35,20 @@ namespace ghostlock::backend::cve_2026_43284 {
         using AccessCarrier = contract::AccessCarrier;
         using AccessChannel = contract::AccessChannel;
 
-        /** Blank: nothing is taken or decided here, as the ruling requires. The seam is borrowed
+        /** Blank: nothing is taken or decided here, as the ruling requires. The landing is borrowed
          *  and must outlive this object. */
         //  reference becomes a nullable pointer. Delete the commented form above once the factory
         //  and its tests pass, as the commenting rule requires.
         Access() noexcept = default;
-        explicit Access(seam::PageCacheSeam *seam) noexcept : seam_(seam) {}
-        /** Hand over the seam a factory could not know. */
-        void adopt(seam::PageCacheSeam *seam) noexcept { seam_ = seam; }
+        explicit Access(landing::PageCacheLanding *landing) noexcept : ops_(landing) {}
+        /** Hand over the landing a factory could not know. */
+        void adopt(landing::PageCacheLanding *landing) noexcept { ops_ = landing; }
 
         [[nodiscard]] AccessState state(AccessChannel channel) const noexcept override {
             if (channel != AccessChannel::PageCache) {
                 return AccessState::Unsupported;
             }
-            if (seam_ != nullptr && seam_->up()) {
+            if (ops_ != nullptr && ops_->up()) {
                 return AccessState::Ready;
             }
             return ever_up_ ? AccessState::Closed : AccessState::Declared;
@@ -61,7 +61,7 @@ namespace ghostlock::backend::cve_2026_43284 {
         }
         /** A block, not a word: sixteen bytes, which is what the page cache writes. */
         [[nodiscard]] bool supports_width(std::size_t bytes) const noexcept override {
-            return bytes == seam::kWriteWidth;
+            return bytes == landing::kWriteWidth;
         }
 
         [[nodiscard]] BoolResult initialize(const AccessMiscParameters &parameters) noexcept override {
@@ -69,23 +69,23 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (params == nullptr || !params->usable_for_initialize()) {
                 return BoolResult::failed(AccessStatus::BadParameters);
             }
-            if (seam_ == nullptr || !seam_->bring_up_with(params->sa)) {
+            if (ops_ == nullptr || !ops_->bring_up_with(params->sa)) {
                 return BoolResult::failed(AccessStatus::Failed);
             }
             /* After bring-up, never before: opening the doors starts a fresh sequence, and a session
              *  that has already written (patch #1, or another window) must continue its own. */
             if (params->has_sequence()) {
-                seam_->adopt_sequence(params->sequence);
+                ops_->adopt_sequence(params->sequence);
             }
             ever_up_ = true;
             return BoolResult::ok(true);
         }
 
         [[nodiscard]] BoolResult shutdown() noexcept override {
-            if (seam_ == nullptr || !seam_->up()) {
+            if (ops_ == nullptr || !ops_->up()) {
                 return BoolResult::failed(AccessStatus::NotInitialized);
             }
-            return (seam_ == nullptr || seam_->tear_down()) ? BoolResult::ok(true)
+            return (ops_ == nullptr || ops_->tear_down()) ? BoolResult::ok(true)
                                                                 : BoolResult::failed(AccessStatus::Failed);
         }
 
@@ -100,26 +100,26 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (params == nullptr || !params->usable_for_access()) {
                 return CountResult::failed(AccessStatus::BadParameters);
             }
-            if (seam_ == nullptr || !seam_->up()) {
+            if (ops_ == nullptr || !ops_->up()) {
                 return CountResult::failed(AccessStatus::NotInitialized);
             }
-            if (in.size() != seam::kWriteWidth) {
+            if (in.size() != landing::kWriteWidth) {
                 return CountResult::failed(AccessStatus::BadWidth);
             }
-            std::uint8_t block[seam::kWriteWidth] = {};
-            for (std::size_t i = 0U; i < seam::kWriteWidth; ++i) {
+            std::uint8_t block[landing::kWriteWidth] = {};
+            for (std::size_t i = 0U; i < landing::kWriteWidth; ++i) {
                 block[i] = std::to_integer<std::uint8_t>(in[i]);
             }
-            if (seam_ == nullptr || !seam_->land_block(params->offset, block)) {
+            if (ops_ == nullptr || !ops_->land_block(params->offset, block)) {
                 return CountResult::failed(AccessStatus::Failed);
             }
-            return CountResult::ok(seam::kWriteWidth);
+            return CountResult::ok(landing::kWriteWidth);
         }
 
         /** Writing zeros is the same path with a zero block, as on the other backend. */
         [[nodiscard]] CountResult write_zero(std::uint64_t address, AccessChannel channel,
                                              const AccessMiscParameters &parameters) noexcept override {
-            const std::byte zero[seam::kWriteWidth] = {};
+            const std::byte zero[landing::kWriteWidth] = {};
             return write(address, std::span<const std::byte>(zero), channel, parameters);
         }
 
@@ -137,26 +137,26 @@ namespace ghostlock::backend::cve_2026_43284 {
             if (params == nullptr || !params->usable_for_access()) {
                 return BlockResult::failed(AccessStatus::BadParameters);
             }
-            if (seam_ == nullptr || !seam_->up()) {
+            if (ops_ == nullptr || !ops_->up()) {
                 return BlockResult::failed(AccessStatus::NotInitialized);
             }
-            if (bytes != seam::kWriteWidth) {
+            if (bytes != landing::kWriteWidth) {
                 return BlockResult::failed(AccessStatus::BadWidth);
             }
-            /* A route that cannot read and a read that failed are different answers, and the seam
+            /* A route that cannot read and a read that failed are different answers, and the landing
              *  is asked which one this is before any block is attempted: the first is a capability
              *  this route does not have, the second is a call that did not come back. */
-            if (!seam_->can_read()) {
+            if (!ops_->can_read()) {
                 return BlockResult::failed(AccessStatus::Unsupported);
             }
-            std::uint8_t block[seam::kWriteWidth] = {};
-            if (!seam_->read_block(params->offset, block)) {
+            std::uint8_t block[landing::kWriteWidth] = {};
+            if (!ops_->read_block(params->offset, block)) {
                 return BlockResult::failed(AccessStatus::Failed);
             }
-            for (std::size_t i = 0U; i < seam::kWriteWidth; ++i) {
+            for (std::size_t i = 0U; i < landing::kWriteWidth; ++i) {
                 block_out_[i] = static_cast<std::byte>(block[i]);
             }
-            return BlockResult::ok(std::span<const std::byte>(block_out_, seam::kWriteWidth));
+            return BlockResult::ok(std::span<const std::byte>(block_out_, landing::kWriteWidth));
         }
 
         /** One word, as the first eight bytes of the block that holds it, little-endian. Reading
@@ -165,7 +165,7 @@ namespace ghostlock::backend::cve_2026_43284 {
         [[nodiscard]] contract::KernelAccess::AccessResult<std::uint64_t> read64(
             std::uint64_t address, AccessChannel channel,
             const AccessMiscParameters &parameters) noexcept override {
-            const BlockResult block = read(address, seam::kWriteWidth, channel, parameters);
+            const BlockResult block = read(address, landing::kWriteWidth, channel, parameters);
             contract::KernelAccess::AccessResult<std::uint64_t> answer{};
             answer.status = block.status;
             if (!block.ok()) {
@@ -189,12 +189,12 @@ namespace ghostlock::backend::cve_2026_43284 {
             return static_cast<const AccessParams *>(&p);
         }
 
-        seam::PageCacheSeam *seam_ = nullptr;
+        landing::PageCacheLanding *ops_ = nullptr;
         /** Whether the route has ever been up, so a closed route is distinguishable from one that
          *  never came up. */
         bool ever_up_ = false;
         /** The buffer a read answer points into: owned by the access so the span a caller gets stays
          *  valid until the next call, which is what the interface promises. */
-        std::byte block_out_[seam::kWriteWidth] = {};
+        std::byte block_out_[landing::kWriteWidth] = {};
     };
 }  // namespace ghostlock::backend::cve_2026_43284

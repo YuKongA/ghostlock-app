@@ -1,5 +1,5 @@
 /** @file tests/jni_ops_43499_test.cpp
- *  43499's op layer on the host: the form table, the facts gate, the refusals, and what the seams
+ *  43499's op layer on the host: the form table, the facts gate, the refusals, and what the ops
  *  are called with.
  *
  *  What this pins is everything the device cannot be asked about cheaply: which (mode, preserve)
@@ -24,7 +24,7 @@ namespace {
     using ghostlock::contract::AccessCarrier;
     using ghostlock::contract::AccessChannel;
     using ghostlock::jni::BackendOps;
-    using ghostlock::jni::BackendSeam;
+    using ghostlock::jni::BackendFactory;
     using ghostlock::jni::Facts43499;
     using ghostlock::jni::FrameKey;
     using ghostlock::jni::FrameOp;
@@ -128,7 +128,7 @@ namespace {
         return answer.status;
     }
 
-    /** The seams a test fills in. */
+    /** The ops a test fills in. */
     struct Seams final {
         Facts43499 published{};
         bool prepare_ok = true;
@@ -146,61 +146,61 @@ namespace {
         WriteForm last_form = WriteForm::Count;
     };
 
-    bool seam_prepare(Facts43499 &facts, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        ++seams->prepare_calls;
-        facts = seams->published;
-        facts.prepared = seams->prepare_ok;
-        return seams->prepare_ok;
+    bool landing_prepare(Facts43499 &facts, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        ++ops->prepare_calls;
+        facts = ops->published;
+        facts.prepared = ops->prepare_ok;
+        return ops->prepare_ok;
     }
-    bool seam_discover(Facts43499 &facts, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        ++seams->discover_calls;
-        facts.discovered = seams->discover_ok;
-        facts.found = seams->discover_ok ? seams->published.found : 0U;
+    bool landing_discover(Facts43499 &facts, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        ++ops->discover_calls;
+        facts.discovered = ops->discover_ok;
+        facts.found = ops->discover_ok ? ops->published.found : 0U;
         facts.mm_struct = facts.found;
-        facts.alias_delta = seams->published.alias_delta;
-        return seams->discover_ok;
+        facts.alias_delta = ops->published.alias_delta;
+        return ops->discover_ok;
     }
-    bool seam_spawn(Facts43499 &facts, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        ++seams->spawn_calls;
-        facts.victim_spawned = seams->spawn_ok;
-        facts.victim_task = seams->published.victim_task;
-        facts.victim_pid = seams->published.victim_pid;
-        return seams->spawn_ok;
+    bool landing_spawn(Facts43499 &facts, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        ++ops->spawn_calls;
+        facts.victim_spawned = ops->spawn_ok;
+        facts.victim_task = ops->published.victim_task;
+        facts.victim_pid = ops->published.victim_pid;
+        return ops->spawn_ok;
     }
-    bool seam_probe(std::uint64_t kind, std::uint64_t &value, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
+    bool landing_probe(std::uint64_t kind, std::uint64_t &value, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
         value = kind == 0U ? 0U : 0x1234U;
         return true;
     }
-    bool seam_land(std::uint64_t address, std::uint64_t value, WriteForm form, std::uint64_t offset,
+    bool landing_land(std::uint64_t address, std::uint64_t value, WriteForm form, std::uint64_t offset,
                    void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        ++seams->land_calls;
-        seams->last_address = address;
-        seams->last_value = value;
-        seams->last_offset = offset;
-        seams->last_form = form;
-        return seams->land_ok;
+        auto *const ops = static_cast<Seams *>(context);
+        ++ops->land_calls;
+        ops->last_address = address;
+        ops->last_value = value;
+        ops->last_offset = offset;
+        ops->last_form = form;
+        return ops->land_ok;
     }
-    bool seam_read(std::uint64_t, std::uint64_t &value, void *context) noexcept {
-        auto *const seams = static_cast<Seams *>(context);
-        value = seams->read_ok ? 0xabcdefULL : 0U;
-        return seams->read_ok;
+    bool landing_read(std::uint64_t, std::uint64_t &value, void *context) noexcept {
+        auto *const ops = static_cast<Seams *>(context);
+        value = ops->read_ok ? 0xabcdefULL : 0U;
+        return ops->read_ok;
     }
 
-    Ops43499Seams full_seams(Seams &state) {
-        Ops43499Seams seams{};
-        seams.prepare = &seam_prepare;
-        seams.discover = &seam_discover;
-        seams.spawn_victim = &seam_spawn;
-        seams.victim_probe = &seam_probe;
-        seams.land = &seam_land;
-        seams.read = &seam_read;
-        seams.context = &state;
-        return seams;
+    Ops43499Seams full_ops(Seams &state) {
+        Ops43499Seams ops{};
+        ops.prepare = &landing_prepare;
+        ops.discover = &landing_discover;
+        ops.spawn_victim = &landing_spawn;
+        ops.victim_probe = &landing_probe;
+        ops.land = &landing_land;
+        ops.read = &landing_read;
+        ops.context = &state;
+        return ops;
     }
 
     void the_form_table_is_the_documented_one() {
@@ -223,7 +223,7 @@ namespace {
                "and the names are spelled once");
     }
 
-    void an_op_without_its_seam_is_unwired_by_name() {
+    void an_op_without_its_landing_is_unwired_by_name() {
         Ops43499 ops{Ops43499Seams{}};
         Request request;
         for (const FrameOp op : {FrameOp::Prepare, FrameOp::Discover, FrameOp::SpawnVictim,
@@ -231,7 +231,7 @@ namespace {
             static_cast<void>(request.open(op, {{FrameKey::Mode, 0U}}));
             Answer answer;
             expect(run(ops, op, request, answer) == FrameStatus::Unsupported,
-                   "an op without its seam is unsupported");
+                   "an op without its landing is unsupported");
             const std::string_view refusal = answer.refusal();
             expect(refusal.rfind("op-not-wired:", 0U) == 0U, "and the refusal names it");
         }
@@ -254,7 +254,7 @@ namespace {
         state.published.found = 0xffffff8080808080ULL;
         state.published.victim_task = 0xffffff80dead0000ULL;
         state.published.victim_pid = 4242U;
-        Ops43499 ops{full_seams(state)};
+        Ops43499 ops{full_ops(state)};
 
         Request write;
         static_cast<void>(write.open(FrameOp::WriteWord,
@@ -308,14 +308,14 @@ namespace {
         expect(state.land_calls == 1 && state.last_address == 0xffffff8000000000ULL &&
                    state.last_value == 0U && state.last_offset == 3U &&
                    state.last_form == WriteForm::ClearPreserving,
-               "and the seam saw exactly what the caller asked for");
+               "and the landing saw exactly what the caller asked for");
         std::uint64_t width = 0U;
         expect(answer.find(FrameKey::Width, width) && width == 8U, "the answer reports the width it wrote");
     }
 
     void a_bad_write_request_is_refused_by_name() {
         Seams state;
-        Ops43499 ops{full_seams(state)};
+        Ops43499 ops{full_ops(state)};
         FrameStatus status = FrameStatus::Ok;
         Answer answer;
 
@@ -357,14 +357,14 @@ namespace {
                "a clear form carrying a value is a caller mistake");
     }
 
-    void a_seam_that_refuses_is_reported_as_a_refusal() {
+    void a_landing_that_refuses_is_reported_as_a_refusal() {
         Seams state;
         state.land_ok = false;
         state.published.page_base = 0xffffff8042a00000ULL;
         state.published.found = 0xffffff8080808080ULL;
         state.published.victim_task = 0xffffff80dead0000ULL;
-        Ops43499 ops{full_seams(state)};
-        // 先把三件事实补齐（用同一组 seam）
+        Ops43499 ops{full_ops(state)};
+        // 先把三件事实补齐（用同一组 landing）
         Request prepare;
         static_cast<void>(prepare.open(FrameOp::Prepare, {}));
         Answer answer;
@@ -387,7 +387,7 @@ namespace {
 
     void a_probe_and_a_read_answer_their_values() {
         Seams state;
-        Ops43499 ops{full_seams(state)};
+        Ops43499 ops{full_ops(state)};
         Request probe;
         static_cast<void>(probe.open(FrameOp::VictimProbe, {{FrameKey::Mode, 1U}}));
         Answer answer;
@@ -438,12 +438,12 @@ namespace {
     /** The session must hand the request to the backend ops, not answer for them. */
     void the_session_routes_its_backend_ops() {
         Seams state;
-        Ops43499Seams seams = full_seams(state);
+        Ops43499Seams ops = full_ops(state);
         Session session;
-        const BackendSeam seam{&create_quiet, &seams, &create_ops_43499};
-        /* ops 的接管发生在 open；把它交给 seam 之前先记下来，会话负责 delete（释放经 ops_）。 */
+        const BackendFactory landing{&create_quiet, &ops, &create_ops_43499};
+        /* ops 的接管发生在 open；把它交给 landing 之前先记下来，会话负责 delete（释放经 ops_）。 */
         state.published.page_base = 0x1000U;
-        expect(session.open(43499U, seam, 1U), "the session opens on the quiet backend");
+        expect(session.open(43499U, landing, 1U), "the session opens on the quiet backend");
         Request prepare;
         static_cast<void>(prepare.open(FrameOp::Prepare, {}));
         Answer answer;
@@ -462,20 +462,20 @@ namespace {
 int main() {
     std::printf("jni ops 43499: forms\n");
     the_form_table_is_the_documented_one();
-    std::printf("jni ops 43499: unwired seams\n");
-    an_op_without_its_seam_is_unwired_by_name();
+    std::printf("jni ops 43499: unwired ops\n");
+    an_op_without_its_landing_is_unwired_by_name();
     std::printf("jni ops 43499: facts gate\n");
     facts_gate_the_write_and_travel_back();
     std::printf("jni ops 43499: bad requests\n");
     a_bad_write_request_is_refused_by_name();
-    std::printf("jni ops 43499: refusing seam\n");
-    a_seam_that_refuses_is_reported_as_a_refusal();
+    std::printf("jni ops 43499: refusing landing\n");
+    a_landing_that_refuses_is_reported_as_a_refusal();
     std::printf("jni ops 43499: probe and read\n");
     a_probe_and_a_read_answer_their_values();
     if (g_failures != 0U) {
         std::printf("jni ops 43499: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("jni ops 43499: PASS (forms, gate, refusals, seam arguments)\n");
+    std::printf("jni ops 43499: PASS (forms, gate, refusals, landing arguments)\n");
     return 0;
 }

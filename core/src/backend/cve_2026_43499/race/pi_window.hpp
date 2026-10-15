@@ -22,7 +22,7 @@
  *  PI -- the interval a thread spends on the chain the kernel walks -- and not the whole window
  *  body: the body may print once its PI span is over, and the readings a syscall produced inside
  *  PI are carried out in MulticastRouteShared and printed after the last actor stopped (one
- *  flush per attempt: seam/multicast_route.hpp report_pi_readings). Per actor the span is:
+ *  flush per attempt: landing/multicast_route.hpp report_pi_readings). Per actor the span is:
  *  waiter_main from the PI-IN mark (the last sync before the park) to the PI-OUT mark (the
  *  completed disarm); owner_main from its target lock to its last unlock; consumer_main and
  *  trigger in full, because both run while the waiter is parked. judge() is outside PI by call

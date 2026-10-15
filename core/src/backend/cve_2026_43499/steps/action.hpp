@@ -82,11 +82,11 @@ namespace ghostlock::backend::cve_2026_43499::steps {
      *  A step that cannot be attempted is a failed step, not a step that did nothing: run() returns
      *  false and sets last_stage, so the runner stops at this id and names it.
      *
-     *  The seam is a parameter, for the same reason the attempt itself takes one: the real futex
-     *  calls are not something a test should make, and a seam that records is how the order becomes
+     *  The landing is a parameter, for the same reason the attempt itself takes one: the real futex
+     *  calls are not something a test should make, and a landing that records is how the order becomes
      *  visible. Production uses the default, which is the real one.
      */
-    template <class Seam = race::FutexSeam>
+    template <class Seam = race::FutexOps>
     class RaceAction final {
       public:
         /** Which link answered, as its own name. Unknown only before the first run. */

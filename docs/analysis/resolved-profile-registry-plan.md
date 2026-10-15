@@ -161,7 +161,7 @@ flowchart TD
 | 单一读入口 + step 顺序 | 43499 `state.profile` 与 43284 `cve_2026_43284_state(session)` 转 private + 受控访问器后无第二入口；调换注册顺序 ⇒ alias `static_assert` 失败 | `document_schema_test`/`profile_entry_test`/`stepset_steps_manifest_test` | B2/B4.2 |
 
 **命令**：`make -C core native-host-tests` / `./gradlew :app:testDebugUnitTest` / `make -C core profile-manifest-v3|combination-manifest|vocabulary-manifest|stepset-steps-manifest|lkm-kmi-manifest|glkv3-golden-hex`（各 **EXIT=0**）。
-**真机门禁**：B2（accessor seam）、B4.2 **是**；B3/B4.1 否。
+**真机门禁**：B2（accessor landing）、B4.2 **是**；B3/B4.1 否。
 
 ## 7. 明确保留（不动）
 

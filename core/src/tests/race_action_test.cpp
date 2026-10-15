@@ -3,7 +3,7 @@
  *
  *  The chain is only joined here, and every link already refuses by name, so the checks are about
  *  which name comes out. Two of the three failure paths stop before any syscall: an unprepared
- *  attempt, and an attempt whose window is not open. The third is exercised with a seam of our own,
+ *  attempt, and an attempt whose window is not open. The third is exercised with a landing of our own,
  *  which is what the attempt type is parameterised on, so the syscall order is visible and the real
  *  futex calls are never made.
  */
@@ -90,8 +90,8 @@ namespace {
         expect(!ok, "which makes the step a failure");
     }
 
-    /** A seam of our own: it records the syscalls and never makes one. */
-    struct RecordingSeam final {
+    /** A landing of our own: it records the syscalls and never makes one. */
+    struct RecordingOps final {
         static const char *order[8U];
         static std::size_t count;
         static void note(const char *what) noexcept {
@@ -119,25 +119,25 @@ namespace {
             return word == nullptr ? -1 : 0;
         }
     };
-    const char *RecordingSeam::order[8U] = {};
-    std::size_t RecordingSeam::count = 0U;
+    const char *RecordingOps::order[8U] = {};
+    std::size_t RecordingOps::count = 0U;
 
-    void inside_an_open_window_the_attempt_reaches_the_seam_in_order() {
-        PiRace<RecordingSeam> race;
+    void inside_an_open_window_the_attempt_reaches_the_landing_in_order() {
+        PiRace<RecordingOps> race;
         WindowGuard window;
         std::uint8_t fragment[64U] = {};
         std::uint32_t chain = 0U;
         std::uint32_t target = 0U;
         race.prepare(&chain, &target);
         window.enter(ExitPath::Success);
-        RecordingSeam::count = 0U;
-        RaceAction<RecordingSeam> action(race, window, offsets(), sample(), fragment, sizeof(fragment), 8U, 0U);
+        RecordingOps::count = 0U;
+        RaceAction<RecordingOps> action(race, window, offsets(), sample(), fragment, sizeof(fragment), 8U, 0U);
         const bool ok = action.run(StepId::DisenforceSelinux);
-        expect(RecordingSeam::count > 0U, "and with an open window the seam is actually called");
-        expect(RecordingSeam::order[0U] != nullptr && RecordingSeam::order[0U][0] == 'l',
+        expect(RecordingOps::count > 0U, "and with an open window the landing is actually called");
+        expect(RecordingOps::order[0U] != nullptr && RecordingOps::order[0U][0] == 'l',
                "beginning with the lock, which is the first syscall the attempt makes");
         expect(action.last_race() != RaceOutcome::Refused,
-               "so the attempt was not refused: it went into the seam");
+               "so the attempt was not refused: it went into the landing");
         (void)ok;
     }
 
@@ -164,7 +164,7 @@ int main() {
     an_attempt_outside_its_window_is_refused_after_the_arm_is_encoded();
     an_unopened_window_refuses_the_attempt();
     std::printf("race action: inside the window\n");
-    inside_an_open_window_the_attempt_reaches_the_seam_in_order();
+    inside_an_open_window_the_attempt_reaches_the_landing_in_order();
     if (g_failures != 0U) {
         std::printf("race action: FAIL (%zu)\n", g_failures);
         return 1;

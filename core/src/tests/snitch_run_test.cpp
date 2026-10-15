@@ -30,7 +30,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::tagged_candidate;
     using ghostlock::backend::cve_2026_43499::leak::ThreadEntry;
     using ghostlock::backend::cve_2026_43499::leak::ThreadResult;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
 
     constexpr std::size_t kCounterOffset = 8U;
     std::size_t g_failures = 0U;
@@ -42,7 +42,7 @@ namespace {
         }
     }
 
-    struct FakeSeam final {
+    struct FakeOps final {
         static unsigned char buffer[65536];
         static std::size_t forks, kills, wakes, unmaps, pokes_per_wake;
         static void reset() noexcept {
@@ -54,37 +54,37 @@ namespace {
             if (bytes > sizeof(buffer)) { return MapResult{nullptr, 12}; }
             return MapResult{buffer, 0};
         }
-        static SeamResult unmap(void *, std::size_t) noexcept { ++unmaps; return SeamResult{0, 0}; }
-        static SeamResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
+        static OpsResult unmap(void *, std::size_t) noexcept { ++unmaps; return OpsResult{0, 0}; }
+        static OpsResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult futex_wait_private_until(std::uint32_t *, std::uint32_t, std::int64_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult futex_wake_private(std::uint32_t *, std::int32_t) noexcept {
             ++wakes;
             auto *count = reinterpret_cast<std::uint32_t *>(buffer + kCounterOffset);
             *count += static_cast<std::uint32_t>(pokes_per_wake);
-            return SeamResult{1, 0};
+            return OpsResult{1, 0};
         }
-        static SeamResult fork_child() noexcept { ++forks; return SeamResult{static_cast<std::int64_t>(1000U + forks), 0}; }
-        static SeamResult stop_child(std::uint64_t) noexcept { ++kills; return SeamResult{0, 0}; }
-        static SeamResult yield_now() noexcept { return SeamResult{0, 0}; }
-        static SeamResult pin_to_processor(std::int32_t) noexcept { return SeamResult{0, 0}; }
+        static OpsResult fork_child() noexcept { ++forks; return OpsResult{static_cast<std::int64_t>(1000U + forks), 0}; }
+        static OpsResult stop_child(std::uint64_t) noexcept { ++kills; return OpsResult{0, 0}; }
+        static OpsResult yield_now() noexcept { return OpsResult{0, 0}; }
+        static OpsResult pin_to_processor(std::int32_t) noexcept { return OpsResult{0, 0}; }
         static void exit_child() noexcept {}
         static ThreadResult start_thread(ThreadEntry, void *) noexcept { return ThreadResult{1U, 0}; }
-        static SeamResult join_thread(unsigned long) noexcept { return SeamResult{0, 0}; }
-        static SeamResult open_memfd(std::uint64_t) noexcept { return SeamResult{1, 0}; }
-        static SeamResult close_fd(std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult socket_pair(std::int32_t *) noexcept { return SeamResult{0, 0}; }
-        static SeamResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult set_nonblocking(std::int32_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult send_buffer(std::int32_t, std::size_t) noexcept { return SeamResult{0, 0}; }
-        /* heap_seam.hpp 的 HeapSeam 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
-         *  假 seam 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
+        static OpsResult join_thread(unsigned long) noexcept { return OpsResult{0, 0}; }
+        static OpsResult open_memfd(std::uint64_t) noexcept { return OpsResult{1, 0}; }
+        static OpsResult close_fd(std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult socket_pair(std::int32_t *) noexcept { return OpsResult{0, 0}; }
+        static OpsResult set_socket_buffer(std::int32_t, std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult set_nonblocking(std::int32_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult send_buffer(std::int32_t, std::size_t) noexcept { return OpsResult{0, 0}; }
+        /* heap_ops.hpp 的 HeapOps 概念要求「带内容发送」（页面必须走这条路进内核 ✓）：
+         *  假 landing 此前缺这一项 ⇒ 概念不满足 ⇒ run_snitch_search 在编译期具名不可调用。
          *  2026-10-14 补齐：与其它调用同形，参数一律忽略。 */
-        static SeamResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return SeamResult{0, 0}; }
-        static SeamResult page_size() noexcept { return SeamResult{4096, 0}; }
+        static OpsResult send_bytes(std::int32_t, const void *, std::size_t) noexcept { return OpsResult{0, 0}; }
+        static OpsResult page_size() noexcept { return OpsResult{4096, 0}; }
     };
-    unsigned char FakeSeam::buffer[65536] = {};
-    std::size_t FakeSeam::forks = 0U, FakeSeam::kills = 0U, FakeSeam::wakes = 0U;
-    std::size_t FakeSeam::unmaps = 0U, FakeSeam::pokes_per_wake = 0U;
+    unsigned char FakeOps::buffer[65536] = {};
+    std::size_t FakeOps::forks = 0U, FakeOps::kills = 0U, FakeOps::wakes = 0U;
+    std::size_t FakeOps::unmaps = 0U, FakeOps::pokes_per_wake = 0U;
 
     struct Buckets final {
         std::uint64_t target = 0U;
@@ -141,8 +141,8 @@ namespace {
     }
 
     void a_run_that_finds_it() {
-        FakeSeam::reset();
-        FakeSeam::pokes_per_wake = 1024U;
+        FakeOps::reset();
+        FakeOps::pokes_per_wake = 1024U;
         Buckets buckets;
         buckets.target = tagged_candidate(512U, kCanonicalTag);
         buckets.has_target = true;
@@ -150,7 +150,7 @@ namespace {
          *  asking whether the candidate is the target, so saying so means being the target. The
          *  real rule gets that from the hash, where two different addresses can share one. */
         const std::uint64_t in_targets_bucket[2] = {buckets.target, buckets.target};
-        const RunOutcome outcome = run_snitch_search<FakeSeam>(setup(), inputs(), rounds(4U), kCounterOffset,
+        const RunOutcome outcome = run_snitch_search<FakeOps>(setup(), inputs(), rounds(4U), kCounterOffset,
                                                                kWordPointers, 2U, strides(), range(), false,
                                                                buckets, in_targets_bucket, 2U);
         expect(outcome.status == RunVerdict::Found, "a run that gets its pokes and an answer finds the object");
@@ -160,26 +160,26 @@ namespace {
     }
 
     void a_run_that_never_poked_must_not_search() {
-        FakeSeam::reset();
+        FakeOps::reset();
         Buckets buckets;
         buckets.target = tagged_candidate(0U, kCanonicalTag);
         buckets.has_target = true;
-        const RunOutcome outcome = run_snitch_search<FakeSeam>(setup(), inputs(), rounds(4U), kCounterOffset,
+        const RunOutcome outcome = run_snitch_search<FakeOps>(setup(), inputs(), rounds(4U), kCounterOffset,
                                                                kWordPointers, 2U, strides(), range(), false,
                                                                buckets, kAddresses, 2U);
         expect(outcome.status == RunVerdict::NoPokes, "a run without pokes gives up");
         expect(outcome.probes == 0U,
                "and does not look at a single address, which would look exactly like an object that is elsewhere");
-        expect(FakeSeam::kills == 2U, "its cohort is stopped");
+        expect(FakeOps::kills == 2U, "its cohort is stopped");
         expect(std::string_view(run_verdict_name(RunVerdict::NoPokes)) == std::string_view("plan-missing"),
                "under the name for a plan that did not happen");
     }
 
     void a_run_that_poked_and_found_nothing() {
-        FakeSeam::reset();
-        FakeSeam::pokes_per_wake = 1024U;
+        FakeOps::reset();
+        FakeOps::pokes_per_wake = 1024U;
         Buckets buckets;
-        const RunOutcome outcome = run_snitch_search<FakeSeam>(setup(), inputs(), rounds(4U), kCounterOffset,
+        const RunOutcome outcome = run_snitch_search<FakeOps>(setup(), inputs(), rounds(4U), kCounterOffset,
                                                                kWordPointers, 2U, strides(), range(), false,
                                                                buckets, kAddresses, 2U);
         expect(outcome.status == RunVerdict::NotFound, "a run that poked and found nothing says so");
@@ -187,18 +187,18 @@ namespace {
     }
 
     void what_fails_before_the_walk() {
-        FakeSeam::reset();
+        FakeOps::reset();
         RegionInputs broken = inputs();
         broken.total_pokes = 0U;
         Buckets buckets;
-        const RunOutcome refused = run_snitch_search<FakeSeam>(setup(), broken, rounds(4U), kCounterOffset,
+        const RunOutcome refused = run_snitch_search<FakeOps>(setup(), broken, rounds(4U), kCounterOffset,
                                                                kWordPointers, 2U, strides(), range(), false,
                                                                buckets, kAddresses, 2U);
         expect(refused.status == RunVerdict::GeometryMissing, "a region that cannot be laid out stops the run");
-        expect(FakeSeam::forks == 0U, "before any child is forked");
-        FakeSeam::reset();
-        FakeSeam::pokes_per_wake = 1024U;
-        const RunOutcome one_address = run_snitch_search<FakeSeam>(setup(), inputs(), rounds(4U), kCounterOffset,
+        expect(FakeOps::forks == 0U, "before any child is forked");
+        FakeOps::reset();
+        FakeOps::pokes_per_wake = 1024U;
+        const RunOutcome one_address = run_snitch_search<FakeOps>(setup(), inputs(), rounds(4U), kCounterOffset,
                                                                    kWordPointers, 2U, strides(), range(), false,
                                                                    buckets, kAddresses, 1U);
         expect(one_address.status == RunVerdict::GeometryMissing,

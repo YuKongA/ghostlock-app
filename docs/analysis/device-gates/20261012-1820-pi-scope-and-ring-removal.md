@@ -59,7 +59,7 @@ main: refused (param-invalid)      0                0                基线
 main: step result w1 => won        1                1                基线
 value=9（设备日志）                 1                1                基线
 main: victim uid=2000              14               16               == 各自 stage 数，逐 stage 一条
-access bound route=... seam=1      14               16               门面接管
+access bound route=... landing=1      14               16               门面接管
 route status=0/0 clean=1/1         是               是               attempts=16 calls=1 successes=1
 6 类行（waiter-lock / park-about word / park-about target-word / park-return /
   ghost-disarm / judge-outcome）   28               32               == 各自 PI 段数，一段一条

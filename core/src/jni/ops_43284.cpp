@@ -1,5 +1,5 @@
 /** @file jni/ops_43284.cpp
- *  43284's op bodies: read the request, check the width and the token, call the seam, name the
+ *  43284's op bodies: read the request, check the width and the token, call the landing, name the
  *  answer (see the header for what this unit deliberately leaves to the device).
  */
 #include "jni/ops_43284.hpp"
@@ -47,7 +47,7 @@ namespace ghostlock::jni {
     }  // namespace
 
     FrameStatus Ops43284::on_resolve(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.resolve == nullptr) {
+        if (ops_.resolve == nullptr) {
             refuse_not_wired(reply, "resolve_target");
             return FrameStatus::Unsupported;
         }
@@ -67,7 +67,7 @@ namespace ghostlock::jni {
         }
         const std::string_view path_text(reinterpret_cast<const char *>(path.data()), path.size());
         std::uint64_t token = 0U;
-        if (!seams_.resolve(raw_role, path_text, token, seams_.context) || token == 0U) {
+        if (!ops_.resolve(raw_role, path_text, token, ops_.context) || token == 0U) {
             refuse(reply, "door-refused");
             return FrameStatus::Failed;
         }
@@ -80,7 +80,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43284::on_write_block(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.write_block == nullptr) {
+        if (ops_.write_block == nullptr) {
             refuse_not_wired(reply, "write_block");
             return FrameStatus::Unsupported;
         }
@@ -114,7 +114,7 @@ namespace ghostlock::jni {
             return FrameStatus::StaleTarget;
         }
         std::uint64_t sequence = facts_.sequence;
-        if (!seams_.write_block(token, offset, block, sequence, seams_.context)) {
+        if (!ops_.write_block(token, offset, block, sequence, ops_.context)) {
             refuse(reply, "block-refused");
             return FrameStatus::Failed;
         }
@@ -125,7 +125,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43284::on_read_block(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.read_block == nullptr) {
+        if (ops_.read_block == nullptr) {
             refuse_not_wired(reply, "read_block");
             return FrameStatus::Unsupported;
         }
@@ -146,7 +146,7 @@ namespace ghostlock::jni {
             return FrameStatus::StaleTarget;
         }
         std::byte block[kBlockWidth] = {};
-        if (!seams_.read_block(token, offset, std::span<std::byte>(block), seams_.context)) {
+        if (!ops_.read_block(token, offset, std::span<std::byte>(block), ops_.context)) {
             refuse(reply, "read-refused");
             return FrameStatus::Failed;
         }
@@ -156,7 +156,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43284::on_trigger(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.trigger == nullptr) {
+        if (ops_.trigger == nullptr) {
             refuse_not_wired(reply, "trigger");
             return FrameStatus::Unsupported;
         }
@@ -164,7 +164,7 @@ namespace ghostlock::jni {
         if (!want_u64(request, FrameKey::DelayMs, "delay_ms", delay_ms, reply)) {
             return FrameStatus::KeyMissing;
         }
-        if (!seams_.trigger(delay_ms, seams_.context)) {
+        if (!ops_.trigger(delay_ms, ops_.context)) {
             refuse(reply, "trigger-refused");
             return FrameStatus::Failed;
         }
@@ -172,7 +172,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43284::on_wait_terminal(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.wait_terminal == nullptr) {
+        if (ops_.wait_terminal == nullptr) {
             refuse_not_wired(reply, "wait_terminal");
             return FrameStatus::Unsupported;
         }
@@ -188,7 +188,7 @@ namespace ghostlock::jni {
         static_cast<void>(request.find_bytes(FrameKey::Text, module));
         const std::string_view module_name(reinterpret_cast<const char *>(module.data()), module.size());
         TerminalState terminal = TerminalState::InFlight;
-        if (!seams_.wait_terminal(budget_ms, poll_ms, module_name, terminal, seams_.context)) {
+        if (!ops_.wait_terminal(budget_ms, poll_ms, module_name, terminal, ops_.context)) {
             refuse(reply, "wait-failed");
             return FrameStatus::Failed;
         }
@@ -211,7 +211,7 @@ namespace ghostlock::jni {
     }
 
     FrameStatus Ops43284::on_embedded_image(const FrameReader &request, FrameWriter &reply) noexcept {
-        if (seams_.embedded_image == nullptr) {
+        if (ops_.embedded_image == nullptr) {
             refuse_not_wired(reply, "embedded_image");
             return FrameStatus::Unsupported;
         }
@@ -220,7 +220,7 @@ namespace ghostlock::jni {
             return FrameStatus::KeyMissing;
         }
         std::span<const std::byte> image{};
-        if (!seams_.embedded_image(role, image, seams_.context) || image.empty()) {
+        if (!ops_.embedded_image(role, image, ops_.context) || image.empty()) {
             refuse(reply, "image-unknown");
             return FrameStatus::Failed;
         }
@@ -231,7 +231,7 @@ namespace ghostlock::jni {
 
     FrameStatus Ops43284::on_hook_words(const FrameReader &request, FrameWriter &reply) noexcept {
         static_cast<void>(request);
-        if (seams_.hook_words == nullptr) {
+        if (ops_.hook_words == nullptr) {
             refuse_not_wired(reply, "hook_words");
             return FrameStatus::Unsupported;
         }
@@ -240,8 +240,8 @@ namespace ghostlock::jni {
         std::uint64_t site_offset = 0U;
         std::uint64_t landing_offset = 0U;
         std::span<const std::byte> payload{};
-        if (!seams_.hook_words(branch_word, displaced_word, site_offset, landing_offset, payload,
-                               seams_.context)) {
+        if (!ops_.hook_words(branch_word, displaced_word, site_offset, landing_offset, payload,
+                               ops_.context)) {
             refuse(reply, "plan-refused");
             return FrameStatus::Failed;
         }
@@ -277,8 +277,8 @@ namespace ghostlock::jni {
         void bundle_destroy(void *self) noexcept { delete static_cast<Ops43284 *>(self); }
     }  // namespace
 
-    BackendOps make_ops_43284(Ops43284Seams seams) noexcept {
-        auto *const ops = new Ops43284(seams);
+    BackendOps make_ops_43284(Ops43284Seams device_ops) noexcept {
+        auto *const ops = new Ops43284(device_ops);
         return BackendOps{&bundle_handle, &bundle_destroy, ops};
     }
 }  // namespace ghostlock::jni

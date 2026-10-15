@@ -7,8 +7,8 @@
 · 修掉两处**真卡**：`dup2(high_read_, 1)` 换掉 stdout ✗ ⇒ 低位 fd 改 {3,4,5} ✓；
   每轮未归零 ⇒ 第二轮 `lock_pi(chain)` 无限等 ✗ ⇒ 改为**每轮归零** ✓；
 · 修掉两处**结构性错**：引擎未武装 ✗ ⇒ `race_.prepare(wait,target)` ✓；
-  默认 `FutexSeam` 是**空实现** ✗ ⇒ 绑定真 seam ✓；
-· 排除九项假因（时机/errno 陈旧/fd 借用/未归零/未武装/空 seam/多余 chain 锁/参数形状/同字 ✓）；
+  默认 `FutexOps` 是**空实现** ✗ ⇒ 绑定真 landing ✓；
+· 排除九项假因（时机/errno 陈旧/fd 借用/未归零/未武装/空 landing/多余 chain 锁/参数形状/同字 ✓）；
 · 门禁全程绿 ✓（check 108 PASS ✓ / android 0 警 ✓ / lint 0 ✓）；`uid=0` **未取得** ✗。
 ```
 

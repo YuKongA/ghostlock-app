@@ -1,6 +1,6 @@
 # 切片 1：multicast 窗口体 22 处旧会话耦合的替换表
 
-- 2026-10-09 · 依据 `seam-port-design.md` §6 · 取材只读 `git show b0e9f499^:<path>`
+- 2026-10-09 · 依据 `landing-port-design.md` §6 · 取材只读 `git show b0e9f499^:<path>`
 - **计数 = 按行**：`…multicast_waiter_route.cpp | grep -c "cve43499_state("` = **22**（同设计稿 §6；L69 一行 2 次访问 ⇒ 22 行 / 23 个表达式）。下表 22 行 = 一旧行号一行。
 - 类：**M** 可映射 · **D** 删 · **X** 无法映射（理由 §2）。旧件 **M** = `src/core/backend/cve_2026_43499/route/multicast_waiter_route.cpp`（208 行 @`b0e9f499^`）；`threads.cpp` = `src/core/race/threads.cpp`（同 rev）
 
@@ -24,7 +24,7 @@
 | 14 | M:153 | 日志读 `.race.consumer_success.load()` | 删 | 同上（mp:71）；pr_info 本体（M:148-153）移出窗口 | D |
 | 15 | M:173 | `.addresses.data_alias(…)` | `KernelAccess::write` 的 `address` **实参**（ka:188），非 TargetState/AccessParams 字段 | Lua（ADR-0015 §3）；新树 `data_alias`／`ResolvedAddresses` 各 0 命中 ⇒ 不重建；**地址算术不移植** | M |
 | 16 | M:174 | `.addresses.init_cred_image_addr()` | 同 #15（同表达式的内层调用） | 同 #15 | M |
-| 17 | M:176 | `.heap.current.base = spray::prepare_good_kernel_page(req)` | `TargetState::page_base`（se:26） | prepare 步骤填充（prepare_page.hpp、heap_seam.hpp） | M |
+| 17 | M:176 | `.heap.current.base = spray::prepare_good_kernel_page(req)` | `TargetState::page_base`（se:26） | prepare 步骤填充（prepare_page.hpp、heap_ops.hpp） | M |
 | 18 | M:178 | `.heap.current.base` 读回判空 | `TargetState::page_base` + `write_readiness()`（se:60-71） | 同上；缝侧已有同款守卫 sm:75-77 | M |
 | 19 | M:194 | `.addresses.data_alias(…)` | 同 #15 | 同 #15 | M |
 | 20 | M:195 | `.addresses.init_cred_image_addr()` | 同 #16 | 同 #15 | M |
@@ -53,7 +53,7 @@
 根 `core/src/`；除 ka 外均在 `backend/cve_2026_43499/` 下：
 
 ka=`contract/kernel_access.hpp` · bk=`kernel_access.hpp` · se=`session.hpp` · ap=`access_params.hpp` ·
-sm=`seam/multicast_seam.hpp` · mp=`route/multicast_policy.hpp` · keys=`route/expected_keys.hpp` ·
+sm=`landing/multicast_landing.hpp` · mp=`route/multicast_policy.hpp` · keys=`route/expected_keys.hpp` ·
 arm=`memory/multicast_arm.hpp` · rs=`route/route_status.hpp` · rp=`route/route_policy.hpp` ·
 pw=`race/pi_window.hpp` · rr=`race/race_runtime.hpp` · wr=`memory/write_request.hpp`
 
@@ -70,7 +70,7 @@ pw=`race/pi_window.hpp` · rr=`race/race_runtime.hpp` · wr=`memory/write_reques
 
 - **行级计数：M 14 · D 6 · X 2**（合计 22；行内未闭项 1 处 = `arm_sequence`）。
 - 本片**不改任何生产代码**；上表是切片 2 的输入。
-- 验收：`make -C core check` **EXIT=0**（2026-10-09，落盘前跑；日志 `/tmp/seamport_check.log`）。
+- 验收：`make -C core check` **EXIT=0**（2026-10-09，落盘前跑；日志 `/tmp/landingport_check.log`）。
 - 不猜（切片 2 定形状前必须回答）：
 
   1. `arm_sequence` 暖场是否保留（§2）——保留则 `MulticastLimits` 需加字段；

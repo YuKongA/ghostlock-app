@@ -49,25 +49,25 @@ waitpid(child, NULL, WNOHANG);           // :1491 非阻塞探测
 
 | 维度 | ref（纯 C） | 本树 `Access` |
 | --- | --- | --- |
-| 状态载体 | **file-scope static**（`mr_ready`/`mr_fd`/`mr_stop`） | **对象成员**（`phase_`/`seam_`/`target_`/`route_`） |
+| 状态载体 | **file-scope static**（`mr_ready`/`mr_fd`/`mr_stop`） | **对象成员**（`phase_`/`ops_`/`target_`/`route_`） |
 | 上电 | `kernel5_resident_start()`；**幂等**（`if (mr_ready) return 1`） | `initialize()`；**非幂等**（`phase_==Up ⇒ Failed`） |
 | 上电中途失败 | **直接 `return 0`**，已建线程/fd **不回收** | `phase_ = Broken` **先记录**再返回 `Failed` |
 | 下电 | `stop()`；未上电 `return`（无副作用） | `shutdown()`；非 Up ⇒ **`NotInitialized` 具名拒绝** |
-| fd 所有者 | **线程自身**（`mr_x` 退出时 `close(mr_fd)`） | **seam**（`tear_down()` 全面负责） |
-| 线程回收 | `atomic_store(mr_stop,1)` + `pthread_join` ×2 | `seam_->tear_down()`（内部 stop/join） |
+| fd 所有者 | **线程自身**（`mr_x` 退出时 `close(mr_fd)`） | **landing**（`tear_down()` 全面负责） |
+| 线程回收 | `atomic_store(mr_stop,1)` + `pthread_join` ×2 | `ops_->tear_down()`（内部 stop/join） |
 | 每轮路由 | `reset_main_route_state()` + `start_threads` + `request_stop/join` | 同（`execute()`） |
 | 失败路径表达 | `fail_stop_dirty_race(reason,err)` ×**3 处**（startup/deadline/join） | **单一 `phase_=Broken`** + 具名 status |
-| child 生命周期 | **局部标志 `child_alive`** + `kill(-child)` + `waitpid` | `TargetState`（**非拥有**）+ seam 的 `tear_down` |
+| child 生命周期 | **局部标志 `child_alive`** + `kill(-child)` + `waitpid` | `TargetState`（**非拥有**）+ landing 的 `tear_down` |
 | **状态可观察性** | **不可观察**（static ✗） | **可观察**（`state()` ⇒ Declared/Initializing/Ready/Closed/Failed ✓） |
 | 重复上电语义 | 幂等 ✓ | 拒绝（Failed）—— 语义不同 |
 | 未初始化时调用 | `if(!mr_ready) return 0`（**静默 false**） | `NotInitialized`/`Unsupported` **具名** ✓ |
 | 清理集中度 | 线程内自清 **+** `stop()` 里 `close_reclaim_sockets`/`cleanup_page_prepare_state` | `tear_down()` **一处** ✓ |
-| route 数量 | `mr_fd` 等是**全局**（同时只有一条 route） | 收进 **seam**（一 backend 一对象，route 在参数 ✓） |
+| route 数量 | `mr_fd` 等是**全局**（同时只有一条 route） | 收进 **landing**（一 backend 一对象，route 在参数 ✓） |
 
 ## 四、三条关键差异
 
 ```
-① **所有者不同**：ref 的 fd 由**线程自己**关（所有权在线程内部）；本树由 **seam** 关
+① **所有者不同**：ref 的 fd 由**线程自己**关（所有权在线程内部）；本树由 **landing** 关
    ⇒ 本树把"资源归谁"从"谁创建谁关"改为"接缝统一持有" ⇒ 可单独测试、可整体替换 ✓
 ② **失败的可观察性**：ref 上电中途失败只 return 0，**残留线程/fd 无人回收**
    ⇒ 这正是 `fail_stop_dirty_race` 与 "dirty failure" 命名的由来（⇒ 旧实现**知道**这是弱点 ✓）
@@ -80,7 +80,7 @@ waitpid(child, NULL, WNOHANG);           // :1491 非阻塞探测
 ## 五、对"接入"的含义（GAP-1）
 
 ```
-⇒ 接入 = 用一个 `AccessSeam` 实现，把旧 C 的四件事**包成 seam 的四个方法**：
+⇒ 接入 = 用一个 `WordLanding` 实现，把旧 C 的四件事**包成 landing 的四个方法**：
    · `bring_up`   ← `kernel5_resident_start`（＋ offset 选择 / 绑核 / iomem / child / perf）
    · `tear_down`  ← `kernel5_resident_stop`（＋ close_reclaim_sockets / cleanup_page_prepare_state /
                      kill(-child) + waitpid）
@@ -88,5 +88,5 @@ waitpid(child, NULL, WNOHANG);           // :1491 非阻塞探测
    · `can_read` / `read_word` ← 由 route 声明（旧 C 的 `kernelsnitch` 具备读能力时）
 ⇒ **必须补的两点**（衔接 §四的②③）：
    a. `bring_up` 中途失败 ⇒ **必须回收已建资源**（旧 C 的弱点 ✗ ⇒ 接入时补齐 ✓）
-   b. 旧 C 的 static 全局 ⇒ **必须收进 seam 成员**（否则"一 backend 一对象"不成立 ✗）
+   b. 旧 C 的 static 全局 ⇒ **必须收进 landing 成员**（否则"一 backend 一对象"不成立 ✗）
 ```

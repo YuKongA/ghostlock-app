@@ -19,7 +19,7 @@
 
 #include "jni/race_threads.hpp"
 #include "jni/route_common.hpp"
-#include "jni/route_seams.hpp"
+#include "jni/route_landings.hpp"
 
 namespace ghostlock::jni {
     /** Everything one pselect attempt reads, in one place the caller fills. */
@@ -35,7 +35,7 @@ namespace ghostlock::jni {
         /** The flags shared with the three threads, and the words. */
         race::RaceContext *race = nullptr;
         /** The helpers that must run C side. */
-        const RouteSeams *seams = nullptr;
+        const RouteSeams *ops = nullptr;
         /** The waiter shift, a profile field. */
         std::uint32_t waiter_shift = 0U;
     };

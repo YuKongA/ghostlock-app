@@ -20,7 +20,7 @@
 | `support/status.hpp` | 5 | Generic success/failure status for functions whose return carries no data. true == success, false == failure. using Stat |
 | `contract/stage_result.hpp` | 4 | Outcome of one orchestration stage. Failed maps to exit code 1, Continue proceeds to the next stage and Done stops with  |
 | `platform/device_facts.hpp` | 4 | Device/firmware facts the CVE-2026-43284 endgame needs, expressed as an injectable probe contract (B5-7). The backend ne |
-| `profile/runtime_struct_offsets.h` | 4 | Active-profile seam (A2-4-3). The frozen transport is owned by the selected backend, which defines these two accessors ( |
+| `profile/runtime_struct_offsets.h` | 4 | Active-profile landing (A2-4-3). The frozen transport is owned by the selected backend, which defines these two accessors ( |
 | `race/pi_race.h` | 4 | Owns one PI race attempt: the two PI futexes the waiter walks, the three worker threads and the route outcome. The atomi |
 | `session/runtime_config.h` | 4 | One runtime snapshot captured once from the environment. Paths own their storage; callers convert to c_str() only at sys |
 | `support/timing.hpp` | 4 | The single process-wide exploit timeline. Inline so the hot attack paths keep the exact code shape they had when this li |

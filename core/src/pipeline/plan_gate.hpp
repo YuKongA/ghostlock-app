@@ -14,7 +14,7 @@
  *    plan-missing -> queue-removed -> geometry-missing -> capability-missing ->
  *    executor-unavailable -> per op [unknown-op -> op-not-available ->
  *    route-not-available -> order-violation -> hash-mismatch -> param-invalid ->
- *    seam-in-pi-window].
+ *    landing-in-pi-window].
  *
  *  Facts (geometry / capabilities / executor) are inputs: they are frozen by the
  *  composition root before the window and the gate only reads them (section 3).
@@ -55,7 +55,7 @@ namespace ghostlock::pipeline {
             case GateReason::OrderViolation: return "order-violation";
             case GateReason::HashMismatch: return "hash-mismatch";
             case GateReason::ParamInvalid: return "param-invalid";
-            case GateReason::SeamInPiWindow: return "seam-in-pi-window";
+            case GateReason::SeamInPiWindow: return "landing-in-pi-window";
             case GateReason::ExecutorUnavailable: return "executor-unavailable";
             case GateReason::QueueRemoved: return "queue-removed";
             case GateReason::PlanMissing: return "plan-missing";
@@ -91,8 +91,8 @@ namespace ghostlock::pipeline {
         contract::RouteMask route_mask;
         const PlanParam *params;
         std::size_t param_count;
-        /** True when the plan puts a seam inside the PI window (refused). */
-        bool seam_inside_window;
+        /** True when the plan puts a landing inside the PI window (refused). */
+        bool landing_inside_window;
         /** Prerequisite op position; it must be < this op's position (-1 = none). */
         std::int32_t depends_on;
     };
@@ -251,8 +251,8 @@ namespace ghostlock::pipeline {
                     return refuse(GateReason::ParamInvalid, in.backend_id, true, i, plan_op.params[q].key);
                 }
             }
-            if (plan_op.seam_inside_window) {
-                return refuse(GateReason::SeamInPiWindow, in.backend_id, true, i, "seam");
+            if (plan_op.landing_inside_window) {
+                return refuse(GateReason::SeamInPiWindow, in.backend_id, true, i, "landing");
             }
         }
         GateVerdict ok{};

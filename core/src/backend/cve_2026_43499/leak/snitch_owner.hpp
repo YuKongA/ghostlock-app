@@ -26,7 +26,7 @@
 #include "backend/cve_2026_43499/leak/snitch_region.hpp"
 #include "backend/cve_2026_43499/leak/snitch_run.hpp"
 #include "backend/cve_2026_43499/leak/snitch_scan.hpp"
-#include "backend/cve_2026_43499/leak/snitch_seam.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops.hpp"
 #include "backend/cve_2026_43499/leak/snitch_setup.hpp"
 #include "contract/address_discovery.hpp"
 

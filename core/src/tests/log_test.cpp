@@ -1,5 +1,5 @@
 /** @file tests/log_test.cpp
- *  The logging seam: level filtering, the line format, and the file it actually writes.
+ *  The logging landing: level filtering, the line format, and the file it actually writes.
  *
  *  Why this exists: the logger was rewritten (spdlog out, printf in) and its whole value is that a
  *  device log reads the way the greps expect. So the test drives the real sink -- a file -- and

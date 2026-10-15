@@ -3,7 +3,7 @@
  *
  *  What is checked is that they agree: the access comes up only with credentials, takes them from
  *  its own parameter set and refuses a set belonging to the other backend; the write goes down
- *  through the seam to the window as a sixteen-byte block at the position the parameters gave; the
+ *  through the landing to the window as a sixteen-byte block at the position the parameters gave; the
  *  read comes back through the same window at that same position, with a word read served as the
  *  block's first eight bytes and a narrower block refused by width; and the route comes back down.
  */
@@ -17,8 +17,8 @@ namespace {
     using ghostlock::backend::cve_2026_43284::Access;
     using ghostlock::backend::cve_2026_43284::AccessParams;
     using ghostlock::backend::cve_2026_43284::SaMaterial;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheSeam;
-    using ghostlock::backend::cve_2026_43284::seam::PageCacheWindow;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheLanding;
+    using ghostlock::backend::cve_2026_43284::landing::PageCacheWindow;
     using ghostlock::contract::AccessChannel;
     using ghostlock::contract::KernelAccess;
 
@@ -96,13 +96,13 @@ namespace {
 
     void the_chain_writes_one_block() {
         RecordingWindow window;
-        PageCacheSeam seam(window);
-        Access access(&seam);
+        PageCacheLanding landing(window);
+        Access access(&landing);
         AccessParams params;
         params.sa = credentials();
         params.offset = 0x1000U;
         params.offset_set = true;
-        expect(access.initialize(params).ok(), "credentials bring the route up through the seam");
+        expect(access.initialize(params).ok(), "credentials bring the route up through the landing");
         expect(window.opened == 1 && window.first_byte_of_secrets == 0xAAU,
                "and the doors were opened with the material the parameters carried");
         std::uint8_t bytes[16] = {};
@@ -160,8 +160,8 @@ namespace {
      *  fresh sequence -- the device dropped every datagram of a window that restarted at one. */
     void a_supplied_sequence_reaches_the_window() {
         RecordingWindow window;
-        PageCacheSeam seam(window);
-        Access access(&seam);
+        PageCacheLanding landing(window);
+        Access access(&landing);
         AccessParams params;
         params.sa = credentials();
         params.offset = 0x2000U;
@@ -171,8 +171,8 @@ namespace {
         expect(access.initialize(params).ok(), "the route comes up with a sequence supplied");
         expect(window.adopted_sequence == 91U, "and the window continues at the sequence given");
         RecordingWindow plain;
-        PageCacheSeam plain_seam(plain);
-        Access plain_access(&plain_seam);
+        PageCacheLanding plain_landing(plain);
+        Access plain_access(&plain_landing);
         AccessParams none;
         none.sa = credentials();
         none.offset = 0x2000U;
@@ -184,8 +184,8 @@ namespace {
     /** A read before the route is up, and a route with no read face: two different answers. */
     void reads_are_refused_by_name_before_they_can_work() {
         RecordingWindow window;
-        PageCacheSeam seam(window);
-        Access access(&seam);
+        PageCacheLanding landing(window);
+        Access access(&landing);
         AccessParams params;
         params.sa = credentials();
         params.offset = 0x2000U;
@@ -196,7 +196,7 @@ namespace {
         expect(window.reads == 0, "and the window was not asked");
         RecordingWindow window_without_read;
         window_without_read.can_read_flag = false;
-        PageCacheSeam without_read(window_without_read);
+        PageCacheLanding without_read(window_without_read);
         Access readless(&without_read);
         expect(readless.initialize(params).ok(), "a route without a read face still comes up");
         expect(readless.read(0U, 16U, AccessChannel::PageCache, params).status ==
@@ -211,8 +211,8 @@ namespace {
 
     void without_credentials_or_with_the_wrong_set_nothing_comes_up() {
         RecordingWindow window;
-        PageCacheSeam seam(window);
-        Access access(&seam);
+        PageCacheLanding landing(window);
+        Access access(&landing);
         AccessParams empty;
         empty.offset_set = true;
         expect(!access.initialize(empty).ok(), "a set with no credentials does not bring it up");

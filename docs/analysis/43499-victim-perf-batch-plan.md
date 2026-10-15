@@ -42,7 +42,7 @@
   没拿到/失败就 retire_child（不留半个）；
 - 失败名分开：victim-pipes-failed / victim-fork-failed / victim-leak-disagreed（三次重试后）；
 - **设备实测**：main: step result w1 => victim-leak-disagreed ⇒ 9 次投票里没有两次一致；
-  而单次投票的探针 perf_seam_probe 是 PASS ⇒ 结论是**投票不稳定**（不是机制不通）；
+  而单次投票的探针 perf_ops_probe 是 PASS ⇒ 结论是**投票不稳定**（不是机制不通）；
 - 下一步（小且明确）：在子侧把每次投票的**值**打出来（看是"差一点"还是"完全不同"），据此决定是提高采样轮数
   还是别的；退役是"3 次内任意两次一致"，我实现的语义相同 ⇒ 重点在采样质量。
 

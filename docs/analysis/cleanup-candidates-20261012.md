@@ -58,14 +58,14 @@ pipeline/run_pipeline_temp.{hpp,cpp}   1125+33 行
 ## 5. 攻击关键路径上的清理边界（2026-10-12 由源码头注反推，收紧本次范围）
 
 ```
-判据来源：seam/multicast_route.hpp 头注逐字
+判据来源：landing/multicast_route.hpp 头注逐字
   "Three details are kept because the retired route needed them, and each is a place a
    cleaner-looking version would silently stop working"
 => 攻击关键路径上，看起来更干净的写法会静默失效。因此不得以行数、引用数、注释占比判删。
 
 允许清理的三类：
   ① 清重复：两套窗口实现只留一套
-     seam/ 一套（multicast_route.hpp 的 *_main）与 pipeline/run_pipeline_temp.cpp 一套（1125 行）并列存在，
+     landing/ 一套（multicast_route.hpp 的 *_main）与 pipeline/run_pipeline_temp.cpp 一套（1125 行）并列存在，
      两套都未被 cmp_disasm 验证（符号名都不匹配 TARGETS 的 *_thread）。
   ② 清未跟踪产物与 IDE 残留：core/cmake-build-debug · profile-core/bin · core/.idea（见 §1）
   ③ 清注册散乱：把'自称待删'集中成一行台账（现散在五处，见 §3）
@@ -74,8 +74,8 @@ pipeline/run_pipeline_temp.{hpp,cpp}   1125+33 行
   steps/window_steps.{cpp,hpp}     节奏层，承载脚本侧 w1/w2/w3 请求（wire-schema 的 steps 声明）
   steps/window_attempt.{cpp,hpp}   尝试层，判据：cmp_requeue_pi 返回 <1 即未搬
   steps/window_runner.{cpp,hpp}    粘合层，边界：字与守卫由调用方给，缺则具名
-  seam/multicast_window.hpp        窗口体，'does three things and no more'；零热身轮具名拒绝
-  seam/multicast_route.hpp         三actor，'The walk is the write'；三处细节必须保留
+  landing/multicast_window.hpp        窗口体，'does three things and no more'；零热身轮具名拒绝
+  landing/multicast_route.hpp         三actor，'The walk is the write'；三处细节必须保留
 
   撤回理由：以上五件的头注记录的是约束（为什么不能简化），不是冗余。
   与'两套实现的 34% 注释占比'性质不同：那一套是试错史，这五件是设计约束。
@@ -99,7 +99,7 @@ pipeline/run_pipeline_temp.{hpp,cpp}   1125+33 行
 => 撤回删判，与 §5 的五件合计九件。
 
 修正后，先前那张删除表里真正站得住的只剩：
-  pipeline/run_pipeline_temp.{hpp,cpp}   第二套窗口实现（与 seam 那套并列，两套都未被 cmp_disasm 验证）
+  pipeline/run_pipeline_temp.{hpp,cpp}   第二套窗口实现（与 landing 那套并列，两套都未被 cmp_disasm 验证）
   core/cmake-build-debug · profile-core/bin · core/.idea   三件未跟踪产物与残留（见 §1）
 
 教训（写给后来的清理者）：按行数、引用数、注释占比、文件名判删，本次十一条判错九条。
@@ -114,7 +114,7 @@ leak/ 四件（读头注后同样撤回删判）：
   snitch_region.hpp   进程间接口层，见下"发现二"
   candidate_match.hpp 判定规则层（一致才成立，一处不一致即不是该对象）
   collision_buckets.hpp 真规则层（地址落哪个桶、候选是否与已知地址碰撞）
-=> 撤回累计：steps/ 三件 + seam/ 两件 + memory/ 四件 + leak/ 四件 = 十三件
+=> 撤回累计：steps/ 三件 + landing/ 两件 + memory/ 四件 + leak/ 四件 = 十三件
 
 发现一：本树早有"整份搬退役树文件"的固定做法与标注格式
   leak/futex_hash.hpp 头注逐字：PORTED, NOT WRITTEN (2026-10-08)，并写明
@@ -136,7 +136,7 @@ leak/ 四件（读头注后同样撤回删判）：
 ## 8. 全模块头注审查总账
 
 ```
-留 41 件：顶层 16 · race 6 · route 6 · steps 3 · seam 2 · memory 4 · leak 4
+留 41 件：顶层 16 · race 6 · route 6 · steps 3 · landing 2 · memory 4 · leak 4
 删 4 件：pipeline/run_pipeline_temp.{hpp,cpp} · core/cmake-build-debug · profile-core/bin · core/.idea
 方法：读头注判层；不以行数、引用数、注释占比、文件名判。
 ```

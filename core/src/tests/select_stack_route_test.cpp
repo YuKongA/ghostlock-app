@@ -9,7 +9,7 @@
 #include <cstring>
 #include <sys/select.h>
 
-#include "backend/cve_2026_43499/seam/select_stack_route.hpp"
+#include "backend/cve_2026_43499/landing/select_stack_route.hpp"
 
 namespace {
     int failures = 0;
@@ -22,16 +22,16 @@ namespace {
 }  // namespace
 
 int main() {
-    using ghostlock::backend::cve_2026_43499::seam::SelectStackConfig;
-    using ghostlock::backend::cve_2026_43499::seam::SelectStackWordSite;
-    using ghostlock::backend::cve_2026_43499::seam::SelectStackWord;
-    using ghostlock::backend::cve_2026_43499::seam::SelectStackOffsets;
-    using ghostlock::backend::cve_2026_43499::seam::fill_select_stack_words;
-    using ghostlock::backend::cve_2026_43499::seam::select_stack_build_fdsets;
-    using ghostlock::backend::cve_2026_43499::seam::SelectStackFdPlan;
-    using ghostlock::backend::cve_2026_43499::seam::select_stack_plan_fds;
-    using ghostlock::backend::cve_2026_43499::seam::select_stack_compact_words;
-    using ghostlock::backend::cve_2026_43499::seam::select_stack_word_site;
+    using ghostlock::backend::cve_2026_43499::landing::SelectStackConfig;
+    using ghostlock::backend::cve_2026_43499::landing::SelectStackWordSite;
+    using ghostlock::backend::cve_2026_43499::landing::SelectStackWord;
+    using ghostlock::backend::cve_2026_43499::landing::SelectStackOffsets;
+    using ghostlock::backend::cve_2026_43499::landing::fill_select_stack_words;
+    using ghostlock::backend::cve_2026_43499::landing::select_stack_build_fdsets;
+    using ghostlock::backend::cve_2026_43499::landing::SelectStackFdPlan;
+    using ghostlock::backend::cve_2026_43499::landing::select_stack_plan_fds;
+    using ghostlock::backend::cve_2026_43499::landing::select_stack_compact_words;
+    using ghostlock::backend::cve_2026_43499::landing::select_stack_word_site;
 
     SelectStackConfig config{};
     config.fd_count = 320U;   /* 320 个 fd ⇒ 每组 5 个 64-bit 词 ✓（不是 320 个词 ✗） */

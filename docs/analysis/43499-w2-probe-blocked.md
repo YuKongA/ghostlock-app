@@ -16,11 +16,11 @@
   - 既有哨兵读的是**我们自己**的页镜像：main.cpp:759 `page = page_image.data();` ⇒
     main.cpp:1010 `before = …(page)` ⇒ `w+0x1180/+0x1198…` 是**页内偏移** ✗ ⇒ **看不到内核 `task+0x798`**
   - 全树仅两处 `read_word` 实现都读 **perf mmap 用户映射**
-    （backend/victim/victim_process.cpp:51 ／ tools/perf_seam_probe.cpp:50）⇒ 非内核读 ✗
+    （backend/victim/victim_process.cpp:51 ／ tools/perf_ops_probe.cpp:50）⇒ 非内核读 ✗
 · 核对二（读回自己映射）：**内核写的是 skb 页，不是我们的用户页** ✗
   - main.cpp:994 `send_bytes(shaping_fd, page_image…, 65536)` ⇒ 数据进**对端接收队列（内核 skb）** ✓
   - main.cpp:995-999 紧接**两端 `close_fd`** ⇒ 队列连 skb 一起被丢弃 ✗
-  - seab face 仅有 `send_bytes`（heap_seam.hpp:48 ／ heap_seam_linux.hpp:97）⇒ **无 `recv_bytes`** ✗
+  - seab face 仅有 `send_bytes`（heap_ops.hpp:48 ／ heap_ops_linux.hpp:97）⇒ **无 `recv_bytes`** ✗
   ⇒ ⇒ **⇒ 若按「回读 page_image」做 ⇒ 会得**假阴性**✗（⇒ 会被误读成「写没落地」）**
 ```
 

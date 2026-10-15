@@ -81,7 +81,7 @@ WriteOutcome write_op(OpCtx& ctx, const WriteEntryParams& entry, const Cve43499O
 
 ## 8. 队列元素与解析触点（R1/R2 裁决）
 
-- **元素 = 扁平标量键（7 键）**：`{backend, op, route?, seam?, stage?, always?, attempts?}`；**参数值不进队列**（`params_ref` **已删**）——参数走两条既有通道，见 [params](handoff-payload-params.md)。
+- **元素 = 扁平标量键（7 键）**：`{backend, op, route?, landing?, stage?, always?, attempts?}`；**参数值不进队列**（`params_ref` **已删**）——参数走两条既有通道，见 [params](handoff-payload-params.md)。
 - **解析触点（native）**：`glkv3_parse.cpp:151-154`（声明数组物化，元素**只收标量成员**，非标量成员记为 unsupported 并具名）、`:277-291`（现把 `params`/`route` 记为**存在性标记** ⇒ 改为 **`route` 文本键**；`params` 标记随 `params_ref` 删除一并移除）；**成员表权威见 [queue-schema](handoff-payload-queue-schema.md) §3**（`backend.cve_2026_43499`/`backend.cve_2026_43284` 各一 `queue`）。
 - **R2：不改 manifest 语义**；成员表权威**同上，见 [queue-schema](handoff-payload-queue-schema.md) §3**（+ 镜像与对拍）。
 
