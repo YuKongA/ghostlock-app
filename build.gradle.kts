@@ -791,3 +791,42 @@ tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
  *  KDIR 的解析照本文件既有的 NDK 风格：环境变量优先，其次 local.properties（此处先只支持环境变量，
  *  等有 DDK 的机器上再加本地文件键）。产物基准：退役树那次是 12304 字节。
  */
+
+/**
+ *  avbcheck 的主机侧（原 tools/avbcheck/Makefile 的 host/test 目标）。
+ *
+ *  写成**任务类**：本仓启用了 configuration cache，脚本级任务的 action 不能触碰脚本对象
+ *  （providers/layout/project），所以这里用注入的服务与类型化属性，全部全限定名，免去 import。
+ */
+abstract class AvbcheckHostTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.InputDirectory
+    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
+
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val outputDir: org.gradle.api.file.DirectoryProperty
+
+    @get:javax.inject.Inject
+    abstract val execOps: org.gradle.process.ExecOperations
+
+    @org.gradle.api.tasks.TaskAction
+    fun run() {
+        val source = sourceDir.get().asFile.absolutePath
+        val out = outputDir.get().asFile.absolutePath
+        execOps.exec {
+            commandLine("cmake", "-S", source, "-B", out, "-G", "Ninja")
+        }
+        execOps.exec {
+            commandLine("cmake", "--build", out, "-j", "8", "--target", "avbcheck-host", "avbcheck-tests")
+        }
+        execOps.exec {
+            commandLine("ctest", "--test-dir", out, "--output-on-failure")
+        }
+    }
+}
+
+val avbcheck = tasks.register<AvbcheckHostTask>("avbcheck") {
+    group = "verification"
+    description = "Builds and tests the host side of tools/avbcheck (offline cross-check + unit test)"
+    sourceDir.set(layout.projectDirectory.dir("tools/avbcheck"))
+    outputDir.set(layout.buildDirectory.dir("avbcheck-host"))
+}
