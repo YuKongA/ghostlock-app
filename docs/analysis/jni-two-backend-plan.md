@@ -525,6 +525,31 @@ wait_for_module 的实现（steps/pagecache_steps.cpp），把具名原因与三
     // read_block（已接线）：比较一致才 Applied —— 写完读回相等，状态机才会往前一步
 
 Kotlin 侧负责的部分（不在 native 猜）：载体路径、偏移、块内容、序号策略、预算；native 只做开门/拼接/落地。
+
+### §11.12 J7.5-4 可以在应用进程里做：五阶段只是库函数的薄包装（2026-10-15 定论）
+
+读到的事实：
+
+| 驱动器里的阶段 | 它其实调用的库函数 |
+|---|---|
+| phase_patch1 | steps::write_image_verified(WriteRequest{access, params, image = splicehelper_bytes(), offset = 0, width = kWriteWidth}) |
+| phase_write（模块进载体） | steps::write_image_verified(WriteRequest{access, params, image = 模块字节, offset = kCarrierBase, width}) |
+| phase_hook | steps::write_hook(HookRequest{access, params, plan, width}) |
+| trigger | steps::trigger_orphan(delay)（已接线） |
+| wait | steps::wait_for_module(WaitRequest{exists, sleep_ms, …})（已接线） |
+
+而 Access 是**库类**（backend/cve_2026_43284/kernel_access.hpp）：explicit Access(landing::PageCacheLanding *landing)，
+只是借用落地对象 —— 正是 3a 里应用进程已经建好的那一个（g_session 里的 landing，真机已验证 up 且能 land_block）。
+
+**结论**：J7.5-4 不需要「让 adb 跑工具」，也不需要把驱动器搬进 native 新逻辑；应用进程里按同样的五步驱动即可，
+而每一步的参数（载体路径、偏移、宽度、镜像角色、钩子符号与 guard 策略、delay、预算）全部由 Kotlin 组装 DTO 传入 ——
+与「临时逻辑只放 Kotlin」的裁定一致。
+
+唯一需要在 native 侧新增的只有**粘合**：把落地对象与 Kotlin 给的参数装成 WriteRequest/HookRequest/AccessParams 并调用上面三个库函数
+（这不是决策，是设备侧的装配）。
+
+下一步顺序：① 先只跑 patch1（write_image_verified，offset 0，splicehelper 镜像）+ read_block 验证；
+② 载体（模块进 /vendor/lib64/libbinderdebug.so 或一次性载体）；③ 钩子；④ trigger；⑤ wait → id 报 uid=0。每步单独真机判据与归档。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
