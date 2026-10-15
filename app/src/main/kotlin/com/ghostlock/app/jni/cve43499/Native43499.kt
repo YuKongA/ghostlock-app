@@ -79,5 +79,15 @@ object Native43499 {
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
     /** @return snapshot 结果数组每一位的名字（第几位是什么，由 native 导出）。 */
+    /**
+     *  按 route 建一个内核访问对象（route 由调用方从档案取值）。
+     *
+     *  @param out 一个 long：访问对象句柄；失败时 refusalOut[0] 为 access-refused。
+     */
+    external fun makeAccess43499(handle: Long, route: Int, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 拆掉一个内核访问对象。 */
+    external fun destroyAccess43499(handle: Long, accessId: Long, refusalOut: Array<String>): Int
+
     external fun snapshotFields(): Array<String>
 }

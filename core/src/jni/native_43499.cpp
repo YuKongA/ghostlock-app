@@ -9,6 +9,7 @@
  *  2. **答案成对**：调用码与具名拒绝来自同一次加锁调用，一起写回 refusalOut；
  *  3. **布局只有一份**：结果数组的名字表来自 marshal_43499.hpp（同表驱动的名字，无字面下标）。
  */
+#include "jni/api_43499_device.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <jni.h>
@@ -270,4 +271,25 @@ JNIEXPORT jobjectArray JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_s
     return ghostlock::jni::wrapper::make_string_array(env, Snapshot43499Layout::names,
                                                       Snapshot43499Layout::count);
 }
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_makeAccess43499(
+        JNIEnv *env, jclass, jlong, jint route, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, ghostlock::jni::CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    const std::uint64_t made = ghostlock::jni::device_make_access_43499(static_cast<int>(route));
+    if (made == 0U) {
+        return answer(env, ghostlock::jni::CallCode::Failed, "access-refused", refusal_out);
+    }
+    const jlong written = static_cast<jlong>(made);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_destroyAccess43499(
+        JNIEnv *env, jclass, jlong, jlong accessId, jobjectArray refusal_out) {
+    const bool done = ghostlock::jni::device_destroy_access_43499(static_cast<std::uint64_t>(accessId));
+    return answer(env, done ? ghostlock::jni::CallCode::Ok : ghostlock::jni::CallCode::StaleTarget,
+                  done ? "" : "stale-target", refusal_out);
+}
+
 }  // extern "C"
