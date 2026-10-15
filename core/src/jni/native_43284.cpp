@@ -333,7 +333,11 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_connectEs
     }
     const int fd = ghostlock::jni::device_connect_esp(values);
     if (fd < 0) {
-        return answer(env, CallCode::Failed, "esp-refused", refusal_out);
+        const char *const why = fd == -1 ? "esp-no-material"
+                                : fd == -2 ? "esp-socket"
+                                : fd == -3 ? "esp-bind"
+                                           : "esp-connect";
+        return answer(env, CallCode::Failed, why, refusal_out);
     }
     return answer(env, CallCode::Ok, "", refusal_out);
 }

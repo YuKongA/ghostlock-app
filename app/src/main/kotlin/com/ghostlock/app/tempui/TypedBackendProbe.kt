@@ -309,6 +309,25 @@ object TypedBackendProbe {
                 (block?.joinToString("") { byte -> "%02x".format(byte) } ?: "none") +
                 " refusal=" + session.lastRefusal,
         )
+        /* 分步拼装（拼装顺序写在 Kotlin 里）：开门 → socket → 拼接面 → 落地 → 拉起 → 收尾。 */
+        val stepwiseHandle = Native43284.create()
+        val stepwise = Assembled43284(stepwiseHandle)
+        stepwise.initialize(init43284())
+        val stepTarget = stepwise.openTargetStepwise(doorPath)
+        step("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
+        val stepSocket = stepwise.openEspSocket()
+        step("typed: stepwise 43284 socket=" + stepSocket + " refusal=" + stepwise.lastRefusal)
+        val stepSurface = stepwise.buildSurface()
+        step("typed: stepwise 43284 surface=" + stepSurface + " refusal=" + stepwise.lastRefusal)
+        val stepLanding = stepwise.buildLanding()
+        step("typed: stepwise 43284 landing=" + stepLanding + " refusal=" + stepwise.lastRefusal)
+        val stepUp = stepwise.bringUpLanding()
+        step("typed: stepwise 43284 bringUp=" + stepUp + " refusal=" + stepwise.lastRefusal)
+        val stepSeq = stepwise.nextSequence()
+        step("typed: stepwise 43284 sequence=" + stepSeq)
+        val stepTorn = stepwise.tearDown()
+        step("typed: stepwise 43284 tearDown=" + stepTorn + " refusal=" + stepwise.lastRefusal)
+        step("typed: stepwise 43284 destroy=" + Native43284.destroy(stepwiseHandle, arrayOf("")))
         val closed = session.close()
         step("typed: assembled 43284 close ok=" + closed)
     }
