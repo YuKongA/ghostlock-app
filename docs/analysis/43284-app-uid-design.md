@@ -146,3 +146,27 @@ payload（退役树那次：shellcode 480 B，payload_max=2520）要放进目标
 **并且这条判定也必须由原语给出**（Kotlin 连尺寸都拿不到，因为 open 被拒）：
 probeReadPath 除了「打开 + splice」还应当回**文件尺寸**（fstat），由 Kotlin 算 slack 并比较 payload 长度；
 这样候选选择就完全建立在「链子自己能碰到的事实」上。
+
+### 8.6 白名单是「经验账」，不是上游四件（用户 2026-10-15 修正）
+
+规则：**任何有通过经验的库都进白名单**，与它出自哪个上游无关；白名单优先检测，不合格再用枚举项逐个试。
+每条经验都要带**出处**（哪次通过 / 哪台设备 / 什么证据），以后每有一处新通过就追加一条，只增不减（可标注失效）。
+
+| 角色 | 路径 | 出处（通过经验） | 本机 app uid 现状 |
+|---|---|---|---|
+| hook 目标 | /system/lib64/libc++.so | 退役树 B5-9h 就是打在它的 sentry 上并通过（0xb70a8 → 0xb70ac） | 实测可读，slack 1824 ✓ |
+| carrier | /vendor/lib64/libbinderdebug.so | 退役树 B5-9h 的载体并通过（.ko 写在它里面，再由 vendor_modprobe insmod） | Kotlin 视角 EACCES，**待原语判定** |
+| carrier | /vendor/lib64/libstagefrighthw.so | dirtyfrag 的上游通过经验 | Kotlin 视角 EACCES，待原语判定 |
+| carrier | /vendor/lib64/libstagefright_aidl_bufferpool2.so | dirtyfrag 的上游通过经验 | 本机不存在 |
+| carrier | /vendor/lib64/libbsp_module.so | dirtyfrag 的上游通过经验 | 本机不存在 |
+| carrier（回退） | /data/local/tmp/ghostlock-carrier | 我们自己的开发载体（本机可读写可 splice） | ✓ |
+
+**检测顺序**（按用户修正）：
+
+1. **枚举**：/vendor/lib64（先一层；不够再算子目录）与 /system/lib64 —— 由原语 probeListDir 做（Kotlin 列目录可能被拒）；
+2. **白名单优先**：上表的条目逐个跑五步判定（存在 / 原语级只读打开 / 从该 fd splice / 含目标模式 / 末页 slack 足够）；
+3. **枚举项兜底**：白名单都不合格时，对其余枚举出来的 .so 逐个试同一判定；
+4. **全败**：具名 carrier-none-usable，回退开发载体并由 LKM/UMH 阶段把它放到可 insmod 的路径。
+
+**判定的两把尺子分开**：hook 目标看「含 sentry 模式 + 末页 slack」；carrier 看「可写进字节（页缓存）+ 所在路径可被允许的域 insmod」。
+同一个路径可以同时被标两种角色，但判定各按各的尺子。
