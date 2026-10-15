@@ -64,7 +64,7 @@ class TempUiActivity : ComponentActivity() {
                     onProbe = ::probeNative,
                     onContracts = ::reportContracts,
                     onGate = ::runDeviceGate,
-                    onAttack = ::runAttack,
+                    onAttackStreaming = ::onAttackStreaming,
                     onPlan = ::runPlans,
                 )
             }
@@ -102,6 +102,12 @@ class TempUiActivity : ComponentActivity() {
      *        所以对调用者仍是同步语义 —— 房间里没有留下没被等的异步。
      *  @return 每一步的结局（与 logcat 的 GhostlockTyped 相同）。
      */
+    /** 流式攻击：每一行实时回调给界面（界面据此逐行上屏）。 */
+    private fun onAttackStreaming(emit: (String) -> Unit): List<String> {
+        GhostLog.i(TAG_UI, "tempui: full 43284 attack start (streaming)")
+        return TypedBackendProbe.run(applicationContext, emit)
+    }
+
     private fun runAttack(): List<String> {
         GhostLog.i(TAG_UI, "tempui: full 43284 attack start")
         val lines = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -126,7 +132,7 @@ private fun TempUiScreen(
     onProbe: () -> List<String>,
     onContracts: () -> List<String>,
     onGate: () -> List<String>,
-    onAttack: () -> List<String>,
+    onAttackStreaming: ((String) -> Unit) -> List<String>,
     onPlan: () -> List<String>,
 ) {
     val lines = remember { mutableStateListOf<String>() }
@@ -134,6 +140,23 @@ private fun TempUiScreen(
     val scope = rememberCoroutineScope()
 
     /* 重活一律走 IO 线程：界面立刻可点（此前主线程被占住 ⇒ 按钮全无响应），且异常变成一行文字而不是崩溃。 */
+    /* 流式版本：动作每产生一行就上屏（攻击链要跑半分钟以上，不能等它结束才显示）。 */
+    fun runStreaming(what: String, action: (((String) -> Unit)) -> List<String>) {
+        scope.launch {
+            val collected = mutableListOf<String>()
+            val out = runCatching {
+                withContext(Dispatchers.IO) {
+                    action { line -> collected += line; lines += line }
+                }
+            }.getOrElse { problem ->
+                listOf(what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: ""))
+            }
+            if (out.isNotEmpty() && collected.isEmpty()) {
+                lines += out
+            }
+        }
+    }
+
     fun runHeavy(what: String, action: () -> List<String>) {
         scope.launch {
             val out = runCatching { withContext(Dispatchers.IO) { action() } }
@@ -154,7 +177,7 @@ private fun TempUiScreen(
             components.Action("界面套件: " + components.label + "（点我切换）") { onToggleKit() }
         }
         components.Actions {
-            components.Action("★ 完整攻击（43284：写 patch#1 → 载体 → hook → trigger → wait）") { runHeavy("攻击") { onAttack() } }
+            components.Action("★ 完整攻击（43284：写 patch#1 → 载体 → hook → trigger → wait）") { runStreaming("攻击") { emit -> onAttackStreaming(emit) } }
         }
         components.Actions {
             components.Action("设备门禁") { runHeavy("门禁") { onGate() } }

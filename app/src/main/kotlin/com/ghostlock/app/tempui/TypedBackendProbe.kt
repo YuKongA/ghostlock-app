@@ -54,12 +54,33 @@ object TypedBackendProbe {
     /** 本次会话的 ESP 源端口：由一次真实 bind 取得（照上游：开 DatagramSocket → getLocalPort → close）。 */
     @Volatile private var saSenderPort: Int = 0
 
+    /** 逐行回调：界面要在**过程中**看到每一行（跑完才返回的列表看不见进度）。 */
+    @Volatile
+    private var lineListener: ((String) -> Unit)? = null
+
+    /**
+     *  跑两个 backend 的探针，并把每一行**实时**交给 @p onLine。
+     *
+     *  @param context 应用上下文（建 SA 要用）。
+     *  @param onLine 每产生一行就调用一次（在工作线程上）。
+     *  @return 与 onLine 收到内容相同的完整列表。
+     */
+    fun run(context: android.content.Context, onLine: (String) -> Unit): List<String> {
+        lineListener = onLine
+        return try {
+            run(context)
+        } finally {
+            lineListener = null
+        }
+    }
+
     fun run(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
         fun step(line: String) {
             lines += line
             GhostLog.i(TAG, line)
+            lineListener?.invoke(line)
         }
         /*
          *  43284 的唯一阻塞项的**关键一问**（纯 Kotlin，不需要 native）：
