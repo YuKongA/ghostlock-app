@@ -331,6 +331,12 @@ class Assembled43284(
         params: com.ghostlock.app.core.generated.AccessParams43284,
         init: Init43284,
     ): Boolean {
+        /* 没有句柄就没得初始化：不许返回 true（2026-10-15 真机暴露的 bug）。 */
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "access:no-handle"
+            return false
+        }
         accessParamsLast = params
         val refusal = refusalSlot()
         val code = Native43284.accessInitialize(handle, accessId, params, init, refusal)
