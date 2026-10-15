@@ -156,9 +156,19 @@ object TypedBackendProbe {
         )
 
         /* 门：真的以 O_RDWR 打开一个本应用可写的文件（用自身的缓存目录），再看一个不存在的路径。 */
-        val doorPath = java.io.File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp",
-                                    "ghostlock-door-probe")
-        doorPath.writeBytes(ByteArray(16) { 0x5A })
+        /*
+         * 门的目标：优先用设备上那份**一次性载体**（16 KiB、world-writable，退役链当年就用它），
+         * 因为 ESP 写需要「旧块内容」才能组出向量 —— 16 字节的小文件写到第二块就没有旧块了（NoOldBlock）。
+         * 退路才是应用自己的缓存目录里的自建文件。
+         */
+        val sharedCarrier = java.io.File("/data/local/tmp/ghostlock-carrier")
+        val doorPath = if (sharedCarrier.canRead() && sharedCarrier.canWrite() && sharedCarrier.length() >= 4096L) {
+            sharedCarrier
+        } else {
+            java.io.File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp", "ghostlock-door-probe").apply {
+                writeBytes(ByteArray(16) { 0x5A })
+            }
+        }
         val ticket = LongArray(1)
         code = Native43284.resolveTarget(
             handle,
