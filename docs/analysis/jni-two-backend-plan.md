@@ -727,6 +727,36 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 2. 批②：把 device_write_block 拆成 landBlock/adoptSequence/nextSequence 三个原语，readBlock 保留；
 3. 批③：新增 Access 线（makeAccess/accessInitialize/writeImageVerified/writeHook）；
 4. 批④：Kotlin 侧编排（先探针、后正式链）替换现在 native 里的装配与写目标；之后 device_resolve 只留 openTarget/closeTarget 语义。
+
+### §11.19 批①要加的契约行（照抄用；2026-10-15 定稿）
+
+D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 VerifyTarget43284.ticket / WriteBlock43284.ticket / ReadBlock43284.ticket（都 LONG）。
+批①新增四个组（加既有的 CloseTarget43284/CloseSurface43284/DestroyLanding43284 三个只带 id 的收尾组）：
+
+    GL_ATTACK_FIELD(OpenTarget43284,   path,     BYTES)   // 入参：载体路径（Kotlin 给）
+    GL_ATTACK_FIELD(OpenTarget43284,   targetId, LONG)    // 出参：Kotlin 持有的句柄
+    GL_ATTACK_FIELD(ConnectEsp43284,   targetId, LONG)
+    GL_ATTACK_FIELD(ConnectEsp43284,   socketId, LONG)
+    GL_ATTACK_FIELD(MakeSurface43284,  targetId, LONG)
+    GL_ATTACK_FIELD(MakeSurface43284,  socketId, LONG)
+    GL_ATTACK_FIELD(MakeSurface43284,  surfaceId, LONG)
+    GL_ATTACK_FIELD(MakeLanding43284,  surfaceId, LONG)
+    GL_ATTACK_FIELD(MakeLanding43284,  landingId, LONG)
+
+语义（写在字段注释里，两端口径一致）：
+
+- 句柄是**不透明 id**（Kotlin 只传回，不解释）；native 侧按 id 查表；
+- 谁建谁拆：openTarget/closeTarget、makeSurface/destroySurface、makeLanding/destroyLanding 成对；
+- 句柄 0 恒表示「没有」；无效 id ⇒ 既有的 stale-handle（-5）；
+- 拼装顺序（写在文档、不在 native）：openTarget → connectEsp → makeSurface → makeLanding → bringUp(landing, sa) → landBlock/readBlock/adoptSequence → Access 线 → 收尾逆序。
+
+落地步骤（下一轮，一批一类事）：
+
+1. 往 core/src/jni/attack_contract_fields.def 加上面九行；
+2. ./gradlew exportJniAttackContract（生成 Kotlin DTO、native Values、读取器、manifest）；
+3. 宿主测试补新组的字段断言（生成的那份测试若断言组数/字段数，同步更新）；checkAll 绿；
+4. native 里加四个薄原语（按 id 查表 + 调一个既有原语 + 回来），**同时删掉 Landing43284 与 g_session**（§11.18 标定的违规点）；
+5. Kotlin 探针改成分步调用（这就是「拼装只在 Kotlin」的落地）；deviceGate 绿 + 归档。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
