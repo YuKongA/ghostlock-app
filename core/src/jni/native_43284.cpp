@@ -456,4 +456,34 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_adoptSequ
                   adopted ? "" : "stale-target", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_landBlock(
+        JNIEnv *env, jclass, jlong, jlong landingId, jlong offset, jbyteArray block,
+        jobjectArray refusal_out) {
+    if (block == nullptr || env->GetArrayLength(block) != 16) {
+        return answer(env, CallCode::BadParameters, "bad-width", refusal_out);
+    }
+    std::uint8_t bytes[16] = {};
+    env->GetByteArrayRegion(block, 0, 16, reinterpret_cast<jbyte *>(bytes));
+    const bool written = ghostlock::jni::device_land_block(
+        static_cast<std::uint64_t>(landingId), static_cast<std::uint64_t>(offset), bytes);
+    return answer(env, written ? CallCode::Ok : CallCode::Failed,
+                  written ? "" : "block-refused", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_readLandingBlock(
+        JNIEnv *env, jclass, jlong, jlong landingId, jlong offset, jbyteArray out,
+        jobjectArray refusal_out) {
+    if (out == nullptr || env->GetArrayLength(out) != 16) {
+        return answer(env, CallCode::BadParameters, "bad-width", refusal_out);
+    }
+    std::uint8_t bytes[16] = {};
+    const bool read = ghostlock::jni::device_read_landing_block(
+        static_cast<std::uint64_t>(landingId), static_cast<std::uint64_t>(offset), bytes);
+    if (read) {
+        env->SetByteArrayRegion(out, 0, 16, reinterpret_cast<const jbyte *>(bytes));
+    }
+    return answer(env, read ? CallCode::Ok : CallCode::Failed,
+                  read ? "" : "block-read-refused", refusal_out);
+}
+
 }  // extern "C"

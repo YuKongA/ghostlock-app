@@ -586,5 +586,39 @@ namespace ghostlock::jni {
         return true;
     }
 
+    /**
+     *  往落地对象写一块（十六字节）：ESP 路线的写入口。
+     *
+     *  @return 写成功 true（只到 Dispatched；内容是否真落上由随后 read_block 比较判定）。
+     */
+    bool device_land_block(const std::uint64_t landingId, const std::uint64_t offset,
+                           const std::uint8_t *block) noexcept {
+        if (landingId == 0U || block == nullptr) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return false;
+        }
+        return g_landings[slot]->land_block(offset, block);
+    }
+
+    /**
+     *  从落地对象读回一块（十六字节）：走同一个窗口的读路径，与写回的原文比较用。
+     *
+     *  @return 整读成功 true。
+     */
+    bool device_read_landing_block(const std::uint64_t landingId, const std::uint64_t offset,
+                                   std::uint8_t *out) noexcept {
+        if (landingId == 0U || out == nullptr) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return false;
+        }
+        return g_landings[slot]->read_block(offset, out);
+    }
+
 }  // namespace ghostlock::jni
 

@@ -96,6 +96,12 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** 往落地对象写一块（十六字节）；失败时 refusalOut[0] 为 block-refused。 */
+    external fun landBlock(handle: Long, landingId: Long, offset: Long, block: ByteArray, refusalOut: Array<String>): Int
+
+    /** 从落地对象读回一块（十六字节）；失败时 refusalOut[0] 为 block-read-refused。 */
+    external fun readLandingBlock(handle: Long, landingId: Long, offset: Long, out: ByteArray, refusalOut: Array<String>): Int
+
     /** 用会话参数把落地对象拉起来；失败时 refusalOut[0] 为 bring-up-refused。 */
     external fun bringUp(handle: Long, landingId: Long, params: Init43284, refusalOut: Array<String>): Int
 

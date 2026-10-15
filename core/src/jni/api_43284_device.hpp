@@ -21,6 +21,13 @@ namespace ghostlock::jni {
     /** @return 关掉一个 socket；fd < 0 则为 false。 */
     [[nodiscard]] bool device_close_socket(int fd) noexcept;
 
+    /** @return 往落地对象写一块（十六字节）。 */
+    [[nodiscard]] bool device_land_block(std::uint64_t landingId, std::uint64_t offset,
+                                         const std::uint8_t *block) noexcept;
+    /** @return 从落地对象读回一块（十六字节）。 */
+    [[nodiscard]] bool device_read_landing_block(std::uint64_t landingId, std::uint64_t offset,
+                                                 std::uint8_t *out) noexcept;
+
     /** @return 用会话参数的材料把落地对象拉起来。 */
     [[nodiscard]] bool device_bring_up(std::uint64_t landingId, const Init43284Values &params) noexcept;
     /** @return 窗口的下一个序号；id 无效 ⇒ 0。 */
