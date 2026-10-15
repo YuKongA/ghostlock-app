@@ -269,8 +269,8 @@ object TypedBackendProbe {
     private fun init43284() = Init43284(
         spi = 0x1234,
         encapPort = 4500,
-        /* 发送端口交给内核挑（0 = 临时端口）：端口策略属于 Kotlin 的决定，也顺手排除「4501 被占」这一假设。 */
-        senderPort = 0,
+        /* 发送端口：4500/4501 在本机被占（真机 bind 失败），换一个高位端口 —— 端口由 Kotlin 决定。 */
+        senderPort = 45011,
         icvLength = 16,
         aesKey = ByteArray(32) { 0xA5.toByte() },
         hmacKey = ByteArray(32) { 0x5A.toByte() },
