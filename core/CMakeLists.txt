@@ -178,7 +178,12 @@ target_include_directories(ghostlock_core PUBLIC
 )
 target_include_directories(ghostlock_core SYSTEM PUBLIC ${GL_NLOHMANN_DIR})
 target_compile_options(ghostlock_core PRIVATE ${GL_WARNINGS})
-target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua)
+if(ANDROID)
+  # 日志在目标侧走 __android_log_print（liblog）；宿主侧走 stderr，不需要它。
+  target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua log)
+else()
+  target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua)
+endif()
 
 # ---------------------------------------------------------------------------
 # 可执行体：host ⇒ build/host，android ⇒ build/native。
