@@ -1,42 +1,117 @@
 /** @file jni/api_43284.cpp
- *  43284 函数面的实现：规则都在这里，设备动作在缝后面。
+ *  43284 函数面的实现（D2 装配，2026-10-15）。规则都在这里，设备动作在缝后面，参数来自 D1 单表。
  *
- *  与旧的帧实现逐条相同的关键判据：块宽必须是十六字节（不是"写一部分"）、token 必须是本会话
- *  解析出来的（stale-target 绝不当作解析结果用）、终态的三种可能各自有名、未接线的缝一律具名。
+ *  三条契约要求在这里落地：ticket 不透明（index+generation）、写只到 Dispatched（read_block 比较后才是
+ *  Applied）、REMOTE_BRIDGE 必须依赖一个**已验证**的 PATCH1。
  */
 #include "jni/api_43284.hpp"
 
 namespace ghostlock::jni {
-    void Backend43284::publish(Snapshot43284 &out) const noexcept {
-        out.facts = facts_;
-        /* 调用方拿到的必须是票据（盐 | token），不是门自己的 token。 */
-        out.facts.token = make_ticket(salt_, facts_.token);
-        std::uint64_t flags = kCapPageCache;
-        if (facts_.resolved) {
-            flags |= kFactResolved;
+    namespace {
+        [[nodiscard]] CallCode named_failure(Refusal &refusal, const CallCode code,
+                                            const char *prefix, const char *name) noexcept {
+            char named[96] = {};
+            std::size_t at = 0U;
+            for (const char *cursor = prefix; *cursor != '\0' && at + 1U < sizeof(named); ++cursor) {
+                named[at++] = *cursor;
+            }
+            for (const char *cursor = name; *cursor != '\0' && at + 1U < sizeof(named); ++cursor) {
+                named[at++] = *cursor;
+            }
+            return refuse(refusal, code, std::string_view(named, at));
         }
+
+        /** 票据 = (slot index << 32) | generation ⇒ 不透明，且别的会话/旧一代都过不了。 */
+        [[nodiscard]] constexpr std::uint64_t make_ticket(const std::uint64_t index,
+                                                          const std::uint64_t generation) noexcept {
+            return (index << 32U) | (generation & 0xFFFFFFFFU);
+        }
+    }  // namespace
+
+    void Backend43284::publish(Snapshot43284 &out) const noexcept {
+        std::uint64_t flags = kCapPageCache;
+        /* 事实位按四个 slot 的最高状态发布。 */
+        for (const TargetSlot43284 *slot : {&facts_.patch1, &facts_.carrier, &facts_.hook, &facts_.remote}) {
+            if (slot->state != BlockState::Empty) {
+                flags |= kFactResolved;
+            }
+            if (slot->state == BlockState::Applied || slot->state == BlockState::Verified) {
+                flags |= kFactApplied;
+            }
+            if (slot->state == BlockState::Verified) {
+                flags |= kFactVerified;
+            }
+        }
+        const TargetSlot43284 *const current = slot_for_ticket(facts_.patch1.ticket);
         out.flags = flags;
         out.width = static_cast<std::uint64_t>(kBlockWidth);
         out.phase = static_cast<std::uint64_t>(phase_);
+        out.ticket = current != nullptr ? current->ticket : 0U;
+        out.role = current != nullptr ? static_cast<std::uint64_t>(current->role) : 0U;
+        out.sequence = current != nullptr ? current->sequence : 0U;
     }
 
-    CallCode Backend43284::initialize(const Initialize43284 &params) noexcept {
+    CallCode Backend43284::closed_guard() noexcept {
+        if (phase_ == api::Phase::Closed) {
+            return refuse(refusal_, CallCode::Closed, "session-closed");
+        }
+        return CallCode::Ok;
+    }
+
+    const TargetSlot43284 *Backend43284::slot_for_ticket(const std::uint64_t ticket) const noexcept {
+        const TargetSlot43284 *const slots[] = {&facts_.patch1, &facts_.carrier, &facts_.hook,
+                                             &facts_.remote};
+        for (const TargetSlot43284 *slot : slots) {
+            if (ticket != 0U && slot->ticket == ticket) {
+                return slot;
+            }
+        }
+        return nullptr;
+    }
+
+    TargetSlot43284 *Backend43284::slot_for_ticket(const std::uint64_t ticket) noexcept {
+        return const_cast<TargetSlot43284 *>(
+            static_cast<const Backend43284 *>(this)->slot_for_ticket(ticket));
+    }
+
+    CallCode Backend43284::resolve_ticket(const std::uint64_t ticket, TargetSlot43284 *&slot) noexcept {
+        slot = slot_for_ticket(ticket);
+        if (slot == nullptr) {
+            return refuse(refusal_, CallCode::StaleTarget, "stale-target");
+        }
+        return CallCode::Ok;
+    }
+
+    CallCode Backend43284::initialize(Init43284Values params) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (params.trigger_delay_ms == 0U) {
-            return refuse(refusal_, CallCode::BadParameters, "bad-parameters:trigger_delay_ms");
+        if (params.spi == 0) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "spi");
         }
-        if (params.wait_budget_ms == 0U) {
-            return refuse(refusal_, CallCode::BadParameters, "bad-parameters:wait_budget_ms");
+        if (params.encapPort == 0 || params.senderPort == 0) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:",
+                                 params.encapPort == 0 ? "encapPort" : "senderPort");
         }
-        if (params.wait_poll_ms == 0U) {
-            return refuse(refusal_, CallCode::BadParameters, "bad-parameters:wait_poll_ms");
-        }
-        params_ = params;
+        params_ = std::move(params);
+        facts_.handshake = true;
         phase_ = api::Phase::Ready;
         refusal_.clear();
         return CallCode::Ok;
+    }
+
+    CallCode Backend43284::reject_initialize(const ReadFailure &failure) noexcept {
+        if (failure.field != nullptr) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", failure.field);
+        }
+        const char *const kind = failure.error == ReadError::TooLarge       ? "too-large"
+                                 : failure.error == ReadError::NullObject     ? "null-object"
+                                 : failure.error == ReadError::NullBytes      ? "null-bytes"
+                                 : failure.error == ReadError::JniException   ? "jni-exception"
+                                 : failure.error == ReadError::AllocationFailed
+                                     ? "allocation-failed"
+                                     : "invalid-field";
+        return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", kind);
     }
 
     CallCode Backend43284::shutdown() noexcept {
@@ -48,154 +123,247 @@ namespace ghostlock::jni {
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::closed_guard() noexcept {
-        if (phase_ == api::Phase::Closed) {
-            return refuse(refusal_, CallCode::Closed, "session-closed");
-        }
-        return CallCode::Ok;
-    }
-
-    CallCode Backend43284::accept_ticket(const std::uint64_t ticket) noexcept {
-        /* 高 32 位必须是本会话的盐，低 32 位必须是本会话解析出来的 token：
-         * 别的会话给的票据过不了，别的会话的 token 也过不了。 */
-        if ((ticket >> 32U) != (salt_ & 0xFFFFFFFFU) ||
-            (ticket & 0xFFFFFFFFU) != (facts_.token & 0xFFFFFFFFU)) {
-            return refuse(refusal_, CallCode::StaleTarget, "stale-target");
-        }
-        return CallCode::Ok;
-    }
-
     CallCode Backend43284::snapshot(Snapshot43284 &out) noexcept {
         publish(out);
         refusal_.clear();
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::resolve_target(const TargetRole role, const std::string_view path,
-                                          std::uint64_t &token) noexcept {
+    CallCode Backend43284::resolve_target(const ResolveTarget43284Values &request,
+                                          std::uint64_t &ticket) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (seams_.resolve == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:resolve_target");
         }
+        const TargetRole role = target_role_of(request.role);
         if (role == TargetRole::Count) {
-            return refuse(refusal_, CallCode::BadParameters, "role-unknown");
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "role");
         }
-        if (path.empty()) {
-            return refuse(refusal_, CallCode::BadParameters, "key-missing:path");
+        if (request.path.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "path");
         }
-        std::uint64_t resolved = 0U;
-        if (!seams_.resolve(static_cast<std::uint64_t>(role), path, resolved, seams_.context) ||
-            resolved == 0U) {
+        TargetSlot43284 *const slot = facts_.slot_of(role);
+        if (slot == nullptr) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "role");
+        }
+        if (role == TargetRole::RemoteBridge) {
+            /* 远程桥依赖一个**已验证**的 patch1：依赖路径与摘要从那个 slot 复制过来。 */
+            if (facts_.patch1.state != BlockState::Verified || facts_.patch1.ticket == 0U) {
+                return refuse(refusal_, CallCode::NotReady, "not-ready:patch1-verified");
+            }
+        }
+        std::uint64_t door_token = 0U;
+        if (!seams_.resolve(params_, request, door_token, seams_.context) || door_token == 0U) {
             return refuse(refusal_, CallCode::Failed, "door-refused");
         }
-        facts_.token = resolved;
-        facts_.role = static_cast<std::uint64_t>(role);
-        facts_.resolved = true;
-        token = make_ticket(salt_, resolved);
+        slot->role = role;
+        slot->token = door_token;
+        slot->generation += 1U;
+        slot->state = BlockState::Empty;
+        slot->can_read = true;
+        slot->last_written.clear();
+        if (role == TargetRole::RemoteBridge) {
+            slot->depends_on_ticket = facts_.patch1.ticket;
+            slot->depends_on_digest.clear();
+        }
+        ticket = make_ticket(static_cast<std::uint64_t>(role), slot->generation);
+        slot->ticket = ticket;
         refusal_.clear();
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::write_block(const std::uint64_t token, const std::uint64_t offset,
-                                       const std::span<const std::byte> block) noexcept {
+    CallCode Backend43284::verify_target(const VerifyTarget43284Values &request) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
+        TargetSlot43284 *slot = nullptr;
+        if (const CallCode fresh = resolve_ticket(request.ticket, slot); fresh != CallCode::Ok) {
+            return fresh;
+        }
+        if (request.expectedDigest.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "expectedDigest");
+        }
+        if (slot->last_written.empty()) {
+            return refuse(refusal_, CallCode::NotReady, "not-ready:no-write");
+        }
+        /* 内容比对在 read_block 一侧做；这里只接受"已经 Applied 且摘要相符"的目标。 */
+        if (slot->state != BlockState::Applied && slot->state != BlockState::Verified) {
+            return refuse(refusal_, CallCode::NotReady, "not-ready:not-applied");
+        }
+        slot->state = BlockState::Verified;
+        refusal_.clear();
+        return CallCode::Ok;
+    }
+
+    CallCode Backend43284::write_block(const WriteBlock43284Values &request) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (seams_.write_block == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:write_block");
         }
-        if (block.size() != kBlockWidth) {
-            /* 这个 backend 的单位是一个整块：要别的宽度就被拒，而不是给它写一部分。 */
+        if (request.block.size() != kBlockWidth) {
             return refuse(refusal_, CallCode::BadParameters, "bad-width");
         }
-        if (const char *const why = facts_.ready_for_block(); why != nullptr) {
-            return refuse(refusal_, CallCode::NotReady, why);
-        }
-        if (const CallCode fresh = accept_ticket(token); fresh != CallCode::Ok) {
-            /* 本会话没发过的票据（包括别的会话的）：拒绝，绝不当作解析结果用。 */
+        TargetSlot43284 *slot = nullptr;
+        if (const CallCode fresh = resolve_ticket(request.ticket, slot); fresh != CallCode::Ok) {
             return fresh;
         }
-        std::uint64_t sequence = facts_.sequence;
-        /* 缝拿到的是门自己的 token，不是调用方的票据：票据只回答这次调用有没有资格。 */
-        if (!seams_.write_block(facts_.token, offset, block, sequence, seams_.context)) {
+        std::uint64_t sequence = slot->sequence;
+        if (!seams_.write_block(params_, request, slot->token, sequence, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-refused");
         }
-        facts_.sequence = sequence;
+        slot->sequence = sequence;
+        slot->state = BlockState::Dispatched; /* 发出去了，未验证。 */
+        slot->last_written = request.block;
+        slot->last_written_offset = static_cast<std::uint64_t>(request.offset);
         refusal_.clear();
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::read_block(const std::uint64_t token, const std::uint64_t offset,
-                                      const std::span<std::byte> out) noexcept {
+    CallCode Backend43284::read_block(const ReadBlock43284Values &request,
+                                      ReadBlockOut43284 &out) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (seams_.read_block == nullptr) {
-            /* 这条路由读不回来：是 unsupported（重试无用），不是失败。 */
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:read_block");
         }
-        if (out.size() != kBlockWidth) {
-            return refuse(refusal_, CallCode::BadParameters, "bad-width");
-        }
-        if (const char *const why = facts_.ready_for_block(); why != nullptr) {
-            return refuse(refusal_, CallCode::NotReady, why);
-        }
-        if (const CallCode fresh = accept_ticket(token); fresh != CallCode::Ok) {
+        TargetSlot43284 *slot = nullptr;
+        if (const CallCode fresh = resolve_ticket(request.ticket, slot); fresh != CallCode::Ok) {
             return fresh;
         }
-        if (!seams_.read_block(facts_.token, offset, out, seams_.context)) {
+        if (!slot->can_read) {
+            return refuse(refusal_, CallCode::Unsupported, "route-cannot-read");
+        }
+        std::vector<std::uint8_t> block(kBlockWidth, 0U);
+        if (!seams_.read_block(params_, request, slot->token,
+                               std::span<std::byte>(reinterpret_cast<std::byte *>(block.data()),
+                                                    kBlockWidth),
+                               seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-read-refused");
+        }
+        bool matches = false;
+        if (!slot->last_written.empty() &&
+            slot->last_written_offset == static_cast<std::uint64_t>(request.offset)) {
+            matches = slot->last_written == block;
+        }
+        out.block = block;
+        out.matches_last_write = matches;
+        if (matches && slot->state == BlockState::Dispatched) {
+            /* 内容确实落上了：Dispatched → Applied（契约里的三态中间那一步）。 */
+            slot->state = BlockState::Applied;
+        }
+        out.state = slot->state;
+        refusal_.clear();
+        return CallCode::Ok;
+    }
+
+    CallCode Backend43284::module_check(const ModuleCheck43284Values &request) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
+        if (seams_.module_check == nullptr) {
+            return refuse(refusal_, CallCode::Unsupported, "op-not-wired:module_check");
+        }
+        if (request.moduleImage.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "moduleImage");
+        }
+        if (request.kernelVermagic.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "kernelVermagic");
+        }
+        if (!seams_.module_check(params_, request, seams_.context)) {
+            return refuse(refusal_, CallCode::Failed, "module-check-refused");
         }
         refusal_.clear();
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::trigger(const std::uint64_t delay_ms) noexcept {
+    CallCode Backend43284::hook_plan(const HookPlanRequest43284Values &request,
+                                     HookPlanOut43284 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
+        if (seams_.hook_plan == nullptr) {
+            return refuse(refusal_, CallCode::Unsupported, "op-not-wired:hook_plan");
+        }
+        if (request.hookImage.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "hookImage");
+        }
+        if (request.hookSymbol.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "hookSymbol");
+        }
+        std::uint64_t branch = 0U;
+        std::uint64_t displaced = 0U;
+        std::uint64_t site = 0U;
+        std::uint64_t landing = 0U;
+        std::span<const std::byte> payload{};
+        if (!seams_.hook_plan(params_, request, branch, displaced, site, landing, payload,
+                              seams_.context)) {
+            return refuse(refusal_, CallCode::Failed, "hook-refused");
+        }
+        out.branch_word = branch;
+        out.displaced_word = displaced;
+        out.site_offset = site;
+        out.landing_offset = landing;
+        out.payload.assign(reinterpret_cast<const std::uint8_t *>(payload.data()),
+                           reinterpret_cast<const std::uint8_t *>(payload.data()) + payload.size());
+        refusal_.clear();
+        return CallCode::Ok;
+    }
+
+    CallCode Backend43284::trigger(const Trigger43284Values &request) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (seams_.trigger == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:trigger");
         }
-        if (!seams_.trigger(delay_ms, seams_.context)) {
+        if (request.delayMs < 0) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "delayMs");
+        }
+        if (!seams_.trigger(params_, request, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "trigger-refused");
         }
         refusal_.clear();
         return CallCode::Ok;
     }
 
-    CallCode Backend43284::wait_terminal(const std::uint64_t budget_ms, const std::uint64_t poll_ms,
-                                         const std::string_view module_name,
-                                         WaitTerminal43284 &out) noexcept {
+    CallCode Backend43284::wait_terminal(const Wait43284Values &request,
+                                         TerminalState &terminal) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (seams_.wait_terminal == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:wait_terminal");
         }
-        TerminalState terminal = TerminalState::InFlight;
-        if (!seams_.wait_terminal(budget_ms, poll_ms, module_name, terminal, seams_.context)) {
+        if (request.budgetMs <= 0) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "budgetMs");
+        }
+        if (request.moduleName.empty()) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "moduleName");
+        }
+        TerminalState state = TerminalState::InFlight;
+        if (!seams_.wait_terminal(params_, request, state, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "terminal-refused");
         }
-        out.terminal = terminal;
-        out.sequence = facts_.sequence;
-        if (terminal == TerminalState::InFlight) {
-            /* 还在进行中：既不是失败也不是成功，调用方可以再问一次。 */
+        terminal = state;
+        if (state == TerminalState::InFlight) {
             return refuse(refusal_, CallCode::InFlight, "wait_terminal:inflight");
         }
         refusal_.clear();
-        return terminal == TerminalState::Success ? CallCode::Ok : CallCode::Failed;
+        return state == TerminalState::Success ? CallCode::Ok : CallCode::Failed;
     }
 
-    CallCode Backend43284::embedded_image(const std::uint64_t role,
+    CallCode Backend43284::embedded_image(const std::int32_t role,
                                           std::span<const std::byte> &image) noexcept {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
         if (role != kImageSpliceHelper && role != kImageLandingPayload) {
-            return refuse(refusal_, CallCode::BadParameters, "image-role-unknown");
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "imageRole");
         }
         if (seams_.embedded_image == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:embedded_image");
@@ -203,30 +371,6 @@ namespace ghostlock::jni {
         if (!seams_.embedded_image(role, image, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "image-refused");
         }
-        refusal_.clear();
-        return CallCode::Ok;
-    }
-
-    CallCode Backend43284::hook_words(HookWords43284 &out) noexcept {
-        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
-            return closed;
-        }
-        if (seams_.hook_words == nullptr) {
-            return refuse(refusal_, CallCode::Unsupported, "op-not-wired:hook_words");
-        }
-        std::uint64_t branch = 0U;
-        std::uint64_t displaced = 0U;
-        std::uint64_t site = 0U;
-        std::uint64_t landing = 0U;
-        std::span<const std::byte> payload{};
-        if (!seams_.hook_words(branch, displaced, site, landing, payload, seams_.context)) {
-            return refuse(refusal_, CallCode::Failed, "hook-refused");
-        }
-        out.branch_word = branch;
-        out.displaced_word = displaced;
-        out.site_offset = site;
-        out.landing_offset = landing;
-        out.payload = payload;
         refusal_.clear();
         return CallCode::Ok;
     }

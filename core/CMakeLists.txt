@@ -156,6 +156,7 @@ list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
 set(GL_JNI_PORTABLE_SRCS
   src/jni/api_43499.cpp
   src/jni/api_43284.cpp
+  src/jni/api_43284_device.cpp
   src/jni/session_protocol.cpp
   src/jni/session_handles.cpp
   src/jni/session_object.cpp
@@ -209,7 +210,7 @@ if(GL_JNI)
     src/jni/ops_43284_device.cpp
   )
   set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/native_43499.cpp)
-  set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/native_43284.cpp)
+  set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/api_43284_device.cpp src/jni/native_43284.cpp)
 
   # D1 单表生成的读取器是两个 backend 的只读边界组件；OBJECT target 保证两库都真实编译它，
   # 又不把同一源文件伪装成任一 backend 的私有实现。
@@ -319,7 +320,6 @@ set(GL_TEST_NAMES
   jni_session_lifecycle_test
   jni_ops_43499_test
   jni_ops_43284_test
-  jni_ops_43284_device_test
   kernel_access_test
   kmi_catalog_test
   leak_search_test
