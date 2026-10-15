@@ -1108,6 +1108,37 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 
 **注意 43499 与 43284 的差别**：43499 的访问是**按 route 选**（create_kernel_access_43499），
 所以它的 makeAccess 多一个 route 入参，而 route 取值来自**档案** —— 这也是「真实 profile 还需设计」的实质的一部分。
+
+### §11.36 决定性发现：43499 的 write/read 硬依赖「解析好的 profile 文档」（2026-10-15）
+
+读 backend/cve_2026_43499/access_params.hpp:35-46 的 Access43499Parameters：
+
+    profile::RouteId route;          // route（Unset 被 initialize 拒绝）
+    std::uint64_t offset; bool offset_set;
+    const profile::Document *document;   // ← **「解析好的文档」**：route/几何/调优计数/三个字段偏移全从它读
+    // 头注释：null 的那个会被**按名拒绝**，因为「一个在这些里猜过的访问就是另一次运行」
+
+也就是说 43499 的 initialize/write/read **必须拿到一份已解析的 profile 文档**，而这份文档正是目标里说的
+「真实 profile 还需进一步设计」那件事 —— 代码里明确拒绝猜（null document ⇒ 具名拒绝）。
+
+**于是两条链的剩余阻塞项恰好是目标里那两个未决项，而不是我这个边界写错了**：
+
+| 链 | 剩余阻塞 | 性质 |
+|---|---|---|
+| 43284 | 内核 SA（§11.33） | 外部前提（设备/系统权限），需用户定 A/B |
+| 43499 | 解析好的 profile 文档 | **设计工作**（真实 profile），目标明确说「还需进一步设计」 |
+
+两者都已由我这边把「边界/原语/拼装/包装类/真机入口」做实：
+
+- 43284：JNI 35 个薄原语 + Assembled43284 分步拼装（真机 bringUp=true）+ Access 线（真机 initialize ✅ / write ✅，只差回读）；
+- 43499：JNI 15 个薄原语 + Assembled43499 + 真机入口全通（三条 route 都取到访问对象、收尾干净）。
+
+**因此下一步的最优顺序（都不需要我猜）**：
+
+1. 若用户给出 43284 的前提（A 预置 SA）⇒ 直接跑 J7.5-4；
+2. 若要做 43499 ⇒ 必须先落 profile 文档的解析与装载（Kotlin 侧：读档案 → 解析成 Document → 通过新原语把文档句柄交给 native，
+   native 只按 id 持有，不解析、不决定）；这也是「真实 profile 设计」的正式开工点；
+3. 两条路都要各自一份真机判据（按裁定：前一阶段未过真机不得进下一阶段）。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
