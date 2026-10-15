@@ -117,4 +117,45 @@ namespace ghostlock::jni {
         return out.ok();
     }
 
+
+    /**
+     *  读一块（通道 PiWindow）。读回的字节由上层决定怎么用；失败给具名 why。
+     *
+     *  @param out    读到的字节（长度可能短于请求，由上层判断）。
+     *  @return 成功 true；失败给 why（Access 状态名）。
+     */
+    bool device_read_43499(const std::uint64_t accessId, const std::uint64_t route,
+                           const std::uint64_t offset, const std::uint64_t address,
+                           const std::size_t bytes, std::vector<std::uint8_t> &out,
+                           const char **why) noexcept {
+        if (why != nullptr) {
+            *why = nullptr;
+        }
+        out.clear();
+        if (accessId == 0U) {
+            if (why != nullptr) { *why = "read:no-handle"; }
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
+        if (slot >= kMaxAccesses43499 || g_accesses_43499[slot] == nullptr) {
+            if (why != nullptr) { *why = "read:stale-handle"; }
+            return false;
+        }
+        backend::cve_2026_43499::Access43499Parameters params{};
+        fill_access_params_43499(params, route, offset, true);
+        const auto back = g_accesses_43499[slot]->read(
+            address, bytes, ghostlock::contract::AccessChannel::PiWindow, params);
+        if (!back.ok()) {
+            if (why != nullptr) {
+                *why = ghostlock::contract::KernelAccess::status_name(back.status);
+            }
+            return false;
+        }
+        out.reserve(back.value.size());
+        for (const std::byte one : back.value) {
+            out.push_back(std::to_integer<std::uint8_t>(one));
+        }
+        return true;
+    }
+
 }  // namespace ghostlock::jni
