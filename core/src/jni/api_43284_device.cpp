@@ -140,11 +140,58 @@ namespace ghostlock::jni {
         }
     }
 
+    /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
+    struct OpenDoor final {
+        int fd = -1;
+        std::string path{};
+    };
+    constexpr std::size_t kMaxDoors = 8U;
+    OpenDoor g_doors[kMaxDoors] = {};
+
+    /** 关掉一个 slot 上的门（复用 slot 或替换目标时先关）。 */
+    void close_door(OpenDoor &door) noexcept {
+        if (door.fd >= 0) {
+            static_cast<void>(::close(door.fd));
+            door.fd = -1;
+        }
+        door.path.clear();
+    }
+
+    /**
+     *  开一扇门：以 O_RDWR 打开目标文件，并把 fd 的 slot 编号当 token 交出去。
+     *
+     *  这是门的第一半（能打开、能读写）；真正让写入"不改文件元数据地落进页缓存"的那一半是 ESP 路线
+     *  （write_block / read_block 接 landing 的 land_block/read_block），还没接线 —— 所以现在
+     *  写仍然是 block-refused，而不是"看起来写成功了"。
+     */
+    bool device_resolve(const Init43284Values &, const ResolveTarget43284Values &request,
+                        std::uint64_t &token, void *) noexcept {
+        const std::string path(reinterpret_cast<const char *>(request.path.data()), request.path.size());
+        if (path.empty()) {
+            return false;
+        }
+        const int fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            return false;
+        }
+        for (std::size_t index = 0U; index < kMaxDoors; ++index) {
+            if (g_doors[index].fd < 0) {
+                g_doors[index].fd = fd;
+                g_doors[index].path = path;
+                token = index + 1U;
+                return true;
+            }
+        }
+        static_cast<void>(::close(fd));
+        return false;
+    }
+
     /** 本构建能提供的 43284 缝（其余留空 ⇒ 那些函数以 op-not-wired 具名拒绝）。 */
     DeviceOps43284 device_ops_43284() noexcept {
         DeviceOps43284 ops{};
         ops.embedded_image = &device_embedded_image;
         ops.hook_plan = &device_hook_plan;
+        ops.resolve = &device_resolve;
         ops.module_check = &device_module_check;
         ops.wait_terminal = &device_wait_terminal;
         return ops;

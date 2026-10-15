@@ -154,10 +154,31 @@ object TypedBackendProbe {
                 " refusal=" + refusal[0],
         )
 
-        /* 真正的设备工作（门/块读写/模块校验/触发/等待）还没接线 ⇒ 具名拒绝。 */
+        /* 门：真的以 O_RDWR 打开一个本应用可写的文件（用自身的缓存目录），再看一个不存在的路径。 */
+        val doorPath = java.io.File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp",
+                                    "ghostlock-door-probe")
+        doorPath.createNewFile()
         val ticket = LongArray(1)
-        code = Native43284.resolveTarget(handle, resolve43284(), ticket, refusal)
-        step("typed: 43284 resolveTarget code=" + code + " refusal=" + refusal[0])
+        code = Native43284.resolveTarget(
+            handle,
+            com.ghostlock.app.core.generated.ResolveTarget43284(
+                role = 1, path = doorPath.absolutePath.toByteArray(), accessMode = 0,
+            ),
+            ticket,
+            refusal,
+        )
+        step("typed: 43284 resolveTarget code=" + code + " ticket=" + ticket[0] + " refusal=" + refusal[0])
+
+        val badTicket = LongArray(1)
+        code = Native43284.resolveTarget(
+            handle,
+            com.ghostlock.app.core.generated.ResolveTarget43284(
+                role = 2, path = "/no/such/door".toByteArray(), accessMode = 0,
+            ),
+            badTicket,
+            refusal,
+        )
+        step("typed: 43284 resolveTarget(bad) code=" + code + " refusal=" + refusal[0])
         code = Native43284.trigger(handle, com.ghostlock.app.core.generated.Trigger43284(150L), refusal)
         step("typed: 43284 trigger code=" + code + " refusal=" + refusal[0])
 

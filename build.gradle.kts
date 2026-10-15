@@ -533,7 +533,10 @@ tasks.register("deviceGate") {
         expected += "typed: 43499 shutdown-after-destroy code=-5 refusal=stale-handle"
         expected += "typed: 43284 library loaded"
         expected += "typed: 43284 initialize code=0"
-        expected += "typed: 43284 resolveTarget code=-3 refusal=op-not-wired:resolve_target"
+        /* 门现在会真的开：本应用自己的缓存目录能开（token>0），不存在的路径具名拒绝。 */
+        /* 票据 = (slot << 32) | generation：只断言开了且给了正票据，数字不写死。 */
+        expected += "typed: 43284 resolveTarget code=0 ticket="
+        expected += "typed: 43284 resolveTarget(bad) code=-4 refusal=door-refused"
 
         /* 43284 的数据 op：**新**函数面上尚未接线（旧帧路径仍提供两张图，上面已经按 manifest
          * 对拍过摘要），所以这里如实断言 op-not-wired —— 等 43284 的 D2 装配落地后再改成
