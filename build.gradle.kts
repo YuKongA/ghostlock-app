@@ -446,6 +446,10 @@ tasks.register("deviceGate") {
     val manifestFile = file("app/build/jni-protocol-manifest.tsv")
     val logFile = file("build/app/device-gate.log")
 
+    /* 要读运行时的 adb 输出，且每次都必须真跑（不许被缓存跳过）。 */
+    notCompatibleWithConfigurationCache("设备门禁读运行时的 adb 输出")
+    outputs.upToDateWhen { false }
+
     doLast {
         fun exec(vararg command: String): String {
             val process = ProcessBuilder(*command).redirectErrorStream(true).start()
@@ -455,18 +459,30 @@ tasks.register("deviceGate") {
             return text
         }
 
-        val devices = exec(adbExe, "devices").lines().count { it.endsWith("\tdevice") }
-        check(devices > 0) { "没有已连接的设备（adb devices 里没有 device 行）" }
+        /* 同一台机器可能同时挂在两条 transport 上（USB 与无线 adb，实测 2026-10-15）：
+         * 只认 USB 那条，并把 -s 传给每一步 —— 否则 adb 会以 "more than one device" 拒绝，
+         * 或者把 APK 装到一条通道、把 am start 发到另一条。 */
+        val listing = exec(adbExe, "devices", "-l")
+        /* -l 的行是 SERIAL<空白>device usb:... transport_id:N（adb 用空格对齐，不是 TAB），
+         * 所以按空白切：第二列是 device 且行里有 usb: 的，就是 USB 那条。 */
+        val usb_parts = listing.lines()
+            .map { line -> line.trim().split(Regex("\\s+")) }
+            .firstOrNull { parts -> parts.size >= 2 && parts[1] == "device" &&
+                                    parts.any { it.startsWith("usb:") } }
+        val serial = (findProperty("deviceSerial") as String?) ?: usb_parts?.firstOrNull()
+            ?: throw GradleException("没有 USB 设备（可用 -PdeviceSerial= 指定）：\n" + listing)
+        logger.lifecycle("deviceGate: 设备 " + serial)
+        fun adb(vararg args: String): String = exec(adbExe, "-s", serial, *args)
 
         val apk = apkDir.listFiles()?.filter { it.name.endsWith(".apk") }?.maxByOrNull { it.lastModified() }
         check(apk != null) { "没有 APK：先运行 :app:assembleDebug" }
 
         logger.lifecycle("deviceGate: 安装 " + apk!!.name)
-        exec(adbExe, "install", "-r", apk.absolutePath)
-        exec(adbExe, "logcat", "-c")
-        exec(adbExe, "shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
+        adb("install", "-r", apk.absolutePath)
+        adb("logcat", "-c")
+        adb("shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
         Thread.sleep(7000L)
-        val log = exec(adbExe, "logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I")
+        val log = adb("logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I")
         logFile.parentFile.mkdirs()
         logFile.writeText(log)
 
@@ -487,7 +503,7 @@ tasks.register("deviceGate") {
         /* 计划那几条：画像名与 release 由设备自己报（uname -r），声明的步骤由画像资产里的
          * available 队列决定 —— 两者都不手抄。43284 的 declared 是 PlanCatalog 的别名展开，
          * 该展开由 PlanCatalogTest 单测钉住。 */
-        val release = exec(adbExe, "shell", "uname", "-r").trim()
+        val release = adb("shell", "uname", "-r").trim()
         expected += "plan: profile=" + release + ".conf release=" + release + " generic=false schema=3"
         val profileText = file("app/src/main/assets/profile/" + release + ".conf").readText()
         val declared = profileText
