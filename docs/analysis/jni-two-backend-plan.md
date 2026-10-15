@@ -977,6 +977,29 @@ steps/pagecache_step_runner.cpp:55-61 的注释写明：
 
 **判据（真机）**：探针把 SA 建起来 → 经落地对象写 helper 镜像 → 期望写满 90 块且回读等于 helper 头部；
 届时把这行写进门禁，之后才进 batch ③（Access 线）与 J7.5-4。
+
+### §11.30 修正：公开 SDK 里没有 IpSecConfig —— 要用 IpSecTransform.Builder（2026-10-15 编译实测）
+
+按 §11.29 第一版写出来的代码编译不过：
+
+    Unresolved reference IpSecConfig（IpSecManager.createTransform 同样找不到）
+
+原因：IpSecConfig 与 IpSecManager.createTransform(IpSecConfig) 属**系统 API**，普通应用看不到。公开面是：
+
+    val transform = IpSecTransform.Builder(context)
+        .setEncryption(IpSecAlgorithm.AES_CBC, aesKey)
+        .setAuthentication(IpSecAlgorithm.HMAC_SHA1, hmacKey)
+        .buildTransportMode()
+    transform.applyToSocket(udpSocket)   // 我们自己那条已连接的 UDP socket
+
+两个要点：
+
+1. **公开 API 不让指定 SPI**（SPI 由系统分配），而 ESP 报文里的 SPI 必须与内核 SA 一致 ⇒
+   要么走「系统分配 SPI + 我们把 SPI 读回来传给 native」，要么这条路必须由系统权限侧（KernelSU/root）来建 SA；
+   这是下一批要先定的岔路 —— 它同时解释了这类攻击为什么在某些设备上依赖额外权限；
+2. 我们的 UDP socket 必须是**已连接**的（applyToSocket 的要求），与 native 侧 connect_esp 的做法一致。
+
+本批编译失败已回滚（树绿）；下一步先定岔路，再写代码。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
