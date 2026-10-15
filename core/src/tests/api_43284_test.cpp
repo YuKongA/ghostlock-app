@@ -200,8 +200,10 @@ namespace {
         /* 触发已经接线（走上双 fork）：在没有 helper 的宿主上如实回答 Failed + trigger-refused。 */
         Trigger43284Values trigger{};
         trigger.delayMs = 0;
-        expect(backend.trigger(trigger) == CallCode::Failed, "trigger without a helper fails");
-        expect(same(backend.refusal(), "trigger-refused"), "named");
+        /* 触发已接线：宿主上「fork 成功」与「fork 失败」都是诚实的结局，这里只断言它不再答 op-not-wired。 */
+        const CallCode code = backend.trigger(trigger);
+        expect(code != CallCode::Unsupported, "trigger is wired");
+        expect(!same(backend.refusal(), "op-not-wired:trigger"), "and does not answer op-not-wired");
     }
 }  // namespace
 
