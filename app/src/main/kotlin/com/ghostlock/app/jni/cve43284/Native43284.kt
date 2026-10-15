@@ -96,6 +96,24 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** @param out 一个 long：socket 句柄（失败时不写）；失败时 refusalOut[0] 为 esp-refused。 */
+    external fun espSocketId(handle: Long, params: Init43284, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 按 id 关 socket（谁建谁关）。 */
+    external fun closeSocketId(handle: Long, socketId: Long, refusalOut: Array<String>): Int
+
+    /** @param out 一个 long：拼接面句柄。 */
+    external fun makeSurface(handle: Long, targetId: Long, socketId: Long, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 拆拼接面（连它的落地对象一起）。 */
+    external fun destroySurface(handle: Long, surfaceId: Long, refusalOut: Array<String>): Int
+
+    /** @param out 一个 long：落地对象句柄。 */
+    external fun makeLanding(handle: Long, surfaceId: Long, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 拆落地对象。 */
+    external fun destroyLanding(handle: Long, landingId: Long, refusalOut: Array<String>): Int
+
     /** 建 ESP socket：0 成功；失败时 refusalOut[0] 为 esp-refused。 */
     external fun connectEsp(handle: Long, params: Init43284, refusalOut: Array<String>): Int
 

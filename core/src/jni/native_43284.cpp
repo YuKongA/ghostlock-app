@@ -345,4 +345,73 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_closeSock
                   closed ? "" : "bad-parameters:fd", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_espSocketId(
+        JNIEnv *env, jclass, jlong handle, jobject params, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    ghostlock::jni::Init43284Values values{};
+    ghostlock::jni::contract::ReadFailure failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, params, &values, &failure)) {
+        const auto outcome = refuse_read(handle, failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const std::uint64_t socket_id = ghostlock::jni::device_esp_socket_id(values);
+    if (socket_id == 0U) {
+        return answer(env, CallCode::Failed, "esp-refused", refusal_out);
+    }
+    const jlong written = static_cast<jlong>(socket_id);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_closeSocketId(
+        JNIEnv *env, jclass, jlong, jlong socketId, jobjectArray refusal_out) {
+    const bool done = ghostlock::jni::device_close_socket_id(static_cast<std::uint64_t>(socketId));
+    return answer(env, done ? CallCode::Ok : CallCode::StaleTarget,
+                  done ? "" : "stale-target", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_destroySurface(
+        JNIEnv *env, jclass, jlong, jlong surfaceId, jobjectArray refusal_out) {
+    const bool done = ghostlock::jni::device_destroy_surface(static_cast<std::uint64_t>(surfaceId));
+    return answer(env, done ? CallCode::Ok : CallCode::StaleTarget,
+                  done ? "" : "stale-target", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_destroyLanding(
+        JNIEnv *env, jclass, jlong, jlong landingId, jobjectArray refusal_out) {
+    const bool done = ghostlock::jni::device_destroy_landing(static_cast<std::uint64_t>(landingId));
+    return answer(env, done ? CallCode::Ok : CallCode::StaleTarget,
+                  done ? "" : "stale-target", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_makeSurface(
+        JNIEnv *env, jclass, jlong, jlong targetId, jlong socketId, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    const std::uint64_t made = ghostlock::jni::device_make_surface(static_cast<std::uint64_t>(targetId), static_cast<std::uint64_t>(socketId));
+    if (made == 0U) {
+        return answer(env, CallCode::Failed, "surface-refused", refusal_out);
+    }
+    const jlong written = static_cast<jlong>(made);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_makeLanding(
+        JNIEnv *env, jclass, jlong, jlong surfaceId, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    const std::uint64_t made = ghostlock::jni::device_make_landing(static_cast<std::uint64_t>(surfaceId));
+    if (made == 0U) {
+        return answer(env, CallCode::Failed, "landing-refused", refusal_out);
+    }
+    const jlong written = static_cast<jlong>(made);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
 }  // extern "C"
