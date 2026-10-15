@@ -1000,6 +1000,26 @@ steps/pagecache_step_runner.cpp:55-61 的注释写明：
 2. 我们的 UDP socket 必须是**已连接**的（applyToSocket 的要求），与 native 侧 connect_esp 的做法一致。
 
 本批编译失败已回滚（树绿）；下一步先定岔路，再写代码。
+
+### §11.31 公开 IPsec API 的接口含义：socket 必须由 app 拥有 ⇒ 接口要接受 Kotlin 给的 fd（2026-10-15）
+
+IpSecTransform.applyToSocket(socket) 只作用于**我们自己的那一条 socket**。而现在的分工是：
+socket 在 native 里由 device_connect_esp 建、fd 只存在 native 的 g_sockets 表里，Kotlin 拿不到 ⇒ **公开 API 这条路走不通**，除非改接口。
+
+这正是裁定说的「接口能力不足 ⇒ 改接口，而不是往 native 加逻辑」。改法（两条，取其一）：
+
+A. **Kotlin 建 socket、把 fd 借给 native**：新增原语 espFromFd(fd) → socketId；语义是**借用**：
+   native 不得关闭它（closeSocketId 对借用 fd 要拒绝并具名 borrowed-fd），谁建谁关仍归 Kotlin；
+   然后 Kotlin 用 IpSecTransform 把 SA 应用到该 socket，native 用同一 fd 发 ESP 报文 —— SPI 由系统分配这一点就自然解决（同一 socket + 同一 SA）。
+
+B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)），不建 socket 表：
+   更少的状态，但每个用到 socket 的原语都要多一个 fd 参数。
+
+两者都符合「拼装/写目标/收尾在 Kotlin」：谁建 socket、要不要应用 SA、何时关，全在 Kotlin；native 只按给定 fd 发报文。
+
+**建议取 A**（状态集中、原语签名不变），并在 closeSocketId 上加 borrowed 判定与具名拒绝。
+下一批：①加 espFromFd 原语（含借用标记）；②Kotlin 侧建 UDP socket + IpSecTransform.applyToSocket；
+③把该 socket 借给 native 当 ESP 通道；④复跑真机判据（写满 90 块且回读等于 helper 头部）。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
