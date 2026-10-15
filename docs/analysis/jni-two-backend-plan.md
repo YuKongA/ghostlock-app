@@ -637,7 +637,41 @@ J7.5-4 的顺序因此是：
 3. 然后 trigger → wait → 查 id。
 
 **下一步第一件事**：照抄驱动器里 patch_access 那一段的 surface 建法，确认它与普通写的差别。
-### §11.4 纪律（不因为这是临时逻辑而放松）
+
+### §11.16 驱动器里 patch#1 那条入口的原文（照抄用）
+
+        {
+            RealSpliceIo patch_surface(real_splice_io(), patch_fd);
+            PageCacheWrite patch_window(patch_door, patch_surface);
+            PageCacheLanding patch_landing(patch_window);
+            Access patch_access(&patch_landing);
+            const auto up = patch_access.initialize(params);
+            if (!up.ok()) {
+                std::printf("example: initialize refused for the patch target (%s)\n",
+                            ghostlock::contract::KernelAccess::status_name(up.status));
+                (void) ::close(patch_fd);
+                return 5;
+            }
+            const bool patched = phase_patch1(patch_access, params);
+            /* The carrier's window continues where this one stopped: one security association, one
+             *  sequence space, which is what the kernel's anti-replay window counts. */
+            spent_sequence = patch_window.next_seq();
+            (void) patch_access.shutdown();
+            if (!patched) {
+                (void) ::close(patch_fd);
+                return 6;
+            }
+        }
+    
+        /* Stack B: the carrier. The vendor path is the target the retired chain used; when this process
+         *  cannot open it, the patched helper is what reads and splices its page instead -- that is what
+         *  patch #1 was for. A carrier this process can open needs neither bridge. */
+        const char *carrier = params.carrier.bytes;
+        PageCacheDoorLinux door(carrier, params.carrier.length);
+        CrashDumpBridge bridge;
+        OldPageSource old_page{};
+
+##placeholder##### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
 2. 攻击关键路径改动按 AGENTS §8：真机门禁与 device-gates/ 归档，缺一不可；
