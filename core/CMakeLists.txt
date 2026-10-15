@@ -1,3 +1,4 @@
+
 # core/CMakeLists.txt -- the native tree's single build entry (Makefile 迁移批次, 2026-10-14).
 #
 # 取代 core/Makefile（已删除；历史见 git）与旧的 CLion-only 索引模型。四类产物：
@@ -235,20 +236,20 @@ if(GL_JNI)
   if(GL_JNI_SOURCES)
     add_library(ghostlock_jni SHARED ${GL_JNI_SOURCES})
     target_compile_options(ghostlock_jni PRIVATE ${GL_WARNINGS})
-    target_link_libraries(ghostlock_jni PRIVATE ghostlock_core)
+    target_link_libraries(ghostlock_jni PRIVATE ghostlock_core log)
     set_target_properties(ghostlock_jni PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
     # 每个 backend 一个 JNI 库（用户裁定 2026-10-14）：函数面是类型化的，不再有帧。
     add_library(ghostlock43499 SHARED ${GL_JNI_43499_SRCS})
     target_sources(ghostlock43499 PRIVATE $<TARGET_OBJECTS:ghostlock_attack_contract>)
     target_compile_options(ghostlock43499 PRIVATE ${GL_WARNINGS})
-    target_link_libraries(ghostlock43499 PRIVATE ghostlock_core)
+    target_link_libraries(ghostlock43499 PRIVATE ghostlock_core log)
     set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
     add_library(ghostlock43284 SHARED ${GL_JNI_43284_SRCS})
     target_sources(ghostlock43284 PRIVATE $<TARGET_OBJECTS:ghostlock_attack_contract>)
     target_compile_options(ghostlock43284 PRIVATE ${GL_WARNINGS})
-    target_link_libraries(ghostlock43284 PRIVATE ghostlock_core)
+    target_link_libraries(ghostlock43284 PRIVATE ghostlock_core log)
     set_target_properties(ghostlock43284 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
   else()
     message(STATUS "GL_JNI: src/jni 下暂无源文件 —— 边界库本次跳过")
