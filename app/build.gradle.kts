@@ -61,6 +61,7 @@ fun resolveNdkDir(): File {
 }
 
 val buildInfoSrc = layout.buildDirectory.dir("generated/source/buildInfo")
+val attackContractSrc = layout.buildDirectory.dir("generated/source/attackContract")
 
 val generateBuildInfo = tasks.register("generateBuildInfo") {
     description = "generateBuildInfo"
@@ -114,6 +115,7 @@ android {
     sourceSets {
         named("main") {
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
+            kotlin.directories.add(attackContractSrc.get().asFile.absolutePath)
             /* LKM images are generated (never committed); AGP forbids Provider here. */
             assets.directories.add(lkmGeneratedAssets.get().asFile.absolutePath)
             /* A6-4 finishing script, copied from the repository source. */
@@ -210,6 +212,7 @@ tasks.withType<Test>().configureEach {
 
 tasks.named("preBuild") {
     dependsOn(generateBuildInfo)
+    dependsOn(rootProject.tasks.named("exportJniAttackContract"))
 }
 
 /* The arm64 native payload is only needed by the tasks that merge/package the

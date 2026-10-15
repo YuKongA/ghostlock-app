@@ -27,9 +27,30 @@ object PlanCatalog {
      *
      * @return (步骤表, 拒绝名)；名单里出现未知 token 时返回 (空表, 具名拒绝)。
      */
+    /**
+     * profile 里的步名到本表的步骤。
+     *
+     * 43284 的 profile 只写一个 pagecache_write —— 那是整条链的驱动名，本表展开成它的五个子步
+     * （顺序即声明顺序）。这一层映射是有意的、只写一处：profile 说的是这台机器上跑哪条链，
+     * 本表说的是这条链由哪几步构成。
+     */
+    private val profileAliases: Map<String, List<StepId>> = mapOf(
+        "pagecache_write" to listOf(
+            StepId.Patch1,
+            StepId.Carrier,
+            StepId.Hook,
+            StepId.Trigger,
+            StepId.Wait,
+        ),
+    )
+
     fun fromTokens(tokens: List<String>): Pair<List<StepId>, String?> {
         val steps = mutableListOf<StepId>()
         for (token in tokens) {
+            profileAliases[token]?.let { expanded ->
+                steps += expanded
+                continue
+            }
             val step = StepId.ofToken(token) ?: return emptyList<StepId>() to ("step-unknown:" + token)
             steps += step
         }

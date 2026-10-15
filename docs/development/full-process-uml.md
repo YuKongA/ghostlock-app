@@ -400,11 +400,10 @@ sequenceDiagram
   N-->>N: 内核兜底（relay/enforce 恢复 + watchdog）
 ```
 
-## 4.5 JNI 边界与 Kotlin 步骤（2026-10-14 · J1–J7）
+## 4.5 JNI 边界与 Kotlin 步骤（2026-10-14 · typed JNI / D1）
 
-> 这一节记的是**跨端边界**：Kotlin 侧的计划与引擎、native 侧的会话与 op 层，以及两者之间那层
-> 具名协议。它是 J1–J7 的产物；设备侧的 seam（准备/搜索/受害/落字、门/splice/ESP/双 fork/终态等待）
-> 尚未接线，凡未接线者一律回答 op-not-wired:<名字>。
+> Round 13 已取代 J1–J7 的 `invoke(op, frame)`：每个 backend 一个 JNI 库，边界只接收普通 JVM
+> 字段。D1 只完成参数定义、生成和读取器形状；真实 seam 装配属于 D2，Kotlin 高阶步骤适配属于 D3。
 
 ### 4.5.1 Class（边界两侧）
 
@@ -424,14 +423,23 @@ classDiagram
     <<interface>>
     +open(request) AccessResult~AccessSession~
   }
-  class JniAccessSession {
-    +invoke(op, values, blobs) AccessResult~NativeReply~
+  class Native43499 {
+    +create() Long
+    +initialize(handle, Init43499) Int
+    +prepare(handle, Prepare43499) Int
+    +discover(handle, Discover43499) Int
+    +writeWord(handle, WordWrite43499) Int
+    +shutdown(handle) Int
+    +destroy(handle) Int
   }
-  class JniOpsInvoker {
-    +invoke(opName, values, blobs) OpsReply
-  }
-  class NativeProtocol {
-    +Builder(op) +parse(frame) Reply
+  class Native43284 {
+    +create() Long
+    +initialize(handle, Init43284) Int
+    +resolveTarget(handle, ResolveTarget43284) Int
+    +writeBlock(handle, WriteBlock43284) Int
+    +waitTerminal(handle, Wait43284) Int
+    +shutdown(handle) Int
+    +destroy(handle) Int
   }
   class StepEngine {
     +run(plan, inputs) List~StepResult~
@@ -443,32 +451,34 @@ classDiagram
     +declaredSteps(backend) +fromTokens(tokens)
   }
   class StepInputs
-  class Session_native["native Session"] {
-    +dispatch(op) FrameStatus
-  }
-  class Ops43499["Ops43499 (six ops)"] {
-    +write_word +initialize
-  }
-  class Ops43284["Ops43284 (seven ops)"] {
-    +resolve_target +hook_words +write_block
-  }
-  class BackendOps["BackendOps (function-pointer bundle)"]
+  class ContractTable["attack_contract_fields.def"]
+  class ContractCodegen["jni_attack_contract_codegen"]
+  class ContractDtos["generated Kotlin DTOs"]
+  class ContractReader["generated read<Group>()"]
+  class ContractManifest["generated TSV manifest"]
+  class Session43499["native Session43499"]
+  class Session43284["native Session43284"]
   class Seams43499["Ops43499Seams (device seam, J3b)"]
   class Seams43284["Ops43284Seams (device seam, J4b)"]
 
-  AccessSessionFactory ..> JniAccessSession : creates
-  JniAccessSession ..|> AccessSession
-  JniAccessSession --> NativeProtocol : frames
+  AccessSessionFactory ..> Native43499 : selects backend
+  AccessSessionFactory ..> Native43284 : selects backend
   StepEngine --> StepPlans : one step to call sequence
   StepEngine --> PlanCatalog : declared order
-  StepEngine ..> JniOpsInvoker : named calls
-  JniOpsInvoker ..> JniAccessSession : token to op/key code
-  JniAccessSession ..> Session_native : nativeSessionInvoke
-  Session_native --> BackendOps : per-backend bundle
-  BackendOps --> Ops43499 : backend 43499
-  BackendOps --> Ops43284 : backend 43284
-  Ops43499 ..> Seams43499 : absent today
-  Ops43284 ..> Seams43284 : data ops wired, device ops absent
+  StepEngine ..> Native43499 : typed high-level calls
+  StepEngine ..> Native43284 : typed high-level calls
+  ContractTable --> ContractCodegen
+  ContractCodegen --> ContractDtos
+  ContractCodegen --> ContractManifest
+  ContractTable --> ContractReader : preprocessor projection
+  ContractDtos --> Native43499
+  ContractDtos --> Native43284
+  Native43499 --> ContractReader
+  Native43284 --> ContractReader
+  Native43499 --> Session43499 : opaque handle
+  Native43284 --> Session43284 : opaque handle
+  Session43499 ..> Seams43499 : D2
+  Session43284 ..> Seams43284 : D2
 ```
 
 ```
@@ -477,14 +487,17 @@ classDiagram
 
 ```mermaid
 stateDiagram-v2
-  state "native SessionPhase" as N {
-    [*] --> declared
-    declared --> ready : initialize ok
-    declared --> failed : op refused / bad parameters
-    ready --> failed : op fails after ready
-    declared --> closed : shutdown + destroy
-    ready --> closed : shutdown + destroy
+  state "native backend session" as N {
+    [*] --> created
+    created --> initialized : initialize DTO validated
+    created --> failed : typed field/range refusal
+    initialized --> prepared : 43499 prepare / 43284 target resolve
+    prepared --> frozen : effect indeterminate
+    created --> closed : shutdown + destroy
+    initialized --> closed : shutdown + destroy
+    prepared --> closed : shutdown + destroy
     failed --> closed : shutdown + destroy
+    frozen --> closed : shutdown + destroy
   }
   state "Kotlin SessionPhase / CleanupDisposition" as K {
     [*] --> INITIALIZING
@@ -509,34 +522,32 @@ stateDiagram-v2
 sequenceDiagram
   participant U as temp UI / PlanRunner
   participant E as StepEngine
-  participant I as JniOpsInvoker
-  participant S as JniAccessSession
-  participant N as native Session
-  participant O as Ops (43499 / 43284)
+  participant K as Native43499 / Native43284
+  participant R as generated read Group
+  participant N as backend session
   participant D as device seam
   U->>E: run(declaredSteps(backend), inputs)
   E->>E: precondition: inputs complete?
   Note over E: missing value => Refused with zero calls
-  E->>I: invoke(opName, values, blobs)
-  I->>I: token to op/key code (manifest is the authority)
-  I->>S: invoke(op, values, blobs)
-  S->>N: nativeSessionInvoke(handle, op, frame)
-  N->>O: dispatch by backend
-  O->>D: seam call
+  E->>K: named function(handle, generated DTO)
+  K->>R: read Group(env, dto)
+  R->>R: field id/signature/fixed byte length
+  R-->>K: typed values or failed field
+  K->>N: validate ranges/generations and transact
+  N->>D: seam call
   alt seam not wired
-    D-->>O: absent
-    O-->>N: unsupported + op-not-wired:name
+    D-->>N: absent
+    N-->>K: unsupported + op-not-wired:name
   else seam wired
-    D-->>O: result
-    O-->>N: ok + fields
+    D-->>N: result
+    N-->>K: code + typed result
   end
-  N-->>S: reply frame (status + fields)
-  S-->>I: NativeReply (indeterminate => DIRTY)
-  I-->>E: OpsReply
+  K-->>E: NativeAnswer (indeterminate => DIRTY)
   E-->>U: StepResult (Ran / Refused / Frozen + calls)
 ```
 
-**门禁命令**（J7 起集中控制）：宿主 = ./gradlew checkAll（原生 CTest + app 单测）；真机 =
+**门禁命令**：D1 = `./gradlew exportJniAttackContract :nativeTestHost :app:testDebugUnitTest
+:nativeBuildAndroid`；真机 =
 ./gradlew deviceGate（装 APK → 起临时界面 → 抓 logcat → 按 native 导出的 manifest **机器校验**）；
 两者合起来 = ./gradlew gateAll。
 
@@ -546,5 +557,6 @@ sequenceDiagram
 - **引用**：`docs/analysis/adr/README.md` · `handoff-payload-batch-plan.md` · `contract-design.md` · `plugin-runtime-integration-design.md` · `root-manager-selection-design.md` · `docs/archive/*` · `engineering-rules.md` · `AGENTS.md`。
 - **两条新纪律（同批留痕）**：本件任何**新条目/新相位/新实现层**必须同时满足 —— ① **无名字→值表**（名字只允许 **dispatch 标识符** 与 **数据面键路径**；见 [target 附件](../analysis/lua-surface-annex-target.md) §C1）· ② **表达一致**（同一件事只允许一种表达，不得「首设 A 语法 / 后续 B 语法」；见 [lua-surface-design](../analysis/lua-surface-design.md) 开头）。
 - **沿革（2026-10-08 · 层族 10 → 9）**：**`race` 不再是层** —— `core/src/race/**`（5 文件）整体移入 **`backend/cve_2026_43499/race/`**，命名空间 `ghostlock::race` → `ghostlock::backend::cve_2026_43499::race`；`contract/layer_scope.hpp` 删 `race` 行（断言 10→**9**、7 保持），`settle` 的 `implements_layer` 由 `race` → **`backend`**。**理由 = 纠错**：PI-futex 是 **43499 专属**机制（43284 为 pagecache/UMH，不含 PI-futex），**旧树本就把 futex 机制放在 `backend/cve_2026_43499/leak/futex_hash.h`**；重写时错误地提为公共层，本次与 AGENTS「backend 按 CVE 分子命名空间」对齐。**守卫实证**：删层行而不改断言 ⇒ **四条 static_assert 同时失败**（`kLayerCount == 10` 与 surface 行指向不存在的层）⇒ 修正后才绿。
-- **沿革（2026-10-14 · J1-J7）**：新增 4.5 JNI 边界与 Kotlin 步骤（Class / 状态机 / Sequence 三张图）—— 边界把上层逻辑留 Kotlin、只有不可替代的核心进 JNI 落成 op 面：native 四个 extern（create/invoke/shutdown/destroy）+ GLKJ v1 帧 + 会话相位（declared/ready/failed/closed）；Kotlin 侧 AccessSession/能力接口 + core/steps 引擎（顺序 · 拒绝即停 · 缺前置零调用 · indeterminate 冻结）。门禁并入两件权威：宿主 ./gradlew checkAll、真机 ./gradlew deviceGate（按 native 导出的 manifest 机器校验）。
+- **沿革（2026-10-14 · J1-J7）**：旧形状为四个 extern + GLKJ v1 帧；Round 13 已明确取代，历史实现仍在树中，删除归后续独立批次。
+- **沿革（2026-10-14 · typed JNI / D1）**：4.5 改为每 backend 一个 JNI 库与具名函数；`attack_contract_fields.def` 单表投影 C++ 读取器、Kotlin DTO、TSV manifest，宿主逐字段哨兵与字段交换负例锁定顺序。D1 不宣称真实 seam 已接线。
 - **历史**：旧实现 UML = [old-full-process-uml.md](old-full-process-uml.md)（归档头含理由与恢复来源；登记见 `docs/archive/INDEX-plans.md` §七）。

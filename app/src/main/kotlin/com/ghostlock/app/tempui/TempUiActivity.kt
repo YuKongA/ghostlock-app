@@ -23,6 +23,7 @@ import com.ghostlock.app.core.SessionPhase
 import com.ghostlock.app.jni.Native
 import com.ghostlock.app.log.GhostLog
 import com.ghostlock.app.log.LogLevel
+import com.ghostlock.app.data.profile.AndroidAssetSource
 import com.ghostlock.app.ui.kit.AndroidUiKitStore
 import com.ghostlock.app.ui.kit.UiKit
 import com.ghostlock.app.ui.kit.UiKitController
@@ -83,7 +84,10 @@ class TempUiActivity : ComponentActivity() {
     /** 跑两个 backend 的声明计划；每一步的结局见 logcat 的 GhostlockPlan。 */
     private fun runPlans(): List<String> {
         GhostLog.i(TAG_UI, "tempui: run the declared plans")
-        return PlanRunner.run()
+        val source = AndroidAssetSource(assets)
+        val release = System.getProperty("os.version") ?: "unknown"
+        val outcomes = PlanRunner.run(release, source, source)
+        return outcomes.map { outcome -> outcome.summary() }
     }
 
     private fun runDeviceGate(): List<String> {

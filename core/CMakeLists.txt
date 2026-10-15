@@ -211,6 +211,12 @@ if(GL_JNI)
   set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/native_43499.cpp)
   set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/native_43284.cpp)
 
+  # D1 单表生成的读取器是两个 backend 的只读边界组件；OBJECT target 保证两库都真实编译它，
+  # 又不把同一源文件伪装成任一 backend 的私有实现。
+  add_library(ghostlock_attack_contract OBJECT src/jni/attack_contract_reader.cpp)
+  target_compile_options(ghostlock_attack_contract PRIVATE ${GL_WARNINGS})
+  target_link_libraries(ghostlock_attack_contract PRIVATE ghostlock_core)
+
   # 配置期硬断言：三份清单两两不相交（重叠即配置失败，不给编出来再说的机会）。
   foreach(pair "GL_JNI_LEGACY_SRCS;GL_JNI_43499_SRCS" "GL_JNI_LEGACY_SRCS;GL_JNI_43284_SRCS" "GL_JNI_43499_SRCS;GL_JNI_43284_SRCS")
     list(GET pair 0 gl_left)
@@ -232,11 +238,13 @@ if(GL_JNI)
 
     # 每个 backend 一个 JNI 库（用户裁定 2026-10-14）：函数面是类型化的，不再有帧。
     add_library(ghostlock43499 SHARED ${GL_JNI_43499_SRCS})
+    target_sources(ghostlock43499 PRIVATE $<TARGET_OBJECTS:ghostlock_attack_contract>)
     target_compile_options(ghostlock43499 PRIVATE ${GL_WARNINGS})
     target_link_libraries(ghostlock43499 PRIVATE ghostlock_core)
     set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
     add_library(ghostlock43284 SHARED ${GL_JNI_43284_SRCS})
+    target_sources(ghostlock43284 PRIVATE $<TARGET_OBJECTS:ghostlock_attack_contract>)
     target_compile_options(ghostlock43284 PRIVATE ${GL_WARNINGS})
     target_link_libraries(ghostlock43284 PRIVATE ghostlock_core)
     set_target_properties(ghostlock43284 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
@@ -301,6 +309,7 @@ set(GL_TEST_NAMES
   handle_generation_test
   heap_geometry_test
   api_43499_test
+  attack_contract_model_test
   handle_registry_test
   marshal_test
   api_43284_test
@@ -469,4 +478,11 @@ if(GL_TESTS)
       -DTOOL=${GL_BIN_DIR}/jni_protocol_manifest
       -DOUT=${GL_REPO_ROOT}/build/native/jni-protocol-manifest.tsv
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/checks/jni_protocol_manifest.cmake)
+
+  # D1 跨端定义生成器：只在宿主运行，输出位置由 Gradle 统一传入 build/。
+  add_executable(jni_attack_contract_codegen
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/attack_contract_codegen.cpp)
+  target_compile_options(jni_attack_contract_codegen PRIVATE ${GL_WARNINGS})
+  target_link_libraries(jni_attack_contract_codegen PRIVATE ghostlock_core)
+  set_target_properties(jni_attack_contract_codegen PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 endif()

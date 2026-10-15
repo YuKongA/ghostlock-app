@@ -224,6 +224,9 @@ tasks.register<Exec>("nativeBuildHost") {
     dependsOn("nativeConfigureHost")
     workingDir(rootDir)
     commandLine(glCmake, "--build", "build/cmake/host", "-j")
+    /* D1 host tools are generated from core/src too; without inputs a successful old build made Gradle
+     * skip CMake after a new executable was registered. */
+    inputs.files(fileTree("core/src"), file("core/CMakeLists.txt"))
     outputs.dir(layout.buildDirectory.dir("host"))
 }
 
@@ -306,9 +309,46 @@ tasks.register("exportJniProtocolManifest") {
     }
 }
 
+/**
+ * D1 跨端字段生成：唯一输入是 native attack_contract_fields.def；生成 Kotlin 参数类型与 TSV 清单。
+ * 两个输出都在仓库根 build/app 下，源码树不接收生成物。
+ */
+tasks.register("exportJniAttackContract") {
+    description = "从 D1 单表生成 Kotlin JNI 参数类型与字段清单"
+    group = "verification"
+    dependsOn("nativeBuildHost")
+    val tool = file("build/host/jni_attack_contract_codegen")
+    val kotlinOut = file(
+        "build/app/generated/source/attackContract/com/ghostlock/app/core/generated/AttackContractDtos.kt",
+    )
+    val manifestOut = file("build/app/jni-attack-contract-fields.tsv")
+    inputs.files(
+        file("core/src/jni/attack_contract_fields.def"),
+        file("core/src/jni/attack_contract_model.hpp"),
+        file("core/src/jni/attack_contract_codegen.cpp"),
+        tool,
+    )
+    outputs.files(kotlinOut, manifestOut)
+    doLast {
+        val process = ProcessBuilder(
+            tool.absolutePath,
+            kotlinOut.absolutePath,
+            manifestOut.absolutePath,
+        ).redirectErrorStream(true).start()
+        val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
+        val code = process.waitFor()
+        check(code == 0) { "jni_attack_contract_codegen failed(" + code + "):\n" + text }
+        logger.lifecycle(text.trim())
+        logger.lifecycle(
+            "exportJniAttackContract: " + kotlinOut.path + " + " + manifestOut.path,
+        )
+    }
+}
+
 /* 应用单测必须先看到那份导出：协议表是跨端契约，测试不允许在缺它的前提下跑过。 */
 tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
     dependsOn("exportJniProtocolManifest")
+    dependsOn("exportJniAttackContract")
 }
 /* ---------------------------------------------------------------------------
  * 设备门禁（J7）：把「在真机上跑一遍」变成一条 Gradle 命令，并**机器校验**关键行。

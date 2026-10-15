@@ -30,10 +30,13 @@ class NativeProtocolTest {
             .filter { it.isNotBlank() && !it.startsWith("#") }
             .mapNotNull { line ->
                 val parts = line.split('\t')
-                if (parts.size != 3) {
+                // 第三列是整数（op/key/status 的编号）；image/image_size 行携带摘要或尺寸，
+                // 由 manifestImages() 读，这里跳过而不是崩掉。
+                val number = parts.getOrNull(2)?.toIntOrNull()
+                if (parts.size != 3 || number == null) {
                     null
                 } else {
-                    Triple(parts[0], parts[1], parts[2].toInt())
+                    Triple(parts[0], parts[1], number)
                 }
             }
     }

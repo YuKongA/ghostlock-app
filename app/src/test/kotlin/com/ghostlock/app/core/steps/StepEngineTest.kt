@@ -63,7 +63,7 @@ class StepEngineTest {
         val results = engine.run(listOf(StepId.W1), StepInputs())
         assertEquals(1, results.size)
         assertEquals(StepOutcome.Refused, results[0].outcome)
-        assertEquals("precondition:w1-inputs", results[0].reason)
+        assertEquals("precondition:w1-address", results[0].reason)
         assertTrue("缺前置不得发出任何原生调用", ops.calls.isEmpty())
     }
 
@@ -138,5 +138,13 @@ class StepEngineTest {
         val (declared, none) = PlanCatalog.fromTokens(listOf("patch1", "carrier", "hook", "trigger", "wait"))
         assertEquals(null, none)
         assertEquals(5, declared.size)
+
+        /* profile 只写一个 pagecache_write：展开成 43284 的五个子步，顺序固定。 */
+        val (expanded, aliasRefusal) = PlanCatalog.fromTokens(listOf("pagecache_write"))
+        assertEquals(null, aliasRefusal)
+        assertEquals(
+            listOf(StepId.Patch1, StepId.Carrier, StepId.Hook, StepId.Trigger, StepId.Wait),
+            expanded,
+        )
     }
 }

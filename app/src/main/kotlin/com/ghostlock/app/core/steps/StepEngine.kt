@@ -45,12 +45,19 @@ class StepEngine(
 
     private fun runStep(step: StepId, inputs: StepInputs): StepResult {
         val calls = mutableListOf<String>()
-        val plan = StepPlans.forStep(step, inputs)
-            ?: return StepResult(step, StepOutcome.Refused, "precondition:" + step.token + "-inputs")
+        val plan = when (val planned = StepPlans.forStep(step, inputs)) {
+            is StepPlans.StepPlan.Missing -> return StepResult(
+                step,
+                StepOutcome.Refused,
+                "precondition:" + step.token + "-" + planned.input,
+            )
+
+            is StepPlans.StepPlan.Ready -> planned.calls
+        }
         var attempt = 1
         while (true) {
             var last: OpsReply? = null
-            for (call in plan.calls) {
+            for (call in plan) {
                 calls += call.opName
                 val reply = ops.invoke(call.opName, call.values, call.blobs)
                 last = reply

@@ -21,6 +21,7 @@
 | [0014 附二](0014-kernel-memory-conflict.md) | 冲突与两条路（虚基类 vs 既有机器判据） | 附件：记录冲突与选择依据 | 附件（随 0014） |
 | [0015](0015-profile-through-lua.md) | profile 解析结果一律经 Lua 中转 | native 不直接把 profile 转到执行层 | Accepted（用户裁定 2026-10-09） |
 | [0016](0016-script-argument-crossing.md) | 脚本参数如何过界（Str 一类的归约） | Str 归约为固定表内一项，查不到即具名拒绝 | Proposed（待用户批准） |
+| [0017](0017-jcs-canonical-form.md) | GLKv3 规范化与摘要（JCS/RFC 8785 · sha256 · base64 载荷） | 记契约声明 + **实现只校验 digest 形式**的技术债 | Proposed（待用户批准） |
 
 ## 相关但与本文档无关的索引
 
