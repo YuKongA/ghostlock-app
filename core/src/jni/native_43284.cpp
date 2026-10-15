@@ -486,4 +486,25 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_readLandi
                   read ? "" : "block-read-refused", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_makeAccess(
+        JNIEnv *env, jclass, jlong, jlong landingId, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    const std::uint64_t made = ghostlock::jni::device_make_access(static_cast<std::uint64_t>(landingId));
+    if (made == 0U) {
+        return answer(env, CallCode::Failed, "access-refused", refusal_out);
+    }
+    const jlong written = static_cast<jlong>(made);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_destroyAccess(
+        JNIEnv *env, jclass, jlong, jlong accessId, jobjectArray refusal_out) {
+    const bool done = ghostlock::jni::device_destroy_access(static_cast<std::uint64_t>(accessId));
+    return answer(env, done ? CallCode::Ok : CallCode::StaleTarget,
+                  done ? "" : "stale-target", refusal_out);
+}
+
 }  // extern "C"

@@ -96,6 +96,12 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** @param out 一个 long：Access 句柄；失败时 refusalOut[0] 为 access-refused。 */
+    external fun makeAccess(handle: Long, landingId: Long, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 拆掉一个 Access。 */
+    external fun destroyAccess(handle: Long, accessId: Long, refusalOut: Array<String>): Int
+
     /** 往落地对象写一块（十六字节）；失败时 refusalOut[0] 为 block-refused。 */
     external fun landBlock(handle: Long, landingId: Long, offset: Long, block: ByteArray, refusalOut: Array<String>): Int
 

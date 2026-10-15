@@ -7,6 +7,7 @@
  *  其余缝（resolve / write_block / read_block / module_check / trigger / wait_terminal）属于真正的
  *  设备工作（J7.5 的 43284 链），不在这里。
  */
+#include "backend/cve_2026_43284/kernel_access.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_write.hpp"
@@ -618,6 +619,45 @@ namespace ghostlock::jni {
             return false;
         }
         return g_landings[slot]->read_block(offset, out);
+    }
+
+    /** Access 表：按拼接面/落地对象建出来的 Access 在这里按不透明 id 存着（谁建谁拆）。 */
+    constexpr std::size_t kMaxAccesses = 4U;
+    std::unique_ptr<backend::cve_2026_43284::Access> g_accesses[kMaxAccesses];
+
+    /**
+     *  建一个 Access：它借用落地对象（必须比它活得久）。
+     *
+     *  @return 不透明 id（slot + 1）；没有落地对象或表满 ⇒ 0。
+     */
+    std::uint64_t device_make_access(const std::uint64_t landingId) noexcept {
+        if (landingId == 0U) {
+            return 0U;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return 0U;
+        }
+        for (std::size_t index = 0U; index < kMaxAccesses; ++index) {
+            if (g_accesses[index] == nullptr) {
+                g_accesses[index] = std::make_unique<backend::cve_2026_43284::Access>(g_landings[slot].get());
+                return static_cast<std::uint64_t>(index) + 1U;
+            }
+        }
+        return 0U;
+    }
+
+    /** @return 拆掉一个 Access（它只借用落地对象，所以拆它不动别人）。 */
+    bool device_destroy_access(const std::uint64_t accessId) noexcept {
+        if (accessId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
+        if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
+            return false;
+        }
+        g_accesses[slot].reset();
+        return true;
     }
 
 }  // namespace ghostlock::jni

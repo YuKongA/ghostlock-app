@@ -21,6 +21,11 @@ namespace ghostlock::jni {
     /** @return 关掉一个 socket；fd < 0 则为 false。 */
     [[nodiscard]] bool device_close_socket(int fd) noexcept;
 
+    /** @return 建一个 Access（借用落地对象）；失败 0。 */
+    [[nodiscard]] std::uint64_t device_make_access(std::uint64_t landingId) noexcept;
+    /** @return 拆掉一个 Access。 */
+    [[nodiscard]] bool device_destroy_access(std::uint64_t accessId) noexcept;
+
     /** @return 往落地对象写一块（十六字节）。 */
     [[nodiscard]] bool device_land_block(std::uint64_t landingId, std::uint64_t offset,
                                          const std::uint8_t *block) noexcept;
