@@ -324,6 +324,14 @@ object TypedBackendProbe {
         step("typed: stepwise 43284 landing=" + stepLanding + " refusal=" + stepwise.lastRefusal)
         val stepUp = stepwise.bringUpLanding()
         step("typed: stepwise 43284 bringUp=" + stepUp + " refusal=" + stepwise.lastRefusal)
+        /* 经落地对象写 helper 镜像：这是「写目标在 Kotlin」的真机第一次尝试。 */
+        val landed = stepwise.writeHelperThroughLanding()
+        val back = stepwise.readLandingFirstBlock()
+        step(
+            "typed: stepwise 43284 landed=" + landed + " back=" +
+                (back?.joinToString("") { byte -> "%02x".format(byte) } ?: "none") +
+                " refusal=" + stepwise.lastRefusal,
+        )
         val stepSeq = stepwise.nextSequence()
         step("typed: stepwise 43284 sequence=" + stepSeq)
         val stepTorn = stepwise.tearDown()

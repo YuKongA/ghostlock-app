@@ -275,6 +275,40 @@ class Assembled43284(
         return code == 0
     }
 
+    /**
+     *  经落地对象把本构建的 helper 镜像写进载体（patch#1 的 Kotlin 版）。
+     *
+     *  @return 成功写出的块数；被拒时停下（lastRefusal 是原因）。
+     */
+    fun writeHelperThroughLanding(baseOffset: Long = 0L): Int {
+        val helper = image(ROLE_IMAGE_SPLICE_HELPER) ?: return 0
+        var written = 0
+        var offset = 0L
+        while (offset < helper.size) {
+            val at = offset.toInt()
+            val width = minOf(BLOCK, helper.size - at)
+            val chunk = helper.copyOfRange(at, at + width).copyOf(BLOCK)
+            val refusal = refusalSlot()
+            val code = Native43284.landBlock(handle, landingId, baseOffset + offset, chunk, refusal)
+            if (code != 0) {
+                record(code, refusal)
+                return written
+            }
+            written += 1
+            offset += BLOCK
+        }
+        return written
+    }
+
+    /** @return 走同一窗口读回第一块（十六字节）；失败 null。 */
+    fun readLandingFirstBlock(): ByteArray? {
+        val refusal = refusalSlot()
+        val out = ByteArray(BLOCK)
+        val code = Native43284.readLandingBlock(handle, landingId, 0L, out, refusal)
+        record(code, refusal)
+        return if (code == 0) out else null
+    }
+
     /** 收尾：按与拼装相反的顺序拆（落地 → 拼接面 → socket → 门）。 */
     fun tearDown(): Boolean {
         var ok = true
