@@ -362,6 +362,8 @@ class Assembled43284(
             imageOffset = offset,
             imageWidth = width,
             imageBytes = image,
+            /* 耐心由 Kotlin 给：200 ms 内没比中就报 budget 用尽（写是派发式的，落盘要等内核）。 */
+            imageBudgetMs = 200L,
         )
         val code = Native43284.writeImage(handle, params, request, init, refusal)
         record(code, refusal)

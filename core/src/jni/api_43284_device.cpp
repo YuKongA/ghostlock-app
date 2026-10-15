@@ -810,6 +810,8 @@ namespace ghostlock::jni {
             reinterpret_cast<const std::byte *>(values.imageBytes.data()), values.imageBytes.size());
         request.offset = static_cast<std::uint64_t>(values.imageOffset);
         request.width = static_cast<std::uint64_t>(values.imageWidth);
+        /* 耐心由上层给：写是派发式的，验证段要等落盘（0 = 不重试，旧行为）。 */
+        request.budget_ms = static_cast<std::uint64_t>(values.imageBudgetMs);
         const char *refusal = nullptr;
         const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
         if (!wrote && why != nullptr) {
