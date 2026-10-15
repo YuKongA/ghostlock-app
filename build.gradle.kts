@@ -490,7 +490,7 @@ tasks.register("deviceGate") {
         adb("logcat", "-c")
         adb("shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
         Thread.sleep(7000L)
-        val log = adb("logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I")
+        val log = adb("logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I", "GhostLockNative:I")
         logFile.parentFile.mkdirs()
         logFile.writeText(log)
 
