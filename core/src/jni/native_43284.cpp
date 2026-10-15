@@ -521,4 +521,23 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_accessIni
                   up ? "" : "access-initialize-refused", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImage(
+        JNIEnv *env, jclass, jlong handle, jobject params, jobject image, jobjectArray refusal_out) {
+    ghostlock::jni::contract::AccessParams43284Values params_values{};
+    ghostlock::jni::contract::ReadFailure params_failure{};
+    if (!ghostlock::jni::contract::readAccessParams43284(env, params, &params_values, &params_failure)) {
+        const auto outcome = refuse_read(handle, params_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    ghostlock::jni::contract::WriteImage43284Values values{};
+    ghostlock::jni::contract::ReadFailure failure{};
+    if (!ghostlock::jni::contract::readWriteImage43284(env, image, &values, &failure)) {
+        const auto outcome = refuse_read(handle, failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const bool wrote = ghostlock::jni::device_write_image(values, params_values);
+    return answer(env, wrote ? CallCode::Ok : CallCode::Failed,
+                  wrote ? "" : "image-write-refused", refusal_out);
+}
+
 }  // extern "C"

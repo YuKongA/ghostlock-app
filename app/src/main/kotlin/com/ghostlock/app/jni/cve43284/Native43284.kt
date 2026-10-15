@@ -99,6 +99,20 @@ object Native43284 {
     /** @param out 一个 long：Access 句柄；失败时 refusalOut[0] 为 access-refused。 */
     external fun makeAccess(handle: Long, landingId: Long, out: LongArray, refusalOut: Array<String>): Int
 
+    /**
+     *  写一个镜像并逐块校验（patch#1 用的那一步）。
+     *
+     *  @param params AccessParams（载体/目标/偏移）
+     *  @param image  WriteImage43284（accessId/offset/width/bytes）
+     *  @return 0 表示写完并校验通过；失败时 refusalOut[0] 为 image-write-refused。
+     */
+    external fun writeImage(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        image: com.ghostlock.app.core.generated.WriteImage43284,
+        refusalOut: Array<String>,
+    ): Int
+
     /** 初始化 Access；失败时 refusalOut[0] 为 access-initialize-refused。 */
     external fun accessInitialize(
         handle: Long,
