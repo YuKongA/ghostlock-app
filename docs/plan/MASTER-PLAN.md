@@ -182,3 +182,23 @@ flowchart LR
 - 设备：A301SO（QV770MFGJ1），KernelSU 未加载；./gradlew deviceGate → PASS（26 项校验全部命中）；
 - 宿主：ctest --test-dir build/cmake/host → 132/132；verifyJniLibs → 三库互不重叠（43499 13 / 43284 16）；
 - 计划细节：docs/analysis/jni-two-backend-plan.md §11（批次与判据）、§11.6（ESP 路线装配点与 3a 确切形状）。
+
+### §12.5 2026-10-15 更新：3a 完成（43284 的写路径在真机上走通）
+
+| 项 | 提交 | 真机/宿主判据 |
+|---|---|---|
+| 43284 trigger 接 steps::trigger_orphan | e5b7ea26 / 834a0813 / e72f35d6 | 真机 code=0（双 fork 真执行） |
+| 43284 read_block 接门那扇 fd 的 pread | 17bccc35 | 真机 code=0，读到文件的 16 字节 |
+| **43284 write_block 接落地对象（3a 完成）** | 6770ab03 | 真机 writeBlock code=0、sequence=1、flags=0x80004（**无 Applied/Verified 位**） |
+| 计划补全（§11.6–§11.11：装配点、驱动器、步骤 API、签名、可套用片段） | c408db85 / 1af66dc9 / 813… / 273811a4 / 3bdd9838 / 7a89aa4e | 文档 |
+| 更名收尾（gate reason、探针、测试局部） | 5d40d9a0 | ctest 132/132 |
+
+**真机门禁当前：PASS（29 项校验全部命中）**，APK 956；宿主 132/132；verifyJniLibs 三库互不重叠。
+
+剩余（按顺序）：
+
+1. 3b 收尾：wait_terminal 换 wait_for_module（前提：先通读它的具名原因与三态对应，见 jni-two-backend-plan §11.9 —— 不许盲接）；
+2. J7.5-4：patch1 → carrier → hook → trigger → wait 端到端，id 报 uid=0，原始日志归档 device-gates/；
+3. J7.5-5 / 6：43499 的设备函数（含需从退役树只读参考后重写的 spawn_victim）与端到端 uid=0。
+
+**用户裁定（在办约束）**：临时逻辑只放 Kotlin；native 只留设备工作；不要用 "seam" 这类临时名（R1/R2/R4 已完成，帧时代的 Ops*Seams 随其整块删除一起消失）。
