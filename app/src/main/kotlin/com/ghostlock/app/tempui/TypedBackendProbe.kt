@@ -376,9 +376,17 @@ object TypedBackendProbe {
          *  那一步就得换开发载体，或改由 LKM 阶段承担。
          */
         for (path in listOf(
+            /* hook 目标候选（sentry 模式所在库） */
             "/system/lib64/libc++.so",
+            "/system/lib64/libutils.so",
+            "/system/lib64/libbinder.so",
+            /* patch#1 的 helper */
             "/apex/com.android.runtime/bin/crash_dump64",
+            /* 载体候选：dirtyfrag 选的那四个 vendor 库 + 我们的开发载体 */
             "/vendor/lib64/libbinderdebug.so",
+            "/vendor/lib64/libstagefrighthw.so",
+            "/vendor/lib64/libstagefright_aidl_bufferpool2.so",
+            "/vendor/lib64/libbsp_module.so",
             "/data/local/tmp/ghostlock-carrier",
         )) {
             val file = java.io.File(path)

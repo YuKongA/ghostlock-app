@@ -83,3 +83,42 @@
 
 因此开工前的最后一环：把 tools/lkm/ghostlock 的构建接到 Gradle 任务上，产出 ghostlock.ko 并记账
 （退役树那次是 12304 字节，sha256 以 d557fe11 开头）。这一步做完，移植的四个项目就都有落点。
+
+## 八、载荷库与 hook 目标都做成可选（用户 2026-10-15 提问后的设计修正）
+
+### 8.1 两组候选（都放档案，选择在 Kotlin）
+
+| 组 | 候选 | 作用 |
+|---|---|---|
+| 载荷载体（要 insmod 的东西从哪来） | dirtyfrag 那四个 vendor 库 + 开发载体 /data/local/tmp/ghostlock-carrier | 把 .ko 的字节写进去，再由特权域 insmod 这个路径 |
+| hook 目标（sentry 模式所在库） | /system/lib64/libc++.so、/system/lib64/libutils.so、/system/lib64/libbinder.so | 在它的 sentry 构造处打 4 字节跳转，让 init 的某次输出命中 shellcode |
+
+### 8.2 「可用」的判定准则（每条都能在 Kotlin 里读出来）
+
+1. **存在**（exists）；
+2. **我们能只读打开**（canRead 并且真的 open 成功）—— 页缓存写的前提（写经 splice，不要求写权限，但必须能只读打开）；
+3. 载体额外条件：**该路径必须被允许的域 insmod**（SELinux 只放 vendor 路径，/data/local/tmp/*.ko 会被拒）
+   ⇒ 载体候选是「可被特权域 insmod 的路径」集合，而不是随便一个库；
+4. hook 目标额外条件：库里**必须含目标模式**（sentry 符号或对应字节序列）⇒ 读符号表/读字节即可验证（纯读，不改任何东西）。
+
+### 8.3 本机 app uid 实测（2026-10-15，逐条真机）
+
+    /system/lib64/libc++.so                  exists 可读 1083168 B   ← hook 首选 ✓
+    /system/lib64/libutils.so                exists 可读 118344 B    ← hook 备选 ✓
+    /system/lib64/libbinder.so               exists 可读 755256 B    ← hook 备选 ✓
+    /apex/.../crash_dump64                   exists 可读 482904 B    ← patch1 helper ✓
+    /vendor/lib64/libbinderdebug.so          exists **拒读** EACCES   ← dirtyfrag 候选① ✗
+    /vendor/lib64/libstagefrighthw.so        exists **拒读** EACCES   ← dirtyfrag 候选② ✗
+    /vendor/lib64/libstagefright_aidl_bufferpool2.so  不存在 ENOENT  ← 候选③ ✗
+    /vendor/lib64/libbsp_module.so                    不存在 ENOENT  ← 候选④ ✗
+    /data/local/tmp/ghostlock-carrier        exists 可读 16384 B    ← 开发载体 ✓
+
+**结论**：在我们这台设备的 app uid 下，dirtyfrag 那四个 vendor 载体**全部不可用**（两个被 SELinux 拒读、两个本机不存在），
+而**开发载体可用**；hook 侧 libc++ 可用且有两条系统库备选 ⇒「libcxx 不可用」时能自动换。
+因此设计**必须**把「开发载体 + LKM 放置」这条路当主路（退役树也是这么做的），vendor 载体只作为可选增强。
+
+### 8.4 动态寻找（照上面的准则逐条试，失败具名）
+
+Kotlin 按档案里的候选顺序，对每个候选做 8.2 的四条检查（1/2 纯 Kotlin；4 读字节或符号表），
+第一个通过者即选定，并把**为什么选它、其它为什么被拒**逐条记进日志（具名，不许沉默）。
+全部失败 ⇒ 具名失败（例如 carrier-none-usable）+ 回退开发载体路径；不猜、不默认。
