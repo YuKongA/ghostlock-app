@@ -40,12 +40,6 @@ object TypedBackendProbe {
     @Volatile
     private var probeContext: android.content.Context? = null
 
-    /** SA 建好后链子要用的材料：必须与内核里那条 SA 一致，ESP 报文才会被处理。 */
-    @Volatile private var saSpi: Int = 0
-    @Volatile private var saEncapPort: Int = 4500
-    @Volatile private var saAesKey: ByteArray? = null
-    @Volatile private var saHmacKey: ByteArray? = null
-
     fun run(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
@@ -147,11 +141,6 @@ object TypedBackendProbe {
                 )
                 .setIpv4Encapsulation(encap, 4500)
                 .buildTransportModeTransform(loopback, spiObj)
-            /* 记下材料：链子的 ESP 报文必须用同一组（SPI/端口/密钥），否则内核里那条 SA 不认它。 */
-            saSpi = spi
-            saEncapPort = encapPort
-            saAesKey = aesKey
-            saHmacKey = hmacKey
             step("typed: ipsec sa built transform=" + (transform != null))
             val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, 4500, aesKey, hmacKey)
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
@@ -431,14 +420,13 @@ object TypedBackendProbe {
 
     /** 43284 的哨兵参数（顺序与字段名由 D1 单表定；真实 profile 仍待设计）。 */
     private fun init43284() = Init43284(
-        /* SA 已建则用它的材料（这才是内核里那条 SA 的 SPI/端口）——否则退回测试值。 */
-        spi = saAesKey?.let { saSpi } ?: 0x1234,
-        encapPort = saAesKey?.let { saEncapPort } ?: 4500,
+        spi = 0x1234,
+        encapPort = 4500,
         /* 发送端口 0 = 让内核挑临时端口（真机实测：指定端口在应用进程里绑不上，临时端口可以）。 */
         senderPort = 0,
         icvLength = 16,
-        aesKey = saAesKey ?: ByteArray(32) { 0xA5.toByte() },
-        hmacKey = saHmacKey ?: ByteArray(32) { 0x5A.toByte() },
+        aesKey = ByteArray(32) { 0xA5.toByte() },
+        hmacKey = ByteArray(32) { 0x5A.toByte() },
         initialSequence = 1,
         sequencePresent = true,
     )
