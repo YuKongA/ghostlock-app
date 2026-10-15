@@ -704,6 +704,24 @@ namespace ghostlock::jni {
          * 而 PageCacheLanding::bring_up_with 在「已拉起」时会返回 false —— 走这条路就不能先单独 bringUp。
          */
         params.sa = sa_material_of(sa_source);
+        /* 2026-10-15：工具那半调用方清单的其余字段（字符串借用式，全部由本栈帧持有）。 */
+        const std::string hook_image = text_of(values.accessHookImagePath);
+        const std::string kernel_release_text = text_of(values.accessKernelRelease);
+        const std::string success_marker_text = text_of(values.accessSuccessMarkerPath);
+        const std::string failure_marker_text = text_of(values.accessFailureMarkerPath);
+        const std::string in_flight_marker_text = text_of(values.accessInFlightMarkerPath);
+        const std::string module_marker_text = text_of(values.accessModuleMarkerPath);
+        params.hook_image = access_path_of(hook_image);
+        params.kernel_release = access_path_of(kernel_release_text);
+        params.success_marker = access_path_of(success_marker_text);
+        params.failure_marker = access_path_of(failure_marker_text);
+        params.in_flight_marker = access_path_of(in_flight_marker_text);
+        params.module_marker = access_path_of(module_marker_text);
+        params.kernel_preempt = values.accessKernelPreempt;
+        params.kernel_modversions = values.accessKernelModversions;
+        params.kernel_module_force_unload = values.accessKernelModuleForceUnload;
+        params.trigger_delay_ms = static_cast<std::uint64_t>(values.accessTriggerDelayMs);
+        params.wait_ms = static_cast<std::uint64_t>(values.accessWaitMs);
         const auto up = g_accesses[slot]->initialize(params);
         /* 状态码原样带出去：bad-parameters 与 failed 是两条完全不同的路，不许压成 bool。 */
         return up.ok() ? 0 : static_cast<int>(up.status);
