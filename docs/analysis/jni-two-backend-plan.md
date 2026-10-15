@@ -1167,6 +1167,28 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 3. Kotlin：Assembled43499 侧接收一份文档文本（先用设备上现成的 profile 资产），交给 native 取 id；
 4. 真机最小序列：建文档 → 取访问对象(route, documentId) → initialize/write/read → 看是否落盘。
    这一步会回答「43499 是否需要同一套 SA」这个分水岭问题。
+
+### §11.38 documentFromText 的实现入口（2026-10-15 半程勘察）
+
+读 profile/glkv3_document.hpp：
+
+    class Document final {
+        Document(const Document &) = delete;      // 不可拷贝 ⇒ 表里放 unique_ptr
+        DocumentVerdict parse(const std::uint8_t *bytes, …);   // **成员式**解析（不是自由函数/工厂）
+        void release();                            // 释放解析结果；之后再读就是「没有文档」
+        enum class DocumentVerdict { … }            // 含「不是本 build 读的文档：schema 不对或解析不了」
+    };
+
+所以 documentFromText 的形状已经清楚：
+
+    std::uint64_t device_document_from_text(bytes) {
+        auto doc = make_unique<profile::Document>();
+        verdict = doc->parse(bytes.data(), bytes.size(), …);   // ← 参数表待读全（下一轮第一次 grep）
+        if (verdict != Ok) return 0;                            // 失败具名（verdict 名）
+        存表 → 返回 id；destroyDocument 走 release() + reset()
+    }
+
+下一轮第一件事：把 parse(...) 的完整签名与 DocumentVerdict 的取值打印出来（一次 grep），然后照上面形状落两个原语 + 导出 + Kotlin。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
