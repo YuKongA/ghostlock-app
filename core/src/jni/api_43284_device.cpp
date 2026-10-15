@@ -634,6 +634,8 @@ namespace ghostlock::jni {
     /** Access 表：按拼接面/落地对象建出来的 Access 在这里按不透明 id 存着（谁建谁拆）。 */
     constexpr std::size_t kMaxAccesses = 4U;
     std::unique_ptr<backend::cve_2026_43284::Access> g_accesses[kMaxAccesses];
+    /* access 槽 -> 落地槽（1 起；0 = 未记）：写失败时要回到拼接面问 last_error()。 */
+    std::size_t g_access_landing[kMaxAccesses] = {};
 
     /**
      *  建一个 Access：它借用落地对象（必须比它活得久）。
@@ -651,6 +653,7 @@ namespace ghostlock::jni {
         for (std::size_t index = 0U; index < kMaxAccesses; ++index) {
             if (g_accesses[index] == nullptr) {
                 g_accesses[index] = std::make_unique<backend::cve_2026_43284::Access>(g_landings[slot].get());
+                g_access_landing[index] = slot + 1U;
                 return static_cast<std::uint64_t>(index) + 1U;
             }
         }
@@ -667,6 +670,7 @@ namespace ghostlock::jni {
             return -2;  /* 句柄失效 */
         }
         g_accesses[slot].reset();
+        g_access_landing[slot] = 0U;
         return true;
     }
 
