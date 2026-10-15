@@ -269,8 +269,8 @@ object TypedBackendProbe {
     private fun init43284() = Init43284(
         spi = 0x1234,
         encapPort = 4500,
-        /* 发送端口：4500/4501 在本机被占（真机 bind 失败），换一个高位端口 —— 端口由 Kotlin 决定。 */
-        senderPort = 45011,
+        /* 发送端口 0 = 让内核挑临时端口（真机实测：指定端口在应用进程里绑不上，临时端口可以）。 */
+        senderPort = 0,
         icvLength = 16,
         aesKey = ByteArray(32) { 0xA5.toByte() },
         hmacKey = ByteArray(32) { 0x5A.toByte() },

@@ -471,7 +471,11 @@ namespace ghostlock::jni {
         if (targetId == 0U || socketId == 0U) {
             return 0U;
         }
-        const std::size_t target_slot = static_cast<std::size_t>(targetId) - 1U;
+        /*
+         * targetId 是**票据**（(门句柄 << 32) | 代）：门句柄 = slot + 1，所以下标是 (targetId >> 32) - 1。
+         * 这是 2026-10-15 真机 surface-refused 的真因 —— 早先把它当成 slot + 1 直接减一，解出来的下标是错的。
+         */
+        const std::size_t target_slot = static_cast<std::size_t>(targetId >> 32U) - 1U;
         const std::size_t socket_slot = static_cast<std::size_t>(socketId) - 1U;
         if (target_slot >= kMaxDoors || g_doors[target_slot].fd < 0) {
             return 0U;

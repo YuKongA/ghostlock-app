@@ -89,10 +89,15 @@ namespace ghostlock::jni {
         if (params.spi == 0) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "spi");
         }
-        if (params.encapPort == 0 || params.senderPort == 0) {
-            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:",
-                                 params.encapPort == 0 ? "encapPort" : "senderPort");
+        if (params.encapPort == 0) {
+            return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "encapPort");
         }
+        /*
+         * senderPort == 0 是**合法值**：它表示「让内核挑一个临时端口」。
+         * 真机实测（2026-10-15）：应用进程里绑一个指定端口会失败（bind 报错），绑临时端口成功 ——
+         * 所以「0 = 内核挑」既符合 Android 的沙箱现实，也与 SaMaterial 里「零可以是明确的值」的风格一致。
+         * encapPort（连接目标）仍必须明说：那是往哪里发的问题，不能由内核猜。
+         */
         params_ = std::move(params);
         facts_.handshake = true;
         phase_ = api::Phase::Ready;
@@ -168,7 +173,12 @@ namespace ghostlock::jni {
             slot->depends_on_ticket = facts_.patch1.ticket;
             slot->depends_on_digest.clear();
         }
-        ticket = make_ticket(static_cast<std::uint64_t>(role), slot->generation);
+        /*
+         * 票据高位装的是**门的句柄**（device token = door slot + 1），不是角色编号：
+         * 这样后续的 makeSurface/makeLanding 能把票据解码回 native 的门表下标。
+         * 角色仍然记在 slot->role 里（用于依赖判断与快照）。
+         */
+        ticket = make_ticket(slot->token, slot->generation);
         slot->ticket = ticket;
         refusal_.clear();
         return CallCode::Ok;
