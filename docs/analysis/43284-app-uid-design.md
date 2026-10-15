@@ -72,3 +72,14 @@
 2. elf_hook + hook_patch（libc++ sentry 的定位与打补丁：0xb70a8 → 0xb70ac，payload 用本树已有的 libcxx_blob）；
 3. chain（staged 顺序）—— 按裁定**不移植为 native 逻辑**：顺序/目标/收尾写在 Kotlin（Assembled43284），native 只出上面两个薄原语；
 4. LKM 阶段沿用本树 core/src/backend/cve_2026_43284/lkm/ 的源码与既有构建入口（构建入口下一轮确认）。
+
+### 七.补 LKM 构建入口的勘察（2026-10-15 续）
+
+- core/src/backend/cve_2026_43284/lkm/ 里只有 module_facts.cpp 与 module_facts.hpp —— 那是「关于模块的事实」的桥，
+  不是 LKM 源码本身；它被编进 core（core/CMakeLists.txt 第 71 行）；
+- LKM 源码在 tools/lkm/ghostlock/ 目录下；
+- Gradle 侧没有退役树的 buildLkmImages 与 verifyLkmLedger 两个任务 ⇒ LKM 的构建入口需要重建，
+  并且按项目规则「构建逻辑一律 Gradle KTS」，应做成 Gradle 任务（DDK android13-5.15 构建，产出 ghostlock.ko 并核对 sha256）。
+
+因此开工前的最后一环：把 tools/lkm/ghostlock 的构建接到 Gradle 任务上，产出 ghostlock.ko 并记账
+（退役树那次是 12304 字节，sha256 以 d557fe11 开头）。这一步做完，移植的四个项目就都有落点。
