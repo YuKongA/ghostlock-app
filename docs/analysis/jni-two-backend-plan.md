@@ -580,6 +580,31 @@ PathView 是**借用式** {const char *bytes; std::size_t length;}（不是 NUL 
 
 判据：真机上 patch1 成功后，read_block 读同一偏移应能读到 helper 的十六进制头部（并据此推到 Applied），
 原始日志归档 device-gates/。
+
+### §11.14 诊断：写返回真但不落盘 = 拼接面没有 helper；第二块被拒 = 载体只有 16 字节（2026-10-15）
+
+读 PageCacheWrite::write_block（landing/pagecache_write.hpp:124-170）得到的确定结论：
+
+1. **前置**：doors_.socket_fd() >= 0 且 splice_.can_serve_page()；否则 WriteOutcome::NotOpen 并返回 false。
+2. **旧块必须读到**：splice_.read_at(doors_.file_fd(), old_block, 16, position) 必须整读成功（NoOldBlock 否则 false）——
+   IV 由旧块与目标块共同决定（compute_iv），没有旧块就没有报文可发。
+3. **报文的密文槽放的是页自己的字节**，由 splice_one 在发送时替换进去；代码注释把失效模式写明了：
+   「Putting the desired block in this slot instead would authenticate bytes nobody sends, and the kernel, which verifies the check before it decrypts, would drop every datagram: **found on the device, where the target page never changed**.」
+
+**所以我观察到的两件事都有精确解释（不是玄学）**：
+
+| 观察 | 原因 |
+|---|---|
+| 第一块 land_block 返回真，但回读内容不变 | 我的 RealSpliceIo 构造时**没有给 helper**（HelperWriteSource 默认空）：没有页内字节的替换，内核校验通过后解出来的不是目标块 ⇒ 目标页从不改变（正是注释里记的那个失效模式） |
+| 第二块（offset 16）被拒 | 我的探针载体文件**只有 16 字节**：位置 16 的旧块读取落到 EOF ⇒ NoOldBlock ⇒ false |
+
+**修法（下一步）**：
+
+1. 载体文件要足够长（按 patch#1 要写的镜像长度；探针里先写成 helper 镜像大小）；
+2. RealSpliceIo 必须带 helper（HelperWriteSource.splice16，来自 patch#1 落地后的 helper）与 OldPageSource ——
+   即「先有 helper（patch#1）→ 才能用 ESP 路线把后续的东西写进去」这个顺序本身就是链的设计；
+3. 因此 J7.5-4 的正解是：patch#1 走**另一条**入口（CrashDumpBridge 的 run(offset, sink_stdout, out)：跑被改过的 helper，其输出就是页），
+   而不是靠同一个窗口连写——这与我先前「用 write_block 分块写 helper」的临时思路不同，后者注定不落盘。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
