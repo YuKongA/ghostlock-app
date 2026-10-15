@@ -790,6 +790,19 @@ namespace ghostlock::jni {
         access_params.kernel_module_force_unload = params_values.accessKernelModuleForceUnload;
         access_params.trigger_delay_ms = static_cast<std::uint64_t>(params_values.accessTriggerDelayMs);
         access_params.wait_ms = static_cast<std::uint64_t>(params_values.accessWaitMs);
+        /* 具名到具体检查：bad-parameters 是三条不同的路，别让它们共用一个名字。 */
+        if (!access_params.sa.set) {
+            if (why != nullptr) {
+                *why = "sa-set-missing";
+            }
+            return false;
+        }
+        if (!access_params.usable_for_access()) {
+            if (why != nullptr) {
+                *why = access_params.offset_set ? "paths-inconsistent" : "offset-not-set";
+            }
+            return false;
+        }
         backend::cve_2026_43284::steps::WriteRequest request{};
         request.access = g_accesses[slot].get();
         request.params = &access_params;
