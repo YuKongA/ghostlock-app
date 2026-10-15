@@ -58,6 +58,9 @@ object TypedBackendProbe {
     @Volatile
     private var lineListener: ((String) -> Unit)? = null
 
+    /** 单飞：同一条链不允许并发跑（启动自检与按钮同时跑会互撞 —— 2026-10-15 真机证据）。 */
+    private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /**
      *  跑两个 backend 的探针，并把每一行**实时**交给 @p onLine。
      *
@@ -75,6 +78,20 @@ object TypedBackendProbe {
     }
 
     fun run(context: android.content.Context): List<String> {
+        if (!running.compareAndSet(false, true)) {
+            val busy = listOf("typed: 攻击正在运行中（单飞守卫：同一条链不允许并发）")
+            lineListener?.invoke(busy[0])
+            return busy
+        }
+        try {
+            return runOnce(context)
+        } finally {
+            running.set(false)
+        }
+    }
+
+    /** 链子的本体（由 run 做单飞守卫后调用）。 */
+    private fun runOnce(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
         fun step(line: String) {
@@ -758,7 +775,7 @@ object TypedBackendProbe {
             val terminal = hook.waitTerminal(
                 budgetMs = 15000L,
                 pollMs = 100L,
-                successMarker = "/dev/df0",
+                successMarker = "/dev/dfm0",  /* /dev/df* 对 app 不可读，但 stat 可判存在（真机已验） */
                 failureMarker = "/dev/df1",
                 inFlightMarker = "/dev/df",
                 moduleMarker = "/sys/module/dirtyfrag",
