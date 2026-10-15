@@ -293,6 +293,22 @@ object TypedBackendProbe {
                         " refusal=" + assembled43499.lastRefusal,
                 )
             }
+            /* 43499 的访问线最小序列：初始化 → 写一块 → 回读 → shutdown（每一步具名）。 */
+            if (assembled43499.accessId != 0L) {
+                val route = 1
+                val inited = assembled43499.initializeAccess(route, 0L, true)
+                step("typed: assembled 43499 init=" + inited + " refusal=" + assembled43499.lastRefusal)
+                val probeBlock = ByteArray(16) { index -> (0x40 + index).toByte() }
+                val wrote = assembled43499.writeBlock(route, 0L, 0L, probeBlock)
+                step("typed: assembled 43499 write=" + wrote + " refusal=" + assembled43499.lastRefusal)
+                val back = assembled43499.readBlock(route, 0L, 0L, 16)
+                val same = back != null && back.contentEquals(probeBlock)
+                step(
+                    "typed: assembled 43499 read=" + (back?.size ?: -1) + " same=" + same +
+                        " refusal=" + assembled43499.lastRefusal,
+                )
+                step("typed: assembled 43499 shutdown=" + assembled43499.shutdownAccess() + " refusal=" + assembled43499.lastRefusal)
+            }
             step("typed: assembled 43499 close=" + assembled43499.close())
         }
     }
