@@ -235,21 +235,27 @@ tasks.register<Exec>("nativeTestHost") {
     commandLine(glCtest, "--test-dir", "build/cmake/host", "--output-on-failure")
 }
 
+/* 这两个任务把 NDK 路径与命令行**在配置期**算好（只捕获 String）：早前放在 doFirst 里会引用脚本对象，
+ * 配置缓存直接拒绝序列化（2026-10-14 实测：:nativeConfigureAndroid / :nativeBuildAndroid 无法缓存）。 */
+val androidTools: Triple<String, String, String> by lazy {
+    val ndk = resolveNdkDir()
+    Triple(ndk, glCmake, glNinja)
+}
+
 tasks.register<Exec>("nativeConfigureAndroid") {
     description = "配置 Android（NDK）CMake 构建树"
     group = "native"
     workingDir(rootDir)
+    val tools = androidTools
+    commandLine(listOf(tools.second, "-S", "core", "-B", "build/cmake/android", "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DCMAKE_MAKE_PROGRAM=" + tools.third,
+        "-DCMAKE_TOOLCHAIN_FILE=" + tools.first + "/build/cmake/android.toolchain.cmake",
+        "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-29",
+        "-DGL_TESTS=OFF", "-DGL_JNI=ON"))
+    environment("ANDROID_NDK_HOME", tools.first)
+    environment("NDK_ROOT", tools.first)
     inputs.files(fileTree("core/src"), file("core/CMakeLists.txt"))
     outputs.dir(layout.buildDirectory.dir("cmake/android"))
-    doFirst {
-        val ndk = resolveNdkDir()
-        environment("ANDROID_NDK_HOME", ndk)
-        environment("NDK_ROOT", ndk)
-        commandLine(listOf(glCmake, "-S", "core", "-B", "build/cmake/android") + glCmakeCommon + listOf(
-            "-DCMAKE_TOOLCHAIN_FILE=" + ndk + "/build/cmake/android.toolchain.cmake",
-            "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-29",
-            "-DGL_TESTS=OFF", "-DGL_JNI=ON"))
-    }
 }
 
 tasks.register<Exec>("nativeBuildAndroid") {
@@ -257,13 +263,11 @@ tasks.register<Exec>("nativeBuildAndroid") {
     group = "native"
     dependsOn("nativeConfigureAndroid")
     workingDir(rootDir)
+    val tools = androidTools
+    commandLine(tools.second, "--build", "build/cmake/android", "-j")
+    environment("ANDROID_NDK_HOME", tools.first)
+    environment("NDK_ROOT", tools.first)
     outputs.file(file("build/native/ghostlock"))
-    doFirst {
-        val ndk = resolveNdkDir()
-        environment("ANDROID_NDK_HOME", ndk)
-        environment("NDK_ROOT", ndk)
-        commandLine(glCmake, "--build", "build/cmake/android", "-j")
-    }
 }
 
 /* JNI 边界库就位：Kotlin 侧 Native.LIBRARY == "ghostlock_jni" ⇒ 打包名必须是
@@ -276,6 +280,32 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     into("app/src/main/jniLibs/arm64-v8a")
 }
 
+/**
+ * 把 JNI 边界协议表导出到 app/build：Kotlin 侧的对拍测试（NativeProtocolTest）读它，
+ * 因此 op/key/status 三张表在两个端之间不可能各写一份（跨端列表不得手抄）。
+ */
+tasks.register("exportJniProtocolManifest") {
+    description = "导出 JNI 协议表到 app/build/jni-protocol-manifest.tsv"
+    group = "verification"
+    dependsOn("nativeBuildHost")
+    val tool = File(rootDir, "build/host/jni_protocol_manifest")
+    val out = File(rootDir, "app/build/jni-protocol-manifest.tsv")
+    inputs.file(tool)
+    outputs.file(out)
+    doLast {
+        out.parentFile.mkdirs()
+        val process = ProcessBuilder(tool.absolutePath).redirectErrorStream(true).start()
+        val text = process.inputStream.readBytes()
+        check(process.waitFor() == 0) { "jni_protocol_manifest failed" }
+        out.writeBytes(text)
+        logger.lifecycle("exportJniProtocolManifest: " + out.length() + " bytes -> " + out.path)
+    }
+}
+
+/* 应用单测必须先看到那份导出：协议表是跨端契约，测试不允许在缺它的前提下跑过。 */
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
+    dependsOn("exportJniProtocolManifest")
+}
 tasks.register("checkAll") {
     description = "集中测试入口：原生 CTest + Kotlin 单测"
     group = "verification"

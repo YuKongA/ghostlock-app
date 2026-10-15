@@ -30,13 +30,14 @@ import com.ghostlock.app.ui.theme.GhostlockTheme
 /**
  * 最小临时 UI：只做诊断，不做业务。
  *
- * 用户裁定（2026-10-14）：旧 Kotlin UI 全面废弃，测试期间只保留一个临时界面；**新 UI 用 Material，
- * 并像 KernelSU 那样可以灵活切到 Miuix**。所以这个界面本身就是那套切换的第一个用户：
- * 顶部一个按钮在两个套件之间切换（选择落 SharedPreferences，切完立刻重绘），下面的诊断按钮
- * 在任何一个套件下都能用 —— 因为界面只依赖 [com.ghostlock.app.ui.kit.GhostlockKit] 的语义。
+ * 用户裁定（2026-10-14）：旧 Kotlin UI 全面废弃，测试期间只保留一个临时界面；新 UI 用 Material，
+ * 并像 KernelSU 那样可以灵活切到 Miuix。所以这个界面本身就是那套切换的第一个用户：顶部一个按钮
+ * 在两个套件之间切换（选择落 SharedPreferences，切完立刻重绘），下面的按钮在所有套件下都能用。
  *
- * 它**不**宣称任何攻击能力、不发起任何攻击步骤：那些要等对应批次的 native 入口与 Kotlin
- * 步骤引擎落地（见 docs/analysis/jni-two-backend-plan.md）。
+ * 「设备门禁」按钮把 JNI 边界在本机走一遍，并把每一步写进 logcat（TAG=GhostlockGate），供 adb 抓取；
+ * 界面启动时自动跑一次，所以一次 am start 就能拿到完整证据。
+ *
+ * 它不宣称任何攻击能力、不发起任何攻击步骤：那些要等设备 seam（J3b/J4b）与 Kotlin 步骤引擎（J6）。
  */
 class TempUiActivity : ComponentActivity() {
     private val controller: UiKitController by lazy { UiKitController(AndroidUiKitStore(this)) }
@@ -51,6 +52,7 @@ class TempUiActivity : ComponentActivity() {
                     onToggleKit = { kit = controller.toggle() },
                     onProbe = ::probeNative,
                     onContracts = ::reportContracts,
+                    onGate = ::runDeviceGate,
                 )
             }
         }
@@ -70,15 +72,18 @@ class TempUiActivity : ComponentActivity() {
         "core: SessionPhase=" + SessionPhase.entries.joinToString(),
         "core: 能力接口=KernelMemoryAccess / PageCacheAccess（描述符由 native 发布）",
     )
+
+    private fun runDeviceGate(): List<String> = probeNative() + DeviceGate.run()
 }
 
-/** 界面的形状与套件无关；控件从 [kitOf] 取。 */
+/** 界面的形状与套件无关；控件从 kitOf 取。 */
 @Composable
 private fun TempUiScreen(
     kit: UiKit,
     onToggleKit: () -> Unit,
     onProbe: () -> List<String>,
     onContracts: () -> List<String>,
+    onGate: () -> List<String>,
 ) {
     val lines = remember { mutableStateListOf<String>() }
     val components = kitOf(kit)
@@ -86,6 +91,7 @@ private fun TempUiScreen(
     LaunchedEffect(Unit) {
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
         lines += onProbe()
+        lines += onGate()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
@@ -93,8 +99,11 @@ private fun TempUiScreen(
             components.Action("界面套件: " + components.label + "（点我切换）") { onToggleKit() }
         }
         components.Actions {
+            components.Action("设备门禁") { lines += onGate() }
             components.Action("探测 JNI 库") { lines += onProbe() }
             components.Action("能力契约面") { lines += onContracts() }
+        }
+        components.Actions {
             components.Action("清空") { lines.clear() }
         }
         components.Body(

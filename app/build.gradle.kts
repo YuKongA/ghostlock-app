@@ -200,6 +200,10 @@ kotlin {
 tasks.withType<Test>().configureEach {
     // //TODO(kotlin-disable-20261010): profile-core 任务已禁用
     // dependsOn(":profile-core:exportProfiles")
+
+    /* JNI 协议表是跨端契约：Kotlin 侧的对拍测试（NativeProtocolTest）必须看到 native 导出的那一份，
+     * 所以单测先触发导出（导出任务自己依赖宿主构建）。禁止手抄 op/key/status 三张表。 */
+    dependsOn(rootProject.tasks.named("exportJniProtocolManifest"))
     /* Forward the M3 one-off write-back switch to the forked test JVM. */
     providers.systemProperty("glk.m3.writeback").orNull?.let { systemProperty("glk.m3.writeback", it) }
 }
@@ -335,18 +339,27 @@ object LkmSupport {
         return matches.first()
     }
 
-    /** podman -> docker; the -P override is passed in by the task. */
+    /**
+     * podman -> docker; the -P override is passed in by the task.
+     *
+     * 每个候选都先按名字试、再试 Homebrew 的绝对路径：Gradle 守护进程的 PATH 里常常没有
+     * /opt/homebrew/bin（本机 podman 就装在那里），只按名字找会得到 "no container engine found"，
+     * 而工具其实装了 —— 2026-10-14 实测踩到。
+     */
     fun detectEngine(execOps: ExecOperations, override: String?): String {
         override?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         for (candidate in listOf("podman", "docker")) {
-            val ok = runCatching {
-                execOps.exec {
-                    commandLine(candidate, "--version")
-                    standardOutput = ByteArrayOutputStream()
-                    errorOutput = ByteArrayOutputStream()
-                }
-            }.isSuccess
-            if (ok) return candidate
+            val exes = listOf(candidate, "/opt/homebrew/bin/" + candidate, "/usr/local/bin/" + candidate)
+            for (exe in exes) {
+                val ok = runCatching {
+                    execOps.exec {
+                        commandLine(exe, "--version")
+                        standardOutput = ByteArrayOutputStream()
+                        errorOutput = ByteArrayOutputStream()
+                    }
+                }.isSuccess
+                if (ok) return exe
+            }
         }
         throw GradleException(
             "no container engine found: install podman or docker, or pass -PcontainerEngine=<exe>",
