@@ -89,6 +89,30 @@ namespace {
         return request;
     }
 
+    void the_session_parameters_become_door_material() {
+        Init43284Values full = params();
+        std::uint8_t aes[32] = {};
+        std::uint8_t hmac[32] = {};
+        for (std::size_t index = 0U; index < 32U; ++index) {
+            aes[index] = static_cast<std::uint8_t>(0xA0U + index);
+            hmac[index] = static_cast<std::uint8_t>(0x50U + index);
+        }
+        std::memcpy(full.aesKey.data(), aes, 32U);
+        std::memcpy(full.hmacKey.data(), hmac, 32U);
+        const ghostlock::backend::cve_2026_43284::SaMaterial sa =
+            ghostlock::jni::sa_material_of(full);
+        expect(sa.set, "a real key pair makes material");
+        expect(sa.spi == 0x1234U, "spi travels");
+        expect(sa.encap_port == 4500U && sa.sender_port == 4501U, "both ports travel");
+        expect(sa.icv_len == 16U, "the icv length travels");
+        expect(sa.aes_key[0] == 0xA0U && sa.aes_key[31] == 0xBFU, "the aes key travels whole");
+        expect(sa.hmac_key[0] == 0x50U && sa.hmac_key[31] == 0x6FU, "and so does the hmac key");
+
+        const ghostlock::backend::cve_2026_43284::SaMaterial none =
+            ghostlock::jni::sa_material_of(params());
+        expect(!none.set, "all-zero keys are not material (no zero-key guessing)");
+    }
+
     void the_shape_and_the_named_refusals() {
         Backend43284 backend{};
         Snapshot43284 snapshot{};
@@ -167,16 +191,20 @@ namespace {
         Backend43284 backend{device_ops_43284()};
         expect(backend.initialize(params()) == CallCode::Ok, "initialize");
         std::uint64_t ticket = 0U;
-        expect(backend.resolve_target(resolve_request(TargetRole::Patch1), ticket) ==
-                   CallCode::Unsupported,
-               "resolve is not wired");
-        expect(same(backend.refusal(), "op-not-wired:resolve_target"), "named");
+        /* 门已经接线：这里用一条不存在的路径 ⇒ 开不了就具名拒绝（不是 unsupported）。 */
+        ResolveTarget43284Values missing{};
+        missing.role = static_cast<std::int32_t>(TargetRole::Patch1);
+        missing.path.assign("/no/such/door", "/no/such/door" + 13);
+        expect(backend.resolve_target(missing, ticket) == CallCode::Failed, "an unopenable door fails");
+        expect(same(backend.refusal(), "door-refused"), "named");
         expect(backend.trigger(Trigger43284Values{}) == CallCode::Unsupported, "trigger");
         expect(same(backend.refusal(), "op-not-wired:trigger"), "named");
     }
 }  // namespace
 
 int main() {
+    std::printf("api 43284: door material\n");
+    the_session_parameters_become_door_material();
     std::printf("api 43284: shape and refusals\n");
     the_shape_and_the_named_refusals();
     std::printf("api 43284: tickets and the three states\n");
