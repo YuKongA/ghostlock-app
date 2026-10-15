@@ -96,6 +96,9 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** 关掉一扇门（谁开谁关）：id 无效时调用码为 -7（stale-target）。 */
+    external fun closeTarget(handle: Long, targetId: Long, refusalOut: Array<String>): Int
+
     /** @return snapshot 结果数组每一位的名字（由 native 导出）。 */
     external fun snapshotFields(): Array<String>
 }
