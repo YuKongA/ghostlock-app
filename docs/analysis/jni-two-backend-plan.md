@@ -550,6 +550,36 @@ Kotlin 侧负责的部分（不在 native 猜）：载体路径、偏移、块�
 
 下一步顺序：① 先只跑 patch1（write_image_verified，offset 0，splicehelper 镜像）+ read_block 验证；
 ② 载体（模块进 /vendor/lib64/libbinderdebug.so 或一次性载体）；③ 钩子；④ trigger；⑤ wait → id 报 uid=0。每步单独真机判据与归档。
+
+### §11.13 AccessParams 的字段面（J7.5-4 第 1 步的最后一块输入，2026-10-15）
+
+class AccessParams final : public contract::KernelAccess::AccessMiscParameters（backend/cve_2026_43284/access_params.hpp:65）：
+
+| 字段 | 含义 | 谁来给 |
+|---|---|---|
+| offset / offset_set | 写进载体的位置；**0 是合法位置，所以另设 offset_set** | Kotlin（DTO 里成对传） |
+| carrier（PathView） | patch#2 写模块进去的那个载体 | Kotlin（路径） |
+| carrier_base | 写入时当作载体起点的位置（模块在 0，一次性载体用过别的基点） | Kotlin |
+| dev_carrier（PathView） | 进程自己打得开的一次性载体（退役树里藏在 --allow-dev-target 后面的那种放松） | Kotlin |
+| patch_target（PathView） | patch#1 的目标 | Kotlin（resolve 请求里的 path 已是它） |
+| …（其余：通道/窗口/校验） | usable_for_initialize() / 带 offset_set 的那一组 | 由上面几项组合 |
+
+PathView 是**借用式** {const char *bytes; std::size_t length;}（不是 NUL 结尾）—— 与 DTO 里的字节数组对应，
+所以粘合时必须保证这些字节活到调用结束（放在调用点的局部 std::string 里即可）。
+
+**第 1 步（patch1）由此完全可写**：
+
+    Access access(g_session->landing);                        // 专用库类，借用 3a 的落地对象
+    AccessParams ap{};                                        // 字段全部来自 Kotlin 的 DTO
+    steps::WriteRequest wr{};
+    wr.access = &access; wr.params = &ap;
+    wr.image  = std::span<const std::byte>(splicehelper_bytes(), splicehelper_padded_size());
+    wr.offset = 0U; wr.width = kWriteWidth;
+    const char *refusal = nullptr;
+    steps::write_image_verified(wr, &refusal);                // 成功后才由 read_block 回读比较
+
+判据：真机上 patch1 成功后，read_block 读同一偏移应能读到 helper 的十六进制头部（并据此推到 Applied），
+原始日志归档 device-gates/。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
