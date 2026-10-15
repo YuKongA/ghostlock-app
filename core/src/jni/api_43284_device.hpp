@@ -23,6 +23,9 @@ namespace ghostlock::jni {
 
     /** @return 建一个 Access（借用落地对象）；失败 0。 */
     [[nodiscard]] std::uint64_t device_make_access(std::uint64_t landingId) noexcept;
+    /** @return 写钩子（站点一个字 + landing 载荷）。 */
+    [[nodiscard]] bool device_write_hook(const contract::WriteHook43284Values &values,
+                                        const contract::AccessParams43284Values &params_values) noexcept;
     /** @return 写一个镜像并逐块校验（patch#1 用的那一步）。 */
     [[nodiscard]] bool device_write_image(const contract::WriteImage43284Values &values,
                                          const contract::AccessParams43284Values &params_values) noexcept;

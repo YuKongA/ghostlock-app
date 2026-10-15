@@ -733,5 +733,45 @@ namespace ghostlock::jni {
         return backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
     }
 
+    /**
+     *  写钩子（站点一个字 + landing 载荷）：驱动器里 steps::write_hook 的那一步。
+     *
+     *  计划用设备侧既有那张（与 device_hook_plan 同源）；access/params/宽度由 Kotlin 给。
+     *  @return 写完并校验 true；否则 false（上层给 hook-write-refused）。
+     */
+    bool device_write_hook(const contract::WriteHook43284Values &values,
+                           const contract::AccessParams43284Values &params_values) noexcept {
+        const std::uint64_t access_id = static_cast<std::uint64_t>(values.hookAccessId);
+        if (access_id == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(access_id) - 1U;
+        if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
+            return false;
+        }
+        auto text_of = [](const std::vector<std::uint8_t> &bytes) {
+            return std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        };
+        const std::string carrier = text_of(params_values.accessCarrierPath);
+        const std::string dev_carrier = text_of(params_values.accessDevCarrierPath);
+        const std::string patch_target = text_of(params_values.accessPatchTargetPath);
+        backend::cve_2026_43284::AccessParams access_params{};
+        access_params.carrier = {carrier.data(), carrier.size()};
+        access_params.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
+        access_params.patch_target = {patch_target.data(), patch_target.size()};
+        access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
+        access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
+        access_params.offset_set = params_values.accessOffsetSet;
+        const backend::cve_2026_43284::hook::SentryPlan plan =
+            backend::cve_2026_43284::hook::device_sentry_plan();
+        backend::cve_2026_43284::steps::HookRequest request{};
+        request.access = g_accesses[slot].get();
+        request.params = &access_params;
+        request.plan = &plan;
+        request.width = static_cast<std::uint64_t>(values.hookWidth);
+        const char *refusal = nullptr;
+        return backend::cve_2026_43284::steps::write_hook(request, &refusal);
+    }
+
 }  // namespace ghostlock::jni
 

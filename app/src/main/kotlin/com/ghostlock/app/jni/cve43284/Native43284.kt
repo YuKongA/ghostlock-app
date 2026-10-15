@@ -18,6 +18,18 @@ import com.ghostlock.app.core.generated.WriteBlock43284
  * -4 failed、-5 stale-handle、-6 busy、-7 stale-target、-8 inflight、-9 closed。
  */
 object Native43284 {
+    /**
+     *  写钩子（站点一个字 + landing 载荷）。
+     *
+     *  @return 0 表示写完并校验通过；失败时 refusalOut[0] 为 hook-write-refused。
+     */
+    external fun writeHook(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        hook: com.ghostlock.app.core.generated.WriteHook43284,
+        refusalOut: Array<String>,
+    ): Int
+
     /** 这个 backend 的库名（CMake 目标 ghostlock43284）。 */
     const val LIBRARY = "ghostlock43284"
 
