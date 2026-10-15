@@ -35,7 +35,12 @@ object TypedBackendProbe {
     const val TAG = "GhostlockTyped"
 
     /** 跑两个 backend 的探针。@return 每一行（屏幕与 logcat 相同）。 */
-    fun run(): List<String> {
+    /** 探针拿到的 Context：建 SA（IpSecManager）要用它。 */
+    @Volatile
+    private var probeContext: android.content.Context? = null
+
+    fun run(context: android.content.Context): List<String> {
+        probeContext = context
         val lines = mutableListOf<String>()
         fun step(line: String) {
             lines += line
