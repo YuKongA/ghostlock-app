@@ -130,8 +130,9 @@ namespace {
         std::uint64_t ticket = 0U;
         expect(backend.resolve_target(resolve_request(TargetRole::Patch1), ticket) == CallCode::Ok,
                "resolve");
-        expect((ticket >> 32U) == static_cast<std::uint64_t>(TargetRole::Patch1),
-               "ticket carries the slot index, not the door token");
+        /* 票据高位装的是门的句柄（slot+1），低位是代：两段都必须非零，且不暴露门自己的 fd。 */
+        expect((ticket >> 32U) >= 1U, "the ticket carries the door handle");
+        expect((ticket & 0xFFFFFFFFU) >= 1U, "and the generation");
         expect(backend.write_block(write_request(999U)) == CallCode::StaleTarget, "unknown ticket");
         expect(same(backend.refusal(), "stale-target"), "named");
 

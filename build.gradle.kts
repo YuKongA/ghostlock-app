@@ -563,6 +563,12 @@ tasks.register("deviceGate") {
         expected += "typed: assembled 43284 open code=0 ticket="
         expected += "typed: assembled 43284 read bytes=5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a refusal="
         expected += "typed: assembled 43284 close ok=true"
+        /* 分步拼装（顺序在 Kotlin）：真机实测 socket/surface/landing 句柄均为 1（空表第一个）、落地对象拉起来了。 */
+        expected += "typed: stepwise 43284 open target="
+        expected += "typed: stepwise 43284 socket=1 refusal="
+        expected += "typed: stepwise 43284 surface=1 refusal="
+        expected += "typed: stepwise 43284 landing=1 refusal="
+        expected += "typed: stepwise 43284 bringUp=true refusal="
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {
