@@ -316,11 +316,13 @@ J3 在执行时拆成两半，理由是**可验证性**：
 
 | 批次 | 命令 | 退出码 | 产物/证据 | 日期 |
 |---|---|---|---|---|
-| J0 | | | | |
-| J1 | | | | |
-| J2 | | | | |
-| J3 | | | | |
-| J4 | | | | |
-| J5 | | | | |
-| J6 | | | | |
-| J7 | | | | |
+| J0 | `make -C core check`（迁移前基线）→ 后改 `./gradlew nativeTestHost` | 0 | 109 PASS → 121/121 CTest | 2026-10-14 |
+| J1 | `ctest -R jni_protocol` | 0 | GLKJ v1 编解码 + 具名拒绝；证伪尾随字节检查 ⇒ 红 | 2026-10-14 |
+| J2 | `ctest -R jni_session` | 0 | 会话状态机 + 句柄代际 + 四个 JNI 入口；证伪 shutdown 幂等 ⇒ 红 | 2026-10-14 |
+| J3a | `ctest -R jni_ops_43499` | 0 | 形状表/事实门/六 op 具名拒绝；证伪 ClearLeaf 极性 ⇒ 红 | 2026-10-14 |
+| J4a | `ctest -R jni_ops_43284` | 0 | 16B 整块/token/三态终态；证伪宽度检查 ⇒ 红 | 2026-10-14 |
+| J4b（第一片） | `adb logcat -s GhostlockGate:I` | 0 | 两端 sha256/词偏移逐位一致（设备门禁第二次） | 2026-10-14 |
+| J5 | `./gradlew checkAll` + 真机门禁 | 0 | Kotlin 边界 + manifest 对拍；设备门禁第一次 | 2026-10-14 |
+| J6 | `./gradlew :app:testDebugUnitTest` + 真机门禁 | 0 | 步骤引擎六例单测 + 真机两条具名拒绝 | 2026-10-14 |
+| J7 | — | — | 待办：四门禁汇总 + UML 同批更新 | |
+| J8 | — | — | 待办：真实 profile 装载与终态交接 | |
