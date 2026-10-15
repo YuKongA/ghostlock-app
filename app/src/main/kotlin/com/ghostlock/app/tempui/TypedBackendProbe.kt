@@ -631,6 +631,17 @@ object TypedBackendProbe {
         }.onFailure { problem ->
             step("typed: next-sequence refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
+
+        /* 内核侧到底有没有在尝试处理我们的 ESP-in-UDP？/proc/net/xfrm_stat 会给线索（纯读）。 */
+        runCatching {
+            val stat = java.io.File("/proc/net/xfrm_stat").readLines()
+                .filter { line -> line.isNotBlank() }
+                .joinToString(" | ")
+                .take(240)
+            step("typed: xfrm-stat=" + stat)
+        }.onFailure { problem ->
+            step("typed: xfrm-stat refused " + problem.javaClass.simpleName)
+        }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
