@@ -195,3 +195,40 @@ probeReadPath 除了「打开 + splice」还应当回**文件尺寸**（fstat）
 sentry 模式扫描不必做（hook 固定，不筛）。
 
 **经验账仍然管用**：carrier 每在一台设备上跑通，就把那条路径追加进白名单（§8.6），下次优先试。
+
+### 8.8 纠正：/data/local/tmp 不能当 insmod 目标；「谁能写」要按域分开看（用户 2026-10-15 指出）
+
+我此前写「全败则回退开发载体 /data/local/tmp，由 LKM/UMH 阶段把它放到可 insmod 的路径」是**错的**：
+SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件只能当**暂存（源）**，不能当**装载路径**。
+
+退役树的做法其实正是这么分的：
+
+    --run-cve-2026-43284 /data/local/tmp/ghostlock.ko  /vendor/lib64/libbinderdebug.so
+                             ^^^^^^^^^^^ 源（读到字节）      ^^^^^^^^^^^^^^^^^^ 装载路径（insmod 的就是它）
+
+⇒ carrier 的两个条件必须**同时**成立：
+
+1. **有人能把字节写进它**（页缓存写）；
+2. **它的路径在允许的域里 insmod 得动**（vendor 等，/data/local/tmp 不行）。
+
+**关键纠正：条件 1 的「人」不必须是我们进程**。链子里的写有两条路：
+
+- 我们自己（app uid）直接只读打开 + splice —— 对 /vendor 会被 EACCES 挡；
+- **helper（crash_dump64）替我们写** —— 它处在更宽的域里（crash_dump），这正是 patch#1 存在的理由
+  （退役树中的 real_chain_hook_helper_splice16 就是「让 helper 去 splice」）。
+
+因此：**vendor 路径对我们 EACCES 并不等于 carrier 不可用** —— 它是否可用取决于**helper 的域**能不能碰它，
+而这一点只能在「helper 就位之后、用 helper 那条路」去实测。这也把探测的视角问题讲清了：
+
+| 视角 | 代表 | 能回答什么 |
+|---|---|---|
+| Kotlin | app 进程的 File/Os | 存在性（已实测够用） |
+| 我们进程的原语 | app uid 的 open/splice | 我们能不能**自己**碰它（vendor 全 EACCES） |
+| **helper 域** | crash_dump64 patch#1 之后 | 链子真正用它写的那些路径可不可用 ← **carrier 的真正判词** |
+
+**修正后的流程**：
+
+1. 枚举 /vendor/lib64（原语 probeListDir）→ 白名单优先；
+2. 对每个候选判「路径可 insmod」（按路径类别）与「我们能不能自己写」（probeReadPath，仅作参考）；
+3. carrier 的最终确认放在 **patch#1 装好之后**：用 helper 那条路写一份可校验的字节进去、再回读比对；
+4. 若 helper 也碰不到任何 vendor 路径 ⇒ 如实报告「此设备此前提下没有可用 carrier」，不再拿 /data/local/tmp 充当装载路径。
