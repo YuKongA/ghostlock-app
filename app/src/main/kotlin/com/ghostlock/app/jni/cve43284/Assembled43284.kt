@@ -346,7 +346,16 @@ class Assembled43284(
 
     /** 分步：写一个镜像并逐块校验（patch#1：image = helper、offset = 0、width = 16）。 */
     fun writeImage(image: ByteArray, offset: Long, width: Long, init: Init43284): Boolean {
-        val params = accessParamsLast ?: return false
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "write:no-handle"
+            return false
+        }
+        val params = accessParamsLast ?: run {
+            lastCode = -1
+            lastRefusal = "write:no-params"
+            return false
+        }
         val refusal = refusalSlot()
         val request = com.ghostlock.app.core.generated.WriteImage43284(
             imageAccessId = accessId,
@@ -361,7 +370,16 @@ class Assembled43284(
 
     /** 分步：写钩子（站点一个字 + landing 载荷）。 */
     fun writeHook(width: Long, init: Init43284): Boolean {
-        val params = accessParamsLast ?: return false
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "hook:no-handle"
+            return false
+        }
+        val params = accessParamsLast ?: run {
+            lastCode = -1
+            lastRefusal = "write:no-params"
+            return false
+        }
         val refusal = refusalSlot()
         val request = com.ghostlock.app.core.generated.WriteHook43284(
             hookAccessId = accessId,
