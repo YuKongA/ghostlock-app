@@ -7,6 +7,7 @@
  *  其余缝（resolve / write_block / read_block / module_check / trigger / wait_terminal）属于真正的
  *  设备工作（J7.5 的 43284 链），不在这里。
  */
+#include "jni/gl_log.hpp"
 #include "backend/cve_2026_43284/kernel_access.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
@@ -816,8 +817,21 @@ namespace ghostlock::jni {
         request.width = static_cast<std::uint64_t>(values.imageWidth);
         /* 耐心由上层给：写是派发式的，验证段要等落盘（0 = 不重试，旧行为）。 */
         request.budget_ms = static_cast<std::uint64_t>(values.imageBudgetMs);
+
+        GL_LOGI("write_image enter: accessId=%llu offset=%llu width=%zu bytes=%zu budget_ms=%llu",
+                static_cast<unsigned long long>(values.imageAccessId),
+                static_cast<unsigned long long>(values.imageOffset),
+                static_cast<std::size_t>(values.imageWidth), values.imageBytes.size(),
+                static_cast<unsigned long long>(values.imageBudgetMs));
+        GL_LOGI("write_image params: carrier=%s patch=%s dev=%s sa_set=%d spi=0x%08x encap=%u sender=%u icv=%u",
+                carrier.c_str(), patch_target.c_str(), dev_carrier.c_str(),
+                access_params.sa.set ? 1 : 0, access_params.sa.spi,
+                static_cast<unsigned>(access_params.sa.encap_port),
+                static_cast<unsigned>(access_params.sa.sender_port),
+                static_cast<unsigned>(access_params.sa.icv_len));
         const char *refusal = nullptr;
         const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
+        GL_LOGI("write_image verified=%d refusal=%s", wrote ? 1 : 0, refusal != nullptr ? refusal : "(null)");
         if (!wrote && why != nullptr) {
             /* 组帧层的错误码（20/21/22/23 = 前端 / splice / 长度 / 后缀；0 = 报文发出去了）：
              * 「报文到底发出去没有」只有它能回答，所以非零时优先报它。 */
