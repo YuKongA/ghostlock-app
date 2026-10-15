@@ -70,6 +70,25 @@ object TypedBackendProbe {
             step("typed: ipsec spi refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
+        /*
+         *  第二问（与 SPI 同一族公开 API）：能不能开一个 UDP 封装套接字？
+         *  注意：UdpEncapsulationSocket 不公开读端口的接口 ⇒ **端口由我们指定**（4500 = ESP-in-UDP 标准端口 ✓），
+         *  开成功就等于拿到了 encap_port；被占用/被拒则给出具名原因。
+         */
+        runCatching {
+            val manager = context.getSystemService(android.net.IpSecManager::class.java)
+            if (manager == null) {
+                step("typed: ipsec encap skipped no-ipsec-service")
+            } else {
+                val socket = manager.openUdpEncapsulationSocket(4500)
+                step("typed: ipsec encap opened port=4500")
+                socket.close()
+                step("typed: ipsec encap closed")
+            }
+        }.onFailure { problem ->
+            step("typed: ipsec encap refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+
         probe43499(::step)
         probe43284(::step)
         return lines
