@@ -292,6 +292,33 @@ log	call	backend	stage	false	true	true	key	true	256
 | Kotlin | `app/` + `profile-core/` | HOCON 解析/合并/覆盖 · `resolve`（Document 三段）· payload 生成 |
 | Rust | `tools/extract_rs/` | boot.img / OTA → profile（`--format conf` / `json`） |
 
+**Kotlin 能力契约（2026-10-14，接口已编译；backend 尚未接线）**：
+
+```mermaid
+classDiagram
+  AccessSessionFactory --> AccessSession : opens
+  AccessSession o-- KernelMemoryAccess : borrows
+  AccessSession o-- PageCacheAccess : borrows
+  AccessCapability <|-- KernelMemoryAccess
+  AccessCapability <|-- PageCacheAccess
+  AccessCapability --> AccessDescriptor : declares
+  AccessDescriptor --> OperationLimits : read/write
+```
+
+`AccessSession` 在 Kotlin 管生命周期；native backend 仍拥有 native 资源。`AccessDescriptor` 只发布本会话已建立的操作限制，不能由接口存在性推断读写已可用。
+
+```mermaid
+stateDiagram-v2
+  [*] --> INITIALIZING
+  INITIALIZING --> READY: backend 建立能力
+  INITIALIZING --> FAILED: 初始化失败
+  READY --> FAILED: native 结果不确定 / cleanup DIRTY
+  READY --> CLOSED: close / 停止访问后释放
+  FAILED --> CLOSED: close / disarm 后释放
+```
+
+这张状态图仅描述新增 Kotlin 契约的允许迁移；实现、JNI 时序与设备结果仍由后续批次验证。
+
 ### 3.5 资产视图（**B1 起**）
 
 | 类别 | 落点 | 描述什么 | 派生/权威 |
@@ -373,10 +400,151 @@ sequenceDiagram
   N-->>N: 内核兜底（relay/enforce 恢复 + watchdog）
 ```
 
+## 4.5 JNI 边界与 Kotlin 步骤（2026-10-14 · J1–J7）
+
+> 这一节记的是**跨端边界**：Kotlin 侧的计划与引擎、native 侧的会话与 op 层，以及两者之间那层
+> 具名协议。它是 J1–J7 的产物；设备侧的 seam（准备/搜索/受害/落字、门/splice/ESP/双 fork/终态等待）
+> 尚未接线，凡未接线者一律回答 op-not-wired:<名字>。
+
+### 4.5.1 Class（边界两侧）
+
+```mermaid
+classDiagram
+  direction LR
+  class AccessSession {
+    <<interface>>
+    +phase : SessionPhase
+    +cleanup : CleanupDisposition
+    +kernelMemory : KernelMemoryAccess?
+    +pageCache : PageCacheAccess?
+    +close()
+  }
+
+  class AccessSessionFactory {
+    <<interface>>
+    +open(request) AccessResult~AccessSession~
+  }
+  class JniAccessSession {
+    +invoke(op, values, blobs) AccessResult~NativeReply~
+  }
+  class JniOpsInvoker {
+    +invoke(opName, values, blobs) OpsReply
+  }
+  class NativeProtocol {
+    +Builder(op) +parse(frame) Reply
+  }
+  class StepEngine {
+    +run(plan, inputs) List~StepResult~
+  }
+  class StepPlans {
+    +forStep(step, inputs) Plan?
+  }
+  class PlanCatalog {
+    +declaredSteps(backend) +fromTokens(tokens)
+  }
+  class StepInputs
+  class Session_native["native Session"] {
+    +dispatch(op) FrameStatus
+  }
+  class Ops43499["Ops43499 (six ops)"] {
+    +write_word +initialize
+  }
+  class Ops43284["Ops43284 (seven ops)"] {
+    +resolve_target +hook_words +write_block
+  }
+  class BackendOps["BackendOps (function-pointer bundle)"]
+  class Seams43499["Ops43499Seams (device seam, J3b)"]
+  class Seams43284["Ops43284Seams (device seam, J4b)"]
+
+  AccessSessionFactory ..> JniAccessSession : creates
+  JniAccessSession ..|> AccessSession
+  JniAccessSession --> NativeProtocol : frames
+  StepEngine --> StepPlans : one step to call sequence
+  StepEngine --> PlanCatalog : declared order
+  StepEngine ..> JniOpsInvoker : named calls
+  JniOpsInvoker ..> JniAccessSession : token to op/key code
+  JniAccessSession ..> Session_native : nativeSessionInvoke
+  Session_native --> BackendOps : per-backend bundle
+  BackendOps --> Ops43499 : backend 43499
+  BackendOps --> Ops43284 : backend 43284
+  Ops43499 ..> Seams43499 : absent today
+  Ops43284 ..> Seams43284 : data ops wired, device ops absent
+```
+
+```
+
+### 4.5.2 状态机（会话相位 + 一步的结局）
+
+```mermaid
+stateDiagram-v2
+  state "native SessionPhase" as N {
+    [*] --> declared
+    declared --> ready : initialize ok
+    declared --> failed : op refused / bad parameters
+    ready --> failed : op fails after ready
+    declared --> closed : shutdown + destroy
+    ready --> closed : shutdown + destroy
+    failed --> closed : shutdown + destroy
+  }
+  state "Kotlin SessionPhase / CleanupDisposition" as K {
+    [*] --> INITIALIZING
+    INITIALIZING --> READY : first snapshot ok
+    READY --> CLEAN : every reply ok
+    CLEAN --> DIRTY : any indeterminate reply (no way back)
+    INITIALIZING --> CLOSED : close()
+    READY --> CLOSED : close()
+  }
+  state "StepOutcome (per step)" as S {
+    [*] --> Ran : reply ok
+    Ran --> Refused : reply not ok, no retry left
+    Ran --> Frozen : reply indeterminate
+    Refused --> [*] : engine stops here
+    Frozen --> [*] : remaining steps listed Frozen, no calls
+  }
+```
+
+### 4.5.3 Sequence（一笔事务端到端 · 与设备门禁同路径）
+
+```mermaid
+sequenceDiagram
+  participant U as temp UI / PlanRunner
+  participant E as StepEngine
+  participant I as JniOpsInvoker
+  participant S as JniAccessSession
+  participant N as native Session
+  participant O as Ops (43499 / 43284)
+  participant D as device seam
+  U->>E: run(declaredSteps(backend), inputs)
+  E->>E: precondition: inputs complete?
+  Note over E: missing value => Refused with zero calls
+  E->>I: invoke(opName, values, blobs)
+  I->>I: token to op/key code (manifest is the authority)
+  I->>S: invoke(op, values, blobs)
+  S->>N: nativeSessionInvoke(handle, op, frame)
+  N->>O: dispatch by backend
+  O->>D: seam call
+  alt seam not wired
+    D-->>O: absent
+    O-->>N: unsupported + op-not-wired:name
+  else seam wired
+    D-->>O: result
+    O-->>N: ok + fields
+  end
+  N-->>S: reply frame (status + fields)
+  S-->>I: NativeReply (indeterminate => DIRTY)
+  I-->>E: OpsReply
+  E-->>U: StepResult (Ran / Refused / Frozen + calls)
+```
+
+**门禁命令**（J7 起集中控制）：宿主 = ./gradlew checkAll（原生 CTest + app 单测）；真机 =
+./gradlew deviceGate（装 APK → 起临时界面 → 抓 logcat → 按 native 导出的 manifest **机器校验**）；
+两者合起来 = ./gradlew gateAll。
+
 ## 5. 维护约定
 
 - **一处权威**：本文件是唯一权威 UML；其他文档**链接**本件，不重画同一结构。结构变化（新增/删除层、暴露面条目、拒绝码、相位）⇒ **同批**更新本件对应图。
 - **引用**：`docs/analysis/adr/README.md` · `handoff-payload-batch-plan.md` · `contract-design.md` · `plugin-runtime-integration-design.md` · `root-manager-selection-design.md` · `docs/archive/*` · `engineering-rules.md` · `AGENTS.md`。
 - **两条新纪律（同批留痕）**：本件任何**新条目/新相位/新实现层**必须同时满足 —— ① **无名字→值表**（名字只允许 **dispatch 标识符** 与 **数据面键路径**；见 [target 附件](../analysis/lua-surface-annex-target.md) §C1）· ② **表达一致**（同一件事只允许一种表达，不得「首设 A 语法 / 后续 B 语法」；见 [lua-surface-design](../analysis/lua-surface-design.md) 开头）。
 - **沿革（2026-10-08 · 层族 10 → 9）**：**`race` 不再是层** —— `core/src/race/**`（5 文件）整体移入 **`backend/cve_2026_43499/race/`**，命名空间 `ghostlock::race` → `ghostlock::backend::cve_2026_43499::race`；`contract/layer_scope.hpp` 删 `race` 行（断言 10→**9**、7 保持），`settle` 的 `implements_layer` 由 `race` → **`backend`**。**理由 = 纠错**：PI-futex 是 **43499 专属**机制（43284 为 pagecache/UMH，不含 PI-futex），**旧树本就把 futex 机制放在 `backend/cve_2026_43499/leak/futex_hash.h`**；重写时错误地提为公共层，本次与 AGENTS「backend 按 CVE 分子命名空间」对齐。**守卫实证**：删层行而不改断言 ⇒ **四条 static_assert 同时失败**（`kLayerCount == 10` 与 surface 行指向不存在的层）⇒ 修正后才绿。
+- **沿革（2026-10-14 · J1-J7）**：新增 4.5 JNI 边界与 Kotlin 步骤（Class / 状态机 / Sequence 三张图）—— 边界把上层逻辑留 Kotlin、只有不可替代的核心进 JNI 落成 op 面：native 四个 extern（create/invoke/shutdown/destroy）+ GLKJ v1 帧 + 会话相位（declared/ready/failed/closed）；Kotlin 侧 AccessSession/能力接口 + core/steps 引擎（顺序 · 拒绝即停 · 缺前置零调用 · indeterminate 冻结）。门禁并入两件权威：宿主 ./gradlew checkAll、真机 ./gradlew deviceGate（按 native 导出的 manifest 机器校验）。
 - **历史**：旧实现 UML = [old-full-process-uml.md](old-full-process-uml.md)（归档头含理由与恢复来源；登记见 `docs/archive/INDEX-plans.md` §七）。

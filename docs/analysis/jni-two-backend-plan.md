@@ -22,7 +22,7 @@
 | F2 | 现有入口**不读帧体**：create 只读 16 字节头 | `core/src/jni/ghostlock_jni.cpp:66-85` |
 | F3 | 库名不一致：Kotlin 声明 `ghostlock_jni`，root 任务把 `build/native/ghostlock` 复制为 `libghostlock.so` | `app/src/main/kotlin/com/ghostlock/app/jni/NativeEntries.kt:28`；`build.gradle.kts`（`prepareGhostlockJniLibs`） |
 | F4 | root 任务 `buildGhostlockNative` 的 `workingDir(file("src"))` 指向**不存在**的 `<repo>/src`，目标 `ghostlock` 亦无对应 Makefile | `build.gradle.kts`；`find . -maxdepth 3 -name 'Makefile*'` 只命中 `tools/avbcheck/Makefile` |
-| F5 | 工作树**已删** `core/Makefile`、`core/CMakeLists.txt`、`core/fixtures/**`、`core/src/tests/**`（119 件，未暂存删除） | `git status --short -- core`；`git ls-tree -r --name-only HEAD core/src/tests | wc -l` ⇒ 119 |
+| F5 | 工作树**已删** `core/Makefile`、`core/CMakeLists.txt`、`core/fixtures/**`、`core/src/tests/**`（119 件，未暂存删除；**J0 已解决**：core/Makefile 由 core/CMakeLists.txt 取代，tests 全部回位——见 §9） | `git status --short -- core`；`git ls-tree -r --name-only HEAD core/src/tests \| wc -l` ⇒ 119 |
 | F6 | 只有 `:app:compileDebugKotlin` 可用；`:app:processDebugMainManifest`/`:app:testDebugUnitTest` 不可用：`AndroidManifest.xml` 第 33–49 行**注释嵌套**，XML 在第 37 行解析失败 | 本机 `python3 -c "ET.parse('app/src/main/AndroidManifest.xml')"` ⇒ `XML FAIL: not well-formed (invalid token): line 37, column 12` |
 | F7 | `profile-core` 被 `settings.gradle.kts` 排除（`kotlin-disable-20261010`）；其 `SessionSecretFrame.kt` 是 SA 帧的历史 Kotlin 实现 | `settings.gradle.kts` 注释行；`profile-core/src/main/kotlin/com/ghostlock/app/data/profile/SessionSecretFrame.kt` |
 | F8 | `app/src/main/jniLibs/arm64-v8a/*.so` 为 2026-10-10 旧树产物，不得当作本树证据 | `ls -la app/src/main/jniLibs/arm64-v8a` |

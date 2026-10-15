@@ -310,6 +310,89 @@ tasks.register("exportJniProtocolManifest") {
 tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
     dependsOn("exportJniProtocolManifest")
 }
+/* ---------------------------------------------------------------------------
+ * 设备门禁（J7）：把「在真机上跑一遍」变成一条 Gradle 命令，并**机器校验**关键行。
+ *
+ * 校验值一律不手抄：镜像摘要与钩子数字从 native 导出的 manifest 读
+ * （app/build/jni-protocol-manifest.tsv，由 native 的 jni_protocol_manifest 产出），
+ * 期望的计划步名与拒绝名写成这里的一张表。抓到的原始日志落到 build/app/device-gate.log。
+ * ------------------------------------------------------------------------- */
+tasks.register("deviceGate") {
+    description = "在已连接的设备上跑门禁：装 APK → 起临时界面 → 抓 logcat → 校验关键行"
+    group = "verification"
+    dependsOn(":app:assembleDebug")
+    val adbExe: String = run {
+        val onPath = resolveTool("adb")
+        if (File(onPath).isFile) {
+            onPath
+        } else {
+            val fromSdk = File(System.getProperty("user.home"), "Library/Android/sdk/platform-tools/adb")
+            if (fromSdk.isFile) fromSdk.absolutePath else "adb"
+        }
+    }
+    val apkDir = file("build/app/outputs/apk/debug")
+    val manifestFile = file("app/build/jni-protocol-manifest.tsv")
+    val logFile = file("build/app/device-gate.log")
+
+    doLast {
+        fun exec(vararg command: String): String {
+            val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+            val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
+            val code = process.waitFor()
+            check(code == 0) { "命令失败(" + code + "): " + command.joinToString(" ") + "\n" + text }
+            return text
+        }
+
+        val devices = exec(adbExe, "devices").lines().count { it.endsWith("\tdevice") }
+        check(devices > 0) { "没有已连接的设备（adb devices 里没有 device 行）" }
+
+        val apk = apkDir.listFiles()?.filter { it.name.endsWith(".apk") }?.maxByOrNull { it.lastModified() }
+        check(apk != null) { "没有 APK：先运行 :app:assembleDebug" }
+
+        logger.lifecycle("deviceGate: 安装 " + apk!!.name)
+        exec(adbExe, "install", "-r", apk.absolutePath)
+        exec(adbExe, "logcat", "-c")
+        exec(adbExe, "shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
+        Thread.sleep(7000L)
+        val log = exec(adbExe, "logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I")
+        logFile.parentFile.mkdirs()
+        logFile.writeText(log)
+
+        /* 期望值：从 native 导出的 manifest 里读，缺行就是 native 侧没导出 —— 也是失败。 */
+        val rows: Map<String, String> = manifestFile.readLines()
+            .mapNotNull { line ->
+                val parts = line.split('\t')
+                if (parts.size == 3) parts[0] + " " + parts[1] to parts[2] else null
+            }
+            .toMap()
+        val expected = mutableListOf<String>()
+        expected += "gate: end"
+        for (name in listOf("splice_helper", "landing_payload")) {
+            rows["image " + name]?.let { digest -> expected += "sha256=" + digest }
+        }
+        rows["hook branch_word"]?.let { expected += "branch=" + it }
+        rows["hook displaced_word"]?.let { expected += "displaced=" + it }
+        expected += "plan: cve_2026_43499 step=w1 outcome=Refused"
+        expected += "plan: cve_2026_43284 step=patch1 outcome=Refused"
+
+        val missing = expected.filterNot { log.contains(it) }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "设备门禁未通过，缺少 " + missing.size + " 项：\n  " + missing.joinToString("\n  ") +
+                    "\n原始日志：" + logFile.path,
+            )
+        }
+        logger.lifecycle("deviceGate: PASS（" + expected.size + " 项校验全部命中；日志 " + logFile.path + "）")
+    }
+}
+
+/** 汇总门禁：宿主测试（原生 CTest + app 单测）+ 设备门禁。 */
+tasks.register("gateAll") {
+    description = "集中门禁：checkAll（宿主）+ deviceGate（真机）"
+    group = "verification"
+    dependsOn("checkAll", "deviceGate")
+}
+
 tasks.register("checkAll") {
     description = "集中测试入口：原生 CTest + Kotlin 单测"
     group = "verification"

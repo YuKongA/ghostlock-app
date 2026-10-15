@@ -55,6 +55,17 @@ int main() {
         const hook::SentryPlan plan = hook::device_sentry_plan();
         std::uint8_t payload[1024] = {};
         std::size_t payload_size = 0U;
+        /* 钩子计划的四个数也导出：设备门禁按它们校验真机上回来的值，Kotlin/脚本都不手抄。 */
+        std::uint32_t branch = 0U;
+        if (hook::hook_branch(plan, branch) == hook::SentryError::Ok) {
+            std::printf("hook\tbranch_word\t0x%08x\n", static_cast<unsigned>(branch));
+        }
+        std::printf("hook\tdisplaced_word\t0x%08x\n",
+                    static_cast<unsigned>(plan.displaced_instruction));
+        std::printf("hook\tsite_offset\t%llu\n",
+                    static_cast<unsigned long long>(plan.hook_file_offset));
+        std::printf("hook\tlanding_offset\t%llu\n",
+                    static_cast<unsigned long long>(plan.payload_file_offset));
         if (hook::build_sentry_payload(plan, payload, sizeof(payload), payload_size) ==
             hook::SentryError::Ok) {
             ghostlock::support::sha256_hex(ghostlock::support::sha256(payload, payload_size), hex);

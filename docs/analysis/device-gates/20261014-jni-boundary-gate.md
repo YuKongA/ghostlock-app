@@ -55,6 +55,7 @@ adb logcat -d -s GhostlockGate:I
 - 不证明任何写原语：`write_word`/`write_block` 在真机上的答案是 `op-not-wired`，因为设备 seam（J3b/J4b）尚未实现。
 - 不证明 root、不证明 KernelSU 可加载、不证明 LKM：本门禁只走边界与拒绝面。
 - 不证明 43284 的 SA/门/sequence：那条链需要会话帧与设备侧 splice 栈（J4b）。
+
 ---
 
 ## 第二次门禁：43284 的数据 op（J4b 的第一片）· 2026-10-14 20:13
