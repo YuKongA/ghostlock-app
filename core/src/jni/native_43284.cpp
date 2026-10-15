@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <jni.h>
+#include <string>
 #include <vector>
 
 #include "jni/api_43284.hpp"
@@ -522,10 +523,18 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_accessIni
         const auto outcome = refuse_read(handle, sa_failure);
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
-    const bool up = ghostlock::jni::device_access_initialize(
+    const int status = ghostlock::jni::device_access_initialize(
         static_cast<std::uint64_t>(accessId), values, sa_source);
-    return answer(env, up ? CallCode::Ok : CallCode::Failed,
-                  up ? "" : "access-initialize-refused", refusal_out);
+    if (status == 0) {
+        return answer(env, CallCode::Ok, "", refusal_out);
+    }
+    /* 具名：把 Access 自己的状态名接上来，bad-parameters 与 failed 一眼可分。 */
+    const std::string named = status < 0
+        ? (status == -1 ? "access-init:no-handle" : "access-init:stale-handle")
+        : (std::string("access-init:") +
+           ghostlock::contract::KernelAccess::status_name(
+               static_cast<ghostlock::contract::KernelAccess::Status>(status)));
+    return answer(env, CallCode::Failed, named.c_str(), refusal_out);
 }
 
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImage(

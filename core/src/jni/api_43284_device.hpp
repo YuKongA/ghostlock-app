@@ -30,9 +30,10 @@ namespace ghostlock::jni {
     [[nodiscard]] bool device_write_image(const contract::WriteImage43284Values &values,
                                          const contract::AccessParams43284Values &params_values) noexcept;
     /** @return 初始化 Access（路径字段借用式，必须活到调用结束）。 */
-    [[nodiscard]] bool device_access_initialize(std::uint64_t accessId,
-                                                const contract::AccessParams43284Values &values,
-                                                const Init43284Values &sa_source) noexcept;
+    /** @return 0 成功；否则是 Access 的状态码（上层翻成具名拒绝）。 */
+    [[nodiscard]] int device_access_initialize(std::uint64_t accessId,
+                                              const contract::AccessParams43284Values &values,
+                                              const Init43284Values &sa_source) noexcept;
     /** @return 拆掉一个 Access。 */
     [[nodiscard]] bool device_destroy_access(std::uint64_t accessId) noexcept;
 

@@ -36,6 +36,15 @@
 
 namespace ghostlock::jni {
     namespace {
+
+    /**
+     *  PathView 是「借用式 ptr + len」，而 half_set() 的定义是 (bytes == nullptr) != (length == 0)：
+     *  **非空指针 + 长度 0 也算半给**（access_params.hpp:60-62）。所以空路径必须写成 {nullptr, 0}。
+     */
+    backend::cve_2026_43284::PathView access_path_of(const std::string &text) noexcept {
+        return text.empty() ? backend::cve_2026_43284::PathView{nullptr, 0U}
+                            : backend::cve_2026_43284::PathView{text.data(), text.size()};
+    }
     /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
     struct OpenDoor final {
         int fd = -1;
@@ -650,11 +659,11 @@ namespace ghostlock::jni {
     /** @return 拆掉一个 Access（它只借用落地对象，所以拆它不动别人）。 */
     bool device_destroy_access(const std::uint64_t accessId) noexcept {
         if (accessId == 0U) {
-            return false;
+            return -1;  /* 没有句柄 */
         }
         const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
         if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
-            return false;
+            return -2;  /* 句柄失效 */
         }
         g_accesses[slot].reset();
         return true;
@@ -667,9 +676,9 @@ namespace ghostlock::jni {
      *        所以它们都在本栈帧里。
      *  @return 成功 true；id 无效或 Access 拒绝 ⇒ false（上层给 access-initialize-refused）。
      */
-    bool device_access_initialize(const std::uint64_t accessId,
-                                  const contract::AccessParams43284Values &values,
-                                  const Init43284Values &sa_source) noexcept {
+    int device_access_initialize(const std::uint64_t accessId,
+                                 const contract::AccessParams43284Values &values,
+                                 const Init43284Values &sa_source) noexcept {
         if (accessId == 0U) {
             return false;
         }
@@ -684,9 +693,9 @@ namespace ghostlock::jni {
         const std::string dev_carrier = text_of(values.accessDevCarrierPath);
         const std::string patch_target = text_of(values.accessPatchTargetPath);
         backend::cve_2026_43284::AccessParams params{};
-        params.carrier = {carrier.data(), carrier.size()};
-        params.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
-        params.patch_target = {patch_target.data(), patch_target.size()};
+        params.carrier = access_path_of(carrier);
+        params.dev_carrier = access_path_of(dev_carrier);
+        params.patch_target = access_path_of(patch_target);
         params.carrier_base = static_cast<std::uint64_t>(values.accessCarrierBase);
         params.offset = static_cast<std::uint64_t>(values.accessOffset);
         params.offset_set = values.accessOffsetSet;
@@ -695,7 +704,9 @@ namespace ghostlock::jni {
          * 而 PageCacheLanding::bring_up_with 在「已拉起」时会返回 false —— 走这条路就不能先单独 bringUp。
          */
         params.sa = sa_material_of(sa_source);
-        return g_accesses[slot]->initialize(params).ok();
+        const auto up = g_accesses[slot]->initialize(params);
+        /* 状态码原样带出去：bad-parameters 与 failed 是两条完全不同的路，不许压成 bool。 */
+        return up.ok() ? 0 : static_cast<int>(up.status);
     }
 
     /**
@@ -722,9 +733,9 @@ namespace ghostlock::jni {
         const std::string dev_carrier = text_of(params_values.accessDevCarrierPath);
         const std::string patch_target = text_of(params_values.accessPatchTargetPath);
         backend::cve_2026_43284::AccessParams access_params{};
-        access_params.carrier = {carrier.data(), carrier.size()};
-        access_params.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
-        access_params.patch_target = {patch_target.data(), patch_target.size()};
+        access_params.carrier = access_path_of(carrier);
+        access_params.dev_carrier = access_path_of(dev_carrier);
+        access_params.patch_target = access_path_of(patch_target);
         access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
         access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
         access_params.offset_set = params_values.accessOffsetSet;
@@ -762,9 +773,9 @@ namespace ghostlock::jni {
         const std::string dev_carrier = text_of(params_values.accessDevCarrierPath);
         const std::string patch_target = text_of(params_values.accessPatchTargetPath);
         backend::cve_2026_43284::AccessParams access_params{};
-        access_params.carrier = {carrier.data(), carrier.size()};
-        access_params.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
-        access_params.patch_target = {patch_target.data(), patch_target.size()};
+        access_params.carrier = access_path_of(carrier);
+        access_params.dev_carrier = access_path_of(dev_carrier);
+        access_params.patch_target = access_path_of(patch_target);
         access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
         access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
         access_params.offset_set = params_values.accessOffsetSet;
