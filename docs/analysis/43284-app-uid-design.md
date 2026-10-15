@@ -289,3 +289,19 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
 
 **按裁定的分工**：域桥本身是「内核/进程交互」，留在 native 做薄原语（execv + 管道 + 读回）；
 而「先打补丁、再 exec、再读回、失败重试」的顺序与选择**全在 Kotlin**。
+
+### 9.4 四处待查的结果（2026-10-15 只读）
+
+| 件 | 结果 |
+|---|---|
+| embed/splicehelper_blob.{cpp,hpp} | **本树已有** ✓（core/src/backend/cve_2026_43284/embed/splicehelper_blob.*） |
+| 引用 splicehelper 的地方 | core/src/tools/pagecache_load_lkm.cpp、**core/src/jni/ops_43284_device.cpp**、steps/pagecache_step_runner.cpp ⇒ 本树已有一条用到它的路 |
+| contract::FileCacheWriteOps（退役树的注入面） | **本树没有** ✗ —— 注入面类型不在这里（contract/capabilities.hpp 也不存在） |
+
+**结论与下一步**：
+
+1. helper 的字节（splicehelper）本树有 ✓，patch#1 不需要重新生成载荷；
+2. 退役树的「注入面（FileCacheWriteOps）」在本树不存在 ⇒ 本树用自己的写法：
+   先看 **core/src/jni/ops_43284_device.cpp** 是怎么用 splicehelper 的（它就在 JNI 目录里，很可能已经是设备侧的接线），
+   据此决定「patch#1 写成什么形态」：若 ops_43284_device.cpp 已经提供写路径，patch#1 只需一个薄原语；否则要先补一个注入面等价物。
+3. 域桥（exec crash_dump64 + 管道 + splice 读回）本树确实没有 ⇒ 仍是**需移植**的新原语。
