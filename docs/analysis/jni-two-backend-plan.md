@@ -448,6 +448,22 @@ PageCacheWrite window(door, io) → PageCacheLanding landing(window) → landing
 1. 把五个阶段按会话装配进设备函数（resolve 给载体路径、write_block/read_block 给页缓存写读、trigger 给双 fork、wait 给 marker）；
 2. 或者（更省事、但需确认）让应用进程直接调用这个驱动器的阶段函数 —— 前提是链必须在**应用进程上下文**里跑（zygote 派生的应用身份正是漏洞的入口），所以「用 adb 跑工具」不等于「应用里跑链」，这条要先确认再选；
 3. 两个 backend 的端到端判据都留 id 报 uid=0 的原始日志归档。
+
+### §11.8 可复用的步骤 API（2026-10-15 勘察，3a/3b 直接照此接线）
+
+steps/pagecache_steps.hpp 已经把链上的动作做成了函数，设备函数只需薄薄一层映射：
+
+| 设备函数 | 复用的函数（landing/ 与 steps/ 里的现成实现） | 说明 |
+|---|---|---|
+| trigger | const char *trigger_orphan(std::uint32_t delay_ms) | 双 fork 触发；返回值就是**具名失败原因**（成功返回 nullptr）—— 与 Trigger43284.delayMs 一一对应，几乎零适配 |
+| wait_terminal | const char *wait_for_module(const WaitRequest &) | WaitRequest 带 exists/sleep_ms 两个函数指针（宿主可注入假实现），返回具名结果；三态（success/failure/inflight）按返回值映射 |
+| write_block（钩子/镜像两类写） | bool write_hook(HookRequest &, const char **refusal)、bool write_image_verified(WriteRequest &, const char **refusal) | 写成功即 Dispatched；read_block 回来比较一致才 Applied |
+| （统一入口） | StepOutcome run_pagecache_step(PagecacheStep, StepContext &, ...) | 若要走「同一实现、两种调用」（script 侧与设备侧），用这个 |
+
+装配仍按 §11.7 的参考：PageCacheDoorLinux → RealSpliceIo(real_splice_io(), target_fd) → PageCacheWrite → PageCacheLanding → bring_up_with(sa)。
+驱动器的输入全部来自库头文件（backend/cve_2026_43284/* 与 contract/kernel_access.hpp、session_frame.hpp），**应用侧设备函数可以复用同一批**。
+
+接线顺序（下一轮直接执行）：3a = 装配 + write_block/read_block；3b = trigger 走 trigger_orphan、wait_terminal 走 wait_for_module（两者都是小改动）。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
