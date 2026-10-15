@@ -671,7 +671,39 @@ J7.5-4 的顺序因此是：
         CrashDumpBridge bridge;
         OldPageSource old_page{};
 
-##placeholder##### §11.4 纪律（不因为这是临时逻辑而放松）
+
+### §11.17 用户裁定（2026-10-15）：拼装/写目标/收尾只在 Kotlin，native 只留 JNI 接口
+
+**裁定原文要点**：不要用以前的 C++ 高级逻辑往 C 代码里加；拼装和具体写目标/收尾只在 Kotlin 做；native 只留 JNI 接口；
+如果做不到，就说明**接口能力不足**，**改接口**，而不是往 native 加逻辑。
+
+#### 对现有 native 代码的自查（按裁定逐条判定）
+
+| 我写的 native | 属于什么 | 判定 | 处置 |
+|---|---|---|---|
+| Landing43284（门→io→window→landing 的构造） | **拼装** | 违反 | 拆成 Kotlin 可调用的原语：openTarget / connectEsp / makeLanding / destroyLanding |
+| g_session 的建立与替换时销毁 | **收尾** | 违反 | 生命周期交给 Kotlin（成对的 create/destroy op），native 只按 id 查表 |
+| device_write_block（land_block + adopt_sequence） | **写目标** | 违反 | 暴露为 landBlock(landingId, offset, block) 与 adoptSequence(landingId, next)，调用顺序由 Kotlin 决定 |
+| device_resolve（O_RDWR 开门 + 票据） | 设备原语（open） | 可留 | 保留，但门对象的持有改为 Kotlin 管（closeTarget） |
+| device_read_block（pread） | 设备原语（读） | 可留 | 保留（Kotlin 决定读哪里、读几次） |
+| device_module_check / embedded_image / hook_plan / trigger / wait_terminal | 既有原语包装（参数由 Kotlin 给） | 可留 | 保留；Kotlin 决定是否调用与何时调用 |
+
+#### 接口能力不足的清单（这是要改的接口，不是要加的 native 逻辑）
+
+Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式**原语（每个都是薄 JNI，句柄的 create/destroy 成对）：
+
+1. 门与拼接：openTarget(path) → targetId；closeTarget(targetId)；connectEsp(targetId, sa) → socketId；closeSocket(socketId)；
+2. 拼接面：makeSurface(targetId, socketId, oldPage?, helper?) → surfaceId；destroySurface(surfaceId)；
+3. 窗口与落地：makeLanding(surfaceId) → landingId；destroyLanding(landingId)；
+4. 落地读写：landBlock(landingId, offset, block)；readBlock(landingId, offset) → bytes；adoptSequence(landingId, next)；nextSequence(landingId) → int；bringUp(landingId, sa) → bool；
+5. Access 那条线：makeAccess(landingId) → accessId；accessInitialize(accessId, params) → status；writeImageVerified(accessId, params, imageRole|bytes, offset, width) → outcome；writeHook(accessId, params, plan) → outcome；
+6. 收尾：destroyAccess(accessId)；以及统一的 destroy(handle) 语义（谁建谁拆，跨窗口序号由 Kotlin 用 nextSequence 取后再 adoptSequence 接续）。
+
+实现方式：native 里只留「按 id 查表 + 调一个既有原语 + 回来」的函数；所有顺序、条件、循环、镜像切块、载体选择、序号接续都写在 Kotlin
+（TypedBackendProbe → 将来的正式链编排）。**这是接口改造，不是往 native 加逻辑**，与裁定一致。
+
+改造前先把这份清单交给用户确认（它改的是 wire/D1 契约面，属 L 级）：确认后按「一批一类事」落：①门/拼接面/落地三个句柄；②读写与序号；③Access 线与写镜像/钩子；④Kotlin 侧编排替换现在 native 里的装配与写目标。
+### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
 2. 攻击关键路径改动按 AGENTS §8：真机门禁与 device-gates/ 归档，缺一不可；
