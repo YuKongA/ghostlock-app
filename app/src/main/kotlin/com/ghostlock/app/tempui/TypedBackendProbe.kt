@@ -420,7 +420,8 @@ object TypedBackendProbe {
          */
         val patchTarget = "/apex/com.android.runtime/bin/crash_dump64"
         val patcher = Assembled43284(Native43284.create()) { init43284() }
-        step("typed: patch1 door=" + patcher.openTargetStepwise(patchTarget))
+        val patchDoor = patcher.openTargetStepwise(patchTarget)
+        step("typed: patch1 door=" + patchDoor + " refusal=" + patcher.lastRefusal)
         patcher.openEspSocket()
         step("typed: patch1 surface=" + patcher.buildSurface())
         step("typed: patch1 landing=" + patcher.buildLanding())
