@@ -347,6 +347,23 @@ object TypedBackendProbe {
                 (back?.joinToString("") { byte -> "%02x".format(byte) } ?: "none") +
                 " refusal=" + stepwise.lastRefusal,
         )
+        /* 驱动器里 patch#1 的完整序列：建 Access → 初始化 → 写 helper 镜像（image=helper/offset=0/width=16）。 */
+        val stepAccess = stepwise.buildAccess()
+        step("typed: stepwise 43284 access=" + stepAccess + " refusal=" + stepwise.lastRefusal)
+        val accessParams = com.ghostlock.app.core.generated.AccessParams43284(
+            accessCarrierPath = doorPath.toByteArray(),
+            accessDevCarrierPath = ByteArray(0),
+            accessPatchTargetPath = doorPath.toByteArray(),
+            accessCarrierBase = 0L,
+            accessOffset = 0L,
+            accessOffsetSet = true,
+        )
+        val accessInit = stepwise.initializeAccessAndRemember(accessParams)
+        step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
+        val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
+        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L) else false
+        step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
+        step("typed: stepwise 43284 accessDestroy=" + stepwise.destroyAccessNow())
         val stepSeq = stepwise.nextSequence()
         step("typed: stepwise 43284 sequence=" + stepSeq)
         val stepTorn = stepwise.tearDown()

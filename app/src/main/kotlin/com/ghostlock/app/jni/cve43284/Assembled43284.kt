@@ -309,6 +309,74 @@ class Assembled43284(
         return if (code == 0) out else null
     }
 
+    /** Access 句柄（0 = 没有）。 */
+    var accessId: Long = 0L
+        private set
+
+    /** 最近一次初始化 Access 用的那份参数（写操作要用同一份）。 */
+    private var accessParamsLast: com.ghostlock.app.core.generated.AccessParams43284? = null
+
+    /** 分步：按落地对象建 Access（借用它，所以要先 bringUpLanding）。 */
+    fun buildAccess(): Long {
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.makeAccess(handle, landingId, out, refusal)
+        record(code, refusal)
+        accessId = if (code == 0) out[0] else 0L
+        return accessId
+    }
+
+    /** 分步：初始化 Access 并记住参数。 */
+    fun initializeAccessAndRemember(
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+    ): Boolean {
+        accessParamsLast = params
+        val refusal = refusalSlot()
+        val code = Native43284.accessInitialize(handle, accessId, params, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 分步：写一个镜像并逐块校验（patch#1：image = helper、offset = 0、width = 16）。 */
+    fun writeImage(image: ByteArray, offset: Long, width: Long): Boolean {
+        val params = accessParamsLast ?: return false
+        val refusal = refusalSlot()
+        val request = com.ghostlock.app.core.generated.WriteImage43284(
+            imageAccessId = accessId,
+            imageOffset = offset,
+            imageWidth = width,
+            imageBytes = image,
+        )
+        val code = Native43284.writeImage(handle, params, request, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 分步：写钩子（站点一个字 + landing 载荷）。 */
+    fun writeHook(width: Long): Boolean {
+        val params = accessParamsLast ?: return false
+        val refusal = refusalSlot()
+        val request = com.ghostlock.app.core.generated.WriteHook43284(
+            hookAccessId = accessId,
+            hookWidth = width,
+        )
+        val code = Native43284.writeHook(handle, params, request, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 分步收尾：拆 Access（必须在拆落地之前）。 */
+    fun destroyAccessNow(): Boolean {
+        if (accessId == 0L) {
+            return true
+        }
+        val refusal = refusalSlot()
+        val code = Native43284.destroyAccess(handle, accessId, refusal)
+        record(code, refusal)
+        accessId = 0L
+        return code == 0
+    }
+
     /** 收尾：按与拼装相反的顺序拆（落地 → 拼接面 → socket → 门）。 */
     fun tearDown(): Boolean {
         var ok = true
