@@ -411,6 +411,18 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 
 现在（2026-10-15）deviceGate 的 26 项里，43284 的 write_block 仍如实回答 block-refused —— 在 3a 落地前这一点不会变。
 
+**3a 的确切形状（2026-10-15 核实）**：
+
+- PageCacheLanding 的构造是 PageCacheLanding(PageCacheWindow &window)：窗口是借来的，必须比落地对象活得久；
+- PageCacheDoors(DoorOps &ops, int handed_in_fd = -1)：**调用方递进来的 fd 只被使用、不被关闭**（"谁开的门谁关"）
+  —— 正是接 resolve 那扇门的地方；
+- DoorOps{open_target, connect_esp(SaMaterial), close_fd, target_is_remote} 需要一份设备侧实现（ESP socket 用 sa 里的端口与密钥）；
+- 窗口的具体实现见 landing/pagecache_write.hpp（把门与 SpliceIoOps 装起来）；bring_up_with 会在 sa.set 为假时拒绝 ——
+  与 sa_material_of 的"零密钥不是凭据"是同一条规则。
+
+因此 3a 的写码顺序是：①设备侧 DoorOps 实现（open_target=用递进来的 fd、connect_esp=按 sa 建 UDP socket）；
+②窗口 + 落地对象按会话建立（lazy，随 ticket）；③write_block/read_block 走 land_block/read_block + adopt_sequence。
+
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
