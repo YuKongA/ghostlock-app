@@ -40,6 +40,12 @@ object TypedBackendProbe {
     @Volatile
     private var probeContext: android.content.Context? = null
 
+    /**
+     *  封装接收侧：**一直持有**（强引用）。
+     *  关掉它、或让它被 GC 收走，内核就不再把 ESP-in-UDP 报文交给 xfrm —— 我们手搓的报文会无人认领。
+     */
+    @Volatile private var encapSocket: android.net.IpSecManager.UdpEncapsulationSocket? = null
+
     /** SA 建好后的材料：**只给写路径**用（门/拼装的材料不受影响）。 */
     @Volatile private var saSpi: Int = 0
     @Volatile private var saEncapPort: Int = 4500
@@ -140,6 +146,7 @@ object TypedBackendProbe {
             val hmacKey = ByteArray(32) { index -> (0xB0 + index).toByte() }
             /* 先留副本：Android 的 IpSec/Crypto API 会擦掉它拿到的密钥数组（2026-10-15 真机实证：
              * 我们留在字段里的那份变成了全零 ⇒ sa-set-missing）。我们留非零副本，把原件交给 API。 */
+            encapSocket = encap
             saSpi = spi
             saEncapPort = encapPort
             saAesKey = aesKey.copyOf()
