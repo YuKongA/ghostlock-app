@@ -391,6 +391,26 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 
 不做的事：不改协议字符串（op-not-wired 等），不改真机日志里已有的判据文本（证据链的可追溯性优先）。
 
+### §11.6 ESP 路线的装配点（43284 最后一段，J7.5-3 收尾）
+
+原语都在当前树里，缺的是把它们按会话装起来：
+
+| 环节 | 原语（已有） | 装配要点 |
+|---|---|---|
+| 密码学 | landing/esp_crypto.hpp：esp_cbc_iv(old_block, desired_block, key, out)、esp_icv(datagram, size, hmac_key, icv_len, out, cap) | key / hmac_key / icv_len 全部来自 Init43284Values（会话参数已经能到达设备函数） |
+| I/O | landing/real_splice_io.hpp：SpliceIoOps{pipe2, splice, vmsplice, …} 与 real_splice_io() 绑定；OldPageSource(read16)、HelperWriteSource(splice16) | 设备侧用 real_splice_io()；宿主测试绑假实现（该文件头已写明这条设计） |
+| 门 | landing/pagecache_doors.hpp：PageCacheDoors::open(SaMaterial)（两扇门一起开、失败不留半开）、DoorOps{open_target, close, target_is_remote} | 谁开的门谁关；remote 载体由 bridge 读，不由本进程 open（与 RemoteBridge 角色对应） |
+| 落地 | landing/pagecache_landing.hpp：PageCacheLanding 的 bring_up_with(SaMaterial)、land_block(position, 16B)、read_block(position, out)、adopt_sequence(next)、can_read()、tear_down() | 每会话一个实例；ticket 指向它；序号由 adopt_sequence 推进；写成功 Dispatched，读比较一致才 Applied |
+| 触发 | landing/crash_dump_bridge.hpp：CrashDumpBridge::run(offset, sink_stdout, out) | patch#1 用它跑被改过的 helper；trigger 的双 fork 让 init 收尸后由它执行 |
+
+装法（一批一类事）：
+
+1. **J7.5-3a**：会话里建 PageCacheLanding（用 resolve 那扇门的 fd）→ write_block/read_block 接 land_block/read_block 与 adopt_sequence；判据：宿主测试（假 I/O）+ 真机对自己的 carrier 文件写一块并读回，Dispatched → Applied。
+2. **J7.5-3b**：接 CrashDumpBridge 与双 fork 的 trigger；判据：真机上 trigger 给具名答案（成功或具名失败，不许沉默）。
+3. **J7.5-4**：patch1 → carrier → hook → trigger → wait 端到端，id 报 uid=0，原始日志归档 device-gates/。
+
+现在（2026-10-15）deviceGate 的 26 项里，43284 的 write_block 仍如实回答 block-refused —— 在 3a 落地前这一点不会变。
+
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
