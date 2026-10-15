@@ -328,6 +328,8 @@ GL_ATTACK_FIELD(WriteImage43284, imageAccessId, LONG)
 GL_ATTACK_FIELD(WriteImage43284, imageOffset, LONG)
 GL_ATTACK_FIELD(WriteImage43284, imageWidth, LONG)
 GL_ATTACK_BYTES_FIELD(WriteImage43284, imageBytes, 67108864U)
+/* 耐心由 Kotlin 给：写路径在原语内部做「派发→立刻回读比字节→有界重试」时用它（0 = 不重试）。 */
+GL_ATTACK_FIELD(WriteImage43284, imageBudgetMs, LONG)
 GL_ATTACK_END_GROUP(WriteImage43284)
 GL_ATTACK_GROUP(WriteHook43284)
 GL_ATTACK_FIELD(WriteHook43284, hookAccessId, LONG)
