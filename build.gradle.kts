@@ -548,7 +548,8 @@ tasks.register("deviceGate") {
         expected += "typed: 43284 moduleCheck code=-4 refusal=module-check-refused"
         /* 等终态接的是真轮询：不存在的路径在预算内必须答 inflight（既非成功也非失败）。 */
         expected += "typed: 43284 waitTerminal code=-8 state=2 refusal=wait_terminal:inflight"
-        expected += "typed: 43284 trigger code=-3 refusal=op-not-wired:trigger"
+        /* trigger 已经接线（复用 steps 的 trigger_orphan）：真机上双 fork 真的执行成功，所以答案就是 ok。 */
+        expected += "typed: 43284 trigger code=0 refusal="
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {
