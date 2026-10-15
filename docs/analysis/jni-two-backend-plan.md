@@ -1061,6 +1061,29 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 
 1. 设备上 KernelSU/root 的现状（能否加载模块、是否有 root shell）；
 2. 预期前提是 A 还是 B；若是 A，请指出「谁建 SA、用什么材料」的既有做法（驱动器从 kFramePath 读的那份帧由谁产出？）；若是 B，需要你确认可引入系统权限。
+
+### §11.34 43499 那一侧的入口：按 route 从工厂取 access（2026-10-15）
+
+读 backend/cve_2026_43499/access_factory_43499.hpp：
+
+    std::unique_ptr<contract::KernelAccess> create_kernel_access_43499(profile::RouteId route) noexcept;
+    // 头注释：initialize 把 route 带在参数里，但调用方持有的对象就是那条 route 自己的子类，
+    // 参数类型与包装在构造时一次定下，而不是每次写都重读。
+
+也就是说 43499 的设备函数应当围绕两件东西建：
+
+1. create_kernel_access_43499(route) —— route 从**档案**来（profile::RouteId，route_catalog 里有枚举）；
+2. 拿到 access 之后，与 43284 完全同型的用法：initialize(params) → write/read（块宽十六字节）→ 收尾。
+
+**对 J7.5-5/6 的含义**：43499 侧要接的是「route 选择 + access 生命周期」这两个原语（makeAccess 的变体：多一个 route 入参），
+其余（拼装/写目标/收尾在 Kotlin）与 43284 一致 —— 而 route 的取值正是「真实 profile 还需进一步设计」那件事的一部分：
+档案决定走哪条 route（例如 page-cache 族还是其它族），这也解释了为什么两个 backend 的端到端都绕不开档案。
+
+**下一批（43499 侧，可与 SA 阻塞并行推进）**：
+
+1. native 加 makeAccess43499(route) 原语（内部走 create_kernel_access_43499）+ destroyAccess43499；
+2. Kotlin 侧 Assembled43499（与 Assembled43284 同型的包装类，先只做 makeAccess/initialize/write/read/收尾）；
+3. 真机跑一条最小序列（route 先用 catalog 里的一个取值，参数由 Kotlin 给）—— 期望与 43284 一样：initialize 与 write 通、回读取决于该 route 是否真的落盘。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
