@@ -143,3 +143,42 @@ flowchart LR
 - **本次归档（28 件）**：`docs/plan/<原名>` → `docs/archive/20261007-2237-<原名>`（头部含原始路径 / 归档原因 / 归档日期）；规则见 [archive README](../archive/README.md)，**计划类索引**见 [INDEX-plans](../archive/INDEX-plans.md)。
 - **归档规则指针**：命名 = `YYYYMMDD-HHMM-<原文件名>`；每件头部含原始路径、归档原因、归档日期；历史不删（`AGENTS.md` 文档约定）。
 - **`docs/analysis/**` 遗留计划**：**候选为空**——名含 plan 的仅 `handoff-payload-plan.md`、`handoff-payload-batch-plan.md`、`resolved-profile-registry-plan.md`，**全部为保留的设计依据**；**owner = Lead**（决定前不动）。规则与索引见 [archive README](../archive/README.md) §五、[INDEX-plans](../archive/INDEX-plans.md)。
+
+## §12 J7.5：分别用两个 backend 在真机取到 root（在办 · 2026-10-15）
+
+**目标原文**：执行至 J7.5 —— 成功分别用两个 backend 获取 root，可以先内置临时逻辑，真实 profile 还需进一步设计。
+
+### §12.1 已完成（每条都有真机证据在 build/app/device-gate.log 与 device-gates/ 归档里）
+
+| 项 | 提交 | 判据 |
+|---|---|---|
+| D2 类型化函数面（两库、DTO 参数、具名拒绝） | 7a06db1d / 273a6069 | deviceGate 20/20 → 26/26 |
+| 43284 Kotlin 客户端 DTO 化 | 270fb96b | deviceGate 23/23 |
+| 43284 数据函数接线（两张图 + 钩子计划） | 273a6069 / 270fb96b | 真机：1440B + 摘要与 manifest 一致、钩子四数 |
+| 43284 module_check（真规则） | 563babc9 | 真机：module-check-refused |
+| 43284 wait_terminal（真轮询三态） | 2266022c | 真机：wait_terminal:inflight |
+| 43284 resolve（真开门 + 票据） | 7ecb906f | 真机：票据 (1<<32)|1、door-refused |
+| 会话参数 → 门材料（零密钥不是凭据） | 0712c906 | 宿主逐字段测试 |
+| 更名 R1 / R2 / R4（不用 seam 这种临时名） | fb7cf17b / dfbb942a / 5d40d9a0 | ctest 132/132 + checkAll |
+
+### §12.2 未完成（当前出口）
+
+| 项 | 内容 | 判据 |
+|---|---|---|
+| J7.5-3a | 会话里建 PageCacheLanding（用 resolve 那扇 fd）+ write_block/read_block 接 land_block/read_block 与 adopt_sequence | 宿主不回归 + 真机写读回 Dispatched → Applied |
+| J7.5-3b | CrashDumpBridge + 双 fork 的 trigger | 真机给具名答案 |
+| J7.5-4 | 43284 链端到端 | 真机 id 报 uid=0，原始日志归档 |
+| J7.5-5 / 6 | 43499 五个设备函数 + 端到端（含 spawn_victim：当前树没有，需按只读方式参考退役树后重写） | 同上 |
+
+### §12.3 留档的教训（写给下一次接手的人）
+
+1. 批量替换脚本**先校验全部锚点、任一不匹配整体不写**（切错过一次：撤回时把相邻的 sa_material_of 定义一起切掉，宿主链接报未定义）；
+2. 提交前必须在最终树上跑门禁（有两次红树提交 85ab5e47、3b680b08，随后各自修复）；
+3. 跨平台：SOCK_CLOEXEC 是 Linux 专有，宿主（macOS）编译要用 SOCK_DGRAM；
+4. DoorOps 的真实命名空间是 ghostlock::backend::cve_2026_43284::landing，且 .cpp 自己的翻译单元要 include 相应头文件。
+
+### §12.4 现场状态（可直接核验）
+
+- 设备：A301SO（QV770MFGJ1），KernelSU 未加载；./gradlew deviceGate → PASS（26 项校验全部命中）；
+- 宿主：ctest --test-dir build/cmake/host → 132/132；verifyJniLibs → 三库互不重叠（43499 13 / 43284 16）；
+- 计划细节：docs/analysis/jni-two-backend-plan.md §11（批次与判据）、§11.6（ESP 路线装配点与 3a 确切形状）。
