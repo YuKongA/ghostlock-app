@@ -312,6 +312,44 @@ J3 在执行时拆成两半，理由是**可验证性**：
 6. 无设备证据不得宣称写效果或 root；不得以 host 测试代替真机判据。
 7. 攻击关键路径的每批只允许**一条写入流**；共享 `build/**` 的门禁串行跑。
 
+
+## §10 取代：函数面（用户裁定 2026-10-14）
+
+**裁定原文**：不要通过 token 和 bytearray Frame 交互，每个 backend 一个 jni，并通过多个正经函数传参交互。
+
+### §10.1 取代了什么
+
+§3 的四个 extern（create/invoke/shutdown/destroy）+ GLKJ v1 帧 + op/key/status 三张表全部作废：
+边界不再有「一个 op 名 + 一帧字节」。跨端只剩两种东西 —— 具名函数，与函数自己的类型化参数/结果。
+
+### §10.2 新的形状
+
+| 层 | 43499 | 43284 |
+|---|---|---|
+| 库 | libghostlock43499.so | libghostlock43284.so |
+| 函数面 | create / initialize(long[]) / snapshot(long[]) / prepare / discover / spawnVictim / victimProbe / writeWord / readWord / shutdown / destroy / refusal / 布局自描述 | create / initialize(long[]) / snapshot(long[]) / resolveTarget / writeBlock / readBlock / trigger / waitTerminal / embeddedImage / hookWords / hookPayload / shutdown / destroy / refusal / 布局自描述 |
+| 参数 | 数字、布尔、字节（路径/块/镜像那几处本来就是字节） | 同左 |
+| 结果 | 调用码（int）+ 调用方给的数组 | 调用码 + 数组/byte[] |
+| 失败 | refusal(handle) 给名字（not-ready:prepare / op-not-wired:write_word / stale-target / inflight …） | 同左 |
+| 数组布局 | native 导出字符串表，Kotlin 对拍 | 同左 |
+
+调用码（core/src/jni/backend_api.hpp）：0 ok；负数是 not-ready / bad-parameters / unsupported / failed /
+stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一次。
+
+### §10.3 批次
+
+- **A（本批已做）**：native 侧类型化核心（api_43499.* / api_43284.*）+ 两个 JNI 库 + 两个库的宿主测试；
+  旧分帧实现仍留在树上，类型由 api_*.hpp 提供一份，不存在两份定义。
+- **B（下批）**：Kotlin 侧切成两个类型化客户端（cve43499.Native43499 / cve43284.Native43284），步骤引擎改调具名函数，
+  真机门禁改走新库；然后删除分帧实现（session_protocol / session_object / session_api / ops_*.cpp 的帧部分）
+  与 manifest 的 op/key/status 段。
+
+### §10.4 为什么仍然保留这些判据
+
+1. 未接线的设备工作继续以 op-not-wired:<函数名> 具名拒绝（不许沉默、不许假装成功）。
+2. 前置不成立继续以 not-ready:<缺什么> 指名（例如 not-ready:prepare / not-ready:resolve-target）。
+3. 效果不确定继续有独立答案（43284 的 inflight 是 InFlight 码，不是失败也不是成功）。
+4. 跨端常量（镜像摘要、钩子四个数）继续由 native 导出、两端对拍，不手抄。
 ## §9 执行记录（执行者逐批追加；不得回填未发生的通过）
 
 | 批次 | 命令 | 退出码 | 产物/证据 | 日期 |

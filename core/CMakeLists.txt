@@ -154,6 +154,8 @@ list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
 # 边界的**协议/事务层**：JNI-free ⇒ 宿主也编、测试直接链它；JNI 入口（session_api.cpp）只是
 # 它的薄适配器，只在 Android 的共享库里出现（需要 jni.h）。
 set(GL_JNI_PORTABLE_SRCS
+  src/jni/api_43499.cpp
+  src/jni/api_43284.cpp
   src/jni/session_protocol.cpp
   src/jni/session_handles.cpp
   src/jni/session_object.cpp
@@ -203,6 +205,17 @@ if(GL_JNI)
     target_compile_options(ghostlock_jni PRIVATE ${GL_WARNINGS})
     target_link_libraries(ghostlock_jni PRIVATE ghostlock_core)
     set_target_properties(ghostlock_jni PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+
+    # 每个 backend 一个 JNI 库（用户裁定 2026-10-14）：函数面是类型化的，不再有帧。
+    add_library(ghostlock43499 SHARED src/jni/api_43499.cpp src/jni/native_43499.cpp)
+    target_compile_options(ghostlock43499 PRIVATE ${GL_WARNINGS})
+    target_link_libraries(ghostlock43499 PRIVATE ghostlock_core)
+    set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+
+    add_library(ghostlock43284 SHARED src/jni/api_43284.cpp src/jni/native_43284.cpp)
+    target_compile_options(ghostlock43284 PRIVATE ${GL_WARNINGS})
+    target_link_libraries(ghostlock43284 PRIVATE ghostlock_core)
+    set_target_properties(ghostlock43284 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
   else()
     message(STATUS "GL_JNI: src/jni 下暂无源文件 —— 边界库本次跳过")
   endif()
@@ -263,6 +276,8 @@ set(GL_TEST_NAMES
   futex_hash_test
   handle_generation_test
   heap_geometry_test
+  api_43499_test
+  api_43284_test
   hmac_sha256_test
   jni_protocol_test
   log_test
