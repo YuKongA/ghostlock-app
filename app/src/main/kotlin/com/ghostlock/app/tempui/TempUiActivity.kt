@@ -91,8 +91,10 @@ class TempUiActivity : ComponentActivity() {
     }
 
     private fun runDeviceGate(): List<String> {
+        val typed = TypedBackendProbe.run()
+
         GhostLog.i(TAG_UI, "tempui: run the device gate")
-        return probeNative() + DeviceGate.run()
+        return probeNative() + DeviceGate.run() + typed
     }
 }
 

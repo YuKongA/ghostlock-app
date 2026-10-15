@@ -283,7 +283,10 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     description = "把 libghostlock_jni.so 复制进 app 的 jniLibs/arm64-v8a"
     group = "native"
     dependsOn("nativeBuildAndroid")
+    /* 三个库都要进 APK：旧的帧边界 + 两个 backend 各自的函数面（D2）。 */
     from("build/native/libghostlock_jni.so")
+    from("build/native/libghostlock43499.so")
+    from("build/native/libghostlock43284.so")
     into("app/src/main/jniLibs/arm64-v8a")
 }
 
@@ -463,7 +466,7 @@ tasks.register("deviceGate") {
         exec(adbExe, "logcat", "-c")
         exec(adbExe, "shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
         Thread.sleep(7000L)
-        val log = exec(adbExe, "logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I")
+        val log = exec(adbExe, "logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I")
         logFile.parentFile.mkdirs()
         logFile.writeText(log)
 
@@ -496,6 +499,23 @@ tasks.register("deviceGate") {
         expected += "plan: cve_2026_43499 step=w1 outcome=Refused reason=precondition:w1-address"
         expected += "plan: cve_2026_43284 declared=patch1,carrier,hook,trigger,wait"
         expected += "plan: cve_2026_43284 step=patch1 outcome=Refused reason=precondition:patch1-path"
+
+        /* D2：两个新库必须在真机上被 Kotlin 调用到（库名 + 调用码 + 具名拒绝）。 */
+        expected += "typed: 43499 library loaded"
+        expected += "typed: 43499 initialize code=0"
+        expected += "typed: 43499 snapshot code=0 phase=0"
+        expected += "typed: 43499 prepare code=-3 refusal=op-not-wired:prepare"
+        expected += "typed: 43499 writeWord code=-3 refusal=op-not-wired:write_word"
+        expected += "typed: 43499 shutdown-after-destroy code=-5 refusal=stale-handle"
+        expected += "typed: 43284 library loaded"
+        expected += "typed: 43284 initialize code=0"
+        expected += "typed: 43284 resolveTarget code=-3 refusal=op-not-wired:resolve_target"
+
+        /* 43284 的两张图与钩子数字：值来自 native 导出的 manifest，设备上必须逐位一致。 */
+        rows["image splice_helper"]?.let { digest ->
+            expected += "typed: 43284 embeddedImage code=ok size=1440"
+            expected += digest
+        }
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {
