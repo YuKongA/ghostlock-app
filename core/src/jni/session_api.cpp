@@ -30,6 +30,7 @@
 
 #include "contract/kernel_access.hpp"
 #include "jni/session_handles.hpp"
+#include "jni/ops_43284.hpp"
 #include "jni/session_object.hpp"
 #include "jni/session_protocol.hpp"
 
@@ -55,6 +56,18 @@ namespace {
     [[nodiscard]] Registry &registry() noexcept {
         static Registry instance;
         return instance;
+    }
+
+    /**
+     *  The ops a backend gets: 43284 serves the two data ops this build can answer without a
+     *  device (its bytes and its hook plan); 43499 has none yet (its device seam is J3b), so it
+     *  keeps answering op-not-wired.
+     */
+    ghostlock::jni::BackendOps ops_for(std::uint64_t backend_id, void *) noexcept {
+        if (backend_id == 43284U) {
+            return ghostlock::jni::make_ops_43284(ghostlock::jni::device_seams_43284());
+        }
+        return ghostlock::jni::BackendOps{};
     }
 
     /** The real backend factory: the contract's, which knows which backends this build has. */
@@ -148,7 +161,7 @@ Java_com_ghostlock_app_jni_Native_nativeSessionCreate(JNIEnv *env, jclass, jbyte
         return static_cast<jlong>(FrameStatus::Busy);
     }
     auto session = std::make_unique<Session>();
-    const ghostlock::jni::BackendSeam seam{&create_backend, nullptr};
+    const ghostlock::jni::BackendSeam seam{&create_backend, nullptr, &ops_for};
     if (!session->open(backend_id, seam, generation)) {
         /* The session stays alive: it answers Snapshot with Failed, which is what a caller needs to
          *  see ("this build has no such backend") instead of a handle that pretends to work. */

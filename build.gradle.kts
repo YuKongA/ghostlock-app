@@ -267,7 +267,11 @@ tasks.register<Exec>("nativeBuildAndroid") {
     commandLine(tools.second, "--build", "build/cmake/android", "-j")
     environment("ANDROID_NDK_HOME", tools.first)
     environment("NDK_ROOT", tools.first)
+    /* 输入必须声明：不声明 Gradle 就只看 outputs ⇒ 源码改了任务仍判 UP-TO-DATE，
+     * APK 里装的是旧 .so（2026-10-14 实测：门禁里 image 操作全静默，根因就是这条）。 */
+    inputs.files(fileTree("core/src"), file("core/CMakeLists.txt"))
     outputs.file(file("build/native/ghostlock"))
+    outputs.file(file("build/native/libghostlock_jni.so"))
 }
 
 /* JNI 边界库就位：Kotlin 侧 Native.LIBRARY == "ghostlock_jni" ⇒ 打包名必须是

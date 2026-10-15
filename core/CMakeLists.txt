@@ -158,6 +158,7 @@ set(GL_JNI_PORTABLE_SRCS
   src/jni/session_object.cpp
   src/jni/ops_43499.cpp
   src/jni/ops_43284.cpp
+  src/jni/ops_43284_device.cpp
 )
 
 set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS} ${GL_JNI_PORTABLE_SRCS})
@@ -267,6 +268,7 @@ set(GL_TEST_NAMES
   jni_session_lifecycle_test
   jni_ops_43499_test
   jni_ops_43284_test
+  jni_ops_43284_device_test
   kernel_access_test
   kmi_catalog_test
   leak_search_test

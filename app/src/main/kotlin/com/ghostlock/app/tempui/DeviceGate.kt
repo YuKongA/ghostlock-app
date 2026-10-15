@@ -93,8 +93,54 @@ object DeviceGate {
         }
         step("gate: " + backend + " " + op.token + " -> " + describe(session.invoke(op, keys, blobs)))
 
+        /* 43284 的两张图与钩子计划：这是本构建自带的数据，必须在真机上原样穿过边界。 */
+        if (backend == "cve_2026_43284") {
+            for (role in listOf(0uL, 1uL)) {
+                val name = if (role == 0uL) "splice_helper" else "landing_payload"
+                when (val answer = session.invoke(NativeProtocol.Op.EmbeddedImage, mapOf(NativeProtocol.Key.Mode to role))) {
+                    is AccessResult.Success -> {
+                        val image = answer.value.blob(NativeProtocol.Key.Bytes)
+                        step(
+                            "gate: image " + name + " " + answer.value + " size=" + (image?.size ?: -1) +
+                                " sha256=" + sha256Hex(image),
+                        )
+                    }
+
+                    is AccessResult.Failure -> step("gate: image " + name + " transport-failure " + answer.detail)
+                }
+            }
+            when (val answer = session.invoke(NativeProtocol.Op.HookWords)) {
+                is AccessResult.Success -> {
+                    val reply = answer.value
+                    step(
+                        "gate: hook_words " + reply +
+                            " branch=0x" + (reply.u64(NativeProtocol.Key.BranchWord) ?: 0uL).toString(16) +
+                            " displaced=0x" + (reply.u64(NativeProtocol.Key.DisplacedWord) ?: 0uL).toString(16) +
+                            " site=" + reply.u64(NativeProtocol.Key.SiteOffset) +
+                            " landing=" + reply.u64(NativeProtocol.Key.LandingOffset) +
+                            " payload=" + (reply.blob(NativeProtocol.Key.Bytes)?.size ?: -1),
+                    )
+                }
+
+                is AccessResult.Failure -> step("gate: hook_words transport-failure " + answer.detail)
+            }
+        }
+
         /* initialize 的真实答案：真后端的参数集还没接线（J3b/J4b），必须具名拒绝。 */
         step("gate: " + backend + " initialize -> " + describe(session.invoke(NativeProtocol.Op.Initialize)))
+    }
+
+    /** 返回缓冲区的 sha256（十六进制小写）；空缓冲返回 none。 */
+    private fun sha256Hex(bytes: ByteArray?): String {
+        if (bytes == null || bytes.isEmpty()) {
+            return "none"
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        val builder = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            builder.append(String.format("%02x", byte))
+        }
+        return builder.toString()
     }
 
     private fun describe(result: AccessResult<NativeReply>): String = when (result) {

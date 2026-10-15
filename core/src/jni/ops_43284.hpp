@@ -141,4 +141,11 @@ namespace ghostlock::jni {
      *  @param seams the device work; an empty seam makes its op answer "op-not-wired".
      */
     [[nodiscard]] BackendOps make_ops_43284(Ops43284Seams seams) noexcept;
+
+    /**
+     *  The seams this build serves without a device: the bytes it carries and the hook plan it
+     *  was built for. Everything else (door, splice, ESP, fork, wait) stays null and answers
+     *  op-not-wired until J4b implements it against a device.
+     */
+    [[nodiscard]] Ops43284Seams device_seams_43284() noexcept;
 }  // namespace ghostlock::jni

