@@ -145,7 +145,7 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kFactVerified = 1U << 21U;
 
     /** 设备工作，用函数指针给；每个回调都收到完整的会话参数与本次请求组。 */
-    struct Ops43284Seams final {
+    struct DeviceOps43284 final {
         bool (*resolve)(const Init43284Values &params, const ResolveTarget43284Values &request,
                         std::uint64_t &token, void *context) noexcept = nullptr;
         bool (*write_block)(const Init43284Values &params, const WriteBlock43284Values &request,
@@ -199,7 +199,7 @@ namespace ghostlock::jni {
     class Backend43284 final {
       public:
         Backend43284() noexcept = default;
-        explicit Backend43284(Ops43284Seams seams) noexcept : seams_(seams) {}
+        explicit Backend43284(DeviceOps43284 device_ops) noexcept : device_ops_(device_ops) {}
 
         /** 初始化：只建立安全关联；门由 resolve_target 创建。 */
         /** 参数按值收：Values 里的密钥是不可拷贝的，进来之后 move 进会话。 */
@@ -264,7 +264,7 @@ namespace ghostlock::jni {
 
         void publish(Snapshot43284 &out) const noexcept;
 
-        Ops43284Seams seams_{};
+        DeviceOps43284 device_ops_{};
         Init43284Values params_{};
         Facts43284 facts_{};
         Refusal refusal_{};

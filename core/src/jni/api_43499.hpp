@@ -150,7 +150,7 @@ namespace ghostlock::jni {
      *  每个回调的第一个参数都是**完整的会话参数**，第二个是本次请求组 —— 设备实现不需要自带
      *  任何配置副本。给空的缝，它的函数就以 op-not-wired:<函数名> 具名拒绝。
      */
-    struct Ops43499Seams final {
+    struct DeviceOps43499 final {
         bool (*prepare)(const SessionParams43499 &params, const Prepare43499Values &request,
                         Facts43499 &facts, void *context) noexcept = nullptr;
         bool (*discover)(const SessionParams43499 &params, const Discover43499Values &request,
@@ -181,7 +181,7 @@ namespace ghostlock::jni {
     class Backend43499 final {
       public:
         Backend43499() noexcept = default;
-        explicit Backend43499(Ops43499Seams seams) noexcept : seams_(seams) {}
+        explicit Backend43499(DeviceOps43499 device_ops) noexcept : device_ops_(device_ops) {}
 
         /** 带参数初始化：四组一起给，缺字段按名拒绝。 */
         [[nodiscard]] CallCode initialize(const SessionParams43499 &params) noexcept;
@@ -230,7 +230,7 @@ namespace ghostlock::jni {
         /** 把事实发布进 Snapshot 的能力位。 */
         void publish(Snapshot43499 &out) const noexcept;
 
-        Ops43499Seams seams_{};
+        DeviceOps43499 device_ops_{};
         SessionParams43499 params_{};
         Facts43499 facts_{};
         Refusal refusal_{};

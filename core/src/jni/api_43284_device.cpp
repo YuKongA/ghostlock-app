@@ -22,7 +22,7 @@ namespace ghostlock::jni {
         std::uint8_t g_payload[1024] = {};
         std::size_t g_payload_size = 0U;
 
-        bool seam_embedded_image(const std::int32_t role, std::span<const std::byte> &image,
+        bool device_embedded_image(const std::int32_t role, std::span<const std::byte> &image,
                                  void *) noexcept {
             using namespace ghostlock::backend::cve_2026_43284;
             if (role == kImageSpliceHelper) {
@@ -46,7 +46,7 @@ namespace ghostlock::jni {
             return false;
         }
 
-        bool seam_hook_plan(const Init43284Values &, const HookPlanRequest43284Values &,
+        bool device_hook_plan(const Init43284Values &, const HookPlanRequest43284Values &,
                             std::uint64_t &branch_word, std::uint64_t &displaced_word,
                             std::uint64_t &site_offset, std::uint64_t &landing_offset,
                             std::span<const std::byte> &payload, void *) noexcept {
@@ -73,10 +73,10 @@ namespace ghostlock::jni {
     }  // namespace
 
     /** 本构建能提供的 43284 缝（其余留空 ⇒ 那些函数以 op-not-wired 具名拒绝）。 */
-    Ops43284Seams device_seams_43284() noexcept {
-        Ops43284Seams seams{};
-        seams.embedded_image = &seam_embedded_image;
-        seams.hook_plan = &seam_hook_plan;
-        return seams;
+    DeviceOps43284 device_ops_43284() noexcept {
+        DeviceOps43284 ops{};
+        ops.embedded_image = &device_embedded_image;
+        ops.hook_plan = &device_hook_plan;
+        return ops;
     }
 }  // namespace ghostlock::jni

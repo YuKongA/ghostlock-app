@@ -35,20 +35,20 @@ namespace {
         return instance;
     }
 
-    bool seam_resolve(const Init43284Values &, const ResolveTarget43284Values &, std::uint64_t &token,
+    bool device_resolve(const Init43284Values &, const ResolveTarget43284Values &, std::uint64_t &token,
                       void *) noexcept {
         token = 4242U;
         return true;
     }
 
-    bool seam_write(const Init43284Values &, const WriteBlock43284Values &, const std::uint64_t,
+    bool device_write(const Init43284Values &, const WriteBlock43284Values &, const std::uint64_t,
                     std::uint64_t &sequence, void *) noexcept {
         ++spy().writes;
         sequence += 1U;
         return true;
     }
 
-    bool seam_read(const Init43284Values &, const ReadBlock43284Values &, const std::uint64_t,
+    bool device_read(const Init43284Values &, const ReadBlock43284Values &, const std::uint64_t,
                    const std::span<std::byte> out, void *) noexcept {
         for (std::size_t index = 0U; index < out.size(); ++index) {
             out[index] = std::byte{0x5A};
@@ -56,12 +56,12 @@ namespace {
         return true;
     }
 
-    Ops43284Seams runtime_seams() noexcept {
-        Ops43284Seams seams{};
-        seams.resolve = &seam_resolve;
-        seams.write_block = &seam_write;
-        seams.read_block = &seam_read;
-        return seams;
+    DeviceOps43284 runtime_ops() noexcept {
+        DeviceOps43284 ops{};
+        ops.resolve = &device_resolve;
+        ops.write_block = &device_write;
+        ops.read_block = &device_read;
+        return ops;
     }
 
     Init43284Values params() noexcept {
@@ -101,7 +101,7 @@ namespace {
     }
 
     void a_ticket_is_opaque_and_the_write_stops_at_dispatched() {
-        Backend43284 backend{runtime_seams()};
+        Backend43284 backend{runtime_ops()};
         expect(backend.initialize(params()) == CallCode::Ok, "initialize");
         std::uint64_t ticket = 0U;
         expect(backend.resolve_target(resolve_request(TargetRole::Patch1), ticket) == CallCode::Ok,
@@ -114,7 +114,7 @@ namespace {
         spy() = Spy{};
         expect(backend.write_block(write_request(ticket)) == CallCode::Ok, "write");
         expect(backend.facts().patch1.state == BlockState::Dispatched, "only dispatched");
-        expect(spy().writes == 1U, "the seam saw it");
+        expect(spy().writes == 1U, "the ops saw it");
 
         ReadBlock43284Values read{};
         read.ticket = ticket;
@@ -126,7 +126,7 @@ namespace {
     }
 
     void the_remote_bridge_needs_a_verified_patch1() {
-        Backend43284 backend{runtime_seams()};
+        Backend43284 backend{runtime_ops()};
         expect(backend.initialize(params()) == CallCode::Ok, "initialize");
         std::uint64_t ticket = 0U;
         expect(backend.resolve_target(resolve_request(TargetRole::RemoteBridge), ticket) ==
@@ -136,7 +136,7 @@ namespace {
     }
 
     void the_block_width_is_enforced() {
-        Backend43284 backend{runtime_seams()};
+        Backend43284 backend{runtime_ops()};
         expect(backend.initialize(params()) == CallCode::Ok, "initialize");
         std::uint64_t ticket = 0U;
         expect(backend.resolve_target(resolve_request(TargetRole::Carrier), ticket) == CallCode::Ok,
@@ -147,8 +147,8 @@ namespace {
         expect(same(backend.refusal(), "bad-width"), "named");
     }
 
-    void the_data_seams_serve_the_images_and_the_hook_plan() {
-        Backend43284 backend{device_seams_43284()};
+    void the_data_device_ops_serve_the_images_and_the_hook_plan() {
+        Backend43284 backend{device_ops_43284()};
         std::span<const std::byte> image{};
         expect(backend.embedded_image(kImageSpliceHelper, image) == CallCode::Ok, "helper image");
         expect(image.size() == 1440U, "1440 bytes padded to the block");
@@ -163,8 +163,8 @@ namespace {
         expect(!plan.payload.empty(), "payload");
     }
 
-    void the_device_seams_are_named_when_absent() {
-        Backend43284 backend{device_seams_43284()};
+    void the_device_device_ops_are_named_when_absent() {
+        Backend43284 backend{device_ops_43284()};
         expect(backend.initialize(params()) == CallCode::Ok, "initialize");
         std::uint64_t ticket = 0U;
         expect(backend.resolve_target(resolve_request(TargetRole::Patch1), ticket) ==
@@ -185,14 +185,14 @@ int main() {
     the_remote_bridge_needs_a_verified_patch1();
     std::printf("api 43284: block width\n");
     the_block_width_is_enforced();
-    std::printf("api 43284: data seams\n");
-    the_data_seams_serve_the_images_and_the_hook_plan();
-    std::printf("api 43284: absent device seams\n");
-    the_device_seams_are_named_when_absent();
+    std::printf("api 43284: data ops\n");
+    the_data_device_ops_serve_the_images_and_the_hook_plan();
+    std::printf("api 43284: absent device ops\n");
+    the_device_device_ops_are_named_when_absent();
     if (g_failures != 0U) {
         std::printf("api 43284: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("api 43284: PASS (tickets, dispatched/applied, remote dependency, data seams)\n");
+    std::printf("api 43284: PASS (tickets, dispatched/applied, remote dependency, data ops)\n");
     return 0;
 }

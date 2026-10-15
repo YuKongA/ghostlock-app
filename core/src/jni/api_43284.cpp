@@ -134,7 +134,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.resolve == nullptr) {
+        if (device_ops_.resolve == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:resolve_target");
         }
         const TargetRole role = target_role_of(request.role);
@@ -155,7 +155,7 @@ namespace ghostlock::jni {
             }
         }
         std::uint64_t door_token = 0U;
-        if (!seams_.resolve(params_, request, door_token, seams_.context) || door_token == 0U) {
+        if (!device_ops_.resolve(params_, request, door_token, device_ops_.context) || door_token == 0U) {
             return refuse(refusal_, CallCode::Failed, "door-refused");
         }
         slot->role = role;
@@ -201,7 +201,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.write_block == nullptr) {
+        if (device_ops_.write_block == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:write_block");
         }
         if (request.block.size() != kBlockWidth) {
@@ -212,7 +212,7 @@ namespace ghostlock::jni {
             return fresh;
         }
         std::uint64_t sequence = slot->sequence;
-        if (!seams_.write_block(params_, request, slot->token, sequence, seams_.context)) {
+        if (!device_ops_.write_block(params_, request, slot->token, sequence, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-refused");
         }
         slot->sequence = sequence;
@@ -228,7 +228,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.read_block == nullptr) {
+        if (device_ops_.read_block == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:read_block");
         }
         TargetSlot43284 *slot = nullptr;
@@ -239,10 +239,10 @@ namespace ghostlock::jni {
             return refuse(refusal_, CallCode::Unsupported, "route-cannot-read");
         }
         std::vector<std::uint8_t> block(kBlockWidth, 0U);
-        if (!seams_.read_block(params_, request, slot->token,
+        if (!device_ops_.read_block(params_, request, slot->token,
                                std::span<std::byte>(reinterpret_cast<std::byte *>(block.data()),
                                                     kBlockWidth),
-                               seams_.context)) {
+                               device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-read-refused");
         }
         bool matches = false;
@@ -265,7 +265,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.module_check == nullptr) {
+        if (device_ops_.module_check == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:module_check");
         }
         if (request.moduleImage.empty()) {
@@ -274,7 +274,7 @@ namespace ghostlock::jni {
         if (request.kernelVermagic.empty()) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "kernelVermagic");
         }
-        if (!seams_.module_check(params_, request, seams_.context)) {
+        if (!device_ops_.module_check(params_, request, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "module-check-refused");
         }
         refusal_.clear();
@@ -286,7 +286,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.hook_plan == nullptr) {
+        if (device_ops_.hook_plan == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:hook_plan");
         }
         if (request.hookImage.empty()) {
@@ -300,8 +300,8 @@ namespace ghostlock::jni {
         std::uint64_t site = 0U;
         std::uint64_t landing = 0U;
         std::span<const std::byte> payload{};
-        if (!seams_.hook_plan(params_, request, branch, displaced, site, landing, payload,
-                              seams_.context)) {
+        if (!device_ops_.hook_plan(params_, request, branch, displaced, site, landing, payload,
+                              device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "hook-refused");
         }
         out.branch_word = branch;
@@ -318,13 +318,13 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.trigger == nullptr) {
+        if (device_ops_.trigger == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:trigger");
         }
         if (request.delayMs < 0) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "delayMs");
         }
-        if (!seams_.trigger(params_, request, seams_.context)) {
+        if (!device_ops_.trigger(params_, request, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "trigger-refused");
         }
         refusal_.clear();
@@ -336,7 +336,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.wait_terminal == nullptr) {
+        if (device_ops_.wait_terminal == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:wait_terminal");
         }
         if (request.budgetMs <= 0) {
@@ -346,7 +346,7 @@ namespace ghostlock::jni {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "moduleName");
         }
         TerminalState state = TerminalState::InFlight;
-        if (!seams_.wait_terminal(params_, request, state, seams_.context)) {
+        if (!device_ops_.wait_terminal(params_, request, state, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "terminal-refused");
         }
         terminal = state;
@@ -365,10 +365,10 @@ namespace ghostlock::jni {
         if (role != kImageSpliceHelper && role != kImageLandingPayload) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "imageRole");
         }
-        if (seams_.embedded_image == nullptr) {
+        if (device_ops_.embedded_image == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:embedded_image");
         }
-        if (!seams_.embedded_image(role, image, seams_.context)) {
+        if (!device_ops_.embedded_image(role, image, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "image-refused");
         }
         refusal_.clear();

@@ -6,5 +6,5 @@
 
 namespace ghostlock::jni {
     /** @return 本构建的 43284 缝；其余（门、块读写、模块校验、触发、等待）留空 ⇒ op-not-wired。 */
-    [[nodiscard]] Ops43284Seams device_seams_43284() noexcept;
+    [[nodiscard]] DeviceOps43284 device_ops_43284() noexcept;
 }  // namespace ghostlock::jni

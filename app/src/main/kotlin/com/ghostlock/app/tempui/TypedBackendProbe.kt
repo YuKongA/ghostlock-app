@@ -18,7 +18,7 @@ import com.ghostlock.app.log.GhostLog
  *  1. 两个库各自加载成功（一个 backend 一个库）；
  *  2. create 给出正句柄；initialize 接受生成的 DTO（43499 四组）并按名回答；
  *  3. snapshot 回来的是**具名**数组（名字由 native 的 snapshotFields 导出，不手抄）；
- *  4. 没有设备 seam 的调用一律**具名拒绝**（op-not-wired:<函数名>）；
+ *  4. 没有设备 device hook 的调用一律**具名拒绝**（op-not-wired:<函数名>）；
  *  5. shutdown / destroy 走通，销毁后句柄作废（stale-handle）。
  *
  * 参数用哨兵值（占位）：真实 profile 仍在设计（本阶段目标到 J7 为止），所以这里只求"值能一路

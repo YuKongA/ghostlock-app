@@ -18,7 +18,7 @@ namespace {
     using ghostlock::jni::Backend43284;
     using ghostlock::jni::CallCode;
     using ghostlock::jni::contract::ReadFailure;
-    using ghostlock::jni::device_seams_43284;
+    using ghostlock::jni::device_ops_43284;
     using ghostlock::jni::kBlockWidth;
     using ghostlock::jni::kImageLandingPayload;
     using ghostlock::jni::wrapper::answer;
@@ -64,7 +64,7 @@ namespace {
 extern "C" {
 /** 建会话：本构建自带的两张图与钩子计划在这里接上（其余缝属 J7.5 的设备工作）。 */
 JNIEXPORT jlong JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_create(JNIEnv *, jclass) {
-    registry().set_prototype(Backend43284{device_seams_43284()});
+    registry().set_prototype(Backend43284{device_ops_43284()});
     return static_cast<jlong>(registry().create());
 }
 

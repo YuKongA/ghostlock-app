@@ -17,7 +17,7 @@ namespace {
     using ghostlock::jni::CallCode;
     using ghostlock::jni::Facts43499;
     using ghostlock::jni::kFactVictim;
-    using ghostlock::jni::Ops43499Seams;
+    using ghostlock::jni::DeviceOps43499;
     using ghostlock::jni::SessionParams43499;
     using ghostlock::jni::Snapshot43499;
     using ghostlock::jni::VictimAction;
@@ -53,7 +53,7 @@ namespace {
         return instance;
     }
 
-    bool seam_prepare(const SessionParams43499 &params, const Prepare43499Values &request,
+    bool device_prepare(const SessionParams43499 &params, const Prepare43499Values &request,
                       Facts43499 &facts, void *) noexcept {
         spy().params = params;
         spy().prepare = request;
@@ -64,7 +64,7 @@ namespace {
         return true;
     }
 
-    bool seam_discover(const SessionParams43499 &params, const Discover43499Values &request,
+    bool device_discover(const SessionParams43499 &params, const Discover43499Values &request,
                        Facts43499 &facts, void *) noexcept {
         spy().params = params;
         spy().discover = request;
@@ -74,7 +74,7 @@ namespace {
         return true;
     }
 
-    bool seam_spawn(const SessionParams43499 &params, Facts43499 &facts, void *) noexcept {
+    bool device_spawn(const SessionParams43499 &params, Facts43499 &facts, void *) noexcept {
         spy().params = params;
         ++spy().calls;
         facts.victim_task = 0x6000U;
@@ -82,7 +82,7 @@ namespace {
         return true;
     }
 
-    bool seam_finish(const SessionParams43499 &params, const FinishVictim43499Values &request,
+    bool device_finish(const SessionParams43499 &params, const FinishVictim43499Values &request,
                      Facts43499 &facts, void *) noexcept {
         spy().params = params;
         spy().finish = request;
@@ -91,7 +91,7 @@ namespace {
         return true;
     }
 
-    bool seam_land(const SessionParams43499 &params, const WordWrite43499Values &request,
+    bool device_land(const SessionParams43499 &params, const WordWrite43499Values &request,
                    Facts43499 &, void *) noexcept {
         spy().params = params;
         spy().write = request;
@@ -99,7 +99,7 @@ namespace {
         return true;
     }
 
-    bool seam_read(const SessionParams43499 &params, std::uint64_t, std::uint64_t &value,
+    bool device_read(const SessionParams43499 &params, std::uint64_t, std::uint64_t &value,
                    void *) noexcept {
         spy().params = params;
         value = 0x7777U;
@@ -107,15 +107,15 @@ namespace {
         return true;
     }
 
-    Ops43499Seams full_seams() noexcept {
-        Ops43499Seams seams{};
-        seams.prepare = &seam_prepare;
-        seams.discover = &seam_discover;
-        seams.spawn_victim = &seam_spawn;
-        seams.finish_victim = &seam_finish;
-        seams.land = &seam_land;
-        seams.read = &seam_read;
-        return seams;
+    DeviceOps43499 full_ops() noexcept {
+        DeviceOps43499 ops{};
+        ops.prepare = &device_prepare;
+        ops.discover = &device_discover;
+        ops.spawn_victim = &device_spawn;
+        ops.finish_victim = &device_finish;
+        ops.land = &device_land;
+        ops.read = &device_read;
+        return ops;
     }
 
     /** 四组参数，字段全用不同哨兵值：任何一处错位都会在逐个对比里露出来。 */
@@ -219,17 +219,17 @@ namespace {
         expect(same(backend.refusal(), "bad-parameters:pointerBytes"), "named as such");
     }
 
-    void every_seam_sees_the_whole_session_parameters() {
-        Backend43499 backend{full_seams()};
+    void every_ops_sees_the_whole_session_parameters() {
+        Backend43499 backend{full_ops()};
         expect(backend.initialize(sentinel_params()) == CallCode::Ok, "initialize");
         Snapshot43499 snapshot{};
 
         spy() = Spy{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Ok, "prepare runs");
-        expect(spy().calls == 1, "the prepare seam ran");
+        expect(spy().calls == 1, "the prepare ops ran");
         expect(spy().params.init.routeId == 11 && spy().params.init.waiterOffset == 96 &&
                    spy().params.init.bufferSize == 264,
-               "the prepare seam sees the init group");
+               "the prepare ops sees the init group");
         expect(spy().params.layout.pointerBytes == 8, "and the layout group");
         expect(spy().params.credential.capsValue == 2199023255551LL, "and the credential group");
         expect(spy().params.targets.taskSeccompOffset == 2144, "and the target group");
@@ -240,7 +240,7 @@ namespace {
     }
 
     void the_generations_bind_each_request_to_its_own_round() {
-        Backend43499 backend{full_seams()};
+        Backend43499 backend{full_ops()};
         expect(backend.initialize(sentinel_params()) == CallCode::Ok, "initialize");
         Snapshot43499 snapshot{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Ok, "prepare");
@@ -264,7 +264,7 @@ namespace {
         const WordWrite43499Values fresh = sentinel_write(1, 1, 1, true, 1);
         expect(backend.write_word(fresh) == CallCode::Ok, "a write on the current generations runs");
         expect(spy().write.address == fresh.address && spy().write.form == fresh.form,
-               "and the seam sees the request");
+               "and the ops sees the request");
         expect(spy().write.victimGeneration == 1 && spy().write.victimGenerationPresent,
                "including the victim generation");
 
@@ -274,7 +274,7 @@ namespace {
     }
 
     void retiring_the_victim_invalidates_old_requests() {
-        Backend43499 backend{full_seams()};
+        Backend43499 backend{full_ops()};
         expect(backend.initialize(sentinel_params()) == CallCode::Ok, "initialize");
         Snapshot43499 snapshot{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Ok, "prepare");
@@ -287,7 +287,7 @@ namespace {
         retire.victimGeneration = 1;
         expect(backend.finish_victim(retire, snapshot) == CallCode::Ok, "retire runs");
         expect(spy().finish.action == static_cast<std::int32_t>(VictimAction::Retire),
-               "the seam sees retire");
+               "the ops sees retire");
         expect(spy().facts_victim_task == 0x6000U, "and saw the live victim before it was cleared");
         expect(!backend.facts().victim_spawned, "the session no longer holds a victim");
         expect(backend.facts().victim_generation == 2, "and the generation moved on");
@@ -305,7 +305,7 @@ namespace {
     }
 
     void a_park_keeps_the_generation_for_the_next_step() {
-        Backend43499 backend{full_seams()};
+        Backend43499 backend{full_ops()};
         expect(backend.initialize(sentinel_params()) == CallCode::Ok, "initialize");
         Snapshot43499 snapshot{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Ok, "prepare");
@@ -323,7 +323,7 @@ namespace {
                "a write with the parked generation still runs");
     }
 
-    void every_device_op_is_named_when_its_seam_is_absent() {
+    void every_device_op_is_named_when_its_ops_is_absent() {
         Backend43499 backend{};
         Snapshot43499 snapshot{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Unsupported, "prepare");
@@ -344,7 +344,7 @@ namespace {
     }
 
     void the_write_form_polarity_is_still_checked() {
-        Backend43499 backend{full_seams()};
+        Backend43499 backend{full_ops()};
         expect(backend.initialize(sentinel_params()) == CallCode::Ok, "initialize");
         Snapshot43499 snapshot{};
         expect(backend.prepare(sentinel_prepare(), snapshot) == CallCode::Ok, "prepare");
@@ -367,7 +367,7 @@ namespace {
     }
 
     void a_closed_session_refuses_everything_but_the_lifecycle_calls() {
-        Backend43499 backend{full_seams()};
+        Backend43499 backend{full_ops()};
         expect(backend.shutdown() == CallCode::Ok, "close");
         Snapshot43499 snapshot{};
         expect(backend.snapshot(snapshot) == CallCode::Ok, "snapshot still answers");
@@ -383,15 +383,15 @@ int main() {
     the_session_keeps_every_field_it_was_given();
     std::printf("api 43499: named rejections\n");
     a_missing_required_field_is_refused_by_name();
-    std::printf("api 43499: seam visibility\n");
-    every_seam_sees_the_whole_session_parameters();
+    std::printf("api 43499: ops visibility\n");
+    every_ops_sees_the_whole_session_parameters();
     std::printf("api 43499: generation binding\n");
     the_generations_bind_each_request_to_its_own_round();
     std::printf("api 43499: victim lifecycle\n");
     retiring_the_victim_invalidates_old_requests();
     a_park_keeps_the_generation_for_the_next_step();
-    std::printf("api 43499: absent seams\n");
-    every_device_op_is_named_when_its_seam_is_absent();
+    std::printf("api 43499: absent ops\n");
+    every_device_op_is_named_when_its_ops_is_absent();
     std::printf("api 43499: form polarity\n");
     the_write_form_polarity_is_still_checked();
     std::printf("api 43499: closed session\n");
@@ -400,6 +400,6 @@ int main() {
         std::printf("api 43499: FAIL (%zu)\n", g_failures);
         return 1;
     }
-    std::printf("api 43499: PASS (parameters reach the seams, generations bind, refusals named)\n");
+    std::printf("api 43499: PASS (parameters reach the device work, generations bind, refusals named)\n");
     return 0;
 }

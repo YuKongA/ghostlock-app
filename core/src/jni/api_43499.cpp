@@ -111,7 +111,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.prepare == nullptr) {
+        if (device_ops_.prepare == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:prepare");
         }
         if (request.threads == 0) {
@@ -129,7 +129,7 @@ namespace ghostlock::jni {
         if (request.mmStructSize == 0) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "mmStructSize");
         }
-        if (!seams_.prepare(params_, request, facts_, seams_.context)) {
+        if (!device_ops_.prepare(params_, request, facts_, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "prepare-refused");
         }
         facts_.prepared = true;
@@ -143,7 +143,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.discover == nullptr) {
+        if (device_ops_.discover == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:discover");
         }
         if (request.rangeStart == 0 && request.rangeEnd == 0) {
@@ -156,7 +156,7 @@ namespace ghostlock::jni {
             /* 搜索必须绑在"它要搜的那一次准备"上：拿旧代的参数来搜，描述的是另一个堆状态。 */
             return named_failure(refusal_, CallCode::Failed, "stale-generation:", "prepare");
         }
-        if (!seams_.discover(params_, request, facts_, seams_.context)) {
+        if (!device_ops_.discover(params_, request, facts_, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "discovery-refused");
         }
         facts_.discovered = facts_.found != 0U;
@@ -173,14 +173,14 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.spawn_victim == nullptr) {
+        if (device_ops_.spawn_victim == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:spawn_victim");
         }
         if (!facts_.prepared || !facts_.discovered) {
             /* 受害者要落在已经准备好的堆里：前置不成立就不 fork。 */
             return refuse(refusal_, CallCode::NotReady, facts_.ready_for_write());
         }
-        if (!seams_.spawn_victim(params_, facts_, seams_.context)) {
+        if (!device_ops_.spawn_victim(params_, facts_, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "victim-spawn-refused");
         }
         if (facts_.victim_task == 0U) {
@@ -198,7 +198,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.finish_victim == nullptr) {
+        if (device_ops_.finish_victim == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:finish_victim");
         }
         if (request.action < 0 || request.action > 2) {
@@ -210,7 +210,7 @@ namespace ghostlock::jni {
         if (request.victimGeneration != facts_.victim_generation) {
             return named_failure(refusal_, CallCode::Failed, "stale-generation:", "victim");
         }
-        if (!seams_.finish_victim(params_, request, facts_, seams_.context)) {
+        if (!device_ops_.finish_victim(params_, request, facts_, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "victim-finish-refused");
         }
         switch (static_cast<VictimAction>(request.action)) {
@@ -239,7 +239,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.victim_probe == nullptr) {
+        if (device_ops_.victim_probe == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:victim_probe");
         }
         if (kind > 1U) {
@@ -248,7 +248,7 @@ namespace ghostlock::jni {
         if (!facts_.victim_spawned) {
             return refuse(refusal_, CallCode::NotReady, "not-ready:victim");
         }
-        if (!seams_.victim_probe(params_, kind, value, seams_.context)) {
+        if (!device_ops_.victim_probe(params_, kind, value, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "victim-probe-refused");
         }
         refusal_.clear();
@@ -272,7 +272,7 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.land == nullptr) {
+        if (device_ops_.land == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:write_word");
         }
         const WriteForm form = write_form_of(request.form);
@@ -292,7 +292,7 @@ namespace ghostlock::jni {
         if (const char *const why = facts_.ready_for_write(); why != nullptr) {
             return refuse(refusal_, CallCode::NotReady, why);
         }
-        if (!seams_.land(params_, request, facts_, seams_.context)) {
+        if (!device_ops_.land(params_, request, facts_, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "write-refused");
         }
         refusal_.clear();
@@ -303,11 +303,11 @@ namespace ghostlock::jni {
         if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
             return closed;
         }
-        if (seams_.read == nullptr) {
+        if (device_ops_.read == nullptr) {
             /* 今天诚实的答案：这个 backend 的路由不能读，所以"读"是 unsupported 而不是失败。 */
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:read_word");
         }
-        if (!seams_.read(params_, address, value, seams_.context)) {
+        if (!device_ops_.read(params_, address, value, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "read-refused");
         }
         refusal_.clear();
