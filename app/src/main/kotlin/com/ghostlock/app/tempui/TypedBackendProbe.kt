@@ -584,7 +584,15 @@ object TypedBackendProbe {
         step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, init43284()) +
             " refusal=" + patcher.lastRefusal)
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
-        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, saInit()) else false
+        /* 自证：打印**即将用于 write 的那一份**材料（DTO 读后清零的规律要求它每次现造，这里验证它到调用点时还是非零的）。 */
+        val patchMaterial = saInit()
+        step(
+            "typed: sa material spi=0x" + Integer.toHexString(patchMaterial.spi) +
+                " encap=" + patchMaterial.encapPort +
+                " aesNonZero=" + patchMaterial.aesKey.count { byte -> byte != 0.toByte() } +
+                " hmacNonZero=" + patchMaterial.hmacKey.count { byte -> byte != 0.toByte() },
+        )
+        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial) else false
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
