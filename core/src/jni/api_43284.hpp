@@ -192,6 +192,13 @@ namespace ghostlock::jni {
         std::uint64_t displaced_word = 0U;
         std::uint64_t site_offset = 0U;
         std::uint64_t landing_offset = 0U;
+        /* 写层要的 SentryPlan 其余字段：由设备层从它持有的完整计划里原样带出（只装结构，不判断）。 */
+        std::uint64_t guard_instruction = 0U;
+        std::uint64_t payload_file_offset = 0U;
+        std::uint64_t payload_vaddr = 0U;
+        std::uint64_t payload_max_bytes = 0U;
+        std::uint64_t entry_offset = 0U;
+        std::uint64_t displaced_offset = 0U;
         std::vector<std::uint8_t> payload{};
     };
 
