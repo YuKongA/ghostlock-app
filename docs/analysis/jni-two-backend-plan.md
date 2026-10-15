@@ -903,6 +903,25 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 
 下一批顺序：①connectEsp 存表返 id ②PairedDoor + makeSurface/destroySurface ③makeLanding/destroyLanding
 ④adoptSequence/nextSequence/bringUp ⑤删掉 Landing43284/g_session 与写目标拼装 ⑥Assembled43284 分步化并让探针走它。
+
+### §11.27 凭据来自会话帧；路线（SA/路由）不在这里 —— 写落上还差的那一环（2026-10-15）
+
+真机事实（本轮）：Kotlin 分步拼装 + 经落地对象写，bringUp=true、landed=1，但同一窗口读回仍是文件原内容（0x5A）。
+即：写被原语接受、内容没落上。拼装已被机器校验（门禁 38/38），所以剩下的就是**路线侧**。
+
+读 phase_credentials（tools/pagecache_load_lkm.cpp:255-283）确认：它只从**会话帧**（read_session_secret_frame）读出 SaMaterial，
+并标 sa.set = true；**不建 SA、不装路由、不碰 xfrm**。也就是「凭据」与「路线」是两件事，驱动器里只有前者。
+
+写要真的落上，还必须有内核侧的对应状态：
+
+1. 与该 SPI/端口匹配的 xfrm/ESP state（SA）—— 报文进去才有意义；
+2. 指向载体的路由/封装对端（encap_peer / ipsec 那一族库里可能有相关原语，需逐个读）；
+3. 或由 LKM 载入后在内核侧建立（lkm/ 里的 module_facts 只管校验，未必建 SA）。
+
+**下一批第一件事（真机取证）**：在设备上看有没有 SA/路由 ——
+adb shell ip xfrm state、adb shell ip xfrm policy、adb shell ip route；
+再回树里找「谁该建它」：检索 xfrm/netlink/SA 相关原语，以及 profile 里是否有 route/SA 字段。
+弄清之前不再改任何写路径 —— 否则每次都只会重复「原语接受、内容不落」这同一个现象。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
