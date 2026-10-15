@@ -791,30 +791,3 @@ tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
  *  KDIR 的解析照本文件既有的 NDK 风格：环境变量优先，其次 local.properties（此处先只支持环境变量，
  *  等有 DDK 的机器上再加本地文件键）。产物基准：退役树那次是 12304 字节。
  */
-
-/**
- *  avbcheck：主机侧离线核对（原 tools/avbcheck/Makefile 的 host/test 目标）。
- *
- *  构建逻辑在 KTS（规则）；CMake 只描述目标，见 tools/avbcheck/CMakeLists.txt。
- *  设备侧（NDK aarch64 静态）由 avbcheckDevice 以 NDK 工具链驱动，NDK 路径走本文件既有的解析。
- */
-val avbcheck by tasks.registering {
-    group = "verification"
-    description = "Builds and runs the host side of tools/avbcheck (offline cross-check + unit test)"
-    doLast {
-        val buildDir = layout.buildDirectory.dir("avbcheck").get().asFile
-        providers.exec {
-            commandLine("cmake", "-S", "tools/avbcheck", "-B", buildDir.absolutePath, "-G", "Ninja")
-        }.result.get().assertNormalExitValue()
-        providers.exec {
-            commandLine(
-                "cmake", "--build", buildDir.absolutePath, "-j", "8",
-                "--target", "avbcheck-host", "avbcheck-tests",
-            )
-        }.result.get().assertNormalExitValue()
-        providers.exec {
-            commandLine("ctest", "--test-dir", buildDir.absolutePath, "--output-on-failure")
-        }.result.get().assertNormalExitValue()
-        logger.lifecycle("avbcheck: host build + unit test passed ({})", buildDir)
-    }
-}
