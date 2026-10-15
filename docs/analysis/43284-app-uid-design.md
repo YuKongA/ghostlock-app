@@ -232,3 +232,26 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
 2. 对每个候选判「路径可 insmod」（按路径类别）与「我们能不能自己写」（probeReadPath，仅作参考）；
 3. carrier 的最终确认放在 **patch#1 装好之后**：用 helper 那条路写一份可校验的字节进去、再回读比对；
 4. 若 helper 也碰不到任何 vendor 路径 ⇒ 如实报告「此设备此前提下没有可用 carrier」，不再拿 /data/local/tmp 充当装载路径。
+
+### 8.9 简化：vendor/system 一律视为可 insmod，不再逐条判定（用户 2026-10-15 裁定）
+
+裁定：**路径类别可 insmod 这一条不再判定** —— vendor 与 system 下的路径一律按「可 insmod」处理。
+
+证据（不是猜的）：退役树 B5-9h 就在本机把 /vendor/lib64/libbinderdebug.so 当装载路径
+（shellcode 里 exec /vendor/bin/insmod /vendor/lib64/libbinderdebug.so）并成功起来；
+而 /data/local/tmp 不行（§8.8）。所以「vendor/system 可、tmp 不可」这条边界有直接实证。
+
+**于是 carrier 只由一条判词决定：链子能不能把字节写进去。**
+
+    carrier 判定 = ① 枚举 /vendor/lib64（+ 必要时 system）
+                 → ② 白名单优先（经验账 §8.6）
+                 → ③ **用链子自己的写路径**（patch#1/helper 就位之后）写一份可校验字节并回读比对
+                 → ④ 全败则如实报告：此设备此前提下无可用 carrier
+
+**两个只读原语的定位也随之降级**：
+
+- probeListDir：仍有用（枚举候选宇宙，白名单之外的那部分靠它发现）；
+- probeReadPath：降为**参考信息**（告诉我们 app uid 自己能不能碰它），**不再是 carrier 的判词** ——
+  判词在 helper 写测试（第 ③ 步）。
+
+**因此移植顺序**：先 patch#1（helper 步骤）→ 再做 carrier 的写测试 → 再 trigger/LKM。
