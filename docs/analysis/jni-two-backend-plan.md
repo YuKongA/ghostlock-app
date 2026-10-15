@@ -1020,6 +1020,25 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 **建议取 A**（状态集中、原语签名不变），并在 closeSocketId 上加 borrowed 判定与具名拒绝。
 下一批：①加 espFromFd 原语（含借用标记）；②Kotlin 侧建 UDP socket + IpSecTransform.applyToSocket；
 ③把该 socket 借给 native 当 ESP 通道；④复跑真机判据（写满 90 块且回读等于 helper 头部）。
+
+### §11.32 access-initialize-refused 的根因：Access::initialize 自己会 bring_up，而我已经拉过一次（2026-10-15）
+
+读 kernel_access.hpp:67-82 的确切判定：先校验 usable_for_initialize，再调 ops_->bring_up_with(params->sa)（它自己拉起），
+有 sequence 时还自己 adopt_sequence；而 PageCacheLanding::bring_up_with 的第一行就是：已经拉起过（up_）或材料为空（!sa.set）就返回 false。
+
+我的分步路径先调了 bringUpLanding() 并且成功，随后 Access::initialize 又去 bring_up_with ⇒ 必然 false ⇒ access-initialize-refused。
+
+**接口结论（改接口，不是加逻辑）**：Access::initialize 承担「拉起 + 接续序号」，所以它必须拿到**会话材料**：
+
+    accessInitialize(handle, accessId, AccessParams43284, Init43284, refusal)
+    // native：params.sa = sa_material_of(init)；再调 Access::initialize(params)
+
+这样两条路都合法、由 Kotlin 选：
+
+- 路 A（已在真机验证）：bringUp(landingId) + landBlock …（拉起与写分开）；
+- 路 B（驱动器原样）：accessInitialize(…, Init43284) —— 它自己拉起、自己接续序号，随后 writeImage（patch#1）。
+
+两条路**不能混用**（同一落地对象不能拉起两次）—— 探针里要么只走 A，要么只走 B。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
