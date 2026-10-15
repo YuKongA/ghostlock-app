@@ -16,6 +16,9 @@ namespace ghostlock::jni {
      *  密钥长度不对就没有材料（set = false）—— 零密钥不是凭据，门的开启会据此拒绝，
      *  而不是拿一段零去连。
      */
+    /** @return 关掉一扇门；id 无效或门本来没开则为 false。 */
+    [[nodiscard]] bool device_close_target(std::uint64_t targetId) noexcept;
+
     [[nodiscard]] ghostlock::backend::cve_2026_43284::SaMaterial sa_material_of(
         const Init43284Values &params) noexcept;
 

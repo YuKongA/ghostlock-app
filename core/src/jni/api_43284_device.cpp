@@ -127,6 +127,26 @@ namespace ghostlock::jni {
         void sleep_ms(const std::uint32_t ms) noexcept {
             ::usleep(static_cast<useconds_t>(ms) * 1000U);
         }
+        /**
+         *  关掉一扇门：按 id 关掉门表里的 fd 并清记录（设备工作；谁开谁关那条规则的执行者）。
+         *
+         *  @param targetId 由 resolve 给的句柄；0、越界、或本来没开 ⇒ false（上层给 stale-target）。
+         *  @note 这里直接 close，不调用 close_door —— 后者声明在本处之后，调用会依赖顺序。
+         */
+        bool device_close_target(const std::uint64_t targetId) noexcept {
+            if (targetId == 0U) {
+                return false;
+            }
+            const std::size_t slot = static_cast<std::size_t>(targetId) - 1U;
+            if (slot >= kMaxDoors || g_doors[slot].fd < 0) {
+                return false;
+            }
+            static_cast<void>(::close(g_doors[slot].fd));
+            g_doors[slot].fd = -1;
+            g_doors[slot].path.clear();
+            return true;
+        }
+
     }  // namespace
 
     /**
