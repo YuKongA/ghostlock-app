@@ -188,6 +188,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] bool read_block(std::uint64_t position,
                                       std::uint8_t out[kBlockBytes]) noexcept override {
             if (!splice_.can_read_page()) {
+                GL_LOGI("read_block: not open can_read=%d fd=%d pos=%llu",
+                        splice_.can_read_page() ? 1 : 0, doors_.file_fd(),
+                        static_cast<unsigned long long>(position));
                 read_outcome_ = ReadOutcome::NotOpen;
                 return false;
             }

