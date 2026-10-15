@@ -608,6 +608,22 @@ object TypedBackendProbe {
                 " hmacNonZero=" + patchMaterial.hmacKey.count { byte -> byte != 0.toByte() },
         )
         val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial) else false
+        /* 对着上游核「旧页」：IV = 旧页 XOR 期望页，前提是"旧页"真是文件当前内容。
+         * Kotlin 直读 crash_dump64 前 16 字节（我们对它可读 ✓），与经链子读回的对比。 */
+        runCatching {
+            val direct = java.io.File("/apex/com.android.runtime/bin/crash_dump64").inputStream().use { stream ->
+                val buffer = ByteArray(16)
+                val count = stream.read(buffer)
+                if (count > 0) buffer.copyOf(count) else ByteArray(0)
+            }
+            val viaChain = patcher.readLandingFirstBlock()
+            val directHex = direct.joinToString("") { byte -> "%02x".format(byte) }
+            val chainHex = viaChain?.joinToString("") { byte -> "%02x".format(byte) } ?: "none"
+            step("typed: old-page direct=" + directHex + " viaChain=" + chainHex +
+                " same=" + (viaChain != null && direct.contentEquals(viaChain)))
+        }.onFailure { problem ->
+            step("typed: old-page refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
