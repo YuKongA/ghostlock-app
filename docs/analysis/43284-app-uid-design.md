@@ -170,3 +170,28 @@ probeReadPath 除了「打开 + splice」还应当回**文件尺寸**（fstat）
 
 **判定的两把尺子分开**：hook 目标看「含 sentry 模式 + 末页 slack」；carrier 看「可写进字节（页缓存）+ 所在路径可被允许的域 insmod」。
 同一个路径可以同时被标两种角色，但判定各按各的尺子。
+
+### 8.7 定案：hook 目标固定 libc++，carrier 保留动态（用户 2026-10-15 裁定）
+
+**为什么 hook 不动态**：它的可用性有两条从我们的 uid **观测不到** ——
+「被哪个特权进程映射」与「打上之后会不会真被执行」（后者要等链子跑一次才知道）。
+既然探测不到，就别做假探测：**固定用 libc++**。
+
+定案内容：
+
+| 角色 | 策略 | 依据 |
+|---|---|---|
+| hook 目标 | **固定 /system/lib64/libc++.so**（不枚举、不换） | 退役树 B5-9h 就是用它的 sentry 打钩并通过；本机实测可读、1083168 B、末页 slack 1824 放得下 480 B payload |
+| carrier | **动态**：枚举 /vendor/lib64 → 白名单优先 → 其余逐个试 → 全败回退开发载体 | 它的机械条件（可读、可 splice、可写页缓存、路径可 insmod）都能在本地判定 |
+| helper（patch#1） | 固定 /apex/com.android.runtime/bin/crash_dump64 | 同样是「谁调用」观测不到，且退役树已证 |
+
+**流程因此简化**（去掉 hook 侧的运行时判据）：
+
+    ① 固定三件：hook 目标 = libc++.so；helper = crash_dump64；payload = 本树的 libcxx_blob + shellcode
+    ② 动态一件：carrier（枚举 vendor → 白名单 → 兜底 → 回退）
+    ③ 预检（只读、便宜）：libc++.so 与 crash_dump64 的存在/可读/size/slack —— 不满足就当场具名失败
+
+**原语需求也随之收窄**：probeReadPath（判定 carrier 的机械条件 + 预检三件）与 probeListDir（枚举 vendor）两个就够；
+sentry 模式扫描不必做（hook 固定，不筛）。
+
+**经验账仍然管用**：carrier 每在一台设备上跑通，就把那条路径追加进白名单（§8.6），下次优先试。
