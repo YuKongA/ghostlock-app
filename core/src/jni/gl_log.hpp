@@ -5,6 +5,7 @@
  *
  *  用法：GL_LOGI("open path=%s role=%d", path, role);
  *  @note 只允许 ASCII 格式串；printf 语义（%s/%d/%u/%zu/%p/%02x …）。
+ *        换行一律用码值 10（fputc(10, …)），避免任何转义歧义。
  */
 #include <cstdarg>
 #include <cstdio>
@@ -36,7 +37,8 @@ namespace ghostlock::log {
 #if defined(__ANDROID__)
         __android_log_print(ANDROID_LOG_INFO, kTag, "%s", full);
 #else
-        std::fprintf(stderr, "[%s] %s\n", kTag, full);
+        std::fputs(full, stderr);
+        std::fputc(10, stderr);
 #endif
     }
 }  // namespace ghostlock::log
