@@ -731,6 +731,19 @@ object TypedBackendProbe {
             hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+            /* Trigger → Wait（退役链顺序：Hook 已成立 ⇒ 现在触发）。marker 用夹具的真实路径。 */
+            val triggerCode = hook.trigger(hookParams.accessTriggerDelayMs)
+            step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " refusal=" + hook.lastRefusal)
+            val terminal = hook.waitTerminal(
+                budgetMs = 15000L,
+                pollMs = 100L,
+                successMarker = "/dev/df0",
+                failureMarker = "/dev/df1",
+                inFlightMarker = "/dev/df",
+                moduleMarker = "/sys/module/dirtyfrag",
+                moduleName = "kernelsu",
+            )
+            step("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
         }.onFailure { problem ->
             step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
