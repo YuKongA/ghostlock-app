@@ -30,7 +30,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 断言是本项目的判据工具（测试里大量 assert 就是判据本身）：RelWithDebInfo/Release 会定义
 # NDEBUG 把它们编译掉 ⇒ 判据静默失效（2026-10-14 复现：futex_hash_test 的断言消失、变量变"未使用"）。
 # 这里统一在选项之后取消 NDEBUG，任何构建类型都保留断言。
-add_compile_options(-UNDEBUG)
+add_compile_options(-UNDEBUG -fconstexpr-steps=8000000)
 
 # 仓库根（core/ 的上一级）：一切产物都落在仓库内的 build/ 下，禁止外链。
 get_filename_component(GL_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
