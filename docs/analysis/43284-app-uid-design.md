@@ -56,3 +56,19 @@
 
 1. 本设计（尤其「载体用 /data/local/tmp 开发载体、patch#1 打进 crash_dump64」这两条）是否认可；
 2. 若认可，我按下节顺序开工：先只读勘察第四节四件 → 再落 stage=write → 真机判据 → stage=trigger → …（前一 stage 未过真机不进下一 stage）。
+
+## 七、开工前四件勘察的结果（2026-10-15 只读）
+
+| # | 问题 | 结果 |
+|---|---|---|
+| 1 | ghostlock.ko 的源码与构建链 | **本树已有**：core/src/backend/cve_2026_43284/lkm/（另有 tools/lkm）；Gradle 里没找到 buildLkmImages/verifyLkmLedger 这两个任务名（需再确认构建入口） |
+| 2 | ksud 发现脚本 | **不在本树**（只有 profile/key_catalog.hpp 提到 ksud）⇒ 需按裁定在 **Kotlin 侧生成**脚本、再交给 LKM 阶段执行 |
+| 3 | shellcode 与 hook 载荷 | **本树已有**：core/src/backend/cve_2026_43284/embed/libcxx_blob.{hpp,cpp}（libc++ 载荷）+ steps/pagecache_steps.* + 测试 sentry_hook_test.cpp |
+| 4 | stage 语义与步骤实现 | 本树有 steps/pagecache_step_runner.cpp；**退役树的 chain / crash_dump / elf_hook / hook_patch 四个步骤本树没有** ⇒ 需移植（作为薄原语；顺序与收尾按裁定放 Kotlin） |
+
+**移植清单（按依赖顺序）**：
+
+1. crash_dump（patch#1 的 helper 步骤：把 helper 页写进 crash_dump64 并校验）；
+2. elf_hook + hook_patch（libc++ sentry 的定位与打补丁：0xb70a8 → 0xb70ac，payload 用本树已有的 libcxx_blob）；
+3. chain（staged 顺序）—— 按裁定**不移植为 native 逻辑**：顺序/目标/收尾写在 Kotlin（Assembled43284），native 只出上面两个薄原语；
+4. LKM 阶段沿用本树 core/src/backend/cve_2026_43284/lkm/ 的源码与既有构建入口（构建入口下一轮确认）。
