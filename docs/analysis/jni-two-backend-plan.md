@@ -464,6 +464,19 @@ steps/pagecache_steps.hpp 已经把链上的动作做成了函数，设备函数
 驱动器的输入全部来自库头文件（backend/cve_2026_43284/* 与 contract/kernel_access.hpp、session_frame.hpp），**应用侧设备函数可以复用同一批**。
 
 接线顺序（下一轮直接执行）：3a = 装配 + write_block/read_block；3b = trigger 走 trigger_orphan、wait_terminal 走 wait_for_module（两者都是小改动）。
+
+### §11.9 wait_terminal 接 wait_for_module：字段一一对应，映射待定（2026-10-15 勘察）
+
+WaitRequest 的字段与 Wait43284 的字段是**一一对应**的：success_marker / failure_marker /
+in_flight_marker / module_name / budget_ms / poll_ms，外加两个可注入的钩子 exists（设备传 stat，测试传集合）
+与 sleep_ms（设备传 usleep，测试传计数器）。
+
+wait_for_module 的契约（该头文件自己写明）：**先看 failure**（陈旧的成功标记不得掩盖新的失败）→ 再看 success；
+模块被观察到已加载后又消失且没有标记，算失败。@return 成功时 nullptr，否则具名原因。
+
+**未定的一点**：哪个具名原因对应 inflight、哪个对应 failure。想用一次 grep 猜没成（没抓到字面量，返回的可能是拼接/传递的字符串），
+所以**没有**替换当前那版已经被真机验证过的 marker 轮询 —— 不拿可用行为去赌一次盲接。下一轮：通读
+wait_for_module 的实现（steps/pagecache_steps.cpp），把具名原因与三态对应关系写清，再换实现并跑真机那条 inflight 判据。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
