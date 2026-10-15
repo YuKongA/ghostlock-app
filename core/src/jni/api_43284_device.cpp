@@ -29,6 +29,13 @@
 
 namespace ghostlock::jni {
     namespace {
+    /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
+    struct OpenDoor final {
+        int fd = -1;
+        std::string path{};
+    };
+    constexpr std::size_t kMaxDoors = 8U;
+    OpenDoor g_doors[kMaxDoors] = {};
         /** 载荷的落点；缝返回的 span 必须在调用期间有效。 */
         std::uint8_t g_payload[1024] = {};
         std::size_t g_payload_size = 0U;
@@ -159,6 +166,25 @@ namespace ghostlock::jni {
         return who == nullptr;
     }
 
+    /**
+     *  读回一块：从门那扇 fd 上 pread 十六字节（设备工作）。
+     *
+     *  @return 读到十六字节为 true；门没开、偏移越界、短读都是 false（上层给 block-read-refused）。
+     *  @note 这一半只读**盘上现存的内容**：写还没接线（ESP 路线），所以内容不会等于最近一次写，
+     *        状态机因此不会走到 Applied —— 这是如实的，不是缺陷。
+     */
+    bool device_read_block(const Init43284Values &, const ReadBlock43284Values &request,
+                           const std::uint64_t door_token, const std::span<std::byte> out,
+                           void *) noexcept {
+        const std::size_t slot = static_cast<std::size_t>(door_token) - 1U;
+        if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
+            return false;
+        }
+        const ssize_t got = ::pread(g_doors[slot].fd, out.data(), out.size(),
+                                    static_cast<off_t>(request.offset));
+        return got == static_cast<ssize_t>(out.size());
+    }
+
     backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
         backend::cve_2026_43284::SaMaterial sa{};
         sa.spi = static_cast<std::uint32_t>(params.spi);
@@ -176,13 +202,6 @@ namespace ghostlock::jni {
         return sa;
     }
 
-    /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
-    struct OpenDoor final {
-        int fd = -1;
-        std::string path{};
-    };
-    constexpr std::size_t kMaxDoors = 8U;
-    OpenDoor g_doors[kMaxDoors] = {};
 
     /** 关掉一个 slot 上的门（复用 slot 或替换目标时先关）。 */
     void close_door(OpenDoor &door) noexcept {
@@ -229,6 +248,7 @@ namespace ghostlock::jni {
         ops.hook_plan = &device_hook_plan;
         ops.resolve = &device_resolve;
         ops.module_check = &device_module_check;
+        ops.read_block = &device_read_block;
         ops.trigger = &device_trigger;
         ops.wait_terminal = &device_wait_terminal;
         return ops;

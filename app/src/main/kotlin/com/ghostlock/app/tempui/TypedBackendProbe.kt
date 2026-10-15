@@ -157,7 +157,7 @@ object TypedBackendProbe {
         /* 门：真的以 O_RDWR 打开一个本应用可写的文件（用自身的缓存目录），再看一个不存在的路径。 */
         val doorPath = java.io.File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp",
                                     "ghostlock-door-probe")
-        doorPath.createNewFile()
+        doorPath.writeBytes(ByteArray(16) { 0x5A })
         val ticket = LongArray(1)
         code = Native43284.resolveTarget(
             handle,
@@ -168,6 +168,19 @@ object TypedBackendProbe {
             refusal,
         )
         step("typed: 43284 resolveTarget code=" + code + " ticket=" + ticket[0] + " refusal=" + refusal[0])
+
+        /* 读回一块：走门那扇 fd 的 pread（设备工作）。文件里是刚写的十六个 0x5A。 */
+        val block = ByteArray(16)
+        code = Native43284.readBlock(
+            handle,
+            com.ghostlock.app.core.generated.ReadBlock43284(ticket = ticket[0], offset = 0L),
+            block,
+            refusal,
+        )
+        step(
+            "typed: 43284 readBlock code=" + code + " bytes=" +
+                block.joinToString("") { byte -> "%02x".format(byte) } + " refusal=" + refusal[0],
+        )
 
         val badTicket = LongArray(1)
         code = Native43284.resolveTarget(

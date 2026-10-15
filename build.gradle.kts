@@ -537,6 +537,8 @@ tasks.register("deviceGate") {
         /* 票据 = (slot << 32) | generation：只断言开了且给了正票据，数字不写死。 */
         expected += "typed: 43284 resolveTarget code=0 ticket="
         expected += "typed: 43284 resolveTarget(bad) code=-4 refusal=door-refused"
+        /* 读块现在已经接线（门那扇 fd 上的 pread）：读到文件里的十六个 0x5A。 */
+        expected += "typed: 43284 readBlock code=0 bytes=5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a refusal="
 
         /* 43284 的数据 op：**新**函数面上尚未接线（旧帧路径仍提供两张图，上面已经按 manifest
          * 对拍过摘要），所以这里如实断言 op-not-wired —— 等 43284 的 D2 装配落地后再改成
