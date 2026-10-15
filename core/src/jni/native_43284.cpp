@@ -538,7 +538,8 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_accessIni
 }
 
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImage(
-        JNIEnv *env, jclass, jlong handle, jobject params, jobject image, jobjectArray refusal_out) {
+        JNIEnv *env, jclass, jlong handle, jobject params, jobject image, jobject init,
+        jobjectArray refusal_out) {
     ghostlock::jni::contract::AccessParams43284Values params_values{};
     ghostlock::jni::contract::ReadFailure params_failure{};
     if (!ghostlock::jni::contract::readAccessParams43284(env, params, &params_values, &params_failure)) {
@@ -551,15 +552,22 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImag
         const auto outcome = refuse_read(handle, failure);
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
+    ghostlock::jni::Init43284Values sa_source{};
+    ghostlock::jni::contract::ReadFailure sa_failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, init, &sa_source, &sa_failure)) {
+        const auto outcome = refuse_read(handle, sa_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
     const char *why = nullptr;
-    const bool wrote = ghostlock::jni::device_write_image(values, params_values, &why);
+    const bool wrote = ghostlock::jni::device_write_image(values, params_values, sa_source, &why);
     const std::string named = wrote ? std::string()
                                     : (std::string("image-write:") + (why != nullptr ? why : "refused"));
     return answer(env, wrote ? CallCode::Ok : CallCode::Failed, named.c_str(), refusal_out);
 }
 
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeHook(
-        JNIEnv *env, jclass, jlong handle, jobject params, jobject hook, jobjectArray refusal_out) {
+        JNIEnv *env, jclass, jlong handle, jobject params, jobject hook, jobject init,
+        jobjectArray refusal_out) {
     ghostlock::jni::contract::AccessParams43284Values params_values{};
     ghostlock::jni::contract::ReadFailure params_failure{};
     if (!ghostlock::jni::contract::readAccessParams43284(env, params, &params_values, &params_failure)) {
@@ -572,7 +580,13 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeHook
         const auto outcome = refuse_read(handle, failure);
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
-    const bool wrote = ghostlock::jni::device_write_hook(values, params_values);
+    ghostlock::jni::Init43284Values hook_sa{};
+    ghostlock::jni::contract::ReadFailure hook_sa_failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, init, &hook_sa, &hook_sa_failure)) {
+        const auto outcome = refuse_read(handle, hook_sa_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const bool wrote = ghostlock::jni::device_write_hook(values, params_values, hook_sa);
     return answer(env, wrote ? CallCode::Ok : CallCode::Failed,
                   wrote ? "" : "hook-write-refused", refusal_out);
 }

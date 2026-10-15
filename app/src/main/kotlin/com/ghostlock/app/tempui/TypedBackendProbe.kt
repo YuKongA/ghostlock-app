@@ -361,7 +361,7 @@ object TypedBackendProbe {
         val accessInit = stepwise.initializeAccessAndRemember(accessParams, init43284())
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
-        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L) else false
+        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, init43284()) else false
         step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 accessDestroy=" + stepwise.destroyAccessNow())
         val stepSeq = stepwise.nextSequence()

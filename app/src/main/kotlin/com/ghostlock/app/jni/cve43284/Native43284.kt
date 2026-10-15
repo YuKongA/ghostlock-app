@@ -27,6 +27,7 @@ object Native43284 {
         handle: Long,
         params: com.ghostlock.app.core.generated.AccessParams43284,
         hook: com.ghostlock.app.core.generated.WriteHook43284,
+        init: Init43284,
         refusalOut: Array<String>,
     ): Int
 
@@ -122,6 +123,7 @@ object Native43284 {
         handle: Long,
         params: com.ghostlock.app.core.generated.AccessParams43284,
         image: com.ghostlock.app.core.generated.WriteImage43284,
+        init: Init43284,
         refusalOut: Array<String>,
     ): Int
 

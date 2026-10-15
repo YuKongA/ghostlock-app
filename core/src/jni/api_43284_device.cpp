@@ -718,6 +718,7 @@ namespace ghostlock::jni {
      */
     bool device_write_image(const contract::WriteImage43284Values &values,
                             const contract::AccessParams43284Values &params_values,
+                            const Init43284Values &sa_source,
                             const char **why) noexcept {
         if (why != nullptr) {
             *why = nullptr;
@@ -749,6 +750,9 @@ namespace ghostlock::jni {
         access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
         access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
         access_params.offset_set = params_values.accessOffsetSet;
+        /* usable_for_access() == usable_for_initialize() && offset_set，而 usable_for_initialize() 要 sa.set：
+           所以写这一层也必须把会话材料带上（上一轮 initialize 缺的就是同一项）。 */
+        access_params.sa = sa_material_of(sa_source);
         backend::cve_2026_43284::steps::WriteRequest request{};
         request.access = g_accesses[slot].get();
         request.params = &access_params;
@@ -771,7 +775,8 @@ namespace ghostlock::jni {
      *  @return 写完并校验 true；否则 false（上层给 hook-write-refused）。
      */
     bool device_write_hook(const contract::WriteHook43284Values &values,
-                           const contract::AccessParams43284Values &params_values) noexcept {
+                           const contract::AccessParams43284Values &params_values,
+                           const Init43284Values &sa_source) noexcept {
         const std::uint64_t access_id = static_cast<std::uint64_t>(values.hookAccessId);
         if (access_id == 0U) {
             return false;
@@ -793,6 +798,7 @@ namespace ghostlock::jni {
         access_params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
         access_params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
         access_params.offset_set = params_values.accessOffsetSet;
+        access_params.sa = sa_material_of(sa_source);   /* 同 write_image：写这一层也要材料 */
         const backend::cve_2026_43284::hook::SentryPlan plan =
             backend::cve_2026_43284::hook::device_sentry_plan();
         backend::cve_2026_43284::steps::HookRequest request{};
