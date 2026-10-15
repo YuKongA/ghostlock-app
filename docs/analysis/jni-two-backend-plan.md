@@ -1139,6 +1139,34 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 2. 若要做 43499 ⇒ 必须先落 profile 文档的解析与装载（Kotlin 侧：读档案 → 解析成 Document → 通过新原语把文档句柄交给 native，
    native 只按 id 持有，不解析、不决定）；这也是「真实 profile 设计」的正式开工点；
 3. 两条路都要各自一份真机判据（按裁定：前一阶段未过真机不得进下一阶段）。
+
+### §11.37 43499 要的「文档」其实两半都在，只缺一个交接原语（2026-10-15）
+
+勘察结果：
+
+| 半边 | 文件 | 能力 |
+|---|---|---|
+| Kotlin 侧解析 | app/src/main/kotlin/com/ghostlock/app/data/profile/{Hocon.kt,DeviceProfile.kt,AndroidAssets.kt} | 已能读资产里的 HOCON：
+  route(backend) / imageOffset(...) / structOffset(...) / declaredStepNames(...) 等取值都现成 |
+| native 侧文档类型 | core/src/profile/glkv3_document.{hpp,cpp}、document_pairs.*、key_catalog.* | 已有 GLK v3 文档的解析与键目录 |
+
+因此 43499 的 Access43499Parameters.document 不需要「从头设计」，需要的是**一个交接原语**：
+
+    documentFromText(text) → documentId      // Kotlin 把（它解析/校验过的）文档文本交给 native；
+                                            // native 调 glkv3_document 的既有解析，把结果按 id 持有
+    destroyDocument(documentId)
+    // 之后 makeAccess43499(route, documentId) —— 文档句柄随访问对象一起给
+
+这与裁定一致：**解析在 Kotlin（或复用既有解析），native 只按 id 持有、不决定**；
+而且这条路不需要任何新算法 —— 只是把既有两半接起来。
+
+**下一批（若走 43499）**：
+
+1. native：加 documentFromText / destroyDocument 两个原语（内部用 glkv3_document 的既有解析；失败具名）；
+2. 契约：给 43499 的访问参数加 documentId 字段（或在 makeAccess43499 里加一个入参 —— 后者更小）；
+3. Kotlin：Assembled43499 侧接收一份文档文本（先用设备上现成的 profile 资产），交给 native 取 id；
+4. 真机最小序列：建文档 → 取访问对象(route, documentId) → initialize/write/read → 看是否落盘。
+   这一步会回答「43499 是否需要同一套 SA」这个分水岭问题。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
