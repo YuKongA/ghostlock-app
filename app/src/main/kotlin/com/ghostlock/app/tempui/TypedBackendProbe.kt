@@ -156,7 +156,7 @@ object TypedBackendProbe {
                     android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.CRYPT_AES_CBC, aesKey),
                 )
                 .setAuthentication(
-                    android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.AUTH_HMAC_SHA256, hmacKey, 96),
+                    android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.AUTH_HMAC_SHA256, hmacKey, 128)  /* 128 bit = 16 字节，与帧的 icv_len 一致（96 会与 16 字节的 ICV 对不上） */,
                 )
                 .setIpv4Encapsulation(encap, 4500)
                 .buildTransportModeTransform(loopback, spiObj)
