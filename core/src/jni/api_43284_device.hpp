@@ -29,6 +29,7 @@ namespace ghostlock::jni {
     [[nodiscard]] bool device_adopt_sequence(std::uint64_t landingId, std::uint64_t next) noexcept;
 
     /** @return 建 socket 并存表；失败 0。 */
+    [[nodiscard]] std::uint64_t device_esp_socket_id(const Init43284Values &params, int &why) noexcept;
     [[nodiscard]] std::uint64_t device_esp_socket_id(const Init43284Values &params) noexcept;
     /** @return 按 id 关掉 socket。 */
     [[nodiscard]] bool device_close_socket_id(std::uint64_t socketId) noexcept;

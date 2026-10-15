@@ -423,9 +423,11 @@ namespace ghostlock::jni {
      *
      *  @return 不透明 id（slot + 1）；失败 0。端口由会话参数给，本函数不做决策。
      */
-    std::uint64_t device_esp_socket_id(const Init43284Values &params) noexcept {
+    std::uint64_t device_esp_socket_id(const Init43284Values &params, int &why) noexcept {
+        why = 0;
         const int fd = device_connect_esp(params);
         if (fd < 0) {
+            why = fd;  /* 把失败原因原样带出去：-1 没有材料、-2 socket、-3 bind、-4 connect */
             return 0U;
         }
         for (std::size_t index = 0U; index < kMaxSockets; ++index) {
@@ -435,7 +437,14 @@ namespace ghostlock::jni {
             }
         }
         static_cast<void>(device_close_socket(fd));
+        why = -9;  /* 表满 */
         return 0U;
+    }
+
+    /** @return 同上，但不带失败原因。 */
+    std::uint64_t device_esp_socket_id(const Init43284Values &params) noexcept {
+        int why = 0;
+        return device_esp_socket_id(params, why);
     }
 
     /** @return 按 id 关掉 socket；0/越界/未开 ⇒ false。 */
