@@ -182,6 +182,23 @@ object TypedBackendProbe {
                 block.joinToString("") { byte -> "%02x".format(byte) } + " refusal=" + refusal[0],
         )
 
+        /* 写一块：走落地对象（ESP 路线）。写成功只到 Dispatched；随后读回比较一致才会 Applied。 */
+        code = Native43284.writeBlock(
+            handle,
+            com.ghostlock.app.core.generated.WriteBlock43284(
+                ticket = ticket[0], offset = 0L, block = ByteArray(16) { 0x33 },
+            ),
+            refusal,
+        )
+        step("typed: 43284 writeBlock code=" + code + " refusal=" + refusal[0])
+        code = Native43284.snapshot(handle, snapshot, refusal)
+        step(
+            "typed: 43284 snapshot-after-write code=" + code +
+                " " + Native43284.snapshotFields().indices.joinToString(",") { index ->
+                    Native43284.snapshotFields()[index] + "=" + snapshot[index]
+                },
+        )
+
         val badTicket = LongArray(1)
         code = Native43284.resolveTarget(
             handle,

