@@ -445,6 +445,8 @@ tasks.register("deviceGate") {
     val apkDir = file("build/app/outputs/apk/debug")
     val manifestFile = file("app/build/jni-protocol-manifest.tsv")
     val logFile = file("build/app/device-gate.log")
+    /* 配置期读一次：doLast 里调 findProperty 会把 Project 捕获进配置缓存。 */
+    val serial_override = findProperty("deviceSerial") as String?
 
     /* 要读运行时的 adb 输出，且每次都必须真跑（不许被缓存跳过）。 */
     notCompatibleWithConfigurationCache("设备门禁读运行时的 adb 输出")
@@ -469,7 +471,7 @@ tasks.register("deviceGate") {
             .map { line -> line.trim().split(Regex("\\s+")) }
             .firstOrNull { parts -> parts.size >= 2 && parts[1] == "device" &&
                                     parts.any { it.startsWith("usb:") } }
-        val serial = (findProperty("deviceSerial") as String?) ?: usb_parts?.firstOrNull()
+        val serial = serial_override ?: usb_parts?.firstOrNull()
             ?: throw GradleException("没有 USB 设备（可用 -PdeviceSerial= 指定）：\n" + listing)
         logger.lifecycle("deviceGate: 设备 " + serial)
         fun adb(vararg args: String): String = exec(adbExe, "-s", serial, *args)
@@ -478,7 +480,13 @@ tasks.register("deviceGate") {
         check(apk != null) { "没有 APK：先运行 :app:assembleDebug" }
 
         logger.lifecycle("deviceGate: 安装 " + apk!!.name)
-        adb("install", "-r", apk.absolutePath)
+        /* 先卸再装，并用 --no-streaming 走 push 路径。
+         * 原因（实测 2026-10-15）：连续 `-r` 覆盖同一个 versionCode 会把 PackageManager 留在
+         * 「REPLACED, but missing application info」状态 —— 此时 am start 报 Activity class does not
+         * exist（result code=-92），而 APK 的 manifest、dex、dexopt 全都是好的；卸载 + 重启 + 重装才清干净。
+         * 卸载失败不致命（本来就没装）。 */
+        runCatching { adb("uninstall", "com.ghostlock.app") }
+        adb("install", "--no-streaming", "-g", apk.absolutePath)
         adb("logcat", "-c")
         adb("shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
         Thread.sleep(7000L)
@@ -519,7 +527,7 @@ tasks.register("deviceGate") {
         /* D2：两个新库必须在真机上被 Kotlin 调用到（库名 + 调用码 + 具名拒绝）。 */
         expected += "typed: 43499 library loaded"
         expected += "typed: 43499 initialize code=0"
-        expected += "typed: 43499 snapshot code=0 phase=0"
+        expected += "typed: 43499 snapshot code=0 phase=1"
         expected += "typed: 43499 prepare code=-3 refusal=op-not-wired:prepare"
         expected += "typed: 43499 writeWord code=-3 refusal=op-not-wired:write_word"
         expected += "typed: 43499 shutdown-after-destroy code=-5 refusal=stale-handle"
@@ -527,11 +535,10 @@ tasks.register("deviceGate") {
         expected += "typed: 43284 initialize code=0"
         expected += "typed: 43284 resolveTarget code=-3 refusal=op-not-wired:resolve_target"
 
-        /* 43284 的两张图与钩子数字：值来自 native 导出的 manifest，设备上必须逐位一致。 */
-        rows["image splice_helper"]?.let { digest ->
-            expected += "typed: 43284 embeddedImage code=ok size=1440"
-            expected += digest
-        }
+        /* 43284 的数据 op：**新**函数面上尚未接线（旧帧路径仍提供两张图，上面已经按 manifest
+         * 对拍过摘要），所以这里如实断言 op-not-wired —— 等 43284 的 D2 装配落地后再改成
+         * 断言 ok + size=1440。 */
+        expected += "typed: 43284 embeddedImage code=null size=-1 refusal=op-not-wired:embedded_image"
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {

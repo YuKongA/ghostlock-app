@@ -26,6 +26,12 @@ namespace ghostlock::jni {
     template <class Backend>
     class HandleRegistry final {
       public:
+        /** 设定新会话的模板：带缝的 backend 由它在建会话时复制进来。 */
+        void set_prototype(Backend prototype) noexcept {
+            std::lock_guard<std::mutex> table_guard(table_mutex_);
+            prototype_ = std::move(prototype);
+        }
+
         /** 建一个会话。@return 句柄（永远 > 0）。 */
         [[nodiscard]] std::uint64_t create() noexcept {
             std::lock_guard<std::mutex> table_guard(table_mutex_);
@@ -35,7 +41,7 @@ namespace ghostlock::jni {
                     slot.live = true;
                     slot.generation += 1U;
                     std::lock_guard<std::mutex> slot_guard(slot.mutex);
-                    slot.backend = Backend{};
+                    slot.backend = prototype_;
                     return make_handle(index, slot.generation);
                 }
             }
@@ -44,7 +50,7 @@ namespace ghostlock::jni {
             slot.live = true;
             slot.generation = 1U;
             std::lock_guard<std::mutex> slot_guard(slot.mutex);
-            slot.backend = Backend{};
+            slot.backend = prototype_;
             return make_handle(slots_.size() - 1U, 1U);
         }
 
@@ -156,5 +162,6 @@ namespace ghostlock::jni {
         std::mutex table_mutex_{};
         /* deque：Slot 里有 mutex，不可搬；deque 增长不会挪动已存在的元素。 */
         std::deque<Slot> slots_{};
+        Backend prototype_{};
     };
 }  // namespace ghostlock::jni
