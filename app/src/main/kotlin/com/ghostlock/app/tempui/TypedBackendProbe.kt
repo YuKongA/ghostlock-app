@@ -624,6 +624,13 @@ object TypedBackendProbe {
         }.onFailure { problem ->
             step("typed: old-page refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
+
+        /* 序号：上游每次写 g_seq++，内核按它做防重放。把链子当前的序号打出来做对照。 */
+        runCatching {
+            step("typed: next-sequence=" + patcher.nextSequence() + " refusal=" + patcher.lastRefusal)
+        }.onFailure { problem ->
+            step("typed: next-sequence refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
