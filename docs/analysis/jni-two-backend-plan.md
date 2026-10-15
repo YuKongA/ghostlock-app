@@ -1084,6 +1084,30 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 1. native 加 makeAccess43499(route) 原语（内部走 create_kernel_access_43499）+ destroyAccess43499；
 2. Kotlin 侧 Assembled43499（与 Assembled43284 同型的包装类，先只做 makeAccess/initialize/write/read/收尾）；
 3. 真机跑一条最小序列（route 先用 catalog 里的一个取值，参数由 Kotlin 给）—— 期望与 43284 一样：initialize 与 write 通、回读取决于该 route 是否真的落盘。
+
+### §11.35 43499 的设备面现状与镜像清单（2026-10-15 勘察）
+
+现状（core/src/jni/ 列表与 native_43499.cpp 的导出）：
+
+    api_43499.{hpp,cpp}  marshal_43499.hpp  native_43499.cpp  ops_43499.{hpp,cpp}（帧时代遗留）
+    native_43499.cpp 导出 **13** 个：create / initialize / snapshot / prepare / discover / spawnVictim /
+    finishVictim / victimProbe / writeWord / readWord / shutdown / destroy / snapshotFields
+    **没有 api_43499_device.{hpp,cpp}** ⇒ 所有设备工作现在都如实回答 op-not-wired:*
+
+要做的就是把 43284 那一套镜像过来（43284 的 api_43284_device.cpp 就是现成参考）：
+
+1. 新建 core/src/jni/api_43499_device.{hpp,cpp}：
+   - 设备函数：device_prepare / device_discover / device_spawn_victim / device_finish_victim /
+     device_land（走 43499 的 AccessSeam→WordLanding 族）/ device_read / device_make_access_43499(route)（§11.34）/
+     device_destroy_access_43499 / 以及 43499 自己的收尾；
+   - 全部「按 id 查表 + 调一个既有原语 + 回来」，拼装/顺序/收尾仍归 Kotlin；
+2. core/CMakeLists.txt：把新文件**同时**加进 GL_JNI_43499_SRCS（第 212 行那条显式列表）与宿主的便携源列表；
+3. native_43499.cpp：新函数逐个导出（照 43284 的那批写法：出参 jlongArray、失败具名、读取器用 contract:: 限定）；
+4. Kotlin：Native43499 补齐 external 声明；新建 **Assembled43499**（与 Assembled43284 同型的包装类）；
+5. 真机：跑一条最小序列（route 从 catalog 取一个值），判据与 43284 同型（initialize/write 通、回读取决于该 route）。
+
+**注意 43499 与 43284 的差别**：43499 的访问是**按 route 选**（create_kernel_access_43499），
+所以它的 makeAccess 多一个 route 入参，而 route 取值来自**档案** —— 这也是「真实 profile 还需设计」的实质的一部分。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
