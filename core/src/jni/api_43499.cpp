@@ -44,6 +44,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::initialize(const Initialize43499 &params) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (const char *const absent = missing_initialize_field(params); absent != nullptr) {
             /* 名字要拼出来：前缀 + 字段名（不能用 string_view + const char* 直接相加）。 */
             char named[64] = {};
@@ -74,6 +77,13 @@ namespace ghostlock::jni {
         return CallCode::Ok;
     }
 
+    CallCode Backend43499::closed_guard() noexcept {
+        if (phase_ == api::Phase::Closed) {
+            return refuse(refusal_, CallCode::Closed, "session-closed");
+        }
+        return CallCode::Ok;
+    }
+
     CallCode Backend43499::snapshot(Snapshot43499 &out) noexcept {
         publish(out);
         refusal_.clear();
@@ -81,6 +91,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::prepare(Snapshot43499 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.prepare == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:prepare");
         }
@@ -93,6 +106,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::discover(Snapshot43499 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.discover == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:discover");
         }
@@ -105,6 +121,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::spawn_victim(Snapshot43499 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.spawn_victim == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:spawn_victim");
         }
@@ -117,6 +136,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::victim_probe(std::uint64_t kind, std::uint64_t &value) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.victim_probe == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:victim_probe");
         }
@@ -128,6 +150,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::write_word(const WriteWord43499 &request) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.land == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:write_word");
         }
@@ -153,6 +178,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43499::read_word(std::uint64_t address, std::uint64_t &value) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.read == nullptr) {
             /* 今天诚实的答案：这个 backend 的路由不能读，所以"读"是 unsupported 而不是失败 —— */
             /* 调用方不该去重试一个不存在的能力。 */

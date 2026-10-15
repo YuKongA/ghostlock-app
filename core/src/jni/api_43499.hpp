@@ -211,6 +211,9 @@ namespace ghostlock::jni {
         [[nodiscard]] const char *refusal() const noexcept { return refusal_.c_str(); }
 
       private:
+        /** 会话关掉之后，除 snapshot / shutdown / destroy 之外的调用一律具名拒绝。 */
+        [[nodiscard]] CallCode closed_guard() noexcept;
+
         /** 把事实发布进 Snapshot 的能力位。 */
         void publish(Snapshot43499 &out) const noexcept;
 

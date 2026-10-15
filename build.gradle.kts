@@ -317,6 +317,75 @@ tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
  * （app/build/jni-protocol-manifest.tsv，由 native 的 jni_protocol_manifest 产出），
  * 期望的计划步名与拒绝名写成这里的一张表。抓到的原始日志落到 build/app/device-gate.log。
  * ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+ * JNI 库的导出符号检查（2026-10-14 审查第 1 点）：库与函数面必须一一对应。
+ *
+ * 期望值不手抄：每个 backend 该导出哪些函数，从它自己的源码里的 JNIEXPORT 声明算出来；
+ * 另一个 backend 的命名空间在本库里出现一个符号就算失败。
+ * ------------------------------------------------------------------------- */
+tasks.register("verifyJniLibs") {
+    description = "检查三个 JNI 库的导出符号：每个 backend 只导出自己的函数面"
+    group = "verification"
+    dependsOn("nativeBuildAndroid")
+    val libDir = file("build/native")
+    val ndkRoot = resolveNdkDir()
+    val sourceDir = file("core/src/jni")
+
+    doLast {
+        val llvmNm = File(ndkRoot, "toolchains/llvm/prebuilt").listFiles()
+            ?.firstOrNull { it.isDirectory }
+            ?.let { File(it, "bin/llvm-nm") }
+        check(llvmNm != null && llvmNm.isFile) { "找不到 llvm-nm（在 " + ndkRoot + " 下）" }
+
+        fun exec(vararg command: String): String {
+            val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+            val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
+            val code = process.waitFor()
+            check(code == 0) { "命令失败(" + code + "): " + command.joinToString(" ") + "\n" + text }
+            return text
+        }
+
+        /** 源码里声明的函数名（JNIEXPORT 后面那一段）。 */
+        fun expectedFunctions(backend: String): Set<String> {
+            val pattern = Regex("Java_com_ghostlock_app_jni_cve" + backend + "_([A-Za-z0-9_]+)")
+            return sourceDir.listFiles().orEmpty()
+                .filter { it.name.endsWith(".cpp") && it.name.contains(backend) }
+                .flatMap { file -> pattern.findAll(file.readText()).map { it.groupValues[1] }.toList() }
+                .toSet()
+        }
+
+        fun exportedFunctions(library: String, backend: String): Set<String> {
+            val pattern = Regex("Java_com_ghostlock_app_jni_cve" + backend + "_([A-Za-z0-9_]+)")
+            val text = exec(llvmNm!!.absolutePath, "-D", "--defined-only", File(libDir, library).absolutePath)
+            return pattern.findAll(text).map { it.groupValues[1] }.toSet()
+        }
+
+        val problems = mutableListOf<String>()
+        for ((backend, library) in listOf("43499" to "libghostlock43499.so", "43284" to "libghostlock43284.so")) {
+            val expected = expectedFunctions(backend)
+            val exported = exportedFunctions(library, backend)
+            check(expected.isNotEmpty()) { "源码里读不到 cve" + backend + " 的函数声明" }
+            val missing = expected - exported
+            if (missing.isNotEmpty()) {
+                problems += library + " 少了导出：" + missing.joinToString(",")
+            }
+            val other = if (backend == "43499") "43284" else "43499"
+            val foreign = exportedFunctions(library, other)
+            if (foreign.isNotEmpty()) {
+                problems += library + " 导出了另一个 backend 的函数：" + foreign.joinToString(",")
+            }
+            logger.lifecycle("verifyJniLibs: " + library + " 导出 " + exported.size + " 个函数（源码期望 " + expected.size + "）")
+        }
+        val legacy = exportedFunctions("libghostlock_jni.so", "43499") +
+            exportedFunctions("libghostlock_jni.so", "43284")
+        if (legacy.isNotEmpty()) {
+            problems += "旧的 libghostlock_jni.so 仍然导出新函数面的符号：" + legacy.joinToString(",")
+        }
+        check(problems.isEmpty()) { "JNI 库符号检查未通过：\n  " + problems.joinToString("\n  ") }
+        logger.lifecycle("verifyJniLibs: PASS（三个库互不重叠）")
+    }
+}
+
 tasks.register("deviceGate") {
     description = "在已连接的设备上跑门禁：装 APK → 起临时界面 → 抓 logcat → 校验关键行"
     group = "verification"
@@ -372,8 +441,21 @@ tasks.register("deviceGate") {
         }
         rows["hook branch_word"]?.let { expected += "branch=" + it }
         rows["hook displaced_word"]?.let { expected += "displaced=" + it }
-        expected += "plan: cve_2026_43499 step=w1 outcome=Refused"
-        expected += "plan: cve_2026_43284 step=patch1 outcome=Refused"
+        /* 计划那几条：画像名与 release 由设备自己报（uname -r），声明的步骤由画像资产里的
+         * available 队列决定 —— 两者都不手抄。43284 的 declared 是 PlanCatalog 的别名展开，
+         * 该展开由 PlanCatalogTest 单测钉住。 */
+        val release = exec(adbExe, "shell", "uname", "-r").trim()
+        expected += "plan: profile=" + release + ".conf release=" + release + " generic=false schema=3"
+        val profileText = file("app/src/main/assets/profile/" + release + ".conf").readText()
+        val declared = profileText
+            .substringAfter("cve_2026_43499 {")
+            .substringBefore("cve_2026_43284")
+            .let { block -> Regex("step = \"([a-z0-9_]+)\"").findAll(block).map { it.groupValues[1] } }
+            .joinToString(",")
+        expected += "plan: cve_2026_43499 declared=" + declared
+        expected += "plan: cve_2026_43499 step=w1 outcome=Refused reason=precondition:w1-address"
+        expected += "plan: cve_2026_43284 declared=patch1,carrier,hook,trigger,wait"
+        expected += "plan: cve_2026_43284 step=patch1 outcome=Refused reason=precondition:patch1-path"
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {
@@ -397,6 +479,7 @@ tasks.register("checkAll") {
     description = "集中测试入口：原生 CTest + Kotlin 单测"
     group = "verification"
     dependsOn("nativeTestHost", ":app:testDebugUnitTest")
+    dependsOn("verifyJniLibs")
 }
 
 tasks.register<Exec>("buildGhostlockExtract") {

@@ -197,7 +197,31 @@ set_target_properties(ghostlock PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR
 # src/jni/legacy/ 下（默认不参与构建）。
 # ---------------------------------------------------------------------------
 if(GL_JNI)
-  file(GLOB GL_JNI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/*.cpp)
+  # 三个库的源清单互斥（审查第 1 点）：同一个函数面不得同时出现在两个库里。
+  # 以前这里是 GLOB，于是新旧两套东西一起编进旧库，同一函数面存在多份会话状态；现在改成显式清单。
+  set(GL_JNI_LEGACY_SRCS
+    src/jni/session_protocol.cpp
+    src/jni/session_handles.cpp
+    src/jni/session_object.cpp
+    src/jni/session_api.cpp
+    src/jni/ops_43499.cpp
+    src/jni/ops_43284.cpp
+    src/jni/ops_43284_device.cpp
+  )
+  set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/native_43499.cpp)
+  set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/native_43284.cpp)
+
+  # 配置期硬断言：三份清单两两不相交（重叠即配置失败，不给编出来再说的机会）。
+  foreach(pair "GL_JNI_LEGACY_SRCS;GL_JNI_43499_SRCS" "GL_JNI_LEGACY_SRCS;GL_JNI_43284_SRCS" "GL_JNI_43499_SRCS;GL_JNI_43284_SRCS")
+    list(GET pair 0 gl_left)
+    list(GET pair 1 gl_right)
+    foreach(source ${gl_left})
+      if(source IN_LIST ${gl_right})
+        message(FATAL_ERROR "JNI 源清单重叠：${source} 同时属于 ${gl_left} 与 ${gl_right}")
+      endif()
+    endforeach()
+  endforeach()
+  set(GL_JNI_SOURCES ${GL_JNI_LEGACY_SRCS})
   # 工具而不是库的一部分：协议表导出器只做宿主工具（它有自己的 main）。
   list(REMOVE_ITEM GL_JNI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/jni_protocol_manifest.cpp)
   if(GL_JNI_SOURCES)
@@ -207,12 +231,12 @@ if(GL_JNI)
     set_target_properties(ghostlock_jni PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
     # 每个 backend 一个 JNI 库（用户裁定 2026-10-14）：函数面是类型化的，不再有帧。
-    add_library(ghostlock43499 SHARED src/jni/api_43499.cpp src/jni/native_43499.cpp)
+    add_library(ghostlock43499 SHARED ${GL_JNI_43499_SRCS})
     target_compile_options(ghostlock43499 PRIVATE ${GL_WARNINGS})
     target_link_libraries(ghostlock43499 PRIVATE ghostlock_core)
     set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
-    add_library(ghostlock43284 SHARED src/jni/api_43284.cpp src/jni/native_43284.cpp)
+    add_library(ghostlock43284 SHARED ${GL_JNI_43284_SRCS})
     target_compile_options(ghostlock43284 PRIVATE ${GL_WARNINGS})
     target_link_libraries(ghostlock43284 PRIVATE ghostlock_core)
     set_target_properties(ghostlock43284 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
@@ -277,6 +301,8 @@ set(GL_TEST_NAMES
   handle_generation_test
   heap_geometry_test
   api_43499_test
+  handle_registry_test
+  marshal_test
   api_43284_test
   hmac_sha256_test
   jni_protocol_test

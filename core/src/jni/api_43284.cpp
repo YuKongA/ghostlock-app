@@ -9,6 +9,8 @@
 namespace ghostlock::jni {
     void Backend43284::publish(Snapshot43284 &out) const noexcept {
         out.facts = facts_;
+        /* 调用方拿到的必须是票据（盐 | token），不是门自己的 token。 */
+        out.facts.token = make_ticket(salt_, facts_.token);
         std::uint64_t flags = kCapPageCache;
         if (facts_.resolved) {
             flags |= kFactResolved;
@@ -19,6 +21,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43284::initialize(const Initialize43284 &params) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (params.trigger_delay_ms == 0U) {
             return refuse(refusal_, CallCode::BadParameters, "bad-parameters:trigger_delay_ms");
         }
@@ -43,6 +48,23 @@ namespace ghostlock::jni {
         return CallCode::Ok;
     }
 
+    CallCode Backend43284::closed_guard() noexcept {
+        if (phase_ == api::Phase::Closed) {
+            return refuse(refusal_, CallCode::Closed, "session-closed");
+        }
+        return CallCode::Ok;
+    }
+
+    CallCode Backend43284::accept_ticket(const std::uint64_t ticket) noexcept {
+        /* 高 32 位必须是本会话的盐，低 32 位必须是本会话解析出来的 token：
+         * 别的会话给的票据过不了，别的会话的 token 也过不了。 */
+        if ((ticket >> 32U) != (salt_ & 0xFFFFFFFFU) ||
+            (ticket & 0xFFFFFFFFU) != (facts_.token & 0xFFFFFFFFU)) {
+            return refuse(refusal_, CallCode::StaleTarget, "stale-target");
+        }
+        return CallCode::Ok;
+    }
+
     CallCode Backend43284::snapshot(Snapshot43284 &out) noexcept {
         publish(out);
         refusal_.clear();
@@ -51,6 +73,9 @@ namespace ghostlock::jni {
 
     CallCode Backend43284::resolve_target(const TargetRole role, const std::string_view path,
                                           std::uint64_t &token) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.resolve == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:resolve_target");
         }
@@ -68,13 +93,16 @@ namespace ghostlock::jni {
         facts_.token = resolved;
         facts_.role = static_cast<std::uint64_t>(role);
         facts_.resolved = true;
-        token = resolved;
+        token = make_ticket(salt_, resolved);
         refusal_.clear();
         return CallCode::Ok;
     }
 
     CallCode Backend43284::write_block(const std::uint64_t token, const std::uint64_t offset,
                                        const std::span<const std::byte> block) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.write_block == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:write_block");
         }
@@ -85,12 +113,13 @@ namespace ghostlock::jni {
         if (const char *const why = facts_.ready_for_block(); why != nullptr) {
             return refuse(refusal_, CallCode::NotReady, why);
         }
-        if (token != facts_.token) {
-            /* 本会话没发过的 token（或别的会话的）：拒绝，绝不当作解析结果用。 */
-            return refuse(refusal_, CallCode::StaleTarget, "stale-target");
+        if (const CallCode fresh = accept_ticket(token); fresh != CallCode::Ok) {
+            /* 本会话没发过的票据（包括别的会话的）：拒绝，绝不当作解析结果用。 */
+            return fresh;
         }
         std::uint64_t sequence = facts_.sequence;
-        if (!seams_.write_block(token, offset, block, sequence, seams_.context)) {
+        /* 缝拿到的是门自己的 token，不是调用方的票据：票据只回答这次调用有没有资格。 */
+        if (!seams_.write_block(facts_.token, offset, block, sequence, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-refused");
         }
         facts_.sequence = sequence;
@@ -100,6 +129,9 @@ namespace ghostlock::jni {
 
     CallCode Backend43284::read_block(const std::uint64_t token, const std::uint64_t offset,
                                       const std::span<std::byte> out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.read_block == nullptr) {
             /* 这条路由读不回来：是 unsupported（重试无用），不是失败。 */
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:read_block");
@@ -110,10 +142,10 @@ namespace ghostlock::jni {
         if (const char *const why = facts_.ready_for_block(); why != nullptr) {
             return refuse(refusal_, CallCode::NotReady, why);
         }
-        if (token != facts_.token) {
-            return refuse(refusal_, CallCode::StaleTarget, "stale-target");
+        if (const CallCode fresh = accept_ticket(token); fresh != CallCode::Ok) {
+            return fresh;
         }
-        if (!seams_.read_block(token, offset, out, seams_.context)) {
+        if (!seams_.read_block(facts_.token, offset, out, seams_.context)) {
             return refuse(refusal_, CallCode::Failed, "block-read-refused");
         }
         refusal_.clear();
@@ -121,6 +153,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43284::trigger(const std::uint64_t delay_ms) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.trigger == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:trigger");
         }
@@ -134,6 +169,9 @@ namespace ghostlock::jni {
     CallCode Backend43284::wait_terminal(const std::uint64_t budget_ms, const std::uint64_t poll_ms,
                                          const std::string_view module_name,
                                          WaitTerminal43284 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.wait_terminal == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:wait_terminal");
         }
@@ -153,6 +191,9 @@ namespace ghostlock::jni {
 
     CallCode Backend43284::embedded_image(const std::uint64_t role,
                                           std::span<const std::byte> &image) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (role != kImageSpliceHelper && role != kImageLandingPayload) {
             return refuse(refusal_, CallCode::BadParameters, "image-role-unknown");
         }
@@ -167,6 +208,9 @@ namespace ghostlock::jni {
     }
 
     CallCode Backend43284::hook_words(HookWords43284 &out) noexcept {
+        if (const CallCode closed = closed_guard(); closed != CallCode::Ok) {
+            return closed;
+        }
         if (seams_.hook_words == nullptr) {
             return refuse(refusal_, CallCode::Unsupported, "op-not-wired:hook_words");
         }

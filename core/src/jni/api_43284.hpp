@@ -5,6 +5,7 @@
  *  与 43499 那份同样的道理：类型（角色、终态、事实、缝）在这里定义一次，函数就是这些类型的
  *  操作；失败给出**名字**，成功给出结果。
  */
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -186,7 +187,27 @@ namespace ghostlock::jni {
         [[nodiscard]] const char *refusal() const noexcept { return refusal_.c_str(); }
 
       private:
+        /** 会话关掉之后，除 snapshot / shutdown / destroy 之外的调用一律具名拒绝。 */
+        [[nodiscard]] CallCode closed_guard() noexcept;
+
+        /** 每构造一个会话取一份盐：票据的高 32 位，用来把票据钉死在本会话上。 */
+        [[nodiscard]] static std::uint64_t next_salt() noexcept {
+            static std::atomic<std::uint64_t> counter{1U};
+            return counter.fetch_add(1U);
+        }
+
+        /** 交给调用方的票据 = 会话盐（高 32 位）| 门给的 token（低 32 位）。 */
+        [[nodiscard]] static constexpr std::uint64_t make_ticket(const std::uint64_t salt,
+                                                               const std::uint64_t token) noexcept {
+            return (salt << 32U) | (token & 0xFFFFFFFFU);
+        }
+
+        /** @return 票据可用时 Ok，否则 stale-target（别的会话的票据永远过不了）。 */
+        [[nodiscard]] CallCode accept_ticket(std::uint64_t ticket) noexcept;
+
         void publish(Snapshot43284 &out) const noexcept;
+
+        std::uint64_t salt_ = next_salt();
 
         Ops43284Seams seams_{};
         Facts43284 facts_{};

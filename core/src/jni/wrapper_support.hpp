@@ -1,13 +1,21 @@
 #pragma once
 /** @file jni/wrapper_support.hpp
- *  每个 backend 一个 JNI 库所需要的那点公共机械：句柄表、数组读写、名字表。
+ *  每个 backend 一个 JNI 库所需要的那点公共机械：句柄表、数组读写、原子答案。
  *
- *  句柄与帧无关，所以这里的实现直接从旧的边界继承（索引 + 代）：拿错句柄是 stale-handle，
- *  而不是"另一台机器的张冠李戴"。数组边界一律校验：Kotlin 给的数组短了就是 bad-parameters，
- *  不做越界写 —— 这是跨端传参唯一必须守住的东西。
+ *  这一层解决四件事，每件都是审查点名的：
+ *
+ *  1. **并发单位是句柄，不是整张表**（每槽一把锁）：一个会话的调用不该让别的会话排队。
+ *     加锁顺序固定为"表 → 槽"；回收路径先把槽标成 dead 再取槽锁，于是在飞的那一次调用会先跑完，
+ *     之后才释放资源 —— 不会出现"调用还在跑、对象已经被清掉"。
+ *  2. **销毁先关闭**：retire 内部先调 backend.shutdown()，再清状态。调用方忘了关，设备侧资源也
+ *     必须在回收时被放掉；这是强制的，不是"看调用方自觉"。
+ *  3. **答案原子**：调用码与具名拒绝来自同一次加锁调用，由同一个写点写进调用方给的 refusalOut
+ *     （长度 ≥ 1 的 String[]）。没有"再单独问一次 refusal(handle)"的窗口。
+ *  4. **数组边界在动手之前校验**：短数组就是 bad-parameters，且**不执行任何动作**。
  */
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <jni.h>
 #include <mutex>
 #include <string_view>
@@ -15,24 +23,37 @@
 #include <vector>
 
 #include "jni/backend_api.hpp"
+#include "jni/handle_registry.hpp"
 
 namespace ghostlock::jni {
     namespace wrapper {
-        /** 把 jlongArray 读进定长缓冲；短了就回答 false（调用方给 bad-parameters）。 */
+        /** 把一条名字拷进定长缓冲（截断而不是溢出）。 */
+        inline void copy_name(char *out, const std::string_view name) noexcept {
+            const std::size_t bytes = name.size() < 127U ? name.size() : 127U;
+            std::memcpy(out, name.data(), bytes);
+            out[bytes] = '\0';
+        }
+
+        /** 数组是否至少有这么长（够只是前提，不是动作）。 */
+        [[nodiscard]] inline bool has_room(JNIEnv *env, jlongArray array,
+                                          const std::size_t need) noexcept {
+            return array != nullptr && env->GetArrayLength(array) >= static_cast<jsize>(need);
+        }
+
+        /** 把 jlongArray 读进定长缓冲；短了就回答 false。 */
         [[nodiscard]] inline bool read_longs(JNIEnv *env, jlongArray array, jlong *out,
                                              const std::size_t need) noexcept {
             if (array == nullptr || out == nullptr) {
                 return false;
             }
-            const jsize length = env->GetArrayLength(array);
-            if (length < static_cast<jsize>(need)) {
+            if (env->GetArrayLength(array) < static_cast<jsize>(need)) {
                 return false;
             }
             env->GetLongArrayRegion(array, 0, static_cast<jsize>(need), out);
             return env->ExceptionCheck() == JNI_FALSE;
         }
 
-        /** 把若干 long 写进调用方给的数组；短了就回答 false（调用方给 bad-parameters）。 */
+        /** 把若干 long 写进调用方给的数组。 */
         [[nodiscard]] inline bool write_longs(JNIEnv *env, jlongArray array, const jlong *values,
                                               const std::size_t count) noexcept {
             if (array == nullptr) {
@@ -45,9 +66,8 @@ namespace ghostlock::jni {
             return env->ExceptionCheck() == JNI_FALSE;
         }
 
-        /** 造一个 String[]（字段布局自描述）。 */
-        [[nodiscard]] inline jobjectArray make_string_array(JNIEnv *env,
-                                                            const char *const *names,
+        /** 造一个 String[]。 */
+        [[nodiscard]] inline jobjectArray make_string_array(JNIEnv *env, const char *const *names,
                                                             const std::size_t count) noexcept {
             jclass string_class = env->FindClass("java/lang/String");
             if (string_class == nullptr) {
@@ -66,88 +86,24 @@ namespace ghostlock::jni {
         }
 
         /**
-         *  一个 backend 库的会话表：句柄 = 索引 + 代。
+         *  把答案（调用码 + 具名拒绝）一次写完：两者同源、同时写，调用方读到的永远是一对。
          *
-         *  @tparam Backend 该 backend 的会话类型（Backend43499 / Backend43284）。
+         *  @param refusal_out 调用方给的 String[]，长度 ≥ 1；成功时写入空串（可以为 null）。
+         *  @return 调用码，直接交给 Kotlin。
          */
+        [[nodiscard]] inline jint answer(JNIEnv *env, const CallCode code, const char *const refusal,
+                                         jobjectArray refusal_out) noexcept {
+            if (refusal_out != nullptr && env->GetArrayLength(refusal_out) >= 1) {
+                jstring text = env->NewStringUTF(refusal == nullptr ? "" : refusal);
+                env->SetObjectArrayElement(refusal_out, 0, text);
+                env->DeleteLocalRef(text);
+            }
+            return static_cast<jint>(code);
+        }
+
+        /** 旧名字：句柄表已抽到 handle_registry.hpp（JNI-free，可宿主测试）。 */
         template <class Backend>
-        class Registry final {
-          public:
-            /** 建一个会话。@return 句柄（永远 > 0）。 */
-            [[nodiscard]] std::uint64_t create() noexcept {
-                std::lock_guard<std::mutex> guard(mutex_);
-                for (std::size_t index = 0U; index < slots_.size(); ++index) {
-                    if (!slots_[index].live) {
-                        slots_[index].live = true;
-                        slots_[index].generation += 1U;
-                        slots_[index].backend = Backend{};
-                        return make_handle(index, slots_[index].generation);
-                    }
-                }
-                slots_.push_back(Slot{});
-                slots_.back().live = true;
-                slots_.back().generation = 1U;
-                slots_.back().backend = Backend{};
-                return make_handle(slots_.size() - 1U, 1U);
-            }
+        using Registry = ghostlock::jni::HandleRegistry<Backend>;
 
-            /** 回收一个会话。@return 是否回收成功（未知句柄 = false）。 */
-            [[nodiscard]] bool retire(const std::uint64_t handle) noexcept {
-                std::lock_guard<std::mutex> guard(mutex_);
-                Slot *const slot = find(handle);
-                if (slot == nullptr) {
-                    return false;
-                }
-                slot->live = false;
-                slot->backend = Backend{};
-                return true;
-            }
-
-            /**
-             *  在一次调用里持有会话的表锁。
-             *
-             *  @param work 收到会话引用；返回调用码。
-             *  @return 句柄不对时 StaleHandle；否则是 work 的答案。
-             */
-            template <class Work>
-            [[nodiscard]] CallCode with(const std::uint64_t handle, Work &&work) noexcept {
-                std::lock_guard<std::mutex> guard(mutex_);
-                Slot *const slot = find(handle);
-                if (slot == nullptr) {
-                    return CallCode::StaleHandle;
-                }
-                return work(slot->backend);
-            }
-
-          private:
-            struct Slot final {
-                bool live = false;
-                std::uint64_t generation = 0U;
-                Backend backend{};
-            };
-
-            [[nodiscard]] static std::uint64_t make_handle(const std::size_t index,
-                                                           const std::uint64_t generation) noexcept {
-                /* 1 起编：0 留给"没有句柄"。 */
-                return (generation << 32U) | (static_cast<std::uint64_t>(index) + 1U);
-            }
-
-            /** @return 该句柄指向的槽，或 null（不存在 / 已回收 / 代不对）。 */
-            [[nodiscard]] Slot *find(const std::uint64_t handle) noexcept {
-                const std::uint64_t index = (handle & 0xFFFFFFFFU) - 1U;
-                const std::uint64_t generation = handle >> 32U;
-                if (handle == 0U || index >= slots_.size()) {
-                    return nullptr;
-                }
-                Slot &slot = slots_[index];
-                if (!slot.live || slot.generation != generation) {
-                    return nullptr;
-                }
-                return &slot;
-            }
-
-            std::mutex mutex_{};
-            std::vector<Slot> slots_{};
-        };
     }  // namespace wrapper
 }  // namespace ghostlock::jni

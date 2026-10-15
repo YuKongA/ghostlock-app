@@ -36,6 +36,8 @@ namespace ghostlock::jni {
         StaleTarget = -7,
         /** 还在进行中：不是失败，也不是成功，稍后可以再问。 */
         InFlight = -8,
+        /** 会话已经关掉：除 snapshot / shutdown / destroy 之外一律拒绝（重试无用）。 */
+        Closed = -9,
     };
 
     /** 调用码的名字（日志与自检用）。 */
@@ -50,6 +52,7 @@ namespace ghostlock::jni {
             case CallCode::Busy: return "busy";
             case CallCode::StaleTarget: return "stale-target";
             case CallCode::InFlight: return "inflight";
+            case CallCode::Closed: return "closed";
         }
         return "unknown";
     }

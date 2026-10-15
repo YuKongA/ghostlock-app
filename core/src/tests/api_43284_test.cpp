@@ -182,11 +182,25 @@ namespace {
         std::uint64_t token = 0U;
         expect(backend.resolve_target(TargetRole::Hook, "/system/lib64/libc++.so", token) == CallCode::Ok,
                "the door resolves");
-        expect(token == 42U, "and answers a token");
+        expect((token & 0xFFFFFFFFU) == 42U, "and answers a ticket carrying the door token");
+        expect((token >> 32U) != 0U, "whose high half is this session salt");
 
         expect(backend.write_block(7U, 0U, std::span<const std::byte>(block, kBlockWidth)) ==
                    CallCode::StaleTarget,
-               "a token this session never handed out is refused");
+               "a ticket this session never handed out is refused");
+
+        /* 跨会话：另一个会话即使拿到同样的门 token，它的票据在这里也过不了。 */
+        Backend43284 other{full_seams()};
+        std::uint64_t other_ticket = 0U;
+        expect(other.resolve_target(TargetRole::Hook, "/system/lib64/libc++.so", other_ticket) ==
+                   CallCode::Ok,
+               "the second session resolves too");
+        expect((other_ticket & 0xFFFFFFFFU) == (token & 0xFFFFFFFFU),
+               "both doors answer the same raw token");
+        expect(other_ticket != token, "but their tickets differ");
+        expect(backend.write_block(other_ticket, 0U, std::span<const std::byte>(block, kBlockWidth)) ==
+                   CallCode::StaleTarget,
+               "and the other session ticket is refused here");
         expect(same(backend.refusal(), "stale-target"), "by name");
 
         expect(backend.write_block(token, 0x100U, std::span<const std::byte>(block, kBlockWidth)) ==
@@ -228,6 +242,23 @@ namespace {
         expect(words.payload.size() == 16U, "and the payload");
     }
 
+    void a_closed_session_refuses_everything_but_the_lifecycle_calls() {
+        Backend43284 backend{full_seams()};
+        expect(backend.shutdown() == CallCode::Ok, "close");
+        Snapshot43284 snapshot{};
+        expect(backend.snapshot(snapshot) == CallCode::Ok, "snapshot still answers after close");
+        std::uint64_t ticket = 0U;
+        expect(backend.resolve_target(TargetRole::Hook, "/system/lib64/libc++.so", ticket) ==
+                   CallCode::Closed,
+               "resolve after close is refused");
+        expect(same(backend.refusal(), "session-closed"), "by name");
+        std::byte block[kBlockWidth] = {};
+        expect(backend.write_block(1U, 0U, std::span<const std::byte>(block, kBlockWidth)) ==
+                   CallCode::Closed,
+               "write after close is refused");
+        expect(backend.trigger(150U) == CallCode::Closed, "trigger after close is refused");
+    }
+
     void shutdown_is_idempotent() {
         Backend43284 backend{};
         expect(backend.shutdown() == CallCode::Ok, "first shutdown");
@@ -251,6 +282,8 @@ int main() {
     the_three_terminal_states_are_distinguished();
     std::printf("api 43284: images and hook\n");
     the_images_and_the_hook_numbers_come_back_typed();
+    std::printf("api 43284: closed session\n");
+    a_closed_session_refuses_everything_but_the_lifecycle_calls();
     std::printf("api 43284: shutdown\n");
     shutdown_is_idempotent();
     if (g_failures != 0U) {
