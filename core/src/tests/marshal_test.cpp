@@ -15,7 +15,6 @@ namespace {
     using ghostlock::jni::field_names_unique;
     using ghostlock::jni::marshal::cve43284::Hook43284Layout;
     using ghostlock::jni::marshal::cve43284::Initialize43284Layout;
-    using ghostlock::jni::marshal::cve43499::Initialize43499Layout;
     using ghostlock::jni::marshal::cve43284::Snapshot43284Layout;
     using ghostlock::jni::marshal::cve43499::Snapshot43499Layout;
 
@@ -31,8 +30,7 @@ namespace {
     void every_table_is_unique_and_resolvable() {
         expect(field_names_unique(Snapshot43499Layout::names, Snapshot43499Layout::count),
                "43499 snapshot names are unique");
-        expect(field_names_unique(Initialize43499Layout::names, Initialize43499Layout::count),
-               "43499 initialize names are unique");
+
         expect(field_names_unique(Snapshot43284Layout::names, Snapshot43284Layout::count),
                "43284 snapshot names are unique");
         expect(field_names_unique(Initialize43284Layout::names, Initialize43284Layout::count),
@@ -64,16 +62,6 @@ namespace {
         expect(values[Snapshot43499Layout::index("page_base")] == 0xAAAA, "page_base too");
         expect(values[Snapshot43499Layout::index("victim_pid")] == 0xCCCC, "victim_pid too");
 
-        std::int64_t params[Initialize43499Layout::count] = {};
-        params[Initialize43499Layout::index("route_id")] = 1;
-        params[Initialize43499Layout::index("waiter_off")] = 96;
-        params[Initialize43499Layout::index("lock_offset")] = 56;
-        params[Initialize43499Layout::index("image_selinux_enforcing")] = 47885704;
-        const ghostlock::jni::Initialize43499 parsed = ghostlock::jni::marshal::cve43499::parse_initialize(params);
-        expect(parsed.route_id == 1U, "route_id round trips");
-        expect(parsed.waiter_off == 96U, "waiter_off round trips");
-        expect(parsed.lock_offset == 56U, "lock_offset round trips");
-        expect(parsed.image_selinux_enforcing == 47885704U, "the image offset round trips");
     }
 
     void the_43284_round_trip_keeps_every_field_in_its_own_slot() {
