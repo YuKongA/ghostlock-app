@@ -182,6 +182,50 @@ object TypedBackendProbe {
                 block.joinToString("") { byte -> "%02x".format(byte) } + " refusal=" + refusal[0],
         )
 
+        /* patch1 via Kotlin：取本构建的 helper 镜像，按十六字节切块，逐块写进载体的开头。
+           这一段的逻辑全在 Kotlin 侧（镜像来源、切块、偏移、顺序），native 只提供「取镜像」与「写一块」。 */
+        var written = 0
+        var refusedAt = -1
+        val helper = Native43284.embeddedImage(handle, 0, refusal)
+        if (helper == null) {
+            step("typed: 43284 patch1-via-kotlin no-helper refusal=" + refusal[0])
+        } else {
+            var offset = 0L
+            while (offset < helper.size) {
+                val remaining = helper.size - offset.toInt()
+                val width = if (remaining >= 16) 16 else remaining
+                val chunk = helper.copyOfRange(offset.toInt(), offset.toInt() + width).copyOf(16)
+                code = Native43284.writeBlock(
+                    handle,
+                    com.ghostlock.app.core.generated.WriteBlock43284(
+                        ticket = ticket[0], offset = offset, block = chunk,
+                    ),
+                    refusal,
+                )
+                if (code != 0) {
+                    refusedAt = offset.toInt()
+                    break
+                }
+                written += 1
+                offset += 16L
+            }
+            step("typed: 43284 patch1-via-kotlin blocks=" + written + " refusedAt=" + refusedAt)
+            /* 回读第一块，看内容是不是真的落上了。 */
+            val back = ByteArray(16)
+            code = Native43284.readBlock(
+                handle,
+                com.ghostlock.app.core.generated.ReadBlock43284(ticket = ticket[0], offset = 0L),
+                back,
+                refusal,
+            )
+            code = Native43284.snapshot(handle, snapshot, refusal)
+            step(
+                "typed: 43284 patch1-readback code=" + code + " first16=" +
+                    back.joinToString("") { byte -> "%02x".format(byte) } +
+                    " writes=" + snapshot[4] + " flags=" + snapshot[1],
+            )
+        }
+
         /* 写一块：走落地对象（ESP 路线）。写成功只到 Dispatched；随后读回比较一致才会 Applied。 */
         code = Native43284.writeBlock(
             handle,

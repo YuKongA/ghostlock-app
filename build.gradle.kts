@@ -542,7 +542,8 @@ tasks.register("deviceGate") {
         /* 写走落地对象（ESP 路线）：真机上 land_block 成功、序号推进；flags 里没有 Applied，
            因为读回的是门那扇 fd 上的旧内容 —— 状态机如实地停在 Dispatched。 */
         expected += "typed: 43284 writeBlock code=0 refusal="
-        expected += "typed: 43284 snapshot-after-write code=0 phase=1,flags=524292,width=16,ticket=4294967297,role=1,sequence=1"
+        /* 快照只断言不变量：phase/flags/width/ticket/role；序号会随写次数变，不写死。 */
+        expected += "typed: 43284 snapshot-after-write code=0 phase=1,flags=524292,width=16,ticket=4294967297,role=1,sequence="
 
         /* 43284 的数据 op：**新**函数面上尚未接线（旧帧路径仍提供两张图，上面已经按 manifest
          * 对拍过摘要），所以这里如实断言 op-not-wired —— 等 43284 的 D2 装配落地后再改成
