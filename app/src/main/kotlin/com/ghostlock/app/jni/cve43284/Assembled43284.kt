@@ -219,6 +219,14 @@ class Assembled43284(
     }
 
     /** 分步第 2 步：建 ESP socket 并存表（要先给会话参数）。 */
+    /**
+     *  复用同一条 ESP 套接字：一条 SA 只声明一个 sender 端口，第二条套接字 bind 必然失败。
+     *
+     *  @param other 已经建好套接字的另一个装配实例（同一次会话、同一个 SA）。
+     */
+    fun reuseSocketFrom(other: Assembled43284) {
+        socketId = other.socketId
+    }
     fun openEspSocket(): Long {
         val params = freshParams() ?: return 0L
         val refusal = refusalSlot()

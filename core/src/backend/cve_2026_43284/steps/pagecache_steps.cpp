@@ -232,9 +232,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
              * 耐心由调用方给（request.budget_ms；0 = 不重试，与旧行为一致）—— 等多久是上层的事。 */
             const auto verify_deadline = std::chrono::steady_clock::now() +
                                          std::chrono::milliseconds(request.budget_ms);
+            GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
+                    static_cast<unsigned long long>(request.offset + at),
+                    static_cast<unsigned long long>(request.budget_ms));
+            std::size_t tries = 0U;
             for (;;) {
-                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu", at, written.value, request.width,
-                    static_cast<unsigned long long>(request.offset + at));
+                tries += 1U;
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
@@ -251,6 +254,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                                 want[0], want[1], want[2], want[3], back.ok() ? 1 : 0, back.value.size());
                     }
                     *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
+                    GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
                     return false;
                 }
                 ::usleep(2000);  /* 一个轮询间隔（2 ms） */
