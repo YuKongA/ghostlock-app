@@ -792,6 +792,38 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 确认 kFields 与 kGroups 两处宏定义各自期望的参数与分节规则，再照抄既有 43284 组块重做。
 
 三次尝试的残留都已回滚：契约表恢复原样（/tmp/contract.def.before53），模型文件从未被改动，构建与测试全绿。
+
+### §11.22 模型文件的宏语义（读全了，2026-10-15）——批① 契约步骤的最后一块
+
+核心事实（attack_contract_model.hpp:37-69，两处 #include 同一份 def、两套宏）：
+
+    // kGroups：只认组名
+    #define GL_ATTACK_GROUP(g) {#g},
+    #define GL_ATTACK_FIELD(g, n, k)          // 空
+    #define GL_ATTACK_BYTES_FIELD(g, n, m)    // 空
+
+    // kFields：三种字段宏展开成描述符
+    #define GL_ATTACK_FIELD(g, n, kind)  {#g, #n, GL_ATTACK_KIND_##kind},
+    #define GL_ATTACK_BYTES_FIELD(g, n, m) {#g, #n, FieldKind::Bytes, "[B", 0U, m},
+
+    // kind 表（决定 fixed_bytes / allocation_max_bytes）
+    LONG    → Long,    "J", 0U, 0U
+    INT     → Int,     "I", 0U, 0U
+    BOOLEAN → Boolean, "Z", 0U, 0U
+    BYTES   → Bytes,   "[B", 0U, 0U      ← **max = 0**，正是 fields_valid 拒绝的那种
+    BYTES16 → 16U/16U；BYTES32 → 32U/32U；SECRET32 → 32U/32U
+
+**因此字节字段只有一种合法写法**：GL_ATTACK_BYTES_FIELD(组, 名, 4096U)（或用 kind 为 BYTES16/BYTES32/SECRET32 的 GL_ATTACK_FIELD）。
+我最初用 GL_ATTACK_FIELD(..., BYTES) ⇒ max=0 ⇒ fields_valid 拒绝（第一次失败的真正原因，已确证）。
+
+第三次（用 BYTES_FIELD + 4096U）仍报同一个断言 ⇒ 说明**还有别的把关**，下一个要查的点：
+
+1. 生成器/模型里是否有**组数或字段数的上限常量**（我从 17 组/213 字段加到 25 组/228 字段，可能撞了某个上限）；
+2. codegen 是否要求每个组都对应一个 **JNI 函数/读取器**（新组没有对应函数时它自己的检查可能把整个生成判失败，而错误被归结到模型断言那一行）；
+3. 是否存在按 backend 的分节/顺序约定（43499 的组在前、43284 的组在后之类），我加在文件末尾可能破坏了这个顺序。
+
+下一轮：先 grep 上限常量与 codegen 的组/字段检查（grep -n "kMax\|limit\|<= 2[0-9]\|groups.size\|fields.size" core/src/jni/attack_contract_*.{hpp,cpp}），
+任一条命中就能一次做对；不再盲改 def。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
