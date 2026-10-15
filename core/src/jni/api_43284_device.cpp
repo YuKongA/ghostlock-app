@@ -220,3 +220,4 @@ namespace ghostlock::jni {
         return ops;
     }
 }  // namespace ghostlock::jni
+
