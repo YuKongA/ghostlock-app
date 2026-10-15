@@ -290,7 +290,8 @@ namespace ghostlock::jni {
         if (path.empty()) {
             return false;
         }
-        const int fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+        /* 只读打开：写不经过这个 fd —— 写是经 ESP 报文 + splice 落进页缓存，目标只需读权限；用 O_RDWR 对系统文件会 EACCES（2026-10-15 真机实证）。 */
+        const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
         if (fd < 0) {
             return false;
         }
