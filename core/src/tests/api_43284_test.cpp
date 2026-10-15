@@ -197,8 +197,11 @@ namespace {
         missing.path.assign("/no/such/door", "/no/such/door" + 13);
         expect(backend.resolve_target(missing, ticket) == CallCode::Failed, "an unopenable door fails");
         expect(same(backend.refusal(), "door-refused"), "named");
-        expect(backend.trigger(Trigger43284Values{}) == CallCode::Unsupported, "trigger");
-        expect(same(backend.refusal(), "op-not-wired:trigger"), "named");
+        /* 触发已经接线（走上双 fork）：在没有 helper 的宿主上如实回答 Failed + trigger-refused。 */
+        Trigger43284Values trigger{};
+        trigger.delayMs = 0;
+        expect(backend.trigger(trigger) == CallCode::Failed, "trigger without a helper fails");
+        expect(same(backend.refusal(), "trigger-refused"), "named");
     }
 }  // namespace
 
