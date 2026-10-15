@@ -839,6 +839,8 @@ namespace ghostlock::jni {
             const int splice_error = (landing_slot != 0U && landing_slot - 1U < kMaxSurfaces)
                                          ? g_surfaces[landing_slot - 1U]->io->last_error()
                                          : -1;
+            GL_LOGI("write_image land: landing_slot=%zu splice_error=%d (0=dispatched, 20/21/22/23=splice stage)",
+                    landing_slot, splice_error);
             static char land_message[64] = {};
             if (splice_error != 0) {
                 std::snprintf(land_message, sizeof(land_message), "land:splice-error-%d", splice_error);
