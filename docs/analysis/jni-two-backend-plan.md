@@ -605,6 +605,38 @@ PathView 是**借用式** {const char *bytes; std::size_t length;}（不是 NUL 
    即「先有 helper（patch#1）→ 才能用 ESP 路线把后续的东西写进去」这个顺序本身就是链的设计；
 3. 因此 J7.5-4 的正解是：patch#1 走**另一条**入口（CrashDumpBridge 的 run(offset, sink_stdout, out)：跑被改过的 helper，其输出就是页），
    而不是靠同一个窗口连写——这与我先前「用 write_block 分块写 helper」的临时思路不同，后者注定不落盘。
+
+### §11.15 CrashDumpBridge 的接口与顺序的澄清（2026-10-15）
+
+接口（landing/crash_dump_bridge.hpp:37-110，逐条读过）：
+
+    class CrashDumpBridge final {
+        enum class Outcome { Never, Ok, NotBound, PipeFailed, SpawnFailed, ShortRead, HelperFailed };
+        bool bind(const char *helper_path, size_t helper_bytes,
+                  const char *carrier_path, size_t carrier_bytes) noexcept;   // 只绑定，不执行
+        OldPageSource     old_page() noexcept;   // read16：通过 helper 读载体的一页（写路径的前像）
+        HelperWriteSource helper()   noexcept;   // splice16：helper 把载体的页拼进报文管道（密文槽）
+        Outcome last_outcome() const noexcept;  int last_status() const noexcept;
+    };
+
+**它正好提供 3a 里缺的那两个源** —— 修法因此很具体：
+
+    CrashDumpBridge bridge;
+    bridge.bind(helper_path, helper_len, carrier_path, carrier_len);
+    RealSpliceIo io(real_splice_io(), target_fd, 0, bridge.old_page(), bridge.helper());
+    // → 之后 land_block 才有页的字节可替换进密文槽，写才会真的落盘
+
+**顺序不是循环的**：helper 是 patch#1 的产物（把 helper 镜像写进某个文件），而 bridge 需要的是**已被 patch 过的** helper；
+该文件的类注释写明：patch #1 gets an exec of a stock crash_dump64, whose output is not a page, so this class refuses ——
+也就是 patch#1 自己不能用这套 splice 路线，它必须走另一条入口（驱动器里 phase_patch1 用的那条）。
+
+J7.5-4 的顺序因此是：
+
+1. patch#1：走驱动器里那条既有入口（phase_patch1 → steps::write_image_verified；它的 Access 用哪种 surface 必须照驱动器的构造抄，见 §11.12/§11.13）；
+2. helper 就位后，后续写（模块进载体、钩子）才用 CrashDumpBridge 提供的两个源建 RealSpliceIo —— 这也是写返回真但不落盘的**唯一正解**（§11.14）；
+3. 然后 trigger → wait → 查 id。
+
+**下一步第一件事**：照抄驱动器里 patch_access 那一段的 surface 建法，确认它与普通写的差别。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
