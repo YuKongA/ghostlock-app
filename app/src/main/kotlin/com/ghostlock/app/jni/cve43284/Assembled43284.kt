@@ -24,8 +24,13 @@ import com.ghostlock.app.core.generated.WriteBlock43284
  * 3. 缺 Access 线：makeAccess / accessInitialize / writeImageVerified / writeHook（现在靠 writeBlock 手写块代替）。
  *
  * @param handle [Native43284.create] 给的会话句柄；本类不负责创建，只负责用与收尾。
+ * @param paramsProvider 每次要用会话参数时**现造一份**：native 的读取器在读完秘密字段后会把它清零
+ *        （attack_contract_reader.hpp 的 clear<Group>Secrets），所以同一个 DTO 对象不能被复用两次。
  */
-class Assembled43284(private val handle: Long) {
+class Assembled43284(
+    private val handle: Long,
+    private val paramsProvider: (() -> Init43284)? = null,
+) {
 
     /** 最近一次调用的具名拒绝（空串表示没有）。 */
     var lastRefusal: String = ""
@@ -191,8 +196,11 @@ class Assembled43284(private val handle: Long) {
         return shutdown == 0 && destroyed == 0
     }
 
-    /** 初始化时收到的会话参数：分步拼装要用它建 socket 与拉起落地对象。 */
+    /** 初始化时收到的那一份参数（只能用一次：读完就被清零）。 */
     private var sessionParams: Init43284? = null
+
+    /** @return 一份全新的会话参数（有 provider 时现造；否则退回那一份，只够用一次）。 */
+    private fun freshParams(): Init43284? = paramsProvider?.invoke() ?: sessionParams
 
     /** 分步拼装拿到的句柄（0 表示没有）。拼装顺序由本类决定。 */
     var targetId: Long = 0L
@@ -212,7 +220,7 @@ class Assembled43284(private val handle: Long) {
 
     /** 分步第 2 步：建 ESP socket 并存表（要先给会话参数）。 */
     fun openEspSocket(): Long {
-        val params = sessionParams ?: return 0L
+        val params = freshParams() ?: return 0L
         val refusal = refusalSlot()
         val out = LongArray(1)
         val code = Native43284.espSocketId(handle, params, out, refusal)
@@ -243,7 +251,7 @@ class Assembled43284(private val handle: Long) {
 
     /** 分步第 5 步：用会话参数把落地对象拉起来。 */
     fun bringUpLanding(): Boolean {
-        val params = sessionParams ?: return false
+        val params = freshParams() ?: return false
         val refusal = refusalSlot()
         val code = Native43284.bringUp(handle, landingId, params, refusal)
         record(code, refusal)

@@ -269,7 +269,8 @@ object TypedBackendProbe {
     private fun init43284() = Init43284(
         spi = 0x1234,
         encapPort = 4500,
-        senderPort = 4501,
+        /* 发送端口交给内核挑（0 = 临时端口）：端口策略属于 Kotlin 的决定，也顺手排除「4501 被占」这一假设。 */
+        senderPort = 0,
         icvLength = 16,
         aesKey = ByteArray(32) { 0xA5.toByte() },
         hmacKey = ByteArray(32) { 0x5A.toByte() },
@@ -311,7 +312,7 @@ object TypedBackendProbe {
         )
         /* 分步拼装（拼装顺序写在 Kotlin 里）：开门 → socket → 拼接面 → 落地 → 拉起 → 收尾。 */
         val stepwiseHandle = Native43284.create()
-        val stepwise = Assembled43284(stepwiseHandle)
+        val stepwise = Assembled43284(stepwiseHandle) { init43284() }
         stepwise.initialize(init43284())
         val stepTarget = stepwise.openTargetStepwise(doorPath)
         step("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
