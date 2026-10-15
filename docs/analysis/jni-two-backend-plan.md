@@ -824,6 +824,23 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 
 下一轮：先 grep 上限常量与 codegen 的组/字段检查（grep -n "kMax\|limit\|<= 2[0-9]\|groups.size\|fields.size" core/src/jni/attack_contract_*.{hpp,cpp}），
 任一条命中就能一次做对；不再盲改 def。
+
+### §11.23 groups_valid() 与 fields_valid() 全读齐：我的写法本该通过（2026-10-15）
+
+groups_valid()（模型 82-101）：① 每个组至少有一个字段；② 组名不重复。
+fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名字非空；③ Bytes 字段的 allocation_max_bytes > 0；
+④ allocation_max_bytes ≥ fixed_bytes；⑤ 同一组内 (组, 名) 不重复。
+
+对照我第三次的写法（8 组、15 字段，字节字段用 GL_ATTACK_BYTES_FIELD(..., 4096U)、其余 LONG）：
+①②✓（组都在表里、名字非空）③④✓（4096U > 0 且 ≥ 0）⑤✓（名字全局唯一）。**两条规则都不该拒绝它。**
+
+而第一次失败（用 GL_ATTACK_FIELD(..., BYTES)）则**确实**违反③（BYTES 的 max=0），与规则一致 ✓。
+
+**新假设（下一步先验证）**：第三/二次的报错可能是**陈旧对象**：.def 是 #include 进来的文本，若某个翻译单元的依赖文件没记录它，
+改 .def 后它不会重编，于是一直报同一条断言。验证方法：把改动加回去后**先 --clean-first（或 new 目录）重配重编**，再看真实诊断。
+
+下一轮步骤：① 重新加回 8 组 15 字段（§11.19 与 11.22 的写法）；② cmake --build ... --clean-first；
+③ 若真过则跑 exportJniAttackContract 与 ctest；若仍报同一断言，则把断言那一行的**完整编译器诊断**（含 note）取全再判断（我此前只看了一行）。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
