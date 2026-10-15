@@ -58,7 +58,7 @@ extern "C" {
 /** 建一个会话。@return 句柄（> 0）。 */
 JNIEXPORT jlong JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_create(JNIEnv *, jclass) {
     /* 会话模板：缝在这里给（43499 的设备实现属于 J7.5，此刻仍为空 ⇒ op-not-wired）。 */
-    registry().set_prototype(Backend43499{});
+    registry().set_factory([]() noexcept { return Backend43499{}; });
     return static_cast<jlong>(registry().create());
 }
 

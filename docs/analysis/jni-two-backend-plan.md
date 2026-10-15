@@ -378,6 +378,19 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 | J7.5-5 | 43499 设备缝：prepare/discover/spawn_victim/finish_victim/land/read（参数用内置临时值） | 真机：prepare/discover 给出 page_base/found；三次 write_word（W1/W3 清分别、W2 凭据） |
 | J7.5-6 | 43499 链端到端：w1 → w2 → w3 | 真机：id 输出 uid=0，原始日志归档 |
 
+### §11.5 更名批（用户裁定 2026-10-15：不要 seam 这种临时感的词）
+
+名字与批次（**每批都要 132/132 与 checkAll 绿**）：
+
+| 批次 | 范围 | 旧 → 新 |
+|---|---|---|
+| R1（已做，见 git log） | JNI 边界层（我引入的那部分） | Ops43499Seams / Ops43284Seams → DeviceOps43499 / DeviceOps43284；device_seams_* → device_ops_*；成员 seams_ → device_ops_；会话模板 → 工厂 set_factory（秘密不可拷贝） |
+| R2 | 43499 的落地原语 | AccessSeam → WordLanding；MulticastSeam → MulticastLanding；race/futex_seam_linux → race/futex_linux（LinuxFutexSeam → LinuxFutex）；perf_seam* → perf_ops*；leak/snitch_seam* → leak/snitch_ops*（SnitchSeam → SnitchOps）；memory/heap_seam* → memory/heap_ops*（HeapSeam → HeapOps） |
+| R3 | 43284 的落地原语与目录 | seam/ 目录 → landing/；PageCacheSeam → PageCacheLanding；其余 seam/ 下的文件按同规则改名 |
+| R4 | 测试与文档 | FakeSeam / RecordingSeam → FakeOps / RecordingOps；SeamResult → OpsResult；文档里的「缝」统一改成「设备工作 / 落地原语」 |
+
+不做的事：不改协议字符串（op-not-wired 等），不改真机日志里已有的判据文本（证据链的可追溯性优先）。
+
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
