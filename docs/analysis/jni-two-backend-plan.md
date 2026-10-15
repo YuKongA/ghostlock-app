@@ -423,6 +423,31 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 因此 3a 的写码顺序是：①设备侧 DoorOps 实现（open_target=用递进来的 fd、connect_esp=按 sa 建 UDP socket）；
 ②窗口 + 落地对象按会话建立（lazy，随 ticket）；③write_block/read_block 走 land_block/read_block + adopt_sequence。
 
+
+### §11.7 重要勘察结果：43284 的设备侧整链驱动器已经在树里（2026-10-15）
+
+core/src/tools/pagecache_load_lkm.cpp 不是零散工具，它是**分阶段的整链驱动器**，每一阶段都有名字与参数契约：
+
+| 阶段 | 行 | 作用 |
+|---|---|---|
+| phase_credentials(SaMaterial &) | 255 | 从帧里取凭据（SPI/端口/ICV/两把密钥） |
+| phase_module(release, kernel_vermagic, size, facts) | 283 | 读模块镜像并取事实（vermagic 等） |
+| phase_patch1(Access &, AccessParams &) | 328 | patch#1：把载体页改成 helper |
+| phase_hook(Access &, AccessParams &, SentryPlan &) | 359 | 钩子计划与落地 |
+| phase_write(Access &, AccessParams &, module_size) | 380 | 把 .ko 写进载体（与 script 侧 carrier 步骤共用实现） |
+| main() | 445 | --frame-stdin 读帧；credentials → module → patch1 → write → hook → trigger 串起来 |
+
+参考装配（两处一致）：PageCacheDoorLinux door(carrier, len) → RealSpliceIo io(real_splice_io(), target_fd) →
+PageCacheWrite window(door, io) → PageCacheLanding landing(window) → landing.bring_up_with(sa)。
+
+载体与触发（该文件头部记的实测结论）：载体 /vendor/lib64/libbinderdebug.so（或一次性载体 /data/local/tmp/ghostlock-carrier）；
+触发 = **双 fork + exec_path = nullptr**，让 init 收尸时由 sentry 开火，shellcode 自己 exec /vendor/bin/insmod <carrier>。
+
+**因此 J7.5-4 的路线是「让边界驱动这条既有链」，不是重写链**：
+
+1. 把五个阶段按会话装配进设备函数（resolve 给载体路径、write_block/read_block 给页缓存写读、trigger 给双 fork、wait 给 marker）；
+2. 或者（更省事、但需确认）让应用进程直接调用这个驱动器的阶段函数 —— 前提是链必须在**应用进程上下文**里跑（zygote 派生的应用身份正是漏洞的入口），所以「用 adb 跑工具」不等于「应用里跑链」，这条要先确认再选；
+3. 两个 backend 的端到端判据都留 id 报 uid=0 的原始日志归档。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
