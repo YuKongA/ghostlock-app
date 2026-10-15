@@ -15,6 +15,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ghostlock.app.core.AccessDomain
@@ -101,9 +105,7 @@ class TempUiActivity : ComponentActivity() {
     private fun runAttack(): List<String> {
         GhostLog.i(TAG_UI, "tempui: full 43284 attack start")
         val lines = java.util.concurrent.ConcurrentLinkedQueue<String>()
-        val worker = Thread { lines.addAll(TypedBackendProbe.run(applicationContext)) }
-        worker.start()
-        worker.join(240_000L)
+        lines.addAll(TypedBackendProbe.run(applicationContext))
         GhostLog.i(TAG_UI, "tempui: full 43284 attack done lines=" + lines.size)
         return lines.toList()
     }
@@ -129,14 +131,22 @@ private fun TempUiScreen(
 ) {
     val lines = remember { mutableStateListOf<String>() }
     val components = kitOf(kit)
+    val scope = rememberCoroutineScope()
+
+    /* 重活一律走 IO 线程：界面立刻可点（此前主线程被占住 ⇒ 按钮全无响应），且异常变成一行文字而不是崩溃。 */
+    fun runHeavy(what: String, action: () -> List<String>) {
+        scope.launch {
+            val out = runCatching { withContext(Dispatchers.IO) { action() } }
+                .getOrElse { problem -> listOf(what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: "")) }
+            lines += out
+        }
+    }
 
     LaunchedEffect(Unit) {
         GhostLog.configure(LogLevel.Info)
         GhostLog.i(TAG_UI, "tempui: 临时界面已启动")
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
-        lines += onProbe()
-        lines += onGate()
-        lines += onPlan()
+        runHeavy("启动自检") { onProbe() + onGate() + onPlan() }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
@@ -144,13 +154,13 @@ private fun TempUiScreen(
             components.Action("界面套件: " + components.label + "（点我切换）") { onToggleKit() }
         }
         components.Actions {
-            components.Action("★ 完整攻击（43284：写 patch#1 → 载体 → hook → trigger → wait）") { lines += onAttack() }
+            components.Action("★ 完整攻击（43284：写 patch#1 → 载体 → hook → trigger → wait）") { runHeavy("攻击") { onAttack() } }
         }
         components.Actions {
-            components.Action("设备门禁") { lines += onGate() }
-            components.Action("跑一遍计划") { lines += onPlan() }
-            components.Action("探测 JNI 库") { lines += onProbe() }
-            components.Action("能力契约面") { lines += onContracts() }
+            components.Action("设备门禁") { runHeavy("门禁") { onGate() } }
+            components.Action("跑一遍计划") { runHeavy("计划") { onPlan() } }
+            components.Action("探测 JNI 库") { runHeavy("探测") { onProbe() } }
+            components.Action("能力契约面") { runHeavy("契约") { onContracts() } }
         }
         components.Actions {
             components.Action("清空") { lines.clear() }
