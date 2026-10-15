@@ -403,14 +403,7 @@ object TypedBackendProbe {
                     " size=" + (if (exists) file.length() else -1L),
             )
         }
-        val accessParams = com.ghostlock.app.core.generated.AccessParams43284(
-            accessCarrierPath = doorPath.toByteArray(),
-            accessDevCarrierPath = ByteArray(0),
-            accessPatchTargetPath = doorPath.toByteArray(),
-            accessCarrierBase = 0L,
-            accessOffset = 0L,
-            accessOffsetSet = true,
-        )
+        val accessParams = Assembled43284.fullAccessParams(doorPath)
         val accessInit = stepwise.initializeAccessAndRemember(accessParams, init43284())
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
@@ -432,14 +425,7 @@ object TypedBackendProbe {
         step("typed: patch1 surface=" + patcher.buildSurface())
         step("typed: patch1 landing=" + patcher.buildLanding())
         step("typed: patch1 access=" + patcher.buildAccess())
-        val patchParams = com.ghostlock.app.core.generated.AccessParams43284(
-            accessCarrierPath = patchTarget.toByteArray(),
-            accessDevCarrierPath = ByteArray(0),
-            accessPatchTargetPath = patchTarget.toByteArray(),
-            accessCarrierBase = 0L,
-            accessOffset = 0L,
-            accessOffsetSet = true,
-        )
+        val patchParams = Assembled43284.fullAccessParams(patchTarget)
         step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, init43284()) +
             " refusal=" + patcher.lastRefusal)
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)

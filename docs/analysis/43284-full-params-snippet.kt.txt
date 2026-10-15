@@ -1,0 +1,36 @@
+        /** patch#1 的固定目标（helper 步骤，设计 8.7 固定）。 */
+        const val PATCH1_TARGET = "/apex/com.android.runtime/bin/crash_dump64"
+
+        /** hook 目标（设计 8.7 固定为 libc++）。 */
+        const val HOOK_TARGET = "/system/lib64/libc++.so"
+
+        /**
+         *  工具那半「调用方清单」的完整参数（常量先内置，不进 profile）。
+         *
+         *  @param carrierPath 载体路径（由调用方选：白名单优先 / 开发载体）。
+         *  @param markerDir  四条 marker 的目录（默认设备可写位置）。
+         */
+        fun fullAccessParams(
+            carrierPath: String,
+            markerDir: String = "/data/local/tmp",
+        ): com.ghostlock.app.core.generated.AccessParams43284 =
+            com.ghostlock.app.core.generated.AccessParams43284(
+                accessCarrierPath = carrierPath.toByteArray(),
+                accessDevCarrierPath = ByteArray(0),
+                accessPatchTargetPath = PATCH1_TARGET.toByteArray(),
+                accessCarrierBase = 0L,
+                accessOffset = 0L,
+                accessOffsetSet = true,
+                accessHookImagePath = HOOK_TARGET.toByteArray(),
+                accessKernelRelease = (System.getProperty("os.version") ?: "").toByteArray(),
+                accessKernelPreempt = false,
+                accessKernelModversions = false,
+                accessKernelModuleForceUnload = false,
+                accessHookPlanSet = false,
+                accessTriggerDelayMs = 0L,
+                accessWaitMs = 0L,
+                accessSuccessMarkerPath = (markerDir + "/ghostlock-success").toByteArray(),
+                accessFailureMarkerPath = (markerDir + "/ghostlock-failure").toByteArray(),
+                accessInFlightMarkerPath = (markerDir + "/ghostlock-inflight").toByteArray(),
+                accessModuleMarkerPath = (markerDir + "/ghostlock-module").toByteArray(),
+            )
