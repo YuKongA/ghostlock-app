@@ -583,7 +583,7 @@ object TypedBackendProbe {
             )
         }
         val accessParams = Assembled43284.fullAccessParams(doorPath)
-        val accessInit = stepwise.initializeAccessAndRemember(accessParams, init43284())
+        val accessInit = stepwise.initializeAccessAndRemember(accessParams, saInit())
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, saInit()) else false
