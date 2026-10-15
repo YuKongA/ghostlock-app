@@ -9,6 +9,7 @@
  *  2. **答案成对**：调用码与具名拒绝来自同一次加锁调用，一起写回 refusalOut；
  *  3. **布局只有一份**：结果数组的名字表来自 marshal_43499.hpp（同表驱动的名字，无字面下标）。
  */
+#include <vector>
 #include <string>
 #include "contract/kernel_access.hpp"
 #include "jni/api_43499_device.hpp"
@@ -322,6 +323,51 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_shutdown4
         : (std::string("shutdown:") + ghostlock::contract::KernelAccess::status_name(
                static_cast<ghostlock::contract::KernelAccess::Status>(status)));
     return answer(env, ghostlock::jni::CallCode::Failed, named.c_str(), refusal_out);
+}
+
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_write43499(
+        JNIEnv *env, jclass, jlong, jlong accessId, jint route, jlong offset, jlong address,
+        jbyteArray block, jobjectArray refusal_out) {
+    if (block == nullptr) {
+        return answer(env, ghostlock::jni::CallCode::BadParameters, "bad-parameters:block", refusal_out);
+    }
+    const jsize length = env->GetArrayLength(block);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
+    if (length > 0) {
+        env->GetByteArrayRegion(block, 0, length, reinterpret_cast<jbyte *>(bytes.data()));
+    }
+    const char *why = nullptr;
+    const bool wrote = ghostlock::jni::device_write_43499(
+        static_cast<std::uint64_t>(accessId), static_cast<std::uint64_t>(route),
+        static_cast<std::uint64_t>(offset), static_cast<std::uint64_t>(address), bytes, &why);
+    const std::string named = wrote ? std::string() : (std::string("write:") + (why != nullptr ? why : "refused"));
+    return answer(env, wrote ? ghostlock::jni::CallCode::Ok : ghostlock::jni::CallCode::Failed,
+                  named.c_str(), refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_read43499(
+        JNIEnv *env, jclass, jlong, jlong accessId, jint route, jlong offset, jlong address,
+        jint bytes, jbyteArray out, jlongArray out_len, jobjectArray refusal_out) {
+    std::vector<std::uint8_t> read_back;
+    const char *why = nullptr;
+    const bool read_ok = ghostlock::jni::device_read_43499(
+        static_cast<std::uint64_t>(accessId), static_cast<std::uint64_t>(route),
+        static_cast<std::uint64_t>(offset), static_cast<std::uint64_t>(address),
+        static_cast<std::size_t>(bytes), read_back, &why);
+    if (!read_ok) {
+        const std::string named = std::string("read:") + (why != nullptr ? why : "refused");
+        return answer(env, ghostlock::jni::CallCode::Failed, named.c_str(), refusal_out);
+    }
+    if (out != nullptr && env->GetArrayLength(out) >= static_cast<jsize>(read_back.size())) {
+        env->SetByteArrayRegion(out, 0, static_cast<jsize>(read_back.size()),
+                                reinterpret_cast<const jbyte *>(read_back.data()));
+    }
+    if (out_len != nullptr && env->GetArrayLength(out_len) >= 1) {
+        const jlong count = static_cast<jlong>(read_back.size());
+        env->SetLongArrayRegion(out_len, 0, 1, &count);
+    }
+    return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
 }
 
 }  // extern "C"
