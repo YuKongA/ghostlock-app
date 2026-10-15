@@ -568,7 +568,8 @@ tasks.register("deviceGate") {
         expected += "typed: stepwise 43284 socket=1 refusal="
         expected += "typed: stepwise 43284 surface=1 refusal="
         expected += "typed: stepwise 43284 landing=1 refusal="
-        expected += "typed: stepwise 43284 bringUp=true refusal="
+        /* 路 B：拉起发生在 Access::initialize 里面，探针因此不再单独 bringUp（计划 11.32）。 */
+        expected += "typed: stepwise 43284 bringUp=skipped-path-b"
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {

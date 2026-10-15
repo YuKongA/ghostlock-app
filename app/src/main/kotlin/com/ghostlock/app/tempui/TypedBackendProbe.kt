@@ -337,8 +337,8 @@ object TypedBackendProbe {
         step("typed: stepwise 43284 surface=" + stepSurface + " refusal=" + stepwise.lastRefusal)
         val stepLanding = stepwise.buildLanding()
         step("typed: stepwise 43284 landing=" + stepLanding + " refusal=" + stepwise.lastRefusal)
-        val stepUp = stepwise.bringUpLanding()
-        step("typed: stepwise 43284 bringUp=" + stepUp + " refusal=" + stepwise.lastRefusal)
+        /* 路 B：不单独 bringUp —— Access::initialize 自己会拉起（见计划 §11.32）。 */
+        step("typed: stepwise 43284 bringUp=skipped-path-b")
         /* 经落地对象写 helper 镜像：这是「写目标在 Kotlin」的真机第一次尝试。 */
         val landed = stepwise.writeHelperThroughLanding()
         val back = stepwise.readLandingFirstBlock()
@@ -358,7 +358,7 @@ object TypedBackendProbe {
             accessOffset = 0L,
             accessOffsetSet = true,
         )
-        val accessInit = stepwise.initializeAccessAndRemember(accessParams)
+        val accessInit = stepwise.initializeAccessAndRemember(accessParams, init43284())
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L) else false

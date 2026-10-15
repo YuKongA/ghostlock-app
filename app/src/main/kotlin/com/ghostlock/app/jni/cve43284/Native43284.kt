@@ -130,6 +130,7 @@ object Native43284 {
         handle: Long,
         accessId: Long,
         params: com.ghostlock.app.core.generated.AccessParams43284,
+        init: Init43284,
         refusalOut: Array<String>,
     ): Int
 

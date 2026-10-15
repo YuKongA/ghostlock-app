@@ -329,10 +329,11 @@ class Assembled43284(
     /** 分步：初始化 Access 并记住参数。 */
     fun initializeAccessAndRemember(
         params: com.ghostlock.app.core.generated.AccessParams43284,
+        init: Init43284,
     ): Boolean {
         accessParamsLast = params
         val refusal = refusalSlot()
-        val code = Native43284.accessInitialize(handle, accessId, params, refusal)
+        val code = Native43284.accessInitialize(handle, accessId, params, init, refusal)
         record(code, refusal)
         return code == 0
     }

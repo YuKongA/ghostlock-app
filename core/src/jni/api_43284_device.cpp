@@ -668,7 +668,8 @@ namespace ghostlock::jni {
      *  @return 成功 true；id 无效或 Access 拒绝 ⇒ false（上层给 access-initialize-refused）。
      */
     bool device_access_initialize(const std::uint64_t accessId,
-                                  const contract::AccessParams43284Values &values) noexcept {
+                                  const contract::AccessParams43284Values &values,
+                                  const Init43284Values &sa_source) noexcept {
         if (accessId == 0U) {
             return false;
         }
@@ -689,6 +690,11 @@ namespace ghostlock::jni {
         params.carrier_base = static_cast<std::uint64_t>(values.accessCarrierBase);
         params.offset = static_cast<std::uint64_t>(values.accessOffset);
         params.offset_set = values.accessOffsetSet;
+        /*
+         * Access::initialize 自己会 bring_up_with（并接续序号），所以材料必须随它一起给；
+         * 而 PageCacheLanding::bring_up_with 在「已拉起」时会返回 false —— 走这条路就不能先单独 bringUp。
+         */
+        params.sa = sa_material_of(sa_source);
         return g_accesses[slot]->initialize(params).ok();
     }
 
