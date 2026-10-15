@@ -46,7 +46,11 @@ class Assembled43284(private val handle: Long) {
     /** 建安全关联。参数（SPI/端口/ICV/密钥）由调用方给：本类不猜。 */
     fun initialize(params: Init43284): Int {
         val refusal = refusalSlot()
-        return record(Native43284.initialize(handle, params, refusal), refusal)
+        val code = record(Native43284.initialize(handle, params, refusal), refusal)
+        if (code == 0) {
+            sessionParams = params
+        }
+        return code
     }
 
     /** 开一扇门：载体路径由调用方给，返回票据（0 表示没开成）。 */
@@ -186,6 +190,109 @@ class Assembled43284(private val handle: Long) {
         val destroyed = record(Native43284.destroy(handle, second), second)
         return shutdown == 0 && destroyed == 0
     }
+
+    /** 初始化时收到的会话参数：分步拼装要用它建 socket 与拉起落地对象。 */
+    private var sessionParams: Init43284? = null
+
+    /** 分步拼装拿到的句柄（0 表示没有）。拼装顺序由本类决定。 */
+    var targetId: Long = 0L
+        private set
+    var socketId: Long = 0L
+        private set
+    var surfaceId: Long = 0L
+        private set
+    var landingId: Long = 0L
+        private set
+
+    /** 分步第 1 步：开一扇门。 */
+    fun openTargetStepwise(path: String, role: Int = ROLE_PATCH1): Long {
+        targetId = openTarget(path, role)
+        return targetId
+    }
+
+    /** 分步第 2 步：建 ESP socket 并存表（要先给会话参数）。 */
+    fun openEspSocket(): Long {
+        val params = sessionParams ?: return 0L
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.espSocketId(handle, params, out, refusal)
+        record(code, refusal)
+        socketId = if (code == 0) out[0] else 0L
+        return socketId
+    }
+
+    /** 分步第 3 步：把门与 socket 配成拼接面。 */
+    fun buildSurface(): Long {
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.makeSurface(handle, targetId, socketId, out, refusal)
+        record(code, refusal)
+        surfaceId = if (code == 0) out[0] else 0L
+        return surfaceId
+    }
+
+    /** 分步第 4 步：按拼接面建落地对象。 */
+    fun buildLanding(): Long {
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.makeLanding(handle, surfaceId, out, refusal)
+        record(code, refusal)
+        landingId = if (code == 0) out[0] else 0L
+        return landingId
+    }
+
+    /** 分步第 5 步：用会话参数把落地对象拉起来。 */
+    fun bringUpLanding(): Boolean {
+        val params = sessionParams ?: return false
+        val refusal = refusalSlot()
+        val code = Native43284.bringUp(handle, landingId, params, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 读窗口的下一个序号。 */
+    fun nextSequence(): Long {
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.nextSequence(handle, landingId, out, refusal)
+        record(code, refusal)
+        return if (code == 0) out[0] else 0L
+    }
+
+    /** 让落地对象采用下一个序号。 */
+    fun adoptSequence(next: Long): Boolean {
+        val refusal = refusalSlot()
+        val code = Native43284.adoptSequence(handle, landingId, next, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 收尾：按与拼装相反的顺序拆（落地 → 拼接面 → socket → 门）。 */
+    fun tearDown(): Boolean {
+        var ok = true
+        if (landingId != 0L) {
+            val refusal = refusalSlot()
+            ok = record(Native43284.destroyLanding(handle, landingId, refusal), refusal) == 0 && ok
+            landingId = 0L
+        }
+        if (surfaceId != 0L) {
+            val refusal = refusalSlot()
+            ok = record(Native43284.destroySurface(handle, surfaceId, refusal), refusal) == 0 && ok
+            surfaceId = 0L
+        }
+        if (socketId != 0L) {
+            val refusal = refusalSlot()
+            ok = record(Native43284.closeSocketId(handle, socketId, refusal), refusal) == 0 && ok
+            socketId = 0L
+        }
+        if (targetId != 0L) {
+            val refusal = refusalSlot()
+            ok = record(Native43284.closeTarget(handle, targetId, refusal), refusal) == 0 && ok
+            targetId = 0L
+        }
+        return ok
+    }
+
 
     companion object {
         /** 一块十六字节（AES-CBC 一块，也是页缓存写的宽度）。 */
