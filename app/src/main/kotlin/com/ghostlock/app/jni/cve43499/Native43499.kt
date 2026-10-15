@@ -90,4 +90,41 @@ object Native43499 {
     external fun destroyAccess43499(handle: Long, accessId: Long, refusalOut: Array<String>): Int
 
     external fun snapshotFields(): Array<String>
+
+    /** 初始化（路由与位置由调用方给）；失败时 refusalOut[0] 为 init:<原因>。 */
+    external fun initialize43499(
+        handle: Long,
+        accessId: Long,
+        route: Int,
+        offset: Long,
+        offsetSet: Boolean,
+        refusalOut: Array<String>,
+    ): Int
+
+    /** 写一块（通道 PiWindow）；失败时 refusalOut[0] 为 write:<原因>。 */
+    external fun write43499(
+        handle: Long,
+        accessId: Long,
+        route: Int,
+        offset: Long,
+        address: Long,
+        block: ByteArray,
+        refusalOut: Array<String>,
+    ): Int
+
+    /** 读一块（通道 PiWindow）；读回字节进 out，实际长度进 outLen[0]。 */
+    external fun read43499(
+        handle: Long,
+        accessId: Long,
+        route: Int,
+        offset: Long,
+        address: Long,
+        bytes: Int,
+        out: ByteArray,
+        outLen: LongArray,
+        refusalOut: Array<String>,
+    ): Int
+
+    /** 关掉访问对象（收尾第一步）；失败时 refusalOut[0] 为 shutdown:<原因>。 */
+    external fun shutdown43499(handle: Long, accessId: Long, refusalOut: Array<String>): Int
 }
