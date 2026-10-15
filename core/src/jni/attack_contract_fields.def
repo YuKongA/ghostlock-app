@@ -338,10 +338,15 @@ GL_ATTACK_END_GROUP(WriteHook43284)
 
 /* hook 计划（4 个字）：hookPlan 的输出必须**经 Kotlin 装配**送进写调用 —— 写层的 plan 不能为 null。 */
 GL_ATTACK_GROUP(HookPlan43284)
-GL_ATTACK_FIELD(HookPlan43284, hookPlanWord0, LONG)
-GL_ATTACK_FIELD(HookPlan43284, hookPlanWord1, LONG)
-GL_ATTACK_FIELD(HookPlan43284, hookPlanWord2, LONG)
-GL_ATTACK_FIELD(HookPlan43284, hookPlanWord3, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanFileOffset, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanVaddr, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanGuardInstruction, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanDisplacedInstruction, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanPayloadFileOffset, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanPayloadVaddr, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanPayloadMaxBytes, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanEntryOffset, LONG)
+GL_ATTACK_FIELD(HookPlan43284, hookPlanDisplacedOffset, LONG)
 GL_ATTACK_END_GROUP(HookPlan43284)
 
 /* 43499 的「只传参」改造（2026-10-15）：原来 document 提供的那 10 个数字，改由 Kotlin 从 HOCON 读入。 */
