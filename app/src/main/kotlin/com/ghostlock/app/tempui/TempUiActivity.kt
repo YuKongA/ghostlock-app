@@ -60,6 +60,7 @@ class TempUiActivity : ComponentActivity() {
                     onProbe = ::probeNative,
                     onContracts = ::reportContracts,
                     onGate = ::runDeviceGate,
+                    onAttack = ::runAttack,
                     onPlan = ::runPlans,
                 )
             }
@@ -90,6 +91,23 @@ class TempUiActivity : ComponentActivity() {
         return outcomes.map { outcome -> outcome.summary() }
     }
 
+    /**
+     *  完整攻击（43284）：patch#1 → 载体 → hook → trigger → wait，一次点完。
+     *
+     *  @note 链子本身在**工作线程**里跑（Android 禁止主线程做网络/重 IO），但这里 **join 回来**，
+     *        所以对调用者仍是同步语义 —— 房间里没有留下没被等的异步。
+     *  @return 每一步的结局（与 logcat 的 GhostlockTyped 相同）。
+     */
+    private fun runAttack(): List<String> {
+        GhostLog.i(TAG_UI, "tempui: full 43284 attack start")
+        val lines = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val worker = Thread { lines.addAll(TypedBackendProbe.run(applicationContext)) }
+        worker.start()
+        worker.join(240_000L)
+        GhostLog.i(TAG_UI, "tempui: full 43284 attack done lines=" + lines.size)
+        return lines.toList()
+    }
+
     private fun runDeviceGate(): List<String> {
         val typed = TypedBackendProbe.run(applicationContext)
 
@@ -106,6 +124,7 @@ private fun TempUiScreen(
     onProbe: () -> List<String>,
     onContracts: () -> List<String>,
     onGate: () -> List<String>,
+    onAttack: () -> List<String>,
     onPlan: () -> List<String>,
 ) {
     val lines = remember { mutableStateListOf<String>() }
@@ -123,6 +142,9 @@ private fun TempUiScreen(
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
         components.Actions {
             components.Action("界面套件: " + components.label + "（点我切换）") { onToggleKit() }
+        }
+        components.Actions {
+            components.Action("★ 完整攻击（43284：写 patch#1 → 载体 → hook → trigger → wait）") { lines += onAttack() }
         }
         components.Actions {
             components.Action("设备门禁") { lines += onGate() }
