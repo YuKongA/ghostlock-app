@@ -333,3 +333,32 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
 
 **结论**：patch#1 → 纯 Kotlin 编排（可立刻做）；域桥 → 一个新原语（下一步做）；
 carrier 写测试的判词就在这两件之后（§8.9）。
+
+### 9.6 patch#1 第一次真机：门打不开 —— 缺口被精确命名（2026-10-15）
+
+真机逐行：
+
+    typed: patch1 door=0                                     ← openTargetStepwise(crash_dump64) 没开成门
+    typed: patch1 surface=0 / landing=0 / access=0           ← 连带
+    typed: patch1 init=true refusal=                         ← 我的 Kotlin bug：没有句柄也返回 true（要修）
+    typed: patch1 wrote=false refusal=image-write:image:no-access-handle helperBytes=1440
+    typed: patch1 accessDestroy=true / teardown=true
+
+两个事实：
+
+1. **helper 字节在边界上是好的**：helperBytes=1440（= 90 块 × 16 B，padded）✓；
+2. **门打不开**：对着 /apex/.../crash_dump64 这条路径，现有的 door 原语开不了它（载体那条 /data/local/tmp 路径能开 ✓）。
+   最可能的原因：door 需要**可写**打开，而系统文件我们只能只读；而上游那条路（页面缓存原语）恰恰不需要写权限。
+
+**缺口因此被精确命名（这就是要加的接口）**：
+
+    一个「把 16 字节写进**只读打开**的文件页缓存」的原语 —— 退役树里叫 contract::FileCacheWriteOps.write16，
+    它绑定的正是 crash_dump64 的 fd。这与裁定一致：内核交互留 native（薄原语），而写什么、写几次、验证与否全在 Kotlin。
+
+**同时暴露我一个 Kotlin bug**：initializeAccessAndRemember 在 accessId=0 时仍返回 true ⇒ 要改成「无句柄即失败并具名」。
+
+**下一批**：
+
+1. 修那个 Kotlin bug（无句柄即失败）；
+2. 加「页面缓存写」薄原语（只读 fd + 偏移 + 16 字节 → 写进页缓存；回读校验由 Kotlin 调另一个原语或同原语返回旧值）；
+3. 用它重跑 patch#1（目标 crash_dump64），判据：offset 16 窗口与源字节一致。
