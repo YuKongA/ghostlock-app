@@ -350,6 +350,41 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 2. 前置不成立继续以 not-ready:<缺什么> 指名（例如 not-ready:prepare / not-ready:resolve-target）。
 3. 效果不确定继续有独立答案（43284 的 inflight 是 InFlight 码，不是失败也不是成功）。
 4. 跨端常量（镜像摘要、钩子四个数）继续由 native 导出、两端对拍，不手抄。
+## §11 J7.5：分别用两个 backend 取到 root（2026-10-15 目标）
+
+**目标原文**：执行至 J7.5 —— 成功分别用两个 backend 获取 root，可以先内置临时逻辑，真实 profile 还需进一步设计。
+
+### §11.1 现状：链库在，缺的是把缝接到链库的那一层
+
+| backend | 已有（当前树） | 缺（J7.5 要写） |
+|---|---|---|
+| 43499 | steps/prepare_runner::run_prepare(PrepareRequest&, PrepareReport&, …)、steps/discovery_runner::run_discovery(DiscoveryRequest&, DiscoveryOutcome&, …)、steps/access_binder、seam/multicast_seam::land_word、access_multicast_waiter、race/、route/、leak/、memory/、perf_seam_linux、abi、access_factory_43499 | Ops43499Seams 的**设备实现**：prepare/discover 把 typed 请求翻成 PrepareRequest/DiscoveryRequest；spawn_victim（**当前树没有**，退役树 6f7ded87 有，按只读方式取回参考再在本树上重写）；land 走 access_binder 拿到的 seam；read 由路由能力决定（不支持时如实 op-not-wired）；finish_victim 的 retire/park/handoff |
+| 43284 | seam/pagecache_seam（write_block/read_block）、seam/real_splice_io、seam/crash_dump_bridge（patch#1 的执行器）、embed/（两张图）、hook/sentry_hook（钩子计划）、ipsec/aes256、lkm/module_facts、steps/pagecache_step_runner | Ops43284Seams 的**设备实现**：resolve（门/路径 → token）、write_block/read_block（接 pagecache_seam 与序号）、module_check（接 lkm）、trigger（双 fork）、wait_terminal（marker 轮询）；以及 43284 的 **D2 头文件重写**（Init43284 与九个请求组、ticket 不透明 index+generation、Dispatched→Applied→Verified、REMOTE_BRIDGE 依赖已验证 PATCH1） |
+
+### §11.2 临时逻辑（本阶段允许）与它的债
+
+- 会话参数暂用**内置临时值**：新增 core/src/jni/temporary_parameters.hpp，每个值旁写明「临时：真实 profile 待设计」，文件头登记为技术债；
+- 目标机 = 当前连接的 A301SO（5.15.189-android13-8-00016-g51bba4309aac-ab14546557），其画像档已在 app/src/main/assets/profile/ 里（J8 选档逻辑可复用，但本阶段不依赖它）；
+- 债的偿还时机：真实 profile 设计落地后，temporary_parameters.hpp 整体删除，参数改由 profile 装载层提供（登记见 §9 执行记录）。
+
+### §11.3 批次（每批一提交；每批都要真机门禁）
+
+| 批次 | 内容 | 真机判据 |
+|---|---|---|
+| J7.5-1 | 43284 的 D2 头文件/实现落盘（api_43284.* 重写，缝签名对齐契约） | 宿主测试：ticket 不透明、三态、REMOTE_BRIDGE 依赖、块宽 16 |
+| J7.5-2 | 43284 数据缝接进新 API（两张图与钩子计划；草稿在 /tmp/api_43284_device.cpp.pending） | deviceGate 两项从 op-not-wired 改为 ok + size=1440 + 摘要与 manifest 一致 |
+| J7.5-3 | 43284 设备缝：resolve/write_block/read_block/module_check/trigger/wait_terminal | 真机：patch1 落页缓存，read_block 比较后 APPLIED（日志给出 offset 与比较结果） |
+| J7.5-4 | 43284 链端到端：patch1 → carrier → hook → trigger → wait | 真机：id 输出 uid=0，原始日志归档 |
+| J7.5-5 | 43499 设备缝：prepare/discover/spawn_victim/finish_victim/land/read（参数用内置临时值） | 真机：prepare/discover 给出 page_base/found；三次 write_word（W1/W3 清分别、W2 凭据） |
+| J7.5-6 | 43499 链端到端：w1 → w2 → w3 | 真机：id 输出 uid=0，原始日志归档 |
+
+### §11.4 纪律（不因为这是临时逻辑而放松）
+
+1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
+2. 攻击关键路径改动按 AGENTS §8：真机门禁与 device-gates/ 归档，缺一不可；
+3. 每条链**各自**过真机（分别取到 root），不合并成一次；
+4. 改核心攻击代码时按 AGENTS §5 做所有权与 UAF 复查，逐条核对资源准备/存活/回收。
+
 ## §9 执行记录（执行者逐批追加；不得回填未发生的通过）
 
 | 批次 | 命令 | 退出码 | 产物/证据 | 日期 |
