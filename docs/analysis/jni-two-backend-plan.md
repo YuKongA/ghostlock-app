@@ -863,6 +863,14 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 
 **所以批① 后半的 native 净新增是 8 个薄原语**（CloseTarget/ConnectEsp/CloseSocket/MakeSurface/MakeSurfaceClose/MakeLanding/DestroyLanding + adoptSequence/nextSequence/bringUp 中的一部分），
 每个都是「按 id 查表 + 调一个既有原语 + 回来」；**拼装（谁先谁后、要不要带 bridge、序号取哪个）全部由 Kotlin 决定** —— 这正是裁定要的形状。
+
+### §11.25 verifyJniLibs 的期望是推推导出来的（批① 后半少一个动作，2026-10-15）
+
+读 build.gradle.kts 的 verifyJniLibs（:370 起）确认：它用 expectedFunctions(backend) **从 core/src/jni 的源码里推导**每个库应有的导出集合，
+再与实际的 llvm-nm 导出比对，并检查旧的 libghostlock_jni.so 不再导出新函数面的符号。
+
+**因此批① 后半新增 8 个薄原语时不需要手改任何计数**（我此前提到的「13/16 要同步」作废）：
+只要在源码里按命名约定声明/定义，verifyJniLibs 会自动把新函数算进期望。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
