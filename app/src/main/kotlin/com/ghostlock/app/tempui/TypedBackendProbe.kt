@@ -6,6 +6,7 @@ import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
 import com.ghostlock.app.jni.cve43284.Assembled43284
+import com.ghostlock.app.jni.cve43499.Assembled43499
 import com.ghostlock.app.core.generated.Wait43284
 
 import com.ghostlock.app.core.generated.Init43499
@@ -278,6 +279,22 @@ object TypedBackendProbe {
         step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
 
         probeAssembled43284(step, doorPath.absolutePath)
+
+        /* 43499 侧最小序列：建会话 → 按 route 取访问对象（1/2/3 都试，看工厂接受哪个）→ 收尾。 */
+        val handle43499 = Native43499.create()
+        if (handle43499 <= 0) {
+            step("typed: assembled 43499 create failed")
+        } else {
+            val assembled43499 = Assembled43499(handle43499)
+            for (route in 1..3) {
+                val access43499 = assembled43499.openAccess(route)
+                step(
+                    "typed: assembled 43499 route=" + route + " access=" + access43499 +
+                        " refusal=" + assembled43499.lastRefusal,
+                )
+            }
+            step("typed: assembled 43499 close=" + assembled43499.close())
+        }
     }
 
     /** 43284 的哨兵参数（顺序与字段名由 D1 单表定；真实 profile 仍待设计）。 */
