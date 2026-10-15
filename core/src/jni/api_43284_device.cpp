@@ -819,7 +819,22 @@ namespace ghostlock::jni {
         const char *refusal = nullptr;
         const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
         if (!wrote && why != nullptr) {
-            *why = refusal;  /* 具名：step-access-missing / step-width-zero / step-image-empty … */
+            /* 组帧层的错误码（20/21/22/23 = 前端 / splice / 长度 / 后缀；0 = 报文发出去了）：
+             * 「报文到底发出去没有」只有它能回答，所以非零时优先报它。 */
+            const std::size_t landing_slot = (slot < kMaxAccesses) ? g_access_landing[slot] : 0U;
+            const int splice_error = (landing_slot != 0U && landing_slot - 1U < kMaxSurfaces)
+                                         ? g_surfaces[landing_slot - 1U]->io->last_error()
+                                         : -1;
+            static char land_message[64] = {};
+            if (splice_error != 0) {
+                std::snprintf(land_message, sizeof(land_message), "land:splice-error-%d", splice_error);
+                *why = land_message;
+            } else if (refusal != nullptr) {
+                *why = refusal;  /* 组帧没问题 ⇒ 保留原来的 step-… 名字（问题在别处） */
+            } else {
+                /* 组帧层没失败（0）且步骤层没给名 ⇒ 报文发出去了，问题在内核那一侧。 */
+                *why = "land:dispatched-unverified";
+            }
         }
         return wrote;
     }
