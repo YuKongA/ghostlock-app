@@ -138,6 +138,12 @@ object TypedBackendProbe {
             step("typed: ipsec sa spi=0x" + Integer.toHexString(spi))
             val aesKey = ByteArray(32) { index -> (0xA0 + index).toByte() }
             val hmacKey = ByteArray(32) { index -> (0xB0 + index).toByte() }
+            /* 先留副本：Android 的 IpSec/Crypto API 会擦掉它拿到的密钥数组（2026-10-15 真机实证：
+             * 我们留在字段里的那份变成了全零 ⇒ sa-set-missing）。我们留非零副本，把原件交给 API。 */
+            saSpi = spi
+            saEncapPort = encapPort
+            saAesKey = aesKey.copyOf()
+            saHmacKey = hmacKey.copyOf()
             val transform = android.net.IpSecTransform.Builder(context)
                 .setEncryption(
                     android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.CRYPT_AES_CBC, aesKey),
@@ -147,11 +153,11 @@ object TypedBackendProbe {
                 )
                 .setIpv4Encapsulation(encap, 4500)
                 .buildTransportModeTransform(loopback, spiObj)
-            saSpi = spi
-            saEncapPort = encapPort
-            saAesKey = aesKey
-            saHmacKey = hmacKey
-            step("typed: ipsec sa built transform=" + (transform != null))
+            step(
+                "typed: ipsec sa built transform=" + (transform != null) +
+                    " retainedAesNonZero=" + (saAesKey?.count { byte -> byte != 0.toByte() } ?: -1) +
+                    " retainedHmacNonZero=" + (saHmacKey?.count { byte -> byte != 0.toByte() } ?: -1),
+            )
             val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, 4500, aesKey, hmacKey)
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
                 "/data/local/tmp/ghostlock-sa.frame",
