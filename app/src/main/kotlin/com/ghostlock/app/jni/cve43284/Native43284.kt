@@ -99,6 +99,14 @@ object Native43284 {
     /** @param out 一个 long：Access 句柄；失败时 refusalOut[0] 为 access-refused。 */
     external fun makeAccess(handle: Long, landingId: Long, out: LongArray, refusalOut: Array<String>): Int
 
+    /** 初始化 Access；失败时 refusalOut[0] 为 access-initialize-refused。 */
+    external fun accessInitialize(
+        handle: Long,
+        accessId: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        refusalOut: Array<String>,
+    ): Int
+
     /** 拆掉一个 Access。 */
     external fun destroyAccess(handle: Long, accessId: Long, refusalOut: Array<String>): Int
 

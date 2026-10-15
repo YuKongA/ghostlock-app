@@ -660,5 +660,37 @@ namespace ghostlock::jni {
         return true;
     }
 
+    /**
+     *  初始化 Access（驱动器里 patch_access.initialize(params) 的那一步）。
+     *
+     *  @note 生成的 Values 在 contract 子命名空间里；PathView 是借用式，三个路径的 std::string 必须活到调用结束，
+     *        所以它们都在本栈帧里。
+     *  @return 成功 true；id 无效或 Access 拒绝 ⇒ false（上层给 access-initialize-refused）。
+     */
+    bool device_access_initialize(const std::uint64_t accessId,
+                                  const contract::AccessParams43284Values &values) noexcept {
+        if (accessId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
+        if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
+            return false;
+        }
+        auto text_of = [](const std::vector<std::uint8_t> &bytes) {
+            return std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        };
+        const std::string carrier = text_of(values.accessCarrierPath);
+        const std::string dev_carrier = text_of(values.accessDevCarrierPath);
+        const std::string patch_target = text_of(values.accessPatchTargetPath);
+        backend::cve_2026_43284::AccessParams params{};
+        params.carrier = {carrier.data(), carrier.size()};
+        params.dev_carrier = {dev_carrier.data(), dev_carrier.size()};
+        params.patch_target = {patch_target.data(), patch_target.size()};
+        params.carrier_base = static_cast<std::uint64_t>(values.accessCarrierBase);
+        params.offset = static_cast<std::uint64_t>(values.accessOffset);
+        params.offset_set = values.accessOffsetSet;
+        return g_accesses[slot]->initialize(params).ok();
+    }
+
 }  // namespace ghostlock::jni
 

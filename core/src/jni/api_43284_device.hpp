@@ -23,6 +23,9 @@ namespace ghostlock::jni {
 
     /** @return 建一个 Access（借用落地对象）；失败 0。 */
     [[nodiscard]] std::uint64_t device_make_access(std::uint64_t landingId) noexcept;
+    /** @return 初始化 Access（路径字段借用式，必须活到调用结束）。 */
+    [[nodiscard]] bool device_access_initialize(std::uint64_t accessId,
+                                                const contract::AccessParams43284Values &values) noexcept;
     /** @return 拆掉一个 Access。 */
     [[nodiscard]] bool device_destroy_access(std::uint64_t accessId) noexcept;
 

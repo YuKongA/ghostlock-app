@@ -507,4 +507,18 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_destroyAc
                   done ? "" : "stale-target", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_accessInitialize(
+        JNIEnv *env, jclass, jlong handle, jlong accessId, jobject params, jobjectArray refusal_out) {
+    ghostlock::jni::contract::AccessParams43284Values values{};
+    ghostlock::jni::contract::ReadFailure failure{};
+    if (!ghostlock::jni::contract::readAccessParams43284(env, params, &values, &failure)) {
+        const auto outcome = refuse_read(handle, failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const bool up = ghostlock::jni::device_access_initialize(
+        static_cast<std::uint64_t>(accessId), values);
+    return answer(env, up ? CallCode::Ok : CallCode::Failed,
+                  up ? "" : "access-initialize-refused", refusal_out);
+}
+
 }  // extern "C"
