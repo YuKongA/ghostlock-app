@@ -96,6 +96,15 @@ object Native43284 {
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** 用会话参数把落地对象拉起来；失败时 refusalOut[0] 为 bring-up-refused。 */
+    external fun bringUp(handle: Long, landingId: Long, params: Init43284, refusalOut: Array<String>): Int
+
+    /** @param out 一个 long：窗口的下一个序号。 */
+    external fun nextSequence(handle: Long, landingId: Long, out: LongArray, refusalOut: Array<String>): Int
+
+    /** 让落地对象采用下一个序号（跨窗口接续也走这里）。 */
+    external fun adoptSequence(handle: Long, landingId: Long, next: Long, refusalOut: Array<String>): Int
+
     /** @param out 一个 long：socket 句柄（失败时不写）；失败时 refusalOut[0] 为 esp-refused。 */
     external fun espSocketId(handle: Long, params: Init43284, out: LongArray, refusalOut: Array<String>): Int
 

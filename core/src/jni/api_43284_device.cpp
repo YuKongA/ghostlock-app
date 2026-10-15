@@ -532,5 +532,46 @@ namespace ghostlock::jni {
         return true;
     }
 
+    /**
+     *  用会话参数的材料把落地对象拉起来（bring_up_with）。参数（密钥/端口/ICV）由 Kotlin 给。
+     *
+     *  @return 起来了 true；id 无效、没建过、或材料不全 ⇒ false。
+     */
+    bool device_bring_up(const std::uint64_t landingId, const Init43284Values &params) noexcept {
+        if (landingId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return false;
+        }
+        return g_landings[slot]->bring_up_with(sa_material_of(params));
+    }
+
+    /** @return 窗口的下一个序号；id 无效 ⇒ 0。序号策略（用不用、用哪个）由 Kotlin 决定。 */
+    std::uint64_t device_next_sequence(const std::uint64_t landingId) noexcept {
+        if (landingId == 0U) {
+            return 0U;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_surfaces[slot] == nullptr || g_surfaces[slot]->window == nullptr) {
+            return 0U;
+        }
+        return static_cast<std::uint64_t>(g_surfaces[slot]->window->next_seq());
+    }
+
+    /** 让落地对象采用下一个序号（跨窗口接续也走这里）。 */
+    bool device_adopt_sequence(const std::uint64_t landingId, const std::uint64_t next) noexcept {
+        if (landingId == 0U) {
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
+        if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            return false;
+        }
+        g_landings[slot]->adopt_sequence(static_cast<std::uint32_t>(next));
+        return true;
+    }
+
 }  // namespace ghostlock::jni
 

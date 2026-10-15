@@ -414,4 +414,35 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_makeLandi
     return answer(env, CallCode::Ok, "", refusal_out);
 }
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_bringUp(
+        JNIEnv *env, jclass, jlong handle, jlong landingId, jobject params, jobjectArray refusal_out) {
+    ghostlock::jni::Init43284Values values{};
+    ghostlock::jni::contract::ReadFailure failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, params, &values, &failure)) {
+        const auto outcome = refuse_read(handle, failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const bool up = ghostlock::jni::device_bring_up(static_cast<std::uint64_t>(landingId), values);
+    return answer(env, up ? CallCode::Ok : CallCode::Failed, up ? "" : "bring-up-refused", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_nextSequence(
+        JNIEnv *env, jclass, jlong, jlong landingId, jlongArray out, jobjectArray refusal_out) {
+    if (!has_room(env, out, 1U)) {
+        return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
+    }
+    const std::uint64_t next = ghostlock::jni::device_next_sequence(static_cast<std::uint64_t>(landingId));
+    const jlong written = static_cast<jlong>(next);
+    static_cast<void>(write_longs(env, out, &written, 1U));
+    return answer(env, CallCode::Ok, "", refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_adoptSequence(
+        JNIEnv *env, jclass, jlong, jlong landingId, jlong next, jobjectArray refusal_out) {
+    const bool adopted = ghostlock::jni::device_adopt_sequence(
+        static_cast<std::uint64_t>(landingId), static_cast<std::uint64_t>(next));
+    return answer(env, adopted ? CallCode::Ok : CallCode::StaleTarget,
+                  adopted ? "" : "stale-target", refusal_out);
+}
+
 }  // extern "C"
