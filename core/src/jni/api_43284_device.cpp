@@ -146,7 +146,24 @@ namespace ghostlock::jni {
         }
     }
 
-        /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
+        backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
+        backend::cve_2026_43284::SaMaterial sa{};
+        sa.spi = static_cast<std::uint32_t>(params.spi);
+        sa.encap_port = static_cast<std::uint16_t>(params.encapPort);
+        sa.sender_port = static_cast<std::uint16_t>(params.senderPort);
+        sa.icv_len = static_cast<std::uint8_t>(params.icvLength);
+        bool any_key_byte = false;
+        for (std::size_t index = 0U; index < 32U; ++index) {
+            sa.aes_key[index] = params.aesKey.data()[index];
+            sa.hmac_key[index] = params.hmacKey.data()[index];
+            any_key_byte = any_key_byte || sa.aes_key[index] != 0U || sa.hmac_key[index] != 0U;
+        }
+        /* 全零密钥不是凭据（与 access_params.hpp 同一条规则）：没有材料，门就不开。 */
+        sa.set = any_key_byte;
+        return sa;
+    }
+
+    /** 已开的门：一个 slot 一个 fd。token = slot + 1（0 留给"没有门"）。 */
     struct OpenDoor final {
         int fd = -1;
         std::string path{};
