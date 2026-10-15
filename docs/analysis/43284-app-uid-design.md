@@ -378,3 +378,25 @@ carrier 写测试的判词就在这两件之后（§8.9）。
 
 **下一步先读 tools/pagecache_load_lkm.cpp 的主流程**：它很可能已经把「patch#1 + 写载体 + 装载」这条序列跑通过，
 读清它用到的原语与参数，就知道要暴露哪几个（而不是凭想象设计）。
+
+### 9.8 那个工具就是完整驱动器；它填的那一段参数就是缺的 DTO 字段（2026-10-15）
+
+读 tools/pagecache_load_lkm.cpp:445-505（main 的前半）：它按阶段跑（phase_credentials → phase_module → 组装 AccessParams → 开跑），
+代码注释自己写明：这一段就是「caller 的那半接口」—— 也就是**该由 Kotlin 提供**的东西；它用 params.consistent() 自检，不一致就拒绝。
+
+**它填的字段（即 AccessParams43284 的完整清单）**：
+
+| 字段 | 我现在的契约 | 说明 |
+|---|---|---|
+| sa | 有（Init43284 单独传） | 会话材料 |
+| carrier / carrier_base / dev_carrier / patch_target | 有 | 载体与 patch#1 目标 |
+| hook_image | 缺 | hook 目标路径（固定 libc++.so，仍应由 Kotlin 给） |
+| kernel_release | 缺 | uname 的 release（Kotlin 可读设备信息） |
+| kernel_preempt / kernel_modversions / kernel_module_force_unload | 缺（三个布尔） | 内核属性 |
+| hook_plan 与 hook_plan_set | 缺 | sentry 计划（参数应由 Kotlin 给，native 现有 device_sentry_plan 可作默认） |
+| trigger_delay_ms / wait_ms | 缺 | 时延（Kotlin 决定） |
+| success_marker / failure_marker / in_flight_marker / module_marker | 缺（四条路径） | LKM 阶段的 marker |
+
+**下一步**：把 AccessParams43284 契约组从 6 个字段扩到这份清单（约 18 个），字段名全局唯一、字节字段用 GL_ATTACK_BYTES_FIELD 带上限、LONG/BOOLEAN 照现有规则；
+然后 native 侧把 DTO 翻成 AccessParams（照 9.5 的既有写法），Kotlin 侧填值（常量先内置，profile 以后再说）。
+这正是裁定要的形态：工具里写死的「调用方常量」搬到 Kotlin，native 只留接口。
