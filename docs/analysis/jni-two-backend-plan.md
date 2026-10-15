@@ -703,6 +703,30 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 （TypedBackendProbe → 将来的正式链编排）。**这是接口改造，不是往 native 加逻辑**，与裁定一致。
 
 改造前先把这份清单交给用户确认（它改的是 wire/D1 契约面，属 L 级）：确认后按「一批一类事」落：①门/拼接面/落地三个句柄；②读写与序号；③Access 线与写镜像/钩子；④Kotlin 侧编排替换现在 native 里的装配与写目标。
+
+### §11.18 违规点与可留点的精确位置（file:line，2026-10-15）
+
+文件：core/src/jni/api_43284_device.cpp
+
+| 行 | 判定 | 原文（截断） |
+|---|---|---|
+| 103 | 拼装：落地装配（违规） | struct Landing43284 final { |
+| 120 | 收尾：会话对象的持有（违规） | std::unique_ptr<Landing43284> g_session; |
+| 136 | 原语包装（可留） | bool device_module_check(const Init43284Values &, const ModuleCheck43284Values &request, |
+| 166 | 原语包装（可留） | bool device_wait_terminal(const Init43284Values &, const Wait43284Values &request, |
+| 194 | 原语包装（可留） | bool device_trigger(const Init43284Values &, const Trigger43284Values &request, void *) noexcept |
+| 212 | 写目标：land_block + adopt_sequence（违规） | bool device_write_block(const Init43284Values &, const WriteBlock43284Values &request, |
+| 231 | 原语：pread（可留） | bool device_read_block(const Init43284Values &, const ReadBlock43284Values &request, |
+| 277 | 原语：开门（可留） | bool device_resolve(const Init43284Values &params_argv, const ResolveTarget43284Values &request, |
+| 308 | 接线：门 | ops.resolve = &device_resolve; |
+| 310 | 接线：读 | ops.read_block = &device_read_block; |
+| 311 | 接线：写（要拆） | ops.write_block = &device_write_block; |
+
+改造批次的落点（据此直接改）：
+1. 批①：删掉 Landing43284（拼装）与 g_session（收尾），换成 openTarget/connectEsp/makeSurface/makeLanding 四个句柄原语；
+2. 批②：把 device_write_block 拆成 landBlock/adoptSequence/nextSequence 三个原语，readBlock 保留；
+3. 批③：新增 Access 线（makeAccess/accessInitialize/writeImageVerified/writeHook）；
+4. 批④：Kotlin 侧编排（先探针、后正式链）替换现在 native 里的装配与写目标；之后 device_resolve 只留 openTarget/closeTarget 语义。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
