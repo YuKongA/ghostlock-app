@@ -362,3 +362,19 @@ carrier 写测试的判词就在这两件之后（§8.9）。
 1. 修那个 Kotlin bug（无句柄即失败）；
 2. 加「页面缓存写」薄原语（只读 fd + 偏移 + 16 字节 → 写进页缓存；回读校验由 Kotlin 调另一个原语或同原语返回旧值）；
 3. 用它重跑 patch#1（目标 crash_dump64），判据：offset 16 窗口与源字节一致。
+
+### 9.7 那个「缺的原语」本树已有：landing::real_splice_io，还有一个用它的工具（2026-10-15）
+
+勘察（core/src/tools/pagecache_load_lkm.cpp 的 include 与 using 段）：
+
+    #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"    ← helper 字节（已确认本树有）
+    #include "backend/cve_2026_43284/landing/real_splice_io.hpp"     ← **真正的 splice I/O = 页面缓存原语**
+
+也就是说 §9.6 里我命名的那个缺口（「把 16 字节写进只读打开的文件页缓存」）**不需要新写内核代码** ——
+本树的 landing::real_splice_io 就是它；现成的工具 tools/pagecache_load_lkm.cpp 正在用它（名字即用途：经页缓存加载 LKM）。
+
+**因此第 2 步的正确形态不是「加一个新原语」，而是「把已有的 real_splice_io 经 JNI 暴露成薄原语」**，
+由 Kotlin 决定目标/偏移/块数与验证 —— 与裁定一致（能放在 Kotlin 的都在 Kotlin，native 只留接口）。
+
+**下一步先读 tools/pagecache_load_lkm.cpp 的主流程**：它很可能已经把「patch#1 + 写载体 + 装载」这条序列跑通过，
+读清它用到的原语与参数，就知道要暴露哪几个（而不是凭想象设计）。
