@@ -11,7 +11,6 @@
 
 #include "jni/api_43284.hpp"
 #include "jni/api_43284_device.hpp"
-#include "jni/api_43284_device.hpp"
 #include "jni/attack_contract_reader.hpp"
 #include "jni/wrapper_support.hpp"
 
@@ -316,11 +315,4 @@ JNIEXPORT jobjectArray JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_s
     static const char *const kNames[] = {"phase", "flags", "width", "ticket", "role", "sequence"};
     return ghostlock::jni::wrapper::make_string_array(env, kNames, 6U);
 }
-JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_closeTarget(
-        JNIEnv *env, jclass, jlong, jlong targetId, jobjectArray refusal_out) {
-    const bool closed = ghostlock::jni::device_close_target(static_cast<std::uint64_t>(targetId));
-    return answer(env, closed ? CallCode::Ok : CallCode::StaleTarget,
-                  closed ? "" : "stale-target", refusal_out);
-}
-
 }  // extern "C"
