@@ -944,6 +944,39 @@ steps/pagecache_step_runner.cpp:55-61 的注释写明：
 
 下一批：①Kotlin 用 IpSecManager 按会话材料建传输模式 SA（把端口/SPI/密钥交给系统），成功或具名失败都记下来；
 ②复跑同一条真机判据，期望写满 90 块（1440/16）且回读等于 helper 头部 —— 那一天写才算真的落上；③然后才是 batch ③ 与 J7.5-4。
+
+### §11.29 Kotlin 侧建 SA 的施工单（Android IPsec API，2026-10-15 定稿）
+
+目标：让内核侧出现与该 SPI/端口匹配的传输模式 SA，并且 encap 接收侧由系统持有（这正是我们 bind 不上的那条套接字）。
+
+**API（Android 的公开面）**：
+
+    // 1) 组装配置：模式=传输、SPI、加密/认证算法与密钥、UDP 封装端口
+    val config = IpSecConfig.Builder()
+        .setMode(IpSecConfig.MODE_TRANSPORT)
+        .setSpi(spi)                                  // 来自会话帧
+        .setEncryption(IpSecAlgorithm.AES_CBC, aesKey) // 来自会话帧
+        .setAuthentication(IpSecAlgorithm.HMAC_SHA1, hmacKey)
+        .setUdpEncapsulation(IpSecConfig.UDP_ENCAP_ESPINUDP, encapPort)
+        .build()
+
+    // 2) 建转换（系统会分配/持有 encap 接收侧）
+    val transform = ipSecManager.createTransform(config)   // 旧名 createTransportModeTransform(Socket, config)
+
+    // 3) 把转换应用到**我们自己的 socket**（发送侧）
+    transform.applyToSocket(udpSocket)
+
+**前提与坑**：
+
+1. 需要 Context 取 IpSecManager（SystemService）；探针当前是 object 无 Context ⇒ 需要把 Context 从 TempUiActivity 传进去（两处小改）；
+2. 端口必须与 native 侧发送用的 sa.sender_port/encap_port 一致 —— 否则内核按端口选 SA 会选不中；
+   这也解释了为什么「让内核挑临时端口」那条路不可能让写落上；
+3. 若系统把该 SPI 判为非法/冲突、或算法不被允许，会抛具名异常（IllegalArgumentException / ResourceUnavailableException 等）——
+   探针要把异常类型与 message 原样打出来（不许吞），这就是「具名拒绝」在 Kotlin 侧的对应做法；
+4. 建好之后，native 侧不需要任何改动：写路径已经通了（landed=1 但内容不落），SA 一到位内核就会处理那些报文。
+
+**判据（真机）**：探针把 SA 建起来 → 经落地对象写 helper 镜像 → 期望写满 90 块且回读等于 helper 头部；
+届时把这行写进门禁，之后才进 batch ③（Access 线）与 J7.5-4。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
