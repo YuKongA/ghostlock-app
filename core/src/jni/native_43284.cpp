@@ -360,9 +360,16 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_espSocket
         const auto outcome = refuse_read(handle, failure);
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
-    const std::uint64_t socket_id = ghostlock::jni::device_esp_socket_id(values);
+    int why = 0;
+    const std::uint64_t socket_id = ghostlock::jni::device_esp_socket_id(values, why);
     if (socket_id == 0U) {
-        return answer(env, CallCode::Failed, "esp-refused", refusal_out);
+        const char *const named = why == -1 ? "esp-no-material"
+                                 : why == -2 ? "esp-socket"
+                                 : why == -3 ? "esp-bind"
+                                 : why == -4 ? "esp-connect"
+                                 : why == -9 ? "esp-table-full"
+                                            : "esp-refused";
+        return answer(env, CallCode::Failed, named, refusal_out);
     }
     const jlong written = static_cast<jlong>(socket_id);
     static_cast<void>(write_longs(env, out, &written, 1U));
