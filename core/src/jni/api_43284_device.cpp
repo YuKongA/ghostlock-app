@@ -364,6 +364,8 @@ namespace ghostlock::jni {
             return -2;  /* socket 建不出来 */
         }
         sockaddr_in local{};
+        GL_LOGI("esp: socket fd=%d sender_port=%u encap_port=%u", fd,
+                static_cast<unsigned>(sa.sender_port), static_cast<unsigned>(sa.encap_port));
         local.sin_family = AF_INET;
         local.sin_port = htons(sa.sender_port);
         local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -375,9 +377,19 @@ namespace ghostlock::jni {
         peer.sin_family = AF_INET;
         peer.sin_port = htons(sa.encap_port);
         peer.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        GL_LOGI("esp: bind(local) ok, connecting to peer port=%u",
+                static_cast<unsigned>(sa.encap_port));
         if (connect(fd, reinterpret_cast<sockaddr *>(&peer), sizeof(peer)) != 0) {
             static_cast<void>(close(fd));
             return -4;  /* connect 失败 */
+        }
+        {
+            sockaddr_in got{};
+            socklen_t got_len = sizeof(got);
+            if (getsockname(fd, reinterpret_cast<sockaddr *>(&got), &got_len) == 0) {
+                GL_LOGI("esp: ready local_port=%u peer_port=%u (both loopback)",
+                        static_cast<unsigned>(ntohs(got.sin_port)), static_cast<unsigned>(sa.encap_port));
+            }
         }
         return fd;
     }

