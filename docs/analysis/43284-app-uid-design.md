@@ -305,3 +305,31 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
    先看 **core/src/jni/ops_43284_device.cpp** 是怎么用 splicehelper 的（它就在 JNI 目录里，很可能已经是设备侧的接线），
    据此决定「patch#1 写成什么形态」：若 ops_43284_device.cpp 已经提供写路径，patch#1 只需一个薄原语；否则要先补一个注入面等价物。
 3. 域桥（exec crash_dump64 + 管道 + splice 读回）本树确实没有 ⇒ 仍是**需移植**的新原语。
+
+### 9.5 移植面缩小：两个载荷都已经在边界上，patch#1 可能不需要新 native 代码（2026-10-15）
+
+读 core/src/jni/ops_43284_device.cpp：它已经通过 embeddedImage(role) 提供**两份真实内容**：
+
+    role=0（kRoleSpliceHelper）  → embed::splicehelper_bytes()（padded）      = patch#1 要写的那份 helper
+    role=1（kRoleLandingPayload）→ hook::build_sentry_payload(device_sentry_plan()) = 钩子载荷（含两台参数已填）
+
+而 Kotlin 侧**已经在调** embeddedImage / hookPlan（探针里取 helper 镜像就是这个）。
+
+### patch#1 因此可以完全用已有原语在 Kotlin 里编排：
+
+    1) 把 door（目标）对准 /apex/com.android.runtime/bin/crash_dump64 —— 它对我们可读（实测 482904 B）✓
+    2) bringUp 落地对象（沿用分步拼装那条路）
+    3) 用 embeddedImage(0) 的字节按 16 B 块 landBlock 到 offset 0（逐块）
+    4) 回读 offset 16 的窗口与源字节比对（上游语义：短读=verify skipped，不符=VerifyMismatch）
+    5) 全部由 Kotlin 决定：目标路径、块数、重试、失败具名
+
+**不需要**退役树的 contract::FileCacheWriteOps（那是它当年的注入面写法）；
+本树用「door + 落地对象」这条既有的写路径就够 —— 与裁定一致（拼装/写目标在 Kotlin）。
+
+### 仍然真正缺的 native 能力只有一件：**域桥**
+
+    fork/execv 被补丁过的 crash_dump64（argv = {offset, path}），stdout 接管道，读回它 splice 出的 16 字节。
+    它是进程/内核交互，本树没有任何等价物 ⇒ 按裁定做成**薄原语**（Kotlin 决定何时调、调哪个 path/offset）。
+
+**结论**：patch#1 → 纯 Kotlin 编排（可立刻做）；域桥 → 一个新原语（下一步做）；
+carrier 写测试的判词就在这两件之后（§8.9）。
