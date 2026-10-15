@@ -255,3 +255,37 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
   判词在 helper 写测试（第 ③ 步）。
 
 **因此移植顺序**：先 patch#1（helper 步骤）→ 再做 carrier 的写测试 → 再 trigger/LKM。
+
+## 九、helper 机制读清了（退役树 steps/crash_dump.hpp，2026-10-15）
+
+### 9.1 两半：打补丁 + 用 helper 碰文件
+
+    patch_crash_dump(ops)：
+        pad16(splicehelper) 写到 crash_dump64 + 0（逐 16 B 块，注入面 contract::FileCacheWriteOps，典型绑定=页面缓存原语）
+        然后验证 offset 16 的 16 字节窗口（短读按上游语义视为 verify skipped）
+
+    把补丁后的 crash_dump64 **exec** 起来（argv = {offset, path}，stdout 接我们的管道）：
+        它就在 **crash_dump 域**里替我们 splice(2) 那一页 ⇒ 我们读回 16 字节
+        （real_crash_dump_bridge()；上游 exp.c do_one_write_cbc use_helper=1）
+
+**这就是「谁来调用什么函数」的答案**：不是我们直接碰 vendor 文件，而是**我们 fork/execv 被补丁过的 crash_dump64**，
+由它在更宽的域里完成读写；我们的 app 只做「执行它 + 读它的 stdout」。
+
+### 9.2 常量与判据（照抄退役树）
+
+- 路径：/apex/com.android.runtime/bin/crash_dump64
+- 块宽 16 B；验证窗口在 offset 16（kCrashDumpVerifyOffset = 16）
+- 错误枚举：None / NotAvailable / WriteFailed / VerifyMismatch
+- is_vendor_path()：(/vendor/... 或 /system/vendor/...) —— 生产载体的路径策略
+
+### 9.3 移植清单（本树需要什么）
+
+| 退役树的件 | 本树是否已有 | 备注 |
+|---|---|---|
+| embed/splicehelper_blob.hpp（内嵌 helper 字节） | **待查** | 本树已知有 embed/libcxx_blob.*（那是 hook 载荷），splicehelper 要单独确认 |
+| contract::FileCacheWriteOps（注入面：write16） | **待查** | 我现有的 landBlock/readLandingBlock 是「落地对象」那条路，需对照它是不是同一注入面 |
+| crash_dump 域桥（fork/execv + 管道 + splice 读回） | **需移植** | 这是新能力：本树目前没有任何「exec 一个系统二进制并读它 stdout」的原语 |
+| is_vendor_path() | 需移植（很小） | 路径策略 |
+
+**按裁定的分工**：域桥本身是「内核/进程交互」，留在 native 做薄原语（execv + 管道 + 读回）；
+而「先打补丁、再 exec、再读回、失败重试」的顺序与选择**全在 Kotlin**。
