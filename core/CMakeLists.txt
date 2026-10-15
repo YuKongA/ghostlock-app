@@ -155,6 +155,7 @@ list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
 # 它的薄适配器，只在 Android 的共享库里出现（需要 jni.h）。
 set(GL_JNI_PORTABLE_SRCS
   src/jni/api_43499.cpp
+  src/jni/api_43499_device.cpp
   src/jni/api_43284.cpp
   src/jni/api_43284_device.cpp
   src/jni/session_protocol.cpp
@@ -209,7 +210,7 @@ if(GL_JNI)
     src/jni/ops_43284.cpp
     src/jni/ops_43284_device.cpp
   )
-  set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/native_43499.cpp)
+  set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/api_43499_device.cpp src/jni/native_43499.cpp)
   set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/api_43284_device.cpp src/jni/native_43284.cpp)
 
   # D1 单表生成的读取器是两个 backend 的只读边界组件；OBJECT target 保证两库都真实编译它，
