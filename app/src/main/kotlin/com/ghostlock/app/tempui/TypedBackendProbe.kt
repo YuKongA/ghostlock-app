@@ -5,6 +5,7 @@ import com.ghostlock.app.core.generated.FinishVictim43499
 import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
+import com.ghostlock.app.jni.cve43284.Assembled43284
 import com.ghostlock.app.core.generated.Wait43284
 
 import com.ghostlock.app.core.generated.Init43499
@@ -260,6 +261,8 @@ object TypedBackendProbe {
         step("typed: 43284 shutdown code=" + code + " refusal=" + refusal[0])
         code = Native43284.destroy(handle, refusal)
         step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
+
+        probeAssembled43284(step, doorPath.absolutePath)
     }
 
     /** 43284 的哨兵参数（顺序与字段名由 D1 单表定；真实 profile 仍待设计）。 */
@@ -279,6 +282,36 @@ object TypedBackendProbe {
         path = "/system/lib64/libc++.so".toByteArray(),
         accessMode = 0,
     )
+
+    /**
+     * 用 Assembled43284 走一遍最小闭环（独立会话）：建 → 初始化 → 开门 → 读块 → 收尾。
+     *
+     * 这一段刻意只用**包装类**（拼装在 Kotlin），native 侧一行未改 —— 它验证的是包装类本身可用。
+     */
+    private fun probeAssembled43284(step: (String) -> Unit, doorPath: String) {
+        if (!Native43284.ensureLoaded()) {
+            step("typed: assembled 43284 library missing")
+            return
+        }
+        val handle = Native43284.create()
+        if (handle <= 0) {
+            step("typed: assembled 43284 create failed")
+            return
+        }
+        val session = Assembled43284(handle)
+        session.initialize(init43284())
+        step("typed: assembled 43284 init code=" + session.lastCode)
+        val ticket = session.openTarget(doorPath, Assembled43284.ROLE_PATCH1)
+        step("typed: assembled 43284 open code=" + session.lastCode + " ticket=" + ticket)
+        val block = if (ticket != 0L) session.readBlock(ticket, 0L) else null
+        step(
+            "typed: assembled 43284 read bytes=" +
+                (block?.joinToString("") { byte -> "%02x".format(byte) } ?: "none") +
+                " refusal=" + session.lastRefusal,
+        )
+        val closed = session.close()
+        step("typed: assembled 43284 close ok=" + closed)
+    }
 
     /* ---- 43499 的哨兵参数（顺序＝D1 单表的顺序；只求值能走到该到的地方） ---- */
 

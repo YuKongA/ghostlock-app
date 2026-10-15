@@ -558,6 +558,11 @@ tasks.register("deviceGate") {
         expected += "typed: 43284 waitTerminal code=-8 state=2 refusal=wait_terminal:inflight"
         /* trigger 已经接线（复用 steps 的 trigger_orphan）：真机上双 fork 真的执行成功，所以答案就是 ok。 */
         expected += "typed: 43284 trigger code=0 refusal="
+        /* 包装类（Assembled43284）在真机上跑一遍最小闭环：开门、读块、收尾都走它。 */
+        expected += "typed: assembled 43284 init code=0"
+        expected += "typed: assembled 43284 open code=0 ticket="
+        expected += "typed: assembled 43284 read bytes=5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a refusal="
+        expected += "typed: assembled 43284 close ok=true"
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {
