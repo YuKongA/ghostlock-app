@@ -774,6 +774,24 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 仍要留意的两处（不是阻塞，是收尾动作）：
 1. verifyJniLibs 里记着两个库的期望导出符号数（43499 13 / 43284 16）—— 批① 若增删 JNI 函数，这个数要同步；
 2. 结构检查会比对 manifest 的两份拷贝（build 产物 vs app/与 profile-core/ 下的资源），exportJniAttackContract 必须同批更新它们。
+
+### §11.21 批① 契约步骤的三次失败与已排除/未排除项（2026-10-15）
+
+已确证（照抄自既有条目，不再是猜的）：
+
+- 组要包在 GL_ATTACK_GROUP(名) / GL_ATTACK_END_GROUP(名) 之间；
+- 字段名在同一张表里**全局唯一**（生成器按字段名出声明，重名 ⇒ redefinition）；
+- BYTES 字段用 GL_ATTACK_BYTES_FIELD(组, 名, 4096U)（**上限带 U 后缀**，无缩进）；
+- kGroups 不是手写清单：模型用宏 + #include attack_contract_fields.def 现场生成，所以组只要在 def 里就在表里。
+
+仍未过的一关：attack_contract_model.hpp:181 的 static_assert(fields_valid())。
+按该函数自身的判定逐条核对（组必须在表里 ✓、名字非空 ✓、Bytes 字段 allocation_max_bytes > 0 且 ≥ fixed_bytes、组内名字不重复 ✓），
+我三次尝试都仍失败 —— 说明 kFields 的描述符生成还有一层我没读到（很可能是另一组宏参数或每个 backend 的分节约定）。
+
+**下一轮唯一入口（不许再盲试）**：完整读一遍 core/src/jni/attack_contract_model.hpp（约 180 行，一次读完），
+确认 kFields 与 kGroups 两处宏定义各自期望的参数与分节规则，再照抄既有 43284 组块重做。
+
+三次尝试的残留都已回滚：契约表恢复原样（/tmp/contract.def.before53），模型文件从未被改动，构建与测试全绿。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
