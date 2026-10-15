@@ -477,6 +477,28 @@ wait_for_module 的契约（该头文件自己写明）：**先看 failure**（�
 **未定的一点**：哪个具名原因对应 inflight、哪个对应 failure。想用一次 grep 猜没成（没抓到字面量，返回的可能是拼接/传递的字符串），
 所以**没有**替换当前那版已经被真机验证过的 marker 轮询 —— 不拿可用行为去赌一次盲接。下一轮：通读
 wait_for_module 的实现（steps/pagecache_steps.cpp），把具名原因与三态对应关系写清，再换实现并跑真机那条 inflight 判据。
+
+### §11.10 用户裁定（2026-10-15）：临时逻辑只能放在 Kotlin；C++ 不新增可以放 Kotlin 的东西
+
+**规则**：native 侧只留**设备工作**（系统调用、文件/套接字、页缓存写读、fork/exec、与既有原语库的粘合）；
+任何**决定、策略、默认值、哨兵参数、字段映射、重试/预算选择、命名与格式化**都属于逻辑，一律放 Kotlin，
+由应用组装成 DTO 传进来。C++ 侧不得出现「临时这样写」「先hardcode」之类的东西 —— 这类一律在 Kotlin。
+
+**对现有代码的审计（本轮自查）**：
+
+| 我已加的 native 代码 | 判定 | 理由 |
+|---|---|---|
+| device_resolve（O_RDWR 开门 + 票据） | 保留 | 设备工作（open）；票据编号是契约（D1 表里定的角色编号），不是策略 |
+| device_module_check（读镜像事实 + 调既有比对规则） | 保留 | 设备工作 + 复用既有 lkm 原语；比对规则不在这里定义 |
+| device_wait_terminal（marker 轮询） | 保留（待换实现） | 轮询与 stat/usleep 是设备工作；marker 文本、预算、轮询间隔全部来自 Kotlin 的 Wait43284 |
+| device_trigger（调 trigger_orphan） | 保留 | 纯粘合，delayMs 来自 Kotlin |
+| sa_material_of（DTO → SaMaterial） | 保留 | 边界映射；「零密钥不是凭据」那条规则本来就在 access_params.hpp（既有约定），这里只搬运 |
+| device_embedded_image / device_hook_plan | 保留 | 只把既有 embed/sentry 库的字节与计划交出去，不产生决策 |
+
+结论：**当前 native 侧没有需要搬到 Kotlin 的逻辑**；本轮之前我在 C++ 里放哨兵参数的做法已改（哨兵在 TypedBackendProbe 里组装）。
+后续新增一律先问一句：这是设备工作还是逻辑？是逻辑就写 Kotlin。
+
+**归属**：这条裁定应当并入 AGENTS §4 的代码约定；但 AGENTS.md 现在有用户未提交的改动，本文件暂不作改动，等用户那批改动落定后再由本人（或用户）合并。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
