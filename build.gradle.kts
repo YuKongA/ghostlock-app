@@ -830,3 +830,50 @@ val avbcheck = tasks.register<AvbcheckHostTask>("avbcheck") {
     sourceDir.set(layout.projectDirectory.dir("tools/avbcheck"))
     outputDir.set(layout.buildDirectory.dir("avbcheck-host"))
 }
+
+/**
+ *  avbcheck 的设备侧：NDK aarch64 静态可执行（原 Makefile 的默认目标）。
+ *
+ *  同样是任务类（configuration cache）。NDK 路径走既有解析：环境变量 ANDROID_NDK_HOME / ANDROID_NDK_ROOT，
+ *  都没有就**具名失败**并说明怎么设 —— 不在任何文件里写死本机路径（原 Makefile 就是在这里硬编码了一个）。
+ */
+abstract class AvbcheckDeviceTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.InputDirectory
+    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
+
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val outputDir: org.gradle.api.file.DirectoryProperty
+
+    @get:javax.inject.Inject
+    abstract val execOps: org.gradle.process.ExecOperations
+
+    @org.gradle.api.tasks.TaskAction
+    fun run() {
+        val ndk = System.getenv("ANDROID_NDK_HOME") ?: System.getenv("ANDROID_NDK_ROOT")
+            ?: throw org.gradle.api.GradleException(
+                "avbcheckDevice needs an NDK: set ANDROID_NDK_HOME (or ANDROID_NDK_ROOT). " +
+                    "The toolchain file comes from \$NDK/build/cmake/android.toolchain.cmake.",
+            )
+        val source = sourceDir.get().asFile.absolutePath
+        val out = outputDir.get().asFile.absolutePath
+        execOps.exec {
+            commandLine(
+                "cmake", "-S", source, "-B", out, "-G", "Ninja",
+                "-DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake",
+                "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-34",
+            )
+        }
+        execOps.exec {
+            commandLine("cmake", "--build", out, "-j", "8", "--target", "avbcheck-device")
+        }
+        val built = java.io.File(out, "avbcheck-device")
+        logger.lifecycle("avbcheckDevice: {} bytes at {}", built.length(), built)
+    }
+}
+
+val avbcheckDevice = tasks.register<AvbcheckDeviceTask>("avbcheckDevice") {
+    group = "verification"
+    description = "Builds the on-device aarch64 static avbcheck via the NDK toolchain"
+    sourceDir.set(layout.projectDirectory.dir("tools/avbcheck"))
+    outputDir.set(layout.buildDirectory.dir("avbcheck-device"))
+}
