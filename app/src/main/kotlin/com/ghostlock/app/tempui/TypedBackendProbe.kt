@@ -47,6 +47,29 @@ object TypedBackendProbe {
             lines += line
             GhostLog.i(TAG, line)
         }
+        /*
+         *  43284 的唯一阻塞项的**关键一问**（纯 Kotlin，不需要 native）：
+         *  公开 API 能不能**分配一个 SPI 并读回它**？能 ⇒ app 侧可自建 SA、帧材料自产；
+         *  不能 ⇒ 只能走外部提供帧那条路。
+         *
+         *  判读：编译通过 = API 存在；真机跑出来 spi=… = 我们这条路成立（拿到数字）；
+         *  抛具名异常 = 如实报告原因（例如需要权限）。
+         */
+        runCatching {
+            val manager = context.getSystemService(android.net.IpSecManager::class.java)
+            if (manager == null) {
+                step("typed: ipsec spi skipped no-ipsec-service")
+            } else {
+                val address = java.net.InetAddress.getByName("127.0.0.1")
+                val allocated = manager.allocateSecurityParameterIndex(address)
+                step("typed: ipsec spi allocated=0x" + Integer.toHexString(allocated.spi))
+                allocated.close()
+                step("typed: ipsec spi closed")
+            }
+        }.onFailure { problem ->
+            step("typed: ipsec spi refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+
         probe43499(::step)
         probe43284(::step)
         return lines
