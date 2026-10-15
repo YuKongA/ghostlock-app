@@ -922,6 +922,28 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 adb shell ip xfrm state、adb shell ip xfrm policy、adb shell ip route；
 再回树里找「谁该建它」：检索 xfrm/netlink/SA 相关原语，以及 profile 里是否有 route/SA 字段。
 弄清之前不再改任何写路径 —— 否则每次都只会重复「原语接受、内容不落」这同一个现象。
+
+### §11.28 路线侧的正解：ESP-in-UDP 的接收侧由 App 的 IpSec 会话持有（2026-10-15）
+
+steps/pagecache_step_runner.cpp:55-61 的注释写明：
+
+    ESP-in-UDP 的接收侧：内核把落在这个套接字上的报文交给 xfrm。生产环境里它由 App 的 IpSec 会话持有
+    （我们绑不上，EADDRINUSE 属正常）；自建 SA 的实验路线下由我们自己开。
+
+这解释了两件此前只观察到现象的事：
+
+1. 固定端口 bind 失败（esp-bind）：那个 encap 端口正是被 App 自己的 IpSec 会话占着的；让内核挑临时端口虽能建 socket，
+   却不是接收侧那条套接字；
+2. 写被原语接受但内容不落：内核侧没有与该 SPI 匹配的 SA，报文到了也没人处理。
+
+结论：**路线（SA）由 Kotlin 侧建立** —— 用 Android 的 IPsec API（IpSecManager 建传输模式转换，材料就是会话帧那份：SPI/两把密钥/ICV/端口）。
+这与「临时逻辑只放 Kotlin」一致：native 只按 id/fd 发报文，谁建 SA、用什么参数、何时拆，全在 Kotlin。
+
+设备侧现状（本轮取证）：KernelSU 未加载（su 不存在 ⇒ shell 查不了 xfrm）；一次性载体 /data/local/tmp/ghostlock-carrier（16 KiB、world-writable）可用；
+/vendor/lib64/libbinderdebug.so 连 shell 都读不了。
+
+下一批：①Kotlin 用 IpSecManager 按会话材料建传输模式 SA（把端口/SPI/密钥交给系统），成功或具名失败都记下来；
+②复跑同一条真机判据，期望写满 90 块（1440/16）且回读等于 helper 头部 —— 那一天写才算真的落上；③然后才是 batch ③ 与 J7.5-4。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
