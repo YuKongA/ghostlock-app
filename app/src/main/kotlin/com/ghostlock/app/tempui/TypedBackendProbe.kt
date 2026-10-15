@@ -463,8 +463,10 @@ object TypedBackendProbe {
             encapPort = saEncapPort,
             senderPort = 0,
             icvLength = 16,
-            aesKey = aes,
-            hmacKey = hmac,
+            /* 给 DTO 的是**副本**：native 读取器读完秘密字段会把它清零，若传同一数组会把我们留的字段也擦掉
+             * （2026-10-15 真机实证：留存副本 32/32 非零，到写的时候却成了全零）。 */
+            aesKey = aes.copyOf(),
+            hmacKey = hmac.copyOf(),
             initialSequence = 1,
             sequencePresent = true,
         )
