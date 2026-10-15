@@ -537,6 +537,7 @@ namespace ghostlock::jni {
         }
         auto window = std::make_unique<backend::cve_2026_43284::landing::PageCacheWrite>(
             *g_surfaces[slot]->door, *g_surfaces[slot]->io);
+        GL_LOGI("surface: built slot=%zu (door fd + io wired)", slot);
         /* 窗口必须比落地对象活得久：把窗口也挂在 surface 上。 */
         g_surfaces[slot]->window = std::move(window);
         g_landings[slot] = std::make_unique<backend::cve_2026_43284::landing::PageCacheLanding>(
@@ -571,6 +572,11 @@ namespace ghostlock::jni {
             return false;
         }
         return g_landings[slot]->bring_up_with(sa_material_of(params));
+        const bool landing_up = g_landings[slot]->bring_up_with(sa_material_of(params));
+        GL_LOGI("landing: bring_up slot=%zu up=%d spi=0x%08x encap=%u sender=%u icv=%u",
+                slot, landing_up ? 1 : 0, params.spi, static_cast<unsigned>(params.encapPort),
+                static_cast<unsigned>(params.senderPort), static_cast<unsigned>(params.icvLength));
+        return landing_up;
     }
 
     /** @return 窗口的下一个序号；id 无效 ⇒ 0。序号策略（用不用、用哪个）由 Kotlin 决定。 */
@@ -655,6 +661,7 @@ namespace ghostlock::jni {
             if (g_accesses[index] == nullptr) {
                 g_accesses[index] = std::make_unique<backend::cve_2026_43284::Access>(g_landings[slot].get());
                 g_access_landing[index] = slot + 1U;
+                GL_LOGI("access: created index=%zu landingSlot=%zu", index, slot);
                 return static_cast<std::uint64_t>(index) + 1U;
             }
         }
