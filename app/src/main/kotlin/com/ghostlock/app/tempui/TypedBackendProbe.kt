@@ -601,6 +601,11 @@ object TypedBackendProbe {
                 " hmacNonZero=" + patchMaterial.hmacKey.count { byte -> byte != 0.toByte() },
         )
         val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial) else false
+        /* 分辨「异步（写是 fire-and-forget，成功只到 Dispatched）」还是「地址/选择子不匹配」：
+         * 等一会儿再用单独的读原语读一次：等后读到 ⇒ 异步；等后仍读不到 ⇒ 地址不匹配。 */
+        Thread.sleep(250)
+        val afterWait = patcher.readLandingFirstBlock()
+        step("typed: patch1 after-wait read=" + (afterWait?.size ?: -1) + " refusal=" + patcher.lastRefusal)
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
