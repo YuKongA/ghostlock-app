@@ -1189,6 +1189,38 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
     }
 
 下一轮第一件事：把 parse(...) 的完整签名与 DocumentVerdict 的取值打印出来（一次 grep），然后照上面形状落两个原语 + 导出 + Kotlin。
+
+### §11.39 documentFromText 全部读清了：**parse 是 in-place，缓冲区必须比文档活得久**（2026-10-15）
+
+glkv3_document.hpp 的确切内容：
+
+    enum class DocumentVerdict { Ok = 0, Invalid = 1, Missing = 2 };
+    constexpr const char *document_verdict_name(…) → "ok" / "document-invalid" / "payload-missing";
+
+    class Document {
+        Document() noexcept = default;
+        /** Parse in place. **The buffer must outlive this object use.** */
+        DocumentVerdict parse(const std::uint8_t *bytes, std::size_t size) noexcept;
+    };
+
+**关键约束（必须写进实现，否则必悬垂）**：parse 不拷贝输入 —— 所以 native 持有 Document 时，
+必须**同时持有那份字节**：表项里放 { std::vector<std::uint8_t> storage; std::unique_ptr<Document> doc; }，
+拷贝文本进 storage，再 parse(storage.data(), storage.size())；销毁时先 reset doc 再清 storage（顺序无所谓，但两者同生命期）。
+
+于是 documentFromText 的最终形状：
+
+    std::uint64_t device_document_from_text(const std::vector<std::uint8_t> &bytes, const char **why) {
+        auto entry = make_unique< DocumentEntry >();
+        entry->storage = bytes;                                  // 拷贝：parse 是 in-place
+        const auto verdict = entry->doc->parse(entry->storage.data(), entry->storage.size());
+        if (verdict != DocumentVerdict::Ok) { if (why) *why = document_verdict_name(verdict); return 0; }
+        存表 → 返回 id（slot + 1）；
+    }
+
+destroyDocument：release()/reset() + 清 storage；
+makeAccess43499(route, documentId)：把 entry->doc.get() 作为 Access43499Parameters.document 交给访问对象。
+
+下一轮照此落码即可（无未知项）。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
