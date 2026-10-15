@@ -59,6 +59,7 @@ class TempUiActivity : ComponentActivity() {
                     onProbe = ::probeNative,
                     onContracts = ::reportContracts,
                     onGate = ::runDeviceGate,
+                    onPlan = ::runPlans,
                 )
             }
         }
@@ -79,6 +80,12 @@ class TempUiActivity : ComponentActivity() {
         "core: 能力接口=KernelMemoryAccess / PageCacheAccess（描述符由 native 发布）",
     )
 
+    /** 跑两个 backend 的声明计划；每一步的结局见 logcat 的 GhostlockPlan。 */
+    private fun runPlans(): List<String> {
+        GhostLog.i(TAG_UI, "tempui: run the declared plans")
+        return PlanRunner.run()
+    }
+
     private fun runDeviceGate(): List<String> {
         GhostLog.i(TAG_UI, "tempui: run the device gate")
         return probeNative() + DeviceGate.run()
@@ -93,6 +100,7 @@ private fun TempUiScreen(
     onProbe: () -> List<String>,
     onContracts: () -> List<String>,
     onGate: () -> List<String>,
+    onPlan: () -> List<String>,
 ) {
     val lines = remember { mutableStateListOf<String>() }
     val components = kitOf(kit)
@@ -103,6 +111,7 @@ private fun TempUiScreen(
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
         lines += onProbe()
         lines += onGate()
+        lines += onPlan()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
@@ -111,6 +120,7 @@ private fun TempUiScreen(
         }
         components.Actions {
             components.Action("设备门禁") { lines += onGate() }
+            components.Action("跑一遍计划") { lines += onPlan() }
             components.Action("探测 JNI 库") { lines += onProbe() }
             components.Action("能力契约面") { lines += onContracts() }
         }

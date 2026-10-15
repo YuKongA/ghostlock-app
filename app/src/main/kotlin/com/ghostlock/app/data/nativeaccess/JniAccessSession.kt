@@ -35,6 +35,12 @@ class NativeReply internal constructor(
 
     fun blob(key: NativeProtocol.Key): ByteArray? = reply.blob(key)
 
+    /** 全部 u64 字段，键是线上的 key 名。 */
+    val values: Map<String, ULong> get() = reply.values.entries.associate { it.key.token to it.value }
+
+    /** 全部字节字段，键是线上的 key 名。 */
+    val blobs: Map<String, ByteArray> get() = reply.blobs.entries.associate { it.key.token to it.value }
+
     override fun toString(): String =
         "op=" + op.token + " status=" + (unknownStatus?.let { "unknown(" + it + ")" } ?: status.token) +
             (refusal?.let { " refusal=" + it } ?: "")
