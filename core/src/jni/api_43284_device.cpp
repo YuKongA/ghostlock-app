@@ -717,13 +717,23 @@ namespace ghostlock::jni {
      *  @return 全部块写完并校验通过 true；否则 false（上层给 image-write-refused）。
      */
     bool device_write_image(const contract::WriteImage43284Values &values,
-                           const contract::AccessParams43284Values &params_values) noexcept {
+                            const contract::AccessParams43284Values &params_values,
+                            const char **why) noexcept {
+        if (why != nullptr) {
+            *why = nullptr;
+        }
         const std::uint64_t access_id = static_cast<std::uint64_t>(values.imageAccessId);
         if (access_id == 0U) {
+            if (why != nullptr) {
+                *why = "image:no-access-handle";
+            }
             return false;
         }
         const std::size_t slot = static_cast<std::size_t>(access_id) - 1U;
         if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
+            if (why != nullptr) {
+                *why = "image:stale-access-handle";
+            }
             return false;
         }
         auto text_of = [](const std::vector<std::uint8_t> &bytes) {
@@ -747,7 +757,11 @@ namespace ghostlock::jni {
         request.offset = static_cast<std::uint64_t>(values.imageOffset);
         request.width = static_cast<std::uint64_t>(values.imageWidth);
         const char *refusal = nullptr;
-        return backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
+        const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
+        if (!wrote && why != nullptr) {
+            *why = refusal;  /* 具名：step-access-missing / step-width-zero / step-image-empty … */
+        }
+        return wrote;
     }
 
     /**

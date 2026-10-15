@@ -551,9 +551,11 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImag
         const auto outcome = refuse_read(handle, failure);
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
-    const bool wrote = ghostlock::jni::device_write_image(values, params_values);
-    return answer(env, wrote ? CallCode::Ok : CallCode::Failed,
-                  wrote ? "" : "image-write-refused", refusal_out);
+    const char *why = nullptr;
+    const bool wrote = ghostlock::jni::device_write_image(values, params_values, &why);
+    const std::string named = wrote ? std::string()
+                                    : (std::string("image-write:") + (why != nullptr ? why : "refused"));
+    return answer(env, wrote ? CallCode::Ok : CallCode::Failed, named.c_str(), refusal_out);
 }
 
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeHook(
