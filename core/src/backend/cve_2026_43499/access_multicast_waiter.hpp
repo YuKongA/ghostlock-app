@@ -6,7 +6,7 @@
  *  KernelAccess43499 and this class adds only what the route alone knows --
  *  which parameter set initialize accepts, and which landing lands the word.
  *
- *  Seam wiring: MulticastLanding decides (route, target, offset) and hands the window
+ *  落地原语 wiring: MulticastLanding decides (route, target, offset) and hands the window
  *  work to a Window.  The window is borrowed and must outlive this access; a caller
  *  with no window gets the unnamed construction, and initialize then refuses by name,
  *  which is the same rule every door here follows.

@@ -3,7 +3,7 @@
  *  「尝试一次」的真身：两个已经准备好的 futex 字上跑一次 PI 竞态，进出窗口守卫。
  *
  *  形状对上了单元那边的钩子：`bool (*attempt)(void *context)`，context 指向 WindowAttempt。
- *  Seam 是模板参数（设备上用 FutexOps），所以假 landing 能在主机上把这条路径测出来。
+ *  落地原语 是模板参数（设备上用 FutexOps），所以假 landing 能在主机上把这条路径测出来。
  *
  *  判据一句话：内核**真的搬了一个等待者**才算赢 —— `cmp_requeue_pi` 的返回 <1 就是没搬。
  */

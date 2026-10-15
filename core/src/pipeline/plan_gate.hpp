@@ -37,7 +37,7 @@ namespace ghostlock::pipeline {
         OrderViolation = 6,
         HashMismatch = 7,
         ParamInvalid = 8,
-        SeamInPiWindow = 9,
+        LandingInPiWindow = 9,
         ExecutorUnavailable = 10,
         QueueRemoved = 11,
         PlanMissing = 12,
@@ -55,7 +55,7 @@ namespace ghostlock::pipeline {
             case GateReason::OrderViolation: return "order-violation";
             case GateReason::HashMismatch: return "hash-mismatch";
             case GateReason::ParamInvalid: return "param-invalid";
-            case GateReason::SeamInPiWindow: return "landing-in-pi-window";
+            case GateReason::LandingInPiWindow: return "landing-in-pi-window";
             case GateReason::ExecutorUnavailable: return "executor-unavailable";
             case GateReason::QueueRemoved: return "queue-removed";
             case GateReason::PlanMissing: return "plan-missing";
@@ -252,7 +252,7 @@ namespace ghostlock::pipeline {
                 }
             }
             if (plan_op.landing_inside_window) {
-                return refuse(GateReason::SeamInPiWindow, in.backend_id, true, i, "landing");
+                return refuse(GateReason::LandingInPiWindow, in.backend_id, true, i, "landing");
             }
         }
         GateVerdict ok{};

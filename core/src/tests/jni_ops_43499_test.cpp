@@ -129,7 +129,7 @@ namespace {
     }
 
     /** The ops a test fills in. */
-    struct Seams final {
+    struct OpsState final {
         Facts43499 published{};
         bool prepare_ok = true;
         bool discover_ok = true;
@@ -147,14 +147,14 @@ namespace {
     };
 
     bool landing_prepare(Facts43499 &facts, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ++ops->prepare_calls;
         facts = ops->published;
         facts.prepared = ops->prepare_ok;
         return ops->prepare_ok;
     }
     bool landing_discover(Facts43499 &facts, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ++ops->discover_calls;
         facts.discovered = ops->discover_ok;
         facts.found = ops->discover_ok ? ops->published.found : 0U;
@@ -163,7 +163,7 @@ namespace {
         return ops->discover_ok;
     }
     bool landing_spawn(Facts43499 &facts, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ++ops->spawn_calls;
         facts.victim_spawned = ops->spawn_ok;
         facts.victim_task = ops->published.victim_task;
@@ -171,13 +171,13 @@ namespace {
         return ops->spawn_ok;
     }
     bool landing_probe(std::uint64_t kind, std::uint64_t &value, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         value = kind == 0U ? 0U : 0x1234U;
         return true;
     }
     bool landing_land(std::uint64_t address, std::uint64_t value, WriteForm form, std::uint64_t offset,
                    void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ++ops->land_calls;
         ops->last_address = address;
         ops->last_value = value;
@@ -186,12 +186,12 @@ namespace {
         return ops->land_ok;
     }
     bool landing_read(std::uint64_t, std::uint64_t &value, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         value = ops->read_ok ? 0xabcdefULL : 0U;
         return ops->read_ok;
     }
 
-    Ops43499Seams full_ops(Seams &state) {
+    Ops43499Seams full_ops(OpsState &state) {
         Ops43499Seams ops{};
         ops.prepare = &landing_prepare;
         ops.discover = &landing_discover;
@@ -244,7 +244,7 @@ namespace {
     }
 
     void facts_gate_the_write_and_travel_back() {
-        Seams state;
+        OpsState state;
         state.published.page_base = 0xffffff8042a00000ULL;
         state.published.word0 = 0x700000000000ULL;
         state.published.word1 = 0x700000000100ULL;
@@ -314,7 +314,7 @@ namespace {
     }
 
     void a_bad_write_request_is_refused_by_name() {
-        Seams state;
+        OpsState state;
         Ops43499 ops{full_ops(state)};
         FrameStatus status = FrameStatus::Ok;
         Answer answer;
@@ -358,7 +358,7 @@ namespace {
     }
 
     void a_landing_that_refuses_is_reported_as_a_refusal() {
-        Seams state;
+        OpsState state;
         state.land_ok = false;
         state.published.page_base = 0xffffff8042a00000ULL;
         state.published.found = 0xffffff8080808080ULL;
@@ -386,7 +386,7 @@ namespace {
     }
 
     void a_probe_and_a_read_answer_their_values() {
-        Seams state;
+        OpsState state;
         Ops43499 ops{full_ops(state)};
         Request probe;
         static_cast<void>(probe.open(FrameOp::VictimProbe, {{FrameKey::Mode, 1U}}));
@@ -437,7 +437,7 @@ namespace {
 
     /** The session must hand the request to the backend ops, not answer for them. */
     void the_session_routes_its_backend_ops() {
-        Seams state;
+        OpsState state;
         Ops43499Seams ops = full_ops(state);
         Session session;
         const BackendFactory landing{&create_quiet, &ops, &create_ops_43499};

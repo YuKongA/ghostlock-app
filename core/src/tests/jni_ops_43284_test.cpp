@@ -160,7 +160,7 @@ namespace {
     }
 
     /** The ops a test fills in. */
-    struct Seams final {
+    struct OpsState final {
         bool resolve_ok = true;
         bool write_ok = true;
         bool read_ok = true;
@@ -185,14 +185,14 @@ namespace {
 
     bool landing_resolve(std::uint64_t, std::string_view path, std::uint64_t &token,
                       void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ops->last_path = path;
         token = ops->resolve_ok ? ops->token_out : 0U;
         return ops->resolve_ok;
     }
     bool landing_write(std::uint64_t token, std::uint64_t offset, std::span<const std::byte> block,
                     std::uint64_t &sequence, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ++ops->writes;
         ops->last_token = token;
         ops->last_offset = offset;
@@ -204,7 +204,7 @@ namespace {
         return true;
     }
     bool landing_read(std::uint64_t, std::uint64_t, std::span<std::byte> block, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         if (!ops->read_ok) {
             return false;
         }
@@ -214,13 +214,13 @@ namespace {
         return true;
     }
     bool landing_trigger(std::uint64_t delay_ms, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ops->last_delay = delay_ms;
         return ops->trigger_ok;
     }
     bool landing_wait(std::uint64_t budget, std::uint64_t poll, std::string_view, TerminalState &terminal,
                    void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         ops->last_budget = budget;
         ops->last_poll = poll;
         if (!ops->wait_ok) {
@@ -230,7 +230,7 @@ namespace {
         return true;
     }
     bool landing_image(std::uint64_t role, std::span<const std::byte> &image, void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         if (!ops->image_ok || role != 0U) {
             return false;
         }
@@ -240,7 +240,7 @@ namespace {
     bool landing_hook(std::uint64_t &branch, std::uint64_t &displaced, std::uint64_t &site,
                    std::uint64_t &landing, std::span<const std::byte> &payload,
                    void *context) noexcept {
-        auto *const ops = static_cast<Seams *>(context);
+        auto *const ops = static_cast<OpsState *>(context);
         if (!ops->hook_ok) {
             return false;
         }
@@ -252,7 +252,7 @@ namespace {
         return true;
     }
 
-    Ops43284Seams full_ops(Seams &state) {
+    Ops43284Seams full_ops(OpsState &state) {
         Ops43284Seams ops{};
         ops.resolve = &landing_resolve;
         ops.write_block = &landing_write;
@@ -285,7 +285,7 @@ namespace {
     }
 
     void a_target_is_resolved_before_any_block() {
-        Seams state;
+        OpsState state;
         Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
@@ -323,7 +323,7 @@ namespace {
     }
 
     void the_block_unit_is_exactly_sixteen_bytes() {
-        Seams state;
+        OpsState state;
         Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
@@ -385,7 +385,7 @@ namespace {
     }
 
     void the_terminal_has_three_answers_and_they_are_not_interchangeable() {
-        Seams state;
+        OpsState state;
         Ops43284 ops{full_ops(state)};
         Builder request;
         Answer answer;
@@ -423,7 +423,7 @@ namespace {
     }
 
     void images_and_hook_words_come_back_as_bytes() {
-        Seams state;
+        OpsState state;
         const std::byte payload[4] = {std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
         state.payload = payload;
         state.payload_size = sizeof(payload);
@@ -491,7 +491,7 @@ namespace {
     }
 
     void the_session_routes_this_backends_ops() {
-        Seams state;
+        OpsState state;
         const std::byte payload[2] = {std::byte{9}, std::byte{9}};
         state.payload = payload;
         state.payload_size = sizeof(payload);

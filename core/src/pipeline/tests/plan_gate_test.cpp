@@ -170,7 +170,7 @@ namespace {
         ops[1].landing_inside_window = true;
         const PlanInput in = base_input(ops, 2);
         const GateVerdict v = plan_gate(in);
-        expect(!v.ok && v.reason == GateReason::SeamInPiWindow, "landing inside the window must be refused");
+        expect(!v.ok && v.reason == GateReason::LandingInPiWindow, "landing inside the window must be refused");
         expect(v.index == 1 && index_matches_path(v), "landing verdict index must match the path");
         std::printf("case landing-in-pi-window: reason=%s path=%s index=%zu\n", gate_reason_name(v.reason), v.path,
                     v.index);

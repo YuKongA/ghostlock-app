@@ -32,7 +32,7 @@ namespace {
     using Platforms = ghostlock::backend::cve_2026_43499::memory::LinuxHeapOps;
 
     /** The device landing, with a child that leaves at once instead of running on. */
-    struct ProbeSeam final {
+    struct ProbeHeap final {
         static OpsResult page_size() noexcept { return Platforms::page_size(); }
         static OpsResult open_memfd(std::uint64_t pid) noexcept { return Platforms::open_memfd(pid); }
         static OpsResult close_fd(std::int32_t fd) noexcept { return Platforms::close_fd(fd); }
@@ -62,7 +62,7 @@ namespace {
             return Platforms::pin_to_processor(cpu);
         }
     };
-    static_assert(HeapOps<ProbeSeam>, "the probe landing answers every call the shape names");
+    static_assert(HeapOps<ProbeHeap>, "the probe landing answers every call the shape names");
 
     /** A search that never finds anything: the mechanism is not ported yet. */
     struct StubSnitch final {
@@ -75,7 +75,7 @@ namespace {
 
 int main() {
     std::printf("prepare page probe\n");
-    const auto page = ProbeSeam::page_size();
+    const auto page = ProbeHeap::page_size();
     const std::uint64_t page_size = static_cast<std::uint64_t>(page.value > 0 ? page.value : 0U);
     const std::uint64_t region = region_for(page_size);
     PageGeometry geometry{};
@@ -98,7 +98,7 @@ int main() {
                 static_cast<unsigned long long>(page_size),
                 static_cast<unsigned long long>(region), inputs.pre_groups, inputs.spray_groups,
                 inputs.post_groups);
-    const auto outcome = prepare_page<ProbeSeam, StubSnitch>(inputs, geometry, patience);
+    const auto outcome = prepare_page<ProbeHeap, StubSnitch>(inputs, geometry, patience);
     std::printf("  status=%s at=%d opened=%zu closed=%zu errno=%d\n", prepare_status_name(outcome.status),
                 static_cast<int>(outcome.at_step), outcome.opened, outcome.closed, outcome.error);
     const bool expected = outcome.status ==

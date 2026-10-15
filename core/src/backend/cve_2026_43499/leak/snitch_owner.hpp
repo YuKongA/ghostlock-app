@@ -73,7 +73,7 @@ namespace ghostlock::backend::cve_2026_43499::leak {
     /**
      *  One search, from the inputs the caller measured and read to a discovery or a refusal.
      *
-     *  @tparam Seam       The heap and snitch operations. Deliberately not defaulted: the device
+     *  @tparam 落地原语       The heap and snitch operations. Deliberately not defaulted: the device
      *                     one lives in a header that includes linux/futex.h and cannot be compiled
      *                     on the host, and this file has to compile there. The caller at the edge
      *                     supplies the real one; a test supplies a recording one.
