@@ -240,7 +240,7 @@ object LkmSupport {
 
     fun readManifest(file: File): List<LkmKmiRow> {
         check(file.isFile) {
-            "missing LKM manifest: " + file + " (regenerate with: make -C core lkm-kmi-manifest)"
+            "missing LKM manifest: " + file + " (the manifest lives in profile-core/src/main/resources; the module images come from ./gradlew buildLkmImages)"
         }
         val rows = file.readLines()
             .filter { it.isNotBlank() && !it.startsWith("#") }

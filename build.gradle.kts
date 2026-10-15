@@ -791,35 +791,3 @@ tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
  *  KDIR 的解析照本文件既有的 NDK 风格：环境变量优先，其次 local.properties（此处先只支持环境变量，
  *  等有 DDK 的机器上再加本地文件键）。产物基准：退役树那次是 12304 字节。
  */
-/** 任务名与变量名一致：Gradle 用变量名作任务名，所以这里就叫 lkmBuild。 */
-val lkmBuild by tasks.registering {
-    group = "build"
-    description = "Builds tools/lkm/ghostlock via kbuild (needs GL_KDIR pointing at a kernel tree)"
-
-    doLast {
-        val kdir = System.getenv("GL_KDIR")
-            ?: throw GradleException(
-                "LKM build needs a kernel tree: set GL_KDIR (e.g. the android13-5.15 DDK). " +
-                    "CMake cannot drive kbuild; the kernel's own Makefile must.",
-            )
-        val moduleDir = layout.projectDirectory.dir("tools/lkm/ghostlock").asFile
-        val outDir = layout.buildDirectory.dir("lkm").get().asFile
-        outDir.mkdirs()
-
-        providers.exec {
-            workingDir = moduleDir
-            commandLine("make", "-C", kdir, "M=$moduleDir", "ARCH=arm64", "LLVM=1", "modules")
-        }.result.get().assertNormalExitValue()
-
-        val built = moduleDir.resolve("ghostlock.ko")
-        if (!built.isFile) {
-            throw GradleException("kbuild reported success but ghostlock.ko is missing")
-        }
-        val target = outDir.resolve("ghostlock.ko")
-        built.copyTo(target, overwrite = true)
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(target.readBytes())
-            .joinToString("") { byte -> "%02x".format(byte) }
-        logger.lifecycle("lkmBuild: ghostlock.ko {} bytes sha256 {}", target.length(), digest)
-    }
-}
